@@ -1,0 +1,363 @@
+package parser
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/akira-toriyama/glyph/internal/core"
+)
+
+// TestParse exercises the canonical `<:code:>[(scope)][!] <subject>` grammar
+// plus the lenient legacy acceptance: a `<type>[(scope)][!]:` token after the
+// gitmoji is dropped (its scope salvaged when the new position has none, its
+// `!` still meaning breaking) so pre-glyph history keeps parsing — no flag-day.
+func TestParse(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want Commit
+	}{
+		{
+			name: "minimal",
+			in:   ":bug: fix a crash on empty input",
+			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash on empty input"},
+		},
+		{
+			name: "scope",
+			in:   ":sparkles:(ui) add a right-click window menu",
+			want: Commit{Gitmoji: ":sparkles:", Scope: "ui", Subject: "add a right-click window menu"},
+		},
+		{
+			name: "breaking bang with scope",
+			in:   ":boom:(api)! replace the --items flag with a positional arg",
+			want: Commit{Gitmoji: ":boom:", Scope: "api", Breaking: true, Subject: "replace the --items flag with a positional arg"},
+		},
+		{
+			name: "breaking bang without scope",
+			in:   ":truck:! rename Store to Repository",
+			want: Commit{Gitmoji: ":truck:", Breaking: true, Subject: "rename Store to Repository"},
+		},
+		{
+			name: "kebab and digits in scope",
+			in:   ":bug:(grid-1f-4) keep defaults when an unknown key is present",
+			want: Commit{Gitmoji: ":bug:", Scope: "grid-1f-4", Subject: "keep defaults when an unknown key is present"},
+		},
+		{
+			name: "underscore code",
+			in:   ":white_check_mark: cover the fold with a permutation test",
+			want: Commit{Gitmoji: ":white_check_mark:", Subject: "cover the fold with a permutation test"},
+		},
+		{
+			name: "legacy type with scope",
+			in:   ":wrench: ci(hub): raise the zizmor gate",
+			want: Commit{Gitmoji: ":wrench:", Scope: "hub", Subject: "raise the zizmor gate"},
+		},
+		{
+			name: "legacy type without scope",
+			in:   ":bug: fix: keep defaults when an unknown key is present",
+			want: Commit{Gitmoji: ":bug:", Subject: "keep defaults when an unknown key is present"},
+		},
+		{
+			name: "legacy breaking bang",
+			in:   ":truck: refactor(core)!: rename Store to Repository",
+			want: Commit{Gitmoji: ":truck:", Scope: "core", Breaking: true, Subject: "rename Store to Repository"},
+		},
+		{
+			name: "new scope wins over legacy scope",
+			in:   ":wrench:(a) ci(b): raise the gate",
+			want: Commit{Gitmoji: ":wrench:", Scope: "a", Subject: "raise the gate"},
+		},
+		{
+			name: "non-type word with colon stays in the subject",
+			in:   ":memo: note: document the squash-merge bump model",
+			want: Commit{Gitmoji: ":memo:", Subject: "note: document the squash-merge bump model"},
+		},
+		{
+			name: "parenthesized text after the space is subject, not scope",
+			in:   ":bug: (ui) fix a crash",
+			want: Commit{Gitmoji: ":bug:", Subject: "(ui) fix a crash"},
+		},
+		{
+			name: "body after blank line",
+			in:   ":bug: fix a crash\n\nGuard the nil map before indexing.",
+			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "Guard the nil map before indexing."},
+		},
+		{
+			name: "body without blank separator is tolerated",
+			in:   ":bug: fix a crash\nGuard the nil map.",
+			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "Guard the nil map."},
+		},
+		{
+			name: "japanese translation body passes through verbatim",
+			in:   ":bug: fix a crash\n\nGuard the nil map.\n\n---（和訳）\nクラッシュを修正。",
+			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "Guard the nil map.\n\n---（和訳）\nクラッシュを修正。"},
+		},
+		{
+			name: "breaking change footer",
+			in:   ":truck: rename Store to Repository\n\nBREAKING CHANGE: Store is gone from the public API.",
+			want: Commit{Gitmoji: ":truck:", Breaking: true, Subject: "rename Store to Repository", Body: "BREAKING CHANGE: Store is gone from the public API."},
+		},
+		{
+			name: "breaking-change hyphen footer",
+			in:   ":truck: rename Store to Repository\n\nBREAKING-CHANGE: Store is gone.",
+			want: Commit{Gitmoji: ":truck:", Breaking: true, Subject: "rename Store to Repository", Body: "BREAKING-CHANGE: Store is gone."},
+		},
+		{
+			name: "lowercase breaking phrase is not a footer",
+			in:   ":bug: fix a crash\n\nbreaking change: this text is prose, not a footer.",
+			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "breaking change: this text is prose, not a footer."},
+		},
+		{
+			name: "mid-line breaking phrase is not a footer",
+			in:   ":bug: fix a crash\n\nSee BREAKING CHANGE: docs for details.",
+			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "See BREAKING CHANGE: docs for details."},
+		},
+		{
+			name: "crlf line endings are normalized",
+			in:   ":bug: fix a crash\r\n\r\nGuard the nil map.",
+			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "Guard the nil map."},
+		},
+		{
+			name: "trailing newline from git %B is trimmed",
+			in:   ":bug: fix a crash\n",
+			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := Parse(c.in)
+			if err != nil {
+				t.Fatalf("Parse(%q): unexpected error: %v", c.in, err)
+			}
+			if got != c.want {
+				t.Fatalf("Parse(%q):\n got  %+v\n want %+v", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+// TestParseRejects: a message that does not open with a well-formed textual
+// gitmoji subject is a lint failure (exit code 3), never a silent zero Commit.
+func TestParseRejects(t *testing.T) {
+	cases := []struct{ name, in string }{
+		{"empty message", ""},
+		{"blank message", "\n\n"},
+		{"no gitmoji", "fix: keep defaults"},
+		{"conventional only", "feat(ui): add a menu"},
+		{"emoji glyph form", "✨ add a right-click menu"},
+		{"no space after code", ":bug:fix a crash"},
+		{"missing subject", ":bug: "},
+		{"bare code", ":bug:"},
+		{"uppercase code", ":Bug: fix a crash"},
+		{"unclosed scope", ":bug:(ui fix a crash"},
+		{"scope after bang", ":bug:!(ui) fix a crash"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := Parse(c.in)
+			if err == nil {
+				t.Fatalf("Parse(%q) should fail, got %+v", c.in, got)
+			}
+			ce := core.AsError(err)
+			if ce == nil {
+				t.Fatalf("Parse(%q) error is not a *core.Error: %v", c.in, err)
+			}
+			if ce.Code != core.CodeLint {
+				t.Fatalf("Parse(%q) error code = %d, want %d (lint)", c.in, ce.Code, core.CodeLint)
+			}
+		})
+	}
+}
+
+// testKnown is a toy membership oracle: the real one is a gitmoji.Table lookup,
+// injected so the parser package never depends on the rules table.
+func testKnown(code string) bool {
+	switch code {
+	case ":bug:", ":sparkles:", ":boom:", ":wrench:", ":memo:", ":construction:", ":truck:":
+		return true
+	}
+	return false
+}
+
+// TestLint pins the five lint rules and their stable machine identifiers:
+// malformed-subject, unknown-gitmoji, wip-merge-candidate, uppercase-subject,
+// trailing-period. Rule order in the result is fixed so CI output is stable.
+func TestLint(t *testing.T) {
+	cases := []struct {
+		name           string
+		in             string
+		mergeCandidate bool
+		want           []string // violation rule ids, in order
+	}{
+		{
+			name: "clean new format",
+			in:   ":bug: fix a crash",
+			want: nil,
+		},
+		{
+			name: "clean legacy format keeps linting",
+			in:   ":wrench: ci(hub): raise the zizmor gate",
+			want: nil,
+		},
+		{
+			name: "malformed subject",
+			in:   "feat: add a menu",
+			want: []string{RuleMalformedSubject},
+		},
+		{
+			name: "unknown gitmoji",
+			in:   ":not-a-real-code: fix a crash",
+			want: []string{RuleUnknownGitmoji},
+		},
+		{
+			name: "trailing period",
+			in:   ":bug: fix a crash.",
+			want: []string{RuleTrailingPeriod},
+		},
+		{
+			name: "uppercase subject",
+			in:   ":bug: Fix a crash",
+			want: []string{RuleUppercaseSubject},
+		},
+		{
+			name: "identifier-start subject is a style violation by design",
+			in:   ":truck:! Store becomes Repository",
+			want: []string{RuleUppercaseSubject},
+		},
+		{
+			name:           "wip blocks a merge candidate",
+			in:             ":construction: try things",
+			mergeCandidate: true,
+			want:           []string{RuleWIPMergeCandidate},
+		},
+		{
+			name: "wip is fine while authoring",
+			in:   ":construction: try things",
+			want: nil,
+		},
+		{
+			name:           "violations accumulate in stable order",
+			in:             ":not-a-real-code: Fix a crash.",
+			mergeCandidate: true,
+			want:           []string{RuleUnknownGitmoji, RuleUppercaseSubject, RuleTrailingPeriod},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := Lint(c.in, LintOptions{Known: testKnown, MergeCandidate: c.mergeCandidate})
+			var rules []string
+			for _, v := range got {
+				if v.Rule == "" || v.Detail == "" {
+					t.Fatalf("Lint(%q) produced a violation with empty fields: %+v", c.in, v)
+				}
+				rules = append(rules, v.Rule)
+			}
+			if fmt.Sprint(rules) != fmt.Sprint(c.want) {
+				t.Fatalf("Lint(%q) rules = %v, want %v", c.in, rules, c.want)
+			}
+		})
+	}
+}
+
+// TestLintWithoutMembership: a nil Known skips only the membership rule — the
+// shape and style rules still apply (used by callers that lint pure grammar).
+func TestLintWithoutMembership(t *testing.T) {
+	if vs := Lint(":not-a-real-code: fix a crash", LintOptions{}); len(vs) != 0 {
+		t.Fatalf("Lint without Known should skip membership, got %+v", vs)
+	}
+	vs := Lint(":not-a-real-code: Fix a crash", LintOptions{})
+	if len(vs) != 1 || vs[0].Rule != RuleUppercaseSubject {
+		t.Fatalf("Lint without Known should still catch style rules, got %+v", vs)
+	}
+}
+
+// FuzzParseNeverPanics: Parse must survive arbitrary bytes; when it accepts a
+// message, the structural invariants hold (a shaped gitmoji, a non-empty
+// subject).
+func FuzzParseNeverPanics(f *testing.F) {
+	f.Add(":bug: fix a crash")
+	f.Add(":sparkles:(ui)! add a menu")
+	f.Add(":wrench: ci(hub): raise the gate\n\nBREAKING CHANGE: x")
+	f.Add("")
+	f.Add("✨ add a menu")
+	f.Add(":bug:(ui\x00) fix")
+	f.Fuzz(func(t *testing.T, msg string) {
+		c, err := Parse(msg)
+		if err != nil {
+			return
+		}
+		if !strings.HasPrefix(c.Gitmoji, ":") || !strings.HasSuffix(c.Gitmoji, ":") || len(c.Gitmoji) < 3 {
+			t.Fatalf("Parse(%q) accepted a malformed gitmoji %q", msg, c.Gitmoji)
+		}
+		if c.Subject == "" {
+			t.Fatalf("Parse(%q) accepted an empty subject", msg)
+		}
+	})
+}
+
+// FuzzParseRoundTrip: any well-formed new-format subject composed from valid
+// parts parses back to exactly those parts. Subjects that themselves spell a
+// legacy `<type>[(scope)][!]:` token are skipped — the lenient legacy pass
+// deliberately eats those (documented one-way lossiness, no flag-day).
+func FuzzParseRoundTrip(f *testing.F) {
+	f.Add("bug", "ui", false, "fix a crash")
+	f.Add("sparkles", "", true, "add a menu")
+	f.Add("white_check_mark", "grid-1f-4", false, "cover the fold")
+	f.Fuzz(func(t *testing.T, code, scope string, breaking bool, subject string) {
+		code = sanitizeFuzz(code, "abcdefghijklmnopqrstuvwxyz0123456789_+-", "x")
+		if code == "" || !lowerAlnum(code[0]) {
+			code = "x" + code
+		}
+		scope = sanitizeFuzz(scope, "abcdefghijklmnopqrstuvwxyz0123456789-", "")
+		if scope != "" && !lowerAlnum(scope[0]) {
+			scope = "s" + scope
+		}
+		subject = strings.NewReplacer("\n", " ", "\r", " ").Replace(subject)
+		if strings.TrimSpace(subject) == "" {
+			t.Skip("empty subject after sanitizing")
+		}
+		if legacyTokenRE.MatchString(subject) {
+			t.Skip("subject spells a legacy token — eaten by design")
+		}
+
+		msg := ":" + code + ":"
+		want := Commit{Gitmoji: msg, Scope: scope, Breaking: breaking, Subject: subject}
+		if scope != "" {
+			msg += "(" + scope + ")"
+		}
+		if breaking {
+			msg += "!"
+		}
+		msg += " " + subject
+
+		got, err := Parse(msg)
+		if err != nil {
+			t.Fatalf("Parse(%q) rejected a well-formed message: %v", msg, err)
+		}
+		if got != want {
+			t.Fatalf("Parse(%q):\n got  %+v\n want %+v", msg, got, want)
+		}
+	})
+}
+
+// lowerAlnum reports whether b may open a code or scope ([a-z0-9]).
+func lowerAlnum(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+}
+
+// sanitizeFuzz keeps only bytes from allowed, lowercasing ASCII letters first;
+// fallback seeds the value when everything was stripped.
+func sanitizeFuzz(s, allowed, fallback string) string {
+	s = strings.ToLower(s)
+	var b strings.Builder
+	for _, r := range s {
+		if strings.ContainsRune(allowed, r) {
+			b.WriteRune(r)
+		}
+	}
+	if b.Len() == 0 {
+		return fallback
+	}
+	return b.String()
+}

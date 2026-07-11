@@ -23,6 +23,16 @@ go vet ./...
 echo "→ go test -race"
 go test -race ./...
 
+# Mirrors build.yml's Linux-only "fuzz smoke (bounded)" step: discover every
+# Fuzz target and run each briefly so a new target needs no edit here either.
+echo "→ fuzz smoke (bounded)"
+for pkg in $(go list ./...); do
+  targets=$(go test -list '^Fuzz' "$pkg" | grep '^Fuzz' || true)
+  for f in $targets; do
+    go test "$pkg" -run '^$' -fuzz "^${f}\$" -fuzztime 15s
+  done
+done
+
 if command -v golangci-lint >/dev/null 2>&1; then
   echo "→ golangci-lint"
   golangci-lint run ./...
