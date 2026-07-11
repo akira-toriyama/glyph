@@ -25,8 +25,8 @@ jobs:
   # Repo-specific checks that don't belong in the shared core. The smoke runs on
   # every leg so the shipped binary (macOS brew cask) is exercised on darwin too —
   # matching the pre-migration matrix, which the core test job (build + unit tests)
-  # doesn't cover. glyph has no fuzz targets yet (they arrive with the parser/bump
-  # packages in Phase 2); add a Linux-only fuzz-smoke step here then.
+  # doesn't cover. The fuzz smoke is Linux-only (house pattern): it discovers every
+  # Fuzz target and runs each briefly, so new targets are covered with no edit here.
   extras:
     strategy:
       fail-fast: false
@@ -56,3 +56,16 @@ jobs:
             echo "expected a usage error for rules --json --md" >&2
             exit 1
           fi
+
+      # Bounded fuzz over every Fuzz target (never-panic / round-trip / fold
+      # invariants). Auto-discovered per package so a new target needs no
+      # workflow edit; scripts/check.sh mirrors this loop.
+      - name: fuzz smoke (bounded)
+        if: runner.os == 'Linux'
+        run: |
+          for pkg in $(go list ./...); do
+            targets=$(go test -list '^Fuzz' "$pkg" | grep '^Fuzz' || true)
+            for f in $targets; do
+              go test "$pkg" -run '^$' -fuzz "^${f}\$" -fuzztime 15s
+            done
+          done
