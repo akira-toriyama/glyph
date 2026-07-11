@@ -1,0 +1,57 @@
+name: release
+
+# Tag-driven release: pushing a vX.Y.Z tag runs GoReleaser (binaries, checksums,
+# Homebrew cask) and attaches build-provenance attestations. Deliberately NOT on
+# every main push — that would run GoReleaser with no tag. Use workflow_dispatch
+# for a manual run.
+#
+# Divergence from the other family Go CLIs (cifail/furrow): glyph does NOT run
+# git-cliff here. glyph is the tool that replaces git-cliff, so depending on it for
+# glyph's own release notes would be self-contradictory. Notes come from
+# GoReleaser's built-in changelog until glyph dogfoods `glyph notes` (Phase 5+).
+#
+# Requires the HOMEBREW_TAP_TOKEN secret (write access to akira-toriyama/homebrew-tap)
+# for the cask push. It is NOT fleet-distributed — set it on this repo before the
+# first tag; without it the build + attestation still run and only the cask step fails.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write      # create the GitHub release
+  id-token: write      # keyless signing for provenance attestation
+  attestations: write  # write the attestation
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      # No job-level `env: GOTOOLCHAIN: local` — see build.yml. It would make
+      # setup-go skip go.mod's `toolchain` line and ship release binaries built
+      # with the bare floor. setup-go pins GOTOOLCHAIN=local itself.
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: GoReleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          # Pin the GoReleaser TOOL to the v2 line (never `latest`).
+          version: "~> 2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PAT with write access to akira-toriyama/homebrew-tap.
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: attest build provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: 'dist/*.tar.gz, dist/checksums.txt'

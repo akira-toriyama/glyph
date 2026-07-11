@@ -1,0 +1,58 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: this workflow only reads the repo.
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Shared Go CI core (build / vet / race-test / module-hygiene / golangci-lint v2),
+  # SHA-pinned once in the hub. go.mod carries a `toolchain` line, so gotoolchain is
+  # left unset — setup-go honors and pins it (see the reusable's header footgun note).
+  ci:
+    uses: akira-toriyama/.github/.github/workflows/go-ci.yml@v1
+    with:
+      go-version-file: go.mod
+
+  # Repo-specific checks that don't belong in the shared core. The smoke runs on
+  # every leg so the shipped binary (macOS brew cask) is exercised on darwin too —
+  # matching the pre-migration matrix, which the core test job (build + unit tests)
+  # doesn't cover. glyph has no fuzz targets yet (they arrive with the parser/bump
+  # packages in Phase 2); add a Linux-only fuzz-smoke step here then.
+  extras:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: smoke test
+        run: |
+          go build -o /tmp/glyph ./cmd/glyph
+          /tmp/glyph version
+          /tmp/glyph --version
+          /tmp/glyph --help >/dev/null
+          # rules self-prints its embedded table both ways; --json must carry the
+          # pinned spec version, --md must lead with the docs heading.
+          /tmp/glyph rules --json | grep -q '"version"'
+          /tmp/glyph rules --md | head -1 | grep -q '^# gitmoji'
+          # mutually-exclusive formats must be a usage error (exit 2), not a crash.
+          if /tmp/glyph rules --json --md >/dev/null 2>&1; then
+            echo "expected a usage error for rules --json --md" >&2
+            exit 1
+          fi

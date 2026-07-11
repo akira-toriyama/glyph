@@ -1,0 +1,73 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: glyph
+    main: ./cmd/glyph
+    binary: glyph
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/akira-toriyama/glyph/internal/version.Version={{.Version}}
+      - -X github.com/akira-toriyama/glyph/internal/version.Commit={{.Commit}}
+      - -X github.com/akira-toriyama/glyph/internal/version.Date={{.Date}}
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+# glyph will derive its own release notes from gitmoji once it self-hosts (Phase
+# 5+, `glyph notes`). Until then GoReleaser groups the tag's commits by their
+# gitmoji / Conventional prefix — the family's other repos use git-cliff, but glyph
+# must not depend on the tool it replaces (see .github/workflows/release.yml).
+changelog:
+  use: git
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '(:sparkles:|:boom:)|(^feat[(!:])'
+      order: 0
+    - title: Fixes
+      regexp: '(:bug:|:ambulance:|:lock:)|(^fix[(!:])'
+      order: 1
+    - title: Others
+      order: 999
+  filters:
+    exclude:
+      - '^:memo:'
+      - '^:card_file_box: chore\(board\)'
+      - '^docs[(:]'
+
+# Homebrew cask pushed to the family tap on release. GoReleaser v2 ships prebuilt
+# binaries as CASKS (the old `brews:` formula path is deprecated); the live
+# Casks/glyph.rb in akira-toriyama/homebrew-tap is regenerated each release.
+# Install: brew install akira-toriyama/tap/glyph.
+homebrew_casks:
+  - repository:
+      owner: akira-toriyama
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/akira-toriyama/glyph
+    description: "gitmoji-driven commit-lint, semver, and release notes for squash-merge repos"
+    # The binary is unsigned; strip the quarantine xattr on macOS so Gatekeeper
+    # allows launch (same pattern as the family's other casks).
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/glyph"]
+          end
+
+release:
+  # Rolling-draft: pushes refresh a draft; publishing (or the tag) cuts it.
+  draft: true
