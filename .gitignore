@@ -1,0 +1,25 @@
+# Go build artifacts
+/glyph
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Go workspace / vendor (kept out until needed)
+/vendor/
+go.work
+go.work.sum
+
+# nix build result symlink
+/result
+
+# macOS / editors
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Local scratch
+/tmp/
