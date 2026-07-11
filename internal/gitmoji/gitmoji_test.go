@@ -162,9 +162,9 @@ func TestVersionPresent(t *testing.T) {
 // TestBumpRankLattice locks the none<patch<minor<major ordering the max-fold
 // relies on, and that an unknown bump string is rejected.
 func TestBumpRankLattice(t *testing.T) {
-	if !(BumpNone.Rank() < BumpPatch.Rank() &&
-		BumpPatch.Rank() < BumpMinor.Rank() &&
-		BumpMinor.Rank() < BumpMajor.Rank()) {
+	if BumpNone.Rank() >= BumpPatch.Rank() ||
+		BumpPatch.Rank() >= BumpMinor.Rank() ||
+		BumpMinor.Rank() >= BumpMajor.Rank() {
 		t.Fatalf("bump ranks not strictly ordered: none=%d patch=%d minor=%d major=%d",
 			BumpNone.Rank(), BumpPatch.Rank(), BumpMinor.Rank(), BumpMajor.Rank())
 	}

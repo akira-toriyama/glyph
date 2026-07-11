@@ -18,12 +18,6 @@ var (
 	errOut io.Writer = os.Stderr
 )
 
-// printPretty writes v as 2-space-indented JSON (HTML escaping off so text with
-// <, >, & stays readable).
-func printPretty(v any) {
-	fmt.Fprintln(out, string(marshal(v, true)))
-}
-
 // printCompact writes v as one JSON line.
 func printCompact(v any) {
 	fmt.Fprintln(out, string(marshal(v, false)))
