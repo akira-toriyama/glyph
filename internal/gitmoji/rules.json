@@ -1,0 +1,507 @@
+{
+  "version": "gitmoji-3.15.0",
+  "sections": [
+    "Breaking Changes",
+    "Features",
+    "Fixes",
+    "Performance",
+    "Security",
+    "Reverts",
+    "UI & UX",
+    "Data",
+    "Dependencies",
+    "Deprecations",
+    "Feature Flags",
+    "Other"
+  ],
+  "codes": [
+    {
+      "code": ":art:",
+      "emoji": "🎨",
+      "meaning": "Improve structure / format of the code.",
+      "bump": "none"
+    },
+    {
+      "code": ":zap:",
+      "emoji": "⚡️",
+      "meaning": "Improve performance.",
+      "bump": "patch",
+      "section": "Performance"
+    },
+    {
+      "code": ":fire:",
+      "emoji": "🔥",
+      "meaning": "Remove code or files.",
+      "bump": "none"
+    },
+    {
+      "code": ":bug:",
+      "emoji": "🐛",
+      "meaning": "Fix a bug.",
+      "bump": "patch",
+      "section": "Fixes"
+    },
+    {
+      "code": ":ambulance:",
+      "emoji": "🚑️",
+      "meaning": "Critical hotfix.",
+      "bump": "patch",
+      "section": "Fixes"
+    },
+    {
+      "code": ":sparkles:",
+      "emoji": "✨",
+      "meaning": "Introduce new features.",
+      "bump": "minor",
+      "section": "Features"
+    },
+    {
+      "code": ":memo:",
+      "emoji": "📝",
+      "meaning": "Add or update documentation.",
+      "bump": "none"
+    },
+    {
+      "code": ":rocket:",
+      "emoji": "🚀",
+      "meaning": "Deploy stuff.",
+      "bump": "none"
+    },
+    {
+      "code": ":lipstick:",
+      "emoji": "💄",
+      "meaning": "Add or update the UI and style files.",
+      "bump": "patch",
+      "section": "UI & UX"
+    },
+    {
+      "code": ":tada:",
+      "emoji": "🎉",
+      "meaning": "Begin a project.",
+      "bump": "none"
+    },
+    {
+      "code": ":white_check_mark:",
+      "emoji": "✅",
+      "meaning": "Add, update, or pass tests.",
+      "bump": "none"
+    },
+    {
+      "code": ":lock:",
+      "emoji": "🔒️",
+      "meaning": "Fix security or privacy issues.",
+      "bump": "patch",
+      "section": "Security"
+    },
+    {
+      "code": ":closed_lock_with_key:",
+      "emoji": "🔐",
+      "meaning": "Add or update secrets.",
+      "bump": "none"
+    },
+    {
+      "code": ":bookmark:",
+      "emoji": "🔖",
+      "meaning": "Release / Version tags.",
+      "bump": "none"
+    },
+    {
+      "code": ":rotating_light:",
+      "emoji": "🚨",
+      "meaning": "Fix compiler / linter warnings.",
+      "bump": "none"
+    },
+    {
+      "code": ":construction:",
+      "emoji": "🚧",
+      "meaning": "Work in progress.",
+      "bump": "none"
+    },
+    {
+      "code": ":green_heart:",
+      "emoji": "💚",
+      "meaning": "Fix CI Build.",
+      "bump": "none"
+    },
+    {
+      "code": ":arrow_down:",
+      "emoji": "⬇️",
+      "meaning": "Downgrade dependencies.",
+      "bump": "patch",
+      "section": "Dependencies"
+    },
+    {
+      "code": ":arrow_up:",
+      "emoji": "⬆️",
+      "meaning": "Upgrade dependencies.",
+      "bump": "patch",
+      "section": "Dependencies"
+    },
+    {
+      "code": ":pushpin:",
+      "emoji": "📌",
+      "meaning": "Pin dependencies to specific versions.",
+      "bump": "patch",
+      "section": "Dependencies"
+    },
+    {
+      "code": ":construction_worker:",
+      "emoji": "👷",
+      "meaning": "Add or update CI build system.",
+      "bump": "none"
+    },
+    {
+      "code": ":chart_with_upwards_trend:",
+      "emoji": "📈",
+      "meaning": "Add or update analytics or track code.",
+      "bump": "patch",
+      "section": "Other"
+    },
+    {
+      "code": ":recycle:",
+      "emoji": "♻️",
+      "meaning": "Refactor code.",
+      "bump": "none"
+    },
+    {
+      "code": ":heavy_plus_sign:",
+      "emoji": "➕",
+      "meaning": "Add a dependency.",
+      "bump": "patch",
+      "section": "Dependencies"
+    },
+    {
+      "code": ":heavy_minus_sign:",
+      "emoji": "➖",
+      "meaning": "Remove a dependency.",
+      "bump": "patch",
+      "section": "Dependencies"
+    },
+    {
+      "code": ":wrench:",
+      "emoji": "🔧",
+      "meaning": "Add or update configuration files.",
+      "bump": "none"
+    },
+    {
+      "code": ":hammer:",
+      "emoji": "🔨",
+      "meaning": "Add or update development scripts.",
+      "bump": "none"
+    },
+    {
+      "code": ":globe_with_meridians:",
+      "emoji": "🌐",
+      "meaning": "Internationalization and localization.",
+      "bump": "patch",
+      "section": "UI & UX"
+    },
+    {
+      "code": ":pencil2:",
+      "emoji": "✏️",
+      "meaning": "Fix typos.",
+      "bump": "patch",
+      "section": "Fixes"
+    },
+    {
+      "code": ":poop:",
+      "emoji": "💩",
+      "meaning": "Write bad code that needs to be improved.",
+      "bump": "none"
+    },
+    {
+      "code": ":rewind:",
+      "emoji": "⏪️",
+      "meaning": "Revert changes.",
+      "bump": "patch",
+      "section": "Reverts"
+    },
+    {
+      "code": ":twisted_rightwards_arrows:",
+      "emoji": "🔀",
+      "meaning": "Merge branches.",
+      "bump": "none"
+    },
+    {
+      "code": ":package:",
+      "emoji": "📦️",
+      "meaning": "Add or update compiled files or packages.",
+      "bump": "patch",
+      "section": "Dependencies"
+    },
+    {
+      "code": ":alien:",
+      "emoji": "👽️",
+      "meaning": "Update code due to external API changes.",
+      "bump": "patch",
+      "section": "Fixes"
+    },
+    {
+      "code": ":truck:",
+      "emoji": "🚚",
+      "meaning": "Move or rename resources (e.g.: files, paths, routes).",
+      "bump": "none"
+    },
+    {
+      "code": ":page_facing_up:",
+      "emoji": "📄",
+      "meaning": "Add or update license.",
+      "bump": "none"
+    },
+    {
+      "code": ":boom:",
+      "emoji": "💥",
+      "meaning": "Introduce breaking changes.",
+      "bump": "major",
+      "section": "Breaking Changes"
+    },
+    {
+      "code": ":bento:",
+      "emoji": "🍱",
+      "meaning": "Add or update assets.",
+      "bump": "patch",
+      "section": "UI & UX"
+    },
+    {
+      "code": ":wheelchair:",
+      "emoji": "♿️",
+      "meaning": "Improve accessibility.",
+      "bump": "patch",
+      "section": "UI & UX"
+    },
+    {
+      "code": ":bulb:",
+      "emoji": "💡",
+      "meaning": "Add or update comments in source code.",
+      "bump": "none"
+    },
+    {
+      "code": ":beers:",
+      "emoji": "🍻",
+      "meaning": "Write code drunkenly.",
+      "bump": "none"
+    },
+    {
+      "code": ":speech_balloon:",
+      "emoji": "💬",
+      "meaning": "Add or update text and literals.",
+      "bump": "patch",
+      "section": "UI & UX"
+    },
+    {
+      "code": ":card_file_box:",
+      "emoji": "🗃️",
+      "meaning": "Perform database related changes.",
+      "bump": "patch",
+      "section": "Data"
+    },
+    {
+      "code": ":loud_sound:",
+      "emoji": "🔊",
+      "meaning": "Add or update logs.",
+      "bump": "none"
+    },
+    {
+      "code": ":mute:",
+      "emoji": "🔇",
+      "meaning": "Remove logs.",
+      "bump": "none"
+    },
+    {
+      "code": ":busts_in_silhouette:",
+      "emoji": "👥",
+      "meaning": "Add or update contributor(s).",
+      "bump": "none"
+    },
+    {
+      "code": ":children_crossing:",
+      "emoji": "🚸",
+      "meaning": "Improve user experience / usability.",
+      "bump": "patch",
+      "section": "UI & UX"
+    },
+    {
+      "code": ":building_construction:",
+      "emoji": "🏗️",
+      "meaning": "Make architectural changes.",
+      "bump": "none"
+    },
+    {
+      "code": ":iphone:",
+      "emoji": "📱",
+      "meaning": "Work on responsive design.",
+      "bump": "patch",
+      "section": "UI & UX"
+    },
+    {
+      "code": ":clown_face:",
+      "emoji": "🤡",
+      "meaning": "Mock things.",
+      "bump": "none"
+    },
+    {
+      "code": ":egg:",
+      "emoji": "🥚",
+      "meaning": "Add or update an easter egg.",
+      "bump": "patch",
+      "section": "UI & UX"
+    },
+    {
+      "code": ":see_no_evil:",
+      "emoji": "🙈",
+      "meaning": "Add or update a .gitignore file.",
+      "bump": "none"
+    },
+    {
+      "code": ":camera_flash:",
+      "emoji": "📸",
+      "meaning": "Add or update snapshots.",
+      "bump": "none"
+    },
+    {
+      "code": ":alembic:",
+      "emoji": "⚗️",
+      "meaning": "Perform experiments.",
+      "bump": "none"
+    },
+    {
+      "code": ":mag:",
+      "emoji": "🔍️",
+      "meaning": "Improve SEO.",
+      "bump": "patch",
+      "section": "UI & UX"
+    },
+    {
+      "code": ":label:",
+      "emoji": "🏷️",
+      "meaning": "Add or update types.",
+      "bump": "patch",
+      "section": "Data"
+    },
+    {
+      "code": ":seedling:",
+      "emoji": "🌱",
+      "meaning": "Add or update seed files.",
+      "bump": "none"
+    },
+    {
+      "code": ":triangular_flag_on_post:",
+      "emoji": "🚩",
+      "meaning": "Add, update, or remove feature flags.",
+      "bump": "patch",
+      "section": "Feature Flags"
+    },
+    {
+      "code": ":goal_net:",
+      "emoji": "🥅",
+      "meaning": "Catch errors.",
+      "bump": "patch",
+      "section": "Fixes"
+    },
+    {
+      "code": ":dizzy:",
+      "emoji": "💫",
+      "meaning": "Add or update animations and transitions.",
+      "bump": "patch",
+      "section": "UI & UX"
+    },
+    {
+      "code": ":wastebasket:",
+      "emoji": "🗑️",
+      "meaning": "Deprecate code that needs to be cleaned up.",
+      "bump": "patch",
+      "section": "Deprecations"
+    },
+    {
+      "code": ":passport_control:",
+      "emoji": "🛂",
+      "meaning": "Work on code related to authorization, roles and permissions.",
+      "bump": "patch",
+      "section": "Security"
+    },
+    {
+      "code": ":adhesive_bandage:",
+      "emoji": "🩹",
+      "meaning": "Simple fix for a non-critical issue.",
+      "bump": "patch",
+      "section": "Fixes"
+    },
+    {
+      "code": ":monocle_face:",
+      "emoji": "🧐",
+      "meaning": "Data exploration/inspection.",
+      "bump": "none"
+    },
+    {
+      "code": ":coffin:",
+      "emoji": "⚰️",
+      "meaning": "Remove dead code.",
+      "bump": "none"
+    },
+    {
+      "code": ":test_tube:",
+      "emoji": "🧪",
+      "meaning": "Add a failing test.",
+      "bump": "none"
+    },
+    {
+      "code": ":necktie:",
+      "emoji": "👔",
+      "meaning": "Add or update business logic.",
+      "bump": "patch",
+      "section": "Fixes"
+    },
+    {
+      "code": ":stethoscope:",
+      "emoji": "🩺",
+      "meaning": "Add or update healthcheck.",
+      "bump": "none"
+    },
+    {
+      "code": ":bricks:",
+      "emoji": "🧱",
+      "meaning": "Infrastructure related changes.",
+      "bump": "none"
+    },
+    {
+      "code": ":technologist:",
+      "emoji": "🧑‍💻",
+      "meaning": "Improve developer experience.",
+      "bump": "none"
+    },
+    {
+      "code": ":money_with_wings:",
+      "emoji": "💸",
+      "meaning": "Add sponsorships or money related infrastructure.",
+      "bump": "none"
+    },
+    {
+      "code": ":thread:",
+      "emoji": "🧵",
+      "meaning": "Add or update code related to multithreading or concurrency.",
+      "bump": "patch",
+      "section": "Performance"
+    },
+    {
+      "code": ":safety_vest:",
+      "emoji": "🦺",
+      "meaning": "Add or update code related to validation.",
+      "bump": "patch",
+      "section": "Fixes"
+    },
+    {
+      "code": ":airplane:",
+      "emoji": "✈️",
+      "meaning": "Improve offline support.",
+      "bump": "patch",
+      "section": "Fixes"
+    },
+    {
+      "code": ":t-rex:",
+      "emoji": "🦖",
+      "meaning": "Code that adds backwards compatibility.",
+      "bump": "patch",
+      "section": "Fixes"
+    }
+  ]
+}
