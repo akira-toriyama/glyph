@@ -17,10 +17,13 @@ var (
 	bumpJSON    bool
 )
 
-// bumpCommit is one classified commit in the machine verdict.
+// bumpCommit is one classified commit in the machine verdict. The gitmoji code
+// serializes as "code" — the same key the rules table (rules.json,
+// `glyph rules --json`) and notes use for the identical token, so every glyph
+// JSON surface names it one way.
 type bumpCommit struct {
 	SHA      string `json:"sha"`
-	Gitmoji  string `json:"gitmoji"`
+	Code     string `json:"code"`
 	Level    string `json:"level"`
 	Breaking bool   `json:"breaking"`
 	Subject  string `json:"subject"`
@@ -82,7 +85,7 @@ func bumpRun(ctx context.Context) error {
 		levels = append(levels, level)
 		commits = append(commits, bumpCommit{
 			SHA:      c.SHA,
-			Gitmoji:  c.Gitmoji,
+			Code:     c.Gitmoji,
 			Level:    string(level),
 			Breaking: c.Breaking,
 			Subject:  c.Subject,
@@ -152,7 +155,7 @@ func decidingReason(commits []bumpCommit, level gitmoji.Bump) string {
 			if c.Breaking {
 				breaking = " (breaking)"
 			}
-			return fmt.Sprintf("%.7s %s %q%s → %s", c.SHA, c.Gitmoji, c.Subject, breaking, level)
+			return fmt.Sprintf("%.7s %s %q%s → %s", c.SHA, c.Code, c.Subject, breaking, level)
 		}
 	}
 	return fmt.Sprintf("level %s", level)
