@@ -78,6 +78,33 @@ func TestGroupHoistsBreaking(t *testing.T) {
 	}
 }
 
+// TestGroupBoomSectionVsFlagAreOrthogonal: a plain :boom: (no ! and no
+// BREAKING CHANGE footer) reaches Breaking Changes through its rule's section,
+// so Entry.Breaking stays false — the field records the orthogonal flag, not
+// section membership. A refactor that fused the two (Breaking = title ==
+// BreakingSection) would flip this field and change the JSON output; this test
+// is the guard. A flagged commit in the same section keeps Breaking true.
+func TestGroupBoomSectionVsFlagAreOrthogonal(t *testing.T) {
+	table := loadTable(t)
+	sections, err := Group([]parser.Commit{
+		{Gitmoji: ":boom:", Subject: "drop the v1 config format", SHA: sha("a")},                 // section-routed, flag off
+		{Gitmoji: ":bug:", Subject: "remove the broken fallback", SHA: sha("b"), Breaking: true}, // flag-hoisted
+	}, table)
+	if err != nil {
+		t.Fatalf("Group: %v", err)
+	}
+	if len(sections) != 1 || sections[0].Title != BreakingSection {
+		t.Fatalf("both commits belong in %q, got %+v", BreakingSection, sections)
+	}
+	es := sections[0].Entries
+	if es[0].Code != ":boom:" || es[0].Breaking {
+		t.Errorf("a plain :boom: is section-routed, so breaking must stay false, got %+v", es[0])
+	}
+	if es[1].Code != ":bug:" || !es[1].Breaking {
+		t.Errorf("a flag-hoisted commit must record breaking=true, got %+v", es[1])
+	}
+}
+
 // TestGroupSkipsNone: none-bump commits never reach the notes; an all-none
 // input is an empty (nil) section list, not an error.
 func TestGroupSkipsNone(t *testing.T) {
