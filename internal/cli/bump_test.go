@@ -143,7 +143,7 @@ func TestBumpJSONShape(t *testing.T) {
 		Next    string `json:"next"`
 		Commits []struct {
 			SHA      string `json:"sha"`
-			Gitmoji  string `json:"gitmoji"`
+			Code     string `json:"code"`
 			Level    string `json:"level"`
 			Breaking bool   `json:"breaking"`
 			Subject  string `json:"subject"`
@@ -160,7 +160,7 @@ func TestBumpJSONShape(t *testing.T) {
 		t.Fatalf("commits carries %d entries, want 2: %s", len(res.Commits), stdout)
 	}
 	for _, c := range res.Commits {
-		if len(c.SHA) != 40 || c.Gitmoji == "" || c.Level == "" || c.Subject == "" {
+		if len(c.SHA) != 40 || c.Code == "" || c.Level == "" || c.Subject == "" {
 			t.Fatalf("commit entry is missing fields: %+v", c)
 		}
 	}
