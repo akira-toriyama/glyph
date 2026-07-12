@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/akira-toriyama/glyph/internal/core"
+	"github.com/akira-toriyama/glyph/internal/gitmoji"
 	"github.com/akira-toriyama/glyph/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -74,6 +75,17 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 	root.SetVersionTemplate("glyph {{.Version}}\n")
-	root.AddCommand(newVersionCmd(), newRulesCmd())
+	root.AddCommand(newVersionCmd(), newRulesCmd(), newLintCmd(), newBumpCmd())
 	return root
+}
+
+// loadRules loads the embedded gitmoji table for a command. The table is
+// embedded, so a load failure is a build/embedding fault — classified as
+// internal (API), never usage.
+func loadRules() (*gitmoji.Table, error) {
+	table, err := gitmoji.Load()
+	if err != nil {
+		return nil, core.APIf("loading gitmoji rules: %v", err)
+	}
+	return table, nil
 }

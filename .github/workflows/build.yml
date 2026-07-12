@@ -56,6 +56,17 @@ jobs:
             echo "expected a usage error for rules --json --md" >&2
             exit 1
           fi
+          # lint / bump exit-code contract on the shipped binary.
+          /tmp/glyph lint --message ':bug: fix a crash'
+          if /tmp/glyph lint --message 'no gitmoji' >/dev/null 2>&1; then
+            echo "expected exit 3 for a malformed message" >&2
+            exit 1
+          fi
+          # the checkout is a repo: an empty range is the soft no-release exit (1).
+          if /tmp/glyph bump --range HEAD..HEAD >/dev/null 2>&1; then
+            echo "expected exit 1 for an empty bump range" >&2
+            exit 1
+          fi
 
       # Bounded fuzz over every Fuzz target (never-panic / round-trip / fold
       # invariants). Auto-discovered per package so a new target needs no
