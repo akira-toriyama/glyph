@@ -8,7 +8,6 @@ import (
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/gitmoji"
 	"github.com/akira-toriyama/glyph/internal/gitsource"
-	"github.com/akira-toriyama/glyph/internal/parser"
 	"github.com/spf13/cobra"
 )
 
@@ -68,29 +67,21 @@ func bumpRun(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	raws, gerr := gitsource.Log(ctx, ".", bumpRange)
-	if gerr != nil {
-		return gerr
+	parsed, perr := participatingCommits(ctx, bumpRange)
+	if perr != nil {
+		return perr
 	}
 
 	commits := []bumpCommit{} // non-nil: serializes as [] so consumers can index
-	levels := make([]gitmoji.Bump, 0, len(raws))
-	for _, raw := range raws {
-		if _, excluded := bump.Excluded(raw.Author, firstLine(raw.Message), raw.Parents); excluded {
-			continue
-		}
-		c, perr := parser.Parse(raw.Message)
-		if perr != nil {
-			return core.Lintf("commit %.7s: %v", raw.SHA, perr)
-		}
-		c.SHA, c.Author = raw.SHA, raw.Author
+	levels := make([]gitmoji.Bump, 0, len(parsed))
+	for _, c := range parsed {
 		level, cerr := bump.Classify(c, table)
 		if cerr != nil {
 			return cerr
 		}
 		levels = append(levels, level)
 		commits = append(commits, bumpCommit{
-			SHA:      raw.SHA,
+			SHA:      c.SHA,
 			Gitmoji:  c.Gitmoji,
 			Level:    string(level),
 			Breaking: c.Breaking,

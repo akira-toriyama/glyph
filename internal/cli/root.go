@@ -75,7 +75,7 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 	root.SetVersionTemplate("glyph {{.Version}}\n")
-	root.AddCommand(newVersionCmd(), newRulesCmd(), newLintCmd(), newBumpCmd())
+	root.AddCommand(newVersionCmd(), newRulesCmd(), newLintCmd(), newBumpCmd(), newNotesCmd())
 	return root
 }
 

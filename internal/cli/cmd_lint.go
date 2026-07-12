@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/akira-toriyama/glyph/internal/bump"
 	"github.com/akira-toriyama/glyph/internal/core"
@@ -113,25 +112,4 @@ func lintRangeRun(ctx context.Context, revRange string, known func(string) bool)
 		Msg:     fmt.Sprintf("%d commit-convention violation(s) across %d linted commit(s) in %s", len(all), checked, revRange),
 		Details: all,
 	}
-}
-
-// checkRangeFlag rejects an empty or option-shaped --range before git runs —
-// caller input, so usage, not an API failure.
-func checkRangeFlag(revRange string) error {
-	if strings.TrimSpace(revRange) == "" {
-		return core.Usagef("--range needs a git revision range like BASE..HEAD")
-	}
-	if strings.HasPrefix(revRange, "-") {
-		return core.Usagef("--range %q looks like an option, not a revision range", revRange)
-	}
-	return nil
-}
-
-// firstLine returns the subject line of a raw message (CR trimmed) — what the
-// participation rules match on.
-func firstLine(message string) string {
-	if i := strings.IndexByte(message, '\n'); i >= 0 {
-		message = message[:i]
-	}
-	return strings.TrimSuffix(message, "\r")
 }
