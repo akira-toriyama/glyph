@@ -12,10 +12,12 @@ import (
 
 // stdout carries the payload; stderr carries diagnostics. Everything funnels
 // through these two writers (no bare fmt.Print*, no logging lib) so a caller
-// piping stdout to jq/grep is never polluted. They are overridable in tests.
+// piping stdout to jq/grep is never polluted. in is the one input stream
+// (`glyph lint --stdin`). All three are overridable in tests.
 var (
 	out    io.Writer = os.Stdout
 	errOut io.Writer = os.Stderr
+	in     io.Reader = os.Stdin
 )
 
 // printCompact writes v as one JSON line.

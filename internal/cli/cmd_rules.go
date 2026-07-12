@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/akira-toriyama/glyph/internal/core"
-	"github.com/akira-toriyama/glyph/internal/gitmoji"
 	"github.com/spf13/cobra"
 )
 
@@ -27,11 +26,9 @@ func newRulesCmd() *cobra.Command {
 			"that CI diffs against docs/gitmoji-table.md to catch drift.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			table, err := gitmoji.Load()
+			table, err := loadRules()
 			if err != nil {
-				// The table is embedded, so a load failure is a build/embedding
-				// fault, not user input — classify it as internal, never usage.
-				return core.APIf("loading gitmoji rules: %v", err)
+				return err
 			}
 			if rulesJSON {
 				b, mErr := table.CanonicalJSON()

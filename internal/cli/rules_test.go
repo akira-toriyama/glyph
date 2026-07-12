@@ -66,11 +66,7 @@ func TestRulesMarkdownFlag(t *testing.T) {
 // TestRulesJSONAndMDConflict: the two formats are mutually exclusive; asking for
 // both is a usage error (exit 2), not a silent pick.
 func TestRulesJSONAndMDConflict(t *testing.T) {
-	root := newRootCmd()
-	root.SetArgs([]string{"rules", "--json", "--md"})
-	root.SetOut(&strings.Builder{})
-	root.SetErr(&strings.Builder{})
-	if code := finish(root.Execute()); code != 2 {
+	if code, _, _ := runGlyph(t, "rules", "--json", "--md"); code != 2 {
 		t.Fatalf("`rules --json --md` should exit 2 (usage), got %d", code)
 	}
 }

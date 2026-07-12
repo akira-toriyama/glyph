@@ -63,16 +63,10 @@ func TestVersionNDJSON(t *testing.T) {
 	}
 }
 
-// TestExecuteReturnsInt guards the exit-code funnel: a successful run returns
-// CodeOK.
+// TestUnknownCommandIsUsage: a bare cobra parse error (unknown subcommand) must
+// map to the usage code through finish(), never to an unclassified code.
 func TestUnknownCommandIsUsage(t *testing.T) {
-	// A bare cobra parse error (unknown subcommand) must map to the usage code
-	// through finish(), never to an unclassified code.
-	root := newRootCmd()
-	root.SetArgs([]string{"no-such-command"})
-	root.SetOut(&bytes.Buffer{})
-	root.SetErr(&bytes.Buffer{})
-	if code := finish(root.Execute()); code != 2 {
+	if code, _, _ := runGlyph(t, "no-such-command"); code != 2 {
 		t.Fatalf("unknown command should exit 2 (usage), got %d", code)
 	}
 }

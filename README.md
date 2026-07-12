@@ -4,9 +4,10 @@ A gitmoji-driven release engine: one Go CLI that **lints commits**, computes the
 **semantic-version bump**, and renders **release notes** — deriving all of it from
 the gitmoji that leads each commit.
 
-> **Status: early scaffold (Phase 0).** The `version` command works; `lint`,
-> `bump`, `notes`, `release`, and `rules` are being built. See
-> [`docs/DESIGN.md`](docs/DESIGN.md) for the full design.
+> **Status: core engine building (Phase 2 done).** `version`, `rules`, `lint`
+> (`--range` / `--message` / `--stdin`) and `bump --range` work; `notes`,
+> `release`, and the squash-safe GitHub inputs (`--pr`, `--since-tag`) are
+> being built. See [`docs/DESIGN.md`](docs/DESIGN.md) for the full design.
 
 ## Why it exists
 
