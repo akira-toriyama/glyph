@@ -63,4 +63,16 @@ if "$BIN" rules --json --md >/dev/null 2>&1; then
   echo "  expected a usage error for rules --json --md" >&2
   exit 1
 fi
+
+echo "→ smoke: lint / bump exit-code contract"
+"$BIN" lint --message ':bug: fix a crash'   # clean → 0
+if "$BIN" lint --message 'no gitmoji' >/dev/null 2>&1; then
+  echo "  expected exit 3 for a malformed message" >&2
+  exit 1
+fi
+# this checkout is a repo: an empty range is the soft no-release exit (1)
+if "$BIN" bump --range HEAD..HEAD >/dev/null 2>&1; then
+  echo "  expected exit 1 for an empty bump range" >&2
+  exit 1
+fi
 echo "✓ all checks passed"
