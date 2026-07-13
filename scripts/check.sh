@@ -1,11 +1,20 @@
 #!/bin/sh
 # check.sh — the full local verification, runnable by you or by Claude Code with
 # no TTY. Mirrors what .github/workflows/build.yml enforces in CI, so a green run
-# here means a green CI. GOTOOLCHAIN=local uses whatever toolchain is installed
-# (the go.mod floor is a supported minor).
+# here means a green CI.
+#
+# GOTOOLCHAIN is deliberately left UNSET — exactly as build.yml leaves it. go.mod
+# carries a `toolchain` line, so Go resolves that toolchain (fetching it once if
+# absent) and the run is pinned by go.mod rather than by whichever SDK happens to
+# be installed on this machine. Forcing GOTOOLCHAIN=local here would check against
+# a *different* Go than CI uses, quietly breaking the "green here == green CI"
+# contract this script exists to provide: a stdlib vulnerability patched in the
+# pinned toolchain but present in the installed one shows up as a local govulncheck
+# failure CI never sees (and the reverse can hide a real one). Only a repo with NO
+# `toolchain` line — floor-only, resolving to whatever is installed by design —
+# should pin GOTOOLCHAIN=local.
 set -eu
 cd "$(dirname "$0")/.."
-export GOTOOLCHAIN=local
 
 # Module hygiene: fail if go.mod/go.sum are not tidy, and verify the downloaded
 # dependencies match go.sum. `-diff` prints the needed changes and exits non-zero
