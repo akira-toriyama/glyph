@@ -8,6 +8,7 @@ package gitsource
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os/exec"
 	"strings"
 
@@ -85,7 +86,13 @@ func run(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		if ctx.Err() != nil {
+		// Only a *canceled* context is the user's own abort — that is what
+		// CodeInterrupted means (SIGINT/SIGTERM). A deadline, which only a
+		// caller-imposed timeout produces, is a wedged or unreachable git: an
+		// ordinary I/O failure. Classifying it as an interrupt would exit 130
+		// silently and tell a release job the operator stopped it. Mirrors
+		// internal/github's split of the same two causes.
+		if errors.Is(ctx.Err(), context.Canceled) {
 			return nil, &core.Error{Code: core.CodeInterrupted, Msg: "interrupted", Silent: true}
 		}
 		return nil, core.APIf("git %s: %s", args[0], distill(stderr.Bytes(), err))

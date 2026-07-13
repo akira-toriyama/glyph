@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/akira-toriyama/glyph/internal/core"
 )
@@ -156,6 +157,42 @@ func TestLogErrorsAreAPI(t *testing.T) {
 				t.Fatalf("Log(%q, %q) error = %v, want a *core.Error with the API code", tc.dir, tc.rng, err)
 			}
 		})
+	}
+}
+
+// TestLogCancelIsInterrupted: a canceled context is the user's own Ctrl-C — the
+// one thing CodeInterrupted means (SIGINT/SIGTERM, per the core contract).
+func TestLogCancelIsInterrupted(t *testing.T) {
+	dir := newRepo(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := Log(ctx, dir, "HEAD~0..HEAD")
+	ce := core.AsError(err)
+	if ce == nil || ce.Code != core.CodeInterrupted {
+		t.Fatalf("Log with a canceled context = %v, want CodeInterrupted (%d)", err, core.CodeInterrupted)
+	}
+}
+
+// TestLogDeadlineIsAPI: a deadline is NOT an interrupt. Only the user aborting
+// the run is CodeInterrupted; a caller-imposed timeout firing against a wedged
+// git is an ordinary I/O failure and must exit CodeAPI — exiting 130 would tell
+// a release job "the operator stopped me" when in truth git hung.
+func TestLogDeadlineIsAPI(t *testing.T) {
+	dir := newRepo(t)
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	_, err := Log(ctx, dir, "HEAD~0..HEAD")
+	ce := core.AsError(err)
+	if ce == nil {
+		t.Fatalf("Log past its deadline = %v, want a *core.Error", err)
+	}
+	if ce.Code == core.CodeInterrupted {
+		t.Fatalf("a deadline was classified as CodeInterrupted (%d) — that code means the user aborted; want CodeAPI (%d)", core.CodeInterrupted, core.CodeAPI)
+	}
+	if ce.Code != core.CodeAPI {
+		t.Fatalf("Log past its deadline error code = %d, want CodeAPI (%d)", ce.Code, core.CodeAPI)
 	}
 }
 
