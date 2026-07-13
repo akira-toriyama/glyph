@@ -4,10 +4,21 @@ A gitmoji-driven release engine: one Go CLI that **lints commits**, computes the
 **semantic-version bump**, and renders **release notes** — deriving all of it from
 the gitmoji that leads each commit.
 
-> **Status: core engine building (Phase 4 done).** `version`, `rules`, `lint`
-> (`--range` / `--message` / `--stdin`), `bump --range` and `notes --range`
-> work; `release` and the squash-safe GitHub inputs (`--pr`, `--since-tag`) are
-> being built. See [`docs/DESIGN.md`](docs/DESIGN.md) for the full design.
+> **Status: core engine building.** `version`, `rules`, `lint` (`--range` /
+> `--message` / `--stdin`), and `bump` / `notes` over both a local range
+> (`--range`) and a **pull request's individual, pre-squash commits** (`--pr`)
+> work. The release-time walk (`--since-tag`) and the `release` command are being
+> built. See [`docs/DESIGN.md`](docs/DESIGN.md) for the full design.
+
+```sh
+# Squash-safe: reads the commits INSIDE the PR, which the squash would erase.
+glyph bump  --pr 7   # → v0.3.0   (a :sparkles: rides with a :white_check_mark:)
+glyph notes --pr 7   # → the Markdown body, none-bump commits left out
+```
+
+In GitHub Actions no flags are needed: `--repo` defaults to `$GITHUB_REPOSITORY`,
+the API host to `$GITHUB_API_URL` (so a GitHub Enterprise runner just works), and
+the credential to `$GITHUB_TOKEN` (else `$GH_TOKEN`).
 
 ## Why it exists
 

@@ -15,16 +15,25 @@ import (
 // cmd_*.go files.
 
 // participatingCommits reads revRange and returns the participating commits,
-// parsed and carrying their SHA and author, oldest first. Excluded commits
-// (bots, merges, autosquash artifacts, raw git reverts) are skipped, never
-// failed; a participating commit that does not parse is a hard lint error
-// naming its SHA. bump and notes share this walk — lint keeps its own (it
-// collects violations instead of failing on the first).
+// parsed and carrying their SHA and author, oldest first. bump and notes share
+// this walk — lint keeps its own (it collects violations instead of failing on
+// the first).
 func participatingCommits(ctx context.Context, revRange string) ([]parser.Commit, error) {
 	raws, err := gitsource.Log(ctx, ".", revRange)
 	if err != nil {
 		return nil, err
 	}
+	return participating(raws)
+}
+
+// participating applies the participation rules to raw commits from ANY source —
+// git locally, or a pull request over the API (github.Commit mirrors RawCommit so
+// it converts straight into this shape). Excluded commits (bots, merges,
+// autosquash artifacts, raw git reverts) are skipped, never failed; a
+// participating commit that does not parse is a hard lint error naming its SHA.
+// Keeping one implementation is what guarantees a PR classifies identically
+// whether its commits are read from git or from GitHub.
+func participating(raws []gitsource.RawCommit) ([]parser.Commit, error) {
 	commits := make([]parser.Commit, 0, len(raws))
 	for _, raw := range raws {
 		if _, excluded := bump.Excluded(raw.Author, firstLine(raw.Message), raw.Parents); excluded {
