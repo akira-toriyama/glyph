@@ -39,7 +39,7 @@ func Log(ctx context.Context, dir, revRange string) ([]RawCommit, error) {
 		return nil, err
 	}
 	var commits []RawCommit
-	for _, record := range bytes.Split(out, []byte{0}) {
+	for record := range bytes.SplitSeq(out, []byte{0}) {
 		if len(record) == 0 {
 			continue
 		}
@@ -66,7 +66,7 @@ func Tags(ctx context.Context, dir string) ([]string, error) {
 		return nil, err
 	}
 	var tags []string
-	for _, l := range strings.Split(string(out), "\n") {
+	for l := range strings.SplitSeq(string(out), "\n") {
 		if l = strings.TrimSpace(l); l != "" {
 			tags = append(tags, l)
 		}

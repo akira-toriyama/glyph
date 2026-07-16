@@ -196,16 +196,10 @@ func TestRulesJSONIsCanonical(t *testing.T) {
 // firstDiff returns a short window around the first byte where a and b differ,
 // to make a canonical-form mismatch legible without dumping the whole table.
 func firstDiff(a, b []byte) string {
-	n := len(a)
-	if len(b) < n {
-		n = len(b)
-	}
-	for i := 0; i < n; i++ {
+	n := min(len(b), len(a))
+	for i := range n {
 		if a[i] != b[i] {
-			lo := i - 40
-			if lo < 0 {
-				lo = 0
-			}
+			lo := max(i-40, 0)
 			return "file: ..." + string(a[lo:i]) + "|" + string(a[i:min(i+40, len(a))]) +
 				"\ncanon: ..." + string(b[lo:i]) + "|" + string(b[i:min(i+40, len(b))])
 		}
