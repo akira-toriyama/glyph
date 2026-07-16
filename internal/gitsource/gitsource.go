@@ -74,6 +74,17 @@ func Tags(ctx context.Context, dir string) ([]string, error) {
 	return tags, nil
 }
 
+// Head returns the checkout's HEAD commit sha — the target_commitish a
+// rolling draft records so the eventual Publish tags the commit the verdict
+// was computed at.
+func Head(ctx context.Context, dir string) (string, error) {
+	out, err := run(ctx, dir, "rev-parse", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // run executes one git command against dir with stdout and stderr captured
 // separately, and classifies any failure as a git/IO error carrying git's most
 // diagnostic stderr line.
