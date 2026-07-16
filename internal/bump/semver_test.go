@@ -120,3 +120,33 @@ func FuzzParseVersion(f *testing.F) {
 		}
 	})
 }
+
+// TestVersionCompare backs the published-floor guard: the next version must be
+// STRICTLY greater than the latest published release, so equality is not
+// greater — a deleted published release's tag is permanently burned and can
+// never be re-published.
+func TestVersionCompare(t *testing.T) {
+	for _, c := range []struct {
+		a, b string
+		want int
+	}{
+		{"v1.2.3", "v1.2.3", 0},
+		{"v1.2.3", "v1.2.4", -1},
+		{"v1.2.10", "v1.2.9", 1},
+		{"v1.10.0", "v1.9.9", 1},
+		{"v2.0.0", "v1.99.99", 1},
+		{"v0.9.9", "v1.0.0", -1},
+	} {
+		a, err := ParseVersion(c.a)
+		if err != nil {
+			t.Fatalf("ParseVersion(%q): %v", c.a, err)
+		}
+		b, err := ParseVersion(c.b)
+		if err != nil {
+			t.Fatalf("ParseVersion(%q): %v", c.b, err)
+		}
+		if got := a.Compare(b); got != c.want {
+			t.Errorf("Compare(%s, %s) = %d, want %d", c.a, c.b, got, c.want)
+		}
+	}
+}

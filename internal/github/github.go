@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -193,40 +192,21 @@ func getAll[T any](ctx context.Context, c *Client, u string) ([]T, error) {
 	return all, nil
 }
 
-// get performs one GET, decodes a 2xx body into into, and returns the next-page
-// URL from the Link header ("" when there is none). Every failure is classified
-// at this source: a canceled context is CodeInterrupted, everything else — a
-// transport error, a non-2xx status, or a decode failure — is CodeAPI.
+// get performs one GET via send, decodes the 2xx body into into, and returns
+// the next-page URL from the Link header ("" when there is none).
 func (c *Client) get(ctx context.Context, u string, into any) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return "", core.APIf("github: malformed request url %q: %v", u, err)
 	}
-	req.Header.Set("Accept", acceptJSON)
-	req.Header.Set("X-GitHub-Api-Version", apiVersion)
-	req.Header.Set("User-Agent", userAgent)
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
-	}
-
-	resp, err := c.http.Do(req)
+	body, header, err := c.send(req)
 	if err != nil {
-		return "", failed(ctx, "GET "+req.URL.Path, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", failed(ctx, "reading "+req.URL.Path, err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", &statusError{status: resp.StatusCode, err: core.APIf(
-			"github: GET %s: %d %s", req.URL.Path, resp.StatusCode, distill(body))}
+		return "", err
 	}
 	if err := json.Unmarshal(body, into); err != nil {
 		return "", core.APIf("github: decoding %s: %v", req.URL.Path, err)
 	}
-	return nextLink(resp.Header.Get("Link")), nil
+	return nextLink(header.Get("Link")), nil
 }
 
 // statusError carries a non-2xx response's status alongside the flattened

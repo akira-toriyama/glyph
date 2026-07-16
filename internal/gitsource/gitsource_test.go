@@ -223,3 +223,34 @@ func TestTags(t *testing.T) {
 		t.Fatalf("Tags[0] = %q, want v0.2.0 (version-sorted descending)", got[0])
 	}
 }
+
+// TestHead returns the checkout's HEAD sha — what the rolling draft's
+// target_commitish records so the eventual Publish tags the commit the
+// verdict was computed at, not whatever main has moved to since.
+func TestHead(t *testing.T) {
+	dir := newRepo(t)
+	commit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	want := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
+	got, err := Head(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("Head: %v", err)
+	}
+	if got != want {
+		t.Fatalf("Head = %q, want %q", got, want)
+	}
+}
+
+// TestHeadErrorsAreAPI: a directory that is not a repository fails as an
+// ordinary git/IO error (4) carrying git's own fatal line.
+func TestHeadErrorsAreAPI(t *testing.T) {
+	gitOrSkip(t)
+	_, err := Head(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("want an error outside a repository")
+	}
+	ce := core.AsError(err)
+	if ce == nil || ce.Code != core.CodeAPI {
+		t.Fatalf("error = %v, want CodeAPI", err)
+	}
+}

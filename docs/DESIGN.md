@@ -91,7 +91,20 @@ On a release run, walk `lastPublishedTag..HEAD` over `main`'s squash commits;
 for each, resolve its PR via `GET /repos/{o}/{r}/commits/{sha}/pulls` and fetch
 that PR's individual commits via `GET /pulls/{N}/commits`; classify and
 max-fold. **Nothing is persisted** — recompute-from-git each run, idempotent and
-self-healing.
+self-healing. Every verdict command runs **inside a git checkout** of the
+repository being released — the walk base, the version base, and the draft's
+target sha all come from local git; tags are never fetched over the API.
+
+`glyph release` converges the repository's **rolling DRAFT release** on that
+verdict: the one glyph-managed draft (draft + `vX.Y.Z` tag) is created or
+updated **by release id** (retagged in place when the next version moves —
+never a second draft; id, not tag name, because tag-name resolution can hit a
+published release, cli/cli#9367), residual drafts are deleted on a none
+verdict, and **no tag is created** — GitHub tags the target commit when a
+human publishes. A next version not strictly above the latest published
+release fails loud (an unpublishable draft; a deleted published release's tag
+is burned forever). `--dry-run` computes everything, action included, and
+writes nothing.
 
 Rejected alternatives: a semver **label** on the PR (note generation must re-read
 the inner commits anyway, so the label adds a weaker, mutable, git-invisible
