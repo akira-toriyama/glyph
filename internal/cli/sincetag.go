@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/internal/bump"
@@ -182,7 +183,16 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 		case found:
 			inner, perr := participatingPull(ctx, c, owner, repo, number)
 			if perr != nil {
-				return nil, perr
+				return nil, wedgeHint(perr, owner, repo, number)
+			}
+			// Pre-flight the membership check that classifyVerdict would run
+			// later anyway (same Classify, same table — it cannot disagree):
+			// down there the PR association is gone, and a bare per-commit
+			// lint line is uniquely unhelpful HERE — see wedgeHint.
+			for _, ic := range inner {
+				if _, cerr := bump.Classify(ic, table); cerr != nil {
+					return nil, wedgeHint(cerr, owner, repo, number)
+				}
 			}
 			commits = append(commits, inner...)
 			continue
@@ -249,6 +259,24 @@ func fallbackCommit(table *gitmoji.Table, raw gitsource.RawCommit, why string) (
 	}
 	warnf("commit %.7s %s — classifying its own message", raw.SHA, why)
 	return c, true
+}
+
+// wedgeHint decorates a lint failure surfaced while expanding a merged PR on
+// the release walk (ratified Q1/t-2nzf: such failures stay hard — never a
+// silent patch). A bare per-commit lint line is uniquely unhelpful here: the
+// caller never named a PR (the walk resolved it), and the squash history is
+// immutable, so the SAME failure — a commit that bypassed the lint gate —
+// wedges every future release until the walk range moves past it. The message
+// therefore names the pull request and both escapes. Non-lint failures pass
+// through untouched.
+func wedgeHint(err error, owner, repo string, number int) error {
+	ce := core.AsError(err)
+	if ce == nil || ce.Code != core.CodeLint {
+		return err
+	}
+	return &core.Error{Code: core.CodeLint, Details: ce.Details, Msg: fmt.Sprintf(
+		"%s — inside merged pull request %s/%s#%d, which the release walk resolved; squash history is immutable, so every release wedges here until the walk moves past this commit: cut a release tag past it by hand, or name a later base with an explicit --since-tag=TAG (DESIGN §4)",
+		ce.Msg, owner, repo, number)}
 }
 
 // mergedPullFor resolves a squash commit to the pull request that merged it: a
