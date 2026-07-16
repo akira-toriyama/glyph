@@ -9,23 +9,15 @@ import (
 	"testing"
 )
 
-// prServer stands in for api.github.com: it serves one pull request's commits at
-// the pulls/{n}/commits path and fails the test on any other path. The client
-// finds it through GITHUB_API_URL — the same variable a GitHub Enterprise runner
-// sets — so no test-only injection hook is needed.
+// prServer stands in for api.github.com: it serves one pull request's commits
+// at the pulls/{n}/commits path and fails the test on any other path — the
+// one-route special case of walkServer (sincetag_test.go), so there is a
+// single fake API to improve. The client finds it through GITHUB_API_URL — the
+// same variable a GitHub Enterprise runner sets — so no test-only injection
+// hook is needed.
 func prServer(t *testing.T, number int, body string) *httptest.Server {
 	t.Helper()
-	want := fmt.Sprintf("/repos/akira-toriyama/glyph/pulls/%d/commits", number)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != want {
-			t.Errorf("requested %q, want %q", r.URL.Path, want)
-			http.NotFound(w, r)
-			return
-		}
-		fmt.Fprint(w, body)
-	}))
-	t.Cleanup(srv.Close)
-	return srv
+	return walkServer(t, map[string]string{pullCommitsPath(number): body})
 }
 
 // apiCommit renders one commit in the shape GET pulls/{n}/commits returns.

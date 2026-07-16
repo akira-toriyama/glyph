@@ -66,11 +66,7 @@ func newBumpCmd() *cobra.Command {
 	cmd.Flags().StringVar(&bumpRepo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY)")
 	cmd.Flags().StringVar(&bumpCurrent, "current", "", "the version to step from (default: highest parseable v* tag, else v0.0.0)")
 	cmd.Flags().BoolVar(&bumpJSON, "json", false, "emit the machine verdict {current,level,next,commits,reason}")
-	cmd.MarkFlagsOneRequired("range", "pr", "since-tag")
-	cmd.MarkFlagsMutuallyExclusive("range", "pr", "since-tag")
-	// --repo configures the API-backed sources; with the purely local --range it
-	// would be silently ignored, and glyph does not ignore input silently.
-	cmd.MarkFlagsMutuallyExclusive("range", "repo")
+	markInputSourceFlags(cmd)
 	return cmd
 }
 
@@ -80,7 +76,7 @@ func bumpRun(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	parsed, source, perr := bumpInput(cmd, table)
+	parsed, source, base, perr := bumpInput(cmd, table)
 	if perr != nil {
 		return perr
 	}
@@ -103,7 +99,7 @@ func bumpRun(cmd *cobra.Command) error {
 	}
 
 	level := bump.Reduce(levels)
-	current, verr := currentVersion(ctx, bumpCurrent)
+	current, verr := currentVersion(ctx, bumpCurrent, base)
 	if verr != nil {
 		return verr
 	}
@@ -133,31 +129,36 @@ func bumpRun(cmd *cobra.Command) error {
 	return nil
 }
 
-// bumpInput reads the commits the verdict is computed from and names the source
-// for the reason line: a local revision range, a pull request's individual
-// (pre-squash) commits over the API, or the release walk since a tag. It
-// dispatches on whether a flag was set, not on its value — so an explicit
-// --pr 0 (what a workflow yields from a null PR number) reaches the --pr guard
-// and is diagnosed as a bad --pr, not misrouted into a --range complaint.
-func bumpInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, string, error) {
+// bumpInput reads the commits the verdict is computed from, names the source
+// for the reason line — a local revision range, a pull request's individual
+// (pre-squash) commits over the API, or the release walk since a tag — and,
+// when the source itself names a version (--since-tag), the base the bump
+// steps from. It dispatches on whether a flag was set, not on its value — so
+// an explicit --pr 0 (what a workflow yields from a null PR number) reaches
+// the --pr guard and is diagnosed as a bad --pr, not misrouted into a --range
+// complaint.
+func bumpInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, string, *bump.Version, error) {
 	ctx := cmd.Context()
 	if cmd.Flags().Changed("pr") {
-		return pullInput(ctx, bumpPR, bumpRepo)
+		commits, source, err := pullInput(ctx, bumpPR, bumpRepo)
+		return commits, source, nil, err
 	}
 	if cmd.Flags().Changed("since-tag") {
 		return sinceTagInput(ctx, table, bumpSinceTag, bumpRepo)
 	}
 	if err := checkRangeFlag(bumpRange); err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	commits, err := participatingCommits(ctx, bumpRange)
-	return commits, bumpRange, err
+	return commits, bumpRange, nil, err
 }
 
 // currentVersion resolves the version to step from: an explicit --current
-// (malformed ⇒ usage — it is the caller's input), else the highest parseable
-// v* tag, else v0.0.0 for a repo before its first release.
-func currentVersion(ctx context.Context, flag string) (bump.Version, error) {
+// (malformed ⇒ usage — it is the caller's input) wins; else the base the input
+// source itself named (--since-tag's tag — the walk base and the step base
+// must be the SAME tag); else the highest parseable v* tag, which is v0.0.0
+// for a repo before its first release.
+func currentVersion(ctx context.Context, flag string, base *bump.Version) (bump.Version, error) {
 	if flag != "" {
 		v, err := bump.ParseVersion(flag)
 		if err != nil {
@@ -165,7 +166,10 @@ func currentVersion(ctx context.Context, flag string) (bump.Version, error) {
 		}
 		return v, nil
 	}
-	_, v, _, err := latestVersionTag(ctx)
+	if base != nil {
+		return *base, nil
+	}
+	_, v, err := latestVersionTag(ctx)
 	return v, err
 }
 

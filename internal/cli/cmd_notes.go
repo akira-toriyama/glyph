@@ -47,11 +47,7 @@ func newNotesCmd() *cobra.Command {
 	addSinceTagFlag(cmd, &notesSinceTag, "render notes from")
 	cmd.Flags().StringVar(&notesRepo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY)")
 	cmd.Flags().BoolVar(&notesJSON, "json", false, "emit the machine verdict {sections,reason}")
-	cmd.MarkFlagsOneRequired("range", "pr", "since-tag")
-	cmd.MarkFlagsMutuallyExclusive("range", "pr", "since-tag")
-	// --repo configures the API-backed sources; with the purely local --range it
-	// would be silently ignored, and glyph does not ignore input silently.
-	cmd.MarkFlagsMutuallyExclusive("range", "repo")
+	markInputSourceFlags(cmd)
 	return cmd
 }
 
@@ -64,7 +60,9 @@ func notesInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, stri
 		return pullInput(ctx, notesPR, notesRepo)
 	}
 	if cmd.Flags().Changed("since-tag") {
-		return sinceTagInput(ctx, table, notesSinceTag, notesRepo)
+		// The version base the walk also resolves is bump's concern, not notes'.
+		commits, source, _, err := sinceTagInput(ctx, table, notesSinceTag, notesRepo)
+		return commits, source, err
 	}
 	if err := checkRangeFlag(notesRange); err != nil {
 		return nil, "", err

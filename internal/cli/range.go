@@ -39,14 +39,27 @@ func participating(raws []gitsource.RawCommit) ([]parser.Commit, error) {
 		if _, excluded := bump.Excluded(raw.Author, firstLine(raw.Message), raw.Parents); excluded {
 			continue
 		}
-		c, perr := parser.Parse(raw.Message)
+		c, perr := parseRaw(raw)
 		if perr != nil {
 			return nil, core.Lintf("commit %.7s: %v", raw.SHA, perr)
 		}
-		c.SHA, c.Author = raw.SHA, raw.Author
 		commits = append(commits, c)
 	}
 	return commits, nil
+}
+
+// parseRaw parses one raw commit and attaches its identity — the single
+// raw→parser.Commit conversion, shared by the strict walk (participating) and
+// the lenient release fallback so the two can never attach different fields.
+// The error is the parser's own, unclassified: each caller owns its policy
+// (hard lint vs warn-and-skip).
+func parseRaw(raw gitsource.RawCommit) (parser.Commit, error) {
+	c, err := parser.Parse(raw.Message)
+	if err != nil {
+		return parser.Commit{}, err
+	}
+	c.SHA, c.Author = raw.SHA, raw.Author
+	return c, nil
 }
 
 // checkRangeFlag rejects an empty or option-shaped --range before git runs —

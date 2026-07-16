@@ -42,6 +42,12 @@ const (
 	maxPages = 1000
 )
 
+// PullCommitsCap is where GitHub truncates the pulls/{n}/commits listing, no
+// matter how far the pagination follows — an API contract, so the adapter owns
+// the number. A response of exactly this many commits may be missing some;
+// the caller that renders warnings names the boundary through this constant.
+const PullCommitsCap = 250
+
 // defaultTimeout bounds each request when no client is injected —
 // http.DefaultClient would hang on an unresponsive GitHub until the CI runner
 // kills the whole job. Per-request (not per-walk): the release walk makes one
@@ -154,7 +160,7 @@ func (c *Client) PullCommits(ctx context.Context, owner, repo string, number int
 		c.baseURL, url.PathEscape(owner), url.PathEscape(repo), number, perPage)
 	raw, err := getAll[apiCommit](ctx, c, first)
 	if err != nil {
-		return nil, err
+		return nil, flatten(err)
 	}
 	commits := make([]Commit, len(raw))
 	for i, ac := range raw {
@@ -235,6 +241,19 @@ type statusError struct {
 
 func (e *statusError) Error() string { return e.err.Error() }
 func (e *statusError) Unwrap() error { return e.err }
+
+// flatten strips the status carrier off a failure. Every method except
+// CommitPulls flattens on the way out, so a status can only ever be observed
+// on the one call whose contract documents it — a 422 from another endpoint
+// (a pulls/{n}/commits validation failure) must never read as "commit
+// unknown" and silently become a release fallback.
+func flatten(err error) error {
+	var se *statusError
+	if errors.As(err, &se) {
+		return se.err
+	}
+	return err
+}
 
 // IsCommitUnknown reports whether err is commits/{sha}/pulls answering 422 —
 // how GitHub says it does not (yet) know the SHA. That is the release walk's

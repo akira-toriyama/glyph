@@ -309,6 +309,23 @@ func TestCommitPulls404IsNotCommitUnknown(t *testing.T) {
 	wantAPIError(t, err, "Not Found")
 }
 
+// TestPullCommits422IsNotCommitUnknown: the commit-unknown branch belongs to
+// CommitPulls alone — a 422 from pulls/{n}/commits means a validation problem,
+// and letting it read as "API lag" would convert a hard failure into a silent
+// fallback. Every other method flattens the status away.
+func TestPullCommits422IsNotCommitUnknown(t *testing.T) {
+	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		fmt.Fprint(w, `{"message":"Validation Failed"}`)
+	})
+
+	_, err := c.PullCommits(context.Background(), "o", "r", 7)
+	if IsCommitUnknown(err) {
+		t.Fatal("a 422 from pulls/{n}/commits must NOT report IsCommitUnknown")
+	}
+	wantAPIError(t, err, "Validation Failed")
+}
+
 // TestNewDefaultClientHasATimeout: without WithHTTPClient, New must not hand
 // out http.DefaultClient — it has no timeout, so a hung GitHub would block a
 // release job until the runner kills it, and the deadline→CodeAPI

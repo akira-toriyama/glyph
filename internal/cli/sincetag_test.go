@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -208,6 +209,190 @@ func TestSinceTagIsExclusiveWithTheOtherSources(t *testing.T) {
 	}
 }
 
+// TestSinceTagRevertPRIsWalked: a revert PR squash-merges with the subject
+// `Revert "..." (#N)` — the same prefix bump.Excluded uses to skip raw
+// git-revert messages. On the walk that subject is a POINTER to a resolvable
+// PR, not a message being classified: excluding it here would silently drop
+// the whole revert (its :rewind: inner commits drive a patch) while the
+// reverted feature still counts — a release advertising a feature that is
+// gone.
+func TestSinceTagRevertPRIsWalked(t *testing.T) {
+	dir, _ := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", `Revert "Add a menu" (#9)`)
+	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(sha): `[` + apiPullRef(9, "2026-07-15T00:00:00Z", sha) + `]`,
+		pullCommitsPath(9):   `[` + apiCommit("r1", "akira-toriyama", ":rewind: revert the menu") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 0 {
+		t.Fatalf("a revert PR's squash commit exited %d, want 0 — it must resolve, not vanish\nstderr: %s", code, stderr)
+	}
+	if stdout != "v0.1.1\n" {
+		t.Fatalf("stdout = %q, want v0.1.1 from the revert PR's :rewind: commit", stdout)
+	}
+}
+
+// TestSinceTagRawRevertDirectPushIsExcluded: a raw `git revert` pushed straight
+// to main has no PR to resolve; on the fallback path the generated-subject
+// exclusion applies exactly as it does on --range — skipped silently, never a
+// violation and never a warning.
+func TestSinceTagRawRevertDirectPushIsExcluded(t *testing.T) {
+	dir, _ := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", `Revert ":bug: fix a crash"`)
+	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(sha): `[]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 1 {
+		t.Fatalf("a lone raw-revert direct push exited %d, want 1 (no release — it is excluded)\nstderr: %s", code, stderr)
+	}
+	if stdout != "" {
+		t.Fatalf("stdout = %q, want empty", stdout)
+	}
+	if strings.Contains(stderr, "::warning::") {
+		t.Fatalf("an excluded commit is skipped, never warned about (parity with --range):\n%s", stderr)
+	}
+}
+
+// TestSinceTagRebaseMergedPRDoesNotDoubleCount: on a rebase-merge, every
+// rebased commit is associated with the merged PR but only the LAST one equals
+// merge_commit_sha. The earlier ones are covered by that PR — falling back on
+// them would count each change twice (once rebased, once via the PR's
+// expansion) and spray direct-push warnings over a perfectly normal merge.
+func TestSinceTagRebaseMergedPRDoesNotDoubleCount(t *testing.T) {
+	dir, _ := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":sparkles: add a menu")
+	shaA := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testCommit(t, dir, "akira-toriyama", ":bug: fix the menu")
+	shaB := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(shaA): `[` + apiPullRef(7, "2026-07-15T00:00:00Z", shaB) + `]`,
+		commitPullsPath(shaB): `[` + apiPullRef(7, "2026-07-15T00:00:00Z", shaB) + `]`,
+		pullCommitsPath(7): `[` +
+			apiCommit("a1", "akira-toriyama", ":sparkles: add a menu") + `,` +
+			apiCommit("b1", "akira-toriyama", ":bug: fix the menu") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag", "--json")
+	if code != 0 {
+		t.Fatalf("bump over a rebase-merged PR exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	var res struct {
+		Commits []struct {
+			SHA string `json:"sha"`
+		} `json:"commits"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, stdout)
+	}
+	if len(res.Commits) != 2 {
+		t.Fatalf("verdict counts %d commits, want exactly the PR's 2 (no double count): %+v", len(res.Commits), res.Commits)
+	}
+	if strings.Contains(stderr, "::warning::") {
+		t.Fatalf("a rebase-merged PR is normal, not a direct push — no warnings:\n%s", stderr)
+	}
+}
+
+// TestSinceTagExplicitEmptyIsUsage: `--since-tag=` (a workflow templating an
+// unset variable) must not silently degrade to auto — the caller NAMED a tag
+// and the name is empty. Usage, before anything runs.
+func TestSinceTagExplicitEmptyIsUsage(t *testing.T) {
+	t.Setenv("GITHUB_REPOSITORY", "akira-toriyama/glyph") // so the repo guard cannot mask the tag guard
+	dir, _ := testRepo(t)
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "bump", "--since-tag=")
+	if code != 2 {
+		t.Fatalf("bump --since-tag= exited %d, want 2 (usage — an empty tag is not auto)", code)
+	}
+	if !strings.Contains(stderr, "since-tag") {
+		t.Fatalf("the error should name the flag:\n%s", stderr)
+	}
+}
+
+// TestSinceTagOptionShapedTagIsUsage: symmetric with checkRangeFlag — an
+// option-shaped or range-shaped tag is the caller's input, rejected as usage
+// (2) before git runs, not surfaced as a retryable-looking API failure (4).
+func TestSinceTagOptionShapedTagIsUsage(t *testing.T) {
+	t.Setenv("GITHUB_REPOSITORY", "akira-toriyama/glyph") // so the repo guard cannot mask the tag guard
+	dir, _ := testRepo(t)
+	t.Chdir(dir)
+	for _, tag := range []string{"-v0.1.0", "v0.1.0..HEAD"} {
+		code, _, stderr := runGlyph(t, "bump", "--since-tag="+tag)
+		if code != 2 {
+			t.Fatalf("bump --since-tag=%q exited %d, want 2 (usage)", tag, code)
+		}
+		if !strings.Contains(stderr, "since-tag") {
+			t.Fatalf("the error for %q should name --since-tag:\n%s", tag, stderr)
+		}
+	}
+}
+
+// TestBumpSinceTagExplicitTagIsTheStepBase: naming a tag names the release
+// being redone — the walk base and the step base must be the SAME tag, or the
+// verdict is computed from one range and versioned from another. --current
+// still wins when given.
+func TestBumpSinceTagExplicitTagIsTheStepBase(t *testing.T) {
+	dir, _ := testRepo(t)
+	testGit(t, dir, "akira-toriyama", "tag", "v0.2.0") // base also carries a HIGHER tag
+	sha := squashCommit(t, dir, "Fix a crash", 3)
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(sha): `[` + apiPullRef(3, "2026-07-15T00:00:00Z", sha) + `]`,
+		pullCommitsPath(3):   `[` + apiCommit("c1", "akira-toriyama", ":bug: fix a crash") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.0")
+	if code != 0 {
+		t.Fatalf("bump --since-tag=v0.1.0 exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if stdout != "v0.1.1\n" {
+		t.Fatalf("stdout = %q, want v0.1.1 — the named tag is the step base, not the higher v0.2.0", stdout)
+	}
+
+	code, stdout, _ = runGlyph(t, "bump", "--since-tag=v0.1.0", "--current", "v3.0.0")
+	if code != 0 || stdout != "v3.0.1\n" {
+		t.Fatalf("--current must still win: exit %d stdout %q, want 0 / v3.0.1", code, stdout)
+	}
+}
+
+// TestSinceTagAllCommitsUnknownWarnsAboutTheRepo: one unknown SHA is API lag;
+// EVERY SHA unknown is what a wrong --repo / inherited GITHUB_REPOSITORY looks
+// like (a fork or reusable-workflow context) — the walk still soft-falls-back,
+// but a summary warning must say the quiet part out loud so the
+// misconfiguration is findable in the log.
+func TestSinceTagAllCommitsUnknownWarnsAboutTheRepo(t *testing.T) {
+	dir, _ := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	testCommit(t, dir, "akira-toriyama", ":memo: document it")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		fmt.Fprint(w, `{"message":"No commit found for SHA"}`)
+	}))
+	t.Cleanup(srv.Close)
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 0 {
+		t.Fatalf("an all-unknown walk exited %d, want 0 (still a soft fallback)\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "--repo") {
+		t.Fatalf("when EVERY commit is unknown the warning must point at --repo/GITHUB_REPOSITORY:\n%s", stderr)
+	}
+}
+
 // TestSinceTagDirectPushFallsBackToItsOwnMessage: a commit with NO pull-request
 // association — a human pushed straight to main — must not fail the release
 // (DESIGN §4): it emits a ::warning:: and is classified from its own message.
@@ -337,6 +522,9 @@ func TestSinceTagAutoWithoutTagsWalksTheWholeHistory(t *testing.T) {
 	}
 	if stdout != "v0.1.0\n" {
 		t.Fatalf("stdout = %q, want v0.1.0 (minor step from v0.0.0)", stdout)
+	}
+	if !strings.Contains(stderr, "whole history") {
+		t.Fatalf("walking everything is a cost the caller should see named (one API round-trip per commit):\n%s", stderr)
 	}
 }
 
