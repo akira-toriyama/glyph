@@ -9,6 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/internal/bump"
+	"github.com/akira-toriyama/glyph/internal/github"
 )
 
 // releasesPath is the releases collection for the repository the tests query.
@@ -757,5 +760,164 @@ func TestReleaseBreakingComposesConsistently(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "## Breaking Changes") {
 		t.Fatalf("breaking entry was not hoisted into Breaking Changes:\n%s", stdout)
+	}
+}
+
+// TestPlanDraftsConvergesOnExactlyOne pins the pure convergence arms the
+// end-to-end upsert tests don't reach: with several glyph drafts and NO tag
+// match the first listed (GitHub lists newest first) is kept and retagged;
+// with two drafts both already carrying the intended tag exactly one
+// survives; with no drafts nothing is kept and nothing is stale.
+func TestPlanDraftsConvergesOnExactlyOne(t *testing.T) {
+	cases := []struct {
+		name      string
+		drafts    []github.Release
+		tag       string
+		wantKeep  int64 // 0 = keep nil
+		wantStale []int64
+	}{
+		{
+			name:      "no tag match keeps the newest",
+			drafts:    []github.Release{{ID: 31, TagName: "v0.2.0", Draft: true}, {ID: 32, TagName: "v0.1.9", Draft: true}},
+			tag:       "v0.3.0",
+			wantKeep:  31,
+			wantStale: []int64{32},
+		},
+		{
+			name:      "duplicate intended tags keep one",
+			drafts:    []github.Release{{ID: 41, TagName: "v0.3.0", Draft: true}, {ID: 42, TagName: "v0.3.0", Draft: true}},
+			tag:       "v0.3.0",
+			wantKeep:  41,
+			wantStale: []int64{42},
+		},
+		{
+			name:   "no drafts",
+			drafts: nil,
+			tag:    "v0.3.0",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			keep, stale := planDrafts(c.drafts, c.tag)
+			var keepID int64
+			if keep != nil {
+				keepID = keep.ID
+			}
+			if keepID != c.wantKeep {
+				t.Errorf("keep = %d, want %d", keepID, c.wantKeep)
+			}
+			staleIDs := make([]int64, len(stale))
+			for i, s := range stale {
+				staleIDs[i] = s.ID
+			}
+			if len(staleIDs) != len(c.wantStale) {
+				t.Fatalf("stale = %v, want %v", staleIDs, c.wantStale)
+			}
+			for i := range staleIDs {
+				if staleIDs[i] != c.wantStale[i] {
+					t.Fatalf("stale = %v, want %v", staleIDs, c.wantStale)
+				}
+			}
+		})
+	}
+}
+
+// TestHighestPublishedIgnoresUnparseableTags: the published floor is computed
+// over house-shaped (vX.Y.Z) published releases ONLY — a foreign published
+// tag (nightly, a bare 0.9.9) neither raises the floor nor breaks it, and
+// drafts never count however high their intended tag.
+func TestHighestPublishedIgnoresUnparseableTags(t *testing.T) {
+	releases := []github.Release{
+		{ID: 1, TagName: "nightly", Draft: false},
+		{ID: 2, TagName: "0.9.9", Draft: false}, // no v prefix — not house-shaped
+		{ID: 3, TagName: "v0.5.0", Draft: false},
+		{ID: 4, TagName: "v0.4.0", Draft: false},
+		{ID: 5, TagName: "v9.9.9", Draft: true}, // a draft is no floor
+	}
+	floor, ok := highestPublished(releases)
+	if !ok || floor.String() != "v0.5.0" {
+		t.Fatalf("floor = %v ok=%v, want v0.5.0 over the parseable published set", floor, ok)
+	}
+	if err := checkPublishedFloor(bump.Version{Minor: 5}, releases); err == nil {
+		t.Fatalf("v0.5.0 equals the floor and must be refused (STRICTLY greater)")
+	}
+	if err := checkPublishedFloor(bump.Version{Minor: 5, Patch: 1}, releases); err != nil {
+		t.Fatalf("v0.5.1 clears the floor, got %v", err)
+	}
+
+	foreignOnly := releases[:2]
+	if _, ok := highestPublished(foreignOnly); ok {
+		t.Fatalf("foreign-only published releases must yield no floor")
+	}
+	if err := checkPublishedFloor(bump.Version{Patch: 1}, foreignOnly); err != nil {
+		t.Fatalf("with no floor any version passes, got %v", err)
+	}
+}
+
+// TestReleaseUpsertUpdateJSONCarriesTheURL: the update path's --json verdict
+// carries the PATCHed draft's URL (the create path is pinned by
+// TestReleaseUpsertJSON) — release.yml surfaces this URL in the job summary.
+func TestReleaseUpsertUpdateJSONCarriesTheURL(t *testing.T) {
+	var writes []apiWrite
+	walk := oneFixWalk(t)
+	srv := releaseServer(t, walk, `[`+draftJSON(11, "v0.1.1")+`]`, &writes)
+	usePR(t, srv)
+
+	code, stdout, stderr := runGlyph(t, "release", "--json")
+	if code != 0 {
+		t.Fatalf("release --json exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	var v releaseVerdict
+	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
+		t.Fatalf("release --json stdout is not one JSON object: %v\n%s", err, stdout)
+	}
+	if v.Action != "update" || v.URL != "https://github.example/releases/11" {
+		t.Errorf("verdict action/url = %q/%q, want update + the PATCHed draft's URL", v.Action, v.URL)
+	}
+}
+
+// TestReleaseDeleteFailureIsAPI: a write failing mid-convergence (the stale
+// draft's DELETE answering 404 — deleted out from under the run) is an
+// ordinary API failure: exit 4, GitHub's message in the envelope, and the
+// upsert write never happens (the run stops at the failed delete).
+func TestReleaseDeleteFailureIsAPI(t *testing.T) {
+	walk := oneFixWalk(t)
+	releases := `[` + draftJSON(11, "v0.1.1") + `,` + draftJSON(12, "v0.1.0") + `]`
+	var patched []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == releasesPath:
+			fmt.Fprint(w, releases)
+		case r.Method == http.MethodGet:
+			body, ok := walk[r.URL.Path]
+			if !ok {
+				t.Errorf("unexpected GET %q", r.URL.Path)
+				http.NotFound(w, r)
+				return
+			}
+			fmt.Fprint(w, body)
+		case r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"message":"Not Found"}`)
+		case r.Method == http.MethodPatch:
+			patched = append(patched, r.URL.Path)
+			fmt.Fprint(w, `{}`)
+		default:
+			t.Errorf("unexpected %s %q", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	usePR(t, srv)
+
+	code, _, stderr := runGlyph(t, "release")
+	if code != 4 {
+		t.Fatalf("a failed stale-draft DELETE exited %d, want 4 (API)\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "Not Found") {
+		t.Fatalf("the envelope should carry GitHub's message:\n%s", stderr)
+	}
+	if len(patched) != 0 {
+		t.Fatalf("the upsert must stop at the failed delete, but PATCHed %v", patched)
 	}
 }

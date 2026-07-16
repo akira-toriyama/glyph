@@ -441,3 +441,37 @@ func TestNextLinkPicksNextAmongRealGitHubRels(t *testing.T) {
 		t.Fatalf("fetched pages %q, want the initial page then page 2 and a stop", seen)
 	}
 }
+
+// TestPaginationRunawayGuard: a pathological server that keeps advertising a
+// rel="next" link must be stopped by the maxPages guard as a named API error —
+// never an unbounded loop. The guard sits far above any real response, so this
+// is the only way to reach it.
+func TestPaginationRunawayGuard(t *testing.T) {
+	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+		// Every page points at itself as the next page.
+		w.Header().Set("Link", fmt.Sprintf(`<http://%s%s>; rel="next"`, r.Host, r.URL.Path))
+		fmt.Fprint(w, `[]`)
+	})
+	_, err := c.CommitPulls(context.Background(), "o", "r", "abc")
+	wantAPIError(t, err, "pagination exceeded")
+}
+
+// FuzzNextLink: the Link-header parser is the one hand-rolled header parser in
+// the package — it must never panic, and anything it returns must be a
+// substring of the header it was given (it extracts, never fabricates).
+func FuzzNextLink(f *testing.F) {
+	f.Add(`<https://api.github.com/x?page=2>; rel="next", <https://api.github.com/x?page=9>; rel="last"`)
+	f.Add(`<u>; rel="prev"`)
+	f.Add(``)
+	f.Add(`<>; rel="next"`)
+	f.Add(`garbage; ; ;, <a`)
+	f.Fuzz(func(t *testing.T, header string) {
+		got := nextLink(header)
+		if got == "" {
+			return
+		}
+		if !strings.Contains(header, "<"+got+">") {
+			t.Fatalf("nextLink(%q) = %q, which the header never carried", header, got)
+		}
+	})
+}

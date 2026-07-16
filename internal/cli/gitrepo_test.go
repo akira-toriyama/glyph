@@ -2,11 +2,57 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
 )
+
+// TestMain blanks the GitHub environment before any test runs: on an Actions
+// runner GITHUB_REPOSITORY / GITHUB_TOKEN / GITHUB_API_URL are ambient, and a
+// future API-touching test that forgot usePR would silently read them and
+// call the real api.github.com. Blanking here makes that leak structurally
+// impossible instead of merely avoided by convention; tests that need the
+// variables set them per-test with t.Setenv.
+func TestMain(m *testing.M) {
+	for _, k := range []string{"GITHUB_API_URL", "GITHUB_REPOSITORY", "GITHUB_TOKEN", "GH_TOKEN"} {
+		os.Unsetenv(k)
+	}
+	os.Exit(m.Run())
+}
+
+// errEnvelope is the decoded machine error envelope glyph prints to stderr on
+// a non-zero exit: {"error":{"code","message"[,"details"]}}. Details stays raw
+// so each caller decodes its own detail shape.
+type errEnvelope struct {
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Details json.RawMessage `json:"details"`
+}
+
+// decodeErrorEnvelope decodes the stderr envelope — the machine API scripts
+// and agents branch on — so tests pin its keys and numeric code instead of
+// grepping substrings (a renamed key would pass every substring assertion).
+// It expects stderr to be exactly the envelope (no ::warning:: lines before).
+func decodeErrorEnvelope(t *testing.T, stderr string) errEnvelope {
+	t.Helper()
+	var env struct {
+		Error *errEnvelope `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(stderr), &env); err != nil || env.Error == nil {
+		t.Fatalf("stderr is not the {\"error\":{...}} envelope (decode: %v):\n%s", err, stderr)
+	}
+	return *env.Error
+}
+
+// setStdin points the lint --stdin input stream at s for one test.
+func setStdin(t *testing.T, s string) {
+	t.Helper()
+	old := in
+	in = strings.NewReader(s)
+	t.Cleanup(func() { in = old })
+}
 
 // testRepo builds a hermetic throwaway repository for the --range commands:
 // pinned identity, the user's real git config held out (a global

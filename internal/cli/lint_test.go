@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -27,7 +28,9 @@ func TestLintMessageLegacyFormatStaysClean(t *testing.T) {
 }
 
 // TestLintMessageViolations: violations exit 3 with a structured stderr
-// envelope carrying the stable rule ids, keeping stdout pure.
+// envelope carrying the stable rule ids, keeping stdout pure. The envelope is
+// DECODED, not grepped — its keys ("error", "code", "details", "rule") are the
+// machine API the lint reusable's jq annotations branch on.
 func TestLintMessageViolations(t *testing.T) {
 	code, stdout, stderr := runGlyph(t, "lint", "--message", ":bug: Fix a crash.")
 	if code != 3 {
@@ -36,10 +39,22 @@ func TestLintMessageViolations(t *testing.T) {
 	if stdout != "" {
 		t.Fatalf("violations must go to stderr, stdout got %q", stdout)
 	}
-	for _, rule := range []string{"uppercase-subject", "trailing-period"} {
-		if !strings.Contains(stderr, rule) {
-			t.Fatalf("stderr envelope is missing rule %q:\n%s", rule, stderr)
-		}
+	env := decodeErrorEnvelope(t, stderr)
+	if env.Code != 3 {
+		t.Fatalf("envelope code = %d, want 3 (the exit code, restated for jq)", env.Code)
+	}
+	var details []struct {
+		Rule string `json:"rule"`
+	}
+	if err := json.Unmarshal(env.Details, &details); err != nil {
+		t.Fatalf("envelope details are not the violations array: %v\n%s", err, env.Details)
+	}
+	rules := make([]string, len(details))
+	for i, d := range details {
+		rules[i] = d.Rule
+	}
+	if len(rules) != 2 || rules[0] != "uppercase-subject" || rules[1] != "trailing-period" {
+		t.Fatalf("violation rules = %v, want [uppercase-subject trailing-period] in stable order", rules)
 	}
 }
 
@@ -58,9 +73,7 @@ func TestLintMessageUnknownCode(t *testing.T) {
 // TestLintStdin: --stdin reads the message from the input stream (the
 // commit-msg hook path) and stays authoring-mode — :construction: is legal.
 func TestLintStdin(t *testing.T) {
-	oldIn := in
-	in = strings.NewReader(":construction: try things\n")
-	defer func() { in = oldIn }()
+	setStdin(t, ":construction: try things\n")
 	code, _, stderr := runGlyph(t, "lint", "--stdin")
 	if code != 0 {
 		t.Fatalf("lint --stdin exited %d, want 0 (WIP is legal at authoring time)\nstderr: %s", code, stderr)
@@ -69,9 +82,7 @@ func TestLintStdin(t *testing.T) {
 
 // TestLintStdinViolation: the stdin path still lints — a violation exits 3.
 func TestLintStdinViolation(t *testing.T) {
-	oldIn := in
-	in = strings.NewReader("no gitmoji here\n")
-	defer func() { in = oldIn }()
+	setStdin(t, "no gitmoji here\n")
 	code, _, stderr := runGlyph(t, "lint", "--stdin")
 	if code != 3 {
 		t.Fatalf("lint --stdin with a bad message exited %d, want 3", code)
