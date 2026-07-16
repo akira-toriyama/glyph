@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/akira-toriyama/glyph/internal/core"
@@ -40,6 +41,19 @@ const (
 	// so it never fires in practice, only stops a runaway loop.
 	maxPages = 1000
 )
+
+// PullCommitsCap is where GitHub truncates the pulls/{n}/commits listing, no
+// matter how far the pagination follows — an API contract, so the adapter owns
+// the number. A response of exactly this many commits may be missing some;
+// the caller that renders warnings names the boundary through this constant.
+const PullCommitsCap = 250
+
+// defaultTimeout bounds each request when no client is injected —
+// http.DefaultClient would hang on an unresponsive GitHub until the CI runner
+// kills the whole job. Per-request (not per-walk): the release walk makes one
+// round-trip per squash commit, and each deserves the full allowance. When it
+// fires, the deadline classifies as an ordinary API failure (see failed).
+const defaultTimeout = 30 * time.Second
 
 // PullRef is the slice of a pull request the release walk needs to resolve a
 // squash commit to the PR it came from: its number, whether/when it merged, and
@@ -85,7 +99,7 @@ type Client struct {
 // New builds a client. token is sent as a Bearer credential when non-empty; an
 // empty token still reads public repos, at the anonymous rate limit.
 func New(token string, opts ...Option) *Client {
-	c := &Client{baseURL: DefaultBaseURL, http: http.DefaultClient, token: token}
+	c := &Client{baseURL: DefaultBaseURL, http: &http.Client{Timeout: defaultTimeout}, token: token}
 	for _, o := range opts {
 		o(c)
 	}
@@ -146,7 +160,7 @@ func (c *Client) PullCommits(ctx context.Context, owner, repo string, number int
 		c.baseURL, url.PathEscape(owner), url.PathEscape(repo), number, perPage)
 	raw, err := getAll[apiCommit](ctx, c, first)
 	if err != nil {
-		return nil, err
+		return nil, flatten(err)
 	}
 	commits := make([]Commit, len(raw))
 	for i, ac := range raw {
@@ -206,12 +220,51 @@ func (c *Client) get(ctx context.Context, u string, into any) (string, error) {
 		return "", failed(ctx, "reading "+req.URL.Path, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", core.APIf("github: GET %s: %d %s", req.URL.Path, resp.StatusCode, distill(body))
+		return "", &statusError{status: resp.StatusCode, err: core.APIf(
+			"github: GET %s: %d %s", req.URL.Path, resp.StatusCode, distill(body))}
 	}
 	if err := json.Unmarshal(body, into); err != nil {
 		return "", core.APIf("github: decoding %s: %v", req.URL.Path, err)
 	}
 	return nextLink(resp.Header.Get("Link")), nil
+}
+
+// statusError carries a non-2xx response's status alongside the flattened
+// *core.Error, so a public method can classify by status (the 422 below)
+// before the failure leaves the package. Unwrap keeps it an ordinary CodeAPI
+// failure to everything else — core.AsError and core.ExitCode see the wrapped
+// *core.Error through the chain.
+type statusError struct {
+	status int
+	err    *core.Error
+}
+
+func (e *statusError) Error() string { return e.err.Error() }
+func (e *statusError) Unwrap() error { return e.err }
+
+// flatten strips the status carrier off a failure. Every method except
+// CommitPulls flattens on the way out, so a status can only ever be observed
+// on the one call whose contract documents it — a 422 from another endpoint
+// (a pulls/{n}/commits validation failure) must never read as "commit
+// unknown" and silently become a release fallback.
+func flatten(err error) error {
+	var se *statusError
+	if errors.As(err, &se) {
+		return se.err
+	}
+	return err
+}
+
+// IsCommitUnknown reports whether err is commits/{sha}/pulls answering 422 —
+// how GitHub says it does not (yet) know the SHA. That is the release walk's
+// API-lag case (the walk runs moments after a push), so the walk branches here
+// to fall back instead of hard-failing the release. Deliberately NOT true for
+// a 404: that is how a bad credential against a private repository answers for
+// every commit, and degrading a whole walk to fallbacks on an auth failure
+// would be silent corruption.
+func IsCommitUnknown(err error) bool {
+	var se *statusError
+	return errors.As(err, &se) && se.status == http.StatusUnprocessableEntity
 }
 
 // failed classifies a request that never produced a usable response. Only a

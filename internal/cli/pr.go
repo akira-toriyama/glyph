@@ -99,6 +99,11 @@ func participatingPull(ctx context.Context, c *github.Client, owner, repo string
 	if err != nil {
 		return nil, err
 	}
+	if len(raws) >= github.PullCommitsCap {
+		// No silent caps: the verdict may be computed from a truncated PR, and
+		// a missing commit could carry the deciding gitmoji.
+		warnf("pull request #%d returned %d commits — GitHub truncates this listing at %d, so some commits (and their gitmoji) may be missing from the verdict", number, len(raws), github.PullCommitsCap)
+	}
 	local := make([]gitsource.RawCommit, len(raws))
 	for i, r := range raws {
 		local[i] = gitsource.RawCommit(r)

@@ -274,6 +274,74 @@ func TestContextDeadlineIsAPI(t *testing.T) {
 	}
 }
 
+// TestCommitPulls422IsCommitUnknown: commits/{sha}/pulls answers 422 when
+// GitHub does not (yet) know the SHA — the release walk's API-lag case, which
+// must be branchable (IsCommitUnknown) so the walk can fall back instead of
+// hard-failing the release. It still reads as an ordinary CodeAPI failure to
+// every layer that does not branch.
+func TestCommitPulls422IsCommitUnknown(t *testing.T) {
+	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		fmt.Fprint(w, `{"message":"No commit found for SHA: abc"}`)
+	})
+
+	_, err := c.CommitPulls(context.Background(), "o", "r", "abc")
+	if !IsCommitUnknown(err) {
+		t.Fatalf("a 422 from commits/{sha}/pulls must report IsCommitUnknown, got %v", err)
+	}
+	wantAPIError(t, err, "No commit found")
+}
+
+// TestCommitPulls404IsNotCommitUnknown: a 404 is how GitHub answers a bad
+// credential against a private repository — for EVERY commit. Treating it as
+// commit-unknown would silently degrade the whole walk to fallbacks on an auth
+// failure, so only the specific 422 may branch.
+func TestCommitPulls404IsNotCommitUnknown(t *testing.T) {
+	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, `{"message":"Not Found"}`)
+	})
+
+	_, err := c.CommitPulls(context.Background(), "o", "r", "abc")
+	if IsCommitUnknown(err) {
+		t.Fatal("a 404 must NOT report IsCommitUnknown — it is how an auth failure looks")
+	}
+	wantAPIError(t, err, "Not Found")
+}
+
+// TestPullCommits422IsNotCommitUnknown: the commit-unknown branch belongs to
+// CommitPulls alone — a 422 from pulls/{n}/commits means a validation problem,
+// and letting it read as "API lag" would convert a hard failure into a silent
+// fallback. Every other method flattens the status away.
+func TestPullCommits422IsNotCommitUnknown(t *testing.T) {
+	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		fmt.Fprint(w, `{"message":"Validation Failed"}`)
+	})
+
+	_, err := c.PullCommits(context.Background(), "o", "r", 7)
+	if IsCommitUnknown(err) {
+		t.Fatal("a 422 from pulls/{n}/commits must NOT report IsCommitUnknown")
+	}
+	wantAPIError(t, err, "Validation Failed")
+}
+
+// TestNewDefaultClientHasATimeout: without WithHTTPClient, New must not hand
+// out http.DefaultClient — it has no timeout, so a hung GitHub would block a
+// release job until the runner kills it, and the deadline→CodeAPI
+// classification above would never be reachable in production. The release
+// walk makes one request per squash commit, so the timeout must be
+// per-request (http.Client.Timeout), not per-walk.
+func TestNewDefaultClientHasATimeout(t *testing.T) {
+	c := New("")
+	if c.http == http.DefaultClient {
+		t.Fatal("New's default client is http.DefaultClient, which never times out")
+	}
+	if c.http.Timeout <= 0 {
+		t.Fatalf("New's default client Timeout = %v, want > 0", c.http.Timeout)
+	}
+}
+
 // TestTransportErrorIsAPI: a request that never reaches a server (connection
 // refused) fails with a healthy context, so it must classify as CodeAPI — the
 // other side of the cancel/deadline split.

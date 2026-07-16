@@ -100,7 +100,11 @@ line can't carry N grouped entries); owning the squash **body** via
 `COMMIT_MESSAGES` (kept only as an optional drift alarm, never the primary).
 
 Fallbacks never hard-fail a release: a direct-push commit or an API lag emits a
-`::warning::` and classifies the squash commit's own message.
+`::warning::` and classifies the squash commit's own message. On this fallback
+path only, a message that does not parse or carries an unknown `:code:` also
+degrades to a `::warning::` and counts **none** — never a silent patch, and
+never exit 3: the hard unknown-code error stays with the lint gate (§2), and
+the downgrade is owned by the walk assembly, keeping `internal/bump` pure.
 
 ## 5. Architecture (Go, house pattern)
 
