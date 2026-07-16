@@ -23,15 +23,16 @@ jobs:
       go-version-file: go.mod
 
   # Repo-specific checks that don't belong in the shared core. The smoke runs on
-  # every leg so the shipped binary (macOS brew cask) is exercised on darwin too —
-  # matching the pre-migration matrix, which the core test job (build + unit tests)
-  # doesn't cover. The fuzz smoke is Linux-only (house pattern): it discovers every
-  # Fuzz target and runs each briefly, so new targets are covered with no edit here.
+  # every leg so the shipped binary is exercised on every released platform shape:
+  # darwin (brew cask) and linux arm64 (free for public repos) beside linux amd64
+  # — the core test job (build + unit tests) covers none of these. The fuzz smoke
+  # is Linux-only (house pattern): it discovers every Fuzz target and runs each
+  # briefly, so new targets are covered with no edit here.
   extras:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
@@ -40,6 +41,9 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
+          # setup-go keys the cache off go.mod by default; go.sum is the actual
+          # dependency identity, so name it explicitly.
+          cache-dependency-path: go.sum
 
       - name: smoke test
         run: |
