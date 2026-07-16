@@ -51,7 +51,7 @@ no flag-day.
 Linter shape check (membership is checked in code against the embedded table):
 
 ```
-^(:[a-z0-9][a-z0-9_+-]*:)(\([a-z0-9][a-z0-9-]*\))?(!)? (.+)$
+^(:[a-z0-9][a-z0-9_+-]*:)(\([a-z0-9][a-z0-9-]*\))?(!)? (\S.*)$
 ```
 
 An unknown `:code:` is a **hard lint error (exit 3)**, never a silent patch. The

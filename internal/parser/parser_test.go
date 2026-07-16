@@ -148,6 +148,11 @@ func TestParseRejects(t *testing.T) {
 		{"emoji glyph form", "✨ add a right-click menu"},
 		{"no space after code", ":bug:fix a crash"},
 		{"missing subject", ":bug: "},
+		{"blank subject (two spaces)", ":bug:  "},
+		{"whitespace-only subject", ":bug: \t "},
+		{"unicode-blank subject (vertical tab)", ":bug: \v"},
+		{"unicode-blank subject (nbsp)", ":bug:  "},
+		{"double space before subject", ":bug:  fix a crash"},
 		{"bare code", ":bug:"},
 		{"uppercase code", ":Bug: fix a crash"},
 		{"unclosed scope", ":bug:(ui fix a crash"},
@@ -273,8 +278,9 @@ func TestLintWithoutMembership(t *testing.T) {
 }
 
 // FuzzParseNeverPanics: Parse must survive arbitrary bytes; when it accepts a
-// message, the structural invariants hold (a shaped gitmoji, a non-empty
-// subject).
+// message, the structural invariants hold (a shaped gitmoji, a non-blank
+// subject — not merely non-empty: a whitespace-only subject would sail
+// through every lint rule).
 func FuzzParseNeverPanics(f *testing.F) {
 	f.Add(":bug: fix a crash")
 	f.Add(":sparkles:(ui)! add a menu")
@@ -282,6 +288,7 @@ func FuzzParseNeverPanics(f *testing.F) {
 	f.Add("")
 	f.Add("✨ add a menu")
 	f.Add(":bug:(ui\x00) fix")
+	f.Add(":bug:  ")
 	f.Fuzz(func(t *testing.T, msg string) {
 		c, err := Parse(msg)
 		if err != nil {
@@ -290,8 +297,8 @@ func FuzzParseNeverPanics(f *testing.F) {
 		if !strings.HasPrefix(c.Gitmoji, ":") || !strings.HasSuffix(c.Gitmoji, ":") || len(c.Gitmoji) < 3 {
 			t.Fatalf("Parse(%q) accepted a malformed gitmoji %q", msg, c.Gitmoji)
 		}
-		if c.Subject == "" {
-			t.Fatalf("Parse(%q) accepted an empty subject", msg)
+		if strings.TrimSpace(c.Subject) == "" {
+			t.Fatalf("Parse(%q) accepted a blank subject %q", msg, c.Subject)
 		}
 	})
 }
@@ -313,8 +320,11 @@ func FuzzParseRoundTrip(f *testing.F) {
 		if scope != "" && !lowerAlnum(scope[0]) {
 			scope = "s" + scope
 		}
-		subject = strings.NewReplacer("\n", " ", "\r", " ").Replace(subject)
-		if strings.TrimSpace(subject) == "" {
+		// Trim, don't just check: the shape requires the subject to OPEN with a
+		// non-space (a leading space would be a malformed subject, not a
+		// round-trip candidate).
+		subject = strings.TrimSpace(strings.NewReplacer("\n", " ", "\r", " ").Replace(subject))
+		if subject == "" {
 			t.Skip("empty subject after sanitizing")
 		}
 		if legacyTokenRE.MatchString(subject) {
