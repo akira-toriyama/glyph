@@ -727,3 +727,46 @@ func TestNotesSinceTagUnknownBreakingFallbackHoists(t *testing.T) {
 		t.Fatalf("the breaking fallback must be hoisted into Breaking Changes:\n%s", stdout)
 	}
 }
+
+// TestSinceTagResolvedPRLintNamesTheWedge pins the ratified Q1/t-2nzf error
+// contract: a commit INSIDE a resolved merged PR that fails lint (a message
+// that does not parse, or an unknown gitmoji) stays a hard exit 3 on the
+// release walk — never a silent patch — but the error must not be the bare
+// per-commit lint line: the walk found the PR itself (the caller never named
+// one), and the squash history is immutable, so the same failure wedges EVERY
+// future release until the range moves past it. The message therefore names
+// the pull request and both escapes (a hand-cut tag past the commit, or an
+// explicit --since-tag base).
+func TestSinceTagResolvedPRLintNamesTheWedge(t *testing.T) {
+	for name, inner := range map[string]string{
+		"malformed":      apiCommit("a1", "akira-toriyama", "no gitmoji leads this subject"),
+		"unknown-etmoji": apiCommit("a1", "akira-toriyama", ":notarealmoji: tweak something"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, _ := testRepo(t)
+			sha := squashCommit(t, dir, "Add a menu", 7)
+			srv := walkServer(t, map[string]string{
+				commitPullsPath(sha): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha) + `]`,
+				pullCommitsPath(7):   `[` + inner + `]`,
+			})
+			usePR(t, srv)
+			t.Chdir(dir)
+
+			code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+			if code != 3 {
+				t.Fatalf("a resolved-PR lint failure exited %d, want 3 (hard, per Q1)\nstderr: %s", code, stderr)
+			}
+			if stdout != "" {
+				t.Errorf("a lint failure wrote a payload:\n%s", stdout)
+			}
+			for _, want := range []string{"akira-toriyama/glyph#7", "--since-tag", "by hand"} {
+				if !strings.Contains(stderr, want) {
+					t.Errorf("the wedge error must carry %q (the PR and the escapes):\n%s", want, stderr)
+				}
+			}
+			if !strings.Contains(stderr, "a1") {
+				t.Errorf("the error must still name the offending commit:\n%s", stderr)
+			}
+		})
+	}
+}

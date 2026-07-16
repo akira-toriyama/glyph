@@ -124,6 +124,14 @@ the `::warning::`, normalized to `:boom:` (so it folds and hoists into
 Breaking Changes); a typo can over-bump, but a breaking change is never
 silently dropped.
 
+The leniency is for the fallback path only. A lint failure **inside a
+resolved merged PR** stays a hard exit 3 even on the release walk (Q1 —
+"never a silent patch" at full strength; only a commit that bypassed the lint
+gate can produce one). Squash history is immutable, so that commit wedges
+every release until the walk range moves past it: cut a release tag past it
+by hand, or name a later base with an explicit `--since-tag=TAG`. The error
+itself names the PR and both escapes.
+
 ## 5. Architecture (Go, house pattern)
 
 Binary `glyph`, module `github.com/akira-toriyama/glyph`. Subcommands:
