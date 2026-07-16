@@ -7,17 +7,17 @@ import (
 	"github.com/akira-toriyama/glyph/internal/bump"
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/gitmoji"
-	"github.com/akira-toriyama/glyph/internal/gitsource"
 	"github.com/akira-toriyama/glyph/internal/parser"
 	"github.com/spf13/cobra"
 )
 
 var (
-	bumpRange   string
-	bumpPR      int
-	bumpRepo    string
-	bumpCurrent string
-	bumpJSON    bool
+	bumpRange    string
+	bumpPR       int
+	bumpSinceTag string
+	bumpRepo     string
+	bumpCurrent  string
+	bumpJSON     bool
 )
 
 // bumpCommit is one classified commit in the machine verdict. The gitmoji code
@@ -62,11 +62,12 @@ func newBumpCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&bumpRange, "range", "", "classify every commit in a git revision range (BASE..HEAD)")
 	cmd.Flags().IntVar(&bumpPR, "pr", 0, "classify a pull request's individual (pre-squash) commits, read over the API")
-	cmd.Flags().StringVar(&bumpRepo, "repo", "", "owner/name to query for --pr (default: $GITHUB_REPOSITORY)")
+	addSinceTagFlag(cmd, &bumpSinceTag, "classify")
+	cmd.Flags().StringVar(&bumpRepo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY)")
 	cmd.Flags().StringVar(&bumpCurrent, "current", "", "the version to step from (default: highest parseable v* tag, else v0.0.0)")
 	cmd.Flags().BoolVar(&bumpJSON, "json", false, "emit the machine verdict {current,level,next,commits,reason}")
-	cmd.MarkFlagsOneRequired("range", "pr")
-	cmd.MarkFlagsMutuallyExclusive("range", "pr")
+	cmd.MarkFlagsOneRequired("range", "pr", "since-tag")
+	cmd.MarkFlagsMutuallyExclusive("range", "pr", "since-tag")
 	return cmd
 }
 
@@ -76,7 +77,7 @@ func bumpRun(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	parsed, source, perr := bumpInput(cmd)
+	parsed, source, perr := bumpInput(cmd, table)
 	if perr != nil {
 		return perr
 	}
@@ -130,15 +131,18 @@ func bumpRun(cmd *cobra.Command) error {
 }
 
 // bumpInput reads the commits the verdict is computed from and names the source
-// for the reason line: a local revision range, or a pull request's individual
-// (pre-squash) commits over the API. It dispatches on whether --pr was set, not
-// on its value — so an explicit --pr 0 (what a workflow yields from a null PR
-// number) reaches the --pr guard and is diagnosed as a bad --pr, not misrouted
-// into a --range complaint.
-func bumpInput(cmd *cobra.Command) ([]parser.Commit, string, error) {
+// for the reason line: a local revision range, a pull request's individual
+// (pre-squash) commits over the API, or the release walk since a tag. It
+// dispatches on whether a flag was set, not on its value — so an explicit
+// --pr 0 (what a workflow yields from a null PR number) reaches the --pr guard
+// and is diagnosed as a bad --pr, not misrouted into a --range complaint.
+func bumpInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, string, error) {
 	ctx := cmd.Context()
 	if cmd.Flags().Changed("pr") {
 		return pullInput(ctx, bumpPR, bumpRepo)
+	}
+	if cmd.Flags().Changed("since-tag") {
+		return sinceTagInput(ctx, table, bumpSinceTag, bumpRepo)
 	}
 	if err := checkRangeFlag(bumpRange); err != nil {
 		return nil, "", err
@@ -158,16 +162,8 @@ func currentVersion(ctx context.Context, flag string) (bump.Version, error) {
 		}
 		return v, nil
 	}
-	tags, err := gitsource.Tags(ctx, ".")
-	if err != nil {
-		return bump.Version{}, err
-	}
-	for _, t := range tags {
-		if v, perr := bump.ParseVersion(t); perr == nil {
-			return v, nil
-		}
-	}
-	return bump.Version{}, nil
+	_, v, _, err := latestVersionTag(ctx)
+	return v, err
 }
 
 // decidingReason names the oldest commit that reaches the folded level — the
