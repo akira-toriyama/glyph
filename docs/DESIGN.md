@@ -174,12 +174,19 @@ Rules ship inside the binary (no synced config table — that would recreate
 per-repo drift). glyph ships its own reusable workflows (`lint.yml`,
 `release.yml`) that install the pinned binary with checksum + attestation verify;
 family repos consume them at a concrete `@vX.Y.Z` (never a moving tag — binary
-and workflow ship from one repo at one tag). Migration off git-cliff is
-canary-first (`chord`), shadow-mode-compared before any publish. Full rollout and
-effort estimate: tracked in the `projects` furrow task and the approved plan.
+and workflow ship from one repo at one tag). glyph's OWN tag-driven GoReleaser
+workflow is `goreleaser.yml` — also the attestation signer identity from v0.3.0
+on. Migration off git-cliff is canary-first (`chord`) and flips DIRECTLY —
+ratified Q16: no shadow parallel-run (a policy-honest comparison against the
+type-driven git-cliff is impossible once the gitmoji table legitimately
+reclassifies single commits, and migration scaffolding is debt). The safety net
+is structural: writes are draft-only, a human publishes, the published floor
+guards the tag space, and `--dry-run` previews any verdict. Full rollout:
+tracked in the `projects` furrow task and the approved plan.
 
 ## 7. Roadmap
 
 Phase 0 scaffold (this) → 1 gitmoji table → 2 parser+bump+lint → 3 lint reusable
-+ canary (first shippable) → 4 notes → 5 GitHub squash-safe plumbing → 6 hub
-`release.yml@v2` + shadow → 7 hub self-adopt + docs → 8 fleet migration.
++ canary (first shippable) → 4 notes → 5 GitHub squash-safe plumbing → 6
+glyph-shipped `release.yml` reusable + chord direct flip → 7 hub self-adopt +
+docs → 8 fleet migration.

@@ -4,11 +4,13 @@ A gitmoji-driven release engine: one Go CLI that **lints commits**, computes the
 **semantic-version bump**, and renders **release notes** — deriving all of it from
 the gitmoji that leads each commit.
 
-> **Status: core engine building.** `version`, `rules`, `lint` (`--range` /
-> `--message` / `--stdin`), and `bump` / `notes` over both a local range
-> (`--range`) and a **pull request's individual, pre-squash commits** (`--pr`)
-> work. The release-time walk (`--since-tag`) and the `release` command are being
-> built. See [`docs/DESIGN.md`](docs/DESIGN.md) for the full design.
+> **Status: engine complete, fleet migration underway.** `version`, `rules`,
+> `lint` (`--range` / `--message` / `--stdin`), `bump` / `notes` over a local
+> range (`--range`), a **pull request's individual, pre-squash commits**
+> (`--pr`) or the release-time walk (`--since-tag`), and `release` (rolling
+> DRAFT upsert) all work. Two reusable workflows ship from this repo at each
+> tag: `lint.yml` (commit lint) and `release.yml` (rolling-draft release).
+> See [`docs/DESIGN.md`](docs/DESIGN.md) for the full design.
 
 ```sh
 # Squash-safe: reads the commits INSIDE the PR, which the squash would erase.

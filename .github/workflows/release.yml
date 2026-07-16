@@ -1,57 +1,282 @@
-name: release
+name: glyph-release
 
-# Tag-driven release: pushing a vX.Y.Z tag runs GoReleaser (binaries, checksums,
-# Homebrew cask) and attaches build-provenance attestations. Deliberately NOT on
-# every main push — that would run GoReleaser with no tag. Use workflow_dispatch
-# for a manual run.
+# Reusable rolling-DRAFT release for the Swift-app family — glyph's OFFICIAL
+# release integration and the successor of akira-toriyama/.github's
+# release.yml@v1 (git-cliff). The workflow and the binary it runs ship from
+# the same repo and the same release, so a caller pins ONE concrete tag
+# (@vX.Y.Z, never a moving ref) and can never mix workflow and binary
+# revisions. GoReleaser owns glyph's OWN tag-driven releases (goreleaser.yml)
+# — this file is the reusable the family consumes.
 #
-# Divergence from the other family Go CLIs (cifail/furrow): glyph does NOT run
-# git-cliff here. glyph is the tool that replaces git-cliff, so depending on it for
-# glyph's own release notes would be self-contradictory. Notes come from
-# GoReleaser's built-in changelog until glyph dogfoods `glyph notes` (Phase 5+).
+# A push to the caller's main makes `glyph release` walk main's squash
+# commits since the last v* tag, resolve each to its merged pull request over
+# the API and classify the PR's individual (pre-squash) commits — squash-safe,
+# stateless, self-healing (glyph docs/DESIGN.md §4) — then upsert the ONE
+# glyph-managed rolling DRAFT release: tag = the next version, body = the
+# grouped notes plus the caller's install block (`--footer-file`), target =
+# the walked HEAD. No git tag is created — GitHub tags the target commit when
+# a human publishes — and immutable releases stay deadlock-free: the next
+# version must clear the published floor, and drafts are deleted by release
+# id only, never by tag name. On a none verdict glyph deletes residual
+# glyph-managed drafts (the draft state converges to the verdict) and exits 1,
+# which this workflow folds into a success no-op — the soft no-release code
+# is handled here once, so callers never script around it.
 #
-# Requires the HOMEBREW_TAP_TOKEN secret (write access to akira-toriyama/homebrew-tap)
-# for the cask push. It is NOT fleet-distributed — set it on this repo before the
-# first tag; without it the build + attestation still run and only the cask step fails.
+# The app build stays the uniform package.sh (it runs `swift build -c
+# release` itself) with an optional post-build smoke, exactly as in the @v1
+# reusable; only the verdict engine changed. The upsert runs BEFORE the
+# build: the verdict comes from one walk (tag and body can never split), and
+# a build failure at worst leaves the draft's asset one merge stale — the
+# next green run re-uploads with --clobber, and nothing is published without
+# a human anyway.
+#
+# Caller skeleton (.github/workflows/release.yml in each app repo):
+#   on:
+#     push: { branches: [main] }
+#     workflow_dispatch:
+#       inputs:
+#         dry_run: { description: "Preview only", type: boolean, default: false }
+#   concurrency: { group: release, cancel-in-progress: false }
+#   permissions: { contents: write }
+#   jobs:
+#     release:
+#       uses: akira-toriyama/glyph/.github/workflows/release.yml@v0.3.0  # pin a release tag
+#       with:
+#         app: Facet              # → Facet.app / Facet.zip, binary `facet`
+#         smoke: false            # true → run `<App>.app/Contents/MacOS/<app> --validate`
+#         dry-run: ${{ github.event.inputs.dry_run == 'true' }}
+#         install-notes: |
+#           ## Install
+#           …app-specific markdown appended after the notes…
+
 on:
-  push:
-    tags: ['v*']
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      app:
+        description: "App display name, e.g. 'Facet' → builds Facet.app, attaches Facet.zip, binary `facet`."
+        required: true
+        type: string
+      install-notes:
+        description: "Markdown appended verbatim after the generated notes, separated by one --- line (the per-app `## Install` block)."
+        required: true
+        type: string
+      smoke:
+        description: "Run `./<App>.app/Contents/MacOS/<app-lowercased> --validate` after the build (apps that have a --validate)."
+        required: false
+        type: boolean
+        default: false
+      smoke-cmd:
+        description: "Post-build smoke args, e.g. 'config --validate' — runs `./<App>.app/Contents/MacOS/<app> <smoke-cmd>`. Takes precedence over `smoke`; empty falls back to `smoke`."
+        required: false
+        type: string
+        default: ""
+      dry-run:
+        description: "Preview only — the full verdict (draft action included) and the build, but no GitHub write (thread the caller's workflow_dispatch input)."
+        required: false
+        type: boolean
+        default: false
+      glyph-version:
+        description: >-
+          The glyph release whose binary computes the verdict (vX.Y.Z, v0.3.0
+          minimum — earlier binaries were attested under the pre-rename signer
+          path). The default is kept in LOCKSTEP with this file's own release
+          tag (bumped right before tagging), so a caller pinned to @vX.Y.Z
+          runs binary vX.Y.Z.
+        type: string
+        default: v0.3.0
 
 permissions:
-  contents: write      # create the GitHub release
-  id-token: write      # keyless signing for provenance attestation
-  attestations: write  # write the attestation
+  contents: write
 
 jobs:
   release:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # macos-26: family apps on the macOS-26 floor (sill v2.0.0+) ship
+    # macOS-26 binaries the smoke step must EXECUTE — a macos-15 host can
+    # compile them but cannot run them.
+    runs-on: macos-26
+    # Bounded so a hung step (build, signing, upload) can't burn the macOS
+    # minutes budget. Generous — a cold build + package + upload fits easily.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          # glyph walks the tags and the range out of LOCAL git (its verdict
+          # commands run inside a checkout by contract), so the full history
+          # must be here.
           fetch-depth: 0
+          # Every release write goes through glyph/gh + the GH_TOKEN env,
+          # never git push — don't leave the checkout token in .git/config
+          # (zizmor artipacked).
+          persist-credentials: false
 
-      # No job-level `env: GOTOOLCHAIN: local` — see build.yml. It would make
-      # setup-go skip go.mod's `toolchain` line and ship release binaries built
-      # with the bare floor. setup-go pins GOTOOLCHAIN=local itself.
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
-          go-version-file: 'go.mod'
-          cache: true
+          xcode-version: latest-stable
 
-      - name: GoReleaser
-        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+      # Same SPM cache as the swift-build action — package.sh runs `swift
+      # build` underneath, so the warm artefacts help here too. The repo name
+      # guards against stale PCH module-cache paths after a rename, and
+      # Package.resolved is hashed so a dependency bump invalidates the cache
+      # (hashFiles tolerates it missing for deps-free repos).
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          # Pin the GoReleaser TOOL to the v2 line (never `latest`).
-          version: "~> 2"
-          args: release --clean
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-spm-${{ github.event.repository.name }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: ${{ runner.os }}-spm-${{ github.event.repository.name }}-
+
+      - name: Install glyph (pinned release binary, checksum + provenance verified)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # PAT with write access to akira-toriyama/homebrew-tap.
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VER: ${{ inputs.glyph-version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ver="$VER"
+          base="https://github.com/akira-toriyama/glyph/releases/download/$ver"
+          file="glyph_${ver#v}_darwin_arm64.tar.gz"
+          curl -fsSL --retry 3 -o "/tmp/$file" "$base/$file"
+          curl -fsSL --retry 3 -o /tmp/glyph-checksums.txt "$base/checksums.txt"
+          ( cd /tmp && grep -F "  $file" glyph-checksums.txt | shasum -a 256 -c - )
+          # Provenance gate: the sha256 above only proves the tarball matches
+          # THIS release's own checksums.txt (self-consistent — a forged
+          # release could ship a matching pair). `gh attestation verify` also
+          # proves the artifact was built by glyph's release workflow
+          # (goreleaser.yml — the signer identity for v0.3.0+). Fail-closed,
+          # with a bounded retry mirroring the curls' `--retry 3`: the
+          # attestations API / Sigstore transparency log can blip, and a
+          # release job must not go red on a transient hiccup. Still
+          # hard-fails after the last attempt.
+          for i in 1 2 3; do
+            if gh attestation verify "/tmp/$file" \
+                 --repo akira-toriyama/glyph \
+                 --signer-workflow akira-toriyama/glyph/.github/workflows/goreleaser.yml; then
+              break
+            fi
+            if [ "$i" -eq 3 ]; then
+              echo "attestation verification failed after 3 attempts" >&2
+              exit 1
+            fi
+            echo "attestation verify failed (attempt $i); retrying" >&2
+            sleep "$((i * 3))"
+          done
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "/tmp/$file" -C "$HOME/.local/bin" glyph
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/glyph" version
 
-      - name: attest build provenance
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+      # ONE walk composes the whole verdict (tag + body) and, unless this is
+      # a dry run, upserts the rolling draft in the same call — recomputed
+      # from git every run, so it is idempotent and self-healing. Exit 1 is
+      # the uniform soft no-release: fold it into a success no-op here.
+      - name: Compose the verdict and upsert the rolling DRAFT
+        id: verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INSTALL_NOTES: ${{ inputs.install-notes }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          set -euo pipefail
+          # The caller's install block reaches glyph as a FILE (--footer-file)
+          # — printf %s, no shell expansion of its backticks / $(…), and no
+          # markdown ever concatenated in shell (ratified Q11).
+          printf '%s' "$INSTALL_NOTES" > "$RUNNER_TEMP/install-notes.md"
+          args=(release --json --footer-file "$RUNNER_TEMP/install-notes.md")
+          if [ "$DRY_RUN" = "true" ]; then
+            args=(release --dry-run --json --footer-file "$RUNNER_TEMP/install-notes.md")
+          fi
+          status=0
+          glyph "${args[@]}" > "$RUNNER_TEMP/verdict.json" 2> "$RUNNER_TEMP/verdict.err" || status=$?
+          cat "$RUNNER_TEMP/verdict.err" >&2
+          if [ "$status" -eq 1 ]; then
+            # Soft no-release: nothing version-worthy since the last tag.
+            # glyph already converged the draft state (residual glyph-managed
+            # drafts deleted — ratified Q3), so this run is complete.
+            reason="$(jq -r '.reason // empty' "$RUNNER_TEMP/verdict.json" 2>/dev/null || true)"
+            echo "::notice::${reason:-no release-worthy changes since the last tag} — nothing to do."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+          tag="$(jq -r .tag "$RUNNER_TEMP/verdict.json")"
+          action="$(jq -r .action "$RUNNER_TEMP/verdict.json")"
+          echo "release=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag"     >> "$GITHUB_OUTPUT"
+          echo "verdict: $tag (draft $action)"
+
+      # Build <App>.app via package.sh (ad-hoc signed for CI — the script
+      # picks $CODESIGN_ID > .signing-id > "-"). Optional smoke for apps that
+      # have one.
+      - name: Build app + zip
+        if: steps.verdict.outputs.release == 'true'
+        env:
+          CODESIGN_ID: "-"
+          APP: ${{ inputs.app }}
+          SMOKE: ${{ inputs.smoke }}
+          SMOKE_CMD: ${{ inputs.smoke-cmd }}
+        run: |
+          set -euo pipefail
+          ./package.sh
+          bin="$(echo "$APP" | tr '[:upper:]' '[:lower:]')"
+          # `smoke-cmd` (e.g. `config --validate`) takes precedence; else the
+          # boolean `smoke` runs `--validate`. Unquoted on purpose so
+          # multi-word args split.
+          if [ -n "$SMOKE_CMD" ]; then
+            # shellcheck disable=SC2086 # intentional word-split (see above)
+            "./${APP}.app/Contents/MacOS/${bin}" $SMOKE_CMD
+          elif [ "$SMOKE" = "true" ]; then
+            "./${APP}.app/Contents/MacOS/${bin}" --validate
+          fi
+          mkdir -p artifacts
+          ditto -c -k --sequesterRsrc --keepParent "${APP}.app" "artifacts/${APP}.zip"
+
+      # gh resolves an unpublished draft by its INTENDED tag for upload/view
+      # (the @v1 reusable relied on the same), and --clobber replaces the
+      # previous merge's asset on an updated draft.
+      - name: Attach the app to the draft
+        if: steps.verdict.outputs.release == 'true' && !inputs.dry-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.verdict.outputs.tag }}
+          APP: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" "artifacts/${APP}.zip" --clobber
+          url="$(jq -r '.url // empty' "$RUNNER_TEMP/verdict.json")"
+          echo "::notice::Draft release ${TAG} upserted (unpublished, no tag yet). Review & Publish manually: ${url}"
+          {
+            echo "## Draft release ${TAG} upserted (unpublished)"
+            echo
+            echo "Merging more to main grows this draft. Review and Publish"
+            echo "manually (the tag is created at Publish time): ${url}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # dry_run (workflow_dispatch only): nothing was written; upload the
+      # notes + artifact so the exact would-be release is previewable without
+      # consuming a version.
+      - name: Upload preview (dry run)
+        if: steps.verdict.outputs.release == 'true' && inputs.dry-run
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          subject-path: 'dist/*.tar.gz, dist/checksums.txt'
+          name: release-preview-${{ steps.verdict.outputs.tag }}
+          path: |
+            artifacts/${{ inputs.app }}.zip
+            ${{ runner.temp }}/verdict.json
+
+      - name: Dry-run summary
+        if: steps.verdict.outputs.release == 'true' && inputs.dry-run
+        env:
+          TAG: ${{ steps.verdict.outputs.tag }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Dry run: ${TAG} (nothing written)"
+            echo
+            echo "the draft action would be: $(jq -r .action "$RUNNER_TEMP/verdict.json")"
+            echo
+            echo '```'
+            jq -r .body "$RUNNER_TEMP/verdict.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

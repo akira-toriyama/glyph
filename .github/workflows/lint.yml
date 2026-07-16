@@ -15,7 +15,7 @@ name: glyph-lint
 #     contents: read
 #   jobs:
 #     lint:
-#       uses: akira-toriyama/glyph/.github/workflows/lint.yml@v0.2.0  # pin a release tag
+#       uses: akira-toriyama/glyph/.github/workflows/lint.yml@v0.3.0  # pin a release tag
 #
 # The glyph binary is DOWNLOADED from a release — checksum-verified against the
 # release's checksums.txt AND provenance-verified with `gh attestation verify`
@@ -39,7 +39,7 @@ on:
           kept in LOCKSTEP with this file's own release tag (bumped right
           before tagging), so a caller pinned to @vX.Y.Z runs binary vX.Y.Z.
         type: string
-        default: v0.2.0
+        default: v0.3.0
 
 permissions:
   contents: read
@@ -73,15 +73,17 @@ jobs:
           # Provenance gate: the sha256 above only proves the tarball matches
           # THIS release's own checksums.txt (self-consistent — a forged release
           # could ship a matching pair). `gh attestation verify` also proves the
-          # artifact was built by glyph's release workflow. Fail-closed, with a
-          # bounded retry (mirrors the curls' `--retry 3`): the attestations API
-          # / Sigstore transparency log can blip, and a commit-lint gate must
-          # not go red on a transient hiccup. Still hard-fails after the last
-          # attempt. Every glyph release (v0.1.0+) is attested.
+          # artifact was built by glyph's release workflow (goreleaser.yml — the
+          # signer identity for v0.3.0+; earlier releases were attested under
+          # the pre-rename release.yml, and their lockstep lint.yml tags carry
+          # that path). Fail-closed, with a bounded retry (mirrors the curls'
+          # `--retry 3`): the attestations API / Sigstore transparency log can
+          # blip, and a commit-lint gate must not go red on a transient hiccup.
+          # Still hard-fails after the last attempt.
           for i in 1 2 3; do
             if gh attestation verify "/tmp/$file" \
                  --repo akira-toriyama/glyph \
-                 --signer-workflow akira-toriyama/glyph/.github/workflows/release.yml; then
+                 --signer-workflow akira-toriyama/glyph/.github/workflows/goreleaser.yml; then
               break
             fi
             if [ "$i" -eq 3 ]; then
