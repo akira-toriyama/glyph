@@ -645,3 +645,85 @@ func TestSinceTagEmptyWalkIsNoRelease(t *testing.T) {
 		t.Fatalf("the no-release reason should name the walked range:\n%s", stderr)
 	}
 }
+
+// TestSinceTagUnknownGitmojiBreakingFallbackIsMajor pins the ratified Q10
+// policy: on the fallback path a breaking marker is NEVER suppressed — not
+// even by an unknown gitmoji. An unknown code alone downgrades to none (the
+// typo case, pinned above); an unknown code CARRYING a breaking marker (`!`
+// or a BREAKING CHANGE footer) majors the verdict behind a ::warning::,
+// normalized to the canonical :boom: — the failure asymmetry is deliberate:
+// a typo can over-bump a version, but a breaking change must never be
+// silently dropped from one.
+func TestSinceTagUnknownGitmojiBreakingFallbackIsMajor(t *testing.T) {
+	for name, message := range map[string]string{
+		"bang":   ":notarealmoji:! drop the legacy flag",
+		"footer": ":notarealmoji: drop the legacy flag\n\nBREAKING CHANGE: the flag is gone",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, _ := testRepo(t)
+			testCommit(t, dir, "akira-toriyama", message)
+			sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			srv := walkServer(t, map[string]string{
+				commitPullsPath(sha): `[]`, // a direct push — the fallback path
+			})
+			usePR(t, srv)
+			t.Chdir(dir)
+
+			code, stdout, stderr := runGlyph(t, "bump", "--since-tag", "--json")
+			if code != 0 {
+				t.Fatalf("an unknown+breaking fallback exited %d, want 0 (it must MAJOR, not vanish)\nstderr: %s", code, stderr)
+			}
+			var res struct {
+				Level   string `json:"level"`
+				Next    string `json:"next"`
+				Commits []struct {
+					Code     string `json:"code"`
+					Level    string `json:"level"`
+					Breaking bool   `json:"breaking"`
+					Subject  string `json:"subject"`
+				} `json:"commits"`
+			}
+			if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+				t.Fatalf("not JSON: %v\n%s", err, stdout)
+			}
+			if res.Level != "major" || res.Next != "v1.0.0" {
+				t.Fatalf("verdict = level %q next %q, want major → v1.0.0", res.Level, res.Next)
+			}
+			if len(res.Commits) != 1 || res.Commits[0].Code != ":boom:" || !res.Commits[0].Breaking {
+				t.Fatalf("commits = %+v, want the one commit normalized to :boom: with breaking true", res.Commits)
+			}
+			if res.Commits[0].Subject != "drop the legacy flag" {
+				t.Fatalf("subject = %q, want the commit's own subject kept verbatim", res.Commits[0].Subject)
+			}
+			if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, ":notarealmoji:") {
+				t.Fatalf("the warning must name the real unknown code:\n%s", stderr)
+			}
+			if !strings.Contains(stderr, "breaking") {
+				t.Fatalf("the warning must say WHY this one counted (the breaking marker):\n%s", stderr)
+			}
+		})
+	}
+}
+
+// TestNotesSinceTagUnknownBreakingFallbackHoists: the same commit must also
+// SURFACE in the notes — a release that majors for a breaking change while
+// its notes stay silent about it would advertise less than it ships. The
+// normalized entry hoists into Breaking Changes with the subject verbatim.
+func TestNotesSinceTagUnknownBreakingFallbackHoists(t *testing.T) {
+	dir, _ := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":notarealmoji:! drop the legacy flag")
+	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(sha): `[]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "notes", "--since-tag")
+	if code != 0 {
+		t.Fatalf("notes over an unknown+breaking fallback exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "## Breaking Changes") || !strings.Contains(stdout, "drop the legacy flag") {
+		t.Fatalf("the breaking fallback must be hoisted into Breaking Changes:\n%s", stdout)
+	}
+}

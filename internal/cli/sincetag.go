@@ -208,6 +208,11 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 	return commits, nil
 }
 
+// gitmojiBoom is the canonical breaking gitmoji — what an unknown-code
+// breaking fallback is normalized to so the shared verdict and notes
+// plumbing (which hard-errors on unknown codes, by design) can carry it.
+const gitmojiBoom = ":boom:"
+
 // fallbackCommit handles a walked commit that cannot be resolved to a merged
 // pull request — no association (a direct push to main), or GitHub not knowing
 // the SHA yet. Fallbacks never hard-fail a release (DESIGN §4), so every
@@ -218,7 +223,12 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 // message that does not parse, or whose gitmoji is unknown (the ratified
 // t-kbqx policy — this assembly layer downgrades what the lint gate keeps as a
 // hard error, so internal/bump stays pure), counts none by being left out of
-// the fold.
+// the fold. One exception, ratified Q10: a breaking marker is NEVER
+// suppressed — an unknown code carrying one (`!` or a BREAKING CHANGE footer,
+// already parsed onto c.Breaking) counts major, normalized to :boom: so it
+// folds and hoists into Breaking Changes downstream. The asymmetry is
+// deliberate: a typo can over-bump a version, but a breaking change must
+// never be silently dropped from one.
 func fallbackCommit(table *gitmoji.Table, raw gitsource.RawCommit, why string) (parser.Commit, bool) {
 	if _, excluded := bump.Excluded(raw.Author, firstLine(raw.Message), raw.Parents); excluded {
 		return parser.Commit{}, false // skipped, never a violation — and never a warning
@@ -229,6 +239,11 @@ func fallbackCommit(table *gitmoji.Table, raw gitsource.RawCommit, why string) (
 		return parser.Commit{}, false
 	}
 	if _, cerr := bump.Classify(c, table); cerr != nil {
+		if c.Breaking {
+			warnf("commit %.7s %s and its gitmoji %s is not in the rules table, but it carries a breaking marker — counted as a breaking change (%s, major)", raw.SHA, why, c.Gitmoji, gitmojiBoom)
+			c.Gitmoji = gitmojiBoom
+			return c, true
+		}
 		warnf("commit %.7s %s and its gitmoji %s is not in the rules table — counted as none", raw.SHA, why, c.Gitmoji)
 		return parser.Commit{}, false
 	}

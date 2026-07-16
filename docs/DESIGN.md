@@ -118,6 +118,11 @@ path only, a message that does not parse or carries an unknown `:code:` also
 degrades to a `::warning::` and counts **none** — never a silent patch, and
 never exit 3: the hard unknown-code error stays with the lint gate (§2), and
 the downgrade is owned by the walk assembly, keeping `internal/bump` pure.
+One exception (Q10): a **breaking marker is never suppressed** — an unknown
+`:code:` carrying `!` or a `BREAKING CHANGE:` footer counts **major** behind
+the `::warning::`, normalized to `:boom:` (so it folds and hoists into
+Breaking Changes); a typo can over-bump, but a breaking change is never
+silently dropped.
 
 ## 5. Architecture (Go, house pattern)
 
