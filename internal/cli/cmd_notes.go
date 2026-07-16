@@ -60,8 +60,9 @@ func notesInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, stri
 		return pullInput(ctx, notesPR, notesRepo)
 	}
 	if cmd.Flags().Changed("since-tag") {
-		// The version base the walk also resolves is bump's concern, not notes'.
-		commits, source, _, err := sinceTagInput(ctx, table, notesSinceTag, notesRepo)
+		// The version base and the pull-expansion provenance the walk also
+		// resolves are bump's and release's concerns, not notes'.
+		commits, _, source, _, err := sinceTagInput(ctx, table, notesSinceTag, notesRepo)
 		return commits, source, err
 	}
 	if err := checkRangeFlag(notesRange); err != nil {

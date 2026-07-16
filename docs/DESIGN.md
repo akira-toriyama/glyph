@@ -104,7 +104,11 @@ verdict, and **no tag is created** — GitHub tags the target commit when a
 human publishes. A next version not strictly above the latest published
 release fails loud (an unpublishable draft; a deleted published release's tag
 is burned forever). `--dry-run` computes everything, action included, and
-writes nothing.
+writes nothing. The `--json` verdict also carries the walk's expansion
+provenance (`pulls`: each resolved pull and its participating commit count) —
+a squash-subject reader like git-cliff can only diverge legitimately when some
+pull contributed 2+ commits, so a shadow comparison branches on exactly this
+instead of re-deriving the walk's exclusion rules in shell.
 
 Rejected alternatives: a semver **label** on the PR (note generation must re-read
 the inner commits anyway, so the label adds a weaker, mutable, git-invisible
