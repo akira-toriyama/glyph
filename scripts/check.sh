@@ -34,11 +34,16 @@ go test -race ./...
 
 # Mirrors build.yml's Linux-only "fuzz smoke (bounded)" step: discover every
 # Fuzz target and run each briefly so a new target needs no edit here either.
+# The bound is an execution COUNT, not a duration: a wall-clock -fuzztime makes
+# the fuzz engine race its own deadline at shutdown and FAIL green runs with a
+# spurious "context deadline exceeded" under machine load (Go's own builders
+# flake on this), whereas a count bound never creates that deadline. Real hangs
+# are still caught by the engine's per-input 10s limit.
 echo "→ fuzz smoke (bounded)"
 for pkg in $(go list ./...); do
   targets=$(go test -list '^Fuzz' "$pkg" | grep '^Fuzz' || true)
   for f in $targets; do
-    go test "$pkg" -run '^$' -fuzz "^${f}\$" -fuzztime 15s
+    go test "$pkg" -run '^$' -fuzz "^${f}\$" -fuzztime 200000x
   done
 done
 

@@ -70,13 +70,18 @@ jobs:
 
       # Bounded fuzz over every Fuzz target (never-panic / round-trip / fold
       # invariants). Auto-discovered per package so a new target needs no
-      # workflow edit; scripts/check.sh mirrors this loop.
+      # workflow edit; scripts/check.sh mirrors this loop. The bound is an
+      # execution COUNT, not a duration: a wall-clock -fuzztime makes the fuzz
+      # engine race its own deadline at shutdown and FAIL green runs with a
+      # spurious "context deadline exceeded" on loaded runners (Go's own
+      # builders flake on this), whereas a count bound never creates that
+      # deadline. Real hangs are still caught by the per-input 10s limit.
       - name: fuzz smoke (bounded)
         if: runner.os == 'Linux'
         run: |
           for pkg in $(go list ./...); do
             targets=$(go test -list '^Fuzz' "$pkg" | grep '^Fuzz' || true)
             for f in $targets; do
-              go test "$pkg" -run '^$' -fuzz "^${f}\$" -fuzztime 15s
+              go test "$pkg" -run '^$' -fuzz "^${f}\$" -fuzztime 200000x
             done
           done
