@@ -150,3 +150,36 @@ func TestVersionCompare(t *testing.T) {
 		}
 	}
 }
+
+// FuzzVersionNext: for any version and any version-moving level, Next is
+// strictly increasing — the invariant the published-floor guard rests on
+// (a computed next that could equal or regress below its base would deadlock
+// or burn a tag). none holds the version still, exactly.
+func FuzzVersionNext(f *testing.F) {
+	f.Add(0, 1, 0, "minor")
+	f.Add(1, 2, 3, "major")
+	f.Add(0, 0, 0, "patch")
+	f.Add(4, 5, 6, "none")
+	f.Fuzz(func(t *testing.T, major, minor, patch int, level string) {
+		// Clamp to the production-reachable shape: ParseVersion only ever
+		// yields non-negative components.
+		if major < 0 || minor < 0 || patch < 0 {
+			t.Skip("unreachable: parsed versions are non-negative")
+		}
+		b := gitmoji.Bump(level)
+		if !b.Valid() {
+			t.Skip("out-of-lattice level")
+		}
+		v := Version{Major: major, Minor: minor, Patch: patch}
+		next := v.Next(b)
+		if b == gitmoji.BumpNone {
+			if next != v {
+				t.Fatalf("Next(none) moved %v to %v", v, next)
+			}
+			return
+		}
+		if next.Compare(v) <= 0 {
+			t.Fatalf("Next(%s) did not increase: %v -> %v", b, v, next)
+		}
+	})
+}

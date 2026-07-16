@@ -290,7 +290,7 @@ func distill(body []byte) string {
 // there is no next page. Link entries look like `<url>; rel="next", <url>;
 // rel="last"`.
 func nextLink(header string) string {
-	for _, entry := range strings.Split(header, ",") {
+	for entry := range strings.SplitSeq(header, ",") {
 		segs := strings.Split(entry, ";")
 		if len(segs) < 2 {
 			continue

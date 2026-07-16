@@ -770,3 +770,67 @@ func TestSinceTagResolvedPRLintNamesTheWedge(t *testing.T) {
 		})
 	}
 }
+
+// TestBumpSinceTagNonVersionTag: an explicit --since-tag that is not a semver
+// version still anchors the WALK at that tag, but names no version base — the
+// bump falls back to the highest parseable v* tag. This is the third arm of
+// the base resolution (auto / version tag / other tag), and the one a caller
+// hits when releasing past a non-release tag (a marker like rc-1).
+func TestBumpSinceTagNonVersionTag(t *testing.T) {
+	dir, _ := testRepo(t)
+	testGit(t, dir, "akira-toriyama", "tag", "rc-1") // same commit as v0.1.0
+	sha := squashCommit(t, dir, "Fix a crash", 8)
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(sha): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha) + `]`,
+		pullCommitsPath(8):   `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=rc-1")
+	if code != 0 {
+		t.Fatalf("bump --since-tag=rc-1 exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if stdout != "v0.1.1\n" {
+		t.Fatalf("stdout = %q, want v0.1.1 (walk from rc-1, step from the highest v* tag)", stdout)
+	}
+}
+
+// TestSinceTagAPIFailureMidWalkPassesThrough: a NON-lint failure while
+// expanding a resolved PR (a 500 from pulls/{n}/commits) must hard-fail as an
+// ordinary API error (4) and pass through wedgeHint UNDECORATED — the wedge
+// prose (immutable history, cut a tag past it) is for lint failures only; a
+// transient server error is retryable and must never be dressed up as a
+// permanent wedge.
+func TestSinceTagAPIFailureMidWalkPassesThrough(t *testing.T) {
+	dir, _ := testRepo(t)
+	sha := squashCommit(t, dir, "Add a menu", 7)
+	pullRef := `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha) + `]`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case commitPullsPath(sha):
+			fmt.Fprint(w, pullRef)
+		case pullCommitsPath(7):
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"message":"boom"}`)
+		default:
+			t.Errorf("unexpected request %q", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 4 {
+		t.Fatalf("a 500 mid-walk exited %d, want 4 (API)\nstderr: %s", code, stderr)
+	}
+	env := decodeErrorEnvelope(t, stderr)
+	if env.Code != 4 || !strings.Contains(env.Message, "boom") {
+		t.Fatalf("envelope = %+v, want code 4 carrying GitHub's message", env)
+	}
+	if strings.Contains(env.Message, "wedge") || strings.Contains(env.Message, "by hand") {
+		t.Fatalf("an API failure must not carry the lint wedge prose:\n%s", env.Message)
+	}
+}

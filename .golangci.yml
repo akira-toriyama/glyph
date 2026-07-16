@@ -16,7 +16,21 @@ linters:
     - unconvert
     - revive
     - gosec
+    - errorlint
+    - exhaustive
+    - modernize
   settings:
+    errorlint:
+      # Keep the errors.Is / errors.As enforcement, but not the blanket `%w`
+      # rewrite of fmt.Errorf: house policy classifies errors eagerly at the
+      # source into *core.Error, and wraps with %w ONLY when a sentinel must
+      # survive for errors.Is branching — a mandatory %w would preserve chains
+      # nothing branches on.
+      errorf: false
+    exhaustive:
+      # A switch with a default arm has decided its fallback; don't demand every
+      # enum member be spelled out on top of it.
+      default-signifies-exhaustive: true
     gosec:
       # Scope gosec to the exec/file-injection rules that matter for a tool that
       # will shell out to git/gh (the gitsource/github packages arrive in Phase 5);

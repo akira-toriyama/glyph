@@ -61,15 +61,21 @@ const wipCode = ":construction:"
 var (
 	// subjectRE is the new-format shape from docs/DESIGN.md §2:
 	// `<:code:>[(scope)][!] <subject>`, everything glued until the single
-	// mandatory space. Membership of the code is checked separately.
-	subjectRE = regexp.MustCompile(`^(:[a-z0-9][a-z0-9_+-]*:)(\([a-z0-9][a-z0-9-]*\))?(!)? (.+)$`)
+	// mandatory space. The subject must open with a non-space (`\S.*`, not
+	// `.+`): with `.+` a run of spaces after the code parses as a blank
+	// subject and sails through every lint rule — not uppercase, no trailing
+	// period — so `:bug:  ` would lint clean. Membership of the code is
+	// checked separately.
+	subjectRE = regexp.MustCompile(`^(:[a-z0-9][a-z0-9_+-]*:)(\([a-z0-9][a-z0-9-]*\))?(!)? (\S.*)$`)
 
 	// legacyTokenRE accepts-and-ignores the retired Conventional token
 	// (`<type>[(scope)][!]: `) that pre-glyph house history carries between the
 	// gitmoji and the subject. The type vocabulary is the ratified house set
 	// (CONTRIBUTING.md), deliberately closed so ordinary subjects with a colon
 	// (":memo: note: …") are not eaten.
-	legacyTokenRE = regexp.MustCompile(`^(feat|fix|perf|revert|docs|style|refactor|test|build|ci|chore)(\([^()]+\))?(!)?: (.+)$`)
+	// The remainder is `\S.*` for the same blank-subject reason as subjectRE:
+	// `:bug: fix:  ` must not salvage a blank subject out of the legacy slot.
+	legacyTokenRE = regexp.MustCompile(`^(feat|fix|perf|revert|docs|style|refactor|test|build|ci|chore)(\([^()]+\))?(!)?: (\S.*)$`)
 )
 
 // Parse parses one commit message into a Commit. A message whose subject line
@@ -91,13 +97,22 @@ func Parse(message string) (Commit, error) {
 	if m == nil {
 		return Commit{}, core.Lintf("malformed subject %q: want `<:code:>[(scope)][!] <subject>` with a leading textual gitmoji", subject)
 	}
+	// The regexp's \S only rejects ASCII-space openers; a subject of Unicode
+	// whitespace (a \v, an NBSP) would still sail through every lint rule, so
+	// blankness is decided by unicode.IsSpace (TrimSpace), not the regexp.
+	if strings.TrimSpace(m[4]) == "" {
+		return Commit{}, core.Lintf("malformed subject %q: the subject is blank", subject)
+	}
 	c := Commit{
 		Gitmoji:  m[1],
 		Scope:    strings.Trim(m[2], "()"),
 		Breaking: m[3] == "!",
 		Subject:  m[4],
 	}
-	if lm := legacyTokenRE.FindStringSubmatch(c.Subject); lm != nil {
+	// The blank guard mirrors the one above: eating the legacy token must not
+	// salvage a blank subject (`:bug: fix: \v`) — a blank remainder means the
+	// colon phrase was part of the subject itself, not a token.
+	if lm := legacyTokenRE.FindStringSubmatch(c.Subject); lm != nil && strings.TrimSpace(lm[4]) != "" {
 		if c.Scope == "" {
 			c.Scope = strings.Trim(lm[2], "()")
 		}
