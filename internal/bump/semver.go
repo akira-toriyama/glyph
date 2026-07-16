@@ -42,6 +42,21 @@ func (v Version) String() string {
 	return fmt.Sprintf("v%d.%d.%d", v.Major, v.Minor, v.Patch)
 }
 
+// Compare orders two versions numerically: -1 when v < o, 0 when equal,
+// 1 when v > o — the primitive behind the published-floor guard (which needs
+// STRICTLY greater, so equality must be distinguishable from above).
+func (v Version) Compare(o Version) int {
+	for _, d := range [][2]int{{v.Major, o.Major}, {v.Minor, o.Minor}, {v.Patch, o.Patch}} {
+		switch {
+		case d[0] < d[1]:
+			return -1
+		case d[0] > d[1]:
+			return 1
+		}
+	}
+	return 0
+}
+
 // Next steps the version by one bump level; none holds it still. A 0.x major
 // steps to 1.0.0 — plain semver, deliberately without a 0.x-keeps-0.x rule;
 // the shadow-mode phase compares this against git-cliff before any publish

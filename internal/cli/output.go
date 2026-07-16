@@ -46,6 +46,14 @@ func warnf(format string, a ...any) {
 	fmt.Fprintf(errOut, "::warning::glyph: "+format+"\n", a...)
 }
 
+// noticef emits one GitHub Actions notice annotation (::notice::) to the
+// diagnostic stream — the informational sibling of warnf, for outcomes worth
+// surfacing in a release job's log that are not warnings (a draft created, a
+// stale draft discarded).
+func noticef(format string, a ...any) {
+	fmt.Fprintf(errOut, "::notice::glyph: "+format+"\n", a...)
+}
+
 // renderError prints a structured error to stderr as {"error":{...}} so a caller
 // piping stdout to jq is unaffected, and both agents and humans can read it.
 func renderError(ce *core.Error) {

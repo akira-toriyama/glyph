@@ -2,9 +2,120 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// releasesPath is the releases collection for the repository the tests query.
+const releasesPath = "/repos/akira-toriyama/glyph/releases"
+
+// apiWrite is one recorded write against the fake releases surface.
+type apiWrite struct {
+	method string
+	path   string
+	body   map[string]any
+}
+
+// releaseServer extends walkServer with the releases surface: GET serves the
+// canned collection, writes (POST/PATCH/DELETE) are recorded into *writes and
+// answered the way GitHub answers them — so a test asserts on the exact write
+// sequence, and a dry-run test proves the sequence stayed empty.
+func releaseServer(t *testing.T, walk map[string]string, releases string, writes *[]apiWrite) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == releasesPath:
+			fmt.Fprint(w, releases)
+		case r.Method == http.MethodGet:
+			body, ok := walk[r.URL.Path]
+			if !ok {
+				t.Errorf("unexpected GET %q", r.URL.Path)
+				http.NotFound(w, r)
+				return
+			}
+			fmt.Fprint(w, body)
+		case r.Method == http.MethodPost && r.URL.Path == releasesPath:
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("POST body is not JSON: %v", err)
+			}
+			*writes = append(*writes, apiWrite{"POST", r.URL.Path, body})
+			w.WriteHeader(http.StatusCreated)
+			fmt.Fprintf(w, `{"id":900,"tag_name":%q,"draft":true,"html_url":"https://github.example/releases/900"}`, body["tag_name"])
+		case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, releasesPath+"/"):
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("PATCH body is not JSON: %v", err)
+			}
+			*writes = append(*writes, apiWrite{"PATCH", r.URL.Path, body})
+			id := strings.TrimPrefix(r.URL.Path, releasesPath+"/")
+			fmt.Fprintf(w, `{"id":%s,"tag_name":%q,"draft":true,"html_url":"https://github.example/releases/%s"}`, id, body["tag_name"], id)
+		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, releasesPath+"/"):
+			*writes = append(*writes, apiWrite{"DELETE", r.URL.Path, nil})
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected %s %q", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// draftJSON / publishedJSON render one release in the shape GET /releases
+// returns.
+func draftJSON(id int, tag string) string {
+	return fmt.Sprintf(`{"id":%d,"tag_name":%q,"draft":true,"html_url":"https://github.example/releases/%d"}`, id, tag, id)
+}
+
+func publishedJSON(id int, tag string) string {
+	return fmt.Sprintf(`{"id":%d,"tag_name":%q,"draft":false,"html_url":"https://github.example/releases/%d"}`, id, tag, id)
+}
+
+// oneFixWalk builds the standard one-PR walk (a single :bug: commit → patch
+// verdict v0.1.1) and chdirs into the repository — the smallest release-worthy
+// input, shared by the upsert tests so each can focus on the draft surface.
+func oneFixWalk(t *testing.T) map[string]string {
+	t.Helper()
+	dir, _ := testRepo(t)
+	sha := squashCommit(t, dir, "Fix a crash", 8)
+	t.Chdir(dir)
+	return map[string]string{
+		commitPullsPath(sha): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha) + `]`,
+		pullCommitsPath(8):   `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+	}
+}
+
+// dryServer is releaseServer with an empty collection plus the assertion that
+// NO write ever lands — the default surface for --dry-run tests.
+func dryServer(t *testing.T, walk map[string]string) *httptest.Server {
+	t.Helper()
+	writes := &[]apiWrite{}
+	srv := releaseServer(t, walk, `[]`, writes)
+	t.Cleanup(func() {
+		if len(*writes) != 0 {
+			t.Errorf("a dry run wrote to the API: %+v", *writes)
+		}
+	})
+	return srv
+}
+
+// noneWalk builds an all-none walk (one :memo: commit) and chdirs into it.
+func noneWalk(t *testing.T) map[string]string {
+	t.Helper()
+	dir, _ := testRepo(t)
+	sha := squashCommit(t, dir, "Document the fold", 7)
+	t.Chdir(dir)
+	return map[string]string{
+		commitPullsPath(sha): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha) + `]`,
+		pullCommitsPath(7):   `[` + apiCommit("a1", "akira-toriyama", ":memo: document the fold") + `]`,
+	}
+}
 
 // TestReleaseComposesTagAndBody is the compose contract: ONE walk feeds both
 // the version step and the notes body, so the tag and the body can never be
@@ -16,7 +127,7 @@ func TestReleaseComposesTagAndBody(t *testing.T) {
 	dir, _ := testRepo(t)
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
 	sha2 := squashCommit(t, dir, "Fix a crash", 8)
-	srv := walkServer(t, map[string]string{
+	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
 		commitPullsPath(sha2): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha2) + `]`,
 		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles:(ui) add a menu") + `]`,
@@ -40,21 +151,337 @@ func TestReleaseComposesTagAndBody(t *testing.T) {
 	}
 }
 
-// TestReleaseRequiresDryRunUntilUpsertLands: the ratified surface is "bare
-// glyph release upserts the rolling draft" (t-skd3). Until that write path
-// exists, bare release must fail loud and point at --dry-run — shipping it as
-// a silent read-only preview would flip its meaning to a WRITE later, and a
-// surface must never change sides quietly.
-func TestReleaseRequiresDryRunUntilUpsertLands(t *testing.T) {
+// TestReleaseUpsertCreatesTheDraft is the ratified bare surface (t-skd3 Q2):
+// glyph release upserts the rolling DRAFT — with no draft present, one POST
+// carrying the intended tag, the notes body, draft:true, and the checkout's
+// HEAD sha as target_commitish (Publish must tag the commit the verdict was
+// computed at). The payload is the draft's URL; no tag is created here.
+func TestReleaseUpsertCreatesTheDraft(t *testing.T) {
+	var writes []apiWrite
+	walk := oneFixWalk(t)
+	srv := releaseServer(t, walk, `[]`, &writes)
+	usePR(t, srv)
+	head := testGit(t, ".", "akira-toriyama", "rev-parse", "HEAD")
+
 	code, stdout, stderr := runGlyph(t, "release")
-	if code != 2 {
-		t.Fatalf("bare release exited %d, want 2 (not implemented yet)\nstderr: %s", code, stderr)
+	if code != 0 {
+		t.Fatalf("release exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if len(writes) != 1 || writes[0].method != "POST" {
+		t.Fatalf("writes = %+v, want exactly one POST", writes)
+	}
+	body := writes[0].body
+	if body["tag_name"] != "v0.1.1" || body["name"] != "v0.1.1" || body["draft"] != true {
+		t.Errorf("POST body = %+v, want tag_name/name v0.1.1 and draft true", body)
+	}
+	if body["target_commitish"] != head {
+		t.Errorf("target_commitish = %v, want the checkout HEAD %s", body["target_commitish"], head)
+	}
+	if notes, _ := body["body"].(string); !strings.Contains(notes, "fix a crash") {
+		t.Errorf("draft body is missing the notes entry:\n%v", body["body"])
+	}
+	if stdout != "https://github.example/releases/900\n" {
+		t.Errorf("stdout = %q, want the draft URL", stdout)
+	}
+}
+
+// TestReleaseUpsertUpdatesTheExistingDraft: a glyph-managed draft already
+// carrying the intended tag is grown in place — one PATCH by release id,
+// never a POST (a second draft) and never a DELETE.
+func TestReleaseUpsertUpdatesTheExistingDraft(t *testing.T) {
+	var writes []apiWrite
+	walk := oneFixWalk(t)
+	srv := releaseServer(t, walk, `[`+draftJSON(11, "v0.1.1")+`]`, &writes)
+	usePR(t, srv)
+
+	code, stdout, stderr := runGlyph(t, "release")
+	if code != 0 {
+		t.Fatalf("release exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if len(writes) != 1 || writes[0].method != "PATCH" || writes[0].path != releasesPath+"/11" {
+		t.Fatalf("writes = %+v, want exactly one PATCH of release 11", writes)
+	}
+	if writes[0].body["tag_name"] != "v0.1.1" || writes[0].body["draft"] != true {
+		t.Errorf("PATCH body = %+v, want tag_name v0.1.1 and draft true", writes[0].body)
+	}
+	if stdout != "https://github.example/releases/11\n" {
+		t.Errorf("stdout = %q, want the draft URL", stdout)
+	}
+}
+
+// TestReleaseUpsertMovesTheDraftTag: when the next version changed since the
+// draft was cut (another merge landed), the existing draft's intended tag is
+// UPDATED — ratified: never a second draft.
+func TestReleaseUpsertMovesTheDraftTag(t *testing.T) {
+	var writes []apiWrite
+	walk := oneFixWalk(t)
+	srv := releaseServer(t, walk, `[`+draftJSON(11, "v0.1.5")+`]`, &writes)
+	usePR(t, srv)
+
+	code, _, stderr := runGlyph(t, "release")
+	if code != 0 {
+		t.Fatalf("release exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if len(writes) != 1 || writes[0].method != "PATCH" || writes[0].path != releasesPath+"/11" {
+		t.Fatalf("writes = %+v, want exactly one PATCH of release 11 (no second draft)", writes)
+	}
+	if writes[0].body["tag_name"] != "v0.1.1" {
+		t.Errorf("PATCH tag_name = %v, want the draft retagged to v0.1.1", writes[0].body["tag_name"])
+	}
+}
+
+// TestReleaseUpsertDeletesDuplicateDrafts: with several glyph-managed drafts
+// the one already carrying the intended tag is kept (even when it is not
+// listed first) and every other one is deleted BY ID, so the upsert converges
+// on exactly one draft.
+func TestReleaseUpsertDeletesDuplicateDrafts(t *testing.T) {
+	var writes []apiWrite
+	walk := oneFixWalk(t)
+	srv := releaseServer(t, walk,
+		`[`+draftJSON(12, "v0.1.5")+`,`+draftJSON(11, "v0.1.1")+`]`, &writes)
+	usePR(t, srv)
+
+	code, _, stderr := runGlyph(t, "release")
+	if code != 0 {
+		t.Fatalf("release exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	var patched, deleted []string
+	for _, w := range writes {
+		switch w.method {
+		case "PATCH":
+			patched = append(patched, w.path)
+		case "DELETE":
+			deleted = append(deleted, w.path)
+		default:
+			t.Errorf("unexpected write %+v", w)
+		}
+	}
+	if len(patched) != 1 || patched[0] != releasesPath+"/11" {
+		t.Errorf("patched %v, want exactly release 11 (the tag match wins)", patched)
+	}
+	if len(deleted) != 1 || deleted[0] != releasesPath+"/12" {
+		t.Errorf("deleted %v, want exactly release 12", deleted)
+	}
+}
+
+// TestReleaseUpsertNoneConvergesDrafts is ratified Q3: on a none verdict the
+// draft state must converge to the verdict — no release should exist, so
+// residual glyph-managed drafts are deleted (by id) and the run still exits 1
+// (soft no-release), uniform with bump and notes.
+func TestReleaseUpsertNoneConvergesDrafts(t *testing.T) {
+	var writes []apiWrite
+	walk := noneWalk(t)
+	srv := releaseServer(t, walk,
+		`[`+draftJSON(11, "v0.1.1")+`,`+draftJSON(12, "v0.1.2")+`]`, &writes)
+	usePR(t, srv)
+
+	code, stdout, stderr := runGlyph(t, "release")
+	if code != 1 {
+		t.Fatalf("none upsert exited %d, want 1 (soft no-release)\nstderr: %s", code, stderr)
 	}
 	if stdout != "" {
-		t.Errorf("bare release wrote a payload:\n%s", stdout)
+		t.Errorf("none upsert wrote a payload:\n%s", stdout)
 	}
-	if !strings.Contains(stderr, "--dry-run") {
-		t.Errorf("bare release does not point at --dry-run:\n%s", stderr)
+	var deleted []string
+	for _, w := range writes {
+		if w.method != "DELETE" {
+			t.Errorf("unexpected write %+v (none may only delete)", w)
+			continue
+		}
+		deleted = append(deleted, w.path)
+	}
+	if len(deleted) != 2 {
+		t.Errorf("deleted %v, want both residual drafts (11 and 12)", deleted)
+	}
+}
+
+// TestReleaseUpsertNeverTouchesForeignReleases: published releases and
+// non-semver drafts (a human's hand-made "nightly") are not glyph's to manage
+// — a none verdict with only those present converges by touching NOTHING.
+func TestReleaseUpsertNeverTouchesForeignReleases(t *testing.T) {
+	var writes []apiWrite
+	walk := noneWalk(t)
+	// "0.9.9" is a parseable version but not the house tag shape (no v) —
+	// glyph never created it, so glyph never deletes it.
+	srv := releaseServer(t, walk,
+		`[`+publishedJSON(3, "v0.1.0")+`,`+draftJSON(21, "nightly")+`,`+draftJSON(22, "0.9.9")+`]`, &writes)
+	usePR(t, srv)
+
+	code, _, stderr := runGlyph(t, "release")
+	if code != 1 {
+		t.Fatalf("none upsert exited %d, want 1\nstderr: %s", code, stderr)
+	}
+	if len(writes) != 0 {
+		t.Fatalf("writes = %+v, want none (published releases and foreign drafts are untouchable)", writes)
+	}
+}
+
+// TestReleaseUpsertJSON: the machine verdict gains the write outcome — the
+// action taken and the draft's URL — on top of the audit trail the dry run
+// already carries, so release.yml@v2 reads one object for the whole step.
+func TestReleaseUpsertJSON(t *testing.T) {
+	var writes []apiWrite
+	walk := oneFixWalk(t)
+	srv := releaseServer(t, walk, `[]`, &writes)
+	usePR(t, srv)
+
+	code, stdout, stderr := runGlyph(t, "release", "--json")
+	if code != 0 {
+		t.Fatalf("release --json exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	var v releaseVerdict
+	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
+		t.Fatalf("release --json stdout is not one JSON object: %v\n%s", err, stdout)
+	}
+	if v.Action != "create" || v.URL != "https://github.example/releases/900" {
+		t.Errorf("verdict action/url = %q/%q, want create + the draft URL", v.Action, v.URL)
+	}
+	if v.Tag != "v0.1.1" || len(v.Commits) != 1 {
+		t.Errorf("verdict = %+v, want the v0.1.1 audit trail intact", v)
+	}
+}
+
+// TestReleaseTargetOverride: --target pins the draft's target_commitish
+// explicitly, outranking the checkout HEAD — the escape hatch when the
+// release job runs on a checkout that is not the commit to tag.
+func TestReleaseTargetOverride(t *testing.T) {
+	var writes []apiWrite
+	walk := oneFixWalk(t)
+	srv := releaseServer(t, walk, `[]`, &writes)
+	usePR(t, srv)
+
+	code, _, stderr := runGlyph(t, "release", "--target", "cafe1234")
+	if code != 0 {
+		t.Fatalf("release --target exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if len(writes) != 1 || writes[0].body["target_commitish"] != "cafe1234" {
+		t.Fatalf("writes = %+v, want one POST targeting cafe1234", writes)
+	}
+}
+
+// TestReleaseRefusesToRegressBelowPublished is the deadlock guard (immutable
+// releases): a next version that is not STRICTLY greater than the latest
+// published release can never be published — its tag is taken (or burned, if
+// the release was deleted), so equality refuses exactly like regression. The
+// floor is the HIGHEST published version, wherever it sits in the listing.
+// Fail loud (4), on the dry run too, naming both versions; never create the
+// unpublishable draft.
+func TestReleaseRefusesToRegressBelowPublished(t *testing.T) {
+	for name, releases := range map[string]struct {
+		json  string
+		floor string
+	}{
+		// A lower published release is listed FIRST both times: a floor that
+		// took the first parseable entry instead of the maximum would wave
+		// these through.
+		"below": {`[` + publishedJSON(2, "v0.0.9") + `,` + publishedJSON(3, "v0.5.0") + `]`, "v0.5.0"},
+		"equal": {`[` + publishedJSON(2, "v0.0.9") + `,` + publishedJSON(3, "v0.1.1") + `]`, "v0.1.1"},
+	} {
+		for _, mode := range [][]string{{"release"}, {"release", "--dry-run"}} {
+			t.Run(name+" "+strings.Join(mode, " "), func(t *testing.T) {
+				var writes []apiWrite
+				walk := oneFixWalk(t)
+				srv := releaseServer(t, walk, releases.json, &writes)
+				usePR(t, srv)
+
+				code, stdout, stderr := runGlyph(t, mode...)
+				if code != 4 {
+					t.Fatalf("%v against published %s exited %d, want 4\nstderr: %s", mode, releases.floor, code, stderr)
+				}
+				if stdout != "" {
+					t.Errorf("a refused release wrote a payload:\n%s", stdout)
+				}
+				if !strings.Contains(stderr, "v0.1.1") || !strings.Contains(stderr, releases.floor) {
+					t.Errorf("the refusal must name the computed and the published versions:\n%s", stderr)
+				}
+				if len(writes) != 0 {
+					t.Errorf("writes = %+v, want none", writes)
+				}
+			})
+		}
+	}
+}
+
+// TestReleaseDryRunAction is ratified Q4: the dry run computes EVERYTHING —
+// verdict plus the draft-convergence decision — and only skips the writes, so
+// the machine verdict carries the action the real run would take.
+func TestReleaseDryRunAction(t *testing.T) {
+	for name, tc := range map[string]struct {
+		walk     func(*testing.T) map[string]string
+		releases string
+		want     string
+		wantCode int
+	}{
+		"create": {oneFixWalk, `[]`, "create", 0},
+		"update": {oneFixWalk, `[` + draftJSON(11, "v0.1.5") + `]`, "update", 0},
+		"delete": {noneWalk, `[` + draftJSON(11, "v0.1.1") + `]`, "delete", 1},
+		"none":   {noneWalk, `[]`, "none", 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var writes []apiWrite
+			walk := tc.walk(t)
+			srv := releaseServer(t, walk, tc.releases, &writes)
+			usePR(t, srv)
+
+			code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--json")
+			if code != tc.wantCode {
+				t.Fatalf("exited %d, want %d\nstderr: %s", code, tc.wantCode, stderr)
+			}
+			var v releaseVerdict
+			if err := json.Unmarshal([]byte(stdout), &v); err != nil {
+				t.Fatalf("not one JSON object: %v\n%s", err, stdout)
+			}
+			if v.Action != tc.want {
+				t.Errorf("action = %q, want %q", v.Action, tc.want)
+			}
+			if v.URL != "" {
+				t.Errorf("a dry run has no write to point at, got url %q", v.URL)
+			}
+			if len(writes) != 0 {
+				t.Errorf("a dry run wrote to the API: %+v", writes)
+			}
+		})
+	}
+}
+
+// TestReleaseFooterFile is ratified Q11: --footer-file appends the file's
+// content verbatim after the notes, separated by one `---` line — composed by
+// glyph so the dry run previews the EXACT body the draft will carry, and the
+// caller never string-concatenates markdown in shell.
+func TestReleaseFooterFile(t *testing.T) {
+	footer := filepath.Join(t.TempDir(), "install.md")
+	if err := os.WriteFile(footer, []byte("## Install\n\n`brew install x`\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	walk := oneFixWalk(t)
+	srv := dryServer(t, walk)
+	usePR(t, srv)
+
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--footer-file", footer)
+	if code != 0 {
+		t.Fatalf("release --footer-file exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	i := strings.Index(stdout, "\n---\n")
+	if i < 0 {
+		t.Fatalf("the body is missing the one-line --- separator:\n%s", stdout)
+	}
+	if !strings.Contains(stdout[i:], "## Install") || !strings.Contains(stdout[i:], "`brew install x`") {
+		t.Errorf("the footer is not appended verbatim after the separator:\n%s", stdout)
+	}
+	if !strings.Contains(stdout[:i], "fix a crash") {
+		t.Errorf("the notes must precede the separator:\n%s", stdout)
+	}
+}
+
+// TestReleaseFooterFileMissingIsUsage: the path is the caller's input; a file
+// that cannot be read is usage (2), caught before any request goes out.
+func TestReleaseFooterFileMissingIsUsage(t *testing.T) {
+	code, _, stderr := runGlyph(t, "release", "--dry-run", "--footer-file", "/nonexistent/install.md")
+	if code != 2 {
+		t.Fatalf("a missing --footer-file exited %d, want 2 (usage)\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "footer-file") || !strings.Contains(stderr, "/nonexistent/install.md") {
+		t.Errorf("the error should name the flag and the path it could not read:\n%s", stderr)
 	}
 }
 
@@ -66,6 +493,8 @@ type releaseVerdict struct {
 	Level   string `json:"level"`
 	Tag     string `json:"tag"`
 	Body    string `json:"body"`
+	Action  string `json:"action"`
+	URL     string `json:"url"`
 	Commits []struct {
 		SHA      string `json:"sha"`
 		Code     string `json:"code"`
@@ -82,7 +511,7 @@ type releaseVerdict struct {
 func TestReleaseJSON(t *testing.T) {
 	dir, _ := testRepo(t)
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
-	srv := walkServer(t, map[string]string{
+	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
 		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles:(ui) add a menu") + `]`,
 	})
@@ -117,7 +546,7 @@ func TestReleaseJSON(t *testing.T) {
 func TestReleaseNoRelease(t *testing.T) {
 	dir, _ := testRepo(t)
 	sha1 := squashCommit(t, dir, "Document the fold", 7)
-	srv := walkServer(t, map[string]string{
+	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
 		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":memo: document the fold") + `]`,
 	})
@@ -142,7 +571,7 @@ func TestReleaseNoRelease(t *testing.T) {
 func TestReleaseNoReleaseJSON(t *testing.T) {
 	dir, _ := testRepo(t)
 	sha1 := squashCommit(t, dir, "Document the fold", 7)
-	srv := walkServer(t, map[string]string{
+	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
 		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":memo: document the fold") + `]`,
 	})
@@ -172,7 +601,7 @@ func TestReleaseExplicitSinceTag(t *testing.T) {
 	dir, _ := testRepo(t)
 	sha1 := squashCommit(t, dir, "Fix a crash", 8)
 	testGit(t, dir, "akira-toriyama", "tag", "v0.5.0") // a later tag that must NOT become the base
-	srv := walkServer(t, map[string]string{
+	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha1) + `]`,
 		pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
 	})
@@ -193,7 +622,7 @@ func TestReleaseExplicitSinceTag(t *testing.T) {
 func TestReleaseCurrentOverride(t *testing.T) {
 	dir, _ := testRepo(t)
 	sha1 := squashCommit(t, dir, "Fix a crash", 8)
-	srv := walkServer(t, map[string]string{
+	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha1) + `]`,
 		pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
 	})
@@ -245,7 +674,7 @@ func TestReleaseHasNoRangeOrPRSource(t *testing.T) {
 func TestReleaseBreakingComposesConsistently(t *testing.T) {
 	dir, _ := testRepo(t)
 	sha1 := squashCommit(t, dir, "Drop the legacy config", 9)
-	srv := walkServer(t, map[string]string{
+	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(9, "2026-07-13T00:00:00Z", sha1) + `]`,
 		pullCommitsPath(9):    `[` + apiCommit("c1", "akira-toriyama", ":coffin:! drop the legacy config") + `]`,
 	})
