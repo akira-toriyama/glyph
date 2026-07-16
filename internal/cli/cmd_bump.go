@@ -154,7 +154,9 @@ func bumpInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, strin
 		return commits, source, nil, err
 	}
 	if cmd.Flags().Changed("since-tag") {
-		return sinceTagInput(ctx, table, bumpSinceTag, bumpRepo)
+		// The walk's pull-expansion provenance is release's concern, not bump's.
+		commits, _, source, base, err := sinceTagInput(ctx, table, bumpSinceTag, bumpRepo)
+		return commits, source, base, err
 	}
 	if err := checkRangeFlag(bumpRange); err != nil {
 		return nil, "", nil, err

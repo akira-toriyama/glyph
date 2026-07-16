@@ -502,7 +502,74 @@ type releaseVerdict struct {
 		Breaking bool   `json:"breaking"`
 		Subject  string `json:"subject"`
 	} `json:"commits"`
+	Pulls []struct {
+		Number  int `json:"number"`
+		Commits int `json:"commits"`
+	} `json:"pulls"`
 	Reason string `json:"reason"`
+}
+
+// TestReleaseJSONReportsPullExpansion: the verdict names every merged pull the
+// walk resolved and how many participating commits each contributed. The
+// Phase 6 shadow comparison branches on exactly this (ratified Q6): git-cliff
+// reads only main's squash subjects, so a bump divergence is EXPECTED when
+// some pull contributed 2+ commits (COMMIT_OR_PR_TITLE replaced its squash
+// subject with the PR title) — and glyph-bug-suspect red otherwise. Doing the
+// detection outside glyph would mean re-implementing the walk's exclusion
+// rules in shell, which drifts. A direct push resolves to no pull and must
+// not appear in the list.
+func TestReleaseJSONReportsPullExpansion(t *testing.T) {
+	dir, _ := testRepo(t)
+	sha1 := squashCommit(t, dir, "Add a menu", 7)
+	sha2 := squashCommit(t, dir, "Fix a crash", 8)
+	testCommit(t, dir, "akira-toriyama", ":memo: note the direct push")
+	direct := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	srv := dryServer(t, map[string]string{
+		commitPullsPath(sha1):   `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
+		commitPullsPath(sha2):   `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha2) + `]`,
+		commitPullsPath(direct): `[]`,
+		pullCommitsPath(7): `[` + apiCommit("a1", "akira-toriyama", ":sparkles:(ui) add a menu") + `,` +
+			apiCommit("a2", "akira-toriyama", ":white_check_mark: test the menu") + `]`,
+		pullCommitsPath(8): `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--json")
+	if code != 0 {
+		t.Fatalf("release --json exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	var v releaseVerdict
+	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
+		t.Fatalf("release --json stdout is not one JSON object: %v\n%s", err, stdout)
+	}
+	if len(v.Pulls) != 2 ||
+		v.Pulls[0].Number != 7 || v.Pulls[0].Commits != 2 ||
+		v.Pulls[1].Number != 8 || v.Pulls[1].Commits != 1 {
+		t.Errorf("verdict pulls = %+v, want [{7 2} {8 1}] in walk order", v.Pulls)
+	}
+}
+
+// TestReleaseNoReleaseJSONPullsNormalized: a walk that resolved no pull still
+// emits pulls as [] — the same nil-slice normalization commits gets — so a
+// shadow script indexes .pulls unconditionally, on the none verdict too.
+func TestReleaseNoReleaseJSONPullsNormalized(t *testing.T) {
+	dir, _ := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":memo: note the direct push")
+	direct := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	srv := dryServer(t, map[string]string{
+		commitPullsPath(direct): `[]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--json")
+	if code != 1 {
+		t.Fatalf("all-none release --json exited %d, want 1\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, `"pulls":[]`) {
+		t.Errorf("no-release verdict does not normalize pulls to []:\n%s", stdout)
+	}
 }
 
 // TestReleaseJSON: the machine verdict carries everything the rolling-draft

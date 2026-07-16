@@ -26,18 +26,21 @@ var (
 )
 
 // releaseResult is the machine verdict: {current, level, tag, body, action,
-// url, commits, reason}. tag and body are omitted on a none verdict — there is
-// no release to act on; url is present only when a write actually happened
-// (never on a dry run).
+// url, commits, pulls, reason}. tag and body are omitted on a none verdict —
+// there is no release to act on; url is present only when a write actually
+// happened (never on a dry run). pulls is the walk's expansion provenance —
+// which merged pulls it resolved and how many participating commits each
+// contributed — what the shadow comparison (Q6) branches on.
 type releaseResult struct {
-	Current string       `json:"current"`
-	Level   string       `json:"level"`
-	Tag     string       `json:"tag,omitempty"`
-	Body    string       `json:"body,omitempty"`
-	Action  string       `json:"action"`
-	URL     string       `json:"url,omitempty"`
-	Commits []bumpCommit `json:"commits"`
-	Reason  string       `json:"reason"`
+	Current string          `json:"current"`
+	Level   string          `json:"level"`
+	Tag     string          `json:"tag,omitempty"`
+	Body    string          `json:"body,omitempty"`
+	Action  string          `json:"action"`
+	URL     string          `json:"url,omitempty"`
+	Commits []bumpCommit    `json:"commits"`
+	Pulls   []pullExpansion `json:"pulls"`
+	Reason  string          `json:"reason"`
 }
 
 // The draft-convergence actions a release run can take (Q4): what the rolling
@@ -67,7 +70,10 @@ func newReleaseCmd() *cobra.Command {
 			"the verdict) and the run exits 1 (soft no-release). --dry-run computes\n" +
 			"everything including that action and writes nothing: stdout is the tag\n" +
 			"line, a blank line, then the Markdown body; --json emits\n" +
-			"{current,level,tag,body,action,url,commits,reason}.",
+			"{current,level,tag,body,action,url,commits,pulls,reason} — pulls is the\n" +
+			"walk's expansion provenance (each resolved pull and its participating\n" +
+			"commit count), what a shadow comparison against a squash-subject reader\n" +
+			"branches on.",
 		Args: sinceTagArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return releaseRun(cmd)
@@ -79,7 +85,7 @@ func newReleaseCmd() *cobra.Command {
 	cmd.Flags().StringVar(&releaseTarget, "target", "", "the commit sha the draft's eventual tag points at (default: the checkout's HEAD)")
 	cmd.Flags().StringVar(&releaseFooterFile, "footer-file", "", "a Markdown file appended verbatim after the notes, separated by one --- line (the per-repo install block)")
 	cmd.Flags().BoolVar(&releaseDryRun, "dry-run", false, "compute the full verdict and the draft action but write nothing to GitHub")
-	cmd.Flags().BoolVar(&releaseJSON, "json", false, "emit the machine verdict {current,level,tag,body,action,url,commits,reason}")
+	cmd.Flags().BoolVar(&releaseJSON, "json", false, "emit the machine verdict {current,level,tag,body,action,url,commits,pulls,reason}")
 	return cmd
 }
 
@@ -106,7 +112,7 @@ func releaseRun(cmd *cobra.Command) error {
 	if !cmd.Flags().Changed("since-tag") {
 		tagFlag = sinceTagAuto
 	}
-	parsed, source, base, perr := sinceTagInput(ctx, table, tagFlag, releaseRepo)
+	parsed, pulls, source, base, perr := sinceTagInput(ctx, table, tagFlag, releaseRepo)
 	if perr != nil {
 		return perr
 	}
@@ -132,7 +138,7 @@ func releaseRun(cmd *cobra.Command) error {
 	drafts := glyphDrafts(releases)
 
 	if level == gitmoji.BumpNone {
-		return releaseNone(ctx, gh, owner, repoName, current, commits, source, drafts)
+		return releaseNone(ctx, gh, owner, repoName, current, commits, pulls, source, drafts)
 	}
 
 	tag := current.Next(level)
@@ -167,6 +173,7 @@ func releaseRun(cmd *cobra.Command) error {
 		Body:    body,
 		Action:  action,
 		Commits: commits,
+		Pulls:   pulls,
 		Reason:  decidingReason(commits, level),
 	}
 
@@ -224,7 +231,7 @@ func releaseRun(cmd *cobra.Command) error {
 // releaseNone finishes a none verdict: the draft state converges to "no
 // release should exist" (Q3 — residual glyph-managed drafts are deleted, by
 // id), and the exit stays the uniform soft no-release (1).
-func releaseNone(ctx context.Context, gh *github.Client, owner, repo string, current bump.Version, commits []bumpCommit, source string, drafts []github.Release) error {
+func releaseNone(ctx context.Context, gh *github.Client, owner, repo string, current bump.Version, commits []bumpCommit, pulls []pullExpansion, source string, drafts []github.Release) error {
 	action := actionNone
 	if len(drafts) > 0 {
 		action = actionDelete
@@ -241,7 +248,7 @@ func releaseNone(ctx context.Context, gh *github.Client, owner, repo string, cur
 	}
 	reason := fmt.Sprintf("no release: %d commit(s) participate in %s and every level is none", len(commits), source)
 	if releaseJSON {
-		printCompact(releaseResult{Current: current.String(), Level: string(gitmoji.BumpNone), Action: action, Commits: commits, Reason: reason})
+		printCompact(releaseResult{Current: current.String(), Level: string(gitmoji.BumpNone), Action: action, Commits: commits, Pulls: pulls, Reason: reason})
 		return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}
 	}
 	return core.NoReleasef("%s", reason)

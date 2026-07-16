@@ -83,23 +83,24 @@ func checkSinceTagFlag(tag string) error {
 }
 
 // sinceTagInput resolves the repository, the walk range and the version base,
-// then walks. bump and notes share it; the returned source names the range for
-// the reason line, and base (when the tag names a version) is what the bump
-// steps from.
-func sinceTagInput(ctx context.Context, table *gitmoji.Table, tagFlag, repoFlag string) ([]parser.Commit, string, *bump.Version, error) {
+// then walks. bump, notes and release share it; the returned source names the
+// range for the reason line, base (when the tag names a version) is what the
+// bump steps from, and pulls is the walk's expansion provenance (release
+// reports it, the others discard it).
+func sinceTagInput(ctx context.Context, table *gitmoji.Table, tagFlag, repoFlag string) ([]parser.Commit, []pullExpansion, string, *bump.Version, error) {
 	if err := checkSinceTagFlag(tagFlag); err != nil {
-		return nil, "", nil, err
+		return nil, nil, "", nil, err
 	}
 	owner, repo, err := resolveRepo(repoFlag)
 	if err != nil {
-		return nil, "", nil, err
+		return nil, nil, "", nil, err
 	}
 	revRange, base, err := sinceTagRange(ctx, tagFlag)
 	if err != nil {
-		return nil, "", nil, err
+		return nil, nil, "", nil, err
 	}
-	commits, err := walkSince(ctx, newGitHub(), table, owner, repo, revRange)
-	return commits, revRange, base, err
+	commits, pulls, err := walkSince(ctx, newGitHub(), table, owner, repo, revRange)
+	return commits, pulls, revRange, base, err
 }
 
 // sinceTagRange turns the --since-tag value into a git revision range and, when
@@ -148,16 +149,31 @@ func latestVersionTag(ctx context.Context) (tag string, v bump.Version, err erro
 	return "", bump.Version{}, nil
 }
 
+// pullExpansion records one merged pull request the walk resolved and how many
+// participating commits it contributed. This is the walk reporting its own
+// expansion facts: git-cliff (and any main-history reader) sees only the squash
+// subject, so a verdict divergence is EXPECTED exactly when some pull
+// contributed 2+ commits (COMMIT_OR_PR_TITLE replaced its squash subject with
+// the PR title) — the shadow comparison (ratified Q6) branches on this instead
+// of re-implementing the walk's exclusion rules in shell.
+type pullExpansion struct {
+	Number  int `json:"number"`
+	Commits int `json:"commits"`
+}
+
 // walkSince walks the range's commits oldest first and folds every merged PR's
-// individual commits into one participating list. Excluded commits are skipped
-// before any API call — the routine fleet-sync direct push never costs a
-// request.
-func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owner, repo, revRange string) ([]parser.Commit, error) {
+// individual commits into one participating list, recording per-pull expansion
+// provenance alongside. Excluded commits are skipped before any API call — the
+// routine fleet-sync direct push never costs a request.
+func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owner, repo, revRange string) ([]parser.Commit, []pullExpansion, error) {
 	raws, err := gitsource.Log(ctx, ".", revRange)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var commits []parser.Commit
+	// Normalized to [] up front so the JSON surface never emits null — a
+	// shadow script indexes .pulls unconditionally.
+	pulls := []pullExpansion{}
 	walked, unknown := 0, 0
 	for _, raw := range raws {
 		// A squash subject here is a POINTER to a pull request, not a message
@@ -179,11 +195,11 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 			unknown++
 			why = "is not known to GitHub yet (API lag)"
 		case rerr != nil:
-			return nil, rerr
+			return nil, nil, rerr
 		case found:
 			inner, perr := participatingPull(ctx, c, owner, repo, number)
 			if perr != nil {
-				return nil, wedgeHint(perr, owner, repo, number)
+				return nil, nil, wedgeHint(perr, owner, repo, number)
 			}
 			// Pre-flight the membership check that classifyVerdict would run
 			// later anyway (same Classify, same table — it cannot disagree):
@@ -191,10 +207,11 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 			// lint line is uniquely unhelpful HERE — see wedgeHint.
 			for _, ic := range inner {
 				if _, cerr := bump.Classify(ic, table); cerr != nil {
-					return nil, wedgeHint(cerr, owner, repo, number)
+					return nil, nil, wedgeHint(cerr, owner, repo, number)
 				}
 			}
 			commits = append(commits, inner...)
+			pulls = append(pulls, pullExpansion{Number: number, Commits: len(inner)})
 			continue
 		case covered:
 			// Part of a merged PR whose canonical (merge_commit_sha) commit
@@ -215,7 +232,7 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 		// misconfiguration is findable in the log.
 		warnf("all %d commit(s) in %s were unknown to %s/%s — unless they were pushed moments ago, check that --repo/$GITHUB_REPOSITORY names the repository this checkout belongs to", walked, revRange, owner, repo)
 	}
-	return commits, nil
+	return commits, pulls, nil
 }
 
 // gitmojiBoom is the canonical breaking gitmoji — what an unknown-code
