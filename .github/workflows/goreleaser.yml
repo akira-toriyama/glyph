@@ -42,6 +42,10 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
+          # GoReleaser only READs local git; every write (release, cask push)
+          # goes through API tokens passed as env, never git — drop the
+          # persisted checkout token (zizmor artipacked). t-yaxa
+          persist-credentials: false
 
       # No job-level `env: GOTOOLCHAIN: local` — see build.yml. It would make
       # setup-go skip go.mod's `toolchain` line and ship release binaries built
@@ -49,10 +53,10 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: 'go.mod'
-          cache: true
-          # setup-go keys the cache off go.mod by default; go.sum is the actual
-          # dependency identity, so name it explicitly.
-          cache-dependency-path: go.sum
+          # Release binaries must not be built from a shared, poisonable module
+          # cache (zizmor cache-poisoning); PR-time caching stays in build.yml.
+          # t-yaxa
+          cache: false
 
       - name: GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
