@@ -340,6 +340,72 @@ func TestSinceTagAutoWithoutTagsWalksTheWholeHistory(t *testing.T) {
 	}
 }
 
+// TestSinceTagSpaceFormIsGuided: --since-tag takes its optional value only in
+// the = form (pflag's NoOptDefVal grammar), so `--since-tag v0.1.0` parses as a
+// bare --since-tag plus a stray positional. That must not walk the WRONG range
+// silently — it is a usage error that spells out the = form.
+func TestSinceTagSpaceFormIsGuided(t *testing.T) {
+	dir, _ := testRepo(t)
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "bump", "--since-tag", "v0.1.0")
+	if code != 2 {
+		t.Fatalf("bump --since-tag v0.1.0 (space form) exited %d, want 2 (usage)", code)
+	}
+	if !strings.Contains(stderr, "--since-tag=v0.1.0") {
+		t.Fatalf("the error should spell out the = form:\n%s", stderr)
+	}
+}
+
+// TestRepoWithRangeIsUsage: --repo configures the API-backed sources (--pr,
+// --since-tag); combined with the purely local --range it used to be silently
+// ignored. No silent ignores — it is a usage error.
+func TestRepoWithRangeIsUsage(t *testing.T) {
+	dir, base := testRepo(t)
+	t.Chdir(dir)
+
+	code, _, _ := runGlyph(t, "bump", "--range", base+"..HEAD", "--repo", "akira-toriyama/glyph")
+	if code != 2 {
+		t.Fatalf("bump --range with --repo exited %d, want 2 (usage — --repo would be silently ignored)", code)
+	}
+}
+
+// TestPullCommitCapIsWarned: GitHub truncates pulls/{n}/commits at 250 no
+// matter the pagination. A PR that returns exactly the cap may have lost
+// commits — and a lost commit could carry THE deciding gitmoji — so the walk
+// must say so (house rule: no silent caps). One under the cap stays quiet.
+func TestPullCommitCapIsWarned(t *testing.T) {
+	build := func(n int) string {
+		commits := make([]string, n)
+		for i := range commits {
+			commits[i] = apiCommit(fmt.Sprintf("c%03d", i), "akira-toriyama", ":bug: fix crash number "+fmt.Sprint(i))
+		}
+		return `[` + strings.Join(commits, ",") + `]`
+	}
+	for name, tc := range map[string]struct {
+		n        int
+		wantWarn bool
+	}{
+		"at the cap": {250, true},
+		"one under":  {249, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := prServer(t, 7, build(tc.n))
+			usePR(t, srv)
+			dir, _ := testRepo(t)
+			t.Chdir(dir)
+
+			code, _, stderr := runGlyph(t, "bump", "--pr", "7")
+			if code != 0 {
+				t.Fatalf("bump --pr exited %d, want 0\nstderr: %s", code, stderr)
+			}
+			if got := strings.Contains(stderr, "::warning::"); got != tc.wantWarn {
+				t.Fatalf("warning emitted = %v, want %v for %d commits:\n%s", got, tc.wantWarn, tc.n, stderr)
+			}
+		})
+	}
+}
+
 // TestSinceTagEmptyWalkIsNoRelease: nothing on main since the tag is the quiet
 // week — a soft no-release (1) naming the range it read, not an error.
 func TestSinceTagEmptyWalkIsNoRelease(t *testing.T) {

@@ -37,7 +37,7 @@ func newNotesCmd() *cobra.Command {
 			"cannot collapse them into one line. stdout is the Markdown body (pipe it\n" +
 			"into a release step); --json emits {sections,reason}. Nothing\n" +
 			"release-worthy prints no body and exits 1 (soft no-release).",
-		Args: cobra.NoArgs,
+		Args: sinceTagArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return notesRun(cmd)
 		},
@@ -49,6 +49,9 @@ func newNotesCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&notesJSON, "json", false, "emit the machine verdict {sections,reason}")
 	cmd.MarkFlagsOneRequired("range", "pr", "since-tag")
 	cmd.MarkFlagsMutuallyExclusive("range", "pr", "since-tag")
+	// --repo configures the API-backed sources; with the purely local --range it
+	// would be silently ignored, and glyph does not ignore input silently.
+	cmd.MarkFlagsMutuallyExclusive("range", "repo")
 	return cmd
 }
 

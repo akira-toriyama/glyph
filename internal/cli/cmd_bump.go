@@ -55,7 +55,7 @@ func newBumpCmd() *cobra.Command {
 			"otherwise erase every per-commit type. stdout is the bare next version\n" +
 			"(pipe it into a tag step); --json emits {current,level,next,commits,reason}.\n" +
 			"A none verdict prints no version and exits 1 (soft no-release).",
-		Args: cobra.NoArgs,
+		Args: sinceTagArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return bumpRun(cmd)
 		},
@@ -68,6 +68,9 @@ func newBumpCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&bumpJSON, "json", false, "emit the machine verdict {current,level,next,commits,reason}")
 	cmd.MarkFlagsOneRequired("range", "pr", "since-tag")
 	cmd.MarkFlagsMutuallyExclusive("range", "pr", "since-tag")
+	// --repo configures the API-backed sources; with the purely local --range it
+	// would be silently ignored, and glyph does not ignore input silently.
+	cmd.MarkFlagsMutuallyExclusive("range", "repo")
 	return cmd
 }
 

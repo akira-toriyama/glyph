@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/akira-toriyama/glyph/internal/bump"
+	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/github"
 	"github.com/akira-toriyama/glyph/internal/gitmoji"
 	"github.com/akira-toriyama/glyph/internal/gitsource"
@@ -31,6 +32,21 @@ func addSinceTagFlag(cmd *cobra.Command, target *string, verb string) {
 	cmd.Flags().StringVar(target, "since-tag", "",
 		verb+" every merged PR's individual (pre-squash) commits on main since a tag (bare --since-tag: the highest v* tag; use --since-tag=TAG to name one)")
 	cmd.Flags().Lookup("since-tag").NoOptDefVal = sinceTagAuto
+}
+
+// sinceTagArgs is the Args guard for the commands carrying --since-tag: they
+// take no positionals, and the one stray positional users actually produce is
+// the space form of the flag's optional value (`--since-tag v1.2.3`), which
+// pflag parses as a bare --since-tag plus a leftover. Walking the WRONG range
+// silently is the worst outcome, so that shape gets a usage error spelling out
+// the = form instead of cobra's generic unknown-command complaint.
+func sinceTagArgs(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 && cmd.Flags().Changed("since-tag") {
+		if tag, _ := cmd.Flags().GetString("since-tag"); tag == sinceTagAuto {
+			return core.Usagef("--since-tag takes its tag attached with '=': --since-tag=%s", args[0])
+		}
+	}
+	return cobra.NoArgs(cmd, args)
 }
 
 // sinceTagInput resolves the repository and the walk range, then walks. bump

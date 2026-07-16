@@ -89,6 +89,12 @@ func pullInput(ctx context.Context, number int, repoFlag string) ([]parser.Commi
 	return commits, fmt.Sprintf("%s/%s#%d", owner, repo, number), err
 }
 
+// pullCommitsCap is where GitHub truncates the pulls/{n}/commits listing, no
+// matter how far the pagination follows. A response of exactly this many
+// commits may therefore be missing some — and a missing commit could carry the
+// deciding gitmoji.
+const pullCommitsCap = 250
+
 // participatingPull reads a pull request's individual commits — the ones that
 // exist BEFORE the squash rewrites them into a single subject, which is the whole
 // reason glyph exists — and returns the participating ones, parsed. github.Commit
@@ -98,6 +104,10 @@ func participatingPull(ctx context.Context, c *github.Client, owner, repo string
 	raws, err := c.PullCommits(ctx, owner, repo, number)
 	if err != nil {
 		return nil, err
+	}
+	if len(raws) >= pullCommitsCap {
+		// No silent caps: the verdict may be computed from a truncated PR.
+		warnf("pull request #%d returned %d commits — GitHub truncates this listing at %d, so some commits (and their gitmoji) may be missing from the verdict", number, len(raws), pullCommitsCap)
 	}
 	local := make([]gitsource.RawCommit, len(raws))
 	for i, r := range raws {
