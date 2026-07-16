@@ -274,6 +274,22 @@ func TestContextDeadlineIsAPI(t *testing.T) {
 	}
 }
 
+// TestNewDefaultClientHasATimeout: without WithHTTPClient, New must not hand
+// out http.DefaultClient — it has no timeout, so a hung GitHub would block a
+// release job until the runner kills it, and the deadline→CodeAPI
+// classification above would never be reachable in production. The release
+// walk makes one request per squash commit, so the timeout must be
+// per-request (http.Client.Timeout), not per-walk.
+func TestNewDefaultClientHasATimeout(t *testing.T) {
+	c := New("")
+	if c.http == http.DefaultClient {
+		t.Fatal("New's default client is http.DefaultClient, which never times out")
+	}
+	if c.http.Timeout <= 0 {
+		t.Fatalf("New's default client Timeout = %v, want > 0", c.http.Timeout)
+	}
+}
+
 // TestTransportErrorIsAPI: a request that never reaches a server (connection
 // refused) fails with a healthy context, so it must classify as CodeAPI — the
 // other side of the cancel/deadline split.

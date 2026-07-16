@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/akira-toriyama/glyph/internal/core"
@@ -40,6 +41,13 @@ const (
 	// so it never fires in practice, only stops a runaway loop.
 	maxPages = 1000
 )
+
+// defaultTimeout bounds each request when no client is injected —
+// http.DefaultClient would hang on an unresponsive GitHub until the CI runner
+// kills the whole job. Per-request (not per-walk): the release walk makes one
+// round-trip per squash commit, and each deserves the full allowance. When it
+// fires, the deadline classifies as an ordinary API failure (see failed).
+const defaultTimeout = 30 * time.Second
 
 // PullRef is the slice of a pull request the release walk needs to resolve a
 // squash commit to the PR it came from: its number, whether/when it merged, and
@@ -85,7 +93,7 @@ type Client struct {
 // New builds a client. token is sent as a Bearer credential when non-empty; an
 // empty token still reads public repos, at the anonymous rate limit.
 func New(token string, opts ...Option) *Client {
-	c := &Client{baseURL: DefaultBaseURL, http: http.DefaultClient, token: token}
+	c := &Client{baseURL: DefaultBaseURL, http: &http.Client{Timeout: defaultTimeout}, token: token}
 	for _, o := range opts {
 		o(c)
 	}
