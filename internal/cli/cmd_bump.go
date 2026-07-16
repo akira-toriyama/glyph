@@ -81,24 +81,10 @@ func bumpRun(cmd *cobra.Command) error {
 		return perr
 	}
 
-	commits := []bumpCommit{} // non-nil: serializes as [] so consumers can index
-	levels := make([]gitmoji.Bump, 0, len(parsed))
-	for _, c := range parsed {
-		level, cerr := bump.Classify(c, table)
-		if cerr != nil {
-			return cerr
-		}
-		levels = append(levels, level)
-		commits = append(commits, bumpCommit{
-			SHA:      c.SHA,
-			Code:     c.Gitmoji,
-			Level:    string(level),
-			Breaking: c.Breaking,
-			Subject:  c.Subject,
-		})
+	commits, level, cerr := classifyVerdict(parsed, table)
+	if cerr != nil {
+		return cerr
 	}
-
-	level := bump.Reduce(levels)
 	current, verr := currentVersion(ctx, bumpCurrent, base)
 	if verr != nil {
 		return verr
@@ -127,6 +113,30 @@ func bumpRun(cmd *cobra.Command) error {
 	}
 	fmt.Fprintln(out, next.String())
 	return nil
+}
+
+// classifyVerdict classifies every participating commit and folds the levels
+// with max — the one verdict computation bump and release share, so composing
+// a release can never classify differently than bump alone would. commits is
+// non-nil (serializes as [] so consumers can index).
+func classifyVerdict(parsed []parser.Commit, table *gitmoji.Table) ([]bumpCommit, gitmoji.Bump, error) {
+	commits := []bumpCommit{}
+	levels := make([]gitmoji.Bump, 0, len(parsed))
+	for _, c := range parsed {
+		level, cerr := bump.Classify(c, table)
+		if cerr != nil {
+			return nil, gitmoji.BumpNone, cerr
+		}
+		levels = append(levels, level)
+		commits = append(commits, bumpCommit{
+			SHA:      c.SHA,
+			Code:     c.Gitmoji,
+			Level:    string(level),
+			Breaking: c.Breaking,
+			Subject:  c.Subject,
+		})
+	}
+	return commits, bump.Reduce(levels), nil
 }
 
 // bumpInput reads the commits the verdict is computed from, names the source
