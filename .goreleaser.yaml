@@ -28,7 +28,7 @@ checksum:
 # glyph will derive its own release notes from gitmoji once it self-hosts (Phase
 # 5+, `glyph notes`). Until then GoReleaser groups the tag's commits by their
 # gitmoji / Conventional prefix — the family's other repos use git-cliff, but glyph
-# must not depend on the tool it replaces (see .github/workflows/release.yml).
+# must not depend on the tool it replaces (see .github/workflows/goreleaser.yml).
 changelog:
   use: git
   sort: asc
