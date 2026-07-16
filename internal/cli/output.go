@@ -38,6 +38,14 @@ func marshal(v any, indent bool) []byte {
 	return bytes.TrimRight(b.Bytes(), "\n")
 }
 
+// warnf emits one GitHub Actions warning annotation (::warning::) to the
+// diagnostic stream. It goes to stderr so a piped stdout payload stays pure —
+// the Actions runner scans stderr for workflow commands just as it does stdout,
+// and outside Actions the line is an ordinary human-readable warning.
+func warnf(format string, a ...any) {
+	fmt.Fprintf(errOut, "::warning::glyph: "+format+"\n", a...)
+}
+
 // renderError prints a structured error to stderr as {"error":{...}} so a caller
 // piping stdout to jq is unaffected, and both agents and humans can read it.
 func renderError(ce *core.Error) {

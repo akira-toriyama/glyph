@@ -208,6 +208,138 @@ func TestSinceTagIsExclusiveWithTheOtherSources(t *testing.T) {
 	}
 }
 
+// TestSinceTagDirectPushFallsBackToItsOwnMessage: a commit with NO pull-request
+// association — a human pushed straight to main — must not fail the release
+// (DESIGN §4): it emits a ::warning:: and is classified from its own message.
+func TestSinceTagDirectPushFallsBackToItsOwnMessage(t *testing.T) {
+	dir, _ := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash, pushed directly")
+	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(sha): `[]`, // no PR knows this commit
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 0 {
+		t.Fatalf("bump --since-tag over a direct push exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if stdout != "v0.1.1\n" {
+		t.Fatalf("stdout = %q, want v0.1.1 (the direct push classifies from its own message)", stdout)
+	}
+	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, sha[:7]) {
+		t.Fatalf("the fallback must announce itself with a ::warning:: naming the commit:\n%s", stderr)
+	}
+}
+
+// TestSinceTagUnmergedAssociationFallsBack: an association that is not the
+// merged match (API lag right after a merge, or a mention from an open PR) is
+// no resolution at all — same fallback as no association.
+func TestSinceTagUnmergedAssociationFallsBack(t *testing.T) {
+	dir, _ := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(sha): `[` + apiPullRef(7, "", sha) + `]`, // associated but never merged
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 0 || stdout != "v0.1.1\n" {
+		t.Fatalf("exit %d stdout %q, want 0 / v0.1.1 (an unmerged association must fall back)\nstderr: %s", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "::warning::") {
+		t.Fatalf("the fallback must emit a ::warning::\n%s", stderr)
+	}
+}
+
+// TestSinceTagMalformedFallbackNeverFailsTheRelease: DESIGN §4 — fallbacks
+// never hard-fail. A direct-push commit whose message does not even parse is
+// warned and counted none; the release proceeds on the rest of the walk. (The
+// same message inside a PR is a hard lint error — the strictness lives on the
+// lint gate, not on the release.)
+func TestSinceTagMalformedFallbackNeverFailsTheRelease(t *testing.T) {
+	dir, _ := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", "hotfix without any gitmoji")
+	bad := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	good := squashCommit(t, dir, "Fix a crash", 8)
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(bad):  `[]`,
+		commitPullsPath(good): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", good) + `]`,
+		pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 0 {
+		t.Fatalf("a malformed fallback commit exited %d, want 0 — the release must not hard-fail\nstderr: %s", code, stderr)
+	}
+	if stdout != "v0.1.1\n" {
+		t.Fatalf("stdout = %q, want v0.1.1 from the resolved PR", stdout)
+	}
+	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, bad[:7]) {
+		t.Fatalf("the skipped commit must be warned about by SHA:\n%s", stderr)
+	}
+}
+
+// TestSinceTagUnknownGitmojiFallbackCountsNone pins the ratified t-kbqx policy:
+// on the FALLBACK path only, an unknown gitmoji degrades to a ::warning:: and
+// counts none — the only resolution of DESIGN §2 ("unknown is a hard lint
+// error, never a silent patch": the warning keeps it non-silent) with §4
+// ("fallbacks never hard-fail a release"). Alone in the walk it yields a soft
+// no-release, never a lint failure and never a patch.
+func TestSinceTagUnknownGitmojiFallbackCountsNone(t *testing.T) {
+	dir, _ := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":notarealmoji: tweak something")
+	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(sha): `[]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+	if code == 3 {
+		t.Fatalf("an unknown gitmoji on the fallback path exited 3 (lint) — it must degrade to a warning:\n%s", stderr)
+	}
+	if code != 1 {
+		t.Fatalf("exited %d, want 1 (the unknown commit counts none → no release)\nstderr: %s", code, stderr)
+	}
+	if stdout != "" {
+		t.Fatalf("a no-release must print nothing to stdout, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, ":notarealmoji:") {
+		t.Fatalf("the warning must name the unknown code:\n%s", stderr)
+	}
+}
+
+// TestSinceTagAutoWithoutTagsWalksTheWholeHistory: a repository before its
+// first release has no walk base — auto walks everything from the root, and
+// the bump steps from v0.0.0.
+func TestSinceTagAutoWithoutTagsWalksTheWholeHistory(t *testing.T) {
+	dir, base := testRepo(t)
+	testGit(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
+	sha1 := squashCommit(t, dir, "Add a menu", 2)
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(base): `[]`, // the root :tada: commit: fallback, none
+		commitPullsPath(sha1): `[` + apiPullRef(2, "2026-07-13T00:00:00Z", sha1) + `]`,
+		pullCommitsPath(2):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles: add a menu") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 0 {
+		t.Fatalf("bump --since-tag before the first release exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if stdout != "v0.1.0\n" {
+		t.Fatalf("stdout = %q, want v0.1.0 (minor step from v0.0.0)", stdout)
+	}
+}
+
 // TestSinceTagEmptyWalkIsNoRelease: nothing on main since the tag is the quiet
 // week — a soft no-release (1) naming the range it read, not an error.
 func TestSinceTagEmptyWalkIsNoRelease(t *testing.T) {
