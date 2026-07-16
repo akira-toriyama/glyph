@@ -13,6 +13,7 @@ var (
 	releaseSinceTag string
 	releaseRepo     string
 	releaseCurrent  string
+	releaseDryRun   bool
 	releaseJSON     bool
 )
 
@@ -37,10 +38,12 @@ func newReleaseCmd() *cobra.Command {
 			"notes separately walks twice, and a merge landing between the walks could\n" +
 			"version one range and describe another. The walk defaults to the highest\n" +
 			"v* tag (release has exactly one input source, so no bare --since-tag is\n" +
-			"required); stdout is the tag line, a blank line, then the Markdown body.\n" +
-			"--json emits {current,level,tag,body,commits,reason}. A none verdict\n" +
-			"prints no release and exits 1 (soft no-release). This command only\n" +
-			"computes — publishing arrives with the rolling-draft mode.",
+			"required). Bare release will upsert the rolling DRAFT release (no tag —\n" +
+			"GitHub tags on manual Publish); until that write path lands it fails\n" +
+			"loud. --dry-run computes everything and writes nothing: stdout is the\n" +
+			"tag line, a blank line, then the Markdown body; --json emits\n" +
+			"{current,level,tag,body,commits,reason}. A none verdict prints no\n" +
+			"release and exits 1 (soft no-release).",
 		Args: sinceTagArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return releaseRun(cmd)
@@ -49,12 +52,19 @@ func newReleaseCmd() *cobra.Command {
 	addSinceTagFlag(cmd, &releaseSinceTag, "compose the release from")
 	cmd.Flags().StringVar(&releaseRepo, "repo", "", "owner/name to query (default: $GITHUB_REPOSITORY)")
 	cmd.Flags().StringVar(&releaseCurrent, "current", "", "the version to step from (default: the walked tag, else the highest parseable v* tag)")
+	cmd.Flags().BoolVar(&releaseDryRun, "dry-run", false, "compute the full verdict but write nothing to GitHub")
 	cmd.Flags().BoolVar(&releaseJSON, "json", false, "emit the machine verdict {current,level,tag,body,commits,reason}")
 	return cmd
 }
 
 func releaseRun(cmd *cobra.Command) error {
 	ctx := cmd.Context()
+	if !releaseDryRun {
+		// The ratified surface: bare release upserts the rolling draft. Failing
+		// loud here (instead of shipping bare as a read-only preview) keeps the
+		// bare form from silently changing sides when the write path lands.
+		return core.Usagef("the rolling-draft upsert is not implemented yet — run `glyph release --dry-run` for the computed verdict")
+	}
 	table, err := loadRules()
 	if err != nil {
 		return err

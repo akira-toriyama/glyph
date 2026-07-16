@@ -9,8 +9,8 @@ import (
 // TestReleaseComposesTagAndBody is the compose contract: ONE walk feeds both
 // the version step and the notes body, so the tag and the body can never be
 // computed from different ranges (calling bump and notes separately walks
-// twice, and a merge landing between the walks would split them). Bare
-// `glyph release` defaults to the auto walk — release has exactly one input
+// twice, and a merge landing between the walks would split them). With no
+// --since-tag the walk defaults to auto — release has exactly one input
 // source, so demanding a bare --since-tag would be ceremony.
 func TestReleaseComposesTagAndBody(t *testing.T) {
 	dir, _ := testRepo(t)
@@ -25,7 +25,7 @@ func TestReleaseComposesTagAndBody(t *testing.T) {
 	usePR(t, srv)
 	t.Chdir(dir)
 
-	code, stdout, stderr := runGlyph(t, "release")
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run")
 	if code != 0 {
 		t.Fatalf("release exited %d, want 0\nstderr: %s", code, stderr)
 	}
@@ -37,6 +37,24 @@ func TestReleaseComposesTagAndBody(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("release body is missing %q:\n%s", want, body)
 		}
+	}
+}
+
+// TestReleaseRequiresDryRunUntilUpsertLands: the ratified surface is "bare
+// glyph release upserts the rolling draft" (t-skd3). Until that write path
+// exists, bare release must fail loud and point at --dry-run — shipping it as
+// a silent read-only preview would flip its meaning to a WRITE later, and a
+// surface must never change sides quietly.
+func TestReleaseRequiresDryRunUntilUpsertLands(t *testing.T) {
+	code, stdout, stderr := runGlyph(t, "release")
+	if code != 2 {
+		t.Fatalf("bare release exited %d, want 2 (not implemented yet)\nstderr: %s", code, stderr)
+	}
+	if stdout != "" {
+		t.Errorf("bare release wrote a payload:\n%s", stdout)
+	}
+	if !strings.Contains(stderr, "--dry-run") {
+		t.Errorf("bare release does not point at --dry-run:\n%s", stderr)
 	}
 }
 
@@ -71,7 +89,7 @@ func TestReleaseJSON(t *testing.T) {
 	usePR(t, srv)
 	t.Chdir(dir)
 
-	code, stdout, stderr := runGlyph(t, "release", "--json")
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--json")
 	if code != 0 {
 		t.Fatalf("release --json exited %d, want 0\nstderr: %s", code, stderr)
 	}
@@ -106,7 +124,7 @@ func TestReleaseNoRelease(t *testing.T) {
 	usePR(t, srv)
 	t.Chdir(dir)
 
-	code, stdout, stderr := runGlyph(t, "release")
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run")
 	if code != 1 {
 		t.Fatalf("all-none release exited %d, want 1\nstderr: %s", code, stderr)
 	}
@@ -131,7 +149,7 @@ func TestReleaseNoReleaseJSON(t *testing.T) {
 	usePR(t, srv)
 	t.Chdir(dir)
 
-	code, stdout, stderr := runGlyph(t, "release", "--json")
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--json")
 	if code != 1 {
 		t.Fatalf("all-none release --json exited %d, want 1\nstderr: %s", code, stderr)
 	}
@@ -161,7 +179,7 @@ func TestReleaseExplicitSinceTag(t *testing.T) {
 	usePR(t, srv)
 	t.Chdir(dir)
 
-	code, stdout, stderr := runGlyph(t, "release", "--since-tag=v0.1.0")
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--since-tag=v0.1.0")
 	if code != 0 {
 		t.Fatalf("release --since-tag=v0.1.0 exited %d, want 0\nstderr: %s", code, stderr)
 	}
@@ -182,7 +200,7 @@ func TestReleaseCurrentOverride(t *testing.T) {
 	usePR(t, srv)
 	t.Chdir(dir)
 
-	code, stdout, stderr := runGlyph(t, "release", "--current", "v2.3.4")
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--current", "v2.3.4")
 	if code != 0 {
 		t.Fatalf("release --current exited %d, want 0\nstderr: %s", code, stderr)
 	}
@@ -234,7 +252,7 @@ func TestReleaseBreakingComposesConsistently(t *testing.T) {
 	usePR(t, srv)
 	t.Chdir(dir)
 
-	code, stdout, stderr := runGlyph(t, "release")
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run")
 	if code != 0 {
 		t.Fatalf("breaking release exited %d, want 0\nstderr: %s", code, stderr)
 	}
