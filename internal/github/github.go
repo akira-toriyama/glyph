@@ -214,12 +214,38 @@ func (c *Client) get(ctx context.Context, u string, into any) (string, error) {
 		return "", failed(ctx, "reading "+req.URL.Path, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", core.APIf("github: GET %s: %d %s", req.URL.Path, resp.StatusCode, distill(body))
+		return "", &statusError{status: resp.StatusCode, err: core.APIf(
+			"github: GET %s: %d %s", req.URL.Path, resp.StatusCode, distill(body))}
 	}
 	if err := json.Unmarshal(body, into); err != nil {
 		return "", core.APIf("github: decoding %s: %v", req.URL.Path, err)
 	}
 	return nextLink(resp.Header.Get("Link")), nil
+}
+
+// statusError carries a non-2xx response's status alongside the flattened
+// *core.Error, so a public method can classify by status (the 422 below)
+// before the failure leaves the package. Unwrap keeps it an ordinary CodeAPI
+// failure to everything else — core.AsError and core.ExitCode see the wrapped
+// *core.Error through the chain.
+type statusError struct {
+	status int
+	err    *core.Error
+}
+
+func (e *statusError) Error() string { return e.err.Error() }
+func (e *statusError) Unwrap() error { return e.err }
+
+// IsCommitUnknown reports whether err is commits/{sha}/pulls answering 422 —
+// how GitHub says it does not (yet) know the SHA. That is the release walk's
+// API-lag case (the walk runs moments after a push), so the walk branches here
+// to fall back instead of hard-failing the release. Deliberately NOT true for
+// a 404: that is how a bad credential against a private repository answers for
+// every commit, and degrading a whole walk to fallbacks on an auth failure
+// would be silent corruption.
+func IsCommitUnknown(err error) bool {
+	var se *statusError
+	return errors.As(err, &se) && se.status == http.StatusUnprocessableEntity
 }
 
 // failed classifies a request that never produced a usable response. Only a

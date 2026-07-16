@@ -274,6 +274,41 @@ func TestContextDeadlineIsAPI(t *testing.T) {
 	}
 }
 
+// TestCommitPulls422IsCommitUnknown: commits/{sha}/pulls answers 422 when
+// GitHub does not (yet) know the SHA — the release walk's API-lag case, which
+// must be branchable (IsCommitUnknown) so the walk can fall back instead of
+// hard-failing the release. It still reads as an ordinary CodeAPI failure to
+// every layer that does not branch.
+func TestCommitPulls422IsCommitUnknown(t *testing.T) {
+	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		fmt.Fprint(w, `{"message":"No commit found for SHA: abc"}`)
+	})
+
+	_, err := c.CommitPulls(context.Background(), "o", "r", "abc")
+	if !IsCommitUnknown(err) {
+		t.Fatalf("a 422 from commits/{sha}/pulls must report IsCommitUnknown, got %v", err)
+	}
+	wantAPIError(t, err, "No commit found")
+}
+
+// TestCommitPulls404IsNotCommitUnknown: a 404 is how GitHub answers a bad
+// credential against a private repository — for EVERY commit. Treating it as
+// commit-unknown would silently degrade the whole walk to fallbacks on an auth
+// failure, so only the specific 422 may branch.
+func TestCommitPulls404IsNotCommitUnknown(t *testing.T) {
+	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, `{"message":"Not Found"}`)
+	})
+
+	_, err := c.CommitPulls(context.Background(), "o", "r", "abc")
+	if IsCommitUnknown(err) {
+		t.Fatal("a 404 must NOT report IsCommitUnknown — it is how an auth failure looks")
+	}
+	wantAPIError(t, err, "Not Found")
+}
+
 // TestNewDefaultClientHasATimeout: without WithHTTPClient, New must not hand
 // out http.DefaultClient — it has no timeout, so a hung GitHub would block a
 // release job until the runner kills it, and the deadline→CodeAPI

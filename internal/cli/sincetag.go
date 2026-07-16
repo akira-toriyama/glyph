@@ -115,11 +115,19 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 			continue
 		}
 		number, found, rerr := mergedPullFor(ctx, c, owner, repo, raw.SHA)
+		if github.IsCommitUnknown(rerr) {
+			// GitHub does not know the SHA yet (422) — the walk outran the API
+			// right after a push. DESIGN §4's API lag, so fall back, not fail.
+			if fc, ok := fallbackCommit(table, raw, "is not known to GitHub yet (API lag)"); ok {
+				commits = append(commits, fc)
+			}
+			continue
+		}
 		if rerr != nil {
 			return nil, rerr
 		}
 		if !found {
-			if fc, ok := fallbackCommit(table, raw); ok {
+			if fc, ok := fallbackCommit(table, raw, "has no merged pull request (a direct push, or the API lagging)"); ok {
 				commits = append(commits, fc)
 			}
 			continue
@@ -133,26 +141,27 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 	return commits, nil
 }
 
-// fallbackCommit handles a walked commit with no merged pull request behind it
-// — a direct push to main, or the API lagging right behind a merge. Fallbacks
-// never hard-fail a release (DESIGN §4), so every outcome is a ::warning::
-// plus the softest sound decision: a message that parses to a KNOWN gitmoji is
+// fallbackCommit handles a walked commit that cannot be resolved to a merged
+// pull request — no association (a direct push to main), or GitHub not knowing
+// the SHA yet. Fallbacks never hard-fail a release (DESIGN §4), so every
+// outcome is a ::warning:: carrying why (the caller's headline) plus the
+// softest sound decision: a message that parses to a KNOWN gitmoji is
 // classified as itself; a message that does not parse, or whose gitmoji is
 // unknown (the ratified t-kbqx policy — this assembly layer downgrades what
 // the lint gate keeps as a hard error, so internal/bump stays pure), counts
 // none by being left out of the fold.
-func fallbackCommit(table *gitmoji.Table, raw gitsource.RawCommit) (parser.Commit, bool) {
+func fallbackCommit(table *gitmoji.Table, raw gitsource.RawCommit, why string) (parser.Commit, bool) {
 	c, perr := parser.Parse(raw.Message)
 	if perr != nil {
-		warnf("commit %.7s has no merged pull request and its own message does not parse (%v) — counted as none", raw.SHA, perr)
+		warnf("commit %.7s %s and its own message does not parse (%v) — counted as none", raw.SHA, why, perr)
 		return parser.Commit{}, false
 	}
 	c.SHA, c.Author = raw.SHA, raw.Author
 	if _, cerr := bump.Classify(c, table); cerr != nil {
-		warnf("commit %.7s has no merged pull request and its gitmoji %s is not in the rules table — counted as none", raw.SHA, c.Gitmoji)
+		warnf("commit %.7s %s and its gitmoji %s is not in the rules table — counted as none", raw.SHA, why, c.Gitmoji)
 		return parser.Commit{}, false
 	}
-	warnf("commit %.7s has no merged pull request association (a direct push, or the API lagging) — classifying its own message", raw.SHA)
+	warnf("commit %.7s %s — classifying its own message", raw.SHA, why)
 	return c, true
 }
 

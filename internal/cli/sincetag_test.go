@@ -340,6 +340,38 @@ func TestSinceTagAutoWithoutTagsWalksTheWholeHistory(t *testing.T) {
 	}
 }
 
+// TestSinceTagUnknownShaFallsBack: GitHub answers commits/{sha}/pulls with 422
+// when it does not yet know the commit — the walk running moments after a
+// push, before the API catches up. That is DESIGN §4's API lag spelled out by
+// the server, so it falls back exactly like an empty association instead of
+// hard-failing the release. (A 404 — the auth-failure shape — still fails.)
+func TestSinceTagUnknownShaFallsBack(t *testing.T) {
+	dir, _ := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash, pushed moments ago")
+	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != commitPullsPath(sha) {
+			t.Errorf("unexpected request %q", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		fmt.Fprint(w, `{"message":"No commit found for SHA: `+sha+`"}`)
+	}))
+	t.Cleanup(srv.Close)
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 0 {
+		t.Fatalf("a 422 (SHA not yet on GitHub) exited %d, want 0 — the walk must fall back\nstderr: %s", code, stderr)
+	}
+	if stdout != "v0.1.1\n" {
+		t.Fatalf("stdout = %q, want v0.1.1 from the commit's own message", stdout)
+	}
+	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, sha[:7]) {
+		t.Fatalf("the fallback must announce itself with a ::warning:: naming the commit:\n%s", stderr)
+	}
+}
+
 // TestSinceTagSpaceFormIsGuided: --since-tag takes its optional value only in
 // the = form (pflag's NoOptDefVal grammar), so `--since-tag v0.1.0` parses as a
 // bare --since-tag plus a stray positional. That must not walk the WRONG range
