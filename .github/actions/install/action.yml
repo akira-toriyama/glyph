@@ -34,9 +34,12 @@ inputs:
   token:
     description: >-
       Token for `gh attestation verify` (the provenance gate hits the GitHub
-      API). Pass ${{ github.token }}. Required and has no default: a composite
-      action does not inherit the job's env, and an input default cannot
-      reference the github context.
+      API). Pass the caller's `github.token`. Required and has no default: a
+      composite action does not inherit the job's env, and the github context
+      is not available in this manifest (so it cannot be defaulted here) — the
+      expression must be written in the workflow step that USES this action.
+      Do NOT write a template expression in this description: GitHub evaluates
+      one even in a description string, and github is not a valid context here.
     required: true
 
 runs:
