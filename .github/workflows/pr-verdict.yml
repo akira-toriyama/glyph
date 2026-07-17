@@ -5,25 +5,25 @@ name: glyph-pr-verdict
 # the question a reviewer actually has BEFORE merging: what does this PR do
 # to the version?
 #
-# The verdict is computed from the PR's INDIVIDUAL commits (`glyph bump
-# --pr`, pure API — squash-safe by the same mechanism as the release walk),
-# never from the PR title: a title-only preview would be wrong exactly when
-# glyph's walk exists to be right, on a multi-commit PR whose squash subject
-# erases the per-commit types. A second walk (`glyph bump --since-tag`, over
-# the checked-out base branch) folds in what is already merged but not yet
-# released, so the comment can distinguish "this PR escalates the next
-# release to vX.Y.Z" from "it stays vX.Y.Z — a same-or-higher bump is
-# already pending". Both walks step from the same highest v* tag, so the
-# predicted tag is simply the `next` of whichever verdict folds higher — no
-# version arithmetic ever happens in shell.
+# `glyph preview --pr` does all of it: the verdict comes from the PR's
+# INDIVIDUAL commits (pure API — squash-safe by the same mechanism as the
+# release walk), never from the PR title, which a multi-commit PR's squash
+# subject would have replaced; it folds in what is already merged but
+# unreleased so the comment can distinguish "this PR escalates the next
+# release to vX.Y.Z" from "it stays vX.Y.Z — a same-or-higher bump is already
+# pending"; it skips that second walk on a repo with no v* tag (the walk is
+# the only unbounded input here, and skipping it is what makes fleet-wide
+# distribution safe); and it renders the body, marker included.
 #
-# Runs anywhere, including repos that do NOT keep a glyph rolling draft: the
-# bump arithmetic is the same whether the next release is a draft
-# (release.yml) or a tag cut by hand, so the comment says "the next release"
-# and never names a draft the repo may not have. A repo with NO v* tag skips
-# the pending walk entirely — see the release-floor guard below; that walk is
-# this workflow's only unbounded input, and it is what makes fleet-wide
-# distribution safe.
+# This workflow is therefore two steps: run it, post it. That is deliberate —
+# the fold is a VERSION decision internal/bump owns, and the ~60 lines of jq
+# that used to make it here were a second opinion about which level wins,
+# living where nobody could unit-test it or run it on a laptop. The same is
+# true of the prose: "the next release", never "the rolling draft", because
+# only a repo wired to release.yml keeps one and naming it elsewhere would be
+# false, not merely noisy — a claim that load-bearing belongs in a package
+# with tests (internal/preview), not in a heredoc. `glyph preview --pr N`
+# prints these exact bytes locally.
 #
 # The comment is advisory, refreshed on every push, and this workflow is NOT
 # meant to be a required check — the lint gate (lint.yml) owns convention
@@ -64,7 +64,7 @@ name: glyph-pr-verdict
 #     pull-requests: write
 #   jobs:
 #     verdict:
-#       uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@v0.4.1  # pin a release tag
+#       uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@v0.5.0  # pin a release tag
 
 on:
   workflow_call:
@@ -76,7 +76,7 @@ on:
           (bumped right before tagging), so a caller pinned to @vX.Y.Z runs
           binary vX.Y.Z.
         type: string
-        default: v0.4.1
+        default: v0.5.0
 
 permissions:
   contents: read
@@ -149,144 +149,56 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/glyph" version
 
-      # The verdict PAIR: this PR alone (--pr, pure API) and what is already
-      # merged on the base branch since the last tag (--since-tag, local walk
-      # + API expansion). Exit 1 is glyph's uniform soft no-release — a valid
-      # "none" verdict whose JSON still prints, so it flows into the compose
-      # step like any other level. Anything else is a real failure (a commit
-      # the lint would reject, git/API trouble) and fails the job with
-      # glyph's own envelope on stderr.
-      - name: Compute the verdict pair (this PR + pending on the base branch)
-        id: verdict
+      # ONE call composes the whole comment: glyph folds its own two verdicts
+      # (this PR's individual commits, and what is already merged but
+      # unreleased), skips the pending walk on a repo with no v* tag, and
+      # renders the body — marker included. None of that is shell's business:
+      # the fold is a version decision internal/bump owns, and the prose makes
+      # claims (it must never name a rolling draft a repo does not keep) that
+      # belong somewhere unit-testable rather than in a jq heredoc nobody can
+      # run locally. `glyph preview --pr N` prints the same bytes on a laptop.
+      #
+      # A none verdict is a normal answer here and exits 0 — "this PR moves
+      # nothing" is exactly what the reviewer asked, so there is no soft
+      # no-release code to fold away.
+      - name: Compose the verdict comment
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           # PR-context guard: outside a pull_request event there is no PR to
-          # preview — fail loudly instead of walking an empty input (mirrors
+          # preview — fail loudly instead of previewing nothing (mirrors
           # lint.yml's guard).
           if [ -z "${PR_NUMBER:-}" ] || [ "$PR_NUMBER" = "0" ]; then
             echo "::error::glyph-pr-verdict requires a pull_request context (empty PR number)."
             exit 1
           fi
-          run_bump() {
-            out="$1"; shift
-            status=0
-            glyph "$@" --json > "$RUNNER_TEMP/$out.json" 2> "$RUNNER_TEMP/$out.err" || status=$?
-            cat "$RUNNER_TEMP/$out.err" >&2
-            if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then
-              # Best-effort headline from the structured envelope; the
-              # preserved glyph exit code is the verdict either way.
-              jq -r '"::error::glyph bump: \(.error.message)"' \
-                "$RUNNER_TEMP/$out.err" 2>/dev/null || true
-              return "$status"
-            fi
-          }
-          run_bump pr bump --pr "$PR_NUMBER"
-
-          # RELEASE-FLOOR guard. The pending walk is the only unbounded input
-          # here: with no v* tag to walk from, `--since-tag` resolves the whole
-          # history and resolves EVERY commit to its merged PR — one API
-          # round-trip each, which glyph names as a cost rather than hiding
-          # (sinceTagRange's "no version tag found" warning; house rule: no
-          # silent unbounded work). Fleet-distributed, that lands on repos with
-          # a thousand commits and no release, burning a third of the hourly
-          # rate limit on every push. And it buys nothing: a repo with no
-          # release has nothing merged-but-unreleased to fold in — its first
-          # release is whatever this PR makes it. So skip the walk and let the
-          # PR's own verdict stand alone.
-          #
-          # The floor is detected from glyph's OWN answer (.current, which is
-          # its highest parseable v* tag or the v0.0.0 fallback), never from a
-          # shell tag glob — that would duplicate glyph's version-tag policy in
-          # the caller, the exact split `--since-tag`'s auto mode exists to
-          # prevent.
-          untagged=false
-          if [ "$(jq -r .current "$RUNNER_TEMP/pr.json")" = "v0.0.0" ]; then
-            untagged=true
-            echo "::notice::no v* release tag here — reporting this PR's own verdict only (the pending walk needs a release floor)."
-            printf '%s' '{"current":"v0.0.0","level":"none","commits":[]}' > "$RUNNER_TEMP/pending.json"
-          else
-            run_bump pending bump --since-tag
+          status=0
+          glyph preview --pr "$PR_NUMBER" --notes \
+            > "$RUNNER_TEMP/body.md" 2> "$RUNNER_TEMP/preview.err" || status=$?
+          cat "$RUNNER_TEMP/preview.err" >&2
+          if [ "$status" -ne 0 ]; then
+            # Best-effort headline from the structured envelope; the preserved
+            # glyph exit code is the verdict either way (a commit the lint
+            # would reject fails here too — commit-lint owns that signal).
+            jq -r '"::error::glyph preview: \(.error.message)"' \
+              "$RUNNER_TEMP/preview.err" 2>/dev/null || true
+            exit "$status"
           fi
-          echo "untagged=$untagged" >> "$GITHUB_OUTPUT"
 
-      # ONE sticky comment per PR, found by the marker its body starts with —
-      # never `gh pr comment --edit-last`, whose "the bot's last comment is
-      # mine" assumption breaks the day any other workflow comments as
-      # github-actions[bot]. The body is composed entirely in jq from the two
-      # verdict JSONs and posted from a file: commit subjects are user input
-      # and are never expanded by the shell (zizmor template-injection).
-      - name: Compose and upsert the sticky verdict comment
+      # ONE sticky comment per PR, found by the marker glyph puts at the top of
+      # the body — never `gh pr comment --edit-last`, whose "the bot's last
+      # comment is mine" assumption breaks the day any other workflow comments
+      # as github-actions[bot]. The body reaches the API as a FILE: it carries
+      # author-supplied commit subjects and must never be expanded by a shell.
+      - name: Upsert the sticky comment
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO_SLUG: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          UNTAGGED: ${{ steps.verdict.outputs.untagged }}
         run: |
           set -euo pipefail
-          cat > "$RUNNER_TEMP/compose.jq" <<'JQ'
-          def rank: {"none": 0, "patch": 1, "minor": 2, "major": 3}[.];
-          def icon: {"none": "⏸️", "patch": "🔧", "minor": "🔼", "major": "💥"}[.];
-          # Markdown-table hygiene for commit subjects: escape the cell
-          # separator, flatten any stray newline.
-          def esc: gsub("\\|"; "\\|") | gsub("\n"; " ");
-
-          $pr[0] as $p | $pending[0] as $q |
-          ($p.level // "none") as $pl |
-          ($q.level // "none") as $ql |
-          $p.current as $cur |
-
-          # "The next release" — never "the rolling draft". The verdict is the
-          # same arithmetic wherever glyph runs, but the DRAFT is not: only a
-          # repo wired to release.yml keeps one, and fleet-distributed this
-          # comment lands mostly on repos that tag straight from main. Naming a
-          # draft they do not have would not be noise, it would be false. The
-          # neutral noun is true in both worlds — a draft's tag IS the next
-          # release.
-          (if $untagged then
-            if $pl == "none" then
-              "⏸️ Merging this PR moves nothing — and this repository has no release tag yet, so there is no version to move."
-            else
-              "\($pl | icon) Merging this PR raises **\($pl)** — the first release here would be **\($p.next)**."
-            end
-          elif $pl == "none" and $ql == "none" then
-            "⏸️ Merging this PR moves nothing — and nothing release-worthy is pending since **\($cur)**."
-          elif $pl == "none" then
-            "⏸️ This PR does not move the version — the next release stays **\($q.next)**."
-          elif ($pl | rank) > ($ql | rank) then
-            if $ql == "none" then
-              "\($pl | icon) Merging this PR raises **\($pl)** — the next release becomes **\($cur) → \($p.next)**."
-            else
-              "\($pl | icon) Merging this PR raises **\($pl)** — the next release escalates **\($q.next) → \($p.next)**."
-            end
-          else
-            "\($pl | icon) Merging this PR adds **\($pl)**-level changes — the next release stays **\($q.next)** (a **\($ql)** bump is already pending)."
-          end) as $headline |
-
-          ([$p.commits[] |
-            "| \(.subject | esc) | \(.code) `\(.code)` | \(.level)\(if .breaking then " 💥" else "" end) |"
-          ]) as $rows |
-
-          (if $untagged then
-            "Computed from this PR's \($p.commits | length) individual commit(s) — squash-safe, a squash-merge cannot erase them. This repository has no v* release tag yet, so nothing merged earlier is folded in. Pushing more commits updates this comment."
-          else
-            "Computed from this PR's \($p.commits | length) individual commit(s) — squash-safe, a squash-merge cannot erase them — folded with what is already merged on the base branch since **\($cur)**. Pushing more commits updates this comment."
-          end) as $footer |
-
-          (["<!-- glyph-pr-verdict -->", $headline, ""]
-            + (if ($rows | length) > 0 then
-                ["| commit | code | bump |", "|---|---|---|"] + $rows + [""]
-              else [] end)
-            + [$footer])
-          | join("\n")
-          JQ
-          jq -r -n \
-            --slurpfile pr "$RUNNER_TEMP/pr.json" \
-            --slurpfile pending "$RUNNER_TEMP/pending.json" \
-            --argjson untagged "$UNTAGGED" \
-            -f "$RUNNER_TEMP/compose.jq" > "$RUNNER_TEMP/body.md"
           cid="$(gh api "repos/$GH_REPO_SLUG/issues/$PR_NUMBER/comments" --paginate \
             --jq '[.[] | select(.body | startswith("<!-- glyph-pr-verdict -->"))][0].id // empty')"
           if [ -n "$cid" ]; then

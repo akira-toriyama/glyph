@@ -8,16 +8,17 @@ the gitmoji that leads each commit.
 > `lint` (`--range` / `--message` / `--stdin`), `bump` / `notes` over a local
 > range (`--range`), a **pull request's individual, pre-squash commits**
 > (`--pr`) or the release-time walk (`--since-tag`), and `release` (rolling
-> DRAFT upsert) all work. Three reusable workflows ship from this repo at each
-> tag: `lint.yml` (commit lint), `release.yml` (rolling-draft release) and
-> `pr-verdict.yml` (a sticky PR comment previewing what merging the PR does
-> to the version — it runs anywhere, not just on rolling-draft repos).
+> DRAFT upsert), and `preview` (the whole PR comment) all work. Three reusable
+> workflows ship from this repo at each tag: `lint.yml` (commit lint),
+> `release.yml` (rolling-draft release) and `pr-verdict.yml` (the merge
+> preview — it runs anywhere, not just on rolling-draft repos).
 > See [`docs/DESIGN.md`](docs/DESIGN.md) for the full design.
 
 ```sh
 # Squash-safe: reads the commits INSIDE the PR, which the squash would erase.
-glyph bump  --pr 7   # → v0.3.0   (a :sparkles: rides with a :white_check_mark:)
-glyph notes --pr 7   # → the Markdown body, none-bump commits left out
+glyph bump    --pr 7   # → v0.3.0   (a :sparkles: rides with a :white_check_mark:)
+glyph notes   --pr 7   # → the Markdown body, none-bump commits left out
+glyph preview --pr 7   # → the whole PR comment: what merging #7 does to the version
 ```
 
 In GitHub Actions no flags are needed: `--repo` defaults to `$GITHUB_REPOSITORY`,
