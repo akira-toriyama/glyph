@@ -119,6 +119,22 @@ func TestCompositeActionIsSingleSource(t *testing.T) {
 		}
 	}
 
+	// The github context is NOT available when a composite action's manifest is
+	// loaded — a `${{ github.* }}` expression in a live scalar (even an input
+	// description string, which GitHub still template-evaluates) fails the load
+	// with "Unrecognized named-value: 'github'" the first time the action is used.
+	// That shipped once in v0.6.0 and only a canary caught it, because nothing
+	// loads the manifest until a workflow actually calls the action. Checked
+	// against comment-stripped text: GitHub's YAML parser drops comments before
+	// the template evaluator runs, so a github expression in the header's usage
+	// example (a comment) is fine — only a live one breaks the load.
+	body := code(raw)
+	if strings.Contains(body, "${{ github.") || strings.Contains(body, "${{github.") {
+		t.Error("install action.yml references the github context in a `${{ github.* }}` " +
+			"expression outside a comment; that context is unavailable at manifest-load time " +
+			"and fails the action load. Pass what you need as an input from the calling workflow step instead.")
+	}
+
 	// It must serve BOTH runner families: the whole point of extracting it was
 	// that the inline copies had diverged (linux_amd64 + sha256sum vs
 	// darwin_arm64 + shasum). Collapsing it back to one platform would re-break
