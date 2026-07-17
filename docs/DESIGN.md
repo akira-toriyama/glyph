@@ -10,9 +10,10 @@ by `glyph rules`. This document is the *why* and the *shape*.
 The fleet squash-merges everywhere. GitHub's
 `squash_merge_commit_title = COMMIT_OR_PR_TITLE` rewrites the squash subject to
 the **PR title** on any multi-commit PR, erasing per-commit types from `main`.
-Every "read `main`'s linear history" tool (git-cliff today, semantic-release,
-cocogitto) is therefore fooled. glyph instead derives the bump and notes from the
-**individual commits inside the PR**, and makes gitmoji the type driver.
+Every tool that types a release from **commit text** (git-cliff today,
+semantic-release, release-please, cocogitto) is therefore fooled. glyph instead
+derives the bump and notes from the **individual commits inside the PR**, and
+makes gitmoji the type driver.
 
 Two inversions from the prior house convention:
 
@@ -22,6 +23,38 @@ Two inversions from the prior house convention:
 - **The bump is computed from the PR's individual commits at merge time**, not
   from `main`'s post-squash history — the one thing git-cliff structurally
   cannot do, and the reason a self-built tool is justified.
+
+A 2026-07-17 survey of the field (release-drafter, release-please, changesets,
+knope, tagpr, semantic-release, python-semantic-release, git-cliff, and the
+gitmoji plugins) placed those two claims precisely — see the t-q5e1 task body
+for the cited detail. What it changed:
+
+- **The scope of "fooled" is commit-text readers, not all history readers.**
+  release-drafter reads `main` and is NOT fooled, because it types from PR labels
+  and changed paths and never looks at commit text at all.
+- **Only the second hop is novel.** The squash-commit → PR resolution glyph does
+  in `--since-tag` is prior art: release-drafter runs the identical
+  `associatedPullRequests` hop, and release-please resolves a squash commit to
+  its PR to read a human override out of the PR *body*. Neither re-expands the
+  PR into its own commits — release-drafter's PR fragment has no `commits`
+  connection, and its version resolver structurally cannot see commit text.
+  python-semantic-release does recover per-commit types under squash, but by
+  parsing the squash **body** for a bullet list — the text GitHub drops unless
+  `squash_merge_commit_message = COMMIT_MESSAGES`. That fragility is the reason
+  to read the API instead of the message.
+- **gitmoji-as-type is NOT novel** and must not be sold as such:
+  `semantic-release-gitmoji` and python-semantic-release's `EmojiCommitParser`
+  both map textual shortcodes to semver with nearly glyph's own defaults, and the
+  latter uses the same subject grammar. glyph's table is bigger (75 codes) and
+  compiled in rather than configured; that is a packaging choice, not an invention.
+- **Deferring the tag to publish is NOT a differentiator** — inherent to any
+  draft-based tool (release-drafter carries `tag_name` on the unpublished draft
+  exactly as glyph does).
+- **Two real differentiators worth defending**: glyph can resolve to *no release*
+  (release-drafter falls back to `patch` whenever no category matches, so it can
+  never say "nothing shipped"), and glyph's walk is self-baselining
+  (release-drafter requires a previously PUBLISHED release or it warns and returns
+  nothing — which is also the strongest argument for the backlogged initial-tag knob).
 
 Only permitted external dependency: the gitmoji spec dataset. (cobra is the lone
 runtime import, per house pattern.)

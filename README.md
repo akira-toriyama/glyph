@@ -29,13 +29,35 @@ the credential to `$GITHUB_TOKEN` (else `$GH_TOKEN`).
 The fleet uses **squash-and-merge** everywhere. GitHub's
 `squash_merge_commit_title = COMMIT_OR_PR_TITLE` rewrites the squash subject to
 the **PR title** on any multi-commit PR, so the per-commit types are erased from
-`main`. Any tool that reads `main`'s history (git-cliff, semantic-release,
-cocogitto) is fooled — a PR titled `chore: cleanup` that contained a feature
-silently ships no minor bump.
+`main`. Every tool that types a release from **commit text** (git-cliff,
+semantic-release, release-please, cocogitto) is fooled by this — a PR titled
+`chore: cleanup` that contained a feature silently ships no minor bump.
 
-glyph derives the bump and notes from the **individual commits inside the PR**
-(re-read at release time), so squash-merge can never lose them. And it makes the
-**gitmoji first-class**: the leading `:code:` *is* the change type.
+glyph derives the bump and notes from the **individual commits inside the PR**,
+read over the API and re-read at release time, so the squash can never lose them.
+
+**What is actually new here is that second hop.** The rest of the field either
+routes around commit text or stops one step short of it:
+
+| tool | how it dodges the squash | where it stops |
+|---|---|---|
+| release-drafter | never reads commit text — types from PR **labels** + paths | resolves each commit to its PR, but the PR fragment has no `commits` — it never re-expands one |
+| release-please | reads the merged PR over the API — but its **body**, a human-written override | recommends squash *specifically to discard* intra-PR types |
+| semantic-release | asks you to constrain the **PR title** instead | maintainers hold that pre-squash commits are disposable by design |
+| python-semantic-release | un-squashes by parsing the squash **body text** | breaks exactly when GitHub drops that text |
+| changesets / knope | moves the signal out of commits into **intent files** | squash-safety is a side effect, not a goal |
+| tagpr | types from **PR labels** | resolves PRs, never their commits |
+
+So the squash-commit → PR hop is prior art. Reading **that PR's own commits** to
+type the release is the part nothing else does — and it is why glyph exists.
+
+Two things glyph does **not** claim as novel: the gitmoji vocabulary
+(`semantic-release-gitmoji` and python-semantic-release's `EmojiCommitParser`
+ship nearly the same `:boom:`/`:sparkles:`/`:bug:` mapping), and deferring the
+tag until a human publishes (any draft-based tool does that). What it does add
+beyond the second hop: a verdict that can be **no release at all** (release-drafter
+falls back to `patch` when nothing matches), and a walk that needs **no published
+release as a baseline**.
 
 ## Commit format
 
