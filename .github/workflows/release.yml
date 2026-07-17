@@ -40,7 +40,7 @@ name: glyph-release
 #   permissions: { contents: write }
 #   jobs:
 #     release:
-#       uses: akira-toriyama/glyph/.github/workflows/release.yml@v0.3.0  # pin a release tag
+#       uses: akira-toriyama/glyph/.github/workflows/release.yml@v0.4.0  # pin a release tag
 #       with:
 #         app: Facet              # → Facet.app / Facet.zip, binary `facet`
 #         smoke: false            # true → run `<App>.app/Contents/MacOS/<app> --validate`
@@ -83,7 +83,7 @@ on:
           tag (bumped right before tagging), so a caller pinned to @vX.Y.Z
           runs binary vX.Y.Z.
         type: string
-        default: v0.3.0
+        default: v0.4.0
 
 permissions:
   contents: write
