@@ -222,6 +222,41 @@ is structural: writes are draft-only, a human publishes, the published floor
 guards the tag space, and `--dry-run` previews any verdict. Full rollout:
 tracked in the `projects` furrow task and the approved plan.
 
+The install itself — download the pinned tarball, verify it against the
+release's `checksums.txt` AND its build provenance (`gh attestation verify`,
+fail-closed, bounded retry), add it to `PATH` — lives in ONE composite action,
+`.github/actions/install`, auto-detecting the runner's OS/arch (it serves the
+Linux lint/preview jobs and the macOS release job from one file; the inline
+copies it replaced had already drifted — two `linux_amd64` + `sha256sum`, one
+`darwin_arm64` + `shasum`). glyph's own three reusables reach it by checking out
+glyph's source at the commit the caller pinned (`job.workflow_sha`) and using a
+relative `uses:` against that checkout — NOT the full `owner/repo/path@tag` form.
+A relative `uses:` inside a reusable workflow resolves against the CALLER's
+workspace, never the reusable's own repo, so a bare `./…` would look for the
+action in the consumer's tree; the self-checkout puts glyph's tree there. The
+binary version is derived from `job.workflow_ref` (the tag the caller pinned),
+so it cannot drift from the workflow revision — replacing a hand-bumped
+`glyph-version` default that did drift once (lint.yml sat at v0.4.0 through the
+v0.5.0 tag while callers pinned @v0.5.0); `internal/workflows` tests guard both
+the single-source install and the derived version.
+
+A CONSUMER that just wants the glyph CLI on a laptop-in-CI (e.g. a macOS
+`swift package diagnose-api-breaking-changes` gate that also reads
+`glyph bump --range "$BASE..HEAD" --json | jq -r .level` — the same rules,
+no gate reimplementing the convention) references the action the ordinary way,
+by full path pinned to a release tag:
+
+```yaml
+- uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z
+  with:
+    version: vX.Y.Z              # the tag you pinned above
+    token: ${{ github.token }}   # for `gh attestation verify`
+- run: glyph bump --range "$BASE..HEAD" --json   # exit 1 on a none verdict — handle it
+```
+
+The consuming job needs `permissions: contents: read` and a `GH_TOKEN`/`token`
+for the attestation verify.
+
 ## 7. Roadmap
 
 Phase 0 scaffold (this) → 1 gitmoji table → 2 parser+bump+lint → 3 lint reusable

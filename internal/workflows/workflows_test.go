@@ -1,0 +1,131 @@
+package workflows
+
+import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+)
+
+// The three reusable workflows that install glyph to run it against a caller's
+// repo. Each MUST reach the binary through the shared composite action, never
+// through its own inline copy of the download.
+var reusables = []string{"lint.yml", "pr-verdict.yml", "release.yml"}
+
+// Tokens that belong ONLY in the composite action .github/actions/install now.
+// If any reappears in a reusable's executable body, the security-critical
+// install logic has been re-inlined — the exact duplication (and the
+// linux/darwin drift) this extraction removed. Checked against comment-stripped
+// text so the header prose ("provenance-verified with `gh attestation verify`")
+// does not trip it.
+var installOnlyTokens = []string{
+	"gh attestation verify",
+	"releases/download",
+	"sha256sum",
+	"shasum",
+	"curl",
+}
+
+// A hand-bumped version default — `default: v0.4.0` — is the lockstep-drift
+// source this PR removed: lint.yml sat at v0.4.0 through the v0.5.0 tag while
+// callers pinned @v0.5.0. The reusables now derive the version from
+// job.workflow_ref, so no reusable may carry a concrete version default.
+var hardcodedVersionDefault = regexp.MustCompile(`(?m)default:\s*["']?v[0-9]`)
+
+// fullLineComment matches a YAML line that is only a comment (optional indent,
+// then '#'). Trailing inline comments are left in place; none of the sentinels
+// below appear in one, and stripping them would risk cutting `#` inside a
+// quoted string.
+var fullLineComment = regexp.MustCompile(`(?m)^[ \t]*#.*$`)
+
+func repoFile(t *testing.T, rel string) string {
+	t.Helper()
+	// The test runs in internal/workflows; the repo root is two levels up
+	// (mirrors internal/gitmoji's golden-file test).
+	b, err := os.ReadFile(filepath.Join("..", "..", rel))
+	if err != nil {
+		t.Fatalf("reading %s: %v", rel, err)
+	}
+	return string(b)
+}
+
+// code returns the workflow text with whole-line comments removed, so an
+// assertion about the executable body is not fooled by documentation prose.
+func code(raw string) string {
+	return fullLineComment.ReplaceAllString(raw, "")
+}
+
+func TestReusablesInstallThroughComposite(t *testing.T) {
+	for _, name := range reusables {
+		t.Run(name, func(t *testing.T) {
+			raw := repoFile(t, filepath.Join(".github", "workflows", name))
+			body := code(raw)
+
+			// The install logic must be gone from the executable body...
+			for _, tok := range installOnlyTokens {
+				if strings.Contains(body, tok) {
+					t.Errorf("%s still contains inline install token %q; it belongs only in "+
+						".github/actions/install/action.yml (re-inlining reintroduces the "+
+						"duplicated, drift-prone download)", name, tok)
+				}
+			}
+
+			// ...and replaced by a reference to the shared composite action.
+			if !strings.Contains(raw, "./.glyph-action/.github/actions/install") {
+				t.Errorf("%s does not use the shared install action "+
+					"(expected `uses: ./.glyph-action/.github/actions/install`)", name)
+			}
+
+			// The self-checkout mechanism must be present: a relative `uses:` in
+			// a reusable workflow resolves against the CALLER's workspace, so the
+			// action is reachable only by checking out glyph's own source at the
+			// pinned commit.
+			for _, want := range []string{
+				"job.workflow_repository",
+				"job.workflow_sha",
+				"job.workflow_ref",
+			} {
+				if !strings.Contains(raw, want) {
+					t.Errorf("%s is missing %s; without the self-checkout the install "+
+						"action cannot be reached and the version cannot be derived", name, want)
+				}
+			}
+
+			// No hand-bumped version default may return.
+			if loc := hardcodedVersionDefault.FindString(raw); loc != "" {
+				t.Errorf("%s carries a hardcoded version default (%q); the version must be "+
+					"derived from job.workflow_ref so it cannot drift out of lockstep", name, strings.TrimSpace(loc))
+			}
+		})
+	}
+}
+
+func TestCompositeActionIsSingleSource(t *testing.T) {
+	raw := repoFile(t, filepath.Join(".github", "actions", "install", "action.yml"))
+
+	if !strings.Contains(raw, "using: composite") {
+		t.Error("install action is not `using: composite`")
+	}
+
+	// The install internals live here and only here.
+	for _, want := range []string{
+		"gh attestation verify",
+		"--signer-workflow akira-toriyama/glyph/.github/workflows/goreleaser.yml",
+		"releases/download",
+	} {
+		if !strings.Contains(raw, want) {
+			t.Errorf("install action is missing %q — it is meant to be the single source of the install logic", want)
+		}
+	}
+
+	// It must serve BOTH runner families: the whole point of extracting it was
+	// that the inline copies had diverged (linux_amd64 + sha256sum vs
+	// darwin_arm64 + shasum). Collapsing it back to one platform would re-break
+	// whichever job runs on the other.
+	for _, want := range []string{"linux", "darwin", "sha256sum", "shasum", "RUNNER_OS", "RUNNER_ARCH"} {
+		if !strings.Contains(raw, want) {
+			t.Errorf("install action is missing %q — it must auto-detect OS/arch to serve the Linux and macOS jobs alike", want)
+		}
+	}
+}
