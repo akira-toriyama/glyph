@@ -172,7 +172,10 @@ Always `-race`.
 
 Rules ship inside the binary (no synced config table — that would recreate
 per-repo drift). glyph ships its own reusable workflows (`lint.yml`,
-`release.yml`) that install the pinned binary with checksum + attestation verify;
+`release.yml`, `pr-verdict.yml` — the merge preview: one sticky PR comment
+predicting the bump and the rolling draft's landing spot from the PR's
+individual commits folded with what is already pending on main) that install
+the pinned binary with checksum + attestation verify;
 family repos consume them at a concrete `@vX.Y.Z` (never a moving tag — binary
 and workflow ship from one repo at one tag). glyph's OWN tag-driven GoReleaser
 workflow is `goreleaser.yml` — also the attestation signer identity from v0.3.0

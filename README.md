@@ -8,8 +8,10 @@ the gitmoji that leads each commit.
 > `lint` (`--range` / `--message` / `--stdin`), `bump` / `notes` over a local
 > range (`--range`), a **pull request's individual, pre-squash commits**
 > (`--pr`) or the release-time walk (`--since-tag`), and `release` (rolling
-> DRAFT upsert) all work. Two reusable workflows ship from this repo at each
-> tag: `lint.yml` (commit lint) and `release.yml` (rolling-draft release).
+> DRAFT upsert) all work. Three reusable workflows ship from this repo at each
+> tag: `lint.yml` (commit lint), `release.yml` (rolling-draft release) and
+> `pr-verdict.yml` (a sticky PR comment previewing the bump and where the
+> rolling draft lands if the PR merges).
 > See [`docs/DESIGN.md`](docs/DESIGN.md) for the full design.
 
 ```sh
