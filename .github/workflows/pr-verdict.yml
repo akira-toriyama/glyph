@@ -71,12 +71,13 @@ on:
     inputs:
       glyph-version:
         description: >-
-          The glyph release whose binary computes the verdict (vX.Y.Z). The
-          default is kept in LOCKSTEP with this file's own release tag
-          (bumped right before tagging), so a caller pinned to @vX.Y.Z runs
-          binary vX.Y.Z.
+          Override the glyph release whose binary computes the verdict (vX.Y.Z).
+          Leave empty (the default) and the version is derived from the tag the
+          caller pinned this reusable to (job.workflow_ref), so @vX.Y.Z runs
+          binary vX.Y.Z automatically. Set it only when pinning a non-tag ref (a
+          branch or SHA), which has no release binary to derive.
         type: string
-        default: v0.5.0
+        default: ""
 
 permissions:
   contents: read
@@ -110,44 +111,45 @@ jobs:
           # .git/config (zizmor artipacked).
           persist-credentials: false
 
-      - name: Install glyph (pinned release binary, checksum + provenance verified)
+      # Resolve the binary version from the tag the caller pinned this reusable
+      # to (job.workflow_ref = …@refs/tags/vX.Y.Z), so the tag IS the version —
+      # no hand-bumped default to drift. The override input covers a branch/SHA
+      # pin, which has no release binary to derive from.
+      - name: Resolve the pinned glyph version
+        id: glyph
         env:
-          VER: ${{ inputs.glyph-version }}
-          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+          OVERRIDE: ${{ inputs.glyph-version }}
         run: |
           set -euo pipefail
-          ver="$VER"
-          base="https://github.com/akira-toriyama/glyph/releases/download/$ver"
-          file="glyph_${ver#v}_linux_amd64.tar.gz"
-          curl -fsSL --retry 3 -o "/tmp/$file" "$base/$file"
-          curl -fsSL --retry 3 -o /tmp/glyph-checksums.txt "$base/checksums.txt"
-          ( cd /tmp && grep -F "  $file" glyph-checksums.txt | sha256sum -c - )
-          # Provenance gate: the sha256 above only proves the tarball matches
-          # THIS release's own checksums.txt (self-consistent — a forged
-          # release could ship a matching pair). `gh attestation verify` also
-          # proves the artifact was built by glyph's release workflow
-          # (goreleaser.yml — the signer identity for v0.3.0+). Fail-closed,
-          # with a bounded retry mirroring the curls' `--retry 3`: the
-          # attestations API / Sigstore transparency log can blip, and an
-          # advisory preview must not go red on a transient hiccup. Still
-          # hard-fails after the last attempt.
-          for i in 1 2 3; do
-            if gh attestation verify "/tmp/$file" \
-                 --repo akira-toriyama/glyph \
-                 --signer-workflow akira-toriyama/glyph/.github/workflows/goreleaser.yml; then
-              break
-            fi
-            if [ "$i" -eq 3 ]; then
-              echo "attestation verification failed after 3 attempts" >&2
-              exit 1
-            fi
-            echo "attestation verify failed (attempt $i); retrying" >&2
-            sleep "$((i * 3))"
-          done
-          mkdir -p "$HOME/.local/bin"
-          tar -xzf "/tmp/$file" -C "$HOME/.local/bin" glyph
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/glyph" version
+          if [ -n "${OVERRIDE:-}" ]; then
+            echo "version=$OVERRIDE" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          ref="${WORKFLOW_REF##*@}"
+          case "$ref" in
+            refs/tags/*) echo "version=${ref#refs/tags/}" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::glyph-pr-verdict is pinned to a non-tag ref ($ref); pass glyph-version to pick a release binary."; exit 1 ;;
+          esac
+
+      # Check out glyph's OWN source at the pinned commit so the install action
+      # is available locally — a relative `uses:` in a reusable workflow resolves
+      # against the CALLER's workspace, not glyph's, so the action must be
+      # checked out here. AFTER the caller checkout above, whose workspace-root
+      # clean would otherwise wipe this untracked subdirectory.
+      - name: Check out glyph's install action at the pinned commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .glyph-action
+          persist-credentials: false
+
+      - name: Install glyph (pinned release binary, checksum + provenance verified)
+        uses: ./.glyph-action/.github/actions/install
+        with:
+          version: ${{ steps.glyph.outputs.version }}
+          token: ${{ github.token }}
 
       # ONE call composes the whole comment: glyph folds its own two verdicts
       # (this PR's individual commits, and what is already merged but
