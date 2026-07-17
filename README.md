@@ -10,8 +10,8 @@ the gitmoji that leads each commit.
 > (`--pr`) or the release-time walk (`--since-tag`), and `release` (rolling
 > DRAFT upsert) all work. Three reusable workflows ship from this repo at each
 > tag: `lint.yml` (commit lint), `release.yml` (rolling-draft release) and
-> `pr-verdict.yml` (a sticky PR comment previewing the bump and where the
-> rolling draft lands if the PR merges).
+> `pr-verdict.yml` (a sticky PR comment previewing what merging the PR does
+> to the version — it runs anywhere, not just on rolling-draft repos).
 > See [`docs/DESIGN.md`](docs/DESIGN.md) for the full design.
 
 ```sh
