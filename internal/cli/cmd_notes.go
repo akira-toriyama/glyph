@@ -32,10 +32,11 @@ func newNotesCmd() *cobra.Command {
 		Long: "notes renders the release-notes body: every participating commit (bots,\n" +
 			"merges, autosquash artifacts and raw git reverts are excluded) groups under\n" +
 			"its gitmoji's section, breaking commits hoist into Breaking Changes, and\n" +
-			"none-bump commits stay out. --range reads a local git revision range; --pr\n" +
-			"reads a pull request's INDIVIDUAL commits over the API, so a squash-merge\n" +
-			"cannot collapse them into one line. stdout is the Markdown body (pipe it\n" +
-			"into a release step); --json emits {sections,reason}. Nothing\n" +
+			"sectionless commits stay out — though a none-bump removal (:fire:/:coffin:/\n" +
+			":truck:) still surfaces under Removals. --range reads a local git revision\n" +
+			"range; --pr reads a pull request's INDIVIDUAL commits over the API, so a\n" +
+			"squash-merge cannot collapse them into one line. stdout is the Markdown body\n" +
+			"(pipe it into a release step); --json emits {sections,reason}. Nothing\n" +
 			"release-worthy prints no body and exits 1 (soft no-release).",
 		Args: sinceTagArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {

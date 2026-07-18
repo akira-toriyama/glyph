@@ -16,7 +16,7 @@ var update = flag.Bool("update", false, "rewrite golden files")
 // this order and skip the empty ones; pinning it here catches a reordering or a
 // rename in rules.json.
 var wantSections = []string{
-	"Breaking Changes", "Features", "Fixes", "Performance", "Security",
+	"Breaking Changes", "Removals", "Features", "Fixes", "Performance", "Security",
 	"Reverts", "UI & UX", "Data", "Dependencies", "Deprecations",
 	"Feature Flags", "Other",
 }
@@ -95,8 +95,8 @@ func TestLoadBearingAndRatifiedDeviations(t *testing.T) {
 }
 
 // TestRuleInvariants: every code is a well-formed, unique textual gitmoji with a
-// valid bump; a none row carries no section, and a version-moving row carries a
-// section drawn from the ratified list.
+// valid bump; a version-moving row carries a section, and any section a row names
+// (version-moving or a none-bump removal) is drawn from the ratified list.
 func TestRuleInvariants(t *testing.T) {
 	tbl := mustLoad(t)
 	sectionSet := map[string]bool{}
@@ -121,17 +121,51 @@ func TestRuleInvariants(t *testing.T) {
 		if r.Meaning == "" {
 			t.Errorf("code %q has no meaning", r.Code)
 		}
-		switch r.Bump {
-		case BumpNone:
-			if r.Section != "" {
-				t.Errorf("none code %q must carry no section, got %q", r.Code, r.Section)
-			}
-		default:
-			if r.Section == "" {
-				t.Errorf("version-moving code %q (%s) must carry a section", r.Code, r.Bump)
-			} else if !sectionSet[r.Section] {
-				t.Errorf("code %q references unknown section %q", r.Code, r.Section)
-			}
+		if r.Bump != BumpNone && r.Section == "" {
+			t.Errorf("version-moving code %q (%s) must carry a section", r.Code, r.Bump)
+		}
+		if r.Section != "" && !sectionSet[r.Section] {
+			t.Errorf("code %q references unknown section %q", r.Code, r.Section)
+		}
+	}
+}
+
+// TestParseTableAllowsNoneCodeWithSection: notes visibility is decoupled from
+// the version bump — a none-bump code MAY carry a (known) section so a removal
+// reaches the release notes without moving the version. The retained half of
+// the invariant (a version-moving code must carry a section) is covered by
+// TestLoadRejectsInvalid's "version-mover missing section" case.
+func TestParseTableAllowsNoneCodeWithSection(t *testing.T) {
+	data := `{"version":"x","sections":["Removals"],"codes":[` +
+		`{"code":":fire:","emoji":"🔥","meaning":"Remove code or files.","bump":"none","section":"Removals"}]}`
+	tbl, err := parseTable([]byte(data))
+	if err != nil {
+		t.Fatalf("parseTable rejected a none code carrying a known section: %v", err)
+	}
+	r, ok := tbl.Lookup(":fire:")
+	if !ok || r.Bump != BumpNone || r.Section != "Removals" {
+		t.Fatalf("Lookup(:fire:) = %+v, %v; want bump=none section=Removals", r, ok)
+	}
+}
+
+// TestRemovalCodesAreNotesVisible: the three removal/rename codes stay bump=none
+// (they must not move the version) yet carry the Removals section, so an honest
+// :fire:/:coffin:/:truck: still surfaces in the release notes — closing the sill
+// catppuccin-latte gap (a public preset pruned under :fire: with zero notes
+// signal).
+func TestRemovalCodesAreNotesVisible(t *testing.T) {
+	tbl := mustLoad(t)
+	for _, code := range []string{":fire:", ":coffin:", ":truck:"} {
+		r, ok := tbl.Lookup(code)
+		if !ok {
+			t.Errorf("Lookup(%q): not found", code)
+			continue
+		}
+		if r.Bump != BumpNone {
+			t.Errorf("%s bump = %q, want none (a removal must not move the version)", code, r.Bump)
+		}
+		if r.Section != "Removals" {
+			t.Errorf("%s section = %q, want Removals (notes visibility)", code, r.Section)
 		}
 	}
 }
@@ -243,7 +277,7 @@ func TestLoadRejectsInvalid(t *testing.T) {
 		{"empty meaning", `{"version":"x","sections":["Fixes"],"codes":[{"code":":bug:","emoji":"🐛","meaning":"","bump":"patch","section":"Fixes"}]}`},
 		{"bad bump", `{"version":"x","sections":["Features"],"codes":[{"code":":sparkles:","emoji":"✨","meaning":"m","bump":"huge","section":"Features"}]}`},
 		{"malformed code", `{"version":"x","sections":["Features"],"codes":[{"code":"sparkles","emoji":"✨","meaning":"m","bump":"minor","section":"Features"}]}`},
-		{"none with section", `{"version":"x","sections":["Features"],"codes":[{"code":":memo:","emoji":"📝","meaning":"m","bump":"none","section":"Features"}]}`},
+		{"none with unknown section", `{"version":"x","sections":["Features"],"codes":[{"code":":memo:","emoji":"📝","meaning":"m","bump":"none","section":"Removals"}]}`},
 		{"unknown section", `{"version":"x","sections":["Features"],"codes":[{"code":":bug:","emoji":"🐛","meaning":"m","bump":"patch","section":"Nope"}]}`},
 		{"version-mover missing section", `{"version":"x","sections":["Features"],"codes":[{"code":":bug:","emoji":"🐛","meaning":"m","bump":"patch","section":""}]}`},
 		{"duplicate code", `{"version":"x","sections":["Features"],"codes":[{"code":":bug:","emoji":"🐛","meaning":"m","bump":"patch","section":"Features"},{"code":":bug:","emoji":"🐛","meaning":"m","bump":"patch","section":"Features"}]}`},

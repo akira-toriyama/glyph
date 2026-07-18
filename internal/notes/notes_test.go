@@ -122,6 +122,35 @@ func TestGroupSkipsNone(t *testing.T) {
 	}
 }
 
+// TestGroupRemovalsAreNotesVisible: a removal/rename commit (:fire:/:coffin:/
+// :truck:, all bump=none) is section-routed into Removals — notes inclusion
+// follows the rule's section, not its bump, so an honest deletion no longer
+// vanishes from the release notes. The flag stays false: a removal reaches its
+// section on its own, it is not a breaking-flag hoist.
+func TestGroupRemovalsAreNotesVisible(t *testing.T) {
+	table := loadTable(t)
+	commits := []parser.Commit{
+		{Gitmoji: ":fire:", Scope: "Palette", Subject: "prune catppuccin-latte", SHA: sha("a")},
+		{Gitmoji: ":coffin:", Subject: "drop the dead legacy shim", SHA: sha("b")},
+		{Gitmoji: ":truck:", Subject: "rename paletteFor to themeFor", SHA: sha("c")},
+	}
+	sections, err := Group(commits, table)
+	if err != nil {
+		t.Fatalf("Group: %v", err)
+	}
+	if len(sections) != 1 || sections[0].Title != "Removals" {
+		t.Fatalf("removals must group under a single Removals section, got %+v", sections)
+	}
+	if n := len(sections[0].Entries); n != 3 {
+		t.Fatalf("Removals carries %d entries, want 3 (fire/coffin/truck)", n)
+	}
+	for _, e := range sections[0].Entries {
+		if e.Breaking {
+			t.Errorf("a removal is section-routed, not a breaking-flag hoist; breaking must stay false, got %+v", e)
+		}
+	}
+}
+
 // TestGroupUnknownCodeIsLint: an unknown gitmoji is a hard lint error naming
 // the code and the commit — never a silent skip.
 func TestGroupUnknownCodeIsLint(t *testing.T) {
@@ -166,11 +195,12 @@ func TestGroupKeepsEntryOrder(t *testing.T) {
 	}
 }
 
-// TestGroupEveryVersionMovingRuleHasAHome: exhaustively over the embedded
-// table, every version-moving code groups into its declared section and every
-// none code stays out — so a rules.json edit can never orphan a code from the
-// notes. Also pins that the table knows the breaking section by name.
-func TestGroupEveryVersionMovingRuleHasAHome(t *testing.T) {
+// TestGroupEveryRuleGroupsBySection: exhaustively over the embedded table, a
+// code with a section groups into that section and a sectionless code stays out
+// — inclusion tracks the section, not the bump, so a none-bump removal still has
+// a home. So a rules.json edit can never orphan a code from the notes. Also pins
+// that the table knows the breaking section by name.
+func TestGroupEveryRuleGroupsBySection(t *testing.T) {
 	table := loadTable(t)
 	if !slices.Contains(table.Sections, BreakingSection) {
 		t.Fatalf("the embedded table's sections %v must include %q", table.Sections, BreakingSection)
@@ -182,9 +212,9 @@ func TestGroupEveryVersionMovingRuleHasAHome(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Group(%s): %v", r.Code, err)
 		}
-		if r.Bump == gitmoji.BumpNone {
+		if r.Section == "" {
 			if len(sections) != 0 {
-				t.Errorf("none code %s must stay out of the notes, got %+v", r.Code, sections)
+				t.Errorf("sectionless code %s must stay out of the notes, got %+v", r.Code, sections)
 			}
 			continue
 		}
@@ -205,13 +235,18 @@ func TestRenderGolden(t *testing.T) {
 	}{
 		{
 			// Section order, the breaking hoist (a none code included), a
-			// scoped and an unscoped entry, and a none commit dropped.
+			// scoped and an unscoped entry, and a none commit dropped. Two
+			// none-bump removals — a :fire: prune and a :truck: rename —
+			// surface under Removals, pinning that it renders right after
+			// Breaking Changes and that both codes coalesce into one section.
 			name: "kitchen_sink",
 			commits: []parser.Commit{
 				{Gitmoji: ":recycle:", Subject: "rework the store layout", SHA: sha("d"), Breaking: true},
 				{Gitmoji: ":sparkles:", Scope: "ui", Subject: "add a command palette", SHA: sha("a")},
 				{Gitmoji: ":memo:", Subject: "document the palette", SHA: sha("9")},
 				{Gitmoji: ":boom:", Subject: "drop the v1 config format", SHA: sha("e")},
+				{Gitmoji: ":fire:", Subject: "prune the legacy theme presets", SHA: sha("7")},
+				{Gitmoji: ":truck:", Scope: "api", Subject: "rename paletteFor to themeFor", SHA: sha("8")},
 				{Gitmoji: ":bug:", Subject: "fix a crash when the config is empty", SHA: sha("b")},
 				{Gitmoji: ":bug:", Scope: "parser", Subject: "keep CRLF messages parsing", SHA: sha("c")},
 				{Gitmoji: ":zap:", Subject: "speed up rule lookup", SHA: sha("f")},

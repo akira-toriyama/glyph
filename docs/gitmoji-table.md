@@ -10,7 +10,7 @@ Spec: **gitmoji-3.15.0** · 75 codes · bump lattice `none < patch < minor < maj
 |-------|------|---------|------|---------|
 | 🎨 | `:art:` | Improve structure / format of the code. | none | — |
 | ⚡️ | `:zap:` | Improve performance. | patch | Performance |
-| 🔥 | `:fire:` | Remove code or files. | none | — |
+| 🔥 | `:fire:` | Remove code or files. | none | Removals |
 | 🐛 | `:bug:` | Fix a bug. | patch | Fixes |
 | 🚑️ | `:ambulance:` | Critical hotfix. | patch | Fixes |
 | ✨ | `:sparkles:` | Introduce new features. | minor | Features |
@@ -42,7 +42,7 @@ Spec: **gitmoji-3.15.0** · 75 codes · bump lattice `none < patch < minor < maj
 | 🔀 | `:twisted_rightwards_arrows:` | Merge branches. | none | — |
 | 📦️ | `:package:` | Add or update compiled files or packages. | patch | Dependencies |
 | 👽️ | `:alien:` | Update code due to external API changes. | patch | Fixes |
-| 🚚 | `:truck:` | Move or rename resources (e.g.: files, paths, routes). | none | — |
+| 🚚 | `:truck:` | Move or rename resources (e.g.: files, paths, routes). | none | Removals |
 | 📄 | `:page_facing_up:` | Add or update license. | none | — |
 | 💥 | `:boom:` | Introduce breaking changes. | major | Breaking Changes |
 | 🍱 | `:bento:` | Add or update assets. | patch | UI & UX |
@@ -72,7 +72,7 @@ Spec: **gitmoji-3.15.0** · 75 codes · bump lattice `none < patch < minor < maj
 | 🛂 | `:passport_control:` | Work on code related to authorization, roles and permissions. | patch | Security |
 | 🩹 | `:adhesive_bandage:` | Simple fix for a non-critical issue. | patch | Fixes |
 | 🧐 | `:monocle_face:` | Data exploration/inspection. | none | — |
-| ⚰️ | `:coffin:` | Remove dead code. | none | — |
+| ⚰️ | `:coffin:` | Remove dead code. | none | Removals |
 | 🧪 | `:test_tube:` | Add a failing test. | none | — |
 | 👔 | `:necktie:` | Add or update business logic. | patch | Fixes |
 | 🩺 | `:stethoscope:` | Add or update healthcheck. | none | — |
@@ -87,14 +87,15 @@ Spec: **gitmoji-3.15.0** · 75 codes · bump lattice `none < patch < minor < maj
 ## Notes sections (render order)
 
 1. Breaking Changes
-2. Features
-3. Fixes
-4. Performance
-5. Security
-6. Reverts
-7. UI & UX
-8. Data
-9. Dependencies
-10. Deprecations
-11. Feature Flags
-12. Other
+2. Removals
+3. Features
+4. Fixes
+5. Performance
+6. Security
+7. Reverts
+8. UI & UX
+9. Data
+10. Dependencies
+11. Deprecations
+12. Feature Flags
+13. Other

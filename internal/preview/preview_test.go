@@ -207,8 +207,8 @@ func TestRenderNotes(t *testing.T) {
 	}
 }
 
-// TestRenderNoNotesBlockWhenEmpty: a none-bump PR renders no notes, and an
-// empty <details> would be a dead disclosure triangle.
+// TestRenderNoNotesBlockWhenEmpty: an empty Notes preview renders no block, so
+// an empty <details> is never a dead disclosure triangle.
 func TestRenderNoNotesBlockWhenEmpty(t *testing.T) {
 	if got := Render(Input{Current: "v1.0.0"}); strings.Contains(got, "<details>") {
 		t.Errorf("rendered an empty details block:\n%s", got)

@@ -31,7 +31,7 @@ const CodeCount = 75
 type Bump string
 
 const (
-	BumpNone  Bump = "none"  // internal / non-shipping / meta — never moves the version, excluded from notes
+	BumpNone  Bump = "none"  // internal / non-shipping / meta — never moves the version; excluded from notes unless the code carries a section (removals do)
 	BumpPatch Bump = "patch" // a shipped, user-observable change
 	BumpMinor Bump = "minor" // a new feature (only :sparkles: auto-minors)
 	BumpMajor Bump = "major" // a breaking change (only :boom: auto-majors)
@@ -59,8 +59,10 @@ func (b Bump) Rank() int {
 func (b Bump) Valid() bool { return b.Rank() >= 0 }
 
 // Rule is one gitmoji's entry: the authoritative code / emoji / meaning from the
-// gitmoji spec, plus glyph's ratified bump and (for version-moving codes) the
-// release-notes section. A none rule carries no section (it never reaches notes).
+// gitmoji spec, plus glyph's ratified bump and the release-notes section. The
+// section is decoupled from the bump: every version-moving code carries one, and
+// a none code may carry one too — a removal (:fire:/:coffin:/:truck:) surfaces in
+// the notes without moving the version; omitting the section keeps a commit out.
 type Rule struct {
 	Code    string `json:"code"`
 	Emoji   string `json:"emoji"`
@@ -108,10 +110,11 @@ func Load() (*Table, error) {
 
 // parseTable decodes and structurally validates a rules table: a version, a
 // non-empty section list, and codes that are each a well-formed, unique textual
-// gitmoji with a valid bump and section-rung consistency (a none code carries no
-// section; a version-moving code carries one drawn from the section list). It
-// does NOT enforce the CodeCount — that is Load's contract for the canonical
-// embedded table, kept separate so this validator is reusable and testable.
+// gitmoji with a valid bump and section consistency (a version-moving code
+// carries a section; a none code may carry one too — a removal — or omit it;
+// any section named is drawn from the section list). It does NOT enforce the
+// CodeCount — that is Load's contract for the canonical embedded table, kept
+// separate so this validator is reusable and testable.
 func parseTable(data []byte) (*Table, error) {
 	var t Table
 	if err := json.Unmarshal(data, &t); err != nil {
@@ -147,17 +150,16 @@ func parseTable(data []byte) (*Table, error) {
 		if r.Meaning == "" {
 			return nil, fmt.Errorf("gitmoji: code %q has no meaning", r.Code)
 		}
-		if r.Bump == BumpNone {
-			if r.Section != "" {
-				return nil, fmt.Errorf("gitmoji: none code %q must carry no section, has %q", r.Code, r.Section)
-			}
-		} else {
-			if r.Section == "" {
-				return nil, fmt.Errorf("gitmoji: version-moving code %q (%s) must carry a section", r.Code, r.Bump)
-			}
-			if !sectionSet[r.Section] {
-				return nil, fmt.Errorf("gitmoji: code %q references unknown section %q", r.Code, r.Section)
-			}
+		// Notes visibility is decoupled from the bump. A version-moving code must
+		// carry a section (every shipping change is notes-visible); a none code
+		// may carry one — a removal (:fire:/:coffin:/:truck:) surfaces in the
+		// notes without moving the version — or omit it to stay out. Any section
+		// named must be drawn from the render-order list.
+		if r.Bump != BumpNone && r.Section == "" {
+			return nil, fmt.Errorf("gitmoji: version-moving code %q (%s) must carry a section", r.Code, r.Bump)
+		}
+		if r.Section != "" && !sectionSet[r.Section] {
+			return nil, fmt.Errorf("gitmoji: code %q references unknown section %q", r.Code, r.Section)
 		}
 		byCode[r.Code] = r
 	}
@@ -181,7 +183,8 @@ func (t *Table) CanonicalJSON() ([]byte, error) {
 
 // Markdown renders the table as a stable Markdown document: the human- and
 // docs-facing view of the embedded rules, and the drift-guard golden for
-// `glyph rules --md`. none codes show "—" for their (absent) section.
+// `glyph rules --md`. A code with no section shows "—"; a removal none code
+// shows its Removals section like any version mover.
 func (t *Table) Markdown() string {
 	var b strings.Builder
 	b.WriteString("# gitmoji → semver\n\n")
