@@ -2,6 +2,7 @@
   "version": "gitmoji-3.15.0",
   "sections": [
     "Breaking Changes",
+    "Removals",
     "Features",
     "Fixes",
     "Performance",
@@ -32,7 +33,8 @@
       "code": ":fire:",
       "emoji": "🔥",
       "meaning": "Remove code or files.",
-      "bump": "none"
+      "bump": "none",
+      "section": "Removals"
     },
     {
       "code": ":bug:",
@@ -240,7 +242,8 @@
       "code": ":truck:",
       "emoji": "🚚",
       "meaning": "Move or rename resources (e.g.: files, paths, routes).",
-      "bump": "none"
+      "bump": "none",
+      "section": "Removals"
     },
     {
       "code": ":page_facing_up:",
@@ -436,7 +439,8 @@
       "code": ":coffin:",
       "emoji": "⚰️",
       "meaning": "Remove dead code.",
-      "bump": "none"
+      "bump": "none",
+      "section": "Removals"
     },
     {
       "code": ":test_tube:",

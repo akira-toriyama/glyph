@@ -101,8 +101,12 @@ in the spec is explicitly enumerated in `rules.json`; buckets:
   capability-adjacent codes (i18n, offline, a11y, UX) deliberately stay patch so
   an AI author cannot accidentally minor a routine change.
 - **patch:** anything altering shipped / user-observable behavior.
-- **none:** internal / non-shipping / meta — kept in history, excluded from notes,
-  never moves the version.
+- **none:** internal / non-shipping / meta — kept in history, never moves the
+  version. Excluded from notes *unless the code carries a section*: removals
+  (`:fire:`/`:coffin:`/`:truck:`) stay none but surface under a **Removals**
+  section, so a deletion or rename is visible to the human pin-bump audit even
+  though the version does not move (notes inclusion tracks the section, not the
+  bump).
 
 **Combination across a PR:** `prBump = max(classify(c) for non-bot c in pr)`. The
 fold is order-independent and idempotent (fuzz-tested) so squash order can never

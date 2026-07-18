@@ -57,7 +57,8 @@ type Input struct {
 	PR       Verdict
 	Pending  Verdict
 	// Notes is the release-notes preview, folded into a <details> block. Empty
-	// renders no block — a none-bump PR has no notes to show.
+	// renders no block — the commits produced no notes sections (nothing
+	// release-worthy and no removals to surface).
 	Notes string
 }
 

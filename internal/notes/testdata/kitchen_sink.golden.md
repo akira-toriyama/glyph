@@ -3,6 +3,11 @@
 - ♻️ rework the store layout (ddddddd)
 - 💥 drop the v1 config format (eeeeeee)
 
+## Removals
+
+- 🔥 prune the legacy theme presets (7777777)
+- 🚚 **api:** rename paletteFor to themeFor (8888888)
+
 ## Features
 
 - ✨ **ui:** add a command palette (aaaaaaa)

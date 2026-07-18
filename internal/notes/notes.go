@@ -2,7 +2,9 @@
 // release notes. It is pure — no I/O, no globals — and layers on parser.Commit
 // and the gitmoji table: grouping follows each rule's section, a breaking
 // commit is hoisted into the Breaking Changes section whatever its gitmoji,
-// and none-bump commits stay out entirely. Participation policy (bots, merges,
+// and a commit whose code carries no section stays out entirely. Inclusion
+// tracks the section, not the bump, so a none-bump removal (:fire:/:coffin:/
+// :truck:, section Removals) still surfaces. Participation policy (bots, merges,
 // autosquash artifacts) is internal/bump's Excluded; reading commits belongs
 // to internal/gitsource — neither happens here.
 package notes
@@ -41,10 +43,11 @@ type Section struct {
 
 // Group maps commits onto the table's sections in the table's render order.
 // A breaking commit hoists into BreakingSection whatever its code's rung or
-// home section; a none-bump, non-breaking commit is dropped (kept in history,
-// excluded from notes); an unknown code is a hard lint error, mirroring
+// home section; a non-breaking commit whose code carries no section is dropped
+// (kept in history, excluded from notes) — so a none-bump removal still lands in
+// its Removals section; an unknown code is a hard lint error, mirroring
 // bump.Classify — never a silent skip. Sections without entries are omitted,
-// so an all-none input returns an empty list.
+// so a sectionless input returns an empty list.
 func Group(commits []parser.Commit, t *gitmoji.Table) ([]Section, error) {
 	byTitle := make(map[string][]Entry)
 	for _, c := range commits {
@@ -60,7 +63,7 @@ func Group(commits []parser.Commit, t *gitmoji.Table) ([]Section, error) {
 		switch {
 		case c.Breaking:
 			title = BreakingSection
-		case rule.Bump == gitmoji.BumpNone:
+		case rule.Section == "":
 			continue
 		default:
 			title = rule.Section
