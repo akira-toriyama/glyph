@@ -1,12 +1,14 @@
 name: glyph-release
 
-# Reusable rolling-DRAFT release for the Swift-app family — glyph's OFFICIAL
+# Reusable rolling-DRAFT release for the Swift family — glyph's OFFICIAL
 # release integration and the successor of akira-toriyama/.github's
-# release.yml@v1 (git-cliff). The workflow and the binary it runs ship from
-# the same repo and the same release, so a caller pins ONE concrete tag
-# (@vX.Y.Z, never a moving ref) and can never mix workflow and binary
-# revisions. GoReleaser owns glyph's OWN tag-driven releases (goreleaser.yml)
-# — this file is the reusable the family consumes.
+# release.yml@v1 (git-cliff). It ships either artifact shape the family
+# builds: an `<App>.app` bundle (`app:` — package.sh → <App>.zip) or a bare
+# binary (`binary:` — build.sh → bin/<binary> + a sha256). The workflow and
+# the binary it runs ship from the same repo and the same release, so a
+# caller pins ONE concrete tag (@vX.Y.Z, never a moving ref) and can never
+# mix workflow and binary revisions. GoReleaser owns glyph's OWN tag-driven
+# releases (goreleaser.yml) — this file is the reusable the family consumes.
 #
 # A push to the caller's main makes `glyph release` walk main's squash
 # commits since the last v* tag, resolve each to its merged pull request over
@@ -22,15 +24,15 @@ name: glyph-release
 # which this workflow folds into a success no-op — the soft no-release code
 # is handled here once, so callers never script around it.
 #
-# The app build stays the uniform package.sh (it runs `swift build -c
-# release` itself) with an optional post-build smoke, exactly as in the @v1
-# reusable; only the verdict engine changed. The upsert runs BEFORE the
-# build: the verdict comes from one walk (tag and body can never split), and
-# a build failure at worst leaves the draft's asset one merge stale — the
-# next green run re-uploads with --clobber, and nothing is published without
-# a human anyway.
+# The build stays the repo's uniform script — package.sh for an app bundle,
+# build.sh for a bare binary (each runs `swift build -c release` itself) —
+# with an optional post-build smoke, exactly as in the @v1 reusable; only
+# the verdict engine changed. The upsert runs BEFORE the build: the verdict
+# comes from one walk (tag and body can never split), and a build failure at
+# worst leaves the draft's asset one merge stale — the next green run
+# re-uploads with --clobber, and nothing is published without a human anyway.
 #
-# Caller skeleton (.github/workflows/release.yml in each app repo):
+# Caller skeleton (.github/workflows/release.yml in each consuming repo):
 #   on:
 #     push: { branches: [main] }
 #     workflow_dispatch:
@@ -40,10 +42,12 @@ name: glyph-release
 #   permissions: { contents: write }
 #   jobs:
 #     release:
-#       uses: akira-toriyama/glyph/.github/workflows/release.yml@v0.4.0  # pin a release tag
+#       uses: akira-toriyama/glyph/.github/workflows/release.yml@v0.8.0  # pin a release tag
 #       with:
 #         app: Facet              # → Facet.app / Facet.zip, binary `facet`
-#         smoke: false            # true → run `<App>.app/Contents/MacOS/<app> --validate`
+#         # …or, for a bare-binary tool (exactly one of app/binary):
+#         # binary: glance        # → ./build.sh must produce bin/glance; attaches glance + glance.sha256
+#         smoke: false            # true → run `<artifact> --validate`
 #         dry-run: ${{ github.event.inputs.dry_run == 'true' }}
 #         install-notes: |
 #           ## Install
@@ -53,20 +57,26 @@ on:
   workflow_call:
     inputs:
       app:
-        description: "App display name, e.g. 'Facet' → builds Facet.app, attaches Facet.zip, binary `facet`."
-        required: true
+        description: "App display name, e.g. 'Facet' → package.sh builds Facet.app, attaches Facet.zip, binary `facet`. Exactly one of `app` / `binary`."
+        required: false
         type: string
+        default: ""
+      binary:
+        description: "Bare-binary name, e.g. 'glance' → ./build.sh must produce bin/<binary>; attaches <binary> + <binary>.sha256. Exactly one of `app` / `binary`."
+        required: false
+        type: string
+        default: ""
       install-notes:
-        description: "Markdown appended verbatim after the generated notes, separated by one --- line (the per-app `## Install` block)."
+        description: "Markdown appended verbatim after the generated notes, separated by one --- line (the per-repo `## Install` block)."
         required: true
         type: string
       smoke:
-        description: "Run `./<App>.app/Contents/MacOS/<app-lowercased> --validate` after the build (apps that have a --validate)."
+        description: "Run the built artifact with `--validate` after the build (`./<App>.app/Contents/MacOS/<app-lowercased>` in app mode, `./bin/<binary>` in binary mode)."
         required: false
         type: boolean
         default: false
       smoke-cmd:
-        description: "Post-build smoke args, e.g. 'config --validate' — runs `./<App>.app/Contents/MacOS/<app> <smoke-cmd>`. Takes precedence over `smoke`; empty falls back to `smoke`."
+        description: "Post-build smoke args, e.g. 'config --validate' — runs the built artifact with these args. Takes precedence over `smoke`; empty falls back to `smoke`."
         required: false
         type: string
         default: ""
@@ -99,6 +109,19 @@ jobs:
     # minutes budget. Generous — a cold build + package + upload fits easily.
     timeout-minutes: 30
     steps:
+      # `required: true` cannot express "exactly one of app/binary", so the
+      # arity is enforced here, before anything else runs.
+      - name: Validate the artifact inputs
+        env:
+          APP: ${{ inputs.app }}
+          BINARY: ${{ inputs.binary }}
+        run: |
+          set -euo pipefail
+          if { [ -n "$APP" ] && [ -n "$BINARY" ]; } || { [ -z "$APP" ] && [ -z "$BINARY" ]; }; then
+            echo "::error::exactly one of 'app' (app bundle via package.sh) or 'binary' (bare binary via build.sh) must be set."
+            exit 1
+          fi
+
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           # glyph walks the tags and the range out of LOCAL git (its verdict
@@ -213,7 +236,7 @@ jobs:
       # picks $CODESIGN_ID > .signing-id > "-"). Optional smoke for apps that
       # have one.
       - name: Build app + zip
-        if: steps.verdict.outputs.release == 'true'
+        if: steps.verdict.outputs.release == 'true' && inputs.app != ''
         env:
           CODESIGN_ID: "-"
           APP: ${{ inputs.app }}
@@ -235,18 +258,44 @@ jobs:
           mkdir -p artifacts
           ditto -c -k --sequesterRsrc --keepParent "${APP}.app" "artifacts/${APP}.zip"
 
+      # Build the bare binary via build.sh (contract: it leaves the release
+      # binary at bin/<binary>, ad-hoc signed in CI). The sha256 goes through
+      # `openssl dgst -r` — same `<hash> *<file>` line `shasum -c` verifies —
+      # because `shasum` itself is an install-only token the workflows test
+      # forbids in a reusable's executable body (internal/workflows).
+      - name: Build binary + sha256
+        if: steps.verdict.outputs.release == 'true' && inputs.binary != ''
+        env:
+          BINARY: ${{ inputs.binary }}
+          SMOKE: ${{ inputs.smoke }}
+          SMOKE_CMD: ${{ inputs.smoke-cmd }}
+        run: |
+          set -euo pipefail
+          ./build.sh
+          # Same smoke contract as app mode: `smoke-cmd` takes precedence,
+          # the boolean runs `--validate`. Unquoted so multi-word args split.
+          if [ -n "$SMOKE_CMD" ]; then
+            # shellcheck disable=SC2086 # intentional word-split (see above)
+            "./bin/${BINARY}" $SMOKE_CMD
+          elif [ "$SMOKE" = "true" ]; then
+            "./bin/${BINARY}" --validate
+          fi
+          mkdir -p artifacts
+          cp "bin/${BINARY}" artifacts/
+          (cd artifacts && openssl dgst -r -sha256 "$BINARY" > "${BINARY}.sha256")
+
       # gh resolves an unpublished draft by its INTENDED tag for upload/view
       # (the @v1 reusable relied on the same), and --clobber replaces the
-      # previous merge's asset on an updated draft.
-      - name: Attach the app to the draft
+      # previous merge's asset on an updated draft. Whichever build step ran
+      # left its artifact set in artifacts/ — upload it wholesale.
+      - name: Attach the artifacts to the draft
         if: steps.verdict.outputs.release == 'true' && !inputs.dry-run
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.verdict.outputs.tag }}
-          APP: ${{ inputs.app }}
         run: |
           set -euo pipefail
-          gh release upload "$TAG" "artifacts/${APP}.zip" --clobber
+          gh release upload "$TAG" artifacts/* --clobber
           url="$(jq -r '.url // empty' "$RUNNER_TEMP/verdict.json")"
           echo "::notice::Draft release ${TAG} upserted (unpublished, no tag yet). Review & Publish manually: ${url}"
           {
@@ -265,7 +314,7 @@ jobs:
         with:
           name: release-preview-${{ steps.verdict.outputs.tag }}
           path: |
-            artifacts/${{ inputs.app }}.zip
+            artifacts/
             ${{ runner.temp }}/verdict.json
 
       - name: Dry-run summary
