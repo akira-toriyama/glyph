@@ -85,6 +85,23 @@ func Head(ctx context.Context, dir string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// HooksDir returns the directory git will look in for hooks, as a path relative
+// to dir (or absolute, when git reports one). It asks git rather than assuming
+// .git/hooks because core.hooksPath relocates them — the family's older repos
+// set it to scripts/hooks, and writing to .git/hooks there would install a hook
+// git never runs. Worktrees are handled by the same delegation.
+func HooksDir(ctx context.Context, dir string) (string, error) {
+	out, err := run(ctx, dir, "rev-parse", "--git-path", "hooks")
+	if err != nil {
+		return "", err
+	}
+	path := strings.TrimSpace(string(out))
+	if path == "" {
+		return "", core.APIf("git rev-parse --git-path hooks: empty result")
+	}
+	return path, nil
+}
+
 // run executes one git command against dir with stdout and stderr captured
 // separately, and classifies any failure as a git/IO error carrying git's most
 // diagnostic stderr line.

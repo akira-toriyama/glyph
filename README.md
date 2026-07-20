@@ -8,7 +8,8 @@ the gitmoji that leads each commit.
 > `lint` (`--range` / `--message` / `--stdin`), `bump` / `notes` over a local
 > range (`--range`), a **pull request's individual, pre-squash commits**
 > (`--pr`) or the release-time walk (`--since-tag`), and `release` (rolling
-> DRAFT upsert), and `preview` (the whole PR comment) all work. Three reusable
+> DRAFT upsert), `preview` (the whole PR comment) and `hook install` (the
+> commit-msg hook) all work. Three reusable
 > workflows ship from this repo at each tag: `lint.yml` (commit lint),
 > `release.yml` (rolling-draft release) and `pr-verdict.yml` (the merge
 > preview — it runs anywhere, not just on rolling-draft repos).
@@ -24,6 +25,16 @@ glyph preview --pr 7   # → the whole PR comment: what merging #7 does to the v
 In GitHub Actions no flags are needed: `--repo` defaults to `$GITHUB_REPOSITORY`,
 the API host to `$GITHUB_API_URL` (so a GitHub Enterprise runner just works), and
 the credential to `$GITHUB_TOKEN` (else `$GH_TOKEN`).
+
+Locally, one command moves the lint from CI to the moment you write the message:
+
+```sh
+glyph hook install     # commit-msg → `glyph lint --stdin` (honours core.hooksPath)
+```
+
+The hook holds no copy of the convention — it calls glyph, so it cannot fall out
+of lockstep when the rules move. Without glyph on `PATH` it warns and lets the
+commit through; the commit-lint CI job stays the authority.
 
 ## Why it exists
 
