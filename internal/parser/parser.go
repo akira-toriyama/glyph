@@ -24,8 +24,13 @@ type Commit struct {
 	Gitmoji  string // leading textual code, e.g. ":sparkles:" (shape-checked, membership is the caller's)
 	Scope    string // without parens; from the new-format slot, else salvaged from a legacy token
 	Breaking bool   // a `!` marker (new or legacy slot) or a BREAKING[- ]CHANGE: footer
-	Subject  string // the human subject, with the markers and any legacy token stripped
-	Body     string // everything after the subject line, leading blank lines dropped
+	// NonBreaking records an explicit `Non-Breaking:` footer — the author
+	// stating that a removal takes nothing public away. It is deliberately NOT
+	// the absence of Breaking: for the removal codes, silence is the thing the
+	// undeclared-removal rule refuses to accept.
+	NonBreaking bool
+	Subject     string // the human subject, with the markers and any legacy token stripped
+	Body        string // everything after the subject line, leading blank lines dropped
 }
 
 // Violation is one lint finding: a stable machine-readable rule id plus a
@@ -43,6 +48,7 @@ const (
 	RuleWIPMergeCandidate = "wip-merge-candidate"
 	RuleUppercaseSubject  = "uppercase-subject"
 	RuleTrailingPeriod    = "trailing-period"
+	RuleUndeclaredRemoval = "undeclared-removal"
 )
 
 // LintOptions configures Lint. Known is the gitmoji membership oracle
@@ -128,7 +134,12 @@ func Parse(message string) (Commit, error) {
 	for _, l := range rest {
 		if strings.HasPrefix(l, "BREAKING CHANGE:") || strings.HasPrefix(l, "BREAKING-CHANGE:") {
 			c.Breaking = true
-			break
+		}
+		// The counterpart footer: an author asserting a removal is safe. Only a
+		// removal code asks for it, and only the undeclared-removal rule reads
+		// it — it never lowers a bump, so it cannot be used to hide a break.
+		if strings.HasPrefix(l, "Non-Breaking:") {
+			c.NonBreaking = true
 		}
 	}
 	return c, nil
@@ -168,7 +179,35 @@ func Lint(message string, opts LintOptions) []Violation {
 			Detail: fmt.Sprintf("subject %q must not end with a period", c.Subject),
 		})
 	}
+	if opts.MergeCandidate && removalCodes[c.Gitmoji] && !c.Breaking && !c.NonBreaking {
+		vs = append(vs, Violation{
+			Rule: RuleUndeclaredRemoval,
+			Detail: fmt.Sprintf("%s removes or renames something but does not say whether that breaks anyone — "+
+				"add `!` (or a BREAKING CHANGE: footer) if it removes public API, else add a "+
+				"`Non-Breaking: <why>` footer to record that it does not", c.Gitmoji),
+		})
+	}
 	return vs
+}
+
+// removalCodes are the gitmoji that take something AWAY. They all classify as
+// bump=none, which is right for the overwhelmingly common case (dead code,
+// docs, fixtures) and silently wrong for the rare one: deleting or renaming a
+// library's public API is a major change that none of them can express.
+//
+// sill shipped exactly that — a public theme preset pruned with :fire: inside a
+// :sparkles: PR, released as MINOR, breaking downstream wand (t-n158). :truck:
+// is worse than :fire: there, because a rename resolves at runtime: sill's
+// paletteFor("catppuccin-latte") fell back to another theme silently rather
+// than failing.
+//
+// glyph cannot know whether the removed symbol was public — that is the
+// consuming repo's knowledge, and an API-diff tool's job. What it CAN do is
+// refuse to let the question go unanswered, which is all this rule does.
+var removalCodes = map[string]bool{
+	":fire:":   true, // Remove code or files.
+	":coffin:": true, // Remove dead code.
+	":truck:":  true, // Move or rename resources.
 }
 
 // splitLines splits a message on \n and drops a trailing \r per line, so CRLF
