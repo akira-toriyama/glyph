@@ -101,6 +101,51 @@ func TestReusablesInstallThroughComposite(t *testing.T) {
 	}
 }
 
+// changelogDisable matches a `disable:` set truthy anywhere in .goreleaser.yaml.
+// The only block that carries one today is `changelog:`; a future pipe that
+// legitimately needs `disable: true` should narrow this, not delete it.
+var changelogDisable = regexp.MustCompile(`(?m)^\s*disable:\s*["']?true`)
+
+// TestReleaseNotesReachGoReleaser guards the pairing that shipped v0.8.2 with an
+// empty release body (t-bb72).
+//
+// GoReleaser loads --release-notes INSIDE the changelog pipe: changelog.Run
+// reads ctx.ReleaseNotesFile and returns early before generating anything, while
+// changelog.Skip short-circuits the whole pipe on `changelog.disable`. So
+// `disable: true` does not merely turn off generation — it discards the notes
+// file too, and the release ships empty. The two halves (workflow passes the
+// flag, config keeps the pipe alive) are only correct together, and nothing in
+// either file can express that on its own.
+func TestReleaseNotesReachGoReleaser(t *testing.T) {
+	workflow := repoFile(t, filepath.Join(".github", "workflows", "goreleaser.yml"))
+	config := repoFile(t, ".goreleaser.yaml")
+
+	// Half one: the workflow generates the notes with glyph and hands them over.
+	body := code(workflow)
+	for _, want := range []string{"glyph notes", "--release-notes"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("goreleaser.yml no longer contains %q; glyph's own releases must be "+
+				"described by `glyph notes`, not GoReleaser's raw commit subjects (t-8hqn)", want)
+		}
+	}
+
+	// Half two: the changelog pipe stays enabled so that flag is actually read.
+	if loc := changelogDisable.FindString(code(config)); loc != "" {
+		t.Errorf(".goreleaser.yaml sets %q; that skips the changelog pipe, which is the "+
+			"pipe that loads --release-notes — the release body ships EMPTY (v0.8.2 did). "+
+			"Neuter the built-in generator with a filter instead of disabling the pipe.",
+			strings.TrimSpace(loc))
+	}
+
+	// ...and the built-in generator stays neutered, so a run WITHOUT the flag
+	// yields an empty body rather than falling back to raw subjects.
+	if !strings.Contains(code(config), `- ".*"`) {
+		t.Error(".goreleaser.yaml no longer excludes every commit from the built-in changelog; " +
+			"without that filter a goreleaser run that misses --release-notes silently falls back " +
+			"to raw commit subjects (the unescaped-@mention surface t-8hqn removed)")
+	}
+}
+
 func TestCompositeActionIsSingleSource(t *testing.T) {
 	raw := repoFile(t, filepath.Join(".github", "actions", "install", "action.yml"))
 

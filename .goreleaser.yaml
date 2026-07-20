@@ -26,13 +26,23 @@ checksum:
   name_template: checksums.txt
 
 # Release notes are glyph's own: the goreleaser.yml workflow runs `glyph notes`
-# from the tagged commit and passes the file via --release-notes (t-8hqn). The
-# built-in changelog is disabled rather than kept as a fallback — its raw commit
-# subjects are exactly the unescaped-@mention surface the dogfooding removes,
-# and a silent fallback would reopen it. A goreleaser run WITHOUT the flag now
-# ships an empty body, which is loud, not wrong.
+# from the tagged commit and passes the file via --release-notes (t-8hqn).
+#
+# This pipe must stay ENABLED. GoReleaser loads --release-notes INSIDE the
+# changelog pipe (changelog.Run reads ctx.ReleaseNotesFile, then returns early
+# before generating anything), while `disable: true` short-circuits that pipe in
+# changelog.Skip. So disabling it silently drops the notes file and ships an
+# EMPTY body — which is exactly what v0.8.2 shipped (t-bb72).
+#
+# Instead the built-in generator is neutered with an exclude-everything filter,
+# which keeps the property the disable was reaching for: with the flag, the file
+# wins (the early return means these filters never run); without it, the body is
+# empty rather than falling back to the raw commit subjects that carry the
+# unescaped-@mention surface this dogfooding removed. Loud, not wrong.
 changelog:
-  disable: true
+  filters:
+    exclude:
+      - ".*"
 
 # Homebrew cask pushed to the family tap on release. GoReleaser v2 ships prebuilt
 # binaries as CASKS (the old `brews:` formula path is deprecated); the live

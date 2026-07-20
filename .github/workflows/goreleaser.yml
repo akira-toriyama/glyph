@@ -26,6 +26,13 @@ name: goreleaser
 # or `@mentions` pinged strangers from glyph's own releases — the one surface
 # t-hykw's escaping did not cover.
 #
+# --release-notes only lands if the changelog pipe stays ENABLED in
+# .goreleaser.yaml: GoReleaser loads the file inside that pipe, so a
+# `changelog.disable: true` drops it and ships an empty body (v0.8.2 did — see
+# t-bb72). The neutered exclude-everything filter there is what keeps the
+# built-in generator from ever writing raw subjects; don't swap it back for a
+# disable. internal/workflows guards the pairing.
+#
 # Requires the HOMEBREW_TAP_TOKEN secret (write access to akira-toriyama/homebrew-tap)
 # for the cask push. It is NOT fleet-distributed — set it on this repo before the
 # first tag; without it the build + attestation still run and only the cask step fails.
