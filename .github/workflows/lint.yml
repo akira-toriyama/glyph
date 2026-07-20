@@ -15,7 +15,7 @@ name: glyph-lint
 #     contents: read
 #   jobs:
 #     lint:
-#       uses: akira-toriyama/glyph/.github/workflows/lint.yml@v0.4.0  # pin a release tag
+#       uses: akira-toriyama/glyph/.github/workflows/lint.yml@v0.10.0  # pin a release tag
 #
 # The glyph binary is DOWNLOADED from a release — checksum-verified against the
 # release's checksums.txt AND provenance-verified with `gh attestation verify`

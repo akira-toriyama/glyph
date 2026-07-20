@@ -42,7 +42,7 @@ name: glyph-release
 #   permissions: { contents: write }
 #   jobs:
 #     release:
-#       uses: akira-toriyama/glyph/.github/workflows/release.yml@v0.8.0  # pin a release tag
+#       uses: akira-toriyama/glyph/.github/workflows/release.yml@v0.10.0  # pin a release tag
 #       with:
 #         app: Facet              # → Facet.app / Facet.zip, binary `facet`
 #         # …or, for a bare-binary tool (exactly one of app/binary):
