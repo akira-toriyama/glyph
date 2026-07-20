@@ -371,3 +371,72 @@ func sanitizeFuzz(s, allowed, fallback string) string {
 	}
 	return b.String()
 }
+
+// TestUndeclaredRemoval pins the rule that closes t-n158: a removal or rename
+// must say whether it breaks anyone. glyph cannot know whether the removed
+// symbol was public — that is the consuming repo's knowledge — so it refuses to
+// let the question go unanswered rather than guessing.
+func TestUndeclaredRemoval(t *testing.T) {
+	known := func(string) bool { return true }
+	has := func(vs []Violation, rule string) bool {
+		for _, v := range vs {
+			if v.Rule == rule {
+				return true
+			}
+		}
+		return false
+	}
+
+	tests := []struct {
+		name    string
+		message string
+		want    bool
+	}{
+		// The sill incident, reduced: a public preset pruned with :fire:,
+		// nothing declared, released as minor and broke downstream wand.
+		{name: "bare :fire: is undeclared", message: ":fire: prune catppuccin-latte", want: true},
+		{name: "bare :coffin: is undeclared", message: ":coffin: drop the dead branch", want: true},
+		// A rename is worse than a deletion: the old name resolves to something
+		// else at runtime instead of failing.
+		{name: "bare :truck: is undeclared", message: ":truck: rename FieldKit to ThemeKit", want: true},
+
+		{name: "! declares it", message: ":fire:(theme)! prune catppuccin-latte", want: false},
+		{
+			name:    "BREAKING CHANGE footer declares it",
+			message: ":fire: prune catppuccin-latte\n\nBREAKING CHANGE: the preset is gone",
+			want:    false,
+		},
+		{
+			name:    "Non-Breaking footer declares it",
+			message: ":fire: drop an unused private helper\n\nNon-Breaking: the helper was never exported",
+			want:    false,
+		},
+
+		// Everything that takes nothing away is untouched — this rule must not
+		// tax ordinary work.
+		{name: ":sparkles: is unaffected", message: ":sparkles: add a thing", want: false},
+		{name: ":bug: is unaffected", message: ":bug: fix a thing", want: false},
+		{name: ":wastebasket: is unaffected", message: ":wastebasket: deprecate the old call", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vs := Lint(tt.message, LintOptions{Known: known, MergeCandidate: true})
+			if got := has(vs, RuleUndeclaredRemoval); got != tt.want {
+				t.Errorf("undeclared-removal = %v, want %v (violations: %+v)", got, tt.want, vs)
+			}
+		})
+	}
+}
+
+// The rule is a merge-candidate rule only. At authoring time a developer is
+// still shaping the commit; forcing the declaration into every `git commit` of
+// a removal (including the ones they will squash away) would make the hook
+// hostile for no gain, since the range walk catches it before merge.
+func TestUndeclaredRemovalIsMergeCandidateOnly(t *testing.T) {
+	vs := Lint(":fire: prune a preset", LintOptions{Known: func(string) bool { return true }})
+	for _, v := range vs {
+		if v.Rule == RuleUndeclaredRemoval {
+			t.Error("undeclared-removal fired at authoring time; it is a merge-candidate rule")
+		}
+	}
+}
