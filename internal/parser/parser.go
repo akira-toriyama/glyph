@@ -24,7 +24,7 @@ type Commit struct {
 	Gitmoji  string // leading textual code, e.g. ":sparkles:" (shape-checked, membership is the caller's)
 	Scope    string // without parens; from the new-format slot, else salvaged from a legacy token
 	Breaking bool   // a `!` marker (new or legacy slot) or a BREAKING[- ]CHANGE: footer
-	// NonBreaking records an explicit `Non-Breaking:` footer — the author
+	// NonBreaking records an explicit `NON-BREAKING: <why>` footer — the author
 	// stating that a removal takes nothing public away. It is deliberately NOT
 	// the absence of Breaking: for the removal codes, silence is the thing the
 	// undeclared-removal rule refuses to accept.
@@ -187,7 +187,17 @@ func Parse(message string) (Commit, error) {
 		// The counterpart footer: an author asserting a removal is safe. Only a
 		// removal code asks for it, and only the undeclared-removal rule reads
 		// it — it never lowers a bump, so it cannot be used to hide a break.
-		if strings.HasPrefix(l, "Non-Breaking:") {
+		//
+		// Uppercase and case-SENSITIVE, mirroring BREAKING CHANGE:, for the same
+		// reason that one is: a body sentence may well read "this is
+		// non-breaking: the API is untouched", and a footer that silences a rule
+		// must not be spellable by accident in prose.
+		//
+		// The reason is mandatory. A bare footer would let the rule be satisfied
+		// by reflex — the author types the magic word without answering the
+		// question the rule exists to ask — which buys nothing over not having
+		// the rule at all.
+		if rest, found := strings.CutPrefix(l, "NON-BREAKING:"); found && strings.TrimSpace(rest) != "" {
 			c.NonBreaking = true
 		}
 	}
@@ -235,12 +245,18 @@ func Lint(message string, opts LintOptions) []Violation {
 			Detail: fmt.Sprintf("subject %q must not end with a period", c.Subject),
 		})
 	}
-	if opts.MergeCandidate && removalCodes[c.Gitmoji] && !c.Breaking && !c.NonBreaking {
+	// Deliberately NOT gated on MergeCandidate, unlike wip-merge-candidate.
+	// :construction: is legal mid-branch and illegal only at the merge, so its
+	// verdict genuinely changes with time. Whether a removal breaks anyone is
+	// settled the moment the commit is written, so there is nothing to wait
+	// for — and waiting is what hurts: caught at authoring time the fix is one
+	// line in an open editor, caught in CI it is a rewrite of pushed history.
+	if removalCodes[c.Gitmoji] && !c.Breaking && !c.NonBreaking {
 		vs = append(vs, Violation{
 			Rule: RuleUndeclaredRemoval,
 			Detail: fmt.Sprintf("%s removes or renames something but does not say whether that breaks anyone — "+
 				"add `!` (or a BREAKING CHANGE: footer) if it removes public API, else add a "+
-				"`Non-Breaking: <why>` footer to record that it does not", c.Gitmoji),
+				"`NON-BREAKING: <why>` footer to record that it does not", c.Gitmoji),
 		})
 	}
 	return vs

@@ -407,9 +407,34 @@ func TestUndeclaredRemoval(t *testing.T) {
 			want:    false,
 		},
 		{
-			name:    "Non-Breaking footer declares it",
-			message: ":fire: drop an unused private helper\n\nNon-Breaking: the helper was never exported",
+			name:    "NON-BREAKING footer declares it",
+			message: ":fire: drop an unused private helper\n\nNON-BREAKING: the helper was never exported",
 			want:    false,
+		},
+		// The footer is uppercase and case-sensitive, exactly like BREAKING
+		// CHANGE:. A body may legitimately read "this is non-breaking: …", and a
+		// footer that switches a rule off must not be spellable by accident.
+		{
+			name:    "lowercase non-breaking does not declare it",
+			message: ":fire: drop a helper\n\nnon-breaking: it was never exported",
+			want:    true,
+		},
+		{
+			name:    "title-case Non-Breaking does not declare it",
+			message: ":fire: drop a helper\n\nNon-Breaking: it was never exported",
+			want:    true,
+		},
+		// A bare footer is the reflex answer — the magic word without the thought
+		// the rule exists to force. It does not count.
+		{
+			name:    "NON-BREAKING with no reason does not declare it",
+			message: ":fire: drop a helper\n\nNON-BREAKING:",
+			want:    true,
+		},
+		{
+			name:    "NON-BREAKING with blank reason does not declare it",
+			message: ":fire: drop a helper\n\nNON-BREAKING:    ",
+			want:    true,
 		},
 
 		// Everything that takes nothing away is untouched — this rule must not
@@ -500,15 +525,21 @@ func TestKebabScopeAcceptedInBothForms(t *testing.T) {
 	}
 }
 
-// The rule is a merge-candidate rule only. At authoring time a developer is
-// still shaping the commit; forcing the declaration into every `git commit` of
-// a removal (including the ones they will squash away) would make the hook
-// hostile for no gain, since the range walk catches it before merge.
-func TestUndeclaredRemovalIsMergeCandidateOnly(t *testing.T) {
+// The rule fires at authoring time too — it is NOT gated on MergeCandidate the
+// way wip-merge-candidate is. :construction: is legal mid-branch and illegal
+// only at the merge, so its verdict really does change with time; whether a
+// removal breaks anyone is settled when the commit is written. Deferring it to
+// the range walk only moves the fix from one line in an open editor to a
+// rewrite of already-pushed history.
+func TestUndeclaredRemovalFiresAtAuthoringTime(t *testing.T) {
 	vs := Lint(":fire: prune a preset", LintOptions{Known: func(string) bool { return true }})
+	found := false
 	for _, v := range vs {
 		if v.Rule == RuleUndeclaredRemoval {
-			t.Error("undeclared-removal fired at authoring time; it is a merge-candidate rule")
+			found = true
 		}
+	}
+	if !found {
+		t.Errorf("undeclared-removal did not fire at authoring time (violations: %+v)", vs)
 	}
 }
