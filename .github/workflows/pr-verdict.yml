@@ -65,6 +65,26 @@ name: glyph-pr-verdict
 #   jobs:
 #     verdict:
 #       uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@v0.5.0  # pin a release tag
+#
+# Gating on the verdict (the caller's policy, not this workflow's — see the
+# outputs block below). The empty check is the load-bearing line: a fork PR
+# skips the verdict job and every output comes back "", which means NOT
+# COMPUTED. Reading that as `none` would let exactly the PRs this reusable
+# cannot inspect sail through the gate.
+#   jobs:
+#     verdict:
+#       uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@v0.5.0
+#     api-guard:
+#       needs: verdict
+#       runs-on: ubuntu-latest
+#       steps:
+#         - run: |
+#             if [ -z "${{ needs.verdict.outputs.level }}" ]; then
+#               echo "::error::verdict unavailable (fork PR?) — refusing to pass the gate"
+#               exit 1
+#             fi
+#             # ...then compare ${{ needs.verdict.outputs.breaking }} against
+#             # whatever the repo knows about its own API surface.
 
 on:
   workflow_call:
@@ -78,6 +98,43 @@ on:
           branch or SHA), which has no release binary to derive.
         type: string
         default: ""
+    outputs:
+      # The verdict, machine-readable, so a caller can GATE on what this job
+      # already computes. Without these the level was rendered into a comment
+      # and discarded, and a caller wanting to act on it had three bad choices:
+      # install glyph itself, re-implement the convention in grep, or parse the
+      # comment prose. All three fork the rules; this forks nothing.
+      #
+      # SKIPPED JOB => EVERY OUTPUT IS THE EMPTY STRING. The fork guard below
+      # skips this job on a fork PR, and GitHub gives a skipped job's outputs as
+      # "". Empty therefore means NOT COMPUTED, never "no change" — a caller
+      # gating on these MUST fail safe on empty rather than read it as `none`.
+      #
+      # This job stays ADVISORY: it is not a required check, and adding outputs
+      # does not change that. Whether a verdict blocks a merge is the caller's
+      # policy, expressed in the caller's own `if:` — the reusable computes, the
+      # caller decides.
+      level:
+        description: >-
+          The fold of this PR's verdict and what is already merged but
+          unreleased: none | patch | minor | major. Empty when the job was
+          skipped (fork PR).
+        value: ${{ jobs.verdict.outputs.level }}
+      next:
+        description: >-
+          The version the next release becomes (vX.Y.Z). Empty on a none
+          verdict, and empty when the job was skipped.
+        value: ${{ jobs.verdict.outputs.next }}
+      current:
+        description: >-
+          The version being stepped from — the highest parseable v* tag, or
+          v0.0.0 on an untagged repo. Empty when the job was skipped.
+        value: ${{ jobs.verdict.outputs.current }}
+      breaking:
+        description: >-
+          "true" when level is major, else "false" — the readable alias for a
+          caller's `if:`. Empty when the job was skipped, which is NOT "false".
+        value: ${{ jobs.verdict.outputs.breaking }}
 
 permissions:
   contents: read
@@ -93,6 +150,11 @@ jobs:
     # Two API-backed walks and one comment write; bound it so a hung step
     # can't idle a runner for hours.
     timeout-minutes: 10
+    outputs:
+      level: ${{ steps.verdict.outputs.level }}
+      next: ${{ steps.verdict.outputs.next }}
+      current: ${{ steps.verdict.outputs.current }}
+      breaking: ${{ steps.verdict.outputs.breaking }}
     permissions:
       contents: read
       # The sticky comment (create + update), granted to this job only.
@@ -164,6 +226,7 @@ jobs:
       # nothing" is exactly what the reviewer asked, so there is no soft
       # no-release code to fold away.
       - name: Compose the verdict comment
+        id: verdict
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -177,8 +240,11 @@ jobs:
             exit 1
           fi
           status=0
-          glyph preview --pr "$PR_NUMBER" --notes \
-            > "$RUNNER_TEMP/body.md" 2> "$RUNNER_TEMP/preview.err" || status=$?
+          # --json carries the rendered body AND the machine verdict in ONE
+          # payload, so exposing outputs costs no extra API walk: the comment
+          # and the gate values are the same computation, not two opinions.
+          glyph preview --pr "$PR_NUMBER" --notes --json \
+            > "$RUNNER_TEMP/verdict.json" 2> "$RUNNER_TEMP/preview.err" || status=$?
           cat "$RUNNER_TEMP/preview.err" >&2
           if [ "$status" -ne 0 ]; then
             # Best-effort headline from the structured envelope; the preserved
@@ -188,6 +254,32 @@ jobs:
               "$RUNNER_TEMP/preview.err" 2>/dev/null || true
             exit "$status"
           fi
+
+          # Body to a FILE, never through the shell: it carries author-supplied
+          # commit subjects.
+          jq -r '.body' "$RUNNER_TEMP/verdict.json" > "$RUNNER_TEMP/body.md"
+
+          # The verdict fields are a closed vocabulary glyph produces (a level
+          # word and vX.Y.Z), so none of them can smuggle a newline into
+          # $GITHUB_OUTPUT and split it into an attacker-chosen key.
+          level="$(jq -r '.level' "$RUNNER_TEMP/verdict.json")"
+          next="$(jq -r '.next // ""' "$RUNNER_TEMP/verdict.json")"
+          current="$(jq -r '.current // ""' "$RUNNER_TEMP/verdict.json")"
+          # An `if`, not `[ x = y ] && flag=true`: under `set -e` that idiom
+          # exits the step whenever the test is false, so every non-major PR
+          # would fail the job.
+          if [ "$level" = "major" ]; then
+            breaking=true
+          else
+            breaking=false
+          fi
+          {
+            echo "level=$level"
+            echo "next=$next"
+            echo "current=$current"
+            echo "breaking=$breaking"
+          } >> "$GITHUB_OUTPUT"
+          echo "verdict: level=$level current=$current next=$next breaking=$breaking"
 
       # ONE sticky comment per PR, found by the marker glyph puts at the top of
       # the body — never `gh pr comment --edit-last`, whose "the bot's last

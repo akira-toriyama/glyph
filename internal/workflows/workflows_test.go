@@ -101,6 +101,69 @@ func TestReusablesInstallThroughComposite(t *testing.T) {
 	}
 }
 
+// The verdict fields pr-verdict.yml exposes to a caller. Each has to survive
+// THREE hops — step -> job -> workflow_call — and a break in any one of them is
+// silent: GitHub resolves a dangling ${{ }} to the empty string, so the caller
+// sees "" and a gate reading empty-as-none would pass every PR. Nothing in the
+// YAML expresses that chain, which is why it is asserted here.
+var verdictOutputs = []string{"level", "next", "current", "breaking"}
+
+// TestPRVerdictExposesTheVerdictToCallers guards the wiring sill's api-guard
+// gate depends on (t-eb6h): without these outputs the level is computed, posted
+// as prose, and discarded, leaving a caller to install glyph itself, re-grep the
+// convention, or parse the comment — each of which forks the rules.
+func TestPRVerdictExposesTheVerdictToCallers(t *testing.T) {
+	raw := repoFile(t, filepath.Join(".github", "workflows", "pr-verdict.yml"))
+	body := code(raw)
+
+	for _, name := range verdictOutputs {
+		// hop 3: workflow_call.outputs.<name>.value <- the job
+		wantCall := "value: ${{ jobs.verdict.outputs." + name + " }}"
+		if !strings.Contains(body, wantCall) {
+			t.Errorf("pr-verdict.yml does not expose %q to callers (expected %q); "+
+				"a caller cannot gate on a verdict it cannot read", name, wantCall)
+		}
+		// hop 2: jobs.verdict.outputs.<name> <- the step
+		wantJob := name + ": ${{ steps.verdict.outputs." + name + " }}"
+		if !strings.Contains(body, wantJob) {
+			t.Errorf("pr-verdict.yml job does not publish %q (expected %q); the "+
+				"workflow_call output would silently resolve to the empty string", name, wantJob)
+		}
+		// hop 1: the step actually writes it
+		if !strings.Contains(body, "echo \""+name+"=$") {
+			t.Errorf("the compose step never writes %q to $GITHUB_OUTPUT", name)
+		}
+	}
+
+	// The step the job reads its outputs from must exist under that id.
+	if !strings.Contains(body, "id: verdict") {
+		t.Error("the compose step lost `id: verdict`; every job output would resolve to the empty string")
+	}
+
+	// The verdict and the comment must come from ONE computation. Dropping
+	// --json would mean either losing the outputs or adding a second API walk
+	// that could disagree with the comment.
+	if !strings.Contains(body, "--json") {
+		t.Error("pr-verdict.yml no longer calls glyph preview with --json; the body and the " +
+			"machine verdict must come from one payload, not two walks that can disagree")
+	}
+
+	// `[ x = y ] && flag=true` under `set -e` exits the step whenever the test
+	// is false — it would fail the job on every non-major PR. This shipped as a
+	// near-miss while writing t-eb6h; pin the shape that replaced it.
+	if regexp.MustCompile(`\[\s*"\$level"\s*=\s*"major"\s*\]\s*&&`).MatchString(body) {
+		t.Error("breaking is derived with `[ ... ] && flag=true`, which exits under `set -e` " +
+			"on every non-major PR; use an if/else")
+	}
+
+	// The fork-skip contract has to stay documented: it is the one way a caller
+	// gets "" and the one way a naive gate silently passes an uninspected PR.
+	if !strings.Contains(raw, "NOT COMPUTED") {
+		t.Error("pr-verdict.yml no longer documents that a skipped (fork) job yields empty " +
+			"outputs meaning NOT COMPUTED; a caller reading empty as `none` fails open")
+	}
+}
+
 // changelogDisable matches a `disable:` set truthy anywhere in .goreleaser.yaml.
 // The only block that carries one today is `changelog:`; a future pipe that
 // legitimately needs `disable: true` should narrow this, not delete it.
