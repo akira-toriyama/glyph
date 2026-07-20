@@ -303,6 +303,88 @@ func TestSinceTagRebaseMergedPRDoesNotDoubleCount(t *testing.T) {
 	}
 }
 
+// TestSinceTagSharedPreSquashCommitCountsOnce: a stacked branch carries its
+// base PR's pre-squash commits, so after both squash-merge, both PRs' listings
+// contain them. Each shared commit must fold and render exactly once,
+// attributed to the PR the walk resolves first (the older merge on main).
+func TestSinceTagSharedPreSquashCommitCountsOnce(t *testing.T) {
+	dir, _ := testRepo(t)
+	sha1 := squashCommit(t, dir, "Add a menu", 7)
+	sha2 := squashCommit(t, dir, "Fix a crash", 8)
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
+		commitPullsPath(sha2): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha2) + `]`,
+		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles: add a menu") + `]`,
+		pullCommitsPath(8): `[` +
+			apiCommit("a1", "akira-toriyama", ":sparkles: add a menu") + `,` + // the base PR's commit riding along
+			apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.0", "--json")
+	if code != 0 {
+		t.Fatalf("bump over a stacked pair exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	var res struct {
+		Commits []struct {
+			SHA string `json:"sha"`
+		} `json:"commits"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, stdout)
+	}
+	if len(res.Commits) != 2 {
+		t.Fatalf("verdict counts %d commits, want 2 (a1 once + b1): %+v", len(res.Commits), res.Commits)
+	}
+	if !strings.Contains(stderr, "::notice::") || !strings.Contains(stderr, "a1") {
+		t.Fatalf("the dedup must announce the shared commit with a ::notice:: naming it:\n%s", stderr)
+	}
+
+	code, notes, stderr := runGlyph(t, "notes", "--since-tag=v0.1.0")
+	if code != 0 {
+		t.Fatalf("notes over a stacked pair exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if got := strings.Count(notes, "add a menu"); got != 1 {
+		t.Fatalf("the shared commit renders %d note line(s), want exactly 1:\n%s", got, notes)
+	}
+}
+
+// TestSinceTagFallbackSharesShaWithAnExpandedPR: a fast-forwarded branch puts a
+// PR's pre-squash commits on main under their ORIGINAL SHAs. When the walk then
+// falls back on such a commit (no merged PR resolves it), it must not fold what
+// an expanded PR already contributed.
+func TestSinceTagFallbackSharesShaWithAnExpandedPR(t *testing.T) {
+	dir, _ := testRepo(t)
+	sha1 := squashCommit(t, dir, "Add a menu", 7)
+	testCommit(t, dir, "akira-toriyama", ":sparkles: add a menu")
+	sha2 := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
+		commitPullsPath(sha2): `[]`, // no PR resolves it — the fallback path
+		// PR 7's listing already carries the commit under the SHA it has on main.
+		pullCommitsPath(7): `[` + apiCommit(sha2, "akira-toriyama", ":sparkles: add a menu") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.0", "--json")
+	if code != 0 {
+		t.Fatalf("bump exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	var res struct {
+		Commits []struct {
+			SHA string `json:"sha"`
+		} `json:"commits"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, stdout)
+	}
+	if len(res.Commits) != 1 {
+		t.Fatalf("verdict counts %d commits, want 1 (the fallback must dedup against the expanded PR): %+v", len(res.Commits), res.Commits)
+	}
+}
+
 // TestSinceTagExplicitEmptyIsUsage: `--since-tag=` (a workflow templating an
 // unset variable) must not silently degrade to auto — the caller NAMED a tag
 // and the name is empty. Usage, before anything runs.

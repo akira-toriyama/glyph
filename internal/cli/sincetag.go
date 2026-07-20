@@ -150,7 +150,8 @@ func latestVersionTag(ctx context.Context) (tag string, v bump.Version, err erro
 }
 
 // pullExpansion records one merged pull request the walk resolved and how many
-// participating commits it contributed. This is the walk reporting its own
+// participating commits it contributed — after the walk-wide SHA dedup, so a
+// stacked PR whose commits all rode in with its base PR reports 0. This is the walk reporting its own
 // expansion facts: git-cliff (and any main-history reader) sees only the squash
 // subject, so a verdict divergence is EXPECTED exactly when some pull
 // contributed 2+ commits (COMMIT_OR_PR_TITLE replaced its squash subject with
@@ -174,6 +175,13 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 	// Normalized to [] up front so the JSON surface never emits null — a
 	// shadow script indexes .pulls unconditionally.
 	pulls := []pullExpansion{}
+	// seen holds every pre-squash SHA already folded in. One commit can be
+	// reachable from TWO merged PRs — a stacked branch carries its base PR's
+	// pre-squash commits, so after both squash-merge, both listings contain
+	// them — and without this set each occurrence would land in the notes and
+	// the fold once per PR. The walk runs oldest first, so a shared commit is
+	// attributed to the PR that first landed it on main.
+	seen := map[string]bool{}
 	walked, unknown := 0, 0
 	for _, raw := range raws {
 		// A squash subject here is a POINTER to a pull request, not a message
@@ -204,14 +212,25 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 			// Pre-flight the membership check that classifyVerdict would run
 			// later anyway (same Classify, same table — it cannot disagree):
 			// down there the PR association is gone, and a bare per-commit
-			// lint line is uniquely unhelpful HERE — see wedgeHint.
+			// lint line is uniquely unhelpful HERE — see wedgeHint. A commit
+			// already folded in skips both the check (the first sighting ran
+			// it, same table) and the fold.
+			contributed := 0
 			for _, ic := range inner {
+				if ic.SHA != "" && seen[ic.SHA] {
+					noticef("commit %.7s in pull request #%d was already folded in by an earlier pull request (stacked branches share pre-squash commits) — counted once", ic.SHA, number)
+					continue
+				}
 				if _, cerr := bump.Classify(ic, table); cerr != nil {
 					return nil, nil, wedgeHint(cerr, owner, repo, number)
 				}
+				if ic.SHA != "" {
+					seen[ic.SHA] = true
+				}
+				commits = append(commits, ic)
+				contributed++
 			}
-			commits = append(commits, inner...)
-			pulls = append(pulls, pullExpansion{Number: number, Commits: len(inner)})
+			pulls = append(pulls, pullExpansion{Number: number, Commits: contributed})
 			continue
 		case covered:
 			// Part of a merged PR whose canonical (merge_commit_sha) commit
@@ -222,6 +241,16 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 			why = "has no merged pull request (a direct push, or the API lagging)"
 		}
 		if fc, ok := fallbackCommit(table, raw, why); ok {
+			// The same dedup as the PR path: a fast-forwarded branch puts a
+			// PR's pre-squash commits on main under their original SHAs, so a
+			// fallback can name a commit an expanded PR already contributed.
+			if fc.SHA != "" && seen[fc.SHA] {
+				noticef("commit %.7s was already folded in by a merged pull request — counted once", fc.SHA)
+				continue
+			}
+			if fc.SHA != "" {
+				seen[fc.SHA] = true
+			}
 			commits = append(commits, fc)
 		}
 	}
