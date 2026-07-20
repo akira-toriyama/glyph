@@ -114,6 +114,23 @@ func TestParse(t *testing.T) {
 			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "See BREAKING CHANGE: docs for details."},
 		},
 		{
+			// The trap this closes: prose wrapping onto the phrase at a line
+			// start is not a footer, and must not force a major release.
+			name: "wrapped prose starting a line with the phrase is not a footer",
+			in:   ":bug: fix a crash\n\nSpell the footer NON-BREAKING:, uppercase, mirroring\nBREAKING CHANGE: for the same reason that one is uppercase.",
+			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "Spell the footer NON-BREAKING:, uppercase, mirroring\nBREAKING CHANGE: for the same reason that one is uppercase."},
+		},
+		{
+			name: "a real footer still counts when it opens a block",
+			in:   ":bug: fix a crash\n\nSome prose about the change.\n\nBREAKING CHANGE: the flag is gone.",
+			want: Commit{Gitmoji: ":bug:", Breaking: true, Subject: "fix a crash", Body: "Some prose about the change.\n\nBREAKING CHANGE: the flag is gone."},
+		},
+		{
+			name: "a footer stacked under another trailer still counts",
+			in:   ":bug: fix a crash\n\nCo-Authored-By: Someone <a@b.c>\nBREAKING CHANGE: the flag is gone.",
+			want: Commit{Gitmoji: ":bug:", Breaking: true, Subject: "fix a crash", Body: "Co-Authored-By: Someone <a@b.c>\nBREAKING CHANGE: the flag is gone."},
+		},
+		{
 			name: "crlf line endings are normalized",
 			in:   ":bug: fix a crash\r\n\r\nGuard the nil map.",
 			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "Guard the nil map."},
@@ -407,9 +424,34 @@ func TestUndeclaredRemoval(t *testing.T) {
 			want:    false,
 		},
 		{
-			name:    "Non-Breaking footer declares it",
-			message: ":fire: drop an unused private helper\n\nNon-Breaking: the helper was never exported",
+			name:    "NON-BREAKING footer declares it",
+			message: ":fire: drop an unused private helper\n\nNON-BREAKING: the helper was never exported",
 			want:    false,
+		},
+		// The footer is uppercase and case-sensitive, exactly like BREAKING
+		// CHANGE:. A body may legitimately read "this is non-breaking: …", and a
+		// footer that switches a rule off must not be spellable by accident.
+		{
+			name:    "lowercase non-breaking does not declare it",
+			message: ":fire: drop a helper\n\nnon-breaking: it was never exported",
+			want:    true,
+		},
+		{
+			name:    "title-case Non-Breaking does not declare it",
+			message: ":fire: drop a helper\n\nNon-Breaking: it was never exported",
+			want:    true,
+		},
+		// A bare footer is the reflex answer — the magic word without the thought
+		// the rule exists to force. It does not count.
+		{
+			name:    "NON-BREAKING with no reason does not declare it",
+			message: ":fire: drop a helper\n\nNON-BREAKING:",
+			want:    true,
+		},
+		{
+			name:    "NON-BREAKING with blank reason does not declare it",
+			message: ":fire: drop a helper\n\nNON-BREAKING:    ",
+			want:    true,
 		},
 
 		// Everything that takes nothing away is untouched — this rule must not
@@ -428,15 +470,93 @@ func TestUndeclaredRemoval(t *testing.T) {
 	}
 }
 
-// The rule is a merge-candidate rule only. At authoring time a developer is
-// still shaping the commit; forcing the declaration into every `git commit` of
-// a removal (including the ones they will squash away) would make the hook
-// hostile for no gain, since the range walk catches it before merge.
-func TestUndeclaredRemovalIsMergeCandidateOnly(t *testing.T) {
+// A scope outside lowercase kebab-case used to surface as malformed-subject,
+// which points at the whole line and sends the author hunting the gitmoji or
+// the separating space when all they wrote was (Palette) for (palette) (t-edan).
+//
+// It bites hardest right here: undeclared-removal tells the author to add `!`,
+// and the Swift repos this rule most protects (sill, wand, facet, halo, perch)
+// scope by PascalCase module name — so following the instruction produced a
+// confusing error. Worse, legacyTokenRE's scope slot is already `[^()]+`, so the
+// RETIRED form accepts (Palette) while the canonical form rejects it.
+func TestInvalidScope(t *testing.T) {
+	known := func(string) bool { return true }
+
+	tests := []struct {
+		name     string
+		message  string
+		wantRule string
+		wantHint string // substring the detail must carry, "" to skip
+	}{
+		{
+			name:     "PascalCase scope names the scope and suggests the fix",
+			message:  ":fire:(Palette)! prune catppuccin-latte",
+			wantRule: RuleInvalidScope,
+			wantHint: "write (palette)",
+		},
+		{
+			name:     "camelCase scope suggests the fix",
+			message:  ":sparkles:(themeKit) add a thing",
+			wantRule: RuleInvalidScope,
+			wantHint: "write (themekit)",
+		},
+		{
+			name:     "a scope lowercasing cannot rescue gets no suggestion",
+			message:  ":fire:(ThemeKit,ThemeKitUI) prune a preset",
+			wantRule: RuleInvalidScope,
+			wantHint: "lowercase kebab-case",
+		},
+		// Not a scope problem: these must keep the catch-all rule.
+		{name: "no gitmoji is still malformed", message: "just a subject", wantRule: RuleMalformedSubject},
+		{name: "missing space is still malformed", message: ":fire:prune a preset", wantRule: RuleMalformedSubject},
+		{name: "blank subject after a scope is still malformed", message: ":fire:(Palette) ", wantRule: RuleMalformedSubject},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vs := Lint(tt.message, LintOptions{Known: known})
+			if len(vs) != 1 {
+				t.Fatalf("want exactly 1 violation (the parse failure short-circuits), got %+v", vs)
+			}
+			if vs[0].Rule != tt.wantRule {
+				t.Errorf("rule = %q, want %q (detail: %s)", vs[0].Rule, tt.wantRule, vs[0].Detail)
+			}
+			if tt.wantHint != "" && !strings.Contains(vs[0].Detail, tt.wantHint) {
+				t.Errorf("detail %q does not carry %q", vs[0].Detail, tt.wantHint)
+			}
+		})
+	}
+}
+
+// The canonical form must not be stricter than the retired one it replaced: a
+// scope glyph rejects after `:fire:` cannot be a scope it accepts after a legacy
+// `refactor(...)` token. This pins the asymmetry that made t-edan bite.
+func TestKebabScopeAcceptedInBothForms(t *testing.T) {
+	known := func(string) bool { return true }
+	for _, msg := range []string{
+		":fire:(palette)! prune catppuccin-latte",
+		":fire: refactor(palette)!: prune catppuccin-latte",
+	} {
+		if vs := Lint(msg, LintOptions{Known: known}); len(vs) != 0 {
+			t.Errorf("Lint(%q) = %+v, want clean", msg, vs)
+		}
+	}
+}
+
+// The rule fires at authoring time too — it is NOT gated on MergeCandidate the
+// way wip-merge-candidate is. :construction: is legal mid-branch and illegal
+// only at the merge, so its verdict really does change with time; whether a
+// removal breaks anyone is settled when the commit is written. Deferring it to
+// the range walk only moves the fix from one line in an open editor to a
+// rewrite of already-pushed history.
+func TestUndeclaredRemovalFiresAtAuthoringTime(t *testing.T) {
 	vs := Lint(":fire: prune a preset", LintOptions{Known: func(string) bool { return true }})
+	found := false
 	for _, v := range vs {
 		if v.Rule == RuleUndeclaredRemoval {
-			t.Error("undeclared-removal fired at authoring time; it is a merge-candidate rule")
+			found = true
 		}
+	}
+	if !found {
+		t.Errorf("undeclared-removal did not fire at authoring time (violations: %+v)", vs)
 	}
 }
