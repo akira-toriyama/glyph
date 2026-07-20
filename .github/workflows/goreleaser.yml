@@ -18,8 +18,13 @@ name: goreleaser
 #
 # Divergence from the other family Go CLIs (cifail/furrow): glyph does NOT run
 # git-cliff here. glyph is the tool that replaces git-cliff, so depending on it for
-# glyph's own release notes would be self-contradictory. Notes come from
-# GoReleaser's built-in changelog until glyph dogfoods `glyph notes` (Phase 5+).
+# glyph's own release notes would be self-contradictory. Instead glyph dogfoods
+# itself: the notes step below runs `glyph notes` FROM THE TAGGED COMMIT (go run —
+# no published binary in the loop, so there is no bootstrap circularity) and hands
+# the result to GoReleaser via --release-notes. This closes t-8hqn: GoReleaser's
+# built-in changelog printed raw commit subjects, so a subject containing `@v2`
+# or `@mentions` pinged strangers from glyph's own releases — the one surface
+# t-hykw's escaping did not cover.
 #
 # Requires the HOMEBREW_TAP_TOKEN secret (write access to akira-toriyama/homebrew-tap)
 # for the cask push. It is NOT fleet-distributed — set it on this repo before the
@@ -58,12 +63,34 @@ jobs:
           # t-yaxa
           cache: false
 
+      - name: release notes via glyph itself
+        # The walk base is the tag BEFORE the one being cut: at tag-push time
+        # the new tag is already the highest v*, and walking since itself would
+        # produce empty notes. GITHUB_REF_NAME is the pushed tag (on a
+        # workflow_dispatch re-run it is only correct when dispatched on the
+        # tag ref — dispatching on a branch fails GoReleaser's own tag check
+        # anyway). The file lands in runner.temp, not the checkout: an
+        # untracked file would trip GoReleaser's dirty-state guard.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # An explicit `shell: bash` turns on pipefail — without it a failing
+        # `glyph notes` would vanish behind tee's 0 and ship empty notes.
+        shell: bash
+        run: |
+          prev="$(git tag --list 'v*' --sort=-v:refname | grep -Fxv "$GITHUB_REF_NAME" | head -1)"
+          if [ -z "$prev" ]; then
+            echo "::error::no previous v* tag found — cannot compute the walk base for release notes"
+            exit 1
+          fi
+          echo "release notes walk: $prev..$GITHUB_REF_NAME"
+          go run ./cmd/glyph notes --since-tag="$prev" | tee "$RUNNER_TEMP/release-notes.md"
+
       - name: GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           # Pin the GoReleaser TOOL to the v2 line (never `latest`).
           version: "~> 2"
-          args: release --clean
+          args: release --clean --release-notes=${{ runner.temp }}/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # PAT with write access to akira-toriyama/homebrew-tap.
