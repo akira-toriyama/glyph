@@ -73,8 +73,14 @@ runs:
 
         base="https://github.com/akira-toriyama/glyph/releases/download/$ver"
         file="glyph_${ver#v}_${os}_${arch}.tar.gz"
-        curl -fsSL --retry 3 -o "$RUNNER_TEMP/$file" "$base/$file"
-        curl -fsSL --retry 3 -o "$RUNNER_TEMP/glyph-checksums.txt" "$base/checksums.txt"
+        # --retry 5 spans ~31s of exponential backoff (1+2+4+8+16). The old
+        # --retry 3 (~7s) was outlived by a real GitHub minor outage — a fleet
+        # verdict job died on 504×4 downloading this binary (t-yj1b) — and this
+        # window matches the 1s→4s→16s schedule glyph's own API calls retry on.
+        # --retry-connrefused folds connection-refused into the transient set:
+        # an outage resets connections as often as it answers 5xx.
+        curl -fsSL --retry 5 --retry-connrefused -o "$RUNNER_TEMP/$file" "$base/$file"
+        curl -fsSL --retry 5 --retry-connrefused -o "$RUNNER_TEMP/glyph-checksums.txt" "$base/checksums.txt"
         # An empty grep (checksum line missing) yields empty stdin, which the
         # `-c` check fails — so a missing entry fails the step, by design.
         ( cd "$RUNNER_TEMP" && grep -F "  $file" glyph-checksums.txt | sha_check )
@@ -85,18 +91,19 @@ runs:
         # was built by glyph's release workflow (goreleaser.yml — the signer
         # identity for v0.3.0+; earlier releases were attested under the
         # pre-rename release.yml, and their lockstep reusable tags carry that
-        # path). Fail-closed, with a bounded retry mirroring the curls'
-        # `--retry 3`: the attestations API / Sigstore transparency log can blip,
-        # and a CI gate must not go red on a transient hiccup. Still hard-fails
-        # after the last attempt.
-        for i in 1 2 3; do
+        # path). Fail-closed, with a bounded retry sized like the curls' window
+        # (~30s): the attestations API / Sigstore transparency log rides the
+        # same infrastructure that just proved able to stay down past a short
+        # retry (t-yj1b), and a CI gate must not go red on a transient hiccup.
+        # Still hard-fails after the last attempt.
+        for i in 1 2 3 4 5; do
           if gh attestation verify "$RUNNER_TEMP/$file" \
                --repo akira-toriyama/glyph \
                --signer-workflow akira-toriyama/glyph/.github/workflows/goreleaser.yml; then
             break
           fi
-          if [ "$i" -eq 3 ]; then
-            echo "attestation verification failed after 3 attempts" >&2
+          if [ "$i" -eq 5 ]; then
+            echo "attestation verification failed after 5 attempts" >&2
             exit 1
           fi
           echo "attestation verify failed (attempt $i); retrying" >&2
