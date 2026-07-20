@@ -25,27 +25,14 @@ archives:
 checksum:
   name_template: checksums.txt
 
-# glyph will derive its own release notes from gitmoji once it self-hosts (Phase
-# 5+, `glyph notes`). Until then GoReleaser groups the tag's commits by their
-# gitmoji / Conventional prefix — the family's other repos use git-cliff, but glyph
-# must not depend on the tool it replaces (see .github/workflows/goreleaser.yml).
+# Release notes are glyph's own: the goreleaser.yml workflow runs `glyph notes`
+# from the tagged commit and passes the file via --release-notes (t-8hqn). The
+# built-in changelog is disabled rather than kept as a fallback — its raw commit
+# subjects are exactly the unescaped-@mention surface the dogfooding removes,
+# and a silent fallback would reopen it. A goreleaser run WITHOUT the flag now
+# ships an empty body, which is loud, not wrong.
 changelog:
-  use: git
-  sort: asc
-  groups:
-    - title: Features
-      regexp: '(:sparkles:|:boom:)|(^feat[(!:])'
-      order: 0
-    - title: Fixes
-      regexp: '(:bug:|:ambulance:|:lock:)|(^fix[(!:])'
-      order: 1
-    - title: Others
-      order: 999
-  filters:
-    exclude:
-      - '^:memo:'
-      - '^:card_file_box: chore\(board\)'
-      - '^docs[(:]'
+  disable: true
 
 # Homebrew cask pushed to the family tap on release. GoReleaser v2 ships prebuilt
 # binaries as CASKS (the old `brews:` formula path is deprecated); the live
