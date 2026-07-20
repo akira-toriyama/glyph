@@ -98,6 +98,13 @@ var (
 	// scopeRE is the scope slot of subjectRE standing alone, used to decide
 	// whether merely lowercasing a rejected scope would make it legal.
 	scopeRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+	// trailerRE is the `Token: value` shape of a git trailer, with the token
+	// capitalized word-by-word (Co-Authored-By, BREAKING CHANGE) so an ordinary
+	// sentence that happens to contain a colon ("see the docs: here") is not
+	// mistaken for one. It decides whether a trailer block CONTINUES: several
+	// trailers may stack with no blank line between them, prose may not.
+	trailerRE = regexp.MustCompile(`^[A-Z][A-Za-z0-9-]*(?: [A-Z][A-Za-z0-9-]*)*: `)
 )
 
 // invalidScope reports whether subject's ONLY defect is a scope outside
@@ -180,7 +187,22 @@ func Parse(message string) (Commit, error) {
 		rest = rest[1:]
 	}
 	c.Body = strings.TrimRight(strings.Join(rest, "\n"), "\n")
+	// A footer is a trailer, not prose. It counts only where a trailer can
+	// legally sit: opening a block (after a blank line, or as the first body
+	// line) or stacked under another trailer. Matching any line that merely
+	// STARTS with the phrase makes a major release out of a paragraph that
+	// happened to wrap that way — glyph's own history is the proof, since the
+	// commit introducing this very rule wrapped onto "BREAKING CHANGE:" while
+	// explaining it and classified itself as breaking.
+	atBlockStart := true
 	for _, l := range rest {
+		if strings.TrimSpace(l) == "" {
+			atBlockStart = true
+			continue
+		}
+		if !atBlockStart {
+			continue
+		}
 		if strings.HasPrefix(l, "BREAKING CHANGE:") || strings.HasPrefix(l, "BREAKING-CHANGE:") {
 			c.Breaking = true
 		}
@@ -197,9 +219,12 @@ func Parse(message string) (Commit, error) {
 		// by reflex — the author types the magic word without answering the
 		// question the rule exists to ask — which buys nothing over not having
 		// the rule at all.
-		if rest, found := strings.CutPrefix(l, "NON-BREAKING:"); found && strings.TrimSpace(rest) != "" {
+		if v, found := strings.CutPrefix(l, "NON-BREAKING:"); found && strings.TrimSpace(v) != "" {
 			c.NonBreaking = true
 		}
+		// Trailers may stack without a blank line between them; prose may not,
+		// so anything else closes the block.
+		atBlockStart = trailerRE.MatchString(l)
 	}
 	return c, nil
 }

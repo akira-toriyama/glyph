@@ -114,6 +114,23 @@ func TestParse(t *testing.T) {
 			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "See BREAKING CHANGE: docs for details."},
 		},
 		{
+			// The trap this closes: prose wrapping onto the phrase at a line
+			// start is not a footer, and must not force a major release.
+			name: "wrapped prose starting a line with the phrase is not a footer",
+			in:   ":bug: fix a crash\n\nSpell the footer NON-BREAKING:, uppercase, mirroring\nBREAKING CHANGE: for the same reason that one is uppercase.",
+			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "Spell the footer NON-BREAKING:, uppercase, mirroring\nBREAKING CHANGE: for the same reason that one is uppercase."},
+		},
+		{
+			name: "a real footer still counts when it opens a block",
+			in:   ":bug: fix a crash\n\nSome prose about the change.\n\nBREAKING CHANGE: the flag is gone.",
+			want: Commit{Gitmoji: ":bug:", Breaking: true, Subject: "fix a crash", Body: "Some prose about the change.\n\nBREAKING CHANGE: the flag is gone."},
+		},
+		{
+			name: "a footer stacked under another trailer still counts",
+			in:   ":bug: fix a crash\n\nCo-Authored-By: Someone <a@b.c>\nBREAKING CHANGE: the flag is gone.",
+			want: Commit{Gitmoji: ":bug:", Breaking: true, Subject: "fix a crash", Body: "Co-Authored-By: Someone <a@b.c>\nBREAKING CHANGE: the flag is gone."},
+		},
+		{
 			name: "crlf line endings are normalized",
 			in:   ":bug: fix a crash\r\n\r\nGuard the nil map.",
 			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "Guard the nil map."},
