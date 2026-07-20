@@ -14,12 +14,16 @@ import (
 )
 
 // newClient spins an httptest.Server for handler and returns a Client pointed at
-// it with the given token, using the server's own HTTP client.
+// it with the given token, using the server's own HTTP client. Retries are
+// disabled so every failure test exercises exactly one attempt — the retry
+// loop has its own tests (retry_test.go), which set a schedule explicitly.
 func newClient(t *testing.T, token string, handler http.HandlerFunc) *Client {
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	return New(token, WithBaseURL(srv.URL), WithHTTPClient(srv.Client()))
+	c := New(token, WithBaseURL(srv.URL), WithHTTPClient(srv.Client()))
+	c.retryDelays = nil
+	return c
 }
 
 // wantAPIError asserts err is a *core.Error carrying CodeAPI (the whole package
@@ -351,6 +355,7 @@ func TestTransportErrorIsAPI(t *testing.T) {
 	srv.Close() // nothing is listening there any more
 
 	c := New("", WithBaseURL(dead))
+	c.retryDelays = nil // classification is under test, not the retry loop
 	_, err := c.PullCommits(context.Background(), "o", "r", 1)
 	wantAPIError(t, err, "")
 }

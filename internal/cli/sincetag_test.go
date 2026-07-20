@@ -811,6 +811,10 @@ func TestSinceTagAPIFailureMidWalkPassesThrough(t *testing.T) {
 		case commitPullsPath(sha):
 			fmt.Fprint(w, pullRef)
 		case pullCommitsPath(7):
+			// Retry-After: 0 keeps the client's transient-failure retries
+			// (which a 5xx now triggers) instant, so the test stays fast while
+			// still walking the whole retry schedule before the hard fail.
+			w.Header().Set("Retry-After", "0")
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprint(w, `{"message":"boom"}`)
 		default:
@@ -829,6 +833,9 @@ func TestSinceTagAPIFailureMidWalkPassesThrough(t *testing.T) {
 	env := decodeErrorEnvelope(t, stderr)
 	if env.Code != 4 || !strings.Contains(env.Message, "boom") {
 		t.Fatalf("envelope = %+v, want code 4 carrying GitHub's message", env)
+	}
+	if !strings.Contains(env.Message, "gave up after") {
+		t.Fatalf("a 5xx must be retried before the hard fail, and the message must say so:\n%s", env.Message)
 	}
 	if strings.Contains(env.Message, "wedge") || strings.Contains(env.Message, "by hand") {
 		t.Fatalf("an API failure must not carry the lint wedge prose:\n%s", env.Message)

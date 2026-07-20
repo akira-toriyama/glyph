@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -54,6 +55,20 @@ const PullCommitsCap = 250
 // fires, the deadline classifies as an ordinary API failure (see failed).
 const defaultTimeout = 30 * time.Second
 
+// defaultRetryDelays is the backoff schedule for transient failures — one more
+// attempt after each delay, so the default is 4 attempts over ~21s. The shape
+// this absorbs is a real one: a GitHub minor outage answering 503 for tens of
+// seconds took a fleet-wide verdict sweep down and cost several waves of
+// `gh run rerun` (t-bjrv). 1s→4s→16s rides out that window without stretching
+// a healthy run — a request that succeeds never waits at all.
+var defaultRetryDelays = []time.Duration{1 * time.Second, 4 * time.Second, 16 * time.Second}
+
+// maxRetryAfter caps how long a server-sent Retry-After header may hold one
+// retry. GitHub's secondary-rate-limit answers carry the header and are worth
+// honoring precisely; an outage-mode gateway could name minutes, and sleeping
+// that long per attempt would hang a CI job past any useful patience.
+const maxRetryAfter = 30 * time.Second
+
 // PullRef is the slice of a pull request the release walk needs to resolve a
 // squash commit to the PR it came from: its number, whether/when it merged, and
 // merge_commit_sha — a commit can be associated with more than one PR, so the
@@ -93,12 +108,17 @@ type Client struct {
 	baseURL string
 	http    *http.Client
 	token   string
+	// retryDelays is the backoff schedule between attempts on a transient
+	// failure; nil or empty means a single attempt. Tests shorten it to keep
+	// retry paths fast; production always runs the default.
+	retryDelays []time.Duration
 }
 
 // New builds a client. token is sent as a Bearer credential when non-empty; an
 // empty token still reads public repos, at the anonymous rate limit.
 func New(token string, opts ...Option) *Client {
-	c := &Client{baseURL: DefaultBaseURL, http: &http.Client{Timeout: defaultTimeout}, token: token}
+	c := &Client{baseURL: DefaultBaseURL, http: &http.Client{Timeout: defaultTimeout},
+		token: token, retryDelays: defaultRetryDelays}
 	for _, o := range opts {
 		o(c)
 	}
@@ -211,12 +231,14 @@ func (c *Client) get(ctx context.Context, u string, into any) (string, error) {
 
 // statusError carries a non-2xx response's status alongside the flattened
 // *core.Error, so a public method can classify by status (the 422 below)
-// before the failure leaves the package. Unwrap keeps it an ordinary CodeAPI
-// failure to everything else — core.AsError and core.ExitCode see the wrapped
-// *core.Error through the chain.
+// before the failure leaves the package, and the retry loop can classify a
+// rate-limit answer by its Retry-After header. Unwrap keeps it an ordinary
+// CodeAPI failure to everything else — core.AsError and core.ExitCode see the
+// wrapped *core.Error through the chain.
 type statusError struct {
-	status int
-	err    *core.Error
+	status     int
+	retryAfter string // the Retry-After header, "" when absent
+	err        *core.Error
 }
 
 func (e *statusError) Error() string { return e.err.Error() }
@@ -258,6 +280,68 @@ func failed(ctx context.Context, what string, err error) error {
 		return &core.Error{Code: core.CodeInterrupted, Msg: "interrupted", Silent: true}
 	}
 	return core.APIf("github: %s: %v", what, err)
+}
+
+// retryable reports whether one attempt's failure is worth another try: a 5xx
+// (an outage or a gateway hiccup), a 429, or a 403 carrying Retry-After —
+// GitHub's secondary-rate-limit signature; a bare 403 is a permission failure
+// and retrying it would only burn more of the limit. A transport failure with
+// a live context also qualifies (an outage resets connections as often as it
+// answers 503). An interrupt never does — the user asked to stop — and every
+// other 4xx is the caller's input, which a retry cannot repair.
+func retryable(err error) bool {
+	var se *statusError
+	if errors.As(err, &se) {
+		return se.status >= 500 || se.status == http.StatusTooManyRequests ||
+			(se.status == http.StatusForbidden && se.retryAfter != "")
+	}
+	ce := core.AsError(err)
+	return ce != nil && ce.Code == core.CodeAPI
+}
+
+// retryWait picks the pause before the next attempt: the server's own
+// Retry-After (whole seconds — the shape GitHub sends), capped at
+// maxRetryAfter, else the schedule's delay.
+func retryWait(err error, fallback time.Duration) time.Duration {
+	var se *statusError
+	if errors.As(err, &se) && se.retryAfter != "" {
+		if n, perr := strconv.Atoi(se.retryAfter); perr == nil && n >= 0 {
+			return min(time.Duration(n)*time.Second, maxRetryAfter)
+		}
+	}
+	return fallback
+}
+
+// waitRetry sleeps d unless the request's context ends first, in which case it
+// returns the context's classification (a canceled context is the user's own
+// abort, a deadline an API failure — same split as failed).
+func waitRetry(ctx context.Context, d time.Duration) error {
+	if d > 0 {
+		t := time.NewTimer(d)
+		defer t.Stop()
+		select {
+		case <-ctx.Done():
+		case <-t.C:
+			return nil
+		}
+	}
+	if ctx.Err() != nil {
+		return failed(ctx, "waiting to retry", ctx.Err())
+	}
+	return nil
+}
+
+// noteAttempts stamps a failure that survived the whole retry schedule, so a
+// CI log reads "this was retried and still failed" instead of leaving open
+// whether the backoff ever ran. A first-attempt failure passes untouched.
+func noteAttempts(err error, attempts int) error {
+	if attempts <= 1 {
+		return err
+	}
+	if ce := core.AsError(err); ce != nil && ce.Code == core.CodeAPI {
+		ce.Msg = fmt.Sprintf("%s (gave up after %d attempts)", ce.Msg, attempts)
+	}
+	return err
 }
 
 // maxSnippet bounds the error-body excerpt carried into a message.
