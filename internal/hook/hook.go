@@ -28,15 +28,19 @@ import (
 // previously installed hook look foreign.
 const Marker = "installed-by: glyph hook install"
 
-// Script is the commit-msg hook. Two properties are load-bearing:
+// Script is the commit-msg hook. Three properties are load-bearing:
 //
 //   - It never matches the convention itself. No regex, no gitmoji list — those
 //     live in the binary, so the hook cannot go stale.
-//   - A missing glyph WARNS AND PASSES rather than failing the commit. The hook
-//     is an early-warning device on developer machines; the commit-lint CI job
-//     is the authority. Blocking a commit because a tool is not installed would
-//     make glyph a hard dependency of committing to six repos, which is a worse
-//     failure than a late lint.
+//   - It stops a commit for ONE reason only: glyph's lint exit code 3, a real
+//     convention violation. Any other failure means glyph could not answer —
+//     not on PATH, no source clone behind the wrapper, a broken build — and the
+//     commit proceeds with a warning. The hook is an early-warning device on
+//     developer machines; the commit-lint CI job is the authority. Blocking a
+//     commit because the tool is unwell would make glyph a hard dependency of
+//     committing to six repos, which is a worse failure than a late lint.
+//   - Consequently it must NEVER exit non-zero on its own account. Every path
+//     that is not "glyph said violation" ends in exit 0.
 const Script = `#!/bin/sh
 # glyph commit-msg hook — ` + Marker + `
 #
@@ -50,7 +54,21 @@ if ! command -v glyph >/dev/null 2>&1; then
 	exit 0
 fi
 
-exec glyph lint --stdin <"$1"
+glyph lint --stdin <"$1"
+status=$?
+
+# 3 is glyph's commit-convention violation code — the one answer that should
+# stop a commit. Anything else non-zero means glyph could not reach a verdict
+# (missing source clone behind the PATH wrapper, a build failure, a bad flag);
+# failing the commit on that would gate committing on the health of a tool
+# whose whole job here is advisory.
+if [ "$status" -eq 3 ]; then
+	exit 3
+fi
+if [ "$status" -ne 0 ]; then
+	echo "glyph: could not lint this message (exit $status) — letting the commit through; CI still enforces the convention" >&2
+fi
+exit 0
 `
 
 // Result reports what Install did, so the CLI can print an accurate line and

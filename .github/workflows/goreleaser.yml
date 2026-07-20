@@ -80,17 +80,43 @@ jobs:
         # untracked file would trip GoReleaser's dirty-state guard.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # An explicit `shell: bash` turns on pipefail — without it a failing
-        # `glyph notes` would vanish behind tee's 0 and ship empty notes.
+        # An explicit `shell: bash` turns on `-e` and pipefail. `glyph notes`
+        # writes straight to the file (never through a pipe) so no exit code can
+        # be masked, and its status is inspected explicitly below rather than
+        # left to -e, which cannot tell a soft no-release from a real failure.
         shell: bash
         run: |
-          prev="$(git tag --list 'v*' --sort=-v:refname | grep -Fxv "$GITHUB_REF_NAME" | head -1)"
+          # The predecessor is the highest tag strictly BELOW the one being cut,
+          # not merely the highest OTHER tag: cutting a v0.8.3 hotfix while
+          # v0.9.0 exists must walk v0.8.2..v0.8.3, never backwards from v0.9.0.
+          # awk over an ASCENDING version sort gives that, and (unlike
+          # `grep -Fxv | head -1`) it always exits 0, so pipefail cannot kill the
+          # step before the guard below can report a missing predecessor.
+          prev="$(git tag --list 'v*' --sort=v:refname |
+            awk -v cur="$GITHUB_REF_NAME" '$0 == cur { exit } { last = $0 } END { print last }')"
           if [ -z "$prev" ]; then
-            echo "::error::no previous v* tag found — cannot compute the walk base for release notes"
+            echo "::error::no v* tag below $GITHUB_REF_NAME — cannot compute the walk base for release notes"
             exit 1
           fi
           echo "release notes walk: $prev..$GITHUB_REF_NAME"
-          go run ./cmd/glyph notes --since-tag="$prev" | tee "$RUNNER_TEMP/release-notes.md"
+
+          # `glyph notes` exits 1 as a SOFT no-release signal ("nothing
+          # release-worthy in this range") — a distinct outcome from a hard
+          # failure, and one `set -e` cannot tell apart. Left to -e, a tag cut
+          # over an infra-only range (all :construction_worker: / :memo:) would
+          # abort the whole job: no binaries, no cask, no attestation, behind a
+          # tag that already exists. Honour the contract instead: 1 ships a
+          # release that says so, anything else is a real failure.
+          status=0
+          go run ./cmd/glyph notes --since-tag="$prev" > "$RUNNER_TEMP/release-notes.md" || status=$?
+          if [ "$status" -eq 1 ]; then
+            echo "::warning::no release-worthy commits in $prev..$GITHUB_REF_NAME — publishing with a placeholder body"
+            printf 'No release-worthy changes since %s.\n' "$prev" > "$RUNNER_TEMP/release-notes.md"
+          elif [ "$status" -ne 0 ]; then
+            echo "::error::glyph notes failed (exit $status)"
+            exit "$status"
+          fi
+          cat "$RUNNER_TEMP/release-notes.md"
 
       - name: GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
