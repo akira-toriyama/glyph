@@ -1,7 +1,10 @@
 package hook
 
 import (
+	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -29,6 +32,74 @@ func TestScriptCarriesNoCopyOfTheConvention(t *testing.T) {
 	if !strings.Contains(Script, "exit 0") {
 		t.Error("hook script has no pass-through for a missing glyph; a developer without " +
 			"glyph on PATH would be unable to commit (CI is the authority, the hook is early warning)")
+	}
+
+	// Only a real violation may stop a commit. If the script ever goes back to
+	// `exec glyph lint`, every glyph malfunction — a missing source clone behind
+	// the PATH wrapper, a broken build, a renamed flag — becomes a hard commit
+	// block in six repos that have no other local gate.
+	if strings.Contains(Script, "exec glyph lint") {
+		t.Error("hook script execs glyph directly, so ANY non-zero exit blocks the commit; " +
+			"it must distinguish exit 3 (a convention violation) from glyph being unable to answer")
+	}
+	if !strings.Contains(Script, "-eq 3") {
+		t.Error("hook script does not single out glyph's lint exit code 3; without that check it " +
+			"cannot tell a real violation from an unwell toolchain")
+	}
+}
+
+// The hook's exit behaviour is the whole contract, so drive the real script
+// with a stub `glyph` that returns each interesting code.
+func TestScriptExitsOnlyOnAViolation(t *testing.T) {
+	tests := []struct {
+		name       string
+		glyphExit  int
+		wantExit   int
+		wantWarned bool
+	}{
+		{name: "clean message passes", glyphExit: 0, wantExit: 0},
+		{name: "violation stops the commit", glyphExit: 3, wantExit: 3},
+		{name: "usage error passes with a warning", glyphExit: 2, wantExit: 0, wantWarned: true},
+		{name: "IO/API failure passes with a warning", glyphExit: 4, wantExit: 0, wantWarned: true},
+		{name: "wrapper failure passes with a warning", glyphExit: 1, wantExit: 0, wantWarned: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			hookPath := filepath.Join(dir, "commit-msg")
+			if err := os.WriteFile(hookPath, []byte(Script), 0o755); err != nil { //nolint:gosec
+				t.Fatalf("writing the hook: %v", err)
+			}
+			msg := filepath.Join(dir, "MSG")
+			if err := os.WriteFile(msg, []byte(":sparkles: a subject\n"), 0o600); err != nil {
+				t.Fatalf("writing the message: %v", err)
+			}
+
+			// A stub glyph earlier on PATH than any real one.
+			stubDir := t.TempDir()
+			stub := fmt.Sprintf("#!/bin/sh\nexit %d\n", tt.glyphExit)
+			if err := os.WriteFile(filepath.Join(stubDir, "glyph"), []byte(stub), 0o755); err != nil { //nolint:gosec
+				t.Fatalf("writing the stub: %v", err)
+			}
+
+			cmd := exec.Command("/bin/sh", hookPath, msg)
+			cmd.Env = append(os.Environ(), "PATH="+stubDir)
+			out, err := cmd.CombinedOutput()
+
+			got := 0
+			var ee *exec.ExitError
+			if errors.As(err, &ee) {
+				got = ee.ExitCode()
+			} else if err != nil {
+				t.Fatalf("running the hook: %v\n%s", err, out)
+			}
+			if got != tt.wantExit {
+				t.Errorf("hook exit = %d, want %d (glyph exited %d)\n%s", got, tt.wantExit, tt.glyphExit, out)
+			}
+			if warned := strings.Contains(string(out), "could not lint"); warned != tt.wantWarned {
+				t.Errorf("warned = %v, want %v\n%s", warned, tt.wantWarned, out)
+			}
+		})
 	}
 }
 

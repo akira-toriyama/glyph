@@ -132,6 +132,121 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 			t.Errorf("no warning surfaced when glyph was absent:\n%s", out)
 		}
 	})
+
+	// Subjects git writes ITSELF must pass. An author cannot rewrite them, so
+	// rejecting one leaves --no-verify as the only way forward — which turns the
+	// gate off entirely. The retired shell hook exempted these four prefixes;
+	// the first cut of this hook did not, and blocked `git commit --fixup` and
+	// `git merge` fleet-wide.
+	t.Run("does not block git-generated subjects", func(t *testing.T) {
+		head := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
+		t.Run("fixup", func(t *testing.T) {
+			appendFile(t, dir, "fixup.txt")
+			testGit(t, dir, "akira-toriyama", "add", "-A")
+			if out, err := commitFlagsWith(dir, pathWithGlyph, "--fixup="+head); err != nil {
+				t.Fatalf("git commit --fixup was blocked by the hook: %v\n%s", err, out)
+			}
+		})
+
+		t.Run("squash", func(t *testing.T) {
+			appendFile(t, dir, "squash.txt")
+			testGit(t, dir, "akira-toriyama", "add", "-A")
+			if out, err := commitFlagsWith(dir, pathWithGlyph, "--squash="+head); err != nil {
+				t.Fatalf("git commit --squash was blocked by the hook: %v\n%s", err, out)
+			}
+		})
+
+		// A blocked merge is worse than a blocked commit: git has already
+		// written MERGE_HEAD, and the follow-up `git commit` runs the same hook
+		// on MERGE_MSG, so the repository cannot be brought out of the merge.
+		t.Run("merge", func(t *testing.T) {
+			testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic")
+			appendFile(t, dir, "topic.txt")
+			testGit(t, dir, "akira-toriyama", "add", "-A")
+			testCommit(t, dir, "akira-toriyama", ":sparkles: land the topic")
+			testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
+
+			out, err := mergeWith(dir, pathWithGlyph, "topic")
+			if err != nil {
+				t.Fatalf("git merge --no-ff was blocked by the hook: %v\n%s", err, out)
+			}
+			if _, sErr := os.Stat(filepath.Join(dir, ".git", "MERGE_HEAD")); sErr == nil {
+				t.Error("repository left mid-merge: MERGE_HEAD still present after the merge commit")
+			}
+		})
+	})
+
+	// git runs commit-msg BEFORE its own cleanup, so the file still holds the
+	// editor template. A message written under the template must lint on its
+	// real subject, not on the first comment line, and a leading blank line
+	// must not read as "empty commit message".
+	t.Run("lints the message, not git's template", func(t *testing.T) {
+		t.Run("subject below a leading blank and a template", func(t *testing.T) {
+			msg := "\n:sparkles:(cleanup) written under the template\n" +
+				"\n" +
+				"# Please enter the commit message for your changes. Lines starting\n" +
+				"# with '#' will be ignored, and an empty message aborts the commit.\n"
+			appendFile(t, dir, "template.txt")
+			testGit(t, dir, "akira-toriyama", "add", "-A")
+			if out, err := commitFileWith(t, dir, pathWithGlyph, msg); err != nil {
+				t.Fatalf("a valid message under git's template was rejected: %v\n%s", err, out)
+			}
+		})
+
+		t.Run("a violation under the template is still caught", func(t *testing.T) {
+			msg := "\nno gitmoji at all\n\n# Please enter the commit message for your changes.\n"
+			appendFile(t, dir, "bad.txt")
+			testGit(t, dir, "akira-toriyama", "add", "-A")
+			if _, err := commitFileWith(t, dir, pathWithGlyph, msg); err == nil {
+				t.Fatal("cleanup swallowed a real violation — the template path must still lint")
+			}
+			testGit(t, dir, "akira-toriyama", "reset", "-q")
+		})
+	})
+}
+
+func appendFile(t *testing.T, dir, name string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("x\n"), 0o600); err != nil {
+		t.Fatalf("writing %s: %v", name, err)
+	}
+}
+
+// commitFlagsWith runs `git commit <flag>` (no -m) so git composes the subject.
+func commitFlagsWith(dir, path string, flag string) (string, error) {
+	return runGit(dir, path, "commit", "-q", flag, "--no-edit")
+}
+
+// mergeWith runs a no-fast-forward merge, whose commit message git writes.
+func mergeWith(dir, path, branch string) (string, error) {
+	return runGit(dir, path, "merge", "--no-ff", "--no-edit", branch)
+}
+
+// commitFileWith commits with a message FILE, reproducing what an editor hands
+// git — template comments and all.
+func commitFileWith(t *testing.T, dir, path, message string) (string, error) {
+	t.Helper()
+	f := filepath.Join(t.TempDir(), "COMMIT_EDITMSG")
+	if err := os.WriteFile(f, []byte(message), 0o600); err != nil {
+		t.Fatalf("writing the message file: %v", err)
+	}
+	return runGit(dir, path, "commit", "-q", "-F", f)
+}
+
+func runGit(dir, path string, args ...string) (string, error) {
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(os.Environ(),
+		"GIT_CONFIG_GLOBAL="+os.DevNull,
+		"GIT_CONFIG_SYSTEM="+os.DevNull,
+		"GIT_AUTHOR_NAME=akira-toriyama",
+		"GIT_AUTHOR_EMAIL=test@example.invalid",
+		"GIT_COMMITTER_NAME=committer",
+		"GIT_COMMITTER_EMAIL=test@example.invalid",
+		"PATH="+path,
+	)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }
 
 // buildGlyph compiles the real binary once so the hook can invoke it as a

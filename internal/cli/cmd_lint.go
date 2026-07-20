@@ -45,7 +45,11 @@ func newLintCmd() *cobra.Command {
 				if rerr != nil {
 					return core.APIf("reading stdin: %v", rerr)
 				}
-				return lintOne(string(b), known)
+				// --stdin is the commit-msg hook, which git invokes BEFORE its
+				// own cleanup: the file still carries the editor template, the
+				// status block and (under commit.verbose) the diff. Reduce it to
+				// the message git will record before judging it.
+				return lintOne(parser.Cleanup(string(b)), known)
 			default:
 				return lintOne(lintMessage, known)
 			}
@@ -60,7 +64,18 @@ func newLintCmd() *cobra.Command {
 }
 
 // lintOne lints a single message at authoring time (no merge-candidate rules).
+//
+// Subjects git writes itself are skipped, exactly as the --range walk skips them
+// (bump.Excluded). Authoring time is where that tolerance matters MOST: the
+// range walk only ever sees these after the fact, whereas the commit-msg hook
+// stands between the developer and `git merge` / `git commit --fixup`. Judging
+// them here rejected messages CI accepts — an author cannot rewrite a subject
+// git generated, so the only escape was --no-verify, which turns the whole gate
+// off. The retired shell hook exempted the same four prefixes.
 func lintOne(message string, known func(string) bool) error {
+	if _, excluded := bump.Excluded("", firstLine(message), 0); excluded {
+		return nil
+	}
 	vs := parser.Lint(message, parser.LintOptions{Known: known})
 	if len(vs) == 0 {
 		return nil

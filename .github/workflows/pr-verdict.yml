@@ -67,20 +67,32 @@ name: glyph-pr-verdict
 #       uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@v0.5.0  # pin a release tag
 #
 # Gating on the verdict (the caller's policy, not this workflow's — see the
-# outputs block below). The empty check is the load-bearing line: a fork PR
-# skips the verdict job and every output comes back "", which means NOT
-# COMPUTED. Reading that as `none` would let exactly the PRs this reusable
-# cannot inspect sail through the gate.
+# outputs block below).
+#
+# TWO lines are load-bearing here, and the `if:` is the one that is easy to omit:
+#
+#   * `if: ${{ !cancelled() }}` — WITHOUT it the gate FAILS OPEN on exactly the
+#     PRs it exists to catch. A fork PR skips the verdict job, and Actions skips
+#     any job whose `needs:` was skipped, so a bare `needs: verdict` means the
+#     empty check below never executes at all: the gate reports skipped, branch
+#     protection sees no failure, and the uninspected PR merges. The same happens
+#     whenever the verdict job fails (an unclassifiable commit makes it red by
+#     design). `!cancelled()` runs the gate in both cases while still honouring a
+#     cancelled workflow run.
+#   * the empty check — a skipped verdict yields "" for every output, which means
+#     NOT COMPUTED. Reading it as `none` is the same fail-open by another route.
+#
 #   jobs:
 #     verdict:
-#       uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@v0.5.0
+#       uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@v0.9.0
 #     api-guard:
 #       needs: verdict
+#       if: ${{ !cancelled() }}          # ← without this the gate is skipped, not enforced
 #       runs-on: ubuntu-latest
 #       steps:
 #         - run: |
 #             if [ -z "${{ needs.verdict.outputs.level }}" ]; then
-#               echo "::error::verdict unavailable (fork PR?) — refusing to pass the gate"
+#               echo "::error::verdict unavailable (fork PR, or the verdict job failed) — refusing to pass the gate"
 #               exit 1
 #             fi
 #             # ...then compare ${{ needs.verdict.outputs.breaking }} against
