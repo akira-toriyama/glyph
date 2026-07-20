@@ -44,6 +44,7 @@ type Violation struct {
 // them — so keep the strings stable.
 const (
 	RuleMalformedSubject  = "malformed-subject"
+	RuleInvalidScope      = "invalid-scope"
 	RuleUnknownGitmoji    = "unknown-gitmoji"
 	RuleWIPMergeCandidate = "wip-merge-candidate"
 	RuleUppercaseSubject  = "uppercase-subject"
@@ -82,7 +83,46 @@ var (
 	// The remainder is `\S.*` for the same blank-subject reason as subjectRE:
 	// `:bug: fix:  ` must not salvage a blank subject out of the legacy slot.
 	legacyTokenRE = regexp.MustCompile(`^(feat|fix|perf|revert|docs|style|refactor|test|build|ci|chore)(\([^()]+\))?(!)?: (\S.*)$`)
+
+	// laxSubjectRE is subjectRE with the scope slot opened up to anything but
+	// parens. It never parses — it only DIAGNOSES. A subject that fails
+	// subjectRE but matches this one is well-formed except for its scope, so
+	// the author gets invalid-scope naming the offending text instead of
+	// malformed-subject pointing at the whole line (t-edan). The asymmetry that
+	// makes this bite: legacyTokenRE's scope slot is already `[^()]+`, so the
+	// RETIRED form accepts `(Palette)` while the canonical one rejects it —
+	// which is exactly the shape Swift repos write (sill, wand, facet, halo,
+	// perch all scope by PascalCase module name).
+	laxSubjectRE = regexp.MustCompile(`^(:[a-z0-9][a-z0-9_+-]*:)\(([^()]*)\)(!)? (\S.*)$`)
+
+	// scopeRE is the scope slot of subjectRE standing alone, used to decide
+	// whether merely lowercasing a rejected scope would make it legal.
+	scopeRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 )
+
+// invalidScope reports whether subject's ONLY defect is a scope outside
+// lowercase kebab-case, returning that scope. It is the shared oracle behind
+// Parse's error text and Lint's rule id, so the two can never disagree.
+func invalidScope(subject string) (string, bool) {
+	if subjectRE.MatchString(subject) {
+		return "", false
+	}
+	m := laxSubjectRE.FindStringSubmatch(subject)
+	if m == nil || strings.TrimSpace(m[4]) == "" {
+		return "", false
+	}
+	return m[2], true
+}
+
+// kebabSuggestion returns the lowercased form of scope when that alone makes it
+// legal, else "" — a suggestion that would itself be rejected (a scope with
+// commas or spaces) is worse than none.
+func kebabSuggestion(scope string) string {
+	if lower := strings.ToLower(scope); scopeRE.MatchString(lower) {
+		return lower
+	}
+	return ""
+}
 
 // Parse parses one commit message into a Commit. A message whose subject line
 // does not open with a well-formed `<:code:>[(scope)][!] <subject>` is a lint
@@ -101,6 +141,15 @@ func Parse(message string) (Commit, error) {
 	}
 	m := subjectRE.FindStringSubmatch(subject)
 	if m == nil {
+		// Name the real defect when it is only the scope: "malformed subject"
+		// points at the whole line and sends the author hunting the gitmoji or
+		// the space, when all they wrote was (Palette) instead of (palette).
+		if scope, ok := invalidScope(subject); ok {
+			if hint := kebabSuggestion(scope); hint != "" {
+				return Commit{}, core.Lintf("invalid scope %q in %q: scopes are lowercase kebab-case — write (%s)", scope, subject, hint)
+			}
+			return Commit{}, core.Lintf("invalid scope %q in %q: scopes are lowercase kebab-case (a-z, 0-9 and -; one scope, no separators)", scope, subject)
+		}
 		return Commit{}, core.Lintf("malformed subject %q: want `<:code:>[(scope)][!] <subject>` with a leading textual gitmoji", subject)
 	}
 	// The regexp's \S only rejects ASCII-space openers; a subject of Unicode
@@ -146,13 +195,20 @@ func Parse(message string) (Commit, error) {
 }
 
 // Lint checks one commit message and returns its violations in a stable order:
-// malformed-subject short-circuits (nothing else is checkable), then
-// unknown-gitmoji, wip-merge-candidate, uppercase-subject, trailing-period.
-// An unknown code is a hard violation here, never a silent fallback.
+// malformed-subject (or the sharper invalid-scope) short-circuits — nothing
+// else is checkable — then unknown-gitmoji, wip-merge-candidate,
+// uppercase-subject, trailing-period, undeclared-removal. An unknown code is a
+// hard violation here, never a silent fallback.
 func Lint(message string, opts LintOptions) []Violation {
 	c, err := Parse(message)
 	if err != nil {
-		return []Violation{{Rule: RuleMalformedSubject, Detail: err.Error()}}
+		rule := RuleMalformedSubject
+		if lines := splitLines(message); len(lines) > 0 {
+			if _, ok := invalidScope(lines[0]); ok {
+				rule = RuleInvalidScope
+			}
+		}
+		return []Violation{{Rule: rule, Detail: err.Error()}}
 	}
 	var vs []Violation
 	if opts.Known != nil && !opts.Known(c.Gitmoji) {

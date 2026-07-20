@@ -428,6 +428,78 @@ func TestUndeclaredRemoval(t *testing.T) {
 	}
 }
 
+// A scope outside lowercase kebab-case used to surface as malformed-subject,
+// which points at the whole line and sends the author hunting the gitmoji or
+// the separating space when all they wrote was (Palette) for (palette) (t-edan).
+//
+// It bites hardest right here: undeclared-removal tells the author to add `!`,
+// and the Swift repos this rule most protects (sill, wand, facet, halo, perch)
+// scope by PascalCase module name — so following the instruction produced a
+// confusing error. Worse, legacyTokenRE's scope slot is already `[^()]+`, so the
+// RETIRED form accepts (Palette) while the canonical form rejects it.
+func TestInvalidScope(t *testing.T) {
+	known := func(string) bool { return true }
+
+	tests := []struct {
+		name     string
+		message  string
+		wantRule string
+		wantHint string // substring the detail must carry, "" to skip
+	}{
+		{
+			name:     "PascalCase scope names the scope and suggests the fix",
+			message:  ":fire:(Palette)! prune catppuccin-latte",
+			wantRule: RuleInvalidScope,
+			wantHint: "write (palette)",
+		},
+		{
+			name:     "camelCase scope suggests the fix",
+			message:  ":sparkles:(themeKit) add a thing",
+			wantRule: RuleInvalidScope,
+			wantHint: "write (themekit)",
+		},
+		{
+			name:     "a scope lowercasing cannot rescue gets no suggestion",
+			message:  ":fire:(ThemeKit,ThemeKitUI) prune a preset",
+			wantRule: RuleInvalidScope,
+			wantHint: "lowercase kebab-case",
+		},
+		// Not a scope problem: these must keep the catch-all rule.
+		{name: "no gitmoji is still malformed", message: "just a subject", wantRule: RuleMalformedSubject},
+		{name: "missing space is still malformed", message: ":fire:prune a preset", wantRule: RuleMalformedSubject},
+		{name: "blank subject after a scope is still malformed", message: ":fire:(Palette) ", wantRule: RuleMalformedSubject},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vs := Lint(tt.message, LintOptions{Known: known})
+			if len(vs) != 1 {
+				t.Fatalf("want exactly 1 violation (the parse failure short-circuits), got %+v", vs)
+			}
+			if vs[0].Rule != tt.wantRule {
+				t.Errorf("rule = %q, want %q (detail: %s)", vs[0].Rule, tt.wantRule, vs[0].Detail)
+			}
+			if tt.wantHint != "" && !strings.Contains(vs[0].Detail, tt.wantHint) {
+				t.Errorf("detail %q does not carry %q", vs[0].Detail, tt.wantHint)
+			}
+		})
+	}
+}
+
+// The canonical form must not be stricter than the retired one it replaced: a
+// scope glyph rejects after `:fire:` cannot be a scope it accepts after a legacy
+// `refactor(...)` token. This pins the asymmetry that made t-edan bite.
+func TestKebabScopeAcceptedInBothForms(t *testing.T) {
+	known := func(string) bool { return true }
+	for _, msg := range []string{
+		":fire:(palette)! prune catppuccin-latte",
+		":fire: refactor(palette)!: prune catppuccin-latte",
+	} {
+		if vs := Lint(msg, LintOptions{Known: known}); len(vs) != 0 {
+			t.Errorf("Lint(%q) = %+v, want clean", msg, vs)
+		}
+	}
+}
+
 // The rule is a merge-candidate rule only. At authoring time a developer is
 // still shaping the commit; forcing the declaration into every `git commit` of
 // a removal (including the ones they will squash away) would make the hook
