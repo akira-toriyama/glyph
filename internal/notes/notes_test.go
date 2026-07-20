@@ -254,13 +254,19 @@ func TestRenderGolden(t *testing.T) {
 			},
 		},
 		{
-			// Subjects are rendered verbatim: backticks, a pipe, emphasis
-			// markers, and CJK must survive untouched.
+			// Subjects are rendered near-verbatim: backticks, a pipe, emphasis
+			// markers, and CJK must survive untouched. The one rewrite is the
+			// mention pass — a bare @token gains backticks so GitHub stops
+			// resolving it to a real user (the facet v7.0.0 incident), while an
+			// already-quoted `@name`, an email, and a pinned ref stay put.
 			name: "adversarial_subjects",
 			commits: []parser.Commit{
 				{Gitmoji: ":bug:", Subject: "handle `nil` table without panicking", SHA: sha("1")},
 				{Gitmoji: ":lipstick:", Scope: "tui", Subject: "align the 日本語 label | keep *bold* verbatim", SHA: sha("2")},
 				{Gitmoji: ":wastebasket:", Subject: "deprecate the --legacy flag", SHA: sha("3")},
+				{Gitmoji: ":bug:", Subject: "pin release + update-tap callers to @v1", SHA: sha("5")},
+				{Gitmoji: ":sparkles:", Scope: "view", Subject: "show `@name` chips that type @name for you", SHA: sha("6")},
+				{Gitmoji: ":bug:", Subject: "mail dev@example.com when actions/checkout@v5 breaks", SHA: sha("7")},
 			},
 		},
 		{

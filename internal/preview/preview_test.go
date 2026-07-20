@@ -173,6 +173,24 @@ func TestRenderEscapesSubject(t *testing.T) {
 	}
 }
 
+// TestRenderNeutralizesMentions: a bare @token in a subject must come out
+// code-quoted — this body is posted as a PR comment, so a raw "@v1" would not
+// just render as a link to the GitHub user v1, it would notify them.
+func TestRenderNeutralizesMentions(t *testing.T) {
+	got := Render(Input{
+		Current: "v1.0.0",
+		PR: Verdict{Level: gitmoji.BumpPatch, Next: "v1.0.1", Commits: []Commit{
+			{Code: ":bug:", Level: gitmoji.BumpPatch, Subject: "pin release + update-tap callers to @v1"},
+		}},
+	})
+	if !strings.Contains(got, "callers to `@v1`") {
+		t.Errorf("bare @token not code-quoted:\n%s", got)
+	}
+	if strings.Contains(got, "to @v1") {
+		t.Errorf("raw mention survived into the comment body:\n%s", got)
+	}
+}
+
 // TestRenderNoTableWhenNoCommits: a PR whose commits are all excluded (a bot's,
 // say) has no evidence to show, and an empty table header would read as a bug.
 func TestRenderNoTableWhenNoCommits(t *testing.T) {

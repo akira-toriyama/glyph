@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/akira-toriyama/glyph/internal/gitmoji"
+	"github.com/akira-toriyama/glyph/internal/markdown"
 )
 
 // Marker leads every rendered body. The comment is sticky — a caller finds its
@@ -128,11 +129,15 @@ func Headline(in Input) string {
 	}
 }
 
-// escapeCell makes a commit subject safe in a Markdown table cell: the column
-// separator is escaped and any newline flattened. Subjects are author-supplied
-// text, and the table is the evidence the headline rests on — a subject that
-// breaks the table takes the evidence with it.
+// escapeCell makes a commit subject safe in a Markdown table cell: would-be
+// @mentions are code-quoted, the column separator is escaped, and any newline
+// flattened. Subjects are author-supplied text, and the table is the evidence
+// the headline rests on — a subject that breaks the table takes the evidence
+// with it. The mention pass matters more here than in the notes: this table is
+// a PR comment, so a bare "@v1" would not just link a stranger, it would
+// notify them.
 func escapeCell(s string) string {
+	s = markdown.EscapeMentions(s)
 	s = strings.ReplaceAll(s, "|", `\|`)
 	s = strings.ReplaceAll(s, "\r\n", " ")
 	s = strings.ReplaceAll(s, "\n", " ")

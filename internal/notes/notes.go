@@ -16,6 +16,7 @@ import (
 
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/gitmoji"
+	"github.com/akira-toriyama/glyph/internal/markdown"
 	"github.com/akira-toriyama/glyph/internal/parser"
 )
 
@@ -96,17 +97,21 @@ func Group(commits []parser.Commit, t *gitmoji.Table) ([]Section, error) {
 
 // tmpl is the Markdown shape of the notes: `## <section>` headings in group
 // order, one `- <emoji> [**scope:** ]<subject> (<short sha>)` line per entry,
-// one blank line between sections, subjects verbatim (own-repo content is
-// trusted; GitHub autolinks the bare short SHA).
+// one blank line between sections, subjects near-verbatim (own-repo content is
+// trusted as Markdown; GitHub autolinks the bare short SHA). The one rewrite
+// is markdown.EscapeMentions on scope and subject: a bare @token in a subject
+// ("callers to @v1") otherwise resolves to a real GitHub user, who then shows
+// up under the release's Contributors.
 var tmpl = template.Must(template.New("notes").Funcs(template.FuncMap{
-	"short": shortSHA,
+	"short":  shortSHA,
+	"escape": markdown.EscapeMentions,
 }).Parse(`{{- range $i, $s := . -}}
 {{- if $i}}
 {{end -}}
 ## {{$s.Title}}
 
 {{range $s.Entries -}}
-- {{.Emoji}} {{with .Scope}}**{{.}}:** {{end}}{{.Subject}} ({{short .SHA}})
+- {{.Emoji}} {{with .Scope}}**{{escape .}}:** {{end}}{{escape .Subject}} ({{short .SHA}})
 {{end -}}
 {{- end -}}
 `))
