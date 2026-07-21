@@ -28,14 +28,21 @@ func newDoctorCmd() *cobra.Command {
 			"The checks, each independent — one it cannot run never stops the others:\n\n" +
 			"  - the credential can read the repository at all, and what the API itself says\n" +
 			"    about its permissions (never a guess at scopes the API did not report)\n" +
-			"  - squash merging is ENABLED: a squash commit is the only landing style that\n" +
-			"    is BOTH the pull request's merge_commit_sha and a classifiable gitmoji\n" +
-			"    subject, so the verdict holds even when the API cannot answer and the walk\n" +
-			"    falls back to the commit's own message\n" +
+			"  - squash merging is ENABLED: a squash-merged pull puts exactly ONE commit on\n" +
+			"    main and that commit IS its merge_commit_sha, so it is never half-resolved —\n" +
+			"    no part of it can stand aside for a merge point the walk cannot resolve. The\n" +
+			"    multi-commit landings all have that window. (A dark API is still not free:\n" +
+			"    a MULTI-commit squash carries the PR title, which nothing lints, so the\n" +
+			"    fallback classifies one subject instead of the pull's commits.)\n" +
 			"  - merge commits / rebase merges are off — advice, not a defect: the walk\n" +
 			"    resolves and expands both (a merge commit since t-7zt7, a rebase from its\n" +
-			"    last replayed commit, which is what GitHub names merge_commit_sha), so\n" +
-			"    this is the squash-only house convention rather than something that breaks\n" +
+			"    last replayed commit, which is what GitHub names merge_commit_sha). What is\n" +
+			"    left is a house convention plus one named, LOUD window per style — a merge\n" +
+			"    point GitHub has not indexed yet (or an automation authored) drops its pull\n" +
+			"    with two warnings and exit 1; a rebase whose listing the walk cannot\n" +
+			"    align — one that dropped an already-upstream commit — can still fold a\n" +
+			"    replayed commit in twice during API lag. Neither is the silent wrong\n" +
+			"    verdict a failure is reserved for\n" +
 			"  - squash_merge_commit_title=COMMIT_OR_PR_TITLE and\n" +
 			"    squash_merge_commit_message=COMMIT_MESSAGES: these decide whether the commit\n" +
 			"    that lands on main carries a classifiable gitmoji subject at all\n" +

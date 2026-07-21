@@ -47,19 +47,23 @@ Everything above depends on repository configuration glyph cannot see from
 inside a release run, and when that drifts nothing goes red — the verdict is
 just computed over a repository that no longer matches the model. `doctor`
 checks it: the credential can read the repository, squash merging is **enabled**
-(a squash commit is the only landing style that is both the PR's
-`merge_commit_sha` and a classifiable gitmoji subject, so the verdict holds even
-when the API cannot answer and the walk falls back to the commit's own message),
-`squash_merge_commit_title` / `squash_merge_commit_message` still keep a
-classifiable gitmoji subject and the per-commit body on `main`, and every
-`uses: akira-toriyama/glyph/…` in the local `.github/workflows` pins a concrete
-`@vX.Y.Z`.
+(a squash-merged PR puts exactly one commit on `main` and that commit *is* its
+`merge_commit_sha`, so the walk can never resolve half of it — every
+multi-commit landing has a window where it can), `squash_merge_commit_title` /
+`squash_merge_commit_message` still keep a classifiable gitmoji subject and the
+per-commit body on `main`, and every `uses: akira-toriyama/glyph/…` in the local
+`.github/workflows` pins a concrete `@vX.Y.Z`.
 
 Merge commits and rebase merges are reported as **advice**, not failures — the
-release walk resolves and expands both, so those settings are a house convention
-rather than something that breaks. Whether a pin is the *latest* release is
-deliberately not checked: `glyph-pin-audit.yml` in `akira-toriyama/.github`
-already answers that fleet-wide.
+release walk resolves and expands both, and even with the API dark a
+merge-merged PR's commits are on `main` with their gitmoji intact. Each keeps
+one narrow window (a merge point GitHub has not indexed yet drops its PR with
+two warnings and exit `1`; a rebase whose listing the walk cannot align against
+what landed can still double-count during API lag), which is a re-run, not the
+silent wrong version a failure is reserved for.
+Whether a pin is the *latest* release is deliberately not checked:
+`glyph-pin-audit.yml` in `akira-toriyama/.github` already answers that
+fleet-wide.
 
 Nothing is ever modified: each finding prints the `gh api` command that fixes it.
 Exit `0` all clear · `3` a check failed · `4` a check could not run (unverified,

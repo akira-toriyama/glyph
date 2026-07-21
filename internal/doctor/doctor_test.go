@@ -91,20 +91,32 @@ func TestUnansweredRepoReadIsCouldNotRunNotAFailure(t *testing.T) {
 }
 
 // TestMergeMethodChecksDescribeTheWalkThatExists is a regression test on the
-// PROSE, and it earns its place: an earlier draft told the fleet that a
-// rebase-merged PR's non-final commits are classified on "the walk's fallback
-// path", where an unknown :code: degrades to a warning counting none. The walk
-// does the opposite — GitHub names the LAST replayed commit as
-// merge_commit_sha, that commit expands the whole pull request through the API,
-// and an unknown :code: inside it hard-fails the release, while the earlier
-// replayed commits resolve as covered and are skipped. A diagnostic that lies
-// about the engine is worse than no diagnostic, and the same sentence was the
-// stated justification for the squash hard fail, so both are pinned here.
+// PROSE, and it has now earned its place twice. The first draft told the fleet
+// that a rebase-merged PR's non-final commits are classified on "the walk's
+// fallback path", where an unknown :code: degrades to a warning counting none;
+// the walk does the opposite, and that arm is pinned below still.
+//
+// The second round was the same defect in the squash argument, every clause of it
+// re-measured against this walk (t-nnb7): a squash-merged pull does NOT reach the
+// same verdict dark as live (a multi-commit squash carries the unlinted PR title
+// — minor live, patch dark), a merge-merged pull does NOT count none at full
+// darkness (gitsource.Log runs without --first-parent, so its branch commits are
+// in the range and classify themselves — minor either way), and an outage does
+// NOT reach the fallback at all (only a 422 does; a 403/404/5xx exits 4). What
+// squash actually buys is that a pull request resolves all-or-nothing.
+//
+// So the forbid lists are the load-bearing half: every entry is a phrase that
+// SHIPPED and was false, and the walk behind each correction is pinned by a test
+// in internal/cli/sincetag_test.go. The mention lists stay short on purpose —
+// this is a guard against resurrecting a lie, not a golden file, so a rewording
+// stays a review question instead of becoming a test failure.
 func TestMergeMethodChecksDescribeTheWalkThatExists(t *testing.T) {
 	permissive := healthyInput(t)
 	permissive.RepoObject.AllowRebaseMerge = yes()
 	squashOff := healthyInput(t)
 	squashOff.RepoObject.AllowSquashMerge = no()
+	mergeCommitOn := healthyInput(t)
+	mergeCommitOn.RepoObject.AllowMergeCommit = yes()
 
 	tests := []struct {
 		name    string
@@ -127,16 +139,45 @@ func TestMergeMethodChecksDescribeTheWalkThatExists(t *testing.T) {
 			},
 		},
 		{
-			name:  "squash off is argued from the fallback, not from resolution",
+			name:  "squash on promises all-or-nothing, never an identical verdict",
+			check: find(t, Run(healthyInput(t)), IDSquashEnabled),
+			want:  StatusPass,
+			mention: []string{
+				"never half-resolved", // the guarantee squash actually gives
+			},
+			forbid: []string{
+				// The sentence this whole round existed to delete: measured
+				// minor -> patch, and minor -> none for an unlinted PR title.
+				"whether or not the",
+			},
+		},
+		{
+			name:  "squash off is argued from the partial window, not from a blackout",
 			check: find(t, Run(squashOff), IDSquashEnabled),
 			want:  StatusFail,
 			mention: []string{
-				"own message",                // §4's fallback classifies the commit itself
-				"Merge pull request #N from", // which a merge commit's message is
+				"own message",    // §4's fallback classifies the commit itself
+				"PARTIAL window", // ...and THAT window is the one squash removes
 			},
 			forbid: []string{
-				"lenient",       // the rebase path is not lenient
-				"only the last", // and its earlier commits are not classified at all
+				"lenient",                 // the rebase path is not lenient
+				"only the last",           // and its earlier commits are not classified at all
+				"neither survives",        // both survive a TOTAL blackout — measured, minor either way
+				"the only one that holds", // so squash is not the only style that holds when dark
+			},
+		},
+		{
+			name:  "allowing merge commits leaves a window, so it cannot claim nothing breaks",
+			check: find(t, Run(mergeCommitOn), IDMergeCommit),
+			want:  StatusAdvice,
+			mention: []string{
+				"counts none", // the partial window the setting still costs
+			},
+			forbid: []string{
+				// An unresolved merge point drops the whole pull request. Loud
+				// (two warnings, exit 1) — which is why this is advice — but not
+				// nothing.
+				"so nothing breaks",
 			},
 		},
 	}

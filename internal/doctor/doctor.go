@@ -286,27 +286,49 @@ func permissionSummary(p *github.RepoPermissions) string {
 // there (internal/cli/sincetag.go, t-7zt7). While the API answers, squash being
 // off costs nothing at all.
 //
-// What squash being off removes is the path for when the API does NOT answer.
-// DESIGN §4's fallback classifies a walked commit from its OWN message, and a
-// squash commit is the only landing style where that message is the pull
-// request's gitmoji subject AND the commit's sha is the pull request's key — the
-// exact path and the fallback agree by construction. Land the same PR as a merge
-// commit and the message on main is "Merge pull request #12 from …": no :code: at
-// all, and the fallback skips it on its parent count, so the whole PR counts none.
+// What squash being off removes is not a fallback — it is the guarantee that a
+// pull request resolves all-or-nothing. A squash-merged PR puts exactly ONE
+// commit on main and that commit IS its merge_commit_sha, so the walk either
+// expands the whole pull from the API or falls back on that one message; there
+// is no third state. Every multi-commit landing splits those two apart.
+//
+// Land the same PR as a merge commit and that commit's own message is "Merge
+// pull request #12 from …" — no :code: at all, so the fallback skips it on its
+// parent count. That does NOT cost the pull request: gitsource.Log runs without
+// --first-parent, so the merged branch's commits are in the range too and each is
+// classified from its own message; at full darkness a merge-merged pull
+// reproduces its live verdict exactly (measured: minor either way). The cost is
+// the PARTIAL window — a branch commit stands aside for a merge point in range
+// (mergedPullFor's covering result), and when that merge point is the one thing
+// GitHub has not indexed, or an automation authored it and ExcludedFromResolution
+// skipped it before the API, nothing expands the pull and the whole of it counts
+// none. Loud (two warnings and exit 1), and permanent in the automation case.
 // Land it as a rebase and the messages survive but the shas do not — GitHub always
-// writes new commits, none of which appear in the PR's own commit listing, so the
-// walk's dedup cannot recognise them and a lagging read can fold the same change
-// in twice.
+// writes new commits, none of which appear in the PR's own commit listing. The walk
+// closes that by aligning the listing against the first-parent run ending at the
+// canonical commit (t-8xsb), so a replayed commit classified during the lag is
+// recognised when the pull expands and counted once, out loud. The alignment is
+// verified message by message and abandoned whole if any differs, and THERE the
+// old double fold survives: a rebase that dropped an already-upstream commit
+// cannot be aligned, and the same change renders twice with nothing that says so.
 //
 // That window is not hypothetical: the walk runs seconds after a push, where
-// GitHub answers 422 for a sha it does not know yet, and the t-bjrv outage
-// answered 503 for tens of seconds across the fleet. A repository with squash off
-// is one such window away from a wrong verdict, and nothing in the run says so.
+// GitHub answers 422 for a sha it does not know yet — and 422 is the ONLY status
+// that reaches the fallback. A 403 rate limit, a 5xx that outlives the retry
+// schedule (t-bjrv) or an unreachable host is not an API-dark walk at all:
+// walkSince returns it and the run exits 4 (measured). Cite the lag window here;
+// the outage window belongs to the exit-code contract, not to this argument.
+//
+// The cost squash itself carries in that window is bounded and worth naming:
+// under COMMIT_OR_PR_TITLE a MULTI-commit squash's subject is the PR TITLE, which
+// no lint gate checks (the commit-lint job lints the PR's COMMITS, never its
+// title), so a dark run classifies that one unlinted subject — one wrong level on
+// one pull, against a whole pull lost.
 //
 // Hence fail rather than advice, and hence the asymmetry with the two checks
 // below: ALLOWING another merge method leaves squash there for the traffic that
-// matters, while turning squash off removes the only landing style that survives
-// an API-dark window. Everything downstream is drawn on it too — the two squash
+// matters, while turning squash off removes the only landing style with no
+// partial state at all. Everything downstream is drawn on it too — the two squash
 // policy checks describe a commit this repository can no longer produce, and the
 // notes grouping, the PR preview and the release reusable are all calibrated on
 // one commit per PR.
@@ -319,21 +341,33 @@ func checkSquashEnabled(in Input) Check {
 	c.Observed = fmt.Sprintf("allow_squash_merge=%t", allowed)
 	if allowed {
 		c.Status = StatusPass
-		c.Message = "PRs can land as one squash commit, the only landing style that is BOTH the pull request's " +
-			"merge_commit_sha and a classifiable gitmoji subject — so the walk reaches the same verdict whether or not the " +
-			"API answers"
+		c.Message = "PRs can land as one squash commit: the pull request's merge_commit_sha and the ONLY commit it puts on " +
+			"main are the same object, so a squash-merged pull is never half-resolved — the walk either expands it from the " +
+			"API or falls back on that one message, and no part of it can stand aside for a merge point that never resolves. " +
+			"That is the guarantee; identical verdicts are NOT. Under COMMIT_OR_PR_TITLE a MULTI-commit squash carries the PR " +
+			"title, which no lint gate checks, so an API-dark run classifies that one subject instead of the pull's commits: a " +
+			":sparkles:+:bug: pull titled :bug: reads minor with the API and patch without, and a title with no gitmoji at all " +
+			"reads none. Squash bounds an API-dark window to one wrong level on one pull; a multi-commit landing can lose a " +
+			"whole one"
 		return c
 	}
 	c.Status = StatusFail
-	c.Message = "squash merging is OFF, so every PR must land as a merge commit or a rebase merge — and neither survives the " +
-		"walk's fallback path. While GitHub answers, all three styles resolve alike: merge_commit_sha names the squash commit, " +
-		"a rebase's last replayed commit, or the merge commit, and the walk expands the pull request from there. When GitHub " +
-		"does NOT answer — the seconds after a push, where it does not know the sha yet, or an outage outliving the retry " +
-		"schedule — the walk classifies the commit on main from its own message (DESIGN §4). Only a squash commit is both the " +
-		"pull request's key and a classifiable subject: a merge commit's message is \"Merge pull request #N from …\", which the " +
-		"fallback skips on its parent count so the whole PR counts none, and a rebase's replayed commits carry new shas that " +
-		"appear in no pull request's commit listing, so the same change can be folded in twice. Allowing another method is a " +
-		"convention; leaving squash off removes the only one that holds when the API is dark"
+	c.Message = "squash merging is OFF, so every PR must land as a merge commit or a rebase merge — landings that put MANY " +
+		"commits on main for one pull request, which is where the walk acquires a window it otherwise does not have. While " +
+		"GitHub answers, all three styles resolve alike: merge_commit_sha names the squash commit, a rebase's last replayed " +
+		"commit, or the merge commit, and the walk expands the pull request from there. A TOTAL blackout is not the problem " +
+		"either — when GitHub answers 422 for every sha the walk classifies each commit from its own message (DESIGN §4), and " +
+		"a merge- or rebase-landed pull comes out at the SAME level, because its commits are on main with their gitmoji " +
+		"intact; a multi-commit squash is the style that loses there. What squash removes is the PARTIAL window, which only a " +
+		"multi-commit landing has. GitHub indexes a merge commit AFTER the commits it merges, so a release run seconds behind " +
+		"the button sees the branch commits stand aside for a merge point it cannot resolve yet and the whole pull request " +
+		"counts none. The same shape is PERMANENT when an automation authors the merge commit: the author gate skips it " +
+		"before the API, so nothing ever resolves the pull. A rebase writes new shas that appear in no pull request's commit " +
+		"listing, so it depends on the walk aligning that listing against the run of commits ending at the canonical one; " +
+		"where the alignment cannot be verified — a rebase that dropped an already-upstream commit — a replayed commit " +
+		"classified during the lag is folded in a second time and the same change renders twice, with nothing that says so. " +
+		"A squash-merged pull has exactly one commit on main and it IS its merge point, so none of those states can exist. " +
+		"Allowing another method is a convention; leaving squash off makes every pull take a landing that has them"
 	c.Fix = fmt.Sprintf("gh api -X PATCH repos/%s -F allow_squash_merge=true", in.Repo)
 	return c
 }
@@ -348,15 +382,27 @@ func checkSquashEnabled(in Input) Check {
 // If that were still true, this would be a hard failure and the honest one.
 //
 // t-7zt7 fixes the walk to resolve and expand a merge commit exactly like a
-// squash commit, so the setting costs no bump any more. What remains is a house
-// convention — the fleet is squash-only so that main carries one commit per PR
-// and the walk is one round-trip per PR — and doctor reports it at that weight.
-// Failing over a setting glyph now handles correctly would be crying wolf, and a
-// diagnostic nobody is obliged to run cannot afford to be ignored.
+// squash commit, so the setting no longer costs a bump whenever the API answers,
+// and no longer costs one at full darkness either (measured) — what it still
+// costs is the partial window below, which is loud and, for a bot-authored merge,
+// permanent. What remains is a house convention — the fleet is squash-only so
+// that main carries one commit per PR and the walk is one round-trip per PR — and
+// doctor reports it at that weight. Failing over a setting glyph now handles
+// correctly would be crying wolf, and a diagnostic nobody is obliged to run
+// cannot afford to be ignored.
 //
 // The coupling runs the other way too: this severity is downstream of that fix.
 // If the merge-commit walk is ever reverted or regresses, this check must move
 // back to StatusFail with it — they are one decision, not two.
+//
+// There is a SECOND coupling, and it is the quieter one: advice is only defensible
+// because the partial window is announced. The reconciliation warning at the end
+// of walkSince (internal/cli/sincetag.go) is what turns "this release is short by
+// a whole pull request" into something a human sees, and it fires on EVERY release
+// of a repository whose merge button an automation presses — exactly the kind of
+// recurring noise somebody eventually silences. Quiet that warning and this
+// setting becomes a silent total loss; the severity must move to StatusFail with
+// it, for the same reason as the coupling above.
 func checkMergeCommit(in Input) Check {
 	c := Check{ID: IDMergeCommit, Expected: "allow_merge_commit=false (house convention: squash-only)"}
 	if u, ok := available(in, c, "allow_merge_commit", in.RepoObject.AllowMergeCommit); !ok {
@@ -370,9 +416,14 @@ func checkMergeCommit(in Input) Check {
 		return c
 	}
 	c.Status = StatusAdvice
-	c.Message = "merge commits are allowed. This is no longer data loss — the release walk resolves and expands a merge " +
-		"commit like a squash commit — so nothing breaks; it is a divergence from the squash-only house convention that " +
-		"keeps main at one commit per PR and the walk at one API round-trip per PR"
+	c.Message = "merge commits are allowed. The unconditional data loss is gone — the release walk resolves and expands a " +
+		"merge commit like a squash commit, and even with the API fully dark the merged branch's commits are in the range and " +
+		"carry their own gitmoji, so the verdict comes out the same. What is left is a window and a convention. The window: a " +
+		"merge-merged pull's branch commits stand aside for its merge point, so if that merge point alone is unresolved — " +
+		"GitHub indexes it after the commits it merges, or an automation authored it and the author gate skipped it before " +
+		"the API — the whole pull counts none. The walk says so, twice, and the release exits 1, so this is a re-run (or a " +
+		"human merge) rather than a silent wrong version; for an automation-driven merge button it repeats every release. The " +
+		"convention: squash-only keeps main at one commit per PR and the walk at one API round-trip per PR"
 	c.Fix = fmt.Sprintf("gh api -X PATCH repos/%s -F allow_merge_commit=false (optional — this is a convention, not a defect)", in.Repo)
 	return c
 }
@@ -417,9 +468,11 @@ func checkRebaseMerge(in Input) Check {
 		"commit resolves and expands the whole pull request through the API exactly as a squash commit does — an unknown " +
 		":code: inside it fails the release, it is NOT downgraded to a warning — and the earlier replayed commits resolve as " +
 		"covered by the same pull request and are skipped, so nothing is counted twice. What it costs is one API round-trip " +
-		"per replayed commit instead of one per pull request, plus the walk's dedup key: a rebase always writes new shas, " +
-		"which appear in no pull request's commit listing, so inside the API-lag window a replayed commit can be folded in " +
-		"twice"
+		"per replayed commit instead of one per pull request. The dedup key used to cost more: a rebase always writes new " +
+		"shas, which appear in no pull request's commit listing, so inside the API-lag window a replayed commit was folded " +
+		"in twice. The walk now aligns the listing against the run of commits ending at the canonical one and counts it once " +
+		"(t-8xsb); what remains is a rebase that cannot be aligned — one that dropped an already-upstream commit — where the " +
+		"double fold survives"
 	c.Fix = fmt.Sprintf("gh api -X PATCH repos/%s -F allow_rebase_merge=false (optional — this is a convention, not a defect)", in.Repo)
 	return c
 }

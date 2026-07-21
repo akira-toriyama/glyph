@@ -424,31 +424,52 @@ The severities are the argued part:
   resolves — every style does. GitHub points `merge_commit_sha` at whichever
   commit represents the merge (the squash commit, a rebase's **last** replayed
   commit, or the merge commit itself), and §4's walk expands the PR from there in
-  all three cases. What squash-off removes is the path for when the API does *not*
-  answer: §4's fallback classifies a walked commit from its **own** message, and a
-  squash commit is the only landing style that is simultaneously the PR's key and
-  a classifiable gitmoji subject. A merge commit's own message is `Merge pull
-  request #N from …` — no `:code:` at all, and the fallback skips it on its parent
-  count, so the whole PR counts *none*. A rebase keeps the messages but not the
-  shas (GitHub always writes new commits, absent from the PR's own commit
-  listing), so the walk's dedup cannot recognise them and a lagging read can fold
-  the same change in twice. The dark window is routine — the walk runs seconds
-  after a push (422, sha not known yet) and t-bjrv answered 503 for tens of
-  seconds — so a repository with squash off is one hiccup away from a wrong
-  verdict, silently. Not a preference: it is the only landing style that survives
-  an API-dark window.
+  all three cases. What squash-off removes is not a fallback — it is the guarantee
+  that a pull request is resolved all-or-nothing. A squash-merged pull has exactly
+  one commit on `main` and that commit is its `merge_commit_sha`, so the walk
+  either expands it or falls back on it. Every multi-commit landing splits those
+  two states. §4's walk runs `git log` without `--first-parent`, so a merge-merged
+  pull's branch commits are in the range beside its merge point; each of them
+  stands aside for that merge point (`mergedPullFor`'s `covering`), and when the
+  merge point alone is unresolved — GitHub indexes a merge commit *after* the
+  commits it merges, or an automation authored it and `ExcludedFromResolution`
+  skipped it before the API — nothing expands the pull and the whole of it counts
+  `none`. That is measured: fully dark, a merge-merged pull reproduces its live
+  verdict (`minor` either way); with only the merge point at 422, the same
+  repository exits `1` with two warnings. A rebase splits them the other way: it
+  writes new shas that appear in no pull's listing, so a replayed commit classified
+  during the lag is folded in again when the last one expands the pull. Note also
+  which failures actually reach the fallback: only a 422 (`IsCommitUnknown`). A 403
+  rate limit, a 5xx outliving the retry schedule (t-bjrv) and a dead socket all
+  leave `walkSince` as an error and exit `4` — the outage window is an exit-code
+  question, not a classification one. Squash is therefore the landing style with no
+  partial state at all; the cost of a dark API under squash is that a MULTI-commit
+  squash carries the PR title, which no lint gate checks, so the fallback reads one
+  unlinted subject (measured `minor` → `patch`, and `minor` → `none` for a title
+  with no gitmoji). One wrong level on one pull, versus a whole pull lost.
 - **`allow_merge_commit` / `allow_rebase_merge` true ⇒ advice, not failure.** A
   merge commit *used* to be data loss (`bump.Excluded` drops 2+ parents, so the
   PR vanished — t-7zt7); with the walk expanding merge commits correctly it costs
-  no bump, and what is left is the squash-only house convention. A rebase merge
-  was never lenient either — the last replayed commit expands the whole PR
-  through the API and an unknown `:code:` inside it hard-fails exactly as a
+  no bump while the API answers, and none at full darkness either — the branch
+  commits are on `main` and classify themselves. What is left is the squash-only
+  house convention plus one *loud* window per style: an unresolved merge point
+  (API lag, or a bot-authored merge, where it repeats every release) drops its pull
+  with two warnings and exit `1`, and a rebase whose listing the walk cannot align
+  against what landed — one that dropped an already-upstream commit — can still
+  fold a replayed commit in twice during the lag. Neither is the silent wrong
+  verdict `fail` is reserved for.
+  A rebase merge was never lenient either — the last replayed commit expands the
+  whole PR through the API and an unknown `:code:` inside it hard-fails exactly as a
   squash's would, while the earlier replayed commits resolve as *covered* and are
   skipped; it costs one round-trip per replayed commit and the dedup key, not
   strictness. Failing over settings glyph handles correctly would train the fleet
   to ignore the report, which is the one failure mode a voluntary check cannot
   survive. The merge-commit severity is downstream of that fix: revert the fix and
-  it must move back to `fail`. *Allowing* a second method leaves squash there for
+  it must move back to `fail`. It is downstream of the *loudness* too — advice only
+  holds while §4's reconciliation warning keeps naming the pull that was lost, and
+  that warning fires on every release of an automation-merged repository, which is
+  exactly the noise somebody eventually silences. Quiet it and this severity moves
+  to `fail` with it. *Allowing* a second method leaves squash there for
   the traffic that matters — which is why this is advice while turning squash
   **off** is a failure.
 - **The squash title/message policy ⇒ fail.** `PR_TITLE` hands the PR title to
