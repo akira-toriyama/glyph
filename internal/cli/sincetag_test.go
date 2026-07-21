@@ -1640,3 +1640,240 @@ func TestSinceTagRebaseMergeUsesOnMainSHAs(t *testing.T) {
 		}
 	})
 }
+
+// squashOf lands ONE commit on main shaped exactly the way GitHub writes a
+// squash merge of a MULTI-commit pull request under COMMIT_OR_PR_TITLE: the
+// subject is the PR TITLE plus (#N), whatever that title happens to be. It is
+// the sibling of squashCommit, which fixes the non-gitmoji shape; here the title
+// is the variable under test, because nothing lints it — the commit-lint job
+// runs `glyph lint --range "$BASE..$HEAD"`, i.e. over the pull's COMMITS.
+func squashOf(t *testing.T, dir, title string, number int) string {
+	t.Helper()
+	testCommit(t, dir, "akira-toriyama", fmt.Sprintf("%s (#%d)", title, number))
+	return testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+}
+
+// TestSinceTagSquashMultiCommitDivergesWhenAPIDark pins what squash actually
+// buys, against the claim doctor used to make. Squash guarantees a pull request
+// resolves ALL-OR-NOTHING — one commit on main, and it IS the merge point — but
+// it does NOT guarantee the same verdict with the API dark as with it answering.
+// A multi-commit squash's subject is the PR title, and the fallback classifies
+// that one subject instead of the pull's commits: a :sparkles:+:bug: pull titled
+// :bug: reads minor live and patch dark.
+//
+// This is the sentence that shipped false twice, so it owns a test rather than a
+// paragraph. Do NOT golden doctor's prose to pin it — pin the walk it describes.
+func TestSinceTagSquashMultiCommitDivergesWhenAPIDark(t *testing.T) {
+	for name, tc := range map[string]struct {
+		dark bool
+		want string
+	}{
+		"the API answers: the pull's own commits decide": {false, "v0.2.0\n"},
+		"the API is dark: the PR title decides":          {true, "v0.1.1\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, _ := testRepo(t)
+			sha := squashOf(t, dir, ":bug:(auth) fix a token refresh", 1)
+			routes := map[string]string{
+				commitPullsPath(sha): `[` + apiPullRef(1, "2026-07-20T00:00:00Z", sha) + `]`,
+				pullCommitsPath(1): `[` +
+					apiCommit("a1", "akira-toriyama", ":sparkles:(auth) add a refresh endpoint") + `,` +
+					apiCommit("a2", "akira-toriyama", ":bug:(auth) fix a token refresh") + `]`,
+			}
+			if tc.dark {
+				routes[commitPullsPath(sha)] = apiUnknownSHA
+				delete(routes, pullCommitsPath(1)) // asking for it would fail the test
+			}
+			usePR(t, walkServer(t, routes))
+			t.Chdir(dir)
+
+			code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.0")
+			if code != 0 {
+				t.Fatalf("bump exited %d, want 0\nstderr: %s", code, stderr)
+			}
+			if stdout != tc.want {
+				t.Fatalf("stdout = %q, want %q — squash bounds an API-dark window to one wrong LEVEL, it does not close it", stdout, tc.want)
+			}
+		})
+	}
+}
+
+// TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark is the same divergence at its
+// floor. A PR title carrying no gitmoji at all is perfectly legal — no gate reads
+// it — so under COMMIT_OR_PR_TITLE a multi-commit squash can put an unparseable
+// subject on main. Live the pull's commits still decide; dark there is nothing to
+// classify and the whole release counts none.
+func TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark(t *testing.T) {
+	dir, _ := testRepo(t)
+	sha := squashOf(t, dir, "Add a refresh endpoint", 6)
+	live := map[string]string{
+		commitPullsPath(sha): `[` + apiPullRef(6, "2026-07-20T00:00:00Z", sha) + `]`,
+		pullCommitsPath(6):   `[` + apiCommit("a1", "akira-toriyama", ":sparkles:(auth) add a refresh endpoint") + `]`,
+	}
+	usePR(t, walkServer(t, live))
+	t.Chdir(dir)
+	if code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.0"); code != 0 || stdout != "v0.2.0\n" {
+		t.Fatalf("with the API answering: exit %d stdout %q, want 0 / v0.2.0\nstderr: %s", code, stdout, stderr)
+	}
+
+	usePR(t, walkServer(t, map[string]string{commitPullsPath(sha): apiUnknownSHA}))
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.0")
+	if code != 1 || stdout != "" {
+		t.Fatalf("with the API dark: exit %d stdout %q, want 1 / empty — an unlinted PR title is what the fallback reads\nstderr: %s", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "does not parse") {
+		t.Fatalf("the loss must name the subject that would not parse:\n%s", stderr)
+	}
+}
+
+// TestSinceTagMergeCommitReproducesVerdictWhenFullyDark pins a claim by DELETING
+// one: doctor and DESIGN §7 used to say a merge-merged PR counts none when the
+// walk falls back, because the fallback skips the merge commit on its parent
+// count. It does skip it — and it costs the pull request nothing, because
+// gitsource.Log runs WITHOUT --first-parent: the merged branch's commits are in
+// the range beside their merge point, gitmoji intact, and each classifies itself.
+//
+// So this test fails the moment someone re-asserts that sentence, and it fails
+// just as loudly if anyone adds --first-parent to gitsource.Log to make the
+// sentence true — which was the tempting "fix" and would have undone t-7zt7.
+func TestSinceTagMergeCommitReproducesVerdictWhenFullyDark(t *testing.T) {
+	dir, _ := testRepo(t)
+	mp := mergePR(t, dir, "akira-toriyama", 3, ":sparkles:(ui) add a menu", ":memo: document the menu")
+	ref := `[` + apiPullRef(3, "2026-07-20T00:00:00Z", mp.Merge) + `]`
+	live := map[string]string{
+		commitPullsPath(mp.Merge): ref,
+		pullCommitsPath(3): `[` +
+			apiCommit(mp.Branch[0], "akira-toriyama", ":sparkles:(ui) add a menu") + `,` +
+			apiCommit(mp.Branch[1], "akira-toriyama", ":memo: document the menu") + `]`,
+	}
+	dark := map[string]string{commitPullsPath(mp.Merge): apiUnknownSHA}
+	for _, b := range mp.Branch {
+		live[commitPullsPath(b)] = ref
+		dark[commitPullsPath(b)] = apiUnknownSHA
+	}
+
+	usePR(t, walkServer(t, live))
+	t.Chdir(dir)
+	if code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.0"); code != 0 || stdout != "v0.2.0\n" {
+		t.Fatalf("with the API answering: exit %d stdout %q, want 0 / v0.2.0\nstderr: %s", code, stdout, stderr)
+	}
+
+	usePR(t, walkServer(t, dark))
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.0")
+	if code != 0 || stdout != "v0.2.0\n" {
+		t.Fatalf("fully dark: exit %d stdout %q, want 0 / v0.2.0 — the branch commits are on main and classify themselves\nstderr: %s", code, stdout, stderr)
+	}
+	if !strings.Contains(stderr, mp.Branch[0][:7]) || !strings.Contains(stderr, "classifying its own message") {
+		t.Fatalf("the fallback must say it classified each branch commit itself:\n%s", stderr)
+	}
+}
+
+// TestSinceTagFallbackOnlyOnUnknownCommit is the guard that makes "an outage
+// reaches the fallback" un-writable again. Exactly ONE status branches to
+// fallbackCommit — 422, github.IsCommitUnknown, the sha GitHub has not indexed
+// yet. A 403 rate limit, a 404, a 429 and a 5xx that outlives the retry schedule
+// all leave walkSince as errors and exit 4: glyph observed nothing, so it
+// classifies nothing. Retry-After: 0 keeps the retryable arms instant (the same
+// device TestSinceTagAPIFailureMidWalkPassesThrough uses) — the schedule's
+// LENGTH is internal/github's business, its OUTCOME is this test's.
+func TestSinceTagFallbackOnlyOnUnknownCommit(t *testing.T) {
+	for name, status := range map[string]int{
+		"403 rate limit":                   http.StatusForbidden,
+		"404 not found":                    http.StatusNotFound,
+		"429 too many requests":            http.StatusTooManyRequests,
+		"500 outliving the retry schedule": http.StatusInternalServerError,
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, _ := testRepo(t)
+			squashCommit(t, dir, "Fix a crash", 8)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Retry-After", "0")
+				w.WriteHeader(status)
+				fmt.Fprintf(w, `{"message":"synthetic %d"}`, status)
+			}))
+			t.Cleanup(srv.Close)
+			usePR(t, srv)
+			t.Chdir(dir)
+
+			code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.0")
+			if code != 4 || stdout != "" {
+				t.Fatalf("a %d exited %d with stdout %q, want 4 / empty — only 422 is an API-dark walk\nstderr: %s", status, code, stdout, stderr)
+			}
+			if strings.Contains(stderr, "classifying its own message") {
+				t.Fatalf("a %d must never reach the fallback — the walk observed nothing about the commit:\n%s", status, stderr)
+			}
+			if env := decodeErrorEnvelope(t, stderr); env.Code != 4 {
+				t.Fatalf("envelope code = %d, want 4", env.Code)
+			}
+		})
+	}
+}
+
+// TestSinceTagRebaseLagCountsAReplayedCommitOnce pins what a rebase costs inside
+// the API-lag window, on both sides of the line.
+//
+// A rebase writes NEW shas, and the pull's listing still reports the pre-rebase
+// ones, so the walk-wide dedup has nothing to match on: a replayed commit
+// classified during the lag used to be folded in a SECOND time when the last
+// replayed commit expanded the pull, rendering the same change twice with
+// nothing that said so. t-8xsb closed that by aligning the listing against the
+// first-parent run ending at the canonical commit — but the alignment is
+// verified message by message and abandoned whole if any differs, so a rebase
+// the walk cannot align still double-folds. Both halves are measured here,
+// because the doctor advice text and DESIGN §7 make a claim about each.
+func TestSinceTagRebaseLagCountsAReplayedCommitOnce(t *testing.T) {
+	dir, _ := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) add a menu")
+	r1 := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testCommit(t, dir, "akira-toriyama", ":memo: document the menu")
+	r2 := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
+	// GitHub names the LAST replayed commit as merge_commit_sha, and the pull's
+	// listing still carries the ORIGINAL pre-rebase shas.
+	t.Run("the alignment holds, so it is counted once and said out loud", func(t *testing.T) {
+		srv := walkServer(t, map[string]string{
+			commitPullsPath(r1): apiUnknownSHA,
+			commitPullsPath(r2): `[` + apiPullRef(4, "2026-07-20T00:00:00Z", r2) + `]`,
+			pullCommitsPath(4): `[` +
+				apiCommit("orig111", "akira-toriyama", ":sparkles:(ui) add a menu") + `,` +
+				apiCommit("orig222", "akira-toriyama", ":memo: document the menu") + `]`,
+		})
+		usePR(t, srv)
+		t.Chdir(dir)
+
+		code, stdout, stderr := runGlyph(t, "notes", "--since-tag=v0.1.0")
+		if code != 0 {
+			t.Fatalf("notes exited %d, want 0\nstderr: %s", code, stderr)
+		}
+		if got := strings.Count(stdout, "add a menu"); got != 1 {
+			t.Fatalf("the lagging replayed commit renders %d time(s), want 1:\n%s", got, stdout)
+		}
+		// Counted once is not enough — the walk must SAY it deduped, or the
+		// difference between "deduped" and "never seen" is invisible.
+		if !strings.Contains(stderr, "counted once") {
+			t.Errorf("the dedup must announce itself:\n%s", stderr)
+		}
+	})
+
+	t.Run("the alignment cannot be verified, so the double fold survives", func(t *testing.T) {
+		srv := walkServer(t, map[string]string{
+			commitPullsPath(r1): apiUnknownSHA,
+			commitPullsPath(r2): `[` + apiPullRef(5, "2026-07-20T00:00:00Z", r2) + `]`,
+			pullCommitsPath(5): `[` +
+				apiCommit("orig111", "akira-toriyama", ":sparkles:(ui) add a different menu") + `,` +
+				apiCommit("orig222", "akira-toriyama", ":memo: document the menu") + `]`,
+		})
+		usePR(t, srv)
+		t.Chdir(dir)
+
+		code, stdout, stderr := runGlyph(t, "notes", "--since-tag=v0.1.0")
+		if code != 0 {
+			t.Fatalf("notes exited %d, want 0\nstderr: %s", code, stderr)
+		}
+		// This is the residual the advice text and DESIGN §7 both name. A walk
+		// that closes it should DELETE those clauses and this subtest with them.
+		if got := strings.Count(stdout, "add a"); got != 2 {
+			t.Fatalf("an unalignable rebase still double-folds; got %d rendering(s), want 2:\n%s", got, stdout)
+		}
+	})
+}
