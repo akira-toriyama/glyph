@@ -99,12 +99,26 @@ var (
 	// whether merely lowercasing a rejected scope would make it legal.
 	scopeRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-	// trailerRE is the `Token: value` shape of a git trailer, with the token
-	// capitalized word-by-word (Co-Authored-By, BREAKING CHANGE) so an ordinary
-	// sentence that happens to contain a colon ("see the docs: here") is not
-	// mistaken for one. It decides whether a trailer block CONTINUES: several
-	// trailers may stack with no blank line between them, prose may not.
-	trailerRE = regexp.MustCompile(`^[A-Z][A-Za-z0-9-]*(?: [A-Z][A-Za-z0-9-]*)*: `)
+	// trailerRE is the `token: value` shape of a git trailer. It decides whether
+	// a trailer block CONTINUES — several trailers may stack with no blank line
+	// between them, prose may not — so a footer (BREAKING CHANGE / NON-BREAKING)
+	// stacked under another trailer is still seen.
+	//
+	// A git trailer key is a single run with NO whitespace, and case is not part
+	// of its definition: `closes:`, `refs:` and `fixes:` are trailers exactly as
+	// `Closes:` is, and `git interpret-trailers` treats them so. Requiring each
+	// word capitalized (the first cut of this rule did) read those everyday
+	// lowercase tokens as prose, closed the block, and DISCARDED a
+	// `BREAKING CHANGE:` footer sitting under them — a major shipped as a minor,
+	// which is the one thing this engine exists to prevent. So the token half is
+	// case-blind. The one Conventional footer whose key contains a space,
+	// `BREAKING CHANGE`, is spelled out as the sole multi-word alternative.
+	//
+	// Prose is still excluded structurally, not by case: an ordinary sentence
+	// with a colon ("see the docs: here") has a SPACE before the colon, so it
+	// matches neither a single no-whitespace token nor the literal
+	// `BREAKING CHANGE`.
+	trailerRE = regexp.MustCompile(`^(?:[A-Za-z0-9][A-Za-z0-9-]*|BREAKING CHANGE): `)
 )
 
 // invalidScope reports whether subject's ONLY defect is a scope outside
