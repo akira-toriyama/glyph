@@ -18,8 +18,14 @@ const (
 	CodeOK        Code = 0 // success
 	CodeNoRelease Code = 1 // no release-worthy change (all commits classify none) — a soft miss, not an error
 	CodeUsage     Code = 2 // bad usage or invalid input — fix the args, do not retry
-	CodeLint      Code = 3 // a commit-convention violation — the CI commit-lint gate code (distinct from usage)
-	CodeAPI       Code = 4 // GitHub API / git / network / IO failure
+	// CodeLint is the gate code: what glyph was asked to judge violates the
+	// convention. That is a commit message under `lint` (the CI commit-lint
+	// gate), and a repository's own configuration under `doctor` — the subject
+	// differs, the verdict is the same class. Deliberately distinct from usage
+	// (2: the invocation itself was fine) and from API (4: glyph could not
+	// reach an answer at all).
+	CodeLint Code = 3
+	CodeAPI  Code = 4 // GitHub API / git / network / IO failure
 
 	// CodeInterrupted is returned when the user interrupts a run with SIGINT
 	// (Ctrl-C) or SIGTERM: the first signal cancels in-flight work and exits with

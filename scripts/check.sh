@@ -89,4 +89,14 @@ if "$BIN" bump --range HEAD..HEAD >/dev/null 2>&1; then
   echo "  expected exit 1 for an empty bump range" >&2
   exit 1
 fi
+
+echo "→ smoke: doctor's input guard (no network — the repo never resolves)"
+"$BIN" doctor --help >/dev/null
+# A malformed --repo is the caller's input and is rejected BEFORE any request
+# goes out, so this smoke stays hermetic: a doctor run that reached the network
+# here would hang or flake on an offline machine.
+if "$BIN" doctor --repo notaslash >/dev/null 2>&1; then
+  echo "  expected exit 2 for a malformed doctor --repo" >&2
+  exit 1
+fi
 echo "✓ all checks passed"

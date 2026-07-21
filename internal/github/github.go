@@ -447,10 +447,12 @@ func (e *statusError) Error() string { return e.err.Error() }
 func (e *statusError) Unwrap() error { return e.err }
 
 // flatten strips the status carrier off a failure. Every method except
-// CommitPulls flattens on the way out, so a status can only ever be observed
-// on the one call whose contract documents it — a 422 from another endpoint
-// (a pulls/{n}/commits validation failure) must never read as "commit
-// unknown" and silently become a release fallback.
+// CommitPulls and Repository flattens on the way out, so a status can only ever
+// be observed on a call whose contract documents it — a 422 from another
+// endpoint (a pulls/{n}/commits validation failure) must never read as "commit
+// unknown" and silently become a release fallback. The two exceptions each
+// export one predicate over their own status (IsCommitUnknown, IsRepoUnknown),
+// and nothing else in glyph may read a status.
 func flatten(err error) error {
 	var se *statusError
 	if errors.As(err, &se) {
@@ -469,6 +471,28 @@ func flatten(err error) error {
 func IsCommitUnknown(err error) bool {
 	var se *statusError
 	return errors.As(err, &se) && se.status == http.StatusUnprocessableEntity
+}
+
+// IsRepoUnknown reports whether err is Repository answering 404 — GitHub saying
+// there is no such repository FOR THIS CREDENTIAL (it answers 404 rather than
+// 403 for a private repository a credential cannot see, so the existence of the
+// repository is never disclosed). It is the one failure of that read which is an
+// answer ABOUT the repository rather than a failure to obtain one, which is
+// exactly the line `glyph doctor` draws: a 404 is a finding the repository owns
+// (exit 3), everything else — a 403 rate limit, a 5xx that outlived the retry
+// schedule, a dead socket, an unparseable body — is glyph failing to observe
+// anything (exit 4).
+//
+// The polarity is deliberate and is the fix for a real inversion: doctor used to
+// call ANY error from this read a failed check, so a transient GitHub 503 exited
+// 3 — "this repository is misconfigured" — at a fleet CI wrapper that branches on
+// `.error.code == 3` to hard-fail and treats everything else as a retryable infra
+// failure. Naming the single answering status and degrading everything else keeps
+// an unclassifiable failure on the "we learned nothing" side, which is the only
+// safe direction for a diagnostic.
+func IsRepoUnknown(err error) bool {
+	var se *statusError
+	return errors.As(err, &se) && se.status == http.StatusNotFound
 }
 
 // failed classifies a request that never produced a usable response. Only a

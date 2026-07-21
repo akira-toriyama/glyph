@@ -8,7 +8,8 @@ the gitmoji that leads each commit.
 > `lint` (`--range` / `--message` / `--stdin`), `bump` / `notes` over a local
 > range (`--range`), a **pull request's individual, pre-squash commits**
 > (`--pr`) or the release-time walk (`--since-tag`), and `release` (rolling
-> DRAFT upsert), `preview` (the whole PR comment) and `hook install` (the
+> DRAFT upsert), `preview` (the whole PR comment), `doctor` (does this
+> repository still match what glyph assumes?) and `hook install` (the
 > commit-msg hook) all work. Three reusable
 > workflows ship from this repo at each tag: `lint.yml` (commit lint),
 > `release.yml` (rolling-draft release) and `pr-verdict.yml` (the merge
@@ -35,6 +36,35 @@ glyph hook install     # commit-msg → `glyph lint --stdin` (honours core.hooks
 The hook holds no copy of the convention — it calls glyph, so it cannot fall out
 of lockstep when the rules move. Without glyph on `PATH` it warns and lets the
 commit through; the commit-lint CI job stays the authority.
+
+## Is this repository still set up the way glyph assumes?
+
+```sh
+glyph doctor            # read-only; --json for CI
+```
+
+Everything above depends on repository configuration glyph cannot see from
+inside a release run, and when that drifts nothing goes red — the verdict is
+just computed over a repository that no longer matches the model. `doctor`
+checks it: the credential can read the repository, squash merging is **enabled**
+(a squash commit is the only landing style that is both the PR's
+`merge_commit_sha` and a classifiable gitmoji subject, so the verdict holds even
+when the API cannot answer and the walk falls back to the commit's own message),
+`squash_merge_commit_title` / `squash_merge_commit_message` still keep a
+classifiable gitmoji subject and the per-commit body on `main`, and every
+`uses: akira-toriyama/glyph/…` in the local `.github/workflows` pins a concrete
+`@vX.Y.Z`.
+
+Merge commits and rebase merges are reported as **advice**, not failures — the
+release walk resolves and expands both, so those settings are a house convention
+rather than something that breaks. Whether a pin is the *latest* release is
+deliberately not checked: `glyph-pin-audit.yml` in `akira-toriyama/.github`
+already answers that fleet-wide.
+
+Nothing is ever modified: each finding prints the `gh api` command that fixes it.
+Exit `0` all clear · `3` a check failed · `4` a check could not run (unverified,
+which is not the same as fine) — an API that never answered is always the
+second, never the first.
 
 ## Why it exists
 
@@ -92,7 +122,8 @@ self-printed by `glyph rules` (Phase 1).
 
 ## Exit codes
 
-`0` ok · `1` no release-worthy change · `2` usage · `3` lint violation ·
+`0` ok · `1` no release-worthy change · `2` usage · `3` convention violation
+(a commit under `lint`, the repository's own configuration under `doctor`) ·
 `4` API/git/IO · `130` interrupted.
 
 ## License

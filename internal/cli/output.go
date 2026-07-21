@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/akira-toriyama/glyph/internal/core"
 )
@@ -43,7 +44,7 @@ func marshal(v any, indent bool) []byte {
 // the Actions runner scans stderr for workflow commands just as it does stdout,
 // and outside Actions the line is an ordinary human-readable warning.
 func warnf(format string, a ...any) {
-	fmt.Fprintf(errOut, "::warning::glyph: "+format+"\n", a...)
+	fmt.Fprintln(errOut, "::warning::glyph: "+oneLine(fmt.Sprintf(format, a...)))
 }
 
 // noticef emits one GitHub Actions notice annotation (::notice::) to the
@@ -51,7 +52,31 @@ func warnf(format string, a ...any) {
 // surfacing in a release job's log that are not warnings (a draft created, a
 // stale draft discarded).
 func noticef(format string, a ...any) {
-	fmt.Fprintf(errOut, "::notice::glyph: "+format+"\n", a...)
+	fmt.Fprintln(errOut, "::notice::glyph: "+oneLine(fmt.Sprintf(format, a...)))
+}
+
+// oneLine folds an annotation's text onto a single physical line.
+//
+// A workflow command IS one line: the runner parses `::warning::` up to the
+// first newline and drops the rest, so a multi-line interpolation loses exactly
+// the part the annotation existed to deliver. The text is not always glyph's own
+// — doctor and the release path interpolate a remote error body, and a
+// proxy/gateway HTML page (common behind an enterprise GITHUB_API_URL) arrives
+// as a dozen lines. Folding here rather than at each call site means no future
+// caller has to remember; everywhere else glyph routes arbitrary API text
+// through renderError, which JSON-encodes it and has the same property.
+//
+// The escape GitHub understands for a genuinely multi-line annotation (%0A) is
+// deliberately not used: glyph's annotations are read as plain warnings outside
+// Actions just as often as inside it, and %0A there is line noise.
+func oneLine(s string) string {
+	var parts []string
+	for line := range strings.SplitSeq(s, "\n") {
+		if t := strings.TrimSpace(line); t != "" {
+			parts = append(parts, t)
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // renderError prints a structured error to stderr as {"error":{...}} so a caller

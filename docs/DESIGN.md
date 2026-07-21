@@ -297,7 +297,7 @@ commit and a tag strictly past it both exited 3). Both now exit 0.
 ## 5. Architecture (Go, house pattern)
 
 Binary `glyph`, module `github.com/akira-toriyama/glyph`. Subcommands:
-`lint`, `bump`, `notes`, `release`, `rules`, `version`.
+`lint`, `bump`, `notes`, `release`, `doctor`, `rules`, `version`.
 
 ```
 cmd/glyph/main.go        os.Exit(cli.Execute()) — thin process boundary only
@@ -308,14 +308,17 @@ internal/parser          message → Commit{Gitmoji,Scope,Breaking,Subject,Body,
 internal/bump            Level lattice; Classify; Reduce(max); Next; stdlib semver
 internal/notes           group by section; text/template render (no external tmpl dep)
 internal/gitsource       local `git log BASE..HEAD` (exec.CommandContext)
-internal/github          commits/{sha}/pulls, pulls/{N}/commits, release CRUD
+internal/github          commits/{sha}/pulls, pulls/{N}/commits, release CRUD, repo object
+internal/doctor          repository-precondition checks; independent, read-only (§7)
 internal/cli             cobra adapter; Execute() int owns the exit-code funnel
 ```
 
 **Exit-code contract** (`internal/core`): `0` ok · `1` no release · `2` usage ·
-`3` lint · `4` API/git/IO · `130` interrupted. Errors are classified at the
-source into `*core.Error`; `ExitCode` funnels everything (unclassified ⇒ API,
-never usage).
+`3` convention violation · `4` API/git/IO · `130` interrupted. Errors are
+classified at the source into `*core.Error`; `ExitCode` funnels everything
+(unclassified ⇒ API, never usage). `3` is the *gate* code — what glyph was asked
+to judge does not conform: a commit message under `lint`, a repository's own
+configuration under `doctor`. Same class, different subject; no new integer.
 
 **gitmoji table embedding:** `//go:embed internal/gitmoji/rules.json` — the
 pinned binary *is* the pinned rules (lockstep, zero skew). `Load()` fails at
@@ -382,7 +385,95 @@ by full path pinned to a release tag:
 The consuming job needs `permissions: contents: read` and a `GH_TOKEN`/`token`
 for the attestation verify.
 
-## 7. Roadmap
+## 7. Repository preconditions (`glyph doctor`)
+
+Everything above assumes repository configuration glyph never observes: that the
+repo squash-merges, that the squash subject and body policy leave a classifiable
+gitmoji on `main`, that a caller pins a concrete tag. When one of those drifts
+nothing turns red — the workflows are green and the verdict is simply computed
+over a repository that no longer matches the model. The 2026-07-21 fleet
+measurement found 31 of 34 non-archived repos allowing merge commits and rebase
+merges, and `glyph-test` sitting on `squash_merge_commit_title = PR_TITLE` /
+`squash_merge_commit_message = PR_BODY`; nothing detected either until a human
+ran `gh api` by hand. `doctor` is the machine-checkable half of that, and the
+prevention side of t-7zt7 (a merge-commit PR vanishing from the release walk).
+
+Shape: independent checks → one report object → an exit on the aggregate.
+**Read-only, always** — a diagnostic that mutates cannot be run casually, and
+this one is meant to be. Each finding carries a stable kebab-case id (branch on
+that, never on the prose), the observed and expected values, what breaks, and the
+`gh api` command that fixes it. Independence is structural: one unreadable input
+degrades *that* check to `unknown` and no other, and `unknown` is deliberately
+distinguishable from `fail` — "we could not check" is not "it is fine", so
+neither exits 0.
+
+The line between the two is drawn on what the API **said**, not on whether the
+call returned an error (`github.IsRepoUnknown`). A 404 from the repository read is
+an answer — there is no such repository *for this credential* — and fails at `3`.
+A 403 rate limit, a 5xx that outlived the retry schedule, a dead socket or a body
+that would not parse is no answer at all: nothing about the repository was
+observed, so it is `unknown` at `4`, the same code every other glyph command gives
+that failure. Collapsing the two the other way made a transient GitHub outage tell
+the fleet's CI wrappers — which branch on `jq -e '.error.code == 3'` to hard-fail
+and treat everything else as retryable infra — that the repository was
+misconfigured, and never retry.
+
+The severities are the argued part:
+
+- **`allow_squash_merge` false ⇒ fail.** *Not* because only a squash commit
+  resolves — every style does. GitHub points `merge_commit_sha` at whichever
+  commit represents the merge (the squash commit, a rebase's **last** replayed
+  commit, or the merge commit itself), and §4's walk expands the PR from there in
+  all three cases. What squash-off removes is the path for when the API does *not*
+  answer: §4's fallback classifies a walked commit from its **own** message, and a
+  squash commit is the only landing style that is simultaneously the PR's key and
+  a classifiable gitmoji subject. A merge commit's own message is `Merge pull
+  request #N from …` — no `:code:` at all, and the fallback skips it on its parent
+  count, so the whole PR counts *none*. A rebase keeps the messages but not the
+  shas (GitHub always writes new commits, absent from the PR's own commit
+  listing), so the walk's dedup cannot recognise them and a lagging read can fold
+  the same change in twice. The dark window is routine — the walk runs seconds
+  after a push (422, sha not known yet) and t-bjrv answered 503 for tens of
+  seconds — so a repository with squash off is one hiccup away from a wrong
+  verdict, silently. Not a preference: it is the only landing style that survives
+  an API-dark window.
+- **`allow_merge_commit` / `allow_rebase_merge` true ⇒ advice, not failure.** A
+  merge commit *used* to be data loss (`bump.Excluded` drops 2+ parents, so the
+  PR vanished — t-7zt7); with the walk expanding merge commits correctly it costs
+  no bump, and what is left is the squash-only house convention. A rebase merge
+  was never lenient either — the last replayed commit expands the whole PR
+  through the API and an unknown `:code:` inside it hard-fails exactly as a
+  squash's would, while the earlier replayed commits resolve as *covered* and are
+  skipped; it costs one round-trip per replayed commit and the dedup key, not
+  strictness. Failing over settings glyph handles correctly would train the fleet
+  to ignore the report, which is the one failure mode a voluntary check cannot
+  survive. The merge-commit severity is downstream of that fix: revert the fix and
+  it must move back to `fail`. *Allowing* a second method leaves squash there for
+  the traffic that matters — which is why this is advice while turning squash
+  **off** is a failure.
+- **The squash title/message policy ⇒ fail.** `PR_TITLE` hands the PR title to
+  *every* squash, single-commit PRs included, so `main` fills with subjects no
+  gitmoji reader can classify — and §4's documented fallback (direct push, or API
+  lag right after a push) classifies exactly that message, so a release counts
+  none and the bump is lost. `PR_BODY` drops the per-commit list that is the only
+  offline record of a PR's pre-squash types.
+- **Workflow pins ⇒ fail on any non-`vX.Y.Z` ref**, scanned in the LOCAL
+  checkout. Whether the pin is the *latest* release is deliberately NOT checked:
+  `glyph-pin-audit.yml` in `akira-toriyama/.github` already owns that question
+  fleet-wide, and a second implementation would be a second source of truth. The
+  scan's trap is that a `uses:`-shaped line need not be an executing step: every
+  reusable ships a permanently-stale COMMENTED caller stub containing `uses:` and
+  an old version (ignore comments and glyph reports itself as drifted forever;
+  read the first match in a file and you read the comment instead of the real
+  line), and a fleet-sync step *writes* stubs from a `run: |` heredoc, so the
+  scan must skip block scalars whole or it fails a repository over text it emits
+  rather than runs. Whole-line comments are dropped, block scalars are skipped by
+  indentation, `uses:` is only recognised as the line's own YAML key, and the
+  owner/repo match is case-insensitive because GitHub's resolution is —
+  `Akira-Toriyama/glyph/…@main` executes, and a case-sensitive scan called that
+  repository clean.
+
+## 8. Roadmap
 
 Phase 0 scaffold (this) → 1 gitmoji table → 2 parser+bump+lint → 3 lint reusable
 + canary (first shippable) → 4 notes → 5 GitHub squash-safe plumbing → 6

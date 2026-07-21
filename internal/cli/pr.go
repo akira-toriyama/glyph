@@ -59,14 +59,22 @@ func checkPRFlag(number int) error {
 	return nil
 }
 
-// newGitHub builds the API client from the environment: the token (GITHUB_TOKEN,
-// else GH_TOKEN) and the REST host (GITHUB_API_URL, else the public one). An
-// empty token still reads a public repository, at the anonymous rate limit.
-func newGitHub() *github.Client {
-	token := os.Getenv(envToken)
-	if token == "" {
-		token = os.Getenv(envGHToken)
+// githubToken resolves the credential: GITHUB_TOKEN, else GH_TOKEN (what the gh
+// CLI exports), else empty — which still reads a public repository, at the
+// anonymous rate limit. It is a named function rather than an inline lookup
+// because `doctor` reports WHETHER a credential was configured, and that answer
+// must come from the same resolution the client actually uses.
+func githubToken() string {
+	if token := os.Getenv(envToken); token != "" {
+		return token
 	}
+	return os.Getenv(envGHToken)
+}
+
+// newGitHub builds the API client from the environment: the token (see
+// githubToken) and the REST host (GITHUB_API_URL, else the public one).
+func newGitHub() *github.Client {
+	token := githubToken()
 	var opts []github.Option
 	if base := strings.TrimSpace(os.Getenv(envAPIURL)); base != "" {
 		opts = append(opts, github.WithBaseURL(base))
