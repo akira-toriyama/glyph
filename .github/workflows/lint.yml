@@ -138,17 +138,27 @@ jobs:
           # becomes a PR annotation. jq never fails the step on a non-JSON
           # envelope — the preserved glyph exit code is the verdict.
           cat /tmp/glyph-lint.err >&2
-          if jq -e .error /tmp/glyph-lint.err >/dev/null 2>&1; then
+          # That stream is annotations AND the envelope, and jq over the two
+          # together is a parse error — a lint run that warned before it failed
+          # would emit no annotations at all. The envelope is written last, so
+          # everything from the first line opening with `{` is the whole
+          # document; sieve it into a file once and let all four jq calls read
+          # pure JSON. `[{]` rather than a bare `{` because an unmatched brace in
+          # a BRE is POSIX-undefined, and sed rather than grep because a grep
+          # that matches nothing exits 1 and would kill the step under
+          # `set -o pipefail` whenever the error was Silent (t-sws7).
+          sed -n '/^[{]/,$p' /tmp/glyph-lint.err > /tmp/glyph-lint.json
+          if jq -e .error /tmp/glyph-lint.json >/dev/null 2>&1; then
             jq -r '(.error.details // [])[]
                      | "::error::\((.sha // "")[0:7]) \(.rule // ""): \(.detail // "")"' \
-              /tmp/glyph-lint.err || true
+              /tmp/glyph-lint.json || true
             # The commit-format hint is for convention violations (exit 3) only —
             # an infra failure (git/API, exit 4) gets the bare message.
-            if jq -e '.error.code == 3' /tmp/glyph-lint.err >/dev/null 2>&1; then
+            if jq -e '.error.code == 3' /tmp/glyph-lint.json >/dev/null 2>&1; then
               jq -r '"::error::glyph lint: \(.error.message) — format: <:gitmoji:>[(scope)][!] <subject>; see `glyph rules` and https://github.com/akira-toriyama/.github/blob/main/CONTRIBUTING.md"' \
-                /tmp/glyph-lint.err || true
+                /tmp/glyph-lint.json || true
             else
-              jq -r '"::error::glyph lint: \(.error.message)"' /tmp/glyph-lint.err || true
+              jq -r '"::error::glyph lint: \(.error.message)"' /tmp/glyph-lint.json || true
             fi
           fi
           exit "$status"

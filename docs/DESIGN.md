@@ -328,6 +328,22 @@ classified at the source into `*core.Error`; `ExitCode` funnels everything
 to judge does not conform: a commit message under `lint`, a repository's own
 configuration under `doctor`. Same class, different subject; no new integer.
 
+**Stream contract:** stdout carries the payload, stderr the diagnostics — and
+stderr has a *shape*, because two machine-readable things share it. Every line
+is either a `::`-prefixed GitHub workflow command or part of the one
+`{"error":{…}}` envelope, which is written **last** (from the CLI's exit funnel,
+after the command returned; cobra is silenced and every git subprocess writes
+into a buffer, so nothing follows it). A consumer therefore sieves the envelope
+out — `sed -n '/^[{]/,$p'` — before handing it to `jq`: jq over the two shapes
+together is a parse error, and both shipped reusables buried that failure under
+`|| true`, so a run that warned before it failed printed **no** `::error::` at
+all (t-sws7). The envelope's `message` is folded onto one line at that single
+boundary for the same reason the annotations are: a consumer interpolates it
+straight into a `::error::`, and the runner parses a workflow command up to the
+first newline — JSON-escaping the newlines keeps the *bytes* valid while the
+*value* still loses everything past the first line, which is how this stayed
+invisible.
+
 **gitmoji table embedding:** `//go:embed internal/gitmoji/rules.json` — the
 pinned binary *is* the pinned rules (lockstep, zero skew). `Load()` fails at
 startup if any spec code is missing or a bump is out of enum.
