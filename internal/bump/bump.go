@@ -1,8 +1,10 @@
 // Package bump owns glyph's version semantics: classifying one commit onto the
 // bump lattice, folding a set of levels (max — order-independent, so squash
 // order can never change the version), stepping a version, and deciding which
-// commits participate in lint and the fold at all. It is pure — no I/O — and
-// layers on gitmoji.Lookup / Bump.Rank.
+// commits participate at all — in lint and the fold
+// (ExcludedFromClassification) and in the release walk's pull-request
+// resolution (ExcludedFromResolution), two questions kept apart on purpose. It
+// is pure — no I/O — and layers on gitmoji.Lookup / Bump.Rank.
 package bump
 
 import (
@@ -49,24 +51,63 @@ func Reduce(levels []gitmoji.Bump) gitmoji.Bump {
 // the same tolerance the retired shell commit-lint gave existing history.
 var generatedSubjects = []string{"Merge ", "Revert ", "fixup! ", "squash! "}
 
-// Excluded reports whether a commit stays out of lint and the version fold,
-// and why: bot authors (`*[bot]`, github-actions*, web-flow), merge commits
-// (structurally by parent count, and by subject for API-sourced commits where
-// parents are unknown), and git-generated subjects (autosquash artifacts, raw
-// `git revert` messages). An excluded commit is skipped, never a violation.
-func Excluded(author, subject string, parents int) (reason string, excluded bool) {
-	switch {
-	case strings.HasSuffix(author, "[bot]"):
-		return "bot author " + author, true
-	case strings.HasPrefix(author, "github-actions"), author == "web-flow":
-		return "automation author " + author, true
-	case parents >= 2:
+// ExcludedFromClassification reports whether a commit's OWN MESSAGE stays out
+// of lint and the version fold, and why: bot authors (`*[bot]`,
+// github-actions*, web-flow), merge commits (structurally by parent count, and
+// by subject for API-sourced commits where parents are unknown), and
+// git-generated subjects (autosquash artifacts, raw `git revert` messages). An
+// excluded commit is skipped, never a violation.
+//
+// This answers "is this commit's own message classifiable?" — the question
+// wherever a MESSAGE is the input: the lint gate, the --range walk, and the
+// release walk's fallback path for a commit no pull request explains.
+//
+// It is emphatically NOT the question the release walk asks of a commit on main
+// before resolving it — that one is ExcludedFromResolution. Asking this one
+// there is what made a merge-commit-merged pull request vanish out of both the
+// version and the notes, silently (t-7zt7).
+func ExcludedFromClassification(author, subject string, parents int) (reason string, excluded bool) {
+	if reason, excluded := ExcludedFromResolution(author); excluded {
+		return reason, true
+	}
+	if parents >= 2 {
 		return "merge commit", true
 	}
 	for _, p := range generatedSubjects {
 		if strings.HasPrefix(subject, p) {
 			return "git-generated subject (" + strings.TrimSpace(strings.TrimSuffix(p, "!")) + ")", true
 		}
+	}
+	return "", false
+}
+
+// ExcludedFromResolution reports whether a commit on main cannot POINT AT a
+// merged pull request, and why. It answers a different question from
+// ExcludedFromClassification and therefore takes different evidence: the author
+// alone. A bot's or an automation's commit is a direct push by construction and
+// can never move the version (ratified policy — bot commits are excluded from
+// the fold even inside a pull request), so resolving one would buy nothing and
+// must not cost an API round-trip: the routine fleet-sync push runs on every
+// repository, every day.
+//
+// Nothing about the commit's own text or shape may be consulted here. The
+// message of a merge point is GitHub's, not an author's — `Fix a crash (#7)`
+// and `Merge pull request #7 from …` are both POINTERS to a pull request — and
+// two parents are how the merge-commit button SHAPES that pointer, not a reason
+// to skip it. Whether a merge commit is a pull request is answered by resolving
+// it: a local `git merge` resolves to nothing and falls through to the
+// classification question, which still excludes it.
+//
+// web-flow stays excluded deliberately: GitHub sets it as the COMMITTER of a
+// web-UI merge and never as the author (that is the human who pressed the
+// button), so this gate cannot hide a real merge point; a commit web-flow
+// genuinely authored is a browser-made edit, which glyph has never classified.
+func ExcludedFromResolution(author string) (reason string, excluded bool) {
+	switch {
+	case strings.HasSuffix(author, "[bot]"):
+		return "bot author " + author, true
+	case strings.HasPrefix(author, "github-actions"), author == "web-flow":
+		return "automation author " + author, true
 	}
 	return "", false
 }

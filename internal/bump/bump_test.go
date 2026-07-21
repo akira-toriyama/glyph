@@ -92,11 +92,12 @@ func TestReduce(t *testing.T) {
 	}
 }
 
-// TestExcluded pins which commits stay out of lint and the version fold: bot
-// authors, merge commits (structurally, and by GitHub's "Merge " subject),
-// autosquash artifacts, and git's own `Revert "…"` messages — exactly the
-// tolerance the retired shell commit-lint gave existing history.
-func TestExcluded(t *testing.T) {
+// TestExcludedFromClassification pins which commits' own messages stay out of
+// lint and the version fold: bot authors, merge commits (structurally, and by
+// GitHub's "Merge " subject), autosquash artifacts, and git's own `Revert "…"`
+// messages — exactly the tolerance the retired shell commit-lint gave existing
+// history.
+func TestExcludedFromClassification(t *testing.T) {
 	cases := []struct {
 		name    string
 		author  string
@@ -120,15 +121,55 @@ func TestExcluded(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			reason, got := Excluded(c.author, c.subject, c.parents)
+			reason, got := ExcludedFromClassification(c.author, c.subject, c.parents)
 			if got != c.want {
-				t.Fatalf("Excluded(%q, %q, %d) = %v (%q), want %v", c.author, c.subject, c.parents, got, reason, c.want)
+				t.Fatalf("ExcludedFromClassification(%q, %q, %d) = %v (%q), want %v", c.author, c.subject, c.parents, got, reason, c.want)
 			}
 			if got && reason == "" {
-				t.Fatalf("Excluded(%q, %q, %d) excluded without a reason", c.author, c.subject, c.parents)
+				t.Fatalf("ExcludedFromClassification(%q, %q, %d) excluded without a reason", c.author, c.subject, c.parents)
 			}
 			if !got && reason != "" {
-				t.Fatalf("Excluded(%q, %q, %d) kept the commit but returned reason %q", c.author, c.subject, c.parents, reason)
+				t.Fatalf("ExcludedFromClassification(%q, %q, %d) kept the commit but returned reason %q", c.author, c.subject, c.parents, reason)
+			}
+		})
+	}
+}
+
+// TestExcludedFromResolution pins the OTHER question — "can this commit point
+// at a pull request?" — and above all what it must NOT ask: a merge commit and
+// a `Merge pull request #7 from …` subject are how GitHub's merge button writes
+// a pointer, so neither may exclude one (t-7zt7: they did, and the pull request
+// vanished out of its release). Only an automation's authorship does, because
+// its commit is a direct push that can never move the version — and the fleet's
+// daily sync push must not cost an API round-trip to learn that.
+func TestExcludedFromResolution(t *testing.T) {
+	cases := []struct {
+		name   string
+		author string
+		want   bool
+	}{
+		{"human stays in", "akira-toriyama", false},
+		{"bot suffix", "dependabot[bot]", true},
+		{"github-actions", "github-actions", true},
+		{"github-actions[bot]", "github-actions[bot]", true},
+		{"web-flow", "web-flow", true},
+		{"bot-ish name without marker stays in", "botond", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			reason, got := ExcludedFromResolution(c.author)
+			if got != c.want {
+				t.Fatalf("ExcludedFromResolution(%q) = %v (%q), want %v", c.author, got, reason, c.want)
+			}
+			if got != (reason != "") {
+				t.Fatalf("ExcludedFromResolution(%q) = %v with reason %q — a skip always names itself, a keep never does", c.author, got, reason)
+			}
+			// The shape a merge point carries is evidence for the message
+			// question only: the same author must answer identically here
+			// whatever the commit looks like, because this predicate cannot see
+			// it at all.
+			if _, merged := ExcludedFromClassification(c.author, "Merge pull request #7 from akira-toriyama/topic", 2); !merged {
+				t.Fatalf("a merge commit must stay out of CLASSIFICATION whoever authored it (%q)", c.author)
 			}
 		})
 	}

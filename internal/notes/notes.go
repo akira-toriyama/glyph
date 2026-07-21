@@ -5,8 +5,8 @@
 // and a commit whose code carries no section stays out entirely. Inclusion
 // tracks the section, not the bump, so a none-bump removal (:fire:/:coffin:/
 // :truck:, section Removals) still surfaces. Participation policy (bots, merges,
-// autosquash artifacts) is internal/bump's Excluded; reading commits belongs
-// to internal/gitsource — neither happens here.
+// autosquash artifacts) is internal/bump's ExcludedFromClassification; reading
+// commits belongs to internal/gitsource — neither happens here.
 package notes
 
 import (

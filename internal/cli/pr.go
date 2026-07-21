@@ -95,6 +95,26 @@ func pullInput(ctx context.Context, number int, repoFlag string) ([]parser.Commi
 // mirrors gitsource.RawCommit field-for-field by design, so both sources converge
 // on one participation walk rather than drifting apart.
 func participatingPull(ctx context.Context, c *github.Client, owner, repo string, number int) ([]parser.Commit, error) {
+	raws, err := pullRawCommits(ctx, c, owner, repo, number)
+	if err != nil {
+		return nil, err
+	}
+	return participating(raws)
+}
+
+// pullRawCommits is the read half of participatingPull: the listing as GitHub
+// returns it, converted to the local raw shape and with the truncation warning
+// already emitted, but NOT yet parsed.
+//
+// The split exists for the release walk, which must filter this listing against
+// its walk-wide SHA set BEFORE anything parses it. A commit the walk already
+// folded in is already represented in the verdict, so re-reading its message
+// can only do harm: a pull request squash-merged into a topic branch leaves its
+// own squash subject (`Add a menu (#6)` — not gitmoji-formed, as no squash
+// subject is) inside the listing of the pull that later landed that branch, and
+// parsing it there wedged the release permanently (t-7zt7). Parse only what the
+// walk has not already accounted for.
+func pullRawCommits(ctx context.Context, c *github.Client, owner, repo string, number int) ([]gitsource.RawCommit, error) {
 	raws, err := c.PullCommits(ctx, owner, repo, number)
 	if err != nil {
 		return nil, err
@@ -108,5 +128,5 @@ func participatingPull(ctx context.Context, c *github.Client, owner, repo string
 	for i, r := range raws {
 		local[i] = gitsource.RawCommit(r)
 	}
-	return participating(local)
+	return local, nil
 }
