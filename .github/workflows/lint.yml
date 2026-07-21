@@ -15,7 +15,16 @@ name: glyph-lint
 #     contents: read
 #   jobs:
 #     lint:
-#       uses: akira-toriyama/glyph/.github/workflows/lint.yml@v0.10.0  # pin a release tag
+#       uses: akira-toriyama/glyph/.github/workflows/lint.yml@vX.Y.Z  # pin a release tag
+#
+# @vX.Y.Z is a PLACEHOLDER, not a ref — substitute a concrete tag from
+# https://github.com/akira-toriyama/glyph/releases. No live version is written
+# here because none can be: a tag is cut on a commit that ALREADY EXISTS, so any
+# version typed into this file names the PREVIOUS release the moment it ships.
+# For a pin that is provably current, read .github/workflows/commit-lint.yml in
+# THIS repo — glyph is inside the fleet it distributes to, so fleet-sync holds
+# that caller at the canonical version. (This is also why a naive grep for glyph
+# pins must skip comments: internal/workflows guards both halves.)
 #
 # The glyph binary is DOWNLOADED from a release — checksum-verified against the
 # release's checksums.txt AND provenance-verified with `gh attestation verify`
