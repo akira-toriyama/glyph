@@ -191,7 +191,15 @@ func Parse(message string) (Commit, error) {
 	lines := splitLines(message)
 	subject := ""
 	if len(lines) > 0 {
-		subject = lines[0]
+		// Trailing whitespace is stripped because GIT strips it: measured against
+		// git 2.54, `git commit -m ':bug:(cli) fix it.   '` and `-F` alike record
+		// `:bug:(cli) fix it.`, exactly as `git stripspace` does (space, tab and
+		// CR; a \v or \f is content and stays). Reading the untrimmed line let a
+		// trailing space hide the period behind it, so `trailing-period` — which
+		// DESIGN §2 states as a rule — did not fire on the very message git was
+		// about to record with the period at the end. That hole was in EVERY mode,
+		// `--range` and CI included, not only at the hook.
+		subject = strings.TrimRight(lines[0], " \t\r")
 	}
 	if strings.TrimSpace(subject) == "" {
 		return Commit{}, core.Lintf("empty commit message")
@@ -289,7 +297,9 @@ func Lint(message string, opts LintOptions) []Violation {
 	if err != nil {
 		rule := RuleMalformedSubject
 		if lines := splitLines(message); len(lines) > 0 {
-			if _, ok := invalidScope(lines[0]); ok {
+			// Same trim as Parse: the two must judge the same string, or the rule
+			// id and the message would disagree about which line was read.
+			if _, ok := invalidScope(strings.TrimRight(lines[0], " \t\r")); ok {
 				rule = RuleInvalidScope
 			}
 		}
