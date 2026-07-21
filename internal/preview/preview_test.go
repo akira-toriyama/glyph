@@ -270,3 +270,62 @@ func TestRenderNoNotesBlockWhenEmpty(t *testing.T) {
 		t.Errorf("rendered an empty details block:\n%s", got)
 	}
 }
+
+// TestRenderNeutralizesMarkupInTheCell pins the t-j0c6 fix at the preview sink,
+// which is the sharper of the two: this body is posted as a PR COMMENT, so a
+// subject that breaks out of its container does it in a comment authored by a
+// bot, over the reviewer's signature.
+//
+// Measured against GitHub 2026-07-21, before the fix — the injected <h1> left
+// the collapsed block entirely and landed at the top level of the comment:
+//
+//	<details><summary>Release notes preview</summary>
+//	<ul><li>⚡️ speed up </li></ul></details><h1>OWNED</h1> the loop (abc1234)
+//
+// and after it, contained and inert:
+//
+//	<details><summary>Release notes preview</summary><ul><li>⚡️ speed up
+//	&lt;/details&gt;&lt;h1&gt;OWNED&lt;/h1&gt; the loop (abc1234)</li></ul></details>
+func TestRenderNeutralizesMarkupInTheCell(t *testing.T) {
+	got := Render(Input{
+		Current: "v1.0.0",
+		PR: Verdict{Level: gitmoji.BumpPatch, Next: "v1.0.1", Commits: []Commit{
+			{Code: ":zap:", Level: gitmoji.BumpPatch, Subject: "speed up </details><h1>OWNED</h1> the loop"},
+			{Code: ":bug:", Level: gitmoji.BumpPatch, Subject: `add a tracker <img src="https://evil.example/p.png">`},
+			{Code: ":bug:", Level: gitmoji.BumpPatch, Subject: "see [x](http://evil.example) and www.evil.example"},
+		}},
+		Notes: "## Fixes\n\n- ⚡️ speed up the loop (abc1234)\n",
+	})
+	for _, want := range []string{
+		`| speed up \</details>\<h1>OWNED\</h1> the loop |`,
+		`| add a tracker \<img src="https\://evil.example/p.png"> |`,
+		`| see \[x](http\://evil.example) and www\.evil.example |`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("cell not neutralized, want %q in:\n%s", want, got)
+		}
+	}
+	// The whole point: exactly one LIVE </details> in the body, and it is
+	// glyph's own. The escaped one in the cell is text, not a tag — counting
+	// substrings alone would have credited it as a break-out.
+	live := 0
+	for i := range got {
+		if strings.HasPrefix(got[i:], "</details>") && (i == 0 || got[i-1] != '\\') {
+			live++
+		}
+	}
+	if live != 1 {
+		t.Errorf("body carries %d live </details>, want exactly 1 (glyph's own):\n%s", live, got)
+	}
+	// No unescaped '<' survives anywhere a subject reached.
+	for i, line := range strings.Split(got, "\n") {
+		if !strings.HasPrefix(line, "| ") {
+			continue // glyph's own markup (the marker, the <details> block)
+		}
+		for j := 0; j < len(line); j++ {
+			if line[j] == '<' && (j == 0 || line[j-1] != '\\') {
+				t.Errorf("line %d carries an unescaped '<' at %d: %s", i, j, line)
+			}
+		}
+	}
+}

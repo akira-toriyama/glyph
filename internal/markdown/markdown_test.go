@@ -48,8 +48,16 @@ import (
 //	                                        span does not form (cmark memo)
 //	`` `a` `x @octocat y`                   LIVE MENTION   ← same memo, via a
 //	                                                         span glyph trusted
-//	fix <http://a/`x> so @octocat can `see` it        LIVE MENTION (known
-//	                                        limitation, see the test below)
+//	fix <http://a/`x> so @octocat can `see` it        LIVE MENTION on RAW input
+//	fix http://a/`x so @octocat can `see` it          LIVE MENTION — no angle
+//	                                        bracket anywhere: GFM's extended
+//	                                        autolink eats the backtick too
+//	see [a](b`c) @octocat `d` end           LIVE MENTION — a link DESTINATION
+//	                                        eats it, so no amount of autolink
+//	                                        and raw-HTML parsing would suffice
+//	                                        (all three: see the test below, and
+//	                                        escape.go, which closes them at the
+//	                                        caller by killing the construct)
 //
 // The guard in front of the at-sign, byte by byte — the question is not "is
 // this a word character" but "is it still THERE when the mention filter runs",
@@ -270,24 +278,36 @@ func TestEscapeMentions(t *testing.T) {
 	}
 }
 
-// TestEscapeMentionsKnownLimitations pins the two shapes glyph knowingly gets
-// wrong, so that a future change that fixes them fails here loudly instead of
+// TestEscapeMentionsKnownLimitations pins the two shapes THIS FUNCTION knowingly
+// gets wrong on raw input, so that a change to it fails here loudly instead of
 // slipping past unnoticed, and so nobody re-derives them as new discoveries.
-// Both are recorded in the probe table above as live mentions.
+//
+// BOTH ARE NOW CLOSED AT THE CALLER, and neither reaches a release body or a PR
+// comment any more: notes.entryLine and preview.escapeCell run EscapeMarkup
+// first, which kills the construct in case 1 and escapes the ampersand in case
+// 2 (see internal/markdown/escape.go, and its measured before/after table).
+// What this test still pins is the PRECONDITION that arrangement rests on —
+// EscapeMentions is exact only on input where no construct outranks a backtick,
+// so a third sink that calls it on raw author text inherits both holes.
 //
 //  1. codeSpans knows only backticks. An inline construct that legally swallows
-//     a backtick FIRST — a URI autolink, or a raw HTML tag with a backtick in a
-//     quoted attribute — leaves the next backtick to pair with a later one, and
-//     glyph reads the phantom span as inert. Closing this needs a full inline
-//     parser (autolinks, raw HTML, entity references, link destinations), which
-//     is a different program from a commit-message linter.
+//     a backtick FIRST — a URI autolink, a bare URL, a raw HTML tag with a
+//     backtick in a quoted attribute, or a link destination — leaves the next
+//     backtick to pair with a later one, and glyph reads the phantom span as
+//     inert. Teaching this function the difference would need a full inline
+//     parser, which is a different program from a commit-message linter; the
+//     callers remove the competing constructs instead, which makes the
+//     backtick-only model exact rather than approximate.
 //
 //  2. An at-sign the AUTHOR wrote as a character reference is invisible here:
 //     the source has no "@" for the pattern to find, and GitHub decodes it to
 //     one before the mention filter runs. Rewriting it is what this branch's
-//     first attempt did in the opposite direction and it is a trap either way;
-//     an author who types &#64; into a commit subject is asking for the mention
-//     they get.
+//     first attempt did in the opposite direction and it is a trap either way —
+//     so the caller escapes the ampersand, which neither rewrites nor drops a
+//     byte.
+//
+// bite-exempt: pins the limitations of this function on raw input, which the
+// change closes at the caller rather than here
 func TestEscapeMentionsKnownLimitations(t *testing.T) {
 	cases := []struct {
 		name string

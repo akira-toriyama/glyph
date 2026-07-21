@@ -97,8 +97,13 @@ func Group(commits []parser.Commit, t *gitmoji.Table) ([]Section, error) {
 
 // tmpl is the Markdown shape of the notes: `## <section>` headings in group
 // order, one entry line each (drawn by entryLine), one blank line between
-// sections. Subjects render near-verbatim — own-repo content is trusted as
-// Markdown, and GitHub autolinks the bare short SHA.
+// sections. GitHub autolinks the bare short SHA.
+//
+// Nothing author-supplied reaches this template: every such byte comes in
+// through entryLine, which is where the escaping is. "Own-repo content is
+// trusted as Markdown" is what this comment used to say, and it was wrong in
+// both directions — a subject's raw HTML broke the notes AND the sanitizer
+// deleted the author's own words (t-j0c6).
 var tmpl = template.Must(template.New("notes").Funcs(template.FuncMap{
 	"line": entryLine,
 }).Parse(`{{- range $i, $s := . -}}
@@ -113,33 +118,50 @@ var tmpl = template.Must(template.New("notes").Funcs(template.FuncMap{
 `))
 
 // entryLine draws one entry — `- <emoji> [**scope:** ]<subject> (<short sha>)`
-// — and neutralizes its mentions ONCE, over the finished line.
+// — from author-supplied fields, in three tiers.
 //
-// The line is assembled HERE, in Go, rather than field by field in the template
-// above, because mention-safety is a property of the rendered INLINE CONTEXT
-// and not of any field that lands in it. A backtick fence has to be longer than
-// every backtick run it will share a context with (see markdown.EscapeMentions),
-// and the template's fields share one: escaping them separately sized the
-// subject's fence against the subject alone, so a backtick carried by the SCOPE
-// stole it. That parses and lints clean today — the legacy token grammar's scope
-// slot is [^()]+ — and the assembled line was a live mention:
+// PER FIELD, before assembly: flatten, then neutralize according to what the
+// field IS. The scope is data (a subsystem name) so it is escaped as plain text;
+// the subject is prose the author meant to be read, so its code spans and
+// emphasis survive and only the constructs that can inject structure, fetch a
+// remote resource or delete the author's own words are disarmed. Both policies
+// live in internal/markdown, which carries the measurements.
+//
+// Per FIELD because the two policies differ, and BEFORE assembly because the
+// neutralizers must see author bytes only — run over the finished line they
+// would escape glyph's own "**" and "- " markup into a different problem.
+//
+// ONCE, OVER THE ASSEMBLED LINE: the mention fence. Mention-safety is a property
+// of the rendered INLINE CONTEXT and not of any field that lands in it. A fence
+// has to be longer than every backtick run it will share a context with (see
+// markdown.EscapeMentions), and these fields share one: escaping them
+// separately sized the subject's fence against the subject alone, so a backtick
+// carried by the SCOPE stole it. That parses and lints clean today — the legacy
+// token grammar's scope slot is [^()]+ — and the assembled line was a live
+// mention:
 //
 //	commit  :bug: fix(readme`): credit @alice and @bob for the fix
 //	line    - 🐛 **readme`:** credit `@alice` and `@bob` for the fix (abc1234)
 //	         ^ measured against GitHub 2026-07-21: @alice is LINKED, because the
 //	           scope's stray backtick paired with the fence's opening one.
 //
-// So the one escape call is the last thing that happens to the line, and every
-// byte of the line has passed through it. A field added to this function is
-// covered by construction; a field added to the template above would not be,
-// which is why there is nothing left in the template to add one to.
+// So the fence is the LAST thing that happens to the line, and every byte of the
+// line has passed through it. The order of the two is forced the other way too:
+// the fence models the FINAL string, so neutralization cannot follow it — that
+// would size a fence and choose spans against a construct set the next step then
+// destroys.
+//
+// The line is assembled here, in Go, rather than field by field in the template
+// above, so that both properties hold by construction. A field added to this
+// function is covered; a field added to the template would not be, which is why
+// there is nothing left in the template to add one to.
 func entryLine(e Entry) string {
 	var b strings.Builder
 	b.WriteString("- " + e.Emoji + " ")
 	if e.Scope != "" {
-		b.WriteString("**" + e.Scope + ":** ")
+		b.WriteString("**" + markdown.EscapeText(markdown.Flatten(e.Scope)) + ":** ")
 	}
-	b.WriteString(e.Subject)
+	b.WriteString(markdown.EscapeMarkup(markdown.Flatten(e.Subject)))
 	b.WriteString(" (" + shortSHA(e.SHA) + ")")
 	return markdown.EscapeMentions(b.String())
 }
