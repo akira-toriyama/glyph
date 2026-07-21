@@ -41,6 +41,14 @@ func releaseServer(t *testing.T, walk map[string]string, releases string, writes
 				http.NotFound(w, r)
 				return
 			}
+			if body == apiUnknownSHA {
+				// walkServer's sentinel, honoured here too: a commit GitHub does
+				// not know yet answers 422, and the release tests need that shape
+				// beside the releases surface rather than only beside the walk.
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				fmt.Fprint(w, `{"message":"No commit found for SHA"}`)
+				return
+			}
 			fmt.Fprint(w, body)
 		case r.Method == http.MethodPost && r.URL.Path == releasesPath:
 			var body map[string]any
@@ -980,5 +988,152 @@ func TestReleaseNoneReportsAnUnwitnessedDeleteHonestly(t *testing.T) {
 		t.Errorf("the notice must report what was observed, not claim a deletion glyph never watched "+
 			"happen — there is no later write on this path to catch a 404 that was really the "+
 			"credential losing sight of the repository:\nstderr: %s", stderr)
+	}
+}
+
+// unreadWalk builds the walk that comes back having read nothing: every walked
+// commit is unknown to the queried repository (422), which is what a wrong
+// --repo — or an inherited $GITHUB_REPOSITORY in a fork or reusable-workflow
+// context — looks like from inside the walk. The commit is a squash subject, so
+// the fallback cannot classify it either and the run reaches a none verdict.
+func unreadWalk(t *testing.T) map[string]string {
+	t.Helper()
+	dir, _ := testRepo(t)
+	sha := squashCommit(t, dir, "Fix a crash", 8)
+	t.Chdir(dir)
+	return map[string]string{commitPullsPath(sha): apiUnknownSHA}
+}
+
+// lostPullWalk builds the other incomplete shape — DESIGN §4's ledger: a
+// merge-merged pull whose branch commits resolve as COVERED by #7 while #7's own
+// merge point is not on the API yet, so every one of them stands aside for a
+// merge point that never turns up and the walk ends short by the whole pull.
+// It returns the repository directory too, so a caller can land a further
+// commit that DOES resolve — the shape where the verdict is not none and the
+// run therefore never reaches the none path at all.
+func lostPullWalk(t *testing.T, messages ...string) (map[string]string, string) {
+	t.Helper()
+	dir, _ := testRepo(t)
+	mp := mergePR(t, dir, "akira-toriyama", 7, messages...)
+	t.Chdir(dir)
+	ref := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`
+	routes := map[string]string{commitPullsPath(mp.Merge): apiUnknownSHA}
+	for _, sha := range mp.Branch {
+		routes[commitPullsPath(sha)] = ref
+	}
+	return routes, dir
+}
+
+// resolvablePatch lands one squash commit that DOES resolve, so a walk carrying
+// it folds to a patch instead of none.
+func resolvablePatch(t *testing.T, dir string, routes map[string]string) {
+	t.Helper()
+	sha := squashCommit(t, dir, "Fix a crash", 8)
+	routes[commitPullsPath(sha)] = `[` + apiPullRef(8, "2026-07-21T00:00:00Z", sha) + `]`
+	routes[pullCommitsPath(8)] = `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`
+}
+
+// TestReleaseNoneKeepsDraftsWhenTheWalkDidNotReadTheRange: the none verdict's
+// delete is the one thing glyph does that it cannot take back, and it ran on
+// exactly the reading glyph had just told the operator to re-run — an empty fold
+// from a walk that could not look is not evidence that nothing shipped.
+//
+// The constructive side has refused to act on such evidence all along
+// (checkPublishedFloor, the wedge error, the footprint rule); measured before
+// this change, the same fake API and the same wrong --repo made the build side
+// exit 4 writing nothing while the destroy side issued a DELETE.
+//
+// The refusal is to DESTROY and not to fail: the exit stays 1. Exit 4 here would
+// wedge a repository whose merge button an automation presses (DESIGN §4: it
+// warns on every release, structurally, and no re-run can clear it).
+func TestReleaseNoneKeepsDraftsWhenTheWalkDidNotReadTheRange(t *testing.T) {
+	cases := []struct {
+		name string
+		walk func(*testing.T) map[string]string
+		want string // what the refusal must name
+	}{
+		{"every commit unknown to the repository", unreadWalk, "unknown to"},
+		{"a pull's merge point never resolved", func(t *testing.T) map[string]string {
+			routes, _ := lostPullWalk(t, ":memo: document the menu", ":memo: document the fold")
+			return routes
+		}, "#7"},
+	}
+	for _, tc := range cases {
+		for _, mode := range [][]string{{"release"}, {"release", "--dry-run"}} {
+			t.Run(tc.name+" "+strings.Join(mode, " "), func(t *testing.T) {
+				var writes []apiWrite
+				srv := releaseServer(t, tc.walk(t), `[`+draftJSON(11, "v0.1.1")+`]`, &writes)
+				usePR(t, srv)
+
+				code, stdout, stderr := runGlyph(t, mode...)
+				if code != 1 {
+					t.Fatalf("exited %d, want 1 (soft no-release — the refusal is to destroy, not to fail)\nstderr: %s", code, stderr)
+				}
+				if len(writes) != 0 {
+					t.Errorf("writes = %+v, want none — a draft must survive a walk glyph does not trust", writes)
+				}
+				if stdout != "" {
+					t.Errorf("a none verdict wrote a payload:\n%s", stdout)
+				}
+				if !strings.Contains(stderr, "keeping the") || !strings.Contains(stderr, tc.want) {
+					t.Errorf("the warning must say the draft was KEPT and why the walk is not trusted:\nstderr: %s", stderr)
+				}
+			})
+		}
+	}
+}
+
+// TestReleaseIncompleteWalkDoesNotLowerTheRollingDraft is the worst shape in the
+// family, and the one a refusal to delete does not reach: with a lost pull AND
+// one commit that does classify, the verdict is not none at all, so the run goes
+// down the constructive path and RETAGS the rolling draft from what it could
+// read. Measured on the pre-change source: a `:boom:` pull lost to an unindexed
+// merge point plus one `:bug:` moved an existing v1.0.0 draft to v0.1.1, exit 0,
+// green — and a human publishing that draft burns the tag forever, which no
+// later run can undo.
+//
+// So an incomplete walk may raise the draft and may not lower it. Leaving it
+// alone costs one run; the next complete walk writes the true verdict.
+func TestReleaseIncompleteWalkDoesNotLowerTheRollingDraft(t *testing.T) {
+	var writes []apiWrite
+	walk, dir := lostPullWalk(t, ":boom:(api) drop the legacy endpoint", ":memo: document the removal")
+	// A resolvable commit of its own, so the verdict is a patch rather than none.
+	resolvablePatch(t, dir, walk)
+
+	srv := releaseServer(t, walk, `[`+draftJSON(50, "v1.0.0")+`]`, &writes)
+	usePR(t, srv)
+
+	code, stdout, stderr := runGlyph(t, "release")
+	if code != 0 {
+		t.Fatalf("exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if len(writes) != 0 {
+		t.Errorf("writes = %+v, want none — an incomplete walk must not retag a draft DOWNWARD", writes)
+	}
+	if !strings.Contains(stdout, "https://github.example/releases/50") {
+		t.Errorf("stdout must still name the draft that stands: %q", stdout)
+	}
+	if !strings.Contains(stderr, "v1.0.0") || !strings.Contains(stderr, "#7") {
+		t.Errorf("the warning must name the draft it left alone and the pull it could not read:\nstderr: %s", stderr)
+	}
+}
+
+// TestReleaseIncompleteWalkMarksTheDraftBody: the CI log is not where the
+// decision is made. A rolling draft is reviewed and published in the GitHub UI,
+// possibly days later, by someone who never saw the warning — and an incomplete
+// fold is invisible in the notes precisely because what is missing is missing.
+// So the draft says so itself, in the body, and the next complete walk rewrites
+// it away.
+func TestReleaseIncompleteWalkMarksTheDraftBody(t *testing.T) {
+	walk, dir := lostPullWalk(t, ":boom:(api) drop the legacy endpoint", ":memo: document the removal")
+	resolvablePatch(t, dir, walk)
+	usePR(t, dryServer(t, walk))
+
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run")
+	if code != 0 {
+		t.Fatalf("exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "[!WARNING]") || !strings.Contains(stdout, "#7") {
+		t.Errorf("the draft body must carry the incomplete-walk warning naming what was not read:\n%s", stdout)
 	}
 }

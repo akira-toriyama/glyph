@@ -242,7 +242,27 @@ updated **by release id** (retagged in place when the next version moves —
 never a second draft; id, not tag name, because tag-name resolution can hit a
 published release, cli/cli#9367), residual drafts are deleted on a none
 verdict, and **no tag is created** — GitHub tags the target commit when a
-human publishes. A next version not strictly above the latest published
+human publishes.
+
+Convergence is on the verdict, and a verdict is a claim about the range only
+when the walk **read** the range. A walk that came back short — every commit
+unknown to the queried repository, a merged pull whose merge point nothing
+resolved, a commit GitHub had not indexed — hands down the same empty fold as a
+range that genuinely holds nothing, and glyph acted on both alike: it deleted
+the rolling draft on the very reading it had just told the operator to re-run
+(t-441z), and, where one commit *did* classify, it retagged an existing v1.0.0
+draft down to v0.1.1 out of a fold missing the `:boom:` pull — exit 0, green,
+and a human publishing that draft burns the tag forever. So an incomplete walk
+**never deletes** a glyph-managed draft (neither residual nor stale) and **never
+lowers** one; it may still create or raise. What it writes says so in the body,
+because the draft is what the person pressing Publish reads and the missing
+commits are invisible in notes that look complete. The refusal is to *destroy*,
+not to fail: the exit code is unchanged, since exiting 4 would wedge a
+repository whose merge button an automation presses (above: it warns on every
+release, structurally, and no re-run can clear it) and would redden a healthy
+one for the ordinary lag that clears itself. Everything here is self-healing —
+the next walk that reads the range writes the true verdict and removes the
+banner. A next version not strictly above the latest published
 release fails loud (an unpublishable draft; a deleted published release's tag
 is burned forever). A delete whose answer is LOST counts as done when its retry
 finds the release already gone: DELETE is idempotent and the id is what glyph
