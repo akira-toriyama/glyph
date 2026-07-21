@@ -67,7 +67,12 @@ func newReleaseCmd() *cobra.Command {
 			"and stale drafts are removed by release id — no tag is created; GitHub\n" +
 			"tags the target commit when a human publishes. On a none verdict any\n" +
 			"residual glyph-managed draft is deleted (the draft state converges to\n" +
-			"the verdict) and the run exits 1 (soft no-release). --dry-run computes\n" +
+			"the verdict) and the run exits 1 (soft no-release). A walk that could\n" +
+			"NOT read its range (a wrong --repo, a merged pull whose merge point\n" +
+			"nothing resolved, a commit GitHub has not indexed) neither deletes a\n" +
+			"draft nor lowers one, and marks whatever it does write — an empty fold\n" +
+			"from a walk that could not look is not evidence that nothing shipped.\n" +
+			"--dry-run computes\n" +
 			"everything including that action and writes nothing: stdout is the tag\n" +
 			"line, a blank line, then the Markdown body; --json emits\n" +
 			"{current,level,tag,body,action,url,commits,pulls,reason} — pulls is the\n" +
@@ -123,7 +128,7 @@ func releaseRun(cmd *cobra.Command) error {
 	if !cmd.Flags().Changed("since-tag") {
 		tagFlag = sinceTagAuto
 	}
-	parsed, pulls, source, base, perr := sinceTagInput(ctx, table, tagFlag, releaseRepo)
+	parsed, facts, source, base, perr := sinceTagInput(ctx, table, tagFlag, releaseRepo)
 	if perr != nil {
 		return perr
 	}
@@ -149,7 +154,7 @@ func releaseRun(cmd *cobra.Command) error {
 	drafts := glyphDrafts(releases)
 
 	if level == gitmoji.BumpNone {
-		return releaseNone(ctx, gh, owner, repoName, current, commits, pulls, source, drafts)
+		return releaseNone(ctx, gh, owner, repoName, current, commits, facts, source, drafts)
 	}
 
 	tag := current.Next(level)
@@ -171,11 +176,49 @@ func releaseRun(cmd *cobra.Command) error {
 		// no caller ever concatenates markdown in shell.
 		body = body + "\n---\n\n" + footer
 	}
+	if !facts.complete() {
+		// The draft is the only thing the person pressing Publish reads, so an
+		// incomplete fold says so THERE and not merely in a CI log they will
+		// never open. It is rewritten from git on every run, so the line
+		// disappears of its own accord on the first walk that reads the range.
+		body = incompleteBanner(facts, owner, repoName, source) + "\n\n" + body
+	}
 
 	keep, stale := planDrafts(drafts, tag.String())
 	action := actionCreate
 	if keep != nil {
 		action = actionUpdate
+	}
+	// An incomplete walk may RAISE the rolling draft and may not LOWER it. The
+	// fold it computed is missing something by its own admission, so a version
+	// below what the draft already claims is not news that the release shrank —
+	// it is the walk failing to see why the draft grew. Measured on the shape
+	// that motivates it: a `:boom:` pull lost to an unindexed merge point, plus
+	// one ordinary `:bug:`, retagged an existing v1.0.0 draft to v0.1.1 at exit
+	// 0, and a human publishing that draft burns the tag forever. Leaving the
+	// draft alone costs a run: the next complete walk writes the true verdict.
+	if keep != nil && !facts.complete() {
+		if have, perr := bump.ParseVersion(keep.TagName); perr == nil && have.Compare(tag) > 0 {
+			warnf("this walk did not read %s (%s), and it computes %s — below the %s the rolling draft already claims. "+
+				"Leaving the draft untouched rather than lowering a version a human may publish; re-run the release once the walk can read the range",
+				source, facts.shortfall(owner, repoName), tag, keep.TagName)
+			result := releaseResult{
+				Current: current.String(),
+				Level:   string(level),
+				Tag:     keep.TagName,
+				Action:  actionNone,
+				Commits: commits,
+				Pulls:   facts.Pulls,
+				Reason: fmt.Sprintf("%s, but this walk did not read %s (%s) — the rolling draft %s is left as it is",
+					decidingReason(commits, level), source, facts.shortfall(owner, repoName), keep.TagName),
+			}
+			if releaseJSON {
+				printCompact(result)
+				return nil
+			}
+			fmt.Fprintln(out, keep.URL)
+			return nil
+		}
 	}
 	result := releaseResult{
 		Current: current.String(),
@@ -184,7 +227,7 @@ func releaseRun(cmd *cobra.Command) error {
 		Body:    body,
 		Action:  action,
 		Commits: commits,
-		Pulls:   pulls,
+		Pulls:   facts.Pulls,
 		Reason:  decidingReason(commits, level),
 	}
 
@@ -206,6 +249,13 @@ func releaseRun(cmd *cobra.Command) error {
 		}
 	}
 	for _, s := range stale {
+		// Same rule as the none verdict below: a walk that did not read the
+		// range is not evidence that a draft is stale.
+		if !facts.complete() {
+			warnf("keeping the draft %s (release id %d) that this verdict would have discarded: the walk did not read %s (%s)",
+				s.TagName, s.ID, source, facts.shortfall(owner, repoName))
+			continue
+		}
 		gone, derr := gh.DeleteRelease(ctx, owner, repoName, s.ID)
 		if derr != nil {
 			return derr
@@ -243,12 +293,33 @@ func releaseRun(cmd *cobra.Command) error {
 // releaseNone finishes a none verdict: the draft state converges to "no
 // release should exist" (Q3 — residual glyph-managed drafts are deleted, by
 // id), and the exit stays the uniform soft no-release (1).
-func releaseNone(ctx context.Context, gh *github.Client, owner, repo string, current bump.Version, commits []bumpCommit, pulls []pullExpansion, source string, drafts []github.Release) error {
+//
+// Convergence is on the VERDICT, and a verdict is only a claim about the range
+// when the walk read the range. A walk that came back short — every commit
+// unknown to the queried repository, a merged pull whose merge point nothing
+// resolved, a commit GitHub had not indexed — produces the same empty fold as a
+// range that genuinely holds nothing, and glyph used to delete on both. That is
+// the asymmetry this closes: the constructive side refuses to build on evidence
+// it distrusts (checkPublishedFloor, the wedge error, the footprint rule) while
+// the one destructive act ran on it unchecked, in the same breath as a warning
+// telling the operator to re-run.
+//
+// The refusal is to DESTROY, not to finish: the exit stays 1. Making it fail
+// loud instead would wedge a repository whose merge button an automation
+// presses — DESIGN §4 says such a repo warns on every release, structurally,
+// and no re-run can ever clear it — and would redden a healthy repository for
+// the ordinary API lag that clears itself on the next run.
+func releaseNone(ctx context.Context, gh *github.Client, owner, repo string, current bump.Version, commits []bumpCommit, facts walkFacts, source string, drafts []github.Release) error {
+	keepDrafts := len(drafts) > 0 && !facts.complete()
 	action := actionNone
-	if len(drafts) > 0 {
+	if len(drafts) > 0 && !keepDrafts {
 		action = actionDelete
 	}
-	if !releaseDryRun {
+	switch {
+	case keepDrafts:
+		warnf("no commit in %s classified release-worthy, but this walk did not read it (%s) — keeping the %d glyph-managed draft(s) rather than deleting on a reading glyph does not trust; re-run the release once the walk can read the range",
+			source, facts.shortfall(owner, repo), len(drafts))
+	case !releaseDryRun:
 		for _, d := range drafts {
 			gone, derr := gh.DeleteRelease(ctx, owner, repo, d.ID)
 			if derr != nil {
@@ -256,15 +327,32 @@ func releaseNone(ctx context.Context, gh *github.Client, owner, repo string, cur
 			}
 			noticef("no release is due — %s the residual draft %s (release id %d)", discardedOrGone(gone), d.TagName, d.ID)
 		}
-	} else if len(drafts) > 0 {
+	case len(drafts) > 0:
 		noticef("dry run: no release is due — the upsert would delete %d residual draft(s)", len(drafts))
 	}
 	reason := fmt.Sprintf("no release: %d commit(s) participate in %s and every level is none", len(commits), source)
+	if keepDrafts {
+		reason += fmt.Sprintf(", but this walk did not read %s (%s) — the %d glyph-managed draft(s) are kept", source, facts.shortfall(owner, repo), len(drafts))
+	}
 	if releaseJSON {
-		printCompact(releaseResult{Current: current.String(), Level: string(gitmoji.BumpNone), Action: action, Commits: commits, Pulls: pulls, Reason: reason})
+		printCompact(releaseResult{Current: current.String(), Level: string(gitmoji.BumpNone), Action: action, Commits: commits, Pulls: facts.Pulls, Reason: reason})
 		return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}
 	}
 	return core.NoReleasef("%s", reason)
+}
+
+// incompleteBanner is the line an incompletely-walked draft carries at the top
+// of its body. It exists because the CI log is not where the decision is made:
+// a rolling draft is reviewed and published in the GitHub UI, days later, by
+// someone who never saw the warning — and the risk it carries (a version
+// computed without a pull the walk could not read) is invisible in the notes
+// themselves, which look complete precisely because the missing commits are
+// missing. Every run rewrites the body from git, so the first walk that reads
+// the range removes it.
+func incompleteBanner(facts walkFacts, owner, repo, source string) string {
+	return fmt.Sprintf("> [!WARNING]\n> These notes were composed from an INCOMPLETE reading of %s: %s.\n"+
+		"> The version and the entries below may be short by whatever that covers — re-run the release once the walk can read the range.",
+		source, facts.shortfall(owner, repo))
 }
 
 // discardedOrGone words a delete's notice for what actually happened. A delete
