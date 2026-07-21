@@ -138,8 +138,12 @@ func TestDeleteReleaseDeletesByID(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	if err := c.DeleteRelease(context.Background(), "akira-toriyama", "glyph", 11); err != nil {
+	gone, err := c.DeleteRelease(context.Background(), "akira-toriyama", "glyph", 11)
+	if err != nil {
 		t.Fatalf("DeleteRelease: %v", err)
+	}
+	if gone {
+		t.Error("a 204 is glyph watching its own delete succeed, so alreadyGone must be false")
 	}
 	if !deleted {
 		t.Fatal("no DELETE request reached the server")
@@ -169,8 +173,11 @@ func TestDeleteReleaseFailureIsAPIError(t *testing.T) {
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprint(w, `{"message":"Not Found"}`)
 	})
-	err := c.DeleteRelease(context.Background(), "o", "r", 99)
+	gone, err := c.DeleteRelease(context.Background(), "o", "r", 99)
 	wantAPIError(t, err, "Not Found")
+	if gone {
+		t.Error("a FIRST-attempt 404 is the id vanishing under us, never this delete's own success")
+	}
 }
 
 // TestCreateReleaseCanceledIsInterrupted: the cancel/deadline split holds on

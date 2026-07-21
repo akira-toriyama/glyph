@@ -260,3 +260,75 @@ func TestRetryWaitHonorsRetryAfter(t *testing.T) {
 		})
 	}
 }
+
+// TestRetriedDeleteAcceptsTheAlreadyGone404: a DELETE carries no body, so send
+// replays it whenever the first answer is lost (a 503 from a gateway that had
+// already forwarded it, a reset socket) — and a GitHub that applied the first
+// copy answers the replay 404. That is this delete's own goal, reported late:
+// the release is gone, which is what the caller asked for. Hard-failing it
+// aborted a whole draft upsert over work that had SUCCEEDED, so the rolling
+// draft never got its new notes (t-yq7m).
+//
+// The absorb is deliberately narrow, and the table pins its edges beside it: a
+// FIRST-attempt 404 still fails (nothing of glyph's removed that id — the
+// upsert's convergence claim depends on hearing it), a retried 404 on a read or
+// on a release write still fails (those verbs WANT the resource, so its absence
+// is never their success), and a 5xx that never clears still exhausts the
+// schedule and fails.
+func TestRetriedDeleteAcceptsTheAlreadyGone404(t *testing.T) {
+	deleteRelease := func(c *Client) (bool, error) { return c.DeleteRelease(context.Background(), "o", "r", 11) }
+	listReleases := func(c *Client) (bool, error) { _, err := c.Releases(context.Background(), "o", "r"); return false, err }
+	updateRelease := func(c *Client) (bool, error) {
+		_, err := c.UpdateRelease(context.Background(), "o", "r", 11, ReleaseParams{TagName: "v1.0.0", Draft: true})
+		return false, err
+	}
+	createRelease := func(c *Client) (bool, error) {
+		_, err := c.CreateRelease(context.Background(), "o", "r", ReleaseParams{TagName: "v1.0.0", Draft: true})
+		return false, err
+	}
+
+	cases := []struct {
+		name string
+		// statuses is what the server answers, attempt by attempt; the last one
+		// repeats once the slice runs out.
+		statuses []int
+		call     func(*Client) (bool, error)
+		wantErr  string // "" when the call must succeed
+		wantGone bool
+		wantHits int
+	}{
+		{"a lost answer then already-gone is the delete's goal", []int{http.StatusServiceUnavailable, http.StatusNotFound}, deleteRelease, "", true, 2},
+		{"a 404 on the first attempt is still a real failure", []int{http.StatusNotFound}, deleteRelease, "Not Found", false, 1},
+		{"a delete that never lands still gives up", []int{http.StatusServiceUnavailable}, deleteRelease, "gave up after 4 attempts", false, 4},
+		{"a retried 404 on a read still fails", []int{http.StatusServiceUnavailable, http.StatusNotFound}, listReleases, "Not Found", false, 2},
+		{"a retried 404 on an update still fails", []int{http.StatusServiceUnavailable, http.StatusNotFound}, updateRelease, "Not Found", false, 2},
+		{"a retried 404 on a create still fails", []int{http.StatusServiceUnavailable, http.StatusNotFound}, createRelease, "Not Found", false, 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var hits atomic.Int32
+			c := retryClient(t, func(w http.ResponseWriter, r *http.Request) {
+				n := int(hits.Add(1))
+				status := tc.statuses[min(n, len(tc.statuses))-1]
+				w.WriteHeader(status)
+				fmt.Fprintf(w, `{"message":%q}`, http.StatusText(status))
+			})
+
+			gone, err := tc.call(c)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("error = %v, want success — the release is gone, which is what the delete asked for", err)
+				}
+			} else {
+				wantAPIError(t, err, tc.wantErr)
+			}
+			if gone != tc.wantGone {
+				t.Errorf("alreadyGone = %v, want %v — the caller words its notice off this, and must not "+
+					"claim a deletion it never watched happen", gone, tc.wantGone)
+			}
+			if got := int(hits.Load()); got != tc.wantHits {
+				t.Fatalf("server saw %d request(s), want %d", got, tc.wantHits)
+			}
+		})
+	}
+}

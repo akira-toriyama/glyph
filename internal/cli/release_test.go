@@ -921,3 +921,64 @@ func TestReleaseDeleteFailureIsAPI(t *testing.T) {
 		t.Fatalf("the upsert must stop at the failed delete, but PATCHed %v", patched)
 	}
 }
+
+// TestReleaseNoneReportsAnUnwitnessedDeleteHonestly: the none verdict's delete
+// is the one write with nothing downstream to contradict it. When its answer is
+// lost and the retry is told 404, the release IS gone — glyph proceeds rather
+// than aborting the run (t-yq7m) — but it never SAW its own request succeed,
+// and a 404 is also how GitHub answers for a repository the credential can no
+// longer see. So the notice reports what was observed instead of claiming a
+// deletion, and says the claim is unconfirmed.
+//
+// The run takes ~1s: it exercises the SHIPPED retry schedule deliberately, so
+// the wait is the real backoff a release job would spend rather than a test
+// double's idea of one.
+func TestReleaseNoneReportsAnUnwitnessedDeleteHonestly(t *testing.T) {
+	walk := noneWalk(t)
+	var deletes int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == releasesPath:
+			fmt.Fprint(w, `[`+draftJSON(11, "v0.1.1")+`]`)
+		case r.Method == http.MethodGet:
+			body, ok := walk[r.URL.Path]
+			if !ok {
+				t.Errorf("unexpected GET %q", r.URL.Path)
+				http.NotFound(w, r)
+				return
+			}
+			fmt.Fprint(w, body)
+		case r.Method == http.MethodDelete:
+			// The first delete reaches GitHub and is applied; its answer is lost
+			// (the gateway says 503), so send replays it and is told the release
+			// is already gone.
+			deletes++
+			if deletes == 1 {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				fmt.Fprint(w, `{"message":"Service Unavailable"}`)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"message":"Not Found"}`)
+		default:
+			t.Errorf("unexpected %s %q", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	usePR(t, srv)
+
+	code, _, stderr := runGlyph(t, "release")
+	if code != 1 {
+		t.Fatalf("a none verdict whose delete was answered 404 on the retry exited %d, want 1 "+
+			"(soft no-release) — the draft is gone, which is what the run asked for\nstderr: %s", code, stderr)
+	}
+	if deletes != 2 {
+		t.Fatalf("the server saw %d delete(s), want 2 (the lost answer and its replay)", deletes)
+	}
+	if !strings.Contains(stderr, "already gone") || !strings.Contains(stderr, "unconfirmed") {
+		t.Errorf("the notice must report what was observed, not claim a deletion glyph never watched "+
+			"happen — there is no later write on this path to catch a 404 that was really the "+
+			"credential losing sight of the repository:\nstderr: %s", stderr)
+	}
+}
