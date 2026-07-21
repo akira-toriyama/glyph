@@ -225,9 +225,21 @@ func TestEscapeMentions(t *testing.T) {
 		{"strong emphasis underscores go too", "credit __@octocat__ now", "credit __`@octocat`__ now"},
 		{"emphasis underscore after punctuation", "credit (_@octocat_) now", "credit (_`@octocat`_) now"},
 		{"emphasis underscore opening the string", "_@octocat_ credit", "_`@octocat`_ credit"},
-		{"intraword underscore is a word byte", "credit x_@octocat_y for the repro", "credit x_@octocat_y for the repro"},
-		{"intraword double underscore is a word byte", "credit x__@octocat__y now", "credit x__@octocat__y now"},
-		{"an email keeps its trailing underscore", "mail foo_@example.com now", "mail foo_@example.com now"},
+		// The three deliberate over-fences. An underscore run in front of an
+		// at-sign is ALWAYS fenced, because telling "cannot open emphasis" from
+		// "closes emphasis opened earlier" needs the whole inline context (see
+		// the mention pattern's comment). GitHub would not have linked any of
+		// these, so the cost is one code span; the shapes that pay it are rare,
+		// and the alternative cost is a stranger's notification.
+		{"intraword underscore is fenced anyway", "credit x_@octocat_y for the repro", "credit x_`@octocat`_y for the repro"},
+		{"intraword double underscore is fenced anyway", "credit x__@octocat__y now", "credit x__`@octocat`__y now"},
+		{"an email with a trailing underscore is fenced anyway", "mail foo_@example.com now", "mail foo_`@example`.com now"},
+		// The leaks the exemption used to cause: the run CLOSES emphasis opened
+		// earlier, GFM deletes it, and the at-sign starts a text node. Measured
+		// live 2026-07-21 — both raw forms render a user-mention link.
+		{"an underscore run that closes emphasis is fenced", "credit _b_@octocat for the repro", "credit _b_`@octocat` for the repro"},
+		{"a longer closing emphasis run is fenced", "fix _the_@octocat bug", "fix _the_`@octocat` bug"},
+		{"the fence must not manufacture an opener", "cc @v1_x_@octocat now", "cc `@v1`_x_`@octocat` now"},
 		// A fence glyph writes changes what sits to the LEFT of the underscore
 		// behind it, and with it the underscore's meaning: "@0_@0" links nothing
 		// (intraword), but "`@0`_@0_" does — punctuation on both sides makes the
@@ -478,15 +490,19 @@ func linkableAtSigns(s string) []atSign {
 //
 // The backtick is NOT a word character here: it shields, but the oracle has to
 // see the at-sign in order to demand that shield.
+// wordCharBefore reports whether the byte before i still stands between the
+// at-sign and the start of a text node once GitHub has RENDERED the line.
+//
+// An underscore deliberately does NOT count, however it is surrounded. GFM
+// deletes an underscore run that takes part in emphasis, and whether a given run
+// does cannot be decided from its neighbours alone — the opener may be anywhere
+// earlier in the inline context. This oracle previously mirrored the
+// implementation's opener-only test and was therefore blind to exactly the leak
+// the implementation had (an underscore run that CLOSES emphasis); stating the
+// conservative rule here instead is what lets the fuzz target falsify the
+// escaper rather than agree with it.
 func wordCharBefore(s string, i int) bool {
-	if s[i-1] != '_' {
-		return isASCIIWord(s[i-1])
-	}
-	n := 0
-	for i-n > 0 && s[i-n-1] == '_' {
-		n++
-	}
-	return i-n > 0 && isASCIIWord(s[i-n-1])
+	return s[i-1] != '_' && isASCIIWord(s[i-1])
 }
 
 func isASCIIWord(b byte) bool {

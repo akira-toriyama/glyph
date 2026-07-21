@@ -46,24 +46,37 @@ const username = `[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?`
 //     plain literal text there, and the mention filter still refuses it.
 //
 // THE UNDERSCORE IS NOT IN THE GUARD SET, even though GitHub counts it a word
-// character, because the guard is about the character that is in front of the
-// at-sign AT RENDER TIME and an underscore does not always survive to be one:
-// at a word boundary it is emphasis syntax, GFM DELETES it, and the at-sign
-// then opens a text node with nothing in front of it. Measured 2026-07-21:
+// character, because the guard is about the character in front of the at-sign
+// AT RENDER TIME and an underscore does not always survive to be one: as
+// emphasis syntax GFM DELETES it, and the at-sign then opens a text node with
+// nothing in front of it. Measured 2026-07-21:
 //
-//	credit _@octocat_ for the repro                        LIVE MENTION
+//	credit _@octocat_ for the repro                        LIVE MENTION  ← run opens
+//	credit _b_@octocat for the repro                       LIVE MENTION  ← run CLOSES
+//	fix _the_@octocat bug                                  LIVE MENTION  ← run CLOSES
 //	- 🐛 **parser:** credit _@octocat_ for the repro (8e0)  LIVE MENTION
 //	credit **_@octocat_** for the repro                    LIVE MENTION
 //	credit x_@octocat_y for the repro                      safe  ← intraword
-//	credit _@octocat for the repro                         safe  ← no closer
+//	mail foo_@example.com now                              safe  ← intraword
 //
-// So an underscore is a word byte only where CommonMark cannot read it as an
-// emphasis opener, which — since the character after it is always the at-sign,
-// punctuation — means only where an alphanumeric is glued to its left. That is
-// endsWithIntrawordUnderscore below, applied by fenceMentions to the matches
-// this pattern now lets through. "No closer, so no emphasis" is deliberately NOT
-// modelled: glyph would have to find the closer to know, and a fence there
-// costs a code span nobody asked for while missing one costs a notification.
+// An earlier version of this rule exempted an underscore run with an
+// alphanumeric glued to its left, on the reasoning that CommonMark cannot read
+// such a run as an emphasis OPENER. That reasoning is half the story and the
+// missing half leaks: the very same condition makes the run right-flanking, so
+// it can CLOSE emphasis opened earlier in the line — rows two and three above,
+// which the exemption skipped and GitHub linked. Worse, glyph's own fence could
+// manufacture the opener: fencing the head of "cc @v1_x_@octocat now" yields
+// "cc `@v1`_x_@octocat now", where the fence puts punctuation to the left of the
+// first underscore and the mention goes live out of input that was safe.
+//
+// Deciding it properly means finding the opener, i.e. parsing emphasis over the
+// whole inline context — a second renderer inside the escaper. So the exemption
+// is gone and every at-sign behind an underscore is fenced. The asymmetry
+// justifies it: over-fencing costs one code span on "mail foo_@example.com"
+// (the only shape that loses, and note "first_last@example.com" is untouched —
+// the byte in front of its at-sign is a letter), while under-fencing costs a
+// stranger a notification. The same reasoning retires "no closer, so no
+// emphasis": glyph would have to find the closer to know.
 //
 // The backtick exclusion is load-bearing twice over. Every stretch this pattern
 // is run over is PROSE (code spans are skipped whole), so every backtick it can
@@ -166,21 +179,6 @@ func fenceMentions(b *strings.Builder, s string, from, to int, fence string) {
 		// stretch); group 2 ends on the last character of the name.
 		at, end := m[3], m[5]
 		b.WriteString(prose[last:at])
-		// An underscore glued to a word on its left is literal text at GitHub,
-		// which refuses the mention behind it (foo_@example.com). The pattern
-		// cannot tell that from the emphasis underscore that vanishes, so the
-		// decision is made here — and it is made on what has been WRITTEN, not
-		// on the input, because a fence glyph just wrote is itself the thing
-		// that can change the answer. In "@0_@0" the underscore is intraword and
-		// GitHub links neither token, but fencing the first one leaves
-		// "`@0`_@0": the underscore now has punctuation on both sides, can open
-		// emphasis, and "cc `@0`_@0_ now" is a live mention glyph created out of
-		// safe input. The fuzz target's fixed-point invariant caught it.
-		if endsWithIntrawordUnderscore(b.String()) {
-			b.WriteString(prose[at:end])
-			last = end
-			continue
-		}
 		if isBacktick(s, from+at-1) || escapesTheNextByte(s, from+at) {
 			b.WriteByte(' ')
 		}
@@ -199,34 +197,6 @@ func fenceMentions(b *strings.Builder, s string, from, to int, fence string) {
 // end (the character before the first mention, the character after the last).
 func isBacktick(s string, i int) bool {
 	return i >= 0 && i < len(s) && s[i] == '`'
-}
-
-// endsWithIntrawordUnderscore reports whether s ends on a run of underscores
-// that is INTRAWORD — an alphanumeric glued to its left — which is the one
-// shape in which an underscore in front of an at-sign is still there when
-// GitHub's mention filter runs, and therefore suppresses the mention.
-//
-// The run is tested whole because emphasis is delimited by RUNS: "__@octocat__"
-// is strong emphasis and both underscores go, so looking only at the byte before
-// the at-sign would find another underscore and call it a word.
-//
-// The left neighbour is tested as an ASCII alphanumeric, which is narrower than
-// CommonMark's rule (it asks for "not Unicode whitespace and not Unicode
-// punctuation", and a CJK character qualifies: "対応_@octocat_" renders safe).
-// The gap costs an unasked-for code span on a CJK subject and never a mention —
-// the safe direction — and it keeps this file free of a Unicode punctuation
-// table whose edges would have to be measured to be trusted.
-func endsWithIntrawordUnderscore(s string) bool {
-	i := len(s)
-	n := 0
-	for i-n > 0 && s[i-n-1] == '_' {
-		n++
-	}
-	if n == 0 || i-n == 0 {
-		return false // no underscore at all, or the run opens the text
-	}
-	b := s[i-n-1]
-	return b >= '0' && b <= '9' || b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z'
 }
 
 // escapesTheNextByte reports whether an ODD number of backslashes ends just
