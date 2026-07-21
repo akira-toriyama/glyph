@@ -440,7 +440,16 @@ func originOf(u *url.URL) string { return u.Scheme + "://" + u.Host }
 type statusError struct {
 	status     int
 	retryAfter string // the Retry-After header, "" when absent
-	err        *core.Error
+	// retried marks an answer to an attempt that was NOT the first: an earlier
+	// copy of this exact request already went out, so it may have been applied
+	// even though its answer never came back. Only the retry loop can know that
+	// (see attempt), and only a method that knows what it was ASKING for can say
+	// what it means — see goneOnRetry. Read it precisely: it says an earlier
+	// attempt was MADE, not that an earlier copy provably landed. A first attempt
+	// that died at the socket (connection refused, DNS, TLS) never reached
+	// GitHub and still sets it.
+	retried bool
+	err     *core.Error
 }
 
 func (e *statusError) Error() string { return e.err.Error() }
@@ -452,13 +461,28 @@ func (e *statusError) Unwrap() error { return e.err }
 // endpoint (a pulls/{n}/commits validation failure) must never read as "commit
 // unknown" and silently become a release fallback. The two exceptions each
 // export one predicate over their own status (IsCommitUnknown, IsRepoUnknown),
-// and nothing else in glyph may read a status.
+// and nothing else OUTSIDE this package may read a status. DeleteRelease
+// consults its own 404 through goneOnRetry before flattening — inside the
+// package, on the one call whose contract gives that status a meaning — so no
+// status escapes.
 func flatten(err error) error {
 	var se *statusError
 	if errors.As(err, &se) {
 		return se.err
 	}
 	return err
+}
+
+// goneOnRetry reports whether err is a 404 answering an attempt this client had
+// already sent at least once — "it is not there" about a resource an earlier
+// copy of the very same request may itself have removed. It is meaningful only
+// to an idempotent verb whose goal IS the resource's absence (DELETE); for every
+// other verb the resource was wanted, so its absence stays a failure. Kept
+// unexported and opt-in for that reason: a future endpoint that deletes
+// something whose absence is NOT the goal simply does not ask.
+func goneOnRetry(err error) bool {
+	var se *statusError
+	return errors.As(err, &se) && se.retried && se.status == http.StatusNotFound
 }
 
 // IsCommitUnknown reports whether err is commits/{sha}/pulls answering 422 —

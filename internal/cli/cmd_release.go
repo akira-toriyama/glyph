@@ -195,10 +195,11 @@ func releaseRun(cmd *cobra.Command) error {
 		}
 	}
 	for _, s := range stale {
-		if derr := gh.DeleteRelease(ctx, owner, repoName, s.ID); derr != nil {
+		gone, derr := gh.DeleteRelease(ctx, owner, repoName, s.ID)
+		if derr != nil {
 			return derr
 		}
-		noticef("discarded the stale draft %s (release id %d)", s.TagName, s.ID)
+		noticef("%s the stale draft %s (release id %d)", discardedOrGone(gone), s.TagName, s.ID)
 	}
 	params := github.ReleaseParams{
 		TagName: tag.String(),
@@ -238,10 +239,11 @@ func releaseNone(ctx context.Context, gh *github.Client, owner, repo string, cur
 	}
 	if !releaseDryRun {
 		for _, d := range drafts {
-			if derr := gh.DeleteRelease(ctx, owner, repo, d.ID); derr != nil {
+			gone, derr := gh.DeleteRelease(ctx, owner, repo, d.ID)
+			if derr != nil {
 				return derr
 			}
-			noticef("no release is due — deleted the residual draft %s (release id %d)", d.TagName, d.ID)
+			noticef("no release is due — %s the residual draft %s (release id %d)", discardedOrGone(gone), d.TagName, d.ID)
 		}
 	} else if len(drafts) > 0 {
 		noticef("dry run: no release is due — the upsert would delete %d residual draft(s)", len(drafts))
@@ -252,6 +254,19 @@ func releaseNone(ctx context.Context, gh *github.Client, owner, repo string, cur
 		return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}
 	}
 	return core.NoReleasef("%s", reason)
+}
+
+// discardedOrGone words a delete's notice for what actually happened. A delete
+// whose retry found the release already absent reached its goal without glyph
+// ever seeing its own request succeed, and 404 is also how GitHub answers for a
+// repository the credential can no longer see — so on that path the notice says
+// what was OBSERVED (it is not there) instead of claiming a deletion. It matters
+// most on the none verdict, where no later write exists to contradict it.
+func discardedOrGone(alreadyGone bool) string {
+	if alreadyGone {
+		return "found already gone (the retried delete was answered 404, so this is unconfirmed):"
+	}
+	return "discarded"
 }
 
 // glyphDrafts filters the releases down to the ones glyph manages: unpublished

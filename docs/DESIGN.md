@@ -244,7 +244,15 @@ published release, cli/cli#9367), residual drafts are deleted on a none
 verdict, and **no tag is created** — GitHub tags the target commit when a
 human publishes. A next version not strictly above the latest published
 release fails loud (an unpublishable draft; a deleted published release's tag
-is burned forever). `--dry-run` computes everything, action included, and
+is burned forever). A delete whose answer is LOST counts as done when its retry
+finds the release already gone: DELETE is idempotent and the id is what glyph
+asked to remove, so failing there aborted the upsert over work that had
+succeeded (t-yq7m). The price is named rather than hidden — a 404 is also how
+GitHub answers for a repository the credential can no longer see, and on a none
+verdict there is no following write to catch that, so such a run reports the
+draft as *found already gone* instead of *deleted* and says the claim is
+unconfirmed. A 404 on the FIRST attempt is untouched: that one is the id
+vanishing under the run. `--dry-run` computes everything, action included, and
 writes nothing. The `--json` verdict also carries the walk's expansion
 provenance (`pulls`: each resolved pull and its participating commit count) —
 a squash-subject reader like git-cliff can only diverge legitimately when some

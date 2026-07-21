@@ -98,16 +98,38 @@ func (c *Client) UpdateRelease(ctx context.Context, owner, repo string, id int64
 // DeleteRelease removes a release by id (DELETE /repos/{owner}/{repo}/releases/{id}).
 // Deleting a DRAFT burns nothing — it has no tag yet; the caller's policy
 // guarantees only glyph-managed drafts ever reach here.
-func (c *Client) DeleteRelease(ctx context.Context, owner, repo string, id int64) error {
+//
+// alreadyGone is true when the release turned out to be absent on a RETRIED
+// attempt: the delete reached its goal, but glyph never saw its own request
+// succeed. The caller owns what to say about that — the two are not the same
+// claim, and one of them is reported to a human.
+func (c *Client) DeleteRelease(ctx context.Context, owner, repo string, id int64) (alreadyGone bool, err error) {
 	u := fmt.Sprintf("%s/repos/%s/%s/releases/%d",
 		c.baseURL, url.PathEscape(owner), url.PathEscape(repo), id)
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
 	if err != nil {
-		return core.APIf("github: malformed request url %q: %v", u, err)
+		return false, core.APIf("github: malformed request url %q: %v", u, err)
 	}
 	// A 204 carries no body, and none is wanted — only the status matters.
 	_, _, err = c.send(req)
-	return flatten(err)
+	// A 404 answering a RETRIED delete is this delete's own goal, reported late.
+	// send replays a DELETE whenever the first answer is lost (a 503 from a
+	// gateway that had already forwarded it, a reset socket), and the replay is
+	// told the release is gone — which is what was asked for. Failing there
+	// aborted a whole draft upsert over work that had SUCCEEDED, leaving the
+	// rolling draft without its new notes (t-yq7m).
+	//
+	// The ambiguity is real and deliberately accepted: 404 is also how GitHub
+	// answers for a repository this credential can no longer see (IsRepoUnknown),
+	// and a DELETE cannot tell the two apart. Hence alreadyGone rather than a
+	// silent nil — the caller must not claim it deleted something it did not
+	// watch disappear. A 404 on the FIRST attempt is untouched: nothing of
+	// glyph's removed that id, so it stays the "it vanished under us" failure the
+	// convergence claim depends on hearing.
+	if goneOnRetry(err) {
+		return true, nil
+	}
+	return false, flatten(err)
 }
 
 // writeRelease performs one JSON-bodied write and decodes the release GitHub
@@ -201,8 +223,9 @@ func (c *Client) attempt(req *http.Request, what string, n int) ([]byte, http.He
 		return nil, nil, failed(req.Context(), "reading "+what, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, nil, &statusError{status: resp.StatusCode, retryAfter: resp.Header.Get("Retry-After"), err: core.APIf(
-			"github: %s: %d %s", what, resp.StatusCode, distill(body))}
+		return nil, nil, &statusError{status: resp.StatusCode, retryAfter: resp.Header.Get("Retry-After"),
+			retried: n > 0, err: core.APIf(
+				"github: %s: %d %s", what, resp.StatusCode, distill(body))}
 	}
 	return body, resp.Header, nil
 }
