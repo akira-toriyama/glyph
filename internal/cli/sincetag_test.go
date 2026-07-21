@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/internal/bump"
 )
 
 // apiUnknownSHA is the route body meaning "answer this path the way GitHub
@@ -1876,4 +1878,88 @@ func TestSinceTagRebaseLagCountsAReplayedCommitOnce(t *testing.T) {
 			t.Fatalf("an unalignable rebase still double-folds; got %d rendering(s), want 2:\n%s", got, stdout)
 		}
 	})
+}
+
+// TestLatestVersionTagComparesVersionsNotRefnames: the walk base and the
+// version base both come from this resolver, and it must answer with the
+// highest VERSION rather than with whatever tag git listed first.
+//
+// git's --sort=-v:refname is a refname sort. It compares digit runs
+// numerically, which is why it looks like a version sort, but it still starts
+// on the leading byte — so every v-prefixed tag lands above every bare one
+// ('v' > '1'), and ParseVersion accepts both spellings (^v?…). On the tags
+// below git reports v0.0.2 first while the highest version is 100.0.0; taking
+// git's first parseable entry moved the release two tags backwards in silence.
+func TestLatestVersionTagComparesVersionsNotRefnames(t *testing.T) {
+	dir, _ := testRepo(t) // tags v0.1.0
+	for _, tag := range []string{"v0.0.1", "v0.0.2", "9.9.9", "100.0.0"} {
+		testGit(t, dir, "akira-toriyama", "tag", tag)
+	}
+	t.Chdir(dir)
+
+	// The premise: git really does report a lower tag first here. Without this
+	// the assertion below could pass on a git whose sort changed, proving
+	// nothing.
+	if first := testGit(t, dir, "akira-toriyama", "tag", "--list", "--sort=-v:refname"); !strings.HasPrefix(first, "v0.1.0\n") {
+		t.Fatalf("premise gone: git --sort=-v:refname now leads with %q, so this test no longer exercises the refname/version gap", strings.SplitN(first, "\n", 2)[0])
+	}
+
+	tag, v, err := latestVersionTag(t.Context())
+	if err != nil {
+		t.Fatalf("latestVersionTag: %v", err)
+	}
+	if tag != "100.0.0" {
+		t.Errorf("latestVersionTag tag = %q, want %q (the highest version, not git's first entry)", tag, "100.0.0")
+	}
+	if want := (bump.Version{Major: 100}); v != want {
+		t.Errorf("latestVersionTag version = %v, want %v", v, want)
+	}
+}
+
+// TestLatestVersionTagBreaksATieOnGitsOrder: one version spelled twice is not
+// a version question, so the answer is whatever git listed first — pinned so
+// the resolver stays deterministic rather than depending on map or loop order.
+//
+// This one passes against the pre-change tree by design: the tie-break is the
+// half of the old behaviour the fix deliberately KEEPS, and a test that pins it
+// is what makes a later "just sort the tags ourselves" visible.
+//
+// bite-exempt: pins the behaviour the fix preserves, not the behaviour it changes
+func TestLatestVersionTagBreaksATieOnGitsOrder(t *testing.T) {
+	dir, _ := testRepo(t) // tags v0.1.0
+	for _, tag := range []string{"1.2.3", "v1.2.3"} {
+		testGit(t, dir, "akira-toriyama", "tag", tag)
+	}
+	t.Chdir(dir)
+
+	tag, _, err := latestVersionTag(t.Context())
+	if err != nil {
+		t.Fatalf("latestVersionTag: %v", err)
+	}
+	if tag != "v1.2.3" {
+		t.Errorf("latestVersionTag tag = %q, want %q (git lists it first among the two spellings)", tag, "v1.2.3")
+	}
+}
+
+// TestSinceTagAutoWalksFromTheHighestVersion carries the same defect up to the
+// command surface, where it is a wrong RELEASE and not merely a wrong string:
+// a bare --since-tag resolves the base, and a base two tags behind re-folds
+// commits an earlier tag already shipped.
+func TestSinceTagAutoWalksFromTheHighestVersion(t *testing.T) {
+	dir, _ := testRepo(t) // tags v0.1.0
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) ship the released feature")
+	testGit(t, dir, "akira-toriyama", "tag", "100.0.0")
+	testCommit(t, dir, "akira-toriyama", ":bug:(ui) fix the unreleased crash")
+	t.Chdir(dir)
+
+	revRange, base, err := sinceTagRange(t.Context(), sinceTagAuto)
+	if err != nil {
+		t.Fatalf("sinceTagRange: %v", err)
+	}
+	if revRange != "100.0.0..HEAD" {
+		t.Errorf("walk range = %q, want %q", revRange, "100.0.0..HEAD")
+	}
+	if base == nil || *base != (bump.Version{Major: 100}) {
+		t.Errorf("version base = %v, want v100.0.0", base)
+	}
 }
