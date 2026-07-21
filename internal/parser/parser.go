@@ -119,7 +119,43 @@ var (
 	// matches neither a single no-whitespace token nor the literal
 	// `BREAKING CHANGE`.
 	trailerRE = regexp.MustCompile(`^(?:[A-Za-z0-9][A-Za-z0-9-]*|BREAKING CHANGE): `)
+
+	// closingRefRE is the OTHER line a footer block legitimately contains: an
+	// issue reference in GitHub's closing-keyword form, which has NO COLON —
+	// `Closes #12`, `Fixes owner/repo#12`, `Resolves https://github.com/...`.
+	//
+	// It exists for exactly the reason the paragraph above exists, one step
+	// further out. `git interpret-trailers` does not consider this a trailer, and
+	// it is not one — but docs/DESIGN.md §2 lists `Closes #N` among the footers a
+	// commit may carry, so it is a line the house writes INSIDE footer blocks. A
+	// rule that recognised only `token: value` read it as prose, closed the block,
+	// and discarded a `BREAKING CHANGE:` footer stacked beneath it. Measured
+	// before this rule existed:
+	//
+	//	Closes: #12          + BREAKING CHANGE: ...  ->  breaking = true
+	//	Closes #12           + BREAKING CHANGE: ...  ->  breaking = FALSE
+	//	Fixes #12            + BREAKING CHANGE: ...  ->  breaking = FALSE
+	//
+	// A major shipped as a minor, out of a footer the design document itself
+	// blesses, decided by one character. That is the same failure the trailer
+	// rule above was written to end and the same one Q10 calls non-suppressible;
+	// the earlier fix simply did not reach the colon-less half of the vocabulary.
+	//
+	// The keyword set is GitHub's own (close/closes/closed, fix/fixes/fixed,
+	// resolve/resolves/resolved) and the reference must be the WHOLE rest of the
+	// line, so ordinary prose that opens with one of these words ("fixes the
+	// crash reported in #12 by rewriting the parser") is still prose and still
+	// closes the block. Case-blind, like the trailer rule, and for the same
+	// reason: `closes #12` is what people type.
+	closingRefRE = regexp.MustCompile(`(?i)^(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?) +(?:#\d+|[\w.-]+/[\w.-]+#\d+|https?://\S+)$`)
 )
+
+// continuesTrailerBlock reports whether l is a line a footer block may contain
+// without ending — a git trailer, or an issue reference in the colon-less
+// closing-keyword form. Anything else is prose, and prose closes the block.
+func continuesTrailerBlock(l string) bool {
+	return trailerRE.MatchString(l) || closingRefRE.MatchString(l)
+}
 
 // invalidScope reports whether subject's ONLY defect is a scope outside
 // lowercase kebab-case, returning that scope. It is the shared oracle behind
@@ -236,9 +272,9 @@ func Parse(message string) (Commit, error) {
 		if v, found := strings.CutPrefix(l, "NON-BREAKING:"); found && strings.TrimSpace(v) != "" {
 			c.NonBreaking = true
 		}
-		// Trailers may stack without a blank line between them; prose may not,
-		// so anything else closes the block.
-		atBlockStart = trailerRE.MatchString(l)
+		// Trailers and issue references may stack without a blank line between
+		// them; prose may not, so anything else closes the block.
+		atBlockStart = continuesTrailerBlock(l)
 	}
 	return c, nil
 }

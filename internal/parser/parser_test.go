@@ -594,3 +594,46 @@ func TestUndeclaredRemovalFiresAtAuthoringTime(t *testing.T) {
 		t.Errorf("undeclared-removal did not fire at authoring time (violations: %+v)", vs)
 	}
 }
+
+// TestBreakingFooterSurvivesAColonLessIssueReference pins the footer vocabulary
+// docs/DESIGN.md §2 actually blesses. `Closes #N` carries no colon, so a rule
+// that recognised only `token: value` read it as prose, closed the trailer block
+// and DISCARDED a `BREAKING CHANGE:` footer stacked beneath it — a major shipped
+// as a minor, decided by one character, out of a shape the design document lists
+// as legal. Q10 makes a breaking marker non-suppressible; this is the table that
+// says so for every footer line the house writes.
+func TestBreakingFooterSurvivesAColonLessIssueReference(t *testing.T) {
+	for name, tc := range map[string]struct {
+		above string
+		want  bool
+	}{
+		"no line above at all":          {"", true},
+		"a colon trailer":               {"Closes: #12", true},
+		"the closing-keyword form":      {"Closes #12", true},
+		"lowercase, as people type it":  {"closes #12", true},
+		"the past tense GitHub accepts": {"Fixed #12", true},
+		"a cross-repository reference":  {"Resolves akira-toriyama/glyph#12", true},
+		"a full issue URL":              {"Closes https://github.com/akira-toriyama/glyph/issues/12", true},
+		"a co-author trailer":           {"Co-Authored-By: A <a@b.invalid>", true},
+		"two footer lines stacked":      {"Closes #12\nCo-Authored-By: A <a@b.invalid>", true},
+		// The other direction: a sentence that merely OPENS with a keyword is
+		// prose, closes the block, and must not smuggle a major in behind it.
+		"prose opening with the keyword":  {"fixes the crash reported in #12 by rewriting the parser", false},
+		"prose ending in an issue number": {"this also closes #12 eventually", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			msg := ":sparkles: add a thing\n\n"
+			if tc.above != "" {
+				msg += tc.above + "\n"
+			}
+			msg += "BREAKING CHANGE: the api moved"
+			c, err := Parse(msg)
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if c.Breaking != tc.want {
+				t.Errorf("breaking = %v, want %v — for the footer block:\n%s", c.Breaking, tc.want, msg)
+			}
+		})
+	}
+}

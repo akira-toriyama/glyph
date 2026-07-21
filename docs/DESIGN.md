@@ -74,7 +74,15 @@ runtime import, per house pattern.)
 - **subject** — English, imperative, lowercase start, no trailing period.
 - **body/footer** — optional; a body ends with the `---（和訳）` separator + a
   Japanese translation (house rule). Footer may carry `BREAKING CHANGE:`,
-  `Closes #N`, `Co-Authored-By:`.
+  `Closes #N`, `Co-Authored-By:`. A footer block is read as one: git trailers
+  (`token: value`) and issue references in GitHub's colon-less closing-keyword
+  form (`Closes #12`, `Fixes owner/repo#12`) may stack with no blank line
+  between them, and only prose ends the block. That the colon-less form counts
+  is load-bearing rather than cosmetic — reading it as prose closed the block
+  and discarded a `BREAKING CHANGE:` footer stacked beneath it, shipping a major
+  as a minor out of a shape this very list blesses. A line that merely OPENS
+  with a closing keyword ("fixes the crash reported in #12 by …") is prose and
+  still ends the block.
 
 The redundant Conventional `<type>` word is dropped — the gitmoji's own trailing
 `:` plays the type-colon role. The parser is **lenient**: it accepts-and-ignores
