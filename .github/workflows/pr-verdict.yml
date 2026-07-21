@@ -64,7 +64,16 @@ name: glyph-pr-verdict
 #     pull-requests: write
 #   jobs:
 #     verdict:
-#       uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@v0.10.0  # pin a release tag
+#       uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@vX.Y.Z  # pin a release tag
+#
+# @vX.Y.Z is a PLACEHOLDER, not a ref — substitute a concrete tag from
+# https://github.com/akira-toriyama/glyph/releases. No live version is written
+# here because none can be: a tag is cut on a commit that ALREADY EXISTS, so any
+# version typed into this file names the PREVIOUS release the moment it ships.
+# For a pin that is provably current, read .github/workflows/version-preview.yml
+# in THIS repo — glyph is inside the fleet it distributes to, so fleet-sync holds
+# that caller at the canonical version. (This is also why a naive grep for glyph
+# pins must skip comments: internal/workflows guards both halves.)
 #
 # Gating on the verdict (the caller's policy, not this workflow's — see the
 # outputs block below).
@@ -82,9 +91,12 @@ name: glyph-pr-verdict
 #   * the empty check — a skipped verdict yields "" for every output, which means
 #     NOT COMPUTED. Reading it as `none` is the same fail-open by another route.
 #
+# @vX.Y.Z below is the same PLACEHOLDER as in the skeleton above — pin the one
+# concrete tag both jobs share.
+#
 #   jobs:
 #     verdict:
-#       uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@v0.10.0
+#       uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@vX.Y.Z
 #     api-guard:
 #       needs: verdict
 #       if: ${{ !cancelled() }}          # ← without this the gate is skipped, not enforced

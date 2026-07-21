@@ -42,7 +42,7 @@ name: glyph-release
 #   permissions: { contents: write }
 #   jobs:
 #     release:
-#       uses: akira-toriyama/glyph/.github/workflows/release.yml@v0.10.0  # pin a release tag
+#       uses: akira-toriyama/glyph/.github/workflows/release.yml@vX.Y.Z  # pin a release tag
 #       with:
 #         app: Facet              # → Facet.app / Facet.zip, binary `facet`
 #         # …or, for a bare-binary tool (exactly one of app/binary):
@@ -52,6 +52,15 @@ name: glyph-release
 #         install-notes: |
 #           ## Install
 #           …app-specific markdown appended after the notes…
+#
+# @vX.Y.Z is a PLACEHOLDER, not a ref — substitute a concrete tag from
+# https://github.com/akira-toriyama/glyph/releases. No live version is written
+# here because none can be: a tag is cut on a commit that ALREADY EXISTS, so any
+# version typed into this file names the PREVIOUS release the moment it ships.
+# Unlike lint.yml and pr-verdict.yml there is no in-repo caller to copy — glyph
+# releases itself through goreleaser.yml, not through this reusable — so the
+# releases page is the only source for the tag. (This is also why a naive grep
+# for glyph pins must skip comments: internal/workflows guards both halves.)
 
 on:
   workflow_call:

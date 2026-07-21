@@ -253,3 +253,133 @@ func TestCompositeActionIsSingleSource(t *testing.T) {
 		}
 	}
 }
+
+// glyphRef matches ANY reference to one of glyph's own reusable workflows or to
+// its install action, capturing the ref it is pinned to. Anchored on the "@",
+// never on a trailing "# pin a release tag": of the four commented caller stubs
+// in the reusables, one (pr-verdict.yml's gating example) carries no trailing
+// comment at all, and a matcher that needed one would silently skip it.
+var glyphRef = regexp.MustCompile(`akira-toriyama/glyph/\.github/[^@\s]+@(\S+)`)
+
+// versionPlaceholder is the literal the caller stubs must use instead of a
+// concrete tag. Precedent: docs/DESIGN.md has used it since v0.6.0 (14bf397)
+// and has needed zero maintenance across the eleven releases since.
+const versionPlaceholder = "vX.Y.Z"
+
+// concreteTag is what an EXECUTABLE `uses:` must carry — a real release tag.
+var concreteTag = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
+
+// workflowFiles lists every .yml under .github/workflows, so a new caller or a
+// new reusable is covered without editing this test.
+func workflowFiles(t *testing.T) []string {
+	t.Helper()
+	dir := filepath.Join("..", "..", ".github", "workflows")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("reading %s: %v", dir, err)
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".yml") {
+			names = append(names, e.Name())
+		}
+	}
+	if len(names) == 0 {
+		t.Fatalf("no workflow files found under %s", dir)
+	}
+	return names
+}
+
+// TestCallerStubsCarryNoConcreteVersion pins the split that makes the stubs
+// maintainable: a COMMENTED caller stub shows @vX.Y.Z, an EXECUTABLE `uses:`
+// shows a real tag.
+//
+// A concrete version in a stub cannot be kept current by any schedule of edits.
+// A release tag is cut on a tree that was frozen BEFORE it (35–62s earlier on
+// v0.10.0/v0.10.1/v0.10.2), so a version written into a reusable names the
+// PREVIOUS release the moment it ships — the stubs read @v0.10.0 while the tag
+// was v0.10.2. The placeholder is not laziness; it is the only honest value.
+func TestCallerStubsCarryNoConcreteVersion(t *testing.T) {
+	stubs := map[string]int{}
+
+	for _, name := range workflowFiles(t) {
+		raw := repoFile(t, filepath.Join(".github", "workflows", name))
+		for i, line := range strings.Split(raw, "\n") {
+			m := glyphRef.FindStringSubmatch(line)
+			if m == nil {
+				continue
+			}
+			ref, lineno := m[1], i+1
+			if strings.HasPrefix(strings.TrimSpace(line), "#") {
+				stubs[name]++
+				if ref != versionPlaceholder {
+					t.Errorf("%s:%d — commented caller stub pins the concrete ref %q; use @%s. "+
+						"A tag is cut on a commit that already exists, so any version written in a "+
+						"comment names the previous release the moment it ships (these read @v0.10.0 "+
+						"under the v0.10.2 tag). Substituting the tag is the reader's job.",
+						name, lineno, ref, versionPlaceholder)
+				}
+				continue
+			}
+			// Executable: this one really is resolved by Actions.
+			if ref == versionPlaceholder {
+				t.Errorf("%s:%d — executable `uses:` is pinned to the placeholder @%s, which is "+
+					"not a ref and cannot resolve; pin a concrete release tag", name, lineno, versionPlaceholder)
+			} else if !concreteTag.MatchString(ref) {
+				t.Errorf("%s:%d — executable `uses:` is pinned to %q, which is not a vX.Y.Z release "+
+					"tag; the binary version is derived from the tag, so a moving ref breaks lockstep",
+					name, lineno, ref)
+			}
+		}
+	}
+
+	// Non-vacuity: every reusable documents its caller, so a stub that quietly
+	// disappeared (taking the invariant with it) fails here rather than passing.
+	for _, name := range reusables {
+		if stubs[name] == 0 {
+			t.Errorf("%s carries no commented caller stub any more; the stub is how a consuming "+
+				"repo learns the shape of the caller — this test has nothing left to guard", name)
+		}
+	}
+}
+
+// fleetPinScrape is the fleet pin-audit's OWN scrape pattern, copied verbatim
+// from akira-toriyama/.github .github/workflows/glyph-pin-audit.yml — the first
+// `grep -oE` of the pipeline inside the audit step's
+// `done < <(printf '%s\n' "$body" | grep -vE '^[[:space:]]*#' | grep -oE …)`
+// line (the second -oE there only trims the match down to "@vX.Y.Z"). Go's RE2
+// accepts the POSIX classes unchanged, so this is the same matcher byte for byte.
+var fleetPinScrape = regexp.MustCompile(`uses:[[:space:]]*akira-toriyama/glyph/[^@[:space:]]*@v[0-9][0-9.]*`)
+
+// TestNaiveGrepSeesNoPinInTheReusables encodes WHY the concrete version is
+// absent, so a well-meant "refresh the stubs to the current tag" cannot undo it
+// by accident.
+//
+// The audit's real pipeline drops comment lines FIRST (`grep -vE
+// '^[[:space:]]*#'`) precisely because stale stubs used to be reported as fleet
+// drift. This test applies the scrape to the RAW text, comment filter removed:
+// with the placeholder in place the reusables hold no version for a naive grep
+// to find, so the audit is correct whether or not the filter is there — and the
+// grep trap (wrong in BOTH directions: false drift from the stubs, and a real
+// pin masked by them) is closed at the source rather than worked around
+// downstream.
+func TestNaiveGrepSeesNoPinInTheReusables(t *testing.T) {
+	// Positive control: a matcher that matches nothing would pass this test
+	// vacuously for ever. Prove it still bites on the shape it is meant to find.
+	const canary = "    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v0.10.2"
+	if !fleetPinScrape.MatchString(canary) {
+		t.Fatalf("the audit scrape pattern no longer matches a real pin (%q); the rest of this "+
+			"test would pass vacuously — re-copy the pattern from glyph-pin-audit.yml", canary)
+	}
+
+	for _, name := range reusables {
+		raw := repoFile(t, filepath.Join(".github", "workflows", name))
+		if found := fleetPinScrape.FindAllString(raw, -1); len(found) > 0 {
+			t.Errorf("%s exposes %d glyph pin(s) to the fleet pin-audit's scrape pattern (%q). "+
+				"A reusable DEFINES the pin; it must never CARRY one, not even in a comment: the "+
+				"audit reads every repo's YAML, and a version here is either false drift (the stub "+
+				"is stale by construction) or masks a real pin. Use @%s.",
+				name, len(found), strings.Join(found, ", "), versionPlaceholder)
+		}
+	}
+}
