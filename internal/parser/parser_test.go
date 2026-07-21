@@ -131,6 +131,40 @@ func TestParse(t *testing.T) {
 			want: Commit{Gitmoji: ":bug:", Breaking: true, Subject: "fix a crash", Body: "Co-Authored-By: Someone <a@b.c>\nBREAKING CHANGE: the flag is gone."},
 		},
 		{
+			// The regression this closes: a git trailer key is case-blind, so a
+			// lowercase `closes:` continues the block exactly as `Closes:` does.
+			// Reading it as prose dropped the BREAKING CHANGE beneath it and
+			// shipped a major as a minor — the one failure the engine exists to
+			// stop. `closes:`/`refs:`/`fixes:` are everyday habits, not adversarial.
+			name: "a footer under a LOWERCASE trailer still counts",
+			in:   ":sparkles: add the resolver\n\ncloses: #12\nBREAKING CHANGE: paletteFor no longer falls back.",
+			want: Commit{Gitmoji: ":sparkles:", Breaking: true, Subject: "add the resolver", Body: "closes: #12\nBREAKING CHANGE: paletteFor no longer falls back."},
+		},
+		{
+			// Order must not change the verdict: the same footer set with the
+			// trailer written first was the tell that block-continuation, not
+			// the footer itself, was misclassified.
+			name: "breaking footer above a lowercase trailer also counts",
+			in:   ":sparkles: add the resolver\n\nBREAKING CHANGE: no fallback.\nrefs: #12",
+			want: Commit{Gitmoji: ":sparkles:", Breaking: true, Subject: "add the resolver", Body: "BREAKING CHANGE: no fallback.\nrefs: #12"},
+		},
+		{
+			// The mirror: NON-BREAKING under a lowercase trailer must be seen,
+			// so an author who declared a removal safe is not falsely failed.
+			name: "non-breaking footer under a lowercase trailer is seen",
+			in:   ":fire: drop the unused fixture\n\nrefs: #12\nNON-BREAKING: the fixture was never exported.",
+			want: Commit{Gitmoji: ":fire:", NonBreaking: true, Subject: "drop the unused fixture", Body: "refs: #12\nNON-BREAKING: the fixture was never exported."},
+		},
+		{
+			// The prose guard survives the case-blind token: an ordinary
+			// sentence has a SPACE before its colon, matching neither a single
+			// no-whitespace token nor the literal BREAKING CHANGE, so it closes
+			// the block and the phrase beneath it stays prose.
+			name: "a prose line with a colon does not keep the block open",
+			in:   ":bug: fix a crash\n\nThis fixes the thing.\nBREAKING CHANGE: not really, just explaining.",
+			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "This fixes the thing.\nBREAKING CHANGE: not really, just explaining."},
+		},
+		{
 			name: "crlf line endings are normalized",
 			in:   ":bug: fix a crash\r\n\r\nGuard the nil map.",
 			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "Guard the nil map."},
