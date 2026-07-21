@@ -129,19 +129,40 @@ func Headline(in Input) string {
 	}
 }
 
-// escapeCell makes a commit subject safe in a Markdown table cell: would-be
-// @mentions are code-quoted, the column separator is escaped, and any newline
-// flattened. Subjects are author-supplied text, and the table is the evidence
-// the headline rests on — a subject that breaks the table takes the evidence
-// with it. The mention pass matters more here than in the notes: this table is
-// a PR comment, so a bare "@v1" would not just link a stranger, it would
-// notify them.
+// escapeCell makes a commit subject safe in a Markdown table cell: any newline
+// is flattened, would-be @mentions are fenced into code spans, and the column
+// separator is escaped. Subjects are author-supplied text, and the table is the
+// evidence the headline rests on — a subject that breaks the table takes the
+// evidence with it. The mention pass matters more here than in the notes: this
+// table is a PR comment, so a bare "@v1" would not just link a stranger, it
+// would notify them.
+//
+// THE ORDER IS THE SAFETY PROPERTY, because mention-safety belongs to the
+// rendered inline context and not to the string this function was handed. A
+// table cell is its own inline context (measured: a stray backtick in one cell
+// forms no span with a backtick in the next), so the escaper must see the cell
+// EXACTLY as it will render:
+//
+//   - flattening comes first. It is what decides the context: to the escaper a
+//     blank line ends the paragraph, and backticks on either side of one cannot
+//     pair — but the flattened cell is one line, where they can. Escaping first
+//     sized the fence against a context this function then destroyed, and the
+//     cell below was a live mention (measured against GitHub 2026-07-21) from a
+//     subject the escaper had already declared safe:
+//
+//     | a ` b  c `@octocat d` | 🐛 `:bug:` | patch |
+//
+//   - pipe escaping comes last. It adds backslashes, and an escaping backslash
+//     in front of a fence swallows it — markdown.EscapeMentions goes out of its
+//     way to write a separating space where the author put one there. A pipe
+//     escaped inside a code span still renders as a pipe, so nothing is lost by
+//     doing it after.
 func escapeCell(s string) string {
-	s = markdown.EscapeMentions(s)
-	s = strings.ReplaceAll(s, "|", `\|`)
 	s = strings.ReplaceAll(s, "\r\n", " ")
 	s = strings.ReplaceAll(s, "\n", " ")
-	return strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = markdown.EscapeMentions(s)
+	return strings.ReplaceAll(s, "|", `\|`)
 }
 
 // Render composes the whole comment body.

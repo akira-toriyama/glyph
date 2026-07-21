@@ -173,21 +173,59 @@ func TestRenderEscapesSubject(t *testing.T) {
 	}
 }
 
+// TestRenderEscapesTheCellTheRendererWillSee pins the ordering inside
+// escapeCell, which is a safety property and not a style choice: mention-safety
+// belongs to the rendered inline context, and flattening is what MAKES the
+// context. The subject below is two paragraphs to the escaper — backticks on
+// either side of a blank line cannot pair, so it sees a code span around the
+// mention and leaves it alone — and one line to GitHub, where the same
+// backticks pair differently, the span lands somewhere else, and the mention
+// comes out in prose right after a span's closing delimiter, which does not
+// shield. Escaping before flattening rendered this cell as a live mention
+// (measured 2026-07-21):
+//
+//	| a ` b  c `@octocat d` | 🐛 `:bug:` | patch |
+func TestRenderEscapesTheCellTheRendererWillSee(t *testing.T) {
+	got := Render(Input{
+		Current: "v1.0.0",
+		PR: Verdict{Level: gitmoji.BumpPatch, Next: "v1.0.1", Commits: []Commit{
+			{Code: ":bug:", Level: gitmoji.BumpPatch, Subject: "a ` b\n\nc `@octocat d`"},
+		}},
+	})
+	if !strings.Contains(got, "| a ` b  c ` ``@octocat`` d` |") {
+		t.Errorf("the cell was escaped against a context it does not render in:\n%s", got)
+	}
+}
+
 // TestRenderNeutralizesMentions: a bare @token in a subject must come out
-// code-quoted — this body is posted as a PR comment, so a raw "@v1" would not
-// just render as a link to the GitHub user v1, it would notify them.
+// inside a backtick fence — this body is posted as a PR comment, so a raw "@v1"
+// would not just render as a link to the GitHub user v1, it would notify them.
+// The lone-backtick subject is t-fbg3 at this layer: a one-backtick fence
+// paired with the author's stray backtick, which fused half the sentence into a
+// code span and pushed the mention back out into prose. The fence is sized
+// against the subject, so that one comes out with two backticks.
 func TestRenderNeutralizesMentions(t *testing.T) {
 	got := Render(Input{
 		Current: "v1.0.0",
 		PR: Verdict{Level: gitmoji.BumpPatch, Next: "v1.0.1", Commits: []Commit{
 			{Code: ":bug:", Level: gitmoji.BumpPatch, Subject: "pin release + update-tap callers to @v1"},
+			{Code: ":bug:", Level: gitmoji.BumpPatch, Subject: "accept a lone ` in the subject, as @octocat asked"},
 		}},
 	})
-	if !strings.Contains(got, "callers to `@v1`") {
-		t.Errorf("bare @token not code-quoted:\n%s", got)
+	for _, want := range []string{"callers to `@v1`", "as ``@octocat`` asked"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in the comment body:\n%s", want, got)
+		}
 	}
-	if strings.Contains(got, "to @v1") {
-		t.Errorf("raw mention survived into the comment body:\n%s", got)
+	// Nothing may leave an at-sign standing on its own: GitHub links one that
+	// has no backtick in front of it, wherever in the body it sits.
+	for i, r := range got {
+		if r != '@' {
+			continue
+		}
+		if i == 0 || got[i-1] != '`' {
+			t.Errorf("unshielded at-sign at byte %d of the comment body:\n%s", i, got)
+		}
 	}
 }
 
