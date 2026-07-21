@@ -96,25 +96,53 @@ func Group(commits []parser.Commit, t *gitmoji.Table) ([]Section, error) {
 }
 
 // tmpl is the Markdown shape of the notes: `## <section>` headings in group
-// order, one `- <emoji> [**scope:** ]<subject> (<short sha>)` line per entry,
-// one blank line between sections, subjects near-verbatim (own-repo content is
-// trusted as Markdown; GitHub autolinks the bare short SHA). The one rewrite
-// is markdown.EscapeMentions on scope and subject: a bare @token in a subject
-// ("callers to @v1") otherwise resolves to a real GitHub user, who then shows
-// up under the release's Contributors.
+// order, one entry line each (drawn by entryLine), one blank line between
+// sections. Subjects render near-verbatim — own-repo content is trusted as
+// Markdown, and GitHub autolinks the bare short SHA.
 var tmpl = template.Must(template.New("notes").Funcs(template.FuncMap{
-	"short":  shortSHA,
-	"escape": markdown.EscapeMentions,
+	"line": entryLine,
 }).Parse(`{{- range $i, $s := . -}}
 {{- if $i}}
 {{end -}}
 ## {{$s.Title}}
 
 {{range $s.Entries -}}
-- {{.Emoji}} {{with .Scope}}**{{escape .}}:** {{end}}{{escape .Subject}} ({{short .SHA}})
+{{line .}}
 {{end -}}
 {{- end -}}
 `))
+
+// entryLine draws one entry — `- <emoji> [**scope:** ]<subject> (<short sha>)`
+// — and neutralizes its mentions ONCE, over the finished line.
+//
+// The line is assembled HERE, in Go, rather than field by field in the template
+// above, because mention-safety is a property of the rendered INLINE CONTEXT
+// and not of any field that lands in it. A backtick fence has to be longer than
+// every backtick run it will share a context with (see markdown.EscapeMentions),
+// and the template's fields share one: escaping them separately sized the
+// subject's fence against the subject alone, so a backtick carried by the SCOPE
+// stole it. That parses and lints clean today — the legacy token grammar's scope
+// slot is [^()]+ — and the assembled line was a live mention:
+//
+//	commit  :bug: fix(readme`): credit @alice and @bob for the fix
+//	line    - 🐛 **readme`:** credit `@alice` and `@bob` for the fix (abc1234)
+//	         ^ measured against GitHub 2026-07-21: @alice is LINKED, because the
+//	           scope's stray backtick paired with the fence's opening one.
+//
+// So the one escape call is the last thing that happens to the line, and every
+// byte of the line has passed through it. A field added to this function is
+// covered by construction; a field added to the template above would not be,
+// which is why there is nothing left in the template to add one to.
+func entryLine(e Entry) string {
+	var b strings.Builder
+	b.WriteString("- " + e.Emoji + " ")
+	if e.Scope != "" {
+		b.WriteString("**" + e.Scope + ":** ")
+	}
+	b.WriteString(e.Subject)
+	b.WriteString(" (" + shortSHA(e.SHA) + ")")
+	return markdown.EscapeMentions(b.String())
+}
 
 // Render draws sections as Markdown — the body a release publishes, headed by
 // no version line (the release title carries the version). No sections render

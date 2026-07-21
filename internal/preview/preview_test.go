@@ -173,6 +173,30 @@ func TestRenderEscapesSubject(t *testing.T) {
 	}
 }
 
+// TestRenderEscapesTheCellTheRendererWillSee pins the ordering inside
+// escapeCell, which is a safety property and not a style choice: mention-safety
+// belongs to the rendered inline context, and flattening is what MAKES the
+// context. The subject below is two paragraphs to the escaper — backticks on
+// either side of a blank line cannot pair, so it sees a code span around the
+// mention and leaves it alone — and one line to GitHub, where the same
+// backticks pair differently, the span lands somewhere else, and the mention
+// comes out in prose right after a span's closing delimiter, which does not
+// shield. Escaping before flattening rendered this cell as a live mention
+// (measured 2026-07-21):
+//
+//	| a ` b  c `@octocat d` | 🐛 `:bug:` | patch |
+func TestRenderEscapesTheCellTheRendererWillSee(t *testing.T) {
+	got := Render(Input{
+		Current: "v1.0.0",
+		PR: Verdict{Level: gitmoji.BumpPatch, Next: "v1.0.1", Commits: []Commit{
+			{Code: ":bug:", Level: gitmoji.BumpPatch, Subject: "a ` b\n\nc `@octocat d`"},
+		}},
+	})
+	if !strings.Contains(got, "| a ` b  c ` ``@octocat`` d` |") {
+		t.Errorf("the cell was escaped against a context it does not render in:\n%s", got)
+	}
+}
+
 // TestRenderNeutralizesMentions: a bare @token in a subject must come out
 // inside a backtick fence — this body is posted as a PR comment, so a raw "@v1"
 // would not just render as a link to the GitHub user v1, it would notify them.

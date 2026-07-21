@@ -8,6 +8,7 @@
 - 🐛 pin release + update-tap callers to `@v1` (5555555)
 - 🐛 mail dev@example.com when actions/checkout@v5 breaks (7777777)
 - 🐛 **lint:** accept a lone ` in the subject, as ``@octocat`` asked (8888888)
+- 🐛 **readme`:** credit ``@alice`` and ``@bob`` for the fix (9999999)
 
 ## UI & UX
 

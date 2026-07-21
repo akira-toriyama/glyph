@@ -263,7 +263,9 @@ func TestRenderGolden(t *testing.T) {
 			// itself against the line it lands in (t-fbg3): the one that
 			// already holds a `@name` span gets a two-backtick fence, and the
 			// one carrying a stray backtick gets one too, because a fence that
-			// merely tied the author's run could be closed by it.
+			// merely tied the author's run could be closed by it. The last one
+			// carries the backtick in its SCOPE, where the fence used to be
+			// blind to it — see TestRenderSizesTheFenceAgainstTheWholeLine.
 			name: "adversarial_subjects",
 			commits: []parser.Commit{
 				{Gitmoji: ":bug:", Subject: "handle `nil` table without panicking", SHA: sha("1")},
@@ -273,6 +275,7 @@ func TestRenderGolden(t *testing.T) {
 				{Gitmoji: ":sparkles:", Scope: "view", Subject: "show `@name` chips that type @name for you", SHA: sha("6")},
 				{Gitmoji: ":bug:", Subject: "mail dev@example.com when actions/checkout@v5 breaks", SHA: sha("7")},
 				{Gitmoji: ":bug:", Scope: "lint", Subject: "accept a lone ` in the subject, as @octocat asked", SHA: sha("8")},
+				{Gitmoji: ":bug:", Scope: "readme`", Subject: "credit @alice and @bob for the fix", SHA: sha("9")},
 			},
 		},
 		{
@@ -313,6 +316,36 @@ func TestRenderGolden(t *testing.T) {
 				t.Fatalf("render mismatch for %s:\n--- got ---\n%s\n--- want ---\n%s", c.name, got, want)
 			}
 		})
+	}
+}
+
+// TestRenderSizesTheFenceAgainstTheWholeLine pins the fix for the leak that a
+// FIELD is not an inline context. The line concatenates the scope and the
+// subject, so a backtick fence sized against the subject alone was stolen by a
+// backtick the scope carried: the fence's opening backtick paired with the
+// scope's stray one, the pairing fused the words between them into a code span,
+// and the mention was pushed back out into live prose. Measured at GitHub on
+// 2026-07-21, the one-backtick line below linked @alice for real.
+//
+// The scope reaches here with a backtick in it because it can: glyph's legacy
+// token grammar accepts anything but parentheses in the scope slot, so
+// ":bug: fix(readme`): credit @alice and @bob for the fix" parses and lints
+// clean today.
+func TestRenderSizesTheFenceAgainstTheWholeLine(t *testing.T) {
+	table := loadTable(t)
+	sections, err := Group([]parser.Commit{
+		{Gitmoji: ":bug:", Scope: "readme`", Subject: "credit @alice and @bob for the fix", SHA: sha("9")},
+	}, table)
+	if err != nil {
+		t.Fatalf("Group: %v", err)
+	}
+	got, err := Render(sections)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	const want = "- 🐛 **readme`:** credit ``@alice`` and ``@bob`` for the fix (9999999)\n"
+	if !strings.Contains(got, want) {
+		t.Errorf("the fence was not sized against the whole line:\n--- got ---\n%s\n--- want the line ---\n%s", got, want)
 	}
 }
 

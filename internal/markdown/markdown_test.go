@@ -51,6 +51,72 @@ import (
 //	fix <http://a/`x> so @octocat can `see` it        LIVE MENTION (known
 //	                                        limitation, see the test below)
 //
+// The guard in front of the at-sign, byte by byte — the question is not "is
+// this a word character" but "is it still THERE when the mention filter runs",
+// and an emphasis delimiter is not. Observed 2026-07-21:
+//
+//	credit xa@octocat for the repro         safe           ← letter, stays
+//	credit x0@octocat for the repro         safe           ← digit, stays
+//	mail first_last@example.com now         safe           ← letter in front
+//	mail foo_@example.com now               safe           ← literal underscore
+//	mail foo_@example.com_ now              safe              (cannot open: an
+//	credit x_@octocat_y for the repro       safe              alphanumeric is
+//	credit x__@octocat__y for the repro     safe              glued to its left)
+//	credit 対応_@octocat_ for the repro       safe           ← CJK counts too
+//	credit _@octocat for the repro          safe           ← opener, no closer
+//	credit _@octocat_ for the repro         LIVE MENTION   ← emphasis: the
+//	credit _@octocat_                       LIVE MENTION      underscore is
+//	_@octocat_ credit                       LIVE MENTION      DELETED and the
+//	credit __@octocat__ for the repro       LIVE MENTION      at-sign opens a
+//	credit **_@octocat_** for the repro     LIVE MENTION      fresh text node
+//	credit (_@octocat_) for the repro       LIVE MENTION
+//	- 🐛 **parser:** credit _@octocat_ for the repro (8e0)   LIVE MENTION
+//	credit *@octocat* for the repro         LIVE MENTION   ← and the same for
+//	credit ~@octocat~ for the repro         LIVE MENTION      every other
+//	credit ~~@octocat~~ for the repro       LIVE MENTION      emphasis marker
+//
+// The asterisk and the tilde are safe in glyph only because they are ABSENT
+// from the guard set, so the escaper fences straight through them; the
+// underscore was present and leaked until it was made conditional.
+//
+// A FENCE CHANGES THE NEIGHBOURHOOD, and the underscore's meaning with it. The
+// middle line below is safe input that glyph made dangerous, which is why the
+// intraword test is applied to the output rather than the input:
+//
+//	cc @0_@0_ now                           safe   ← intraword, both refused
+//	cc `@0`_@0_ now                         LIVE MENTION   ← punctuation now
+//	                                          sits on both sides of the "_",
+//	                                          which makes it an emphasis opener
+//	cc `@0`_`@0`_ now                       safe (<code>)
+//
+// And the fences hold on all of them:
+//
+//	credit _`@octocat`_ for the repro       safe (<code>)
+//	credit __`@octocat`__ for the repro     safe (<code>)
+//	credit **_`@octocat`_** for the repro   safe (<code>)
+//	credit (_`@octocat`_) for the repro     safe (<code>)
+//	credit *`@octocat`* for the repro       safe (<code>)
+//	credit ~~`@octocat`~~ for the repro     safe (<code>)
+//	- 🐛 **parser:** credit _`@octocat`_ for the repro (8e0)  safe (<code>)
+//
+// A FIELD IS NOT AN INLINE CONTEXT. A notes line concatenates the scope and the
+// subject into one, and a fence sized against the subject alone is stolen by a
+// backtick the scope carried (a backtick survives lint today: the legacy token
+// grammar's scope slot is [^()]+). The renderers escape the assembled line and
+// the assembled cell for this reason:
+//
+//	- 🐛 **readme`:** credit `@alice` and `@bob` for the fix (abc1234)
+//	                                        LIVE MENTION (@alice)
+//	- 🐛 **readme`:** credit ``@alice`` and ``@bob`` for the fix (abc1234)
+//	                                        safe (<code>)
+//	| a ` b  c `@octocat d` | 🐛 `:bug:` | patch |      LIVE MENTION
+//	| a ` b  c ` ``@octocat`` d` | 🐛 `:bug:` | patch |  safe (<code>)
+//
+// A table CELL is its own inline context, measured: a stray backtick in one
+// cell forms no span with a backtick in the next, and the cmark memo below does
+// not carry across either (two equal-length spans in two cells BOTH form, where
+// in one context only the first would).
+//
 // Two independent facts hold glyph's output safe, and the escaper is built to
 // satisfy both: the mention filter skips <code> subtrees, AND it refuses an
 // at-sign with a literal backtick glued to it. The second is what covers the
@@ -148,6 +214,30 @@ func TestEscapeMentions(t *testing.T) {
 		// second mention then stayed live (fuzz counterexample "@0-@0").
 		{"trailing hyphen is not part of the name", "cc @a- and @b-@c", "cc `@a`- and `@b`-`@c`"},
 		{"hyphen inside the name is kept", "cc @a-b for review", "cc `@a-b` for review"},
+
+		// An underscore is a word byte only INTRAWORD. At a word boundary it is
+		// an emphasis delimiter that GFM deletes, and the at-sign behind it
+		// opens a text node the mention filter links — "credit _@octocat_ for
+		// the repro" is a live mention, and so is a real notes line built from
+		// it. The email is the case the word-byte guard exists for and it must
+		// still come through untouched.
+		{"emphasis underscore is not a word byte", "credit _@octocat_ for the repro", "credit _`@octocat`_ for the repro"},
+		{"strong emphasis underscores go too", "credit __@octocat__ now", "credit __`@octocat`__ now"},
+		{"emphasis underscore after punctuation", "credit (_@octocat_) now", "credit (_`@octocat`_) now"},
+		{"emphasis underscore opening the string", "_@octocat_ credit", "_`@octocat`_ credit"},
+		{"intraword underscore is a word byte", "credit x_@octocat_y for the repro", "credit x_@octocat_y for the repro"},
+		{"intraword double underscore is a word byte", "credit x__@octocat__y now", "credit x__@octocat__y now"},
+		{"an email keeps its trailing underscore", "mail foo_@example.com now", "mail foo_@example.com now"},
+		// A fence glyph writes changes what sits to the LEFT of the underscore
+		// behind it, and with it the underscore's meaning: "@0_@0" links nothing
+		// (intraword), but "`@0`_@0_" does — punctuation on both sides makes the
+		// underscore an emphasis opener. So the intraword test reads the OUTPUT.
+		{"a fence must not promote the underscore behind it", "cc @0_@0_ now", "cc `@0`_`@0`_ now"},
+		// A CJK character is not Unicode punctuation, so the underscore cannot
+		// open emphasis there either and GitHub renders it safe. glyph fences
+		// anyway — over-escaping, the cheap direction. Pinned so the day the
+		// rule learns Unicode, this line is the one that says so.
+		{"a CJK left neighbour is over-escaped", "対応_@octocat_ を修正", "対応_`@octocat`_ を修正"},
 
 		// cmark-gfm forms only the FIRST of two equal-length spans once some
 		// unmatched run has exhausted its closer search, so the second span is
@@ -309,6 +399,9 @@ func FuzzEscapeMentionsNeverLeaksAMention(f *testing.F) {
 	f.Add("cc @a- and @b-@c")
 	f.Add("`ping\n\n@octocat`")
 	f.Add("`` `a` `x @octocat y`")
+	f.Add("credit _@octocat_ for the repro")
+	f.Add("mail foo_@example.com now")
+	f.Add("cc @0_@0_ now")
 	f.Add("")
 	f.Fuzz(func(t *testing.T, s string) {
 		got := EscapeMentions(s)
@@ -365,7 +458,7 @@ func linkableAtSigns(s string) []atSign {
 		if s[i] != '@' {
 			continue
 		}
-		if i > 0 && isMentionWordByte(s[i-1]) {
+		if i > 0 && wordCharBefore(s, i) {
 			continue // an email or a pinned ref: GitHub does not link it
 		}
 		if name := linkableToken.FindString(s[i+1:]); name != "" {
@@ -375,15 +468,29 @@ func linkableAtSigns(s string) []atSign {
 	return out
 }
 
-// isMentionWordByte reports whether b is a byte GitHub treats as part of a word
-// in front of an at-sign, which stops the token from being a mention. The
-// backtick is NOT in this set: it shields, but the oracle has to see the
-// at-sign in order to demand that shield.
-func isMentionWordByte(b byte) bool {
-	return b == '_' ||
-		(b >= 'A' && b <= 'Z') ||
-		(b >= 'a' && b <= 'z') ||
-		(b >= '0' && b <= '9')
+// wordCharBefore reports whether what sits in front of the at-sign at i is
+// still a word character WHEN THE MENTION FILTER RUNS, which stops the token
+// from being a mention. That is the question the probe table answers, and it is
+// not the same as "is this byte a word character": GFM deletes an emphasis
+// delimiter on its way to the rendered document, so an underscore counts only
+// where it cannot be one — intraword, an alphanumeric glued to the left of the
+// whole underscore run ("x_@octocat_y" is safe, "credit _@octocat_" is not).
+//
+// The backtick is NOT a word character here: it shields, but the oracle has to
+// see the at-sign in order to demand that shield.
+func wordCharBefore(s string, i int) bool {
+	if s[i-1] != '_' {
+		return isASCIIWord(s[i-1])
+	}
+	n := 0
+	for i-n > 0 && s[i-n-1] == '_' {
+		n++
+	}
+	return i-n > 0 && isASCIIWord(s[i-n-1])
+}
+
+func isASCIIWord(b byte) bool {
+	return (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
 }
 
 // backticksBefore returns the length of the run of backticks ending just before
