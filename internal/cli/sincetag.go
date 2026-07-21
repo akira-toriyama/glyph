@@ -383,9 +383,16 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 	// turns a silent loss (exit 1, `no release`, not one diagnostic — the t-7zt7
 	// silence surviving on the new path) into a visible one. A warning on every
 	// normal release would be worse than none, and this one cannot fire on a
-	// healthy repository: standing aside requires the pull's canonical commit to
-	// be IN this range, and a canonical commit in range that resolves is expanded
-	// right there.
+	// repository whose merge points the walk can RESOLVE: standing aside
+	// requires the pull's canonical commit to be IN this range, and a canonical
+	// commit in range that resolves is expanded right there. Note what that
+	// does — and does not — promise. API lag clears itself, so the warning is a
+	// one-run event. But a repository whose merge button is pressed by an
+	// AUTOMATION is perfectly healthy and warns on every release: the author
+	// gate skips a bot-authored merge commit before the API, so nothing is ever
+	// left to resolve the pull. That is not a regression (before t-7zt7 the same
+	// pull was lost in silence) and the loudness is the point, but "healthy
+	// repositories stay quiet" would be a promise this mechanism does not keep.
 	for _, number := range coveredOrder {
 		if expanded[number] {
 			continue

@@ -175,10 +175,17 @@ set holds, so the dedup passes them all and the same change renders twice; and
 a pull whose earlier commits shipped under the previous tag has them folded
 straight back in, manufacturing a minor bump out of released work. Both are the
 silent-wrong-verdict class this mechanism exists to kill, so the honest move is
-to name the loss and refuse to guess. The warning cannot fire on a healthy
-repository — one that cries on every release would be worse than none: standing
-aside requires the pull's canonical commit to be **in range**, and a canonical
-commit in range that resolves is expanded on the spot.
+to name the loss and refuse to guess. The warning cannot fire on a repository
+whose merge points the walk can **resolve** — one that cries on every release
+would be worse than none: standing aside requires the pull's canonical commit to
+be **in range**, and a canonical commit in range that resolves is expanded on the
+spot. Two causes reach the warning and they behave differently. API lag clears
+itself, so it warns once. But a repository whose merge button is pressed by an
+**automation** is perfectly healthy and warns on *every* release: the author gate
+skips a bot-authored merge commit before the API, so nothing is left to resolve
+the pull. Before t-7zt7 that pull was lost silently, so this is not a regression
+— but such a repository should let a human press merge, or expect a standing
+warning.
 
 *Covered* is deliberately gated on the canonical commit being **in the walked
 range** — a pull merged into another base branch is associated with commits
