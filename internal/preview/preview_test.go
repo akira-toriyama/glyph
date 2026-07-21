@@ -174,20 +174,34 @@ func TestRenderEscapesSubject(t *testing.T) {
 }
 
 // TestRenderNeutralizesMentions: a bare @token in a subject must come out
-// code-quoted — this body is posted as a PR comment, so a raw "@v1" would not
-// just render as a link to the GitHub user v1, it would notify them.
+// inside a backtick fence — this body is posted as a PR comment, so a raw "@v1"
+// would not just render as a link to the GitHub user v1, it would notify them.
+// The lone-backtick subject is t-fbg3 at this layer: a one-backtick fence
+// paired with the author's stray backtick, which fused half the sentence into a
+// code span and pushed the mention back out into prose. The fence is sized
+// against the subject, so that one comes out with two backticks.
 func TestRenderNeutralizesMentions(t *testing.T) {
 	got := Render(Input{
 		Current: "v1.0.0",
 		PR: Verdict{Level: gitmoji.BumpPatch, Next: "v1.0.1", Commits: []Commit{
 			{Code: ":bug:", Level: gitmoji.BumpPatch, Subject: "pin release + update-tap callers to @v1"},
+			{Code: ":bug:", Level: gitmoji.BumpPatch, Subject: "accept a lone ` in the subject, as @octocat asked"},
 		}},
 	})
-	if !strings.Contains(got, "callers to `@v1`") {
-		t.Errorf("bare @token not code-quoted:\n%s", got)
+	for _, want := range []string{"callers to `@v1`", "as ``@octocat`` asked"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in the comment body:\n%s", want, got)
+		}
 	}
-	if strings.Contains(got, "to @v1") {
-		t.Errorf("raw mention survived into the comment body:\n%s", got)
+	// Nothing may leave an at-sign standing on its own: GitHub links one that
+	// has no backtick in front of it, wherever in the body it sits.
+	for i, r := range got {
+		if r != '@' {
+			continue
+		}
+		if i == 0 || got[i-1] != '`' {
+			t.Errorf("unshielded at-sign at byte %d of the comment body:\n%s", i, got)
+		}
 	}
 }
 

@@ -256,9 +256,14 @@ func TestRenderGolden(t *testing.T) {
 		{
 			// Subjects are rendered near-verbatim: backticks, a pipe, emphasis
 			// markers, and CJK must survive untouched. The one rewrite is the
-			// mention pass — a bare @token gains backticks so GitHub stops
-			// resolving it to a real user (the facet v7.0.0 incident), while an
-			// already-quoted `@name`, an email, and a pinned ref stay put.
+			// mention pass — a bare @token comes out inside a backtick fence,
+			// which GitHub renders as code and links to nobody (the facet
+			// v7.0.0 incident), while an already-quoted `@name`, an email, and
+			// a pinned ref stay put. Two subjects here show the fence sizing
+			// itself against the line it lands in (t-fbg3): the one that
+			// already holds a `@name` span gets a two-backtick fence, and the
+			// one carrying a stray backtick gets one too, because a fence that
+			// merely tied the author's run could be closed by it.
 			name: "adversarial_subjects",
 			commits: []parser.Commit{
 				{Gitmoji: ":bug:", Subject: "handle `nil` table without panicking", SHA: sha("1")},
@@ -267,6 +272,7 @@ func TestRenderGolden(t *testing.T) {
 				{Gitmoji: ":bug:", Subject: "pin release + update-tap callers to @v1", SHA: sha("5")},
 				{Gitmoji: ":sparkles:", Scope: "view", Subject: "show `@name` chips that type @name for you", SHA: sha("6")},
 				{Gitmoji: ":bug:", Subject: "mail dev@example.com when actions/checkout@v5 breaks", SHA: sha("7")},
+				{Gitmoji: ":bug:", Scope: "lint", Subject: "accept a lone ` in the subject, as @octocat asked", SHA: sha("8")},
 			},
 		},
 		{
