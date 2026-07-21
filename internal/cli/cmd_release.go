@@ -90,6 +90,17 @@ func newReleaseCmd() *cobra.Command {
 }
 
 func releaseRun(cmd *cobra.Command) error {
+	// release is where a silently-ignored empty flag costs most: --current
+	// decides the tag, --target decides the commit that tag will point at, and
+	// both defaults look plausible enough to publish.
+	if err := checkNamingFlags(cmd, [][3]string{
+		{"current", "version", currentHint},
+		{"repo", "repository", repoHint},
+		{"target", "commit", "omit --target to point the draft at this checkout's HEAD, or name a commit with --target=SHA"},
+		{"footer-file", "path", "omit --footer-file to publish the notes alone, or name the file with --footer-file=PATH"},
+	}); err != nil {
+		return err
+	}
 	ctx := cmd.Context()
 	table, err := loadRules()
 	if err != nil {

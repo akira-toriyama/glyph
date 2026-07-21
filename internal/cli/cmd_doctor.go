@@ -75,6 +75,9 @@ func newDoctorCmd() *cobra.Command {
 }
 
 func doctorRun(cmd *cobra.Command) error {
+	if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {
+		return err
+	}
 	owner, name, err := resolveRepo(doctorRepo)
 	if err != nil {
 		return err

@@ -84,6 +84,21 @@ if "$BIN" lint --message 'no gitmoji' >/dev/null 2>&1; then
   echo "  expected exit 3 for a malformed message" >&2
   exit 1
 fi
+# The CODE is the assertion, not merely non-zero: `--stdin=false` used to exit 3,
+# telling a CI gate that a commit violated the convention when none was
+# submitted, and a plain `if "$BIN" …; then` cannot tell 3 from 2.
+status=0
+"$BIN" lint --stdin=false </dev/null >/dev/null 2>&1 || status=$?
+if [ "$status" -ne 2 ]; then
+  echo "  expected exit 2 (usage) for lint --stdin=false, got $status" >&2
+  exit 1
+fi
+status=0
+"$BIN" bump --range HEAD~1..HEAD --current= >/dev/null 2>&1 || status=$?
+if [ "$status" -ne 2 ]; then
+  echo "  expected exit 2 (usage) for an empty --current, got $status" >&2
+  exit 1
+fi
 # this checkout is a repo: an empty range is the soft no-release exit (1)
 if "$BIN" bump --range HEAD..HEAD >/dev/null 2>&1; then
   echo "  expected exit 1 for an empty bump range" >&2
