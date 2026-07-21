@@ -274,8 +274,18 @@ jobs:
             # Best-effort headline from the structured envelope; the preserved
             # glyph exit code is the verdict either way (a commit the lint
             # would reject fails here too — commit-lint owns that signal).
-            jq -r '"::error::glyph preview: \(.error.message)"' \
-              "$RUNNER_TEMP/preview.err" 2>/dev/null || true
+            #
+            # SIEVE FIRST. glyph's stderr carries ::warning:: annotations AND
+            # the envelope, and jq over the two together is a parse error — the
+            # `|| true` then dropped this heading in silence, which is exactly
+            # what happened (t-sws7: measured, zero output). The envelope is the
+            # last thing written, so everything from the first line opening with
+            # `{` is the whole document. `[{]` rather than a bare `{` because an
+            # unmatched brace in a BRE is POSIX-undefined; sed, not grep,
+            # because a grep that matches nothing exits 1 and would kill the
+            # step under `set -o pipefail` on every Silent error.
+            sed -n '/^[{]/,$p' "$RUNNER_TEMP/preview.err" \
+              | jq -r '"::error::glyph preview: \(.error.message)"' || true
             exit "$status"
           fi
 
