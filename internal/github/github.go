@@ -100,7 +100,10 @@ type Option func(*Client)
 func WithBaseURL(u string) Option { return func(c *Client) { c.baseURL = strings.TrimRight(u, "/") } }
 
 // WithHTTPClient injects the HTTP client — an httptest.Server's Client() in
-// tests, or a rate-limit/timeout-tuned client in production.
+// tests, or a rate-limit/timeout-tuned client in production. It chooses how
+// bytes move (transport, TLS, timeout); it does NOT choose who may receive the
+// token, because New re-installs the origin gate over whatever is injected —
+// see guardRedirects.
 func WithHTTPClient(h *http.Client) Option { return func(c *Client) { c.http = h } }
 
 // Client talks to one GitHub REST host with one credential.
@@ -116,14 +119,105 @@ type Client struct {
 
 // New builds a client. token is sent as a Bearer credential when non-empty; an
 // empty token still reads public repos, at the anonymous rate limit.
+//
+// The origin gate is installed LAST, after every option has run, so it covers a
+// client handed in by WithHTTPClient exactly as it covers the default one: the
+// invariant "this client speaks its credential only to the origin baseURL
+// names" has to hold for every Client this constructor returns, or it is not an
+// invariant. See guardRedirects for why an injected client's own policy loses.
 func New(token string, opts ...Option) *Client {
 	c := &Client{baseURL: DefaultBaseURL, http: &http.Client{Timeout: defaultTimeout},
 		token: token, retryDelays: defaultRetryDelays}
 	for _, o := range opts {
 		o(c)
 	}
+	c.http = c.guardRedirects(c.http)
 	return c
 }
+
+// guardRedirects returns h with checkRedirect installed as its redirect policy.
+//
+// It works on a shallow COPY and never mutates h. The client passed to
+// WithHTTPClient belongs to the caller and is routinely shared — every test in
+// this package hands in httptest.Server.Client(), one object per server, and a
+// production caller may well reuse one tuned client for several things —
+// so reaching into it to rewrite how it follows redirects is a side effect a
+// constructor has no business having. The copy carries Transport, Timeout, Jar
+// and the rest over untouched: those are what WithHTTPClient exists to choose.
+//
+// An injected CheckRedirect is deliberately REPLACED, not chained to and not
+// respected. The credential belongs to the Client, not to the transport: send
+// attaches "Authorization: Bearer <token>" — contents: write in a release job —
+// to every request, so where that header may travel is this package's invariant
+// to keep and not a knob a caller widens by handing in a client. A caller that
+// wants different redirect handling is asking for a different security
+// contract, and would be silently granted one if this deferred to whatever it
+// injected.
+func (c *Client) guardRedirects(h *http.Client) *http.Client {
+	guarded := *h
+	guarded.CheckRedirect = c.checkRedirect
+	return &guarded
+}
+
+// maxRedirects is how many hops one request may take. It restates net/http's
+// own default of 10 because installing ANY CheckRedirect replaces the standard
+// policy wholesale — the 10-hop stop included — so a hook that forgets to count
+// turns a server-side redirect loop into an infinite one inside a CI job.
+const maxRedirects = 10
+
+// checkRedirect is the redirect half of the origin gate nextPage opens: every
+// hop must land on the origin baseURL names, and one that leaves it fails the
+// request instead of being followed.
+//
+// It exists because net/http's own protection is WEAKER than the Link-header
+// gate. shouldCopyHeaderOnRedirect compares the HOSTNAME only — scheme and port
+// are discarded, and a subdomain of the original host counts as the same host —
+// so the standard client happily carries "Authorization: Bearer <token>" from
+// https://ghe.corp to http://ghe.corp:8080, i.e. to another service, in
+// plaintext. Verified empirically between two httptest servers on 127.0.0.1:
+// the second port logged the bearer token. That is exactly the shape nextPage
+// refuses one hop earlier, and a gate whose back door is wider than its front
+// door is not a gate — which mattered the moment this package started claiming
+// the invariant out loud.
+//
+// The verdict is REFUSAL, not "follow it with the header stripped". Stripping
+// keeps the credential home but still lets a foreign host ANSWER, and its JSON
+// becomes the pull list or the commit list a release verdict is computed from:
+// that trades a leaked token for a silently corrupted release, which is the
+// worse of the two. Refusing is also the same answer nextPage gives the same
+// shape, so the package has one origin rule with one outcome. glyph talks to an
+// API it was pointed at; a redirect off that origin is an anomaly, and the
+// house rule is that anomalies are named rather than absorbed.
+func (c *Client) checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxRedirects {
+		return &redirectRefused{err: core.APIf(
+			"github: refusing to follow more than %d redirects — %s is redirecting in a loop",
+			maxRedirects, originOf(req.URL))}
+	}
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
+		return &redirectRefused{err: core.APIf("github: malformed base url %q: %v", c.baseURL, err)}
+	}
+	if !sameOrigin(base, req.URL) {
+		return &redirectRefused{err: core.APIf(
+			"github: refusing to follow a redirect to %s — this client is configured for %s, and its credential goes nowhere else",
+			originOf(req.URL), originOf(base))}
+	}
+	return nil
+}
+
+// redirectRefused carries a checkRedirect verdict back out through net/http,
+// which wraps whatever CheckRedirect returns in a *url.Error. It marks the
+// failure as glyph's own policy rather than a wire hiccup, so send's retry loop
+// does not replay a decision that cannot change: the t-bjrv backoff exists to
+// ride out a GitHub outage, and spending ~21s re-refusing the same redirect
+// before failing anyway would only delay the CI log the operator needs.
+// Unwrap keeps the wrapped *core.Error reachable, so to everything outside this
+// package (core.AsError, core.ExitCode) it is an ordinary CodeAPI failure.
+type redirectRefused struct{ err *core.Error }
+
+func (e *redirectRefused) Error() string { return e.err.Error() }
+func (e *redirectRefused) Unwrap() error { return e.err }
 
 // apiPull is the pull-request shape as GitHub reports it; only the fields the
 // release walk reads are decoded.
@@ -213,7 +307,8 @@ func getAll[T any](ctx context.Context, c *Client, u string) ([]T, error) {
 }
 
 // get performs one GET via send, decodes the 2xx body into into, and returns
-// the next-page URL from the Link header ("" when there is none).
+// the next-page URL from the Link header ("" when there is none) — admitted
+// only when it addresses the client's own origin, see nextPage.
 func (c *Client) get(ctx context.Context, u string, into any) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -226,8 +321,115 @@ func (c *Client) get(ctx context.Context, u string, into any) (string, error) {
 	if err := json.Unmarshal(body, into); err != nil {
 		return "", core.APIf("github: decoding %s: %v", req.URL.Path, err)
 	}
-	return nextLink(header.Get("Link")), nil
+	return c.nextPage(header.Get("Link"))
 }
+
+// nextPage reads the next-page URL out of a response's Link header and admits
+// it only when it addresses the client's OWN origin — the scheme, host and
+// port baseURL names. "" (no next page) passes through as the walk's stop.
+//
+// Why the gate exists: send attaches "Authorization: Bearer <token>" to
+// whatever URL it is handed, and in a release job that credential carries
+// contents: write. net/http drops the header when a *redirect* crosses hosts,
+// but this hop is hand-written and sits outside that protection, so without
+// the check a response that merely *says* "your next page is over there" would
+// hand the token to an arbitrary host. (net/http's redirect rule is also too
+// coarse to lean on even where it does apply — it compares hostnames only —
+// which is why checkRedirect re-applies THIS rule to every hop; the two are one
+// invariant with two entry points.) Reaching that requires already
+// controlling the API host's answers (an Enterprise install, a proxy) — an
+// actor who by then holds the token anyway — so this is defense in depth, not
+// a live exploit. It is here because "this client speaks its credential only
+// to the host it was pointed at" is an invariant worth stating in code rather
+// than in a comment about who we happen to talk to today.
+//
+// It sits HERE, in get, rather than in getAll: get is what turns a Link header
+// into a return value a caller will follow, so validating on the way out means
+// no unvalidated next link ever escapes the funnel that owns the token. A
+// check in getAll would guard today's three listings and leave the next caller
+// of get to reopen the hole. nextLink stays what it is — a pure header parser
+// with no client, no network and no notion of origin, whose fuzz property (it
+// only ever returns a substring of the header it was given) is what keeps it
+// honest.
+//
+// The refusal is a hard CodeAPI error, never a quiet stop: silently truncating
+// a page walk would hand internal/bump a short commit list and turn a wrong
+// release verdict loose, which is far worse than failing the job. The message
+// names both origins, because the realistic cause is a misconfigured
+// Enterprise host and a CI log is all the operator gets.
+func (c *Client) nextPage(header string) (string, error) {
+	next := nextLink(header)
+	if next == "" {
+		return "", nil
+	}
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
+		return "", core.APIf("github: malformed base url %q: %v", c.baseURL, err)
+	}
+	u, err := url.Parse(next)
+	if err != nil {
+		return "", core.APIf("github: malformed next-page link %q: %v", next, err)
+	}
+	// A relative reference is refused, not resolved. Resolving it would be safe
+	// for the credential (a relative reference cannot change origin), so this is
+	// a correctness call: it would mean CHOOSING a base — the configured baseURL
+	// or the URL of the page that carried the header, which stop agreeing as
+	// soon as the path is more than a root — i.e. guessing which page the server
+	// meant. A wrong guess walks the wrong page and quietly changes a release
+	// verdict. GitHub always sends absolute next links, so this shape is an
+	// anomaly, and naming an anomaly beats guessing at it.
+	if !u.IsAbs() {
+		return "", core.APIf(
+			"github: refusing to follow the relative next-page link %q — a Link header from %s must carry an absolute url",
+			next, c.baseURL)
+	}
+	if !sameOrigin(base, u) {
+		return "", core.APIf(
+			"github: refusing to follow a next-page link to %s — this client is configured for %s, and its credential goes nowhere else",
+			originOf(u), originOf(base))
+	}
+	return next, nil
+}
+
+// sameOrigin reports whether two absolute URLs address the same origin — the
+// single rule both gates apply, nextPage to a Link header and checkRedirect to
+// a Location, so the two can never drift into disagreeing about what "the
+// configured host" means. The
+// comparison is on PARSED components, never a string prefix: the whole point is
+// to reject api.github.com.evil.test, which has https://api.github.com as a
+// prefix. Scheme and host compare case-insensitively (RFC 3986 §3.1 and
+// §3.2.2 — url.Parse already lowercases the scheme, the host it leaves
+// verbatim). PATH is deliberately not compared: GitHub's own Link headers
+// rewrite a /repos/{owner}/{repo}/… request into the /repositories/{id}/… form
+// on later pages, so anything stricter than origin would break real pagination
+// — and origin is exactly the line that decides who receives the credential.
+func sameOrigin(a, b *url.URL) bool {
+	return strings.EqualFold(a.Scheme, b.Scheme) &&
+		strings.EqualFold(a.Hostname(), b.Hostname()) &&
+		effectivePort(a) == effectivePort(b)
+}
+
+// effectivePort is a URL's port with the scheme's default filled in.
+// https://h and https://h:443 are one origin (RFC 3986 §6.2.3), and treating
+// them as two would hard-fail a legitimate walk against a host that happens to
+// spell its default port out. A scheme with no known default keeps "", which
+// only ever compares equal to another URL of that same scheme.
+func effectivePort(u *url.URL) string {
+	if p := u.Port(); p != "" {
+		return p
+	}
+	switch u.Scheme {
+	case "https":
+		return "443"
+	case "http":
+		return "80"
+	}
+	return ""
+}
+
+// originOf renders scheme://host[:port] verbatim for a refusal message, so the
+// log names both sides of the mismatch instead of a bare "rejected".
+func originOf(u *url.URL) string { return u.Scheme + "://" + u.Host }
 
 // statusError carries a non-2xx response's status alongside the flattened
 // *core.Error, so a public method can classify by status (the 422 below)
@@ -279,6 +481,15 @@ func failed(ctx context.Context, what string, err error) error {
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return &core.Error{Code: core.CodeInterrupted, Msg: "interrupted", Silent: true}
 	}
+	// A redirect verdict comes back through this same door (http.Client.Do wraps
+	// CheckRedirect's error in a *url.Error), and it is already a finished,
+	// classified message naming both origins. Carry it out whole: re-wrapping
+	// would bury the operator's answer inside `github: GET /x: Get "…": github:
+	// refusing…` and, worse, flatten the carrier that tells send not to retry it.
+	var rr *redirectRefused
+	if errors.As(err, &rr) {
+		return rr
+	}
 	return core.APIf("github: %s: %v", what, err)
 }
 
@@ -290,6 +501,13 @@ func failed(ctx context.Context, what string, err error) error {
 // answers 503). An interrupt never does — the user asked to stop — and every
 // other 4xx is the caller's input, which a retry cannot repair.
 func retryable(err error) bool {
+	// A refused redirect is this package's own verdict, not the wire's: the same
+	// Location would be refused three more times. Checked first, because the
+	// fallback below says yes to every CodeAPI failure and this one is one.
+	var rr *redirectRefused
+	if errors.As(err, &rr) {
+		return false
+	}
 	var se *statusError
 	if errors.As(err, &se) {
 		return se.status >= 500 || se.status == http.StatusTooManyRequests ||
