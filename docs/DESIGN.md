@@ -155,6 +155,37 @@ message wedged the release permanently. The price is one API round-trip per
 merge commit, including the local merges that resolve to nothing — the only way
 to tell the two apart is to ask.
 
+**A pull's listing is governed by the walk's range, not by the pull.** The
+listing is the pull's *entire* history and knows nothing of the range, so
+expanding it whole folds in whatever the pull touched, whenever it touched it:
+with a version tag cut *inside* a landed pull's footprint, commits that shipped
+under that tag came back for a second release — exit 0, empty stderr, a minor
+manufactured out of released work (t-8xsb). Before anything is parsed, each
+listed commit is therefore mapped to **where it landed on the released branch**,
+and the range decides. The mapping is git's, not a guess, and there are three
+shapes: the merge button leaves the commits on the branch verbatim, so a listed
+SHA the repository holds and that is an ancestor of `HEAD` landed as itself; a
+rebase rewrote them all, but preserved their messages and their order and named
+the last of the run as `merge_commit_sha`, so the N first-parent commits ending
+there align positionally — an alignment **verified message by message and
+abandoned whole** unless every one matches; a squash left no footprint at all,
+and the pull alone governs it exactly as before. A commit that landed outside
+the range is dropped with a `::notice::` naming it, and one that landed inside
+is folded **under its on-branch SHA** — which also retires a defect of its own,
+since a rebase-merged pull used to put its pre-rebase SHAs, which exist on no
+branch, into the notes. A **shallow** checkout cannot answer the question at all
+(a commit git does not have is indistinguishable from one that never landed), so
+the walk says so once and falls back to expanding whole listings.
+
+This also restores the intuitive **wedge escape**. A lint failure inside a
+resolved pull is hard (Q1, below), and it used to be escapable only by cutting a
+base at or past the pull's *merge point*, because expanding re-read the whole
+listing however far past the offending commit the tag sat — so clearing the wedge
+threw away every good commit in between. Now a base at or past the **offending
+commit** clears it, and the error says so; only a squash-merged pull, whose
+commits exist nowhere but the API, still sends the operator to its merge point
+(which is its one commit on `main` anyway).
+
 Standing aside is only safe if something stands in, so the walk keeps a ledger:
 a pull that some commit reported itself *covered* by, whose canonical commit is
 inside the range and was nevertheless never expanded, gets a loud `::warning::`
@@ -166,16 +197,21 @@ the release reports `no release: 0 commit(s) participate` with no diagnostic at
 all: the original t-7zt7 silence, surviving on the new path.
 
 The walk **warns and does not expand** such a pull. Its commits are genuinely
-lost from that release, and they cannot be recovered from the API: a pull's
-commit listing is the pull's *entire* history and carries nothing about the
-walk's range, which is a git fact, so folding it in guesses which of its
-commits belong here — and the guess is wrong two ways. A rebase-merged pull
-lists its *pre-rebase* SHAs, which can never equal the `main` SHAs the walk-wide
-set holds, so the dedup passes them all and the same change renders twice; and
-a pull whose earlier commits shipped under the previous tag has them folded
-straight back in, manufacturing a minor bump out of released work. Both are the
-silent-wrong-verdict class this mechanism exists to kill, so the honest move is
-to name the loss and refuse to guess. The warning cannot fire on a repository
+lost from that release, and the reason the walk will not recover them from the
+API is the same one that governs the resolved arm above — a listing carries
+nothing about the range — but here the walk cannot repair it. The footprint
+mapping needs the pull's **canonical commit** as its anchor, and this arm is
+defined by not having one: the rebase alignment has nothing to align against.
+Guessing instead is wrong two ways. A rebase-merged pull lists its *pre-rebase*
+SHAs, which can never equal the `main` SHAs the walk-wide set holds, so the
+dedup passes them all and the same change renders twice; and a pull whose
+earlier commits shipped under the previous tag has them folded straight back in,
+manufacturing a minor bump out of released work. Both are the silent-wrong-verdict
+class this mechanism exists to kill, so the honest move is to name the loss and
+refuse to guess. (The merge-button shape *is* placeable without the anchor, since
+its commits sit on the branch under their own SHAs — so this refusal is broader
+than it now has to be. Narrowing it means reopening a decision t-7zt7 ratified,
+and it is tracked rather than smuggled in.) The warning cannot fire on a repository
 whose merge points the walk can **resolve** — one that cries on every release
 would be worse than none: standing aside requires the pull's canonical commit to
 be **in range**, and a canonical commit in range that resolves is expanded on the
@@ -232,10 +268,20 @@ The leniency is for the fallback path only. A lint failure **inside a
 resolved merged PR** stays a hard exit 3 even on the release walk (Q1 —
 "never a silent patch" at full strength; only a commit that bypassed the lint
 gate can produce one). Published history is immutable, so that commit wedges
-every release until the walk no longer reaches the pull's **merge point**: cut
-a release tag at that merge point (or later) by hand, or name such a tag with
-an explicit `--since-tag=TAG`. The error itself names the PR, its merge point
-and that escape.
+every release until the walk starts past it: cut a release tag there by hand, or
+name such a tag with an explicit `--since-tag=TAG`. The error names the PR, its
+merge point, the base that clears it and why that base is the one.
+
+**Which base clears it depends on whether the offending commit is somewhere a
+tag can be cut**, and the two answers are the two halves of the footprint rule
+above. A merge- or rebase-merged PR put its commits on the released branch, so
+the walk can drop the ones that landed outside the range, and a base **at or
+past the offending commit** clears the wedge — the intuitive escape, and the
+nearest one, which matters because every commit between it and the merge point
+is a commit a farther base would silently drop from the release. A
+**squash-merged** PR has no such commit: its individual commits exist only over
+the API, its one commit on `main` *is* its merge point, and nothing short of a
+base at or past that merge point stops the walk re-fetching the listing.
 
 Since a merge commit resolves (t-7zt7), that hard gate reaches **merge-merged
 PRs for the first time**: a non-conforming commit inside one now wedges the
@@ -243,14 +289,10 @@ release where the pre-fix walk released quietly. That is the contract
 squash-merged PRs have always had, and the quiet release was the silent-drop
 bug wearing a friendly face — but it is a real change for the 31 of 34 fleet
 repositories that allow the button, and it lands as an exit 3 on their next
-release. The escape is stated against the **merge point** for exactly this
-shape: expanding a pull re-fetches its *whole* listing whenever its merge point
-is in range, so a base cut past the offending commit alone leaves that merge
-point in range and wedges again — verified, a tag at the offending commit and a
-tag strictly past it both still exit 3, and only a base at or past the merge
-commit exits 0. A squash-merged PR has exactly one commit on `main` and it *is*
-its merge point, so the two readings coincide there, which is why the older
-"past the commit" wording held until the other shape became reachable.
+release. Between t-7zt7 and t-8xsb the escape had to be stated against the merge
+point for *every* shape, because expanding re-fetched the pull's whole listing
+whenever its merge point was in range (verified then: a tag at the offending
+commit and a tag strictly past it both exited 3). Both now exit 0.
 
 ## 5. Architecture (Go, house pattern)
 

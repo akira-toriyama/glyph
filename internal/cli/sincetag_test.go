@@ -1369,21 +1369,22 @@ func TestSinceTagResolvedPRLintNamesTheWedge(t *testing.T) {
 	}
 }
 
-// TestSinceTagWedgeEscapeIsTheMergePoint walks the escape the wedge error hands
-// the operator and checks that the door actually opens. It does not for a
-// MERGE-merged pull under the old wording ("cut a release tag past it by hand",
-// meaning past the offending commit): expanding a pull re-fetches its ENTIRE
-// listing whenever its merge point is in range, so the offending commit comes
-// back over the API however far past it the tag sits. Only a base at or past the
-// pull's MERGE COMMIT stops the walk from resolving the pull at all.
+// TestSinceTagWedgeEscapeIsTheOffendingCommit walks the escape the wedge error
+// hands the operator and checks that the door actually opens.
 //
-// The three tags below are the whole table, on one repository: pull #7 landed
-// through the merge button with a non-conforming commit B1 inside it, and #8
+// For a MERGE-merged pull the escape is the intuitive one — a base at or past
+// the offending commit — and it is only intuitive again because of t-8xsb.
+// Before mainFootprint, expanding a pull re-fetched its ENTIRE listing whenever
+// its merge point was in range, so the offending commit came back over the API
+// however far past it the tag sat; the hint had to send everyone to the merge
+// COMMIT, throwing away every good commit in between. Now a listed commit that
+// landed outside the range is dropped before it is parsed, so the first two rows
+// below open (they exited 3 until this fix) and the hint names the commit.
+//
+// The four tags are the whole table, on one repository: pull #7 landed through
+// the merge button with a non-conforming commit B1 inside it, and #8
 // squash-merged afterwards so a cleared walk still has something to release.
-// A squash-merged pull has exactly one commit on main, which IS its merge point,
-// so "past the commit" and "past the merge point" coincide there — which is why
-// the old wording held until this branch made the other shape reachable.
-func TestSinceTagWedgeEscapeIsTheMergePoint(t *testing.T) {
+func TestSinceTagWedgeEscapeIsTheOffendingCommit(t *testing.T) {
 	dir, _ := testRepo(t)
 	mp := mergePR(t, dir, "akira-toriyama", 7, "no gitmoji leads this subject", ":bug:(ui) polish the menu")
 	bad, good := mp.Branch[0], mp.Branch[1]
@@ -1393,6 +1394,7 @@ func TestSinceTagWedgeEscapeIsTheMergePoint(t *testing.T) {
 	testGit(t, dir, "akira-toriyama", "tag", "v0.4.0", mp.Merge)
 	pr7 := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`
 	routes := map[string]string{
+		commitPullsPath(bad):      pr7,
 		commitPullsPath(good):     pr7,
 		commitPullsPath(mp.Merge): pr7,
 		commitPullsPath(later):    `[` + apiPullRef(8, "2026-07-21T00:00:00Z", later) + `]`,
@@ -1407,8 +1409,9 @@ func TestSinceTagWedgeEscapeIsTheMergePoint(t *testing.T) {
 		wantCode int
 		wantOut  string
 	}{
-		{"a tag AT the offending commit", "v0.2.0", 3, ""},
-		{"a tag strictly PAST the offending commit — what the old escape said to do", "v0.3.0", 3, ""},
+		{"a base BEFORE the pull is the wedge itself", "v0.1.0", 3, ""},
+		{"a tag AT the offending commit", "v0.2.0", 0, "v0.2.1\n"},
+		{"a tag strictly PAST the offending commit", "v0.3.0", 0, "v0.3.1\n"},
 		{"a tag at the pull's merge commit", "v0.4.0", 0, "v0.4.1\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1424,17 +1427,14 @@ func TestSinceTagWedgeEscapeIsTheMergePoint(t *testing.T) {
 				return
 			}
 			env := decodeErrorEnvelope(t, stderr)
-			// The lint line still names the offending commit (that is the
-			// failure), but the ESCAPE must send the operator to the merge
-			// commit — the only base these two subtests prove clears it.
 			if !strings.Contains(env.Message, bad[:7]) {
 				t.Errorf("the error must still name the offending commit %.7s:\n%s", bad, env.Message)
 			}
-			if want := "AT OR PAST " + mp.Merge[:7]; !strings.Contains(env.Message, want) {
-				t.Errorf("the escape must name the merge point (%q), the only base that opens the door:\n%s", want, env.Message)
-			}
-			if strings.Contains(env.Message, "past it by hand") {
-				t.Errorf("the old escape (a tag past the offending commit) is exactly what the two failing subtests disprove:\n%s", env.Message)
+			// The escape names the OFFENDING COMMIT, because the two rows above
+			// prove a base there opens the door — sending the operator to the
+			// merge point instead would silently drop everything between.
+			if want := "AT OR PAST " + bad[:7]; !strings.Contains(env.Message, want) {
+				t.Errorf("the escape must name the offending commit (%q), the nearest base that opens the door:\n%s", want, env.Message)
 			}
 		})
 	}
@@ -1509,4 +1509,134 @@ func TestSinceTagAPIFailureMidWalkPassesThrough(t *testing.T) {
 	if strings.Contains(env.Message, "wedge") || strings.Contains(env.Message, "by hand") {
 		t.Fatalf("an API failure must not carry the lint wedge prose:\n%s", env.Message)
 	}
+}
+
+// --- t-8xsb: a pull's listing is governed by the walk range ------------------
+//
+// A merged pull request's API commit listing is the pull's ENTIRE history and
+// carries nothing about the walk's range. DESIGN §4 says exactly that, and says
+// it as the reason the walk refuses to expand an UNRESOLVED pull — but the
+// resolved arm expanded the listing whole regardless, so a version tag cut
+// INSIDE a landed pull's footprint folded already-released commits back into the
+// next release. Exit 0, empty stderr, a minor invented out of shipped work.
+//
+// The tests below pin the fix (mainFootprint) on both shapes that have a
+// footprint, plus the controls that must not move.
+
+// TestSinceTagDoesNotRefoldReleasedMergeMergedCommits is the reported bug: pull
+// #7 lands through the merge button, and the release tag is cut at its FIRST
+// branch commit — so that commit shipped, and only the second belongs to the
+// next release. Before the fix this answered v0.2.0 with no diagnostic at all.
+func TestSinceTagDoesNotRefoldReleasedMergeMergedCommits(t *testing.T) {
+	dir, _ := testRepo(t)
+	mp := mergePR(t, dir, "akira-toriyama", 7, ":sparkles:(ui) add a menu", ":memo: document the menu")
+	shipped, pending := mp.Branch[0], mp.Branch[1]
+	testGit(t, dir, "akira-toriyama", "tag", "v0.1.1", shipped)
+	pr7 := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(pending):  pr7,
+		commitPullsPath(mp.Merge): pr7,
+		pullCommitsPath(7): `[` +
+			apiCommit(shipped, "akira-toriyama", ":sparkles:(ui) add a menu") + `,` +
+			apiCommit(pending, "akira-toriyama", ":memo: document the menu") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.1")
+	if code != 1 {
+		t.Fatalf("bump --since-tag=v0.1.1 = exit %d stdout %q, want 1 (only the :memo: is in range)\nstderr: %s", code, stdout, stderr)
+	}
+	// The drop is announced. A commit leaving the fold silently is the class of
+	// failure this whole file exists to prevent — in either direction.
+	if !strings.Contains(stderr, shipped[:7]) || !strings.Contains(stderr, "shipped under an earlier tag") {
+		t.Errorf("the walk must name the released commit it declined to re-count:\n%s", stderr)
+	}
+	// The in-range half is still COUNTED — the verdict is none because a :memo:
+	// is none, not because the pull was refused wholesale. A fix that dropped
+	// the whole pull would pass the assertion above and fail this one.
+	if !strings.Contains(stderr, "1 commit(s) participate") {
+		t.Errorf("the in-range half of the pull must still participate:\n%s", stderr)
+	}
+}
+
+// TestSinceTagRefoldControlWholePullInRange is the control for the test above,
+// and the one that would catch an over-eager fix: with the tag BEFORE the pull,
+// every commit of it is in range and the verdict must be untouched.
+func TestSinceTagRefoldControlWholePullInRange(t *testing.T) {
+	dir, _ := testRepo(t)
+	mp := mergePR(t, dir, "akira-toriyama", 7, ":sparkles:(ui) add a menu", ":memo: document the menu")
+	pr7 := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(mp.Branch[0]): pr7,
+		commitPullsPath(mp.Branch[1]): pr7,
+		commitPullsPath(mp.Merge):     pr7,
+		pullCommitsPath(7): `[` +
+			apiCommit(mp.Branch[0], "akira-toriyama", ":sparkles:(ui) add a menu") + `,` +
+			apiCommit(mp.Branch[1], "akira-toriyama", ":memo: document the menu") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, shas, stderr := verdictSHAs(t, "bump", "--since-tag=v0.1.0")
+	if code != 0 {
+		t.Fatalf("the whole pull is in range and must still release: exit %d\nstderr: %s", code, stderr)
+	}
+	if len(shas) != 2 {
+		t.Errorf("both commits must participate, got %v\nstderr: %s", shas, stderr)
+	}
+}
+
+// TestSinceTagRebaseMergeUsesOnMainSHAs covers the shape a naive ancestry check
+// cannot: a REBASE-merge rewrites every commit, so the pull's listing reports
+// pre-rebase SHAs that exist on no branch and can never equal a walked one. The
+// walk aligns the listing against the first-parent run ending at the canonical
+// commit — verified message by message — which fixes the range AND a defect of
+// its own: before this, the notes cited SHAs the repository does not contain.
+func TestSinceTagRebaseMergeUsesOnMainSHAs(t *testing.T) {
+	dir, _ := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) add a menu")
+	r1 := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testCommit(t, dir, "akira-toriyama", ":memo: document the menu")
+	r2 := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testGit(t, dir, "akira-toriyama", "tag", "v0.1.1", r1)
+	// GitHub names the LAST replayed commit as merge_commit_sha, and the listing
+	// still reports the branch's original, pre-rebase SHAs.
+	pr7 := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", r2) + `]`
+	listing := `[` +
+		apiCommit("pre1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "akira-toriyama", ":sparkles:(ui) add a menu") + `,` +
+		apiCommit("pre2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "akira-toriyama", ":memo: document the menu") + `]`
+	routes := map[string]string{
+		commitPullsPath(r1): pr7,
+		commitPullsPath(r2): pr7,
+		pullCommitsPath(7):  listing,
+	}
+
+	t.Run("tag inside the rebased run drops the released commit", func(t *testing.T) {
+		srv := walkServer(t, routes)
+		usePR(t, srv)
+		t.Chdir(dir)
+		code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.1")
+		if code != 1 {
+			t.Fatalf("bump --since-tag=v0.1.1 = exit %d stdout %q, want 1\nstderr: %s", code, stdout, stderr)
+		}
+	})
+
+	t.Run("the whole run in range still releases, citing real SHAs", func(t *testing.T) {
+		srv := walkServer(t, routes)
+		usePR(t, srv)
+		t.Chdir(dir)
+		code, shas, stderr := verdictSHAs(t, "bump", "--since-tag=v0.1.0")
+		if code != 0 {
+			t.Fatalf("the whole pull is in range: exit %d\nstderr: %s", code, stderr)
+		}
+		// The assertion that would have caught the phantom-SHA defect: every
+		// reported commit must be one this repository actually has.
+		for _, sha := range shas {
+			if strings.HasPrefix(sha, "pre") {
+				t.Errorf("the verdict cites a pre-rebase SHA the repository does not contain: %s", sha)
+			}
+			testGit(t, dir, "akira-toriyama", "cat-file", "-e", sha+"^{commit}")
+		}
+	})
 }

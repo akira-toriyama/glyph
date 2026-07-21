@@ -244,22 +244,77 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 	// pull — the reconciliation at the end of the walk deliberately does not call
 	// this (see there), because a listing fetched without a canonical commit in
 	// range says nothing about which of its commits belong to this walk.
+	//
+	// What the listing DOES say is filtered twice before anything is parsed: by
+	// where each commit landed on the released branch (mainFootprint — the range
+	// governs anything git can place, which is what stops a pull from folding
+	// back work an earlier tag shipped), and by seen (an already-represented
+	// commit must never be able to fail the release — its message may be a squash
+	// subject, which never parses).
+	//
+	// A shallow checkout cannot answer the footprint question: a commit git does
+	// not HAVE is indistinguishable from one that never landed, so every listed
+	// commit reads as footprint-less and the walk quietly returns to expanding
+	// whole listings — the t-8xsb behaviour, wearing a clone option. Asked once,
+	// and only if some pull actually expands, so the ordinary full-history
+	// release pays one `git rev-parse` and a shallow one is told.
+	shallowChecked := false
 	foldPull := func(number int, canonical string) error {
+		if !shallowChecked {
+			shallowChecked = true
+			shallow, serr := gitsource.IsShallow(ctx, ".")
+			if serr != nil {
+				return serr
+			}
+			if shallow {
+				warnf("this is a SHALLOW checkout: the walk cannot tell a commit that never landed on the released branch from one git does not have, so a merged pull request's commits can be counted again even though an earlier tag shipped them. Check out with full history (actions/checkout with fetch-depth: 0) before releasing")
+			}
+		}
 		listing, perr := pullRawCommits(ctx, c, owner, repo, number)
 		if perr != nil {
-			return wedgeHint(perr, owner, repo, number, canonical)
+			return wedgeHint(perr, owner, repo, number, canonical, "")
+		}
+		// Where did each listed commit LAND on the released branch? That is the
+		// only question that lets the walk RANGE — a git fact — govern a listing
+		// that knows nothing about it. A commit with no landing site is governed
+		// by the pull alone and folds exactly as it always did; one that landed
+		// is folded only if its landing site is in range.
+		landed, ferr := mainFootprint(ctx, canonical, listing)
+		if ferr != nil {
+			return ferr
 		}
 		fresh := make([]gitsource.RawCommit, 0, len(listing))
-		for _, r := range listing {
+		for i, r := range listing {
+			if on := landed[i]; on != "" {
+				if !inRange[on] {
+					noticef("commit %.7s in pull request #%d landed on the released branch as %.7s, which is outside %s — it shipped under an earlier tag and is not counted again", r.SHA, number, on, revRange)
+					continue
+				}
+				// The landing site is the identity that matters downstream: the
+				// notes must cite a commit the repository actually has, and a
+				// rebase-merge's listing reports pre-rebase shas that exist on
+				// no branch. Substituting here also makes the walk-wide dedup
+				// below compare like with like.
+				r.SHA = on
+			}
 			if r.SHA != "" && seen[r.SHA] {
 				noticef("commit %.7s in pull request #%d is already represented in this walk (a stacked branch carries its base PR's pre-squash commits; a merge-merged PR's commits sit on main under these same SHAs; a sub-PR's squash commit rides inside the PR that landed its branch) — counted once", r.SHA, number)
 				continue
 			}
 			fresh = append(fresh, r)
 		}
-		inner, perr := participating(fresh)
-		if perr != nil {
-			return wedgeHint(perr, owner, repo, number, canonical)
+		// Parsed one at a time so a failure knows WHICH commit it was. The escape
+		// the wedge hint offers is a tag cut at that commit, and only a commit
+		// this walk can point at on the released branch can carry one — see
+		// wedgeHint. participating holds no cross-commit state, so a run of
+		// singletons folds to exactly the same list as one call.
+		inner := make([]parser.Commit, 0, len(fresh))
+		for _, r := range fresh {
+			one, oerr := participating([]gitsource.RawCommit{r})
+			if oerr != nil {
+				return wedgeHint(oerr, owner, repo, number, canonical, onMain(r.SHA, inRange))
+			}
+			inner = append(inner, one...)
 		}
 		contributed := 0
 		for _, ic := range inner {
@@ -268,7 +323,7 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 			// down there the PR association is gone, and a bare per-commit lint
 			// line is uniquely unhelpful HERE — see wedgeHint.
 			if _, cerr := bump.Classify(ic, table); cerr != nil {
-				return wedgeHint(cerr, owner, repo, number, canonical)
+				return wedgeHint(cerr, owner, repo, number, canonical, onMain(ic.SHA, inRange))
 			}
 			if ic.SHA != "" {
 				seen[ic.SHA] = true
@@ -409,6 +464,100 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 	return commits, pulls, nil
 }
 
+// mainFootprint answers, for each commit in a merged pull request's API listing,
+// which commit on the RELEASED branch it landed as — the empty string when it
+// landed under no identity of its own.
+//
+// This is the missing half of the expansion. A pull's listing is the pull's
+// ENTIRE history and carries nothing about the walk's range, which is a git
+// fact; DESIGN §4 says so, and says it as the reason the walk refuses to expand
+// an UNRESOLVED pull. The resolved arm expanded the listing whole anyway, and
+// the gap between the two is a fabricated release: with a version tag cut inside
+// a merge-merged pull's topic branch, commits that shipped under that tag were
+// folded back into the next one (t-8xsb — exit 0, empty stderr, a minor invented
+// out of released work). Once each listed commit is mapped to where it landed,
+// the range can govern it, and both arms follow the same principle.
+//
+// Three shapes, decided from LOCAL GIT alone — GitHub reports no merge method,
+// and asking for one would be a round-trip per pull to learn something git
+// already knows:
+//
+//   - the merge button: the pull's commits sit on the released branch verbatim,
+//     so a listed sha that this repository holds AND that is an ancestor of HEAD
+//     landed as itself. This is asked of HEAD rather than of the merge commit on
+//     purpose: a commit that reached the branch by some earlier route is just as
+//     released, and the range is what decides whether it belongs here.
+//   - rebase and merge: git rewrote every commit, so no listed sha is on the
+//     branch — but it preserved their messages and their order, and the canonical
+//     commit GitHub names is the LAST of the run. So the N first-parent commits
+//     ending there align positionally. The alignment is VERIFIED message by
+//     message and abandoned whole unless every one matches: a guess about which
+//     commits belong to a release is precisely what this function exists to
+//     remove, and half a mapping is worse than none.
+//   - squash and merge: the listing collapsed into the one canonical commit and
+//     has no footprint at all. Nothing changes for it — the pull alone governs,
+//     as it always has.
+//
+// The unverifiable case degrades to the old behaviour rather than to an error:
+// a squash-merged pull and a rebase whose alignment does not hold are not
+// distinguishable without the merge method, and the squash shape is the fleet's
+// norm, so a warning here would fire on nearly every release and teach people to
+// ignore it. What that costs is bounded — it is exactly today's expansion.
+func mainFootprint(ctx context.Context, canonical string, listing []gitsource.RawCommit) ([]string, error) {
+	landed := make([]string, len(listing))
+	if len(listing) == 0 {
+		return landed, nil
+	}
+	shas := make([]string, 0, len(listing))
+	for _, r := range listing {
+		if r.SHA != "" {
+			shas = append(shas, r.SHA)
+		}
+	}
+	// One call to drop everything this repository does not hold — which is the
+	// WHOLE listing for the squash and rebase shapes, so the per-sha ancestry
+	// test below runs only where it can answer yes.
+	have, err := gitsource.Have(ctx, ".", shas)
+	if err != nil {
+		return nil, err
+	}
+	anyLanded := false
+	for i, r := range listing {
+		if r.SHA == "" || !have[r.SHA] {
+			continue
+		}
+		on, aerr := gitsource.IsAncestor(ctx, ".", r.SHA, "HEAD")
+		if aerr != nil {
+			return nil, aerr
+		}
+		if on {
+			landed[i], anyLanded = r.SHA, true
+		}
+	}
+	if anyLanded {
+		return landed, nil
+	}
+	// Nothing landed under its own sha: either a rebase rewrote them all, or the
+	// pull was squashed. Only the rebase shape leaves a run this listing can be
+	// aligned against, and only an exact, complete match is accepted as one.
+	mains, err := gitsource.FirstParentLog(ctx, ".", canonical, len(listing))
+	if err != nil {
+		return nil, err
+	}
+	if len(mains) != len(listing) {
+		return landed, nil
+	}
+	for i := range listing {
+		if strings.TrimSpace(mains[i].Message) != strings.TrimSpace(listing[i].Message) {
+			return landed, nil
+		}
+	}
+	for i := range listing {
+		landed[i] = mains[i].SHA
+	}
+	return landed, nil
+}
+
 // gitmojiBoom is the canonical breaking gitmoji — what an unknown-code
 // breaking fallback is normalized to so the shared verdict and notes
 // plumbing (which hard-errors on unknown codes, by design) can carry it.
@@ -495,24 +644,47 @@ func fallbackCommit(table *gitmoji.Table, raw gitsource.RawCommit, reason fallba
 // exactly the repositories where this newly happens, which is the worst moment
 // to sound like someone else's problem.
 //
-// The escape is stated against the pull's MERGE POINT, never against the
-// offending commit, and since the other shape became reachable that is the whole
-// difference between an open door and a closed one: foldPull re-fetches and
-// re-lints the pull's ENTIRE listing whenever its merge point is in range, so
-// for a merge-merged pull a base cut past the offending commit alone — what this
-// hint used to advise — wedges again (verified: tag AT the offending commit and
-// tag strictly past it both still exit 3; only a base at or past the merge
-// commit exits 0). A squash-merged pull has exactly ONE commit on main and it IS
-// its merge point, so the two readings coincide there — which is why the old
-// wording was right until this walk started resolving merge commits.
-func wedgeHint(err error, owner, repo string, number int, mergePoint string) error {
+// WHERE THE ESCAPE POINTS depends on whether the offending commit is somewhere a
+// tag can be cut, and onMain is what answers that. A merge- or rebase-merged
+// pull put its commits on the released branch, so the walk can now drop the ones
+// an earlier tag already shipped (mainFootprint) — which means a base past the
+// offending commit clears the wedge, the intuitive escape, restored. A
+// SQUASH-merged pull has no such commit: its listing exists only over the API,
+// its one commit on main IS its merge point, and nothing short of a base at or
+// past that merge point stops the walk from re-fetching the whole listing.
+//
+// That distinction used to be invisible, and the cost was a hint that lied by
+// omission. Before mainFootprint, expanding a pull re-read its entire listing
+// whenever its merge point was in range, so for a merge-merged pull a base past
+// the offending commit wedged again and the hint had to send everyone to the
+// merge point (verified then: tag AT the offending commit and tag strictly past
+// it both still exited 3). Now both subtests exit 0, so pointing a merge-merged
+// pull at its merge point would throw away every commit between — a short
+// release recommended by glyph itself.
+func wedgeHint(err error, owner, repo string, number int, mergePoint, offending string) error {
 	ce := core.AsError(err)
 	if ce == nil || ce.Code != core.CodeLint {
 		return err
 	}
+	base, why := mergePoint, "the pull request was squash-merged, so its commits exist only over the API and re-reading the listing is the only way the walk sees them at all; its ONE commit on the released branch is that merge point"
+	if offending != "" {
+		base, why = offending, "the offending commit is itself on the released branch (the pull was merge- or rebase-merged), and the walk no longer folds back a listed commit that landed outside the range"
+	}
 	return &core.Error{Code: core.CodeLint, Details: ce.Details, Msg: fmt.Sprintf(
-		"%s — inside merged pull request %s/%s#%d, which the release walk resolved from its merge point %.7s; the commit is already on a published branch and cannot be rewritten, so every release wedges here until the walk no longer reaches that merge point. Expanding a pull re-reads its WHOLE commit listing, so a base inside the pull does not help even when it sits past the offending commit: the walk must start AT OR PAST %.7s — cut a release tag there by hand, or name such a tag with an explicit --since-tag=TAG (DESIGN §4)",
-		ce.Msg, owner, repo, number, mergePoint, mergePoint)}
+		"%s — inside merged pull request %s/%s#%d, which the release walk resolved from its merge point %.7s; the commit is already on a published branch and cannot be rewritten, so every release wedges here until the walk starts past it. The walk must start AT OR PAST %.7s — %s. Cut a release tag there by hand, or name such a tag with an explicit --since-tag=TAG (DESIGN §4)",
+		ce.Msg, owner, repo, number, mergePoint, base, why)}
+}
+
+// onMain reports the sha a wedge escape can be cut at: the commit itself when
+// the walk can see it on the released branch, else "" for a commit that lives
+// only inside a pull request's API listing. By the time foldPull asks, a listed
+// commit that landed outside the range has already been dropped, so being in
+// range is exactly the same question as having a landing site at all.
+func onMain(sha string, inRange map[string]bool) string {
+	if sha != "" && inRange[sha] {
+		return sha
+	}
+	return ""
 }
 
 // mergedPullFor resolves a merge point on main to the pull request that merged
