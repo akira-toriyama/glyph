@@ -343,7 +343,13 @@ func TestRenderSizesTheFenceAgainstTheWholeLine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	const want = "- 🐛 **readme`:** credit ``@alice`` and ``@bob`` for the fix (9999999)\n"
+	// The scope's backtick now arrives ESCAPED — a scope is a plain-text field
+	// (t-j0c6) — and the fence is still TWO backticks, which is the property
+	// this test exists for. Measured: longestBacktickRun counts an escaped
+	// backtick like any other, deliberately, because an over-long fence is
+	// harmless while a fence that ties an authored run can be closed by it. So
+	// escaping the scope did not quietly shrink the fence back to one.
+	const want = "- 🐛 **readme\\`:** credit ``@alice`` and ``@bob`` for the fix (9999999)\n"
 	if !strings.Contains(got, want) {
 		t.Errorf("the fence was not sized against the whole line:\n--- got ---\n%s\n--- want the line ---\n%s", got, want)
 	}
@@ -355,5 +361,260 @@ func TestRenderEmpty(t *testing.T) {
 	got, err := Render(nil)
 	if err != nil || got != "" {
 		t.Fatalf("Render(nil) = %q, %v; want empty and no error", got, err)
+	}
+}
+
+// TestRenderFlattensLineTerminators pins the t-bz0r fix. A commit subject can
+// carry a bare CR — parser.splitLines trims only a TRAILING "\r" per line, so an
+// interior one survives Parse — and CommonMark treats a bare CR as a line
+// terminator. Unflattened, the notes line ENDS there: the list item closes and
+// whatever the subject said next is parsed as a fresh block, so a commit can
+// fabricate a release-notes section in someone else's release.
+//
+// Measured against GitHub 2026-07-21, on bytes written in binary mode (an
+// earlier investigation read the same probe through a text-mode reader, which
+// silently turned the CR into an LF and measured nothing):
+//
+//	in   "- 🐛 **parser:** fix the thing\r## Fabricated Section (8e0abc1)"
+//	out  <li>🐛 <strong>parser:</strong> fix the thing</li>
+//	     <h2>Fabricated Section (8e0abc1)</h2>      ← a REAL document section
+func TestRenderFlattensLineTerminators(t *testing.T) {
+	table := loadTable(t)
+	for _, c := range []struct{ name, subject string }{
+		{"a bare CR", "fix the thing\r## Fabricated Section"},
+		{"CRLF", "fix the thing\r\n## Fabricated Section"},
+		{"LF", "fix the thing\n## Fabricated Section"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			sections, err := Group([]parser.Commit{
+				{Gitmoji: ":bug:", Scope: "parser", Subject: c.subject, SHA: sha("8")},
+			}, table)
+			if err != nil {
+				t.Fatalf("Group: %v", err)
+			}
+			got, err := Render(sections)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			// The entry must be exactly ONE line. The heading marker may
+			// survive as TEXT — it is inert mid-line (measured) — but a line
+			// terminator inside the entry is what promotes it to a block.
+			var entries []string
+			for line := range strings.SplitSeq(got, "\n") {
+				if strings.HasPrefix(line, "- ") {
+					entries = append(entries, line)
+				}
+			}
+			if len(entries) != 1 {
+				t.Fatalf("want exactly one entry line, got %d — the subject split the item:\n%q", len(entries), got)
+			}
+			const want = "- 🐛 **parser:** fix the thing ## Fabricated Section (8888888)"
+			if entries[0] != want {
+				t.Errorf("subject not flattened:\n got %q\nwant %q", entries[0], want)
+			}
+		})
+	}
+}
+
+// TestRenderNeutralizesMarkup pins the t-j0c6 fix at the notes sink. Every case
+// is a shape measured against GitHub's renderer on 2026-07-21, and the first
+// three are not hypothetical attacks — they are subjects this fleet has already
+// shipped, whose words GitHub's sanitizer DELETED from the release body.
+func TestRenderNeutralizesMarkup(t *testing.T) {
+	table := loadTable(t)
+	cases := []struct {
+		name    string
+		subject string
+		want    string
+	}{
+		{
+			// Measured before the fix: "MUI  + " — <Chip> is deleted outright
+			// and <kbd> renders as a live tag that leaks past the </li>.
+			name:    "a tag GitHub deletes, beside one it keeps",
+			subject: "ThemedChip — MUI <Chip> + <kbd> compact token",
+			want:    `- ✨ ThemedChip — MUI \<Chip> + \<kbd> compact token (7777777)`,
+		},
+		{
+			// Measured before the fix: "unwrap Optional before NSNull check".
+			name:    "a generic type vanishes today",
+			subject: "unwrap Optional<Any> before NSNull check",
+			want:    `- ✨ unwrap Optional\<Any> before NSNull check (7777777)`,
+		},
+		{
+			// Measured before the fix: the <h1> escaped the preview's
+			// <details> block and landed at the top of the PR comment.
+			name:    "a closing tag breaking out of its container",
+			subject: "speed up </details><h1>OWNED</h1> the loop",
+			want:    `- ✨ speed up \</details>\<h1>OWNED\</h1> the loop (7777777)`,
+		},
+		{
+			// Measured before the fix: a live <img>, fetched through camo.
+			name:    "a remote-image beacon",
+			subject: `add a tracker <img src="https://evil.example/p.png" width=0>`,
+			want:    `- ✨ add a tracker \<img src="https\://evil.example/p.png" width=0> (7777777)`,
+		},
+		{
+			name:    "an arbitrary link",
+			subject: "see [x](http://evil.example) for details",
+			want:    `- ✨ see \[x](http\://evil.example) for details (7777777)`,
+		},
+		{
+			// The half a '<' rule cannot reach: measured, a bare URL is
+			// autolinked with no angle bracket anywhere in the input.
+			name:    "a bare URL",
+			subject: "read http://evil.example/x for details",
+			want:    `- ✨ read http\://evil.example/x for details (7777777)`,
+		},
+		{
+			// No fence can reach this one: the reference resolves to an
+			// at-sign AFTER inline parsing, so there is no at-sign in the
+			// source for the mention pattern to find. Measured LIVE before.
+			name:    "a character reference that renders as a mention",
+			subject: "pin callers to &#64;v1",
+			want:    `- ✨ pin callers to \&#64;v1 (7777777)`,
+		},
+		{
+			// The approved policy: a subject stays readable. Measured
+			// byte-identical at GitHub before and after the fix.
+			name:    "code spans and emphasis keep working",
+			subject: "keep `code spans` and *emphasis* working",
+			want:    "- ✨ keep `code spans` and *emphasis* working (7777777)",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			sections, err := Group([]parser.Commit{
+				{Gitmoji: ":sparkles:", Subject: c.subject, SHA: sha("7")},
+			}, table)
+			if err != nil {
+				t.Fatalf("Group: %v", err)
+			}
+			got, err := Render(sections)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			if !strings.Contains(got, c.want) {
+				t.Errorf("subject not neutralized:\n--- got ---\n%s\n--- want the line ---\n%s", got, c.want)
+			}
+		})
+	}
+}
+
+// TestRenderNeutralizesTheScope pins the other half of t-j0c6: the scope is a
+// plain-text field, not prose. It can only carry markup through the LEGACY token
+// grammar — the canonical scope slot is lowercase kebab-case, while the legacy
+// slot is [^()]+ — and measured, ":bug: fix(<img src=x>): …" lints clean today
+// and put a live tag in a release body.
+//
+// The hyphen case is the trap this pins from the other side: '-' is the one
+// punctuation byte a well-formed canonical scope can carry, so escaping it would
+// write a backslash into essentially every scoped line in the fleet for zero
+// rendered difference. Without a hyphenated scope here, a later "escape every
+// punctuation byte" simplification would pass every other test in this file.
+func TestRenderNeutralizesTheScope(t *testing.T) {
+	table := loadTable(t)
+	cases := []struct{ name, scope, want string }{
+		{"a canonical scope is untouched", "parser", "- ✨ **parser:** ship it (7777777)"},
+		{"a hyphenated scope keeps its hyphens", "grid-1f-4", "- ✨ **grid-1f-4:** ship it (7777777)"},
+		{"a raw tag in a legacy scope", "<img src=x>", `- ✨ **\<img src\=x\>:** ship it (7777777)`},
+		{"a link in a legacy scope", "[x](http://evil)", `- ✨ **\[x\]\(http\:\/\/evil\):** ship it (7777777)`},
+		{"a comma-separated legacy scope", "ThemeKit,prism", `- ✨ **ThemeKit\,prism:** ship it (7777777)`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			sections, err := Group([]parser.Commit{
+				{Gitmoji: ":sparkles:", Scope: c.scope, Subject: "ship it", SHA: sha("7")},
+			}, table)
+			if err != nil {
+				t.Fatalf("Group: %v", err)
+			}
+			// Group must keep the RAW scope: the JSON surface is a machine
+			// contract and escaping belongs to the render, not to the model.
+			if got := sections[0].Entries[0].Scope; got != c.scope {
+				t.Errorf("Group stored an escaped scope %q; the model must carry the raw value %q", got, c.scope)
+			}
+			got, err := Render(sections)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			if !strings.Contains(got, c.want) {
+				t.Errorf("scope not rendered as plain text:\n--- got ---\n%s\n--- want the line ---\n%s", got, c.want)
+			}
+		})
+	}
+}
+
+// TestRenderClosesThePhantomSpan pins the t-dwra fix end to end, at the sink
+// where it mattered — and it is the case that decided the shape of the whole
+// change, so it is pinned by name rather than left to the unit tests.
+//
+// codeSpans knows only backticks. A construct that outranks one consumes it, so
+// the NEXT backtick pairs with a later one and glyph reports a span GitHub never
+// formed. A mention inside that phantom reads as already-inert and is left raw.
+// Before this change the four subjects below came out of entryLine BYTE FOR BYTE
+// — no fence, no escape — and GitHub linked @octocat in every one of them.
+//
+// Measured 2026-07-21, the rendered notes line before and after:
+//
+//	before  fix <http://a/`x> so @octocat can `see` it
+//	        -> … <a class="user-mention" href="…/octocat">@octocat</a> …   LIVE
+//	after   fix \<http\://a/`x> so @octocat can `see` it
+//	        -> fix &lt;http://a/<code>x&gt; so @octocat can </code>see` it  inert
+//
+// The second line is the whole argument for killing the construct instead of
+// parsing it: with the autolink dead the two backticks pair for real, so the
+// PHANTOM SPAN BECOMES A REAL ONE and GitHub itself puts the at-sign inside
+// <code>. glyph's belief stopped being wrong because the world changed to match
+// it, not because the model got cleverer.
+//
+// The third case is why no amount of cleverness would have been enough: the
+// backtick is eaten by a link DESTINATION, which an autolink-and-raw-HTML
+// scanner does not model either.
+func TestRenderClosesThePhantomSpan(t *testing.T) {
+	table := loadTable(t)
+	cases := []struct{ name, subject, want string }{
+		{
+			name:    "a URI autolink swallows the opening backtick",
+			subject: "fix <http://a/`x> so @octocat can `see` it",
+			want:    "- 🐛 fix \\<http\\://a/`x> so @octocat can `see` it (8888888)",
+		},
+		{
+			name:    "a BARE url does it with no angle bracket at all",
+			subject: "fix http://a/`x so @octocat can `see` it",
+			want:    "- 🐛 fix http\\://a/`x so @octocat can `see` it (8888888)",
+		},
+		{
+			name:    "a link destination does it too",
+			subject: "see [a](b`c) @octocat `d` end",
+			want:    "- 🐛 see \\[a](b`c) @octocat `d` end (8888888)",
+		},
+		{
+			name:    "a raw tag's quoted attribute does it too",
+			subject: "fix <i title=\"`\"> so @octocat can `see` it",
+			want:    "- 🐛 fix \\<i title=\"`\"> so @octocat can `see` it (8888888)",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			sections, err := Group([]parser.Commit{
+				{Gitmoji: ":bug:", Subject: c.subject, SHA: sha("8")},
+			}, table)
+			if err != nil {
+				t.Fatalf("Group: %v", err)
+			}
+			got, err := Render(sections)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			if !strings.Contains(got, c.want) {
+				t.Errorf("the phantom span is still open:\n--- got ---\n%s\n--- want the line ---\n%s", got, c.want)
+			}
+			// The premise, stated so the test cannot quietly stop testing
+			// anything: the construct that stole the backtick must be gone.
+			line := c.want
+			if strings.Contains(line, "://") && !strings.Contains(line, `\://`) {
+				t.Errorf("a live scheme survived in %q", line)
+			}
+		})
 	}
 }

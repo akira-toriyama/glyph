@@ -129,19 +129,21 @@ func Headline(in Input) string {
 	}
 }
 
-// escapeCell makes a commit subject safe in a Markdown table cell: any newline
-// is flattened, would-be @mentions are fenced into code spans, and the column
-// separator is escaped. Subjects are author-supplied text, and the table is the
-// evidence the headline rests on — a subject that breaks the table takes the
-// evidence with it. The mention pass matters more here than in the notes: this
-// table is a PR comment, so a bare "@v1" would not just link a stranger, it
-// would notify them.
+// escapeCell makes a commit subject safe in a Markdown table cell: it is
+// flattened to one line, its structure-injecting constructs are disarmed,
+// would-be @mentions are fenced into code spans, and the column separator is
+// escaped. Subjects are author-supplied text, and the table is the evidence the
+// headline rests on — a subject that breaks the table takes the evidence with
+// it. Both passes matter more here than in the notes: this table is a PR
+// comment, so a bare "@v1" would not just link a stranger, it would notify them,
+// and a raw "</details>" would close the collapsed block glyph wraps the notes
+// preview in, promoting attacker-chosen content to the top of a bot's comment.
 //
-// THE ORDER IS THE SAFETY PROPERTY, because mention-safety belongs to the
-// rendered inline context and not to the string this function was handed. A
-// table cell is its own inline context (measured: a stray backtick in one cell
-// forms no span with a backtick in the next), so the escaper must see the cell
-// EXACTLY as it will render:
+// THE ORDER IS THE SAFETY PROPERTY, because both passes model the rendered
+// inline context and not the string this function was handed. A table cell is
+// its own inline context (measured: a stray backtick in one cell forms no span
+// with a backtick in the next), so each pass must see the cell EXACTLY as it
+// will render at the moment it runs:
 //
 //   - flattening comes first. It is what decides the context: to the escaper a
 //     blank line ends the paragraph, and backticks on either side of one cannot
@@ -152,15 +154,19 @@ func Headline(in Input) string {
 //
 //     | a ` b  c `@octocat d` | 🐛 `:bug:` | patch |
 //
+//   - markup neutralization comes before the mention fence, never after. The
+//     fence models the FINAL string; running it first would size a fence and
+//     choose spans against a set of constructs the next step then destroys —
+//     the identical failure mode to escaping before flattening.
+//
 //   - pipe escaping comes last. It adds backslashes, and an escaping backslash
 //     in front of a fence swallows it — markdown.EscapeMentions goes out of its
 //     way to write a separating space where the author put one there. A pipe
 //     escaped inside a code span still renders as a pipe, so nothing is lost by
 //     doing it after.
 func escapeCell(s string) string {
-	s = strings.ReplaceAll(s, "\r\n", " ")
-	s = strings.ReplaceAll(s, "\n", " ")
-	s = strings.ReplaceAll(s, "\r", " ")
+	s = markdown.Flatten(s)
+	s = markdown.EscapeMarkup(s)
 	s = markdown.EscapeMentions(s)
 	return strings.ReplaceAll(s, "|", `\|`)
 }

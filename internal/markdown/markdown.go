@@ -4,6 +4,16 @@
 // each function neutralizes one specific GitHub rendering behavior that turns
 // honest commit text into something it never meant to be.
 //
+// The package is two files, and the split is a pipeline the callers run in
+// order. escape.go comes FIRST and works per field: Flatten makes the value one
+// line, then EscapeMarkup (for prose) or EscapeText (for a plain-text field
+// like the scope) disarms the constructs that can inject structure, point
+// somewhere the author never wrote, or delete the author's own words. This file
+// comes LAST and works over the ASSEMBLED line: EscapeMentions fences the
+// would-be @mentions, which is a property of the whole inline context and of no
+// field in it. Neither order is interchangeable, and both reasons are written
+// down where the callers make the calls.
+//
 // Everything here is a MODEL of a renderer no unit test can call. Every rule
 // below was measured against GitHub's own renderer (`gh api -X POST /markdown`,
 // mode=gfm) on 2026-07-21; the probes, their observed output and the date sit
@@ -250,16 +260,29 @@ func longestBacktickRun(s string) int {
 // live, and a safety boundary should not owe its correctness to a caller's line
 // discipline.
 //
-// KNOWN LIMITATION, accepted and pinned by a test: this scan knows only
-// backticks, and CommonMark has other inline constructs that are parsed FIRST
-// and can swallow one. A URI autolink or a raw HTML tag carrying a backtick —
-// "fix <http://a/`x> so @octocat can `see` it" — leaves the next backtick to
-// pair with a later one, and glyph reads the phantom span as already-inert and
-// leaves the mention inside it raw. GitHub renders that as a live mention.
-// Closing the gap needs a real inline parser (autolinks, raw HTML, entity
-// references, link destinations), which is a different program from a commit
-// linter; the same blindness in the other direction fences a mention inside an
-// autolinked URL, which is cosmetic. Both stay in the box marked "known".
+// THIS SCAN KNOWS ONLY BACKTICKS, AND THAT IS A PRECONDITION ON ITS INPUT, not
+// an approximation. CommonMark has other inline constructs that are parsed
+// FIRST and can swallow a backtick: a URI autolink, a BARE url (GFM's extended
+// autolink needs no angle bracket at all), a raw HTML tag carrying a backtick in
+// a quoted attribute, and a link destination. Each leaves the next backtick to
+// pair with a later one, and this scan would then report a PHANTOM span — a
+// mention inside it reads as already-inert and is left raw, which GitHub renders
+// as a live mention. All four were measured live (t-dwra):
+//
+//	fix <http://a/`x> so @octocat can `see` it
+//	fix http://a/`x so @octocat can `see` it
+//	<i title="`"> so @octocat can `see` it
+//	see [a](b`c) @octocat `d` end
+//
+// The fix is not here. Teaching this scan those grammars would be a renderer
+// inside an escaper, and — as the fourth line shows — a scanner that learned
+// autolinks and raw HTML would STILL have been wrong. EscapeMarkup removes the
+// competing constructs before this runs (see escape.go), which makes the
+// backtick-only model exact by construction instead of nearly right. Both
+// callers do that; a third one must too.
+//
+// The blindness in the other direction — fencing a mention inside an autolinked
+// URL — is cosmetic and stays.
 func codeSpans(s string) [][2]int {
 	var spans [][2]int
 	for from := 0; ; {
