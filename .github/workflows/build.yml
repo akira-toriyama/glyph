@@ -82,6 +82,21 @@ jobs:
             echo "expected exit 3 for a malformed message" >&2
             exit 1
           fi
+          # The CODE is the assertion, not merely non-zero: `--stdin=false` used
+          # to exit 3, telling this very gate that a commit violated the
+          # convention when none was submitted.
+          status=0
+          /tmp/glyph lint --stdin=false </dev/null >/dev/null 2>&1 || status=$?
+          if [ "$status" -ne 2 ]; then
+            echo "expected exit 2 (usage) for lint --stdin=false, got $status" >&2
+            exit 1
+          fi
+          status=0
+          /tmp/glyph bump --range HEAD~1..HEAD --current= >/dev/null 2>&1 || status=$?
+          if [ "$status" -ne 2 ]; then
+            echo "expected exit 2 (usage) for an empty --current, got $status" >&2
+            exit 1
+          fi
           # the checkout is a repo: an empty range is the soft no-release exit (1).
           if /tmp/glyph bump --range HEAD..HEAD >/dev/null 2>&1; then
             echo "expected exit 1 for an empty bump range" >&2

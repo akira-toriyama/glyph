@@ -74,6 +74,9 @@ func notesInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, stri
 }
 
 func notesRun(cmd *cobra.Command) error {
+	if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {
+		return err
+	}
 	table, err := loadRules()
 	if err != nil {
 		return err

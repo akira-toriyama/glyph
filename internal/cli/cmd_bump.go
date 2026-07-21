@@ -71,6 +71,12 @@ func newBumpCmd() *cobra.Command {
 }
 
 func bumpRun(cmd *cobra.Command) error {
+	if err := checkNamingFlags(cmd, [][3]string{
+		{"current", "version", currentHint},
+		{"repo", "repository", repoHint},
+	}); err != nil {
+		return err
+	}
 	ctx := cmd.Context()
 	table, err := loadRules()
 	if err != nil {

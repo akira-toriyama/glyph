@@ -65,6 +65,9 @@ func newPreviewCmd() *cobra.Command {
 }
 
 func previewRun(cmd *cobra.Command) error {
+	if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {
+		return err
+	}
 	ctx := cmd.Context()
 	table, err := loadRules()
 	if err != nil {

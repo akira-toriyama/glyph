@@ -37,10 +37,23 @@ func newLintCmd() *cobra.Command {
 				return err
 			}
 			known := func(code string) bool { _, ok := table.Lookup(code); return ok }
+			// EVERY arm asks whether the flag was GIVEN, never what its value
+			// is — the same question MarkFlagsOneRequired answers, so the group
+			// check and the dispatch cannot disagree about which mode was
+			// selected. Dispatching --stdin on its VALUE meant an explicit
+			// --stdin=false satisfied the group (cobra asks pflag's Changed) and
+			// then matched no arm, so the run fell through to an empty --message
+			// and answered a bad INVOCATION with 3 — the gate code the fleet's
+			// commit-lint job hard-fails on, for a commit nobody submitted. It
+			// swallowed a good message too: a valid subject on stdin was reported
+			// as "empty commit message".
 			switch {
 			case cmd.Flags().Changed("range"):
 				return lintRangeRun(cmd.Context(), lintRange, known)
-			case lintStdin:
+			case cmd.Flags().Changed("stdin"):
+				if !lintStdin {
+					return core.Usagef("--stdin=false selects no input mode — --stdin IS the mode, so drop it and give --range or --message instead")
+				}
 				b, rerr := io.ReadAll(in)
 				if rerr != nil {
 					return core.APIf("reading stdin: %v", rerr)
@@ -50,8 +63,20 @@ func newLintCmd() *cobra.Command {
 				// status block and (under commit.verbose) the diff. Reduce it to
 				// the message git will record before judging it.
 				return lintOne(parser.Cleanup(string(b)), known)
-			default:
+			case cmd.Flags().Changed("message"):
+				// An empty --message is the caller naming no message, which is
+				// usage — not a message that violates the convention. The old
+				// fall-through could not tell the two apart and called both 3.
+				if err := checkGivenEmpty(cmd, "message", "message",
+					"name the message to lint (--message='<:code:> subject'), or read one from the commit-msg hook with --stdin"); err != nil {
+					return err
+				}
 				return lintOne(lintMessage, known)
+			default:
+				// Unreachable while MarkFlagsOneRequired holds. Kept as usage
+				// rather than a panic so a fourth mode added without its arm is
+				// diagnosed as a bad invocation instead of crashing a CI gate.
+				return core.Usagef("lint needs one of --range, --message or --stdin")
 			}
 		},
 	}
