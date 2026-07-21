@@ -138,17 +138,37 @@ func sinceTagRange(ctx context.Context, tagFlag string) (revRange string, base *
 // latestVersionTag returns the highest parseable version tag and its parsed
 // version; tag is empty for a repository before its first release. The one
 // resolver behind both the walk base and the bump base.
+//
+// EVERY tag is parsed and compared as a VERSION. The order git reports is not
+// one, and this used to take git's first parseable entry: `--sort=-v:refname`
+// is a REFNAME sort that happens to compare digit runs numerically, so it
+// orders on the leading byte first and every `refs/tags/v…` lands above every
+// `refs/tags/1…` ('v' > '1'). ParseVersion accepts a tag WITHOUT the v (its
+// pattern is ^v?…), so both spellings reach this loop, and measured on tags
+// {v0.0.1, v0.0.2, 9.9.9, 100.0.0} git reports v0.0.2 first — the resolver
+// answered v0.0.2 where the highest version is 100.0.0, moving the walk base
+// and the version base together to a tag two releases behind. A wrong base is
+// the silent-wrong-verdict class: the walk re-folds released commits and the
+// bump steps from the wrong number, with nothing on stderr.
+//
+// A tie — the same version spelled twice, v1.2.3 beside 1.2.3 — keeps the
+// FIRST in git's order, so the answer stays deterministic without inventing a
+// preference between two tags git considers equally valid.
 func latestVersionTag(ctx context.Context) (tag string, v bump.Version, err error) {
 	tags, terr := gitsource.Tags(ctx, ".")
 	if terr != nil {
 		return "", bump.Version{}, terr
 	}
 	for _, t := range tags {
-		if pv, perr := bump.ParseVersion(t); perr == nil {
-			return t, pv, nil
+		pv, perr := bump.ParseVersion(t)
+		if perr != nil {
+			continue
+		}
+		if tag == "" || pv.Compare(v) > 0 {
+			tag, v = t, pv
 		}
 	}
-	return "", bump.Version{}, nil
+	return tag, v, nil
 }
 
 // pullExpansion records one merged pull request the walk expanded — resolved

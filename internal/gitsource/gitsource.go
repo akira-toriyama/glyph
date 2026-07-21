@@ -43,9 +43,19 @@ func Log(ctx context.Context, dir, revRange string) ([]RawCommit, error) {
 	return parseLog(out)
 }
 
-// Tags lists all tags version-sorted descending (highest first). The caller
-// picks the first entry it can parse as a version — deliberately not filtered
-// here, so the policy of what counts as a version stays with internal/bump.
+// Tags lists all tags in git's `--sort=-v:refname` order, unfiltered — the
+// policy of what counts as a version stays with internal/bump.
+//
+// That order is NOT a version ordering and no caller may read it as one. It is
+// a REFNAME sort that compares digit runs numerically, so it still orders on
+// the leading byte first: every `refs/tags/v…` lands above every
+// `refs/tags/1…`, and on {v0.0.1, v0.0.2, 9.9.9, 100.0.0} git reports v0.0.2
+// ahead of the highest version there is. A caller that wants the highest
+// VERSION must parse every entry and compare (internal/cli's latestVersionTag,
+// which read this doc's earlier promise of "version-sorted descending" and took
+// the first parseable entry). What the order IS good for is being STABLE, which
+// is what lets that caller break a tie between two spellings of one version
+// without inventing a preference.
 func Tags(ctx context.Context, dir string) ([]string, error) {
 	out, err := run(ctx, dir, "tag", "--list", "--sort=-v:refname")
 	if err != nil {
