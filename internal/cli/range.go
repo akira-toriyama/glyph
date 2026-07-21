@@ -36,7 +36,7 @@ func participatingCommits(ctx context.Context, revRange string) ([]parser.Commit
 func participating(raws []gitsource.RawCommit) ([]parser.Commit, error) {
 	commits := make([]parser.Commit, 0, len(raws))
 	for _, raw := range raws {
-		if _, excluded := bump.Excluded(raw.Author, firstLine(raw.Message), raw.Parents); excluded {
+		if _, excluded := bump.ExcludedFromClassification(raw.Author, firstLine(raw.Message), raw.Parents); excluded {
 			continue
 		}
 		c, perr := parseRaw(raw)

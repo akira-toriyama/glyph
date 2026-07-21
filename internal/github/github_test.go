@@ -121,7 +121,7 @@ func TestPullCommitsSinglePage(t *testing.T) {
 		t.Fatalf("commit 0 = %+v, want %+v", commits[0], want0)
 	}
 	// The bot author name (not a login) and the two-parent merge shape are exactly
-	// what internal/bump.Excluded keys on downstream.
+	// what internal/bump.ExcludedFromClassification keys on downstream.
 	want1 := Commit{SHA: "bbb", Author: "fleet-sync[bot]", Parents: 2, Message: ":robot: chore(fleet): sync"}
 	if commits[1] != want1 {
 		t.Fatalf("commit 1 = %+v, want %+v", commits[1], want1)

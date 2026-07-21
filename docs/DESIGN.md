@@ -124,13 +124,66 @@ changes shipped runtime behavior the spec leaves `null`).
 
 ## 4. Squash-safe mechanism — release-time re-read (stateless)
 
-On a release run, walk `lastPublishedTag..HEAD` over `main`'s squash commits;
+On a release run, walk `lastPublishedTag..HEAD` over `main`'s **merge points**;
 for each, resolve its PR via `GET /repos/{o}/{r}/commits/{sha}/pulls` and fetch
 that PR's individual commits via `GET /pulls/{N}/commits`; classify and
 max-fold. **Nothing is persisted** — recompute-from-git each run, idempotent and
 self-healing. Every verdict command runs **inside a git checkout** of the
 repository being released — the walk base, the version base, and the draft's
 target sha all come from local git; tags are never fetched over the API.
+
+A merge point is whatever commit GitHub named `merge_commit_sha` for the pull —
+the squash commit, a rebase-merge's last commit, or (the merge-commit button)
+the **merge commit itself**, whose `merge_commit_sha` is its own sha. One
+equality resolves all three. The walk therefore excludes a commit before that
+lookup **only by its author** (a bot's or an automation's commit is a direct
+push that can never move the version, and the fleet's daily sync push must not
+cost a round-trip): a merge point's subject and its parent count are how GitHub
+*shapes a pointer*, not evidence about it. Judging the shape first is what let
+one click on the merge button drop a whole PR out of both the version and the
+notes, silently, on the 31 of 34 fleet repositories that allow the button
+(t-7zt7); the message rules still apply, one step later, to any commit no pull
+request explains — which is how a local `git merge` stays skipped. Because
+`git log` runs without `--first-parent`, a merge-merged PR's own commits are
+walked beside its merge point; they resolve as *covered* by that PR (or, if the
+association lags, fold in on the fallback path), and a walk-wide SHA set counts
+each exactly once either way. That set holds the **canonical commit of every
+resolved pull** as well as its inner commits — a pull squash-merged *into* a
+topic branch leaves its own (never gitmoji-formed) squash subject inside the
+listing of the pull that later landed that branch, and re-reading it as a
+message wedged the release permanently. The price is one API round-trip per
+merge commit, including the local merges that resolve to nothing — the only way
+to tell the two apart is to ask.
+
+Standing aside is only safe if something stands in, so the walk keeps a ledger:
+a pull that some commit reported itself *covered* by, whose canonical commit is
+inside the range and was nevertheless never expanded, gets a loud `::warning::`
+naming it at the end of the walk. That is a merged PR the walk could only ever
+see from the inside — GitHub had not indexed the merge commit yet (a release
+job runs seconds after the merge), or an automation authored it and the author
+gate skipped it. Without the ledger every one of its commits skips itself and
+the release reports `no release: 0 commit(s) participate` with no diagnostic at
+all: the original t-7zt7 silence, surviving on the new path.
+
+The walk **warns and does not expand** such a pull. Its commits are genuinely
+lost from that release, and they cannot be recovered from the API: a pull's
+commit listing is the pull's *entire* history and carries nothing about the
+walk's range, which is a git fact, so folding it in guesses which of its
+commits belong here — and the guess is wrong two ways. A rebase-merged pull
+lists its *pre-rebase* SHAs, which can never equal the `main` SHAs the walk-wide
+set holds, so the dedup passes them all and the same change renders twice; and
+a pull whose earlier commits shipped under the previous tag has them folded
+straight back in, manufacturing a minor bump out of released work. Both are the
+silent-wrong-verdict class this mechanism exists to kill, so the honest move is
+to name the loss and refuse to guess. The warning cannot fire on a healthy
+repository — one that cries on every release would be worse than none: standing
+aside requires the pull's canonical commit to be **in range**, and a canonical
+commit in range that resolves is expanded on the spot.
+
+*Covered* is deliberately gated on the canonical commit being **in the walked
+range** — a pull merged into another base branch is associated with commits
+that reached `main` another way, and neither deferring to it nor expanding it
+would be right.
 
 `glyph release` converges the repository's **rolling DRAFT release** on that
 verdict: the one glyph-managed draft (draft + `vX.Y.Z` tag) is created or
@@ -145,7 +198,10 @@ writes nothing. The `--json` verdict also carries the walk's expansion
 provenance (`pulls`: each resolved pull and its participating commit count) —
 a squash-subject reader like git-cliff can only diverge legitimately when some
 pull contributed 2+ commits, so a shadow comparison branches on exactly this
-instead of re-deriving the walk's exclusion rules in shell.
+instead of re-deriving the walk's exclusion rules in shell. The count does not
+distinguish the merge style, so it is an **upper bound**: a merge-merged pull's
+commits are on `main` verbatim, where a text reader sees them and agrees, so 2+
+there can raise a false alarm — never hide a real divergence.
 
 Rejected alternatives: a semver **label** on the PR (note generation must re-read
 the inner commits anyway, so the label adds a weaker, mutable, git-invisible
@@ -168,10 +224,26 @@ silently dropped.
 The leniency is for the fallback path only. A lint failure **inside a
 resolved merged PR** stays a hard exit 3 even on the release walk (Q1 —
 "never a silent patch" at full strength; only a commit that bypassed the lint
-gate can produce one). Squash history is immutable, so that commit wedges
-every release until the walk range moves past it: cut a release tag past it
-by hand, or name a later base with an explicit `--since-tag=TAG`. The error
-itself names the PR and both escapes.
+gate can produce one). Published history is immutable, so that commit wedges
+every release until the walk no longer reaches the pull's **merge point**: cut
+a release tag at that merge point (or later) by hand, or name such a tag with
+an explicit `--since-tag=TAG`. The error itself names the PR, its merge point
+and that escape.
+
+Since a merge commit resolves (t-7zt7), that hard gate reaches **merge-merged
+PRs for the first time**: a non-conforming commit inside one now wedges the
+release where the pre-fix walk released quietly. That is the contract
+squash-merged PRs have always had, and the quiet release was the silent-drop
+bug wearing a friendly face — but it is a real change for the 31 of 34 fleet
+repositories that allow the button, and it lands as an exit 3 on their next
+release. The escape is stated against the **merge point** for exactly this
+shape: expanding a pull re-fetches its *whole* listing whenever its merge point
+is in range, so a base cut past the offending commit alone leaves that merge
+point in range and wedges again — verified, a tag at the offending commit and a
+tag strictly past it both still exit 3, and only a base at or past the merge
+commit exits 0. A squash-merged PR has exactly one commit on `main` and it *is*
+its merge point, so the two readings coincide there, which is why the older
+"past the commit" wording held until the other shape became reachable.
 
 ## 5. Architecture (Go, house pattern)
 

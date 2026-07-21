@@ -65,15 +65,17 @@ func newLintCmd() *cobra.Command {
 
 // lintOne lints a single message at authoring time (no merge-candidate rules).
 //
-// Subjects git writes itself are skipped, exactly as the --range walk skips them
-// (bump.Excluded). Authoring time is where that tolerance matters MOST: the
-// range walk only ever sees these after the fact, whereas the commit-msg hook
-// stands between the developer and `git merge` / `git commit --fixup`. Judging
-// them here rejected messages CI accepts — an author cannot rewrite a subject
-// git generated, so the only escape was --no-verify, which turns the whole gate
-// off. The retired shell hook exempted the same four prefixes.
+// Subjects git writes itself are skipped, exactly as the --range walk skips
+// them (bump.ExcludedFromClassification — the message question, the only one a
+// hook can ask: there is no commit to resolve yet). Authoring time is where
+// that tolerance matters MOST: the range walk only ever sees these after the
+// fact, whereas the commit-msg hook stands between the developer and
+// `git merge` / `git commit --fixup`. Judging them here rejected messages CI
+// accepts — an author cannot rewrite a subject git generated, so the only
+// escape was --no-verify, which turns the whole gate off. The retired shell
+// hook exempted the same four prefixes.
 func lintOne(message string, known func(string) bool) error {
-	if _, excluded := bump.Excluded("", firstLine(message), 0); excluded {
+	if _, excluded := bump.ExcludedFromClassification("", firstLine(message), 0); excluded {
 		return nil
 	}
 	vs := parser.Lint(message, parser.LintOptions{Known: known})
@@ -111,7 +113,7 @@ func lintRangeRun(ctx context.Context, revRange string, known func(string) bool)
 	checked := 0
 	for _, raw := range raws {
 		subject := firstLine(raw.Message)
-		if _, excluded := bump.Excluded(raw.Author, subject, raw.Parents); excluded {
+		if _, excluded := bump.ExcludedFromClassification(raw.Author, subject, raw.Parents); excluded {
 			continue
 		}
 		checked++
