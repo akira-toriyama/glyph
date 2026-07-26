@@ -183,8 +183,9 @@ func TestNotesMalformedCommitIsLint(t *testing.T) {
 	}
 }
 
-// TestNotesRequiresRange: notes without --range is usage — the squash-safe
-// inputs (--pr / --since-tag) arrive with the GitHub plumbing phase.
+// TestNotesRequiresRange: notes with no input mode at all is usage. The
+// squash-safe inputs ship too (--pr, --since-tag) and cobra requires exactly one
+// of the three, so this pins the empty invocation, not an unimplemented feature.
 func TestNotesRequiresRange(t *testing.T) {
 	if code, _, _ := runGlyph(t, "notes"); code != 2 {
 		t.Fatalf("notes without --range should exit 2")

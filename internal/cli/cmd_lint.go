@@ -29,7 +29,15 @@ func newLintCmd() *cobra.Command {
 			"artifacts and raw git reverts are skipped; :construction: is a violation\n" +
 			"there). --message and --stdin lint one message at authoring time — the\n" +
 			"commit-msg hook path, where :construction: stays legal. Violations exit 3\n" +
-			"with a structured stderr envelope; a clean run is silent.",
+			"with a structured stderr envelope; a clean run is silent.\n\n" +
+			"One rule asks for something no shape check can supply, and it fires HERE at\n" +
+			"authoring time, not only in CI: a :fire:, :coffin: or :truck: commit must say\n" +
+			"whether it breaks anyone — add ! (or a BREAKING CHANGE: footer) if it takes\n" +
+			"public API away, else a NON-BREAKING: <why> footer. Beyond what the error\n" +
+			"itself says: that footer is case-SENSITIVE, its reason is mandatory (a bare\n" +
+			"NON-BREAKING: still fails), and it counts only where a trailer can sit — after\n" +
+			"a blank line, as the first body line, or stacked under another trailer. What\n" +
+			"counts as public: https://github.com/akira-toriyama/.github/blob/main/CONTRIBUTING.md",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			table, err := loadRules()

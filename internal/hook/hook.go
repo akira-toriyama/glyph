@@ -43,14 +43,15 @@ const Marker = "installed-by: glyph hook install"
 //     that is not "glyph said violation" ends in exit 0.
 //
 // The gate code is INTERPOLATED from core.CodeLint rather than typed as a shell
-// literal, which is the fourth property and the one that had to be built. This
-// file is the only place in the tree where the exit-code contract crosses into
-// another language, so the compiler stops checking at the backtick: the number
-// appeared twice as text, and renumbering the constant would have left a hook
-// that compares against a code glyph no longer emits — i.e. one that waves every
-// violation through — with the whole suite green, because the test pinned the
-// literal too. A generated hook cannot disagree with the constant it is
-// generated from.
+// literal, which is the fourth property and the one that had to be built. Plenty
+// of shell branches on glyph's exit codes — lint.yml, release.yml and
+// goreleaser.yml all do, and so do the fleet's CI wrappers — but this file is the
+// only one glyph WRITES, so it is the only one glyph can keep honest. The
+// compiler stops checking at the backtick: the number appeared twice as text, and
+// renumbering the constant would have left a hook that compares against a code
+// glyph no longer emits — i.e. one that waves every violation through — with the
+// whole suite green, because the test pinned the literal too. A generated hook
+// cannot disagree with the constant it is generated from.
 //
 // A var rather than a const for that reason alone; it is never reassigned.
 var Script = fmt.Sprintf(`#!/bin/sh
