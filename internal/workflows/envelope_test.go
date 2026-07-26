@@ -47,6 +47,21 @@ var mergedIntoJQ = regexp.MustCompile(`2>&1[^|]*\|[^|]*jq`)
 // a false positive on a legitimate fourth use — a conversation in review, not a
 // silent hole in a fleet-distributed gate.
 func TestReusablesSieveTheEnvelopeBeforeJQ(t *testing.T) {
+	// Positive control, for the same reason TestNaiveGrepSeesNoPinInTheReusables
+	// carries one. Every assertion below is nested inside "for each sink this
+	// file has", so a file with no sink asserts NOTHING — and most files have
+	// none, which is normal (they never run glyph). If stderrSink stopped
+	// matching real redirects, every subtest would go quiet in exactly the way a
+	// clean run looks, and this guard on a fleet-distributed contract would be
+	// gone with nothing to show for it. So: prove the pattern still bites, and
+	// prove the corpus still contains something for it to bite on.
+	const canary = `          glyph release --json >"$RESULT" 2>"$ERR" || status=$?`
+	if m := stderrSink.FindStringSubmatch(canary); m == nil || strings.Trim(m[1], `"`) != "$ERR" {
+		t.Fatalf("stderrSink no longer finds the sink in a real redirect (%q) — every subtest below "+
+			"would pass vacuously", canary)
+	}
+
+	found := 0
 	for _, name := range workflowFiles(t) {
 		t.Run(name, func(t *testing.T) {
 			body := code(repoFile(t, filepath.Join(".github", "workflows", name)))
@@ -57,6 +72,7 @@ func TestReusablesSieveTheEnvelopeBeforeJQ(t *testing.T) {
 					sinks = append(sinks, sink)
 				}
 			}
+			found += len(sinks)
 
 			for line := range strings.SplitSeq(body, "\n") {
 				if strings.Contains(line, envelopeSieve) {
@@ -86,5 +102,16 @@ func TestReusablesSieveTheEnvelopeBeforeJQ(t *testing.T) {
 					name, strings.TrimSpace(m), envelopeSieve)
 			}
 		})
+	}
+
+	// The corpus half of the control. Only the workflows that actually run glyph
+	// park its stderr, so most files contributing nothing is expected — but ZERO
+	// across all of them means either the redirects were removed (and this guard
+	// now protects nothing) or the scan stopped finding them (and it protects
+	// nothing while looking healthy). Both are worth a red test.
+	if found == 0 {
+		t.Errorf("no glyph stderr sink was found in any of .github/workflows — every subtest above "+
+			"asserted nothing. Either the reusables stopped parking stderr in a file, or %q stopped "+
+			"matching how they do it.", stderrSink)
 	}
 }
