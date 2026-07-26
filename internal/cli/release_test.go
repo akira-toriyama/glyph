@@ -1136,6 +1136,162 @@ func TestReleaseIncompleteWalkDoesNotLowerTheRollingDraft(t *testing.T) {
 	}
 }
 
+// truncatedPullWalk builds the third incomplete shape: a squash-merged pull
+// whose commit listing comes back at GitHub's hard cap. The API stops at
+// PullCommitsCap however far the pagination follows, so the listing is not the
+// pull — it is as much of the pull as can be obtained, and the rest is
+// unreachable rather than absent.
+//
+// Every commit is a :memo: so the fold is NONE, which is the case that matters:
+// a none verdict is what sends the run down the delete path, and "nothing
+// release-worthy" is exactly the conclusion a truncated listing is not entitled
+// to reach. The 251st commit could be the :boom:.
+func truncatedPullWalk(t *testing.T) map[string]string {
+	t.Helper()
+	dir, _ := testRepo(t)
+	sha := squashCommit(t, dir, "Document everything", 7)
+	t.Chdir(dir)
+
+	listing := make([]string, github.PullCommitsCap)
+	for i := range listing {
+		listing[i] = apiCommit(fmt.Sprintf("c%03d", i), "akira-toriyama", fmt.Sprintf(":memo: document part %d", i))
+	}
+	return map[string]string{
+		commitPullsPath(sha): `[` + apiPullRef(7, "2026-07-22T00:00:00Z", sha) + `]`,
+		pullCommitsPath(7):   `[` + strings.Join(listing, ",") + `]`,
+	}
+}
+
+// TestReleaseTruncatedPullDoesNotDeleteTheDraft: a listing GitHub truncated is a
+// range the walk did not read, and the walk must not act on it irreversibly.
+//
+// Measured on the pre-change source, which warned about the truncation and then
+// ignored its own warning: the same run that printed "pull request #7 returned
+// 250 commits — GitHub truncates this listing at 250" exited 1 with
+// action "delete" and a write set of exactly one DELETE. The rolling draft — the
+// thing a human was going to publish — was removed on the strength of a fold
+// that was short by an unknown amount, because complete() read three fields and
+// truncation was in none of them.
+func TestReleaseTruncatedPullDoesNotDeleteTheDraft(t *testing.T) {
+	var writes []apiWrite
+	walk := truncatedPullWalk(t)
+	srv := releaseServer(t, walk, `[`+draftJSON(11, "v0.2.0")+`]`, &writes)
+	usePR(t, srv)
+
+	code, stdout, stderr := runGlyph(t, "release", "--json")
+	if code != 0 && code != 1 {
+		t.Fatalf("exited %d, want 0 or 1\nstderr: %s", code, stderr)
+	}
+	for _, w := range writes {
+		if w.method == "DELETE" {
+			t.Errorf("a truncated listing deleted the rolling draft (%+v) — the walk warned it could not "+
+				"read the whole pull and then acted as though an empty fold meant nothing shipped", writes)
+		}
+	}
+	if !strings.Contains(stdout, `"action":"none"`) {
+		t.Errorf("action must be none — there is nothing this walk is entitled to do:\n%s", stdout)
+	}
+	// The operator has to be able to tell WHICH pull was short, not merely that
+	// something was.
+	if !strings.Contains(stderr, "#7") || !strings.Contains(stderr, "250") {
+		t.Errorf("stderr must name the truncated pull and the cap:\n%s", stderr)
+	}
+}
+
+// TestReleaseTruncatedPullIsInTheShortfall: the walk's own account of what it
+// could not read has to include truncation by name, because that account is
+// what the draft body shows the person pressing Publish (and what the no-lower
+// warning quotes). A generic "the walk was short" would leave them with nothing
+// to act on.
+func TestReleaseTruncatedPullIsInTheShortfall(t *testing.T) {
+	var writes []apiWrite
+	walk := truncatedPullWalk(t)
+	// A draft has to be present: the shortfall is rendered by the arm that
+	// explains why the drafts were KEPT, so with nothing to keep there is
+	// nothing to explain.
+	srv := releaseServer(t, walk, `[`+draftJSON(11, "v0.2.0")+`]`, &writes)
+	usePR(t, srv)
+
+	code, _, stderr := runGlyph(t, "release", "--dry-run")
+	if code != 0 && code != 1 {
+		t.Fatalf("exited %d, want 0 or 1\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "truncated") || !strings.Contains(stderr, "#7") {
+		t.Errorf("the shortfall must name the truncated pull in words the operator can act on:\n%s", stderr)
+	}
+	if len(writes) != 0 {
+		t.Errorf("a dry run wrote to the API: %+v", writes)
+	}
+}
+
+// shallowCheckout makes a REAL `git clone --depth 1` of a repository holding one
+// squash-merged pull, chdirs into the clone, and returns the walk routes for it.
+//
+// A real clone rather than a stubbed answer, because the whole defect is about
+// what git can and cannot see: in a depth-1 clone the parent commits are absent
+// objects, so mainFootprint's `Have` says no for every listed sha and the walk
+// falls back to expanding whole listings — the exact behaviour the footprint
+// rule was built to end, reachable by deleting one line from a workflow. Faking
+// IsShallow would test the plumbing and leave the premise unexamined.
+func shallowCheckout(t *testing.T) map[string]string {
+	t.Helper()
+	origin, _ := testRepo(t)
+	sha := squashCommit(t, origin, "Fix a crash", 8)
+
+	clone := filepath.Join(t.TempDir(), "shallow")
+	testGit(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", "1", "file://"+origin, clone)
+	if got := testGit(t, clone, "akira-toriyama", "rev-parse", "--is-shallow-repository"); got != "true" {
+		t.Fatalf("the fixture clone is not shallow (--is-shallow-repository = %q); the test would prove nothing", got)
+	}
+	t.Chdir(clone)
+	return map[string]string{
+		commitPullsPath(sha): `[` + apiPullRef(8, "2026-07-23T00:00:00Z", sha) + `]`,
+		pullCommitsPath(8):   `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+	}
+}
+
+// TestReleaseShallowCheckoutIsAnIncompleteWalk: a truncated history is a range
+// the walk did not read, and must reach the same refusals as the other three.
+//
+// actions/checkout defaults to fetch-depth: 1, so this is the incomplete shape a
+// release workflow produces by LOSING one line — the likeliest of the four and,
+// until now, the only one glyph observed and then ignored. It warned (measured:
+// two ::warning:: lines, so "silent" was never the right word for it) and left
+// facts.complete() true, so the version was wrong while the run was green.
+func TestReleaseShallowCheckoutIsAnIncompleteWalk(t *testing.T) {
+	var writes []apiWrite
+	walk := shallowCheckout(t)
+	srv := releaseServer(t, walk, `[`+draftJSON(11, "v9.9.9")+`]`, &writes)
+	usePR(t, srv)
+
+	code, _, stderr := runGlyph(t, "release")
+	if code != 0 {
+		t.Fatalf("exited %d, want 0 — the refusal is to destroy, not to fail\nstderr: %s", code, stderr)
+	}
+	if len(writes) != 0 {
+		t.Errorf("writes = %+v, want none — a shallow walk must not retag a draft downward", writes)
+	}
+	if !strings.Contains(stderr, "shallow") {
+		t.Errorf("the shortfall must name the shallow checkout so the operator can fix the workflow:\n%s", stderr)
+	}
+}
+
+// TestReleaseShallowCheckoutBannersTheDraft: the person pressing Publish never
+// saw the CI log, and a fold computed over a truncated history looks exactly as
+// complete as any other in the notes.
+func TestReleaseShallowCheckoutBannersTheDraft(t *testing.T) {
+	walk := shallowCheckout(t)
+	usePR(t, dryServer(t, walk))
+
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run")
+	if code != 0 {
+		t.Fatalf("exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "[!WARNING]") || !strings.Contains(stdout, "shallow") {
+		t.Errorf("the draft body must say the history was truncated:\n%s", stdout)
+	}
+}
+
 // TestReleaseIncompleteWalkMarksTheDraftBody: the CI log is not where the
 // decision is made. A rolling draft is reviewed and published in the GitHub UI,
 // possibly days later, by someone who never saw the warning — and an incomplete
