@@ -246,14 +246,17 @@ with a version tag cut *inside* a landed pull's footprint, commits that shipped
 under that tag came back for a second release — exit 0, empty stderr, a minor
 manufactured out of released work (t-8xsb). Before anything is parsed, each
 listed commit is therefore mapped to **where it landed on the released branch**,
-and the range decides. The mapping is git's, not a guess, and there are three
-shapes: the merge button leaves the commits on the branch verbatim, so a listed
-SHA the repository holds and that is an ancestor of `HEAD` landed as itself; a
-rebase rewrote them all, but preserved their messages and their order and named
-the last of the run as `merge_commit_sha`, so the N first-parent commits ending
-there align positionally — an alignment **verified message by message and
-abandoned whole** unless every one matches; a squash left no footprint at all,
-and the pull alone governs it exactly as before. A commit that landed outside
+and the range decides. The mapping is git's, not a guess, and it is two questions
+rather than three shapes. First, did this commit land under its **own SHA**? The
+merge button leaves the pull's commits on the branch verbatim, so a listed SHA the
+repository holds and that is an ancestor of `HEAD` landed as itself. Then, of
+**whatever is left**: does it align against the run a rebase would have written?
+A rebase rewrites what it replays but preserves the messages and the order, and
+GitHub names the last of the run as `merge_commit_sha`, so the first-parent
+commits ending there align positionally with the unplaced entries — an alignment
+**verified message by message and abandoned whole** unless every one matches. A
+squash left no footprint at all, reaches that alignment with the whole listing and
+fails it, and the pull alone governs it exactly as before. A commit that landed outside
 the range is dropped with a `::notice::` naming it, and one that landed inside
 is folded **under its on-branch SHA** — which also retires a defect of its own,
 since a rebase-merged pull used to put its pre-rebase SHAs, which exist on no
@@ -264,6 +267,26 @@ knows the answer it gave was a guess, records the checkout as one it could not
 read (below). That probe is taken once per walk, before any expansion, rather
 than lazily on the first pull that expands: a walk where nothing resolves is
 still a walk over a truncated history, and it was the one that never asked.
+
+The order of those two questions matters, and so does the fact that the second is
+asked of **what the first did not place** rather than only when it placed nothing.
+Reading a listing as all-verbatim *or* all-rewritten was wrong in both directions,
+and both were measured against the live API rather than argued (`glyph-test`,
+t-7h15). A listing can be **mixed**: GitHub computes it against a *stored* base
+SHA instead of re-deriving one, so a stacked pull keeps listing its base pull's
+commits after those land verbatim through the merge button — and short-circuiting
+there left every *rebased* entry of that pull with no landing site, which is to say
+ungoverned by the range. That is t-8xsb reappearing inside the fix for t-8xsb:
+`minor` out of work released a tag earlier, exit 0, no warning, notes citing
+pre-rebase SHAs. And a rebase does **not** replay everything it is handed: it drops
+the merge commit that "merge `main` into the branch" leaves behind, GitHub permits
+rebase-merge over one, and that entry — listed, landing nowhere — made the count
+wrong and abandoned a mapping that was otherwise exact. It is kept out of the
+alignment on its **parent count**, the same fact `bump.ExcludedFromClassification`
+already reads, so nothing downstream needs it placed. What still cannot be aligned
+is a rebase that dropped a commit it was asked to replay — one already upstream, or
+one that rebased empty — and that stays indistinguishable from a squash, so it stays
+quiet (below).
 
 This also restores the intuitive **wedge escape**. A lint failure inside a
 resolved pull is hard (Q1, below), and it used to be escapable only by cutting a
@@ -656,7 +679,8 @@ The severities are the argued part:
   house convention plus one *loud* window per style: an unresolved merge point
   (API lag, or a bot-authored merge, where it repeats every release) drops its pull
   with two warnings and exit `1`, and a rebase whose listing the walk cannot align
-  against what landed — one that dropped an already-upstream commit — can still
+  against what landed — one that dropped a commit it was asked to replay, already
+  upstream or rebased empty — can still
   fold a replayed commit in twice during the lag. Neither is the silent wrong
   verdict `fail` is reserved for.
   A rebase merge was never lenient either — the last replayed commit expands the

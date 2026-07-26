@@ -589,82 +589,122 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 // out of released work). Once each listed commit is mapped to where it landed,
 // the range can govern it, and both arms follow the same principle.
 //
-// Three shapes, decided from LOCAL GIT alone — GitHub reports no merge method,
-// and asking for one would be a round-trip per pull to learn something git
-// already knows:
+// Two questions, asked of LOCAL GIT alone — GitHub reports no merge method, and
+// asking for one would be a round-trip per pull to learn something git already
+// knows. They are asked in this order because the first is a git FACT and the
+// second is an inference the first narrows:
 //
-//   - the merge button: the pull's commits sit on the released branch verbatim,
-//     so a listed sha that this repository holds AND that is an ancestor of HEAD
-//     landed as itself. This is asked of HEAD rather than of the merge commit on
-//     purpose: a commit that reached the branch by some earlier route is just as
-//     released, and the range is what decides whether it belongs here.
-//   - rebase and merge: git rewrote every commit, so no listed sha is on the
-//     branch — but it preserved their messages and their order, and the canonical
-//     commit GitHub names is the LAST of the run. So the N first-parent commits
-//     ending there align positionally. The alignment is VERIFIED message by
-//     message and abandoned whole unless every one matches: a guess about which
-//     commits belong to a release is precisely what this function exists to
-//     remove, and half a mapping is worse than none.
-//   - squash and merge: the listing collapsed into the one canonical commit and
-//     has no footprint at all. Nothing changes for it — the pull alone governs,
-//     as it always has.
+//  1. Did this listed commit land under its OWN sha? The merge button leaves the
+//     pull's commits on the released branch verbatim, so a listed sha that this
+//     repository holds AND that is an ancestor of HEAD landed as itself. Asked of
+//     HEAD rather than of the merge commit on purpose: a commit that reached the
+//     branch by some earlier route is just as released, and the range is what
+//     decides whether it belongs here.
+//  2. Whatever is LEFT, does it align against the run a rebase would have
+//     written? A rebase rewrites the commits it replays but preserves their
+//     messages and their order, and GitHub names the LAST of the run as
+//     merge_commit_sha — so the N first-parent commits ending there align
+//     positionally with the N unplaced entries, in listing order. The alignment
+//     is VERIFIED message by message and abandoned whole unless every one
+//     matches: a guess about which commits belong to a release is precisely what
+//     this function exists to remove, and half a mapping is worse than none.
 //
-// The unverifiable case degrades to the old behaviour rather than to an error:
-// a squash-merged pull and a rebase whose alignment does not hold are not
-// distinguishable without the merge method, and the squash shape is the fleet's
-// norm, so a warning here would fire on nearly every release and teach people to
-// ignore it. What that costs is bounded — it is exactly today's expansion.
+// Step 2 used to run only when step 1 placed NOTHING, on the reading that a
+// listing is either all-verbatim or all-rewritten. It is neither, and both ways
+// out of that assumption were measured against the real API on
+// akira-toriyama/glyph-test (drill for t-7h15):
+//
+//   - A listing can be MIXED. A stacked pull request carries its base pull's
+//     commits, and GitHub computes the listing against a STORED base sha rather
+//     than re-deriving it, so those commits stay listed after the base pull lands
+//     them on main under their own shas (measured: pull #28 still listed the
+//     merge-button-landed ed1bd9e after #27 merged). Rebase-merge the stacked
+//     pull and step 1 places that one entry, step 2 never ran, and every REWRITTEN
+//     entry kept an empty landing site — which foldPull reads as "the pull alone
+//     governs" and folds regardless of the range. That is t-8xsb resurrected
+//     through the front door: measured minor where patch was correct, exit 0, no
+//     warning, and the notes citing pre-rebase shas main does not contain.
+//   - A rebase does NOT replay everything it is given. It drops the base-merge
+//     commit that "merge main into the branch" leaves — an entirely ordinary
+//     branch, and GitHub permits rebase-merge over it (measured: pull #26 listed
+//     three commits, two landed). That entry has no landing site under any shape,
+//     so leaving it in the window made the count wrong and the alignment was
+//     abandoned WHOLE, taking the two commits it could have placed with it. It is
+//     excluded on its parent count — the same fact bump.ExcludedFromClassification
+//     already reads, so nothing downstream needs it placed.
+//
+// A squash leaves no footprint at all and reaches step 2 with the whole listing,
+// where it fails to align: the pull alone governs it, exactly as before.
+//
+// The unalignable case therefore still degrades to the old behaviour rather than
+// to an error or a warning. A squash and a rebase whose window does not align are
+// not distinguishable without the merge method — including when step 1 placed
+// some of the listing, since a squash-merged STACKED pull is that shape too — and
+// squash is the fleet's norm, so a diagnostic here would fire on nearly every
+// release and teach people to ignore it. What it costs is bounded: exactly the
+// expansion that ran before any of this existed.
 func mainFootprint(ctx context.Context, canonical string, listing []gitsource.RawCommit) ([]string, error) {
 	landed := make([]string, len(listing))
-	if len(listing) == 0 {
-		return landed, nil
-	}
 	shas := make([]string, 0, len(listing))
 	for _, r := range listing {
 		if r.SHA != "" {
 			shas = append(shas, r.SHA)
 		}
 	}
-	// One call to drop everything this repository does not hold — which is the
-	// WHOLE listing for the squash and rebase shapes, so the per-sha ancestry
+	// One call to drop everything this repository does not hold — which is most
+	// of the listing for the squash and rebase shapes, so the per-sha ancestry
 	// test below runs only where it can answer yes.
 	have, err := gitsource.Have(ctx, ".", shas)
 	if err != nil {
 		return nil, err
 	}
-	anyLanded := false
+	// window is the listing positions a rebase could still account for, in listing
+	// order: everything step 1 did not place, minus the entries a rebase never
+	// replays. Its LENGTH is what makes the alignment checkable, so an entry that
+	// cannot have a landing site has to leave — one that stays shifts every
+	// position after it and the whole mapping is thrown away.
+	window := make([]int, 0, len(listing))
 	for i, r := range listing {
-		if r.SHA == "" || !have[r.SHA] {
+		if r.SHA != "" && have[r.SHA] {
+			on, aerr := gitsource.IsAncestor(ctx, ".", r.SHA, "HEAD")
+			if aerr != nil {
+				return nil, aerr
+			}
+			if on {
+				landed[i] = r.SHA
+				continue
+			}
+		}
+		// A merge commit is never replayed by a rebase (measured — see above), so
+		// it has no landing site to find and no position to hold.
+		if r.Parents >= 2 {
 			continue
 		}
-		on, aerr := gitsource.IsAncestor(ctx, ".", r.SHA, "HEAD")
-		if aerr != nil {
-			return nil, aerr
-		}
-		if on {
-			landed[i], anyLanded = r.SHA, true
-		}
+		window = append(window, i)
 	}
-	if anyLanded {
+	// Nothing left to place: the whole merge-button shape, and also the pull that
+	// listed no commits at all. Neither may fall through, and the reason is not
+	// the saved subprocess — `canonical` is a sha this CHECKOUT may not hold, so
+	// logging against it turns "there was nothing to align" into an exit-4 git
+	// error mid-walk. One guard for both because it is one question: is there
+	// anything an alignment could answer about?
+	if len(window) == 0 {
 		return landed, nil
 	}
-	// Nothing landed under its own sha: either a rebase rewrote them all, or the
-	// pull was squashed. Only the rebase shape leaves a run this listing can be
-	// aligned against, and only an exact, complete match is accepted as one.
-	mains, err := gitsource.FirstParentLog(ctx, ".", canonical, len(listing))
+	mains, err := gitsource.FirstParentLog(ctx, ".", canonical, len(window))
 	if err != nil {
 		return nil, err
 	}
-	if len(mains) != len(listing) {
+	if len(mains) != len(window) {
 		return landed, nil
 	}
-	for i := range listing {
-		if strings.TrimSpace(mains[i].Message) != strings.TrimSpace(listing[i].Message) {
+	for k, i := range window {
+		if strings.TrimSpace(mains[k].Message) != strings.TrimSpace(listing[i].Message) {
 			return landed, nil
 		}
 	}
-	for i := range listing {
-		landed[i] = mains[i].SHA
+	for k, i := range window {
+		landed[i] = mains[k].SHA
 	}
 	return landed, nil
 }

@@ -1,0 +1,16 @@
+diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
+index 2197cbb..4fe176a 100644
+--- a/internal/cli/sincetag.go
++++ b/internal/cli/sincetag.go
+@@ -688,6 +688,11 @@ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.Ra
+ 	// logging against it turns "there was nothing to align" into an exit-4 git
+ 	// error mid-walk. One guard for both because it is one question: is there
+ 	// anything an alignment could answer about?
++	for _, on := range landed {
++		if on != "" {
++			return landed, nil
++		}
++	}
+ 	if len(window) == 0 {
+ 		return landed, nil
+ 	}
