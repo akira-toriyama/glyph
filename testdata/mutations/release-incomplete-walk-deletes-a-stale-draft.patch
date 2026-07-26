@@ -1,0 +1,16 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index f886832..9048174 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -252,11 +252,6 @@ func releaseRun(cmd *cobra.Command) error {
+ 	for _, s := range stale {
+ 		// Same rule as the none verdict below: a walk that did not read the
+ 		// range is not evidence that a draft is stale.
+-		if !facts.complete() {
+-			warnf("keeping the draft %s (release id %d) that this verdict would have discarded: the walk did not read %s (%s)",
+-				s.TagName, s.ID, source, facts.shortfall(owner, repoName))
+-			continue
+-		}
+ 		gone, derr := gh.DeleteRelease(ctx, owner, repoName, s.ID)
+ 		if derr != nil {
+ 			return derr

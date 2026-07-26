@@ -1311,3 +1311,86 @@ func TestReleaseIncompleteWalkMarksTheDraftBody(t *testing.T) {
 		t.Errorf("the draft body must carry the incomplete-walk warning naming what was not read:\n%s", stdout)
 	}
 }
+
+// shallowFeatureCheckout is shallowCheckout's shape with a :sparkles: pull, so the
+// verdict RAISES instead of landing at v0.0.1. That difference is what makes the
+// stale arm reachable at all: a shallow clone does not carry the origin's tags, so
+// the walk finds no version base and steps from v0.0.0 — with a :bug: the answer
+// is v0.0.1, which is below any draft worth keeping and returns at the never-lower
+// guard before the stale loop is reached.
+func shallowFeatureCheckout(t *testing.T) map[string]string {
+	t.Helper()
+	origin, _ := testRepo(t)
+	sha := squashCommit(t, origin, "Add a menu", 9)
+
+	clone := filepath.Join(t.TempDir(), "shallow")
+	testGit(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", "1", "file://"+origin, clone)
+	if got := testGit(t, clone, "akira-toriyama", "rev-parse", "--is-shallow-repository"); got != "true" {
+		t.Fatalf("the fixture clone is not shallow (--is-shallow-repository = %q); the test would prove nothing", got)
+	}
+	t.Chdir(clone)
+	return map[string]string{
+		commitPullsPath(sha): `[` + apiPullRef(9, "2026-07-23T00:00:00Z", sha) + `]`,
+		pullCommitsPath(9):   `[` + apiCommit("s1", "akira-toriyama", ":sparkles:(ui) add a menu") + `]`,
+	}
+}
+
+// TestReleaseIncompleteWalkKeepsAStaleDraft covers the half of the refusal that
+// had no test at all. DESIGN §4 promises that an incomplete walk "never deletes a
+// glyph-managed draft (NEITHER RESIDUAL NOR STALE) and never lowers one", and two
+// of those three were pinned: TestReleaseNoneKeepsDraftsWhenTheWalkDidNotReadTheRange
+// holds the residual arm (the none verdict) and
+// TestReleaseIncompleteWalkDoesNotLowerTheRollingDraft holds the lowering one. The
+// stale arm — the delete on the UPSERT path, beside a draft the run is keeping —
+// could be removed with the whole suite green (measured while seeding the mutation
+// ledger, t-p7q2; it is now a row there).
+//
+// It is the same t-441z risk as the residual arm and not a lesser one: the walk
+// has just told the operator it could not read the range, and deleting a release
+// on that reading destroys the only record of a verdict nobody has published yet.
+//
+// The fixture threads a narrow gap, which is most of why the arm went untested. It
+// needs an incomplete walk that still RAISES — a lowering verdict returns earlier,
+// at the guard the other test covers — and TWO glyph-managed drafts, so planDrafts
+// has one to keep and one to call stale. Hence shallowFeatureCheckout: the shallow
+// clone supplies the incompleteness (actions/checkout's default depth, so the
+// likeliest shape) and carries no tags, so its :sparkles: pull steps from v0.0.0 to
+// v0.1.0. The draft already at v0.1.0 is the one kept; v0.0.1 is the stale one this
+// test is about.
+func TestReleaseIncompleteWalkKeepsAStaleDraft(t *testing.T) {
+	var writes []apiWrite
+	walk := shallowFeatureCheckout(t)
+	releases := `[` + draftJSON(11, "v0.1.0") + `,` + draftJSON(12, "v0.0.1") + `]`
+	srv := releaseServer(t, walk, releases, &writes)
+	usePR(t, srv)
+
+	code, _, stderr := runGlyph(t, "release")
+	if code != 0 {
+		t.Fatalf("exited %d, want 0 — the refusal is to destroy, not to fail\nstderr: %s", code, stderr)
+	}
+	for _, w := range writes {
+		if w.method == "DELETE" {
+			t.Errorf("the walk did not read the range and still issued %s %s — a draft deleted on a "+
+				"reading glyph does not trust is the t-441z failure, and this is the arm DESIGN §4 "+
+				"calls \"neither residual nor stale\".\nall writes: %+v\nstderr: %s",
+				w.method, w.path, writes, stderr)
+		}
+	}
+	// The keep still converges: the refusal is narrow, and a fix that skipped the
+	// whole upsert would satisfy the assertion above while losing the release.
+	var patched bool
+	for _, w := range writes {
+		if w.method == "PATCH" && strings.HasSuffix(w.path, "/11") {
+			patched = true
+		}
+	}
+	if !patched {
+		t.Errorf("the rolling draft must still be updated — an incomplete walk may raise, it may only "+
+			"not destroy.\nall writes: %+v\nstderr: %s", writes, stderr)
+	}
+	// Named, not merely spared: the operator has to know which release was kept and
+	// why, or the next run reads as a repository with a stray draft in it.
+	if !strings.Contains(stderr, "v0.0.1") || !strings.Contains(stderr, "release id 12") {
+		t.Errorf("the kept stale draft must be named in the warning so it is not read as a stray:\n%s", stderr)
+	}
+}
