@@ -73,8 +73,11 @@ runtime import, per house pattern.)
 - **`!`** — optional breaking marker, immediately after code or scope.
 - **subject** — English, imperative, lowercase start, no trailing period.
 - **body/footer** — optional; a body ends with the `---（和訳）` separator + a
-  Japanese translation (house rule). Footer may carry `BREAKING CHANGE:`,
-  `Closes #N`, `Co-Authored-By:`. A footer block is read as one: git trailers
+  Japanese translation (house rule). Footer may carry `BREAKING CHANGE:` (or
+  `BREAKING-CHANGE:`), `NON-BREAKING: <why>` (next bullet), `Closes #N`,
+  `Co-Authored-By:`. A footer counts only where a trailer can legally sit —
+  opening a block (after a blank line, or as the very FIRST body line) or
+  stacked under another trailer — and a block is read as one: git trailers
   (`token: value`) and issue references in GitHub's colon-less closing-keyword
   form (`Closes #12`, `Fixes owner/repo#12`) may stack with no blank line
   between them, and only prose ends the block. That the colon-less form counts
@@ -83,6 +86,19 @@ runtime import, per house pattern.)
   as a minor out of a shape this very list blesses. A line that merely OPENS
   with a closing keyword ("fixes the crash reported in #12 by …") is prose and
   still ends the block.
+- **`NON-BREAKING: <why>`** — the removal codes' counterpart to
+  `BREAKING CHANGE:`, and what satisfies `undeclared-removal` (below) when `!` is
+  not the answer: it records that a `:fire:`/`:coffin:`/`:truck:` commit takes
+  nothing public away. Alone among these footers it exists for one lint rule and
+  nothing else in glyph reads it, and it never moves the bump — so it cannot hide
+  a break, only record a claim the author is making. Uppercase and
+  case-SENSITIVE, for the reason `BREAKING CHANGE:` is: a body may legitimately
+  read "this is non-breaking: the API is untouched", and a footer that switches a
+  rule off must not be spellable by accident in prose. The reason is mandatory —
+  a bare `NON-BREAKING:` leaves the rule unsatisfied, because the magic word
+  typed by reflex answers nothing the rule exists to ask (today answered by the
+  same detail string as no footer at all, which tells an author who just typed
+  the word to type it — a separate defect).
 
 The redundant Conventional `<type>` word is dropped — the gitmoji's own trailing
 `:` plays the type-colon role. The parser is **lenient**: it accepts-and-ignores
@@ -95,9 +111,67 @@ Linter shape check (membership is checked in code against the embedded table):
 ^(:[a-z0-9][a-z0-9_+-]*:)(\([a-z0-9][a-z0-9-]*\))?(!)? (\S.*)$
 ```
 
-An unknown `:code:` is a **hard lint error (exit 3)**, never a silent patch. The
-linter also rejects a trailing `.`, an uppercase first subject letter, and any
-`:construction:` commit that reaches a merge candidate.
+An unknown `:code:` is a **hard lint error (exit 3)**, never a silent patch.
+
+The complete rule set, in the order `parser.Lint` evaluates it. Every id is
+**machine API** — branch on the id, never on the prose — so this list has to stay
+in step with the `Rule*` constants in `internal/parser/parser.go`. It did not:
+the prose summary that stood here was written in the scaffold commit, before the
+parser existed. It named four of the seven, left `malformed-subject` implicit in
+the shape block above, and had no word at all for `invalid-scope` or
+`undeclared-removal` — both added later. Enumerating by id is what makes that
+drift checkable at all, and `TestDesignDocNamesEveryRuleID` in `internal/parser`
+is what checks it: an id here that is no longer a constant, or a constant not
+named here, fails the suite.
+
+- `malformed-subject` — the subject line does not match the shape above.
+  Short-circuits: with the subject unparsed, nothing else is checkable.
+- `invalid-scope` — the same parse failure, sharpened for a subject whose scope
+  is outside lowercase kebab: it names the offending scope and suggests the
+  lowercased form when lowercasing alone would make it legal, where
+  `malformed-subject` quotes the whole line and sends an author who wrote
+  `(Palette)` hunting the gitmoji or the separating space. Being a parse failure
+  it short-circuits exactly as `malformed-subject` does, which is the part worth
+  knowing at the terminal: `:bug:(Palette) Do a thing.` reports the scope ALONE
+  and says nothing about the capital or the period until the scope is fixed. The
+  defect it prevents was authors obeying `undeclared-removal`'s own instruction —
+  `:fire:(Palette)! prune catppuccin-latte` answered with `malformed-subject`
+  (t-edan), in the PascalCase-scoping Swift repos (sill, wand, facet, halo,
+  perch) that removal rule most protects. The legacy token's scope slot is
+  `[^()]+` and still accepts `(Palette)`, so the retired syntax is the more
+  permissive of the two — which is exactly why the canonical form owes the author
+  the sharper message.
+- `unknown-gitmoji` — the code is not in the embedded table (`glyph rules`).
+- `wip-merge-candidate` — a `:construction:` commit reaching a merge candidate.
+  The ONE rule gated on merge-candidate mode: `:construction:` is legal
+  mid-branch and illegal only at the merge, so its verdict genuinely changes
+  with time.
+- `uppercase-subject` — the subject's first rune is uppercase.
+- `trailing-period` — the subject ends with `.`, judged after the same trailing
+  space/tab/CR trim git itself applies before recording the message. Reading the
+  untrimmed line let a trailing space hide the period behind it, in every mode,
+  `--range` and CI included.
+- `undeclared-removal` — a `:fire:`, `:coffin:` or `:truck:` commit that says
+  nothing about whether it breaks anyone: no `!`, no `BREAKING CHANGE:` footer,
+  no `NON-BREAKING: <why>` footer. Those three codes are the removals, and the
+  only three; all three are `none`, which is right for dead code, docs and
+  fixtures and silently wrong for the rare one. sill pruned the public preset
+  `catppuccin-latte` under `:fire:` inside a `:sparkles:` PR, shipped it as a
+  MINOR, and broke downstream wand (t-n158) — `:truck:` is the worst of the three
+  there, because a rename resolves at runtime, so
+  `paletteFor("catppuccin-latte")` fell back to another theme instead of failing.
+  glyph cannot know whether the removed element was public — that is the
+  consuming repo's knowledge, and an API-diff tool's job — so the rule only
+  refuses to let the question go UNANSWERED. Deliberately NOT gated on
+  merge-candidate, unlike `wip-merge-candidate`: whether a removal breaks anyone
+  is settled the moment the commit is written, so there is nothing to wait for,
+  and waiting is what costs — at the hook the fix is one line in an editor the
+  author already has open, in CI it is a rewrite of pushed history.
+
+These are glyph's implementation of the convention, not its normative statement.
+Which elements count as *public* for `undeclared-removal` is settled by the fleet
+CONTRIBUTING.md that `docs/commit-convention.md` points at — do not restate it
+here, or one question will have two answers.
 
 ## 3. gitmoji → semver
 
@@ -125,7 +199,9 @@ emoji is ambiguous). Any of three triggers short-circuits to major and cannot be
 dropped by a skip rule: `:boom:`, a `!` before the colon, or a
 `BREAKING CHANGE:` / `BREAKING-CHANGE:` footer.
 
-**Deliberate divergences from the spec's `semver` field** (to ratify in Phase 1):
+**Deliberate divergences from the spec's `semver` field** — ratified and
+shipped; each is pinned by name in `TestLoadBearingAndRatifiedDeviations`, so
+reverting one fails the suite rather than quietly changing every repo's bump:
 `:wrench:`→none and `:alembic:`→none (fleet config / experiments are
 non-shipping); `:thread:` / `:safety_vest:` / `:airplane:` / `:t-rex:`→patch (each
 changes shipped runtime behavior the spec leaves `null`).
@@ -338,22 +414,49 @@ commit and a tag strictly past it both exited 3). Both now exit 0.
 
 ## 5. Architecture (Go, house pattern)
 
-Binary `glyph`, module `github.com/akira-toriyama/glyph`. Subcommands:
-`lint`, `bump`, `notes`, `release`, `doctor`, `rules`, `version`.
+Binary `glyph`, module `github.com/akira-toriyama/glyph`. Subcommands: `lint`,
+`bump`, `notes`, `preview`, `release`, `doctor`, `rules`, `hook`, `version` —
+everything `glyph --help` prints except cobra's own `completion` and `help`.
+This line and the tree below are the two places in this document a new command
+or package has to be added, and both had gone quietly out of date: before t-0cqs
+the list was two commands behind (`preview`, `hook`) and the tree four packages
+behind (`markdown`, `preview`, `hook`, `workflows`). Read them against
+`glyph --help` and `ls internal/` rather than trusting them.
 
 ```
 cmd/glyph/main.go        os.Exit(cli.Execute()) — thin process boundary only
 internal/core            exit-code contract + structured Error (no I/O, no logic)
 internal/version         ldflags build identity + ReadBuildInfo fallback
 internal/gitmoji         //go:embed rules.json; Load() validates completeness
-internal/parser          message → Commit{Gitmoji,Scope,Breaking,Subject,Body,SHA,Author}
+internal/parser          Commit{Gitmoji,Scope,Breaking,NonBreaking,Subject,Body,SHA,Author}
 internal/bump            Level lattice; Classify; Reduce(max); Next; stdlib semver
+internal/markdown        per-field escape, then EscapeMentions over the assembled line
 internal/notes           group by section; text/template render (no external tmpl dep)
+internal/preview         merge-preview comment body — pure; no git, no API, no clock
 internal/gitsource       local `git log BASE..HEAD` (exec.CommandContext)
 internal/github          commits/{sha}/pulls, pulls/{N}/commits, release CRUD, repo object
 internal/doctor          repository-precondition checks; independent, read-only (§7)
+internal/hook            commit-msg hook contents + overwrite policy (no rules of its own)
 internal/cli             cobra adapter; Execute() int owns the exit-code funnel
+internal/workflows       no runtime code — tests pinning CI-YAML invariants
 ```
+
+**Why the four newest boundaries exist** — the tree says what each package
+holds, and each package's doc comment argues its own internals; what belongs
+here is only why it is a package at all, and what depends on it:
+
+- `internal/markdown` — one owner for the escaping ORDER (per field, then over
+  the assembled line), because both renderers, `notes` and `preview`, have to run
+  it the same way round and a copy in each is a copy that drifts.
+- `internal/preview` — the merge fold is version arithmetic, so it sits above
+  `internal/bump` rather than in `pr-verdict.yml`'s jq, where it was a second
+  rank table living on the fleet's side of the pin.
+- `internal/hook` — the generated hook is a consumer of the exit-code contract
+  that glyph WRITES, so its gate code is interpolated from `core.CodeLint`
+  (below) instead of typed as a shell literal; only `internal/cli` imports it.
+- `internal/workflows` — the one package whose subject is a directory rather
+  than a type (`.github/`), hence no runtime code, no importers, and nothing in
+  it that ships.
 
 **Exit-code contract** (`internal/core`): `0` ok · `1` no release · `2` usage ·
 `3` convention violation · `4` API/git/IO · `130` interrupted. Errors are
@@ -361,6 +464,17 @@ classified at the source into `*core.Error`; `ExitCode` funnels everything
 (unclassified ⇒ API, never usage). `3` is the *gate* code — what glyph was asked
 to judge does not conform: a commit message under `lint`, a repository's own
 configuration under `doctor`. Same class, different subject; no new integer.
+
+One command sits deliberately off the `1` rung: for `preview`, `none` is a real
+answer to the question asked — *what would merging this do?* — so a none verdict
+exits `0` there. `core.CodeNoRelease` is constructed in `cmd_bump.go`,
+`cmd_notes.go` and `cmd_release.go`, and nowhere else. Outside Go the integers
+are branched on in several places — `lint.yml` on `0` and on
+`jq -e '.error.code == 3'`, `release.yml` and `goreleaser.yml` on `1` — but the
+generated commit-msg hook is the one such consumer glyph WRITES, so its gate code
+is interpolated from `core.CodeLint` rather than typed as a shell literal; it
+forwards `3` and only `3` and exits `0` on every other failure (`internal/hook`,
+above).
 
 **Stream contract:** stdout carries the payload, stderr the diagnostics — and
 stderr has a *shape*, because two machine-readable things share it. Every line
@@ -378,14 +492,42 @@ first newline — JSON-escaping the newlines keeps the *bytes* valid while the
 *value* still loses everything past the first line, which is how this stayed
 invisible.
 
-**gitmoji table embedding:** `//go:embed internal/gitmoji/rules.json` — the
-pinned binary *is* the pinned rules (lockstep, zero skew). `Load()` fails at
-startup if any spec code is missing or a bump is out of enum.
+**gitmoji table embedding:** `//go:embed rules.json` inside `internal/gitmoji`
+(an embed pattern is package-relative, so it cannot be written as a path from the
+repository root) — the pinned binary *is* the pinned rules (lockstep, zero skew).
+`Load()` fails at startup if any spec code is missing or a bump is out of enum.
 
 **Testing** (stdlib only, no testify): table tests + a full-coverage
-exhaustiveness test for the gitmoji table; golden tests for notes; fuzz for the
-parser (never panics; well-formed round-trips) and the fold (order-independence).
-Always `-race`.
+exhaustiveness test for the gitmoji table — the two halves buy different things.
+`Load()` (above) only catches `rules.json` disagreeing with `CodeCount`, which an
+edit to both would satisfy, so `TestCodeCount` pins the literal 75 as well: a
+code added or dropped cannot reach a release without a diff that says so. Neither
+half is a build error — the binary still compiles; what breaks is every command
+that reads the table, at startup. Golden files for notes
+(`internal/notes/testdata/*.golden.md`) and for the docs table
+(`docs/gitmoji-table.md` is `glyph rules --md`, held by a golden test);
+`internal/workflows` pins what the CI YAML cannot state about itself; fuzz over
+the parser (never panics; well-formed round-trips), the fold
+(order-independence), version parse/step, the `Link:` header parser (it extracts,
+never fabricates) and both Markdown escapers. One fuzz target is not a parse
+test at all: `FuzzNextPageOrigin` machine-checks a SECURITY invariant — no
+`Link:` header a server sends can move a token-bearing request off the configured
+origin — and spells the expected origin out literally rather than calling
+`sameOrigin`, so a bug inside the comparison cannot make the property agree with
+itself. `rg '^func Fuzz'` is the current list, not this sentence. Always `-race`.
+
+**Anything that models an external system carries one test that asks the real
+system**, because a closed loop of glyph-against-glyph proves nothing about the
+thing being modelled. `internal/parser` shells to `git stripspace` — git's own
+`strbuf_stripspace`, the authority on what git will actually record — with
+`GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM` pinned to `/dev/null` so a personal
+`core.commentChar` cannot move the answer. `internal/markdown`'s rules were
+measured against GitHub's own renderer (`gh api -X POST /markdown`, mode=gfm),
+with the probes, their observed output and the date of the run recorded in
+`markdown_test.go`; re-run them before changing a rule, because the one rule
+changed from reasoning alone was wrong (an at-sign written as `&#64;` renders
+back to `@` and GitHub's mention post-processor linked it anyway, long after
+CommonMark had decoded the entity).
 
 ## 6. Distribution (summary)
 
@@ -405,8 +547,9 @@ ratified Q16: no shadow parallel-run (a policy-honest comparison against the
 type-driven git-cliff is impossible once the gitmoji table legitimately
 reclassifies single commits, and migration scaffolding is debt). The safety net
 is structural: writes are draft-only, a human publishes, the published floor
-guards the tag space, and `--dry-run` previews any verdict. Full rollout:
-tracked in the `projects` furrow task and the approved plan.
+guards the tag space, and `--dry-run` previews any verdict. Full rollout — and
+everything else still open — is tracked in the `projects` furrow board, which is
+the single home for it (§8 keeps no copy).
 
 The install itself — download the pinned tarball, verify it against the
 release's `checksums.txt` AND its build provenance (`gh attestation verify`,
@@ -552,9 +695,38 @@ The severities are the argued part:
   `Akira-Toriyama/glyph/…@main` executes, and a case-sensitive scan called that
   repository clean.
 
-## 8. Roadmap
+## 8. Where we are
 
-Phase 0 scaffold (this) → 1 gitmoji table → 2 parser+bump+lint → 3 lint reusable
-+ canary (first shippable) → 4 notes → 5 GitHub squash-safe plumbing → 6
-glyph-shipped `release.yml` reusable + chord direct flip → 7 hub self-adopt +
-docs → 8 fleet migration.
+No phase list: a numbered plan has to be re-edited on every release, and the one
+that stood here was not — it still called the gitmoji table "Phase 1" long after
+it shipped, the same rot that left §5's subcommand list and package tree behind
+the binary (t-0cqs).
+
+**Shipped.** Every engine deliverable is something you can run or read in this
+tree, and it is inventoried where it is already maintained rather than a third
+time here: the commands are §5's list, each with its own `--help`; the three
+reusable workflows and the one install action are §6; `git tag` is the release
+history and the only answer to "which version". README's status line is the
+one-sentence state, and it is the only prose that should need touching when that
+changes.
+
+**Self-adopted, partly — know which half.** glyph consumes its own reusables at
+a pinned tag: `.github/workflows/commit-lint.yml` calls `lint.yml`,
+`version-preview.yml` calls `pr-verdict.yml`. It does NOT consume its own
+`release.yml`. glyph's tags are cut by `goreleaser.yml`, which renders the
+release body with `glyph notes --since-tag` run from the tagged commit — so the
+notes renderer is dogfooded while the rolling-draft path is not exercised
+end to end by anything in this repository. What holds `release.yml` here is
+`internal/workflows` (the install action stays single-source, the binary version
+is derived from the caller's pin, the commented caller stub keeps its `@vX.Y.Z`
+placeholder, the checkout stays `fetch-depth: 0`) plus the fake-API tests behind
+`glyph release`. Worth knowing before trusting "we dogfood it" about a
+`release.yml` change.
+
+**Next.** Fleet migration, and everything else still open, lives in the
+`projects` furrow board — the pointer §6 already carries, not a second copy of it
+here: a doc-side task list is a second source of truth, and the two go stale
+against each other. Two design decisions this document names in place, so that
+dropping the phase list does not lose them: the initial-tag knob (§1), and
+narrowing the reconciliation refusal to the merge-button shape, which is
+placeable without a canonical commit (§4).

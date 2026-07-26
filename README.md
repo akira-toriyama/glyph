@@ -122,7 +122,9 @@ The leading gitmoji (textual form, e.g. `:sparkles:`) is the type; `!` (or a
 ```
 
 The full gitmoji → semver mapping is the binary's embedded source of truth,
-self-printed by `glyph rules` (Phase 1).
+self-printed by `glyph rules` — `--md` (the default) renders the same table as
+`docs/gitmoji-table.md`, and `--json` emits the embedded `rules.json` verbatim.
+Both name the gitmoji-spec snapshot they were pinned from.
 
 ## Exit codes
 

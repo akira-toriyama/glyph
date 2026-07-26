@@ -256,8 +256,9 @@ func TestBumpMalformedCommitIsLint(t *testing.T) {
 	}
 }
 
-// TestBumpRequiresRange: bump without --range is usage — the squash-safe
-// inputs (--pr / --since-tag) arrive in a later phase.
+// TestBumpRequiresRange: bump with no input mode at all is usage. The
+// squash-safe inputs ship too (--pr, --since-tag) and cobra requires exactly one
+// of the three, so this pins the empty invocation, not an unimplemented feature.
 func TestBumpRequiresRange(t *testing.T) {
 	if code, _, _ := runGlyph(t, "bump"); code != 2 {
 		t.Fatalf("bump without --range should exit 2")
