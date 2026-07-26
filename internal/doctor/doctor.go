@@ -309,8 +309,9 @@ func permissionSummary(p *github.RepoPermissions) string {
 // canonical commit (t-8xsb), so a replayed commit classified during the lag is
 // recognised when the pull expands and counted once, out loud. The alignment is
 // verified message by message and abandoned whole if any differs, and THERE the
-// old double fold survives: a rebase that dropped an already-upstream commit
-// cannot be aligned, and the same change renders twice with nothing that says so.
+// old double fold survives: a rebase that dropped a commit it was asked to replay
+// — one already upstream, or one that rebased empty — cannot be aligned, and the
+// same change renders twice with nothing that says so.
 //
 // That window is not hypothetical: the walk runs seconds after a push, where
 // GitHub answers 422 for a sha it does not know yet — and 422 is the ONLY status
@@ -364,8 +365,9 @@ func checkSquashEnabled(in Input) Check {
 		"counts none. The same shape is PERMANENT when an automation authors the merge commit: the author gate skips it " +
 		"before the API, so nothing ever resolves the pull. A rebase writes new shas that appear in no pull request's commit " +
 		"listing, so it depends on the walk aligning that listing against the run of commits ending at the canonical one; " +
-		"where the alignment cannot be verified — a rebase that dropped an already-upstream commit — a replayed commit " +
-		"classified during the lag is folded in a second time and the same change renders twice, with nothing that says so. " +
+		"where the alignment cannot be verified — a rebase that dropped a commit it was asked to replay, one already " +
+		"upstream or one that rebased empty — a replayed commit classified during the lag is folded in a second time and " +
+		"the same change renders twice, with nothing that says so. " +
 		"A squash-merged pull has exactly one commit on main and it IS its merge point, so none of those states can exist. " +
 		"Allowing another method is a convention; leaving squash off makes every pull take a landing that has them"
 	c.Fix = fmt.Sprintf("gh api -X PATCH repos/%s -F allow_squash_merge=true", in.Repo)
@@ -471,8 +473,8 @@ func checkRebaseMerge(in Input) Check {
 		"per replayed commit instead of one per pull request. The dedup key used to cost more: a rebase always writes new " +
 		"shas, which appear in no pull request's commit listing, so inside the API-lag window a replayed commit was folded " +
 		"in twice. The walk now aligns the listing against the run of commits ending at the canonical one and counts it once " +
-		"(t-8xsb); what remains is a rebase that cannot be aligned — one that dropped an already-upstream commit — where the " +
-		"double fold survives"
+		"(t-8xsb); what remains is a rebase that cannot be aligned — one that dropped a commit it was asked to replay, " +
+		"already upstream or rebased empty — where the double fold survives"
 	c.Fix = fmt.Sprintf("gh api -X PATCH repos/%s -F allow_rebase_merge=false (optional — this is a convention, not a defect)", in.Repo)
 	return c
 }

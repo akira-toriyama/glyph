@@ -1,14 +1,14 @@
 diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index fdc388e..1501dd2 100644
+index 2197cbb..000071e 100644
 --- a/internal/cli/sincetag.go
 +++ b/internal/cli/sincetag.go
-@@ -655,9 +655,6 @@ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.Ra
+@@ -695,9 +695,6 @@ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.Ra
  	if err != nil {
  		return nil, err
  	}
--	if len(mains) != len(listing) {
+-	if len(mains) != len(window) {
 -		return landed, nil
 -	}
- 	for i := range listing {
- 		if strings.TrimSpace(mains[i].Message) != strings.TrimSpace(listing[i].Message) {
+ 	for k, i := range window {
+ 		if strings.TrimSpace(mains[k].Message) != strings.TrimSpace(listing[i].Message) {
  			return landed, nil

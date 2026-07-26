@@ -1644,6 +1644,119 @@ func TestSinceTagRebaseMergeUsesOnMainSHAs(t *testing.T) {
 	})
 }
 
+// The two tests below are the shapes that break "a listing is either ALL
+// verbatim or ALL rewritten" — the reading under which the alignment used to run
+// only when nothing had been placed under its own sha (t-7h15). Both were
+// measured against the real API on akira-toriyama/glyph-test before they were
+// written here, because the premise is GitHub's behaviour and not glyph's: a
+// closed loop of fixtures would have agreed with whatever the code assumed.
+
+// TestSinceTagStackedRebaseMergePlacesTheRewrittenHalf covers the MIXED listing.
+//
+// A stacked pull request carries its base pull's commits, and GitHub computes the
+// listing against a STORED base sha rather than re-deriving it — so when the base
+// pull lands through the merge button, its commit is on main under its own sha
+// AND still in the stacked pull's listing (measured: glyph-test#28 kept listing
+// ed1bd9e after #27 merged it verbatim). Rebase-merge the stacked pull and the
+// listing is half placeable by ancestry, half only by alignment.
+//
+// Before the fix the first half short-circuited the second: every REWRITTEN entry
+// kept an empty landing site, which foldPull reads as "the pull alone governs" and
+// folds whatever the range says. Measured here: minor out of a :sparkles: released
+// one tag ago, exit 0, no warning, and the notes citing pre-rebase shas main does
+// not contain. It is t-8xsb through the front door, on the shape t-8xsb's own fix
+// introduced.
+func TestSinceTagStackedRebaseMergePlacesTheRewrittenHalf(t *testing.T) {
+	dir, _ := testRepo(t)
+	// The base pull's commit, landed verbatim by the merge button.
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) add a menu")
+	base := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	// The stacked pull's two commits, as the rebase rewrote them onto main. The
+	// tag sits at the first, so only the second belongs to the next release.
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(core) add the fold")
+	shipped := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testGit(t, dir, "akira-toriyama", "tag", "v0.2.0", shipped)
+	testCommit(t, dir, "akira-toriyama", ":bug:(ui) fix the menu")
+	pending := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(pending): `[` + apiPullRef(7, "2026-07-20T00:00:00Z", pending) + `]`,
+		pullCommitsPath(7): `[` +
+			apiCommit(base, "akira-toriyama", ":sparkles:(ui) add a menu") + `,` +
+			apiCommit("pre1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "akira-toriyama", ":sparkles:(core) add the fold") + `,` +
+			apiCommit("pre2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "akira-toriyama", ":bug:(ui) fix the menu") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, shas, stderr := verdictSHAs(t, "bump", "--since-tag=v0.2.0", "--json")
+	if code != 0 {
+		t.Fatalf("the pending :bug: is in range and must release: exit %d\nstderr: %s", code, stderr)
+	}
+	// The level is the whole point: the rewritten entry that shipped under v0.2.0
+	// must not be counted, and it carries the only :sparkles: in the range.
+	if len(shas) != 1 || shas[0] != pending {
+		t.Errorf("verdict counts %v, want [%.7s] alone — the released half of the rebased run is being folded back in", shas, pending)
+	}
+	// Every cited sha has to be one this repository holds. Placing the rewritten
+	// half is what retires the pre-rebase shas as much as it fixes the range.
+	for _, sha := range shas {
+		testGit(t, dir, "akira-toriyama", "cat-file", "-e", sha+"^{commit}")
+	}
+	if !strings.Contains(stderr, "shipped under an earlier tag") {
+		t.Errorf("the walk must name the released commits it declined to re-count:\n%s", stderr)
+	}
+}
+
+// TestSinceTagRebaseOverABaseMergeCommitStillAligns covers the other way the
+// all-or-nothing reading fails: a rebase does not replay everything it is given.
+//
+// "Merge branch 'main' into <topic>" is an ordinary thing to have on a branch,
+// GitHub lists that merge commit with the pull's own commits, and it PERMITS
+// rebase-merge over it — measured on glyph-test#26: three listed commits, two
+// landed, merge_commit_sha naming the last of the two. Counting the merge commit
+// into the alignment window therefore made the length wrong, and the alignment
+// was abandoned WHOLE, taking the two entries it could have placed with it. The
+// listing then governed itself again: phantom shas, and a :sparkles: from before
+// the tag folded back in.
+func TestSinceTagRebaseOverABaseMergeCommitStillAligns(t *testing.T) {
+	dir, _ := testRepo(t)
+	// main moved while the pull was open — this is what the author merged in, and
+	// it is what the alignment window runs off the end into if the merge commit is
+	// left holding a position.
+	testCommit(t, dir, "akira-toriyama", ":memo: note something on main")
+	// The pull's two commits as the rebase replayed them; the tag sits at the first.
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) add a menu")
+	shipped := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testGit(t, dir, "akira-toriyama", "tag", "v0.2.0", shipped)
+	testCommit(t, dir, "akira-toriyama", ":bug:(ui) fix the menu")
+	pending := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(pending): `[` + apiPullRef(7, "2026-07-20T00:00:00Z", pending) + `]`,
+		pullCommitsPath(7): `[` +
+			apiCommit("pre1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "akira-toriyama", ":sparkles:(ui) add a menu") + `,` +
+			apiCommit("pre2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "akira-toriyama", ":bug:(ui) fix the menu") + `,` +
+			apiMergeCommit("pre3cccccccccccccccccccccccccccccccccccc", "akira-toriyama", "Merge branch 'main' into topic-7") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, shas, stderr := verdictSHAs(t, "bump", "--since-tag=v0.2.0", "--json")
+	if code != 0 {
+		t.Fatalf("the pending :bug: is in range and must release: exit %d\nstderr: %s", code, stderr)
+	}
+	if len(shas) != 1 || shas[0] != pending {
+		t.Errorf("verdict counts %v, want [%.7s] alone — the base-merge commit is displacing the alignment", shas, pending)
+	}
+	for _, sha := range shas {
+		testGit(t, dir, "akira-toriyama", "cat-file", "-e", sha+"^{commit}")
+	}
+	if !strings.Contains(stderr, "shipped under an earlier tag") {
+		t.Errorf("the walk must name the released commit it declined to re-count:\n%s", stderr)
+	}
+}
+
 // squashOf lands ONE commit on main shaped exactly the way GitHub writes a
 // squash merge of a MULTI-commit pull request under COMMIT_OR_PR_TITLE: the
 // subject is the PR TITLE plus (#N), whatever that title happens to be. It is
@@ -2032,6 +2145,12 @@ func TestMainFootprintSurvivesAListingLongerThanMain(t *testing.T) {
 //
 // The unknown canonical is the assertion. A guard removed here does not merely
 // cost a subprocess: it fails the run.
+//
+// The guard it now exercises is the ALIGNMENT WINDOW's, not a private one for the
+// empty listing. Once the window became "what is left after ancestry placed what
+// it could" (t-7h15), an empty listing and a fully placed merge-button listing
+// became the same state — nothing an alignment could answer about — and a second
+// guard ahead of it would be a decision no test could reach.
 func TestMainFootprintEmptyListingAsksGitNothing(t *testing.T) {
 	dir, _ := testRepo(t)
 	t.Chdir(dir)

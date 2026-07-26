@@ -27,6 +27,18 @@ func apiCommit(sha, author, message string) string {
 		sha, m, author)
 }
 
+// apiMergeCommit renders a listing entry with TWO parents — the "Merge branch
+// 'main' into <topic>" commit a branch acquires the moment its author pulls the
+// base in. GitHub lists it beside the pull's own commits (measured against the
+// real API: akira-toriyama/glyph-test#26 listed three, of which this was one),
+// and a rebase does not replay it, so it is the one listed shape that can have
+// no landing site at all.
+func apiMergeCommit(sha, author, message string) string {
+	m, _ := json.Marshal(message)
+	return fmt.Sprintf(`{"sha":%q,"commit":{"message":%s,"author":{"name":%q}},"parents":[{"sha":"p"},{"sha":"q"}]}`,
+		sha, m, author)
+}
+
 // usePR points the CLI at the stand-in API and names the repository, exactly as
 // GitHub Actions would.
 func usePR(t *testing.T, srv *httptest.Server) {
