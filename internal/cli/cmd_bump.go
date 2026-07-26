@@ -164,7 +164,16 @@ func bumpInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, strin
 		return commits, source, nil, err
 	}
 	if cmd.Flags().Changed("since-tag") {
-		// The walk's pull-expansion provenance is release's concern, not bump's.
+		// Both halves of the walk's facts are discarded here, and for the same
+		// reason: bump REPORTS, it does not act. The expansion provenance is
+		// release's audit trail, and an incomplete walk is already a ::warning::
+		// per cause on stderr — the channel the operator and the Actions
+		// annotation layer both read. What made discarding it wrong for release
+		// was that release then DELETED a draft and lowered a version on the
+		// strength of the same fold; bump writes nothing back, so the warning is
+		// the whole remedy. (preview is the exception among the readers: its
+		// answer is pasted into a pull request and read later by someone who
+		// never opens the log, so it carries the shortfall in the body itself.)
 		commits, _, source, base, err := sinceTagInput(ctx, table, bumpSinceTag, bumpRepo)
 		return commits, source, base, err
 	}

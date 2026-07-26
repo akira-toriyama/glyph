@@ -65,8 +65,10 @@ func notesInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, stri
 		return pullInput(ctx, notesPR, notesRepo)
 	}
 	if cmd.Flags().Changed("since-tag") {
-		// The version base and the pull-expansion provenance the walk also
-		// resolves are bump's and release's concerns, not notes'.
+		// The version base is bump's concern; the walk's facts are discarded for
+		// the reason spelled out at bump's own call site — notes REPORTS, and an
+		// incomplete walk already warns per cause on stderr. Nothing here writes
+		// back, so there is no irreversible act to gate.
 		commits, _, source, _, err := sinceTagInput(ctx, table, notesSinceTag, notesRepo)
 		return commits, source, err
 	}

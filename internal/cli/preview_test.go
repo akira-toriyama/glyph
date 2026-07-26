@@ -220,3 +220,82 @@ func TestPreviewRequiresPR(t *testing.T) {
 		t.Fatalf("missing --pr exited %d, want 2 (usage): %s", code, stderr)
 	}
 }
+
+// TestPreviewZeroVersionTagIsTagged: a repository tagged v0.0.0 HAS released,
+// and the pending walk must run.
+//
+// untagged used to be decided by comparing the parsed version against the zero
+// value, which is the same answer for "no tag anywhere" and "the tag is
+// v0.0.0". The second is an ordinary thing to have cut — it is what a repo that
+// wants a floor before its first real release does — and glyph then skipped its
+// pending walk and told the reviewer, in a durable PR comment, that the
+// repository had no release tag. Measured on the same checkout before this
+// change: `preview --pr 7 --json` reported {"untagged":true,"pending":"none"}
+// while `bump --since-tag=auto --json` walked v0.0.0..HEAD and answered
+// {"level":"minor"}. The existence question is about the TAG, so it is now
+// asked of the tag name.
+func TestPreviewZeroVersionTagIsTagged(t *testing.T) {
+	dir := testRepoUntagged(t)
+	testGit(t, dir, "akira-toriyama", "tag", "v0.0.0")
+	pending := squashCommit(t, dir, "Add a menu", 9)
+	t.Chdir(dir)
+
+	srv := walkServer(t, map[string]string{
+		pullCommitsPath(7):       `[` + apiCommit("aaa1111", "akira-toriyama", ":bug: fix a crash") + `]`,
+		commitPullsPath(pending): `[` + apiPullRef(9, "2026-07-24T00:00:00Z", pending) + `]`,
+		pullCommitsPath(9):       `[` + apiCommit("bbb2222", "akira-toriyama", ":sparkles: add a menu") + `]`,
+	})
+	usePR(t, srv)
+
+	code, stdout, stderr := runGlyph(t, "preview", "--pr", "7", "--json")
+	if code != 0 {
+		t.Fatalf("preview exited %d: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, `"untagged":false`) {
+		t.Errorf("a v0.0.0-tagged repository must not read as untagged:\n%s", stdout)
+	}
+	// The walk ran AND its answer reached the fold: walkServer fails on any
+	// route it was not given, so serving the pending routes proves the request
+	// happened, and the level proves the result was used.
+	if !strings.Contains(stdout, `"pending":"minor"`) {
+		t.Errorf("the pending walk must run and fold in the merged :sparkles:; got:\n%s", stdout)
+	}
+	if strings.Contains(stderr, "no v* release tag here") {
+		t.Errorf("a tagged repository must not be told it has no release tag: %s", stderr)
+	}
+}
+
+// TestPreviewIncompletePendingWalkSaysSoInTheBody: the comment states a
+// conclusion about what is pending, and an incomplete walk produces the same
+// empty fold as a base branch that genuinely holds nothing.
+//
+// release refuses to ACT on that ambiguity; preview has nothing to refuse, so
+// it has to say it — and say it in the BODY, not only in the ::warning:: the
+// walk already emits. This body is pasted into a pull request by
+// pr-verdict.yml and read later by a reviewer who never opens the workflow log:
+// the whole reason the prose lives in a tested package is that it makes claims
+// which must stay true wherever it is distributed.
+func TestPreviewIncompletePendingWalkSaysSoInTheBody(t *testing.T) {
+	dir, _ := testRepo(t)
+	// A merge point GitHub has not indexed yet: the walk knows a pull is there,
+	// cannot resolve it, and comes back short by whatever it changed.
+	pending := squashCommit(t, dir, "Add a menu", 9)
+	t.Chdir(dir)
+
+	srv := walkServer(t, map[string]string{
+		pullCommitsPath(7):       `[` + apiCommit("aaa1111", "akira-toriyama", ":bug: fix a crash") + `]`,
+		commitPullsPath(pending): apiUnknownSHA,
+	})
+	usePR(t, srv)
+
+	code, stdout, stderr := runGlyph(t, "preview", "--pr", "7")
+	if code != 0 {
+		t.Fatalf("preview exited %d: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "[!WARNING]") || !strings.Contains(stdout, "INCOMPLETE") {
+		t.Errorf("the body must qualify its pending claim when the walk came back short:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "as the walk could read") {
+		t.Errorf("the footer must stop claiming a complete fold:\n%s", stdout)
+	}
+}

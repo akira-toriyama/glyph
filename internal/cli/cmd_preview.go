@@ -87,7 +87,16 @@ func previewRun(cmd *cobra.Command) error {
 	if cerr != nil {
 		return cerr
 	}
-	current, verr := currentVersion(ctx, "", nil)
+	// The tag NAME, not just the version it parses to. Whether this repository
+	// has ever released is a question about the existence of a tag, and
+	// currentVersion answers only what to step FROM — for an untagged repository
+	// that is v0.0.0, which is also a perfectly ordinary tag to have cut.
+	// Comparing the version against the zero value therefore called a repository
+	// tagged v0.0.0 untagged, skipped its pending walk, and printed "this
+	// repository has no v* release tag yet" — while `bump --since-tag=auto` on
+	// the SAME checkout walked v0.0.0..HEAD and answered minor. Two commands,
+	// one repository, contradictory answers.
+	latestTag, current, verr := latestVersionTag(ctx)
 	if verr != nil {
 		return verr
 	}
@@ -99,13 +108,26 @@ func previewRun(cmd *cobra.Command) error {
 	// and no release — and buys nothing, because a repo with no release has
 	// nothing merged-but-unreleased to fold in. Skip the walk; the PR's own
 	// verdict is the whole answer, and the body says why.
-	untagged := current == bump.Version{}
+	untagged := latestTag == ""
 	var pendingLevel gitmoji.Bump
 	var pendingNext string
+	var pendingShort string
 	if !untagged {
-		pparsed, _, _, _, serr := sinceTagInput(ctx, table, sinceTagAuto, previewRepo)
+		pparsed, facts, _, _, serr := sinceTagInput(ctx, table, sinceTagAuto, previewRepo)
 		if serr != nil {
 			return serr
+		}
+		// The pending fold is the one side of this comment computed from a walk,
+		// so it is the one side that can come back short. release refuses to act
+		// on that; there is nothing to refuse here, so it is reported instead —
+		// see preview.Input.PendingShort for why the walk's own ::warning:: is
+		// not enough on this path.
+		if !facts.complete() {
+			owner, repo, rerr := resolveRepo(previewRepo)
+			if rerr != nil {
+				return rerr
+			}
+			pendingShort = facts.shortfall(owner, repo)
 		}
 		_, pendingLevel, cerr = classifyVerdict(pparsed, table)
 		if cerr != nil {
@@ -123,6 +145,8 @@ func previewRun(cmd *cobra.Command) error {
 		Untagged: untagged,
 		PR:       preview.Verdict{Level: prLevel, Commits: previewCommits(prCommits)},
 		Pending:  preview.Verdict{Level: pendingLevel, Next: pendingNext},
+
+		PendingShort: pendingShort,
 	}
 	if prLevel != gitmoji.BumpNone {
 		in.PR.Next = current.Next(prLevel).String()
