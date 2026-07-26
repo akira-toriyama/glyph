@@ -280,3 +280,36 @@ func commitWith(dir, path, message string) (string, error) {
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
+
+// TestHookInstallPrintFalseIsNotAConflict: the same Changed-versus-value split
+// as rules, on a group with no default-bearing member.
+//
+// `--print=false --force` asks to INSTALL rather than print, and to force the
+// install — coherent, and refused by cobra's grouping with a message saying both
+// flags "were all set". Here there is nothing that could be "selected off" into
+// nothing (installing is what the command does when no flag chooses otherwise),
+// so a =false member is simply not selecting, and only two flags genuinely ON
+// are a conflict.
+func TestHookInstallPrintFalseIsNotAConflict(t *testing.T) {
+	for name, tc := range map[string]struct {
+		args     []string
+		wantCode int
+	}{
+		"declining print while forcing installs":  {[]string{"hook", "install", "--print=false", "--force"}, 0},
+		"declining print while asking for ndjson": {[]string{"hook", "install", "--print=false", "--ndjson"}, 0},
+		"print and force really do conflict":      {[]string{"hook", "install", "--print", "--force"}, 2},
+		"print and ndjson really do conflict":     {[]string{"hook", "install", "--print", "--ndjson"}, 2},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, _ := testRepo(t)
+			t.Chdir(dir)
+			code, _, stderr := runGlyph(t, tc.args...)
+			if code != tc.wantCode {
+				t.Fatalf("%v exited %d, want %d\nstderr: %s", tc.args, code, tc.wantCode, stderr)
+			}
+			if strings.Contains(stderr, "were all set") {
+				t.Errorf("%v: the envelope claims a flag was set that the caller turned off:\n%s", tc.args, stderr)
+			}
+		})
+	}
+}

@@ -73,7 +73,19 @@ func newHookInstallCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&hookForce, "force", false, "replace an existing commit-msg hook glyph did not write")
 	cmd.Flags().BoolVar(&hookPrint, "print", false, "write the hook script to stdout instead of installing it")
 	cmd.Flags().BoolVar(&hookNDJSON, "ndjson", false, "emit compact single-line JSON instead of the human line")
-	cmd.MarkFlagsMutuallyExclusive("print", "force")
-	cmd.MarkFlagsMutuallyExclusive("print", "ndjson")
+	// Value-aware, not Changed-aware: `--print=false --force` asks to install
+	// rather than print, and force the install — a coherent invocation cobra's
+	// grouping refused while reporting that both flags "were all set".
+	//
+	// The group has no default-bearing member (installing is what the command
+	// does when nothing is selected, and no flag names that), so there is no
+	// checkDefaultModeOff here: --print=false and --ndjson=false both leave the
+	// command with something to do.
+	cmd.PreRunE = func(cmd *cobra.Command, _ []string) error {
+		if err := checkExclusiveBool(cmd, "print", "force"); err != nil {
+			return err
+		}
+		return checkExclusiveBool(cmd, "print", "ndjson")
+	}
 	return cmd
 }
