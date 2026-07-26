@@ -37,6 +37,17 @@ The hook holds no copy of the convention — it calls glyph, so it cannot fall o
 of lockstep when the rules move. Without glyph on `PATH` it warns and lets the
 commit through; the commit-lint CI job stays the authority.
 
+## Working on glyph
+
+```sh
+sh scripts/check.sh     # everything CI gates on, before pushing
+```
+
+It declares which CI gates it mirrors and which it does not, and reconciles the
+two at the end — a gate that did not run means no success line, and a missing
+tool is a failure rather than a skip. `nix develop` supplies the tools;
+[`CLAUDE.md`](CLAUDE.md) has the rest of the working assumptions.
+
 ## Is this repository still set up the way glyph assumes?
 
 ```sh

@@ -57,17 +57,21 @@ tree that does not compile turns the local gate into a silent no-op.
 
 ## Verification
 
-- **`sh scripts/check.sh`** — the full local run: module hygiene, build, vet, race tests, a
-  bounded fuzz smoke, the mutation ledger, both optional linters, then a smoke test of the
-  exit-code contract against a freshly built `bin/glyph`. Nothing in the repo invokes it, which
-  is why it is named here.
-  Its header claims "a green run here means a green CI". At this HEAD that is **not** true, and
-  t-7tj3 (still open) is where it gets fixed, not here: it does not mirror build.yml's `bite`
-  job, and `golangci-lint` / `govulncheck` are `command -v`-guarded yet the run still ends
-  `✓ all checks passed` when they are missing (measured on this machine: `govulncheck` is not on
-  PATH, so that arm always skips; `nix develop` supplies both). Note `-count=1` is **not** part
-  of that gap — the CI job runs `go test -race ./...` without it too, so adding it here would
-  make check.sh diverge from CI, not converge. Add it when chasing a flake.
+- **`sh scripts/check.sh`** — the full local run, and the only thing that reproduces CI without
+  pushing. Nothing in the repo invokes it, which is why it is named here.
+  It declares its gates in a manifest at the top and **reconciles** at the end: every mirrored
+  gate must actually have run or there is no `✓` line and the exit is non-zero, and gates that
+  are deliberately *not* mirrored are listed with the reason. So read the final line, not the
+  absence of errors — `✓ 11/11 mirrored gates passed — NOT mirrored: …`.
+  Three things it will refuse to do rather than mislead you: it **exits 2 on a dirty tree**
+  (`ALLOW_DIRTY=1` runs anyway and says so in the final line, because a green over uncommitted
+  work is a claim about nothing reproducible); a **missing tool is a failure, not a skip**
+  (`nix develop` supplies `golangci-lint` and `govulncheck`); and its `bite` step needs the
+  `akira-toriyama/.github` clone beside this repo (or `GLYPH_FLEET_HUB`) — that step reads
+  **committed** history only, so an uncommitted test is invisible to it.
+  Two things that look like gaps and are not: `-count=1` is absent because `go-ci.yml` omits it
+  too (adding it would move this script *away* from CI — add it by hand when chasing a flake),
+  and `taplo` is unmirrored because glyph tracks zero `.toml` files.
 - **`sh scripts/mutations.sh`** — the mutation ledger: each `testdata/mutations/*.patch` breaks
   one argued decision and the ledger names the test that must then fail. This is where the house
   rule "a fix is shown by re-breaking it, not by a green suite" is mechanised. Adding a decision?
