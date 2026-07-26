@@ -61,6 +61,19 @@ type Input struct {
 	// renders no block — the commits produced no notes sections (nothing
 	// release-worthy and no removals to surface).
 	Notes string
+	// PendingShort names what the pending walk could not read, in the walk's own
+	// words; empty when it read the range whole.
+	//
+	// It exists because this comment makes a POSITIVE claim to a human —
+	// "nothing release-worthy is pending since v1.2.3" — and an incomplete walk
+	// produces the same empty fold as a range that genuinely holds nothing. The
+	// release path already refuses to act on that ambiguity; here there is
+	// nothing to refuse, only something to say. And it must be said HERE rather
+	// than left to the ::warning:: the walk already emits: this body is pasted
+	// into a pull request and read days later by a reviewer who never opens the
+	// workflow log, which is the whole reason the prose lives in a testable
+	// package instead of in the caller's jq.
+	PendingShort string
 }
 
 // rank orders levels for the fold, and is the ONLY test this package applies to
@@ -177,6 +190,14 @@ func Render(in Input) string {
 	b.WriteString(Marker + "\n")
 	b.WriteString(Headline(in) + "\n")
 
+	// Directly under the headline, because it QUALIFIES the headline: every
+	// sentence Headline can produce about the pending side is a claim this walk
+	// did not fully earn. Below the table would read as a footnote to the
+	// evidence rather than a caveat on the conclusion.
+	if in.PendingShort != "" {
+		fmt.Fprintf(&b, "\n> [!WARNING]\n> The pending side of this fold is INCOMPLETE: %s. Anything already merged but unreleased may be missing from the figure above, so treat it as a floor rather than the answer.\n", in.PendingShort)
+	}
+
 	if len(in.PR.Commits) > 0 {
 		b.WriteString("\n| commit | code | bump |\n|---|---|---|\n")
 		for _, c := range in.PR.Commits {
@@ -205,6 +226,9 @@ func footer(in Input) string {
 	// here and the wording must not read as a miscount.
 	if in.Untagged {
 		return fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. This repository has no v* release tag yet, so nothing merged earlier is folded in. Pushing more commits updates this comment.", n)
+	}
+	if in.PendingShort != "" {
+		return fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them — folded with as much of what is already merged on the base branch since **%s** as the walk could read. Pushing more commits updates this comment.", n, in.Current)
 	}
 	return fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them — folded with what is already merged on the base branch since **%s**. Pushing more commits updates this comment.", n, in.Current)
 }

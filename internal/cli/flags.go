@@ -80,3 +80,63 @@ func checkNamingFlags(cmd *cobra.Command, flags [][3]string) error {
 	}
 	return nil
 }
+
+// The same Changed-versus-VALUE split, one flag kind over: a BOOLEAN group.
+//
+// cobra's MarkFlagsMutuallyExclusive groups on Changed, so it reads
+// `--json=false --md` as both flags being set and refuses the invocation with
+// "[json md] were all set" — a false statement, in the machine-readable envelope
+// other repositories parse, about an invocation that asks for one format and
+// explicitly declines the other. And the mirror case goes the other way:
+// `--md=false` is not in the group's way at all, so nothing looks at it, and the
+// caller who said "not Markdown" is handed Markdown at exit 0. That is the
+// silent ignore this file exists to forbid, wearing a bool.
+//
+// Both guards therefore ask what the flags ARE, not whether they were mentioned.
+
+// turnedOn returns the members of a boolean group the caller actually set to
+// true. A flag given =false is not selecting anything and is not a conflict.
+func turnedOn(cmd *cobra.Command, names ...string) []string {
+	var on []string
+	for _, n := range names {
+		f := cmd.Flags().Lookup(n)
+		if f == nil {
+			panic("turnedOn: " + cmd.Name() + " has no --" + n + " flag")
+		}
+		if f.Value.String() == "true" {
+			on = append(on, "--"+n)
+		}
+	}
+	return on
+}
+
+// checkExclusiveBool rejects a boolean group with more than one member turned
+// ON, and names the ones that are rather than the ones that were mentioned.
+func checkExclusiveBool(cmd *cobra.Command, names ...string) error {
+	if on := turnedOn(cmd, names...); len(on) > 1 {
+		return core.Usagef("%s cannot be combined — they select different behaviour", strings.Join(on, " and "))
+	}
+	return nil
+}
+
+// checkDefaultModeOff rejects the default-bearing member of such a group being
+// turned explicitly OFF while nothing else is on.
+//
+// A mode flag whose default is the command's default behaviour has no
+// meaningful false: --md=false says "not the Markdown table", and with no other
+// format selected that names no output at all. Honouring it as "the default,
+// then" is the silent ignore; falling through to Markdown is what glyph did.
+func checkDefaultModeOff(cmd *cobra.Command, name, hint string, alternatives ...string) error {
+	f := cmd.Flags().Lookup(name)
+	if f == nil {
+		panic("checkDefaultModeOff: " + cmd.Name() + " has no --" + name + " flag")
+	}
+	if !f.Changed || f.Value.String() == "true" {
+		return nil
+	}
+	if len(turnedOn(cmd, alternatives...)) > 0 {
+		// Coherent: the caller declined the default and chose something else.
+		return nil
+	}
+	return core.Usagef("--%s=false selects nothing — %s", name, hint)
+}

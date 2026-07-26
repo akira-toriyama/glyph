@@ -622,27 +622,44 @@ func noteAttempts(err error, attempts int) error {
 // maxSnippet bounds the error-body excerpt carried into a message.
 const maxSnippet = 200
 
+// clamp cuts s to maxSnippet on a RUNE boundary. A bare byte slice could split a
+// multi-byte character, and the invalid tail surfaces as U+FFFD garbage once the
+// error envelope is marshaled.
+func clamp(s string) string {
+	if len(s) <= maxSnippet {
+		return s
+	}
+	cut := maxSnippet
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
+}
+
 // distill pulls the most useful line out of a GitHub error body: its "message"
-// field when the body is the standard JSON error, else a trimmed snippet. The
-// snippet is cut on a rune boundary — a bare byte slice could split a multi-byte
-// character, and the invalid tail would surface as U+FFFD garbage once the error
-// envelope is marshaled.
+// field when the body is the standard JSON error, else a trimmed snippet.
+//
+// BOTH arms are clamped, which is the point of the shared helper. Only the
+// snippet arm was, on the reasonable-sounding assumption that a JSON "message"
+// is a sentence — but the body is remote text glyph does not author, and the
+// arm that skips the clamp is the one that fires on a WELL-FORMED answer. A
+// validation error listing every offending field, or a proxy that wraps its
+// page in a JSON envelope behind an enterprise GITHUB_API_URL, arrives as a
+// "message" of arbitrary length. Measured before this change: a JSON body
+// carrying a 5000-character message came back at 5000 characters, while a
+// 5000-byte non-JSON body came back at 200.
+//
+// Nothing downstream clamps either — internal/cli's oneLine folds newlines and
+// renderError passes the text through — so the whole of it lands on one physical
+// line of a CI log, or inside one ::error:: annotation.
 func distill(body []byte) string {
 	var e struct {
 		Message string `json:"message"`
 	}
 	if json.Unmarshal(body, &e) == nil && e.Message != "" {
-		return e.Message
+		return clamp(e.Message)
 	}
-	s := strings.TrimSpace(string(body))
-	if len(s) > maxSnippet {
-		cut := maxSnippet
-		for cut > 0 && !utf8.RuneStart(s[cut]) {
-			cut--
-		}
-		s = s[:cut]
-	}
-	return s
+	return clamp(strings.TrimSpace(string(body)))
 }
 
 // nextLink extracts the rel="next" target from a GitHub Link header, or "" when

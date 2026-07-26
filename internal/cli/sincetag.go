@@ -221,13 +221,39 @@ type walkFacts struct {
 	// source, and DESIGN §4 blesses that path. The line is "something is missing
 	// from the fold", not "the fold used second-best evidence".
 	Dropped []string
+	// Truncated are pulls whose commit listing came back at GitHub's hard cap
+	// (github.PullCommitsCap), in walk order. The API stops at that many however
+	// far the pagination follows, so a listing of exactly the cap is one glyph
+	// cannot claim to have read whole — the commits past it are unreachable, not
+	// absent, and any one of them could carry the deciding gitmoji.
+	//
+	// It belongs here rather than in the warning alone for the same reason the
+	// other three do: the walk already SAID it could not read the range, and then
+	// deleted a draft and lowered a version on the strength of the fold anyway.
+	// Measured before this arm existed: a pull returning 250 :memo: commits, with
+	// a v0.2.0 draft present, exited 1 with action "delete" and the write set was
+	// exactly one DELETE — in the same run whose stderr carried the truncation
+	// warning.
+	Truncated []int
+	// Shallow: this checkout is a --depth clone, so git cannot answer the
+	// footprint question at all — a commit it does not HAVE is indistinguishable
+	// from one that never landed on the released branch.
+	//
+	// It is the only member of this struct that is a property of the CHECKOUT
+	// rather than of what the API returned, and it is the one most likely to
+	// appear: actions/checkout defaults to fetch-depth: 1, so a single line
+	// removed from a release workflow produces it. Measured on a real
+	// `git clone --depth 1`: the walk folds commits an earlier tag already
+	// shipped and answers minor where the full-history control on the same
+	// repository answers patch — loud (two warnings) and green.
+	Shallow bool
 }
 
 // complete reports that the walk read the range it was asked about. Everything
 // glyph does that it cannot take back — deleting a draft, lowering the version a
 // human is about to publish — is gated on it.
 func (f walkFacts) complete() bool {
-	return !f.AllUnknown && len(f.LostPulls) == 0 && len(f.Dropped) == 0
+	return !f.AllUnknown && !f.Shallow && len(f.LostPulls) == 0 && len(f.Dropped) == 0 && len(f.Truncated) == 0
 }
 
 // shortfall says, in one clause, what the walk could not read — for the warning
@@ -238,11 +264,17 @@ func (f walkFacts) shortfall(owner, repo string) string {
 	if f.AllUnknown {
 		parts = append(parts, fmt.Sprintf("every commit in it was unknown to %s/%s (check that --repo/$GITHUB_REPOSITORY names the repository this checkout belongs to)", owner, repo))
 	}
+	if f.Shallow {
+		parts = append(parts, "this is a shallow checkout, so git cannot tell a commit that never landed on the released branch from one it does not have (check out with fetch-depth: 0)")
+	}
 	for _, n := range f.LostPulls {
 		parts = append(parts, fmt.Sprintf("merged pull request #%d has commits here that stood aside for a merge point nothing resolved", n))
 	}
 	if len(f.Dropped) > 0 {
 		parts = append(parts, fmt.Sprintf("%d commit(s) GitHub had not indexed could not be read (%s)", len(f.Dropped), strings.Join(f.Dropped, ", ")))
+	}
+	for _, n := range f.Truncated {
+		parts = append(parts, fmt.Sprintf("merged pull request #%d returned the maximum %d commits, so GitHub truncated its listing and the rest could not be read", n, github.PullCommitsCap))
 	}
 	return strings.Join(parts, "; ")
 }
@@ -262,11 +294,27 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 	if err != nil {
 		return nil, walkFacts{}, err
 	}
+	// Asked once per WALK, before anything else, and not inside the expansion.
+	//
+	// It used to be asked lazily on the first pull that actually expanded, to
+	// save one `git rev-parse` on a release that folds nothing. That saving cost
+	// the fact: a walk where no pull resolves — the API lagging, an automation
+	// authoring the merge commits, a range of direct pushes — never asked at all,
+	// so the shallowest reading of the shallowest checkout was the one that went
+	// unreported. The question is about the CHECKOUT, not about any pull, so it
+	// belongs where the checkout is first read.
+	shallow, serr := gitsource.IsShallow(ctx, ".")
+	if serr != nil {
+		return nil, walkFacts{}, serr
+	}
+	if shallow {
+		warnf("this is a SHALLOW checkout: the walk cannot tell a commit that never landed on the released branch from one git does not have, so a merged pull request's commits can be counted again even though an earlier tag shipped them. Check out with full history (actions/checkout with fetch-depth: 0) before releasing")
+	}
 	var commits []parser.Commit
 	// Normalized to [] up front so the JSON surface never emits null: .pulls is
 	// indexable on every verdict, the none verdict included, with no null-check
 	// at each consumer.
-	facts := walkFacts{Pulls: []pullExpansion{}}
+	facts := walkFacts{Pulls: []pullExpansion{}, Shallow: shallow}
 	// seen holds every SHA already REPRESENTED in the fold. One commit can be
 	// reachable from TWO merged PRs — a stacked branch carries its base PR's
 	// pre-squash commits, so after both squash-merge, both listings contain
@@ -323,27 +371,17 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 	// commit must never be able to fail the release — its message may be a squash
 	// subject, which never parses).
 	//
-	// A shallow checkout cannot answer the footprint question: a commit git does
-	// not HAVE is indistinguishable from one that never landed, so every listed
-	// commit reads as footprint-less and the walk quietly returns to expanding
-	// whole listings — the t-8xsb behaviour, wearing a clone option. Asked once,
-	// and only if some pull actually expands, so the ordinary full-history
-	// release pays one `git rev-parse` and a shallow one is told.
-	shallowChecked := false
 	foldPull := func(number int, canonical string) error {
-		if !shallowChecked {
-			shallowChecked = true
-			shallow, serr := gitsource.IsShallow(ctx, ".")
-			if serr != nil {
-				return serr
-			}
-			if shallow {
-				warnf("this is a SHALLOW checkout: the walk cannot tell a commit that never landed on the released branch from one git does not have, so a merged pull request's commits can be counted again even though an earlier tag shipped them. Check out with full history (actions/checkout with fetch-depth: 0) before releasing")
-			}
-		}
 		listing, perr := pullRawCommits(ctx, c, owner, repo, number)
 		if perr != nil {
 			return wedgeHint(perr, owner, repo, number, canonical, "")
+		}
+		// Asked HERE and not inside pullRawCommits, which the --pr path shares and
+		// which carries no facts: only a walk has a verdict that can be acted on
+		// irreversibly, so only a walk needs the fact rather than the warning.
+		// pullRawCommits still emits that warning for both callers.
+		if len(listing) >= github.PullCommitsCap {
+			facts.Truncated = append(facts.Truncated, number)
 		}
 		// Where did each listed commit LAND on the released branch? That is the
 		// only question that lets the walk RANGE — a git fact — govern a listing

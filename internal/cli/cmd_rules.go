@@ -7,10 +7,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// rulesJSON / rulesMD select the `glyph rules` output format. They are mutually
-// exclusive (enforced by cobra). Only rulesJSON is read: Markdown is the default,
-// so an explicit --md takes the same path as no flag at all. rulesMD exists to
-// register the flag (documenting the default) and to form the exclusion group.
+// rulesJSON / rulesMD select the `glyph rules` output format. Only rulesJSON
+// decides the path taken — Markdown is the default, so an explicit --md is the
+// same as no flag at all — but rulesMD is READ, by the guards in flags.go, so
+// that `--md=false` is answered rather than ignored. Registering a flag whose
+// value nothing looks at is how a caller's explicit "not this" became a no-op.
 var (
 	rulesJSON bool
 	rulesMD   bool
@@ -26,6 +27,13 @@ func newRulesCmd() *cobra.Command {
 			"that CI diffs against docs/gitmoji-table.md to catch drift.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := checkExclusiveBool(cmd, "json", "md"); err != nil {
+				return err
+			}
+			if err := checkDefaultModeOff(cmd, "md",
+				"omit it for the Markdown table, or ask for the other format with --json", "json"); err != nil {
+				return err
+			}
 			table, err := loadRules()
 			if err != nil {
 				return err
@@ -44,6 +52,5 @@ func newRulesCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&rulesJSON, "json", false, "emit the embedded rules.json verbatim — the pretty-printed file itself (511 lines), not the one-line envelope every other --json prints")
 	cmd.Flags().BoolVar(&rulesMD, "md", false, "render the Markdown docs table (default)")
-	cmd.MarkFlagsMutuallyExclusive("json", "md")
 	return cmd
 }

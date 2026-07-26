@@ -183,7 +183,11 @@ is folded **under its on-branch SHA** — which also retires a defect of its own
 since a rebase-merged pull used to put its pre-rebase SHAs, which exist on no
 branch, into the notes. A **shallow** checkout cannot answer the question at all
 (a commit git does not have is indistinguishable from one that never landed), so
-the walk says so once and falls back to expanding whole listings.
+the walk says so once and falls back to expanding whole listings — and, since it
+knows the answer it gave was a guess, records the checkout as one it could not
+read (below). That probe is taken once per walk, before any expansion, rather
+than lazily on the first pull that expands: a walk where nothing resolves is
+still a walk over a truncated history, and it was the one that never asked.
 
 This also restores the intuitive **wedge escape**. A lint failure inside a
 resolved pull is hard (Q1, below), and it used to be escapable only by cutting a
@@ -247,8 +251,10 @@ human publishes.
 Convergence is on the verdict, and a verdict is a claim about the range only
 when the walk **read** the range. A walk that came back short — every commit
 unknown to the queried repository, a merged pull whose merge point nothing
-resolved, a commit GitHub had not indexed — hands down the same empty fold as a
-range that genuinely holds nothing, and glyph acted on both alike: it deleted
+resolved, a commit GitHub had not indexed, a pull whose commit listing GitHub
+**truncated** at its 250 cap, or a **shallow** checkout in which git cannot place
+a listed commit at all — hands down the same empty fold as a range that genuinely
+holds nothing, and glyph acted on both alike: it deleted
 the rolling draft on the very reading it had just told the operator to re-run
 (t-441z), and, where one commit *did* classify, it retagged an existing v1.0.0
 draft down to v0.1.1 out of a fold missing the `:boom:` pull — exit 0, green,

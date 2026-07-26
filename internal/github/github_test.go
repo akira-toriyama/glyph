@@ -876,3 +876,53 @@ func FuzzNextLink(f *testing.F) {
 		}
 	})
 }
+
+// TestDistillClampsTheJSONMessageToo: the arm that fires on a WELL-FORMED
+// answer was the unclamped one.
+//
+// Only the non-JSON snippet branch was bounded, on the assumption that a JSON
+// "message" is a sentence. It is remote text glyph does not author: a
+// validation error listing every offending field, or a proxy behind an
+// enterprise GITHUB_API_URL that wraps its page in a JSON envelope, arrives
+// arbitrarily long. Nothing downstream clamps either — internal/cli folds the
+// newlines out and passes the text through — so the whole of it lands on one
+// physical line of a CI log, or inside one ::error:: annotation. Measured
+// before the fix: 5000 characters in, 5000 characters out, while a 5000-BYTE
+// non-JSON body came back at 200.
+func TestDistillClampsTheJSONMessageToo(t *testing.T) {
+	long := strings.Repeat("x", 5000)
+	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		fmt.Fprintf(w, `{"message":%q}`, long)
+	})
+
+	_, err := c.PullCommits(context.Background(), "o", "r", 7)
+	ce := core.AsError(err)
+	if ce == nil {
+		t.Fatalf("error %v is not a *core.Error", err)
+	}
+	if len(ce.Msg) > maxSnippet*2 {
+		t.Fatalf("a %d-character JSON message reached the error envelope at %d characters; "+
+			"the JSON arm must clamp like the snippet arm does", len(long), len(ce.Msg))
+	}
+}
+
+// TestDistillClampsAMultiByteJSONMessageOnARuneBoundary: the JSON arm must cut
+// where the snippet arm cuts — a byte index through a multi-byte rune leaves a
+// tail that marshals to U+FFFD.
+func TestDistillClampsAMultiByteJSONMessageOnARuneBoundary(t *testing.T) {
+	body := strings.Repeat("あ", 500) // 3 bytes each: a cut at 200 lands mid-rune
+	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		fmt.Fprintf(w, `{"message":%q}`, body)
+	})
+
+	_, err := c.PullCommits(context.Background(), "o", "r", 7)
+	ce := core.AsError(err)
+	if ce == nil {
+		t.Fatalf("error %v is not a *core.Error", err)
+	}
+	if !utf8.ValidString(ce.Msg) {
+		t.Fatalf("the clamped JSON message is not valid UTF-8 — the cut went through a rune: %q", ce.Msg)
+	}
+}

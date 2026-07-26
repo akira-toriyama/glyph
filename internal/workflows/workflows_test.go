@@ -13,6 +13,11 @@ import (
 // through its own inline copy of the download.
 var reusables = []string{"lint.yml", "pr-verdict.yml", "release.yml"}
 
+// fetchDepthFull is actions/checkout's full-history setting as a workflow
+// writes it. Matched as its own YAML key so a `fetch-depth: 0` inside a quoted
+// string or a heredoc cannot satisfy it.
+var fetchDepthFull = regexp.MustCompile(`(?m)^\s*fetch-depth:\s*0\s*$`)
+
 // Tokens that belong ONLY in the composite action .github/actions/install now.
 // If any reappears in a reusable's executable body, the security-critical
 // install logic has been re-inlined — the exact duplication (and the
@@ -381,5 +386,46 @@ func TestNaiveGrepSeesNoPinInTheReusables(t *testing.T) {
 				"is stale by construction) or masks a real pin. Use @%s.",
 				name, len(found), strings.Join(found, ", "), versionPlaceholder)
 		}
+	}
+}
+
+// TestWalkingReusablesCheckOutFullHistory pins `fetch-depth: 0` on every
+// reusable whose job runs a glyph command that WALKS.
+//
+// actions/checkout defaults to fetch-depth: 1 — a shallow clone. glyph now
+// reports that as an incomplete walk and refuses the irreversible half of a
+// release on it, so losing this line no longer produces a silently wrong
+// version. What it produces instead is a repository that can never publish:
+// every release run declines to touch the draft and says why, for ever, because
+// nothing about a workflow heals itself the way API lag does.
+//
+// The line is one token in a YAML file that no test compiles and no reviewer
+// misses the absence of, and it is only ever noticed by its consequence. That
+// is the shape this package exists for.
+func TestWalkingReusablesCheckOutFullHistory(t *testing.T) {
+	// Positive control: prove the matcher still finds the real thing, so a
+	// pattern that has stopped matching cannot pass as four clean files.
+	const canary = "          fetch-depth: 0"
+	if !fetchDepthFull.MatchString(canary) {
+		t.Fatalf("fetchDepthFull no longer matches a real setting (%q) — every case below would pass vacuously", canary)
+	}
+
+	// Asserted against the comment-stripped body: the reusables carry commented
+	// caller stubs, and a `fetch-depth: 0` sitting in one of those is
+	// documentation, not a checkout option any runner obeys.
+	for _, name := range []string{"lint.yml", "pr-verdict.yml", "release.yml"} {
+		t.Run(name, func(t *testing.T) {
+			body := code(repoFile(t, filepath.Join(".github", "workflows", name)))
+			if !strings.Contains(body, "actions/checkout") {
+				t.Skip("no checkout step to constrain")
+			}
+			if !fetchDepthFull.MatchString(body) {
+				t.Errorf("%s checks out without `fetch-depth: 0`, so the runner gets actions/checkout's "+
+					"default depth of 1 — a shallow clone. glyph cannot tell a commit that never landed "+
+					"on the released branch from one git does not have, so it reports the walk as "+
+					"incomplete and declines to delete or lower the rolling draft. Unlike API lag that "+
+					"state never clears on its own: the repository simply stops being able to release.", name)
+			}
+		})
 	}
 }
