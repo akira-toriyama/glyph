@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os/exec"
 	"slices"
 	"strconv"
@@ -129,11 +130,20 @@ func Have(ctx context.Context, dir string, shas []string) (map[string]bool, erro
 
 // IsAncestor reports whether sha is an ancestor of rev, or is rev itself.
 //
-// A sha this repository does not hold answers false rather than an error, and so
-// does one on a history rev cannot reach. Both are ordinary answers to the
-// question the walk asks — "did this listed commit land on the released branch
-// under its own identity?" — and the callers must not have to tell git's exit 1
-// (no) from its exit 128 (no such object) to read them.
+// A NO is reported as (false, nil) however git spells it: exit 1 (the honest
+// no), and exit 128 (no such object) for a sha this repository does not hold or
+// a history rev cannot reach. Both are ordinary answers to the question the walk
+// asks — "did this listed commit land on the released branch under its own
+// identity?" — and the callers must not have to tell the two apart to read them.
+//
+// That deliberate breadth is why the interrupt is classified FIRST and not after
+// the exit status, which is the order the two look natural in. A cancelled
+// context does not stop git politely: exec.CommandContext KILLS the child, and a
+// killed child is an *exec.ExitError like any other (measured on this toolchain:
+// err "signal: killed", errors.As true, ctx.Err() context.Canceled). Read in the
+// other order, a Ctrl-C during the footprint walk is swallowed into "this commit
+// never landed" — a wrong answer to a question that governs which commits a
+// release counts, returned with a nil error so nothing downstream can tell.
 func IsAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
 	// #nosec G204 -- the binary is the fixed literal "git"; sha and rev are
 	// object names the caller took from git or from a GitHub sha field, and
@@ -142,12 +152,12 @@ func IsAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		if ierr := interrupted(ctx); ierr != nil {
+			return false, ierr
+		}
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
 			return false, nil
-		}
-		if errors.Is(ctx.Err(), context.Canceled) {
-			return false, &core.Error{Code: core.CodeInterrupted, Msg: "interrupted", Silent: true}
 		}
 		return false, core.APIf("git merge-base: %s", distill(stderr.Bytes(), err))
 	}
@@ -208,43 +218,63 @@ func parseLog(out []byte) ([]RawCommit, error) {
 	return commits, nil
 }
 
-// runStdin is run with bytes fed to the child's stdin — what --batch-check needs.
-func runStdin(ctx context.Context, dir, stdin string, args ...string) ([]byte, error) {
-	// #nosec G204 -- the binary is the fixed literal "git"; args are structured
-	// by this package's exported funcs and carry no caller-supplied revision.
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
-	cmd.Stdin = strings.NewReader(stdin)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
-		if errors.Is(ctx.Err(), context.Canceled) {
-			return nil, &core.Error{Code: core.CodeInterrupted, Msg: "interrupted", Silent: true}
-		}
-		return nil, core.APIf("git %s: %s", args[0], distill(stderr.Bytes(), err))
+// interrupted returns the user's own abort, or nil when the run failed for any
+// other reason. It is the ONE place this package decides that question, because
+// getting it wrong is silent in both directions and every git call has to get it
+// right.
+//
+// Only a *canceled* context is the user's abort — that is what CodeInterrupted
+// means (SIGINT/SIGTERM). A deadline, which only a caller-imposed timeout
+// produces, is a wedged or unreachable git: an ordinary I/O failure. Classifying
+// that as an interrupt would exit 130 silently and tell a release job the
+// operator stopped it. Mirrors internal/github's split of the same two causes.
+//
+// Callers ask this BEFORE reading the child's exit status, never after. A
+// cancelled context kills the child, so the abort arrives wearing an
+// *exec.ExitError and any status-first reading absorbs it — see IsAncestor,
+// where that ordering turned a Ctrl-C into a wrong answer about the repository.
+func interrupted(ctx context.Context) error {
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return &core.Error{Code: core.CodeInterrupted, Msg: "interrupted", Silent: true}
 	}
-	return stdout.Bytes(), nil
+	return nil
 }
 
 // run executes one git command against dir with stdout and stderr captured
 // separately, and classifies any failure as a git/IO error carrying git's most
 // diagnostic stderr line.
 func run(ctx context.Context, dir string, args ...string) ([]byte, error) {
-	// #nosec G204 -- the binary is the fixed literal "git"; args are structured
-	// by this package's exported funcs, and the one caller-supplied value
-	// (revRange) is pinned as a revision by --end-of-options, never an option.
+	return runIn(ctx, dir, nil, args...)
+}
+
+// runStdin is run with bytes fed to the child's stdin — what --batch-check needs.
+func runStdin(ctx context.Context, dir, stdin string, args ...string) ([]byte, error) {
+	return runIn(ctx, dir, strings.NewReader(stdin), args...)
+}
+
+// runIn is the single exec site behind run and runStdin. The two used to be
+// copies differing in one line, with the reasoning for the interrupt split
+// written on only one of them — so a future fix would land on whichever copy its
+// author happened to read (t-tgbs).
+//
+// stdin is an io.Reader rather than a string precisely so run can pass NIL and
+// keep os/exec's own behaviour (the child gets /dev/null). Collapsing run into
+// runStdin("") instead would have swapped that for a pipe this package then has
+// to write to and close, which is a behaviour change smuggled inside a
+// deduplication — and one nobody had measured.
+//
+// #nosec G204 -- the binary is the fixed literal "git". Every argument is
+// structured by this package's own exported funcs; the caller-supplied values
+// among them (a revision range, an object name) are pinned as revisions by
+// --end-of-options at their call sites, so none can be read as an option.
+func runIn(ctx context.Context, dir string, stdin io.Reader, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd.Stdin = stdin
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		// Only a *canceled* context is the user's own abort — that is what
-		// CodeInterrupted means (SIGINT/SIGTERM). A deadline, which only a
-		// caller-imposed timeout produces, is a wedged or unreachable git: an
-		// ordinary I/O failure. Classifying it as an interrupt would exit 130
-		// silently and tell a release job the operator stopped it. Mirrors
-		// internal/github's split of the same two causes.
-		if errors.Is(ctx.Err(), context.Canceled) {
-			return nil, &core.Error{Code: core.CodeInterrupted, Msg: "interrupted", Silent: true}
+		if ierr := interrupted(ctx); ierr != nil {
+			return nil, ierr
 		}
 		return nil, core.APIf("git %s: %s", args[0], distill(stderr.Bytes(), err))
 	}
