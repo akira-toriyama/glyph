@@ -1,0 +1,14 @@
+diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
+index fdc388e..47ad41f 100644
+--- a/internal/cli/sincetag.go
++++ b/internal/cli/sincetag.go
+@@ -616,9 +616,6 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
+ // ignore it. What that costs is bounded — it is exactly today's expansion.
+ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.RawCommit) ([]string, error) {
+ 	landed := make([]string, len(listing))
+-	if len(listing) == 0 {
+-		return landed, nil
+-	}
+ 	shas := make([]string, 0, len(listing))
+ 	for _, r := range listing {
+ 		if r.SHA != "" {

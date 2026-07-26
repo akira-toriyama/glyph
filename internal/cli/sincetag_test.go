@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/internal/bump"
+	"github.com/akira-toriyama/glyph/internal/gitsource"
 )
 
 // apiUnknownSHA is the route body meaning "answer this path the way GitHub
@@ -1961,5 +1962,85 @@ func TestSinceTagAutoWalksFromTheHighestVersion(t *testing.T) {
 	}
 	if base == nil || *base != (bump.Version{Major: 100}) {
 		t.Errorf("version base = %v, want v100.0.0", base)
+	}
+}
+
+// The two tests below go straight at mainFootprint rather than through a walk,
+// because both defences they cover are invisible from the outside: each one is
+// the reason a walk does NOT blow up, and a walk that does not blow up looks
+// exactly like a walk that never needed the guard. Measured before they existed:
+// deleting either guard left `go test ./...` green in all 14 packages.
+
+// TestMainFootprintSurvivesAListingLongerThanMain covers the length guard on the
+// rebase-alignment arm. FirstParentLog's own contract is that it returns FEWER
+// than n commits near the root of a history, and this is the only place in the
+// tree that consumes it — after which the loop indexes `mains[i]` by the
+// LISTING's length. Without the guard that is an index out of range, i.e. a
+// panic, not a wrong answer.
+//
+// The trigger is not exotic: a repository whose main is shorter than the pull
+// that landed on it, which is every repository on its first release, and
+// glyph-test on day one. It needs a rebase-merge, because that is the shape
+// whose listed SHAs exist on no branch — so `Have` says no to all of them,
+// nothing is placed under its own SHA, and the walk falls through to alignment.
+//
+// The listed MESSAGES have to match main's, in order, for as far as main goes.
+// That is not decoration, it is what makes the test bite: the comparison loop
+// returns on the first mismatch, so a listing whose first entry already differs
+// never reaches an out-of-range index and the guard can be deleted under it with
+// the test still green. (Measured — the first version of this test was exactly
+// that vacuous.) A rebase preserves messages and order, so matching them is also
+// the honest fixture for the shape.
+func TestMainFootprintSurvivesAListingLongerThanMain(t *testing.T) {
+	dir, _ := testRepo(t) // root commit ":tada: begin the project"
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) add a menu")
+	t.Chdir(dir)
+	canonical := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
+	// Three listed commits against a two-commit main, oldest first — the order
+	// FirstParentLog returns. The SHAs are well-formed and absent from this
+	// repository, which is what a rebase-merge's pre-rebase listing looks like
+	// from here, so `Have` says no to all three.
+	listing := []gitsource.RawCommit{
+		{SHA: "1111111111111111111111111111111111111111", Message: ":tada: begin the project"},
+		{SHA: "2222222222222222222222222222222222222222", Message: ":sparkles:(ui) add a menu"},
+		{SHA: "3333333333333333333333333333333333333333", Message: ":bug:(ui) fix the menu"},
+	}
+
+	landed, err := mainFootprint(t.Context(), canonical, listing)
+	if err != nil {
+		t.Fatalf("mainFootprint: %v", err)
+	}
+	if len(landed) != len(listing) {
+		t.Fatalf("landed has %d entries, want one per listed commit (%d)", len(landed), len(listing))
+	}
+	// An alignment that cannot be attempted is abandoned WHOLE: every entry stays
+	// empty, so the caller treats the pull as having no readable footprint rather
+	// than placing some of it and guessing the rest.
+	for i, sha := range landed {
+		if sha != "" {
+			t.Errorf("landed[%d] = %q, want empty: main is shorter than the listing, so nothing can be aligned", i, sha)
+		}
+	}
+}
+
+// TestMainFootprintEmptyListingAsksGitNothing covers the other early return, and
+// pins the property that makes it more than a micro-optimisation: with no commits
+// to place there is nothing to ask git ABOUT, and the canonical commit is a sha
+// this checkout may not hold. Falling through would run `git log` against it and
+// turn "this pull listed nothing" into an exit-4 API/git error mid-walk.
+//
+// The unknown canonical is the assertion. A guard removed here does not merely
+// cost a subprocess: it fails the run.
+func TestMainFootprintEmptyListingAsksGitNothing(t *testing.T) {
+	dir, _ := testRepo(t)
+	t.Chdir(dir)
+
+	landed, err := mainFootprint(t.Context(), "4444444444444444444444444444444444444444", nil)
+	if err != nil {
+		t.Fatalf("an empty listing must not consult git about the canonical commit, got: %v", err)
+	}
+	if len(landed) != 0 {
+		t.Errorf("landed = %v, want empty for an empty listing", landed)
 	}
 }
