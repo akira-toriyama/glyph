@@ -58,9 +58,12 @@ func (v Version) Compare(o Version) int {
 }
 
 // Next steps the version by one bump level; none holds it still. A 0.x major
-// steps to 1.0.0 — plain semver, deliberately without a 0.x-keeps-0.x rule;
-// the shadow-mode phase compares this against git-cliff before any publish
-// relies on it.
+// steps to 1.0.0 — plain semver, deliberately without a 0.x-keeps-0.x rule.
+//
+// Nothing double-checks that arithmetic before a release goes out, and nothing
+// is meant to: the safety net is that glyph only ever writes a DRAFT, a human
+// presses Publish, and checkPublishedFloor refuses a version that is not
+// strictly above the highest published release.
 func (v Version) Next(level gitmoji.Bump) Version {
 	switch level {
 	case gitmoji.BumpMajor:

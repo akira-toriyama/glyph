@@ -274,13 +274,13 @@ draft as *found already gone* instead of *deleted* and says the claim is
 unconfirmed. A 404 on the FIRST attempt is untouched: that one is the id
 vanishing under the run. `--dry-run` computes everything, action included, and
 writes nothing. The `--json` verdict also carries the walk's expansion
-provenance (`pulls`: each resolved pull and its participating commit count) —
-a squash-subject reader like git-cliff can only diverge legitimately when some
-pull contributed 2+ commits, so a shadow comparison branches on exactly this
-instead of re-deriving the walk's exclusion rules in shell. The count does not
-distinguish the merge style, so it is an **upper bound**: a merge-merged pull's
-commits are on `main` verbatim, where a text reader sees them and agrees, so 2+
-there can raise a false alarm — never hide a real divergence.
+provenance (`pulls`: each resolved pull and its participating commit count), so
+how a verdict was assembled can be read back afterwards — by a human reviewing a
+draft, or by a CI step — without re-deriving the walk's exclusion rules in
+shell. It reports what the walk DID and never why a count is what it is: 0 has
+two innocent causes (a stacked pull whose commits rode in with its base, a
+merge-merged pull the fallback already folded), so it never means "this pull
+changed nothing".
 
 Rejected alternatives: a semver **label** on the PR (note generation must re-read
 the inner commits anyway, so the label adds a weaker, mutable, git-invisible

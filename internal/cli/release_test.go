@@ -521,13 +521,10 @@ type releaseVerdict struct {
 }
 
 // TestReleaseJSONReportsPullExpansion: the verdict names every merged pull the
-// walk resolved and how many participating commits each contributed. The
-// Phase 6 shadow comparison branches on exactly this (ratified Q6): git-cliff
-// reads only main's squash subjects, so a bump divergence is EXPECTED when
-// some pull contributed 2+ commits (COMMIT_OR_PR_TITLE replaced its squash
-// subject with the PR title) — and glyph-bug-suspect red otherwise. Doing the
-// detection outside glyph would mean re-implementing the walk's exclusion
-// rules in shell, which drifts. A direct push resolves to no pull and must
+// walk resolved and how many participating commits each contributed — the
+// provenance that makes a verdict auditable afterwards, without
+// re-implementing the walk's exclusion rules somewhere else. A direct push
+// resolves to no pull and must
 // not appear in the list.
 func TestReleaseJSONReportsPullExpansion(t *testing.T) {
 	dir, _ := testRepo(t)
@@ -562,8 +559,8 @@ func TestReleaseJSONReportsPullExpansion(t *testing.T) {
 }
 
 // TestReleaseNoReleaseJSONPullsNormalized: a walk that resolved no pull still
-// emits pulls as [] — the same nil-slice normalization commits gets — so a
-// shadow script indexes .pulls unconditionally, on the none verdict too.
+// emits pulls as [] — the same nil-slice normalization commits gets — so
+// .pulls is indexable on the none verdict too, with no null-check.
 func TestReleaseNoReleaseJSONPullsNormalized(t *testing.T) {
 	dir, _ := testRepo(t)
 	testCommit(t, dir, "akira-toriyama", ":memo: note the direct push")
