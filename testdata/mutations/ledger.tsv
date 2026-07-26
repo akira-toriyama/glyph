@@ -1,0 +1,13 @@
+# The mutation ledger. Tab-separated; see README.md in this directory.
+#
+#   patch	package	tests	why this decision is worth a row
+#
+# `tests` is space-separated and names the test that ASSERTS the decision — not
+# every test that happens to break under the mutation.
+gitsource-is-shallow-misreads-gits-answer.patch	./internal/gitsource	TestIsShallow	a shallow checkout read as full makes every ancestry answer a maybe, and the walk grades itself on a truncated history instead of saying so
+gitsource-is-shallow-misreads-gits-answer.patch	./internal/cli	TestReleaseShallowCheckoutBannersTheDraft	the walk must ACT on shallowness, not merely observe it: the draft a human publishes has to carry the banner saying the history was truncated
+gitsource-is-ancestor-classifies-the-interrupt-last.patch	./internal/gitsource	TestIsAncestorCancelIsInterrupted	exec.CommandContext KILLS git on cancel and a killed child is an ordinary ExitError, so reading the exit status first swallows a Ctrl-C into "this commit never landed" — a wrong answer about which commits a release counts, returned with a nil error
+gitsource-have-checks-the-wrong-thing-about-the-type.patch	./internal/gitsource	TestHave	cat-file --batch-check answers "<sha> missing" for an object the repository does not hold, so trusting the line without checking it says `commit` claims a sha that is not there and the footprint places a commit that never landed
+parser-trailing-period-rule-removed.patch	./internal/parser	TestLint	the lint rules are the fleet's only gate on commit subjects; a dropped rule is invisible until every repo has history it now refuses
+release-incomplete-walk-lowers-the-rolling-draft.patch	./internal/cli	TestReleaseIncompleteWalkDoesNotLowerTheRollingDraft	a walk missing a `:boom:` pull retagged an existing v1.0.0 draft down to v0.1.1 at exit 0, and a human publishing that draft burns the tag forever (t-441z)
+release-publishes-instead-of-drafting.patch	./internal/cli	TestReleaseUpsertCreatesTheDraft TestReleaseUpsertUpdatesTheExistingDraft	glyph never publishes and never tags: writes are draft-only so a human is always the one who cuts the tag, and that is the whole safety net behind the direct git-cliff flip

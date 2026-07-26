@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 2189d93..87b0f3a 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -121,7 +121,7 @@ func Have(ctx context.Context, dir string, shas []string) (map[string]bool, erro
+ 	}
+ 	for line := range strings.SplitSeq(string(out), "\n") {
+ 		name, typ, ok := strings.Cut(strings.TrimSpace(line), " ")
+-		if ok && typ == "commit" {
++		if ok && typ != "" {
+ 			have[name] = true
+ 		}
+ 	}
