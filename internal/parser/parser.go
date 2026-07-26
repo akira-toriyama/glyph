@@ -31,6 +31,14 @@ type Commit struct {
 	NonBreaking bool
 	Subject     string // the human subject, with the markers and any legacy token stripped
 	Body        string // everything after the subject line, leading blank lines dropped
+
+	// bareNonBreaking records that a `NON-BREAKING:` footer was written WITHOUT a
+	// reason, at a position where a footer counts. It changes no verdict — a bare
+	// footer leaves the rule unsatisfied, which is the point — and exists only so
+	// the violation can tell an author who typed the word something other than
+	// "type the word". Unexported because that is its whole scope: nothing outside
+	// this package has a use for it, and the JSON surfaces do not carry it.
+	bareNonBreaking bool
 }
 
 // Violation is one lint finding: a stable machine-readable rule id plus a
@@ -277,8 +285,12 @@ func Parse(message string) (Commit, error) {
 		// by reflex — the author types the magic word without answering the
 		// question the rule exists to ask — which buys nothing over not having
 		// the rule at all.
-		if v, found := strings.CutPrefix(l, "NON-BREAKING:"); found && strings.TrimSpace(v) != "" {
-			c.NonBreaking = true
+		if v, found := strings.CutPrefix(l, "NON-BREAKING:"); found {
+			if strings.TrimSpace(v) != "" {
+				c.NonBreaking = true
+			} else {
+				c.bareNonBreaking = true
+			}
 		}
 		// Trailers and issue references may stack without a blank line between
 		// them; prose may not, so anything else closes the block.
@@ -337,12 +349,21 @@ func Lint(message string, opts LintOptions) []Violation {
 	// for — and waiting is what hurts: caught at authoring time the fix is one
 	// line in an open editor, caught in CI it is a rewrite of pushed history.
 	if removalCodes[c.Gitmoji] && !c.Breaking && !c.NonBreaking {
-		vs = append(vs, Violation{
-			Rule: RuleUndeclaredRemoval,
-			Detail: fmt.Sprintf("%s removes or renames something but does not say whether that breaks anyone — "+
-				"add `!` (or a BREAKING CHANGE: footer) if it removes public API, else add a "+
-				"`NON-BREAKING: <why>` footer to record that it does not", c.Gitmoji),
-		})
+		// An author who typed the footer and left it empty has already read the
+		// instruction below, so repeating it verbatim answers nothing: the reply to
+		// "NON-BREAKING:" used to be "add a `NON-BREAKING: <why>` footer", byte for
+		// byte the same sentence as for a commit carrying no footer at all. The two
+		// states need different sentences because they are different mistakes —
+		// one has not answered the question, the other has not been asked it yet.
+		detail := fmt.Sprintf("%s removes or renames something but does not say whether that breaks anyone — "+
+			"add `!` (or a BREAKING CHANGE: footer) if it removes public API, else add a "+
+			"`NON-BREAKING: <why>` footer to record that it does not", c.Gitmoji)
+		if c.bareNonBreaking {
+			detail = fmt.Sprintf("%s carries a `NON-BREAKING:` footer with no reason after it, which leaves "+
+				"the question unanswered — write WHY the removal takes nothing public away (e.g. "+
+				"`NON-BREAKING: the preset was never exported`), or use `!` if it does", c.Gitmoji)
+		}
+		vs = append(vs, Violation{Rule: RuleUndeclaredRemoval, Detail: detail})
 	}
 	return vs
 }
