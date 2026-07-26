@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 2189d93..44499fd 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -192,7 +192,7 @@ func IsShallow(ctx context.Context, dir string) (bool, error) {
+ 	if err != nil {
+ 		return false, err
+ 	}
+-	return strings.TrimSpace(string(out)) == "true", nil
++	return strings.TrimSpace(string(out)) == "shallow", nil
+ }
+ 
+ // parseLog splits the NUL-separated, unit-separated records logFormat produces.

@@ -34,6 +34,30 @@ jobs:
     with:
       go-version-file: go.mod
 
+  # Do the tests still BITE? `bite` above asks it of the tests a pull request
+  # ADDS, and is satisfied by any one of them; this asks it of a standing list of
+  # decisions, one row at a time, and stays red until every named test fails
+  # under its mutation. The two are not substitutes: `bite` cannot notice a test
+  # that rotted three releases ago, and coverage cannot notice a line every test
+  # executes but nobody asserts — which is exactly what was measured on
+  # gitsource's shallow / did-it-land paths (testdata/mutations/README.md).
+  # Its own job because it snapshots, patches and rebuilds the tree per row, and
+  # a red here means something different from a red unit test.
+  mutations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+          cache-dependency-path: go.sum
+      - name: mutation ledger
+        run: sh scripts/mutations.sh
+
   # Repo-specific checks that don't belong in the shared core. The smoke runs on
   # every leg so the shipped binary is exercised on every released platform shape:
   # darwin (brew cask) and linux arm64 (free for public repos) beside linux amd64

@@ -1,0 +1,17 @@
+diff --git a/internal/parser/parser.go b/internal/parser/parser.go
+index daaa87d..7960924 100644
+--- a/internal/parser/parser.go
++++ b/internal/parser/parser.go
+@@ -324,12 +324,6 @@ func Lint(message string, opts LintOptions) []Violation {
+ 			Detail: fmt.Sprintf("subject %q must start lowercase", c.Subject),
+ 		})
+ 	}
+-	if strings.HasSuffix(c.Subject, ".") {
+-		vs = append(vs, Violation{
+-			Rule:   RuleTrailingPeriod,
+-			Detail: fmt.Sprintf("subject %q must not end with a period", c.Subject),
+-		})
+-	}
+ 	// Deliberately NOT gated on MergeCandidate, unlike wip-merge-candidate.
+ 	// :construction: is legal mid-branch and illegal only at the merge, so its
+ 	// verdict genuinely changes with time. Whether a removal breaks anyone is

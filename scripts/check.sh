@@ -47,6 +47,15 @@ for pkg in $(go list ./...); do
   done
 done
 
+# Does the suite BITE? The step above proves the tests PASS, which is a weaker
+# claim than it reads as: a line every test executes but nobody asserts is
+# invisible to both `go test` and coverage. Each testdata/mutations/*.patch
+# breaks one argued decision and the ledger names the test that must then fail.
+# One snapshot, patch and build per row: 21s for 7 rows with a warm build cache,
+# so it sits after the fast gates but ahead of the binary smoke.
+echo "→ mutation ledger (does the suite bite?)"
+sh scripts/mutations.sh
+
 if command -v golangci-lint >/dev/null 2>&1; then
   echo "→ golangci-lint"
   golangci-lint run ./...

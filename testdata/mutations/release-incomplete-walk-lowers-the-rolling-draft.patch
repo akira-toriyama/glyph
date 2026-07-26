@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index f886832..e7b5f9c 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -198,7 +198,7 @@ func releaseRun(cmd *cobra.Command) error {
+ 	// one ordinary `:bug:`, retagged an existing v1.0.0 draft to v0.1.1 at exit
+ 	// 0, and a human publishing that draft burns the tag forever. Leaving the
+ 	// draft alone costs a run: the next complete walk writes the true verdict.
+-	if keep != nil && !facts.complete() {
++	if false && keep != nil && !facts.complete() {
+ 		if have, perr := bump.ParseVersion(keep.TagName); perr == nil && have.Compare(tag) > 0 {
+ 			warnf("this walk did not read %s (%s), and it computes %s — below the %s the rolling draft already claims. "+
+ 				"Leaving the draft untouched rather than lowering a version a human may publish; re-run the release once the walk can read the range",
