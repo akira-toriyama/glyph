@@ -100,6 +100,22 @@ jobs:
             echo "expected a usage error for rules --json --md" >&2
             exit 1
           fi
+          # `completion`'s output is redirected into a file the shell SOURCES, so
+          # an unknown shell reporting success writes prose where a script belongs.
+          # Asserted on the real process because cobra binds the completion writer
+          # when the command tree is built, so no in-process test can see which
+          # stream the script took (internal/cli/root_test.go says so).
+          /tmp/glyph completion zsh | head -1 | grep -q '^#compdef'
+          status=0
+          out=$(/tmp/glyph completion bogus 2>/dev/null) || status=$?
+          if [ "$status" -ne 2 ]; then
+            echo "expected exit 2 (usage) for an unknown completion shell, got $status" >&2
+            exit 1
+          fi
+          if [ -n "$out" ]; then
+            echo "'completion bogus' wrote to stdout" >&2
+            exit 1
+          fi
           # lint / bump exit-code contract on the shipped binary.
           /tmp/glyph lint --message ':bug: fix a crash'
           if /tmp/glyph lint --message 'no gitmoji' >/dev/null 2>&1; then

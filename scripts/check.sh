@@ -87,6 +87,29 @@ if "$BIN" rules --json --md >/dev/null 2>&1; then
   exit 1
 fi
 
+# `completion` is cobra's command, and its output is redirected into a file the
+# shell SOURCES — so an unknown shell reporting success is not a cosmetic exit
+# code. `glyph completion zshh > _glyph` used to exit 0 and write the parent's
+# English help where a completion script belongs. Both halves are asserted here
+# rather than in a Go test because cobra binds the completion writer once, when
+# the command tree is built, so an in-process test cannot observe which stream
+# the script went to (see internal/cli/root_test.go).
+echo "→ smoke: completion writes a script, or refuses"
+"$BIN" completion zsh | head -1 | grep -q '^#compdef' || {
+  echo "  expected 'completion zsh' to write a zsh script to stdout" >&2
+  exit 1
+}
+status=0
+out=$("$BIN" completion bogus 2>/dev/null) || status=$?
+if [ "$status" -ne 2 ]; then
+  echo "  expected exit 2 (usage) for an unknown completion shell, got $status" >&2
+  exit 1
+fi
+if [ -n "$out" ]; then
+  echo "  'completion bogus' wrote to stdout, which is what a caller redirects into a sourced file" >&2
+  exit 1
+fi
+
 echo "→ smoke: lint / bump exit-code contract"
 "$BIN" lint --message ':bug: fix a crash'   # clean → 0
 if "$BIN" lint --message 'no gitmoji' >/dev/null 2>&1; then
