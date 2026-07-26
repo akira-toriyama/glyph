@@ -198,8 +198,14 @@ func TestLogDeadlineIsAPI(t *testing.T) {
 	}
 }
 
-// TestTags: version-sorted descending, all tags included (the caller picks the
-// first it can parse); a repo without tags yields an empty list.
+// TestTags: git's --sort=-v:refname order, all tags included — the policy of
+// what counts as a version stays with the caller. The order is NOT a version
+// ordering and this test must not be read as promising one: it is a REFNAME
+// sort, so it orders on the leading byte first and puts every `v…` above every
+// `1…`. The fixture here happens to agree because every tag in it starts with v.
+// See Tags' own doc, and latestVersionTag, which read an earlier version of
+// this comment as a promise and took git's first parseable entry.
+// A repo without tags yields an empty list.
 func TestTags(t *testing.T) {
 	dir := newRepo(t)
 
@@ -222,7 +228,7 @@ func TestTags(t *testing.T) {
 		t.Fatalf("Tags = %v, want 4 entries", got)
 	}
 	if got[0] != "v0.2.0" {
-		t.Fatalf("Tags[0] = %q, want v0.2.0 (version-sorted descending)", got[0])
+		t.Fatalf("Tags[0] = %q, want v0.2.0 (git's refname order over this all-v fixture)", got[0])
 	}
 }
 

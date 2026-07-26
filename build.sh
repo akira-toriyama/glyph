@@ -1,6 +1,8 @@
 #!/bin/sh
 # build.sh — build glyph into bin/glyph with the version/commit/date stamped from
-# git. Used by install.sh and the Homebrew cask's from-source fallback.
+# git. Used by install.sh, and by anyone building from a checkout. NOT part of
+# the cask path: .goreleaser.yaml ships `homebrew_casks`, which installs the
+# prebuilt release binary and has no from-source stanza to fall back to.
 set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"

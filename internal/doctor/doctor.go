@@ -375,7 +375,7 @@ func checkSquashEnabled(in Input) Check {
 // checkMergeCommit reports allow_merge_commit, and its severity is the one
 // deliberate judgement call in this file.
 //
-// A merge commit USED to be data loss: bump.Excluded drops any commit with 2+
+// A merge commit USED to be data loss: bump.ExcludedFromClassification drops any commit with 2+
 // parents, so a PR landed with the merge button's "Create a merge commit"
 // vanished from the release walk entirely and its gitmoji never reached the
 // verdict — a whole PR's worth of change shipping as no release at all (t-7zt7).

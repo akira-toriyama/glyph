@@ -22,12 +22,17 @@ var scissorsRE = regexp.MustCompile(`^\s*#\s*-+\s*>8\s*-+\s*$`)
 // leading blank line an "empty commit message" — rejecting messages git was
 // perfectly happy to record.
 //
-// The three steps mirror git's --cleanup=default, in git's order:
+// The three steps follow git's --cleanup=default, in git's order. They do not
+// reproduce it: git also collapses an interior run of blank lines to one
+// (measured — `printf 'a\n\n\n\nb\n' | git stripspace` gives "a\n\nb\n"), and
+// this deliberately does not, because a body's internal spacing is the author's
+// and nothing downstream reads it:
 //
 //  1. cut at the scissors line (before comments are stripped, since the scissors
 //     line IS a comment and removing it first would strand the diff),
 //  2. drop whole-line comments,
-//  3. drop leading blank lines, so the subject is the first line that carries text.
+//  3. drop leading AND trailing blank lines, so the subject is the first line
+//     that carries text and nothing is left where the template used to be.
 //
 // Only the authoring path (`--stdin`) calls this. A --range walk reads messages
 // from `git log %B`, which git has already cleaned; running this there would

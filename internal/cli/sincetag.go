@@ -310,10 +310,8 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 	coveredPulls, coveredOrder, expanded := map[int]bool{}, []int{}, map[int]bool{}
 	// foldPull expands one merged pull request into the walk, canonical being the
 	// walked commit that resolved to it (its merge point): the listing is
-	// filtered against seen BEFORE it is parsed (an already-represented commit
-	// must never be able to fail the release — its message may be a squash
-	// subject, which never parses), what remains is classified, and the pull's
-	// contribution is recorded. Only a RESOLVED canonical commit may expand a
+	// filtered BEFORE it is parsed (see the two filters below), what remains is
+	// classified, and the pull's contribution is recorded. Only a RESOLVED canonical commit may expand a
 	// pull — the reconciliation at the end of the walk deliberately does not call
 	// this (see there), because a listing fetched without a canonical commit in
 	// range says nothing about which of its commits belong to this walk.
