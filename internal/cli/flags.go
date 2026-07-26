@@ -54,6 +54,20 @@ const (
 	currentHint = "omit --current to step from the default (the tag the walk named, else the highest v* tag), or name one with --current=vX.Y.Z"
 )
 
+// currentFlagUsage is the --help line for --current, shared by bump and release
+// because they share currentVersion and therefore share the default.
+//
+// Naming the default is the whole job, and stating it in each command's own
+// string got it wrong: bump's read "highest parseable v* tag, else v0.0.0",
+// omitting the arm that runs FIRST. currentVersion prefers the base the input
+// source named, so under --since-tag=TAG the step base is TAG — measured on a
+// repo tagged v0.1.0 and v0.5.0 at the same commit, where
+// `bump --since-tag=v0.1.0 --json` answers current v0.1.0, not the v0.5.0 the
+// help promised. That is the version a wrong-bump investigation starts from,
+// and --help is where the investigator looks, so the one place the CLI could
+// mislead is the one place it did.
+const currentFlagUsage = "the version to step from (default: the tag the walk named, else the highest parseable v* tag, else v0.0.0)"
+
 // checkNamingFlags rejects the empty form of each named flag, before any git or
 // API work. Flags that select the INPUT SOURCE (--range, --pr, --since-tag)
 // keep their own guards: their complaint has to name the source, not just the

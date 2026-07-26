@@ -64,7 +64,7 @@ func newBumpCmd() *cobra.Command {
 	cmd.Flags().IntVar(&bumpPR, "pr", 0, "classify a pull request's individual (pre-squash) commits, read over the API")
 	addSinceTagFlag(cmd, &bumpSinceTag, "classify")
 	cmd.Flags().StringVar(&bumpRepo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY)")
-	cmd.Flags().StringVar(&bumpCurrent, "current", "", "the version to step from (default: highest parseable v* tag, else v0.0.0)")
+	cmd.Flags().StringVar(&bumpCurrent, "current", "", currentFlagUsage)
 	cmd.Flags().BoolVar(&bumpJSON, "json", false, "emit the machine verdict {current,level,next,commits,reason}")
 	markInputSourceFlags(cmd)
 	return cmd
