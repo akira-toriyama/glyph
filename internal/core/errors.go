@@ -73,8 +73,18 @@ func NoReleasef(format string, a ...any) *Error {
 }
 
 // ExitCode resolves any error to a process exit code. nil -> 0; a *core.Error
-// -> its Code; anything else -> CodeAPI (an unclassified failure is an
-// internal/IO failure by definition, and must never fall through to usage).
+// anywhere in the chain -> its Code; anything else -> CodeAPI.
+//
+// The CodeAPI fallback is a BACKSTOP, not a policy the CLI relies on: an error
+// that reaches a process boundary unclassified is glyph having failed to say
+// what went wrong, which is an internal failure, and answering `usage` there
+// would tell a caller to fix its arguments over a fault that has nothing to do
+// with them. The one shape that legitimately arrives unclassified — cobra's own
+// parse error, which IS a usage problem — is classified by the CLI's own funnel
+// before it gets here (internal/cli.finish), so in a shipped binary this arm is
+// unreachable. That is deliberate: the sole source of truth for the mapping is
+// this function, and the CLI decides only what an unclassified error MEANS in
+// its context, never what code it carries.
 func ExitCode(err error) int {
 	if err == nil {
 		return int(CodeOK)

@@ -32,7 +32,7 @@ const Marker = "installed-by: glyph hook install"
 //
 //   - It never matches the convention itself. No regex, no gitmoji list — those
 //     live in the binary, so the hook cannot go stale.
-//   - It stops a commit for ONE reason only: glyph's lint exit code 3, a real
+//   - It stops a commit for ONE reason only: glyph's lint gate code, a real
 //     convention violation. Any other failure means glyph could not answer —
 //     not on PATH, no source clone behind the wrapper, a broken build — and the
 //     commit proceeds with a warning. The hook is an early-warning device on
@@ -41,8 +41,20 @@ const Marker = "installed-by: glyph hook install"
 //     committing to six repos, which is a worse failure than a late lint.
 //   - Consequently it must NEVER exit non-zero on its own account. Every path
 //     that is not "glyph said violation" ends in exit 0.
-const Script = `#!/bin/sh
-# glyph commit-msg hook — ` + Marker + `
+//
+// The gate code is INTERPOLATED from core.CodeLint rather than typed as a shell
+// literal, which is the fourth property and the one that had to be built. This
+// file is the only place in the tree where the exit-code contract crosses into
+// another language, so the compiler stops checking at the backtick: the number
+// appeared twice as text, and renumbering the constant would have left a hook
+// that compares against a code glyph no longer emits — i.e. one that waves every
+// violation through — with the whole suite green, because the test pinned the
+// literal too. A generated hook cannot disagree with the constant it is
+// generated from.
+//
+// A var rather than a const for that reason alone; it is never reassigned.
+var Script = fmt.Sprintf(`#!/bin/sh
+# glyph commit-msg hook — %s
 #
 # Lints the message being written against the gitmoji convention by calling
 # glyph, which holds the rules. Do not add a regex here: a local copy of the
@@ -57,19 +69,19 @@ fi
 glyph lint --stdin <"$1"
 status=$?
 
-# 3 is glyph's commit-convention violation code — the one answer that should
+# %[2]d is glyph's commit-convention violation code — the one answer that should
 # stop a commit. Anything else non-zero means glyph could not reach a verdict
 # (missing source clone behind the PATH wrapper, a build failure, a bad flag);
 # failing the commit on that would gate committing on the health of a tool
 # whose whole job here is advisory.
-if [ "$status" -eq 3 ]; then
-	exit 3
+if [ "$status" -eq %[2]d ]; then
+	exit %[2]d
 fi
 if [ "$status" -ne 0 ]; then
 	echo "glyph: could not lint this message (exit $status) — letting the commit through; CI still enforces the convention" >&2
 fi
 exit 0
-`
+`, Marker, int(core.CodeLint))
 
 // Result reports what Install did, so the CLI can print an accurate line and
 // tests can assert the branch taken without re-reading the disk.

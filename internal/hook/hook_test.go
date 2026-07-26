@@ -42,9 +42,14 @@ func TestScriptCarriesNoCopyOfTheConvention(t *testing.T) {
 		t.Error("hook script execs glyph directly, so ANY non-zero exit blocks the commit; " +
 			"it must distinguish exit 3 (a convention violation) from glyph being unable to answer")
 	}
-	if !strings.Contains(Script, "-eq 3") {
-		t.Error("hook script does not single out glyph's lint exit code 3; without that check it " +
-			"cannot tell a real violation from an unwell toolchain")
+	// Asserted THROUGH the constant, never against the literal 3. Pinning the
+	// text was the same defect the script itself had: renumbering core.CodeLint
+	// would leave the hook comparing against a code glyph no longer emits — a
+	// hook that waves every violation through — and a test pinned to "-eq 3"
+	// would keep passing while it happened.
+	if want := fmt.Sprintf("-eq %d", int(core.CodeLint)); !strings.Contains(Script, want) {
+		t.Errorf("hook script does not single out glyph's lint gate code (%q); without that check it "+
+			"cannot tell a real violation from an unwell toolchain", want)
 	}
 }
 
@@ -57,11 +62,14 @@ func TestScriptExitsOnlyOnAViolation(t *testing.T) {
 		wantExit   int
 		wantWarned bool
 	}{
-		{name: "clean message passes", glyphExit: 0, wantExit: 0},
-		{name: "violation stops the commit", glyphExit: 3, wantExit: 3},
-		{name: "usage error passes with a warning", glyphExit: 2, wantExit: 0, wantWarned: true},
-		{name: "IO/API failure passes with a warning", glyphExit: 4, wantExit: 0, wantWarned: true},
-		{name: "wrapper failure passes with a warning", glyphExit: 1, wantExit: 0, wantWarned: true},
+		// Named through the core constants, so a renumbering moves the fixture
+		// and the script together instead of leaving the table asserting a
+		// contract the binary no longer has.
+		{name: "clean message passes", glyphExit: int(core.CodeOK), wantExit: 0},
+		{name: "violation stops the commit", glyphExit: int(core.CodeLint), wantExit: int(core.CodeLint)},
+		{name: "usage error passes with a warning", glyphExit: int(core.CodeUsage), wantExit: 0, wantWarned: true},
+		{name: "IO/API failure passes with a warning", glyphExit: int(core.CodeAPI), wantExit: 0, wantWarned: true},
+		{name: "wrapper failure passes with a warning", glyphExit: int(core.CodeNoRelease), wantExit: 0, wantWarned: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
