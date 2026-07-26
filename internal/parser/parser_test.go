@@ -637,3 +637,50 @@ func TestBreakingFooterSurvivesAColonLessIssueReference(t *testing.T) {
 		})
 	}
 }
+
+// TestUndeclaredRemovalTellsABareFooterApart pins the DISTINCTION rather than
+// either sentence, because the defect was that there was no distinction: a commit
+// carrying `NON-BREAKING:` with nothing after it got the byte-identical detail as
+// one carrying no footer at all, i.e. an author who had just typed the word was
+// told to type the word (t-ees7).
+//
+// Both states are violations and that is not in question — a bare footer leaves
+// the rule unsatisfied by design, since the magic word typed by reflex answers
+// nothing the rule exists to ask. What is in question is whether the message can
+// tell the author WHICH mistake they made, so the assertion is that the two
+// details differ. Asserting one exact sentence instead would pin the wording and
+// still pass if both states went back to sharing it.
+func TestUndeclaredRemovalTellsABareFooterApart(t *testing.T) {
+	detailFor := func(msg string) string {
+		t.Helper()
+		vs := Lint(msg, LintOptions{Known: testKnown})
+		for _, v := range vs {
+			if v.Rule == RuleUndeclaredRemoval {
+				return v.Detail
+			}
+		}
+		t.Fatalf("Lint(%q) reported no %s violation, got %+v", msg, RuleUndeclaredRemoval, vs)
+		return ""
+	}
+
+	silent := detailFor(":fire: remove the legacy adapter")
+	bare := detailFor(":fire: remove the legacy adapter\n\nNON-BREAKING:")
+
+	if silent == bare {
+		t.Errorf("a bare `NON-BREAKING:` footer and no footer at all produce the same detail, so the "+
+			"message tells an author who just typed the footer to add the footer:\n%s", bare)
+	}
+	// The bare case has to name what is missing, or the differing sentence is a
+	// difference without information.
+	if !strings.Contains(bare, "no reason") {
+		t.Errorf("the bare-footer detail must say the REASON is what is missing, got:\n%s", bare)
+	}
+	// Control: a footer WITH a reason satisfies the rule outright. Without this, a
+	// change that stopped reading reasons at all would pass everything above.
+	const withReason = ":fire: remove the legacy adapter\n\nNON-BREAKING: the preset was never exported"
+	for _, v := range Lint(withReason, LintOptions{Known: testKnown}) {
+		if v.Rule == RuleUndeclaredRemoval {
+			t.Errorf("a NON-BREAKING: footer with a reason must satisfy the rule, got %+v", v)
+		}
+	}
+}
