@@ -33,8 +33,11 @@ const (
 	acceptJSON = "application/vnd.github+json"
 	// userAgent is mandatory — GitHub rejects a request without one.
 	userAgent = "glyph"
-	// perPage asks for the largest page so pagination is the exception; the two
-	// endpoints glyph calls return single-digit pages in practice.
+	// perPage asks for the largest page so pagination is the exception. Two of
+	// the three paginated endpoints (commits/{sha}/pulls, pulls/{n}/commits)
+	// return single-digit pages in practice; the releases listing is the one that
+	// can genuinely run long on an old repository, and it is walked in full
+	// because the rolling-draft reconciliation has to see every draft.
 	perPage = "100"
 	// maxPages guards a pathological server that keeps advertising a next link.
 	// It sits far above any real response (pulls/{n}/commits caps at 250 total)
@@ -72,9 +75,15 @@ const maxRetryAfter = 30 * time.Second
 // PullRef is the slice of a pull request the release walk needs to resolve a
 // squash commit to the PR it came from: its number, whether/when it merged, and
 // merge_commit_sha — a commit can be associated with more than one PR, so the
-// caller (internal/bump) matches MergeCommitSHA == sha to pick the exact one.
+// caller (internal/cli's mergedPullFor) matches MergeCommitSHA == sha to pick
+// the exact one.
 type PullRef struct {
-	Number         int
+	Number int
+	// State is decoded because the endpoint returns it, but nothing branches on
+	// it: "merged" is not one of its values (GitHub reports a merged pull as
+	// closed), so MergedAt is what the walk actually asks. Kept so a reader
+	// comparing this struct against the API response does not go looking for a
+	// field that was dropped.
 	State          string
 	MergedAt       string // RFC3339, empty when the PR is not merged
 	MergeCommitSHA string

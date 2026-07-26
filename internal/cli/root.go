@@ -39,20 +39,27 @@ func Execute() int {
 // finish maps a returned error to the exit-code contract and renders the stderr
 // envelope — unless the error is Silent (the command already wrote its verdict
 // to stdout and needs only a nonzero exit code).
+//
+// It CLASSIFIES and then delegates: the number itself always comes from
+// core.ExitCode, so the contract has one implementation rather than two that
+// agree by inspection. They used to disagree on paper — core.ExitCode documents
+// an unclassified error as CodeAPI and says it "must never fall through to
+// usage", which is exactly what this function did to it — and the reason both
+// were right is a fact only this layer knows: cobra is silenced in newRootCmd,
+// so a bare error arriving here is a parse/usage problem and nothing else. That
+// fact belongs where it is knowable, and the mapping belongs in core.
 func finish(err error) int {
 	if err == nil {
 		return int(core.CodeOK)
 	}
 	ce := core.AsError(err)
 	if ce == nil {
-		// A bare error here is a cobra parse/usage problem, which is a usage
-		// error by contract — never an unclassified (API) code.
 		ce = &core.Error{Code: core.CodeUsage, Msg: err.Error()}
 	}
 	if !ce.Silent {
 		renderError(ce)
 	}
-	return int(ce.Code)
+	return core.ExitCode(ce)
 }
 
 func newRootCmd() *cobra.Command {

@@ -54,9 +54,11 @@ func newDoctorCmd() *cobra.Command {
 			"checkout, because a pin is a fact about the tree in front of you — pointing\n" +
 			"--repo elsewhere diagnoses that repository's settings and THIS checkout's pins.\n\n" +
 			"Every check carries a stable machine id — branch on that, never on the prose.\n" +
-			"Exit: 0 = every check passed / 3 = a check failed (the repository violates a\n" +
-			"convention glyph enforces, the same class as a lint violation) / 4 = every\n" +
-			"runnable check passed but one could not run, which is unverified, not fine.\n" +
+			"Exit: 0 = every check passed / 2 = the invocation itself was wrong (a\n" +
+			"malformed --repo, rejected before any request goes out) / 3 = a check\n" +
+			"failed (the repository violates a convention glyph enforces, the same class\n" +
+			"as a lint violation) / 4 = every runnable check passed but one could not\n" +
+			"run, which is unverified, not fine / 130 = interrupted.\n" +
 			"An API failure that produced no answer at all — a rate limit, an outage that\n" +
 			"outlived the retries, an unreachable host — is a could-not-run (4) and never a\n" +
 			"violation (3): glyph observed nothing, so it says nothing about the repository.\n" +

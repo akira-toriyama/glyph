@@ -68,8 +68,9 @@ func TestVersionString(t *testing.T) {
 }
 
 // TestNext pins the stepping rule, including that none holds the version still
-// and that a 0.x major steps to 1.0.0 (plain semver — the shadow-mode phase
-// compares this against git-cliff before any publish relies on it).
+// and that a 0.x major steps to 1.0.0 (plain semver, with no 0.x-keeps-0.x
+// exception). This test IS the check on that arithmetic — see Next's own doc
+// for why nothing downstream re-derives it.
 func TestNext(t *testing.T) {
 	cases := []struct {
 		in    string

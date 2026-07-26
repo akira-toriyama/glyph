@@ -170,12 +170,16 @@ func TestNotesMalformedCommitIsLint(t *testing.T) {
 	testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")
 	t.Chdir(dir)
 
+	// The SHA, not the word "commit " — see the twin in bump_test.go for why
+	// the literal assertion could not fail.
+	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
 	code, _, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
 	if code != 3 {
 		t.Fatalf("notes with a malformed commit exited %d, want 3", code)
 	}
-	if !strings.Contains(stderr, "commit ") {
-		t.Fatalf("the lint error should name the offending commit:\n%s", stderr)
+	if !strings.Contains(stderr, sha[:7]) {
+		t.Fatalf("the lint error should name the offending commit %.7s:\n%s", sha, stderr)
 	}
 }
 

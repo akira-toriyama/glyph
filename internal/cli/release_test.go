@@ -521,13 +521,10 @@ type releaseVerdict struct {
 }
 
 // TestReleaseJSONReportsPullExpansion: the verdict names every merged pull the
-// walk resolved and how many participating commits each contributed. The
-// Phase 6 shadow comparison branches on exactly this (ratified Q6): git-cliff
-// reads only main's squash subjects, so a bump divergence is EXPECTED when
-// some pull contributed 2+ commits (COMMIT_OR_PR_TITLE replaced its squash
-// subject with the PR title) — and glyph-bug-suspect red otherwise. Doing the
-// detection outside glyph would mean re-implementing the walk's exclusion
-// rules in shell, which drifts. A direct push resolves to no pull and must
+// walk resolved and how many participating commits each contributed — the
+// provenance that makes a verdict auditable afterwards, without
+// re-implementing the walk's exclusion rules somewhere else. A direct push
+// resolves to no pull and must
 // not appear in the list.
 func TestReleaseJSONReportsPullExpansion(t *testing.T) {
 	dir, _ := testRepo(t)
@@ -562,8 +559,8 @@ func TestReleaseJSONReportsPullExpansion(t *testing.T) {
 }
 
 // TestReleaseNoReleaseJSONPullsNormalized: a walk that resolved no pull still
-// emits pulls as [] — the same nil-slice normalization commits gets — so a
-// shadow script indexes .pulls unconditionally, on the none verdict too.
+// emits pulls as [] — the same nil-slice normalization commits gets — so
+// .pulls is indexable on the none verdict too, with no null-check.
 func TestReleaseNoReleaseJSONPullsNormalized(t *testing.T) {
 	dir, _ := testRepo(t)
 	testCommit(t, dir, "akira-toriyama", ":memo: note the direct push")
@@ -834,13 +831,25 @@ func TestPlanDraftsConvergesOnExactlyOne(t *testing.T) {
 // over house-shaped (vX.Y.Z) published releases ONLY — a foreign published
 // tag (nightly, a bare 0.9.9) neither raises the floor nor breaks it, and
 // drafts never count however high their intended tag.
+//
+// Both rejections are exercised on purpose, because highestPublished rejects in
+// TWO steps and the name of this test claims both. `nightly` and `0.9.9` are
+// dropped by the v-prefix check alone and never reach ParseVersion, so with only
+// those the parse arm — the one the title actually advertises — was dead code
+// under a green test. `v2` and `v1.0.0-rc.1` are v-prefixed and reach it:
+// versionRE wants exactly three dot-separated decimals with no suffix, so a
+// two-component tag and a pre-release are what a repository that ever tagged a
+// major alias or an rc really has sitting in its release list.
 func TestHighestPublishedIgnoresUnparseableTags(t *testing.T) {
 	releases := []github.Release{
 		{ID: 1, TagName: "nightly", Draft: false},
-		{ID: 2, TagName: "0.9.9", Draft: false}, // no v prefix — not house-shaped
+		{ID: 2, TagName: "0.9.9", Draft: false},       // no v prefix — rejected before ParseVersion
+		{ID: 6, TagName: "v2", Draft: false},          // v-prefixed, unparseable — reaches ParseVersion
+		{ID: 7, TagName: "v1.0.0-rc.1", Draft: false}, // v-prefixed pre-release — likewise
 		{ID: 3, TagName: "v0.5.0", Draft: false},
 		{ID: 4, TagName: "v0.4.0", Draft: false},
 		{ID: 5, TagName: "v9.9.9", Draft: true}, // a draft is no floor
+		{ID: 8, TagName: "v8.8", Draft: true},   // ...and an unparseable one is doubly not
 	}
 	floor, ok := highestPublished(releases)
 	if !ok || floor.String() != "v0.5.0" {
@@ -853,7 +862,16 @@ func TestHighestPublishedIgnoresUnparseableTags(t *testing.T) {
 		t.Fatalf("v0.5.1 clears the floor, got %v", err)
 	}
 
-	foreignOnly := releases[:2]
+	// Named rather than sliced by index: this set must keep meaning "every
+	// published release here is unparseable", through both rejection steps, and
+	// a releases[:N] would silently start including a house tag the moment
+	// somebody inserts one above the cut.
+	foreignOnly := []github.Release{
+		{ID: 1, TagName: "nightly", Draft: false},
+		{ID: 2, TagName: "0.9.9", Draft: false},
+		{ID: 6, TagName: "v2", Draft: false},
+		{ID: 7, TagName: "v1.0.0-rc.1", Draft: false},
+	}
 	if _, ok := highestPublished(foreignOnly); ok {
 		t.Fatalf("foreign-only published releases must yield no floor")
 	}

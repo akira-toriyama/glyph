@@ -18,9 +18,10 @@ var (
 )
 
 // previewResult is the machine verdict:
-// {current, untagged, level, next, pending, body}. level/next are the FOLDED
+// {current, untagged, level, next, pr, pending, body}. level/next are the FOLDED
 // answer — what the version becomes if this PR merges — so a caller never
-// re-derives it from the two sides.
+// re-derives it from the two sides; pr and pending are the two sides it folded,
+// reported separately so a comment can show the working.
 type previewResult struct {
 	Current  string `json:"current"`
 	Untagged bool   `json:"untagged"`

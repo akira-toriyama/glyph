@@ -27,10 +27,12 @@ var (
 
 // releaseResult is the machine verdict: {current, level, tag, body, action,
 // url, commits, pulls, reason}. tag and body are omitted on a none verdict —
-// there is no release to act on; url is present only when a write actually
-// happened (never on a dry run). pulls is the walk's expansion provenance —
-// which merged pulls it resolved and how many participating commits each
-// contributed — what the shadow comparison (Q6) branches on.
+// there is no release to act on, and body is also absent when an incomplete
+// walk declines to touch the draft at all; url is present only when a write
+// actually happened (never on a dry run). pulls is the walk's expansion
+// provenance — which merged pulls it resolved and how many participating
+// commits each contributed — which is what a human or a CI step reads to audit
+// how a verdict was assembled, and what the incomplete-walk warnings key off.
 type releaseResult struct {
 	Current string          `json:"current"`
 	Level   string          `json:"level"`
@@ -72,13 +74,12 @@ func newReleaseCmd() *cobra.Command {
 			"nothing resolved, a commit GitHub has not indexed) neither deletes a\n" +
 			"draft nor lowers one, and marks whatever it does write — an empty fold\n" +
 			"from a walk that could not look is not evidence that nothing shipped.\n" +
-			"--dry-run computes\n" +
-			"everything including that action and writes nothing: stdout is the tag\n" +
-			"line, a blank line, then the Markdown body; --json emits\n" +
+			"A real run prints the draft's URL; --dry-run computes everything\n" +
+			"including that action and writes nothing, printing the tag line, a\n" +
+			"blank line, then the Markdown body. --json emits\n" +
 			"{current,level,tag,body,action,url,commits,pulls,reason} — pulls is the\n" +
 			"walk's expansion provenance (each resolved pull and its participating\n" +
-			"commit count), what a shadow comparison against a squash-subject reader\n" +
-			"branches on.",
+			"commit count), which is how a verdict can be audited after the fact.",
 		Args: sinceTagArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return releaseRun(cmd)
@@ -86,7 +87,7 @@ func newReleaseCmd() *cobra.Command {
 	}
 	addSinceTagFlag(cmd, &releaseSinceTag, "compose the release from")
 	cmd.Flags().StringVar(&releaseRepo, "repo", "", "owner/name to query (default: $GITHUB_REPOSITORY)")
-	cmd.Flags().StringVar(&releaseCurrent, "current", "", "the version to step from (default: the walked tag, else the highest parseable v* tag)")
+	cmd.Flags().StringVar(&releaseCurrent, "current", "", currentFlagUsage)
 	cmd.Flags().StringVar(&releaseTarget, "target", "", "the commit sha the draft's eventual tag points at (default: the checkout's HEAD)")
 	cmd.Flags().StringVar(&releaseFooterFile, "footer-file", "", "a Markdown file appended verbatim after the notes, separated by one --- line (the per-repo install block)")
 	cmd.Flags().BoolVar(&releaseDryRun, "dry-run", false, "compute the full verdict and the draft action but write nothing to GitHub")

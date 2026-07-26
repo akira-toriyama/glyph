@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -196,8 +198,14 @@ func TestLogDeadlineIsAPI(t *testing.T) {
 	}
 }
 
-// TestTags: version-sorted descending, all tags included (the caller picks the
-// first it can parse); a repo without tags yields an empty list.
+// TestTags: git's --sort=-v:refname order, all tags included — the policy of
+// what counts as a version stays with the caller. The order is NOT a version
+// ordering and this test must not be read as promising one: it is a REFNAME
+// sort, so it orders on the leading byte first and puts every `v…` above every
+// `1…`. The fixture here happens to agree because every tag in it starts with v.
+// See Tags' own doc, and latestVersionTag, which read an earlier version of
+// this comment as a promise and took git's first parseable entry.
+// A repo without tags yields an empty list.
 func TestTags(t *testing.T) {
 	dir := newRepo(t)
 
@@ -220,7 +228,7 @@ func TestTags(t *testing.T) {
 		t.Fatalf("Tags = %v, want 4 entries", got)
 	}
 	if got[0] != "v0.2.0" {
-		t.Fatalf("Tags[0] = %q, want v0.2.0 (version-sorted descending)", got[0])
+		t.Fatalf("Tags[0] = %q, want v0.2.0 (git's refname order over this all-v fixture)", got[0])
 	}
 }
 
@@ -252,5 +260,246 @@ func TestHeadErrorsAreAPI(t *testing.T) {
 	ce := core.AsError(err)
 	if ce == nil || ce.Code != core.CodeAPI {
 		t.Fatalf("error = %v, want CodeAPI", err)
+	}
+}
+
+// TestHave: the repository's own commits come back, and everything else — a
+// well-formed sha nobody has, a tree that is not a commit, outright garbage —
+// is simply absent rather than an error. The listing Have is asked about is
+// GitHub's, so it routinely names commits that exist in no clone.
+func TestHave(t *testing.T) {
+	dir := newRepo(t)
+	root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	commit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	head := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	tree := git(t, dir, "akira-toriyama", "rev-parse", "HEAD^{tree}")
+	absent := "0123456789abcdef0123456789abcdef01234567"
+
+	got, err := Have(context.Background(), dir, []string{root, head, tree, absent, "not-a-sha"})
+	if err != nil {
+		t.Fatalf("Have: %v", err)
+	}
+	for _, sha := range []string{root, head} {
+		if !got[sha] {
+			t.Fatalf("Have does not report %.7s, which this repository holds", sha)
+		}
+	}
+	for name, sha := range map[string]string{"a tree": tree, "an absent commit": absent, "garbage": "not-a-sha"} {
+		if got[sha] {
+			t.Fatalf("Have reports %s (%q) as a commit this repository holds", name, sha)
+		}
+	}
+}
+
+// TestHaveEmpty: no shas is a successful empty answer and must not shell out —
+// the release walk calls this per pull request, and a squash-merged one whose
+// listing the API truncated to nothing would otherwise pay for a git process.
+func TestHaveEmpty(t *testing.T) {
+	got, err := Have(context.Background(), t.TempDir(), nil)
+	if err != nil {
+		t.Fatalf("Have(nil): %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("Have(nil) = %v, want empty", got)
+	}
+}
+
+// TestIsAncestor: a YES is a real ancestor or the rev itself; a NO covers both
+// spellings git gives it — an honest exit 1 for a commit on another line of
+// history, and exit 128 for an object this repository does not hold. The walk
+// reads both as "did not land here", so neither may surface as an error.
+func TestIsAncestor(t *testing.T) {
+	dir := newRepo(t)
+	root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	commit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	head := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side", root)
+	commit(t, dir, "akira-toriyama", ":memo: a commit off the released branch")
+	offBranch := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	git(t, dir, "akira-toriyama", "switch", "-q", "main")
+
+	for name, tc := range map[string]struct {
+		sha  string
+		want bool
+	}{
+		"an ancestor":               {root, true},
+		"the rev itself":            {head, true},
+		"another line of history":   {offBranch, false},
+		"an object we do not hold":  {"0123456789abcdef0123456789abcdef01234567", false},
+		"a name that is not an sha": {"not-a-sha", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := IsAncestor(context.Background(), dir, tc.sha, "HEAD")
+			if err != nil {
+				t.Fatalf("IsAncestor(%q): unexpected error: %v", tc.sha, err)
+			}
+			if got != tc.want {
+				t.Fatalf("IsAncestor(%q) = %v, want %v", tc.sha, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestIsAncestorCancelIsInterrupted: the abort must not be readable as an
+// answer about the repository.
+//
+// This is a REGRESSION test with a specific shape, and the shape is the whole
+// point. A context cancelled BEFORE the child starts makes os/exec return
+// ctx.Err() and never produces an *exec.ExitError, so it exercises none of the
+// ordering: the bug needed the child to be RUNNING when the cancel lands, at
+// which point exec.CommandContext kills it and the abort comes back wearing an
+// ExitError — indistinguishable, to a status-first reading, from git's own
+// "no, not an ancestor". Reading it that way returned (false, nil): a wrong
+// answer about which commits a release counts, with a nil error so no caller
+// could tell.
+//
+// Reproducing that needs the child alive at a moment the test controls, which
+// real `git merge-base` (microseconds) cannot offer. So PATH is pointed at a
+// git that announces itself and then blocks: the test waits for the
+// announcement — proof the process is running — and only then cancels. No
+// sleeps, no timing assumptions.
+func TestIsAncestorCancelIsInterrupted(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stub git is a shell script")
+	}
+	dir := t.TempDir()
+	bin := t.TempDir()
+	started := filepath.Join(dir, "started")
+	stub := "#!/bin/sh\ntouch " + started + "\nexec sleep 60\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(stub), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for {
+			if _, err := os.Stat(started); err == nil {
+				cancel()
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Millisecond):
+			}
+		}
+	}()
+
+	_, err := IsAncestor(ctx, dir, "any-sha", "HEAD")
+	ce := core.AsError(err)
+	if ce == nil || ce.Code != core.CodeInterrupted {
+		t.Fatalf("IsAncestor cancelled mid-run = %v, want CodeInterrupted (%d) — a killed child arrives as an *exec.ExitError, so reading the exit status before the context turns the abort into a silent \"did not land\"", err, core.CodeInterrupted)
+	}
+}
+
+// TestFirstParentLog: the n commits ending at rev along first parents, oldest
+// first — the shape a rebase-merge leaves behind. A merged side branch must not
+// appear: --first-parent is what makes the run alignable.
+func TestFirstParentLog(t *testing.T) {
+	dir := newRepo(t)
+	commit(t, dir, "akira-toriyama", ":bug: first")
+	git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side")
+	commit(t, dir, "akira-toriyama", ":memo: on the side branch")
+	git(t, dir, "akira-toriyama", "switch", "-q", "main")
+	commit(t, dir, "akira-toriyama", ":sparkles: second")
+	git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", "Merge branch 'side'", "side")
+
+	got, err := FirstParentLog(context.Background(), dir, "HEAD", 3)
+	if err != nil {
+		t.Fatalf("FirstParentLog: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("FirstParentLog(3) returned %d commits, want 3: %+v", len(got), got)
+	}
+	if !strings.HasPrefix(got[0].Message, ":bug: first") {
+		t.Fatalf("commits are not oldest-first: first is %q", got[0].Message)
+	}
+	if !strings.HasPrefix(got[2].Message, "Merge branch 'side'") {
+		t.Fatalf("last commit = %q, want the merge commit (the run ends AT rev)", got[2].Message)
+	}
+	for _, c := range got {
+		if strings.Contains(c.Message, "on the side branch") {
+			t.Fatalf("a merged side-branch commit appeared in a --first-parent run: %+v", got)
+		}
+	}
+}
+
+// TestFirstParentLogShortNearTheRoot: asking for more commits than the history
+// holds is a SHORT answer, not an error — the contract mainFootprint's length
+// guard depends on. Without that guard a young repository indexes a listing-long
+// loop into a shorter slice and panics.
+func TestFirstParentLogShortNearTheRoot(t *testing.T) {
+	dir := newRepo(t)
+	commit(t, dir, "akira-toriyama", ":bug: the only other commit")
+
+	got, err := FirstParentLog(context.Background(), dir, "HEAD", 10)
+	if err != nil {
+		t.Fatalf("FirstParentLog past the root: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("FirstParentLog(10) on a 2-commit history = %d commits, want 2", len(got))
+	}
+}
+
+// TestIsShallow: a full clone says no, a --depth 1 clone says yes. The release
+// walk branches on this because a truncated history cannot tell a commit that
+// never landed from one git simply does not have.
+func TestIsShallow(t *testing.T) {
+	dir := newRepo(t)
+	commit(t, dir, "akira-toriyama", ":bug: fix a crash")
+
+	full, err := IsShallow(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("IsShallow(full): %v", err)
+	}
+	if full {
+		t.Fatal("IsShallow reports a full checkout as shallow")
+	}
+
+	clone := filepath.Join(t.TempDir(), "shallow")
+	git(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", "1", "file://"+dir, clone)
+	shallow, err := IsShallow(context.Background(), clone)
+	if err != nil {
+		t.Fatalf("IsShallow(shallow): %v", err)
+	}
+	if !shallow {
+		t.Fatal("IsShallow reports a --depth 1 clone as full — the walk would grade itself on a partial repository")
+	}
+}
+
+// TestHooksDir asks git rather than assuming .git/hooks, because core.hooksPath
+// relocates them — the family's older repos set it, and writing to .git/hooks
+// there installs a hook git never runs.
+func TestHooksDir(t *testing.T) {
+	dir := newRepo(t)
+
+	got, err := HooksDir(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("HooksDir: %v", err)
+	}
+	if filepath.Base(got) != "hooks" {
+		t.Fatalf("HooksDir = %q, want a path ending in hooks", got)
+	}
+
+	git(t, dir, "akira-toriyama", "config", "core.hooksPath", "scripts/hooks")
+	got, err = HooksDir(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("HooksDir with core.hooksPath: %v", err)
+	}
+	if !strings.HasSuffix(filepath.ToSlash(got), "scripts/hooks") {
+		t.Fatalf("HooksDir with core.hooksPath = %q, want it to honour the relocation", got)
+	}
+}
+
+// TestHooksDirErrorsAreAPI: outside a repository there is no answer to give,
+// and a git/IO failure is exit 4 by contract.
+func TestHooksDirErrorsAreAPI(t *testing.T) {
+	gitOrSkip(t)
+	_, err := HooksDir(context.Background(), t.TempDir())
+	ce := core.AsError(err)
+	if ce == nil || ce.Code != core.CodeAPI {
+		t.Fatalf("HooksDir outside a repository = %v, want CodeAPI", err)
 	}
 }

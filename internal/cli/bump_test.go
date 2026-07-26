@@ -239,12 +239,20 @@ func TestBumpMalformedCommitIsLint(t *testing.T) {
 	testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")
 	t.Chdir(dir)
 
+	// The SHA is what makes the failure actionable: published history is
+	// immutable, so the operator's next move is to go look at that commit.
+	// Asserting the word "commit " instead proved only that range.go's format
+	// string still had a literal in it — the message is "commit %.7s: %v", so
+	// dropping the SHA left this green. The API path already asserts the sha
+	// (pr_test.go's TestPRMalformedCommitIsLint); the local path now does too.
+	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
 	code, _, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")
 	if code != 3 {
 		t.Fatalf("bump with a malformed commit exited %d, want 3", code)
 	}
-	if !strings.Contains(stderr, "commit ") {
-		t.Fatalf("the lint error should name the offending commit:\n%s", stderr)
+	if !strings.Contains(stderr, sha[:7]) {
+		t.Fatalf("the lint error should name the offending commit %.7s:\n%s", sha, stderr)
 	}
 }
 

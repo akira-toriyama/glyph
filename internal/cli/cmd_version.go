@@ -16,7 +16,14 @@ func newVersionCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print the glyph version",
-		Args:  cobra.NoArgs,
+		Long: "version prints the build identity: the release tag, the commit it was built\n" +
+			"from, and the build date, stamped in by ldflags at release time and\n" +
+			"recovered from the module's build info otherwise (so a `go install` build\n" +
+			"still identifies itself). It is the one command that reaches nothing —\n" +
+			"no git, no API, no repository — so it answers anywhere.\n\n" +
+			"The binary IS the pinned rules (the gitmoji table is embedded), so this\n" +
+			"version identifies the convention in force as well as the code.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			info := version.Resolve()
 			if versionNDJSON {

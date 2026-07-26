@@ -42,7 +42,7 @@ func newRulesCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&rulesJSON, "json", false, "emit the embedded rules.json verbatim")
+	cmd.Flags().BoolVar(&rulesJSON, "json", false, "emit the embedded rules.json verbatim — the pretty-printed file itself (511 lines), not the one-line envelope every other --json prints")
 	cmd.Flags().BoolVar(&rulesMD, "md", false, "render the Markdown docs table (default)")
 	cmd.MarkFlagsMutuallyExclusive("json", "md")
 	return cmd

@@ -296,7 +296,7 @@ func TestSinceTagIsExclusiveWithTheOtherSources(t *testing.T) {
 }
 
 // TestSinceTagRevertPRIsWalked: a revert PR squash-merges with the subject
-// `Revert "..." (#N)` — the same prefix bump.Excluded uses to skip raw
+// `Revert "..." (#N)` — the same prefix bump.ExcludedFromClassification uses to skip raw
 // git-revert messages. On the walk that subject is a POINTER to a resolvable
 // PR, not a message being classified: excluding it here would silently drop
 // the whole revert (its :rewind: inner commits drive a patch) while the

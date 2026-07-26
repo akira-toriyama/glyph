@@ -49,10 +49,14 @@ func newBumpCmd() *cobra.Command {
 		Long: "bump classifies every participating commit (bots, merges, autosquash\n" +
 			"artifacts and raw git reverts are excluded), folds the levels with max — so\n" +
 			"order can never change the verdict — and steps the current version.\n" +
+			"There are three input sources, exactly one of which is required.\n" +
 			"--range reads a local git revision range; --pr reads a pull request's\n" +
 			"INDIVIDUAL commits over the API, which is what makes the verdict\n" +
-			"squash-safe: a squash-merge rewrites the subject to the PR title and would\n" +
-			"otherwise erase every per-commit type. stdout is the bare next version\n" +
+			"squash-safe (a squash-merge rewrites the subject to the PR title and would\n" +
+			"otherwise erase every per-commit type); --since-tag walks main's merge\n" +
+			"points since a tag and expands each back into the pull it merged — the\n" +
+			"release-time source, and what glyph's own release job uses.\n" +
+			"stdout is the bare next version\n" +
 			"(pipe it into a tag step); --json emits {current,level,next,commits,reason}.\n" +
 			"A none verdict prints no version and exits 1 (soft no-release).",
 		Args: sinceTagArgs,
@@ -64,7 +68,7 @@ func newBumpCmd() *cobra.Command {
 	cmd.Flags().IntVar(&bumpPR, "pr", 0, "classify a pull request's individual (pre-squash) commits, read over the API")
 	addSinceTagFlag(cmd, &bumpSinceTag, "classify")
 	cmd.Flags().StringVar(&bumpRepo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY)")
-	cmd.Flags().StringVar(&bumpCurrent, "current", "", "the version to step from (default: highest parseable v* tag, else v0.0.0)")
+	cmd.Flags().StringVar(&bumpCurrent, "current", "", currentFlagUsage)
 	cmd.Flags().BoolVar(&bumpJSON, "json", false, "emit the machine verdict {current,level,next,commits,reason}")
 	markInputSourceFlags(cmd)
 	return cmd

@@ -18,8 +18,16 @@ func newHookCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "hook",
 		Short: "Manage the commit-msg hook that lints through glyph",
-		Args:  cobra.NoArgs,
-		RunE:  func(cmd *cobra.Command, args []string) error { return cmd.Help() },
+		Long: "hook manages the commit-msg hook, which moves the convention check from CI\n" +
+			"to the moment the message is written.\n\n" +
+			"The hook holds NO copy of the convention — it calls `glyph lint --stdin`, so\n" +
+			"it cannot fall out of lockstep when the rules move, which is exactly what the\n" +
+			"hand-written per-repo regexes it replaces did. Without glyph on PATH it warns\n" +
+			"and lets the commit through, and it blocks for ONE reason only: lint's\n" +
+			"convention-violation exit. The commit-lint CI job stays the authority; this is\n" +
+			"early warning, and a tool that is unwell must never stop anyone committing.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newHookInstallCmd())
 	return cmd

@@ -127,15 +127,18 @@ func checkWorkflowPins(root string) Check {
 // THE TRAP, which has been got wrong in every direction: a `uses:`-shaped line
 // is not necessarily an executing step.
 //
-//   - Every glyph reusable workflow ships a permanently-stale COMMENTED caller
-//     stub in its header — a line whose first non-space character is # that
-//     contains `uses:` and a version frozen at whenever the prose was last
-//     edited. glyph's own lint.yml carries
-//     `#       uses: akira-toriyama/glyph/.github/workflows/lint.yml@v0.10.0`
-//     while the repository's real caller (commit-lint.yml) is pinned to a later
-//     tag. A scan that ignores comments reports glyph itself as drifted forever;
-//     a scan that takes the FIRST match in a file (a `head -1` shape) reads the
-//     comment instead of the real line and reports the wrong version everywhere.
+//   - Every glyph reusable workflow ships a COMMENTED caller stub in its header
+//     — a line whose first non-space character is # that nevertheless contains
+//     `uses:`. A scan that ignores comments reports glyph itself as drifted
+//     forever; a scan that takes the FIRST match in a file (a `head -1` shape)
+//     reads the stub instead of the real line and reports the wrong version
+//     everywhere. Those stubs now carry the @vX.Y.Z PLACEHOLDER rather than a
+//     concrete tag, which removes the second half of the trap at its source —
+//     but this scan must keep handling both, because it reads OTHER
+//     repositories' workflows too, and nothing makes them follow that rule.
+//     internal/workflows/workflows_test.go is what holds glyph's own stubs to
+//     the placeholder; see it rather than a quoted example line, which is
+//     exactly the thing that goes stale here.
 //   - One shape further out, and the reason this loop carries state: a fleet-sync
 //     step WRITES caller stubs, so a `run: |` block holds a heredoc whose text is
 //     `uses: akira-toriyama/glyph/.github/workflows/lint.yml@main`. That is data

@@ -177,20 +177,14 @@ func latestVersionTag(ctx context.Context) (tag string, v bump.Version, err erro
 // contributed, after the walk-wide SHA dedup: a stacked PR whose commits all
 // rode in with its base PR reports 0, and so does a merge-merged PR whose
 // commits the walk already folded in on the fallback path. This is the walk
-// reporting its own expansion facts, and the shadow comparison (ratified Q6)
-// branches on them instead of re-implementing the walk's exclusion rules in
-// shell.
+// reporting its own expansion facts: how a verdict was assembled, in a form a
+// human or a CI step can read back afterwards without re-deriving the walk's
+// exclusion rules somewhere else.
 //
-// What 2+ means depends on the merge style, so the count is an UPPER BOUND on
-// divergence rather than a predicate for it. For a SQUASH-merged pull,
-// git-cliff (and any main-history reader) sees only the squash subject, so 2+
-// contributed commits means a divergence is expected — COMMIT_OR_PR_TITLE
-// replaced that subject with the PR title, and the per-commit types exist
-// nowhere on main. For a MERGE-COMMIT-merged pull the same commits ARE on main,
-// messages intact, so a text reader reads exactly what the expansion did and
-// agrees. Nothing here distinguishes the two shapes, so a comparison branching
-// on 2+ can raise a false alarm on a merge-merged pull — never miss a real
-// divergence, which is the direction that matters.
+// It records what the walk DID, and never why a number is what it is. A count
+// of 0 is the case that invites a wrong reading, and both of its causes are
+// innocent — see the two named above — so nothing may treat 0 as "this pull
+// changed nothing".
 type pullExpansion struct {
 	Number  int `json:"number"`
 	Commits int `json:"commits"`
@@ -269,8 +263,9 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 		return nil, walkFacts{}, err
 	}
 	var commits []parser.Commit
-	// Normalized to [] up front so the JSON surface never emits null — a
-	// shadow script indexes .pulls unconditionally.
+	// Normalized to [] up front so the JSON surface never emits null: .pulls is
+	// indexable on every verdict, the none verdict included, with no null-check
+	// at each consumer.
 	facts := walkFacts{Pulls: []pullExpansion{}}
 	// seen holds every SHA already REPRESENTED in the fold. One commit can be
 	// reachable from TWO merged PRs — a stacked branch carries its base PR's
@@ -315,10 +310,8 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 	coveredPulls, coveredOrder, expanded := map[int]bool{}, []int{}, map[int]bool{}
 	// foldPull expands one merged pull request into the walk, canonical being the
 	// walked commit that resolved to it (its merge point): the listing is
-	// filtered against seen BEFORE it is parsed (an already-represented commit
-	// must never be able to fail the release — its message may be a squash
-	// subject, which never parses), what remains is classified, and the pull's
-	// contribution is recorded. Only a RESOLVED canonical commit may expand a
+	// filtered BEFORE it is parsed (see the two filters below), what remains is
+	// classified, and the pull's contribution is recorded. Only a RESOLVED canonical commit may expand a
 	// pull — the reconciliation at the end of the walk deliberately does not call
 	// this (see there), because a listing fetched without a canonical commit in
 	// range says nothing about which of its commits belong to this walk.
