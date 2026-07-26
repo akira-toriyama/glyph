@@ -83,6 +83,32 @@ func newRootCmd() *cobra.Command {
 	}
 	root.SetVersionTemplate("glyph {{.Version}}\n")
 	root.AddCommand(newVersionCmd(), newRulesCmd(), newLintCmd(), newBumpCmd(), newNotesCmd(), newPreviewCmd(), newReleaseCmd(), newHookCmd(), newDoctorCmd())
+
+	// `completion` is cobra's, not ours, and it arrives with a hole the root's
+	// own cobra.NoArgs cannot cover: cobra sets Args: NoArgs on it but gives it
+	// no Run, and Command.execute() returns flag.ErrHelp for an unrunnable
+	// command BEFORE it validates arguments. So the NoArgs never ran, and
+	// `glyph completion bogus` printed the parent's help to STDOUT and exited 0
+	// — the one invalid-argument path in this CLI that was not usage(2).
+	//
+	// That is not a cosmetic exit code. The output of this command is redirected
+	// into a file the shell then sources, so `glyph completion zsh > _glyph` and
+	// `glyph completion zshh > _glyph` both reported success and the second wrote
+	// 563 bytes of English prose where a completion script belongs — a syntax
+	// error at every subsequent shell start, with nothing having failed.
+	//
+	// Making the parent RUNNABLE is the whole fix: execute() then reaches
+	// ValidateArgs and cobra's own NoArgs rejects the argument. `glyph hook`,
+	// this repo's own parent command, has carried both an Args and a help RunE
+	// since it was written (cmd_hook.go) — this only gives cobra's command the
+	// same pair. A bare `glyph completion` still prints help at 0, exactly as
+	// `glyph hook` and bare `glyph` do.
+	root.InitDefaultCompletionCmd()
+	for _, c := range root.Commands() {
+		if c.Name() == "completion" {
+			c.RunE = func(cmd *cobra.Command, args []string) error { return cmd.Help() }
+		}
+	}
 	return root
 }
 
