@@ -33,9 +33,13 @@ func newNotesCmd() *cobra.Command {
 			"merges, autosquash artifacts and raw git reverts are excluded) groups under\n" +
 			"its gitmoji's section, breaking commits hoist into Breaking Changes, and\n" +
 			"sectionless commits stay out — though a none-bump removal (:fire:/:coffin:/\n" +
-			":truck:) still surfaces under Removals. --range reads a local git revision\n" +
-			"range; --pr reads a pull request's INDIVIDUAL commits over the API, so a\n" +
-			"squash-merge cannot collapse them into one line. stdout is the Markdown body\n" +
+			":truck:) still surfaces under Removals.\n" +
+			"There are three input sources, exactly one of which is required.\n" +
+			"--range reads a local git revision range; --pr reads a pull request's\n" +
+			"INDIVIDUAL commits over the API, so a squash-merge cannot collapse them\n" +
+			"into one line; --since-tag walks main's merge points since a tag and\n" +
+			"expands each back into the pull it merged (the release-time source).\n" +
+			"stdout is the Markdown body\n" +
 			"(pipe it into a release step); --json emits {sections,reason}. Nothing\n" +
 			"release-worthy prints no body and exits 1 (soft no-release).",
 		Args: sinceTagArgs,
