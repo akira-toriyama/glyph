@@ -108,6 +108,13 @@ tree that does not compile turns the local gate into a silent no-op.
   non-merge commit — a real trailer, parsed by `git interpret-trailers`, so a line sitting inside
   a body paragraph waives nothing.
   Rationale: [`docs/go-bite.md`](https://github.com/akira-toriyama/.github/blob/main/docs/go-bite.md).
+- **dist-gate** — a distribution-layer file (the three reusables, `goreleaser.yml`,
+  the install action, `.goreleaser.yaml`) in the diff with no `internal/workflows`
+  `*_test.go` change fails the PR — bite acts on Go diffs only, and YAML `:bug:`
+  fixes have shipped with zero tests before. Waiver: `Dist-gate-exempt: <reason>`
+  trailer on every non-merge commit (a real trailer, like `Bite-exempt:`). The
+  file set lives twice on purpose — `scripts/dist-gate.sh` and
+  `internal/workflows/distgate_test.go` — and the test fails if the copies drift.
 - **`internal/workflows`** — tests the workflow YAML itself: the install action's single source,
   `fetch-depth: 0` on the walking reusables, the `sed -n '/^[{]/,$p'` envelope sieve a step needs
   before `jq`. Its failure messages carry the incident; read them. The one it fails you for being

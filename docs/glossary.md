@@ -37,7 +37,7 @@ missing entry, because it is the one place a reader trusts not to be stale.
 4. [The render boundary](#4-the-render-boundary) — inline context, phantom span, neutralize, escape, fence, flatten, pipe escape, over-escaping is the safe direction
 5. [Repository preconditions (`doctor`)](#5-repository-preconditions-doctor) — check, check id, pass/fail/advice/unknown, release-tag pin
 6. [Exit codes and streams](#6-exit-codes-and-streams) — gate code, soft no-release, annotation, error envelope
-7. [Fleet distribution](#7-fleet-distribution) — fleet, reusable workflow, composite action, merge preview, sticky comment
+7. [Fleet distribution](#7-fleet-distribution) — fleet, reusable workflow, composite action, distribution layer, dist-gate, merge preview, sticky comment
 
 ---
 
@@ -729,6 +729,25 @@ reusable's own repo — so glyph's reusables check out glyph's source at
 while a **consumer** references the action the ordinary way, by full
 `owner/repo/path@vX.Y.Z`. `.github/actions/install/action.yml`,
 `internal/workflows/doc.go`
+
+**distribution layer** — the files by which glyph reaches the fleet *without
+going through the Go compiler*: the three reusable workflows plus
+`goreleaser.yml`, the composite install action, and `.goreleaser.yaml`. The term
+earns its entry by its boundary, which is easy to draw one file too wide in both
+directions: `build.yml` is **not** distribution layer (this repo's own CI, shipped
+to nobody), and neither are the fleet-synced consumers (`commit-lint.yml`,
+`task-status.yml`, …) — their canonical copies are owned by
+`akira-toriyama/.github` and arrive here by sync, not by pull request.
+`scripts/dist-gate.sh: DIST_PATTERN`
+
+**dist-gate** — the pull-request gate that makes evidence for a distribution-layer
+change *mandatory*: such a file in the diff with no `internal/workflows`
+`*_test.go` change fails the PR. It closes a measured gap — `bite` acts on Go
+diffs only and the extras smoke reads no YAML, so a `:bug:` fix touching only
+`.goreleaser.yaml` or only the install action used to ship with zero tests.
+Waived by a `Dist-gate-exempt: <reason>` git trailer on every non-merge commit,
+go-bite's exact shape. `scripts/dist-gate.sh`, `.github/workflows/build.yml`
+(the `dist-gate` job), `internal/workflows/distgate_test.go`
 
 **merge preview** — the answer to "what does merging this PR do to the version",
 rendered as a whole Markdown comment body: the PR's own individual commits folded

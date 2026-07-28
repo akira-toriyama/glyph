@@ -1,0 +1,35 @@
+diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
+index 7d51ed2..d10392a 100644
+--- a/.github/workflows/build.yml
++++ b/.github/workflows/build.yml
+@@ -58,30 +58,6 @@ jobs:
+       - name: mutation ledger
+         run: sh scripts/mutations.sh
+ 
+-  # A change to what glyph SHIPS must carry evidence, exactly as a change to
+-  # what it computes must. `bite` above acts on Go diffs only and the smoke
+-  # below reads no YAML, so a :bug: fix touching only .goreleaser.yaml or the
+-  # install action used to reach main with zero tests and no gate noticing
+-  # (t-5dbh). This job closes that: a distribution-layer file in the diff with
+-  # no internal/workflows test change fails the pull request. File set, waiver
+-  # (`Dist-gate-exempt:` trailer) and rationale: scripts/dist-gate.sh.
+-  # PR-only because the gate judges a diff; a push to main carries none.
+-  dist-gate:
+-    if: github.event_name == 'pull_request'
+-    runs-on: ubuntu-latest
+-    timeout-minutes: 5
+-    steps:
+-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+-        with:
+-          persist-credentials: false
+-          # The gate diffs BASE...HEAD and reads trailers across the range; a
+-          # depth-1 checkout holds neither the base nor the commits.
+-          fetch-depth: 0
+-      - name: distribution-layer gate
+-        env:
+-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+-        run: sh scripts/dist-gate.sh "$BASE_SHA"
+-
+   # Repo-specific checks that don't belong in the shared core. The smoke runs on
+   # every leg so the shipped binary is exercised on every released platform shape:
+   # darwin (brew cask) and linux arm64 (free for public repos) beside linux amd64
