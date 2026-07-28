@@ -112,6 +112,13 @@ type Input struct {
 	// TokenConfigured records whether a credential was configured at all, so
 	// the token check can tell "anonymous" from "rejected".
 	TokenConfigured bool
+	// HooksDir / HooksErr are git's answer to where this checkout's hooks live
+	// (core.hooksPath relocates them, so it must be ASKED, not assumed) and the
+	// failure to get one. Resolved by the caller for the same reason RepoObject
+	// is: internal/cli owns every subprocess, as it owns every request. A nil
+	// error with an empty directory cannot happen — git names one or fails.
+	HooksDir string
+	HooksErr error
 }
 
 // The stable check ids. They are the report's API — rename one and every CI
@@ -125,6 +132,7 @@ const (
 	IDSquashTitle    = "squash-commit-title"
 	IDSquashMessage  = "squash-commit-message"
 	IDWorkflowPinned = "workflow-glyph-pins"
+	IDCommitMsgHook  = "commit-msg-hook"
 )
 
 // Expected values for the two squash enums, as GitHub spells them.
@@ -139,9 +147,9 @@ const (
 //
 // Check order is the report order and is chosen for reading: the token check
 // first because it explains every could-not-run below it, then the three merge
-// methods, then the squash policy they enable, then the local workflow pins
-// (the one check that needs no network at all, so it still answers when the API
-// side is entirely dark).
+// methods, then the squash policy they enable, then the two LOCAL checks — the
+// workflow pins and the installed commit-msg hook — which need no network at
+// all, so they still answer when the API side is entirely dark.
 func Run(in Input) *Report {
 	r := &Report{Repo: in.Repo, Checks: []Check{
 		checkTokenAccess(in),
@@ -151,6 +159,7 @@ func Run(in Input) *Report {
 		checkSquashTitle(in),
 		checkSquashMessage(in),
 		checkWorkflowPins(in.Root),
+		checkCommitMsgHook(in.HooksDir, in.HooksErr),
 	}}
 	r.OK = true
 	for _, c := range r.Checks {

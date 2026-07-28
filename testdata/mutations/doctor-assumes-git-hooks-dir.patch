@@ -1,0 +1,23 @@
+--- a/internal/cli/cmd_doctor.go
++++ b/internal/cli/cmd_doctor.go
+@@ -2,10 +2,10 @@
+ 
+ import (
+ 	"fmt"
++	"path/filepath"
+ 
+ 	"github.com/akira-toriyama/glyph/internal/core"
+ 	"github.com/akira-toriyama/glyph/internal/doctor"
+-	"github.com/akira-toriyama/glyph/internal/gitsource"
+ 	"github.com/spf13/cobra"
+ )
+ 
+@@ -96,7 +96,7 @@
+ 	// the only place allowed to ask: internal/doctor runs no subprocess, exactly
+ 	// as it makes no request. A failure here is handed over verbatim and becomes
+ 	// that one check's could-not-run — never an aborted report.
+-	hooksDir, herr := gitsource.HooksDir(cmd.Context(), ".")
++	hooksDir, herr := filepath.Join(".git", "hooks"), error(nil)
+ 	// An interrupt is the user's own abort and must never be laundered into a
+ 	// check result: reporting "the token cannot read the repository" because
+ 	// somebody pressed Ctrl-C would be a diagnosis of the wrong thing entirely.

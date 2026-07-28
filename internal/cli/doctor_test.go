@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/internal/hook"
 )
 
 // doctorRepoPath is the one endpoint doctor reads: the repository object for
@@ -92,11 +94,20 @@ jobs:
 `
 
 // useDoctorCheckout builds a throwaway checkout holding one workflow file and
-// makes it the working directory — doctor reads the LOCAL tree for the pin
-// check. No git repository is needed: doctor runs no git command.
+// makes it the working directory — doctor reads the LOCAL tree for both of its
+// offline checks.
+//
+// It is a REAL git repository, because doctor asks git where hooks live rather
+// than assuming .git/hooks (core.hooksPath relocates them). A bare directory
+// would make the hook check could-not-run in every test here, which is a true
+// answer to a question none of them are asking. No commit and no hook is
+// installed, so these tests also hold the line that an ABSENT hook passes: a
+// fresh clone has none, an Actions checkout cannot have one, and a check that
+// spoke up about it would speak up on every run in every repository.
 func useDoctorCheckout(t *testing.T, workflow string) {
 	t.Helper()
 	root := t.TempDir()
+	testGit(t, root, "akira-toriyama", "init", "-q", "-b", "main")
 	dir := filepath.Join(root, ".github", "workflows")
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -168,7 +179,7 @@ func TestDoctorHealthyRepositoryPasses(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("doctor on a healthy repository exited %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	if !strings.Contains(stdout, "7 checks: 7 pass, 0 fail, 0 advice, 0 could not run") {
+	if !strings.Contains(stdout, "8 checks: 8 pass, 0 fail, 0 advice, 0 could not run") {
 		t.Errorf("summary line missing or wrong:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "read-only") {
@@ -195,6 +206,7 @@ func TestDoctorJSONShape(t *testing.T) {
 		"squash-commit-title",
 		"squash-commit-message",
 		"workflow-glyph-pins",
+		"commit-msg-hook",
 	}
 	if len(rep.Checks) != len(want) {
 		t.Fatalf("report carries %d checks, want %d", len(rep.Checks), len(want))
@@ -217,8 +229,8 @@ func TestDoctorJSONShape(t *testing.T) {
 	if rep.Repo != "akira-toriyama/glyph" {
 		t.Errorf("repo = %q, want the diagnosed repository", rep.Repo)
 	}
-	if !rep.OK || rep.Counts.Pass != 7 {
-		t.Errorf("counts = %+v ok=%t, want 7 pass and ok", rep.Counts, rep.OK)
+	if !rep.OK || rep.Counts.Pass != 8 {
+		t.Errorf("counts = %+v ok=%t, want 8 pass and ok", rep.Counts, rep.OK)
 	}
 }
 
@@ -278,7 +290,7 @@ func TestDoctorMergeMethodsAreAdviceNotFailure(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("permissive merge methods exited %d, want 0 — a house convention is not a gate", code)
 	}
-	if !strings.Contains(stdout, "5 pass, 0 fail, 2 advice") {
+	if !strings.Contains(stdout, "6 pass, 0 fail, 2 advice") {
 		t.Errorf("merge and rebase must report as advice:\n%s", stdout)
 	}
 	if strings.Count(stderr, "::notice::") != 2 {
@@ -540,5 +552,69 @@ func TestDoctorTakesNoPositionalArgs(t *testing.T) {
 	useDoctorCheckout(t, pinnedCaller)
 	if code, _, _ := runGlyph(t, "doctor", "akira-toriyama/glyph"); code != 2 {
 		t.Fatalf("a positional argument exited %d, want 2 (usage)", code)
+	}
+}
+
+// TestDoctorFindsAStaleInstalledHook is the end-to-end half of the hook check:
+// a real checkout, a real hook file on disk, and git asked where hooks live.
+//
+// The stale hook is the failure internal/hook's code interpolation prevents
+// when glyph WRITES the script and cannot prevent afterwards — hooks are
+// untracked, so nothing refreshes one and the copy on disk keeps comparing
+// against whatever number it was born with. It exits 0 on a real violation,
+// which is indistinguishable from a clean message, which is why doctor has to
+// be the thing that notices.
+func TestDoctorFindsAStaleInstalledHook(t *testing.T) {
+	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+	useDoctorCheckout(t, pinnedCaller)
+	stale := strings.Replace(hook.Script, `-eq 3 `, `-eq 9 `, 1)
+	if stale == hook.Script {
+		t.Fatal("the stale-hook fixture no longer differs from hook.Script — re-derive it")
+	}
+	writeHook(t, filepath.Join(".git", "hooks"), stale)
+
+	code, stdout, stderr := runGlyph(t, "doctor")
+	if code != 3 {
+		t.Fatalf("a stale glyph-written hook exited %d, want 3 (the convention-violation code)\n%s\n%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "fail     commit-msg-hook") {
+		t.Errorf("the stale hook must be the failing check:\n%s", stdout)
+	}
+	if !strings.Contains(stderr, "::warning::glyph: doctor commit-msg-hook") {
+		t.Errorf("a failing check must annotate as a warning:\n%s", stderr)
+	}
+}
+
+// TestDoctorHonoursCoreHooksPath is why the hooks directory is git's answer and
+// not filepath.Join(root, ".git", "hooks"). The family's older repos set
+// core.hooksPath to a tracked directory; a doctor that assumed .git/hooks would
+// read a file git never runs and report a clean bill of health over a stale hook
+// sitting in the directory git actually uses.
+func TestDoctorHonoursCoreHooksPath(t *testing.T) {
+	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+	useDoctorCheckout(t, pinnedCaller)
+	testGit(t, ".", "akira-toriyama", "config", "core.hooksPath", "scripts/hooks")
+	// The decoy sits where the naive implementation would look. It is CURRENT,
+	// so a doctor reading it reports a pass — the exact wrong answer.
+	writeHook(t, filepath.Join(".git", "hooks"), hook.Script)
+	writeHook(t, filepath.Join("scripts", "hooks"), strings.Replace(hook.Script, `-eq 3 `, `-eq 9 `, 1))
+
+	code, stdout, _ := runGlyph(t, "doctor")
+	if code != 3 {
+		t.Fatalf("the hook in core.hooksPath is the one git runs; doctor exited %d, want 3\n%s", code, stdout)
+	}
+	if !strings.Contains(stdout, filepath.Join("scripts", "hooks", "commit-msg")) {
+		t.Errorf("the report must name the directory git reported, not .git/hooks:\n%s", stdout)
+	}
+}
+
+// writeHook installs body as the commit-msg hook under dir, creating it.
+func writeHook(t *testing.T, dir, body string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatalf("mkdir %s: %v", dir, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "commit-msg"), []byte(body), 0o600); err != nil {
+		t.Fatalf("write hook: %v", err)
 	}
 }

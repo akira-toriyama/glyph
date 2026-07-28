@@ -718,6 +718,27 @@ The severities are the argued part:
   owner/repo match is case-insensitive because GitHub's resolution is —
   `Akira-Toriyama/glyph/…@main` executes, and a case-sensitive scan called that
   repository clean.
+- **A stale glyph-written commit-msg hook ⇒ fail; no hook at all ⇒ pass.** The
+  question is drift, not adoption. `internal/hook` interpolates the lint gate
+  code from `core.CodeLint` so a renumbered constant cannot leave behind a hook
+  comparing against a code glyph no longer emits — one that waves every
+  violation through. That holds for the hook glyph *writes*; it holds for
+  nothing already on disk. Hooks are untracked, so no pull, no fleet-sync and no
+  CI job refreshes one, and everything it decides — the gate code, the arguments
+  it hands `lint` — was frozen by whichever glyph was on PATH that day. It fails
+  in the quiet direction: a stale hook still exits 0, which is what a clean
+  message looks like. Hence the one artefact here that glyph itself wrote is
+  also the one nothing else can notice going wrong.
+  Absence passing is the argued half. A hook is opt-in, CI is the authority, and
+  an Actions checkout cannot have one *by construction* — grading that as advice
+  would post a notice on every run in every repository, which is the noise that
+  teaches a fleet to stop reading the report. A hook glyph did not write is
+  advice: `hook.Install` refuses to overwrite one, so it is a standing choice
+  rather than drift, and rare enough to say so once. The hooks directory is
+  git's answer (`core.hooksPath` relocates it; the family's older repos point it
+  at a tracked `scripts/hooks`), which makes this the one check that needs a
+  subprocess — resolved in `internal/cli` beside every other one, since
+  `internal/doctor` runs no git exactly as it makes no request.
 
 ## 8. Where we are
 

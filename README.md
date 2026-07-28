@@ -62,8 +62,17 @@ checks it: the credential can read the repository, squash merging is **enabled**
 `merge_commit_sha`, so the walk can never resolve half of it — every
 multi-commit landing has a window where it can), `squash_merge_commit_title` /
 `squash_merge_commit_message` still keep a classifiable gitmoji subject and the
-per-commit body on `main`, and every `uses: akira-toriyama/glyph/…` in the local
-`.github/workflows` pins a concrete `@vX.Y.Z`.
+per-commit body on `main`, every `uses: akira-toriyama/glyph/…` in the local
+`.github/workflows` pins a concrete `@vX.Y.Z`, and the installed commit-msg hook
+is the one *this* binary writes.
+
+That last one is the only check whose subject glyph wrote itself. Hooks are
+untracked, so nothing refreshes one: whichever glyph was on PATH the day it was
+installed froze the exit code it stops a commit on and what it hands `lint`, and
+a stale hook still exits `0` — indistinguishable from a clean message. `glyph
+hook install` refreshes it. Having **no** hook passes (it is opt-in, CI is the
+authority, and an Actions checkout cannot have one); a hook glyph did not write
+is advice, because glyph will not overwrite it unasked.
 
 Merge commits and rebase merges are reported as **advice**, not failures — the
 release walk resolves and expands both, and even with the API dark a
