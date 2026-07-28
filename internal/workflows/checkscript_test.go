@@ -86,3 +86,77 @@ func TestCheckScriptDeclaresNoSilentSkip(t *testing.T) {
 		}
 	}
 }
+
+// TestCheckScriptRunsBiteUnderGoModsToolchain guards the one gate here that runs
+// under a Go the script chooses rather than the one every other gate resolves.
+//
+// go-bite exports GOTOOLCHAIN=local, correctly: in CI, setup-go has already
+// installed the toolchain go.mod names. Locally nothing has. `nix develop` supplies
+// nixpkgs' current go (measured: 1.26.4 against go.mod's `toolchain go1.26.5`) and a
+// mise install leaks a GOROOT for a different version into the shell, so the driver
+// and its GOROOT disagree and every package fails to compile — `cannot build
+// bitescan`, no verdict, and the run never reaches its ✓ line (t-wmwb).
+//
+// The fix that suggests itself is `unset GOROOT`, and it is the one this test
+// refuses. It compiles, so it looks right, but it leaves bite judging the diff with
+// nixpkgs' go while CI judges it with go.mod's — a loud failure swapped for a silent
+// divergence, in the script whose entire purpose is the claim that they agree. So
+// the requirement is positive: hand go-bite the toolchain root the other gates
+// resolved, which is what setup-go hands it in CI.
+func TestCheckScriptRunsBiteUnderGoModsToolchain(t *testing.T) {
+	script := repoFile(t, filepath.Join("scripts", "check.sh"))
+
+	var invocation string
+	for _, stmt := range executableStatements(script) {
+		if strings.Contains(stmt, `sh "$BITE"`) {
+			invocation = stmt
+			break
+		}
+	}
+	if invocation == "" {
+		t.Fatal(`no executable statement in scripts/check.sh runs sh "$BITE" — either the bite gate ` +
+			"was removed (it is a mirrored gate, so MIRRORS must lose it too) or it is invoked some " +
+			"other way and this test is now checking nothing")
+	}
+
+	if !strings.Contains(script, "go env GOROOT") {
+		t.Error("scripts/check.sh no longer derives a GOROOT from `go env GOROOT`. That call is how the " +
+			"script learns which toolchain go.mod's `toolchain` line resolved to under GOTOOLCHAIN=auto — " +
+			"the same one setup-go installs in CI. Without it the bite gate has no way to run under CI's Go.")
+	}
+	for _, key := range []string{"GOROOT=", "PATH="} {
+		if !strings.Contains(invocation, key) {
+			t.Errorf("the bite invocation in scripts/check.sh does not set %s: %q\n\n"+
+				"go-bite exports GOTOOLCHAIN=local, so it runs whatever `go` it finds against whatever "+
+				"GOROOT it inherits. Locally those are two different Go versions and it cannot build at "+
+				"all (t-wmwb). Clearing GOROOT instead would let it build under nixpkgs' go while CI uses "+
+				"go.mod's — this script's header claims a green run here means a green CI, and that trade "+
+				"makes the claim quietly false. Pass GOROOT=\"$(go env GOROOT)\" and prepend its bin to PATH.",
+				strings.TrimSuffix(key, "="), invocation)
+		}
+	}
+}
+
+// executableStatements drops comment lines and joins backslash continuations, so a
+// guard reads one shell command as one string. Without the join, an invocation
+// spread over two lines looks like two statements and a guard on it matches neither
+// half.
+func executableStatements(script string) []string {
+	var out []string
+	pending := ""
+	for line := range strings.SplitSeq(script, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		if head, continued := strings.CutSuffix(line, `\`); continued {
+			pending += head
+			continue
+		}
+		out = append(out, pending+line)
+		pending = ""
+	}
+	if pending != "" {
+		out = append(out, pending)
+	}
+	return out
+}
