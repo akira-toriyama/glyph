@@ -128,10 +128,38 @@ func TestSecondaryRateLimit403IsRetried(t *testing.T) {
 	}
 }
 
-// TestBare403IsNotRetried: a 403 WITHOUT Retry-After is a permission failure —
-// retrying cannot repair a bad credential, and hammering it would only burn
-// more of the rate limit.
-func TestBare403IsNotRetried(t *testing.T) {
+// TestBare403IsRetried: a 403 WITHOUT Retry-After used to be returned on the
+// first answer as a permission failure. t-z7c1 measured GitHub answering
+// exactly that shape — bare 403, `Resource not accessible by integration`, no
+// Retry-After — when several repos' release runs PATCH their rolling drafts
+// in the same second, and the very same request succeeding moments later. The
+// collision and the true permission failure share one status and one message,
+// so the loop now retries both: the collision heals inside the schedule.
+func TestBare403IsRetried(t *testing.T) {
+	var hits atomic.Int32
+	c := retryClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) == 1 {
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprint(w, `{"message":"Resource not accessible by integration"}`)
+			return
+		}
+		fmt.Fprint(w, `[]`)
+	})
+
+	if _, err := c.CommitPulls(context.Background(), "o", "r", "s"); err != nil {
+		t.Fatalf("a bare 403 that clears must retry and succeed, got %v", err)
+	}
+	if got := hits.Load(); got != 2 {
+		t.Fatalf("server saw %d request(s), want 2", got)
+	}
+}
+
+// TestBare403StillFailsWhenPermanent: the other face of the same coin — a TRUE
+// permission failure answers 403 on every attempt, and after the schedule is
+// spent the verdict must be the same API failure as before, not a softer one.
+// The retry buys the collision its recovery; it must not buy a bad credential
+// anything but latency.
+func TestBare403StillFailsWhenPermanent(t *testing.T) {
 	var hits atomic.Int32
 	c := retryClient(t, func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
@@ -141,8 +169,8 @@ func TestBare403IsNotRetried(t *testing.T) {
 
 	_, err := c.CommitPulls(context.Background(), "o", "r", "s")
 	wantAPIError(t, err, "Resource not accessible")
-	if got := hits.Load(); got != 1 {
-		t.Fatalf("server saw %d request(s), want exactly 1 (a permission failure must not be retried)", got)
+	if got, want := hits.Load(), int32(4); got != want {
+		t.Fatalf("server saw %d request(s), want %d (the full schedule, then the failure escapes)", got, want)
 	}
 }
 

@@ -551,12 +551,20 @@ func failed(ctx context.Context, what string, err error) error {
 }
 
 // retryable reports whether one attempt's failure is worth another try: a 5xx
-// (an outage or a gateway hiccup), a 429, or a 403 carrying Retry-After —
-// GitHub's secondary-rate-limit signature; a bare 403 is a permission failure
-// and retrying it would only burn more of the limit. A transport failure with
-// a live context also qualifies (an outage resets connections as often as it
-// answers 503). An interrupt never does — the user asked to stop — and every
-// other 4xx is the caller's input, which a retry cannot repair.
+// (an outage or a gateway hiccup), a 429, or ANY 403. With Retry-After the 403
+// is GitHub's secondary-rate-limit signature. Without one it is EITHER a true
+// permission failure OR the collision t-z7c1 measured: several repos' release
+// runs PATCH their rolling drafts in the same second (fleet-sync's fan-out
+// window) and GitHub answers a bare 403 `Resource not accessible by
+// integration` that the very same request survives moments later. The two
+// share one status and one message — they cannot be told apart here — so both
+// are retried: the collision heals inside the schedule, and a true permission
+// failure still fails with the same verdict, ~21s later (bounded by the
+// schedule; hand-rerunning the job, which is what the intermittent red used
+// to demand, was the same retry with far worse latency). A transport failure
+// with a live context also qualifies (an outage resets connections as often
+// as it answers 503). An interrupt never does — the user asked to stop — and
+// every other 4xx is the caller's input, which a retry cannot repair.
 func retryable(err error) bool {
 	// A refused redirect is this package's own verdict, not the wire's: the same
 	// Location would be refused three more times. Checked first, because the
@@ -568,7 +576,7 @@ func retryable(err error) bool {
 	var se *statusError
 	if errors.As(err, &se) {
 		return se.status >= 500 || se.status == http.StatusTooManyRequests ||
-			(se.status == http.StatusForbidden && se.retryAfter != "")
+			se.status == http.StatusForbidden
 	}
 	ce := core.AsError(err)
 	return ce != nil && ce.Code == core.CodeAPI
