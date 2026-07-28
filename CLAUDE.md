@@ -5,9 +5,11 @@ this file points at it rather than keeping a second copy.
 
 **Blast radius, stated correctly.** Every fleet repo runs this binary as its commit-lint gate
 and its merge-preview verdict — but only at **the tag it pins**. Merging to `main` here reaches
-nobody; a rollout is a separate act that moves five pin sites, of which fleet-sync distributes
-two. So a wrong answer is not "wrong everywhere at once"; it is wrong in this repo until a tag
-is cut, and then wrong fleet-wide until the pins move back. The sequence and the five sites are
+nobody; a rollout is a separate act that moves five pin sites, and no single mechanism moves all
+five — `fleet-sync` byte-copies two, `glyph-pin-rewrite` opens a pull request for the other three
+(they live in files each repo owns), and merging those is still a human step. So a wrong answer is
+not "wrong everywhere at once"; it is wrong in this repo until a tag is cut, and then wrong
+fleet-wide until the pins move back. The sequence and the five sites are
 in [`akira-toriyama/.github/docs/glyph-rollout-runbook.md`](https://github.com/akira-toriyama/.github/blob/main/docs/glyph-rollout-runbook.md);
 how far to verify before touching the fleet is in
 [`docs/fleet-change-policy.md`](https://github.com/akira-toriyama/.github/blob/main/docs/fleet-change-policy.md).
