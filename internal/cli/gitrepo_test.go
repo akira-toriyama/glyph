@@ -74,6 +74,15 @@ func testRepo(t *testing.T) (dir, base string) {
 }
 
 // testGit runs one git command in dir as author and fails the test on error.
+//
+// Background maintenance is pinned OFF (gc.auto / gc.autoDetach /
+// maintenance.auto). Measured once in CI: t.TempDir's cleanup failed
+// ENOTEMPTY on a fixture's .git while the test's own assertions all passed —
+// something still had a hand in the directory. Every git this file runs is
+// wait()ed, so the only process git could leave behind is detached
+// auto-maintenance after a commit; pinning it off removes that writer
+// entirely rather than betting on the fixture staying too small to trigger
+// it. (Mechanism inferred from elimination, not reproduced locally.)
 func testGit(t *testing.T, dir, author string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
@@ -84,6 +93,10 @@ func testGit(t *testing.T, dir, author string, args ...string) string {
 		"GIT_AUTHOR_EMAIL=test@example.invalid",
 		"GIT_COMMITTER_NAME=committer",
 		"GIT_COMMITTER_EMAIL=test@example.invalid",
+		"GIT_CONFIG_COUNT=3",
+		"GIT_CONFIG_KEY_0=gc.auto", "GIT_CONFIG_VALUE_0=0",
+		"GIT_CONFIG_KEY_1=gc.autoDetach", "GIT_CONFIG_VALUE_1=false",
+		"GIT_CONFIG_KEY_2=maintenance.auto", "GIT_CONFIG_VALUE_2=false",
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

@@ -243,6 +243,12 @@ func runGit(dir, path string, args ...string) (string, error) {
 		"GIT_AUTHOR_EMAIL=test@example.invalid",
 		"GIT_COMMITTER_NAME=committer",
 		"GIT_COMMITTER_EMAIL=test@example.invalid",
+		// No detached background maintenance racing t.TempDir cleanup —
+		// same pin as testGit, which carries the incident.
+		"GIT_CONFIG_COUNT=3",
+		"GIT_CONFIG_KEY_0=gc.auto", "GIT_CONFIG_VALUE_0=0",
+		"GIT_CONFIG_KEY_1=gc.autoDetach", "GIT_CONFIG_VALUE_1=false",
+		"GIT_CONFIG_KEY_2=maintenance.auto", "GIT_CONFIG_VALUE_2=false",
 		"PATH="+path,
 	)
 	out, err := cmd.CombinedOutput()
