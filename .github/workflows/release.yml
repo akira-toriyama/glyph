@@ -23,11 +23,11 @@ name: glyph-release
 # glyph-managed drafts (the draft state converges to the verdict) and exits 1,
 # which this workflow folds into a success no-op — the soft no-release code
 # is handled here once, so callers never script around it. A walk that could
-# not READ its range is the exception in both directions: it deletes no draft
-# and lowers none, and marks whatever it writes, because an empty (or short)
-# fold from a walk that could not look is not evidence about the range. The
-# exit codes are unchanged, so this workflow needs no new branch — but a run
-# that warns and leaves the draft alone is doing that deliberately.
+# not READ its range fails loud instead: glyph exits 4 before touching any
+# draft, because an empty (or short) fold from a walk that could not look is
+# not evidence about the range, and that exit propagates as a red run whose
+# error names what the walk could not read. No new branch here — every
+# non-0/1 status already falls through as a failure, deliberately.
 #
 # The build stays the repo's uniform script — package.sh for an app bundle,
 # build.sh for a bare binary (each runs `swift build -c release` itself) —

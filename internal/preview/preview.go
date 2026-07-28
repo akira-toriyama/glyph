@@ -67,8 +67,8 @@ type Input struct {
 	// It exists because this comment makes a POSITIVE claim to a human —
 	// "nothing release-worthy is pending since v1.2.3" — and an incomplete walk
 	// produces the same empty fold as a range that genuinely holds nothing. The
-	// release path already refuses to act on that ambiguity; here there is
-	// nothing to refuse, only something to say. And it must be said HERE rather
+	// release path fails loud (4) on that ambiguity; here there is nothing to
+	// refuse, only something to say. And it must be said HERE rather
 	// than left to the ::warning:: the walk already emits: this body is pasted
 	// into a pull request and read days later by a reviewer who never opens the
 	// workflow log, which is the whole reason the prose lives in a testable

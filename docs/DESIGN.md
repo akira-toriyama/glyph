@@ -419,16 +419,19 @@ the rolling draft on the very reading it had just told the operator to re-run
 (t-441z), and, where one commit *did* classify, it retagged an existing v1.0.0
 draft down to v0.1.1 out of a fold missing the `:boom:` pull — exit 0, green,
 and a human publishing that draft burns the tag forever. So an incomplete walk
-**never deletes** a glyph-managed draft (neither residual nor stale) and **never
-lowers** one; it may still create or raise. What it writes says so in the body,
-because the draft is what the person pressing Publish reads and the missing
-commits are invisible in notes that look complete. The refusal is to *destroy*,
-not to fail: the exit code is unchanged, since exiting 4 would wedge a
-repository whose merge button an automation presses (above: it warns on every
-release, structurally, and no re-run can clear it) and would redden a healthy
-one for the ordinary lag that clears itself. Everything here is self-healing —
-the next walk that reads the range writes the true verdict and removes the
-banner. A next version not strictly above the latest published
+**fails loud (4)** before the releases listing is even fetched: no delete, no
+retag, no draft, no verdict — the same refusal to judge an unread range that
+the wedge, the covered pull and the published floor have always made (ratified
+t-pysg, replacing #66's warn-and-refuse-to-destroy, which still built and
+raised drafts, banner and all, out of folds it had just called short). The exit
+that #66 rejected was rejected for a repository whose merge button an
+automation presses, which then warned on every release structurally; merge
+points resolve now (t-7zt7), so what remains of that shape is a bot-authored
+merge commit — a walk blind to a whole pull, which is exactly what the exit is
+for, and the escape is the wedge escape: cut a tag at or past what the walk
+cannot read, or fix the checkout (`fetch-depth: 0`) when the shortfall names
+it. Ordinary API lag clears on the re-run the error asks for. A next version
+not strictly above the latest published
 release fails loud (an unpublishable draft; a deleted published release's tag
 is burned forever). A delete whose answer is LOST counts as done when its retry
 finds the release already gone: DELETE is idempotent and the id is what glyph
@@ -721,7 +724,9 @@ The severities are the argued part:
   skipped it before the API — nothing expands the pull and the whole of it counts
   `none`. That is measured: fully dark, a merge-merged pull reproduces its live
   verdict (`minor` either way); with only the merge point at 422, the same
-  repository exits `1` with two warnings. A rebase splits them the other way: it
+  repository is a lost pull — an incomplete walk, which `release` refuses at
+  exit `4` (§4) and `bump`/`notes` report at two warnings. A rebase splits them
+  the other way: it
   writes new shas that appear in no pull's listing, so a replayed commit classified
   during the lag is folded in again when the last one expands the pull. Note also
   which failures actually reach the fallback: only a 422 (`IsCommitUnknown`). A 403
@@ -738,8 +743,9 @@ The severities are the argued part:
   no bump while the API answers, and none at full darkness either — the branch
   commits are on `main` and classify themselves. What is left is the squash-only
   house convention plus one *loud* window per style: an unresolved merge point
-  (API lag, or a bot-authored merge, where it repeats every release) drops its pull
-  with two warnings and exit `1`, and a rebase whose listing the walk cannot align
+  (API lag, or a bot-authored merge, where it repeats every release) is a lost
+  pull that stops `release` at exit `4` until a tag clears it (§4), and a rebase
+  whose listing the walk cannot align
   against what landed — one that dropped a commit it was asked to replay, already
   upstream or rebased empty — can still
   fold a replayed commit in twice during the lag. Neither is the silent wrong

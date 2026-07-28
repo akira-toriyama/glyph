@@ -60,8 +60,8 @@ packages gets two rows.
 4. Add the row, then `scripts/mutations.sh <substring>` to run just that row.
 
 Name the file after **the defect the decision prevents**, not after the code —
-`release-incomplete-walk-lowers-the-rolling-draft.patch`, not
-`cmd-release-line-201.patch`. The filename is the sentence the gate prints.
+`release-incomplete-walk-still-hands-down-a-verdict.patch`, not
+`cmd-release-line-133.patch`. The filename is the sentence the gate prints.
 
 Two properties the runner enforces so a row cannot rot green:
 
