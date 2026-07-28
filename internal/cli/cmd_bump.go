@@ -169,11 +169,12 @@ func bumpInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, strin
 		// release's audit trail, and an incomplete walk is already a ::warning::
 		// per cause on stderr — the channel the operator and the Actions
 		// annotation layer both read. What made discarding it wrong for release
-		// was that release then DELETED a draft and lowered a version on the
-		// strength of the same fold; bump writes nothing back, so the warning is
-		// the whole remedy. (preview is the exception among the readers: its
-		// answer is pasted into a pull request and read later by someone who
-		// never opens the log, so it carries the shortfall in the body itself.)
+		// is that release acts on its verdict irreversibly, which is why it
+		// fails loud (4) on an incomplete walk; bump writes nothing back, so
+		// the warning is the whole remedy. (preview is the exception among the
+		// readers: its answer is pasted into a pull request and read later by
+		// someone who never opens the log, so it carries the shortfall in the
+		// body itself.)
 		commits, _, source, base, err := sinceTagInput(ctx, table, bumpSinceTag, bumpRepo)
 		return commits, source, base, err
 	}

@@ -1051,88 +1051,70 @@ func resolvablePatch(t *testing.T, dir string, routes map[string]string) {
 	routes[pullCommitsPath(8)] = `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`
 }
 
-// TestReleaseNoneKeepsDraftsWhenTheWalkDidNotReadTheRange: the none verdict's
-// delete is the one thing glyph does that it cannot take back, and it ran on
-// exactly the reading glyph had just told the operator to re-run — an empty fold
-// from a walk that could not look is not evidence that nothing shipped.
+// TestReleaseIncompleteWalkFailsLoud: a verdict is a claim about the range only
+// when the walk READ the range, and release is the command that acts on its
+// verdict irreversibly — so a walk that came back short stops the release at
+// exit 4 before the releases listing is even fetched (ratified t-pysg,
+// replacing #66's warn-and-refuse-to-destroy).
 //
-// The constructive side has refused to act on such evidence all along
-// (checkPublishedFloor, the wedge error, the footprint rule); measured before
-// this change, the same fake API and the same wrong --repo made the build side
-// exit 4 writing nothing while the destroy side issued a DELETE.
+// The shapes are the family walkFacts records, and each carried a measured
+// defect when glyph still handed down a verdict on it: the none verdict deleted
+// the rolling draft on the very reading it had just told the operator to re-run
+// (t-441z); a `:boom:` pull lost to an unresolved merge point beside one
+// ordinary `:bug:` took the CONSTRUCTIVE path — the shape the old refusal to
+// destroy never reached — and retagged an existing v1.0.0 draft down to v0.1.1
+// at exit 0, where a human publishing it burns the tag forever; a listing
+// GitHub truncated at its 250 cap read "unreachable" as "absent"; and a shallow
+// checkout graded itself on a truncated history (actions/checkout's default
+// fetch-depth: 1, so the shape a release workflow produces by LOSING one line).
 //
-// The refusal is to DESTROY and not to fail: the exit stays 1. Exit 4 here would
-// wedge a repository whose merge button an automation presses (DESIGN §4: it
-// warns on every release, structurally, and no re-run can clear it).
-func TestReleaseNoneKeepsDraftsWhenTheWalkDidNotReadTheRange(t *testing.T) {
+// The dry run takes the same gate: --dry-run skips the writes, not the reading,
+// and a preview of a verdict no real run would hand down is not a preview.
+func TestReleaseIncompleteWalkFailsLoud(t *testing.T) {
 	cases := []struct {
 		name string
 		walk func(*testing.T) map[string]string
-		want string // what the refusal must name
+		want []string // what the failure must name, so the operator can act
 	}{
-		{"every commit unknown to the repository", unreadWalk, "unknown to"},
+		{"every commit unknown to the repository", unreadWalk, []string{"unknown to"}},
 		{"a pull's merge point never resolved", func(t *testing.T) map[string]string {
 			routes, _ := lostPullWalk(t, ":memo: document the menu", ":memo: document the fold")
 			return routes
-		}, "#7"},
+		}, []string{"#7"}},
+		{"a lost boom pull beside a commit that classifies", func(t *testing.T) map[string]string {
+			routes, dir := lostPullWalk(t, ":boom:(api) drop the legacy endpoint", ":memo: document the removal")
+			// A resolvable commit of its own, so the fold would NOT be none —
+			// the t-441z lowering shape.
+			resolvablePatch(t, dir, routes)
+			return routes
+		}, []string{"#7"}},
+		{"a truncated pull listing", truncatedPullWalk, []string{"truncated", "250", "#7"}},
+		{"a shallow checkout", shallowCheckout, []string{"shallow"}},
 	}
 	for _, tc := range cases {
 		for _, mode := range [][]string{{"release"}, {"release", "--dry-run"}} {
 			t.Run(tc.name+" "+strings.Join(mode, " "), func(t *testing.T) {
 				var writes []apiWrite
-				srv := releaseServer(t, tc.walk(t), `[`+draftJSON(11, "v0.1.1")+`]`, &writes)
+				srv := releaseServer(t, tc.walk(t), `[`+draftJSON(50, "v1.0.0")+`]`, &writes)
 				usePR(t, srv)
 
 				code, stdout, stderr := runGlyph(t, mode...)
-				if code != 1 {
-					t.Fatalf("exited %d, want 1 (soft no-release — the refusal is to destroy, not to fail)\nstderr: %s", code, stderr)
+				if code != 4 {
+					t.Fatalf("exited %d, want 4 — a walk that could not read its range hands down no verdict\nstderr: %s", code, stderr)
 				}
 				if len(writes) != 0 {
-					t.Errorf("writes = %+v, want none — a draft must survive a walk glyph does not trust", writes)
+					t.Errorf("writes = %+v, want none — the run must stop before it touches anything", writes)
 				}
 				if stdout != "" {
-					t.Errorf("a none verdict wrote a payload:\n%s", stdout)
+					t.Errorf("a failed walk wrote a payload:\n%s", stdout)
 				}
-				if !strings.Contains(stderr, "keeping the") || !strings.Contains(stderr, tc.want) {
-					t.Errorf("the warning must say the draft was KEPT and why the walk is not trusted:\nstderr: %s", stderr)
+				for _, want := range tc.want {
+					if !strings.Contains(stderr, want) {
+						t.Errorf("the failure must name what the walk could not read (%q):\nstderr: %s", want, stderr)
+					}
 				}
 			})
 		}
-	}
-}
-
-// TestReleaseIncompleteWalkDoesNotLowerTheRollingDraft is the worst shape in the
-// family, and the one a refusal to delete does not reach: with a lost pull AND
-// one commit that does classify, the verdict is not none at all, so the run goes
-// down the constructive path and RETAGS the rolling draft from what it could
-// read. Measured on the pre-change source: a `:boom:` pull lost to an unindexed
-// merge point plus one `:bug:` moved an existing v1.0.0 draft to v0.1.1, exit 0,
-// green — and a human publishing that draft burns the tag forever, which no
-// later run can undo.
-//
-// So an incomplete walk may raise the draft and may not lower it. Leaving it
-// alone costs one run; the next complete walk writes the true verdict.
-func TestReleaseIncompleteWalkDoesNotLowerTheRollingDraft(t *testing.T) {
-	var writes []apiWrite
-	walk, dir := lostPullWalk(t, ":boom:(api) drop the legacy endpoint", ":memo: document the removal")
-	// A resolvable commit of its own, so the verdict is a patch rather than none.
-	resolvablePatch(t, dir, walk)
-
-	srv := releaseServer(t, walk, `[`+draftJSON(50, "v1.0.0")+`]`, &writes)
-	usePR(t, srv)
-
-	code, stdout, stderr := runGlyph(t, "release")
-	if code != 0 {
-		t.Fatalf("exited %d, want 0\nstderr: %s", code, stderr)
-	}
-	if len(writes) != 0 {
-		t.Errorf("writes = %+v, want none — an incomplete walk must not retag a draft DOWNWARD", writes)
-	}
-	if !strings.Contains(stdout, "https://github.example/releases/50") {
-		t.Errorf("stdout must still name the draft that stands: %q", stdout)
-	}
-	if !strings.Contains(stderr, "v1.0.0") || !strings.Contains(stderr, "#7") {
-		t.Errorf("the warning must name the draft it left alone and the pull it could not read:\nstderr: %s", stderr)
 	}
 }
 
@@ -1142,10 +1124,10 @@ func TestReleaseIncompleteWalkDoesNotLowerTheRollingDraft(t *testing.T) {
 // pull — it is as much of the pull as can be obtained, and the rest is
 // unreachable rather than absent.
 //
-// Every commit is a :memo: so the fold is NONE, which is the case that matters:
-// a none verdict is what sends the run down the delete path, and "nothing
-// release-worthy" is exactly the conclusion a truncated listing is not entitled
-// to reach. The 251st commit could be the :boom:.
+// Every commit is a :memo:, so the fold — were the walk entitled to one —
+// would be NONE: "nothing release-worthy" is exactly the conclusion a
+// truncated listing is not entitled to reach. The 251st commit could be the
+// :boom:.
 func truncatedPullWalk(t *testing.T) map[string]string {
 	t.Helper()
 	dir, _ := testRepo(t)
@@ -1159,68 +1141,6 @@ func truncatedPullWalk(t *testing.T) map[string]string {
 	return map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(7, "2026-07-22T00:00:00Z", sha) + `]`,
 		pullCommitsPath(7):   `[` + strings.Join(listing, ",") + `]`,
-	}
-}
-
-// TestReleaseTruncatedPullDoesNotDeleteTheDraft: a listing GitHub truncated is a
-// range the walk did not read, and the walk must not act on it irreversibly.
-//
-// Measured on the pre-change source, which warned about the truncation and then
-// ignored its own warning: the same run that printed "pull request #7 returned
-// 250 commits — GitHub truncates this listing at 250" exited 1 with
-// action "delete" and a write set of exactly one DELETE. The rolling draft — the
-// thing a human was going to publish — was removed on the strength of a fold
-// that was short by an unknown amount, because complete() read three fields and
-// truncation was in none of them.
-func TestReleaseTruncatedPullDoesNotDeleteTheDraft(t *testing.T) {
-	var writes []apiWrite
-	walk := truncatedPullWalk(t)
-	srv := releaseServer(t, walk, `[`+draftJSON(11, "v0.2.0")+`]`, &writes)
-	usePR(t, srv)
-
-	code, stdout, stderr := runGlyph(t, "release", "--json")
-	if code != 0 && code != 1 {
-		t.Fatalf("exited %d, want 0 or 1\nstderr: %s", code, stderr)
-	}
-	for _, w := range writes {
-		if w.method == "DELETE" {
-			t.Errorf("a truncated listing deleted the rolling draft (%+v) — the walk warned it could not "+
-				"read the whole pull and then acted as though an empty fold meant nothing shipped", writes)
-		}
-	}
-	if !strings.Contains(stdout, `"action":"none"`) {
-		t.Errorf("action must be none — there is nothing this walk is entitled to do:\n%s", stdout)
-	}
-	// The operator has to be able to tell WHICH pull was short, not merely that
-	// something was.
-	if !strings.Contains(stderr, "#7") || !strings.Contains(stderr, "250") {
-		t.Errorf("stderr must name the truncated pull and the cap:\n%s", stderr)
-	}
-}
-
-// TestReleaseTruncatedPullIsInTheShortfall: the walk's own account of what it
-// could not read has to include truncation by name, because that account is
-// what the draft body shows the person pressing Publish (and what the no-lower
-// warning quotes). A generic "the walk was short" would leave them with nothing
-// to act on.
-func TestReleaseTruncatedPullIsInTheShortfall(t *testing.T) {
-	var writes []apiWrite
-	walk := truncatedPullWalk(t)
-	// A draft has to be present: the shortfall is rendered by the arm that
-	// explains why the drafts were KEPT, so with nothing to keep there is
-	// nothing to explain.
-	srv := releaseServer(t, walk, `[`+draftJSON(11, "v0.2.0")+`]`, &writes)
-	usePR(t, srv)
-
-	code, _, stderr := runGlyph(t, "release", "--dry-run")
-	if code != 0 && code != 1 {
-		t.Fatalf("exited %d, want 0 or 1\nstderr: %s", code, stderr)
-	}
-	if !strings.Contains(stderr, "truncated") || !strings.Contains(stderr, "#7") {
-		t.Errorf("the shortfall must name the truncated pull in words the operator can act on:\n%s", stderr)
-	}
-	if len(writes) != 0 {
-		t.Errorf("a dry run wrote to the API: %+v", writes)
 	}
 }
 
@@ -1247,150 +1167,5 @@ func shallowCheckout(t *testing.T) map[string]string {
 	return map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(8, "2026-07-23T00:00:00Z", sha) + `]`,
 		pullCommitsPath(8):   `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
-	}
-}
-
-// TestReleaseShallowCheckoutIsAnIncompleteWalk: a truncated history is a range
-// the walk did not read, and must reach the same refusals as the other three.
-//
-// actions/checkout defaults to fetch-depth: 1, so this is the incomplete shape a
-// release workflow produces by LOSING one line — the likeliest of the four and,
-// until now, the only one glyph observed and then ignored. It warned (measured:
-// two ::warning:: lines, so "silent" was never the right word for it) and left
-// facts.complete() true, so the version was wrong while the run was green.
-func TestReleaseShallowCheckoutIsAnIncompleteWalk(t *testing.T) {
-	var writes []apiWrite
-	walk := shallowCheckout(t)
-	srv := releaseServer(t, walk, `[`+draftJSON(11, "v9.9.9")+`]`, &writes)
-	usePR(t, srv)
-
-	code, _, stderr := runGlyph(t, "release")
-	if code != 0 {
-		t.Fatalf("exited %d, want 0 — the refusal is to destroy, not to fail\nstderr: %s", code, stderr)
-	}
-	if len(writes) != 0 {
-		t.Errorf("writes = %+v, want none — a shallow walk must not retag a draft downward", writes)
-	}
-	if !strings.Contains(stderr, "shallow") {
-		t.Errorf("the shortfall must name the shallow checkout so the operator can fix the workflow:\n%s", stderr)
-	}
-}
-
-// TestReleaseShallowCheckoutBannersTheDraft: the person pressing Publish never
-// saw the CI log, and a fold computed over a truncated history looks exactly as
-// complete as any other in the notes.
-func TestReleaseShallowCheckoutBannersTheDraft(t *testing.T) {
-	walk := shallowCheckout(t)
-	usePR(t, dryServer(t, walk))
-
-	code, stdout, stderr := runGlyph(t, "release", "--dry-run")
-	if code != 0 {
-		t.Fatalf("exited %d, want 0\nstderr: %s", code, stderr)
-	}
-	if !strings.Contains(stdout, "[!WARNING]") || !strings.Contains(stdout, "shallow") {
-		t.Errorf("the draft body must say the history was truncated:\n%s", stdout)
-	}
-}
-
-// TestReleaseIncompleteWalkMarksTheDraftBody: the CI log is not where the
-// decision is made. A rolling draft is reviewed and published in the GitHub UI,
-// possibly days later, by someone who never saw the warning — and an incomplete
-// fold is invisible in the notes precisely because what is missing is missing.
-// So the draft says so itself, in the body, and the next complete walk rewrites
-// it away.
-func TestReleaseIncompleteWalkMarksTheDraftBody(t *testing.T) {
-	walk, dir := lostPullWalk(t, ":boom:(api) drop the legacy endpoint", ":memo: document the removal")
-	resolvablePatch(t, dir, walk)
-	usePR(t, dryServer(t, walk))
-
-	code, stdout, stderr := runGlyph(t, "release", "--dry-run")
-	if code != 0 {
-		t.Fatalf("exited %d, want 0\nstderr: %s", code, stderr)
-	}
-	if !strings.Contains(stdout, "[!WARNING]") || !strings.Contains(stdout, "#7") {
-		t.Errorf("the draft body must carry the incomplete-walk warning naming what was not read:\n%s", stdout)
-	}
-}
-
-// shallowFeatureCheckout is shallowCheckout's shape with a :sparkles: pull, so the
-// verdict RAISES instead of landing at v0.0.1. That difference is what makes the
-// stale arm reachable at all: a shallow clone does not carry the origin's tags, so
-// the walk finds no version base and steps from v0.0.0 — with a :bug: the answer
-// is v0.0.1, which is below any draft worth keeping and returns at the never-lower
-// guard before the stale loop is reached.
-func shallowFeatureCheckout(t *testing.T) map[string]string {
-	t.Helper()
-	origin, _ := testRepo(t)
-	sha := squashCommit(t, origin, "Add a menu", 9)
-
-	clone := filepath.Join(t.TempDir(), "shallow")
-	testGit(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", "1", "file://"+origin, clone)
-	if got := testGit(t, clone, "akira-toriyama", "rev-parse", "--is-shallow-repository"); got != "true" {
-		t.Fatalf("the fixture clone is not shallow (--is-shallow-repository = %q); the test would prove nothing", got)
-	}
-	t.Chdir(clone)
-	return map[string]string{
-		commitPullsPath(sha): `[` + apiPullRef(9, "2026-07-23T00:00:00Z", sha) + `]`,
-		pullCommitsPath(9):   `[` + apiCommit("s1", "akira-toriyama", ":sparkles:(ui) add a menu") + `]`,
-	}
-}
-
-// TestReleaseIncompleteWalkKeepsAStaleDraft covers the half of the refusal that
-// had no test at all. DESIGN §4 promises that an incomplete walk "never deletes a
-// glyph-managed draft (NEITHER RESIDUAL NOR STALE) and never lowers one", and two
-// of those three were pinned: TestReleaseNoneKeepsDraftsWhenTheWalkDidNotReadTheRange
-// holds the residual arm (the none verdict) and
-// TestReleaseIncompleteWalkDoesNotLowerTheRollingDraft holds the lowering one. The
-// stale arm — the delete on the UPSERT path, beside a draft the run is keeping —
-// could be removed with the whole suite green (measured while seeding the mutation
-// ledger, t-p7q2; it is now a row there).
-//
-// It is the same t-441z risk as the residual arm and not a lesser one: the walk
-// has just told the operator it could not read the range, and deleting a release
-// on that reading destroys the only record of a verdict nobody has published yet.
-//
-// The fixture threads a narrow gap, which is most of why the arm went untested. It
-// needs an incomplete walk that still RAISES — a lowering verdict returns earlier,
-// at the guard the other test covers — and TWO glyph-managed drafts, so planDrafts
-// has one to keep and one to call stale. Hence shallowFeatureCheckout: the shallow
-// clone supplies the incompleteness (actions/checkout's default depth, so the
-// likeliest shape) and carries no tags, so its :sparkles: pull steps from v0.0.0 to
-// v0.1.0. The draft already at v0.1.0 is the one kept; v0.0.1 is the stale one this
-// test is about.
-func TestReleaseIncompleteWalkKeepsAStaleDraft(t *testing.T) {
-	var writes []apiWrite
-	walk := shallowFeatureCheckout(t)
-	releases := `[` + draftJSON(11, "v0.1.0") + `,` + draftJSON(12, "v0.0.1") + `]`
-	srv := releaseServer(t, walk, releases, &writes)
-	usePR(t, srv)
-
-	code, _, stderr := runGlyph(t, "release")
-	if code != 0 {
-		t.Fatalf("exited %d, want 0 — the refusal is to destroy, not to fail\nstderr: %s", code, stderr)
-	}
-	for _, w := range writes {
-		if w.method == "DELETE" {
-			t.Errorf("the walk did not read the range and still issued %s %s — a draft deleted on a "+
-				"reading glyph does not trust is the t-441z failure, and this is the arm DESIGN §4 "+
-				"calls \"neither residual nor stale\".\nall writes: %+v\nstderr: %s",
-				w.method, w.path, writes, stderr)
-		}
-	}
-	// The keep still converges: the refusal is narrow, and a fix that skipped the
-	// whole upsert would satisfy the assertion above while losing the release.
-	var patched bool
-	for _, w := range writes {
-		if w.method == "PATCH" && strings.HasSuffix(w.path, "/11") {
-			patched = true
-		}
-	}
-	if !patched {
-		t.Errorf("the rolling draft must still be updated — an incomplete walk may raise, it may only "+
-			"not destroy.\nall writes: %+v\nstderr: %s", writes, stderr)
-	}
-	// Named, not merely spared: the operator has to know which release was kept and
-	// why, or the next run reads as a repository with a stray draft in it.
-	if !strings.Contains(stderr, "v0.0.1") || !strings.Contains(stderr, "release id 12") {
-		t.Errorf("the kept stale draft must be named in the warning so it is not read as a stray:\n%s", stderr)
 	}
 }

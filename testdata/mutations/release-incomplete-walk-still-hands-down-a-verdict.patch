@@ -1,0 +1,30 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index cbd243b..5da7fc4 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -133,25 +133,6 @@ func releaseRun(cmd *cobra.Command) error {
+ 	if perr != nil {
+ 		return perr
+ 	}
+-	// A verdict is a claim about the range only when the walk READ the range,
+-	// and release is the command that acts on its verdict irreversibly. So a
+-	// walk that came back short — every commit unknown to the queried
+-	// repository, a merged pull whose merge point nothing resolved, a commit
+-	// GitHub had not indexed, a truncated pull listing, a shallow checkout —
+-	// stops here, before the releases listing is even fetched: fail loud (4),
+-	// like every other place glyph refuses to judge what it could not read
+-	// (the wedge, the covered pull, checkPublishedFloor). Ratified t-pysg,
+-	// replacing #66's warn-and-refuse-to-destroy: that compromise existed for
+-	// the repository whose merge button an automation presses, which then
+-	// warned on every release structurally — but merge points resolve now
+-	// (t-7zt7), so what remains of that shape is a bot-authored merge commit,
+-	// and a walk blind to a whole pull is exactly what this exit is for. The
+-	// escape is the wedge escape: cut a tag at or past what the walk cannot
+-	// read, or fix the checkout (fetch-depth: 0) when the shortfall names it.
+-	if !facts.complete() {
+-		return core.APIf("this walk did not read %s (%s) — refusing to hand down a verdict computed from a range it could not read; re-run the release once the walk can read the range",
+-			source, facts.shortfall(owner, repoName))
+-	}
+ 
+ 	commits, level, cerr := classifyVerdict(parsed, table)
+ 	if cerr != nil {

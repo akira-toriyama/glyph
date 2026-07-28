@@ -157,7 +157,8 @@ Both name the gitmoji-spec snapshot they were pinned from.
 
 `0` ok · `1` no release-worthy change · `2` usage · `3` convention violation
 (a commit under `lint`, the repository's own configuration under `doctor`) ·
-`4` API/git/IO · `130` interrupted.
+`4` API/git/IO, including a `release` walk that could not read its range ·
+`130` interrupted.
 
 ## License
 

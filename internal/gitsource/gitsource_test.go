@@ -22,9 +22,11 @@ func gitOrSkip(t *testing.T) {
 	}
 }
 
-// gitEnv pins a hermetic git environment: fixed identity, and the user's real
+// gitEnv pins a hermetic git environment: fixed identity, the user's real
 // global/system config held out (a global commit.gpgsign would otherwise break
-// the test commits).
+// the test commits), and background maintenance off — internal/cli's testGit
+// carries the incident (a CI-only ENOTEMPTY at t.TempDir cleanup); the pin is
+// applied here too so no test fixture leaves a detached git behind.
 func gitEnv(author string) []string {
 	return append(os.Environ(),
 		"GIT_CONFIG_GLOBAL="+os.DevNull,
@@ -33,6 +35,10 @@ func gitEnv(author string) []string {
 		"GIT_AUTHOR_EMAIL=test@example.invalid",
 		"GIT_COMMITTER_NAME=committer",
 		"GIT_COMMITTER_EMAIL=test@example.invalid",
+		"GIT_CONFIG_COUNT=3",
+		"GIT_CONFIG_KEY_0=gc.auto", "GIT_CONFIG_VALUE_0=0",
+		"GIT_CONFIG_KEY_1=gc.autoDetach", "GIT_CONFIG_VALUE_1=false",
+		"GIT_CONFIG_KEY_2=maintenance.auto", "GIT_CONFIG_VALUE_2=false",
 	)
 }
 

@@ -223,13 +223,14 @@ range. The distinction it exists to make: downstream, a range that genuinely
 holds nothing and a range the walk could not read arrive as the *same* empty
 fold, and glyph acted on both alike — it deleted the rolling draft on a reading
 it had just told the operator to re-run (t-441z), and retagged an existing v1.0.0
-draft down to v0.1.1 out of a fold missing the `:boom:` pull. So an incomplete
-walk **never deletes** a glyph-managed draft and **never lowers** one; it may
-still create or raise, and what it writes says so in the body. The refusal is to
-*destroy*, not to fail — the exit code is unchanged, because exiting 4 would
-wedge an automation-merged repository forever and redden a healthy one for
-ordinary lag. `internal/cli/sincetag.go: walkFacts.complete`,
-`internal/cli/cmd_release.go: releaseRun, releaseNone`
+draft down to v0.1.1 out of a fold missing the `:boom:` pull. So `release`
+**fails loud (4)** on one, before the releases listing is even fetched: no
+delete, no retag, no draft, no verdict — the same refusal to judge an unread
+range as the wedge and the covered pull (ratified t-pysg, replacing #66's
+warn-and-refuse-to-destroy). The commands that only *report* — `bump`, `notes`
+— warn per cause instead, and `preview` carries the shortfall in its comment
+body. `internal/cli/sincetag.go: walkFacts.complete`,
+`internal/cli/cmd_release.go: releaseRun`
 
 **walkFacts** — the struct carrying the above: `Pulls` (provenance) plus the
 **five** ways a walk can come back short — `AllUnknown` (every commit unknown to
@@ -330,7 +331,8 @@ this codebase. A **residual** draft is one that survives a **none** verdict —
 nothing should exist, so it is deleted and the draft state converges on "no
 release is due". A **stale** draft is one of the *others* when the verdict **is**
 a release: one draft is kept and retagged, every other one is stale. An
-incomplete walk deletes neither. `internal/cli/cmd_release.go: releaseNone`
+incomplete walk deletes neither — it exits 4 before the listing is read.
+`internal/cli/cmd_release.go: releaseNone`
 (residual), `planDrafts` (stale),
 [DESIGN §4](DESIGN.md#4-squash-safe-mechanism--release-time-re-read-stateless)
 
@@ -349,13 +351,12 @@ commit of the whole history for an answer that cannot matter — and the comment
 says so. `internal/preview/preview.go: Input.Pending, Input.Untagged`,
 `internal/cli/cmd_preview.go: previewRun`
 
-**incomplete banner** — the `> [!WARNING]` block an incompletely-walked draft
-carries at the top of its body. It exists because the CI log is not where the
-decision is made: a rolling draft is published in the GitHub UI, days later, by
-someone who never saw the warning, and the risk is invisible in notes that look
-complete precisely because the missing commits are missing. Every run rewrites
-the body from git, so it disappears on the first walk that reads the range.
-`internal/cli/cmd_release.go: incompleteBanner`; the PR-comment counterpart is
+**incomplete banner** — retired with t-pysg: the `> [!WARNING]` block an
+incompletely-walked draft used to carry at the top of its body, from the era
+when `release` still wrote drafts on an incomplete walk (#66). `release` now
+fails loud (4) before writing anything, so no draft composed from an unread
+range exists to mark. The need it served survives where the reader still gets a
+positive claim from a short walk: `preview`'s PR comment, via
 `internal/preview/preview.go: Input.PendingShort`
 
 ---
