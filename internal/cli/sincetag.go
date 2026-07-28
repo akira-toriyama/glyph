@@ -562,7 +562,7 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 			continue
 		}
 		facts.LostPulls = append(facts.LostPulls, number)
-		warnf("pull request #%d has commits in %s but nothing in the range resolved to it — GitHub does not associate its merge commit with the pull yet, or an automation authored that merge; those commits stood aside for that merge point and are NOT counted, so this release is short by whatever #%d changed. The pull's own commit listing is its whole history and cannot say which commits belong to %s, so the walk will not guess — re-run the release once GitHub has caught up with the merge point", number, revRange, number, revRange)
+		warnf("pull request #%d has commits in %s but nothing in the range resolved to it — GitHub does not associate its merge commit with the pull yet, or an automation merged it with a real merge commit (a *[bot] / github-actions* / web-flow author, which the walk skips before resolution); those commits stood aside for that merge point and are NOT counted, so this release is short by whatever #%d changed. The pull's own commit listing is its whole history and cannot say which commits belong to %s, so the walk will not guess — re-run the release once GitHub has caught up with the merge point", number, revRange, number, revRange)
 	}
 	if walked > 0 && unknown == walked {
 		facts.AllUnknown = true
