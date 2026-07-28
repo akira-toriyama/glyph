@@ -18,6 +18,7 @@
 #
 # ─── MIRRORED ────────────────────────────────────────────────────────────────
 #   commit-lint     commit-lint.yml → lint.yml   `glyph lint --range`
+#   dist-gate       build.yml `dist-gate`        `scripts/dist-gate.sh origin/main`
 #   module-hygiene  go-ci.yml (via build.yml's `ci`) `go mod tidy -diff`, verify
 #   build           go-ci.yml                    `go build ./...`
 #   vet             go-ci.yml                    `go vet ./...`
@@ -70,7 +71,7 @@ cd "$(dirname "$0")/.."
 # MIRRORS is the reconciliation set: the run refuses its ✓ line unless every name
 # here was recorded by `ran`. Keeping it as data rather than as a comment is what
 # makes "a gate silently stopped running" a failure instead of a nicer-looking log.
-MIRRORS='commit-lint module-hygiene build vet race-test golangci-lint govulncheck bite mutations fuzz-smoke smoke'
+MIRRORS='commit-lint dist-gate module-hygiene build vet race-test golangci-lint govulncheck bite mutations fuzz-smoke smoke'
 NOT_MIRRORED='zizmor, taplo, version-preview, task-status, goreleaser, codeql'
 RAN=''
 ran() { RAN="$RAN $1 "; }
@@ -107,6 +108,18 @@ else
   echo "  (no commits ahead of origin/main — nothing to lint)"
 fi
 ran commit-lint
+
+# The distribution-layer gate build.yml runs on every pull request: a change to
+# a reusable workflow, goreleaser.yml, the install action or .goreleaser.yaml
+# must carry an internal/workflows test change (or a Dist-gate-exempt trailer on
+# every commit). Same script, same base — origin/main is what a pull request
+# from here would be judged against, and the origin/main check above has already
+# run. Like `bite` below it reads COMMITTED history: an uncommitted test does
+# not satisfy it, and that is the same claim-about-a-commit stance as the dirty
+# check at the top.
+echo "→ dist-gate (does a distribution-layer change carry evidence?)"
+sh scripts/dist-gate.sh origin/main
+ran dist-gate
 
 # Module hygiene: fail if go.mod/go.sum are not tidy, and verify the downloaded
 # dependencies match go.sum. `-diff` prints the needed changes and exits non-zero
