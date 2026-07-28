@@ -188,7 +188,26 @@ if [ ! -f "$BITE" ]; then
   echo "    script back to overstating its coverage, which is the defect being fixed." >&2
   exit 1
 fi
-BASE_SHA="$(git rev-parse origin/main)" HEAD_SHA="$(git rev-parse HEAD)" sh "$BITE"
+# go-bite exports GOTOOLCHAIN=local on the premise that setup-go has already
+# installed the toolchain go.mod names. In CI that premise holds. Locally it fails
+# twice over: `nix develop` supplies whatever nixpkgs' go currently is (measured:
+# 1.26.4, against go.mod's `toolchain go1.26.5`), and a mise install leaks
+# GOROOT=…/go/1.26.5 into the shell — so the 1.26.4 driver reaches into a 1.26.5
+# GOROOT and every package dies with `compile: version "go1.26.5" does not match go
+# tool version "go1.26.4"`. The gate then reports `cannot build bitescan` and no
+# verdict at all, and the run never reaches its ✓ line (t-wmwb).
+#
+# `unset GOROOT` clears the error and is the WRONG fix: it leaves this gate running
+# under nixpkgs' go while CI runs go.mod's, trading a loud failure for a silent
+# "green here != green CI" — the defect the header above exists to refuse. Make
+# go-bite's premise true instead. Every other gate here resolves the `toolchain`
+# line through GOTOOLCHAIN=auto, so `go env GOROOT` already names that toolchain's
+# root; handing it over as GOROOT plus PATH is what setup-go does in CI. On a
+# machine whose go IS go.mod's toolchain this resolves to that same go, so it costs
+# nothing outside the devshell.
+BITE_GOROOT="$(go env GOROOT)"
+BASE_SHA="$(git rev-parse origin/main)" HEAD_SHA="$(git rev-parse HEAD)" \
+  GOROOT="$BITE_GOROOT" PATH="$BITE_GOROOT/bin:$PATH" sh "$BITE"
 ran bite
 
 # Both linters are CI gates, so a missing one is a FAILURE and not a skip. The old
