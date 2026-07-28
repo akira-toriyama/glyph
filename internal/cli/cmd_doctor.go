@@ -5,6 +5,7 @@ import (
 
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/doctor"
+	"github.com/akira-toriyama/glyph/internal/gitsource"
 	"github.com/spf13/cobra"
 )
 
@@ -49,7 +50,13 @@ func newDoctorCmd() *cobra.Command {
 			"  - every `uses: akira-toriyama/glyph/…` in the LOCAL .github/workflows pins a\n" +
 			"    concrete @vX.Y.Z tag (whether the pin is the LATEST release is deliberately\n" +
 			"    NOT checked — glyph-pin-audit.yml in akira-toriyama/.github already owns\n" +
-			"    that question fleet-wide, and two answers to it would be one too many)\n\n" +
+			"    that question fleet-wide, and two answers to it would be one too many)\n" +
+			"  - no STALE glyph-written commit-msg hook is installed. Hooks are untracked, so\n" +
+			"    nothing refreshes one: whatever glyph was on PATH the day it was installed\n" +
+			"    froze the exit code it stops a commit on and the arguments it hands lint, and\n" +
+			"    a stale hook still exits 0 — indistinguishable from a clean message. NO hook\n" +
+			"    passes (it is opt-in, and an Actions checkout cannot have one); a hook glyph\n" +
+			"    did not write is advice, because glyph will not overwrite it unasked\n\n" +
 			"--repo moves only the API side. The workflow-pin check always reads the LOCAL\n" +
 			"checkout, because a pin is a fact about the tree in front of you — pointing\n" +
 			"--repo elsewhere diagnoses that repository's settings and THIS checkout's pins.\n\n" +
@@ -85,6 +92,11 @@ func doctorRun(cmd *cobra.Command) error {
 		return err
 	}
 	repoObject, rerr := newGitHub().Repository(cmd.Context(), owner, name)
+	// git names the hooks directory (core.hooksPath relocates it), and this is
+	// the only place allowed to ask: internal/doctor runs no subprocess, exactly
+	// as it makes no request. A failure here is handed over verbatim and becomes
+	// that one check's could-not-run — never an aborted report.
+	hooksDir, herr := gitsource.HooksDir(cmd.Context(), ".")
 	// An interrupt is the user's own abort and must never be laundered into a
 	// check result: reporting "the token cannot read the repository" because
 	// somebody pressed Ctrl-C would be a diagnosis of the wrong thing entirely.
@@ -101,6 +113,8 @@ func doctorRun(cmd *cobra.Command) error {
 		RepoObject:      repoObject,
 		RepoErr:         rerr,
 		TokenConfigured: githubToken() != "",
+		HooksDir:        hooksDir,
+		HooksErr:        herr,
 	})
 
 	// Annotations go out in BOTH modes, before the payload. On an Actions
