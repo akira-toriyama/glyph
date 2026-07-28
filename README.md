@@ -37,6 +37,13 @@ The hook holds no copy of the convention — it calls glyph, so it cannot fall o
 of lockstep when the rules move. Without glyph on `PATH` it warns and lets the
 commit through; the commit-lint CI job stays the authority.
 
+The verdict it gives is the verdict CI will give. That takes work, because the
+hook runs *before* git cleans the message: glyph resolves git's cleanup mode for
+the commit being written (`commit.cleanup` × whether an editor runs) and reduces
+the file exactly as git will — so a `#` line that `git commit -F` records is
+linted, and an editor's template is not (DESIGN §2.1). The one thing it cannot
+see is `git commit --cleanup=<mode>` given on the command line.
+
 ## Working on glyph
 
 ```sh

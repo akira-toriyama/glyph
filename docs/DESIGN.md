@@ -173,6 +173,67 @@ Which elements count as *public* for `undeclared-removal` is settled by the flee
 CONTRIBUTING.md that `docs/commit-convention.md` points at — do not restate it
 here, or one question will have two answers.
 
+### 2.1 The text the rules judge — git's cleanup
+
+A rule is only as good as the text it is applied to, and at the commit-msg hook
+that text is **not** the message. git runs the hook BEFORE its own cleanup, so
+the file still holds whatever the editor left: the template, the status block,
+and under `-v` a scissors line with the entire diff below it. `parser.Cleanup`
+reduces that file to the message git will record, and `--stdin` is its only
+caller (a `--range` walk reads `git log %B`, which git has already cleaned).
+
+**The requirement is agreement, not tidiness.** The hook and CI must reach the
+SAME verdict on one commit; a gap is glyph lying in one of two directions, and
+the two are not equally bad. Blessing a message CI will reject costs a round
+trip. Refusing one CI would accept costs the commit — the only way past the hook
+is `--no-verify`, which turns the whole gate off.
+
+**Which cleanup runs is a per-commit question, and the hook can answer it.** git
+has five modes and picks between two of them by whether an editor will run;
+assuming the editor's cleanup is what made the hook and CI disagree, measured on
+git 2.54 in both directions (`-F` with a `#` line as the subject: hook 0, CI 3;
+`-F` with an indented `  # why:` above a `NON-BREAKING:` footer: hook 0, CI 3 for
+`undeclared-removal`). The two signals a hook actually has:
+
+- `commit.cleanup`, read with `git config --get`;
+- `GIT_EDITOR`, which git sets to `:` when no editor will run. Only that side is
+  load-bearing — with `core.editor` or `$EDITOR` supplying the editor git leaves
+  `GIT_EDITOR` **unset** in the hook, so unset must mean "an editor may run".
+  Read the other way, those developers get the whitespace branch, where the
+  template is never stripped and every commit is `malformed-subject`.
+
+Resolution, then, is `commit.cleanup` × edited → `verbatim` / `whitespace` /
+`strip` / `scissors`, with the scissors cut applied whenever an editor ran (git
+truncates under `-v` in every mode) and NOT applied without one (measured:
+`commit.cleanup=scissors` with `-F` records the cut line and everything under
+it). An unrecognised mode name warns and falls back — this hook forwards only the
+lint gate code and waves everything else through, so failing there would trade a
+typo in `commit.cleanup` for a repository whose commits are not linted at all.
+
+**Two decisions ratified by measurement, against the shape a reader expects:**
+
+- the cleanup is a **port** of git's `strbuf_stripspace`, not an approximation of
+  it — trailing `" \t\r"` per line (git's own `isspace`: a `\v` is content),
+  interior blank runs collapsed, comments recognised at **column 0 only**. Held
+  to `git stripspace` by a differential test over generated messages, because
+  every earlier approximation passed its hand-written cases;
+- the scissors line is matched **exactly** — git's `wt_status_locate_end` does a
+  `strstr` for one literal string, so a loose match cuts messages git records,
+  and everything below a stray cut line (footers included) vanishes from the
+  hook's view. A test drives a real `commit -v` and asserts git still writes that
+  literal, because exactness fails the other way if git ever changes it.
+
+**Deriving this inside the binary rather than in the hook script is a rollout
+decision.** The script is a file installed once into ~34 repositories; had it
+been taught to compute the mode, every already-installed copy would go on
+computing nothing until someone re-ran `glyph hook install` there. It also keeps
+the hook's founding property (§5): the hook holds no knowledge, it asks glyph.
+
+**What stays wrong, and is not claimed fixed:** `git commit --cleanup=<mode>` on
+the COMMAND LINE reaches neither the config nor the environment (measured), so a
+per-commit override is invisible to the hook and the message is judged under the
+repository's mode. Same for `core.commentChar`: glyph assumes `#`.
+
 ## 3. gitmoji → semver
 
 Lattice: `none(0) < patch(1) < minor(2) < major(3)`. Default-none. Every gitmoji

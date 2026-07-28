@@ -503,3 +503,36 @@ func TestHooksDirErrorsAreAPI(t *testing.T) {
 		t.Fatalf("HooksDir outside a repository = %v, want CodeAPI", err)
 	}
 }
+
+// TestConfigGet: an unset key is an ANSWER (", false, nil), a set one carries
+// its value, and only a git that could not be asked at all is an error. The
+// caller is the commit-msg hook deciding what git will do to the message it was
+// handed, and "unset" is the commonest correct answer it gets.
+func TestConfigGet(t *testing.T) {
+	dir := newRepo(t)
+
+	val, set, err := ConfigGet(context.Background(), dir, "commit.cleanup")
+	if err != nil || set || val != "" {
+		t.Fatalf("ConfigGet on an unset key = (%q, %v, %v), want (\"\", false, nil) — git spells unset as exit 1, which is not a failure", val, set, err)
+	}
+
+	git(t, dir, "akira-toriyama", "config", "commit.cleanup", "scissors")
+	val, set, err = ConfigGet(context.Background(), dir, "commit.cleanup")
+	if err != nil || !set || val != "scissors" {
+		t.Fatalf("ConfigGet on a set key = (%q, %v, %v), want (\"scissors\", true, nil)", val, set, err)
+	}
+}
+
+// TestConfigGetUnreachableDirIsAPI: exit 1 is "no such key" and every other
+// failure is exit 4 by contract — telling them apart is why this does not simply
+// swallow every error as unset. A directory that does not exist is the failure
+// that is unambiguously not an unset key: outside a repository git still answers
+// from the global config, and answers exit 1.
+func TestConfigGetUnreachableDirIsAPI(t *testing.T) {
+	gitOrSkip(t)
+	_, _, err := ConfigGet(context.Background(), filepath.Join(t.TempDir(), "no-such-dir"), "commit.cleanup")
+	ce := core.AsError(err)
+	if ce == nil || ce.Code != core.CodeAPI {
+		t.Fatalf("ConfigGet on a missing directory = %v, want CodeAPI", err)
+	}
+}

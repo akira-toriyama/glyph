@@ -1,0 +1,11 @@
+--- a/internal/parser/cleanup.go
++++ b/internal/parser/cleanup.go
+@@ -154,7 +154,7 @@
+ 	if strings.HasPrefix(message, cutLine) {
+ 		return ""
+ 	}
+-	if i := strings.Index(message, "\n"+cutLine); i >= 0 {
++	if i := strings.Index(message, cutLine); i >= 0 {
+ 		return message[:i+1]
+ 	}
+ 	return message

@@ -434,6 +434,28 @@ reads messages git has already cleaned, and running it there would swallow a
 genuinely empty message and any body line starting with `#`.
 `internal/parser/cleanup.go: Cleanup`
 
+**cleanup mode** — *which* cleanup, of git's five: `verbatim` (none),
+`whitespace`, `strip` (whitespace + comment lines), `scissors`, and `default`,
+which is not a cleanup but a choice between `strip` and `whitespace` by whether a
+message is **edited**. glyph resolves it per commit from `commit.cleanup` and
+`GIT_EDITOR`; a mode assumed instead of resolved is how the hook and CI came to
+disagree about the same message. DESIGN §2.1.
+`internal/parser/cleanup.go: CleanupMode, ResolveCleanupMode`,
+`internal/cli/cmd_lint.go: hookCleanupMode`
+
+**edited** — whether git will open an editor for this commit, which decides both
+the `default` mode and the scissors cut. The hook's only evidence is
+`GIT_EDITOR=:`, git's marker for "no editor will run" (`-m`, `-F`, `--amend
+--no-edit`); **unset** is not evidence of the opposite — `core.editor` and
+`$EDITOR` both leave it unset — so unset counts as edited.
+`internal/cli/cmd_lint.go: hookCleanupMode`
+
+**cut line / scissors line** — the one literal git writes above the diff under
+`commit -v`: `# ` followed by 24 dashes, ` >8 `, 24 dashes. Matched exactly and at
+the start of a line, because git matches it that way; an indented lookalike is
+neither a cut nor even a comment to git, so cutting there hides text git records.
+`internal/parser/cleanup.go: cutLine, truncateAtCutLine`
+
 ---
 
 ## 4. The render boundary

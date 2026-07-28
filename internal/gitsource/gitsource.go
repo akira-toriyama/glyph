@@ -99,6 +99,36 @@ func HooksDir(ctx context.Context, dir string) (string, error) {
 	return path, nil
 }
 
+// ConfigGet returns one git config value and whether it is set at all.
+//
+// Unset is (", false, nil) and not an error: git spells "no such key" as exit 1,
+// the same shape as a real failure, and the one caller — the commit-msg hook
+// asking for `commit.cleanup` — has a correct answer for the unset case and
+// nothing to say about the difference. Any OTHER failure (not a repository, a
+// malformed config file) reaches the caller as an error, which that caller then
+// chooses to treat as unset; the choice belongs there, not here.
+//
+// `--get` reports the LAST value for a multiply-set key, which is git's own
+// precedence for the single-valued keys this asks about.
+func ConfigGet(ctx context.Context, dir, key string) (string, bool, error) {
+	// #nosec G204 -- the binary is the fixed literal "git"; key is a config name
+	// from this package's callers, pinned as a value by --end-of-options.
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "config", "--get", "--end-of-options", key)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		if ierr := interrupted(ctx); ierr != nil {
+			return "", false, ierr
+		}
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && ee.ExitCode() == 1 {
+			return "", false, nil
+		}
+		return "", false, core.APIf("git config: %s", distill(stderr.Bytes(), err))
+	}
+	return strings.TrimSpace(stdout.String()), true, nil
+}
+
 // Have reports which of shas this repository actually holds, as a set. It is the
 // cheap first half of the footprint question the release walk asks about a pull
 // request's commit listing (internal/cli: mainFootprint): most listed shas — a

@@ -1,0 +1,11 @@
+--- a/internal/parser/cleanup.go
++++ b/internal/parser/cleanup.go
+@@ -183,7 +183,7 @@
+ 		// touching its `empties` counter). "a\n# c\nb" is therefore "a\nb", not
+ 		// "a\n\nb" — and a trailer stacked under a commented-out line stays a
+ 		// trailer.
+-		if dropComments && strings.HasPrefix(line, "#") {
++		if dropComments && strings.HasPrefix(strings.TrimLeft(line, " \t"), "#") {
+ 			continue
+ 		}
+ 		trimmed := strings.TrimRight(line, " \t\r")
