@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/akira-toriyama/glyph/internal/bump"
 	"github.com/akira-toriyama/glyph/internal/core"
@@ -70,7 +71,7 @@ func newLintCmd() *cobra.Command {
 				// own cleanup: the file still carries the editor template, the
 				// status block and (under commit.verbose) the diff. Reduce it to
 				// the message git will record before judging it.
-				return lintOne(parser.Cleanup(string(b)), known)
+				return lintOne(parser.Cleanup(string(b), hookCleanupMode(cmd.Context())), known)
 			case cmd.Flags().Changed("message"):
 				// An empty --message is the caller naming no message, which is
 				// usage — not a message that violates the convention. The old
@@ -94,6 +95,37 @@ func newLintCmd() *cobra.Command {
 	cmd.MarkFlagsMutuallyExclusive("range", "message", "stdin")
 	cmd.MarkFlagsOneRequired("range", "message", "stdin")
 	return cmd
+}
+
+// hookCleanupMode reads the two signals a commit-msg hook has about what git is
+// about to do to the message it was handed: `commit.cleanup`, and GIT_EDITOR.
+//
+// Asking git HERE rather than having the hook script pass a `--cleanup` flag is
+// the decision worth knowing, and it is a rollout one. The hook is a file
+// installed once into ~34 repositories; a script that had to compute the mode
+// would leave every already-installed copy computing nothing, so the fix would
+// reach a repo only when someone re-ran `glyph hook install` there. Deriving it
+// inside the binary means the hook script does not change at all and every
+// installed copy is fixed the moment the binary is. It also keeps the hook's
+// founding property intact: the hook holds no knowledge, it asks glyph.
+//
+// Neither signal is required. Outside a repository, or with git unable to answer,
+// the config read fails and this proceeds as if unset — a developer piping a file
+// into `glyph lint --stdin` by hand gets git's default-with-an-editor reading,
+// which is what that file looks like.
+func hookCleanupMode(ctx context.Context) parser.CleanupMode {
+	// An error is treated as unset on purpose: this is an advisory hook, and a
+	// git that cannot answer a config question is not a reason to refuse a lint.
+	configured, _, _ := gitsource.ConfigGet(ctx, ".", "commit.cleanup")
+	mode, known := parser.ResolveCleanupMode(configured, os.Getenv("GIT_EDITOR") != ":")
+	if !known {
+		// Warn, never fail. The installed hook forwards ONLY the lint gate code
+		// and waves every other non-zero through, so exiting here would trade a
+		// typo in commit.cleanup for a repository whose commits are not linted
+		// at all — maximum strictness buying zero enforcement.
+		warnf("commit.cleanup=%q is not a mode git knows; linting this message as if it were 'default'", configured)
+	}
+	return mode
 }
 
 // lintOne lints a single message at authoring time (no merge-candidate rules).

@@ -15,8 +15,11 @@ import (
 // call the real api.github.com. Blanking here makes that leak structurally
 // impossible instead of merely avoided by convention; tests that need the
 // variables set them per-test with t.Setenv.
+// GIT_EDITOR joins them for the same reason from the other side: `lint --stdin`
+// reads it to tell an edited message from a `-m` one, and a developer whose
+// shell exports GIT_EDITOR would otherwise run a different code path than CI.
 func TestMain(m *testing.M) {
-	for _, k := range []string{"GITHUB_API_URL", "GITHUB_REPOSITORY", "GITHUB_TOKEN", "GH_TOKEN"} {
+	for _, k := range []string{"GITHUB_API_URL", "GITHUB_REPOSITORY", "GITHUB_TOKEN", "GH_TOKEN", "GIT_EDITOR"} {
 		os.Unsetenv(k)
 	}
 	os.Exit(m.Run())

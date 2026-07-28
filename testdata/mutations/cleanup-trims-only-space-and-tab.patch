@@ -1,0 +1,11 @@
+--- a/internal/parser/cleanup.go
++++ b/internal/parser/cleanup.go
+@@ -186,7 +186,7 @@
+ 		if dropComments && strings.HasPrefix(line, "#") {
+ 			continue
+ 		}
+-		trimmed := strings.TrimRight(line, " \t\r")
++		trimmed := strings.TrimRight(line, " \t")
+ 		if trimmed == "" {
+ 			blank = true
+ 			continue

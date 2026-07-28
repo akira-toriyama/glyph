@@ -2,9 +2,218 @@ package cli
 
 import (
 	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// TestHookVerdictMatchesWhatGitRecords is the whole point of the hook: the
+// verdict a developer gets while writing a message must be the verdict CI gets
+// on the message git actually recorded. Anything else is glyph lying in one
+// direction or the other — blessing a commit CI will reject, or refusing one CI
+// would accept.
+//
+// It is written against REAL git rather than against a model of it: every case
+// makes an actual commit, the commit-msg hook captures the exact bytes git hands
+// a hook and the GIT_EDITOR it sets, and the two verdicts are then taken through
+// the CLI itself — `lint --stdin` on the captured file (what the hook does) and
+// `lint --range` on the recorded commit (what CI does). No case can pass because
+// glyph and its test agree about git.
+//
+// Every row here disagreed before `--stdin` learned git's cleanup modes: glyph
+// stripped comments and cut at scissors in ALL of them, which is what git does
+// only when an editor runs.
+func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+
+	cases := []struct {
+		name string
+		// config applied to the repo before committing, as key/value pairs.
+		config [][2]string
+		// message is what the author produces: the whole file with -F, the text
+		// prepended to git's prepared buffer with an editor.
+		message string
+		editor  bool
+		// below writes the message UNDER git's prepared buffer instead of above
+		// it, which is where the template ends up as line 1.
+		below   bool
+		verbose bool
+		// want is the exit code BOTH sides must reach.
+		want int
+	}{
+		{
+			name: "-F: a leading '#' line is the subject git records",
+			// No editor ⇒ cleanup=whitespace ⇒ comments are content. glyph used
+			// to drop the line and lint the one below it: hook 0, CI 3.
+			message: "# reminder from my notes\n:sparkles:(x) add the thing\n",
+			want:    3,
+		},
+		{
+			name: "-F: an indented comment keeps a footer out of the trailer block",
+			// git only drops a '#' at column 0. Dropping this one closed the gap
+			// above NON-BREAKING:, making it a trailer at the hook and prose in
+			// CI: hook 0, CI 3 (undeclared-removal).
+			message: ":fire:(x) drop the thing\n\n  # why: leftover note here\nNON-BREAKING: it was dead\n",
+			want:    3,
+		},
+		{
+			name:    "-F under commit.cleanup=strip: comments really are dropped",
+			config:  [][2]string{{"commit.cleanup", "strip"}},
+			message: "# a note git will drop\n:bug:(x) fix the thing\n",
+			want:    0,
+		},
+		{
+			name:    "-F under commit.cleanup=verbatim: git records the bytes as written",
+			config:  [][2]string{{"commit.cleanup", "verbatim"}},
+			message: ":bug:(x) fix the thing.  \n",
+			want:    3, // trailing-period, in both readings
+		},
+		{
+			name:    "an editor runs: the template is not the message",
+			editor:  true,
+			message: ":sparkles:(x) add the thing\n",
+			want:    0,
+		},
+		{
+			name: "an editor runs: a message typed UNDER the template is still the message",
+			// git strips the comments above it, so the subject is the author's
+			// line. Reading GIT_EDITOR's absence as "no editor ran" — which is
+			// what core.editor and $EDITOR leave behind — lints the template's
+			// first line as the subject: hook 3, CI 0, and no way past it but
+			// --no-verify.
+			editor:  true,
+			below:   true,
+			message: ":sparkles:(x) add the thing\n",
+			want:    0,
+		},
+		{
+			name: "an editor runs with -v: the diff below the cut line is not the message",
+			// The verbose diff carries lines that are prose to the linter; if it
+			// were not cut, the NON-BREAKING: footer would stop being a trailer.
+			editor:  true,
+			verbose: true,
+			message: ":fire:(x) drop the thing\n\nNON-BREAKING: it was dead\n",
+			want:    0,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			testGit(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
+			testGit(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "-m", ":tada: begin the project")
+			for _, kv := range tc.config {
+				testGit(t, dir, "akira-toriyama", "config", kv[0], kv[1])
+			}
+
+			handed := filepath.Join(dir, "handed-to-the-hook.txt")
+			editorEnv := filepath.Join(dir, "git-editor-env.txt")
+			writeExecutable(t, filepath.Join(dir, ".git", "hooks", "commit-msg"),
+				"#!/bin/sh\ncp \"$1\" "+handed+"\nprintf '%s' \"${GIT_EDITOR-UNSET}\" > "+editorEnv+"\nexit 0\n")
+
+			if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello\n"), 0o600); err != nil {
+				t.Fatalf("write file: %v", err)
+			}
+			testGit(t, dir, "akira-toriyama", "add", "a.txt")
+
+			args := []string{"commit", "-q"}
+			if tc.verbose {
+				args = append(args, "-v")
+			}
+			if tc.editor {
+				// core.editor rather than GIT_EDITOR on purpose: git then leaves
+				// GIT_EDITOR UNSET in the hook's environment (measured), which is
+				// the reading that must still mean "an editor ran".
+				buffer := filepath.Join(dir, "buffer.txt")
+				editor := filepath.Join(dir, "editor.sh")
+				if err := os.WriteFile(buffer, []byte(tc.message), 0o600); err != nil {
+					t.Fatalf("write buffer: %v", err)
+				}
+				script := "#!/bin/sh\ncat \"$1\" >> " + buffer + "\ncp " + buffer + " \"$1\"\n"
+				if tc.below {
+					script = "#!/bin/sh\ncat " + buffer + " >> \"$1\"\n"
+				}
+				writeExecutable(t, editor, script)
+				testGit(t, dir, "akira-toriyama", "config", "core.editor", editor)
+			} else {
+				msg := filepath.Join(dir, "message.txt")
+				if err := os.WriteFile(msg, []byte(tc.message), 0o600); err != nil {
+					t.Fatalf("write message: %v", err)
+				}
+				args = append(args, "-F", msg)
+			}
+			testGit(t, dir, "akira-toriyama", args...)
+
+			raw, err := os.ReadFile(handed) //nolint:gosec // a path this test just wrote
+			if err != nil {
+				t.Fatalf("the commit-msg hook did not run: %v", err)
+			}
+			env, err := os.ReadFile(editorEnv) //nolint:gosec // a path this test just wrote
+			if err != nil {
+				t.Fatalf("read the hook's GIT_EDITOR: %v", err)
+			}
+
+			t.Chdir(dir)
+			// Hand glyph the environment git handed the hook, whichever way git
+			// spelled it — that signal is half of what the mode is derived from.
+			if string(env) == "UNSET" {
+				unsetEnv(t, "GIT_EDITOR")
+			} else {
+				t.Setenv("GIT_EDITOR", string(env))
+			}
+
+			setStdin(t, string(raw))
+			hookCode, _, hookErr := runGlyph(t, "lint", "--stdin")
+			ciCode, _, ciErr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
+			recorded := testGit(t, dir, "akira-toriyama", "log", "-1", "--format=%B")
+
+			if hookCode != ciCode {
+				t.Fatalf("the hook and CI disagree about the same commit: hook %d, CI %d\n"+
+					"  handed to the hook: %q\n  recorded by git:    %q\n  hook stderr: %s\n  CI stderr:   %s",
+					hookCode, ciCode, raw, recorded, hookErr, ciErr)
+			}
+			if hookCode != tc.want {
+				t.Errorf("both sides answered %d, want %d — they agree on the wrong verdict\n"+
+					"  handed to the hook: %q\n  recorded by git:    %q\n  stderr: %s",
+					hookCode, tc.want, raw, recorded, hookErr)
+			}
+		})
+	}
+}
+
+// writeExecutable writes body at path (creating its directory) with the mode a
+// hook or an editor needs.
+func writeExecutable(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o700); err != nil { //nolint:gosec // git must be able to run it
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+// unsetEnv removes a variable for one test and restores it afterwards —
+// t.Setenv's missing half, and the state that matters here: git leaves
+// GIT_EDITOR UNSET when core.editor supplied the editor.
+func unsetEnv(t *testing.T, key string) {
+	t.Helper()
+	old, had := os.LookupEnv(key)
+	t.Cleanup(func() {
+		if had {
+			_ = os.Setenv(key, old)
+			return
+		}
+		_ = os.Unsetenv(key)
+	})
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatalf("unset %s: %v", key, err)
+	}
+}
 
 // TestLintMessageClean: a convention-clean message is a silent success — no
 // payload, exit 0 (Rule of Silence).
