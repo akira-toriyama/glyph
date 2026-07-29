@@ -370,7 +370,6 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 	// back work an earlier tag shipped), and by seen (an already-represented
 	// commit must never be able to fail the release — its message may be a squash
 	// subject, which never parses).
-	//
 	foldPull := func(number int, canonical string) error {
 		listing, perr := pullRawCommits(ctx, c, owner, repo, number)
 		if perr != nil {
