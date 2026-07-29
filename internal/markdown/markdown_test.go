@@ -500,16 +500,6 @@ func linkableAtSigns(s string) []atSign {
 	return out
 }
 
-// wordCharBefore reports whether what sits in front of the at-sign at i is
-// still a word character WHEN THE MENTION FILTER RUNS, which stops the token
-// from being a mention. That is the question the probe table answers, and it is
-// not the same as "is this byte a word character": GFM deletes an emphasis
-// delimiter on its way to the rendered document, so an underscore counts only
-// where it cannot be one — intraword, an alphanumeric glued to the left of the
-// whole underscore run ("x_@octocat_y" is safe, "credit _@octocat_" is not).
-//
-// The backtick is NOT a word character here: it shields, but the oracle has to
-// see the at-sign in order to demand that shield.
 // wordCharBefore reports whether the byte before i still stands between the
 // at-sign and the start of a text node once GitHub has RENDERED the line.
 //
@@ -521,6 +511,9 @@ func linkableAtSigns(s string) []atSign {
 // the implementation had (an underscore run that CLOSES emphasis); stating the
 // conservative rule here instead is what lets the fuzz target falsify the
 // escaper rather than agree with it.
+//
+// The backtick is NOT a word character here: it shields, but the oracle has to
+// see the at-sign in order to demand that shield.
 func wordCharBefore(s string, i int) bool {
 	return s[i-1] != '_' && isASCIIWord(s[i-1])
 }
