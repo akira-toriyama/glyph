@@ -237,14 +237,13 @@ func extractRun(t *testing.T, body, stepName string) string {
 	if i < 0 {
 		t.Fatalf("step %q not found in the workflow — this test is asserting nothing", stepName)
 	}
-	rest := body[i:]
-	j := strings.Index(rest, "run: |")
-	if j < 0 {
+	_, block, ok := strings.Cut(body[i:], "run: |")
+	if !ok {
 		t.Fatalf("step %q has no `run: |` block", stepName)
 	}
 	const indent = "          " // ten spaces: a reusable's step-script body
 	var out []string
-	for _, line := range strings.Split(rest[j+len("run: |"):], "\n")[1:] {
+	for _, line := range strings.Split(block, "\n")[1:] {
 		if strings.TrimSpace(line) == "" {
 			out = append(out, "")
 			continue
