@@ -228,8 +228,35 @@ ran bite
 # line, which on this machine meant govulncheck never ran and nothing said so.
 if command -v golangci-lint >/dev/null 2>&1; then
   echo "→ golangci-lint"
+  # Running the gate is not the same as running CI'S gate. go-ci.yml pins the
+  # version it installs; `nix develop` supplies whatever nixpkgs currently has,
+  # and the two drift apart silently because a linter that gains an analyzer
+  # gains it in a minor release. Measured 2026-08-02: local v2.6.2 against CI's
+  # v2.12.2, six minors apart — `modernize`'s stringscut exists in one and not
+  # the other, so this script printed 12/12 and the pull request went red on a
+  # finding it could not have produced.
+  #
+  # Reported, not fatal: failing here would make the script unusable until the
+  # flake is bumped, and an unusable check is how people stop running it. It
+  # goes in the FINAL LINE instead, next to ALLOW_DIRTY, on the same principle —
+  # the ✓ line is what gets read, so the ✓ line is where a weakened claim has to
+  # appear.
+  LINT_SKEW=""
+  want_lint="$(sed -n "s/.*golangci-lint-version:.*default:[[:space:]]*'v\{0,1\}\([0-9][0-9.]*\)'.*/\1/p" "$HUB/.github/workflows/go-ci.yml" 2>/dev/null | head -1)"
+  if [ -z "$want_lint" ]; then
+    want_lint="$(sed -n "s/.*default:[[:space:]]*'v\([0-9][0-9.]*\)'.*/\1/p" "$HUB/.github/workflows/go-ci.yml" 2>/dev/null | head -1)"
+  fi
+  got_lint="$(golangci-lint --version 2>/dev/null | sed -n 's/.*version[[:space:]]*v\{0,1\}\([0-9][0-9.]*\).*/\1/p' | head -1)"
+  if [ -z "$want_lint" ]; then
+    LINT_SKEW="golangci-lint: could not read the version go-ci.yml pins, so this run cannot say it matched CI"
+  elif [ -z "$got_lint" ]; then
+    LINT_SKEW="golangci-lint: could not read the LOCAL version, so this run cannot say it matched CI"
+  elif [ "$want_lint" != "$got_lint" ]; then
+    LINT_SKEW="golangci-lint v$got_lint here vs v$want_lint in CI — findings only the newer one has are invisible to this run"
+  fi
   golangci-lint run ./...
   ran golangci-lint
+  [ -n "$LINT_SKEW" ] && echo "  ! $LINT_SKEW"
 else
   echo "✗ golangci-lint is not installed, and go-ci.yml runs it — so this run cannot" >&2
   echo "  claim a green CI. \`nix develop\` supplies it (flake.nix's devShell), or install it." >&2
@@ -341,8 +368,10 @@ if [ -n "$missing" ]; then
   exit 1
 fi
 
+SKEW=""
+[ -n "${LINT_SKEW:-}" ] && SKEW=" — SKEWED FROM CI: $LINT_SKEW"
 if [ -n "$DIRTY" ]; then
-  echo "✓ passed (DIRTY TREE — not a claim about HEAD): $total/$total mirrored gates — NOT mirrored: $NOT_MIRRORED"
+  echo "✓ passed (DIRTY TREE — not a claim about HEAD): $total/$total mirrored gates — NOT mirrored: $NOT_MIRRORED$SKEW"
 else
-  echo "✓ $total/$total mirrored gates passed — NOT mirrored: $NOT_MIRRORED"
+  echo "✓ $total/$total mirrored gates passed — NOT mirrored: $NOT_MIRRORED$SKEW"
 fi

@@ -10,6 +10,13 @@ name: glyph-release
 # mix workflow and binary revisions. GoReleaser owns glyph's OWN tag-driven
 # releases (goreleaser.yml) — this file is the reusable the family consumes.
 #
+# Passing NEITHER is the third shape: a repo whose release IS the notes gets
+# the verdict and the draft upsert and nothing else — ubuntu runner, no Xcode,
+# no build, no assets. It exists so the live-fire range (glyph-test) can call
+# THIS file instead of a hand copy of it. A range that fires a different gun
+# proves nothing about this one, and the hand copy had already drifted three
+# glyph releases behind the workflows around it once.
+#
 # A push to the caller's main makes `glyph release` walk main's squash
 # commits since the last v* tag, resolve each to its merged pull request over
 # the API and classify the PR's individual (pre-squash) commits — squash-safe,
@@ -50,8 +57,10 @@ name: glyph-release
 #       uses: akira-toriyama/glyph/.github/workflows/release.yml@vX.Y.Z  # pin a release tag
 #       with:
 #         app: Facet              # → Facet.app / Facet.zip, binary `facet`
-#         # …or, for a bare-binary tool (exactly one of app/binary):
+#         # …or, for a bare-binary tool (at most one of app/binary):
 #         # binary: glance        # → ./build.sh must produce bin/glance; attaches glance + glance.sha256
+#         # …or NEITHER, for a repo that ships no artefact: the verdict and
+#         # the rolling draft, on ubuntu, and nothing built.
 #         smoke: false            # true → run `<artifact> --validate`
 #         dry-run: ${{ github.event.inputs.dry_run == 'true' }}
 #         install-notes: |
@@ -71,12 +80,12 @@ on:
   workflow_call:
     inputs:
       app:
-        description: "App display name, e.g. 'Facet' → package.sh builds Facet.app, attaches Facet.zip, binary `facet`. Exactly one of `app` / `binary`."
+        description: "App display name, e.g. 'Facet' → package.sh builds Facet.app, attaches Facet.zip, binary `facet`. At most one of `app` / `binary`; neither is verdict-only."
         required: false
         type: string
         default: ""
       binary:
-        description: "Bare-binary name, e.g. 'glance' → ./build.sh must produce bin/<binary>; attaches <binary> + <binary>.sha256. Exactly one of `app` / `binary`."
+        description: "Bare-binary name, e.g. 'glance' → ./build.sh must produce bin/<binary>; attaches <binary> + <binary>.sha256. At most one of `app` / `binary`; neither is verdict-only."
         required: false
         type: string
         default: ""
@@ -118,22 +127,36 @@ jobs:
     # macos-26: family apps on the macOS-26 floor (sill v2.0.0+) ship
     # macOS-26 binaries the smoke step must EXECUTE — a macos-15 host can
     # compile them but cannot run them.
-    runs-on: macos-26
+    #
+    # …but only when there IS an artifact. A verdict-only caller (neither
+    # `app` nor `binary`) runs one Go binary over git and the API and has no
+    # Swift, no Xcode and nothing to execute; putting it on a macOS runner
+    # would spend the family's scarcest minutes to compute a version number.
+    # The reusable decides this from the inputs rather than taking a `runs-on`
+    # input, because there is no combination of the two a caller should pick.
+    runs-on: ${{ (inputs.app != '' || inputs.binary != '') && 'macos-26' || 'ubuntu-latest' }}
     # Bounded so a hung step (build, signing, upload) can't burn the macOS
     # minutes budget. Generous — a cold build + package + upload fits easily.
     timeout-minutes: 30
     steps:
-      # `required: true` cannot express "exactly one of app/binary", so the
-      # arity is enforced here, before anything else runs.
+      # `required: true` cannot express "at most one of app/binary", so the
+      # arity is enforced here, before anything else runs. NEITHER is the
+      # verdict-only mode — a repo whose release IS the notes (glyph-test is
+      # the one in the fleet) — and it is a real mode rather than an oversight,
+      # so it is spelled out in the log. BOTH is still an error: there is one
+      # artifact per release and no order in which two would attach.
       - name: Validate the artifact inputs
         env:
           APP: ${{ inputs.app }}
           BINARY: ${{ inputs.binary }}
         run: |
           set -euo pipefail
-          if { [ -n "$APP" ] && [ -n "$BINARY" ]; } || { [ -z "$APP" ] && [ -z "$BINARY" ]; }; then
-            echo "::error::exactly one of 'app' (app bundle via package.sh) or 'binary' (bare binary via build.sh) must be set."
+          if [ -n "$APP" ] && [ -n "$BINARY" ]; then
+            echo "::error::at most one of 'app' (app bundle via package.sh) or 'binary' (bare binary via build.sh) may be set."
             exit 1
+          fi
+          if [ -z "$APP" ] && [ -z "$BINARY" ]; then
+            echo "::notice::verdict-only: no 'app' or 'binary', so this run computes the verdict and upserts the draft, and builds nothing."
           fi
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -147,7 +170,12 @@ jobs:
           # (zizmor artipacked).
           persist-credentials: false
 
+      # Both of these serve the Swift build and nothing else, and neither
+      # exists on the ubuntu runner a verdict-only run lands on: setup-xcode
+      # would fail outright there, and the SPM cache would key a path that is
+      # never written. Gated on the same predicate as `runs-on` above.
       - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+        if: inputs.app != '' || inputs.binary != ''
         with:
           xcode-version: latest-stable
 
@@ -157,6 +185,7 @@ jobs:
       # Package.resolved is hashed so a dependency bump invalidates the cache
       # (hashFiles tolerates it missing for deps-free repos).
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: inputs.app != '' || inputs.binary != ''
         with:
           path: |
             .build
@@ -302,14 +331,31 @@ jobs:
       # (the @v1 reusable relied on the same), and --clobber replaces the
       # previous merge's asset on an updated draft. Whichever build step ran
       # left its artifact set in artifacts/ — upload it wholesale.
+      #
+      # The artifact-mode arm of the condition is load-bearing, not tidiness:
+      # with no build step there is no artifacts/, the glob stays literal, and
+      # `gh release upload … artifacts/*` fails the run for a draft that is
+      # already correct.
       - name: Attach the artifacts to the draft
-        if: steps.verdict.outputs.release == 'true' && !inputs.dry-run
+        if: steps.verdict.outputs.release == 'true' && !inputs.dry-run && (inputs.app != '' || inputs.binary != '')
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.verdict.outputs.tag }}
         run: |
           set -euo pipefail
           gh release upload "$TAG" artifacts/* --clobber
+
+      # Separate from the upload, and NOT gated on the artifact mode: the URL
+      # of the draft a human has to go and publish is the one thing every
+      # caller needs out of this run, verdict-only included. It rode inside
+      # the upload step until verdict-only mode existed, which would have made
+      # the mode that ships nothing also the mode that says nothing.
+      - name: Say where the draft is
+        if: steps.verdict.outputs.release == 'true' && !inputs.dry-run
+        env:
+          TAG: ${{ steps.verdict.outputs.tag }}
+        run: |
+          set -euo pipefail
           url="$(jq -r '.url // empty' "$RUNNER_TEMP/verdict.json")"
           echo "::notice::Draft release ${TAG} upserted (unpublished, no tag yet). Review & Publish manually: ${url}"
           {
