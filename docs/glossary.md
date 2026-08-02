@@ -405,13 +405,16 @@ be reworded. The same discipline as `doctor`'s check id, one layer down.
 `internal/cli/cmd_lint.go: rangeViolation`
 
 **legacy token** — the retired Conventional `<type>[(scope)][!]: ` token that
-pre-glyph history carries *between* the gitmoji and the subject. It is
-**accepted and ignored** (its scope salvaged when the canonical slot has none,
-its `!` still meaning breaking) so existing history keeps linting and bumping —
-no flag-day. The type vocabulary is closed on purpose, so an ordinary subject
-with a colon (`:memo: note: …`) is not eaten. Load-bearing asymmetry: the legacy
-scope slot is `[^()]+` while the canonical one is lowercase kebab-case, so the
-legacy path is the only one that can deliver a scope with anything to escape.
+pre-glyph history carries *between* the gitmoji and the subject. Handled by
+surface since v1.0.0: the release **walk** still eats it (scope salvaged when
+the canonical slot has none, its `!` still meaning breaking) so immutable
+history keeps parsing and bumping, while the authoring **lint** rejects it as
+the hard error `legacy-token`, with the canonical rewrite in the detail when
+one exists. The type vocabulary is closed on purpose, so an ordinary subject
+with a colon (`:memo: note: …`) is not eaten. The old load-bearing asymmetry —
+the legacy scope slot is `[^()]+` while the canonical one is lowercase
+kebab-case, so only the legacy path could deliver a scope with anything to
+escape — is thereby closed at authoring time: no legacy slot reaches it.
 `internal/parser/parser.go: legacyTokenRE`
 
 **merge candidate** — a commit on its way into main (a PR range), where

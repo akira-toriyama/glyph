@@ -51,22 +51,22 @@ func TestParse(t *testing.T) {
 		{
 			name: "legacy type with scope",
 			in:   ":wrench: ci(hub): raise the zizmor gate",
-			want: Commit{Gitmoji: ":wrench:", Scope: "hub", Subject: "raise the zizmor gate"},
+			want: Commit{Gitmoji: ":wrench:", Scope: "hub", Subject: "raise the zizmor gate", legacyToken: "ci(hub):"},
 		},
 		{
 			name: "legacy type without scope",
 			in:   ":bug: fix: keep defaults when an unknown key is present",
-			want: Commit{Gitmoji: ":bug:", Subject: "keep defaults when an unknown key is present"},
+			want: Commit{Gitmoji: ":bug:", Subject: "keep defaults when an unknown key is present", legacyToken: "fix:"},
 		},
 		{
 			name: "legacy breaking bang",
 			in:   ":truck: refactor(core)!: rename Store to Repository",
-			want: Commit{Gitmoji: ":truck:", Scope: "core", Breaking: true, Subject: "rename Store to Repository"},
+			want: Commit{Gitmoji: ":truck:", Scope: "core", Breaking: true, Subject: "rename Store to Repository", legacyToken: "refactor(core)!:"},
 		},
 		{
 			name: "new scope wins over legacy scope",
 			in:   ":wrench:(a) ci(b): raise the gate",
-			want: Commit{Gitmoji: ":wrench:", Scope: "a", Subject: "raise the gate"},
+			want: Commit{Gitmoji: ":wrench:", Scope: "a", Subject: "raise the gate", legacyToken: "ci(b):"},
 		},
 		{
 			name: "non-type word with colon stays in the subject",
@@ -252,9 +252,12 @@ func TestLint(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "clean legacy format keeps linting",
+			// The retired token is a hard error at AUTHORING time (v1.0.0:
+			// one grammar, zero migration debt); only the walk over immutable
+			// history — which never runs Lint — still tolerates it.
+			name: "legacy token is a violation",
 			in:   ":wrench: ci(hub): raise the zizmor gate",
-			want: nil,
+			want: []string{RuleLegacyToken},
 		},
 		{
 			name: "malformed subject",
@@ -298,6 +301,20 @@ func TestLint(t *testing.T) {
 			mergeCandidate: true,
 			want:           []string{RuleUnknownGitmoji, RuleUppercaseSubject, RuleTrailingPeriod},
 		},
+		{
+			// The closed type vocabulary is what keeps this from firing on
+			// ordinary colon phrases — the same boundary Parse's eating has.
+			name: "a colon phrase outside the type vocabulary is not a token",
+			in:   ":memo: note: document the squash-merge bump model",
+			want: nil,
+		},
+		{
+			// legacy-token leads the appended rules: the rewrite it suggests
+			// is the line the style rules should be judging.
+			name: "legacy token accumulates before the style rules",
+			in:   ":bug: fix: Fix a crash.",
+			want: []string{RuleLegacyToken, RuleUppercaseSubject, RuleTrailingPeriod},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -311,6 +328,34 @@ func TestLint(t *testing.T) {
 			}
 			if fmt.Sprint(rules) != fmt.Sprint(c.want) {
 				t.Fatalf("Lint(%q) rules = %v, want %v", c.in, rules, c.want)
+			}
+		})
+	}
+}
+
+// TestLintLegacyTokenRewrite: the legacy-token detail carries a ready-to-paste
+// canonical rewrite whenever one exists that the linter would itself accept —
+// kebabSuggestion's contract, one level up. Salvaged scope and `!` survive the
+// rewrite; a scope that even lowercasing cannot make legal gets the plain
+// grammar reminder instead of a suggestion that drops information.
+func TestLintLegacyTokenRewrite(t *testing.T) {
+	detailOf := func(msg string) string {
+		t.Helper()
+		vs := Lint(msg, LintOptions{Known: testKnown})
+		if len(vs) == 0 || vs[0].Rule != RuleLegacyToken {
+			t.Fatalf("Lint(%q) did not lead with legacy-token: %+v", msg, vs)
+		}
+		return vs[0].Detail
+	}
+	cases := []struct{ name, in, wantPart string }{
+		{"scope and bang survive", ":truck: refactor(core)!: rename Store", `write ":truck:(core)! rename Store"`},
+		{"pascal scope is lowercased", ":wrench: ci(Hub): raise the gate", `write ":wrench:(hub) raise the gate"`},
+		{"unfixable scope gets the grammar, not a lossy rewrite", ":bug: fix(a b): keep defaults", "`<:code:>[(scope)][!] <subject>`"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if d := detailOf(c.in); !strings.Contains(d, c.wantPart) {
+				t.Fatalf("detail %q does not contain %q", d, c.wantPart)
 			}
 		})
 	}
@@ -561,18 +606,25 @@ func TestInvalidScope(t *testing.T) {
 	}
 }
 
-// The canonical form must not be stricter than the retired one it replaced: a
-// scope glyph rejects after `:fire:` cannot be a scope it accepts after a legacy
-// `refactor(...)` token. This pins the asymmetry that made t-edan bite.
-func TestKebabScopeAcceptedInBothForms(t *testing.T) {
+// One grammar, with the door out of the retired one signposted: the kebab
+// scope the canonical form accepts lints clean, and the SAME commit spelled
+// with the retired token is rejected carrying that exact canonical spelling in
+// its detail. This is the successor to the "accepted in both forms" pin from
+// t-edan's era — the asymmetry it froze (the legacy slot accepting scopes the
+// canonical one rejects) is now closed at the source, because no legacy slot
+// reaches authoring at all.
+func TestLegacySpellingRejectedWithCanonicalRewrite(t *testing.T) {
 	known := func(string) bool { return true }
-	for _, msg := range []string{
-		":fire:(palette)! prune catppuccin-latte",
-		":fire: refactor(palette)!: prune catppuccin-latte",
-	} {
-		if vs := Lint(msg, LintOptions{Known: known}); len(vs) != 0 {
-			t.Errorf("Lint(%q) = %+v, want clean", msg, vs)
-		}
+	canonical := ":fire:(palette)! prune catppuccin-latte"
+	if vs := Lint(canonical, LintOptions{Known: known}); len(vs) != 0 {
+		t.Errorf("Lint(%q) = %+v, want clean", canonical, vs)
+	}
+	vs := Lint(":fire: refactor(palette)!: prune catppuccin-latte", LintOptions{Known: known})
+	if len(vs) != 1 || vs[0].Rule != RuleLegacyToken {
+		t.Fatalf("legacy spelling: want exactly the legacy-token violation, got %+v", vs)
+	}
+	if !strings.Contains(vs[0].Detail, `"`+canonical+`"`) {
+		t.Errorf("detail %q does not hand the author the canonical spelling %q", vs[0].Detail, canonical)
 	}
 }
 

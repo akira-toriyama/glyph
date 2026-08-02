@@ -39,6 +39,15 @@ type Commit struct {
 	// "type the word". Unexported because that is its whole scope: nothing outside
 	// this package has a use for it, and the JSON surfaces do not carry it.
 	bareNonBreaking bool
+
+	// legacyToken records the retired Conventional `<type>[(scope)][!]:` token
+	// Parse salvaged out of the subject (e.g. "fix(core)!:"), "" when none was
+	// there. Parse keeps eating the token so the immutable pre-glyph history
+	// walks and bumps exactly as before; Lint reads this field to make the same
+	// token a hard error at AUTHORING time (legacy-token, ratified with v1.0.0:
+	// one grammar, zero migration debt). Unexported for bareNonBreaking's
+	// reason: only Lint has a use for it.
+	legacyToken string
 }
 
 // Violation is one lint finding: a stable machine-readable rule id plus a
@@ -53,6 +62,7 @@ type Violation struct {
 const (
 	RuleMalformedSubject  = "malformed-subject"
 	RuleInvalidScope      = "invalid-scope"
+	RuleLegacyToken       = "legacy-token"
 	RuleUnknownGitmoji    = "unknown-gitmoji"
 	RuleWIPMergeCandidate = "wip-merge-candidate"
 	RuleUppercaseSubject  = "uppercase-subject"
@@ -83,9 +93,12 @@ var (
 	// checked separately.
 	subjectRE = regexp.MustCompile(`^(:[a-z0-9][a-z0-9_+-]*:)(\([a-z0-9][a-z0-9-]*\))?(!)? (\S.*)$`)
 
-	// legacyTokenRE accepts-and-ignores the retired Conventional token
+	// legacyTokenRE recognises the retired Conventional token
 	// (`<type>[(scope)][!]: `) that pre-glyph house history carries between the
-	// gitmoji and the subject. The type vocabulary is the ratified house set
+	// gitmoji and the subject. Parse still eats it — the walk over immutable
+	// history must keep classifying those commits as it always has — but it now
+	// also RECORDS it, and Lint turns the record into a hard error at authoring
+	// time (legacy-token). The type vocabulary is the ratified house set
 	// (CONTRIBUTING.md), deliberately closed so ordinary subjects with a colon
 	// (":memo: note: …") are not eaten.
 	// The remainder is `\S.*` for the same blank-subject reason as subjectRE:
@@ -189,12 +202,42 @@ func kebabSuggestion(scope string) string {
 	return ""
 }
 
+// legacyRewrite spells the canonical form of a commit whose subject carried a
+// legacy token, or "" when no clean rewrite exists — kebabSuggestion's rule,
+// one level up: a suggestion the linter would itself reject is worse than
+// none. The one lossy case is a salvaged scope outside kebab-case that even
+// lowercasing cannot fix (the legacy slot is `[^()]+`, the canonical one is
+// not); dropping the scope from the suggestion would misrepresent the commit,
+// so that case gets the plain grammar reminder instead.
+func legacyRewrite(c Commit) string {
+	scope := ""
+	if c.Scope != "" {
+		s := c.Scope
+		if !scopeRE.MatchString(s) {
+			if s = kebabSuggestion(s); s == "" {
+				return ""
+			}
+		}
+		scope = "(" + s + ")"
+	}
+	bang := ""
+	if c.Breaking {
+		bang = "!"
+	}
+	line := c.Gitmoji + scope + bang + " " + c.Subject
+	if !subjectRE.MatchString(line) {
+		return ""
+	}
+	return line
+}
+
 // Parse parses one commit message into a Commit. A message whose subject line
 // does not open with a well-formed `<:code:>[(scope)][!] <subject>` is a lint
 // failure (*core.Error, CodeLint) — never a silently zero Commit. The legacy
-// Conventional token after the gitmoji is accepted and dropped (its scope is
-// salvaged when the new slot has none, its `!` still means breaking) so
-// pre-glyph history keeps parsing — no flag-day.
+// Conventional token after the gitmoji is still eaten (its scope salvaged
+// when the new slot has none, its `!` still meaning breaking) so pre-glyph
+// history keeps parsing and bumping exactly as before — but it is recorded on
+// the Commit, and Lint makes it a hard error at authoring time (legacy-token).
 func Parse(message string) (Commit, error) {
 	lines := splitLines(message)
 	subject := ""
@@ -246,6 +289,7 @@ func Parse(message string) (Commit, error) {
 		}
 		c.Breaking = c.Breaking || lm[3] == "!"
 		c.Subject = lm[4]
+		c.legacyToken = lm[1] + lm[2] + lm[3] + ":"
 	}
 
 	rest := lines[1:]
@@ -318,6 +362,18 @@ func Lint(message string, opts LintOptions) []Violation {
 		return []Violation{{Rule: rule, Detail: err.Error()}}
 	}
 	var vs []Violation
+	// First among the appended rules: it is a grammar defect, and the rewrite
+	// it suggests is what the remaining rules should be judging. It fires in
+	// every mode — unlike wip-merge-candidate there is no time at which the
+	// retired token becomes legal, and the walk over history never runs Lint,
+	// so no old commit can trip it.
+	if c.legacyToken != "" {
+		detail := fmt.Sprintf("retired Conventional token %q after the gitmoji — the convention is one grammar, `<:code:>[(scope)][!] <subject>`", c.legacyToken)
+		if s := legacyRewrite(c); s != "" {
+			detail = fmt.Sprintf("retired Conventional token %q after the gitmoji — the convention is one grammar, write %q", c.legacyToken, s)
+		}
+		vs = append(vs, Violation{Rule: RuleLegacyToken, Detail: detail})
+	}
 	if opts.Known != nil && !opts.Known(c.Gitmoji) {
 		vs = append(vs, Violation{
 			Rule:   RuleUnknownGitmoji,
