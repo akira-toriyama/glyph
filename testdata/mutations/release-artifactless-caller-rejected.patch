@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index cbbdab0..9d3f152 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -151,7 +151,7 @@ jobs:
+           BINARY: ${{ inputs.binary }}
+         run: |
+           set -euo pipefail
+-          if [ -n "$APP" ] && [ -n "$BINARY" ]; then
++          if { [ -n "$APP" ] && [ -n "$BINARY" ]; } || { [ -z "$APP" ] && [ -z "$BINARY" ]; }; then
+             echo "::error::at most one of 'app' (app bundle via package.sh) or 'binary' (bare binary via build.sh) may be set."
+             exit 1
+           fi
