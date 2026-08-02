@@ -46,17 +46,34 @@ func Reduce(levels []gitmoji.Bump) gitmoji.Bump {
 	return top
 }
 
-// generatedSubjects are the prefixes git and GitHub write themselves; such
-// commits carry no author-chosen gitmoji and are excluded rather than failed —
-// the same tolerance the retired shell commit-lint gave existing history.
-var generatedSubjects = []string{"Merge ", "Revert ", "fixup! ", "squash! "}
+// UnknownParents marks a caller that cannot know a commit's parent count: the
+// commit-msg hook lints a MESSAGE before any commit exists. Everywhere else
+// parents come from git or the API — github.go fills them for API commits too
+// — and 0 means a root commit, which is a different fact from "unknown".
+const UnknownParents = -1
+
+// generatedSubjects are the EXACT prefixes git itself writes: an autosquash
+// artifact, or a raw `git revert` message — whose subject git wraps in quotes,
+// which is why the prefix carries one. They are git's text on a single-parent
+// commit, so parent count cannot recognise them and they stay excluded on
+// every path. "Merge " is deliberately NOT here: a real merge is recognised
+// structurally wherever parents are known, and matching the word instead let
+// any single-parent commit whose subject happened to open with "Merge …" slip
+// past lint and the version fold, silently (t-fs5y). The word is honoured only
+// where parents are genuinely unknown — see ExcludedFromClassification.
+var generatedSubjects = []struct{ prefix, label string }{
+	{`Revert "`, "Revert"},
+	{"fixup! ", "fixup!"},
+	{"squash! ", "squash!"},
+}
 
 // ExcludedFromClassification reports whether a commit's OWN MESSAGE stays out
 // of lint and the version fold, and why: bot authors (`*[bot]`,
-// github-actions*, web-flow), merge commits (structurally by parent count, and
-// by subject for API-sourced commits where parents are unknown), and
-// git-generated subjects (autosquash artifacts, raw `git revert` messages). An
-// excluded commit is skipped, never a violation.
+// github-actions*, web-flow), merge commits (structurally by parent count —
+// by subject only for the hook, which sees a message before the commit exists
+// and must pass parents=UnknownParents), and git-generated subjects
+// (autosquash artifacts, raw `git revert` messages in git's exact quoted
+// form). An excluded commit is skipped, never a violation.
 //
 // This answers "is this commit's own message classifiable?" — the question
 // wherever a MESSAGE is the input: the lint gate, the --range walk, and the
@@ -73,9 +90,17 @@ func ExcludedFromClassification(author, subject string, parents int) (reason str
 	if parents >= 2 {
 		return "merge commit", true
 	}
+	// Only the hook may honour the WORD: it lints a message with no commit
+	// behind it, so a merge in progress is recognisable by nothing but the
+	// subject git is about to write for it. Every parents-aware path relies on
+	// the structure above — a single-parent "Merge the two parsers into one"
+	// is an author's sentence and must face the lint like any other.
+	if parents == UnknownParents && strings.HasPrefix(subject, "Merge ") {
+		return "git-generated subject (Merge)", true
+	}
 	for _, p := range generatedSubjects {
-		if strings.HasPrefix(subject, p) {
-			return "git-generated subject (" + strings.TrimSpace(strings.TrimSuffix(p, "!")) + ")", true
+		if strings.HasPrefix(subject, p.prefix) {
+			return "git-generated subject (" + p.label + ")", true
 		}
 	}
 	return "", false
