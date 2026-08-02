@@ -93,10 +93,12 @@ func TestReduce(t *testing.T) {
 }
 
 // TestExcludedFromClassification pins which commits' own messages stay out of
-// lint and the version fold: bot authors, merge commits (structurally, and by
-// GitHub's "Merge " subject), autosquash artifacts, and git's own `Revert "…"`
-// messages — exactly the tolerance the retired shell commit-lint gave existing
-// history.
+// lint and the version fold: bot authors, merge commits (structurally by
+// parent count; by the "Merge " word ONLY where parents are unknown, i.e. the
+// commit-msg hook), autosquash artifacts, and git's own `Revert "…"` messages
+// in their exact quoted form. The word-matching this replaced let any
+// single-parent commit whose subject opened with "Merge " or "Revert " slip
+// past lint and the fold on parents-aware paths (t-fs5y).
 func TestExcludedFromClassification(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -112,8 +114,11 @@ func TestExcludedFromClassification(t *testing.T) {
 		{"github-actions[bot]", "github-actions[bot]", "chore: sync", 1, true},
 		{"web-flow", "web-flow", ":bug: via web ui", 1, true},
 		{"merge commit by parent count", "akira-toriyama", ":bug: fix in a merge", 2, true},
-		{"merge subject", "akira-toriyama", "Merge branch 'main' into feat/x", 1, true},
+		{"merge word with one parent is an author's sentence", "akira-toriyama", "Merge the two parsers into one", 1, false},
+		{"merge word on a root commit is an author's sentence", "akira-toriyama", "Merge of the two prototypes, initial import", 0, false},
+		{"merge word at the hook, parents unknown", "akira-toriyama", "Merge branch 'main' into feat/x", UnknownParents, true},
 		{"git revert subject", "akira-toriyama", "Revert \":bug: fix a crash\"", 1, true},
+		{"revert word without git's quote is an author's sentence", "akira-toriyama", "Revert the parser rewrite by hand", 1, false},
 		{"fixup artifact", "akira-toriyama", "fixup! :bug: fix a crash", 1, true},
 		{"squash artifact", "akira-toriyama", "squash! :bug: fix a crash", 1, true},
 		{"rewind revert stays in", "akira-toriyama", ":rewind: revert the flag change", 1, false},

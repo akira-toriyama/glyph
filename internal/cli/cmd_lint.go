@@ -140,8 +140,13 @@ func hookCleanupMode(ctx context.Context) parser.CleanupMode {
 // accepts — an author cannot rewrite a subject git generated, so the only
 // escape was --no-verify, which turns the whole gate off. The retired shell
 // hook exempted the same four prefixes.
+//
+// UnknownParents is what makes the hook the ONE place the word "Merge" still
+// buys tolerance: there is no commit yet, so a merge in progress has no parent
+// count to be recognised by. Every parents-aware caller passes the real count
+// and gets the structural judgement instead (t-fs5y).
 func lintOne(message string, known func(string) bool) error {
-	if _, excluded := bump.ExcludedFromClassification("", firstLine(message), 0); excluded {
+	if _, excluded := bump.ExcludedFromClassification("", firstLine(message), bump.UnknownParents); excluded {
 		return nil
 	}
 	vs := parser.Lint(message, parser.LintOptions{Known: known})
