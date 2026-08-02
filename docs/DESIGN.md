@@ -101,9 +101,16 @@ runtime import, per house pattern.)
   the word to type it — a separate defect).
 
 The redundant Conventional `<type>` word is dropped — the gitmoji's own trailing
-`:` plays the type-colon role. The parser is **lenient**: it accepts-and-ignores
-a legacy `<type>(scope)!:` token so existing history keeps linting and bumping —
-no flag-day.
+`:` plays the type-colon role. The retired token is handled by SURFACE, not by
+one blanket policy. The release walk's parser stays **lenient**: it
+accepts-and-ignores a legacy `<type>(scope)!:` token (scope salvaged when the
+new slot has none, its `!` still meaning breaking) so the immutable pre-glyph
+history keeps walking and bumping exactly as it always has. The authoring lint
+makes the same token a **hard error** (`legacy-token`, in the list below):
+since v1.0.0 the convention is one grammar and new history carries zero
+migration debt — ratified 2026-07-21, shipped only after the machines that
+wrote the retired form fleet-wide were silenced first (t-271n), so the rule
+never fires on a commit a bot is still producing.
 
 Linter shape check (membership is checked in code against the embedded table):
 
@@ -141,6 +148,15 @@ named here, fails the suite.
   `[^()]+` and still accepts `(Palette)`, so the retired syntax is the more
   permissive of the two — which is exactly why the canonical form owes the author
   the sharper message.
+- `legacy-token` — the subject carries the retired Conventional
+  `<type>[(scope)][!]:` token after the gitmoji. First of the accumulating
+  rules because the rewrite it offers is the line the style rules should be
+  judging: the detail hands the author the canonical spelling — salvaged scope
+  and `!` preserved — whenever one exists that the linter itself accepts
+  (kebabSuggestion's contract, one level up; a salvaged scope even lowercasing
+  cannot make kebab gets the plain grammar reminder, because a suggestion that
+  drops the scope misrepresents the commit). Fires in every authoring mode and
+  never on the walk — Parse still eats the token, so history is untouched.
 - `unknown-gitmoji` — the code is not in the embedded table (`glyph rules`).
 - `wip-merge-candidate` — a `:construction:` commit reaching a merge candidate.
   The ONE rule gated on merge-candidate mode: `:construction:` is legal

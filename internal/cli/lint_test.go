@@ -227,12 +227,21 @@ func TestLintMessageClean(t *testing.T) {
 	}
 }
 
-// TestLintMessageLegacyFormatStaysClean: pre-glyph history keeps linting — the
-// retired Conventional token is accepted, not flagged.
-func TestLintMessageLegacyFormatStaysClean(t *testing.T) {
+// TestLintMessageLegacyTokenHardErrors: the retired Conventional token is a
+// hard error at authoring time — v1.0.0's meaning is one grammar, zero
+// migration debt. Only the release walk over immutable history (which never
+// runs Lint) still tolerates it. The violation carries the ready-to-paste
+// canonical rewrite, so the fix is a copy, not an exegesis of the grammar.
+func TestLintMessageLegacyTokenHardErrors(t *testing.T) {
 	code, _, stderr := runGlyph(t, "lint", "--message", ":wrench: ci(hub): raise the zizmor gate")
-	if code != 0 {
-		t.Fatalf("legacy-format lint exited %d, want 0\nstderr: %s", code, stderr)
+	if code != 3 {
+		t.Fatalf("legacy-format lint exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "legacy-token") {
+		t.Fatalf("stderr does not carry the legacy-token rule id:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, `:wrench:(hub) raise the zizmor gate`) {
+		t.Fatalf("stderr does not suggest the canonical rewrite:\n%s", stderr)
 	}
 }
 

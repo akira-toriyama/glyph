@@ -25,7 +25,8 @@ func newLintCmd() *cobra.Command {
 		Use:   "lint",
 		Short: "Lint commit messages against the gitmoji convention",
 		Long: "lint checks commit messages against the gitmoji convention\n" +
-			"(`<:code:>[(scope)][!] <subject>`; legacy Conventional tokens are accepted).\n" +
+			"(`<:code:>[(scope)][!] <subject>`; the retired Conventional token after the\n" +
+			"gitmoji is a hard error — the violation carries the canonical rewrite).\n" +
 			"--range lints every commit on its way into main (bots, merges, autosquash\n" +
 			"artifacts and raw git reverts are skipped; :construction: is a violation\n" +
 			"there). --message and --stdin lint one message at authoring time — the\n" +
