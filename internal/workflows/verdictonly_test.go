@@ -1,6 +1,7 @@
 package workflows
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -175,9 +176,11 @@ func TestArtifactArityAcceptsNeither(t *testing.T) {
 			cmd.Env = append(os.Environ(), "APP="+c.app, "BINARY="+c.bin)
 			out, err := cmd.CombinedOutput()
 			exit := 0
-			if ee, ok := err.(*exec.ExitError); ok {
+			var ee *exec.ExitError
+			switch {
+			case errors.As(err, &ee):
 				exit = ee.ExitCode()
-			} else if err != nil {
+			case err != nil:
 				t.Fatalf("running the validation step: %v", err)
 			}
 			if exit != c.wantExit {
