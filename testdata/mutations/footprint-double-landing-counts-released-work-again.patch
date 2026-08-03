@@ -1,0 +1,16 @@
+diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
+index 191b427..22170a1 100644
+--- a/internal/cli/sincetag.go
++++ b/internal/cli/sincetag.go
+@@ -669,10 +669,7 @@ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.Ra
+ 			if aerr != nil {
+ 				return nil, aerr
+ 			}
+-			if on {
+-				landed[i] = r.SHA
+-				continue
+-			}
++			_ = on
+ 		}
+ 		// A merge commit is never replayed by a rebase (measured — see above), so
+ 		// it has no landing site to find and no position to hold.

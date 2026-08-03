@@ -360,10 +360,31 @@ the merge commit that "merge `main` into the branch" leaves behind, GitHub permi
 rebase-merge over one, and that entry — listed, landing nowhere — made the count
 wrong and abandoned a mapping that was otherwise exact. It is kept out of the
 alignment on its **parent count**, the same fact `bump.ExcludedFromClassification`
-already reads, so nothing downstream needs it placed. What still cannot be aligned
+already reads, so nothing downstream needs it placed. What can still fail to align
 is a rebase that dropped a commit it was asked to replay — one already upstream, or
-one that rebased empty — and that stays indistinguishable from a squash, so it stays
-quiet (below).
+one that rebased empty — which stays indistinguishable from a squash and stays quiet
+(below). *Can*, not *must*: the commonest drop is a change whose duplicate sits on
+`main` directly under the replayed run, and there the window reaches one commit
+deeper, the messages verify, and the entry maps to the landing that made its replay
+redundant — the ratified double-landing answer, next.
+
+**A change that landed twice keeps the landing git states** (ratified, t-nsww).
+Both doubles occur in the wild: a rebase-merged pull's *original* commit later
+reaches `main` verbatim through another pull — the stored-base listing above is
+how the entry outlives its own landing — and a branch carries a commit, its own
+SHA or a cherry-pick, whose change is already on `main`, so the rebase drops it.
+Either way one listed entry has two defensible landing sites: where git says the
+change sits on the branch, and the copy this pull's own rebase wrote. The mapping
+keeps git's answer — an ancestor SHA landed *as itself* whoever landed it, and a
+dropped replay aligns to the commit that made it redundant — because the first is
+a fact and the second a message-verified alignment, while "this pull's copy is
+the real landing" is an intent git nowhere records: precisely the guess this
+mechanism exists to remove. The two readings reach different verdicts only when
+the landings straddle the walk's base — the pull's copy in range, the other under
+an earlier tag — and there git's answer maps the entry to the released landing,
+which the range drops with its notice instead of counting the change again
+through the in-range copy. The pull's-copy reading re-releases it: t-8xsb's
+silence, one shape over.
 
 This also restores the intuitive **wedge escape**. A lint failure inside a
 resolved pull is hard (Q1, below), and it used to be escapable only by cutting a

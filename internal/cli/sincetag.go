@@ -597,8 +597,10 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 //     pull's commits on the released branch verbatim, so a listed sha that this
 //     repository holds AND that is an ancestor of HEAD landed as itself. Asked of
 //     HEAD rather than of the merge commit on purpose: a commit that reached the
-//     branch by some earlier route is just as released, and the range is what
-//     decides whether it belongs here.
+//     branch by another route is just as released, and the range is what decides
+//     whether it belongs here. That holds even when this pull's rebase ALSO wrote
+//     a copy of the change — the double landing keeps git's answer, ratified
+//     (t-nsww, DESIGN §4).
 //  2. Whatever is LEFT, does it align against the run a rebase would have
 //     written? A rebase rewrites the commits it replays but preserves their
 //     messages and their order, and GitHub names the LAST of the run as
@@ -607,6 +609,10 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 //     is VERIFIED message by message and abandoned whole unless every one
 //     matches: a guess about which commits belong to a release is precisely what
 //     this function exists to remove, and half a mapping is worse than none.
+//     The window can also reach PAST the run: a replay the rebase dropped as
+//     already upstream aligns, message-verified, to the older commit that made
+//     it redundant — the other half of the ratified double-landing answer
+//     (t-nsww, DESIGN §4).
 //
 // Step 2 used to run only when step 1 placed NOTHING, on the reading that a
 // listing is either all-verbatim or all-rewritten. It is neither, and both ways
