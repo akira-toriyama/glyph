@@ -79,6 +79,19 @@ tree that does not compile turns the local gate into a silent no-op.
   rule "a fix is shown by re-breaking it, not by a green suite" is mechanised. Adding a decision?
   Add a row — `testdata/mutations/README.md` says how, and what to do when a patch stops
   applying (re-derive it; deleting the row is how a decision loses its only defender).
+- **`sh scripts/fleet-preflight.sh <candidate-binary>`** — run this **before cutting a tag**, not
+  before pushing. It answers the one question the rollout runbook cannot: of the repos that pin
+  glyph, how many does this release change the verdict for? It is a **differential** — every probe
+  runs twice over the same range, once with the tag the fleet is pinned at and once with the
+  binary you are about to ship — so a repo that is already red for its own reasons is not a
+  finding, and the one repo this release breaks cannot hide among them. The candidate is an
+  argument because the point is to judge a binary that has no release yet; `sh build.sh` first.
+  Two things to read in its output rather than assume: `lint` moves are a **prediction** (CI lints
+  a pull request's own commits, so nothing already merged is re-judged) while `bump` moves are
+  **retroactive** (that repo's next release cuts a different version, having changed nothing), and
+  the `✓` line carries every weakening of the claim — unanswered gates make the headline count a
+  floor. It needs `gh` and the fleet cloned as siblings, which is why it is not a `check.sh` gate:
+  check.sh mirrors CI, and no CI job asks this.
 
 ## Generated and pinned data — regenerate, never hand-edit
 
