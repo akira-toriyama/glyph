@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 3ed0fd8..3caa35f 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -300,7 +300,7 @@ func convergeStrays(ctx context.Context, gh *github.Client, owner, repo string,
+ 	for _, s := range stale {
+ 		gone, derr := gh.DeleteRelease(ctx, owner, repo, s.ID)
+ 		if derr != nil {
+-			if core.ExitCode(derr) == int(core.CodeInterrupted) {
++			if derr != nil {
+ 				return derr
+ 			}
+ 			warnf("the notes landed, but the stale draft %s (release id %d) would not go: %v — "+

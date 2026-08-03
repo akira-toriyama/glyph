@@ -1,0 +1,19 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 3ed0fd8..e215aad 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -328,12 +328,8 @@ func releaseNone(ctx context.Context, gh *github.Client, owner, repo string, cur
+ 	}
+ 	switch {
+ 	case !releaseDryRun:
+-		for _, d := range drafts {
+-			gone, derr := gh.DeleteRelease(ctx, owner, repo, d.ID)
+-			if derr != nil {
+-				return derr
+-			}
+-			noticef("no release is due — %s the residual draft %s (release id %d)", discardedOrGone(gone), d.TagName, d.ID)
++		if cerr := convergeStrays(ctx, gh, owner, repo, drafts); cerr != nil {
++			return cerr
+ 		}
+ 	case len(drafts) > 0:
+ 		noticef("dry run: no release is due — the upsert would delete %d residual draft(s)", len(drafts))

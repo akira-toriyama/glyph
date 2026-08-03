@@ -473,7 +473,24 @@ release fails loud (an unpublishable draft; a deleted published release's tag
 is burned forever). A delete whose answer is LOST counts as done when its retry
 finds the release already gone: DELETE is idempotent and the id is what glyph
 asked to remove, so failing there aborted the upsert over work that had
-succeeded (t-yq7m). The price is named rather than hidden — a 404 is also how
+succeeded (t-yq7m). t-yq7m fixed one shape of that; **the order is the general
+fix**, so as of v1.0.0 the rolling draft is WRITTEN FIRST and the stale drafts
+are converged after it. Measured before the reorder, against an API answering
+every `DELETE` with 503: the run burned the whole 1s→4s→16s schedule, exited 4,
+and sent the `PATCH` **zero** times — a delete spent the run's only chance to
+land the notes. The mirror image was lost too: with the delete first, a failed
+write left the strays already gone, so the run destroyed state and landed
+nothing. A stray that will not go is now a **warning on a green run**, because
+the exit code of `release` answers whether the *verdict* landed and after the
+write it did; what remains is bookkeeping over a draft, where no tag exists,
+nothing is published, and no new draft is created while one exists — so the
+stray set is self-limiting and the same failure simply repeats next run. Failing
+there instead would red the release job at its `status -ne 0` gate before it
+reads the verdict, i.e. a stray GitHub will not delete would stop the repository
+shipping artefacts while its notes were correct (t-rncn). The leniency is
+subordinate to a write that succeeded: on a **none** verdict the delete is the
+entire action, so it still fails loud, and an interrupt is never absorbed on
+either path. The price is named rather than hidden — a 404 is also how
 GitHub answers for a repository the credential can no longer see, and on a none
 verdict there is no following write to catch that, so such a run reports the
 draft as *found already gone* instead of *deleted* and says the claim is
