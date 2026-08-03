@@ -1,0 +1,13 @@
+diff --git a/internal/parser/parser.go b/internal/parser/parser.go
+index 32b67e9..3ce3758 100644
+--- a/internal/parser/parser.go
++++ b/internal/parser/parser.go
+@@ -287,7 +287,7 @@ func Parse(message string) (Commit, error) {
+ 		if c.Scope == "" {
+ 			c.Scope = strings.Trim(lm[2], "()")
+ 		}
+-		c.Breaking = c.Breaking || lm[3] == "!"
++		_ = lm[3]
+ 		c.Subject = lm[4]
+ 		c.legacyToken = lm[1] + lm[2] + lm[3] + ":"
+ 	}

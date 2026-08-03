@@ -101,6 +101,17 @@ tree that does not compile turns the local gate into a silent no-op.
   regenerate with `go test ./internal/notes -update`.
 - `-update` makes a rendering bug look intentional. Read the golden diff as the format spec it
   is before committing it.
+- `internal/bump/testdata/fleet-corpus.tsv` is the exception that proves the rule: it has **no
+  `-update`, on purpose**, because the failure it defends against is an author who narrows the
+  parser, sees a wall of red and regenerates. It freezes 3,049 real fleet subjects against the
+  verdict each produces, and the number that matters is that **75 of its 83 breaking rows are
+  breaking only because a retired Conventional token carried the `!`** — nine in ten of the
+  fleet's breaking commits hang on one line in `parser.go`, and losing it costs those repos a
+  major they never learn they were owed. `sh scripts/fleet-corpus.sh` refreshes it by
+  **appending** subjects the fleet has written since (and refuses to run if the stored verdicts
+  already disagree with the tree, so a broken tree cannot bake its own output in as truth);
+  changing what a stored subject *means* is a hand edit. Public repos only — six of the
+  thirty-five are private and their subjects are not this repo's to publish.
 - `internal/gitmoji/gitmoji.go` pins `CodeCount = 75` and `Load()` rejects a table of any other
   size — adding a code to `rules.json` without bumping it breaks **every** command at startup,
   not one test.
