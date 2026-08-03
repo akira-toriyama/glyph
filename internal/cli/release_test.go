@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -811,6 +812,15 @@ func TestPlanDraftsConvergesOnExactlyOne(t *testing.T) {
 			if keepID != c.wantKeep {
 				t.Errorf("keep = %d, want %d", keepID, c.wantKeep)
 			}
+			// A stray can exist only ALONGSIDE a kept draft. That is what
+			// makes the write which now precedes convergence always a PATCH
+			// of an existing draft, so it can never be a create racing a
+			// stale draft for the same tag.
+			if keep == nil && len(stale) > 0 {
+				t.Fatalf("planDrafts returned %d stale draft(s) with nothing kept; the reordered "+
+					"upsert writes before it converges, and that is only safe while a stray "+
+					"implies a draft to update", len(stale))
+			}
 			staleIDs := make([]int64, len(stale))
 			for i, s := range stale {
 				staleIDs[i] = s.ID
@@ -902,14 +912,18 @@ func TestReleaseUpsertUpdateJSONCarriesTheURL(t *testing.T) {
 	}
 }
 
-// TestReleaseDeleteFailureIsAPI: a write failing mid-convergence (the stale
-// draft's DELETE answering 404 — deleted out from under the run) is an
-// ordinary API failure: exit 4, GitHub's message in the envelope, and the
-// upsert write never happens (the run stops at the failed delete).
-func TestReleaseDeleteFailureIsAPI(t *testing.T) {
+// strayServer serves the two-glyph-managed-draft shape the stray-convergence
+// tests need — id 11 at the verdict's tag (kept, PATCHed) and id 12 at an older
+// tag (stale, DELETEd) — and records every WRITE in ORDER.
+//
+// The order is the whole point of these tests and is why this does not reuse
+// releaseServer: that helper records writes per-method, which cannot tell
+// "PATCH then DELETE" from "DELETE then PATCH". fail decides what every DELETE
+// answers, so one helper covers both the converging and the refusing case.
+func strayServer(t *testing.T, seq *[]string, fail func(http.ResponseWriter)) *httptest.Server {
+	t.Helper()
 	walk := oneFixWalk(t)
 	releases := `[` + draftJSON(11, "v0.1.1") + `,` + draftJSON(12, "v0.1.0") + `]`
-	var patched []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == releasesPath:
@@ -923,11 +937,118 @@ func TestReleaseDeleteFailureIsAPI(t *testing.T) {
 			}
 			fmt.Fprint(w, body)
 		case r.Method == http.MethodDelete:
-			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprint(w, `{"message":"Not Found"}`)
+			*seq = append(*seq, "DELETE "+r.URL.Path)
+			if fail != nil {
+				fail(w)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
 		case r.Method == http.MethodPatch:
-			patched = append(patched, r.URL.Path)
-			fmt.Fprint(w, `{}`)
+			*seq = append(*seq, "PATCH "+r.URL.Path)
+			fmt.Fprint(w, draftJSON(11, "v0.1.1"))
+		default:
+			t.Errorf("unexpected %s %q", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestReleaseWritesTheDraftBeforeConvergingStrays pins the ORDER on the path
+// where everything succeeds, and says nothing about failure — so it keeps
+// biting even if the severity below is ever revisited.
+//
+// The notes must land first because the write is the run's only chance to land
+// them: convergence is bookkeeping over a draft, and a delete placed ahead of
+// the write can spend the whole run on it (measured: 21s of the shipped
+// backoff, then exit 4, PATCH never sent).
+func TestReleaseWritesTheDraftBeforeConvergingStrays(t *testing.T) {
+	var seq []string
+	usePR(t, strayServer(t, &seq, nil))
+
+	code, _, stderr := runGlyph(t, "release")
+	if code != 0 {
+		t.Fatalf("release exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	want := []string{
+		"PATCH /repos/akira-toriyama/glyph/releases/11",
+		"DELETE /repos/akira-toriyama/glyph/releases/12",
+	}
+	if !slices.Equal(seq, want) {
+		t.Fatalf("write sequence = %v, want %v — the rolling draft is written BEFORE the stale "+
+			"drafts are converged", seq, want)
+	}
+}
+
+// TestReleaseStrayDeleteFailureKeepsTheNotes is t-rncn itself: a PERMANENT 5xx
+// on the stale draft's DELETE.
+//
+// Measured on the pre-reorder tree with this exact scenario: exit 4, stdout
+// empty, PATCH count 0 — the run burned the shipped 1s/4s/16s schedule on a
+// delete and never wrote the release notes it had just computed. t-yq7m
+// absorbed only the lost-answer 404; the harm it named is general.
+//
+// Now the verdict lands and the stray is a warning. That is a severity change
+// on a documented path (4 -> 0) and it is bounded: no tag exists, nothing is
+// published, and no new draft is created while one exists, so the stray set is
+// self-limiting and the failure repeats identically next run.
+func TestReleaseStrayDeleteFailureKeepsTheNotes(t *testing.T) {
+	var seq []string
+	usePR(t, strayServer(t, &seq, func(w http.ResponseWriter) {
+		w.Header().Set("Retry-After", "0")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"message":"Service Unavailable"}`)
+	}))
+
+	code, stdout, stderr := runGlyph(t, "release")
+	if code != 0 {
+		t.Fatalf("a stale draft glyph could not delete exited %d, want 0 — the notes landed, and "+
+			"the exit code of `release` answers whether the verdict did\nstderr: %s", code, stderr)
+	}
+	if stdout != "https://github.example/releases/11\n" {
+		t.Errorf("stdout = %q, want the PATCHed draft's URL — the verdict must still be reported", stdout)
+	}
+	if len(seq) == 0 || seq[0] != "PATCH /repos/akira-toriyama/glyph/releases/11" {
+		t.Fatalf("write sequence = %v; the PATCH must come first and must have happened", seq)
+	}
+	if n := strings.Count(strings.Join(seq, "\n"), "PATCH "); n != 1 {
+		t.Errorf("the draft was written %d times, want exactly 1", n)
+	}
+	for _, want := range []string{"::warning::", "release id 12", "v0.1.0"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the warning does not carry %q — a stray nobody is told about is a stray a "+
+				"human publishes:\n%s", want, stderr)
+		}
+	}
+}
+
+// TestReleaseNoneDeleteFailureStillFailsLoud is the boundary of the leniency
+// above, and the guard against a later tidy-up that routes releaseNone through
+// convergeStrays too.
+//
+// The two paths differ in exactly one thing: whether a write already succeeded.
+// On a none verdict the delete IS the whole action, so absorbing its failure
+// would mean the run did nothing and reported fine.
+func TestReleaseNoneDeleteFailureStillFailsLoud(t *testing.T) {
+	walk := noneWalk(t)
+	releases := `[` + draftJSON(11, "v0.1.1") + `]`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == releasesPath:
+			fmt.Fprint(w, releases)
+		case r.Method == http.MethodGet:
+			body, ok := walk[r.URL.Path]
+			if !ok {
+				t.Errorf("unexpected GET %q", r.URL.Path)
+				http.NotFound(w, r)
+				return
+			}
+			fmt.Fprint(w, body)
+		case r.Method == http.MethodDelete:
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprint(w, `{"message":"Service Unavailable"}`)
 		default:
 			t.Errorf("unexpected %s %q", r.Method, r.URL.Path)
 			http.NotFound(w, r)
@@ -938,13 +1059,9 @@ func TestReleaseDeleteFailureIsAPI(t *testing.T) {
 
 	code, _, stderr := runGlyph(t, "release")
 	if code != 4 {
-		t.Fatalf("a failed stale-draft DELETE exited %d, want 4 (API)\nstderr: %s", code, stderr)
-	}
-	if !strings.Contains(stderr, "Not Found") {
-		t.Fatalf("the envelope should carry GitHub's message:\n%s", stderr)
-	}
-	if len(patched) != 0 {
-		t.Fatalf("the upsert must stop at the failed delete, but PATCHed %v", patched)
+		t.Fatalf("a residual delete that would not go exited %d, want 4 — on a none verdict the "+
+			"delete is the entire action, so there is no landed write to be lenient "+
+			"about\nstderr: %s", code, stderr)
 	}
 }
 

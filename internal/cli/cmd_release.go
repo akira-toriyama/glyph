@@ -65,7 +65,10 @@ func newReleaseCmd() *cobra.Command {
 			"v* tag (release has exactly one input source, so no bare --since-tag is\n" +
 			"required). Bare release upserts the rolling DRAFT release: the one\n" +
 			"glyph-managed draft is created or updated (tag, notes body, target sha)\n" +
-			"and stale drafts are removed by release id — no tag is created; GitHub\n" +
+			"FIRST, and stale drafts are then removed by release id; one that will\n" +
+			"not go leaves a warning rather than failing the release, because the\n" +
+			"notes have already landed and the next run converges it — no tag is\n" +
+			"created; GitHub\n" +
 			"tags the target commit when a human publishes. On a none verdict any\n" +
 			"residual glyph-managed draft is deleted (the draft state converges to\n" +
 			"the verdict) and the run exits 1 (soft no-release). A walk that could\n" +
@@ -230,13 +233,6 @@ func releaseRun(cmd *cobra.Command) error {
 			return herr
 		}
 	}
-	for _, s := range stale {
-		gone, derr := gh.DeleteRelease(ctx, owner, repoName, s.ID)
-		if derr != nil {
-			return derr
-		}
-		noticef("%s the stale draft %s (release id %d)", discardedOrGone(gone), s.TagName, s.ID)
-	}
 	params := github.ReleaseParams{
 		TagName: tag.String(),
 		Target:  target,
@@ -256,12 +252,64 @@ func releaseRun(cmd *cobra.Command) error {
 	}
 	noticef("draft release %s %sd (unpublished — the tag is created when a human publishes): %s", tag, action, rel.URL)
 
+	if cerr := convergeStrays(ctx, gh, owner, repoName, stale); cerr != nil {
+		return cerr
+	}
+
 	result.URL = rel.URL
 	if releaseJSON {
 		printCompact(result)
 		return nil
 	}
 	fmt.Fprintln(out, rel.URL)
+	return nil
+}
+
+// convergeStrays deletes the stale glyph-managed drafts AFTER the rolling draft
+// has been written, and treats one that will not go as a WARNING rather than a
+// failure.
+//
+// Both halves are the same argument. The upsert used to delete first, so a
+// delete that would not go spent the run's ONLY chance to land the notes:
+// measured against a fake API answering every DELETE with 503, the run burned
+// the whole 1s→4s→16s schedule, exited 4, and sent the PATCH zero times — the
+// rolling draft never received the release it was computed for. t-yq7m absorbed
+// one shape of this (a resent DELETE whose lost answer returns 404); the harm
+// it named is general, and the order is the general fix. It also removes the
+// mirror-image loss: with the delete first, a write that failed left the strays
+// already gone, so the run destroyed state and landed nothing.
+//
+// The leniency is bounded by what already succeeded. The exit code of `release`
+// answers one question — did the verdict land? — and after the write it did.
+// What remains is convergence bookkeeping over a DRAFT: no tag exists, nothing
+// is published, and no new draft is created while one exists, so the stray set
+// is self-limiting and the same failure simply repeats next run (DESIGN §4:
+// nothing is persisted, the upsert converges, and even a duplicate self-heals).
+// Failing here instead would red the release job at release.yml's `status -ne 0`
+// gate, before it reads the verdict — so a stray GitHub will not delete would
+// stop the repository shipping artefacts while its notes were correct.
+//
+// An interrupt is never absorbed: internal/github classifies a canceled context
+// as CodeInterrupted, so a Ctrl-C during convergence still leaves the process
+// exiting 130 rather than 0 with a warning.
+//
+// releaseNone deliberately does NOT use this: on a none verdict the delete is
+// the entire action, so absorbing its failure would mean the run did nothing
+// and reported fine.
+func convergeStrays(ctx context.Context, gh *github.Client, owner, repo string, stale []github.Release) error {
+	for _, s := range stale {
+		gone, derr := gh.DeleteRelease(ctx, owner, repo, s.ID)
+		if derr != nil {
+			if core.ExitCode(derr) == int(core.CodeInterrupted) {
+				return derr
+			}
+			warnf("the notes landed, but the stale draft %s (release id %d) would not go: %v — "+
+				"it converges on the next release; do NOT publish it, a stale tag at a stale "+
+				"target wedges the next release at the published floor", s.TagName, s.ID, derr)
+			continue
+		}
+		noticef("%s the stale draft %s (release id %d)", discardedOrGone(gone), s.TagName, s.ID)
+	}
 	return nil
 }
 

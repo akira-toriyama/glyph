@@ -331,9 +331,14 @@ this codebase. A **residual** draft is one that survives a **none** verdict —
 nothing should exist, so it is deleted and the draft state converges on "no
 release is due". A **stale** draft is one of the *others* when the verdict **is**
 a release: one draft is kept and retagged, every other one is stale. An
-incomplete walk deletes neither — it exits 4 before the listing is read.
+incomplete walk deletes neither — it exits 4 before the listing is read. The
+asymmetry runs one step further, and it is the same distinction: a stale draft
+is removed **after** the rolling draft is written, and one the API will not
+delete is a warning on a green run, because the verdict has already landed and
+the next run converges it. A residual draft's delete *is* the whole action of a
+none verdict, so it still fails loud (4).
 `internal/cli/cmd_release.go: releaseNone`
-(residual), `planDrafts` (stale),
+(residual), `planDrafts` (stale), `convergeStrays` (the post-write pass),
 [DESIGN §4](DESIGN.md#4-squash-safe-mechanism--release-time-re-read-stateless)
 
 **published floor** — the highest **published** (non-draft) house-shaped version.
