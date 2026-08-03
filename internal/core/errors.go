@@ -25,7 +25,17 @@ const (
 	// (2: the invocation itself was fine) and from API (4: glyph could not
 	// reach an answer at all).
 	CodeLint Code = 3
-	CodeAPI  Code = 4 // GitHub API / git / network / IO failure
+
+	// CodeAPI is the no-trustworthy-answer code. It covers the failures its
+	// name suggests — GitHub API, git, network, IO — and equally a deliberate
+	// REFUSAL to hand down a verdict with nothing broken underneath: an
+	// incomplete walk (`cmd_release.go`, ratified t-pysg) and
+	// `checkPublishedFloor` both return it, because a verdict computed over a
+	// range glyph could not read is worse than no verdict at all. Read as
+	// "glyph has no answer it will stand behind", not as "retry later" — the
+	// two refusals never clear on a retry, they clear when a human moves the
+	// tag or fixes the checkout.
+	CodeAPI Code = 4
 
 	// CodeInterrupted is returned when the user interrupts a run with SIGINT
 	// (Ctrl-C) or SIGTERM: the first signal cancels in-flight work and exits with
@@ -62,7 +72,9 @@ func Lintf(format string, a ...any) *Error {
 	return &Error{Code: CodeLint, Msg: fmt.Sprintf(format, a...)}
 }
 
-// APIf builds a CodeAPI error (GitHub API / git / network / IO failure).
+// APIf builds a CodeAPI error: glyph could not reach an answer it will stand
+// behind — a GitHub API / git / network / IO failure, or a refusal to judge
+// what it could not read.
 func APIf(format string, a ...any) *Error {
 	return &Error{Code: CodeAPI, Msg: fmt.Sprintf(format, a...)}
 }

@@ -9,6 +9,14 @@
 // version written into a comment is stale on arrival, and its presence is what
 // makes the fleet's grep for glyph pins wrong in both directions.
 //
-// It has no runtime code; the invariants live in workflows_test.go. The package
-// exists only so the directory holds a non-test Go file.
+// It also reconciles the exit-code contract's out-of-Go copies — the three
+// prose tables (README.md, docs/DESIGN.md §5, docs/glossary.md §6) and the
+// shell and jq branches under .github/workflows and scripts — against
+// internal/core. Those are the copies the compiler never sees: a Go test that
+// renumbered a code would go red everywhere at once, while a doc spelling the
+// old integer stays green forever.
+//
+// It has no runtime code; the invariants live in workflows_test.go and
+// exitcodes_test.go. The package exists only so the directory holds a non-test
+// Go file.
 package workflows

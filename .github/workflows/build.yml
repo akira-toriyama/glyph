@@ -141,14 +141,19 @@ jobs:
             exit 1
           fi
           # lint / bump exit-code contract on the shipped binary.
-          /tmp/glyph lint --message ':bug: fix a crash'
-          if /tmp/glyph lint --message 'no gitmoji' >/dev/null 2>&1; then
-            echo "expected exit 3 for a malformed message" >&2
-            exit 1
-          fi
           # The CODE is the assertion, not merely non-zero: `--stdin=false` used
           # to exit 3, telling this very gate that a commit violated the
-          # convention when none was submitted.
+          # convention when none was submitted. That rule governs EVERY
+          # assertion below — two of them used to name an integer and assert
+          # only non-zero, which is green through the renumbering they exist
+          # to catch.
+          /tmp/glyph lint --message ':bug: fix a crash'
+          status=0
+          /tmp/glyph lint --message 'no gitmoji' >/dev/null 2>&1 || status=$?
+          if [ "$status" -ne 3 ]; then
+            echo "expected exit 3 (convention violation) for a malformed message, got $status" >&2
+            exit 1
+          fi
           status=0
           /tmp/glyph lint --stdin=false </dev/null >/dev/null 2>&1 || status=$?
           if [ "$status" -ne 2 ]; then
@@ -162,8 +167,10 @@ jobs:
             exit 1
           fi
           # the checkout is a repo: an empty range is the soft no-release exit (1).
-          if /tmp/glyph bump --range HEAD..HEAD >/dev/null 2>&1; then
-            echo "expected exit 1 for an empty bump range" >&2
+          status=0
+          /tmp/glyph bump --range HEAD..HEAD >/dev/null 2>&1 || status=$?
+          if [ "$status" -ne 1 ]; then
+            echo "expected exit 1 (no release-worthy change) for an empty bump range, got $status" >&2
             exit 1
           fi
 

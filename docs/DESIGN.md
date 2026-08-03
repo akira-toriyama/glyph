@@ -583,7 +583,8 @@ here is only why it is a package at all, and what depends on it:
   it that ships.
 
 **Exit-code contract** (`internal/core`): `0` ok · `1` no release · `2` usage ·
-`3` convention violation · `4` API/git/IO · `130` interrupted. Errors are
+`3` convention violation · `4` no trustworthy answer — API/git/IO, or a refusal
+to judge what it could not read · `130` interrupted. Errors are
 classified at the source into `*core.Error`; `ExitCode` funnels everything
 (unclassified ⇒ API, never usage). `3` is the *gate* code — what glyph was asked
 to judge does not conform: a commit message under `lint`, a repository's own
