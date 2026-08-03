@@ -280,7 +280,7 @@ BIN="$(pwd)/bin/glyph"
 
 echo "→ smoke: version / rules / help / usage errors"
 "$BIN" version >/dev/null
-"$BIN" version --ndjson >/dev/null # subcommand must own --ndjson (else exit 2)
+"$BIN" version --json >/dev/null   # the machine flag is spelled --json on every command that has one
 "$BIN" --version >/dev/null
 "$BIN" --help >/dev/null
 "$BIN" rules --json >/dev/null     # embedded table self-prints as JSON

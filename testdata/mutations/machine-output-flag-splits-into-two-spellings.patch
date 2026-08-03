@@ -1,0 +1,12 @@
+diff --git a/internal/cli/cmd_version.go b/internal/cli/cmd_version.go
+index 0a48945..b03e1c4 100644
+--- a/internal/cli/cmd_version.go
++++ b/internal/cli/cmd_version.go
+@@ -38,6 +38,6 @@ func newVersionCmd() *cobra.Command {
+ 			return nil
+ 		},
+ 	}
+-	cmd.Flags().BoolVar(&versionJSON, "json", false, "emit the machine identity {version,commit,date} as one JSON line")
++	cmd.Flags().BoolVar(&versionJSON, "ndjson", false, "emit the machine identity {version,commit,date} as one JSON line")
+ 	return cmd
+ }
