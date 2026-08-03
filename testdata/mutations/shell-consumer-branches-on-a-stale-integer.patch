@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+index adcc4bb..c394511 100644
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -154,7 +154,7 @@ jobs:
+               /tmp/glyph-lint.json || true
+             # The commit-format hint is for convention violations (exit 3) only —
+             # an infra failure (git/API, exit 4) gets the bare message.
+-            if jq -e '.error.code == 3' /tmp/glyph-lint.json >/dev/null 2>&1; then
++            if jq -e '.error.code == 2' /tmp/glyph-lint.json >/dev/null 2>&1; then
+               jq -r '"::error::glyph lint: \(.error.message) — format: <:gitmoji:>[(scope)][!] <subject>; see `glyph rules` and https://github.com/akira-toriyama/.github/blob/main/CONTRIBUTING.md"' \
+                 /tmp/glyph-lint.json || true
+             else

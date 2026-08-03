@@ -315,14 +315,19 @@ if [ -n "$out" ]; then
 fi
 
 echo "→ smoke: lint / bump exit-code contract"
-"$BIN" lint --message ':bug: fix a crash'   # clean → 0
-if "$BIN" lint --message 'no gitmoji' >/dev/null 2>&1; then
-  echo "  expected exit 3 for a malformed message" >&2
-  exit 1
-fi
 # The CODE is the assertion, not merely non-zero: `--stdin=false` used to exit 3,
 # telling a CI gate that a commit violated the convention when none was
-# submitted, and a plain `if "$BIN" …; then` cannot tell 3 from 2.
+# submitted, and a plain `if "$BIN" …; then` cannot tell 3 from 2. That rule
+# governs EVERY assertion in this block. Three of them used to state an integer
+# in the failure message and assert only non-zero — a smoke that would have
+# stayed green through the very renumbering it was written to catch.
+"$BIN" lint --message ':bug: fix a crash'   # clean → 0
+status=0
+"$BIN" lint --message 'no gitmoji' >/dev/null 2>&1 || status=$?
+if [ "$status" -ne 3 ]; then
+  echo "  expected exit 3 (convention violation) for a malformed message, got $status" >&2
+  exit 1
+fi
 status=0
 "$BIN" lint --stdin=false </dev/null >/dev/null 2>&1 || status=$?
 if [ "$status" -ne 2 ]; then
@@ -336,8 +341,10 @@ if [ "$status" -ne 2 ]; then
   exit 1
 fi
 # this checkout is a repo: an empty range is the soft no-release exit (1)
-if "$BIN" bump --range HEAD..HEAD >/dev/null 2>&1; then
-  echo "  expected exit 1 for an empty bump range" >&2
+status=0
+"$BIN" bump --range HEAD..HEAD >/dev/null 2>&1 || status=$?
+if [ "$status" -ne 1 ]; then
+  echo "  expected exit 1 (no release-worthy change) for an empty bump range, got $status" >&2
   exit 1
 fi
 
@@ -346,8 +353,10 @@ echo "→ smoke: doctor's input guard (no network — the repo never resolves)"
 # A malformed --repo is the caller's input and is rejected BEFORE any request
 # goes out, so this smoke stays hermetic: a doctor run that reached the network
 # here would hang or flake on an offline machine.
-if "$BIN" doctor --repo notaslash >/dev/null 2>&1; then
-  echo "  expected exit 2 for a malformed doctor --repo" >&2
+status=0
+"$BIN" doctor --repo notaslash >/dev/null 2>&1 || status=$?
+if [ "$status" -ne 2 ]; then
+  echo "  expected exit 2 (usage) for a malformed doctor --repo, got $status" >&2
   exit 1
 fi
 ran smoke
