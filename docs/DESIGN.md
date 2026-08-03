@@ -617,6 +617,21 @@ first newline — JSON-escaping the newlines keeps the *bytes* valid while the
 *value* still loses everything past the first line, which is how this stayed
 invisible.
 
+**Machine-output flag:** one spelling, `--json`, on every command that has one —
+`bump`, `notes`, `preview`, `release`, `doctor`, `rules`, `version` and
+`hook install` (`lint` speaks only in exit codes, so it has none). It was
+`--ndjson` on the last two until v1.0.0, which was wrong twice: the flag named a
+format glyph has never emitted (`printCompact` writes ONE object, not a stream)
+and it split the surface, so a caller had to remember which subcommand took
+which — measured before the rename, `version --json` and `bump --ndjson` *both*
+exited 2 with `unknown flag`. The flag is read by VALUE and not by `Changed`, so
+an explicit `--json=false` selects the human line at exit `0`; unlike
+`rules --md`, the machine flag is not the default-bearing member of its group,
+so declining it selects a real output rather than nothing and it carries no
+`checkDefaultModeOff`. Enumerated from the command tree at run time by
+`internal/cli`'s `TestMachineOutputFlagHasOneSpelling`, so a new command that
+invents a third spelling fails there rather than in a caller's shell.
+
 **gitmoji table embedding:** `//go:embed rules.json` inside `internal/gitmoji`
 (an embed pattern is package-relative, so it cannot be written as a path from the
 repository root) — the pinned binary *is* the pinned rules (lockstep, zero skew).

@@ -7,10 +7,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// versionNDJSON: the version subcommand owns its own --ndjson flag. A root
-// --ndjson would be a LOCAL (not persistent) flag and would not reach a
-// subcommand, so `glyph version --ndjson` would otherwise error.
-var versionNDJSON bool
+// versionJSON: the version subcommand owns its own --json flag. A root-level
+// one would be a LOCAL (not persistent) flag and would not reach a subcommand,
+// so `glyph version --json` would otherwise error.
+//
+// It was spelled --ndjson until v1.0.0, which named a format glyph has never
+// emitted — printCompact writes one object, not a stream — and split the
+// machine flag into two spellings a caller had to memorise per subcommand.
+var versionJSON bool
 
 func newVersionCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -26,7 +30,7 @@ func newVersionCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			info := version.Resolve()
-			if versionNDJSON {
+			if versionJSON {
 				printCompact(info)
 				return nil
 			}
@@ -34,6 +38,6 @@ func newVersionCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&versionNDJSON, "ndjson", false, "emit compact single-line JSON instead of the human line")
+	cmd.Flags().BoolVar(&versionJSON, "json", false, "emit the machine identity {version,commit,date} as one JSON line")
 	return cmd
 }

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -301,10 +302,10 @@ func TestHookInstallPrintFalseIsNotAConflict(t *testing.T) {
 		args     []string
 		wantCode int
 	}{
-		"declining print while forcing installs":  {[]string{"hook", "install", "--print=false", "--force"}, 0},
-		"declining print while asking for ndjson": {[]string{"hook", "install", "--print=false", "--ndjson"}, 0},
-		"print and force really do conflict":      {[]string{"hook", "install", "--print", "--force"}, 2},
-		"print and ndjson really do conflict":     {[]string{"hook", "install", "--print", "--ndjson"}, 2},
+		"declining print while forcing installs": {[]string{"hook", "install", "--print=false", "--force"}, 0},
+		"declining print while asking for json":  {[]string{"hook", "install", "--print=false", "--json"}, 0},
+		"print and force really do conflict":     {[]string{"hook", "install", "--print", "--force"}, 2},
+		"print and json really do conflict":      {[]string{"hook", "install", "--print", "--json"}, 2},
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir, _ := testRepo(t)
@@ -317,5 +318,43 @@ func TestHookInstallPrintFalseIsNotAConflict(t *testing.T) {
 				t.Errorf("%v: the envelope claims a flag was set that the caller turned off:\n%s", tc.args, stderr)
 			}
 		})
+	}
+}
+
+// TestHookInstallJSONFalseIsTheHumanSummary is the version guard's twin on the
+// other command the v1.0.0 rename touched.
+//
+// It pins both halves of the flag's contract in one run: an explicit
+// --json=false installs and prints the human summary at exit 0, and --json on
+// the same repository prints ONE JSON line carrying the action. Reading the
+// flag by MENTION rather than by value would break the first half while leaving
+// the second passing, so the two assertions have to sit together.
+func TestHookInstallJSONFalseIsTheHumanSummary(t *testing.T) {
+	dir, _ := testRepo(t)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "hook", "install", "--json=false")
+	if code != 0 {
+		t.Fatalf("hook install --json=false exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if strings.HasPrefix(strings.TrimSpace(stdout), "{") {
+		t.Errorf("hook install --json=false emitted JSON to a caller who declined it — the flag "+
+			"is being read by MENTION (Changed) instead of by value: %q", stdout)
+	}
+
+	code, stdout, stderr = runGlyph(t, "hook", "install", "--json")
+	if code != 0 {
+		t.Fatalf("hook install --json exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	line := strings.TrimSpace(stdout)
+	if strings.Contains(line, "\n") {
+		t.Fatalf("--json output must be a single line, got:\n%s", line)
+	}
+	var res map[string]any
+	if err := json.Unmarshal([]byte(line), &res); err != nil {
+		t.Fatalf("hook install --json output is not valid JSON: %v\n%s", err, line)
+	}
+	if _, ok := res["action"]; !ok {
+		t.Errorf("compact hook-install JSON is missing the \"action\" field: %s", line)
 	}
 }

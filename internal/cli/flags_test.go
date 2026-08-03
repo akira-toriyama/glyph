@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
@@ -124,5 +125,57 @@ func TestLintStdinFalseIsUsageNotAVerdict(t *testing.T) {
 				t.Errorf("the diagnostic does not name --stdin:\nstderr: %s", stderr)
 			}
 		})
+	}
+}
+
+// TestMachineOutputFlagHasOneSpelling enumerates the flag from the command tree
+// rather than from a list, so a new command that invents a third spelling fails
+// here instead of in a caller's shell.
+//
+// glyph shipped two names for one thing until v1.0.0: `--json` on six commands
+// and `--ndjson` on `version` and `hook install`. `--ndjson` was a misnomer as
+// well as a split — printCompact writes ONE object, never a stream — and the
+// cost landed on callers, who had to remember which subcommand took which:
+// measured before the rename, `version --json` and `bump --ndjson` BOTH exited
+// 2 with `unknown flag`.
+func TestMachineOutputFlagHasOneSpelling(t *testing.T) {
+	var walk func(cmd *cobra.Command, path string)
+	var machine []string
+	walk = func(cmd *cobra.Command, path string) {
+		if f := cmd.Flags().Lookup("ndjson"); f != nil {
+			t.Errorf("%s registers --ndjson. The machine-output flag is spelled --json on every "+
+				"command that has one; --ndjson also names a format glyph does not emit "+
+				"(printCompact writes one object, not a stream)", path)
+		}
+		if f := cmd.Flags().Lookup("json"); f != nil {
+			machine = append(machine, path)
+		}
+		for _, sub := range cmd.Commands() {
+			walk(sub, path+" "+sub.Name())
+		}
+	}
+	root := newRootCmd()
+	walk(root, "glyph")
+
+	// NON-VACUITY. A tree walk that reached nothing would report no --ndjson
+	// anywhere and pass, which is the failure mode this whole file is written
+	// against. The floor is the six commands that always had --json plus the
+	// two renamed into it.
+	const floor = 8
+	if len(machine) < floor {
+		t.Fatalf("the walk found --json on only %d commands (%v); at least %d have it, so the "+
+			"walk is not reaching the command tree and the --ndjson assertion above proved "+
+			"nothing", len(machine), machine, floor)
+	}
+
+	// The two renamed commands are named explicitly: they are the ones the
+	// rename was FOR, and a regression that put --ndjson back on either would
+	// otherwise only show up in the negative assertion, which reads as an
+	// absence rather than as these two commands.
+	for _, want := range []string{"glyph version", "glyph hook install"} {
+		if !slices.Contains(machine, want) {
+			t.Errorf("%s does not register --json; it was renamed from --ndjson in v1.0.0 and "+
+				"must keep the one spelling", want)
+		}
 	}
 }
