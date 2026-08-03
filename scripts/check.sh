@@ -38,6 +38,17 @@
 #   zizmor        (zizmor.yml)          Actions-security lint over .github/. The
 #                                       policy is the fleet's; a shell copy of it
 #                                       would drift against the canonical one.
+#   actionlint    (actionlint.yml)      Workflow syntax, expression types and
+#                                       shellcheck over `run:` blocks. The tool's
+#                                       VERSION and its SHA256 are pinned once in
+#                                       the hub's reusable and are deliberately
+#                                       not caller-tunable, so a local actionlint
+#                                       is whatever nixpkgs currently ships — a
+#                                       green here would be a claim about a
+#                                       different linter, which is the same
+#                                       "green here != green CI" defect the
+#                                       golangci-lint skew line below reports
+#                                       rather than hides.
 #   taplo         (taplo.yml)           TOML formatting. glyph tracks 0 .toml
 #                                       files (measured), so it is a structural
 #                                       no-op here, not a gap.
@@ -72,7 +83,7 @@ cd "$(dirname "$0")/.."
 # here was recorded by `ran`. Keeping it as data rather than as a comment is what
 # makes "a gate silently stopped running" a failure instead of a nicer-looking log.
 MIRRORS='commit-lint dist-gate module-hygiene build vet race-test golangci-lint govulncheck bite mutations fuzz-smoke smoke'
-NOT_MIRRORED='zizmor, taplo, version-preview, task-status, goreleaser, codeql'
+NOT_MIRRORED='zizmor, actionlint, taplo, version-preview, task-status, goreleaser, codeql'
 RAN=''
 ran() { RAN="$RAN $1 "; }
 
