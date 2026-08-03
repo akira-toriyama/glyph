@@ -1,0 +1,25 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 3ed0fd8..0000e63 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -233,6 +233,9 @@ func releaseRun(cmd *cobra.Command) error {
+ 			return herr
+ 		}
+ 	}
++	if cerr := convergeStrays(ctx, gh, owner, repoName, stale); cerr != nil {
++		return cerr
++	}
+ 	params := github.ReleaseParams{
+ 		TagName: tag.String(),
+ 		Target:  target,
+@@ -252,10 +255,6 @@ func releaseRun(cmd *cobra.Command) error {
+ 	}
+ 	noticef("draft release %s %sd (unpublished — the tag is created when a human publishes): %s", tag, action, rel.URL)
+ 
+-	if cerr := convergeStrays(ctx, gh, owner, repoName, stale); cerr != nil {
+-		return cerr
+-	}
+-
+ 	result.URL = rel.URL
+ 	if releaseJSON {
+ 		printCompact(result)
