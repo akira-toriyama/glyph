@@ -2205,6 +2205,61 @@ func TestSinceTagBelowNeedsAVersion(t *testing.T) {
 	}
 }
 
+// TestSinceTagUnboundedWalkRefused: the release-floor guard on the untagged
+// arm (t-354v). A resolved --since-tag with no tag to bound it walks the WHOLE
+// history at one API round-trip per visited commit, and release.yml runs that
+// on every push of a repository that has not released yet — measured on the
+// v0.11.1 rollout, four untagged fleet repositories walked their entire
+// histories. Past sinceTagWalkCap glyph refuses BEFORE the first API call
+// (fail-loud 4, the checkPublishedFloor family: nothing broken, no retry
+// clears it, the escape is in the message). Under the cap the walk runs
+// exactly as before — a skip would fold zero commits and verdict the first
+// release out of existence — and the count excludes the bot authors the walk
+// itself never asks about.
+func TestSinceTagUnboundedWalkRefused(t *testing.T) {
+	dir, _ := testRepo(t)
+	testGit(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
+	// 199 human commits (plus the fixture's root) and 10 bot commits: 200
+	// walk-visible, exactly AT the cap. The bot commits prove the guard counts
+	// what the walk VISITS, not raw history length.
+	for i := range 199 {
+		testCommit(t, dir, "akira-toriyama", fmt.Sprintf(":memo: human commit %d", i))
+	}
+	for i := range 10 {
+		testCommit(t, dir, "fleet-sync[bot]", fmt.Sprintf(":robot: chore(fleet): sync %d", i))
+	}
+	t.Chdir(dir)
+
+	revRange, base, err := sinceTagRange(t.Context(), sinceTagAuto)
+	if err != nil {
+		t.Fatalf("200 walk-visible commits are AT the cap and must still walk (a skip would "+
+			"verdict the first release out of existence), got %v", err)
+	}
+	if revRange != "HEAD" || base == nil || *base != (bump.Version{}) {
+		t.Fatalf("range/base = %q/%v, want HEAD / v0.0.0", revRange, base)
+	}
+
+	// One more visible commit crosses the cap: both resolved forms must refuse
+	// before anything reaches the API — the server holds no routes, so any
+	// request fails the test.
+	testCommit(t, dir, "akira-toriyama", ":memo: the 201st visible commit")
+	srv := walkServer(t, map[string]string{})
+	usePR(t, srv)
+
+	for _, flag := range []string{"--since-tag", "--since-tag=below:v9.9.9"} {
+		code, _, stderr := runGlyph(t, "bump", flag)
+		if code != 4 {
+			t.Fatalf("bump %s over 201 walk-visible untagged commits exited %d, want 4 (refuse "+
+				"the unbounded walk)\nstderr: %s", flag, code, stderr)
+		}
+		for _, want := range []string{"201", "200", "--since-tag=TAG"} {
+			if !strings.Contains(stderr, want) {
+				t.Errorf("the refusal for %s must name the real cost and the escape (missing %q):\n%s", flag, want, stderr)
+			}
+		}
+	}
+}
+
 // The two tests below go straight at mainFootprint rather than through a walk,
 // because both defences they cover are invisible from the outside: each one is
 // the reason a walk does NOT blow up, and a walk that does not blow up looks

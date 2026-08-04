@@ -90,7 +90,10 @@ question auto cannot: at tag-push time the new tag *is* the highest v\* tag, so
 auto would walk an empty range. Strictly below the bound, not "the highest
 other tag" — cutting a v0.8.3 hotfix while v0.9.0 exists resolves v0.8.2. With
 no version tag below the bound (the first release), the walk covers the whole
-history, same as auto before the first tag. The bound must itself be
+history, same as auto before the first tag — bounded in both forms by the
+release-floor cap: past `sinceTagWalkCap` walk-visible commits the walk is
+refused (fail-loud 4) with the escape in the message, because it pays one API
+round-trip per visited commit and nothing else bounds it. The bound must itself be
 version-shaped (usage error otherwise), and the sentinel cannot collide with a
 real tag: git forbids `:` in refnames. This resolution used to be re-derived in
 shell inside `goreleaser.yml` and inherited the refname-sort defect above
@@ -682,7 +685,7 @@ checkWorkflowPins, scanUses, pinProblem, isGlyphRef`,
 | 1 | no release (soft) |
 | 2 | usage — bad invocation or input; fix the args, do not retry |
 | 3 | the gate code — what glyph was asked to judge does not conform |
-| 4 | no trustworthy answer — GitHub API / git / network / IO failure, or a refusal to judge a range or repository state glyph could not read (the incomplete walk, the published floor) |
+| 4 | no trustworthy answer — GitHub API / git / network / IO failure, or a refusal to judge a range or repository state glyph could not read (the incomplete walk, the published floor, the unbounded first-release walk) |
 | 130 | interrupted (SIGINT/SIGTERM), emitted silently |
 
 `internal/core/errors.go: Code, ExitCode`

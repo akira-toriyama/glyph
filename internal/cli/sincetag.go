@@ -149,10 +149,7 @@ func sinceTagRange(ctx context.Context, tagFlag string) (revRange string, base *
 			return "", nil, lerr
 		}
 		if latest == "" {
-			// One API round-trip per commit over everything — a cost the
-			// caller should see named (house rule: no silent unbounded work).
-			warnf("no version tag found — walking the repository's whole history")
-			return "HEAD", &bump.Version{}, nil
+			return wholeHistory(ctx, "no version tag found")
 		}
 		return latest + "..HEAD", &v, nil
 	}
@@ -169,9 +166,8 @@ func sinceTagRange(ctx context.Context, tagFlag string) (revRange string, base *
 		if prev == "" {
 			// The repository's first release: nothing sits below it, and dying
 			// here would fail a job standing behind a tag that already exists.
-			// Same walk, same named cost, as auto before the first tag.
-			warnf("no version tag below %s — walking the repository's whole history", strings.TrimSpace(rest))
-			return "HEAD", &bump.Version{}, nil
+			// Same walk, same guard, as auto before the first tag.
+			return wholeHistory(ctx, fmt.Sprintf("no version tag below %s", strings.TrimSpace(rest)))
 		}
 		return prev + "..HEAD", &v, nil
 	}
@@ -179,6 +175,57 @@ func sinceTagRange(ctx context.Context, tagFlag string) (revRange string, base *
 		return tag + "..HEAD", &v, nil
 	}
 	return tag + "..HEAD", nil, nil
+}
+
+// sinceTagWalkCap bounds the whole-history walk: the most commits an untagged
+// repository may hold before a resolved --since-tag refuses to walk it. The
+// walk pays at least one API round-trip per commit it visits, and in CI the
+// job runs under the Actions GITHUB_TOKEN's 1,000-request hourly budget — 200
+// keeps one speculative first-release walk at a fifth of that budget. A first
+// release large enough to cross it is one the operator should bound by hand.
+const sinceTagWalkCap = 200
+
+// wholeHistory is the untagged arm of a RESOLVED --since-tag (auto with no
+// version tag, below: with none under its bound): the whole history, walked —
+// never skipped, and never unbounded in silence.
+//
+// Not skipped, because this walk is how a first release is computed at all:
+// preview's release-floor guard skips its pending walk on the argument that
+// nothing is unreleased where nothing was ever released, but bump/notes/
+// release are ANSWERING what the first release is, and a skip here folds zero
+// commits, verdicts none, and deletes the first rolling draft forever.
+//
+// Never unbounded, because the walk pays one API round-trip per visited
+// commit and this is the one resolution with no tag to bound it. Distributed
+// fleet-wide, release.yml runs it on every push of a repository that has not
+// released yet — measured on the v0.11.1 rollout, four untagged repositories
+// walked their entire histories (t-354v). So the commits the walk would visit
+// are counted FIRST, from the same log and under the same author exclusion
+// the walk itself applies, and past the cap glyph refuses: a fail-loud
+// CodeAPI refusal in the checkPublishedFloor family — nothing is broken
+// underneath, no retry clears it, and the escape (name the base) is in the
+// message. The count is exact, not estimated, so the refusal names the real
+// cost; the doubled `git log` on this arm is local and cheap.
+func wholeHistory(ctx context.Context, whyNone string) (string, *bump.Version, error) {
+	raws, err := gitsource.Log(ctx, ".", "HEAD")
+	if err != nil {
+		return "", nil, err
+	}
+	walked := 0
+	for _, raw := range raws {
+		if _, excluded := bump.ExcludedFromResolution(raw.Author); !excluded {
+			walked++
+		}
+	}
+	if walked > sinceTagWalkCap {
+		return "", nil, core.APIf(
+			"%s, and walking this repository's whole history would ask GitHub about %d commits, one round-trip each (the cap is %d) — refusing the unbounded walk; name the walk base yourself with --since-tag=TAG (cutting a tag at the intended base first if none exists)",
+			whyNone, walked, sinceTagWalkCap)
+	}
+	// One API round-trip per commit over everything — a cost the caller
+	// should see named (house rule: no silent unbounded work).
+	warnf("%s — walking the repository's whole history (%d commit(s) the walk will ask GitHub about)", whyNone, walked)
+	return "HEAD", &bump.Version{}, nil
 }
 
 // latestVersionTag returns the highest parseable version tag and its parsed

@@ -29,12 +29,14 @@ const (
 	// CodeAPI is the no-trustworthy-answer code. It covers the failures its
 	// name suggests — GitHub API, git, network, IO — and equally a deliberate
 	// REFUSAL to hand down a verdict with nothing broken underneath: an
-	// incomplete walk (`cmd_release.go`, ratified t-pysg) and
-	// `checkPublishedFloor` both return it, because a verdict computed over a
-	// range glyph could not read is worse than no verdict at all. Read as
-	// "glyph has no answer it will stand behind", not as "retry later" — the
-	// two refusals never clear on a retry, they clear when a human moves the
-	// tag or fixes the checkout.
+	// incomplete walk (`cmd_release.go`, ratified t-pysg), `checkPublishedFloor`,
+	// and the unbounded first-release walk (`sincetag.go: wholeHistory`, past
+	// its cap) all return it, because a verdict computed over a range glyph
+	// could not read — or could only read at a cost nobody named — is worse
+	// than no verdict at all. Read as "glyph has no answer it will stand
+	// behind", not as "retry later" — these refusals never clear on a retry,
+	// they clear when a human moves the tag, fixes the checkout, or names the
+	// walk base.
 	CodeAPI Code = 4
 
 	// CodeInterrupted is returned when the user interrupts a run with SIGINT
