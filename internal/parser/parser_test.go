@@ -280,6 +280,13 @@ func TestLint(t *testing.T) {
 			want: []string{RuleUppercaseSubject},
 		},
 		{
+			// The check decodes the first RUNE and asks unicode.IsUpper — a
+			// byte-based reading would let every non-ASCII capital through.
+			name: "non-ASCII uppercase subject",
+			in:   ":bug: Über-fix the crash",
+			want: []string{RuleUppercaseSubject},
+		},
+		{
 			name: "identifier-start subject is a style violation by design",
 			in:   ":truck:! Store becomes Repository",
 			want: []string{RuleUppercaseSubject},

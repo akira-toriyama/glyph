@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode"
 
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/github"
@@ -35,6 +36,12 @@ const (
 // GITHUB_REPOSITORY. With neither there is nothing to ask and no request has
 // gone out, so a missing or malformed value is the caller's input — usage, never
 // an API failure.
+//
+// Interior whitespace is judged here too (ratified 2026-07-22): TrimSpace alone
+// let `a b/c` sail to the wire and come back as a 404 wearing the API code, so
+// the caller was told to retry an input no retry can fix. Same rule as the
+// empty-flag guard (#64): the entrance names what is wrong with caller input,
+// at exit 2, before any request goes out.
 func resolveRepo(flag string) (owner, repo string, err error) {
 	spec := strings.TrimSpace(flag)
 	if spec == "" {
@@ -44,7 +51,8 @@ func resolveRepo(flag string) (owner, repo string, err error) {
 		return "", "", core.Usagef("--repo owner/name is required (or set %s, which GitHub Actions sets for you)", envRepo)
 	}
 	owner, repo, found := strings.Cut(spec, "/")
-	if !found || owner == "" || repo == "" || strings.Contains(repo, "/") {
+	if !found || owner == "" || repo == "" || strings.Contains(repo, "/") ||
+		strings.ContainsFunc(spec, unicode.IsSpace) {
 		return "", "", core.Usagef("--repo %q is not owner/name", spec)
 	}
 	return owner, repo, nil
