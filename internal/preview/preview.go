@@ -156,32 +156,20 @@ func Headline(in Input) string {
 // inline context and not the string this function was handed. A table cell is
 // its own inline context (measured: a stray backtick in one cell forms no span
 // with a backtick in the next), so each pass must see the cell EXACTLY as it
-// will render at the moment it runs:
+// will render at the moment it runs. Flatten-then-markup-then-fence is
+// markdown.Line's to enforce now (t-3f4s), and the measured leaks that forced
+// each half of that order are written down on the builder; this function keeps
+// the one pass that is the TABLE's and not the line's:
 //
-//   - flattening comes first. It is what decides the context: to the escaper a
-//     blank line ends the paragraph, and backticks on either side of one cannot
-//     pair — but the flattened cell is one line, where they can. Escaping first
-//     sized the fence against a context this function then destroyed, and the
-//     cell below was a live mention (measured against GitHub 2026-07-21) from a
-//     subject the escaper had already declared safe:
-//
-//     | a ` b  c `@octocat d` | 🐛 `:bug:` | patch |
-//
-//   - markup neutralization comes before the mention fence, never after. The
-//     fence models the FINAL string; running it first would size a fence and
-//     choose spans against a set of constructs the next step then destroys —
-//     the identical failure mode to escaping before flattening.
-//
-//   - pipe escaping comes last. It adds backslashes, and an escaping backslash
-//     in front of a fence swallows it — markdown.EscapeMentions goes out of its
-//     way to write a separating space where the author put one there. A pipe
-//     escaped inside a code span still renders as a pipe, so nothing is lost by
-//     doing it after.
+//   - pipe escaping comes last, after the fence. It adds backslashes, and an
+//     escaping backslash in front of a fence swallows it — the fence goes out
+//     of its way to write a separating space where the author put one there. A
+//     pipe escaped inside a code span still renders as a pipe, so nothing is
+//     lost by doing it after.
 func escapeCell(s string) string {
-	s = markdown.Flatten(s)
-	s = markdown.EscapeMarkup(s)
-	s = markdown.EscapeMentions(s)
-	return strings.ReplaceAll(s, "|", `\|`)
+	var l markdown.Line
+	l.Prose(s)
+	return strings.ReplaceAll(l.String(), "|", `\|`)
 }
 
 // Render composes the whole comment body.

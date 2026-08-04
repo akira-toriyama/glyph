@@ -133,37 +133,37 @@ var tmpl = template.Must(template.New("notes").Funcs(template.FuncMap{
 //
 // ONCE, OVER THE ASSEMBLED LINE: the mention fence. Mention-safety is a property
 // of the rendered INLINE CONTEXT and not of any field that lands in it. A fence
-// has to be longer than every backtick run it will share a context with (see
-// markdown.EscapeMentions), and these fields share one: escaping them
-// separately sized the subject's fence against the subject alone, so a backtick
-// carried by the SCOPE stole it. That parses and lints clean today — the legacy
-// token grammar's scope slot is [^()]+ — and the assembled line was a live
-// mention:
+// has to be longer than every backtick run it will share a context with, and
+// these fields share one: escaping them separately sized the subject's fence
+// against the subject alone, so a backtick carried by the SCOPE stole it. That
+// parses and lints clean today — the legacy token grammar's scope slot is
+// [^()]+ — and the assembled line was a live mention:
 //
 //	commit  :bug: fix(readme`): credit @alice and @bob for the fix
 //	line    - 🐛 **readme`:** credit `@alice` and `@bob` for the fix (abc1234)
 //	         ^ measured against GitHub 2026-07-21: @alice is LINKED, because the
 //	           scope's stray backtick paired with the fence's opening one.
 //
-// So the fence is the LAST thing that happens to the line, and every byte of the
-// line has passed through it. The order of the two is forced the other way too:
-// the fence models the FINAL string, so neutralization cannot follow it — that
-// would size a fence and choose spans against a construct set the next step then
-// destroys.
+// Both orderings are markdown.Line's to enforce now — this function only says
+// which policy each field gets (the scope is Text, the subject is Prose), and
+// CANNOT run the passes out of order, because the fence is no longer callable:
+// Line runs it inside String, last, over every byte (t-3f4s).
 //
 // The line is assembled here, in Go, rather than field by field in the template
 // above, so that both properties hold by construction. A field added to this
 // function is covered; a field added to the template would not be, which is why
 // there is nothing left in the template to add one to.
 func entryLine(e Entry) string {
-	var b strings.Builder
-	b.WriteString("- " + e.Emoji + " ")
+	var l markdown.Line
+	l.Raw("- " + e.Emoji + " ")
 	if e.Scope != "" {
-		b.WriteString("**" + markdown.EscapeText(markdown.Flatten(e.Scope)) + ":** ")
+		l.Raw("**")
+		l.Text(e.Scope)
+		l.Raw(":** ")
 	}
-	b.WriteString(markdown.EscapeMarkup(markdown.Flatten(e.Subject)))
-	b.WriteString(" (" + shortSHA(e.SHA) + ")")
-	return markdown.EscapeMentions(b.String())
+	l.Prose(e.Subject)
+	l.Raw(" (" + shortSHA(e.SHA) + ")")
+	return l.String()
 }
 
 // Render draws sections as Markdown — the body a release publishes, headed by
