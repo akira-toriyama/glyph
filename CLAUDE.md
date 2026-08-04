@@ -89,9 +89,14 @@ tree that does not compile turns the local gate into a silent no-op.
   Two things to read in its output rather than assume: `lint` moves are a **prediction** (CI lints
   a pull request's own commits, so nothing already merged is re-judged) while `bump` moves are
   **retroactive** (that repo's next release cuts a different version, having changed nothing), and
-  the `✓` line carries every weakening of the claim — unanswered gates make the headline count a
-  floor. It needs `gh` and the fleet cloned as siblings, which is why it is not a `check.sh` gate:
-  check.sh mirrors CI, and no CI job asks this.
+  the `✓` line carries every weakening of the claim — anything that weakens it also stamps the
+  headline count as a **FLOOR**. It needs `gh`, `jq`, a token and the fleet cloned as siblings,
+  which is why it is not a `check.sh` gate: check.sh mirrors CI, and no CI job asks this.
+  Two corrections worth not re-making: the lint differential compares the **finding set**, not the
+  exit code (lint has only two answer codes, so a repo already at `3` could never register a move
+  however much worse the candidate made it — that hid eight repos), and the bump probe runs
+  `--since-tag`, the walk `release.yml` actually performs, not `--range` (they disagree: on canon,
+  `--range` refuses the whole range over one `:robot:` subject while `--since-tag` returns v2.0.1).
 
 ## Generated and pinned data — regenerate, never hand-edit
 
@@ -103,15 +108,15 @@ tree that does not compile turns the local gate into a silent no-op.
   is before committing it.
 - `internal/bump/testdata/fleet-corpus.tsv` is the exception that proves the rule: it has **no
   `-update`, on purpose**, because the failure it defends against is an author who narrows the
-  parser, sees a wall of red and regenerates. It freezes 3,049 real fleet subjects against the
-  verdict each produces, and the number that matters is that **75 of its 83 breaking rows are
-  breaking only because a retired Conventional token carried the `!`** — nine in ten of the
-  fleet's breaking commits hang on one line in `parser.go`, and losing it costs those repos a
-  major they never learn they were owed. `sh scripts/fleet-corpus.sh` refreshes it by
-  **appending** subjects the fleet has written since (and refuses to run if the stored verdicts
-  already disagree with the tree, so a broken tree cannot bake its own output in as truth);
-  changing what a stored subject *means* is a hand edit. Public repos only — six of the
-  thirty-five are private and their subjects are not this repo's to publish.
+  parser, sees a wall of red and regenerates. It freezes the fleet's real commit subjects against
+  the verdict each produces, so the parser's acceptance range stops being a versioning contract
+  nothing holds. `sh scripts/fleet-corpus.sh` refreshes it by **appending** what the fleet has
+  written since (and refuses to run if the stored verdicts already disagree with the tree, so a
+  broken tree cannot bake its own output in as truth); changing what a stored subject *means* is
+  a hand edit. Public repos only — a private repo's subjects are not this repo's to publish.
+  The counts, the floors and the argument live in `internal/bump/fleetcorpus_test.go`'s header
+  and are deliberately not copied here: the file is designed to grow, so any number written down
+  twice is a number that goes stale in one of the two places.
 - `internal/gitmoji/gitmoji.go` pins `CodeCount = 75` and `Load()` rejects a table of any other
   size — adding a code to `rules.json` without bumping it breaks **every** command at startup,
   not one test.

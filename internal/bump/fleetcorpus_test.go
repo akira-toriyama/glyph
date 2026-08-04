@@ -35,11 +35,17 @@ import (
 // version number silently falling, is asserted nowhere. There is no mutation
 // ledger row for that line either.
 //
-// So this gate freezes the fleet's REAL subjects — 3,049 distinct ones, from
-// the public repositories — against the verdict each one produces today. The
-// measurement that justifies the file: 75 of the 83 breaking rows are breaking
-// ONLY because a legacy token carried the `!`. Nine in ten of the fleet's
-// breaking commits hang on that one line.
+// So this gate freezes the fleet's REAL subjects — 3,053 distinct ones, from
+// the public repositories — against the verdict each one produces today.
+//
+// The measurement that justifies the file, stated exactly, because the loose
+// version of it was wrong by 2.3x: 75 of the 83 breaking rows take their
+// breaking-ness ONLY from a legacy `!`, but 42 of those are `:boom:`, which the
+// table already levels major on the gitmoji alone — their version does not move.
+// The commits that actually FALL A LEVEL when the lift is removed number 33.
+// Thirty-three real releases, each one shipping smaller than it owed, is the
+// thing being defended; "nine in ten" was a count of exposure and read as a
+// count of harm.
 //
 // ─── Why there is no -update ─────────────────────────────────────────────────
 // A golden with a rewrite flag defends nothing here. The failure mode is not a
@@ -74,23 +80,24 @@ var corpusPath = filepath.Join("testdata", "fleet-corpus.tsv")
 // individually. Their job is the coarser one: catch a refresh that silently
 // emptied a category. Measured at the corpus committed alongside this file.
 const (
-	minCorpusRows = 3000 // 3049 present
+	minCorpusRows = 3000 // 3053 present
 	minBreaking   = 80   // 83 present
 	minLegacy     = 2100 // 2202 present
-	// The sharpest one, and the measurement that justifies this whole file:
-	// 75 of the 83 breaking rows are breaking ONLY because a retired
-	// Conventional token carried the `!`. Nine in ten of the fleet's breaking
-	// commits depend on the single line in parser.go that lifts it out. Drop
-	// that line and they become non-breaking in silence — which is why a
-	// corpus without one of these rows would be vacuous for the very defect
-	// it was written for.
+	// The sharpest one: rows breaking ONLY because a retired Conventional
+	// token carried the `!`, i.e. the exact path parser.go's lift keeps alive.
+	// Without one of these the gate is vacuous for the defect it exists for.
+	// (Exposure is 75; the subset whose LEVEL actually falls when the lift goes
+	// is 33 — the header says why the difference matters.)
 	minLegacyBangOnly = 70 // 75 present
 )
 
 // newSlotBangRE matches the CURRENT grammar's breaking marker, the `!` that
 // sits before the mandatory space. A row that is breaking without one, and
-// without a footer (the corpus stores subjects, so there are none), took its
-// breaking-ness from the legacy token.
+// without a footer, took its breaking-ness from the legacy token. "Without a
+// footer" was an assumption about the collector until loadCorpus started
+// REJECTING a multi-line raw — a body carrying `BREAKING CHANGE:` would
+// otherwise be representable, loadable, and counted toward minLegacyBangOnly
+// while having no legacy token at all.
 var newSlotBangRE = regexp.MustCompile(`^:[a-z0-9][a-z0-9_+-]*:(\([^()]*\))?! `)
 
 // hasLegacyToken asks the shipped lint rule rather than re-deriving the
@@ -118,8 +125,16 @@ type corpusRow struct {
 	subject  string // Parse's subject: markers and any legacy token stripped
 }
 
+// verdict quotes the SCOPE too. The header used to claim a tab could never split
+// a row because "the two subject fields are quoted", and that was false: a scope
+// salvaged from a retired token comes out of legacyTokenRE's `\([^()]+\)` slot,
+// which admits a tab, so `:bug: fix(a<TAB>b): thing` emitted a seven-field row
+// the loader then rejected. Anything that can carry an arbitrary byte is quoted;
+// level, breaking and gitmoji are drawn from closed vocabularies and cannot.
 func (r corpusRow) verdict() string {
-	return strings.Join([]string{r.level, r.breaking, r.gitmoji, r.scope, strconv.Quote(r.subject)}, "\t")
+	return strings.Join([]string{
+		r.level, r.breaking, r.gitmoji, strconv.Quote(r.scope), strconv.Quote(r.subject),
+	}, "\t")
 }
 
 func (r corpusRow) String() string {
@@ -185,13 +200,29 @@ func loadCorpus(t *testing.T) []corpusRow {
 		if err != nil {
 			t.Fatalf("%s:%d: field 1 is not a quoted Go string: %v", corpusPath, n, err)
 		}
+		scope, err := strconv.Unquote(parts[4])
+		if err != nil {
+			t.Fatalf("%s:%d: field 5 is not a quoted Go string: %v", corpusPath, n, err)
+		}
 		subject, err := strconv.Unquote(parts[5])
 		if err != nil {
 			t.Fatalf("%s:%d: field 6 is not a quoted Go string: %v", corpusPath, n, err)
 		}
+		// A stored subject must be ONE line. The legacy-bang-only control below
+		// reasons that a breaking row with no new-slot `!` took its breaking-ness
+		// from a legacy token, and that only holds while no row can carry a
+		// BREAKING CHANGE footer. git's %s gives one line by construction, so
+		// this can only fail on a hand edit — which is exactly when the control
+		// would otherwise start counting the wrong thing, silently.
+		if strings.ContainsAny(raw, "\n\r") {
+			t.Fatalf("%s:%d: the stored subject spans lines. A corpus row is one commit SUBJECT;\n"+
+				"a body can carry a BREAKING CHANGE footer, which would make a row breaking\n"+
+				"without a legacy token and corrupt the minLegacyBangOnly control.\n  %s",
+				corpusPath, n, strconv.Quote(raw))
+		}
 		rows = append(rows, corpusRow{
 			line: n, raw: raw,
-			level: parts[1], breaking: parts[2], gitmoji: parts[3], scope: parts[4],
+			level: parts[1], breaking: parts[2], gitmoji: parts[3], scope: scope,
 			subject: subject,
 		})
 	}
@@ -214,9 +245,9 @@ func TestFleetCorpus(t *testing.T) {
 	rows := loadCorpus(t)
 	table := loadTable(t)
 
-	// Positive controls FIRST. Every assertion below is about the rows
-	// agreeing; on an empty or gutted corpus they all agree vacuously and the
-	// run is green.
+	// The one control that must run FIRST and must be fatal: it is about the
+	// FILE, and every assertion after it is about rows agreeing — on an empty or
+	// gutted corpus those all agree vacuously and the run is green.
 	if len(rows) < minCorpusRows {
 		t.Fatalf("the corpus holds %d rows, below the floor of %d.\n"+
 			"Rows are only ever appended, so a shrunken corpus means rows were deleted —\n"+
@@ -224,36 +255,60 @@ func TestFleetCorpus(t *testing.T) {
 			len(rows), minCorpusRows)
 	}
 
+	// The category counts are DEFERRED to the end of this function, and are
+	// t.Errorf rather than t.Fatalf, because they are derived from the tree
+	// under test — hasLegacyToken asks the shipped lint rule. Run first and
+	// fatal, they pre-empted the report that matters: deleting legacyTokenRE
+	// outright drops `legacy` to zero, which killed the test before the
+	// row-by-row comparison ever ran, so the narrowing most likely to happen
+	// was reported as "the corpus lost a category" instead of as the 33 real
+	// releases it silently shrinks.
 	var breaking, legacy, legacyBangOnly int
 	for _, r := range rows {
-		if r.breaking == "t" {
-			breaking++
-			if !newSlotBangRE.MatchString(r.raw) {
-				legacyBangOnly++
-			}
-		}
-		if hasLegacyToken(r.raw) {
+		isLegacy := hasLegacyToken(r.raw)
+		if isLegacy {
 			legacy++
 		}
-	}
-	for _, c := range []struct {
-		got, want int
-		what, why string
-	}{
-		{breaking, minBreaking, "breaking rows",
-			"with none, `breaking: true -> false` can never be observed and the check below is decoration"},
-		{legacy, minLegacy, "rows carrying a retired Conventional token",
-			"the legacy path is what the fleet's pre-glyph history is made of; a corpus without it pins nothing about that history"},
-		{legacyBangOnly, minLegacyBangOnly, "rows breaking ONLY via a legacy `!`",
-			"this is the exact path parser.go's `c.Breaking = c.Breaking || lm[3] == \"!\"` keeps alive — without one of these the gate is vacuous for the defect it exists for"},
-	} {
-		if c.got < c.want {
-			t.Fatalf("the corpus holds %d %s, below the floor of %d — %s.", c.got, c.what, c.want, c.why)
+		if r.breaking != "t" {
+			continue
+		}
+		breaking++
+		// "Breaking ONLY via a legacy `!`" is BOTH halves: no `!` in the current
+		// grammar's slot AND a retired token actually present. Counting the
+		// first half alone was a proxy that happens to agree on today's corpus
+		// and would stop agreeing the moment a row acquired breaking-ness some
+		// other way — which is precisely when a positive control must not
+		// quietly keep counting.
+		if isLegacy && !newSlotBangRE.MatchString(r.raw) {
+			legacyBangOnly++
 		}
 	}
+	// Reported after the comparison below — see the note where they are counted.
+	defer func() {
+		for _, c := range []struct {
+			got, want int
+			what, why string
+		}{
+			{breaking, minBreaking, "breaking rows",
+				"with none, `breaking: true -> false` can never be observed and the report above is decoration"},
+			{legacy, minLegacy, "rows carrying a retired Conventional token",
+				"the legacy path is what the fleet's pre-glyph history is made of; a corpus without it pins nothing about that history"},
+			{legacyBangOnly, minLegacyBangOnly, "rows breaking ONLY via a legacy `!`",
+				"this is the exact path parser.go's `c.Breaking = c.Breaking || lm[3] == \"!\"` keeps alive — without one of these the gate is vacuous for the defect it exists for"},
+		} {
+			if c.got < c.want {
+				t.Errorf("the corpus holds %d %s, below the floor of %d — %s.\n"+
+					"This count is derived from the TREE, not the file, so it can also mean the code that\n"+
+					"recognises the category was removed. Read any report above this one first.",
+					c.got, c.what, c.want, c.why)
+			}
+		}
+	}()
 
 	// The exact assertion: every stored verdict, recomputed.
 	var lost []corpusRow
+	var lostLevel []int
+	membership := 0
 	drifted := 0
 	for _, r := range rows {
 		got := classifyCorpusSubject(r.raw, table)
@@ -266,6 +321,29 @@ func TestFleetCorpus(t *testing.T) {
 		// silence, having changed nothing itself.
 		if r.breaking == "t" && got.breaking != "t" {
 			lost = append(lost, r)
+			if got.level != r.level {
+				lostLevel = append(lostLevel, r.line)
+			}
+			continue
+		}
+		// The level column comes from Classify, so the corpus freezes gitmoji
+		// TABLE MEMBERSHIP as well as the parser's acceptance range. That is
+		// deliberate — adding a code changes the version verdict of every fleet
+		// commit already carrying it, which is exactly the kind of change
+		// CodeCount exists to keep deliberate — but the drift must say so.
+		// Reported generically it sends the reader to the parser, and the fleet
+		// has 77 such rows waiting (74 of them `:robot:`, which fleet-sync
+		// writes today), so the wrong-subsystem message was the likely one.
+		if r.level == "!unknown-gitmoji" || got.level == "!unknown-gitmoji" {
+			membership++
+			if membership <= 5 {
+				t.Errorf("%s:%d: the GITMOJI TABLE changed, not the parser — %s is %s now and was %s\n"+
+					"  subject: %s\n"+
+					"  Adding or removing a code in internal/gitmoji/rules.json re-levels every fleet\n"+
+					"  commit already carrying it. That is a real fleet-visible change, so it belongs in\n"+
+					"  the diff: update these rows in the same commit that moves CodeCount.",
+					corpusPath, r.line, r.gitmoji, got.level, r.level, strconv.Quote(r.raw))
+			}
 			continue
 		}
 		drifted++
@@ -273,6 +351,9 @@ func TestFleetCorpus(t *testing.T) {
 			t.Errorf("%s:%d: verdict drifted for a real fleet commit subject\n  subject: %s\n  want:    %s\n  got:     %s",
 				corpusPath, r.line, strconv.Quote(r.raw), r.verdict(), got.verdict())
 		}
+	}
+	if membership > 5 {
+		t.Errorf("%s: %d rows re-levelled by a gitmoji-table change in total (first 5 shown).", corpusPath, membership)
 	}
 	if drifted > 20 {
 		t.Errorf("%s: %d rows drifted in total (first 20 shown).\n"+
@@ -283,18 +364,30 @@ func TestFleetCorpus(t *testing.T) {
 
 	if len(lost) > 0 {
 		var b strings.Builder
-		fmt.Fprintf(&b, "%d commit subject(s) STOPPED being breaking.\n\n", len(lost))
+		fmt.Fprintf(&b, "%d commit subject(s) STOPPED being breaking, and %d of them now take a LOWER LEVEL.\n\n",
+			len(lost), len(lostLevel))
 		b.WriteString("This is the one drift that is never a formatting change. Every fleet repository\n" +
-			"whose unreleased range holds one of these now cuts a SMALLER version than it owes —\n" +
-			"a major landing as a patch, or as no release at all — with no error, no warning, and\n" +
-			"no change of its own. It is the failure this gate was written for.\n\n")
+			"whose unreleased range holds one of the level-losing subjects now cuts a SMALLER\n" +
+			"version than it owes — a major landing as a patch, or as no release at all — with no\n" +
+			"error, no warning, and no change of its own. It is the failure this gate was written\n" +
+			"for.\n\n" +
+			"The two counts differ and the difference is the point: a subject whose gitmoji already\n" +
+			"levels major (`:boom:`) loses its `breaking` flag without losing its version, so the\n" +
+			"larger number is EXPOSURE and the smaller one is HARM. Quote the smaller one.\n\n")
 		for i, r := range lost {
 			if i == 10 {
 				fmt.Fprintf(&b, "  … and %d more\n", len(lost)-10)
 				break
 			}
-			fmt.Fprintf(&b, "  %s:%d  %s\n", corpusPath, r.line, strconv.Quote(r.raw))
+			now := classifyCorpusSubject(r.raw, table)
+			mark := "  "
+			if now.level != r.level {
+				mark = "! "
+			}
+			fmt.Fprintf(&b, "  %s%s:%d  %s -> %s  %s\n",
+				mark, corpusPath, r.line, r.level, now.level, strconv.Quote(r.raw))
 		}
+		b.WriteString("\n  (rows marked ! lose a level; the rest lose only the flag)\n")
 		b.WriteString("\nIf the loss is genuinely intended, say so where it can be argued: change the\n" +
 			"minBreaking / minLegacyBangOnly floors in this file, in the same commit, with the\n" +
 			"reason in the message. Editing the corpus rows alone is not enough and is not meant\n" +
