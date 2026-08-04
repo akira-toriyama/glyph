@@ -10,6 +10,7 @@ import (
 
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/hook"
+	"github.com/akira-toriyama/glyph/internal/testutil"
 )
 
 func TestHookInstallWritesIntoTheGitHooksDir(t *testing.T) {
@@ -235,23 +236,13 @@ func commitFileWith(t *testing.T, dir, path, message string) (string, error) {
 	return runGit(dir, path, "commit", "-q", "-F", f)
 }
 
+// runGit differs from testGit in contract, not fixture: the hook tests assert
+// on git FAILING (the hook blocking a commit), so the error comes back instead
+// of failing the test, and PATH is overridden so the hook resolves the glyph
+// binary the test built.
 func runGit(dir, path string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = append(os.Environ(),
-		"GIT_CONFIG_GLOBAL="+os.DevNull,
-		"GIT_CONFIG_SYSTEM="+os.DevNull,
-		"GIT_AUTHOR_NAME=akira-toriyama",
-		"GIT_AUTHOR_EMAIL=test@example.invalid",
-		"GIT_COMMITTER_NAME=committer",
-		"GIT_COMMITTER_EMAIL=test@example.invalid",
-		// No detached background maintenance racing t.TempDir cleanup —
-		// same pin as testGit, which carries the incident.
-		"GIT_CONFIG_COUNT=3",
-		"GIT_CONFIG_KEY_0=gc.auto", "GIT_CONFIG_VALUE_0=0",
-		"GIT_CONFIG_KEY_1=gc.autoDetach", "GIT_CONFIG_VALUE_1=false",
-		"GIT_CONFIG_KEY_2=maintenance.auto", "GIT_CONFIG_VALUE_2=false",
-		"PATH="+path,
-	)
+	cmd.Env = testutil.GitEnv("akira-toriyama", "PATH="+path)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -274,18 +265,7 @@ func buildGlyph(t *testing.T) string {
 // commitWith runs `git commit` in dir with the given PATH, returning git's
 // combined output so the caller can assert on the hook's diagnostics.
 func commitWith(dir, path, message string) (string, error) {
-	cmd := exec.Command("git", "-C", dir, "commit", "-q", "--allow-empty", "-m", message)
-	cmd.Env = append(os.Environ(),
-		"GIT_CONFIG_GLOBAL="+os.DevNull,
-		"GIT_CONFIG_SYSTEM="+os.DevNull,
-		"GIT_AUTHOR_NAME=akira-toriyama",
-		"GIT_AUTHOR_EMAIL=test@example.invalid",
-		"GIT_COMMITTER_NAME=committer",
-		"GIT_COMMITTER_EMAIL=test@example.invalid",
-		"PATH="+path,
-	)
-	out, err := cmd.CombinedOutput()
-	return string(out), err
+	return runGit(dir, path, "commit", "-q", "--allow-empty", "-m", message)
 }
 
 // TestHookInstallPrintFalseIsNotAConflict: the same Changed-versus-value split

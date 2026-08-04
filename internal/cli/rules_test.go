@@ -9,13 +9,10 @@ import (
 // TestRulesJSON: `glyph rules --json` emits the embedded table as JSON carrying
 // all 75 codes, so a caller can pipe it to jq.
 func TestRulesJSON(t *testing.T) {
-	got := captureOut(t, func() {
-		root := newRootCmd()
-		root.SetArgs([]string{"rules", "--json"})
-		if err := root.Execute(); err != nil {
-			t.Fatalf("glyph rules --json: unexpected error: %v", err)
-		}
-	})
+	code, got, stderr := runGlyph(t, "rules", "--json")
+	if code != 0 {
+		t.Fatalf("glyph rules --json exited %d, want 0\nstderr: %s", code, stderr)
+	}
 	var table struct {
 		Version string           `json:"version"`
 		Codes   []map[string]any `json:"codes"`
@@ -34,13 +31,10 @@ func TestRulesJSON(t *testing.T) {
 // TestRulesDefaultIsMarkdown: with no flag, `glyph rules` prints the Markdown
 // table (a `# ` heading), never JSON — so the JSON branch stays opt-in.
 func TestRulesDefaultIsMarkdown(t *testing.T) {
-	got := captureOut(t, func() {
-		root := newRootCmd()
-		root.SetArgs([]string{"rules"})
-		if err := root.Execute(); err != nil {
-			t.Fatalf("glyph rules: unexpected error: %v", err)
-		}
-	})
+	code, got, stderr := runGlyph(t, "rules")
+	if code != 0 {
+		t.Fatalf("glyph rules exited %d, want 0\nstderr: %s", code, stderr)
+	}
 	if !strings.HasPrefix(got, "# gitmoji") {
 		t.Fatalf("plain `rules` should print a Markdown heading, got: %q", first80(got))
 	}
@@ -51,13 +45,10 @@ func TestRulesDefaultIsMarkdown(t *testing.T) {
 
 // TestRulesMarkdownFlag: `--md` is the explicit form of the default.
 func TestRulesMarkdownFlag(t *testing.T) {
-	got := captureOut(t, func() {
-		root := newRootCmd()
-		root.SetArgs([]string{"rules", "--md"})
-		if err := root.Execute(); err != nil {
-			t.Fatalf("glyph rules --md: unexpected error: %v", err)
-		}
-	})
+	code, got, stderr := runGlyph(t, "rules", "--md")
+	if code != 0 {
+		t.Fatalf("glyph rules --md exited %d, want 0\nstderr: %s", code, stderr)
+	}
 	if !strings.HasPrefix(got, "# gitmoji") {
 		t.Fatalf("`rules --md` should print a Markdown heading, got: %q", first80(got))
 	}

@@ -3,7 +3,6 @@ package gitsource
 import (
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -11,63 +10,30 @@ import (
 	"time"
 
 	"github.com/akira-toriyama/glyph/internal/core"
+	"github.com/akira-toriyama/glyph/internal/testutil"
 )
 
-// gitOrSkip skips the test when git is absent (never on CI, where git is a
-// given — this guards exotic local environments only).
+// The hermetic fixture (pinned identity, real git config held out, background
+// maintenance off — the incidents live on testutil.GitEnv) is testutil's; the
+// local names keep this file's call sites short.
 func gitOrSkip(t *testing.T) {
 	t.Helper()
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not installed")
-	}
+	testutil.GitOrSkip(t)
 }
 
-// gitEnv pins a hermetic git environment: fixed identity, the user's real
-// global/system config held out (a global commit.gpgsign would otherwise break
-// the test commits), and background maintenance off — internal/cli's testGit
-// carries the incident (a CI-only ENOTEMPTY at t.TempDir cleanup); the pin is
-// applied here too so no test fixture leaves a detached git behind.
-func gitEnv(author string) []string {
-	return append(os.Environ(),
-		"GIT_CONFIG_GLOBAL="+os.DevNull,
-		"GIT_CONFIG_SYSTEM="+os.DevNull,
-		"GIT_AUTHOR_NAME="+author,
-		"GIT_AUTHOR_EMAIL=test@example.invalid",
-		"GIT_COMMITTER_NAME=committer",
-		"GIT_COMMITTER_EMAIL=test@example.invalid",
-		"GIT_CONFIG_COUNT=3",
-		"GIT_CONFIG_KEY_0=gc.auto", "GIT_CONFIG_VALUE_0=0",
-		"GIT_CONFIG_KEY_1=gc.autoDetach", "GIT_CONFIG_VALUE_1=false",
-		"GIT_CONFIG_KEY_2=maintenance.auto", "GIT_CONFIG_VALUE_2=false",
-	)
-}
-
-// git runs one git command in dir as author and fails the test on error.
 func git(t *testing.T, dir, author string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = gitEnv(author)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git %v: %v\n%s", args, err, out)
-	}
-	return strings.TrimSpace(string(out))
+	return testutil.Git(t, dir, author, args...)
 }
 
-// newRepo creates a temp repository with one root commit and returns its path.
 func newRepo(t *testing.T) string {
 	t.Helper()
-	gitOrSkip(t)
-	dir := t.TempDir()
-	git(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
-	git(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "-m", ":tada: begin the project")
-	return dir
+	return testutil.NewRepo(t)
 }
 
-// commit adds one empty commit authored by author with the given message.
 func commit(t *testing.T, dir, author, message string) {
 	t.Helper()
-	git(t, dir, author, "commit", "-q", "--allow-empty", "-m", message)
+	testutil.Commit(t, dir, author, message)
 }
 
 // TestLogRange: Log walks BASE..HEAD oldest→newest carrying SHA, author name,
