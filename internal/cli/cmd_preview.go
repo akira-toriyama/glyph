@@ -96,7 +96,7 @@ func previewRun(cmd *cobra.Command) error {
 	// repository has no v* release tag yet" — while `bump --since-tag=auto` on
 	// the SAME checkout walked v0.0.0..HEAD and answered minor. Two commands,
 	// one repository, contradictory answers.
-	latestTag, current, verr := latestVersionTag(ctx)
+	latestTag, current, verr := latestVersionTag(ctx, nil)
 	if verr != nil {
 		return verr
 	}

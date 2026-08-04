@@ -72,11 +72,18 @@ jobs:
 
       - name: release notes via glyph itself
         # The walk base is the tag BEFORE the one being cut: at tag-push time
-        # the new tag is already the highest v*, and walking since itself would
-        # produce empty notes. GITHUB_REF_NAME is the pushed tag (on a
-        # workflow_dispatch re-run it is only correct when dispatched on the
-        # tag ref — dispatching on a branch fails GoReleaser's own tag check
-        # anyway). The file lands in runner.temp, not the checkout: an
+        # the new tag is already the highest v*, so a bare --since-tag would
+        # resolve the tag being cut and walk an empty range. below: resolves
+        # the predecessor INSIDE glyph, where every tag is parsed and compared
+        # as a version. This step used to re-derive that answer in shell over
+        # `git tag --sort=v:refname` — a refname sort, not a version order —
+        # and inherited the exact defect 012bfba removed from the binary: with
+        # a prerelease tag present the predecessor came back wrong, and for
+        # the lowest-sorted tag it came back empty and killed the job behind a
+        # tag that already existed (t-s5n4). GITHUB_REF_NAME is the pushed tag
+        # (on a workflow_dispatch re-run it is only correct when dispatched on
+        # the tag ref — dispatching on a branch fails GoReleaser's own tag
+        # check anyway). The file lands in runner.temp, not the checkout: an
         # untracked file would trip GoReleaser's dirty-state guard.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -86,20 +93,6 @@ jobs:
         # left to -e, which cannot tell a soft no-release from a real failure.
         shell: bash
         run: |
-          # The predecessor is the highest tag strictly BELOW the one being cut,
-          # not merely the highest OTHER tag: cutting a v0.8.3 hotfix while
-          # v0.9.0 exists must walk v0.8.2..v0.8.3, never backwards from v0.9.0.
-          # awk over an ASCENDING version sort gives that, and (unlike
-          # `grep -Fxv | head -1`) it always exits 0, so pipefail cannot kill the
-          # step before the guard below can report a missing predecessor.
-          prev="$(git tag --list 'v*' --sort=v:refname |
-            awk -v cur="$GITHUB_REF_NAME" '$0 == cur { exit } { last = $0 } END { print last }')"
-          if [ -z "$prev" ]; then
-            echo "::error::no v* tag below $GITHUB_REF_NAME — cannot compute the walk base for release notes"
-            exit 1
-          fi
-          echo "release notes walk: $prev..$GITHUB_REF_NAME"
-
           # `glyph notes` exits 1 as a SOFT no-release signal ("nothing
           # release-worthy in this range") — a distinct outcome from a hard
           # failure, and one `set -e` cannot tell apart. Left to -e, a tag cut
@@ -108,10 +101,10 @@ jobs:
           # tag that already exists. Honour the contract instead: 1 ships a
           # release that says so, anything else is a real failure.
           status=0
-          go run ./cmd/glyph notes --since-tag="$prev" > "$RUNNER_TEMP/release-notes.md" || status=$?
+          go run ./cmd/glyph notes --since-tag="below:$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md" || status=$?
           if [ "$status" -eq 1 ]; then
-            echo "::warning::no release-worthy commits in $prev..$GITHUB_REF_NAME — publishing with a placeholder body"
-            printf 'No release-worthy changes since %s.\n' "$prev" > "$RUNNER_TEMP/release-notes.md"
+            echo "::warning::no release-worthy commits below $GITHUB_REF_NAME — publishing with a placeholder body"
+            printf 'No release-worthy changes in %s.\n' "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
           elif [ "$status" -ne 0 ]; then
             echo "::error::glyph notes failed (exit $status)"
             exit "$status"

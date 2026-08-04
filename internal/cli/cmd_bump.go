@@ -201,7 +201,7 @@ func currentVersion(ctx context.Context, flag string, base *bump.Version) (bump.
 	if base != nil {
 		return *base, nil
 	}
-	_, v, err := latestVersionTag(ctx)
+	_, v, err := latestVersionTag(ctx, nil)
 	return v, err
 }
 

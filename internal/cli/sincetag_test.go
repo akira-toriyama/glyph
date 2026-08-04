@@ -2020,7 +2020,7 @@ func TestLatestVersionTagComparesVersionsNotRefnames(t *testing.T) {
 		t.Fatalf("premise gone: git --sort=-v:refname now leads with %q, so this test no longer exercises the refname/version gap", strings.SplitN(first, "\n", 2)[0])
 	}
 
-	tag, v, err := latestVersionTag(t.Context())
+	tag, v, err := latestVersionTag(t.Context(), nil)
 	if err != nil {
 		t.Fatalf("latestVersionTag: %v", err)
 	}
@@ -2048,7 +2048,7 @@ func TestLatestVersionTagBreaksATieOnGitsOrder(t *testing.T) {
 	}
 	t.Chdir(dir)
 
-	tag, _, err := latestVersionTag(t.Context())
+	tag, _, err := latestVersionTag(t.Context(), nil)
 	if err != nil {
 		t.Fatalf("latestVersionTag: %v", err)
 	}
@@ -2077,6 +2077,131 @@ func TestSinceTagAutoWalksFromTheHighestVersion(t *testing.T) {
 	}
 	if base == nil || *base != (bump.Version{Major: 100}) {
 		t.Errorf("version base = %v, want v100.0.0", base)
+	}
+}
+
+// TestSinceTagBelowResolvesThePredecessorAsAVersion: --since-tag=below:TAG is
+// the tag-push question — the new tag is already the highest v* tag, so the
+// walk base is the highest version STRICTLY below it. goreleaser.yml used to
+// re-derive that answer in shell over `git tag --sort=v:refname`, which is a
+// refname sort, not a version order: with a prerelease tag present it handed
+// back the prerelease as the predecessor (measured: prev for v1.0.1 =>
+// v1.0.0-rc1), and the release notes re-folded commits v1.0.0 had already
+// shipped. glyph's own resolver rejects the unparseable prerelease and answers
+// v1.0.0 — only the one commit after it may reach the API, and the answer must
+// equal the tag being cut.
+func TestSinceTagBelowResolvesThePredecessorAsAVersion(t *testing.T) {
+	dir, _ := testRepo(t) // tags v0.1.0
+	testCommit(t, dir, "akira-toriyama", ":bug: an rc-era fix")
+	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0-rc1")
+	testCommit(t, dir, "akira-toriyama", ":bug: the 1.0 fix")
+	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	sha := squashCommit(t, dir, "Fix a crash", 7)
+	testGit(t, dir, "akira-toriyama", "tag", "v1.0.1")
+
+	// The premise: git's version sort really does slot the prerelease between
+	// the two releases, so the retired shell derivation (awk over this exact
+	// listing) picked v1.0.0-rc1 as v1.0.1's predecessor. Without this, the
+	// assertions below could pass on a git whose sort changed, proving nothing.
+	if listing := testGit(t, dir, "akira-toriyama", "tag", "--list", "v*", "--sort=v:refname"); !strings.Contains(listing, "v1.0.0\nv1.0.0-rc1\nv1.0.1") {
+		t.Fatalf("premise gone: git --sort=v:refname no longer orders the prerelease above its release:\n%s", listing)
+	}
+
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(sha): `[` + apiPullRef(7, "2026-07-13T00:00:00Z", sha) + `]`,
+		pullCommitsPath(7):   `[` + apiCommit("a1", "akira-toriyama", ":bug: fix a crash") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=below:v1.0.1")
+	if code != 0 {
+		t.Fatalf("bump --since-tag=below:v1.0.1 exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if stdout != "v1.0.1\n" {
+		t.Fatalf("stdout = %q, want v1.0.1 (a patch step from v1.0.0 — the predecessor by VERSION, not by git's sort)", stdout)
+	}
+
+	code, stdout, stderr = runGlyph(t, "notes", "--since-tag=below:v1.0.1")
+	if code != 0 {
+		t.Fatalf("notes --since-tag=below:v1.0.1 exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "fix a crash") || strings.Contains(stdout, "the 1.0 fix") {
+		t.Fatalf("notes must carry exactly the walk above v1.0.0 — nothing v1.0.0 already shipped:\n%s", stdout)
+	}
+}
+
+// TestSinceTagBelowIsStrictlyBelowNotHighestOther: cutting a v0.8.3 hotfix
+// while v0.9.0 exists must resolve v0.8.2 and walk forward from it — never
+// backwards from v0.9.0. The wrong reading is detectable because it walks an
+// EMPTY range (v0.9.0 is HEAD here) and answers "no release" where the hotfix
+// verdict is due.
+func TestSinceTagBelowIsStrictlyBelowNotHighestOther(t *testing.T) {
+	dir, _ := testRepo(t) // tags v0.1.0
+	testCommit(t, dir, "akira-toriyama", ":bug: the 0.8.2 fix")
+	testGit(t, dir, "akira-toriyama", "tag", "v0.8.2")
+	sha := squashCommit(t, dir, "Fix the hotfix crash", 9)
+	testGit(t, dir, "akira-toriyama", "tag", "v0.9.0")
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(sha): `[` + apiPullRef(9, "2026-07-13T00:00:00Z", sha) + `]`,
+		pullCommitsPath(9):   `[` + apiCommit("h1", "akira-toriyama", ":bug: fix the hotfix crash") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=below:v0.8.3")
+	if code != 0 {
+		t.Fatalf("bump --since-tag=below:v0.8.3 exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if stdout != "v0.8.3\n" {
+		t.Fatalf("stdout = %q, want v0.8.3 (stepping from v0.8.2, the highest version strictly below the bound)", stdout)
+	}
+}
+
+// TestSinceTagBelowFirstVersionWalksTheWholeHistory: nothing sits below the
+// repository's first version tag, and the answer is the same walk auto makes
+// before the first release — the whole history, with the cost named. The shell
+// derivation this replaces answered an EMPTY predecessor here and exited 1:
+// no binaries, no cask, no attestation, behind a tag that already existed.
+func TestSinceTagBelowFirstVersionWalksTheWholeHistory(t *testing.T) {
+	dir, base := testRepo(t)
+	testGit(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
+	sha := squashCommit(t, dir, "Add a menu", 2)
+	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(base): `[]`, // the root :tada: commit: fallback, none
+		commitPullsPath(sha):  `[` + apiPullRef(2, "2026-07-13T00:00:00Z", sha) + `]`,
+		pullCommitsPath(2):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles: add a menu") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "notes", "--since-tag=below:v1.0.0")
+	if code != 0 {
+		t.Fatalf("notes --since-tag=below: on the first version tag exited %d, want 0 — a first release has notes, not a dead job\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "whole history") {
+		t.Fatalf("walking everything is a cost the caller should see named:\n%s", stderr)
+	}
+}
+
+// TestSinceTagBelowNeedsAVersion: the bound is compared UNDER, so it must name
+// a version — and a workflow templating an unset variable produces the bare
+// prefix, which must die as the caller's input (usage, 2) instead of resolving
+// to a tag it did not mean or surfacing as a retryable-looking git failure (4).
+func TestSinceTagBelowNeedsAVersion(t *testing.T) {
+	dir, _ := testRepo(t)
+	t.Chdir(dir)
+
+	for _, bound := range []string{"below:", "below:main", "below:v1.0"} {
+		code, _, stderr := runGlyph(t, "bump", "--since-tag="+bound)
+		if code != 2 {
+			t.Errorf("bump --since-tag=%s exited %d, want 2 (usage)", bound, code)
+			continue
+		}
+		if !strings.Contains(stderr, "version-shaped") {
+			t.Errorf("the error for %q should say a version-shaped tag is needed:\n%s", bound, stderr)
+		}
 	}
 }
 
