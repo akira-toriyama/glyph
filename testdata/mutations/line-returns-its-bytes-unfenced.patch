@@ -1,0 +1,11 @@
+diff --git a/internal/markdown/compose.go b/internal/markdown/compose.go
+index 3a5903b..588737f 100644
+--- a/internal/markdown/compose.go
++++ b/internal/markdown/compose.go
+@@ -81,5 +81,5 @@ func (l *Line) Prose(s string) {
+ // any fragment contributed. Calling it again returns the same bytes: the fence
+ // is a fixed point and the builder is not consumed.
+ func (l *Line) String() string {
+-	return escapeMentions(l.b.String())
++	return l.b.String()
+ }
