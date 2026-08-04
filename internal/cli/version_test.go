@@ -1,39 +1,23 @@
 package cli
 
 import (
-	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
 )
 
-// captureOut runs fn with the package stdout writer redirected to a buffer and
-// returns what was written.
-func captureOut(t *testing.T, fn func()) string {
-	t.Helper()
-	var buf bytes.Buffer
-	old := out
-	out = &buf
-	defer func() { out = old }()
-	fn()
-	return buf.String()
-}
-
 // TestVersionHuman keeps the default (no --json) as a human-readable
 // `glyph <ver>` line so the JSON branch stays opt-in.
 func TestVersionHuman(t *testing.T) {
-	got := captureOut(t, func() {
-		root := newRootCmd()
-		root.SetArgs([]string{"version"})
-		if err := root.Execute(); err != nil {
-			t.Fatalf("glyph version: unexpected error: %v", err)
-		}
-	})
-	if !strings.HasPrefix(got, "glyph ") {
-		t.Fatalf("plain `version` should print a `glyph <ver>` line, got: %q", got)
+	code, stdout, stderr := runGlyph(t, "version")
+	if code != 0 {
+		t.Fatalf("glyph version exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	if strings.HasPrefix(strings.TrimSpace(got), "{") {
-		t.Fatalf("plain `version` should not emit JSON, got: %q", got)
+	if !strings.HasPrefix(stdout, "glyph ") {
+		t.Fatalf("plain `version` should print a `glyph <ver>` line, got: %q", stdout)
+	}
+	if strings.HasPrefix(strings.TrimSpace(stdout), "{") {
+		t.Fatalf("plain `version` should not emit JSON, got: %q", stdout)
 	}
 }
 
@@ -41,16 +25,11 @@ func TestVersionHuman(t *testing.T) {
 // local flag that would not reach it) and emits single-line JSON carrying the
 // version field.
 func TestVersionJSON(t *testing.T) {
-	var e error
-	got := captureOut(t, func() {
-		root := newRootCmd()
-		root.SetArgs([]string{"version", "--json"})
-		e = root.Execute()
-	})
-	if e != nil {
-		t.Fatalf("glyph version --json: unexpected error: %v", e)
+	code, stdout, stderr := runGlyph(t, "version", "--json")
+	if code != 0 {
+		t.Fatalf("glyph version --json exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	line := strings.TrimSpace(got)
+	line := strings.TrimSpace(stdout)
 	if strings.Contains(line, "\n") {
 		t.Fatalf("--json output must be a single line, got:\n%s", line)
 	}
