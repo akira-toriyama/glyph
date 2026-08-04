@@ -905,7 +905,10 @@ changes.
 a pinned tag: `.github/workflows/commit-lint.yml` calls `lint.yml`,
 `version-preview.yml` calls `pr-verdict.yml`. It does NOT consume its own
 `release.yml`. glyph's tags are cut by `goreleaser.yml`, which renders the
-release body with `glyph notes --since-tag` run from the tagged commit — so the
+release body with `glyph notes --since-tag=below:TAG` run from the tagged
+commit (the predecessor resolved by the binary — the workflow once re-derived
+it in shell over git's refname sort and inherited the defect that sort has,
+t-s5n4) — so the
 notes renderer is dogfooded while the rolling-draft path is not exercised
 end to end by anything in this repository. What holds `release.yml` here is
 `internal/workflows` (the install action stays single-source, the binary version

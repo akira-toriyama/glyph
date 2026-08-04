@@ -28,12 +28,26 @@ import (
 // tag — so a release job never duplicates glyph's version-tag policy in shell.
 const sinceTagAuto = "auto"
 
+// sinceTagBelow is the prefix of the OTHER resolved --since-tag form,
+// --since-tag=below:TAG: the walk base is the highest parseable version tag
+// STRICTLY below TAG — the predecessor of a release that already has its tag.
+// It exists for the job auto cannot serve: at tag-push time the new tag is the
+// highest v* tag, so auto resolves to the tag being cut and walks an empty
+// range. goreleaser.yml re-derived this answer in shell (`git tag
+// --sort=v:refname | awk`) and inherited the exact defect latestVersionTag's
+// doc names — git's sort is not a version order — so with a prerelease tag
+// present the predecessor came back wrong, and for the lowest sorted tag it
+// came back EMPTY, failing the job behind a tag that already existed (t-s5n4).
+// The sentinel is unambiguous: git forbids ':' in a refname, so no real tag
+// can spell it.
+const sinceTagBelow = "below:"
+
 // addSinceTagFlag wires --since-tag onto a command. The value is optional
 // (pflag's NoOptDefVal grammar): a bare --since-tag resolves the tag itself; a
 // named tag must be attached with = (--since-tag=v1.2.3).
 func addSinceTagFlag(cmd *cobra.Command, target *string, verb string) {
 	cmd.Flags().StringVar(target, "since-tag", "",
-		verb+" every merged PR's individual (pre-squash) commits on main since a tag (bare --since-tag: the highest v* tag; use --since-tag=TAG to name one)")
+		verb+" every merged PR's individual (pre-squash) commits on main since a tag (bare --since-tag: the highest v* tag; --since-tag=TAG names one; --since-tag=below:TAG resolves the highest version tag strictly below TAG)")
 	cmd.Flags().Lookup("since-tag").NoOptDefVal = sinceTagAuto
 }
 
@@ -68,6 +82,17 @@ func sinceTagArgs(cmd *cobra.Command, args []string) error {
 // bare --since-tag) is not a name and skips the checks.
 func checkSinceTagFlag(tag string) error {
 	if tag == sinceTagAuto {
+		return nil
+	}
+	if rest, ok := strings.CutPrefix(tag, sinceTagBelow); ok {
+		// The bound must NAME a version — a predecessor is found by comparing
+		// under it, and there is no comparing under a tag that is not one. A
+		// workflow templating an unset variable produces the bare prefix, so
+		// (like the empty tag below) it must die here as the caller's input,
+		// never resolve to some tag it did not mean.
+		if _, perr := bump.ParseVersion(strings.TrimSpace(rest)); perr != nil {
+			return core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
+		}
 		return nil
 	}
 	if strings.TrimSpace(tag) == "" {
@@ -111,14 +136,15 @@ func sinceTagInput(ctx context.Context, table *gitmoji.Table, tagFlag, repoFlag 
 // resolution, so the walk base and the step base are the same tag by
 // construction — naming a tag names the release being redone; stepping from a
 // different (higher) tag would version a verdict computed over another range.
-// Auto resolves the highest parseable v* tag; a repository before its first
-// release walks the whole history and steps from v0.0.0. An explicit tag that
-// is not a version still walks, but names no base (nil — the bump falls back
-// to the highest v* tag).
+// Auto resolves the highest parseable v* tag; below:TAG the highest one
+// strictly under TAG's version (the predecessor of a tag already cut); a
+// repository with no such tag walks the whole history and steps from v0.0.0.
+// An explicit tag that is not a version still walks, but names no base (nil —
+// the bump falls back to the highest v* tag).
 func sinceTagRange(ctx context.Context, tagFlag string) (revRange string, base *bump.Version, err error) {
 	tag := strings.TrimSpace(tagFlag)
 	if tag == sinceTagAuto {
-		latest, v, lerr := latestVersionTag(ctx)
+		latest, v, lerr := latestVersionTag(ctx, nil)
 		if lerr != nil {
 			return "", nil, lerr
 		}
@@ -130,6 +156,25 @@ func sinceTagRange(ctx context.Context, tagFlag string) (revRange string, base *
 		}
 		return latest + "..HEAD", &v, nil
 	}
+	if rest, ok := strings.CutPrefix(tag, sinceTagBelow); ok {
+		// checkSinceTagFlag guaranteed the bound parses before anything ran.
+		bound, perr := bump.ParseVersion(strings.TrimSpace(rest))
+		if perr != nil {
+			return "", nil, core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
+		}
+		prev, v, lerr := latestVersionTag(ctx, &bound)
+		if lerr != nil {
+			return "", nil, lerr
+		}
+		if prev == "" {
+			// The repository's first release: nothing sits below it, and dying
+			// here would fail a job standing behind a tag that already exists.
+			// Same walk, same named cost, as auto before the first tag.
+			warnf("no version tag below %s — walking the repository's whole history", strings.TrimSpace(rest))
+			return "HEAD", &bump.Version{}, nil
+		}
+		return prev + "..HEAD", &v, nil
+	}
 	if v, perr := bump.ParseVersion(tag); perr == nil {
 		return tag + "..HEAD", &v, nil
 	}
@@ -139,6 +184,13 @@ func sinceTagRange(ctx context.Context, tagFlag string) (revRange string, base *
 // latestVersionTag returns the highest parseable version tag and its parsed
 // version; tag is empty for a repository before its first release. The one
 // resolver behind both the walk base and the bump base.
+//
+// below, when non-nil, bounds the answer to versions STRICTLY under it — how
+// below:TAG resolves the predecessor of a tag already cut. Strictly below the
+// BOUND, not merely "the highest other tag": cutting a v0.8.3 hotfix while
+// v0.9.0 exists must resolve v0.8.2, never walk backwards from v0.9.0. The
+// bound compares as a version too, so both spellings of the bound's own tag
+// (v1.2.3 beside 1.2.3) fall out of the answer together.
 //
 // EVERY tag is parsed and compared as a VERSION. The order git reports is not
 // one, and this used to take git's first parseable entry: `--sort=-v:refname`
@@ -155,7 +207,7 @@ func sinceTagRange(ctx context.Context, tagFlag string) (revRange string, base *
 // A tie — the same version spelled twice, v1.2.3 beside 1.2.3 — keeps the
 // FIRST in git's order, so the answer stays deterministic without inventing a
 // preference between two tags git considers equally valid.
-func latestVersionTag(ctx context.Context) (tag string, v bump.Version, err error) {
+func latestVersionTag(ctx context.Context, below *bump.Version) (tag string, v bump.Version, err error) {
 	tags, terr := gitsource.Tags(ctx, ".")
 	if terr != nil {
 		return "", bump.Version{}, terr
@@ -163,6 +215,9 @@ func latestVersionTag(ctx context.Context) (tag string, v bump.Version, err erro
 	for _, t := range tags {
 		pv, perr := bump.ParseVersion(t)
 		if perr != nil {
+			continue
+		}
+		if below != nil && pv.Compare(*below) >= 0 {
 			continue
 		}
 		if tag == "" || pv.Compare(v) > 0 {

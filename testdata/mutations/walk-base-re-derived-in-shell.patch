@@ -1,0 +1,16 @@
+diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
+index 2ee88d2..c8a1628 100644
+--- a/.github/workflows/goreleaser.yml
++++ b/.github/workflows/goreleaser.yml
+@@ -100,8 +100,10 @@ jobs:
+           # abort the whole job: no binaries, no cask, no attestation, behind a
+           # tag that already exists. Honour the contract instead: 1 ships a
+           # release that says so, anything else is a real failure.
++          prev="$(git tag --list 'v*' --sort=v:refname |
++            awk -v cur="$GITHUB_REF_NAME" '$0 == cur { exit } { last = $0 } END { print last }')"
+           status=0
+-          go run ./cmd/glyph notes --since-tag="below:$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md" || status=$?
++          go run ./cmd/glyph notes --since-tag="$prev" > "$RUNNER_TEMP/release-notes.md" || status=$?
+           if [ "$status" -eq 1 ]; then
+             echo "::warning::no release-worthy commits below $GITHUB_REF_NAME — publishing with a placeholder body"
+             printf 'No release-worthy changes in %s.\n' "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"

@@ -31,7 +31,7 @@ missing entry, because it is the one place a reader trusts not to be stale.
 
 **Contents**
 
-1. [The release walk](#1-the-release-walk) — walk, walk base, auto, range, fold, participate, merge point, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, walkFacts, Dropped, shortfall, wedge, wedge escape
+1. [The release walk](#1-the-release-walk) — walk, walk base, auto, below:, range, fold, participate, merge point, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, walkFacts, Dropped, shortfall, wedge, wedge escape
 2. [Verdicts and the rolling draft](#2-verdicts-and-the-rolling-draft) — verdict, level, source, reason, target, action, rolling draft, glyph-managed draft, residual draft, stale draft, published floor, pending, incomplete banner
 3. [Convention and lint](#3-convention-and-lint) — rules table, bump lattice, section, rule id, legacy token, merge candidate, generated subject, cleanup
 4. [The render boundary](#4-the-render-boundary) — inline context, phantom span, neutralize, escape, fence, flatten, pipe escape, over-escaping is the safe direction
@@ -82,6 +82,19 @@ attached with `=` (`--since-tag=v1.2.3`); the space form is caught as a usage
 error rather than walking the wrong range.
 `internal/cli/sincetag.go: sinceTagAuto, latestVersionTag, sinceTagArgs`,
 `internal/gitsource/gitsource.go: Tags`
+
+**below:** — the other *resolved* `--since-tag` form
+(`--since-tag=below:TAG`): the highest parseable version tag **strictly below**
+TAG's version — the predecessor of a tag already cut. It answers the tag-push
+question auto cannot: at tag-push time the new tag *is* the highest v\* tag, so
+auto would walk an empty range. Strictly below the bound, not "the highest
+other tag" — cutting a v0.8.3 hotfix while v0.9.0 exists resolves v0.8.2. With
+no version tag below the bound (the first release), the walk covers the whole
+history, same as auto before the first tag. The bound must itself be
+version-shaped (usage error otherwise), and the sentinel cannot collide with a
+real tag: git forbids `:` in refnames. This resolution used to be re-derived in
+shell inside `goreleaser.yml` and inherited the refname-sort defect above
+(t-s5n4). `internal/cli/sincetag.go: sinceTagBelow, sinceTagRange`
 
 **range** — the `TAG..HEAD` revision range string (the code calls it `revRange`,
 and reports it as `source`). `--since-tag` names the **tag alone**; the walk

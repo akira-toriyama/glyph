@@ -214,6 +214,49 @@ func TestReleaseNotesReachGoReleaser(t *testing.T) {
 	}
 }
 
+// gitVersionSort matches git's version sort in either direction — the heart of
+// any shell re-derivation of a version order (`git tag --sort=v:refname`).
+var gitVersionSort = regexp.MustCompile(`--sort=-?v:refname`)
+
+// TestReleaseNotesWalkBaseIsResolvedByGlyph guards where the notes step's walk
+// base comes from: the binary, never shell (t-s5n4).
+//
+// At tag-push time the new tag is already the highest v*, so the base is the
+// highest version tag STRICTLY below it — a version comparison. goreleaser.yml
+// used to re-derive that answer with awk over `git tag --sort=v:refname`, which
+// is a refname sort and not a version order: the exact defect 012bfba removed
+// from the binary's own resolver, hand-copied back in shell, where the Go
+// regression tests could not see it. Measured on tags {v1.0.0-rc1, v1.0.0,
+// v1.0.1}: the shell answered v1.0.0-rc1 as v1.0.1's predecessor (released
+// commits re-folded into the notes), and an EMPTY predecessor for the
+// lowest-sorted tag (exit 1 — no binaries, no cask, no attestation, behind a
+// tag that already existed). `--since-tag=below:` is the binary answering the
+// same question with every tag parsed and compared as a version.
+func TestReleaseNotesWalkBaseIsResolvedByGlyph(t *testing.T) {
+	workflow := repoFile(t, filepath.Join(".github", "workflows", "goreleaser.yml"))
+	body := code(workflow)
+
+	// The affirmative half: the notes walk hands the predecessor question to
+	// the binary, bound to the tag being cut.
+	if !strings.Contains(body, `--since-tag="below:$GITHUB_REF_NAME"`) {
+		t.Error(`goreleaser.yml no longer walks --since-tag="below:$GITHUB_REF_NAME"; the walk base ` +
+			"must be resolved by glyph itself — a shell derivation re-inherits the tag-order defect " +
+			"012bfba removed from the binary (t-s5n4)")
+	}
+
+	// Positive control for the absence below: the pattern must still recognise
+	// the retired derivation, or the guard is asserting nothing.
+	retired := `prev="$(git tag --list 'v*' --sort=v:refname | awk -v cur="$GITHUB_REF_NAME" '...')"`
+	if !gitVersionSort.MatchString(retired) {
+		t.Fatal("canary: gitVersionSort no longer matches the retired shell derivation it exists to keep out")
+	}
+	if loc := gitVersionSort.FindString(body); loc != "" {
+		t.Errorf("goreleaser.yml's executable body reads git's tag sort (%q): that is a refname "+
+			"sort, not a version order — with a prerelease tag present it hands back a wrong or "+
+			"empty walk base; resolve the base inside glyph (--since-tag=below:) instead", loc)
+	}
+}
+
 func TestCompositeActionIsSingleSource(t *testing.T) {
 	raw := repoFile(t, filepath.Join(".github", "actions", "install", "action.yml"))
 
