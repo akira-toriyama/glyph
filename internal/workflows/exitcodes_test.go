@@ -251,8 +251,16 @@ func TestOutOfGoConsumersBranchOnTheContractIntegers(t *testing.T) {
 	prVerdict := filepath.Join(".github", "workflows", "pr-verdict.yml")
 	build := filepath.Join(".github", "workflows", "build.yml")
 	check := filepath.Join("scripts", "check.sh")
+	preflight := filepath.Join("scripts", "fleet-preflight.sh")
 
 	rows := []consumer{
+		// fleet-preflight decides what counts as an ANSWER from a probe, and
+		// therefore which repos it reports as changing. A stale integer there
+		// does not fail loudly — it silently reclassifies a verdict as a broken
+		// probe, or the reverse, in the one instrument a tag is cut on.
+		{preflight, core.CodeOK, shEq},
+		{preflight, core.CodeNoRelease, shEq},
+		{preflight, core.CodeLint, shEq},
 		{lint, core.CodeOK, shEq},
 		{lint, core.CodeLint, jqEq},
 		{release, core.CodeNoRelease, shEq},

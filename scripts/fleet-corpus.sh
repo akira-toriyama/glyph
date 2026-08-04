@@ -77,10 +77,15 @@ while IFS= read -r name; do
     MISSING="$MISSING $name"
     continue
   fi
-  CLONED=$((CLONED + 1))
   # --all so a subject that only ever lived on a released tag still counts;
-  # history is the corpus, not the current branch.
-  git -C "$dir" log --all --format='%s' >> "$WORK/subjects.txt" 2>/dev/null || true
+  # history is the corpus, not the current branch. A repo whose log cannot be
+  # read contributed nothing, so it is MISSING and not CLONED — counting it as
+  # collected is how "29/29 public repositories" comes to mean twenty-eight.
+  if git -C "$dir" log --all --format='%s' >> "$WORK/subjects.txt" 2>/dev/null; then
+    CLONED=$((CLONED + 1))
+  else
+    MISSING="$MISSING $name(unreadable)"
+  fi
 done < "$WORK/public.txt"
 
 # A subject containing a newline cannot survive a line-oriented handoff, and git
@@ -108,9 +113,21 @@ if [ ! -f "$CORPUS" ]; then
 fi
 BEFORE="$(rows "$CORPUS")"
 
+# The append test's status is the whole verdict, so it is captured rather than
+# piped. A pipeline's status is the LAST command's — grep's — and `|| true` then
+# swallowed even that, so a hard FAIL (the refusal that fires when the stored
+# verdicts already disagree with the tree, i.e. exactly the case this script must
+# not paper over) was followed by the ✓ line and exit 0. Measured.
 echo "→ appending unseen subjects (existing verdicts are never touched)"
-GLYPH_FLEET_SUBJECTS="$WORK/subjects.txt" go test ./internal/bump -run TestFleetCorpusAppend -v 2>&1 |
-  grep -E 'appended|nothing to append|refusing to append|FAIL|ok ' || true
+st=0
+GLYPH_FLEET_SUBJECTS="$WORK/subjects.txt" go test ./internal/bump \
+  -run TestFleetCorpusAppend -v > "$WORK/append.log" 2>&1 || st=$?
+grep -E 'appended|nothing to append|refusing to append|FAIL|ok ' "$WORK/append.log" || true
+if [ "$st" -ne 0 ]; then
+  echo "✗ the append step failed (exit $st) — the corpus was NOT refreshed." >&2
+  sed 's/^/    /' "$WORK/append.log" >&2
+  exit "$st"
+fi
 
 AFTER="$(rows "$CORPUS")"
 echo "✓ corpus: $BEFORE → $AFTER rows. Read the diff as the specification it is, then run"

@@ -28,11 +28,23 @@
 #                 it is the reason the range walked is recent authorship rather
 #                 than all history.
 #
-#   bump --range  the release verdict (release.yml). This one IS retroactive:
-#                 it re-reads history that already exists, so a flip here
+#   bump          the release verdict (release.yml). This one IS retroactive:
+#   --since-tag   it re-reads history that already exists, so a flip here
 #                 changes the version number the next release cuts, in a repo
 #                 that did nothing. A moved `bump` line is strictly graver than
 #                 a moved `lint` line, and the report says so.
+#
+#                 `--since-tag` and not `--range`, which is what this script
+#                 asked first and was wrong to. The release job walks merge
+#                 points and expands each back into the pull it merged; a plain
+#                 range walks the commits on the branch. They are not the same
+#                 set and they do not give the same answer — measured on canon,
+#                 where `--range v2.0.0..origin/main` refuses the whole range
+#                 over one `:robot:` subject fleet-sync wrote (a code not in
+#                 glyph's table) while `--since-tag` returns v2.0.1 without
+#                 hesitating. Nine repos were being reported as "bump gate
+#                 unanswered" on the strength of that, and the one thing a
+#                 preflight may not do is describe a gate it is not running.
 #
 # The two are classified INDEPENDENTLY. They fail for unrelated reasons — a
 # repo carrying one unparseable subject makes `bump` refuse the whole range
@@ -93,7 +105,11 @@ for arg in "$@"; do
   case "$arg" in
     --fetch) FETCH=1 ;;
     -h|--help)
-      sed -n '2,60p' "$0" | sed 's/^# \{0,1\}//'
+      # The whole header, not a hand-counted slice of it. `sed -n '2,60p'` cut
+      # off mid-sentence and never reached the Usage block — the one thing
+      # --help exists to print — and it was silently re-truncated every time the
+      # header grew. Stop at the first non-comment line instead.
+      sed -n '2,${/^[^#]/q;p;}' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     -*)
@@ -127,11 +143,24 @@ CANDIDATE="$(cd "$(dirname "$CANDIDATE")" && pwd)/$(basename "$CANDIDATE")"
 
 WORK="$(mktemp -d)"
 BASELINE_WT=''
+# `[ -n "$X" ] && cmd` was wrong here: it is an AND-OR list whose LAST command is
+# the git, so under `set -e` a worktree that will not remove aborts cleanup before
+# `rm -rf` runs and replaces the script's exit status with git's. Measured: rc=128
+# and a leaked temp directory. An `if` has neither property.
 cleanup() {
-  [ -n "$BASELINE_WT" ] && git -C "$REPO_ROOT" worktree remove --force "$BASELINE_WT" >/dev/null 2>&1
+  if [ -n "$BASELINE_WT" ]; then
+    git -C "$REPO_ROOT" worktree remove --force "$BASELINE_WT" >/dev/null 2>&1 || true
+  fi
   rm -rf "$WORK"
 }
-trap cleanup EXIT INT TERM
+# A signal handler that only cleans up does not stop the script — the shell runs
+# the handler and CARRIES ON. Measured: SIGTERM mid-walk deleted the evidence
+# files and the run then printed a normal, fully-caveated `✓ preflight:` line with
+# the entire NOT MEASURED section missing, and exited 0. An interrupted run must
+# not be able to produce a verdict, so re-raise.
+trap cleanup EXIT
+trap 'cleanup; trap - INT;  kill -INT  $$' INT
+trap 'cleanup; trap - TERM; kill -TERM $$' TERM
 
 # The baseline. Building it from a tag rather than downloading the release asset
 # keeps this runnable with no release credentials and, more to the point, makes
@@ -139,6 +168,7 @@ trap cleanup EXIT INT TERM
 # both sides, so a difference in the report is a difference in glyph and not in
 # how the two binaries were produced.
 BASELINE_LABEL=''
+BASE_TAG_NAME=''
 if [ -n "$BASELINE" ]; then
   if [ ! -x "$BASELINE" ]; then
     echo "✗ baseline is not an executable file: $BASELINE" >&2
@@ -159,6 +189,7 @@ else
   BASELINE="$WORK/glyph-baseline"
   ( cd "$BASELINE_WT" && go build -o "$BASELINE" ./cmd/glyph )
   BASELINE_LABEL="$BASE_TAG (built here)"
+  BASE_TAG_NAME="$BASE_TAG"
 fi
 
 # The denominator. `--source` drops forks, `--no-archived` drops the dead. This
@@ -169,6 +200,20 @@ echo "→ reading the fleet from GitHub"
 if ! command -v gh >/dev/null 2>&1; then
   echo "✗ gh is not installed, so the fleet's membership cannot be read." >&2
   echo "  Measuring the clones on this disk instead would report a fraction as a total." >&2
+  exit 1
+fi
+# The bump probe runs the release job's own `--since-tag` walk, which expands
+# each merge point back into the pull it merged over the API. Without a token
+# every one of those returns exit 4, and the run would spend two minutes
+# producing thirty-five "no answer" rows that say nothing about the candidate.
+if [ -z "${GITHUB_TOKEN:-}" ]; then
+  GITHUB_TOKEN="$(gh auth token 2>/dev/null || true)"
+  export GITHUB_TOKEN
+fi
+if [ -z "${GITHUB_TOKEN:-}" ]; then
+  echo "✗ no GITHUB_TOKEN and \`gh auth token\` gave none, so the release-path walk" >&2
+  echo "  (\`bump --since-tag\`) cannot expand merge points and would report no verdict" >&2
+  echo "  for any repo. Run \`gh auth login\`, or export GITHUB_TOKEN." >&2
   exit 1
 fi
 if ! gh repo list "$OWNER" --no-archived --source --limit 200 --json name \
@@ -199,23 +244,82 @@ probe() { # probe <bin> <dir> <subcommand-and-args...>
   printf '%s\t%s\n' "$_st" "$(printf '%s' "$_out" | head -1)"
 }
 
-answered() { # answered <gate> <code>  → 0 when the code is an ANSWER, 1 when the probe broke
-  case "$1:$2" in
-    lint:0|lint:3) return 0 ;;
-    bump:0|bump:1) return 0 ;;
+# probe_lint exists because the exit code is NOT the whole verdict, and treating
+# it as one was this script's worst bug. lint has exactly two answer codes, so a
+# repo already at 3 could never register a move however much worse the candidate
+# made it — and nine of thirty-five were already at 3, eight of which gain
+# violations under the v1.0.0 candidate while being counted as agreeing. The
+# headline "10 would change" was wrong by eight.
+#
+# So the comparable thing is the FINDING SET: every (sha, rule) pair the run
+# reported. The envelope is sieved with `sed -n '/^[{]/,$p'` rather than fed to
+# jq whole, because a lint run that warns before it fails writes annotations
+# ahead of the JSON and jq over the two together is a parse error — the same
+# incident internal/workflows pins for lint.yml (t-sws7).
+probe_lint() { # probe_lint <bin> <dir> <range>
+  _st=0
+  _err="$( cd "$2" && "$1" lint --range "$3" 2>&1 >/dev/null )" || _st=$?
+  _sig=''
+  if [ "$_st" -eq 3 ]; then
+    _sig="$(printf '%s\n' "$_err" | sed -n '/^[{]/,$p' |
+      jq -r '[(.error.details // [])[] | "\(.sha[0:7]):\(.rule)"] | sort | join(" ")' 2>/dev/null || true)"
+    # A code-3 run with no readable detail list is not "no violations"; it is a
+    # signature this script cannot compare. Say so rather than emit an empty
+    # string that would compare equal to a clean run's.
+    [ -n "$_sig" ] || _sig='?unreadable-envelope'
+  fi
+  printf '%s\t%s\n' "$_st" "$_sig"
+}
+
+# An ANSWER is any code glyph reaches by JUDGING. That includes 3 on both gates:
+# lint exits 3 for a convention violation and bump exits 3 for a subject it
+# refuses to classify, and both are verdicts a consumer acts on — comparing them
+# across binaries is the entire point. Only 2 (bad input from this script), 4 (no
+# trustworthy answer) and 130 (interrupted) mean no verdict was produced.
+#
+# Spelled `[ "$status" -eq N ]` rather than as a `case` on "$gate:$code", which
+# is how it was first written. The shape is not cosmetic: internal/workflows'
+# exit-code inventory walks every .sh under scripts/ looking for exactly this
+# pattern, and the `case` form was invisible to it — so glyph's own guard against
+# "a shell consumer branches on a stale integer" did not cover its newest shell
+# consumer. Keep the form, and keep the rows in exitcodes_test.go beside it.
+answered() { # answered <gate> <status>  → 0 when the status is an ANSWER, 1 when the probe broke
+  status="$2"
+  case "$1" in
+    lint) [ "$status" -eq 0 ] || [ "$status" -eq 3 ] ;;
+    bump) [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] ;;
     *) return 1 ;;
   esac
 }
 
 verdict() { # verdict <gate> <code> <stdout> → the human word for a probe result
   case "$1:$2" in
-    lint:0) echo "clean" ;;
-    lint:3) echo "violation" ;;
     bump:0) echo "${3:-?}" ;;
     bump:1) echo "none" ;;
+    bump:3) echo "refused" ;;
     *) echo "exit$2" ;;
   esac
 }
+
+# lintword renders a lint result as its finding COUNT, so a row shows how much
+# worse the candidate is rather than merely that both sides were non-zero.
+lintword() { # lintword <code> <signature>
+  case "$1" in
+    0) echo "clean" ;;
+    3)
+      case "$2" in
+        '?unreadable-envelope') echo "3/unreadable" ;;
+        *) echo "$(printf '%s' "$2" | wc -w | tr -d ' ')v" ;;
+      esac
+      ;;
+    *) echo "exit$1" ;;
+  esac
+}
+
+# All report cells are ASCII. printf's %-Ns pads by BYTES, so a multibyte arrow
+# or em-dash in a cell silently narrows that row against the header — measured
+# at 2 columns per row before this.
+
 
 # ─── Walk ────────────────────────────────────────────────────────────────────
 # Counters are updated in THIS shell, never inside a pipeline: `cmd | while read`
@@ -228,11 +332,14 @@ LINT_OK=0
 BUMP_OK=0
 UNPROBED=0
 LOCAL_HEAD=0
+FETCH_FAILED=0
+BEHIND_PIN=0
+LOST_ANSWER=0
 : > "$WORK/rows"
 : > "$WORK/skips"
 
 # RECENT_CAP bounds the walk in a repo that has never released. Such a repo has
-# no release floor, and dropping it would drop a real consumer — thirteen of
+# no release floor, and dropping it would drop a real consumer — sixteen of
 # them, measured — so the range becomes its last commits instead. The number is
 # a proxy for "recent authorship" and the report PRINTS the range it used, so
 # nobody has to infer which question a row answers.
@@ -258,8 +365,31 @@ while IFS= read -r name; do
     continue
   fi
 
+  # What is this repo ACTUALLY pinned at? The baseline is one tag for the whole
+  # fleet, which is only true when the last rollout finished. It often has not:
+  # this run's own reading of the fleet finds repos several releases back, and
+  # for those the real change is LARGER than any row here — the baseline they
+  # would move from is older than the one being compared against. The script was
+  # already reading these very strings to decide consumership and throwing them
+  # away. Comments are filtered because every glyph reusable ships a permanently
+  # stale commented caller stub (the rollout runbook's trap).
+  pin="$(grep -rhoE "^[^#]*$OWNER/glyph[^@]*@v[0-9]+\.[0-9]+\.[0-9]+" \
+           "$dir/.github/workflows" "$dir/.github/actions" 2>/dev/null |
+         grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -u | tail -1 || true)"
+  if [ -n "$pin" ] && [ -n "$BASE_TAG_NAME" ] && [ "$pin" != "$BASE_TAG_NAME" ]; then
+    BEHIND_PIN=$((BEHIND_PIN + 1))
+    printf '%s\tpinned at %s, not the %s baseline — its real change is larger than its row\n' \
+      "$name" "$pin" "$BASE_TAG_NAME" >> "$WORK/skips"
+  fi
+
+  # A discarded fetch failure is worse than no fetch: passing --fetch removed the
+  # "clones NOT refreshed" caveat from the ✓ line whether or not a single fetch
+  # had actually succeeded, so an offline run read as the freshest possible one.
   if [ -n "$FETCH" ]; then
-    git -C "$dir" fetch --quiet --tags origin >/dev/null 2>&1 || true
+    if ! git -C "$dir" fetch --quiet --tags origin >/dev/null 2>&1; then
+      FETCH_FAILED=$((FETCH_FAILED + 1))
+      printf '%s\tfetch failed, so this row is as stale as the clone was\n' "$name" >> "$WORK/skips"
+    fi
   fi
 
   # Walk the REMOTE's head, not the local one. The question is what the fleet
@@ -301,35 +431,53 @@ while IFS= read -r name; do
   fi
 
   CONSUMERS=$((CONSUMERS + 1))
-  behind="$local_note"
 
-  o_lint="$(probe "$BASELINE"  "$dir" lint --range "$rng")"
-  n_lint="$(probe "$CANDIDATE" "$dir" lint --range "$rng")"
-  o_bump="$(probe "$BASELINE"  "$dir" bump --range "$rng")"
-  n_bump="$(probe "$CANDIDATE" "$dir" bump --range "$rng")"
+  o_lint="$(probe_lint "$BASELINE"  "$dir" "$rng")"
+  n_lint="$(probe_lint "$CANDIDATE" "$dir" "$rng")"
+  # The release job's own invocation, aimed at the repo it belongs to. It reads
+  # the API, which is why a token is required up front rather than discovered
+  # here as thirty-five identical exit 4s.
+  o_bump="$(probe "$BASELINE"  "$dir" bump --since-tag --repo "$OWNER/$name")"
+  n_bump="$(probe "$CANDIDATE" "$dir" bump --since-tag --repo "$OWNER/$name")"
 
   ol_code="${o_lint%%	*}"; nl_code="${n_lint%%	*}"
+  ol_sig="${o_lint#*	}";  nl_sig="${n_lint#*	}"
   ob_code="${o_bump%%	*}"; nb_code="${n_bump%%	*}"
   ob_out="${o_bump#*	}";  nb_out="${n_bump#*	}"
 
   # Per GATE, because the two break independently and a broken one must not
   # take its neighbour's answer down with it.
-  lint_cell='—'
+  # Three cases per gate, not two. The third — the BASELINE answered and the
+  # CANDIDATE cannot — is the gravest verdict this instrument can reach: the
+  # release makes glyph stop computing an answer for a repo that has one today.
+  # It was being filed as a skip, next to "no local clone", while CHANGED stayed
+  # where it was. A regression cannot be routed into the list of things that
+  # were never measured.
+  lint_cell='-'
   if answered lint "$ol_code" && answered lint "$nl_code"; then
     LINT_OK=$((LINT_OK + 1))
-    [ "$ol_code" != "$nl_code" ] && moved_lint=1 || moved_lint=''
-    lint_cell="$(verdict lint "$ol_code" "") → $(verdict lint "$nl_code" "")"
+    # The finding SET, not the exit code. See probe_lint.
+    if [ "$ol_code" != "$nl_code" ] || [ "$ol_sig" != "$nl_sig" ]; then moved_lint=1; else moved_lint=''; fi
+    lint_cell="$(lintword "$ol_code" "$ol_sig") -> $(lintword "$nl_code" "$nl_sig")"
+  elif answered lint "$ol_code"; then
+    moved_lint=1
+    LOST_ANSWER=$((LOST_ANSWER + 1))
+    lint_cell="$(lintword "$ol_code" "$ol_sig") -> NO ANSWER(exit $nl_code)"
   else
     moved_lint=''
     printf '%s\tlint gate unanswered over %s (baseline exit %s, candidate exit %s)\n' \
       "$name" "$rng" "$ol_code" "$nl_code" >> "$WORK/skips"
   fi
 
-  bump_cell='—'
+  bump_cell='-'
   if answered bump "$ob_code" && answered bump "$nb_code"; then
     BUMP_OK=$((BUMP_OK + 1))
     if [ "$ob_code" != "$nb_code" ] || [ "$ob_out" != "$nb_out" ]; then moved_bump=1; else moved_bump=''; fi
-    bump_cell="$(verdict bump "$ob_code" "$ob_out") → $(verdict bump "$nb_code" "$nb_out")"
+    bump_cell="$(verdict bump "$ob_code" "$ob_out") -> $(verdict bump "$nb_code" "$nb_out")"
+  elif answered bump "$ob_code"; then
+    moved_bump=1
+    LOST_ANSWER=$((LOST_ANSWER + 1))
+    bump_cell="$(verdict bump "$ob_code" "$ob_out") -> NO ANSWER(exit $nb_code)"
   else
     moved_bump=''
     printf '%s\tbump gate unanswered over %s (baseline exit %s, candidate exit %s)\n' \
@@ -344,7 +492,7 @@ while IFS= read -r name; do
   CHANGED=$((CHANGED + 1))
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$name" "$moved" "$rng" "$lint_cell" "$bump_cell" \
-    "${behind:+clone-behind-origin}" >> "$WORK/rows"
+    "$local_note" >> "$WORK/rows"
 done < "$WORK/fleet.txt"
 
 # ─── Report ──────────────────────────────────────────────────────────────────
@@ -356,6 +504,12 @@ if [ "$CHANGED" -gt 0 ]; then
     printf '  %-18s %-9s %-22s %-22s %-24s %s\n' "$name" "$moved" "$rng" "$lint" "$bump" "$note"
   done < "$WORK/rows"
   echo
+  if [ "$LOST_ANSWER" -gt 0 ]; then
+    echo "  !! $LOST_ANSWER gate(s) show NO ANSWER under the candidate where the baseline had one."
+    echo "     That is not a changed verdict, it is a LOST one: the release makes glyph stop"
+    echo "     computing a result for a repo that has one today. Read those rows first."
+    echo
+  fi
   echo "  lint moves are a PREDICTION: CI lints a pull request's own commits, so"
   echo "  nothing already merged is re-judged and no existing run turns red. It"
   echo "  says the habit that wrote those commits is still live in that repo."
@@ -375,12 +529,31 @@ fi
 # The ✓ line carries every weakening of the claim, because the ✓ line is what
 # gets read — the same stance scripts/check.sh takes with ALLOW_DIRTY and the
 # golangci-lint skew.
+# A run that probed nothing is not a run that found nothing. UNPROBED used to be
+# incremented at every skip and then never read, so with no clones on disk the
+# script printed a ✓, a flat "0 would change" and exit 0 over a fleet it had
+# measured none of — the exact vacuous green everything else here refuses.
+if [ "$CONSUMERS" -eq 0 ]; then
+  echo "✗ none of the $FLEET_TOTAL fleet repos could be probed ($UNPROBED skipped, each listed above)." >&2
+  echo "  \"0 would change\" over a fleet nothing was measured of is not a result." >&2
+  exit 1
+fi
+
 NOTE=''
 if [ -z "$FETCH" ]; then
   NOTE="$NOTE — clones NOT refreshed, so this is the fleet as of each clone's last fetch (--fetch)"
+elif [ "$FETCH_FAILED" -gt 0 ]; then
+  NOTE="$NOTE — $FETCH_FAILED fetch(es) FAILED, so those rows are as stale as their clone"
 fi
+[ "$UNPROBED" -gt 0 ] && NOTE="$NOTE — $UNPROBED of $FLEET_TOTAL never probed"
 [ "$LOCAL_HEAD" -gt 0 ] && NOTE="$NOTE — $LOCAL_HEAD repo(s) walked at local HEAD (no remote-tracking ref)"
+[ "$BEHIND_PIN" -gt 0 ] && NOTE="$NOTE — $BEHIND_PIN repo(s) pinned BELOW the baseline, so their real change exceeds their row"
+[ "$LOST_ANSWER" -gt 0 ] && NOTE="$NOTE — $LOST_ANSWER gate(s) LOST their answer under the candidate"
 if [ "$LINT_OK" -lt "$CONSUMERS" ] || [ "$BUMP_OK" -lt "$CONSUMERS" ]; then
-  NOTE="$NOTE — gates unanswered (lint $LINT_OK/$CONSUMERS, bump $BUMP_OK/$CONSUMERS), so $CHANGED is a FLOOR"
+  NOTE="$NOTE — gates unanswered (lint $LINT_OK/$CONSUMERS, bump $BUMP_OK/$CONSUMERS)"
 fi
-echo "✓ preflight: $CONSUMERS/$FLEET_TOTAL fleet repos consume glyph and were probed; $CHANGED would change — baseline $BASELINE_LABEL$NOTE"
+case "$NOTE" in *?*) NOTE="$NOTE — so $CHANGED is a FLOOR" ;; esac
+# "N/35 consume glyph and were probed" asserted a fact about the FLEET — that the
+# other 33 do not consume glyph — when the real reduction was "I do not have 33 of
+# the clones". Say what was probed and leave the reasons to the list above.
+echo "✓ preflight: probed $CONSUMERS of $FLEET_TOTAL fleet repos; $CHANGED would change — baseline $BASELINE_LABEL$NOTE"
