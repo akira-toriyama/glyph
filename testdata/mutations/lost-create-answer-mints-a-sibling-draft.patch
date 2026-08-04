@@ -1,0 +1,15 @@
+diff --git a/internal/github/release.go b/internal/github/release.go
+index d4c2279..37bf2d5 100644
+--- a/internal/github/release.go
++++ b/internal/github/release.go
+@@ -95,9 +95,7 @@ func (c *Client) Releases(ctx context.Context, owner, repo string) ([]Release, e
+ func (c *Client) CreateRelease(ctx context.Context, owner, repo string, p ReleaseParams) (Release, error) {
+ 	u := fmt.Sprintf("%s/repos/%s/%s/releases",
+ 		c.baseURL, url.PathEscape(owner), url.PathEscape(repo))
+-	return c.writeRelease(ctx, http.MethodPost, u, p, func() ([]byte, bool) {
+-		return c.createLanded(ctx, owner, repo, p)
+-	})
++	return c.writeRelease(ctx, http.MethodPost, u, p, nil)
+ }
+ 
+ // UpdateRelease rewrites a release by id (PATCH /repos/{owner}/{repo}/releases/{id})

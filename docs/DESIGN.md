@@ -495,7 +495,16 @@ GitHub answers for a repository the credential can no longer see, and on a none
 verdict there is no following write to catch that, so such a run reports the
 draft as *found already gone* instead of *deleted* and says the claim is
 unconfirmed. A 404 on the FIRST attempt is untouched: that one is the id
-vanishing under the run. `--dry-run` computes everything, action included, and
+vanishing under the run. The create has the same lost-answer problem with the
+opposite polarity, and gets the mirrored fix: a draft has no tag for GitHub to
+collide on, so a `POST` whose answer was lost used to be replayed blind and
+every replay minted another identical draft (measured: two from one lost
+answer, four from a spent schedule — t-ph6p). Before each re-send the client
+now probes the release listing for what the earlier copy would have made —
+same intended tag, same draft state — and adopts it as the create's answer;
+the probe is one round trip, best-effort, and a probe that finds nothing or
+cannot look falls back to the replay, with the upsert's convergence still
+deleting any duplicate on the next run. `--dry-run` computes everything, action included, and
 writes nothing. The `--json` verdict also carries the walk's expansion
 provenance (`pulls`: each resolved pull and its participating commit count), so
 how a verdict was assembled can be read back afterwards — by a human reviewing a
