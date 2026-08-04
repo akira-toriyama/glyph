@@ -80,10 +80,24 @@ func (c *Client) Releases(ctx context.Context, owner, repo string) ([]Release, e
 
 // CreateRelease creates a release (POST /repos/{owner}/{repo}/releases) —
 // with Draft true, the rolling draft: no tag exists until a human publishes.
+//
+// The create is the one write here whose blind replay is not idempotent: a
+// draft has no tag for GitHub to collide on, so every re-sent copy of a POST
+// whose answer was lost mints another identical draft — one 503-answered
+// create measured leaving two, and a spent schedule four, for a human to pick
+// through (t-ph6p). So before each re-send, createLanded asks whether the
+// earlier copy already reached its goal, and a found release is adopted as
+// this create's answer instead of a sibling being minted. On a probe that
+// finds nothing — or cannot look — the loop falls back to what it always did:
+// re-send, and let the upsert's convergence delete a duplicate on the next
+// run. The probe narrows that backstop to the runs where glyph could not
+// observe its own work; it does not replace it.
 func (c *Client) CreateRelease(ctx context.Context, owner, repo string, p ReleaseParams) (Release, error) {
 	u := fmt.Sprintf("%s/repos/%s/%s/releases",
 		c.baseURL, url.PathEscape(owner), url.PathEscape(repo))
-	return c.writeRelease(ctx, http.MethodPost, u, p)
+	return c.writeRelease(ctx, http.MethodPost, u, p, func() ([]byte, bool) {
+		return c.createLanded(ctx, owner, repo, p)
+	})
 }
 
 // UpdateRelease rewrites a release by id (PATCH /repos/{owner}/{repo}/releases/{id})
@@ -92,7 +106,7 @@ func (c *Client) CreateRelease(ctx context.Context, owner, repo string, p Releas
 func (c *Client) UpdateRelease(ctx context.Context, owner, repo string, id int64, p ReleaseParams) (Release, error) {
 	u := fmt.Sprintf("%s/repos/%s/%s/releases/%d",
 		c.baseURL, url.PathEscape(owner), url.PathEscape(repo), id)
-	return c.writeRelease(ctx, http.MethodPatch, u, p)
+	return c.writeRelease(ctx, http.MethodPatch, u, p, nil)
 }
 
 // DeleteRelease removes a release by id (DELETE /repos/{owner}/{repo}/releases/{id}).
@@ -133,8 +147,9 @@ func (c *Client) DeleteRelease(ctx context.Context, owner, repo string, id int64
 }
 
 // writeRelease performs one JSON-bodied write and decodes the release GitHub
-// answers with.
-func (c *Client) writeRelease(ctx context.Context, method, u string, p ReleaseParams) (Release, error) {
+// answers with. recovered, when non-nil, is the write's recovery probe — see
+// sendRecovering; nil for the idempotent verbs.
+func (c *Client) writeRelease(ctx context.Context, method, u string, p ReleaseParams, recovered func() ([]byte, bool)) (Release, error) {
 	payload, err := json.Marshal(wireParams(p))
 	if err != nil {
 		return Release{}, core.APIf("github: encoding release params: %v", err)
@@ -144,7 +159,7 @@ func (c *Client) writeRelease(ctx context.Context, method, u string, p ReleasePa
 		return Release{}, core.APIf("github: malformed request url %q: %v", u, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	body, _, err := c.send(req)
+	body, _, err := c.sendRecovering(req, recovered)
 	if err != nil {
 		return Release{}, flatten(err)
 	}
@@ -155,20 +170,69 @@ func (c *Client) writeRelease(ctx context.Context, method, u string, p ReleasePa
 	return Release(raw), nil
 }
 
+// createLanded is CreateRelease's recovery probe: has a release matching what
+// the create asked for — the intended tag, in the requested draft state —
+// appeared? Listing is the only way to see a draft (it has no tag to GET by),
+// and the client's retries are stripped so the probe costs ONE round trip: the
+// calling loop already owns the pacing, and a probe walking its own backoff
+// schedule would multiply an outage's wall clock by the schedule's length.
+// Any failure to look is a miss — the caller re-sends, which is exactly the
+// pre-probe behaviour.
+//
+// The match is deliberately just (tag, draft) and not the body: the upsert
+// only creates when no such release existed, and a replay is byte-identical
+// to the copy that landed (see send: GetBody rewinds the same payload), so a
+// match is the earlier copy's own work — or a concurrent run's identical
+// draft, which is the state the upsert converges on anyway.
+func (c *Client) createLanded(ctx context.Context, owner, repo string, p ReleaseParams) ([]byte, bool) {
+	single := *c
+	single.retryDelays = nil
+	rels, err := single.Releases(ctx, owner, repo)
+	if err != nil {
+		return nil, false
+	}
+	for _, r := range rels {
+		if r.Draft == p.Draft && r.TagName == p.TagName {
+			body, merr := json.Marshal(apiRelease(r))
+			if merr != nil {
+				return nil, false
+			}
+			return body, true
+		}
+	}
+	return nil, false
+}
+
 // send performs one logical request with the standard headers and returns the
 // 2xx body and response headers — the one funnel every read and write goes
 // through. Transient failures (a 5xx, a rate-limit answer, a transport error)
 // are retried on the client's backoff schedule before the failure escapes:
 // GitHub's minor outages answer 503 for tens of seconds, and hard-failing a
 // whole verdict job on one such answer traded a 16-second wait for a wave of
-// manual reruns (t-bjrv). Retrying a write is safe here by the caller's own
-// design — the draft upsert converges on exactly one glyph-managed draft and
-// deletes strays, so even a duplicate create self-heals on the next run.
-// Every failure is classified at this source: a canceled context is the
-// user's own abort (CodeInterrupted), everything else — a transport error, a
-// non-2xx status, or a truncated body — is CodeAPI (behind a statusError
-// carrier the public methods flatten on the way out).
+// manual reruns (t-bjrv). Retrying a write is safe here because every write
+// names its key: a replayed PATCH rewrites the same release, and a replayed
+// DELETE whose first copy already landed is read through goneOnRetry. The one
+// verb that has no key to name — the create, whose key GitHub mints in the
+// answer — recovers a lost answer through sendRecovering's probe instead of
+// replaying blind. Every failure is classified at this source: a canceled
+// context is the user's own abort (CodeInterrupted), everything else — a
+// transport error, a non-2xx status, or a truncated body — is CodeAPI (behind
+// a statusError carrier the public methods flatten on the way out).
 func (c *Client) send(req *http.Request) ([]byte, http.Header, error) {
+	return c.sendRecovering(req, nil)
+}
+
+// sendRecovering is send with a recovery probe for a write whose blind replay
+// could apply twice. After an attempt fails and is judged worth another — and
+// before any backoff is spent on it — recovered is asked whether the earlier
+// copy, whose answer was lost, had in fact reached its goal; a body answered
+// true IS the request's answer, no further copy is sent, and no response
+// headers are carried (a recovered answer has none). The split mirrors
+// statusError.retried / goneOnRetry: only this loop knows an earlier copy went
+// out, and only a caller that knows what it was asking for can recognise the
+// goal — here for the verb whose goal is the resource's presence, as
+// goneOnRetry is for the verb whose goal is its absence (t-ph6p).
+func (c *Client) sendRecovering(req *http.Request, recovered func() ([]byte, bool)) ([]byte, http.Header, error) {
 	req.Header.Set("Accept", acceptJSON)
 	req.Header.Set("X-GitHub-Api-Version", apiVersion)
 	req.Header.Set("User-Agent", userAgent)
@@ -187,6 +251,11 @@ func (c *Client) send(req *http.Request) ([]byte, http.Header, error) {
 		}
 		if attempt >= len(c.retryDelays) || !replayable || !retryable(err) {
 			return nil, nil, noteAttempts(err, attempt+1)
+		}
+		if recovered != nil {
+			if landed, ok := recovered(); ok {
+				return landed, nil, nil
+			}
 		}
 		if werr := waitRetry(req.Context(), retryWait(err, c.retryDelays[attempt])); werr != nil {
 			// The context ended mid-backoff. A cancel is the user's abort and

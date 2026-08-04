@@ -261,6 +261,158 @@ func TestCancelDuringBackoffIsInterrupted(t *testing.T) {
 	}
 }
 
+// TestCreateRecoversItsOwnLostAnswer: the t-ph6p incident. A POST /releases
+// that GitHub applies but answers 503 used to be replayed blind, and a draft
+// has no tag to collide on — so every replay minted another identical draft
+// (measured: two from one lost answer, four from a spent schedule). The create
+// must instead probe for the release its earlier copy made — same intended
+// tag, same draft state — and adopt it: one POST total, no sibling, and the
+// caller receives the landed release as if the answer had never been lost.
+func TestCreateRecoversItsOwnLostAnswer(t *testing.T) {
+	var posts, gets atomic.Int32
+	c := retryClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			// The create lands server-side, but its answer is always lost.
+			posts.Add(1)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprint(w, `{"message":"Service Unavailable"}`)
+		case http.MethodGet:
+			gets.Add(1)
+			fmt.Fprint(w, `[{"id":7,"tag_name":"v1.2.3","draft":true,"html_url":"u7"}]`)
+		}
+	})
+
+	rel, err := c.CreateRelease(context.Background(), "o", "r", ReleaseParams{TagName: "v1.2.3", Draft: true})
+	if err != nil {
+		t.Fatalf("a create whose first copy landed must adopt it, got %v", err)
+	}
+	if rel.ID != 7 || rel.TagName != "v1.2.3" || !rel.Draft || rel.URL != "u7" {
+		t.Fatalf("release = %+v, want the landed draft the probe found", rel)
+	}
+	if got := posts.Load(); got != 1 {
+		t.Fatalf("server saw %d POST(s), want exactly 1 — every extra POST is a sibling draft "+
+			"a human has to pick through", got)
+	}
+	if got := gets.Load(); got != 1 {
+		t.Fatalf("server saw %d GET(s), want exactly 1 probe", got)
+	}
+}
+
+// TestCreateProbeMatchesOnlyItsOwnRequest: the probe adopts a release only
+// when it matches what THIS create asked for — the intended tag, in the
+// requested draft state. A published release under the same tag or a draft
+// under another tag is not the earlier copy's work, so the replay must still
+// go out (and a probe that sees an empty repository likewise).
+func TestCreateProbeMatchesOnlyItsOwnRequest(t *testing.T) {
+	cases := []struct {
+		name    string
+		listing string
+	}{
+		{"an empty listing is a miss", `[]`},
+		{"a published release under the same tag is not the lost draft", `[{"id":9,"tag_name":"v1.2.3","draft":false,"html_url":"u9"}]`},
+		{"a draft under another tag is not the lost draft", `[{"id":8,"tag_name":"v9.9.9","draft":true,"html_url":"u8"}]`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var posts, gets atomic.Int32
+			c := retryClient(t, func(w http.ResponseWriter, r *http.Request) {
+				switch r.Method {
+				case http.MethodPost:
+					if posts.Add(1) == 1 {
+						w.WriteHeader(http.StatusServiceUnavailable)
+						fmt.Fprint(w, `{"message":"Service Unavailable"}`)
+						return
+					}
+					fmt.Fprint(w, `{"id":21,"tag_name":"v1.2.3","draft":true,"html_url":"u21"}`)
+				case http.MethodGet:
+					gets.Add(1)
+					fmt.Fprint(w, tc.listing)
+				}
+			})
+
+			rel, err := c.CreateRelease(context.Background(), "o", "r", ReleaseParams{TagName: "v1.2.3", Draft: true})
+			if err != nil {
+				t.Fatalf("a 503 that clears must still succeed through the replay, got %v", err)
+			}
+			if rel.ID != 21 {
+				t.Fatalf("release = %+v, want the replayed POST's answer, not an adopted stranger", rel)
+			}
+			if got := posts.Load(); got != 2 {
+				t.Fatalf("server saw %d POST(s), want 2 — the probe missed, so the replay must go out", got)
+			}
+			if got := gets.Load(); got != 1 {
+				t.Fatalf("server saw %d GET(s), want exactly 1 probe", got)
+			}
+		})
+	}
+}
+
+// TestCreateProbeSpendsOneAttempt: the probe is best-effort by design — ONE
+// round trip per failed POST, no backoff schedule of its own. A probe that
+// walked the client's schedule would multiply an outage's wall clock by the
+// schedule's length while hammering an API that is already answering 503; a
+// probe that cannot look is simply a miss, and the loop falls back to the
+// replay it would have sent anyway (the pre-probe behaviour, duplicates and
+// all, with the upsert's convergence still the backstop).
+func TestCreateProbeSpendsOneAttempt(t *testing.T) {
+	t.Run("a blind probe falls back to the replay", func(t *testing.T) {
+		var posts, gets atomic.Int32
+		c := retryClient(t, func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodPost:
+				if posts.Add(1) <= 2 {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					fmt.Fprint(w, `{"message":"Service Unavailable"}`)
+					return
+				}
+				fmt.Fprint(w, `{"id":5,"tag_name":"v2.0.0","draft":true,"html_url":"u5"}`)
+			case http.MethodGet:
+				gets.Add(1)
+				w.WriteHeader(http.StatusServiceUnavailable)
+				fmt.Fprint(w, `{"message":"Service Unavailable"}`)
+			}
+		})
+
+		rel, err := c.CreateRelease(context.Background(), "o", "r", ReleaseParams{TagName: "v2.0.0", Draft: true})
+		if err != nil {
+			t.Fatalf("a 503 that clears must succeed, got %v", err)
+		}
+		if rel.ID != 5 {
+			t.Fatalf("release = %+v, want the replayed POST's answer", rel)
+		}
+		if got := posts.Load(); got != 3 {
+			t.Fatalf("server saw %d POST(s), want 3 (two lost answers, then success)", got)
+		}
+		if got := gets.Load(); got != 2 {
+			t.Fatalf("server saw %d GET(s), want 2 — one probe attempt per failed POST; more means "+
+				"the probe is walking its own retry schedule", got)
+		}
+	})
+	t.Run("a create that never lands still gives up on schedule", func(t *testing.T) {
+		var posts, gets atomic.Int32
+		c := retryClient(t, func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodPost:
+				posts.Add(1)
+			case http.MethodGet:
+				gets.Add(1)
+			}
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprint(w, `{"message":"Service Unavailable"}`)
+		})
+
+		_, err := c.CreateRelease(context.Background(), "o", "r", ReleaseParams{TagName: "v2.0.0", Draft: true})
+		wantAPIError(t, err, "gave up after 4 attempts")
+		if got := posts.Load(); got != 4 {
+			t.Fatalf("server saw %d POST(s), want the schedule's 4", got)
+		}
+		if got := gets.Load(); got != 3 {
+			t.Fatalf("server saw %d GET(s), want 3 — one probe attempt before each replay", got)
+		}
+	})
+}
+
 // TestRetryWaitHonorsRetryAfter pins the wait arithmetic: the server's own
 // Retry-After wins over the schedule when parseable, is capped so an
 // outage-mode gateway naming minutes cannot hang a job, and anything
@@ -330,7 +482,10 @@ func TestRetriedDeleteAcceptsTheAlreadyGone404(t *testing.T) {
 		{"a delete that never lands still gives up", []int{http.StatusServiceUnavailable}, deleteRelease, "gave up after 4 attempts", false, 4},
 		{"a retried 404 on a read still fails", []int{http.StatusServiceUnavailable, http.StatusNotFound}, listReleases, "Not Found", false, 2},
 		{"a retried 404 on an update still fails", []int{http.StatusServiceUnavailable, http.StatusNotFound}, updateRelease, "Not Found", false, 2},
-		{"a retried 404 on a create still fails", []int{http.StatusServiceUnavailable, http.StatusNotFound}, createRelease, "Not Found", false, 2},
+		// The create's middle hit is its recovery probe (one GET between the
+		// 503-answered POST and its replay); the probe's own 404 is a miss, so
+		// the replayed POST still goes out and its 404 still fails.
+		{"a retried 404 on a create still fails", []int{http.StatusServiceUnavailable, http.StatusNotFound, http.StatusNotFound}, createRelease, "Not Found", false, 3},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
