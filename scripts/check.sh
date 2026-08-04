@@ -19,6 +19,7 @@
 # ─── MIRRORED ────────────────────────────────────────────────────────────────
 #   commit-lint     commit-lint.yml → lint.yml   `glyph lint --range`
 #   dist-gate       build.yml `dist-gate`        `scripts/dist-gate.sh origin/main`
+#   golden-gate     build.yml `golden-gate`      `scripts/golden-gate.sh origin/main`
 #   module-hygiene  go-ci.yml (via build.yml's `ci`) `go mod tidy -diff`, verify
 #   build           go-ci.yml                    `go build ./...`
 #   vet             go-ci.yml                    `go vet ./...`
@@ -82,7 +83,7 @@ cd "$(dirname "$0")/.."
 # MIRRORS is the reconciliation set: the run refuses its ✓ line unless every name
 # here was recorded by `ran`. Keeping it as data rather than as a comment is what
 # makes "a gate silently stopped running" a failure instead of a nicer-looking log.
-MIRRORS='commit-lint dist-gate module-hygiene build vet race-test golangci-lint govulncheck bite mutations fuzz-smoke smoke'
+MIRRORS='commit-lint dist-gate golden-gate module-hygiene build vet race-test golangci-lint govulncheck bite mutations fuzz-smoke smoke'
 NOT_MIRRORED='zizmor, actionlint, taplo, version-preview, task-status, goreleaser, codeql'
 RAN=''
 ran() { RAN="$RAN $1 "; }
@@ -131,6 +132,16 @@ ran commit-lint
 echo "→ dist-gate (does a distribution-layer change carry evidence?)"
 sh scripts/dist-gate.sh origin/main
 ran dist-gate
+
+# The golden gate build.yml runs on every pull request: a diff that rewrites a
+# golden (testdata/*.golden.*, docs/gitmoji-table.md) must carry a
+# `Golden-change: <reason>` trailer on every non-merge commit — `-update`
+# regenerates a golden from whatever the code now produces, so the trailer is
+# what forces the diff to be read as the spec change it is. Same script, same
+# base, same committed-history stance as dist-gate above.
+echo "→ golden-gate (does a golden rewrite state its reason?)"
+sh scripts/golden-gate.sh origin/main
+ran golden-gate
 
 # Module hygiene: fail if go.mod/go.sum are not tidy, and verify the downloaded
 # dependencies match go.sum. `-diff` prints the needed changes and exits non-zero
