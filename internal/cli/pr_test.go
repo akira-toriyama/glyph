@@ -234,11 +234,24 @@ func TestPRMalformedCommitIsLint(t *testing.T) {
 }
 
 // TestPRMalformedRepoIsUsage: a --repo that is not owner/name is caller input,
-// caught before any request — usage (2), not an API failure.
+// caught before any request — usage (2), not an API failure. The server proves
+// the "before any request" half: it fails the test on ANY request, so a spec
+// that leaks past the entrance is caught as the wire call it would have made.
+// The whitespace rows are the ratified 2026-07-22 shape: `a b/c` used to sail
+// through TrimSpace-only checking and come back as a 404 wearing the API code.
 func TestPRMalformedRepoIsUsage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("a malformed --repo reached the wire: %s %s", r.Method, r.URL.Path)
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	usePR(t, srv)
 	dir, _ := testRepo(t)
 	t.Chdir(dir)
-	for _, spec := range []string{"notaslash", "a/b/c", "/leading", "trailing/"} {
+	for _, spec := range []string{
+		"notaslash", "a/b/c", "/leading", "trailing/",
+		"a b/c", "a/b c", "a\tb/c", "a/b\nc",
+	} {
 		if code, _, _ := runGlyph(t, "bump", "--pr", "7", "--repo", spec); code != 2 {
 			t.Fatalf("bump --pr --repo %q exited %d, want 2 (usage)", spec, code)
 		}
