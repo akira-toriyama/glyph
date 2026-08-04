@@ -267,12 +267,12 @@ func TestEscapeMentions(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := EscapeMentions(c.in)
+			got := escapeMentions(c.in)
 			if got != c.want {
-				t.Errorf("EscapeMentions(%q) = %q, want %q", c.in, got, c.want)
+				t.Errorf("escapeMentions(%q) = %q, want %q", c.in, got, c.want)
 			}
-			if again := EscapeMentions(got); again != got {
-				t.Errorf("EscapeMentions is not idempotent: EscapeMentions(%q) = %q", got, again)
+			if again := escapeMentions(got); again != got {
+				t.Errorf("escapeMentions is not idempotent: escapeMentions(%q) = %q", got, again)
 			}
 		})
 	}
@@ -283,11 +283,11 @@ func TestEscapeMentions(t *testing.T) {
 // slipping past unnoticed, and so nobody re-derives them as new discoveries.
 //
 // BOTH ARE NOW CLOSED AT THE CALLER, and neither reaches a release body or a PR
-// comment any more: notes.entryLine and preview.escapeCell run EscapeMarkup
+// comment any more: notes.entryLine and preview.escapeCell run escapeMarkup
 // first, which kills the construct in case 1 and escapes the ampersand in case
 // 2 (see internal/markdown/escape.go, and its measured before/after table).
 // What this test still pins is the PRECONDITION that arrangement rests on —
-// EscapeMentions is exact only on input where no construct outranks a backtick,
+// escapeMentions is exact only on input where no construct outranks a backtick,
 // so a third sink that calls it on raw author text inherits both holes.
 //
 //  1. codeSpans knows only backticks. An inline construct that legally swallows
@@ -318,8 +318,8 @@ func TestEscapeMentionsKnownLimitations(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := EscapeMentions(c.in); got != c.in {
-				t.Errorf("EscapeMentions(%q) = %q; the limitation moved — re-run the probe and update the docs", c.in, got)
+			if got := escapeMentions(c.in); got != c.in {
+				t.Errorf("escapeMentions(%q) = %q; the limitation moved — re-run the probe and update the docs", c.in, got)
 			}
 		})
 	}
@@ -436,13 +436,13 @@ func FuzzEscapeMentionsNeverLeaksAMention(f *testing.F) {
 	f.Add("cc @0_@0_ now")
 	f.Add("")
 	f.Fuzz(func(t *testing.T, s string) {
-		got := EscapeMentions(s)
+		got := escapeMentions(s)
 
-		if again := EscapeMentions(got); again != got {
-			t.Fatalf("EscapeMentions(%q) = %q, not a fixed point: re-escaping gives %q", s, got, again)
+		if again := escapeMentions(got); again != got {
+			t.Fatalf("escapeMentions(%q) = %q, not a fixed point: re-escaping gives %q", s, got, again)
 		}
 		if !isSubsequence(s, got) {
-			t.Fatalf("EscapeMentions(%q) = %q dropped or rewrote author bytes; it may only add delimiters", s, got)
+			t.Fatalf("escapeMentions(%q) = %q dropped or rewrote author bytes; it may only add delimiters", s, got)
 		}
 		if repeatsARunLength(s) {
 			return // the input may hold a code span; the local rules below cannot judge it
@@ -451,7 +451,7 @@ func FuzzEscapeMentionsNeverLeaksAMention(f *testing.F) {
 		for _, at := range linkableAtSigns(got) {
 			before, after := backticksBefore(got, at.start), backtickRun(got, at.end)
 			if before == 0 {
-				t.Fatalf("EscapeMentions(%q) = %q left %q unshielded: GitHub links an at-sign with no backtick in front of it",
+				t.Fatalf("escapeMentions(%q) = %q left %q unshielded: GitHub links an at-sign with no backtick in front of it",
 					s, got, got[at.start:at.end])
 			}
 			// A run longer than anything the author wrote is a fence glyph put
@@ -460,7 +460,7 @@ func FuzzEscapeMentionsNeverLeaksAMention(f *testing.F) {
 			// closing fence, shows up as a length mismatch — and the latter is
 			// a live mention, because a span delimiter does not shield.
 			if (before > longest || after > longest) && before != after {
-				t.Fatalf("EscapeMentions(%q) = %q fenced %q with %d backticks in front and %d behind; the fence must be balanced",
+				t.Fatalf("escapeMentions(%q) = %q fenced %q with %d backticks in front and %d behind; the fence must be balanced",
 					s, got, got[at.start:at.end], before, after)
 			}
 		}
@@ -635,7 +635,7 @@ func TestEscapeMentionsFencesNoPaddedSpan(t *testing.T) {
 		"cc @alice and @bob", "`code`@octocat", "@octocat`code`", "a ` b ` c ` and @octocat",
 		"cc @user@octocat now", "対応は@v1へ", "the alias (@name) syntax",
 	} {
-		got := EscapeMentions(in)
+		got := escapeMentions(in)
 		for _, sp := range codeSpans(got) {
 			span := got[sp[0]:sp[1]]
 			if backtickRun(span, 0) <= longestBacktickRun(in) {
@@ -643,7 +643,7 @@ func TestEscapeMentionsFencesNoPaddedSpan(t *testing.T) {
 			}
 			content := strings.Trim(span, "`")
 			if strings.HasPrefix(content, " ") || strings.HasSuffix(content, " ") {
-				t.Errorf("EscapeMentions(%q) produced the space-padded fence %q, which renders one space short", in, span)
+				t.Errorf("escapeMentions(%q) produced the space-padded fence %q, which renders one space short", in, span)
 			}
 		}
 	}

@@ -4,15 +4,18 @@
 // each function neutralizes one specific GitHub rendering behavior that turns
 // honest commit text into something it never meant to be.
 //
-// The package is two files, and the split is a pipeline the callers run in
-// order. escape.go comes FIRST and works per field: Flatten makes the value one
-// line, then EscapeMarkup (for prose) or EscapeText (for a plain-text field
-// like the scope) disarms the constructs that can inject structure, point
-// somewhere the author never wrote, or delete the author's own words. This file
-// comes LAST and works over the ASSEMBLED line: EscapeMentions fences the
-// would-be @mentions, which is a property of the whole inline context and of no
-// field in it. Neither order is interchangeable, and both reasons are written
-// down where the callers make the calls.
+// The pipeline is three files. escape.go comes FIRST and works per field:
+// flatten makes the value one line, then escapeMarkup (for prose) or escapeText
+// (for a plain-text field like the scope) disarms the constructs that can
+// inject structure, point somewhere the author never wrote, or delete the
+// author's own words. This file comes LAST and works over the ASSEMBLED line:
+// escapeMentions fences the would-be @mentions, which is a property of the
+// whole inline context and of no field in it. Neither order is interchangeable
+// — and no caller gets to choose one: compose.go's Line builder, the package's
+// only exported surface, runs the pipeline itself and is where both reasons are
+// written down. The order used to be a doc-comment contract on each call site,
+// which held for exactly as long as every future call site would read it
+// (ratified out 2026-07-22, t-3f4s).
 //
 // Everything here is a MODEL of a renderer no unit test can call. Every rule
 // below was measured against GitHub's own renderer (`gh api -X POST /markdown`,
@@ -91,7 +94,7 @@ const username = `[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?`
 // The backtick exclusion is load-bearing twice over. Every stretch this pattern
 // is run over is PROSE (code spans are skipped whole), so every backtick it can
 // see is literal text — exactly the shape GitHub refuses. And it is what makes
-// EscapeMentions a fixed point: the escaper's own fence is a backtick glued to
+// escapeMentions a fixed point: the escaper's own fence is a backtick glued to
 // the at-sign, so a second pass matches nothing of what the first pass wrote.
 // The one backtick that does NOT suppress is a code span's closing delimiter
 // ("`code`@octocat" IS a live mention — after rendering, the at-sign starts a
@@ -113,7 +116,7 @@ const username = `[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?`
 // rebuilds the token from group 2 and needs to know where the at-sign starts.
 var mention = regexp.MustCompile("(^|[^A-Za-z0-9`])@(" + username + "(?:@" + username + ")*)")
 
-// EscapeMentions neutralizes would-be @mentions in s by wrapping each one in a
+// escapeMentions neutralizes would-be @mentions in s by wrapping each one in a
 // backtick fence: "callers to @v1" becomes "callers to `@v1`", which GitHub
 // renders as the code token @v1 and links to nobody. Left raw, such a token in
 // a release body silently lists a stranger under the release's Contributors,
@@ -158,7 +161,7 @@ var mention = regexp.MustCompile("(^|[^A-Za-z0-9`])@(" + username + "(?:@" + use
 // Not every at-sign is a mention: an email (dev@example.com), a pinned ref
 // (actions/checkout@v5) and a lone at-sign ("meet @ noon") stay raw, exactly as
 // GitHub itself treats them.
-func EscapeMentions(s string) string {
+func escapeMentions(s string) string {
 	if !strings.Contains(s, "@") {
 		return s
 	}
@@ -255,10 +258,10 @@ func longestBacktickRun(s string) int {
 //
 // Inline parsing is per BLOCK, so the scan runs per paragraph: a code span
 // cannot reach across a blank line, and neither can the backtick bookkeeping
-// below. Today's callers pass a single line (a commit subject, a scope), so the
-// split is unreachable from here — but this scan decides where mentions stay
-// live, and a safety boundary should not owe its correctness to a caller's line
-// discipline.
+// below. Line flattens every author-supplied field, so the split is unreachable
+// from there — but this scan decides where mentions stay live, and a safety
+// boundary should not owe its correctness to the builder's flattening any more
+// than it used to owe it to a caller's line discipline.
 //
 // THIS SCAN KNOWS ONLY BACKTICKS, AND THAT IS A PRECONDITION ON ITS INPUT, not
 // an approximation. CommonMark has other inline constructs that are parsed
@@ -276,10 +279,12 @@ func longestBacktickRun(s string) int {
 //
 // The fix is not here. Teaching this scan those grammars would be a renderer
 // inside an escaper, and — as the fourth line shows — a scanner that learned
-// autolinks and raw HTML would STILL have been wrong. EscapeMarkup removes the
+// autolinks and raw HTML would STILL have been wrong. escapeMarkup removes the
 // competing constructs before this runs (see escape.go), which makes the
-// backtick-only model exact by construction instead of nearly right. Both
-// callers do that; a third one must too.
+// backtick-only model exact by construction instead of nearly right. Line is
+// what holds that precondition now: Prose runs escapeMarkup before the fence
+// ever sees the bytes, and nothing outside this package can reach the fence any
+// other way.
 //
 // The blindness in the other direction — fencing a mention inside an autolinked
 // URL — is cosmetic and stays.

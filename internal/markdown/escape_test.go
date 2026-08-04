@@ -53,7 +53,7 @@ import (
 //	                                the ':', never in front of the token
 //
 // THE FOUR LIVE MENTIONS THIS CLOSES, each measured before and after the whole
-// pipeline (Flatten -> EscapeMarkup -> EscapeMentions) inside a real notes line:
+// pipeline (flatten -> escapeMarkup -> escapeMentions) inside a real notes line:
 //
 //	fix <http://a/`x> so @octocat can `see` it        LIVE -> inert
 //	fix http://a/`x so @octocat can `see` it          LIVE -> inert
@@ -97,11 +97,11 @@ func TestFlatten(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := Flatten(c.in); got != c.want {
-				t.Errorf("Flatten(%q) = %q, want %q", c.in, got, c.want)
+			if got := flatten(c.in); got != c.want {
+				t.Errorf("flatten(%q) = %q, want %q", c.in, got, c.want)
 			}
-			if strings.ContainsAny(Flatten(c.in), "\r\n") {
-				t.Errorf("Flatten(%q) left a line terminator behind", c.in)
+			if strings.ContainsAny(flatten(c.in), "\r\n") {
+				t.Errorf("flatten(%q) left a line terminator behind", c.in)
 			}
 		})
 	}
@@ -170,26 +170,26 @@ func TestEscapeMarkup(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := EscapeMarkup(c.in)
+			got := escapeMarkup(c.in)
 			if got != c.want {
-				t.Errorf("EscapeMarkup(%q)\n got %q\nwant %q", c.in, got, c.want)
+				t.Errorf("escapeMarkup(%q)\n got %q\nwant %q", c.in, got, c.want)
 			}
 			// Additive: the author's bytes survive in order. The notes must
 			// never silently drop what a commit said — which is the very thing
 			// GitHub's sanitizer does today.
 			if !isSubsequence(c.in, got) {
-				t.Errorf("EscapeMarkup(%q) = %q dropped or rewrote a byte", c.in, got)
+				t.Errorf("escapeMarkup(%q) = %q dropped or rewrote a byte", c.in, got)
 			}
 			// A fixed point: one pass is enough, and the second changes nothing.
-			if again := EscapeMarkup(got); again != got {
-				t.Errorf("EscapeMarkup is not a fixed point on %q:\n first %q\nsecond %q", c.in, got, again)
+			if again := escapeMarkup(got); again != got {
+				t.Errorf("escapeMarkup is not a fixed point on %q:\n first %q\nsecond %q", c.in, got, again)
 			}
 		})
 	}
 }
 
 // TestEscapeMarkupLeavesTheCodeSpanMapAlone is the load-bearing half of the
-// argument that ONE pass suffices. EscapeMarkup skips the code spans of its
+// argument that ONE pass suffices. escapeMarkup skips the code spans of its
 // INPUT, so if escaping could move the span map, the map it skipped by would be
 // the wrong one and a construct could survive inside a span that no longer
 // exists. It cannot: every inserted byte is a backslash placed in front of a
@@ -207,11 +207,11 @@ func TestEscapeMarkupLeavesTheCodeSpanMapAlone(t *testing.T) {
 		`\<a> ` + "`b` <c>",
 	} {
 		t.Run(in, func(t *testing.T) {
-			before, after := codeSpans(in), codeSpans(EscapeMarkup(in))
+			before, after := codeSpans(in), codeSpans(escapeMarkup(in))
 			if len(before) != len(after) {
-				t.Fatalf("EscapeMarkup changed the number of code spans in %q: %d -> %d", in, len(before), len(after))
+				t.Fatalf("escapeMarkup changed the number of code spans in %q: %d -> %d", in, len(before), len(after))
 			}
-			out := EscapeMarkup(in)
+			out := escapeMarkup(in)
 			for i := range before {
 				b, a := in[before[i][0]:before[i][1]], out[after[i][0]:after[i][1]]
 				if b != a {
@@ -247,15 +247,15 @@ func TestEscapeText(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := EscapeText(c.in); got != c.want {
-				t.Errorf("EscapeText(%q)\n got %q\nwant %q", c.in, got, c.want)
+			if got := escapeText(c.in); got != c.want {
+				t.Errorf("escapeText(%q)\n got %q\nwant %q", c.in, got, c.want)
 			}
 		})
 	}
 }
 
 // TestEscapeTextLeavesNoConstruct is the falsifiable statement of what "plain
-// text" means, and it is what makes EscapeMarkup(subject) sound in isolation: a
+// text" means, and it is what makes escapeMarkup(subject) sound in isolation: a
 // scope can no longer open a span, a tag or a link that reaches across the
 // "**…:** " boundary into the subject beside it.
 func TestEscapeTextLeavesNoConstruct(t *testing.T) {
@@ -270,14 +270,14 @@ func TestEscapeTextLeavesNoConstruct(t *testing.T) {
 		`\<not escaped>`,
 	} {
 		t.Run(in, func(t *testing.T) {
-			out := EscapeText(in)
+			out := escapeText(in)
 			if spans := codeSpans(out); len(spans) != 0 {
-				t.Errorf("EscapeText(%q) = %q still forms code span(s) %v", in, out, spans)
+				t.Errorf("escapeText(%q) = %q still forms code span(s) %v", in, out, spans)
 			}
-			// EscapeMarkup is the independent judge of "does a construct start
+			// escapeMarkup is the independent judge of "does a construct start
 			// here": if none does, it has nothing to add.
-			if again := EscapeMarkup(out); again != out {
-				t.Errorf("EscapeText(%q) = %q still carries a construct — EscapeMarkup would add %d byte(s)", in, out, len(again)-len(out))
+			if again := escapeMarkup(out); again != out {
+				t.Errorf("escapeText(%q) = %q still carries a construct — escapeMarkup would add %d byte(s)", in, out, len(again)-len(out))
 			}
 		})
 	}
@@ -316,12 +316,12 @@ func FuzzEscapeMarkupNeutralizes(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
-		out := EscapeMarkup(s)
+		out := escapeMarkup(s)
 		if !isSubsequence(s, out) {
-			t.Fatalf("EscapeMarkup(%q) = %q dropped or rewrote a byte", s, out)
+			t.Fatalf("escapeMarkup(%q) = %q dropped or rewrote a byte", s, out)
 		}
-		if again := EscapeMarkup(out); again != out {
-			t.Fatalf("EscapeMarkup is not a fixed point on %q: %q -> %q", s, out, again)
+		if again := escapeMarkup(out); again != out {
+			t.Fatalf("escapeMarkup is not a fixed point on %q: %q -> %q", s, out, again)
 		}
 		if strings.Contains(s, "`") {
 			return // the premise: with no backtick there is no code span
@@ -330,17 +330,17 @@ func FuzzEscapeMarkupNeutralizes(f *testing.F) {
 			switch {
 			case out[i] == '<', out[i] == '[':
 				if !oddBackslashRunBefore(out, i) {
-					t.Fatalf("EscapeMarkup(%q) = %q left %q live at %d", s, out, out[i], i)
+					t.Fatalf("escapeMarkup(%q) = %q left %q live at %d", s, out, out[i], i)
 				}
 			case out[i] == '&' && entityAt(out, i):
 				if !oddBackslashRunBefore(out, i) {
-					t.Fatalf("EscapeMarkup(%q) = %q left an entity live at %d", s, out, i)
+					t.Fatalf("escapeMarkup(%q) = %q left an entity live at %d", s, out, i)
 				}
 			}
 		}
 		for _, trigger := range []string{"http://", "https://", "ftp://", "www."} {
 			if idx := indexFold(out, trigger); idx >= 0 {
-				t.Fatalf("EscapeMarkup(%q) = %q left %q unbroken at %d", s, out, trigger, idx)
+				t.Fatalf("escapeMarkup(%q) = %q left %q unbroken at %d", s, out, trigger, idx)
 			}
 		}
 	})

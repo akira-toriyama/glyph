@@ -32,7 +32,7 @@ import "strings"
 // construct glyph failed to recognize is live. So none of the rules here tests a
 // grammar. They test a byte.
 
-// Flatten replaces every CommonMark line terminator in s with a single space:
+// flatten replaces every CommonMark line terminator in s with a single space:
 // "\r\n", "\n" and a bare "\r" each become one space.
 //
 // A bare CR is a line terminator at GitHub, which is not obvious and is the
@@ -55,18 +55,20 @@ import "strings"
 // Flattening also has to happen before anything else looks at the text, because
 // it is what DECIDES the inline context: to an escaper a blank line ends the
 // paragraph and backticks on either side of it cannot pair, while in the
-// flattened line they can. preview.escapeCell has always flattened first for
-// exactly this reason, with a measured leak behind the rule.
+// flattened line they can. Line's Text and Prose flatten before they escape for
+// exactly this reason, with a measured leak behind the rule (it was
+// preview.escapeCell's, from the era when the order was each caller's to get
+// right).
 //
-// It deliberately does not live inside EscapeMentions: deleting a byte would
+// It deliberately does not live inside escapeMentions: deleting a byte would
 // break that function's no-rewriting invariant, which its fuzz oracle enforces.
-func Flatten(s string) string {
+func flatten(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", " ")
 	s = strings.ReplaceAll(s, "\n", " ")
 	return strings.ReplaceAll(s, "\r", " ")
 }
 
-// EscapeMarkup neutralizes, in the PROSE of s, every inline construct that can
+// escapeMarkup neutralizes, in the PROSE of s, every inline construct that can
 // escape its container, point somewhere the author never wrote, or outrank a
 // backtick and steal a code-span delimiter. The author's own code spans pass
 // through byte-for-byte, and emphasis and strikethrough are left working: a
@@ -156,7 +158,7 @@ func Flatten(s string) string {
 // WHY ONE PASS IS ENOUGH, although the span map is computed on the ORIGINAL
 // string and may hold a phantom span. Two facts:
 //
-//   - codeSpans(EscapeMarkup(s)) == codeSpans(s), modulo offsets. Every inserted
+//   - codeSpans(escapeMarkup(s)) == codeSpans(s), modulo offsets. Every inserted
 //     byte is a backslash placed in front of a '<', '[', ':', '.' or '&' —
 //     never in front of a backtick — so backtick runs keep their lengths and
 //     their order, paragraphSpans' backslash case skips exactly the bytes its
@@ -177,7 +179,7 @@ func Flatten(s string) string {
 // their grammars admit neither a backtick nor a '<', so they can neither steal a
 // delimiter nor form a phantom span, and the href is the address the author
 // typed, so they cannot point anywhere the author did not write.
-func EscapeMarkup(s string) string {
+func escapeMarkup(s string) string {
 	var b strings.Builder
 	last := 0
 	for _, span := range codeSpans(s) {
@@ -196,7 +198,7 @@ func escapeProse(b *strings.Builder, p string) {
 		switch {
 		case p[i] == '\\':
 			// An already-escaped byte is copied as a pair and skipped, which is
-			// what makes EscapeMarkup a fixed point and what keeps an author's
+			// what makes escapeMarkup a fixed point and what keeps an author's
 			// own "\<" from becoming "\\<" — a literal backslash followed by a
 			// LIVE '<'. A lone trailing backslash copies alone.
 			if i+1 < len(p) {
@@ -277,10 +279,10 @@ func isASCIILetter(c byte) bool {
 func isAlphanumeric(c byte) bool { return isASCIILetter(c) || isDigit(c) }
 
 // escapable is every ASCII punctuation byte CommonMark lets a backslash escape,
-// minus the two EscapeText deliberately leaves alone.
+// minus the two escapeText deliberately leaves alone.
 const escapable = "!\"#$%&'()*+,./:;<=>?[\\]^_`{|}~"
 
-// EscapeText renders s as the literal text it is: a plain-text field, not prose.
+// escapeText renders s as the literal text it is: a plain-text field, not prose.
 // It is what the commit SCOPE gets, because a scope is data — a subsystem name
 // glyph prints in bold — and nothing in it should ever become markup.
 //
@@ -312,11 +314,11 @@ const escapable = "!\"#$%&'()*+,./:;<=>?[\\]^_`{|}~"
 //   - '@' is left alone, because escaping it is worse than useless twice over.
 //     "\@octocat" is a LIVE mention (the backslash vanishes in rendering before
 //     the mention post-processor looks), and the backslash would then trip
-//     EscapeMentions' escapesTheNextByte, which correctly writes a separating
+//     escapeMentions' escapesTheNextByte, which correctly writes a separating
 //     space so its fence is not eaten — printing a visible "\ " for no safety at
 //     all. A mention in a scope keeps being handled where it always was: in the
-//     single EscapeMentions pass over the assembled line.
-func EscapeText(s string) string {
+//     single escapeMentions pass over the assembled line.
+func escapeText(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	for i := 0; i < len(s); i++ {

@@ -1,5 +1,5 @@
 diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
-index 7d51ed2..d10392a 100644
+index af5b42b..4e4b368 100644
 --- a/.github/workflows/build.yml
 +++ b/.github/workflows/build.yml
 @@ -58,30 +58,6 @@ jobs:
@@ -30,6 +30,6 @@ index 7d51ed2..d10392a 100644
 -          BASE_SHA: ${{ github.event.pull_request.base.sha }}
 -        run: sh scripts/dist-gate.sh "$BASE_SHA"
 -
-   # Repo-specific checks that don't belong in the shared core. The smoke runs on
-   # every leg so the shipped binary is exercised on every released platform shape:
-   # darwin (brew cask) and linux arm64 (free for public repos) beside linux amd64
+   # A golden file is a format spec stored as bytes, and `go test -update`
+   # rewrites it from whatever the code currently produces — so a rendering bug
+   # can arrive LOOKING intentional, with nothing forcing anyone to read the

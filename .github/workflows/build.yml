@@ -82,6 +82,29 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: sh scripts/dist-gate.sh "$BASE_SHA"
 
+  # A golden file is a format spec stored as bytes, and `go test -update`
+  # rewrites it from whatever the code currently produces — so a rendering bug
+  # can arrive LOOKING intentional, with nothing forcing anyone to read the
+  # diff as the spec change it is. This job is that force: a golden diff with
+  # no `Golden-change: <reason>` trailer on every non-merge commit fails the
+  # pull request. File set, non-waiver stance and rationale:
+  # scripts/golden-gate.sh. PR-only because the gate judges a diff.
+  golden-gate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          # The gate diffs BASE...HEAD and reads trailers across the range; a
+          # depth-1 checkout holds neither the base nor the commits.
+          fetch-depth: 0
+      - name: golden-file gate
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: sh scripts/golden-gate.sh "$BASE_SHA"
+
   # Repo-specific checks that don't belong in the shared core. The smoke runs on
   # every leg so the shipped binary is exercised on every released platform shape:
   # darwin (brew cask) and linux arm64 (free for public repos) beside linux amd64
