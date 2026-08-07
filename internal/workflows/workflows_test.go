@@ -472,3 +472,44 @@ func TestWalkingReusablesCheckOutFullHistory(t *testing.T) {
 		})
 	}
 }
+
+// TestCaskPushUsesDeployKey guards the tap-credential pairing (t-6bhz).
+//
+// The cask push works only when BOTH halves agree: goreleaser.yml exports
+// HOMEBREW_TAP_DEPLOY_KEY into GoReleaser's env, and .goreleaser.yaml's
+// repository block resolves that env into an SSH git push
+// (repository.git.private_key). Either half alone fails at release time —
+// a missing env is a template error, a token-style repository block would
+// silently go back to the account-scoped API path the deploy key replaced.
+// Nothing in either file can express the pairing on its own, same class as
+// TestReleaseNotesReachGoReleaser.
+func TestCaskPushUsesDeployKey(t *testing.T) {
+	workflow := code(repoFile(t, filepath.Join(".github", "workflows", "goreleaser.yml")))
+	config := code(repoFile(t, ".goreleaser.yaml"))
+
+	// Half one: the workflow hands the key to GoReleaser.
+	if !strings.Contains(workflow, "HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}") {
+		t.Error("goreleaser.yml no longer exports HOMEBREW_TAP_DEPLOY_KEY; the cask push " +
+			"template in .goreleaser.yaml resolves that env and fails without it (t-6bhz)")
+	}
+
+	// Half two: the config spends it on an SSH push to the tap.
+	for _, want := range []string{
+		`url: "git@github.com:akira-toriyama/homebrew-tap.git"`,
+		`private_key: "{{ .Env.HOMEBREW_TAP_DEPLOY_KEY }}"`,
+	} {
+		if !strings.Contains(config, want) {
+			t.Errorf(".goreleaser.yaml no longer contains %q; the cask must be pushed over "+
+				"SSH with the tap's write deploy key, not a token (t-6bhz)", want)
+		}
+	}
+
+	// And the retired PAT must not creep back into either executable body —
+	// its account-scoped blast radius is what the deploy key removed.
+	for name, body := range map[string]string{"goreleaser.yml": workflow, ".goreleaser.yaml": config} {
+		if strings.Contains(body, "HOMEBREW_TAP_TOKEN") {
+			t.Errorf("%s references the retired HOMEBREW_TAP_TOKEN; the tap credential is "+
+				"the deploy key now (t-6bhz)", name)
+		}
+	}
+}
