@@ -1,9 +1,10 @@
 package doctor
 
 // This file is the local half of the diagnosis: every akira-toriyama/glyph
-// reference in the checkout's own workflows must pin a concrete vX.Y.Z release
-// tag. It reads files and nothing else — no network, no git — so it still
-// answers when the API side of the report is entirely dark.
+// reference in the checkout's own workflows and composite actions must pin a
+// concrete vX.Y.Z release tag. It reads files and nothing else — no network,
+// no git — so it still answers when the API side of the report is entirely
+// dark.
 //
 // What it deliberately does NOT check is whether the pin is the LATEST release.
 // That audit already runs daily as glyph-pin-audit.yml in akira-toriyama/.github
@@ -12,7 +13,9 @@ package doctor
 // already has an answer to. This check asks only: is the pin CONCRETE.
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,16 +39,20 @@ type pinRef struct {
 	Problem string
 }
 
-// checkWorkflowPins scans .github/workflows in the local checkout.
+// checkWorkflowPins scans .github/workflows and .github/actions/**/action.yml
+// in the local checkout.
 //
-// A missing directory is UNKNOWN, not a vacuous pass. Both readings are live —
-// a repository may genuinely have no workflows, or doctor may have been run
-// from the wrong directory — and the difference matters enough that the check
-// says so instead of quietly reporting that everything is fine.
+// A missing WORKFLOWS directory is UNKNOWN, not a vacuous pass. Both readings
+// are live — a repository may genuinely have no workflows, or doctor may have
+// been run from the wrong directory — and the difference matters enough that
+// the check says so instead of quietly reporting that everything is fine. The
+// actions directory carries no such ambiguity (most consumers call the
+// reusables directly and have none), so its absence stays inside the verdict
+// the workflows earn.
 func checkWorkflowPins(root string) Check {
 	c := Check{
 		ID:       IDWorkflowPinned,
-		Expected: "every `uses: " + glyphRepo + "/…` in .github/workflows pins a concrete @vX.Y.Z release tag",
+		Expected: "every `uses: " + glyphRepo + "/…` in .github/workflows or .github/actions/**/action.yml pins a concrete @vX.Y.Z release tag",
 	}
 	dir := filepath.Join(root, ".github", "workflows")
 	entries, err := os.ReadDir(dir)
@@ -80,6 +87,47 @@ func checkWorkflowPins(root string) Check {
 		refs = append(refs, scanUses(filepath.Join(".github", "workflows", name), string(body))...)
 	}
 
+	// The workflows directory is not the only place a checkout EXECUTES a glyph
+	// reference from: DESIGN §6's consumer shape wraps the install action in
+	// the caller's own composite action — .github/actions/<name>/action.yml —
+	// and a scan fixed to the one directory answered "no reference … in this
+	// checkout" (pass) on a checkout whose composite pinned @main. Measured
+	// before this walk existed; the moving ref this check calls its one
+	// unaffordable miss sat in the file it never opened. Only the two
+	// action.yml spellings are read — GitHub takes nothing else in an action
+	// directory as metadata, so nothing else there can hold an executing
+	// `uses:` — but at any depth, because nothing makes an author keep a
+	// composite exactly one level down.
+	actionsDir := filepath.Join(root, ".github", "actions")
+	if werr := filepath.WalkDir(actionsDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil // no composite actions — nothing more to scan
+			}
+			unreadable = append(unreadable, fmt.Sprintf("%s could not be listed: %v", path, err))
+			return nil
+		}
+		if d.IsDir() || (d.Name() != "action.yml" && d.Name() != "action.yaml") {
+			return nil
+		}
+		rel, rerr := filepath.Rel(root, path)
+		if rerr != nil {
+			rel = path
+		}
+		files++
+		body, berr := os.ReadFile(path) // #nosec G304 -- the caller's own checkout, walked above
+		if berr != nil {
+			unreadable = append(unreadable, fmt.Sprintf("%s could not be read: %v", path, berr))
+			return nil
+		}
+		refs = append(refs, scanUses(rel, string(body))...)
+		return nil
+	}); werr != nil {
+		// Unreachable while the callback above swallows every error, kept so a
+		// future early return cannot silently drop the walk's complaint.
+		unreadable = append(unreadable, fmt.Sprintf("%s could not be walked: %v", actionsDir, werr))
+	}
+
 	var bad []pinRef
 	for _, r := range refs {
 		if r.Problem != "" {
@@ -95,7 +143,7 @@ func checkWorkflowPins(root string) Check {
 	switch {
 	case len(bad) > 0:
 		c.Status = StatusFail
-		c.Observed = fmt.Sprintf("%d of %d %s reference(s) in %d workflow file(s) in this checkout do not pin a release tag",
+		c.Observed = fmt.Sprintf("%d of %d %s reference(s) in %d workflow/action file(s) in this checkout do not pin a release tag",
 			len(bad), len(refs), glyphRepo, files)
 		c.Message = "a glyph reusable workflow and the glyph binary it installs ship from ONE repository at ONE tag, and the " +
 			"reusable derives the binary version from the tag the caller pinned (job.workflow_ref). A moving ref makes both " +
@@ -104,17 +152,17 @@ func checkWorkflowPins(root string) Check {
 		c.Fix = "pin each reference to a released tag: uses: " + glyphRepo + "/.github/workflows/<file>@vX.Y.Z"
 	case len(unreadable) > 0:
 		c.Status = StatusUnknown
-		c.Observed = fmt.Sprintf("%d workflow file(s) could not be read; the %d %s reference(s) that were read all pin a release tag",
+		c.Observed = fmt.Sprintf("%d workflow/action file(s) could not be read; the %d %s reference(s) that were read all pin a release tag",
 			len(unreadable), len(refs), glyphRepo)
 		c.Message = "the files that were read are clean, but a file doctor cannot read could hold anything"
 		c.Fix = "fix the file permissions and re-run"
 	case len(refs) == 0:
 		c.Status = StatusPass
-		c.Observed = fmt.Sprintf("no %s reference in the %d workflow file(s) in this checkout", glyphRepo, files)
+		c.Observed = fmt.Sprintf("no %s reference in the %d workflow/action file(s) in this checkout", glyphRepo, files)
 		c.Message = "nothing here consumes a glyph reusable workflow or action, so there is no pin to drift"
 	default:
 		c.Status = StatusPass
-		c.Observed = fmt.Sprintf("%d %s reference(s) in the %d workflow file(s) in this checkout, all pinned to a release tag",
+		c.Observed = fmt.Sprintf("%d %s reference(s) in the %d workflow/action file(s) in this checkout, all pinned to a release tag",
 			len(refs), glyphRepo, files)
 		c.Message = "every glyph reference names one immutable release, so the workflow and the binary it installs cannot diverge"
 	}

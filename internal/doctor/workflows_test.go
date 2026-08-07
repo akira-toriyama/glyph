@@ -274,6 +274,105 @@ func TestCheckWorkflowPinsOutcomes(t *testing.T) {
 	}
 }
 
+// checkoutAt writes files at paths relative to a throwaway checkout's root —
+// the shape checkoutWith cannot express now that the scan reads more than one
+// directory.
+func checkoutAt(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	for rel, body := range files {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+	}
+	return root
+}
+
+// TestCheckWorkflowPinsScansCompositeActions pins the walk past the workflows
+// directory. DESIGN §6's consumer shape wraps the install action in the
+// caller's own composite action, and the measured miss is the first case
+// verbatim: a checkout whose only glyph reference was an @main inside
+// .github/actions/setup/action.yml, which the scan fixed to .github/workflows
+// reported clean ("no akira-toriyama/glyph reference … pass").
+func TestCheckWorkflowPinsScansCompositeActions(t *testing.T) {
+	// A workflow with no glyph reference at all, so every verdict below is
+	// earned by what sits under .github/actions.
+	const plainWorkflow = "jobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - run: \"true\"\n"
+	const movingComposite = "runs:\n  using: composite\n  steps:\n    - uses: akira-toriyama/glyph/.github/actions/install@main\n"
+	const pinnedComposite = "runs:\n  using: composite\n  steps:\n    - uses: akira-toriyama/glyph/.github/actions/install@v1.0.0\n"
+
+	tests := []struct {
+		name       string
+		files      map[string]string
+		want       Status
+		wantDetail string
+	}{
+		{
+			name: "the measured miss: a moving ref hides in a composite action",
+			files: map[string]string{
+				".github/workflows/w.yml":          plainWorkflow,
+				".github/actions/setup/action.yml": movingComposite,
+			},
+			want:       StatusFail,
+			wantDetail: ".github/actions/setup/action.yml:4",
+		},
+		{
+			name: "a pinned composite is clean",
+			files: map[string]string{
+				".github/workflows/w.yml":          plainWorkflow,
+				".github/actions/setup/action.yml": pinnedComposite,
+			},
+			want: StatusPass,
+		},
+		{
+			name: "the action.yaml spelling is scanned too",
+			files: map[string]string{
+				".github/workflows/w.yml":           plainWorkflow,
+				".github/actions/setup/action.yaml": movingComposite,
+			},
+			want:       StatusFail,
+			wantDetail: ".github/actions/setup/action.yaml:4",
+		},
+		{
+			// GitHub reads nothing but the two action.yml spellings as action
+			// metadata, so any other file under .github/actions is data — a
+			// scan that swept it in would fail a repository over bytes nothing
+			// executes, the same wrong verdict the block-scalar skip exists to
+			// avoid.
+			name: "a non-metadata file under actions/ is data, not a pin",
+			files: map[string]string{
+				".github/workflows/w.yml":          plainWorkflow,
+				".github/actions/setup/config.yml": movingComposite,
+			},
+			want: StatusPass,
+		},
+		{
+			name: "a composite nested deeper than one level is still found",
+			files: map[string]string{
+				".github/workflows/w.yml":             plainWorkflow,
+				".github/actions/go/setup/action.yml": movingComposite,
+			},
+			want:       StatusFail,
+			wantDetail: ".github/actions/go/setup/action.yml:4",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := checkWorkflowPins(checkoutAt(t, tt.files))
+			if c.Status != tt.want {
+				t.Fatalf("status = %s, want %s (observed %q, details %v)", c.Status, tt.want, c.Observed, c.Details)
+			}
+			if tt.wantDetail != "" && !strings.Contains(strings.Join(c.Details, "\n"), tt.wantDetail) {
+				t.Errorf("details %v do not name %q — a finding must point at the line to edit", c.Details, tt.wantDetail)
+			}
+		})
+	}
+}
+
 // TestCheckWorkflowPinsWithoutADirectoryIsUnknown: "no .github/workflows here"
 // is ambiguous — a repository with no workflows, or doctor run from the wrong
 // directory — so it must report could-not-run rather than a pass it did not
