@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -456,6 +457,47 @@ func TestReleaseDryRunAction(t *testing.T) {
 	}
 }
 
+// TestReleaseDryRunResolvesTheTarget: the target is part of "EVERYTHING" in
+// Q4 — the dry run resolves it (the checkout's HEAD when the flag is absent)
+// and reports it in the verdict, instead of silently ignoring the one flag
+// that names which commit the eventual tag points at. Measured before the
+// fix: dry-run output was byte-identical with and without --target, on
+// stdout and stderr alike, so a typo'd sha surfaced only on the real run.
+func TestReleaseDryRunResolvesTheTarget(t *testing.T) {
+	dryRunVerdict := func(t *testing.T, args ...string) releaseVerdict {
+		t.Helper()
+		var writes []apiWrite
+		walk := oneFixWalk(t)
+		srv := releaseServer(t, walk, `[]`, &writes)
+		usePR(t, srv)
+
+		code, stdout, stderr := runGlyph(t, append([]string{"release", "--dry-run", "--json"}, args...)...)
+		if code != 0 {
+			t.Fatalf("exited %d, want 0\nstderr: %s", code, stderr)
+		}
+		var v releaseVerdict
+		if err := json.Unmarshal([]byte(stdout), &v); err != nil {
+			t.Fatalf("not one JSON object: %v\n%s", err, stdout)
+		}
+		if len(writes) != 0 {
+			t.Fatalf("a dry run wrote to the API: %+v", writes)
+		}
+		return v
+	}
+
+	t.Run("an explicit --target reaches the verdict", func(t *testing.T) {
+		if v := dryRunVerdict(t, "--target", "cafe1234"); v.Target != "cafe1234" {
+			t.Errorf("target = %q, want the cafe1234 the flag named", v.Target)
+		}
+	})
+	t.Run("no flag resolves the checkout's HEAD", func(t *testing.T) {
+		v := dryRunVerdict(t)
+		if !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(v.Target) {
+			t.Errorf("target = %q, want the checkout's full HEAD sha", v.Target)
+		}
+	})
+}
+
 // TestReleaseFooterFile is ratified Q11: --footer-file appends the file's
 // content verbatim after the notes, separated by one `---` line — composed by
 // glyph so the dry run previews the EXACT body the draft will carry, and the
@@ -504,6 +546,7 @@ type releaseVerdict struct {
 	Current string `json:"current"`
 	Level   string `json:"level"`
 	Tag     string `json:"tag"`
+	Target  string `json:"target"`
 	Body    string `json:"body"`
 	Action  string `json:"action"`
 	URL     string `json:"url"`

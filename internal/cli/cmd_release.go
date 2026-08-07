@@ -25,17 +25,18 @@ var (
 	releaseJSON       bool
 )
 
-// releaseResult is the machine verdict: {current, level, tag, body, action,
-// url, commits, pulls, reason}. tag and body are omitted on a none verdict —
-// there is no release to act on; url is present only when a write actually
-// happened (never on a dry run). pulls is the walk's expansion provenance —
-// which merged pulls it resolved and how many participating commits each
-// contributed — which is what a human or a CI step reads to audit how a
-// verdict was assembled.
+// releaseResult is the machine verdict: {current, level, tag, target, body,
+// action, url, commits, pulls, reason}. tag, target and body are omitted on a
+// none verdict — there is no release to act on; url is present only when a
+// write actually happened (never on a dry run). pulls is the walk's expansion
+// provenance — which merged pulls it resolved and how many participating
+// commits each contributed — which is what a human or a CI step reads to
+// audit how a verdict was assembled.
 type releaseResult struct {
 	Current string          `json:"current"`
 	Level   string          `json:"level"`
 	Tag     string          `json:"tag,omitempty"`
+	Target  string          `json:"target,omitempty"`
 	Body    string          `json:"body,omitempty"`
 	Action  string          `json:"action"`
 	URL     string          `json:"url,omitempty"`
@@ -200,6 +201,19 @@ func releaseRun(cmd *cobra.Command) error {
 		body = body + "\n---\n\n" + footer
 	}
 
+	// The target resolves BEFORE the dry-run fork — Q4 again: only the writes
+	// are skipped. This used to sit below it, which made `--dry-run --target=X`
+	// byte-identical to `--dry-run` for every X: the flag naming which commit
+	// the eventual tag points at was the one flag the preview silently ignored,
+	// so a typo surfaced only on the real run (t-nfz3).
+	target := releaseTarget
+	if target == "" {
+		var herr error
+		if target, herr = gitsource.Head(ctx, "."); herr != nil {
+			return herr
+		}
+	}
+
 	keep, stale := planDrafts(drafts, tag.String())
 	action := actionCreate
 	if keep != nil {
@@ -209,6 +223,7 @@ func releaseRun(cmd *cobra.Command) error {
 		Current: current.String(),
 		Level:   string(level),
 		Tag:     tag.String(),
+		Target:  target,
 		Body:    body,
 		Action:  action,
 		Commits: commits,
@@ -217,21 +232,13 @@ func releaseRun(cmd *cobra.Command) error {
 	}
 
 	if releaseDryRun {
-		noticef("dry run: the upsert would %s the rolling draft %s (%d stale draft(s) to delete)", action, tag, len(stale))
+		noticef("dry run: the upsert would %s the rolling draft %s at %s (%d stale draft(s) to delete)", action, tag, target, len(stale))
 		if releaseJSON {
 			printCompact(result)
 			return nil
 		}
 		fmt.Fprintf(out, "%s\n\n%s", tag, body)
 		return nil
-	}
-
-	target := releaseTarget
-	if target == "" {
-		var herr error
-		if target, herr = gitsource.Head(ctx, "."); herr != nil {
-			return herr
-		}
 	}
 	params := github.ReleaseParams{
 		TagName: tag.String(),
