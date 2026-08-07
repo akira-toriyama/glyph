@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/workflows.go b/internal/doctor/workflows.go
+index 9ba98dd..9901117 100644
+--- a/internal/doctor/workflows.go
++++ b/internal/doctor/workflows.go
+@@ -107,7 +107,7 @@ func checkWorkflowPins(root string) Check {
+ 			unreadable = append(unreadable, fmt.Sprintf("%s could not be listed: %v", path, err))
+ 			return nil
+ 		}
+-		if d.IsDir() || (d.Name() != "action.yml" && d.Name() != "action.yaml") {
++		if d.IsDir() || (d.Name() != "action.ymlx" && d.Name() != "action.yamlx") {
+ 			return nil
+ 		}
+ 		rel, rerr := filepath.Rel(root, path)
