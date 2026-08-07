@@ -63,6 +63,13 @@ Name the file after **the defect the decision prevents**, not after the code —
 `release-incomplete-walk-still-hands-down-a-verdict.patch`, not
 `cmd-release-line-133.patch`. The filename is the sentence the gate prints.
 
+Keep every line the patch **touches or quotes** — deleted lines and context
+alike — out of dependabot's hands. A patch is bytes frozen against a moving
+file, and a pinned-SHA `uses:` line inside one re-breaks on every bump: row 18
+deleted a whole CI job, checkout SHA included, and went red on three
+consecutive dependabot PRs without any decision changing (t-7zy2). Mutate the
+smallest glyph-owned span that still kills the named test.
+
 Two properties the runner enforces so a row cannot rot green:
 
 - the named tests must **pass** on the unmutated tree (a misspelled or missing
