@@ -70,8 +70,8 @@ checks it: the credential can read the repository, squash merging is **enabled**
 multi-commit landing has a window where it can), `squash_merge_commit_title` /
 `squash_merge_commit_message` still keep a classifiable gitmoji subject and the
 per-commit body on `main`, every `uses: akira-toriyama/glyph/…` in the local
-`.github/workflows` pins a concrete `@vX.Y.Z`, and the installed commit-msg hook
-is the one *this* binary writes.
+`.github/workflows` or `.github/actions/**/action.yml` pins a concrete
+`@vX.Y.Z`, and the installed commit-msg hook is the one *this* binary writes.
 
 That last one is the only check whose subject glyph wrote itself. Hooks are
 untracked, so nothing refreshes one: whichever glyph was on PATH the day it was
