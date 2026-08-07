@@ -1,35 +1,15 @@
 diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
-index af5b42b..4e4b368 100644
+index af5b42b..5dd2d30 100644
 --- a/.github/workflows/build.yml
 +++ b/.github/workflows/build.yml
-@@ -58,30 +58,6 @@ jobs:
-       - name: mutation ledger
-         run: sh scripts/mutations.sh
- 
--  # A change to what glyph SHIPS must carry evidence, exactly as a change to
--  # what it computes must. `bite` above acts on Go diffs only and the smoke
--  # below reads no YAML, so a :bug: fix touching only .goreleaser.yaml or the
--  # install action used to reach main with zero tests and no gate noticing
--  # (t-5dbh). This job closes that: a distribution-layer file in the diff with
--  # no internal/workflows test change fails the pull request. File set, waiver
--  # (`Dist-gate-exempt:` trailer) and rationale: scripts/dist-gate.sh.
--  # PR-only because the gate judges a diff; a push to main carries none.
--  dist-gate:
--    if: github.event_name == 'pull_request'
--    runs-on: ubuntu-latest
--    timeout-minutes: 5
--    steps:
--      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
--        with:
--          persist-credentials: false
--          # The gate diffs BASE...HEAD and reads trailers across the range; a
--          # depth-1 checkout holds neither the base nor the commits.
--          fetch-depth: 0
+@@ -77,10 +77,6 @@ jobs:
+           # The gate diffs BASE...HEAD and reads trailers across the range; a
+           # depth-1 checkout holds neither the base nor the commits.
+           fetch-depth: 0
 -      - name: distribution-layer gate
 -        env:
 -          BASE_SHA: ${{ github.event.pull_request.base.sha }}
 -        run: sh scripts/dist-gate.sh "$BASE_SHA"
--
+ 
    # A golden file is a format spec stored as bytes, and `go test -update`
    # rewrites it from whatever the code currently produces — so a rendering bug
-   # can arrive LOOKING intentional, with nothing forcing anyone to read the
