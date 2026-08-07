@@ -295,7 +295,7 @@ onMain`
 ## 2. Verdicts and the rolling draft
 
 **verdict** — the composed answer of a verdict command: the classified commits,
-the folded level and the reason (plus tag, body and action for `release`).
+the folded level and the reason (plus tag, target, body and action for `release`).
 `release` computes it **once** and derives both the version and the notes from
 that single commit set — calling `bump` and `notes` separately walks twice, and a
 merge landing between the walks could version one range and describe another.
@@ -313,17 +313,19 @@ commit(s) participate in *source* and every level is none"), and into the
 sentences a run writes when the walk could not read the range; an ordinary release
 verdict's reason names the deciding commit instead, and the string does not appear
 at all. It is also not a key on any `--json` surface — none of `{current, level,
-next, commits, reason}`, `{sections, reason}`, `{current, level, tag, body,
-action, url, commits, pulls, reason}` or `{current, untagged, level, next, pr,
-pending, body}` carries it, so a consumer that wants to know what was walked reads
-the flags it passed, not the verdict. `internal/cli/cmd_bump.go: bumpInput`,
+next, commits, reason}`, `{sections, reason}`, `{current, level, tag, target,
+body, action, url, commits, pulls, reason}` or `{current, untagged, level, next,
+pr, pending, body}` carries it, so a consumer that wants to know what was walked
+reads the flags it passed, not the verdict. `internal/cli/cmd_bump.go: bumpInput`,
 `internal/cli/cmd_notes.go: notesInput`, `internal/cli/pr.go: pullInput`
 
 **reason** — the one-line answer to "why this bump": the **oldest** commit that
 reaches the folded level. `internal/cli/cmd_bump.go: decidingReason`
 
 **target** — `target_commitish`: the sha the draft's eventual tag will point at,
-defaulting to the checkout's HEAD. No tag exists until a human publishes.
+defaulting to the checkout's HEAD. No tag exists until a human publishes. The
+verdict carries it as `target` — resolved on the dry run too, so a `--target`
+typo is visible in the preview rather than first surfacing on the real write.
 `internal/cli/cmd_release.go: releaseRun`, `internal/gitsource/gitsource.go: Head`
 
 **action** — which draft convergence the run performs: `create`, `update`

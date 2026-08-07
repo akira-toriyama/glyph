@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 0432cc5..e891b90 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -223,7 +223,7 @@ func releaseRun(cmd *cobra.Command) error {
+ 		Current: current.String(),
+ 		Level:   string(level),
+ 		Tag:     tag.String(),
+-		Target:  target,
++		Target:  "",
+ 		Body:    body,
+ 		Action:  action,
+ 		Commits: commits,
