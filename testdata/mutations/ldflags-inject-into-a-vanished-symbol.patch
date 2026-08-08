@@ -1,0 +1,17 @@
+diff --git a/.goreleaser.yaml b/.goreleaser.yaml
+index c3f6a22..09dd1d7 100644
+--- a/.goreleaser.yaml
++++ b/.goreleaser.yaml
+@@ -12,9 +12,9 @@ builds:
+     flags: [-trimpath]
+     ldflags:
+       - -s -w
+-      - -X github.com/akira-toriyama/glyph/internal/version.Version={{.Version}}
+-      - -X github.com/akira-toriyama/glyph/internal/version.Commit={{.Commit}}
+-      - -X github.com/akira-toriyama/glyph/internal/version.Date={{.Date}}
++      - -X github.com/akira-toriyama/glyph/internal/buildinfo.Version={{.Version}}
++      - -X github.com/akira-toriyama/glyph/internal/buildinfo.Commit={{.Commit}}
++      - -X github.com/akira-toriyama/glyph/internal/buildinfo.Date={{.Date}}
+     goos: [linux, darwin]
+     goarch: [amd64, arm64]
+ 

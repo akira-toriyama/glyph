@@ -1,0 +1,15 @@
+diff --git a/.github/actions/install/action.yml b/.github/actions/install/action.yml
+index cfe4fde..fd61705 100644
+--- a/.github/actions/install/action.yml
++++ b/.github/actions/install/action.yml
+@@ -79,8 +79,8 @@ runs:
+         # window matches the 1s→4s→16s schedule glyph's own API calls retry on.
+         # --retry-connrefused folds connection-refused into the transient set:
+         # an outage resets connections as often as it answers 5xx.
+-        curl -fsSL --retry 5 --retry-connrefused -o "$RUNNER_TEMP/$file" "$base/$file"
+-        curl -fsSL --retry 5 --retry-connrefused -o "$RUNNER_TEMP/glyph-checksums.txt" "$base/checksums.txt"
++        curl -fsSL --retry 3 -o "$RUNNER_TEMP/$file" "$base/$file"
++        curl -fsSL --retry 3 -o "$RUNNER_TEMP/glyph-checksums.txt" "$base/checksums.txt"
+         # An empty grep (checksum line missing) yields empty stdin, which the
+         # `-c` check fails — so a missing entry fails the step, by design.
+         ( cd "$RUNNER_TEMP" && grep -F "  $file" glyph-checksums.txt | sha_check )
