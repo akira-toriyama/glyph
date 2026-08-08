@@ -214,3 +214,35 @@ jobs:
               go test "$pkg" -run '^$' -fuzz "^${f}\$" -fuzztime 200000x
             done
           done
+
+  # Coverage as a REPORT, never a gate (t-37mg). The number is read for risk —
+  # an unexecuted branch is the cheap way to find candidates for the mutation
+  # ledger — and deliberately not as a target: the ledger measures whether
+  # tests BITE, and 93% coverage has been measured beside three surviving
+  # mutations (t-1mgy's guard among them), so a percent gate rewards exactly
+  # the tests that assert nothing. Threshold gating waits until the number has
+  # a history to be judged against, if it ever earns one. Report-only also
+  # keeps this job's one real failure mode — the tests themselves — a
+  # duplicate of `ci / test`, so a red here never says anything new.
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+          cache-dependency-path: go.sum
+      - name: coverage report (job summary)
+        run: |
+          go test -covermode=atomic -coverprofile=cover.out ./... > per-pkg.txt
+          {
+            echo '### Coverage — report only, read for risk (t-37mg)'
+            echo '```'
+            grep -E '^(ok|\?)' per-pkg.txt
+            go tool cover -func=cover.out | tail -n 1
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
