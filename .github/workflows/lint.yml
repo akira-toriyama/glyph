@@ -65,7 +65,7 @@ jobs:
     # Lint is fast; bound it so a hung step can't idle a runner for hours.
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # glyph walks the PR range locally, so the full history must be here.
           fetch-depth: 0
@@ -102,7 +102,7 @@ jobs:
       # runs AFTER the caller checkout above: that one cleans the workspace root,
       # which would otherwise wipe this untracked subdirectory.
       - name: Check out glyph's install action at the pinned commit
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}

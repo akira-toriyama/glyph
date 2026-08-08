@@ -159,7 +159,7 @@ jobs:
             echo "::notice::verdict-only: no 'app' or 'binary', so this run computes the verdict and upserts the draft, and builds nothing."
           fi
 
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # glyph walks the tags and the range out of LOCAL git (its verdict
           # commands run inside a checkout by contract), so the full history
@@ -221,7 +221,7 @@ jobs:
       # the darwin tarball). AFTER the caller checkout above, whose workspace-root
       # clean would otherwise wipe this untracked subdirectory.
       - name: Check out glyph's install action at the pinned commit
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
