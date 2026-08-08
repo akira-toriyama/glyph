@@ -306,7 +306,8 @@ func permissionSummary(p *github.RepoPermissions) string {
 // parent count. That does NOT cost the pull request: gitsource.Log runs without
 // --first-parent, so the merged branch's commits are in the range too and each is
 // classified from its own message; at full darkness a merge-merged pull
-// reproduces its live verdict exactly (measured: minor either way). The cost is
+// reproduces its live verdict exactly (measured: minor either way —
+// cli.TestSinceTagMergeCommitReproducesVerdictWhenFullyDark). The cost is
 // the PARTIAL window — a branch commit stands aside for a merge point in range
 // (mergedPullFor's covering result), and when that merge point is the one thing
 // GitHub has not indexed, or an automation authored it and ExcludedFromResolution
@@ -326,7 +327,8 @@ func permissionSummary(p *github.RepoPermissions) string {
 // GitHub answers 422 for a sha it does not know yet — and 422 is the ONLY status
 // that reaches the fallback. A 403 rate limit, a 5xx that outlives the retry
 // schedule (t-bjrv) or an unreachable host is not an API-dark walk at all:
-// walkSince returns it and the run exits 4 (measured). Cite the lag window here;
+// walkSince returns it and the run exits 4 (measured —
+// cli.TestSinceTagFallbackOnlyOnUnknownCommit). Cite the lag window here;
 // the outage window belongs to the exit-code contract, not to this argument.
 //
 // The cost squash itself carries in that window is bounded and worth naming:
@@ -394,7 +396,8 @@ func checkSquashEnabled(in Input) Check {
 //
 // t-7zt7 fixes the walk to resolve and expand a merge commit exactly like a
 // squash commit, so the setting no longer costs a bump whenever the API answers,
-// and no longer costs one at full darkness either (measured) — what it still
+// and no longer costs one at full darkness either (measured —
+// cli.TestSinceTagMergeCommitReproducesVerdictWhenFullyDark) — what it still
 // costs is the partial window below, which is loud and, for a bot-authored merge,
 // permanent. What remains is a house convention — the fleet is squash-only so
 // that main carries one commit per PR and the walk is one round-trip per PR — and

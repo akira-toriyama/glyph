@@ -801,8 +801,8 @@ The severities are the argued part:
   merge point alone is unresolved — GitHub indexes a merge commit *after* the
   commits it merges, or an automation authored it and `ExcludedFromResolution`
   skipped it before the API — nothing expands the pull and the whole of it counts
-  `none`. That is measured: fully dark, a merge-merged pull reproduces its live
-  verdict (`minor` either way); with only the merge point at 422, the same
+  `none`. That is measured (`TestSinceTagMergeCommitReproducesVerdictWhenFullyDark`):
+  fully dark, a merge-merged pull reproduces its live verdict (`minor` either way); with only the merge point at 422, the same
   repository is a lost pull — an incomplete walk, which `release` refuses at
   exit `4` (§4) and `bump`/`notes` report at two warnings. A rebase splits them
   the other way: it
@@ -815,7 +815,8 @@ The severities are the argued part:
   partial state at all; the cost of a dark API under squash is that a MULTI-commit
   squash carries the PR title, which no lint gate checks, so the fallback reads one
   unlinted subject (measured `minor` → `patch`, and `minor` → `none` for a title
-  with no gitmoji). One wrong level on one pull, versus a whole pull lost.
+  with no gitmoji — `TestSinceTagSquashMultiCommitDivergesWhenAPIDark`,
+  `TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark`). One wrong level on one pull, versus a whole pull lost.
 - **`allow_merge_commit` / `allow_rebase_merge` true ⇒ advice, not failure.** A
   merge commit *used* to be data loss (`bump.Excluded` drops 2+ parents, so the
   PR vanished — t-7zt7); with the walk expanding merge commits correctly it costs
