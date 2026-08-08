@@ -77,7 +77,10 @@ func TestReusablesInstallThroughComposite(t *testing.T) {
 			}
 
 			// ...and replaced by a reference to the shared composite action.
-			if !strings.Contains(raw, "./.glyph-action/.github/actions/install") {
+			// Presence is demanded of the executable BODY, not the raw text: a
+			// commented caller stub quoting the same string would otherwise
+			// satisfy the requirement while the real step is gone (t-szx1).
+			if !strings.Contains(body, "./.glyph-action/.github/actions/install") {
 				t.Errorf("%s does not use the shared install action "+
 					"(expected `uses: ./.glyph-action/.github/actions/install`)", name)
 			}
@@ -91,7 +94,7 @@ func TestReusablesInstallThroughComposite(t *testing.T) {
 				"job.workflow_sha",
 				"job.workflow_ref",
 			} {
-				if !strings.Contains(raw, want) {
+				if !strings.Contains(body, want) {
 					t.Errorf("%s is missing %s; without the self-checkout the install "+
 						"action cannot be reached and the version cannot be derived", name, want)
 				}
@@ -163,6 +166,9 @@ func TestPRVerdictExposesTheVerdictToCallers(t *testing.T) {
 
 	// The fork-skip contract has to stay documented: it is the one way a caller
 	// gets "" and the one way a naive gate silently passes an uninspected PR.
+	// Deliberately RAW where every other presence check reads code(): this one
+	// demands documentation, and documentation living in a comment is the
+	// requirement being met, not the loophole (t-szx1).
 	if !strings.Contains(raw, "NOT COMPUTED") {
 		t.Error("pr-verdict.yml no longer documents that a skipped (fork) job yields empty " +
 			"outputs meaning NOT COMPUTED; a caller reading empty as `none` fails open")
@@ -259,8 +265,12 @@ func TestReleaseNotesWalkBaseIsResolvedByGlyph(t *testing.T) {
 
 func TestCompositeActionIsSingleSource(t *testing.T) {
 	raw := repoFile(t, filepath.Join(".github", "actions", "install", "action.yml"))
+	// Every presence check below reads the comment-stripped body: the header's
+	// usage example is a comment quoting much of the same text, so a raw match
+	// would keep passing after the executable half was deleted (t-szx1).
+	body := code(raw)
 
-	if !strings.Contains(raw, "using: composite") {
+	if !strings.Contains(body, "using: composite") {
 		t.Error("install action is not `using: composite`")
 	}
 
@@ -270,7 +280,7 @@ func TestCompositeActionIsSingleSource(t *testing.T) {
 		"--signer-workflow akira-toriyama/glyph/.github/workflows/goreleaser.yml",
 		"releases/download",
 	} {
-		if !strings.Contains(raw, want) {
+		if !strings.Contains(body, want) {
 			t.Errorf("install action is missing %q — it is meant to be the single source of the install logic", want)
 		}
 	}
@@ -284,7 +294,6 @@ func TestCompositeActionIsSingleSource(t *testing.T) {
 	// against comment-stripped text: GitHub's YAML parser drops comments before
 	// the template evaluator runs, so a github expression in the header's usage
 	// example (a comment) is fine — only a live one breaks the load.
-	body := code(raw)
 	if strings.Contains(body, "${{ github.") || strings.Contains(body, "${{github.") {
 		t.Error("install action.yml references the github context in a `${{ github.* }}` " +
 			"expression outside a comment; that context is unavailable at manifest-load time " +
@@ -296,9 +305,34 @@ func TestCompositeActionIsSingleSource(t *testing.T) {
 	// darwin_arm64 + shasum). Collapsing it back to one platform would re-break
 	// whichever job runs on the other.
 	for _, want := range []string{"linux", "darwin", "sha256sum", "shasum", "RUNNER_OS", "RUNNER_ARCH"} {
-		if !strings.Contains(raw, want) {
+		if !strings.Contains(body, want) {
 			t.Errorf("install action is missing %q — it must auto-detect OS/arch to serve the Linux and macOS jobs alike", want)
 		}
+	}
+}
+
+// TestPresenceChecksCannotBeSatisfiedByAComment is the non-vacuity canary for
+// every presence assertion above that reads code(...). Measured in the
+// 2026-07-22 audit: five presence checks in this file read the RAW text, so a
+// whole-line comment quoting the required string satisfied them — the guarded
+// step could be deleted and the requirement stayed green off its own
+// documentation. This pins the mechanism that closed that: code() drops a
+// whole-line comment entirely, and keeps the same bytes when they are
+// executable. Trailing INLINE comments survive code() by design (see
+// fullLineComment) — that residual acceptance is documented there, not here.
+func TestPresenceChecksCannotBeSatisfiedByAComment(t *testing.T) {
+	const doc = "# using: composite\n  #   uses: ./.glyph-action/.github/actions/install\nname: x\n"
+	for _, tok := range []string{"using: composite", "./.glyph-action/.github/actions/install"} {
+		if strings.Contains(code(doc), tok) {
+			t.Errorf("code() kept %q from a whole-line comment; every presence check reading "+
+				"code() can be satisfied by documentation again", tok)
+		}
+	}
+	// Positive control: the same token outside a comment must survive, or
+	// code() has started eating the executable body and every presence check
+	// above would fail closed instead.
+	if !strings.Contains(code("runs:\n  using: composite\n"), "using: composite") {
+		t.Error("code() dropped an executable line; the presence checks above are now asserting against mutilated text")
 	}
 }
 
