@@ -90,6 +90,93 @@ func TestUnansweredRepoReadIsCouldNotRunNotAFailure(t *testing.T) {
 	}
 }
 
+// TestRemainingChecksDescribeMeasuredBehaviour extends the prose guard below
+// to the four checks its merge-method table does not reach (t-rmng):
+// token-repo-read, the two squash policy checks, and workflow-glyph-pins.
+// Mention-only, deliberately: a forbid entry is a phrase that SHIPPED and was
+// false, and none of these four has shipped one yet — what is pinned here is
+// the load-bearing clause of each message, so a reworded claim becomes a
+// review question instead of a silent drift. The one arm not covered is
+// token-repo-read's 404 finding: its error shape (github's statusError) is
+// unexported by design, so that message is exercised end-to-end from
+// internal/cli instead.
+func TestRemainingChecksDescribeMeasuredBehaviour(t *testing.T) {
+	unanswered := healthyInput(t)
+	unanswered.RepoObject = github.Repo{}
+	unanswered.RepoErr = errors.New("github: GET /repos/akira-toriyama/glyph: 502 bad gateway")
+	titleOff := healthyInput(t)
+	titleOff.RepoObject.SquashMergeCommitTitle = "PR_TITLE"
+	bodyOff := healthyInput(t)
+	bodyOff.RepoObject.SquashMergeCommitMessage = "PR_BODY"
+	movingComposite := healthyInput(t)
+	movingComposite.Root = checkoutAt(t, map[string]string{
+		".github/workflows/w.yml":          "jobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - run: \"true\"\n",
+		".github/actions/setup/action.yml": "runs:\n  using: composite\n  steps:\n    - uses: akira-toriyama/glyph/.github/actions/install@main\n",
+	})
+
+	tests := []struct {
+		name    string
+		check   Check
+		want    Status
+		mention []string
+	}{
+		{
+			name:  "an unanswered read is unverified, never a verdict",
+			check: find(t, Run(unanswered), IDTokenAccess),
+			want:  StatusUnknown,
+			mention: []string{
+				"nothing was observed about the repository", // the split the check exists for
+				"NOT a verdict", // 3-vs-4 is what the fleet wrappers branch on
+			},
+		},
+		{
+			name:  "PR_TITLE is argued from the fallback the walk actually runs",
+			check: find(t, Run(titleOff), IDSquashTitle),
+			want:  StatusFail,
+			mention: []string{
+				// The dark-window mechanism, pinned live by
+				// TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark: the fallback
+				// classifies the commit's own message, and a no-gitmoji subject
+				// counts none.
+				"classifies the squash commit's own message",
+				"counts none",
+			},
+		},
+		{
+			name:  "PR_BODY is argued from the offline record, not from glyph's own needs",
+			check: find(t, Run(bodyOff), IDSquashMessage),
+			want:  StatusFail,
+			mention: []string{
+				// DESIGN §4 rejected the squash body as a signal, so the cost
+				// this check may claim is the record and the drift alarm — not
+				// a verdict.
+				"nothing in the repository itself records",
+			},
+		},
+		{
+			name:  "a moving pin is argued from the tag-derived version, not from taste",
+			check: find(t, Run(movingComposite), IDWorkflowPinned),
+			want:  StatusFail,
+			mention: []string{
+				"ONE repository at ONE tag", // the lockstep the pin preserves
+				"job.workflow_ref",          // the mechanism that derives the binary version
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.check.Status != tt.want {
+				t.Fatalf("status = %s, want %s (observed %q)", tt.check.Status, tt.want, tt.check.Observed)
+			}
+			for _, m := range tt.mention {
+				if !strings.Contains(tt.check.Message, m) {
+					t.Errorf("the message does not say %q — it must describe the behaviour that was measured:\n%s", m, tt.check.Message)
+				}
+			}
+		})
+	}
+}
+
 // TestMergeMethodChecksDescribeTheWalkThatExists is a regression test on the
 // PROSE, and it has now earned its place twice. The first draft told the fleet
 // that a rebase-merged PR's non-final commits are classified on "the walk's
