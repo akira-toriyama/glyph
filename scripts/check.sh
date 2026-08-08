@@ -24,6 +24,8 @@
 #   build           go-ci.yml                    `go build ./...`
 #   vet             go-ci.yml                    `go vet ./...`
 #   race-test       go-ci.yml                    `go test -race ./...`
+#   coverage        build.yml `coverage`         total line off the race run's
+#                                                profile — a REPORT, never a gate
 #   golangci-lint   go-ci.yml                    `golangci-lint run ./...`
 #   govulncheck     govulncheck.yml → go-vuln.yml `govulncheck ./...`
 #   bite            build.yml `bite`             the hub's go-bite.sh
@@ -83,7 +85,7 @@ cd "$(dirname "$0")/.."
 # MIRRORS is the reconciliation set: the run refuses its ✓ line unless every name
 # here was recorded by `ran`. Keeping it as data rather than as a comment is what
 # makes "a gate silently stopped running" a failure instead of a nicer-looking log.
-MIRRORS='commit-lint dist-gate golden-gate module-hygiene build vet race-test golangci-lint govulncheck bite mutations fuzz-smoke smoke'
+MIRRORS='commit-lint dist-gate golden-gate module-hygiene build vet race-test coverage golangci-lint govulncheck bite mutations fuzz-smoke smoke'
 NOT_MIRRORED='zizmor, actionlint, taplo, version-preview, task-status, goreleaser, codeql'
 RAN=''
 ran() { RAN="$RAN $1 "; }
@@ -163,9 +165,19 @@ ran vet
 # than stricter: go-ci.yml runs the same command without it. Adding it here would
 # move this script AWAY from CI, not towards it. Add it by hand when chasing a
 # flake — a cached green is a real risk, it is just not a mirror defect.
-echo "→ go test -race"
-go test -race ./...
+echo "→ go test -race (coverage rides the same run)"
+COVER="$(mktemp)"
+go test -race -covermode=atomic -coverprofile="$COVER" ./...
 ran race-test
+# The total line off the profile the race run just wrote — a REPORT, never a
+# gate (t-37mg): coverage is read for risk (an unexecuted branch is a cheap
+# candidate finder for the mutation ledger), and a threshold would turn the
+# number into a target, which buys the tests that assert nothing. The ledger
+# below stays the authority on whether tests bite — 93% coverage has been
+# measured beside three surviving mutations.
+go tool cover -func="$COVER" | tail -n 1
+rm -f "$COVER"
+ran coverage
 
 # Mirrors build.yml's Linux-only "fuzz smoke (bounded)" step: discover every
 # Fuzz target and run each briefly so a new target needs no edit here either.
