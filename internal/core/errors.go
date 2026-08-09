@@ -119,3 +119,14 @@ func AsError(err error) *Error {
 	}
 	return nil
 }
+
+// IsInterrupted reports whether err carries CodeInterrupted — the user's own
+// SIGINT/SIGTERM, classified at the source (internal/gitsource, internal/github's
+// backoff wait). The question is asked at three call sites that each spelled it
+// differently; one predicate keeps them the same question. An interrupt must
+// carry out as the abort it is — laundering it into a check result or an API
+// failure tells a CI wrapper to retry a run its operator stopped.
+func IsInterrupted(err error) bool {
+	ce := AsError(err)
+	return ce != nil && ce.Code == CodeInterrupted
+}
