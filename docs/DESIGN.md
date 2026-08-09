@@ -767,7 +767,8 @@ Shape: independent checks → one report object → an exit on the aggregate.
 **Read-only, always** — a diagnostic that mutates cannot be run casually, and
 this one is meant to be. Each finding carries a stable kebab-case id (branch on
 that, never on the prose), the observed and expected values, what breaks, and the
-`gh api` command that fixes it. Independence is structural: one unreadable input
+concrete command or edit that resolves it — a `gh api -X PATCH` only for the
+repository-settings checks. Independence is structural: one unreadable input
 degrades *that* check to `unknown` and no other, and `unknown` is deliberately
 distinguishable from `fail` — "we could not check" is not "it is fine", so
 neither exits 0.

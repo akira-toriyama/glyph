@@ -19,7 +19,7 @@ the gitmoji that leads each commit.
 ```sh
 # Squash-safe: reads the commits INSIDE the PR, which the squash would erase.
 glyph bump    --pr 7   # → v0.3.0   (a :sparkles: rides with a :white_check_mark:)
-glyph notes   --pr 7   # → the Markdown body, none-bump commits left out
+glyph notes   --pr 7   # → the Markdown release body
 glyph preview --pr 7   # → the whole PR comment: what merging #7 does to the version
 ```
 
@@ -92,7 +92,7 @@ Whether a pin is the *latest* release is deliberately not checked:
 `glyph-pin-audit.yml` in `akira-toriyama/.github` already answers that
 fleet-wide.
 
-Nothing is ever modified: each finding prints the `gh api` command that fixes it.
+Nothing is ever modified: each failing check prints the command that fixes it.
 Exit `0` all clear · `3` a check failed · `4` a check could not run (unverified,
 which is not the same as fine) — an API that never answered is always the
 second, never the first.
