@@ -496,7 +496,8 @@ mention table at the top of `markdown_test.go`, the escaped-form and raw-HTML
 tables at the top of `escape_test.go`. The one time a rule was changed from
 reasoning alone, the reasoning was wrong. Most of this vocabulary is the #61
 hardening (t-j0c6), which is the whole of `escape.go` — flatten, neutralize,
-escape. The fence half is older: `EscapeMentions` and `mention` arrived in #38,
+escape. The fence half is older: the mention fence (today `escapeMentions`) and
+`mention` arrived in #38,
 which wrapped a would-be mention in a single backtick pair, and #54 made the fence
 as long as the input demands (`longestBacktickRun`). Until now all of it existed
 only inside those doc comments.
@@ -525,7 +526,8 @@ construction**. `internal/markdown/markdown.go: codeSpans, paragraphSpans`,
 The next three are **three different operations**, applied at different times to
 different kinds of value. Do not use them interchangeably.
 
-**neutralize** (`EscapeMarkup`) — over **prose**: add backslashes to disarm the
+**neutralize** (`escapeMarkup`, reached through `Line.Prose`) — over **prose**:
+add backslashes to disarm the
 inline constructs that can inject structure, point somewhere the author never
 wrote, or *delete the author's own words*. Four rules, each testing a **byte and
 never a grammar** — `<`, the extended-autolink triggers (`://` after
@@ -535,10 +537,11 @@ prose the author meant to be read. It only **adds** bytes, so the author's text
 survives as a subsequence and the pass is a fixed point. Not theoretical: of the
 16 fleet subjects carrying a `<`, 14 were being **deleted** by GitHub's
 sanitizer (`<Chip>`, `Optional<Any>`, `[overlay.theme.<name>]`), and escaping
-repairs those and regresses none. `internal/markdown/escape.go: EscapeMarkup,
+repairs those and regresses none. `internal/markdown/escape.go: escapeMarkup,
 escapeProse`
 
-**escape** (`EscapeText`) — over a **plain-text field**, which in practice is the
+**escape** (`escapeText`, reached through `Line.Text`) — over a **plain-text
+field**, which in practice is the
 commit *scope*: backslash every ASCII punctuation byte CommonMark lets a
 backslash escape, minus two deliberate exclusions (`-`, which is a marker only at
 the start of a line and would otherwise put a backslash in essentially every
@@ -546,9 +549,10 @@ scoped line in the fleet; and `@`, because `\@octocat` is a *live* mention and t
 backslash would additionally trip the fence's own backslash guard). It is a flat
 byte loop precisely because "this is a plain-text field" means no grammar applies
 to it. **It is not idempotent** and a plain-text escaper cannot be — call it once,
-at render, on the raw field. `internal/markdown/escape.go: EscapeText, escapable`
+at render, on the raw field. `internal/markdown/escape.go: escapeText, escapable`
 
-**fence** (`EscapeMentions`) — wrap a would-be `@mention` in a backtick run so
+**fence** (`escapeMentions`, reached through `Line.String`) — wrap a would-be
+`@mention` in a backtick run so
 GitHub renders it as a code token and links nobody. Wrapping is the **only**
 neutralization GitHub honors: an entity (`&#64;`) or a backslash does nothing at
 all, because mentions are attached by a **post-processor over the rendered
@@ -559,18 +563,29 @@ fused a run of the author's words into a code span and pushed the mention back
 out into prose (t-fbg3). A separating space is written where the fence would
 otherwise touch a byte that consumes it. Left raw, such a token silently lists a
 stranger under a release's Contributors and, in a PR comment, **notifies** them
-(t-hykw). `internal/markdown/markdown.go: EscapeMentions, mention,
+(t-hykw). `internal/markdown/markdown.go: escapeMentions, mention,
 longestBacktickRun`
 
-**flatten** — not one of the three: it *replaces* bytes (every CommonMark line
-terminator, including a bare CR, becomes one space) and therefore lives outside
-`EscapeMentions`, whose no-rewriting invariant a fuzz oracle enforces. It must run
+**flatten** (`flatten`, the first thing `Line.Text` and `Line.Prose` do) — not
+one of the three: it *replaces* bytes (every CommonMark line terminator,
+including a bare CR, becomes one space) and therefore lives outside
+`escapeMentions`, whose no-rewriting invariant a fuzz oracle enforces. It must run
 **first**, because it is what *decides* the inline context — to an escaper a blank
 line ends the paragraph and backticks on either side cannot pair, while in the
 flattened line they can. A bare CR is a line terminator at GitHub, so a subject
 carrying one ended the notes list item and the rest was parsed as a fresh block: a
 commit could fabricate a release-notes section (t-bz0r).
-`internal/markdown/escape.go: Flatten`
+`internal/markdown/escape.go: flatten`
+
+**line builder** (`markdown.Line`) — the package's **only exported surface**:
+`Raw` appends glyph's own markup, `Text` and `Prose` append author-supplied
+fields through the passes above, `String` runs the fence over the assembled
+line. Since #104 the escape order is no longer a contract a caller could break —
+it is applied by construction inside the type, and the surface golden
+(`internal/markdown/testdata/exported-surface.golden.txt`, five declarations,
+all `Line`) is what keeps the passes unreachable from outside. Why that order is
+the only safe one is argued once, at the type's doc comment.
+`internal/markdown/compose.go: Line`
 
 **pipe escape** — the fourth pass a preview cell goes through, after flatten,
 neutralize and fence, and the only one that does not live in `internal/markdown`:
@@ -732,7 +747,7 @@ non-archived repositories allowed merge commits and rebase merges
 `internal/doctor/doctor.go` package comment), and the fleet's history held 9,548
 commit subjects — the denominator the escaping rules' rendering cost is sized
 against, and stated where that sizing is argued rather than here
-(`internal/markdown/escape.go: EscapeMarkup`, rules 3 and 4).
+(`internal/markdown/escape.go: escapeMarkup`, rules 3 and 4).
 
 **reusable workflow** — a workflow with a `workflow_call` trigger, invoked from
 another repository's workflow by `uses:` at a pinned tag. glyph ships **three**:
