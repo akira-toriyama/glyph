@@ -383,6 +383,52 @@ func TestOutOfGoConsumersBranchOnTheContractIntegers(t *testing.T) {
 	}
 }
 
+// goRunInvocation matches an executable `go run` invocation. The exit status
+// of `go run` is cmd/go's, not the compiled binary's (`go help run` says so in
+// as many words): glyph's 2, 3 and 4 all arrive as 1. In a step that branches
+// on the contract integers, that launders every hard failure into the one
+// value the soft no-release arm absorbs.
+var goRunInvocation = regexp.MustCompile(`\bgo run\b`)
+
+// TestReleaseNotesRunTheBuiltBinaryNotGoRun keeps `go run` out of
+// goreleaser.yml's executable body. Measured with this tree's binary: `notes
+// --since-tag=below:notatag` exits 2 directly and 1 through `go run` (stderr
+// tail: "exit status 2"); a dead-credential API walk exits 4 directly and 1
+// through `go run`. The arm below the invocation reads 1 as "nothing
+// release-worthy" and publishes a placeholder body — so under `go run` a
+// wedged walk or a dark API ships a green release that claims there was
+// nothing to say. scripts/check.sh's `go run` sites are out of scope on
+// purpose: that script only pass/fails, it never branches an arm on 1.
+func TestReleaseNotesRunTheBuiltBinaryNotGoRun(t *testing.T) {
+	body := code(repoFile(t, filepath.Join(".github", "workflows", "goreleaser.yml")))
+
+	// Positive control: the matcher must still recognise the retired
+	// invocation, or the absence below is asserting nothing.
+	retired := `go run ./cmd/glyph notes --since-tag="below:$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md" || status=$?`
+	if !goRunInvocation.MatchString(retired) {
+		t.Fatal("canary: goRunInvocation no longer matches the retired invocation it exists to keep out")
+	}
+
+	if loc := goRunInvocation.FindString(body); loc != "" {
+		t.Errorf("goreleaser.yml's executable body invokes %q: the exit status of `go run` is "+
+			"cmd/go's, not glyph's — 2/3/4 all collapse into 1, the one value the no-release arm "+
+			"absorbs, so a broken walk publishes a placeholder release body behind a real tag. "+
+			"Build once and run the binary", loc)
+	}
+
+	// The affirmative half: the binary is built, and the invocation runs it
+	// from where it was built to.
+	for _, want := range []string{
+		`go build -o "$RUNNER_TEMP/glyph" ./cmd/glyph`,
+		`"$RUNNER_TEMP/glyph" notes`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("goreleaser.yml's notes step lost %q; the step must build the tagged tree "+
+				"once and invoke that binary, so glyph's own exit codes reach the branch below it", want)
+		}
+	}
+}
+
 // refusalClause is the wording that separates "something broke" from "glyph
 // declines to answer". Both exit 4, and a copy that mentions only the first
 // teaches the next author that the second needs a new integer — in a frozen

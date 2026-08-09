@@ -19,8 +19,9 @@ name: goreleaser
 # Divergence from the other family Go CLIs (cifail/furrow): glyph does NOT run
 # git-cliff here. glyph is the tool that replaces git-cliff, so depending on it for
 # glyph's own release notes would be self-contradictory. Instead glyph dogfoods
-# itself: the notes step below runs `glyph notes` FROM THE TAGGED COMMIT (go run —
-# no published binary in the loop, so there is no bootstrap circularity) and hands
+# itself: the notes step below runs `glyph notes` FROM THE TAGGED COMMIT (a
+# binary built right there — no published binary in the loop, so there is no
+# bootstrap circularity) and hands
 # the result to GoReleaser via --release-notes. This closes t-8hqn: GoReleaser's
 # built-in changelog printed raw commit subjects, so a subject containing `@v2`
 # or `@mentions` pinged strangers from glyph's own releases — the one surface
@@ -87,10 +88,16 @@ jobs:
         # untracked file would trip GoReleaser's dirty-state guard.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # An explicit `shell: bash` turns on `-e` and pipefail. `glyph notes`
-        # writes straight to the file (never through a pipe) so no exit code can
-        # be masked, and its status is inspected explicitly below rather than
-        # left to -e, which cannot tell a soft no-release from a real failure.
+        # An explicit `shell: bash` turns on `-e` and pipefail. glyph runs as a
+        # BUILT binary, never `go run`: `go help run` states that Run's exit
+        # status is not the compiled binary's — cmd/go collapses glyph's 2/3/4
+        # into 1 (measured), and 1 is the one value the arm below reads as the
+        # soft no-release signal, so a wedged walk or a dark API would publish
+        # a placeholder release body behind a real tag, green. A compile
+        # failure aborts the step via -e, which is right. `glyph notes` writes
+        # straight to the file (never through a pipe), and its status is
+        # inspected explicitly below rather than left to -e, which cannot tell
+        # a soft no-release from a real failure.
         shell: bash
         run: |
           # `glyph notes` exits 1 as a SOFT no-release signal ("nothing
@@ -100,8 +107,9 @@ jobs:
           # abort the whole job: no binaries, no cask, no attestation, behind a
           # tag that already exists. Honour the contract instead: 1 ships a
           # release that says so, anything else is a real failure.
+          go build -o "$RUNNER_TEMP/glyph" ./cmd/glyph
           status=0
-          go run ./cmd/glyph notes --since-tag="below:$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md" || status=$?
+          "$RUNNER_TEMP/glyph" notes --since-tag="below:$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md" || status=$?
           if [ "$status" -eq 1 ]; then
             echo "::warning::no release-worthy commits below $GITHUB_REF_NAME — publishing with a placeholder body"
             printf 'No release-worthy changes in %s.\n' "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
