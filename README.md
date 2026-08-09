@@ -161,6 +161,13 @@ for a merge-preview comment on every PR, and `release.yml` to keep a rolling
 draft release maintained on every push to `main`. Publishing the draft is the
 release: the tag is created by that human act, never by CI.
 
+Adopting on a repository with deep history? Cut a version tag at the commit
+where the convention starts — the walk baselines at the highest `v*` tag, and
+with no tag at all a long history is refused past a walk cap (fail-loud, one
+API round-trip per commit is the cost it refuses; the error names this exact
+remedy) rather than walked unbounded. A young repository needs no tag: the
+first release walks the whole history.
+
 ## Commit format
 
 ```
