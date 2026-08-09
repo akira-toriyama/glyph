@@ -1,13 +1,13 @@
 diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
-index b9a2c30..b2f67d0 100644
+index c729a96..3794c66 100644
 --- a/.github/workflows/goreleaser.yml
 +++ b/.github/workflows/goreleaser.yml
-@@ -100,15 +100,7 @@ jobs:
-           # abort the whole job: no binaries, no cask, no attestation, behind a
+@@ -108,15 +108,7 @@ jobs:
            # tag that already exists. Honour the contract instead: 1 ships a
            # release that says so, anything else is a real failure.
+           go build -o "$RUNNER_TEMP/glyph" ./cmd/glyph
 -          status=0
--          go run ./cmd/glyph notes --since-tag="below:$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md" || status=$?
+-          "$RUNNER_TEMP/glyph" notes --since-tag="below:$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md" || status=$?
 -          if [ "$status" -eq 1 ]; then
 -            echo "::warning::no release-worthy commits below $GITHUB_REF_NAME — publishing with a placeholder body"
 -            printf 'No release-worthy changes in %s.\n' "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
@@ -15,7 +15,7 @@ index b9a2c30..b2f67d0 100644
 -            echo "::error::glyph notes failed (exit $status)"
 -            exit "$status"
 -          fi
-+          go run ./cmd/glyph notes --since-tag="below:$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
++          "$RUNNER_TEMP/glyph" notes --since-tag="below:$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
            cat "$RUNNER_TEMP/release-notes.md"
  
        - name: GoReleaser
