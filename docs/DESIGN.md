@@ -96,9 +96,7 @@ runtime import, per house pattern.)
   read "this is non-breaking: the API is untouched", and a footer that switches a
   rule off must not be spellable by accident in prose. The reason is mandatory —
   a bare `NON-BREAKING:` leaves the rule unsatisfied, because the magic word
-  typed by reflex answers nothing the rule exists to ask (today answered by the
-  same detail string as no footer at all, which tells an author who just typed
-  the word to type it — a separate defect).
+  typed by reflex answers nothing the rule exists to ask.
 
 The redundant Conventional `<type>` word is dropped — the gitmoji's own trailing
 `:` plays the type-colon role. The retired token is handled by SURFACE, not by
