@@ -312,7 +312,9 @@ func permissionSummary(p *github.RepoPermissions) string {
 // (mergedPullFor's covering result), and when that merge point is the one thing
 // GitHub has not indexed, or an automation authored it and ExcludedFromResolution
 // skipped it before the API, nothing expands the pull and the whole of it counts
-// none. Loud (two warnings and exit 1), and permanent in the automation case.
+// none. Loud (two warnings; `release` refuses the incomplete walk at 4, and
+// bump/notes hand down their verdict without the pull), and permanent in the
+// automation case.
 // Land it as a rebase and the messages survive but the shas do not — GitHub always
 // writes new commits, none of which appear in the PR's own commit listing. The walk
 // closes that by aligning the listing against the first-parent run ending at the

@@ -86,9 +86,10 @@ Merge commits and rebase merges are reported as **advice**, not failures — the
 release walk resolves and expands both, and even with the API dark a
 merge-merged PR's commits are on `main` with their gitmoji intact. Each keeps
 one narrow window (a merge point GitHub has not indexed yet drops its PR with
-two warnings and exit `1`; a rebase whose listing the walk cannot align against
-what landed can still double-count during API lag), which is a re-run, not the
-silent wrong version a failure is reserved for.
+two warnings — `release` refuses the incomplete walk at exit `4`, `bump`/`notes`
+hand down their verdict without the dropped pull; a rebase whose listing the
+walk cannot align against what landed can still double-count during API lag),
+which is a re-run, not the silent wrong version a failure is reserved for.
 Whether a pin is the *latest* release is deliberately not checked:
 `glyph-pin-audit.yml` in `akira-toriyama/.github` already answers that
 fleet-wide.
