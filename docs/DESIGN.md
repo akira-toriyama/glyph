@@ -586,10 +586,11 @@ internal/github          commits/{sha}/pulls, pulls/{N}/commits, release CRUD, r
 internal/doctor          repository-precondition checks; independent, read-only (§7)
 internal/hook            commit-msg hook contents + overwrite policy (no rules of its own)
 internal/cli             cobra adapter; Execute() int owns the exit-code funnel
+internal/testutil        the hermetic git fixture shared by tests (test-only, ships nothing)
 internal/workflows       no runtime code — tests pinning CI-YAML invariants
 ```
 
-**Why the four newest boundaries exist** — the tree says what each package
+**Why the five newest boundaries exist** — the tree says what each package
 holds, and each package's doc comment argues its own internals; what belongs
 here is only why it is a package at all, and what depends on it:
 
@@ -605,6 +606,11 @@ here is only why it is a package at all, and what depends on it:
 - `internal/workflows` — the one package whose subject is a directory rather
   than a type (`.github/`), hence no runtime code, no importers, and nothing in
   it that ships.
+- `internal/testutil` — one home for the hermetic git fixture, because its
+  environment pin is an incident-bearing block and verbatim copies quietly
+  lose incidents (a partial copy in the hook tests had already lost the
+  maintenance pin). Imported only by `internal/cli` and `internal/gitsource`
+  tests; nothing shipping depends on it.
 
 **Exit-code contract** (`internal/core`): `0` ok · `1` no release · `2` usage ·
 `3` convention violation · `4` no trustworthy answer — API/git/IO, or a refusal
