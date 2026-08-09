@@ -64,7 +64,7 @@ tree that does not compile turns the local gate into a silent no-op.
   It declares its gates in a manifest at the top and **reconciles** at the end: every mirrored
   gate must actually have run or there is no `✓` line and the exit is non-zero, and gates that
   are deliberately *not* mirrored are listed with the reason. So read the final line, not the
-  absence of errors — `✓ 11/11 mirrored gates passed — NOT mirrored: …`.
+  absence of errors — `✓ N/N mirrored gates passed — NOT mirrored: …`.
   Three things it will refuse to do rather than mislead you: it **exits 2 on a dirty tree**
   (`ALLOW_DIRTY=1` runs anyway and says so in the final line, because a green over uncommitted
   work is a claim about nothing reproducible); a **missing tool is a failure, not a skip**
