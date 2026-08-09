@@ -399,6 +399,14 @@ func TestDoctorTokenFailureDoesNotAbortTheReport(t *testing.T) {
 func failingAPI(t *testing.T, status int, body string) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Retry-After: 0 is a timing knob, not a claim about GitHub's wire
+		// shape: a real primary-rate-limit 403 (this body) carries no such
+		// header, and github.go reserves a header-bearing 403 for the
+		// secondary-limit path. Without it the retryable statuses here fall
+		// back to the 1s/4s/16s default schedule, twice per doctor run — 42 of
+		// this package's 69 test seconds were that sleep. Header honouring is
+		// itself pinned by internal/github/retry_test.go.
+		w.Header().Set("Retry-After", "0")
 		w.WriteHeader(status)
 		fmt.Fprint(w, body)
 	}))
