@@ -418,12 +418,14 @@ at the code's section, so a sectionless code carrying a breaking marker still
 renders. `internal/gitmoji/gitmoji.go: Rule.Section`, `internal/notes/notes.go:
 Group`
 
-**rule id** — the stable kebab-case key a lint finding carries: seven of them, in
-source order (`malformed-subject`, `invalid-scope`, `unknown-gitmoji`,
-`wip-merge-candidate`, `uppercase-subject`, `trailing-period`,
-`undeclared-removal`). It is machine API — CI jobs and agents branch on the `rule`
-key of a `--json` finding, never on the `detail` beside it, which is prose and will
-be reworded. The same discipline as `doctor`'s check id, one layer down.
+**rule id** — the stable kebab-case key a lint finding carries. It is machine
+API — CI jobs and agents branch on the `rule` key of a `--json` finding, never
+on the `detail` beside it, which is prose and will be reworded. The same
+discipline as `doctor`'s check id, one layer down. The ids themselves are
+enumerated in [DESIGN §2](DESIGN.md#2-commit-format), the copy
+`TestDesignDocNamesEveryRuleID` holds in step with the `Rule*` constants — this
+entry stopped carrying its own list after shipping one that was a rule short
+(`legacy-token` arrived in #94 and no gate read this file).
 `internal/parser/parser.go: Violation, RuleMalformedSubject…RuleUndeclaredRemoval`,
 `internal/cli/cmd_lint.go: rangeViolation`
 
@@ -625,13 +627,15 @@ release tag), `token-repo-read` a credential to configure, and any check that
 could not run hands back "re-run", with the condition that must change first.
 Two load-bearing properties: **read-only, always** (a diagnostic that mutates
 cannot be run casually, and this one is meant to be), and **independent** — one
-unreadable input degrades *that* check and no other. 7 checks, in a stable source
-order. `internal/doctor/doctor.go: Check, Run`
+unreadable input degrades *that* check and no other. One check per line of
+`Run`'s literal, in that stable order — the count lives there, not here: this
+entry shipped "7" while `Run` built 8 (`commit-msg-hook` arrived in #81 and no
+gate read this file). `internal/doctor/doctor.go: Check, Run`
 
 **check id** — the stable kebab-case machine key (`squash-merge-enabled`,
 `workflow-glyph-pins`, …). Branch on the id, **never** on the message, which is
 prose and will be reworded. Treat the id block as the versioned surface it is.
-`internal/doctor/doctor.go: IDTokenAccess…IDWorkflowPinned`
+`internal/doctor/doctor.go: IDTokenAccess…IDCommitMsgHook`
 
 **pass / fail / advice / unknown** — four statuses, and the last two are the
 point.
