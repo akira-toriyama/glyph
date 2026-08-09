@@ -329,6 +329,74 @@ func TestReleaseUpsertNeverTouchesForeignReleases(t *testing.T) {
 	}
 }
 
+// TestReleaseUpsertNeverAdoptsUnparseableVDrafts closes the gap beside
+// TestReleaseUpsertNeverTouchesForeignReleases: that test's foreign drafts
+// ("nightly", "0.9.9") both fall to glyphDrafts' v-prefix arm, so its second
+// arm — bump.ParseVersion rejecting a v-prefixed tag — was reachable by no
+// test in the suite (measured: the `continue` is uncovered across every
+// package, and deleting it stays green everywhere). A draft a human named
+// vNext / v1.2 / v2026.08 wears the v but is not the house tag shape, so it
+// is not glyph's to touch: a none verdict must not DELETE it, a release
+// verdict must POST a fresh draft rather than PATCH it into glyph's, and the
+// dry run — which reads the same listing — must preview exactly that.
+//
+// bite-exempt: ratifies the behaviour the tree already has, so it cannot fail
+// against pre-PR source; the mutation ledger row is its defender instead.
+func TestReleaseUpsertNeverAdoptsUnparseableVDrafts(t *testing.T) {
+	foreign := `[` + draftJSON(31, "vNext") + `,` + draftJSON(32, "v1.2") + `,` + draftJSON(33, "v2026.08") + `]`
+
+	t.Run("none-verdict-deletes-nothing", func(t *testing.T) {
+		var writes []apiWrite
+		srv := releaseServer(t, noneWalk(t), foreign, &writes)
+		usePR(t, srv)
+
+		code, _, stderr := runGlyph(t, "release")
+		if code != 1 {
+			t.Fatalf("none upsert exited %d, want 1\nstderr: %s", code, stderr)
+		}
+		if len(writes) != 0 {
+			t.Fatalf("writes = %+v, want none — a v-prefixed tag ParseVersion rejects is a "+
+				"human's draft, and a none verdict discarding it destroys work glyph never made", writes)
+		}
+	})
+
+	t.Run("release-verdict-creates-fresh-never-patches", func(t *testing.T) {
+		var writes []apiWrite
+		srv := releaseServer(t, oneFixWalk(t), foreign, &writes)
+		usePR(t, srv)
+
+		code, _, stderr := runGlyph(t, "release")
+		if code != 0 {
+			t.Fatalf("release exited %d, want 0\nstderr: %s", code, stderr)
+		}
+		if len(writes) != 1 || writes[0].method != "POST" || writes[0].path != releasesPath {
+			t.Fatalf("writes = %+v, want exactly one POST %s — adopting the foreign draft would "+
+				"publish glyph's notes under a human's tag name and delete the rest as strays",
+				writes, releasesPath)
+		}
+	})
+
+	t.Run("dry-run-previews-the-same-restraint", func(t *testing.T) {
+		var writes []apiWrite
+		srv := releaseServer(t, oneFixWalk(t), foreign, &writes)
+		usePR(t, srv)
+
+		code, _, stderr := runGlyph(t, "release", "--dry-run")
+		if code != 0 {
+			t.Fatalf("dry run exited %d, want 0\nstderr: %s", code, stderr)
+		}
+		if len(writes) != 0 {
+			t.Fatalf("a dry run wrote to the API: %+v", writes)
+		}
+		if !strings.Contains(stderr, "would create the rolling draft v0.1.1") {
+			t.Errorf("the dry run does not preview a CREATE — it would adopt the foreign draft:\n%s", stderr)
+		}
+		if !strings.Contains(stderr, "(0 stale draft(s) to delete)") {
+			t.Errorf("the dry run counts a human's drafts as stale:\n%s", stderr)
+		}
+	})
+}
+
 // TestReleaseUpsertJSON: the machine verdict gains the write outcome — the
 // action taken and the draft's URL — on top of the audit trail the dry run
 // already carries, so release.yml@v2 reads one object for the whole step.
