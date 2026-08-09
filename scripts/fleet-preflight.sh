@@ -334,6 +334,7 @@ UNPROBED=0
 LOCAL_HEAD=0
 FETCH_FAILED=0
 BEHIND_PIN=0
+PIN_UNVERIFIED=0
 LOST_ANSWER=0
 : > "$WORK/rows"
 : > "$WORK/skips"
@@ -356,37 +357,17 @@ while IFS= read -r name; do
     continue
   fi
 
-  # A repo that does not run glyph cannot be reddened by glyph. Excluding it is
-  # right; excluding it QUIETLY is not, because "not a consumer" and "I forgot to
-  # look" produce the same silence.
-  if ! grep -rlq "$OWNER/glyph" "$dir/.github/workflows" "$dir/.github/actions" 2>/dev/null; then
-    printf '%s\tno glyph pin site — not a consumer\n' "$name" >> "$WORK/skips"
-    UNPROBED=$((UNPROBED + 1))
-    continue
-  fi
-
-  # What is this repo ACTUALLY pinned at? The baseline is one tag for the whole
-  # fleet, which is only true when the last rollout finished. It often has not:
-  # this run's own reading of the fleet finds repos several releases back, and
-  # for those the real change is LARGER than any row here — the baseline they
-  # would move from is older than the one being compared against. The script was
-  # already reading these very strings to decide consumership and throwing them
-  # away. Comments are filtered because every glyph reusable ships a permanently
-  # stale commented caller stub (the rollout runbook's trap).
-  pin="$(grep -rhoE "^[^#]*$OWNER/glyph[^@]*@v[0-9]+\.[0-9]+\.[0-9]+" \
-           "$dir/.github/workflows" "$dir/.github/actions" 2>/dev/null |
-         grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -u | tail -1 || true)"
-  if [ -n "$pin" ] && [ -n "$BASE_TAG_NAME" ] && [ "$pin" != "$BASE_TAG_NAME" ]; then
-    BEHIND_PIN=$((BEHIND_PIN + 1))
-    printf '%s\tpinned at %s, not the %s baseline — its real change is larger than its row\n' \
-      "$name" "$pin" "$BASE_TAG_NAME" >> "$WORK/skips"
-  fi
-
-  # A discarded fetch failure is worse than no fetch: passing --fetch removed the
-  # "clones NOT refreshed" caveat from the ✓ line whether or not a single fetch
-  # had actually succeeded, so an offline run read as the freshest possible one.
+  # Refresh FIRST: everything below — consumership, the pin, the walk — is read
+  # from the remote ref, and an unfetched remote ref answers as of the clone's
+  # last visit. A discarded fetch failure is worse than no fetch: passing
+  # --fetch removed the "clones NOT refreshed" caveat from the ✓ line whether or
+  # not a single fetch had actually succeeded, so an offline run read as the
+  # freshest possible one.
+  refreshed=''
   if [ -n "$FETCH" ]; then
-    if ! git -C "$dir" fetch --quiet --tags origin >/dev/null 2>&1; then
+    if git -C "$dir" fetch --quiet --tags origin >/dev/null 2>&1; then
+      refreshed=1
+    else
       FETCH_FAILED=$((FETCH_FAILED + 1))
       printf '%s\tfetch failed, so this row is as stale as the clone was\n' "$name" >> "$WORK/skips"
     fi
@@ -406,7 +387,45 @@ while IFS= read -r name; do
   else
     wh=HEAD
     local_note='local-HEAD'
-    LOCAL_HEAD=$((LOCAL_HEAD + 1))
+  fi
+
+  # A repo that does not run glyph cannot be reddened by glyph. Excluding it is
+  # right; excluding it QUIETLY is not, because "not a consumer" and "I forgot to
+  # look" produce the same silence. Judged at the ref the walk uses, never the
+  # working tree — a clone sits at whatever checkout its last visit left.
+  if ! git -C "$dir" grep -q -e "$OWNER/glyph" "$wh" -- .github/workflows .github/actions 2>/dev/null; then
+    printf '%s\tno glyph pin site at %s — not a consumer\n' "$name" "$wh" >> "$WORK/skips"
+    UNPROBED=$((UNPROBED + 1))
+    continue
+  fi
+
+  # What is this repo ACTUALLY pinned at? The baseline is one tag for the whole
+  # fleet, which is only true when the last rollout finished; a repo genuinely
+  # pinned further back sees a LARGER change than any row here — the baseline it
+  # would move from is older than the one being compared against. Read from the
+  # remote ref, never the working tree: `git fetch` moves origin/* and leaves
+  # the tree behind, and the tree-read version of this block reported 29 repos
+  # "pinned BELOW the baseline" out of checkouts the fleet had long moved past,
+  # while every fetched origin/HEAD carried the true pin (the hub's
+  # glyph-pin-audit.yml, which reads the API, agreed). `sort -V`, because
+  # v0.12.0 sorts lexically below v0.8.0 and `tail -1` would report the LOWER
+  # pin of such a pair. Comments are filtered because every glyph reusable ships
+  # a permanently stale commented caller stub (the rollout runbook's trap).
+  pin="$(git -C "$dir" grep -hoE "^[^#]*$OWNER/glyph[^@]*@v[0-9]+\.[0-9]+\.[0-9]+" \
+           "$wh" -- .github/workflows .github/actions 2>/dev/null |
+         grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -uV | tail -1 || true)"
+  if [ -n "$pin" ] && [ -n "$BASE_TAG_NAME" ] && [ "$pin" != "$BASE_TAG_NAME" ]; then
+    if [ -n "$refreshed" ] && [ "$wh" != HEAD ]; then
+      BEHIND_PIN=$((BEHIND_PIN + 1))
+      printf '%s\tpinned at %s, not the %s baseline — its real change is larger than its row\n' \
+        "$name" "$pin" "$BASE_TAG_NAME" >> "$WORK/skips"
+    else
+      # This run did not refresh the ref it read (or read local HEAD), so the
+      # version is an observation from the clone's last fetch — never asserted.
+      PIN_UNVERIFIED=$((PIN_UNVERIFIED + 1))
+      printf '%s\tpin read %s at %s as of the last fetch — unverified (--fetch to assert)\n' \
+        "$name" "$pin" "$wh" >> "$WORK/skips"
+    fi
   fi
 
   tag="$(git -C "$dir" tag --sort=-v:refname 2>/dev/null | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
@@ -431,6 +450,7 @@ while IFS= read -r name; do
   fi
 
   CONSUMERS=$((CONSUMERS + 1))
+  [ -n "$local_note" ] && LOCAL_HEAD=$((LOCAL_HEAD + 1))
 
   o_lint="$(probe_lint "$BASELINE"  "$dir" "$rng")"
   n_lint="$(probe_lint "$CANDIDATE" "$dir" "$rng")"
@@ -548,6 +568,7 @@ fi
 [ "$UNPROBED" -gt 0 ] && NOTE="$NOTE — $UNPROBED of $FLEET_TOTAL never probed"
 [ "$LOCAL_HEAD" -gt 0 ] && NOTE="$NOTE — $LOCAL_HEAD repo(s) walked at local HEAD (no remote-tracking ref)"
 [ "$BEHIND_PIN" -gt 0 ] && NOTE="$NOTE — $BEHIND_PIN repo(s) pinned BELOW the baseline, so their real change exceeds their row"
+[ "$PIN_UNVERIFIED" -gt 0 ] && NOTE="$NOTE — $PIN_UNVERIFIED repo(s) showed a non-baseline pin at last fetch (unverified; --fetch to assert)"
 [ "$LOST_ANSWER" -gt 0 ] && NOTE="$NOTE — $LOST_ANSWER gate(s) LOST their answer under the candidate"
 if [ "$LINT_OK" -lt "$CONSUMERS" ] || [ "$BUMP_OK" -lt "$CONSUMERS" ]; then
   NOTE="$NOTE — gates unanswered (lint $LINT_OK/$CONSUMERS, bump $BUMP_OK/$CONSUMERS)"
