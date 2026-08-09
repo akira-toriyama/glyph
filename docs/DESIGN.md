@@ -580,7 +580,7 @@ internal/version         ldflags build identity + ReadBuildInfo fallback
 internal/gitmoji         //go:embed rules.json; Load() validates completeness
 internal/parser          Commit{Gitmoji,Scope,Breaking,NonBreaking,Subject,Body,SHA,Author}
 internal/bump            Level lattice; Classify; Reduce(max); Next; stdlib semver
-internal/markdown        per-field escape, then EscapeMentions over the assembled line
+internal/markdown        Line: per-field escape, then the mention fence over the assembled line
 internal/notes           group by section; text/template render (no external tmpl dep)
 internal/preview         merge-preview comment body — pure; no git, no API, no clock
 internal/gitsource       local `git log BASE..HEAD` (exec.CommandContext)
