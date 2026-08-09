@@ -22,9 +22,9 @@ type Info struct {
 	Date    string `json:"date,omitempty"`
 }
 
-// Resolve returns the build identity. When Commit/Date were not stamped by the
-// linker (a bare `go install`), it falls back to the VCS stamps the Go
-// toolchain embeds in the binary — so even un-stamped builds are identifiable.
+// Resolve returns the build identity. When the linker stamped nothing (a bare
+// `go install`/`go build`), it falls back to what the Go toolchain embedded in
+// the binary — so even un-stamped builds are identifiable.
 func Resolve() Info {
 	info := Info{Version: Version, Commit: Commit, Date: Date}
 	if info.Commit != "" && info.Date != "" {
@@ -33,6 +33,22 @@ func Resolve() Info {
 	bi, ok := debug.ReadBuildInfo()
 	if !ok {
 		return info
+	}
+	return resolve(info, bi)
+}
+
+// resolve merges the toolchain's embedded identity into the linker's. Split
+// from Resolve because ReadBuildInfo answers for the running binary — the
+// go-install shape (a module version, no VCS stamps) can only be exercised
+// through a seam.
+func resolve(info Info, bi *debug.BuildInfo) Info {
+	// A module-mode `go install pkg@version` builds from the module zip: no
+	// VCS stamps exist, but the toolchain records the module version itself.
+	// Surface it, so the binary a user just installed can say which release
+	// it is — it answered only "dev" before, indistinguishable from a source
+	// build. "(devel)" is a directory build and keeps the "dev" sentinel.
+	if info.Version == "dev" && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		info.Version = bi.Main.Version
 	}
 	for _, s := range bi.Settings {
 		switch s.Key {
