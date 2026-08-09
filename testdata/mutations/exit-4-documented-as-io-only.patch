@@ -1,8 +1,8 @@
 diff --git a/README.md b/README.md
-index 0949d80..f4357cf 100644
+index 530ff56..5404006 100644
 --- a/README.md
 +++ b/README.md
-@@ -157,7 +157,7 @@ Both name the gitmoji-spec snapshot they were pinned from.
+@@ -189,7 +189,7 @@ pinned from.
  
  `0` ok · `1` no release-worthy change · `2` usage · `3` convention violation
  (a commit under `lint`, the repository's own configuration under `doctor`) ·
@@ -10,4 +10,4 @@ index 0949d80..f4357cf 100644
 +`4` API/git/IO ·
  `130` interrupted.
  
- ## License
+ The integers are a frozen machine API — CI gates branch on the exact value, so
