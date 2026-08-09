@@ -4,7 +4,8 @@ A gitmoji-driven release engine: one Go CLI that **lints commits**, computes the
 **semantic-version bump**, and renders **release notes** — deriving all of it from
 the gitmoji that leads each commit.
 
-> **Status: engine complete, fleet migration underway.** `version`, `rules`,
+> **Status: engine complete, fleet migrated** — every consumer repo pins a
+> released tag (audited daily fleet-wide; see the pin audit below). `version`, `rules`,
 > `lint` (`--range` / `--message` / `--stdin`), `bump` / `notes` over a local
 > range (`--range`), a **pull request's individual, pre-squash commits**
 > (`--pr`) or the release-time walk (`--since-tag`), and `release` (rolling

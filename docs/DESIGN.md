@@ -917,10 +917,11 @@ placeholder, the checkout stays `fetch-depth: 0`) plus the fake-API tests behind
 `glyph release`. Worth knowing before trusting "we dogfood it" about a
 `release.yml` change.
 
-**Next.** Fleet migration, and everything else still open, lives in the
-`projects` furrow board — the pointer §6 already carries, not a second copy of it
-here: a doc-side task list is a second source of truth, and the two go stale
-against each other. Two design decisions this document names in place, so that
+**Next.** Everything still open lives in the `projects` furrow board — the
+pointer §6 already carries, not a second copy of it here: a doc-side task list
+is a second source of truth, and the two go stale against each other. (The
+fleet migration this paragraph used to name completed: every consumer pins
+v1.0.0 or later, audited daily.) Two design decisions this document names in place, so that
 dropping the phase list does not lose them: the initial-tag knob (§1), and
 narrowing the reconciliation refusal to the merge-button shape, which is
 placeable without a canonical commit (§4).
