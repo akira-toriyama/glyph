@@ -40,9 +40,11 @@ func newDoctorCmd() *cobra.Command {
 			"    last replayed commit, which is what GitHub names merge_commit_sha). What is\n" +
 			"    left is a house convention plus one named, LOUD window per style — a merge\n" +
 			"    point GitHub has not indexed yet (or an automation authored) drops its pull\n" +
-			"    with two warnings and exit 1; a rebase whose listing the walk cannot align\n" +
-			"    — one that dropped a commit it was asked to replay, already upstream or\n" +
-			"    rebased empty — can still fold a replayed commit in twice during API lag.\n" +
+			"    with two warnings (release refuses the incomplete walk at exit 4;\n" +
+			"    bump/notes hand down their verdict without it); a rebase whose listing the\n" +
+			"    walk cannot align — one that dropped a commit it was asked to replay,\n" +
+			"    already upstream or rebased empty — can still fold a replayed commit in\n" +
+			"    twice during API lag.\n" +
 			"    Neither is the silent wrong verdict a failure is reserved for\n" +
 			"  - squash_merge_commit_title=COMMIT_OR_PR_TITLE and\n" +
 			"    squash_merge_commit_message=COMMIT_MESSAGES: these decide whether the commit\n" +

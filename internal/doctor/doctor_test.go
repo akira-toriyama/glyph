@@ -262,8 +262,8 @@ func TestMergeMethodChecksDescribeTheWalkThatExists(t *testing.T) {
 			},
 			forbid: []string{
 				// An unresolved merge point drops the whole pull request. Loud
-				// (two warnings, exit 1) — which is why this is advice — but not
-				// nothing.
+				// (two warnings; release refuses the incomplete walk at 4) —
+				// which is why this is advice — but not nothing.
 				"so nothing breaks",
 			},
 		},
