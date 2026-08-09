@@ -83,6 +83,20 @@ func newDoctorCmd() *cobra.Command {
 	return cmd
 }
 
+// firstInterrupt returns the first of errs carrying the user's interrupt, or
+// nil. Split out of doctorRun so the guard over its two independent reads (the
+// API, then git) is testable without arranging a live signal — cancelling the
+// context before doctorRun makes the FIRST read interrupted and the guard
+// passes for the wrong reason, hiding a dropped herr entirely.
+func firstInterrupt(errs ...error) error {
+	for _, err := range errs {
+		if core.IsInterrupted(err) {
+			return err
+		}
+	}
+	return nil
+}
+
 func doctorRun(cmd *cobra.Command) error {
 	if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {
 		return err
@@ -98,10 +112,15 @@ func doctorRun(cmd *cobra.Command) error {
 	// that one check's could-not-run — never an aborted report.
 	hooksDir, herr := gitsource.HooksDir(cmd.Context(), ".")
 	// An interrupt is the user's own abort and must never be laundered into a
-	// check result: reporting "the token cannot read the repository" because
-	// somebody pressed Ctrl-C would be a diagnosis of the wrong thing entirely.
-	if ce := core.AsError(rerr); ce != nil && ce.Code == core.CodeInterrupted {
-		return rerr
+	// check result: reporting "the token cannot read the repository" — or "git
+	// could not report where hooks live" — because somebody pressed Ctrl-C
+	// would be a diagnosis of the wrong thing entirely. Both reads run before
+	// this guard, and the signal lands in whichever is in flight, so both are
+	// asked: guarding rerr alone turned a mid-run SIGTERM into exit 4 with the
+	// abort rendered as the hook check's could-not-run — the one code the
+	// fleet's wrappers read as retryable infra, on a run the operator stopped.
+	if err := firstInterrupt(rerr, herr); err != nil {
+		return err
 	}
 	report := doctor.Run(doctor.Input{
 		Repo: owner + "/" + name,

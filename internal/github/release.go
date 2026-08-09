@@ -261,7 +261,7 @@ func (c *Client) sendRecovering(req *http.Request, recovered func() ([]byte, boo
 			// The context ended mid-backoff. A cancel is the user's abort and
 			// carries out as such; a deadline means the caller's patience ran
 			// out first, and the LAST real failure is the informative one.
-			if ce := core.AsError(werr); ce != nil && ce.Code == core.CodeInterrupted {
+			if core.IsInterrupted(werr) {
 				return nil, nil, werr
 			}
 			return nil, nil, noteAttempts(err, attempt+1)

@@ -307,7 +307,7 @@ func convergeStrays(ctx context.Context, gh *github.Client, owner, repo string, 
 	for _, s := range stale {
 		gone, derr := gh.DeleteRelease(ctx, owner, repo, s.ID)
 		if derr != nil {
-			if core.ExitCode(derr) == int(core.CodeInterrupted) {
+			if core.IsInterrupted(derr) {
 				return derr
 			}
 			warnf("the notes landed, but the stale draft %s (release id %d) would not go: %v — "+

@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,7 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/hook"
 )
 
@@ -459,6 +464,99 @@ func TestDoctorUnansweredAPIIsCouldNotRunNotAViolation(t *testing.T) {
 	env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
 	if env.Code != 4 {
 		t.Fatalf("envelope code = %d, want 4 — `.error.code == 3` means a convention violation to the fleet's wrappers", env.Code)
+	}
+}
+
+// runGlyphCtx is runGlyph with a caller-owned context, for the one family of
+// tests that needs to cancel mid-run — the wiring a live SIGINT/SIGTERM uses.
+func runGlyphCtx(t *testing.T, ctx context.Context, args ...string) (code int, stdout, stderr string) {
+	t.Helper()
+	var outBuf, errBuf bytes.Buffer
+	oldOut, oldErr := out, errOut
+	out, errOut = &outBuf, &errBuf
+	defer func() { out, errOut = oldOut, oldErr }()
+
+	root := newRootCmd()
+	root.SetArgs(args)
+	root.SetOut(&errBuf)
+	root.SetErr(&errBuf)
+	code = finish(root.ExecuteContext(ctx))
+	return code, outBuf.String(), errBuf.String()
+}
+
+// TestFirstInterruptChecksEveryRead pins the predicate doctorRun guards its two
+// independent reads with. The order matters only for which error carries out;
+// what must never regress is that the SECOND position is consulted at all —
+// see TestDoctorInterruptDuringHooksReadCarriesOut for why cancelling before
+// the run cannot cover that.
+func TestFirstInterruptChecksEveryRead(t *testing.T) {
+	interrupt := &core.Error{Code: core.CodeInterrupted, Msg: "interrupted", Silent: true}
+	plain := core.APIf("git: boom")
+
+	if got := firstInterrupt(nil, nil); got != nil {
+		t.Errorf("firstInterrupt(nil, nil) = %v, want nil", got)
+	}
+	if got := firstInterrupt(plain, nil); got != nil {
+		t.Errorf("a plain failure is not an abort; got %v, want nil", got)
+	}
+	if got := firstInterrupt(nil, interrupt); got == nil {
+		t.Error("an interrupt in the SECOND read was not seen — that is the laundering defect")
+	}
+	if got := firstInterrupt(interrupt, plain); !errors.Is(got, error(interrupt)) {
+		t.Errorf("the first interrupt should carry out verbatim; got %v", got)
+	}
+}
+
+// TestDoctorInterruptDuringHooksReadCarriesOut pins the guard over doctor's
+// SECOND read. Both reads run before the guard, and the signal lands in
+// whichever is in flight; measured before the fix, a SIGTERM landing in the
+// hooks read exited 4 — stdout carried a report with commit-msg-hook rendered
+// as "could not run: … interrupted" — and 4 is the one code the fleet's
+// wrappers read as retryable infra, so CI would retry a run its operator
+// stopped. The same signal landing in the API read already exited 130 with
+// nothing written: same command, same signal, different answer by landing
+// site.
+//
+// The choreography exists because the trivial arrangement proves nothing:
+// cancelling the context BEFORE the run makes the API read interrupted and the
+// rerr half of the guard fires first, green with or without the herr half. So
+// the API read completes against a healthy fake, and only when the fake git
+// signals that the hooks read is in flight is the context cancelled.
+func TestDoctorInterruptDuringHooksReadCarriesOut(t *testing.T) {
+	srv := doctorServer(t, apiRepoObject(healthySettings))
+	usePR(t, srv)
+	useDoctorCheckout(t, pinnedCaller)
+
+	// A fake git that reports being asked, then blocks. `exec` hands the pipe
+	// fds to a /dev/null-redirected sleep so the harness's output copy sees
+	// EOF at once and the kill on cancel is all Wait waits for.
+	bin := t.TempDir()
+	asked := filepath.Join(bin, "asked")
+	script := "#!/bin/sh\nPATH=/usr/bin:/bin\ntouch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for range 400 {
+			if _, err := os.Stat(asked); err == nil {
+				cancel()
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel() // safety net: never leave the run behind the fake's 30s block
+	}()
+
+	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	if code != 130 {
+		t.Fatalf("doctor exited %d, want 130 — an interrupt in the hooks read is the user's own abort, not a check result", code)
+	}
+	if stdout != "" {
+		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
 	}
 }
 
