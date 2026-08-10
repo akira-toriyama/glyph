@@ -1,0 +1,13 @@
+diff --git a/internal/cli/hookdrift.go b/internal/cli/hookdrift.go
+index c49777c..7c45889 100644
+--- a/internal/cli/hookdrift.go
++++ b/internal/cli/hookdrift.go
+@@ -36,7 +36,7 @@ func warnIfHookStale(ctx context.Context, k hook.Kind) {
+ 	if err != nil {
+ 		return
+ 	}
+-	if !k.Stale(string(body)) {
++	if false && !k.Stale(string(body)) {
+ 		return
+ 	}
+ 	warnf("the installed %s hook was written by an older glyph and no longer matches this one — "+
