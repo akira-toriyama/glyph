@@ -624,3 +624,35 @@ func TestLintRangeUsageGuards(t *testing.T) {
 		t.Fatalf("lint --range --all exited %d, want 2", code)
 	}
 }
+
+// TestLintRangeAnnotationCarriesTheFix pins the fix's two delivery routes over
+// a range: the ::error:: annotation a human reads in the job summary, and the
+// envelope's `fix` key an agent applies. Both carry the SAME corrected line
+// parser.Lint computed — the annotation is not a second renderer of the
+// suggestion, which is how the jq reconstruction went stale (t-sws7).
+func TestLintRangeAnnotationCarriesTheFix(t *testing.T) {
+	dir, base := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":bug: Fix the crash.")
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
+	if code != 3 {
+		t.Fatalf("lint --range exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	const want = ":bug: fix the crash"
+	if !strings.Contains(stderr, "fix: "+want) {
+		t.Errorf("the annotation does not carry the corrected line — a human in the job summary "+
+			"gets the finding but not the paste:\n%s", stderr)
+	}
+	env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+	var details []rangeViolation
+	if err := json.Unmarshal(env.Details, &details); err != nil || len(details) == 0 {
+		t.Fatalf("decoding details: %v\n%s", err, stderr)
+	}
+	for _, d := range details {
+		if d.Fix != want {
+			t.Errorf("envelope finding %s carries fix %q, want %q — the machine half is where "+
+				"an agent reads it", d.Rule, d.Fix, want)
+		}
+	}
+}

@@ -1,20 +1,17 @@
+diff --git a/internal/parser/parser.go b/internal/parser/parser.go
+index 4868a05..483a450 100644
 --- a/internal/parser/parser.go
 +++ b/internal/parser/parser.go
-@@ -362,18 +362,6 @@
- 		return []Violation{{Rule: rule, Detail: err.Error()}}
- 	}
- 	var vs []Violation
--	// First among the appended rules: it is a grammar defect, and the rewrite
--	// it suggests is what the remaining rules should be judging. It fires in
--	// every mode — unlike wip-merge-candidate there is no time at which the
--	// retired token becomes legal, and the walk over history never runs Lint,
--	// so no old commit can trip it.
+@@ -420,13 +420,6 @@ func Lint(message string, opts LintOptions) []Violation {
+ 	// every mode — unlike wip-merge-candidate there is no time at which the
+ 	// retired token becomes legal, and the walk over history never runs Lint,
+ 	// so no old commit can trip it.
 -	if c.legacyToken != "" {
 -		detail := fmt.Sprintf("retired Conventional token %q after the gitmoji — the convention is one grammar, `<:code:>[(scope)][!] <subject>`", c.legacyToken)
 -		if s := legacyRewrite(c); s != "" {
 -			detail = fmt.Sprintf("retired Conventional token %q after the gitmoji — the convention is one grammar, write %q", c.legacyToken, s)
 -		}
--		vs = append(vs, Violation{Rule: RuleLegacyToken, Detail: detail})
+-		vs = append(vs, Violation{Rule: RuleLegacyToken, Detail: detail, Fix: fix})
 -	}
  	if opts.Known != nil && !opts.Known(c.Gitmoji) {
  		vs = append(vs, Violation{

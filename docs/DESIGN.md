@@ -119,7 +119,17 @@ Linter shape check (membership is checked in code against the embedded table):
 An unknown `:code:` is a **hard lint error (exit 3)**, never a silent patch.
 
 The complete rule set, in the order `parser.Lint` evaluates it. Every id is
-**machine API** — branch on the id, never on the prose — so this list has to stay
+**machine API** — branch on the id, never on the prose — and so is the finding's
+`fix` field: where a repair is mechanical (the retired token, casing, trailing
+periods, a lowercasable scope), the violation carries the corrected subject
+line, and pasting it as the message's first line lints green
+(`TestLintFixIsPasteable`). Every fixable violation on one message carries the
+SAME fully-corrected line — per-rule fixes applied in sequence un-did each
+other — and rules whose repair needs a human decision (an unknown code, a WIP
+marker, an undeclared removal) carry none: a guessed fix lint would bless
+anyway is a wrong answer pasted with confidence. Agents were regexing `detail`
+for the suggestion, and that prose has been reworded before (#78) — the `fix`
+key is the stable home the id discipline already promised. This list has to stay
 in step with the `Rule*` constants in `internal/parser/parser.go`. It did not:
 the prose summary that stood here was written in the scaffold commit, before the
 parser existed. It named four of the seven, left `malformed-subject` implicit in

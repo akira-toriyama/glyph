@@ -52,9 +52,23 @@ type Commit struct {
 
 // Violation is one lint finding: a stable machine-readable rule id plus a
 // human sentence quoting the offending part.
+//
+// Fix, when present, is the corrected SUBJECT LINE — replace the message's
+// first line with it, verbatim, and the mechanical violations are gone. It is
+// a field and not a phrase inside Detail because agents were regexing the
+// prose to recover the suggestion, and the prose has been reworded before
+// (PR #78) — a rewording must never break a machine consumer, which is what
+// the stable rule ids already promise. Every fixable violation on one message
+// carries the SAME fully-corrected line, so applying any one of them applies
+// them all — fixes that each corrected only their own rule un-did each other
+// when applied in sequence. Rules whose repair needs a human decision (an
+// unknown code, a WIP marker, an undeclared removal) carry no Fix at all:
+// a guessed fix that lint would bless anyway is how a wrong answer gets
+// pasted with confidence.
 type Violation struct {
 	Rule   string `json:"rule"`
 	Detail string `json:"detail"`
+	Fix    string `json:"fix,omitempty"`
 }
 
 // The lint rule identifiers. They are machine API — CI and agents branch on
@@ -231,6 +245,40 @@ func legacyRewrite(c Commit) string {
 	return line
 }
 
+// mechanicalFix spells the one corrected subject line that clears every
+// mechanical rule at once: the retired token gone (legacyRewrite), trailing
+// periods trimmed, the first rune lowercased. "" when no clean line exists —
+// legacyRewrite's own rule, inherited: a suggestion the linter would itself
+// reject is worse than none, and so is one for a subject that is nothing BUT
+// periods.
+func mechanicalFix(c Commit) string {
+	s := strings.TrimRight(c.Subject, ".")
+	if r, size := utf8.DecodeRuneInString(s); r != utf8.RuneError && unicode.IsUpper(r) {
+		s = string(unicode.ToLower(r)) + s[size:]
+	}
+	c.Subject = s
+	return legacyRewrite(c)
+}
+
+// scopeFix spells the corrected subject line for an invalid-scope finding, or
+// "" — the lax match re-derives the pieces Parse refused, and kebabSuggestion
+// decides whether lowercasing alone legalises the scope (anything more is a
+// guess, and a guessed fix pastes a wrong answer with confidence).
+func scopeFix(first string) string {
+	m := laxSubjectRE.FindStringSubmatch(first)
+	if m == nil {
+		return ""
+	}
+	k := kebabSuggestion(m[2])
+	if k == "" {
+		return ""
+	}
+	// Through mechanicalFix, not straight to a string: a line that fixed only
+	// the scope and left an uppercase subject or a trailing period would be a
+	// paste that still fails lint — the one property Fix exists to guarantee.
+	return mechanicalFix(Commit{Gitmoji: m[1], Scope: k, Breaking: m[3] == "!", Subject: m[4]})
+}
+
 // Parse parses one commit message into a Commit. A message whose subject line
 // does not open with a well-formed `<:code:>[(scope)][!] <subject>` is a lint
 // failure (*core.Error, CodeLint) — never a silently zero Commit. The legacy
@@ -351,17 +399,22 @@ func Parse(message string) (Commit, error) {
 func Lint(message string, opts LintOptions) []Violation {
 	c, err := Parse(message)
 	if err != nil {
-		rule := RuleMalformedSubject
+		rule, fix := RuleMalformedSubject, ""
 		if lines := splitLines(message); len(lines) > 0 {
 			// Same trim as Parse: the two must judge the same string, or the rule
 			// id and the message would disagree about which line was read.
-			if _, ok := invalidScope(strings.TrimRight(lines[0], " \t\r")); ok {
+			first := strings.TrimRight(lines[0], " \t\r")
+			if _, ok := invalidScope(first); ok {
 				rule = RuleInvalidScope
+				fix = scopeFix(first)
 			}
 		}
-		return []Violation{{Rule: rule, Detail: err.Error()}}
+		return []Violation{{Rule: rule, Detail: err.Error(), Fix: fix}}
 	}
 	var vs []Violation
+	// One corrected line for every mechanical rule this message trips — each
+	// fixable violation carries the same string (see Violation.Fix for why).
+	fix := mechanicalFix(c)
 	// First among the appended rules: it is a grammar defect, and the rewrite
 	// it suggests is what the remaining rules should be judging. It fires in
 	// every mode — unlike wip-merge-candidate there is no time at which the
@@ -372,7 +425,7 @@ func Lint(message string, opts LintOptions) []Violation {
 		if s := legacyRewrite(c); s != "" {
 			detail = fmt.Sprintf("retired Conventional token %q after the gitmoji — the convention is one grammar, write %q", c.legacyToken, s)
 		}
-		vs = append(vs, Violation{Rule: RuleLegacyToken, Detail: detail})
+		vs = append(vs, Violation{Rule: RuleLegacyToken, Detail: detail, Fix: fix})
 	}
 	if opts.Known != nil && !opts.Known(c.Gitmoji) {
 		vs = append(vs, Violation{
@@ -390,12 +443,14 @@ func Lint(message string, opts LintOptions) []Violation {
 		vs = append(vs, Violation{
 			Rule:   RuleUppercaseSubject,
 			Detail: fmt.Sprintf("subject %q must start lowercase", c.Subject),
+			Fix:    fix,
 		})
 	}
 	if strings.HasSuffix(c.Subject, ".") {
 		vs = append(vs, Violation{
 			Rule:   RuleTrailingPeriod,
 			Detail: fmt.Sprintf("subject %q must not end with a period", c.Subject),
+			Fix:    fix,
 		})
 	}
 	// Deliberately NOT gated on MergeCandidate, unlike wip-merge-candidate.
