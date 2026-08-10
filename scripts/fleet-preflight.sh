@@ -16,7 +16,8 @@
 # runs today, once with the candidate — and only a repo whose verdict MOVES is
 # a finding. Repos that agree are counted and stay quiet.
 #
-# Two probes, because glyph reaches the fleet through two gates:
+# Three probes, because glyph reaches the fleet through two verdict gates and
+# one rendering surface:
 #
 #   lint --range  the commit-lint gate (lint.yml). Read its answer as a
 #                 PREDICTOR, not a verdict: CI lints a pull request's own
@@ -46,7 +47,26 @@
 #                 unanswered" on the strength of that, and the one thing a
 #                 preflight may not do is describe a gate it is not running.
 #
-# The two are classified INDEPENDENTLY. They fail for unrelated reasons — a
+#   release       the SHIPPED body (release.yml). Everything a body is made of
+#   --dry-run     — section titles and order, the entry line, the citation, the
+#                 markdown escaping — lives in internal/notes and is golden-
+#                 pinned against glyph's own fixtures only, so a rendering
+#                 change moves every consumer's next release body while both
+#                 verdict probes read 0 moved. Probed with the release job's
+#                 own command (`release --dry-run --json`, the invocation at
+#                 release.yml's verdict step) and never with `notes` — the
+#                 same correction this script already made once, for
+#                 `--since-tag` vs `--range`: a preflight may not describe a
+#                 gate it is not running. Its moves are RETROACTIVE the way
+#                 bump's are — the repo's next release publishes a different
+#                 body, having changed nothing itself — and they are counted
+#                 BESIDE the verdict count, never inside it: a re-rendered
+#                 body is not a changed verdict. Bodies are compared only when
+#                 BOTH binaries reach a release verdict (exit 0): every other
+#                 combination is the verdict itself moving, which is the bump
+#                 row's finding, not this one's.
+#
+# The probes are classified INDEPENDENTLY. They fail for unrelated reasons — a
 # repo carrying one unparseable subject makes `bump` refuse the whole range
 # (exit 3) while `lint` still answers about every other commit in it — and the
 # first cut of this script discarded such a repo entirely, throwing away a good
@@ -271,11 +291,33 @@ probe_lint() { # probe_lint <bin> <dir> <range>
   printf '%s\t%s\n' "$_st" "$_sig"
 }
 
+# probe_body runs the release job's own verdict computation and keeps the BODY
+# it would publish. The multi-line body cannot ride probe()'s one-line record,
+# so it lands in a file and the printed record is the code alone; the file is
+# meaningful ONLY when the code is 0 — a none verdict (1) has no body field and
+# a refusal (3) has no body at all, and the caller never reads the file then.
+# --dry-run computes the full verdict and writes nothing (the same read-only
+# posture as the other probes); no --footer-file, because the footer is the
+# caller's text appended verbatim and identical under both binaries — the
+# question here is what GLYPH renders.
+probe_body() { # probe_body <bin> <dir> <owner/name> <bodyfile>
+  _st=0
+  _out="$( cd "$2" && "$1" release --dry-run --json --repo "$3" 2>/dev/null )" || _st=$?
+  if [ "$_st" -eq 0 ]; then
+    printf '%s' "$_out" | jq -r '.body // ""' > "$4" 2>/dev/null || : > "$4"
+  else
+    : > "$4"
+  fi
+  printf '%s\n' "$_st"
+}
+
 # An ANSWER is any code glyph reaches by JUDGING. That includes 3 on both gates:
 # lint exits 3 for a convention violation and bump exits 3 for a subject it
 # refuses to classify, and both are verdicts a consumer acts on — comparing them
 # across binaries is the entire point. Only 2 (bad input from this script), 4 (no
 # trustworthy answer) and 130 (interrupted) mean no verdict was produced.
+# body shares bump's answer set: release exits 0 (a draft would be written),
+# 1 (none — nothing release-worthy) or 3 (a refusal), all reached by judging.
 #
 # Spelled `[ "$status" -eq N ]` rather than as a `case` on "$gate:$code", which
 # is how it was first written. The shape is not cosmetic: internal/workflows'
@@ -288,6 +330,7 @@ answered() { # answered <gate> <status>  → 0 when the status is an ANSWER, 1 w
   case "$1" in
     lint) [ "$status" -eq 0 ] || [ "$status" -eq 3 ] ;;
     bump) [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] ;;
+    body) [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ] ;;
     *) return 1 ;;
   esac
 }
@@ -330,6 +373,8 @@ CONSUMERS=0
 CHANGED=0
 LINT_OK=0
 BUMP_OK=0
+BODY_OK=0
+BODY_CHANGED=0
 UNPROBED=0
 LOCAL_HEAD=0
 FETCH_FAILED=0
@@ -337,6 +382,7 @@ BEHIND_PIN=0
 PIN_UNVERIFIED=0
 LOST_ANSWER=0
 : > "$WORK/rows"
+: > "$WORK/body_rows"
 : > "$WORK/skips"
 
 # RECENT_CAP bounds the walk in a repo that has never released. Such a repo has
@@ -459,6 +505,11 @@ while IFS= read -r name; do
   # here as thirty-five identical exit 4s.
   o_bump="$(probe "$BASELINE"  "$dir" bump --since-tag --repo "$OWNER/$name")"
   n_bump="$(probe "$CANDIDATE" "$dir" bump --since-tag --repo "$OWNER/$name")"
+  # The rendering surface, via the release job's own command. Same API cost
+  # class as the bump probe (it runs the same walk, plus the releases listing
+  # the dry run reads too).
+  ob_body="$(probe_body "$BASELINE"  "$dir" "$OWNER/$name" "$WORK/body.old")"
+  nb_body="$(probe_body "$CANDIDATE" "$dir" "$OWNER/$name" "$WORK/body.new")"
 
   ol_code="${o_lint%%	*}"; nl_code="${n_lint%%	*}"
   ol_sig="${o_lint#*	}";  nl_sig="${n_lint#*	}"
@@ -504,6 +555,24 @@ while IFS= read -r name; do
       "$name" "$rng" "$ob_code" "$nb_code" >> "$WORK/skips"
   fi
 
+  # The rendering comparison, gated the way the header says: only two release
+  # verdicts (0 on both sides) have bodies to compare — every other answered
+  # combination is the VERDICT moving, which the bump row reports, and counting
+  # it here too would bill one change twice under two names. A broken probe is
+  # a skip, never a finding.
+  if answered body "$ob_body" && answered body "$nb_body"; then
+    BODY_OK=$((BODY_OK + 1))
+    if [ "$ob_body" -eq 0 ] && [ "$nb_body" -eq 0 ] && ! cmp -s "$WORK/body.old" "$WORK/body.new"; then
+      BODY_CHANGED=$((BODY_CHANGED + 1))
+      delta="$(diff "$WORK/body.old" "$WORK/body.new" | grep -c '^[<>]' | tr -d ' ')"
+      printf '%s\t%s\t%s line(s) differ\t%s\n' \
+        "$name" "$rng" "$delta" "$local_note" >> "$WORK/body_rows"
+    fi
+  else
+    printf '%s\tbody gate unanswered over %s (baseline exit %s, candidate exit %s)\n' \
+      "$name" "$rng" "$ob_body" "$nb_body" >> "$WORK/skips"
+  fi
+
   moved=''
   [ -n "$moved_lint" ] && moved="lint"
   [ -n "$moved_bump" ] && moved="${moved:+$moved+}bump"
@@ -535,6 +604,19 @@ if [ "$CHANGED" -gt 0 ]; then
   echo "  says the habit that wrote those commits is still live in that repo."
   echo "  bump moves are RETROACTIVE: that repo's next release cuts a different"
   echo "  version than it would today, having changed nothing itself."
+  echo
+fi
+
+if [ "$BODY_CHANGED" -gt 0 ]; then
+  echo "RENDERED BODIES THAT MOVE — same verdict, different bytes published"
+  printf '  %-18s %-22s %-20s %s\n' REPO RANGE BODY NOTE
+  while IFS='	' read -r name rng delta note; do
+    printf '  %-18s %-22s %-20s %s\n' "$name" "$rng" "$delta" "$note"
+  done < "$WORK/body_rows"
+  echo
+  echo "  body moves are RETROACTIVE the way bump's are: that repo's next release"
+  echo "  publishes a different body, having changed nothing itself. They are NOT"
+  echo "  in the changed count — a re-rendered body is not a changed verdict."
   echo
 fi
 
@@ -570,11 +652,13 @@ fi
 [ "$BEHIND_PIN" -gt 0 ] && NOTE="$NOTE — $BEHIND_PIN repo(s) pinned BELOW the baseline, so their real change exceeds their row"
 [ "$PIN_UNVERIFIED" -gt 0 ] && NOTE="$NOTE — $PIN_UNVERIFIED repo(s) showed a non-baseline pin at last fetch (unverified; --fetch to assert)"
 [ "$LOST_ANSWER" -gt 0 ] && NOTE="$NOTE — $LOST_ANSWER gate(s) LOST their answer under the candidate"
-if [ "$LINT_OK" -lt "$CONSUMERS" ] || [ "$BUMP_OK" -lt "$CONSUMERS" ]; then
-  NOTE="$NOTE — gates unanswered (lint $LINT_OK/$CONSUMERS, bump $BUMP_OK/$CONSUMERS)"
+if [ "$LINT_OK" -lt "$CONSUMERS" ] || [ "$BUMP_OK" -lt "$CONSUMERS" ] || [ "$BODY_OK" -lt "$CONSUMERS" ]; then
+  NOTE="$NOTE — gates unanswered (lint $LINT_OK/$CONSUMERS, bump $BUMP_OK/$CONSUMERS, body $BODY_OK/$CONSUMERS)"
 fi
-case "$NOTE" in *?*) NOTE="$NOTE — so $CHANGED is a FLOOR" ;; esac
+case "$NOTE" in *?*) NOTE="$NOTE — so the counts are FLOORS" ;; esac
 # "N/35 consume glyph and were probed" asserted a fact about the FLEET — that the
 # other 33 do not consume glyph — when the real reduction was "I do not have 33 of
 # the clones". Say what was probed and leave the reasons to the list above.
-echo "✓ preflight: probed $CONSUMERS of $FLEET_TOTAL fleet repos; $CHANGED would change — baseline $BASELINE_LABEL$NOTE"
+# The two counts stay two: a re-rendered body is not a changed verdict, so
+# summing them would launder rendering churn into the number a tag is cut on.
+echo "✓ preflight: probed $CONSUMERS of $FLEET_TOTAL fleet repos; $CHANGED verdict(s) would change, $BODY_CHANGED body(ies) would re-render — baseline $BASELINE_LABEL$NOTE"
