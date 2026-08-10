@@ -31,7 +31,9 @@ func newLintCmd() *cobra.Command {
 			"artifacts and raw git reverts are skipped; :construction: is a violation\n" +
 			"there). --message and --stdin lint one message at authoring time — the\n" +
 			"commit-msg hook path, where :construction: stays legal. Violations exit 3\n" +
-			"with a structured stderr envelope; a clean run is silent.\n\n" +
+			"with a structured stderr envelope; a clean run is silent, EXCEPT that a\n" +
+			"--range which judged no commit at all says so and still exits 0 — `0` means\n" +
+			"\"everything I checked conforms\", which is vacuous when nothing was checked.\n\n" +
 			"One rule asks for something no shape check can supply, and it fires HERE at\n" +
 			"authoring time, not only in CI: a :fire:, :coffin: or :truck: commit must say\n" +
 			"whether it breaks anyone — add ! (or a BREAKING CHANGE: footer) if it takes\n" +
@@ -192,6 +194,9 @@ func lintRangeRun(ctx context.Context, revRange string, known func(string) bool)
 			all = append(all, rangeViolation{SHA: raw.SHA, Subject: subject, Rule: v.Rule, Detail: v.Detail})
 		}
 	}
+	if checked == 0 {
+		warnNothingLinted(revRange, len(raws))
+	}
 	if len(all) == 0 {
 		return nil
 	}
@@ -200,4 +205,36 @@ func lintRangeRun(ctx context.Context, revRange string, known func(string) bool)
 		Msg:     fmt.Sprintf("%d commit-convention violation(s) across %d linted commit(s) in %s", len(all), checked, revRange),
 		Details: all,
 	}
+}
+
+// warnNothingLinted reports the one verdict the exit-code contract cannot
+// express: `0` says "every commit I checked conforms", and with nothing checked
+// that sentence is vacuously true. The gate then reads as a pass over work it
+// never looked at.
+//
+// lint.yml already refuses one shape of this — outside a pull_request context
+// its base/head SHAs are empty, `..` collapses to an empty range and "every
+// commit 'passes' silently" — but it refuses it in YAML, on the caller's side of
+// the pin, and only for that one cause. The invocation CLAUDE.md tells authors
+// and agents to run before pushing, `glyph lint --range origin/main..HEAD`,
+// reaches the same silence with no guard at all: a stale base, a base ahead of
+// head, or an unfetched ref all read as an empty range.
+//
+// It stays exit 0, and that is the argued part. `2` is frozen as "the arguments
+// are wrong" and these arguments are fine; more concretely, a range holding
+// nothing but bot commits is a DAILY event fleet-wide (dependabot, fleet-sync),
+// and lint.yml forwards glyph's code verbatim (`exit "$status"`), so any
+// non-zero here would red every repository's gate on a healthy push. The verdict
+// belongs on the diagnostic stream, which is where warnf puts it — one
+// `::warning::` annotation in Actions, one plain line at a terminal.
+//
+// The two causes get different sentences because they call for different fixes:
+// an empty range is the caller's range to correct, while an all-excluded range
+// is glyph working exactly as designed and worth knowing anyway.
+func warnNothingLinted(revRange string, seen int) {
+	if seen == 0 {
+		warnf("nothing linted: %s holds no commits — a base ahead of head, a stale or unfetched base ref, and a genuinely empty range all read alike here", revRange)
+		return
+	}
+	warnf("nothing linted: all %d commit(s) in %s are excluded from the convention (bots, merge commits, autosquash artifacts, raw git reverts)", seen, revRange)
 }

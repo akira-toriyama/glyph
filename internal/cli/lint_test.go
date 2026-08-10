@@ -368,6 +368,64 @@ func TestLintRangeClean(t *testing.T) {
 	if stdout != "" {
 		t.Fatalf("clean lint --range wrote %q to stdout, want nothing", stdout)
 	}
+	// The positive control for TestLintRangeJudgingNothingSaysSo: this range
+	// DID judge commits, so the nothing-linted annotation must not fire. A
+	// warning that cries on every clean run is one a fleet learns to ignore,
+	// which costs exactly what it was added to buy.
+	if stderr != "" {
+		t.Fatalf("a range that judged commits must stay silent, stderr got:\n%s", stderr)
+	}
+}
+
+// TestLintRangeJudgingNothingSaysSo pins the one verdict the exit-code contract
+// cannot express. `0` means "every commit I checked conforms"; over a range that
+// checked none, that is vacuously true and reads to the caller exactly like a
+// clean pass. lint.yml guards one cause of it in YAML, on the caller's side of
+// the pin; the local invocation CLAUDE.md prescribes before pushing has no guard
+// at all.
+//
+// Both causes are asserted and each must name itself, because they call for
+// different fixes: an empty range is the caller's range to correct (a stale or
+// unfetched base collapses to one), while an all-excluded range is glyph working
+// exactly as designed. The exit code is pinned to 0 on both — an all-bot range
+// is a daily fleet event and lint.yml forwards glyph's code verbatim, so a
+// non-zero here would red every repository's gate on a healthy push.
+func TestLintRangeJudgingNothingSaysSo(t *testing.T) {
+	dir, base := testRepo(t)
+	testCommit(t, dir, "dependabot[bot]", "build(deps): bump a dep")
+	t.Chdir(dir)
+
+	t.Run("empty range", func(t *testing.T) {
+		code, stdout, stderr := runGlyph(t, "lint", "--range", "HEAD..HEAD")
+		if code != 0 {
+			t.Fatalf("an empty range exited %d, want 0\nstderr: %s", code, stderr)
+		}
+		if stdout != "" {
+			t.Fatalf("an empty range wrote %q to stdout, want nothing", stdout)
+		}
+		if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "nothing linted") {
+			t.Fatalf("a range that judged nothing must say so:\n%s", stderr)
+		}
+		if !strings.Contains(stderr, "holds no commits") {
+			t.Fatalf("the empty-range cause must name itself — the caller's range is what needs fixing:\n%s", stderr)
+		}
+	})
+
+	t.Run("every commit excluded", func(t *testing.T) {
+		code, stdout, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
+		if code != 0 {
+			t.Fatalf("an all-excluded range exited %d, want 0\nstderr: %s", code, stderr)
+		}
+		if stdout != "" {
+			t.Fatalf("an all-excluded range wrote %q to stdout, want nothing", stdout)
+		}
+		if !strings.Contains(stderr, "nothing linted") || !strings.Contains(stderr, "excluded from the convention") {
+			t.Fatalf("an all-excluded range must say so, and say which cause it was:\n%s", stderr)
+		}
+		if !strings.Contains(stderr, "all 1 commit(s)") {
+			t.Fatalf("the annotation must carry how many commits were passed over:\n%s", stderr)
+		}
+	})
 }
 
 // TestLintRangeOutsideRepo: git failures classify as API (exit 4), never as
