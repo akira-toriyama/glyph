@@ -1,0 +1,26 @@
+diff --git a/internal/parser/parser.go b/internal/parser/parser.go
+index 381a0a3..87d3cb2 100644
+--- a/internal/parser/parser.go
++++ b/internal/parser/parser.go
+@@ -288,18 +288,11 @@ func Format(message string, opts LintOptions) (string, []Violation) {
+ 	if len(vs) == 0 {
+ 		return message, nil
+ 	}
+-	for _, v := range vs {
+-		if v.Fix == "" {
+-			return "", vs
+-		}
+-	}
+ 	lines := splitLines(message)
+-	lines[0] = vs[0].Fix // every fixable violation carries the same line
+-	formatted := strings.Join(lines, "\n")
+-	if left := Lint(formatted, opts); len(left) != 0 {
+-		return "", vs
++	if vs[0].Fix != "" {
++		lines[0] = vs[0].Fix
+ 	}
+-	return formatted, nil
++	return strings.Join(lines, "\n"), nil
+ }
+ 
+ // scopeFix spells the corrected subject line for an invalid-scope finding, or

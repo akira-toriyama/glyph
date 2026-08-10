@@ -254,10 +254,52 @@ func legacyRewrite(c Commit) string {
 func mechanicalFix(c Commit) string {
 	s := strings.TrimRight(c.Subject, ".")
 	if r, size := utf8.DecodeRuneInString(s); r != utf8.RuneError && unicode.IsUpper(r) {
+		// Acronym refusal, measured before it was written: of the fleet
+		// corpus's uppercase-subject rows, roughly a quarter open with an
+		// all-caps word — TOML, README, CLI — and lowercasing exactly one rune
+		// mints "tOML": a wrong answer lint itself would bless, pasted with
+		// confidence. Two uppercase runes in a row is the signature; the human
+		// rewrite ("support TOML …") is a rewording, not a mechanical fix.
+		if next, _ := utf8.DecodeRuneInString(s[size:]); unicode.IsUpper(next) {
+			return ""
+		}
 		s = string(unicode.ToLower(r)) + s[size:]
 	}
 	c.Subject = s
 	return legacyRewrite(c)
+}
+
+// Format returns the corrected MESSAGE — the first line replaced by the one
+// mechanical fix, every other byte untouched — or the violations that stop it.
+// The contract is the epic's invariant, enforced in code rather than promised:
+// Lint(Format(m)) is empty, or Format refuses. Three outcomes:
+//
+//   - no violations: the message returns unchanged (fmt is idempotent);
+//   - every violation carries the fix: the rewritten message returns, RE-LINTED
+//     first — a composer bug must become a refusal here, never green-looking
+//     red output;
+//   - anything else — an unfixable violation, or a re-lint that still finds
+//     fault: (nil, violations), and the caller refuses. Emitting a best-effort
+//     line that still fails lint is the three-round-trip loop this exists to
+//     end (measured: one message, three lint calls, because invalid-scope
+//     short-circuits and each paste surfaced the next rule).
+func Format(message string, opts LintOptions) (string, []Violation) {
+	vs := Lint(message, opts)
+	if len(vs) == 0 {
+		return message, nil
+	}
+	for _, v := range vs {
+		if v.Fix == "" {
+			return "", vs
+		}
+	}
+	lines := splitLines(message)
+	lines[0] = vs[0].Fix // every fixable violation carries the same line
+	formatted := strings.Join(lines, "\n")
+	if left := Lint(formatted, opts); len(left) != 0 {
+		return "", vs
+	}
+	return formatted, nil
 }
 
 // scopeFix spells the corrected subject line for an invalid-scope finding, or

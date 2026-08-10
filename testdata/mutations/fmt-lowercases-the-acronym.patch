@@ -1,0 +1,14 @@
+diff --git a/internal/parser/parser.go b/internal/parser/parser.go
+index 381a0a3..fea93fa 100644
+--- a/internal/parser/parser.go
++++ b/internal/parser/parser.go
+@@ -260,9 +260,6 @@ func mechanicalFix(c Commit) string {
+ 		// mints "tOML": a wrong answer lint itself would bless, pasted with
+ 		// confidence. Two uppercase runes in a row is the signature; the human
+ 		// rewrite ("support TOML …") is a rewording, not a mechanical fix.
+-		if next, _ := utf8.DecodeRuneInString(s[size:]); unicode.IsUpper(next) {
+-			return ""
+-		}
+ 		s = string(unicode.ToLower(r)) + s[size:]
+ 	}
+ 	c.Subject = s
