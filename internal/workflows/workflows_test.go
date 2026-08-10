@@ -574,16 +574,22 @@ var reusableJobIDs = map[string]string{
 // step's `with:` entry, a nested map — cannot be mistaken for a job.
 var topLevelJobKey = regexp.MustCompile(`(?m)^  ([A-Za-z0-9_-]+):[ \t]*$`)
 
+// nextRootKey ends the jobs mapping: the first line that starts a new
+// unindented YAML key.
+var nextRootKey = regexp.MustCompile(`(?m)^[A-Za-z0-9_-]+:`)
+
+// jobDisplayName matches a job's own `name:` — four-space indented, i.e. a key
+// of the job map rather than of a step.
+var jobDisplayName = regexp.MustCompile(`(?m)^    name:[ \t]`)
+
 // jobIDsIn returns the job ids declared under `jobs:` in a workflow body,
 // which must already be comment-stripped.
 func jobIDsIn(body string) []string {
-	i := strings.Index(body, "\njobs:\n")
-	if i < 0 {
+	_, rest, ok := strings.Cut(body, "\njobs:\n")
+	if !ok {
 		return nil
 	}
-	rest := body[i+len("\njobs:\n"):]
-	// The jobs mapping ends at the first line that starts a new top-level key.
-	if end := regexp.MustCompile(`(?m)^[A-Za-z0-9_-]+:`).FindStringIndex(rest); end != nil {
+	if end := nextRootKey.FindStringIndex(rest); end != nil {
 		rest = rest[:end[0]]
 	}
 	var ids []string
@@ -648,15 +654,15 @@ func TestReusableJobIDsAreTheContextsConsumersRequire(t *testing.T) {
 // jobNameOverride reports whether the named job declares its own `name:` key —
 // a four-space-indented `name:` inside that job's block, before the next job.
 func jobNameOverride(body, job string) bool {
-	i := strings.Index(body, "\n  "+job+":\n")
-	if i < 0 {
+	_, rest, ok := strings.Cut(body, "\n  "+job+":\n")
+	if !ok {
 		return false
 	}
-	rest := body[i+1:]
-	if end := topLevelJobKey.FindStringIndex(rest[len("  "+job+":\n"):]); end != nil {
-		rest = rest[:len("  "+job+":\n")+end[0]]
+	// Stop at the next job so a sibling's display name cannot answer for this one.
+	if end := topLevelJobKey.FindStringIndex(rest); end != nil {
+		rest = rest[:end[0]]
 	}
-	return regexp.MustCompile(`(?m)^    name:[ \t]`).MatchString(rest)
+	return jobDisplayName.MatchString(rest)
 }
 
 // TestJobIDsInFindsARealJobsBlock is the positive control for jobIDsIn: a
