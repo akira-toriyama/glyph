@@ -2,6 +2,9 @@ package cli
 
 import (
 	"fmt"
+	"strings"
+
+	"github.com/akira-toriyama/glyph/internal/core"
 
 	"github.com/akira-toriyama/glyph/internal/gitsource"
 	"github.com/akira-toriyama/glyph/internal/hook"
@@ -29,14 +32,56 @@ func newHookCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newHookInstallCmd())
+	cmd.AddCommand(newHookInstallCmd(), newHookPrePushCmd())
 	return cmd
+}
+
+// newHookPrePushCmd is what a pre-push hook calls. It takes git's argv
+// verbatim and reads git's protocol on stdin.
+//
+// ArbitraryArgs, and no flags at all, is the rollout decision. The script that
+// calls this is installed once into ~34 clones and nothing refreshes one, so a
+// named flag would freeze today's argv shape into every copy: the day git passes
+// a third argument, every frozen script turns a push into a usage error. Passing
+// argv through unread is the only shape that survives its own installed base —
+// the same reasoning DESIGN §2.1 used to put the cleanup mode in the binary.
+func newHookPrePushCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "pre-push [remote] [url]",
+		Short: "Lint the commits a push would add, reading git's pre-push protocol on stdin",
+		Long: "pre-push is called BY the installed pre-push hook, not by hand. git writes one\n" +
+			"line per ref to stdin (<local ref> <local sha> <remote ref> <remote sha>) and\n" +
+			"passes the remote on argv; this lints the commits that push would add which\n" +
+			"the remote does not already have.\n\n" +
+			"It is the only place the merge-candidate rules can fire before CI: the\n" +
+			"commit-msg hook judges one message with no branch behind it, so\n" +
+			":construction: is legal there and stays legal here — a violation blocks ONLY\n" +
+			"when the ref being written is the remote's default branch. Everywhere else it\n" +
+			"warns and exits 0, because refusing a legal mid-branch commit makes the branch\n" +
+			"unpushable and the only escape is --no-verify, which turns the gate off\n" +
+			"entirely.\n\n" +
+			"Deletions, tags and a push with nothing to do are skipped in silence. The\n" +
+			"default branch is read from the local refs/remotes/<remote>/HEAD and never\n" +
+			"over the network; where nothing records it, nothing blocks and the run says so.",
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			table, err := loadRules()
+			if err != nil {
+				return err
+			}
+			return prePushRun(cmd.Context(), args, func(code string) bool {
+				_, ok := table.Lookup(code)
+				return ok
+			})
+		},
+	}
 }
 
 func newHookInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "install",
-		Short: "Install the commit-msg hook into this repository",
+		Use:       "install [kind...]",
+		Short:     "Install glyph's git hooks into this repository",
+		ValidArgs: hook.KindNames(),
 		Long: "install writes a commit-msg hook that pipes the message being written through\n" +
 			"`glyph lint --stdin`, so a convention violation surfaces at authoring time\n" +
 			"instead of in CI. The hook carries no copy of the rules — that is what makes\n" +
@@ -47,32 +92,46 @@ func newHookInstallCmd() *cobra.Command {
 			"committed like any other file).\n\n" +
 			"An existing hook glyph did not write is never clobbered: install refuses and\n" +
 			"exits 2 until --force. Where glyph is absent from PATH the installed hook\n" +
-			"warns and lets the commit through — CI stays the authority.",
-		Args: cobra.NoArgs,
+			"warns and lets the commit through — CI stays the authority.\n\n" +
+			"Naming no kind installs every hook glyph writes (commit-msg, pre-push).\n" +
+			"Name kinds to install a subset — the escape when one of them is somebody\n" +
+			"else's file. Nothing is written unless every named kind can be: a run that\n" +
+			"refused halfway would report failure over a tree that had already changed.",
+		Args: cobra.OnlyValidArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			kinds, err := resolveHookKinds(args)
+			if err != nil {
+				return err
+			}
 			if hookPrint {
-				fmt.Fprint(out, hook.Script)
+				// One script or none: two concatenated shell scripts are not a
+				// script, and writing them out as if they were is worse than
+				// refusing.
+				if len(args) != 1 {
+					return core.Usagef("--print writes ONE hook script; name the kind (one of %s)", strings.Join(hook.KindNames(), ", "))
+				}
+				fmt.Fprint(out, kinds[0].Script)
 				return nil
 			}
-			hooksDir, err := gitsource.HooksDir(cmd.Context(), ".")
-			if err != nil {
-				return err
+			hooksDir, herr := gitsource.HooksDir(cmd.Context(), ".")
+			if herr != nil {
+				return herr
 			}
-			res, err := hook.Install(hooksDir, hookForce)
-			if err != nil {
-				return err
+			rep, ierr := hook.Install(hooksDir, hookForce, kinds...)
+			if ierr != nil {
+				return ierr
 			}
 			if hookJSON {
-				printCompact(res)
+				printCompact(rep)
 				return nil
 			}
-			fmt.Fprintln(out, res.Summary())
+			fmt.Fprintln(out, rep.Summary())
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&hookForce, "force", false, "replace an existing commit-msg hook glyph did not write")
-	cmd.Flags().BoolVar(&hookPrint, "print", false, "write the hook script to stdout instead of installing it")
-	cmd.Flags().BoolVar(&hookJSON, "json", false, "emit the machine result {path,action,existed} as one JSON line")
+	cmd.Flags().BoolVar(&hookForce, "force", false, "replace an existing hook glyph did not write")
+	cmd.Flags().BoolVar(&hookPrint, "print", false, "write one named hook's script to stdout instead of installing it")
+	cmd.Flags().BoolVar(&hookJSON, "json", false, "emit the machine result {hooks:[{kind,path,action,existed}]} as one JSON line")
 	// Value-aware, not Changed-aware: `--print=false --force` asks to install
 	// rather than print, and force the install — a coherent invocation cobra's
 	// grouping refused while reporting that both flags "were all set".
@@ -88,4 +147,23 @@ func newHookInstallCmd() *cobra.Command {
 		return checkExclusiveBool(cmd, "print", "json")
 	}
 	return cmd
+}
+
+// resolveHookKinds maps the command's positional arguments to hook kinds. No
+// argument means every kind glyph writes — bare `glyph hook install` is the
+// invocation the fleet's CONTRIBUTING points at, so it must keep working AND
+// must not quietly omit a gate that was added after it was written.
+func resolveHookKinds(args []string) ([]hook.Kind, error) {
+	if len(args) == 0 {
+		return hook.Kinds, nil
+	}
+	kinds := make([]hook.Kind, 0, len(args))
+	for _, name := range args {
+		k, ok := hook.KindByName(name)
+		if !ok {
+			return nil, core.Usagef("glyph writes no %q hook; the kinds are %s", name, strings.Join(hook.KindNames(), ", "))
+		}
+		kinds = append(kinds, k)
+	}
+	return kinds, nil
 }

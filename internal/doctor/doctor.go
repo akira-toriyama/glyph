@@ -28,6 +28,8 @@
 package doctor
 
 import (
+	"github.com/akira-toriyama/glyph/internal/hook"
+
 	"fmt"
 	"strings"
 
@@ -133,6 +135,7 @@ const (
 	IDSquashMessage  = "squash-commit-message"
 	IDWorkflowPinned = "workflow-glyph-pins"
 	IDCommitMsgHook  = "commit-msg-hook"
+	IDPrePushHook    = "pre-push-hook"
 )
 
 // Expected values for the two squash enums, as GitHub spells them.
@@ -159,7 +162,8 @@ func Run(in Input) *Report {
 		checkSquashTitle(in),
 		checkSquashMessage(in),
 		checkWorkflowPins(in.Root),
-		checkCommitMsgHook(in.HooksDir, in.HooksErr),
+		checkHook(hook.Kinds[0], IDCommitMsgHook, in.HooksDir, in.HooksErr),
+		checkHook(hook.Kinds[1], IDPrePushHook, in.HooksDir, in.HooksErr),
 	}}
 	r.OK = true
 	for _, c := range r.Checks {

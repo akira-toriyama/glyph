@@ -48,10 +48,10 @@ import (
 //   - a hook somebody else wrote -> advice. glyph refuses to overwrite it
 //     (hook.Install), so this is a standing choice rather than drift, and unlike
 //     absence it is rare enough that saying so once costs nothing.
-func checkCommitMsgHook(dir string, dirErr error) Check {
+func checkHook(k hook.Kind, id, dir string, dirErr error) Check {
 	c := Check{
-		ID: IDCommitMsgHook,
-		Expected: "no stale glyph-written commit-msg hook: either none is installed, or the installed one is " +
+		ID: id,
+		Expected: "no stale glyph-written " + k.Name + " hook: either none is installed, or the installed one is " +
 			"byte-identical to the hook this binary writes",
 	}
 
@@ -68,15 +68,15 @@ func checkCommitMsgHook(dir string, dirErr error) Check {
 		return c
 	}
 
-	path := filepath.Join(dir, "commit-msg")
+	path := filepath.Join(dir, k.Name)
 	body, err := os.ReadFile(path) // #nosec G304 -- the path git itself reported for this checkout
 	switch {
 	case os.IsNotExist(err):
 		c.Status = StatusPass
-		c.Observed = "no commit-msg hook at " + path + ", so none can be stale"
+		c.Observed = "no " + k.Name + " hook at " + path + ", so none can be stale"
 		c.Message = "the local gate is opt-in and CI is the authority, so its absence costs a round trip rather than a " +
 			"wrong verdict. `glyph hook install` adds it: it holds no copy of the rules (it shells back to " +
-			"`glyph lint --stdin`) and blocks a commit for a real convention violation and nothing else"
+			"`" + k.Asks + "`) and blocks for a real convention violation and nothing else"
 		return c
 	case err != nil:
 		c.Status = StatusUnknown
@@ -88,13 +88,13 @@ func checkCommitMsgHook(dir string, dirErr error) Check {
 
 	installed := string(body)
 	switch {
-	case installed == hook.Script:
+	case installed == k.Script:
 		c.Status = StatusPass
 		c.Observed = fmt.Sprintf("%s matches this glyph's hook exactly", path)
 		c.Message = "the local gate and this binary agree on the exit code that stops a commit and on what is handed to lint"
 	case strings.Contains(installed, hook.Marker):
 		c.Status = StatusFail
-		c.Observed = fmt.Sprintf("%s was written by glyph and no longer matches this binary's hook (%s)", path, diffSummary(installed, hook.Script))
+		c.Observed = fmt.Sprintf("%s was written by glyph and no longer matches this binary's hook (%s)", path, diffSummary(installed, k.Script))
 		c.Message = "a hook is written once and never refreshed by anything — hooks are untracked, so no pull, no fleet-sync " +
 			"and no CI job can update one. Everything it decides was therefore frozen at install time: the exit code it " +
 			"treats as a convention violation (glyph interpolates that from core.CodeLint precisely because a stale copy " +

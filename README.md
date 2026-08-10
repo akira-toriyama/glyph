@@ -62,7 +62,7 @@ release as a baseline**.
 | `glyph release` | upserts one rolling **draft** release (tag, target, body); publishing — and therefore the tag — stays a human act |
 | `glyph preview` | the whole merge-preview comment for a PR: what merging it does to the version, with the evidence |
 | `glyph doctor` | read-only checks that the repository still matches what glyph assumes; each failing check prints the command that fixes it |
-| `glyph hook install` | a local `commit-msg` hook that runs `glyph lint --stdin` at the moment you write the message |
+| `glyph hook install` | local `commit-msg` and `pre-push` hooks that run the same lint the CI gate runs |
 | `glyph rules` | the embedded gitmoji → semver table (`--md`, or `--json` for the raw `rules.json`) |
 
 `lint --range/--message/--stdin` works offline against local git alone. The
@@ -136,7 +136,7 @@ The release verdict rides on configuration glyph cannot see from inside a run:
 squash merging enabled, `squash_merge_commit_title` / `squash_merge_commit_message`
 still landing a classifiable gitmoji subject and the per-commit body on `main`,
 a credential that can read the repository, workflow pins on release tags, and
-a commit-msg hook (if any) written by *this* binary. When one of those drifts
+the installed hooks (if any) written by *this* binary. When one of those drifts
 nothing goes red — the verdict is just computed over a repository that no
 longer matches the model, which is exactly what `doctor` exists to catch.
 Nothing is ever modified: each failing check prints the command that fixes it.
@@ -147,14 +147,25 @@ always the second, never the first.
 **2. Move the lint to the moment you write the message:**
 
 ```sh
-glyph hook install     # commit-msg → `glyph lint --stdin` (honours core.hooksPath)
+glyph hook install                 # both hooks (honours core.hooksPath)
+glyph hook install commit-msg      # or name the ones you want
 ```
 
-The hook holds no copy of the convention — it calls glyph, so it cannot fall
-out of lockstep when the rules move. Without glyph on `PATH` it warns and lets
-the commit through; the commit-lint CI job stays the authority. The verdict it
-gives is the verdict CI will give: glyph reduces the message exactly as git's
-cleanup mode will before linting it (DESIGN §2.1).
+Two hooks, one gate. `commit-msg` runs `glyph lint --stdin` on the message being
+written. `pre-push` hands git's ref list to `glyph hook pre-push`, which lints the
+commits the push would add that the remote does not already have — the only place
+the merge-candidate rules can fire before CI, since a `:construction:` commit is
+legal mid-branch and illegal at the merge. It blocks **only** when the ref being
+written is the remote's default branch; anywhere else it warns and lets the push
+through, because refusing a legal mid-branch commit makes the branch unpushable
+and the only escape is `--no-verify`, which turns the gate off entirely.
+
+Neither hook holds a copy of the convention, and neither computes a range — both
+call glyph, so they cannot fall out of lockstep when the rules move. Without glyph
+on `PATH` they warn and let you through; the commit-lint CI job stays the
+authority. The verdict `commit-msg` gives is the verdict CI will give: glyph
+reduces the message exactly as git's cleanup mode will before linting it
+(DESIGN §2.1).
 
 **3. Wire CI** — the `lint.yml` caller above for the gate, `pr-verdict.yml`
 for a merge-preview comment on every PR, and `release.yml` to keep a rolling

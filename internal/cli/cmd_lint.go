@@ -162,6 +162,26 @@ func lintOne(message string, known func(string) bool) error {
 	}
 }
 
+// lintRaws lints raw commits as merge candidates, returning every finding and
+// how many commits were actually judged (excluded ones are skipped, never
+// failed). Both callers — the `--range` gate CI runs and the pre-push hook —
+// go through here, because a hook and CI that reach different verdicts on one
+// commit is glyph lying in one of two directions, and DESIGN §2.1 says which
+// of the two costs the developer the push.
+func lintRaws(raws []gitsource.RawCommit, known func(string) bool) (findings []rangeViolation, checked int) {
+	for _, raw := range raws {
+		subject := firstLine(raw.Message)
+		if _, excluded := bump.ExcludedFromClassification(raw.Author, subject, raw.Parents); excluded {
+			continue
+		}
+		checked++
+		for _, v := range parser.Lint(raw.Message, parser.LintOptions{Known: known, MergeCandidate: true}) {
+			findings = append(findings, rangeViolation{SHA: raw.SHA, Subject: subject, Rule: v.Rule, Detail: v.Detail})
+		}
+	}
+	return findings, checked
+}
+
 // rangeViolation is one finding over a range, anchored to its commit.
 type rangeViolation struct {
 	SHA     string `json:"sha"`
@@ -182,18 +202,7 @@ func lintRangeRun(ctx context.Context, revRange string, known func(string) bool)
 	if err != nil {
 		return err
 	}
-	var all []rangeViolation
-	checked := 0
-	for _, raw := range raws {
-		subject := firstLine(raw.Message)
-		if _, excluded := bump.ExcludedFromClassification(raw.Author, subject, raw.Parents); excluded {
-			continue
-		}
-		checked++
-		for _, v := range parser.Lint(raw.Message, parser.LintOptions{Known: known, MergeCandidate: true}) {
-			all = append(all, rangeViolation{SHA: raw.SHA, Subject: subject, Rule: v.Rule, Detail: v.Detail})
-		}
-	}
+	all, checked := lintRaws(raws, known)
 	if checked == 0 {
 		warnNothingLinted(revRange, len(raws))
 	}

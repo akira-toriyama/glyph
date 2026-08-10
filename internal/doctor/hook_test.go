@@ -13,13 +13,13 @@ import (
 // hooksDirWith writes body as the commit-msg hook in a throwaway hooks
 // directory and returns the directory. An empty body installs nothing, which is
 // the state of every fresh clone.
-func hooksDirWith(t *testing.T, body string) string {
+func hooksDirWith(t *testing.T, name, body string) string {
 	t.Helper()
 	dir := t.TempDir()
 	if body == "" {
 		return dir
 	}
-	if err := os.WriteFile(filepath.Join(dir, "commit-msg"), []byte(body), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
 		t.Fatalf("write hook: %v", err)
 	}
 	return dir
@@ -30,7 +30,7 @@ func hooksDirWith(t *testing.T, body string) string {
 // than a copy: a literal here would be a second source of truth for the hook's
 // text and would go stale in exactly the way the check reports.
 func TestCommitMsgHookCurrentPasses(t *testing.T) {
-	c := checkCommitMsgHook(hooksDirWith(t, hook.Script), nil)
+	c := checkHook(hook.Kinds[0], IDCommitMsgHook, hooksDirWith(t, "commit-msg", hook.Script), nil)
 	if c.Status != StatusPass {
 		t.Errorf("an up-to-date hook is %s, want pass: %s", c.Status, c.Observed)
 	}
@@ -54,7 +54,7 @@ func TestCommitMsgHookDriftFails(t *testing.T) {
 		t.Fatal("the fixture lost the marker, so it exercises the foreign-hook branch instead of drift")
 	}
 
-	c := checkCommitMsgHook(hooksDirWith(t, stale), nil)
+	c := checkHook(hook.Kinds[0], IDCommitMsgHook, hooksDirWith(t, "commit-msg", stale), nil)
 	if c.Status != StatusFail {
 		t.Errorf("a glyph-written hook that no longer matches this binary is %s, want fail: %s", c.Status, c.Observed)
 	}
@@ -72,7 +72,7 @@ func TestCommitMsgHookDriftFails(t *testing.T) {
 // noise that teaches a fleet to stop reading the report. The check must stay
 // silent AND still name the command, which is why the message is asserted too.
 func TestCommitMsgHookAbsentPasses(t *testing.T) {
-	c := checkCommitMsgHook(hooksDirWith(t, ""), nil)
+	c := checkHook(hook.Kinds[0], IDCommitMsgHook, hooksDirWith(t, "commit-msg", ""), nil)
 	if c.Status != StatusPass {
 		t.Errorf("no installed hook is %s, want pass — absence is the default state of every clone: %s", c.Status, c.Observed)
 	}
@@ -89,7 +89,7 @@ func TestCommitMsgHookAbsentPasses(t *testing.T) {
 // Reporting it as a failure would fail a repository over a decision glyph itself
 // declines to override.
 func TestCommitMsgHookForeignIsAdvice(t *testing.T) {
-	c := checkCommitMsgHook(hooksDirWith(t, "#!/bin/sh\ngrep -q '^feat' \"$1\" || exit 1\n"), nil)
+	c := checkHook(hook.Kinds[0], IDCommitMsgHook, hooksDirWith(t, "commit-msg", "#!/bin/sh\ngrep -q '^feat' \"$1\" || exit 1\n"), nil)
 	if c.Status != StatusAdvice {
 		t.Errorf("somebody else's hook is %s, want advice: %s", c.Status, c.Observed)
 	}
@@ -104,7 +104,7 @@ func TestCommitMsgHookForeignIsAdvice(t *testing.T) {
 // pass — the two recommend opposite actions, and only one of them is a claim
 // this check is entitled to make.
 func TestCommitMsgHookUnaskableIsUnknown(t *testing.T) {
-	c := checkCommitMsgHook("", errors.New("not a git repository"))
+	c := checkHook(hook.Kinds[0], IDCommitMsgHook, "", errors.New("not a git repository"))
 	if c.Status != StatusUnknown {
 		t.Errorf("an unaskable hooks directory is %s, want unknown: %s", c.Status, c.Observed)
 	}
@@ -114,7 +114,7 @@ func TestCommitMsgHookUnaskableIsUnknown(t *testing.T) {
 // could hold anything, including a stale one. Not-exists is the only absence
 // this check is allowed to read as clean.
 func TestCommitMsgHookUnreadableIsUnknown(t *testing.T) {
-	dir := hooksDirWith(t, hook.Script)
+	dir := hooksDirWith(t, "commit-msg", hook.Script)
 	path := filepath.Join(dir, "commit-msg")
 	if err := os.Chmod(path, 0o000); err != nil {
 		t.Fatalf("chmod: %v", err)
@@ -124,7 +124,7 @@ func TestCommitMsgHookUnreadableIsUnknown(t *testing.T) {
 		t.Skip("this filesystem (or a root-equivalent uid) ignores mode 000, so unreadable cannot be staged")
 	}
 
-	c := checkCommitMsgHook(dir, nil)
+	c := checkHook(hook.Kinds[0], IDCommitMsgHook, dir, nil)
 	if c.Status != StatusUnknown {
 		t.Errorf("an unreadable hook is %s, want unknown: %s", c.Status, c.Observed)
 	}
@@ -140,5 +140,37 @@ func TestDiffSummaryNamesAPrefixRatherThanALine(t *testing.T) {
 	}
 	if !strings.Contains(got, "then one runs on") {
 		t.Errorf("the summary must say the two agree as far as they overlap, got %q", got)
+	}
+}
+
+// TestEveryHookKindIsCheckedTheSameWay: the check is generic over the kind, so
+// the pre-push hook gets the same four verdicts the commit-msg one does — and
+// in particular the argued one, absence passing.
+//
+// Absence is not drift. A hook is opt-in, CI is the authority, and hooks do not
+// clone, so a checkout on an Actions runner has none by construction. Grading
+// that as advice would post a notice on every doctor run in every repository,
+// for a condition no repository can avoid — the noise that teaches a fleet to
+// skip the report (§7). The drift arm is asserted beside it because a check
+// that only ever passes is not a check.
+func TestEveryHookKindIsCheckedTheSameWay(t *testing.T) {
+	ids := map[string]string{"commit-msg": IDCommitMsgHook, "pre-push": IDPrePushHook}
+	for _, k := range hook.Kinds {
+		t.Run(k.Name, func(t *testing.T) {
+			absent := t.TempDir()
+			if c := checkHook(k, ids[k.Name], absent, nil); c.Status != StatusPass {
+				t.Errorf("no %s hook installed reported %q, want pass — absence is opt-out, not drift", k.Name, c.Status)
+			}
+
+			stale := hooksDirWith(t, k.Name, "#!/bin/sh\n# "+hook.Marker+"\nexit 0\n")
+			c := checkHook(k, ids[k.Name], stale, nil)
+			if c.Status != StatusFail {
+				t.Errorf("a glyph-written %s hook that no longer matches reported %q, want fail — "+
+					"it fails in the quiet direction, so nothing else notices", k.Name, c.Status)
+			}
+			if c.ID != ids[k.Name] {
+				t.Errorf("check id = %q, want %q — each kind carries its own observed/expected pair", c.ID, ids[k.Name])
+			}
+		})
 	}
 }

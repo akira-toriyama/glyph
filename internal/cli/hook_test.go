@@ -81,7 +81,7 @@ func TestHookInstallPrintDoesNotWrite(t *testing.T) {
 	dir, _ := testRepo(t)
 	t.Chdir(dir)
 
-	code, stdout, stderr := runGlyph(t, "hook", "install", "--print")
+	code, stdout, stderr := runGlyph(t, "hook", "install", "--print", "commit-msg")
 	if code != int(core.CodeOK) {
 		t.Fatalf("exit = %d, want 0\nstderr: %s", code, stderr)
 	}
@@ -334,7 +334,17 @@ func TestHookInstallJSONFalseIsTheHumanSummary(t *testing.T) {
 	if err := json.Unmarshal([]byte(line), &res); err != nil {
 		t.Fatalf("hook install --json output is not valid JSON: %v\n%s", err, line)
 	}
-	if _, ok := res["action"]; !ok {
-		t.Errorf("compact hook-install JSON is missing the \"action\" field: %s", line)
+	hooks, ok := res["hooks"].([]any)
+	if !ok || len(hooks) == 0 {
+		t.Fatalf("compact hook-install JSON must carry a \"hooks\" array — one install writes N hooks: %s", line)
+	}
+	first, ok := hooks[0].(map[string]any)
+	if !ok {
+		t.Fatalf("hooks[0] is not an object: %s", line)
+	}
+	for _, key := range []string{"kind", "path", "action", "existed"} {
+		if _, ok := first[key]; !ok {
+			t.Errorf("compact hook-install JSON is missing the %q field: %s", key, line)
+		}
 	}
 }

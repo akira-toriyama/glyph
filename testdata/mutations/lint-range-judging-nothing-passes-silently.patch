@@ -1,11 +1,11 @@
 diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
-index dbfa047..22cb96d 100644
+index b63fb36..5646378 100644
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -194,9 +194,6 @@ func lintRangeRun(ctx context.Context, revRange string, known func(string) bool)
- 			all = append(all, rangeViolation{SHA: raw.SHA, Subject: subject, Rule: v.Rule, Detail: v.Detail})
- 		}
+@@ -203,9 +203,6 @@ func lintRangeRun(ctx context.Context, revRange string, known func(string) bool)
+ 		return err
  	}
+ 	all, checked := lintRaws(raws, known)
 -	if checked == 0 {
 -		warnNothingLinted(revRange, len(raws))
 -	}
