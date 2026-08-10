@@ -37,11 +37,126 @@ const logFormat = "%H%x1f%an%x1f%P%x1f%B"
 // empty range is a successful empty result. --end-of-options pins revRange as
 // a revision, so an option-shaped argument is a git error, never a flag.
 func Log(ctx context.Context, dir, revRange string) ([]RawCommit, error) {
-	out, err := run(ctx, dir, "log", "-z", "--reverse", "--format="+logFormat, "--end-of-options", revRange, "--")
+	return LogRevs(ctx, dir, []string{revRange})
+}
+
+// LogRevs is Log over several revisions at once — the union of what each
+// includes, minus what each `^`-prefixed one excludes.
+//
+// Exclusions are spelled `^<object>` rather than passed as `--not`, and that is
+// forced by --end-of-options rather than chosen: everything after it is a
+// revision, so `git log --end-of-options HEAD --not --remotes=origin` is
+// `fatal: bad revision '--not'` (measured). Giving up --end-of-options to spell
+// it the readable way would give up this package's property that no caller
+// string can be read as an option, on the one caller whose input comes off a
+// git hook's stdin.
+func LogRevs(ctx context.Context, dir string, revs []string) ([]RawCommit, error) {
+	if len(revs) == 0 {
+		return nil, nil
+	}
+	args := append([]string{"log", "-z", "--reverse", "--format=" + logFormat, "--end-of-options"}, revs...)
+	out, err := run(ctx, dir, append(args, "--")...)
 	if err != nil {
 		return nil, err
 	}
 	return parseLog(out)
+}
+
+// RemoteTips returns the object names of every remote-tracking ref under
+// remote — what this clone last saw that remote holding.
+//
+// The trailing slash on the pattern is load-bearing: `refs/remotes/origin`
+// without it also matches a remote named `originmirror` (measured), which would
+// exclude commits the push genuinely carries.
+//
+// Measured equal to `--not --remotes=<remote>` on the case that rules out the
+// cheaper spellings: a branch pushed to a second remote first makes bare
+// `--remotes` report ZERO outgoing commits, i.e. a silent green over unlinted
+// work, while both the qualified form and this one report the two real ones.
+func RemoteTips(ctx context.Context, dir, remote string) ([]string, error) {
+	out, err := run(ctx, dir, "for-each-ref", "--format=%(objectname)", "--end-of-options", "refs/remotes/"+remote+"/")
+	if err != nil {
+		return nil, err
+	}
+	var tips []string
+	for l := range strings.SplitSeq(string(out), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			tips = append(tips, l)
+		}
+	}
+	return tips, nil
+}
+
+// RemoteURLs maps each configured remote's name to its URL.
+//
+// The caller is the pre-push hook, which git hands a remote NAME or a bare URL
+// in the same argument (measured: `git push git@host:o/r.git HEAD` passes the
+// URL as both `$1` and `$2`), so the name has to be recovered from the URL
+// before anything can be asked about the remote's tracking refs.
+//
+// No remotes at all is an empty map, not an error: git spells it exit 1, the
+// same shape ConfigGet documents for an unset key.
+func RemoteURLs(ctx context.Context, dir string) (map[string]string, error) {
+	// #nosec G204 -- the binary is the fixed literal "git" and every argument
+	// here is a constant of this package.
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "config", "--get-regexp", `^remote\..*\.url$`)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		if ierr := interrupted(ctx); ierr != nil {
+			return nil, ierr
+		}
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && ee.ExitCode() == 1 {
+			return map[string]string{}, nil
+		}
+		return nil, core.APIf("git config --get-regexp: %s", distill(stderr.Bytes(), err))
+	}
+	urls := map[string]string{}
+	for line := range strings.SplitSeq(stdout.String(), "\n") {
+		key, url, ok := strings.Cut(strings.TrimSpace(line), " ")
+		if !ok {
+			continue
+		}
+		name := strings.TrimSuffix(strings.TrimPrefix(key, "remote."), ".url")
+		if name != "" && name != key {
+			urls[name] = url
+		}
+	}
+	return urls, nil
+}
+
+// DefaultBranch returns remote's default branch as this clone records it, or
+// "" when nothing records it. Unresolved is deliberately NOT an error: the
+// caller has a correct behaviour for it and only that caller can decide what
+// not knowing costs.
+//
+// It reads a LOCAL ref and never the network. A git hook that needed a token
+// would fail on every machine that has none, and refuse a push for a reason
+// that has nothing to do with the commits being pushed. The ref is written by
+// clone and refreshed by `git remote set-head <remote> -a`; a clone made before
+// that ref existed simply has no answer, which is why the caller degrades
+// rather than guesses (`main` is wrong on a `master` or `develop` repository,
+// and guessing it there blocks a legal commit whose only escape is
+// --no-verify).
+func DefaultBranch(ctx context.Context, dir, remote string) (string, error) {
+	prefix := "refs/remotes/" + remote + "/"
+	// #nosec G204 -- the binary is the fixed literal "git"; remote is a
+	// configured remote name and --end-of-options pins the ref as a ref.
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "symbolic-ref", "--quiet", "--end-of-options", prefix+"HEAD")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		if ierr := interrupted(ctx); ierr != nil {
+			return "", ierr
+		}
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && ee.ExitCode() == 1 {
+			return "", nil
+		}
+		return "", core.APIf("git symbolic-ref: %s", distill(stderr.Bytes(), err))
+	}
+	return strings.TrimPrefix(strings.TrimSpace(stdout.String()), prefix), nil
 }
 
 // Tags lists all tags in git's `--sort=-v:refname` order, unfiltered — the
