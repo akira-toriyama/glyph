@@ -63,7 +63,7 @@ release as a baseline**.
 | `glyph preview` | the whole merge-preview comment for a PR: what merging it does to the version, with the evidence |
 | `glyph doctor` | read-only checks that the repository still matches what glyph assumes; each failing check prints the command that fixes it |
 | `glyph hook install` | local `commit-msg` and `pre-push` hooks that run the same lint the CI gate runs |
-| `glyph rules` | the embedded gitmoji → semver table (`--md`, or `--json` for the raw `rules.json`) |
+| `glyph rules` | the embedded gitmoji → semver table (`--md`, or `--json` for the raw `rules.json`); `--lint` lists every lint `rule` id with `merge_candidate_only` |
 
 `lint --range/--message/--stdin` works offline against local git alone. The
 PR and release-walk inputs (`--pr`, `--since-tag`, `release`, `preview`,

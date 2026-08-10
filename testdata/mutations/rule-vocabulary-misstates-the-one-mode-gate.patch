@@ -1,0 +1,13 @@
+diff --git a/internal/parser/parser.go b/internal/parser/parser.go
+index 3433024..1275779 100644
+--- a/internal/parser/parser.go
++++ b/internal/parser/parser.go
+@@ -129,7 +129,7 @@ func LintRules() []LintRule {
+ 		{Rule: RuleInvalidScope},
+ 		{Rule: RuleLegacyToken},
+ 		{Rule: RuleUnknownGitmoji},
+-		{Rule: RuleWIPMergeCandidate, MergeCandidateOnly: true},
++		{Rule: RuleWIPMergeCandidate},
+ 		{Rule: RuleUppercaseSubject},
+ 		{Rule: RuleTrailingPeriod},
+ 		{Rule: RuleCJKSubject},

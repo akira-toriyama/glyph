@@ -137,7 +137,11 @@ the shape block above, and had no word at all for `invalid-scope` or
 `undeclared-removal` — both added later. Enumerating by id is what makes that
 drift checkable at all, and `TestDesignDocNamesEveryRuleID` in `internal/parser`
 is what checks it: an id here that is no longer a constant, or a constant not
-named here, fails the suite.
+named here, fails the suite. The binary self-prints the same vocabulary —
+`glyph rules --lint`, each id with `merge_candidate_only` and nothing else —
+held to the constants by `TestLintRulesMatchTheConstants` and to `Lint`'s real
+mode behaviour by `TestLintRulesModeGating`. The semantics stay here on
+purpose: a prose field beside a printed id would be this list's second home.
 
 - `malformed-subject` — the subject line does not match the shape above.
   Short-circuits: with the subject unparsed, nothing else is checkable.
