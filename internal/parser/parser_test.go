@@ -743,3 +743,71 @@ func TestUndeclaredRemovalTellsABareFooterApart(t *testing.T) {
 		}
 	}
 }
+
+// TestLintFixIsPasteable pins the contract Fix carries: replace the message's
+// first line with it, verbatim, and lint is green. Not "closer to green" —
+// green. The field exists because agents were regexing the Detail prose for
+// the suggestion and the prose has been reworded before (PR #78); a fix that
+// still failed lint after pasting would be that defect with a schema. Every
+// fixable violation on one message must carry the SAME line, because per-rule
+// fixes applied in sequence un-did each other.
+func TestLintFixIsPasteable(t *testing.T) {
+	known := func(code string) bool { return code != ":unknown:" }
+	opts := LintOptions{Known: known, MergeCandidate: true}
+
+	fixable := []struct {
+		name, message, wantFix string
+	}{
+		{"uppercase and trailing period", ":bug: Fix the crash.", ":bug: fix the crash"},
+		{"legacy token", ":bug: fix: repair the handler", ":bug: repair the handler"},
+		{"legacy token with scope and both subject defects", ":bug: fix(api)!: Repair it.", ":bug:(api)! repair it"},
+		{"invalid scope, lowercasing legalises", ":bug:(API) Fix the crash.", ":bug:(api) fix the crash"},
+	}
+	for _, tc := range fixable {
+		t.Run(tc.name, func(t *testing.T) {
+			vs := Lint(tc.message, opts)
+			if len(vs) == 0 {
+				t.Fatalf("expected violations for %q", tc.message)
+			}
+			for _, v := range vs {
+				if v.Fix != tc.wantFix {
+					t.Errorf("%s carries fix %q, want %q — every fixable violation on one message "+
+						"carries the same fully-corrected line", v.Rule, v.Fix, tc.wantFix)
+				}
+				if left := Lint(v.Fix, opts); len(left) != 0 {
+					t.Errorf("pasting the fix for %s still lints red (%v) — a fix that fails its own "+
+						"lint is the regexed-prose defect wearing a schema", v.Rule, left)
+				}
+			}
+		})
+	}
+
+	unfixable := []struct {
+		name, message, rule string
+	}{
+		{"unknown gitmoji", ":unknown: try a thing", RuleUnknownGitmoji},
+		{"wip merge candidate", ":construction: try a thing", RuleWIPMergeCandidate},
+		{"undeclared removal", ":fire: drop the old preset", RuleUndeclaredRemoval},
+		{"subject that is nothing but periods", ":bug: ....", RuleTrailingPeriod},
+		{"malformed subject", "no gitmoji at all", RuleMalformedSubject},
+	}
+	for _, tc := range unfixable {
+		t.Run(tc.name, func(t *testing.T) {
+			vs := Lint(tc.message, opts)
+			var hit bool
+			for _, v := range vs {
+				if v.Rule != tc.rule {
+					continue
+				}
+				hit = true
+				if v.Fix != "" {
+					t.Errorf("%s carries fix %q, want none — repairing it needs a human decision, and "+
+						"a guessed fix lint would bless anyway is a wrong answer pasted with confidence", v.Rule, v.Fix)
+				}
+			}
+			if !hit {
+				t.Fatalf("expected a %s violation for %q, got %v", tc.rule, tc.message, vs)
+			}
+		})
+	}
+}

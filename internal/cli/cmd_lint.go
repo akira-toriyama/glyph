@@ -220,7 +220,11 @@ func lintPRRun(ctx context.Context, number int, repoFlag string, known func(stri
 	// One annotation per finding, written by the binary that computed it —
 	// the same producer contract lintRangeRun holds (t-sws7).
 	for _, v := range vs {
-		errorf("%s/%s#%d title %s: %s", owner, repo, number, v.Rule, v.Detail)
+		if v.Fix != "" {
+			errorf("%s/%s#%d title %s: %s — fix: %s", owner, repo, number, v.Rule, v.Detail, v.Fix)
+		} else {
+			errorf("%s/%s#%d title %s: %s", owner, repo, number, v.Rule, v.Detail)
+		}
 	}
 	return &core.Error{
 		Code: core.CodeLint,
@@ -244,18 +248,21 @@ func lintRaws(raws []gitsource.RawCommit, known func(string) bool) (findings []r
 		}
 		checked++
 		for _, v := range parser.Lint(raw.Message, parser.LintOptions{Known: known, MergeCandidate: true}) {
-			findings = append(findings, rangeViolation{SHA: raw.SHA, Subject: subject, Rule: v.Rule, Detail: v.Detail})
+			findings = append(findings, rangeViolation{SHA: raw.SHA, Subject: subject, Rule: v.Rule, Detail: v.Detail, Fix: v.Fix})
 		}
 	}
 	return findings, checked
 }
 
-// rangeViolation is one finding over a range, anchored to its commit.
+// rangeViolation is one finding over a range, anchored to its commit. Fix
+// rides along verbatim from parser.Violation — same field, same paste-and-pass
+// contract, same omitempty.
 type rangeViolation struct {
 	SHA     string `json:"sha"`
 	Subject string `json:"subject"`
 	Rule    string `json:"rule"`
 	Detail  string `json:"detail"`
+	Fix     string `json:"fix,omitempty"`
 }
 
 // lintRangeRun lints every participating commit in revRange as a merge
@@ -282,7 +289,11 @@ func lintRangeRun(ctx context.Context, revRange string, known func(string) bool)
 	// and it is here rather than in a caller's jq because that reconstruction
 	// is where a whole run's annotations went missing in silence (t-sws7).
 	for _, v := range all {
-		errorf("%.7s %s: %s", v.SHA, v.Rule, v.Detail)
+		if v.Fix != "" {
+			errorf("%.7s %s: %s — fix: %s", v.SHA, v.Rule, v.Detail, v.Fix)
+		} else {
+			errorf("%.7s %s: %s", v.SHA, v.Rule, v.Detail)
+		}
 	}
 	return &core.Error{
 		Code:    core.CodeLint,

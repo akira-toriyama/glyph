@@ -420,7 +420,9 @@ Group`
 
 **rule id** — the stable kebab-case key a lint finding carries. It is machine
 API — CI jobs and agents branch on the `rule` key of a `--json` finding, never
-on the `detail` beside it, which is prose and will be reworded. The same
+on the `detail` beside it, which is prose and will be reworded. A mechanical
+repair, where one exists, is the finding's `fix` key — the corrected subject
+line, paste-and-pass — not a phrase to regex out of `detail`. The same
 discipline as `doctor`'s check id, one layer down. The ids themselves are
 enumerated in [DESIGN §2](DESIGN.md#2-commit-format), the copy
 `TestDesignDocNamesEveryRuleID` holds in step with the `Rule*` constants — this
