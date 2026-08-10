@@ -1,11 +1,17 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/doctor"
 	"github.com/akira-toriyama/glyph/internal/gitsource"
+	"github.com/akira-toriyama/glyph/internal/hook"
 	"github.com/spf13/cobra"
 )
 
@@ -86,6 +92,71 @@ func newDoctorCmd() *cobra.Command {
 	return cmd
 }
 
+// probeCommitMsgHook FIRES the installed commit-msg hook against a message
+// that violates the convention, and reports what came back. It lives here
+// because internal/doctor runs no subprocess, exactly as it makes no request —
+// the same division that puts HooksDir here.
+//
+// It fires ONLY when the installed bytes are exactly this binary's hook — the
+// arm the byte-compare check passes. Someone else's hook is theirs to run and
+// a stale glyph hook already fails the drift check, so executing either would
+// have a read-only diagnosis run code it does not vouch for. nil means nothing
+// was fired, and internal/doctor renders why from its own checks.
+//
+// What the probe buys over the byte-compare: the script blocks only on the
+// lint gate code and waves every other failure through by design, so current
+// bytes over a glyph that cannot answer — a PATH wrapper building a different
+// checkout (the documented worktree trap), a tree that does not compile — are
+// a silent no-op the compare calls healthy. Only firing the hook asks the
+// question end to end.
+func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.HookProbe {
+	if dirErr != nil {
+		return nil
+	}
+	k := hook.Kinds[0]
+	path := filepath.Join(dir, k.Name)
+	body, err := os.ReadFile(path) // #nosec G304 -- the path git itself reported for this checkout
+	if err != nil || string(body) != k.Script {
+		return nil
+	}
+	msg, err := os.CreateTemp("", "glyph-doctor-probe-*.txt")
+	if err != nil {
+		return &doctor.HookProbe{Err: err}
+	}
+	defer os.Remove(msg.Name()) //nolint:errcheck // best-effort scratch cleanup
+	// A subject no cleanup mode can rescue: no gitmoji, so the gate code is
+	// the only healthy answer.
+	if _, werr := msg.WriteString("no gitmoji in this doctor probe\n"); werr != nil {
+		_ = msg.Close() // the write error is the one worth reporting
+		return &doctor.HookProbe{Err: werr}
+	}
+	if cerr := msg.Close(); cerr != nil {
+		return &doctor.HookProbe{Err: cerr}
+	}
+	// Exactly git's invocation: the hook file itself, argv[1] the message file.
+	// Output is discarded — the hook's stderr talks to a committing developer,
+	// and the check renders its own sentence from the exit code alone.
+	probe := exec.CommandContext(ctx, path, msg.Name()) // #nosec G204 -- firing the byte-verified hook glyph itself wrote
+	err = probe.Run()
+	if err == nil {
+		return &doctor.HookProbe{Fired: true, Exit: 0}
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		return &doctor.HookProbe{Fired: true, Exit: exit.ExitCode()}
+	}
+	return &doctor.HookProbe{Err: err}
+}
+
+// probeErr unwraps the probe's own failure for the interrupt guard below — a
+// Ctrl-C that lands mid-probe is the user's abort, never a check result.
+func probeErr(p *doctor.HookProbe) error {
+	if p == nil {
+		return nil
+	}
+	return p.Err
+}
+
 // firstInterrupt returns the first of errs carrying the user's interrupt, or
 // nil. Split out of doctorRun so the guard over its two independent reads (the
 // API, then git) is testable without arranging a live signal — cancelling the
@@ -114,6 +185,7 @@ func doctorRun(cmd *cobra.Command) error {
 	// as it makes no request. A failure here is handed over verbatim and becomes
 	// that one check's could-not-run — never an aborted report.
 	hooksDir, herr := gitsource.HooksDir(cmd.Context(), ".")
+	probe := probeCommitMsgHook(cmd.Context(), hooksDir, herr)
 	// An interrupt is the user's own abort and must never be laundered into a
 	// check result: reporting "the token cannot read the repository" — or "git
 	// could not report where hooks live" — because somebody pressed Ctrl-C
@@ -122,7 +194,7 @@ func doctorRun(cmd *cobra.Command) error {
 	// asked: guarding rerr alone turned a mid-run SIGTERM into exit 4 with the
 	// abort rendered as the hook check's could-not-run — the one code the
 	// fleet's wrappers read as retryable infra, on a run the operator stopped.
-	if err := firstInterrupt(rerr, herr); err != nil {
+	if err := firstInterrupt(rerr, herr, probeErr(probe)); err != nil {
 		return err
 	}
 	report := doctor.Run(doctor.Input{
@@ -137,6 +209,7 @@ func doctorRun(cmd *cobra.Command) error {
 		TokenConfigured: githubToken() != "",
 		HooksDir:        hooksDir,
 		HooksErr:        herr,
+		CommitMsgProbe:  probe,
 	})
 
 	// Annotations go out in BOTH modes, before the payload. On an Actions

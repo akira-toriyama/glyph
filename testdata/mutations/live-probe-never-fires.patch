@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
+index f762df0..266d051 100644
+--- a/internal/cli/cmd_doctor.go
++++ b/internal/cli/cmd_doctor.go
+@@ -116,7 +116,7 @@ func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.H
+ 	k := hook.Kinds[0]
+ 	path := filepath.Join(dir, k.Name)
+ 	body, err := os.ReadFile(path) // #nosec G304 -- the path git itself reported for this checkout
+-	if err != nil || string(body) != k.Script {
++	if err != nil || string(body) == k.Script {
+ 		return nil
+ 	}
+ 	msg, err := os.CreateTemp("", "glyph-doctor-probe-*.txt")

@@ -121,6 +121,21 @@ type Input struct {
 	// error with an empty directory cannot happen — git names one or fails.
 	HooksDir string
 	HooksErr error
+	// CommitMsgProbe is the outcome of the caller FIRING the installed
+	// commit-msg hook with a violating message — executed by internal/cli for
+	// the same reason HooksDir is resolved there, and only when the installed
+	// bytes are exactly this binary's hook (see probeCommitMsgHook). nil means
+	// nothing was fired.
+	CommitMsgProbe *HookProbe
+}
+
+// HookProbe is what came back from firing a hook. Fired with Exit is a real
+// answer; Err is the probe itself failing to run — which is unknown, never a
+// verdict about the hook.
+type HookProbe struct {
+	Fired bool
+	Exit  int
+	Err   error
 }
 
 // The stable check ids. They are the report's API — rename one and every CI
@@ -135,6 +150,7 @@ const (
 	IDSquashMessage  = "squash-commit-message"
 	IDWorkflowPinned = "workflow-glyph-pins"
 	IDCommitMsgHook  = "commit-msg-hook"
+	IDCommitMsgFires = "commit-msg-hook-fires"
 	IDPrePushHook    = "pre-push-hook"
 )
 
@@ -163,6 +179,7 @@ func Run(in Input) *Report {
 		checkSquashMessage(in),
 		checkWorkflowPins(in.Root),
 		checkHook(hook.Kinds[0], IDCommitMsgHook, in.HooksDir, in.HooksErr),
+		checkHookFires(in.CommitMsgProbe, in.HooksErr),
 		checkHook(hook.Kinds[1], IDPrePushHook, in.HooksDir, in.HooksErr),
 	}}
 	r.OK = true

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/hook"
 )
 
@@ -170,6 +171,46 @@ func TestEveryHookKindIsCheckedTheSameWay(t *testing.T) {
 			}
 			if c.ID != ids[k.Name] {
 				t.Errorf("check id = %q, want %q — each kind carries its own observed/expected pair", c.ID, ids[k.Name])
+			}
+		})
+	}
+}
+
+// TestCheckHookFiresVerdicts walks every arm of the live-fire check. The two
+// that carry the design are the middle rows: a probe that came back 0 is the
+// silent no-op — current bytes over a glyph that cannot answer — and it FAILS;
+// a probe that could not run, or an exit outside the script's own vocabulary
+// (it exits only 0 or the gate code), is unknown, never a verdict about the
+// hook. Everything not fired belongs to the byte-compare check and passes here
+// with the sibling named.
+func TestCheckHookFiresVerdicts(t *testing.T) {
+	gate := int(core.CodeLint)
+	cases := []struct {
+		name   string
+		probe  *HookProbe
+		dirErr error
+		want   Status
+	}{
+		{"hooks dir unknown", nil, os.ErrNotExist, StatusUnknown},
+		{"nothing to fire", nil, nil, StatusPass},
+		{"probe could not run", &HookProbe{Err: os.ErrPermission}, nil, StatusUnknown},
+		{"blocked at the gate code", &HookProbe{Fired: true, Exit: gate}, nil, StatusPass},
+		{"silent no-op", &HookProbe{Fired: true, Exit: 0}, nil, StatusFail},
+		{"exit outside the script's vocabulary", &HookProbe{Fired: true, Exit: 127}, nil, StatusUnknown},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := checkHookFires(tc.probe, tc.dirErr)
+			if c.Status != tc.want {
+				t.Errorf("status = %q, want %q: %s", c.Status, tc.want, c.Observed)
+			}
+			if c.ID != IDCommitMsgFires {
+				t.Errorf("check id = %q, want %q", c.ID, IDCommitMsgFires)
+			}
+			for field, v := range map[string]string{"observed": c.Observed, "expected": c.Expected} {
+				if v == "" {
+					t.Errorf("%s is empty; every check reports what it saw and what it wanted", field)
+				}
 			}
 		})
 	}

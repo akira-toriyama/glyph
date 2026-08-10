@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/hook.go b/internal/doctor/hook.go
+index 549d187..f3605c3 100644
+--- a/internal/doctor/hook.go
++++ b/internal/doctor/hook.go
+@@ -163,7 +163,7 @@ func checkHookFires(probe *HookProbe, dirErr error) Check {
+ 		c.Message = "the whole chain answered: the script, the glyph it resolves on PATH, and the verdict that " +
+ 			"stops a commit are in working order on this machine"
+ 	case probe.Exit == 0:
+-		c.Status = StatusFail
++		c.Status = StatusPass
+ 		c.Observed = "the hook let a violating message through at exit 0"
+ 		c.Message = "the script is current but the glyph it reaches cannot lint — the hook blocks only on the gate " +
+ 			"code and waves every other failure through by design, so a PATH wrapper building a different checkout " +

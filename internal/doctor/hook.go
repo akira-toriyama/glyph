@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/hook"
 )
 
@@ -108,6 +109,74 @@ func checkHook(k hook.Kind, id, dir string, dirErr error) Check {
 			"it costs is that nothing here is known to lint the convention locally; if this hook does call glyph, it does " +
 			"so on terms this binary cannot see"
 		c.Fix = "inspect it, then `glyph hook install --force` to replace it with the generated hook"
+	}
+	return c
+}
+
+// checkHookFires reports what happened when the installed commit-msg hook was
+// actually FIRED with a violating message — the live half of the hook
+// diagnosis, and the half the byte-compare above cannot supply.
+//
+// Byte-identical bytes prove the SCRIPT is current; they prove nothing about
+// the glyph the script reaches at run time. The script resolves `glyph` on
+// PATH, and by design it blocks only on the lint gate code and waves every
+// other failure through — so a PATH wrapper that builds a different checkout
+// (CLAUDE.md documents this exactly: inside a worktree the wrapper builds the
+// PRIMARY clone), or a source tree that no longer compiles, turns the local
+// gate into a silent no-op while its bytes still compare clean. Firing the
+// hook with a message that violates the convention asks the only question that
+// covers the whole chain: does this hook, on this machine, today, block?
+//
+// The probe is the CALLER's (internal/cli owns every subprocess), and it fires
+// ONLY the byte-identical arm. Someone else's hook is theirs to run, and a
+// stale glyph hook already fails the drift check above — a read-only diagnosis
+// must not execute code it does not vouch for. Everything not fired is
+// therefore a pass here with the sibling check named as the owner: this check
+// answers "does the current hook work", not "is a hook installed".
+func checkHookFires(probe *HookProbe, dirErr error) Check {
+	gate := int(core.CodeLint)
+	c := Check{
+		ID: IDCommitMsgFires,
+		Expected: fmt.Sprintf("fired with a violating message, the byte-identical commit-msg hook blocks at exit %d — "+
+			"proof the glyph it resolves on PATH can actually lint", gate),
+	}
+	switch {
+	case probe == nil && dirErr != nil:
+		c.Status = StatusUnknown
+		c.Observed = "the hooks directory is unknown (see commit-msg-hook), so nothing could be fired"
+		c.Message = "whether the local gate works is unverified, not verified-absent — the same distinction the " +
+			"byte-compare check draws when git cannot name the directory"
+		c.Fix = "re-run from inside a git checkout"
+	case probe == nil:
+		c.Status = StatusPass
+		c.Observed = "no byte-identical glyph commit-msg hook is installed, so there was nothing to fire"
+		c.Message = "absence, a foreign hook and a stale hook are all the commit-msg-hook check's verdicts; " +
+			"this check only ever fires the hook that check already calls current"
+	case probe.Err != nil:
+		c.Status = StatusUnknown
+		c.Observed = fmt.Sprintf("the probe itself could not run: %v", probe.Err)
+		c.Message = "an unrunnable probe is not a verdict about the hook — whether the local gate works is unverified"
+		c.Fix = "check that the hook file is executable and /bin/sh is available, then re-run"
+	case probe.Exit == gate:
+		c.Status = StatusPass
+		c.Observed = fmt.Sprintf("the hook blocked the probe message at exit %d", gate)
+		c.Message = "the whole chain answered: the script, the glyph it resolves on PATH, and the verdict that " +
+			"stops a commit are in working order on this machine"
+	case probe.Exit == 0:
+		c.Status = StatusFail
+		c.Observed = "the hook let a violating message through at exit 0"
+		c.Message = "the script is current but the glyph it reaches cannot lint — the hook blocks only on the gate " +
+			"code and waves every other failure through by design, so a PATH wrapper building a different checkout " +
+			"or a source tree that does not compile turns the local gate into a silent no-op with clean-looking bytes. " +
+			"Every commit on this machine is going unlinted while CI still enforces the convention"
+		c.Fix = "run `glyph lint --message 'probe'` by hand and check what `command -v glyph` resolves to; " +
+			"repair the wrapper's source checkout (or the build) it points at"
+	default:
+		c.Status = StatusUnknown
+		c.Observed = fmt.Sprintf("the hook exited %d, a code the generated script never returns (it exits only 0 or %d)", probe.Exit, gate)
+		c.Message = "an exit outside the script's own vocabulary means the shell or filesystem failed underneath it, " +
+			"not that the hook reached a verdict"
+		c.Fix = "run the hook by hand against a scratch file and read what it prints"
 	}
 	return c
 }

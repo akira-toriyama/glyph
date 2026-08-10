@@ -910,6 +910,22 @@ The severities are the argued part:
   at a tracked `scripts/hooks`), which makes this the one check that needs a
   subprocess — resolved in `internal/cli` beside every other one, since
   `internal/doctor` runs no git exactly as it makes no request.
+- **The byte-identical hook is also FIRED (`commit-msg-hook-fires`).** Current
+  bytes prove the script; they prove nothing about the glyph the script resolves
+  on PATH at run time, and the script blocks only on the gate code and waves
+  every other failure through *by design* — so a PATH wrapper building a
+  different checkout (the documented worktree trap) or a tree that no longer
+  compiles is a local gate answering 0 to everything while the byte-compare
+  calls it healthy. `internal/cli` executes the hook with a violating scratch
+  message (a subprocess, like the hooks-dir read; `internal/doctor` only renders
+  the outcome) and the check fails when the probe passes through — the split
+  "bytes current, gate dead" is the finding. It fires the byte-identical arm and
+  nothing else: someone else's hook is theirs to run, a stale glyph hook already
+  fails the drift check, and a read-only diagnosis must not execute code it does
+  not vouch for. Executing the hook glyph itself wrote is still read-only in the
+  sense the report claims — the hook lints a scratch file and changes nothing.
+  A probe that cannot run, or an exit outside the script's own two-code
+  vocabulary, is unknown, never a verdict.
 
 ## 8. Where we are
 
