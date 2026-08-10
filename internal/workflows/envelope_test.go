@@ -29,6 +29,51 @@ var stderrSink = regexp.MustCompile(`2>\s*("?[^"\s|;&]+"?)`)
 // jq's own diagnostics, which these steps do deliberately.
 var mergedIntoJQ = regexp.MustCompile(`2>&1[^|]*\|[^|]*jq`)
 
+// detailsRead matches a workflow reading the envelope's details array — the
+// signature of a caller rebuilding per-finding annotations out of the machine
+// half of the stream.
+var detailsRead = regexp.MustCompile(`\.error\.details`)
+
+// TestNoWorkflowRebuildsPerFindingAnnotations guards the division of labour the
+// stream contract rests on: the binary that computed a finding is the one that
+// renders it. glyph writes one `::error::` per finding onto the diagnostic
+// stream itself, and a consumer's whole job is `cat` — replay that stream into
+// the log and frame the SUMMARY (`.error.message`, which stays legitimate and
+// present in three workflows today).
+//
+// The reconstruction this forbids was real and its failure was silent: lint.yml
+// iterated `.error.details` with jq to mint one annotation per finding, over a
+// stream that carries two shapes, behind an `|| true` — and a run that warned
+// before it failed emitted NO annotations at all (t-sws7). The verdict was
+// computed correctly and then lost in shell on the caller's side of the pin,
+// where no test of glyph's could see it. Reading `.error.details` in YAML is
+// that defect's first move, whatever it is rebuilt into — so the guard bans the
+// read, not the output shape.
+func TestNoWorkflowRebuildsPerFindingAnnotations(t *testing.T) {
+	// Positive control: the exact line this guard exists to keep out — the jq
+	// program lint.yml shipped with until the binary took the annotations over.
+	// A regex guard that asserts an absence proves nothing unless the pattern
+	// still bites the real instance it was written against.
+	const canary = `jq -r '(.error.details // [])[]` + "\n" +
+		`         | "::error::\((.sha // "")[0:7]) \(.rule // ""): \(.detail // "")"'`
+	if !detailsRead.MatchString(canary) {
+		t.Fatalf("detailsRead no longer matches the reconstruction it was written to ban (%q) — "+
+			"every assertion below is vacuous", canary)
+	}
+
+	for _, name := range workflowFiles(t) {
+		t.Run(name, func(t *testing.T) {
+			body := code(repoFile(t, filepath.Join(".github", "workflows", name)))
+			if m := detailsRead.FindString(body); m != "" {
+				t.Errorf("%s reads the envelope's details array (%q) — rebuilding per-finding "+
+					"output in YAML is how a whole run's annotations vanished in silence (t-sws7). "+
+					"The binary already writes one ::error:: per finding onto the stream this step "+
+					"replays with `cat`; frame only .error.message here.", name, m)
+			}
+		})
+	}
+}
+
 // TestReusablesSieveTheEnvelopeBeforeJQ guards the consumer half of the stream
 // contract.
 //
