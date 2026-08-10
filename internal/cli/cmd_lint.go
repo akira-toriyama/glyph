@@ -14,11 +14,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// The three lint input modes; exactly one is required (cobra-enforced).
+// The four lint input modes; exactly one is required (cobra-enforced).
+// lintRepo rides alongside --pr the way bumpRepo rides alongside bump's.
 var (
 	lintRange   string
 	lintMessage string
 	lintStdin   bool
+	lintPR      int
+	lintRepo    string
 )
 
 func newLintCmd() *cobra.Command {
@@ -30,7 +33,11 @@ func newLintCmd() *cobra.Command {
 			"gitmoji is a hard error — the violation carries the canonical rewrite).\n" +
 			"--range lints every commit on its way into main (bots, merges, autosquash\n" +
 			"artifacts and raw git reverts are skipped; :construction: is a violation\n" +
-			"there). --message and --stdin lint one message at authoring time — the\n" +
+			"there). --pr lints a pull request's TITLE over the API, as the merge\n" +
+			"candidate it is: a squash merge records that title as the landed commit's\n" +
+			"subject (ratified in CONTRIBUTING — a pull-request title is a commit\n" +
+			"subject), and it is the one such subject the --range walk can never see.\n" +
+			"--message and --stdin lint one message at authoring time — the\n" +
 			"commit-msg hook path, where :construction: stays legal. Violations exit 3\n" +
 			"with a structured stderr envelope; a clean run is silent, EXCEPT that a\n" +
 			"--range which judged no commit at all says so and still exits 0 — `0` means\n" +
@@ -45,6 +52,11 @@ func newLintCmd() *cobra.Command {
 			"counts as public: https://github.com/akira-toriyama/.github/blob/main/CONTRIBUTING.md",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := checkNamingFlags(cmd, [][3]string{
+				{"repo", "repository", repoHint},
+			}); err != nil {
+				return err
+			}
 			table, err := loadRules()
 			if err != nil {
 				return err
@@ -63,6 +75,8 @@ func newLintCmd() *cobra.Command {
 			switch {
 			case cmd.Flags().Changed("range"):
 				return lintRangeRun(cmd.Context(), lintRange, known)
+			case cmd.Flags().Changed("pr"):
+				return lintPRRun(cmd.Context(), lintPR, lintRepo, known)
 			case cmd.Flags().Changed("stdin"):
 				if !lintStdin {
 					return core.Usagef("--stdin=false selects no input mode — --stdin IS the mode, so drop it and give --range or --message instead")
@@ -98,10 +112,12 @@ func newLintCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&lintRange, "range", "", "lint every commit in a git revision range (BASE..HEAD)")
+	cmd.Flags().IntVar(&lintPR, "pr", 0, "lint a pull request's title — the subject a squash merge lands — read over the API")
+	cmd.Flags().StringVar(&lintRepo, "repo", "", "owner/name to query for --pr (default: $GITHUB_REPOSITORY)")
 	cmd.Flags().StringVar(&lintMessage, "message", "", "lint one message given inline")
 	cmd.Flags().BoolVar(&lintStdin, "stdin", false, "lint one message read from stdin (commit-msg hook)")
-	cmd.MarkFlagsMutuallyExclusive("range", "message", "stdin")
-	cmd.MarkFlagsOneRequired("range", "message", "stdin")
+	cmd.MarkFlagsMutuallyExclusive("range", "pr", "message", "stdin")
+	cmd.MarkFlagsOneRequired("range", "pr", "message", "stdin")
 	return cmd
 }
 
@@ -163,6 +179,53 @@ func lintOne(message string, known func(string) bool) error {
 	return &core.Error{
 		Code:    core.CodeLint,
 		Msg:     fmt.Sprintf("%d commit-convention violation(s)", len(vs)),
+		Details: vs,
+	}
+}
+
+// lintPRRun lints the one line of a pull request a squash merge writes into
+// main's history: its title. CONTRIBUTING ratifies that line as a commit
+// subject, and it is the only merge-candidate subject the --range walk can
+// never see — the range holds the pre-squash commits, while the title exists
+// nowhere as a commit until the squash mints it. Measured across the fleet
+// before this existed, 158 landed subjects failed glyph's own grammar this way,
+// each one degrading the release walk's fallback to a silent none.
+//
+// The judgement is exactly lintRaws' judgement of the commit this title is
+// about to become: parents=1 (a squash lands single-parent — never
+// UnknownParents, so a "Merge …" title is an author's sentence and faces the
+// lint), the PR's author stands in for the commit author (a squash attributes
+// the landed commit to the pull's author, so dependabot's titles are excluded
+// exactly as its commits are), and the merge-candidate rules apply because
+// main is where this subject is headed (:construction: is a violation).
+func lintPRRun(ctx context.Context, number int, repoFlag string, known func(string) bool) error {
+	if err := checkPRFlag(number); err != nil {
+		return err
+	}
+	owner, repo, err := resolveRepo(repoFlag)
+	if err != nil {
+		return err
+	}
+	pull, err := newGitHub().PullRequest(ctx, owner, repo, number)
+	if err != nil {
+		return err
+	}
+	if _, excluded := bump.ExcludedFromClassification(pull.Author, pull.Title, 1); excluded {
+		return nil
+	}
+	vs := parser.Lint(pull.Title, parser.LintOptions{Known: known, MergeCandidate: true})
+	if len(vs) == 0 {
+		return nil
+	}
+	// One annotation per finding, written by the binary that computed it —
+	// the same producer contract lintRangeRun holds (t-sws7).
+	for _, v := range vs {
+		errorf("%s/%s#%d title %s: %s", owner, repo, number, v.Rule, v.Detail)
+	}
+	return &core.Error{
+		Code: core.CodeLint,
+		Msg: fmt.Sprintf("%d commit-convention violation(s) in the title of %s/%s#%d — a squash merge records this title as the landed commit's subject",
+			len(vs), owner, repo, number),
 		Details: vs,
 	}
 }

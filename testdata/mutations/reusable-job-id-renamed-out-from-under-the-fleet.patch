@@ -1,9 +1,9 @@
 diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
-index adcc4bb..2a7a27c 100644
+index 06b03e2..1f06735 100644
 --- a/.github/workflows/lint.yml
 +++ b/.github/workflows/lint.yml
-@@ -60,7 +60,7 @@ permissions:
-   contents: read
+@@ -70,7 +70,7 @@ permissions:
+   pull-requests: read
  
  jobs:
 -  lint:

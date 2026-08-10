@@ -18,7 +18,7 @@ import (
 // a new string flag is covered the moment it is registered, and a new command
 // fails the completeness check below until someone says how to invoke it.
 var namingFlagBase = map[string][]string{
-	"lint":    nil,
+	"lint":    {"--pr", "1"},
 	"bump":    {"--pr", "1"},
 	"notes":   {"--pr", "1"},
 	"release": {"--dry-run"},

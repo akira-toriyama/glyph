@@ -830,8 +830,12 @@ The severities are the argued part:
   leave `walkSince` as an error and exit `4` — the outage window is an exit-code
   question, not a classification one. Squash is therefore the landing style with no
   partial state at all; the cost of a dark API under squash is that a MULTI-commit
-  squash carries the PR title, which no lint gate checks, so the fallback reads one
-  unlinted subject (measured `minor` → `patch`, and `minor` → `none` for a title
+  squash carries the PR title, so the fallback reads one subject the range walk
+  never saw. `lint --pr` is that subject's own gate — CONTRIBUTING ratifies the
+  title as a commit subject and lint.yml runs it beside the range — so the
+  fallback now reads a *linted* subject, though only as reliably as the gate's
+  trigger re-fires on a retitle
+  (measured `minor` → `patch`, and `minor` → `none` for a title
   with no gitmoji — `TestSinceTagSquashMultiCommitDivergesWhenAPIDark`,
   `TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark`). One wrong level on one pull, versus a whole pull lost.
 - **`allow_merge_commit` / `allow_rebase_merge` true ⇒ advice, not failure.** A
