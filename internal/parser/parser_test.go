@@ -883,3 +883,79 @@ func TestFormatEnforcesTheInvariant(t *testing.T) {
 		})
 	}
 }
+
+// TestUndeclaredRemovalNamesTheActualMistake pins the four-sentence split: an
+// author who ALREADY WROTE the footer must never be answered with "write the
+// footer" (PR #78 fixed the bare state and named the principle; the miscased
+// and misplaced states shared the generic sentence — measured byte-identical —
+// until this test). Each state's sentence must name its own repair, and the
+// detectors must not blur: the miscased detector reads only block-start lines,
+// so the prose sentence "this is non-breaking: …" — the accident the footer's
+// case-sensitivity exists to prevent — still gets the generic answer, and none
+// of the three diagnosis states satisfies the rule.
+func TestUndeclaredRemovalNamesTheActualMistake(t *testing.T) {
+	known := func(string) bool { return true }
+	opts := LintOptions{Known: known}
+	cases := []struct {
+		name, message string
+		wants         []string // fragments the detail must carry
+		rejects       []string // fragments it must NOT (the wrong state's sentence)
+	}{
+		{
+			"no footer at all",
+			":fire: drop the preset",
+			[]string{"does not say whether that breaks anyone"},
+			[]string{"already wrote"},
+		},
+		{
+			"bare footer",
+			":fire: drop the preset\n\nNON-BREAKING:",
+			[]string{"no reason after it"},
+			[]string{"wrong case", "inside a body paragraph"},
+		},
+		{
+			"miscased footer",
+			":fire: drop the preset\n\nNon-breaking: it was never exported",
+			[]string{"wrong case", "recase"},
+			[]string{"does not say whether", "no reason after it"},
+		},
+		{
+			"misplaced footer, wrapped into a paragraph",
+			":fire: drop the preset\n\nThis prunes the palette helper.\nNON-BREAKING: it was never exported",
+			[]string{"inside a body paragraph", "already wrote"},
+			[]string{"does not say whether", "wrong case"},
+		},
+		{
+			"prose that merely contains the phrase",
+			":fire: drop the preset\n\nthis is non-breaking: the API is untouched",
+			[]string{"does not say whether that breaks anyone"},
+			[]string{"wrong case", "inside a body paragraph", "no reason after it"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			vs := Lint(tc.message, opts)
+			var detail string
+			for _, v := range vs {
+				if v.Rule == RuleUndeclaredRemoval {
+					detail = v.Detail
+				}
+			}
+			if detail == "" {
+				t.Fatalf("no undeclared-removal violation for %q — every diagnosis state must still "+
+					"FAIL the rule (none of them answers the question)", tc.message)
+			}
+			for _, w := range tc.wants {
+				if !strings.Contains(detail, w) {
+					t.Errorf("detail lacks %q:\n%s", w, detail)
+				}
+			}
+			for _, r := range tc.rejects {
+				if strings.Contains(detail, r) {
+					t.Errorf("detail carries %q — the wrong state's sentence, which is the byte-identical "+
+						"answer this split exists to end:\n%s", r, detail)
+				}
+			}
+		})
+	}
+}
