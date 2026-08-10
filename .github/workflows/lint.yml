@@ -1,7 +1,9 @@
 name: glyph-lint
 
-# Reusable workflow — gitmoji commit lint over a PR's BASE..HEAD range, run by
-# `glyph lint`. This is glyph's OFFICIAL commit-lint integration: the workflow
+# Reusable workflow — gitmoji commit lint over a commit range, run by
+# `glyph lint`: a pull request's BASE..HEAD (the gate), or a direct push to the
+# default branch (annotate-only — see the lint step for why that verdict may
+# not gate). This is glyph's OFFICIAL commit-lint integration: the workflow
 # and the binary it runs ship from the same repo and the same release, so a
 # caller pins ONE concrete tag and can never mix workflow and binary revisions
 # (GoReleaser owns the vX.Y.Z tag space — never pin a moving ref). Each family
@@ -11,6 +13,8 @@ name: glyph-lint
 #   name: commit-lint
 #   on:
 #     pull_request:
+#     push:
+#       branches: [main]  # optional — annotates direct pushes, never fails them
 #   permissions:
 #     contents: read
 #   jobs:
@@ -115,19 +119,72 @@ jobs:
           version: ${{ steps.glyph.outputs.version }}
           token: ${{ github.token }}
 
-      - name: Lint the PR commit range
+      - name: Lint the commit range
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
+          PUSHED_REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          # PR-context guard: in a non-PR context base/head are empty, so `..`
-          # would collapse to an empty range and every commit "passes" silently.
-          # Fail loudly instead — call this from a pull_request-triggered caller.
-          if [ -z "${BASE:-}" ] || [ -z "${HEAD:-}" ]; then
-            echo "::error::glyph-lint requires a pull_request context (empty base/head SHA)."
-            exit 1
-          fi
+          # Two arms, and each is decided TOGETHER with what its verdict may
+          # do. A pull_request range is a merge candidate and the verdict gates
+          # (exit 3 fails the job). A push to the default branch is history
+          # already merged: the same rules run, but the verdict only annotates
+          # — that history is immutable, so a red verdict there could never be
+          # made green again, and a permanently red check is the noise that
+          # trains a fleet to stop reading its own gate. Exit 3 is swallowed on
+          # that arm alone, at the bottom of this step.
+          verdict=gates
+          case "$EVENT" in
+            pull_request)
+              # A PR payload never lacks these; empty means the event shape
+              # changed under us. Refuse rather than lint the empty range `..`
+              # collapses to — every commit would "pass" silently.
+              if [ -z "${PR_BASE:-}" ] || [ -z "${PR_HEAD:-}" ]; then
+                echo "::error::glyph-lint got a pull_request event with an empty base/head SHA."
+                exit 1
+              fi
+              BASE="$PR_BASE"; HEAD="$PR_HEAD"
+              ;;
+            push)
+              # Default branch only. On a topic branch :construction: is legal
+              # (DESIGN §2 — WIP is a violation only for merge candidates), so
+              # linting every branch's pushes would reverse that ratification
+              # repo-wide. Refuse rather than skip: a push event arriving from
+              # another ref is a caller trigger bug, and a silent skip is this
+              # gate's own defect class — the reason the push arm exists.
+              if [ "$PUSHED_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+                echo "::error::glyph-lint lints pushes to the default branch only ($PUSHED_REF is not refs/heads/$DEFAULT_BRANCH); narrow the caller's push trigger to branches: [$DEFAULT_BRANCH]."
+                exit 1
+              fi
+              # A range this arm cannot compute is refused, never linted as
+              # empty. An all-zeroes `before` is ref creation — no base exists.
+              # A `before` that is not an ancestor of `after` is a force push:
+              # before..after then holds everything EXCEPT the rewritten
+              # commits, which are exactly the ones in question.
+              if [ "$PUSH_BEFORE" = "0000000000000000000000000000000000000000" ]; then
+                echo "::error::glyph-lint cannot judge this push: event.before is all zeroes (ref creation), so no base exists to lint from."
+                exit 1
+              fi
+              if ! git merge-base --is-ancestor "$PUSH_BEFORE" "$PUSH_AFTER" 2>/dev/null; then
+                echo "::error::glyph-lint cannot judge this push: event.before is not an ancestor of event.after (a force push, or a base this clone cannot see)."
+                exit 1
+              fi
+              BASE="$PUSH_BEFORE"; HEAD="$PUSH_AFTER"
+              verdict=annotates
+              ;;
+            *)
+              # merge_group lands here deliberately: the fleet runs no merge
+              # queue, and an arm nothing exercises is dead code that reads as
+              # a live check.
+              echo "::error::glyph-lint supports pull_request and default-branch push events only (got: $EVENT)."
+              exit 1
+              ;;
+          esac
           status=0
           glyph lint --range "$BASE..$HEAD" 2>/tmp/glyph-lint.err || status=$?
           if [ "$status" -eq 0 ]; then
@@ -163,5 +220,13 @@ jobs:
             else
               jq -r '"::error::glyph lint: \(.error.message)"' /tmp/glyph-lint.json || true
             fi
+          fi
+          # The annotate-only arm swallows the GATE code and nothing else: an
+          # infra failure (git/API, exit 4) is rerunnable and must stay loud on
+          # both arms — swallowing every non-zero would turn a broken checkout
+          # into a green gate.
+          if [ "$verdict" = "annotates" ] && [ "$status" -eq 3 ]; then
+            echo "violations annotated above; this history is already on the default branch, so the verdict does not gate — fix forward."
+            exit 0
           fi
           exit "$status"

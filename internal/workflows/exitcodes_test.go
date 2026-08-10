@@ -263,6 +263,12 @@ func TestOutOfGoConsumersBranchOnTheContractIntegers(t *testing.T) {
 		{preflight, core.CodeLint, shEq},
 		{lint, core.CodeOK, shEq},
 		{lint, core.CodeLint, jqEq},
+		// The push arm swallows the gate code — and only the gate code — after
+		// annotating: default-branch history is immutable, so a red verdict
+		// there never turns green again. A stale integer here fails open in
+		// one direction (violations start redding a check nobody can fix) and
+		// closed in the other (a rerunnable infra failure gets absorbed).
+		{lint, core.CodeLint, shEq},
 		{release, core.CodeNoRelease, shEq},
 		{release, core.CodeOK, shNe},
 		{goreleaser, core.CodeNoRelease, shEq},
