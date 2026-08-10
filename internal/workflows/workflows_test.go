@@ -547,3 +547,140 @@ func TestCaskPushUsesDeployKey(t *testing.T) {
 		}
 	}
 }
+
+// The job id inside each reusable, and what a rename costs. These are not
+// internal names: GitHub composes a called job's check name as
+// "<caller job> / <called job>", so the id here is the SECOND half of the
+// status-check context every consumer configures, and glyph owns it.
+//
+// Measured 2026-08-10 over the non-archived fleet (`gh api
+// repos/akira-toriyama/<r>/branches/main/protection`): 21 repositories require
+// a context whose second half is `lint` — 20 spell it "lint / lint" and
+// .github spells it "commit-lint / lint". The CALLER half varies across the
+// fleet and the reusable half does not, which is exactly why the pin belongs
+// in glyph's tree rather than in any one consumer's.
+//
+// None of the three jobs carries a `name:`, so the id IS the name; adding one
+// would move the contract without touching a line this test reads, which is
+// why the guard below rejects it too.
+var reusableJobIDs = map[string]string{
+	"lint.yml":       "lint",
+	"release.yml":    "release",
+	"pr-verdict.yml": "verdict",
+}
+
+// topLevelJobKey matches a job id: a two-space-indented key directly under
+// `jobs:`. Anchored to the line so a `lint:` appearing at any other depth — a
+// step's `with:` entry, a nested map — cannot be mistaken for a job.
+var topLevelJobKey = regexp.MustCompile(`(?m)^  ([A-Za-z0-9_-]+):[ \t]*$`)
+
+// jobIDsIn returns the job ids declared under `jobs:` in a workflow body,
+// which must already be comment-stripped.
+func jobIDsIn(body string) []string {
+	i := strings.Index(body, "\njobs:\n")
+	if i < 0 {
+		return nil
+	}
+	rest := body[i+len("\njobs:\n"):]
+	// The jobs mapping ends at the first line that starts a new top-level key.
+	if end := regexp.MustCompile(`(?m)^[A-Za-z0-9_-]+:`).FindStringIndex(rest); end != nil {
+		rest = rest[:end[0]]
+	}
+	var ids []string
+	for _, m := range topLevelJobKey.FindAllStringSubmatch(rest, -1) {
+		ids = append(ids, m[1])
+	}
+	return ids
+}
+
+// TestReusableJobIDsAreTheContextsConsumersRequire pins each reusable's job id,
+// and pins that each declares exactly ONE job.
+//
+// A rename never goes red where it is written. The renamed job reports under a
+// context nothing requires, the required context never reports at all, and the
+// pull request sits at "Expected — waiting for status to be reported" forever:
+// 21 repositories unable to merge until a human edits branch protection in each
+// one. Adding a SECOND job to a reusable has the mirror-image cost — every
+// consumer gains a check name it never configured — so the count is pinned with
+// the names.
+//
+// This is the same class as `lint --stdin=false` exiting 3: a gate that answers
+// something other than what its consumers read, while nothing in the tree
+// records what they read. The three ids were load-bearing before this test and
+// asserted nowhere; `verdict` was reachable only as a substring of
+// TestPRVerdictExposesTheVerdictToCallers's expression strings, which pins the
+// outputs wiring and says nothing about the id being a published name.
+//
+// bite-exempt: a guard over an invariant the tree already holds — the ids are
+// correct today and the point is that nothing said so, so it cannot fail
+// against the pre-change source. What it must do instead is fail under a
+// rename, and that is measured by the mutation ledger row
+// reusable-job-id-renamed-out-from-under-the-fleet.patch.
+func TestReusableJobIDsAreTheContextsConsumersRequire(t *testing.T) {
+	for _, name := range reusables {
+		t.Run(name, func(t *testing.T) {
+			raw := repoFile(t, filepath.Join(".github", "workflows", name))
+			body := code(raw)
+			want := reusableJobIDs[name]
+
+			got := jobIDsIn(body)
+			if len(got) != 1 || got[0] != want {
+				t.Fatalf("%s declares jobs %v, want exactly [%s] — the job id is the second "+
+					"half of the check-run context every caller configures "+
+					"(measured 2026-08-10: 21 fleet repositories require one ending in `/ lint`, "+
+					"under two different caller halves). A rename does not fail here; it makes the "+
+					"required context stop reporting, and every one of those repositories blocks on "+
+					"a check that will never arrive",
+					name, got, want)
+			}
+
+			// A `name:` on the job would override the id in the context without
+			// changing the id itself, moving the fleet's contract past this guard.
+			if jobNameOverride(body, want) {
+				t.Errorf("%s gives job %q an explicit `name:`; the check-run context is composed "+
+					"from the display name when one exists, so this silently renames the context "+
+					"21 repositories require while leaving the job id above untouched", name, want)
+			}
+		})
+	}
+}
+
+// jobNameOverride reports whether the named job declares its own `name:` key —
+// a four-space-indented `name:` inside that job's block, before the next job.
+func jobNameOverride(body, job string) bool {
+	i := strings.Index(body, "\n  "+job+":\n")
+	if i < 0 {
+		return false
+	}
+	rest := body[i+1:]
+	if end := topLevelJobKey.FindStringIndex(rest[len("  "+job+":\n"):]); end != nil {
+		rest = rest[:len("  "+job+":\n")+end[0]]
+	}
+	return regexp.MustCompile(`(?m)^    name:[ \t]`).MatchString(rest)
+}
+
+// TestJobIDsInFindsARealJobsBlock is the positive control for jobIDsIn: a
+// scanner that silently returned nothing would make the guard above vacuous on
+// every file at once. It asserts the parser both FINDS a known job and REFUSES
+// the shapes that look like one — a deeper key, and a workflow with no `jobs:`.
+//
+// bite-exempt: a positive control by definition. It exists so the guard above
+// cannot pass over an empty match set, which means it must hold both before and
+// after the change.
+func TestJobIDsInFindsARealJobsBlock(t *testing.T) {
+	body := code(repoFile(t, filepath.Join(".github", "workflows", "lint.yml")))
+	if got := jobIDsIn(body); len(got) != 1 || got[0] != "lint" {
+		t.Fatalf("jobIDsIn on the real lint.yml returned %v, want [lint] — the scanner "+
+			"must actually match, or every assertion built on it passes over nothing", got)
+	}
+
+	const nested = "on:\n  workflow_call:\n    inputs:\n      lint:\n        type: string\n"
+	if got := jobIDsIn(nested); got != nil {
+		t.Fatalf("jobIDsIn found %v in a workflow with no jobs: block, want none", got)
+	}
+
+	const decoy = "jobs:\n  real:\n    steps:\n      - run: true\n        name: not-a-job\n"
+	if got := jobIDsIn("\n" + decoy); len(got) != 1 || got[0] != "real" {
+		t.Fatalf("jobIDsIn returned %v for a jobs block with one job and a nested key, want [real]", got)
+	}
+}
