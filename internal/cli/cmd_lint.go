@@ -214,6 +214,13 @@ func lintRangeRun(ctx context.Context, revRange string, known func(string) bool)
 	if len(all) == 0 {
 		return nil
 	}
+	// One annotation per finding, written by the binary that computed it. The
+	// envelope below still carries the machine answer; this is the human half,
+	// and it is here rather than in a caller's jq because that reconstruction
+	// is where a whole run's annotations went missing in silence (t-sws7).
+	for _, v := range all {
+		errorf("%.7s %s: %s", v.SHA, v.Rule, v.Detail)
+	}
 	return &core.Error{
 		Code:    core.CodeLint,
 		Msg:     fmt.Sprintf("%d commit-convention violation(s) across %d linted commit(s) in %s", len(all), checked, revRange),

@@ -353,6 +353,86 @@ func TestLintRange(t *testing.T) {
 	}
 }
 
+// TestLintRangeAnnotatesEachFinding pins the producer half of the annotation
+// contract lint.yml now leans on: one `::error::` per finding, written by the
+// binary that computed it, every one of them before the envelope so the
+// fleet's sieve still recovers pure JSON.
+//
+// The caller-side reconstruction this replaced was where a whole run's
+// annotations went missing in silence (t-sws7): lint.yml rebuilt the
+// per-finding lines with jq over a stream carrying two shapes, and a run that
+// warned before it failed emitted no annotations at all. lint.yml now replays
+// the diagnostic stream verbatim and frames only the summary — so if glyph
+// stops writing these lines, nobody writes them, and the per-commit pointers a
+// reviewer acts on vanish with no red anywhere. The mutation row naming this
+// test is what keeps that from happening quietly.
+func TestLintRangeAnnotatesEachFinding(t *testing.T) {
+	dir, base := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":construction: try an idea")
+	testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")
+	t.Chdir(dir)
+	wipSHA := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD~1")[:7]
+	malformedSHA := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")[:7]
+
+	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
+	if code != 3 {
+		t.Fatalf("lint --range exited %d, want 3\nstderr: %s", code, stderr)
+	}
+
+	lines := strings.Split(strings.TrimRight(stderr, "\n"), "\n")
+	cut := -1
+	for i, l := range lines {
+		if strings.HasPrefix(l, "{") {
+			cut = i
+			break
+		}
+	}
+	if cut < 0 {
+		t.Fatalf("no line opens the envelope, so `sed -n '/^[{]/,$p'` recovers nothing:\n%s", stderr)
+	}
+
+	var annotations []string
+	for _, l := range lines[:cut] {
+		if strings.HasPrefix(l, "::error::glyph: ") {
+			annotations = append(annotations, l)
+		}
+	}
+	if len(annotations) != 2 {
+		t.Fatalf("want one ::error:: annotation per finding (2), got %d — lint.yml no longer "+
+			"rebuilds these, so what the binary does not write, no reviewer sees:\n%s",
+			len(annotations), stderr)
+	}
+	for _, want := range []struct{ sha, rule string }{
+		{wipSHA, "wip-merge-candidate"},
+		{malformedSHA, "malformed-subject"},
+	} {
+		anchored := false
+		for _, a := range annotations {
+			if strings.Contains(a, want.sha) && strings.Contains(a, want.rule) {
+				anchored = true
+				break
+			}
+		}
+		if !anchored {
+			t.Errorf("no annotation anchors %s to commit %s — a finding without its commit "+
+				"cannot be acted on:\n%s", want.rule, want.sha, stderr)
+		}
+	}
+
+	// The machine half must survive the human half: everything from the first
+	// `{`-opening line is still one decodable envelope carrying the same two
+	// findings, or the fleet's `jq -e '.error.code == 3'` branch breaks.
+	env := decodeErrorEnvelope(t, strings.Join(lines[cut:], "\n"))
+	if env.Code != 3 {
+		t.Errorf("sieved envelope carries code %d, want 3", env.Code)
+	}
+	var details []json.RawMessage
+	if err := json.Unmarshal(env.Details, &details); err != nil || len(details) != 2 {
+		t.Errorf("sieved envelope's details did not survive the annotations (decode: %v, count %d, want 2):\n%s",
+			err, len(details), stderr)
+	}
+}
+
 // TestLintRangeClean: a range of clean and skipped commits is a silent 0.
 func TestLintRangeClean(t *testing.T) {
 	dir, base := testRepo(t)

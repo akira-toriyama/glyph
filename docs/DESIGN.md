@@ -649,6 +649,16 @@ first newline — JSON-escaping the newlines keeps the *bytes* valid while the
 *value* still loses everything past the first line, which is how this stayed
 invisible.
 
+The same incident settled who *renders* a finding: the binary that computed it.
+`lint --range` writes one `::error::` per violation onto the stream before the
+envelope, so a consumer's whole job is `cat` — replay the stream verbatim and
+frame only the summary (`.error.message`). Rebuilding the per-finding lines out
+of `.error.details` in a caller's jq is exactly the reconstruction that vanished
+under `|| true`, on the fleet's side of the pin where no test here could see it,
+so `internal/workflows` bans the read itself
+(`TestNoWorkflowRebuildsPerFindingAnnotations`) and the mutation ledger holds the
+producer half (`lint-findings-lose-their-annotations`).
+
 **Machine-output flag:** one spelling, `--json`, on every command that has one —
 `bump`, `notes`, `preview`, `release`, `doctor`, `rules`, `version` and
 `hook install` (`lint` speaks only in exit codes, so it has none). It was

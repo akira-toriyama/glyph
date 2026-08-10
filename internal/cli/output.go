@@ -56,6 +56,25 @@ func warnf(format string, a ...any) {
 	fmt.Fprintln(errOut, "::warning::glyph: "+oneLine(fmt.Sprintf(format, a...)))
 }
 
+// errorf emits one GitHub Actions error annotation (::error::) to the
+// diagnostic stream.
+//
+// glyph writes these itself rather than leaving a caller to rebuild them out of
+// the JSON envelope. The rebuild was real and it was where the failure lived:
+// lint.yml reconstructed one annotation per finding with `sed` and four `jq`
+// calls over a stream carrying two shapes, and a run that warned before it
+// failed emitted NO annotations at all (t-sws7) — the verdict was computed
+// correctly and then lost in shell on the caller's side of the pin, where no
+// test of glyph's could see it. A finding glyph computed is a finding glyph
+// renders.
+//
+// Ordering is safe by construction: renderError writes the envelope from the
+// exit funnel after the command has returned, so every annotation precedes it
+// and the `sed -n '/^[{]/,$p'` sieve still recovers the envelope whole.
+func errorf(format string, a ...any) {
+	fmt.Fprintln(errOut, "::error::glyph: "+oneLine(fmt.Sprintf(format, a...)))
+}
+
 // noticef emits one GitHub Actions notice annotation (::notice::) to the
 // diagnostic stream — the informational sibling of warnf, for outcomes worth
 // surfacing in a release job's log that are not warnings (a draft created, a

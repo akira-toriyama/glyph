@@ -134,24 +134,27 @@ jobs:
             echo "all commits OK"
             exit 0
           fi
-          # The structured envelope goes to the log verbatim, and each finding
-          # becomes a PR annotation. jq never fails the step on a non-JSON
-          # envelope — the preserved glyph exit code is the verdict.
+          # The whole diagnostic stream goes to the log verbatim: glyph has
+          # already written one `::error::` per finding onto it, so the
+          # annotations a reviewer sees are the ones the binary computed rather
+          # than a shell reconstruction of them. Rebuilding them here is what
+          # went silently missing when a run warned before it failed (t-sws7).
+          # jq never fails the step on a non-JSON envelope — the preserved glyph
+          # exit code is the verdict.
           cat /tmp/glyph-lint.err >&2
           # That stream is annotations AND the envelope, and jq over the two
           # together is a parse error — a lint run that warned before it failed
           # would emit no annotations at all. The envelope is written last, so
           # everything from the first line opening with `{` is the whole
-          # document; sieve it into a file once and let all four jq calls read
+          # document; sieve it into a file once and let every jq call read
           # pure JSON. `[{]` rather than a bare `{` because an unmatched brace in
           # a BRE is POSIX-undefined, and sed rather than grep because a grep
           # that matches nothing exits 1 and would kill the step under
           # `set -o pipefail` whenever the error was Silent (t-sws7).
           sed -n '/^[{]/,$p' /tmp/glyph-lint.err > /tmp/glyph-lint.json
           if jq -e .error /tmp/glyph-lint.json >/dev/null 2>&1; then
-            jq -r '(.error.details // [])[]
-                     | "::error::\((.sha // "")[0:7]) \(.rule // ""): \(.detail // "")"' \
-              /tmp/glyph-lint.json || true
+            # Only the SUMMARY is framed here; the per-finding annotations are
+            # glyph's own, above.
             # The commit-format hint is for convention violations (exit 3) only —
             # an infra failure (git/API, exit 4) gets the bare message.
             if jq -e '.error.code == 3' /tmp/glyph-lint.json >/dev/null 2>&1; then
