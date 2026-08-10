@@ -200,6 +200,11 @@ func releaseRun(cmd *cobra.Command) error {
 		// no caller ever concatenates markdown in shell.
 		body = body + "\n---\n\n" + footer
 	}
+	// Sized BEFORE the dry-run fork: a dry run previews the real run, and a
+	// body the real run refuses must fail the preview identically.
+	if serr := checkReleaseBody(body); serr != nil {
+		return serr
+	}
 
 	// The target resolves BEFORE the dry-run fork — Q4 again: only the writes
 	// are skipped. This used to sit below it, which made `--dry-run --target=X`

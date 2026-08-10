@@ -511,7 +511,20 @@ points resolve now (t-7zt7), so what remains of that shape is a bot-authored
 merge commit — a walk blind to a whole pull, which is exactly what the exit is
 for, and the escape is the wedge escape: cut a tag at or past what the walk
 cannot read, or fix the checkout (`fetch-depth: 0`) when the shortfall names
-it. Ordinary API lag clears on the re-run the error asks for. A next version
+it. Ordinary API lag clears on the re-run the error asks for. The same family,
+reached from the output side: a composed body over GitHub's release cap —
+**125000 characters, not bytes**, measured live against the API with the
+over-by-one and the multibyte case both probed (`internal/cli/bodylimit.go`
+keeps the method beside the number) — **fails loud (4) before anything is
+written**, dry run included. The walk read the whole range, so a truncated
+body would publish a wrong document as the release; and without the guard the
+run computes its verdict, spends the write's retry schedule on a POST GitHub
+always 422s, and exits 4 anyway — one draft later. The escape is the wedge
+escape again: cut an intermediate tag so the next walk, and its body, is
+smaller. (The preview's sticky comment takes the OPPOSITE degradation —
+truncate at its 65536-char comment cap, marked in the comment and warned on
+stderr — because that surface is advisory and refreshed on every push, and a
+refusal there would take the whole verdict comment down with it.) A next version
 not strictly above the latest published
 release fails loud (an unpublishable draft; a deleted published release's tag
 is burned forever). A delete whose answer is LOST counts as done when its retry

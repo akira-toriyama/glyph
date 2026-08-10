@@ -165,7 +165,10 @@ func previewRun(cmd *cobra.Command) error {
 		}
 	}
 
-	body := preview.Render(in)
+	// Truncated (never refused) before EITHER output path: the workflow posts
+	// the --json payload's body, so an oversized comment has to be cut in the
+	// one place both surfaces share.
+	body := truncateComment(preview.Render(in))
 	if previewJSON {
 		res := previewResult{
 			Current:  in.Current,
