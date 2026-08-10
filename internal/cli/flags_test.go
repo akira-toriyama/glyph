@@ -19,6 +19,7 @@ import (
 // fails the completeness check below until someone says how to invoke it.
 var namingFlagBase = map[string][]string{
 	"lint":    {"--pr", "1"},
+	"fmt":     nil,
 	"bump":    {"--pr", "1"},
 	"notes":   {"--pr", "1"},
 	"release": {"--dry-run"},

@@ -789,6 +789,7 @@ func TestLintFixIsPasteable(t *testing.T) {
 		{"wip merge candidate", ":construction: try a thing", RuleWIPMergeCandidate},
 		{"undeclared removal", ":fire: drop the old preset", RuleUndeclaredRemoval},
 		{"subject that is nothing but periods", ":bug: ....", RuleTrailingPeriod},
+		{"acronym first word", ":memo: TOML support arrives", RuleUppercaseSubject},
 		{"malformed subject", "no gitmoji at all", RuleMalformedSubject},
 	}
 	for _, tc := range unfixable {
@@ -807,6 +808,77 @@ func TestLintFixIsPasteable(t *testing.T) {
 			}
 			if !hit {
 				t.Fatalf("expected a %s violation for %q, got %v", tc.rule, tc.message, vs)
+			}
+		})
+	}
+}
+
+// TestFormatEnforcesTheInvariant pins fmt's contract at its source:
+// Lint(Format(m)) is empty, or Format refuses — never a best-effort line that
+// still fails lint. The measured loop this ends: one message took three lint
+// round trips because invalid-scope short-circuits and each paste surfaced the
+// next rule; Format answers all of them in one line or says whose problem it
+// is.
+func TestFormatEnforcesTheInvariant(t *testing.T) {
+	known := func(code string) bool { return code != ":unknown:" }
+	opts := LintOptions{Known: known}
+
+	t.Run("clean returns unchanged", func(t *testing.T) {
+		const m = ":bug: fix the crash\n\nBody line.\n"
+		got, vs := Format(m, opts)
+		if vs != nil || got != m {
+			t.Fatalf("Format(%q) = %q, %v — a clean message is not fmt's to touch", m, got, vs)
+		}
+	})
+
+	t.Run("the measured three-round-trip message formats in one", func(t *testing.T) {
+		got, vs := Format(":sparkles: feat(Core): Add The Thing.", opts)
+		if vs != nil {
+			t.Fatalf("refused: %v", vs)
+		}
+		if got != ":sparkles:(core) add The Thing" {
+			t.Fatalf("Format = %q — legacy token, scope case, first-rune case and the period must all "+
+				"clear in ONE answer (interior capitals are legal and not fmt's to touch)", got)
+		}
+		if left := Lint(got, opts); len(left) != 0 {
+			t.Fatalf("the formatted line still lints red: %v", left)
+		}
+	})
+
+	t.Run("the body is not fmt's to touch", func(t *testing.T) {
+		const body = "\n\nParagraph.\n\nNON-BREAKING: kept verbatim, even oddly   spaced.\n"
+		got, vs := Format(":bug: Fix it."+body, opts)
+		if vs != nil {
+			t.Fatalf("refused: %v", vs)
+		}
+		if got != ":bug: fix it"+body {
+			t.Fatalf("Format rewrote more than the first line:\n%q", got)
+		}
+	})
+
+	t.Run("idempotent", func(t *testing.T) {
+		once, vs := Format(":bug: Fix it.", opts)
+		if vs != nil {
+			t.Fatalf("refused: %v", vs)
+		}
+		twice, vs := Format(once, opts)
+		if vs != nil || twice != once {
+			t.Fatalf("Format(Format(m)) = %q, %v; want %q unchanged", twice, vs, once)
+		}
+	})
+
+	refusals := []struct{ name, message string }{
+		{"unknown code", ":unknown: Do a thing."},
+		{"undeclared removal", ":fire: Drop the preset."},
+		{"acronym first word", ":memo: TOML support arrives"},
+		{"malformed subject", "no gitmoji at all"},
+	}
+	for _, tc := range refusals {
+		t.Run("refuses: "+tc.name, func(t *testing.T) {
+			got, vs := Format(tc.message, opts)
+			if got != "" || len(vs) == 0 {
+				t.Fatalf("Format(%q) = %q, %v — a repair needing the author must refuse with the "+
+					"violations, never emit a guess", tc.message, got, vs)
 			}
 		})
 	}

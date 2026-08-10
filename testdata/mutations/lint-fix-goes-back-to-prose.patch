@@ -1,5 +1,5 @@
 diff --git a/internal/parser/parser.go b/internal/parser/parser.go
-index 4868a05..4a4a7fe 100644
+index 381a0a3..3ecbc18 100644
 --- a/internal/parser/parser.go
 +++ b/internal/parser/parser.go
 @@ -252,6 +252,7 @@ func legacyRewrite(c Commit) string {
@@ -9,4 +9,4 @@ index 4868a05..4a4a7fe 100644
 +	return ""
  	s := strings.TrimRight(c.Subject, ".")
  	if r, size := utf8.DecodeRuneInString(s); r != utf8.RuneError && unicode.IsUpper(r) {
- 		s = string(unicode.ToLower(r)) + s[size:]
+ 		// Acronym refusal, measured before it was written: of the fleet

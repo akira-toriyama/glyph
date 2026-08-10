@@ -575,7 +575,7 @@ commit and a tag strictly past it both exited 3). Both now exit 0.
 ## 5. Architecture (Go, house pattern)
 
 Binary `glyph`, module `github.com/akira-toriyama/glyph`. Subcommands: `lint`,
-`bump`, `notes`, `preview`, `release`, `doctor`, `rules`, `hook`, `version` —
+`fmt`, `bump`, `notes`, `preview`, `release`, `doctor`, `rules`, `hook`, `version` —
 everything `glyph --help` prints except cobra's own `completion` and `help`.
 This line and the tree below are the two places in this document a new command
 or package has to be added, and both had gone quietly out of date: before t-0cqs
@@ -671,7 +671,9 @@ producer half (`lint-findings-lose-their-annotations`).
 
 **Machine-output flag:** one spelling, `--json`, on every command that has one —
 `bump`, `notes`, `preview`, `release`, `doctor`, `rules`, `version` and
-`hook install` (`lint` speaks only in exit codes, so it has none). It was
+`hook install` (`lint` speaks only in exit codes, and `fmt`'s stdout IS the
+payload — the corrected message, pipeable into `git commit -F -` — so neither
+has one). It was
 `--ndjson` on the last two until v1.0.0, which was wrong twice: the flag named a
 format glyph has never emitted (`printCompact` writes ONE object, not a stream)
 and it split the surface, so a caller had to remember which subcommand took
