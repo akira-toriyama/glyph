@@ -348,3 +348,65 @@ func TestHookInstallJSONFalseIsTheHumanSummary(t *testing.T) {
 		}
 	}
 }
+
+// TestStaleHookIsReportedWhenTheHookItselfRuns: the installed hook is the one
+// artefact nothing refreshes — hooks are untracked, so no pull, no fleet-sync
+// and no CI job updates one — and a stale one still exits 0, which is exactly
+// what a clean message looks like. `doctor` detects it and nothing runs `doctor`
+// on a schedule, so the hook's own run is the one moment the developer is
+// certainly present to be told.
+//
+// The three states are asserted together because only the middle one is drift:
+// a foreign hook is a standing choice glyph refuses to overwrite, and warning
+// about it on every commit is the noise that trains people to stop reading
+// warnings; a current hook must stay silent for the same reason.
+func TestStaleHookIsReportedWhenTheHookItselfRuns(t *testing.T) {
+	write := func(t *testing.T, dir, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, ".git", "hooks", "commit-msg"), []byte(body), 0o755); err != nil { //nolint:gosec
+			t.Fatalf("writing the hook: %v", err)
+		}
+	}
+	const stale = "#!/bin/sh\n# " + hook.Marker + "\nexit 0\n"
+
+	for name, tc := range map[string]struct {
+		body     string
+		wantWarn bool
+	}{
+		"a glyph hook that has drifted": {body: stale, wantWarn: true},
+		"the current hook":              {body: hook.Script, wantWarn: false},
+		"somebody else's hook":          {body: "#!/bin/sh\nexit 0\n", wantWarn: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, _ := testRepo(t)
+			t.Chdir(dir)
+			write(t, dir, tc.body)
+			setStdin(t, ":bug:(x) fix a crash\n")
+
+			code, _, stderr := runGlyph(t, "lint", "--stdin")
+			if code != 0 {
+				t.Fatalf("a clean message exited %d, want 0 — the drift notice must never change the verdict\nstderr: %s", code, stderr)
+			}
+			warned := strings.Contains(stderr, "written by an older glyph")
+			if warned != tc.wantWarn {
+				t.Fatalf("warned = %v, want %v\nstderr: %s", warned, tc.wantWarn, stderr)
+			}
+		})
+	}
+}
+
+// TestStaleHookNoticeIsSilentWhereItCannotLook: this is advice riding inside a
+// gate whose founding contract is that it never returns non-zero on its own
+// account, so a repository git cannot answer about must commit exactly as
+// before. Outside a checkout there is no hooks directory to read at all.
+func TestStaleHookNoticeIsSilentWhereItCannotLook(t *testing.T) {
+	t.Chdir(t.TempDir())
+	setStdin(t, ":bug:(x) fix a crash\n")
+	code, _, stderr := runGlyph(t, "lint", "--stdin")
+	if code != 0 {
+		t.Fatalf("linting a message outside a repository exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if strings.Contains(stderr, "written by an older glyph") {
+		t.Fatalf("nothing could be read, so nothing may be claimed:\n%s", stderr)
+	}
+}

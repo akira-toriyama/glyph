@@ -151,6 +151,20 @@ var Kinds = []Kind{
 	{Name: "pre-push", Script: PrePushScript, Asks: "glyph hook pre-push"},
 }
 
+// Stale reports whether an installed hook body is one GLYPH wrote that no
+// longer matches what this binary would write.
+//
+// The three-way split matters and is why this is one function rather than a
+// comparison at each call site: identical is fine, a body glyph did not write is
+// somebody else's standing choice, and only the third state — glyph's marker on
+// bytes that have moved — is drift. Everything a hook decides was frozen by
+// whichever glyph was on PATH the day it was installed, including the exit code
+// it treats as a violation, and it fails in the quiet direction: a stale hook
+// still exits 0, which is what a clean message looks like.
+func (k Kind) Stale(installed string) bool {
+	return installed != k.Script && strings.Contains(installed, Marker)
+}
+
 // KindByName resolves a hook name, or reports that glyph does not write one.
 func KindByName(name string) (Kind, bool) {
 	for _, k := range Kinds {
