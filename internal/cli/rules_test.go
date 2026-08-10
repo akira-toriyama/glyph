@@ -2,8 +2,11 @@ package cli
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/internal/parser"
 )
 
 // TestRulesJSON: `glyph rules --json` emits the embedded table as JSON carrying
@@ -62,6 +65,27 @@ func TestRulesJSONAndMDConflict(t *testing.T) {
 	}
 }
 
+// TestRulesLintVocabulary: `rules --lint` prints exactly parser.LintRules(),
+// order included — the surface is a rendering of the parser's vocabulary, not
+// a second copy of it, so anything but byte-level agreement here means the
+// command grew its own list.
+func TestRulesLintVocabulary(t *testing.T) {
+	code, got, stderr := runGlyph(t, "rules", "--lint")
+	if code != 0 {
+		t.Fatalf("glyph rules --lint exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	var payload struct {
+		Rules []parser.LintRule `json:"rules"`
+	}
+	if err := json.Unmarshal([]byte(got), &payload); err != nil {
+		t.Fatalf("rules --lint output is not valid JSON: %v\n%s", err, got)
+	}
+	if want := parser.LintRules(); !reflect.DeepEqual(payload.Rules, want) {
+		t.Fatalf("rules --lint printed a vocabulary that is not parser.LintRules():\ngot:  %+v\nwant: %+v",
+			payload.Rules, want)
+	}
+}
+
 func first80(s string) string {
 	if len(s) > 80 {
 		return s[:80]
@@ -107,6 +131,21 @@ func TestRulesBooleanFormatFlagsAreReadByValue(t *testing.T) {
 		},
 		"both on is the real conflict": {
 			args: []string{"rules", "--json", "--md"}, wantCode: 2, wantErr: "cannot be combined",
+		},
+		"lint selects the vocabulary": {
+			args: []string{"rules", "--lint"}, wantCode: 0, wantOut: "{",
+		},
+		"declining the default and choosing lint is coherent": {
+			args: []string{"rules", "--md=false", "--lint"}, wantCode: 0, wantOut: "{",
+		},
+		"declining lint alone is still the default": {
+			args: []string{"rules", "--lint=false"}, wantCode: 0, wantOut: "# gitmoji",
+		},
+		"lint and json is a conflict": {
+			args: []string{"rules", "--lint", "--json"}, wantCode: 2, wantErr: "cannot be combined",
+		},
+		"lint and md is a conflict": {
+			args: []string{"rules", "--lint", "--md"}, wantCode: 2, wantErr: "cannot be combined",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

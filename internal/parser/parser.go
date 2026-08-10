@@ -105,6 +105,39 @@ const (
 	RuleUndeclaredRemoval = "undeclared-removal"
 )
 
+// LintRule is one entry of the lint vocabulary: the value a finding's `rule`
+// key can carry, plus the one property that changes a rule's verdict by mode.
+// MergeCandidateOnly marks a rule that fires only under
+// LintOptions.MergeCandidate — a consumer pre-checking at authoring time must
+// not enforce it there.
+type LintRule struct {
+	Rule               string `json:"rule"`
+	MergeCandidateOnly bool   `json:"merge_candidate_only"`
+}
+
+// LintRules enumerates the lint vocabulary, in the order the Rule* constants
+// above are declared. Ids and the mode gate only, deliberately: the per-rule
+// semantics live in DESIGN §2's list (gated by TestDesignDocNamesEveryRuleID),
+// and a prose field here would be that section's second home. The slice is
+// fresh per call so no caller can edit the vocabulary out from under the next.
+// TestLintRulesMatchTheConstants holds this list to the constants; the
+// merge-candidate claim is held to Lint's real behaviour by
+// TestLintRulesModeGating.
+func LintRules() []LintRule {
+	return []LintRule{
+		{Rule: RuleMalformedSubject},
+		{Rule: RuleInvalidScope},
+		{Rule: RuleLegacyToken},
+		{Rule: RuleUnknownGitmoji},
+		{Rule: RuleWIPMergeCandidate, MergeCandidateOnly: true},
+		{Rule: RuleUppercaseSubject},
+		{Rule: RuleTrailingPeriod},
+		{Rule: RuleCJKSubject},
+		{Rule: RuleRenderedGitmoji},
+		{Rule: RuleUndeclaredRemoval},
+	}
+}
+
 // LintOptions configures Lint. Known is the gitmoji membership oracle
 // (normally a gitmoji.Table lookup); nil skips the membership rule only.
 // MergeCandidate marks commits that are on their way into main (a PR range):

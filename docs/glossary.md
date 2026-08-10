@@ -427,7 +427,9 @@ discipline as `doctor`'s check id, one layer down. The ids themselves are
 enumerated in [DESIGN §2](DESIGN.md#2-commit-format), the copy
 `TestDesignDocNamesEveryRuleID` holds in step with the `Rule*` constants — this
 entry stopped carrying its own list after shipping one that was a rule short
-(`legacy-token` arrived in #94 and no gate read this file).
+(`legacy-token` arrived in #94 and no gate read this file) — and self-printed
+by `glyph rules --lint`: each id with `merge_candidate_only`, no prose, so an
+agent looks the vocabulary up from the pinned binary it is talking to.
 `internal/parser/parser.go: Violation, RuleMalformedSubject…RuleUndeclaredRemoval`,
 `internal/cli/cmd_lint.go: rangeViolation`
 
