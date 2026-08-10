@@ -185,6 +185,19 @@ named here, fails the suite.
   cannot make. Subject only — bodies in pre-retirement history legitimately
   carry `---（和訳）` sections — and no `fix`: the mechanical repair is a
   translation, exactly the guess `fix` refuses to bless.
+- `rendered-gitmoji` — the subject opens with the GLYPH form of a known code
+  (`✨ feat(tree): x`) instead of the textual `:sparkles:`. The same argument
+  that made `invalid-scope`: it is a parse failure, and `malformed-subject`
+  quoting the whole line sends the author hunting when the one wrong thing is
+  the emoji's spelling. Measured 8 subjects across 4 PRs, every one a PR title
+  — the surface where an emoji picker is one keystroke away — and five of the
+  eight carried a retired Conventional token too, so the finding's `fix` is
+  composed through `Format` on the code-substituted message: one corrected
+  line that clears both, rather than two findings each proposing half the
+  repair. The reverse lookup is injected (`LintOptions.CodeForEmoji`, U+FE0F
+  and ZWJ normalized away) so the parser stays table-blind, and detection sits
+  beside `laxSubjectRE`, never inside `Parse` — the walk must keep refusing
+  the glyph form.
 - `undeclared-removal` — a `:fire:`, `:coffin:` or `:truck:` commit that says
   nothing about whether it breaks anyone: no `!`, no `BREAKING CHANGE:` footer,
   no `NON-BREAKING: <why>` footer. Those three codes are the removals, and the

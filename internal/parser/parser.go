@@ -101,6 +101,7 @@ const (
 	RuleUppercaseSubject  = "uppercase-subject"
 	RuleTrailingPeriod    = "trailing-period"
 	RuleCJKSubject        = "cjk-subject"
+	RuleRenderedGitmoji   = "rendered-gitmoji"
 	RuleUndeclaredRemoval = "undeclared-removal"
 )
 
@@ -112,6 +113,15 @@ const (
 type LintOptions struct {
 	Known          func(code string) bool
 	MergeCandidate bool
+	// CodeForEmoji resolves a rendered emoji glyph to its textual :code:, ""
+	// when it is no gitmoji. Injected exactly as Known is — the table lives in
+	// internal/gitmoji and this package must not import it — and read only on
+	// the Parse-failure path: a subject that OPENS with the glyph form of a
+	// known code gets the sharper rendered-gitmoji finding (with the corrected
+	// spelling as its fix) instead of malformed-subject quoting the whole
+	// line. The resolver owns normalization (U+FE0F, ZWJ) on both sides; the
+	// caller here hands over the raw leading token.
+	CodeForEmoji func(glyph string) string
 }
 
 // wipCode is the one gitmoji that may never reach a merge candidate.
@@ -322,6 +332,38 @@ func Format(message string, opts LintOptions) (string, []Violation) {
 	return formatted, nil
 }
 
+// renderedGitmoji recognises a first line that opens with the GLYPH form of a
+// known gitmoji — `✨ feat(tree): x` — and returns the textual code plus the
+// corrected subject line. Detection sits beside laxSubjectRE, never inside the
+// parse path: Parse must keep refusing the glyph form, or the walk would start
+// accepting subjects the convention defines as textual.
+//
+// The fix is composed through Format on the code-substituted message rather
+// than by string surgery, because the measured population co-trips other
+// rules — five of the eight carried a retired Conventional token too — and two
+// findings each proposing half the repair would fight over the same line. If
+// even the substituted message cannot be made green mechanically, there is no
+// fix, only the sharper name.
+func renderedGitmoji(message, first string, opts LintOptions) (code, fix string, ok bool) {
+	if opts.CodeForEmoji == nil {
+		return "", "", false
+	}
+	glyph, rest, found := strings.Cut(first, " ")
+	if !found || glyph == "" {
+		return "", "", false
+	}
+	code = opts.CodeForEmoji(glyph)
+	if code == "" {
+		return "", "", false
+	}
+	lines := splitLines(message)
+	lines[0] = code + " " + rest
+	if formatted, vs := Format(strings.Join(lines, "\n"), opts); vs == nil {
+		fix = splitLines(formatted)[0]
+	}
+	return code, fix, true
+}
+
 // scopeFix spells the corrected subject line for an invalid-scope finding, or
 // "" — the lax match re-derives the pieces Parse refused, and kebabSuggestion
 // decides whether lowercasing alone legalises the scope (anything more is a
@@ -475,7 +517,7 @@ func Parse(message string) (Commit, error) {
 func Lint(message string, opts LintOptions) []Violation {
 	c, err := Parse(message)
 	if err != nil {
-		rule, fix := RuleMalformedSubject, ""
+		rule, detail, fix := RuleMalformedSubject, err.Error(), ""
 		if lines := splitLines(message); len(lines) > 0 {
 			// Same trim as Parse: the two must judge the same string, or the rule
 			// id and the message would disagree about which line was read.
@@ -483,9 +525,21 @@ func Lint(message string, opts LintOptions) []Violation {
 			if _, ok := invalidScope(first); ok {
 				rule = RuleInvalidScope
 				fix = scopeFix(first)
+			} else if code, f, ok := renderedGitmoji(message, first, opts); ok {
+				// The same argument that made invalid-scope: malformed-subject
+				// quotes the whole line and sends the author hunting, when the
+				// one wrong thing is the emoji being the GLYPH instead of the
+				// textual code. Measured 8 subjects across 4 PRs — all PR
+				// titles, where an emoji picker is one keystroke away.
+				rule = RuleRenderedGitmoji
+				fix = f
+				detail = fmt.Sprintf("subject opens with the rendered emoji instead of its textual code %s — the convention is textual (pure ASCII, grep-friendly; GitHub renders the glyph anyway)", code)
+				if f != "" {
+					detail += fmt.Sprintf("; write %q", f)
+				}
 			}
 		}
-		return []Violation{{Rule: rule, Detail: err.Error(), Fix: fix}}
+		return []Violation{{Rule: rule, Detail: detail, Fix: fix}}
 	}
 	var vs []Violation
 	// One corrected line for every mechanical rule this message trips — each

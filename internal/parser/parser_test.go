@@ -1006,3 +1006,68 @@ func TestCJKSubjectRule(t *testing.T) {
 		})
 	}
 }
+
+// TestRenderedGitmojiSubject pins the sharper name for the glyph-spelled code
+// and its edges. The population that motivated it (8 subjects, 4 PRs, all PR
+// titles) co-trips the retired Conventional token in five cases, so the fix
+// must be ONE line clearing both — composed through Format, not string surgery
+// — or two findings would each propose half the repair. Without the injected
+// reverse lookup the finding must degrade to malformed-subject, never panic;
+// an emoji that is no gitmoji stays malformed-subject too.
+func TestRenderedGitmojiSubject(t *testing.T) {
+	known := func(string) bool { return true }
+	codeFor := func(glyph string) string {
+		// The resolver owns normalization (the LintOptions contract): the
+		// real one in internal/cli drops U+FE0F/ZWJ on both sides.
+		glyph = strings.Map(func(r rune) rune {
+			if r == 0xFE0F || r == 0x200D {
+				return -1
+			}
+			return r
+		}, glyph)
+		return map[string]string{"✨": ":sparkles:", "🐛": ":bug:"}[glyph]
+	}
+	opts := LintOptions{Known: known, CodeForEmoji: codeFor}
+
+	t.Run("glyph with legacy token and subject defects fixes in one line", func(t *testing.T) {
+		vs := Lint("✨ feat(tree): Add The Thing.", opts)
+		if len(vs) != 1 || vs[0].Rule != RuleRenderedGitmoji {
+			t.Fatalf("want one rendered-gitmoji violation, got %v", vs)
+		}
+		if vs[0].Fix != ":sparkles:(tree) add The Thing" {
+			t.Fatalf("fix = %q — the glyph, the retired token and the subject defects must clear "+
+				"in ONE corrected line", vs[0].Fix)
+		}
+		if left := Lint(vs[0].Fix, opts); len(left) != 0 {
+			t.Fatalf("pasting the fix still lints red: %v", left)
+		}
+	})
+
+	t.Run("plain glyph subject", func(t *testing.T) {
+		vs := Lint("🐛 fix the crash", opts)
+		if len(vs) != 1 || vs[0].Rule != RuleRenderedGitmoji || vs[0].Fix != ":bug: fix the crash" {
+			t.Fatalf("got %v", vs)
+		}
+	})
+
+	t.Run("variation selector is presentation, not identity", func(t *testing.T) {
+		vs := Lint("✨️ add a menu", opts)
+		if len(vs) != 1 || vs[0].Rule != RuleRenderedGitmoji {
+			t.Fatalf("an FE0F-carrying glyph must still resolve, got %v", vs)
+		}
+	})
+
+	t.Run("an emoji that is no gitmoji stays malformed", func(t *testing.T) {
+		vs := Lint("🦖 do a thing", opts)
+		if len(vs) != 1 || vs[0].Rule != RuleMalformedSubject {
+			t.Fatalf("got %v", vs)
+		}
+	})
+
+	t.Run("without the reverse lookup the finding degrades, never panics", func(t *testing.T) {
+		vs := Lint("✨ add a menu", LintOptions{Known: known})
+		if len(vs) != 1 || vs[0].Rule != RuleMalformedSubject {
+			t.Fatalf("got %v", vs)
+		}
+	})
+}

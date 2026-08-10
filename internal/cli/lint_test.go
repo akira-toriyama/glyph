@@ -656,3 +656,33 @@ func TestLintRangeAnnotationCarriesTheFix(t *testing.T) {
 		}
 	}
 }
+
+// TestLintMessageRenderedGitmojiResolvesThroughTheRealTable is the cli half of
+// the rendered-gitmoji finding: the reverse lookup is built from the embedded
+// table (authoringLintOptions), so a glyph the table knows resolves — with the
+// U+FE0F an emoji picker loves to append normalized away — and the fix that
+// comes back passes lint. A stub cannot prove this half; the table can drift
+// from no stub.
+func TestLintMessageRenderedGitmojiResolvesThroughTheRealTable(t *testing.T) {
+	code, _, stderr := runGlyph(t, "lint", "--message", "⚡️ speed up the fold")
+	if code != 3 {
+		t.Fatalf("lint --message with a rendered gitmoji exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "rendered-gitmoji") || !strings.Contains(stderr, ":zap:") {
+		t.Fatalf("the finding must name the sharper rule and the textual code the glyph renders:\n%s", stderr)
+	}
+	env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+	var details []struct {
+		Rule string `json:"rule"`
+		Fix  string `json:"fix"`
+	}
+	if err := json.Unmarshal(env.Details, &details); err != nil || len(details) != 1 {
+		t.Fatalf("decoding details: %v\n%s", err, stderr)
+	}
+	if details[0].Fix != ":zap: speed up the fold" {
+		t.Fatalf("fix = %q, want the corrected line", details[0].Fix)
+	}
+	if lintCode, _, _ := runGlyph(t, "lint", "--message", details[0].Fix); lintCode != 0 {
+		t.Fatalf("the fix the real table produced fails the real lint")
+	}
+}

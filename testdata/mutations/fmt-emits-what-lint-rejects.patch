@@ -1,8 +1,8 @@
 diff --git a/internal/parser/parser.go b/internal/parser/parser.go
-index 381a0a3..87d3cb2 100644
+index 644ab44..96f3ffd 100644
 --- a/internal/parser/parser.go
 +++ b/internal/parser/parser.go
-@@ -288,18 +288,11 @@ func Format(message string, opts LintOptions) (string, []Violation) {
+@@ -318,18 +318,11 @@ func Format(message string, opts LintOptions) (string, []Violation) {
  	if len(vs) == 0 {
  		return message, nil
  	}
@@ -23,4 +23,4 @@ index 381a0a3..87d3cb2 100644
 +	return strings.Join(lines, "\n"), nil
  }
  
- // scopeFix spells the corrected subject line for an invalid-scope finding, or
+ // renderedGitmoji recognises a first line that opens with the GLYPH form of a

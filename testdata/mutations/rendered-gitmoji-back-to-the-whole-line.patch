@@ -1,0 +1,23 @@
+diff --git a/internal/parser/parser.go b/internal/parser/parser.go
+index 644ab44..461f254 100644
+--- a/internal/parser/parser.go
++++ b/internal/parser/parser.go
+@@ -525,18 +525,6 @@ func Lint(message string, opts LintOptions) []Violation {
+ 			if _, ok := invalidScope(first); ok {
+ 				rule = RuleInvalidScope
+ 				fix = scopeFix(first)
+-			} else if code, f, ok := renderedGitmoji(message, first, opts); ok {
+-				// The same argument that made invalid-scope: malformed-subject
+-				// quotes the whole line and sends the author hunting, when the
+-				// one wrong thing is the emoji being the GLYPH instead of the
+-				// textual code. Measured 8 subjects across 4 PRs — all PR
+-				// titles, where an emoji picker is one keystroke away.
+-				rule = RuleRenderedGitmoji
+-				fix = f
+-				detail = fmt.Sprintf("subject opens with the rendered emoji instead of its textual code %s — the convention is textual (pure ASCII, grep-friendly; GitHub renders the glyph anyway)", code)
+-				if f != "" {
+-					detail += fmt.Sprintf("; write %q", f)
+-				}
+ 			}
+ 		}
+ 		return []Violation{{Rule: rule, Detail: detail, Fix: fix}}

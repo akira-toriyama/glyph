@@ -69,10 +69,7 @@ func newHookPrePushCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return prePushRun(cmd.Context(), args, func(code string) bool {
-				_, ok := table.Lookup(code)
-				return ok
-			})
+			return prePushRun(cmd.Context(), args, authoringLintOptions(table))
 		},
 	}
 }
