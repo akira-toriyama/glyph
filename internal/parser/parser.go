@@ -40,6 +40,25 @@ type Commit struct {
 	// this package has a use for it, and the JSON surfaces do not carry it.
 	bareNonBreaking bool
 
+	// miscasedNonBreaking and misplacedNonBreaking are bareNonBreaking's two
+	// siblings — the other ways an author who ALREADY WROTE the footer can be
+	// answered with "write the footer" (PR #78 fixed the bare state and wrote
+	// down why: different mistakes need different sentences; these were the
+	// two still sharing one). Both are diagnosis-only: neither sets
+	// NonBreaking, neither changes any verdict, and only the
+	// undeclared-removal arm reads them.
+	//
+	// They are deliberately NOT one detector. miscased fires only on a line
+	// the atBlockStart gate already admitted — a case-insensitive scan of the
+	// whole body would match the prose sentence "this is non-breaking: the API
+	// is untouched", which is the exact accident the footer's case-SENSITIVITY
+	// exists to make unspellable. misplaced fires only on the EXACT spelling
+	// inside a paragraph — the wrap hazard, the same one that made glyph's own
+	// commit classify as breaking when its explanation wrapped onto
+	// "BREAKING CHANGE:".
+	miscasedNonBreaking  bool
+	misplacedNonBreaking bool
+
 	// legacyToken records the retired Conventional `<type>[(scope)][!]:` token
 	// Parse salvaged out of the subject (e.g. "fix(core)!:"), "" when none was
 	// there. Parse keeps eating the token so the immutable pre-glyph history
@@ -401,6 +420,13 @@ func Parse(message string) (Commit, error) {
 			continue
 		}
 		if !atBlockStart {
+			// The exact footer spelling inside a paragraph is the wrap hazard:
+			// the author wrote the footer, the editor's fill wrapped it into
+			// prose, and a trailer cannot sit there. Exact prefix only — this
+			// arm must not become a case-insensitive body scan.
+			if strings.HasPrefix(l, "NON-BREAKING:") {
+				c.misplacedNonBreaking = true
+			}
 			continue
 		}
 		if strings.HasPrefix(l, "BREAKING CHANGE:") || strings.HasPrefix(l, "BREAKING-CHANGE:") {
@@ -425,6 +451,13 @@ func Parse(message string) (Commit, error) {
 			} else {
 				c.bareNonBreaking = true
 			}
+		} else if n := len("NON-BREAKING:"); len(l) >= n && strings.EqualFold(l[:n], "NON-BREAKING:") {
+			// The right footer in the wrong case, at a position where the
+			// footer would have counted. Gated on atBlockStart by construction
+			// (this loop already is), so prose that merely contains the phrase
+			// mid-sentence can never reach here — the case-sensitivity's whole
+			// argument stays intact.
+			c.miscasedNonBreaking = true
 		}
 		// Trailers and issue references may stack without a blank line between
 		// them; prose may not, so anything else closes the block.
@@ -508,13 +541,28 @@ func Lint(message string, opts LintOptions) []Violation {
 		// byte the same sentence as for a commit carrying no footer at all. The two
 		// states need different sentences because they are different mistakes —
 		// one has not answered the question, the other has not been asked it yet.
-		detail := fmt.Sprintf("%s removes or renames something but does not say whether that breaks anyone — "+
-			"add `!` (or a BREAKING CHANGE: footer) if it removes public API, else add a "+
-			"`NON-BREAKING: <why>` footer to record that it does not", c.Gitmoji)
-		if c.bareNonBreaking {
+		// Four states, four sentences — an author who already wrote the footer
+		// must never be told to write the footer (PR #78 fixed the bare state
+		// and named the principle; miscased and misplaced are its siblings).
+		var detail string
+		switch {
+		case c.bareNonBreaking:
 			detail = fmt.Sprintf("%s carries a `NON-BREAKING:` footer with no reason after it, which leaves "+
 				"the question unanswered — write WHY the removal takes nothing public away (e.g. "+
 				"`NON-BREAKING: the preset was never exported`), or use `!` if it does", c.Gitmoji)
+		case c.miscasedNonBreaking:
+			detail = fmt.Sprintf("%s carries the footer in the wrong case — it is case-sensitive, exactly "+
+				"`NON-BREAKING: <why>`, so that prose can never spell it by accident; recase the one you "+
+				"already wrote", c.Gitmoji)
+		case c.misplacedNonBreaking:
+			detail = fmt.Sprintf("%s has a `NON-BREAKING:` line inside a body paragraph, where a trailer "+
+				"cannot sit — it counts only after a blank line, as the first body line, or stacked under "+
+				"another trailer; move the one you already wrote onto its own block (an editor's line-fill "+
+				"wraps it into prose, which is how a footer disappears mid-sentence)", c.Gitmoji)
+		default:
+			detail = fmt.Sprintf("%s removes or renames something but does not say whether that breaks anyone — "+
+				"add `!` (or a BREAKING CHANGE: footer) if it removes public API, else add a "+
+				"`NON-BREAKING: <why>` footer to record that it does not", c.Gitmoji)
 		}
 		vs = append(vs, Violation{Rule: RuleUndeclaredRemoval, Detail: detail})
 	}
