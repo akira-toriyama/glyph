@@ -8,6 +8,7 @@ import (
 
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/gitsource"
+	"github.com/akira-toriyama/glyph/internal/hook"
 )
 
 // This file is `glyph hook pre-push`: the verdict a pre-push hook asks for.
@@ -172,6 +173,10 @@ func outgoingRevs(p pushRef, defaultBranch string, tips []string, have map[strin
 // prePushRun is the verdict. args is git's argv for the hook, forwarded
 // verbatim by the script.
 func prePushRun(ctx context.Context, args []string, known func(string) bool) error {
+	// Same reason as the commit-msg arm: the hook that called this is the one
+	// artefact nothing refreshes, and its own run is when the developer is here.
+	warnIfHookStale(ctx, hook.Kinds[1])
+
 	refs, err := parsePushRefs(in)
 	if err != nil {
 		return err

@@ -92,7 +92,7 @@ func checkHook(k hook.Kind, id, dir string, dirErr error) Check {
 		c.Status = StatusPass
 		c.Observed = fmt.Sprintf("%s matches this glyph's hook exactly", path)
 		c.Message = "the local gate and this binary agree on the exit code that stops a commit and on what is handed to lint"
-	case strings.Contains(installed, hook.Marker):
+	case k.Stale(installed):
 		c.Status = StatusFail
 		c.Observed = fmt.Sprintf("%s was written by glyph and no longer matches this binary's hook (%s)", path, diffSummary(installed, k.Script))
 		c.Message = "a hook is written once and never refreshed by anything — hooks are untracked, so no pull, no fleet-sync " +

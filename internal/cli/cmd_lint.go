@@ -9,6 +9,7 @@ import (
 	"github.com/akira-toriyama/glyph/internal/bump"
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/gitsource"
+	"github.com/akira-toriyama/glyph/internal/hook"
 	"github.com/akira-toriyama/glyph/internal/parser"
 	"github.com/spf13/cobra"
 )
@@ -74,6 +75,10 @@ func newLintCmd() *cobra.Command {
 				// own cleanup: the file still carries the editor template, the
 				// status block and (under commit.verbose) the diff. Reduce it to
 				// the message git will record before judging it.
+				//
+				// The hook that called this is also the one artefact nothing
+				// refreshes, so its own run is where a drifted copy is reported.
+				warnIfHookStale(cmd.Context(), hook.Kinds[0])
 				return lintOne(parser.Cleanup(string(b), hookCleanupMode(cmd.Context())), known)
 			case cmd.Flags().Changed("message"):
 				// An empty --message is the caller naming no message, which is
