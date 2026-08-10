@@ -1,0 +1,14 @@
+diff --git a/internal/cli/prepush.go b/internal/cli/prepush.go
+index 0775945..e6c89ff 100644
+--- a/internal/cli/prepush.go
++++ b/internal/cli/prepush.go
+@@ -147,9 +147,6 @@ func outgoingRevs(p pushRef, tips []string, have map[string]bool) []string {
+ 	if !allZero(p.RemoteOID) && have[p.RemoteOID] {
+ 		revs = append(revs, "^"+p.RemoteOID)
+ 	}
+-	for _, t := range tips {
+-		revs = append(revs, "^"+t)
+-	}
+ 	return revs
+ }
+ 

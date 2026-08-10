@@ -1,0 +1,13 @@
+diff --git a/internal/cli/prepush.go b/internal/cli/prepush.go
+index 0775945..914a47c 100644
+--- a/internal/cli/prepush.go
++++ b/internal/cli/prepush.go
+@@ -65,7 +65,7 @@ func allZero(oid string) bool {
+ 	if oid == "" {
+ 		return false
+ 	}
+-	return strings.Trim(oid, "0") == ""
++	return oid == strings.Repeat("0", 40)
+ }
+ 
+ // parsePushRefs reads git's pre-push protocol.

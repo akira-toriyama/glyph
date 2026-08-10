@@ -1,0 +1,13 @@
+diff --git a/internal/cli/prepush.go b/internal/cli/prepush.go
+index 0775945..ffe0758 100644
+--- a/internal/cli/prepush.go
++++ b/internal/cli/prepush.go
+@@ -239,7 +239,7 @@ func prePushRun(ctx context.Context, args []string, known func(string) bool) err
+ 
+ 	var blocking []rangeViolation
+ 	for _, f := range findings {
+-		if onDefault[f.SHA] {
++		if true || onDefault[f.SHA] {
+ 			blocking = append(blocking, f)
+ 		}
+ 	}
