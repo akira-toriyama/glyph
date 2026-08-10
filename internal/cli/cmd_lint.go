@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/akira-toriyama/glyph/internal/bump"
 	"github.com/akira-toriyama/glyph/internal/core"
+	"github.com/akira-toriyama/glyph/internal/gitmoji"
 	"github.com/akira-toriyama/glyph/internal/gitsource"
 	"github.com/akira-toriyama/glyph/internal/hook"
 	"github.com/akira-toriyama/glyph/internal/parser"
@@ -61,7 +63,7 @@ func newLintCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			known := func(code string) bool { _, ok := table.Lookup(code); return ok }
+			opts := authoringLintOptions(table)
 			// EVERY arm asks whether the flag was GIVEN, never what its value
 			// is — the same question MarkFlagsOneRequired answers, so the group
 			// check and the dispatch cannot disagree about which mode was
@@ -74,9 +76,9 @@ func newLintCmd() *cobra.Command {
 			// as "empty commit message".
 			switch {
 			case cmd.Flags().Changed("range"):
-				return lintRangeRun(cmd.Context(), lintRange, known)
+				return lintRangeRun(cmd.Context(), lintRange, opts)
 			case cmd.Flags().Changed("pr"):
-				return lintPRRun(cmd.Context(), lintPR, lintRepo, known)
+				return lintPRRun(cmd.Context(), lintPR, lintRepo, opts)
 			case cmd.Flags().Changed("stdin"):
 				if !lintStdin {
 					return core.Usagef("--stdin=false selects no input mode — --stdin IS the mode, so drop it and give --range or --message instead")
@@ -93,7 +95,7 @@ func newLintCmd() *cobra.Command {
 				// The hook that called this is also the one artefact nothing
 				// refreshes, so its own run is where a drifted copy is reported.
 				warnIfHookStale(cmd.Context(), hook.Kinds[0])
-				return lintOne(parser.Cleanup(string(b), hookCleanupMode(cmd.Context())), known)
+				return lintOne(parser.Cleanup(string(b), hookCleanupMode(cmd.Context())), opts)
 			case cmd.Flags().Changed("message"):
 				// An empty --message is the caller naming no message, which is
 				// usage — not a message that violates the convention. The old
@@ -102,7 +104,7 @@ func newLintCmd() *cobra.Command {
 					"name the message to lint (--message='<:code:> subject'), or read one from the commit-msg hook with --stdin"); err != nil {
 					return err
 				}
-				return lintOne(lintMessage, known)
+				return lintOne(lintMessage, opts)
 			default:
 				// Unreachable while MarkFlagsOneRequired holds. Kept as usage
 				// rather than a panic so a fourth mode added without its arm is
@@ -119,6 +121,45 @@ func newLintCmd() *cobra.Command {
 	cmd.MarkFlagsMutuallyExclusive("range", "pr", "message", "stdin")
 	cmd.MarkFlagsOneRequired("range", "pr", "message", "stdin")
 	return cmd
+}
+
+// authoringLintOptions builds the LintOptions every authoring-path judgement
+// shares: the known-code test and the emoji reverse lookup, both closures over
+// the embedded table so parser stays table-blind. One constructor rather than
+// inline literals at each arm, because the rendered-gitmoji finding only fires
+// where CodeForEmoji is wired — an arm that forgot it would silently answer
+// the duller malformed-subject, which is exactly the class of drift #139
+// killed for annotations.
+func authoringLintOptions(table *gitmoji.Table) parser.LintOptions {
+	index := make(map[string]string, len(table.Codes))
+	for _, r := range table.Codes {
+		if r.Emoji != "" {
+			index[emojiKey(r.Emoji)] = r.Code
+		}
+	}
+	return parser.LintOptions{
+		Known:        func(code string) bool { _, ok := table.Lookup(code); return ok },
+		CodeForEmoji: func(glyph string) string { return index[emojiKey(glyph)] },
+	}
+}
+
+// emojiKey normalizes an emoji glyph for lookup: U+FE0F variation selectors
+// and zero-width joiners dropped, so `⚡` and `⚡️` resolve alike — which of
+// the two an author's picker emitted is presentation, not identity.
+func emojiKey(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == 0xFE0F || r == 0x200D {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// withMergeCandidate returns opts with the merge-candidate rules on — the
+// range and title paths, where the message's destination is main.
+func withMergeCandidate(opts parser.LintOptions) parser.LintOptions {
+	opts.MergeCandidate = true
+	return opts
 }
 
 // hookCleanupMode reads the two signals a commit-msg hook has about what git is
@@ -168,11 +209,11 @@ func hookCleanupMode(ctx context.Context) parser.CleanupMode {
 // buys tolerance: there is no commit yet, so a merge in progress has no parent
 // count to be recognised by. Every parents-aware caller passes the real count
 // and gets the structural judgement instead (t-fs5y).
-func lintOne(message string, known func(string) bool) error {
+func lintOne(message string, opts parser.LintOptions) error {
 	if _, excluded := bump.ExcludedFromClassification("", firstLine(message), bump.UnknownParents); excluded {
 		return nil
 	}
-	vs := parser.Lint(message, parser.LintOptions{Known: known})
+	vs := parser.Lint(message, opts)
 	if len(vs) == 0 {
 		return nil
 	}
@@ -198,7 +239,7 @@ func lintOne(message string, known func(string) bool) error {
 // the landed commit to the pull's author, so dependabot's titles are excluded
 // exactly as its commits are), and the merge-candidate rules apply because
 // main is where this subject is headed (:construction: is a violation).
-func lintPRRun(ctx context.Context, number int, repoFlag string, known func(string) bool) error {
+func lintPRRun(ctx context.Context, number int, repoFlag string, opts parser.LintOptions) error {
 	if err := checkPRFlag(number); err != nil {
 		return err
 	}
@@ -213,7 +254,8 @@ func lintPRRun(ctx context.Context, number int, repoFlag string, known func(stri
 	if _, excluded := bump.ExcludedFromClassification(pull.Author, pull.Title, 1); excluded {
 		return nil
 	}
-	vs := parser.Lint(pull.Title, parser.LintOptions{Known: known, MergeCandidate: true})
+	opts.MergeCandidate = true
+	vs := parser.Lint(pull.Title, opts)
 	if len(vs) == 0 {
 		return nil
 	}
@@ -240,14 +282,14 @@ func lintPRRun(ctx context.Context, number int, repoFlag string, known func(stri
 // go through here, because a hook and CI that reach different verdicts on one
 // commit is glyph lying in one of two directions, and DESIGN §2.1 says which
 // of the two costs the developer the push.
-func lintRaws(raws []gitsource.RawCommit, known func(string) bool) (findings []rangeViolation, checked int) {
+func lintRaws(raws []gitsource.RawCommit, opts parser.LintOptions) (findings []rangeViolation, checked int) {
 	for _, raw := range raws {
 		subject := firstLine(raw.Message)
 		if _, excluded := bump.ExcludedFromClassification(raw.Author, subject, raw.Parents); excluded {
 			continue
 		}
 		checked++
-		for _, v := range parser.Lint(raw.Message, parser.LintOptions{Known: known, MergeCandidate: true}) {
+		for _, v := range parser.Lint(raw.Message, withMergeCandidate(opts)) {
 			findings = append(findings, rangeViolation{SHA: raw.SHA, Subject: subject, Rule: v.Rule, Detail: v.Detail, Fix: v.Fix})
 		}
 	}
@@ -269,7 +311,7 @@ type rangeViolation struct {
 // candidate. Excluded commits (bots, merges, autosquash artifacts, raw git
 // reverts) are skipped, never failed — the same tolerance the retired shell
 // lint gave history.
-func lintRangeRun(ctx context.Context, revRange string, known func(string) bool) error {
+func lintRangeRun(ctx context.Context, revRange string, opts parser.LintOptions) error {
 	if err := checkRangeFlag(revRange); err != nil {
 		return err
 	}
@@ -277,7 +319,7 @@ func lintRangeRun(ctx context.Context, revRange string, known func(string) bool)
 	if err != nil {
 		return err
 	}
-	all, checked := lintRaws(raws, known)
+	all, checked := lintRaws(raws, opts)
 	if checked == 0 {
 		warnNothingLinted(revRange, len(raws))
 	}

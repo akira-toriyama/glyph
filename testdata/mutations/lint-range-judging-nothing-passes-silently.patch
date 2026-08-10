@@ -1,11 +1,11 @@
 diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
-index b63fb36..5646378 100644
+index dd6e4c3..a327574 100644
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -203,9 +203,6 @@ func lintRangeRun(ctx context.Context, revRange string, known func(string) bool)
+@@ -320,9 +320,6 @@ func lintRangeRun(ctx context.Context, revRange string, opts parser.LintOptions)
  		return err
  	}
- 	all, checked := lintRaws(raws, known)
+ 	all, checked := lintRaws(raws, opts)
 -	if checked == 0 {
 -		warnNothingLinted(revRange, len(raws))
 -	}

@@ -9,6 +9,7 @@ import (
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/gitsource"
 	"github.com/akira-toriyama/glyph/internal/hook"
+	"github.com/akira-toriyama/glyph/internal/parser"
 )
 
 // This file is `glyph hook pre-push`: the verdict a pre-push hook asks for.
@@ -172,7 +173,7 @@ func outgoingRevs(p pushRef, defaultBranch string, tips []string, have map[strin
 
 // prePushRun is the verdict. args is git's argv for the hook, forwarded
 // verbatim by the script.
-func prePushRun(ctx context.Context, args []string, known func(string) bool) error {
+func prePushRun(ctx context.Context, args []string, opts parser.LintOptions) error {
 	// Same reason as the commit-msg arm: the hook that called this is the one
 	// artefact nothing refreshes, and its own run is when the developer is here.
 	warnIfHookStale(ctx, hook.Kinds[1])
@@ -249,7 +250,7 @@ func prePushRun(ctx context.Context, args []string, known func(string) bool) err
 		}
 	}
 
-	findings, checked := lintRaws(raws, known)
+	findings, checked := lintRaws(raws, opts)
 	if checked == 0 {
 		// The two causes need different sentences, and reporting the first as the
 		// second is what the live-fire run caught: an empty walk means the remote

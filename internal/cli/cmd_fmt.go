@@ -48,7 +48,7 @@ func newFmtCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			known := func(code string) bool { _, ok := table.Lookup(code); return ok }
+			opts := authoringLintOptions(table)
 			// Changed, never the value — the same dispatch discipline lint's
 			// arms follow, for the same incident (an explicit --stdin=false
 			// matched no arm and answered a bad invocation with the gate code).
@@ -61,13 +61,13 @@ func newFmtCmd() *cobra.Command {
 				if rerr != nil {
 					return core.APIf("reading stdin: %v", rerr)
 				}
-				return fmtRun(parser.Cleanup(string(b), hookCleanupMode(cmd.Context())), known)
+				return fmtRun(parser.Cleanup(string(b), hookCleanupMode(cmd.Context())), opts)
 			case cmd.Flags().Changed("message"):
 				if err := checkGivenEmpty(cmd, "message", "message",
 					"name the message to format (--message='<:code:> subject'), or pipe one with --stdin"); err != nil {
 					return err
 				}
-				return fmtRun(fmtMessage, known)
+				return fmtRun(fmtMessage, opts)
 			default:
 				return core.Usagef("fmt needs one of --message or --stdin")
 			}
@@ -84,12 +84,12 @@ func newFmtCmd() *cobra.Command {
 // exactly — same function, same UnknownParents — because a message fmt would
 // reword and lint would skip is the two commands disagreeing about whose
 // message it is.
-func fmtRun(message string, known func(string) bool) error {
+func fmtRun(message string, opts parser.LintOptions) error {
 	if _, excluded := bump.ExcludedFromClassification("", firstLine(message), bump.UnknownParents); excluded {
 		printMessage(message)
 		return nil
 	}
-	formatted, vs := parser.Format(message, parser.LintOptions{Known: known})
+	formatted, vs := parser.Format(message, opts)
 	if vs != nil {
 		return &core.Error{
 			Code:    core.CodeLint,
