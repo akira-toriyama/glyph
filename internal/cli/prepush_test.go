@@ -225,3 +225,33 @@ func TestPrePushMalformedProtocolIsNotALintFailure(t *testing.T) {
 		t.Fatalf("a malformed protocol line exited %d, want 4\nstderr: %s", code, stderr)
 	}
 }
+
+// TestPrePushJudgesACommitTheRemoteHasElsewhereWhenItReachesTheDefaultBranch is
+// a live-fire regression: the first working version of this hook let a
+// :construction: commit onto main in silence.
+//
+// The commit had been pushed to a topic branch first, so the remote held it and
+// the tips exclusion — which exists to stop a branch re-judging everything it
+// merged in from main — removed it from the range. The gate that exists to
+// block it answered "nothing to lint". On the default branch the ref's own
+// remote oid IS main's tip, so excluding that alone is both exact and enough,
+// and the tips must not be consulted there.
+func TestPrePushJudgesACommitTheRemoteHasElsewhereWhenItReachesTheDefaultBranch(t *testing.T) {
+	work, _ := testClone(t)
+	t.Chdir(work)
+	testutil.Git(t, work, "akira-toriyama", "checkout", "-q", "-b", "topic")
+	testutil.Commit(t, work, "akira-toriyama", ":construction: try an idea")
+	// The remote now holds the commit — on another ref.
+	testutil.Git(t, work, "akira-toriyama", "push", "-q", "origin", "topic")
+	testutil.Git(t, work, "akira-toriyama", "fetch", "-q", "origin")
+
+	setStdin(t, "refs/heads/topic "+rev(t, work, "HEAD")+" refs/heads/main "+rev(t, work, "origin/main")+"\n")
+	code, _, stderr := runGlyph(t, "hook", "pre-push", "origin", "ignored")
+	if code != 3 {
+		t.Fatalf("a commit the remote holds on another ref still ARRIVES on the default branch; "+
+			"exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "wip-merge-candidate") {
+		t.Fatalf("the blocking envelope must name the rule:\n%s", stderr)
+	}
+}

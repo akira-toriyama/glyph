@@ -142,10 +142,26 @@ func resolveRemote(ctx context.Context, args []string) string {
 // So the exclusion is every remote-tracking tip of THIS remote, plus the remote
 // oid itself when this clone actually holds it. `have` is the caller's one
 // batched answer for every line's remote oid.
-func outgoingRevs(p pushRef, tips []string, have map[string]bool) []string {
+//
+// The default branch is the exception, and it is the one that matters: there
+// the ref's own remote oid IS main's tip, so `^oid` alone is EXACT — everything
+// already on main is its ancestor — while the tips are strictly too broad. That
+// breadth is not academic. Measured against a real `git push`: a
+// :construction: commit pushed to a topic branch first, then pushed to main,
+// was excluded on the second push because the remote held it on the topic ref,
+// so the one gate that exists to stop it said "nothing to lint" and let it onto
+// main. Off the default branch the tips stay, because there the remote oid is a
+// stale topic tip and dropping them re-judges every commit the branch merged in
+// from main — on a repository with pre-glyph history, a hook that can never be
+// satisfied.
+func outgoingRevs(p pushRef, defaultBranch string, tips []string, have map[string]bool) []string {
 	revs := []string{p.LocalOID}
-	if !allZero(p.RemoteOID) && have[p.RemoteOID] {
+	held := !allZero(p.RemoteOID) && have[p.RemoteOID]
+	if held {
 		revs = append(revs, "^"+p.RemoteOID)
+	}
+	if held && defaultBranch != "" && p.branchName() == defaultBranch {
+		return revs
 	}
 	for _, t := range tips {
 		revs = append(revs, "^"+t)
@@ -212,7 +228,7 @@ func prePushRun(ctx context.Context, args []string, known func(string) bool) err
 	onDefault := map[string]bool{}
 	var raws []gitsource.RawCommit
 	for _, p := range branches {
-		commits, lerr := gitsource.LogRevs(ctx, ".", outgoingRevs(p, tips, have))
+		commits, lerr := gitsource.LogRevs(ctx, ".", outgoingRevs(p, defaultBranch, tips, have))
 		if lerr != nil {
 			return lerr
 		}
@@ -230,7 +246,15 @@ func prePushRun(ctx context.Context, args []string, known func(string) bool) err
 
 	findings, checked := lintRaws(raws, known)
 	if checked == 0 {
-		warnf("nothing linted: no commit in this push is judgeable — %d outgoing commit(s), all excluded from the convention (bots, merge commits, autosquash artifacts, raw git reverts)", len(raws))
+		// The two causes need different sentences, and reporting the first as the
+		// second is what the live-fire run caught: an empty walk means the remote
+		// already holds everything this push carries, while a non-empty one means
+		// the convention has no opinion about any of it.
+		if len(raws) == 0 {
+			warnf("nothing linted: the remote already holds every commit this push carries")
+			return nil
+		}
+		warnf("nothing linted: all %d outgoing commit(s) are excluded from the convention (bots, merge commits, autosquash artifacts, raw git reverts)", len(raws))
 		return nil
 	}
 	if len(findings) == 0 {
