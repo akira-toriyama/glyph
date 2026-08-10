@@ -1,0 +1,15 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+index 37b04c7..a9736fc 100644
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -157,10 +157,6 @@ jobs:
+               # repo-wide. Refuse rather than skip: a push event arriving from
+               # another ref is a caller trigger bug, and a silent skip is this
+               # gate's own defect class — the reason the push arm exists.
+-              if [ "$PUSHED_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+-                echo "::error::glyph-lint lints pushes to the default branch only ($PUSHED_REF is not refs/heads/$DEFAULT_BRANCH); narrow the caller's push trigger to branches: [$DEFAULT_BRANCH]."
+-                exit 1
+-              fi
+               # A range this arm cannot compute is refused, never linted as
+               # empty. An all-zeroes `before` is ref creation — no base exists.
+               # A `before` that is not an ancestor of `after` is a force push:

@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+index 37b04c7..095b84d 100644
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -168,7 +168,7 @@ jobs:
+               # commits, which are exactly the ones in question.
+               if [ "$PUSH_BEFORE" = "0000000000000000000000000000000000000000" ]; then
+                 echo "::error::glyph-lint cannot judge this push: event.before is all zeroes (ref creation), so no base exists to lint from."
+-                exit 1
++                exit 0
+               fi
+               if ! git merge-base --is-ancestor "$PUSH_BEFORE" "$PUSH_AFTER" 2>/dev/null; then
+                 echo "::error::glyph-lint cannot judge this push: event.before is not an ancestor of event.after (a force push, or a base this clone cannot see)."

@@ -1,0 +1,17 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+index 37b04c7..ede4253 100644
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -221,12 +221,4 @@ jobs:
+               jq -r '"::error::glyph lint: \(.error.message)"' /tmp/glyph-lint.json || true
+             fi
+           fi
+-          # The annotate-only arm swallows the GATE code and nothing else: an
+-          # infra failure (git/API, exit 4) is rerunnable and must stay loud on
+-          # both arms — swallowing every non-zero would turn a broken checkout
+-          # into a green gate.
+-          if [ "$verdict" = "annotates" ] && [ "$status" -eq 3 ]; then
+-            echo "violations annotated above; this history is already on the default branch, so the verdict does not gate — fix forward."
+-            exit 0
+-          fi
+           exit "$status"
