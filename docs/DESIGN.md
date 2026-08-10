@@ -175,6 +175,16 @@ named here, fails the suite.
   space/tab/CR trim git itself applies before recording the message. Reading the
   untrimmed line let a trailing space hide the period behind it, in every mode,
   `--range` and CI included.
+- `cjk-subject` — the subject carries a rune in a CJK script (Han, Hiragana,
+  Katakana, Hangul, or their punctuation/fullwidth blocks). The convention's
+  subjects have been English since the shape block above was written, and this
+  is the first rule to hold any of it — measured before it existed, 592 fleet
+  subjects carried CJK text and 585 of them linted clean. The id names what is
+  checked, not the policy: a CJK scan is no English detector (a French subject
+  sails through), so `non-english-subject` would promise a judgement the rule
+  cannot make. Subject only — bodies in pre-retirement history legitimately
+  carry `---（和訳）` sections — and no `fix`: the mechanical repair is a
+  translation, exactly the guess `fix` refuses to bless.
 - `undeclared-removal` — a `:fire:`, `:coffin:` or `:truck:` commit that says
   nothing about whether it breaks anyone: no `!`, no `BREAKING CHANGE:` footer,
   no `NON-BREAKING: <why>` footer. Those three codes are the removals, and the
