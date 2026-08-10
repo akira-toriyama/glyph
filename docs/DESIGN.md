@@ -374,7 +374,14 @@ fails it, and the pull alone governs it exactly as before. A commit that landed 
 the range is dropped with a `::notice::` naming it, and one that landed inside
 is folded **under its on-branch SHA** — which also retires a defect of its own,
 since a rebase-merged pull used to put its pre-rebase SHAs, which exist on no
-branch, into the notes. A **shallow** checkout cannot answer the question at all
+branch, into the notes. The notes then cite what the fold established: the pull
+**beside** the landed sha (`(#123, abc1234)`) wherever one resolved, and for a
+footprint-less commit — the squash arm, whose listed shas exist on no branch and
+were published anyway (t-xxhj: a live release body cited two shas
+`git branch -r --contains` answers nothing for) — the pull **alone** (`(#123)`),
+the one address that outlives the squash. Beside, never instead: within one pull
+the sha is what keeps N entries N distinct lines, so replacing it would collapse
+them into N copies of the same pointer. A **shallow** checkout cannot answer the question at all
 (a commit git does not have is indistinguishable from one that never landed), so
 the walk says so once and falls back to expanding whole listings — and, since it
 knows the answer it gave was a guess, records the checkout as one it could not

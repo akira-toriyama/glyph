@@ -129,7 +129,7 @@ func previewRun(cmd *cobra.Command) error {
 			}
 			pendingShort = facts.shortfall(owner, repo)
 		}
-		_, pendingLevel, cerr = classifyVerdict(pparsed, table)
+		_, pendingLevel, cerr = classifyVerdict(plain(pparsed), table)
 		if cerr != nil {
 			return cerr
 		}
@@ -152,7 +152,7 @@ func previewRun(cmd *cobra.Command) error {
 		in.PR.Next = current.Next(prLevel).String()
 	}
 	if previewNotes {
-		sections, gerr := notes.Group(parsed, table)
+		sections, gerr := notes.Group(withPull(parsed, previewPR), table)
 		if gerr != nil {
 			return gerr
 		}

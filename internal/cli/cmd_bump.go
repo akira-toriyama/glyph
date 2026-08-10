@@ -176,7 +176,7 @@ func bumpInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, strin
 		// someone who never opens the log, so it carries the shortfall in the
 		// body itself.)
 		commits, _, source, base, err := sinceTagInput(ctx, table, bumpSinceTag, bumpRepo)
-		return commits, source, base, err
+		return plain(commits), source, base, err
 	}
 	if err := checkRangeFlag(bumpRange); err != nil {
 		return nil, "", nil, err

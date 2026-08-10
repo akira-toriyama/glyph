@@ -6,7 +6,6 @@ import (
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/gitmoji"
 	"github.com/akira-toriyama/glyph/internal/notes"
-	"github.com/akira-toriyama/glyph/internal/parser"
 	"github.com/spf13/cobra"
 )
 
@@ -56,13 +55,16 @@ func newNotesCmd() *cobra.Command {
 	return cmd
 }
 
-// notesInput reads the commits the notes are rendered from and names the source
-// for the reason line — the notes twin of bumpInput, dispatching on whether a
-// flag was set rather than on its value.
-func notesInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, string, error) {
+// notesInput reads the commits the notes are rendered from — with the citation
+// each source can attest: the walk's per-commit pull, the --pr flag's own
+// number, the bare sha for a local range — and names the source for the reason
+// line. The notes twin of bumpInput, dispatching on whether a flag was set
+// rather than on its value.
+func notesInput(cmd *cobra.Command, table *gitmoji.Table) ([]notes.Commit, string, error) {
 	ctx := cmd.Context()
 	if cmd.Flags().Changed("pr") {
-		return pullInput(ctx, notesPR, notesRepo)
+		commits, source, err := pullInput(ctx, notesPR, notesRepo)
+		return withPull(commits, notesPR), source, err
 	}
 	if cmd.Flags().Changed("since-tag") {
 		// The version base is bump's concern; the walk's facts are discarded for
@@ -70,13 +72,13 @@ func notesInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, stri
 		// incomplete walk already warns per cause on stderr. Nothing here writes
 		// back, so there is no irreversible act to gate.
 		commits, _, source, _, err := sinceTagInput(ctx, table, notesSinceTag, notesRepo)
-		return commits, source, err
+		return notesCommits(commits), source, err
 	}
 	if err := checkRangeFlag(notesRange); err != nil {
 		return nil, "", err
 	}
 	commits, err := participatingCommits(ctx, notesRange)
-	return commits, notesRange, err
+	return withPull(commits, 0), notesRange, err
 }
 
 func notesRun(cmd *cobra.Command) error {

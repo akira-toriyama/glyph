@@ -157,7 +157,7 @@ func releaseRun(cmd *cobra.Command) error {
 			source, facts.shortfall(owner, repoName))
 	}
 
-	commits, level, cerr := classifyVerdict(parsed, table)
+	commits, level, cerr := classifyVerdict(plain(parsed), table)
 	if cerr != nil {
 		return cerr
 	}
@@ -186,7 +186,7 @@ func releaseRun(cmd *cobra.Command) error {
 		return gerr
 	}
 
-	sections, gerr := notes.Group(parsed, table)
+	sections, gerr := notes.Group(notesCommits(parsed), table)
 	if gerr != nil {
 		return gerr
 	}
