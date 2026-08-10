@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+index adcc4bb..2a7a27c 100644
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -60,7 +60,7 @@ permissions:
+   contents: read
+ 
+ jobs:
+-  lint:
++  commit-lint:
+     runs-on: ubuntu-latest
+     # Lint is fast; bound it so a hung step can't idle a runner for hours.
+     timeout-minutes: 10
