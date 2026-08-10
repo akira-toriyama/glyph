@@ -154,7 +154,11 @@ Have, IsAncestor, FirstParentLog`
 no identity of its own. A landed commit is folded only if its landing site is in
 range, and it is folded **under the on-branch sha** — which is also why a
 rebase-merged pull no longer puts pre-rebase shas, which exist on no branch, into
-the notes. `internal/cli/sincetag.go: mainFootprint, foldPull`
+the notes. The notes cite the pull *beside* that sha (`(#123, abc1234)`); a
+commit that landed under no identity of its own cites the pull *alone*
+(`(#123)`), because its listed sha is exactly such a pre-squash sha and the pull
+is the one address that outlives the squash (t-xxhj).
+`internal/cli/sincetag.go: mainFootprint, foldPull, notesCommits`
 
 **stand aside** — what a walked commit does when it reports itself carried by a
 pull whose merge point is some *other* sha in this range: it is not counted,

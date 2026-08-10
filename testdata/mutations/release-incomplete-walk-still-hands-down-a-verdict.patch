@@ -1,8 +1,8 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index cbd243b..5da7fc4 100644
+index 055756e..fbf8a87 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -133,25 +133,6 @@ func releaseRun(cmd *cobra.Command) error {
+@@ -137,26 +137,6 @@ func releaseRun(cmd *cobra.Command) error {
  	if perr != nil {
  		return perr
  	}
@@ -25,6 +25,7 @@ index cbd243b..5da7fc4 100644
 -		return core.APIf("this walk did not read %s (%s) — refusing to hand down a verdict computed from a range it could not read; re-run the release once the walk can read the range",
 -			source, facts.shortfall(owner, repoName))
 -	}
- 
- 	commits, level, cerr := classifyVerdict(parsed, table)
+-
+ 	commits, level, cerr := classifyVerdict(plain(parsed), table)
  	if cerr != nil {
+ 		return cerr

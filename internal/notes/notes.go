@@ -11,6 +11,7 @@ package notes
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -23,11 +24,28 @@ import (
 // BreakingSection is the section title breaking commits are hoisted into.
 const BreakingSection = "Breaking Changes"
 
+// Commit is one participating commit plus the citation only the caller knows:
+// the merged pull request that landed it, 0 when none is known. The SHA rides
+// in the embedded parser.Commit, and a caller that knows the sha is an identity
+// no branch holds — the release walk's footprint-less arm, where a squash left
+// the pull's listed commits with no landing site of their own — BLANKS it
+// rather than flagging it: the notes cite what exists, and a sha that exists on
+// no branch is not data with a bad label, it is absence (measured: a published
+// body citing shas `git branch -r --contains` answers nothing for, t-xxhj).
+// This package renders what it is given and holds no arm knowledge; which arm
+// a commit came down is DESIGN §4's fact and stays in the walk.
+type Commit struct {
+	parser.Commit
+	Pull int
+}
+
 // Entry is one release-notes line: the rule's emoji plus the commit's own
-// scope, subject, and SHA. Breaking records the orthogonal flag (a `!` or a
-// BREAKING CHANGE footer) — a plain :boom: lands here via its section instead.
+// scope, subject, and citation — the pull that landed it and/or its SHA.
+// Breaking records the orthogonal flag (a `!` or a BREAKING CHANGE footer) — a
+// plain :boom: lands here via its section instead.
 type Entry struct {
 	SHA      string `json:"sha"`
+	Pull     int    `json:"pull,omitempty"`
 	Code     string `json:"code"`
 	Emoji    string `json:"emoji"`
 	Scope    string `json:"scope,omitempty"`
@@ -49,7 +67,7 @@ type Section struct {
 // its Removals section; an unknown code is a hard lint error, mirroring
 // bump.Classify — never a silent skip. Sections without entries are omitted,
 // so a sectionless input returns an empty list.
-func Group(commits []parser.Commit, t *gitmoji.Table) ([]Section, error) {
+func Group(commits []Commit, t *gitmoji.Table) ([]Section, error) {
 	byTitle := make(map[string][]Entry)
 	for _, c := range commits {
 		rule, ok := t.Lookup(c.Gitmoji)
@@ -71,6 +89,7 @@ func Group(commits []parser.Commit, t *gitmoji.Table) ([]Section, error) {
 		}
 		byTitle[title] = append(byTitle[title], Entry{
 			SHA:      c.SHA,
+			Pull:     c.Pull,
 			Code:     rule.Code,
 			Emoji:    rule.Emoji,
 			Scope:    c.Scope,
@@ -97,7 +116,8 @@ func Group(commits []parser.Commit, t *gitmoji.Table) ([]Section, error) {
 
 // tmpl is the Markdown shape of the notes: `## <section>` headings in group
 // order, one entry line each (drawn by entryLine), one blank line between
-// sections. GitHub autolinks the bare short SHA.
+// sections. GitHub autolinks both citation halves — the bare short SHA and the
+// `#N` pull reference.
 //
 // Nothing author-supplied reaches this template: every such byte comes in
 // through entryLine, which is where the escaping is. "Own-repo content is
@@ -117,8 +137,15 @@ var tmpl = template.Must(template.New("notes").Funcs(template.FuncMap{
 {{- end -}}
 `))
 
-// entryLine draws one entry — `- <emoji> [**scope:** ]<subject> (<short sha>)`
-// — from author-supplied fields, in three tiers.
+// entryLine draws one entry — `- <emoji> [**scope:** ]<subject> (<citation>)`
+// — from author-supplied fields, in three tiers. The citation is
+// `#<pull>, <short sha>` when both are known, either alone otherwise, and
+// omitted entirely when the entry carries neither — never an empty `()`.
+// The pull is ADDED beside the sha, not put in its place: within one pull the
+// sha is what keeps N entries N distinct lines, and it is the *landed*
+// identity (glossary) wherever one exists. Only a commit whose sha the caller
+// blanked — landed under no identity of its own — cites the pull alone, the
+// one address of it that outlives the squash.
 //
 // PER FIELD, before assembly: flatten, then neutralize according to what the
 // field IS. The scope is data (a subsystem name) so it is escaped as plain text;
@@ -162,7 +189,14 @@ func entryLine(e Entry) string {
 		l.Raw(":** ")
 	}
 	l.Prose(e.Subject)
-	l.Raw(" (" + shortSHA(e.SHA) + ")")
+	switch {
+	case e.Pull > 0 && e.SHA != "":
+		l.Raw(" (#" + strconv.Itoa(e.Pull) + ", " + shortSHA(e.SHA) + ")")
+	case e.Pull > 0:
+		l.Raw(" (#" + strconv.Itoa(e.Pull) + ")")
+	case e.SHA != "":
+		l.Raw(" (" + shortSHA(e.SHA) + ")")
+	}
 	return l.String()
 }
 

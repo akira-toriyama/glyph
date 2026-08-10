@@ -10,6 +10,7 @@ import (
 	"github.com/akira-toriyama/glyph/internal/github"
 	"github.com/akira-toriyama/glyph/internal/gitmoji"
 	"github.com/akira-toriyama/glyph/internal/gitsource"
+	"github.com/akira-toriyama/glyph/internal/notes"
 	"github.com/akira-toriyama/glyph/internal/parser"
 	"github.com/spf13/cobra"
 )
@@ -115,7 +116,7 @@ func checkSinceTagFlag(tag string) error {
 // bump steps from, and the walk's own facts come back with the commits — its
 // expansion provenance AND whether it could read the range at all (release
 // reports them, the others discard them).
-func sinceTagInput(ctx context.Context, table *gitmoji.Table, tagFlag, repoFlag string) ([]parser.Commit, walkFacts, string, *bump.Version, error) {
+func sinceTagInput(ctx context.Context, table *gitmoji.Table, tagFlag, repoFlag string) ([]walked, walkFacts, string, *bump.Version, error) {
 	if err := checkSinceTagFlag(tagFlag); err != nil {
 		return nil, walkFacts{}, "", nil, err
 	}
@@ -274,6 +275,59 @@ func latestVersionTag(ctx context.Context, below *bump.Version) (tag string, v b
 	return tag, v, nil
 }
 
+// walked is one folded commit plus the provenance only the walk knows: the
+// merged pull request it was expanded from (0 on the fallback path) and
+// whether its SHA is a *landed* identity (glossary) — a commit the released
+// branch actually holds. The two downstream consumers read different halves:
+// classification reads the bare parser.Commit (plain), the notes read the
+// citation (notesCommits) — the pull beside the sha, and the pull ALONE for a
+// footprint-less commit, whose listed sha exists on no branch and used to be
+// published anyway (t-xxhj: a body citing shas `git branch -r --contains`
+// answers nothing for).
+type walked struct {
+	parser.Commit
+	Pull   int
+	Landed bool
+}
+
+// plain strips the provenance for the paths that classify: bump.Classify and
+// the verdict surfaces read commits, not citations.
+func plain(ws []walked) []parser.Commit {
+	out := make([]parser.Commit, 0, len(ws))
+	for _, w := range ws {
+		out = append(out, w.Commit)
+	}
+	return out
+}
+
+// notesCommits hands the fold to the notes with its citation: the pull number
+// beside every expanded commit, and the SHA blanked for a commit that landed
+// under no identity of its own — the squash arm, the one arm whose listed shas
+// no branch holds. Blanked HERE, where DESIGN §4's arms are a known fact,
+// because internal/notes renders what it is given and holds no arm knowledge.
+func notesCommits(ws []walked) []notes.Commit {
+	out := make([]notes.Commit, 0, len(ws))
+	for _, w := range ws {
+		c := w.Commit
+		if w.Pull > 0 && !w.Landed {
+			c.SHA = ""
+		}
+		out = append(out, notes.Commit{Commit: c, Pull: w.Pull})
+	}
+	return out
+}
+
+// withPull wraps commits that all belong to ONE known pull request — the --pr
+// input, whose commits are read straight off the pull — for the notes. n = 0
+// wraps with no citation beyond the sha (the local --range input).
+func withPull(cs []parser.Commit, n int) []notes.Commit {
+	out := make([]notes.Commit, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, notes.Commit{Commit: c, Pull: n})
+	}
+	return out
+}
+
 // pullExpansion records one merged pull request the walk expanded — resolved
 // from its canonical commit — and how many participating commits it
 // contributed, after the walk-wide SHA dedup: a stacked PR whose commits all
@@ -391,7 +445,7 @@ func (f walkFacts) shortfall(owner, repo string) string {
 // reconciles the pulls commits stood aside for against the pulls actually
 // expanded, so a merged pull request whose canonical commit never resolved is
 // named in a warning instead of silently lost.
-func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owner, repo, revRange string) ([]parser.Commit, walkFacts, error) {
+func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owner, repo, revRange string) ([]walked, walkFacts, error) {
 	raws, err := gitsource.Log(ctx, ".", revRange)
 	if err != nil {
 		return nil, walkFacts{}, err
@@ -412,7 +466,7 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 	if shallow {
 		warnf("this is a SHALLOW checkout: the walk cannot tell a commit that never landed on the released branch from one git does not have, so a merged pull request's commits can be counted again even though an earlier tag shipped them. Check out with full history (actions/checkout with fetch-depth: 0) before releasing")
 	}
-	var commits []parser.Commit
+	var commits []walked
 	// Normalized to [] up front so the JSON surface never emits null: .pulls is
 	// indexable on every verdict, the none verdict included, with no null-check
 	// at each consumer.
@@ -494,6 +548,10 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 			return ferr
 		}
 		fresh := make([]gitsource.RawCommit, 0, len(listing))
+		// freshLanded records, index-aligned with fresh, whether the entry's SHA
+		// is a landing site — the fact notesCommits later turns into "cite the
+		// sha" versus "the pull is this commit's only address".
+		freshLanded := make([]bool, 0, len(listing))
 		for i, r := range listing {
 			if on := landed[i]; on != "" {
 				if !inRange[on] {
@@ -512,19 +570,22 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 				continue
 			}
 			fresh = append(fresh, r)
+			freshLanded = append(freshLanded, landed[i] != "")
 		}
 		// Parsed one at a time so a failure knows WHICH commit it was. The escape
 		// the wedge hint offers is a tag cut at that commit, and only a commit
 		// this walk can point at on the released branch can carry one — see
 		// wedgeHint. participating holds no cross-commit state, so a run of
 		// singletons folds to exactly the same list as one call.
-		inner := make([]parser.Commit, 0, len(fresh))
-		for _, r := range fresh {
+		inner := make([]walked, 0, len(fresh))
+		for i, r := range fresh {
 			one, oerr := participating([]gitsource.RawCommit{r})
 			if oerr != nil {
 				return wedgeHint(oerr, owner, repo, number, canonical, onMain(r.SHA, inRange))
 			}
-			inner = append(inner, one...)
+			for _, ic := range one {
+				inner = append(inner, walked{Commit: ic, Pull: number, Landed: freshLanded[i]})
+			}
 		}
 		contributed := 0
 		for _, ic := range inner {
@@ -532,7 +593,7 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 			// later anyway (same Classify, same table — it cannot disagree):
 			// down there the PR association is gone, and a bare per-commit lint
 			// line is uniquely unhelpful HERE — see wedgeHint.
-			if _, cerr := bump.Classify(ic, table); cerr != nil {
+			if _, cerr := bump.Classify(ic.Commit, table); cerr != nil {
 				return wedgeHint(cerr, owner, repo, number, canonical, onMain(ic.SHA, inRange))
 			}
 			if ic.SHA != "" {
@@ -545,7 +606,7 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 		expanded[number] = true
 		return nil
 	}
-	walked, unknown := 0, 0
+	visited, unknown := 0, 0
 	for _, raw := range raws {
 		// A merge point here is a POINTER to a pull request, not a message
 		// being classified, so only its AUTHOR excludes it before resolution
@@ -561,7 +622,7 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 		if _, excluded := bump.ExcludedFromResolution(raw.Author); excluded {
 			continue
 		}
-		walked++
+		visited++
 		number, found, covering, rerr := mergedPullFor(ctx, c, owner, repo, raw.SHA, inRange)
 		// Ledger first, whatever this commit resolves to: a commit can name the
 		// pull that merged it AND a pull that merely carries it (a sub-PR's
@@ -620,7 +681,9 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 			if fc.SHA != "" {
 				seen[fc.SHA] = true
 			}
-			commits = append(commits, fc)
+			// Landed by construction: the fallback reads the walked commit
+			// itself, an identity the released branch holds.
+			commits = append(commits, walked{Commit: fc, Landed: true})
 		}
 	}
 	// Reconcile the ledger: a pull the walk only ever saw from the INSIDE. Its
@@ -665,13 +728,13 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 		facts.LostPulls = append(facts.LostPulls, number)
 		warnf("pull request #%d has commits in %s but nothing in the range resolved to it — GitHub does not associate its merge commit with the pull yet, or an automation merged it with a real merge commit (a *[bot] / github-actions* / web-flow author, which the walk skips before resolution); those commits stood aside for that merge point and are NOT counted, so this release is short by whatever #%d changed. The pull's own commit listing is its whole history and cannot say which commits belong to %s, so the walk will not guess — re-run the release once GitHub has caught up with the merge point", number, revRange, number, revRange)
 	}
-	if walked > 0 && unknown == walked {
+	if visited > 0 && unknown == visited {
 		facts.AllUnknown = true
 		// One unknown SHA is lag; EVERY SHA unknown is what a wrong --repo (or
 		// an inherited GITHUB_REPOSITORY in a fork / reusable-workflow
 		// context) looks like. Still a soft fallback — but named, so the
 		// misconfiguration is findable in the log.
-		warnf("all %d commit(s) in %s were unknown to %s/%s — unless they were pushed moments ago, check that --repo/$GITHUB_REPOSITORY names the repository this checkout belongs to", walked, revRange, owner, repo)
+		warnf("all %d commit(s) in %s were unknown to %s/%s — unless they were pushed moments ago, check that --repo/$GITHUB_REPOSITORY names the repository this checkout belongs to", visited, revRange, owner, repo)
 	}
 	return commits, facts, nil
 }
