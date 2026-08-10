@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
-index 7499b90..53d6720 100644
+index f762df0..c0f20ec 100644
 --- a/internal/cli/cmd_doctor.go
 +++ b/internal/cli/cmd_doctor.go
-@@ -119,7 +119,7 @@ func doctorRun(cmd *cobra.Command) error {
+@@ -194,7 +194,7 @@ func doctorRun(cmd *cobra.Command) error {
  	// asked: guarding rerr alone turned a mid-run SIGTERM into exit 4 with the
  	// abort rendered as the hook check's could-not-run — the one code the
  	// fleet's wrappers read as retryable infra, on a run the operator stopped.
--	if err := firstInterrupt(rerr, herr); err != nil {
-+	if err := firstInterrupt(rerr); err != nil {
+-	if err := firstInterrupt(rerr, herr, probeErr(probe)); err != nil {
++	if err := firstInterrupt(rerr, probeErr(probe)); err != nil {
  		return err
  	}
  	report := doctor.Run(doctor.Input{

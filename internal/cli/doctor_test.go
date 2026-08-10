@@ -153,11 +153,20 @@ func runDoctorJSON(t *testing.T, settings, workflow string) (int, doctorReport, 
 	usePR(t, doctorServer(t, apiRepoObject(settings)))
 	useDoctorCheckout(t, workflow)
 	code, stdout, stderr := runGlyph(t, "doctor", "--json")
+	return code, decodeDoctorJSON(t, stdout), stderr
+}
+
+// decodeDoctorJSON decodes a doctor --json payload whose fixture the caller has
+// already arranged — the firing tests need to install a hook and stub PATH
+// between the checkout and the run, which runDoctorJSON's one-call shape
+// cannot express.
+func decodeDoctorJSON(t *testing.T, stdout string) doctorReport {
+	t.Helper()
 	var rep doctorReport
 	if err := json.Unmarshal([]byte(stdout), &rep); err != nil {
 		t.Fatalf("doctor --json is not JSON: %v\n%s", err, stdout)
 	}
-	return code, rep, stderr
+	return rep
 }
 
 // status returns one check's status by id, failing the test when the id is
@@ -184,7 +193,7 @@ func TestDoctorHealthyRepositoryPasses(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("doctor on a healthy repository exited %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	if !strings.Contains(stdout, "9 checks: 9 pass, 0 fail, 0 advice, 0 could not run") {
+	if !strings.Contains(stdout, "10 checks: 10 pass, 0 fail, 0 advice, 0 could not run") {
 		t.Errorf("summary line missing or wrong:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "read-only") {
@@ -212,6 +221,7 @@ func TestDoctorJSONShape(t *testing.T) {
 		"squash-commit-message",
 		"workflow-glyph-pins",
 		"commit-msg-hook",
+		"commit-msg-hook-fires",
 		"pre-push-hook",
 	}
 	if len(rep.Checks) != len(want) {
@@ -235,9 +245,136 @@ func TestDoctorJSONShape(t *testing.T) {
 	if rep.Repo != "akira-toriyama/glyph" {
 		t.Errorf("repo = %q, want the diagnosed repository", rep.Repo)
 	}
-	if !rep.OK || rep.Counts.Pass != 9 {
-		t.Errorf("counts = %+v ok=%t, want 9 pass and ok", rep.Counts, rep.OK)
+	if !rep.OK || rep.Counts.Pass != 10 {
+		t.Errorf("counts = %+v ok=%t, want 10 pass and ok", rep.Counts, rep.OK)
 	}
+}
+
+// installCurrentHook writes THIS binary's commit-msg hook into the checkout's
+// hooks directory, exactly as `glyph hook install` would — the byte-identical
+// arm, the only one the probe fires.
+func installCurrentHook(t *testing.T) {
+	t.Helper()
+	if err := os.MkdirAll(".git/hooks", 0o750); err != nil {
+		t.Fatalf("mkdir hooks: %v", err)
+	}
+	if err := os.WriteFile(".git/hooks/commit-msg", []byte(hook.Kinds[0].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
+		t.Fatalf("install hook: %v", err)
+	}
+}
+
+// stubGlyphOnPATH prepends a directory holding a fake `glyph` that exits with
+// code, standing in for whatever the hook's `command -v glyph` resolves to on a
+// developer machine — a healthy binary (the gate code) or a wrapper whose
+// checkout is broken (anything else).
+func stubGlyphOnPATH(t *testing.T, code int) {
+	t.Helper()
+	dir := t.TempDir()
+	script := fmt.Sprintf("#!/bin/sh\nexit %d\n", code)
+	if err := os.WriteFile(filepath.Join(dir, "glyph"), []byte(script), 0o700); err != nil { // #nosec G306 -- PATH stubs must be executable
+		t.Fatalf("write stub: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// TestDoctorFiresTheCurrentHook is the live half of the hook diagnosis: doctor
+// must EXECUTE the byte-identical commit-msg hook, not just compare its bytes.
+// The bytes prove the script is current; they prove nothing about the glyph the
+// script resolves on PATH at run time — and the script waves every non-gate
+// failure through by design, so a wrapper building a different checkout (the
+// documented worktree trap) or a tree that does not compile is a local gate
+// that answers 0 to everything while its bytes compare clean. That silent
+// no-op is exactly what the byte-compare check reported as healthy.
+func TestDoctorFiresTheCurrentHook(t *testing.T) {
+	t.Run("a working glyph blocks the probe", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		installCurrentHook(t)
+		stubGlyphOnPATH(t, 3)
+
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
+		rep := decodeDoctorJSON(t, stdout)
+		if code != 0 {
+			t.Fatalf("doctor exited %d, want 0\nstderr: %s", code, stderr)
+		}
+		c := checkByID(t, rep, "commit-msg-hook-fires")
+		if c.Status != "pass" || !strings.Contains(c.Observed, "blocked") {
+			t.Errorf("a hook that blocks the violating probe must pass with the block observed, got %s: %s",
+				c.Status, c.Observed)
+		}
+	})
+
+	t.Run("a broken glyph is a silent no-op, and that is a FAIL", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		installCurrentHook(t)
+		// 127: what the wrapper yields when its source clone is gone or the
+		// build fails. The hook forwards only the gate code and exits 0 — the
+		// quiet direction.
+		stubGlyphOnPATH(t, 127)
+
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
+		rep := decodeDoctorJSON(t, stdout)
+		if code != 3 {
+			t.Fatalf("a silently dead local gate must fail doctor (exit 3), got %d\nstderr: %s", code, stderr)
+		}
+		c := checkByID(t, rep, "commit-msg-hook-fires")
+		if c.Status != "fail" {
+			t.Errorf("the probe passing through must FAIL the check, got %s: %s", c.Status, c.Observed)
+		}
+		if !strings.Contains(stderr, "commit-msg-hook-fires") || !strings.Contains(stderr, "::warning::") {
+			t.Errorf("the silent no-op must annotate:\n%s", stderr)
+		}
+		// The sibling byte-compare check must still PASS here — the split is
+		// the whole finding: current bytes, dead gate.
+		if s := checkByID(t, rep, "commit-msg-hook"); s.Status != "pass" {
+			t.Errorf("the byte-compare must still pass (the bytes ARE current), got %s", s.Status)
+		}
+	})
+
+	t.Run("a foreign hook is not fired", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		if err := os.MkdirAll(".git/hooks", 0o750); err != nil {
+			t.Fatalf("mkdir hooks: %v", err)
+		}
+		if err := os.WriteFile(".git/hooks/commit-msg", []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil { // #nosec G306
+			t.Fatalf("install foreign hook: %v", err)
+		}
+		// A PATH stub that would make any firing VISIBLE as a wrong verdict:
+		// were the foreign hook executed, it would exit 1 and the check could
+		// not report "nothing to fire".
+		stubGlyphOnPATH(t, 3)
+
+		_, stdout, _ := runGlyph(t, "doctor", "--json")
+		rep := decodeDoctorJSON(t, stdout)
+		c := checkByID(t, rep, "commit-msg-hook-fires")
+		if c.Status != "pass" || !strings.Contains(c.Observed, "nothing to fire") {
+			t.Errorf("someone else's hook is theirs to run — the probe must not fire it, got %s: %s",
+				c.Status, c.Observed)
+		}
+	})
+}
+
+// checkByID returns the one check with the given id, failing the test if the
+// report does not carry it.
+func checkByID(t *testing.T, rep doctorReport, id string) struct {
+	ID       string   `json:"id"`
+	Status   string   `json:"status"`
+	Observed string   `json:"observed"`
+	Expected string   `json:"expected"`
+	Message  string   `json:"message"`
+	Fix      string   `json:"fix"`
+	Details  []string `json:"details"`
+} {
+	t.Helper()
+	for _, c := range rep.Checks {
+		if c.ID == id {
+			return c
+		}
+	}
+	t.Fatalf("report carries no %q check", id)
+	panic("unreachable")
 }
 
 // TestDoctorSquashPolicyDriftFails is the drift that motivated the command:
@@ -296,7 +433,7 @@ func TestDoctorMergeMethodsAreAdviceNotFailure(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("permissive merge methods exited %d, want 0 — a house convention is not a gate", code)
 	}
-	if !strings.Contains(stdout, "7 pass, 0 fail, 2 advice") {
+	if !strings.Contains(stdout, "8 pass, 0 fail, 2 advice") {
 		t.Errorf("merge and rebase must report as advice:\n%s", stdout)
 	}
 	if strings.Count(stderr, "::notice::") != 2 {
