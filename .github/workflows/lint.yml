@@ -17,6 +17,7 @@ name: glyph-lint
 #       branches: [main]  # optional — annotates direct pushes, never fails them
 #   permissions:
 #     contents: read
+#     pull-requests: read  # the squash-title lint reads GET /pulls/{n}
 #   jobs:
 #     lint:
 #       uses: akira-toriyama/glyph/.github/workflows/lint.yml@vX.Y.Z  # pin a release tag
@@ -60,8 +61,13 @@ on:
         type: string
         default: ""
 
+# A reusable can only downgrade the caller's token, never raise it, so the
+# caller's stub must grant pull-requests: read too (it is in the stub above) —
+# without it the squash-title read 403s, which glyph reports as exit 4: a loud
+# infra failure, never a silent pass.
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   lint:
@@ -228,5 +234,41 @@ jobs:
           if [ "$verdict" = "annotates" ] && [ "$status" -eq 3 ]; then
             echo "violations annotated above; this history is already on the default branch, so the verdict does not gate — fix forward."
             exit 0
+          fi
+          exit "$status"
+
+      # The squash title: a squash merge records the PR title as the subject of
+      # the commit that lands on main (CONTRIBUTING ratifies that title as a
+      # commit subject), and the range above can never see it — the range holds
+      # the pre-squash commits, while the title exists nowhere as a commit until
+      # the squash mints it. Same stream contract as the range step: glyph
+      # writes one ::error:: per finding itself, the step replays the stream
+      # verbatim and frames only the summary. Bot pulls are excluded inside the
+      # binary (a squash attributes the landed commit to the pull's author), so
+      # dependabot's daily titles cannot red the gate.
+      - name: Lint the squash title
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          status=0
+          glyph lint --pr "$PR_NUMBER" 2>/tmp/glyph-title.err || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "title OK"
+            exit 0
+          fi
+          cat /tmp/glyph-title.err >&2
+          sed -n '/^[{]/,$p' /tmp/glyph-title.err > /tmp/glyph-title.json
+          if jq -e .error /tmp/glyph-title.json >/dev/null 2>&1; then
+            # The retitle hint is for convention violations (exit 3) only — an
+            # infra failure (API/permissions, exit 4) gets the bare message.
+            if jq -e '.error.code == 3' /tmp/glyph-title.json >/dev/null 2>&1; then
+              jq -r '"::error::glyph lint: \(.error.message) — retitle the pull request; format: <:gitmoji:>[(scope)][!] <subject>; see `glyph rules` and https://github.com/akira-toriyama/.github/blob/main/CONTRIBUTING.md"' \
+                /tmp/glyph-title.json || true
+            else
+              jq -r '"::error::glyph lint: \(.error.message)"' /tmp/glyph-title.json || true
+            fi
           fi
           exit "$status"

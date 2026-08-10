@@ -33,8 +33,9 @@ func newDoctorCmd() *cobra.Command {
 			"    main and that commit IS its merge_commit_sha, so it is never half-resolved —\n" +
 			"    no part of it can stand aside for a merge point the walk cannot resolve. The\n" +
 			"    multi-commit landings all have that window. (A dark API is still not free:\n" +
-			"    a MULTI-commit squash carries the PR title, which nothing lints, so the\n" +
-			"    fallback classifies one subject instead of the pull's commits.)\n" +
+			"    a MULTI-commit squash carries the PR title — linted by `lint --pr` at the\n" +
+			"    gate, but the fallback still classifies that one subject instead of the\n" +
+			"    pull's commits.)\n" +
 			"  - merge commits / rebase merges are off — advice, not a defect: the walk\n" +
 			"    resolves and expands both (a merge commit since t-7zt7, a rebase from its\n" +
 			"    last replayed commit, which is what GitHub names merge_commit_sha). What is\n" +

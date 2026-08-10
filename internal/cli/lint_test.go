@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -310,7 +311,7 @@ func TestLintStdinViolation(t *testing.T) {
 	}
 }
 
-// TestLintModeFlagsAreExclusiveAndRequired: exactly one of --range /
+// TestLintModeFlagsAreExclusiveAndRequired: exactly one of --range / --pr /
 // --message / --stdin — none or two is a usage error (exit 2).
 func TestLintModeFlagsAreExclusiveAndRequired(t *testing.T) {
 	if code, _, _ := runGlyph(t, "lint"); code != 2 {
@@ -318,6 +319,102 @@ func TestLintModeFlagsAreExclusiveAndRequired(t *testing.T) {
 	}
 	if code, _, _ := runGlyph(t, "lint", "--message", ":bug: x", "--stdin"); code != 2 {
 		t.Fatalf("lint with two modes exited %d, want 2", code)
+	}
+	if code, _, _ := runGlyph(t, "lint", "--pr", "7", "--range", "a..b"); code != 2 {
+		t.Fatalf("lint with --pr and --range exited %d, want 2", code)
+	}
+	// The bad-invocation classes bump's --pr already refuses, refused here the
+	// same way: a non-positive number (what a workflow yields from a null PR
+	// number) is usage — the gate code 3 belongs to convention violations, and
+	// no request may go out for input no retry can fix.
+	if code, _, _ := runGlyph(t, "lint", "--pr", "0"); code != 2 {
+		t.Fatalf("lint --pr 0 exited %d, want 2", code)
+	}
+}
+
+// pullPath names the single-pull endpoint for the akira-toriyama/glyph
+// repository the tests query, the way pullCommitsPath names the listing.
+func pullPath(number int) string {
+	return fmt.Sprintf("/repos/akira-toriyama/glyph/pulls/%d", number)
+}
+
+// apiOnePullBody renders GET pulls/{n} with only what the title lint reads.
+func apiOnePullBody(title, login string) string {
+	m, _ := json.Marshal(title)
+	return fmt.Sprintf(`{"number":7,"title":%s,"user":{"login":%q}}`, m, login)
+}
+
+// TestLintPRTitle is the squash-title gate working end to end: a title in the
+// grammar passes silently; a title outside it exits 3, is annotated by the
+// binary itself (the producer contract of t-sws7), and still ends in one
+// sievable envelope. CONTRIBUTING ratifies the title as a commit subject —
+// measured before this existed, 158 landed subjects had failed the grammar
+// this way, each read by the release walk's fallback as a silent none.
+func TestLintPRTitle(t *testing.T) {
+	t.Run("clean title", func(t *testing.T) {
+		srv := walkServer(t, map[string]string{pullPath(7): apiOnePullBody(":bug:(lint) fix a crash", "akira-toriyama")})
+		usePR(t, srv)
+		code, stdout, stderr := runGlyph(t, "lint", "--pr", "7")
+		if code != 0 {
+			t.Fatalf("lint --pr with a clean title exited %d, want 0\nstderr: %s", code, stderr)
+		}
+		if stdout != "" || stderr != "" {
+			t.Fatalf("a clean title must be silent, got stdout %q stderr %q", stdout, stderr)
+		}
+	})
+
+	t.Run("malformed title", func(t *testing.T) {
+		srv := walkServer(t, map[string]string{pullPath(7): apiOnePullBody("add a menu without a gitmoji", "akira-toriyama")})
+		usePR(t, srv)
+		code, stdout, stderr := runGlyph(t, "lint", "--pr", "7")
+		if code != 3 {
+			t.Fatalf("lint --pr with a malformed title exited %d, want 3\nstderr: %s", code, stderr)
+		}
+		if stdout != "" {
+			t.Fatalf("violations must go to stderr, stdout got %q", stdout)
+		}
+		if !strings.Contains(stderr, "::error::glyph: ") || !strings.Contains(stderr, "malformed-subject") {
+			t.Fatalf("the finding must arrive as the binary's own ::error:: annotation:\n%s", stderr)
+		}
+		env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+		if env.Code != 3 {
+			t.Errorf("envelope carries code %d, want 3", env.Code)
+		}
+	})
+}
+
+// TestLintPRTitleIsAMergeCandidate pins WHICH rule set judges the title. The
+// title's destination is main — a squash merge records it as the landed
+// commit's subject — so the merge-candidate rules apply and :construction: is
+// a violation, exactly as it is for a commit in a --range. Judging it with the
+// authoring-time tolerance instead would bless a WIP marker the very gate that
+// exists to stop WIP on main could then do nothing about.
+func TestLintPRTitleIsAMergeCandidate(t *testing.T) {
+	srv := walkServer(t, map[string]string{pullPath(7): apiOnePullBody(":construction: try an idea", "akira-toriyama")})
+	usePR(t, srv)
+	code, _, stderr := runGlyph(t, "lint", "--pr", "7")
+	if code != 3 {
+		t.Fatalf("lint --pr with a :construction: title exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "wip-merge-candidate") {
+		t.Fatalf("a WIP title headed for main must fail the merge-candidate rule:\n%s", stderr)
+	}
+}
+
+// TestLintPRTitleExcludesBots pins the exclusion side: the squash attributes
+// the landed commit to the pull's AUTHOR, so a bot's title is excluded exactly
+// as a bot's commit is. Without this, every dependabot pull — a daily,
+// fleet-wide event whose titles are not glyph's grammar and not the bot's to
+// change — would red the gate, and lint.yml forwards the code verbatim.
+func TestLintPRTitleExcludesBots(t *testing.T) {
+	srv := walkServer(t, map[string]string{pullPath(9): apiOnePullBody("build(deps): bump the actions group", "dependabot[bot]")})
+	usePR(t, srv)
+	code, stdout, stderr := runGlyph(t, "lint", "--pr", "9")
+	if code != 0 {
+		t.Fatalf("lint --pr on a bot's pull exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if stdout != "" || stderr != "" {
+		t.Fatalf("an excluded title must be silent, got stdout %q stderr %q", stdout, stderr)
 	}
 }
 

@@ -1,0 +1,43 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+index 06b03e2..da58f85 100644
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -237,38 +237,3 @@ jobs:
+           fi
+           exit "$status"
+ 
+-      # The squash title: a squash merge records the PR title as the subject of
+-      # the commit that lands on main (CONTRIBUTING ratifies that title as a
+-      # commit subject), and the range above can never see it — the range holds
+-      # the pre-squash commits, while the title exists nowhere as a commit until
+-      # the squash mints it. Same stream contract as the range step: glyph
+-      # writes one ::error:: per finding itself, the step replays the stream
+-      # verbatim and frames only the summary. Bot pulls are excluded inside the
+-      # binary (a squash attributes the landed commit to the pull's author), so
+-      # dependabot's daily titles cannot red the gate.
+-      - name: Lint the squash title
+-        if: github.event_name == 'pull_request'
+-        env:
+-          GITHUB_TOKEN: ${{ github.token }}
+-          PR_NUMBER: ${{ github.event.pull_request.number }}
+-        run: |
+-          set -euo pipefail
+-          status=0
+-          glyph lint --pr "$PR_NUMBER" 2>/tmp/glyph-title.err || status=$?
+-          if [ "$status" -eq 0 ]; then
+-            echo "title OK"
+-            exit 0
+-          fi
+-          cat /tmp/glyph-title.err >&2
+-          sed -n '/^[{]/,$p' /tmp/glyph-title.err > /tmp/glyph-title.json
+-          if jq -e .error /tmp/glyph-title.json >/dev/null 2>&1; then
+-            # The retitle hint is for convention violations (exit 3) only — an
+-            # infra failure (API/permissions, exit 4) gets the bare message.
+-            if jq -e '.error.code == 3' /tmp/glyph-title.json >/dev/null 2>&1; then
+-              jq -r '"::error::glyph lint: \(.error.message) — retitle the pull request; format: <:gitmoji:>[(scope)][!] <subject>; see `glyph rules` and https://github.com/akira-toriyama/.github/blob/main/CONTRIBUTING.md"' \
+-                /tmp/glyph-title.json || true
+-            else
+-              jq -r '"::error::glyph lint: \(.error.message)"' /tmp/glyph-title.json || true
+-            fi
+-          fi
+-          exit "$status"
