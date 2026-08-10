@@ -51,8 +51,8 @@ is a breaking change. **Assert the code, never truthiness** — `lint --stdin=fa
 The wrapper builds a **hardcoded** clone path (`/Volumes/workspace/github.com/akira-toriyama/glyph`).
 Inside a git worktree it therefore builds and runs the *primary* checkout — code you did not
 write — and reports success. To exercise your own tree use `sh build.sh` (stamps the version
-from git) or `go run ./cmd/glyph`. The same wrapper is what the installed commit-msg hook calls,
-and that hook blocks **only** on exit 3 and passes every other failure through by design, so a
+from git) or `go run ./cmd/glyph`. The same wrapper is what the installed hooks call,
+and they block **only** on exit 3 and pass every other failure through by design, so a
 tree that does not compile turns the local gate into a silent no-op.
 
 `glyph lint --range origin/main..HEAD` before committing: CI lints this repo's own commits.

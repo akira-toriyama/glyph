@@ -12,50 +12,69 @@ import (
 	"github.com/akira-toriyama/glyph/internal/core"
 )
 
-// The hook's whole reason to exist is that it holds no copy of the convention.
-// If a gitmoji, a scope regex, or a Conventional type word ever appears in the
+// The hooks' whole reason to exist is that they hold no copy of the convention.
+// If a gitmoji, a scope regex, or a Conventional type word ever appears in a
 // script, the drift this command was built to end has been reintroduced.
-func TestScriptCarriesNoCopyOfTheConvention(t *testing.T) {
-	for _, banned := range []string{":sparkles:", ":bug:", "grep", "[a-z0-9]", "feat", "BREAKING CHANGE"} {
-		if strings.Contains(Script, banned) {
-			t.Errorf("hook script contains %q — the rules must stay in the binary "+
-				"(a local copy is exactly what fell out of lockstep in the repos this replaces)", banned)
-		}
+//
+// Table-driven over Kinds so a third hook cannot be added without declaring what
+// it must and must not contain — the previous shape named one script by hand,
+// which is how a second one would have shipped unchecked.
+func TestEveryKindsScriptCarriesNoCopyOfTheConvention(t *testing.T) {
+	required := map[string][]string{
+		// commit-msg is handed the message FILE as $1 and must read it.
+		"commit-msg": {"glyph lint --stdin", `<"$1"`},
+		// pre-push gets git's protocol on inherited stdin and forwards argv
+		// verbatim — a named flag here would freeze git's argv shape into every
+		// installed copy, and nothing refreshes one.
+		"pre-push": {"glyph hook pre-push", `-- "$@"`},
 	}
-	// It must actually delegate, and read the message file git passes as $1.
-	for _, want := range []string{"glyph lint --stdin", `<"$1"`} {
-		if !strings.Contains(Script, want) {
-			t.Errorf("hook script is missing %q", want)
-		}
-	}
-	// A missing glyph must not block the commit.
-	if !strings.Contains(Script, "exit 0") {
-		t.Error("hook script has no pass-through for a missing glyph; a developer without " +
-			"glyph on PATH would be unable to commit (CI is the authority, the hook is early warning)")
+	// The range arithmetic must live in the binary. A script that computed it
+	// would go on computing the OLD thing in every clone it was installed into,
+	// and a wrong range is a wrong verdict rather than a loud failure.
+	bannedPerKind := map[string][]string{
+		"pre-push": {"rev-list", "rev-parse", "git log", "--not"},
 	}
 
-	// Only a real violation may stop a commit. If the script ever goes back to
-	// `exec glyph lint`, every glyph malfunction — a missing source clone behind
-	// the PATH wrapper, a broken build, a renamed flag — becomes a hard commit
-	// block in six repos that have no other local gate.
-	if strings.Contains(Script, "exec glyph lint") {
-		t.Error("hook script execs glyph directly, so ANY non-zero exit blocks the commit; " +
-			"it must distinguish exit 3 (a convention violation) from glyph being unable to answer")
-	}
-	// Asserted THROUGH the constant, never against the literal 3. Pinning the
-	// text was the same defect the script itself had: renumbering core.CodeLint
-	// would leave the hook comparing against a code glyph no longer emits — a
-	// hook that waves every violation through — and a test pinned to "-eq 3"
-	// would keep passing while it happened.
-	if want := fmt.Sprintf("-eq %d", int(core.CodeLint)); !strings.Contains(Script, want) {
-		t.Errorf("hook script does not single out glyph's lint gate code (%q); without that check it "+
-			"cannot tell a real violation from an unwell toolchain", want)
+	for _, k := range Kinds {
+		t.Run(k.Name, func(t *testing.T) {
+			for _, banned := range append([]string{":sparkles:", ":bug:", "grep", "[a-z0-9]", "feat", "BREAKING CHANGE"}, bannedPerKind[k.Name]...) {
+				if strings.Contains(k.Script, banned) {
+					t.Errorf("%s script contains %q — the rules and the arithmetic must stay in the binary "+
+						"(a local copy is exactly what fell out of lockstep in the repos this replaces)", k.Name, banned)
+				}
+			}
+			for _, want := range required[k.Name] {
+				if !strings.Contains(k.Script, want) {
+					t.Errorf("%s script is missing %q", k.Name, want)
+				}
+			}
+			// A missing glyph must not block the developer.
+			if !strings.Contains(k.Script, "exit 0") {
+				t.Errorf("%s script has no pass-through for a missing glyph; a developer without "+
+					"glyph on PATH would be blocked (CI is the authority, the hook is early warning)", k.Name)
+			}
+			// If a script ever goes back to `exec glyph`, every glyph malfunction —
+			// a missing source clone behind the PATH wrapper, a broken build, a
+			// renamed flag — becomes a hard block in repos with no other local gate.
+			if strings.Contains(k.Script, "exec glyph") {
+				t.Errorf("%s script execs glyph directly, so ANY non-zero exit blocks; it must "+
+					"distinguish the convention-violation exit from glyph being unable to answer", k.Name)
+			}
+			// Asserted THROUGH the constant, never against the literal 3. Pinning
+			// the text was the same defect the script itself had: renumbering
+			// core.CodeLint would leave a hook comparing against a code glyph no
+			// longer emits, and a test pinned to "-eq 3" would keep passing.
+			if want := fmt.Sprintf("-eq %d", int(core.CodeLint)); !strings.Contains(k.Script, want) {
+				t.Errorf("%s script does not single out glyph's lint gate code (%q); without that check it "+
+					"cannot tell a real violation from an unwell toolchain", k.Name, want)
+			}
+		})
 	}
 }
 
-// The hook's exit behaviour is the whole contract, so drive the real script
-// with a stub `glyph` that returns each interesting code.
-func TestScriptExitsOnlyOnAViolation(t *testing.T) {
+// The exit behaviour is the whole contract of every hook here, so drive each
+// REAL script with a stub `glyph` that returns each interesting code.
+func TestEveryKindsScriptExitsOnlyOnAViolation(t *testing.T) {
 	tests := []struct {
 		name       string
 		glyphExit  int
@@ -65,63 +84,70 @@ func TestScriptExitsOnlyOnAViolation(t *testing.T) {
 		// Named through the core constants, so a renumbering moves the fixture
 		// and the script together instead of leaving the table asserting a
 		// contract the binary no longer has.
-		{name: "clean message passes", glyphExit: int(core.CodeOK), wantExit: 0},
-		{name: "violation stops the commit", glyphExit: int(core.CodeLint), wantExit: int(core.CodeLint)},
+		{name: "clean passes", glyphExit: int(core.CodeOK), wantExit: 0},
+		{name: "violation blocks", glyphExit: int(core.CodeLint), wantExit: int(core.CodeLint)},
 		{name: "usage error passes with a warning", glyphExit: int(core.CodeUsage), wantExit: 0, wantWarned: true},
 		{name: "IO/API failure passes with a warning", glyphExit: int(core.CodeAPI), wantExit: 0, wantWarned: true},
 		{name: "wrapper failure passes with a warning", glyphExit: int(core.CodeNoRelease), wantExit: 0, wantWarned: true},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			hookPath := filepath.Join(dir, "commit-msg")
-			if err := os.WriteFile(hookPath, []byte(Script), 0o755); err != nil { //nolint:gosec
-				t.Fatalf("writing the hook: %v", err)
-			}
-			msg := filepath.Join(dir, "MSG")
-			if err := os.WriteFile(msg, []byte(":sparkles: a subject\n"), 0o600); err != nil {
-				t.Fatalf("writing the message: %v", err)
-			}
+	for _, k := range Kinds {
+		for _, tt := range tests {
+			t.Run(k.Name+"/"+tt.name, func(t *testing.T) {
+				dir := t.TempDir()
+				hookPath := filepath.Join(dir, k.Name)
+				if err := os.WriteFile(hookPath, []byte(k.Script), 0o755); err != nil { //nolint:gosec
+					t.Fatalf("writing the hook: %v", err)
+				}
+				msg := filepath.Join(dir, "MSG")
+				if err := os.WriteFile(msg, []byte(":sparkles: a subject\n"), 0o600); err != nil {
+					t.Fatalf("writing the message: %v", err)
+				}
 
-			// A stub glyph earlier on PATH than any real one.
-			stubDir := t.TempDir()
-			stub := fmt.Sprintf("#!/bin/sh\nexit %d\n", tt.glyphExit)
-			if err := os.WriteFile(filepath.Join(stubDir, "glyph"), []byte(stub), 0o755); err != nil { //nolint:gosec
-				t.Fatalf("writing the stub: %v", err)
-			}
+				// A stub glyph earlier on PATH than any real one.
+				stubDir := t.TempDir()
+				stub := fmt.Sprintf("#!/bin/sh\nexit %d\n", tt.glyphExit)
+				if err := os.WriteFile(filepath.Join(stubDir, "glyph"), []byte(stub), 0o755); err != nil { //nolint:gosec
+					t.Fatalf("writing the stub: %v", err)
+				}
 
-			cmd := exec.Command("/bin/sh", hookPath, msg)
-			cmd.Env = append(os.Environ(), "PATH="+stubDir)
-			out, err := cmd.CombinedOutput()
+				args := []string{hookPath, msg}
+				if k.Name == "pre-push" {
+					args = []string{hookPath, "origin", "https://example.invalid/x.git"}
+				}
+				cmd := exec.Command("/bin/sh", args...) // #nosec G204 -- fixture paths
+				cmd.Env = append(os.Environ(), "PATH="+stubDir)
+				cmd.Stdin = strings.NewReader("")
+				out, err := cmd.CombinedOutput()
 
-			got := 0
-			var ee *exec.ExitError
-			if errors.As(err, &ee) {
-				got = ee.ExitCode()
-			} else if err != nil {
-				t.Fatalf("running the hook: %v\n%s", err, out)
-			}
-			if got != tt.wantExit {
-				t.Errorf("hook exit = %d, want %d (glyph exited %d)\n%s", got, tt.wantExit, tt.glyphExit, out)
-			}
-			if warned := strings.Contains(string(out), "could not lint"); warned != tt.wantWarned {
-				t.Errorf("warned = %v, want %v\n%s", warned, tt.wantWarned, out)
-			}
-		})
+				got := 0
+				var ee *exec.ExitError
+				if errors.As(err, &ee) {
+					got = ee.ExitCode()
+				} else if err != nil {
+					t.Fatalf("running the hook: %v\n%s", err, out)
+				}
+				if got != tt.wantExit {
+					t.Errorf("hook exit = %d, want %d (glyph exited %d)\n%s", got, tt.wantExit, tt.glyphExit, out)
+				}
+				if warned := strings.Contains(string(out), "could not lint"); warned != tt.wantWarned {
+					t.Errorf("warned = %v, want %v\n%s", warned, tt.wantWarned, out)
+				}
+			})
+		}
 	}
 }
 
 func TestInstallWritesExecutableHook(t *testing.T) {
 	dir := t.TempDir()
 
-	res, err := Install(dir, false)
+	res, err := Install(dir, false, Kinds[0])
 	if err != nil {
 		t.Fatalf("Install: %v", err)
 	}
-	if res.Action != "installed" {
-		t.Errorf("Action = %q, want %q", res.Action, "installed")
+	if res.Hooks[0].Action != "installed" {
+		t.Errorf("Action = %q, want %q", res.Hooks[0].Action, "installed")
 	}
-	if res.Existed {
+	if res.Hooks[0].Existed {
 		t.Error("Existed = true for a fresh install")
 	}
 
@@ -148,7 +174,7 @@ func TestInstallWritesExecutableHook(t *testing.T) {
 func TestInstallCreatesMissingHooksDir(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "scripts", "hooks")
 
-	if _, err := Install(dir, false); err != nil {
+	if _, err := Install(dir, false, Kinds[0]); err != nil {
 		t.Fatalf("Install into a missing dir: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "commit-msg")); err != nil {
@@ -159,15 +185,15 @@ func TestInstallCreatesMissingHooksDir(t *testing.T) {
 func TestInstallIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 
-	if _, err := Install(dir, false); err != nil {
+	if _, err := Install(dir, false, Kinds[0]); err != nil {
 		t.Fatalf("first Install: %v", err)
 	}
-	res, err := Install(dir, false)
+	res, err := Install(dir, false, Kinds[0])
 	if err != nil {
 		t.Fatalf("second Install: %v", err)
 	}
-	if res.Action != "unchanged" {
-		t.Errorf("Action = %q on re-install, want %q", res.Action, "unchanged")
+	if res.Hooks[0].Action != "unchanged" {
+		t.Errorf("Action = %q on re-install, want %q", res.Hooks[0].Action, "unchanged")
 	}
 }
 
@@ -178,14 +204,14 @@ func TestInstallRefreshesAnOlderGlyphHook(t *testing.T) {
 	stale := "#!/bin/sh\n# glyph commit-msg hook — " + Marker + "\nexec glyph lint --old-flag\n"
 	writeHook(t, dir, stale)
 
-	res, err := Install(dir, false)
+	res, err := Install(dir, false, Kinds[0])
 	if err != nil {
 		t.Fatalf("Install over a glyph-written hook: %v", err)
 	}
-	if res.Action != "refreshed" {
-		t.Errorf("Action = %q, want %q", res.Action, "refreshed")
+	if res.Hooks[0].Action != "refreshed" {
+		t.Errorf("Action = %q, want %q", res.Hooks[0].Action, "refreshed")
 	}
-	if !res.Existed {
+	if !res.Hooks[0].Existed {
 		t.Error("Existed = false when replacing an existing hook")
 	}
 	if got := readHook(t, dir); got != Script {
@@ -202,7 +228,7 @@ func TestInstallRefusesAForeignHook(t *testing.T) {
 	foreign := "#!/bin/sh\n# hand-written house rules\nexit 0\n"
 	writeHook(t, dir, foreign)
 
-	res, err := Install(dir, false)
+	res, err := Install(dir, false, Kinds[0])
 	if err == nil {
 		t.Fatal("Install overwrote a foreign hook without --force")
 	}
@@ -212,7 +238,7 @@ func TestInstallRefusesAForeignHook(t *testing.T) {
 	if !strings.Contains(err.Error(), "--force") {
 		t.Errorf("refusal does not name the escape hatch: %v", err)
 	}
-	if res.Existed != true {
+	if res.Hooks[0].Existed != true {
 		t.Error("Existed = false for a refused overwrite")
 	}
 	if got := readHook(t, dir); got != foreign {
@@ -224,12 +250,12 @@ func TestInstallForceReplacesAForeignHook(t *testing.T) {
 	dir := t.TempDir()
 	writeHook(t, dir, "#!/bin/sh\n# hand-written house rules\nexit 0\n")
 
-	res, err := Install(dir, true)
+	res, err := Install(dir, true, Kinds[0])
 	if err != nil {
 		t.Fatalf("Install --force: %v", err)
 	}
-	if res.Action != "refreshed" {
-		t.Errorf("Action = %q, want %q", res.Action, "refreshed")
+	if res.Hooks[0].Action != "refreshed" {
+		t.Errorf("Action = %q, want %q", res.Hooks[0].Action, "refreshed")
 	}
 	if got := readHook(t, dir); got != Script {
 		t.Error("--force did not replace the foreign hook")
@@ -240,7 +266,7 @@ func TestInstallForceReplacesAForeignHook(t *testing.T) {
 // must restore the mode even when the content is already current.
 func TestInstallRestoresTheExecuteBitOnAnUnchangedHook(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := Install(dir, false); err != nil {
+	if _, err := Install(dir, false, Kinds[0]); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	path := filepath.Join(dir, "commit-msg")
@@ -248,12 +274,12 @@ func TestInstallRestoresTheExecuteBitOnAnUnchangedHook(t *testing.T) {
 		t.Fatalf("chmod: %v", err)
 	}
 
-	res, err := Install(dir, false)
+	res, err := Install(dir, false, Kinds[0])
 	if err != nil {
 		t.Fatalf("re-Install: %v", err)
 	}
-	if res.Action != "unchanged" {
-		t.Errorf("Action = %q, want %q", res.Action, "unchanged")
+	if res.Hooks[0].Action != "unchanged" {
+		t.Errorf("Action = %q, want %q", res.Hooks[0].Action, "unchanged")
 	}
 	info, err := os.Stat(path)
 	if err != nil {

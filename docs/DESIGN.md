@@ -238,7 +238,9 @@ typo in `commit.cleanup` for a repository whose commits are not linted at all.
   literal, because exactness fails the other way if git ever changes it.
 
 **Deriving this inside the binary rather than in the hook script is a rollout
-decision.** The script is a file installed once into ~34 repositories; had it
+decision, and the pre-push hook is the same decision applied to a bigger
+quantity** — it computes no range at all, because a range computed by a script
+nobody refreshes is a wrong verdict rather than a loud failure. The script is a file installed once into ~34 repositories; had it
 been taught to compute the mode, every already-installed copy would go on
 computing nothing until someone re-ran `glyph hook install` there. It also keeps
 the hook's founding property (§5): the hook holds no knowledge, it asks glyph.
@@ -870,7 +872,10 @@ The severities are the argued part:
   owner/repo match is case-insensitive because GitHub's resolution is —
   `Akira-Toriyama/glyph/…@main` executes, and a case-sensitive scan called that
   repository clean.
-- **A stale glyph-written commit-msg hook ⇒ fail; no hook at all ⇒ pass.** The
+- **A stale glyph-written hook ⇒ fail; no hook at all ⇒ pass.** One check per
+  kind (`commit-msg-hook`, `pre-push-hook`), because a `Check` carries ONE
+  observed/expected pair and folding the two would collapse "commit-msg current,
+  pre-push stale" into prose a CI gate has to parse. The
   question is drift, not adoption. `internal/hook` interpolates the lint gate
   code from `core.CodeLint` so a renumbered constant cannot leave behind a hook
   comparing against a code glyph no longer emits — one that waves every

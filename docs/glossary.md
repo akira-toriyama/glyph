@@ -445,8 +445,12 @@ escape — is thereby closed at authoring time: no legacy slot reaches it.
 **merge candidate** — a commit on its way into main (a PR range), where
 `:construction:` is a violation. At **authoring** time — the commit-msg hook and
 `--message` — it stays legal, because its verdict genuinely changes with time.
-`internal/parser/parser.go: LintOptions.MergeCandidate, wipCode`,
-`internal/cli/cmd_lint.go: lintOne, lintRangeRun`
+The pre-push hook sits between the two and splits the difference: the rule fires
+over the outgoing commits, and only the *consequence* is gated on the ref being
+the remote's default branch, since a push to a topic branch is by construction
+still mid-branch. `internal/parser/parser.go: LintOptions.MergeCandidate, wipCode`,
+`internal/cli/cmd_lint.go: lintOne, lintRangeRun, lintRaws`,
+`internal/cli/prepush.go: prePushRun`
 
 **generated subject** — a subject prefix git or GitHub writes itself (`Merge `,
 `Revert `, `fixup! `, `squash! `). Such commits carry no author-chosen gitmoji
