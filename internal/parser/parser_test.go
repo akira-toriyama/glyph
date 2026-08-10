@@ -959,3 +959,50 @@ func TestUndeclaredRemovalNamesTheActualMistake(t *testing.T) {
 		})
 	}
 }
+
+// TestCJKSubjectRule pins the first rule to hold the convention's oldest
+// sentence — subjects are English — and pins its edges just as hard: the scan
+// is a CJK detector, not an English one, so accented Latin sails through; it
+// judges the SUBJECT only, so a body carrying a legacy translation section
+// stays legal; and it carries no fix, because the mechanical repair is a
+// translation — the guess the fix contract refuses to bless.
+func TestCJKSubjectRule(t *testing.T) {
+	known := func(string) bool { return true }
+	opts := LintOptions{Known: known}
+
+	cases := []struct {
+		name, message string
+		fires         bool
+	}{
+		{"kanji subject", ":bug: クラッシュを修正する", true},
+		{"katakana mixed into english", ":sparkles:(ui) add メニュー entry", true},
+		{"hangul subject", ":memo: 문서를 갱신", true},
+		{"fullwidth punctuation alone", ":bug: fix the crash（again）", true},
+		{"english subject", ":bug: fix the crash", false},
+		{"accented latin is not this rule's business", ":bug: fix the café naïveté", false},
+		{"cjk in the body only", ":bug: fix the crash\n\n変更の背景はここに。\n\n---（和訳）\n修正。", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var hit *Violation
+			for _, v := range Lint(tc.message, opts) {
+				if v.Rule == RuleCJKSubject {
+					vv := v
+					hit = &vv
+				}
+			}
+			if tc.fires && hit == nil {
+				t.Fatalf("no cjk-subject violation for %q — the convention's English subject "+
+					"rule is back to being prose nothing holds", tc.message)
+			}
+			if !tc.fires && hit != nil {
+				t.Fatalf("cjk-subject fired on %q (%s) — the rule's edges are the argument: "+
+					"subject only, CJK only", tc.message, hit.Detail)
+			}
+			if hit != nil && hit.Fix != "" {
+				t.Errorf("cjk-subject carries fix %q, want none — a translation is a guess, "+
+					"not a mechanical fix", hit.Fix)
+			}
+		})
+	}
+}

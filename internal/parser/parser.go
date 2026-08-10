@@ -100,6 +100,7 @@ const (
 	RuleWIPMergeCandidate = "wip-merge-candidate"
 	RuleUppercaseSubject  = "uppercase-subject"
 	RuleTrailingPeriod    = "trailing-period"
+	RuleCJKSubject        = "cjk-subject"
 	RuleUndeclaredRemoval = "undeclared-removal"
 )
 
@@ -469,8 +470,8 @@ func Parse(message string) (Commit, error) {
 // Lint checks one commit message and returns its violations in a stable order:
 // malformed-subject (or the sharper invalid-scope) short-circuits — nothing
 // else is checkable — then unknown-gitmoji, wip-merge-candidate,
-// uppercase-subject, trailing-period, undeclared-removal. An unknown code is a
-// hard violation here, never a silent fallback.
+// uppercase-subject, trailing-period, cjk-subject, undeclared-removal. An
+// unknown code is a hard violation here, never a silent fallback.
 func Lint(message string, opts LintOptions) []Violation {
 	c, err := Parse(message)
 	if err != nil {
@@ -528,6 +529,23 @@ func Lint(message string, opts LintOptions) []Violation {
 			Fix:    fix,
 		})
 	}
+	// The convention's subjects are English (CONTRIBUTING; DESIGN §2 has said
+	// so since the scaffold) and this is the first rule to hold any of it —
+	// measured before it existed, 592 fleet subjects carried CJK text and 585
+	// of them linted clean. The id names what is CHECKED, not the policy: a
+	// CJK scan is not an English detector (a French subject sails through),
+	// and a rule called non-english-subject would promise exactly the
+	// judgement it cannot make. Subject only, deliberately — bodies in the
+	// fleet's history legitimately carry `---（和訳）` sections from before
+	// translations were retired, and history is never re-judged, but the rule
+	// must not fire on a body either way. No fix: the mechanical repair is a
+	// translation, which is precisely the kind of guess Fix refuses to bless.
+	if r := firstCJKRune(c.Subject); r != 0 {
+		vs = append(vs, Violation{
+			Rule:   RuleCJKSubject,
+			Detail: fmt.Sprintf("subject %q carries CJK text (first: %q) — commit subjects are English (see the fleet CONTRIBUTING); reword the subject, the body is not judged here", c.Subject, r),
+		})
+	}
 	// Deliberately NOT gated on MergeCandidate, unlike wip-merge-candidate.
 	// :construction: is legal mid-branch and illegal only at the merge, so its
 	// verdict genuinely changes with time. Whether a removal breaks anyone is
@@ -567,6 +585,22 @@ func Lint(message string, opts LintOptions) []Violation {
 		vs = append(vs, Violation{Rule: RuleUndeclaredRemoval, Detail: detail})
 	}
 	return vs
+}
+
+// firstCJKRune returns the first rune of s in a CJK script — Han, Hiragana,
+// Katakana, Hangul, or the CJK punctuation/fullwidth blocks those scripts are
+// typed with — or 0 when there is none. The block list is the check's whole
+// definition, so it stays enumerable here rather than approximated by "not
+// ASCII": café and naïve are not this rule's business.
+func firstCJKRune(s string) rune {
+	for _, r := range s {
+		if unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul) ||
+			(r >= 0x3000 && r <= 0x303F) || // CJK symbols and punctuation (、。「」…)
+			(r >= 0xFF00 && r <= 0xFFEF) { // halfwidth and fullwidth forms (！？ＡＢ…)
+			return r
+		}
+	}
+	return 0
 }
 
 // removalCodes are the gitmoji that take something AWAY. They all classify as
