@@ -1,13 +1,15 @@
 package github
 
-// THE live-fire oracle (t-2e11). Every other test in this package speaks to
-// an httptest fake, and a fake affirms glyph's assumptions for ever — it is
-// glyph's model of GitHub, answering questions about itself. House rule
-// (stated at internal/parser's `git stripspace` oracle): code that models an
-// external system's behaviour carries one test that asks the real system.
-// This is that one test for the GitHub adapter: the day it goes red is the
-// day the fakes' shared premises drifted from the real API — the day the
-// other ~50 tests here started proving the wrong thing while staying green.
+// The live-fire oracles (t-2e11, t-sfkk). Every other test in this package
+// speaks to an httptest fake, and a fake affirms glyph's assumptions for ever
+// — it is glyph's model of GitHub, answering questions about itself. House
+// rule (stated at internal/parser's `git stripspace` oracle): code that
+// models an external system's behaviour carries a test that asks the real
+// system. These are those tests for the GitHub adapter — the draft lifecycle
+// the upsert stands on, and the squash→PR resolution the walk stands on: the
+// day one goes red is the day the fakes' shared premises drifted from the
+// real API — the day the other ~50 tests here started proving the wrong thing
+// while staying green.
 //
 // Gated on GLYPH_LIVE_REPO (an owner/name sandbox the token may write to —
 // the fleet's is akira-toriyama/glyph-test) and skipped everywhere else, so
@@ -73,6 +75,142 @@ func listedDraft(ctx context.Context, t *testing.T, c *Client, owner, name strin
 		}
 		time.Sleep(2 * time.Second)
 	}
+}
+
+// TestLiveFireSquashResolutionIsWithinGitHubsOwn is the second live oracle,
+// for the hop DESIGN §1 calls the one novel thing glyph does: squash commit →
+// pull request, which every other test answers with an httptest fake.
+// GitHub's own generate-notes endpoint answers the same question from the
+// real system's side — which merged pulls does this range hold — for free and
+// creating nothing.
+//
+// The assertion is ONE-WAY on purpose: every pull glyph's merged-match
+// resolution finds must be cited by GitHub's notes for the identical range
+// (failure), while pulls GitHub cites that glyph did not resolve are reported
+// as a delta only — GitHub owns filters (.github/release.yml categories) and
+// glyph owns the author gate, so set EQUALITY would go red for reasons that
+// are not drift. The resolution here is deliberately the walk's superset (no
+// author gate): a subset relation that holds for the superset holds for the
+// walk's gated set a fortiori, and the gate lives in internal/bump, which
+// this adapter does not import.
+func TestLiveFireSquashResolutionIsWithinGitHubsOwn(t *testing.T) {
+	c, owner, name := liveClient(t)
+	ctx := context.Background()
+
+	// The range base: the sandbox's highest version tag, read from the API the
+	// way everything else here is. Sorted numerically — refname sort is the
+	// git-side bug glyph itself exists to avoid (t-s5n4), not one to re-import.
+	var page []struct {
+		Name string `json:"name"`
+	}
+	prev := ""
+	var prevV [3]int
+	u := fmt.Sprintf("%s/repos/%s/%s/tags?per_page=100", c.baseURL, owner, name)
+	for u != "" {
+		next, err := c.get(ctx, u, &page)
+		if err != nil {
+			t.Fatalf("listing tags: %v", err)
+		}
+		for _, tag := range page {
+			var v [3]int
+			if _, serr := fmt.Sscanf(tag.Name, "v%d.%d.%d", &v[0], &v[1], &v[2]); serr != nil {
+				continue
+			}
+			if prev == "" || v[0] > prevV[0] || (v[0] == prevV[0] && (v[1] > prevV[1] || (v[1] == prevV[1] && v[2] > prevV[2]))) {
+				prev, prevV = tag.Name, v
+			}
+		}
+		u = next
+	}
+	if prev == "" {
+		t.Fatalf("no vX.Y.Z tag in %s/%s — the oracle needs a range base; cut one in the sandbox", owner, name)
+	}
+
+	// Pin the head ONCE and hand the same sha to both readings, so the range
+	// cannot move between glyph's answer and GitHub's.
+	target := os.Getenv("GLYPH_LIVE_TARGET")
+	if target == "" {
+		target = "main"
+	}
+	var headCommit struct {
+		SHA string `json:"sha"`
+	}
+	if _, err := c.get(ctx, fmt.Sprintf("%s/repos/%s/%s/commits/%s", c.baseURL, owner, name, target), &headCommit); err != nil {
+		t.Fatalf("resolving %s: %v", target, err)
+	}
+
+	var compare struct {
+		TotalCommits int `json:"total_commits"`
+		Commits      []struct {
+			SHA string `json:"sha"`
+		} `json:"commits"`
+	}
+	if _, err := c.get(ctx, fmt.Sprintf("%s/repos/%s/%s/compare/%s...%s?per_page=250", c.baseURL, owner, name, prev, headCommit.SHA), &compare); err != nil {
+		t.Fatalf("comparing %s...%s: %v", prev, headCommit.SHA, err)
+	}
+	if len(compare.Commits) != compare.TotalCommits {
+		t.Fatalf("compare answered %d of %d commits — refusing to test the resolution over a range read in part",
+			len(compare.Commits), compare.TotalCommits)
+	}
+
+	// glyph's side of the question: the merged match, per commit — the same
+	// CommitPulls answer and the same MergedAt + MergeCommitSHA reading the
+	// walk's resolution branches on.
+	resolvedSet := map[int]bool{}
+	var resolved []int
+	for _, cm := range compare.Commits {
+		pulls, err := c.CommitPulls(ctx, owner, name, cm.SHA)
+		if IsCommitUnknown(err) {
+			continue // the walk's own API-lag arm: fall back, never fail
+		}
+		if err != nil {
+			t.Fatalf("resolving %.7s: %v", cm.SHA, err)
+		}
+		for _, p := range pulls {
+			if p.MergedAt != "" && p.MergeCommitSHA == cm.SHA && !resolvedSet[p.Number] {
+				resolvedSet[p.Number] = true
+				resolved = append(resolved, p.Number)
+			}
+		}
+	}
+	if len(resolved) == 0 {
+		t.Fatalf("glyph resolved no merged pull in %s..%s of %s/%s — the one-way claim would pass vacuously; "+
+			"squash-merge a pull in the sandbox (the rollout runbook's live fire leaves exactly these)",
+			prev, target, owner, name)
+	}
+
+	// GitHub's side, over the identical range. The tag name is a livefire-
+	// prefixed placeholder: generate-notes computes as if it were about to be
+	// cut at the pinned head and creates nothing.
+	body, err := c.GenerateNotes(ctx, owner, name, NotesParams{
+		TagName:         livefirePrefix + "notes",
+		Target:          headCommit.SHA,
+		PreviousTagName: prev,
+	})
+	if err != nil {
+		t.Fatalf("generate-notes over %s..%.7s: %v", prev, headCommit.SHA, err)
+	}
+	cited := pullsCited(body)
+	citedSet := map[int]bool{}
+	for _, n := range cited {
+		citedSet[n] = true
+	}
+
+	for _, n := range resolved {
+		if !citedSet[n] {
+			t.Errorf("glyph resolved pull #%d in %s..%.7s and GitHub's own notes for the identical range do not cite it — "+
+				"the squash→PR resolution model has drifted from the real API (GitHub cited: %v)",
+				n, prev, headCommit.SHA, cited)
+		}
+	}
+	for _, n := range cited {
+		if !resolvedSet[n] {
+			t.Logf("delta (not drift): GitHub cites #%d, glyph's merged-match did not resolve it — "+
+				"the two sides own different filters", n)
+		}
+	}
+	t.Logf("range %s..%.7s: glyph resolved %d pull(s) %v; GitHub cited %d %v",
+		prev, headCommit.SHA, len(resolved), resolved, len(cited), cited)
 }
 
 // TestLiveFireDraftLifecycle is the contract the rolling-draft upsert stands
