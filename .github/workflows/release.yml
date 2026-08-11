@@ -200,6 +200,53 @@ jobs:
             echo "::notice::verdict-only: no 'app' or 'binary', so this run computes the verdict and upserts the draft, and builds nothing."
           fi
 
+      # A release run WRITES — it upserts the one glyph-managed rolling draft
+      # and re-points its target — so the ref it runs from decides what the
+      # repository is about to ship. Off the default branch every one of those
+      # writes is wrong, and NOTHING downstream says so: the walk's range is
+      # <tag>..HEAD over this ref, so the branch's unmerged commits enter the
+      # notes; each resolves to no merged pull request and falls to the
+      # direct-push arm, classified from its own subject; and the exit-4
+      # refusal for a walk that could not read its range never fires, because
+      # only an API lag is recorded as dropped. The run is green, the draft
+      # holds unmerged work, and Publish puts the tag on the branch tip.
+      #
+      # Refuse, do not warn — lint.yml's push arm draws this same boundary for
+      # the same reason (a gate that answers without judging is the defect
+      # class these guards exist to close), and the argument is stronger here
+      # because that arm only READS while this path writes. Refusing first also
+      # means a mis-triggered run spends no runner minutes.
+      #
+      # dry-run is the way through: previewing the notes from a topic branch
+      # writes nothing, which is what a caller's workflow_dispatch is for.
+      - name: Refuse a release run from a non-default ref
+        env:
+          RELEASE_REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "::notice::dry run from $RELEASE_REF: the verdict is computed and nothing is written, so the ref is not judged."
+            exit 0
+          fi
+          # Fail closed on a boundary this guard cannot see. Measured on
+          # 2026-08-11 (glyph-test's ref-probe, dispatched from main and from a
+          # topic branch): a workflow_dispatch payload carries default_branch
+          # exactly as a push payload does, so an empty value means the event
+          # shape changed under the guard rather than an ordinary run. The bare
+          # comparison below would refuse such a run anyway — `refs/heads/`
+          # matches no ref — but it would name the wrong cause, and a refusal
+          # nobody can diagnose gets worked around instead of fixed.
+          if [ -z "${DEFAULT_BRANCH:-}" ]; then
+            echo "::error::glyph-release cannot read this repository's default branch from the event payload; refusing rather than writing the rolling draft from an unverified ref ($RELEASE_REF)."
+            exit 1
+          fi
+          if [ "$RELEASE_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "::error::glyph-release writes the rolling draft from the default branch only ($RELEASE_REF is not refs/heads/$DEFAULT_BRANCH): a run from another ref folds that ref's unmerged commits into the notes and retargets the draft at its HEAD. Dispatch with dry_run: true to preview from here."
+            exit 1
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # glyph walks the tags and the range out of LOCAL git (its verdict

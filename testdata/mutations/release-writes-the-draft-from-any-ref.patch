@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 252820f..71cb317 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -242,7 +242,7 @@ jobs:
+             echo "::error::glyph-release cannot read this repository's default branch from the event payload; refusing rather than writing the rolling draft from an unverified ref ($RELEASE_REF)."
+             exit 1
+           fi
+-          if [ "$RELEASE_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
++          if false; then
+             echo "::error::glyph-release writes the rolling draft from the default branch only ($RELEASE_REF is not refs/heads/$DEFAULT_BRANCH): a run from another ref folds that ref's unmerged commits into the notes and retargets the draft at its HEAD. Dispatch with dry_run: true to preview from here."
+             exit 1
+           fi
