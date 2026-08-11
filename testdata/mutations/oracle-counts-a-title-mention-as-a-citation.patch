@@ -1,0 +1,13 @@
+diff --git a/internal/github/generatenotes.go b/internal/github/generatenotes.go
+index 80923cf..d380ea4 100644
+--- a/internal/github/generatenotes.go
++++ b/internal/github/generatenotes.go
+@@ -67,7 +67,7 @@ func (c *Client) GenerateNotes(ctx context.Context, owner, repo string, p NotesP
+ // pullURLRE finds the pull a generated line cites: generate-notes writes each
+ // entry as "* <title> by @<login> in https://<host>/<owner>/<repo>/pull/<n>",
+ // so the /pull/<n> path segment is the machine-readable part of the prose.
+-var pullURLRE = regexp.MustCompile(`/pull/([0-9]+)\b`)
++var pullURLRE = regexp.MustCompile(`(?:#|/pull/)([0-9]+)\b`)
+ 
+ // pullsCited extracts the distinct pull numbers a generate-notes body cites,
+ // ascending. It reads URLs and not "#N" on purpose: the body legitimately
