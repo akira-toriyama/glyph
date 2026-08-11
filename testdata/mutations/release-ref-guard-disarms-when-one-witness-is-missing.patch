@@ -1,0 +1,13 @@
+diff --git a/internal/cli/releaseref.go b/internal/cli/releaseref.go
+index a4892fb..d23907d 100644
+--- a/internal/cli/releaseref.go
++++ b/internal/cli/releaseref.go
+@@ -89,7 +89,7 @@ func checkReleaseRef(ctx context.Context, owner, repo string, dryRun bool) error
+ 		return nil
+ 	}
+ 
+-	if ref == "" && event == "" {
++	if ref == "" || event == "" {
+ 		noticef("no GitHub Actions run context (%s and %s are both unset), so the ref this release writes from was not judged", envActionsRef, envActionsEvent)
+ 		return nil
+ 	}

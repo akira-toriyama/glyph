@@ -1,0 +1,13 @@
+diff --git a/internal/cli/releaseref.go b/internal/cli/releaseref.go
+index a4892fb..908d7a6 100644
+--- a/internal/cli/releaseref.go
++++ b/internal/cli/releaseref.go
+@@ -82,7 +82,7 @@ func checkReleaseRef(ctx context.Context, owner, repo string, dryRun bool) error
+ 	// preview path every consumer exposes as a dispatch input, on the day the
+ 	// pin moves. Short-circuits before the boundary is resolved so a preview
+ 	// never pays for the fallback request.
+-	if dryRun {
++	if false && dryRun {
+ 		if ref != "" {
+ 			noticef("dry run from %s: nothing is written, so the ref this release would write from was not judged", ref)
+ 		}

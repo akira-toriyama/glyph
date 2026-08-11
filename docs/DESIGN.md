@@ -527,7 +527,51 @@ stderr — because that surface is advisory and refreshed on every push, and a
 refusal there would take the whole verdict comment down with it.) A next version
 not strictly above the latest published
 release fails loud (an unpublishable draft; a deleted published release's tag
-is burned forever). A delete whose answer is LOST counts as done when its retry
+is burned forever).
+
+The refusals above are about evidence — a range glyph could not read. One is
+about **authority**, and it is the only release-time refusal a dry run does not
+reproduce. A release run started from a ref that is not the repository's
+**default branch** **fails loud (4) before the walk**, because everything
+downstream of that ref is silently wrong and nothing catches it: the range is
+`<tag>..HEAD` over the branch, so its unmerged commits enter the notes; each
+resolves to no merged pull and takes the direct-push arm, classified from its
+own subject; only an API lag is recorded as dropped, so the walk still calls
+itself complete and the refusal above never fires. Green run, a draft
+describing work the default branch never held, and Publish cutting the tag
+there. A caller cannot close this itself — GitHub offers no way to restrict
+which ref a `workflow_dispatch` runs from — and it is not hypothetical
+plumbing: four repositories (`canon`, `dotfiles`, `sill`, `swift-toml-edit`)
+hand-copy the release step instead of calling glyph's reusable, so the binary
+is the only layer that reaches them. The escapes are `--dry-run` and re-running
+from the default branch, and both are named in the refusal.
+
+That the ref is exempt from the dry-run rule stated for the body cap and
+`--target` (a dry run previews the real run) is the argued exception, not an
+oversight: those are properties of the **work** a run would publish, so hiding
+them would preview a lie, while the ref is a property of the **write**.
+Exempting it can never make a preview more permissive than the run it previews,
+since the real run from the same ref refuses unconditionally — and judging it
+would red the sanctioned preview path every consumer exposes as a dispatch
+input, plus `scripts/fleet-preflight.sh`, whose probes all pass `--dry-run`.
+The boundary is read from the event payload at `$GITHUB_EVENT_PATH`, then from
+the repository object; **two** sources because one would mean a payload
+reshuffle refuses every pinned repository at once, with eleven pin reverts as
+the only recovery. `gitsource.DefaultBranch` is not among them: it reads
+`refs/remotes/<remote>/HEAD`, which `actions/checkout` never writes, so in CI
+it is permanently unresolved. The guard arms when **either** `$GITHUB_REF` or
+`$GITHUB_EVENT_PATH` is present — one witness missing is a refusal, not a
+shrug, so a step that blanks one cannot disarm the boundary green — and with
+both absent (a laptop) the run proceeds and says on stderr that its ref went
+unjudged. That last case is a deliberate hole: no documented caller writes a
+release from outside Actions, and closing it would refuse a class that does not
+exist. `release.yml`'s own step stays as the cheaper half — it refuses before
+the checkout and the Xcode setup, which the binary cannot do because it has not
+been installed yet — and the two must never drift on polarity. Note that
+`fleet-preflight` is structurally blind to this refusal (its probes carry no
+ref and pass `--dry-run`), so glyph-test's live-fire range is its only oracle.
+
+A delete whose answer is LOST counts as done when its retry
 finds the release already gone: DELETE is idempotent and the id is what glyph
 asked to remove, so failing there aborted the upsert over work that had
 succeeded (t-yq7m). t-yq7m fixed one shape of that; **the order is the general

@@ -29,6 +29,13 @@ type Repo struct {
 	Private    bool
 	Visibility string
 
+	// DefaultBranch is the release path's SECOND source for the branch a write
+	// is allowed from (`internal/cli/releaseref.go`). The first is the event
+	// payload, which costs nothing; this one costs the request and exists so a
+	// payload that stops carrying the field degrades one repository's release
+	// to a slower answer instead of refusing every pinned repository at once.
+	DefaultBranch string
+
 	AllowMergeCommit *bool
 	AllowRebaseMerge *bool
 	AllowSquashMerge *bool
@@ -62,6 +69,8 @@ type apiRepo struct {
 	FullName   string `json:"full_name"`
 	Private    bool   `json:"private"`
 	Visibility string `json:"visibility"`
+
+	DefaultBranch string `json:"default_branch"`
 
 	AllowMergeCommit *bool `json:"allow_merge_commit"`
 	AllowRebaseMerge *bool `json:"allow_rebase_merge"`

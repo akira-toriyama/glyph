@@ -33,10 +33,14 @@ const (
 	// and the unbounded first-release walk (`sincetag.go: wholeHistory`, past
 	// its cap) all return it, because a verdict computed over a range glyph
 	// could not read — or could only read at a cost nobody named — is worse
-	// than no verdict at all. Read as "glyph has no answer it will stand
-	// behind", not as "retry later" — these refusals never clear on a retry,
-	// they clear when a human moves the tag, fixes the checkout, or names the
-	// walk base.
+	// than no verdict at all. A release run started from a ref that is not the
+	// repository's default branch (`cmd_release.go: checkReleaseRef`) joins
+	// them from the other side: glyph read everything it asked for, and refuses
+	// on AUTHORITY rather than on evidence — the same class, since neither
+	// clears by retrying. Read as "glyph has no answer it will stand behind",
+	// not as "retry later" — these refusals never clear on a retry, they clear
+	// when a human moves the tag, fixes the checkout, names the walk base, or
+	// re-runs the release from the default branch.
 	CodeAPI Code = 4
 
 	// CodeInterrupted is returned when the user interrupts a run with SIGINT
