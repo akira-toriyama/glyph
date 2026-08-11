@@ -118,6 +118,42 @@ on:
           non-tag ref (a branch or SHA), which has no release binary to derive.
         type: string
         default: ""
+    outputs:
+      # The verdict, machine-readable, so a caller can act on what this run
+      # already computed instead of re-deriving it (installing glyph again, or
+      # re-implementing the convention in grep — both fork the rules).
+      #
+      # EMPTY MEANS NOT COMPUTED, never "none": the run died before the
+      # verdict, or an arm could not read its envelope. A caller gating on
+      # these must fail safe on "".
+      #
+      # The draft's URL is deliberately NOT an output. With the API handle in
+      # hand, auto-publishing the draft is a two-line caller step — and the
+      # human act of publishing (and therefore cutting the tag) is the safety
+      # net §4/§6 rest on. A human finds the draft where humans look: the
+      # releases page; the run's own log prints it.
+      level:
+        description: >-
+          The bump the range folded to: none | patch | minor | major. Empty
+          when no verdict was computed.
+        value: ${{ jobs.release.outputs.level }}
+      next:
+        description: >-
+          The tag the rolling draft targets (vX.Y.Z). Empty on a none verdict
+          — nothing is due — and empty when no verdict was computed.
+        value: ${{ jobs.release.outputs.next }}
+      current:
+        description: >-
+          The version the walk stepped from (the tag the walk named, else the
+          highest parseable v* tag, else v0.0.0). Empty when no verdict was
+          computed.
+        value: ${{ jobs.release.outputs.current }}
+      action:
+        description: >-
+          What the upsert did (or, on a dry run, would do) to the rolling
+          draft: create | update | delete | none. Empty when no verdict was
+          computed.
+        value: ${{ jobs.release.outputs.action }}
 
 permissions:
   contents: write
@@ -138,6 +174,11 @@ jobs:
     # Bounded so a hung step (build, signing, upload) can't burn the macOS
     # minutes budget. Generous — a cold build + package + upload fits easily.
     timeout-minutes: 30
+    outputs:
+      level: ${{ steps.verdict.outputs.level }}
+      next: ${{ steps.verdict.outputs.next }}
+      current: ${{ steps.verdict.outputs.current }}
+      action: ${{ steps.verdict.outputs.action }}
     steps:
       # `required: true` cannot express "at most one of app/binary", so the
       # arity is enforced here, before anything else runs. NEITHER is the
@@ -257,6 +298,12 @@ jobs:
           status=0
           glyph "${args[@]}" > "$RUNNER_TEMP/verdict.json" 2> "$RUNNER_TEMP/verdict.err" || status=$?
           cat "$RUNNER_TEMP/verdict.err" >&2
+          # The four caller-facing outputs are written on BOTH answer arms from
+          # the same envelope the run itself acts on — never re-derived. On any
+          # arm that cannot read its envelope they stay "", and "" means NOT
+          # COMPUTED by the workflow_call contract (a skipped or dead run reads
+          # the same), so the reads are best-effort on purpose.
+          emit() { echo "$1=$(jq -r "$2 // empty" "$RUNNER_TEMP/verdict.json" 2>/dev/null || true)" >> "$GITHUB_OUTPUT"; }
           if [ "$status" -eq 1 ]; then
             # Soft no-release: nothing version-worthy since the last tag.
             # glyph already converged the draft state (residual glyph-managed
@@ -264,6 +311,11 @@ jobs:
             reason="$(jq -r '.reason // empty' "$RUNNER_TEMP/verdict.json" 2>/dev/null || true)"
             echo "::notice::${reason:-no release-worthy changes since the last tag} — nothing to do."
             echo "release=false" >> "$GITHUB_OUTPUT"
+            emit level   .level
+            emit current .current
+            emit action  .action
+            # No tag is due on a none verdict; empty, not the absent field's null.
+            echo "next=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if [ "$status" -ne 0 ]; then
@@ -273,6 +325,10 @@ jobs:
           action="$(jq -r .action "$RUNNER_TEMP/verdict.json")"
           echo "release=true" >> "$GITHUB_OUTPUT"
           echo "tag=$tag"     >> "$GITHUB_OUTPUT"
+          emit level   .level
+          emit current .current
+          emit action  .action
+          echo "next=$tag" >> "$GITHUB_OUTPUT"
           echo "verdict: $tag (draft $action)"
 
       # Build <App>.app via package.sh (ad-hoc signed for CI — the script
