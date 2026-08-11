@@ -32,7 +32,17 @@ type apiWrite struct {
 // sequence, and a dry-run test proves the sequence stayed empty.
 func releaseServer(t *testing.T, walk map[string]string, releases string, writes *[]apiWrite) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(releaseHandler(t, walk, releases, writes))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// releaseHandler is releaseServer's body, split out so a test can put another
+// route in front of the same surface (releaseref_test.go serves the repository
+// object ahead of it) without a second copy of the write recorder.
+func releaseHandler(t *testing.T, walk map[string]string, releases string, writes *[]apiWrite) http.HandlerFunc {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == releasesPath:
 			fmt.Fprint(w, releases)
@@ -75,9 +85,7 @@ func releaseServer(t *testing.T, walk map[string]string, releases string, writes
 			t.Errorf("unexpected %s %q", r.Method, r.URL.Path)
 			http.NotFound(w, r)
 		}
-	}))
-	t.Cleanup(srv.Close)
-	return srv
+	})
 }
 
 // draftJSON / publishedJSON render one release in the shape GET /releases

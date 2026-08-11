@@ -718,7 +718,7 @@ checkWorkflowPins, scanUses, pinProblem, isGlyphRef`,
 | 1 | no release (soft) |
 | 2 | usage — bad invocation or input; fix the args, do not retry |
 | 3 | the gate code — what glyph was asked to judge does not conform |
-| 4 | no trustworthy answer — GitHub API / git / network / IO failure, or a refusal to judge a range or repository state glyph could not read (the incomplete walk, the published floor, the unbounded first-release walk) |
+| 4 | no trustworthy answer — GitHub API / git / network / IO failure, or a refusal to judge a range or repository state glyph could not read (the incomplete walk, the published floor, the unbounded first-release walk), or a refusal to write from a ref glyph has no authority over (a release run off the default branch) |
 | 130 | interrupted (SIGINT/SIGTERM), emitted silently |
 
 `internal/core/errors.go: Code, ExitCode`

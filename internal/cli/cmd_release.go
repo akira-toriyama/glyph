@@ -128,6 +128,16 @@ func releaseRun(cmd *cobra.Command) error {
 	if oerr != nil {
 		return oerr
 	}
+	// Before the walk, not merely before the write: everything above this line
+	// is local and free, and sinceTagInput is where the money goes (at least
+	// one API round-trip per commit it visits). A run on the wrong ref is not
+	// going to be allowed to write, so paying for its verdict is waste — and
+	// the walk is also the half that produces the wrong ANSWER, not only the
+	// wrong write, which is why this sits above it rather than beside the
+	// upsert.
+	if rerr := checkReleaseRef(ctx, owner, repoName, releaseDryRun); rerr != nil {
+		return rerr
+	}
 
 	tagFlag := releaseSinceTag
 	if !cmd.Flags().Changed("since-tag") {

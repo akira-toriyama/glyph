@@ -1,0 +1,13 @@
+diff --git a/internal/cli/releaseref.go b/internal/cli/releaseref.go
+index a4892fb..cfdfe79 100644
+--- a/internal/cli/releaseref.go
++++ b/internal/cli/releaseref.go
+@@ -101,7 +101,7 @@ func checkReleaseRef(ctx context.Context, owner, repo string, dryRun bool) error
+ 	if derr != nil {
+ 		return derr
+ 	}
+-	if want := "refs/heads/" + def; ref != want {
++	if want := "refs/heads/" + def; false {
+ 		return core.APIf("glyph release writes the rolling draft from the default branch only: this run is on %s, not %s (%s). A release from another ref folds that ref's unmerged commits into the notes and re-points the draft's target at its HEAD. Re-run from the default branch, or pass --dry-run to preview from here", ref, want, source)
+ 	}
+ 	return nil

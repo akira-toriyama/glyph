@@ -72,6 +72,15 @@ PR and release-walk inputs (`--pr`, `--since-tag`, `release`, `preview`,
 (so a GitHub Enterprise runner just works), and the credential to
 `$GITHUB_TOKEN` (else `$GH_TOKEN`).
 
+A **writing** `release` reads two more, and refuses rather than guesses:
+`$GITHUB_REF` and `$GITHUB_EVENT_PATH`. When either is set, glyph is in a run
+that has an identity, and it will only upsert the draft if the ref is the
+repository's default branch — the draft is one per repository, and a release
+walked over another ref folds that ref's unmerged commits into it. The
+boundary comes from the event payload, or from the repository object if the
+payload does not name it. `--dry-run` is never judged, and with neither
+variable set (a laptop) nothing is judged and the run says so.
+
 ## Install
 
 **Homebrew**

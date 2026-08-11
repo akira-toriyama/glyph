@@ -19,8 +19,15 @@ import (
 // GIT_EDITOR joins them for the same reason from the other side: `lint --stdin`
 // reads it to tell an edited message from a `-m` one, and a developer whose
 // shell exports GIT_EDITOR would otherwise run a different code path than CI.
+// The run-context pair (actionsEnv: GITHUB_REF, GITHUB_EVENT_PATH) is the
+// sharpest case of all, and it is ranged over rather than re-typed here: glyph
+// runs its own `go test` on an Actions runner, where GITHUB_REF is
+// refs/pull/N/merge and GITHUB_EVENT_PATH points at a real payload, so an
+// unblanked one arms checkReleaseRef and every writing release test judges
+// differently in CI than on a laptop. Sharing the slice means a third
+// run-context variable joins this list by construction.
 func TestMain(m *testing.M) {
-	for _, k := range []string{"GITHUB_API_URL", "GITHUB_REPOSITORY", "GITHUB_TOKEN", "GH_TOKEN", "GIT_EDITOR"} {
+	for _, k := range append([]string{"GITHUB_API_URL", "GITHUB_REPOSITORY", "GITHUB_TOKEN", "GH_TOKEN", "GIT_EDITOR"}, actionsEnv...) {
 		os.Unsetenv(k)
 	}
 	os.Exit(m.Run())
