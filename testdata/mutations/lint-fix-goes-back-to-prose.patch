@@ -1,11 +1,11 @@
 diff --git a/internal/parser/parser.go b/internal/parser/parser.go
-index 381a0a3..3ecbc18 100644
+index 3a86b04..e42b86e 100644
 --- a/internal/parser/parser.go
 +++ b/internal/parser/parser.go
-@@ -252,6 +252,7 @@ func legacyRewrite(c Commit) string {
- // reject is worse than none, and so is one for a subject that is nothing BUT
- // periods.
- func mechanicalFix(c Commit) string {
+@@ -387,6 +387,7 @@ func canonicalLine(c Commit, g Grammar) string {
+ // suggestion the linter would itself reject is worse than none, and so is one
+ // for a subject that is nothing BUT periods.
+ func mechanicalFix(c Commit, g Grammar) string {
 +	return ""
  	s := strings.TrimRight(c.Subject, ".")
  	if r, size := utf8.DecodeRuneInString(s); r != utf8.RuneError && unicode.IsUpper(r) {

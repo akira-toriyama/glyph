@@ -87,7 +87,7 @@ func participating(raws []gitsource.RawCommit) ([]parser.Commit, error) {
 // The error is the parser's own, unclassified: each caller owns its policy
 // (hard lint vs warn-and-skip).
 func parseRaw(raw gitsource.RawCommit) (parser.Commit, error) {
-	c, err := parser.Parse(raw.Message)
+	c, err := parser.Parse(raw.Message, parser.GrammarGitmoji)
 	if err != nil {
 		return parser.Commit{}, err
 	}

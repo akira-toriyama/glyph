@@ -350,15 +350,24 @@ What differs from the gitmoji grammar, and everything that does not:
 
 The lint vocabulary, as a delta over the list above. Shared and firing
 identically: `malformed-subject`, `invalid-scope`, `uppercase-subject`,
-`trailing-period`, `cjk-subject`. Read across with the obvious substitution:
-the membership rule, under the new id `unknown-type` — a new id rather than a
-reused one, because `unknown-gitmoji` naming a type would lie to the machine
-that branches on it. New, the mirror image of `legacy-token`: `gitmoji-token`,
-sharpening `malformed-subject` when a conventional-profile subject opens with
-a textual `:code:`-shaped token — the same vocabulary-bleed detection, pointing
-the other way, and shape-checked only (deciding whether the code is a KNOWN
-gitmoji would make this profile load the other profile's table to lint its
-own commits). Absent, each with its reason:
+`trailing-period`, `cjk-subject`. Two ids exist only here:
+
+- `unknown-type` — the type is not in the embedded conventional table (`glyph
+  rules --profile=conventional`). The membership rule read across, under a new
+  id rather than a reused one: `unknown-gitmoji` naming a type would lie to
+  the machine that branches on it. Like its counterpart, membership is the
+  injected oracle's answer and the shape check stays open, so `readme: fix
+  typo` is diagnosed as an unknown TYPE rather than a shapeless line.
+- `gitmoji-token` — the mirror image of `legacy-token`: a conventional-profile
+  subject that opens with the gitmoji grammar's own well-formed shape
+  (`:sparkles: add x`) sharpens `malformed-subject` into the name of what the
+  author actually did — wrote the other profile's vocabulary. Shape-checked
+  only, deliberately: deciding whether the code is a KNOWN gitmoji would make
+  this profile load the other profile's table to lint its own commits. And no
+  `fix`, for `Fix`'s standing reason — which type a gitmoji maps to is a
+  cross-vocabulary guess.
+
+Absent, each with its reason:
 
 | gitmoji-profile rule | why it has no conventional counterpart |
 |---|---|
@@ -376,11 +385,6 @@ open: the profile's ratified scope is lint + bump for repositories that never
 had the guard either, and the honest reading is an argument FOR the gitmoji
 profile, not a defect to fix by inventing a `removal` type no Conventional
 author would ever write unprompted.
-
-The new ids above are ratified vocabulary stated ahead of their code; their
-canonical bullets join the §2 list in the change that adds their `Rule*`
-constants, which is the shape `TestDesignDocNamesEveryRuleID` holds the list
-to.
 
 One dogfood fact, named because §8 names the smaller version of it: the fleet
 stays on the gitmoji profile, so no commit in this repository's own CI ever

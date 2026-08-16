@@ -29,13 +29,13 @@ func TestClassify(t *testing.T) {
 		commit parser.Commit
 		want   gitmoji.Bump
 	}{
-		{"patch rung", parser.Commit{Gitmoji: ":bug:"}, gitmoji.BumpPatch},
-		{"minor rung is sparkles only", parser.Commit{Gitmoji: ":sparkles:"}, gitmoji.BumpMinor},
-		{"major rung is boom without any flag", parser.Commit{Gitmoji: ":boom:"}, gitmoji.BumpMajor},
-		{"none rung", parser.Commit{Gitmoji: ":memo:"}, gitmoji.BumpNone},
-		{"ratified deviation stays none", parser.Commit{Gitmoji: ":wrench:"}, gitmoji.BumpNone},
-		{"breaking overrides a none rung", parser.Commit{Gitmoji: ":memo:", Breaking: true}, gitmoji.BumpMajor},
-		{"breaking overrides a patch rung", parser.Commit{Gitmoji: ":truck:", Breaking: true}, gitmoji.BumpMajor},
+		{"patch rung", parser.Commit{Token: ":bug:"}, gitmoji.BumpPatch},
+		{"minor rung is sparkles only", parser.Commit{Token: ":sparkles:"}, gitmoji.BumpMinor},
+		{"major rung is boom without any flag", parser.Commit{Token: ":boom:"}, gitmoji.BumpMajor},
+		{"none rung", parser.Commit{Token: ":memo:"}, gitmoji.BumpNone},
+		{"ratified deviation stays none", parser.Commit{Token: ":wrench:"}, gitmoji.BumpNone},
+		{"breaking overrides a none rung", parser.Commit{Token: ":memo:", Breaking: true}, gitmoji.BumpMajor},
+		{"breaking overrides a patch rung", parser.Commit{Token: ":truck:", Breaking: true}, gitmoji.BumpMajor},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -55,8 +55,8 @@ func TestClassify(t *testing.T) {
 func TestClassifyUnknownCode(t *testing.T) {
 	table := loadTable(t)
 	for _, commit := range []parser.Commit{
-		{Gitmoji: ":not-a-real-code:", SHA: "abc1234"},
-		{Gitmoji: ":not-a-real-code:", Breaking: true},
+		{Token: ":not-a-real-code:", SHA: "abc1234"},
+		{Token: ":not-a-real-code:", Breaking: true},
 	} {
 		_, err := Classify(commit, table)
 		if err == nil {

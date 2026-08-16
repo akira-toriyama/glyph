@@ -70,13 +70,13 @@ type Section struct {
 func Group(commits []Commit, t *gitmoji.Table) ([]Section, error) {
 	byTitle := make(map[string][]Entry)
 	for _, c := range commits {
-		rule, ok := t.Lookup(c.Gitmoji)
+		rule, ok := t.Lookup(c.Token)
 		if !ok {
 			where := ""
 			if c.SHA != "" {
 				where = " in commit " + c.SHA
 			}
-			return nil, core.Lintf("unknown gitmoji %s%s: not in the embedded rules table (see `glyph rules`)", c.Gitmoji, where)
+			return nil, core.Lintf("unknown gitmoji %s%s: not in the embedded rules table (see `glyph rules`)", c.Token, where)
 		}
 		var title string
 		switch {

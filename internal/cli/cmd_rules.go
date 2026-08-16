@@ -43,7 +43,7 @@ func newRulesCmd() *cobra.Command {
 				// so a broken embed cannot take this surface down with it.
 				fmt.Fprintln(out, string(marshal(struct {
 					Rules []parser.LintRule `json:"rules"`
-				}{Rules: parser.LintRules()}, true)))
+				}{Rules: parser.LintRules(parser.GrammarGitmoji)}, true)))
 				return nil
 			}
 			table, err := loadRules()

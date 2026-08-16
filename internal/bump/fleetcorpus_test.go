@@ -147,12 +147,12 @@ func (r corpusRow) String() string {
 // acceptance range just as consequentially as one that narrows it.
 func classifyCorpusSubject(raw string, table *gitmoji.Table) corpusRow {
 	row := corpusRow{raw: raw, breaking: "-", gitmoji: "-", scope: "-"}
-	c, err := parser.Parse(raw)
+	c, err := parser.Parse(raw, parser.GrammarGitmoji)
 	if err != nil {
 		row.level = "!parse"
 		return row
 	}
-	row.gitmoji = c.Gitmoji
+	row.gitmoji = c.Token
 	row.subject = c.Subject
 	if c.Scope != "" {
 		row.scope = c.Scope

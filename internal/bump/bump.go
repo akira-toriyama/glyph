@@ -20,13 +20,13 @@ import (
 // silent fallback), a breaking commit short-circuits to major, and everything
 // else takes its table rung.
 func Classify(c parser.Commit, t *gitmoji.Table) (gitmoji.Bump, error) {
-	rule, ok := t.Lookup(c.Gitmoji)
+	rule, ok := t.Lookup(c.Token)
 	if !ok {
 		where := ""
 		if c.SHA != "" {
 			where = " in commit " + c.SHA
 		}
-		return "", core.Lintf("unknown gitmoji %s%s: not in the embedded rules table (see `glyph rules`)", c.Gitmoji, where)
+		return "", core.Lintf("unknown gitmoji %s%s: not in the embedded rules table (see `glyph rules`)", c.Token, where)
 	}
 	if c.Breaking {
 		return gitmoji.BumpMajor, nil
