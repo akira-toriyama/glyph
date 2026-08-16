@@ -135,9 +135,10 @@ func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.H
 		return &doctor.HookProbe{Err: err}
 	}
 	defer os.Remove(msg.Name()) //nolint:errcheck // best-effort scratch cleanup
-	// A subject no cleanup mode can rescue: no gitmoji, so the gate code is
-	// the only healthy answer.
-	if _, werr := msg.WriteString("no gitmoji in this doctor probe\n"); werr != nil {
+	// A subject no cleanup mode can rescue and NO profile grammar accepts —
+	// no leading token in either vocabulary — so the gate code is the only
+	// healthy answer whichever profile the installed hook lints under.
+	if _, werr := msg.WriteString("this doctor probe matches no commit grammar\n"); werr != nil {
 		_ = msg.Close() // the write error is the one worth reporting
 		return &doctor.HookProbe{Err: werr}
 	}

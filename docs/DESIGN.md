@@ -1070,6 +1070,19 @@ merges, and `glyph-test` sitting on `squash_merge_commit_title = PR_TITLE` /
 ran `gh api` by hand. `doctor` is the machine-checkable half of that, and the
 prevention side of t-7zt7 (a merge-commit PR vanishing from the release walk).
 
+Profiles narrow **nothing** here, ratified 2026-08-16 with the reasoning on
+the record because the opposite reading is the tempting one: the squash and
+policy checks look gitmoji-flavoured, but they guard the WALK, and the
+conventional profile's ratified scope includes the walk (lint + bump,
+`--since-tag`), so every precondition above holds under both vocabularies.
+What does follow the profile is the comparison basis: the hook checks
+byte-compare against the run's profile scripts (`Input.Profile`) — a
+conventional repo's hooks legitimately carry the `--profile` flag, and judging
+them against the default bytes would report every correctly installed hook as
+drift. The cross reading is deliberate and real: the same tree that passes
+under its own profile IS stale under the other, because a repository must not
+run the other vocabulary's hooks.
+
 Shape: independent checks → one report object → an exit on the aggregate.
 **Read-only, always** — a diagnostic that mutates cannot be run casually, and
 this one is meant to be. Each finding carries a stable kebab-case id (branch on
