@@ -105,7 +105,7 @@ func TestRuleInvariants(t *testing.T) {
 	}
 	seen := map[string]bool{}
 	for _, r := range tbl.Codes {
-		if !codeShapeRE.MatchString(r.Code) {
+		if !gitmojiSpec.TokenRE.MatchString(r.Code) {
 			t.Errorf("code %q is not a well-formed textual gitmoji", r.Code)
 		}
 		if seen[r.Code] {
@@ -138,7 +138,7 @@ func TestRuleInvariants(t *testing.T) {
 func TestParseTableAllowsNoneCodeWithSection(t *testing.T) {
 	data := `{"version":"x","sections":["Removals"],"codes":[` +
 		`{"code":":fire:","emoji":"🔥","meaning":"Remove code or files.","bump":"none","section":"Removals"}]}`
-	tbl, err := parseTable([]byte(data))
+	tbl, err := ParseTable([]byte(data), gitmojiSpec)
 	if err != nil {
 		t.Fatalf("parseTable rejected a none code carrying a known section: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestLoadRejectsInvalid(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if _, err := parseTable([]byte(c.json)); err == nil {
+			if _, err := ParseTable([]byte(c.json), gitmojiSpec); err == nil {
 				t.Fatalf("parseTable accepted invalid input %q; want an error", c.name)
 			}
 		})
