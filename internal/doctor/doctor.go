@@ -582,11 +582,11 @@ func checkRebaseMerge(in Input) Check {
 func checkSquashTitle(in Input) Check {
 	return checkSquashEnum(in, IDSquashTitle, "squash_merge_commit_title",
 		in.RepoObject.SquashMergeCommitTitle, wantSquashTitle,
-		"a single-commit PR keeps its own gitmoji subject on main; only a multi-commit squash borrows the PR title",
+		"a single-commit PR keeps its own classifiable subject on main; only a multi-commit squash borrows the PR title",
 		"every squash commit takes the PR TITLE as its subject, including single-commit PRs — so main fills with subjects "+
-			"no gitmoji reader can classify. The verdict holds while the API answers, but the walk's fallback (a direct push, "+
-			"or API lag right after a push) classifies the squash commit's own message, which now carries no :code: at all: "+
-			"the release counts none and the bump is lost silently")
+			"the selected profile's grammar cannot classify. The verdict holds while the API answers, but the walk's fallback "+
+			"(a direct push, or API lag right after a push) classifies the squash commit's own message, which now carries no "+
+			"leading token at all: the release counts none and the bump is lost silently")
 }
 
 // checkSquashMessage is the body half of the same policy. COMMIT_MESSAGES keeps
