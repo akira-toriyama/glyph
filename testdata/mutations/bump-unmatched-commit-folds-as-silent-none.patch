@@ -1,0 +1,13 @@
+diff --git a/internal/bump/sigilfold.go b/internal/bump/sigilfold.go
+index a5616b2..f6ed545 100644
+--- a/internal/bump/sigilfold.go
++++ b/internal/bump/sigilfold.go
+@@ -63,7 +63,7 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) (gitmoji.Bump, error)
+ 			return "", core.Lintf("commit %s: %v", c.SHA, err)
+ 		}
+ 		if !m.Matched {
+-			return "", core.Lintf("commit %s matches none of the %d configured patterns; refusing to version the range (an unmatched commit folded as none would be a silent hole — fix the message, add a pattern, or exclude the author)", c.SHA, len(cfg.Patterns))
++			continue
+ 		}
+ 		if m.Skip {
+ 			continue
