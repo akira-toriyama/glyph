@@ -1,0 +1,13 @@
+diff --git a/internal/cli/root.go b/internal/cli/root.go
+index 86a3e93..b52b481 100644
+--- a/internal/cli/root.go
++++ b/internal/cli/root.go
+@@ -127,7 +127,7 @@ func loadRules() (*gitmoji.Table, error) {
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	table, err := p.load()
++	table, err := profiles[0].load()
+ 	if err != nil {
+ 		return nil, core.APIf("loading %s rules: %v", p.name, err)
+ 	}
