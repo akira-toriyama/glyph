@@ -51,6 +51,16 @@ name: glyph-lint
 on:
   workflow_call:
     inputs:
+      profile:
+        description: >-
+          Commit-grammar profile the binary judges under: gitmoji (the default,
+          the fleet's own) or conventional (Conventional Commits types). The
+          same flag-not-file decision as the CLI (DESIGN §2.2/§6): the profile
+          is stated here, beside the pin, never in a repo config file, so a
+          repository cannot drift into a vocabulary nobody chose. An unknown
+          value fails the run as usage (exit 2), never as a lint verdict.
+        type: string
+        default: gitmoji
       glyph-version:
         description: >-
           Override the glyph release whose binary is installed (vX.Y.Z). Leave
@@ -130,6 +140,7 @@ jobs:
 
       - name: Lint the commit range
         env:
+          PROFILE: ${{ inputs.profile }}
           EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
@@ -195,7 +206,7 @@ jobs:
               ;;
           esac
           status=0
-          glyph lint --range "$BASE..$HEAD" 2>/tmp/glyph-lint.err || status=$?
+          glyph lint --range "$BASE..$HEAD" --profile "$PROFILE" 2>/tmp/glyph-lint.err || status=$?
           if [ "$status" -eq 0 ]; then
             echo "all commits OK"
             exit 0
@@ -224,8 +235,16 @@ jobs:
             # The commit-format hint is for convention violations (exit 3) only —
             # an infra failure (git/API, exit 4) gets the bare message.
             if jq -e '.error.code == 3' /tmp/glyph-lint.json >/dev/null 2>&1; then
-              jq -r '"::error::glyph lint: \(.error.message) — format: <:gitmoji:>[(scope)][!] <subject>; see `glyph rules` and https://github.com/akira-toriyama/.github/blob/main/CONTRIBUTING.md"' \
-                /tmp/glyph-lint.json || true
+              # The format hint follows the profile: pointing a conventional
+              # repo at the gitmoji grammar (or the fleet CONTRIBUTING) would
+              # be a wrong answer delivered confidently.
+              if [ "$PROFILE" = "gitmoji" ]; then
+                jq -r '"::error::glyph lint: \(.error.message) — format: <:gitmoji:>[(scope)][!] <subject>; see `glyph rules` and https://github.com/akira-toriyama/.github/blob/main/CONTRIBUTING.md"' \
+                  /tmp/glyph-lint.json || true
+              else
+                jq --arg p "$PROFILE" -r '"::error::glyph lint: \(.error.message) — format: <type>[(scope)][!]: <subject>; see `glyph rules --profile=\($p)`"' \
+                  /tmp/glyph-lint.json || true
+              fi
             else
               jq -r '"::error::glyph lint: \(.error.message)"' /tmp/glyph-lint.json || true
             fi
@@ -253,11 +272,12 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PROFILE: ${{ inputs.profile }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           status=0
-          glyph lint --pr "$PR_NUMBER" 2>/tmp/glyph-title.err || status=$?
+          glyph lint --pr "$PR_NUMBER" --profile "$PROFILE" 2>/tmp/glyph-title.err || status=$?
           if [ "$status" -eq 0 ]; then
             echo "title OK"
             exit 0
@@ -268,8 +288,13 @@ jobs:
             # The retitle hint is for convention violations (exit 3) only — an
             # infra failure (API/permissions, exit 4) gets the bare message.
             if jq -e '.error.code == 3' /tmp/glyph-title.json >/dev/null 2>&1; then
-              jq -r '"::error::glyph lint: \(.error.message) — retitle the pull request; format: <:gitmoji:>[(scope)][!] <subject>; see `glyph rules` and https://github.com/akira-toriyama/.github/blob/main/CONTRIBUTING.md"' \
-                /tmp/glyph-title.json || true
+              if [ "$PROFILE" = "gitmoji" ]; then
+                jq -r '"::error::glyph lint: \(.error.message) — retitle the pull request; format: <:gitmoji:>[(scope)][!] <subject>; see `glyph rules` and https://github.com/akira-toriyama/.github/blob/main/CONTRIBUTING.md"' \
+                  /tmp/glyph-title.json || true
+              else
+                jq --arg p "$PROFILE" -r '"::error::glyph lint: \(.error.message) — retitle the pull request; format: <type>[(scope)][!]: <subject>; see `glyph rules --profile=\($p)`"' \
+                  /tmp/glyph-title.json || true
+              fi
             else
               jq -r '"::error::glyph lint: \(.error.message)"' /tmp/glyph-title.json || true
             fi

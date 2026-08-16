@@ -252,10 +252,12 @@ counterpart — breaking is `!` or the footer, exactly the two the Conventional
 spec defines.
 
 The profile is a **flag, never a repo config file**: `--profile=conventional`
-on any command that reads rules, and `glyph hook install --profile=conventional`
-to spell it into the git hooks it writes — so the choice sits where the pinned
-version already sits, reviewed like any pin move. The default is `gitmoji`
-everywhere; a repository that says nothing keeps meaning what it always meant.
+on any command that reads rules, `glyph hook install --profile=conventional`
+to spell it into the git hooks it writes, and a `profile` input on all three
+reusable workflows (`with: profile: conventional`, beside the pin) — so the
+choice sits in the caller's own pinned file, reviewed like any pin move. The
+default is `gitmoji` everywhere; a repository that says nothing keeps meaning
+what it always meant.
 
 ## Exit codes
 
