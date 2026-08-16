@@ -28,7 +28,7 @@
           pname = "glyph";
           inherit version;
           src = ./.;
-          vendorHash = "sha256-9jK3jKbFp+5WSQfMbNzwIB55bC5KScZOaFHItffTF00=";
+          vendorHash = "sha256-ltgBK1DeW2mzYrVYPku4paeJ0jYPMnXDlf3WApJpb/k=";
           ldflags = [
             "-s" "-w"
             "-X ${v}.Version=${version}"

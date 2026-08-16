@@ -837,6 +837,7 @@ internal/gitmoji         //go:embed rules.json; Load() validates completeness; t
 internal/conventional    //go:embed rules.json — the conventional profile's type table (data + count pin only; the engine is gitmoji's)
 internal/parser          Commit{Gitmoji,Scope,Breaking,NonBreaking,Subject,Body,SHA,Author}
 internal/bump            Level lattice; Classify; Reduce(max); Next; stdlib semver
+internal/config          v2 glyph.toml loader — user RE2 patterns, first match wins, semver_sigil extraction (epic e-qzpz; not yet wired to any command)
 internal/markdown        Line: per-field escape, then the mention fence over the assembled line
 internal/notes           group by section; text/template render (no external tmpl dep)
 internal/preview         merge-preview comment body — pure; no git, no API, no clock

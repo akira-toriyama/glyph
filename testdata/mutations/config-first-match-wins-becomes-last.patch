@@ -1,0 +1,13 @@
+diff --git a/internal/config/match.go b/internal/config/match.go
+index 2d4a47a..48ef009 100644
+--- a/internal/config/match.go
++++ b/internal/config/match.go
+@@ -39,7 +39,7 @@ type Match struct {
+ // pattern declares no fixed fallback. Both are config bugs surfaced at the
+ // first commit that hits them.
+ func (c *Config) Match(message string) (Match, error) {
+-	for i := range c.Patterns {
++	for i := len(c.Patterns) - 1; i >= 0; i-- {
+ 		p := &c.Patterns[i]
+ 		sub := p.re.FindStringSubmatch(message)
+ 		if sub == nil {
