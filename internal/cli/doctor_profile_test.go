@@ -27,7 +27,7 @@ func installProfileHooks(t *testing.T, profile string) {
 // bite-exempt: deliberately pins behaviour #175 already wired (Input.Profile
 // reaches the hook byte-compare); this change is the ratified §7 conclusion
 // and prose neutralization, and the pin is the part that must not rot.
-// Every check RUNS under both profiles — the ratified company scope includes
+// Every check RUNS under both profiles — the ratified adopter scope includes
 // the walk, so the squash preconditions are not the gitmoji profile's private
 // property, and nothing is narrowed away — but the hook comparisons follow
 // the run's profile: a conventional repo's hooks legitimately carry the
