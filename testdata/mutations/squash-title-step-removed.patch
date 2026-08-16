@@ -1,8 +1,8 @@
 diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
-index 06b03e2..da58f85 100644
+index 0a6b968..b7cdcfc 100644
 --- a/.github/workflows/lint.yml
 +++ b/.github/workflows/lint.yml
-@@ -237,38 +237,3 @@ jobs:
+@@ -259,44 +259,3 @@ jobs:
            fi
            exit "$status"
  
@@ -19,11 +19,12 @@ index 06b03e2..da58f85 100644
 -        if: github.event_name == 'pull_request'
 -        env:
 -          GITHUB_TOKEN: ${{ github.token }}
+-          PROFILE: ${{ inputs.profile }}
 -          PR_NUMBER: ${{ github.event.pull_request.number }}
 -        run: |
 -          set -euo pipefail
 -          status=0
--          glyph lint --pr "$PR_NUMBER" 2>/tmp/glyph-title.err || status=$?
+-          glyph lint --pr "$PR_NUMBER" --profile "$PROFILE" 2>/tmp/glyph-title.err || status=$?
 -          if [ "$status" -eq 0 ]; then
 -            echo "title OK"
 -            exit 0
@@ -34,8 +35,13 @@ index 06b03e2..da58f85 100644
 -            # The retitle hint is for convention violations (exit 3) only — an
 -            # infra failure (API/permissions, exit 4) gets the bare message.
 -            if jq -e '.error.code == 3' /tmp/glyph-title.json >/dev/null 2>&1; then
--              jq -r '"::error::glyph lint: \(.error.message) — retitle the pull request; format: <:gitmoji:>[(scope)][!] <subject>; see `glyph rules` and https://github.com/akira-toriyama/.github/blob/main/CONTRIBUTING.md"' \
--                /tmp/glyph-title.json || true
+-              if [ "$PROFILE" = "gitmoji" ]; then
+-                jq -r '"::error::glyph lint: \(.error.message) — retitle the pull request; format: <:gitmoji:>[(scope)][!] <subject>; see `glyph rules` and https://github.com/akira-toriyama/.github/blob/main/CONTRIBUTING.md"' \
+-                  /tmp/glyph-title.json || true
+-              else
+-                jq --arg p "$PROFILE" -r '"::error::glyph lint: \(.error.message) — retitle the pull request; format: <type>[(scope)][!]: <subject>; see `glyph rules --profile=\($p)`"' \
+-                  /tmp/glyph-title.json || true
+-              fi
 -            else
 -              jq -r '"::error::glyph lint: \(.error.message)"' /tmp/glyph-title.json || true
 -            fi

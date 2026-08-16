@@ -108,6 +108,16 @@ on:
         required: false
         type: boolean
         default: false
+      profile:
+        description: >-
+          Commit-grammar profile the binary judges under: gitmoji (the default,
+          the fleet's own) or conventional (Conventional Commits types). The
+          same flag-not-file decision as the CLI (DESIGN §2.2/§6): the profile
+          is stated here, beside the pin, never in a repo config file, so a
+          repository cannot drift into a vocabulary nobody chose. An unknown
+          value fails the run as usage (exit 2), never as a lint verdict.
+        type: string
+        default: gitmoji
       glyph-version:
         description: >-
           Override the glyph release whose binary computes the verdict (vX.Y.Z,
@@ -332,15 +342,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           INSTALL_NOTES: ${{ inputs.install-notes }}
           DRY_RUN: ${{ inputs.dry-run }}
+          PROFILE: ${{ inputs.profile }}
         run: |
           set -euo pipefail
           # The caller's install block reaches glyph as a FILE (--footer-file)
           # — printf %s, no shell expansion of its backticks / $(…), and no
           # markdown ever concatenated in shell (ratified Q11).
           printf '%s' "$INSTALL_NOTES" > "$RUNNER_TEMP/install-notes.md"
-          args=(release --json --footer-file "$RUNNER_TEMP/install-notes.md")
+          args=(release --json --footer-file "$RUNNER_TEMP/install-notes.md" --profile "$PROFILE")
           if [ "$DRY_RUN" = "true" ]; then
-            args=(release --dry-run --json --footer-file "$RUNNER_TEMP/install-notes.md")
+            args=(release --dry-run --json --footer-file "$RUNNER_TEMP/install-notes.md" --profile "$PROFILE")
           fi
           status=0
           glyph "${args[@]}" > "$RUNNER_TEMP/verdict.json" 2> "$RUNNER_TEMP/verdict.err" || status=$?
