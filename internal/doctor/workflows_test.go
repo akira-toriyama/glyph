@@ -186,6 +186,48 @@ func TestScanUsesShapes(t *testing.T) {
 // TestPinProblemNamesTheShape: the two failing shapes need different fixes, so
 // the report must not blur them into one sentence. A SHA is immutable and only
 // breaks the version derivation; a moving ref changes under the caller.
+// FuzzScanUsesCitesOnlyRealUsesLines throws arbitrary bytes at the one
+// hand-written stateful scanner in the tree whose input is EXTERNAL — scanUses
+// walks other repositories' workflow YAML, and its own doc comment records
+// that the comment/stub/block-scalar traps have been got wrong in every
+// direction. The properties held here are the ones a caller relies on
+// regardless of input shape: no panic, and every returned reference is
+// traceable to a real, non-comment line whose value really names the glyph
+// repository — a scanner confused by an adversarial block scalar must fail
+// these, not merely return something.
+func FuzzScanUsesCitesOnlyRealUsesLines(f *testing.F) {
+	f.Add(commentedStub)
+	f.Add("jobs:\n  lint:\n    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v1.2.3\n")
+	f.Add("steps:\n  - uses: \"akira-toriyama/glyph/.github/actions/install@v0.3.0\"  # pinned\n")
+	f.Add("run: |\n  uses: akira-toriyama/glyph/.github/workflows/lint.yml@main\nnext: 1\n")
+	f.Add("run: |2-\n   uses: akira-toriyama/glyph/x@main\n")
+	f.Add("if: >0.5\nuses: AKIRA-TORIYAMA/GLYPH/w.yml\n")
+	f.Add("- uses:\n#\n\nuses: akira-toriyama/glyph/w.yml@\n")
+	f.Fuzz(func(t *testing.T, body string) {
+		refs := scanUses("w.yml", body)
+		lines := strings.Split(body, "\n")
+		for _, r := range refs {
+			if r.Line < 1 || r.Line > len(lines) {
+				t.Fatalf("ref %+v cites line %d of %d — outside the input", r, r.Line, len(lines))
+			}
+			cited := lines[r.Line-1]
+			if strings.HasPrefix(strings.TrimLeft(cited, " \t"), "#") {
+				t.Fatalf("ref %+v cites a whole-line comment %q — the stub trap, reopened", r, cited)
+			}
+			if !strings.Contains(cited, r.Uses) {
+				t.Fatalf("ref %+v cites line %q, which does not carry its value", r, cited)
+			}
+			spec, ref, _ := strings.Cut(r.Uses, "@")
+			if !isGlyphRef(spec) {
+				t.Fatalf("ref %+v escaped the isGlyphRef filter (spec %q)", r, spec)
+			}
+			if r.Ref != ref {
+				t.Fatalf("ref %+v split its own value differently: Ref %q, want %q", r, r.Ref, ref)
+			}
+		}
+	})
+}
+
 func TestPinProblemNamesTheShape(t *testing.T) {
 	sha := pinProblem("9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0", true)
 	if !strings.Contains(sha, "commit SHA") || !strings.Contains(sha, "job.workflow_ref") {
