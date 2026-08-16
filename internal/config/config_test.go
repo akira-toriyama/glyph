@@ -7,16 +7,77 @@ import (
 	"testing"
 )
 
-// loadGemoji loads the committed `glyph init --gemoji` fixture — the exact
-// generated config the epic ratified — so every test here runs against the
-// artifact users will actually hold.
+// loadGemoji loads the embedded `glyph init --gemoji` preset — the exact
+// artifact init writes — so every test here runs against what users will
+// actually hold.
 func loadGemoji(t *testing.T) *Config {
 	t.Helper()
-	cfg, err := LoadFile(filepath.Join("testdata", "gemoji.toml"))
+	data, ok := Preset("gemoji")
+	if !ok {
+		t.Fatalf("Preset(gemoji) missing")
+	}
+	cfg, err := Load(data)
 	if err != nil {
-		t.Fatalf("LoadFile(gemoji.toml): %v", err)
+		t.Fatalf("Load(gemoji preset): %v", err)
 	}
 	return cfg
+}
+
+// TestEveryPresetLoads pins the ship gate: a preset this binary offers to
+// write must load under this binary's own loader, whole and strict.
+func TestEveryPresetLoads(t *testing.T) {
+	names := PresetNames()
+	want := []string{"conventional", "gemoji"}
+	if len(names) != len(want) {
+		t.Fatalf("PresetNames() = %v, want %v", names, want)
+	}
+	for i, w := range want {
+		if names[i] != w {
+			t.Fatalf("PresetNames() = %v, want %v", names, want)
+		}
+	}
+	for _, name := range names {
+		data, ok := Preset(name)
+		if !ok {
+			t.Fatalf("Preset(%s) missing", name)
+		}
+		if _, err := Load(data); err != nil {
+			t.Errorf("preset %s does not load: %v", name, err)
+		}
+	}
+}
+
+// TestConventionalPresetGrammar pins the conventional preset's shape: the
+// sigil sits before the colon, so conventional's own `feat!:` reads as the
+// major sigil unchanged, and a sigil-less `feat:` is a violation (the
+// write-it-down half of the sigil's job).
+func TestConventionalPresetGrammar(t *testing.T) {
+	data, _ := Preset("conventional")
+	cfg, err := Load(data)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	cases := []struct {
+		message string
+		sigil   Sigil
+	}{
+		{"feat^: add a thing", SigilMinor},
+		{"fix~: repair a thing", SigilPatch},
+		{"chore=: touch nothing", SigilNone},
+		{"feat(api)!: drop a flag", SigilMajor},
+	}
+	for _, c := range cases {
+		m, err := cfg.Match(c.message)
+		if err != nil || !m.Matched || m.Skip {
+			t.Fatalf("Match(%q) = %+v, %v — want a sigil match", c.message, m, err)
+		}
+		if m.Sigil != c.sigil {
+			t.Errorf("Match(%q).Sigil = %v, want %v", c.message, m.Sigil, c.sigil)
+		}
+	}
+	if v := cfg.Lint("feat: no sigil written", "akira"); v.OK || v.Excluded {
+		t.Errorf("a sigil-less conventional subject must be a violation, got %+v", v)
+	}
 }
 
 func TestLoadGemojiConfig(t *testing.T) {

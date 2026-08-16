@@ -171,9 +171,13 @@ func FuzzMatch(f *testing.F) {
 	f.Add("Merge branch 'main'")
 	f.Add("")
 	f.Add(":bug:~ subject\n\nbody with (?P<semver_sigil>!) inside")
-	cfg, err := LoadFile("testdata/gemoji.toml")
+	data, ok := Preset("gemoji")
+	if !ok {
+		f.Fatalf("Preset(gemoji) missing")
+	}
+	cfg, err := Load(data)
 	if err != nil {
-		f.Fatalf("LoadFile: %v", err)
+		f.Fatalf("Load: %v", err)
 	}
 	f.Fuzz(func(t *testing.T, message string) {
 		m, err := cfg.Match(message)
