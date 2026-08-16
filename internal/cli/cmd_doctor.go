@@ -109,6 +109,18 @@ func newDoctorCmd() *cobra.Command {
 // checkout (the documented worktree trap), a tree that does not compile — are
 // a silent no-op the compare calls healthy. Only firing the hook asks the
 // question end to end.
+//
+// commit-msg is fired and pre-push is NOT, and the asymmetry is argued, not
+// an accident. What a live fire proves is a property of the MACHINE — that
+// the glyph the hook resolves on PATH can actually lint — and both hooks
+// resolve the same PATH, so one answer covers both for the default `glyph
+// hook install`, which writes the pair. Firing commit-msg costs a temp file;
+// firing pre-push would cost a fabricated push — a scratch repository with a
+// remote, a violating commit and a default-branch head — which is subprocess
+// choreography a read-only diagnosis should not carry for a question already
+// answered. The residual blind spot is a machine where ONLY pre-push was
+// installed by name: real, narrow, and accepted (t-2etd holds the design if
+// it is ever worth closing).
 func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.HookProbe {
 	if dirErr != nil {
 		return nil
