@@ -15,10 +15,12 @@ import (
 	"github.com/akira-toriyama/glyph/internal/parser"
 )
 
-// Classify maps one commit to its bump level: an unknown gitmoji is a lint
+// Classify maps one commit to its bump level: an unknown token is a lint
 // error (checked first — membership holds even for breaking commits, never a
 // silent fallback), a breaking commit short-circuits to major, and everything
-// else takes its table rung.
+// else takes its table rung. The error names the table's own vocabulary and
+// its self-print command, so a conventional repo is never told to look up a
+// gitmoji.
 func Classify(c parser.Commit, t *gitmoji.Table) (gitmoji.Bump, error) {
 	rule, ok := t.Lookup(c.Token)
 	if !ok {
@@ -26,7 +28,7 @@ func Classify(c parser.Commit, t *gitmoji.Table) (gitmoji.Bump, error) {
 		if c.SHA != "" {
 			where = " in commit " + c.SHA
 		}
-		return "", core.Lintf("unknown gitmoji %s%s: not in the embedded rules table (see `glyph rules`)", c.Token, where)
+		return "", core.Lintf("unknown %s %s%s: not in the embedded rules table (see `%s`)", t.Spec().Token, c.Token, where, t.Spec().Rules)
 	}
 	if c.Breaking {
 		return gitmoji.BumpMajor, nil

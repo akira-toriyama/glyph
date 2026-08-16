@@ -54,11 +54,19 @@ const Marker = "installed-by: glyph hook install"
 // whole suite green, because the test pinned the literal too. A generated hook
 // cannot disagree with the constant it is generated from.
 //
-// A var rather than a const for that reason alone; it is never reassigned.
-var Script = fmt.Sprintf(`#!/bin/sh
+// A function of the profile rather than a var since profiles exist
+// (DESIGN §2.2): the conventional profile's hook must call the lint under its
+// own vocabulary, and the flag is interpolated exactly as the gate code is —
+// generated, never retyped. The default profile's bytes are IDENTICAL to
+// every hook installed before profiles existed, so a fleet refresh under the
+// default stays "unchanged"; the suffix names the caller's standing choice of
+// vocabulary and nothing else, so the founding property holds: the hook still
+// holds no knowledge, it asks glyph.
+func commitMsgScript(argSuffix, convention string) string {
+	return fmt.Sprintf(`#!/bin/sh
 # glyph commit-msg hook — %s
 #
-# Lints the message being written against the gitmoji convention by calling
+# Lints the message being written against %[3]s by calling
 # glyph, which holds the rules. Do not add a regex here: a local copy of the
 # convention is exactly what drifts out of lockstep when the rules move.
 #
@@ -68,7 +76,7 @@ if ! command -v glyph >/dev/null 2>&1; then
 	exit 0
 fi
 
-glyph lint --stdin <"$1"
+glyph lint --stdin%[4]s <"$1"
 status=$?
 
 # %[2]d is glyph's commit-convention violation code — the one answer that should
@@ -83,7 +91,8 @@ if [ "$status" -ne 0 ]; then
 	echo "glyph: could not lint this message (exit $status) — letting the commit through; CI still enforces the convention" >&2
 fi
 exit 0
-`, Marker, int(core.CodeLint))
+`, Marker, int(core.CodeLint), convention, argSuffix)
+}
 
 // PrePushScript is the pre-push hook. It carries the same three properties as
 // Script and one more that is specific to it: it computes NOTHING about the
@@ -98,7 +107,8 @@ exit 0
 // hook's cleanup-mode derivation inside the binary (DESIGN 2.1); here it keeps
 // the range arithmetic there too, which matters more, because a range computed
 // by a stale script is a wrong verdict rather than a loud failure.
-var PrePushScript = fmt.Sprintf(`#!/bin/sh
+func prePushScript(argSuffix string) string {
+	return fmt.Sprintf(`#!/bin/sh
 # glyph pre-push hook — %s
 #
 # Hands git's pre-push protocol (four fields per line, on stdin) to glyph, which
@@ -111,7 +121,7 @@ if ! command -v glyph >/dev/null 2>&1; then
 	exit 0
 fi
 
-glyph hook pre-push -- "$@"
+glyph hook pre-push%[3]s -- "$@"
 status=$?
 
 # %[2]d is glyph's commit-convention violation code — the one answer that should
@@ -126,7 +136,8 @@ if [ "$status" -ne 0 ]; then
 	echo "glyph: could not lint the outgoing range (exit $status) — letting the push through; CI still enforces the convention" >&2
 fi
 exit 0
-`, Marker, int(core.CodeLint))
+`, Marker, int(core.CodeLint), argSuffix)
+}
 
 // Kind is one hook glyph writes: the name git looks the file up by, and the
 // script that goes there.
@@ -144,11 +155,23 @@ type Kind struct {
 	Asks string
 }
 
-// Kinds is every hook glyph writes, in install order. A bare
-// `glyph hook install` writes all of them.
-var Kinds = []Kind{
-	{Name: "commit-msg", Script: Script, Asks: "glyph lint --stdin"},
-	{Name: "pre-push", Script: PrePushScript, Asks: "glyph hook pre-push"},
+// Kinds is every hook glyph writes for one profile, in install order. A bare
+// `glyph hook install` writes all of them. The empty string and the default
+// profile name both yield the default bytes — byte-identical to every hook
+// installed before profiles existed — and any other name is interpolated into
+// each glyph invocation as --profile=<name>. The name's validity is the CLI's
+// question (resolveProfile answers it before anything reaches here); this
+// package only spells the choice into the file.
+func Kinds(profile string) []Kind {
+	suffix, convention := "", "the gitmoji convention"
+	if profile != "" && profile != "gitmoji" {
+		suffix = " --profile=" + profile
+		convention = "the " + profile + "-profile commit convention"
+	}
+	return []Kind{
+		{Name: "commit-msg", Script: commitMsgScript(suffix, convention), Asks: "glyph lint --stdin" + suffix},
+		{Name: "pre-push", Script: prePushScript(suffix), Asks: "glyph hook pre-push" + suffix},
+	}
 }
 
 // Stale reports whether an installed hook body is one GLYPH wrote that no
@@ -165,9 +188,10 @@ func (k Kind) Stale(installed string) bool {
 	return installed != k.Script && strings.Contains(installed, Marker)
 }
 
-// KindByName resolves a hook name, or reports that glyph does not write one.
-func KindByName(name string) (Kind, bool) {
-	for _, k := range Kinds {
+// KindByName resolves a hook name under one profile, or reports that glyph
+// does not write one.
+func KindByName(profile, name string) (Kind, bool) {
+	for _, k := range Kinds(profile) {
 		if k.Name == name {
 			return k, true
 		}
@@ -176,10 +200,11 @@ func KindByName(name string) (Kind, bool) {
 }
 
 // KindNames is the name list, for cobra's ValidArgs and for help text — so the
-// completion a user gets and the set Install accepts cannot disagree.
+// completion a user gets and the set Install accepts cannot disagree. Names
+// are profile-independent (only the script bytes vary), so this takes none.
 func KindNames() []string {
-	names := make([]string, 0, len(Kinds))
-	for _, k := range Kinds {
+	names := make([]string, 0, len(Kinds("")))
+	for _, k := range Kinds("") {
 		names = append(names, k.Name)
 	}
 	return names

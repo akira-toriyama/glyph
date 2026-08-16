@@ -19,12 +19,12 @@ import (
 // parsed and carrying their SHA and author, oldest first. bump and notes share
 // this walk — lint keeps its own (it collects violations instead of failing on
 // the first).
-func participatingCommits(ctx context.Context, revRange string) ([]parser.Commit, error) {
+func participatingCommits(ctx context.Context, revRange string, g parser.Grammar) ([]parser.Commit, error) {
 	raws, err := gitsource.Log(ctx, ".", revRange)
 	if err != nil {
 		return nil, err
 	}
-	return participating(raws)
+	return participating(raws, g)
 }
 
 // participating applies the participation rules to raw commits from ANY source —
@@ -34,7 +34,7 @@ func participatingCommits(ctx context.Context, revRange string) ([]parser.Commit
 // participating commit that does not parse is a hard lint error naming its SHA.
 // Keeping one implementation is what guarantees a PR classifies identically
 // whether its commits are read from git or from GitHub.
-func participating(raws []gitsource.RawCommit) ([]parser.Commit, error) {
+func participating(raws []gitsource.RawCommit, g parser.Grammar) ([]parser.Commit, error) {
 	commits := make([]parser.Commit, 0, len(raws))
 	var bad []rangeViolation
 	firstMsg := ""
@@ -42,7 +42,7 @@ func participating(raws []gitsource.RawCommit) ([]parser.Commit, error) {
 		if _, excluded := bump.ExcludedFromClassification(raw.Author, firstLine(raw.Message), raw.Parents); excluded {
 			continue
 		}
-		c, perr := parseRaw(raw)
+		c, perr := parseRaw(raw, g)
 		if perr != nil {
 			// Walk the WHOLE range before failing. Stopping at the first
 			// unparsable commit answered a three-commit cleanup with three
@@ -60,7 +60,7 @@ func participating(raws []gitsource.RawCommit) ([]parser.Commit, error) {
 			if firstMsg == "" {
 				firstMsg = fmt.Sprintf("commit %.7s: %v", raw.SHA, perr)
 			}
-			for _, v := range parser.Lint(raw.Message, parser.LintOptions{}) {
+			for _, v := range parser.Lint(raw.Message, parser.LintOptions{Grammar: g}) {
 				bad = append(bad, rangeViolation{SHA: raw.SHA, Subject: firstLine(raw.Message), Rule: v.Rule, Detail: v.Detail, Fix: v.Fix})
 			}
 			continue
@@ -86,8 +86,8 @@ func participating(raws []gitsource.RawCommit) ([]parser.Commit, error) {
 // the lenient release fallback so the two can never attach different fields.
 // The error is the parser's own, unclassified: each caller owns its policy
 // (hard lint vs warn-and-skip).
-func parseRaw(raw gitsource.RawCommit) (parser.Commit, error) {
-	c, err := parser.Parse(raw.Message, parser.GrammarGitmoji)
+func parseRaw(raw gitsource.RawCommit, g parser.Grammar) (parser.Commit, error) {
+	c, err := parser.Parse(raw.Message, g)
 	if err != nil {
 		return parser.Commit{}, err
 	}

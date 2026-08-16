@@ -8,7 +8,6 @@ import (
 
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/gitsource"
-	"github.com/akira-toriyama/glyph/internal/hook"
 	"github.com/akira-toriyama/glyph/internal/parser"
 )
 
@@ -176,7 +175,7 @@ func outgoingRevs(p pushRef, defaultBranch string, tips []string, have map[strin
 func prePushRun(ctx context.Context, args []string, opts parser.LintOptions) error {
 	// Same reason as the commit-msg arm: the hook that called this is the one
 	// artefact nothing refreshes, and its own run is when the developer is here.
-	warnIfHookStale(ctx, hook.Kinds[1])
+	warnIfHookStale(ctx, profileKinds()[1])
 
 	refs, err := parsePushRefs(in)
 	if err != nil {

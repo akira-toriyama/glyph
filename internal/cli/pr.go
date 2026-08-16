@@ -93,7 +93,7 @@ func newGitHub() *github.Client {
 // pullInput resolves the repository, reads a pull request's individual commits,
 // and names the source for the reason line (owner/name#N). bump and notes share
 // it, so both read a pull request the same way.
-func pullInput(ctx context.Context, number int, repoFlag string) ([]parser.Commit, string, error) {
+func pullInput(ctx context.Context, number int, repoFlag string, g parser.Grammar) ([]parser.Commit, string, error) {
 	if err := checkPRFlag(number); err != nil {
 		return nil, "", err
 	}
@@ -101,7 +101,7 @@ func pullInput(ctx context.Context, number int, repoFlag string) ([]parser.Commi
 	if err != nil {
 		return nil, "", err
 	}
-	commits, err := participatingPull(ctx, newGitHub(), owner, repo, number)
+	commits, err := participatingPull(ctx, newGitHub(), owner, repo, number, g)
 	return commits, fmt.Sprintf("%s/%s#%d", owner, repo, number), err
 }
 
@@ -110,12 +110,12 @@ func pullInput(ctx context.Context, number int, repoFlag string) ([]parser.Commi
 // reason glyph exists — and returns the participating ones, parsed. github.Commit
 // mirrors gitsource.RawCommit field-for-field by design, so both sources converge
 // on one participation walk rather than drifting apart.
-func participatingPull(ctx context.Context, c *github.Client, owner, repo string, number int) ([]parser.Commit, error) {
+func participatingPull(ctx context.Context, c *github.Client, owner, repo string, number int, g parser.Grammar) ([]parser.Commit, error) {
 	raws, err := pullRawCommits(ctx, c, owner, repo, number)
 	if err != nil {
 		return nil, err
 	}
-	return participating(raws)
+	return participating(raws, g)
 }
 
 // pullRawCommits is the read half of participatingPull: the listing as GitHub

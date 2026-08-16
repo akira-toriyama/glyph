@@ -23,12 +23,14 @@ var (
 func newRulesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rules",
-		Short: "Print the embedded gitmoji → semver table",
-		Long: "rules self-prints the pinned gitmoji rules the binary embeds — the machine\n" +
-			"source of truth for classification and notes. --json reproduces the embedded\n" +
-			"rules.json verbatim (pipe it to jq); --md (the default) renders the docs table\n" +
-			"that CI diffs against docs/gitmoji-table.md to catch drift; --lint lists the\n" +
-			"lint vocabulary — every `rule` id a finding can carry, as JSON.",
+		Short: "Print the embedded token → semver table",
+		Long: "rules self-prints the pinned rules the binary embeds — the machine source of\n" +
+			"truth for classification and notes, one table per profile (--profile selects;\n" +
+			"gitmoji is the default). --json reproduces the profile's embedded rules.json\n" +
+			"verbatim (pipe it to jq); --md (the default) renders the docs table that CI\n" +
+			"diffs against docs/gitmoji-table.md / docs/conventional-table.md to catch\n" +
+			"drift; --lint lists the profile's lint vocabulary — every `rule` id a finding\n" +
+			"can carry, as JSON.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkExclusiveBool(cmd, "json", "md", "lint"); err != nil {
@@ -40,10 +42,17 @@ func newRulesCmd() *cobra.Command {
 			}
 			if rulesLint {
 				// The vocabulary is the parser's, not the table's: no loadRules,
-				// so a broken embed cannot take this surface down with it.
+				// so a broken embed cannot take this surface down with it — but
+				// the profile still selects WHICH vocabulary, so the flag is
+				// validated even on this path (an unknown profile must be usage
+				// here exactly as everywhere else, not a silent default).
+				p, err := resolveProfile()
+				if err != nil {
+					return err
+				}
 				fmt.Fprintln(out, string(marshal(struct {
 					Rules []parser.LintRule `json:"rules"`
-				}{Rules: parser.LintRules(parser.GrammarGitmoji)}, true)))
+				}{Rules: parser.LintRules(p.grammar)}, true)))
 				return nil
 			}
 			table, err := loadRules()

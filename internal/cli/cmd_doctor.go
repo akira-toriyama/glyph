@@ -11,7 +11,6 @@ import (
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/doctor"
 	"github.com/akira-toriyama/glyph/internal/gitsource"
-	"github.com/akira-toriyama/glyph/internal/hook"
 	"github.com/spf13/cobra"
 )
 
@@ -125,7 +124,7 @@ func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.H
 	if dirErr != nil {
 		return nil
 	}
-	k := hook.Kinds[0]
+	k := profileKinds()[0]
 	path := filepath.Join(dir, k.Name)
 	body, err := os.ReadFile(path) // #nosec G304 -- the path git itself reported for this checkout
 	if err != nil || string(body) != k.Script {
@@ -221,6 +220,7 @@ func doctorRun(cmd *cobra.Command) error {
 		TokenConfigured: githubToken() != "",
 		HooksDir:        hooksDir,
 		HooksErr:        herr,
+		Profile:         profileName(),
 		CommitMsgProbe:  probe,
 	})
 

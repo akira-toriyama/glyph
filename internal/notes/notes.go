@@ -76,7 +76,7 @@ func Group(commits []Commit, t *gitmoji.Table) ([]Section, error) {
 			if c.SHA != "" {
 				where = " in commit " + c.SHA
 			}
-			return nil, core.Lintf("unknown gitmoji %s%s: not in the embedded rules table (see `glyph rules`)", c.Token, where)
+			return nil, core.Lintf("unknown %s %s%s: not in the embedded rules table (see `%s`)", t.Spec().Token, c.Token, where, t.Spec().Rules)
 		}
 		var title string
 		switch {

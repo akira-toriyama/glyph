@@ -121,6 +121,13 @@ type Input struct {
 	// error with an empty directory cannot happen — git names one or fails.
 	HooksDir string
 	HooksErr error
+	// Profile is the run's commit-grammar profile name ("" means the
+	// default). The hook checks byte-compare the installed scripts against
+	// what THIS profile's install would write, because a conventional repo's
+	// hook legitimately carries the --profile flag and the default profile's
+	// does not — comparing across profiles would report every correctly
+	// installed hook as foreign.
+	Profile string
 	// CommitMsgProbe is the outcome of the caller FIRING the installed
 	// commit-msg hook with a violating message — executed by internal/cli for
 	// the same reason HooksDir is resolved there, and only when the installed
@@ -183,9 +190,9 @@ func Run(in Input) *Report {
 		checkSquashMessage(in),
 		checkWorkflowPins(in.Root),
 		checkCallerPermissions(in.Root),
-		checkHook(hook.Kinds[0], IDCommitMsgHook, in.HooksDir, in.HooksErr),
+		checkHook(hook.Kinds(in.Profile)[0], IDCommitMsgHook, in.HooksDir, in.HooksErr),
 		checkHookFires(in.CommitMsgProbe, in.HooksErr),
-		checkHook(hook.Kinds[1], IDPrePushHook, in.HooksDir, in.HooksErr),
+		checkHook(hook.Kinds(in.Profile)[1], IDPrePushHook, in.HooksDir, in.HooksErr),
 	}}
 	r.OK = true
 	for _, c := range r.Checks {

@@ -579,7 +579,7 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 		// singletons folds to exactly the same list as one call.
 		inner := make([]walked, 0, len(fresh))
 		for i, r := range fresh {
-			one, oerr := participating([]gitsource.RawCommit{r})
+			one, oerr := participating([]gitsource.RawCommit{r}, grammarFor(table))
 			if oerr != nil {
 				return wedgeHint(oerr, owner, repo, number, canonical, onMain(r.SHA, inRange))
 			}
@@ -884,6 +884,29 @@ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.Ra
 // plumbing (which hard-errors on unknown codes, by design) can carry it.
 const gitmojiBoom = ":boom:"
 
+// breakingStandIn is the token an unknown-token breaking commit is normalized
+// to under this table's vocabulary. The gitmoji vocabulary has a canonical
+// breaking code of its own (:boom:); the conventional one deliberately does
+// not — breaking is a modifier there, never a type (DESIGN §3.1) — so the
+// stand-in is the table's first version-moving entry. Membership is ALL the
+// substitution buys: the Breaking flag the commit already carries is what
+// majors the fold and hoists the notes entry, so which known token stands in
+// changes no verdict — it only lets the shared plumbing, which hard-errors on
+// unknown tokens by design, carry the commit at all.
+func breakingStandIn(table *gitmoji.Table) string {
+	if table.Spec().Emoji {
+		return gitmojiBoom
+	}
+	for _, r := range table.Codes {
+		if r.Bump != gitmoji.BumpNone {
+			return r.Code
+		}
+	}
+	// Unreachable for any table Load accepts today (both ship version-moving
+	// entries); the empty string would fail membership downstream, loudly.
+	return ""
+}
+
 // fallbackReason is why a walked commit reached the fallback path: the headline
 // every fallback warning splices in, plus whether the API simply did not know
 // the commit YET (422). The lag flag is not decoration — it decides whether an
@@ -943,7 +966,7 @@ func fallbackCommit(table *gitmoji.Table, raw gitsource.RawCommit, reason fallba
 		}
 		return parser.Commit{}, false // skipped, never a violation
 	}
-	c, perr := parseRaw(raw)
+	c, perr := parseRaw(raw, grammarFor(table))
 	if perr != nil {
 		warnf("commit %.7s %s and its own message does not parse (%v) — counted as none", raw.SHA, reason.why, perr)
 		dropped()
@@ -951,11 +974,12 @@ func fallbackCommit(table *gitmoji.Table, raw gitsource.RawCommit, reason fallba
 	}
 	if _, cerr := bump.Classify(c, table); cerr != nil {
 		if c.Breaking {
-			warnf("commit %.7s %s and its gitmoji %s is not in the rules table, but it carries a breaking marker — counted as a breaking change (%s, major)", raw.SHA, reason.why, c.Token, gitmojiBoom)
-			c.Token = gitmojiBoom
+			standIn := breakingStandIn(table)
+			warnf("commit %.7s %s and its %s %s is not in the rules table, but it carries a breaking marker — counted as a breaking change (as %s, major)", raw.SHA, reason.why, table.Spec().Token, c.Token, standIn)
+			c.Token = standIn
 			return c, true
 		}
-		warnf("commit %.7s %s and its gitmoji %s is not in the rules table — counted as none", raw.SHA, reason.why, c.Token)
+		warnf("commit %.7s %s and its %s %s is not in the rules table — counted as none", raw.SHA, reason.why, table.Spec().Token, c.Token)
 		dropped()
 		return parser.Commit{}, false
 	}

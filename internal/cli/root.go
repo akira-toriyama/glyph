@@ -70,7 +70,12 @@ func newRootCmd() *cobra.Command {
 			"the semantic-version bump and release notes from the individual commits inside a\n" +
 			"pull request — so a squash-merge (which rewrites the squash subject to the PR\n" +
 			"title) can never lose the per-commit types. One binary lints commits, computes\n" +
-			"the next version, and renders notes.",
+			"the next version, and renders notes.\n\n" +
+			"A second commit grammar ships in the same binary: --profile=conventional reads\n" +
+			"Conventional Commits types (`<type>[(scope)][!]: <subject>`) with its own\n" +
+			"embedded type → semver table, sharing the footer semantics, the walk and the\n" +
+			"exit codes. The profile is a flag, never a repo config file, so it is stated\n" +
+			"where the pinned version already is (DESIGN §2.2, §6).",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -82,6 +87,8 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 	root.SetVersionTemplate("glyph {{.Version}}\n")
+	root.PersistentFlags().StringVar(&profileFlag, "profile", defaultProfile,
+		"commit-grammar profile: gitmoji (the default, the fleet's own) or conventional (Conventional Commits types)")
 	root.AddCommand(newVersionCmd(), newRulesCmd(), newLintCmd(), newFmtCmd(), newBumpCmd(), newNotesCmd(), newPreviewCmd(), newReleaseCmd(), newHookCmd(), newDoctorCmd())
 
 	// `completion` is cobra's, not ours, and it arrives with a hole the root's
@@ -112,13 +119,17 @@ func newRootCmd() *cobra.Command {
 	return root
 }
 
-// loadRules loads the embedded gitmoji table for a command. The table is
-// embedded, so a load failure is a build/embedding fault — classified as
-// internal (API), never usage.
+// loadRules loads the selected profile's embedded table for a command. An
+// unknown --profile is usage; a table that fails to load is a build/embedding
+// fault — classified as internal (API), never usage.
 func loadRules() (*gitmoji.Table, error) {
-	table, err := gitmoji.Load()
+	p, err := resolveProfile()
 	if err != nil {
-		return nil, core.APIf("loading gitmoji rules: %v", err)
+		return nil, err
+	}
+	table, err := p.load()
+	if err != nil {
+		return nil, core.APIf("loading %s rules: %v", p.name, err)
 	}
 	return table, nil
 }
