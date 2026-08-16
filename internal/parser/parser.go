@@ -543,10 +543,11 @@ func Parse(message string) (Commit, error) {
 }
 
 // Lint checks one commit message and returns its violations in a stable order:
-// malformed-subject (or the sharper invalid-scope) short-circuits — nothing
-// else is checkable — then unknown-gitmoji, wip-merge-candidate,
-// uppercase-subject, trailing-period, cjk-subject, undeclared-removal. An
-// unknown code is a hard violation here, never a silent fallback.
+// malformed-subject (or the sharper invalid-scope or rendered-gitmoji)
+// short-circuits — nothing else is checkable — then legacy-token,
+// unknown-gitmoji, wip-merge-candidate, uppercase-subject, trailing-period,
+// cjk-subject, undeclared-removal. An unknown code is a hard violation here,
+// never a silent fallback.
 func Lint(message string, opts LintOptions) []Violation {
 	c, err := Parse(message)
 	if err != nil {

@@ -216,8 +216,8 @@ pinned from.
 
 `0` ok · `1` no release-worthy change · `2` usage · `3` convention violation
 (a commit under `lint`, the repository's own configuration under `doctor`) ·
-`4` API/git/IO, including a `release` walk that could not read its range ·
-`130` interrupted.
+`4` API/git/IO, a `release` walk that could not read its range, or a `release`
+write refused off the default branch · `130` interrupted.
 
 The integers are a frozen machine API — CI gates branch on the exact value, so
 assert the code, never truthiness (`if glyph …` cannot tell `3` from `2`).
