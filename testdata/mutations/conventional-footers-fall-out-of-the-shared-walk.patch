@@ -1,0 +1,13 @@
+diff --git a/internal/parser/parser.go b/internal/parser/parser.go
+index 3a86b04..a90fbe2 100644
+--- a/internal/parser/parser.go
++++ b/internal/parser/parser.go
+@@ -606,7 +606,7 @@ func Parse(message string, g Grammar) (Commit, error) {
+ 	// happened to wrap that way — glyph's own history is the proof, since the
+ 	// commit introducing this very rule wrapped onto "BREAKING CHANGE:" while
+ 	// explaining it and classified itself as breaking.
+-	atBlockStart := true
++	atBlockStart := g == GrammarGitmoji
+ 	for _, l := range rest {
+ 		if strings.TrimSpace(l) == "" {
+ 			atBlockStart = true

@@ -1,0 +1,14 @@
+diff --git a/internal/conventional/rules.json b/internal/conventional/rules.json
+index c5b3d76..2bb35e5 100644
+--- a/internal/conventional/rules.json
++++ b/internal/conventional/rules.json
+@@ -23,8 +23,7 @@
+     {
+       "code": "perf",
+       "meaning": "A change that improves performance.",
+-      "bump": "patch",
+-      "section": "Performance"
++      "bump": "none"
+     },
+     {
+       "code": "revert",
