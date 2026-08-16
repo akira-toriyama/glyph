@@ -56,18 +56,21 @@ release as a baseline**.
 
 | command | answer |
 |---|---|
-| `glyph lint` | commit-convention gate over `--range`, one `--message`, or `--stdin`; findings carry stable rule ids for machines (`--json`) |
+| `glyph lint` | commit-convention gate over `--range`, one `--message`, `--stdin`, or a PR title via `--pr` (the subject a squash merge lands); findings carry stable rule ids for machines (`--json`) |
+| `glyph fmt` | the corrected message, printed to paste — lint's mechanical fixes applied at once; a clean message prints unchanged, and a violation with no mechanical fix is a refusal at exit 3, never a best-effort line |
 | `glyph bump` | the next version — or **"no release"** — from `--range`, `--pr`, or the release-time walk `--since-tag` |
 | `glyph notes` | the release-notes body: commits grouped under their gitmoji's section, breaking changes hoisted |
-| `glyph release` | upserts one rolling **draft** release (tag, target, body); publishing — and therefore the tag — stays a human act |
-| `glyph preview` | the whole merge-preview comment for a PR: what merging it does to the version, with the evidence |
+| `glyph release` | upserts one rolling **draft** release (tag, target, body — `--footer-file` appends a per-repo Markdown footer); publishing — and therefore the tag — stays a human act |
+| `glyph preview` | the whole merge-preview comment for a PR: what merging it does to the version, with the evidence; `--notes` folds the release-notes preview in |
 | `glyph doctor` | read-only checks that the repository still matches what glyph assumes; each failing check prints the command that fixes it |
 | `glyph hook install` | local `commit-msg` and `pre-push` hooks that run the same lint the CI gate runs |
 | `glyph rules` | the embedded gitmoji → semver table (`--md`, or `--json` for the raw `rules.json`); `--lint` lists every lint `rule` id with `merge_candidate_only` |
+| `glyph version` | the build identity — release tag, commit, build date; the one command that reaches nothing (no git, no API), so it answers anywhere |
 
-`lint --range/--message/--stdin` works offline against local git alone. The
-PR and release-walk inputs (`--pr`, `--since-tag`, `release`, `preview`,
-`doctor`) read the GitHub API; in GitHub Actions no flags are needed —
+`lint --range/--message/--stdin` and `fmt` work offline against local git
+alone. The PR and release-walk inputs (`--pr` — on `lint` as much as on
+`bump` — `--since-tag`, `release`, `preview`, `doctor`) read the GitHub API;
+in GitHub Actions no flags are needed —
 `--repo` defaults to `$GITHUB_REPOSITORY`, the API host to `$GITHUB_API_URL`
 (so a GitHub Enterprise runner just works), and the credential to
 `$GITHUB_TOKEN` (else `$GH_TOKEN`).
