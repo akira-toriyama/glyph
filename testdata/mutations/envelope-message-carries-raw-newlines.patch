@@ -1,0 +1,13 @@
+diff --git a/internal/cli/output.go b/internal/cli/output.go
+index c44935c..ab4d9bc 100644
+--- a/internal/cli/output.go
++++ b/internal/cli/output.go
+@@ -107,7 +107,7 @@ func oneLine(s string) string {
+ 			parts = append(parts, t)
+ 		}
+ 	}
+-	return strings.Join(parts, " ")
++	return strings.Join(parts, "\n")
+ }
+ 
+ // renderError prints a structured error to stderr as {"error":{...}} so a caller

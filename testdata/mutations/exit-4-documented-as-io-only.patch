@@ -1,13 +1,15 @@
 diff --git a/README.md b/README.md
-index 530ff56..5404006 100644
+index 621d3cd..61c1c38 100644
 --- a/README.md
 +++ b/README.md
-@@ -189,7 +189,7 @@ pinned from.
+@@ -219,8 +219,8 @@ pinned from.
  
  `0` ok · `1` no release-worthy change · `2` usage · `3` convention violation
  (a commit under `lint`, the repository's own configuration under `doctor`) ·
--`4` API/git/IO, including a `release` walk that could not read its range ·
+-`4` API/git/IO, a `release` walk that could not read its range, or a `release`
+-write refused off the default branch · `130` interrupted.
 +`4` API/git/IO ·
- `130` interrupted.
++`130` interrupted.
  
  The integers are a frozen machine API — CI gates branch on the exact value, so
+ assert the code, never truthiness (`if glyph …` cannot tell `3` from `2`).
