@@ -61,6 +61,16 @@ runtime import, per house pattern.)
 
 ## 2. Commit format
 
+glyph speaks two commit grammars, called **profiles**: **`gitmoji`** — the
+default, the fleet's own, and the subject of the rest of this section — and
+**`conventional`** (§2.2), ratified 2026-08-16 for company repositories where a
+gitmoji vocabulary cannot be imposed. A profile bundles the three things a
+vocabulary owns — the subject grammar, the token → bump table (§3), and the
+lint rules that only make sense inside that vocabulary — and nothing else:
+footer semantics, body rules, git's cleanup (§2.1), the walk, the fold and the
+exit codes are one implementation both profiles share. How a run selects its
+profile is a distribution question and lives in §6.
+
 ```
 <:code:>[(<scope>)][!] <subject>
 ```
@@ -108,7 +118,12 @@ makes the same token a **hard error** (`legacy-token`, in the list below):
 since v1.0.0 the convention is one grammar and new history carries zero
 migration debt — ratified 2026-07-21, shipped only after the machines that
 wrote the retired form fleet-wide were silenced first (t-271n), so the rule
-never fires on a commit a bot is still producing.
+never fires on a commit a bot is still producing. Re-ratified 2026-08-16,
+narrower and unchanged in force: "one grammar" means one grammar **per
+profile**. The rule's intent was always the detection of vocabulary bleed, not
+a judgement on the Conventional form as such — the same token this rule
+hard-errors on is the conventional profile's canonical grammar, and that
+profile carries the mirror-image guard pointing the other way (§2.2).
 
 Linter shape check (membership is checked in code against the embedded table):
 
@@ -118,7 +133,9 @@ Linter shape check (membership is checked in code against the embedded table):
 
 An unknown `:code:` is a **hard lint error (exit 3)**, never a silent patch.
 
-The complete rule set, in the order `parser.Lint` evaluates it. Every id is
+The complete rule set of the gitmoji profile, in the order `parser.Lint`
+evaluates it — §2.2 states the conventional profile's vocabulary as a delta
+over this list. Every id is
 **machine API** — branch on the id, never on the prose — and so is the finding's
 `fix` field: where a repair is mechanical (the retired token, casing, trailing
 periods, a lowercasable scope), the violation carries the corrected subject
@@ -287,6 +304,91 @@ the COMMAND LINE reaches neither the config nor the environment (measured), so a
 per-commit override is invisible to the hook and the message is judged under the
 repository's mode. Same for `core.commentChar`: glyph assumes `#`.
 
+### 2.2 The conventional profile (ratified 2026-08-16)
+
+```
+<type>[(<scope>)][!]: <subject>
+```
+
+Conventional Commits' own form, chosen over a second in-house token set because
+the profile exists for company repositories whose authors should have to learn
+nothing: the motive is zero imposed vocabulary, and an invented one would
+rebuild exactly the cost being removed. The type vocabulary is closed —
+`feat fix perf revert docs style refactor test build ci chore`, eleven types,
+pinned by a `TypeCount = 11` the way `CodeCount = 75` pins the gitmoji table —
+and it is, measured 2026-08-16, identical to the retired-token vocabulary
+`legacyTokenRE` already recognises and to commitlint's config-conventional
+type-enum, so an author arriving from either recognises every token.
+
+What differs from the gitmoji grammar, and everything that does not:
+
+- the type plays the code's role and the type-colon replaces the gitmoji's own
+  trailing colon (`feat(cli)!: x`), with `!` before the colon as the
+  Conventional spec places it. Type membership is checked the way code
+  membership is — injected, the shape check open — so the parser stays
+  table-blind in both profiles and an unknown type is the same hard error an
+  unknown gitmoji is, never a silent fallback.
+- the scope rule is the same lowercase kebab. The Conventional spec does not
+  regulate scope shape, so this is a house rule carried across on purpose: an
+  author moving between a fleet repo and a company repo keeps one habit, and
+  `invalid-scope` keeps firing with the same sharpened message.
+- subject style is shared: imperative, lowercase start, no trailing period,
+  English — `uppercase-subject`, `trailing-period` and `cjk-subject` fire
+  unchanged, and the `fmt` fix machinery composes the same corrected line.
+- **footer semantics are shared verbatim** — `BREAKING CHANGE:` /
+  `BREAKING-CHANGE:`, `NON-BREAKING:`, the trailer-block placement rules, the
+  colon-less closing-keyword forms. This was nearly ratified the other way
+  ("subject-only, `!` alone means breaking") on the belief that the current
+  parser model closes its decision in the subject line; measured 2026-08-16,
+  that belief was false — the footer walk in `Parse` is independent of the
+  subject grammar and already classifies footers under the gitmoji profile.
+  Dropping footers from one profile is therefore what would SPLIT the two
+  profiles' verdicts on an identical body — the opposite of the parity this
+  profile exists to keep. `NON-BREAKING:` still parses here and changes no
+  verdict (the one rule that reads it is gitmoji-only, below); the asymmetry
+  is in the rules that consume the record, not in what is recorded.
+
+The lint vocabulary, as a delta over the list above. Shared and firing
+identically: `malformed-subject`, `invalid-scope`, `uppercase-subject`,
+`trailing-period`, `cjk-subject`. Read across with the obvious substitution:
+the membership rule, under the new id `unknown-type` — a new id rather than a
+reused one, because `unknown-gitmoji` naming a type would lie to the machine
+that branches on it. New, the mirror image of `legacy-token`: `gitmoji-token`,
+sharpening `malformed-subject` when a conventional-profile subject opens with
+a textual `:code:`-shaped token — the same vocabulary-bleed detection, pointing
+the other way, and shape-checked only (deciding whether the code is a KNOWN
+gitmoji would make this profile load the other profile's table to lint its
+own commits). Absent, each with its reason:
+
+| gitmoji-profile rule | why it has no conventional counterpart |
+|---|---|
+| `legacy-token` | the token it retires IS this profile's grammar; bleed detection here is `gitmoji-token` |
+| `rendered-gitmoji` | diagnoses a misspelt gitmoji; there is no gitmoji to misspell |
+| `wip-merge-candidate` | no WIP type exists — Conventional has nothing playing `:construction:` |
+| `undeclared-removal` | no removal types exist, so the question cannot be asked — next paragraph |
+
+The absence of `undeclared-removal` is the one to respect rather than admire:
+the Conventional vocabulary cannot mark a removal, so the sill incident class —
+a public symbol pruned inside a feature PR, shipped minor, breaking a
+downstream consumer (t-n158) — is unguardable in this profile. A `refactor:`
+that deletes public API and says nothing ships a none. Accepted with eyes
+open: the profile's ratified scope is lint + bump for repositories that never
+had the guard either, and the honest reading is an argument FOR the gitmoji
+profile, not a defect to fix by inventing a `removal` type no Conventional
+author would ever write unprompted.
+
+The new ids above are ratified vocabulary stated ahead of their code; their
+canonical bullets join the §2 list in the change that adds their `Rule*`
+constants, which is the shape `TestDesignDocNamesEveryRuleID` holds the list
+to.
+
+One dogfood fact, named because §8 names the smaller version of it: the fleet
+stays on the gitmoji profile, so no commit in this repository's own CI ever
+exercises the conventional grammar end-to-end. The compensations are
+structural — a parity suite and mutation-ledger rows on the glyph side, a
+live-fire repository on the fleet side — and the epic's closing condition is a
+company repository actually running the profile, not a green suite here.
+
 ## 3. gitmoji → semver
 
 Lattice: `none(0) < patch(1) < minor(2) < major(3)`. Default-none. Every gitmoji
@@ -319,6 +421,51 @@ reverting one fails the suite rather than quietly changing every repo's bump:
 `:wrench:`→none and `:alembic:`→none (fleet config / experiments are
 non-shipping); `:thread:` / `:safety_vest:` / `:airplane:` / `:t-rex:`→patch (each
 changes shipped runtime behavior the spec leaves `null`).
+
+### 3.1 The conventional table (ratified 2026-08-16)
+
+Same lattice, same default-none, same fold, same non-suppressible breaking flag
+— with one less trigger: the conventional vocabulary has no `:boom:`, so
+breaking is `!` or the footer, exactly the two the Conventional spec defines.
+Every type is explicitly enumerated, and the table is **derived, not
+designed**: each type takes the bump and section of its canonical gitmoji
+counterpart, so the two tables cannot quietly embody two philosophies — a
+dispute about a conventional row is a dispute about the gitmoji row it derives
+from, and the arguments above settle both.
+
+| type | bump | section | counterpart |
+|------|------|---------|-------------|
+| `feat` | minor | Features | `:sparkles:` |
+| `fix` | patch | Fixes | `:bug:` |
+| `perf` | patch | Performance | `:zap:` |
+| `revert` | patch | Reverts | `:rewind:` |
+| `docs` | none | — | `:memo:` |
+| `style` | none | — | `:art:` |
+| `refactor` | none | — | `:recycle:` |
+| `test` | none | — | `:white_check_mark:` |
+| `build` | none | — | `:construction_worker:` |
+| `ci` | none | — | `:green_heart:` |
+| `chore` | none | — | `:hammer:` |
+
+Where the industry splits, the derivation decides: `perf` → patch sides with
+semantic-release and `:zap:` against convco's default none; `revert` → patch
+sides with everyone and `:rewind:`. The row that costs something is **`build`
+→ none**. The gitmoji table classifies dependency changes patch — six codes
+and a Dependencies section, because a vendored dependency changes the shipped
+binary — while the Conventional vocabulary folds dependency bumps under
+`build`/`chore` (Dependabot's own spelling), and this table maps both none. A
+dependency upgrade that changes shipped behaviour must therefore say so itself
+— `fix`, `feat`, or `!` — or ride along until the next version-moving commit.
+Ratified as accepted coarseness rather than patched, because the repair would
+be a bump keyed on the scope slot (`build(deps)` → patch), which makes a
+free-form label semantic in exactly one cell of one profile's table — and a
+scope suddenly load-bearing is drift no author would predict.
+
+`sections[]` is shared: conventional rows draw from the gitmoji section list,
+no new names. The ratified company scope is lint + bump — notes and the
+rolling draft are not required — but a row that already carries its section
+means turning notes on later is a decision, not a data migration. Version
+stepping, 0.x included, is shared and makes no new decision here.
 
 ## 4. Squash-safe mechanism — release-time re-read (stateless)
 
@@ -851,6 +998,24 @@ caller gates fail-safe on `""` (#155). The draft's URL is deliberately
 withheld: with the API handle in hand, auto-publishing the draft is a two-line
 caller step, and the human act of publishing — the safety net everything above
 rests on — stays structurally out of a caller's reach.
+
+**Profile selection (ratified 2026-08-16) is a flag, not a file in the repo:**
+`--profile={gitmoji|conventional}`, default `gitmoji`, on every command that
+reads a rules table, both tables embedded in the one binary — "rules ship
+inside the binary" (this section's opening sentence) now covers two tables
+instead of one and is re-ratified unchanged. Surveyed before ratifying
+(shallow clones, 2026-08-16): all six comparable tools — commitlint,
+semantic-release, cocogitto, convco, git-cliff, release-please — select their
+vocabulary through a per-repository config file, which is exactly the
+synced-table drift that opening sentence refuses; the survey made the
+no-config stance a deliberate differentiation rather than an omission. glyph's
+callers already state a pinned tag at every use site, and the profile rides
+the same sites: the three reusables take a `profile` input (default
+`gitmoji`) a company caller sets once beside its pin, and
+`hook install --profile=…` interpolates the flag into the hook it writes, the
+way the hook already interpolates its gate exit code. A repository therefore
+cannot drift into a profile nobody chose — the choice sits where the version
+already sits, in the caller's own pinned file, reviewed like any pin move.
 
 The install itself — download the pinned tarball, verify it against the
 release's `checksums.txt` AND its build provenance (`gh attestation verify`,
