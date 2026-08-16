@@ -536,7 +536,7 @@ func IsRepoUnknown(err error) bool {
 // job would read that as "the operator stopped me" instead of "the API died".
 func failed(ctx context.Context, what string, err error) error {
 	if errors.Is(ctx.Err(), context.Canceled) {
-		return &core.Error{Code: core.CodeInterrupted, Msg: "interrupted", Silent: true}
+		return core.Interrupted()
 	}
 	// A redirect verdict comes back through this same door (http.Client.Do wraps
 	// CheckRedirect's error in a *url.Error), and it is already a finished,

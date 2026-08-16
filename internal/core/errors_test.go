@@ -61,6 +61,25 @@ func TestErrorFields(t *testing.T) {
 	}
 }
 
+// Interrupted's whole contract is that both writing sides emit the SAME error:
+// CodeInterrupted, the constant message, and Silent — the operator caused the
+// stop, so the envelope must stay quiet and the exit code carries the verdict.
+func TestInterrupted(t *testing.T) {
+	e := Interrupted()
+	if e.Code != CodeInterrupted {
+		t.Errorf("Code = %d, want %d", int(e.Code), int(CodeInterrupted))
+	}
+	if e.Error() != "interrupted" {
+		t.Errorf("Error() = %q, want %q", e.Error(), "interrupted")
+	}
+	if !e.Silent {
+		t.Error("Silent = false, want true — a silent exit is the builder's whole point")
+	}
+	if !IsInterrupted(e) {
+		t.Error("IsInterrupted(Interrupted()) = false — the writer and the reader disagree")
+	}
+}
+
 func TestAsError(t *testing.T) {
 	le := Lintf("x")
 	if got := AsError(fmt.Errorf("wrap: %w", le)); got != le {

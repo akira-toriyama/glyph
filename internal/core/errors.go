@@ -90,6 +90,17 @@ func NoReleasef(format string, a ...any) *Error {
 	return &Error{Code: CodeNoRelease, Msg: fmt.Sprintf(format, a...)}
 }
 
+// Interrupted builds THE CodeInterrupted error: constant message, always
+// Silent — the operator caused the stop, so the exit code (130) is the whole
+// verdict and the stderr envelope stays quiet. Deliberately not a format
+// builder like the others: the writing sides (internal/gitsource,
+// internal/github) had hand-written byte-identical literals, and IsInterrupted
+// already argues that the reading sides must stay one question — a format
+// parameter here is how the writing sides would drift apart again.
+func Interrupted() *Error {
+	return &Error{Code: CodeInterrupted, Msg: "interrupted", Silent: true}
+}
+
 // ExitCode resolves any error to a process exit code. nil -> 0; a *core.Error
 // anywhere in the chain -> its Code; anything else -> CodeAPI.
 //
