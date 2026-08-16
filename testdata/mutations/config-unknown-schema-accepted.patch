@@ -1,0 +1,14 @@
+diff --git a/internal/config/config.go b/internal/config/config.go
+index 513f569..b16e566 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -196,9 +196,6 @@ func Load(data []byte) (*Config, error) {
+ 	if r.Schema == nil {
+ 		return nil, fmt.Errorf("schema is required (this glyph understands schema = %d)", Schema)
+ 	}
+-	if *r.Schema != Schema {
+-		return nil, fmt.Errorf("unsupported schema = %d (this glyph understands schema = %d); refusing to guess what its fields mean", *r.Schema, Schema)
+-	}
+ 
+ 	if len(r.Patterns) == 0 {
+ 		return nil, fmt.Errorf("at least one [[patterns]] entry is required: without one, no commit can ever match and every range is refused")
