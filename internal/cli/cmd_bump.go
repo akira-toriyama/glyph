@@ -160,7 +160,7 @@ func classifyVerdict(parsed []parser.Commit, table *gitmoji.Table) ([]bumpCommit
 func bumpInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, string, *bump.Version, error) {
 	ctx := cmd.Context()
 	if cmd.Flags().Changed("pr") {
-		commits, source, err := pullInput(ctx, bumpPR, bumpRepo)
+		commits, source, err := pullInput(ctx, bumpPR, bumpRepo, grammarFor(table))
 		return commits, source, nil, err
 	}
 	if cmd.Flags().Changed("since-tag") {
@@ -181,7 +181,7 @@ func bumpInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, strin
 	if err := checkRangeFlag(bumpRange); err != nil {
 		return nil, "", nil, err
 	}
-	commits, err := participatingCommits(ctx, bumpRange)
+	commits, err := participatingCommits(ctx, bumpRange, grammarFor(table))
 	return commits, bumpRange, nil, err
 }
 

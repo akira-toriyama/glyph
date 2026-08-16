@@ -29,7 +29,7 @@ func TestHookInstallWritesIntoTheGitHooksDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hook was not written to .git/hooks: %v", err)
 	}
-	if string(got) != hook.Script {
+	if string(got) != hook.Kinds("")[0].Script {
 		t.Error("installed hook does not match hook.Script")
 	}
 }
@@ -85,7 +85,7 @@ func TestHookInstallPrintDoesNotWrite(t *testing.T) {
 	if code != int(core.CodeOK) {
 		t.Fatalf("exit = %d, want 0\nstderr: %s", code, stderr)
 	}
-	if stdout != hook.Script {
+	if stdout != hook.Kinds("")[0].Script {
 		t.Error("--print did not emit the script verbatim on stdout")
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".git", "hooks", "commit-msg")); err == nil {
@@ -374,7 +374,7 @@ func TestStaleHookIsReportedWhenTheHookItselfRuns(t *testing.T) {
 		wantWarn bool
 	}{
 		"a glyph hook that has drifted": {body: stale, wantWarn: true},
-		"the current hook":              {body: hook.Script, wantWarn: false},
+		"the current hook":              {body: hook.Kinds("")[0].Script, wantWarn: false},
 		"somebody else's hook":          {body: "#!/bin/sh\nexit 0\n", wantWarn: false},
 	} {
 		t.Run(name, func(t *testing.T) {

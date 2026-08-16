@@ -44,7 +44,7 @@ var spec = gitmoji.Spec{
 	TokenRE: regexp.MustCompile(`^[a-z][a-z0-9-]*$`),
 	Emoji:   false,
 	Title:   "conventional type → semver",
-	Command: "glyph rules --profile=conventional --md",
+	Rules:   "glyph rules --profile=conventional",
 }
 
 // Load parses and validates the embedded conventional table. It fails if the

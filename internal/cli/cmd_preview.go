@@ -79,7 +79,7 @@ func previewRun(cmd *cobra.Command) error {
 	}
 
 	// The PR side: pure API, bounded by the PR's own commits.
-	parsed, _, perr := pullInput(ctx, previewPR, previewRepo)
+	parsed, _, perr := pullInput(ctx, previewPR, previewRepo, grammarFor(table))
 	if perr != nil {
 		return perr
 	}

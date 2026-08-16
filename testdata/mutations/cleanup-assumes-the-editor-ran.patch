@@ -1,11 +1,11 @@
 diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
-index dd6e4c3..1b459d6 100644
+index 9d78928..62c54d2 100644
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -95,7 +95,7 @@ func newLintCmd() *cobra.Command {
+@@ -96,7 +96,7 @@ func newLintCmd() *cobra.Command {
  				// The hook that called this is also the one artefact nothing
  				// refreshes, so its own run is where a drifted copy is reported.
- 				warnIfHookStale(cmd.Context(), hook.Kinds[0])
+ 				warnIfHookStale(cmd.Context(), profileKinds()[0])
 -				return lintOne(parser.Cleanup(string(b), hookCleanupMode(cmd.Context())), opts)
 +				return lintOne(parser.Cleanup(string(b), parser.CleanupMode{Space: true, Comments: true, Truncate: true}), opts)
  			case cmd.Flags().Changed("message"):

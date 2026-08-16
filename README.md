@@ -231,6 +231,32 @@ self-printed by `glyph rules` — `--md` (the default) renders the same table as
 embedded `rules.json` verbatim. Both name the gitmoji-spec snapshot they were
 pinned from.
 
+### The conventional profile
+
+A second grammar ships in the same binary, for repositories where a gitmoji
+vocabulary cannot be imposed (ratified 2026-08-16, DESIGN §2.2):
+
+```
+<type>[(<scope>)][!]: <subject>          # --profile=conventional
+```
+
+The eleven Conventional Commits types (`feat fix perf revert docs style
+refactor test build ci chore`) carry their own embedded type → semver table —
+each row derived from its gitmoji counterpart (`feat` minors as `:sparkles:`
+does, `fix` patches as `:bug:` does) and self-printed by
+`glyph rules --profile=conventional` (the same table as
+[`docs/conventional-table.md`](docs/conventional-table.md)). Footer semantics,
+the release walk, the fold and the exit codes are shared: a `BREAKING CHANGE:`
+footer majors identically under both grammars, and there is no `:boom:`
+counterpart — breaking is `!` or the footer, exactly the two the Conventional
+spec defines.
+
+The profile is a **flag, never a repo config file**: `--profile=conventional`
+on any command that reads rules, and `glyph hook install --profile=conventional`
+to spell it into the git hooks it writes — so the choice sits where the pinned
+version already sits, reviewed like any pin move. The default is `gitmoji`
+everywhere; a repository that says nothing keeps meaning what it always meant.
+
 ## Exit codes
 
 `0` ok · `1` no release-worthy change · `2` usage · `3` convention violation

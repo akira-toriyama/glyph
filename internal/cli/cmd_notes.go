@@ -63,7 +63,7 @@ func newNotesCmd() *cobra.Command {
 func notesInput(cmd *cobra.Command, table *gitmoji.Table) ([]notes.Commit, string, error) {
 	ctx := cmd.Context()
 	if cmd.Flags().Changed("pr") {
-		commits, source, err := pullInput(ctx, notesPR, notesRepo)
+		commits, source, err := pullInput(ctx, notesPR, notesRepo, grammarFor(table))
 		return withPull(commits, notesPR), source, err
 	}
 	if cmd.Flags().Changed("since-tag") {
@@ -77,7 +77,7 @@ func notesInput(cmd *cobra.Command, table *gitmoji.Table) ([]notes.Commit, strin
 	if err := checkRangeFlag(notesRange); err != nil {
 		return nil, "", err
 	}
-	commits, err := participatingCommits(ctx, notesRange)
+	commits, err := participatingCommits(ctx, notesRange, grammarFor(table))
 	return withPull(commits, 0), notesRange, err
 }
 
