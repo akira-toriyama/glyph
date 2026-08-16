@@ -1,0 +1,13 @@
+diff --git a/internal/draftplan/draftplan.go b/internal/draftplan/draftplan.go
+index 24dfeee..4f1fb02 100644
+--- a/internal/draftplan/draftplan.go
++++ b/internal/draftplan/draftplan.go
+@@ -95,7 +95,7 @@ func managed(releases []Draft) []Draft {
+ func PlanDraft(level gitmoji.Bump, nextTag string, draftOnNone bool, releases []Draft) Plan {
+ 	drafts := managed(releases)
+ 
+-	if level == gitmoji.BumpNone && !draftOnNone {
++	if level == gitmoji.BumpNone {
+ 		if len(drafts) == 0 {
+ 			return Plan{Action: ActionNone}
+ 		}

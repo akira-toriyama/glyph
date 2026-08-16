@@ -838,6 +838,7 @@ internal/conventional    //go:embed rules.json — the conventional profile's ty
 internal/parser          Commit{Gitmoji,Scope,Breaking,NonBreaking,Subject,Body,SHA,Author}
 internal/bump            Level lattice; Classify; Reduce(max); Next; stdlib semver
 internal/config          v2 glyph.toml loader — user RE2 patterns, first match wins, semver_sigil extraction (epic e-qzpz; not yet wired to any command)
+internal/draftplan       v2 draft convergence — pure; which draft a verdict keeps, retags or deletes (the Unreleased placeholder lives here; not yet wired)
 internal/markdown        Line: per-field escape, then the mention fence over the assembled line
 internal/notes           group by section; text/template render (no external tmpl dep)
 internal/preview         merge-preview comment body — pure; no git, no API, no clock
