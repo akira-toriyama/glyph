@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 0bb03bc..a36810e 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -54,7 +54,7 @@ func LogRevs(ctx context.Context, dir string, revs []string) ([]RawCommit, error
+ 	if len(revs) == 0 {
+ 		return nil, nil
+ 	}
+-	args := append([]string{"log", "-z", "--reverse", "--format=" + logFormat, "--end-of-options"}, revs...)
++	args := append([]string{"log", "-z", "--reverse", "--first-parent", "--format=" + logFormat, "--end-of-options"}, revs...)
+ 	out, err := run(ctx, dir, append(args, "--")...)
+ 	if err != nil {
+ 		return nil, err

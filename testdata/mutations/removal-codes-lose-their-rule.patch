@@ -1,0 +1,17 @@
+diff --git a/internal/parser/parser.go b/internal/parser/parser.go
+index 112f80a..35889fa 100644
+--- a/internal/parser/parser.go
++++ b/internal/parser/parser.go
+@@ -705,11 +705,7 @@ func firstCJKRune(s string) rune {
+ // glyph cannot know whether the removed symbol was public — that is the
+ // consuming repo's knowledge, and an API-diff tool's job. What it CAN do is
+ // refuse to let the question go unanswered, which is all this rule does.
+-var removalCodes = map[string]bool{
+-	":fire:":   true, // Remove code or files.
+-	":coffin:": true, // Remove dead code.
+-	":truck:":  true, // Move or rename resources.
+-}
++var removalCodes = map[string]bool{}
+ 
+ // splitLines splits a message on \n and drops a trailing \r per line, so CRLF
+ // input parses identically to LF input.
