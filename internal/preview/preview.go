@@ -142,6 +142,21 @@ func Headline(in Input) string {
 	}
 }
 
+// codeCell renders one commit's token for the verdict table. A textual
+// gitmoji is printed twice on purpose — GitHub renders the bare `:code:` as
+// its glyph, so the pair reads "✨ `:sparkles:`": the picture and the literal
+// an author would type. A conventional type has no rendered form, and the
+// same pair printed "feat `feat`" — the literal twice — measured on
+// glyph-test2's first verdict comment, so a token that is not colon-wrapped
+// gets the backticked literal alone. Shape-checked, not table-checked: the
+// preview is pure and must stay ignorant of which vocabulary it is rendering.
+func codeCell(code string) string {
+	if strings.HasPrefix(code, ":") && strings.HasSuffix(code, ":") && len(code) > 2 {
+		return code + " `" + code + "`"
+	}
+	return "`" + code + "`"
+}
+
 // escapeCell makes a commit subject safe in a Markdown table cell: it is
 // flattened to one line, its structure-injecting constructs are disarmed,
 // would-be @mentions are fenced into code spans, and the column separator is
@@ -193,7 +208,7 @@ func Render(in Input) string {
 			if c.Breaking {
 				breaking = " 💥"
 			}
-			fmt.Fprintf(&b, "| %s | %s `%s` | %s%s |\n", escapeCell(c.Subject), c.Code, c.Code, c.Level, breaking)
+			fmt.Fprintf(&b, "| %s | %s | %s%s |\n", escapeCell(c.Subject), codeCell(c.Code), c.Level, breaking)
 		}
 	}
 

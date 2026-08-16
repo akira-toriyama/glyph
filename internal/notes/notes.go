@@ -182,7 +182,15 @@ var tmpl = template.Must(template.New("notes").Funcs(template.FuncMap{
 // there is nothing left in the template to add one to.
 func entryLine(e Entry) string {
 	var l markdown.Line
-	l.Raw("- " + e.Emoji + " ")
+	// The emoji is one vocabulary's ornament, not the line's skeleton: a
+	// conventional entry has none (its table says so), and rendering the
+	// empty slot anyway left a double space after the dash on every line of
+	// a conventional repo's notes — measured on glyph-test2's first draft.
+	if e.Emoji != "" {
+		l.Raw("- " + e.Emoji + " ")
+	} else {
+		l.Raw("- ")
+	}
 	if e.Scope != "" {
 		l.Raw("**")
 		l.Text(e.Scope)
