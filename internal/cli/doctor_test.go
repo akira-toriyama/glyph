@@ -193,7 +193,7 @@ func TestDoctorHealthyRepositoryPasses(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("doctor on a healthy repository exited %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	if !strings.Contains(stdout, "10 checks: 10 pass, 0 fail, 0 advice, 0 could not run") {
+	if !strings.Contains(stdout, "11 checks: 11 pass, 0 fail, 0 advice, 0 could not run") {
 		t.Errorf("summary line missing or wrong:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "read-only") {
@@ -214,6 +214,7 @@ func TestDoctorJSONShape(t *testing.T) {
 	}
 	want := []string{
 		"token-repo-read",
+		"token-repo-write",
 		"squash-merge-enabled",
 		"merge-commit-enabled",
 		"rebase-merge-enabled",
@@ -245,8 +246,8 @@ func TestDoctorJSONShape(t *testing.T) {
 	if rep.Repo != "akira-toriyama/glyph" {
 		t.Errorf("repo = %q, want the diagnosed repository", rep.Repo)
 	}
-	if !rep.OK || rep.Counts.Pass != 10 {
-		t.Errorf("counts = %+v ok=%t, want 10 pass and ok", rep.Counts, rep.OK)
+	if !rep.OK || rep.Counts.Pass != 11 {
+		t.Errorf("counts = %+v ok=%t, want 11 pass and ok", rep.Counts, rep.OK)
 	}
 }
 
@@ -433,7 +434,7 @@ func TestDoctorMergeMethodsAreAdviceNotFailure(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("permissive merge methods exited %d, want 0 — a house convention is not a gate", code)
 	}
-	if !strings.Contains(stdout, "8 pass, 0 fail, 2 advice") {
+	if !strings.Contains(stdout, "9 pass, 0 fail, 2 advice") {
 		t.Errorf("merge and rebase must report as advice:\n%s", stdout)
 	}
 	if strings.Count(stderr, "::notice::") != 2 {
@@ -584,8 +585,8 @@ func TestDoctorUnansweredAPIIsCouldNotRunNotAViolation(t *testing.T) {
 	if rep.Counts.Fail != 0 {
 		t.Errorf("counts = %+v, want 0 fail — a report that says '0 fail' must not exit on a failure", rep.Counts)
 	}
-	if rep.Counts.Unknown != 6 {
-		t.Errorf("counts = %+v, want the 6 API-backed checks unknown (the local pin check still ran)", rep.Counts)
+	if rep.Counts.Unknown != 7 {
+		t.Errorf("counts = %+v, want the 7 API-backed checks unknown (the local pin check still ran)", rep.Counts)
 	}
 	if got := status(t, rep, "workflow-glyph-pins"); got != "pass" {
 		t.Errorf("workflow-glyph-pins = %s, want pass — it needs no API at all", got)
