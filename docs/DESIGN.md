@@ -63,8 +63,9 @@ runtime import, per house pattern.)
 
 glyph speaks two commit grammars, called **profiles**: **`gitmoji`** — the
 default, the fleet's own, and the subject of the rest of this section — and
-**`conventional`** (§2.2), ratified 2026-08-16 for company repositories where a
-gitmoji vocabulary cannot be imposed. A profile bundles the three things a
+**`conventional`** (§2.2), ratified 2026-08-16 for adopter repositories —
+external organizations taking glyph up — where a gitmoji vocabulary cannot be
+imposed. A profile bundles the three things a
 vocabulary owns — the subject grammar, the token → bump table (§3), and the
 lint rules that only make sense inside that vocabulary — and nothing else:
 footer semantics, body rules, git's cleanup (§2.1), the walk, the fold and the
@@ -311,7 +312,7 @@ repository's mode. Same for `core.commentChar`: glyph assumes `#`.
 ```
 
 Conventional Commits' own form, chosen over a second in-house token set because
-the profile exists for company repositories whose authors should have to learn
+the profile exists for adopter repositories whose authors should have to learn
 nothing: the motive is zero imposed vocabulary, and an invented one would
 rebuild exactly the cost being removed. The type vocabulary is closed —
 `feat fix perf revert docs style refactor test build ci chore`, eleven types,
@@ -330,7 +331,7 @@ What differs from the gitmoji grammar, and everything that does not:
   unknown gitmoji is, never a silent fallback.
 - the scope rule is the same lowercase kebab. The Conventional spec does not
   regulate scope shape, so this is a house rule carried across on purpose: an
-  author moving between a fleet repo and a company repo keeps one habit, and
+  author moving between a fleet repo and an adopter repo keeps one habit, and
   `invalid-scope` keeps firing with the same sharpened message.
 - subject style is shared: imperative, lowercase start, no trailing period,
   English — `uppercase-subject`, `trailing-period` and `cjk-subject` fire
@@ -390,8 +391,11 @@ One dogfood fact, named because §8 names the smaller version of it: the fleet
 stays on the gitmoji profile, so no commit in this repository's own CI ever
 exercises the conventional grammar end-to-end. The compensations are
 structural — a parity suite and mutation-ledger rows on the glyph side, a
-live-fire repository on the fleet side — and the epic's closing condition is a
-company repository actually running the profile, not a green suite here.
+live-fire repository on the fleet side. An adopter actually running the
+profile would close the gap outright, but adoption is the adopter's decision,
+not a milestone this repository can schedule — the live-fire repository is the
+standing mitigation (a closing condition demanding a live adopter was ratified
+2026-08-16 and withdrawn 2026-08-17 as unschedulable).
 
 ## 3. gitmoji → semver
 
@@ -466,7 +470,7 @@ free-form label semantic in exactly one cell of one profile's table — and a
 scope suddenly load-bearing is drift no author would predict.
 
 `sections[]` is shared: conventional rows draw from the gitmoji section list,
-no new names. The ratified company scope is lint + bump — notes and the
+no new names. The ratified adopter scope is lint + bump — notes and the
 rolling draft are not required — but a row that already carries its section
 means turning notes on later is a decision, not a data migration. Version
 stepping, 0.x included, is shared and makes no new decision here.
@@ -1016,7 +1020,7 @@ synced-table drift that opening sentence refuses; the survey made the
 no-config stance a deliberate differentiation rather than an omission. glyph's
 callers already state a pinned tag at every use site, and the profile rides
 the same sites: the three reusables take a `profile` input (default
-`gitmoji`) a company caller sets once beside its pin, and
+`gitmoji`) an adopter caller sets once beside its pin, and
 `hook install --profile=…` interpolates the flag into the hook it writes, the
 way the hook already interpolates its gate exit code. A repository therefore
 cannot drift into a profile nobody chose — the choice sits where the version

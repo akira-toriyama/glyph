@@ -405,8 +405,8 @@ bump table, and the lint rules that only make sense inside that vocabulary. Two
 exist: `gitmoji` — the default and the fleet's own, deliberately the zero
 `Grammar` value so a caller that states nothing means what every caller meant
 before profiles existed — and `conventional` (`<type>[(scope)][!]: <subject>`,
-ratified 2026-08-16 for company repositories where a gitmoji vocabulary cannot
-be imposed). Everything a profile does *not* own is one shared code path — the
+ratified 2026-08-16 for adopter repositories — external organizations taking
+glyph up — where a gitmoji vocabulary cannot be imposed). Everything a profile does *not* own is one shared code path — the
 footer walk, the trailer-block rules, git's cleanup, the release walk, the
 fold, the exit codes — which is what keeps the two profiles' verdicts on an
 identical body identical, and is the half of the design easiest to get wrong:
