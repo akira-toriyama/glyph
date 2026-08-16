@@ -705,7 +705,9 @@ here is only why it is a package at all, and what depends on it:
   rank table living on the fleet's side of the pin.
 - `internal/hook` — the generated hook is a consumer of the exit-code contract
   that glyph WRITES, so its gate code is interpolated from `core.CodeLint`
-  (below) instead of typed as a shell literal; only `internal/cli` imports it.
+  (below) instead of typed as a shell literal. `internal/cli` imports it to
+  install, and `internal/doctor` imports the same embedded bytes to
+  byte-compare what a repository actually has (#81).
 - `internal/workflows` — the one package whose subject is a directory rather
   than a type (`.github/`), hence no runtime code, no importers, and nothing in
   it that ships.
@@ -716,8 +718,9 @@ here is only why it is a package at all, and what depends on it:
   tests; nothing shipping depends on it.
 
 **Exit-code contract** (`internal/core`): `0` ok · `1` no release · `2` usage ·
-`3` convention violation · `4` no trustworthy answer — API/git/IO, or a refusal
-to judge what it could not read · `130` interrupted. Errors are
+`3` convention violation · `4` no trustworthy answer — API/git/IO, a refusal
+to judge what it could not read, or a refusal to write from a ref it has no
+authority over (a release run off the default branch, §4) · `130` interrupted. Errors are
 classified at the source into `*core.Error`; `ExitCode` funnels everything
 (unclassified ⇒ API, never usage). `3` is the *gate* code — what glyph was asked
 to judge does not conform: a commit message under `lint`, a repository's own
