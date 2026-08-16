@@ -66,6 +66,7 @@ release as a baseline**.
 | `glyph hook install` | local `commit-msg` and `pre-push` hooks that run the same lint the CI gate runs |
 | `glyph rules` | the embedded gitmoji → semver table (`--md`, or `--json` for the raw `rules.json`); `--lint` lists every lint `rule` id with `merge_candidate_only` |
 | `glyph version` | the build identity — release tag, commit, build date; the one command that reaches nothing (no git, no API), so it answers anywhere |
+| `glyph init` | writes a `glyph.toml` preset (`--gemoji` or `--conventional`) — the v2 configuration, in which your own regex patterns decide the commit grammar and the named group `semver_sigil` (`=` none / `~` patch / `^` minor / `!` major) is the only input to version calculation; the v2 engine is under construction and today's commands do not read the file yet |
 
 `lint --range/--message/--stdin` and `fmt` work offline against local git
 alone. The PR and release-walk inputs (`--pr` — on `lint` as much as on
