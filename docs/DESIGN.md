@@ -829,7 +829,8 @@ behind (`markdown`, `preview`, `hook`, `workflows`). Read them against
 cmd/glyph/main.go        os.Exit(cli.Execute()) — thin process boundary only
 internal/core            exit-code contract + structured Error (no I/O, no logic)
 internal/version         ldflags build identity + ReadBuildInfo fallback
-internal/gitmoji         //go:embed rules.json; Load() validates completeness
+internal/gitmoji         //go:embed rules.json; Load() validates completeness; the table engine both vocabularies load through
+internal/conventional    //go:embed rules.json — the conventional profile's type table (data + count pin only; the engine is gitmoji's)
 internal/parser          Commit{Gitmoji,Scope,Breaking,NonBreaking,Subject,Body,SHA,Author}
 internal/bump            Level lattice; Classify; Reduce(max); Next; stdlib semver
 internal/markdown        Line: per-field escape, then the mention fence over the assembled line

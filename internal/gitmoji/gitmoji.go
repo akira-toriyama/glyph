@@ -1,9 +1,17 @@
 // Package gitmoji is glyph's machine source of truth for the gitmoji → semver
-// mapping. It embeds the pinned rules table (rules.json) so the binary and its
-// rules ship lockstep — no separately-synced config can drift from the code that
-// reads it. It holds the table, the bump lattice, and the two renderers
-// (CanonicalJSON, Markdown) that back `glyph rules`; it performs no other I/O and
-// no classification (that is internal/bump's job, layered on Lookup).
+// mapping, and — since the conventional profile (DESIGN §2.2) — the one table
+// ENGINE both vocabularies load through. It embeds the pinned gitmoji table
+// (rules.json) so the binary and its rules ship lockstep — no
+// separately-synced config can drift from the code that reads it — and it
+// holds the bump lattice, the shared Table model with its validation
+// (ParseTable, parameterized by a Spec), and the two renderers (CanonicalJSON,
+// Markdown) that back `glyph rules`. The engine lives HERE rather than in a
+// third package because the validation rules — unique tokens, a valid bump, a
+// section drawn from the declared list, a section mandatory on every
+// version-moving entry — are the parts that must never fork between
+// vocabularies; internal/conventional embeds its own data and calls in with
+// its own Spec. No other I/O and no classification (that is internal/bump's
+// job, layered on Lookup).
 package gitmoji
 
 import (
@@ -58,28 +66,63 @@ func (b Bump) Rank() int {
 // Valid reports whether b is one of the four defined rungs.
 func (b Bump) Valid() bool { return b.Rank() >= 0 }
 
-// Rule is one gitmoji's entry: the authoritative code / emoji / meaning from the
-// gitmoji spec, plus glyph's ratified bump and the release-notes section. The
-// section is decoupled from the bump: every version-moving code carries one, and
-// a none code may carry one too — a removal (:fire:/:coffin:/:truck:) surfaces in
-// the notes without moving the version; omitting the section keeps a commit out.
+// Rule is one vocabulary entry: the token (a textual gitmoji code, or a
+// conventional type — DESIGN §2.2 "the type plays the code's role", which is
+// why the field and its JSON key stay `code` for both), the emoji and meaning,
+// plus glyph's ratified bump and the release-notes section. The emoji is the
+// gitmoji vocabulary's alone — a conventional entry has none, and its Spec
+// says so. The section is decoupled from the bump: every version-moving entry
+// carries one, and a none entry may carry one too — a removal
+// (:fire:/:coffin:/:truck:) surfaces in the notes without moving the version;
+// omitting the section keeps a commit out.
 type Rule struct {
 	Code    string `json:"code"`
-	Emoji   string `json:"emoji"`
+	Emoji   string `json:"emoji,omitempty"`
 	Meaning string `json:"meaning"`
 	Bump    Bump   `json:"bump"`
 	Section string `json:"section,omitempty"`
 }
 
-// Table is the loaded, validated rules set. Codes is kept in spec order; byCode
-// is the O(1) lookup index built at Load and excluded from serialization.
+// Spec parameterizes the table engine for one vocabulary: what its tokens are
+// called and shaped like, whether entries carry emoji, and how the Markdown
+// surface titles itself. The two instances live beside their data — the
+// gitmoji one below, the conventional one in internal/conventional — so a
+// vocabulary and its spec cannot drift apart.
+type Spec struct {
+	Name    string         // vocabulary name; prefixes every validation error ("gitmoji", "conventional")
+	Token   string         // what one entry's token is called in prose and headers ("code", "type")
+	TokenRE *regexp.Regexp // the shape every token must satisfy
+	Emoji   bool           // every entry must carry an emoji (and the Markdown grows the column)
+	Title   string         // the Markdown H1
+	Command string         // the self-printing command, named in the generated-file comment
+}
+
+// gitmojiSpec is the gitmoji vocabulary's own Spec — the shape here is the
+// same group-1 shape the linter uses to pull a code off a commit subject.
+var gitmojiSpec = Spec{
+	Name:    "gitmoji",
+	Token:   "code",
+	TokenRE: regexp.MustCompile(`^:[a-z0-9][a-z0-9_+-]*:$`),
+	Emoji:   true,
+	Title:   "gitmoji → semver",
+	Command: "glyph rules --md",
+}
+
+// Table is the loaded, validated rules set of one vocabulary. Codes is kept
+// in source order; byCode is the O(1) lookup index built at load; spec records
+// which vocabulary this is, for the renderers and error prose, and stays out
+// of serialization.
 type Table struct {
 	Version  string   `json:"version"`
 	Sections []string `json:"sections"`
 	Codes    []Rule   `json:"codes"`
 
 	byCode map[string]Rule
+	spec   Spec
 }
+
+// Spec returns the vocabulary spec this table was validated under.
+func (t *Table) Spec() Spec { return t.spec }
 
 // Lookup returns the rule for a textual gitmoji code (e.g. ":sparkles:") and
 // whether it is known. An unknown code is a hard lint error upstream, never a
@@ -89,16 +132,12 @@ func (t *Table) Lookup(code string) (Rule, bool) {
 	return r, ok
 }
 
-// codeShapeRE is the textual-gitmoji shape a rule code must satisfy: a colon, a
-// leading alphanumeric, then alphanumerics / _ + - , and a closing colon. It is
-// the same group-1 shape the linter uses to pull a code off a commit subject.
-var codeShapeRE = regexp.MustCompile(`^:[a-z0-9][a-z0-9_+-]*:$`)
-
-// Load parses and validates the embedded rules table. It fails if the table is
-// structurally invalid or not exactly CodeCount codes — a build/embedding error,
-// surfaced at startup rather than as a silent misclassification later.
+// Load parses and validates the embedded gitmoji rules table. It fails if the
+// table is structurally invalid or not exactly CodeCount codes — a
+// build/embedding error, surfaced at startup rather than as a silent
+// misclassification later.
 func Load() (*Table, error) {
-	t, err := parseTable(rawRules)
+	t, err := ParseTable(rawRules, gitmojiSpec)
 	if err != nil {
 		return nil, err
 	}
@@ -108,62 +147,72 @@ func Load() (*Table, error) {
 	return t, nil
 }
 
-// parseTable decodes and structurally validates a rules table: a version, a
-// non-empty section list, and codes that are each a well-formed, unique textual
-// gitmoji with a valid bump and section consistency (a version-moving code
-// carries a section; a none code may carry one too — a removal — or omit it;
-// any section named is drawn from the section list). It does NOT enforce the
-// CodeCount — that is Load's contract for the canonical embedded table, kept
-// separate so this validator is reusable and testable.
-func parseTable(data []byte) (*Table, error) {
+// ParseTable decodes and structurally validates one vocabulary's rules table
+// under its spec: a version, a non-empty section list, and entries that are
+// each a well-formed, unique token with a valid bump and section consistency
+// (a version-moving entry carries a section; a none entry may carry one — a
+// removal — or omit it; any section named is drawn from the section list).
+// It does NOT enforce a count — that is each vocabulary's Load contract for
+// its canonical embedded table (CodeCount here, TypeCount in
+// internal/conventional), kept separate so this validator is reusable and
+// testable.
+func ParseTable(data []byte, spec Spec) (*Table, error) {
 	var t Table
 	if err := json.Unmarshal(data, &t); err != nil {
-		return nil, fmt.Errorf("gitmoji: rules.json is not valid JSON: %w", err)
+		return nil, fmt.Errorf("%s: rules.json is not valid JSON: %w", spec.Name, err)
 	}
 	if t.Version == "" {
-		return nil, fmt.Errorf("gitmoji: rules.json has no version")
+		return nil, fmt.Errorf("%s: rules.json has no version", spec.Name)
 	}
 	if len(t.Sections) == 0 {
-		return nil, fmt.Errorf("gitmoji: rules.json has no sections")
+		return nil, fmt.Errorf("%s: rules.json has no sections", spec.Name)
 	}
 	sectionSet := make(map[string]bool, len(t.Sections))
 	for _, s := range t.Sections {
 		if s == "" {
-			return nil, fmt.Errorf("gitmoji: rules.json has an empty section name")
+			return nil, fmt.Errorf("%s: rules.json has an empty section name", spec.Name)
 		}
 		sectionSet[s] = true
 	}
 	byCode := make(map[string]Rule, len(t.Codes))
 	for _, r := range t.Codes {
-		if !codeShapeRE.MatchString(r.Code) {
-			return nil, fmt.Errorf("gitmoji: %q is not a well-formed textual gitmoji code", r.Code)
+		if !spec.TokenRE.MatchString(r.Code) {
+			return nil, fmt.Errorf("%s: %q is not a well-formed %s", spec.Name, r.Code, spec.Token)
 		}
 		if _, dup := byCode[r.Code]; dup {
-			return nil, fmt.Errorf("gitmoji: duplicate code %q", r.Code)
+			return nil, fmt.Errorf("%s: duplicate %s %q", spec.Name, spec.Token, r.Code)
 		}
 		if !r.Bump.Valid() {
-			return nil, fmt.Errorf("gitmoji: code %q has out-of-enum bump %q", r.Code, r.Bump)
+			return nil, fmt.Errorf("%s: %s %q has out-of-enum bump %q", spec.Name, spec.Token, r.Code, r.Bump)
 		}
-		if r.Emoji == "" {
-			return nil, fmt.Errorf("gitmoji: code %q has no emoji", r.Code)
+		// The emoji column belongs to one vocabulary: mandatory where the spec
+		// says entries carry one, and refused where it says they do not — a
+		// conventional type with an emoji would be data the renderers silently
+		// drop, which is how a hand edit hides.
+		if spec.Emoji && r.Emoji == "" {
+			return nil, fmt.Errorf("%s: %s %q has no emoji", spec.Name, spec.Token, r.Code)
+		}
+		if !spec.Emoji && r.Emoji != "" {
+			return nil, fmt.Errorf("%s: %s %q carries an emoji, which this vocabulary does not have", spec.Name, spec.Token, r.Code)
 		}
 		if r.Meaning == "" {
-			return nil, fmt.Errorf("gitmoji: code %q has no meaning", r.Code)
+			return nil, fmt.Errorf("%s: %s %q has no meaning", spec.Name, spec.Token, r.Code)
 		}
-		// Notes visibility is decoupled from the bump. A version-moving code must
-		// carry a section (every shipping change is notes-visible); a none code
-		// may carry one — a removal (:fire:/:coffin:/:truck:) surfaces in the
-		// notes without moving the version — or omit it to stay out. Any section
-		// named must be drawn from the render-order list.
+		// Notes visibility is decoupled from the bump. A version-moving entry
+		// must carry a section (every shipping change is notes-visible); a none
+		// entry may carry one — a removal (:fire:/:coffin:/:truck:) surfaces in
+		// the notes without moving the version — or omit it to stay out. Any
+		// section named must be drawn from the render-order list.
 		if r.Bump != BumpNone && r.Section == "" {
-			return nil, fmt.Errorf("gitmoji: version-moving code %q (%s) must carry a section", r.Code, r.Bump)
+			return nil, fmt.Errorf("%s: version-moving %s %q (%s) must carry a section", spec.Name, spec.Token, r.Code, r.Bump)
 		}
 		if r.Section != "" && !sectionSet[r.Section] {
-			return nil, fmt.Errorf("gitmoji: code %q references unknown section %q", r.Code, r.Section)
+			return nil, fmt.Errorf("%s: %s %q references unknown section %q", spec.Name, spec.Token, r.Code, r.Section)
 		}
 		byCode[r.Code] = r
 	}
 	t.byCode = byCode
+	t.spec = spec
 	return &t, nil
 }
 
@@ -182,26 +231,40 @@ func (t *Table) CanonicalJSON() ([]byte, error) {
 }
 
 // Markdown renders the table as a stable Markdown document: the human- and
-// docs-facing view of the embedded rules, and the drift-guard golden for
-// `glyph rules --md`. A code with no section shows "—"; a removal none code
-// shows its Removals section like any version mover.
+// docs-facing view of the embedded rules, and the drift-guard golden for the
+// spec's own self-printing command. An entry with no section shows "—"; a
+// removal none code shows its Removals section like any version mover. The
+// emoji column exists only where the vocabulary does (Spec.Emoji) — the
+// gitmoji rendering is byte-identical to what it was before the engine was
+// parameterized, which its golden pins.
 func (t *Table) Markdown() string {
+	head := strings.ToUpper(t.spec.Token[:1]) + t.spec.Token[1:]
 	var b strings.Builder
-	b.WriteString("# gitmoji → semver\n\n")
-	b.WriteString("<!-- Generated by `glyph rules --md`; do not edit by hand. -->\n\n")
-	fmt.Fprintf(&b, "Spec: **%s** · %d codes · bump lattice `none < patch < minor < major`.\n\n",
-		t.Version, len(t.Codes))
+	fmt.Fprintf(&b, "# %s\n\n", t.spec.Title)
+	fmt.Fprintf(&b, "<!-- Generated by `%s`; do not edit by hand. -->\n\n", t.spec.Command)
+	fmt.Fprintf(&b, "Spec: **%s** · %d %ss · bump lattice `none < patch < minor < major`.\n\n",
+		t.Version, len(t.Codes), t.spec.Token)
 
-	b.WriteString("## Codes\n\n")
-	b.WriteString("| Emoji | Code | Meaning | Bump | Section |\n")
-	b.WriteString("|-------|------|---------|------|---------|\n")
+	fmt.Fprintf(&b, "## %ss\n\n", head)
+	if t.spec.Emoji {
+		fmt.Fprintf(&b, "| Emoji | %s | Meaning | Bump | Section |\n", head)
+		b.WriteString("|-------|------|---------|------|---------|\n")
+	} else {
+		fmt.Fprintf(&b, "| %s | Meaning | Bump | Section |\n", head)
+		b.WriteString("|------|---------|------|---------|\n")
+	}
 	for _, r := range t.Codes {
 		section := r.Section
 		if section == "" {
 			section = "—"
 		}
-		fmt.Fprintf(&b, "| %s | `%s` | %s | %s | %s |\n",
-			r.Emoji, r.Code, mdCell(r.Meaning), r.Bump, section)
+		if t.spec.Emoji {
+			fmt.Fprintf(&b, "| %s | `%s` | %s | %s | %s |\n",
+				r.Emoji, r.Code, mdCell(r.Meaning), r.Bump, section)
+		} else {
+			fmt.Fprintf(&b, "| `%s` | %s | %s | %s |\n",
+				r.Code, mdCell(r.Meaning), r.Bump, section)
+		}
 	}
 
 	b.WriteString("\n## Notes sections (render order)\n\n")

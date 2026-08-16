@@ -414,12 +414,20 @@ the profile is the subject line's business only. Ratified in
 [DESIGN §2, §2.2, §3.1 and §6](DESIGN.md).
 `internal/parser/parser.go: Grammar, GrammarGitmoji, GrammarConventional`
 
-**rules table** — the embedded gitmoji → semver mapping, **75** codes, embedded
-with `//go:embed` so the pinned binary *is* the pinned rules (no separately
-synced config can drift). Membership is injected into the parser, so the grammar
-and the table evolve separately; an unknown code is a hard lint error, never a
-silent patch. Print it with `glyph rules` (`--md`, `--json`).
-`internal/gitmoji/gitmoji.go: Table, Load, CodeCount`, `internal/gitmoji/rules.json`
+**rules table** — one profile's embedded token → semver mapping: **75** codes
+for the gitmoji vocabulary, **11** types for the conventional one, each
+embedded with `//go:embed` so the pinned binary *is* the pinned rules (no
+separately synced config can drift). One table ENGINE — validation, lookup,
+the renderers — lives in `internal/gitmoji`, parameterized by a per-vocabulary
+`Spec`, so what a well-formed table is can never fork between profiles;
+`internal/conventional` is data plus its count pin only, and its rows are
+*derived* (each type takes its canonical gitmoji counterpart's bump and
+section, pinned by the derivation test). Membership is injected into the
+parser, so the grammar and the table evolve separately; an unknown token is a
+hard lint error, never a silent patch. Print either with `glyph rules`
+(`--md`, `--json`; the profile flag selects the vocabulary).
+`internal/gitmoji/gitmoji.go: Table, Spec, ParseTable, Load, CodeCount`,
+`internal/conventional/conventional.go: Load, TypeCount`
 
 **bump lattice** — `none(0) < patch(1) < minor(2) < major(3)`. `:boom:` is the
 only code that auto-majors and `:sparkles:` the only one that auto-minors;
