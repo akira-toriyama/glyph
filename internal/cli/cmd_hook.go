@@ -65,11 +65,7 @@ func newHookPrePushCmd() *cobra.Command {
 			"over the network; where nothing records it, nothing blocks and the run says so.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			table, err := loadRules()
-			if err != nil {
-				return err
-			}
-			return prePushRun(cmd.Context(), args, authoringLintOptions(table))
+			return prePushRun(cmd.Context(), args)
 		},
 	}
 }
@@ -96,11 +92,7 @@ func newHookInstallCmd() *cobra.Command {
 			"refused halfway would report failure over a tree that had already changed.",
 		Args: cobra.OnlyValidArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			p, err := resolveProfile()
-			if err != nil {
-				return err
-			}
-			kinds, err := resolveHookKinds(p.name, args)
+			kinds, err := resolveHookKinds(args)
 			if err != nil {
 				return err
 			}
@@ -154,13 +146,13 @@ func newHookInstallCmd() *cobra.Command {
 // argument means every kind glyph writes — bare `glyph hook install` is the
 // invocation the fleet's CONTRIBUTING points at, so it must keep working AND
 // must not quietly omit a gate that was added after it was written.
-func resolveHookKinds(profile string, args []string) ([]hook.Kind, error) {
+func resolveHookKinds(args []string) ([]hook.Kind, error) {
 	if len(args) == 0 {
-		return hook.Kinds(profile), nil
+		return hook.Kinds(), nil
 	}
 	kinds := make([]hook.Kind, 0, len(args))
 	for _, name := range args {
-		k, ok := hook.KindByName(profile, name)
+		k, ok := hook.KindByName(name)
 		if !ok {
 			return nil, core.Usagef("glyph writes no %q hook; the kinds are %s", name, strings.Join(hook.KindNames(), ", "))
 		}

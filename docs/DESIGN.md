@@ -1,8 +1,8 @@
 # glyph — design
 
-The canonical design for glyph, a self-built, gitmoji-driven release engine.
-The per-gitmoji semver table is **not** duplicated here — it lives in
-`internal/gitmoji/rules.json` (the machine source of truth) and is self-printed
+The canonical design for glyph, a self-built, sigil-driven release engine.
+The commit grammar is **not** defined here — since v2 it lives in each
+repository's own `glyph.toml` (§2), written once by `glyph init` and printed
 by `glyph rules`. This document is the *why* and the *shape*.
 
 ## 1. Problem
@@ -61,186 +61,45 @@ runtime import, per house pattern.)
 
 ## 2. Commit format
 
-glyph speaks two commit grammars, called **profiles**: **`gitmoji`** — the
-default, the fleet's own, and the subject of the rest of this section — and
-**`conventional`** (§2.2), ratified 2026-08-16 for adopter repositories —
-external organizations taking glyph up — where a gitmoji vocabulary cannot be
-imposed. A profile bundles the three things a
-vocabulary owns — the subject grammar, the token → bump table (§3), and the
-lint rules that only make sense inside that vocabulary — and nothing else:
-footer semantics, body rules, git's cleanup (§2.1), the walk, the fold and the
-exit codes are one implementation both profiles share. How a run selects its
-profile is a distribution question and lives in §6.
+v2 (epic e-qzpz, ratified 2026-08-16) removed glyph's own grammars. The
+repository's `glyph.toml` — written by `glyph init --gemoji` or
+`--conventional` and then owned by the repository — carries an ordered list of
+RE2 `[[patterns]]`, and a commit message means whatever the first matching
+pattern says it means:
 
-```
-<:code:>[(<scope>)][!] <subject>
-```
+- The named group **`semver_sigil`** must capture one of the four sigils —
+  `=` none / `~` patch / `^` minor / `!` major — the only input to version
+  calculation (§3). The alphabet is fixed in the binary; everything else
+  (where the sigil sits, what a prefix looks like, whether a scope exists) is
+  the pattern file's decision. RE2 means no lookahead and no backreferences,
+  stated in the presets' comments and here because it is the first thing a
+  regex author reaches for.
+- A pattern may carry a fixed **`semver_sigil`** key — the sigil a match
+  yields when the message captures none (the presets use it to make a raw
+  `git revert` a patch) — or **`skip = true`**, which drops a matching commit
+  from lint, bump and notes entirely (the presets skip merge commits and
+  autosquash artifacts; v1 carried both as hardcoded exemptions, and the hook
+  path is where they matter most — an author cannot rewrite a subject git
+  generated, so judging it forces `--no-verify`, which turns the gate off).
+- **`exclude_authors`** removes a commit from lint and the fold before its
+  message is ever matched — the key exists for bots, whose messages are
+  exactly the ones the patterns do not describe. Whether such a commit
+  appears in the notes is `[[note.sections]]`'s decision alone (§3).
+- **Lint has no taste** (mutation row `config-lint-grows-a-taste.patch`): a
+  message either matches a pattern and yields a sigil, or it violates. Which
+  combinations are wise (`:memo:!`) is the author's call — glyph parses and
+  computes, it does not opine. The retired v1 rule vocabulary (uppercase
+  subject, trailing period, footer discipline, merge-candidate rules) is
+  gone with the grammar that defined it.
+- Unknown keys, an unknown `schema`, an uncompilable pattern and a section
+  that does not state exactly one axis are LOAD errors, never repairs
+  (mutation row `config-unknown-schema-accepted.patch`): this file decides CI
+  verdicts, and a silently-misread key is a silently-changed verdict.
 
-- **`:code:`** — exactly one leading gitmoji in **textual** form (`:sparkles:`),
-  column 0, mandatory. Textual (not the glyph) for pure-ASCII stability (no
-  U+FE0F / ZWJ), grep-ability, and deterministic AI authoring. GitHub renders the
-  glyph in its UI.
-- **`(scope)`** — optional; parentheses only, lowercase kebab, no leading space.
-- **`!`** — optional breaking marker, immediately after code or scope.
-- **subject** — English, imperative, lowercase start, no trailing period.
-- **body/footer** — optional; a body ends with the `---（和訳）` separator + a
-  Japanese translation (house rule). Footer may carry `BREAKING CHANGE:` (or
-  `BREAKING-CHANGE:`), `NON-BREAKING: <why>` (next bullet), `Closes #N`,
-  `Co-Authored-By:`. A footer counts only where a trailer can legally sit —
-  opening a block (after a blank line, or as the very FIRST body line) or
-  stacked under another trailer — and a block is read as one: git trailers
-  (`token: value`) and issue references in GitHub's colon-less closing-keyword
-  form (`Closes #12`, `Fixes owner/repo#12`) may stack with no blank line
-  between them, and only prose ends the block. That the colon-less form counts
-  is load-bearing rather than cosmetic — reading it as prose closed the block
-  and discarded a `BREAKING CHANGE:` footer stacked beneath it, shipping a major
-  as a minor out of a shape this very list blesses. A line that merely OPENS
-  with a closing keyword ("fixes the crash reported in #12 by …") is prose and
-  still ends the block.
-- **`NON-BREAKING: <why>`** — the removal codes' counterpart to
-  `BREAKING CHANGE:`, and what satisfies `undeclared-removal` (below) when `!` is
-  not the answer: it records that a `:fire:`/`:coffin:`/`:truck:` commit takes
-  nothing public away. Alone among these footers it exists for one lint rule and
-  nothing else in glyph reads it, and it never moves the bump — so it cannot hide
-  a break, only record a claim the author is making. Uppercase and
-  case-SENSITIVE, for the reason `BREAKING CHANGE:` is: a body may legitimately
-  read "this is non-breaking: the API is untouched", and a footer that switches a
-  rule off must not be spellable by accident in prose. The reason is mandatory —
-  a bare `NON-BREAKING:` leaves the rule unsatisfied, because the magic word
-  typed by reflex answers nothing the rule exists to ask.
-
-The redundant Conventional `<type>` word is dropped — the gitmoji's own trailing
-`:` plays the type-colon role. The retired token is handled by SURFACE, not by
-one blanket policy. The release walk's parser stays **lenient**: it
-accepts-and-ignores a legacy `<type>(scope)!:` token (scope salvaged when the
-new slot has none, its `!` still meaning breaking) so the immutable pre-glyph
-history keeps walking and bumping exactly as it always has. The authoring lint
-makes the same token a **hard error** (`legacy-token`, in the list below):
-since v1.0.0 the convention is one grammar and new history carries zero
-migration debt — ratified 2026-07-21, shipped only after the machines that
-wrote the retired form fleet-wide were silenced first (t-271n), so the rule
-never fires on a commit a bot is still producing. Re-ratified 2026-08-16,
-narrower and unchanged in force: "one grammar" means one grammar **per
-profile**. The rule's intent was always the detection of vocabulary bleed, not
-a judgement on the Conventional form as such — the same token this rule
-hard-errors on is the conventional profile's canonical grammar, and that
-profile carries the mirror-image guard pointing the other way (§2.2).
-
-Linter shape check (membership is checked in code against the embedded table):
-
-```
-^(:[a-z0-9][a-z0-9_+-]*:)(\([a-z0-9][a-z0-9-]*\))?(!)? (\S.*)$
-```
-
-An unknown `:code:` is a **hard lint error (exit 3)**, never a silent patch.
-
-The complete rule set of the gitmoji profile, in the order `parser.Lint`
-evaluates it — §2.2 states the conventional profile's vocabulary as a delta
-over this list. Every id is
-**machine API** — branch on the id, never on the prose — and so is the finding's
-`fix` field: where a repair is mechanical (the retired token, casing, trailing
-periods, a lowercasable scope), the violation carries the corrected subject
-line, and pasting it as the message's first line lints green
-(`TestLintFixIsPasteable`). Every fixable violation on one message carries the
-SAME fully-corrected line — per-rule fixes applied in sequence un-did each
-other — and rules whose repair needs a human decision (an unknown code, a WIP
-marker, an undeclared removal) carry none: a guessed fix lint would bless
-anyway is a wrong answer pasted with confidence. Agents were regexing `detail`
-for the suggestion, and that prose has been reworded before (#78) — the `fix`
-key is the stable home the id discipline already promised. This list has to stay
-in step with the `Rule*` constants in `internal/parser/parser.go`. It did not:
-the prose summary that stood here was written in the scaffold commit, before the
-parser existed. It named four of the seven, left `malformed-subject` implicit in
-the shape block above, and had no word at all for `invalid-scope` or
-`undeclared-removal` — both added later. Enumerating by id is what makes that
-drift checkable at all, and `TestDesignDocNamesEveryRuleID` in `internal/parser`
-is what checks it: an id here that is no longer a constant, or a constant not
-named here, fails the suite. The binary self-prints the same vocabulary —
-`glyph rules --lint`, each id with `merge_candidate_only` and nothing else —
-held to the constants by `TestLintRulesMatchTheConstants` and to `Lint`'s real
-mode behaviour by `TestLintRulesModeGating`. The semantics stay here on
-purpose: a prose field beside a printed id would be this list's second home.
-
-- `malformed-subject` — the subject line does not match the shape above.
-  Short-circuits: with the subject unparsed, nothing else is checkable.
-- `invalid-scope` — the same parse failure, sharpened for a subject whose scope
-  is outside lowercase kebab: it names the offending scope and suggests the
-  lowercased form when lowercasing alone would make it legal, where
-  `malformed-subject` quotes the whole line and sends an author who wrote
-  `(Palette)` hunting the gitmoji or the separating space. Being a parse failure
-  it short-circuits exactly as `malformed-subject` does, which is the part worth
-  knowing at the terminal: `:bug:(Palette) Do a thing.` reports the scope ALONE
-  and says nothing about the capital or the period until the scope is fixed. The
-  defect it prevents was authors obeying `undeclared-removal`'s own instruction —
-  `:fire:(Palette)! prune catppuccin-latte` answered with `malformed-subject`
-  (t-edan), in the PascalCase-scoping Swift repos (sill, wand, facet, halo,
-  perch) that removal rule most protects. The legacy token's scope slot is
-  `[^()]+` and still accepts `(Palette)`, so the retired syntax is the more
-  permissive of the two — which is exactly why the canonical form owes the author
-  the sharper message.
-- `legacy-token` — the subject carries the retired Conventional
-  `<type>[(scope)][!]:` token after the gitmoji. First of the accumulating
-  rules because the rewrite it offers is the line the style rules should be
-  judging: the detail hands the author the canonical spelling — salvaged scope
-  and `!` preserved — whenever one exists that the linter itself accepts
-  (kebabSuggestion's contract, one level up; a salvaged scope even lowercasing
-  cannot make kebab gets the plain grammar reminder, because a suggestion that
-  drops the scope misrepresents the commit). Fires in every authoring mode and
-  never on the walk — Parse still eats the token, so history is untouched.
-- `unknown-gitmoji` — the code is not in the embedded table (`glyph rules`).
-- `wip-merge-candidate` — a `:construction:` commit reaching a merge candidate.
-  The ONE rule gated on merge-candidate mode: `:construction:` is legal
-  mid-branch and illegal only at the merge, so its verdict genuinely changes
-  with time.
-- `uppercase-subject` — the subject's first rune is uppercase.
-- `trailing-period` — the subject ends with `.`, judged after the same trailing
-  space/tab/CR trim git itself applies before recording the message. Reading the
-  untrimmed line let a trailing space hide the period behind it, in every mode,
-  `--range` and CI included.
-- `cjk-subject` — the subject carries a rune in a CJK script (Han, Hiragana,
-  Katakana, Hangul, or their punctuation/fullwidth blocks). The convention's
-  subjects have been English since the shape block above was written, and this
-  is the first rule to hold any of it — measured before it existed, 592 fleet
-  subjects carried CJK text and 585 of them linted clean. The id names what is
-  checked, not the policy: a CJK scan is no English detector (a French subject
-  sails through), so `non-english-subject` would promise a judgement the rule
-  cannot make. Subject only — bodies in pre-retirement history legitimately
-  carry `---（和訳）` sections — and no `fix`: the mechanical repair is a
-  translation, exactly the guess `fix` refuses to bless.
-- `rendered-gitmoji` — the subject opens with the GLYPH form of a known code
-  (`✨ feat(tree): x`) instead of the textual `:sparkles:`. The same argument
-  that made `invalid-scope`: it is a parse failure, and `malformed-subject`
-  quoting the whole line sends the author hunting when the one wrong thing is
-  the emoji's spelling. Measured 8 subjects across 4 PRs, every one a PR title
-  — the surface where an emoji picker is one keystroke away — and five of the
-  eight carried a retired Conventional token too, so the finding's `fix` is
-  composed through `Format` on the code-substituted message: one corrected
-  line that clears both, rather than two findings each proposing half the
-  repair. The reverse lookup is injected (`LintOptions.CodeForEmoji`, U+FE0F
-  and ZWJ normalized away) so the parser stays table-blind, and detection sits
-  beside `laxSubjectRE`, never inside `Parse` — the walk must keep refusing
-  the glyph form.
-- `undeclared-removal` — a `:fire:`, `:coffin:` or `:truck:` commit that says
-  nothing about whether it breaks anyone: no `!`, no `BREAKING CHANGE:` footer,
-  no `NON-BREAKING: <why>` footer. Those three codes are the removals, and the
-  only three; all three are `none`, which is right for dead code, docs and
-  fixtures and silently wrong for the rare one. sill pruned the public preset
-  `catppuccin-latte` under `:fire:` inside a `:sparkles:` PR, shipped it as a
-  MINOR, and broke downstream wand (t-n158) — `:truck:` is the worst of the three
-  there, because a rename resolves at runtime, so
-  `paletteFor("catppuccin-latte")` fell back to another theme instead of failing.
-  glyph cannot know whether the removed element was public — that is the
-  consuming repo's knowledge, and an API-diff tool's job — so the rule only
-  refuses to let the question go UNANSWERED. Deliberately NOT gated on
-  merge-candidate, unlike `wip-merge-candidate`: whether a removal breaks anyone
-  is settled the moment the commit is written, so there is nothing to wait for,
-  and waiting is what costs — at the hook the fix is one line in an editor the
-  author already has open, in CI it is a rewrite of pushed history.
-
-These are glyph's implementation of the convention, not its normative statement.
-Which elements count as *public* for `undeclared-removal` is settled by the fleet
-CONTRIBUTING.md that `docs/commit-convention.md` points at — do not restate it
-here, or one question will have two answers.
+Config resolution is one file per checkout: the `glyph.toml` at the top level
+of the working tree the command runs in (ratified Q1 — a config change
+reinterprets past commits, accepted). The commit-msg hook, CI and a
+subdirectory shell all read the same file by construction.
 
 ### 2.1 The text the rules judge — git's cleanup
 
@@ -305,175 +164,47 @@ the COMMAND LINE reaches neither the config nor the environment (measured), so a
 per-commit override is invisible to the hook and the message is judged under the
 repository's mode. Same for `core.commentChar`: glyph assumes `#`.
 
-### 2.2 The conventional profile (ratified 2026-08-16)
+## 3. Sigils → semver
 
-```
-<type>[(<scope>)][!]: <subject>
-```
+Lattice: `none(0) < patch(1) < minor(2) < major(3)`, owned by `internal/bump`
+(`Level`, `Reduce`). The sigil IS the classification: `=` none, `~` patch,
+`^` minor, `!` major — fixed in the binary beside the alphabet
+(`bump.SigilLevel`), not configurable, because a repository that could remap
+`!` to patch would make every pinned verdict unreadable from the file alone.
 
-Conventional Commits' own form, chosen over a second in-house token set because
-the profile exists for adopter repositories whose authors should have to learn
-nothing: the motive is zero imposed vocabulary, and an invented one would
-rebuild exactly the cost being removed. The type vocabulary is closed —
-`feat fix perf revert docs style refactor test build ci chore`, eleven types,
-pinned by a `TypeCount = 11` the way `CodeCount = 75` pins the gitmoji table —
-and it is, measured 2026-08-16, identical to the retired-token vocabulary
-`legacyTokenRE` already recognises and to commitlint's config-conventional
-type-enum, so an author arriving from either recognises every token.
+**Combination across a range:** `Reduce` folds with max — order-independent
+and idempotent (fuzz-pinned), so squash order can never change the version.
+All-none ⇒ no release (exit 1).
 
-What differs from the gitmoji grammar, and everything that does not:
+**A non-excluded commit no pattern claims refuses the WHOLE range** (ratified
+Q2; mutation row `bump-unmatched-commit-folds-as-silent-none.patch`): folded
+as none instead, a commit stops existing for versioning the moment someone's
+regex misses it — the silent hole v2 exists to close. The refusal is the lint
+class (exit 3), walks the whole range before it goes out (one red run carries
+every finding — the v1 three-red-runs incident, kept fixed), and is exempted
+exactly twice: `exclude_authors` (checked BEFORE matching — mutation row
+`bump-author-exclusion-waits-for-a-match.patch`) and the release walk's
+API-lag fallback (§4 — a squash subject during lag is not a message anyone
+wrote, so it is dropped and recorded in the walk facts, never a refusal).
 
-- the type plays the code's role and the type-colon replaces the gitmoji's own
-  trailing colon (`feat(cli)!: x`), with `!` before the colon as the
-  Conventional spec places it. Type membership is checked the way code
-  membership is — injected, the shape check open — so the parser stays
-  table-blind in both profiles and an unknown type is the same hard error an
-  unknown gitmoji is, never a silent fallback.
-- the scope rule is the same lowercase kebab. The Conventional spec does not
-  regulate scope shape, so this is a house rule carried across on purpose: an
-  author moving between a fleet repo and an adopter repo keeps one habit, and
-  `invalid-scope` keeps firing with the same sharpened message.
-- subject style is shared: imperative, lowercase start, no trailing period,
-  English — `uppercase-subject`, `trailing-period` and `cjk-subject` fire
-  unchanged, and the `fmt` fix machinery composes the same corrected line.
-- **footer semantics are shared verbatim** — `BREAKING CHANGE:` /
-  `BREAKING-CHANGE:`, `NON-BREAKING:`, the trailer-block placement rules, the
-  colon-less closing-keyword forms. This was nearly ratified the other way
-  ("subject-only, `!` alone means breaking") on the belief that the current
-  parser model closes its decision in the subject line; measured 2026-08-16,
-  that belief was false — the footer walk in `Parse` is independent of the
-  subject grammar and already classifies footers under the gitmoji profile.
-  Dropping footers from one profile is therefore what would SPLIT the two
-  profiles' verdicts on an identical body — the opposite of the parity this
-  profile exists to keep. `NON-BREAKING:` still parses here and changes no
-  verdict (the one rule that reads it is gitmoji-only, below); the asymmetry
-  is in the rules that consume the record, not in what is recorded.
+**Notes follow `[[note.sections]]` alone**: config order is render order, each
+section filters on one axis (`semver` or `author`), and a commit lands in
+EVERY section whose filter matches it (mutation row
+`notes-first-section-wins.patch` — dedupe on first placement and section
+order silently decides which section owns a commit). An unmatched commit has
+no level, so it can only surface through an author section, rendered through
+the same `note.line` template with `$subject` bound to its raw first line —
+the ratified bot fallback. `skip` is total: no section at all, which is what
+separates it from `exclude_authors`.
 
-The lint vocabulary, as a delta over the list above. Shared and firing
-identically: `malformed-subject`, `invalid-scope`, `uppercase-subject`,
-`trailing-period`, `cjk-subject`. Two ids exist only here:
-
-- `unknown-type` — the type is not in the embedded conventional table (`glyph
-  rules --profile=conventional`). The membership rule read across, under a new
-  id rather than a reused one: `unknown-gitmoji` naming a type would lie to
-  the machine that branches on it. Like its counterpart, membership is the
-  injected oracle's answer and the shape check stays open, so `readme: fix
-  typo` is diagnosed as an unknown TYPE rather than a shapeless line.
-- `gitmoji-token` — the mirror image of `legacy-token`: a conventional-profile
-  subject that opens with the gitmoji grammar's own well-formed shape
-  (`:sparkles: add x`) sharpens `malformed-subject` into the name of what the
-  author actually did — wrote the other profile's vocabulary. Shape-checked
-  only, deliberately: deciding whether the code is a KNOWN gitmoji would make
-  this profile load the other profile's table to lint its own commits. And no
-  `fix`, for `Fix`'s standing reason — which type a gitmoji maps to is a
-  cross-vocabulary guess.
-
-Absent, each with its reason:
-
-| gitmoji-profile rule | why it has no conventional counterpart |
-|---|---|
-| `legacy-token` | the token it retires IS this profile's grammar; bleed detection here is `gitmoji-token` |
-| `rendered-gitmoji` | diagnoses a misspelt gitmoji; there is no gitmoji to misspell |
-| `wip-merge-candidate` | no WIP type exists — Conventional has nothing playing `:construction:` |
-| `undeclared-removal` | no removal types exist, so the question cannot be asked — next paragraph |
-
-The absence of `undeclared-removal` is the one to respect rather than admire:
-the Conventional vocabulary cannot mark a removal, so the sill incident class —
-a public symbol pruned inside a feature PR, shipped minor, breaking a
-downstream consumer (t-n158) — is unguardable in this profile. A `refactor:`
-that deletes public API and says nothing ships a none. Accepted with eyes
-open: the profile's ratified scope is lint + bump for repositories that never
-had the guard either, and the honest reading is an argument FOR the gitmoji
-profile, not a defect to fix by inventing a `removal` type no Conventional
-author would ever write unprompted.
-
-One dogfood fact, named because §8 names the smaller version of it: the fleet
-stays on the gitmoji profile, so no commit in this repository's own CI ever
-exercises the conventional grammar end-to-end. The compensations are
-structural — a parity suite and mutation-ledger rows on the glyph side, a
-live-fire repository on the fleet side. An adopter actually running the
-profile would close the gap outright, but adoption is the adopter's decision,
-not a milestone this repository can schedule — the live-fire repository is the
-standing mitigation (a closing condition demanding a live adopter was ratified
-2026-08-16 and withdrawn 2026-08-17 as unschedulable).
-
-## 3. gitmoji → semver
-
-Lattice: `none(0) < patch(1) < minor(2) < major(3)`. Default-none. Every gitmoji
-in the spec is explicitly enumerated in `rules.json`; buckets:
-
-- **major:** `:boom:` only auto-majors.
-- **minor:** `:sparkles:` only. A new feature is an explicit authoring decision;
-  capability-adjacent codes (i18n, offline, a11y, UX) deliberately stay patch so
-  an AI author cannot accidentally minor a routine change.
-- **patch:** anything altering shipped / user-observable behavior.
-- **none:** internal / non-shipping / meta — kept in history, never moves the
-  version. Excluded from notes *unless the code carries a section*: removals
-  (`:fire:`/`:coffin:`/`:truck:`) stay none but surface under a **Removals**
-  section, so a deletion or rename is visible to the human pin-bump audit even
-  though the version does not move (notes inclusion tracks the section, not the
-  bump).
-
-**Combination across a PR:** `prBump = max(classify(c) for non-bot c in pr)`. The
-fold is order-independent and idempotent (fuzz-tested) so squash order can never
-change the version. `prBump == none` ⇒ no release.
-
-**Breaking is an orthogonal, non-suppressible boolean flag**, not a rung (a single
-emoji is ambiguous). Any of three triggers short-circuits to major and cannot be
-dropped by a skip rule: `:boom:`, a `!` before the colon, or a
-`BREAKING CHANGE:` / `BREAKING-CHANGE:` footer.
-
-**Deliberate divergences from the spec's `semver` field** — ratified and
-shipped; each is pinned by name in `TestLoadBearingAndRatifiedDeviations`, so
-reverting one fails the suite rather than quietly changing every repo's bump:
-`:wrench:`→none and `:alembic:`→none (fleet config / experiments are
-non-shipping); `:thread:` / `:safety_vest:` / `:airplane:` / `:t-rex:`→patch (each
-changes shipped runtime behavior the spec leaves `null`).
-
-### 3.1 The conventional table (ratified 2026-08-16)
-
-Same lattice, same default-none, same fold, same non-suppressible breaking flag
-— with one less trigger: the conventional vocabulary has no `:boom:`, so
-breaking is `!` or the footer, exactly the two the Conventional spec defines.
-Every type is explicitly enumerated, and the table is **derived, not
-designed**: each type takes the bump and section of its canonical gitmoji
-counterpart, so the two tables cannot quietly embody two philosophies — a
-dispute about a conventional row is a dispute about the gitmoji row it derives
-from, and the arguments above settle both.
-
-| type | bump | section | counterpart |
-|------|------|---------|-------------|
-| `feat` | minor | Features | `:sparkles:` |
-| `fix` | patch | Fixes | `:bug:` |
-| `perf` | patch | Performance | `:zap:` |
-| `revert` | patch | Reverts | `:rewind:` |
-| `docs` | none | — | `:memo:` |
-| `style` | none | — | `:art:` |
-| `refactor` | none | — | `:recycle:` |
-| `test` | none | — | `:white_check_mark:` |
-| `build` | none | — | `:construction_worker:` |
-| `ci` | none | — | `:green_heart:` |
-| `chore` | none | — | `:hammer:` |
-
-Where the industry splits, the derivation decides: `perf` → patch sides with
-semantic-release and `:zap:` against convco's default none; `revert` → patch
-sides with everyone and `:rewind:`. The row that costs something is **`build`
-→ none**. The gitmoji table classifies dependency changes patch — six codes
-and a Dependencies section, because a vendored dependency changes the shipped
-binary — while the Conventional vocabulary folds dependency bumps under
-`build`/`chore` (Dependabot's own spelling), and this table maps both none. A
-dependency upgrade that changes shipped behaviour must therefore say so itself
-— `fix`, `feat`, or `!` — or ride along until the next version-moving commit.
-Ratified as accepted coarseness rather than patched, because the repair would
-be a bump keyed on the scope slot (`build(deps)` → patch), which makes a
-free-form label semantic in exactly one cell of one profile's table — and a
-scope suddenly load-bearing is drift no author would predict.
-
-`sections[]` is shared: conventional rows draw from the gitmoji section list,
-no new names. The ratified adopter scope is lint + bump — notes and the
-rolling draft are not required — but a row that already carries its section
-means turning notes on later is a decision, not a data migration. Version
-stepping, 0.x included, is shared and makes no new decision here.
+**`draft_on_none`** (§4's flag, `internal/draftplan`): with it on, a none
+verdict maintains an `Unreleased` placeholder draft instead of deleting the
+rolling draft, and the next real verdict retags that same draft to the real
+version through the ordinary keep-selection path (mutation row
+`draftplan-none-forgets-the-placeholder.patch`). The placeholder tag is
+deliberately not house-shaped — publishing it by hand cannot burn a version
+tag or wedge the published floor — and it is claimed as glyph-managed even
+with the flag off, so flipping the flag off converges the artifact away.
 
 ## 4. Squash-safe mechanism — release-time re-read (stateless)
 
@@ -833,9 +564,7 @@ behind (`markdown`, `preview`, `hook`, `workflows`). Read them against
 cmd/glyph/main.go        os.Exit(cli.Execute()) — thin process boundary only
 internal/core            exit-code contract + structured Error (no I/O, no logic)
 internal/version         ldflags build identity + ReadBuildInfo fallback
-internal/gitmoji         //go:embed rules.json; Load() validates completeness; the table engine both vocabularies load through
-internal/conventional    //go:embed rules.json — the conventional profile's type table (data + count pin only; the engine is gitmoji's)
-internal/parser          Commit{Gitmoji,Scope,Breaking,NonBreaking,Subject,Body,SHA,Author}
+internal/cleanup         git's message cleanup, modelled exactly (comment strip, scissors cut) — what --stdin judges is what git records
 internal/bump            Level lattice; Classify; Reduce(max); Next; stdlib semver
 internal/config          v2 glyph.toml loader — user RE2 patterns, first match wins, semver_sigil extraction (epic e-qzpz; not yet wired to any command)
 internal/draftplan       v2 draft convergence — pure; which draft a verdict keeps, retags or deletes (the Unreleased placeholder lives here; not yet wired)
@@ -938,24 +667,17 @@ so declining it selects a real output rather than nothing and it carries no
 `internal/cli`'s `TestMachineOutputFlagHasOneSpelling`, so a new command that
 invents a third spelling fails there rather than in a caller's shell.
 
-**gitmoji table embedding:** `//go:embed rules.json` inside `internal/gitmoji`
-(an embed pattern is package-relative, so it cannot be written as a path from the
-repository root) — the pinned binary *is* the pinned rules (lockstep, zero skew).
-`Load()` fails at startup if any spec code is missing or a bump is out of enum.
+**Preset embedding:** `//go:embed presets/*.toml` inside `internal/config` —
+the preset files are the single source: `glyph init` writes them byte for
+byte and the config package's own tests load them, so the generated artifact
+and the loader cannot drift apart silently (`TestEveryPresetLoads`).
 
-**Testing** (stdlib only, no testify): table tests + a full-coverage
-exhaustiveness test for the gitmoji table — the two halves buy different things.
-`Load()` (above) only catches `rules.json` disagreeing with `CodeCount`, which an
-edit to both would satisfy, so `TestCodeCount` pins the literal 75 as well: a
-code added or dropped cannot reach a release without a diff that says so. Neither
-half is a build error — the binary still compiles; what breaks is every command
-that reads the table, at startup. Golden files for notes
-(`internal/notes/testdata/*.golden.md`) and for the docs table
-(`docs/gitmoji-table.md` is `glyph rules --md`, held by a golden test);
-`internal/workflows` pins what the CI YAML cannot state about itself; fuzz over
-the parser (never panics; well-formed round-trips), the fold
-(order-independence), version parse/step, the `Link:` header parser (it extracts,
-never fabricates) and both Markdown escapers. One fuzz target is not a parse
+**Testing** (stdlib only, no testify): table tests; a golden for the
+dry-run release body (`internal/cli/testdata/release_dry_run.golden.md`);
+`internal/workflows` pins what the CI YAML cannot state about itself; fuzz
+over the pattern match (never panics; every outcome one of the three legal
+shapes), the fold (order-independence), version parse/step, the `Link:`
+header parser (it extracts, never fabricates) and both Markdown escapers. One fuzz target is not a parse
 test at all: `FuzzNextPageOrigin` machine-checks a SECURITY invariant — no
 `Link:` header a server sends can move a token-bearing request off the configured
 origin — and spells the expected origin out literally rather than calling
@@ -1010,23 +732,15 @@ withheld: with the API handle in hand, auto-publishing the draft is a two-line
 caller step, and the human act of publishing — the safety net everything above
 rests on — stays structurally out of a caller's reach.
 
-**Profile selection (ratified 2026-08-16) is a flag, not a file in the repo:**
-`--profile={gitmoji|conventional}`, default `gitmoji`, on every command that
-reads a rules table, both tables embedded in the one binary — "rules ship
-inside the binary" (this section's opening sentence) now covers two tables
-instead of one and is re-ratified unchanged. Surveyed before ratifying
-(shallow clones, 2026-08-16): all six comparable tools — commitlint,
-semantic-release, cocogitto, convco, git-cliff, release-please — select their
-vocabulary through a per-repository config file, which is exactly the
-synced-table drift that opening sentence refuses; the survey made the
-no-config stance a deliberate differentiation rather than an omission. glyph's
-callers already state a pinned tag at every use site, and the profile rides
-the same sites: the three reusables take a `profile` input (default
-`gitmoji`) an adopter caller sets once beside its pin, and
-`hook install --profile=…` interpolates the flag into the hook it writes, the
-way the hook already interpolates its gate exit code. A repository therefore
-cannot drift into a profile nobody chose — the choice sits where the version
-already sits, in the caller's own pinned file, reviewed like any pin move.
+**The grammar is the repository's file (v2, superseding the 2026-08-16
+flag-not-file ratification):** v1 refused per-repo config because a synced
+TABLE could drift from the pinned binary. v2's config is a different object —
+not a copy of anything glyph owns, but the repository's OWN grammar, versioned
+in its own history and read by whatever binary its pins name. The drift the
+v1 stance guarded against (two copies of one truth) has no second copy left
+to drift. The reusables therefore take no grammar input at all: the binary
+finds `glyph.toml` at the checkout root, the same file the hook and a
+developer's shell read.
 
 The install itself — download the pinned tarball, verify it against the
 release's `checksums.txt` AND its build provenance (`gh attestation verify`,
@@ -1076,18 +790,9 @@ merges, and `glyph-test` sitting on `squash_merge_commit_title = PR_TITLE` /
 ran `gh api` by hand. `doctor` is the machine-checkable half of that, and the
 prevention side of t-7zt7 (a merge-commit PR vanishing from the release walk).
 
-Profiles narrow **nothing** here, ratified 2026-08-16 with the reasoning on
-the record because the opposite reading is the tempting one: the squash and
-policy checks look gitmoji-flavoured, but they guard the WALK, and the
-conventional profile's ratified scope includes the walk (lint + bump,
-`--since-tag`), so every precondition above holds under both vocabularies.
-What does follow the profile is the comparison basis: the hook checks
-byte-compare against the run's profile scripts (`Input.Profile`) — a
-conventional repo's hooks legitimately carry the `--profile` flag, and judging
-them against the default bytes would report every correctly installed hook as
-drift. The cross reading is deliberate and real: the same tree that passes
-under its own profile IS stale under the other, because a repository must not
-run the other vocabulary's hooks.
+The checks follow no vocabulary — they guard the WALK (squash policy, pins,
+hooks), and the walk is grammar-free since v2: every precondition above holds
+whatever the repository's `glyph.toml` says.
 
 Shape: independent checks → one report object → an exit on the aggregate.
 **Read-only, always** — a diagnostic that mutates cannot be run casually, and

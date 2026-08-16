@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
-	"github.com/akira-toriyama/glyph/internal/bump"
+	"github.com/akira-toriyama/glyph/internal/cleanup"
+	"github.com/akira-toriyama/glyph/internal/config"
 	"github.com/akira-toriyama/glyph/internal/core"
-	"github.com/akira-toriyama/glyph/internal/gitmoji"
 	"github.com/akira-toriyama/glyph/internal/gitsource"
-	"github.com/akira-toriyama/glyph/internal/parser"
+	"github.com/akira-toriyama/glyph/internal/hook"
 	"github.com/spf13/cobra"
 )
 
@@ -28,31 +27,23 @@ var (
 func newLintCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "lint",
-		Short: "Lint commit messages against the commit convention",
-		Long: "lint checks commit messages against the selected profile's convention —\n" +
-			"gitmoji by default (`<:code:>[(scope)][!] <subject>`; the retired Conventional\n" +
-			"token after the gitmoji is a hard error — the violation carries the canonical\n" +
-			"rewrite), or Conventional Commits under --profile=conventional\n" +
-			"(`<type>[(scope)][!]: <subject>`).\n" +
-			"--range lints every commit on its way into main (bots, merges, autosquash\n" +
-			"artifacts and raw git reverts are skipped; :construction: is a violation\n" +
-			"there). --pr lints a pull request's TITLE over the API, as the merge\n" +
-			"candidate it is: a squash merge records that title as the landed commit's\n" +
-			"subject (ratified in CONTRIBUTING — a pull-request title is a commit\n" +
-			"subject), and it is the one such subject the --range walk can never see.\n" +
-			"--message and --stdin lint one message at authoring time — the\n" +
-			"commit-msg hook path, where :construction: stays legal. Violations exit 3\n" +
-			"with a structured stderr envelope; a clean run is silent, EXCEPT that a\n" +
-			"--range which judged no commit at all says so and still exits 0 — `0` means\n" +
-			"\"everything I checked conforms\", which is vacuous when nothing was checked.\n\n" +
-			"One rule asks for something no shape check can supply, and it fires HERE at\n" +
-			"authoring time, not only in CI: a :fire:, :coffin: or :truck: commit must say\n" +
-			"whether it breaks anyone — add ! (or a BREAKING CHANGE: footer) if it takes\n" +
-			"public API away, else a NON-BREAKING: <why> footer. Beyond what the error\n" +
-			"itself says: that footer is case-SENSITIVE, its reason is mandatory (a bare\n" +
-			"NON-BREAKING: still fails), and it counts only where a trailer can sit — after\n" +
-			"a blank line, as the first body line, or stacked under another trailer. What\n" +
-			"counts as public: https://github.com/akira-toriyama/.github/blob/main/CONTRIBUTING.md",
+		Short: "Lint commit messages against the repository's glyph.toml patterns",
+		Long: "lint checks commit messages against the repository's own glyph.toml: a\n" +
+			"message must match one of the file's patterns and yield a version sigil\n" +
+			"(= none / ~ patch / ^ minor / ! major) — or be claimed by a skip pattern.\n" +
+			"That is the whole check: which prefixes exist, where the sigil sits and\n" +
+			"what a subject looks like are the pattern file's decisions, and glyph has\n" +
+			"no opinion on combinations (a docs commit carrying ! is the author's call).\n" +
+			"--range lints every commit on its way into main (exclude_authors are\n" +
+			"skipped, and so is anything a skip pattern claims — merge commits and\n" +
+			"autosquash artifacts under the shipped presets). --pr lints a pull\n" +
+			"request's TITLE over the API, as the merge candidate it is: a squash merge\n" +
+			"records that title as the landed commit's subject. --message and --stdin\n" +
+			"lint one message at authoring time — the commit-msg hook path. Violations\n" +
+			"exit 3 with a structured stderr envelope; a clean run is silent, EXCEPT\n" +
+			"that a --range which judged no commit at all says so and still exits 0 —\n" +
+			"`0` means \"everything I checked conforms\", which is vacuous when nothing\n" +
+			"was checked.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{
@@ -60,11 +51,6 @@ func newLintCmd() *cobra.Command {
 			}); err != nil {
 				return err
 			}
-			table, err := loadRules()
-			if err != nil {
-				return err
-			}
-			opts := authoringLintOptions(table)
 			// EVERY arm asks whether the flag was GIVEN, never what its value
 			// is — the same question MarkFlagsOneRequired answers, so the group
 			// check and the dispatch cannot disagree about which mode was
@@ -75,14 +61,22 @@ func newLintCmd() *cobra.Command {
 			// commit-lint job hard-fails on, for a commit nobody submitted. It
 			// swallowed a good message too: a valid subject on stdin was reported
 			// as "empty commit message".
+			// The invocation is judged before the environment: every arm
+			// validates its own input shape FIRST and loads glyph.toml after,
+			// so `--stdin=false` in a directory with no config is still
+			// answered as the usage error it is, never as "not initialized".
 			switch {
 			case cmd.Flags().Changed("range"):
-				return lintRangeRun(cmd.Context(), lintRange, opts)
+				return lintRangeRun(cmd.Context(), lintRange)
 			case cmd.Flags().Changed("pr"):
-				return lintPRRun(cmd.Context(), lintPR, lintRepo, opts)
+				return lintPRRun(cmd.Context(), lintPR, lintRepo)
 			case cmd.Flags().Changed("stdin"):
 				if !lintStdin {
 					return core.Usagef("--stdin=false selects no input mode — --stdin IS the mode, so drop it and give --range or --message instead")
+				}
+				cfg, err := loadConfig(cmd.Context())
+				if err != nil {
+					return err
 				}
 				b, rerr := io.ReadAll(in)
 				if rerr != nil {
@@ -95,17 +89,21 @@ func newLintCmd() *cobra.Command {
 				//
 				// The hook that called this is also the one artefact nothing
 				// refreshes, so its own run is where a drifted copy is reported.
-				warnIfHookStale(cmd.Context(), profileKinds()[0])
-				return lintOne(parser.Cleanup(string(b), hookCleanupMode(cmd.Context())), opts)
+				warnIfHookStale(cmd.Context(), hook.Kinds()[0])
+				return lintOne(cleanup.Apply(string(b), hookCleanupMode(cmd.Context())), cfg)
 			case cmd.Flags().Changed("message"):
 				// An empty --message is the caller naming no message, which is
 				// usage — not a message that violates the convention. The old
 				// fall-through could not tell the two apart and called both 3.
 				if err := checkGivenEmpty(cmd, "message", "message",
-					"name the message to lint (--message='<:code:> subject'), or read one from the commit-msg hook with --stdin"); err != nil {
+					"name the message to lint (--message='<subject>'), or read one from the commit-msg hook with --stdin"); err != nil {
 					return err
 				}
-				return lintOne(lintMessage, opts)
+				cfg, err := loadConfig(cmd.Context())
+				if err != nil {
+					return err
+				}
+				return lintOne(lintMessage, cfg)
 			default:
 				// Unreachable while MarkFlagsOneRequired holds. Kept as usage
 				// rather than a panic so a fourth mode added without its arm is
@@ -124,50 +122,6 @@ func newLintCmd() *cobra.Command {
 	return cmd
 }
 
-// authoringLintOptions builds the LintOptions every authoring-path judgement
-// shares: the grammar (derived from the table, so the pair cannot split), the
-// known-token test and — for the vocabulary that has emoji — the emoji
-// reverse lookup, closures over the embedded table so parser stays
-// table-blind. One constructor rather than inline literals at each arm,
-// because the rendered-gitmoji finding only fires where CodeForEmoji is wired
-// — an arm that forgot it would silently answer the duller malformed-subject,
-// which is exactly the class of drift #139 killed for annotations.
-func authoringLintOptions(table *gitmoji.Table) parser.LintOptions {
-	opts := parser.LintOptions{
-		Grammar: grammarFor(table),
-		Known:   func(code string) bool { _, ok := table.Lookup(code); return ok },
-	}
-	if table.Spec().Emoji {
-		index := make(map[string]string, len(table.Codes))
-		for _, r := range table.Codes {
-			if r.Emoji != "" {
-				index[emojiKey(r.Emoji)] = r.Code
-			}
-		}
-		opts.CodeForEmoji = func(glyph string) string { return index[emojiKey(glyph)] }
-	}
-	return opts
-}
-
-// emojiKey normalizes an emoji glyph for lookup: U+FE0F variation selectors
-// and zero-width joiners dropped, so `⚡` and `⚡️` resolve alike — which of
-// the two an author's picker emitted is presentation, not identity.
-func emojiKey(s string) string {
-	return strings.Map(func(r rune) rune {
-		if r == 0xFE0F || r == 0x200D {
-			return -1
-		}
-		return r
-	}, s)
-}
-
-// withMergeCandidate returns opts with the merge-candidate rules on — the
-// range and title paths, where the message's destination is main.
-func withMergeCandidate(opts parser.LintOptions) parser.LintOptions {
-	opts.MergeCandidate = true
-	return opts
-}
-
 // hookCleanupMode reads the two signals a commit-msg hook has about what git is
 // about to do to the message it was handed: `commit.cleanup`, and GIT_EDITOR.
 //
@@ -184,11 +138,11 @@ func withMergeCandidate(opts parser.LintOptions) parser.LintOptions {
 // the config read fails and this proceeds as if unset — a developer piping a file
 // into `glyph lint --stdin` by hand gets git's default-with-an-editor reading,
 // which is what that file looks like.
-func hookCleanupMode(ctx context.Context) parser.CleanupMode {
+func hookCleanupMode(ctx context.Context) cleanup.Mode {
 	// An error is treated as unset on purpose: this is an advisory hook, and a
 	// git that cannot answer a config question is not a reason to refuse a lint.
 	configured, _, _ := gitsource.ConfigGet(ctx, ".", "commit.cleanup")
-	mode, known := parser.ResolveCleanupMode(configured, os.Getenv("GIT_EDITOR") != ":")
+	mode, known := cleanup.ResolveMode(configured, os.Getenv("GIT_EDITOR") != ":")
 	if !known {
 		// Warn, never fail. The installed hook forwards ONLY the lint gate code
 		// and waves every other non-zero through, so exiting here would trade a
@@ -199,34 +153,21 @@ func hookCleanupMode(ctx context.Context) parser.CleanupMode {
 	return mode
 }
 
-// lintOne lints a single message at authoring time (no merge-candidate rules).
-//
-// Subjects git writes itself are skipped, exactly as the --range walk skips
-// them (bump.ExcludedFromClassification — the message question, the only one a
-// hook can ask: there is no commit to resolve yet). Authoring time is where
-// that tolerance matters MOST: the range walk only ever sees these after the
-// fact, whereas the commit-msg hook stands between the developer and
-// `git merge` / `git commit --fixup`. Judging them here rejected messages CI
-// accepts — an author cannot rewrite a subject git generated, so the only
-// escape was --no-verify, which turns the whole gate off. The retired shell
-// hook exempted the same four prefixes.
-//
-// UnknownParents is what makes the hook the ONE place the word "Merge" still
-// buys tolerance: there is no commit yet, so a merge in progress has no parent
-// count to be recognised by. Every parents-aware caller passes the real count
-// and gets the structural judgement instead (t-fs5y).
-func lintOne(message string, opts parser.LintOptions) error {
-	if _, excluded := bump.ExcludedFromClassification("", firstLine(message), bump.UnknownParents); excluded {
-		return nil
-	}
-	vs := parser.Lint(message, opts)
-	if len(vs) == 0 {
+// lintOne lints a single message at authoring time. The author is unknown —
+// no commit exists yet — so it stands as the empty string, which can never
+// match exclude_authors: the human authoring path is always judged. Whatever
+// tolerance authoring needs (a merge in progress, an autosquash artifact) is
+// the pattern file's to grant through skip patterns, and the shipped presets
+// grant exactly those two.
+func lintOne(message string, cfg *config.Config) error {
+	v := cfg.Lint(message, "")
+	if v.OK || v.Excluded {
 		return nil
 	}
 	return &core.Error{
 		Code:    core.CodeLint,
-		Msg:     fmt.Sprintf("%d commit-convention violation(s)", len(vs)),
-		Details: vs,
+		Msg:     "1 commit-convention violation(s)",
+		Details: []rangeViolation{{Subject: firstLine(message), Detail: v.Reason}},
 	}
 }
 
@@ -234,18 +175,12 @@ func lintOne(message string, opts parser.LintOptions) error {
 // main's history: its title. CONTRIBUTING ratifies that line as a commit
 // subject, and it is the only merge-candidate subject the --range walk can
 // never see — the range holds the pre-squash commits, while the title exists
-// nowhere as a commit until the squash mints it. Measured across the fleet
-// before this existed, 158 landed subjects failed glyph's own grammar this way,
-// each one degrading the release walk's fallback to a silent none.
+// nowhere as a commit until the squash mints it.
 //
-// The judgement is exactly lintRaws' judgement of the commit this title is
-// about to become: parents=1 (a squash lands single-parent — never
-// UnknownParents, so a "Merge …" title is an author's sentence and faces the
-// lint), the PR's author stands in for the commit author (a squash attributes
-// the landed commit to the pull's author, so dependabot's titles are excluded
-// exactly as its commits are), and the merge-candidate rules apply because
-// main is where this subject is headed (:construction: is a violation).
-func lintPRRun(ctx context.Context, number int, repoFlag string, opts parser.LintOptions) error {
+// The PR's author stands in for the commit author (a squash attributes the
+// landed commit to the pull's author), so an exclude_authors title —
+// dependabot's — passes exactly as its commits do.
+func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 	if err := checkPRFlag(number); err != nil {
 		return err
 	}
@@ -253,131 +188,93 @@ func lintPRRun(ctx context.Context, number int, repoFlag string, opts parser.Lin
 	if err != nil {
 		return err
 	}
+	cfg, err := loadConfig(ctx)
+	if err != nil {
+		return err
+	}
 	pull, err := newGitHub().PullRequest(ctx, owner, repo, number)
 	if err != nil {
 		return err
 	}
-	if _, excluded := bump.ExcludedFromClassification(pull.Author, pull.Title, 1); excluded {
+	v := cfg.Lint(pull.Title, pull.Author)
+	if v.OK || v.Excluded {
 		return nil
 	}
-	opts.MergeCandidate = true
-	vs := parser.Lint(pull.Title, opts)
-	if len(vs) == 0 {
-		return nil
-	}
-	// One annotation per finding, written by the binary that computed it —
+	// One annotation for the finding, written by the binary that computed it —
 	// the same producer contract lintRangeRun holds (t-sws7).
-	for _, v := range vs {
-		if v.Fix != "" {
-			errorf("%s/%s#%d title %s: %s — fix: %s", owner, repo, number, v.Rule, v.Detail, v.Fix)
-		} else {
-			errorf("%s/%s#%d title %s: %s", owner, repo, number, v.Rule, v.Detail)
-		}
-	}
+	errorf("%s/%s#%d title: %s", owner, repo, number, v.Reason)
 	return &core.Error{
 		Code: core.CodeLint,
-		Msg: fmt.Sprintf("%d commit-convention violation(s) in the title of %s/%s#%d — a squash merge records this title as the landed commit's subject",
-			len(vs), owner, repo, number),
-		Details: vs,
+		Msg: fmt.Sprintf("1 commit-convention violation(s) in the title of %s/%s#%d — a squash merge records this title as the landed commit's subject",
+			owner, repo, number),
+		Details: []rangeViolation{{Subject: pull.Title, Detail: v.Reason}},
 	}
 }
 
-// lintRaws lints raw commits as merge candidates, returning every finding and
-// how many commits were actually judged (excluded ones are skipped, never
-// failed). Both callers — the `--range` gate CI runs and the pre-push hook —
-// go through here, because a hook and CI that reach different verdicts on one
-// commit is glyph lying in one of two directions, and DESIGN §2.1 says which
-// of the two costs the developer the push.
-func lintRaws(raws []gitsource.RawCommit, opts parser.LintOptions) (findings []rangeViolation, checked int) {
+// lintRaws lints raw commits, returning every finding and how many commits
+// were actually judged (excluded authors are skipped, never failed; a
+// skip-pattern match is judged and clean). Both callers — the `--range` gate
+// CI runs and the pre-push hook — go through here, because a hook and CI that
+// reach different verdicts on one commit is glyph lying in one of two
+// directions, and DESIGN §2.1 says which of the two costs the developer the
+// push.
+func lintRaws(raws []gitsource.RawCommit, cfg *config.Config) (findings []rangeViolation, checked int) {
 	for _, raw := range raws {
-		subject := firstLine(raw.Message)
-		if _, excluded := bump.ExcludedFromClassification(raw.Author, subject, raw.Parents); excluded {
+		v := cfg.Lint(raw.Message, raw.Author)
+		if v.Excluded {
 			continue
 		}
 		checked++
-		for _, v := range parser.Lint(raw.Message, withMergeCandidate(opts)) {
-			findings = append(findings, rangeViolation{SHA: raw.SHA, Subject: subject, Rule: v.Rule, Detail: v.Detail, Fix: v.Fix})
+		if !v.OK {
+			findings = append(findings, rangeViolation{SHA: raw.SHA, Subject: firstLine(raw.Message), Detail: v.Reason})
 		}
 	}
 	return findings, checked
 }
 
-// rangeViolation is one finding over a range, anchored to its commit. Fix
-// rides along verbatim from parser.Violation — same field, same paste-and-pass
-// contract, same omitempty.
+// rangeViolation is one finding, anchored to its commit where one exists.
+// The v1 rule-id vocabulary is gone with the embedded grammar: a v2 finding
+// is the config's own sentence about why the message means nothing under it.
 type rangeViolation struct {
-	SHA     string `json:"sha"`
+	SHA     string `json:"sha,omitempty"`
 	Subject string `json:"subject"`
-	Rule    string `json:"rule"`
 	Detail  string `json:"detail"`
-	Fix     string `json:"fix,omitempty"`
 }
 
-// lintRangeRun lints every participating commit in revRange as a merge
-// candidate. Excluded commits (bots, merges, autosquash artifacts, raw git
-// reverts) are skipped, never failed — the same tolerance the retired shell
-// lint gave history.
-func lintRangeRun(ctx context.Context, revRange string, opts parser.LintOptions) error {
+// lintRangeRun lints every commit in revRange. Excluded authors are skipped,
+// never failed — the bots exclude_authors names lint nowhere.
+func lintRangeRun(ctx context.Context, revRange string) error {
 	if err := checkRangeFlag(revRange); err != nil {
 		return err
 	}
-	raws, err := gitsource.Log(ctx, ".", revRange)
+	cfg, err := loadConfig(ctx)
 	if err != nil {
 		return err
 	}
-	all, checked := lintRaws(raws, opts)
-	if checked == 0 {
-		warnNothingLinted(revRange, len(raws))
+	raws, lerr := gitsource.Log(ctx, ".", revRange)
+	if lerr != nil {
+		return lerr
 	}
-	if len(all) == 0 {
-		return nil
-	}
-	// One annotation per finding, written by the binary that computed it. The
-	// envelope below still carries the machine answer; this is the human half,
-	// and it is here rather than in a caller's jq because that reconstruction
-	// is where a whole run's annotations went missing in silence (t-sws7).
-	for _, v := range all {
-		if v.Fix != "" {
-			errorf("%.7s %s: %s — fix: %s", v.SHA, v.Rule, v.Detail, v.Fix)
-		} else {
-			errorf("%.7s %s: %s", v.SHA, v.Rule, v.Detail)
+	findings, checked := lintRaws(raws, cfg)
+	if len(findings) > 0 {
+		for _, f := range findings {
+			errorf("commit %.7s: %s", f.SHA, f.Detail)
+		}
+		return &core.Error{
+			Code:    core.CodeLint,
+			Msg:     fmt.Sprintf("%d commit-convention violation(s)", len(findings)),
+			Details: findings,
 		}
 	}
-	return &core.Error{
-		Code:    core.CodeLint,
-		Msg:     fmt.Sprintf("%d commit-convention violation(s) across %d linted commit(s) in %s", len(all), checked, revRange),
-		Details: all,
+	if checked == 0 {
+		// The two causes need different sentences: an empty walk means the
+		// range holds no commits (the caller's range is what needs fixing),
+		// while a non-empty one means every commit was excluded.
+		if len(raws) == 0 {
+			warnf("nothing linted: %s holds no commits — nothing to lint is not a pass on anything", revRange)
+		} else {
+			warnf("nothing linted: all %d commit(s) in %s are excluded from the convention (exclude_authors) — nothing to lint is not a pass on anything", len(raws), revRange)
+		}
 	}
-}
-
-// warnNothingLinted reports the one verdict the exit-code contract cannot
-// express: `0` says "every commit I checked conforms", and with nothing checked
-// that sentence is vacuously true. The gate then reads as a pass over work it
-// never looked at.
-//
-// lint.yml already refuses one shape of this — outside a pull_request context
-// its base/head SHAs are empty, `..` collapses to an empty range and "every
-// commit 'passes' silently" — but it refuses it in YAML, on the caller's side of
-// the pin, and only for that one cause. The invocation CLAUDE.md tells authors
-// and agents to run before pushing, `glyph lint --range origin/main..HEAD`,
-// reaches the same silence with no guard at all: a stale base, a base ahead of
-// head, or an unfetched ref all read as an empty range.
-//
-// It stays exit 0, and that is the argued part. `2` is frozen as "the arguments
-// are wrong" and these arguments are fine; more concretely, a range holding
-// nothing but bot commits is a DAILY event fleet-wide (dependabot, fleet-sync),
-// and lint.yml forwards glyph's code verbatim (`exit "$status"`), so any
-// non-zero here would red every repository's gate on a healthy push. The verdict
-// belongs on the diagnostic stream, which is where warnf puts it — one
-// `::warning::` annotation in Actions, one plain line at a terminal.
-//
-// The two causes get different sentences because they call for different fixes:
-// an empty range is the caller's range to correct, while an all-excluded range
-// is glyph working exactly as designed and worth knowing anyway.
-func warnNothingLinted(revRange string, seen int) {
-	if seen == 0 {
-		warnf("nothing linted: %s holds no commits — a base ahead of head, a stale or unfetched base ref, and a genuinely empty range all read alike here", revRange)
-		return
-	}
-	warnf("nothing linted: all %d commit(s) in %s are excluded from the convention (bots, merge commits, autosquash artifacts, raw git reverts)", seen, revRange)
+	return nil
 }

@@ -36,8 +36,8 @@ func TestReleaseDryRunGolden(t *testing.T) {
 	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
 		commitPullsPath(sha2): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha2) + `]`,
-		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles:(ui) add a menu") + `]`,
-		pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles:(ui)^ add a menu") + `]`,
+		pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)

@@ -44,6 +44,11 @@ semver_sigil = '~'
 pattern = '^Merge '
 skip = true
 
+[[patterns]]
+# autosquash artifacts — rewritten away by rebase --autosquash before landing
+pattern = '^(fixup|squash)! '
+skip = true
+
 [note]
 # One line per commit. $xxx reads the winning pattern's named groups;
 # $pr / $author / $hash are built in. A commit no pattern matches (bots)

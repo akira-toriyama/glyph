@@ -155,22 +155,16 @@ type Kind struct {
 	Asks string
 }
 
-// Kinds is every hook glyph writes for one profile, in install order. A bare
-// `glyph hook install` writes all of them. The empty string and the default
-// profile name both yield the default bytes — byte-identical to every hook
-// installed before profiles existed — and any other name is interpolated into
-// each glyph invocation as --profile=<name>. The name's validity is the CLI's
-// question (resolveProfile answers it before anything reaches here); this
-// package only spells the choice into the file.
-func Kinds(profile string) []Kind {
-	suffix, convention := "", "the gitmoji convention"
-	if profile != "" && profile != "gitmoji" {
-		suffix = " --profile=" + profile
-		convention = "the " + profile + "-profile commit convention"
-	}
+// Kinds is every hook glyph writes, in install order. A bare
+// `glyph hook install` writes all of them. The v1 profile interpolation is
+// gone with profiles themselves: the convention lives in the repository's
+// glyph.toml, which the binary reads — the hook still carries no copy of
+// anything.
+func Kinds() []Kind {
+	suffix, convention := "", "the repository's glyph.toml convention"
 	return []Kind{
-		{Name: "commit-msg", Script: commitMsgScript(suffix, convention), Asks: "glyph lint --stdin" + suffix},
-		{Name: "pre-push", Script: prePushScript(suffix), Asks: "glyph hook pre-push" + suffix},
+		{Name: "commit-msg", Script: commitMsgScript(suffix, convention), Asks: "glyph lint --stdin"},
+		{Name: "pre-push", Script: prePushScript(suffix), Asks: "glyph hook pre-push"},
 	}
 }
 
@@ -188,10 +182,9 @@ func (k Kind) Stale(installed string) bool {
 	return installed != k.Script && strings.Contains(installed, Marker)
 }
 
-// KindByName resolves a hook name under one profile, or reports that glyph
-// does not write one.
-func KindByName(profile, name string) (Kind, bool) {
-	for _, k := range Kinds(profile) {
+// KindByName resolves a hook name, or reports that glyph does not write one.
+func KindByName(name string) (Kind, bool) {
+	for _, k := range Kinds() {
 		if k.Name == name {
 			return k, true
 		}
@@ -203,8 +196,8 @@ func KindByName(profile, name string) (Kind, bool) {
 // completion a user gets and the set Install accepts cannot disagree. Names
 // are profile-independent (only the script bytes vary), so this takes none.
 func KindNames() []string {
-	names := make([]string, 0, len(Kinds("")))
-	for _, k := range Kinds("") {
+	names := make([]string, 0, len(Kinds()))
+	for _, k := range Kinds() {
 		names = append(names, k.Name)
 	}
 	return names

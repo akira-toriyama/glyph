@@ -2,8 +2,6 @@ package bump
 
 import (
 	"testing"
-
-	"github.com/akira-toriyama/glyph/internal/gitmoji"
 )
 
 // TestParseVersion accepts exactly the house tag shape — vX.Y.Z with an
@@ -74,17 +72,17 @@ func TestVersionString(t *testing.T) {
 func TestNext(t *testing.T) {
 	cases := []struct {
 		in    string
-		level gitmoji.Bump
+		level Level
 		want  string
 	}{
-		{"v1.2.3", gitmoji.BumpNone, "v1.2.3"},
-		{"v1.2.3", gitmoji.BumpPatch, "v1.2.4"},
-		{"v1.2.3", gitmoji.BumpMinor, "v1.3.0"},
-		{"v1.2.3", gitmoji.BumpMajor, "v2.0.0"},
-		{"v0.6.1", gitmoji.BumpPatch, "v0.6.2"},
-		{"v0.6.1", gitmoji.BumpMinor, "v0.7.0"},
-		{"v0.6.1", gitmoji.BumpMajor, "v1.0.0"},
-		{"v0.0.0", gitmoji.BumpPatch, "v0.0.1"},
+		{"v1.2.3", LevelNone, "v1.2.3"},
+		{"v1.2.3", LevelPatch, "v1.2.4"},
+		{"v1.2.3", LevelMinor, "v1.3.0"},
+		{"v1.2.3", LevelMajor, "v2.0.0"},
+		{"v0.6.1", LevelPatch, "v0.6.2"},
+		{"v0.6.1", LevelMinor, "v0.7.0"},
+		{"v0.6.1", LevelMajor, "v1.0.0"},
+		{"v0.0.0", LevelPatch, "v0.0.1"},
 	}
 	for _, c := range cases {
 		v, err := ParseVersion(c.in)
@@ -167,13 +165,13 @@ func FuzzVersionNext(f *testing.F) {
 		if major < 0 || minor < 0 || patch < 0 {
 			t.Skip("unreachable: parsed versions are non-negative")
 		}
-		b := gitmoji.Bump(level)
+		b := Level(level)
 		if !b.Valid() {
 			t.Skip("out-of-lattice level")
 		}
 		v := Version{Major: major, Minor: minor, Patch: patch}
 		next := v.Next(b)
-		if b == gitmoji.BumpNone {
+		if b == LevelNone {
 			if next != v {
 				t.Fatalf("Next(none) moved %v to %v", v, next)
 			}

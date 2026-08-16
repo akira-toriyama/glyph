@@ -19,7 +19,7 @@
 # human-stated reason in the history of every commit that rewrote the spec.
 #
 # What counts as a golden is GOLDEN_PATTERN below: the -update-rewritable
-# goldens (testdata/*.golden.*) and docs/gitmoji-table.md (regenerated from
+# goldens (testdata/*.golden.*; docs/gitmoji-table.md left with
 # gitmoji.Table.Markdown(), same -update path). Deliberately absent:
 # internal/bump/testdata/fleet-corpus.tsv has NO -update on purpose — its test
 # header argues why, and scripts/fleet-corpus.sh refuses to bake a broken
@@ -37,7 +37,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-GOLDEN_PATTERN='^(docs/gitmoji-table\.md$|.*/testdata/.*\.golden\..*$)'
+GOLDEN_PATTERN='^.*/testdata/.*\.golden\..*$'
 
 base="${1:?usage: sh scripts/golden-gate.sh <base-ref>}"
 

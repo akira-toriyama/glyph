@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/akira-toriyama/glyph/internal/bump"
+	"github.com/akira-toriyama/glyph/internal/config"
 	"github.com/akira-toriyama/glyph/internal/core"
-	"github.com/akira-toriyama/glyph/internal/gitmoji"
-	"github.com/akira-toriyama/glyph/internal/parser"
+	"github.com/akira-toriyama/glyph/internal/gitsource"
 	"github.com/spf13/cobra"
 )
 
@@ -20,40 +20,35 @@ var (
 	bumpJSON     bool
 )
 
-// bumpCommit is one classified commit in the machine verdict. The gitmoji code
-// serializes as "code" — the same key the rules table (rules.json,
-// `glyph rules --json`) and notes use for the identical token, so every glyph
-// JSON surface names it one way.
-type bumpCommit struct {
-	SHA      string `json:"sha"`
-	Code     string `json:"code"`
-	Level    string `json:"level"`
-	Breaking bool   `json:"breaking"`
-	Subject  string `json:"subject"`
-}
-
 // bumpResult is the machine verdict: {current, level, next, commits, reason}.
 // next is omitted on a none verdict — there is no next version to act on.
+// The commit rows are bump.SigilVerdict: {sha, subject, sigil, level} — the
+// v1 "code" and "breaking" keys died with the embedded table; the sigil IS
+// the classification input now.
 type bumpResult struct {
-	Current string       `json:"current"`
-	Level   string       `json:"level"`
-	Next    string       `json:"next,omitempty"`
-	Commits []bumpCommit `json:"commits"`
-	Reason  string       `json:"reason"`
+	Current string              `json:"current"`
+	Level   string              `json:"level"`
+	Next    string              `json:"next,omitempty"`
+	Commits []bump.SigilVerdict `json:"commits"`
+	Reason  string              `json:"reason"`
 }
 
 func newBumpCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bump",
 		Short: "Compute the next version from a range of commits",
-		Long: "bump classifies every participating commit (bots, merges, autosquash\n" +
-			"artifacts and raw git reverts are excluded), folds the levels with max — so\n" +
+		Long: "bump reads each commit's version sigil under the repository's glyph.toml\n" +
+			"(= none / ~ patch / ^ minor / ! major — captured by your patterns, or\n" +
+			"supplied by a pattern's fixed semver_sigil), folds the levels with max — so\n" +
 			"order can never change the verdict — and steps the current version.\n" +
+			"exclude_authors stay out of the fold; a skip-pattern commit stays out of\n" +
+			"everything; a commit NO pattern claims refuses the whole range (exit 3) —\n" +
+			"an unmatched commit folded as none would be a silent hole.\n" +
 			"There are three input sources, exactly one of which is required.\n" +
 			"--range reads a local git revision range; --pr reads a pull request's\n" +
 			"INDIVIDUAL commits over the API, which is what makes the verdict\n" +
 			"squash-safe (a squash-merge rewrites the subject to the PR title and would\n" +
-			"otherwise erase every per-commit type); --since-tag walks main's merge\n" +
+			"otherwise erase every per-commit sigil); --since-tag walks main's merge\n" +
 			"points since a tag and expands each back into the pull it merged — the\n" +
 			"release-time source, and what glyph's own release job uses.\n" +
 			"stdout is the bare next version\n" +
@@ -64,9 +59,9 @@ func newBumpCmd() *cobra.Command {
 			return bumpRun(cmd)
 		},
 	}
-	cmd.Flags().StringVar(&bumpRange, "range", "", "classify every commit in a git revision range (BASE..HEAD)")
-	cmd.Flags().IntVar(&bumpPR, "pr", 0, "classify a pull request's individual (pre-squash) commits, read over the API")
-	addSinceTagFlag(cmd, &bumpSinceTag, "classify")
+	cmd.Flags().StringVar(&bumpRange, "range", "", "fold every commit in a git revision range (BASE..HEAD)")
+	cmd.Flags().IntVar(&bumpPR, "pr", 0, "fold a pull request's individual (pre-squash) commits, read over the API")
+	addSinceTagFlag(cmd, &bumpSinceTag, "fold")
 	cmd.Flags().StringVar(&bumpRepo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY)")
 	cmd.Flags().StringVar(&bumpCurrent, "current", "", currentFlagUsage)
 	cmd.Flags().BoolVar(&bumpJSON, "json", false, "emit the machine verdict {current,level,next,commits,reason}")
@@ -82,16 +77,16 @@ func bumpRun(cmd *cobra.Command) error {
 		return err
 	}
 	ctx := cmd.Context()
-	table, err := loadRules()
+	cfg, err := loadConfig(ctx)
 	if err != nil {
 		return err
 	}
-	parsed, source, base, perr := bumpInput(cmd, table)
+	raws, source, base, perr := bumpInput(cmd, cfg)
 	if perr != nil {
 		return perr
 	}
 
-	commits, level, cerr := classifyVerdict(parsed, table)
+	commits, level, cerr := bump.FoldSigils(raws, cfg)
 	if cerr != nil {
 		return cerr
 	}
@@ -100,7 +95,7 @@ func bumpRun(cmd *cobra.Command) error {
 		return verr
 	}
 
-	if level == gitmoji.BumpNone {
+	if level == bump.LevelNone {
 		reason := fmt.Sprintf("no release: %d commit(s) participate in %s and every level is none", len(commits), source)
 		if bumpJSON {
 			printCompact(bumpResult{Current: current.String(), Level: string(level), Commits: commits, Reason: reason})
@@ -125,30 +120,6 @@ func bumpRun(cmd *cobra.Command) error {
 	return nil
 }
 
-// classifyVerdict classifies every participating commit and folds the levels
-// with max — the one verdict computation bump and release share, so composing
-// a release can never classify differently than bump alone would. commits is
-// non-nil (serializes as [] so consumers can index).
-func classifyVerdict(parsed []parser.Commit, table *gitmoji.Table) ([]bumpCommit, gitmoji.Bump, error) {
-	commits := []bumpCommit{}
-	levels := make([]gitmoji.Bump, 0, len(parsed))
-	for _, c := range parsed {
-		level, cerr := bump.Classify(c, table)
-		if cerr != nil {
-			return nil, gitmoji.BumpNone, cerr
-		}
-		levels = append(levels, level)
-		commits = append(commits, bumpCommit{
-			SHA:      c.SHA,
-			Code:     c.Token,
-			Level:    string(level),
-			Breaking: c.Breaking,
-			Subject:  c.Subject,
-		})
-	}
-	return commits, bump.Reduce(levels), nil
-}
-
 // bumpInput reads the commits the verdict is computed from, names the source
 // for the reason line — a local revision range, a pull request's individual
 // (pre-squash) commits over the API, or the release walk since a tag — and,
@@ -157,11 +128,11 @@ func classifyVerdict(parsed []parser.Commit, table *gitmoji.Table) ([]bumpCommit
 // an explicit --pr 0 (what a workflow yields from a null PR number) reaches
 // the --pr guard and is diagnosed as a bad --pr, not misrouted into a --range
 // complaint.
-func bumpInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, string, *bump.Version, error) {
+func bumpInput(cmd *cobra.Command, cfg *config.Config) ([]bump.SigilCommit, string, *bump.Version, error) {
 	ctx := cmd.Context()
 	if cmd.Flags().Changed("pr") {
-		commits, source, err := pullInput(ctx, bumpPR, bumpRepo, grammarFor(table))
-		return commits, source, nil, err
+		raws, source, err := pullInput(ctx, bumpPR, bumpRepo)
+		return sigilCommits(raws), source, nil, err
 	}
 	if cmd.Flags().Changed("since-tag") {
 		// Both halves of the walk's facts are discarded here, and for the same
@@ -175,14 +146,14 @@ func bumpInput(cmd *cobra.Command, table *gitmoji.Table) ([]parser.Commit, strin
 		// readers: its answer is pasted into a pull request and read later by
 		// someone who never opens the log, so it carries the shortfall in the
 		// body itself.)
-		commits, _, source, base, err := sinceTagInput(ctx, table, bumpSinceTag, bumpRepo)
-		return plain(commits), source, base, err
+		commits, _, source, base, err := sinceTagInput(ctx, cfg, bumpSinceTag, bumpRepo)
+		return walkedSigilCommits(commits), source, base, err
 	}
 	if err := checkRangeFlag(bumpRange); err != nil {
 		return nil, "", nil, err
 	}
-	commits, err := participatingCommits(ctx, bumpRange, grammarFor(table))
-	return commits, bumpRange, nil, err
+	raws, err := gitsource.Log(ctx, ".", bumpRange)
+	return sigilCommits(raws), bumpRange, nil, err
 }
 
 // currentVersion resolves the version to step from: an explicit --current
@@ -207,14 +178,10 @@ func currentVersion(ctx context.Context, flag string, base *bump.Version) (bump.
 
 // decidingReason names the oldest commit that reaches the folded level — the
 // one-line answer to "why this bump".
-func decidingReason(commits []bumpCommit, level gitmoji.Bump) string {
+func decidingReason(commits []bump.SigilVerdict, level bump.Level) string {
 	for _, c := range commits {
 		if c.Level == string(level) {
-			breaking := ""
-			if c.Breaking {
-				breaking = " (breaking)"
-			}
-			return fmt.Sprintf("%.7s %s %q%s → %s", c.SHA, c.Code, c.Subject, breaking, level)
+			return fmt.Sprintf("%.7s %s %q → %s", c.SHA, c.Sigil, c.Subject, level)
 		}
 	}
 	return fmt.Sprintf("level %s", level)

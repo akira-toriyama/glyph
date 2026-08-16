@@ -1,9 +1,9 @@
-diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 1f82a42..485d764 100644
---- a/internal/cli/cmd_release.go
-+++ b/internal/cli/cmd_release.go
-@@ -376,9 +376,6 @@ func glyphDrafts(releases []github.Release) []github.Release {
- 		if !r.Draft || !strings.HasPrefix(r.TagName, "v") {
+diff --git a/internal/draftplan/draftplan.go b/internal/draftplan/draftplan.go
+index dfadbe8..fc677f9 100644
+--- a/internal/draftplan/draftplan.go
++++ b/internal/draftplan/draftplan.go
+@@ -73,9 +73,6 @@ func managed(releases []Draft) []Draft {
+ 		if !strings.HasPrefix(r.TagName, "v") {
  			continue
  		}
 -		if _, err := bump.ParseVersion(r.TagName); err != nil {

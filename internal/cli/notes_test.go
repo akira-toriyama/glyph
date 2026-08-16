@@ -6,50 +6,50 @@ import (
 	"testing"
 )
 
-// TestNotesMarkdown: the full Markdown body — the breaking hoist, section
-// order, a scoped entry, a none commit dropped — pinned byte-for-byte with the
-// real commit SHAs.
+// TestNotesMarkdown: the full Markdown body under the gemoji preset — the
+// section order the config declares, a major landing in Breaking Changes, a
+// none commit landing nowhere (no none-section is configured), and the
+// note.line template rendered with the mention fence over the author.
 func TestNotesMarkdown(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) add a command palette")
-	testCommit(t, dir, "akira-toriyama", ":memo: document the palette")
-	testCommit(t, dir, "akira-toriyama", ":recycle: rework the store\n\nBREAKING CHANGE: Store is gone.")
-	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a command palette")
+	testCommit(t, dir, "akira-toriyama", ":memo:= document the palette")
+	testCommit(t, dir, "akira-toriyama", ":recycle:! rework the store")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	t.Chdir(dir)
-	shas := strings.Fields(testGit(t, dir, "akira-toriyama", "log", "--format=%H", "--reverse", base+"..HEAD"))
-	if len(shas) != 4 {
-		t.Fatalf("expected 4 commits in the range, got %v", shas)
-	}
 
 	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
 	if code != 0 {
 		t.Fatalf("notes exited %d, want 0\nstderr: %s", code, stderr)
 	}
 	want := "## Breaking Changes\n\n" +
-		"- ♻️ rework the store (" + shas[2][:7] + ")\n\n" +
+		"- rework the store () `@akira-toriyama`\n\n" +
 		"## Features\n\n" +
-		"- ✨ **ui:** add a command palette (" + shas[0][:7] + ")\n\n" +
+		"- add a command palette () `@akira-toriyama`\n\n" +
 		"## Fixes\n\n" +
-		"- 🐛 fix a crash (" + shas[3][:7] + ")\n"
+		"- fix a crash () `@akira-toriyama`\n"
 	if stdout != want {
 		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
 	}
 }
 
-// TestNotesSkipsExcluded: a bot's feature commit never reaches the notes —
-// the same participation rules as lint and bump.
-func TestNotesSkipsExcluded(t *testing.T) {
+// TestNotesSectionsAloneDecide: exclude_authors keeps a bot out of the FOLD,
+// never out of the notes — whether a commit appears is note.sections'
+// decision alone (ratified), so a bot's raw bump lands in the author-axis
+// Dependencies section and a bot's conforming commit lands in its semver
+// section too.
+func TestNotesSectionsAloneDecide(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "dependabot[bot]", ":sparkles: a bot feature that must stay out")
-	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	testCommit(t, dir, "dependabot[bot]", "Bump a dep from 1 to 2")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "notes", "--range", base+"..HEAD")
 	if code != 0 {
 		t.Fatalf("notes exited %d, want 0", code)
 	}
-	if strings.Contains(stdout, "bot feature") || strings.Contains(stdout, "## Features") {
-		t.Fatalf("the bot commit must not reach the notes:\n%s", stdout)
+	if !strings.Contains(stdout, "## Dependencies") || !strings.Contains(stdout, "Bump a dep from 1 to 2") {
+		t.Fatalf("the bot commit must land in the Dependencies author section, rendered from its raw first line:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "## Fixes") {
 		t.Fatalf("the human fix must reach the notes:\n%s", stdout)
@@ -60,7 +60,7 @@ func TestNotesSkipsExcluded(t *testing.T) {
 // nothing on stdout, exit 1, the reason in the stderr envelope.
 func TestNotesEmptyIsNoRelease(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":memo: document the notes model")
+	testCommit(t, dir, "akira-toriyama", ":memo:= document the notes model")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
@@ -80,7 +80,7 @@ func TestNotesEmptyIsNoRelease(t *testing.T) {
 // envelope.
 func TestNotesEmptyJSON(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":memo: document the notes model")
+	testCommit(t, dir, "akira-toriyama", ":memo:= document the notes model")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD", "--json")
@@ -108,7 +108,7 @@ func TestNotesEmptyJSON(t *testing.T) {
 // code,emoji,scope,subject,breaking}]}]} on one line.
 func TestNotesJSONShape(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) add a command palette")
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a command palette")
 	testCommit(t, dir, "akira-toriyama", ":bug:! drop the broken fallback")
 	t.Chdir(dir)
 
@@ -121,15 +121,8 @@ func TestNotesJSONShape(t *testing.T) {
 	}
 	var res struct {
 		Sections []struct {
-			Title   string `json:"title"`
-			Entries []struct {
-				SHA      string `json:"sha"`
-				Code     string `json:"code"`
-				Emoji    string `json:"emoji"`
-				Scope    string `json:"scope"`
-				Subject  string `json:"subject"`
-				Breaking bool   `json:"breaking"`
-			} `json:"entries"`
+			Title string   `json:"title"`
+			Lines []string `json:"lines"`
 		} `json:"sections"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
@@ -141,45 +134,46 @@ func TestNotesJSONShape(t *testing.T) {
 	if res.Sections[0].Title != "Breaking Changes" || res.Sections[1].Title != "Features" {
 		t.Fatalf("section order = %q, %q; want Breaking Changes, Features", res.Sections[0].Title, res.Sections[1].Title)
 	}
-	e := res.Sections[0].Entries[0]
-	if len(e.SHA) != 40 || e.Code != ":bug:" || e.Emoji == "" || !e.Breaking || e.Subject == "" {
-		t.Fatalf("breaking entry is missing fields: %+v", e)
+	if len(res.Sections[0].Lines) != 1 || !strings.Contains(res.Sections[0].Lines[0], "drop the broken fallback") {
+		t.Fatalf("breaking section lines = %v", res.Sections[0].Lines)
 	}
-	f := res.Sections[1].Entries[0]
-	if f.Scope != "ui" || f.Breaking {
-		t.Fatalf("feature entry = %+v, want scope ui and breaking false", f)
+	if !strings.Contains(res.Sections[1].Lines[0], "add a command palette") {
+		t.Fatalf("feature section lines = %v", res.Sections[1].Lines)
 	}
 }
 
-// TestNotesUnknownCodeIsLint: an unknown gitmoji anywhere in the range is a
-// hard lint failure (exit 3) — never silently dropped from the notes.
-func TestNotesUnknownCodeIsLint(t *testing.T) {
+// TestNotesUnmatchedIsRendered: notes never refuse a range — an unmatched
+// commit has no semver level, so it can only surface through an author-axis
+// section; whether it appears at all is note.sections' decision (the fold is
+// where an unmatched commit refuses, and bump/release run the fold).
+func TestNotesUnmatchedIsRendered(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":not-a-real-code: mystery change")
+	testCommit(t, dir, "akira-toriyama", ":not_a_real_code:^ mystery change")
 	t.Chdir(dir)
 
-	if code, _, _ := runGlyph(t, "notes", "--range", base+"..HEAD"); code != 3 {
-		t.Fatalf("notes with an unknown code should exit 3")
+	if code, _, _ := runGlyph(t, "notes", "--range", base+"..HEAD"); code != 0 {
+		t.Fatalf("notes over a matched unknown-prefix commit should exit 0 — the prefix is the author's call")
 	}
 }
 
-// TestNotesMalformedCommitIsLint: a non-parsing human commit in the range is a
-// lint failure carrying the offending SHA.
-func TestNotesMalformedCommitIsLint(t *testing.T) {
+// TestNotesUnmatchedLandsNowhereByDefault: notes never refuse a range — an
+// unmatched commit renders through the bot fallback (raw first line) but has
+// no semver level, so under the preset (whose only author section names
+// dependabot) an unmatched human commit lands in no section at all, and a
+// range holding only it is the soft no-release. The STRICT arm lives in the
+// fold: bump and release refuse this same range (Q2), so nothing publishes a
+// version around the commit notes quietly passed over.
+func TestNotesUnmatchedLandsNowhereByDefault(t *testing.T) {
 	dir, base := testRepo(t)
 	testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")
 	t.Chdir(dir)
 
-	// The SHA, not the word "commit " — see the twin in bump_test.go for why
-	// the literal assertion could not fail.
-	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-
-	code, _, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
-	if code != 3 {
-		t.Fatalf("notes with a malformed commit exited %d, want 3", code)
+	code, stdout, _ := runGlyph(t, "notes", "--range", base+"..HEAD")
+	if code != 1 {
+		t.Fatalf("notes over an unmatched-only range exited %d, want 1 (nothing lands in a section)", code)
 	}
-	if !strings.Contains(stderr, sha[:7]) {
-		t.Fatalf("the lint error should name the offending commit %.7s:\n%s", sha, stderr)
+	if stdout != "" {
+		t.Fatalf("stdout should be empty, got %q", stdout)
 	}
 }
 

@@ -98,7 +98,7 @@ func publishedJSON(id int, tag string) string {
 	return fmt.Sprintf(`{"id":%d,"tag_name":%q,"draft":false,"html_url":"https://github.example/releases/%d"}`, id, tag, id)
 }
 
-// oneFixWalk builds the standard one-PR walk (a single :bug: commit → patch
+// oneFixWalk builds the standard one-PR walk (a single :bug:~ commit → patch
 // verdict v0.1.1) and chdirs into the repository — the smallest release-worthy
 // input, shared by the upsert tests so each can focus on the draft surface.
 func oneFixWalk(t *testing.T) map[string]string {
@@ -108,7 +108,7 @@ func oneFixWalk(t *testing.T) map[string]string {
 	t.Chdir(dir)
 	return map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha) + `]`,
-		pullCommitsPath(8):   `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+		pullCommitsPath(8):   `[` + apiCommit("b1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 	}
 }
 
@@ -126,7 +126,7 @@ func dryServer(t *testing.T, walk map[string]string) *httptest.Server {
 	return srv
 }
 
-// noneWalk builds an all-none walk (one :memo: commit) and chdirs into it.
+// noneWalk builds an all-none walk (one :memo:= commit) and chdirs into it.
 func noneWalk(t *testing.T) map[string]string {
 	t.Helper()
 	dir, _ := testRepo(t)
@@ -134,7 +134,7 @@ func noneWalk(t *testing.T) map[string]string {
 	t.Chdir(dir)
 	return map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha) + `]`,
-		pullCommitsPath(7):   `[` + apiCommit("a1", "akira-toriyama", ":memo: document the fold") + `]`,
+		pullCommitsPath(7):   `[` + apiCommit("a1", "akira-toriyama", ":memo:= document the fold") + `]`,
 	}
 }
 
@@ -151,8 +151,8 @@ func TestReleaseComposesTagAndBody(t *testing.T) {
 	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
 		commitPullsPath(sha2): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha2) + `]`,
-		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles:(ui) add a menu") + `]`,
-		pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles:(ui)^ add a menu") + `]`,
+		pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -628,7 +628,7 @@ type releaseVerdict struct {
 	URL     string `json:"url"`
 	Commits []struct {
 		SHA      string `json:"sha"`
-		Code     string `json:"code"`
+		Sigil    string `json:"sigil"`
 		Level    string `json:"level"`
 		Breaking bool   `json:"breaking"`
 		Subject  string `json:"subject"`
@@ -650,15 +650,15 @@ func TestReleaseJSONReportsPullExpansion(t *testing.T) {
 	dir, _ := testRepo(t)
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
 	sha2 := squashCommit(t, dir, "Fix a crash", 8)
-	testCommit(t, dir, "akira-toriyama", ":memo: note the direct push")
+	testCommit(t, dir, "akira-toriyama", ":memo:= note the direct push")
 	direct := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1):   `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
 		commitPullsPath(sha2):   `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha2) + `]`,
 		commitPullsPath(direct): `[]`,
-		pullCommitsPath(7): `[` + apiCommit("a1", "akira-toriyama", ":sparkles:(ui) add a menu") + `,` +
-			apiCommit("a2", "akira-toriyama", ":white_check_mark: test the menu") + `]`,
-		pullCommitsPath(8): `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+		pullCommitsPath(7): `[` + apiCommit("a1", "akira-toriyama", ":sparkles:(ui)^ add a menu") + `,` +
+			apiCommit("a2", "akira-toriyama", ":white_check_mark:= test the menu") + `]`,
+		pullCommitsPath(8): `[` + apiCommit("b1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -683,7 +683,7 @@ func TestReleaseJSONReportsPullExpansion(t *testing.T) {
 // .pulls is indexable on the none verdict too, with no null-check.
 func TestReleaseNoReleaseJSONPullsNormalized(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":memo: note the direct push")
+	testCommit(t, dir, "akira-toriyama", ":memo:= note the direct push")
 	direct := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := dryServer(t, map[string]string{
 		commitPullsPath(direct): `[]`,
@@ -708,7 +708,7 @@ func TestReleaseJSON(t *testing.T) {
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
 	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
-		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles:(ui) add a menu") + `]`,
+		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles:(ui)^ add a menu") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -727,8 +727,8 @@ func TestReleaseJSON(t *testing.T) {
 	if !strings.Contains(v.Body, "add a menu") {
 		t.Errorf("verdict body is missing the entry:\n%s", v.Body)
 	}
-	if len(v.Commits) != 1 || v.Commits[0].SHA != "a1" || v.Commits[0].Code != ":sparkles:" {
-		t.Errorf("verdict commits = %+v, want the one :sparkles: a1", v.Commits)
+	if len(v.Commits) != 1 || v.Commits[0].SHA != "a1" || v.Commits[0].Sigil != "^" {
+		t.Errorf("verdict commits = %+v, want the one :sparkles:^ a1", v.Commits)
 	}
 	if v.Reason == "" {
 		t.Error("verdict reason is empty")
@@ -743,7 +743,7 @@ func TestReleaseNoRelease(t *testing.T) {
 	sha1 := squashCommit(t, dir, "Document the fold", 7)
 	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
-		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":memo: document the fold") + `]`,
+		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":memo:= document the fold") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -768,7 +768,7 @@ func TestReleaseNoReleaseJSON(t *testing.T) {
 	sha1 := squashCommit(t, dir, "Document the fold", 7)
 	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
-		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":memo: document the fold") + `]`,
+		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":memo:= document the fold") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -798,7 +798,7 @@ func TestReleaseExplicitSinceTag(t *testing.T) {
 	testGit(t, dir, "akira-toriyama", "tag", "v0.5.0") // a later tag that must NOT become the base
 	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha1) + `]`,
-		pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+		pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -819,7 +819,7 @@ func TestReleaseCurrentOverride(t *testing.T) {
 	sha1 := squashCommit(t, dir, "Fix a crash", 8)
 	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha1) + `]`,
-		pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+		pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -888,87 +888,6 @@ func TestReleaseBreakingComposesConsistently(t *testing.T) {
 	}
 }
 
-// TestPlanDraftsConvergesOnExactlyOne pins the pure convergence arms the
-// end-to-end upsert tests don't reach: with several glyph drafts and NO tag
-// match the first listed (GitHub lists newest first) is kept and retagged;
-// with two drafts both already carrying the intended tag exactly one
-// survives; with no drafts nothing is kept and nothing is stale.
-func TestPlanDraftsConvergesOnExactlyOne(t *testing.T) {
-	cases := []struct {
-		name      string
-		drafts    []github.Release
-		tag       string
-		wantKeep  int64 // 0 = keep nil
-		wantStale []int64
-	}{
-		{
-			name:      "no tag match keeps the newest",
-			drafts:    []github.Release{{ID: 31, TagName: "v0.2.0", Draft: true}, {ID: 32, TagName: "v0.1.9", Draft: true}},
-			tag:       "v0.3.0",
-			wantKeep:  31,
-			wantStale: []int64{32},
-		},
-		{
-			name:      "duplicate intended tags keep one",
-			drafts:    []github.Release{{ID: 41, TagName: "v0.3.0", Draft: true}, {ID: 42, TagName: "v0.3.0", Draft: true}},
-			tag:       "v0.3.0",
-			wantKeep:  41,
-			wantStale: []int64{42},
-		},
-		{
-			name:   "no drafts",
-			drafts: nil,
-			tag:    "v0.3.0",
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			keep, stale := planDrafts(c.drafts, c.tag)
-			var keepID int64
-			if keep != nil {
-				keepID = keep.ID
-			}
-			if keepID != c.wantKeep {
-				t.Errorf("keep = %d, want %d", keepID, c.wantKeep)
-			}
-			// A stray can exist only ALONGSIDE a kept draft. That is what
-			// makes the write which now precedes convergence always a PATCH
-			// of an existing draft, so it can never be a create racing a
-			// stale draft for the same tag.
-			if keep == nil && len(stale) > 0 {
-				t.Fatalf("planDrafts returned %d stale draft(s) with nothing kept; the reordered "+
-					"upsert writes before it converges, and that is only safe while a stray "+
-					"implies a draft to update", len(stale))
-			}
-			staleIDs := make([]int64, len(stale))
-			for i, s := range stale {
-				staleIDs[i] = s.ID
-			}
-			if len(staleIDs) != len(c.wantStale) {
-				t.Fatalf("stale = %v, want %v", staleIDs, c.wantStale)
-			}
-			for i := range staleIDs {
-				if staleIDs[i] != c.wantStale[i] {
-					t.Fatalf("stale = %v, want %v", staleIDs, c.wantStale)
-				}
-			}
-		})
-	}
-}
-
-// TestHighestPublishedIgnoresUnparseableTags: the published floor is computed
-// over house-shaped (vX.Y.Z) published releases ONLY — a foreign published
-// tag (nightly, a bare 0.9.9) neither raises the floor nor breaks it, and
-// drafts never count however high their intended tag.
-//
-// Both rejections are exercised on purpose, because highestPublished rejects in
-// TWO steps and the name of this test claims both. `nightly` and `0.9.9` are
-// dropped by the v-prefix check alone and never reach ParseVersion, so with only
-// those the parse arm — the one the title actually advertises — was dead code
-// under a green test. `v2` and `v1.0.0-rc.1` are v-prefixed and reach it:
-// versionRE wants exactly three dot-separated decimals with no suffix, so a
-// two-component tag and a pre-release are what a repository that ever tagged a
-// major alias or an rc really has sitting in its release list.
 func TestHighestPublishedIgnoresUnparseableTags(t *testing.T) {
 	releases := []github.Release{
 		{ID: 1, TagName: "nightly", Draft: false},
@@ -1284,7 +1203,7 @@ func resolvablePatch(t *testing.T, dir string, routes map[string]string) {
 	t.Helper()
 	sha := squashCommit(t, dir, "Fix a crash", 8)
 	routes[commitPullsPath(sha)] = `[` + apiPullRef(8, "2026-07-21T00:00:00Z", sha) + `]`
-	routes[pullCommitsPath(8)] = `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`
+	routes[pullCommitsPath(8)] = `[` + apiCommit("b1", "akira-toriyama", ":bug:~ fix a crash") + `]`
 }
 
 // TestReleaseIncompleteWalkFailsLoud: a verdict is a claim about the range only
@@ -1314,11 +1233,11 @@ func TestReleaseIncompleteWalkFailsLoud(t *testing.T) {
 	}{
 		{"every commit unknown to the repository", unreadWalk, []string{"unknown to"}},
 		{"a pull's merge point never resolved", func(t *testing.T) map[string]string {
-			routes, _ := lostPullWalk(t, ":memo: document the menu", ":memo: document the fold")
+			routes, _ := lostPullWalk(t, ":memo:= document the menu", ":memo:= document the fold")
 			return routes
 		}, []string{"#7"}},
 		{"a lost boom pull beside a commit that classifies", func(t *testing.T) map[string]string {
-			routes, dir := lostPullWalk(t, ":boom:(api) drop the legacy endpoint", ":memo: document the removal")
+			routes, dir := lostPullWalk(t, ":boom:(api)! drop the legacy endpoint", ":memo:= document the removal")
 			// A resolvable commit of its own, so the fold would NOT be none —
 			// the t-441z lowering shape.
 			resolvablePatch(t, dir, routes)
@@ -1372,7 +1291,7 @@ func truncatedPullWalk(t *testing.T) map[string]string {
 
 	listing := make([]string, github.PullCommitsCap)
 	for i := range listing {
-		listing[i] = apiCommit(fmt.Sprintf("c%03d", i), "akira-toriyama", fmt.Sprintf(":memo: document part %d", i))
+		listing[i] = apiCommit(fmt.Sprintf("c%03d", i), "akira-toriyama", fmt.Sprintf(":memo:= document part %d", i))
 	}
 	return map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(7, "2026-07-22T00:00:00Z", sha) + `]`,
@@ -1402,6 +1321,6 @@ func shallowCheckout(t *testing.T) map[string]string {
 	t.Chdir(clone)
 	return map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(8, "2026-07-23T00:00:00Z", sha) + `]`,
-		pullCommitsPath(8):   `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+		pullCommitsPath(8):   `[` + apiCommit("b1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 	}
 }

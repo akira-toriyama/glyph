@@ -2,9 +2,13 @@ package cli
 
 import (
 	"encoding/json"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/internal/config"
 )
 
 // testRepoUntagged is testRepo without its v0.1.0 tag — a repository before its
@@ -19,7 +23,12 @@ func testRepoUntagged(t *testing.T) string {
 	}
 	dir := t.TempDir()
 	testGit(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "-m", ":tada: begin the project")
+	preset, _ := config.Preset("gemoji")
+	if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), preset, 0o644); err != nil {
+		t.Fatalf("write glyph.toml: %v", err)
+	}
+	testGit(t, dir, "akira-toriyama", "add", "glyph.toml")
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= begin the project")
 	return dir
 }
 
@@ -34,7 +43,7 @@ func TestPreviewUntaggedSkipsTheWalk(t *testing.T) {
 	dir := testRepoUntagged(t)
 	t.Chdir(dir)
 	srv := prServer(t, 7, `[`+
-		apiCommit("aaa1111", "akira-toriyama", ":sparkles: add the palette")+`]`)
+		apiCommit("aaa1111", "akira-toriyama", ":sparkles:^ add the palette")+`]`)
 	usePR(t, srv)
 
 	code, stdout, stderr := runGlyph(t, "preview", "--pr", "7")
@@ -61,7 +70,7 @@ func TestPreviewUntaggedSkipsTheWalk(t *testing.T) {
 func TestPreviewNoneExitsZero(t *testing.T) {
 	dir := testRepoUntagged(t)
 	t.Chdir(dir)
-	srv := prServer(t, 7, `[`+apiCommit("aaa1111", "akira-toriyama", ":memo: document it")+`]`)
+	srv := prServer(t, 7, `[`+apiCommit("aaa1111", "akira-toriyama", ":memo:= document it")+`]`)
 	usePR(t, srv)
 
 	code, stdout, stderr := runGlyph(t, "preview", "--pr", "7")
@@ -82,7 +91,7 @@ func TestPreviewNoneExitsZero(t *testing.T) {
 func TestPreviewJSONFoldsTheLevels(t *testing.T) {
 	dir := testRepoUntagged(t)
 	t.Chdir(dir)
-	srv := prServer(t, 7, `[`+apiCommit("aaa1111", "akira-toriyama", ":bug: fix a crash")+`]`)
+	srv := prServer(t, 7, `[`+apiCommit("aaa1111", "akira-toriyama", ":bug:~ fix a crash")+`]`)
 	usePR(t, srv)
 
 	code, stdout, stderr := runGlyph(t, "preview", "--pr", "7", "--json")
@@ -126,7 +135,7 @@ func TestPreviewJSONFoldsTheLevels(t *testing.T) {
 func TestPreviewNotes(t *testing.T) {
 	dir := testRepoUntagged(t)
 	t.Chdir(dir)
-	body := `[` + apiCommit("aaa1111", "akira-toriyama", ":sparkles:(ui) add the palette") + `]`
+	body := `[` + apiCommit("aaa1111", "akira-toriyama", ":sparkles:(ui)^ add the palette") + `]`
 	usePR(t, prServer(t, 7, body))
 
 	code, stdout, stderr := runGlyph(t, "preview", "--pr", "7", "--notes")
@@ -146,7 +155,7 @@ func TestPreviewNotes(t *testing.T) {
 func TestPreviewNotesOffByDefault(t *testing.T) {
 	dir := testRepoUntagged(t)
 	t.Chdir(dir)
-	usePR(t, prServer(t, 7, `[`+apiCommit("aaa1111", "akira-toriyama", ":sparkles: add it")+`]`))
+	usePR(t, prServer(t, 7, `[`+apiCommit("aaa1111", "akira-toriyama", ":sparkles:^ add it")+`]`))
 
 	code, stdout, _ := runGlyph(t, "preview", "--pr", "7")
 	if code != 0 {
@@ -165,17 +174,17 @@ func TestPreviewNotesOffByDefault(t *testing.T) {
 // is also what makes the pending side squash-safe.
 func TestPreviewFoldsPendingOverPR(t *testing.T) {
 	dir, _ := testRepo(t) // tagged v0.1.0
-	testCommit(t, dir, "akira-toriyama", ":sparkles: land a feature (#3)")
+	testCommit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
 	t.Chdir(dir)
 	head := strings.TrimSpace(testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
 
 	srv := walkServer(t, map[string]string{
 		// The PR under preview: a lone bug fix.
-		pullCommitsPath(7): `[` + apiCommit("bbb2222", "akira-toriyama", ":bug: fix a crash") + `]`,
+		pullCommitsPath(7): `[` + apiCommit("bbb2222", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 		// The walk: main's squash commit resolves to merged PR 3 …
 		commitPullsPath(head): `[{"number":3,"merged_at":"2026-07-17T00:00:00Z","merge_commit_sha":"` + head + `"}]`,
 		// … which re-expands into the feature that makes the pending level minor.
-		pullCommitsPath(3): `[` + apiCommit("ccc3333", "akira-toriyama", ":sparkles: land a feature") + `]`,
+		pullCommitsPath(3): `[` + apiCommit("ccc3333", "akira-toriyama", ":sparkles:^ land a feature") + `]`,
 	})
 	usePR(t, srv)
 
@@ -241,9 +250,9 @@ func TestPreviewZeroVersionTagIsTagged(t *testing.T) {
 	t.Chdir(dir)
 
 	srv := walkServer(t, map[string]string{
-		pullCommitsPath(7):       `[` + apiCommit("aaa1111", "akira-toriyama", ":bug: fix a crash") + `]`,
+		pullCommitsPath(7):       `[` + apiCommit("aaa1111", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 		commitPullsPath(pending): `[` + apiPullRef(9, "2026-07-24T00:00:00Z", pending) + `]`,
-		pullCommitsPath(9):       `[` + apiCommit("bbb2222", "akira-toriyama", ":sparkles: add a menu") + `]`,
+		pullCommitsPath(9):       `[` + apiCommit("bbb2222", "akira-toriyama", ":sparkles:^ add a menu") + `]`,
 	})
 	usePR(t, srv)
 
@@ -283,7 +292,7 @@ func TestPreviewIncompletePendingWalkSaysSoInTheBody(t *testing.T) {
 	t.Chdir(dir)
 
 	srv := walkServer(t, map[string]string{
-		pullCommitsPath(7):       `[` + apiCommit("aaa1111", "akira-toriyama", ":bug: fix a crash") + `]`,
+		pullCommitsPath(7):       `[` + apiCommit("aaa1111", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 		commitPullsPath(pending): apiUnknownSHA,
 	})
 	usePR(t, srv)

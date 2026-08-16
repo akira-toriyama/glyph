@@ -147,7 +147,7 @@ func verdictSHAs(t *testing.T, args ...string) (code int, shas []string, stderr 
 // TestBumpSinceTagExpandsSquashCommits is the release walk end to end: two
 // squash commits since v0.1.0, each resolved to its merged PR and expanded to
 // the PR's individual commits; the fold runs across ALL inner commits (a
-// :sparkles: in PR 7 beats the :bug: in PR 8), so the verdict is a minor —
+// :sparkles:^ in PR 7 beats the :bug:~ in PR 8), so the verdict is a minor —
 // even though neither squash subject parses as a gitmoji commit at all.
 func TestBumpSinceTagExpandsSquashCommits(t *testing.T) {
 	dir, _ := testRepo(t)
@@ -157,10 +157,10 @@ func TestBumpSinceTagExpandsSquashCommits(t *testing.T) {
 		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
 		commitPullsPath(sha2): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha2) + `]`,
 		pullCommitsPath(7): `[` +
-			apiCommit("a1", "akira-toriyama", ":memo: document the menu") + `,` +
-			apiCommit("a2", "akira-toriyama", ":sparkles:(ui) add a menu") + `]`,
+			apiCommit("a1", "akira-toriyama", ":memo:= document the menu") + `,` +
+			apiCommit("a2", "akira-toriyama", ":sparkles:(ui)^ add a menu") + `]`,
 		pullCommitsPath(8): `[` +
-			apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+			apiCommit("b1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -184,7 +184,7 @@ func TestBumpSinceTagAutoDetectsTheTag(t *testing.T) {
 	sha1 := squashCommit(t, dir, "Fix a crash", 3)
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(3, "2026-07-13T00:00:00Z", sha1) + `]`,
-		pullCommitsPath(3):    `[` + apiCommit("c1", "akira-toriyama", ":bug: fix a crash") + `]`,
+		pullCommitsPath(3):    `[` + apiCommit("c1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -208,8 +208,8 @@ func TestNotesSinceTag(t *testing.T) {
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
 		commitPullsPath(sha2): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha2) + `]`,
-		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles: add a menu") + `]`,
-		pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug:(api) stop dropping the last page") + `]`,
+		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles:^ add a menu") + `]`,
+		pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug:(api)~ stop dropping the last page") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -234,7 +234,7 @@ func TestSinceTagPicksTheMergedMatch(t *testing.T) {
 			apiPullRef(6, "", "somethingelse") + `,` + // associated, never merged
 			apiPullRef(9, "2026-07-14T00:00:00Z", "othersha") + `,` + // merged, different squash
 			apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`, // the real one
-		pullCommitsPath(7): `[` + apiCommit("a1", "akira-toriyama", ":sparkles: add a menu") + `]`,
+		pullCommitsPath(7): `[` + apiCommit("a1", "akira-toriyama", ":sparkles:^ add a menu") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -250,11 +250,11 @@ func TestSinceTagPicksTheMergedMatch(t *testing.T) {
 // resolution — walkServer would fail the test if its SHA were ever asked about.
 func TestSinceTagBotCommitsNeverReachTheAPI(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "fleet-sync[bot]", ":robot: chore(fleet): sync a file")
+	testCommit(t, dir, "dependabot[bot]", ":robot:= chore(fleet): sync a file")
 	sha1 := squashCommit(t, dir, "Fix a crash", 3)
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(3, "2026-07-13T00:00:00Z", sha1) + `]`,
-		pullCommitsPath(3):    `[` + apiCommit("c1", "akira-toriyama", ":bug: fix a crash") + `]`,
+		pullCommitsPath(3):    `[` + apiCommit("c1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -311,7 +311,7 @@ func TestSinceTagRevertPRIsWalked(t *testing.T) {
 	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(9, "2026-07-15T00:00:00Z", sha) + `]`,
-		pullCommitsPath(9):   `[` + apiCommit("r1", "akira-toriyama", ":rewind: revert the menu") + `]`,
+		pullCommitsPath(9):   `[` + apiCommit("r1", "akira-toriyama", ":rewind:~ revert the menu") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -325,13 +325,13 @@ func TestSinceTagRevertPRIsWalked(t *testing.T) {
 	}
 }
 
-// TestSinceTagRawRevertDirectPushIsExcluded: a raw `git revert` pushed straight
+// TestSinceTagRawRevertDirectPushIsAPatch: a raw `git revert` pushed straight
 // to main has no PR to resolve; on the fallback path the generated-subject
 // exclusion applies exactly as it does on --range — skipped silently, never a
 // violation and never a warning.
-func TestSinceTagRawRevertDirectPushIsExcluded(t *testing.T) {
+func TestSinceTagRawRevertDirectPushIsAPatch(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", `Revert ":bug: fix a crash"`)
+	testCommit(t, dir, "akira-toriyama", `Revert ":bug:~ fix a crash"`)
 	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[]`,
@@ -340,14 +340,14 @@ func TestSinceTagRawRevertDirectPushIsExcluded(t *testing.T) {
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
-	if code != 1 {
-		t.Fatalf("a lone raw-revert direct push exited %d, want 1 (no release — it is excluded)\nstderr: %s", code, stderr)
+	if code != 0 {
+		t.Fatalf("a lone raw-revert direct push exited %d, want 0 — the preset's Revert pattern supplies the ~ sigil (ratified: a raw git revert is a patch)\nstderr: %s", code, stderr)
 	}
-	if stdout != "" {
-		t.Fatalf("stdout = %q, want empty", stdout)
+	if stdout != "v0.1.1\n" {
+		t.Fatalf("stdout = %q, want v0.1.1", stdout)
 	}
-	if strings.Contains(stderr, "::warning::") {
-		t.Fatalf("an excluded commit is skipped, never warned about (parity with --range):\n%s", stderr)
+	if !strings.Contains(stderr, "::warning::") {
+		t.Fatalf("the fallback read must announce itself:\n%s", stderr)
 	}
 }
 
@@ -358,16 +358,16 @@ func TestSinceTagRawRevertDirectPushIsExcluded(t *testing.T) {
 // expansion) and spray direct-push warnings over a perfectly normal merge.
 func TestSinceTagRebaseMergedPRDoesNotDoubleCount(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":sparkles: add a menu")
+	testCommit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
 	shaA := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	testCommit(t, dir, "akira-toriyama", ":bug: fix the menu")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix the menu")
 	shaB := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(shaA): `[` + apiPullRef(7, "2026-07-15T00:00:00Z", shaB) + `]`,
 		commitPullsPath(shaB): `[` + apiPullRef(7, "2026-07-15T00:00:00Z", shaB) + `]`,
 		pullCommitsPath(7): `[` +
-			apiCommit("a1", "akira-toriyama", ":sparkles: add a menu") + `,` +
-			apiCommit("b1", "akira-toriyama", ":bug: fix the menu") + `]`,
+			apiCommit("a1", "akira-toriyama", ":sparkles:^ add a menu") + `,` +
+			apiCommit("b1", "akira-toriyama", ":bug:~ fix the menu") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -401,7 +401,7 @@ func TestSinceTagRebaseMergedPRDoesNotDoubleCount(t *testing.T) {
 // of the fleet's 34 repositories.
 func TestSinceTagMergeCommitPRIsExpanded(t *testing.T) {
 	dir, _ := testRepo(t)
-	mp := mergePR(t, dir, "akira-toriyama", 7, ":memo: document the menu", ":sparkles:(ui) add a menu")
+	mp := mergePR(t, dir, "akira-toriyama", 7, ":memo:= document the menu", ":sparkles:(ui)^ add a menu")
 	ref := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`
 	srv := walkServer(t, map[string]string{
 		// `git log` (no --first-parent) lists the merged commits beside the
@@ -411,8 +411,8 @@ func TestSinceTagMergeCommitPRIsExpanded(t *testing.T) {
 		commitPullsPath(mp.Branch[1]): ref,
 		commitPullsPath(mp.Merge):     ref,
 		pullCommitsPath(7): `[` +
-			apiCommit(mp.Branch[0], "akira-toriyama", ":memo: document the menu") + `,` +
-			apiCommit(mp.Branch[1], "akira-toriyama", ":sparkles:(ui) add a menu") + `]`,
+			apiCommit(mp.Branch[0], "akira-toriyama", ":memo:= document the menu") + `,` +
+			apiCommit(mp.Branch[1], "akira-toriyama", ":sparkles:(ui)^ add a menu") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -456,7 +456,7 @@ func TestSinceTagMergeCommitPRIsExpanded(t *testing.T) {
 func TestSinceTagSubPullSquashCommitIsNotRelinted(t *testing.T) {
 	dir, _ := testRepo(t)
 	mp := mergeInto(t, dir, "akira-toriyama", "akira-toriyama", prTopic(7), prMergeSubject(7),
-		"Add a menu (#6)", ":bug:(ui) polish the menu")
+		"Add a menu (#6)", ":bug:(ui)~ polish the menu")
 	sub, rest := mp.Branch[0], mp.Branch[1]
 	subRef := apiPullRef(6, "2026-07-19T00:00:00Z", sub)
 	prRef := apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge)
@@ -467,10 +467,10 @@ func TestSinceTagSubPullSquashCommitIsNotRelinted(t *testing.T) {
 		commitPullsPath(sub):      `[` + subRef + `,` + prRef + `]`,
 		commitPullsPath(rest):     `[` + prRef + `]`,
 		commitPullsPath(mp.Merge): `[` + prRef + `]`,
-		pullCommitsPath(6):        `[` + apiCommit("i1", "akira-toriyama", ":sparkles: add a menu") + `]`,
+		pullCommitsPath(6):        `[` + apiCommit("i1", "akira-toriyama", ":sparkles:^ add a menu") + `]`,
 		pullCommitsPath(7): `[` +
 			apiCommit(sub, "akira-toriyama", "Add a menu (#6)") + `,` +
-			apiCommit(rest, "akira-toriyama", ":bug:(ui) polish the menu") + `]`,
+			apiCommit(rest, "akira-toriyama", ":bug:(ui)~ polish the menu") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -516,7 +516,7 @@ func TestSinceTagUnresolvableMergePointIsWarnedNotExpanded(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir, _ := testRepo(t)
-			mp := mergePR(t, dir, "akira-toriyama", 7, ":memo: document the menu", ":sparkles:(ui) add a menu")
+			mp := mergePR(t, dir, "akira-toriyama", 7, ":memo:= document the menu", ":sparkles:(ui)^ add a menu")
 			ref := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`
 			srv := walkServer(t, map[string]string{
 				commitPullsPath(mp.Branch[0]): ref,
@@ -561,9 +561,9 @@ func TestSinceTagUnresolvableMergePointIsWarnedNotExpanded(t *testing.T) {
 func TestSinceTagUnresolvedPullIsNeverFoldedFromItsListing(t *testing.T) {
 	t.Run("a rebase-merged pull lists its pre-rebase SHAs", func(t *testing.T) {
 		dir, _ := testRepo(t)
-		testCommit(t, dir, "akira-toriyama", ":sparkles: add a menu")
+		testCommit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
 		shaA := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-		testCommit(t, dir, "akira-toriyama", ":bug: fix the menu")
+		testCommit(t, dir, "akira-toriyama", ":bug:~ fix the menu")
 		shaB := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 		srv := walkServer(t, map[string]string{
 			// shaB is the pull's merge point — and the API does not know it yet,
@@ -589,7 +589,7 @@ func TestSinceTagUnresolvedPullIsNeverFoldedFromItsListing(t *testing.T) {
 
 	t.Run("the listing reaches back past the previous tag", func(t *testing.T) {
 		dir, _ := testRepo(t)
-		mp := mergePR(t, dir, "akira-toriyama", 7, ":sparkles:(ui) add a menu", ":memo: document the menu")
+		mp := mergePR(t, dir, "akira-toriyama", 7, ":sparkles:(ui)^ add a menu", ":memo:= document the menu")
 		// v0.1.1 shipped the pull's first commit already — the release walk then
 		// starts strictly after it, but the pull's listing still begins there.
 		testGit(t, dir, "akira-toriyama", "tag", "v0.1.1", mp.Branch[0])
@@ -603,7 +603,7 @@ func TestSinceTagUnresolvedPullIsNeverFoldedFromItsListing(t *testing.T) {
 
 		code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.1")
 		if code != 1 || stdout != "" {
-			t.Fatalf("bump = exit %d stdout %q, want 1 / empty — the only change the fold would find (%s) went out in v0.1.1\nstderr: %s", code, stdout, ":sparkles:(ui) add a menu", stderr)
+			t.Fatalf("bump = exit %d stdout %q, want 1 / empty — the only change the fold would find (%s) went out in v0.1.1\nstderr: %s", code, stdout, ":sparkles:(ui)^ add a menu", stderr)
 		}
 		if strings.Contains(stdout, "v0.2.0") {
 			t.Fatalf("a minor manufactured out of a commit released one tag ago: %q", stdout)
@@ -628,8 +628,8 @@ func TestSinceTagHealthyRepositoryIsNeverWarnedAt(t *testing.T) {
 			return map[string]string{
 				commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
 				commitPullsPath(sha2): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha2) + `]`,
-				pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles: add a menu") + `]`,
-				pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+				pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles:^ add a menu") + `]`,
+				pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 			}
 		},
 		"a stacked pair": func(t *testing.T, dir string) map[string]string {
@@ -643,24 +643,24 @@ func TestSinceTagHealthyRepositoryIsNeverWarnedAt(t *testing.T) {
 				// and is COVERED by #8, whose own squash commit expands #8.
 				commitPullsPath(sha1): `[` + base + `,` + stacked + `]`,
 				commitPullsPath(sha2): `[` + stacked + `]`,
-				pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles: add a menu") + `]`,
+				pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles:^ add a menu") + `]`,
 				pullCommitsPath(8): `[` +
-					apiCommit("a1", "akira-toriyama", ":sparkles: add a menu") + `,` +
-					apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+					apiCommit("a1", "akira-toriyama", ":sparkles:^ add a menu") + `,` +
+					apiCommit("b1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 			}
 		},
 		"a rebase-merged pull": func(t *testing.T, dir string) map[string]string {
-			testCommit(t, dir, "akira-toriyama", ":sparkles: add a menu")
+			testCommit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
 			shaA := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-			testCommit(t, dir, "akira-toriyama", ":bug: fix the menu")
+			testCommit(t, dir, "akira-toriyama", ":bug:~ fix the menu")
 			shaB := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 			ref := `[` + apiPullRef(7, "2026-07-15T00:00:00Z", shaB) + `]`
 			return map[string]string{
 				commitPullsPath(shaA): ref,
 				commitPullsPath(shaB): ref,
 				pullCommitsPath(7): `[` +
-					apiCommit("a1", "akira-toriyama", ":sparkles: add a menu") + `,` +
-					apiCommit("b1", "akira-toriyama", ":bug: fix the menu") + `]`,
+					apiCommit("a1", "akira-toriyama", ":sparkles:^ add a menu") + `,` +
+					apiCommit("b1", "akira-toriyama", ":bug:~ fix the menu") + `]`,
 			}
 		},
 	} {
@@ -696,7 +696,7 @@ func TestSinceTagHealthyRepositoryIsNeverWarnedAt(t *testing.T) {
 // fails the test.
 func TestSinceTagCoveredByAPullOnAnotherBaseBranchStillCounts(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		// Merged — but its merge commit is not a commit of this range.
@@ -727,14 +727,14 @@ func TestSinceTagCoveredByAPullOnAnotherBaseBranchStillCounts(t *testing.T) {
 // change lands in the verdict exactly once, whichever path reached it first.
 func TestSinceTagMergeCommitBranchCommitsCountOnce(t *testing.T) {
 	dir, _ := testRepo(t)
-	mp := mergePR(t, dir, "akira-toriyama", 7, ":memo: document the menu", ":sparkles:(ui) add a menu")
+	mp := mergePR(t, dir, "akira-toriyama", 7, ":memo:= document the menu", ":sparkles:(ui)^ add a menu")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(mp.Branch[0]): `[]`, // not associated (yet)
 		commitPullsPath(mp.Branch[1]): `[]`,
 		commitPullsPath(mp.Merge):     `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`,
 		pullCommitsPath(7): `[` +
-			apiCommit(mp.Branch[0], "akira-toriyama", ":memo: document the menu") + `,` +
-			apiCommit(mp.Branch[1], "akira-toriyama", ":sparkles:(ui) add a menu") + `]`,
+			apiCommit(mp.Branch[0], "akira-toriyama", ":memo:= document the menu") + `,` +
+			apiCommit(mp.Branch[1], "akira-toriyama", ":sparkles:(ui)^ add a menu") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -759,7 +759,7 @@ func TestSinceTagMergeCommitBranchCommitsCountOnce(t *testing.T) {
 // classification question never did.
 func TestSinceTagPlainMergeCommitIsSkipped(t *testing.T) {
 	dir, _ := testRepo(t)
-	mp := mergeInto(t, dir, "akira-toriyama", "akira-toriyama", "topic", "Merge branch 'topic'", ":memo: note the topic")
+	mp := mergeInto(t, dir, "akira-toriyama", "akira-toriyama", "topic", "Merge branch 'topic'", ":memo:= note the topic")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(mp.Branch[0]): `[]`,
 		// The merge commit is asked about now (it costs the one round-trip that
@@ -771,7 +771,7 @@ func TestSinceTagPlainMergeCommitIsSkipped(t *testing.T) {
 
 	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.0")
 	if code != 1 {
-		t.Fatalf("a local merge of a :memo: branch exited %d, want 1 (no release — both commits count none)\nstderr: %s", code, stderr)
+		t.Fatalf("a local merge of a :memo:= branch exited %d, want 1 (no release — both commits count none)\nstderr: %s", code, stderr)
 	}
 	if stdout != "" {
 		t.Fatalf("a no-release must print nothing to stdout, got %q", stdout)
@@ -800,7 +800,7 @@ func TestSinceTagPlainMergeCommitIsSkipped(t *testing.T) {
 // naming the pull is the whole difference from the t-7zt7 silence.
 func TestSinceTagBotMergeCommitCostsNoLookup(t *testing.T) {
 	dir, _ := testRepo(t)
-	mp := mergeInto(t, dir, "akira-toriyama", "github-actions[bot]", prTopic(7), prMergeSubject(7), ":bug: fix a crash")
+	mp := mergeInto(t, dir, "akira-toriyama", "dependabot[bot]", prTopic(7), prMergeSubject(7), ":bug:~ fix a crash")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(mp.Branch[0]): `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`,
 		// The merge commit's own route is deliberately absent, and so is
@@ -831,10 +831,10 @@ func TestSinceTagSharedPreSquashCommitCountsOnce(t *testing.T) {
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
 		commitPullsPath(sha2): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha2) + `]`,
-		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles: add a menu") + `]`,
+		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles:^ add a menu") + `]`,
 		pullCommitsPath(8): `[` +
-			apiCommit("a1", "akira-toriyama", ":sparkles: add a menu") + `,` + // the base PR's commit riding along
-			apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+			apiCommit("a1", "akira-toriyama", ":sparkles:^ add a menu") + `,` + // the base PR's commit riding along
+			apiCommit("b1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -874,13 +874,13 @@ func TestSinceTagSharedPreSquashCommitCountsOnce(t *testing.T) {
 func TestSinceTagFallbackSharesShaWithAnExpandedPR(t *testing.T) {
 	dir, _ := testRepo(t)
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
-	testCommit(t, dir, "akira-toriyama", ":sparkles: add a menu")
+	testCommit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
 	sha2 := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
 		commitPullsPath(sha2): `[]`, // no PR resolves it — the fallback path
 		// PR 7's listing already carries the commit under the SHA it has on main.
-		pullCommitsPath(7): `[` + apiCommit(sha2, "akira-toriyama", ":sparkles: add a menu") + `]`,
+		pullCommitsPath(7): `[` + apiCommit(sha2, "akira-toriyama", ":sparkles:^ add a menu") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -947,7 +947,7 @@ func TestBumpSinceTagExplicitTagIsTheStepBase(t *testing.T) {
 	sha := squashCommit(t, dir, "Fix a crash", 3)
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(3, "2026-07-15T00:00:00Z", sha) + `]`,
-		pullCommitsPath(3):   `[` + apiCommit("c1", "akira-toriyama", ":bug: fix a crash") + `]`,
+		pullCommitsPath(3):   `[` + apiCommit("c1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -973,8 +973,8 @@ func TestBumpSinceTagExplicitTagIsTheStepBase(t *testing.T) {
 // misconfiguration is findable in the log.
 func TestSinceTagAllCommitsUnknownWarnsAboutTheRepo(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash")
-	testCommit(t, dir, "akira-toriyama", ":memo: document it")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testCommit(t, dir, "akira-toriyama", ":memo:= document it")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		fmt.Fprint(w, `{"message":"No commit found for SHA"}`)
@@ -997,7 +997,7 @@ func TestSinceTagAllCommitsUnknownWarnsAboutTheRepo(t *testing.T) {
 // (DESIGN §4): it emits a ::warning:: and is classified from its own message.
 func TestSinceTagDirectPushFallsBackToItsOwnMessage(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash, pushed directly")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash, pushed directly")
 	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[]`, // no PR knows this commit
@@ -1022,7 +1022,7 @@ func TestSinceTagDirectPushFallsBackToItsOwnMessage(t *testing.T) {
 // no resolution at all — same fallback as no association.
 func TestSinceTagUnmergedAssociationFallsBack(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(7, "", sha) + `]`, // associated but never merged
@@ -1039,67 +1039,6 @@ func TestSinceTagUnmergedAssociationFallsBack(t *testing.T) {
 	}
 }
 
-// TestSinceTagMalformedFallbackNeverFailsTheRelease: DESIGN §4 — fallbacks
-// never hard-fail. A direct-push commit whose message does not even parse is
-// warned and counted none; the release proceeds on the rest of the walk. (The
-// same message inside a PR is a hard lint error — the strictness lives on the
-// lint gate, not on the release.)
-func TestSinceTagMalformedFallbackNeverFailsTheRelease(t *testing.T) {
-	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", "hotfix without any gitmoji")
-	bad := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	good := squashCommit(t, dir, "Fix a crash", 8)
-	srv := walkServer(t, map[string]string{
-		commitPullsPath(bad):  `[]`,
-		commitPullsPath(good): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", good) + `]`,
-		pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
-	})
-	usePR(t, srv)
-	t.Chdir(dir)
-
-	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
-	if code != 0 {
-		t.Fatalf("a malformed fallback commit exited %d, want 0 — the release must not hard-fail\nstderr: %s", code, stderr)
-	}
-	if stdout != "v0.1.1\n" {
-		t.Fatalf("stdout = %q, want v0.1.1 from the resolved PR", stdout)
-	}
-	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, bad[:7]) {
-		t.Fatalf("the skipped commit must be warned about by SHA:\n%s", stderr)
-	}
-}
-
-// TestSinceTagUnknownGitmojiFallbackCountsNone pins the ratified t-kbqx policy:
-// on the FALLBACK path only, an unknown gitmoji degrades to a ::warning:: and
-// counts none — the only resolution of DESIGN §2 ("unknown is a hard lint
-// error, never a silent patch": the warning keeps it non-silent) with §4
-// ("fallbacks never hard-fail a release"). Alone in the walk it yields a soft
-// no-release, never a lint failure and never a patch.
-func TestSinceTagUnknownGitmojiFallbackCountsNone(t *testing.T) {
-	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":notarealmoji: tweak something")
-	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	srv := walkServer(t, map[string]string{
-		commitPullsPath(sha): `[]`,
-	})
-	usePR(t, srv)
-	t.Chdir(dir)
-
-	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
-	if code == 3 {
-		t.Fatalf("an unknown gitmoji on the fallback path exited 3 (lint) — it must degrade to a warning:\n%s", stderr)
-	}
-	if code != 1 {
-		t.Fatalf("exited %d, want 1 (the unknown commit counts none → no release)\nstderr: %s", code, stderr)
-	}
-	if stdout != "" {
-		t.Fatalf("a no-release must print nothing to stdout, got %q", stdout)
-	}
-	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, ":notarealmoji:") {
-		t.Fatalf("the warning must name the unknown code:\n%s", stderr)
-	}
-}
-
 // TestSinceTagAutoWithoutTagsWalksTheWholeHistory: a repository before its
 // first release has no walk base — auto walks everything from the root, and
 // the bump steps from v0.0.0.
@@ -1108,9 +1047,9 @@ func TestSinceTagAutoWithoutTagsWalksTheWholeHistory(t *testing.T) {
 	testGit(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
 	sha1 := squashCommit(t, dir, "Add a menu", 2)
 	srv := walkServer(t, map[string]string{
-		commitPullsPath(base): `[]`, // the root :tada: commit: fallback, none
+		commitPullsPath(base): `[]`, // the root :tada:= commit: fallback, none
 		commitPullsPath(sha1): `[` + apiPullRef(2, "2026-07-13T00:00:00Z", sha1) + `]`,
-		pullCommitsPath(2):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles: add a menu") + `]`,
+		pullCommitsPath(2):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles:^ add a menu") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -1134,7 +1073,7 @@ func TestSinceTagAutoWithoutTagsWalksTheWholeHistory(t *testing.T) {
 // hard-failing the release. (A 404 — the auth-failure shape — still fails.)
 func TestSinceTagUnknownShaFallsBack(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash, pushed moments ago")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash, pushed moments ago")
 	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != commitPullsPath(sha) {
@@ -1197,7 +1136,7 @@ func TestPullCommitCapIsWarned(t *testing.T) {
 	build := func(n int) string {
 		commits := make([]string, n)
 		for i := range commits {
-			commits[i] = apiCommit(fmt.Sprintf("c%03d", i), "akira-toriyama", ":bug: fix crash number "+fmt.Sprint(i))
+			commits[i] = apiCommit(fmt.Sprintf("c%03d", i), "akira-toriyama", ":bug:~ fix crash number "+fmt.Sprint(i))
 		}
 		return `[` + strings.Join(commits, ",") + `]`
 	}
@@ -1245,62 +1184,42 @@ func TestSinceTagEmptyWalkIsNoRelease(t *testing.T) {
 	}
 }
 
-// TestSinceTagUnknownGitmojiBreakingFallbackIsMajor pins the ratified Q10
-// policy: on the fallback path a breaking marker is NEVER suppressed — not
-// even by an unknown gitmoji. An unknown code alone downgrades to none (the
-// typo case, pinned above); an unknown code CARRYING a breaking marker (`!`
-// or a BREAKING CHANGE footer) majors the verdict behind a ::warning::,
-// normalized to the canonical :boom: — the failure asymmetry is deliberate:
-// a typo can over-bump a version, but a breaking change must never be
-// silently dropped from one.
-func TestSinceTagUnknownGitmojiBreakingFallbackIsMajor(t *testing.T) {
-	for name, message := range map[string]string{
-		"bang":   ":notarealmoji:! drop the legacy flag",
-		"footer": ":notarealmoji: drop the legacy flag\n\nBREAKING CHANGE: the flag is gone",
-	} {
-		t.Run(name, func(t *testing.T) {
-			dir, _ := testRepo(t)
-			testCommit(t, dir, "akira-toriyama", message)
-			sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-			srv := walkServer(t, map[string]string{
-				commitPullsPath(sha): `[]`, // a direct push — the fallback path
-			})
-			usePR(t, srv)
-			t.Chdir(dir)
+// TestSinceTagFreePrefixBangFallbackIsMajor: v2 has no code table — the
+// prefix is the author's free choice, and the ! sigil alone majors a
+// direct-push fallback commit. What v1 achieved by normalizing an unknown
+// breaking code to :boom: (never suppress a breaking marker) the sigil now
+// does by construction.
+func TestSinceTagFreePrefixBangFallbackIsMajor(t *testing.T) {
+	dir, _ := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":notarealmoji:! drop the legacy flag")
+	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(sha): `[]`, // a direct push — the fallback path
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
 
-			code, stdout, stderr := runGlyph(t, "bump", "--since-tag", "--json")
-			if code != 0 {
-				t.Fatalf("an unknown+breaking fallback exited %d, want 0 (it must MAJOR, not vanish)\nstderr: %s", code, stderr)
-			}
-			var res struct {
-				Level   string `json:"level"`
-				Next    string `json:"next"`
-				Commits []struct {
-					Code     string `json:"code"`
-					Level    string `json:"level"`
-					Breaking bool   `json:"breaking"`
-					Subject  string `json:"subject"`
-				} `json:"commits"`
-			}
-			if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-				t.Fatalf("not JSON: %v\n%s", err, stdout)
-			}
-			if res.Level != "major" || res.Next != "v1.0.0" {
-				t.Fatalf("verdict = level %q next %q, want major → v1.0.0", res.Level, res.Next)
-			}
-			if len(res.Commits) != 1 || res.Commits[0].Code != ":boom:" || !res.Commits[0].Breaking {
-				t.Fatalf("commits = %+v, want the one commit normalized to :boom: with breaking true", res.Commits)
-			}
-			if res.Commits[0].Subject != "drop the legacy flag" {
-				t.Fatalf("subject = %q, want the commit's own subject kept verbatim", res.Commits[0].Subject)
-			}
-			if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, ":notarealmoji:") {
-				t.Fatalf("the warning must name the real unknown code:\n%s", stderr)
-			}
-			if !strings.Contains(stderr, "breaking") {
-				t.Fatalf("the warning must say WHY this one counted (the breaking marker):\n%s", stderr)
-			}
-		})
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag", "--json")
+	if code != 0 {
+		t.Fatalf("a bang fallback exited %d, want 0 (it must MAJOR, not vanish)\nstderr: %s", code, stderr)
+	}
+	var res struct {
+		Level   string `json:"level"`
+		Next    string `json:"next"`
+		Commits []struct {
+			Sigil   string `json:"sigil"`
+			Level   string `json:"level"`
+			Subject string `json:"subject"`
+		} `json:"commits"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, stdout)
+	}
+	if res.Level != "major" || res.Next != "v1.0.0" {
+		t.Fatalf("verdict = level %q next %q, want major → v1.0.0", res.Level, res.Next)
+	}
+	if len(res.Commits) != 1 || res.Commits[0].Sigil != "!" {
+		t.Fatalf("commits = %+v, want the one ! commit", res.Commits)
 	}
 }
 
@@ -1391,7 +1310,7 @@ func TestSinceTagResolvedPRLintNamesTheWedge(t *testing.T) {
 // squash-merged afterwards so a cleared walk still has something to release.
 func TestSinceTagWedgeEscapeIsTheOffendingCommit(t *testing.T) {
 	dir, _ := testRepo(t)
-	mp := mergePR(t, dir, "akira-toriyama", 7, "no gitmoji leads this subject", ":bug:(ui) polish the menu")
+	mp := mergePR(t, dir, "akira-toriyama", 7, "no gitmoji leads this subject", ":bug:(ui)~ polish the menu")
 	bad, good := mp.Branch[0], mp.Branch[1]
 	later := squashCommit(t, dir, "Fix a crash", 8)
 	testGit(t, dir, "akira-toriyama", "tag", "v0.2.0", bad)
@@ -1405,8 +1324,8 @@ func TestSinceTagWedgeEscapeIsTheOffendingCommit(t *testing.T) {
 		commitPullsPath(later):    `[` + apiPullRef(8, "2026-07-21T00:00:00Z", later) + `]`,
 		pullCommitsPath(7): `[` +
 			apiCommit(bad, "akira-toriyama", "no gitmoji leads this subject") + `,` +
-			apiCommit(good, "akira-toriyama", ":bug:(ui) polish the menu") + `]`,
-		pullCommitsPath(8): `[` + apiCommit("c1", "akira-toriyama", ":bug: fix a crash") + `]`,
+			apiCommit(good, "akira-toriyama", ":bug:(ui)~ polish the menu") + `]`,
+		pullCommitsPath(8): `[` + apiCommit("c1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 	}
 	for _, tc := range []struct {
 		name     string
@@ -1456,7 +1375,7 @@ func TestBumpSinceTagNonVersionTag(t *testing.T) {
 	sha := squashCommit(t, dir, "Fix a crash", 8)
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha) + `]`,
-		pullCommitsPath(8):   `[` + apiCommit("b1", "akira-toriyama", ":bug: fix a crash") + `]`,
+		pullCommitsPath(8):   `[` + apiCommit("b1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -1534,7 +1453,7 @@ func TestSinceTagAPIFailureMidWalkPassesThrough(t *testing.T) {
 // next release. Before the fix this answered v0.2.0 with no diagnostic at all.
 func TestSinceTagDoesNotRefoldReleasedMergeMergedCommits(t *testing.T) {
 	dir, _ := testRepo(t)
-	mp := mergePR(t, dir, "akira-toriyama", 7, ":sparkles:(ui) add a menu", ":memo: document the menu")
+	mp := mergePR(t, dir, "akira-toriyama", 7, ":sparkles:(ui)^ add a menu", ":memo:= document the menu")
 	shipped, pending := mp.Branch[0], mp.Branch[1]
 	testGit(t, dir, "akira-toriyama", "tag", "v0.1.1", shipped)
 	pr7 := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`
@@ -1542,15 +1461,15 @@ func TestSinceTagDoesNotRefoldReleasedMergeMergedCommits(t *testing.T) {
 		commitPullsPath(pending):  pr7,
 		commitPullsPath(mp.Merge): pr7,
 		pullCommitsPath(7): `[` +
-			apiCommit(shipped, "akira-toriyama", ":sparkles:(ui) add a menu") + `,` +
-			apiCommit(pending, "akira-toriyama", ":memo: document the menu") + `]`,
+			apiCommit(shipped, "akira-toriyama", ":sparkles:(ui)^ add a menu") + `,` +
+			apiCommit(pending, "akira-toriyama", ":memo:= document the menu") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.1")
 	if code != 1 {
-		t.Fatalf("bump --since-tag=v0.1.1 = exit %d stdout %q, want 1 (only the :memo: is in range)\nstderr: %s", code, stdout, stderr)
+		t.Fatalf("bump --since-tag=v0.1.1 = exit %d stdout %q, want 1 (only the :memo:= is in range)\nstderr: %s", code, stdout, stderr)
 	}
 	// The drop is announced. A commit leaving the fold silently is the class of
 	// failure this whole file exists to prevent — in either direction.
@@ -1570,15 +1489,15 @@ func TestSinceTagDoesNotRefoldReleasedMergeMergedCommits(t *testing.T) {
 // every commit of it is in range and the verdict must be untouched.
 func TestSinceTagRefoldControlWholePullInRange(t *testing.T) {
 	dir, _ := testRepo(t)
-	mp := mergePR(t, dir, "akira-toriyama", 7, ":sparkles:(ui) add a menu", ":memo: document the menu")
+	mp := mergePR(t, dir, "akira-toriyama", 7, ":sparkles:(ui)^ add a menu", ":memo:= document the menu")
 	pr7 := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(mp.Branch[0]): pr7,
 		commitPullsPath(mp.Branch[1]): pr7,
 		commitPullsPath(mp.Merge):     pr7,
 		pullCommitsPath(7): `[` +
-			apiCommit(mp.Branch[0], "akira-toriyama", ":sparkles:(ui) add a menu") + `,` +
-			apiCommit(mp.Branch[1], "akira-toriyama", ":memo: document the menu") + `]`,
+			apiCommit(mp.Branch[0], "akira-toriyama", ":sparkles:(ui)^ add a menu") + `,` +
+			apiCommit(mp.Branch[1], "akira-toriyama", ":memo:= document the menu") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -1600,17 +1519,17 @@ func TestSinceTagRefoldControlWholePullInRange(t *testing.T) {
 // its own: before this, the notes cited SHAs the repository does not contain.
 func TestSinceTagRebaseMergeUsesOnMainSHAs(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) add a menu")
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
 	r1 := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	testCommit(t, dir, "akira-toriyama", ":memo: document the menu")
+	testCommit(t, dir, "akira-toriyama", ":memo:= document the menu")
 	r2 := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	testGit(t, dir, "akira-toriyama", "tag", "v0.1.1", r1)
 	// GitHub names the LAST replayed commit as merge_commit_sha, and the listing
 	// still reports the branch's original, pre-rebase SHAs.
 	pr7 := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", r2) + `]`
 	listing := `[` +
-		apiCommit("pre1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "akira-toriyama", ":sparkles:(ui) add a menu") + `,` +
-		apiCommit("pre2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "akira-toriyama", ":memo: document the menu") + `]`
+		apiCommit("pre1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "akira-toriyama", ":sparkles:(ui)^ add a menu") + `,` +
+		apiCommit("pre2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "akira-toriyama", ":memo:= document the menu") + `]`
 	routes := map[string]string{
 		commitPullsPath(r1): pr7,
 		commitPullsPath(r2): pr7,
@@ -1664,39 +1583,39 @@ func TestSinceTagRebaseMergeUsesOnMainSHAs(t *testing.T) {
 //
 // Before the fix the first half short-circuited the second: every REWRITTEN entry
 // kept an empty landing site, which foldPull reads as "the pull alone governs" and
-// folds whatever the range says. Measured here: minor out of a :sparkles: released
+// folds whatever the range says. Measured here: minor out of a :sparkles:^ released
 // one tag ago, exit 0, no warning, and the notes citing pre-rebase shas main does
 // not contain. It is t-8xsb through the front door, on the shape t-8xsb's own fix
 // introduced.
 func TestSinceTagStackedRebaseMergePlacesTheRewrittenHalf(t *testing.T) {
 	dir, _ := testRepo(t)
 	// The base pull's commit, landed verbatim by the merge button.
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) add a menu")
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
 	base := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	// The stacked pull's two commits, as the rebase rewrote them onto main. The
 	// tag sits at the first, so only the second belongs to the next release.
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(core) add the fold")
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(core)^ add the fold")
 	shipped := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	testGit(t, dir, "akira-toriyama", "tag", "v0.2.0", shipped)
-	testCommit(t, dir, "akira-toriyama", ":bug:(ui) fix the menu")
+	testCommit(t, dir, "akira-toriyama", ":bug:(ui)~ fix the menu")
 	pending := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(pending): `[` + apiPullRef(7, "2026-07-20T00:00:00Z", pending) + `]`,
 		pullCommitsPath(7): `[` +
-			apiCommit(base, "akira-toriyama", ":sparkles:(ui) add a menu") + `,` +
-			apiCommit("pre1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "akira-toriyama", ":sparkles:(core) add the fold") + `,` +
-			apiCommit("pre2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "akira-toriyama", ":bug:(ui) fix the menu") + `]`,
+			apiCommit(base, "akira-toriyama", ":sparkles:(ui)^ add a menu") + `,` +
+			apiCommit("pre1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "akira-toriyama", ":sparkles:(core)^ add the fold") + `,` +
+			apiCommit("pre2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "akira-toriyama", ":bug:(ui)~ fix the menu") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
 
 	code, shas, stderr := verdictSHAs(t, "bump", "--since-tag=v0.2.0", "--json")
 	if code != 0 {
-		t.Fatalf("the pending :bug: is in range and must release: exit %d\nstderr: %s", code, stderr)
+		t.Fatalf("the pending :bug:~ is in range and must release: exit %d\nstderr: %s", code, stderr)
 	}
 	// The level is the whole point: the rewritten entry that shipped under v0.2.0
-	// must not be counted, and it carries the only :sparkles: in the range.
+	// must not be counted, and it carries the only :sparkles:^ in the range.
 	if len(shas) != 1 || shas[0] != pending {
 		t.Errorf("verdict counts %v, want [%.7s] alone — the released half of the rebased run is being folded back in", shas, pending)
 	}
@@ -1719,26 +1638,26 @@ func TestSinceTagStackedRebaseMergePlacesTheRewrittenHalf(t *testing.T) {
 // landed, merge_commit_sha naming the last of the two. Counting the merge commit
 // into the alignment window therefore made the length wrong, and the alignment
 // was abandoned WHOLE, taking the two entries it could have placed with it. The
-// listing then governed itself again: phantom shas, and a :sparkles: from before
+// listing then governed itself again: phantom shas, and a :sparkles:^ from before
 // the tag folded back in.
 func TestSinceTagRebaseOverABaseMergeCommitStillAligns(t *testing.T) {
 	dir, _ := testRepo(t)
 	// main moved while the pull was open — this is what the author merged in, and
 	// it is what the alignment window runs off the end into if the merge commit is
 	// left holding a position.
-	testCommit(t, dir, "akira-toriyama", ":memo: note something on main")
+	testCommit(t, dir, "akira-toriyama", ":memo:= note something on main")
 	// The pull's two commits as the rebase replayed them; the tag sits at the first.
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) add a menu")
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
 	shipped := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	testGit(t, dir, "akira-toriyama", "tag", "v0.2.0", shipped)
-	testCommit(t, dir, "akira-toriyama", ":bug:(ui) fix the menu")
+	testCommit(t, dir, "akira-toriyama", ":bug:(ui)~ fix the menu")
 	pending := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(pending): `[` + apiPullRef(7, "2026-07-20T00:00:00Z", pending) + `]`,
 		pullCommitsPath(7): `[` +
-			apiCommit("pre1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "akira-toriyama", ":sparkles:(ui) add a menu") + `,` +
-			apiCommit("pre2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "akira-toriyama", ":bug:(ui) fix the menu") + `,` +
+			apiCommit("pre1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "akira-toriyama", ":sparkles:(ui)^ add a menu") + `,` +
+			apiCommit("pre2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "akira-toriyama", ":bug:(ui)~ fix the menu") + `,` +
 			apiMergeCommit("pre3cccccccccccccccccccccccccccccccccccc", "akira-toriyama", "Merge branch 'main' into topic-7") + `]`,
 	})
 	usePR(t, srv)
@@ -1746,7 +1665,7 @@ func TestSinceTagRebaseOverABaseMergeCommitStillAligns(t *testing.T) {
 
 	code, shas, stderr := verdictSHAs(t, "bump", "--since-tag=v0.2.0", "--json")
 	if code != 0 {
-		t.Fatalf("the pending :bug: is in range and must release: exit %d\nstderr: %s", code, stderr)
+		t.Fatalf("the pending :bug:~ is in range and must release: exit %d\nstderr: %s", code, stderr)
 	}
 	if len(shas) != 1 || shas[0] != pending {
 		t.Errorf("verdict counts %v, want [%.7s] alone — the base-merge commit is displacing the alignment", shas, pending)
@@ -1776,8 +1695,8 @@ func squashOf(t *testing.T, dir, title string, number int) string {
 // resolves ALL-OR-NOTHING — one commit on main, and it IS the merge point — but
 // it does NOT guarantee the same verdict with the API dark as with it answering.
 // A multi-commit squash's subject is the PR title, and the fallback classifies
-// that one subject instead of the pull's commits: a :sparkles:+:bug: pull titled
-// :bug: reads minor live and patch dark.
+// that one subject instead of the pull's commits: a :sparkles:+:bug:~ pull titled
+// :bug:~ reads minor live and patch dark.
 //
 // This is the sentence that shipped false twice, so it owns a test rather than a
 // paragraph. Do NOT golden doctor's prose to pin it — pin the walk it describes.
@@ -1791,12 +1710,12 @@ func TestSinceTagSquashMultiCommitDivergesWhenAPIDark(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir, _ := testRepo(t)
-			sha := squashOf(t, dir, ":bug:(auth) fix a token refresh", 1)
+			sha := squashOf(t, dir, ":bug:(auth)~ fix a token refresh", 1)
 			routes := map[string]string{
 				commitPullsPath(sha): `[` + apiPullRef(1, "2026-07-20T00:00:00Z", sha) + `]`,
 				pullCommitsPath(1): `[` +
-					apiCommit("a1", "akira-toriyama", ":sparkles:(auth) add a refresh endpoint") + `,` +
-					apiCommit("a2", "akira-toriyama", ":bug:(auth) fix a token refresh") + `]`,
+					apiCommit("a1", "akira-toriyama", ":sparkles:(auth)^ add a refresh endpoint") + `,` +
+					apiCommit("a2", "akira-toriyama", ":bug:(auth)~ fix a token refresh") + `]`,
 			}
 			if tc.dark {
 				routes[commitPullsPath(sha)] = apiUnknownSHA
@@ -1826,7 +1745,7 @@ func TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark(t *testing.T) {
 	sha := squashOf(t, dir, "Add a refresh endpoint", 6)
 	live := map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(6, "2026-07-20T00:00:00Z", sha) + `]`,
-		pullCommitsPath(6):   `[` + apiCommit("a1", "akira-toriyama", ":sparkles:(auth) add a refresh endpoint") + `]`,
+		pullCommitsPath(6):   `[` + apiCommit("a1", "akira-toriyama", ":sparkles:(auth)^ add a refresh endpoint") + `]`,
 	}
 	usePR(t, walkServer(t, live))
 	t.Chdir(dir)
@@ -1839,8 +1758,8 @@ func TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark(t *testing.T) {
 	if code != 1 || stdout != "" {
 		t.Fatalf("with the API dark: exit %d stdout %q, want 1 / empty — an unlinted PR title is what the fallback reads\nstderr: %s", code, stdout, stderr)
 	}
-	if !strings.Contains(stderr, "does not parse") {
-		t.Fatalf("the loss must name the subject that would not parse:\n%s", stderr)
+	if !strings.Contains(stderr, "matches no pattern") {
+		t.Fatalf("the loss must say the subject matched no pattern:\n%s", stderr)
 	}
 }
 
@@ -1856,13 +1775,13 @@ func TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark(t *testing.T) {
 // sentence true — which was the tempting "fix" and would have undone t-7zt7.
 func TestSinceTagMergeCommitReproducesVerdictWhenFullyDark(t *testing.T) {
 	dir, _ := testRepo(t)
-	mp := mergePR(t, dir, "akira-toriyama", 3, ":sparkles:(ui) add a menu", ":memo: document the menu")
+	mp := mergePR(t, dir, "akira-toriyama", 3, ":sparkles:(ui)^ add a menu", ":memo:= document the menu")
 	ref := `[` + apiPullRef(3, "2026-07-20T00:00:00Z", mp.Merge) + `]`
 	live := map[string]string{
 		commitPullsPath(mp.Merge): ref,
 		pullCommitsPath(3): `[` +
-			apiCommit(mp.Branch[0], "akira-toriyama", ":sparkles:(ui) add a menu") + `,` +
-			apiCommit(mp.Branch[1], "akira-toriyama", ":memo: document the menu") + `]`,
+			apiCommit(mp.Branch[0], "akira-toriyama", ":sparkles:(ui)^ add a menu") + `,` +
+			apiCommit(mp.Branch[1], "akira-toriyama", ":memo:= document the menu") + `]`,
 	}
 	dark := map[string]string{commitPullsPath(mp.Merge): apiUnknownSHA}
 	for _, b := range mp.Branch {
@@ -1877,12 +1796,13 @@ func TestSinceTagMergeCommitReproducesVerdictWhenFullyDark(t *testing.T) {
 	}
 
 	usePR(t, walkServer(t, dark))
+	t.Chdir(dir)
 	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.0")
 	if code != 0 || stdout != "v0.2.0\n" {
 		t.Fatalf("fully dark: exit %d stdout %q, want 0 / v0.2.0 — the branch commits are on main and classify themselves\nstderr: %s", code, stdout, stderr)
 	}
-	if !strings.Contains(stderr, mp.Branch[0][:7]) || !strings.Contains(stderr, "classifying its own message") {
-		t.Fatalf("the fallback must say it classified each branch commit itself:\n%s", stderr)
+	if !strings.Contains(stderr, mp.Branch[0][:7]) || !strings.Contains(stderr, "reading its own message") {
+		t.Fatalf("the fallback must say it read each branch commit itself:\n%s", stderr)
 	}
 }
 
@@ -1941,9 +1861,9 @@ func TestSinceTagFallbackOnlyOnUnknownCommit(t *testing.T) {
 // because the doctor advice text and DESIGN §7 make a claim about each.
 func TestSinceTagRebaseLagCountsAReplayedCommitOnce(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) add a menu")
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
 	r1 := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	testCommit(t, dir, "akira-toriyama", ":memo: document the menu")
+	testCommit(t, dir, "akira-toriyama", ":memo:= document the menu")
 	r2 := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	// GitHub names the LAST replayed commit as merge_commit_sha, and the pull's
@@ -1953,8 +1873,8 @@ func TestSinceTagRebaseLagCountsAReplayedCommitOnce(t *testing.T) {
 			commitPullsPath(r1): apiUnknownSHA,
 			commitPullsPath(r2): `[` + apiPullRef(4, "2026-07-20T00:00:00Z", r2) + `]`,
 			pullCommitsPath(4): `[` +
-				apiCommit("orig111", "akira-toriyama", ":sparkles:(ui) add a menu") + `,` +
-				apiCommit("orig222", "akira-toriyama", ":memo: document the menu") + `]`,
+				apiCommit("orig111", "akira-toriyama", ":sparkles:(ui)^ add a menu") + `,` +
+				apiCommit("orig222", "akira-toriyama", ":memo:= document the menu") + `]`,
 		})
 		usePR(t, srv)
 		t.Chdir(dir)
@@ -1978,8 +1898,8 @@ func TestSinceTagRebaseLagCountsAReplayedCommitOnce(t *testing.T) {
 			commitPullsPath(r1): apiUnknownSHA,
 			commitPullsPath(r2): `[` + apiPullRef(5, "2026-07-20T00:00:00Z", r2) + `]`,
 			pullCommitsPath(5): `[` +
-				apiCommit("orig111", "akira-toriyama", ":sparkles:(ui) add a different menu") + `,` +
-				apiCommit("orig222", "akira-toriyama", ":memo: document the menu") + `]`,
+				apiCommit("orig111", "akira-toriyama", ":sparkles:(ui)^ add a different menu") + `,` +
+				apiCommit("orig222", "akira-toriyama", ":memo:= document the menu") + `]`,
 		})
 		usePR(t, srv)
 		t.Chdir(dir)
@@ -2063,12 +1983,12 @@ func TestLatestVersionTagBreaksATieOnGitsOrder(t *testing.T) {
 // commits an earlier tag already shipped.
 func TestSinceTagAutoWalksFromTheHighestVersion(t *testing.T) {
 	dir, _ := testRepo(t) // tags v0.1.0
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) ship the released feature")
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ ship the released feature")
 	testGit(t, dir, "akira-toriyama", "tag", "100.0.0")
-	testCommit(t, dir, "akira-toriyama", ":bug:(ui) fix the unreleased crash")
+	testCommit(t, dir, "akira-toriyama", ":bug:(ui)~ fix the unreleased crash")
 	t.Chdir(dir)
 
-	revRange, base, err := sinceTagRange(t.Context(), sinceTagAuto)
+	revRange, base, err := sinceTagRange(t.Context(), testCfg(t), sinceTagAuto)
 	if err != nil {
 		t.Fatalf("sinceTagRange: %v", err)
 	}
@@ -2092,9 +2012,9 @@ func TestSinceTagAutoWalksFromTheHighestVersion(t *testing.T) {
 // equal the tag being cut.
 func TestSinceTagBelowResolvesThePredecessorAsAVersion(t *testing.T) {
 	dir, _ := testRepo(t) // tags v0.1.0
-	testCommit(t, dir, "akira-toriyama", ":bug: an rc-era fix")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ an rc-era fix")
 	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0-rc1")
-	testCommit(t, dir, "akira-toriyama", ":bug: the 1.0 fix")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ the 1.0 fix")
 	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0")
 	sha := squashCommit(t, dir, "Fix a crash", 7)
 	testGit(t, dir, "akira-toriyama", "tag", "v1.0.1")
@@ -2109,7 +2029,7 @@ func TestSinceTagBelowResolvesThePredecessorAsAVersion(t *testing.T) {
 
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(7, "2026-07-13T00:00:00Z", sha) + `]`,
-		pullCommitsPath(7):   `[` + apiCommit("a1", "akira-toriyama", ":bug: fix a crash") + `]`,
+		pullCommitsPath(7):   `[` + apiCommit("a1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -2138,13 +2058,13 @@ func TestSinceTagBelowResolvesThePredecessorAsAVersion(t *testing.T) {
 // verdict is due.
 func TestSinceTagBelowIsStrictlyBelowNotHighestOther(t *testing.T) {
 	dir, _ := testRepo(t) // tags v0.1.0
-	testCommit(t, dir, "akira-toriyama", ":bug: the 0.8.2 fix")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ the 0.8.2 fix")
 	testGit(t, dir, "akira-toriyama", "tag", "v0.8.2")
 	sha := squashCommit(t, dir, "Fix the hotfix crash", 9)
 	testGit(t, dir, "akira-toriyama", "tag", "v0.9.0")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(9, "2026-07-13T00:00:00Z", sha) + `]`,
-		pullCommitsPath(9):   `[` + apiCommit("h1", "akira-toriyama", ":bug: fix the hotfix crash") + `]`,
+		pullCommitsPath(9):   `[` + apiCommit("h1", "akira-toriyama", ":bug:~ fix the hotfix crash") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -2169,9 +2089,9 @@ func TestSinceTagBelowFirstVersionWalksTheWholeHistory(t *testing.T) {
 	sha := squashCommit(t, dir, "Add a menu", 2)
 	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0")
 	srv := walkServer(t, map[string]string{
-		commitPullsPath(base): `[]`, // the root :tada: commit: fallback, none
+		commitPullsPath(base): `[]`, // the root :tada:= commit: fallback, none
 		commitPullsPath(sha):  `[` + apiPullRef(2, "2026-07-13T00:00:00Z", sha) + `]`,
-		pullCommitsPath(2):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles: add a menu") + `]`,
+		pullCommitsPath(2):    `[` + apiCommit("a1", "akira-toriyama", ":sparkles:^ add a menu") + `]`,
 	})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -2223,14 +2143,14 @@ func TestSinceTagUnboundedWalkRefused(t *testing.T) {
 	// walk-visible, exactly AT the cap. The bot commits prove the guard counts
 	// what the walk VISITS, not raw history length.
 	for i := range 199 {
-		testCommit(t, dir, "akira-toriyama", fmt.Sprintf(":memo: human commit %d", i))
+		testCommit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= human commit %d", i))
 	}
 	for i := range 10 {
-		testCommit(t, dir, "fleet-sync[bot]", fmt.Sprintf(":robot: chore(fleet): sync %d", i))
+		testCommit(t, dir, "dependabot[bot]", fmt.Sprintf(":robot:= chore(fleet): sync %d", i))
 	}
 	t.Chdir(dir)
 
-	revRange, base, err := sinceTagRange(t.Context(), sinceTagAuto)
+	revRange, base, err := sinceTagRange(t.Context(), testCfg(t), sinceTagAuto)
 	if err != nil {
 		t.Fatalf("200 walk-visible commits are AT the cap and must still walk (a skip would "+
 			"verdict the first release out of existence), got %v", err)
@@ -2242,7 +2162,7 @@ func TestSinceTagUnboundedWalkRefused(t *testing.T) {
 	// One more visible commit crosses the cap: both resolved forms must refuse
 	// before anything reaches the API — the server holds no routes, so any
 	// request fails the test.
-	testCommit(t, dir, "akira-toriyama", ":memo: the 201st visible commit")
+	testCommit(t, dir, "akira-toriyama", ":memo:= the 201st visible commit")
 	srv := walkServer(t, map[string]string{})
 	usePR(t, srv)
 
@@ -2287,8 +2207,8 @@ func TestSinceTagUnboundedWalkRefused(t *testing.T) {
 // that vacuous.) A rebase preserves messages and order, so matching them is also
 // the honest fixture for the shape.
 func TestMainFootprintSurvivesAListingLongerThanMain(t *testing.T) {
-	dir, _ := testRepo(t) // root commit ":tada: begin the project"
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) add a menu")
+	dir, _ := testRepo(t) // root commit ":tada:= begin the project"
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
 	t.Chdir(dir)
 	canonical := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
@@ -2297,9 +2217,9 @@ func TestMainFootprintSurvivesAListingLongerThanMain(t *testing.T) {
 	// repository, which is what a rebase-merge's pre-rebase listing looks like
 	// from here, so `Have` says no to all three.
 	listing := []gitsource.RawCommit{
-		{SHA: "1111111111111111111111111111111111111111", Message: ":tada: begin the project"},
-		{SHA: "2222222222222222222222222222222222222222", Message: ":sparkles:(ui) add a menu"},
-		{SHA: "3333333333333333333333333333333333333333", Message: ":bug:(ui) fix the menu"},
+		{SHA: "1111111111111111111111111111111111111111", Message: ":tada:= begin the project"},
+		{SHA: "2222222222222222222222222222222222222222", Message: ":sparkles:(ui)^ add a menu"},
+		{SHA: "3333333333333333333333333333333333333333", Message: ":bug:(ui)~ fix the menu"},
 	}
 
 	landed, err := mainFootprint(t.Context(), canonical, listing)
@@ -2391,26 +2311,26 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 		dir, _ := testRepo(t)
 		// The pull's two commits, pre-rebase, still on their branch.
 		testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-2")
-		b1 := commit(t, dir, "fix.txt", ":bug:(ui) fix the menu")
-		b2 := commit(t, dir, "speed.txt", ":zap:(ui) speed up the menu")
+		b1 := commit(t, dir, "fix.txt", ":bug:(ui)~ fix the menu")
+		b2 := commit(t, dir, "speed.txt", ":zap:(ui)~ speed up the menu")
 		// The rebase-merge replayed both onto main; GitHub names the last
 		// replayed commit as merge_commit_sha, and the listing keeps b1 and b2.
 		testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
-		commit(t, dir, "fix.txt", ":bug:(ui) fix the menu")                     // b1'
-		canonical := commit(t, dir, "speed.txt", ":zap:(ui) speed up the menu") // b2'
+		commit(t, dir, "fix.txt", ":bug:(ui)~ fix the menu")                     // b1'
+		canonical := commit(t, dir, "speed.txt", ":zap:(ui)~ speed up the menu") // b2'
 		// A later pull branches from the ORIGINAL b1 and lands through the
 		// merge button — now b1 itself is an ancestor of HEAD, and the same
 		// change sits on main twice: as b1 (that pull) and as b1' (this one).
 		testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-3", b1)
-		commit(t, dir, "mention.txt", ":memo: mention the menu")
+		commit(t, dir, "mention.txt", ":memo:= mention the menu")
 		testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
 		testGit(t, dir, "akira-toriyama", "merge", "-q", "--no-ff",
 			"-m", "Merge pull request #3 from akira-toriyama/topic-3", "topic-3")
 		t.Chdir(dir)
 
 		landed, err := mainFootprint(t.Context(), canonical, []gitsource.RawCommit{
-			{SHA: b1, Parents: 1, Message: ":bug:(ui) fix the menu"},
-			{SHA: b2, Parents: 1, Message: ":zap:(ui) speed up the menu"},
+			{SHA: b1, Parents: 1, Message: ":bug:(ui)~ fix the menu"},
+			{SHA: b2, Parents: 1, Message: ":zap:(ui)~ speed up the menu"},
 		})
 		if err != nil {
 			t.Fatalf("mainFootprint: %v", err)
@@ -2429,24 +2349,24 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 	t.Run("the original and everything under it land later", func(t *testing.T) {
 		dir, _ := testRepo(t)
 		testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-2")
-		b1 := commit(t, dir, "fix.txt", ":bug:(ui) fix the menu")
-		b2 := commit(t, dir, "speed.txt", ":zap:(ui) speed up the menu")
+		b1 := commit(t, dir, "fix.txt", ":bug:(ui)~ fix the menu")
+		b2 := commit(t, dir, "speed.txt", ":zap:(ui)~ speed up the menu")
 		testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
-		commit(t, dir, "fix.txt", ":bug:(ui) fix the menu")                     // b1'
-		canonical := commit(t, dir, "speed.txt", ":zap:(ui) speed up the menu") // b2'
+		commit(t, dir, "fix.txt", ":bug:(ui)~ fix the menu")                     // b1'
+		canonical := commit(t, dir, "speed.txt", ":zap:(ui)~ speed up the menu") // b2'
 		// The later pull branches from b2, the LAST listed commit — and a
 		// branch carries its ancestry, so landing it lands b1 as well. Step 1
 		// places the whole listing and the rebase run plays no part.
 		testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-3", b2)
-		commit(t, dir, "mention.txt", ":memo: mention the menu")
+		commit(t, dir, "mention.txt", ":memo:= mention the menu")
 		testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
 		testGit(t, dir, "akira-toriyama", "merge", "-q", "--no-ff",
 			"-m", "Merge pull request #3 from akira-toriyama/topic-3", "topic-3")
 		t.Chdir(dir)
 
 		landed, err := mainFootprint(t.Context(), canonical, []gitsource.RawCommit{
-			{SHA: b1, Parents: 1, Message: ":bug:(ui) fix the menu"},
-			{SHA: b2, Parents: 1, Message: ":zap:(ui) speed up the menu"},
+			{SHA: b1, Parents: 1, Message: ":bug:(ui)~ fix the menu"},
+			{SHA: b2, Parents: 1, Message: ":zap:(ui)~ speed up the menu"},
 		})
 		if err != nil {
 			t.Fatalf("mainFootprint: %v", err)
@@ -2463,21 +2383,21 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 		dir, root := testRepo(t)
 		// The change is on main FIRST — and shipped. The tag is why the answer
 		// matters: C under v0.2.0 and a copy in range would straddle the base.
-		C := commit(t, dir, "shared.txt", ":bug:(core) fix the hotfix")
+		C := commit(t, dir, "shared.txt", ":bug:(core)~ fix the hotfix")
 		testGit(t, dir, "akira-toriyama", "tag", "v0.2.0")
 		// The branch cherry-picked the same patch under its own sha, added one
 		// commit of its own, and was rebase-merged: the rebase found c's patch
 		// already upstream, dropped it, and replayed only d.
 		testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-2", root)
-		c := commit(t, dir, "shared.txt", ":bug:(core) fix the hotfix")
-		d := commit(t, dir, "add.txt", ":sparkles:(core) add a thing")
+		c := commit(t, dir, "shared.txt", ":bug:(core)~ fix the hotfix")
+		d := commit(t, dir, "add.txt", ":sparkles:(core)^ add a thing")
 		testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
-		canonical := commit(t, dir, "add.txt", ":sparkles:(core) add a thing") // d'
+		canonical := commit(t, dir, "add.txt", ":sparkles:(core)^ add a thing") // d'
 		t.Chdir(dir)
 
 		landed, err := mainFootprint(t.Context(), canonical, []gitsource.RawCommit{
-			{SHA: c, Parents: 1, Message: ":bug:(core) fix the hotfix"},
-			{SHA: d, Parents: 1, Message: ":sparkles:(core) add a thing"},
+			{SHA: c, Parents: 1, Message: ":bug:(core)~ fix the hotfix"},
+			{SHA: d, Parents: 1, Message: ":sparkles:(core)^ add a thing"},
 		})
 		if err != nil {
 			t.Fatalf("mainFootprint: %v", err)

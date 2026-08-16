@@ -312,16 +312,21 @@ echo "→ build binary for live checks"
 go build -o bin/glyph ./cmd/glyph
 BIN="$(pwd)/bin/glyph"
 
-echo "→ smoke: version / rules / help / usage errors"
+echo "→ smoke: version / init / help / usage errors"
 "$BIN" version >/dev/null
 "$BIN" version --json >/dev/null   # the machine flag is spelled --json on every command that has one
 "$BIN" --version >/dev/null
 "$BIN" --help >/dev/null
-"$BIN" rules --json >/dev/null     # embedded table self-prints as JSON
-"$BIN" rules --md >/dev/null       # ...and as the Markdown docs table
-# mutually-exclusive formats must exit 2 (usage), not crash
-if "$BIN" rules --json --md >/dev/null 2>&1; then
-  echo "  expected a usage error for rules --json --md" >&2
+# init refuses to clobber this repository's own glyph.toml (usage, 2)
+status=0
+"$BIN" init --gemoji >/dev/null 2>&1 || status=$?
+if [ "$status" -ne 2 ]; then
+  echo "  expected exit 2 (usage) for init over an existing glyph.toml, got $status" >&2
+  exit 1
+fi
+# two presets at once must exit 2 (usage), not crash
+if "$BIN" init --gemoji --conventional >/dev/null 2>&1; then
+  echo "  expected a usage error for init --gemoji --conventional" >&2
   exit 1
 fi
 
@@ -355,7 +360,7 @@ echo "→ smoke: lint / bump exit-code contract"
 # governs EVERY assertion in this block. Three of them used to state an integer
 # in the failure message and assert only non-zero — a smoke that would have
 # stayed green through the very renumbering it was written to catch.
-"$BIN" lint --message ':bug: fix a crash'   # clean → 0
+"$BIN" lint --message ':bug:~ fix a crash'   # clean → 0
 status=0
 "$BIN" lint --message 'no gitmoji' >/dev/null 2>&1 || status=$?
 if [ "$status" -ne 3 ]; then

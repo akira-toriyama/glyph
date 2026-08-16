@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/internal/gitmoji"
+	"github.com/akira-toriyama/glyph/internal/bump"
 	"github.com/akira-toriyama/glyph/internal/markdown"
 )
 
@@ -31,17 +31,16 @@ const Marker = "<!-- glyph-pr-verdict -->"
 
 // Commit is one classified commit in the preview table.
 type Commit struct {
-	Code     string
-	Level    gitmoji.Bump
-	Breaking bool
-	Subject  string
+	Sigil   string
+	Level   bump.Level
+	Subject string
 }
 
 // Verdict is one side of the fold: a classified commit set and the level it
 // folds to. Next is the version that level steps to — empty when the level is
 // none, because there is no next version to name.
 type Verdict struct {
-	Level   gitmoji.Bump
+	Level   bump.Level
 	Next    string
 	Commits []Commit
 }
@@ -84,29 +83,29 @@ type Input struct {
 // 0 = nothing moves, which is also the only safe direction — a preview that
 // over-claims a bump is worse than one that under-claims, because the reviewer
 // checks the table against the claim.
-func rank(b gitmoji.Bump) int {
+func rank(b bump.Level) int {
 	switch b {
-	case gitmoji.BumpPatch:
+	case bump.LevelPatch:
 		return 1
-	case gitmoji.BumpMinor:
+	case bump.LevelMinor:
 		return 2
-	case gitmoji.BumpMajor:
+	case bump.LevelMajor:
 		return 3
-	case gitmoji.BumpNone:
+	case bump.LevelNone:
 		return 0
 	}
 	return 0 // an unset or unrecognized level: nothing moves
 }
 
-func icon(b gitmoji.Bump) string {
+func icon(b bump.Level) string {
 	switch b {
-	case gitmoji.BumpPatch:
+	case bump.LevelPatch:
 		return "🔧"
-	case gitmoji.BumpMinor:
+	case bump.LevelMinor:
 		return "🔼"
-	case gitmoji.BumpMajor:
+	case bump.LevelMajor:
 		return "💥"
-	case gitmoji.BumpNone:
+	case bump.LevelNone:
 		return "⏸️"
 	}
 	return "⏸️"
@@ -140,21 +139,6 @@ func Headline(in Input) string {
 		// qr >= pr >= 1 here, so both levels are real and named.
 		return fmt.Sprintf("%s Merging this PR adds **%s**-level changes — the next release stays **%s** (a **%s** bump is already pending).", icon(pl), pl, in.Pending.Next, ql)
 	}
-}
-
-// codeCell renders one commit's token for the verdict table. A textual
-// gitmoji is printed twice on purpose — GitHub renders the bare `:code:` as
-// its glyph, so the pair reads "✨ `:sparkles:`": the picture and the literal
-// an author would type. A conventional type has no rendered form, and the
-// same pair printed "feat `feat`" — the literal twice — measured on
-// glyph-test2's first verdict comment, so a token that is not colon-wrapped
-// gets the backticked literal alone. Shape-checked, not table-checked: the
-// preview is pure and must stay ignorant of which vocabulary it is rendering.
-func codeCell(code string) string {
-	if strings.HasPrefix(code, ":") && strings.HasSuffix(code, ":") && len(code) > 2 {
-		return code + " `" + code + "`"
-	}
-	return "`" + code + "`"
 }
 
 // escapeCell makes a commit subject safe in a Markdown table cell: it is
@@ -202,13 +186,9 @@ func Render(in Input) string {
 	}
 
 	if len(in.PR.Commits) > 0 {
-		b.WriteString("\n| commit | code | bump |\n|---|---|---|\n")
+		b.WriteString("\n| commit | sigil | bump |\n|---|---|---|\n")
 		for _, c := range in.PR.Commits {
-			breaking := ""
-			if c.Breaking {
-				breaking = " 💥"
-			}
-			fmt.Fprintf(&b, "| %s | %s | %s%s |\n", escapeCell(c.Subject), codeCell(c.Code), c.Level, breaking)
+			fmt.Fprintf(&b, "| %s | `%s` | %s |\n", escapeCell(c.Subject), c.Sigil, c.Level)
 		}
 	}
 

@@ -1,12 +1,18 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/internal/gitsource"
+	"github.com/akira-toriyama/glyph/internal/testutil"
 )
 
 // prServer stands in for api.github.com: it serves one pull request's commits
@@ -47,6 +53,17 @@ func usePR(t *testing.T, srv *httptest.Server) {
 	t.Setenv("GITHUB_REPOSITORY", "akira-toriyama/glyph")
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
+	// The v2 engine reads glyph.toml from the checkout's top level before any
+	// request goes out, so an API-backed test must run inside an initialized
+	// repository. Tests that build their own fixture chdir before or after
+	// this call; only when the current directory is NOT an initialized repo
+	// (the package directory itself) does usePR supply a fresh one.
+	if top, err := gitsource.TopLevel(context.Background(), "."); err == nil {
+		if _, serr := os.Stat(filepath.Join(top, "glyph.toml")); serr == nil {
+			return
+		}
+	}
+	t.Chdir(testutil.NewRepo(t))
 }
 
 // TestBumpPR is the whole point of the squash-safe design: the version comes from
@@ -55,8 +72,8 @@ func usePR(t *testing.T, srv *httptest.Server) {
 // max, so the PR is a minor.
 func TestBumpPR(t *testing.T) {
 	srv := prServer(t, 7, `[`+
-		apiCommit("a1", "akira-toriyama", ":memo: document the fold")+`,`+
-		apiCommit("b2", "akira-toriyama", ":sparkles:(ui) add a menu")+`]`)
+		apiCommit("a1", "akira-toriyama", ":memo:= document the fold")+`,`+
+		apiCommit("b2", "akira-toriyama", ":sparkles:(ui)^ add a menu")+`]`)
 	usePR(t, srv)
 	dir, _ := testRepo(t) // carries the v0.1.0 tag bump steps from
 	t.Chdir(dir)
@@ -70,20 +87,21 @@ func TestBumpPR(t *testing.T) {
 	}
 }
 
-// TestBumpPRExcludesBots: the participation rules must be identical whether the
-// commits are read from git or from the API. A bot's commit inside a PR cannot
-// move the version — the same rule that keeps fleet-sync out of the fold.
+// TestBumpPRExcludesBots: the exclusion rules must be identical whether the
+// commits are read from git or from the API. An exclude_authors commit inside
+// a PR cannot move the version — the same key that keeps bots out of the fold
+// (the preset names dependabot; the author decides, never a name pattern).
 func TestBumpPRExcludesBots(t *testing.T) {
 	srv := prServer(t, 9, `[`+
-		apiCommit("a1", "fleet-sync[bot]", ":sparkles: a bot must not minor the release")+`,`+
-		apiCommit("b2", "akira-toriyama", ":bug: fix a crash")+`]`)
+		apiCommit("a1", "dependabot[bot]", ":sparkles:^ a bot must not minor the release")+`,`+
+		apiCommit("b2", "akira-toriyama", ":bug:~ fix a crash")+`]`)
 	usePR(t, srv)
 	dir, _ := testRepo(t)
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "bump", "--pr", "9")
 	if code != 0 || stdout != "v0.1.1\n" {
-		t.Fatalf("bump --pr = exit %d stdout %q, want 0 / v0.1.1 (the bot's :sparkles: must not count)", code, stdout)
+		t.Fatalf("bump --pr = exit %d stdout %q, want 0 / v0.1.1 (the bot's :sparkles:^ must not count)", code, stdout)
 	}
 }
 
@@ -91,8 +109,8 @@ func TestBumpPRExcludesBots(t *testing.T) {
 // renders one line per real change.
 func TestNotesPR(t *testing.T) {
 	srv := prServer(t, 7, `[`+
-		apiCommit("a1", "akira-toriyama", ":sparkles: add a menu")+`,`+
-		apiCommit("b2", "akira-toriyama", ":bug:(api) stop dropping the last page")+`]`)
+		apiCommit("a1", "akira-toriyama", ":sparkles:^ add a menu")+`,`+
+		apiCommit("b2", "akira-toriyama", ":bug:(api)~ stop dropping the last page")+`]`)
 	usePR(t, srv)
 	dir, _ := testRepo(t)
 	t.Chdir(dir)
@@ -109,7 +127,7 @@ func TestNotesPR(t *testing.T) {
 // TestPRRepoFlagBeatsTheEnvironment: --repo is the explicit override for a caller
 // outside Actions (or one pointing at another repository).
 func TestPRRepoFlagBeatsTheEnvironment(t *testing.T) {
-	srv := prServer(t, 3, `[`+apiCommit("a1", "akira-toriyama", ":bug: fix a crash")+`]`)
+	srv := prServer(t, 3, `[`+apiCommit("a1", "akira-toriyama", ":bug:~ fix a crash")+`]`)
 	t.Setenv("GITHUB_API_URL", srv.URL)
 	t.Setenv("GITHUB_REPOSITORY", "someone-else/wrong") // must be overridden
 	t.Setenv("GITHUB_TOKEN", "")
@@ -199,8 +217,8 @@ func TestPRNotFoundIsAPI(t *testing.T) {
 // on the input the fleet actually produces every day.
 func TestPRAllBotIsNoRelease(t *testing.T) {
 	srv := prServer(t, 5, `[`+
-		apiCommit("a1", "fleet-sync[bot]", ":robot: chore(fleet): sync a file")+`,`+
-		apiCommit("b2", "dependabot[bot]", ":arrow_up: build(deps): bump a thing")+`]`)
+		apiCommit("a1", "fleet-sync[bot]", ":robot:= chore(fleet): sync a file")+`,`+
+		apiCommit("b2", "dependabot[bot]", ":arrow_up:~ build(deps): bump a thing")+`]`)
 	usePR(t, srv)
 	dir, _ := testRepo(t)
 	t.Chdir(dir)
@@ -265,7 +283,7 @@ func TestPRUsesGHTokenFallback(t *testing.T) {
 	var gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
-		fmt.Fprint(w, `[`+apiCommit("a1", "akira-toriyama", ":bug: fix a crash")+`]`)
+		fmt.Fprint(w, `[`+apiCommit("a1", "akira-toriyama", ":bug:~ fix a crash")+`]`)
 	}))
 	t.Cleanup(srv.Close)
 	t.Setenv("GITHUB_API_URL", srv.URL)
@@ -288,7 +306,7 @@ func TestPRUsesGHTokenFallback(t *testing.T) {
 // names the commit that DECIDED the level ("why this bump"), not the input the
 // caller already knows it asked for.
 func TestBumpPRJSONVerdict(t *testing.T) {
-	srv := prServer(t, 7, `[`+apiCommit("a1", "akira-toriyama", ":sparkles: add a menu")+`]`)
+	srv := prServer(t, 7, `[`+apiCommit("a1", "akira-toriyama", ":sparkles:^ add a menu")+`]`)
 	usePR(t, srv)
 	dir, _ := testRepo(t)
 	t.Chdir(dir)
@@ -301,8 +319,8 @@ func TestBumpPRJSONVerdict(t *testing.T) {
 		Level   string `json:"level"`
 		Next    string `json:"next"`
 		Commits []struct {
-			SHA  string `json:"sha"`
-			Code string `json:"code"`
+			SHA   string `json:"sha"`
+			Sigil string `json:"sigil"`
 		} `json:"commits"`
 		Reason string `json:"reason"`
 	}
@@ -312,11 +330,11 @@ func TestBumpPRJSONVerdict(t *testing.T) {
 	if res.Level != "minor" || res.Next != "v0.2.0" {
 		t.Fatalf("verdict = %+v, want minor → v0.2.0", res)
 	}
-	if len(res.Commits) != 1 || res.Commits[0].Code != ":sparkles:" || res.Commits[0].SHA != "a1" {
-		t.Fatalf("commits = %+v, want the PR's one :sparkles: commit (sha a1)", res.Commits)
+	if len(res.Commits) != 1 || res.Commits[0].Sigil != "^" || res.Commits[0].SHA != "a1" {
+		t.Fatalf("commits = %+v, want the PR's one ^ commit (sha a1)", res.Commits)
 	}
-	if !strings.Contains(res.Reason, ":sparkles:") || !strings.Contains(res.Reason, "minor") {
-		t.Fatalf("reason %q should name the deciding commit and the level", res.Reason)
+	if !strings.Contains(res.Reason, "^") || !strings.Contains(res.Reason, "minor") {
+		t.Fatalf("reason %q should name the deciding sigil and the level", res.Reason)
 	}
 }
 
@@ -324,7 +342,7 @@ func TestBumpPRJSONVerdict(t *testing.T) {
 // commit, so the reason falls back to naming what was read — and for --pr that must
 // be the pull request, not an empty string left over from the --range plumbing.
 func TestNoneVerdictNamesThePullRequest(t *testing.T) {
-	srv := prServer(t, 12, `[`+apiCommit("a1", "akira-toriyama", ":memo: document the fold")+`]`)
+	srv := prServer(t, 12, `[`+apiCommit("a1", "akira-toriyama", ":memo:= document the fold")+`]`)
 	usePR(t, srv)
 	dir, _ := testRepo(t)
 	t.Chdir(dir)

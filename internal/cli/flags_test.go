@@ -114,7 +114,7 @@ func TestEveryStringFlagRejectsItsEmptyForm(t *testing.T) {
 func TestLintStdinFalseIsUsageNotAVerdict(t *testing.T) {
 	for _, tc := range []struct{ name, stdin string }{
 		{"empty stdin", ""},
-		{"a clean message on stdin", ":bug: fix a crash\n"},
+		{"a clean message on stdin", ":bug:~ fix a crash\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			setStdin(t, tc.stdin)
@@ -162,7 +162,7 @@ func TestMachineOutputFlagHasOneSpelling(t *testing.T) {
 	// anywhere and pass, which is the failure mode this whole file is written
 	// against. The floor is the six commands that always had --json plus the
 	// two renamed into it.
-	const floor = 8
+	const floor = 7
 	if len(machine) < floor {
 		t.Fatalf("the walk found --json on only %d commands (%v); at least %d have it, so the "+
 			"walk is not reaching the command tree and the --ndjson assertion above proved "+

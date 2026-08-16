@@ -138,13 +138,16 @@ jobs:
           /tmp/glyph version
           /tmp/glyph --version
           /tmp/glyph --help >/dev/null
-          # rules self-prints its embedded table both ways; --json must carry the
-          # pinned spec version, --md must lead with the docs heading.
-          /tmp/glyph rules --json | grep -q '"version"'
-          /tmp/glyph rules --md | head -1 | grep -q '^# gitmoji'
-          # mutually-exclusive formats must be a usage error (exit 2), not a crash.
-          if /tmp/glyph rules --json --md >/dev/null 2>&1; then
-            echo "expected a usage error for rules --json --md" >&2
+          # init refuses to clobber this repository's own glyph.toml (usage, 2).
+          status=0
+          /tmp/glyph init --gemoji >/dev/null 2>&1 || status=$?
+          if [ "$status" -ne 2 ]; then
+            echo "expected exit 2 (usage) for init over an existing glyph.toml, got $status" >&2
+            exit 1
+          fi
+          # two presets at once must be a usage error (exit 2), not a crash.
+          if /tmp/glyph init --gemoji --conventional >/dev/null 2>&1; then
+            echo "expected a usage error for init --gemoji --conventional" >&2
             exit 1
           fi
           # `completion`'s output is redirected into a file the shell SOURCES, so

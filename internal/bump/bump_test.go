@@ -2,86 +2,20 @@ package bump
 
 import (
 	"testing"
-
-	"github.com/akira-toriyama/glyph/internal/core"
-	"github.com/akira-toriyama/glyph/internal/gitmoji"
-	"github.com/akira-toriyama/glyph/internal/parser"
 )
 
-// loadTable loads the real embedded rules table — classification is tested
-// against the shipped source of truth, not a mock copy of it.
-func loadTable(t *testing.T) *gitmoji.Table {
-	t.Helper()
-	table, err := gitmoji.Load()
-	if err != nil {
-		t.Fatalf("gitmoji.Load(): %v", err)
-	}
-	return table
-}
-
-// TestClassify pins the classification rule: an unknown code is a lint error
-// (never a silent level), a breaking commit short-circuits to major, and
-// everything else takes its table rung.
-func TestClassify(t *testing.T) {
-	table := loadTable(t)
-	cases := []struct {
-		name   string
-		commit parser.Commit
-		want   gitmoji.Bump
-	}{
-		{"patch rung", parser.Commit{Token: ":bug:"}, gitmoji.BumpPatch},
-		{"minor rung is sparkles only", parser.Commit{Token: ":sparkles:"}, gitmoji.BumpMinor},
-		{"major rung is boom without any flag", parser.Commit{Token: ":boom:"}, gitmoji.BumpMajor},
-		{"none rung", parser.Commit{Token: ":memo:"}, gitmoji.BumpNone},
-		{"ratified deviation stays none", parser.Commit{Token: ":wrench:"}, gitmoji.BumpNone},
-		{"breaking overrides a none rung", parser.Commit{Token: ":memo:", Breaking: true}, gitmoji.BumpMajor},
-		{"breaking overrides a patch rung", parser.Commit{Token: ":truck:", Breaking: true}, gitmoji.BumpMajor},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			got, err := Classify(c.commit, table)
-			if err != nil {
-				t.Fatalf("Classify(%+v): unexpected error: %v", c.commit, err)
-			}
-			if got != c.want {
-				t.Fatalf("Classify(%+v) = %s, want %s", c.commit, got, c.want)
-			}
-		})
-	}
-}
-
-// TestClassifyUnknownCode: an unknown gitmoji is a hard lint failure even when
-// the commit is flagged breaking — membership is checked before everything.
-func TestClassifyUnknownCode(t *testing.T) {
-	table := loadTable(t)
-	for _, commit := range []parser.Commit{
-		{Token: ":not-a-real-code:", SHA: "abc1234"},
-		{Token: ":not-a-real-code:", Breaking: true},
-	} {
-		_, err := Classify(commit, table)
-		if err == nil {
-			t.Fatalf("Classify(%+v) should fail on an unknown code", commit)
-		}
-		ce := core.AsError(err)
-		if ce == nil || ce.Code != core.CodeLint {
-			t.Fatalf("Classify(%+v) error = %v, want a *core.Error with the lint code", commit, err)
-		}
-	}
-}
-
-// TestReduce pins the fold: max over the lattice, none for an empty slice.
 func TestReduce(t *testing.T) {
 	cases := []struct {
 		name   string
-		levels []gitmoji.Bump
-		want   gitmoji.Bump
+		levels []Level
+		want   Level
 	}{
-		{"empty is none", nil, gitmoji.BumpNone},
-		{"single", []gitmoji.Bump{gitmoji.BumpPatch}, gitmoji.BumpPatch},
-		{"none and patch", []gitmoji.Bump{gitmoji.BumpNone, gitmoji.BumpPatch}, gitmoji.BumpPatch},
-		{"minor beats patch", []gitmoji.Bump{gitmoji.BumpPatch, gitmoji.BumpMinor, gitmoji.BumpNone}, gitmoji.BumpMinor},
-		{"major beats all", []gitmoji.Bump{gitmoji.BumpMinor, gitmoji.BumpMajor, gitmoji.BumpPatch}, gitmoji.BumpMajor},
-		{"all none", []gitmoji.Bump{gitmoji.BumpNone, gitmoji.BumpNone}, gitmoji.BumpNone},
+		{"empty is none", nil, LevelNone},
+		{"single", []Level{LevelPatch}, LevelPatch},
+		{"none and patch", []Level{LevelNone, LevelPatch}, LevelPatch},
+		{"minor beats patch", []Level{LevelPatch, LevelMinor, LevelNone}, LevelMinor},
+		{"major beats all", []Level{LevelMinor, LevelMajor, LevelPatch}, LevelMajor},
+		{"all none", []Level{LevelNone, LevelNone}, LevelNone},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -92,111 +26,19 @@ func TestReduce(t *testing.T) {
 	}
 }
 
-// TestExcludedFromClassification pins which commits' own messages stay out of
-// lint and the version fold: bot authors, merge commits (structurally by
-// parent count; by the "Merge " word ONLY where parents are unknown, i.e. the
-// commit-msg hook), autosquash artifacts, and git's own `Revert "…"` messages
-// in their exact quoted form. The word-matching this replaced let any
-// single-parent commit whose subject opened with "Merge " or "Revert " slip
-// past lint and the fold on parents-aware paths (t-fs5y).
-func TestExcludedFromClassification(t *testing.T) {
-	cases := []struct {
-		name    string
-		author  string
-		subject string
-		parents int
-		want    bool
-	}{
-		{"human commit stays in", "akira-toriyama", ":bug: fix a crash", 1, false},
-		{"dependabot", "dependabot[bot]", "build(deps): bump actions/checkout", 1, true},
-		{"any bot suffix", "renovate[bot]", ":arrow_up: bump deps", 1, true},
-		{"github-actions", "github-actions", ":robot: automated commit", 1, true},
-		{"github-actions[bot]", "github-actions[bot]", "chore: sync", 1, true},
-		{"web-flow", "web-flow", ":bug: via web ui", 1, true},
-		{"merge commit by parent count", "akira-toriyama", ":bug: fix in a merge", 2, true},
-		{"merge word with one parent is an author's sentence", "akira-toriyama", "Merge the two parsers into one", 1, false},
-		{"merge word on a root commit is an author's sentence", "akira-toriyama", "Merge of the two prototypes, initial import", 0, false},
-		{"merge word at the hook, parents unknown", "akira-toriyama", "Merge branch 'main' into feat/x", UnknownParents, true},
-		{"git revert subject", "akira-toriyama", "Revert \":bug: fix a crash\"", 1, true},
-		{"revert word without git's quote is an author's sentence", "akira-toriyama", "Revert the parser rewrite by hand", 1, false},
-		{"fixup artifact", "akira-toriyama", "fixup! :bug: fix a crash", 1, true},
-		{"squash artifact", "akira-toriyama", "squash! :bug: fix a crash", 1, true},
-		{"rewind revert stays in", "akira-toriyama", ":rewind: revert the flag change", 1, false},
-		{"bot-ish name without marker stays in", "botond", ":bug: fix a crash", 1, false},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			reason, got := ExcludedFromClassification(c.author, c.subject, c.parents)
-			if got != c.want {
-				t.Fatalf("ExcludedFromClassification(%q, %q, %d) = %v (%q), want %v", c.author, c.subject, c.parents, got, reason, c.want)
-			}
-			if got && reason == "" {
-				t.Fatalf("ExcludedFromClassification(%q, %q, %d) excluded without a reason", c.author, c.subject, c.parents)
-			}
-			if !got && reason != "" {
-				t.Fatalf("ExcludedFromClassification(%q, %q, %d) kept the commit but returned reason %q", c.author, c.subject, c.parents, reason)
-			}
-		})
-	}
-}
-
-// TestExcludedFromResolution pins the OTHER question — "can this commit point
-// at a pull request?" — and above all what it must NOT ask: a merge commit and
-// a `Merge pull request #7 from …` subject are how GitHub's merge button writes
-// a pointer, so neither may exclude one (t-7zt7: they did, and the pull request
-// vanished out of its release). Only an automation's authorship does, because
-// its commit is a direct push that can never move the version — and the fleet's
-// daily sync push must not cost an API round-trip to learn that.
-func TestExcludedFromResolution(t *testing.T) {
-	cases := []struct {
-		name   string
-		author string
-		want   bool
-	}{
-		{"human stays in", "akira-toriyama", false},
-		{"bot suffix", "dependabot[bot]", true},
-		{"github-actions", "github-actions", true},
-		{"github-actions[bot]", "github-actions[bot]", true},
-		{"web-flow", "web-flow", true},
-		{"bot-ish name without marker stays in", "botond", false},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			reason, got := ExcludedFromResolution(c.author)
-			if got != c.want {
-				t.Fatalf("ExcludedFromResolution(%q) = %v (%q), want %v", c.author, got, reason, c.want)
-			}
-			if got != (reason != "") {
-				t.Fatalf("ExcludedFromResolution(%q) = %v with reason %q — a skip always names itself, a keep never does", c.author, got, reason)
-			}
-			// The shape a merge point carries is evidence for the message
-			// question only: the same author must answer identically here
-			// whatever the commit looks like, because this predicate cannot see
-			// it at all.
-			if _, merged := ExcludedFromClassification(c.author, "Merge pull request #7 from akira-toriyama/topic", 2); !merged {
-				t.Fatalf("a merge commit must stay out of CLASSIFICATION whoever authored it (%q)", c.author)
-			}
-		})
-	}
-}
-
-// FuzzReduceInvariants: the fold must be order-independent (reversal and
-// rotation), idempotent (folding the result back in changes nothing), and
-// monotone (a prefix never exceeds the whole) — so squash order can never
-// change the version.
 func FuzzReduceInvariants(f *testing.F) {
 	f.Add([]byte{0, 1, 2, 3}, 1)
 	f.Add([]byte{3, 3, 0}, 2)
 	f.Add([]byte{}, 0)
-	rungs := []gitmoji.Bump{gitmoji.BumpNone, gitmoji.BumpPatch, gitmoji.BumpMinor, gitmoji.BumpMajor}
+	rungs := []Level{LevelNone, LevelPatch, LevelMinor, LevelMajor}
 	f.Fuzz(func(t *testing.T, seed []byte, rot int) {
-		levels := make([]gitmoji.Bump, len(seed))
+		levels := make([]Level, len(seed))
 		for i, b := range seed {
 			levels[i] = rungs[int(b)%len(rungs)]
 		}
 		want := Reduce(levels)
 
-		reversed := make([]gitmoji.Bump, len(levels))
+		reversed := make([]Level, len(levels))
 		for i, l := range levels {
 			reversed[len(levels)-1-i] = l
 		}
@@ -206,13 +48,13 @@ func FuzzReduceInvariants(f *testing.F) {
 
 		if len(levels) > 0 {
 			k := ((rot % len(levels)) + len(levels)) % len(levels)
-			rotated := append(append([]gitmoji.Bump{}, levels[k:]...), levels[:k]...)
+			rotated := append(append([]Level{}, levels[k:]...), levels[:k]...)
 			if got := Reduce(rotated); got != want {
 				t.Fatalf("Reduce(rotated %v by %d) = %s, want %s", levels, k, got, want)
 			}
 		}
 
-		if got := Reduce(append(append([]gitmoji.Bump{}, levels...), want)); got != want {
+		if got := Reduce(append(append([]Level{}, levels...), want)); got != want {
 			t.Fatalf("Reduce is not idempotent: folding %s back into %v gave %s", want, levels, got)
 		}
 

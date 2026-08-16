@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
-index 9d78928..62c54d2 100644
+index 6a622d4..3b61ca8 100644
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -96,7 +96,7 @@ func newLintCmd() *cobra.Command {
+@@ -90,7 +90,7 @@ func newLintCmd() *cobra.Command {
  				// The hook that called this is also the one artefact nothing
  				// refreshes, so its own run is where a drifted copy is reported.
- 				warnIfHookStale(cmd.Context(), profileKinds()[0])
--				return lintOne(parser.Cleanup(string(b), hookCleanupMode(cmd.Context())), opts)
-+				return lintOne(parser.Cleanup(string(b), parser.CleanupMode{Space: true, Comments: true, Truncate: true}), opts)
+ 				warnIfHookStale(cmd.Context(), hook.Kinds()[0])
+-				return lintOne(cleanup.Apply(string(b), hookCleanupMode(cmd.Context())), cfg)
++				return lintOne(cleanup.Apply(string(b), cleanup.Mode{Space: true, Comments: true, Truncate: true}), cfg)
  			case cmd.Flags().Changed("message"):
  				// An empty --message is the caller naming no message, which is
  				// usage — not a message that violates the convention. The old

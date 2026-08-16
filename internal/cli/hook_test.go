@@ -29,7 +29,7 @@ func TestHookInstallWritesIntoTheGitHooksDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hook was not written to .git/hooks: %v", err)
 	}
-	if string(got) != hook.Kinds("")[0].Script {
+	if string(got) != hook.Kinds()[0].Script {
 		t.Error("installed hook does not match hook.Script")
 	}
 }
@@ -85,7 +85,7 @@ func TestHookInstallPrintDoesNotWrite(t *testing.T) {
 	if code != int(core.CodeOK) {
 		t.Fatalf("exit = %d, want 0\nstderr: %s", code, stderr)
 	}
-	if stdout != hook.Kinds("")[0].Script {
+	if stdout != hook.Kinds()[0].Script {
 		t.Error("--print did not emit the script verbatim on stdout")
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".git", "hooks", "commit-msg")); err == nil {
@@ -117,7 +117,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 	})
 
 	t.Run("accepts a conforming message", func(t *testing.T) {
-		out, err := commitWith(dir, pathWithGlyph, ":sparkles:(hook) add the thing")
+		out, err := commitWith(dir, pathWithGlyph, ":sparkles:(hook)^ add the thing")
 		if err != nil {
 			t.Fatalf("conforming commit was rejected: %v\n%s", err, out)
 		}
@@ -126,7 +126,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 	// A developer without glyph installed must still be able to commit; CI is
 	// the authority, the hook is early warning (t-7m35's ratified policy).
 	t.Run("passes when glyph is absent from PATH", func(t *testing.T) {
-		out, err := commitWith(dir, "/nonexistent", ":wrench: adjust something")
+		out, err := commitWith(dir, "/nonexistent", ":wrench:= adjust something")
 		if err != nil {
 			t.Fatalf("commit blocked when glyph is off PATH: %v\n%s", err, out)
 		}
@@ -166,7 +166,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 			testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic")
 			appendFile(t, dir, "topic.txt")
 			testGit(t, dir, "akira-toriyama", "add", "-A")
-			testCommit(t, dir, "akira-toriyama", ":sparkles: land the topic")
+			testCommit(t, dir, "akira-toriyama", ":sparkles:^ land the topic")
 			testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
 
 			out, err := mergeWith(dir, pathWithGlyph, "topic")
@@ -185,7 +185,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 	// must not read as "empty commit message".
 	t.Run("lints the message, not git's template", func(t *testing.T) {
 		t.Run("subject below a leading blank and a template", func(t *testing.T) {
-			msg := "\n:sparkles:(cleanup) written under the template\n" +
+			msg := "\n:sparkles:(cleanup)^ written under the template\n" +
 				"\n" +
 				"# Please enter the commit message for your changes. Lines starting\n" +
 				"# with '#' will be ignored, and an empty message aborts the commit.\n"
@@ -374,14 +374,14 @@ func TestStaleHookIsReportedWhenTheHookItselfRuns(t *testing.T) {
 		wantWarn bool
 	}{
 		"a glyph hook that has drifted": {body: stale, wantWarn: true},
-		"the current hook":              {body: hook.Kinds("")[0].Script, wantWarn: false},
+		"the current hook":              {body: hook.Kinds()[0].Script, wantWarn: false},
 		"somebody else's hook":          {body: "#!/bin/sh\nexit 0\n", wantWarn: false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir, _ := testRepo(t)
 			t.Chdir(dir)
 			write(t, dir, tc.body)
-			setStdin(t, ":bug:(x) fix a crash\n")
+			setStdin(t, ":bug:(x)~ fix a crash\n")
 
 			code, _, stderr := runGlyph(t, "lint", "--stdin")
 			if code != 0 {
@@ -401,10 +401,15 @@ func TestStaleHookIsReportedWhenTheHookItselfRuns(t *testing.T) {
 // before. Outside a checkout there is no hooks directory to read at all.
 func TestStaleHookNoticeIsSilentWhereItCannotLook(t *testing.T) {
 	t.Chdir(t.TempDir())
-	setStdin(t, ":bug:(x) fix a crash\n")
+	setStdin(t, ":bug:(x)~ fix a crash\n")
 	code, _, stderr := runGlyph(t, "lint", "--stdin")
-	if code != 0 {
-		t.Fatalf("linting a message outside a repository exited %d, want 0\nstderr: %s", code, stderr)
+	// v2 reads glyph.toml from the checkout, so outside a repository the run
+	// fails — but with git's own failure (4), never the violation code (3),
+	// which is the ONLY code the installed hook blocks on. The founding
+	// contract (a tool that is unwell must never stop anyone committing)
+	// holds in the script, and nothing may claim staleness it could not read.
+	if code != 4 {
+		t.Fatalf("linting a message outside a repository exited %d, want 4 (git cannot answer; the hook script passes every non-3 through)\nstderr: %s", code, stderr)
 	}
 	if strings.Contains(stderr, "written by an older glyph") {
 		t.Fatalf("nothing could be read, so nothing may be claimed:\n%s", stderr)

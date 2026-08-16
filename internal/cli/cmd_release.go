@@ -8,8 +8,8 @@ import (
 
 	"github.com/akira-toriyama/glyph/internal/bump"
 	"github.com/akira-toriyama/glyph/internal/core"
+	"github.com/akira-toriyama/glyph/internal/draftplan"
 	"github.com/akira-toriyama/glyph/internal/github"
-	"github.com/akira-toriyama/glyph/internal/gitmoji"
 	"github.com/akira-toriyama/glyph/internal/gitsource"
 	"github.com/akira-toriyama/glyph/internal/notes"
 	"github.com/spf13/cobra"
@@ -33,16 +33,16 @@ var (
 // commits each contributed — which is what a human or a CI step reads to
 // audit how a verdict was assembled.
 type releaseResult struct {
-	Current string          `json:"current"`
-	Level   string          `json:"level"`
-	Tag     string          `json:"tag,omitempty"`
-	Target  string          `json:"target,omitempty"`
-	Body    string          `json:"body,omitempty"`
-	Action  string          `json:"action"`
-	URL     string          `json:"url,omitempty"`
-	Commits []bumpCommit    `json:"commits"`
-	Pulls   []pullExpansion `json:"pulls"`
-	Reason  string          `json:"reason"`
+	Current string              `json:"current"`
+	Level   string              `json:"level"`
+	Tag     string              `json:"tag,omitempty"`
+	Target  string              `json:"target,omitempty"`
+	Body    string              `json:"body,omitempty"`
+	Action  string              `json:"action"`
+	URL     string              `json:"url,omitempty"`
+	Commits []bump.SigilVerdict `json:"commits"`
+	Pulls   []pullExpansion     `json:"pulls"`
+	Reason  string              `json:"reason"`
 }
 
 // The draft-convergence actions a release run can take (Q4): what the rolling
@@ -112,14 +112,11 @@ func releaseRun(cmd *cobra.Command) error {
 		return err
 	}
 	ctx := cmd.Context()
-	table, err := loadRules()
-	if err != nil {
-		return err
-	}
-	// Caller-input problems surface before any network or git work: the footer
-	// file is read up front, and the repository must resolve for the releases
-	// listing (sinceTagInput re-resolves it for the walk — same answer, one
-	// source of truth in resolveRepo).
+	// Caller-input problems surface before any network or git work — and
+	// before the environment is judged: the footer file is read up front, and
+	// the repository must resolve for the releases listing (sinceTagInput
+	// re-resolves it for the walk — same answer, one source of truth in
+	// resolveRepo).
 	footer, ferr := readFooter(releaseFooterFile)
 	if ferr != nil {
 		return ferr
@@ -127,6 +124,10 @@ func releaseRun(cmd *cobra.Command) error {
 	owner, repoName, oerr := resolveRepo(releaseRepo)
 	if oerr != nil {
 		return oerr
+	}
+	cfg, err := loadConfig(ctx)
+	if err != nil {
+		return err
 	}
 	// Before the walk, not merely before the write: everything above this line
 	// is local and free, and sinceTagInput is where the money goes (at least
@@ -143,7 +144,7 @@ func releaseRun(cmd *cobra.Command) error {
 	if !cmd.Flags().Changed("since-tag") {
 		tagFlag = sinceTagAuto
 	}
-	parsed, facts, source, base, perr := sinceTagInput(ctx, table, tagFlag, releaseRepo)
+	parsed, facts, source, base, perr := sinceTagInput(ctx, cfg, tagFlag, releaseRepo)
 	if perr != nil {
 		return perr
 	}
@@ -167,7 +168,7 @@ func releaseRun(cmd *cobra.Command) error {
 			source, facts.shortfall(owner, repoName))
 	}
 
-	commits, level, cerr := classifyVerdict(plain(parsed), table)
+	commits, level, cerr := bump.FoldSigils(walkedSigilCommits(parsed), cfg)
 	if cerr != nil {
 		return cerr
 	}
@@ -185,25 +186,29 @@ func releaseRun(cmd *cobra.Command) error {
 	if lerr != nil {
 		return lerr
 	}
-	drafts := glyphDrafts(releases)
-
-	if level == gitmoji.BumpNone {
-		return releaseNone(ctx, gh, owner, repoName, current, commits, facts, source, drafts)
+	if level == bump.LevelNone && !cfg.Note.DraftOnNone {
+		plan := draftplan.PlanDraft(level, "", false, planInput(releases))
+		return releaseNone(ctx, gh, owner, repoName, current, commits, facts, source, staleReleases(plan.Stale))
 	}
 
-	tag := current.Next(level)
-	if gerr := checkPublishedFloor(tag, releases); gerr != nil {
-		return gerr
+	// tagName is what the kept (or created) draft converges to: the next
+	// version on a release verdict, the Unreleased placeholder on a
+	// maintained none (draft_on_none — the flag's whole point is that a
+	// quiet merge keeps the door open instead of deleting the draft).
+	tagName := draftplan.PlaceholderTag
+	if level != bump.LevelNone {
+		tag := current.Next(level)
+		if gerr := checkPublishedFloor(tag, releases); gerr != nil {
+			return gerr
+		}
+		tagName = tag.String()
 	}
 
-	sections, gerr := notes.Group(notesCommits(parsed), table)
+	sections, gerr := notes.GroupSigils(walkedNoteCommits(parsed), cfg)
 	if gerr != nil {
 		return gerr
 	}
-	body, rerr := notes.Render(sections)
-	if rerr != nil {
-		return rerr
-	}
+	body := notes.RenderSigils(sections)
 	if footer != "" {
 		// One --- line between the notes and the caller's install block (Q11)
 		// — composed here so a dry run previews the EXACT published body and
@@ -229,50 +234,53 @@ func releaseRun(cmd *cobra.Command) error {
 		}
 	}
 
-	keep, stale := planDrafts(drafts, tag.String())
-	action := actionCreate
-	if keep != nil {
-		action = actionUpdate
-	}
+	plan := draftplan.PlanDraft(level, tagName, cfg.Note.DraftOnNone, planInput(releases))
+	stale := staleReleases(plan.Stale)
 	result := releaseResult{
 		Current: current.String(),
 		Level:   string(level),
-		Tag:     tag.String(),
+		Tag:     tagName,
 		Target:  target,
 		Body:    body,
-		Action:  action,
+		Action:  string(plan.Action),
 		Commits: commits,
 		Pulls:   facts.Pulls,
 		Reason:  decidingReason(commits, level),
 	}
 
 	if releaseDryRun {
-		noticef("dry run: the upsert would %s the rolling draft %s at %s (%d stale draft(s) to delete)", action, tag, target, len(stale))
+		noticef("dry run: the upsert would %s the rolling draft %s at %s (%d stale draft(s) to delete)", plan.Action, tagName, target, len(stale))
 		if releaseJSON {
 			printCompact(result)
+			if level == bump.LevelNone {
+				return &core.Error{Code: core.CodeNoRelease, Msg: result.Reason, Silent: true}
+			}
 			return nil
 		}
-		fmt.Fprintf(out, "%s\n\n%s", tag, body)
+		fmt.Fprintf(out, "%s\n\n%s", tagName, body)
+		if level == bump.LevelNone {
+			return &core.Error{Code: core.CodeNoRelease, Msg: result.Reason, Silent: true}
+		}
 		return nil
 	}
 	params := github.ReleaseParams{
-		TagName: tag.String(),
+		TagName: tagName,
 		Target:  target,
-		Name:    tag.String(),
+		Name:    tagName,
 		Body:    body,
 		Draft:   true,
 	}
 	var rel github.Release
 	var werr error
-	if keep != nil {
-		rel, werr = gh.UpdateRelease(ctx, owner, repoName, keep.ID, params)
+	if plan.Keep != nil {
+		rel, werr = gh.UpdateRelease(ctx, owner, repoName, plan.Keep.ID, params)
 	} else {
 		rel, werr = gh.CreateRelease(ctx, owner, repoName, params)
 	}
 	if werr != nil {
 		return werr
 	}
-	noticef("draft release %s %sd (unpublished — the tag is created when a human publishes): %s", tag, action, rel.URL)
+	noticef("draft release %s %sd (unpublished — the tag is created when a human publishes): %s", tagName, plan.Action, rel.URL)
 
 	if cerr := convergeStrays(ctx, gh, owner, repoName, stale); cerr != nil {
 		return cerr
@@ -281,10 +289,38 @@ func releaseRun(cmd *cobra.Command) error {
 	result.URL = rel.URL
 	if releaseJSON {
 		printCompact(result)
+		if level == bump.LevelNone {
+			return &core.Error{Code: core.CodeNoRelease, Msg: result.Reason, Silent: true}
+		}
 		return nil
 	}
 	fmt.Fprintln(out, rel.URL)
+	if level == bump.LevelNone {
+		// The placeholder is maintained and the run still reports "no release
+		// is due" — draft_on_none keeps a door open, it does not release.
+		return &core.Error{Code: core.CodeNoRelease, Msg: result.Reason, Silent: true}
+	}
 	return nil
+}
+
+// planInput adapts the releases listing for draftplan, which decides what is
+// glyph-managed (house-shaped drafts and the Unreleased placeholder).
+func planInput(releases []github.Release) []draftplan.Draft {
+	out := make([]draftplan.Draft, 0, len(releases))
+	for _, r := range releases {
+		out = append(out, draftplan.Draft{ID: r.ID, TagName: r.TagName, Draft: r.Draft})
+	}
+	return out
+}
+
+// staleReleases converts a plan's stale set back to the shape the delete
+// calls and their notices read.
+func staleReleases(ds []draftplan.Draft) []github.Release {
+	out := make([]github.Release, 0, len(ds))
+	for _, d := range ds {
+		out = append(out, github.Release{ID: d.ID, TagName: d.TagName, Draft: d.Draft})
+	}
+	return out
 }
 
 // convergeStrays deletes the stale glyph-managed drafts AFTER the rolling draft
@@ -343,7 +379,7 @@ func convergeStrays(ctx context.Context, gh *github.Client, owner, repo string, 
 // the walk is entitled to: releaseRun already failed loud (4) on any walk that
 // did not read its range, so an empty fold here is a range that genuinely
 // holds nothing — never a reading glyph distrusts.
-func releaseNone(ctx context.Context, gh *github.Client, owner, repo string, current bump.Version, commits []bumpCommit, facts walkFacts, source string, drafts []github.Release) error {
+func releaseNone(ctx context.Context, gh *github.Client, owner, repo string, current bump.Version, commits []bump.SigilVerdict, facts walkFacts, source string, drafts []github.Release) error {
 	action := actionNone
 	if len(drafts) > 0 {
 		action = actionDelete
@@ -362,7 +398,7 @@ func releaseNone(ctx context.Context, gh *github.Client, owner, repo string, cur
 	}
 	reason := fmt.Sprintf("no release: %d commit(s) participate in %s and every level is none", len(commits), source)
 	if releaseJSON {
-		printCompact(releaseResult{Current: current.String(), Level: string(gitmoji.BumpNone), Action: action, Commits: commits, Pulls: facts.Pulls, Reason: reason})
+		printCompact(releaseResult{Current: current.String(), Level: string(bump.LevelNone), Action: action, Commits: commits, Pulls: facts.Pulls, Reason: reason})
 		return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}
 	}
 	return core.NoReleasef("%s", reason)
@@ -379,46 +415,6 @@ func discardedOrGone(alreadyGone bool) string {
 		return "found already gone (the retried delete was answered 404, so this is unconfirmed):"
 	}
 	return "discarded"
-}
-
-// glyphDrafts filters the releases down to the ones glyph manages: unpublished
-// drafts whose intended tag is the house version shape (vX.Y.Z, with the v).
-// Everything else — published releases, and a human's hand-made drafts under
-// other names — is not glyph's to touch, ever.
-func glyphDrafts(releases []github.Release) []github.Release {
-	var drafts []github.Release
-	for _, r := range releases {
-		if !r.Draft || !strings.HasPrefix(r.TagName, "v") {
-			continue
-		}
-		if _, err := bump.ParseVersion(r.TagName); err != nil {
-			continue
-		}
-		drafts = append(drafts, r)
-	}
-	return drafts
-}
-
-// planDrafts converges the glyph-managed drafts on exactly one: keep the
-// draft already carrying the intended tag when there is one (else the first
-// listed — GitHub lists newest first), and mark every other one stale. The
-// kept draft is UPDATED to the next tag rather than replaced — ratified:
-// never a second draft.
-func planDrafts(drafts []github.Release, tag string) (keep *github.Release, stale []github.Release) {
-	for i := range drafts {
-		if keep == nil && drafts[i].TagName == tag {
-			keep = &drafts[i]
-		}
-	}
-	if keep == nil && len(drafts) > 0 {
-		keep = &drafts[0]
-	}
-	for i := range drafts {
-		if keep == nil || drafts[i].ID != keep.ID {
-			stale = append(stale, drafts[i])
-		}
-	}
-	return keep, stale
 }
 
 // checkPublishedFloor is the deadlock guard (immutable releases): the next

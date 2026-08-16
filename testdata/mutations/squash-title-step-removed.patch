@@ -1,30 +1,21 @@
 diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
-index 0a6b968..b7cdcfc 100644
+index 2f9a96a..f409a42 100644
 --- a/.github/workflows/lint.yml
 +++ b/.github/workflows/lint.yml
-@@ -259,44 +259,3 @@ jobs:
-           fi
-           exit "$status"
- 
--      # The squash title: a squash merge records the PR title as the subject of
--      # the commit that lands on main (CONTRIBUTING ratifies that title as a
--      # commit subject), and the range above can never see it — the range holds
--      # the pre-squash commits, while the title exists nowhere as a commit until
--      # the squash mints it. Same stream contract as the range step: glyph
--      # writes one ::error:: per finding itself, the step replays the stream
--      # verbatim and frames only the summary. Bot pulls are excluded inside the
--      # binary (a squash attributes the landed commit to the pull's author), so
+@@ -250,30 +250,4 @@ jobs:
+       # writes one ::error:: per finding itself, the step replays the stream
+       # verbatim and frames only the summary. Bot pulls are excluded inside the
+       # binary (a squash attributes the landed commit to the pull's author), so
 -      # dependabot's daily titles cannot red the gate.
 -      - name: Lint the squash title
 -        if: github.event_name == 'pull_request'
 -        env:
 -          GITHUB_TOKEN: ${{ github.token }}
--          PROFILE: ${{ inputs.profile }}
 -          PR_NUMBER: ${{ github.event.pull_request.number }}
 -        run: |
 -          set -euo pipefail
 -          status=0
--          glyph lint --pr "$PR_NUMBER" --profile "$PROFILE" 2>/tmp/glyph-title.err || status=$?
+-          glyph lint --pr "$PR_NUMBER" 2>/tmp/glyph-title.err || status=$?
 -          if [ "$status" -eq 0 ]; then
 -            echo "title OK"
 -            exit 0
@@ -35,15 +26,12 @@ index 0a6b968..b7cdcfc 100644
 -            # The retitle hint is for convention violations (exit 3) only — an
 -            # infra failure (API/permissions, exit 4) gets the bare message.
 -            if jq -e '.error.code == 3' /tmp/glyph-title.json >/dev/null 2>&1; then
--              if [ "$PROFILE" = "gitmoji" ]; then
--                jq -r '"::error::glyph lint: \(.error.message) — retitle the pull request; format: <:gitmoji:>[(scope)][!] <subject>; see `glyph rules` and https://github.com/akira-toriyama/.github/blob/main/CONTRIBUTING.md"' \
--                  /tmp/glyph-title.json || true
--              else
--                jq --arg p "$PROFILE" -r '"::error::glyph lint: \(.error.message) — retitle the pull request; format: <type>[(scope)][!]: <subject>; see `glyph rules --profile=\($p)`"' \
--                  /tmp/glyph-title.json || true
--              fi
+-              jq -r '"::error::glyph lint: \(.error.message) — retitle the pull request to match one of this repository'"'"'s glyph.toml patterns"' \
+-                /tmp/glyph-title.json || true
 -            else
 -              jq -r '"::error::glyph lint: \(.error.message)"' /tmp/glyph-title.json || true
 -            fi
 -          fi
 -          exit "$status"
++      # dependabot's daily titles cannot red the gate.
+\ No newline at end of file

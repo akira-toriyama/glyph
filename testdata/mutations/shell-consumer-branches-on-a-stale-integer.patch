@@ -1,13 +1,13 @@
 diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
-index 0a6b968..68dec69 100644
+index 2f9a96a..e9db9bd 100644
 --- a/.github/workflows/lint.yml
 +++ b/.github/workflows/lint.yml
-@@ -234,7 +234,7 @@ jobs:
+@@ -223,7 +223,7 @@ jobs:
              # glyph's own, above.
              # The commit-format hint is for convention violations (exit 3) only —
              # an infra failure (git/API, exit 4) gets the bare message.
 -            if jq -e '.error.code == 3' /tmp/glyph-lint.json >/dev/null 2>&1; then
 +            if jq -e '.error.code == 2' /tmp/glyph-lint.json >/dev/null 2>&1; then
-               # The format hint follows the profile: pointing a conventional
-               # repo at the gitmoji grammar (or the fleet CONTRIBUTING) would
-               # be a wrong answer delivered confidently.
+               # The convention is the repository's own glyph.toml, so the hint
+               # points at the file rather than at any embedded grammar.
+               jq -r '"::error::glyph lint: \(.error.message) — the convention is this repository'"'"'s glyph.toml; write the message to match one of its patterns"' \

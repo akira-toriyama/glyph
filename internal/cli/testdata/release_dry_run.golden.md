@@ -2,11 +2,11 @@ v0.2.0
 
 ## Features
 
-- ✨ **ui:** add a menu (#7)
+- add a menu (#7) `@akira-toriyama`
 
 ## Fixes
 
-- 🐛 fix a crash (#8)
+- fix a crash (#8) `@akira-toriyama`
 
 ---
 

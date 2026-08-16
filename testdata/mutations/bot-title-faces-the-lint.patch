@@ -1,14 +1,13 @@
 diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
-index dd6e4c3..74fc499 100644
+index 6a622d4..ba06436 100644
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -251,9 +251,6 @@ func lintPRRun(ctx context.Context, number int, repoFlag string, opts parser.Lin
+@@ -196,7 +196,7 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
  	if err != nil {
  		return err
  	}
--	if _, excluded := bump.ExcludedFromClassification(pull.Author, pull.Title, 1); excluded {
--		return nil
--	}
- 	opts.MergeCandidate = true
- 	vs := parser.Lint(pull.Title, opts)
- 	if len(vs) == 0 {
+-	v := cfg.Lint(pull.Title, pull.Author)
++	v := cfg.Lint(pull.Title, "")
+ 	if v.OK || v.Excluded {
+ 		return nil
+ 	}

@@ -1,4 +1,4 @@
-package parser
+package cleanup
 
 import (
 	"strings"
@@ -20,7 +20,7 @@ import (
 // and asserts git still writes THIS string.
 const cutLine = "# ------------------------ >8 ------------------------\n"
 
-// CleanupMode is what git will do to a commit message before recording it —
+// Mode is what git will do to a commit message before recording it —
 // the resolved `--cleanup` for ONE commit, not the mode name.
 //
 // Three fields rather than a five-valued enum because git's own cleanup is three
@@ -30,7 +30,7 @@ const cutLine = "# ------------------------ >8 ------------------------\n"
 // enum of git's mode names cannot express `--cleanup=strip` under `-v` (truncate)
 // versus the same mode under `-m` (do not) — and that pair is exactly where the
 // hook and CI used to disagree.
-type CleanupMode struct {
+type Mode struct {
 	// Space runs git's whitespace cleanup: trailing " \t\r" off every line,
 	// an interior run of blank lines collapsed to one, leading and trailing
 	// blank lines dropped. False only for `verbatim`.
@@ -44,7 +44,7 @@ type CleanupMode struct {
 	Truncate bool
 }
 
-// ResolveCleanupMode answers what git will do to this message from the two
+// ResolveMode answers what git will do to this message from the two
 // signals a commit-msg hook actually has: `commit.cleanup` (empty when unset)
 // and whether git is going to open an editor.
 //
@@ -71,30 +71,30 @@ type CleanupMode struct {
 // the COMMAND LINE reaches neither the config nor the environment (measured:
 // `git config --get commit.cleanup` stays unset), so a per-commit override is
 // invisible here and glyph judges the message under the repository's mode.
-func ResolveCleanupMode(configured string, edited bool) (mode CleanupMode, known bool) {
+func ResolveMode(configured string, edited bool) (mode Mode, known bool) {
 	switch configured {
 	case "verbatim":
 		// Nothing is cleaned — but `-v` still truncates, in every mode.
-		return CleanupMode{Truncate: edited}, true
+		return Mode{Truncate: edited}, true
 	case "whitespace":
-		return CleanupMode{Space: true, Truncate: edited}, true
+		return Mode{Space: true, Truncate: edited}, true
 	case "strip":
-		return CleanupMode{Space: true, Comments: true, Truncate: edited}, true
+		return Mode{Space: true, Comments: true, Truncate: edited}, true
 	case "scissors":
 		// git truncates in this mode only "if the message is to be edited".
 		// Measured: with `commit.cleanup=scissors` and `-F`, git records the
 		// cut line AND everything below it. Cutting there would hide a footer
 		// git keeps — the false-positive direction, which stops a commit.
-		return CleanupMode{Space: true, Truncate: edited}, true
+		return Mode{Space: true, Truncate: edited}, true
 	case "default", "":
 		// git's default IS the editor question: strip when a message is edited,
 		// whitespace when it is not.
 		if edited {
-			return CleanupMode{Space: true, Comments: true, Truncate: true}, true
+			return Mode{Space: true, Comments: true, Truncate: true}, true
 		}
-		return CleanupMode{Space: true}, true
+		return Mode{Space: true}, true
 	default:
-		mode, _ = ResolveCleanupMode("default", edited)
+		mode, _ = ResolveMode("default", edited)
 		return mode, false
 	}
 }
@@ -135,7 +135,7 @@ func ResolveCleanupMode(configured string, edited bool) (mode CleanupMode, known
 // from `git log %B`, which git has already cleaned; running this there would
 // silently swallow a genuinely empty message and any body line a project chose
 // to start with '#'.
-func Cleanup(message string, mode CleanupMode) string {
+func Apply(message string, mode Mode) string {
 	if mode.Truncate {
 		message = truncateAtCutLine(message)
 	}

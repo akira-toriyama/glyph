@@ -1,22 +1,14 @@
 diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
-index bf0c99e..bf2c4d6 100644
+index 6a622d4..1cae3ad 100644
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -284,17 +284,6 @@ func lintRangeRun(ctx context.Context, revRange string, known func(string) bool)
- 	if len(all) == 0 {
- 		return nil
+@@ -257,9 +257,6 @@ func lintRangeRun(ctx context.Context, revRange string) error {
  	}
--	// One annotation per finding, written by the binary that computed it. The
--	// envelope below still carries the machine answer; this is the human half,
--	// and it is here rather than in a caller's jq because that reconstruction
--	// is where a whole run's annotations went missing in silence (t-sws7).
--	for _, v := range all {
--		if v.Fix != "" {
--			errorf("%.7s %s: %s — fix: %s", v.SHA, v.Rule, v.Detail, v.Fix)
--		} else {
--			errorf("%.7s %s: %s", v.SHA, v.Rule, v.Detail)
+ 	findings, checked := lintRaws(raws, cfg)
+ 	if len(findings) > 0 {
+-		for _, f := range findings {
+-			errorf("commit %.7s: %s", f.SHA, f.Detail)
 -		}
--	}
- 	return &core.Error{
- 		Code:    core.CodeLint,
- 		Msg:     fmt.Sprintf("%d commit-convention violation(s) across %d linted commit(s) in %s", len(all), checked, revRange),
+ 		return &core.Error{
+ 			Code:    core.CodeLint,
+ 			Msg:     fmt.Sprintf("%d commit-convention violation(s)", len(findings)),

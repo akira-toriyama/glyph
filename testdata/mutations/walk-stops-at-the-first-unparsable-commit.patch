@@ -1,32 +1,13 @@
-diff --git a/internal/cli/range.go b/internal/cli/range.go
-index 50ead4d..4c08c4c 100644
---- a/internal/cli/range.go
-+++ b/internal/cli/range.go
-@@ -44,26 +44,7 @@ func participating(raws []gitsource.RawCommit, g parser.Grammar) ([]parser.Commi
+diff --git a/internal/bump/sigilfold.go b/internal/bump/sigilfold.go
+index c0d265a..ccabf7e 100644
+--- a/internal/bump/sigilfold.go
++++ b/internal/bump/sigilfold.go
+@@ -93,7 +93,7 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Leve
  		}
- 		c, perr := parseRaw(raw, g)
- 		if perr != nil {
--			// Walk the WHOLE range before failing. Stopping at the first
--			// unparsable commit answered a three-commit cleanup with three
--			// separate red runs (measured: `bump --range --json` returned one
--			// commit, no rule id, no details, and the caller re-ran lint in a
--			// loop to find the rest).
--			//
--			// The findings come from parser.Lint's own Parse-failure arm — a
--			// message that does not parse yields exactly the one mapped
--			// violation (malformed-subject or invalid-scope, fix attached) and
--			// no strict rule ever runs, so the walk stays exactly as lenient
--			// as before: a commit that PARSES but violates an authoring rule
--			// is still not this walk's business (§2's ratified split — the
--			// walk is lenient, authoring is strict).
--			if firstMsg == "" {
--				firstMsg = fmt.Sprintf("commit %.7s: %v", raw.SHA, perr)
--			}
--			for _, v := range parser.Lint(raw.Message, parser.LintOptions{Grammar: g}) {
--				bad = append(bad, rangeViolation{SHA: raw.SHA, Subject: firstLine(raw.Message), Rule: v.Rule, Detail: v.Detail, Fix: v.Fix})
--			}
+ 		if !m.Matched {
+ 			refusals = append(refusals, Refusal{SHA: c.SHA, Subject: firstLine(c.Message), Detail: fmt.Sprintf("matches none of the %d configured patterns", len(cfg.Patterns))})
 -			continue
-+			return nil, core.Lintf("commit %.7s: %v", raw.SHA, perr)
++			break
  		}
- 		commits = append(commits, c)
- 	}
+ 		if m.Skip {
+ 			continue
