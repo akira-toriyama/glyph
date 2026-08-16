@@ -25,6 +25,7 @@ on:
   pull_request:
 permissions:
   contents: read
+  pull-requests: read
 jobs:
   lint:
     uses: akira-toriyama/glyph/.github/workflows/lint.yml@v0.10.1  # pin a release tag
@@ -41,8 +42,8 @@ func TestScanUsesReadsTheRealLineNotTheCommentedStub(t *testing.T) {
 	if refs[0].Ref != "v0.10.1" {
 		t.Errorf("read ref %q, want v0.10.1 — the commented stub's v0.9.0 must never be read as the pin", refs[0].Ref)
 	}
-	if refs[0].Line != 15 {
-		t.Errorf("reference reported at line %d, want 15 (the executable uses:)", refs[0].Line)
+	if refs[0].Line != 16 {
+		t.Errorf("reference reported at line %d, want 16 (the executable uses:)", refs[0].Line)
 	}
 	if refs[0].Problem != "" {
 		t.Errorf("a concrete tag must be clean, got problem %q", refs[0].Problem)

@@ -193,7 +193,7 @@ func TestDoctorHealthyRepositoryPasses(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("doctor on a healthy repository exited %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	if !strings.Contains(stdout, "11 checks: 11 pass, 0 fail, 0 advice, 0 could not run") {
+	if !strings.Contains(stdout, "12 checks: 12 pass, 0 fail, 0 advice, 0 could not run") {
 		t.Errorf("summary line missing or wrong:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "read-only") {
@@ -221,6 +221,7 @@ func TestDoctorJSONShape(t *testing.T) {
 		"squash-commit-title",
 		"squash-commit-message",
 		"workflow-glyph-pins",
+		"workflow-caller-permissions",
 		"commit-msg-hook",
 		"commit-msg-hook-fires",
 		"pre-push-hook",
@@ -246,8 +247,8 @@ func TestDoctorJSONShape(t *testing.T) {
 	if rep.Repo != "akira-toriyama/glyph" {
 		t.Errorf("repo = %q, want the diagnosed repository", rep.Repo)
 	}
-	if !rep.OK || rep.Counts.Pass != 11 {
-		t.Errorf("counts = %+v ok=%t, want 11 pass and ok", rep.Counts, rep.OK)
+	if !rep.OK || rep.Counts.Pass != 12 {
+		t.Errorf("counts = %+v ok=%t, want 12 pass and ok", rep.Counts, rep.OK)
 	}
 }
 
@@ -434,7 +435,7 @@ func TestDoctorMergeMethodsAreAdviceNotFailure(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("permissive merge methods exited %d, want 0 — a house convention is not a gate", code)
 	}
-	if !strings.Contains(stdout, "9 pass, 0 fail, 2 advice") {
+	if !strings.Contains(stdout, "10 pass, 0 fail, 2 advice") {
 		t.Errorf("merge and rebase must report as advice:\n%s", stdout)
 	}
 	if strings.Count(stderr, "::notice::") != 2 {

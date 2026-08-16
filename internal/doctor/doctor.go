@@ -150,6 +150,7 @@ const (
 	IDSquashTitle    = "squash-commit-title"
 	IDSquashMessage  = "squash-commit-message"
 	IDWorkflowPinned = "workflow-glyph-pins"
+	IDCallerPerms    = "workflow-caller-permissions"
 	IDCommitMsgHook  = "commit-msg-hook"
 	IDCommitMsgFires = "commit-msg-hook-fires"
 	IDPrePushHook    = "pre-push-hook"
@@ -181,6 +182,7 @@ func Run(in Input) *Report {
 		checkSquashTitle(in),
 		checkSquashMessage(in),
 		checkWorkflowPins(in.Root),
+		checkCallerPermissions(in.Root),
 		checkHook(hook.Kinds[0], IDCommitMsgHook, in.HooksDir, in.HooksErr),
 		checkHookFires(in.CommitMsgProbe, in.HooksErr),
 		checkHook(hook.Kinds[1], IDPrePushHook, in.HooksDir, in.HooksErr),
