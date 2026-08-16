@@ -1,0 +1,28 @@
+diff --git a/internal/notes/sigil.go b/internal/notes/sigil.go
+index cd2be67..fb771d0 100644
+--- a/internal/notes/sigil.go
++++ b/internal/notes/sigil.go
+@@ -81,17 +81,23 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
+ 	}
+ 
+ 	sections := make([]SigilSection, 0, len(cfg.Note.Sections))
++	placed := make(map[string]bool)
+ 	for _, s := range cfg.Note.Sections {
+ 		out := SigilSection{Title: s.Title}
+ 		for _, j := range js {
++			if placed[j.c.SHA] {
++				continue
++			}
+ 			switch s.Axis {
+ 			case config.AxisSemver:
+ 				if j.matched && j.level == s.Value {
+ 					out.Lines = append(out.Lines, j.line)
++					placed[j.c.SHA] = true
+ 				}
+ 			case config.AxisAuthor:
+ 				if j.c.Author == s.Value {
+ 					out.Lines = append(out.Lines, j.line)
++					placed[j.c.SHA] = true
+ 				}
+ 			}
+ 		}
