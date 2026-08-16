@@ -45,9 +45,9 @@ func wrap(cs []parser.Commit) []Commit {
 func TestGroupSectionsFollowTableOrder(t *testing.T) {
 	table := loadTable(t)
 	commits := []parser.Commit{
-		{Gitmoji: ":arrow_up:", Subject: "bump cobra to 1.10.2", SHA: sha("0")},
-		{Gitmoji: ":bug:", Subject: "fix a crash when the config is empty", SHA: sha("b")},
-		{Gitmoji: ":sparkles:", Scope: "ui", Subject: "add a command palette", SHA: sha("a")},
+		{Token: ":arrow_up:", Subject: "bump cobra to 1.10.2", SHA: sha("0")},
+		{Token: ":bug:", Subject: "fix a crash when the config is empty", SHA: sha("b")},
+		{Token: ":sparkles:", Scope: "ui", Subject: "add a command palette", SHA: sha("a")},
 	}
 	sections, err := Group(wrap(commits), table)
 	if err != nil {
@@ -68,8 +68,8 @@ func TestGroupSectionsFollowTableOrder(t *testing.T) {
 func TestGroupHoistsBreaking(t *testing.T) {
 	table := loadTable(t)
 	commits := []parser.Commit{
-		{Gitmoji: ":recycle:", Subject: "rework the store layout", SHA: sha("d"), Breaking: true},
-		{Gitmoji: ":bug:", Subject: "drop the broken fallback", SHA: sha("c"), Breaking: true},
+		{Token: ":recycle:", Subject: "rework the store layout", SHA: sha("d"), Breaking: true},
+		{Token: ":bug:", Subject: "drop the broken fallback", SHA: sha("c"), Breaking: true},
 	}
 	sections, err := Group(wrap(commits), table)
 	if err != nil {
@@ -97,8 +97,8 @@ func TestGroupHoistsBreaking(t *testing.T) {
 func TestGroupBoomSectionVsFlagAreOrthogonal(t *testing.T) {
 	table := loadTable(t)
 	sections, err := Group(wrap([]parser.Commit{
-		{Gitmoji: ":boom:", Subject: "drop the v1 config format", SHA: sha("a")},                 // section-routed, flag off
-		{Gitmoji: ":bug:", Subject: "remove the broken fallback", SHA: sha("b"), Breaking: true}, // flag-hoisted
+		{Token: ":boom:", Subject: "drop the v1 config format", SHA: sha("a")},                 // section-routed, flag off
+		{Token: ":bug:", Subject: "remove the broken fallback", SHA: sha("b"), Breaking: true}, // flag-hoisted
 	}), table)
 	if err != nil {
 		t.Fatalf("Group: %v", err)
@@ -120,8 +120,8 @@ func TestGroupBoomSectionVsFlagAreOrthogonal(t *testing.T) {
 func TestGroupSkipsNone(t *testing.T) {
 	table := loadTable(t)
 	commits := []parser.Commit{
-		{Gitmoji: ":memo:", Subject: "document the bump model", SHA: sha("9")},
-		{Gitmoji: ":recycle:", Subject: "rework the store layout", SHA: sha("d")},
+		{Token: ":memo:", Subject: "document the bump model", SHA: sha("9")},
+		{Token: ":recycle:", Subject: "rework the store layout", SHA: sha("d")},
 	}
 	sections, err := Group(wrap(commits), table)
 	if err != nil {
@@ -140,9 +140,9 @@ func TestGroupSkipsNone(t *testing.T) {
 func TestGroupRemovalsAreNotesVisible(t *testing.T) {
 	table := loadTable(t)
 	commits := []parser.Commit{
-		{Gitmoji: ":fire:", Scope: "Palette", Subject: "prune catppuccin-latte", SHA: sha("a")},
-		{Gitmoji: ":coffin:", Subject: "drop the dead legacy shim", SHA: sha("b")},
-		{Gitmoji: ":truck:", Subject: "rename paletteFor to themeFor", SHA: sha("c")},
+		{Token: ":fire:", Scope: "Palette", Subject: "prune catppuccin-latte", SHA: sha("a")},
+		{Token: ":coffin:", Subject: "drop the dead legacy shim", SHA: sha("b")},
+		{Token: ":truck:", Subject: "rename paletteFor to themeFor", SHA: sha("c")},
 	}
 	sections, err := Group(wrap(commits), table)
 	if err != nil {
@@ -166,7 +166,7 @@ func TestGroupRemovalsAreNotesVisible(t *testing.T) {
 func TestGroupUnknownCodeIsLint(t *testing.T) {
 	table := loadTable(t)
 	commits := []parser.Commit{
-		{Gitmoji: ":not-a-real-code:", Subject: "mystery change", SHA: sha("e")},
+		{Token: ":not-a-real-code:", Subject: "mystery change", SHA: sha("e")},
 	}
 	_, err := Group(wrap(commits), table)
 	ce := core.AsError(err)
@@ -183,8 +183,8 @@ func TestGroupUnknownCodeIsLint(t *testing.T) {
 func TestGroupKeepsEntryOrder(t *testing.T) {
 	table := loadTable(t)
 	commits := []parser.Commit{
-		{Gitmoji: ":bug:", Subject: "fix the first crash", SHA: sha("1")},
-		{Gitmoji: ":pencil2:", Scope: "help", Subject: "fix a typo in the usage text", SHA: sha("2")},
+		{Token: ":bug:", Subject: "fix the first crash", SHA: sha("1")},
+		{Token: ":pencil2:", Scope: "help", Subject: "fix a typo in the usage text", SHA: sha("2")},
 	}
 	sections, err := Group(wrap(commits), table)
 	if err != nil {
@@ -217,7 +217,7 @@ func TestGroupEveryRuleGroupsBySection(t *testing.T) {
 	}
 	for _, r := range table.Codes {
 		sections, err := Group(wrap([]parser.Commit{
-			{Gitmoji: r.Code, Subject: "exercise " + r.Code, SHA: sha("f")},
+			{Token: r.Code, Subject: "exercise " + r.Code, SHA: sha("f")},
 		}), table)
 		if err != nil {
 			t.Fatalf("Group(%s): %v", r.Code, err)
@@ -256,9 +256,9 @@ func TestRenderGolden(t *testing.T) {
 			// fallback path and --range, where no pull is known).
 			name: "citations",
 			commits: []Commit{
-				{Commit: parser.Commit{Gitmoji: ":sparkles:", Scope: "ui", Subject: "add a command palette", SHA: sha("a")}, Pull: 123},
-				{Commit: parser.Commit{Gitmoji: ":bug:", Subject: "fix a crash when the config is empty"}, Pull: 124},
-				{Commit: parser.Commit{Gitmoji: ":bug:", Subject: "fix the exit code on empty input", SHA: sha("b")}},
+				{Commit: parser.Commit{Token: ":sparkles:", Scope: "ui", Subject: "add a command palette", SHA: sha("a")}, Pull: 123},
+				{Commit: parser.Commit{Token: ":bug:", Subject: "fix a crash when the config is empty"}, Pull: 124},
+				{Commit: parser.Commit{Token: ":bug:", Subject: "fix the exit code on empty input", SHA: sha("b")}},
 			},
 		},
 		{
@@ -269,16 +269,16 @@ func TestRenderGolden(t *testing.T) {
 			// Breaking Changes and that both codes coalesce into one section.
 			name: "kitchen_sink",
 			commits: wrap([]parser.Commit{
-				{Gitmoji: ":recycle:", Subject: "rework the store layout", SHA: sha("d"), Breaking: true},
-				{Gitmoji: ":sparkles:", Scope: "ui", Subject: "add a command palette", SHA: sha("a")},
-				{Gitmoji: ":memo:", Subject: "document the palette", SHA: sha("9")},
-				{Gitmoji: ":boom:", Subject: "drop the v1 config format", SHA: sha("e")},
-				{Gitmoji: ":fire:", Subject: "prune the legacy theme presets", SHA: sha("7")},
-				{Gitmoji: ":truck:", Scope: "api", Subject: "rename paletteFor to themeFor", SHA: sha("8")},
-				{Gitmoji: ":bug:", Subject: "fix a crash when the config is empty", SHA: sha("b")},
-				{Gitmoji: ":bug:", Scope: "parser", Subject: "keep CRLF messages parsing", SHA: sha("c")},
-				{Gitmoji: ":zap:", Subject: "speed up rule lookup", SHA: sha("f")},
-				{Gitmoji: ":arrow_up:", Subject: "bump cobra to 1.10.2", SHA: sha("0")},
+				{Token: ":recycle:", Subject: "rework the store layout", SHA: sha("d"), Breaking: true},
+				{Token: ":sparkles:", Scope: "ui", Subject: "add a command palette", SHA: sha("a")},
+				{Token: ":memo:", Subject: "document the palette", SHA: sha("9")},
+				{Token: ":boom:", Subject: "drop the v1 config format", SHA: sha("e")},
+				{Token: ":fire:", Subject: "prune the legacy theme presets", SHA: sha("7")},
+				{Token: ":truck:", Scope: "api", Subject: "rename paletteFor to themeFor", SHA: sha("8")},
+				{Token: ":bug:", Subject: "fix a crash when the config is empty", SHA: sha("b")},
+				{Token: ":bug:", Scope: "parser", Subject: "keep CRLF messages parsing", SHA: sha("c")},
+				{Token: ":zap:", Subject: "speed up rule lookup", SHA: sha("f")},
+				{Token: ":arrow_up:", Subject: "bump cobra to 1.10.2", SHA: sha("0")},
 			}),
 		},
 		{
@@ -296,22 +296,22 @@ func TestRenderGolden(t *testing.T) {
 			// blind to it — see TestRenderSizesTheFenceAgainstTheWholeLine.
 			name: "adversarial_subjects",
 			commits: wrap([]parser.Commit{
-				{Gitmoji: ":bug:", Subject: "handle `nil` table without panicking", SHA: sha("1")},
-				{Gitmoji: ":lipstick:", Scope: "tui", Subject: "align the 日本語 label | keep *bold* verbatim", SHA: sha("2")},
-				{Gitmoji: ":wastebasket:", Subject: "deprecate the --legacy flag", SHA: sha("3")},
-				{Gitmoji: ":bug:", Subject: "pin release + update-tap callers to @v1", SHA: sha("5")},
-				{Gitmoji: ":sparkles:", Scope: "view", Subject: "show `@name` chips that type @name for you", SHA: sha("6")},
-				{Gitmoji: ":bug:", Subject: "mail dev@example.com when actions/checkout@v5 breaks", SHA: sha("7")},
-				{Gitmoji: ":bug:", Scope: "lint", Subject: "accept a lone ` in the subject, as @octocat asked", SHA: sha("8")},
-				{Gitmoji: ":bug:", Scope: "readme`", Subject: "credit @alice and @bob for the fix", SHA: sha("9")},
+				{Token: ":bug:", Subject: "handle `nil` table without panicking", SHA: sha("1")},
+				{Token: ":lipstick:", Scope: "tui", Subject: "align the 日本語 label | keep *bold* verbatim", SHA: sha("2")},
+				{Token: ":wastebasket:", Subject: "deprecate the --legacy flag", SHA: sha("3")},
+				{Token: ":bug:", Subject: "pin release + update-tap callers to @v1", SHA: sha("5")},
+				{Token: ":sparkles:", Scope: "view", Subject: "show `@name` chips that type @name for you", SHA: sha("6")},
+				{Token: ":bug:", Subject: "mail dev@example.com when actions/checkout@v5 breaks", SHA: sha("7")},
+				{Token: ":bug:", Scope: "lint", Subject: "accept a lone ` in the subject, as @octocat asked", SHA: sha("8")},
+				{Token: ":bug:", Scope: "readme`", Subject: "credit @alice and @bob for the fix", SHA: sha("9")},
 			}),
 		},
 		{
 			// A single section renders with no separator blank line at the end.
 			name: "single_section",
 			commits: wrap([]parser.Commit{
-				{Gitmoji: ":pencil2:", Subject: "fix a typo in the help text", SHA: sha("4")},
-				{Gitmoji: ":bug:", Subject: "fix the exit code on empty input", SHA: sha("5")},
+				{Token: ":pencil2:", Subject: "fix a typo in the help text", SHA: sha("4")},
+				{Token: ":bug:", Subject: "fix the exit code on empty input", SHA: sha("5")},
 			}),
 		},
 	}
@@ -362,7 +362,7 @@ func TestRenderGolden(t *testing.T) {
 func TestRenderSizesTheFenceAgainstTheWholeLine(t *testing.T) {
 	table := loadTable(t)
 	sections, err := Group(wrap([]parser.Commit{
-		{Gitmoji: ":bug:", Scope: "readme`", Subject: "credit @alice and @bob for the fix", SHA: sha("9")},
+		{Token: ":bug:", Scope: "readme`", Subject: "credit @alice and @bob for the fix", SHA: sha("9")},
 	}), table)
 	if err != nil {
 		t.Fatalf("Group: %v", err)
@@ -415,7 +415,7 @@ func TestRenderFlattensLineTerminators(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			sections, err := Group(wrap([]parser.Commit{
-				{Gitmoji: ":bug:", Scope: "parser", Subject: c.subject, SHA: sha("8")},
+				{Token: ":bug:", Scope: "parser", Subject: c.subject, SHA: sha("8")},
 			}), table)
 			if err != nil {
 				t.Fatalf("Group: %v", err)
@@ -512,7 +512,7 @@ func TestRenderNeutralizesMarkup(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			sections, err := Group(wrap([]parser.Commit{
-				{Gitmoji: ":sparkles:", Subject: c.subject, SHA: sha("7")},
+				{Token: ":sparkles:", Subject: c.subject, SHA: sha("7")},
 			}), table)
 			if err != nil {
 				t.Fatalf("Group: %v", err)
@@ -551,7 +551,7 @@ func TestRenderNeutralizesTheScope(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			sections, err := Group(wrap([]parser.Commit{
-				{Gitmoji: ":sparkles:", Scope: c.scope, Subject: "ship it", SHA: sha("7")},
+				{Token: ":sparkles:", Scope: c.scope, Subject: "ship it", SHA: sha("7")},
 			}), table)
 			if err != nil {
 				t.Fatalf("Group: %v", err)
@@ -625,7 +625,7 @@ func TestRenderClosesThePhantomSpan(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			sections, err := Group(wrap([]parser.Commit{
-				{Gitmoji: ":bug:", Subject: c.subject, SHA: sha("8")},
+				{Token: ":bug:", Subject: c.subject, SHA: sha("8")},
 			}), table)
 			if err != nil {
 				t.Fatalf("Group: %v", err)

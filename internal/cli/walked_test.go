@@ -21,9 +21,9 @@ func TestNotesCommitsCiteThePermanentAddress(t *testing.T) {
 	squashedSHA := strings.Repeat("b", 40)
 	directSHA := strings.Repeat("c", 40)
 	got := notesCommits([]walked{
-		{Commit: parser.Commit{Gitmoji: ":bug:", Subject: "landed by the merge button", SHA: landedSHA}, Pull: 7, Landed: true},
-		{Commit: parser.Commit{Gitmoji: ":bug:", Subject: "squash-expanded", SHA: squashedSHA}, Pull: 7, Landed: false},
-		{Commit: parser.Commit{Gitmoji: ":bug:", Subject: "direct push", SHA: directSHA}, Landed: true},
+		{Commit: parser.Commit{Token: ":bug:", Subject: "landed by the merge button", SHA: landedSHA}, Pull: 7, Landed: true},
+		{Commit: parser.Commit{Token: ":bug:", Subject: "squash-expanded", SHA: squashedSHA}, Pull: 7, Landed: false},
+		{Commit: parser.Commit{Token: ":bug:", Subject: "direct push", SHA: directSHA}, Landed: true},
 	})
 	if len(got) != 3 {
 		t.Fatalf("notesCommits returned %d commits, want 3", len(got))

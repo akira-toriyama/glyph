@@ -140,7 +140,7 @@ func classifyVerdict(parsed []parser.Commit, table *gitmoji.Table) ([]bumpCommit
 		levels = append(levels, level)
 		commits = append(commits, bumpCommit{
 			SHA:      c.SHA,
-			Code:     c.Gitmoji,
+			Code:     c.Token,
 			Level:    string(level),
 			Breaking: c.Breaking,
 			Subject:  c.Subject,

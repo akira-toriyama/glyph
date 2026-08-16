@@ -65,7 +65,7 @@ func TestRulesJSONAndMDConflict(t *testing.T) {
 	}
 }
 
-// TestRulesLintVocabulary: `rules --lint` prints exactly parser.LintRules(),
+// TestRulesLintVocabulary: `rules --lint` prints exactly parser.LintRules(parser.GrammarGitmoji),
 // order included — the surface is a rendering of the parser's vocabulary, not
 // a second copy of it, so anything but byte-level agreement here means the
 // command grew its own list.
@@ -80,8 +80,8 @@ func TestRulesLintVocabulary(t *testing.T) {
 	if err := json.Unmarshal([]byte(got), &payload); err != nil {
 		t.Fatalf("rules --lint output is not valid JSON: %v\n%s", err, got)
 	}
-	if want := parser.LintRules(); !reflect.DeepEqual(payload.Rules, want) {
-		t.Fatalf("rules --lint printed a vocabulary that is not parser.LintRules():\ngot:  %+v\nwant: %+v",
+	if want := parser.LintRules(parser.GrammarGitmoji); !reflect.DeepEqual(payload.Rules, want) {
+		t.Fatalf("rules --lint printed a vocabulary that is not parser.LintRules(parser.GrammarGitmoji):\ngot:  %+v\nwant: %+v",
 			payload.Rules, want)
 	}
 }

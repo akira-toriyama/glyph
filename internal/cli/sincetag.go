@@ -951,11 +951,11 @@ func fallbackCommit(table *gitmoji.Table, raw gitsource.RawCommit, reason fallba
 	}
 	if _, cerr := bump.Classify(c, table); cerr != nil {
 		if c.Breaking {
-			warnf("commit %.7s %s and its gitmoji %s is not in the rules table, but it carries a breaking marker — counted as a breaking change (%s, major)", raw.SHA, reason.why, c.Gitmoji, gitmojiBoom)
-			c.Gitmoji = gitmojiBoom
+			warnf("commit %.7s %s and its gitmoji %s is not in the rules table, but it carries a breaking marker — counted as a breaking change (%s, major)", raw.SHA, reason.why, c.Token, gitmojiBoom)
+			c.Token = gitmojiBoom
 			return c, true
 		}
-		warnf("commit %.7s %s and its gitmoji %s is not in the rules table — counted as none", raw.SHA, reason.why, c.Gitmoji)
+		warnf("commit %.7s %s and its gitmoji %s is not in the rules table — counted as none", raw.SHA, reason.why, c.Token)
 		dropped()
 		return parser.Commit{}, false
 	}

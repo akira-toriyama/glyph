@@ -21,114 +21,114 @@ func TestParse(t *testing.T) {
 		{
 			name: "minimal",
 			in:   ":bug: fix a crash on empty input",
-			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash on empty input"},
+			want: Commit{Token: ":bug:", Subject: "fix a crash on empty input"},
 		},
 		{
 			name: "scope",
 			in:   ":sparkles:(ui) add a right-click window menu",
-			want: Commit{Gitmoji: ":sparkles:", Scope: "ui", Subject: "add a right-click window menu"},
+			want: Commit{Token: ":sparkles:", Scope: "ui", Subject: "add a right-click window menu"},
 		},
 		{
 			name: "breaking bang with scope",
 			in:   ":boom:(api)! replace the --items flag with a positional arg",
-			want: Commit{Gitmoji: ":boom:", Scope: "api", Breaking: true, Subject: "replace the --items flag with a positional arg"},
+			want: Commit{Token: ":boom:", Scope: "api", Breaking: true, Subject: "replace the --items flag with a positional arg"},
 		},
 		{
 			name: "breaking bang without scope",
 			in:   ":truck:! rename Store to Repository",
-			want: Commit{Gitmoji: ":truck:", Breaking: true, Subject: "rename Store to Repository"},
+			want: Commit{Token: ":truck:", Breaking: true, Subject: "rename Store to Repository"},
 		},
 		{
 			name: "kebab and digits in scope",
 			in:   ":bug:(grid-1f-4) keep defaults when an unknown key is present",
-			want: Commit{Gitmoji: ":bug:", Scope: "grid-1f-4", Subject: "keep defaults when an unknown key is present"},
+			want: Commit{Token: ":bug:", Scope: "grid-1f-4", Subject: "keep defaults when an unknown key is present"},
 		},
 		{
 			name: "underscore code",
 			in:   ":white_check_mark: cover the fold with a permutation test",
-			want: Commit{Gitmoji: ":white_check_mark:", Subject: "cover the fold with a permutation test"},
+			want: Commit{Token: ":white_check_mark:", Subject: "cover the fold with a permutation test"},
 		},
 		{
 			name: "legacy type with scope",
 			in:   ":wrench: ci(hub): raise the zizmor gate",
-			want: Commit{Gitmoji: ":wrench:", Scope: "hub", Subject: "raise the zizmor gate", legacyToken: "ci(hub):"},
+			want: Commit{Token: ":wrench:", Scope: "hub", Subject: "raise the zizmor gate", legacyToken: "ci(hub):"},
 		},
 		{
 			name: "legacy type without scope",
 			in:   ":bug: fix: keep defaults when an unknown key is present",
-			want: Commit{Gitmoji: ":bug:", Subject: "keep defaults when an unknown key is present", legacyToken: "fix:"},
+			want: Commit{Token: ":bug:", Subject: "keep defaults when an unknown key is present", legacyToken: "fix:"},
 		},
 		{
 			name: "legacy breaking bang",
 			in:   ":truck: refactor(core)!: rename Store to Repository",
-			want: Commit{Gitmoji: ":truck:", Scope: "core", Breaking: true, Subject: "rename Store to Repository", legacyToken: "refactor(core)!:"},
+			want: Commit{Token: ":truck:", Scope: "core", Breaking: true, Subject: "rename Store to Repository", legacyToken: "refactor(core)!:"},
 		},
 		{
 			name: "new scope wins over legacy scope",
 			in:   ":wrench:(a) ci(b): raise the gate",
-			want: Commit{Gitmoji: ":wrench:", Scope: "a", Subject: "raise the gate", legacyToken: "ci(b):"},
+			want: Commit{Token: ":wrench:", Scope: "a", Subject: "raise the gate", legacyToken: "ci(b):"},
 		},
 		{
 			name: "non-type word with colon stays in the subject",
 			in:   ":memo: note: document the squash-merge bump model",
-			want: Commit{Gitmoji: ":memo:", Subject: "note: document the squash-merge bump model"},
+			want: Commit{Token: ":memo:", Subject: "note: document the squash-merge bump model"},
 		},
 		{
 			name: "parenthesized text after the space is subject, not scope",
 			in:   ":bug: (ui) fix a crash",
-			want: Commit{Gitmoji: ":bug:", Subject: "(ui) fix a crash"},
+			want: Commit{Token: ":bug:", Subject: "(ui) fix a crash"},
 		},
 		{
 			name: "body after blank line",
 			in:   ":bug: fix a crash\n\nGuard the nil map before indexing.",
-			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "Guard the nil map before indexing."},
+			want: Commit{Token: ":bug:", Subject: "fix a crash", Body: "Guard the nil map before indexing."},
 		},
 		{
 			name: "body without blank separator is tolerated",
 			in:   ":bug: fix a crash\nGuard the nil map.",
-			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "Guard the nil map."},
+			want: Commit{Token: ":bug:", Subject: "fix a crash", Body: "Guard the nil map."},
 		},
 		{
 			name: "japanese translation body passes through verbatim",
 			in:   ":bug: fix a crash\n\nGuard the nil map.\n\n---（和訳）\nクラッシュを修正。",
-			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "Guard the nil map.\n\n---（和訳）\nクラッシュを修正。"},
+			want: Commit{Token: ":bug:", Subject: "fix a crash", Body: "Guard the nil map.\n\n---（和訳）\nクラッシュを修正。"},
 		},
 		{
 			name: "breaking change footer",
 			in:   ":truck: rename Store to Repository\n\nBREAKING CHANGE: Store is gone from the public API.",
-			want: Commit{Gitmoji: ":truck:", Breaking: true, Subject: "rename Store to Repository", Body: "BREAKING CHANGE: Store is gone from the public API."},
+			want: Commit{Token: ":truck:", Breaking: true, Subject: "rename Store to Repository", Body: "BREAKING CHANGE: Store is gone from the public API."},
 		},
 		{
 			name: "breaking-change hyphen footer",
 			in:   ":truck: rename Store to Repository\n\nBREAKING-CHANGE: Store is gone.",
-			want: Commit{Gitmoji: ":truck:", Breaking: true, Subject: "rename Store to Repository", Body: "BREAKING-CHANGE: Store is gone."},
+			want: Commit{Token: ":truck:", Breaking: true, Subject: "rename Store to Repository", Body: "BREAKING-CHANGE: Store is gone."},
 		},
 		{
 			name: "lowercase breaking phrase is not a footer",
 			in:   ":bug: fix a crash\n\nbreaking change: this text is prose, not a footer.",
-			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "breaking change: this text is prose, not a footer."},
+			want: Commit{Token: ":bug:", Subject: "fix a crash", Body: "breaking change: this text is prose, not a footer."},
 		},
 		{
 			name: "mid-line breaking phrase is not a footer",
 			in:   ":bug: fix a crash\n\nSee BREAKING CHANGE: docs for details.",
-			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "See BREAKING CHANGE: docs for details."},
+			want: Commit{Token: ":bug:", Subject: "fix a crash", Body: "See BREAKING CHANGE: docs for details."},
 		},
 		{
 			// The trap this closes: prose wrapping onto the phrase at a line
 			// start is not a footer, and must not force a major release.
 			name: "wrapped prose starting a line with the phrase is not a footer",
 			in:   ":bug: fix a crash\n\nSpell the footer NON-BREAKING:, uppercase, mirroring\nBREAKING CHANGE: for the same reason that one is uppercase.",
-			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "Spell the footer NON-BREAKING:, uppercase, mirroring\nBREAKING CHANGE: for the same reason that one is uppercase."},
+			want: Commit{Token: ":bug:", Subject: "fix a crash", Body: "Spell the footer NON-BREAKING:, uppercase, mirroring\nBREAKING CHANGE: for the same reason that one is uppercase."},
 		},
 		{
 			name: "a real footer still counts when it opens a block",
 			in:   ":bug: fix a crash\n\nSome prose about the change.\n\nBREAKING CHANGE: the flag is gone.",
-			want: Commit{Gitmoji: ":bug:", Breaking: true, Subject: "fix a crash", Body: "Some prose about the change.\n\nBREAKING CHANGE: the flag is gone."},
+			want: Commit{Token: ":bug:", Breaking: true, Subject: "fix a crash", Body: "Some prose about the change.\n\nBREAKING CHANGE: the flag is gone."},
 		},
 		{
 			name: "a footer stacked under another trailer still counts",
 			in:   ":bug: fix a crash\n\nCo-Authored-By: Someone <a@b.c>\nBREAKING CHANGE: the flag is gone.",
-			want: Commit{Gitmoji: ":bug:", Breaking: true, Subject: "fix a crash", Body: "Co-Authored-By: Someone <a@b.c>\nBREAKING CHANGE: the flag is gone."},
+			want: Commit{Token: ":bug:", Breaking: true, Subject: "fix a crash", Body: "Co-Authored-By: Someone <a@b.c>\nBREAKING CHANGE: the flag is gone."},
 		},
 		{
 			// The regression this closes: a git trailer key is case-blind, so a
@@ -138,7 +138,7 @@ func TestParse(t *testing.T) {
 			// stop. `closes:`/`refs:`/`fixes:` are everyday habits, not adversarial.
 			name: "a footer under a LOWERCASE trailer still counts",
 			in:   ":sparkles: add the resolver\n\ncloses: #12\nBREAKING CHANGE: paletteFor no longer falls back.",
-			want: Commit{Gitmoji: ":sparkles:", Breaking: true, Subject: "add the resolver", Body: "closes: #12\nBREAKING CHANGE: paletteFor no longer falls back."},
+			want: Commit{Token: ":sparkles:", Breaking: true, Subject: "add the resolver", Body: "closes: #12\nBREAKING CHANGE: paletteFor no longer falls back."},
 		},
 		{
 			// Order must not change the verdict: the same footer set with the
@@ -146,14 +146,14 @@ func TestParse(t *testing.T) {
 			// the footer itself, was misclassified.
 			name: "breaking footer above a lowercase trailer also counts",
 			in:   ":sparkles: add the resolver\n\nBREAKING CHANGE: no fallback.\nrefs: #12",
-			want: Commit{Gitmoji: ":sparkles:", Breaking: true, Subject: "add the resolver", Body: "BREAKING CHANGE: no fallback.\nrefs: #12"},
+			want: Commit{Token: ":sparkles:", Breaking: true, Subject: "add the resolver", Body: "BREAKING CHANGE: no fallback.\nrefs: #12"},
 		},
 		{
 			// The mirror: NON-BREAKING under a lowercase trailer must be seen,
 			// so an author who declared a removal safe is not falsely failed.
 			name: "non-breaking footer under a lowercase trailer is seen",
 			in:   ":fire: drop the unused fixture\n\nrefs: #12\nNON-BREAKING: the fixture was never exported.",
-			want: Commit{Gitmoji: ":fire:", NonBreaking: true, Subject: "drop the unused fixture", Body: "refs: #12\nNON-BREAKING: the fixture was never exported."},
+			want: Commit{Token: ":fire:", NonBreaking: true, Subject: "drop the unused fixture", Body: "refs: #12\nNON-BREAKING: the fixture was never exported."},
 		},
 		{
 			// The prose guard survives the case-blind token: an ordinary
@@ -162,22 +162,22 @@ func TestParse(t *testing.T) {
 			// the block and the phrase beneath it stays prose.
 			name: "a prose line with a colon does not keep the block open",
 			in:   ":bug: fix a crash\n\nThis fixes the thing.\nBREAKING CHANGE: not really, just explaining.",
-			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "This fixes the thing.\nBREAKING CHANGE: not really, just explaining."},
+			want: Commit{Token: ":bug:", Subject: "fix a crash", Body: "This fixes the thing.\nBREAKING CHANGE: not really, just explaining."},
 		},
 		{
 			name: "crlf line endings are normalized",
 			in:   ":bug: fix a crash\r\n\r\nGuard the nil map.",
-			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash", Body: "Guard the nil map."},
+			want: Commit{Token: ":bug:", Subject: "fix a crash", Body: "Guard the nil map."},
 		},
 		{
 			name: "trailing newline from git %B is trimmed",
 			in:   ":bug: fix a crash\n",
-			want: Commit{Gitmoji: ":bug:", Subject: "fix a crash"},
+			want: Commit{Token: ":bug:", Subject: "fix a crash"},
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := Parse(c.in)
+			got, err := Parse(c.in, GrammarGitmoji)
 			if err != nil {
 				t.Fatalf("Parse(%q): unexpected error: %v", c.in, err)
 			}
@@ -211,7 +211,7 @@ func TestParseRejects(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := Parse(c.in)
+			got, err := Parse(c.in, GrammarGitmoji)
 			if err == nil {
 				t.Fatalf("Parse(%q) should fail, got %+v", c.in, got)
 			}
@@ -393,12 +393,12 @@ func FuzzParseNeverPanics(f *testing.F) {
 	f.Add(":bug:(ui\x00) fix")
 	f.Add(":bug:  ")
 	f.Fuzz(func(t *testing.T, msg string) {
-		c, err := Parse(msg)
+		c, err := Parse(msg, GrammarGitmoji)
 		if err != nil {
 			return
 		}
-		if !strings.HasPrefix(c.Gitmoji, ":") || !strings.HasSuffix(c.Gitmoji, ":") || len(c.Gitmoji) < 3 {
-			t.Fatalf("Parse(%q) accepted a malformed gitmoji %q", msg, c.Gitmoji)
+		if !strings.HasPrefix(c.Token, ":") || !strings.HasSuffix(c.Token, ":") || len(c.Token) < 3 {
+			t.Fatalf("Parse(%q) accepted a malformed gitmoji %q", msg, c.Token)
 		}
 		if strings.TrimSpace(c.Subject) == "" {
 			t.Fatalf("Parse(%q) accepted a blank subject %q", msg, c.Subject)
@@ -435,7 +435,7 @@ func FuzzParseRoundTrip(f *testing.F) {
 		}
 
 		msg := ":" + code + ":"
-		want := Commit{Gitmoji: msg, Scope: scope, Breaking: breaking, Subject: subject}
+		want := Commit{Token: msg, Scope: scope, Breaking: breaking, Subject: subject}
 		if scope != "" {
 			msg += "(" + scope + ")"
 		}
@@ -444,7 +444,7 @@ func FuzzParseRoundTrip(f *testing.F) {
 		}
 		msg += " " + subject
 
-		got, err := Parse(msg)
+		got, err := Parse(msg, GrammarGitmoji)
 		if err != nil {
 			t.Fatalf("Parse(%q) rejected a well-formed message: %v", msg, err)
 		}
@@ -686,7 +686,7 @@ func TestBreakingFooterSurvivesAColonLessIssueReference(t *testing.T) {
 				msg += tc.above + "\n"
 			}
 			msg += "BREAKING CHANGE: the api moved"
-			c, err := Parse(msg)
+			c, err := Parse(msg, GrammarGitmoji)
 			if err != nil {
 				t.Fatalf("Parse: %v", err)
 			}

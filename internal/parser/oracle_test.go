@@ -82,8 +82,8 @@ func TestSubjectVerdictSurvivesGitsCleanup(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			recorded := gitStripspace(t, tc.raw+"\n")
 
-			rawC, rawErr := Parse(tc.raw)
-			recC, recErr := Parse(recorded)
+			rawC, rawErr := Parse(tc.raw, GrammarGitmoji)
+			recC, recErr := Parse(recorded, GrammarGitmoji)
 			if (rawErr == nil) != (recErr == nil) {
 				t.Fatalf("glyph parses the written message and the recorded one differently:\n"+
 					"  written  %q -> %v\n  recorded %q -> %v", tc.raw, rawErr, recorded, recErr)

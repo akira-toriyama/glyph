@@ -1,18 +1,18 @@
 diff --git a/internal/parser/parser.go b/internal/parser/parser.go
-index 4868a05..483a450 100644
+index 3a86b04..efb8e93 100644
 --- a/internal/parser/parser.go
 +++ b/internal/parser/parser.go
-@@ -420,13 +420,6 @@ func Lint(message string, opts LintOptions) []Violation {
- 	// every mode — unlike wip-merge-candidate there is no time at which the
+@@ -711,13 +711,6 @@ func Lint(message string, opts LintOptions) []Violation {
  	// retired token becomes legal, and the walk over history never runs Lint,
- 	// so no old commit can trip it.
+ 	// so no old commit can trip it. Gitmoji-grammar only by construction:
+ 	// parseSubjectLine records the token under no other grammar.
 -	if c.legacyToken != "" {
 -		detail := fmt.Sprintf("retired Conventional token %q after the gitmoji — the convention is one grammar, `<:code:>[(scope)][!] <subject>`", c.legacyToken)
--		if s := legacyRewrite(c); s != "" {
+-		if s := canonicalLine(c, g); s != "" {
 -			detail = fmt.Sprintf("retired Conventional token %q after the gitmoji — the convention is one grammar, write %q", c.legacyToken, s)
 -		}
 -		vs = append(vs, Violation{Rule: RuleLegacyToken, Detail: detail, Fix: fix})
 -	}
- 	if opts.Known != nil && !opts.Known(c.Gitmoji) {
- 		vs = append(vs, Violation{
- 			Rule:   RuleUnknownGitmoji,
+ 	if opts.Known != nil && !opts.Known(c.Token) {
+ 		if g == GrammarConventional {
+ 			vs = append(vs, Violation{

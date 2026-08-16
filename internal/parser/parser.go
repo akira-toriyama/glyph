@@ -1,8 +1,11 @@
 // Package parser turns a raw commit message into glyph's structured Commit and
 // lints a single message against the commit convention. It is pure — no I/O, no
-// globals — and deliberately independent of internal/gitmoji: code membership
-// is injected (LintOptions.Known), so the grammar and the rules table evolve
-// separately.
+// globals — and deliberately independent of internal/gitmoji: token membership
+// is injected (LintOptions.Known), so the grammar and the rules tables evolve
+// separately. It owns both profile grammars (DESIGN §2): which one a call
+// applies is a Grammar value, and everything the grammars do not own — the
+// footer walk, the trailer-block rules, git's cleanup — is one code path
+// shared by construction, so the two profiles cannot drift apart on a body.
 package parser
 
 import (
@@ -15,13 +18,27 @@ import (
 	"github.com/akira-toriyama/glyph/internal/core"
 )
 
+// Grammar selects which profile's subject grammar Parse and Lint apply —
+// DESIGN §2's profiles. The zero value is the gitmoji grammar on purpose: it
+// is the default profile, so a caller that states nothing means what every
+// caller meant before profiles existed, and what the CLI's --profile flag
+// defaults to. Only the subject line is grammar's to select — the footer walk,
+// the trailer-block rules and the cleanup are shared code below, which is what
+// keeps the two profiles' verdicts on an identical body identical.
+type Grammar int
+
+const (
+	GrammarGitmoji      Grammar = iota // `<:code:>[(scope)][!] <subject>` — the fleet's own
+	GrammarConventional                // `<type>[(scope)][!]: <subject>` — ratified 2026-08-16 (§2.2)
+)
+
 // Commit is one parsed commit message plus the git metadata the range
 // assembler attaches — Parse itself only sees the message, so it leaves SHA
 // and Author zero.
 type Commit struct {
 	SHA      string
 	Author   string
-	Gitmoji  string // leading textual code, e.g. ":sparkles:" (shape-checked, membership is the caller's)
+	Token    string // the leading vocabulary token: a textual code (":sparkles:") under GrammarGitmoji, a type ("feat") under GrammarConventional; shape-checked here, membership is the caller's
 	Scope    string // without parens; from the new-format slot, else salvaged from a legacy token
 	Breaking bool   // a `!` marker (new or legacy slot) or a BREAKING[- ]CHANGE: footer
 	// NonBreaking records an explicit `NON-BREAKING: <why>` footer — the author
@@ -96,7 +113,9 @@ const (
 	RuleMalformedSubject  = "malformed-subject"
 	RuleInvalidScope      = "invalid-scope"
 	RuleLegacyToken       = "legacy-token"
+	RuleGitmojiToken      = "gitmoji-token"
 	RuleUnknownGitmoji    = "unknown-gitmoji"
+	RuleUnknownType       = "unknown-type"
 	RuleWIPMergeCandidate = "wip-merge-candidate"
 	RuleUppercaseSubject  = "uppercase-subject"
 	RuleTrailingPeriod    = "trailing-period"
@@ -115,15 +134,27 @@ type LintRule struct {
 	MergeCandidateOnly bool   `json:"merge_candidate_only"`
 }
 
-// LintRules enumerates the lint vocabulary, in the order the Rule* constants
-// above are declared. Ids and the mode gate only, deliberately: the per-rule
-// semantics live in DESIGN §2's list (gated by TestDesignDocNamesEveryRuleID),
-// and a prose field here would be that section's second home. The slice is
-// fresh per call so no caller can edit the vocabulary out from under the next.
-// TestLintRulesMatchTheConstants holds this list to the constants; the
-// merge-candidate claim is held to Lint's real behaviour by
-// TestLintRulesModeGating.
-func LintRules() []LintRule {
+// LintRules enumerates one grammar's lint vocabulary, in the order the Rule*
+// constants above are declared. Ids and the mode gate only, deliberately: the
+// per-rule semantics live in DESIGN §2's list (gated by
+// TestDesignDocNamesEveryRuleID), and a prose field here would be that
+// section's second home. The slice is fresh per call so no caller can edit the
+// vocabulary out from under the next. TestLintRulesMatchTheConstants holds
+// both lists to the constants — every constant appears in at least one, each
+// list follows declaration order — and the merge-candidate claim is held to
+// Lint's real behaviour by TestLintRulesModeGating.
+func LintRules(g Grammar) []LintRule {
+	if g == GrammarConventional {
+		return []LintRule{
+			{Rule: RuleMalformedSubject},
+			{Rule: RuleInvalidScope},
+			{Rule: RuleGitmojiToken},
+			{Rule: RuleUnknownType},
+			{Rule: RuleUppercaseSubject},
+			{Rule: RuleTrailingPeriod},
+			{Rule: RuleCJKSubject},
+		}
+	}
 	return []LintRule{
 		{Rule: RuleMalformedSubject},
 		{Rule: RuleInvalidScope},
@@ -138,12 +169,16 @@ func LintRules() []LintRule {
 	}
 }
 
-// LintOptions configures Lint. Known is the gitmoji membership oracle
-// (normally a gitmoji.Table lookup); nil skips the membership rule only.
-// MergeCandidate marks commits that are on their way into main (a PR range):
-// there a WIP :construction: commit is a violation, while it stays legal at
-// authoring time (the commit-msg hook path).
+// LintOptions configures Lint. Known is the token membership oracle (normally
+// a rules-table lookup for the same profile as Grammar); nil skips the
+// membership rule only. MergeCandidate marks commits that are on their way
+// into main (a PR range): there a WIP :construction: commit is a violation,
+// while it stays legal at authoring time (the commit-msg hook path).
 type LintOptions struct {
+	// Grammar selects the profile grammar the message is judged under. The
+	// zero value is GrammarGitmoji — the default profile — so options built
+	// before profiles existed still mean what they meant.
+	Grammar        Grammar
 	Known          func(code string) bool
 	MergeCandidate bool
 	// CodeForEmoji resolves a rendered emoji glyph to its textual :code:, ""
@@ -192,6 +227,25 @@ var (
 	// which is exactly the shape Swift repos write (sill, wand, facet, halo,
 	// perch all scope by PascalCase module name).
 	laxSubjectRE = regexp.MustCompile(`^(:[a-z0-9][a-z0-9_+-]*:)\(([^()]*)\)(!)? (\S.*)$`)
+
+	// conventionalSubjectRE is the conventional profile's shape from DESIGN
+	// §2.2: `<type>[(scope)][!]: <subject>` — the type-colon where the gitmoji
+	// grammar has its mandatory space, the `!` before it as the Conventional
+	// spec places it, and the same scope slot. The type shape is open (any
+	// lowercase word), NOT the closed eleven-type alternation legacyTokenRE
+	// uses: membership is the injected oracle's question here exactly as code
+	// membership is under the gitmoji grammar, so the parser stays table-blind
+	// in both profiles and `readme: fix typo` is diagnosed as an UNKNOWN TYPE
+	// rather than a shapeless line. The subject is `\S.*` for subjectRE's
+	// blank-subject reason.
+	conventionalSubjectRE = regexp.MustCompile(`^([a-z][a-z0-9-]*)(\([a-z0-9][a-z0-9-]*\))?(!)?: (\S.*)$`)
+
+	// conventionalLaxRE is conventionalSubjectRE with the scope slot opened to
+	// anything but parens — laxSubjectRE's diagnosis role, ported: a subject
+	// that fails the shape but matches this one is well-formed except for its
+	// scope, and the author gets invalid-scope naming the offending text
+	// instead of malformed-subject quoting the whole line.
+	conventionalLaxRE = regexp.MustCompile(`^([a-z][a-z0-9-]*)\(([^()]*)\)(!)?: (\S.*)$`)
 
 	// scopeRE is the scope slot of subjectRE standing alone, used to decide
 	// whether merely lowercasing a rejected scope would make it legal.
@@ -255,14 +309,28 @@ func continuesTrailerBlock(l string) bool {
 	return trailerRE.MatchString(l) || closingRefRE.MatchString(l)
 }
 
+// grammarREs returns g's subject shape and its lax diagnostic variant. The
+// two grammars' REs share their group layout — token, scope, bang, subject —
+// which is what lets every function below stay one implementation.
+func grammarREs(g Grammar) (shape, lax *regexp.Regexp) {
+	if g == GrammarConventional {
+		return conventionalSubjectRE, conventionalLaxRE
+	}
+	return subjectRE, laxSubjectRE
+}
+
 // invalidScope reports whether subject's ONLY defect is a scope outside
 // lowercase kebab-case, returning that scope. It is the shared oracle behind
-// Parse's error text and Lint's rule id, so the two can never disagree.
-func invalidScope(subject string) (string, bool) {
-	if subjectRE.MatchString(subject) {
+// Parse's error text and Lint's rule id, so the two can never disagree. One
+// implementation for both grammars on purpose — the scope rule is the same
+// house rule in each (DESIGN §2.2), so a scope diagnosis must never depend on
+// which profile noticed it.
+func invalidScope(subject string, g Grammar) (string, bool) {
+	shape, lax := grammarREs(g)
+	if shape.MatchString(subject) {
 		return "", false
 	}
-	m := laxSubjectRE.FindStringSubmatch(subject)
+	m := lax.FindStringSubmatch(subject)
 	if m == nil || strings.TrimSpace(m[4]) == "" {
 		return "", false
 	}
@@ -279,14 +347,14 @@ func kebabSuggestion(scope string) string {
 	return ""
 }
 
-// legacyRewrite spells the canonical form of a commit whose subject carried a
-// legacy token, or "" when no clean rewrite exists — kebabSuggestion's rule,
-// one level up: a suggestion the linter would itself reject is worse than
-// none. The one lossy case is a salvaged scope outside kebab-case that even
-// lowercasing cannot fix (the legacy slot is `[^()]+`, the canonical one is
-// not); dropping the scope from the suggestion would misrepresent the commit,
-// so that case gets the plain grammar reminder instead.
-func legacyRewrite(c Commit) string {
+// canonicalLine spells c as g's canonical subject line, or "" when no clean
+// spelling exists — kebabSuggestion's rule, one level up: a suggestion the
+// linter would itself reject is worse than none. The one lossy case is a
+// salvaged scope outside kebab-case that even lowercasing cannot fix (the
+// legacy slot is `[^()]+`, the canonical ones are not); dropping the scope
+// from the suggestion would misrepresent the commit, so that case gets the
+// plain grammar reminder instead.
+func canonicalLine(c Commit, g Grammar) string {
 	scope := ""
 	if c.Scope != "" {
 		s := c.Scope
@@ -301,20 +369,24 @@ func legacyRewrite(c Commit) string {
 	if c.Breaking {
 		bang = "!"
 	}
-	line := c.Gitmoji + scope + bang + " " + c.Subject
-	if !subjectRE.MatchString(line) {
+	sep := " "
+	if g == GrammarConventional {
+		sep = ": "
+	}
+	line := c.Token + scope + bang + sep + c.Subject
+	if shape, _ := grammarREs(g); !shape.MatchString(line) {
 		return ""
 	}
 	return line
 }
 
 // mechanicalFix spells the one corrected subject line that clears every
-// mechanical rule at once: the retired token gone (legacyRewrite), trailing
-// periods trimmed, the first rune lowercased. "" when no clean line exists —
-// legacyRewrite's own rule, inherited: a suggestion the linter would itself
-// reject is worse than none, and so is one for a subject that is nothing BUT
-// periods.
-func mechanicalFix(c Commit) string {
+// mechanical rule at once: the retired token gone (canonicalLine under the
+// gitmoji grammar), trailing periods trimmed, the first rune lowercased. ""
+// when no clean line exists — canonicalLine's own rule, inherited: a
+// suggestion the linter would itself reject is worse than none, and so is one
+// for a subject that is nothing BUT periods.
+func mechanicalFix(c Commit, g Grammar) string {
 	s := strings.TrimRight(c.Subject, ".")
 	if r, size := utf8.DecodeRuneInString(s); r != utf8.RuneError && unicode.IsUpper(r) {
 		// Acronym refusal, measured before it was written: of the fleet
@@ -329,7 +401,7 @@ func mechanicalFix(c Commit) string {
 		s = string(unicode.ToLower(r)) + s[size:]
 	}
 	c.Subject = s
-	return legacyRewrite(c)
+	return canonicalLine(c, g)
 }
 
 // Format returns the corrected MESSAGE — the first line replaced by the one
@@ -378,7 +450,10 @@ func Format(message string, opts LintOptions) (string, []Violation) {
 // even the substituted message cannot be made green mechanically, there is no
 // fix, only the sharper name.
 func renderedGitmoji(message, first string, opts LintOptions) (code, fix string, ok bool) {
-	if opts.CodeForEmoji == nil {
+	// Gitmoji-grammar only: under the conventional grammar there is no textual
+	// spelling to correct toward, and the resolver should not even be
+	// injected there — the grammar gate keeps the rule scoped even if one is.
+	if opts.Grammar != GrammarGitmoji || opts.CodeForEmoji == nil {
 		return "", "", false
 	}
 	glyph, rest, found := strings.Cut(first, " ")
@@ -397,12 +472,30 @@ func renderedGitmoji(message, first string, opts LintOptions) (code, fix string,
 	return code, fix, true
 }
 
+// gitmojiToken returns the gitmoji token a conventional-grammar subject opens
+// with — the OTHER profile's vocabulary, written whole — or "". It matches the
+// full gitmoji subject shape rather than a bare leading `:code:`, so only a
+// line that genuinely IS the other grammar gets the sharper name; a stray
+// colon-word stays malformed-subject. Grammar-gated here rather than at the
+// call site so the detector can never leak into the gitmoji profile, where
+// the same opening is simply correct.
+func gitmojiToken(first string, g Grammar) string {
+	if g != GrammarConventional {
+		return ""
+	}
+	if m := subjectRE.FindStringSubmatch(first); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
 // scopeFix spells the corrected subject line for an invalid-scope finding, or
 // "" — the lax match re-derives the pieces Parse refused, and kebabSuggestion
 // decides whether lowercasing alone legalises the scope (anything more is a
 // guess, and a guessed fix pastes a wrong answer with confidence).
-func scopeFix(first string) string {
-	m := laxSubjectRE.FindStringSubmatch(first)
+func scopeFix(first string, g Grammar) string {
+	_, lax := grammarREs(g)
+	m := lax.FindStringSubmatch(first)
 	if m == nil {
 		return ""
 	}
@@ -413,17 +506,73 @@ func scopeFix(first string) string {
 	// Through mechanicalFix, not straight to a string: a line that fixed only
 	// the scope and left an uppercase subject or a trailing period would be a
 	// paste that still fails lint — the one property Fix exists to guarantee.
-	return mechanicalFix(Commit{Gitmoji: m[1], Scope: k, Breaking: m[3] == "!", Subject: m[4]})
+	return mechanicalFix(Commit{Token: m[1], Scope: k, Breaking: m[3] == "!", Subject: m[4]}, g)
 }
 
-// Parse parses one commit message into a Commit. A message whose subject line
-// does not open with a well-formed `<:code:>[(scope)][!] <subject>` is a lint
-// failure (*core.Error, CodeLint) — never a silently zero Commit. The legacy
-// Conventional token after the gitmoji is still eaten (its scope salvaged
-// when the new slot has none, its `!` still meaning breaking) so pre-glyph
-// history keeps parsing and bumping exactly as before — but it is recorded on
-// the Commit, and Lint makes it a hard error at authoring time (legacy-token).
-func Parse(message string) (Commit, error) {
+// parseSubjectLine parses one already-trimmed, non-blank subject line under
+// g's grammar. It owns everything grammar-specific about Parse: the shape, the
+// sharpened invalid-scope diagnosis, and the gitmoji grammar's legacy-token
+// leniency.
+func parseSubjectLine(subject string, g Grammar) (Commit, error) {
+	shape, _ := grammarREs(g)
+	m := shape.FindStringSubmatch(subject)
+	if m == nil {
+		// Name the real defect when it is only the scope: "malformed subject"
+		// points at the whole line and sends the author hunting the token or
+		// the separator, when all they wrote was (Palette) instead of
+		// (palette).
+		if scope, ok := invalidScope(subject, g); ok {
+			if hint := kebabSuggestion(scope); hint != "" {
+				return Commit{}, core.Lintf("invalid scope %q in %q: scopes are lowercase kebab-case — write (%s)", scope, subject, hint)
+			}
+			return Commit{}, core.Lintf("invalid scope %q in %q: scopes are lowercase kebab-case (a-z, 0-9 and -; one scope, no separators)", scope, subject)
+		}
+		if g == GrammarConventional {
+			return Commit{}, core.Lintf("malformed subject %q: want `<type>[(scope)][!]: <subject>` with a leading Conventional type", subject)
+		}
+		return Commit{}, core.Lintf("malformed subject %q: want `<:code:>[(scope)][!] <subject>` with a leading textual gitmoji", subject)
+	}
+	// The regexp's \S only rejects ASCII-space openers; a subject of Unicode
+	// whitespace (a \v, an NBSP) would still sail through every lint rule, so
+	// blankness is decided by unicode.IsSpace (TrimSpace), not the regexp.
+	if strings.TrimSpace(m[4]) == "" {
+		return Commit{}, core.Lintf("malformed subject %q: the subject is blank", subject)
+	}
+	c := Commit{
+		Token:    m[1],
+		Scope:    strings.Trim(m[2], "()"),
+		Breaking: m[3] == "!",
+		Subject:  m[4],
+	}
+	// The blank guard mirrors the one above: eating the legacy token must not
+	// salvage a blank subject (`:bug: fix: \v`) — a blank remainder means the
+	// colon phrase was part of the subject itself, not a token.
+	if g == GrammarGitmoji {
+		if lm := legacyTokenRE.FindStringSubmatch(c.Subject); lm != nil && strings.TrimSpace(lm[4]) != "" {
+			if c.Scope == "" {
+				c.Scope = strings.Trim(lm[2], "()")
+			}
+			c.Breaking = c.Breaking || lm[3] == "!"
+			c.Subject = lm[4]
+			c.legacyToken = lm[1] + lm[2] + lm[3] + ":"
+		}
+	}
+	return c, nil
+}
+
+// Parse parses one commit message into a Commit under g's subject grammar. A
+// message whose subject line does not open with the grammar's well-formed
+// shape is a lint failure (*core.Error, CodeLint) — never a silently zero
+// Commit. Under GrammarGitmoji the legacy Conventional token after the
+// gitmoji is still eaten (its scope salvaged when the new slot has none, its
+// `!` still meaning breaking) so pre-glyph history keeps parsing and bumping
+// exactly as before — but it is recorded on the Commit, and Lint makes it a
+// hard error at authoring time (legacy-token). Under GrammarConventional
+// there is no such leniency to carry: no pre-profile history exists, so the
+// grammar is exactly its shape. Everything below the subject line — the body,
+// the footer walk, the trailer-block rules — is one shared path, which is
+// what keeps the two profiles' verdicts on an identical body identical.
+func Parse(message string, g Grammar) (Commit, error) {
 	lines := splitLines(message)
 	subject := ""
 	if len(lines) > 0 {
@@ -440,41 +589,9 @@ func Parse(message string) (Commit, error) {
 	if strings.TrimSpace(subject) == "" {
 		return Commit{}, core.Lintf("empty commit message")
 	}
-	m := subjectRE.FindStringSubmatch(subject)
-	if m == nil {
-		// Name the real defect when it is only the scope: "malformed subject"
-		// points at the whole line and sends the author hunting the gitmoji or
-		// the space, when all they wrote was (Palette) instead of (palette).
-		if scope, ok := invalidScope(subject); ok {
-			if hint := kebabSuggestion(scope); hint != "" {
-				return Commit{}, core.Lintf("invalid scope %q in %q: scopes are lowercase kebab-case — write (%s)", scope, subject, hint)
-			}
-			return Commit{}, core.Lintf("invalid scope %q in %q: scopes are lowercase kebab-case (a-z, 0-9 and -; one scope, no separators)", scope, subject)
-		}
-		return Commit{}, core.Lintf("malformed subject %q: want `<:code:>[(scope)][!] <subject>` with a leading textual gitmoji", subject)
-	}
-	// The regexp's \S only rejects ASCII-space openers; a subject of Unicode
-	// whitespace (a \v, an NBSP) would still sail through every lint rule, so
-	// blankness is decided by unicode.IsSpace (TrimSpace), not the regexp.
-	if strings.TrimSpace(m[4]) == "" {
-		return Commit{}, core.Lintf("malformed subject %q: the subject is blank", subject)
-	}
-	c := Commit{
-		Gitmoji:  m[1],
-		Scope:    strings.Trim(m[2], "()"),
-		Breaking: m[3] == "!",
-		Subject:  m[4],
-	}
-	// The blank guard mirrors the one above: eating the legacy token must not
-	// salvage a blank subject (`:bug: fix: \v`) — a blank remainder means the
-	// colon phrase was part of the subject itself, not a token.
-	if lm := legacyTokenRE.FindStringSubmatch(c.Subject); lm != nil && strings.TrimSpace(lm[4]) != "" {
-		if c.Scope == "" {
-			c.Scope = strings.Trim(lm[2], "()")
-		}
-		c.Breaking = c.Breaking || lm[3] == "!"
-		c.Subject = lm[4]
-		c.legacyToken = lm[1] + lm[2] + lm[3] + ":"
+	c, err := parseSubjectLine(subject, g)
+	if err != nil {
+		return Commit{}, err
 	}
 
 	rest := lines[1:]
@@ -542,23 +659,32 @@ func Parse(message string) (Commit, error) {
 	return c, nil
 }
 
-// Lint checks one commit message and returns its violations in a stable order:
-// malformed-subject (or the sharper invalid-scope or rendered-gitmoji)
-// short-circuits — nothing else is checkable — then legacy-token,
-// unknown-gitmoji, wip-merge-candidate, uppercase-subject, trailing-period,
-// cjk-subject, undeclared-removal. An unknown code is a hard violation here,
-// never a silent fallback.
+// Lint checks one commit message against opts.Grammar's vocabulary and
+// returns its violations in a stable order: malformed-subject (or the sharper
+// invalid-scope, rendered-gitmoji or gitmoji-token) short-circuits — nothing
+// else is checkable — then the surviving rules in `LintRules(opts.Grammar)`
+// order. An unknown token is a hard violation here, never a silent fallback.
 func Lint(message string, opts LintOptions) []Violation {
-	c, err := Parse(message)
+	g := opts.Grammar
+	c, err := Parse(message, g)
 	if err != nil {
 		rule, detail, fix := RuleMalformedSubject, err.Error(), ""
 		if lines := splitLines(message); len(lines) > 0 {
 			// Same trim as Parse: the two must judge the same string, or the rule
 			// id and the message would disagree about which line was read.
 			first := strings.TrimRight(lines[0], " \t\r")
-			if _, ok := invalidScope(first); ok {
+			if _, ok := invalidScope(first, g); ok {
 				rule = RuleInvalidScope
-				fix = scopeFix(first)
+				fix = scopeFix(first, g)
+			} else if gm := gitmojiToken(first, g); gm != "" {
+				// The mirror image of legacy-token (DESIGN §2.2): the author
+				// wrote the OTHER profile's vocabulary. Shape-checked only —
+				// deciding whether the code is a known gitmoji would mean
+				// loading the other profile's table to lint this one's
+				// commits — and no fix: which type a gitmoji maps to is a
+				// cross-vocabulary guess, exactly what Fix refuses to bless.
+				rule = RuleGitmojiToken
+				detail = fmt.Sprintf("subject opens with the gitmoji token %s where a Conventional type belongs — this profile's grammar is `<type>[(scope)][!]: <subject>` (if this repository lints gitmoji commits, it is missing --profile=gitmoji)", gm)
 			} else if code, f, ok := renderedGitmoji(message, first, opts); ok {
 				// The same argument that made invalid-scope: malformed-subject
 				// quotes the whole line and sends the author hunting, when the
@@ -578,26 +704,34 @@ func Lint(message string, opts LintOptions) []Violation {
 	var vs []Violation
 	// One corrected line for every mechanical rule this message trips — each
 	// fixable violation carries the same string (see Violation.Fix for why).
-	fix := mechanicalFix(c)
+	fix := mechanicalFix(c, g)
 	// First among the appended rules: it is a grammar defect, and the rewrite
 	// it suggests is what the remaining rules should be judging. It fires in
 	// every mode — unlike wip-merge-candidate there is no time at which the
 	// retired token becomes legal, and the walk over history never runs Lint,
-	// so no old commit can trip it.
+	// so no old commit can trip it. Gitmoji-grammar only by construction:
+	// parseSubjectLine records the token under no other grammar.
 	if c.legacyToken != "" {
 		detail := fmt.Sprintf("retired Conventional token %q after the gitmoji — the convention is one grammar, `<:code:>[(scope)][!] <subject>`", c.legacyToken)
-		if s := legacyRewrite(c); s != "" {
+		if s := canonicalLine(c, g); s != "" {
 			detail = fmt.Sprintf("retired Conventional token %q after the gitmoji — the convention is one grammar, write %q", c.legacyToken, s)
 		}
 		vs = append(vs, Violation{Rule: RuleLegacyToken, Detail: detail, Fix: fix})
 	}
-	if opts.Known != nil && !opts.Known(c.Gitmoji) {
-		vs = append(vs, Violation{
-			Rule:   RuleUnknownGitmoji,
-			Detail: fmt.Sprintf("unknown gitmoji %s: not in the embedded rules table (see `glyph rules`)", c.Gitmoji),
-		})
+	if opts.Known != nil && !opts.Known(c.Token) {
+		if g == GrammarConventional {
+			vs = append(vs, Violation{
+				Rule:   RuleUnknownType,
+				Detail: fmt.Sprintf("unknown type %q: not in the embedded conventional table (see `glyph rules --profile=conventional`)", c.Token),
+			})
+		} else {
+			vs = append(vs, Violation{
+				Rule:   RuleUnknownGitmoji,
+				Detail: fmt.Sprintf("unknown gitmoji %s: not in the embedded rules table (see `glyph rules`)", c.Token),
+			})
+		}
 	}
-	if opts.MergeCandidate && c.Gitmoji == wipCode {
+	if g == GrammarGitmoji && opts.MergeCandidate && c.Token == wipCode {
 		vs = append(vs, Violation{
 			Rule:   RuleWIPMergeCandidate,
 			Detail: fmt.Sprintf("%s is work-in-progress and must not reach a merge candidate — squash or reword it", wipCode),
@@ -640,7 +774,7 @@ func Lint(message string, opts LintOptions) []Violation {
 	// settled the moment the commit is written, so there is nothing to wait
 	// for — and waiting is what hurts: caught at authoring time the fix is one
 	// line in an open editor, caught in CI it is a rewrite of pushed history.
-	if removalCodes[c.Gitmoji] && !c.Breaking && !c.NonBreaking {
+	if g == GrammarGitmoji && removalCodes[c.Token] && !c.Breaking && !c.NonBreaking {
 		// An author who typed the footer and left it empty has already read the
 		// instruction below, so repeating it verbatim answers nothing: the reply to
 		// "NON-BREAKING:" used to be "add a `NON-BREAKING: <why>` footer", byte for
@@ -655,20 +789,20 @@ func Lint(message string, opts LintOptions) []Violation {
 		case c.bareNonBreaking:
 			detail = fmt.Sprintf("%s carries a `NON-BREAKING:` footer with no reason after it, which leaves "+
 				"the question unanswered — write WHY the removal takes nothing public away (e.g. "+
-				"`NON-BREAKING: the preset was never exported`), or use `!` if it does", c.Gitmoji)
+				"`NON-BREAKING: the preset was never exported`), or use `!` if it does", c.Token)
 		case c.miscasedNonBreaking:
 			detail = fmt.Sprintf("%s carries the footer in the wrong case — it is case-sensitive, exactly "+
 				"`NON-BREAKING: <why>`, so that prose can never spell it by accident; recase the one you "+
-				"already wrote", c.Gitmoji)
+				"already wrote", c.Token)
 		case c.misplacedNonBreaking:
 			detail = fmt.Sprintf("%s has a `NON-BREAKING:` line inside a body paragraph, where a trailer "+
 				"cannot sit — it counts only after a blank line, as the first body line, or stacked under "+
 				"another trailer; move the one you already wrote onto its own block (an editor's line-fill "+
-				"wraps it into prose, which is how a footer disappears mid-sentence)", c.Gitmoji)
+				"wraps it into prose, which is how a footer disappears mid-sentence)", c.Token)
 		default:
 			detail = fmt.Sprintf("%s removes or renames something but does not say whether that breaks anyone — "+
 				"add `!` (or a BREAKING CHANGE: footer) if it removes public API, else add a "+
-				"`NON-BREAKING: <why>` footer to record that it does not", c.Gitmoji)
+				"`NON-BREAKING: <why>` footer to record that it does not", c.Token)
 		}
 		vs = append(vs, Violation{Rule: RuleUndeclaredRemoval, Detail: detail})
 	}

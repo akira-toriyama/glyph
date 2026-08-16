@@ -1,11 +1,11 @@
 diff --git a/internal/parser/parser.go b/internal/parser/parser.go
-index 644ab44..461f254 100644
+index 3a86b04..b808341 100644
 --- a/internal/parser/parser.go
 +++ b/internal/parser/parser.go
-@@ -525,18 +525,6 @@ func Lint(message string, opts LintOptions) []Violation {
- 			if _, ok := invalidScope(first); ok {
- 				rule = RuleInvalidScope
- 				fix = scopeFix(first)
+@@ -685,18 +685,6 @@ func Lint(message string, opts LintOptions) []Violation {
+ 				// cross-vocabulary guess, exactly what Fix refuses to bless.
+ 				rule = RuleGitmojiToken
+ 				detail = fmt.Sprintf("subject opens with the gitmoji token %s where a Conventional type belongs — this profile's grammar is `<type>[(scope)][!]: <subject>` (if this repository lints gitmoji commits, it is missing --profile=gitmoji)", gm)
 -			} else if code, f, ok := renderedGitmoji(message, first, opts); ok {
 -				// The same argument that made invalid-scope: malformed-subject
 -				// quotes the whole line and sends the author hunting, when the

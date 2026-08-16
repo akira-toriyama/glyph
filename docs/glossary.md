@@ -399,6 +399,21 @@ breaking markers, the removal codes and the `NON-BREAKING:` footer are normative
 exists to prevent. What remains below is only glyph's implementation vocabulary:
 the words for the machinery that reads the convention and enforces it.
 
+**profile** — the bundle one commit vocabulary owns: a subject **grammar** (the
+shape `Parse` and `Lint` judge under, selected by `parser.Grammar`), a token →
+bump table, and the lint rules that only make sense inside that vocabulary. Two
+exist: `gitmoji` — the default and the fleet's own, deliberately the zero
+`Grammar` value so a caller that states nothing means what every caller meant
+before profiles existed — and `conventional` (`<type>[(scope)][!]: <subject>`,
+ratified 2026-08-16 for company repositories where a gitmoji vocabulary cannot
+be imposed). Everything a profile does *not* own is one shared code path — the
+footer walk, the trailer-block rules, git's cleanup, the release walk, the
+fold, the exit codes — which is what keeps the two profiles' verdicts on an
+identical body identical, and is the half of the design easiest to get wrong:
+the profile is the subject line's business only. Ratified in
+[DESIGN §2, §2.2, §3.1 and §6](DESIGN.md).
+`internal/parser/parser.go: Grammar, GrammarGitmoji, GrammarConventional`
+
 **rules table** — the embedded gitmoji → semver mapping, **75** codes, embedded
 with `//go:embed` so the pinned binary *is* the pinned rules (no separately
 synced config can drift). Membership is injected into the parser, so the grammar
