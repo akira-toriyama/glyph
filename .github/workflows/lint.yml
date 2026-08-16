@@ -62,9 +62,12 @@ on:
         default: ""
 
 # A reusable can only downgrade the caller's token, never raise it, so the
-# caller's stub must grant pull-requests: read too (it is in the stub above) —
-# without it the squash-title read 403s, which glyph reports as exit 4: a loud
-# infra failure, never a silent pass.
+# caller's stub must grant pull-requests: read too (it is in the stub above).
+# The two directions fail differently (measured in .github#186, recorded in
+# the distributed caller): a caller granting less than this block declares
+# never reaches any step — the run dies as startup_failure before it starts.
+# The runtime 403 (glyph exit 4) is reachable only from the other side: this
+# block dropping the declaration while the caller still grants it.
 permissions:
   contents: read
   pull-requests: read
