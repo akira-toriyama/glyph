@@ -120,6 +120,11 @@ tag:
 # .github/workflows/commit-lint.yml
 on:
   pull_request:
+  push:
+    branches: [main]  # optional — annotates direct pushes, never fails them
+permissions:
+  contents: read
+  pull-requests: read  # the squash-title lint reads GET /pulls/{n}
 jobs:
   lint:
     uses: akira-toriyama/glyph/.github/workflows/lint.yml@vX.Y.Z  # pin a release tag
@@ -183,6 +188,17 @@ reduces the message exactly as git's cleanup mode will before linting it
 for a merge-preview comment on every PR, and `release.yml` to keep a rolling
 draft release maintained on every push to `main`. Publishing the draft is the
 release: the tag is created by that human act, never by CI.
+
+Two wired-in behaviours worth knowing before you read them out of the YAML:
+the lint caller's optional `push: branches: [main]` arm runs the same rules
+over each direct push to the default branch but only **annotates** — that
+history is immutable, so a red verdict there could never be made green again,
+and exit 3 is swallowed on that arm alone. And `release.yml` hands its verdict
+back as `workflow_call` outputs (`level`, `next`, `current`, `action`) so a
+caller can gate follow-up steps without re-deriving it; empty means **not
+computed**, never "none", so gate fail-safe on `""`. The draft's URL is
+deliberately not among them — with the handle in hand, auto-publishing would
+be a two-line caller step, and publishing staying human is the safety net.
 
 Adopting on a repository with deep history? Cut a version tag at the commit
 where the convention starts — the walk baselines at the highest `v*` tag, and
