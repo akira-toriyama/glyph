@@ -143,6 +143,7 @@ type HookProbe struct {
 // versioned surface it is.
 const (
 	IDTokenAccess    = "token-repo-read"
+	IDTokenWrite     = "token-repo-write"
 	IDSquashEnabled  = "squash-merge-enabled"
 	IDMergeCommit    = "merge-commit-enabled"
 	IDRebaseMerge    = "rebase-merge-enabled"
@@ -164,14 +165,16 @@ const (
 // an unhealthy — or unreadable — repository IS the report, not a failure to
 // produce one. The caller maps the report to an exit code.
 //
-// Check order is the report order and is chosen for reading: the token check
-// first because it explains every could-not-run below it, then the three merge
+// Check order is the report order and is chosen for reading: the token checks
+// first because the read explains every could-not-run below it (and the write
+// advisory rides on the same response), then the three merge
 // methods, then the squash policy they enable, then the two LOCAL checks — the
 // workflow pins and the installed commit-msg hook — which need no network at
 // all, so they still answer when the API side is entirely dark.
 func Run(in Input) *Report {
 	r := &Report{Repo: in.Repo, Checks: []Check{
 		checkTokenAccess(in),
+		checkTokenWrite(in),
 		checkSquashEnabled(in),
 		checkMergeCommit(in),
 		checkRebaseMerge(in),
@@ -267,6 +270,45 @@ func checkTokenAccess(in Input) Check {
 	c.Status = StatusPass
 	c.Observed = fmt.Sprintf("read %s with %s; %s", visibility(in.RepoObject), credential, permissionSummary(in.RepoObject.Permissions))
 	c.Message = "the read glyph's verdict commands depend on works"
+	return c
+}
+
+// checkTokenWrite asks whether the credential could WRITE the rolling draft —
+// the one thing `glyph release` does that every read command does not. A
+// read-only GITHUB_TOKEN passes every check above and then dies at the draft
+// upsert with a 403 after the walk has already run, which is exactly the
+// silent class this report exists to name before it costs a release run.
+//
+// It is deliberately never a FAILURE: a read-only credential is the correct
+// configuration for a repository that never runs release, and doctor must not
+// red the fleet's read-side wiring over a command it does not use. So push
+// granted is a pass, anything less is ADVICE naming the release-only
+// consequence — and a repository object that was never read degrades to
+// unknown exactly like every other check fed by that read. The verdict
+// branches only on what the API SAID (the same reported block
+// permissionSummary narrates): glyph never infers a scope the API did not
+// report — see github.Repo.Permissions.
+func checkTokenWrite(in Input) Check {
+	c := Check{ID: IDTokenWrite, Expected: "the credential can write releases in " + in.Repo + " (needed only by `glyph release`)"}
+	if in.RepoErr != nil {
+		c.Status = StatusUnknown
+		c.Observed = "the repository object was never read (see " + IDTokenAccess + "), so the API reported nothing about write access"
+		c.Message = "unverified, not a verdict — this check reads the same response as " + IDTokenAccess + " and answers with it"
+		c.Fix = "resolve " + IDTokenAccess + " and re-run"
+		return c
+	}
+	c.Observed = permissionSummary(in.RepoObject.Permissions)
+	if p := in.RepoObject.Permissions; p != nil && p.Push {
+		c.Status = StatusPass
+		c.Message = "the draft upsert `glyph release` performs would be authorised"
+		return c
+	}
+	c.Status = StatusAdvice
+	c.Message = "every read command is unaffected — which is why this is advice, not a failure — but `glyph release` " +
+		"writes the rolling draft over the API, and this credential's write would be refused (403) only after the " +
+		"walk has already spent its API budget. On a repository that never runs release there is nothing to do"
+	c.Fix = "for a release repository: run with a credential that can write — in Actions, `permissions: contents: write` " +
+		"on the release caller (the reusable's stub carries it); locally, a token with repo write access"
 	return c
 }
 

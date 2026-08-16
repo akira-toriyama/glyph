@@ -26,7 +26,7 @@ func healthyInput(t *testing.T) Input {
 			AllowSquashMerge: yes(), AllowMergeCommit: no(), AllowRebaseMerge: no(),
 			SquashMergeCommitTitle:   wantSquashTitle,
 			SquashMergeCommitMessage: wantSquashMessage,
-			Permissions:              &github.RepoPermissions{Admin: true, Pull: true},
+			Permissions:              &github.RepoPermissions{Admin: true, Push: true, Pull: true},
 		},
 	}
 }
@@ -87,6 +87,61 @@ func TestUnansweredRepoReadIsCouldNotRunNotAFailure(t *testing.T) {
 	}
 	if r.OK {
 		t.Error("ok must be false: unverified is not verified-good")
+	}
+}
+
+// TestTokenWriteIsAdviceNeverAFailure pins the two decisions the write check
+// is made of. First, its three verdicts: push reported → pass; a block without
+// push, or no block at all → ADVICE, because a read-only credential is the
+// correct configuration for a repository that never runs `glyph release`, and
+// doctor must not red the fleet's read-side wiring over a command it does not
+// use. Second, that advice really is advice: it may not flip Report.OK or
+// count as a failure — the 403 it predicts costs a release run, not a lint
+// gate, and a red doctor on every read-only repo would train the fleet to
+// stop reading it.
+func TestTokenWriteIsAdviceNeverAFailure(t *testing.T) {
+	tests := []struct {
+		name string
+		perm *github.RepoPermissions
+		want Status
+	}{
+		{"push reported", &github.RepoPermissions{Push: true, Pull: true}, StatusPass},
+		{"read-only block", &github.RepoPermissions{Pull: true}, StatusAdvice},
+		{"no block (anonymous read)", nil, StatusAdvice},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := healthyInput(t)
+			in.RepoObject.Permissions = tt.perm
+			r := Run(in)
+			c := find(t, r, IDTokenWrite)
+			if c.Status != tt.want {
+				t.Fatalf("%s = %s, want %s (observed: %s)", IDTokenWrite, c.Status, tt.want, c.Observed)
+			}
+			if tt.want == StatusAdvice {
+				if !r.OK || r.Counts.Fail != 0 {
+					t.Errorf("advice flipped the verdict: ok=%v counts=%+v — a read-only credential on a "+
+						"non-release repository is correct configuration", r.OK, r.Counts)
+				}
+				if !strings.Contains(c.Message, "release") {
+					t.Errorf("the advice must name the release-only consequence, got %q", c.Message)
+				}
+			}
+		})
+	}
+}
+
+// TestTokenWriteDegradesWithTheUnreadRepo holds the write check to the same
+// independence rule as everything else fed by the repository read: no response
+// means UNKNOWN — "we could not check" is not "it is fine" — never a verdict
+// invented over evidence that was never collected.
+func TestTokenWriteDegradesWithTheUnreadRepo(t *testing.T) {
+	in := healthyInput(t)
+	in.RepoObject = github.Repo{}
+	in.RepoErr = errors.New("github: GET /repos/akira-toriyama/glyph: 403 API rate limit exceeded")
+	c := find(t, Run(in), IDTokenWrite)
+	if c.Status != StatusUnknown {
+		t.Fatalf("%s = %s, want %s — nothing about write access was observed", IDTokenWrite, c.Status, StatusUnknown)
 	}
 }
 
