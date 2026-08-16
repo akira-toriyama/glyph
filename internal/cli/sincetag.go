@@ -3,15 +3,15 @@ package cli
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/internal/bump"
+	"github.com/akira-toriyama/glyph/internal/config"
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/github"
-	"github.com/akira-toriyama/glyph/internal/gitmoji"
 	"github.com/akira-toriyama/glyph/internal/gitsource"
 	"github.com/akira-toriyama/glyph/internal/notes"
-	"github.com/akira-toriyama/glyph/internal/parser"
 	"github.com/spf13/cobra"
 )
 
@@ -116,7 +116,7 @@ func checkSinceTagFlag(tag string) error {
 // bump steps from, and the walk's own facts come back with the commits — its
 // expansion provenance AND whether it could read the range at all (release
 // reports them, the others discard them).
-func sinceTagInput(ctx context.Context, table *gitmoji.Table, tagFlag, repoFlag string) ([]walked, walkFacts, string, *bump.Version, error) {
+func sinceTagInput(ctx context.Context, cfg *config.Config, tagFlag, repoFlag string) ([]walked, walkFacts, string, *bump.Version, error) {
 	if err := checkSinceTagFlag(tagFlag); err != nil {
 		return nil, walkFacts{}, "", nil, err
 	}
@@ -124,11 +124,11 @@ func sinceTagInput(ctx context.Context, table *gitmoji.Table, tagFlag, repoFlag 
 	if err != nil {
 		return nil, walkFacts{}, "", nil, err
 	}
-	revRange, base, err := sinceTagRange(ctx, tagFlag)
+	revRange, base, err := sinceTagRange(ctx, cfg, tagFlag)
 	if err != nil {
 		return nil, walkFacts{}, "", nil, err
 	}
-	commits, facts, err := walkSince(ctx, newGitHub(), table, owner, repo, revRange)
+	commits, facts, err := walkSince(ctx, newGitHub(), cfg, owner, repo, revRange)
 	return commits, facts, revRange, base, err
 }
 
@@ -142,7 +142,7 @@ func sinceTagInput(ctx context.Context, table *gitmoji.Table, tagFlag, repoFlag 
 // repository with no such tag walks the whole history and steps from v0.0.0.
 // An explicit tag that is not a version still walks, but names no base (nil —
 // the bump falls back to the highest v* tag).
-func sinceTagRange(ctx context.Context, tagFlag string) (revRange string, base *bump.Version, err error) {
+func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (revRange string, base *bump.Version, err error) {
 	tag := strings.TrimSpace(tagFlag)
 	if tag == sinceTagAuto {
 		latest, v, lerr := latestVersionTag(ctx, nil)
@@ -150,7 +150,7 @@ func sinceTagRange(ctx context.Context, tagFlag string) (revRange string, base *
 			return "", nil, lerr
 		}
 		if latest == "" {
-			return wholeHistory(ctx, "no version tag found")
+			return wholeHistory(ctx, cfg, "no version tag found")
 		}
 		return latest + "..HEAD", &v, nil
 	}
@@ -168,7 +168,7 @@ func sinceTagRange(ctx context.Context, tagFlag string) (revRange string, base *
 			// The repository's first release: nothing sits below it, and dying
 			// here would fail a job standing behind a tag that already exists.
 			// Same walk, same guard, as auto before the first tag.
-			return wholeHistory(ctx, fmt.Sprintf("no version tag below %s", strings.TrimSpace(rest)))
+			return wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s", strings.TrimSpace(rest)))
 		}
 		return prev + "..HEAD", &v, nil
 	}
@@ -207,14 +207,14 @@ const sinceTagWalkCap = 200
 // underneath, no retry clears it, and the escape (name the base) is in the
 // message. The count is exact, not estimated, so the refusal names the real
 // cost; the doubled `git log` on this arm is local and cheap.
-func wholeHistory(ctx context.Context, whyNone string) (string, *bump.Version, error) {
+func wholeHistory(ctx context.Context, cfg *config.Config, whyNone string) (string, *bump.Version, error) {
 	raws, err := gitsource.Log(ctx, ".", "HEAD")
 	if err != nil {
 		return "", nil, err
 	}
 	walked := 0
 	for _, raw := range raws {
-		if _, excluded := bump.ExcludedFromResolution(raw.Author); !excluded {
+		if !slices.Contains(cfg.ExcludeAuthors, raw.Author) {
 			walked++
 		}
 	}
@@ -285,45 +285,35 @@ func latestVersionTag(ctx context.Context, below *bump.Version) (tag string, v b
 // published anyway (t-xxhj: a body citing shas `git branch -r --contains`
 // answers nothing for).
 type walked struct {
-	parser.Commit
+	Raw    gitsource.RawCommit
 	Pull   int
 	Landed bool
 }
 
-// plain strips the provenance for the paths that classify: bump.Classify and
-// the verdict surfaces read commits, not citations.
-func plain(ws []walked) []parser.Commit {
-	out := make([]parser.Commit, 0, len(ws))
+// walkedSigilCommits strips the provenance for the fold: FoldSigils reads
+// commits, not citations.
+func walkedSigilCommits(ws []walked) []bump.SigilCommit {
+	out := make([]bump.SigilCommit, 0, len(ws))
 	for _, w := range ws {
-		out = append(out, w.Commit)
+		out = append(out, bump.SigilCommit{SHA: w.Raw.SHA, Author: w.Raw.Author, Message: w.Raw.Message})
 	}
 	return out
 }
 
-// notesCommits hands the fold to the notes with its citation: the pull number
-// beside every expanded commit, and the SHA blanked for a commit that landed
-// under no identity of its own — the squash arm, the one arm whose listed shas
-// no branch holds. Blanked HERE, where DESIGN §4's arms are a known fact,
-// because internal/notes renders what it is given and holds no arm knowledge.
-func notesCommits(ws []walked) []notes.Commit {
-	out := make([]notes.Commit, 0, len(ws))
+// walkedNoteCommits hands the fold to the notes with its citation: the pull
+// number beside every expanded commit, and the SHA blanked for a commit that
+// landed under no identity of its own — the squash arm, the one arm whose
+// listed shas no branch holds. Blanked HERE, where DESIGN §4's arms are a
+// known fact, because internal/notes renders what it is given and holds no
+// arm knowledge.
+func walkedNoteCommits(ws []walked) []notes.SigilCommit {
+	out := make([]notes.SigilCommit, 0, len(ws))
 	for _, w := range ws {
-		c := w.Commit
+		sha := w.Raw.SHA
 		if w.Pull > 0 && !w.Landed {
-			c.SHA = ""
+			sha = ""
 		}
-		out = append(out, notes.Commit{Commit: c, Pull: w.Pull})
-	}
-	return out
-}
-
-// withPull wraps commits that all belong to ONE known pull request — the --pr
-// input, whose commits are read straight off the pull — for the notes. n = 0
-// wraps with no citation beyond the sha (the local --range input).
-func withPull(cs []parser.Commit, n int) []notes.Commit {
-	out := make([]notes.Commit, 0, len(cs))
-	for _, c := range cs {
-		out = append(out, notes.Commit{Commit: c, Pull: n})
+		out = append(out, notes.SigilCommit{SHA: sha, Pull: w.Pull, Author: w.Raw.Author, Message: w.Raw.Message})
 	}
 	return out
 }
@@ -371,11 +361,12 @@ type walkFacts struct {
 	// the refusal happened.
 	LostPulls []int
 	// Dropped names the commits the walk could not read AT ALL because the API
-	// had not indexed them: an unresolved merge commit, a message that does not
-	// parse, an unknown gitmoji. Deliberately NOT every fallback — a commit the
-	// fallback classified from its own message was READ, just from a weaker
-	// source, and DESIGN §4 blesses that path. The line is "something is missing
-	// from the fold", not "the fold used second-best evidence".
+	// had not indexed them: a merge commit unknown to GitHub is a merge POINT
+	// the walk could not resolve, whose own message never says what it merged.
+	// Deliberately NOT every fallback — a commit the fold reads from its own
+	// message was READ, just from a weaker source, and DESIGN §4 blesses that
+	// path. The line is "something is missing from the fold", not "the fold
+	// used second-best evidence".
 	Dropped []string
 	// Truncated are pulls whose commit listing came back at GitHub's hard cap
 	// (github.PullCommitsCap), in walk order. The API stops at that many however
@@ -445,7 +436,7 @@ func (f walkFacts) shortfall(owner, repo string) string {
 // reconciles the pulls commits stood aside for against the pulls actually
 // expanded, so a merged pull request whose canonical commit never resolved is
 // named in a warning instead of silently lost.
-func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owner, repo, revRange string) ([]walked, walkFacts, error) {
+func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner, repo, revRange string) ([]walked, walkFacts, error) {
 	raws, err := gitsource.Log(ctx, ".", revRange)
 	if err != nil {
 		return nil, walkFacts{}, err
@@ -514,18 +505,25 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 	coveredPulls, coveredOrder, expanded := map[int]bool{}, []int{}, map[int]bool{}
 	// foldPull expands one merged pull request into the walk, canonical being the
 	// walked commit that resolved to it (its merge point): the listing is
-	// filtered BEFORE it is parsed (see the two filters below), what remains is
-	// classified, and the pull's contribution is recorded. Only a RESOLVED canonical commit may expand a
-	// pull — the reconciliation at the end of the walk deliberately does not call
-	// this (see there), because a listing fetched without a canonical commit in
-	// range says nothing about which of its commits belong to this walk.
+	// filtered BEFORE anything judges it (see the two filters below), and the
+	// pull's contribution is recorded. Only a RESOLVED canonical commit may
+	// expand a pull — the reconciliation at the end of the walk deliberately
+	// does not call this (see there), because a listing fetched without a
+	// canonical commit in range says nothing about which of its commits belong
+	// to this walk.
 	//
-	// What the listing DOES say is filtered twice before anything is parsed: by
-	// where each commit landed on the released branch (mainFootprint — the range
-	// governs anything git can place, which is what stops a pull from folding
-	// back work an earlier tag shipped), and by seen (an already-represented
-	// commit must never be able to fail the release — its message may be a squash
-	// subject, which never parses).
+	// What the listing DOES say is filtered twice: by where each commit landed
+	// on the released branch (mainFootprint — the range governs anything git
+	// can place, which is what stops a pull from folding back work an earlier
+	// tag shipped), and by seen (an already-represented commit must never be
+	// able to fail the release — its message may be a squash subject, which
+	// need not match any pattern).
+	//
+	// What remains is PRE-FLIGHTED against the pattern file: a non-excluded
+	// inner commit no pattern claims would refuse the fold downstream anyway
+	// (same Match, same config — it cannot disagree), but down there the PR
+	// association is gone, and a bare per-commit refusal is uniquely unhelpful
+	// HERE — see wedgeHint.
 	foldPull := func(number int, canonical string) error {
 		listing, perr := pullRawCommits(ctx, c, owner, repo, number)
 		if perr != nil {
@@ -547,11 +545,7 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 		if ferr != nil {
 			return ferr
 		}
-		fresh := make([]gitsource.RawCommit, 0, len(listing))
-		// freshLanded records, index-aligned with fresh, whether the entry's SHA
-		// is a landing site — the fact notesCommits later turns into "cite the
-		// sha" versus "the pull is this commit's only address".
-		freshLanded := make([]bool, 0, len(listing))
+		contributed := 0
 		for i, r := range listing {
 			if on := landed[i]; on != "" {
 				if !inRange[on] {
@@ -569,37 +563,19 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 				noticef("commit %.7s in pull request #%d is already represented in this walk (a stacked branch carries its base PR's pre-squash commits; a merge-merged PR's commits sit on main under these same SHAs; a sub-PR's squash commit rides inside the PR that landed its branch) — counted once", r.SHA, number)
 				continue
 			}
-			fresh = append(fresh, r)
-			freshLanded = append(freshLanded, landed[i] != "")
-		}
-		// Parsed one at a time so a failure knows WHICH commit it was. The escape
-		// the wedge hint offers is a tag cut at that commit, and only a commit
-		// this walk can point at on the released branch can carry one — see
-		// wedgeHint. participating holds no cross-commit state, so a run of
-		// singletons folds to exactly the same list as one call.
-		inner := make([]walked, 0, len(fresh))
-		for i, r := range fresh {
-			one, oerr := participating([]gitsource.RawCommit{r}, grammarFor(table))
-			if oerr != nil {
-				return wedgeHint(oerr, owner, repo, number, canonical, onMain(r.SHA, inRange))
+			if !slices.Contains(cfg.ExcludeAuthors, r.Author) {
+				m, merr := cfg.Match(r.Message)
+				if merr != nil {
+					return wedgeHint(core.Lintf("commit %.7s: %v", r.SHA, merr), owner, repo, number, canonical, onMain(r.SHA, inRange))
+				}
+				if !m.Matched {
+					return wedgeHint(core.Lintf("commit %.7s matches none of the %d configured patterns", r.SHA, len(cfg.Patterns)), owner, repo, number, canonical, onMain(r.SHA, inRange))
+				}
 			}
-			for _, ic := range one {
-				inner = append(inner, walked{Commit: ic, Pull: number, Landed: freshLanded[i]})
+			if r.SHA != "" {
+				seen[r.SHA] = true
 			}
-		}
-		contributed := 0
-		for _, ic := range inner {
-			// Pre-flight the membership check that classifyVerdict would run
-			// later anyway (same Classify, same table — it cannot disagree):
-			// down there the PR association is gone, and a bare per-commit lint
-			// line is uniquely unhelpful HERE — see wedgeHint.
-			if _, cerr := bump.Classify(ic.Commit, table); cerr != nil {
-				return wedgeHint(cerr, owner, repo, number, canonical, onMain(ic.SHA, inRange))
-			}
-			if ic.SHA != "" {
-				seen[ic.SHA] = true
-			}
-			commits = append(commits, ic)
+			commits = append(commits, walked{Raw: r, Pull: number, Landed: landed[i] != ""})
 			contributed++
 		}
 		facts.Pulls = append(facts.Pulls, pullExpansion{Number: number, Commits: contributed})
@@ -609,17 +585,25 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 	visited, unknown := 0, 0
 	for _, raw := range raws {
 		// A merge point here is a POINTER to a pull request, not a message
-		// being classified, so only its AUTHOR excludes it before resolution
-		// (bump.ExcludedFromResolution spells out why that is the whole
-		// evidence). Neither its subject nor its shape may: a `Revert "..."`
-		// squash subject is a real revert PR that must resolve and expand, and
+		// being judged, so only its AUTHOR excludes it before resolution — and
+		// the authors are the config's exclude_authors, whose commits can never
+		// move the version, so resolving one would buy nothing and must not
+		// cost an API round-trip (the routine bot push runs on every
+		// repository, every day). The commit itself still joins the walk:
+		// whether it appears in the notes is note.sections' decision, not the
+		// resolution gate's. Neither its subject nor its shape may exclude it:
 		// a two-parent commit is what the "Create a merge commit" button
 		// writes — skipping it for that dropped the entire pull request out of
 		// the release, silently (t-7zt7). Message rules apply where a message
-		// IS classified: on the PR's inner commits (participating) and on the
-		// fallback path (fallbackCommit), which still skips an unresolved
-		// merge commit — a local `git merge` — exactly as before.
-		if _, excluded := bump.ExcludedFromResolution(raw.Author); excluded {
+		// IS judged: in the fold, the lint and the notes downstream.
+		if slices.Contains(cfg.ExcludeAuthors, raw.Author) {
+			if raw.SHA != "" && seen[raw.SHA] {
+				continue
+			}
+			if raw.SHA != "" {
+				seen[raw.SHA] = true
+			}
+			commits = append(commits, walked{Raw: raw, Landed: true})
 			continue
 		}
 		visited++
@@ -634,13 +618,13 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 				coveredOrder = append(coveredOrder, n)
 			}
 		}
-		var reason fallbackReason
+		lag := false
 		switch {
 		case github.IsCommitUnknown(rerr):
 			// GitHub does not know the SHA yet (422) — the walk outran the API
 			// right after a push. DESIGN §4's API lag: fall back, never fail.
 			unknown++
-			reason = fallbackReason{why: "is not known to GitHub yet (API lag)", lag: true}
+			lag = true
 		case rerr != nil:
 			return nil, walkFacts{}, rerr
 		case found:
@@ -667,30 +651,61 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 			// walk was supposed to stand in, and when nothing did, a human has to
 			// hear about it.
 			continue
-		default:
-			reason = fallbackReason{why: "has no merged pull request (a direct push, or the API lagging)"}
 		}
-		if fc, ok := fallbackCommit(table, raw, reason, &facts); ok {
-			// The same dedup as the PR path: a fast-forwarded branch puts a
-			// PR's pre-squash commits on main under their original SHAs, so a
-			// fallback can name a commit an expanded PR already contributed.
-			if fc.SHA != "" && seen[fc.SHA] {
-				noticef("commit %.7s was already folded in by a merged pull request — counted once", fc.SHA)
+		// The fallback: no merged pull request explains this commit (a direct
+		// push, or the API lagging), so its own message is the evidence — the
+		// same evidence the fold and the notes read for every commit. One case
+		// deserves more than the default: a merge commit GitHub has not
+		// indexed yet is a merge POINT the walk could not resolve, and its own
+		// message never says what it merged (the pattern file will skip it as
+		// a merge), so the pull behind it is lost to this run. That is a fact
+		// a release decision needs, not only a warning (t-7zt7's silence, in
+		// miniature).
+		if lag && raw.Parents >= 2 {
+			warnf("merge commit %.7s is not known to GitHub yet (API lag), so the pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA)
+			facts.Dropped = append(facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
+			continue
+		}
+		if raw.SHA != "" && seen[raw.SHA] {
+			noticef("commit %.7s was already folded in by a merged pull request — counted once", raw.SHA)
+			continue
+		}
+		if lag {
+			// The lag fallback stays SOFT on an unmatched message, unlike the
+			// fold (Q2): this commit's true content is the pull request the
+			// API has not indexed yet — a squash subject is not a commit
+			// message anyone wrote — so refusing the range here would red
+			// every release for the minutes GitHub lags behind a merge.
+			// DESIGN §4 blesses the weaker source and records the shortfall:
+			// the commit is dropped from the fold, warned about, and carried
+			// in facts.Dropped so release refuses to ACT on the incomplete
+			// walk while bump and notes merely report it.
+			if m, merr := cfg.Match(raw.Message); merr != nil || !m.Matched {
+				warnf("commit %.7s is not known to GitHub yet (API lag) and its own message matches no pattern — nothing was counted from it; re-run once GitHub has indexed the commit", raw.SHA)
+				facts.Dropped = append(facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
 				continue
 			}
-			if fc.SHA != "" {
-				seen[fc.SHA] = true
-			}
-			// Landed by construction: the fallback reads the walked commit
-			// itself, an identity the released branch holds.
-			commits = append(commits, walked{Commit: fc, Landed: true})
+			warnf("commit %.7s is not known to GitHub yet (API lag) — reading its own message", raw.SHA)
+		} else if m, merr := cfg.Match(raw.Message); merr != nil || !m.Matched || !m.Skip {
+			// A skip-pattern commit (a local git merge under the presets) is
+			// passed over in silence, as v1 skipped structural merges; every
+			// other fallback announces that a message, not a pull request, is
+			// the evidence.
+			warnf("commit %.7s has no merged pull request (a direct push, or the API lagging) — reading its own message", raw.SHA)
 		}
+		if raw.SHA != "" {
+			seen[raw.SHA] = true
+		}
+		// Landed by construction: the fallback reads the walked commit
+		// itself, an identity the released branch holds.
+		commits = append(commits, walked{Raw: raw, Landed: true})
 	}
 	// Reconcile the ledger: a pull the walk only ever saw from the INSIDE. Its
 	// commits stood aside for a canonical commit that never resolved — GitHub
 	// not knowing the merge commit yet (a release job runs seconds after the
-	// merge, and the merge commit is indexed after the commits it merges), or an
-	// automation having authored it (the author gate skips it before the API).
+	// merge, and the merge commit is indexed after the commits it merges), or
+	// an exclude_authors author having authored it (the author gate skips it
+	// before the API).
 	//
 	// WARN, and deliberately do NOT expand. An earlier round of t-7zt7 folded the
 	// pull's whole listing in here, and it was unsound for one reason: a pull's
@@ -709,24 +724,13 @@ func walkSince(ctx context.Context, c *github.Client, table *gitmoji.Table, owne
 	// Both are the silent-wrong-verdict class this file exists to kill, so the
 	// honest answer is to say what was lost and refuse to guess: a named warning
 	// turns a silent loss (exit 1, `no release`, not one diagnostic — the t-7zt7
-	// silence surviving on the new path) into a visible one. A warning on every
-	// normal release would be worse than none, and this one cannot fire on a
-	// repository whose merge points the walk can RESOLVE: standing aside
-	// requires the pull's canonical commit to be IN this range, and a canonical
-	// commit in range that resolves is expanded right there. Note what that
-	// does — and does not — promise. API lag clears itself, so the warning is a
-	// one-run event. But a repository whose merge button is pressed by an
-	// AUTOMATION is perfectly healthy and warns on every release: the author
-	// gate skips a bot-authored merge commit before the API, so nothing is ever
-	// left to resolve the pull. That is not a regression (before t-7zt7 the same
-	// pull was lost in silence) and the loudness is the point, but "healthy
-	// repositories stay quiet" would be a promise this mechanism does not keep.
+	// silence surviving on the new path) into a visible one.
 	for _, number := range coveredOrder {
 		if expanded[number] {
 			continue
 		}
 		facts.LostPulls = append(facts.LostPulls, number)
-		warnf("pull request #%d has commits in %s but nothing in the range resolved to it — GitHub does not associate its merge commit with the pull yet, or an automation merged it with a real merge commit (a *[bot] / github-actions* / web-flow author, which the walk skips before resolution); those commits stood aside for that merge point and are NOT counted, so this release is short by whatever #%d changed. The pull's own commit listing is its whole history and cannot say which commits belong to %s, so the walk will not guess — re-run the release once GitHub has caught up with the merge point", number, revRange, number, revRange)
+		warnf("pull request #%d has commits in %s but nothing in the range resolved to it — GitHub does not associate its merge commit with the pull yet, or an exclude_authors author merged it with a real merge commit (which the walk skips before resolution); those commits stood aside for that merge point and are NOT counted, so this release is short by whatever #%d changed. The pull's own commit listing is its whole history and cannot say which commits belong to %s, so the walk will not guess — re-run the release once GitHub has caught up with the merge point", number, revRange, number, revRange)
 	}
 	if visited > 0 && unknown == visited {
 		facts.AllUnknown = true
@@ -877,114 +881,6 @@ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.Ra
 		landed[i] = mains[k].SHA
 	}
 	return landed, nil
-}
-
-// gitmojiBoom is the canonical breaking gitmoji — what an unknown-code
-// breaking fallback is normalized to so the shared verdict and notes
-// plumbing (which hard-errors on unknown codes, by design) can carry it.
-const gitmojiBoom = ":boom:"
-
-// breakingStandIn is the token an unknown-token breaking commit is normalized
-// to under this table's vocabulary. The gitmoji vocabulary has a canonical
-// breaking code of its own (:boom:); the conventional one deliberately does
-// not — breaking is a modifier there, never a type (DESIGN §3.1) — so the
-// stand-in is the table's first version-moving entry. Membership is ALL the
-// substitution buys: the Breaking flag the commit already carries is what
-// majors the fold and hoists the notes entry, so which known token stands in
-// changes no verdict — it only lets the shared plumbing, which hard-errors on
-// unknown tokens by design, carry the commit at all.
-func breakingStandIn(table *gitmoji.Table) string {
-	if table.Spec().Emoji {
-		return gitmojiBoom
-	}
-	for _, r := range table.Codes {
-		if r.Bump != gitmoji.BumpNone {
-			return r.Code
-		}
-	}
-	// Unreachable for any table Load accepts today (both ship version-moving
-	// entries); the empty string would fail membership downstream, loudly.
-	return ""
-}
-
-// fallbackReason is why a walked commit reached the fallback path: the headline
-// every fallback warning splices in, plus whether the API simply did not know
-// the commit YET (422). The lag flag is not decoration — it decides whether an
-// EXCLUDED commit still gets a diagnostic (see fallbackCommit), and a plain
-// string could not carry that: the walk computed "is not known to GitHub yet"
-// and then threw it away for the one commit shape where it mattered most.
-type fallbackReason struct {
-	why string
-	lag bool
-}
-
-// fallbackCommit handles a walked commit that cannot be resolved to a merged
-// pull request — no association (a direct push to main, or a local `git merge`
-// of a topic branch), or GitHub not knowing the SHA yet. It is also where the
-// message rules the resolution question deliberately skipped are applied, so an
-// unresolved merge commit is excluded HERE, on its parent count, instead of
-// before the lookup. Fallbacks never hard-fail a release (DESIGN §4), so every
-// outcome is at most a ::warning:: carrying the reason's why (the caller's
-// headline) plus the softest sound decision: an excluded message (a merge commit
-// no PR explains, a raw git revert, an autosquash artifact) is skipped as the
-// --range walk skips it — silently, unless it is a merge commit excluded while
-// the API did not know it, which is a lost merge point and says so; a message
-// that parses to a KNOWN gitmoji is classified as itself; a message that does
-// not parse, or whose gitmoji is unknown (the ratified t-kbqx policy — this
-// assembly layer downgrades what the lint gate keeps as a hard error, so
-// internal/bump stays pure), counts none by being left out of the fold. One
-// exception, ratified Q10: a breaking marker is NEVER
-// suppressed — an unknown code carrying one (`!` or a BREAKING CHANGE footer,
-// already parsed onto c.Breaking) counts major, normalized to :boom: so it
-// folds and hoists into Breaking Changes downstream. The asymmetry is
-// deliberate: a typo can over-bump a version, but a breaking change must
-// never be silently dropped from one.
-func fallbackCommit(table *gitmoji.Table, raw gitsource.RawCommit, reason fallbackReason, facts *walkFacts) (parser.Commit, bool) {
-	// A commit the walk could not READ is recorded, not only warned about: the
-	// warning reaches a log, and what glyph must not do on an incomplete fold —
-	// delete the rolling draft, lower the version a human is about to publish —
-	// is a decision, which needs the fact itself. Only the lag arms count: a
-	// direct-push commit that does not parse is a message glyph read and judged,
-	// not evidence it could not obtain.
-	dropped := func() {
-		if reason.lag {
-			facts.Dropped = append(facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
-		}
-	}
-	if _, excluded := bump.ExcludedFromClassification(raw.Author, firstLine(raw.Message), raw.Parents); excluded {
-		if reason.lag && raw.Parents >= 2 {
-			// The one exclusion that can cost a whole pull request, so it is
-			// the one that must not be silent: a merge commit GitHub has not
-			// indexed yet is a merge point the walk could not resolve, and its
-			// own message never says what it merged. The lag was computed one
-			// step up and then discarded here — the t-7zt7 silence in
-			// miniature. (An unresolved merge commit whose API answer was a
-			// definite "no pull request" is a local `git merge` and stays
-			// silent, exactly as the --range walk skips it.)
-			warnf("merge commit %.7s %s, so the pull request it may have merged could not be resolved — its own message is not classifiable, so nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA, reason.why)
-			dropped()
-		}
-		return parser.Commit{}, false // skipped, never a violation
-	}
-	c, perr := parseRaw(raw, grammarFor(table))
-	if perr != nil {
-		warnf("commit %.7s %s and its own message does not parse (%v) — counted as none", raw.SHA, reason.why, perr)
-		dropped()
-		return parser.Commit{}, false
-	}
-	if _, cerr := bump.Classify(c, table); cerr != nil {
-		if c.Breaking {
-			standIn := breakingStandIn(table)
-			warnf("commit %.7s %s and its %s %s is not in the rules table, but it carries a breaking marker — counted as a breaking change (as %s, major)", raw.SHA, reason.why, table.Spec().Token, c.Token, standIn)
-			c.Token = standIn
-			return c, true
-		}
-		warnf("commit %.7s %s and its %s %s is not in the rules table — counted as none", raw.SHA, reason.why, table.Spec().Token, c.Token)
-		dropped()
-		return parser.Commit{}, false
-	}
-	warnf("commit %.7s %s — classifying its own message", raw.SHA, reason.why)
-	return c, true
 }
 
 // wedgeHint decorates a lint failure surfaced while expanding a merged PR on

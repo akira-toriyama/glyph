@@ -9,8 +9,11 @@ package testutil
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/internal/config"
 )
 
 // GitOrSkip skips the test when git is absent (never on CI, where git is a
@@ -67,13 +70,24 @@ func Git(t *testing.T, dir, author string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// NewRepo creates a temp repository with one root commit and returns its path.
+// NewRepo creates a temp repository with one root commit and returns its
+// path. The root commit carries the gemoji-preset glyph.toml — the v2 engine
+// reads the config from the checkout's top level, so a fixture without one
+// answers every command with "not initialized".
 func NewRepo(t *testing.T) string {
 	t.Helper()
 	GitOrSkip(t)
 	dir := t.TempDir()
 	Git(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
-	Git(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "-m", ":tada: begin the project")
+	preset, ok := config.Preset("gemoji")
+	if !ok {
+		t.Fatalf("gemoji preset missing")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), preset, 0o644); err != nil {
+		t.Fatalf("write glyph.toml: %v", err)
+	}
+	Git(t, dir, "akira-toriyama", "add", "glyph.toml")
+	Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= begin the project")
 	return dir
 }
 

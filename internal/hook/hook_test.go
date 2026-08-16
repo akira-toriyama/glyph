@@ -35,7 +35,7 @@ func TestEveryKindsScriptCarriesNoCopyOfTheConvention(t *testing.T) {
 		"pre-push": {"rev-list", "rev-parse", "git log", "--not"},
 	}
 
-	for _, k := range Kinds("") {
+	for _, k := range Kinds() {
 		t.Run(k.Name, func(t *testing.T) {
 			for _, banned := range append([]string{":sparkles:", ":bug:", "grep", "[a-z0-9]", "feat", "BREAKING CHANGE"}, bannedPerKind[k.Name]...) {
 				if strings.Contains(k.Script, banned) {
@@ -90,7 +90,7 @@ func TestEveryKindsScriptExitsOnlyOnAViolation(t *testing.T) {
 		{name: "IO/API failure passes with a warning", glyphExit: int(core.CodeAPI), wantExit: 0, wantWarned: true},
 		{name: "wrapper failure passes with a warning", glyphExit: int(core.CodeNoRelease), wantExit: 0, wantWarned: true},
 	}
-	for _, k := range Kinds("") {
+	for _, k := range Kinds() {
 		for _, tt := range tests {
 			t.Run(k.Name+"/"+tt.name, func(t *testing.T) {
 				dir := t.TempDir()
@@ -140,7 +140,7 @@ func TestEveryKindsScriptExitsOnlyOnAViolation(t *testing.T) {
 func TestInstallWritesExecutableHook(t *testing.T) {
 	dir := t.TempDir()
 
-	res, err := Install(dir, false, Kinds("")[0])
+	res, err := Install(dir, false, Kinds()[0])
 	if err != nil {
 		t.Fatalf("Install: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestInstallWritesExecutableHook(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading the installed hook: %v", err)
 	}
-	if string(got) != Kinds("")[0].Script {
+	if string(got) != Kinds()[0].Script {
 		t.Error("installed hook does not match Script")
 	}
 	info, err := os.Stat(filepath.Join(dir, "commit-msg"))
@@ -174,7 +174,7 @@ func TestInstallWritesExecutableHook(t *testing.T) {
 func TestInstallCreatesMissingHooksDir(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "scripts", "hooks")
 
-	if _, err := Install(dir, false, Kinds("")[0]); err != nil {
+	if _, err := Install(dir, false, Kinds()[0]); err != nil {
 		t.Fatalf("Install into a missing dir: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "commit-msg")); err != nil {
@@ -185,10 +185,10 @@ func TestInstallCreatesMissingHooksDir(t *testing.T) {
 func TestInstallIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 
-	if _, err := Install(dir, false, Kinds("")[0]); err != nil {
+	if _, err := Install(dir, false, Kinds()[0]); err != nil {
 		t.Fatalf("first Install: %v", err)
 	}
-	res, err := Install(dir, false, Kinds("")[0])
+	res, err := Install(dir, false, Kinds()[0])
 	if err != nil {
 		t.Fatalf("second Install: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestInstallRefreshesAnOlderGlyphHook(t *testing.T) {
 	stale := "#!/bin/sh\n# glyph commit-msg hook — " + Marker + "\nexec glyph lint --old-flag\n"
 	writeHook(t, dir, stale)
 
-	res, err := Install(dir, false, Kinds("")[0])
+	res, err := Install(dir, false, Kinds()[0])
 	if err != nil {
 		t.Fatalf("Install over a glyph-written hook: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestInstallRefreshesAnOlderGlyphHook(t *testing.T) {
 	if !res.Hooks[0].Existed {
 		t.Error("Existed = false when replacing an existing hook")
 	}
-	if got := readHook(t, dir); got != Kinds("")[0].Script {
+	if got := readHook(t, dir); got != Kinds()[0].Script {
 		t.Error("stale glyph hook was not rewritten to the current Script")
 	}
 }
@@ -228,7 +228,7 @@ func TestInstallRefusesAForeignHook(t *testing.T) {
 	foreign := "#!/bin/sh\n# hand-written house rules\nexit 0\n"
 	writeHook(t, dir, foreign)
 
-	res, err := Install(dir, false, Kinds("")[0])
+	res, err := Install(dir, false, Kinds()[0])
 	if err == nil {
 		t.Fatal("Install overwrote a foreign hook without --force")
 	}
@@ -250,14 +250,14 @@ func TestInstallForceReplacesAForeignHook(t *testing.T) {
 	dir := t.TempDir()
 	writeHook(t, dir, "#!/bin/sh\n# hand-written house rules\nexit 0\n")
 
-	res, err := Install(dir, true, Kinds("")[0])
+	res, err := Install(dir, true, Kinds()[0])
 	if err != nil {
 		t.Fatalf("Install --force: %v", err)
 	}
 	if res.Hooks[0].Action != "refreshed" {
 		t.Errorf("Action = %q, want %q", res.Hooks[0].Action, "refreshed")
 	}
-	if got := readHook(t, dir); got != Kinds("")[0].Script {
+	if got := readHook(t, dir); got != Kinds()[0].Script {
 		t.Error("--force did not replace the foreign hook")
 	}
 }
@@ -266,7 +266,7 @@ func TestInstallForceReplacesAForeignHook(t *testing.T) {
 // must restore the mode even when the content is already current.
 func TestInstallRestoresTheExecuteBitOnAnUnchangedHook(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := Install(dir, false, Kinds("")[0]); err != nil {
+	if _, err := Install(dir, false, Kinds()[0]); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	path := filepath.Join(dir, "commit-msg")
@@ -274,7 +274,7 @@ func TestInstallRestoresTheExecuteBitOnAnUnchangedHook(t *testing.T) {
 		t.Fatalf("chmod: %v", err)
 	}
 
-	res, err := Install(dir, false, Kinds("")[0])
+	res, err := Install(dir, false, Kinds()[0])
 	if err != nil {
 		t.Fatalf("re-Install: %v", err)
 	}

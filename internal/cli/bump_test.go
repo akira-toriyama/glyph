@@ -10,9 +10,9 @@ import (
 // bare next version (pipe it straight into a tag step).
 func TestBumpMinor(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash")
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) add a menu")
-	testCommit(t, dir, "akira-toriyama", ":memo: document it")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
+	testCommit(t, dir, "akira-toriyama", ":memo:= document it")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")
@@ -29,7 +29,7 @@ func TestBumpMinor(t *testing.T) {
 func TestBumpPatchFromTag(t *testing.T) {
 	dir, base := testRepo(t)
 	testGit(t, dir, "akira-toriyama", "tag", "not-a-version") // skipped by the picker
-	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "bump", "--range", base+"..HEAD")
@@ -38,41 +38,11 @@ func TestBumpPatchFromTag(t *testing.T) {
 	}
 }
 
-// TestBumpBreakingFooter: a BREAKING CHANGE footer majors the fold even when
-// every rung in the range is none/patch.
-func TestBumpBreakingFooter(t *testing.T) {
-	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":recycle: rework the store\n\nBREAKING CHANGE: Store is gone.")
-	t.Chdir(dir)
-
-	code, stdout, _ := runGlyph(t, "bump", "--range", base+"..HEAD")
-	if code != 0 || stdout != "v1.0.0\n" {
-		t.Fatalf("bump = exit %d stdout %q, want 0 / v1.0.0", code, stdout)
-	}
-}
-
-// TestBumpExcludedCommitsStayOut: bot and autosquash commits do not reach the
-// fold — a range of only excluded commits is a no-release.
-func TestBumpExcludedCommitsStayOut(t *testing.T) {
-	dir, base := testRepo(t)
-	testCommit(t, dir, "dependabot[bot]", ":sparkles: a bot must not minor the release")
-	testCommit(t, dir, "akira-toriyama", "fixup! :sparkles: nor an autosquash artifact")
-	t.Chdir(dir)
-
-	code, stdout, _ := runGlyph(t, "bump", "--range", base+"..HEAD")
-	if code != 1 {
-		t.Fatalf("bump over excluded-only commits exited %d, want 1", code)
-	}
-	if stdout != "" {
-		t.Fatalf("no-release must print nothing to stdout, got %q", stdout)
-	}
-}
-
 // TestBumpNoneHuman: a docs-only range is the soft no-release exit: nothing on
 // stdout, exit 1, the reason in the stderr envelope.
 func TestBumpNoneHuman(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":memo: document the bump model")
+	testCommit(t, dir, "akira-toriyama", ":memo:= document the bump model")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")
@@ -91,7 +61,7 @@ func TestBumpNoneHuman(t *testing.T) {
 // next) on stdout and exits 1 without a second stderr envelope.
 func TestBumpNoneJSON(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":memo: document the bump model")
+	testCommit(t, dir, "akira-toriyama", ":memo:= document the bump model")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD", "--json")
@@ -126,8 +96,8 @@ func TestBumpNoneJSON(t *testing.T) {
 // reason} with per-commit sha/gitmoji/level/breaking/subject.
 func TestBumpJSONShape(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash")
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) add a menu")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "bump", "--range", base+"..HEAD", "--json")
@@ -142,11 +112,10 @@ func TestBumpJSONShape(t *testing.T) {
 		Level   string `json:"level"`
 		Next    string `json:"next"`
 		Commits []struct {
-			SHA      string `json:"sha"`
-			Code     string `json:"code"`
-			Level    string `json:"level"`
-			Breaking bool   `json:"breaking"`
-			Subject  string `json:"subject"`
+			SHA     string `json:"sha"`
+			Sigil   string `json:"sigil"`
+			Level   string `json:"level"`
+			Subject string `json:"subject"`
 		} `json:"commits"`
 		Reason string `json:"reason"`
 	}
@@ -160,7 +129,7 @@ func TestBumpJSONShape(t *testing.T) {
 		t.Fatalf("commits carries %d entries, want 2: %s", len(res.Commits), stdout)
 	}
 	for _, c := range res.Commits {
-		if len(c.SHA) != 40 || c.Code == "" || c.Level == "" || c.Subject == "" {
+		if len(c.SHA) != 40 || c.Sigil == "" || c.Level == "" || c.Subject == "" {
 			t.Fatalf("commit entry is missing fields: %+v", c)
 		}
 	}
@@ -187,7 +156,7 @@ func TestBumpEmptyRangeJSON(t *testing.T) {
 // TestBumpCurrentOverride: --current beats the tag lookup.
 func TestBumpCurrentOverride(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "bump", "--range", base+"..HEAD", "--current", "v3.4.5")
@@ -211,7 +180,7 @@ func TestBumpCurrentInvalidIsUsage(t *testing.T) {
 func TestBumpNoTagsStartsAtZero(t *testing.T) {
 	dir, base := testRepo(t)
 	testGit(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
-	testCommit(t, dir, "akira-toriyama", ":sparkles: first feature")
+	testCommit(t, dir, "akira-toriyama", ":sparkles:^ first feature")
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "bump", "--range", base+"..HEAD")

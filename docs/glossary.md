@@ -33,7 +33,7 @@ missing entry, because it is the one place a reader trusts not to be stale.
 
 1. [The release walk](#1-the-release-walk) — walk, walk base, auto, below:, range, fold, participate, merge point, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, walkFacts, Dropped, shortfall, wedge, wedge escape
 2. [Verdicts and the rolling draft](#2-verdicts-and-the-rolling-draft) — verdict, level, source, reason, target, action, rolling draft, glyph-managed draft, residual draft, stale draft, published floor, pending, incomplete banner
-3. [Convention and lint](#3-convention-and-lint) — rules table, bump lattice, section, rule id, legacy token, merge candidate, generated subject, cleanup
+3. [Convention and lint](#3-convention-and-lint) — pattern, sigil, bump lattice, section, excluded author, cleanup
 4. [The render boundary](#4-the-render-boundary) — inline context, phantom span, neutralize, escape, fence, flatten, pipe escape, over-escaping is the safe direction
 5. [Repository preconditions (`doctor`)](#5-repository-preconditions-doctor) — check, check id, pass/fail/advice/unknown, release-tag pin
 6. [Exit codes and streams](#6-exit-codes-and-streams) — gate code, soft no-release, annotation, error envelope
@@ -213,7 +213,7 @@ stays with the lint gate; t-kbqx, so `internal/bump` stays pure). One exception
 carrying one counts major, normalized to `:boom:` so it folds and hoists into
 Breaking Changes. The asymmetry is deliberate: a typo can over-bump a version, a
 breaking change must never be silently dropped from one.
-`internal/cli/sincetag.go: fallbackCommit, fallbackReason, gitmojiBoom`
+`internal/cli/sincetag.go: walkSince` (the fallback arm)
 
 **API lag** — GitHub answering **422** for a sha it does not know yet, which is
 what a walk running seconds after a push meets. It is the **only** status that
@@ -344,8 +344,10 @@ tag (cli/cli#9367). `internal/cli/cmd_release.go: planDrafts`,
 `internal/github/release.go: UpdateRelease`
 
 **glyph-managed draft** — an unpublished draft whose tag name is the house shape
-`vX.Y.Z` (with the `v`). Published releases and a human's hand-named drafts are
-never glyph's to touch. `internal/cli/cmd_release.go: glyphDrafts`
+`vX.Y.Z` (with the `v`), or the `Unreleased` placeholder (draft_on_none's
+artifact — claimed even with the flag off, so flipping it off converges the
+placeholder away). Published releases and a human's hand-named drafts are
+never glyph's to touch. `internal/draftplan/draftplan.go: PlanDraft`
 
 **residual draft** vs **stale draft** — both are glyph-managed drafts glyph
 removes, in two different situations, and the words are not interchangeable in
@@ -399,96 +401,36 @@ breaking markers, the removal codes and the `NON-BREAKING:` footer are normative
 exists to prevent. What remains below is only glyph's implementation vocabulary:
 the words for the machinery that reads the convention and enforces it.
 
-**profile** — the bundle one commit vocabulary owns: a subject **grammar** (the
-shape `Parse` and `Lint` judge under, selected by `parser.Grammar`), a token →
-bump table, and the lint rules that only make sense inside that vocabulary. Two
-exist: `gitmoji` — the default and the fleet's own, deliberately the zero
-`Grammar` value so a caller that states nothing means what every caller meant
-before profiles existed — and `conventional` (`<type>[(scope)][!]: <subject>`,
-ratified 2026-08-16 for adopter repositories — external organizations taking
-glyph up — where a gitmoji vocabulary cannot be imposed). Everything a profile does *not* own is one shared code path — the
-footer walk, the trailer-block rules, git's cleanup, the release walk, the
-fold, the exit codes — which is what keeps the two profiles' verdicts on an
-identical body identical, and is the half of the design easiest to get wrong:
-the profile is the subject line's business only. Ratified in
-[DESIGN §2, §2.2, §3.1 and §6](DESIGN.md).
-`internal/parser/parser.go: Grammar, GrammarGitmoji, GrammarConventional`
+**pattern** — one `[[patterns]]` entry in the repository's `glyph.toml`: an
+RE2 regex applied to the whole message, in file order, first match wins. A
+pattern may capture the named group `semver_sigil`, supply a fixed
+`semver_sigil` value for messages that carry none, or declare `skip = true`
+(the commit leaves lint, bump and notes entirely). Retired v1 vocabulary this
+replaces: *profile*, *rules table*, *rule id*, *legacy token*, *merge
+candidate*, *generated subject* — all were properties of glyph's own grammars,
+and glyph no longer owns one. `internal/config/config.go: Pattern`,
+`internal/config/match.go: Match`
 
-**rules table** — one profile's embedded token → semver mapping: **75** codes
-for the gitmoji vocabulary, **11** types for the conventional one, each
-embedded with `//go:embed` so the pinned binary *is* the pinned rules (no
-separately synced config can drift). One table ENGINE — validation, lookup,
-the renderers — lives in `internal/gitmoji`, parameterized by a per-vocabulary
-`Spec`, so what a well-formed table is can never fork between profiles;
-`internal/conventional` is data plus its count pin only, and its rows are
-*derived* (each type takes its canonical gitmoji counterpart's bump and
-section, pinned by the derivation test). Membership is injected into the
-parser, so the grammar and the table evolve separately; an unknown token is a
-hard lint error, never a silent patch. Print either with `glyph rules`
-(`--md`, `--json`; the profile flag selects the vocabulary).
-`internal/gitmoji/gitmoji.go: Table, Spec, ParseTable, Load, CodeCount`,
-`internal/conventional/conventional.go: Load, TypeCount`
+**sigil** — the version signal a commit carries: `=` none / `~` patch /
+`^` minor / `!` major, read from the `semver_sigil` capture (or a pattern's
+fixed value). The alphabet and its meaning are fixed in the binary; where the
+sigil sits is the pattern's decision. `internal/config/config.go: Sigil`,
+`internal/bump/sigilfold.go: SigilLevel`
 
-**bump lattice** — `none(0) < patch(1) < minor(2) < major(3)`. `:boom:` is the
-only code that auto-majors and `:sparkles:` the only one that auto-minors;
-capability-adjacent codes (i18n, offline, a11y, UX) deliberately stay patch so an
-AI author cannot accidentally minor a routine change.
-`internal/gitmoji/gitmoji.go: Bump.Rank`
+**bump lattice** — `none(0) < patch(1) < minor(2) < major(3)`, the fold's
+order. `internal/bump/level.go: Level, Reduce`
 
-**section** — the release-notes group a code carries (13 in the table, in render
-order). Notes inclusion tracks the **section, not the bump**: a removal is
-bump-none and still surfaces under *Removals*, so a deletion or rename is visible
-to a human audit even though the version does not move. A code with no section
-drops out of the notes — *unless the commit is breaking*, and that test comes
-first: `Group` hoists a breaking commit into Breaking Changes before it ever looks
-at the code's section, so a sectionless code carrying a breaking marker still
-renders. `internal/gitmoji/gitmoji.go: Rule.Section`, `internal/notes/notes.go:
-Group`
+**section** — one `[[note.sections]]` entry: a title plus a filter on exactly
+one axis (`semver` or `author`). Config order is render order; a commit lands
+in every section whose filter matches it; empty sections are omitted; whether
+a commit appears in the notes at all is the sections' decision alone.
+`internal/config/config.go: Section`, `internal/notes/sigil.go: GroupSigils`
 
-**rule id** — the stable kebab-case key a lint finding carries. It is machine
-API — CI jobs and agents branch on the `rule` key of a `--json` finding, never
-on the `detail` beside it, which is prose and will be reworded. A mechanical
-repair, where one exists, is the finding's `fix` key — the corrected subject
-line, paste-and-pass — not a phrase to regex out of `detail`. The same
-discipline as `doctor`'s check id, one layer down. The ids themselves are
-enumerated in [DESIGN §2](DESIGN.md#2-commit-format), the copy
-`TestDesignDocNamesEveryRuleID` holds in step with the `Rule*` constants — this
-entry stopped carrying its own list after shipping one that was a rule short
-(`legacy-token` arrived in #94 and no gate read this file) — and self-printed
-by `glyph rules --lint`: each id with `merge_candidate_only`, no prose, so an
-agent looks the vocabulary up from the pinned binary it is talking to.
-`internal/parser/parser.go: Violation, RuleMalformedSubject…RuleUndeclaredRemoval`,
-`internal/cli/cmd_lint.go: rangeViolation`
-
-**legacy token** — the retired Conventional `<type>[(scope)][!]: ` token that
-pre-glyph history carries *between* the gitmoji and the subject. Handled by
-surface since v1.0.0: the release **walk** still eats it (scope salvaged when
-the canonical slot has none, its `!` still meaning breaking) so immutable
-history keeps parsing and bumping, while the authoring **lint** rejects it as
-the hard error `legacy-token`, with the canonical rewrite in the detail when
-one exists. The type vocabulary is closed on purpose, so an ordinary subject
-with a colon (`:memo: note: …`) is not eaten. The old load-bearing asymmetry —
-the legacy scope slot is `[^()]+` while the canonical one is lowercase
-kebab-case, so only the legacy path could deliver a scope with anything to
-escape — is thereby closed at authoring time: no legacy slot reaches it.
-`internal/parser/parser.go: legacyTokenRE`
-
-**merge candidate** — a commit on its way into main (a PR range), where
-`:construction:` is a violation. At **authoring** time — the commit-msg hook and
-`--message` — it stays legal, because its verdict genuinely changes with time.
-The pre-push hook sits between the two and splits the difference: the rule fires
-over the outgoing commits, and only the *consequence* is gated on the ref being
-the remote's default branch, since a push to a topic branch is by construction
-still mid-branch. `internal/parser/parser.go: LintOptions.MergeCandidate, wipCode`,
-`internal/cli/cmd_lint.go: lintOne, lintRangeRun, lintRaws`,
-`internal/cli/prepush.go: prePushRun`
-
-**generated subject** — a subject prefix git or GitHub writes itself (`Merge `,
-`Revert `, `fixup! `, `squash! `). Such commits carry no author-chosen gitmoji
-and are excluded rather than failed — an author cannot rewrite a subject git
-generated, so judging them at the hook would leave `--no-verify` as the only
-escape, which turns the whole gate off. `internal/bump/bump.go:
-generatedSubjects`
+**excluded author** — an `exclude_authors` entry: its commits leave lint and
+the fold before matching (the key exists for bots, whose messages the
+patterns do not describe) and skip release-walk resolution, but still reach
+the notes machinery — the sections decide. Distinguish from **skip**, which
+is total. `internal/bump/sigilfold.go: FoldSigils`
 
 **cleanup** — the reduction of a raw commit-message **file** (what git hands a
 commit-msg hook, still holding the editor template, the status block and, under

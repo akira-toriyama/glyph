@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/akira-toriyama/glyph/internal/bump"
-	"github.com/akira-toriyama/glyph/internal/gitmoji"
 	"github.com/akira-toriyama/glyph/internal/notes"
 	"github.com/akira-toriyama/glyph/internal/preview"
 	"github.com/spf13/cobra"
@@ -70,7 +69,7 @@ func previewRun(cmd *cobra.Command) error {
 		return err
 	}
 	ctx := cmd.Context()
-	table, err := loadRules()
+	cfg, err := loadConfig(ctx)
 	if err != nil {
 		return err
 	}
@@ -79,11 +78,11 @@ func previewRun(cmd *cobra.Command) error {
 	}
 
 	// The PR side: pure API, bounded by the PR's own commits.
-	parsed, _, perr := pullInput(ctx, previewPR, previewRepo, grammarFor(table))
+	raws, _, perr := pullInput(ctx, previewPR, previewRepo)
 	if perr != nil {
 		return perr
 	}
-	prCommits, prLevel, cerr := classifyVerdict(parsed, table)
+	prCommits, prLevel, cerr := bump.FoldSigils(sigilCommits(raws), cfg)
 	if cerr != nil {
 		return cerr
 	}
@@ -109,11 +108,11 @@ func previewRun(cmd *cobra.Command) error {
 	// nothing merged-but-unreleased to fold in. Skip the walk; the PR's own
 	// verdict is the whole answer, and the body says why.
 	untagged := latestTag == ""
-	var pendingLevel gitmoji.Bump
+	var pendingLevel bump.Level
 	var pendingNext string
 	var pendingShort string
 	if !untagged {
-		pparsed, facts, _, _, serr := sinceTagInput(ctx, table, sinceTagAuto, previewRepo)
+		pparsed, facts, _, _, serr := sinceTagInput(ctx, cfg, sinceTagAuto, previewRepo)
 		if serr != nil {
 			return serr
 		}
@@ -129,11 +128,11 @@ func previewRun(cmd *cobra.Command) error {
 			}
 			pendingShort = facts.shortfall(owner, repo)
 		}
-		_, pendingLevel, cerr = classifyVerdict(plain(pparsed), table)
+		_, pendingLevel, cerr = bump.FoldSigils(walkedSigilCommits(pparsed), cfg)
 		if cerr != nil {
 			return cerr
 		}
-		if pendingLevel != gitmoji.BumpNone {
+		if pendingLevel != bump.LevelNone {
 			pendingNext = current.Next(pendingLevel).String()
 		}
 	} else {
@@ -148,20 +147,16 @@ func previewRun(cmd *cobra.Command) error {
 
 		PendingShort: pendingShort,
 	}
-	if prLevel != gitmoji.BumpNone {
+	if prLevel != bump.LevelNone {
 		in.PR.Next = current.Next(prLevel).String()
 	}
 	if previewNotes {
-		sections, gerr := notes.Group(withPull(parsed, previewPR), table)
+		sections, gerr := notes.GroupSigils(noteCommits(raws, previewPR), cfg)
 		if gerr != nil {
 			return gerr
 		}
 		if len(sections) > 0 {
-			body, rerr := notes.Render(sections)
-			if rerr != nil {
-				return rerr
-			}
-			in.Notes = body
+			in.Notes = notes.RenderSigils(sections)
 		}
 	}
 
@@ -178,7 +173,7 @@ func previewRun(cmd *cobra.Command) error {
 			Pending:  string(orNone(pendingLevel)),
 			Body:     body,
 		}
-		if l := foldLevel(prLevel, pendingLevel); l != gitmoji.BumpNone {
+		if l := foldLevel(prLevel, pendingLevel); l != bump.LevelNone {
 			res.Next = current.Next(l).String()
 		}
 		printCompact(res)
@@ -193,32 +188,31 @@ func previewRun(cmd *cobra.Command) error {
 // from the same tag. bump.Reduce owns the ordering — the same max-fold every
 // other verdict in glyph goes through, so preview cannot grow a second opinion
 // about which level wins.
-func foldLevel(a, b gitmoji.Bump) gitmoji.Bump {
-	return bump.Reduce([]gitmoji.Bump{orNone(a), orNone(b)})
+func foldLevel(a, b bump.Level) bump.Level {
+	return bump.Reduce([]bump.Level{orNone(a), orNone(b)})
 }
 
 // orNone normalizes an uncomputed level. Bump's zero value is "" rather than
 // "none" (it is a string type), and a skipped pending walk leaves exactly that
 // — which must read as "nothing pending", never as an unknown that leaks into
 // the JSON surface.
-func orNone(b gitmoji.Bump) gitmoji.Bump {
+func orNone(b bump.Level) bump.Level {
 	if b == "" {
-		return gitmoji.BumpNone
+		return bump.LevelNone
 	}
 	return b
 }
 
 // previewCommits maps the shared verdict rows onto the render's own type. The
-// two are deliberately separate: bumpCommit is a JSON surface other commands
-// publish, and preview must be free to show a column it does not.
-func previewCommits(cs []bumpCommit) []preview.Commit {
+// two are deliberately separate: bump.SigilVerdict is a JSON surface other
+// commands publish, and preview must be free to show a column it does not.
+func previewCommits(cs []bump.SigilVerdict) []preview.Commit {
 	out := make([]preview.Commit, 0, len(cs))
 	for _, c := range cs {
 		out = append(out, preview.Commit{
-			Code:     c.Code,
-			Level:    gitmoji.Bump(c.Level),
-			Breaking: c.Breaking,
-			Subject:  c.Subject,
+			Sigil:   c.Sigil,
+			Level:   bump.Level(c.Level),
+			Subject: c.Subject,
 		})
 	}
 	return out

@@ -102,8 +102,8 @@ func TestLoadGemojiConfig(t *testing.T) {
 		t.Errorf("Commit.Template lost the literal placeholder: %q", cfg.Commit.Template)
 	}
 
-	if len(cfg.Patterns) != 3 {
-		t.Fatalf("len(Patterns) = %d, want 3", len(cfg.Patterns))
+	if len(cfg.Patterns) != 4 {
+		t.Fatalf("len(Patterns) = %d, want 4", len(cfg.Patterns))
 	}
 	if cfg.Patterns[0].Fixed != nil || cfg.Patterns[0].Skip {
 		t.Errorf("Patterns[0] should rely on its capture group alone: %+v", cfg.Patterns[0])
@@ -113,6 +113,9 @@ func TestLoadGemojiConfig(t *testing.T) {
 	}
 	if !cfg.Patterns[2].Skip {
 		t.Errorf("Patterns[2].Skip = false, want true (merge commits leave processing)")
+	}
+	if !cfg.Patterns[3].Skip {
+		t.Errorf("Patterns[3].Skip = false, want true (autosquash artifacts leave processing)")
 	}
 
 	if cfg.Note.Line != "- $subject ($pr) @$author" {

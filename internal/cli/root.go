@@ -11,7 +11,6 @@ import (
 	"syscall"
 
 	"github.com/akira-toriyama/glyph/internal/core"
-	"github.com/akira-toriyama/glyph/internal/gitmoji"
 	"github.com/akira-toriyama/glyph/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -65,17 +64,16 @@ func finish(err error) int {
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "glyph",
-		Short: "gitmoji-driven commit-lint, semver, and release notes for squash-merge repos",
-		Long: "glyph reads the gitmoji that leads each commit as the change type, and derives\n" +
-			"the semantic-version bump and release notes from the individual commits inside a\n" +
-			"pull request — so a squash-merge (which rewrites the squash subject to the PR\n" +
-			"title) can never lose the per-commit types. One binary lints commits, computes\n" +
-			"the next version, and renders notes.\n\n" +
-			"A second commit grammar ships in the same binary: --profile=conventional reads\n" +
-			"Conventional Commits types (`<type>[(scope)][!]: <subject>`) with its own\n" +
-			"embedded type → semver table, sharing the footer semantics, the walk and the\n" +
-			"exit codes. The profile is a flag, never a repo config file, so it is stated\n" +
-			"where the pinned version already is (DESIGN §2.2, §6).",
+		Short: "sigil-driven commit-lint, semver, and release notes for squash-merge repos",
+		Long: "glyph reads each commit's version sigil (= none / ~ patch / ^ minor / ! major)\n" +
+			"under the repository's own glyph.toml — your regex patterns decide the\n" +
+			"grammar; the named group semver_sigil is the only input to version\n" +
+			"calculation — and derives the semantic-version bump and release notes from\n" +
+			"the individual commits inside a pull request, so a squash-merge (which\n" +
+			"rewrites the squash subject to the PR title) can never lose the per-commit\n" +
+			"sigils. One binary lints commits, computes the next version, and renders\n" +
+			"notes. `glyph init --gemoji` (or --conventional) writes a starting\n" +
+			"glyph.toml; everything else reads the one at the repository root.",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -87,9 +85,7 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 	root.SetVersionTemplate("glyph {{.Version}}\n")
-	root.PersistentFlags().StringVar(&profileFlag, "profile", defaultProfile,
-		"commit-grammar profile: gitmoji (the default, the fleet's own) or conventional (Conventional Commits types)")
-	root.AddCommand(newVersionCmd(), newRulesCmd(), newLintCmd(), newFmtCmd(), newBumpCmd(), newNotesCmd(), newPreviewCmd(), newReleaseCmd(), newHookCmd(), newDoctorCmd(), newInitCmd())
+	root.AddCommand(newVersionCmd(), newLintCmd(), newBumpCmd(), newNotesCmd(), newPreviewCmd(), newReleaseCmd(), newHookCmd(), newDoctorCmd(), newInitCmd())
 
 	// `completion` is cobra's, not ours, and it arrives with a hole the root's
 	// own cobra.NoArgs cannot cover: cobra sets Args: NoArgs on it but gives it
@@ -117,19 +113,4 @@ func newRootCmd() *cobra.Command {
 		}
 	}
 	return root
-}
-
-// loadRules loads the selected profile's embedded table for a command. An
-// unknown --profile is usage; a table that fails to load is a build/embedding
-// fault — classified as internal (API), never usage.
-func loadRules() (*gitmoji.Table, error) {
-	p, err := resolveProfile()
-	if err != nil {
-		return nil, err
-	}
-	table, err := p.load()
-	if err != nil {
-		return nil, core.APIf("loading %s rules: %v", p.name, err)
-	}
-	return table, nil
 }

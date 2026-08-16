@@ -27,11 +27,11 @@ func hooksDirWith(t *testing.T, name, body string) string {
 }
 
 // TestCommitMsgHookCurrentPasses is the case the check exists to distinguish
-// everything else FROM, so it is asserted against hook.Kinds("")[0].Script itself rather
+// everything else FROM, so it is asserted against hook.Kinds()[0].Script itself rather
 // than a copy: a literal here would be a second source of truth for the hook's
 // text and would go stale in exactly the way the check reports.
 func TestCommitMsgHookCurrentPasses(t *testing.T) {
-	c := checkHook(hook.Kinds("")[0], IDCommitMsgHook, hooksDirWith(t, "commit-msg", hook.Kinds("")[0].Script), nil)
+	c := checkHook(hook.Kinds()[0], IDCommitMsgHook, hooksDirWith(t, "commit-msg", hook.Kinds()[0].Script), nil)
 	if c.Status != StatusPass {
 		t.Errorf("an up-to-date hook is %s, want pass: %s", c.Status, c.Observed)
 	}
@@ -46,8 +46,8 @@ func TestCommitMsgHookCurrentPasses(t *testing.T) {
 // glyph's status against a number this binary no longer emits, so every real
 // violation exits 0 and the commit lands.
 func TestCommitMsgHookDriftFails(t *testing.T) {
-	stale := strings.Replace(hook.Kinds("")[0].Script, `-eq 3 `, `-eq 9 `, 1)
-	if stale == hook.Kinds("")[0].Script {
+	stale := strings.Replace(hook.Kinds()[0].Script, `-eq 3 `, `-eq 9 `, 1)
+	if stale == hook.Kinds()[0].Script {
 		t.Fatalf("the stale-hook fixture no longer differs from the current commit-msg script — re-derive it from the current " +
 			"script, or this test asserts drift is detected using a hook that has not drifted")
 	}
@@ -55,7 +55,7 @@ func TestCommitMsgHookDriftFails(t *testing.T) {
 		t.Fatal("the fixture lost the marker, so it exercises the foreign-hook branch instead of drift")
 	}
 
-	c := checkHook(hook.Kinds("")[0], IDCommitMsgHook, hooksDirWith(t, "commit-msg", stale), nil)
+	c := checkHook(hook.Kinds()[0], IDCommitMsgHook, hooksDirWith(t, "commit-msg", stale), nil)
 	if c.Status != StatusFail {
 		t.Errorf("a glyph-written hook that no longer matches this binary is %s, want fail: %s", c.Status, c.Observed)
 	}
@@ -73,7 +73,7 @@ func TestCommitMsgHookDriftFails(t *testing.T) {
 // noise that teaches a fleet to stop reading the report. The check must stay
 // silent AND still name the command, which is why the message is asserted too.
 func TestCommitMsgHookAbsentPasses(t *testing.T) {
-	c := checkHook(hook.Kinds("")[0], IDCommitMsgHook, hooksDirWith(t, "commit-msg", ""), nil)
+	c := checkHook(hook.Kinds()[0], IDCommitMsgHook, hooksDirWith(t, "commit-msg", ""), nil)
 	if c.Status != StatusPass {
 		t.Errorf("no installed hook is %s, want pass — absence is the default state of every clone: %s", c.Status, c.Observed)
 	}
@@ -90,7 +90,7 @@ func TestCommitMsgHookAbsentPasses(t *testing.T) {
 // Reporting it as a failure would fail a repository over a decision glyph itself
 // declines to override.
 func TestCommitMsgHookForeignIsAdvice(t *testing.T) {
-	c := checkHook(hook.Kinds("")[0], IDCommitMsgHook, hooksDirWith(t, "commit-msg", "#!/bin/sh\ngrep -q '^feat' \"$1\" || exit 1\n"), nil)
+	c := checkHook(hook.Kinds()[0], IDCommitMsgHook, hooksDirWith(t, "commit-msg", "#!/bin/sh\ngrep -q '^feat' \"$1\" || exit 1\n"), nil)
 	if c.Status != StatusAdvice {
 		t.Errorf("somebody else's hook is %s, want advice: %s", c.Status, c.Observed)
 	}
@@ -105,7 +105,7 @@ func TestCommitMsgHookForeignIsAdvice(t *testing.T) {
 // pass — the two recommend opposite actions, and only one of them is a claim
 // this check is entitled to make.
 func TestCommitMsgHookUnaskableIsUnknown(t *testing.T) {
-	c := checkHook(hook.Kinds("")[0], IDCommitMsgHook, "", errors.New("not a git repository"))
+	c := checkHook(hook.Kinds()[0], IDCommitMsgHook, "", errors.New("not a git repository"))
 	if c.Status != StatusUnknown {
 		t.Errorf("an unaskable hooks directory is %s, want unknown: %s", c.Status, c.Observed)
 	}
@@ -115,7 +115,7 @@ func TestCommitMsgHookUnaskableIsUnknown(t *testing.T) {
 // could hold anything, including a stale one. Not-exists is the only absence
 // this check is allowed to read as clean.
 func TestCommitMsgHookUnreadableIsUnknown(t *testing.T) {
-	dir := hooksDirWith(t, "commit-msg", hook.Kinds("")[0].Script)
+	dir := hooksDirWith(t, "commit-msg", hook.Kinds()[0].Script)
 	path := filepath.Join(dir, "commit-msg")
 	if err := os.Chmod(path, 0o000); err != nil {
 		t.Fatalf("chmod: %v", err)
@@ -125,7 +125,7 @@ func TestCommitMsgHookUnreadableIsUnknown(t *testing.T) {
 		t.Skip("this filesystem (or a root-equivalent uid) ignores mode 000, so unreadable cannot be staged")
 	}
 
-	c := checkHook(hook.Kinds("")[0], IDCommitMsgHook, dir, nil)
+	c := checkHook(hook.Kinds()[0], IDCommitMsgHook, dir, nil)
 	if c.Status != StatusUnknown {
 		t.Errorf("an unreadable hook is %s, want unknown: %s", c.Status, c.Observed)
 	}
@@ -156,7 +156,7 @@ func TestDiffSummaryNamesAPrefixRatherThanALine(t *testing.T) {
 // that only ever passes is not a check.
 func TestEveryHookKindIsCheckedTheSameWay(t *testing.T) {
 	ids := map[string]string{"commit-msg": IDCommitMsgHook, "pre-push": IDPrePushHook}
-	for _, k := range hook.Kinds("") {
+	for _, k := range hook.Kinds() {
 		t.Run(k.Name, func(t *testing.T) {
 			absent := t.TempDir()
 			if c := checkHook(k, ids[k.Name], absent, nil); c.Status != StatusPass {

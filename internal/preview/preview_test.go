@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/internal/gitmoji"
+	"github.com/akira-toriyama/glyph/internal/bump"
 )
 
 func feat() Commit {
-	return Commit{Code: ":sparkles:", Level: gitmoji.BumpMinor, Subject: "add the palette"}
+	return Commit{Sigil: "^", Level: bump.LevelMinor, Subject: "add the palette"}
 }
 
 // TestHeadline pins every branch of the sentence a reviewer reads. The strings
@@ -28,40 +28,40 @@ func TestHeadline(t *testing.T) {
 		{
 			name: "PR none but a bump is pending",
 			in: Input{Current: "v1.2.3",
-				Pending: Verdict{Level: gitmoji.BumpMinor, Next: "v1.3.0"}},
+				Pending: Verdict{Level: bump.LevelMinor, Next: "v1.3.0"}},
 			want: "⏸️ This PR does not move the version — the next release stays **v1.3.0**.",
 		},
 		{
 			name: "PR is the first thing to move it",
 			in: Input{Current: "v1.2.3",
-				PR: Verdict{Level: gitmoji.BumpMinor, Next: "v1.3.0"}},
+				PR: Verdict{Level: bump.LevelMinor, Next: "v1.3.0"}},
 			want: "🔼 Merging this PR raises **minor** — the next release becomes **v1.2.3 → v1.3.0**.",
 		},
 		{
 			name: "PR escalates over what is pending",
 			in: Input{Current: "v1.2.3",
-				PR:      Verdict{Level: gitmoji.BumpMajor, Next: "v2.0.0"},
-				Pending: Verdict{Level: gitmoji.BumpMinor, Next: "v1.3.0"}},
+				PR:      Verdict{Level: bump.LevelMajor, Next: "v2.0.0"},
+				Pending: Verdict{Level: bump.LevelMinor, Next: "v1.3.0"}},
 			want: "💥 Merging this PR raises **major** — the next release escalates **v1.3.0 → v2.0.0**.",
 		},
 		{
 			name: "PR is lower than what is pending — version unmoved",
 			in: Input{Current: "v1.2.3",
-				PR:      Verdict{Level: gitmoji.BumpPatch, Next: "v1.2.4"},
-				Pending: Verdict{Level: gitmoji.BumpMinor, Next: "v1.3.0"}},
+				PR:      Verdict{Level: bump.LevelPatch, Next: "v1.2.4"},
+				Pending: Verdict{Level: bump.LevelMinor, Next: "v1.3.0"}},
 			want: "🔧 Merging this PR adds **patch**-level changes — the next release stays **v1.3.0** (a **minor** bump is already pending).",
 		},
 		{
 			name: "equal levels — pending still owns the version",
 			in: Input{Current: "v1.2.3",
-				PR:      Verdict{Level: gitmoji.BumpMinor, Next: "v1.3.0"},
-				Pending: Verdict{Level: gitmoji.BumpMinor, Next: "v1.3.0"}},
+				PR:      Verdict{Level: bump.LevelMinor, Next: "v1.3.0"},
+				Pending: Verdict{Level: bump.LevelMinor, Next: "v1.3.0"}},
 			want: "🔼 Merging this PR adds **minor**-level changes — the next release stays **v1.3.0** (a **minor** bump is already pending).",
 		},
 		{
 			name: "untagged repo — this PR would cut the first release",
 			in: Input{Current: "v0.0.0", Untagged: true,
-				PR: Verdict{Level: gitmoji.BumpMinor, Next: "v0.1.0"}},
+				PR: Verdict{Level: bump.LevelMinor, Next: "v0.1.0"}},
 			want: "🔼 Merging this PR raises **minor** — the first release here would be **v0.1.0**.",
 		},
 		{
@@ -84,7 +84,7 @@ func TestHeadline(t *testing.T) {
 // keep a glyph rolling draft. A sentence claiming one where none exists is
 // false, not merely noisy — so no branch may ever say "draft".
 func TestHeadlineNeverNamesADraft(t *testing.T) {
-	levels := []gitmoji.Bump{gitmoji.BumpNone, gitmoji.BumpPatch, gitmoji.BumpMinor, gitmoji.BumpMajor}
+	levels := []bump.Level{bump.LevelNone, bump.LevelPatch, bump.LevelMinor, bump.LevelMajor}
 	for _, untagged := range []bool{false, true} {
 		for _, pl := range levels {
 			for _, ql := range levels {
@@ -111,19 +111,19 @@ func TestHeadlineNeverNamesADraft(t *testing.T) {
 func TestRenderMarkdown(t *testing.T) {
 	got := Render(Input{
 		Current: "v0.1.0",
-		PR: Verdict{Level: gitmoji.BumpMajor, Next: "v1.0.0", Commits: []Commit{
-			{Code: ":bug:", Level: gitmoji.BumpPatch, Subject: "cook the noodles separately"},
-			{Code: ":boom:", Level: gitmoji.BumpMajor, Breaking: true, Subject: "rebuild the broth soy-first"},
+		PR: Verdict{Level: bump.LevelMajor, Next: "v1.0.0", Commits: []Commit{
+			{Sigil: "~", Level: bump.LevelPatch, Subject: "cook the noodles separately"},
+			{Sigil: "!", Level: bump.LevelMajor, Subject: "rebuild the broth soy-first"},
 		}},
-		Pending: Verdict{Level: gitmoji.BumpMinor, Next: "v0.2.0"},
+		Pending: Verdict{Level: bump.LevelMinor, Next: "v0.2.0"},
 	})
 	want := `<!-- glyph-pr-verdict -->
 💥 Merging this PR raises **major** — the next release escalates **v0.2.0 → v1.0.0**.
 
-| commit | code | bump |
+| commit | sigil | bump |
 |---|---|---|
-| cook the noodles separately | :bug: ` + "`:bug:`" + ` | patch |
-| rebuild the broth soy-first | :boom: ` + "`:boom:`" + ` | major 💥 |
+| cook the noodles separately | ` + "`~`" + ` | patch |
+| rebuild the broth soy-first | ` + "`!`" + ` | major |
 
 Computed from the 2 commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them — folded with what is already merged on the base branch since **v0.1.0**. Pushing more commits updates this comment.
 `
@@ -138,7 +138,7 @@ Computed from the 2 commit(s) participating in this PR — squash-safe, a squash
 func TestRenderStartsWithMarker(t *testing.T) {
 	for _, in := range []Input{
 		{Current: "v1.0.0"},
-		{Current: "v0.0.0", Untagged: true, PR: Verdict{Level: gitmoji.BumpMinor, Next: "v0.1.0", Commits: []Commit{feat()}}},
+		{Current: "v0.0.0", Untagged: true, PR: Verdict{Level: bump.LevelMinor, Next: "v0.1.0", Commits: []Commit{feat()}}},
 	} {
 		if !strings.HasPrefix(Render(in), Marker+"\n") {
 			t.Errorf("body does not start with the marker:\n%s", Render(in))
@@ -151,8 +151,8 @@ func TestRenderStartsWithMarker(t *testing.T) {
 func TestRenderEscapesSubject(t *testing.T) {
 	got := Render(Input{
 		Current: "v1.0.0",
-		PR: Verdict{Level: gitmoji.BumpMajor, Next: "v2.0.0", Commits: []Commit{
-			{Code: ":boom:", Level: gitmoji.BumpMajor, Subject: "drop the legacy | pipe api\nand its docs"},
+		PR: Verdict{Level: bump.LevelMajor, Next: "v2.0.0", Commits: []Commit{
+			{Sigil: "!", Level: bump.LevelMajor, Subject: "drop the legacy | pipe api\nand its docs"},
 		}},
 	})
 	row := ""
@@ -188,8 +188,8 @@ func TestRenderEscapesSubject(t *testing.T) {
 func TestRenderEscapesTheCellTheRendererWillSee(t *testing.T) {
 	got := Render(Input{
 		Current: "v1.0.0",
-		PR: Verdict{Level: gitmoji.BumpPatch, Next: "v1.0.1", Commits: []Commit{
-			{Code: ":bug:", Level: gitmoji.BumpPatch, Subject: "a ` b\n\nc `@octocat d`"},
+		PR: Verdict{Level: bump.LevelPatch, Next: "v1.0.1", Commits: []Commit{
+			{Sigil: "~", Level: bump.LevelPatch, Subject: "a ` b\n\nc `@octocat d`"},
 		}},
 	})
 	if !strings.Contains(got, "| a ` b  c ` ``@octocat`` d` |") {
@@ -207,9 +207,9 @@ func TestRenderEscapesTheCellTheRendererWillSee(t *testing.T) {
 func TestRenderNeutralizesMentions(t *testing.T) {
 	got := Render(Input{
 		Current: "v1.0.0",
-		PR: Verdict{Level: gitmoji.BumpPatch, Next: "v1.0.1", Commits: []Commit{
-			{Code: ":bug:", Level: gitmoji.BumpPatch, Subject: "pin release + update-tap callers to @v1"},
-			{Code: ":bug:", Level: gitmoji.BumpPatch, Subject: "accept a lone ` in the subject, as @octocat asked"},
+		PR: Verdict{Level: bump.LevelPatch, Next: "v1.0.1", Commits: []Commit{
+			{Sigil: "~", Level: bump.LevelPatch, Subject: "pin release + update-tap callers to @v1"},
+			{Sigil: "~", Level: bump.LevelPatch, Subject: "accept a lone ` in the subject, as @octocat asked"},
 		}},
 	})
 	for _, want := range []string{"callers to `@v1`", "as ``@octocat`` asked"} {
@@ -246,7 +246,7 @@ func TestRenderNoTableWhenNoCommits(t *testing.T) {
 func TestRenderNotes(t *testing.T) {
 	got := Render(Input{
 		Current: "v1.0.0",
-		PR:      Verdict{Level: gitmoji.BumpMinor, Next: "v1.1.0", Commits: []Commit{feat()}},
+		PR:      Verdict{Level: bump.LevelMinor, Next: "v1.1.0", Commits: []Commit{feat()}},
 		Notes:   "### Features\n\n- add the palette (abc1234)\n",
 	})
 	if !strings.Contains(got, "<details>\n<summary>Release notes preview</summary>") {
@@ -289,10 +289,10 @@ func TestRenderNoNotesBlockWhenEmpty(t *testing.T) {
 func TestRenderNeutralizesMarkupInTheCell(t *testing.T) {
 	got := Render(Input{
 		Current: "v1.0.0",
-		PR: Verdict{Level: gitmoji.BumpPatch, Next: "v1.0.1", Commits: []Commit{
-			{Code: ":zap:", Level: gitmoji.BumpPatch, Subject: "speed up </details><h1>OWNED</h1> the loop"},
-			{Code: ":bug:", Level: gitmoji.BumpPatch, Subject: `add a tracker <img src="https://evil.example/p.png">`},
-			{Code: ":bug:", Level: gitmoji.BumpPatch, Subject: "see [x](http://evil.example) and www.evil.example"},
+		PR: Verdict{Level: bump.LevelPatch, Next: "v1.0.1", Commits: []Commit{
+			{Sigil: "~", Level: bump.LevelPatch, Subject: "speed up </details><h1>OWNED</h1> the loop"},
+			{Sigil: "~", Level: bump.LevelPatch, Subject: `add a tracker <img src="https://evil.example/p.png">`},
+			{Sigil: "~", Level: bump.LevelPatch, Subject: "see [x](http://evil.example) and www.evil.example"},
 		}},
 		Notes: "## Fixes\n\n- ⚡️ speed up the loop (abc1234)\n",
 	})

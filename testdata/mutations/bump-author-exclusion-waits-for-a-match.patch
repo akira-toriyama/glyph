@@ -1,20 +1,20 @@
 diff --git a/internal/bump/sigilfold.go b/internal/bump/sigilfold.go
-index a5616b2..cfabfd9 100644
+index c0d265a..28917fe 100644
 --- a/internal/bump/sigilfold.go
 +++ b/internal/bump/sigilfold.go
-@@ -55,9 +55,6 @@ type SigilCommit struct {
- func FoldSigils(commits []SigilCommit, cfg *config.Config) (gitmoji.Bump, error) {
- 	levels := make([]gitmoji.Bump, 0, len(commits))
+@@ -83,9 +83,6 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Leve
+ 	levels := make([]Level, 0, len(commits))
+ 	var refusals []Refusal
  	for _, c := range commits {
 -		if slices.Contains(cfg.ExcludeAuthors, c.Author) {
 -			continue
 -		}
  		m, err := cfg.Match(c.Message)
  		if err != nil {
- 			return "", core.Lintf("commit %s: %v", c.SHA, err)
-@@ -65,6 +62,9 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) (gitmoji.Bump, error)
- 		if !m.Matched {
- 			return "", core.Lintf("commit %s matches none of the %d configured patterns; refusing to version the range (an unmatched commit folded as none would be a silent hole — fix the message, add a pattern, or exclude the author)", c.SHA, len(cfg.Patterns))
+ 			refusals = append(refusals, Refusal{SHA: c.SHA, Subject: firstLine(c.Message), Detail: err.Error()})
+@@ -95,6 +92,9 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Leve
+ 			refusals = append(refusals, Refusal{SHA: c.SHA, Subject: firstLine(c.Message), Detail: fmt.Sprintf("matches none of the %d configured patterns", len(cfg.Patterns))})
+ 			continue
  		}
 +		if slices.Contains(cfg.ExcludeAuthors, c.Author) {
 +			continue

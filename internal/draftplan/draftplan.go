@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/akira-toriyama/glyph/internal/bump"
-	"github.com/akira-toriyama/glyph/internal/gitmoji"
 )
 
 // PlaceholderTag is the tag name of the draft a none verdict maintains when
@@ -92,10 +91,10 @@ func managed(releases []Draft) []Draft {
 // Keep selection is v1's planDrafts unchanged: prefer the draft already
 // carrying the intended tag, else the first listed (GitHub lists newest
 // first); every other managed draft is stale.
-func PlanDraft(level gitmoji.Bump, nextTag string, draftOnNone bool, releases []Draft) Plan {
+func PlanDraft(level bump.Level, nextTag string, draftOnNone bool, releases []Draft) Plan {
 	drafts := managed(releases)
 
-	if level == gitmoji.BumpNone && !draftOnNone {
+	if level == bump.LevelNone && !draftOnNone {
 		if len(drafts) == 0 {
 			return Plan{Action: ActionNone}
 		}
@@ -103,7 +102,7 @@ func PlanDraft(level gitmoji.Bump, nextTag string, draftOnNone bool, releases []
 	}
 
 	tag := nextTag
-	if level == gitmoji.BumpNone {
+	if level == bump.LevelNone {
 		tag = PlaceholderTag
 	}
 

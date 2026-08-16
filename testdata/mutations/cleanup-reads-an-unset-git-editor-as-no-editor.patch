@@ -1,11 +1,13 @@
+diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
+index 6a622d4..9d52608 100644
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -117,7 +117,7 @@
+@@ -142,7 +142,7 @@ func hookCleanupMode(ctx context.Context) cleanup.Mode {
  	// An error is treated as unset on purpose: this is an advisory hook, and a
  	// git that cannot answer a config question is not a reason to refuse a lint.
  	configured, _, _ := gitsource.ConfigGet(ctx, ".", "commit.cleanup")
--	mode, known := parser.ResolveCleanupMode(configured, os.Getenv("GIT_EDITOR") != ":")
-+	mode, known := parser.ResolveCleanupMode(configured, os.Getenv("GIT_EDITOR") != "" && os.Getenv("GIT_EDITOR") != ":")
+-	mode, known := cleanup.ResolveMode(configured, os.Getenv("GIT_EDITOR") != ":")
++	mode, known := cleanup.ResolveMode(configured, os.Getenv("GIT_EDITOR") != "" && os.Getenv("GIT_EDITOR") != ":")
  	if !known {
  		// Warn, never fail. The installed hook forwards ONLY the lint gate code
  		// and waves every other non-zero through, so exiting here would trade a

@@ -1,14 +1,13 @@
 diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
-index dd6e4c3..a327574 100644
+index 6a622d4..740a131 100644
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -320,9 +320,6 @@ func lintRangeRun(ctx context.Context, revRange string, opts parser.LintOptions)
- 		return err
+@@ -266,7 +266,7 @@ func lintRangeRun(ctx context.Context, revRange string) error {
+ 			Details: findings,
+ 		}
  	}
- 	all, checked := lintRaws(raws, opts)
 -	if checked == 0 {
--		warnNothingLinted(revRange, len(raws))
--	}
- 	if len(all) == 0 {
- 		return nil
- 	}
++	if false && checked == 0 {
+ 		// The two causes need different sentences: an empty walk means the
+ 		// range holds no commits (the caller's range is what needs fixing),
+ 		// while a non-empty one means every commit was excluded.

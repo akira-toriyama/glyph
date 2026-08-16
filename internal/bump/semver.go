@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-
-	"github.com/akira-toriyama/glyph/internal/gitmoji"
 )
 
 // Version is a plain semver triple. House tags are exactly vX.Y.Z — no
@@ -64,13 +62,13 @@ func (v Version) Compare(o Version) int {
 // is meant to: the safety net is that glyph only ever writes a DRAFT, a human
 // presses Publish, and checkPublishedFloor refuses a version that is not
 // strictly above the highest published release.
-func (v Version) Next(level gitmoji.Bump) Version {
+func (v Version) Next(level Level) Version {
 	switch level {
-	case gitmoji.BumpMajor:
+	case LevelMajor:
 		return Version{Major: v.Major + 1}
-	case gitmoji.BumpMinor:
+	case LevelMinor:
 		return Version{Major: v.Major, Minor: v.Minor + 1}
-	case gitmoji.BumpPatch:
+	case LevelPatch:
 		return Version{Major: v.Major, Minor: v.Minor, Patch: v.Patch + 1}
 	default:
 		return v

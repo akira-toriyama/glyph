@@ -8,7 +8,7 @@ import (
 
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/gitsource"
-	"github.com/akira-toriyama/glyph/internal/parser"
+	"github.com/akira-toriyama/glyph/internal/hook"
 )
 
 // This file is `glyph hook pre-push`: the verdict a pre-push hook asks for.
@@ -172,10 +172,10 @@ func outgoingRevs(p pushRef, defaultBranch string, tips []string, have map[strin
 
 // prePushRun is the verdict. args is git's argv for the hook, forwarded
 // verbatim by the script.
-func prePushRun(ctx context.Context, args []string, opts parser.LintOptions) error {
+func prePushRun(ctx context.Context, args []string) error {
 	// Same reason as the commit-msg arm: the hook that called this is the one
 	// artefact nothing refreshes, and its own run is when the developer is here.
-	warnIfHookStale(ctx, profileKinds()[1])
+	warnIfHookStale(ctx, hook.Kinds()[1])
 
 	refs, err := parsePushRefs(in)
 	if err != nil {
@@ -249,7 +249,16 @@ func prePushRun(ctx context.Context, args []string, opts parser.LintOptions) err
 		}
 	}
 
-	findings, checked := lintRaws(raws, opts)
+	// The config is loaded only once there is something to judge: every early
+	// return above is a push with nothing a commit convention has an opinion
+	// about, and an uninitialized repository must keep pushing tags and
+	// deletes exactly as before (the hook's founding contract — only the
+	// violation code blocks).
+	cfg, cerr := loadConfig(ctx)
+	if cerr != nil {
+		return cerr
+	}
+	findings, checked := lintRaws(raws, cfg)
 	if checked == 0 {
 		// The two causes need different sentences, and reporting the first as the
 		// second is what the live-fire run caught: an empty walk means the remote
@@ -259,7 +268,7 @@ func prePushRun(ctx context.Context, args []string, opts parser.LintOptions) err
 			warnf("nothing linted: the remote already holds every commit this push carries")
 			return nil
 		}
-		warnf("nothing linted: all %d outgoing commit(s) are excluded from the convention (bots, merge commits, autosquash artifacts, raw git reverts)", len(raws))
+		warnf("nothing linted: all %d outgoing commit(s) are excluded from the convention (exclude_authors)", len(raws))
 		return nil
 	}
 	if len(findings) == 0 {
@@ -295,7 +304,7 @@ func prePushRun(ctx context.Context, args []string, opts parser.LintOptions) err
 func summariseFindings(fs []rangeViolation) string {
 	parts := make([]string, 0, len(fs))
 	for _, f := range fs {
-		parts = append(parts, fmt.Sprintf("%.7s %s", f.SHA, f.Rule))
+		parts = append(parts, fmt.Sprintf("%.7s %s", f.SHA, f.Detail))
 	}
 	return strings.Join(parts, "; ")
 }

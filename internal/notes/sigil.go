@@ -25,8 +25,8 @@ type SigilCommit struct {
 // text, rendered as they wrote it) and its fully rendered lines in commit
 // order.
 type SigilSection struct {
-	Title string
-	Lines []string
+	Title string   `json:"title"`
+	Lines []string `json:"lines"`
 }
 
 // varRE is the $xxx placeholder grammar of the line template. RE2 group
@@ -138,6 +138,15 @@ func renderLine(template string, c SigilCommit, groups map[string]string) string
 		rest = rest[loc[1]:]
 	}
 	return l.String()
+}
+
+// shortSHA abbreviates a full SHA to the conventional seven characters; an
+// already-short value passes through untouched.
+func shortSHA(s string) string {
+	if len(s) > 7 {
+		return s[:7]
+	}
+	return s
 }
 
 // RenderSigils draws v2 sections as Markdown, mirroring the v1 body shape:

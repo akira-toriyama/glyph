@@ -84,7 +84,7 @@ func TestReleaseRefusesABodyGitHubRejects(t *testing.T) {
 	t.Chdir(dir)
 	walk := map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha) + `]`,
-		pullCommitsPath(8):   `[` + apiCommit("b1", "akira-toriyama", ":bug: "+strings.Repeat("x", releaseBodyMaxChars+100)) + `]`,
+		pullCommitsPath(8):   `[` + apiCommit("b1", "akira-toriyama", ":bug:~ "+strings.Repeat("x", releaseBodyMaxChars+100)) + `]`,
 	}
 	srv := releaseServer(t, walk, `[]`, &writes)
 	usePR(t, srv)
@@ -108,7 +108,7 @@ func TestReleaseRefusesABodyGitHubRejects(t *testing.T) {
 func TestPreviewCommentStaysUnderTheCap(t *testing.T) {
 	dir := testRepoUntagged(t)
 	t.Chdir(dir)
-	body := `[` + apiCommit("aaa1111", "akira-toriyama", ":sparkles: "+strings.Repeat("y", commentBodyMaxChars+100)) + `]`
+	body := `[` + apiCommit("aaa1111", "akira-toriyama", ":sparkles:^ "+strings.Repeat("y", commentBodyMaxChars+100)) + `]`
 	usePR(t, prServer(t, 7, body))
 
 	code, stdout, stderr := runGlyph(t, "preview", "--pr", "7", "--notes")

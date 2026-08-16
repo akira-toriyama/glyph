@@ -1,13 +1,15 @@
 # glyph
 
-A gitmoji-driven release engine for squash-merge repositories: one Go binary
+A sigil-driven release engine for squash-merge repositories: one Go binary
 that **lints commit messages**, computes the **semantic-version bump**, renders
 **release notes**, and maintains a **rolling draft release** — all derived from
-the gitmoji that leads each commit.
+the version sigil each commit carries under the repository's own `glyph.toml`
+(`=` none / `~` patch / `^` minor / `!` major).
 
 ```sh
+glyph init --gemoji    # write the starting glyph.toml (or --conventional)
 # Squash-safe: reads the commits INSIDE the PR, which the squash would erase.
-glyph bump    --pr 7   # → v0.3.0   (a :sparkles: rides with a :white_check_mark:)
+glyph bump    --pr 7   # → v0.3.0   (a ^ rides with a =)
 glyph notes   --pr 7   # → the Markdown release body
 glyph preview --pr 7   # → the whole PR comment: what merging #7 does to the version
 ```
@@ -44,29 +46,27 @@ routes around commit text or stops one step short of it:
 So the squash-commit → PR hop is prior art. Reading **that PR's own commits** to
 type the release is the part nothing else does — and it is why glyph exists.
 
-Two things glyph does **not** claim as novel: the gitmoji vocabulary
-(`semantic-release-gitmoji` and python-semantic-release's `EmojiCommitParser`
-ship nearly the same `:boom:`/`:sparkles:`/`:bug:` mapping), and deferring the
-tag until a human publishes (any draft-based tool does that). What it does add
-beyond the second hop: a verdict that can be **no release at all** (release-drafter
-falls back to `patch` when nothing matches), and a walk that needs **no published
-release as a baseline**.
+Two things glyph does **not** claim as novel: pattern-driven commit parsing
+(git-cliff's `commit_parsers` are the direct ancestor of `[[patterns]]`), and
+deferring the tag until a human publishes (any draft-based tool does that).
+What it does add beyond the second hop: a verdict that can be **no release at
+all** — including refusing a range holding a commit no pattern claims, never
+folding it as a silent none — and a walk that needs **no published release as
+a baseline**.
 
 ## What it does
 
 | command | answer |
 |---|---|
-| `glyph lint` | commit-convention gate over `--range`, one `--message`, `--stdin`, or a PR title via `--pr` (the subject a squash merge lands); findings carry stable rule ids for machines (`--json`) |
-| `glyph fmt` | the corrected message, printed to paste — lint's mechanical fixes applied at once; a clean message prints unchanged, and a violation with no mechanical fix is a refusal at exit 3, never a best-effort line |
-| `glyph bump` | the next version — or **"no release"** — from `--range`, `--pr`, or the release-time walk `--since-tag` |
-| `glyph notes` | the release-notes body: commits grouped under their gitmoji's section, breaking changes hoisted |
+| `glyph init` | writes a starting `glyph.toml` (`--gemoji` or `--conventional`) — the file everything else reads; an existing file refuses without `--force` |
+| `glyph lint` | commit-convention gate over `--range`, one `--message`, `--stdin`, or a PR title via `--pr` (the subject a squash merge lands): does one of the repository's patterns claim the message, and does it yield a sigil? |
+| `glyph bump` | the next version — or **"no release"** — from `--range`, `--pr`, or the release-time walk `--since-tag`; a commit no pattern claims refuses the whole range |
+| `glyph notes` | the release-notes body: `[[note.sections]]` order, one line per commit through the `note.line` template |
 | `glyph release` | upserts one rolling **draft** release (tag, target, body — `--footer-file` appends a per-repo Markdown footer); publishing — and therefore the tag — stays a human act |
 | `glyph preview` | the whole merge-preview comment for a PR: what merging it does to the version, with the evidence; `--notes` folds the release-notes preview in |
 | `glyph doctor` | read-only checks that the repository still matches what glyph assumes; each failing check prints the command that fixes it |
 | `glyph hook install` | local `commit-msg` and `pre-push` hooks that run the same lint the CI gate runs |
-| `glyph rules` | the embedded gitmoji → semver table (`--md`, or `--json` for the raw `rules.json`); `--lint` lists every lint `rule` id with `merge_candidate_only` |
 | `glyph version` | the build identity — release tag, commit, build date; the one command that reaches nothing (no git, no API), so it answers anywhere |
-| `glyph init` | writes a `glyph.toml` preset (`--gemoji` or `--conventional`) — the v2 configuration, in which your own regex patterns decide the commit grammar and the named group `semver_sigil` (`=` none / `~` patch / `^` minor / `!` major) is the only input to version calculation; the v2 engine is under construction and today's commands do not read the file yet |
 
 `lint --range/--message/--stdin` and `fmt` work offline against local git
 alone. The PR and release-walk inputs (`--pr` — on `lint` as much as on
@@ -144,6 +144,12 @@ you. `glyph doctor` flags any unpinned reference it finds in your workflows.
 
 ## Getting started in your repository
 
+**0. Write the config everything reads:**
+
+```sh
+glyph init --gemoji     # or --conventional; edit the file freely afterwards
+```
+
 **1. Check the repository matches the model:**
 
 ```sh
@@ -152,7 +158,7 @@ glyph doctor            # read-only; --json for CI
 
 The release verdict rides on configuration glyph cannot see from inside a run:
 squash merging enabled, `squash_merge_commit_title` / `squash_merge_commit_message`
-still landing a classifiable gitmoji subject and the per-commit body on `main`,
+still landing the pull-request title as the squash subject on `main`,
 a credential that can read the repository, workflow pins on release tags, and
 the installed hooks (if any) written by *this* binary. When one of those drifts
 nothing goes red — the verdict is just computed over a repository that no
@@ -171,9 +177,7 @@ glyph hook install commit-msg      # or name the ones you want
 
 Two hooks, one gate. `commit-msg` runs `glyph lint --stdin` on the message being
 written. `pre-push` hands git's ref list to `glyph hook pre-push`, which lints the
-commits the push would add that the remote does not already have — the only place
-the merge-candidate rules can fire before CI, since a `:construction:` commit is
-legal mid-branch and illegal at the merge. It blocks **only** when the ref being
+commits the push would add that the remote does not already have. It blocks **only** when the ref being
 written is the remote's default branch; anywhere else it warns and lets the push
 through, because refusing a legal mid-branch commit makes the branch unpushable
 and the only escape is `--no-verify`, which turns the gate off entirely.
@@ -210,55 +214,39 @@ first release walks the whole history.
 
 ## Commit format
 
-```
-<:code:>[(<scope>)][!] <subject>
-```
-
-The leading gitmoji (textual form, e.g. `:sparkles:`) is the type; `!` (or a
-`BREAKING CHANGE:` footer, or `:boom:`) marks a breaking change. A removal code
-(`:fire:`/`:coffin:`/`:truck:`) must either carry `!` or a
-`NON-BREAKING: <why>` footer saying why nothing public goes away. Examples:
+Your `glyph.toml` decides. The shipped presets give you a starting grammar:
 
 ```
-:sparkles:(ui) add a right-click window menu            → minor
-:bug:(config) keep defaults when an unknown key present → patch
-:boom:(api)! replace --items flag with a positional arg → major
-:memo:(readme) document the bump model                  → no release
+<:code:>[(<scope>)]<sigil> <subject>     # --gemoji
+<type>[(<scope>)]<sigil>: <subject>      # --conventional
 ```
 
-The full gitmoji → semver mapping is the binary's embedded source of truth,
-self-printed by `glyph rules` — `--md` (the default) renders the same table as
-[`docs/gitmoji-table.md`](docs/gitmoji-table.md), and `--json` emits the
-embedded `rules.json` verbatim. Both name the gitmoji-spec snapshot they were
-pinned from.
-
-### The conventional profile
-
-A second grammar ships in the same binary, for repositories where a gitmoji
-vocabulary cannot be imposed (ratified 2026-08-16, DESIGN §2.2):
+The sigil is the version signal, and the only thing glyph interprets:
+`=` none / `~` patch / `^` minor / `!` major. The prefix (a gemoji, a
+conventional type, anything your pattern accepts) is for the reader and never
+decides the version. Examples under the gemoji preset:
 
 ```
-<type>[(<scope>)][!]: <subject>          # --profile=conventional
+:sparkles:(ui)^ add a right-click window menu            → minor
+:bug:(config)~ keep defaults when an unknown key present → patch
+:boom:(api)! replace --items flag with a positional arg  → major
+:memo:(readme)= document the bump model                  → no release
 ```
 
-The eleven Conventional Commits types (`feat fix perf revert docs style
-refactor test build ci chore`) carry their own embedded type → semver table —
-each row derived from its gitmoji counterpart (`feat` minors as `:sparkles:`
-does, `fix` patches as `:bug:` does) and self-printed by
-`glyph rules --profile=conventional` (the same table as
-[`docs/conventional-table.md`](docs/conventional-table.md)). Footer semantics,
-the release walk, the fold and the exit codes are shared: a `BREAKING CHANGE:`
-footer majors identically under both grammars, and there is no `:boom:`
-counterpart — breaking is `!` or the footer, exactly the two the Conventional
-spec defines.
+Under the conventional preset the sigil sits before the colon, so
+Conventional Commits' own `feat!:` reads as the major sigil unchanged
+(`feat^:` minors, `fix~:` patches, `chore=:` moves nothing) — and a
+sigil-less `feat:` is a violation: writing the version signal down is the
+point.
 
-The profile is a **flag, never a repo config file**: `--profile=conventional`
-on any command that reads rules, `glyph hook install --profile=conventional`
-to spell it into the git hooks it writes, and a `profile` input on all three
-reusable workflows (`with: profile: conventional`, beside the pin) — so the
-choice sits in the caller's own pinned file, reviewed like any pin move. The
-default is `gitmoji` everywhere; a repository that says nothing keeps meaning
-what it always meant.
+Everything is the pattern file's to change: `[[patterns]]` are ordered RE2
+regexes (first match wins) over the whole message, the named group
+`semver_sigil` carries the signal, a pattern-level `semver_sigil` key
+supplies one for messages that carry none (the presets make a raw
+`git revert` a patch), and `skip = true` drops a matching commit from every
+check (merge commits, autosquash artifacts). `exclude_authors` keeps bots
+out of lint and the fold; whether they appear in the notes is
+`[[note.sections]]`'s decision alone.
 
 ## Exit codes
 

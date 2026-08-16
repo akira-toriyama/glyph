@@ -13,7 +13,7 @@ import (
 // accepts the ERE unchanged, so this is the same matcher byte for byte —
 // TestGoldenGateGuardsTheGoldenFiles asserts the byte-for-byte part, so the two
 // copies cannot drift apart silently.
-const goldenPattern = `^(docs/gitmoji-table\.md$|.*/testdata/.*\.golden\..*$)`
+const goldenPattern = `^.*/testdata/.*\.golden\..*$`
 
 // TestGoldenGateGuardsTheGoldenFiles pins the gate that makes a golden rewrite
 // state its reason (t-3f4s): `go test -update` regenerates a golden from
@@ -84,8 +84,7 @@ func TestGoldenGatePatternCoversTheRealGoldens(t *testing.T) {
 	// no longer exist is a dead arm, and the gate has silently stopped covering
 	// what it was written for.
 	for _, path := range []string{
-		"docs/gitmoji-table.md",
-		"internal/notes/testdata/kitchen_sink.golden.md",
+		"internal/cli/testdata/release_dry_run.golden.md",
 		"internal/markdown/testdata/exported-surface.golden.txt",
 	} {
 		if _, err := os.Stat(filepath.Join("..", "..", filepath.FromSlash(path))); err != nil {

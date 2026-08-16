@@ -30,6 +30,16 @@ template = '''
 pattern = '^:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!]) (?P<subject>.+)'
 
 [[patterns]]
+# v1 acceptance (this repository's own pre-v2 history and the migration
+# window): a gitmoji subject with no sigil folds as none — lint passes, the
+# version does not move. The v1 breaking form (`:code:! subject`) is caught
+# by the strict pattern above, since v1's `!` sits exactly where the v2
+# major sigil does. Remove this block once the history behind the release
+# walk's base is all sigil-carrying (t-js8g).
+pattern = '^:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))? (?P<subject>.+)'
+semver_sigil = '='
+
+[[patterns]]
 # raw `git revert`
 pattern = '^Revert "(?P<subject>.+)"'
 semver_sigil = '~'

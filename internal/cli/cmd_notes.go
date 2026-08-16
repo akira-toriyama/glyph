@@ -3,8 +3,9 @@ package cli
 import (
 	"fmt"
 
+	"github.com/akira-toriyama/glyph/internal/config"
 	"github.com/akira-toriyama/glyph/internal/core"
-	"github.com/akira-toriyama/glyph/internal/gitmoji"
+	"github.com/akira-toriyama/glyph/internal/gitsource"
 	"github.com/akira-toriyama/glyph/internal/notes"
 	"github.com/spf13/cobra"
 )
@@ -20,19 +21,23 @@ var (
 // notesResult is the machine verdict: {sections, reason}. reason appears only
 // on an empty verdict — it explains why nothing rendered.
 type notesResult struct {
-	Sections []notes.Section `json:"sections"`
-	Reason   string          `json:"reason,omitempty"`
+	Sections []notes.SigilSection `json:"sections"`
+	Reason   string               `json:"reason,omitempty"`
 }
 
 func newNotesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "notes",
 		Short: "Render section-grouped release notes from a range of commits",
-		Long: "notes renders the release-notes body: every participating commit (bots,\n" +
-			"merges, autosquash artifacts and raw git reverts are excluded) groups under\n" +
-			"its gitmoji's section, breaking commits hoist into Breaking Changes, and\n" +
-			"sectionless commits stay out — though a none-bump removal (:fire:/:coffin:/\n" +
-			":truck:) still surfaces under Removals.\n" +
+		Long: "notes renders the release-notes body under the repository's glyph.toml:\n" +
+			"[[note.sections]] order is render order, each section filters on one axis\n" +
+			"(semver or author), a commit lands in EVERY section whose filter matches\n" +
+			"it, and each line renders through the note.line template ($xxx reads the\n" +
+			"winning pattern's named groups; $pr / $author / $hash are built in; a\n" +
+			"commit no pattern matches renders its raw first line as $subject).\n" +
+			"skip-pattern commits appear nowhere; exclude_authors appear wherever\n" +
+			"note.sections says they do — whether a commit is in the notes is the\n" +
+			"sections' decision alone.\n" +
 			"There are three input sources, exactly one of which is required.\n" +
 			"--range reads a local git revision range; --pr reads a pull request's\n" +
 			"INDIVIDUAL commits over the API, so a squash-merge cannot collapse them\n" +
@@ -60,49 +65,49 @@ func newNotesCmd() *cobra.Command {
 // number, the bare sha for a local range — and names the source for the reason
 // line. The notes twin of bumpInput, dispatching on whether a flag was set
 // rather than on its value.
-func notesInput(cmd *cobra.Command, table *gitmoji.Table) ([]notes.Commit, string, error) {
+func notesInput(cmd *cobra.Command, cfg *config.Config) ([]notes.SigilCommit, string, error) {
 	ctx := cmd.Context()
 	if cmd.Flags().Changed("pr") {
-		commits, source, err := pullInput(ctx, notesPR, notesRepo, grammarFor(table))
-		return withPull(commits, notesPR), source, err
+		raws, source, err := pullInput(ctx, notesPR, notesRepo)
+		return noteCommits(raws, notesPR), source, err
 	}
 	if cmd.Flags().Changed("since-tag") {
 		// The version base is bump's concern; the walk's facts are discarded for
 		// the reason spelled out at bump's own call site — notes REPORTS, and an
 		// incomplete walk already warns per cause on stderr. Nothing here writes
 		// back, so there is no irreversible act to gate.
-		commits, _, source, _, err := sinceTagInput(ctx, table, notesSinceTag, notesRepo)
-		return notesCommits(commits), source, err
+		commits, _, source, _, err := sinceTagInput(ctx, cfg, notesSinceTag, notesRepo)
+		return walkedNoteCommits(commits), source, err
 	}
 	if err := checkRangeFlag(notesRange); err != nil {
 		return nil, "", err
 	}
-	commits, err := participatingCommits(ctx, notesRange, grammarFor(table))
-	return withPull(commits, 0), notesRange, err
+	raws, err := gitsource.Log(ctx, ".", notesRange)
+	return noteCommits(raws, 0), notesRange, err
 }
 
 func notesRun(cmd *cobra.Command) error {
 	if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {
 		return err
 	}
-	table, err := loadRules()
+	cfg, err := loadConfig(cmd.Context())
 	if err != nil {
 		return err
 	}
-	commits, source, perr := notesInput(cmd, table)
+	commits, source, perr := notesInput(cmd, cfg)
 	if perr != nil {
 		return perr
 	}
 
-	sections, nerr := notes.Group(commits, table)
+	sections, nerr := notes.GroupSigils(commits, cfg)
 	if nerr != nil {
 		return nerr
 	}
 
 	if len(sections) == 0 {
-		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none is release-worthy", len(commits), source)
+		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section", len(commits), source)
 		if notesJSON {
-			printCompact(notesResult{Sections: []notes.Section{}, Reason: reason})
+			printCompact(notesResult{Sections: []notes.SigilSection{}, Reason: reason})
 			return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}
 		}
 		return core.NoReleasef("%s", reason)
@@ -112,10 +117,6 @@ func notesRun(cmd *cobra.Command) error {
 		printCompact(notesResult{Sections: sections})
 		return nil
 	}
-	md, rerr := notes.Render(sections)
-	if rerr != nil {
-		return rerr
-	}
-	fmt.Fprint(out, md)
+	fmt.Fprint(out, notes.RenderSigils(sections))
 	return nil
 }

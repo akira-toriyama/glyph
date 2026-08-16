@@ -13,10 +13,10 @@ import (
 // cleanup — must not present `subject\r` to the prefix rules.
 func TestFirstLine(t *testing.T) {
 	for name, tc := range map[string]struct{ in, want string }{
-		"LF subject and body":   {":bug: fix a crash\n\nBody.", ":bug: fix a crash"},
-		"CRLF subject and body": {"fixup! :bug: fix a crash\r\nBody.", "fixup! :bug: fix a crash"},
-		"lone trailing CR":      {":bug: fix a crash\r", ":bug: fix a crash"},
-		"single line":           {":bug: fix a crash", ":bug: fix a crash"},
+		"LF subject and body":   {":bug:~ fix a crash\n\nBody.", ":bug:~ fix a crash"},
+		"CRLF subject and body": {"fixup! :bug:~ fix a crash\r\nBody.", "fixup! :bug:~ fix a crash"},
+		"lone trailing CR":      {":bug:~ fix a crash\r", ":bug:~ fix a crash"},
+		"single line":           {":bug:~ fix a crash", ":bug:~ fix a crash"},
 		"empty message":         {"", ""},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -37,7 +37,7 @@ func TestFirstLine(t *testing.T) {
 func TestBumpRangeReturnsEveryViolation(t *testing.T) {
 	dir, base := testRepo(t)
 	testCommit(t, dir, "akira-toriyama", "no gitmoji one")
-	testCommit(t, dir, "akira-toriyama", ":bug: a fine commit rides along")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ a fine commit rides along")
 	testCommit(t, dir, "akira-toriyama", "no gitmoji two")
 	t.Chdir(dir)
 
@@ -58,13 +58,12 @@ func TestBumpRangeReturnsEveryViolation(t *testing.T) {
 		t.Fatalf("decoding details: %v\n%s", err, stderr)
 	}
 	if len(details) != 2 {
-		t.Fatalf("details carry %d finding(s), want 2 — every unparsable commit in one answer:\n%s", len(details), stderr)
+		t.Fatalf("details carry %d finding(s), want 2 — every unmatched commit in one answer:\n%s", len(details), stderr)
 	}
 	shas := map[string]bool{}
 	for _, d := range details {
-		if d.Rule != "malformed-subject" {
-			t.Errorf("finding carries rule %q, want malformed-subject — the walk's refusal now speaks "+
-				"lint's machine vocabulary", d.Rule)
+		if !strings.Contains(d.Detail, "matches none") {
+			t.Errorf("finding detail %q should name the pattern mismatch", d.Detail)
 		}
 		shas[d.SHA] = true
 	}
@@ -74,13 +73,12 @@ func TestBumpRangeReturnsEveryViolation(t *testing.T) {
 }
 
 // TestBumpRangeStaysLenientAboutAuthoringRules is the control that keeps the
-// accumulation from quietly strictening the walk — §2's ratified split: the
-// walk is lenient, authoring is strict. A commit that PARSES but violates the
-// authoring rules (uppercase subject, trailing period) must still classify and
-// bump; only a message the parser cannot read at all refuses the range.
+// accumulation from quietly strictening the walk — v2 has no taste: a subject
+// the pattern claims folds whatever its capitalization or punctuation; only a
+// message NO pattern claims refuses the range.
 func TestBumpRangeStaysLenientAboutAuthoringRules(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug: Fix The Crash.")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ Fix The Crash.")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")

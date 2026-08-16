@@ -10,7 +10,6 @@ import (
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/github"
 	"github.com/akira-toriyama/glyph/internal/gitsource"
-	"github.com/akira-toriyama/glyph/internal/parser"
 )
 
 // This file is the GitHub-side input plumbing — the remote twin of range.go. It
@@ -90,10 +89,13 @@ func newGitHub() *github.Client {
 	return github.New(token, opts...)
 }
 
-// pullInput resolves the repository, reads a pull request's individual commits,
-// and names the source for the reason line (owner/name#N). bump and notes share
-// it, so both read a pull request the same way.
-func pullInput(ctx context.Context, number int, repoFlag string, g parser.Grammar) ([]parser.Commit, string, error) {
+// pullInput resolves the repository, reads a pull request's individual
+// commits — the ones that exist BEFORE the squash rewrites them into a single
+// subject, which is the whole reason glyph exists — and names the source for
+// the reason line (owner/name#N). bump and notes share it, so both read a
+// pull request the same way; what the commits MEAN is the pattern file's
+// question, asked downstream.
+func pullInput(ctx context.Context, number int, repoFlag string) ([]gitsource.RawCommit, string, error) {
 	if err := checkPRFlag(number); err != nil {
 		return nil, "", err
 	}
@@ -101,21 +103,8 @@ func pullInput(ctx context.Context, number int, repoFlag string, g parser.Gramma
 	if err != nil {
 		return nil, "", err
 	}
-	commits, err := participatingPull(ctx, newGitHub(), owner, repo, number, g)
-	return commits, fmt.Sprintf("%s/%s#%d", owner, repo, number), err
-}
-
-// participatingPull reads a pull request's individual commits — the ones that
-// exist BEFORE the squash rewrites them into a single subject, which is the whole
-// reason glyph exists — and returns the participating ones, parsed. github.Commit
-// mirrors gitsource.RawCommit field-for-field by design, so both sources converge
-// on one participation walk rather than drifting apart.
-func participatingPull(ctx context.Context, c *github.Client, owner, repo string, number int, g parser.Grammar) ([]parser.Commit, error) {
-	raws, err := pullRawCommits(ctx, c, owner, repo, number)
-	if err != nil {
-		return nil, err
-	}
-	return participating(raws, g)
+	raws, err := pullRawCommits(ctx, newGitHub(), owner, repo, number)
+	return raws, fmt.Sprintf("%s/%s#%d", owner, repo, number), err
 }
 
 // pullRawCommits is the read half of participatingPull: the listing as GitHub

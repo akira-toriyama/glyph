@@ -260,7 +260,7 @@ func installCurrentHook(t *testing.T) {
 	if err := os.MkdirAll(".git/hooks", 0o750); err != nil {
 		t.Fatalf("mkdir hooks: %v", err)
 	}
-	if err := os.WriteFile(".git/hooks/commit-msg", []byte(hook.Kinds("")[0].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
+	if err := os.WriteFile(".git/hooks/commit-msg", []byte(hook.Kinds()[0].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
 		t.Fatalf("install hook: %v", err)
 	}
 }
@@ -813,8 +813,8 @@ func TestDoctorTakesNoPositionalArgs(t *testing.T) {
 func TestDoctorFindsAStaleInstalledHook(t *testing.T) {
 	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 	useDoctorCheckout(t, pinnedCaller)
-	stale := strings.Replace(hook.Kinds("")[0].Script, `-eq 3 `, `-eq 9 `, 1)
-	if stale == hook.Kinds("")[0].Script {
+	stale := strings.Replace(hook.Kinds()[0].Script, `-eq 3 `, `-eq 9 `, 1)
+	if stale == hook.Kinds()[0].Script {
 		t.Fatal("the stale-hook fixture no longer differs from the current commit-msg script — re-derive it")
 	}
 	writeHook(t, filepath.Join(".git", "hooks"), stale)
@@ -842,8 +842,8 @@ func TestDoctorHonoursCoreHooksPath(t *testing.T) {
 	testGit(t, ".", "akira-toriyama", "config", "core.hooksPath", "scripts/hooks")
 	// The decoy sits where the naive implementation would look. It is CURRENT,
 	// so a doctor reading it reports a pass — the exact wrong answer.
-	writeHook(t, filepath.Join(".git", "hooks"), hook.Kinds("")[0].Script)
-	writeHook(t, filepath.Join("scripts", "hooks"), strings.Replace(hook.Kinds("")[0].Script, `-eq 3 `, `-eq 9 `, 1))
+	writeHook(t, filepath.Join(".git", "hooks"), hook.Kinds()[0].Script)
+	writeHook(t, filepath.Join("scripts", "hooks"), strings.Replace(hook.Kinds()[0].Script, `-eq 3 `, `-eq 9 `, 1))
 
 	code, stdout, _ := runGlyph(t, "doctor")
 	if code != 3 {

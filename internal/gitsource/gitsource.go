@@ -197,6 +197,22 @@ func Head(ctx context.Context, dir string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// TopLevel returns the absolute path of the working tree's top level — where
+// glyph.toml lives, whatever subdirectory the command runs from. Asked of git
+// rather than walked by hand so worktrees and submodules get git's own
+// answer.
+func TopLevel(ctx context.Context, dir string) (string, error) {
+	out, err := run(ctx, dir, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", err
+	}
+	path := strings.TrimSpace(string(out))
+	if path == "" {
+		return "", core.APIf("git rev-parse --show-toplevel: empty result")
+	}
+	return path, nil
+}
+
 // HooksDir returns the directory git will look in for hooks, as a path relative
 // to dir (or absolute, when git reports one). It asks git rather than assuming
 // .git/hooks because core.hooksPath relocates them — the family's older repos

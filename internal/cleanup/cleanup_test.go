@@ -1,20 +1,20 @@
-package parser
+package cleanup
 
 import "testing"
 
 // The four modes as a commit-msg hook resolves them, named once so the tables
 // below read as the situations they are rather than as three booleans.
 var (
-	editedDefault  = CleanupMode{Space: true, Comments: true, Truncate: true} // git commit (an editor runs)
-	noEditorGiven  = CleanupMode{Space: true}                                 // git commit -m / -F
-	editedScissors = CleanupMode{Space: true, Truncate: true}                 // commit.cleanup=scissors + an editor
-	verbatimGiven  = CleanupMode{}                                            // commit.cleanup=verbatim, no editor
+	editedDefault  = Mode{Space: true, Comments: true, Truncate: true} // git commit (an editor runs)
+	noEditorGiven  = Mode{Space: true}                                 // git commit -m / -F
+	editedScissors = Mode{Space: true, Truncate: true}                 // commit.cleanup=scissors + an editor
+	verbatimGiven  = Mode{}                                            // commit.cleanup=verbatim, no editor
 )
 
 func TestCleanup(t *testing.T) {
 	tests := []struct {
 		name string
-		mode CleanupMode
+		mode Mode
 		in   string
 		want string
 	}{
@@ -146,8 +146,8 @@ func TestCleanup(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := Cleanup(tt.in, tt.mode); got != tt.want {
-				t.Errorf("Cleanup(%q, %+v)\n got %q\nwant %q", tt.in, tt.mode, got, tt.want)
+			if got := Apply(tt.in, tt.mode); got != tt.want {
+				t.Errorf("Apply(%q, %+v)\n got %q\nwant %q", tt.in, tt.mode, got, tt.want)
 			}
 		})
 	}
@@ -162,35 +162,35 @@ func TestResolveCleanupMode(t *testing.T) {
 		name       string
 		configured string
 		edited     bool
-		want       CleanupMode
+		want       Mode
 		wantKnown  bool
 	}{
 		{"unset + an editor is git's strip, and -v may have appended a diff",
-			"", true, CleanupMode{Space: true, Comments: true, Truncate: true}, true},
+			"", true, Mode{Space: true, Comments: true, Truncate: true}, true},
 		{"unset + no editor (-m / -F) is whitespace: comments are content, nothing is cut",
-			"", false, CleanupMode{Space: true}, true},
+			"", false, Mode{Space: true}, true},
 		{"an explicit 'default' reads exactly as unset",
-			"default", false, CleanupMode{Space: true}, true},
+			"default", false, Mode{Space: true}, true},
 		{"whitespace keeps comments even under an editor",
-			"whitespace", true, CleanupMode{Space: true, Truncate: true}, true},
+			"whitespace", true, Mode{Space: true, Truncate: true}, true},
 		{"strip drops comments even without an editor",
-			"strip", false, CleanupMode{Space: true, Comments: true}, true},
+			"strip", false, Mode{Space: true, Comments: true}, true},
 		{"scissors cuts only when a message is edited",
-			"scissors", true, CleanupMode{Space: true, Truncate: true}, true},
+			"scissors", true, Mode{Space: true, Truncate: true}, true},
 		{"scissors without an editor does not cut",
-			"scissors", false, CleanupMode{Space: true}, true},
+			"scissors", false, Mode{Space: true}, true},
 		{"verbatim cleans nothing, but -v still truncates",
-			"verbatim", true, CleanupMode{Truncate: true}, true},
+			"verbatim", true, Mode{Truncate: true}, true},
 		{"verbatim without an editor is the identity",
-			"verbatim", false, CleanupMode{}, true},
+			"verbatim", false, Mode{}, true},
 		{"an unknown mode falls back to default and says so",
-			"stirp", true, CleanupMode{Space: true, Comments: true, Truncate: true}, false},
+			"stirp", true, Mode{Space: true, Comments: true, Truncate: true}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, known := ResolveCleanupMode(tt.configured, tt.edited)
+			got, known := ResolveMode(tt.configured, tt.edited)
 			if got != tt.want || known != tt.wantKnown {
-				t.Errorf("ResolveCleanupMode(%q, %v) = %+v, %v; want %+v, %v",
+				t.Errorf("ResolveMode(%q, %v) = %+v, %v; want %+v, %v",
 					tt.configured, tt.edited, got, known, tt.want, tt.wantKnown)
 			}
 		})
@@ -202,7 +202,7 @@ func TestResolveCleanupMode(t *testing.T) {
 // project chose to start with '#'. This test documents the boundary by pinning
 // what Cleanup would destroy if it were ever applied there.
 func TestCleanupIsNotSafeForAlreadyCleanedMessages(t *testing.T) {
-	if got := Cleanup("#42 was the culprit\n", editedDefault); got != "" {
+	if got := Apply("#42 was the culprit\n", editedDefault); got != "" {
 		t.Errorf("expected a '#'-leading line to be treated as a comment, got %q", got)
 	}
 }

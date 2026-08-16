@@ -7,7 +7,6 @@ import (
 
 	"github.com/akira-toriyama/glyph/internal/config"
 	"github.com/akira-toriyama/glyph/internal/core"
-	"github.com/akira-toriyama/glyph/internal/gitmoji"
 )
 
 // sigilConfig is the ratified `glyph init --gemoji` shape, reduced to what
@@ -38,12 +37,12 @@ skip = true
 func TestSigilLevel(t *testing.T) {
 	cases := []struct {
 		sigil config.Sigil
-		want  gitmoji.Bump
+		want  Level
 	}{
-		{config.SigilNone, gitmoji.BumpNone},
-		{config.SigilPatch, gitmoji.BumpPatch},
-		{config.SigilMinor, gitmoji.BumpMinor},
-		{config.SigilMajor, gitmoji.BumpMajor},
+		{config.SigilNone, LevelNone},
+		{config.SigilPatch, LevelPatch},
+		{config.SigilMinor, LevelMinor},
+		{config.SigilMajor, LevelMajor},
 	}
 	for _, c := range cases {
 		if got := SigilLevel(c.sigil); got != c.want {
@@ -57,37 +56,37 @@ func TestFoldSigils(t *testing.T) {
 	cases := []struct {
 		name    string
 		commits []SigilCommit
-		want    gitmoji.Bump
+		want    Level
 	}{
-		{"empty range is none", nil, gitmoji.BumpNone},
+		{"empty range is none", nil, LevelNone},
 		{"max wins over the lattice", []SigilCommit{
 			{SHA: "a", Author: "akira", Message: ":memo:= reword"},
 			{SHA: "b", Author: "akira", Message: ":sparkles:^ add"},
 			{SHA: "c", Author: "akira", Message: ":bug:~ fix"},
-		}, gitmoji.BumpMinor},
+		}, LevelMinor},
 		{"order cannot move the version", []SigilCommit{
 			{SHA: "c", Author: "akira", Message: ":bug:~ fix"},
 			{SHA: "b", Author: "akira", Message: ":sparkles:^ add"},
 			{SHA: "a", Author: "akira", Message: ":memo:= reword"},
-		}, gitmoji.BumpMinor},
+		}, LevelMinor},
 		{"major short-circuits nothing but still tops", []SigilCommit{
 			{SHA: "a", Author: "akira", Message: ":boom:! drop the flag"},
 			{SHA: "b", Author: "akira", Message: ":memo:= reword"},
-		}, gitmoji.BumpMajor},
+		}, LevelMajor},
 		{"fixed sigil folds like a captured one", []SigilCommit{
 			{SHA: "a", Author: "akira", Message: `Revert ":sparkles:^ add"`},
-		}, gitmoji.BumpPatch},
+		}, LevelPatch},
 		{"skip pattern leaves the fold", []SigilCommit{
 			{SHA: "a", Author: "akira", Message: "Merge pull request #1"},
 			{SHA: "b", Author: "akira", Message: ":bug:~ fix"},
-		}, gitmoji.BumpPatch},
+		}, LevelPatch},
 		{"all-none folds to none", []SigilCommit{
 			{SHA: "a", Author: "akira", Message: ":memo:= reword"},
-		}, gitmoji.BumpNone},
+		}, LevelNone},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := FoldSigils(c.commits, cfg)
+			_, got, err := FoldSigils(c.commits, cfg)
 			if err != nil {
 				t.Fatalf("FoldSigils: %v", err)
 			}
@@ -103,7 +102,7 @@ func TestFoldSigils(t *testing.T) {
 // verdict, never folds as a silent none.
 func TestFoldSigilsRefusesUnmatched(t *testing.T) {
 	cfg := sigilConfig(t)
-	_, err := FoldSigils([]SigilCommit{
+	_, _, err := FoldSigils([]SigilCommit{
 		{SHA: "aaa1", Author: "akira", Message: ":bug:~ fine"},
 		{SHA: "bbb2", Author: "akira", Message: "fix: wrong grammar entirely"},
 	}, cfg)
@@ -125,25 +124,25 @@ func TestFoldSigilsRefusesUnmatched(t *testing.T) {
 // is matched — a bot's unmatched message is not a range refusal.
 func TestFoldSigilsExcludesAuthorBeforeMatching(t *testing.T) {
 	cfg := sigilConfig(t)
-	got, err := FoldSigils([]SigilCommit{
+	_, got, err := FoldSigils([]SigilCommit{
 		{SHA: "a", Author: "dependabot[bot]", Message: "Bump golang.org/x/text from 0.1 to 0.2"},
 		{SHA: "b", Author: "akira", Message: ":bug:~ fix"},
 	}, cfg)
 	if err != nil {
 		t.Fatalf("FoldSigils refused a range over an excluded author's message: %v", err)
 	}
-	if got != gitmoji.BumpPatch {
+	if got != LevelPatch {
 		t.Errorf("FoldSigils = %v, want patch (bot commit contributes nothing)", got)
 	}
 	// The exclusion also silences a would-be level, not only a would-be error.
-	got, err = FoldSigils([]SigilCommit{
+	_, got, err = FoldSigils([]SigilCommit{
 		{SHA: "a", Author: "dependabot[bot]", Message: ":boom:! bot claims a major"},
 		{SHA: "b", Author: "akira", Message: ":memo:= reword"},
 	}, cfg)
 	if err != nil {
 		t.Fatalf("FoldSigils: %v", err)
 	}
-	if got != gitmoji.BumpNone {
+	if got != LevelNone {
 		t.Errorf("FoldSigils = %v, want none (excluded author cannot move the version)", got)
 	}
 }
@@ -153,7 +152,7 @@ func TestFoldSigilsPropagatesConfigBug(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	_, err = FoldSigils([]SigilCommit{{SHA: "abc3", Author: "akira", Message: "z captured outside the alphabet"}}, cfg)
+	_, _, err = FoldSigils([]SigilCommit{{SHA: "abc3", Author: "akira", Message: "z captured outside the alphabet"}}, cfg)
 	if err == nil {
 		t.Fatalf("FoldSigils accepted an unparseable sigil capture")
 	}

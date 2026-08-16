@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/internal/config"
+	"github.com/akira-toriyama/glyph/internal/testutil"
 )
 
 // TestHookVerdictMatchesWhatGitRecords is the whole point of the hook: the
@@ -50,33 +53,32 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 			name: "-F: a leading '#' line is the subject git records",
 			// No editor ⇒ cleanup=whitespace ⇒ comments are content. glyph used
 			// to drop the line and lint the one below it: hook 0, CI 3.
-			message: "# reminder from my notes\n:sparkles:(x) add the thing\n",
+			message: "# reminder from my notes\n:sparkles:(x)^ add the thing\n",
 			want:    3,
 		},
 		{
-			name: "-F: an indented comment keeps a footer out of the trailer block",
-			// git only drops a '#' at column 0. Dropping this one closed the gap
-			// above NON-BREAKING:, making it a trailer at the hook and prose in
-			// CI: hook 0, CI 3 (undeclared-removal).
-			message: ":fire:(x) drop the thing\n\n  # why: leftover note here\nNON-BREAKING: it was dead\n",
-			want:    3,
+			name: "-F: an indented comment is content in both readings",
+			// git only drops a '#' at column 0; this one stays in the body,
+			// which v2 never reads — the subject matches either way.
+			message: ":fire:(x)= drop the thing\n\n  # why: leftover note here\n",
+			want:    0,
 		},
 		{
 			name:    "-F under commit.cleanup=strip: comments really are dropped",
 			config:  [][2]string{{"commit.cleanup", "strip"}},
-			message: "# a note git will drop\n:bug:(x) fix the thing\n",
+			message: "# a note git will drop\n:bug:(x)~ fix the thing\n",
 			want:    0,
 		},
 		{
 			name:    "-F under commit.cleanup=verbatim: git records the bytes as written",
 			config:  [][2]string{{"commit.cleanup", "verbatim"}},
-			message: ":bug:(x) fix the thing.  \n",
-			want:    3, // trailing-period, in both readings
+			message: "# a note git records under verbatim\n:bug:(x)~ fix the thing\n",
+			want:    3, // the '#' line survives, so no pattern claims the message
 		},
 		{
 			name:    "an editor runs: the template is not the message",
 			editor:  true,
-			message: ":sparkles:(x) add the thing\n",
+			message: ":sparkles:(x)^ add the thing\n",
 			want:    0,
 		},
 		{
@@ -88,7 +90,7 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 			// --no-verify.
 			editor:  true,
 			below:   true,
-			message: ":sparkles:(x) add the thing\n",
+			message: ":sparkles:(x)^ add the thing\n",
 			want:    0,
 		},
 		{
@@ -97,7 +99,7 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 			// were not cut, the NON-BREAKING: footer would stop being a trailer.
 			editor:  true,
 			verbose: true,
-			message: ":fire:(x) drop the thing\n\nNON-BREAKING: it was dead\n",
+			message: ":fire:(x)= drop the thing\n\nwhy: it was dead\n",
 			want:    0,
 		},
 	}
@@ -106,7 +108,12 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			testGit(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
-			testGit(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "-m", ":tada: begin the project")
+			preset, _ := config.Preset("gemoji")
+			if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), preset, 0o644); err != nil {
+				t.Fatalf("write glyph.toml: %v", err)
+			}
+			testGit(t, dir, "akira-toriyama", "add", "glyph.toml")
+			testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= begin the project")
 			for _, kv := range tc.config {
 				testGit(t, dir, "akira-toriyama", "config", kv[0], kv[1])
 			}
@@ -219,7 +226,8 @@ func unsetEnv(t *testing.T, key string) {
 // TestLintMessageClean: a convention-clean message is a silent success — no
 // payload, exit 0 (Rule of Silence).
 func TestLintMessageClean(t *testing.T) {
-	code, stdout, _ := runGlyph(t, "lint", "--message", ":bug: fix a crash")
+	t.Chdir(testutil.NewRepo(t))
+	code, stdout, _ := runGlyph(t, "lint", "--message", ":bug:~ fix a crash")
 	if code != 0 {
 		t.Fatalf("clean lint --message exited %d, want 0", code)
 	}
@@ -228,30 +236,13 @@ func TestLintMessageClean(t *testing.T) {
 	}
 }
 
-// TestLintMessageLegacyTokenHardErrors: the retired Conventional token is a
-// hard error at authoring time — v1.0.0's meaning is one grammar, zero
-// migration debt. Only the release walk over immutable history (which never
-// runs Lint) still tolerates it. The violation carries the ready-to-paste
-// canonical rewrite, so the fix is a copy, not an exegesis of the grammar.
-func TestLintMessageLegacyTokenHardErrors(t *testing.T) {
-	code, _, stderr := runGlyph(t, "lint", "--message", ":wrench: ci(hub): raise the zizmor gate")
-	if code != 3 {
-		t.Fatalf("legacy-format lint exited %d, want 3\nstderr: %s", code, stderr)
-	}
-	if !strings.Contains(stderr, "legacy-token") {
-		t.Fatalf("stderr does not carry the legacy-token rule id:\n%s", stderr)
-	}
-	if !strings.Contains(stderr, `:wrench:(hub) raise the zizmor gate`) {
-		t.Fatalf("stderr does not suggest the canonical rewrite:\n%s", stderr)
-	}
-}
-
 // TestLintMessageViolations: violations exit 3 with a structured stderr
 // envelope carrying the stable rule ids, keeping stdout pure. The envelope is
 // DECODED, not grepped — its keys ("error", "code", "details", "rule") are the
 // machine API the lint reusable's jq annotations branch on.
 func TestLintMessageViolations(t *testing.T) {
-	code, stdout, stderr := runGlyph(t, "lint", "--message", ":bug: Fix a crash.")
+	t.Chdir(testutil.NewRepo(t))
+	code, stdout, stderr := runGlyph(t, "lint", "--message", "Fix a crash without any pattern shape")
 	if code != 3 {
 		t.Fatalf("lint --message with violations exited %d, want 3", code)
 	}
@@ -263,36 +254,25 @@ func TestLintMessageViolations(t *testing.T) {
 		t.Fatalf("envelope code = %d, want 3 (the exit code, restated for jq)", env.Code)
 	}
 	var details []struct {
-		Rule string `json:"rule"`
+		Subject string `json:"subject"`
+		Detail  string `json:"detail"`
 	}
 	if err := json.Unmarshal(env.Details, &details); err != nil {
 		t.Fatalf("envelope details are not the violations array: %v\n%s", err, env.Details)
 	}
-	rules := make([]string, len(details))
-	for i, d := range details {
-		rules[i] = d.Rule
+	if len(details) != 1 || !strings.Contains(details[0].Detail, "matches none") {
+		t.Fatalf("details = %+v, want one pattern-mismatch finding", details)
 	}
-	if len(rules) != 2 || rules[0] != "uppercase-subject" || rules[1] != "trailing-period" {
-		t.Fatalf("violation rules = %v, want [uppercase-subject trailing-period] in stable order", rules)
-	}
-}
-
-// TestLintMessageUnknownCode: an unknown gitmoji is a violation against the
-// real embedded table — never a silent pass.
-func TestLintMessageUnknownCode(t *testing.T) {
-	code, _, stderr := runGlyph(t, "lint", "--message", ":not-a-real-code: fix a crash")
-	if code != 3 {
-		t.Fatalf("unknown code exited %d, want 3", code)
-	}
-	if !strings.Contains(stderr, "unknown-gitmoji") {
-		t.Fatalf("stderr envelope is missing unknown-gitmoji:\n%s", stderr)
+	if details[0].Subject != "Fix a crash without any pattern shape" {
+		t.Fatalf("finding must carry the subject, got %+v", details[0])
 	}
 }
 
 // TestLintStdin: --stdin reads the message from the input stream (the
-// commit-msg hook path) and stays authoring-mode — :construction: is legal.
+// commit-msg hook path) and stays authoring-mode — :construction:= is legal.
 func TestLintStdin(t *testing.T) {
-	setStdin(t, ":construction: try things\n")
+	t.Chdir(testutil.NewRepo(t))
+	setStdin(t, ":construction:= try things\n")
 	code, _, stderr := runGlyph(t, "lint", "--stdin")
 	if code != 0 {
 		t.Fatalf("lint --stdin exited %d, want 0 (WIP is legal at authoring time)\nstderr: %s", code, stderr)
@@ -301,13 +281,14 @@ func TestLintStdin(t *testing.T) {
 
 // TestLintStdinViolation: the stdin path still lints — a violation exits 3.
 func TestLintStdinViolation(t *testing.T) {
+	t.Chdir(testutil.NewRepo(t))
 	setStdin(t, "no gitmoji here\n")
 	code, _, stderr := runGlyph(t, "lint", "--stdin")
 	if code != 3 {
 		t.Fatalf("lint --stdin with a bad message exited %d, want 3", code)
 	}
-	if !strings.Contains(stderr, "malformed-subject") {
-		t.Fatalf("stderr envelope is missing malformed-subject:\n%s", stderr)
+	if !strings.Contains(stderr, "matches none") {
+		t.Fatalf("stderr envelope is missing the pattern-mismatch finding:\n%s", stderr)
 	}
 }
 
@@ -317,7 +298,7 @@ func TestLintModeFlagsAreExclusiveAndRequired(t *testing.T) {
 	if code, _, _ := runGlyph(t, "lint"); code != 2 {
 		t.Fatalf("lint with no mode exited %d, want 2", code)
 	}
-	if code, _, _ := runGlyph(t, "lint", "--message", ":bug: x", "--stdin"); code != 2 {
+	if code, _, _ := runGlyph(t, "lint", "--message", ":bug:~ x", "--stdin"); code != 2 {
 		t.Fatalf("lint with two modes exited %d, want 2", code)
 	}
 	if code, _, _ := runGlyph(t, "lint", "--pr", "7", "--range", "a..b"); code != 2 {
@@ -352,7 +333,7 @@ func apiOnePullBody(title, login string) string {
 // this way, each read by the release walk's fallback as a silent none.
 func TestLintPRTitle(t *testing.T) {
 	t.Run("clean title", func(t *testing.T) {
-		srv := walkServer(t, map[string]string{pullPath(7): apiOnePullBody(":bug:(lint) fix a crash", "akira-toriyama")})
+		srv := walkServer(t, map[string]string{pullPath(7): apiOnePullBody(":bug:(lint)~ fix a crash", "akira-toriyama")})
 		usePR(t, srv)
 		code, stdout, stderr := runGlyph(t, "lint", "--pr", "7")
 		if code != 0 {
@@ -373,7 +354,7 @@ func TestLintPRTitle(t *testing.T) {
 		if stdout != "" {
 			t.Fatalf("violations must go to stderr, stdout got %q", stdout)
 		}
-		if !strings.Contains(stderr, "::error::glyph: ") || !strings.Contains(stderr, "malformed-subject") {
+		if !strings.Contains(stderr, "::error::glyph: ") || !strings.Contains(stderr, "matches none") {
 			t.Fatalf("the finding must arrive as the binary's own ::error:: annotation:\n%s", stderr)
 		}
 		env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
@@ -381,24 +362,6 @@ func TestLintPRTitle(t *testing.T) {
 			t.Errorf("envelope carries code %d, want 3", env.Code)
 		}
 	})
-}
-
-// TestLintPRTitleIsAMergeCandidate pins WHICH rule set judges the title. The
-// title's destination is main — a squash merge records it as the landed
-// commit's subject — so the merge-candidate rules apply and :construction: is
-// a violation, exactly as it is for a commit in a --range. Judging it with the
-// authoring-time tolerance instead would bless a WIP marker the very gate that
-// exists to stop WIP on main could then do nothing about.
-func TestLintPRTitleIsAMergeCandidate(t *testing.T) {
-	srv := walkServer(t, map[string]string{pullPath(7): apiOnePullBody(":construction: try an idea", "akira-toriyama")})
-	usePR(t, srv)
-	code, _, stderr := runGlyph(t, "lint", "--pr", "7")
-	if code != 3 {
-		t.Fatalf("lint --pr with a :construction: title exited %d, want 3\nstderr: %s", code, stderr)
-	}
-	if !strings.Contains(stderr, "wip-merge-candidate") {
-		t.Fatalf("a WIP title headed for main must fail the merge-candidate rule:\n%s", stderr)
-	}
 }
 
 // TestLintPRTitleExcludesBots pins the exclusion side: the squash attributes
@@ -419,15 +382,15 @@ func TestLintPRTitleExcludesBots(t *testing.T) {
 }
 
 // TestLintRange: over a PR-shaped range the merge-candidate rules apply
-// (:construction: blocks), excluded commits (bots, autosquash) are skipped
+// (:construction:= blocks), excluded commits (bots, autosquash) are skipped
 // rather than failed, and each violation carries its commit SHA.
 func TestLintRange(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash")
-	testCommit(t, dir, "dependabot[bot]", "build(deps): bump a dep")   // bot: skipped
-	testCommit(t, dir, "akira-toriyama", "fixup! :bug: fix a crash")   // autosquash: skipped
-	testCommit(t, dir, "akira-toriyama", ":construction: try an idea") // WIP: violation here
-	testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")     // malformed: violation
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testCommit(t, dir, "dependabot[bot]", "build(deps): bump a dep")    // bot: skipped
+	testCommit(t, dir, "akira-toriyama", "fixup! :bug:~ fix a crash")   // autosquash: skipped
+	testCommit(t, dir, "akira-toriyama", ":construction:= try an idea") // WIP with a sigil: the author's call, clean
+	testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")      // unmatched: violation
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
@@ -437,10 +400,11 @@ func TestLintRange(t *testing.T) {
 	if stdout != "" {
 		t.Fatalf("violations must go to stderr, stdout got %q", stdout)
 	}
-	for _, want := range []string{"wip-merge-candidate", "malformed-subject"} {
-		if !strings.Contains(stderr, want) {
-			t.Fatalf("stderr envelope is missing %q:\n%s", want, stderr)
-		}
+	if !strings.Contains(stderr, "matches none") {
+		t.Fatalf("stderr envelope is missing the pattern-mismatch finding:\n%s", stderr)
+	}
+	if strings.Contains(stderr, "construction") {
+		t.Fatalf("a WIP commit carrying a sigil is the author's call, not a violation:\n%s", stderr)
 	}
 	if strings.Contains(stderr, "build(deps)") {
 		t.Fatalf("bot commit leaked into the violations:\n%s", stderr)
@@ -465,7 +429,7 @@ func TestLintRange(t *testing.T) {
 // test is what keeps that from happening quietly.
 func TestLintRangeAnnotatesEachFinding(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":construction: try an idea")
+	testCommit(t, dir, "akira-toriyama", "first without any pattern shape")
 	testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")
 	t.Chdir(dir)
 	wipSHA := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD~1")[:7]
@@ -500,8 +464,8 @@ func TestLintRangeAnnotatesEachFinding(t *testing.T) {
 			len(annotations), stderr)
 	}
 	for _, want := range []struct{ sha, rule string }{
-		{wipSHA, "wip-merge-candidate"},
-		{malformedSHA, "malformed-subject"},
+		{wipSHA, "matches none"},
+		{malformedSHA, "matches none"},
 	} {
 		anchored := false
 		for _, a := range annotations {
@@ -533,9 +497,9 @@ func TestLintRangeAnnotatesEachFinding(t *testing.T) {
 // TestLintRangeClean: a range of clean and skipped commits is a silent 0.
 func TestLintRangeClean(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	testCommit(t, dir, "dependabot[bot]", "build(deps): bump a dep")
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui) add a menu\n\nBody.\n\n---（和訳）\nメニュー。")
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu\n\nBody.\n\n---（和訳）\nメニュー。")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
@@ -622,67 +586,5 @@ func TestLintRangeUsageGuards(t *testing.T) {
 	}
 	if code, _, _ := runGlyph(t, "lint", "--range", "--all"); code != 2 {
 		t.Fatalf("lint --range --all exited %d, want 2", code)
-	}
-}
-
-// TestLintRangeAnnotationCarriesTheFix pins the fix's two delivery routes over
-// a range: the ::error:: annotation a human reads in the job summary, and the
-// envelope's `fix` key an agent applies. Both carry the SAME corrected line
-// parser.Lint computed — the annotation is not a second renderer of the
-// suggestion, which is how the jq reconstruction went stale (t-sws7).
-func TestLintRangeAnnotationCarriesTheFix(t *testing.T) {
-	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug: Fix the crash.")
-	t.Chdir(dir)
-
-	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
-	if code != 3 {
-		t.Fatalf("lint --range exited %d, want 3\nstderr: %s", code, stderr)
-	}
-	const want = ":bug: fix the crash"
-	if !strings.Contains(stderr, "fix: "+want) {
-		t.Errorf("the annotation does not carry the corrected line — a human in the job summary "+
-			"gets the finding but not the paste:\n%s", stderr)
-	}
-	env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
-	var details []rangeViolation
-	if err := json.Unmarshal(env.Details, &details); err != nil || len(details) == 0 {
-		t.Fatalf("decoding details: %v\n%s", err, stderr)
-	}
-	for _, d := range details {
-		if d.Fix != want {
-			t.Errorf("envelope finding %s carries fix %q, want %q — the machine half is where "+
-				"an agent reads it", d.Rule, d.Fix, want)
-		}
-	}
-}
-
-// TestLintMessageRenderedGitmojiResolvesThroughTheRealTable is the cli half of
-// the rendered-gitmoji finding: the reverse lookup is built from the embedded
-// table (authoringLintOptions), so a glyph the table knows resolves — with the
-// U+FE0F an emoji picker loves to append normalized away — and the fix that
-// comes back passes lint. A stub cannot prove this half; the table can drift
-// from no stub.
-func TestLintMessageRenderedGitmojiResolvesThroughTheRealTable(t *testing.T) {
-	code, _, stderr := runGlyph(t, "lint", "--message", "⚡️ speed up the fold")
-	if code != 3 {
-		t.Fatalf("lint --message with a rendered gitmoji exited %d, want 3\nstderr: %s", code, stderr)
-	}
-	if !strings.Contains(stderr, "rendered-gitmoji") || !strings.Contains(stderr, ":zap:") {
-		t.Fatalf("the finding must name the sharper rule and the textual code the glyph renders:\n%s", stderr)
-	}
-	env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
-	var details []struct {
-		Rule string `json:"rule"`
-		Fix  string `json:"fix"`
-	}
-	if err := json.Unmarshal(env.Details, &details); err != nil || len(details) != 1 {
-		t.Fatalf("decoding details: %v\n%s", err, stderr)
-	}
-	if details[0].Fix != ":zap: speed up the fold" {
-		t.Fatalf("fix = %q, want the corrected line", details[0].Fix)
-	}
-	if lintCode, _, _ := runGlyph(t, "lint", "--message", details[0].Fix); lintCode != 0 {
-		t.Fatalf("the fix the real table produced fails the real lint")
 	}
 }

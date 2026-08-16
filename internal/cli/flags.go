@@ -118,25 +118,3 @@ func checkExclusiveBool(cmd *cobra.Command, names ...string) error {
 	}
 	return nil
 }
-
-// checkDefaultModeOff rejects the default-bearing member of such a group being
-// turned explicitly OFF while nothing else is on.
-//
-// A mode flag whose default is the command's default behaviour has no
-// meaningful false: --md=false says "not the Markdown table", and with no other
-// format selected that names no output at all. Honouring it as "the default,
-// then" is the silent ignore; falling through to Markdown is what glyph did.
-func checkDefaultModeOff(cmd *cobra.Command, name, hint string, alternatives ...string) error {
-	f := cmd.Flags().Lookup(name)
-	if f == nil {
-		panic("checkDefaultModeOff: " + cmd.Name() + " has no --" + name + " flag")
-	}
-	if !f.Changed || f.Value.String() == "true" {
-		return nil
-	}
-	if len(turnedOn(cmd, alternatives...)) > 0 {
-		// Coherent: the caller declined the default and chose something else.
-		return nil
-	}
-	return core.Usagef("--%s=false selects nothing — %s", name, hint)
-}

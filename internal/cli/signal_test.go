@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/akira-toriyama/glyph/internal/testutil"
 )
 
 // These two tests are the only place the SIGNAL path of the shipped binary is
@@ -25,6 +27,9 @@ import (
 func startGlyph(t *testing.T, stdin *os.File, env []string, args ...string) *exec.Cmd {
 	t.Helper()
 	cmd := exec.Command(buildGlyph(t), args...)
+	// The v2 engine reads glyph.toml before the API call these tests block
+	// in, so the subprocess runs inside an initialized fixture repository.
+	cmd.Dir = testutil.NewRepo(t)
 	cmd.Stdin = stdin
 	cmd.Env = append(os.Environ(), env...)
 	if err := cmd.Start(); err != nil {

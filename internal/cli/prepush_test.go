@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/akira-toriyama/glyph/internal/config"
 	"github.com/akira-toriyama/glyph/internal/testutil"
 )
 
@@ -22,7 +24,12 @@ func testClone(t *testing.T) (work, remote string) {
 
 	seed := filepath.Join(root, "seed")
 	testutil.Git(t, root, "akira-toriyama", "init", "-q", "-b", "main", seed)
-	testutil.Commit(t, seed, "akira-toriyama", ":tada: begin the project")
+	preset, _ := config.Preset("gemoji")
+	if err := os.WriteFile(filepath.Join(seed, "glyph.toml"), preset, 0o644); err != nil {
+		t.Fatalf("write glyph.toml: %v", err)
+	}
+	testutil.Git(t, seed, "akira-toriyama", "add", "glyph.toml")
+	testutil.Git(t, seed, "akira-toriyama", "commit", "-q", "-m", ":tada:= begin the project")
 	testutil.Git(t, seed, "akira-toriyama", "remote", "add", "origin", remote)
 	testutil.Git(t, seed, "akira-toriyama", "push", "-q", "origin", "main")
 
@@ -96,7 +103,7 @@ func TestPrePushRangeExcludesWhatTheRemoteAlreadyHas(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("a topic branch must not block; exited %d\nstderr: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "the outgoing one") && !strings.Contains(stderr, "malformed-subject") {
+	if !strings.Contains(stderr, "matches none") {
 		t.Fatalf("the outgoing commit must be judged:\n%s", stderr)
 	}
 	if strings.Contains(stderr, "1 commit-convention violation(s)") == false {
@@ -106,7 +113,7 @@ func TestPrePushRangeExcludesWhatTheRemoteAlreadyHas(t *testing.T) {
 
 // TestPrePushWarnsOffTheDefaultBranchAndBlocksOnIt: the ratified severity fold.
 //
-// :construction: is legal mid-branch and illegal at the merge, so the rule
+// an unmatched message is a finding everywhere, but mid-branch it only warns, so the rule
 // fires either way and only the CONSEQUENCE moves. Blocking it on a topic
 // branch would make the branch unpushable, and the only escape is --no-verify,
 // which turns the whole gate off (DESIGN §2.1) — a strictly worse trade than a
@@ -115,14 +122,14 @@ func TestPrePushWarnsOffTheDefaultBranchAndBlocksOnIt(t *testing.T) {
 	work, _ := testClone(t)
 	t.Chdir(work)
 	testutil.Git(t, work, "akira-toriyama", "checkout", "-q", "-b", "topic")
-	testutil.Commit(t, work, "akira-toriyama", ":construction: try an idea")
+	testutil.Commit(t, work, "akira-toriyama", "wip try an idea with no pattern shape")
 	head := rev(t, work, "HEAD")
 
 	t.Run("topic branch warns", func(t *testing.T) {
 		setStdin(t, "refs/heads/topic "+head+" refs/heads/topic "+zeros+"\n")
 		code, _, stderr := runGlyph(t, "hook", "pre-push", "origin", "ignored")
 		if code != 0 {
-			t.Fatalf("a :construction: commit on a topic branch exited %d, want 0\nstderr: %s", code, stderr)
+			t.Fatalf("an unmatched commit on a topic branch exited %d, want 0 (mid-branch is warn-only)\nstderr: %s", code, stderr)
 		}
 		if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "commit-lint job will reject") {
 			t.Fatalf("the finding must still be reported, and say CI will act on it:\n%s", stderr)
@@ -133,10 +140,10 @@ func TestPrePushWarnsOffTheDefaultBranchAndBlocksOnIt(t *testing.T) {
 		setStdin(t, "refs/heads/topic "+head+" refs/heads/main "+rev(t, work, "origin/main")+"\n")
 		code, _, stderr := runGlyph(t, "hook", "pre-push", "origin", "ignored")
 		if code != 3 {
-			t.Fatalf("a :construction: commit reaching the default branch exited %d, want 3\nstderr: %s", code, stderr)
+			t.Fatalf("an unmatched commit reaching the default branch exited %d, want 3\nstderr: %s", code, stderr)
 		}
-		if !strings.Contains(stderr, "wip-merge-candidate") {
-			t.Fatalf("the blocking envelope must carry the rule id:\n%s", stderr)
+		if !strings.Contains(stderr, "matches none") {
+			t.Fatalf("the blocking envelope must carry the finding:\n%s", stderr)
 		}
 	})
 }
@@ -153,7 +160,7 @@ func TestPrePushDefaultBranchUnresolvedWarnsOnly(t *testing.T) {
 	t.Chdir(work)
 	testutil.Git(t, work, "akira-toriyama", "remote", "set-head", "origin", "--delete")
 	testutil.Git(t, work, "akira-toriyama", "checkout", "-q", "-b", "topic")
-	testutil.Commit(t, work, "akira-toriyama", ":construction: try an idea")
+	testutil.Commit(t, work, "akira-toriyama", "wip try an idea with no pattern shape")
 
 	setStdin(t, "refs/heads/topic "+rev(t, work, "HEAD")+" refs/heads/main "+rev(t, work, "origin/main")+"\n")
 	code, _, stderr := runGlyph(t, "hook", "pre-push", "origin", "ignored")
@@ -228,7 +235,7 @@ func TestPrePushMalformedProtocolIsNotALintFailure(t *testing.T) {
 
 // TestPrePushJudgesACommitTheRemoteHasElsewhereWhenItReachesTheDefaultBranch is
 // a live-fire regression: the first working version of this hook let a
-// :construction: commit onto main in silence.
+// unmatched commit onto main in silence.
 //
 // The commit had been pushed to a topic branch first, so the remote held it and
 // the tips exclusion — which exists to stop a branch re-judging everything it
@@ -240,7 +247,7 @@ func TestPrePushJudgesACommitTheRemoteHasElsewhereWhenItReachesTheDefaultBranch(
 	work, _ := testClone(t)
 	t.Chdir(work)
 	testutil.Git(t, work, "akira-toriyama", "checkout", "-q", "-b", "topic")
-	testutil.Commit(t, work, "akira-toriyama", ":construction: try an idea")
+	testutil.Commit(t, work, "akira-toriyama", "wip try an idea with no pattern shape")
 	// The remote now holds the commit — on another ref.
 	testutil.Git(t, work, "akira-toriyama", "push", "-q", "origin", "topic")
 	testutil.Git(t, work, "akira-toriyama", "fetch", "-q", "origin")
@@ -251,7 +258,7 @@ func TestPrePushJudgesACommitTheRemoteHasElsewhereWhenItReachesTheDefaultBranch(
 		t.Fatalf("a commit the remote holds on another ref still ARRIVES on the default branch; "+
 			"exited %d, want 3\nstderr: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "wip-merge-candidate") {
+	if !strings.Contains(stderr, "matches none") {
 		t.Fatalf("the blocking envelope must name the rule:\n%s", stderr)
 	}
 }
