@@ -380,7 +380,7 @@ func parseLog(out []byte) ([]RawCommit, error) {
 // where that ordering turned a Ctrl-C into a wrong answer about the repository.
 func interrupted(ctx context.Context) error {
 	if errors.Is(ctx.Err(), context.Canceled) {
-		return &core.Error{Code: core.CodeInterrupted, Msg: "interrupted", Silent: true}
+		return core.Interrupted()
 	}
 	return nil
 }
