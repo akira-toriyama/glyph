@@ -36,18 +36,22 @@ func TestLintGateAlsoJudgesTheSquashTitle(t *testing.T) {
 	}
 
 	// The read needs a token permission the range lint never did, in BOTH
-	// halves of this file: the executable grant (a reusable can only downgrade
-	// the caller's token) and the commented caller stub that fleet-sync's
-	// canonical copy is written from — a stub without the grant distributes a
-	// caller whose title step 403s on every private repository.
+	// halves of this file — and the two halves fail differently (measured in
+	// .github#186): drop it from the executable grant and the squash-title
+	// read 403s at runtime, because a reusable can only downgrade the
+	// caller's token; drop it from the commented caller stub and every caller
+	// written from it dies as startup_failure before any job starts, because
+	// the reusable now declares more than the caller grants.
 	if !strings.Contains(body, "pull-requests: read") {
-		t.Errorf("lint.yml's permissions no longer include pull-requests: read — the squash-title " +
-			"read 403s (exit 4, a loud infra failure on every pull request) the moment the " +
-			"caller's token is scoped down to match")
+		t.Errorf("lint.yml's permissions no longer include pull-requests: read — a reusable can " +
+			"only downgrade the caller's token, so the squash-title read 403s at runtime " +
+			"(exit 4, a loud infra failure on every pull request) even from a caller that " +
+			"still grants the permission")
 	}
 	if !strings.Contains(raw, "#     pull-requests: read") {
 		t.Errorf("the commented caller stub no longer grants pull-requests: read — the stub is " +
-			"what the fleet's canonical caller is written from, and a caller granting only " +
-			"contents: read hands this reusable a token whose title read 403s")
+			"what the fleet's canonical caller is written from, and a caller granting less " +
+			"than this reusable declares never reaches the title step: the run dies as " +
+			"startup_failure before any job starts (measured in .github#186)")
 	}
 }
