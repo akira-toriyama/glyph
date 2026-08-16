@@ -175,7 +175,7 @@ func callerGrants(body string) (map[string]string, bool) {
 	seen := false
 	block := -1      // indent of the key that opened a block scalar, or -1
 	permIndent := -1 // indent of an open permissions: mapping, or -1
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		if block >= 0 {
 			if strings.TrimSpace(line) == "" || indentOf(line) > block {
 				continue
