@@ -1,5 +1,5 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index b875d2c..a749097 100644
+index 511bf82..6d984b4 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
 @@ -163,10 +163,6 @@ func releaseRun(cmd *cobra.Command) error {
@@ -11,5 +11,5 @@ index b875d2c..a749097 100644
 -			source, facts.shortfall(owner, repoName))
 -	}
  
- 	commits, level, cerr := bump.FoldSigils(walkedSigilCommits(parsed), cfg)
+ 	commits, dec, cerr := bump.FoldSigils(walkedSigilCommits(parsed), cfg)
  	if cerr != nil {
