@@ -1,0 +1,17 @@
+diff --git a/internal/bump/semver.go b/internal/bump/semver.go
+index 40812c2..7925bc3 100644
+--- a/internal/bump/semver.go
++++ b/internal/bump/semver.go
+@@ -118,12 +118,6 @@ func (v Version) Compare(o Version) int {
+ // presses Publish, and checkPublishedFloor refuses a version that is not
+ // strictly above the highest published release.
+ func (v Version) Next(d Decision) Version {
+-	if d.Promote {
+-		if v.Major == 0 {
+-			return Version{Major: 1}
+-		}
+-		return Version{Major: v.Major + 1}
+-	}
+ 	switch d.Level {
+ 	case LevelMajor:
+ 		if v.Major == 0 {

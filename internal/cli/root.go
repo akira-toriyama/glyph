@@ -65,7 +65,8 @@ func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "glyph",
 		Short: "sigil-driven commit-lint, semver, and release notes for squash-merge repos",
-		Long: "glyph reads each commit's version sigil (= none / ~ patch / ^ minor / ! major)\n" +
+		Long: "glyph reads each commit's version sigil (= none / ~ patch / ^ minor / ! major /\n" +
+			"% promote to 1.0.0)\n" +
 			"under the repository's own glyph.toml — your regex patterns decide the\n" +
 			"grammar; the named group semver_sigil is the only input to version\n" +
 			"calculation — and derives the semantic-version bump and release notes from\n" +

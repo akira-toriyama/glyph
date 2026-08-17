@@ -210,6 +210,7 @@ func TestParseSigil(t *testing.T) {
 		{"~", SigilPatch},
 		{"^", SigilMinor},
 		{"!", SigilMajor},
+		{"%", SigilPromote},
 	}
 	for _, c := range cases {
 		got, err := ParseSigil(c.in)

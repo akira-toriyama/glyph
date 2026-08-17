@@ -412,10 +412,22 @@ and glyph no longer owns one. `internal/config/config.go: Pattern`,
 `internal/config/match.go: Match`
 
 **sigil** — the version signal a commit carries: `=` none / `~` patch /
-`^` minor / `!` major, read from the `semver_sigil` capture (or a pattern's
-fixed value). The alphabet and its meaning are fixed in the binary; where the
-sigil sits is the pattern's decision. `internal/config/config.go: Sigil`,
-`internal/bump/sigilfold.go: SigilLevel`
+`^` minor / `!` major / `%` promote, read from the `semver_sigil` capture (or
+a pattern's fixed value). The alphabet and its meaning are fixed in the
+binary; where the sigil sits is the pattern's decision.
+`internal/config/config.go: Sigil`, `internal/bump/sigilfold.go: SigilLevel`
+
+**promote** — what `%` asks for: the version `v1.0.0` rather than a distance
+from the current one. It is not a rung — a `%` commit classifies as *major*
+like any other breaking change, and the promotion is carried beside the
+lattice in `bump.Decision`, OR-folded so it stays order-independent. From 1.x
+it degrades to a plain major step. `internal/bump/level.go: Decision`
+
+**0.x clamp** — while the current major is 0, a major decision steps the
+MINOR (`v0.5.3` + `!` ⇒ `v0.6.0`). The one piece of arithmetic in glyph that
+depends on the version it starts from; classification never does, so the
+commit still reads *major* in every verdict, section and output.
+`internal/bump/semver.go: Version.Next`
 
 **bump lattice** — `none(0) < patch(1) < minor(2) < major(3)`, the fold's
 order. `internal/bump/level.go: Level, Reduce`

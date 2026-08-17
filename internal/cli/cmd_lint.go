@@ -30,7 +30,8 @@ func newLintCmd() *cobra.Command {
 		Short: "Lint commit messages against the repository's glyph.toml patterns",
 		Long: "lint checks commit messages against the repository's own glyph.toml: a\n" +
 			"message must match one of the file's patterns and yield a version sigil\n" +
-			"(= none / ~ patch / ^ minor / ! major) — or be claimed by a skip pattern.\n" +
+			"(= none / ~ patch / ^ minor / ! major / % promote) — or be claimed by a skip\n" +
+			"pattern.\n" +
 			"That is the whole check: which prefixes exist, where the sigil sits and\n" +
 			"what a subject looks like are the pattern file's decisions, and glyph has\n" +
 			"no opinion on combinations (a docs commit carrying ! is the author's call).\n" +

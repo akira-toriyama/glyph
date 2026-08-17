@@ -1,0 +1,12 @@
+diff --git a/internal/bump/sigilfold.go b/internal/bump/sigilfold.go
+index 8dd50c3..c8ac157 100644
+--- a/internal/bump/sigilfold.go
++++ b/internal/bump/sigilfold.go
+@@ -110,7 +110,6 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Deci
+ 			continue
+ 		}
+ 		level := SigilLevel(m.Sigil)
+-		promote = promote || m.Sigil == config.SigilPromote
+ 		levels = append(levels, level)
+ 		verdicts = append(verdicts, SigilVerdict{
+ 			SHA:     c.SHA,

@@ -108,12 +108,19 @@ func TestHeadlineNeverNamesADraft(t *testing.T) {
 
 // TestRenderMarkdown pins the whole body: marker first (the sticky comment is
 // found by it), headline, the evidence table, then the footer.
+//
+// The fixture is a PROMOTION, and it has to be: a 0.x repository reaching
+// v1.0.0 is now something only a '%' commit can do, so pairing v0.1.0 with a
+// v1.0.0 next over a plain '!' would pin a shape glyph can no longer compute.
+// It also exercises the row a promoting commit produces — sigil '%', level
+// major — which is what keeps it out of the default branch of every consumer
+// that switches on a level.
 func TestRenderMarkdown(t *testing.T) {
 	got := Render(Input{
 		Current: "v0.1.0",
 		PR: Verdict{Level: bump.LevelMajor, Next: "v1.0.0", Commits: []Commit{
 			{Sigil: "~", Level: bump.LevelPatch, Subject: "cook the noodles separately"},
-			{Sigil: "!", Level: bump.LevelMajor, Subject: "rebuild the broth soy-first"},
+			{Sigil: "%", Level: bump.LevelMajor, Subject: "rebuild the broth soy-first"},
 		}},
 		Pending: Verdict{Level: bump.LevelMinor, Next: "v0.2.0"},
 	})
@@ -123,7 +130,7 @@ func TestRenderMarkdown(t *testing.T) {
 | commit | sigil | bump |
 |---|---|---|
 | cook the noodles separately | ` + "`~`" + ` | patch |
-| rebuild the broth soy-first | ` + "`!`" + ` | major |
+| rebuild the broth soy-first | ` + "`%`" + ` | major |
 
 Computed from the 2 commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them — folded with what is already merged on the base branch since **v0.1.0**. Pushing more commits updates this comment.
 `

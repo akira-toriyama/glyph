@@ -1,9 +1,9 @@
 // Package config loads and validates glyph.toml — the v2 configuration in
 // which user-defined RE2 patterns decide the message grammar and the named
 // group semver_sigil is the only input to version calculation. The sigil
-// alphabet is fixed in the binary (= none / ~ patch / ^ minor / ! major);
-// everything else — where the sigil sits, what a subject looks like, which
-// commits are skipped — belongs to the file, not to glyph.
+// alphabet is fixed in the binary (= none / ~ patch / ^ minor / ! major /
+// % promote to 1.0.0); everything else — where the sigil sits, what a subject
+// looks like, which commits are skipped — belongs to the file, not to glyph.
 //
 // The package is pure: no I/O beyond LoadFile reading the one path it is
 // given, no globals. It is deliberately strict where the house config style
@@ -40,19 +40,28 @@ const Schema = 1
 // names cannot contain '-', which is why it is snake_case.
 const SigilGroup = "semver_sigil"
 
-// Sigil is one of the four version signals a commit can carry. The alphabet
+// Sigil is one of the five version signals a commit can carry. The alphabet
 // and its meaning are fixed in the binary and are not configurable.
+//
+// Four of them are relative — they say how far to step from wherever the
+// repository already is. SigilPromote is the one absolute signal: it names
+// the version v1.0.0 rather than a distance, and it exists because the 0.x
+// arithmetic has no other exit. While the major is 0 a '!' folds to a minor
+// step (see bump.Version.Next), so a repository still finding its shape can
+// break things without claiming a stable 1.0 — which leaves reaching 1.0.0
+// as something its author has to say, and '%' is how they say it.
 type Sigil rune
 
 const (
-	SigilNone  Sigil = '=' // no version movement
-	SigilPatch Sigil = '~'
-	SigilMinor Sigil = '^'
-	SigilMajor Sigil = '!'
+	SigilNone    Sigil = '=' // no version movement
+	SigilPatch   Sigil = '~'
+	SigilMinor   Sigil = '^'
+	SigilMajor   Sigil = '!'
+	SigilPromote Sigil = '%' // 0.x → 1.0.0; a major step at 1.x and above
 )
 
 // ParseSigil maps a captured semver_sigil group (or a pattern's fixed
-// semver_sigil key) to its Sigil. Anything but the four one-rune signals is
+// semver_sigil key) to its Sigil. Anything but the five one-rune signals is
 // an error — a pattern loose enough to capture something else is a config
 // bug, not a new kind of sigil.
 func ParseSigil(s string) (Sigil, error) {
@@ -65,8 +74,10 @@ func ParseSigil(s string) (Sigil, error) {
 		return SigilMinor, nil
 	case "!":
 		return SigilMajor, nil
+	case "%":
+		return SigilPromote, nil
 	}
-	return 0, fmt.Errorf("invalid semver_sigil %q: the alphabet is [=~^!]", s)
+	return 0, fmt.Errorf("invalid semver_sigil %q: the alphabet is [=~^!%%]", s)
 }
 
 func (s Sigil) String() string { return string(rune(s)) }

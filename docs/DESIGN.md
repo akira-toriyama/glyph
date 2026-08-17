@@ -67,13 +67,23 @@ repository's `glyph.toml` — written by `glyph init --gemoji` or
 RE2 `[[patterns]]`, and a commit message means whatever the first matching
 pattern says it means:
 
-- The named group **`semver_sigil`** must capture one of the four sigils —
-  `=` none / `~` patch / `^` minor / `!` major — the only input to version
-  calculation (§3). The alphabet is fixed in the binary; everything else
-  (where the sigil sits, what a prefix looks like, whether a scope exists) is
-  the pattern file's decision. RE2 means no lookahead and no backreferences,
-  stated in the presets' comments and here because it is the first thing a
-  regex author reaches for.
+- The named group **`semver_sigil`** must capture one of the five sigils —
+  `=` none / `~` patch / `^` minor / `!` major / `%` promote to 1.0.0 — the
+  only input to version calculation (§3). The alphabet is fixed in the binary;
+  everything else (where the sigil sits, what a prefix looks like, whether a
+  scope exists) is the pattern file's decision. RE2 means no lookahead and no
+  backreferences, stated in the presets' comments and here because it is the
+  first thing a regex author reaches for.
+  - v2 ratified an alphabet of exactly four, "fixed and unchangeable". **That
+    decision is superseded** (2026-08-17, task t-c01z): `%` is the fifth, and
+    it is fixed and unchangeable in the same way — a repository still cannot
+    invent a sigil or remap one. What changed is the count, and it changed
+    because the 0.x rule below closed the only exit those four had. Widening
+    the alphabet is a breaking change to every distributed `glyph.toml`, whose
+    patterns spell the class themselves: a config still reading `[=~^!]` does
+    not reject a `%` commit, it fails to MATCH it, which refuses the whole
+    range (exit 3). The presets ship `[=~^!%]`; existing files are a rollout
+    step, not an upgrade glyph performs.
 - A pattern may carry a fixed **`semver_sigil`** key — the sigil a match
   yields when the message captures none (the presets use it to make a raw
   `git revert` a patch) — or **`skip = true`**, which drops a matching commit
@@ -168,13 +178,50 @@ repository's mode. Same for `core.commentChar`: glyph assumes `#`.
 
 Lattice: `none(0) < patch(1) < minor(2) < major(3)`, owned by `internal/bump`
 (`Level`, `Reduce`). The sigil IS the classification: `=` none, `~` patch,
-`^` minor, `!` major — fixed in the binary beside the alphabet
+`^` minor, `!` major, `%` major — fixed in the binary beside the alphabet
 (`bump.SigilLevel`), not configurable, because a repository that could remap
 `!` to patch would make every pinned verdict unreadable from the file alone.
 
 **Combination across a range:** `Reduce` folds with max — order-independent
 and idempotent (fuzz-pinned), so squash order can never change the version.
 All-none ⇒ no release (exit 1).
+
+**Classification is version-blind; only the arithmetic is not.** This is the
+one split the 0.x rule rests on, and it is why the rule lives in
+`bump.Version.Next` and nowhere else:
+
+- While the current major is **0**, a major decision steps the **minor**
+  (`v0.5.3` + `!` ⇒ `v0.6.0`; mutation row
+  `semver-0x-major-still-jumps-to-1.0.0.patch`). Plain semver would answer
+  `v1.0.0` — the behaviour through v2 — which let a repository still finding
+  its shape claim a stable major by writing one `!`, and charged it a whole
+  major for every break after that. There is no config opt-out: a flag here
+  would make the same commit range mean two versions depending on a file that
+  nothing in the verdict shows.
+- **`%` promotes**: from any 0.x it lands exactly on `v1.0.0`, and from 1.x up
+  it is a plain major step (mutation row
+  `semver-promote-steps-instead-of-landing.patch`). It is the only door out of
+  0.x, which is the point — reaching 1.0 becomes something an author says,
+  not an accident of the third breaking change. The 1.x arm is not symmetry
+  for its own sake: a constant `v1.0.0` would sit at or below every published
+  1.x release and `checkPublishedFloor` would refuse the release outright
+  (exit 4).
+- In 0.x, `!` and `^` therefore produce the same version. That collapse is
+  accepted: `v0.y.z` has two moving digits and the lattice has three moving
+  rungs, so some pair must collapse, and the pair chosen keeps `~` distinct —
+  a fix and a break are the two a reader most needs to tell apart.
+
+**Promote is not a fifth rung.** `bump.Decision` carries `{Level, Promote}`,
+and a `%` commit classifies as **major** like any other breaking change; the
+promotion rides beside the lattice, OR-folded so it stays order-independent
+(mutation row `sigilfold-promote-is-dropped.patch`). A fifth `Level` word was
+rejected because `Level` is a closed four-word vocabulary that three consumers
+read as data and all three answer an unknown word by silently doing nothing:
+a `[[note.sections]]` `semver` filter (the promoting commit vanishes from the
+release body), `internal/preview`'s `rank`/`icon` (the pull request is told it
+"moves nothing" while the version moves), and `pr-verdict.yml`'s
+`[ "$level" = "major" ]` (`breaking` goes false fleet-wide). None of those is
+a failure anyone would see.
 
 **A non-excluded commit no pattern claims refuses the WHOLE range** (ratified
 Q2; mutation row `bump-unmatched-commit-folds-as-silent-none.patch`): folded

@@ -168,7 +168,7 @@ func releaseRun(cmd *cobra.Command) error {
 			source, facts.shortfall(owner, repoName))
 	}
 
-	commits, level, cerr := bump.FoldSigils(walkedSigilCommits(parsed), cfg)
+	commits, dec, cerr := bump.FoldSigils(walkedSigilCommits(parsed), cfg)
 	if cerr != nil {
 		return cerr
 	}
@@ -186,8 +186,8 @@ func releaseRun(cmd *cobra.Command) error {
 	if lerr != nil {
 		return lerr
 	}
-	if level == bump.LevelNone && !cfg.Note.DraftOnNone {
-		plan := draftplan.PlanDraft(level, "", false, planInput(releases))
+	if dec.Level == bump.LevelNone && !cfg.Note.DraftOnNone {
+		plan := draftplan.PlanDraft(dec.Level, "", false, planInput(releases))
 		return releaseNone(ctx, gh, owner, repoName, current, commits, facts, source, staleReleases(plan.Stale))
 	}
 
@@ -196,8 +196,8 @@ func releaseRun(cmd *cobra.Command) error {
 	// maintained none (draft_on_none — the flag's whole point is that a
 	// quiet merge keeps the door open instead of deleting the draft).
 	tagName := draftplan.PlaceholderTag
-	if level != bump.LevelNone {
-		tag := current.Next(level)
+	if dec.Level != bump.LevelNone {
+		tag := current.Next(dec)
 		if gerr := checkPublishedFloor(tag, releases); gerr != nil {
 			return gerr
 		}
@@ -234,31 +234,31 @@ func releaseRun(cmd *cobra.Command) error {
 		}
 	}
 
-	plan := draftplan.PlanDraft(level, tagName, cfg.Note.DraftOnNone, planInput(releases))
+	plan := draftplan.PlanDraft(dec.Level, tagName, cfg.Note.DraftOnNone, planInput(releases))
 	stale := staleReleases(plan.Stale)
 	result := releaseResult{
 		Current: current.String(),
-		Level:   string(level),
+		Level:   string(dec.Level),
 		Tag:     tagName,
 		Target:  target,
 		Body:    body,
 		Action:  string(plan.Action),
 		Commits: commits,
 		Pulls:   facts.Pulls,
-		Reason:  decidingReason(commits, level),
+		Reason:  decidingReason(commits, dec),
 	}
 
 	if releaseDryRun {
 		noticef("dry run: the upsert would %s the rolling draft %s at %s (%d stale draft(s) to delete)", plan.Action, tagName, target, len(stale))
 		if releaseJSON {
 			printCompact(result)
-			if level == bump.LevelNone {
+			if dec.Level == bump.LevelNone {
 				return &core.Error{Code: core.CodeNoRelease, Msg: result.Reason, Silent: true}
 			}
 			return nil
 		}
 		fmt.Fprintf(out, "%s\n\n%s", tagName, body)
-		if level == bump.LevelNone {
+		if dec.Level == bump.LevelNone {
 			return &core.Error{Code: core.CodeNoRelease, Msg: result.Reason, Silent: true}
 		}
 		return nil
@@ -289,13 +289,13 @@ func releaseRun(cmd *cobra.Command) error {
 	result.URL = rel.URL
 	if releaseJSON {
 		printCompact(result)
-		if level == bump.LevelNone {
+		if dec.Level == bump.LevelNone {
 			return &core.Error{Code: core.CodeNoRelease, Msg: result.Reason, Silent: true}
 		}
 		return nil
 	}
 	fmt.Fprintln(out, rel.URL)
-	if level == bump.LevelNone {
+	if dec.Level == bump.LevelNone {
 		// The placeholder is maintained and the run still reports "no release
 		// is due" — draft_on_none keeps a door open, it does not release.
 		return &core.Error{Code: core.CodeNoRelease, Msg: result.Reason, Silent: true}

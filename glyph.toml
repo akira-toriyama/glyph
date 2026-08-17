@@ -21,13 +21,16 @@ template = '''
 # The regexes glyph runs over the whole message (RE2 syntax — lookahead and
 # backreferences are unsupported). Top to bottom, the first pattern that
 # matches wins.
-# The named group `semver_sigil` must capture one of  = ~ ^ !
-#   = none / ~ patch / ^ minor / ! major
+# The named group `semver_sigil` must capture one of  = ~ ^ ! %
+#   = none / ~ patch / ^ minor / ! major / % promote to 1.0.0
+# While the version is still 0.x a `!` steps the MINOR (0.4.2 -> 0.5.0), so
+# breaking things early cannot accidentally claim a stable 1.0. `%` is the one
+# way out: it lands exactly on 1.0.0, and behaves as `!` from 1.x on.
 # A pattern-level `semver_sigil` key supplies a fixed value when the message
 # carries none. `skip = true` drops a matching commit from lint, bump and
 # notes entirely (a skipped commit is not a violation).
 [[patterns]]
-pattern = '^:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!]) (?P<subject>.+)'
+pattern = '^:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!%]) (?P<subject>.+)'
 
 [[patterns]]
 # v1 acceptance (this repository's own pre-v2 history and the migration

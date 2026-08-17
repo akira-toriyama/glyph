@@ -172,3 +172,25 @@ func TestRenderSigils(t *testing.T) {
 		t.Errorf("no sections must render to the empty string")
 	}
 }
+
+// TestGroupSigilsPromoteLandsInBreaking is the standing detector for the one
+// way a fifth level word could have been introduced without anything failing
+// to compile: a section filters on `semver = "major"`, and a promoting commit
+// that classified as anything else would simply not be written into the
+// release body — no error, no empty section, just a missing line in the notes
+// for the commit that decided the version.
+func TestGroupSigilsPromoteLandsInBreaking(t *testing.T) {
+	cfg := sigilCfg(t)
+	sections, err := GroupSigils([]SigilCommit{
+		{SHA: "aaaaaaaaaaaa", Pull: 20, Author: "akira", Message: ":rocket:% call it 1.0"},
+	}, cfg)
+	if err != nil {
+		t.Fatalf("GroupSigils: %v", err)
+	}
+	if len(sections) != 1 || sections[0].Title != "Breaking Changes" {
+		t.Fatalf("sections = %+v, want one Breaking Changes section", sections)
+	}
+	if len(sections[0].Lines) != 1 || !strings.Contains(sections[0].Lines[0], "call it 1.0") {
+		t.Fatalf("lines = %+v, want the promoting commit", sections[0].Lines)
+	}
+}

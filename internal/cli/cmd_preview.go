@@ -82,7 +82,7 @@ func previewRun(cmd *cobra.Command) error {
 	if perr != nil {
 		return perr
 	}
-	prCommits, prLevel, cerr := bump.FoldSigils(sigilCommits(raws), cfg)
+	prCommits, prDec, cerr := bump.FoldSigils(sigilCommits(raws), cfg)
 	if cerr != nil {
 		return cerr
 	}
@@ -108,7 +108,7 @@ func previewRun(cmd *cobra.Command) error {
 	// nothing merged-but-unreleased to fold in. Skip the walk; the PR's own
 	// verdict is the whole answer, and the body says why.
 	untagged := latestTag == ""
-	var pendingLevel bump.Level
+	var pendingDec bump.Decision
 	var pendingNext string
 	var pendingShort string
 	if !untagged {
@@ -128,12 +128,12 @@ func previewRun(cmd *cobra.Command) error {
 			}
 			pendingShort = facts.shortfall(owner, repo)
 		}
-		_, pendingLevel, cerr = bump.FoldSigils(walkedSigilCommits(pparsed), cfg)
+		_, pendingDec, cerr = bump.FoldSigils(walkedSigilCommits(pparsed), cfg)
 		if cerr != nil {
 			return cerr
 		}
-		if pendingLevel != bump.LevelNone {
-			pendingNext = current.Next(pendingLevel).String()
+		if pendingDec.Level != bump.LevelNone {
+			pendingNext = current.Next(pendingDec).String()
 		}
 	} else {
 		warnf("no v* release tag here — previewing this PR's own verdict only (the pending walk needs a release floor)")
@@ -142,13 +142,13 @@ func previewRun(cmd *cobra.Command) error {
 	in := preview.Input{
 		Current:  current.String(),
 		Untagged: untagged,
-		PR:       preview.Verdict{Level: prLevel, Commits: previewCommits(prCommits)},
-		Pending:  preview.Verdict{Level: pendingLevel, Next: pendingNext},
+		PR:       preview.Verdict{Level: prDec.Level, Commits: previewCommits(prCommits)},
+		Pending:  preview.Verdict{Level: pendingDec.Level, Next: pendingNext},
 
 		PendingShort: pendingShort,
 	}
-	if prLevel != bump.LevelNone {
-		in.PR.Next = current.Next(prLevel).String()
+	if prDec.Level != bump.LevelNone {
+		in.PR.Next = current.Next(prDec).String()
 	}
 	if previewNotes {
 		sections, gerr := notes.GroupSigils(noteCommits(raws, previewPR), cfg)
@@ -168,13 +168,13 @@ func previewRun(cmd *cobra.Command) error {
 		res := previewResult{
 			Current:  in.Current,
 			Untagged: untagged,
-			Level:    string(foldLevel(prLevel, pendingLevel)),
-			PR:       string(prLevel),
-			Pending:  string(orNone(pendingLevel)),
+			Level:    string(foldDecision(prDec, pendingDec).Level),
+			PR:       string(prDec.Level),
+			Pending:  string(orNone(pendingDec.Level)),
 			Body:     body,
 		}
-		if l := foldLevel(prLevel, pendingLevel); l != bump.LevelNone {
-			res.Next = current.Next(l).String()
+		if d := foldDecision(prDec, pendingDec); d.Level != bump.LevelNone {
+			res.Next = current.Next(d).String()
 		}
 		printCompact(res)
 		return nil
@@ -183,13 +183,15 @@ func previewRun(cmd *cobra.Command) error {
 	return nil
 }
 
-// foldLevel is the whole point of the command: the version this PR lands on is
-// the HIGHER of its own level and what is already pending, because both step
-// from the same tag. bump.Reduce owns the ordering — the same max-fold every
-// other verdict in glyph goes through, so preview cannot grow a second opinion
-// about which level wins.
-func foldLevel(a, b bump.Level) bump.Level {
-	return bump.Reduce([]bump.Level{orNone(a), orNone(b)})
+// foldDecision is the whole point of the command: the version this PR lands on
+// is the HIGHER of its own decision and what is already pending, because both
+// step from the same tag. bump.Decision.Merge owns the ordering — the same
+// max-fold every other verdict in glyph goes through, so preview cannot grow a
+// second opinion about which level wins, and a '%' on either side promotes the
+// preview exactly as it will promote the release.
+func foldDecision(a, b bump.Decision) bump.Decision {
+	a.Level, b.Level = orNone(a.Level), orNone(b.Level)
+	return a.Merge(b)
 }
 
 // orNone normalizes an uncomputed level. Bump's zero value is "" rather than

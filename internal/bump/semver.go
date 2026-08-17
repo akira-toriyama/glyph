@@ -94,16 +94,41 @@ func (v Version) Compare(o Version) int {
 	return 0
 }
 
-// Next steps the version by one bump level; none holds it still. A 0.x major
-// steps to 1.0.0 — plain semver, deliberately without a 0.x-keeps-0.x rule.
+// Next steps the version by one decision; none holds it still.
+//
+// This is the ONLY place in glyph where arithmetic depends on the version it
+// starts from, and the split is deliberate: classification never does. A
+// breaking commit is major everywhere — in the verdict rows, in the release
+// notes' Breaking Changes section, in pr-verdict's `breaking` output — and it
+// is only the step that shortens while the major is 0. Folding the 0.x rule
+// into the level instead would erase the commit's breakingness from every one
+// of those surfaces to say something about the version number.
+//
+// While the major is 0 a major decision steps the minor, so a repository that
+// has not committed to a shape can break things all it likes without ever
+// claiming 1.0. That leaves promote as the only door to 1.0.0, which is the
+// point — reaching 1.0 is an author's declaration, not an accident of the
+// third breaking change. Promote lands exactly on 1.0.0 from any 0.x; from
+// 1.x and above it is a plain major step, so it can never move the version
+// backwards or stall it (checkPublishedFloor would reject that anyway, and a
+// constant 1.0.0 would trip it on every repo that has already shipped 1.x).
 //
 // Nothing double-checks that arithmetic before a release goes out, and nothing
 // is meant to: the safety net is that glyph only ever writes a DRAFT, a human
 // presses Publish, and checkPublishedFloor refuses a version that is not
 // strictly above the highest published release.
-func (v Version) Next(level Level) Version {
-	switch level {
+func (v Version) Next(d Decision) Version {
+	if d.Promote {
+		if v.Major == 0 {
+			return Version{Major: 1}
+		}
+		return Version{Major: v.Major + 1}
+	}
+	switch d.Level {
 	case LevelMajor:
+		if v.Major == 0 {
+			return Version{Major: 0, Minor: v.Minor + 1}
+		}
 		return Version{Major: v.Major + 1}
 	case LevelMinor:
 		return Version{Major: v.Major, Minor: v.Minor + 1}

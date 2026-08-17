@@ -4,7 +4,7 @@ A sigil-driven release engine for squash-merge repositories: one Go binary
 that **lints commit messages**, computes the **semantic-version bump**, renders
 **release notes**, and maintains a **rolling draft release** — all derived from
 the version sigil each commit carries under the repository's own `glyph.toml`
-(`=` none / `~` patch / `^` minor / `!` major).
+(`=` none / `~` patch / `^` minor / `!` major / `%` promote to 1.0.0).
 
 ```sh
 glyph init --gemoji    # write the starting glyph.toml (or --conventional)
@@ -222,22 +222,33 @@ Your `glyph.toml` decides. The shipped presets give you a starting grammar:
 ```
 
 The sigil is the version signal, and the only thing glyph interprets:
-`=` none / `~` patch / `^` minor / `!` major. The prefix (a gemoji, a
-conventional type, anything your pattern accepts) is for the reader and never
-decides the version. Examples under the gemoji preset:
+`=` none / `~` patch / `^` minor / `!` major / `%` promote. The prefix (a
+gemoji, a conventional type, anything your pattern accepts) is for the reader
+and never decides the version. Examples under the gemoji preset:
 
 ```
 :sparkles:(ui)^ add a right-click window menu            → minor
 :bug:(config)~ keep defaults when an unknown key present → patch
 :boom:(api)! replace --items flag with a positional arg  → major
 :memo:(readme)= document the bump model                  → no release
+:rocket:% call it 1.0                                    → v1.0.0
 ```
+
+**Below 1.0, `!` does not reach 1.0.0.** While the version is `v0.y.z` a
+breaking change steps the minor (`v0.5.3` + `!` → `v0.6.0`), so a repository
+still finding its shape can break things without claiming a stable major.
+`%` is the only way across: it lands exactly on `v1.0.0`, and from 1.x on it
+is an ordinary major step (`v1.4.2` + `%` → `v2.0.0`). A `%` commit is still
+classified as breaking everywhere a level is published — the release notes'
+Breaking Changes section, the PR verdict, the JSON — because the rule shortens
+the *step*, not the meaning of the commit. One consequence worth expecting: in
+0.x, `!` and `^` land on the same version.
 
 Under the conventional preset the sigil sits before the colon, so
 Conventional Commits' own `feat!:` reads as the major sigil unchanged
-(`feat^:` minors, `fix~:` patches, `chore=:` moves nothing) — and a
-sigil-less `feat:` is a violation: writing the version signal down is the
-point.
+(`feat^:` minors, `fix~:` patches, `chore=:` moves nothing, `feat%:` promotes)
+— and a sigil-less `feat:` is a violation: writing the version signal down is
+the point.
 
 Everything is the pattern file's to change: `[[patterns]]` are ordered RE2
 regexes (first match wins) over the whole message, the named group

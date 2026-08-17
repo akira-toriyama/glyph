@@ -1215,8 +1215,11 @@ func TestSinceTagFreePrefixBangFallbackIsMajor(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
 		t.Fatalf("not JSON: %v\n%s", err, stdout)
 	}
-	if res.Level != "major" || res.Next != "v1.0.0" {
-		t.Fatalf("verdict = level %q next %q, want major → v1.0.0", res.Level, res.Next)
+	// major CLASSIFICATION, 0.x STEP: the repository is at v0.1.0, so the
+	// breaking commit steps the minor while still reading as major everywhere
+	// a level is published.
+	if res.Level != "major" || res.Next != "v0.2.0" {
+		t.Fatalf("verdict = level %q next %q, want major → v0.2.0", res.Level, res.Next)
 	}
 	if len(res.Commits) != 1 || res.Commits[0].Sigil != "!" {
 		t.Fatalf("commits = %+v, want the one ! commit", res.Commits)

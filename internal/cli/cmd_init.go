@@ -26,7 +26,8 @@ func newInitCmd() *cobra.Command {
 		Short: "Write a glyph.toml preset into the current directory",
 		Long: "init writes glyph.toml — the v2 configuration in which YOUR regex patterns\n" +
 			"decide the commit grammar and the named group semver_sigil (= none / ~ patch /\n" +
-			"^ minor / ! major) is the only input to version calculation.\n\n" +
+			"^ minor / ! major / % promote to 1.0.0) is the only input to version\n" +
+			"calculation.\n\n" +
 			"One preset flag is required (--" + strings.Join(names, ", --") + "); the file it\n" +
 			"writes is a starting point to edit, not a contract to keep. An existing\n" +
 			"glyph.toml is never touched without --force.",
