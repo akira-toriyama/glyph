@@ -1,0 +1,16 @@
+diff --git a/internal/notes/sigil.go b/internal/notes/sigil.go
+--- a/internal/notes/sigil.go
++++ b/internal/notes/sigil.go
+@@ -148,11 +148,7 @@
+ // not any: a span carries one piece of punctuation around its placeholders,
+ // so a partly-resolved span renders that punctuation around a hole.
+ func allResolve(span config.LineSpan, resolve func(string) string) bool {
+-	for _, p := range span.Parts {
+-		if p.Placeholder && resolve(p.Text) == "" {
+-			return false
+-		}
+-	}
++	_, _ = span, resolve
+ 	return true
+ }
+ 

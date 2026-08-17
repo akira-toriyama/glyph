@@ -1,7 +1,6 @@
 package notes
 
 import (
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -28,10 +27,6 @@ type SigilSection struct {
 	Title string   `json:"title"`
 	Lines []string `json:"lines"`
 }
-
-// varRE is the $xxx placeholder grammar of the line template. RE2 group
-// names share it, which is what makes "a placeholder is a group name" hold.
-var varRE = regexp.MustCompile(`\$[a-z_][a-z0-9_]*`)
 
 // GroupSigils maps commits onto the config's [[note.sections]], in the
 // config's order — order is render order, and a commit lands in EVERY
@@ -76,7 +71,7 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
 			first, _, _ := strings.Cut(c.Message, "\n")
 			groups = map[string]string{"subject": first}
 		}
-		j.line = renderLine(cfg.Note.Line, c, groups)
+		j.line = renderLine(cfg.Note.Spans, c, groups)
 		js = append(js, j)
 	}
 
@@ -110,34 +105,55 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
 // The built-ins $pr / $author / $hash are reserved: they win over a pattern
 // group of the same name. A placeholder that is neither built-in nor a group
 // of the winning pattern renders empty.
-func renderLine(template string, c SigilCommit, groups map[string]string) string {
+//
+// An optional span drops WITH its literal text when any placeholder inside it
+// resolves empty. That is the whole point of the span: $pr is empty for every
+// commit under --range and for every direct push under --since-tag, and the
+// shipped presets rendered the parens the author wrote around it regardless:
+// the line "- add the demo feature () @akira-toriyama" is what a release body
+// carried, measured live before this existed.
+func renderLine(spans []config.LineSpan, c SigilCommit, groups map[string]string) string {
 	builtins := map[string]string{
-		"pr":     "",
-		"author": c.Author,
-		"hash":   shortSHA(c.SHA),
+		config.BuiltinPR:     "",
+		config.BuiltinAuthor: c.Author,
+		config.BuiltinHash:   shortSHA(c.SHA),
 	}
 	if c.Pull > 0 {
-		builtins["pr"] = "#" + strconv.Itoa(c.Pull)
+		builtins[config.BuiltinPR] = "#" + strconv.Itoa(c.Pull)
+	}
+	resolve := func(name string) string {
+		if v, ok := builtins[name]; ok {
+			return v
+		}
+		return groups[name]
 	}
 
 	var l markdown.Line
-	rest := template
-	for {
-		loc := varRE.FindStringIndex(rest)
-		if loc == nil {
-			l.Raw(rest)
-			break
+	for _, span := range spans {
+		if span.Optional && !allResolve(span, resolve) {
+			continue
 		}
-		l.Raw(rest[:loc[0]])
-		name := rest[loc[0]+1 : loc[1]]
-		if v, ok := builtins[name]; ok {
-			l.Prose(v)
-		} else {
-			l.Prose(groups[name])
+		for _, p := range span.Parts {
+			if p.Placeholder {
+				l.Prose(resolve(p.Text))
+			} else {
+				l.Raw(p.Text)
+			}
 		}
-		rest = rest[loc[1]:]
 	}
 	return l.String()
+}
+
+// allResolve says whether every placeholder in the span has a value. EVERY,
+// not any: a span carries one piece of punctuation around its placeholders,
+// so a partly-resolved span renders that punctuation around a hole.
+func allResolve(span config.LineSpan, resolve func(string) string) bool {
+	for _, p := range span.Parts {
+		if p.Placeholder && resolve(p.Text) == "" {
+			return false
+		}
+	}
+	return true
 }
 
 // shortSHA abbreviates a full SHA to the conventional seven characters; an

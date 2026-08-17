@@ -56,7 +56,13 @@ skip = true
 # One line per commit. $xxx reads the winning pattern's named groups;
 # $pr / $author / $hash are built in. A commit no pattern matches (bots)
 # falls back to its raw first line.
-line = '- $subject ($pr) @$author'
+#
+# $[ ... ] is an optional span: it renders only when EVERY $xxx inside it
+# resolves to something, and takes its own punctuation with it when one does
+# not. $pr is empty for every commit that reached main without a merged pull,
+# which is every commit under --range — so the parens below sit inside a span.
+# Written outside one they shipped as a bare `()` in the release body.
+line = '- $subject$[ ($pr)] @$author'
 
 # Keep an "Unreleased" placeholder draft alive across merges that do not
 # move the version (false = no draft until something does).

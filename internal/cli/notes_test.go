@@ -10,6 +10,13 @@ import (
 // section order the config declares, a major landing in Breaking Changes, a
 // none commit landing nowhere (no none-section is configured), and the
 // note.line template rendered with the mention fence over the author.
+//
+// Every commit here reached main without a merged pull — which is EVERY
+// commit under --range, since the range walk resolves no pulls at all — so
+// this is the empty arm of the preset's optional span, byte-exact: no `()`,
+// and no double space where the span used to sit. The populated arm is
+// TestReleaseDryRunGolden, whose two lines both carry `(#N)`; break the span
+// in either direction and one of the two fails.
 func TestNotesMarkdown(t *testing.T) {
 	dir, base := testRepo(t)
 	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a command palette")
@@ -23,11 +30,11 @@ func TestNotesMarkdown(t *testing.T) {
 		t.Fatalf("notes exited %d, want 0\nstderr: %s", code, stderr)
 	}
 	want := "## Breaking Changes\n\n" +
-		"- rework the store () `@akira-toriyama`\n\n" +
+		"- rework the store `@akira-toriyama`\n\n" +
 		"## Features\n\n" +
-		"- add a command palette () `@akira-toriyama`\n\n" +
+		"- add a command palette `@akira-toriyama`\n\n" +
 		"## Fixes\n\n" +
-		"- fix a crash () `@akira-toriyama`\n"
+		"- fix a crash `@akira-toriyama`\n"
 	if stdout != want {
 		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
 	}

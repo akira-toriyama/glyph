@@ -259,6 +259,13 @@ check (merge commits, autosquash artifacts). `exclude_authors` keeps bots
 out of lint and the fold; whether they appear in the notes is
 `[[note.sections]]`'s decision alone.
 
+`note.line` is the same idea for the release body: `$name` reads the winning
+pattern's named groups, `$pr` / `$author` / `$hash` are built in, and a
+`$[ … ]` span renders only when every placeholder inside it resolves. That is
+what lets the shipped `- $subject$[ ($pr)] @$author` cite a pull when there is
+one and drop the parens with it when there is not, instead of writing `()` for
+every commit that reached main without a merged pull.
+
 ## Exit codes
 
 `0` ok · `1` no release-worthy change · `2` usage · `3` convention violation

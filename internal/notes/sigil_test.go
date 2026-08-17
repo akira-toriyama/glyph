@@ -90,7 +90,7 @@ func TestGroupSigilsSkipIsTotal(t *testing.T) {
 }
 
 func TestGroupSigilsPropagatesConfigBug(t *testing.T) {
-	cfg, err := config.Load([]byte("schema = 1\n[[patterns]]\npattern = '^(?P<semver_sigil>.) '\n[note]\nline = '- $subject'\n"))
+	cfg, err := config.Load([]byte("schema = 1\n[[patterns]]\npattern = '^(?P<semver_sigil>.) (?P<subject>.+)'\n[note]\nline = '- $subject'\n"))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestRenderLineTemplate(t *testing.T) {
 [[patterns]]
 pattern = '^(\((?P<scope>[a-z]+)\) )?(?P<semver_sigil>[=~^!]) (?P<subject>.+)'
 [note]
-line = '- $scope $subject $pr @$author $hash $nosuch'
+line = '- $scope $subject $pr @$author $hash'
 [[note.sections]]
 semver = "patch"
 title = "Fixes"
@@ -133,12 +133,71 @@ title = "Fixes"
 			t.Errorf("line %q should contain %q", first, want)
 		}
 	}
-	if strings.Contains(first, "$") || strings.Contains(first, "nosuch") {
+	if strings.Contains(first, "$") {
 		t.Errorf("unresolved placeholders must render empty, got %q", first)
 	}
 	second := sections[0].Lines[1]
 	if strings.Contains(second, "#") {
 		t.Errorf("a pull-less commit should substitute $pr as empty, got %q", second)
+	}
+}
+
+// TestRenderLineOptionalSpan asserts BOTH arms of one template, because
+// either alone is vacuous: with only the empty arm the test passes when the
+// span feature is deleted outright, and with only the populated arm it passes
+// when Optional is ignored and every span always renders. Together they pin
+// the defect that shipped: the line "- add the demo feature () @akira-toriyama"
+// with the parens around an empty $pr, for every commit that reached main
+// without a merged pull — which is every commit the --range walk sees.
+func TestRenderLineOptionalSpan(t *testing.T) {
+	cfg := sigilCfg(t)
+	sections, err := GroupSigils([]SigilCommit{
+		{SHA: "aaaaaaaaaaaa", Pull: 61, Author: "akira-toriyama", Message: ":bug:~ fix the demo crash"},
+		{SHA: "bbbbbbbbbbbb", Pull: 0, Author: "akira-toriyama", Message: ":bug:~ fix it again by direct push"},
+	}, cfg)
+	if err != nil {
+		t.Fatalf("GroupSigils: %v", err)
+	}
+	if len(sections) != 1 || len(sections[0].Lines) != 2 {
+		t.Fatalf("sections = %+v", sections)
+	}
+	if got, want := sections[0].Lines[0], "- fix the demo crash (#61) `@akira-toriyama`"; got != want {
+		t.Errorf("a commit WITH a pull must cite it:\n got %q\nwant %q", got, want)
+	}
+	if got, want := sections[0].Lines[1], "- fix it again by direct push `@akira-toriyama`"; got != want {
+		t.Errorf("a commit with NO pull must lose the parens and the space with them:\n got %q\nwant %q", got, want)
+	}
+}
+
+// TestRenderLineBuiltinsOutrankGroups: a pattern free to name its groups can
+// name one $pr, and the built-in still wins — so a subject-supplied group can
+// never dress itself as the pull the walk resolved. The span reads the same
+// resolution, so the built-in also decides whether the span renders.
+func TestRenderLineBuiltinsOutrankGroups(t *testing.T) {
+	cfg, err := config.Load([]byte(`schema = 1
+[[patterns]]
+pattern = '^(?P<semver_sigil>[=~^!]) (?P<pr>\S+) (?P<subject>.+)'
+[note]
+line = '- $subject$[ ($pr)]'
+[[note.sections]]
+semver = "patch"
+title = "Fixes"
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	sections, err := GroupSigils([]SigilCommit{
+		{SHA: "aaaaaaaaaaaa", Pull: 61, Author: "akira", Message: "~ #999 fix the thing"},
+		{SHA: "bbbbbbbbbbbb", Pull: 0, Author: "akira", Message: "~ #999 fix the other thing"},
+	}, cfg)
+	if err != nil {
+		t.Fatalf("GroupSigils: %v", err)
+	}
+	if got, want := sections[0].Lines[0], "- fix the thing (#61)"; got != want {
+		t.Errorf("the built-in $pr must outrank the pattern group of the same name: got %q, want %q", got, want)
+	}
+	if got, want := sections[0].Lines[1], "- fix the other thing"; got != want {
+		t.Errorf("the span must read the BUILT-IN, so a group named pr cannot keep it alive: got %q, want %q", got, want)
 	}
 }
 

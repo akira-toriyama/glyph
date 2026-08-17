@@ -1,0 +1,14 @@
+diff --git a/internal/config/match.go b/internal/config/match.go
+--- a/internal/config/match.go
++++ b/internal/config/match.go
+@@ -45,10 +45,6 @@
+ 		if sub == nil {
+ 			continue
+ 		}
+-		if p.Skip {
+-			return Match{Matched: true, Skip: true, PatternIndex: i}, nil
+-		}
+-
+ 		groups := make(map[string]string)
+ 		captured := ""
+ 		for gi, name := range p.re.SubexpNames() {
