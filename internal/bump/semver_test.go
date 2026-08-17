@@ -53,6 +53,82 @@ func TestParseVersionRejects(t *testing.T) {
 	}
 }
 
+// TestParseBaseVersion: the bound of --since-tag=below: may be a release
+// CANDIDATE, and it compares as the release it is a candidate for. The two
+// tables below are the whole contract — what the base parse adds over
+// ParseVersion, and what it deliberately does not relax.
+func TestParseBaseVersion(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		want Version
+	}{
+		// Plain versions parse identically — below: did not lose its old input.
+		{"v1.2.3", Version{1, 2, 3}},
+		{"1.2.3", Version{1, 2, 3}},
+		// The shape that killed a real release job: GoReleaser's `prerelease:
+		// auto` is keyed off exactly this, and goreleaser.yml hands the tag
+		// straight to below:.
+		{"v3.0.0-rc.1", Version{3, 0, 0}},
+		{"v1.0.0-rc1", Version{1, 0, 0}},
+		{"v0.1.0-alpha.2.beta", Version{0, 1, 0}},
+		{"v1.2.3+build.5", Version{1, 2, 3}},
+		{"v1.2.3-rc.1+build.5", Version{1, 2, 3}},
+	} {
+		got, err := ParseBaseVersion(c.in)
+		if err != nil {
+			t.Errorf("ParseBaseVersion(%q): unexpected error: %v", c.in, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("ParseBaseVersion(%q) = %+v, want %+v", c.in, got, c.want)
+		}
+	}
+
+	// Still rejected. The triple in front is parsed by ParseVersion itself, so
+	// the house rules on it are unchanged; only a suffix AFTER a complete
+	// triple is new. A workflow templating an unset variable, or naming a
+	// branch, must still die as caller input rather than resolve to a tag it
+	// did not mean.
+	for _, in := range []string{
+		"",
+		"main",
+		"v1.2",
+		"v1.2.3.4",
+		"v01.2.3",
+		"V1.2.3",
+		" v1.2.3",
+		"v1.2.3 ",
+		"v1.2.3-",     // a suffix marker with no suffix is not a pre-release
+		"v1.2.3-rc 1", // whitespace is not in semver's pre-release alphabet
+		"v1.2-rc.1",   // the suffix cannot complete an incomplete triple
+	} {
+		if got, err := ParseBaseVersion(in); err == nil {
+			t.Errorf("ParseBaseVersion(%q) should fail, got %+v", in, got)
+		}
+	}
+}
+
+// TestParseVersionStillRefusesCandidates guards the half of the split that is
+// easy to lose: ParseBaseVersion exists so the CANDIDATE SET does not have to
+// change. latestVersionTag parses every tag in the repository with
+// ParseVersion and skips what fails, so the moment ParseVersion accepts a
+// pre-release, a release resolves the predecessor of a candidate — the exact
+// wrong answer the shell derivation was retired for (t-s5n4), now reachable
+// from inside glyph.
+func TestParseVersionStillRefusesCandidates(t *testing.T) {
+	for _, in := range []string{"v1.0.0-rc1", "v3.0.0-rc.1", "v1.2.3+build.5"} {
+		if got, err := ParseVersion(in); err == nil {
+			t.Errorf("ParseVersion(%q) = %+v, want an error: a candidate must never be eligible "+
+				"as a walk base or a version to step from", in, got)
+		}
+		// Positive control: the same string IS a valid bound, so a failure
+		// above cannot be blamed on the string being malformed.
+		if _, err := ParseBaseVersion(in); err != nil {
+			t.Errorf("ParseBaseVersion(%q) rejects it too (%v) — this table is asserting nothing", in, err)
+		}
+	}
+}
+
 // TestVersionString: versions render with the house v prefix regardless of the
 // input form.
 func TestVersionString(t *testing.T) {
