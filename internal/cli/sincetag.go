@@ -91,7 +91,18 @@ func checkSinceTagFlag(tag string) error {
 		// workflow templating an unset variable produces the bare prefix, so
 		// (like the empty tag below) it must die here as the caller's input,
 		// never resolve to some tag it did not mean.
-		if _, perr := bump.ParseVersion(strings.TrimSpace(rest)); perr != nil {
+		//
+		// A RELEASE CANDIDATE names one. The bound is parsed with
+		// ParseBaseVersion, not ParseVersion, because goreleaser.yml hands this
+		// flag $GITHUB_REF_NAME on a `tags: ['v*']` trigger — so the day the
+		// same file gained `prerelease: auto`, the first v3.0.0-rc.1 died right
+		// here at exit 2, behind a tag that already existed: no notes, no
+		// binaries, no cask, no attestation. That is the precise failure the
+		// below: form was introduced to end (t-s5n4), arriving through the one
+		// input nobody had handed it. Candidates stay out of the ANSWER set —
+		// latestVersionTag still parses every tag with ParseVersion — so what
+		// changes is only what may be asked about.
+		if _, perr := bump.ParseBaseVersion(strings.TrimSpace(rest)); perr != nil {
 			return core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
 		}
 		return nil
@@ -138,8 +149,10 @@ func sinceTagInput(ctx context.Context, cfg *config.Config, tagFlag, repoFlag st
 // construction — naming a tag names the release being redone; stepping from a
 // different (higher) tag would version a verdict computed over another range.
 // Auto resolves the highest parseable v* tag; below:TAG the highest one
-// strictly under TAG's version (the predecessor of a tag already cut); a
-// repository with no such tag walks the whole history and steps from v0.0.0.
+// strictly under TAG's version — the predecessor of a tag already cut, and
+// under a RELEASE CANDIDATE the predecessor of the release it is a candidate
+// for; a repository with no such tag walks the whole history and steps from
+// v0.0.0.
 // An explicit tag that is not a version still walks, but names no base (nil —
 // the bump falls back to the highest v* tag).
 func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (revRange string, base *bump.Version, err error) {
@@ -156,7 +169,9 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 	}
 	if rest, ok := strings.CutPrefix(tag, sinceTagBelow); ok {
 		// checkSinceTagFlag guaranteed the bound parses before anything ran.
-		bound, perr := bump.ParseVersion(strings.TrimSpace(rest))
+		// A pre-release bound compares as its base version — exact, not a
+		// rounding: see ParseBaseVersion for why the two select the same tag.
+		bound, perr := bump.ParseBaseVersion(strings.TrimSpace(rest))
 		if perr != nil {
 			return "", nil, core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
 		}

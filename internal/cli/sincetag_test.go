@@ -2051,6 +2051,59 @@ func TestSinceTagBelowResolvesThePredecessorAsAVersion(t *testing.T) {
 	}
 }
 
+// TestSinceTagBelowAcceptsAReleaseCandidate is the release job glyph cut on
+// itself and lost. goreleaser.yml triggers on `tags: ['v*']` and hands
+// $GITHUB_REF_NAME to --since-tag=below:, and .goreleaser.yaml asks GitHub to
+// mark a hyphenated tag as a pre-release — so the two files together promise
+// candidates work. They did not: pushing v3.0.0-rc.1 died here at exit 2
+// ("needs a version-shaped tag"), before GoReleaser ran, leaving no notes, no
+// binaries, no cask and no attestation behind a tag that already existed —
+// the exact failure below: was introduced to end (t-s5n4), through the one
+// input nobody had handed it.
+//
+// The candidate resolves to the predecessor of the RELEASE it is a candidate
+// for, and this fixture pins both halves at once: v1.0.0-rc1 is tagged in the
+// history too, so an implementation that merely loosened ParseVersion would
+// answer v1.0.0-rc1 here and re-fold nothing, while the correct answer walks
+// from v1.0.0 and carries exactly the commit above it.
+func TestSinceTagBelowAcceptsAReleaseCandidate(t *testing.T) {
+	dir, _ := testRepo(t) // tags v0.1.0
+	testCommit(t, dir, "akira-toriyama", ":bug:~ an rc-era fix")
+	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0-rc1")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ the 1.0 fix")
+	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	sha := squashCommit(t, dir, "Add the candidate feature", 11)
+	// The tag being cut IS the candidate — the tag-push shape, where auto
+	// would resolve the tag being cut and walk an empty range.
+	testGit(t, dir, "akira-toriyama", "tag", "v1.1.0-rc.1")
+
+	srv := walkServer(t, map[string]string{
+		commitPullsPath(sha): `[` + apiPullRef(11, "2026-07-13T00:00:00Z", sha) + `]`,
+		pullCommitsPath(11):  `[` + apiCommit("c1", "akira-toriyama", ":sparkles:^ add the candidate feature") + `]`,
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=below:v1.1.0-rc.1")
+	if code != 0 {
+		t.Fatalf("bump --since-tag=below:v1.1.0-rc.1 exited %d, want 0 — a candidate is a tag being cut, "+
+			"which is the whole situation below: exists for\nstderr: %s", code, stderr)
+	}
+	if stdout != "v1.1.0\n" {
+		t.Fatalf("stdout = %q, want v1.1.0 (a minor step from v1.0.0). v1.0.0-rc1 answering here would mean "+
+			"candidates had been let into the ANSWER set, not just the question", stdout)
+	}
+
+	code, stdout, stderr = runGlyph(t, "notes", "--since-tag=below:v1.1.0-rc.1")
+	if code != 0 {
+		t.Fatalf("notes --since-tag=below:v1.1.0-rc.1 exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "add the candidate feature") || strings.Contains(stdout, "the 1.0 fix") {
+		t.Fatalf("a candidate's notes cover everything since the last real RELEASE, and nothing v1.0.0 "+
+			"already shipped:\n%s", stdout)
+	}
+}
+
 // TestSinceTagBelowIsStrictlyBelowNotHighestOther: cutting a v0.8.3 hotfix
 // while v0.9.0 exists must resolve v0.8.2 and walk forward from it — never
 // backwards from v0.9.0. The wrong reading is detectable because it walks an
