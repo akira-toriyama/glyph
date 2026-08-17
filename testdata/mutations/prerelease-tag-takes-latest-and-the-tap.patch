@@ -1,0 +1,17 @@
+diff --git a/.goreleaser.yaml b/.goreleaser.yaml
+index de9b430..5264bae 100644
+--- a/.goreleaser.yaml
++++ b/.goreleaser.yaml
+@@ -64,7 +64,6 @@ homebrew_casks:
+     # least of all across a breaking grammar change. Without this the cask is
+     # regenerated on every `v*` tag, so the first rc of v3 would have made the
+     # tap serve v2's replacement to everyone who typed `brew upgrade`.
+-    skip_upload: auto
+     directory: Casks
+     homepage: https://github.com/akira-toriyama/glyph
+     description: "gitmoji-driven commit-lint, semver, and release notes for squash-merge repos"
+@@ -96,4 +95,3 @@ release:
+   # breaking grammar on a real binary the reusables install (t-x3ed) without
+   # yet claiming the fleet should move to it. Deleting rc assets afterwards
+   # cannot un-move `latest` for whoever looked in between.
+-  prerelease: auto
