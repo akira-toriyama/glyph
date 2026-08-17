@@ -118,10 +118,13 @@ type Pattern struct {
 }
 
 // Note carries the release-notes block: the per-commit line template and the
-// ordered sections. The $xxx placeholders in Line are interpreted by the
-// notes renderer, not here.
+// ordered sections. Line is the template as written, kept for display; Spans
+// is the same template compiled, and is what the notes renderer walks —
+// resolving a placeholder to a commit's value stays the renderer's job, so
+// this package never sees a commit.
 type Note struct {
 	Line        string
+	Spans       []LineSpan
 	DraftOnNone bool
 	Sections    []Section
 }
@@ -195,9 +198,10 @@ func LoadFile(path string) (*Config, error) {
 }
 
 // Load parses and validates glyph.toml content. It rejects, rather than
-// repairs: unknown keys, an unknown or missing schema, an uncompilable or
-// sigil-less pattern, and a section that does not state exactly one axis are
-// all load failures.
+// repairs: unknown keys, an unknown or missing schema, an empty
+// exclude_authors entry, an uncompilable or sigil-less pattern, a malformed
+// note.line, a note.line placeholder nothing can bind, and a section that does
+// not state exactly one axis are all load failures.
 func Load(data []byte) (*Config, error) {
 	var r raw
 	if err := strictUnmarshal(data, &r); err != nil {
@@ -211,6 +215,12 @@ func Load(data []byte) (*Config, error) {
 		return nil, fmt.Errorf("unsupported schema = %d (this glyph understands schema = %d); refusing to guess what its fields mean", *r.Schema, Schema)
 	}
 
+	for i, a := range r.ExcludeAuthors {
+		if a == "" {
+			return nil, fmt.Errorf("exclude_authors[%d] is empty: the authoring path has no commit yet and judges under an empty author, so an empty entry excludes every message the commit-msg hook is ever handed — the convention gate off, at exit 0, from one stray comma", i)
+		}
+	}
+
 	if len(r.Patterns) == 0 {
 		return nil, fmt.Errorf("at least one [[patterns]] entry is required: without one, no commit can ever match and every range is refused")
 	}
@@ -221,6 +231,14 @@ func Load(data []byte) (*Config, error) {
 			return nil, fmt.Errorf("patterns[%d]: %w", i, err)
 		}
 		patterns = append(patterns, p)
+	}
+
+	spans, err := ParseLine(r.Note.Line)
+	if err != nil {
+		return nil, fmt.Errorf("note.line: %w", err)
+	}
+	if err := validateLineNames(spans, patterns); err != nil {
+		return nil, fmt.Errorf("note.line: %w", err)
 	}
 
 	sections := make([]Section, 0, len(r.Note.Sections))
@@ -239,6 +257,7 @@ func Load(data []byte) (*Config, error) {
 		Patterns:       patterns,
 		Note: Note{
 			Line:        r.Note.Line,
+			Spans:       spans,
 			DraftOnNone: r.Note.DraftOnNone,
 			Sections:    sections,
 		},

@@ -1,0 +1,12 @@
+diff --git a/internal/config/presets/gemoji.toml b/internal/config/presets/gemoji.toml
+--- a/internal/config/presets/gemoji.toml
++++ b/internal/config/presets/gemoji.toml
+@@ -39,7 +39,7 @@
+ # that change being made rather than undone (measured — glyph-test v0.4.1
+ # shipped `- :sparkles:(soak)^ add the page ... (#53) (#54)` in its Fixes
+ # section, describing the feature it had just removed).
+-pattern = '^(?P<subject>Revert ".+")'
++pattern = '^Revert "(?P<subject>.+)"'
+ semver_sigil = '~'
+ 
+ [[patterns]]

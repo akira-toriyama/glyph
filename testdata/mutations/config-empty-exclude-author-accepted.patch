@@ -1,0 +1,17 @@
+diff --git a/internal/config/config.go b/internal/config/config.go
+index d4667c6..7907c7c 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -215,12 +215,6 @@ func Load(data []byte) (*Config, error) {
+ 		return nil, fmt.Errorf("unsupported schema = %d (this glyph understands schema = %d); refusing to guess what its fields mean", *r.Schema, Schema)
+ 	}
+ 
+-	for i, a := range r.ExcludeAuthors {
+-		if a == "" {
+-			return nil, fmt.Errorf("exclude_authors[%d] is empty: the authoring path has no commit yet and judges under an empty author, so an empty entry excludes every message the commit-msg hook is ever handed — the convention gate off, at exit 0, from one stray comma", i)
+-		}
+-	}
+-
+ 	if len(r.Patterns) == 0 {
+ 		return nil, fmt.Errorf("at least one [[patterns]] entry is required: without one, no commit can ever match and every range is refused")
+ 	}

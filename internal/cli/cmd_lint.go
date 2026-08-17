@@ -155,8 +155,11 @@ func hookCleanupMode(ctx context.Context) cleanup.Mode {
 }
 
 // lintOne lints a single message at authoring time. The author is unknown —
-// no commit exists yet — so it stands as the empty string, which can never
-// match exclude_authors: the human authoring path is always judged. Whatever
+// no commit exists yet — so it stands as the empty string. That the human
+// authoring path is always judged is enforced in config.Load, which refuses
+// an empty exclude_authors entry: slices.Contains matched one happily, so an
+// entry of the empty string excused every message this function was ever
+// handed — the installed hook turned off by a stray comma, at exit 0. Whatever
 // tolerance authoring needs (a merge in progress, an autosquash artifact) is
 // the pattern file's to grant through skip patterns, and the shipped presets
 // grant exactly those two.

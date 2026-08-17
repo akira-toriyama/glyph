@@ -44,6 +44,32 @@ func TestLintHasNoTaste(t *testing.T) {
 	}
 }
 
+// TestLintEmptyAuthorIsAlwaysJudged pins WHY an empty exclude_authors entry is
+// refused at load rather than tolerated at lint. lint --message and lint
+// --stdin have no commit yet, so they judge under the empty author; a config
+// carrying an empty entry therefore excludes every message the commit-msg hook
+// is ever handed, and a message matching no pattern exits 0. Measured against
+// the binary before the load refusal existed: exit 0 with the entry, exit 3
+// with only that entry removed.
+//
+// The second arm is the one with teeth. Lint still matches "" against ""
+// deliberately — the comparison is one line and has no business knowing which
+// callers pass an empty author — so the load refusal is the ONLY thing between
+// a stray comma and a dead gate. Assert that here, or a later reader deletes
+// the refusal believing Lint defends itself.
+func TestLintEmptyAuthorIsAlwaysJudged(t *testing.T) {
+	cfg := loadGemoji(t)
+	if got := cfg.Lint("no gitmoji, no sigil, nothing", ""); got.OK || got.Excluded {
+		t.Fatalf("Lint(_, \"\") = %+v, want a violation — the authoring path is never excluded", got)
+	}
+
+	unreachable := *cfg
+	unreachable.ExcludeAuthors = []string{""}
+	if got := unreachable.Lint("no gitmoji, no sigil, nothing", ""); !got.Excluded {
+		t.Fatalf("Lint under an empty entry = %+v, want Excluded — if this no longer holds, the load refusal has moved and its message is now wrong", got)
+	}
+}
+
 func TestLintViolations(t *testing.T) {
 	cfg := loadGemoji(t)
 	t.Run("no pattern matches", func(t *testing.T) {

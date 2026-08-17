@@ -154,10 +154,15 @@ Have, IsAncestor, FirstParentLog`
 no identity of its own. A landed commit is folded only if its landing site is in
 range, and it is folded **under the on-branch sha** — which is also why a
 rebase-merged pull no longer puts pre-rebase shas, which exist on no branch, into
-the notes. The notes cite the pull *beside* that sha (`(#123, abc1234)`); a
-commit that landed under no identity of its own cites the pull *alone*
-(`(#123)`), because its listed sha is exactly such a pre-squash sha and the pull
-is the one address that outlives the squash (t-xxhj).
+the notes. What the fold hands the notes is a *binding*, not a citation format:
+the landed sha reaches `note.line`'s `$hash` and the pull reaches `$pr`, and a
+commit that landed under no identity of its own binds the pull alone, because
+its listed sha is exactly such a pre-squash sha and the pull is the one address
+that outlives the squash (t-xxhj). Which of them a release body prints is the
+template's decision — both shipped presets place `$pr` alone, inside an optional
+span, so a line reads `- subject (#123)` and loses the parens entirely when no
+pull resolved; the `(#123, abc1234)` shape v1 hardcoded is expressible as
+`$[ ($pr, $hash)]` and is deliberately not what ships (§3).
 `internal/cli/sincetag.go: mainFootprint, foldPull, notesCommits`
 
 **stand aside** — what a walked commit does when it reports itself carried by a

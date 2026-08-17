@@ -94,17 +94,24 @@ pattern says it means:
 - **`exclude_authors`** removes a commit from lint and the fold before its
   message is ever matched — the key exists for bots, whose messages are
   exactly the ones the patterns do not describe. Whether such a commit
-  appears in the notes is `[[note.sections]]`'s decision alone (§3).
+  appears in the notes is `[[note.sections]]`'s decision alone (§3). An
+  **empty entry is refused at load**: the authoring path has no commit yet, so
+  `lint --message` and `lint --stdin` judge under an empty author, and
+  `exclude_authors = ['']` excluded every message the commit-msg hook was ever
+  handed — measured, a message matching no pattern exited 0 with that one
+  entry present and 3 with it removed. A stray comma turning the gate off
+  silently is the shape this file refuses everywhere else.
 - **Lint has no taste** (mutation row `config-lint-grows-a-taste.patch`): a
   message either matches a pattern and yields a sigil, or it violates. Which
   combinations are wise (`:memo:!`) is the author's call — glyph parses and
   computes, it does not opine. The retired v1 rule vocabulary (uppercase
   subject, trailing period, footer discipline, merge-candidate rules) is
   gone with the grammar that defined it.
-- Unknown keys, an unknown `schema`, an uncompilable pattern and a section
-  that does not state exactly one axis are LOAD errors, never repairs
-  (mutation row `config-unknown-schema-accepted.patch`): this file decides CI
-  verdicts, and a silently-misread key is a silently-changed verdict.
+- Unknown keys, an unknown `schema`, an uncompilable pattern, a malformed
+  `note.line` and a section that does not state exactly one axis are LOAD
+  errors, never repairs (mutation row `config-unknown-schema-accepted.patch`):
+  this file decides CI verdicts, and a silently-misread key is a
+  silently-changed verdict.
 
 Config resolution is one file per checkout: the `glyph.toml` at the top level
 of the working tree the command runs in (ratified Q1 — a config change
@@ -244,6 +251,34 @@ the same `note.line` template with `$subject` bound to its raw first line —
 the ratified bot fallback. `skip` is total: no section at all, which is what
 separates it from `exclude_authors`.
 
+**`note.line` and the optional span.** The template substitutes `$name`
+placeholders — the winning pattern's named groups, plus the built-ins `$pr` /
+`$author` / `$hash`, which outrank a group of the same name — and literal
+text passes through as the author's own Markdown, with the mention fence run
+over the assembled line. A **`$[ … ]` span renders only when EVERY placeholder
+inside it resolves non-empty** (mutation row
+`notes-optional-span-always-renders.patch`), taking its own punctuation with
+it when one does not. Without it, punctuation written around a placeholder
+rendered around nothing: `$pr` is empty for every commit the `--range` walk
+sees (that walk resolves no pulls at all) and for every direct push under
+`--since-tag`, so both shipped presets emitted
+`- add the demo feature () @akira-toriyama` — measured live. A malformed span
+is a CONFIG error, refused at load with the file's path (exit 3) rather than
+by the release that would have rendered it: unterminated, nested, or holding
+no placeholder — the last because a span with nothing to resolve renders
+unconditionally, which says optional and means always. The marker was chosen
+over `${ … }` and `[? … ]` after measuring that all three parse as literal
+text under the existing placeholder grammar (so every template already in the
+fleet loads unchanged): only `$[` carries both of the file's own signals — `$`
+marks what glyph interprets, and the bracket already means optional in the
+same file's `[commit]` template block (`[(scope)]`, `[<body>]`). A bare `[`
+stays literal, which is what leaves the `- [$scope] $subject` idiom and
+Markdown links untouched, and brackets *inside* a span nest — the closing `]`
+is the first at depth zero, so `$[ [$scope]]` renders `[cli]` or leaves whole,
+and an unpaired `[` is refused as unterminated instead of closing the span one
+character early (measured: closing at the first `]` of any kind left a stray
+`]` on every rendered line).
+
 **`draft_on_none`** (§4's flag, `internal/draftplan`): with it on, a none
 verdict maintains an `Unreleased` placeholder draft instead of deleting the
 rolling draft, and the next real verdict retags that same draft to the real
@@ -307,14 +342,19 @@ fails it, and the pull alone governs it exactly as before. A commit that landed 
 the range is dropped with a `::notice::` naming it, and one that landed inside
 is folded **under its on-branch SHA** — which also retires a defect of its own,
 since a rebase-merged pull used to put its pre-rebase SHAs, which exist on no
-branch, into the notes. The notes then cite what the fold established: the pull
-**beside** the landed sha (`(#123, abc1234)`) wherever one resolved, and for a
-footprint-less commit — the squash arm, whose listed shas exist on no branch and
-were published anyway (t-xxhj: a live release body cited two shas
-`git branch -r --contains` answers nothing for) — the pull **alone** (`(#123)`),
-the one address that outlives the squash. Beside, never instead: within one pull
-the sha is what keeps N entries N distinct lines, so replacing it would collapse
-them into N copies of the same pointer. A **shallow** checkout cannot answer the question at all
+branch, into the notes. The fold then establishes what the notes may cite: the
+pull **beside** the landed sha wherever one resolved, and for a footprint-less
+commit — the squash arm, whose listed shas exist on no branch and were published
+anyway (t-xxhj: a live release body cited two shas `git branch -r --contains`
+answers nothing for) — the pull **alone**, the one address that outlives the
+squash. Beside, never instead: within one pull the pull number is the same for
+every entry, so the sha is the only thing that could tell their citations apart,
+and a template placing it *instead* of the pull would address a squash's entries
+by shas no branch holds. What actually reaches a body is `note.line`'s decision,
+not glyph's — the fold binds `$pr` and `$hash`, and both shipped presets place
+`$pr` alone inside an optional span, so a line reads `- subject (#123)` and
+drops the parens with the pull (§3). v1's hardcoded `(#123, abc1234)` is
+`$[ ($pr, $hash)]` today. A **shallow** checkout cannot answer the question at all
 (a commit git does not have is indistinguishable from one that never landed), so
 the walk says so once and falls back to expanding whole listings — and, since it
 knows the answer it gave was a guess, records the checkout as one it could not

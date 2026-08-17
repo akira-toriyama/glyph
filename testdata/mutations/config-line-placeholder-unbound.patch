@@ -1,0 +1,14 @@
+diff --git a/internal/config/config.go b/internal/config/config.go
+index d4667c6..2b0cb23 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -237,9 +237,6 @@ func Load(data []byte) (*Config, error) {
+ 	if err != nil {
+ 		return nil, fmt.Errorf("note.line: %w", err)
+ 	}
+-	if err := validateLineNames(spans, patterns); err != nil {
+-		return nil, fmt.Errorf("note.line: %w", err)
+-	}
+ 
+ 	sections := make([]Section, 0, len(r.Note.Sections))
+ 	for i, rs := range r.Note.Sections {

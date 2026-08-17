@@ -118,7 +118,7 @@ func TestLoadGemojiConfig(t *testing.T) {
 		t.Errorf("Patterns[3].Skip = false, want true (autosquash artifacts leave processing)")
 	}
 
-	if cfg.Note.Line != "- $subject ($pr) @$author" {
+	if cfg.Note.Line != "- $subject$[ ($pr)] @$author" {
 		t.Errorf("Note.Line = %q", cfg.Note.Line)
 	}
 	if cfg.Note.DraftOnNone {
@@ -166,6 +166,15 @@ func TestLoadErrors(t *testing.T) {
 		{"section with no axis", "schema = 1\n" + minimalPatterns + "[[note.sections]]\ntitle = 'T'\n", "state its axis"},
 		{"section bad semver value", "schema = 1\n" + minimalPatterns + "[[note.sections]]\nsemver = 'huge'\ntitle = 'T'\n", "invalid semver filter"},
 		{"section missing title", "schema = 1\n" + minimalPatterns + "[[note.sections]]\nsemver = 'major'\n", "title is required"},
+		// An empty exclude_authors entry is the config typo that turns the
+		// authoring gate into a no-op: --message and --stdin judge under the
+		// empty author (no commit exists yet), so the entry excludes every
+		// message the commit-msg hook sees and a violating subject exits 0.
+		{"empty exclude_authors entry", "schema = 1\nexclude_authors = ['']\n" + minimalPatterns, "exclude_authors[0] is empty"},
+		{"empty exclude_authors entry beside a real one", "schema = 1\nexclude_authors = ['dependabot[bot]', '']\n" + minimalPatterns, "exclude_authors[1] is empty"},
+		{"unterminated optional span", "schema = 1\n" + minimalPatterns + "[note]\nline = '- $subject$[ ($pr)'\n", "note.line: unterminated optional span"},
+		{"nested optional span", "schema = 1\n" + minimalPatterns + "[note]\nline = '- $subject$[ ($pr$[ $hash]) ]'\n", "note.line: nested optional span"},
+		{"optional span with nothing to resolve", "schema = 1\n" + minimalPatterns + "[note]\nline = '- $subject$[ (pull)]'\n", "note.line: optional span"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
