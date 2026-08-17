@@ -863,9 +863,14 @@ func TestReleaseHasNoRangeOrPRSource(t *testing.T) {
 }
 
 // TestReleaseBreakingComposesConsistently: a breaking marker on a none-rung
-// code majors the version AND hoists the entry into Breaking Changes — the two
+// code moves the version AND hoists the entry into Breaking Changes — the two
 // halves of the verdict must tell the same story because they come from the
 // same classified set.
+//
+// The repository is at 0.x, so the step is a minor (v0.1.0 -> v0.2.0) while the
+// classification stays major. That pairing is the point of the 0.x rule and is
+// asserted here on purpose: the clamp shortens the step, it does not make the
+// commit less breaking, and the release notes must keep saying so.
 func TestReleaseBreakingComposesConsistently(t *testing.T) {
 	dir, _ := testRepo(t)
 	sha1 := squashCommit(t, dir, "Drop the legacy config", 9)
@@ -880,8 +885,8 @@ func TestReleaseBreakingComposesConsistently(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("breaking release exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	if !strings.HasPrefix(stdout, "v1.0.0\n\n") {
-		t.Fatalf("breaking commit did not major the tag:\n%s", stdout)
+	if !strings.HasPrefix(stdout, "v0.2.0\n\n") {
+		t.Fatalf("breaking commit did not move the tag:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "## Breaking Changes") {
 		t.Fatalf("breaking entry was not hoisted into Breaking Changes:\n%s", stdout)

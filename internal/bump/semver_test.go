@@ -141,32 +141,78 @@ func TestVersionString(t *testing.T) {
 	}
 }
 
-// TestNext pins the stepping rule, including that none holds the version still
-// and that a 0.x major steps to 1.0.0 (plain semver, with no 0.x-keeps-0.x
-// exception). This test IS the check on that arithmetic — see Next's own doc
-// for why nothing downstream re-derives it.
+// TestNext pins the stepping rule, including that none holds the version
+// still. This test IS the check on that arithmetic — see Next's own doc for
+// why nothing downstream re-derives it.
 func TestNext(t *testing.T) {
 	cases := []struct {
-		in    string
-		level Level
-		want  string
+		in   string
+		dec  Decision
+		want string
 	}{
-		{"v1.2.3", LevelNone, "v1.2.3"},
-		{"v1.2.3", LevelPatch, "v1.2.4"},
-		{"v1.2.3", LevelMinor, "v1.3.0"},
-		{"v1.2.3", LevelMajor, "v2.0.0"},
-		{"v0.6.1", LevelPatch, "v0.6.2"},
-		{"v0.6.1", LevelMinor, "v0.7.0"},
-		{"v0.6.1", LevelMajor, "v1.0.0"},
-		{"v0.0.0", LevelPatch, "v0.0.1"},
+		{"v1.2.3", Decision{Level: LevelNone}, "v1.2.3"},
+		{"v1.2.3", Decision{Level: LevelPatch}, "v1.2.4"},
+		{"v1.2.3", Decision{Level: LevelMinor}, "v1.3.0"},
+		{"v1.2.3", Decision{Level: LevelMajor}, "v2.0.0"},
+		{"v0.6.1", Decision{Level: LevelPatch}, "v0.6.2"},
+		{"v0.6.1", Decision{Level: LevelMinor}, "v0.7.0"},
+		{"v0.0.0", Decision{Level: LevelPatch}, "v0.0.1"},
 	}
 	for _, c := range cases {
 		v, err := ParseVersion(c.in)
 		if err != nil {
 			t.Fatalf("ParseVersion(%q): %v", c.in, err)
 		}
-		if got := v.Next(c.level).String(); got != c.want {
-			t.Fatalf("%s.Next(%s) = %s, want %s", c.in, c.level, got, c.want)
+		if got := v.Next(c.dec).String(); got != c.want {
+			t.Fatalf("%s.Next(%+v) = %s, want %s", c.in, c.dec, got, c.want)
+		}
+	}
+}
+
+// TestNext0xMajorFoldsToMinor pins the 0.x clamp: while the major is 0 a
+// breaking change steps the MINOR, so a repository still finding its shape
+// cannot claim a stable 1.0 by writing one '!'. The v1.0.0 row is the boundary
+// — the clamp must stop the moment the major leaves 0, or every 1.x repo in
+// the fleet silently stops majoring.
+func TestNext0xMajorFoldsToMinor(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"v0.0.1", "v0.1.0"},
+		{"v0.5.3", "v0.6.0"},
+		{"v0.0.0", "v0.1.0"},
+		{"v1.0.0", "v2.0.0"},
+		{"v1.2.3", "v2.0.0"},
+	}
+	for _, c := range cases {
+		v, err := ParseVersion(c.in)
+		if err != nil {
+			t.Fatalf("ParseVersion(%q): %v", c.in, err)
+		}
+		if got := v.Next(Decision{Level: LevelMajor}).String(); got != c.want {
+			t.Fatalf("%s.Next(major) = %s, want %s", c.in, got, c.want)
+		}
+	}
+}
+
+// TestNextPromoteLandsOnV1 pins the '%' sigil, the only door out of 0.x now
+// that a '!' cannot open one. From 1.x it must be a plain major step: a
+// constant v1.0.0 would sit at or below every already-published 1.x release
+// and checkPublishedFloor would refuse the whole release (exit 4).
+func TestNextPromoteLandsOnV1(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"v0.0.0", "v1.0.0"},
+		{"v0.0.1", "v1.0.0"},
+		{"v0.5.3", "v1.0.0"},
+		{"v1.0.0", "v2.0.0"},
+		{"v1.4.2", "v2.0.0"},
+		{"v3.1.0", "v4.0.0"},
+	}
+	for _, c := range cases {
+		v, err := ParseVersion(c.in)
+		if err != nil {
+			t.Fatalf("ParseVersion(%q): %v", c.in, err)
+		}
+		if got := v.Next(Decision{Level: LevelMajor, Promote: true}).String(); got != c.want {
+			t.Fatalf("%s.Next(promote) = %s, want %s", c.in, got, c.want)
 		}
 	}
 }
@@ -226,16 +272,20 @@ func TestVersionCompare(t *testing.T) {
 	}
 }
 
-// FuzzVersionNext: for any version and any version-moving level, Next is
+// FuzzVersionNext: for any version and any version-moving decision, Next is
 // strictly increasing — the invariant the published-floor guard rests on
 // (a computed next that could equal or regress below its base would deadlock
-// or burn a tag). none holds the version still, exactly.
+// or burn a tag). none holds the version still, exactly. The 0.x clamp keeps
+// that invariant (a minor step still increases), and a promotion never lands
+// below v1.0.0.
 func FuzzVersionNext(f *testing.F) {
-	f.Add(0, 1, 0, "minor")
-	f.Add(1, 2, 3, "major")
-	f.Add(0, 0, 0, "patch")
-	f.Add(4, 5, 6, "none")
-	f.Fuzz(func(t *testing.T, major, minor, patch int, level string) {
+	f.Add(0, 1, 0, "minor", false)
+	f.Add(1, 2, 3, "major", false)
+	f.Add(0, 0, 0, "patch", false)
+	f.Add(4, 5, 6, "none", false)
+	f.Add(0, 5, 3, "major", true)
+	f.Add(2, 0, 0, "major", true)
+	f.Fuzz(func(t *testing.T, major, minor, patch int, level string, promote bool) {
 		// Clamp to the production-reachable shape: ParseVersion only ever
 		// yields non-negative components.
 		if major < 0 || minor < 0 || patch < 0 {
@@ -245,8 +295,17 @@ func FuzzVersionNext(f *testing.F) {
 		if !b.Valid() {
 			t.Skip("out-of-lattice level")
 		}
+		// Promote is only reachable beside a major: SigilLevel maps '%' onto
+		// major, so a promoting decision always carries that rung.
+		if promote && b != LevelMajor {
+			t.Skip("unreachable: promote always folds as major")
+		}
 		v := Version{Major: major, Minor: minor, Patch: patch}
-		next := v.Next(b)
+		dec := Decision{Level: b, Promote: promote}
+		next := v.Next(dec)
+		if promote && next.Compare(Version{Major: 1}) < 0 {
+			t.Fatalf("Next(promote) landed below v1.0.0: %v -> %v", v, next)
+		}
 		if b == LevelNone {
 			if next != v {
 				t.Fatalf("Next(none) moved %v to %v", v, next)
@@ -254,7 +313,7 @@ func FuzzVersionNext(f *testing.F) {
 			return
 		}
 		if next.Compare(v) <= 0 {
-			t.Fatalf("Next(%s) did not increase: %v -> %v", b, v, next)
+			t.Fatalf("Next(%+v) did not increase: %v -> %v", dec, v, next)
 		}
 	})
 }

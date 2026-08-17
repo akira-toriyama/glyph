@@ -176,7 +176,8 @@ func TestBumpCurrentInvalidIsUsage(t *testing.T) {
 }
 
 // TestBumpNoTagsStartsAtZero: with no version tag anywhere, the base is
-// v0.0.0 — the first release-worthy range yields v0.0.1/v0.1.0/v1.0.0.
+// v0.0.0 — the first release-worthy range yields v0.0.1 or v0.1.0 (v1.0.0
+// needs a '%'; a bare '!' cannot leave 0.x).
 func TestBumpNoTagsStartsAtZero(t *testing.T) {
 	dir, base := testRepo(t)
 	testGit(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
@@ -239,5 +240,84 @@ func TestBumpOutsideRepoIsAPI(t *testing.T) {
 	t.Chdir(t.TempDir())
 	if code, _, _ := runGlyph(t, "bump", "--range", "main..HEAD"); code != 4 {
 		t.Fatalf("bump outside a repo should exit 4")
+	}
+}
+
+// TestBump0xBangStaysIn0x is the end-to-end half of the 0.x rule: a repository
+// at v0.1.0 answers a breaking commit with v0.2.0, and the JSON still calls it
+// major. Both halves are asserted together on purpose — the whole design is
+// that the clamp moves the arithmetic without touching the classification, and
+// a test that checked only the version would pass just as happily if the
+// commit had quietly stopped being breaking.
+func TestBump0xBangStaysIn0x(t *testing.T) {
+	dir, base := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":boom:! drop the legacy flag")
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD", "--json")
+	if code != 0 {
+		t.Fatalf("bump exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	var res struct {
+		Current string `json:"current"`
+		Level   string `json:"level"`
+		Next    string `json:"next"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, stdout)
+	}
+	if res.Current != "v0.1.0" || res.Next != "v0.2.0" {
+		t.Fatalf("verdict = %s → %s, want v0.1.0 → v0.2.0", res.Current, res.Next)
+	}
+	if res.Level != "major" {
+		t.Fatalf("level = %q, want major (the clamp shortens the step, not the classification)", res.Level)
+	}
+}
+
+// TestBumpPromoteReachesV1: '%' is the only door out of 0.x, and this walks
+// through it — including the reason line, which must name the promoting commit
+// rather than whichever breaking commit happened to come first.
+func TestBumpPromoteReachesV1(t *testing.T) {
+	dir, base := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":boom:! drop the legacy flag")
+	testCommit(t, dir, "akira-toriyama", ":rocket:% call it 1.0")
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD", "--json")
+	if code != 0 {
+		t.Fatalf("bump exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	var res struct {
+		Level  string `json:"level"`
+		Next   string `json:"next"`
+		Reason string `json:"reason"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, stdout)
+	}
+	if res.Next != "v1.0.0" {
+		t.Fatalf("next = %q, want v1.0.0", res.Next)
+	}
+	if res.Level != "major" {
+		t.Fatalf("level = %q, want major — a fifth level word would vanish from every consumer that filters on one", res.Level)
+	}
+	if !strings.Contains(res.Reason, "call it 1.0") {
+		t.Fatalf("reason = %q, want the promoting commit named", res.Reason)
+	}
+}
+
+// TestBumpPromoteFrom1xIsAPlainMajor: from 1.x a '%' must step like '!'. A
+// constant v1.0.0 would sit at or below the current version, which is the one
+// shape checkPublishedFloor rejects outright (exit 4) — so this is the test
+// that keeps a promotion from deadlocking every repository that already
+// reached 1.0.
+func TestBumpPromoteFrom1xIsAPlainMajor(t *testing.T) {
+	dir, base := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":rocket:% call it 1.0")
+	t.Chdir(dir)
+
+	code, stdout, _ := runGlyph(t, "bump", "--range", base+"..HEAD", "--current", "v1.4.2")
+	if code != 0 || stdout != "v2.0.0\n" {
+		t.Fatalf("bump = exit %d stdout %q, want 0 / v2.0.0", code, stdout)
 	}
 }

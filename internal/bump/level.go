@@ -17,6 +17,30 @@ const (
 	LevelMajor Level = "major" // a breaking change
 )
 
+// Decision is the whole answer a fold produces: the rung the range reached,
+// plus whether any commit asked to promote (the '%' sigil).
+//
+// Promote is a field rather than a fifth rung, and that is the load-bearing
+// choice here. Level is a closed four-word vocabulary three consumers already
+// read as data — a note section's semver filter, preview's icon and rank, and
+// pr-verdict.yml's `[ "$level" = "major" ]` — and every one of them answers an
+// unknown word by silently doing nothing rather than by failing. A fifth rung
+// would therefore publish a version while telling the pull request it moved
+// nothing, and drop the promoting commit out of the release notes. So a '%'
+// commit classifies as major like any other breaking change, and carries its
+// absoluteness beside the lattice instead of inside it.
+type Decision struct {
+	Level   Level
+	Promote bool
+}
+
+// Merge folds two decisions: max on the lattice, OR on promote. Both halves
+// are commutative and idempotent, so the whole fold stays order-independent —
+// squash order cannot move the version, promotion included.
+func (d Decision) Merge(o Decision) Decision {
+	return Decision{Level: Reduce([]Level{d.Level, o.Level}), Promote: d.Promote || o.Promote}
+}
+
 // Reduce folds levels with max over the lattice. The fold is
 // order-independent and idempotent (fuzz-pinned); an empty input is none —
 // no release.

@@ -12,13 +12,19 @@ import (
 // SigilLevel maps a v2 sigil onto the bump lattice. The mapping is the
 // sigil's definition (= none / ~ patch / ^ minor / ! major), fixed in the
 // binary alongside the alphabet itself.
+//
+// Promote lands on major rather than on a rung of its own: a repository does
+// not reach 1.0.0 over a change it considers compatible, and every reader of
+// Level — note sections, preview's icon, pr-verdict's `breaking` — would
+// answer a fifth word by quietly doing nothing. What makes '%' more than a
+// major is carried in Decision.Promote, beside the lattice, not in it.
 func SigilLevel(s config.Sigil) Level {
 	switch s {
 	case config.SigilPatch:
 		return LevelPatch
 	case config.SigilMinor:
 		return LevelMinor
-	case config.SigilMajor:
+	case config.SigilMajor, config.SigilPromote:
 		return LevelMajor
 	case config.SigilNone:
 		return LevelNone
@@ -55,6 +61,10 @@ type SigilVerdict struct {
 // An empty range folds to none — no release; verdicts is non-nil so the JSON
 // surface serializes [].
 //
+// A '%' anywhere in the range also sets Decision.Promote, OR-folded, so that
+// half is order-independent too: one commit asking for 1.0.0 is enough, and
+// asking twice is the same as asking once.
+//
 // Two ways a commit stays out of the fold, checked in this order: an
 // exclude_authors author is dropped before its message is ever matched — the
 // key exists for bots, whose messages are exactly the ones the patterns do
@@ -78,8 +88,9 @@ type Refusal struct {
 	Detail  string `json:"detail"`
 }
 
-func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Level, error) {
+func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Decision, error) {
 	verdicts := []SigilVerdict{}
+	var promote bool
 	levels := make([]Level, 0, len(commits))
 	var refusals []Refusal
 	for _, c := range commits {
@@ -99,6 +110,7 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Leve
 			continue
 		}
 		level := SigilLevel(m.Sigil)
+		promote = promote || m.Sigil == config.SigilPromote
 		levels = append(levels, level)
 		verdicts = append(verdicts, SigilVerdict{
 			SHA:     c.SHA,
@@ -112,9 +124,9 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Leve
 		if extra := len(refusals) - 1; extra > 0 {
 			msg = fmt.Sprintf("commit %.7s: %s (+%d more violation(s), all in details); refusing to version the range", refusals[0].SHA, refusals[0].Detail, extra)
 		}
-		return nil, "", &core.Error{Code: core.CodeLint, Msg: msg, Details: refusals}
+		return nil, Decision{}, &core.Error{Code: core.CodeLint, Msg: msg, Details: refusals}
 	}
-	return verdicts, Reduce(levels), nil
+	return verdicts, Decision{Level: Reduce(levels), Promote: promote}, nil
 }
 
 // firstLine returns a raw message's subject line (CR trimmed).

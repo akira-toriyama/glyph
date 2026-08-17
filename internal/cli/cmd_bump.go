@@ -38,9 +38,11 @@ func newBumpCmd() *cobra.Command {
 		Use:   "bump",
 		Short: "Compute the next version from a range of commits",
 		Long: "bump reads each commit's version sigil under the repository's glyph.toml\n" +
-			"(= none / ~ patch / ^ minor / ! major — captured by your patterns, or\n" +
-			"supplied by a pattern's fixed semver_sigil), folds the levels with max — so\n" +
-			"order can never change the verdict — and steps the current version.\n" +
+			"(= none / ~ patch / ^ minor / ! major / % promote — captured by your\n" +
+			"patterns, or supplied by a pattern's fixed semver_sigil), folds the levels\n" +
+			"with max — so order can never change the verdict — and steps the current\n" +
+			"version. While the major is 0 a ! steps the minor, so 1.0.0 is reached only\n" +
+			"by a % commit saying so; from 1.x on, % is a plain major.\n" +
 			"exclude_authors stay out of the fold; a skip-pattern commit stays out of\n" +
 			"everything; a commit NO pattern claims refuses the whole range (exit 3) —\n" +
 			"an unmatched commit folded as none would be a silent hole.\n" +
@@ -86,7 +88,7 @@ func bumpRun(cmd *cobra.Command) error {
 		return perr
 	}
 
-	commits, level, cerr := bump.FoldSigils(raws, cfg)
+	commits, dec, cerr := bump.FoldSigils(raws, cfg)
 	if cerr != nil {
 		return cerr
 	}
@@ -95,21 +97,21 @@ func bumpRun(cmd *cobra.Command) error {
 		return verr
 	}
 
-	if level == bump.LevelNone {
+	if dec.Level == bump.LevelNone {
 		reason := fmt.Sprintf("no release: %d commit(s) participate in %s and every level is none", len(commits), source)
 		if bumpJSON {
-			printCompact(bumpResult{Current: current.String(), Level: string(level), Commits: commits, Reason: reason})
+			printCompact(bumpResult{Current: current.String(), Level: string(dec.Level), Commits: commits, Reason: reason})
 			return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}
 		}
 		return core.NoReleasef("%s", reason)
 	}
 
-	next := current.Next(level)
-	reason := decidingReason(commits, level)
+	next := current.Next(dec)
+	reason := decidingReason(commits, dec)
 	if bumpJSON {
 		printCompact(bumpResult{
 			Current: current.String(),
-			Level:   string(level),
+			Level:   string(dec.Level),
 			Next:    next.String(),
 			Commits: commits,
 			Reason:  reason,
@@ -178,11 +180,23 @@ func currentVersion(ctx context.Context, flag string, base *bump.Version) (bump.
 
 // decidingReason names the oldest commit that reaches the folded level — the
 // one-line answer to "why this bump".
-func decidingReason(commits []bump.SigilVerdict, level bump.Level) string {
-	for _, c := range commits {
-		if c.Level == string(level) {
-			return fmt.Sprintf("%.7s %s %q → %s", c.SHA, c.Sigil, c.Subject, level)
+//
+// A promoted range names its oldest '%' commit instead, even though promote
+// and major share a level. Otherwise the reason for landing on 1.0.0 would
+// point at whichever breaking commit came first, and the one commit that
+// actually chose the version would not appear in the answer at all.
+func decidingReason(commits []bump.SigilVerdict, dec bump.Decision) string {
+	if dec.Promote {
+		for _, c := range commits {
+			if c.Sigil == config.SigilPromote.String() {
+				return fmt.Sprintf("%.7s %s %q → promote", c.SHA, c.Sigil, c.Subject)
+			}
 		}
 	}
-	return fmt.Sprintf("level %s", level)
+	for _, c := range commits {
+		if c.Level == string(dec.Level) {
+			return fmt.Sprintf("%.7s %s %q → %s", c.SHA, c.Sigil, c.Subject, dec.Level)
+		}
+	}
+	return fmt.Sprintf("level %s", dec.Level)
 }

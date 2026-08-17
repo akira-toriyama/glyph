@@ -159,14 +159,14 @@ func TestMatchSigilErrors(t *testing.T) {
 		}
 	})
 	t.Run("empty capture without fixed fallback", func(t *testing.T) {
-		cfg := mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?P<semver_sigil>[=~^!]?)x'\n")
+		cfg := mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?P<semver_sigil>[=~^!%]?)x'\n")
 		_, err := cfg.Match("x no sigil given")
 		if err == nil || !strings.Contains(err.Error(), "captured nothing") {
 			t.Fatalf("err = %v, want captured-nothing error", err)
 		}
 	})
 	t.Run("empty capture falls back to fixed", func(t *testing.T) {
-		cfg := mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?P<semver_sigil>[=~^!]?)x'\nsemver_sigil = '^'\n")
+		cfg := mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?P<semver_sigil>[=~^!%]?)x'\nsemver_sigil = '^'\n")
 		m, err := cfg.Match("x no sigil given")
 		if err != nil {
 			t.Fatalf("Match: %v", err)
@@ -214,7 +214,7 @@ func FuzzMatch(f *testing.F) {
 			// no sigil to check
 		default:
 			switch m.Sigil {
-			case SigilNone, SigilPatch, SigilMinor, SigilMajor:
+			case SigilNone, SigilPatch, SigilMinor, SigilMajor, SigilPromote:
 			default:
 				t.Fatalf("Sigil = %v outside the alphabet", m.Sigil)
 			}
