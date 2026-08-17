@@ -1,0 +1,13 @@
+diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
+index 5929d32..a95f3d0 100644
+--- a/internal/cli/sincetag.go
++++ b/internal/cli/sincetag.go
+@@ -102,7 +102,7 @@ func checkSinceTagFlag(tag string) error {
+ 		// input nobody had handed it. Candidates stay out of the ANSWER set —
+ 		// latestVersionTag still parses every tag with ParseVersion — so what
+ 		// changes is only what may be asked about.
+-		if _, perr := bump.ParseBaseVersion(strings.TrimSpace(rest)); perr != nil {
++		if _, perr := bump.ParseVersion(strings.TrimSpace(rest)); perr != nil {
+ 			return core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
+ 		}
+ 		return nil
