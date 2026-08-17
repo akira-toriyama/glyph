@@ -1,0 +1,14 @@
+diff --git a/internal/bump/semver.go b/internal/bump/semver.go
+index 40812c2..6296d55 100644
+--- a/internal/bump/semver.go
++++ b/internal/bump/semver.go
+@@ -126,9 +126,6 @@ func (v Version) Next(d Decision) Version {
+ 	}
+ 	switch d.Level {
+ 	case LevelMajor:
+-		if v.Major == 0 {
+-			return Version{Major: 0, Minor: v.Minor + 1}
+-		}
+ 		return Version{Major: v.Major + 1}
+ 	case LevelMinor:
+ 		return Version{Major: v.Major, Minor: v.Minor + 1}
