@@ -57,6 +57,14 @@ homebrew_casks:
       git:
         url: "git@github.com:akira-toriyama/homebrew-tap.git"
         private_key: "{{ .Env.HOMEBREW_TAP_DEPLOY_KEY }}"
+    # `auto` = skip the tap push when the tag carries a prerelease part
+    # (v3.0.0-rc.1). A release candidate exists to be installed by the
+    # reusables and executed as a fleet gate before the fleet's pins move; it
+    # is not what `brew install akira-toriyama/tap/glyph` should hand a human,
+    # least of all across a breaking grammar change. Without this the cask is
+    # regenerated on every `v*` tag, so the first rc of v3 would have made the
+    # tap serve v2's replacement to everyone who typed `brew upgrade`.
+    skip_upload: auto
     directory: Casks
     homepage: https://github.com/akira-toriyama/glyph
     description: "gitmoji-driven commit-lint, semver, and release notes for squash-merge repos"
@@ -79,3 +87,13 @@ release:
   # human pass since glyph generates and escapes them (t-8hqn) and
   # pr-verdict previews them at PR time.
   draft: false
+  # `auto` marks a hyphenated tag (v3.0.0-rc.1) as a prerelease, which is the
+  # only thing that keeps GitHub's `latest` pointer — what `gh release view
+  # --latest`, the releases page and every "what should I pin?" glance read —
+  # off a candidate. GoReleaser's default is `false`, i.e. every tag publishes
+  # as a full release, so before this key an rc was indistinguishable from a
+  # shipped version at exactly the moment the distinction matters: proving a
+  # breaking grammar on a real binary the reusables install (t-x3ed) without
+  # yet claiming the fleet should move to it. Deleting rc assets afterwards
+  # cannot un-move `latest` for whoever looked in between.
+  prerelease: auto

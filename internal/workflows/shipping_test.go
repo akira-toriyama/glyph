@@ -34,6 +34,43 @@ func TestReleasePublishesAtTagTime(t *testing.T) {
 	}
 }
 
+// TestPrereleaseTagsStayOffLatestAndOffTheTap pins the pair of `auto`s that
+// make a release candidate cheap. v2's grammar change cannot be proven by a
+// dry run — only by a real release binary that the reusables install and a
+// fleet gate executes (t-x3ed) — so v3 ships rc tags first. GoReleaser
+// defaults both keys the other way: without `prerelease: auto` every `v*` tag
+// publishes as a full release and takes GitHub's `latest` pointer, and without
+// `skip_upload: auto` the same tag regenerates Casks/glyph.rb, so an rc of a
+// breaking version reaches anyone who types `brew upgrade`. Both are absences,
+// invisible to CI, and neither shows up until the tag is already pushed and
+// `latest` has already moved for whoever looked in between.
+func TestPrereleaseTagsStayOffLatestAndOffTheTap(t *testing.T) {
+	config := code(repoFile(t, ".goreleaser.yaml"))
+
+	for _, g := range []struct{ key, why string }{
+		{"prerelease", "an rc tag publishes as a full release and takes GitHub's `latest` pointer, " +
+			"which is what every \"what should I pin?\" glance reads"},
+		{"skip_upload", "an rc tag regenerates the Homebrew cask, so `brew install " +
+			"akira-toriyama/tap/glyph` hands out a candidate of a breaking version"},
+	} {
+		if !regexp.MustCompile(`(?m)^\s*` + g.key + `:\s*auto\s*$`).MatchString(config) {
+			t.Errorf(".goreleaser.yaml no longer sets `%s: auto`; GoReleaser's default is the "+
+				"other way, so %s", g.key, g.why)
+		}
+	}
+
+	// Positive control: the guard above asserts a presence, but the regex it
+	// asserts with is the part that can rot. Prove the same pattern still finds
+	// a key this file demonstrably carries — `draft: false` — spelled the way
+	// the guards spell it, so a regex that has stopped matching anything at all
+	// fails here instead of passing two absences off as satisfied.
+	if !regexp.MustCompile(`(?m)^\s*draft:\s*false\s*$`).MatchString(config) {
+		t.Error("the key regex matches nothing in .goreleaser.yaml, not even `draft: false`; " +
+			"the two `auto` guards above are asserting against a pattern that can no longer " +
+			"match this file's syntax, so they would pass on a stripped config")
+	}
+}
+
 // TestInstallActionRetriesSpanARealOutage pins the retry widths in the install
 // composite action (bcd93e3): `--retry 3` (~7s) measurably lost to a real
 // GitHub outage — a verdict job died on 504x4 downloading the binary (t-yj1b)
