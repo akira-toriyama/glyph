@@ -79,9 +79,23 @@ func TestMatchGemojiGrammar(t *testing.T) {
 
 // TestMatchFixedSigil asserts the pattern-level semver_sigil key: a raw git
 // revert carries no sigil in its message, and the fixed value supplies one.
+//
+// It also pins WHERE the preset's subject group starts, which is a release-body
+// decision rather than a parsing one. The group takes the whole line, quotes
+// included, because the notes render $subject: capturing only the text inside
+// the quotes puts the REVERTED commit's own subject in the body, so a release
+// that removed something announces it as though it had been added. Measured in
+// the field — glyph-test v0.4.1 shipped
+//
+//	## Fixes
+//	- :sparkles:(soak)^ add the page the next round will revert (#53) (#54)
+//
+// for a pull request whose entire content was `git revert`. Nothing in the line
+// said revert, and the gitmoji it carried was the one for a new feature.
 func TestMatchFixedSigil(t *testing.T) {
 	cfg := loadGemoji(t)
-	m, err := cfg.Match(`Revert ":sparkles:(cli)^ add the thing"`)
+	const msg = `Revert ":sparkles:(cli)^ add the thing"`
+	m, err := cfg.Match(msg)
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -91,8 +105,15 @@ func TestMatchFixedSigil(t *testing.T) {
 	if m.Sigil != SigilPatch {
 		t.Errorf("Sigil = %v, want ~ (the pattern's fixed value)", m.Sigil)
 	}
-	if got := m.Groups["subject"]; got != `:sparkles:(cli)^ add the thing` {
-		t.Errorf("subject = %q", got)
+	if got := m.Groups["subject"]; got != msg {
+		t.Errorf("subject = %q, want the whole line %q — a revert's release-note line has to "+
+			"say a revert happened, and $subject is all the preset's template renders", got, msg)
+	}
+	// The inner subject must not be what survives: that is the exact string
+	// that shipped as a Fixes entry describing an addition.
+	if got := m.Groups["subject"]; got == `:sparkles:(cli)^ add the thing` {
+		t.Error("subject is the reverted commit's own subject; a release body built from it " +
+			"describes the change being made, in the section for undoing it")
 	}
 }
 

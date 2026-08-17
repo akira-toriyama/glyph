@@ -30,8 +30,13 @@ template = '''
 pattern = '^:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!]) (?P<subject>.+)'
 
 [[patterns]]
-# raw `git revert`
-pattern = '^Revert "(?P<subject>.+)"'
+# raw `git revert`. The subject group takes the WHOLE line, quotes and all,
+# so a release body says a revert happened: capturing only the text inside the
+# quotes renders the reverted commit's own subject under Fixes, which reads as
+# that change being made rather than undone (measured — glyph-test v0.4.1
+# shipped `- :sparkles:(soak)^ add the page ... (#53) (#54)` in its Fixes
+# section, describing the feature it had just removed).
+pattern = '^(?P<subject>Revert ".+")'
 semver_sigil = '~'
 
 [[patterns]]
