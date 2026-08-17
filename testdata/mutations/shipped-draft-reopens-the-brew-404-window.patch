@@ -1,10 +1,13 @@
 diff --git a/.goreleaser.yaml b/.goreleaser.yaml
-index c3f6a22..34621e0 100644
+index de9b430..09c0228 100644
 --- a/.goreleaser.yaml
 +++ b/.goreleaser.yaml
-@@ -78,4 +78,4 @@ release:
+@@ -86,7 +86,7 @@ release:
    # never had the window; this matches them, and the notes no longer need a
    # human pass since glyph generates and escapes them (t-8hqn) and
    # pr-verdict previews them at PR time.
 -  draft: false
 +  draft: true
+   # `auto` marks a hyphenated tag (v3.0.0-rc.1) as a prerelease, which is the
+   # only thing that keeps GitHub's `latest` pointer — what `gh release view
+   # --latest`, the releases page and every "what should I pin?" glance read —
