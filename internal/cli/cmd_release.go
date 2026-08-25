@@ -216,8 +216,17 @@ func releaseRun(cmd *cobra.Command) error {
 		// no caller ever concatenates markdown in shell.
 		body = body + "\n---\n\n" + footer
 	}
+	// The plan is computed BEFORE the body is final, because the body depends
+	// on it: an update must re-read the kept draft's current body and carry
+	// the hand region across (see composeDraftBody) — the rolling draft is the
+	// one place a human can write release prose, and rewriting it blind is how
+	// that prose was silently destroyed on the next push (t-qgps).
+	plan := draftplan.PlanDraft(dec.Level, tagName, cfg.Note.DraftOnNone, planInput(releases))
+	body = composeDraftBody(keptBody(plan.Keep, releases), body)
 	// Sized BEFORE the dry-run fork: a dry run previews the real run, and a
-	// body the real run refuses must fail the preview identically.
+	// body the real run refuses must fail the preview identically. Sized over
+	// the FINAL body, hand region included — a human can write the draft over
+	// the limit, and the refusal must name it before the API does.
 	if serr := checkReleaseBody(body); serr != nil {
 		return serr
 	}
@@ -235,7 +244,6 @@ func releaseRun(cmd *cobra.Command) error {
 		}
 	}
 
-	plan := draftplan.PlanDraft(dec.Level, tagName, cfg.Note.DraftOnNone, planInput(releases))
 	stale := staleReleases(plan.Stale)
 	result := releaseResult{
 		Current: current.String(),
@@ -452,6 +460,55 @@ func highestPublished(releases []github.Release) (bump.Version, bool) {
 		}
 	}
 	return floor, found
+}
+
+// handMarker is the line that splits a rolling draft's body into a hand
+// region (above) and a machine region (below). It is an HTML comment on
+// purpose — GitHub renders it as nothing, so a published release carries no
+// trace of it — and its text is the contract, stated in the one place a human
+// is when the contract matters: the draft's edit box. The rolling draft is
+// the only place release prose can be written ("the exit codes changed, fix
+// your gates"), and before this marker existed the next push rewrote the
+// whole body and destroyed that prose with no warning (t-qgps).
+//
+// Everything ABOVE the marker is preserved byte-for-byte across every upsert;
+// everything below is glyph's and is rewritten every time. An edit below the
+// marker is still lost — that boundary has to exist for the machine region to
+// stay truthful — but now the boundary is printed where the human is typing,
+// instead of being an unwritten rule they learn by losing work.
+const handMarker = "<!-- glyph: notes written ABOVE this line survive every push; glyph rewrites everything BELOW it -->"
+
+// keptBody returns the current body of the draft the plan keeps, "" when the
+// plan creates one (or the kept id is somehow not in the listing — treated as
+// a fresh body rather than an error, because the listing and the plan came
+// from the same response and a miss means GitHub's answer changed under us;
+// the upsert's own PATCH-by-id semantics still converge).
+func keptBody(keep *draftplan.Draft, releases []github.Release) string {
+	if keep == nil {
+		return ""
+	}
+	for _, r := range releases {
+		if r.ID == keep.ID {
+			return r.Body
+		}
+	}
+	return ""
+}
+
+// composeDraftBody assembles the draft body the upsert writes: the existing
+// body's hand region (everything above the marker, byte-for-byte — including
+// the CRLF line endings a web edit stores), the marker, then the freshly
+// generated machine region. A body with no marker — a pre-marker draft, or
+// one where a human deleted the marker line — contributes no hand region:
+// glyph cannot tell that body's hand-written lines from its own stale
+// output, and guessing would resurrect old machine text as if a human had
+// written it.
+func composeDraftBody(existing, generated string) string {
+	hand, _, found := strings.Cut(existing, handMarker)
+	if !found {
+		hand = ""
+	}
+	return hand + handMarker + "\n\n" + generated
 }
 
 // readFooter reads the --footer-file when one is named. The path is the

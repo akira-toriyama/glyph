@@ -1,13 +1,15 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 50eaaae..055756e 100644
+index 03849ab..3dc182a 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -200,11 +200,6 @@ func releaseRun(cmd *cobra.Command) error {
- 		// no caller ever concatenates markdown in shell.
- 		body = body + "\n---\n\n" + footer
- 	}
+@@ -223,13 +223,6 @@ func releaseRun(cmd *cobra.Command) error {
+ 	// that prose was silently destroyed on the next push (t-qgps).
+ 	plan := draftplan.PlanDraft(dec.Level, tagName, cfg.Note.DraftOnNone, planInput(releases))
+ 	body = composeDraftBody(keptBody(plan.Keep, releases), body)
 -	// Sized BEFORE the dry-run fork: a dry run previews the real run, and a
--	// body the real run refuses must fail the preview identically.
+-	// body the real run refuses must fail the preview identically. Sized over
+-	// the FINAL body, hand region included — a human can write the draft over
+-	// the limit, and the refusal must name it before the API does.
 -	if serr := checkReleaseBody(body); serr != nil {
 -		return serr
 -	}
