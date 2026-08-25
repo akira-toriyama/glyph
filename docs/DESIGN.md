@@ -67,6 +67,13 @@ the embedded table.
 
 ## 2. Commit format
 
+A note on the name before anything else: "v2" throughout this document is the
+**engine generation** (epic e-qzpz's sigil redesign), not a tag. The generation
+ships as tag **v3.0.0** — the existing `v2.0.0` / `v2.1.0` tags are v1-grammar
+releases, and they are what the fleet is pinned at until the rollout moves the
+pins. "Upgrade to glyph v2" must never be read as "pin a v2.x tag": a real
+`pin glyph v2.0.0` commit exists in glyph-test, and it pinned the OLD grammar.
+
 v2 (epic e-qzpz, ratified 2026-08-16) removed glyph's own grammars. The
 repository's `glyph.toml` — written by `glyph init --gemoji` or
 `--conventional` and then owned by the repository — carries an ordered list of
