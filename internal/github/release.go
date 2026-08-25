@@ -21,13 +21,16 @@ import (
 // Release is one GitHub release as the rolling-draft upsert reads it: the id
 // (the ONLY safe update/delete key — tag-name resolution can hit a published
 // release sharing a draft's intended tag, cli/cli#9367), the intended tag,
-// whether it is still an unpublished draft, and the html_url a human reviews
-// and publishes at.
+// whether it is still an unpublished draft, the html_url a human reviews and
+// publishes at, and the body — which the upsert must READ before it writes,
+// because a draft body can carry a human's hand-written notes above the hand
+// marker, and rewriting blind is how they were silently destroyed (t-qgps).
 type Release struct {
 	ID      int64
 	TagName string
 	Draft   bool
 	URL     string
+	Body    string
 }
 
 // ReleaseParams is the writable slice of a release. Draft is deliberately a
@@ -49,6 +52,7 @@ type apiRelease struct {
 	TagName string `json:"tag_name"`
 	Draft   bool   `json:"draft"`
 	URL     string `json:"html_url"`
+	Body    string `json:"body"`
 }
 
 // wireParams carries ReleaseParams onto the wire; kept separate so the domain

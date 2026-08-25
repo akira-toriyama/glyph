@@ -230,6 +230,98 @@ func TestReleaseUpsertUpdatesTheExistingDraft(t *testing.T) {
 	}
 }
 
+// wantMarker is the hand marker's exact bytes, duplicated here ON PURPOSE:
+// the marker is a published contract (existing drafts carry it), so a change
+// to the const must fail these tests rather than be silently followed.
+const wantMarker = "<!-- glyph: notes written ABOVE this line survive every push; glyph rewrites everything BELOW it -->"
+
+// draftJSONBody is draftJSON with the release's current body — the update
+// path's input for the hand-region tests.
+func draftJSONBody(id int, tag, body string) string {
+	b, err := json.Marshal(body)
+	if err != nil {
+		panic(err)
+	}
+	return fmt.Sprintf(`{"id":%d,"tag_name":%q,"draft":true,"html_url":"https://github.example/releases/%d","body":%s}`, id, tag, id, b)
+}
+
+// TestReleaseUpsertPreservesTheHandRegion pins the t-qgps contract: the
+// rolling draft is the one place release prose can be written, and the upsert
+// must carry everything ABOVE the hand marker across a rewrite byte-for-byte
+// (CRLF included — a web edit stores CRLF), while everything below is
+// regenerated. The mutation ledger names this test.
+func TestReleaseUpsertPreservesTheHandRegion(t *testing.T) {
+	var writes []apiWrite
+	walk := oneFixWalk(t)
+	existing := "the exit codes changed, fix your gates\r\n\r\n" + wantMarker + "\n\n## Fixes\n\n- stale machine text\n"
+	srv := releaseServer(t, walk, `[`+draftJSONBody(11, "v0.1.1", existing)+`]`, &writes)
+	usePR(t, srv)
+
+	code, _, stderr := runGlyph(t, "release")
+	if code != 0 {
+		t.Fatalf("release exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if len(writes) != 1 || writes[0].method != "PATCH" {
+		t.Fatalf("writes = %+v, want exactly one PATCH", writes)
+	}
+	body, _ := writes[0].body["body"].(string)
+	wantPrefix := "the exit codes changed, fix your gates\r\n\r\n" + wantMarker + "\n\n"
+	if !strings.HasPrefix(body, wantPrefix) {
+		t.Errorf("the hand region did not survive the upsert:\n got %q", body)
+	}
+	if strings.Contains(body, "stale machine text") {
+		t.Errorf("the machine region was preserved instead of regenerated: %q", body)
+	}
+	if !strings.Contains(body, "fix a crash") {
+		t.Errorf("the fresh machine region is missing: %q", body)
+	}
+}
+
+// TestReleaseUpsertMarkerlessBodyGetsNoHandRegion: a pre-marker draft (or one
+// whose human deleted the marker line) contributes nothing — glyph cannot
+// tell that body's hand-written lines from its own stale output, and guessing
+// would resurrect old machine text as if a human had written it.
+func TestReleaseUpsertMarkerlessBodyGetsNoHandRegion(t *testing.T) {
+	var writes []apiWrite
+	walk := oneFixWalk(t)
+	srv := releaseServer(t, walk, `[`+draftJSONBody(11, "v0.1.1", "## Fixes\n\n- old body with no marker\n")+`]`, &writes)
+	usePR(t, srv)
+
+	code, _, stderr := runGlyph(t, "release")
+	if code != 0 {
+		t.Fatalf("release exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	body, _ := writes[0].body["body"].(string)
+	if !strings.HasPrefix(body, wantMarker+"\n\n") {
+		t.Errorf("a rewritten body must open with the hand marker: %q", body)
+	}
+	if strings.Contains(body, "old body with no marker") {
+		t.Errorf("a marker-less body must not be preserved: %q", body)
+	}
+}
+
+// TestReleaseUpsertCreateWritesTheMarker: the marker is the contract's only
+// user-visible statement, so it must be present from the draft's FIRST byte —
+// a human should never meet a draft that does not say where their notes live.
+func TestReleaseUpsertCreateWritesTheMarker(t *testing.T) {
+	var writes []apiWrite
+	walk := oneFixWalk(t)
+	srv := releaseServer(t, walk, `[]`, &writes)
+	usePR(t, srv)
+
+	code, _, stderr := runGlyph(t, "release")
+	if code != 0 {
+		t.Fatalf("release exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if len(writes) != 1 || writes[0].method != "POST" {
+		t.Fatalf("writes = %+v, want exactly one POST", writes)
+	}
+	body, _ := writes[0].body["body"].(string)
+	if !strings.HasPrefix(body, wantMarker+"\n\n") {
+		t.Errorf("a created draft must open with the hand marker: %q", body)
+	}
+}
+
 // TestReleaseUpsertMovesTheDraftTag: when the next version changed since the
 // draft was cut (another merge landed), the existing draft's intended tag is
 // UPDATED — ratified: never a second draft.

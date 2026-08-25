@@ -627,7 +627,27 @@ same intended tag, same draft state — and adopts it as the create's answer;
 the probe is one round trip, best-effort, and a probe that finds nothing or
 cannot look falls back to the replay, with the upsert's convergence still
 deleting any duplicate on the next run. `--dry-run` computes everything, action included, and
-writes nothing. The `--json` verdict also carries the walk's expansion
+writes nothing.
+
+**The hand region** (t-qgps): the rolling draft is the only place release
+prose can be written ("the exit codes changed, fix your gates"), and the
+upsert used to rewrite the whole body on every push — the one channel for
+hand-written notes was also the one place work was silently destroyed. Every
+draft body glyph writes now opens with the hand marker (an HTML comment, so a
+published release renders no trace of it): everything ABOVE it survives every
+upsert byte-for-byte (CRLF from a web edit included), everything below is
+glyph's and is rewritten every time. The contract is printed where the human
+is typing, instead of being an unwritten rule learned by losing work. A body
+with no marker contributes no hand region — glyph cannot tell such a body's
+hand-written lines from its own stale output, and guessing would resurrect
+old machine text as if a human had written it. `checkReleaseBody` sizes the
+FINAL body, hand region included. Rejected: a `RELEASE-NOTE:` commit footer
+(v2 removed footer parsing, and prose does not belong in commit messages
+addressed to the version fold); diffing the body against a re-render to
+detect edits (the base moves between pushes, so staleness and hand edits are
+indistinguishable). (Mutation row `draft-hand-region-discarded.patch`.)
+
+The `--json` verdict also carries the walk's expansion
 provenance (`pulls`: each resolved pull and its participating commit count), so
 how a verdict was assembled can be read back afterwards — by a human reviewing a
 draft, or by a CI step — without re-deriving the walk's exclusion rules in
