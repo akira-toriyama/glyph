@@ -443,8 +443,11 @@ func runIn(ctx context.Context, dir string, stdin io.Reader, args ...string) ([]
 	return stdout.Bytes(), nil
 }
 
-// distill picks the most diagnostic line out of git's stderr — the first
-// fatal:/error: line, else the first non-empty line, else the exec error.
+// distill exists because the error envelope carries ONE line and git's stderr
+// is many: hint: noise first, the fatal: buried under it. Preference order
+// over paraphrasing the body: git prefixes its diagnosis, and the exec error
+// ("exit status 128") is the least informative string available — it is the
+// fallback, never the answer while stderr has anything at all.
 func distill(stderr []byte, err error) string {
 	lines := strings.Split(string(stderr), "\n")
 	for _, l := range lines {
