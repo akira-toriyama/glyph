@@ -30,11 +30,11 @@ func TestNotesMarkdown(t *testing.T) {
 		t.Fatalf("notes exited %d, want 0\nstderr: %s", code, stderr)
 	}
 	want := "## Breaking Changes\n\n" +
-		"- rework the store `@akira-toriyama`\n\n" +
+		"- rework the store @akira-toriyama\n\n" +
 		"## Features\n\n" +
-		"- add a command palette `@akira-toriyama`\n\n" +
+		"- add a command palette @akira-toriyama\n\n" +
 		"## Fixes\n\n" +
-		"- fix a crash `@akira-toriyama`\n"
+		"- fix a crash @akira-toriyama\n"
 	if stdout != want {
 		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
 	}

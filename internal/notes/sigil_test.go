@@ -161,10 +161,10 @@ func TestRenderLineOptionalSpan(t *testing.T) {
 	if len(sections) != 1 || len(sections[0].Lines) != 2 {
 		t.Fatalf("sections = %+v", sections)
 	}
-	if got, want := sections[0].Lines[0], "- fix the demo crash (#61) `@akira-toriyama`"; got != want {
+	if got, want := sections[0].Lines[0], "- fix the demo crash (#61) @akira-toriyama"; got != want {
 		t.Errorf("a commit WITH a pull must cite it:\n got %q\nwant %q", got, want)
 	}
-	if got, want := sections[0].Lines[1], "- fix it again by direct push `@akira-toriyama`"; got != want {
+	if got, want := sections[0].Lines[1], "- fix it again by direct push @akira-toriyama"; got != want {
 		t.Errorf("a commit with NO pull must lose the parens and the space with them:\n got %q\nwant %q", got, want)
 	}
 }
@@ -201,9 +201,12 @@ title = "Fixes"
 	}
 }
 
-// TestRenderLineNeutralizesMentions pins the safety property v1 lines carry:
-// a subject cannot page someone from a release body — the mention fence runs
-// over the assembled v2 line too.
+// TestRenderLineNeutralizesMentions pins the safety property v1 lines carry
+// AND its one ratified exemption (2026-08-17): a subject cannot page someone
+// from a release body — the mention fence runs over the assembled v2 line —
+// while the built-in $author, rendered through the template's own "@", goes
+// out as a live mention. Crediting the contributor is the point; the subject's
+// strangers are not.
 func TestRenderLineNeutralizesMentions(t *testing.T) {
 	cfg := sigilCfg(t)
 	sections, err := GroupSigils([]SigilCommit{
@@ -215,6 +218,27 @@ func TestRenderLineNeutralizesMentions(t *testing.T) {
 	line := sections[0].Lines[0]
 	if strings.Contains(line, "@someone") && !strings.Contains(line, "`@someone`") {
 		t.Errorf("a bare @mention survived into the rendered line: %q", line)
+	}
+	if !strings.HasSuffix(line, " @akira") {
+		t.Errorf("the author credit must be a live mention, not fenced: %q", line)
+	}
+}
+
+// TestRenderLineFencesFreeTextAuthor pins the gate on the exemption: the
+// author value is git's free-text %an, and only a whole handle-shaped value
+// may go live. "Akira Toriyama" would page the stranger @Akira if it slipped
+// through raw — the exact t-hykw failure the fence exists for.
+func TestRenderLineFencesFreeTextAuthor(t *testing.T) {
+	cfg := sigilCfg(t)
+	sections, err := GroupSigils([]SigilCommit{
+		{SHA: "aaaaaaaaaaaa", Pull: 1, Author: "Akira Toriyama", Message: ":bug:~ fix a thing"},
+	}, cfg)
+	if err != nil {
+		t.Fatalf("GroupSigils: %v", err)
+	}
+	line := sections[0].Lines[0]
+	if strings.Contains(line, "@Akira") && !strings.Contains(line, "`@Akira`") {
+		t.Errorf("a free-text author name rendered as a live mention: %q", line)
 	}
 }
 

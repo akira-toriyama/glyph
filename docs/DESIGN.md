@@ -288,7 +288,22 @@ separates it from `exclude_authors`.
 placeholders — the winning pattern's named groups, plus the built-ins `$pr` /
 `$author` / `$hash`, which outrank a group of the same name — and literal
 text passes through as the author's own Markdown, with the mention fence run
-over the assembled line. A **`$[ … ]` span renders only when EVERY placeholder
+over the assembled line. The fence has exactly one ratified exemption
+(2026-08-17): the built-in `$author`, so the preset's `@$author` renders as a
+live mention — crediting the contributor is intended behaviour, and every
+peer tool (git-cliff, GitHub's own generated notes, release-drafter,
+changesets) pages the author the same way. The exemption is gated by shape,
+not position: the value is git's free-text `%an`, and it goes out raw only
+when the WHOLE field is one GitHub-handle-shaped token — anything else
+(`Akira Toriyama`, `dependabot[bot]`) stays fenced, because `@Akira` would
+page a stranger, which is the t-hykw incident the fence exists to prevent.
+Group-derived values (`$subject` above all) keep the fence unconditionally:
+who a subject mentions is not the author credit. Rejected alternatives:
+rendering the raw first line (machine notation in prose, and Breaking
+Changes already says what `!` says), and dropping the fence entirely
+(subjects carry arbitrary text). (Mutation row
+`line-returns-its-bytes-unfenced.patch`; the gate lives in
+`markdown.Line.Mention`.) A **`$[ … ]` span renders only when EVERY placeholder
 inside it resolves non-empty** (mutation row
 `notes-optional-span-always-renders.patch`), taking its own punctuation with
 it when one does not. Without it, punctuation written around a placeholder

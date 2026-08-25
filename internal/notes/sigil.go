@@ -101,7 +101,14 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
 // text is the user's own markdown and passes through raw; substituted values
 // are commit-derived text and are escaped as prose, with the mention fence
 // running over the assembled line (the same pipeline v1 lines go through —
-// a subject must not be able to page someone from a release body).
+// a subject must not be able to page someone from a release body). The one
+// exemption is the built-in $author (ratified 2026-08-17): crediting the
+// contributor is the intended behaviour and every peer tool pages them, so
+// the template's "@$author" renders as a live mention — but only when the
+// value is exactly one handle-shaped token; a free-text git author name stays
+// fenced (markdown.Line.Mention holds the gate and the t-hykw reasoning).
+// Group-derived values and the other built-ins keep the fence: whether a
+// SUBJECT can page someone is not the author's intent to declare.
 // The built-ins $pr / $author / $hash are reserved: they win over a pattern
 // group of the same name. A placeholder that is neither built-in nor a group
 // of the winning pattern renders empty.
@@ -134,9 +141,12 @@ func renderLine(spans []config.LineSpan, c SigilCommit, groups map[string]string
 			continue
 		}
 		for _, p := range span.Parts {
-			if p.Placeholder {
+			switch {
+			case p.Placeholder && p.Text == config.BuiltinAuthor:
+				l.Mention(resolve(p.Text))
+			case p.Placeholder:
 				l.Prose(resolve(p.Text))
-			} else {
+			default:
 				l.Raw(p.Text)
 			}
 		}

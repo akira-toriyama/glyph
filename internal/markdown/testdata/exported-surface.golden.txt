@@ -1,3 +1,4 @@
+func (l *Line) Mention(s string)
 func (l *Line) Prose(s string)
 func (l *Line) Raw(s string)
 func (l *Line) String() string
