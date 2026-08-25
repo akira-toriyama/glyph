@@ -1,0 +1,27 @@
+diff --git a/internal/cli/cmd_bump.go b/internal/cli/cmd_bump.go
+index fc0d4e5..011dd1b 100644
+--- a/internal/cli/cmd_bump.go
++++ b/internal/cli/cmd_bump.go
+@@ -92,7 +92,6 @@ func bumpRun(cmd *cobra.Command) error {
+ 	if cerr != nil {
+ 		return cerr
+ 	}
+-	warnSigilVerdicts(commits)
+ 	current, verr := currentVersion(ctx, bumpCurrent, base)
+ 	if verr != nil {
+ 		return verr
+diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
+index b06343f..3611305 100644
+--- a/internal/cli/cmd_lint.go
++++ b/internal/cli/cmd_lint.go
+@@ -275,9 +275,7 @@ func lintRangeRun(ctx context.Context, revRange string) error {
+ 	// Warnings go out even when the run fails: the warned commits are real
+ 	// whichever way the verdict lands, and a developer fixing the violation
+ 	// should not discover the warning only on the green re-run.
+-	for _, w := range warned {
+-		warnf("commit %.7s: %s", w.SHA, w.Detail)
+-	}
++	_ = warned
+ 	if len(findings) > 0 {
+ 		for _, f := range findings {
+ 			errorf("commit %.7s: %s", f.SHA, f.Detail)

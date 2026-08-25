@@ -22,6 +22,12 @@ type Match struct {
 	// what it captured (possibly ""). The notes line template's $xxx
 	// placeholders read from here.
 	Groups map[string]string
+	// Warn is the winning pattern's warn message, "" when it declares none.
+	// The verdict is unchanged — a warned match is still a match — but every
+	// verdict computation that reads this Match must surface the message
+	// (that invariant is what makes a warned pattern's hole visible for as
+	// long as the pattern lives; see Pattern.Warn).
+	Warn string
 	// PatternIndex is the winning pattern's position in Config.Patterns, -1
 	// when Matched is false.
 	PatternIndex int
@@ -75,7 +81,7 @@ func (c *Config) Match(message string) (Match, error) {
 			return Match{}, fmt.Errorf("patterns[%d] matched but its %s group captured nothing and no fixed semver_sigil is set", i, SigilGroup)
 		}
 
-		return Match{Matched: true, Sigil: sigil, Groups: groups, PatternIndex: i}, nil
+		return Match{Matched: true, Sigil: sigil, Groups: groups, Warn: p.Warn, PatternIndex: i}, nil
 	}
 	return Match{PatternIndex: -1}, nil
 }

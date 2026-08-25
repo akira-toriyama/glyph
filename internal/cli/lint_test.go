@@ -588,3 +588,60 @@ func TestLintRangeUsageGuards(t *testing.T) {
 		t.Fatalf("lint --range --all exited %d, want 2", code)
 	}
 }
+
+// useV1WindowConfig swaps the fixture repo's glyph.toml for the composed
+// --v1-window artifact — the config a migrating fleet repository actually
+// runs under.
+func useV1WindowConfig(t *testing.T, dir string) {
+	t.Helper()
+	data, err := config.PresetWithV1Window("gemoji")
+	if err != nil {
+		t.Fatalf("PresetWithV1Window: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), data, 0o644); err != nil {
+		t.Fatalf("write glyph.toml: %v", err)
+	}
+}
+
+// TestLintRangeWarnsOnTheV1WindowAndStaysGreen pins the window's lint
+// verdict end to end: a sigil-less gitmoji subject is CLEAN (exit 0 — the
+// window exists so v1 history and v1 habits do not break the gate) and LOUD
+// (one ::warning:: naming the commit and the fix). Green-and-silent is the
+// measured pre-warn state this exists to keep from coming back: the sigil's
+// whole write-reminder role was off for as long as the window lived.
+func TestLintRangeWarnsOnTheV1WindowAndStaysGreen(t *testing.T) {
+	dir, base := testRepo(t)
+	useV1WindowConfig(t, dir)
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(x) a v1 subject with no sigil")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ a strict fix")
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
+	if code != 0 {
+		t.Fatalf("lint --range exited %d, want 0 — the window keeps the verdict green\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "v1-acceptance window") {
+		t.Fatalf("the warned commit must annotate:\n%s", stderr)
+	}
+	if strings.Count(stderr, "v1-acceptance window") != 1 {
+		t.Fatalf("exactly the sigil-less commit warns, not the strict one:\n%s", stderr)
+	}
+}
+
+// TestLintStdinWarnsOnTheV1Window is the authoring half of the same pin: the
+// hook path surfaces the warning at commit time, where adding the sigil
+// costs one keystroke instead of a rebase.
+func TestLintStdinWarnsOnTheV1Window(t *testing.T) {
+	dir, _ := testRepo(t)
+	useV1WindowConfig(t, dir)
+	t.Chdir(dir)
+	setStdin(t, ":sparkles:(x) a v1 subject with no sigil\n")
+
+	code, _, stderr := runGlyph(t, "lint", "--stdin")
+	if code != 0 {
+		t.Fatalf("lint --stdin exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "v1-acceptance window") {
+		t.Fatalf("the authoring path must surface the warning:\n%s", stderr)
+	}
+}

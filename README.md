@@ -58,7 +58,7 @@ a baseline**.
 
 | command | answer |
 |---|---|
-| `glyph init` | writes a starting `glyph.toml` (`--gemoji` or `--conventional`) — the file everything else reads; an existing file refuses without `--force` |
+| `glyph init` | writes a starting `glyph.toml` (`--gemoji` or `--conventional`) — the file everything else reads; `--v1-window` (gemoji only) appends the migration pattern that accepts sigil-less v1 subjects as none, with a warning on every one; an existing file refuses without `--force` |
 | `glyph lint` | commit-convention gate over `--range`, one `--message`, `--stdin`, or a PR title via `--pr` (the subject a squash merge lands): does one of the repository's patterns claim the message, and does it yield a sigil? |
 | `glyph bump` | the next version — or **"no release"** — from `--range`, `--pr`, or the release-time walk `--since-tag`; a commit no pattern claims refuses the whole range |
 | `glyph notes` | the release-notes body: `[[note.sections]]` order, one line per commit through the `note.line` template |
@@ -149,6 +149,13 @@ you. `glyph doctor` flags any unpinned reference it finds in your workflows.
 ```sh
 glyph init --gemoji     # or --conventional; edit the file freely afterwards
 ```
+
+A repository with pre-sigil gitmoji history adds `--v1-window`: sigil-less
+subjects then lint clean **with a warning** and fold as `=` none instead of
+failing the range. The window is meant to be deleted once every commit behind
+the release walk's base carries a sigil — its comment in the generated file
+says so, and the per-commit warning is what keeps it from quietly becoming
+permanent.
 
 **1. Check the repository matches the model:**
 

@@ -225,3 +225,42 @@ func TestFoldSigilsPropagatesConfigBug(t *testing.T) {
 		t.Errorf("error must name the commit that surfaced the config bug: %v", err)
 	}
 }
+
+// TestFoldSigilsCarriesTheWinningPatternsWarn pins the fold half of the warn
+// mechanism: a commit claimed by a warned pattern folds normally — the
+// verdict is unchanged — and its row carries the pattern's message, which is
+// how the machine surface (bump --json) names the warned commits and the CLI
+// surfaces each one. Silent here would mean the v1-acceptance window's
+// sigil-less commits fold as none with nothing said, the exact hole the warn
+// key exists to keep visible.
+func TestFoldSigilsCarriesTheWinningPatternsWarn(t *testing.T) {
+	cfg, err := config.Load([]byte(`schema = 1
+
+[[patterns]]
+pattern = '^:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!%]) (?P<subject>.+)'
+
+[[patterns]]
+pattern = '^:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))? (?P<subject>.+)'
+semver_sigil = '='
+warn = 'no sigil: folds as none'
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	verdicts, dec, ferr := FoldSigils([]SigilCommit{
+		{SHA: "aaaa", Author: "akira", Message: ":sparkles: v1 subject with no sigil"},
+		{SHA: "bbbb", Author: "akira", Message: ":bug:~ a strict fix"},
+	}, cfg)
+	if ferr != nil {
+		t.Fatalf("FoldSigils: %v", ferr)
+	}
+	if dec.Level != LevelPatch {
+		t.Fatalf("level = %v, want patch — a warned match must not change the verdict", dec.Level)
+	}
+	if verdicts[0].Warn != "no sigil: folds as none" {
+		t.Errorf("warned commit's row = %+v, want the pattern's warn message on it", verdicts[0])
+	}
+	if verdicts[1].Warn != "" {
+		t.Errorf("strict commit's row = %+v, want no warning", verdicts[1])
+	}
+}

@@ -45,12 +45,16 @@ type SigilCommit struct {
 // SigilVerdict is one folded commit's row in the machine verdict: the sigil
 // the message carried (or the pattern supplied) and the level it folds to.
 // Excluded authors and skip-pattern commits have no row — they are not in
-// the fold.
+// the fold. Warn is the winning pattern's warn message (config.Pattern.Warn),
+// on the row so the machine surface names the warned commits and the CLI can
+// surface each one — a warned pattern must be loud wherever it wins a
+// verdict.
 type SigilVerdict struct {
 	SHA     string `json:"sha"`
 	Subject string `json:"subject"`
 	Sigil   string `json:"sigil"`
 	Level   string `json:"level"`
+	Warn    string `json:"warn,omitempty"`
 }
 
 // FoldSigils computes the release level of a commit range under a v2 config:
@@ -117,6 +121,7 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Deci
 			Subject: firstLine(c.Message),
 			Sigil:   m.Sigil.String(),
 			Level:   string(level),
+			Warn:    m.Warn,
 		})
 	}
 	if len(refusals) > 0 {

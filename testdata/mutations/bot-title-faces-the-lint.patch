@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
-index 6a622d4..ba06436 100644
+index b06343f..10f882f 100644
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -196,7 +196,7 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
+@@ -203,7 +203,7 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
  	if err != nil {
  		return err
  	}
 -	v := cfg.Lint(pull.Title, pull.Author)
 +	v := cfg.Lint(pull.Title, "")
  	if v.OK || v.Excluded {
- 		return nil
- 	}
+ 		if v.Warn != "" {
+ 			warnf("%s/%s#%d title: %s", owner, repo, number, v.Warn)

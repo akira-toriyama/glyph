@@ -161,6 +161,11 @@ func TestLoadErrors(t *testing.T) {
 		{"invalid regex", `schema = 1` + "\n[[patterns]]\npattern = '(?=lookahead)'\n", "RE2"},
 		{"pattern with no sigil source", "schema = 1\n[[patterns]]\npattern = '^x'\n", "could never yield a verdict"},
 		{"skip contradicts fixed sigil", "schema = 1\n[[patterns]]\npattern = '^x'\nskip = true\nsemver_sigil = '~'\n", "contradict"},
+		// A skipped commit is outside every verdict, so a warning on a skip
+		// pattern would fire for nobody — refusing the combination keeps
+		// "warned wherever it wins a verdict" a statement with no exceptions.
+		{"skip contradicts warn", "schema = 1\n[[patterns]]\npattern = '^Merge '\nskip = true\nwarn = 'x'\n", "contradict"},
+		{"empty warn", "schema = 1\n[[patterns]]\npattern = '^x'\nsemver_sigil = '='\nwarn = ''\n", "warn is empty"},
 		{"fixed sigil invalid", "schema = 1\n[[patterns]]\npattern = '^x'\nsemver_sigil = '+'\n", "invalid semver_sigil"},
 		{"section with both axes", "schema = 1\n" + minimalPatterns + "[[note.sections]]\nsemver = 'major'\nauthor = 'x'\ntitle = 'T'\n", "exactly one"},
 		{"section with no axis", "schema = 1\n" + minimalPatterns + "[[note.sections]]\ntitle = 'T'\n", "state its axis"},
