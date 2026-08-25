@@ -42,11 +42,12 @@ name: glyph-lint
 # binary revision it runs cannot diverge, with no hand-bumped default to fall
 # out of lockstep (one did: this file sat at v0.4.0 through the v0.5.0 tag).
 #
-# What the lint enforces (exit 3 on violation; see `glyph rules` for the table):
-# a leading textual gitmoji per docs/DESIGN.md §2, with the retired Conventional
-# token accepted on legacy history. Bots, merge commits, autosquash artifacts
-# and raw `git revert` subjects are skipped, never failed. :construction: (WIP)
-# is a violation here — a PR range is a merge candidate.
+# What the lint enforces (exit 3 on violation): the repository's own
+# glyph.toml — a commit means what the first matching [[patterns]] entry says
+# (docs/DESIGN.md §2), and a message no pattern claims is the violation.
+# exclude_authors and skip-pattern commits (the presets skip merge commits and
+# autosquash artifacts) are skipped, never failed; a warn-pattern match
+# annotates a ::warning:: and stays green.
 
 on:
   workflow_call:

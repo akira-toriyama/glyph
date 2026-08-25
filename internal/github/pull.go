@@ -4,7 +4,7 @@ package github
 // through. Same contract as the rest of the adapter: bytes move, failures
 // classify at the source, and no policy lives here — what a title must look
 // like, and whose titles are excluded, is the caller's (internal/cli, via
-// internal/parser and internal/bump) decision.
+// internal/config and internal/bump) decision.
 
 import (
 	"context"

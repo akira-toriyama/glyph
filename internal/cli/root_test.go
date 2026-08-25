@@ -60,7 +60,7 @@ func TestFinishBareErrorIsUsage(t *testing.T) {
 // completion zshh > _glyph` reported success and wrote English prose where a
 // completion script belongs, breaking every later shell start with nothing
 // having failed. Every other shape already exited 2 (`glyph bogus`, `glyph hook
-// bogus`, `glyph rules bogus`, `glyph completion zsh extra`).
+// bogus`, `glyph completion zsh extra`).
 //
 // The assertion is the CODE, not merely non-zero: 2 is usage and 3 is the gate
 // code a fleet lint job hard-fails on, and nothing downstream can tell them

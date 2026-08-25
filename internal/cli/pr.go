@@ -17,7 +17,7 @@ import (
 // turns a pull request's individual (pre-squash) commits into the very same
 // participating-commit list the local --range walk produces. Command logic stays
 // in the cmd_*.go files; the participation rules stay in internal/bump and
-// internal/parser, so a PR classifies identically whether it is read from git or
+// internal/config, so a PR classifies identically whether it is read from git or
 // from the API.
 
 // The environment GitHub Actions already populates, so a caller in CI needs no

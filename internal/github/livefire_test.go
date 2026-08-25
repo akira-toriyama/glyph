@@ -3,7 +3,7 @@ package github
 // The live-fire oracles (t-2e11, t-sfkk). Every other test in this package
 // speaks to an httptest fake, and a fake affirms glyph's assumptions for ever
 // — it is glyph's model of GitHub, answering questions about itself. House
-// rule (stated at internal/parser's `git stripspace` oracle): code that
+// rule (stated at internal/cleanup's real-git oracles): code that
 // models an external system's behaviour carries a test that asks the real
 // system. These are those tests for the GitHub adapter — the draft lifecycle
 // the upsert stands on, and the squash→PR resolution the walk stands on: the

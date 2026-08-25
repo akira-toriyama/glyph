@@ -2,8 +2,8 @@
 
 The canonical design for glyph, a self-built, sigil-driven release engine.
 The commit grammar is **not** defined here — since v2 it lives in each
-repository's own `glyph.toml` (§2), written once by `glyph init` and printed
-by `glyph rules`. This document is the *why* and the *shape*.
+repository's own `glyph.toml` (§2), written once by `glyph init` and then
+owned by the repository. This document is the *why* and the *shape*.
 
 ## 1. Problem
 
@@ -13,13 +13,17 @@ the **PR title** on any multi-commit PR, erasing per-commit types from `main`.
 Every tool that types a release from **commit text** (git-cliff today,
 semantic-release, release-please, cocogitto) is therefore fooled. glyph instead
 derives the bump and notes from the **individual commits inside the PR**, and
-makes gitmoji the type driver.
+made gitmoji the type driver. (That last half is the v1 statement: since v2
+the driver is the repository's own pattern file and its `semver_sigil` (§2),
+and the gitmoji prefix is visual convention the patterns may or may not
+require. The problem, and the PR-resolution hop below, are unchanged.)
 
 Two inversions from the prior house convention:
 
-- **gitmoji drives classification/semver.** Previously the Conventional type
-  decided the bump and the gitmoji was stripped before parsing. Now the leading
-  `:code:` *is* the type.
+- **gitmoji drives classification/semver** *(v1 — superseded by §2's sigil)*.
+  Previously the Conventional type
+  decided the bump and the gitmoji was stripped before parsing. In v1 the
+  leading `:code:` *was* the type; in v2 the sigil beside it is.
 - **The bump is computed from the PR's individual commits at merge time**, not
   from `main`'s post-squash history — the one thing git-cliff structurally
   cannot do, and the reason a self-built tool is justified.
@@ -44,9 +48,10 @@ for the cited detail. What it changed:
   to read the API instead of the message.
 - **gitmoji-as-type is NOT novel** and must not be sold as such:
   `semantic-release-gitmoji` and python-semantic-release's `EmojiCommitParser`
-  both map textual shortcodes to semver with nearly glyph's own defaults, and the
-  latter uses the same subject grammar. glyph's table is bigger (75 codes) and
-  compiled in rather than configured; that is a packaging choice, not an invention.
+  both map textual shortcodes to semver with nearly glyph's v1 defaults, and the
+  latter uses the same subject grammar. glyph's v1 table was bigger (75 codes) and
+  compiled in rather than configured — a packaging choice, not an invention, and
+  one v2 then dissolved entirely into the repository's own pattern file.
 - **Deferring the tag to publish is NOT a differentiator** — inherent to any
   draft-based tool (release-drafter carries `tag_name` on the unpublished draft
   exactly as glyph does).
@@ -56,8 +61,9 @@ for the cited detail. What it changed:
   (release-drafter requires a previously PUBLISHED release or it warns and returns
   nothing — which is also the strongest argument for the backlogged initial-tag knob).
 
-Only permitted external dependency: the gitmoji spec dataset. (cobra is the lone
-runtime import, per house pattern.)
+Only permitted external dependencies: cobra (the CLI frame, per house pattern)
+and go-toml (the `glyph.toml` decoder). The v1 gitmoji spec dataset left with
+the embedded table.
 
 ## 2. Commit format
 
@@ -155,8 +161,10 @@ is `--no-verify`, which turns the whole gate off.
 has five modes and picks between two of them by whether an editor will run;
 assuming the editor's cleanup is what made the hook and CI disagree, measured on
 git 2.54 in both directions (`-F` with a `#` line as the subject: hook 0, CI 3;
-`-F` with an indented `  # why:` above a `NON-BREAKING:` footer: hook 0, CI 3 for
-`undeclared-removal`). The two signals a hook actually has:
+`-F` with an indented `  # why:` line above a footer: hook 0, CI 3 — both
+measured under the v1 grammar, whose footer rule the second case tripped; the
+disagreement belongs to git's cleanup, not to any grammar, so a v2 pattern
+file inherits it unchanged). The two signals a hook actually has:
 
 - `commit.cleanup`, read with `git config --get`;
 - `GIT_EDITOR`, which git sets to `:` when no editor will run. Only that side is
@@ -613,16 +621,16 @@ line can't carry N grouped entries); owning the squash **body** via
 `COMMIT_MESSAGES` (kept only as an optional drift alarm, never the primary).
 
 Fallbacks never hard-fail a release: a direct-push commit or an API lag emits a
-`::warning::` and classifies the squash commit's own message. On this fallback
-path only, a message that does not parse or carries an unknown `:code:` also
-degrades to a `::warning::` and counts **none** — never a silent patch, and
-never exit 3: the hard unknown-code error stays with the lint gate (§2), and
-the downgrade is owned by the walk assembly, keeping `internal/bump` pure.
-One exception (Q10): a **breaking marker is never suppressed** — an unknown
-`:code:` carrying `!` or a `BREAKING CHANGE:` footer counts **major** behind
-the `::warning::`, normalized to `:boom:` (so it folds and hoists into
-Breaking Changes); a typo can over-bump, but a breaking change is never
-silently dropped.
+`::warning::` and classifies the squash commit's own message under the pattern
+file. On this fallback path only, a message no pattern claims also degrades to
+a `::warning::` and counts **none** — never a silent patch, and never exit 3:
+the hard refusal stays with the lint gate and the range fold (§2, §3), and the
+downgrade is owned by the walk assembly, keeping `internal/bump` pure. The v1
+exception here (Q10: an unknown `:code:` carrying `!` or a `BREAKING CHANGE:`
+footer normalized to a major) is **superseded with the grammar that defined
+it**: v2 reads no body and normalizes nothing, so a breaking marker survives
+the dark path exactly when the subject carries a sigil the pattern file reads
+— which is the marker's home under §2, not a special case of the walk.
 
 The leniency is for the fallback path only. A lint failure **inside a
 resolved merged PR** stays a hard exit 3 even on the release walk (Q1 —
@@ -657,7 +665,7 @@ commit and a tag strictly past it both exited 3). Both now exit 0.
 ## 5. Architecture (Go, house pattern)
 
 Binary `glyph`, module `github.com/akira-toriyama/glyph`. Subcommands: `lint`,
-`fmt`, `bump`, `notes`, `preview`, `release`, `doctor`, `rules`, `hook`, `version` —
+`init`, `bump`, `notes`, `preview`, `release`, `doctor`, `hook`, `version` —
 everything `glyph --help` prints except cobra's own `completion` and `help`.
 This line and the tree below are the two places in this document a new command
 or package has to be added, and both had gone quietly out of date: before t-0cqs
@@ -671,8 +679,8 @@ internal/core            exit-code contract + structured Error (no I/O, no logic
 internal/version         ldflags build identity + ReadBuildInfo fallback
 internal/cleanup         git's message cleanup, modelled exactly (comment strip, scissors cut) — what --stdin judges is what git records
 internal/bump            Level lattice; Classify; Reduce(max); Next; stdlib semver
-internal/config          v2 glyph.toml loader — user RE2 patterns, first match wins, semver_sigil extraction (epic e-qzpz; not yet wired to any command)
-internal/draftplan       v2 draft convergence — pure; which draft a verdict keeps, retags or deletes (the Unreleased placeholder lives here; not yet wired)
+internal/config          glyph.toml loader — user RE2 patterns, first match wins, semver_sigil extraction; embeds the init presets
+internal/draftplan       draft convergence — pure; which draft a verdict keeps, retags or deletes (the Unreleased placeholder lives here)
 internal/markdown        Line: per-field escape, then the mention fence over the assembled line
 internal/notes           group by section; text/template render (no external tmpl dep)
 internal/preview         merge-preview comment body — pure; no git, no API, no clock
@@ -756,19 +764,16 @@ so `internal/workflows` bans the read itself
 producer half (`lint-findings-lose-their-annotations`).
 
 **Machine-output flag:** one spelling, `--json`, on every command that has one —
-`bump`, `notes`, `preview`, `release`, `doctor`, `rules`, `version` and
-`hook install` (`lint` speaks only in exit codes, and `fmt`'s stdout IS the
-payload — the corrected message, pipeable into `git commit -F -` — so neither
-has one). It was
-`--ndjson` on the last two until v1.0.0, which was wrong twice: the flag named a
+`bump`, `notes`, `preview`, `release`, `doctor`, `version` and
+`hook install` (`lint` speaks only in exit codes and the error envelope, so it
+has none). It was
+`--ndjson` on two of them until v1.0.0, which was wrong twice: the flag named a
 format glyph has never emitted (`printCompact` writes ONE object, not a stream)
 and it split the surface, so a caller had to remember which subcommand took
 which — measured before the rename, `version --json` and `bump --ndjson` *both*
 exited 2 with `unknown flag`. The flag is read by VALUE and not by `Changed`, so
-an explicit `--json=false` selects the human line at exit `0`; unlike
-`rules --md`, the machine flag is not the default-bearing member of its group,
-so declining it selects a real output rather than nothing and it carries no
-`checkDefaultModeOff`. Enumerated from the command tree at run time by
+an explicit `--json=false` selects a real output — the human line at exit `0` —
+rather than nothing. Enumerated from the command tree at run time by
 `internal/cli`'s `TestMachineOutputFlagHasOneSpelling`, so a new command that
 invents a third spelling fails there rather than in a caller's shell.
 
@@ -791,10 +796,14 @@ itself. `rg '^func Fuzz'` is the current list, not this sentence. Always `-race`
 
 **Anything that models an external system carries one test that asks the real
 system**, because a closed loop of glyph-against-glyph proves nothing about the
-thing being modelled. `internal/parser` shells to `git stripspace` — git's own
-`strbuf_stripspace`, the authority on what git will actually record — with
+thing being modelled. `internal/cleanup` ports git's `strbuf_stripspace` and
+`wt_status_locate_end` line for line, and two oracles hold the port to the
+real git: `TestCutLineIsTheOneGitWrites` drives a real `git commit -v` and
+asserts git still writes the exact scissors line the cut matches on, and
+`internal/cli`'s `TestHookVerdictMatchesWhatGitRecords` commits through a real
+git and asserts the hook's verdict matches what git recorded — both with
 `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM` pinned to `/dev/null` so a personal
-`core.commentChar` cannot move the answer. `internal/markdown`'s rules were
+config cannot move the answer. `internal/markdown`'s rules were
 measured against GitHub's own renderer (`gh api -X POST /markdown`, mode=gfm),
 with the probes, their observed output and the date of the run recorded in
 `markdown_test.go`; re-run them before changing a rule, because the one rule

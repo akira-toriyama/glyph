@@ -3,8 +3,8 @@
 # state its reason as a `Golden-change: <reason>` trailer on every non-merge
 # commit in the range.
 #
-# A golden is a format SPEC stored as bytes — TestRenderGolden, the gitmoji
-# table's TestMarkdownGolden, markdown's TestExportedSurfaceGolden all compare
+# A golden is a format SPEC stored as bytes — the dry-run release body's
+# golden and markdown's TestExportedSurfaceGolden both compare
 # output against one — and `go test -update` rewrites it from whatever the code
 # currently produces. That last part is the hazard this gate closes (ratified
 # with t-3f4s's surface golden): -update makes a rendering BUG look intentional.
@@ -19,12 +19,10 @@
 # human-stated reason in the history of every commit that rewrote the spec.
 #
 # What counts as a golden is GOLDEN_PATTERN below: the -update-rewritable
-# goldens (testdata/*.golden.*; docs/gitmoji-table.md left with
-# gitmoji.Table.Markdown(), same -update path). Deliberately absent:
-# internal/bump/testdata/fleet-corpus.tsv has NO -update on purpose — its test
-# header argues why, and scripts/fleet-corpus.sh refuses to bake a broken
-# tree's verdicts in as truth. Listing it here would read as "a trailer makes a
-# hand edit of stored verdicts acceptable", which it does not.
+# goldens (testdata/*.golden.*). Deliberately absent: the fuzz corpus, which is
+# regression INPUTS rather than a format spec — a trailer demanded there would
+# read as "a hand edit of a crash input is acceptable with a reason", and the
+# only legitimate writes are the engine's own.
 #
 # Usage: sh scripts/golden-gate.sh <base>   (CI passes the PR base sha;
 # check.sh passes origin/main). The diff is three-dot, i.e. against the

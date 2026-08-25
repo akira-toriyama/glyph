@@ -2,8 +2,8 @@
 // releases out of the GitHub REST API. It is an I/O adapter, the remote twin of
 // internal/gitsource: it moves bytes and classifies failures (every API failure
 // is core.CodeAPI by contract, a canceled context is core.CodeInterrupted), and
-// holds no commit semantics — parsing belongs to internal/parser, participation
-// and folding to internal/bump. The base URL and HTTP client are injectable so
+// holds no commit semantics — a message's meaning belongs to internal/config's
+// pattern match, participation and folding to internal/bump. The base URL and HTTP client are injectable so
 // an httptest.Server can stand in for api.github.com under test.
 package github
 
