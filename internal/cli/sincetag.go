@@ -819,8 +819,9 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
 //     three commits, two landed). That entry has no landing site under any shape,
 //     so leaving it in the window made the count wrong and the alignment was
 //     abandoned WHOLE, taking the two commits it could have placed with it. It is
-//     excluded on its parent count — the same fact bump.ExcludedFromClassification
-//     already reads, so nothing downstream needs it placed.
+//     excluded on its parent count — the same RawCommit.Parents fact the walk
+//     already reads everywhere it handles a merge commit, so nothing
+//     downstream needs it placed.
 //
 // A squash leaves no footprint at all and reaches step 2 with the whole listing,
 // where it fails to align: the pull alone governs it, exactly as before.
