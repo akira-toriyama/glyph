@@ -169,6 +169,39 @@ func TestRenderLineOptionalSpan(t *testing.T) {
 	}
 }
 
+// TestGroupSigilsMultiCommitPullRepeatsTheCitation pins, for the first time,
+// what a multi-commit pull looks like in the notes: one line PER COMMIT, each
+// citing the SAME (#N). This is the mechanical consequence of renderLine
+// binding $pr per commit, and until t-njmw nothing asserted it — the shape
+// could have changed to dedup-by-pull (or drop the citation) without a test
+// noticing. Whether the repetition is the *right* rendering is a separate,
+// unratified question; this test freezes the current answer so a change to it
+// has to be a decision.
+func TestGroupSigilsMultiCommitPullRepeatsTheCitation(t *testing.T) {
+	cfg := sigilCfg(t)
+	sections, err := GroupSigils([]SigilCommit{
+		{SHA: "aaaaaaaaaaaa", Pull: 61, Author: "akira", Message: ":bug:~ fix the first thing"},
+		{SHA: "bbbbbbbbbbbb", Pull: 61, Author: "akira", Message: ":bug:~ fix the second thing"},
+		{SHA: "cccccccccccc", Pull: 61, Author: "akira", Message: ":bug:~ fix the third thing"},
+	}, cfg)
+	if err != nil {
+		t.Fatalf("GroupSigils: %v", err)
+	}
+	if len(sections) != 1 || len(sections[0].Lines) != 3 {
+		t.Fatalf("sections = %+v, want one Fixes section with three lines", sections)
+	}
+	want := []string{
+		"- fix the first thing (#61) @akira",
+		"- fix the second thing (#61) @akira",
+		"- fix the third thing (#61) @akira",
+	}
+	for i, w := range want {
+		if sections[0].Lines[i] != w {
+			t.Errorf("line %d = %q, want %q", i, sections[0].Lines[i], w)
+		}
+	}
+}
+
 // TestRenderLineBuiltinsOutrankGroups: a pattern free to name its groups can
 // name one $pr, and the built-in still wins — so a subject-supplied group can
 // never dress itself as the pull the walk resolved. The span reads the same

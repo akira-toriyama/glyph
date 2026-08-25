@@ -219,6 +219,44 @@ func TestPreviewFoldsPendingOverPR(t *testing.T) {
 	}
 }
 
+// TestPreviewPRMultiCommitListing: the PR side of the preview folds over the
+// pull's WHOLE commit listing, max-fold like everywhere else. Every other
+// preview test feeds a one-commit listing (t-njmw found the gap: 9 tests,
+// none with two commits in one pull), so a preview that read only the first
+// listing entry would have stayed green everywhere while under-reporting any
+// multi-commit PR whose stronger sigil came second — which is exactly the
+// order this test uses.
+func TestPreviewPRMultiCommitListing(t *testing.T) {
+	dir, _ := testRepo(t) // tagged v0.1.0, HEAD on the tag: the pending side is empty
+	t.Chdir(dir)
+
+	srv := walkServer(t, map[string]string{
+		pullCommitsPath(7): `[` +
+			apiCommit("aaa1111", "akira-toriyama", ":memo:= note the thing") + `,` +
+			apiCommit("bbb2222", "akira-toriyama", ":sparkles:^ add the thing") + `]`,
+	})
+	usePR(t, srv)
+
+	code, stdout, stderr := runGlyph(t, "preview", "--pr", "7", "--json")
+	if code != 0 {
+		t.Fatalf("preview exited %d: %s", code, stderr)
+	}
+	var got struct {
+		Level string `json:"level"`
+		Next  string `json:"next"`
+		PR    string `json:"pr"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, stdout)
+	}
+	if got.PR != "minor" {
+		t.Errorf("pr side = %s, want minor (the fold must read the whole listing, not its first entry)", got.PR)
+	}
+	if got.Level != "minor" || got.Next != "v0.2.0" {
+		t.Errorf("fold = %s/%s, want minor/v0.2.0", got.Level, got.Next)
+	}
+}
+
 // TestPreviewRequiresPR: without --pr there is no pull request to preview.
 // Caller input, so usage (2) — never a walk over an empty input.
 func TestPreviewRequiresPR(t *testing.T) {
