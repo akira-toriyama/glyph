@@ -108,18 +108,19 @@ appends `..HEAD` itself, so a value containing `..` is rejected as usage.
 order-independent and idempotent (fuzz-pinned), so squash order can never change
 a version. The word is used for both the operation and its input set — "an empty
 fold" means the commit set came out empty, which is the ambiguity *walkFacts*
-exists to resolve. `internal/bump/bump.go: Reduce`
+exists to resolve. `internal/bump/level.go: Reduce`
 
 **participate** — a commit that survives the participation rules and reaches
 classification. An excluded commit is *skipped, never a violation*. Two
 exclusion questions are kept rigorously apart, and conflating them is the t-7zt7
-defect: `ExcludedFromClassification` asks "is this commit's own **message**
-classifiable?" (bot authors, 2+ parents, git-generated subjects) and governs
-lint, the `--range` walk and the fallback path; `ExcludedFromResolution` asks
-"can this commit on main **point at** a merged pull request?" and takes the
-**author alone** — a merge point's subject and parent count are how GitHub
-*shapes a pointer*, not evidence about it. `internal/bump/bump.go:
-ExcludedFromClassification, ExcludedFromResolution`
+defect: the classification side asks "is this commit's own **message**
+judged?" — `exclude_authors` drops it before matching, a matching `skip = true`
+pattern drops it after — and governs lint, the fold and the fallback path; the
+resolution side asks "can this commit on main **point at** a merged pull
+request?" and takes the **author alone** — a merge point's subject and parent
+count are how GitHub *shapes a pointer*, not evidence about it.
+`internal/bump/sigilfold.go: FoldSigils`, `internal/cli/sincetag.go: walkSince`
+(the resolution gate)
 
 **merge point** — whatever commit GitHub named `merge_commit_sha` for a pull
 request: the squash commit, a rebase-merge's **last** replayed commit, or (the
@@ -211,13 +212,13 @@ walkFacts.Pulls`
 **fallback path** — where a walked commit that resolved to *no* merged pull
 request is classified from its **own message** (a direct push, a local `git
 merge`, or the API not knowing the sha yet). Leniency is confined here and
-nowhere else: an unparseable message or an unknown code emits a `::warning::` and
-counts **none** — never a silent patch, never exit 3 (the hard unknown-code error
-stays with the lint gate; t-kbqx, so `internal/bump` stays pure). One exception
-(ratified Q10): a **breaking marker is never suppressed** — an unknown code
-carrying one counts major, normalized to `:boom:` so it folds and hoists into
-Breaking Changes. The asymmetry is deliberate: a typo can over-bump a version, a
-breaking change must never be silently dropped from one.
+nowhere else: a message no pattern claims emits a `::warning::` and counts
+**none** — never a silent patch, never exit 3 (the hard refusal stays with the
+lint gate and the range fold; t-kbqx, so `internal/bump` stays pure). The v1
+exception here (Q10's footer/unknown-code normalization to `:boom:`) is
+superseded with the grammar that defined it: v2 reads no body and normalizes
+nothing, so a breaking marker survives this path exactly when the subject
+carries a sigil the pattern file reads.
 `internal/cli/sincetag.go: walkSince` (the fallback arm)
 
 **API lag** — GitHub answering **422** for a sha it does not know yet, which is
@@ -266,16 +267,16 @@ walkFacts`
 
 **Dropped** — the narrowest of the five, and the one whose name over-promises.
 Nothing is recorded unless the commit reached the fallback path through *API lag*
-— the 422 arm, where GitHub did not know the sha. Under that condition three
+— the 422 arm, where GitHub did not know the sha. Under that condition two
 outcomes record: a merge commit excluded on its parent count (a merge point that
-may have carried a whole pull), a message that does not parse, and a code that is
-not in the rules table and carries no breaking marker. Every other fallback
-records nothing, including the same three shapes reached because the commit simply
+may have carried a whole pull), and a message no pattern claims. Every other
+fallback
+records nothing, including the same shapes reached because the commit simply
 has no pull request — a direct push or a local `git merge` is a message glyph
 **read** and judged, not evidence it could not obtain. So `Dropped` is not "the
 fold used second-best evidence"; it is "something is missing from the fold, and
-only GitHub can supply it". `internal/cli/sincetag.go: fallbackCommit` (the
-`dropped` closure, gated on `fallbackReason.lag`)
+only GitHub can supply it". `internal/cli/sincetag.go: walkFacts.Dropped` (both
+arms sit in `walkSince`'s lag fallback)
 
 **shortfall** — the one-clause sentence naming what the walk could not read, so
 the same fact can be spliced into a `::warning::`, into the draft body a human
@@ -308,12 +309,14 @@ the folded level and the reason (plus tag, target, body and action for `release`
 `release` computes it **once** and derives both the version and the notes from
 that single commit set — calling `bump` and `notes` separately walks twice, and a
 merge landing between the walks could version one range and describe another.
-`internal/cli/cmd_bump.go: classifyVerdict`, `internal/cli/cmd_release.go:
+`internal/bump/sigilfold.go: FoldSigils`, `internal/cli/cmd_release.go:
 releaseResult`
 
 **level** — a rung of the bump lattice for one commit or one fold (`none`,
-`patch`, `minor`, `major`). Distinguish from **breaking**, which is an orthogonal
-non-suppressible boolean, not a rung. `internal/gitmoji/gitmoji.go: Bump`
+`patch`, `minor`, `major`). Distinguish from **promote**, the OR-folded boolean
+a `%` commit sets beside the lattice (1.0.0 is named, not stepped); the v1
+breaking boolean is gone — breaking IS the major rung, and pr-verdict's
+`breaking` output derives from it. `internal/bump/level.go: Level, Decision`
 
 **source** — the human name of what the verdict was computed over: a revision
 range, `owner/name#N`, or the walked range. Where it surfaces is narrower than the
@@ -455,7 +458,7 @@ commit-msg hook, still holding the editor template, the status block and, under
 actually record. Only the authoring path (`--stdin`) calls it: a `--range` walk
 reads messages git has already cleaned, and running it there would swallow a
 genuinely empty message and any body line starting with `#`.
-`internal/parser/cleanup.go: Cleanup`
+`internal/cleanup/cleanup.go: Apply`
 
 **cleanup mode** — *which* cleanup, of git's five: `verbatim` (none),
 `whitespace`, `strip` (whitespace + comment lines), `scissors`, and `default`,
@@ -463,7 +466,7 @@ which is not a cleanup but a choice between `strip` and `whitespace` by whether 
 message is **edited**. glyph resolves it per commit from `commit.cleanup` and
 `GIT_EDITOR`; a mode assumed instead of resolved is how the hook and CI came to
 disagree about the same message. DESIGN §2.1.
-`internal/parser/cleanup.go: CleanupMode, ResolveCleanupMode`,
+`internal/cleanup/cleanup.go: Mode, ResolveMode`,
 `internal/cli/cmd_lint.go: hookCleanupMode`
 
 **edited** — whether git will open an editor for this commit, which decides both
@@ -477,7 +480,7 @@ the `default` mode and the scissors cut. The hook's only evidence is
 `commit -v`: `# ` followed by 24 dashes, ` >8 `, 24 dashes. Matched exactly and at
 the start of a line, because git matches it that way; an indented lookalike is
 neither a cut nor even a comment to git, so cutting there hides text git records.
-`internal/parser/cleanup.go: cutLine, truncateAtCutLine`
+`internal/cleanup/cleanup.go: cutLine, truncateAtCutLine`
 
 ---
 
@@ -505,7 +508,7 @@ assembled inline context** and of no single field in it — which is why the fen
 runs last, over the assembled line: escaping fields separately sized the
 subject's fence against the subject alone, and a backtick carried by the *scope*
 stole it, producing a live mention out of a commit that lints clean today.
-`internal/notes/notes.go: entryLine`, `internal/preview/preview.go: escapeCell`
+`internal/notes/sigil.go: renderLine`, `internal/preview/preview.go: escapeCell`
 
 **phantom span** — a code span glyph's backtick-only scanner believes in that
 GitHub does **not** form, because some construct parsed earlier ate a backtick: a
