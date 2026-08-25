@@ -127,6 +127,12 @@ type Input struct {
 	// bytes are exactly this binary's hook (see probeCommitMsgHook). nil means
 	// nothing was fired.
 	CommitMsgProbe *HookProbe
+	// ConfigPath / ConfigPathErr are git's answer to where this checkout's
+	// glyph.toml must sit (top level + "glyph.toml") and the failure to get
+	// one — resolved by the caller for the same reason HooksDir is: naming
+	// the top level takes a subprocess, and internal/doctor runs none.
+	ConfigPath    string
+	ConfigPathErr error
 }
 
 // HookProbe is what came back from firing a hook. Fired with Exit is a real
@@ -142,6 +148,7 @@ type HookProbe struct {
 // gate branching on it silently stops matching, so treat this block as the
 // versioned surface it is.
 const (
+	IDConfigLoads    = "glyph-toml-loads"
 	IDTokenAccess    = "token-repo-read"
 	IDTokenWrite     = "token-repo-write"
 	IDSquashEnabled  = "squash-merge-enabled"
@@ -166,14 +173,18 @@ const (
 // an unhealthy — or unreadable — repository IS the report, not a failure to
 // produce one. The caller maps the report to an exit code.
 //
-// Check order is the report order and is chosen for reading: the token checks
-// first because the read explains every could-not-run below it (and the write
-// advisory rides on the same response), then the three merge
-// methods, then the squash policy they enable, then the two LOCAL checks — the
-// workflow pins and the installed commit-msg hook — which need no network at
-// all, so they still answer when the API side is entirely dark.
+// Check order is the report order and is chosen for reading: glyph.toml
+// first, because it is the precondition every verdict command reads before
+// anything else — with it down nothing else glyph does can run, however
+// healthy the rest of the report is. Then the token checks, because the read
+// explains every could-not-run below it (and the write advisory rides on the
+// same response), then the three merge methods, then the squash policy they
+// enable, then the remaining LOCAL checks — the workflow pins and the
+// installed commit-msg hook — which, like the config, need no network at all,
+// so they still answer when the API side is entirely dark.
 func Run(in Input) *Report {
 	r := &Report{Repo: in.Repo, Checks: []Check{
+		checkConfig(in.ConfigPath, in.ConfigPathErr),
 		checkTokenAccess(in),
 		checkTokenWrite(in),
 		checkSquashEnabled(in),

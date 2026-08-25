@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/config.go b/internal/doctor/config.go
+index 505197e..74d6ec1 100644
+--- a/internal/doctor/config.go
++++ b/internal/doctor/config.go
+@@ -60,7 +60,7 @@ func checkConfig(path string, pathErr error) Check {
+ 		c.Message = "the config every verdict is judged under is there and valid, so the verdict commands can run at all"
+ 		return c
+ 	case errors.Is(err, fs.ErrNotExist):
+-		c.Status = StatusFail
++		c.Status = StatusAdvice
+ 		c.Observed = fmt.Sprintf("no glyph.toml at %s", filepath.Dir(path))
+ 		c.Message = "this repository is not initialized for glyph: the message grammar and the semver_sigil mapping live in " +
+ 			"glyph.toml, and without the file every verdict command — lint, bump, notes, preview, release — refuses to run " +

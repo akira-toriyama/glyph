@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/akira-toriyama/glyph/internal/config"
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/hook"
 )
@@ -122,6 +123,16 @@ func useDoctorCheckout(t *testing.T, workflow string) {
 			t.Fatalf("write workflow: %v", err)
 		}
 	}
+	// The gemoji preset, exactly as `glyph init --gemoji` writes it — the
+	// config check reads the checkout's top level, and a fixture without one
+	// would fail every healthy-repository assertion below.
+	preset, ok := config.Preset("gemoji")
+	if !ok {
+		t.Fatalf("gemoji preset missing")
+	}
+	if err := os.WriteFile(filepath.Join(root, "glyph.toml"), preset, 0o600); err != nil {
+		t.Fatalf("write glyph.toml: %v", err)
+	}
 	t.Chdir(root)
 }
 
@@ -193,7 +204,7 @@ func TestDoctorHealthyRepositoryPasses(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("doctor on a healthy repository exited %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	if !strings.Contains(stdout, "12 checks: 12 pass, 0 fail, 0 advice, 0 could not run") {
+	if !strings.Contains(stdout, "13 checks: 13 pass, 0 fail, 0 advice, 0 could not run") {
 		t.Errorf("summary line missing or wrong:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "read-only") {
@@ -213,6 +224,7 @@ func TestDoctorJSONShape(t *testing.T) {
 		t.Fatalf("exit %d, want 0", code)
 	}
 	want := []string{
+		"glyph-toml-loads",
 		"token-repo-read",
 		"token-repo-write",
 		"squash-merge-enabled",
@@ -247,8 +259,8 @@ func TestDoctorJSONShape(t *testing.T) {
 	if rep.Repo != "akira-toriyama/glyph" {
 		t.Errorf("repo = %q, want the diagnosed repository", rep.Repo)
 	}
-	if !rep.OK || rep.Counts.Pass != 12 {
-		t.Errorf("counts = %+v ok=%t, want 12 pass and ok", rep.Counts, rep.OK)
+	if !rep.OK || rep.Counts.Pass != 13 {
+		t.Errorf("counts = %+v ok=%t, want 13 pass and ok", rep.Counts, rep.OK)
 	}
 }
 
@@ -435,7 +447,7 @@ func TestDoctorMergeMethodsAreAdviceNotFailure(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("permissive merge methods exited %d, want 0 — a house convention is not a gate", code)
 	}
-	if !strings.Contains(stdout, "10 pass, 0 fail, 2 advice") {
+	if !strings.Contains(stdout, "11 pass, 0 fail, 2 advice") {
 		t.Errorf("merge and rebase must report as advice:\n%s", stdout)
 	}
 	if strings.Count(stderr, "::notice::") != 2 {
@@ -467,6 +479,32 @@ func TestDoctorSquashDisabledFails(t *testing.T) {
 	}
 	if rep.OK {
 		t.Error("ok must be false when a check failed")
+	}
+}
+
+// TestDoctorMissingConfigFailsAtTheLintCode pins the exit decided for the v2
+// config-first invariant: an absent glyph.toml is a finding about the
+// repository — its whole gate is down, every verdict command refuses to run —
+// so doctor fails it at 3, the convention class. Not 2: doctor's invocation
+// was fine, and unlike the verdict commands it was ASKED whether the
+// repository satisfies glyph's preconditions. Not 4: the absence was observed,
+// nothing was unverifiable.
+func TestDoctorMissingConfigFailsAtTheLintCode(t *testing.T) {
+	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+	useDoctorCheckout(t, pinnedCaller)
+	if err := os.Remove("glyph.toml"); err != nil {
+		t.Fatalf("remove glyph.toml: %v", err)
+	}
+	code, stdout, _ := runGlyph(t, "doctor", "--json")
+	rep := decodeDoctorJSON(t, stdout)
+	if code != 3 {
+		t.Fatalf("doctor on an uninitialized repository exited %d, want 3", code)
+	}
+	if got := status(t, rep, "glyph-toml-loads"); got != "fail" {
+		t.Errorf("glyph-toml-loads = %s, want fail", got)
+	}
+	if got := status(t, rep, "squash-merge-enabled"); got != "pass" {
+		t.Errorf("squash-merge-enabled = %s, want pass — independence holds in this direction too", got)
 	}
 }
 
@@ -694,6 +732,49 @@ func TestDoctorInterruptDuringHooksReadCarriesOut(t *testing.T) {
 	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
 	if code != 130 {
 		t.Fatalf("doctor exited %d, want 130 — an interrupt in the hooks read is the user's own abort, not a check result", code)
+	}
+	if stdout != "" {
+		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
+	}
+}
+
+// TestDoctorInterruptDuringTopLevelReadCarriesOut is the same guard, third
+// read. Cancellation is sticky, so a signal landing in the FIRST git read
+// leaves every later read interrupted too and a guard missing herr alone is
+// covered by terr — which is exactly why the test above cannot defend terr:
+// the one window where terr is the ONLY carrier is a signal landing after the
+// hooks read already succeeded, while the top-level read (the config check's
+// input) is in flight. So here the fake git answers --git-path and blocks on
+// --show-toplevel, and only then is the context cancelled.
+func TestDoctorInterruptDuringTopLevelReadCarriesOut(t *testing.T) {
+	srv := doctorServer(t, apiRepoObject(healthySettings))
+	usePR(t, srv)
+	useDoctorCheckout(t, pinnedCaller)
+
+	bin := t.TempDir()
+	asked := filepath.Join(bin, "asked")
+	script := "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$*\" in\n*--git-path*) echo .git/hooks; exit 0;;\nesac\ntouch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for range 400 {
+			if _, err := os.Stat(asked); err == nil {
+				cancel()
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel() // safety net: never leave the run behind the fake's 30s block
+	}()
+
+	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	if code != 130 {
+		t.Fatalf("doctor exited %d, want 130 — an interrupt in the top-level read is the user's own abort, not a check result", code)
 	}
 	if stdout != "" {
 		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)

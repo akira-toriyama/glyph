@@ -877,9 +877,14 @@ merges, and `glyph-test` sitting on `squash_merge_commit_title = PR_TITLE` /
 ran `gh api` by hand. `doctor` is the machine-checkable half of that, and the
 prevention side of t-7zt7 (a merge-commit PR vanishing from the release walk).
 
-The checks follow no vocabulary — they guard the WALK (squash policy, pins,
-hooks), and the walk is grammar-free since v2: every precondition above holds
-whatever the repository's `glyph.toml` says.
+The checks follow no vocabulary, and they guard two layers. One check guards
+the CONFIG: `glyph.toml` exists at the checkout's top level and loads — v2's
+config-first invariant, which until this check had no machine verification
+anywhere (the fleet reality it exists for: a repository whose pin moves before
+its config exists fails every gate at exit 2, with nothing having said so in
+advance). The rest guard the WALK (squash policy, pins, hooks), which is
+grammar-free since v2: every walk precondition holds whatever the repository's
+`glyph.toml` says.
 
 Shape: independent checks → one report object → an exit on the aggregate.
 **Read-only, always** — a diagnostic that mutates cannot be run casually, and
@@ -904,6 +909,15 @@ misconfigured, and never retry.
 
 The severities are the argued part:
 
+- **`glyph.toml` missing or unloadable ⇒ fail.** The verdict commands exit `2`
+  on a missing config because for *them* the invocation was the mistake — the
+  caller assumed a v2 repository. `doctor` was asked whether the repository
+  satisfies glyph's preconditions, and an observed absence is the honest answer
+  no: the whole gate is down, at `3` like every other violated precondition. A
+  file that exists but does not load is the same failure carrying the loader's
+  own error (the loader rejects rather than repairs — no silent none). Only
+  content that was never *observed* — a read the filesystem refused, no top
+  level to resolve the path against — is `unknown` at `4`.
 - **`allow_squash_merge` false ⇒ fail.** *Not* because only a squash commit
   resolves — every style does. GitHub points `merge_commit_sha` at whichever
   commit represents the merge (the squash commit, a rebase's **last** replayed

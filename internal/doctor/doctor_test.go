@@ -20,6 +20,7 @@ func healthyInput(t *testing.T) Input {
 	return Input{
 		Repo:            "akira-toriyama/glyph",
 		Root:            checkoutWith(t, map[string]string{"commit-lint.yml": commentedStub}),
+		ConfigPath:      configPathWith(t, minimalConfig),
 		TokenConfigured: true,
 		RepoObject: github.Repo{
 			FullName: "akira-toriyama/glyph", Visibility: "public",
