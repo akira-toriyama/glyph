@@ -27,8 +27,12 @@ In this repo:
   considered and rejected there, with the incident that killed it named.
 - **docs/glossary.md** — the vocabulary. If a task body uses a word oddly (*merge point*,
   *footprint*, *residual* vs *stale* draft), it is defined there.
-- **`glyph rules`** — the gitmoji table, embedded from `internal/gitmoji/rules.json` so the
-  pinned binary *is* the pinned rules. Never retype the table, or one row of it, into prose.
+- **`glyph.toml`** — the grammar. Since v2 there is no embedded table and no `glyph rules`:
+  a commit means what this file's first matching `[[patterns]]` entry says, and glyph's own
+  copy is a **generated artifact** — byte-identical to `glyph init --gemoji --v1-window`
+  output, held by test. Regenerate with `--force`; edit the preset or
+  `internal/config/presets/v1window.snippet`, never this file. Never retype a pattern into
+  prose.
 
 Outside it: the commit convention is canonical in
 [`.github/CONTRIBUTING.md`](https://github.com/akira-toriyama/.github/blob/main/CONTRIBUTING.md)
@@ -73,7 +77,8 @@ tree that does not compile turns the local gate into a silent no-op.
   **committed** history only, so an uncommitted test is invisible to it.
   Two things that look like gaps and are not: `-count=1` is absent because `go-ci.yml` omits it
   too (adding it would move this script *away* from CI — add it by hand when chasing a flake),
-  and `taplo` is unmirrored because glyph tracks zero `.toml` files.
+  and `taplo` is unmirrored for the same reason actionlint is — the tool version is pinned in
+  the hub's reusable, so a local run would judge with a different formatter.
 - **`sh scripts/mutations.sh`** — the mutation ledger: each `testdata/mutations/*.patch` breaks
   one argued decision and the ledger names the test that must then fail. This is where the house
   rule "a fix is shown by re-breaking it, not by a green suite" is mechanised. Adding a decision?
@@ -100,32 +105,21 @@ tree that does not compile turns the local gate into a silent no-op.
 
 ## Generated and pinned data — regenerate, never hand-edit
 
-- `docs/gitmoji-table.md` ← `gitmoji.Table.Markdown()`, guarded by `TestMarkdownGolden`;
-  regenerate with `go test ./internal/gitmoji -run Golden -update`.
-- `internal/notes/testdata/*.golden.md` ← `notes.Render()`, guarded by `TestRenderGolden`;
-  regenerate with `go test ./internal/notes -update`.
-- `-update` makes a rendering bug look intentional. Read the golden diff as the format spec it
+- `glyph.toml` ← `glyph init --gemoji --v1-window`, guarded by
+  `TestGlyphOwnConfigIsTheComposedV1WindowPreset` (byte equality); regenerate with
+  `go run ./cmd/glyph init --gemoji --v1-window --force`. The sources are
+  `internal/config/presets/gemoji.toml` and `presets/v1window.snippet` — edit those.
+- The `-update` goldens — `internal/cli/testdata/release_dry_run.golden.md` (dry-run release
+  body) and `internal/markdown/testdata/exported-surface.golden.txt` — are gated: a rewrite
+  must carry a `Golden-change: <reason>` trailer on every non-merge commit (golden-gate).
+  `-update` makes a rendering bug look intentional. Read the golden diff as the format spec it
   is before committing it.
-- `internal/bump/testdata/fleet-corpus.tsv` is the exception that proves the rule: it has **no
-  `-update`, on purpose**, because the failure it defends against is an author who narrows the
-  parser, sees a wall of red and regenerates. It freezes the fleet's real commit subjects against
-  the verdict each produces, so the parser's acceptance range stops being a versioning contract
-  nothing holds. `sh scripts/fleet-corpus.sh` refreshes it by **appending** what the fleet has
-  written since (and refuses to run if the stored verdicts already disagree with the tree, so a
-  broken tree cannot bake its own output in as truth); changing what a stored subject *means* is
-  a hand edit. Public repos only — a private repo's subjects are not this repo's to publish.
-  The counts, the floors and the argument live in `internal/bump/fleetcorpus_test.go`'s header
-  and are deliberately not copied here: the file is designed to grow, so any number written down
-  twice is a number that goes stale in one of the two places.
-- `internal/gitmoji/gitmoji.go` pins `CodeCount = 75` and `Load()` rejects a table of any other
-  size — adding a code to `rules.json` without bumping it breaks **every** command at startup,
-  not one test.
-- `testdata/fuzz` is a regression corpus, not scratch. Seven entries are committed (six under
-  `internal/markdown/`, one under `internal/parser/`) and plain `go test` replays each as a named
-  subtest. A **new** file there is the engine reporting an input the code fails: the engine writes
-  it under a hash name, so rename it after the defect (Go replays any filename in the target
-  directory; six of the seven are named that way) and commit it. Never delete one to go green.
-  A new `Fuzz` target needs no CI or check.sh edit — both loops discover targets.
+- `testdata/fuzz` is a regression corpus, not scratch. Six entries are committed, all under
+  `internal/markdown/`, and plain `go test` replays each as a named subtest. A **new** file
+  there is the engine reporting an input the code fails: the engine writes it under a hash
+  name, so rename it after the defect (Go replays any filename in the target directory) and
+  commit it. Never delete one to go green. A new `Fuzz` target needs no CI or check.sh edit —
+  both loops discover targets.
 
 ## CI gates that fail for reasons the diff does not show
 

@@ -98,13 +98,14 @@ func TestGoldenGatePatternCoversTheRealGoldens(t *testing.T) {
 		}
 	}
 
-	// Negative controls. The fleet corpus is deliberately outside: it has no
-	// -update on purpose (its test header argues why), and listing it would
-	// read as "a trailer makes a hand edit of stored verdicts acceptable". The
-	// fuzz corpus is regression inputs, not a format spec. Ordinary sources
-	// must never trip a gate about goldens.
+	// Negative controls. The fuzz corpus is deliberately outside: it is
+	// regression inputs, not a format spec, and demanding a trailer there
+	// would read as "a hand edit of a crash input is acceptable with a
+	// reason". Ordinary sources and the generated glyph.toml (whose guard is
+	// the byte-equality test, not this gate) must never trip a gate about
+	// goldens.
 	for _, path := range []string{
-		"internal/bump/testdata/fleet-corpus.tsv",
+		"internal/config/presets/gemoji.toml",
 		"internal/markdown/testdata/fuzz/FuzzEscapeMentionsNeverLeaksAMention/backslash-eats-the-fence",
 		"internal/cli/release_test.go",
 	} {

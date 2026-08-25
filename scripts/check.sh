@@ -52,9 +52,12 @@
 #                                       "green here != green CI" defect the
 #                                       golangci-lint skew line below reports
 #                                       rather than hides.
-#   taplo         (taplo.yml)           TOML formatting. glyph tracks 0 .toml
-#                                       files (measured), so it is a structural
-#                                       no-op here, not a gap.
+#   taplo         (taplo.yml)           TOML formatting over glyph.toml and the
+#                                       presets. Same argument as actionlint:
+#                                       the tool version is pinned in the hub's
+#                                       reusable, so a local taplo is whatever
+#                                       nixpkgs ships — a green here would be a
+#                                       claim about a different formatter.
 #   version-preview (version-preview.yml) posts the merge-preview COMMENT on a
 #                                       pull request. There is no pull request
 #                                       locally; `glyph preview --pr N` is the
@@ -136,7 +139,7 @@ sh scripts/dist-gate.sh origin/main
 ran dist-gate
 
 # The golden gate build.yml runs on every pull request: a diff that rewrites a
-# golden (testdata/*.golden.*, docs/gitmoji-table.md) must carry a
+# golden (testdata/*.golden.*) must carry a
 # `Golden-change: <reason>` trailer on every non-merge commit — `-update`
 # regenerates a golden from whatever the code now produces, so the trailer is
 # what forces the diff to be read as the spec change it is. Same script, same

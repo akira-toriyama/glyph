@@ -1,8 +1,9 @@
 // Package gitsource reads commits and tags out of a local repository by
 // shelling out to git (exec.CommandContext — a Ctrl-C cancels the child). It is
 // an I/O adapter: it moves bytes and classifies failures (all git failures are
-// core.CodeAPI by contract), and holds no commit semantics — parsing belongs to
-// internal/parser, participation and folding to internal/bump.
+// core.CodeAPI by contract), and holds no commit semantics — a message's
+// meaning belongs to internal/config's pattern match, participation and
+// folding to internal/bump.
 package gitsource
 
 import (

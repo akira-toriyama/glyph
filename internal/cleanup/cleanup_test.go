@@ -1,6 +1,12 @@
 package cleanup
 
-import "testing"
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 // The four modes as a commit-msg hook resolves them, named once so the tables
 // below read as the situations they are rather than as three booleans.
@@ -204,5 +210,59 @@ func TestResolveCleanupMode(t *testing.T) {
 func TestCleanupIsNotSafeForAlreadyCleanedMessages(t *testing.T) {
 	if got := Apply("#42 was the culprit\n", editedDefault); got != "" {
 		t.Errorf("expected a '#'-leading line to be treated as a comment, got %q", got)
+	}
+}
+
+// TestCutLineIsTheOneGitWrites is the real-git oracle cleanup.go's cutLine
+// constant names: `git commit -v` writes the scissors line into the message
+// file, and this test asserts it writes EXACTLY the constant — matched by
+// strstr in git's wt_status_locate_end, so one drifted byte in a future git
+// silently moves the cut. The v1 parser carried this oracle and it died with
+// that package; the constant sat un-vouched-for until this restored it.
+// The editor deliberately aborts (exit 1): the message file is already
+// written when the editor runs, so the scissors line is captured without a
+// commit ever being made.
+func TestCutLineIsTheOneGitWrites(t *testing.T) {
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-q", "-b", "main")
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "a.txt")
+
+	captured := filepath.Join(dir, "captured.txt")
+	editor := filepath.Join(dir, "editor.sh")
+	if err := os.WriteFile(editor, []byte("#!/bin/sh\ncp \"$1\" "+captured+"\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	commit := exec.Command("git", "commit", "-v")
+	commit.Dir = dir
+	commit.Env = append(os.Environ(),
+		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
+		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid",
+		"GIT_EDITOR="+editor,
+	)
+	_ = commit.Run() // the editor aborts by design; the message file is what matters
+
+	body, err := os.ReadFile(captured)
+	if err != nil {
+		t.Fatalf("the editor never captured the message file: %v", err)
+	}
+	if !strings.Contains(string(body), cutLine) {
+		t.Fatalf("git commit -v wrote no line equal to cutLine %q — git's scissors changed, and truncateAtCutLine now cuts on a line git does not write:\n%s", cutLine, body)
 	}
 }

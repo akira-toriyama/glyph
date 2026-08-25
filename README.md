@@ -68,7 +68,7 @@ a baseline**.
 | `glyph hook install` | local `commit-msg` and `pre-push` hooks that run the same lint the CI gate runs |
 | `glyph version` | the build identity — release tag, commit, build date; the one command that reaches nothing (no git, no API), so it answers anywhere |
 
-`lint --range/--message/--stdin` and `fmt` work offline against local git
+`lint --range/--message/--stdin` and `init` work offline against local git
 alone. The PR and release-walk inputs (`--pr` — on `lint` as much as on
 `bump` — `--since-tag`, `release`, `preview`, `doctor`) read the GitHub API;
 in GitHub Actions no flags are needed —

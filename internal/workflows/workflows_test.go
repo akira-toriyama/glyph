@@ -47,7 +47,7 @@ var fullLineComment = regexp.MustCompile(`(?m)^[ \t]*#.*$`)
 func repoFile(t *testing.T, rel string) string {
 	t.Helper()
 	// The test runs in internal/workflows; the repo root is two levels up
-	// (mirrors internal/gitmoji's golden-file test).
+	// (the same shape as the repo's golden-file tests).
 	b, err := os.ReadFile(filepath.Join("..", "..", rel))
 	if err != nil {
 		t.Fatalf("reading %s: %v", rel, err)
