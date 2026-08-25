@@ -33,6 +33,10 @@ func newDoctorCmd() *cobra.Command {
 			"ever modified. Each failing check prints the command that fixes it and leaves\n" +
 			"running it to you.\n\n" +
 			"The checks, each independent — one it cannot run never stops the others:\n\n" +
+			"  - glyph.toml exists at the checkout's top level and LOADS (valid schema,\n" +
+			"    compilable patterns, a semver_sigil for every match): the config is what\n" +
+			"    every verdict command reads before anything else, so a repository that\n" +
+			"    pins glyph without one has its whole gate down\n" +
 			"  - the credential can read the repository at all, and what the API itself says\n" +
 			"    about its permissions (never a guess at scopes the API did not report)\n" +
 			"  - squash merging is ENABLED: a squash-merged pull puts exactly ONE commit on\n" +
@@ -199,6 +203,14 @@ func doctorRun(cmd *cobra.Command) error {
 	// that one check's could-not-run — never an aborted report.
 	hooksDir, herr := gitsource.HooksDir(cmd.Context(), ".")
 	probe := probeCommitMsgHook(cmd.Context(), hooksDir, herr)
+	// git also names the top level glyph.toml sits at — the same file loadConfig
+	// resolves for every verdict command, asked here for the same reason
+	// HooksDir is. A failure degrades the config check alone.
+	top, terr := gitsource.TopLevel(cmd.Context(), ".")
+	configPath := ""
+	if terr == nil {
+		configPath = filepath.Join(top, "glyph.toml")
+	}
 	// An interrupt is the user's own abort and must never be laundered into a
 	// check result: reporting "the token cannot read the repository" — or "git
 	// could not report where hooks live" — because somebody pressed Ctrl-C
@@ -207,7 +219,7 @@ func doctorRun(cmd *cobra.Command) error {
 	// asked: guarding rerr alone turned a mid-run SIGTERM into exit 4 with the
 	// abort rendered as the hook check's could-not-run — the one code the
 	// fleet's wrappers read as retryable infra, on a run the operator stopped.
-	if err := firstInterrupt(rerr, herr, probeErr(probe)); err != nil {
+	if err := firstInterrupt(rerr, herr, terr, probeErr(probe)); err != nil {
 		return err
 	}
 	report := doctor.Run(doctor.Input{
@@ -223,6 +235,8 @@ func doctorRun(cmd *cobra.Command) error {
 		HooksDir:        hooksDir,
 		HooksErr:        herr,
 		CommitMsgProbe:  probe,
+		ConfigPath:      configPath,
+		ConfigPathErr:   terr,
 	})
 
 	// Annotations go out in BOTH modes, before the payload. On an Actions

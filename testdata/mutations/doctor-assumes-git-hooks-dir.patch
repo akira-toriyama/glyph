@@ -1,21 +1,13 @@
 diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
-index 9fd6b26..063b63d 100644
+index ef672b2..d87ff6d 100644
 --- a/internal/cli/cmd_doctor.go
 +++ b/internal/cli/cmd_doctor.go
-@@ -10,7 +10,6 @@ import (
- 
- 	"github.com/akira-toriyama/glyph/internal/core"
- 	"github.com/akira-toriyama/glyph/internal/doctor"
--	"github.com/akira-toriyama/glyph/internal/gitsource"
- 	"github.com/akira-toriyama/glyph/internal/hook"
- 	"github.com/spf13/cobra"
- )
-@@ -197,7 +196,7 @@ func doctorRun(cmd *cobra.Command) error {
+@@ -201,7 +201,7 @@ func doctorRun(cmd *cobra.Command) error {
  	// the only place allowed to ask: internal/doctor runs no subprocess, exactly
  	// as it makes no request. A failure here is handed over verbatim and becomes
  	// that one check's could-not-run — never an aborted report.
 -	hooksDir, herr := gitsource.HooksDir(cmd.Context(), ".")
 +	hooksDir, herr := filepath.Join(".git", "hooks"), error(nil)
  	probe := probeCommitMsgHook(cmd.Context(), hooksDir, herr)
- 	// An interrupt is the user's own abort and must never be laundered into a
- 	// check result: reporting "the token cannot read the repository" — or "git
+ 	// git also names the top level glyph.toml sits at — the same file loadConfig
+ 	// resolves for every verdict command, asked here for the same reason
