@@ -172,6 +172,7 @@ func releaseRun(cmd *cobra.Command) error {
 	if cerr != nil {
 		return cerr
 	}
+	warnSigilVerdicts(commits)
 	current, verr := currentVersion(ctx, releaseCurrent, base)
 	if verr != nil {
 		return verr

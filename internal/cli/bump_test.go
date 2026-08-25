@@ -321,3 +321,46 @@ func TestBumpPromoteFrom1xIsAPlainMajor(t *testing.T) {
 		t.Fatalf("bump = exit %d stdout %q, want 0 / v2.0.0", code, stdout)
 	}
 }
+
+// TestBumpWarnsEachWarnedCommit pins the fold-side emission: every commit a
+// warned pattern claimed annotates on the diagnostic stream, and the JSON
+// row carries the same message — the verdict itself is untouched. This is
+// the release-time half of the v1-window loudness: the dotfiles measurement
+// (v1 verdict v1.0.0, v2 verdict none, release silently stopped) is exactly
+// what a warning here would have named.
+func TestBumpWarnsEachWarnedCommit(t *testing.T) {
+	dir, base := testRepo(t)
+	useV1WindowConfig(t, dir)
+	testCommit(t, dir, "akira-toriyama", ":sparkles:(x) a v1 subject with no sigil")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ a strict fix")
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD", "--json")
+	if code != 0 {
+		t.Fatalf("bump exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "v1-acceptance window") {
+		t.Fatalf("the warned commit must annotate:\n%s", stderr)
+	}
+	var res struct {
+		Commits []struct {
+			Sigil string `json:"sigil"`
+			Warn  string `json:"warn"`
+		} `json:"commits"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+		t.Fatalf("bump --json: %v\n%s", err, stdout)
+	}
+	var warned int
+	for _, c := range res.Commits {
+		if c.Warn != "" {
+			warned++
+			if c.Sigil != "=" {
+				t.Errorf("warned row = %+v, want the window's none sigil", c)
+			}
+		}
+	}
+	if warned != 1 {
+		t.Errorf("%d warned row(s) in the machine verdict, want exactly the sigil-less commit", warned)
+	}
+}

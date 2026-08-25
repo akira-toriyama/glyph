@@ -1,10 +1,10 @@
 diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
-index 6a622d4..1cae3ad 100644
+index b06343f..f4d260e 100644
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -257,9 +257,6 @@ func lintRangeRun(ctx context.Context, revRange string) error {
+@@ -279,9 +279,6 @@ func lintRangeRun(ctx context.Context, revRange string) error {
+ 		warnf("commit %.7s: %s", w.SHA, w.Detail)
  	}
- 	findings, checked := lintRaws(raws, cfg)
  	if len(findings) > 0 {
 -		for _, f := range findings {
 -			errorf("commit %.7s: %s", f.SHA, f.Detail)

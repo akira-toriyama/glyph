@@ -166,6 +166,9 @@ func hookCleanupMode(ctx context.Context) cleanup.Mode {
 func lintOne(message string, cfg *config.Config) error {
 	v := cfg.Lint(message, "")
 	if v.OK || v.Excluded {
+		if v.Warn != "" {
+			warnf("%s", v.Warn)
+		}
 		return nil
 	}
 	return &core.Error{
@@ -202,6 +205,9 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 	}
 	v := cfg.Lint(pull.Title, pull.Author)
 	if v.OK || v.Excluded {
+		if v.Warn != "" {
+			warnf("%s/%s#%d title: %s", owner, repo, number, v.Warn)
+		}
 		return nil
 	}
 	// One annotation for the finding, written by the binary that computed it —
@@ -215,14 +221,16 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 	}
 }
 
-// lintRaws lints raw commits, returning every finding and how many commits
-// were actually judged (excluded authors are skipped, never failed; a
-// skip-pattern match is judged and clean). Both callers — the `--range` gate
-// CI runs and the pre-push hook — go through here, because a hook and CI that
-// reach different verdicts on one commit is glyph lying in one of two
-// directions, and DESIGN §2.1 says which of the two costs the developer the
-// push.
-func lintRaws(raws []gitsource.RawCommit, cfg *config.Config) (findings []rangeViolation, checked int) {
+// lintRaws lints raw commits, returning every finding, every warned-but-clean
+// commit, and how many commits were actually judged (excluded authors are
+// skipped, never failed; a skip-pattern match is judged and clean). Both
+// callers — the `--range` gate CI runs and the pre-push hook — go through
+// here, because a hook and CI that reach different verdicts on one commit is
+// glyph lying in one of two directions, and DESIGN §2.1 says which of the two
+// costs the developer the push. warned rides beside findings for the same
+// reason: a warned pattern must be loud at both gates or the quiet one
+// teaches the developer the warning is noise.
+func lintRaws(raws []gitsource.RawCommit, cfg *config.Config) (findings, warned []rangeViolation, checked int) {
 	for _, raw := range raws {
 		v := cfg.Lint(raw.Message, raw.Author)
 		if v.Excluded {
@@ -231,9 +239,13 @@ func lintRaws(raws []gitsource.RawCommit, cfg *config.Config) (findings []rangeV
 		checked++
 		if !v.OK {
 			findings = append(findings, rangeViolation{SHA: raw.SHA, Subject: firstLine(raw.Message), Detail: v.Reason})
+			continue
+		}
+		if v.Warn != "" {
+			warned = append(warned, rangeViolation{SHA: raw.SHA, Subject: firstLine(raw.Message), Detail: v.Warn})
 		}
 	}
-	return findings, checked
+	return findings, warned, checked
 }
 
 // rangeViolation is one finding, anchored to its commit where one exists.
@@ -259,7 +271,13 @@ func lintRangeRun(ctx context.Context, revRange string) error {
 	if lerr != nil {
 		return lerr
 	}
-	findings, checked := lintRaws(raws, cfg)
+	findings, warned, checked := lintRaws(raws, cfg)
+	// Warnings go out even when the run fails: the warned commits are real
+	// whichever way the verdict lands, and a developer fixing the violation
+	// should not discover the warning only on the green re-run.
+	for _, w := range warned {
+		warnf("commit %.7s: %s", w.SHA, w.Detail)
+	}
 	if len(findings) > 0 {
 		for _, f := range findings {
 			errorf("commit %.7s: %s", f.SHA, f.Detail)

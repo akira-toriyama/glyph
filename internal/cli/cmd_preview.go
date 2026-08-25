@@ -86,6 +86,7 @@ func previewRun(cmd *cobra.Command) error {
 	if cerr != nil {
 		return cerr
 	}
+	warnSigilVerdicts(prCommits)
 	// The tag NAME, not just the version it parses to. Whether this repository
 	// has ever released is a question about the existence of a tag, and
 	// currentVersion answers only what to step FROM — for an untagged repository
@@ -128,10 +129,12 @@ func previewRun(cmd *cobra.Command) error {
 			}
 			pendingShort = facts.shortfall(owner, repo)
 		}
-		_, pendingDec, cerr = bump.FoldSigils(walkedSigilCommits(pparsed), cfg)
+		var pendingCommits []bump.SigilVerdict
+		pendingCommits, pendingDec, cerr = bump.FoldSigils(walkedSigilCommits(pparsed), cfg)
 		if cerr != nil {
 			return cerr
 		}
+		warnSigilVerdicts(pendingCommits)
 		if pendingDec.Level != bump.LevelNone {
 			pendingNext = current.Next(pendingDec).String()
 		}

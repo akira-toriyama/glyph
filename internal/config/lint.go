@@ -15,6 +15,10 @@ type LintVerdict struct {
 	// Reason is the violation, empty when OK or Excluded. It is the complete
 	// user-facing sentence: what failed and what would fix it.
 	Reason string
+	// Warn carries the winning pattern's warn message on an OK verdict — a
+	// legal-but-undesirable message the caller must surface without failing
+	// (see Pattern.Warn). Empty otherwise.
+	Warn string
 }
 
 // Lint judges a single commit message: does any pattern claim it, and does
@@ -39,5 +43,5 @@ func (c *Config) Lint(message, author string) LintVerdict {
 	if !m.Matched {
 		return LintVerdict{Reason: fmt.Sprintf("message matches none of the %d configured patterns — write it to match one (see glyph.toml), or exclude the author", len(c.Patterns))}
 	}
-	return LintVerdict{OK: true}
+	return LintVerdict{OK: true, Warn: m.Warn}
 }

@@ -91,6 +91,24 @@ pattern says it means:
   autosquash artifacts; v1 carried both as hardcoded exemptions, and the hook
   path is where they matter most — an author cannot rewrite a subject git
   generated, so judging it forces `--no-verify`, which turns the gate off).
+- A pattern may carry **`warn = '<message>'`** — a message the file's author
+  wrote for a commit's author, for a pattern that is legal but undesirable.
+  The verdict is untouched; the message is surfaced **wherever the pattern
+  wins a verdict**: lint (`--range`, `--stdin`/`--message`, `--pr`, both
+  hooks) annotates it per commit, and the fold puts it on the commit's row in
+  the machine verdict (`bump --json`'s `commits[].warn`), which `bump`,
+  `release` and both of `preview`'s folds each announce. The invariant is
+  deliberate — a warning loud at one gate and silent at another teaches the
+  reader that the loud gate is noise. `warn` on a `skip` pattern is a load
+  error (a skipped commit is outside every verdict, so the warning would fire
+  for nobody), and so is an empty `warn`. The key exists for the
+  **v1-acceptance window** (t-37xj): the migration pattern that accepts a
+  sigil-less gitmoji subject as `=` none, where before the warning a
+  forgotten sigil passed lint green and folded silently — measured on
+  dotfiles as a release that simply stopped (v1 verdict v1.0.0, v2 verdict
+  none, nothing said). `glyph init --gemoji --v1-window` generates the
+  window with the warning in place; the block's own comment says when to
+  remove it.
 - **`exclude_authors`** removes a commit from lint and the fold before its
   message is ever matched — the key exists for bots, whose messages are
   exactly the ones the patterns do not describe. Whether such a commit

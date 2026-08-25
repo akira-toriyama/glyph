@@ -258,7 +258,13 @@ func prePushRun(ctx context.Context, args []string) error {
 	if cerr != nil {
 		return cerr
 	}
-	findings, checked := lintRaws(raws, cfg)
+	findings, warned, checked := lintRaws(raws, cfg)
+	// The push-time gate surfaces the same warnings CI will: a warned pattern
+	// quiet here and loud there reads as CI-only noise, which is how a
+	// warning dies.
+	for _, w := range warned {
+		warnf("commit %.7s: %s", w.SHA, w.Detail)
+	}
 	if checked == 0 {
 		// The two causes need different sentences, and reporting the first as the
 		// second is what the live-fire run caught: an empty walk means the remote

@@ -112,6 +112,13 @@ type Pattern struct {
 	// Skip drops a matching commit from lint, bump and notes entirely — a
 	// skipped commit is not a violation (git-cliff's commit_parsers shape).
 	Skip bool
+	// Warn is the pattern-level warn key: a message the author of the FILE
+	// wrote for the author of a COMMIT, emitted wherever this pattern wins a
+	// verdict (lint, and the version fold). It exists for patterns that are
+	// legal but undesirable — the v1-acceptance window, where a sigil-less
+	// subject folds none: without a warning that hole is silent for exactly
+	// as long as the pattern lives. Empty means no warning.
+	Warn string
 
 	re            *regexp.Regexp
 	hasSigilGroup bool
@@ -168,6 +175,7 @@ type rawPattern struct {
 	Pattern     *string `toml:"pattern"`
 	SemverSigil *string `toml:"semver_sigil"`
 	Skip        bool    `toml:"skip"`
+	Warn        *string `toml:"warn"`
 }
 
 type rawNote struct {
@@ -305,6 +313,17 @@ func compilePattern(rp rawPattern) (Pattern, error) {
 		fixed = &s
 	}
 
+	warn := ""
+	if rp.Warn != nil {
+		if rp.Skip {
+			return Pattern{}, fmt.Errorf("skip = true and warn = %q contradict: a skipped commit is outside every verdict, so its warning would have no reader with anything to fix", *rp.Warn)
+		}
+		if *rp.Warn == "" {
+			return Pattern{}, fmt.Errorf("warn is empty: the warning IS the message shown for every commit this pattern claims — say what is undesirable and what to write instead, or drop the key")
+		}
+		warn = *rp.Warn
+	}
+
 	if !rp.Skip && !hasGroup && fixed == nil {
 		return Pattern{}, fmt.Errorf("pattern %q has no (?P<%s>...) group, no semver_sigil key and no skip = true: a match could never yield a verdict", *rp.Pattern, SigilGroup)
 	}
@@ -313,6 +332,7 @@ func compilePattern(rp rawPattern) (Pattern, error) {
 		Pattern:       *rp.Pattern,
 		Fixed:         fixed,
 		Skip:          rp.Skip,
+		Warn:          warn,
 		re:            re,
 		hasSigilGroup: hasGroup,
 	}, nil
