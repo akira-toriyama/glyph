@@ -1,6 +1,9 @@
 package markdown
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // Line assembles one GitHub-rendered Markdown line from glyph's own markup and
 // author-supplied fields, applying this package's escaping pipeline in the only
@@ -46,7 +49,17 @@ import "strings"
 //	| a ` b  c `@octocat d` | 🐛 `:bug:` | patch |
 type Line struct {
 	b strings.Builder
+	// live holds the byte ranges Mention wrote: name bytes the fence pass must
+	// leave alone. They are guaranteed handle-shaped (Mention falls back to
+	// Prose otherwise), so they carry no backtick and no at-sign — which is what
+	// keeps String's whole-line fence sizing and code-span model exact even
+	// though these bytes are skipped when fencing.
+	live [][2]int
 }
+
+// handle is the username shape anchored to the WHOLE value: Mention trusts a
+// name only when nothing but a single GitHub-linkable token is there.
+var handle = regexp.MustCompile(`^(?:` + username + `)$`)
 
 // Raw appends s byte-for-byte. It is for glyph's OWN markup — a list bullet, an
 // emoji, the bold around a scope, a short SHA — and never for author-supplied
@@ -76,10 +89,40 @@ func (l *Line) Prose(s string) {
 	l.b.WriteString(escapeMarkup(flatten(s)))
 }
 
+// Mention appends a name the caller MEANS to page — the release-notes author
+// credit (ratified 2026-08-17): the template's literal at-sign plus this value
+// renders as a live @mention instead of being fenced. It is the one deliberate
+// hole in the fence, and it is gated by shape, not by trust in the caller: the
+// value goes live only when it is exactly one GitHub-handle-shaped token
+// (alphanumerics and interior hyphens). Anything else — a git author name with
+// a space, "dependabot[bot]", an empty resolve — falls back to Prose and stays
+// fenced, because the value here is git's free-text %an, and "@Akira Toriyama"
+// would page the stranger @Akira (the t-hykw incident, from the other
+// direction). The safety property the fence exists for is thus preserved:
+// no author-controlled FREE TEXT can page anyone; going live requires the
+// whole field to be nothing but the handle.
+//
+// The at-sign itself is not written here on purpose. It belongs to the
+// caller's template ("@$author"), so a template without one renders the bare
+// name and mentions nobody — same as today.
+func (l *Line) Mention(s string) {
+	if !handle.MatchString(s) {
+		l.Prose(s)
+		return
+	}
+	start := l.b.Len()
+	l.b.WriteString(s)
+	l.live = append(l.live, [2]int{start, l.b.Len()})
+}
+
 // String returns the assembled line with every would-be @mention fenced — the
 // LAST pass, over the WHOLE line, its fence sized against every backtick run
-// any fragment contributed. Calling it again returns the same bytes: the fence
-// is a fixed point and the builder is not consumed.
+// any fragment contributed — except inside the ranges Mention wrote, which are
+// the one deliberate exemption and are handle-shaped by construction. A token
+// that only PARTLY overlaps such a range (template glue extending the name,
+// a chain swallowing it) is fenced whole: the exemption never widens. Calling
+// String again returns the same bytes: the fence is a fixed point and the
+// builder is not consumed.
 func (l *Line) String() string {
-	return escapeMentions(l.b.String())
+	return escapeMentionsSkipping(l.b.String(), l.live)
 }

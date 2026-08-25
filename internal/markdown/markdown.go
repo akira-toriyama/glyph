@@ -162,6 +162,16 @@ var mention = regexp.MustCompile("(^|[^A-Za-z0-9`])@(" + username + "(?:@" + use
 // (actions/checkout@v5) and a lone at-sign ("meet @ noon") stay raw, exactly as
 // GitHub itself treats them.
 func escapeMentions(s string) string {
+	return escapeMentionsSkipping(s, nil)
+}
+
+// escapeMentionsSkipping is escapeMentions with Line.Mention's exemption: a
+// would-be mention whose NAME lies entirely inside one of the live ranges is
+// left raw — that is the author credit going live. The ranges hold no backtick
+// and no at-sign (Line.Mention guarantees the handle shape), so the fence
+// sizing and the code-span scan below still model the whole string exactly;
+// only the final "wrap it" decision consults them.
+func escapeMentionsSkipping(s string, live [][2]int) string {
 	if !strings.Contains(s, "@") {
 		return s
 	}
@@ -169,28 +179,36 @@ func escapeMentions(s string) string {
 	var b strings.Builder
 	last := 0
 	for _, span := range codeSpans(s) {
-		fenceMentions(&b, s, last, span[0], fence)
+		fenceMentions(&b, s, last, span[0], fence, live)
 		b.WriteString(s[span[0]:span[1]])
 		last = span[1]
 	}
-	fenceMentions(&b, s, last, len(s), fence)
+	fenceMentions(&b, s, last, len(s), fence, live)
 	return b.String()
 }
 
 // fenceMentions copies s[from:to] — a stretch GitHub renders as prose — into b,
-// wrapping every would-be mention in fence.
+// wrapping every would-be mention in fence, except a mention whose name sits
+// wholly inside a live range (skipped: its bytes flow through raw with the
+// surrounding prose). Wholly, not partly: a partial overlap means prose glued
+// itself onto the exempt name — template text extending it, or a chain token
+// swallowing it — and the assembled token is then something nobody vouched
+// for, so it is fenced like any other.
 //
 // It indexes the FULL string, not the stretch, to decide whether a separating
 // space is needed: the neighbor that can fuse with the fence is the code-span
 // delimiter just outside the stretch, which a pattern run over the stretch
 // alone would report as "start of text" and miss.
-func fenceMentions(b *strings.Builder, s string, from, to int, fence string) {
+func fenceMentions(b *strings.Builder, s string, from, to int, fence string, live [][2]int) {
 	prose := s[from:to]
 	last := 0
 	for _, m := range mention.FindAllStringSubmatchIndex(prose, -1) {
 		// Group 1 ends on the at-sign (it is empty at the start of the
 		// stretch); group 2 ends on the last character of the name.
 		at, end := m[3], m[5]
+		if insideLive(live, from+m[4], from+m[5]) {
+			continue // the bytes up to and past it are copied by the next write
+		}
 		b.WriteString(prose[last:at])
 		if isBacktick(s, from+at-1) || escapesTheNextByte(s, from+at) {
 			b.WriteByte(' ')
@@ -204,6 +222,19 @@ func fenceMentions(b *strings.Builder, s string, from, to int, fence string) {
 		last = end
 	}
 	b.WriteString(prose[last:])
+}
+
+// insideLive reports whether [start, end) lies entirely within one live range.
+// Entirely within ONE: live ranges never touch (each is a separate Mention
+// call with template bytes between), so a token spanning two is glued prose
+// and must be fenced.
+func insideLive(live [][2]int, start, end int) bool {
+	for _, r := range live {
+		if start >= r[0] && end <= r[1] {
+			return true
+		}
+	}
+	return false
 }
 
 // isBacktick reports whether s[i] is a backtick, tolerating an index off either
