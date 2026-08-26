@@ -42,21 +42,22 @@ type pinRef struct {
 // checkWorkflowPins scans .github/workflows and .github/actions/**/action.yml
 // in the local checkout.
 //
-// A missing WORKFLOWS directory is UNKNOWN, not a vacuous pass. Both readings
-// are live — a repository may genuinely have no workflows, or doctor may have
-// been run from the wrong directory — and the difference matters enough that
-// the check says so instead of quietly reporting that everything is fine. The
-// actions directory carries no such ambiguity (most consumers call the
-// reusables directly and have none), so its absence stays inside the verdict
-// the workflows earn.
-func checkWorkflowPins(root string) Check {
+// A missing WORKFLOWS directory splits on rootVerified. Under a git-named root
+// the absence is an observed fact — a repository with no workflows has nothing
+// pinned and nothing to drift, and the actions walk below still runs, so a
+// composite in .github/actions is not blessed by the workflows directory being
+// gone. Under a bare "." both readings stay live — no workflows, or doctor run
+// from the wrong directory — and that stays UNKNOWN, not a vacuous pass
+// (a fresh repository could never get doctor to exit 0 before wiring CI, which
+// is how this arm was found: the t-wzsw zero-base drill, 2026-08-26).
+func checkWorkflowPins(root string, rootVerified bool) Check {
 	c := Check{
 		ID:       IDWorkflowPinned,
 		Expected: "every `uses: " + glyphRepo + "/…` in .github/workflows or .github/actions/**/action.yml pins a concrete @vX.Y.Z release tag",
 	}
 	dir := filepath.Join(root, ".github", "workflows")
 	entries, err := os.ReadDir(dir)
-	if err != nil {
+	if err != nil && !(rootVerified && errors.Is(err, fs.ErrNotExist)) {
 		c.Status = StatusUnknown
 		c.Observed = fmt.Sprintf("%s could not be listed: %v", dir, err)
 		c.Message = "doctor reads the LOCAL checkout for this check, so it must run from the repository root. " +

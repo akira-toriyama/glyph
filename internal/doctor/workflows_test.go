@@ -306,7 +306,7 @@ func TestCheckWorkflowPinsOutcomes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := checkWorkflowPins(checkoutWith(t, tt.files))
+			c := checkWorkflowPins(checkoutWith(t, tt.files), true)
 			if c.Status != tt.want {
 				t.Fatalf("status = %s, want %s (observed %q, details %v)", c.Status, tt.want, c.Observed, c.Details)
 			}
@@ -405,7 +405,7 @@ func TestCheckWorkflowPinsScansCompositeActions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := checkWorkflowPins(checkoutAt(t, tt.files))
+			c := checkWorkflowPins(checkoutAt(t, tt.files), true)
 			if c.Status != tt.want {
 				t.Fatalf("status = %s, want %s (observed %q, details %v)", c.Status, tt.want, c.Observed, c.Details)
 			}
@@ -421,7 +421,7 @@ func TestCheckWorkflowPinsScansCompositeActions(t *testing.T) {
 // directory — so it must report could-not-run rather than a pass it did not
 // earn.
 func TestCheckWorkflowPinsWithoutADirectoryIsUnknown(t *testing.T) {
-	c := checkWorkflowPins(t.TempDir())
+	c := checkWorkflowPins(t.TempDir(), false)
 	if c.Status != StatusUnknown {
 		t.Fatalf("status = %s, want %s", c.Status, StatusUnknown)
 	}

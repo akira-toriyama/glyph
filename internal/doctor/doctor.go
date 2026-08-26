@@ -104,6 +104,13 @@ type Input struct {
 	Repo string
 	// Root is the local checkout whose .github/workflows are scanned.
 	Root string
+	// RootVerified reports that Root came from git itself (rev-parse
+	// --show-toplevel), not from an assumption about cwd. It decides how the
+	// local scans read an absent .github/workflows: under a git-named root
+	// that absence is an observed fact about the repository (pass — nothing
+	// to scan), while under a bare "." it could equally be a wrong working
+	// directory, which must stay unknown.
+	RootVerified bool
 	// RepoObject / RepoErr are the outcome of GET /repos/{owner}/{repo}.
 	// RepoErr must be handed over VERBATIM, exactly as internal/github
 	// returned it: the token check asks github.IsRepoUnknown about it, and
@@ -162,6 +169,7 @@ const (
 	IDSquashMessage  = "squash-commit-message"
 	IDWorkflowPinned = "workflow-glyph-pins"
 	IDCallerPerms    = "workflow-caller-permissions"
+	IDCallerInputs   = "workflow-caller-inputs"
 	IDCommitMsgHook  = "commit-msg-hook"
 	IDCommitMsgFires = "commit-msg-hook-fires"
 	IDPrePushHook    = "pre-push-hook"
@@ -196,8 +204,9 @@ func Run(in Input) *Report {
 		checkRebaseMerge(in),
 		checkSquashTitle(in),
 		checkSquashMessage(in),
-		checkWorkflowPins(in.Root),
-		checkCallerPermissions(in.Root),
+		checkWorkflowPins(in.Root, in.RootVerified),
+		checkCallerPermissions(in.Root, in.RootVerified),
+		checkCallerInputs(in.Root, in.RootVerified),
 		checkHook(hook.Kinds()[0], IDCommitMsgHook, in.HooksDir, in.HooksErr),
 		checkHookFires(in.CommitMsgProbe, in.HooksErr),
 		checkHook(hook.Kinds()[1], IDPrePushHook, in.HooksDir, in.HooksErr),

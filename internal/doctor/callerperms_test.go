@@ -113,7 +113,7 @@ func TestCallerPermissionsOutcomes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := checkCallerPermissions(checkoutWith(t, tt.files))
+			c := checkCallerPermissions(checkoutWith(t, tt.files), true)
 			if c.Status != tt.want {
 				t.Fatalf("status = %s, want %s\nobserved: %s\ndetails: %v", c.Status, tt.want, c.Observed, c.Details)
 			}
@@ -139,7 +139,7 @@ func TestCallerPermissionsOutcomes(t *testing.T) {
 // contract: an unlistable workflows directory observed nothing, and "we could
 // not check" is not "it is fine".
 func TestCallerPermissionsWithoutADirectoryIsUnknown(t *testing.T) {
-	c := checkCallerPermissions(t.TempDir())
+	c := checkCallerPermissions(t.TempDir(), false)
 	if c.Status != StatusUnknown {
 		t.Fatalf("status = %s, want %s", c.Status, StatusUnknown)
 	}
