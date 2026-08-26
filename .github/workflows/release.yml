@@ -63,9 +63,10 @@ name: glyph-release
 #         # the rolling draft, on ubuntu, and nothing built.
 #         smoke: false            # true → run `<artifact> --validate`
 #         dry-run: ${{ github.event.inputs.dry_run == 'true' }}
-#         install-notes: |
-#           ## Install
-#           …app-specific markdown appended after the notes…
+#         install-notes: |          # REQUIRED — omitting it kills the run as
+#           ## Install               # startup_failure before any job, and
+#           …app-specific markdown…  # GitHub surfaces no error anywhere
+#                                    # (measured: glyph-test3, 2026-08-26)
 #
 # @vX.Y.Z is a PLACEHOLDER, not a ref — substitute a concrete tag from
 # https://github.com/akira-toriyama/glyph/releases. No live version is written
