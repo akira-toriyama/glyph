@@ -137,11 +137,15 @@ type Input struct {
 
 // HookProbe is what came back from firing a hook. Fired with Exit is a real
 // answer; Err is the probe itself failing to run — which is unknown, never a
-// verdict about the hook.
+// verdict about the hook. Claimed reports whether the repository's own
+// glyph.toml classifies the probe message: lint has no taste, so a config is
+// free to claim anything — and against one that does, exit 0 is the chain
+// working, not the gate failing.
 type HookProbe struct {
-	Fired bool
-	Exit  int
-	Err   error
+	Fired   bool
+	Exit    int
+	Claimed bool
+	Err     error
 }
 
 // The stable check ids. They are the report's API — rename one and every CI
@@ -435,9 +439,9 @@ func checkSquashEnabled(in Input) Check {
 			"main are the same object, so a squash-merged pull is never half-resolved — the walk either expands it from the " +
 			"API or falls back on that one message, and no part of it can stand aside for a merge point that never resolves. " +
 			"That is the guarantee; identical verdicts are NOT. Under COMMIT_OR_PR_TITLE a MULTI-commit squash carries the PR " +
-			"title, which no lint gate checks, so an API-dark run classifies that one subject instead of the pull's commits: a " +
-			":sparkles:+:bug: pull titled :bug: reads minor with the API and patch without, and a title with no gitmoji at all " +
-			"reads none. Squash bounds an API-dark window to one wrong level on one pull; a multi-commit landing can lose a " +
+			"title, whose sigil is its own, so an API-dark run classifies that one subject instead of the pull's commits: a " +
+			"^+~ pull titled ~ reads minor with the API and patch without, and a title no pattern claims refuses the fold " +
+			"outright. Squash bounds an API-dark window to one wrong level on one pull; a multi-commit landing can lose a " +
 			"whole one"
 		return c
 	}
@@ -447,7 +451,7 @@ func checkSquashEnabled(in Input) Check {
 		"GitHub answers, all three styles resolve alike: merge_commit_sha names the squash commit, a rebase's last replayed " +
 		"commit, or the merge commit, and the walk expands the pull request from there. A TOTAL blackout is not the problem " +
 		"either — when GitHub answers 422 for every sha the walk classifies each commit from its own message (DESIGN §4), and " +
-		"a merge- or rebase-landed pull comes out at the SAME level, because its commits are on main with their gitmoji " +
+		"a merge- or rebase-landed pull comes out at the SAME level, because its commits are on main with their sigils " +
 		"intact; a multi-commit squash is the style that loses there. What squash removes is the PARTIAL window, which only a " +
 		"multi-commit landing has. GitHub indexes a merge commit AFTER the commits it merges, so a release run seconds behind " +
 		"the button sees the branch commits stand aside for a merge point it cannot resolve yet and the whole pull request " +
@@ -513,7 +517,8 @@ func checkMergeCommit(in Input) Check {
 		"carry their own gitmoji, so the verdict comes out the same. What is left is a window and a convention. The window: a " +
 		"merge-merged pull's branch commits stand aside for its merge point, so if that merge point alone is unresolved — " +
 		"GitHub indexes it after the commits it merges, or an automation authored it and the author gate skipped it before " +
-		"the API — the whole pull counts none. The walk says so, twice, and the release exits 1, so this is a re-run (or a " +
+		"the API — the whole pull counts none. The walk names the lost pull, and the release refuses the incomplete walk " +
+		"at exit 4, so this is a re-run (or a " +
 		"human merge) rather than a silent wrong version; for an automation-driven merge button it repeats every release. The " +
 		"convention: squash-only keeps main at one commit per PR and the walk at one API round-trip per PR"
 	c.Fix = fmt.Sprintf("gh api -X PATCH repos/%s -F allow_merge_commit=false (optional — this is a convention, not a defect)", in.Repo)
@@ -557,8 +562,8 @@ func checkRebaseMerge(in Input) Check {
 	}
 	c.Status = StatusAdvice
 	c.Message = "rebase merging is allowed. It costs no strictness: merge_commit_sha names the LAST replayed commit, so that " +
-		"commit resolves and expands the whole pull request through the API exactly as a squash commit does — an unknown " +
-		":code: inside it fails the release, it is NOT downgraded to a warning — and the earlier replayed commits resolve as " +
+		"commit resolves and expands the whole pull request through the API exactly as a squash commit does — a subject " +
+		"inside it that no pattern claims fails the release, it is NOT downgraded to a warning — and the earlier replayed commits resolve as " +
 		"covered by the same pull request and are skipped, so nothing is counted twice. What it costs is one API round-trip " +
 		"per replayed commit instead of one per pull request. The dedup key used to cost more: a rebase always writes new " +
 		"shas, which appear in no pull request's commit listing, so inside the API-lag window a replayed commit was folded " +
@@ -587,10 +592,11 @@ func checkSquashTitle(in Input) Check {
 	return checkSquashEnum(in, IDSquashTitle, "squash_merge_commit_title",
 		in.RepoObject.SquashMergeCommitTitle, wantSquashTitle,
 		"a single-commit PR keeps its own classifiable subject on main; only a multi-commit squash borrows the PR title",
-		"every squash commit takes the PR TITLE as its subject, including single-commit PRs — so main fills with subjects "+
-			"the selected profile's grammar cannot classify. The verdict holds while the API answers, but the walk's fallback "+
-			"(a direct push, or API lag right after a push) classifies the squash commit's own message, which now carries no "+
-			"leading token at all: the release counts none and the bump is lost silently")
+		"every squash commit takes the PR TITLE as its subject, including single-commit PRs — so a commit's own sigil "+
+			"never lands on main. The verdict holds while the API answers, but the walk's fallback "+
+			"(a direct push, or API lag right after a push) classifies the squash commit's own message: the title's sigil "+
+			"alone decides, a title no pattern claims refuses the fold, and one a window pattern claims counts none — "+
+			"the bump is lost silently")
 }
 
 // checkSquashMessage is the body half of the same policy. COMMIT_MESSAGES keeps

@@ -196,6 +196,11 @@ func TestCheckHookFiresVerdicts(t *testing.T) {
 		{"probe could not run", &HookProbe{Err: os.ErrPermission}, nil, StatusUnknown},
 		{"blocked at the gate code", &HookProbe{Fired: true, Exit: gate}, nil, StatusPass},
 		{"silent no-op", &HookProbe{Fired: true, Exit: 0}, nil, StatusFail},
+		// Exit 0 with the config claiming the probe is the chain WORKING: a
+		// catch-all pattern is legal (lint has no taste), and failing this
+		// machine over its repository's own grammar taught the fleet the
+		// check cries wolf.
+		{"config claims the probe", &HookProbe{Fired: true, Exit: 0, Claimed: true}, nil, StatusPass},
 		{"exit outside the script's vocabulary", &HookProbe{Fired: true, Exit: 127}, nil, StatusUnknown},
 	}
 	for _, tc := range cases {

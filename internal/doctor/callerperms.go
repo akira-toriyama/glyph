@@ -59,7 +59,8 @@ func checkCallerPermissions(root string) Check {
 	c := Check{
 		ID: IDCallerPerms,
 		Expected: "every workflow calling a glyph reusable grants at least what that reusable declares " +
-			"(lint: pull-requests: read; release: contents: write; pr-verdict: pull-requests: write)",
+			"(lint: contents: read, pull-requests: read; release: contents: write; " +
+			"pr-verdict: contents: read, pull-requests: write)",
 	}
 	dir := filepath.Join(root, ".github", "workflows")
 	entries, err := os.ReadDir(dir)

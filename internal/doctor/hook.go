@@ -30,7 +30,7 @@ import (
 	"github.com/akira-toriyama/glyph/internal/hook"
 )
 
-// checkCommitMsgHook asks whether a STALE glyph-written commit-msg hook is
+// checkHook asks whether a STALE glyph-written hook of kind k is
 // installed here. Not "is a hook installed" — the difference decides three of
 // the four verdicts:
 //
@@ -162,6 +162,12 @@ func checkHookFires(probe *HookProbe, dirErr error) Check {
 		c.Observed = fmt.Sprintf("the hook blocked the probe message at exit %d", gate)
 		c.Message = "the whole chain answered: the script, the glyph it resolves on PATH, and the verdict that " +
 			"stops a commit are in working order on this machine"
+	case probe.Exit == 0 && probe.Claimed:
+		c.Status = StatusPass
+		c.Observed = "the hook let the probe message through at exit 0 — and this repository's glyph.toml claims that message, so 0 is the verdict a working chain gives"
+		c.Message = "the whole chain answered: the script ran, the glyph it resolves on PATH linted, and the config " +
+			"accepted — the gate is exactly as strict as the repository's own patterns (lint has no taste), so a " +
+			"config that claims the probe text has simply left this probe nothing to block on"
 	case probe.Exit == 0:
 		c.Status = StatusFail
 		c.Observed = "the hook let a violating message through at exit 0"
