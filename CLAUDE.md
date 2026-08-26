@@ -43,7 +43,8 @@ locally. Doc rules (one home per fact, no stored translations) are in
 ## Exit codes are a machine API
 
 Implemented once in `internal/core/errors.go`; spelled out in README.md (twice — the table and
-`doctor`'s subset) and DESIGN §5. Do not add another prose copy. What matters is that the
+`doctor`'s subset), DESIGN §5 and glossary §6, and `internal/workflows/exitcodes_test.go` holds
+every copy lockstep. Do not add another prose copy outside that guard. What matters is that the
 integers are frozen: every fleet repo's lint gate, glyph's three reusable workflows, the
 installed commit-msg hook and `scripts/check.sh` all branch on the exact value, so a new code
 is a breaking change. **Assert the code, never truthiness** — `lint --stdin=false` once exited

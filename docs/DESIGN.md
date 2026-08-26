@@ -61,8 +61,9 @@ for the cited detail. What it changed:
   (release-drafter requires a previously PUBLISHED release or it warns and returns
   nothing — which is also the strongest argument for the backlogged initial-tag knob).
 
-Only permitted external dependencies: cobra (the CLI frame, per house pattern)
-and go-toml (the `glyph.toml` decoder). The v1 gitmoji spec dataset left with
+Only permitted external dependencies: cobra (the CLI frame, per house pattern;
+its flag package pflag rides along as a direct require) and go-toml (the
+`glyph.toml` decoder). The v1 gitmoji spec dataset left with
 the embedded table.
 
 ## 2. Commit format
@@ -154,7 +155,7 @@ subdirectory shell all read the same file by construction.
 A rule is only as good as the text it is applied to, and at the commit-msg hook
 that text is **not** the message. git runs the hook BEFORE its own cleanup, so
 the file still holds whatever the editor left: the template, the status block,
-and under `-v` a scissors line with the entire diff below it. `parser.Cleanup`
+and under `-v` a scissors line with the entire diff below it. `cleanup.Apply`
 reduces that file to the message git will record, and `--stdin` is its only
 caller (a `--range` walk reads `git log %B`, which git has already cleaned).
 
@@ -327,7 +328,7 @@ and an unpaired `[` is refused as unterminated instead of closing the span one
 character early (measured: closing at the first `]` of any kind left a stray
 `]` on every rendered line).
 
-**`draft_on_none`** (§4's flag, `internal/draftplan`): with it on, a none
+**`draft_on_none`** (a `glyph.toml` key; the mechanism is `internal/draftplan`): with it on, a none
 verdict maintains an `Unreleased` placeholder draft instead of deleting the
 rolling draft, and the next real verdict retags that same draft to the real
 version through the ordinary keep-selection path (mutation row
@@ -855,8 +856,8 @@ CommonMark had decoded the entity).
 
 ## 6. Distribution (summary)
 
-Rules ship inside the binary (no synced config table — that would recreate
-per-repo drift). glyph ships its own reusable workflows (`lint.yml`,
+The engine ships inside the binary; the grammar is the repository's own
+`glyph.toml` (see below — v2 dissolved the embedded table). glyph ships its own reusable workflows (`lint.yml`,
 `release.yml`, `pr-verdict.yml` — the merge preview: one sticky PR comment
 predicting the next release from the PR's individual commits folded with what
 is already pending on main; it is fleet-distributable because it names no
@@ -867,8 +868,9 @@ family repos consume them at a concrete `@vX.Y.Z` (never a moving tag — binary
 and workflow ship from one repo at one tag). glyph's OWN tag-driven GoReleaser
 workflow is `goreleaser.yml` — also the attestation signer identity from v0.3.0
 on. Migration off git-cliff is canary-first (`chord`) and flips DIRECTLY —
-ratified Q16: no shadow parallel-run (a policy-honest comparison against the
-type-driven git-cliff is impossible once the gitmoji table legitimately
+ratified Q16 (v1 — the reasoning predates the table's removal, the stance
+stands): no shadow parallel-run (a policy-honest comparison against the
+type-driven git-cliff is impossible once glyph legitimately
 reclassifies single commits, and migration scaffolding is debt). The safety net
 is structural: writes are draft-only, a human publishes, the published floor
 guards the tag space, and `--dry-run` previews any verdict. Full rollout — and
@@ -936,8 +938,8 @@ for the attestation verify.
 ## 7. Repository preconditions (`glyph doctor`)
 
 Everything above assumes repository configuration glyph never observes: that the
-repo squash-merges, that the squash subject and body policy leave a classifiable
-gitmoji on `main`, that a caller pins a concrete tag. When one of those drifts
+repo squash-merges, that the squash subject and body policy leave a subject the
+repository's patterns can classify on `main`, that a caller pins a concrete tag. When one of those drifts
 nothing turns red — the workflows are green and the verdict is simply computed
 over a repository that no longer matches the model. The 2026-07-21 fleet
 measurement found 31 of 34 non-archived repos allowing merge commits and rebase
@@ -1049,8 +1051,8 @@ The severities are the argued part:
   the traffic that matters — which is why this is advice while turning squash
   **off** is a failure.
 - **The squash title/message policy ⇒ fail.** `PR_TITLE` hands the PR title to
-  *every* squash, single-commit PRs included, so `main` fills with subjects no
-  gitmoji reader can classify — and §4's documented fallback (direct push, or API
+  *every* squash, single-commit PRs included, so `main` fills with subjects the
+  repository's patterns cannot classify — and §4's documented fallback (direct push, or API
   lag right after a push) classifies exactly that message, so a release counts
   none and the bump is lost. `PR_BODY` drops the per-commit list that is the only
   offline record of a PR's pre-squash types.
@@ -1069,6 +1071,22 @@ The severities are the argued part:
   owner/repo match is case-insensitive because GitHub's resolution is —
   `Akira-Toriyama/glyph/…@main` executes, and a case-sensitive scan called that
   repository clean.
+- **A credential that cannot write releases ⇒ advice (`token-repo-write`).**
+  Only `glyph release` writes; every read command is unaffected, and doctor must
+  not red the fleet's read-side wiring over a command a repository does not use.
+  The check answers from the same repository read as `token-repo-read` — glyph
+  never infers a scope the API did not report — and its value is timing: without
+  it the 403 lands only after the release walk has already spent its API budget.
+- **A caller granting less than its reusable declares ⇒ fail
+  (`workflow-caller-permissions`).** The one failure class NO runtime diagnosis
+  can see, glyph's included: the run dies as `startup_failure` before any job —
+  no step, no exit code, nothing red in the caller's own YAML (measured,
+  `.github#186`). Reading the checkout's workflow files is the only vantage
+  point that works, which is doctor's. Two boundaries, both against crying wolf:
+  a caller with no `permissions:` block anywhere is not judged (the repository
+  default may be fine, and doctor cannot see it), and grants are unioned across
+  workflow and job level (a sibling-job grant could in principle false-pass —
+  the pin check's own documented trade, made for the same reason).
 - **A stale glyph-written hook ⇒ fail; no hook at all ⇒ pass.** One check per
   kind (`commit-msg-hook`, `pre-push-hook`), because a `Check` carries ONE
   observed/expected pair and folding the two would collapse "commit-msg current,
@@ -1121,7 +1139,7 @@ the binary (t-0cqs).
 tree, and it is inventoried where it is already maintained rather than a third
 time here: the commands are §5's list, each with its own `--help`; the three
 reusable workflows and the one install action are §6; `git tag` is the release
-history and the only answer to "which version". README's status line is the
+history and the only answer to "which version". README's opening lede is the
 one-sentence state, and it is the only prose that should need touching when that
 changes.
 
