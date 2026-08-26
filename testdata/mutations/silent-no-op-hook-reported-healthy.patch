@@ -1,10 +1,10 @@
 diff --git a/internal/doctor/hook.go b/internal/doctor/hook.go
-index 549d187..f3605c3 100644
+index 82847dd..a4157ea 100644
 --- a/internal/doctor/hook.go
 +++ b/internal/doctor/hook.go
-@@ -163,7 +163,7 @@ func checkHookFires(probe *HookProbe, dirErr error) Check {
- 		c.Message = "the whole chain answered: the script, the glyph it resolves on PATH, and the verdict that " +
- 			"stops a commit are in working order on this machine"
+@@ -169,7 +169,7 @@ func checkHookFires(probe *HookProbe, dirErr error) Check {
+ 			"accepted — the gate is exactly as strict as the repository's own patterns (lint has no taste), so a " +
+ 			"config that claims the probe text has simply left this probe nothing to block on"
  	case probe.Exit == 0:
 -		c.Status = StatusFail
 +		c.Status = StatusPass
