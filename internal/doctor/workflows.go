@@ -57,7 +57,7 @@ func checkWorkflowPins(root string, rootVerified bool) Check {
 	}
 	dir := filepath.Join(root, ".github", "workflows")
 	entries, err := os.ReadDir(dir)
-	if err != nil && !(rootVerified && errors.Is(err, fs.ErrNotExist)) {
+	if err != nil && (!rootVerified || !errors.Is(err, fs.ErrNotExist)) {
 		c.Status = StatusUnknown
 		c.Observed = fmt.Sprintf("%s could not be listed: %v", dir, err)
 		c.Message = "doctor reads the LOCAL checkout for this check, so it must run from the repository root. " +

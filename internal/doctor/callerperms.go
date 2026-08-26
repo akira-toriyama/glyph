@@ -139,7 +139,7 @@ func checkCallerPermissions(root string, rootVerified bool) Check {
 func listWorkflows(root string, rootVerified bool, c *Check, consequence string) ([]os.DirEntry, bool) {
 	dir := filepath.Join(root, ".github", "workflows")
 	entries, err := os.ReadDir(dir)
-	if err != nil && !(rootVerified && errors.Is(err, fs.ErrNotExist)) {
+	if err != nil && (!rootVerified || !errors.Is(err, fs.ErrNotExist)) {
 		c.Status = StatusUnknown
 		c.Observed = fmt.Sprintf("%s could not be listed: %v", dir, err)
 		c.Message = "doctor reads the LOCAL checkout for this check, so it must run from the repository root. " + consequence
