@@ -59,7 +59,8 @@ func TestUnknownCommandIsUsage(t *testing.T) {
 // an unread package-level var is legal Go. That is t-y2hr's defect one flag
 // over, and this is its only defender. The machine flag is deliberately NOT
 // default-bearing: declining it selects a real output, so it gets no
-// checkDefaultModeOff (unlike `rules --md`, where declining selects nothing).
+// default-mode guard (v1's `rules --md` was the counterexample: declining it
+// selected nothing).
 func TestVersionJSONFalseIsTheHumanLine(t *testing.T) {
 	code, stdout, stderr := runGlyph(t, "version", "--json=false")
 	if code != 0 {

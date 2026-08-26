@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/akira-toriyama/glyph/internal/bump"
 	"github.com/akira-toriyama/glyph/internal/cleanup"
 	"github.com/akira-toriyama/glyph/internal/config"
 	"github.com/akira-toriyama/glyph/internal/core"
@@ -42,9 +43,10 @@ func newLintCmd() *cobra.Command {
 			"records that title as the landed commit's subject. --message and --stdin\n" +
 			"lint one message at authoring time — the commit-msg hook path. Violations\n" +
 			"exit 3 with a structured stderr envelope; a clean run is silent, EXCEPT\n" +
-			"that a --range which judged no commit at all says so and still exits 0 —\n" +
-			"`0` means \"everything I checked conforms\", which is vacuous when nothing\n" +
-			"was checked.",
+			"for two loud-and-still-0 cases: a --range which judged no commit at all\n" +
+			"says so (`0` means \"everything I checked conforms\", which is vacuous when\n" +
+			"nothing was checked), and a pattern carrying a warn — the v1 window —\n" +
+			"annotates every commit it claims.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{
@@ -73,7 +75,7 @@ func newLintCmd() *cobra.Command {
 				return lintPRRun(cmd.Context(), lintPR, lintRepo)
 			case cmd.Flags().Changed("stdin"):
 				if !lintStdin {
-					return core.Usagef("--stdin=false selects no input mode — --stdin IS the mode, so drop it and give --range or --message instead")
+					return core.Usagef("--stdin=false selects no input mode — --stdin IS the mode, so drop it and give --range, --pr or --message instead")
 				}
 				cfg, err := loadConfig(cmd.Context())
 				if err != nil {
@@ -109,7 +111,7 @@ func newLintCmd() *cobra.Command {
 				// Unreachable while MarkFlagsOneRequired holds. Kept as usage
 				// rather than a panic so a fourth mode added without its arm is
 				// diagnosed as a bad invocation instead of crashing a CI gate.
-				return core.Usagef("lint needs one of --range, --message or --stdin")
+				return core.Usagef("lint needs one of --range, --pr, --message or --stdin")
 			}
 		},
 	}
@@ -120,6 +122,12 @@ func newLintCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&lintStdin, "stdin", false, "lint one message read from stdin (commit-msg hook)")
 	cmd.MarkFlagsMutuallyExclusive("range", "pr", "message", "stdin")
 	cmd.MarkFlagsOneRequired("range", "pr", "message", "stdin")
+	// --repo feeds the one API-backed mode. Combined with any local mode it
+	// would be silently ignored, and glyph does not ignore input silently —
+	// the same grammar markInputSourceFlags gives bump and notes.
+	cmd.MarkFlagsMutuallyExclusive("repo", "range")
+	cmd.MarkFlagsMutuallyExclusive("repo", "message")
+	cmd.MarkFlagsMutuallyExclusive("repo", "stdin")
 	return cmd
 }
 
@@ -173,8 +181,8 @@ func lintOne(message string, cfg *config.Config) error {
 	}
 	return &core.Error{
 		Code:    core.CodeLint,
-		Msg:     "1 commit-convention violation(s)",
-		Details: []rangeViolation{{Subject: firstLine(message), Detail: v.Reason}},
+		Msg:     "1 commit-convention violation",
+		Details: []rangeViolation{{Subject: bump.FirstLine(message), Detail: v.Reason}},
 	}
 }
 
@@ -215,7 +223,7 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 	errorf("%s/%s#%d title: %s", owner, repo, number, v.Reason)
 	return &core.Error{
 		Code: core.CodeLint,
-		Msg: fmt.Sprintf("1 commit-convention violation(s) in the title of %s/%s#%d — a squash merge records this title as the landed commit's subject",
+		Msg: fmt.Sprintf("1 commit-convention violation in the title of %s/%s#%d — a squash merge records this title as the landed commit's subject",
 			owner, repo, number),
 		Details: []rangeViolation{{Subject: pull.Title, Detail: v.Reason}},
 	}
@@ -238,11 +246,11 @@ func lintRaws(raws []gitsource.RawCommit, cfg *config.Config) (findings, warned 
 		}
 		checked++
 		if !v.OK {
-			findings = append(findings, rangeViolation{SHA: raw.SHA, Subject: firstLine(raw.Message), Detail: v.Reason})
+			findings = append(findings, rangeViolation{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message), Detail: v.Reason})
 			continue
 		}
 		if v.Warn != "" {
-			warned = append(warned, rangeViolation{SHA: raw.SHA, Subject: firstLine(raw.Message), Detail: v.Warn})
+			warned = append(warned, rangeViolation{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message), Detail: v.Warn})
 		}
 	}
 	return findings, warned, checked

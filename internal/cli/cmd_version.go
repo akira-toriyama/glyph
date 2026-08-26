@@ -25,8 +25,9 @@ func newVersionCmd() *cobra.Command {
 			"recovered from the module's build info otherwise (so a `go install` build\n" +
 			"still identifies itself). It is the one command that reaches nothing —\n" +
 			"no git, no API, no repository — so it answers anywhere.\n\n" +
-			"The binary IS the pinned rules (the gitmoji table is embedded), so this\n" +
-			"version identifies the convention in force as well as the code.",
+			"The rules are NOT in the binary: the repository's glyph.toml decides the\n" +
+			"grammar, so this version identifies the engine alone, never the convention\n" +
+			"in force.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			info := version.Resolve()

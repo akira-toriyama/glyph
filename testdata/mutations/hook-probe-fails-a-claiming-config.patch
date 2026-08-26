@@ -1,0 +1,17 @@
+diff --git a/internal/doctor/hook.go b/internal/doctor/hook.go
+index 82847dd..a6c88e0 100644
+--- a/internal/doctor/hook.go
++++ b/internal/doctor/hook.go
+@@ -162,12 +162,6 @@ func checkHookFires(probe *HookProbe, dirErr error) Check {
+ 		c.Observed = fmt.Sprintf("the hook blocked the probe message at exit %d", gate)
+ 		c.Message = "the whole chain answered: the script, the glyph it resolves on PATH, and the verdict that " +
+ 			"stops a commit are in working order on this machine"
+-	case probe.Exit == 0 && probe.Claimed:
+-		c.Status = StatusPass
+-		c.Observed = "the hook let the probe message through at exit 0 — and this repository's glyph.toml claims that message, so 0 is the verdict a working chain gives"
+-		c.Message = "the whole chain answered: the script ran, the glyph it resolves on PATH linted, and the config " +
+-			"accepted — the gate is exactly as strict as the repository's own patterns (lint has no taste), so a " +
+-			"config that claims the probe text has simply left this probe nothing to block on"
+ 	case probe.Exit == 0:
+ 		c.Status = StatusFail
+ 		c.Observed = "the hook let a violating message through at exit 0"

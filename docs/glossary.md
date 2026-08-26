@@ -241,7 +241,7 @@ truncated history. `internal/gitsource/gitsource.go: IsShallow`,
 **truncated listing** — a pull whose commit listing came back at GitHub's hard
 cap of **250**, however far pagination follows. A listing of exactly the cap is
 one glyph cannot claim to have read whole: the commits past it are *unreachable,
-not absent*, and any of them could carry the deciding gitmoji.
+not absent*, and any of them could carry the deciding sigil.
 `internal/github/github.go: PullCommitsCap`, `walkFacts.Truncated`
 
 **incomplete walk** — a walk that came back knowing it had **not** read the whole
@@ -342,13 +342,13 @@ typo is visible in the preview rather than first surfacing on the real write.
 
 **action** — which draft convergence the run performs: `create`, `update`
 (grow/retag), `delete`, or `none`. `--dry-run` computes the action too and writes
-nothing. `internal/cli/cmd_release.go: actionCreate…actionNone`
+nothing. `internal/draftplan/draftplan.go: ActionCreate…ActionNone`
 
 **rolling draft** — the **one** glyph-managed unpublished draft release a
 repository keeps, created or updated **by release id** and retagged in place when
 the next version moves. Never a second draft. By id and not tag name because
 tag-name resolution can hit a *published* release sharing the draft's intended
-tag (cli/cli#9367). `internal/cli/cmd_release.go: planDrafts`,
+tag (cli/cli#9367). `internal/draftplan/draftplan.go: PlanDraft`,
 `internal/github/release.go: UpdateRelease`
 
 **glyph-managed draft** — an unpublished draft whose tag name is the house shape
@@ -370,7 +370,7 @@ delete is a warning on a green run, because the verdict has already landed and
 the next run converges it. A residual draft's delete *is* the whole action of a
 none verdict, so it still fails loud (4).
 `internal/cli/cmd_release.go: releaseNone`
-(residual), `planDrafts` (stale), `convergeStrays` (the post-write pass),
+(residual), `staleReleases` (stale), `convergeStrays` (the post-write pass),
 [DESIGN §4](DESIGN.md#4-squash-safe-mechanism--release-time-re-read-stateless)
 
 **published floor** — the highest **published** (non-draft) house-shaped version.
@@ -403,8 +403,9 @@ positive claim from a short walk: `preview`'s PR comment, via
 *The convention itself is not documented here.* It is shared by every repository
 under this account and lives in exactly one place, which is the whole point of
 [`commit-convention.md`](commit-convention.md) — a pointer to the canonical copy in
-`akira-toriyama/.github`. The gitmoji code and the subject shape, the three
-breaking markers, the removal codes and the `NON-BREAKING:` footer are normative
+`akira-toriyama/.github`. The account-wide conventions that sit above any
+pattern file — the language rule, the PR-title rule, removals declaring their
+sigil, migration state — are normative
 *there*, and restating them here would be the second source of truth that pointer
 exists to prevent. What remains below is only glyph's implementation vocabulary:
 the words for the machinery that reads the convention and enforces it.
@@ -632,7 +633,7 @@ gate read this file). `internal/doctor/doctor.go: Check, Run`
 **check id** — the stable kebab-case machine key (`squash-merge-enabled`,
 `workflow-glyph-pins`, …). Branch on the id, **never** on the message, which is
 prose and will be reworded. Treat the id block as the versioned surface it is.
-`internal/doctor/doctor.go: IDTokenAccess…IDCommitMsgHook`
+`internal/doctor/doctor.go: IDConfigLoads…IDPrePushHook`
 
 **pass / fail / advice / unknown** — four statuses, and the last two are the
 point.

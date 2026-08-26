@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/akira-toriyama/glyph/internal/cleanup"
+	"github.com/akira-toriyama/glyph/internal/config"
 	"github.com/akira-toriyama/glyph/internal/core"
 	"github.com/akira-toriyama/glyph/internal/doctor"
 	"github.com/akira-toriyama/glyph/internal/gitsource"
@@ -38,7 +40,9 @@ func newDoctorCmd() *cobra.Command {
 			"    every verdict command reads before anything else, so a repository that\n" +
 			"    pins glyph without one has its whole gate down\n" +
 			"  - the credential can read the repository at all, and what the API itself says\n" +
-			"    about its permissions (never a guess at scopes the API did not report)\n" +
+			"    about its permissions (never a guess at scopes the API did not report);\n" +
+			"    a credential that could not write releases is advice — only `glyph release`\n" +
+			"    writes, and without the advice the 403 lands after the walk spent its budget\n" +
 			"  - squash merging is ENABLED: a squash-merged pull puts exactly ONE commit on\n" +
 			"    main and that commit IS its merge_commit_sha, so it is never half-resolved —\n" +
 			"    no part of it can stand aside for a merge point the walk cannot resolve. The\n" +
@@ -59,17 +63,24 @@ func newDoctorCmd() *cobra.Command {
 			"    Neither is the silent wrong verdict a failure is reserved for\n" +
 			"  - squash_merge_commit_title=COMMIT_OR_PR_TITLE and\n" +
 			"    squash_merge_commit_message=COMMIT_MESSAGES: these decide whether the commit\n" +
-			"    that lands on main carries a classifiable gitmoji subject at all\n" +
+			"    that lands on main carries a subject the repository's patterns can classify\n" +
 			"  - every `uses: akira-toriyama/glyph/…` in the LOCAL .github/workflows pins a\n" +
 			"    concrete @vX.Y.Z tag (whether the pin is the LATEST release is deliberately\n" +
 			"    NOT checked — glyph-pin-audit.yml in akira-toriyama/.github already owns\n" +
 			"    that question fleet-wide, and two answers to it would be one too many)\n" +
-			"  - no STALE glyph-written commit-msg hook is installed. Hooks are untracked, so\n" +
+			"  - every caller of a glyph reusable grants the permissions that reusable\n" +
+			"    declares: a caller granting less dies as startup_failure before any job\n" +
+			"    runs, which no runtime diagnosis — glyph's included — can see\n" +
+			"  - no STALE glyph-written hook is installed (one check per kind: commit-msg,\n" +
+			"    pre-push). Hooks are untracked, so\n" +
 			"    nothing refreshes one: whatever glyph was on PATH the day it was installed\n" +
 			"    froze the exit code it stops a commit on and the arguments it hands lint, and\n" +
 			"    a stale hook still exits 0 — indistinguishable from a clean message. NO hook\n" +
 			"    passes (it is opt-in, and an Actions checkout cannot have one); a hook glyph\n" +
-			"    did not write is advice, because glyph will not overwrite it unasked\n\n" +
+			"    did not write is advice, because glyph will not overwrite it unasked\n" +
+			"  - a current commit-msg hook is also FIRED with a probe message, because\n" +
+			"    byte-identical bytes still prove nothing about the glyph the hook resolves\n" +
+			"    on PATH — the chain is only healthy if the probe comes back with a verdict\n\n" +
 			"--repo moves only the API side. The workflow-pin check always reads the LOCAL\n" +
 			"checkout, because a pin is a fact about the tree in front of you — pointing\n" +
 			"--repo elsewhere diagnoses that repository's settings and THIS checkout's pins.\n\n" +
@@ -125,6 +136,29 @@ func newDoctorCmd() *cobra.Command {
 // answered. The residual blind spot is a machine where ONLY pre-push was
 // installed by name: real, narrow, and accepted (t-2etd holds the design if
 // it is ever worth closing).
+// doctorProbeMessage is the message the hook probe commits with — one no
+// shipped preset accepts. One home: probeClaimed judges the same bytes the
+// probe fires, or the two drift and the claim check answers for a different
+// message than the hook saw.
+const doctorProbeMessage = "this doctor probe matches no commit grammar\n"
+
+// probeClaimed asks whether the repository's own glyph.toml claims the probe
+// message, judged exactly as the fired hook's `lint --stdin` will judge it
+// (same cleanup mode, empty author). Best-effort on purpose: an unloadable
+// config is the config check's finding, and this answers false rather than
+// aborting the probe.
+func probeClaimed(ctx context.Context, configPath string, pathErr error) bool {
+	if pathErr != nil {
+		return false
+	}
+	cfg, err := config.LoadFile(configPath)
+	if err != nil {
+		return false
+	}
+	v := cfg.Lint(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx)), "")
+	return v.OK
+}
+
 func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.HookProbe {
 	if dirErr != nil {
 		return nil
@@ -140,10 +174,12 @@ func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.H
 		return &doctor.HookProbe{Err: err}
 	}
 	defer os.Remove(msg.Name()) //nolint:errcheck // best-effort scratch cleanup
-	// A subject no cleanup mode can rescue and NO profile grammar accepts —
-	// no leading token in either vocabulary — so the gate code is the only
-	// healthy answer whichever profile the installed hook lints under.
-	if _, werr := msg.WriteString("this doctor probe matches no commit grammar\n"); werr != nil {
+	// A subject no shipped preset accepts, so against the fleet's configs the
+	// gate code is the only healthy answer. Which patterns judge it is the
+	// repository's business (lint has no taste): probeClaimed reports when the
+	// local glyph.toml claims this text, and the check then reads exit 0 as
+	// the chain working rather than the gate failing.
+	if _, werr := msg.WriteString(doctorProbeMessage); werr != nil {
 		_ = msg.Close() // the write error is the one worth reporting
 		return &doctor.HookProbe{Err: werr}
 	}
@@ -210,6 +246,9 @@ func doctorRun(cmd *cobra.Command) error {
 	configPath := ""
 	if terr == nil {
 		configPath = filepath.Join(top, "glyph.toml")
+	}
+	if probe != nil {
+		probe.Claimed = probeClaimed(cmd.Context(), configPath, terr)
 	}
 	// An interrupt is the user's own abort and must never be laundered into a
 	// check result: reporting "the token cannot read the repository" — or "git
@@ -315,7 +354,7 @@ func printDoctorHuman(r *doctor.Report) {
 	// summary is separated from the checks exactly once however the report ends.
 	spaced := false
 	for _, c := range r.Checks {
-		fmt.Fprintf(out, "%-8s %-22s %s\n", c.Status, c.ID, c.Observed)
+		fmt.Fprintf(out, "%-8s %-28s %s\n", c.Status, c.ID, c.Observed)
 		if c.Status == doctor.StatusPass {
 			spaced = false
 			continue

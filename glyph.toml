@@ -11,7 +11,7 @@ style = "gemoji"
 # The gemoji vocabulary: https://github.com/github/gemoji
 # (machine-readable list: https://api.github.com/emojis)
 #
-# The template is for humans and the commit hook; glyph never parses it.
+# The template is for humans; glyph never parses it.
 template = '''
 <:code:>[(scope)]<semver_sigil> <subject>
 
@@ -62,7 +62,7 @@ skip = true
 # release walk's base carries a sigil.
 pattern = '^:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))? (?P<subject>.+)'
 semver_sigil = '='
-warn = 'v1-acceptance window: no version sigil, so this commit folds as none and cannot move the version — write <:code:>[(scope)]<sigil> <subject> with = ~ ^ ! or %'
+warn = 'v1-acceptance window: no version sigil, so this commit folds as none and cannot move the version — write <:code:>[(scope)]<semver_sigil> <subject> with = ~ ^ ! or %'
 
 [note]
 # One line per commit. $xxx reads the winning pattern's named groups;

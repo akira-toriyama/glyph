@@ -292,7 +292,7 @@ func FuzzVersionNext(f *testing.F) {
 			t.Skip("unreachable: parsed versions are non-negative")
 		}
 		b := Level(level)
-		if !b.Valid() {
+		if b.Rank() < 0 {
 			t.Skip("out-of-lattice level")
 		}
 		// Promote is only reachable beside a major: SigilLevel maps '%' onto

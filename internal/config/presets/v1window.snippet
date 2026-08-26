@@ -8,4 +8,4 @@
 # release walk's base carries a sigil.
 pattern = '^:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))? (?P<subject>.+)'
 semver_sigil = '='
-warn = 'v1-acceptance window: no version sigil, so this commit folds as none and cannot move the version — write <:code:>[(scope)]<sigil> <subject> with = ~ ^ ! or %'
+warn = 'v1-acceptance window: no version sigil, so this commit folds as none and cannot move the version — write <:code:>[(scope)]<semver_sigil> <subject> with = ~ ^ ! or %'

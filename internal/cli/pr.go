@@ -107,7 +107,7 @@ func pullInput(ctx context.Context, number int, repoFlag string) ([]gitsource.Ra
 	return raws, fmt.Sprintf("%s/%s#%d", owner, repo, number), err
 }
 
-// pullRawCommits is the read half of participatingPull: the listing as GitHub
+// pullRawCommits is the read half of pullInput: the listing as GitHub
 // returns it, converted to the local raw shape and with the truncation warning
 // already emitted, but NOT yet parsed.
 //
@@ -126,8 +126,8 @@ func pullRawCommits(ctx context.Context, c *github.Client, owner, repo string, n
 	}
 	if len(raws) >= github.PullCommitsCap {
 		// No silent caps: the verdict may be computed from a truncated PR, and
-		// a missing commit could carry the deciding gitmoji.
-		warnf("pull request #%d returned %d commits — GitHub truncates this listing at %d, so some commits (and their gitmoji) may be missing from the verdict", number, len(raws), github.PullCommitsCap)
+		// a missing commit could carry the deciding sigil.
+		warnf("pull request #%d returned %d commits — GitHub truncates this listing at %d, so some commits (and their sigils) may be missing from the verdict", number, len(raws), github.PullCommitsCap)
 	}
 	local := make([]gitsource.RawCommit, len(raws))
 	for i, r := range raws {

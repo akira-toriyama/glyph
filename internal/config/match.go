@@ -41,7 +41,7 @@ type Match struct {
 // sigil may sit, the pattern does.
 //
 // The only error is a matched message that yields no usable sigil: the
-// capture is not one of = ~ ^ !, or the group captured nothing and the
+// capture is not one of = ~ ^ ! %, or the group captured nothing and the
 // pattern declares no fixed fallback. Both are config bugs surfaced at the
 // first commit that hits them.
 func (c *Config) Match(message string) (Match, error) {

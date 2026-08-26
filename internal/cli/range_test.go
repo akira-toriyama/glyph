@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/internal/bump"
 )
 
-// TestFirstLine pins the contract firstLine's comment states and every
-// exclusion path relies on (range.go, cmd_lint.go, sincetag.go): the subject
+// TestFirstLine pins the contract bump.FirstLine's comment states and every
+// exclusion path relies on (cmd_lint.go, sincetag.go, the notes fallback): the subject
 // the participation rules match against is the first line with its CR trimmed.
 // A CRLF message — what the GitHub API hands back verbatim, unlike git's own
 // cleanup — must not present `subject\r` to the prefix rules.
@@ -20,8 +22,8 @@ func TestFirstLine(t *testing.T) {
 		"empty message":         {"", ""},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if got := firstLine(tc.in); got != tc.want {
-				t.Errorf("firstLine(%q) = %q, want %q", tc.in, got, tc.want)
+			if got := bump.FirstLine(tc.in); got != tc.want {
+				t.Errorf("FirstLine(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
 	}

@@ -143,6 +143,13 @@ import (
 // lucky: the fence puts a backtick immediately in front of the at-sign, and a
 // backtick in front of an at-sign is not a mention (GitHub agrees — see the
 // probe table above), so the second pass has nothing left to match.
+// escapeMentions is the no-exemption arm, kept here because production always
+// goes through compose with Line.Mention's live ranges — the tests are the one
+// caller that wants the bare wrapper.
+func escapeMentions(s string) string {
+	return escapeMentionsSkipping(s, nil)
+}
+
 func TestEscapeMentions(t *testing.T) {
 	cases := []struct {
 		name string

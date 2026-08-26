@@ -32,7 +32,7 @@ import (
 // one — sizing the subject's fence against the subject alone let a backtick
 // carried by the SCOPE steal it, and the assembled line was a live mention
 // (measured against GitHub 2026-07-21; the incident is written out at
-// notes.entryLine). The order is forced from the other side too: the fence
+// escapeText's doc in escape.go). The order is forced from the other side too: the fence
 // models the FINAL string, so no neutralization may follow it — a later pass
 // would rewrite the string the fence was sized and placed against, and an added
 // backslash in front of the fence swallows it outright.

@@ -16,7 +16,7 @@ style = "conventional"
 #                              the major sigil unchanged)
 # The type word is free; it aids the reader and never decides the version.
 #
-# The template is for humans and the commit hook; glyph never parses it.
+# The template is for humans; glyph never parses it.
 template = '''
 <type>[(scope)]<semver_sigil>: <subject>
 

@@ -116,7 +116,7 @@ const username = `[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?`
 // rebuilds the token from group 2 and needs to know where the at-sign starts.
 var mention = regexp.MustCompile("(^|[^A-Za-z0-9`])@(" + username + "(?:@" + username + ")*)")
 
-// escapeMentions neutralizes would-be @mentions in s by wrapping each one in a
+// escapeMentionsSkipping neutralizes would-be @mentions in s by wrapping each one in a
 // backtick fence: "callers to @v1" becomes "callers to `@v1`", which GitHub
 // renders as the code token @v1 and links to nobody. Left raw, such a token in
 // a release body silently lists a stranger under the release's Contributors,
@@ -161,13 +161,10 @@ var mention = regexp.MustCompile("(^|[^A-Za-z0-9`])@(" + username + "(?:@" + use
 // Not every at-sign is a mention: an email (dev@example.com), a pinned ref
 // (actions/checkout@v5) and a lone at-sign ("meet @ noon") stay raw, exactly as
 // GitHub itself treats them.
-func escapeMentions(s string) string {
-	return escapeMentionsSkipping(s, nil)
-}
-
-// escapeMentionsSkipping is escapeMentions with Line.Mention's exemption: a
-// would-be mention whose NAME lies entirely inside one of the live ranges is
-// left raw — that is the author credit going live. The ranges hold no backtick
+//
+// live carries Line.Mention's exemption: a would-be mention whose NAME lies
+// entirely inside one of the live ranges is left raw — that is the author
+// credit going live. nil means no exemption. The ranges hold no backtick
 // and no at-sign (Line.Mention guarantees the handle shape), so the fence
 // sizing and the code-span scan below still model the whole string exactly;
 // only the final "wrap it" decision consults them.

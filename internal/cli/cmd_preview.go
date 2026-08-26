@@ -168,15 +168,16 @@ func previewRun(cmd *cobra.Command) error {
 	// one place both surfaces share.
 	body := truncateComment(preview.Render(in))
 	if previewJSON {
+		d := foldDecision(prDec, pendingDec)
 		res := previewResult{
 			Current:  in.Current,
 			Untagged: untagged,
-			Level:    string(foldDecision(prDec, pendingDec).Level),
+			Level:    string(d.Level),
 			PR:       string(prDec.Level),
 			Pending:  string(orNone(pendingDec.Level)),
 			Body:     body,
 		}
-		if d := foldDecision(prDec, pendingDec); d.Level != bump.LevelNone {
+		if d.Level != bump.LevelNone {
 			res.Next = current.Next(d).String()
 		}
 		printCompact(res)

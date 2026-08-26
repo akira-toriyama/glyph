@@ -1,13 +1,13 @@
 // Package draftplan is the v2 release's draft-convergence brain: given a
 // fold verdict, the flag draft_on_none and what drafts exist, it says which
 // ONE draft survives, what tag it converges to, and which are stale. It is
-// pure — no git, no API, no clock — and holds the v1 planning invariants
-// unchanged: never a second draft, the kept draft is retagged in place, and
+// pure — no git, no API, no clock — and holds the founding planning invariants:
+// never a second draft, the kept draft is retagged in place, and
 // everything glyph did not manage is not glyph's to touch. What is new is
 // the placeholder: with draft_on_none = true a none verdict keeps an
 // "Unreleased" draft alive instead of converging to nothing, and the next
 // real verdict retags that same draft to the real version (the ratified
-// retag; the machinery is v1's update-in-place).
+// retag; the machinery is the same update-in-place).
 package draftplan
 
 import (
@@ -24,14 +24,14 @@ const PlaceholderTag = "Unreleased"
 
 // Draft is the slice of a release this package reads. ID is the identity
 // drafts are kept and deleted by (tag-name resolution can hit a published
-// release sharing the tag — cli/cli#9367, the v1 lesson).
+// release sharing the tag — cli/cli#9367).
 type Draft struct {
 	ID      int64
 	TagName string
 	Draft   bool
 }
 
-// Action is which convergence the plan performs, mirroring v1's verdict
+// Action is which convergence the plan performs, mirroring the release verdict
 // vocabulary (README: create / update / delete / none).
 type Action string
 
@@ -55,7 +55,7 @@ type Plan struct {
 }
 
 // managed says which drafts are glyph's to converge: unpublished drafts
-// tagged with a house-shaped version — v1's definition — plus the
+// tagged with a house-shaped version, plus the
 // placeholder. The placeholder is claimed UNCONDITIONALLY, not only while
 // draft_on_none is on: the name is glyph's own artifact, and a user who
 // turns the flag off must see the placeholder converge away on the next
@@ -82,13 +82,13 @@ func managed(releases []Draft) []Draft {
 }
 
 // PlanDraft computes the convergence for one verdict. level none with
-// draft_on_none off is v1's residual arm: everything managed is stale and
+// draft_on_none off is the residual arm: everything managed is stale and
 // the state converges on "no release is due". level none with the flag on
 // maintains the placeholder instead. A real level converges on the next
 // tag; a lingering placeholder is simply the first claimable draft and
 // retags to the real version — which is the whole draft_on_none promise.
 //
-// Keep selection is v1's planDrafts unchanged: prefer the draft already
+// Keep selection: prefer the draft already
 // carrying the intended tag, else the first listed (GitHub lists newest
 // first); every other managed draft is stale.
 func PlanDraft(level bump.Level, nextTag string, draftOnNone bool, releases []Draft) Plan {
