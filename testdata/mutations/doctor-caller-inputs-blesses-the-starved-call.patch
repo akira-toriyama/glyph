@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
+index 6ea5858..1d9aacb 100644
+--- a/internal/doctor/callerinputs.go
++++ b/internal/doctor/callerinputs.go
+@@ -75,7 +75,7 @@ func checkCallerInputs(root string, rootVerified bool) Check {
+ 			}
+ 			keys := jobWithKeys(lines, ref.Line)
+ 			for _, want := range required {
+-				if !keys[want] {
++				if false && !keys[want] {
+ 					findings = append(findings, fmt.Sprintf(
+ 						".github/workflows/%s calls %s but its with: never names %s", name, base, want))
+ 				}

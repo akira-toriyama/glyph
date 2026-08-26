@@ -1,15 +1,18 @@
 package doctor
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
 
-// This check exists for the one failure class NO runtime diagnosis can see —
-// glyph's included. A caller workflow granting less than the reusable it calls
+// This check exists for a failure class NO runtime diagnosis can see —
+// glyph's included (checkCallerInputs guards the other member: a missing
+// required input). A caller workflow granting less than the reusable it calls
 // declares never starts: the run dies as startup_failure before any job, so
 // there is no step to print an error, no exit code to classify, and nothing
 // red in the caller's own YAML. Measured in akira-toriyama/.github#186 (a
@@ -55,22 +58,17 @@ type permNeed struct {
 //     reading (workflow level only) reds every caller that grants on the job,
 //     which is legal and real. A false pass here is the pin check's own
 //     documented trade, made for the same reason.
-func checkCallerPermissions(root string) Check {
+func checkCallerPermissions(root string, rootVerified bool) Check {
 	c := Check{
 		ID: IDCallerPerms,
 		Expected: "every workflow calling a glyph reusable grants at least what that reusable declares " +
 			"(lint: contents: read, pull-requests: read; release: contents: write; " +
 			"pr-verdict: contents: read, pull-requests: write)",
 	}
-	dir := filepath.Join(root, ".github", "workflows")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		c.Status = StatusUnknown
-		c.Observed = fmt.Sprintf("%s could not be listed: %v", dir, err)
-		c.Message = "doctor reads the LOCAL checkout for this check, so it must run from the repository root. " +
-			"A caller granting less than its reusable declares dies as startup_failure before any job — " +
-			"unverified here, not verified"
-		c.Fix = "re-run from the repository root (cd into the checkout)"
+	entries, unknown := listWorkflows(root, rootVerified, &c,
+		"A caller granting less than its reusable declares dies as startup_failure before any job — "+
+			"unverified here, not verified")
+	if unknown {
 		return c
 	}
 
@@ -81,7 +79,7 @@ func checkCallerPermissions(root string) Check {
 		if e.IsDir() || (!strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml")) {
 			continue
 		}
-		path := filepath.Join(dir, name)
+		path := filepath.Join(root, ".github", "workflows", name)
 		body, rerr := os.ReadFile(path) // #nosec G304 -- the caller's own checkout, listed above
 		if rerr != nil {
 			// The pin check already reports unreadable files; a second copy of
@@ -130,6 +128,25 @@ func checkCallerPermissions(root string) Check {
 	c.Observed = fmt.Sprintf("%d workflow file(s) call glyph reusables; every explicit permissions block covers what the pinned reusable declares", callers)
 	c.Message = "these runs get past GitHub's startup permission gate"
 	return c
+}
+
+// listWorkflows lists root/.github/workflows for the caller-side checks. An
+// absent directory under a git-named root is an observed absence — the caller
+// loops simply see zero entries — while any other failure, or an absence under
+// an unverified bare ".", fills c with the UNKNOWN verdict and returns
+// unknown=true. The consequence line is each check's own sentence about what
+// an unverified read costs.
+func listWorkflows(root string, rootVerified bool, c *Check, consequence string) ([]os.DirEntry, bool) {
+	dir := filepath.Join(root, ".github", "workflows")
+	entries, err := os.ReadDir(dir)
+	if err != nil && (!rootVerified || !errors.Is(err, fs.ErrNotExist)) {
+		c.Status = StatusUnknown
+		c.Observed = fmt.Sprintf("%s could not be listed: %v", dir, err)
+		c.Message = "doctor reads the LOCAL checkout for this check, so it must run from the repository root. " + consequence
+		c.Fix = "re-run from the repository root (cd into the checkout)"
+		return nil, true
+	}
+	return entries, false
 }
 
 // calledNeed is one reusable a workflow file calls, with one scope it must

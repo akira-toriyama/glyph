@@ -1087,6 +1087,14 @@ The severities are the argued part:
   default may be fine, and doctor cannot see it), and grants are unioned across
   workflow and job level (a sibling-job grant could in principle false-pass —
   the pin check's own documented trade, made for the same reason).
+- **A caller omitting an input its reusable marks required ⇒ fail
+  (`workflow-caller-inputs`).** The other member of the same startup-death
+  class, and the quieter one: GitHub surfaces NO error anywhere for it — not
+  in the run, not in the check suite, not in the API (measured, glyph-test3
+  2026-08-26: three pushes, three silent `startup_failure`s). The required-set
+  is a table mirroring the shipped reusables' `workflow_call.inputs`, held
+  lockstep by test exactly as the permissions table is; today it holds one row
+  (`release.yml`: `install-notes`).
 - **A stale glyph-written hook ⇒ fail; no hook at all ⇒ pass.** One check per
   kind (`commit-msg-hook`, `pre-push-hook`), because a `Check` carries ONE
   observed/expected pair and folding the two would collapse "commit-msg current,

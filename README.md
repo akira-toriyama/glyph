@@ -170,7 +170,8 @@ it every command refuses to run), squash merging enabled,
 still landing the pull-request title as the squash subject on `main`,
 a credential that can read the repository (and, for `release`, write it),
 workflow pins on release tags, caller workflows granting what the pinned
-reusables declare, and the installed hooks (if any) written by *this* binary. When one of those drifts
+reusables declare and passing the inputs they require, and the installed hooks
+(if any) written by *this* binary. When one of those drifts
 nothing goes red — the verdict is just computed over a repository that no
 longer matches the model, which is exactly what `doctor` exists to catch.
 Nothing is ever modified: each failing check prints the command that fixes it.

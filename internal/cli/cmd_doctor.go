@@ -71,6 +71,9 @@ func newDoctorCmd() *cobra.Command {
 			"  - every caller of a glyph reusable grants the permissions that reusable\n" +
 			"    declares: a caller granting less dies as startup_failure before any job\n" +
 			"    runs, which no runtime diagnosis — glyph's included — can see\n" +
+			"  - every caller passes the inputs its reusable marks required (release:\n" +
+			"    install-notes): the same startup death, and GitHub surfaces no error\n" +
+			"    anywhere for this one\n" +
 			"  - no STALE glyph-written hook is installed (one check per kind: commit-msg,\n" +
 			"    pre-push). Hooks are untracked, so\n" +
 			"    nothing refreshes one: whatever glyph was on PATH the day it was installed\n" +
@@ -244,8 +247,15 @@ func doctorRun(cmd *cobra.Command) error {
 	// HooksDir is. A failure degrades the config check alone.
 	top, terr := gitsource.TopLevel(cmd.Context(), ".")
 	configPath := ""
+	// The workflow scans read the checkout git itself names, so running doctor
+	// from a subdirectory works, and an absent .github/workflows under that
+	// root is an observed absence rather than a maybe-wrong cwd. Only when git
+	// cannot answer does the scan fall back to cwd — unverified, and the
+	// checks say so instead of passing vacuously.
+	root, rootVerified := ".", false
 	if terr == nil {
 		configPath = filepath.Join(top, "glyph.toml")
+		root, rootVerified = top, true
 	}
 	if probe != nil {
 		probe.Claimed = probeClaimed(cmd.Context(), configPath, terr)
@@ -262,12 +272,9 @@ func doctorRun(cmd *cobra.Command) error {
 		return err
 	}
 	report := doctor.Run(doctor.Input{
-		Repo: owner + "/" + name,
-		// The local checkout is cwd, the same assumption every verdict command
-		// makes (DESIGN §4: glyph runs inside a checkout of the repository
-		// being released). The workflow-pin check names the directory it read
-		// when it is not there, so a wrong cwd diagnoses itself.
-		Root:            ".",
+		Repo:            owner + "/" + name,
+		Root:            root,
+		RootVerified:    rootVerified,
 		RepoObject:      repoObject,
 		RepoErr:         rerr,
 		TokenConfigured: githubToken() != "",
