@@ -37,7 +37,6 @@ import (
 // raw sha, or the word `(delete)`. Only the REMOTE ref names what is being
 // written, which is why every decision below reads that one.
 type pushRef struct {
-	LocalRef  string
 	LocalOID  string
 	RemoteRef string
 	RemoteOID string
@@ -92,7 +91,7 @@ func parsePushRefs(r io.Reader) ([]pushRef, error) {
 		if len(f) != 4 {
 			return nil, core.APIf("pre-push line %q has %d fields, want 4 (<local ref> <local sha> <remote ref> <remote sha>)", line, len(f))
 		}
-		refs = append(refs, pushRef{LocalRef: f[0], LocalOID: f[1], RemoteRef: f[2], RemoteOID: f[3]})
+		refs = append(refs, pushRef{LocalOID: f[1], RemoteRef: f[2], RemoteOID: f[3]})
 	}
 	return refs, nil
 }
@@ -274,7 +273,7 @@ func prePushRun(ctx context.Context, args []string) error {
 			warnf("nothing linted: the remote already holds every commit this push carries")
 			return nil
 		}
-		warnf("nothing linted: all %d outgoing commit(s) are excluded from the convention (exclude_authors)", len(raws))
+		warnf("nothing linted: all %d outgoing commit(s) are excluded from the convention (exclude_authors) — nothing to lint is not a pass on anything", len(raws))
 		return nil
 	}
 	if len(findings) == 0 {
@@ -296,8 +295,9 @@ func prePushRun(ctx context.Context, args []string) error {
 	}
 
 	// Off the default branch the finding is real but the consequence is not: this
-	// is mid-branch by construction, :construction: is legal here and illegal at
-	// the merge, and a hook that refused it would make the branch unpushable.
+	// is mid-branch by construction — a repo's patterns may bless a WIP shape
+	// here that its gate rejects at the merge — and a hook that refused it
+	// would make the branch unpushable.
 	warnf("%d commit-convention violation(s) in this push — not blocking off the default branch, but the commit-lint job will reject them: %s",
 		len(findings), summariseFindings(findings))
 	if defaultBranch == "" {

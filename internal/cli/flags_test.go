@@ -129,6 +129,28 @@ func TestLintStdinFalseIsUsageNotAVerdict(t *testing.T) {
 	}
 }
 
+// TestLintRepoRefusesLocalModes pins the input-source grammar lint shares with
+// bump and notes (markInputSourceFlags's reasoning): --repo feeds the one
+// API-backed mode (--pr), and combined with a local mode it would be silently
+// ignored — glyph does not ignore input silently.
+func TestLintRepoRefusesLocalModes(t *testing.T) {
+	for _, args := range [][]string{
+		{"lint", "--repo", "o/r", "--range", "HEAD~1..HEAD"},
+		{"lint", "--repo", "o/r", "--message", ":bug:~ fix a crash"},
+		{"lint", "--repo", "o/r", "--stdin"},
+	} {
+		t.Run(args[3], func(t *testing.T) {
+			code, _, stderr := runGlyph(t, args...)
+			if code != 2 {
+				t.Fatalf("%v exited %d, want 2 (usage — --repo rides only with --pr)\nstderr: %s", args, code, stderr)
+			}
+			if !strings.Contains(stderr, "repo") {
+				t.Errorf("the diagnostic does not name --repo:\nstderr: %s", stderr)
+			}
+		})
+	}
+}
+
 // TestMachineOutputFlagHasOneSpelling enumerates the flag from the command tree
 // rather than from a list, so a new command that invents a third spelling fails
 // here instead of in a caller's shell.

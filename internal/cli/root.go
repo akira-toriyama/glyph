@@ -1,13 +1,14 @@
 // Package cli is glyph's cobra adapter: it parses flags, drives the core
 // packages, and renders results — mapping everything to glyph's exit-code
 // contract via Execute() int. It holds no classification, bump, or notes logic;
-// that lives in internal/{parser,bump,notes,gitmoji,github}.
+// that lives in internal/{config,bump,notes,github}.
 package cli
 
 import (
 	"context"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/akira-toriyama/glyph/internal/core"
@@ -53,7 +54,14 @@ func finish(err error) int {
 	}
 	ce := core.AsError(err)
 	if ce == nil {
-		ce = &core.Error{Code: core.CodeUsage, Msg: err.Error()}
+		msg := err.Error()
+		// cobra's own errors arrive bare (SilenceErrors drops its "Run 'glyph
+		// --help'" tail), and the unknown-command reply is the one place a
+		// lost user lands with no next step — restore one.
+		if strings.HasPrefix(msg, "unknown command ") {
+			msg += " — run 'glyph --help' for the command list"
+		}
+		ce = &core.Error{Code: core.CodeUsage, Msg: msg}
 	}
 	if !ce.Silent {
 		renderError(ce)

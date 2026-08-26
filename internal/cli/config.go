@@ -2,7 +2,8 @@ package cli
 
 import (
 	"context"
-	"os"
+	"errors"
+	"io/fs"
 	"path/filepath"
 
 	"github.com/akira-toriyama/glyph/internal/config"
@@ -30,20 +31,10 @@ func loadConfig(ctx context.Context) (*config.Config, error) {
 	path := filepath.Join(top, "glyph.toml")
 	cfg, lerr := config.LoadFile(path)
 	if lerr != nil {
-		if os.IsNotExist(unwrapAll(lerr)) {
+		if errors.Is(lerr, fs.ErrNotExist) {
 			return nil, core.Usagef("no glyph.toml at %s — this repository is not initialized for glyph; write one with `glyph init --gemoji` (or --conventional), or start from either preset and edit", top)
 		}
 		return nil, core.Lintf("%v", lerr)
 	}
 	return cfg, nil
-}
-
-func unwrapAll(err error) error {
-	for {
-		u, ok := err.(interface{ Unwrap() error })
-		if !ok {
-			return err
-		}
-		err = u.Unwrap()
-	}
 }

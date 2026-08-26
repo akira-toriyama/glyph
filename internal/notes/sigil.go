@@ -68,8 +68,7 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
 			// The unmatched fallback the design names "use the raw first
 			// line": the commit renders through the same template with
 			// $subject bound to its first line and no other groups.
-			first, _, _ := strings.Cut(c.Message, "\n")
-			groups = map[string]string{"subject": first}
+			groups = map[string]string{"subject": bump.FirstLine(c.Message)}
 		}
 		j.line = renderLine(cfg.Note.Spans, c, groups)
 		js = append(js, j)

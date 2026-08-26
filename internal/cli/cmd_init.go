@@ -67,14 +67,16 @@ func newInitCmd() *cobra.Command {
 }
 
 func runInit(preset string) error {
-	data, ok := config.Preset(preset)
-	if !ok {
-		return core.Usagef("unknown preset %q", preset)
-	}
+	var data []byte
 	if initV1Window {
 		var err error
 		if data, err = config.PresetWithV1Window(preset); err != nil {
 			return core.Usagef("%v", err)
+		}
+	} else {
+		var ok bool
+		if data, ok = config.Preset(preset); !ok {
+			return core.Usagef("unknown preset %q", preset)
 		}
 	}
 	const path = "glyph.toml"

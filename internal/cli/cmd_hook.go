@@ -20,13 +20,14 @@ var (
 func newHookCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "hook",
-		Short: "Manage the commit-msg hook that lints through glyph",
-		Long: "hook manages the commit-msg hook, which moves the convention check from CI\n" +
-			"to the moment the message is written.\n\n" +
-			"The hook holds NO copy of the convention — it calls `glyph lint --stdin`, so\n" +
-			"it cannot fall out of lockstep when the rules move, which is exactly what the\n" +
-			"hand-written per-repo regexes it replaces did. Without glyph on PATH it warns\n" +
-			"and lets the commit through, and it blocks for ONE reason only: lint's\n" +
+		Short: "Manage the git hooks that lint through glyph",
+		Long: "hook manages glyph's two git hooks — commit-msg lints the message being\n" +
+			"written, pre-push lints the commits a push would add — moving the convention\n" +
+			"check from CI to the moment the work happens.\n\n" +
+			"Neither hook holds a copy of the convention — both call glyph, so they cannot\n" +
+			"fall out of lockstep when the rules move, which is exactly what the\n" +
+			"hand-written per-repo regexes they replace did. Without glyph on PATH they warn\n" +
+			"and let you through, and they block for ONE reason only: lint's\n" +
 			"convention-violation exit. The commit-lint CI job stays the authority; this is\n" +
 			"early warning, and a tool that is unwell must never stop anyone committing.",
 		Args: cobra.NoArgs,
@@ -75,10 +76,11 @@ func newHookInstallCmd() *cobra.Command {
 		Use:       "install [kind...]",
 		Short:     "Install glyph's git hooks into this repository",
 		ValidArgs: hook.KindNames(),
-		Long: "install writes a commit-msg hook that pipes the message being written through\n" +
-			"`glyph lint --stdin`, so a convention violation surfaces at authoring time\n" +
-			"instead of in CI. The hook carries no copy of the rules — that is what makes\n" +
-			"it drift-proof, and it is why the hand-written per-repo regexes it replaces\n" +
+		Long: "install writes glyph's git hooks: a commit-msg hook that pipes the message\n" +
+			"being written through `glyph lint --stdin`, and a pre-push hook that lints the\n" +
+			"commits a push would add — so a convention violation surfaces at authoring time\n" +
+			"instead of in CI. The hooks carry no copy of the rules — that is what makes\n" +
+			"them drift-proof, and it is why the hand-written per-repo regexes they replace\n" +
 			"kept enforcing a retired form.\n\n" +
 			"The destination honours core.hooksPath, so a repo that tracks its hooks under\n" +
 			"scripts/hooks is written there (and the change shows up in git status, to be\n" +
@@ -130,9 +132,9 @@ func newHookInstallCmd() *cobra.Command {
 	// grouping refused while reporting that both flags "were all set".
 	//
 	// The group has no default-bearing member (installing is what the command
-	// does when nothing is selected, and no flag names that), so there is no
-	// checkDefaultModeOff here: --print=false and --json=false both leave the
-	// command with something to do.
+	// does when nothing is selected, and no flag names that), so nothing here
+	// rejects an all-false invocation: --print=false and --json=false both
+	// leave the command with something to do.
 	cmd.PreRunE = func(cmd *cobra.Command, _ []string) error {
 		if err := checkExclusiveBool(cmd, "print", "force"); err != nil {
 			return err

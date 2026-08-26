@@ -57,6 +57,17 @@ type SigilVerdict struct {
 	Warn    string `json:"warn,omitempty"`
 }
 
+// Refusal is one commit the fold refused, in the machine error's details.
+// The WHOLE range is walked before the refusal goes out: stopping at the
+// first unreadable commit answered a three-commit cleanup with three
+// separate red runs (measured — the caller re-ran lint in a loop to find
+// the rest).
+type Refusal struct {
+	SHA     string `json:"sha"`
+	Subject string `json:"subject"`
+	Detail  string `json:"detail"`
+}
+
 // FoldSigils computes the release level of a commit range under a v2 config:
 // each commit's sigil via cfg.Match, folded with max over the lattice (the
 // same order-independent Reduce as always, so squash order can never move
@@ -81,17 +92,6 @@ type SigilVerdict struct {
 // which is the silent hole v2 exists to close. The refusal is the lint class
 // (exit 3): the range holds a message the repository's own convention cannot
 // read, which is the same verdict lint would hand that message.
-// Refusal is one commit the fold refused, in the machine error's details.
-// The WHOLE range is walked before the refusal goes out: stopping at the
-// first unreadable commit answered a three-commit cleanup with three
-// separate red runs (measured, the incident behind v1's accumulating walk —
-// the caller re-ran lint in a loop to find the rest).
-type Refusal struct {
-	SHA     string `json:"sha"`
-	Subject string `json:"subject"`
-	Detail  string `json:"detail"`
-}
-
 func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Decision, error) {
 	verdicts := []SigilVerdict{}
 	var promote bool
@@ -103,11 +103,11 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Deci
 		}
 		m, err := cfg.Match(c.Message)
 		if err != nil {
-			refusals = append(refusals, Refusal{SHA: c.SHA, Subject: firstLine(c.Message), Detail: err.Error()})
+			refusals = append(refusals, Refusal{SHA: c.SHA, Subject: FirstLine(c.Message), Detail: err.Error()})
 			continue
 		}
 		if !m.Matched {
-			refusals = append(refusals, Refusal{SHA: c.SHA, Subject: firstLine(c.Message), Detail: fmt.Sprintf("matches none of the %d configured patterns", len(cfg.Patterns))})
+			refusals = append(refusals, Refusal{SHA: c.SHA, Subject: FirstLine(c.Message), Detail: fmt.Sprintf("matches none of the %d configured patterns", len(cfg.Patterns))})
 			continue
 		}
 		if m.Skip {
@@ -118,7 +118,7 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Deci
 		levels = append(levels, level)
 		verdicts = append(verdicts, SigilVerdict{
 			SHA:     c.SHA,
-			Subject: firstLine(c.Message),
+			Subject: FirstLine(c.Message),
 			Sigil:   m.Sigil.String(),
 			Level:   string(level),
 			Warn:    m.Warn,
@@ -134,8 +134,10 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Deci
 	return verdicts, Decision{Level: Reduce(levels), Promote: promote}, nil
 }
 
-// firstLine returns a raw message's subject line (CR trimmed).
-func firstLine(message string) string {
+// FirstLine returns a raw message's subject line (CR trimmed) — the one
+// subject definition every consumer (fold refusals, lint findings, the notes
+// fallback) shares, so a CRLF message cannot mean different things per caller.
+func FirstLine(message string) string {
 	if i := strings.IndexByte(message, '\n'); i >= 0 {
 		message = message[:i]
 	}

@@ -54,15 +54,13 @@ const Marker = "installed-by: glyph hook install"
 // whole suite green, because the test pinned the literal too. A generated hook
 // cannot disagree with the constant it is generated from.
 //
-// A function of the profile rather than a var since profiles exist
-// (DESIGN §2.2): the conventional profile's hook must call the lint under its
-// own vocabulary, and the flag is interpolated exactly as the gate code is —
-// generated, never retyped. The default profile's bytes are IDENTICAL to
-// every hook installed before profiles existed, so a fleet refresh under the
-// default stays "unchanged"; the suffix names the caller's standing choice of
-// vocabulary and nothing else, so the founding property holds: the hook still
-// holds no knowledge, it asks glyph.
-func commitMsgScript(argSuffix, convention string) string {
+// The interpolated words are constants since profiles left (their bytes must
+// stay IDENTICAL to every installed copy, or a fleet refresh reports every
+// clone drifted); the gate code is interpolated exactly as before — generated,
+// never retyped. The founding property holds: the hook holds no knowledge,
+// it asks glyph.
+func commitMsgScript() string {
+	const argSuffix, convention = "", "the repository's glyph.toml convention"
 	return fmt.Sprintf(`#!/bin/sh
 # glyph commit-msg hook — %s
 #
@@ -107,7 +105,8 @@ exit 0
 // hook's cleanup-mode derivation inside the binary (DESIGN 2.1); here it keeps
 // the range arithmetic there too, which matters more, because a range computed
 // by a stale script is a wrong verdict rather than a loud failure.
-func prePushScript(argSuffix string) string {
+func prePushScript() string {
+	const argSuffix = ""
 	return fmt.Sprintf(`#!/bin/sh
 # glyph pre-push hook — %s
 #
@@ -161,10 +160,9 @@ type Kind struct {
 // glyph.toml, which the binary reads — the hook still carries no copy of
 // anything.
 func Kinds() []Kind {
-	suffix, convention := "", "the repository's glyph.toml convention"
 	return []Kind{
-		{Name: "commit-msg", Script: commitMsgScript(suffix, convention), Asks: "glyph lint --stdin"},
-		{Name: "pre-push", Script: prePushScript(suffix), Asks: "glyph hook pre-push"},
+		{Name: "commit-msg", Script: commitMsgScript(), Asks: "glyph lint --stdin"},
+		{Name: "pre-push", Script: prePushScript(), Asks: "glyph hook pre-push"},
 	}
 }
 
@@ -193,8 +191,7 @@ func KindByName(name string) (Kind, bool) {
 }
 
 // KindNames is the name list, for cobra's ValidArgs and for help text — so the
-// completion a user gets and the set Install accepts cannot disagree. Names
-// are profile-independent (only the script bytes vary), so this takes none.
+// completion a user gets and the set Install accepts cannot disagree.
 func KindNames() []string {
 	names := make([]string, 0, len(Kinds()))
 	for _, k := range Kinds() {

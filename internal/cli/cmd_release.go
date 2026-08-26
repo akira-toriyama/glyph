@@ -45,16 +45,6 @@ type releaseResult struct {
 	Reason  string              `json:"reason"`
 }
 
-// The draft-convergence actions a release run can take (Q4): what the rolling
-// draft needs to match the verdict — create it, update (grow/retag) it,
-// delete residual drafts on a none verdict, or nothing at all.
-const (
-	actionCreate = "create"
-	actionUpdate = "update"
-	actionDelete = "delete"
-	actionNone   = "none"
-)
-
 func newReleaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "release",
@@ -69,8 +59,8 @@ func newReleaseCmd() *cobra.Command {
 			"FIRST, and stale drafts are then removed by release id; one that will\n" +
 			"not go leaves a warning rather than failing the release, because the\n" +
 			"notes have already landed and the next run converges it — no tag is\n" +
-			"created; GitHub\n" +
-			"tags the target commit when a human publishes. On a none verdict any\n" +
+			"created; GitHub tags the target commit when a human publishes.\n" +
+			"On a none verdict any\n" +
 			"residual glyph-managed draft is deleted (the draft state converges to\n" +
 			"the verdict) and the run exits 1 (soft no-release). A walk that could\n" +
 			"NOT read its range (a wrong --repo, a merged pull whose merge point\n" +
@@ -81,7 +71,7 @@ func newReleaseCmd() *cobra.Command {
 			"A real run prints the draft's URL; --dry-run computes everything\n" +
 			"including that action and writes nothing, printing the tag line, a\n" +
 			"blank line, then the Markdown body. --json emits\n" +
-			"{current,level,tag,body,action,url,commits,pulls,reason} — pulls is the\n" +
+			"{current,level,tag,target,body,action,url,commits,pulls,reason} — pulls is the\n" +
 			"walk's expansion provenance (each resolved pull and its participating\n" +
 			"commit count), which is how a verdict can be audited after the fact.",
 		Args: sinceTagArgs,
@@ -95,7 +85,7 @@ func newReleaseCmd() *cobra.Command {
 	cmd.Flags().StringVar(&releaseTarget, "target", "", "the commit sha the draft's eventual tag points at (default: the checkout's HEAD)")
 	cmd.Flags().StringVar(&releaseFooterFile, "footer-file", "", "a Markdown file appended verbatim after the notes, separated by one --- line (the per-repo install block)")
 	cmd.Flags().BoolVar(&releaseDryRun, "dry-run", false, "compute the full verdict and the draft action but write nothing to GitHub")
-	cmd.Flags().BoolVar(&releaseJSON, "json", false, "emit the machine verdict {current,level,tag,body,action,url,commits,pulls,reason}")
+	cmd.Flags().BoolVar(&releaseJSON, "json", false, "emit the machine verdict {current,level,tag,target,body,action,url,commits,pulls,reason}")
 	return cmd
 }
 
@@ -389,9 +379,9 @@ func convergeStrays(ctx context.Context, gh *github.Client, owner, repo string, 
 // did not read its range, so an empty fold here is a range that genuinely
 // holds nothing — never a reading glyph distrusts.
 func releaseNone(ctx context.Context, gh *github.Client, owner, repo string, current bump.Version, commits []bump.SigilVerdict, facts walkFacts, source string, drafts []github.Release) error {
-	action := actionNone
+	action := string(draftplan.ActionNone)
 	if len(drafts) > 0 {
-		action = actionDelete
+		action = string(draftplan.ActionDelete)
 	}
 	switch {
 	case !releaseDryRun:

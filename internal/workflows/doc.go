@@ -16,7 +16,6 @@
 // renumbered a code would go red everywhere at once, while a doc spelling the
 // old integer stays green forever.
 //
-// It has no runtime code; the invariants live in workflows_test.go and
-// exitcodes_test.go. The package exists only so the directory holds a non-test
-// Go file.
+// It has no runtime code; the invariants live in this package's _test.go
+// files. The package exists only so the directory holds a non-test Go file.
 package workflows

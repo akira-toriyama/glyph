@@ -294,8 +294,8 @@ func latestVersionTag(ctx context.Context, below *bump.Version) (tag string, v b
 // merged pull request it was expanded from (0 on the fallback path) and
 // whether its SHA is a *landed* identity (glossary) — a commit the released
 // branch actually holds. The two downstream consumers read different halves:
-// classification reads the bare parser.Commit (plain), the notes read the
-// citation (notesCommits) — the pull beside the sha, and the pull ALONE for a
+// classification reads the bare gitsource.RawCommit (plain), the notes read the
+// citation (walkedNoteCommits) — the pull beside the sha, and the pull ALONE for a
 // footprint-less commit, whose listed sha exists on no branch and used to be
 // published anyway (t-xxhj: a body citing shas `git branch -r --contains`
 // answers nothing for).
@@ -308,11 +308,11 @@ type walked struct {
 // walkedSigilCommits strips the provenance for the fold: FoldSigils reads
 // commits, not citations.
 func walkedSigilCommits(ws []walked) []bump.SigilCommit {
-	out := make([]bump.SigilCommit, 0, len(ws))
+	raws := make([]gitsource.RawCommit, 0, len(ws))
 	for _, w := range ws {
-		out = append(out, bump.SigilCommit{SHA: w.Raw.SHA, Author: w.Raw.Author, Message: w.Raw.Message})
+		raws = append(raws, w.Raw)
 	}
-	return out
+	return sigilCommits(raws)
 }
 
 // walkedNoteCommits hands the fold to the notes with its citation: the pull
@@ -387,7 +387,7 @@ type walkFacts struct {
 	// (github.PullCommitsCap), in walk order. The API stops at that many however
 	// far the pagination follows, so a listing of exactly the cap is one glyph
 	// cannot claim to have read whole — the commits past it are unreachable, not
-	// absent, and any one of them could carry the deciding gitmoji.
+	// absent, and any one of them could carry the deciding sigil.
 	//
 	// It belongs here rather than in the warning alone for the same reason the
 	// other three do: the walk already SAID it could not read the range, and then
@@ -447,7 +447,7 @@ func (f walkFacts) shortfall(owner, repo string) string {
 // — the routine fleet-sync direct push never costs a request. Everything else
 // is asked about: a commit's own shape cannot tell a pull request's merge point
 // from a local merge, so resolution answers that, and the unresolved ones fall
-// through to fallbackCommit, which applies the message rules. A last pass
+// through to the inline fallback, which applies the message rules. A last pass
 // reconciles the pulls commits stood aside for against the pulls actually
 // expanded, so a merged pull request whose canonical commit never resolved is
 // named in a warning instead of silently lost.

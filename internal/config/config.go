@@ -92,9 +92,10 @@ type Config struct {
 	Note           Note
 }
 
-// Commit carries the human-facing template block. glyph never parses the
-// template — it exists for init output and the commit hook's message stub —
-// so no validation applies beyond TOML well-formedness.
+// Commit carries the human-facing template block. glyph never reads it — the
+// preset bytes init writes are its one home; it is decoded at all only so the
+// strict decoder accepts the section — so no validation applies beyond TOML
+// well-formedness.
 type Commit struct {
 	Style    string
 	Template string
@@ -120,8 +121,7 @@ type Pattern struct {
 	// as long as the pattern lives. Empty means no warning.
 	Warn string
 
-	re            *regexp.Regexp
-	hasSigilGroup bool
+	re *regexp.Regexp
 }
 
 // Note carries the release-notes block: the per-commit line template and the
@@ -329,12 +329,11 @@ func compilePattern(rp rawPattern) (Pattern, error) {
 	}
 
 	return Pattern{
-		Pattern:       *rp.Pattern,
-		Fixed:         fixed,
-		Skip:          rp.Skip,
-		Warn:          warn,
-		re:            re,
-		hasSigilGroup: hasGroup,
+		Pattern: *rp.Pattern,
+		Fixed:   fixed,
+		Skip:    rp.Skip,
+		Warn:    warn,
+		re:      re,
 	}, nil
 }
 

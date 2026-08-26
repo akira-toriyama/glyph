@@ -54,9 +54,6 @@ func Reduce(levels []Level) Level {
 	return top
 }
 
-// Valid reports whether l is one of the four defined rungs.
-func (l Level) Valid() bool { return l.Rank() >= 0 }
-
 // Rank projects a Level onto the lattice ordering (0..3); an unknown level
 // is -1. The max-fold compares ranks, so the fold is order-independent and
 // idempotent.

@@ -47,8 +47,8 @@ import "strings"
 //	in   "- 🐛 **parser:** fix the thing ## Fabricated Section (8e0abc1)"
 //	out  <li>🐛 <strong>parser:</strong> fix the thing ## Fabricated Section …</li>
 //
-// A CR reaches a subject because parser.splitLines trims only a TRAILING "\r"
-// per line: an interior one survives Parse untouched.
+// A CR reaches a subject because bump.FirstLine trims only a TRAILING "\r":
+// an interior one survives untouched.
 //
 // The order matters — CRLF first, so a CRLF yields ONE space rather than two.
 //
@@ -294,23 +294,20 @@ const escapable = "!\"#$%&'()*+,./:;<=>?[\\]^_`{|}~"
 // It is NOT idempotent, and a plain-text escaper cannot be. Call it once, at
 // render, on the raw field — never on a value that has already been through it.
 //
-// Only the LEGACY token grammar can deliver a scope with anything to escape:
-// the canonical grammar's scope slot is lowercase kebab-case, while the legacy
-// slot is [^()]+ and accepts anything but a parenthesis. Measured, that is not
-// hypothetical — "…​fix(<i title=\"x\">): …" lints clean today and put a live tag
-// in a release body. Across the fleet, 139 legacy scopes are non-kebab and every
-// one renders identically escaped.
+// A scope is whatever bytes a repository's pattern captured — v2 imposes no
+// shape on the group, so anything but a parenthesis can arrive here. Measured,
+// that is not hypothetical — "…​fix(<i title=\"x\">): …" linted clean and put a
+// live tag in a release body; the v1 fleet carried 139 non-kebab scopes and
+// every one renders identically escaped.
 //
 // TWO EXCLUSIONS, both load-bearing:
 //
 //   - '-' is left alone. It is a marker only at the START of a line (a list
-//     bullet, a setext underline, a thematic break) and a scope is never there
-//     by construction — entryLine writes "- <emoji> " in front of it. Escaping
-//     it would put a backslash into the raw source of essentially every scoped
-//     line in the fleet for zero rendered difference, since '-' is the ONLY
-//     punctuation byte a well-formed canonical scope can carry. Excluding it
-//     keeps every canonical scope byte-identical and confines the backslashes to
-//     the legacy path.
+//     bullet, a setext underline, a thematic break) and the shipped line
+//     templates never put a scope there — compose writes the "- " bullet as
+//     raw markup in front. Escaping it would put a backslash into the raw
+//     source of essentially every kebab-case scope in the fleet for zero
+//     rendered difference. Excluding it keeps those scopes byte-identical.
 //   - '@' is left alone, because escaping it is worse than useless twice over.
 //     "\@octocat" is a LIVE mention (the backslash vanishes in rendering before
 //     the mention post-processor looks), and the backslash would then trip

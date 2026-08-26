@@ -179,13 +179,6 @@ func currentVersion(ctx context.Context, flag string, base *bump.Version) (bump.
 	return v, err
 }
 
-// decidingReason names the oldest commit that reaches the folded level — the
-// one-line answer to "why this bump".
-//
-// A promoted range names its oldest '%' commit instead, even though promote
-// and major share a level. Otherwise the reason for landing on 1.0.0 would
-// point at whichever breaking commit came first, and the one commit that
-// actually chose the version would not appear in the answer at all.
 // warnSigilVerdicts surfaces each folded commit's pattern warning
 // (config.Pattern.Warn). Every command that folds a range calls this right
 // after FoldSigils — bump, release, and both of preview's folds — because a
@@ -199,6 +192,13 @@ func warnSigilVerdicts(commits []bump.SigilVerdict) {
 	}
 }
 
+// decidingReason names the oldest commit that reaches the folded level — the
+// one-line answer to "why this bump".
+//
+// A promoted range names its oldest '%' commit instead, even though promote
+// and major share a level. Otherwise the reason for landing on 1.0.0 would
+// point at whichever breaking commit came first, and the one commit that
+// actually chose the version would not appear in the answer at all.
 func decidingReason(commits []bump.SigilVerdict, dec bump.Decision) string {
 	if dec.Promote {
 		for _, c := range commits {

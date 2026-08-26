@@ -45,11 +45,3 @@ func checkRangeFlag(revRange string) error {
 	}
 	return nil
 }
-
-// firstLine returns the subject line of a raw message (CR trimmed).
-func firstLine(message string) string {
-	if i := strings.IndexByte(message, '\n'); i >= 0 {
-		message = message[:i]
-	}
-	return strings.TrimSuffix(message, "\r")
-}
