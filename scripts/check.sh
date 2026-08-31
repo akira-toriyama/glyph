@@ -58,6 +58,18 @@
 #                                       reusable, so a local taplo is whatever
 #                                       nixpkgs ships — a green here would be a
 #                                       claim about a different formatter.
+#   repo-policy   (repo-policy.yml)     house policy over the tree — the *.ja.*
+#                                       translation ban (the available(macOS)
+#                                       half auto-skips a repo with no root
+#                                       Package.swift, i.e. this one). The
+#                                       reusable checks the hub out at its own
+#                                       resolved commit (job.workflow_sha), so
+#                                       the caller's @v2 pin freezes WHICH
+#                                       repo-policy-check.sh judges; a local run
+#                                       from the sibling hub clone would judge
+#                                       with whatever revision that clone has —
+#                                       the actionlint/taplo argument again, a
+#                                       claim about a different checker.
 #   version-preview (version-preview.yml) posts the merge-preview COMMENT on a
 #                                       pull request. There is no pull request
 #                                       locally; `glyph preview --pr N` is the
@@ -89,7 +101,7 @@ cd "$(dirname "$0")/.."
 # here was recorded by `ran`. Keeping it as data rather than as a comment is what
 # makes "a gate silently stopped running" a failure instead of a nicer-looking log.
 MIRRORS='commit-lint dist-gate golden-gate module-hygiene build vet race-test coverage golangci-lint govulncheck bite mutations fuzz-smoke smoke'
-NOT_MIRRORED='zizmor, actionlint, taplo, version-preview, task-status, goreleaser, codeql'
+NOT_MIRRORED='zizmor, actionlint, taplo, repo-policy, version-preview, task-status, goreleaser, codeql'
 RAN=''
 ran() { RAN="$RAN $1 "; }
 
