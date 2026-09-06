@@ -285,6 +285,22 @@ the same `note.line` template with `$subject` bound to its raw first line —
 the ratified bot fallback. `skip` is total: no section at all, which is what
 separates it from `exclude_authors`.
 
+**The presets' `subject` group is the whole first line** (ratified 2026-09-07,
+fleet-wide the same day): `:sparkles:(cli)^ add the thing` renders as exactly
+that in the release body — GitHub draws the gemoji — rather than as the bare
+`add the thing` the group used to stop at. The two shipped presets and every
+fleet `glyph.toml` moved together, so a `glyph init` of today writes what the
+fleet already carries. The group's NAME is what makes the change one line:
+`note.line` cites `$subject`, the `Revert "…"` pattern and the unmatched-commit
+fallback bind `subject` alone, and nothing else reads the group — bump reads
+`semver_sigil`, lint reads the match, and the verdict's `subject` field is git's
+first line, not the group. Rejected alternative: a second `$raw` group cited
+from the template, which would have emptied every revert and bot line (a
+placeholder neither built-in nor a group of the winning pattern renders empty).
+Measured before it went out: glyph-test #80 and the sill canary #211 both
+rewrote their draft to the whole-subject form, and `POST /markdown` renders the
+shortcode as the emoji. (Mutation row `presets-subject-stops-at-the-sigil.patch`.)
+
 **`note.line` and the optional span.** The template substitutes `$name`
 placeholders — the winning pattern's named groups, plus the built-ins `$pr` /
 `$author` / `$hash`, which outrank a group of the same name — and literal

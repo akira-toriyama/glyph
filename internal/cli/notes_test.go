@@ -9,7 +9,10 @@ import (
 // TestNotesMarkdown: the full Markdown body under the gemoji preset — the
 // section order the config declares, a major landing in Breaking Changes, a
 // none commit landing nowhere (no none-section is configured), and the
-// note.line template rendered with the mention fence over the author.
+// note.line template rendered with the mention fence over the author. Each
+// line carries the whole commit subject — gitmoji, scope and sigil included —
+// which is the preset's ratified subject group (DESIGN §3), not a rendering
+// that forgot to apply the template.
 //
 // Every commit here reached main without a merged pull — which is EVERY
 // commit under --range, since the range walk resolves no pulls at all — so
@@ -30,11 +33,11 @@ func TestNotesMarkdown(t *testing.T) {
 		t.Fatalf("notes exited %d, want 0\nstderr: %s", code, stderr)
 	}
 	want := "## Breaking Changes\n\n" +
-		"- rework the store @akira-toriyama\n\n" +
+		"- :recycle:! rework the store @akira-toriyama\n\n" +
 		"## Features\n\n" +
-		"- add a command palette @akira-toriyama\n\n" +
+		"- :sparkles:(ui)^ add a command palette @akira-toriyama\n\n" +
 		"## Fixes\n\n" +
-		"- fix a crash @akira-toriyama\n"
+		"- :bug:~ fix a crash @akira-toriyama\n"
 	if stdout != want {
 		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
 	}

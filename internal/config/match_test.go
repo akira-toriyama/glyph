@@ -49,11 +49,11 @@ func TestMatchGemojiGrammar(t *testing.T) {
 		scope   string
 		subject string
 	}{
-		{"minor with scope", ":sparkles:(doctor)^ add the profile checks", SigilMinor, "doctor", "add the profile checks"},
-		{"patch without scope", ":bug:~ stop the crash", SigilPatch, "", "stop the crash"},
-		{"major", ":boom:(cli)! drop the profile flag", SigilMajor, "cli", "drop the profile flag"},
-		{"none", ":memo:= reword the readme", SigilNone, "", "reword the readme"},
-		{"body does not leak into subject", ":bug:~ one line\n\nbody text here", SigilPatch, "", "one line"},
+		{"minor with scope", ":sparkles:(doctor)^ add the profile checks", SigilMinor, "doctor", ":sparkles:(doctor)^ add the profile checks"},
+		{"patch without scope", ":bug:~ stop the crash", SigilPatch, "", ":bug:~ stop the crash"},
+		{"major", ":boom:(cli)! drop the profile flag", SigilMajor, "cli", ":boom:(cli)! drop the profile flag"},
+		{"none", ":memo:= reword the readme", SigilNone, "", ":memo:= reword the readme"},
+		{"body does not leak into subject", ":bug:~ one line\n\nbody text here", SigilPatch, "", ":bug:~ one line"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

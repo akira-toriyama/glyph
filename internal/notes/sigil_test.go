@@ -161,10 +161,10 @@ func TestRenderLineOptionalSpan(t *testing.T) {
 	if len(sections) != 1 || len(sections[0].Lines) != 2 {
 		t.Fatalf("sections = %+v", sections)
 	}
-	if got, want := sections[0].Lines[0], "- fix the demo crash (#61) @akira-toriyama"; got != want {
+	if got, want := sections[0].Lines[0], "- :bug:~ fix the demo crash (#61) @akira-toriyama"; got != want {
 		t.Errorf("a commit WITH a pull must cite it:\n got %q\nwant %q", got, want)
 	}
-	if got, want := sections[0].Lines[1], "- fix it again by direct push @akira-toriyama"; got != want {
+	if got, want := sections[0].Lines[1], "- :bug:~ fix it again by direct push @akira-toriyama"; got != want {
 		t.Errorf("a commit with NO pull must lose the parens and the space with them:\n got %q\nwant %q", got, want)
 	}
 }
@@ -191,9 +191,9 @@ func TestGroupSigilsMultiCommitPullRepeatsTheCitation(t *testing.T) {
 		t.Fatalf("sections = %+v, want one Fixes section with three lines", sections)
 	}
 	want := []string{
-		"- fix the first thing (#61) @akira",
-		"- fix the second thing (#61) @akira",
-		"- fix the third thing (#61) @akira",
+		"- :bug:~ fix the first thing (#61) @akira",
+		"- :bug:~ fix the second thing (#61) @akira",
+		"- :bug:~ fix the third thing (#61) @akira",
 	}
 	for i, w := range want {
 		if sections[0].Lines[i] != w {
