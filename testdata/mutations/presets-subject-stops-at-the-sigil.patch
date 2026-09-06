@@ -1,0 +1,13 @@
+diff --git a/internal/config/presets/gemoji.toml b/internal/config/presets/gemoji.toml
+index 4c7826a..1fb2e1c 100644
+--- a/internal/config/presets/gemoji.toml
++++ b/internal/config/presets/gemoji.toml
+@@ -38,7 +38,7 @@ template = '''
+ # name `subject` (rather than adding a `$raw` group to the template) is what
+ # keeps the revert pattern and the unmatched-commit fallback — both bind
+ # `subject` alone — rendering unchanged.
+-pattern = '^(?P<subject>:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!%]) .+)'
++pattern = '^:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!%]) (?P<subject>.+)'
+ 
+ [[patterns]]
+ # raw `git revert`. The subject group takes the WHOLE line, quotes and all,
