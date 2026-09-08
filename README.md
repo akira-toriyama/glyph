@@ -67,6 +67,7 @@ a baseline**.
 | `glyph doctor` | read-only checks that the repository still matches what glyph assumes; each failing check prints the command that fixes it |
 | `glyph hook install` | local `commit-msg` and `pre-push` hooks that run the same lint the CI gate runs |
 | `glyph version` | the build identity — release tag, commit, build date; the one command that reaches nothing (no git, no API), so it answers anywhere |
+| `glyph emoji` | the gemoji dictionary as JSON: for each kind of change the one shortcode to write, when to pick it, and the gitmoji codes it absorbed; advice only — lint never reads it, and like `version` it reaches nothing |
 
 `lint --range/--message/--stdin` and `init` work offline against local git
 alone. The PR and release-walk inputs (`--pr` — on `lint` as much as on
@@ -240,10 +241,18 @@ and never decides the version. Examples under the gemoji preset:
 ```
 :sparkles:(ui)^ add a right-click window menu            → minor
 :bug:(config)~ keep defaults when an unknown key present → patch
-:boom:(api)! replace --items flag with a positional arg  → major
+:fire:(api)! drop the --items flag for a positional arg    → major
 :memo:(readme)= document the bump model                  → no release
 :rocket:% call it 1.0                                    → v1.0.0
 ```
+
+Which code to write is `glyph emoji`'s answer: an ordered dictionary — read top
+to bottom, stop at the first description that fits — with one code per kind of
+change and the gitmoji codes each one absorbed. It is advice, not grammar: a
+code it does not list is still legal wherever the pattern accepts it, and it
+carries no semver field because the sigil is the version signal. The bytes are
+also at `internal/emoji/table.json`.
+
 
 **Below 1.0, `!` does not reach 1.0.0.** While the version is `v0.y.z` a
 breaking change steps the minor (`v0.5.3` + `!` → `v0.6.0`), so a repository

@@ -420,6 +420,12 @@ candidate*, *generated subject* — all were properties of glyph's own grammars,
 and glyph no longer owns one. `internal/config/config.go: Pattern`,
 `internal/config/match.go: Match`
 
+**dictionary** — the ordered gemoji table `glyph emoji` prints: one code per
+kind of change, the first description that fits wins, and each entry names the
+gitmoji codes it absorbed. Advice for the writer of a subject, read by nothing
+in the engine — lint accepts whatever the pattern accepts, and the sigil alone
+decides the version. `internal/emoji/table.json`, `internal/emoji/emoji.go: Entry`
+
 **sigil** — the version signal a commit carries: `=` none / `~` patch /
 `^` minor / `!` major / `%` promote, read from the `semver_sigil` capture (or
 a pattern's fixed value). The alphabet and its meaning are fixed in the

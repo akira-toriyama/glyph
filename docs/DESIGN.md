@@ -215,6 +215,63 @@ the COMMAND LINE reaches neither the config nor the environment (measured), so a
 per-commit override is invisible to the hook and the message is judged under the
 repository's mode. Same for `core.commentChar`: glyph assumes `#`.
 
+### The gemoji dictionary (`glyph emoji`, t-0c0m)
+
+v2 dissolved the embedded gitmoji table because it made the emoji decide the
+version. What went with it was the one thing the table was also doing:
+telling the writer of a subject **which** code to write. Measured 2026-09-08
+over 46 fleet clones, 52 distinct codes head the fleet's subjects, and the
+tail is the symptom — `:green_heart:` beside `:construction_worker:`,
+`:bookmark:` beside `:rocket:` beside `:package:` for the same act, `:art:`
+and `:recycle:` and `:broom:` and `:bulb:` for the same tidy. Ratified
+(user, 2026-09-08):
+
+- **A dictionary, not a grammar.** `glyph emoji` prints an ordered JSON array
+  — `code`, `emoji`, `name`, `description`, `absorbs` — and nothing in the
+  engine reads it: lint accepts whatever the repository's pattern accepts,
+  listed or not, and the sigil alone decides the version. The dictionary
+  carries **no semver field** for that reason; putting one back is the v1
+  mistake in a new file. The binary is the one home (each repository defines
+  nothing), and the shipped bytes are served byte for byte, so
+  `internal/emoji/table.json` on GitHub and the command's stdout are the same
+  bytes for a session with no binary at hand.
+- **One meaning, one emoji.** Every entry's `name` is the kind of change, one
+  word, unique across the table (`TestOneMeaningOneEmoji`). Where gitmoji
+  offers neighbours — `:art:` / `:recycle:` / `:lipstick:`, `:fire:` /
+  `:coffin:` / `:wastebasket:` — the description draws the border and the
+  losing codes are listed under `absorbs`, so a reader arriving with gitmoji
+  habits can look their old code up. Severity is not a kind (`:ambulance:`,
+  `:adhesive_bandage:` fold into `:bug:`); direction is not a kind
+  (`:arrow_down:`, `:pushpin:` fold into `:arrow_up:`); scale is not a kind
+  (`:building_construction:` folds into `:recycle:`).
+- **Ordered, first fit wins** — the same reading rule as `[[patterns]]`, so
+  the specific kinds (`:page_facing_up:` license, `:see_no_evil:` ignore)
+  sit above the broad ones (`:bug:`, `:sparkles:`) and location beats kind
+  for the file-shaped entries: a fix inside a workflow is `ci`, a fix inside
+  check.sh is `tooling`, a fix to a test is `tests`.
+- **Deliberately absent**, with the reason each time, so nobody re-adds them
+  as an oversight: `:boom:` — breaking is the sigil's job, and a `:boom:`
+  prefix repeats `!` while hiding the kind (a removal that breaks is
+  `:fire:!`, a feature that breaks is `:sparkles:!`; README's example moved
+  accordingly); `:globe_with_meridians:` — the fleet is English only with
+  no stored translations (doc-consistency-policy); `:twisted_rightwards_arrows:`
+  — the presets skip merge commits, so nothing is ever written with it;
+  `:rotating_light:` as a kind of its own — a warning fix is polish. The
+  rest of gitmoji's 75 that the fleet never used (`:poop:`, `:beers:`,
+  `:egg:` …) are neither entries nor absorbed: absence is the whole
+  statement.
+- **Renderability has an oracle**, because the one failure that matters —
+  a listed code GitHub draws as literal text — is invisible to every local
+  check. `internal/emoji/testdata/gemoji.tsv` is `GET /emojis` as GitHub
+  answered it on the date in its header (1936 shortcodes), and
+  `TestEveryCodeRendersOnGitHub` holds every entry and every absorbed code
+  to it, emoji field included: the `emoji` value is exactly the code points
+  the API maps the key to, with no variation selector added, because the API
+  is the oracle and a font is not. Refresh the snapshot with the command in
+  its header; never hand-edit it. `doctor` was considered for this and
+  rejected — doctor diagnoses a repository, and the dictionary is a property
+  of the binary.
+
 ## 3. Sigils → semver
 
 Lattice: `none(0) < patch(1) < minor(2) < major(3)`, owned by `internal/bump`
@@ -724,7 +781,7 @@ commit and a tag strictly past it both exited 3). Both now exit 0.
 ## 5. Architecture (Go, house pattern)
 
 Binary `glyph`, module `github.com/akira-toriyama/glyph`. Subcommands: `lint`,
-`init`, `bump`, `notes`, `preview`, `release`, `doctor`, `hook`, `version` —
+`init`, `bump`, `notes`, `preview`, `release`, `doctor`, `hook`, `version`, `emoji` —
 everything `glyph --help` prints except cobra's own `completion` and `help`.
 This line and the tree below are the two places in this document a new command
 or package has to be added, and both had gone quietly out of date: before t-0cqs
@@ -739,6 +796,7 @@ internal/version         ldflags build identity + ReadBuildInfo fallback
 internal/cleanup         git's message cleanup, modelled exactly (comment strip, scissors cut) — what --stdin judges is what git records
 internal/bump            Level lattice; Classify; Reduce(max); Next; stdlib semver
 internal/config          glyph.toml loader — user RE2 patterns, first match wins, semver_sigil extraction; embeds the init presets
+internal/emoji           the gemoji dictionary `glyph emoji` prints — embedded table.json, advisory data nothing else reads (§2)
 internal/draftplan       draft convergence — pure; which draft a verdict keeps, retags or deletes (the Unreleased placeholder lives here)
 internal/markdown        Line: per-field escape, then the mention fence over the assembled line
 internal/notes           group by section; text/template render (no external tmpl dep)

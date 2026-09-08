@@ -25,6 +25,8 @@ this repo until a tag is cut, then wrong fleet-wide until the pins move back.
 - Route the question to its home and answer from the home, never from memory:
   - surface, flags, why glyph exists → **README.md**
   - the model and the ratified decisions → **docs/DESIGN.md**
+  - which gemoji a commit is written with → `go run ./cmd/glyph emoji` (the ordered dictionary;
+    its rationale and the codes it deliberately leaves out → **DESIGN §2**, "The gemoji dictionary")
   - vocabulary a task body may use oddly (*merge point*, *footprint*, *residual* vs *stale*
     draft) → **docs/glossary.md**
   - commit convention →
