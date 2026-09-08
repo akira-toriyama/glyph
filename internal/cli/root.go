@@ -94,7 +94,7 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 	root.SetVersionTemplate("glyph {{.Version}}\n")
-	root.AddCommand(newVersionCmd(), newLintCmd(), newBumpCmd(), newNotesCmd(), newPreviewCmd(), newReleaseCmd(), newHookCmd(), newDoctorCmd(), newInitCmd())
+	root.AddCommand(newVersionCmd(), newLintCmd(), newBumpCmd(), newNotesCmd(), newPreviewCmd(), newReleaseCmd(), newHookCmd(), newDoctorCmd(), newInitCmd(), newEmojiCmd())
 
 	// `completion` is cobra's, not ours, and it arrives with a hole the root's
 	// own cobra.NoArgs cannot cover: cobra sets Args: NoArgs on it but gives it

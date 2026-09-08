@@ -1,0 +1,215 @@
+[
+  {
+    "code": ":robot:",
+    "emoji": "🤖",
+    "name": "automation",
+    "description": "A commit written by automation on a schedule or a trigger — fleet-sync, a status mirror, a bot — never by someone choosing what to say. A commit that adds or changes automation is ci or tooling."
+  },
+  {
+    "code": ":tada:",
+    "emoji": "🎉",
+    "name": "bootstrap",
+    "description": "The first commit of a repository, or the scaffold of a whole new component where nothing stood before. After that first landing every change has a more specific kind."
+  },
+  {
+    "code": ":rewind:",
+    "emoji": "⏪",
+    "name": "revert",
+    "description": "Undo an earlier commit, restoring what stood before it. The preset already reads git's own `Revert \"…\"` subject; write this when you word the subject yourself."
+  },
+  {
+    "code": ":fire:",
+    "emoji": "🔥",
+    "name": "removal",
+    "description": "Take something away — code, files, a feature, a repository — and leave nothing in its place. Carries `!` (or `%`) whenever anything outside the repository could have referenced what left. Relocating is move; undoing a commit is revert.",
+    "absorbs": [
+      ":coffin:",
+      ":wastebasket:"
+    ]
+  },
+  {
+    "code": ":truck:",
+    "emoji": "🚚",
+    "name": "move",
+    "description": "Rename or relocate — files, paths, repositories, where a task lives — with the content itself unchanged. If what moves also changes shape, name the change instead."
+  },
+  {
+    "code": ":lock:",
+    "emoji": "🔒",
+    "name": "security",
+    "description": "The commit exists because of a security or permission finding: least-privilege permissions, secrets and tokens, a vulnerability-driven version bump. The finding wins over whatever the diff touches.",
+    "absorbs": [
+      ":closed_lock_with_key:",
+      ":passport_control:"
+    ]
+  },
+  {
+    "code": ":page_facing_up:",
+    "emoji": "📄",
+    "name": "license",
+    "description": "The LICENSE file, and nothing else."
+  },
+  {
+    "code": ":see_no_evil:",
+    "emoji": "🙈",
+    "name": "ignore",
+    "description": ".gitignore, and untracking what should never have been tracked."
+  },
+  {
+    "code": ":bento:",
+    "emoji": "🍱",
+    "name": "assets",
+    "description": "Media and other binary or generated artifacts committed as they are: images, sounds, fonts, a rendered diagram. Test fixtures are tests; records the code reads are data.",
+    "absorbs": [
+      ":loud_sound:"
+    ]
+  },
+  {
+    "code": ":card_file_box:",
+    "emoji": "🗃",
+    "name": "data",
+    "description": "Records rather than code: the furrow board, a snapshot, seed data, a dataset the code reads. Changing how records are read or written is code and takes that kind.",
+    "absorbs": [
+      ":label:",
+      ":clipboard:",
+      ":card_index_dividers:",
+      ":seedling:"
+    ]
+  },
+  {
+    "code": ":white_check_mark:",
+    "emoji": "✅",
+    "name": "tests",
+    "description": "Tests and their fixtures, nothing that ships: add, extend, deflake, restructure. A test that lands alongside a fix belongs to the fix.",
+    "absorbs": [
+      ":test_tube:",
+      ":technologist:",
+      ":camera_flash:"
+    ]
+  },
+  {
+    "code": ":construction_worker:",
+    "emoji": "👷",
+    "name": "ci",
+    "description": "What runs on a CI runner: .github/workflows, actions, the reusables and their callers, and repairing a build that broke there.",
+    "absorbs": [
+      ":green_heart:",
+      ":alarm_clock:"
+    ]
+  },
+  {
+    "code": ":hammer:",
+    "emoji": "🔨",
+    "name": "tooling",
+    "description": "Scripts and hooks a developer runs locally: build.sh, check.sh, scripts/, git hooks, the nix dev shell. If it runs on the runner it is ci."
+  },
+  {
+    "code": ":wrench:",
+    "emoji": "🔧",
+    "name": "config",
+    "description": "Configuration files the tools read: glyph.toml, linter and formatter config, dependabot.yml, dotfiles, app settings. Workflows are ci; build scripts are tooling."
+  },
+  {
+    "code": ":package:",
+    "emoji": "📦",
+    "name": "distribution",
+    "description": "How the built artifact reaches a machine: goreleaser, a Homebrew cask or tap, a nix flake, install.sh, code signing, an app bundle."
+  },
+  {
+    "code": ":arrow_up:",
+    "emoji": "⬆",
+    "name": "dependency",
+    "description": "A version move of something external — up, down, added, removed, or pinned: go.mod, Package.swift, a `uses:` tag, an install-action version. The direction is not a kind.",
+    "absorbs": [
+      ":arrow_down:",
+      ":pushpin:",
+      ":heavy_plus_sign:",
+      ":heavy_minus_sign:"
+    ]
+  },
+  {
+    "code": ":rocket:",
+    "emoji": "🚀",
+    "name": "release",
+    "description": "The act of releasing: a promotion to 1.0 (`%`), lockstep version pins cut ahead of a tag, publishing or deploying. Moving a dependency's version is dependency.",
+    "absorbs": [
+      ":bookmark:"
+    ]
+  },
+  {
+    "code": ":memo:",
+    "emoji": "📝",
+    "name": "docs",
+    "description": "Prose a reader reads: README, docs/, CLAUDE.md, design notes, code comments. Text the product shows its user is ui.",
+    "absorbs": [
+      ":bulb:",
+      ":pencil2:"
+    ]
+  },
+  {
+    "code": ":lipstick:",
+    "emoji": "💄",
+    "name": "ui",
+    "description": "What the user sees and reads in the product: layout, colour, type, spacing, wording on screen, in --help and in error messages. A new capability is feature; wrong output is fix.",
+    "absorbs": [
+      ":children_crossing:",
+      ":speech_balloon:",
+      ":dizzy:",
+      ":iphone:"
+    ]
+  },
+  {
+    "code": ":wheelchair:",
+    "emoji": "♿",
+    "name": "accessibility",
+    "description": "Accessibility: VoiceOver and other assistive technology, Reduce Motion, contrast, keyboard reachability."
+  },
+  {
+    "code": ":zap:",
+    "emoji": "⚡",
+    "name": "performance",
+    "description": "Faster or leaner with the same observable result. If the result was also wrong, it is fix."
+  },
+  {
+    "code": ":bug:",
+    "emoji": "🐛",
+    "name": "fix",
+    "description": "Behaviour was wrong — against the spec, the docs, or plain intent — and now is right. Severity is not a kind: a hotfix and a one-liner are both fix.",
+    "absorbs": [
+      ":ambulance:",
+      ":adhesive_bandage:"
+    ]
+  },
+  {
+    "code": ":sparkles:",
+    "emoji": "✨",
+    "name": "feature",
+    "description": "A capability that did not exist: a new command, flag, key, screen, option, integration. Changing what an existing capability does is fix (it was wrong) or refactor (same behaviour)."
+  },
+  {
+    "code": ":recycle:",
+    "emoji": "♻",
+    "name": "refactor",
+    "description": "Restructure code with observable behaviour unchanged: move logic, split or merge types, change internal contracts. Surface-only changes are polish.",
+    "absorbs": [
+      ":building_construction:",
+      ":thread:"
+    ]
+  },
+  {
+    "code": ":art:",
+    "emoji": "🎨",
+    "name": "polish",
+    "description": "Code hygiene with neither behaviour nor structure changed: formatting, lint and compiler warnings, naming, comment tidy, typos in code.",
+    "absorbs": [
+      ":broom:",
+      ":rotating_light:"
+    ]
+  },
+  {
+    "code": ":construction:",
+    "emoji": "🚧",
+    "name": "checkpoint",
+    "description": "A step that is not coherent on its own and lands only inside a pull request that finishes it. Always `=`; the squash keeps the PR title."
+  }
+]

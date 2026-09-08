@@ -1,0 +1,13 @@
+diff --git a/internal/emoji/table.json b/internal/emoji/table.json
+index e81f3c4..189aff1 100644
+--- a/internal/emoji/table.json
++++ b/internal/emoji/table.json
+@@ -199,7 +199,7 @@
+   {
+     "code": ":art:",
+     "emoji": "🎨",
+-    "name": "polish",
++    "name": "refactor",
+     "description": "Code hygiene with neither behaviour nor structure changed: formatting, lint and compiler warnings, naming, comment tidy, typos in code.",
+     "absorbs": [
+       ":broom:",
