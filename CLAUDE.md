@@ -131,6 +131,20 @@ design, so a tree that does not compile turns the local gate into a silent no-op
   are committed, all under `internal/markdown/`, and plain `go test` replays each as a named
   subtest. A new `Fuzz` target needs no CI or check.sh edit — both loops discover targets.
 
+## `internal/emoji/table.json` is hand-edited, in order
+
+- Insert a new kind where its specificity puts it — specific above broad, location above kind —
+  because the dictionary is **ordered, first fit wins**, and `glyph emoji` prints the file byte
+  for byte. Give it a `name` no other entry has (that uniqueness is the one-meaning-one-emoji
+  rule), write the `description` as when-to-pick-it with its borders, list the gitmoji codes it
+  takes over under `absorbs`, and leave `emoji` as `"?"`: `go test ./internal/emoji` then prints
+  the code points GitHub maps the shortcode to, rejects a code GitHub does not draw, and names the
+  first line off canonical form.
+- The oracle is `testdata/gemoji.tsv`, a dated `GET /emojis` snapshot — refresh it with the
+  command in its header, never by hand. Nothing regenerates the table and nothing else reads it;
+  the argued decisions (what is deliberately absent, and why) are DESIGN §2, "The gemoji
+  dictionary".
+
 ## CI gates that fail for reasons the diff does not show
 
 - **bite** — runs the tests a PR adds or changes against the pre-PR source. To waive it, give
