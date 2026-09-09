@@ -889,6 +889,23 @@ so `internal/workflows` bans the read itself
 (`TestNoWorkflowRebuildsPerFindingAnnotations`) and the mutation ledger holds the
 producer half (`lint-findings-lose-their-annotations`).
 
+**Repository resolution** (`resolveRepo`, one function for every API-side
+command — `lint --pr`, `bump`/`notes` `--pr`/`--since-tag`, `preview`,
+`release`, `doctor`): an explicit `--repo` wins, else `$GITHUB_REPOSITORY`,
+else the clone's `origin` remote (t-ygmv, mutation row
+`origin-fallback-ignores-the-host.patch`). The environment sits above origin
+because in Actions the variable is the authority and origin is whatever
+`actions/checkout` wrote; outside Actions the variable is unset, so origin
+answers only where nobody else did — measured before the fallback: `glyph
+doctor` inside a clone exited 2 asking for `--repo`, the one input the clone
+already held. Only the remote named `origin` is read (a second remote is a
+choice the caller makes with `--repo`), and its URL must be on the host the
+API client will query — `github.com`, or `$GITHUB_API_URL`'s hostname — or the
+entrance refuses at exit 2 naming both hosts: silently asking `api.github.com`
+about a GitLab clone would come back as a 404 wearing the API code, telling the
+caller to retry an input no retry can fix. An origin with no owner/name to give
+(a local path) is the same usage error as no origin at all, never a guess.
+
 **Machine-output flag:** one spelling, `--json`, on every command that has one —
 `bump`, `notes`, `preview`, `release`, `doctor`, `version` and
 `hook install` (`lint` speaks only in exit codes and the error envelope, so it

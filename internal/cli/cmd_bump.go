@@ -64,7 +64,7 @@ func newBumpCmd() *cobra.Command {
 	cmd.Flags().StringVar(&bumpRange, "range", "", "fold every commit in a git revision range (BASE..HEAD)")
 	cmd.Flags().IntVar(&bumpPR, "pr", 0, "fold a pull request's individual (pre-squash) commits, read over the API")
 	addSinceTagFlag(cmd, &bumpSinceTag, "fold")
-	cmd.Flags().StringVar(&bumpRepo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY)")
+	cmd.Flags().StringVar(&bumpRepo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().StringVar(&bumpCurrent, "current", "", currentFlagUsage)
 	cmd.Flags().BoolVar(&bumpJSON, "json", false, "emit the machine verdict {current,level,next,commits,reason}")
 	markInputSourceFlags(cmd)

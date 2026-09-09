@@ -117,7 +117,7 @@ func newLintCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&lintRange, "range", "", "lint every commit in a git revision range (BASE..HEAD)")
 	cmd.Flags().IntVar(&lintPR, "pr", 0, "lint a pull request's title — the subject a squash merge lands — read over the API")
-	cmd.Flags().StringVar(&lintRepo, "repo", "", "owner/name to query for --pr (default: $GITHUB_REPOSITORY)")
+	cmd.Flags().StringVar(&lintRepo, "repo", "", "owner/name to query for --pr (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().StringVar(&lintMessage, "message", "", "lint one message given inline")
 	cmd.Flags().BoolVar(&lintStdin, "stdin", false, "lint one message read from stdin (commit-msg hook)")
 	cmd.MarkFlagsMutuallyExclusive("range", "pr", "message", "stdin")
@@ -199,7 +199,7 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 	if err := checkPRFlag(number); err != nil {
 		return err
 	}
-	owner, repo, err := resolveRepo(repoFlag)
+	owner, repo, err := resolveRepo(ctx, repoFlag)
 	if err != nil {
 		return err
 	}

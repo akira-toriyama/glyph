@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"unicode"
@@ -32,22 +33,38 @@ const (
 )
 
 // resolveRepo picks the repository to query: an explicit --repo wins, else
-// GITHUB_REPOSITORY. With neither there is nothing to ask and no request has
-// gone out, so a missing or malformed value is the caller's input — usage, never
-// an API failure.
+// GITHUB_REPOSITORY, else the clone's origin remote (t-ygmv). With none of
+// the three there is nothing to ask and no request has gone out, so a
+// missing or malformed value is the caller's input — usage, never an API
+// failure.
+//
+// The environment sits ABOVE origin on purpose: in Actions the variable is
+// the authority and origin is whatever actions/checkout wrote, and outside
+// Actions the variable is unset, so origin only ever answers where nobody
+// else did. Only the remote named origin is read — a second remote is a
+// choice the caller makes with --repo — and its URL must point at the host
+// the API client will query (github.com, or GITHUB_API_URL's host): a
+// clone of some other forge would otherwise be asked about on api.github.com
+// and come back as a 404 wearing the API code.
 //
 // Interior whitespace is judged here too (ratified 2026-07-22): TrimSpace alone
 // let `a b/c` sail to the wire and come back as a 404 wearing the API code, so
 // the caller was told to retry an input no retry can fix. Same rule as the
 // empty-flag guard (#64): the entrance names what is wrong with caller input,
 // at exit 2, before any request goes out.
-func resolveRepo(flag string) (owner, repo string, err error) {
+func resolveRepo(ctx context.Context, flag string) (owner, repo string, err error) {
 	spec := strings.TrimSpace(flag)
 	if spec == "" {
 		spec = strings.TrimSpace(os.Getenv(envRepo))
 	}
 	if spec == "" {
-		return "", "", core.Usagef("--repo owner/name is required (or set %s, which GitHub Actions sets for you)", envRepo)
+		spec, err = originRepo(ctx)
+		if err != nil {
+			return "", "", err
+		}
+	}
+	if spec == "" {
+		return "", "", core.Usagef("--repo owner/name is required (or set %s, which GitHub Actions sets for you, or run inside a clone whose origin remote points at GitHub)", envRepo)
 	}
 	owner, repo, found := strings.Cut(spec, "/")
 	if !found || owner == "" || repo == "" || strings.Contains(repo, "/") ||
@@ -55,6 +72,92 @@ func resolveRepo(flag string) (owner, repo string, err error) {
 		return "", "", core.Usagef("--repo %q is not owner/name", spec)
 	}
 	return owner, repo, nil
+}
+
+// originRepo reads owner/name off the origin remote of the clone the command
+// runs in: "" when there is no clone, no origin, or an origin whose URL has
+// no owner/name to give (every one of those means "nothing to infer", and
+// resolveRepo's usage error is the right answer). An origin on a host the
+// client will NOT query is usage too, but a loud one — it names both hosts,
+// because silently asking api.github.com about a GitLab clone is the shape
+// this guard exists to refuse.
+func originRepo(ctx context.Context) (string, error) {
+	urls, err := gitsource.RemoteURLs(ctx, ".")
+	if err != nil {
+		return "", nil
+	}
+	raw, ok := urls["origin"]
+	if !ok {
+		return "", nil
+	}
+	host, path, ok := splitRemoteURL(raw)
+	if !ok {
+		return "", nil
+	}
+	if want := apiHost(); !strings.EqualFold(host, want) {
+		return "", core.Usagef("origin remote %q is on %s, but the API host is %s — name the repository with --repo owner/name, or set %s to the host that serves it", raw, host, want, envAPIURL)
+	}
+	return path, nil
+}
+
+// apiHost is the repository host the API client's base URL implies:
+// github.com for the public API, else GITHUB_API_URL's hostname (GitHub
+// Enterprise Server serves web and API from one host; an httptest server in
+// a test is its own host, which no origin points at — so a test that wants
+// the fallback names the host explicitly). Ports are dropped on both sides:
+// an ssh origin and an https API never share one.
+func apiHost() string {
+	base := strings.TrimSpace(os.Getenv(envAPIURL))
+	if base == "" {
+		return "github.com"
+	}
+	u, err := url.Parse(base)
+	if err != nil || u.Hostname() == "" {
+		return base
+	}
+	if u.Hostname() == "api.github.com" {
+		return "github.com"
+	}
+	return u.Hostname()
+}
+
+// splitRemoteURL takes a git remote URL apart into its host and its
+// owner/name path, for the three spellings a GitHub clone comes in:
+// https://host/owner/name(.git), ssh://git@host[:port]/owner/name(.git), and
+// the scp-like git@host:owner/name(.git). Anything else — a local path, a
+// deeper path, an empty segment — is not a repository coordinate (ok false).
+func splitRemoteURL(raw string) (host, path string, ok bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", "", false
+	}
+	var rest string
+	switch {
+	case strings.Contains(raw, "://"):
+		u, err := url.Parse(raw)
+		if err != nil || u.Hostname() == "" {
+			return "", "", false
+		}
+		host, rest = u.Hostname(), u.Path
+	default:
+		// scp-like: [user@]host:path — the colon marks the host end only when
+		// no slash precedes it, which is what separates it from a local path
+		// such as ./dir:with:colons/repo.
+		i := strings.Index(raw, ":")
+		if i < 0 || strings.Contains(raw[:i], "/") {
+			return "", "", false
+		}
+		host, rest = raw[:i], raw[i+1:]
+		if at := strings.LastIndex(host, "@"); at >= 0 {
+			host = host[at+1:]
+		}
+	}
+	rest = strings.TrimSuffix(strings.Trim(rest, "/"), ".git")
+	owner, name, found := strings.Cut(rest, "/")
+	if host == "" || !found || owner == "" || name == "" || strings.Contains(name, "/") {
+		return "", "", false
+	}
+	return host, owner + "/" + name, true
 }
 
 // checkPRFlag rejects a non-positive pull-request number before any request goes
@@ -99,7 +202,7 @@ func pullInput(ctx context.Context, number int, repoFlag string) ([]gitsource.Ra
 	if err := checkPRFlag(number); err != nil {
 		return nil, "", err
 	}
-	owner, repo, err := resolveRepo(repoFlag)
+	owner, repo, err := resolveRepo(ctx, repoFlag)
 	if err != nil {
 		return nil, "", err
 	}

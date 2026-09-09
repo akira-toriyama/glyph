@@ -75,7 +75,10 @@ alone. The PR and release-walk inputs (`--pr` — on `lint` as much as on
 in GitHub Actions no flags are needed —
 `--repo` defaults to `$GITHUB_REPOSITORY`, the API host to `$GITHUB_API_URL`
 (so a GitHub Enterprise runner just works), and the credential to
-`$GITHUB_TOKEN` (else `$GH_TOKEN`).
+`$GITHUB_TOKEN` (else `$GH_TOKEN`). Outside Actions, with the variable unset,
+`--repo` defaults to the clone's `origin` remote — provided it points at the
+host the API client will query; an origin elsewhere is refused at exit 2
+rather than asked about on the wrong host.
 
 A **writing** `release` reads two more, and refuses rather than guesses:
 `$GITHUB_REF` and `$GITHUB_EVENT_PATH`. When either is set, glyph is in a run

@@ -1,0 +1,13 @@
+diff --git a/internal/cli/pr.go b/internal/cli/pr.go
+index 1a1f3ee..c1383e8 100644
+--- a/internal/cli/pr.go
++++ b/internal/cli/pr.go
+@@ -94,7 +94,7 @@ func originRepo(ctx context.Context) (string, error) {
+ 	if !ok {
+ 		return "", nil
+ 	}
+-	if want := apiHost(); !strings.EqualFold(host, want) {
++	if want := apiHost(); false && !strings.EqualFold(host, want) {
+ 		return "", core.Usagef("origin remote %q is on %s, but the API host is %s — name the repository with --repo owner/name, or set %s to the host that serves it", raw, host, want, envAPIURL)
+ 	}
+ 	return path, nil
