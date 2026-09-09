@@ -92,10 +92,11 @@ type Config struct {
 	Note           Note
 }
 
-// Commit carries the human-facing template block. glyph never reads it — the
-// preset bytes init writes are its one home; it is decoded at all only so the
-// strict decoder accepts the section — so no validation applies beyond TOML
-// well-formedness.
+// Commit carries the human-facing template block. glyph never parses it —
+// the preset bytes init writes are its one home, and no validation applies
+// beyond TOML well-formedness. Its one reader is Config.SubjectForm, which
+// quotes the template's first line back inside the no-pattern-matches lint
+// violation, verbatim.
 type Commit struct {
 	Style    string
 	Template string

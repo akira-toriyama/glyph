@@ -92,3 +92,43 @@ func TestLintViolations(t *testing.T) {
 		}
 	})
 }
+
+// TestLintViolationQuotesTheForm pins the no-pattern-matches violation to
+// commit.template (t-s1q0). Under the preset the refusal carries the subject
+// form as the file wrote it, so the reader is told the shape instead of being
+// sent to re-derive it from the winning regex; a config with no [commit] block
+// keeps the bare pointer, because there is no line to quote.
+func TestLintViolationQuotesTheForm(t *testing.T) {
+	cfg := loadGemoji(t)
+	got := cfg.Lint("fix: wrong grammar", "akira")
+	if got.OK || got.Excluded {
+		t.Fatalf("Lint = %+v, want violation", got)
+	}
+	const form = "<:code:>[(scope)]<semver_sigil> <subject>"
+	if !strings.Contains(got.Reason, form) {
+		t.Errorf("Reason = %q, want it to quote the template's first line %q", got.Reason, form)
+	}
+	if !strings.Contains(got.Reason, "= ~ ^ ! or %") {
+		t.Errorf("Reason = %q, want the sigil alphabet, the part a refused subject most often lacks", got.Reason)
+	}
+
+	bare := mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?P<semver_sigil>[=~^!%]) '\n")
+	if got := bare.Lint("no sigil", "akira"); got.OK || !strings.Contains(got.Reason, "see glyph.toml") {
+		t.Errorf("no-template Reason = %q, want the bare pointer", got.Reason)
+	}
+}
+
+func TestSubjectForm(t *testing.T) {
+	cases := []struct{ template, want string }{
+		{"\n<:code:>[(scope)]<semver_sigil> <subject>\n\n[<body>]\n", "<:code:>[(scope)]<semver_sigil> <subject>"},
+		{"  <type>: <subject>  ", "<type>: <subject>"},
+		{"\n\n", ""},
+		{"", ""},
+	}
+	for _, c := range cases {
+		cfg := &Config{Commit: Commit{Template: c.template}}
+		if got := cfg.SubjectForm(); got != c.want {
+			t.Errorf("SubjectForm(%q) = %q, want %q", c.template, got, c.want)
+		}
+	}
+}

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // LintVerdict is one message's standing under the config. Exactly one of
@@ -41,7 +42,34 @@ func (c *Config) Lint(message, author string) LintVerdict {
 		return LintVerdict{Reason: err.Error()}
 	}
 	if !m.Matched {
-		return LintVerdict{Reason: fmt.Sprintf("message matches none of the %d configured patterns — write it to match one (see glyph.toml), or exclude the author", len(c.Patterns))}
+		return LintVerdict{Reason: c.unmatchedReason()}
 	}
 	return LintVerdict{OK: true, Warn: m.Warn}
+}
+
+// unmatchedReason is the no-pattern-matches violation. It quotes the
+// subject form from commit.template (t-s1q0): the author of a refused
+// message otherwise has to open glyph.toml and read the winning regex back
+// into a shape, every time. The form is the file's own words, so its
+// sigil-less window warning and this refusal spell the same line, and a
+// config with no template gets the bare pointer instead.
+func (c *Config) unmatchedReason() string {
+	form := c.SubjectForm()
+	if form == "" {
+		return fmt.Sprintf("message matches none of the %d configured patterns — write it to match one (see glyph.toml), or exclude the author", len(c.Patterns))
+	}
+	return fmt.Sprintf("message matches none of the %d configured patterns — write it as %s with a semver_sigil of = ~ ^ ! or %% (commit.template in glyph.toml), or exclude the author", len(c.Patterns), form)
+}
+
+// SubjectForm is the first non-blank line of commit.template — the shape of
+// a subject line as the file's author wrote it for a reader. It is quoted,
+// never parsed: no placeholder is interpreted, and an absent [commit] block
+// yields "".
+func (c *Config) SubjectForm() string {
+	for line := range strings.SplitSeq(c.Commit.Template, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			return line
+		}
+	}
+	return ""
 }

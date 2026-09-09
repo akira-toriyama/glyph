@@ -1,21 +1,14 @@
 diff --git a/internal/config/lint.go b/internal/config/lint.go
-index b4063a9..da10844 100644
+index b647b17..6a3f470 100644
 --- a/internal/config/lint.go
 +++ b/internal/config/lint.go
-@@ -3,6 +3,7 @@ package config
- import (
- 	"fmt"
- 	"slices"
-+	"strings"
- )
- 
- // LintVerdict is one message's standing under the config. Exactly one of
-@@ -43,5 +44,8 @@ func (c *Config) Lint(message, author string) LintVerdict {
+@@ -44,6 +44,9 @@ func (c *Config) Lint(message, author string) LintVerdict {
  	if !m.Matched {
- 		return LintVerdict{Reason: fmt.Sprintf("message matches none of the %d configured patterns — write it to match one (see glyph.toml), or exclude the author", len(c.Patterns))}
+ 		return LintVerdict{Reason: c.unmatchedReason()}
  	}
 +	if !m.Skip && m.Sigil == SigilMajor && strings.HasPrefix(message, ":memo:") {
 +		return LintVerdict{Reason: "a docs change cannot be breaking"}
 +	}
  	return LintVerdict{OK: true, Warn: m.Warn}
  }
+ 

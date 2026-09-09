@@ -11,7 +11,8 @@ style = "gemoji"
 # The gemoji vocabulary: https://github.com/github/gemoji
 # (machine-readable list: https://api.github.com/emojis)
 #
-# The template is for humans; glyph never parses it.
+# The template is for humans; glyph never parses it. lint quotes its first
+# line back when a message matches no pattern, so keep that line the form.
 template = '''
 <:code:>[(scope)]<semver_sigil> <subject>
 
