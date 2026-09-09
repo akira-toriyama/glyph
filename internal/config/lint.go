@@ -66,7 +66,7 @@ func (c *Config) unmatchedReason() string {
 // never parsed: no placeholder is interpreted, and an absent [commit] block
 // yields "".
 func (c *Config) SubjectForm() string {
-	for _, line := range strings.Split(c.Commit.Template, "\n") {
+	for line := range strings.SplitSeq(c.Commit.Template, "\n") {
 		if line = strings.TrimSpace(line); line != "" {
 			return line
 		}
