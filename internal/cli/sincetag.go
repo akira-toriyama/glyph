@@ -131,7 +131,7 @@ func sinceTagInput(ctx context.Context, cfg *config.Config, tagFlag, repoFlag st
 	if err := checkSinceTagFlag(tagFlag); err != nil {
 		return nil, walkFacts{}, "", nil, err
 	}
-	owner, repo, err := resolveRepo(repoFlag)
+	owner, repo, err := resolveRepo(ctx, repoFlag)
 	if err != nil {
 		return nil, walkFacts{}, "", nil, err
 	}

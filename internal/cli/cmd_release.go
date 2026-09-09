@@ -80,7 +80,7 @@ func newReleaseCmd() *cobra.Command {
 		},
 	}
 	addSinceTagFlag(cmd, &releaseSinceTag, "compose the release from")
-	cmd.Flags().StringVar(&releaseRepo, "repo", "", "owner/name to query (default: $GITHUB_REPOSITORY)")
+	cmd.Flags().StringVar(&releaseRepo, "repo", "", "owner/name to query (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().StringVar(&releaseCurrent, "current", "", currentFlagUsage)
 	cmd.Flags().StringVar(&releaseTarget, "target", "", "the commit sha the draft's eventual tag points at (default: the checkout's HEAD)")
 	cmd.Flags().StringVar(&releaseFooterFile, "footer-file", "", "a Markdown file appended verbatim after the notes, separated by one --- line (the per-repo install block)")
@@ -111,7 +111,7 @@ func releaseRun(cmd *cobra.Command) error {
 	if ferr != nil {
 		return ferr
 	}
-	owner, repoName, oerr := resolveRepo(releaseRepo)
+	owner, repoName, oerr := resolveRepo(ctx, releaseRepo)
 	if oerr != nil {
 		return oerr
 	}

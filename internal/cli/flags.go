@@ -50,7 +50,7 @@ func checkGivenEmpty(cmd *cobra.Command, name, noun, hint string) error {
 // The hints for the flags more than one command takes, so the same input is
 // diagnosed the same way whichever command received it.
 const (
-	repoHint    = "omit --repo to use $GITHUB_REPOSITORY, or name one with --repo=owner/name"
+	repoHint    = "omit --repo to use $GITHUB_REPOSITORY (else the origin remote), or name one with --repo=owner/name"
 	currentHint = "omit --current to step from the default (the tag the walk named, else the highest v* tag), or name one with --current=vX.Y.Z"
 )
 

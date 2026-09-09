@@ -97,7 +97,7 @@ func newDoctorCmd() *cobra.Command {
 			"outlived the retries, an unreachable host — is a could-not-run (4) and never a\n" +
 			"violation (3): glyph observed nothing, so it says nothing about the repository.\n" +
 			"Advice never affects the exit. --json emits {repo,checks,counts,ok} on one line.",
-		Example: "  glyph doctor                          # diagnose $GITHUB_REPOSITORY from this checkout\n" +
+		Example: "  glyph doctor                          # diagnose this checkout ($GITHUB_REPOSITORY, else origin)\n" +
 			"  glyph doctor --repo akira-toriyama/sill\n" +
 			"  glyph doctor --json | jq -e .ok       # CI pre-flight",
 		Args: cobra.NoArgs,
@@ -105,7 +105,7 @@ func newDoctorCmd() *cobra.Command {
 			return doctorRun(cmd)
 		},
 	}
-	cmd.Flags().StringVar(&doctorRepo, "repo", "", "owner/name to diagnose (default: $GITHUB_REPOSITORY)")
+	cmd.Flags().StringVar(&doctorRepo, "repo", "", "owner/name to diagnose (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().BoolVar(&doctorJSON, "json", false, "emit the machine report {repo,checks,counts,ok}")
 	return cmd
 }
@@ -231,7 +231,7 @@ func doctorRun(cmd *cobra.Command) error {
 	if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {
 		return err
 	}
-	owner, name, err := resolveRepo(doctorRepo)
+	owner, name, err := resolveRepo(cmd.Context(), doctorRepo)
 	if err != nil {
 		return err
 	}

@@ -57,7 +57,7 @@ func newPreviewCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().IntVar(&previewPR, "pr", 0, "the pull request to preview, read over the API (required)")
-	cmd.Flags().StringVar(&previewRepo, "repo", "", "owner/name to query (default: $GITHUB_REPOSITORY)")
+	cmd.Flags().StringVar(&previewRepo, "repo", "", "owner/name to query (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().BoolVar(&previewNotes, "notes", false, "fold the release-notes preview for this PR into the body")
 	cmd.Flags().BoolVar(&previewJSON, "json", false, "emit the machine verdict {current,untagged,level,next,pr,pending,body}")
 	_ = cmd.MarkFlagRequired("pr")
@@ -123,7 +123,7 @@ func previewRun(cmd *cobra.Command) error {
 		// see preview.Input.PendingShort for why the walk's own ::warning:: is
 		// not enough on this path.
 		if !facts.complete() {
-			owner, repo, rerr := resolveRepo(previewRepo)
+			owner, repo, rerr := resolveRepo(ctx, previewRepo)
 			if rerr != nil {
 				return rerr
 			}
