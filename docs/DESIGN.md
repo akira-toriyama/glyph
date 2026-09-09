@@ -139,6 +139,15 @@ pattern says it means:
   computes, it does not opine. The retired v1 rule vocabulary (uppercase
   subject, trailing period, footer discipline, merge-candidate rules) is
   gone with the grammar that defined it.
+- **A refusal quotes the form** (mutation row
+  `lint-violation-forgets-the-form.patch`, t-s1q0): the no-pattern-matches
+  violation carries the first line of `commit.template` verbatim — `write it
+  as <:code:>[(scope)]<semver_sigil> <subject> with a semver_sigil of = ~ ^ !
+  or %` — so the refused author is told the shape instead of re-deriving it
+  from the winning regex on every failure (measured: the envelope said only
+  "see glyph.toml", while the v1-window warning next to it already spelled the
+  line). The template stays unparsed: glyph quotes it, it does not interpret a
+  placeholder, and a file with no `[commit]` block gets the bare pointer.
 - Unknown keys, an unknown `schema`, an uncompilable pattern, a malformed
   `note.line` and a section that does not state exactly one axis are LOAD
   errors, never repairs (mutation row `config-unknown-schema-accepted.patch`):
