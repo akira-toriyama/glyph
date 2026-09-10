@@ -178,7 +178,7 @@ func releaseRun(cmd *cobra.Command) error {
 		return lerr
 	}
 	if dec.Level == bump.LevelNone && !cfg.Note.DraftOnNone {
-		plan := draftplan.PlanDraft(dec.Level, "", false, planInput(releases))
+		plan := draftplan.PlanDraft("", dec.Level, "", false, planInput(releases))
 		return releaseNone(ctx, gh, owner, repoName, current, commits, facts, source, staleReleases(plan.Stale))
 	}
 
@@ -186,13 +186,13 @@ func releaseRun(cmd *cobra.Command) error {
 	// version on a release verdict, the Unreleased placeholder on a
 	// maintained none (draft_on_none — the flag's whole point is that a
 	// quiet merge keeps the door open instead of deleting the draft).
-	tagName := draftplan.PlaceholderTag
+	tagName := draftplan.PlaceholderTagOn("")
 	if dec.Level != bump.LevelNone {
 		tag := current.Next(dec)
-		if gerr := checkPublishedFloor(tag, releases); gerr != nil {
+		if gerr := checkPublishedFloor("", tag, releases); gerr != nil {
 			return gerr
 		}
-		tagName = tag.String()
+		tagName = tag.TagOn("")
 	}
 
 	sections, gerr := notes.GroupSigils(walkedNoteCommits(parsed), cfg)
@@ -211,7 +211,7 @@ func releaseRun(cmd *cobra.Command) error {
 	// the hand region across (see composeDraftBody) — the rolling draft is the
 	// one place a human can write release prose, and rewriting it blind is how
 	// that prose was silently destroyed on the next push (t-qgps).
-	plan := draftplan.PlanDraft(dec.Level, tagName, cfg.Note.DraftOnNone, planInput(releases))
+	plan := draftplan.PlanDraft("", dec.Level, tagName, cfg.Note.DraftOnNone, planInput(releases))
 	body = composeDraftBody(keptBody(plan.Keep, releases), body)
 	// Sized BEFORE the dry-run fork: a dry run previews the real run, and a
 	// body the real run refuses must fail the preview identically. Sized over
@@ -421,27 +421,30 @@ func discardedOrGone(alreadyGone bool) string {
 // draft could never be published — its tag is taken, or permanently burned if
 // a published release was deleted. The repository's state is off, so this
 // fails loud (4) instead of creating an unpublishable draft.
-func checkPublishedFloor(next bump.Version, releases []github.Release) error {
-	floor, ok := highestPublished(releases)
+func checkPublishedFloor(prefix string, next bump.Version, releases []github.Release) error {
+	floor, ok := highestPublished(prefix, releases)
 	if !ok || next.Compare(floor) > 0 {
 		return nil
 	}
 	return core.APIf(
 		"computed version %s is not greater than the latest published release %s — refusing the draft (it would collide with or regress below a published release; if a published release was deleted its tag is permanently burned — bump past it)",
-		next, floor)
+		next.TagOn(prefix), floor.TagOn(prefix))
 }
 
 // highestPublished returns the highest published (non-draft) house-shaped
-// version among the releases; ok is false when there is none — a repository
-// before its first publish has no floor.
-func highestPublished(releases []github.Release) (bump.Version, bool) {
+// version ON ONE LINE among the releases; ok is false when there is none —
+// a line before its first publish has no floor. The floor is per line by
+// construction (DESIGN §4.1): a published haiku/v2.0.0 is no floor under a
+// curry/ draft, and a published bare v2.0.0 is none under either package
+// (mutation row published-floor-read-across-lines).
+func highestPublished(prefix string, releases []github.Release) (bump.Version, bool) {
 	var floor bump.Version
 	found := false
 	for _, r := range releases {
-		if r.Draft || !strings.HasPrefix(r.TagName, "v") {
+		if r.Draft || !strings.HasPrefix(strings.TrimPrefix(r.TagName, prefix), "v") {
 			continue
 		}
-		v, err := bump.ParseVersion(r.TagName)
+		v, err := bump.ParseVersionOn(prefix, r.TagName)
 		if err != nil {
 			continue
 		}

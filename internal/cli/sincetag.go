@@ -158,7 +158,7 @@ func sinceTagInput(ctx context.Context, cfg *config.Config, tagFlag, repoFlag st
 func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (revRange string, base *bump.Version, err error) {
 	tag := strings.TrimSpace(tagFlag)
 	if tag == sinceTagAuto {
-		latest, v, lerr := latestVersionTag(ctx, nil)
+		latest, v, lerr := latestVersionTag(ctx, "", nil)
 		if lerr != nil {
 			return "", nil, lerr
 		}
@@ -175,7 +175,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 		if perr != nil {
 			return "", nil, core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
 		}
-		prev, v, lerr := latestVersionTag(ctx, &bound)
+		prev, v, lerr := latestVersionTag(ctx, "", &bound)
 		if lerr != nil {
 			return "", nil, lerr
 		}
@@ -244,9 +244,14 @@ func wholeHistory(ctx context.Context, cfg *config.Config, whyNone string) (stri
 	return "HEAD", &bump.Version{}, nil
 }
 
-// latestVersionTag returns the highest parseable version tag and its parsed
-// version; tag is empty for a repository before its first release. The one
-// resolver behind both the walk base and the bump base.
+// latestVersionTag returns the highest parseable version tag ON ONE LINE and
+// its parsed version; tag is empty for a line before its first release. The
+// one resolver behind both the walk base and the bump base. prefix is the
+// line's tag namespace ("" for the bare line, config.Package.TagPrefix for a
+// package): a tag on any other line — a curry/ tag asked about haiku/, a bare
+// v* tag asked about any package, a nested line's tag asked about its parent
+// — is not a candidate, so one line's release can never move another line's
+// base (DESIGN §4.1; mutation row packages-tag-of-one-line-baselines-another).
 //
 // below, when non-nil, bounds the answer to versions STRICTLY under it — how
 // below:TAG resolves the predecessor of a tag already cut. Strictly below the
@@ -270,13 +275,13 @@ func wholeHistory(ctx context.Context, cfg *config.Config, whyNone string) (stri
 // A tie — the same version spelled twice, v1.2.3 beside 1.2.3 — keeps the
 // FIRST in git's order, so the answer stays deterministic without inventing a
 // preference between two tags git considers equally valid.
-func latestVersionTag(ctx context.Context, below *bump.Version) (tag string, v bump.Version, err error) {
+func latestVersionTag(ctx context.Context, prefix string, below *bump.Version) (tag string, v bump.Version, err error) {
 	tags, terr := gitsource.Tags(ctx, ".")
 	if terr != nil {
 		return "", bump.Version{}, terr
 	}
 	for _, t := range tags {
-		pv, perr := bump.ParseVersion(t)
+		pv, perr := bump.ParseVersionOn(prefix, t)
 		if perr != nil {
 			continue
 		}

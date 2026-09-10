@@ -789,13 +789,16 @@ commit and a tag strictly past it both exited 3). Both now exit 0.
 
 ### 4.1 Packages — independently versioned lines in one repository
 
-**Status: designed 2026-09-10 (t-99rf); shipped so far (t-exs0): the
-`[[packages]]` schema in `internal/config`, the attribution rule as
-`internal/attribution`, and `doctor`'s path-exists check.** Declaring a
-package therefore changes no verdict yet — the walk, the fold, the drafts,
-the preview and the reusable below are the remaining `e-7hat` tasks on the
-projects board, and the presets' commented example says so until this line
-says otherwise. A binary older than the schema refuses the file (§2's strict
+**Status: designed 2026-09-10 (t-99rf); shipped so far: the `[[packages]]`
+schema in `internal/config`, the attribution rule as `internal/attribution`,
+and `doctor`'s path-exists check (t-exs0); the line primitives — a tag is
+parsed *on* a line (`bump.ParseVersionOn`, `config.Package.TagPrefix`), and
+the walk base, the published floor and the managed drafts are each resolved
+per line — plus `doctor`'s root-line advice (t-q047).** Every resolver still
+runs on the bare line alone: declaring a package changes no verdict yet — the
+walk that selects lines, the fold, the N drafts, the preview and the reusable
+below are the remaining `e-7hat` tasks on the projects board, and the
+presets' commented example says so until this line says otherwise. A binary older than the schema refuses the file (§2's strict
 decoder — an old pinned binary must refuse a grammar it cannot read, never
 ignore it). The decisions below are ratified so that each task inherits them
 instead of re-deriving them; the paragraphs that describe measured behaviour
@@ -1001,9 +1004,9 @@ file, so a typo silently moves the verdict: fail; unknown while the file
 itself has not loaded, since its packages were never read); `name`s are
 unique (a load error, so `glyph-toml-loads` already carries it with the
 loader's own remedy — no second check repeats it); and a bare `v*` tag exists
-while no root package is declared — advice, not a defect: those tags baseline
-nothing now, and the note says which package declaration would adopt them
-(lands with the tag-parse task, which is where the tags are first read).
+while no root package is declared (`root-line-tags`, shipped) — advice, not a
+defect: those tags baseline nothing now, and the note says which package
+declaration would adopt them.
 
 **The reusables.** `release.yml` gains a `packages` output (the JSON array
 above, as a string) and keeps its four scalars with the empty-in-packages-mode

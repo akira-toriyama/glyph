@@ -1,14 +1,13 @@
 diff --git a/internal/draftplan/draftplan.go b/internal/draftplan/draftplan.go
-index 072898f..426d04f 100644
+index 072898f..6dd6333 100644
 --- a/internal/draftplan/draftplan.go
 +++ b/internal/draftplan/draftplan.go
-@@ -87,9 +87,6 @@ func managed(prefix string, releases []Draft) []Draft {
+@@ -87,7 +87,7 @@ func managed(prefix string, releases []Draft) []Draft {
  		if !strings.HasPrefix(strings.TrimPrefix(r.TagName, prefix), "v") {
  			continue
  		}
 -		if _, err := bump.ParseVersionOn(prefix, r.TagName); err != nil {
--			continue
--		}
++		if _, err := bump.ParseVersion(strings.TrimPrefix(r.TagName, prefix)); err != nil {
+ 			continue
+ 		}
  		drafts = append(drafts, r)
- 	}
- 	return drafts

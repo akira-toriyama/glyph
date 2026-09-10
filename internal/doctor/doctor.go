@@ -140,6 +140,11 @@ type Input struct {
 	// the top level takes a subprocess, and internal/doctor runs none.
 	ConfigPath    string
 	ConfigPathErr error
+	// Tags / TagsErr are git's tag list for the checkout and the failure to
+	// get one — resolved by the caller like HooksDir, read by the root-line
+	// check alone.
+	Tags    []string
+	TagsErr error
 }
 
 // HookProbe is what came back from firing a hook. Fired with Exit is a real
@@ -161,6 +166,7 @@ type HookProbe struct {
 const (
 	IDConfigLoads    = "glyph-toml-loads"
 	IDPackagePaths   = "package-paths-exist"
+	IDRootLineTags   = "root-line-tags"
 	IDTokenAccess    = "token-repo-read"
 	IDTokenWrite     = "token-repo-write"
 	IDSquashEnabled  = "squash-merge-enabled"
@@ -200,6 +206,7 @@ func Run(in Input) *Report {
 	r := &Report{Repo: in.Repo, Checks: []Check{
 		checkConfig(in.ConfigPath, in.ConfigPathErr),
 		checkPackagePaths(in.ConfigPath, in.ConfigPathErr),
+		checkRootLineTags(in.ConfigPath, in.ConfigPathErr, in.Tags, in.TagsErr),
 		checkTokenAccess(in),
 		checkTokenWrite(in),
 		checkSquashEnabled(in),

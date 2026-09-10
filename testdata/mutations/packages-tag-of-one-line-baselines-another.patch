@@ -1,0 +1,13 @@
+diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
+index d85dd71..5157a36 100644
+--- a/internal/cli/sincetag.go
++++ b/internal/cli/sincetag.go
+@@ -281,7 +281,7 @@ func latestVersionTag(ctx context.Context, prefix string, below *bump.Version) (
+ 		return "", bump.Version{}, terr
+ 	}
+ 	for _, t := range tags {
+-		pv, perr := bump.ParseVersionOn(prefix, t)
++		pv, perr := bump.ParseVersion(strings.TrimPrefix(t, prefix))
+ 		if perr != nil {
+ 			continue
+ 		}

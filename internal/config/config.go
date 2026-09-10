@@ -132,6 +132,18 @@ type Package struct {
 	Name string
 }
 
+// TagPrefix is the line's tag namespace: "" for the root package (its line
+// is the bare vX.Y.Z) and "<path>/" for every other. It is the ONE place the
+// path-to-prefix rule lives; every resolver takes the prefix from here and
+// none re-derives it (a hand-spelled prefix without the slash would name a
+// line that exists nowhere, silently).
+func (p Package) TagPrefix() string {
+	if p.Path == "." {
+		return ""
+	}
+	return p.Path + "/"
+}
+
 // Pattern is one compiled [[patterns]] entry. Order is meaning: the first
 // pattern in file order whose regex matches the message wins, and nothing
 // after it is consulted.
