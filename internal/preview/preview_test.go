@@ -336,3 +336,59 @@ func TestRenderNeutralizesMarkupInTheCell(t *testing.T) {
 		}
 	}
 }
+
+// TestRenderPackages pins the per-line body (DESIGN §4.1, "Preview"): the
+// marker, one headline per line led by the line's name with versions
+// spelled as tags, one table per line, and a footer naming every line's
+// base — the single line's sentences, per line.
+func TestRenderPackages(t *testing.T) {
+	got := Render(Input{Packages: []Package{
+		{Path: "haiku", Current: "haiku/v0.1.0",
+			PR:      Verdict{Level: bump.LevelMinor, Next: "haiku/v0.2.0", Commits: []Commit{{Sigil: "^", Level: bump.LevelMinor, Subject: "add a season"}}},
+			Pending: Verdict{Level: bump.LevelNone}},
+		{Path: "curry", Current: "curry/v0.1.0",
+			PR:      Verdict{Level: bump.LevelPatch, Next: "curry/v0.1.1", Commits: []Commit{{Sigil: "~", Level: bump.LevelPatch, Subject: "swap an ingredient"}}},
+			Pending: Verdict{Level: bump.LevelMinor, Next: "curry/v0.2.0"}},
+	}})
+	want := `<!-- glyph-pr-verdict -->
+**haiku** — 🔼 Merging this PR raises **minor** — the next release becomes **haiku/v0.1.0 → haiku/v0.2.0**.
+**curry** — 🔧 Merging this PR adds **patch**-level changes — the next release stays **curry/v0.2.0** (a **minor** bump is already pending).
+
+### haiku
+
+| commit | sigil | bump |
+|---|---|---|
+| add a season | ` + "`^`" + ` | minor |
+
+### curry
+
+| commit | sigil | bump |
+|---|---|---|
+| swap an ingredient | ` + "`~`" + ` | patch |
+
+Computed from the 2 commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them — folded, per line, with what is already merged on the base branch since **haiku/v0.1.0** (haiku), **curry/v0.1.0** (curry). Pushing more commits updates this comment.
+`
+	if got != want {
+		t.Errorf("Render(packages)\n got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// TestRenderPackagesCountsASharedCommitOnce: a commit that moves two lines
+// sits in both tables and is one commit in the footer's count; an untagged
+// line is named as such instead of given a base.
+func TestRenderPackagesCountsASharedCommitOnce(t *testing.T) {
+	move := Commit{Sigil: "~", Level: bump.LevelPatch, Subject: "move a file across the lines"}
+	got := Render(Input{Packages: []Package{
+		{Path: "haiku", Current: "haiku/v0.1.0", PR: Verdict{Level: bump.LevelPatch, Next: "haiku/v0.1.1", Commits: []Commit{move}}, Pending: Verdict{Level: bump.LevelNone}},
+		{Path: "curry", Current: "curry/v0.0.0", Untagged: true, PR: Verdict{Level: bump.LevelPatch, Next: "curry/v0.0.1", Commits: []Commit{move}}},
+	}})
+	if !strings.Contains(got, "Computed from the 1 commit(s) participating") {
+		t.Errorf("a commit in two lines must be counted once:\n%s", got)
+	}
+	if !strings.Contains(got, "since **haiku/v0.1.0** (haiku). curry has no release tag yet, so nothing merged earlier is folded in for it.") {
+		t.Errorf("the untagged line must be named, not given a base:\n%s", got)
+	}
+	if strings.Count(got, "move a file across the lines") != 2 {
+		t.Errorf("a commit moving two lines sits in both tables:\n%s", got)
+	}
+}
