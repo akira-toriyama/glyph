@@ -1,0 +1,13 @@
+diff --git a/internal/config/config.go b/internal/config/config.go
+index d68758a..5282ee9 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -323,7 +323,7 @@ func Load(data []byte) (*Config, error) {
+ // Config.Packages documents.
+ func buildPackages(raws []rawPackage) ([]Package, error) {
+ 	if len(raws) == 0 {
+-		return nil, nil
++		return []Package{{Path: ".", Name: "."}}, nil
+ 	}
+ 	packages := make([]Package, 0, len(raws))
+ 	byPath := make(map[string]int, len(raws))

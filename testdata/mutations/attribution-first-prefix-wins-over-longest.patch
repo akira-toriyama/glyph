@@ -1,0 +1,13 @@
+diff --git a/internal/attribution/attribution.go b/internal/attribution/attribution.go
+index 7c2586d..9592342 100644
+--- a/internal/attribution/attribution.go
++++ b/internal/attribution/attribution.go
+@@ -140,7 +140,7 @@ func owner(file string, packages []config.Package) (int, bool) {
+ 		default:
+ 			continue
+ 		}
+-		if l > bestLen {
++		if bestLen < 0 {
+ 			best, bestLen, found = i, l, true
+ 		}
+ 	}

@@ -25,7 +25,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"regexp"
+	"strings"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -90,6 +92,14 @@ type Config struct {
 	Commit         Commit
 	Patterns       []Pattern
 	Note           Note
+	// Packages is the [[packages]] array in file order, empty when the file
+	// declares none. Empty means ONE version line with no name — the shape
+	// every repository had before packages existed — and nothing here
+	// synthesises a root package to stand in for it: a consumer that branches
+	// on len(Packages) > 0 is asking "did the author declare lines?", and a
+	// synthesised entry would answer yes for every repository in the fleet
+	// (DESIGN §4.1; mutation row packages-absent-changes-the-single-line).
+	Packages []Package
 }
 
 // Commit carries the human-facing template block. glyph never parses it —
@@ -100,6 +110,26 @@ type Config struct {
 type Commit struct {
 	Style    string
 	Template string
+}
+
+// Package is one validated [[packages]] entry: a declared subtree of the
+// repository with its own version line (DESIGN §4.1). Path is the subtree as
+// written, already checked to be a clean relative path — "." for the root
+// package, else a slash-separated path with no leading "./", no trailing "/"
+// and no ".." — so the tag line <path>/vX.Y.Z is derivable from it without
+// another normalisation step. Name is what a commit scope may call the
+// package: the file's `name` key when set, else the last path segment
+// (path.Base, which is "." for the root package — a scope under the shipped
+// presets cannot spell that, so a root package a scope must be able to name
+// sets `name` explicitly). Names are unique across the array; the loader
+// refuses two packages sharing one and names both.
+//
+// There is deliberately no TagPrefix: the tag line is derived from Path and
+// is not configurable (§4.1 rejects the knob; the strict decoder refuses the
+// key as unknown, which is the whole enforcement).
+type Package struct {
+	Path string
+	Name string
 }
 
 // Pattern is one compiled [[patterns]] entry. Order is meaning: the first
@@ -165,6 +195,12 @@ type raw struct {
 	Commit         rawCommit    `toml:"commit"`
 	Patterns       []rawPattern `toml:"patterns"`
 	Note           rawNote      `toml:"note"`
+	Packages       []rawPackage `toml:"packages"`
+}
+
+type rawPackage struct {
+	Path *string `toml:"path"`
+	Name *string `toml:"name"`
 }
 
 type rawCommit struct {
@@ -250,6 +286,11 @@ func Load(data []byte) (*Config, error) {
 		return nil, fmt.Errorf("note.line: %w", err)
 	}
 
+	packages, err := buildPackages(r.Packages)
+	if err != nil {
+		return nil, err
+	}
+
 	sections := make([]Section, 0, len(r.Note.Sections))
 	for i, rs := range r.Note.Sections {
 		s, err := buildSection(rs)
@@ -270,7 +311,62 @@ func Load(data []byte) (*Config, error) {
 			DraftOnNone: r.Note.DraftOnNone,
 			Sections:    sections,
 		},
+		Packages: packages,
 	}, nil
+}
+
+// buildPackages validates the [[packages]] array. It rejects rather than
+// repairs, like everything else here: a path that is not already clean is
+// refused with the clean form named instead of being normalised, because the
+// path is the tag prefix and a tag line must be readable from the file as
+// written. A nil result for an absent or empty array is the one-line shape
+// Config.Packages documents.
+func buildPackages(raws []rawPackage) ([]Package, error) {
+	if len(raws) == 0 {
+		return nil, nil
+	}
+	packages := make([]Package, 0, len(raws))
+	byPath := make(map[string]int, len(raws))
+	byName := make(map[string]int, len(raws))
+	for i, rp := range raws {
+		p, err := buildPackage(rp)
+		if err != nil {
+			return nil, fmt.Errorf("packages[%d]: %w", i, err)
+		}
+		if j, dup := byPath[p.Path]; dup {
+			return nil, fmt.Errorf("packages[%d] and packages[%d] declare the same path %q: one subtree is one version line", j, i, p.Path)
+		}
+		if j, dup := byName[p.Name]; dup {
+			return nil, fmt.Errorf("packages[%d] (%q) and packages[%d] (%q) share the name %q: a scope naming it could mean either line — set name on one of them", j, packages[j].Path, i, p.Path, p.Name)
+		}
+		byPath[p.Path] = i
+		byName[p.Name] = i
+		packages = append(packages, p)
+	}
+	return packages, nil
+}
+
+func buildPackage(rp rawPackage) (Package, error) {
+	if rp.Path == nil || *rp.Path == "" {
+		return Package{}, fmt.Errorf("path is required and must not be empty (\".\" declares the root package)")
+	}
+	p := *rp.Path
+	switch {
+	case strings.HasPrefix(p, "/"):
+		return Package{}, fmt.Errorf("path %q is absolute: a package is a subtree of the repository, written relative to glyph.toml", p)
+	case p == ".." || strings.HasPrefix(p, "../"):
+		return Package{}, fmt.Errorf("path %q escapes the repository: a package is a subtree of the checkout glyph.toml sits in", p)
+	case path.Clean(p) != p:
+		return Package{}, fmt.Errorf("path %q is not in clean form: write %q (the path is the tag prefix, <path>/vX.Y.Z, and is read from the file as written)", p, path.Clean(p))
+	}
+	name := path.Base(p)
+	if rp.Name != nil {
+		if *rp.Name == "" {
+			return Package{}, fmt.Errorf("name is empty: drop the key to take the default (%q, the last path segment) or write the word a scope will use", name)
+		}
+		name = *rp.Name
+	}
+	return Package{Path: p, Name: name}, nil
 }
 
 func strictUnmarshal(data []byte, r *raw) error {

@@ -160,6 +160,7 @@ type HookProbe struct {
 // versioned surface it is.
 const (
 	IDConfigLoads    = "glyph-toml-loads"
+	IDPackagePaths   = "package-paths-exist"
 	IDTokenAccess    = "token-repo-read"
 	IDTokenWrite     = "token-repo-write"
 	IDSquashEnabled  = "squash-merge-enabled"
@@ -188,7 +189,8 @@ const (
 // Check order is the report order and is chosen for reading: glyph.toml
 // first, because it is the precondition every verdict command reads before
 // anything else — with it down nothing else glyph does can run, however
-// healthy the rest of the report is. Then the token checks, because the read
+// healthy the rest of the report is — and the package paths it declares
+// right behind it, the one check that reads the loaded file. Then the token checks, because the read
 // explains every could-not-run below it (and the write advisory rides on the
 // same response), then the three merge methods, then the squash policy they
 // enable, then the remaining LOCAL checks — the workflow pins and the
@@ -197,6 +199,7 @@ const (
 func Run(in Input) *Report {
 	r := &Report{Repo: in.Repo, Checks: []Check{
 		checkConfig(in.ConfigPath, in.ConfigPathErr),
+		checkPackagePaths(in.ConfigPath, in.ConfigPathErr),
 		checkTokenAccess(in),
 		checkTokenWrite(in),
 		checkSquashEnabled(in),
