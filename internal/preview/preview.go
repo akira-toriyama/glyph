@@ -73,6 +73,25 @@ type Input struct {
 	// workflow log, which is the whole reason the prose lives in a testable
 	// package instead of in the caller's jq.
 	PendingShort string
+	// Packages is the per-line fold of a repository that declares
+	// [[packages]] (DESIGN §4.1): one entry per line the pull's commits are
+	// attributed to, in config order — a line the pull does not touch is not
+	// mentioned. When it is non-empty the scalar fields above describe no one
+	// line and are ignored, except PendingShort, which qualifies every line's
+	// pending side at once (one walk read them all).
+	Packages []Package
+}
+
+// Package is one line's fold: its path (the line's name), what its version
+// currently is — spelled as the line's TAG, haiku/v0.1.0, so two lines can
+// never be confused in one comment — whether the line has released at all,
+// and the two verdicts, their Next spelled as tags too.
+type Package struct {
+	Path     string
+	Current  string
+	Untagged bool
+	PR       Verdict
+	Pending  Verdict
 }
 
 // rank orders levels for the fold, and is the ONLY test this package applies to
@@ -173,6 +192,9 @@ func escapeCell(s string) string {
 
 // Render composes the whole comment body.
 func Render(in Input) string {
+	if len(in.Packages) > 0 {
+		return renderPackages(in)
+	}
 	var b strings.Builder
 	b.WriteString(Marker + "\n")
 	b.WriteString(Headline(in) + "\n")
@@ -200,6 +222,77 @@ func Render(in Input) string {
 
 	b.WriteString("\n" + footer(in) + "\n")
 	return b.String()
+}
+
+// renderPackages is Render for a repository with lines: one headline per
+// touched line — the single line's sentence, led by the line's name, with
+// the versions spelled as tags — then one commit table per line (a commit
+// that touches two lines sits in both, as it participates in both), the
+// notes preview once (its per-line headings are the notes' own), and a
+// footer that names every line's base. The marker and the warning block are
+// the single line's, byte for byte: the sticky-comment contract and the
+// incomplete-walk caveat do not change shape because there are two lines.
+func renderPackages(in Input) string {
+	var b strings.Builder
+	b.WriteString(Marker + "\n")
+	for _, p := range in.Packages {
+		fmt.Fprintf(&b, "**%s** — %s\n", p.Path, Headline(Input{Current: p.Current, Untagged: p.Untagged, PR: p.PR, Pending: p.Pending}))
+	}
+	if in.PendingShort != "" {
+		fmt.Fprintf(&b, "\n> [!WARNING]\n> The pending side of this fold is INCOMPLETE: %s. Anything already merged but unreleased may be missing from the figures above, so treat each as a floor rather than the answer.\n", in.PendingShort)
+	}
+	for _, p := range in.Packages {
+		if len(p.PR.Commits) == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, "\n### %s\n\n| commit | sigil | bump |\n|---|---|---|\n", p.Path)
+		for _, c := range p.PR.Commits {
+			fmt.Fprintf(&b, "| %s | `%s` | %s |\n", escapeCell(c.Subject), c.Sigil, c.Level)
+		}
+	}
+	if in.Notes != "" {
+		b.WriteString("\n<details>\n<summary>Release notes preview</summary>\n\n")
+		b.WriteString(strings.TrimRight(in.Notes, "\n"))
+		b.WriteString("\n\n</details>\n")
+	}
+	b.WriteString("\n" + packagesFooter(in) + "\n")
+	return b.String()
+}
+
+// packagesFooter is footer per line: the participating commits are counted
+// once each (a commit in two lines is one commit), and the base every line
+// was folded since is named — or the line said to have no release tag yet.
+func packagesFooter(in Input) string {
+	seen := map[string]bool{}
+	n := 0
+	var bases, untagged []string
+	for _, p := range in.Packages {
+		for _, c := range p.PR.Commits {
+			key := c.Sigil + "\x00" + c.Subject
+			if !seen[key] {
+				seen[key] = true
+				n++
+			}
+		}
+		if p.Untagged {
+			untagged = append(untagged, p.Path)
+			continue
+		}
+		bases = append(bases, fmt.Sprintf("**%s** (%s)", p.Current, p.Path))
+	}
+	s := fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them", n)
+	if len(bases) > 0 {
+		how := "with what is already merged on the base branch"
+		if in.PendingShort != "" {
+			how = "with as much of what is already merged on the base branch as the walk could read"
+		}
+		s += fmt.Sprintf(" — folded, per line, %s since %s", how, strings.Join(bases, ", "))
+	}
+	s += "."
+	if len(untagged) > 0 {
+		s += fmt.Sprintf(" %s has no release tag yet, so nothing merged earlier is folded in for it.", strings.Join(untagged, " and "))
+	}
+	return s + " Pushing more commits updates this comment."
 }
 
 func footer(in Input) string {

@@ -17,18 +17,23 @@ var (
 )
 
 // previewResult is the machine verdict:
-// {current, untagged, level, next, pr, pending, body}. level/next are the FOLDED
+// {current, untagged, level, next, pr, pending, body} — plus packages when
+// the repository declares [[packages]]. level/next are the FOLDED
 // answer — what the version becomes if this PR merges — so a caller never
 // re-derives it from the two sides; pr and pending are the two sides it folded,
-// reported separately so a comment can show the working.
+// reported separately so a comment can show the working. With packages
+// declared the scalars are empty (pr and pending read "none") and packages
+// carries one folded verdict per touched line (DESIGN §4.1): pr-verdict.yml's
+// level output is then "", which its callers already treat as not computed.
 type previewResult struct {
-	Current  string `json:"current"`
-	Untagged bool   `json:"untagged"`
-	Level    string `json:"level"`
-	Next     string `json:"next,omitempty"`
-	PR       string `json:"pr"`
-	Pending  string `json:"pending"`
-	Body     string `json:"body"`
+	Current  string           `json:"current"`
+	Untagged bool             `json:"untagged"`
+	Level    string           `json:"level"`
+	Next     string           `json:"next,omitempty"`
+	PR       string           `json:"pr"`
+	Pending  string           `json:"pending"`
+	Body     string           `json:"body"`
+	Packages []packagePreview `json:"packages,omitempty"`
 }
 
 func newPreviewCmd() *cobra.Command {
@@ -76,8 +81,8 @@ func previewRun(cmd *cobra.Command) error {
 	if err := checkPRFlag(previewPR); err != nil {
 		return err
 	}
-	if rerr := refusePackages(cfg, "preview"); rerr != nil {
-		return rerr
+	if len(cfg.Packages) > 0 {
+		return previewLines(ctx, cfg)
 	}
 
 	// The PR side: pure API, bounded by the PR's own commits.

@@ -804,10 +804,12 @@ and the contradiction check; and the drafts (t-qecb): `release` converges
 one rolling draft per line (`internal/cli/release_lines.go` — every line's
 upsert before any stray, the single line's bare draft deleted as residue,
 the footer on every draft, `packages[]` in the verdict with the scalars
-empty). `preview` refuses a packages repository at exit 2 until its
-per-line form lands.** That, and the reusable below, are the remaining
-`e-7hat` tasks on the projects board, and the presets' commented example
-says so until this line says otherwise. A binary older than the schema refuses the file (§2's strict
+empty); and the preview (t-npye): `preview --pr` attributes the pull's
+commits over the API and renders one headline and one table per touched
+line (`internal/cli/preview_lines.go`, `preview.Package`), the pending
+side from one walk.** The reusable below is the remaining `e-7hat` task on
+the projects board, and the presets' commented example says so until this
+line says otherwise. A binary older than the schema refuses the file (§2's strict
 decoder — an old pinned binary must refuse a grammar it cannot read, never
 ignore it). The decisions below are ratified so that each task inherits them
 instead of re-deriving them; the paragraphs that describe measured behaviour
@@ -1039,7 +1041,23 @@ are attributed to, in config order, each with that line's current version and
 next; a package the pull does not touch is not mentioned, and a pull whose
 commits carry nothing (`=` everywhere, or shared-only `=`) says it moves
 nothing, as today. `pr-verdict.yml` renders what the binary hands it and
-needs no change.
+needs no change. The pull's commits exist on its branch only, so their files
+come from `GET /commits/{sha}` — one request per participating commit, the
+squash arm's price paid before the merge — and a commit attribution refuses
+is refused here at exit 3, the same lint-class answer the walk will give
+once it is merged, while the branch can still be fixed. The pending side is
+the one walk, run when any touched line has a release tag (the release-floor
+guard per line); a touched line with no tag reports its PR verdict alone and
+the footer says so. The body is the single line's sentences per line: the
+marker, one headline per touched line led by the line's name with versions
+spelled as tags (`haiku/v0.1.0 → haiku/v0.2.0`, so two lines can never be
+confused), one commit table per line (a commit moving two lines sits in
+both, counted once in the footer), the notes preview under the notes' own
+`# <path>` headings, and the incomplete-walk warning once — one walk read
+every line. The machine verdict gains `packages: [{path, current, untagged,
+level, next, pr, pending}]` with the scalars empty, so `pr-verdict.yml`'s
+`level` output is `""` — not computed — exactly as its callers already read
+it.
 
 **Lint.** Attribution needs files, so it belongs to the inputs that have them:
 `lint --range` (local git) applies rules 2–3 and the contradiction check when

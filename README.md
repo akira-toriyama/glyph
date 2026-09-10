@@ -360,9 +360,15 @@ any hand-written prose it carried into the line's own draft first. GitHub's
 Latest badge lands on whichever line a human published last; glyph never
 sets `make_latest`. A tag that selects one line converges that line alone.
 
-Not there yet, and refused at exit 2 rather than answered on the wrong
-line: `preview` (a verdict per package the pull touches). A repository
-without `[[packages]]` is untouched by all of this, byte for byte.
+`preview --pr` posts one headline per line the pull touches — `**haiku** —
+🔼 Merging this PR raises **minor** — the next release becomes
+**haiku/v0.1.0 → haiku/v0.2.0**.` — with one commit table per line and the
+notes preview per line; a line the pull does not touch is not mentioned, and
+a shared-only `^` is refused at exit 3 here first, while the branch can
+still be fixed. The reusables (`pr-verdict.yml`, `release.yml`) render what
+the binary hands them; `release.yml`'s per-line outputs are the one piece
+still to land. A repository without `[[packages]]` is untouched by all of
+this, byte for byte.
 
 ## Exit codes
 

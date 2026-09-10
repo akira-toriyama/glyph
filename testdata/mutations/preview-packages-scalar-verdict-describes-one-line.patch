@@ -1,0 +1,17 @@
+diff --git a/internal/cli/preview_lines.go b/internal/cli/preview_lines.go
+index 9c8d0a8..7957d62 100644
+--- a/internal/cli/preview_lines.go
++++ b/internal/cli/preview_lines.go
+@@ -202,7 +202,11 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
+ 		if pkgs == nil {
+ 			pkgs = []packagePreview{}
+ 		}
+-		printCompact(previewResult{Pending: string(bump.LevelNone), PR: string(bump.LevelNone), Body: body, Packages: pkgs})
++		res := previewResult{Pending: string(bump.LevelNone), PR: string(bump.LevelNone), Body: body, Packages: pkgs}
++		if len(pkgs) > 0 {
++			res.Current, res.Level, res.Next = pkgs[0].Current, pkgs[0].Level, pkgs[0].Next
++		}
++		printCompact(res)
+ 		return nil
+ 	}
+ 	fmt.Fprint(out, body)
