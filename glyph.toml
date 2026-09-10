@@ -12,9 +12,10 @@ exclude_authors = ['dependabot[bot]', 'renovate[bot]']
 # package takes its files out of its parent); a commit touching no package's
 # files may name one in its scope, and with a version sigil MUST. Leave this
 # out for one version line, which is what every repository has without it.
-# Not yet a verdict input: a declared package is validated here and checked
-# by `glyph doctor`, and the per-line walk is still being built (see
-# docs/DESIGN.md §4.1, its status line).
+# A verdict input wherever a diff can be read — bump, notes, release,
+# preview --pr, lint --range, the pre-push hook — and the reusable
+# release.yml answers per line through its `packages` output
+# (docs/DESIGN.md §4.1).
 #
 # [[packages]]
 # path = "haiku"          # tags haiku/vX.Y.Z; a scope calls it (haiku)

@@ -17,6 +17,15 @@ name: glyph-release
 # proves nothing about this one, and the hand copy had already drifted three
 # glyph releases behind the workflows around it once.
 #
+# A repository that declares [[packages]] (glyph docs/DESIGN.md §4.1) is the
+# fourth shape: glyph keeps one rolling draft PER LINE, the four scalar
+# outputs are "" (there is no one line for them to describe — a single-line
+# caller fails safe on that, as its contract already says) and `packages`
+# hands every line's verdict through as one JSON array. Such a repository is
+# verdict-only by construction: `app` / `binary` name one artifact for one
+# draft and are refused once the verdict says packages; a monorepo attaches
+# per line in a follow-up job over `packages` (README says how).
+#
 # A push to the caller's main makes `glyph release` walk main's squash
 # commits since the last v* tag, resolve each to its merged pull request over
 # the API and classify the PR's individual (pre-squash) commits — squash-safe,
@@ -155,6 +164,19 @@ on:
           draft: create | update | delete | none. Empty when no verdict was
           computed.
         value: ${{ jobs.release.outputs.action }}
+      packages:
+        description: >-
+          The per-line verdicts of a repository that declares [[packages]]
+          (glyph DESIGN §4.1), one JSON array in config order:
+          [{path, current, level, next, tag, action, commits, reason}] —
+          `tag` (haiku/v0.2.0) is what a follow-up job hands to
+          `gh release upload`. Each line's draft body and url are stripped:
+          the body already lives in the draft (and N of them could meet the
+          1 MB output cap), the url for the reason the single line's url is
+          withheld. Empty when the repository declares no packages — the
+          four scalars carry the verdict then — and empty when no verdict
+          was computed. When it is set, the four scalars are "" by contract.
+        value: ${{ jobs.release.outputs.packages }}
 
 permissions:
   contents: write
@@ -180,13 +202,18 @@ jobs:
       next: ${{ steps.verdict.outputs.next }}
       current: ${{ steps.verdict.outputs.current }}
       action: ${{ steps.verdict.outputs.action }}
+      packages: ${{ steps.verdict.outputs.packages }}
     steps:
       # `required: true` cannot express "at most one of app/binary", so the
       # arity is enforced here, before anything else runs. NEITHER is the
       # verdict-only mode — a repo whose release IS the notes (glyph-test is
       # the one in the fleet) — and it is a real mode rather than an oversight,
       # so it is spelled out in the log. BOTH is still an error: there is one
-      # artifact per release and no order in which two would attach.
+      # artifact per release and no order in which two would attach. The
+      # third refusal — either input on a repository that declares packages —
+      # cannot be asked here: the declaration is in the caller's glyph.toml,
+      # which is not checked out yet and which glyph alone reads; it is asked
+      # of the verdict envelope below.
       - name: Validate the artifact inputs
         env:
           APP: ${{ inputs.app }}
@@ -352,6 +379,13 @@ jobs:
           # COMPUTED by the workflow_call contract (a skipped or dead run reads
           # the same), so the reads are best-effort on purpose.
           emit() { echo "$1=$(jq -r "$2 // empty" "$RUNNER_TEMP/verdict.json" 2>/dev/null || true)" >> "$GITHUB_OUTPUT"; }
+          # A packages repository (glyph DESIGN §4.1) answers per line: the
+          # array goes through as ONE JSON string, minus each line's body (the
+          # draft holds it, and N bodies could meet the 1 MB output cap) and
+          # url (withheld per line for the reason it is withheld above — the
+          # handle would make auto-publish a two-line caller step). "" when
+          # the file declares no packages: the four scalars carry the verdict.
+          emit_packages() { echo "packages=$(jq -r '(.packages // []) | map(del(.body, .url)) | if length == 0 then empty else tojson end' "$RUNNER_TEMP/verdict.json" 2>/dev/null || true)" >> "$GITHUB_OUTPUT"; }
           if [ "$status" -eq 1 ]; then
             # Soft no-release: nothing version-worthy since the last tag.
             # glyph already converged the draft state (residual glyph-managed
@@ -362,6 +396,7 @@ jobs:
             emit level   .level
             emit current .current
             emit action  .action
+            emit_packages
             # No tag is due on a none verdict; empty, not the absent field's null.
             echo "next=" >> "$GITHUB_OUTPUT"
             exit 0
@@ -376,8 +411,35 @@ jobs:
           emit level   .level
           emit current .current
           emit action  .action
+          emit_packages
           echo "next=$tag" >> "$GITHUB_OUTPUT"
-          echo "verdict: $tag (draft $action)"
+          if [ -n "$tag" ]; then
+            echo "verdict: $tag (draft $action)"
+          else
+            # packages: the scalars are "" and each line reports itself.
+            jq -r '.packages[] | "verdict: \(.path): \(.level) -> \(.tag // "-") (draft \(.action))"' "$RUNNER_TEMP/verdict.json"
+          fi
+
+      # `app` / `binary` describe ONE artifact for ONE draft. A repository
+      # that declares [[packages]] keeps one draft per line, and there is no
+      # line the one artifact would belong to — a monorepo attaches per line
+      # in a follow-up job of its own, reading `packages` (README says how).
+      # The refusal reads the verdict envelope, not the inputs alone, because
+      # the declaration lives in the caller's glyph.toml and glyph is its only
+      # reader (a grep for `[[packages]]` here would fork the grammar — the
+      # defect class the outputs exist to avoid). So the drafts are already
+      # upserted, correctly, and only the build and the attach are refused:
+      # red on every push until the caller drops the input — a
+      # misconfiguration, never a transient.
+      - name: Refuse an artifact input on a packages repository
+        if: steps.verdict.outputs.packages != '' && (inputs.app != '' || inputs.binary != '')
+        env:
+          APP: ${{ inputs.app }}
+          BINARY: ${{ inputs.binary }}
+        run: |
+          set -euo pipefail
+          echo "::error::this repository declares [[packages]] (one rolling draft per line), and 'app'/'binary' (${APP}${BINARY}) name one artifact for one draft. Drop the input and attach per line in a follow-up job over the 'packages' output."
+          exit 1
 
       # Build <App>.app via package.sh (ad-hoc signed for CI — the script
       # picks $CODESIGN_ID > .signing-id > "-"). Optional smoke for apps that
@@ -458,8 +520,23 @@ jobs:
         if: steps.verdict.outputs.release == 'true' && !inputs.dry-run
         env:
           TAG: ${{ steps.verdict.outputs.tag }}
+          PACKAGES_MODE: ${{ steps.verdict.outputs.packages != '' }}
         run: |
           set -euo pipefail
+          if [ "$PACKAGES_MODE" = "true" ]; then
+            # One draft per line: every line the run wrote, by its own tag.
+            # A line that folded to none has no url and is not a draft to publish.
+            jq -r '.packages[] | select(.url // "" != "") | "::notice::Draft release \(.tag) upserted (unpublished, no tag yet). Review & Publish manually: \(.url)"' "$RUNNER_TEMP/verdict.json"
+            {
+              echo "## Draft releases upserted (unpublished), one per line"
+              echo
+              echo "Merging more to main grows each draft. Review and Publish"
+              echo "manually, per line (the tag is created at Publish time):"
+              echo
+              jq -r '.packages[] | select(.url // "" != "") | "- \(.tag) (\(.action)): \(.url)"' "$RUNNER_TEMP/verdict.json"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           url="$(jq -r '.url // empty' "$RUNNER_TEMP/verdict.json")"
           echo "::notice::Draft release ${TAG} upserted (unpublished, no tag yet). Review & Publish manually: ${url}"
           {
@@ -476,7 +553,8 @@ jobs:
         if: steps.verdict.outputs.release == 'true' && inputs.dry-run
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: release-preview-${{ steps.verdict.outputs.tag }}
+          # packages: the scalar tag is "", the envelope carries every line.
+          name: release-preview-${{ steps.verdict.outputs.tag || 'packages' }}
           path: |
             artifacts/
             ${{ runner.temp }}/verdict.json
@@ -485,8 +563,16 @@ jobs:
         if: steps.verdict.outputs.release == 'true' && inputs.dry-run
         env:
           TAG: ${{ steps.verdict.outputs.tag }}
+          PACKAGES_MODE: ${{ steps.verdict.outputs.packages != '' }}
         run: |
           set -euo pipefail
+          if [ "$PACKAGES_MODE" = "true" ]; then
+            {
+              echo "## Dry run (nothing written), one verdict per line"
+              jq -r '.packages[] | "\n### \(.path): \(.level) -> \(.tag // "-") (the draft action would be: \(.action))\n\n```\n\(.body // "")\n```"' "$RUNNER_TEMP/verdict.json"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           {
             echo "## Dry run: ${TAG} (nothing written)"
             echo

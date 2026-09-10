@@ -23,8 +23,9 @@ import (
 // act of publishing (and therefore cutting the tag) is the safety net §4/§6
 // rest on.
 
-// releaseOutputs are the four names, in declaration order.
-var releaseOutputs = []string{"level", "next", "current", "action"}
+// releaseOutputs are the names, in declaration order: the four scalars and,
+// since packages (t-dc9e, DESIGN §4.1 "The reusables"), the per-line array.
+var releaseOutputs = []string{"level", "next", "current", "action", "packages"}
 
 // TestReleaseOutputsAreWiredThroughAllThreeLayers: for each name, the
 // workflow_call declaration maps to the release job, the job maps to the
@@ -60,6 +61,13 @@ func TestReleaseOutputsAreWiredThroughAllThreeLayers(t *testing.T) {
 	if got := strings.Count(body, `echo "next=`); got != 2 {
 		t.Errorf("the verdict step writes next= %d time(s), want 2 (empty on the none arm, the tag on "+
 			"the release arm)", got)
+	}
+	// packages is written by its own helper (the array needs a jq of its own),
+	// on both arms for the same reason: every line's none verdict is a legible
+	// answer, and exit 1 is the whole repository folding to none.
+	if got := strings.Count(body, "emit_packages\n"); got != 2 {
+		t.Errorf("the verdict step calls emit_packages %d time(s), want 2 (the none arm and the release arm) — "+
+			"the arm that lost its write answers \"\" and a packages caller reads that as NOT COMPUTED", got)
 	}
 }
 

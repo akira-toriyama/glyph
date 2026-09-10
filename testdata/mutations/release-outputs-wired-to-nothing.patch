@@ -1,8 +1,8 @@
 diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
-index df5b0a8..74e1a3a 100644
+index 5650a5b..0d9e038 100644
 --- a/.github/workflows/release.yml
 +++ b/.github/workflows/release.yml
-@@ -174,11 +174,6 @@ jobs:
+@@ -197,12 +197,6 @@ jobs:
      # Bounded so a hung step (build, signing, upload) can't burn the macOS
      # minutes budget. Generous — a cold build + package + upload fits easily.
      timeout-minutes: 30
@@ -11,6 +11,7 @@ index df5b0a8..74e1a3a 100644
 -      next: ${{ steps.verdict.outputs.next }}
 -      current: ${{ steps.verdict.outputs.current }}
 -      action: ${{ steps.verdict.outputs.action }}
+-      packages: ${{ steps.verdict.outputs.packages }}
      steps:
        # `required: true` cannot express "at most one of app/binary", so the
        # arity is enforced here, before anything else runs. NEITHER is the

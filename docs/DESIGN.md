@@ -807,9 +807,11 @@ the footer on every draft, `packages[]` in the verdict with the scalars
 empty); and the preview (t-npye): `preview --pr` attributes the pull's
 commits over the API and renders one headline and one table per touched
 line (`internal/cli/preview_lines.go`, `preview.Package`), the pending
-side from one walk.** The reusable below is the remaining `e-7hat` task on
-the projects board, and the presets' commented example says so until this
-line says otherwise. A binary older than the schema refuses the file (§2's strict
+side from one walk; and the reusable (t-dc9e): `release.yml` hands the
+per-line verdicts through as its `packages` output, the scalars `""`, and
+refuses `app` / `binary` once the verdict says packages.** The line is
+complete; what remains of `e-7hat` is the runbook's rollout and the live-fire
+harness. A binary older than the schema refuses the file (§2's strict
 decoder — an old pinned binary must refuse a grammar it cannot read, never
 ignore it). The decisions below are ratified so that each task inherits them
 instead of re-deriving them; the paragraphs that describe measured behaviour
@@ -1082,10 +1084,20 @@ declaration would adopt them.
 **The reusables.** `release.yml` gains a `packages` output (the JSON array
 above, as a string) and keeps its four scalars with the empty-in-packages-mode
 rule, so a caller written for the single line fails safe on `""` exactly as
-its contract already tells it to. Its artifact inputs (`app` / `binary`)
-describe one artifact for one draft, and are refused at the input validation
-step when the repository declares packages: a monorepo attaches per line in
-its own job, reading `packages`. `lint.yml` and `pr-verdict.yml` are
+its contract already tells it to. The array goes through minus each line's
+`body` and `url`: the body already lives in the draft and N of them could
+meet the 1 MB output cap, and the url is withheld per line for the reason the
+single line's url is withheld (the handle makes auto-publish a two-line
+caller step; publishing stays human). Its artifact inputs (`app` / `binary`)
+describe one artifact for one draft, and are refused when the repository
+declares packages: a monorepo attaches per line in its own job, reading
+`packages`. The refusal is asked of the verdict envelope — after the drafts
+are upserted, before the build — rather than of the input-validation step,
+because the declaration lives in the caller's `glyph.toml`, which that step
+has not checked out and which glyph alone reads (a grep for `[[packages]]` in
+the workflow would fork the grammar, the defect class the outputs exist to
+avoid); the drafts written first are correct, and the misconfigured run stays
+red until the input is dropped. `lint.yml` and `pr-verdict.yml` are
 unchanged. The rollout is the runbook's: the binary change is additive, so
 `fleet-preflight` must report zero verdict moves and zero body re-renders on
 every repository without `[[packages]]`, and the live fire is
