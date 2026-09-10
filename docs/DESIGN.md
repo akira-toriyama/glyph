@@ -794,11 +794,17 @@ schema in `internal/config`, the attribution rule as `internal/attribution`,
 and `doctor`'s path-exists check (t-exs0); the line primitives — a tag is
 parsed *on* a line (`bump.ParseVersionOn`, `config.Package.TagPrefix`), and
 the walk base, the published floor and the managed drafts are each resolved
-per line — plus `doctor`'s root-line advice (t-q047).** Every resolver still
-runs on the bare line alone: declaring a package changes no verdict yet — the
-walk that selects lines, the fold, the N drafts, the preview and the reusable
-below are the remaining `e-7hat` tasks on the projects board, and the
-presets' commented example says so until this line says otherwise. A binary older than the schema refuses the file (§2's strict
+per line — plus `doctor`'s root-line advice (t-q047); and the walk itself
+(t-ws0s): `internal/cli/lines.go` resolves the lines a `--since-tag` names,
+walks the union once, fetches each participating commit's files from local
+git or the API, and partitions the walk per line, so `bump` and `notes`
+answer per line over `--since-tag` and `--range` (the `packages` array
+below, scalars empty), `lint --range` and the pre-push hook apply rules 2–3
+and the contradiction check, and `preview` and `release` refuse a packages
+repository at exit 2 until their per-line forms land.** Those two, the N
+drafts and the reusable below are the remaining `e-7hat` tasks on the
+projects board, and the presets' commented example says so until this line
+says otherwise. A binary older than the schema refuses the file (§2's strict
 decoder — an old pinned binary must refuse a grammar it cannot read, never
 ignore it). The decisions below are ratified so that each task inherits them
 instead of re-deriving them; the paragraphs that describe measured behaviour
@@ -896,23 +902,36 @@ squash arm, whose listed shas exist on no branch, the API does:
 branch holds — **measured** 2026-09-10 on glyph-test #83 (inner `2aff743`,
 unknown to local git, answered with one file where the pull's net diff had
 two). So the price of attribution is one round trip per squash-arm inner
-commit, on top of §4's one per merge point and one per pull; the fleet's pulls
-carry one to four commits, and the number is reported in DESIGN's walk-cost
-line once the implementation measures it. The endpoint pages its file list
-past 300 entries and stops at 3000; a commit whose listing reaches that cap is
-an **incomplete walk** in the sense §4 already defines (a package it touched
-past the cap is unreachable, not absent), recorded in `walkFacts` beside
-`Truncated` and refused by `release` (exit 4). Attribution is per commit and
-never per pull. `GET /pulls/{N}/files` — one call, the pull's net diff — was
-rejected twice over: a pull touching two packages with a `^` in one and a `~`
-in the other would bump both lines by the higher sigil, which discards
-exactly the per-commit typing §1 exists for; and the net diff is not the sum
-of the commits (a change made and undone inside the pull is absent from it),
-so it cannot even attribute the commits it would replace. The version follows
-the commits, not the diff — the stance the single line has always taken.
-Merge commits are attributed to nothing: `bump.ExcludedFromClassification`
-already keeps them out of the fold on their parent count, so their diff is
-never asked for.
+commit, on top of §4's one per merge point and one per pull — a squash-merged
+pull of *k* commits costs 2 + *k* requests where it cost 2 (measured
+2026-09-10 on glyph-monorepo-test, pulls #1 and #2 of one and two commits:
+seven requests, four of them the merge points and the listings);
+nothing else in the walk changes price, and a repository without
+`[[packages]]` pays nothing new because no file is ever asked for. The
+whole-history cap (`sinceTagWalkCap`) still counts commits, not requests: a
+capped first walk of a packages repository may cost up to twice the cap. The
+endpoint pages its file list at 300 per page (`Link: rel="next"`, followed)
+and stops at 3000 — **measured** 2026-09-10 on torvalds/linux's 17k-file root
+commit: `rel="last"` at page 10, page 11 empty; a commit whose listing reaches
+that cap is an **incomplete walk** in the sense §4 already defines (a package
+it touched past the cap is unreachable, not absent), recorded in `walkFacts`
+as `FilesCapped` beside `Truncated`, so `complete()` is false and a writing
+command refuses (exit 4). Attribution is per commit and never per pull.
+`GET /pulls/{N}/files` — one call, the pull's net diff — was rejected twice
+over: a pull touching two packages with a `^` in one and a `~` in the other
+would bump both lines by the higher sigil, which discards exactly the
+per-commit typing §1 exists for; and the net diff is not the sum of the
+commits (a change made and undone inside the pull is absent from it), so it
+cannot even attribute the commits it would replace. The version follows the
+commits, not the diff — the stance the single line has always taken. Merge
+commits are attributed to nothing and their diff is never asked for: under
+the presets a skip pattern already drops them, and a merge commit some other
+pattern claims is judged on its scope and sigil alone (rules 2–3), the same
+as any commit whose diff touches no package. A file is asked about under
+both names of a rename (`git diff-tree --no-renames`; the API's
+`previous_filename`), which is what rule 1's "a rename across two modules
+moves both lines" needs — with detection on, the line the file left would
+never hear of it.
 
 **The walk is one walk.** Each package's range is `<its base>..HEAD`, its
 base resolved exactly as §4 resolves the single line's — the highest parseable
@@ -921,12 +940,16 @@ tag carrying the package's prefix (`latestVersionTag` per prefix; a
 `packages-tag-of-one-line-baselines-another.patch`), else no tag and the
 whole history. The walk runs once over the **union** of those ranges (the
 range from the bases' common ancestor to `HEAD`, which contains the union),
-resolving each merge point once, and `inRange` becomes *in which lines* a sha
-is unreleased rather than a boolean; a listed commit participates in package
-p when it is attributed to p **and** its governing on-branch commit (its
-landing site, else its pull's merge point) is unreleased on p's line. N walks
-over overlapping ranges would resolve the same pulls N times for the same
-answers, and were rejected on cost alone. The whole-history cap applies to
+resolving each merge point once, and the range question becomes *in which
+lines* a sha is unreleased rather than a boolean (each line's own
+`base..HEAD` set, read from local git, free); a listed commit participates
+in package p when it is attributed to p **and** its governing on-branch
+commit (its landing site, else its pull's merge point) is unreleased on p's
+line. A commit the union holds that is released on every line — possible
+where the common ancestor sits before both bases — is walked, because the
+union had to contain it, and dropped with a notice. N walks over overlapping
+ranges would resolve the same pulls N times for the same answers, and were
+rejected on cost alone. The whole-history cap applies to
 the union walk as it does today, and its remedy gains a package form the
 error names: a package with no tag of its own — the common case of a package
 added to an old repository — is baselined by cutting **`<path>/v0.0.0` at the
@@ -937,9 +960,17 @@ reading — **a tag names a line.** A prefixed TAG selects that package alone
 (the verdict, the notes and the draft are that line's, and the other lines are
 not converged), which is what tag-time note rendering needs (`goreleaser.yml`
 already runs `notes --since-tag=below:TAG` from the tagged commit); a bare
-`--since-tag` walks every line. `--current` is accepted only when one line is
-selected, refused at exit 2 otherwise: with two lines it would name a version
-for a verdict that has two.
+`--since-tag` walks every line; a tag on a line no `[[packages]]` entry
+declares — `fish/v1.0.0`, or a bare `v1.0.0` with no root package — is usage
+(exit 2), never a walk of some other line; a tag that is not a version on any
+line names no line, so every line walks from it and steps from its own
+highest tag, as the single line does. `--current` is accepted only when one
+line is selected, refused at exit 2 otherwise: with two lines it would name a
+version for a verdict that has two. `--pr` on `bump` and `notes` is refused
+under packages for the reason the lint paragraph gives — a pull's listing
+carries messages and no files — and `--range` answers per line from local
+git, every commit unreleased on every line (a `--range` fold names no
+release base) and each line stepping from its own highest tag.
 
 **The fold, the step, the exit.** `FoldSigils` runs once per package over
 that package's participating commits, so §3 is unchanged per line: max-fold,
@@ -955,7 +986,15 @@ action, commits, reason}]` while the scalar `current` / `level` / `next` /
 packages are declared** — a repository with packages has no one line for them
 to describe, and a consumer that reads only the scalars is exactly the
 consumer that must not act (mutation row
-`packages-scalar-verdict-describes-one-line.patch`).
+`packages-scalar-verdict-describes-one-line.patch`). The top-level `commits`
+then lists every commit that participates on any line — a shared-only `=`
+among them, on no line but read — and `notes`' verdict mirrors the shape:
+`packages: [{path, sections}]` with the top-level `sections` empty. On
+stdout, `bump` prints the next **tag** of every line that moves, one per
+line in config order (`haiku/v0.2.0` — the prefix is what a tag step needs,
+and the single line's bare `vX.Y.Z` is the root package's spelling of the
+same thing); `notes` prints one line's body bare when a tag selects it and,
+over several lines, each body under a `# <path>` heading, the sections nested below it.
 
 **Drafts, one per line.** Convergence runs `draftplan` once per package over
 the drafts carrying that package's prefix, so the founding invariants hold

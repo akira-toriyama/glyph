@@ -300,6 +300,57 @@ what lets the shipped `- $subject$[ ($pr)] @$author` cite a pull when there is
 one and drop the parens with it when there is not, instead of writing `()` for
 every commit that reached main without a merged pull.
 
+## Packages — several version lines in one repository
+
+A repository that versions more than one thing declares each as a
+`[[packages]]` subtree; each gets its own tag line, its own walk base and
+its own verdict, and the mode is **independent** only — every package moves
+for its own reasons (a repository that wants everything to move together is
+the single line it already is):
+
+```toml
+[[packages]]
+path = "haiku"          # tags are haiku/vX.Y.Z — the Go multi-module rule, not configurable
+# name = "haiku"        # what a commit scope may call it; default: the last path segment
+
+[[packages]]
+path = "."              # optional: the root package keeps the bare vX.Y.Z line
+```
+
+Which line a commit moves is read from its **own diff**, per commit — never
+from a pull's net diff, which cannot tell a `^` under one module from a `~`
+under another: files under a package move that package (the longest path
+wins, so a nested package takes its files out of its parent; a rename across
+two packages moves both); a commit under no package moves the package its
+scope names (`:sparkles:(haiku)^ …` on a shared README); and a commit under
+no package with no such scope moves nothing when its sigil is `=`, and is
+refused (exit 3, at `lint --range`, the pre-push hook and the release walk
+alike) when its sigil claims a version impact — nothing can carry it, and the
+message names both escapes. A scope naming a package the diff does not touch
+is refused the same way. Files come from local git for every commit the
+branch holds and from the API for a squash-merged pull's inner commits, one
+request each.
+
+`bump` and `notes` then answer per line. **A tag names a line**:
+`--since-tag=haiku/v0.1.0` or `--since-tag=below:haiku/v0.2.0` selects haiku
+alone (what a tag-time notes step needs), a bare `--since-tag` walks every
+line from its own highest tag, and `--range` attributes from local git with
+every commit pending on every line. A package with no tag yet is baselined
+by cutting `<path>/v0.0.0` at the commit before its first change. On stdout
+`bump` prints the next **tag** of every line that moves, one per line
+(`haiku/v0.2.0`), and exits `1` only when every line folds to none; `--json`
+carries `packages: [{path, current, level, next, commits, reason}]` with the
+scalar `current` / `level` / `next` **empty** — there is no one line for them
+to describe, so a consumer reading only the scalars fails safe. `notes`
+mirrors it: `packages: [{path, sections}]`, and on stdout one body per line
+under a `# <path>` heading (bare when one line is selected). `--pr` is
+refused on both — a pull's listing carries messages and no files.
+
+Not there yet, and refused at exit 2 rather than answered on the wrong
+line: `release` (one draft per line) and `preview` (a verdict per package the
+pull touches). A repository without `[[packages]]` is untouched by all of
+this, byte for byte.
+
 ## Exit codes
 
 `0` ok · `1` no release-worthy change · `2` usage · `3` convention violation

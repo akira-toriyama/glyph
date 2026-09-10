@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -506,5 +507,105 @@ func TestConfigGetUnreachableDirIsAPI(t *testing.T) {
 	ce := core.AsError(err)
 	if ce == nil || ce.Code != core.CodeAPI {
 		t.Fatalf("ConfigGet on a missing directory = %v, want CodeAPI", err)
+	}
+}
+
+// TestDiffTreeFiles: the paths a commit's own diff touches, with a rename
+// reported under BOTH names — detection is off so a move across two subtrees
+// names the line the file left as well as the one it joined — a root commit
+// answered against the empty tree, and a merge commit answered empty (its
+// diff is never attributed to anything).
+func TestDiffTreeFiles(t *testing.T) {
+	dir := newRepo(t)
+	root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	write := func(rel, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, rel), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("haiku/h.go", "package haiku\n")
+	write("curry/c.go", "package curry\n")
+	git(t, dir, "akira-toriyama", "add", ".")
+	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= two subtrees")
+	two := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	git(t, dir, "akira-toriyama", "mv", "haiku/h.go", "curry/h.go")
+	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":truck:~ move a file across subtrees")
+	moved := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side", root)
+	write("side.txt", "side\n")
+	git(t, dir, "akira-toriyama", "add", ".")
+	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":memo:= on the side")
+	git(t, dir, "akira-toriyama", "switch", "-q", "main")
+	git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", "Merge branch 'side'", "side")
+	merge := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
+	for name, tc := range map[string]struct {
+		sha  string
+		want []string
+	}{
+		"the root commit":       {root, []string{"glyph.toml"}},
+		"two subtrees":          {two, []string{"curry/c.go", "haiku/h.go"}},
+		"a rename names both":   {moved, []string{"curry/h.go", "haiku/h.go"}},
+		"a merge commit is nil": {merge, nil},
+	} {
+		got, err := DiffTreeFiles(context.Background(), dir, tc.sha)
+		if err != nil {
+			t.Fatalf("%s: DiffTreeFiles: %v", name, err)
+		}
+		if !slices.Equal(got, tc.want) {
+			t.Fatalf("%s: DiffTreeFiles = %q, want %q", name, got, tc.want)
+		}
+	}
+}
+
+// TestDiffTreeFilesUnknownShaIsAPI: an object this checkout does not hold is
+// a git failure in the API class, never an empty answer — an empty answer
+// would attribute the commit to nothing and quietly drop it from every line.
+func TestDiffTreeFilesUnknownShaIsAPI(t *testing.T) {
+	dir := newRepo(t)
+	_, err := DiffTreeFiles(context.Background(), dir, "0123456789abcdef0123456789abcdef01234567")
+	if err == nil {
+		t.Fatalf("DiffTreeFiles on an absent sha returned no error")
+	}
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
+		t.Fatalf("DiffTreeFiles error = %v, want CodeAPI", err)
+	}
+}
+
+// TestMergeBase: the common ancestor of several revs is the older base on a
+// linear history and the fork point across branches; one rev answers itself
+// without shelling out.
+func TestMergeBase(t *testing.T) {
+	dir := newRepo(t)
+	root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	commit(t, dir, "akira-toriyama", ":bug:~ first")
+	first := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	commit(t, dir, "akira-toriyama", ":bug:~ second")
+	second := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side", root)
+	commit(t, dir, "akira-toriyama", ":memo:= aside")
+	aside := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	git(t, dir, "akira-toriyama", "switch", "-q", "main")
+
+	for name, tc := range map[string]struct {
+		revs []string
+		want string
+	}{
+		"one rev is itself":         {[]string{second}, second},
+		"linear: the older base":    {[]string{second, first}, first},
+		"across a fork: the root":   {[]string{second, aside}, root},
+		"three revs, one on a fork": {[]string{first, second, aside}, root},
+	} {
+		got, err := MergeBase(context.Background(), dir, tc.revs)
+		if err != nil {
+			t.Fatalf("%s: MergeBase: %v", name, err)
+		}
+		if got != tc.want {
+			t.Fatalf("%s: MergeBase = %.7s, want %.7s", name, got, tc.want)
+		}
 	}
 }

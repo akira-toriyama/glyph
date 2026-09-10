@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/akira-toriyama/glyph/internal/config"
 	"github.com/akira-toriyama/glyph/internal/core"
@@ -18,11 +19,21 @@ var (
 	notesJSON     bool
 )
 
-// notesResult is the machine verdict: {sections, reason}. reason appears only
-// on an empty verdict — it explains why nothing rendered.
+// notesResult is the machine verdict: {sections, reason} — plus packages
+// when the repository declares [[packages]], and then sections is EMPTY:
+// each line renders its own body (DESIGN §4.1), and the top-level sections
+// describe no one line, exactly as bump's scalars describe no one line.
+// reason appears only on an empty verdict — it explains why nothing rendered.
 type notesResult struct {
 	Sections []notes.SigilSection `json:"sections"`
+	Packages []packageNotes       `json:"packages,omitempty"`
 	Reason   string               `json:"reason,omitempty"`
+}
+
+// packageNotes is one line's rendered notes inside notesResult.packages.
+type packageNotes struct {
+	Path     string               `json:"path"`
+	Sections []notes.SigilSection `json:"sections"`
 }
 
 func newNotesCmd() *cobra.Command {
@@ -76,14 +87,76 @@ func notesInput(cmd *cobra.Command, cfg *config.Config) ([]notes.SigilCommit, st
 		// the reason spelled out at bump's own call site — notes REPORTS, and an
 		// incomplete walk already warns per cause on stderr. Nothing here writes
 		// back, so there is no irreversible act to gate.
-		commits, _, source, _, err := sinceTagInput(ctx, cfg, notesSinceTag, notesRepo)
-		return walkedNoteCommits(commits), source, err
+		w, err := sinceTagInput(ctx, cfg, notesSinceTag, notesRepo)
+		return walkedNoteCommits(w.All), w.Source, err
 	}
 	if err := checkRangeFlag(notesRange); err != nil {
 		return nil, "", err
 	}
 	raws, err := gitsource.Log(ctx, ".", notesRange)
 	return noteCommits(raws, 0), notesRange, err
+}
+
+// notesLines is notes for a repository that declares [[packages]]: one body
+// per line, each grouped over the commits that participate on that line.
+// --pr is refused for the reason bump refuses it. stdout is the one line's
+// body when one line is selected (the tag-time rendering goreleaser.yml
+// performs, where a heading would be noise); with several lines each body
+// sits under a `# <path>` heading, the sections keeping their `##` below it,
+// in config order, lines with nothing to say omitted. Exit 1 only when no
+// line lands anything in a section.
+func notesLines(cmd *cobra.Command, cfg *config.Config) error {
+	ctx := cmd.Context()
+	var w sinceTagWalk
+	var err error
+	switch {
+	case cmd.Flags().Changed("pr"):
+		return refusePullSource(cfg)
+	case cmd.Flags().Changed("since-tag"):
+		w, err = sinceTagInput(ctx, cfg, notesSinceTag, notesRepo)
+	default:
+		if err = checkRangeFlag(notesRange); err != nil {
+			return err
+		}
+		w, err = rangeLines(ctx, cfg, notesRange)
+	}
+	if err != nil {
+		return err
+	}
+	var pkgs []packageNotes
+	var bodies []string
+	for _, lw := range w.Lines {
+		sections, gerr := notes.GroupSigils(walkedNoteCommits(lw.Commits), cfg)
+		if gerr != nil {
+			return gerr
+		}
+		if sections == nil {
+			sections = []notes.SigilSection{}
+		}
+		pkgs = append(pkgs, packageNotes{Path: lw.Package.Path, Sections: sections})
+		if len(sections) == 0 {
+			continue
+		}
+		body := notes.RenderSigils(sections)
+		if len(w.Lines) > 1 {
+			body = "# " + lw.Package.Path + "\n\n" + body
+		}
+		bodies = append(bodies, body)
+	}
+	if len(bodies) == 0 {
+		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section on any line", len(w.All), w.Source)
+		if notesJSON {
+			printCompact(notesResult{Sections: []notes.SigilSection{}, Packages: pkgs, Reason: reason})
+			return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}
+		}
+		return core.NoReleasef("%s", reason)
+	}
+	if notesJSON {
+		printCompact(notesResult{Sections: []notes.SigilSection{}, Packages: pkgs})
+		return nil
+	}
+	fmt.Fprint(out, strings.Join(bodies, "\n"))
+	return nil
 }
 
 func notesRun(cmd *cobra.Command) error {
@@ -93,6 +166,9 @@ func notesRun(cmd *cobra.Command) error {
 	cfg, err := loadConfig(cmd.Context())
 	if err != nil {
 		return err
+	}
+	if len(cfg.Packages) > 0 {
+		return notesLines(cmd, cfg)
 	}
 	commits, source, perr := notesInput(cmd, cfg)
 	if perr != nil {

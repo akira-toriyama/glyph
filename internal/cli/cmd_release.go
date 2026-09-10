@@ -119,6 +119,9 @@ func releaseRun(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
+	if rerr := refusePackages(cfg, "release"); rerr != nil {
+		return rerr
+	}
 	// Before the walk, not merely before the write: everything above this line
 	// is local and free, and sinceTagInput is where the money goes (at least
 	// one API round-trip per commit it visits). A run on the wrong ref is not
@@ -134,10 +137,11 @@ func releaseRun(cmd *cobra.Command) error {
 	if !cmd.Flags().Changed("since-tag") {
 		tagFlag = sinceTagAuto
 	}
-	parsed, facts, source, base, perr := sinceTagInput(ctx, cfg, tagFlag, releaseRepo)
+	w, perr := sinceTagInput(ctx, cfg, tagFlag, releaseRepo)
 	if perr != nil {
 		return perr
 	}
+	parsed, facts, source, base := w.All, w.Facts, w.Source, w.Base
 	// A verdict is a claim about the range only when the walk READ the range,
 	// and release is the command that acts on its verdict irreversibly. So a
 	// walk that came back short — every commit unknown to the queried
@@ -163,7 +167,7 @@ func releaseRun(cmd *cobra.Command) error {
 		return cerr
 	}
 	warnSigilVerdicts(commits)
-	current, verr := currentVersion(ctx, releaseCurrent, base)
+	current, verr := currentVersion(ctx, releaseCurrent, base, "")
 	if verr != nil {
 		return verr
 	}

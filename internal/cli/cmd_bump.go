@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/akira-toriyama/glyph/internal/bump"
 	"github.com/akira-toriyama/glyph/internal/config"
@@ -20,12 +21,33 @@ var (
 	bumpJSON     bool
 )
 
-// bumpResult is the machine verdict: {current, level, next, commits, reason}.
+// bumpResult is the machine verdict: {current, level, next, commits, reason}
+// — plus packages when the repository declares [[packages]].
 // next is omitted on a none verdict — there is no next version to act on.
 // The commit rows are bump.SigilVerdict: {sha, subject, sigil, level} — the
 // v1 "code" and "breaking" keys died with the embedded table; the sigil IS
 // the classification input now.
+//
+// With packages declared the scalars current / level / next are EMPTY and
+// packages carries one verdict per line (DESIGN §4.1): a repository with
+// packages has no one line for the scalars to describe, and a consumer that
+// reads only the scalars is exactly the consumer that must not act on them
+// (mutation row packages-scalar-verdict-describes-one-line). commits then
+// lists every commit that participates on any line.
 type bumpResult struct {
+	Current  string              `json:"current"`
+	Level    string              `json:"level"`
+	Next     string              `json:"next,omitempty"`
+	Commits  []bump.SigilVerdict `json:"commits"`
+	Packages []packageVerdict    `json:"packages,omitempty"`
+	Reason   string              `json:"reason"`
+}
+
+// packageVerdict is one line's verdict inside bumpResult.packages: the
+// package's path (the line's name), what the line steps from, how far, to
+// what, the commits that participate on the line, and why.
+type packageVerdict struct {
+	Path    string              `json:"path"`
 	Current string              `json:"current"`
 	Level   string              `json:"level"`
 	Next    string              `json:"next,omitempty"`
@@ -83,6 +105,9 @@ func bumpRun(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
+	if len(cfg.Packages) > 0 {
+		return bumpLines(cmd, cfg)
+	}
 	raws, source, base, perr := bumpInput(cmd, cfg)
 	if perr != nil {
 		return perr
@@ -93,7 +118,7 @@ func bumpRun(cmd *cobra.Command) error {
 		return cerr
 	}
 	warnSigilVerdicts(commits)
-	current, verr := currentVersion(ctx, bumpCurrent, base)
+	current, verr := currentVersion(ctx, bumpCurrent, base, "")
 	if verr != nil {
 		return verr
 	}
@@ -149,8 +174,8 @@ func bumpInput(cmd *cobra.Command, cfg *config.Config) ([]bump.SigilCommit, stri
 		// readers: its answer is pasted into a pull request and read later by
 		// someone who never opens the log, so it carries the shortfall in the
 		// body itself.)
-		commits, _, source, base, err := sinceTagInput(ctx, cfg, bumpSinceTag, bumpRepo)
-		return walkedSigilCommits(commits), source, base, err
+		w, err := sinceTagInput(ctx, cfg, bumpSinceTag, bumpRepo)
+		return walkedSigilCommits(w.All), w.Source, w.Base, err
 	}
 	if err := checkRangeFlag(bumpRange); err != nil {
 		return nil, "", nil, err
@@ -159,12 +184,92 @@ func bumpInput(cmd *cobra.Command, cfg *config.Config) ([]bump.SigilCommit, stri
 	return sigilCommits(raws), bumpRange, nil, err
 }
 
-// currentVersion resolves the version to step from: an explicit --current
-// (malformed ⇒ usage — it is the caller's input) wins; else the base the input
-// source itself named (--since-tag's tag — the walk base and the step base
-// must be the SAME tag); else the highest parseable v* tag, which is v0.0.0
-// for a repo before its first release.
-func currentVersion(ctx context.Context, flag string, base *bump.Version) (bump.Version, error) {
+// bumpLines is bump for a repository that declares [[packages]] (DESIGN
+// §4.1): one verdict per line, each folded over the commits that participate
+// on that line and stepped from that line's own base. --pr is refused — a
+// pull's listing has no files to attribute — and --current is accepted only
+// when one line is selected. stdout is the next TAG of every line that
+// moves, one per line (haiku/v0.2.0 — the prefix is what a tag step needs);
+// exit 1 only when every line folds to none.
+func bumpLines(cmd *cobra.Command, cfg *config.Config) error {
+	ctx := cmd.Context()
+	var w sinceTagWalk
+	var err error
+	switch {
+	case cmd.Flags().Changed("pr"):
+		return refusePullSource(cfg)
+	case cmd.Flags().Changed("since-tag"):
+		w, err = sinceTagInput(ctx, cfg, bumpSinceTag, bumpRepo)
+	default:
+		if err = checkRangeFlag(bumpRange); err != nil {
+			return err
+		}
+		w, err = rangeLines(ctx, cfg, bumpRange)
+	}
+	if err != nil {
+		return err
+	}
+	if err := checkLineSelection(bumpCurrent, w.Lines); err != nil {
+		return err
+	}
+	// The union rows first: every participating commit is matched here, so a
+	// message no pattern claims refuses the walk BEFORE any line is folded
+	// (a wrong grammar cannot hide behind a wrong tree), and a shared-only =
+	// commit — on no line — still appears in what the walk read.
+	rows, _, cerr := bump.FoldSigils(walkedSigilCommits(w.All), cfg)
+	if cerr != nil {
+		return cerr
+	}
+	warnSigilVerdicts(rows)
+	var pkgs []packageVerdict
+	var reasons, tags []string
+	for _, lw := range w.Lines {
+		verdicts, dec, ferr := bump.FoldSigils(walkedSigilCommits(lw.Commits), cfg)
+		if ferr != nil {
+			return ferr
+		}
+		current, verr := currentVersion(ctx, bumpCurrent, lw.Base, lw.Prefix)
+		if verr != nil {
+			return verr
+		}
+		pv := packageVerdict{Path: lw.Package.Path, Current: current.String(), Level: string(dec.Level), Commits: verdicts}
+		if dec.Level == bump.LevelNone {
+			pv.Reason = fmt.Sprintf("no release: %d commit(s) participate in %s and every level is none", len(verdicts), lw.Source)
+		} else {
+			next := current.Next(dec)
+			pv.Next = next.String()
+			pv.Reason = decidingReason(verdicts, dec)
+			tags = append(tags, next.TagOn(lw.Prefix))
+		}
+		reasons = append(reasons, lw.Package.Path+": "+pv.Reason)
+		pkgs = append(pkgs, pv)
+	}
+	reason := strings.Join(reasons, "; ")
+	if len(tags) == 0 {
+		reason = "no release: every line folds to none (" + reason + ")"
+		if bumpJSON {
+			printCompact(bumpResult{Commits: rows, Packages: pkgs, Reason: reason})
+			return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}
+		}
+		return core.NoReleasef("%s", reason)
+	}
+	if bumpJSON {
+		printCompact(bumpResult{Commits: rows, Packages: pkgs, Reason: reason})
+		return nil
+	}
+	for _, tag := range tags {
+		fmt.Fprintln(out, tag)
+	}
+	return nil
+}
+
+// currentVersion resolves the version to step from ON ONE LINE: an explicit
+// --current (malformed ⇒ usage — it is the caller's input) wins; else the
+// base the input source itself named (--since-tag's tag — the walk base and
+// the step base must be the SAME tag); else the highest parseable tag on the
+// line (prefix "" is the bare line), which is v0.0.0 for a line before its
+// first release.
+func currentVersion(ctx context.Context, flag string, base *bump.Version, prefix string) (bump.Version, error) {
 	if flag != "" {
 		v, err := bump.ParseVersion(flag)
 		if err != nil {
@@ -175,7 +280,7 @@ func currentVersion(ctx context.Context, flag string, base *bump.Version) (bump.
 	if base != nil {
 		return *base, nil
 	}
-	_, v, err := latestVersionTag(ctx, "", nil)
+	_, v, err := latestVersionTag(ctx, prefix, nil)
 	return v, err
 }
 

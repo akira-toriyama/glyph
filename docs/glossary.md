@@ -331,6 +331,31 @@ touch is refused the same way.
 
 ---
 
+**line** — one independently versioned subtree of the repository, declared as a
+`[[packages]]` entry: its own tag prefix (`<path>/`, bare for the root package
+`path = "."`), its own walk base (the highest tag carrying that prefix), its own
+fold, verdict and — when `release` learns it — draft. A repository with no
+`[[packages]]` is one line with no name, and nothing synthesises a root package
+for it. A tag **names** a line: `--since-tag=haiku/v0.1.0` selects haiku alone.
+`internal/config/config.go: Package.TagPrefix`, `internal/cli/lines.go: line`
+
+**attribution** — which lines a participating commit moves, read from the
+commit's **own** diff and never a pull's net diff: files under a package move
+it (longest path prefix wins; a rename counts under both names), a commit under
+no package moves the package its scope names, and a commit under no package
+with no such scope moves nothing when its sigil is `=` and is refused when the
+sigil claims a version impact — as is a scope naming a package the diff does not
+touch. Asked only of a commit the fold would read; the files come from local git
+for a landed identity and from `GET /commits/{sha}` for a squash-merged pull's
+inner commit. `internal/attribution/attribution.go: Attribute`,
+`internal/cli/lines.go: partitionLines`
+
+**governing commit** — the on-branch identity a line's range judges a walked
+commit by: the commit's own sha when it landed on the released branch, else the
+merge point of the pull it was expanded from. A squash-merged pull's inner
+commits exist on no branch, so without this a line could never hold them.
+`internal/cli/lines.go: walked.governing`
+
 ## 2. Verdicts and the rolling draft
 
 **verdict** — the composed answer of a verdict command: the classified commits,
