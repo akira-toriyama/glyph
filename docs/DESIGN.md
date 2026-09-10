@@ -787,6 +787,249 @@ point for *every* shape, because expanding re-fetched the pull's whole listing
 whenever its merge point was in range (verified then: a tag at the offending
 commit and a tag strictly past it both exited 3). Both now exit 0.
 
+### 4.1 Packages — independently versioned lines in one repository
+
+**Status: designed 2026-09-10 (t-99rf), not shipped.** The implementing
+tasks are the `e-7hat` box on the projects board; until they land,
+`[[packages]]` is an unknown key and the loader refuses the file (§2's strict
+decoder — an old pinned binary must refuse a grammar it cannot read, never
+ignore it). The decisions below are ratified so that each task inherits them
+instead of re-deriving them; the paragraphs that describe measured behaviour
+say so, and the rest is the design.
+
+**The model.** A *package* is a declared subtree of the repository with its
+own version line: its own tags, its own walk base, its own rolling draft.
+Everything §4 says about the walk — footprints, the covered ledger, the
+incomplete-walk refusal, the wedge — is about *which commits are unreleased*,
+and none of it changes; what packages add is one question asked of every
+participating commit before the fold, *which line does this commit move?*,
+and then the fold, the version step and the draft convergence run once per
+line. A repository with no `[[packages]]` is one line with no name, and every
+verdict it gets today is unchanged byte for byte (golden-pinned; mutation row
+`packages-absent-changes-the-single-line.patch`). So the mode is
+**independent** versioning only: *fixed* versioning — every package moving
+together under one number — is what the single line already is, and a second
+spelling of it would make one repository mean two things (rejected: lerna's
+`fixed`, changesets' `fixed` groups).
+
+```toml
+[[packages]]
+path = "haiku"              # the subtree; the tag line is haiku/vX.Y.Z
+# name = "haiku"            # what a commit scope may call it; default: the last path segment
+
+[[packages]]
+path = "."                  # the root package: the bare vX.Y.Z line, and every file no other package claims
+```
+
+- **The tag line is `<path>/vX.Y.Z`, derived, not configurable.** That is the
+  Go multi-module rule (go.dev/ref/mod, "Tags for multi-module repositories"),
+  the one ecosystem that *mandates* a shape, and it is the shape the largest
+  monorepos in the wild carry (measured 2026-09-10: google-cloud-go
+  `storage/v1.67.1`, opentelemetry-go `exporters/prometheus/v0.59.1`,
+  aws-sdk-go-v2 `config/vX.Y.Z` beside a bare root line). A `tag_prefix` knob
+  was rejected for the reason §3 gives for the fixed sigil alphabet: a verdict
+  must be readable from the file alone, and a line whose tags do not say which
+  directory they version is what the Go rule exists to prevent. `pkg@X.Y.Z`
+  (npm) and `pkg-vX.Y.Z` (release-please, cocogitto) are therefore not
+  producible; glyph writes no manifest versions for those ecosystems either,
+  so that door was never open. `path = "."` is the one exception by
+  definition: the root module's line is bare `vX.Y.Z`, which is why a
+  repository that declares it keeps every tag and draft it has.
+- **`name` is the scope's word for the package**, defaulting to the last path
+  segment, and must be unique across packages (a load error names the two;
+  the remedy is to set one). It exists because the presets' scope group is
+  `[a-z0-9-]+` and cannot spell `exporters/prometheus`. It names nothing else:
+  the draft is named by its tag, the notes by their section titles.
+- **One `glyph.toml`, at the top level, as today.** A per-package file was
+  rejected: a commit is one message judged under one pattern file, and N files
+  would be N grammars for the same message, with the winning one decided by a
+  path the message does not carry.
+
+**Attribution — path decides, scope carries what path cannot.** Each
+participating commit (after `exclude_authors`, after a skip pattern, after
+the pattern match — nothing is attributed that the fold would not read) is
+mapped to the packages whose subtree its own diff touches; a file belongs to
+the package with the **longest** path prefix, so a nested package takes its
+files out of its parent and the root package holds the remainder. The rules,
+in the order they are asked:
+
+1. Its files lie under one or more packages → it participates in **each** of
+   them, with its one sigil. A commit that renames across two modules moves
+   both lines; that is what it did.
+2. Its files lie under no package (a *shared-only* commit: root CI, the
+   workspace file, a README, in a repository with no root package) and the
+   winning pattern captured a `scope` naming a package → it participates in
+   **that** package. The author said where the impact lands and the tree could
+   not.
+3. Otherwise it has **no carrier**. With sigil `=` that is the expected shape
+   of shared housekeeping and it participates nowhere (it appears in no draft
+   — there is no line for it to appear on). With any other sigil it is a
+   **refusal of the lint class (exit 3)**: the author claimed a version impact
+   and nothing can carry it. The error names both escapes — name the package
+   in the scope, or write `=` — and, in the walk, the wedge escape per line.
+
+Two things the rules deliberately do not do. A scope that **contradicts** the
+tree — files only under `curry/`, scope `haiku` — is refused the same way, on
+the same reasoning as rule 3: the scope is checked only when it names a
+package, so `(ci)`, `(deps)` and every free-form scope in the fleet stay
+untouched, and a package-named scope on a commit that touched another package
+is an authoring error the gate can see. And there is no `all` scope and no
+"shared moves everything" arm (knope has the first, and the second was the
+obvious default): a shared-only `~` that steps every line is fixed versioning
+entering through the back door, and the independent mode exists so that a
+line moves for its own reasons. A change that really does alter every
+package's behaviour touches every package's files, and rule 1 already answers
+it.
+
+**Where the files come from.** For a commit the released branch holds — the
+fallback arm, a merge-merged pull's landed commits, and every commit a
+`--range` fold reads — local git answers (`git diff-tree`), free. For the
+squash arm, whose listed shas exist on no branch, the API does:
+`GET /repos/{o}/{r}/commits/{sha}` returns the commit's own files for a sha no
+branch holds — **measured** 2026-09-10 on glyph-test #83 (inner `2aff743`,
+unknown to local git, answered with one file where the pull's net diff had
+two). So the price of attribution is one round trip per squash-arm inner
+commit, on top of §4's one per merge point and one per pull; the fleet's pulls
+carry one to four commits, and the number is reported in DESIGN's walk-cost
+line once the implementation measures it. The endpoint pages its file list
+past 300 entries and stops at 3000; a commit whose listing reaches that cap is
+an **incomplete walk** in the sense §4 already defines (a package it touched
+past the cap is unreachable, not absent), recorded in `walkFacts` beside
+`Truncated` and refused by `release` (exit 4). Attribution is per commit and
+never per pull. `GET /pulls/{N}/files` — one call, the pull's net diff — was
+rejected twice over: a pull touching two packages with a `^` in one and a `~`
+in the other would bump both lines by the higher sigil, which discards
+exactly the per-commit typing §1 exists for; and the net diff is not the sum
+of the commits (a change made and undone inside the pull is absent from it),
+so it cannot even attribute the commits it would replace. The version follows
+the commits, not the diff — the stance the single line has always taken.
+Merge commits are attributed to nothing: `bump.ExcludedFromClassification`
+already keeps them out of the fold on their parent count, so their diff is
+never asked for.
+
+**The walk is one walk.** Each package's range is `<its base>..HEAD`, its
+base resolved exactly as §4 resolves the single line's — the highest parseable
+tag carrying the package's prefix (`latestVersionTag` per prefix; a
+`curry/` tag never baselines `haiku`, mutation row
+`packages-tag-of-one-line-baselines-another.patch`), else no tag and the
+whole history. The walk runs once over the **union** of those ranges (the
+range from the bases' common ancestor to `HEAD`, which contains the union),
+resolving each merge point once, and `inRange` becomes *in which lines* a sha
+is unreleased rather than a boolean; a listed commit participates in package
+p when it is attributed to p **and** its governing on-branch commit (its
+landing site, else its pull's merge point) is unreleased on p's line. N walks
+over overlapping ranges would resolve the same pulls N times for the same
+answers, and were rejected on cost alone. The whole-history cap applies to
+the union walk as it does today, and its remedy gains a package form the
+error names: a package with no tag of its own — the common case of a package
+added to an old repository — is baselined by cutting **`<path>/v0.0.0` at the
+commit before its first change**, a tag that says "nothing of this line was
+released before here" and steps to `<path>/v0.1.0` on the first `^`. No new
+flag: `--since-tag=TAG` and `below:TAG` keep their meanings and gain one
+reading — **a tag names a line.** A prefixed TAG selects that package alone
+(the verdict, the notes and the draft are that line's, and the other lines are
+not converged), which is what tag-time note rendering needs (`goreleaser.yml`
+already runs `notes --since-tag=below:TAG` from the tagged commit); a bare
+`--since-tag` walks every line. `--current` is accepted only when one line is
+selected, refused at exit 2 otherwise: with two lines it would name a version
+for a verdict that has two.
+
+**The fold, the step, the exit.** `FoldSigils` runs once per package over
+that package's participating commits, so §3 is unchanged per line: max-fold,
+`%` promotes that line, the 0.x rule reads that line's current version, and a
+commit no pattern claims still refuses the whole walk (it is refused before
+attribution, so a wrong grammar cannot be hidden by a wrong tree). The
+published floor is per prefix. Exit `1` (no release) is answered **only when
+every line folds to none**; one line moving is a release. No new integer:
+the exit-code contract is frozen (§5), and every mixed outcome is legible in
+the machine verdict, which gains `packages: [{path, current, level, next,
+action, commits, reason}]` while the scalar `current` / `level` / `next` /
+`action` stay what they are for the single line and are **empty when
+packages are declared** — a repository with packages has no one line for them
+to describe, and a consumer that reads only the scalars is exactly the
+consumer that must not act (mutation row
+`packages-scalar-verdict-describes-one-line.patch`).
+
+**Drafts, one per line.** Convergence runs `draftplan` once per package over
+the drafts carrying that package's prefix, so the founding invariants hold
+per line: never a second draft on a line, retagged in place, everything glyph
+did not manage untouched. The placeholder `draft_on_none` maintains becomes
+`<path>/Unreleased` — still not house-shaped, still publishable into nothing
+that wedges a floor. Two drafts glyph *did* write are claimed and converged
+away, on the precedent of the placeholder being claimed with the flag off: a
+bare `vX.Y.Z` draft in a repository that declares packages but no root package
+is the single line's residue and is deleted with a notice on the first
+packages run (a hand region it carried goes with it — the migration is the
+one moment to move that prose, and the notice says so); with a root package
+declared it is that package's draft and simply converges. The write order is
+§4's write-first, extended: every line's upsert lands before any line's strays
+are converged, so a write that fails on the second line leaves the first
+line's notes standing and exits 4 — the next run heals it. `--footer-file`
+appends to every draft (one install block per repository is what every caller
+passes today; a per-package footer is a knob nobody has asked for and is
+recorded here so its absence is a decision). `checkReleaseBody` sizes each
+draft on its own. GitHub's **Latest** badge is one per repository and is
+assigned when a human *publishes*, by creation date unless the publisher says
+otherwise; glyph writes drafts, which cannot be latest, so it never sets
+`make_latest` and the badge lands on whichever line was published last — the
+shape google-cloud-go's releases page has lived with for years. Not a knob.
+
+**Preview.** `preview --pr` renders one verdict per package the pull's commits
+are attributed to, in config order, each with that line's current version and
+next; a package the pull does not touch is not mentioned, and a pull whose
+commits carry nothing (`=` everywhere, or shared-only `=`) says it moves
+nothing, as today. `pr-verdict.yml` renders what the binary hands it and
+needs no change.
+
+**Lint.** Attribution needs files, so it belongs to the inputs that have them:
+`lint --range` (local git) applies rules 2–3 and the contradiction check when
+packages are declared, and `hook pre-push` inherits it, which is where a
+shared-only `^` is caught before it is pushed. `--message`, `--stdin` and
+`--pr` judge a message alone, as today: the commit-msg hook cannot see a diff
+that is not yet a commit, and a pull's title is not attributed to anything.
+This is the one place the hook's verdict is weaker than CI's, and it is stated
+here rather than left to be discovered: the pre-push hook closes it on the
+same machine, one step later.
+
+**Doctor** gains three checks: every declared `path` exists in the checkout;
+`name`s are unique (also a load error, reported here with the fix); and a
+bare `v*` tag exists while no root package is declared — advice, not a
+defect: those tags baseline nothing now, and the note says which package
+declaration would adopt them.
+
+**The reusables.** `release.yml` gains a `packages` output (the JSON array
+above, as a string) and keeps its four scalars with the empty-in-packages-mode
+rule, so a caller written for the single line fails safe on `""` exactly as
+its contract already tells it to. Its artifact inputs (`app` / `binary`)
+describe one artifact for one draft, and are refused at the input validation
+step when the repository declares packages: a monorepo attaches per line in
+its own job, reading `packages`. `lint.yml` and `pr-verdict.yml` are
+unchanged. The rollout is the runbook's: the binary change is additive, so
+`fleet-preflight` must report zero verdict moves and zero body re-renders on
+every repository without `[[packages]]`, and the live fire is
+`glyph-monorepo-test` (two Go modules, `haiku/` and `curry/`, created
+2026-09-10), whose defining probe is a pull that touches both modules with a
+`^` in one and a `~` in the other and must move the two lines differently.
+
+**Architecture.** The attribution rule is pure — files, scope, config in;
+package set or refusal out — and gets a package of its own beside `draftplan`
+and `preview` (§5's tree is updated by the task that creates it, because
+`TestDesignTreeNamesEveryInternalPackage` reconciles the tree with the
+filesystem and a row for a package that does not exist yet fails it). The
+`Commit` struct §5 sketches gains nothing: attribution consumes files the
+walk fetches beside the listing, and the fold reads `SigilCommit` as today.
+
+**Rejected, in one place**, so the next reader does not re-argue them:
+intent files (changesets — the signal leaves the commits, README says why);
+pull-level attribution (above); a `tag_prefix` knob (above); an `all` scope or
+a shared-moves-all arm (above); per-package `glyph.toml` (above); N walks
+(above); a `--path` flag selecting a package on the command line instead of
+the file (a verdict must be readable from `glyph.toml` alone, §2); cross-package
+dependency cascades (multi-semantic-release bumps a dependent when its
+dependency moves — glyph reads no manifest and would have to start, and a
+consumer that wants the cascade expresses it by touching the dependent, which
+is a commit the rules already carry).
+
 ## 5. Architecture (Go, house pattern)
 
 Binary `glyph`, module `github.com/akira-toriyama/glyph`. Subcommands: `lint`,
