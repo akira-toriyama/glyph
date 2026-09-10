@@ -990,6 +990,26 @@ withheld: with the API handle in hand, auto-publishing the draft is a two-line
 caller step, and the human act of publishing — the safety net everything above
 rests on — stays structurally out of a caller's reach.
 
+An `assets` input — files a caller built elsewhere in the run, attached by the
+reusable — was requested (zmk-hid-host, 2026-09-10: a Zephyr firmware build
+that fits neither `app` nor `binary`) and declined; the shape for it is a
+follow-up job in the caller over the `next` output, `gh release upload
+"$next" … --clobber`, gated on `next != ""` and on the dry-run input. Three
+reasons. The reusable upserts BEFORE it builds, on purpose: a red build leaves
+the draft's asset one merge stale and its notes current, and nothing ships
+without a human anyway; an input fed by a `needs:` build job inverts that — a
+red build means the release job never runs, so the notes go stale with the
+asset. An asset name that cites the version (`<shield>-vX.Y.Z.uf2`) exists
+only after the verdict, which is exactly what `next` hands the caller and what
+a pre-verdict artefact cannot carry. And the premise the request rested on —
+that an unpublished draft cannot be found by tag, so a caller needs the
+release id — is false in gh: the REST `releases/tags/<tag>` lookup 404s on a
+draft, and gh falls back to the listing. Measured on glyph-test's `v2.0.0`
+draft, 2026-09-10: upload, `--clobber` replace and `gh release delete-asset`
+each resolved the draft by tag. A `release-id` output is the withheld URL by
+another name and is refused for the same reason
+(`TestReleaseOutputsNeverExposeTheDraftURL`).
+
 **The grammar is the repository's file (v2, superseding the 2026-08-16
 flag-not-file ratification):** v1 refused per-repo config because a synced
 TABLE could drift from the pinned binary. v2's config is a different object —
