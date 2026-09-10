@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 5650a5b..083dcb7 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -385,7 +385,7 @@ jobs:
+           # url (withheld per line for the reason it is withheld above — the
+           # handle would make auto-publish a two-line caller step). "" when
+           # the file declares no packages: the four scalars carry the verdict.
+-          emit_packages() { echo "packages=$(jq -r '(.packages // []) | map(del(.body, .url)) | if length == 0 then empty else tojson end' "$RUNNER_TEMP/verdict.json" 2>/dev/null || true)" >> "$GITHUB_OUTPUT"; }
++          emit_packages() { echo "packages=$(jq -r '(.packages // []) | map(del(.body)) | if length == 0 then empty else tojson end' "$RUNNER_TEMP/verdict.json" 2>/dev/null || true)" >> "$GITHUB_OUTPUT"; }
+           if [ "$status" -eq 1 ]; then
+             # Soft no-release: nothing version-worthy since the last tag.
+             # glyph already converged the draft state (residual glyph-managed

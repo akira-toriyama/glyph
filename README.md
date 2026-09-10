@@ -219,6 +219,11 @@ caller can gate follow-up steps without re-deriving it; empty means **not
 computed**, never "none", so gate fail-safe on `""`. The draft's URL is
 deliberately not among them — with the handle in hand, auto-publishing would
 be a two-line caller step, and publishing staying human is the safety net.
+A repository that declares `[[packages]]` answers through `packages`
+instead — one JSON array of per-line verdicts, `[{path, current, level,
+next, tag, action, commits, reason}]`, each line's body and url stripped —
+and the four scalars are `""` there, so a caller written for one line
+fails safe.
 
 An artefact the reusable did not build — a firmware image from a Docker job,
 say — is attached by a follow-up job in the caller, not by a new input: gate
@@ -229,7 +234,11 @@ not — gh falls back to the listing), the same call the reusable's own upload
 step makes. Measured on glyph-test's `v2.0.0` draft, 2026-09-10: upload,
 `--clobber` replace and `gh release delete-asset` each resolved the draft by
 tag. It is a follow-up job rather than a `needs:`-fed input because the
-reusable upserts before it builds — DESIGN §6 argues why.
+reusable upserts before it builds — DESIGN §6 argues why. A monorepo
+attaches the same way, per line: iterate the `packages` output
+(`jq -r '.[] | select(.tag != null) | .tag'`) and upload to each `tag`;
+`app` / `binary` name one artifact for one draft and are refused once the
+verdict says packages.
 
 Adopting on a repository with deep history? Cut a version tag at the commit
 where the convention starts — the walk baselines at the highest `v*` tag, and
@@ -366,9 +375,10 @@ sets `make_latest`. A tag that selects one line converges that line alone.
 notes preview per line; a line the pull does not touch is not mentioned, and
 a shared-only `^` is refused at exit 3 here first, while the branch can
 still be fixed. The reusables (`pr-verdict.yml`, `release.yml`) render what
-the binary hands them; `release.yml`'s per-line outputs are the one piece
-still to land. A repository without `[[packages]]` is untouched by all of
-this, byte for byte.
+the binary hands them: `release.yml` passes the per-line verdicts through as
+its `packages` output and refuses `app` / `binary` on a packages repository.
+A repository without `[[packages]]` is untouched by all of this, byte for
+byte.
 
 ## Exit codes
 
