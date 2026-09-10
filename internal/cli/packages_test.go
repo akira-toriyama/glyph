@@ -539,15 +539,15 @@ func TestPackagesRangeAndPullSources(t *testing.T) {
 	}
 }
 
-// TestReleaseAndPreviewRefusePackages: the two commands with no per-line
-// form yet refuse a packages repository at usage, before any walk — running
-// the single-line convergence over a two-line verdict would act on the wrong
-// answer.
-func TestReleaseAndPreviewRefusePackages(t *testing.T) {
+// TestPreviewRefusesPackages: the one command with no per-line form yet
+// refuses a packages repository at usage, before any request — rendering the
+// single-line verdict over a two-line repository would answer the wrong
+// question.
+func TestPreviewRefusesPackages(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	t.Chdir(dir)
 	t.Setenv("GITHUB_REPOSITORY", "akira-toriyama/glyph")
-	for _, args := range [][]string{{"release", "--dry-run"}, {"preview", "--pr", "1"}} {
+	for _, args := range [][]string{{"preview", "--pr", "1"}} {
 		code, _, stderr := runGlyph(t, args...)
 		if code != 2 || !strings.Contains(stderr, "does not answer per line yet") {
 			t.Fatalf("%v exited %d, want 2 with the packages refusal\nstderr: %s", args, code, stderr)

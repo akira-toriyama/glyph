@@ -26,23 +26,33 @@ var (
 )
 
 // releaseResult is the machine verdict: {current, level, tag, target, body,
-// action, url, commits, pulls, reason}. tag, target and body are omitted on a
-// none verdict — there is no release to act on; url is present only when a
-// write actually happened (never on a dry run). pulls is the walk's expansion
-// provenance — which merged pulls it resolved and how many participating
-// commits each contributed — which is what a human or a CI step reads to
-// audit how a verdict was assembled.
+// action, url, commits, pulls, reason} — plus packages when the repository
+// declares [[packages]]. tag, target and body are omitted on a none verdict
+// — there is no release to act on; url is present only when a write actually
+// happened (never on a dry run). pulls is the walk's expansion provenance —
+// which merged pulls it resolved and how many participating commits each
+// contributed — which is what a human or a CI step reads to audit how a
+// verdict was assembled.
+//
+// With packages declared, current / level / next-bearing tag / body / action
+// / url are EMPTY and packages carries one verdict and one draft per line
+// (DESIGN §4.1): a caller written for the single line — release.yml's four
+// outputs, a tag step — then fails safe on "", which its contract already
+// tells it to. target stays: one checkout, one HEAD, every line's draft
+// points at it. commits then lists every commit that participates on any
+// line.
 type releaseResult struct {
-	Current string              `json:"current"`
-	Level   string              `json:"level"`
-	Tag     string              `json:"tag,omitempty"`
-	Target  string              `json:"target,omitempty"`
-	Body    string              `json:"body,omitempty"`
-	Action  string              `json:"action"`
-	URL     string              `json:"url,omitempty"`
-	Commits []bump.SigilVerdict `json:"commits"`
-	Pulls   []pullExpansion     `json:"pulls"`
-	Reason  string              `json:"reason"`
+	Current  string              `json:"current"`
+	Level    string              `json:"level"`
+	Tag      string              `json:"tag,omitempty"`
+	Target   string              `json:"target,omitempty"`
+	Body     string              `json:"body,omitempty"`
+	Action   string              `json:"action"`
+	URL      string              `json:"url,omitempty"`
+	Commits  []bump.SigilVerdict `json:"commits"`
+	Packages []packageRelease    `json:"packages,omitempty"`
+	Pulls    []pullExpansion     `json:"pulls"`
+	Reason   string              `json:"reason"`
 }
 
 func newReleaseCmd() *cobra.Command {
@@ -119,9 +129,6 @@ func releaseRun(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	if rerr := refusePackages(cfg, "release"); rerr != nil {
-		return rerr
-	}
 	// Before the walk, not merely before the write: everything above this line
 	// is local and free, and sinceTagInput is where the money goes (at least
 	// one API round-trip per commit it visits). A run on the wrong ref is not
@@ -131,6 +138,9 @@ func releaseRun(cmd *cobra.Command) error {
 	// upsert.
 	if rerr := checkReleaseRef(ctx, owner, repoName, releaseDryRun); rerr != nil {
 		return rerr
+	}
+	if len(cfg.Packages) > 0 {
+		return releaseLines(ctx, cmd, cfg, footer, owner, repoName)
 	}
 
 	tagFlag := releaseSinceTag

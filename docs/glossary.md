@@ -334,7 +334,9 @@ touch is refused the same way.
 **line** — one independently versioned subtree of the repository, declared as a
 `[[packages]]` entry: its own tag prefix (`<path>/`, bare for the root package
 `path = "."`), its own walk base (the highest tag carrying that prefix), its own
-fold, verdict and — when `release` learns it — draft. A repository with no
+fold, verdict and rolling draft (`<path>/vX.Y.Z`, placeholder
+`<path>/Unreleased`), converged by `draftplan` on that prefix alone so one
+line's release never touches another's draft. A repository with no
 `[[packages]]` is one line with no name, and nothing synthesises a root package
 for it. A tag **names** a line: `--since-tag=haiku/v0.1.0` selects haiku alone.
 `internal/config/config.go: Package.TagPrefix`, `internal/cli/lines.go: line`

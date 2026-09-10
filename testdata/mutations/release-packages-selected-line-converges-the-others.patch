@@ -1,0 +1,12 @@
+diff --git a/internal/cli/lines.go b/internal/cli/lines.go
+index a82698a..b7233a9 100644
+--- a/internal/cli/lines.go
++++ b/internal/cli/lines.go
+@@ -125,7 +125,6 @@ func resolveLines(ctx context.Context, cfg *config.Config, tagFlag string) ([]li
+ 				return nil, "", core.Usagef("--since-tag=%s names the %s line, which no [[packages]] entry declares (declared lines: %s)", tag, lineLabel(prefix), declaredLines(cfg))
+ 			}
+ 			lines = []line{{Package: p, Prefix: prefix, Base: &v, Source: tag + "..HEAD", Range: tag + "..HEAD"}}
+-			break
+ 		}
+ 		for _, p := range cfg.Packages {
+ 			lines = append(lines, line{Package: p, Prefix: p.TagPrefix(), Source: tag + "..HEAD", Range: tag + "..HEAD"})

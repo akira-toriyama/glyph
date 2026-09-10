@@ -800,11 +800,14 @@ walks the union once, fetches each participating commit's files from local
 git or the API, and partitions the walk per line, so `bump` and `notes`
 answer per line over `--since-tag` and `--range` (the `packages` array
 below, scalars empty), `lint --range` and the pre-push hook apply rules 2–3
-and the contradiction check, and `preview` and `release` refuse a packages
-repository at exit 2 until their per-line forms land.** Those two, the N
-drafts and the reusable below are the remaining `e-7hat` tasks on the
-projects board, and the presets' commented example says so until this line
-says otherwise. A binary older than the schema refuses the file (§2's strict
+and the contradiction check; and the drafts (t-qecb): `release` converges
+one rolling draft per line (`internal/cli/release_lines.go` — every line's
+upsert before any stray, the single line's bare draft deleted as residue,
+the footer on every draft, `packages[]` in the verdict with the scalars
+empty). `preview` refuses a packages repository at exit 2 until its
+per-line form lands.** That, and the reusable below, are the remaining
+`e-7hat` tasks on the projects board, and the presets' commented example
+says so until this line says otherwise. A binary older than the schema refuses the file (§2's strict
 decoder — an old pinned binary must refuse a grammar it cannot read, never
 ignore it). The decisions below are ratified so that each task inherits them
 instead of re-deriving them; the paragraphs that describe measured behaviour
@@ -1019,6 +1022,17 @@ assigned when a human *publishes*, by creation date unless the publisher says
 otherwise; glyph writes drafts, which cannot be latest, so it never sets
 `make_latest` and the badge lands on whichever line was published last — the
 shape google-cloud-go's releases page has lived with for years. Not a knob.
+**Measured** 2026-09-10 on glyph-monorepo-test: `releases/latest` was 404
+with two drafts standing, `haiku/v0.1.0` after haiku was published,
+`curry/v0.0.1` after curry was — the last publish, whichever line. A tag
+that selects one line converges that line **alone**: the other lines'
+drafts are not that run's to touch (goreleaser's tag-time run must not
+rewrite a sibling's draft from a range it did not ask about). The published
+floor is asked of the **checkout's** tags, so a release run on a checkout
+that has not fetched a sibling line's freshly published tag refuses at the
+floor (exit 4, measured) rather than re-drafting a version that is already
+out — the same fail-loud the single line has, and the reason
+`release.yml` checks out with tags.
 
 **Preview.** `preview --pr` renders one verdict per package the pull's commits
 are attributed to, in config order, each with that line's current version and
