@@ -1,0 +1,13 @@
+diff --git a/internal/cli/lines.go b/internal/cli/lines.go
+index df6d5ba..4b3074b 100644
+--- a/internal/cli/lines.go
++++ b/internal/cli/lines.go
+@@ -273,7 +273,7 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
+ 		gov := c.governing()
+ 		var reach []int
+ 		for i := range lines {
+-			if unreleased[i] == nil || unreleased[i][gov] {
++			if unreleased[i] == nil || unreleased[i][gov] || true {
+ 				reach = append(reach, i)
+ 			}
+ 		}

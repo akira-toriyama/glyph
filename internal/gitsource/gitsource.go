@@ -345,6 +345,50 @@ func FirstParentLog(ctx context.Context, dir, rev string, n int) ([]RawCommit, e
 	return commits, nil
 }
 
+// DiffTreeFiles returns the paths a commit's own diff touches — repository-
+// relative, slash-separated, in git's order, directories never listed. Rename
+// detection is OFF on purpose: a move across two subtrees then names both the
+// old path and the new, which is what attribution needs to move both lines
+// (DESIGN §4.1, rule 1); with detection on, git would report the pair as one
+// entry under the new name and the line the file left would never hear of it.
+// A root commit is diffed against the empty tree (--root). A merge commit
+// answers EMPTY (git shows no diff for a merge without -m/-c), and callers do
+// not ask about one: a merge commit is attributed to nothing.
+//
+// Asked only of a commit this checkout holds — the walk's landed identities
+// and every commit a --range fold reads. A squash-merged pull's inner commits
+// exist on no branch, and the walk asks the API about those instead.
+func DiffTreeFiles(ctx context.Context, dir, sha string) ([]string, error) {
+	out, err := run(ctx, dir, "diff-tree", "-z", "--no-commit-id", "--name-only", "-r", "--root", "--no-renames", "--end-of-options", sha, "--")
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for entry := range bytes.SplitSeq(out, []byte{0}) {
+		if len(entry) > 0 {
+			files = append(files, string(entry))
+		}
+	}
+	return files, nil
+}
+
+// MergeBase returns the best common ancestor of revs (git merge-base
+// --octopus) — the commit the packages walk starts from when the lines' bases
+// differ, so that one walk's range contains every line's range (DESIGN
+// §4.1, "the walk is one walk"). One rev answers itself. Every rev must be
+// an object this checkout holds; an unknown one is a git failure (API), and
+// the caller took them from git's own tag list.
+func MergeBase(ctx context.Context, dir string, revs []string) (string, error) {
+	if len(revs) == 1 {
+		return revs[0], nil
+	}
+	out, err := run(ctx, dir, append([]string{"merge-base", "--octopus", "--end-of-options"}, revs...)...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // IsShallow reports whether this checkout is a shallow clone. The release walk
 // asks because a truncated history makes every ancestry answer a maybe: a commit
 // git cannot see is indistinguishable from one that never landed, and the walk

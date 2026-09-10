@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/akira-toriyama/glyph/internal/attribution"
 	"github.com/akira-toriyama/glyph/internal/bump"
 	"github.com/akira-toriyama/glyph/internal/cleanup"
 	"github.com/akira-toriyama/glyph/internal/config"
@@ -238,7 +239,15 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 // costs the developer the push. warned rides beside findings for the same
 // reason: a warned pattern must be loud at both gates or the quiet one
 // teaches the developer the warning is noise.
-func lintRaws(raws []gitsource.RawCommit, cfg *config.Config) (findings, warned []rangeViolation, checked int) {
+//
+// With [[packages]] declared, a clean message is judged once more against
+// the commit's own diff (DESIGN §4.1): a commit under no package whose sigil
+// claims a version impact, and a scope naming a package the diff does not
+// touch, are findings here — the pre-push hook is where a shared-only ^ is
+// caught before it is pushed, and the release walk would refuse it later
+// with no way to rewrite it. --message and --stdin never reach this: a
+// message alone has no diff. The error is git failing to read a diff (API).
+func lintRaws(ctx context.Context, raws []gitsource.RawCommit, cfg *config.Config) (findings, warned []rangeViolation, checked int, err error) {
 	for _, raw := range raws {
 		v := cfg.Lint(raw.Message, raw.Author)
 		if v.Excluded {
@@ -252,8 +261,40 @@ func lintRaws(raws []gitsource.RawCommit, cfg *config.Config) (findings, warned 
 		if v.Warn != "" {
 			warned = append(warned, rangeViolation{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message), Detail: v.Warn})
 		}
+		if len(cfg.Packages) == 0 {
+			continue
+		}
+		reason, aerr := lintAttribution(ctx, raw, cfg)
+		if aerr != nil {
+			return nil, nil, 0, aerr
+		}
+		if reason != "" {
+			findings = append(findings, rangeViolation{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message), Detail: reason})
+		}
 	}
-	return findings, warned, checked
+	return findings, warned, checked, nil
+}
+
+// lintAttribution asks attribution's question of one clean, matched commit
+// under local git, returning the refusal's sentence or "". A skip-pattern
+// match has no sigil to carry; a merge commit's diff is never asked for
+// (attributed to nothing, the same as in the walk).
+func lintAttribution(ctx context.Context, raw gitsource.RawCommit, cfg *config.Config) (string, error) {
+	m, merr := cfg.Match(raw.Message)
+	if merr != nil || !m.Matched || m.Skip {
+		return "", nil
+	}
+	var files []string
+	if raw.Parents < 2 {
+		var err error
+		if files, err = gitsource.DiffTreeFiles(ctx, ".", raw.SHA); err != nil {
+			return "", err
+		}
+	}
+	if _, aerr := attribution.Attribute(files, m.Groups[config.ScopeGroup], m.Sigil, cfg.Packages); aerr != nil {
+		return aerr.Error(), nil
+	}
+	return "", nil
 }
 
 // rangeViolation is one finding, anchored to its commit where one exists.
@@ -279,7 +320,10 @@ func lintRangeRun(ctx context.Context, revRange string) error {
 	if lerr != nil {
 		return lerr
 	}
-	findings, warned, checked := lintRaws(raws, cfg)
+	findings, warned, checked, aerr := lintRaws(ctx, raws, cfg)
+	if aerr != nil {
+		return aerr
+	}
 	// Warnings go out even when the run fails: the warned commits are real
 	// whichever way the verdict lands, and a developer fixing the violation
 	// should not discover the warning only on the green re-run.

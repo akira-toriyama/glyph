@@ -42,6 +42,13 @@ const Schema = 1
 // names cannot contain '-', which is why it is snake_case.
 const SigilGroup = "semver_sigil"
 
+// ScopeGroup is the regex group name attribution reads (DESIGN §4.1, rule
+// 2): a commit whose files lie under no package participates in the package
+// its scope names. Nothing requires a pattern to capture it — a file without
+// the group simply has no scope to consult, and the shipped presets capture
+// it under this name.
+const ScopeGroup = "scope"
+
 // Sigil is one of the five version signals a commit can carry. The alphabet
 // and its meaning are fixed in the binary and are not configurable.
 //

@@ -76,6 +76,9 @@ func previewRun(cmd *cobra.Command) error {
 	if err := checkPRFlag(previewPR); err != nil {
 		return err
 	}
+	if rerr := refusePackages(cfg, "preview"); rerr != nil {
+		return rerr
+	}
 
 	// The PR side: pure API, bounded by the PR's own commits.
 	raws, _, perr := pullInput(ctx, previewPR, previewRepo)
@@ -113,10 +116,11 @@ func previewRun(cmd *cobra.Command) error {
 	var pendingNext string
 	var pendingShort string
 	if !untagged {
-		pparsed, facts, _, _, serr := sinceTagInput(ctx, cfg, sinceTagAuto, previewRepo)
+		w, serr := sinceTagInput(ctx, cfg, sinceTagAuto, previewRepo)
 		if serr != nil {
 			return serr
 		}
+		pparsed, facts := w.All, w.Facts
 		// The pending fold is the one side of this comment computed from a walk,
 		// so it is the one side that can come back short. release refuses to act
 		// on that; there is nothing to refuse here, so it is reported instead —

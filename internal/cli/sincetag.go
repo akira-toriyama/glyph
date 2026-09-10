@@ -102,7 +102,13 @@ func checkSinceTagFlag(tag string) error {
 		// input nobody had handed it. Candidates stay out of the ANSWER set —
 		// latestVersionTag still parses every tag with ParseVersion — so what
 		// changes is only what may be asked about.
-		if _, perr := bump.ParseBaseVersion(strings.TrimSpace(rest)); perr != nil {
+		//
+		// Parsed ON ITS LINE: a bound spelled haiku/v1.2.3 is version-shaped
+		// on the haiku/ line, and whether that line is declared is
+		// resolveLines' question, asked once the config is loaded.
+		bound := strings.TrimSpace(rest)
+		prefix, _ := bump.SplitTag(bound)
+		if _, perr := bump.ParseBaseVersionOn(prefix, bound); perr != nil {
 			return core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
 		}
 		return nil
@@ -121,26 +127,39 @@ func checkSinceTagFlag(tag string) error {
 	return nil
 }
 
-// sinceTagInput resolves the repository, the walk range and the version base,
-// then walks. bump, notes and release share it; the returned source names the
-// range for the reason line, base (when the tag names a version) is what the
-// bump steps from, and the walk's own facts come back with the commits — its
+// sinceTagInput resolves the repository, the lines and the walk range, walks
+// once, and partitions the walk over the lines (lines.go). bump, notes,
+// release and preview share it; Source names the range for the reason line,
+// Base (when the tag names a version, single line only) is what the bump
+// steps from, and the walk's own facts come back with the commits — its
 // expansion provenance AND whether it could read the range at all (release
 // reports them, the others discard them).
-func sinceTagInput(ctx context.Context, cfg *config.Config, tagFlag, repoFlag string) ([]walked, walkFacts, string, *bump.Version, error) {
+func sinceTagInput(ctx context.Context, cfg *config.Config, tagFlag, repoFlag string) (sinceTagWalk, error) {
 	if err := checkSinceTagFlag(tagFlag); err != nil {
-		return nil, walkFacts{}, "", nil, err
+		return sinceTagWalk{}, err
 	}
 	owner, repo, err := resolveRepo(ctx, repoFlag)
 	if err != nil {
-		return nil, walkFacts{}, "", nil, err
+		return sinceTagWalk{}, err
 	}
-	revRange, base, err := sinceTagRange(ctx, cfg, tagFlag)
+	lines, revRange, err := resolveLines(ctx, cfg, tagFlag)
 	if err != nil {
-		return nil, walkFacts{}, "", nil, err
+		return sinceTagWalk{}, err
 	}
-	commits, facts, err := walkSince(ctx, newGitHub(), cfg, owner, repo, revRange)
-	return commits, facts, revRange, base, err
+	gh := newGitHub()
+	commits, facts, err := walkSince(ctx, gh, cfg, owner, repo, revRange)
+	if err != nil {
+		return sinceTagWalk{}, err
+	}
+	lws, all, err := partitionLines(ctx, gh, cfg, owner, repo, commits, &facts, lines)
+	if err != nil {
+		return sinceTagWalk{}, err
+	}
+	var base *bump.Version
+	if len(cfg.Packages) == 0 {
+		base = lines[0].Base
+	}
+	return sinceTagWalk{All: all, Facts: facts, Source: revRange, Base: base, Lines: lws}, nil
 }
 
 // sinceTagRange turns the --since-tag value into a git revision range and, when
@@ -168,9 +187,15 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 		return latest + "..HEAD", &v, nil
 	}
 	if rest, ok := strings.CutPrefix(tag, sinceTagBelow); ok {
-		// checkSinceTagFlag guaranteed the bound parses before anything ran.
+		// checkSinceTagFlag guaranteed the bound parses ON ITS LINE before
+		// anything ran; this is the single line, so a bound on any other
+		// line names a line this repository does not have (resolveLines
+		// answers for declared packages, and never reaches here with one).
 		// A pre-release bound compares as its base version — exact, not a
 		// rounding: see ParseBaseVersion for why the two select the same tag.
+		if prefix, _ := bump.SplitTag(strings.TrimSpace(rest)); prefix != "" {
+			return "", nil, core.Usagef("--since-tag=below:%s names the %s line, but this repository declares no [[packages]] — its one line is the bare vX.Y.Z tags", strings.TrimSpace(rest), prefix)
+		}
 		bound, perr := bump.ParseBaseVersion(strings.TrimSpace(rest))
 		if perr != nil {
 			return "", nil, core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
@@ -308,6 +333,12 @@ type walked struct {
 	Raw    gitsource.RawCommit
 	Pull   int
 	Landed bool
+	// MergePoint is the on-branch commit the pull was resolved from — GitHub's
+	// merge_commit_sha — "" on the fallback path. With packages declared it
+	// is the identity the lines' ranges judge a footprint-less commit by
+	// (walked.governing): a squash-merged pull's inner commit is unreleased
+	// on a line exactly when its merge point is.
+	MergePoint string
 }
 
 // walkedSigilCommits strips the provenance for the fold: FoldSigils reads
@@ -414,13 +445,21 @@ type walkFacts struct {
 	// shipped and answers minor where the full-history control on the same
 	// repository answers patch — loud (two warnings) and green.
 	Shallow bool
+	// FilesCapped are the squash-arm inner commits whose file listing came
+	// back at GitHub's hard cap (github.CommitFilesCap), in walk order — the
+	// packages walk's own truncation. A package touched only past the cap is
+	// unreachable, not absent, and the verdict that leaves it out is a
+	// verdict computed over a range the walk could not read whole (DESIGN
+	// §4.1). Empty whenever no packages are declared: no file is ever asked
+	// for then.
+	FilesCapped []string
 }
 
 // complete reports that the walk read the range it was asked about. Everything
 // glyph does that it cannot take back — deleting a draft, lowering the version a
 // human is about to publish — is gated on it.
 func (f walkFacts) complete() bool {
-	return !f.AllUnknown && !f.Shallow && len(f.LostPulls) == 0 && len(f.Dropped) == 0 && len(f.Truncated) == 0
+	return !f.AllUnknown && !f.Shallow && len(f.LostPulls) == 0 && len(f.Dropped) == 0 && len(f.Truncated) == 0 && len(f.FilesCapped) == 0
 }
 
 // shortfall says, in one clause, what the walk could not read — for the warning
@@ -442,6 +481,9 @@ func (f walkFacts) shortfall(owner, repo string) string {
 	}
 	for _, n := range f.Truncated {
 		parts = append(parts, fmt.Sprintf("merged pull request #%d returned the maximum %d commits, so GitHub truncated its listing and the rest could not be read", n, github.PullCommitsCap))
+	}
+	if len(f.FilesCapped) > 0 {
+		parts = append(parts, fmt.Sprintf("%d commit(s) returned the maximum %d files, so GitHub truncated the listing and a package touched past it could not be read (%s)", len(f.FilesCapped), github.CommitFilesCap, strings.Join(f.FilesCapped, ", ")))
 	}
 	return strings.Join(parts, "; ")
 }
@@ -595,7 +637,7 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
 			if r.SHA != "" {
 				seen[r.SHA] = true
 			}
-			commits = append(commits, walked{Raw: r, Pull: number, Landed: landed[i] != ""})
+			commits = append(commits, walked{Raw: r, Pull: number, Landed: landed[i] != "", MergePoint: canonical})
 			contributed++
 		}
 		facts.Pulls = append(facts.Pulls, pullExpansion{Number: number, Commits: contributed})

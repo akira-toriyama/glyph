@@ -257,7 +257,10 @@ func prePushRun(ctx context.Context, args []string) error {
 	if cerr != nil {
 		return cerr
 	}
-	findings, warned, checked := lintRaws(raws, cfg)
+	findings, warned, checked, aerr := lintRaws(ctx, raws, cfg)
+	if aerr != nil {
+		return aerr
+	}
 	// The push-time gate surfaces the same warnings CI will: a warned pattern
 	// quiet here and loud there reads as CI-only noise, which is how a
 	// warning dies.
