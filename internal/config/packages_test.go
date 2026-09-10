@@ -114,3 +114,12 @@ func TestLoadPackagesErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestPackageTagPrefix(t *testing.T) {
+	cases := map[string]string{".": "", "haiku": "haiku/", "exporters/prometheus": "exporters/prometheus/"}
+	for path, want := range cases {
+		if got := (Package{Path: path}).TagPrefix(); got != want {
+			t.Errorf("Package{Path: %q}.TagPrefix() = %q, want %q", path, got, want)
+		}
+	}
+}

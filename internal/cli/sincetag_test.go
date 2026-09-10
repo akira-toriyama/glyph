@@ -1943,7 +1943,7 @@ func TestLatestVersionTagComparesVersionsNotRefnames(t *testing.T) {
 		t.Fatalf("premise gone: git --sort=-v:refname now leads with %q, so this test no longer exercises the refname/version gap", strings.SplitN(first, "\n", 2)[0])
 	}
 
-	tag, v, err := latestVersionTag(t.Context(), nil)
+	tag, v, err := latestVersionTag(t.Context(), "", nil)
 	if err != nil {
 		t.Fatalf("latestVersionTag: %v", err)
 	}
@@ -1971,7 +1971,7 @@ func TestLatestVersionTagBreaksATieOnGitsOrder(t *testing.T) {
 	}
 	t.Chdir(dir)
 
-	tag, _, err := latestVersionTag(t.Context(), nil)
+	tag, _, err := latestVersionTag(t.Context(), "", nil)
 	if err != nil {
 		t.Fatalf("latestVersionTag: %v", err)
 	}
@@ -2468,4 +2468,41 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 			t.Errorf("landed[1] = %.7s, want %.7s — the replayed half still lands on its rewrite", landed[1], canonical)
 		}
 	})
+}
+
+// TestLatestVersionTagIsPerLine pins the line boundary of the walk base
+// (DESIGN §4.1): asked on a line, the resolver answers with that line's
+// highest tag and no other's — the bare line ignores every <path>/ tag, a
+// package ignores bare tags and its siblings', and a parent ignores its
+// nested package's. A tag two lines over that baselined a walk would re-fold
+// released commits or skip unreleased ones with nothing on stderr.
+func TestLatestVersionTagIsPerLine(t *testing.T) {
+	dir, _ := testRepo(t) // tags v0.1.0
+	for _, tag := range []string{"haiku/v2.0.0", "haiku/v1.9.0", "curry/v0.3.0", "haiku/sub/v9.0.0", "v0.0.9"} {
+		testGit(t, dir, "akira-toriyama", "tag", tag)
+	}
+	t.Chdir(dir)
+
+	cases := map[string]string{
+		"":           "v0.1.0",
+		"haiku/":     "haiku/v2.0.0",
+		"curry/":     "curry/v0.3.0",
+		"haiku/sub/": "haiku/sub/v9.0.0",
+		"other/":     "",
+	}
+	for prefix, want := range cases {
+		tag, _, err := latestVersionTag(t.Context(), prefix, nil)
+		if err != nil {
+			t.Fatalf("latestVersionTag(%q): %v", prefix, err)
+		}
+		if tag != want {
+			t.Errorf("latestVersionTag(%q) = %q, want %q", prefix, tag, want)
+		}
+	}
+	// below: on a line is the predecessor ON THAT LINE.
+	below := bump.Version{Major: 2}
+	tag, v, err := latestVersionTag(t.Context(), "haiku/", &below)
+	if err != nil || tag != "haiku/v1.9.0" || v != (bump.Version{Major: 1, Minor: 9}) {
+		t.Errorf("latestVersionTag(haiku/, below v2.0.0) = %q, %v, %v; want haiku/v1.9.0", tag, v, err)
+	}
 }

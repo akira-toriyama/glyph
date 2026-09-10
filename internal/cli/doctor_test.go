@@ -204,7 +204,7 @@ func TestDoctorHealthyRepositoryPasses(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("doctor on a healthy repository exited %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	if !strings.Contains(stdout, "15 checks: 15 pass, 0 fail, 0 advice, 0 could not run") {
+	if !strings.Contains(stdout, "16 checks: 16 pass, 0 fail, 0 advice, 0 could not run") {
 		t.Errorf("summary line missing or wrong:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "read-only") {
@@ -226,6 +226,7 @@ func TestDoctorJSONShape(t *testing.T) {
 	want := []string{
 		"glyph-toml-loads",
 		"package-paths-exist",
+		"root-line-tags",
 		"token-repo-read",
 		"token-repo-write",
 		"squash-merge-enabled",
@@ -261,8 +262,8 @@ func TestDoctorJSONShape(t *testing.T) {
 	if rep.Repo != "akira-toriyama/glyph" {
 		t.Errorf("repo = %q, want the diagnosed repository", rep.Repo)
 	}
-	if !rep.OK || rep.Counts.Pass != 15 {
-		t.Errorf("counts = %+v ok=%t, want 15 pass and ok", rep.Counts, rep.OK)
+	if !rep.OK || rep.Counts.Pass != 16 {
+		t.Errorf("counts = %+v ok=%t, want 16 pass and ok", rep.Counts, rep.OK)
 	}
 }
 
@@ -449,7 +450,7 @@ func TestDoctorMergeMethodsAreAdviceNotFailure(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("permissive merge methods exited %d, want 0 — a house convention is not a gate", code)
 	}
-	if !strings.Contains(stdout, "13 pass, 0 fail, 2 advice") {
+	if !strings.Contains(stdout, "14 pass, 0 fail, 2 advice") {
 		t.Errorf("merge and rebase must report as advice:\n%s", stdout)
 	}
 	if strings.Count(stderr, "::notice::") != 2 {
@@ -777,6 +778,49 @@ func TestDoctorInterruptDuringTopLevelReadCarriesOut(t *testing.T) {
 	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
 	if code != 130 {
 		t.Fatalf("doctor exited %d, want 130 — an interrupt in the top-level read is the user's own abort, not a check result", code)
+	}
+	if stdout != "" {
+		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
+	}
+}
+
+// TestDoctorInterruptDuringTagsReadCarriesOut is the same guard, fourth
+// read: the tag list the root-line check reads (DESIGN §4.1) is the LAST git
+// subprocess before the report, so a signal landing after the hooks read and
+// the top-level read both succeeded, while `git tag --list` is in flight, is
+// carried by tagsErr alone. Left out of the guard it would be laundered into
+// root-line-tags could-not-run at exit 4 — the code the fleet wrappers
+// retry, on a run the operator stopped. The fake git answers --git-path and
+// --show-toplevel and blocks on tag.
+func TestDoctorInterruptDuringTagsReadCarriesOut(t *testing.T) {
+	srv := doctorServer(t, apiRepoObject(healthySettings))
+	usePR(t, srv)
+	useDoctorCheckout(t, pinnedCaller)
+
+	bin := t.TempDir()
+	asked := filepath.Join(bin, "asked")
+	script := "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$*\" in\n*--git-path*) echo .git/hooks; exit 0;;\n*--show-toplevel*) pwd; exit 0;;\nesac\ntouch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for range 400 {
+			if _, err := os.Stat(asked); err == nil {
+				cancel()
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel() // safety net: never leave the run behind the fake's 30s block
+	}()
+
+	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	if code != 130 {
+		t.Fatalf("doctor exited %d, want 130 — an interrupt in the tag read is the user's own abort, not a check result", code)
 	}
 	if stdout != "" {
 		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)

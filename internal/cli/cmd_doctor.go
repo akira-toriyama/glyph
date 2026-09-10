@@ -246,6 +246,10 @@ func doctorRun(cmd *cobra.Command) error {
 	// resolves for every verdict command, asked here for the same reason
 	// HooksDir is. A failure degrades the config check alone.
 	top, terr := gitsource.TopLevel(cmd.Context(), ".")
+	// The tag list feeds the root-line check (DESIGN §4.1): which line the
+	// repository's bare v* tags are on is a config question, but whether any
+	// exist is git's to answer. A failure degrades that one check.
+	tags, tagsErr := gitsource.Tags(cmd.Context(), ".")
 	configPath := ""
 	// The workflow scans read the checkout git itself names, so running doctor
 	// from a subdirectory works, and an absent .github/workflows under that
@@ -268,7 +272,7 @@ func doctorRun(cmd *cobra.Command) error {
 	// asked: guarding rerr alone turned a mid-run SIGTERM into exit 4 with the
 	// abort rendered as the hook check's could-not-run — the one code the
 	// fleet's wrappers read as retryable infra, on a run the operator stopped.
-	if err := firstInterrupt(rerr, herr, terr, probeErr(probe)); err != nil {
+	if err := firstInterrupt(rerr, herr, terr, tagsErr, probeErr(probe)); err != nil {
 		return err
 	}
 	report := doctor.Run(doctor.Input{
@@ -283,6 +287,8 @@ func doctorRun(cmd *cobra.Command) error {
 		CommitMsgProbe:  probe,
 		ConfigPath:      configPath,
 		ConfigPathErr:   terr,
+		Tags:            tags,
+		TagsErr:         tagsErr,
 	})
 
 	// Annotations go out in BOTH modes, before the payload. On an Actions

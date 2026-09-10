@@ -1,5 +1,5 @@
 diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
-index d28e55e..e031ed7 100644
+index d28e55e..af033e2 100644
 --- a/internal/cli/cmd_doctor.go
 +++ b/internal/cli/cmd_doctor.go
 @@ -272,7 +272,7 @@ func doctorRun(cmd *cobra.Command) error {
@@ -7,7 +7,7 @@ index d28e55e..e031ed7 100644
  	// abort rendered as the hook check's could-not-run — the one code the
  	// fleet's wrappers read as retryable infra, on a run the operator stopped.
 -	if err := firstInterrupt(rerr, herr, terr, tagsErr, probeErr(probe)); err != nil {
-+	if err := firstInterrupt(rerr, herr, probeErr(probe)); err != nil {
++	if err := firstInterrupt(rerr, herr, terr, probeErr(probe)); err != nil {
  		return err
  	}
  	report := doctor.Run(doctor.Input{

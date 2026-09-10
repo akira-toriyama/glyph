@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 // Version is a plain semver triple. House tags are exactly vX.Y.Z — no
@@ -137,4 +138,65 @@ func (v Version) Next(d Decision) Version {
 	default:
 		return v
 	}
+}
+
+// A version LINE is a tag namespace (DESIGN §4.1): the bare line's tags are
+// vX.Y.Z, and a package's are <path>/vX.Y.Z. The prefix is the whole
+// difference — "" for the bare line, "<path>/" for a package — and it is
+// derived by config.Package.TagPrefix, never spelled by hand. Every resolver
+// that picks a tag (the walk base, the published floor, the managed drafts)
+// asks the question ON a line, so a tag from one line can never answer for
+// another: a curry/ tag never baselines haiku, and a bare v* tag never
+// baselines any package (mutation row packages-tag-of-one-line-baselines-another).
+
+// SplitTag splits a tag into its line prefix — everything through the LAST
+// '/', "" for a bare tag — and the remainder. It names the line a tag is on;
+// whether that line is declared, and whether the remainder is a version, are
+// the caller's questions (ParseVersionOn answers the second).
+func SplitTag(tag string) (prefix, rest string) {
+	i := strings.LastIndexByte(tag, '/')
+	if i < 0 {
+		return "", tag
+	}
+	return tag[:i+1], tag[i+1:]
+}
+
+// ParseVersionOn parses tag as a version on the line with the given prefix:
+// the prefix must match exactly and what follows must be a plain version
+// (ParseVersion's shape, v optional). A tag on any other line — bare where a
+// prefix is wanted, prefixed where none is, or a NESTED line's tag
+// (haiku/sub/v1.0.0 asked on haiku/) — is an error, the same plain error
+// ParseVersion returns, for the caller to classify.
+func ParseVersionOn(prefix, tag string) (Version, error) {
+	rest, ok := strings.CutPrefix(tag, prefix)
+	if !ok {
+		return Version{}, fmt.Errorf("%q is not on the %s line (want %svX.Y.Z)", tag, lineName(prefix), prefix)
+	}
+	if strings.Contains(rest, "/") {
+		return Version{}, fmt.Errorf("%q is on a line below %s, not on it (want %svX.Y.Z)", tag, lineName(prefix), prefix)
+	}
+	return ParseVersion(rest)
+}
+
+// ParseBaseVersionOn is ParseBaseVersion on a line: the prefix must match
+// exactly, and the remainder may carry a pre-release or build suffix. It is
+// what --since-tag=below:<prefix>vX.Y.Z-rc.1 parses its bound with.
+func ParseBaseVersionOn(prefix, tag string) (Version, error) {
+	rest, ok := strings.CutPrefix(tag, prefix)
+	if !ok || strings.Contains(rest, "/") {
+		return Version{}, fmt.Errorf("%q is not on the %s line (want %svX.Y.Z)", tag, lineName(prefix), prefix)
+	}
+	return ParseBaseVersion(rest)
+}
+
+// TagOn renders the version as a tag on a line: prefix + vX.Y.Z.
+func (v Version) TagOn(prefix string) string {
+	return prefix + v.String()
+}
+
+func lineName(prefix string) string {
+	if prefix == "" {
+		return "bare (root)"
+	}
+	return prefix
 }
