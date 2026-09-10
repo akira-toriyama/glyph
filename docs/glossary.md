@@ -31,7 +31,7 @@ missing entry, because it is the one place a reader trusts not to be stale.
 
 **Contents**
 
-1. [The release walk](#1-the-release-walk) — walk, walk base, auto, below:, range, fold, participate, merge point, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, walkFacts, Dropped, shortfall, wedge, wedge escape
+1. [The release walk](#1-the-release-walk) — walk, walk base, auto, below:, range, fold, participate, merge point, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, walkFacts, Dropped, shortfall, wedge, wedge escape, package, line, root package, attribution, carrier, shared-only
 2. [Verdicts and the rolling draft](#2-verdicts-and-the-rolling-draft) — verdict, level, source, reason, target, action, rolling draft, glyph-managed draft, residual draft, stale draft, published floor, pending, incomplete banner
 3. [Convention and lint](#3-convention-and-lint) — pattern, sigil, bump lattice, section, excluded author, cleanup
 4. [The render boundary](#4-the-render-boundary) — inline context, phantom span, neutralize, escape, fence, flatten, pipe escape, over-escaping is the safe direction
@@ -299,6 +299,35 @@ and its one commit on main *is* its merge point, so nothing short of a base at o
 past that merge point works. The error message names the pull, the merge point,
 the base and why that base is the one. `internal/cli/sincetag.go: wedgeHint,
 onMain`
+
+**package** — a declared subtree of the repository with a version line of its
+own: its own tags (`<path>/vX.Y.Z`), its own walk base, its own rolling draft.
+Declared as `[[packages]]` in `glyph.toml`; a repository that declares none is
+one **line** with no name, and every verdict it gets is unchanged. The **root
+package** is `path = "."`: the bare `vX.Y.Z` line, and the holder of every file
+no other package claims. *Designed, not shipped* —
+[DESIGN §4.1](DESIGN.md#41-packages--independently-versioned-lines-in-one-repository)
+carries the decisions and the `e-7hat` box on the projects board the tasks.
+
+**line** — one version series: one tag prefix, one base, one draft, one fold.
+"Which line does this commit move?" is the only question packages add to the
+walk; the answer is **attribution**.
+
+**attribution** — mapping a participating commit to the packages it moves, asked
+after the pattern match and before the fold. The tree decides: a file belongs to
+the package with the longest path prefix, and a commit participates in every
+package its own diff touches. Files come from local git for a commit the
+released branch holds and from `GET /commits/{sha}` for the squash arm (measured
+to answer for a sha no branch holds). Per commit, never per pull: the pull's net
+diff is neither the sum of its commits nor fine enough to carry two sigils.
+
+**carrier** — the package a commit's sigil lands on. A **shared-only** commit
+(its diff lies under no package: root CI, the workspace file, a README in a
+repository with no root package) has a carrier only if its scope names a
+package; with none, a `=` commit participates nowhere and any other sigil is a
+lint-class refusal, because a version claim nothing can carry is the silent-none
+shape with the polarity reversed. A scope that names a package the diff did not
+touch is refused the same way.
 
 ---
 
