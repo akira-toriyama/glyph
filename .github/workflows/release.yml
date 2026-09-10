@@ -404,8 +404,13 @@ jobs:
           if [ "$status" -ne 0 ]; then
             exit "$status"
           fi
-          tag="$(jq -r .tag "$RUNNER_TEMP/verdict.json")"
-          action="$(jq -r .action "$RUNNER_TEMP/verdict.json")"
+          # `// empty`, not a bare read: on a packages repository the envelope
+          # carries no scalar tag, and `jq -r .tag` prints the literal `null`
+          # — which then rides into `next=` as four characters a caller's
+          # `!= ''` gate reads as a tag. Measured on glyph-monorepo-test's
+          # first live run (2026-09-10): the read-back refused `next=null`.
+          tag="$(jq -r '.tag // empty' "$RUNNER_TEMP/verdict.json")"
+          action="$(jq -r '.action // empty' "$RUNNER_TEMP/verdict.json")"
           echo "release=true" >> "$GITHUB_OUTPUT"
           echo "tag=$tag"     >> "$GITHUB_OUTPUT"
           emit level   .level

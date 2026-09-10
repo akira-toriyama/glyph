@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index ef7418f..f76ff41 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -409,7 +409,7 @@ jobs:
+           # — which then rides into `next=` as four characters a caller's
+           # `!= ''` gate reads as a tag. Measured on glyph-monorepo-test's
+           # first live run (2026-09-10): the read-back refused `next=null`.
+-          tag="$(jq -r '.tag // empty' "$RUNNER_TEMP/verdict.json")"
++          tag="$(jq -r .tag "$RUNNER_TEMP/verdict.json")"
+           action="$(jq -r '.action // empty' "$RUNNER_TEMP/verdict.json")"
+           echo "release=true" >> "$GITHUB_OUTPUT"
+           echo "tag=$tag"     >> "$GITHUB_OUTPUT"
