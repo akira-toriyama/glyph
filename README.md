@@ -220,6 +220,17 @@ computed**, never "none", so gate fail-safe on `""`. The draft's URL is
 deliberately not among them — with the handle in hand, auto-publishing would
 be a two-line caller step, and publishing staying human is the safety net.
 
+An artefact the reusable did not build — a firmware image from a Docker job,
+say — is attached by a follow-up job in the caller, not by a new input: gate
+it on `needs.release.outputs.next != ''` and on the dry-run input, then
+`gh release upload "$next" <files> --clobber`. gh resolves an unpublished
+draft by its intended tag (the REST `releases/tags/<tag>` lookup alone does
+not — gh falls back to the listing), the same call the reusable's own upload
+step makes. Measured on glyph-test's `v2.0.0` draft, 2026-09-10: upload,
+`--clobber` replace and `gh release delete-asset` each resolved the draft by
+tag. It is a follow-up job rather than a `needs:`-fed input because the
+reusable upserts before it builds — DESIGN §6 argues why.
+
 Adopting on a repository with deep history? Cut a version tag at the commit
 where the convention starts — the walk baselines at the highest `v*` tag, and
 with no tag at all a long history is refused past a walk cap (fail-loud, one
