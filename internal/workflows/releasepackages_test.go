@@ -62,7 +62,7 @@ func TestReleaseRefusesArtifactInputsOnAPackagesRepository(t *testing.T) {
 		t.Fatalf("could not find all three steps in release.yml (refuse=%d, verdict=%d, build=%d) — a rename "+
 			"moved one and this guard is asserting nothing", ri, vi, bi)
 	}
-	if !(vi < ri && ri < bi) {
+	if vi >= ri || ri >= bi {
 		t.Errorf("the packages refusal is out of place (verdict=%d, refuse=%d, build=%d): it must follow the "+
 			"verdict (the envelope is where the declaration is read) and precede the build (an artifact "+
 			"nothing can attach must not be built)", vi, ri, bi)
