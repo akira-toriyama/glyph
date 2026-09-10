@@ -113,6 +113,12 @@ design, so a tree that does not compile turns the local gate into a silent no-op
   (user-ratified 2026-08-27), so real PRs, releases and force-pushed branches there are fair
   game. Do not wipe its history or tags: `e2e-v2.yml` and `livefire.yml` reference old tags
   as frozen coordinates, and the rollout runbook names it as the canary.
+- Fire **packages** ammunition in **`glyph-monorepo-test`** (created 2026-09-10, the same
+  standing as glyph-test): five declared lines, `travel/onsen` nested in `travel`, one rolling
+  draft per line. Its `release.yml` is the reusable's per-line read-back on every push, its
+  `e2e.yml` (`glyph-ref=<ref>`) fires the §4.1 rules on a fixture and at a frozen coordinate,
+  and its `artifact-probe.yml` is **expected to fail** at the reusable's refusal. Its README
+  lists the pulls and the merge commit that are frozen; do not rewrite them.
 
 ## Generated and pinned data — regenerate, never hand-edit
 
