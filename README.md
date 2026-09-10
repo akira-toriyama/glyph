@@ -346,10 +346,23 @@ mirrors it: `packages: [{path, sections}]`, and on stdout one body per line
 under a `# <path>` heading (bare when one line is selected). `--pr` is
 refused on both — a pull's listing carries messages and no files.
 
+`release` keeps **one rolling draft per line** — `haiku/v0.2.0` and
+`curry/v0.1.1` side by side, each converged on its own tag prefix (never a
+second draft on a line, retagged in place, a line that folds to none loses
+its residual draft), every line's upsert written before any stray is deleted
+(a write that fails on the second line leaves the first standing and exits
+`4`), `--footer-file` appended to every draft, and `--json` carrying
+`packages: [{path, current, level, next, tag, body, action, url, commits,
+reason}]` with the scalars empty and `target` shared. A bare `vX.Y.Z` draft
+in a repository that declares packages but no root package is the single
+line's residue and is deleted with a notice on the first packages run — move
+any hand-written prose it carried into the line's own draft first. GitHub's
+Latest badge lands on whichever line a human published last; glyph never
+sets `make_latest`. A tag that selects one line converges that line alone.
+
 Not there yet, and refused at exit 2 rather than answered on the wrong
-line: `release` (one draft per line) and `preview` (a verdict per package the
-pull touches). A repository without `[[packages]]` is untouched by all of
-this, byte for byte.
+line: `preview` (a verdict per package the pull touches). A repository
+without `[[packages]]` is untouched by all of this, byte for byte.
 
 ## Exit codes
 

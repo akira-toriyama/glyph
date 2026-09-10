@@ -1,0 +1,12 @@
+diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
+index 8e394f6..2ffe4ad 100644
+--- a/internal/cli/release_lines.go
++++ b/internal/cli/release_lines.go
+@@ -231,6 +231,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
+ 			if i > 0 {
+ 				warnf("%d line(s) were written before this failure and stand; the remaining lines converge on the next run", i)
+ 			}
++			_ = convergeStrays(ctx, gh, owner, repoName, stale)
+ 			return werr
+ 		}
+ 		noticef("draft release %s %sd (unpublished — the tag is created when a human publishes): %s", d.params.TagName, d.plan.Action, rel.URL)

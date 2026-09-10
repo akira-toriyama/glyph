@@ -414,13 +414,13 @@ func refusePullSource(cfg *config.Config) error {
 	return core.Usagef("this repository declares [[packages]], and --pr reads a pull request's messages alone, so its commits cannot be attributed to a line — use --since-tag (the release walk) or --range (local git), which have the files")
 }
 
-// refusePackages is the answer of a command that has no per-line form yet:
-// release converges one draft, preview renders one verdict, and running
-// either over a repository whose verdict has N lines would act on the wrong
-// answer. The remaining e-7hat tasks lift it (DESIGN §4.1 status).
+// refusePackages is the answer of a command that has no per-line form yet —
+// preview renders one verdict, and rendering it over a repository whose
+// verdict has N lines would answer the wrong question. The remaining e-7hat
+// task lifts it (DESIGN §4.1 status).
 func refusePackages(cfg *config.Config, command string) error {
 	if len(cfg.Packages) == 0 {
 		return nil
 	}
-	return core.Usagef("this repository declares [[packages]], and `glyph %s` does not answer per line yet — bump --since-tag and notes --since-tag do (DESIGN §4.1)", command)
+	return core.Usagef("this repository declares [[packages]], and `glyph %s` does not answer per line yet — bump, notes and release do (DESIGN §4.1)", command)
 }
