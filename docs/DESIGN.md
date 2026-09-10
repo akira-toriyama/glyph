@@ -789,9 +789,13 @@ commit and a tag strictly past it both exited 3). Both now exit 0.
 
 ### 4.1 Packages — independently versioned lines in one repository
 
-**Status: designed 2026-09-10 (t-99rf), not shipped.** The implementing
-tasks are the `e-7hat` box on the projects board; until they land,
-`[[packages]]` is an unknown key and the loader refuses the file (§2's strict
+**Status: designed 2026-09-10 (t-99rf); shipped so far (t-exs0): the
+`[[packages]]` schema in `internal/config`, the attribution rule as
+`internal/attribution`, and `doctor`'s path-exists check.** Declaring a
+package therefore changes no verdict yet — the walk, the fold, the drafts,
+the preview and the reusable below are the remaining `e-7hat` tasks on the
+projects board, and the presets' commented example says so until this line
+says otherwise. A binary older than the schema refuses the file (§2's strict
 decoder — an old pinned binary must refuse a grammar it cannot read, never
 ignore it). The decisions below are ratified so that each task inherits them
 instead of re-deriving them; the paragraphs that describe measured behaviour
@@ -991,11 +995,15 @@ This is the one place the hook's verdict is weaker than CI's, and it is stated
 here rather than left to be discovered: the pre-push hook closes it on the
 same machine, one step later.
 
-**Doctor** gains three checks: every declared `path` exists in the checkout;
-`name`s are unique (also a load error, reported here with the fix); and a
-bare `v*` tag exists while no root package is declared — advice, not a
-defect: those tags baseline nothing now, and the note says which package
-declaration would adopt them.
+**Doctor** gains three checks: every declared `path` is a directory in the
+checkout (`package-paths-exist`, shipped — a path with no subtree claims no
+file, so a typo silently moves the verdict: fail; unknown while the file
+itself has not loaded, since its packages were never read); `name`s are
+unique (a load error, so `glyph-toml-loads` already carries it with the
+loader's own remedy — no second check repeats it); and a bare `v*` tag exists
+while no root package is declared — advice, not a defect: those tags baseline
+nothing now, and the note says which package declaration would adopt them
+(lands with the tag-parse task, which is where the tags are first read).
 
 **The reusables.** `release.yml` gains a `packages` output (the JSON array
 above, as a string) and keeps its four scalars with the empty-in-packages-mode
@@ -1047,7 +1055,8 @@ internal/core            exit-code contract + structured Error (no I/O, no logic
 internal/version         ldflags build identity + ReadBuildInfo fallback
 internal/cleanup         git's message cleanup, modelled exactly (comment strip, scissors cut) — what --stdin judges is what git records
 internal/bump            Level lattice; Classify; Reduce(max); Next; stdlib semver
-internal/config          glyph.toml loader — user RE2 patterns, first match wins, semver_sigil extraction; embeds the init presets
+internal/config          glyph.toml loader — user RE2 patterns, first match wins, semver_sigil extraction, the [[packages]] schema; embeds the init presets
+internal/attribution     which declared package(s) a commit moves — pure; files + scope + sigil + packages in, package set or lint-class refusal out (§4.1)
 internal/emoji           the gemoji dictionary `glyph emoji` prints — embedded table.json, advisory data nothing else reads (§2)
 internal/draftplan       draft convergence — pure; which draft a verdict keeps, retags or deletes (the Unreleased placeholder lives here)
 internal/markdown        Line: per-field escape, then the mention fence over the assembled line

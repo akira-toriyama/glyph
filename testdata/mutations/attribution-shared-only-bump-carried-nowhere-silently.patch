@@ -1,0 +1,16 @@
+diff --git a/internal/attribution/attribution.go b/internal/attribution/attribution.go
+index 7c2586d..7f58dc2 100644
+--- a/internal/attribution/attribution.go
++++ b/internal/attribution/attribution.go
+@@ -118,10 +118,7 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
+ 	if hasNamed {
+ 		return []config.Package{packages[named]}, nil
+ 	}
+-	if sigil == config.SigilNone {
+-		return nil, nil
+-	}
+-	return nil, &Refusal{Reason: NoCarrier, Scope: scope, Sigil: sigil, Names: names(packages)}
++	return nil, nil
+ }
+ 
+ // owner returns the index of the package whose path is the longest prefix of
