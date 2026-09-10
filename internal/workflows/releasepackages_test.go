@@ -79,3 +79,27 @@ func TestReleaseRefusesArtifactInputsOnAPackagesRepository(t *testing.T) {
 			"that does not stop the run is a warning nobody reads:\n%s", script)
 	}
 }
+
+// TestReleaseScalarTagIsReadWithEmptyNotNull: the release arm's `tag` is
+// read from an envelope that, on a packages repository, has no scalar tag —
+// and `jq -r .tag` prints the literal `null` for an absent key, which then
+// rides into `next=` as four characters a caller's `!= ”` gate reads as a
+// tag. Measured on glyph-monorepo-test's first live run (2026-09-10): the
+// read-back refused `next=null`. Positive control: the envelope is read
+// with jq -r at all (a rewrite to another reader needs this re-derived).
+func TestReleaseScalarTagIsReadWithEmptyNotNull(t *testing.T) {
+	script := extractRun(t, repoFile(t, filepath.Join(".github", "workflows", "release.yml")),
+		"Compose the verdict and upsert the rolling DRAFT")
+	if !strings.Contains(script, `jq -r`) {
+		t.Fatal("the verdict step no longer reads its envelope with jq -r; this guard's premise " +
+			"(an absent key prints as the literal null) needs re-deriving for the new reader")
+	}
+	if !strings.Contains(script, `tag="$(jq -r '.tag // empty'`) {
+		t.Errorf("the release arm does not read the scalar tag as `.tag // empty` — on a packages "+
+			"repository the key is absent and a bare read hands every caller next=null:\n%s", script)
+	}
+	if strings.Contains(script, `jq -r .tag `) {
+		t.Errorf("the verdict step still carries a bare `jq -r .tag` read somewhere — an absent key "+
+			"prints as null there:\n%s", script)
+	}
+}
