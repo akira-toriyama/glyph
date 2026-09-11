@@ -394,8 +394,9 @@ rendered around nothing: `$pr` is empty for every commit the `--range` walk
 sees (that walk resolves no pulls at all) and for every direct push under
 `--since-tag`, so both shipped presets emitted
 `- add the demo feature () @akira-toriyama` — measured live. A malformed span
-is a CONFIG error, refused at load with the file's path (exit 3) rather than
-by the release that would have rendered it: unterminated, nested, or holding
+is a CONFIG error, refused at load with the file's path (exit 2 — §5: the
+config is the yardstick on a verdict command, never the judged subject) rather
+than by the release that would have rendered it: unterminated, nested, or holding
 no placeholder — the last because a span with nothing to resolve renders
 unconditionally, which says optional and means always. The marker was chosen
 over `${ … }` and `[? … ]` after measuring that all three parse as literal
@@ -1192,6 +1193,18 @@ classified at the source into `*core.Error`; `ExitCode` funnels everything
 (unclassified ⇒ API, never usage). `3` is the *gate* code — what glyph was asked
 to judge does not conform: a commit message under `lint`, a repository's own
 configuration under `doctor`. Same class, different subject; no new integer.
+
+The converse is the part that had to be repaired rather than merely written
+down (t-c6r5): on a verdict command the config is the **yardstick**, so a
+`glyph.toml` that will not load is never `3` there — no commit was judged at
+all. Unreadable (permission, EISDIR) is `4`, the code `doctor` and the hook
+installer already gave that same event; unparseable is `2`, the code a
+**missing** config already carries, since both leave a human editing a file.
+Two mechanisms depend on it and both failed silently while the loader answered
+`3`: the installed commit-msg and pre-push hooks block on `3` alone, so a typo
+in `glyph.toml` rejected the very commit that would repair it, and `lint.yml`'s
+default-branch push arm swallows `3` alone, so an I/O failure returned a green
+gate having judged nothing.
 
 One command sits deliberately off the `1` rung: for `preview`, `none` is a real
 answer to the question asked — *what would merging this do?* — so a none verdict
