@@ -1,0 +1,30 @@
+diff --git a/internal/markdown/markdown.go b/internal/markdown/markdown.go
+index 3f7c2fe..08defb8 100644
+--- a/internal/markdown/markdown.go
++++ b/internal/markdown/markdown.go
+@@ -377,12 +377,6 @@ func paragraphSpans(p string, offset int) [][2]int {
+ 			i += 2
+ 		case '`':
+ 			n := backtickRun(p, i)
+-			if n > maxBacktickRun {
+-				// cmark cannot open a span with this run, so there is no span
+-				// here to believe in. Spend the run as literal text.
+-				i += n
+-				continue
+-			}
+ 			end := search.closer(p, i+n, n)
+ 			if end < 0 {
+ 				// No partner: this run is literal text. Resume AFTER it — it is
+@@ -469,12 +463,6 @@ func (b *backtickSearch) closer(p string, from, n int) int {
+ 			continue
+ 		}
+ 		m := backtickRun(p, i)
+-		if m > maxBacktickRun {
+-			// Not registered by cmark either, so it can close nothing and is
+-			// not a run a later opener may find in the memo.
+-			i += m - 1
+-			continue
+-		}
+ 		b.lastRun[m] = i
+ 		if m == n {
+ 			return i + m

@@ -12,6 +12,9 @@ import "strings"
 //	backtick is a code span — and codeSpans is a backtick-only model, so it
 //	becomes exact BY CONSTRUCTION.
 //
+// The pass itself is escapeProseLine, at the foot of this file: it runs over the
+// ASSEMBLED line, because a code span pairs across fields (t-9np1).
+//
 // That is why the known limitation codeSpans used to carry (an autolink or a
 // raw HTML tag swallowing a backtick, so glyph believed a PHANTOM span and left
 // the mention inside it raw) is closed here rather than there. Teaching
@@ -68,7 +71,7 @@ func flatten(s string) string {
 	return strings.ReplaceAll(s, "\r", " ")
 }
 
-// escapeMarkup neutralizes, in the PROSE of s, every inline construct that can
+// escapeProseLine neutralizes, in the PROSE of s, every inline construct that can
 // escape its container, point somewhere the author never wrote, or outrank a
 // backtick and steal a code-span delimiter. The author's own code spans pass
 // through byte-for-byte, and emphasis and strikethrough are left working: a
@@ -158,7 +161,7 @@ func flatten(s string) string {
 // WHY ONE PASS IS ENOUGH, although the span map is computed on the ORIGINAL
 // string and may hold a phantom span. Two facts:
 //
-//   - codeSpans(escapeMarkup(s)) == codeSpans(s), modulo offsets. Every inserted
+//   - codeSpans(escapeProseLine(s, …)) == codeSpans(s), modulo offsets. Every inserted
 //     byte is a backslash placed in front of a '<', '[', ':', '.' or '&' —
 //     never in front of a backtick — so backtick runs keep their lengths and
 //     their order, paragraphSpans' backslash case skips exactly the bytes its
@@ -179,55 +182,6 @@ func flatten(s string) string {
 // their grammars admit neither a backtick nor a '<', so they can neither steal a
 // delimiter nor form a phantom span, and the href is the address the author
 // typed, so they cannot point anywhere the author did not write.
-func escapeMarkup(s string) string {
-	var b strings.Builder
-	last := 0
-	for _, span := range codeSpans(s) {
-		escapeProse(&b, s[last:span[0]])
-		b.WriteString(s[span[0]:span[1]]) // the author's span, byte-for-byte
-		last = span[1]
-	}
-	escapeProse(&b, s[last:])
-	return b.String()
-}
-
-// escapeProse copies p — a stretch GitHub renders as prose — into b with the
-// four rules applied.
-func escapeProse(b *strings.Builder, p string) {
-	for i := 0; i < len(p); {
-		switch {
-		case p[i] == '\\':
-			// An already-escaped byte is copied as a pair and skipped, which is
-			// what makes escapeMarkup a fixed point and what keeps an author's
-			// own "\<" from becoming "\\<" — a literal backslash followed by a
-			// LIVE '<'. A lone trailing backslash copies alone.
-			if i+1 < len(p) {
-				b.WriteString(p[i : i+2])
-				i += 2
-			} else {
-				b.WriteByte('\\')
-				i++
-			}
-		case p[i] == '<' || p[i] == '[':
-			b.WriteByte('\\')
-			b.WriteByte(p[i])
-			i++
-		case p[i] == ':' && strings.HasPrefix(p[i:], "://") &&
-			(foldSuffix(p, i, "http") || foldSuffix(p, i, "https") || foldSuffix(p, i, "ftp")):
-			b.WriteString(`\:`)
-			i++
-		case p[i] == '.' && foldSuffix(p, i, "www"):
-			b.WriteString(`\.`)
-			i++
-		case p[i] == '&' && entityAt(p, i):
-			b.WriteString(`\&`)
-			i++
-		default:
-			b.WriteByte(p[i])
-			i++
-		}
-	}
-}
 
 // foldSuffix reports whether the bytes ending just before i equal w, ignoring
 // case — schemes are case-insensitive at GitHub ("HTTP://EVIL.COM" is linked).
@@ -327,4 +281,84 @@ func escapeText(s string) string {
 		b.WriteByte(s[i])
 	}
 	return b.String()
+}
+
+// escapeProseLine applies escapeProse's rules to the ASSEMBLED line s, which is
+// the only context in which they are decidable. Detection reads the whole
+// string; a backslash is inserted only where the construct it would disarm
+// touches author prose, which prose reports for a byte range.
+//
+// escapeProse ran per field, and every one of its rules carries state or
+// context that a field boundary truncated (t-9np1, measured on the shipped
+// escaper):
+//
+//	prose "…thing \" + prose "<h1>OWNED</h1>"   ->  \\<h1>  — the author's own
+//	   trailing backslash escaped the one the next stretch inserted, leaving a
+//	   LIVE '<'. One pass reads "\<" as the author's escape and copies the pair.
+//	prose "see www" + prose ".evil.example/x"   ->  a live autolink: foldSuffix
+//	   looked back only as far as the stretch began.
+//	prose "cc &" + prose "#64;octocat"          ->  a live @mention: entityAt
+//	   looked ahead only as far as the stretch ended.
+//
+// A construct that STRADDLES prose and glyph's own markup is escaped too, at
+// whichever byte the rule fires on. That can put a backslash in front of a byte
+// Raw contributed, which is the over-escaping side the design rule prefers and
+// is invisible in the render; a construct lying wholly inside Raw is glyph's
+// own and is left alone.
+// It returns the escaped line and pos, where pos[i] is the offset in the result
+// of input byte i (and pos[len(s)] the end) — the fence pass needs it to find
+// Mention's exempt ranges again after escaping has shifted everything right.
+func escapeProseLine(s string, inSpan []bool, prose func(lo, hi int) bool) (string, []int) {
+	var b strings.Builder
+	b.Grow(len(s))
+	pos := make([]int, len(s)+1)
+	esc := func(lo, hi, at int) {
+		if prose(lo, hi) {
+			b.WriteByte('\\')
+		}
+		b.WriteByte(s[at])
+	}
+	for i := 0; i < len(s); {
+		pos[i] = b.Len()
+		// Inside a code span nothing is escaped: the bytes are inert, and this
+		// is the one exemption the package grants. It is exact only because
+		// codeSpans now models cmark's MAXBACKTICKS bound (markdown.go).
+		if inSpan[i] {
+			b.WriteByte(s[i])
+			i++
+			continue
+		}
+		switch {
+		case s[i] == '\\':
+			// An already-escaped byte is copied as a pair and skipped — what
+			// makes the pass a fixed point, and what keeps an author's own "\<"
+			// from becoming "\\<": a literal backslash followed by a LIVE '<'.
+			if i+1 < len(s) {
+				b.WriteString(s[i : i+2])
+				pos[i+1] = b.Len() - 1
+				i += 2
+			} else {
+				b.WriteByte('\\')
+				i++
+			}
+		case s[i] == '<', s[i] == '[':
+			esc(i, i+1, i)
+			i++
+		case s[i] == ':' && strings.HasPrefix(s[i:], "://") &&
+			(foldSuffix(s, i, "http") || foldSuffix(s, i, "https") || foldSuffix(s, i, "ftp")):
+			esc(i-len("http"), i+3, i)
+			i++
+		case s[i] == '.' && foldSuffix(s, i, "www"):
+			esc(i-len("www"), i+1, i)
+			i++
+		case s[i] == '&' && entityAt(s, i):
+			esc(i, i+1, i)
+			i++
+		default:
+			b.WriteByte(s[i])
+			i++
+		}
+	}
+	pos[len(s)] = b.Len()
+	return b.String(), pos
 }

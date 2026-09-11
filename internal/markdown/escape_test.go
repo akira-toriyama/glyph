@@ -111,6 +111,22 @@ func TestFlatten(t *testing.T) {
 // inject structure, point somewhere the author never wrote, delete the author's
 // words, or steal a code-span delimiter come out escaped — and everything else,
 // most of all the author's code spans and emphasis, passes through untouched.
+// escapeMarkup is the all-prose specialization of escapeProseLine: one string,
+// every byte author prose, spans computed from the string itself. Production
+// composes lines instead (a code span pairs ACROSS fields, t-9np1), so this
+// lives here — it is the shape in which the single-string invariants below are
+// stateable, and nothing ships it.
+func escapeMarkup(s string) string {
+	inSpan := make([]bool, len(s))
+	for _, sp := range codeSpans(s) {
+		for i := sp[0]; i < sp[1] && i < len(s); i++ {
+			inSpan[i] = true
+		}
+	}
+	out, _ := escapeProseLine(s, inSpan, func(lo, hi int) bool { return true })
+	return out
+}
+
 func TestEscapeMarkup(t *testing.T) {
 	cases := []struct{ name, in, want string }{
 		// Raw HTML. No grammar test — every prose '<' is escaped, so a shape

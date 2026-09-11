@@ -1,11 +1,11 @@
 diff --git a/internal/markdown/compose.go b/internal/markdown/compose.go
-index 5b5cc42..f3433e6 100644
+index 20472f3..a2f890f 100644
 --- a/internal/markdown/compose.go
 +++ b/internal/markdown/compose.go
-@@ -124,5 +124,5 @@ func (l *Line) Mention(s string) {
- // String again returns the same bytes: the fence is a fixed point and the
- // builder is not consumed.
- func (l *Line) String() string {
--	return escapeMentionsSkipping(l.b.String(), l.live)
-+	return l.b.String()
+@@ -200,5 +200,5 @@ func (l *Line) String() string {
+ 		at += len(p.s)
+ 	}
+ 
+-	return escapeMentionsSkipping(escaped, live)
++	return escaped
  }
