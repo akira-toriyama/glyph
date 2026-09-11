@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/akira-toriyama/glyph/internal/config"
-	"github.com/akira-toriyama/glyph/internal/core"
-	"github.com/akira-toriyama/glyph/internal/hook"
+	"github.com/akira-toriyama/glyph/v3/internal/config"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/hook"
 )
 
 // doctorRepoPath is the one endpoint doctor reads: the repository object for

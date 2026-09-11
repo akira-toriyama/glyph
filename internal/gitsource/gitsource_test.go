@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/akira-toriyama/glyph/internal/core"
-	"github.com/akira-toriyama/glyph/internal/testutil"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/testutil"
 )
 
 // The hermetic fixture (pinned identity, real git config held out, background

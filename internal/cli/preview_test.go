@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/internal/config"
+	"github.com/akira-toriyama/glyph/v3/internal/config"
 )
 
 // testRepoUntagged is testRepo without its v0.1.0 tag — a repository before its

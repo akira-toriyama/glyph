@@ -28,12 +28,12 @@
 package doctor
 
 import (
-	"github.com/akira-toriyama/glyph/internal/hook"
+	"github.com/akira-toriyama/glyph/v3/internal/hook"
 
 	"fmt"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/internal/github"
+	"github.com/akira-toriyama/glyph/v3/internal/github"
 )
 
 // Status is a check's verdict. Four values, and the distinction between the

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/internal/github"
+	"github.com/akira-toriyama/glyph/v3/internal/github"
 )
 
 // yes/no build the *bool the merge settings decode into — a pointer precisely

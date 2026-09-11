@@ -3,7 +3,7 @@ package draftplan
 import (
 	"testing"
 
-	"github.com/akira-toriyama/glyph/internal/bump"
+	"github.com/akira-toriyama/glyph/v3/internal/bump"
 )
 
 func d(id int64, tag string) Draft { return Draft{ID: id, TagName: tag, Draft: true} }

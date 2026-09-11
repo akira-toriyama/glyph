@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
 )
 
 // The two variables that make a run's identity readable to a PROCESS rather

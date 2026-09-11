@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/akira-toriyama/glyph/internal/version"
+	"github.com/akira-toriyama/glyph/v3/internal/version"
 	"github.com/spf13/cobra"
 )
 

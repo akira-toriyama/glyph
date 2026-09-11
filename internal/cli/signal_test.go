@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/akira-toriyama/glyph/internal/testutil"
+	"github.com/akira-toriyama/glyph/v3/internal/testutil"
 )
 
 // These two tests are the only place the SIGNAL path of the shipped binary is

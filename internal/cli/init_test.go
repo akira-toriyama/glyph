@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/internal/config"
+	"github.com/akira-toriyama/glyph/v3/internal/config"
 )
 
 // TestInitWritesThePresetVerbatim pins init's whole contract: the file on

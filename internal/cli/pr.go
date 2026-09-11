@@ -8,9 +8,9 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/akira-toriyama/glyph/internal/core"
-	"github.com/akira-toriyama/glyph/internal/github"
-	"github.com/akira-toriyama/glyph/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/github"
+	"github.com/akira-toriyama/glyph/v3/internal/gitsource"
 )
 
 // This file is the GitHub-side input plumbing — the remote twin of range.go. It

@@ -6,9 +6,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/internal/core"
-	"github.com/akira-toriyama/glyph/internal/gitsource"
-	"github.com/akira-toriyama/glyph/internal/hook"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v3/internal/hook"
 )
 
 // This file is `glyph hook pre-push`: the verdict a pre-push hook asks for.

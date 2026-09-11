@@ -1126,7 +1126,10 @@ is a commit the rules already carry).
 
 ## 5. Architecture (Go, house pattern)
 
-Binary `glyph`, module `github.com/akira-toriyama/glyph`. Subcommands: `lint`,
+Binary `glyph`, module `github.com/akira-toriyama/glyph/v3` — the major suffix is
+part of the path from v2 on, and a tag alone does not supply it: without it the
+proxy answers `go install …@latest` with the last unsuffixed version (v1.0.0)
+forever. Cutting v4 means editing this path. Subcommands: `lint`,
 `init`, `bump`, `notes`, `preview`, `release`, `doctor`, `hook`, `version`, `emoji` —
 everything `glyph --help` prints except cobra's own `completion` and `help`.
 This line and the tree below are the two places in this document a new command
