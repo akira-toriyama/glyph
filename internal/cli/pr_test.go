@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/internal/gitsource"
-	"github.com/akira-toriyama/glyph/internal/testutil"
+	"github.com/akira-toriyama/glyph/v3/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v3/internal/testutil"
 )
 
 // prServer stands in for api.github.com: it serves one pull request's commits

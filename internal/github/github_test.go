@@ -12,7 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/akira-toriyama/glyph/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
 )
 
 // newClient spins an httptest.Server for handler and returns a Client pointed at

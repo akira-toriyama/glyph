@@ -108,7 +108,7 @@ gh attestation verify glyph_*.tar.gz --repo akira-toriyama/glyph
 **go install**
 
 ```sh
-go install github.com/akira-toriyama/glyph/cmd/glyph@latest
+go install github.com/akira-toriyama/glyph/v3/cmd/glyph@latest
 ```
 
 **Nix**

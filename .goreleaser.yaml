@@ -12,9 +12,9 @@ builds:
     flags: [-trimpath]
     ldflags:
       - -s -w
-      - -X github.com/akira-toriyama/glyph/internal/version.Version={{.Version}}
-      - -X github.com/akira-toriyama/glyph/internal/version.Commit={{.Commit}}
-      - -X github.com/akira-toriyama/glyph/internal/version.Date={{.Date}}
+      - -X github.com/akira-toriyama/glyph/v3/internal/version.Version={{.Version}}
+      - -X github.com/akira-toriyama/glyph/v3/internal/version.Commit={{.Commit}}
+      - -X github.com/akira-toriyama/glyph/v3/internal/version.Date={{.Date}}
     goos: [linux, darwin]
     goarch: [amd64, arm64]
 

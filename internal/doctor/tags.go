@@ -12,8 +12,8 @@ package doctor
 import (
 	"fmt"
 
-	"github.com/akira-toriyama/glyph/internal/bump"
-	"github.com/akira-toriyama/glyph/internal/config"
+	"github.com/akira-toriyama/glyph/v3/internal/bump"
+	"github.com/akira-toriyama/glyph/v3/internal/config"
 )
 
 // checkRootLineTags reports whether the bare v* tags in the checkout belong

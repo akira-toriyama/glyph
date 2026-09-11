@@ -6,12 +6,12 @@ import (
 	"os"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/internal/bump"
-	"github.com/akira-toriyama/glyph/internal/core"
-	"github.com/akira-toriyama/glyph/internal/draftplan"
-	"github.com/akira-toriyama/glyph/internal/github"
-	"github.com/akira-toriyama/glyph/internal/gitsource"
-	"github.com/akira-toriyama/glyph/internal/notes"
+	"github.com/akira-toriyama/glyph/v3/internal/bump"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/draftplan"
+	"github.com/akira-toriyama/glyph/v3/internal/github"
+	"github.com/akira-toriyama/glyph/v3/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v3/internal/notes"
 	"github.com/spf13/cobra"
 )
 

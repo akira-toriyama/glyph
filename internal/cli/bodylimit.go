@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/akira-toriyama/glyph/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
 )
 
 // GitHub caps the two write surfaces glyph composes bodies for, the caps are

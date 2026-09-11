@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/akira-toriyama/glyph/internal/gitsource"
-	"github.com/akira-toriyama/glyph/internal/hook"
+	"github.com/akira-toriyama/glyph/v3/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v3/internal/hook"
 )
 
 // warnIfHookStale tells the developer, at the moment the hook runs, that the

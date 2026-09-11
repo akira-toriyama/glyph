@@ -10,7 +10,7 @@ cd "$DIR"
 VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
 COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-PKG="github.com/akira-toriyama/glyph/internal/version"
+PKG="github.com/akira-toriyama/glyph/v3/internal/version"
 
 mkdir -p bin
 GOTOOLCHAIN=local go build -trimpath \

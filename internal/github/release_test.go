@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
 )
 
 // TestReleasesLists decodes the fields the rolling-draft upsert branches on —

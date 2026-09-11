@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/akira-toriyama/glyph/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
 )
 
 // retryClient is newClient with an instant retry schedule: the loop runs its

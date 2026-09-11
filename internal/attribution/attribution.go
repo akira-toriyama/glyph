@@ -18,7 +18,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/internal/config"
+	"github.com/akira-toriyama/glyph/v3/internal/config"
 )
 
 // Reason says why a commit was refused: which of §4.1's two authoring errors

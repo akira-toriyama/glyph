@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/internal/config"
-	"github.com/akira-toriyama/glyph/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/config"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
 )
 
 func sigilCfg(t *testing.T) *config.Config {

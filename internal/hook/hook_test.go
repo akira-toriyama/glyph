@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
 )
 
 // The hooks' whole reason to exist is that they hold no copy of the convention.

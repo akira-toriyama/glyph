@@ -3,10 +3,10 @@ package cli
 import (
 	"strings"
 
-	"github.com/akira-toriyama/glyph/internal/bump"
-	"github.com/akira-toriyama/glyph/internal/core"
-	"github.com/akira-toriyama/glyph/internal/gitsource"
-	"github.com/akira-toriyama/glyph/internal/notes"
+	"github.com/akira-toriyama/glyph/v3/internal/bump"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v3/internal/notes"
 )
 
 // This file is the shared input plumbing that turns raw commits — from git or

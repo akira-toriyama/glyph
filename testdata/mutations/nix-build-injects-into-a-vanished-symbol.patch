@@ -1,0 +1,13 @@
+diff --git a/flake.nix b/flake.nix
+index b9c9271..499cacf 100644
+--- a/flake.nix
++++ b/flake.nix
+@@ -21,7 +21,7 @@
+         # version string.
+         version = "dev";
+         rev = self.shortRev or self.dirtyShortRev or "unknown";
+-        v = "github.com/akira-toriyama/glyph/v3/internal/version";
++        v = "github.com/akira-toriyama/glyph/v3/internal/buildinfo";
+       in
+       {
+         packages.default = pkgs.buildGoModule {

@@ -128,14 +128,16 @@ func TestNotesSoftExitShipsAPlaceholder(t *testing.T) {
 // build.sh write it (build.sh single-quotes the argument).
 var ldflagsX = regexp.MustCompile(`-X '?([A-Za-z0-9_./~-]+)\.([A-Za-z_][A-Za-z0-9_]*)=`)
 
-// TestLdflagsNameTheRealVersionSymbols pins the injection target the release
-// and source builds write twice, as literals, in files no test compiles.
-// Go's -X silently ignores an unknown symbol: move internal/version or rename
-// a var and both builds go green while every released binary reports "dev" —
-// measured with a doctored -X (exit 0, zero warnings, `glyph dev`). The smoke
-// in build.yml runs a plain `go build`, so it cannot see it either.
+// TestLdflagsNameTheRealVersionSymbols pins the injection target the release,
+// source and nix builds write three times over, as literals, in files no test
+// compiles. Go's -X silently ignores an unknown symbol: move internal/version
+// or rename a var and all three builds go green while every released binary
+// reports "dev" — measured with a doctored -X (exit 0, zero warnings, `glyph
+// dev`). The smoke in build.yml runs a plain `go build`, so it cannot see it
+// either. The path itself is not written here: it is read from go.mod, so the
+// major suffix is declared once (t-f2sk).
 func TestLdflagsNameTheRealVersionSymbols(t *testing.T) {
-	const wantPkg = "github.com/akira-toriyama/glyph/internal/version"
+	wantPkg := modulePath(t) + "/internal/version"
 
 	// The package the path names must exist where the path says — read through
 	// the module layout itself, so a moved package fails here.
@@ -183,5 +185,78 @@ func TestLdflagsNameTheRealVersionSymbols(t *testing.T) {
 	}
 	for _, m := range shInjections {
 		declared("build.sh", m[1])
+	}
+
+	// flake.nix routes the path through one `v =` binding. It is the third
+	// build that stamps a binary and the only one no other guard reads, so a
+	// rewrite that misses it ships `glyph dev` from every nix build.
+	flake := repoFile(t, "flake.nix")
+	if !strings.Contains(flake, `v = "`+wantPkg+`"`) {
+		t.Errorf("flake.nix's `v` no longer names %q; its -X injections are silent no-ops and "+
+			"every nix build reports \"dev\"", wantPkg)
+	}
+	flakeInjections := regexp.MustCompile(`-X \$\{v\}\.([A-Za-z_][A-Za-z0-9_]*)=`).FindAllStringSubmatch(flake, -1)
+	// Two, not three: nix injects Version and Commit but not Date, because a
+	// build timestamp would make the derivation non-reproducible.
+	if len(flakeInjections) < 2 {
+		t.Fatalf("flake.nix carries %d ${v} -X injection(s), want at least 2 — either the "+
+			"injections were dropped or the matcher no longer fits how they are written", len(flakeInjections))
+	}
+	for _, m := range flakeInjections {
+		declared("flake.nix", m[1])
+	}
+}
+
+// modulePath returns go.mod's module path, the one place the major suffix is
+// declared. Every other spelling in the tree is checked against this.
+func modulePath(t *testing.T) string {
+	t.Helper()
+	m := regexp.MustCompile(`(?m)^module (\S+)$`).FindStringSubmatch(repoFile(t, "go.mod"))
+	if m == nil {
+		t.Fatalf("go.mod declares no module path")
+	}
+	return m[1]
+}
+
+// TestModulePathCarriesTheMajorAndReadmeSpellsIt holds the two halves of Go's
+// major-version rule together: from v2 on, the module path must end in /vN, and
+// every documented `go install` must spell that same path.
+//
+// Missed twice — neither the v1->v2 nor the v2->v3 step touched go.mod, so the
+// proxy stayed frozen at v1.0.0 and README's `go install …@latest` handed out a
+// two-major-old binary that rejects today's commit convention (t-f2sk). Nothing
+// went red: the proxy is not consulted by any build, test or release here, and
+// fleet-preflight probes lint findings and bump levels only.
+//
+// Know what this does NOT catch: it reads no tags, so a v4 tag cut over a /v3
+// go.mod passes here. Comparing the module's major against the repository's
+// highest tag needs a real repository, which is `doctor`'s side of the fence
+// (t-nag8, the `go-module-major` check). What this holds is the copy drift —
+// go.mod is the one declaration and README, .goreleaser.yaml, build.sh and
+// flake.nix are checked against it, never against each other.
+func TestModulePathCarriesTheMajorAndReadmeSpellsIt(t *testing.T) {
+	path := modulePath(t)
+
+	major := regexp.MustCompile(`/v([2-9][0-9]*)$`).FindStringSubmatch(path)
+	if major == nil {
+		t.Fatalf("go.mod's module path is %q, which carries no /vN major suffix. Go treats a "+
+			"path without one as v0/v1 forever: the proxy serves v1.0.0 to `go install @latest` "+
+			"and 404s the real tags. Cutting a v2+ tag does not change that — go.mod does", path)
+	}
+
+	// Non-vacuity: README must actually carry a `go install` line, or the
+	// assertion below proves nothing about a file that stopped documenting it.
+	readme := repoFile(t, "README.md")
+	installs := regexp.MustCompile(`(?m)^go install (\S+)@`).FindAllStringSubmatch(readme, -1)
+	if len(installs) == 0 {
+		t.Fatalf("README.md documents no `go install` line; if the install route was dropped on " +
+			"purpose, drop this half of the guard with it")
+	}
+	for _, m := range installs {
+		if !strings.HasPrefix(m[1], path+"/") {
+			t.Errorf("README.md documents `go install %s@…`, which is not under the module path "+
+				"%q. That command installs whatever the unsuffixed path last resolved to — for "+
+				"glyph, v1.0.0 — not this tree", m[1], path)
+		}
 	}
 }

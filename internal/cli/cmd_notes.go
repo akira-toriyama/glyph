@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/internal/config"
-	"github.com/akira-toriyama/glyph/internal/core"
-	"github.com/akira-toriyama/glyph/internal/gitsource"
-	"github.com/akira-toriyama/glyph/internal/notes"
+	"github.com/akira-toriyama/glyph/v3/internal/config"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v3/internal/notes"
 	"github.com/spf13/cobra"
 )
 

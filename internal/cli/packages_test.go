@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/internal/testutil"
+	"github.com/akira-toriyama/glyph/v3/internal/testutil"
 )
 
 // This file pins the packages walk (DESIGN §4.1): a repository declaring two

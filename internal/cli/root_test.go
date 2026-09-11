@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
 )
 
 // captureErr swaps the diagnostic stream for one test and returns the buffer.

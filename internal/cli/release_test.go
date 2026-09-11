@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/internal/bump"
-	"github.com/akira-toriyama/glyph/internal/github"
+	"github.com/akira-toriyama/glyph/v3/internal/bump"
+	"github.com/akira-toriyama/glyph/v3/internal/github"
 )
 
 // releasesPath is the releases collection for the repository the tests query.

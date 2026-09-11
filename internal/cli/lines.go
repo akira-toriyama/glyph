@@ -6,12 +6,12 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/internal/attribution"
-	"github.com/akira-toriyama/glyph/internal/bump"
-	"github.com/akira-toriyama/glyph/internal/config"
-	"github.com/akira-toriyama/glyph/internal/core"
-	"github.com/akira-toriyama/glyph/internal/github"
-	"github.com/akira-toriyama/glyph/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v3/internal/attribution"
+	"github.com/akira-toriyama/glyph/v3/internal/bump"
+	"github.com/akira-toriyama/glyph/v3/internal/config"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/github"
+	"github.com/akira-toriyama/glyph/v3/internal/gitsource"
 )
 
 // This file is the packages layer over the walk (DESIGN §4.1): which version

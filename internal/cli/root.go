@@ -11,8 +11,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/akira-toriyama/glyph/internal/core"
-	"github.com/akira-toriyama/glyph/internal/version"
+	"github.com/akira-toriyama/glyph/v3/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/version"
 	"github.com/spf13/cobra"
 )
 
