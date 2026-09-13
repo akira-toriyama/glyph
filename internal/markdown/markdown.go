@@ -4,13 +4,15 @@
 // each function neutralizes one specific GitHub rendering behavior that turns
 // honest commit text into something it never meant to be.
 //
-// The pipeline is three files. escape.go comes FIRST and works per field:
-// flatten makes the value one line, then escapeMarkup (for prose) or escapeText
-// (for a plain-text field like the scope) disarms the constructs that can
-// inject structure, point somewhere the author never wrote, or delete the
-// author's own words. This file comes LAST and works over the ASSEMBLED line:
-// escapeMentions fences the would-be @mentions, which is a property of the
-// whole inline context and of no field in it. Neither order is interchangeable
+// The pipeline is three files. escape.go comes FIRST: flatten makes each value
+// one line as it arrives, escapeText disarms a plain-text field like the scope
+// on the spot, and escapeProseLine then disarms prose over the ASSEMBLED line —
+// the constructs that can inject structure, point somewhere the author never
+// wrote, or delete the author's own words. This file comes LAST and also works
+// over the assembled line: escapeMentions fences the would-be @mentions. BOTH
+// of the last two are whole-line passes and for one reason — a code span pairs
+// backtick runs across the whole inline context, so neither question is
+// decidable a field at a time (t-9np1). Neither order is interchangeable
 // — and no caller gets to choose one: compose.go's Line builder, the package's
 // only exported surface, runs the pipeline itself and is where both reasons are
 // written down. The order used to be a doc-comment contract on each call site,
@@ -266,6 +268,16 @@ func escapesTheNextByte(s string, i int) bool {
 // backticks in s, which is what the fence has to beat. Escaped backticks are
 // counted like any other: an over-long fence is harmless, while a fence that
 // ties an authored run can be closed by it.
+//
+// Deliberately NOT capped at maxBacktickRun, even though a fence wider than
+// that is one cmark will not open. Capping would let the fence tie an authored
+// run of the same width and be closed by it (t-fbg3), and the uncapped fence is
+// safe where it fails to open: GitHub's mention filter refuses an at-sign glued
+// to a literal backtick. Measured 2026-09-11 across five rendering contexts
+// (list item, table cell, heading, blockquote, details), each with a bare
+// @octocat positive control that DID link, and a sensitivity control — the same
+// run separated from the at-sign by one space — that leaked as expected. The
+// cost is cosmetic: a subject that already carries 80 backticks renders 81.
 func longestBacktickRun(s string) int {
 	longest, run := 0, 0
 	for i := 0; i < len(s); i++ {
@@ -307,10 +319,10 @@ func longestBacktickRun(s string) int {
 //
 // The fix is not here. Teaching this scan those grammars would be a renderer
 // inside an escaper, and — as the fourth line shows — a scanner that learned
-// autolinks and raw HTML would STILL have been wrong. escapeMarkup removes the
+// autolinks and raw HTML would STILL have been wrong. escapeProseLine removes the
 // competing constructs before this runs (see escape.go), which makes the
 // backtick-only model exact by construction instead of nearly right. Line is
-// what holds that precondition now: Prose runs escapeMarkup before the fence
+// what holds that precondition now: String runs escapeProseLine before the fence
 // ever sees the bytes, and nothing outside this package can reach the fence any
 // other way.
 //
@@ -365,6 +377,12 @@ func paragraphSpans(p string, offset int) [][2]int {
 			i += 2
 		case '`':
 			n := backtickRun(p, i)
+			if n > maxBacktickRun {
+				// cmark cannot open a span with this run, so there is no span
+				// here to believe in. Spend the run as literal text.
+				i += n
+				continue
+			}
 			end := search.closer(p, i+n, n)
 			if end < 0 {
 				// No partner: this run is literal text. Resume AFTER it — it is
@@ -410,13 +428,24 @@ func paragraphSpans(p string, offset int) [][2]int {
 // fenced, and a fence inside a span GitHub does believe in is visible noise,
 // not a notification.
 //
-// cmark's other bound on this — it refuses to OPEN a span with a run longer
-// than 80 backticks, the width of the memo array — is deliberately not modelled.
-// Honouring it would make the escaper's own fence unopenable on a subject
-// carrying 80 consecutive backticks, and the pass would then grow its fence by
-// one on every run instead of standing still. In that shape the neutralization
-// still holds by the second line of defence: the fence stays glued to the
-// at-sign as literal text, and the mention filter refuses it there.
+// cmark's other bound IS modelled, as maxBacktickRun below: it refuses to OPEN
+// or CLOSE a span with a run longer than 80 backticks, the width of the memo
+// array. Leaving it out was argued once (2026-07) on the grounds that the fence
+// is a second line of defence — the fence stays glued to the at-sign as literal
+// text and the mention filter refuses it there — and that argument is about
+// MENTIONS alone. It does not carry to the other consumer of these spans:
+// escapeProseLine skips a span because the bytes in it are inert, so a span glyph
+// believes in and cmark does not is a stretch of author bytes shipped RAW. That
+// is the under-escaping direction escape.go forbids, and it was measured live
+// (t-9np1): 81 backticks, a payload, 81 backticks, in one commit subject on the
+// shipped preset, yields a live link, live raw HTML and a live @mention in a
+// published release body and in a pr-verdict comment.
+//
+// The cost the old note feared is real but is not this function's: a subject
+// carrying a run of 80 or more makes escapeMentions' own fence unopenable,
+// because the fence is one backtick longer than the longest run. That is a
+// fence-width problem, it exists whether or not this model is exact, and
+// longestBacktickRun is where it is answered.
 type backtickSearch struct {
 	// lastRun maps a run length to the start of the most recent run of that
 	// length any search has walked past.
@@ -440,6 +469,12 @@ func (b *backtickSearch) closer(p string, from, n int) int {
 			continue
 		}
 		m := backtickRun(p, i)
+		if m > maxBacktickRun {
+			// Not registered by cmark either, so it can close nothing and is
+			// not a run a later opener may find in the memo.
+			i += m - 1
+			continue
+		}
 		b.lastRun[m] = i
 		if m == n {
 			return i + m
@@ -449,6 +484,14 @@ func (b *backtickSearch) closer(p string, from, n int) int {
 	b.exhausted = true
 	return -1
 }
+
+// maxBacktickRun is cmark-gfm's MAXBACKTICKS: the width of the memo array that
+// registers backtick runs. A run longer than this is registered nowhere, so it
+// can neither open nor close a code span — it is literal text, however it pairs.
+// Measured against GitHub 2026-09-11: a run of 80 forms a span and renders its
+// content as code; runs of 81, 100 and 1001 form nothing and render the bytes
+// between them live.
+const maxBacktickRun = 80
 
 // backtickRun returns the length of the run of backticks starting at i.
 func backtickRun(s string, i int) int {

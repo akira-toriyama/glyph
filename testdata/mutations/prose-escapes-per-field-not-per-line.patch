@@ -1,0 +1,22 @@
+diff --git a/internal/markdown/compose.go b/internal/markdown/compose.go
+index 20472f3..741e12c 100644
+--- a/internal/markdown/compose.go
++++ b/internal/markdown/compose.go
+@@ -172,10 +172,14 @@ func (l *Line) String() string {
+ 
+ 	// One scan, over the whole line.
+ 	inSpan := make([]bool, len(assembled))
+-	for _, sp := range codeSpans(assembled) {
+-		for i := sp[0]; i < sp[1] && i < len(assembled); i++ {
+-			inSpan[i] = true
++	base := 0
++	for _, p := range l.parts {
++		for _, sp := range codeSpans(p.s) {
++			for i := sp[0]; i < sp[1] && base+i < len(assembled); i++ {
++				inSpan[base+i] = true
++			}
+ 		}
++		base += len(p.s)
+ 	}
+ 	prose := func(lo, hi int) bool {
+ 		for i := max(lo, 0); i < min(hi, len(owner)); i++ {
