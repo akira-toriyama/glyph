@@ -325,6 +325,7 @@ the single line it already is):
 ```toml
 [[packages]]
 path = "haiku"          # tags are haiku/vX.Y.Z — the Go multi-module rule, not configurable
+                        # (a major version subdirectory folds into the major: pubsub/v2 tags as pubsub/v2.x.y)
 # name = "haiku"        # what a commit scope may call it; default: the last path segment
 
 [[packages]]

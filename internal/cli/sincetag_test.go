@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v3/internal/bump"
+	"github.com/akira-toriyama/glyph/v3/internal/config"
 	"github.com/akira-toriyama/glyph/v3/internal/gitsource"
 )
 
@@ -1943,7 +1944,7 @@ func TestLatestVersionTagComparesVersionsNotRefnames(t *testing.T) {
 		t.Fatalf("premise gone: git --sort=-v:refname now leads with %q, so this test no longer exercises the refname/version gap", strings.SplitN(first, "\n", 2)[0])
 	}
 
-	tag, v, err := latestVersionTag(t.Context(), "", nil)
+	tag, v, err := latestVersionTag(t.Context(), config.Line{}, nil)
 	if err != nil {
 		t.Fatalf("latestVersionTag: %v", err)
 	}
@@ -1971,7 +1972,7 @@ func TestLatestVersionTagBreaksATieOnGitsOrder(t *testing.T) {
 	}
 	t.Chdir(dir)
 
-	tag, _, err := latestVersionTag(t.Context(), "", nil)
+	tag, _, err := latestVersionTag(t.Context(), config.Line{}, nil)
 	if err != nil {
 		t.Fatalf("latestVersionTag: %v", err)
 	}
@@ -2491,7 +2492,7 @@ func TestLatestVersionTagIsPerLine(t *testing.T) {
 		"other/":     "",
 	}
 	for prefix, want := range cases {
-		tag, _, err := latestVersionTag(t.Context(), prefix, nil)
+		tag, _, err := latestVersionTag(t.Context(), config.Line{Prefix: prefix}, nil)
 		if err != nil {
 			t.Fatalf("latestVersionTag(%q): %v", prefix, err)
 		}
@@ -2501,7 +2502,7 @@ func TestLatestVersionTagIsPerLine(t *testing.T) {
 	}
 	// below: on a line is the predecessor ON THAT LINE.
 	below := bump.Version{Major: 2}
-	tag, v, err := latestVersionTag(t.Context(), "haiku/", &below)
+	tag, v, err := latestVersionTag(t.Context(), config.Line{Prefix: "haiku/"}, &below)
 	if err != nil || tag != "haiku/v1.9.0" || v != (bump.Version{Major: 1, Minor: 9}) {
 		t.Errorf("latestVersionTag(haiku/, below v2.0.0) = %q, %v, %v; want haiku/v1.9.0", tag, v, err)
 	}

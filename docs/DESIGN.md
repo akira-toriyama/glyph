@@ -860,12 +860,47 @@ path = "haiku"              # the subtree; the tag line is haiku/vX.Y.Z
 path = "."                  # the root package: the bare vX.Y.Z line, and every file no other package claims
 ```
 
-- **The tag line is `<path>/vX.Y.Z`, derived, not configurable.** That is the
-  Go multi-module rule (go.dev/ref/mod, "Tags for multi-module repositories"),
-  the one ecosystem that *mandates* a shape, and it is the shape the largest
-  monorepos in the wild carry (measured 2026-09-10: google-cloud-go
-  `storage/v1.67.1`, opentelemetry-go `exporters/prometheus/v0.59.1`,
-  aws-sdk-go-v2 `config/vX.Y.Z` beside a bare root line). A `tag_prefix` knob
+- **The tag line is `<path>/vX.Y.Z`, derived, not configurable — with the
+  path's major version subdirectory folded into the major.** That is the Go
+  multi-module rule (go.dev/ref/mod, "Module paths": the tag prefix is the
+  module subdirectory *not including the major version suffix*, and a module
+  at major N ≥ 2 may live in a `/vN` subdirectory), the one ecosystem that
+  *mandates* a shape, and it is the shape the largest monorepos in the wild
+  carry (measured 2026-09-10: google-cloud-go `storage/v1.67.1`,
+  opentelemetry-go `exporters/prometheus/v0.59.1`, aws-sdk-go-v2
+  `config/vX.Y.Z` beside a bare root line; measured 2026-09-13:
+  google-cloud-go `pubsub/v2/` tags `pubsub/v2.7.0` beside `pubsub/v1.9.1`,
+  etcd `client/v3/` tags `client/v3.6.0`). So `path = "pubsub/v2"` is the
+  **v2 line on the `pubsub/` prefix**, and a `path = "pubsub"` beside it is the
+  free line holding every other major; a root-level `path = "v2"` is the bare
+  v2.\* line the same way (`config.Package.TagPrefix`, `Config.LineOf`;
+  mutation rows `major-subdirectory-kept-in-the-tag-prefix`,
+  `line-reads-tags-of-every-major`). Every reader of tags — the walk base,
+  the published floor, the managed drafts, `--since-tag`'s line selection —
+  asks its question on a *line*, prefix and major together, so two lines on
+  one prefix never read each other's tags, and a locked line's placeholder
+  draft is `<path>/Unreleased` (under the path, the one name that is
+  unambiguously its). The first cut derived `pubsub/v2/` and gave the module
+  a tag line nothing in the Go ecosystem reads: zero tags, a current of
+  v0.0.0 (or the deprecated v1 line's, with `pubsub` declared alone), and a
+  `^` that drafted `pubsub/v2/v2.3.0` — two minors *behind* the published
+  `pubsub/v2.3.0` of the day, under a name `go get` never resolves; the
+  published floor could not catch it because it read the same dead prefix
+  (t-z9d3). Two steps follow from a locked line holding one major: its
+  **first release is `vN.0.0`** whatever the level (nothing below the major
+  is on it), and a step that would leave the major — a `!` on `pubsub/v2`
+  stepping to `pubsub/v3.0.0`, which the module path `/v2` disowns, or a `!`
+  on the free `pubsub/` line stepping onto the declared v2 line's own floor —
+  is **refused at 3**, the wedge's class and the wedge's escape (the breaking
+  change belongs in `pubsub/v3` as its own package; a tag cut by hand past
+  the commit releases the wedge), never a tag no module claims (mutation row
+  `locked-line-steps-past-its-major`). A free line with no locked sibling
+  steps its major exactly as the single line always has: which module path
+  the tag needs is Go's business and the author's, as before. Rejected:
+  reading `go.mod` to learn the major (glyph reads no manifest — §4.1's
+  rejected list — and the directory already says it), and a `major` key on
+  the package (the path carries it, and a knob could disagree with the
+  directory). A `tag_prefix` knob
   was rejected for the reason §3 gives for the fixed sigil alphabet: a verdict
   must be readable from the file alone, and a line whose tags do not say which
   directory they version is what the Go rule exists to prevent. `pkg@X.Y.Z`
@@ -875,10 +910,13 @@ path = "."                  # the root package: the bare vX.Y.Z line, and every 
   definition: the root module's line is bare `vX.Y.Z`, which is why a
   repository that declares it keeps every tag and draft it has.
 - **`name` is the scope's word for the package**, defaulting to the last path
-  segment, and must be unique across packages (a load error names the two;
-  the remedy is to set one). It exists because the presets' scope group is
-  `[a-z0-9-]+` and cannot spell `exporters/prometheus`. It names nothing else:
-  the draft is named by its tag, the notes by their section titles.
+  segment — for a major version subdirectory the segment before it with the
+  suffix kept, `pubsub/v2`, which is what such monorepos write in the scope
+  (google-cloud-go: `feat(pubsub/v2): …`) — and must be unique across packages
+  (a load error names the two; the remedy is to set one). It exists because
+  the presets' scope group is `[a-z0-9-]+` and cannot spell
+  `exporters/prometheus` or `pubsub/v2`. It names nothing else: the draft is
+  named by its tag, the notes by their section titles.
 - **One `glyph.toml`, at the top level, as today.** A per-package file was
   rejected: a commit is one message judged under one pattern file, and N files
   would be N grammars for the same message, with the winning one decided by a

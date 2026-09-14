@@ -22,10 +22,13 @@ import (
 //   - No [[packages]] → pass: the single line is the bare line, every bare
 //     tag is its.
 //   - A root package declared (path ".") → pass: bare tags are its line.
-//   - Packages declared, no root, no bare version tag → pass.
-//   - Packages declared, no root, bare version tags present → ADVICE: those
-//     tags baseline no line, and the note says which declaration adopts them.
-//     Never a failure — leaving history untouched is a legitimate choice.
+//   - Packages declared, no root, no bare version tag on the bare line that
+//     no declared line holds → pass (a root-level major version subdirectory
+//     `v2` holds the bare v2.* tags, DESIGN §4.1).
+//   - Packages declared, no root, bare version tags no line holds → ADVICE:
+//     those tags baseline no line, and the note says which declaration
+//     adopts them. Never a failure — leaving history untouched is a
+//     legitimate choice.
 //   - The config unresolved or unloaded, or the tags unlistable → unknown:
 //     one of the two inputs was never observed.
 func checkRootLineTags(path string, pathErr error, tags []string, tagsErr error) Check {
@@ -66,11 +69,15 @@ func checkRootLineTags(path string, pathErr error, tags []string, tagsErr error)
 		c.Fix = "fix the checkout (git tag --list must work) and re-run"
 		return c
 	}
+	// The bare line's residue is what no declared line holds: a root-level
+	// vN package holds its major's bare tags (config.Config.LineOf on an
+	// undeclared root computes the leftover exactly).
+	residue := cfg.LineOf(config.Package{Path: "."})
 	bare, highest := 0, ""
 	var hv bump.Version
 	for _, t := range tags {
 		v, perr := bump.ParseVersionOn("", t)
-		if perr != nil {
+		if perr != nil || !residue.Holds(v.Major) {
 			continue
 		}
 		if bare == 0 || v.Compare(hv) > 0 {
@@ -80,12 +87,12 @@ func checkRootLineTags(path string, pathErr error, tags []string, tagsErr error)
 	}
 	if bare == 0 {
 		c.Status = StatusPass
-		c.Observed = fmt.Sprintf("%d package(s) declared, none at the root, and no bare vX.Y.Z tag exists", len(cfg.Packages))
+		c.Observed = fmt.Sprintf("%d package(s) declared, none at the root, and no bare vX.Y.Z tag exists that no declared line holds", len(cfg.Packages))
 		c.Message = "every version tag the walk could read is on a declared line"
 		return c
 	}
 	c.Status = StatusAdvice
-	c.Observed = fmt.Sprintf("%d package(s) declared, none at the root, and %d bare vX.Y.Z tag(s) exist (highest %s)", len(cfg.Packages), bare, highest)
+	c.Observed = fmt.Sprintf("%d package(s) declared, none at the root, and %d bare vX.Y.Z tag(s) exist that no declared line holds (highest %s)", len(cfg.Packages), bare, highest)
 	c.Message = "those tags are on the bare line, and with no root package declared no line's walk or floor reads them: they are history, not a base. " +
 		"That is a legitimate state — nothing is broken — but if the root of the repository is itself a package they are its releases"
 	c.Fix = "to adopt them, declare the root package in glyph.toml — [[packages]] path = \".\" (set name = \"…\" so a scope can name it); to leave them as history, nothing"

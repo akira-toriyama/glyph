@@ -1,10 +1,10 @@
 diff --git a/internal/draftplan/draftplan.go b/internal/draftplan/draftplan.go
-index 072898f..2993c78 100644
+index e980bf2..e2159fe 100644
 --- a/internal/draftplan/draftplan.go
 +++ b/internal/draftplan/draftplan.go
-@@ -110,7 +110,7 @@ func managed(prefix string, releases []Draft) []Draft {
- func PlanDraft(prefix string, level bump.Level, nextTag string, draftOnNone bool, releases []Draft) Plan {
- 	drafts := managed(prefix, releases)
+@@ -118,7 +118,7 @@ func managed(l config.Line, releases []Draft) []Draft {
+ func PlanDraft(l config.Line, level bump.Level, nextTag string, draftOnNone bool, releases []Draft) Plan {
+ 	drafts := managed(l, releases)
  
 -	if level == bump.LevelNone && !draftOnNone {
 +	if level == bump.LevelNone {

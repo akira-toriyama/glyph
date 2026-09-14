@@ -32,6 +32,9 @@ func TestRootLineTagsPasses(t *testing.T) {
 		"no bare tag":        checkRootLineTags(configPathWith(t, noRootPackages), nil, []string{"haiku/v1.0.0", "curry/v0.3.0"}, nil),
 		"no tags at all":     checkRootLineTags(configPathWith(t, noRootPackages), nil, nil, nil),
 		"root declared, err": checkRootLineTags(configPathWith(t, noRootPackages+"\n[[packages]]\npath = '.'\n"), nil, nil, errors.New("git tag: boom")),
+		// A root-level major version subdirectory holds the bare v2.* tags
+		// (DESIGN §4.1): they are its line, not residue.
+		"root v2 declared": checkRootLineTags(configPathWith(t, noRootPackages+"\n[[packages]]\npath = 'v2'\n"), nil, []string{"v2.0.0", "v2.1.0"}, nil),
 	}
 	for name, c := range cases {
 		if c.Status != StatusPass {
@@ -52,5 +55,15 @@ func TestRootLineTagsDegradeWithUnobservedInputs(t *testing.T) {
 		if c.Status != StatusUnknown {
 			t.Errorf("%s: %s = %s (%s), want unknown", name, IDRootLineTags, c.Status, c.Observed)
 		}
+	}
+}
+
+// TestRootLineTagsRootMajorSubdirectoryHoldsItsMajorOnly: with only a
+// root-level v2 declared, bare v1.* tags are still nobody's — counted, and
+// the v2.* ones are not.
+func TestRootLineTagsRootMajorSubdirectoryHoldsItsMajorOnly(t *testing.T) {
+	c := checkRootLineTags(configPathWith(t, noRootPackages+"\n[[packages]]\npath = 'v2'\n"), nil, []string{"v1.0.0", "v2.0.0", "v1.1.0"}, nil)
+	if c.Status != StatusAdvice || !strings.Contains(c.Observed, "2 bare vX.Y.Z tag(s)") || !strings.Contains(c.Observed, "highest v1.1.0") {
+		t.Fatalf("%s = %s (%s), want advice over the two v1 tags", IDRootLineTags, c.Status, c.Observed)
 	}
 }

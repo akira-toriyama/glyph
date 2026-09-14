@@ -141,13 +141,17 @@ func (v Version) Next(d Decision) Version {
 }
 
 // A version LINE is a tag namespace (DESIGN §4.1): the bare line's tags are
-// vX.Y.Z, and a package's are <path>/vX.Y.Z. The prefix is the whole
-// difference — "" for the bare line, "<path>/" for a package — and it is
-// derived by config.Package.TagPrefix, never spelled by hand. Every resolver
-// that picks a tag (the walk base, the published floor, the managed drafts)
-// asks the question ON a line, so a tag from one line can never answer for
-// another: a curry/ tag never baselines haiku, and a bare v* tag never
-// baselines any package (mutation row packages-tag-of-one-line-baselines-another).
+// vX.Y.Z, and a package's are <path>/vX.Y.Z, with a major version
+// subdirectory /vN folded into the major (pubsub/v2 tags as pubsub/v2.x.y).
+// The prefix and the majors held are the whole difference — config.Line,
+// derived by config.Config.LineOf, never spelled by hand; the functions
+// below know the prefix only, and the caller filters by major. Every
+// resolver that picks a tag (the walk base, the published floor, the managed
+// drafts) asks the question ON a line, so a tag from one line can never
+// answer for another: a curry/ tag never baselines haiku, a bare v* tag
+// never baselines any package, and pubsub/v2.7.0 never baselines the pubsub/
+// v1 line beside it (mutation rows
+// packages-tag-of-one-line-baselines-another, line-reads-tags-of-every-major).
 
 // SplitTag splits a tag into its line prefix — everything through the LAST
 // '/', "" for a bare tag — and the remainder. It names the line a tag is on;

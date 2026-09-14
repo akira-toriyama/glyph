@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/akira-toriyama/glyph/v3/internal/bump"
+	"github.com/akira-toriyama/glyph/v3/internal/config"
 	"github.com/akira-toriyama/glyph/v3/internal/notes"
 	"github.com/akira-toriyama/glyph/v3/internal/preview"
 	"github.com/spf13/cobra"
@@ -104,7 +105,7 @@ func previewRun(cmd *cobra.Command) error {
 	// repository has no v* release tag yet" — while `bump --since-tag=auto` on
 	// the SAME checkout walked v0.0.0..HEAD and answered minor. Two commands,
 	// one repository, contradictory answers.
-	latestTag, current, verr := latestVersionTag(ctx, "", nil)
+	latestTag, current, verr := latestVersionTag(ctx, config.Line{}, nil)
 	if verr != nil {
 		return verr
 	}

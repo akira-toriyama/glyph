@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -115,11 +116,73 @@ func TestLoadPackagesErrors(t *testing.T) {
 	}
 }
 
+// TestPackageTagPrefix pins the path-to-prefix rule, Go's own: the module
+// subdirectory NOT including a major version suffix (go.dev/ref/mod). A
+// /vN last segment with N ≥ 2 is folded into the line's major; v0, v1 and
+// a zero-padded v02 are plain directory names (mutation row
+// major-subdirectory-kept-in-the-tag-prefix; t-z9d3, measured on
+// google-cloud-go pubsub/v2 → pubsub/v2.7.0 and etcd client/v3 →
+// client/v3.6.0).
 func TestPackageTagPrefix(t *testing.T) {
-	cases := map[string]string{".": "", "haiku": "haiku/", "exporters/prometheus": "exporters/prometheus/"}
+	cases := map[string]struct {
+		prefix string
+		major  int
+	}{
+		".":                    {"", 0},
+		"haiku":                {"haiku/", 0},
+		"exporters/prometheus": {"exporters/prometheus/", 0},
+		"pubsub/v2":            {"pubsub/", 2},
+		"client/v3":            {"client/", 3},
+		"a/b/v10":              {"a/b/", 10},
+		"v2":                   {"", 2},
+		"pubsub/v1":            {"pubsub/v1/", 0},
+		"pubsub/v0":            {"pubsub/v0/", 0},
+		"pubsub/v02":           {"pubsub/v02/", 0},
+		"pubsub/v2x":           {"pubsub/v2x/", 0},
+	}
 	for path, want := range cases {
-		if got := (Package{Path: path}).TagPrefix(); got != want {
-			t.Errorf("Package{Path: %q}.TagPrefix() = %q, want %q", path, got, want)
+		p := Package{Path: path}
+		if got := p.TagPrefix(); got != want.prefix {
+			t.Errorf("Package{Path: %q}.TagPrefix() = %q, want %q", path, got, want.prefix)
 		}
+		if got := p.Major(); got != want.major {
+			t.Errorf("Package{Path: %q}.Major() = %d, want %d", path, got, want.major)
+		}
+	}
+}
+
+// TestLineOfSharesThePrefixByMajor: pubsub and pubsub/v2 tag on ONE prefix
+// and are told apart by the major — the locked line holds 2 alone, the free
+// line everything else; an undeclared root yields to a declared root-level
+// vN the same way (mutation row line-reads-tags-of-every-major).
+func TestLineOfSharesThePrefixByMajor(t *testing.T) {
+	cfg, err := Load([]byte(packagesToml("\n[[packages]]\npath = 'pubsub'\n\n[[packages]]\npath = 'pubsub/v2'\n\n[[packages]]\npath = 'pubsub/v3'\n\n[[packages]]\npath = 'v2'\n")))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	free, v2, v3, root := cfg.LineOf(cfg.Packages[0]), cfg.LineOf(cfg.Packages[1]), cfg.LineOf(cfg.Packages[2]), cfg.LineOf(Package{Path: "."})
+	if free.Prefix != "pubsub/" || free.Major != 0 || fmt.Sprint(free.Claimed) != "[2 3]" {
+		t.Errorf("free line = %+v, want pubsub/ with majors 2 and 3 claimed", free)
+	}
+	if v2.Prefix != "pubsub/" || v2.Major != 2 || v2.Claimed != nil || v3.Major != 3 {
+		t.Errorf("locked lines = %+v / %+v", v2, v3)
+	}
+	for major, want := range map[int][3]bool{0: {true, false, false}, 1: {true, false, false}, 2: {false, true, false}, 3: {false, false, true}, 4: {true, false, false}} {
+		if got := [3]bool{free.Holds(major), v2.Holds(major), v3.Holds(major)}; got != want {
+			t.Errorf("major %d held by (free, v2, v3) = %v, want %v", major, got, want)
+		}
+	}
+	if root.Prefix != "" || fmt.Sprint(root.Claimed) != "[2]" || root.Holds(2) || !root.Holds(1) {
+		t.Errorf("the undeclared root's line = %+v, want the bare prefix with 2 claimed by the v2 package", root)
+	}
+	if v2.Label() != "pubsub/v2.*" || free.Label() != "pubsub/" || cfg.LineOf(cfg.Packages[3]).Label() != "bare v2.*" || root.Label() != "bare v*" {
+		t.Errorf("labels = %q %q %q %q", v2.Label(), free.Label(), cfg.LineOf(cfg.Packages[3]).Label(), root.Label())
+	}
+	if v2.MajorDir() != "v2/" || free.MajorDir() != "" {
+		t.Errorf("MajorDir = %q / %q", v2.MajorDir(), free.MajorDir())
+	}
+	// The default scope word keeps the suffix, as monorepos write it.
+	if cfg.Packages[1].Name != "pubsub/v2" || cfg.Packages[3].Name != "v2" || cfg.Packages[0].Name != "pubsub" {
+		t.Errorf("names = %q %q %q", cfg.Packages[1].Name, cfg.Packages[3].Name, cfg.Packages[0].Name)
 	}
 }

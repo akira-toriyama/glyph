@@ -28,15 +28,25 @@ const packagesConfig = "\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath =
 // on the commit that declared them. base is that commit.
 func packagesRepo(t *testing.T) (dir, base string) {
 	t.Helper()
-	dir = testutil.NewRepo(t)
-	appendTo(t, dir, "glyph.toml", packagesConfig)
-	writeFile(t, dir, "haiku/haiku.go", "package haiku\n")
-	writeFile(t, dir, "curry/curry.go", "package curry\n")
-	testGit(t, dir, "akira-toriyama", "add", ".")
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare two lines")
+	dir = packagesRepoWith(t, packagesConfig, map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n"})
 	testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
 	testGit(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
 	return dir, testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+}
+
+// packagesRepoWith is packagesRepo's body for any [[packages]] snippet and
+// file set: the preset plus the snippet, the files, one declaring commit,
+// no tags.
+func packagesRepoWith(t *testing.T, snippet string, files map[string]string) string {
+	t.Helper()
+	dir := testutil.NewRepo(t)
+	appendTo(t, dir, "glyph.toml", snippet)
+	for rel, content := range files {
+		writeFile(t, dir, rel, content)
+	}
+	testGit(t, dir, "akira-toriyama", "add", ".")
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
+	return dir
 }
 
 func writeFile(t *testing.T, dir, rel, content string) {

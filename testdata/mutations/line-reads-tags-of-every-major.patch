@@ -1,0 +1,16 @@
+diff --git a/internal/config/tagline.go b/internal/config/tagline.go
+index 5615b0f..e4d59b0 100644
+--- a/internal/config/tagline.go
++++ b/internal/config/tagline.go
+@@ -42,10 +42,7 @@ type Line struct {
+ 
+ // Holds says whether a version of the given major is on this line.
+ func (l Line) Holds(major int) bool {
+-	if l.Major > 0 {
+-		return major == l.Major
+-	}
+-	return !slices.Contains(l.Claimed, major)
++	return true
+ }
+ 
+ // Locked says whether the line is a major version subdirectory's.

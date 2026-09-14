@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v3/internal/bump"
+	"github.com/akira-toriyama/glyph/v3/internal/config"
 	"github.com/akira-toriyama/glyph/v3/internal/github"
 )
 
@@ -996,14 +997,14 @@ func TestHighestPublishedIgnoresUnparseableTags(t *testing.T) {
 		{ID: 5, TagName: "v9.9.9", Draft: true}, // a draft is no floor
 		{ID: 8, TagName: "v8.8", Draft: true},   // ...and an unparseable one is doubly not
 	}
-	floor, ok := highestPublished("", releases)
+	floor, ok := highestPublished(config.Line{}, releases)
 	if !ok || floor.String() != "v0.5.0" {
 		t.Fatalf("floor = %v ok=%v, want v0.5.0 over the parseable published set", floor, ok)
 	}
-	if err := checkPublishedFloor("", bump.Version{Minor: 5}, releases); err == nil {
+	if err := checkPublishedFloor(config.Line{}, bump.Version{Minor: 5}, releases); err == nil {
 		t.Fatalf("v0.5.0 equals the floor and must be refused (STRICTLY greater)")
 	}
-	if err := checkPublishedFloor("", bump.Version{Minor: 5, Patch: 1}, releases); err != nil {
+	if err := checkPublishedFloor(config.Line{}, bump.Version{Minor: 5, Patch: 1}, releases); err != nil {
 		t.Fatalf("v0.5.1 clears the floor, got %v", err)
 	}
 
@@ -1017,10 +1018,10 @@ func TestHighestPublishedIgnoresUnparseableTags(t *testing.T) {
 		{ID: 6, TagName: "v2", Draft: false},
 		{ID: 7, TagName: "v1.0.0-rc.1", Draft: false},
 	}
-	if _, ok := highestPublished("", foreignOnly); ok {
+	if _, ok := highestPublished(config.Line{}, foreignOnly); ok {
 		t.Fatalf("foreign-only published releases must yield no floor")
 	}
-	if err := checkPublishedFloor("", bump.Version{Patch: 1}, foreignOnly); err != nil {
+	if err := checkPublishedFloor(config.Line{}, bump.Version{Patch: 1}, foreignOnly); err != nil {
 		t.Fatalf("with no floor any version passes, got %v", err)
 	}
 }
@@ -1445,18 +1446,18 @@ func TestHighestPublishedIsPerLine(t *testing.T) {
 		"curry/":     {bump.Version{}, false},
 	}
 	for prefix, want := range cases {
-		floor, ok := highestPublished(prefix, rels)
+		floor, ok := highestPublished(config.Line{Prefix: prefix}, rels)
 		if ok != want.ok || floor != want.floor {
 			t.Errorf("highestPublished(%q) = %v, %t; want %v, %t", prefix, floor, ok, want.floor, want.ok)
 		}
 	}
-	if err := checkPublishedFloor("curry/", bump.Version{Minor: 1}, rels); err != nil {
+	if err := checkPublishedFloor(config.Line{Prefix: "curry/"}, bump.Version{Minor: 1}, rels); err != nil {
 		t.Errorf("curry/v0.1.0 under a published bare v2.0.0 and haiku/v1.5.0 must pass — different lines, no floor on curry/; got %v", err)
 	}
-	if err := checkPublishedFloor("", bump.Version{Minor: 5}, rels); err == nil {
+	if err := checkPublishedFloor(config.Line{}, bump.Version{Minor: 5}, rels); err == nil {
 		t.Errorf("bare v0.5.0 under a published bare v2.0.0 must be refused — same line")
 	}
-	if err := checkPublishedFloor("haiku/", bump.Version{Major: 1, Minor: 5}, rels); err == nil || !strings.Contains(err.Error(), "haiku/v1.5.0") {
+	if err := checkPublishedFloor(config.Line{Prefix: "haiku/"}, bump.Version{Major: 1, Minor: 5}, rels); err == nil || !strings.Contains(err.Error(), "haiku/v1.5.0") {
 		t.Errorf("haiku/v1.5.0 under a published haiku/v1.5.0 must be refused naming the line's tag; got %v", err)
 	}
 }
