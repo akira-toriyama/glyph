@@ -924,7 +924,20 @@ commit: `rel="last"` at page 10, page 11 empty; a commit whose listing reaches
 that cap is an **incomplete walk** in the sense §4 already defines (a package
 it touched past the cap is unreachable, not absent), recorded in `walkFacts`
 as `FilesCapped` beside `Truncated`, so `complete()` is false and a writing
-command refuses (exit 4). Attribution is per commit and never per pull.
+command refuses (exit 4). Two corollaries, both ratified with t-c6r5 and
+t-ft7p after the first cut got them wrong. A refusal attribution would hand
+down over a truncated listing — no carrier, or a scope naming a package the
+*visible* files do not touch — is **withheld**: both are claims about files
+the walk could not read (the package past the cap may be exactly the one
+named), so the commit is carried nowhere and the walk's own incompleteness
+answers, never the gate code; measured before the fix, a capped commit under
+no package exited **3** with the wedge remedy, which would have cut a tag past
+a commit whose true attribution the cap had hidden, and `lint.yml`'s push arm
+would have swallowed it as a merged violation. And the cap counts the
+**entries** GitHub listed, not the names returned: a rename is one entry under
+two names, so a whole listing of 1500 renames is whole — counted by name it was
+refused at 4 with a remedy a re-run could never satisfy. Attribution is per
+commit and never per pull.
 `GET /pulls/{N}/files` — one call, the pull's net diff — was rejected twice
 over: a pull touching two packages with a `^` in one and a `~` in the other
 would bump both lines by the higher sigil, which discards exactly the
@@ -1048,7 +1061,12 @@ needs no change. The pull's commits exist on its branch only, so their files
 come from `GET /commits/{sha}` — one request per participating commit, the
 squash arm's price paid before the merge — and a commit attribution refuses
 is refused here at exit 3, the same lint-class answer the walk will give
-once it is merged, while the branch can still be fixed. The pending side is
+once it is merged, while the branch can still be fixed. Over a listing GitHub
+truncated the refusal is withheld exactly as the walk withholds it, the commit
+is attributed to no line, and the body carries a PR-side INCOMPLETE caveat
+beside the pending one — a line a commit touches only past the cap is missing
+from every figure, and this comment is read by someone who never opens the
+log (`preview.Input.PRShort`). The pending side is
 the one walk, run when any touched line has a release tag (the release-floor
 guard per line); a touched line with no tag reports its PR verdict alone and
 the footer says so. The body is the single line's sentences per line: the

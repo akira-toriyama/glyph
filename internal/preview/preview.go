@@ -73,12 +73,21 @@ type Input struct {
 	// workflow log, which is the whole reason the prose lives in a testable
 	// package instead of in the caller's jq.
 	PendingShort string
+	// PRShort names what the PR side could not read: the pull's own commits
+	// whose file listing GitHub truncated, in the walk's words, so a line one
+	// of them touches only past the cap is absent from every figure — and a
+	// refusal attribution would have made over the truncated listing was
+	// withheld rather than handed down (DESIGN §4.1). Empty when every
+	// listing was whole, and always empty on the single line, which asks for
+	// no files. It is said here for PendingShort's reason: the log is not
+	// read.
+	PRShort string
 	// Packages is the per-line fold of a repository that declares
 	// [[packages]] (DESIGN §4.1): one entry per line the pull's commits are
 	// attributed to, in config order — a line the pull does not touch is not
 	// mentioned. When it is non-empty the scalar fields above describe no one
-	// line and are ignored, except PendingShort, which qualifies every line's
-	// pending side at once (one walk read them all).
+	// line and are ignored, except PendingShort and PRShort, which qualify
+	// every line at once (one walk read them all; one listing per commit).
 	Packages []Package
 }
 
@@ -241,6 +250,7 @@ func renderPackages(in Input) string {
 	if in.PendingShort != "" {
 		fmt.Fprintf(&b, "\n> [!WARNING]\n> The pending side of this fold is INCOMPLETE: %s. Anything already merged but unreleased may be missing from the figures above, so treat each as a floor rather than the answer.\n", in.PendingShort)
 	}
+	b.WriteString(PRShortBlock(in.PRShort))
 	for _, p := range in.Packages {
 		if len(p.PR.Commits) == 0 {
 			continue
@@ -257,6 +267,17 @@ func renderPackages(in Input) string {
 	}
 	b.WriteString("\n" + packagesFooter(in) + "\n")
 	return b.String()
+}
+
+// PRShortBlock is the caveat renderPackages places under the headlines when
+// PRShort is set, and "" when it is not. Exported because the packages
+// "moves nothing" sentence is the caller's own, and a pull whose one capped
+// commit was attributed to no line is exactly the body that must carry it.
+func PRShortBlock(short string) string {
+	if short == "" {
+		return ""
+	}
+	return fmt.Sprintf("\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: %s. A line one of its commits touches only past the cap is missing from the figures above, so treat each as a floor rather than the answer.\n", short)
 }
 
 // packagesFooter is footer per line: the participating commits are counted

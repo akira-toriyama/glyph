@@ -129,3 +129,42 @@ func TestCommitFiles422IsCommitUnknown(t *testing.T) {
 		}
 	}
 }
+
+// TestCommitFilesRenamesDoNotCountTowardTheCap: the cap is GitHub's count of
+// listed entries, and a rename is one entry the adapter returns under two
+// names — so a whole listing of CommitFilesCap/2 renames answers every name
+// and is NOT capped (t-ft7p: counted by name it was, and release refused
+// the range at 4 with a remedy a re-run could never satisfy). The same
+// number of entries at the cap is still capped, whether or not they are
+// renames (mutation row rename-second-name-counts-toward-the-files-cap).
+func TestCommitFilesRenamesDoNotCountTowardTheCap(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		entries int
+		capped  bool
+	}{
+		{"half the cap in renames, every name returned", CommitFilesCap / 2, false},
+		{"one rename short of the cap", CommitFilesCap - 1, false},
+		{"the cap in renames", CommitFilesCap, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			entries := make([]string, 0, tc.entries)
+			for i := range tc.entries {
+				entries = append(entries, fmt.Sprintf(`{"filename":"new/f%d","previous_filename":"old/f%d","status":"renamed"}`, i, i))
+			}
+			c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, `{"sha":"s","files":[`+strings.Join(entries, ",")+`]}`)
+			})
+			files, capped, err := c.CommitFiles(context.Background(), "o", "r", "s")
+			if err != nil {
+				t.Fatalf("CommitFiles(%d renames): %v", tc.entries, err)
+			}
+			if len(files) != 2*tc.entries {
+				t.Fatalf("CommitFiles(%d renames) returned %d names, want both names of each", tc.entries, len(files))
+			}
+			if capped != tc.capped {
+				t.Fatalf("CommitFiles(%d renames) capped = %v, want %v — the cap counts entries, not names", tc.entries, capped, tc.capped)
+			}
+		})
+	}
+}

@@ -42,7 +42,10 @@ type packagePreview struct {
 // folds the PR side per touched line, walks the pending side once when any
 // touched line has released, and renders. A commit attribution refuses is
 // the same lint-class refusal the walk and lint --range hand down: preview
-// says what CI will say.
+// says what CI will say — including that a refusal over a listing GitHub
+// truncated is withheld (partitionLines): the commit is attributed to no
+// line, and the body says the PR side is incomplete, because a reviewer
+// reads this comment and never the log (preview.Input.PRShort).
 func previewLines(ctx context.Context, cfg *config.Config) error {
 	raws, _, perr := pullInput(ctx, previewPR, previewRepo)
 	if perr != nil {
@@ -58,6 +61,7 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 	// walk judges a squash-arm inner commit: not an excluded author, not a
 	// skip, matched — then its files, then attribution.
 	perLine := make([][]gitsource.RawCommit, len(cfg.Packages))
+	var prCapped []string
 	for _, r := range raws {
 		if slices.Contains(cfg.ExcludeAuthors, r.Author) {
 			continue
@@ -69,18 +73,23 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 			continue
 		}
 		var files []string
+		capped := false
 		if r.Parents < 2 {
-			var capped bool
 			var ferr error
 			files, capped, ferr = gh.CommitFiles(ctx, owner, repo, r.SHA)
 			if ferr != nil {
 				return ferr
 			}
 			if capped {
+				prCapped = append(prCapped, fmt.Sprintf("%.7s", r.SHA))
 				warnf("commit %.7s in pull request #%d touches at least %d files, and GitHub lists no more than that — a package it touches past the cap is missing from this preview", r.SHA, previewPR, github.CommitFilesCap)
 			}
 		}
 		moved, aerr := attribution.Attribute(files, m.Groups[config.ScopeGroup], m.Sigil, cfg.Packages)
+		if aerr != nil && capped {
+			warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but the listing was truncated, so that is not a verdict: the commit is attributed to no line", r.SHA, aerr)
+			continue
+		}
 		if aerr != nil {
 			return &core.Error{Code: core.CodeLint, Details: []rangeViolation{{SHA: r.SHA, Subject: bump.FirstLine(r.Message), Detail: aerr.Error()}},
 				Msg: fmt.Sprintf("commit %.7s in pull request %s/%s#%d: %v — the release walk will refuse this commit the same way once it is merged, and a merged commit cannot be rewritten; fix it on the branch", r.SHA, owner, repo, previewPR, aerr)}
@@ -154,7 +163,11 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 		warnf("no release tag on any line this PR touches — previewing the PR's own verdict per line (the pending walk needs a release floor)")
 	}
 
-	in := preview.Input{PendingShort: pendingShort}
+	prShort := ""
+	if len(prCapped) > 0 {
+		prShort = walkFacts{FilesCapped: prCapped}.shortfall(owner, repo)
+	}
+	in := preview.Input{PendingShort: pendingShort, PRShort: prShort}
 	var pkgs []packagePreview
 	var noteBodies []string
 	for _, tl := range touched {
@@ -194,7 +207,7 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 
 	var body string
 	if len(touched) == 0 {
-		body = truncateComment(preview.Marker + "\n⏸️ Merging this PR moves nothing — its " + fmt.Sprintf("%d", len(raws)) + " commit(s) touch no declared package.\n\n" + fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. Pushing more commits updates this comment.", len(raws)) + "\n")
+		body = truncateComment(preview.Marker + "\n⏸️ Merging this PR moves nothing — its " + fmt.Sprintf("%d", len(raws)) + " commit(s) touch no declared package.\n" + preview.PRShortBlock(prShort) + "\n" + fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. Pushing more commits updates this comment.", len(raws)) + "\n")
 	} else {
 		body = truncateComment(preview.Render(in))
 	}

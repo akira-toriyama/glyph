@@ -245,6 +245,15 @@ func (w walked) governing() string {
 // on a history where the bases' common ancestor sits before both — is
 // dropped with a notice; it was walked because the union had to contain it,
 // and it belongs to no line's verdict.
+//
+// A refusal attribution hands down over a listing GitHub TRUNCATED is not a
+// finding and never wedges: "no carrier" and "the scope names a package the
+// files do not touch" are both claims about files the walk could not read
+// (the package past the cap may be exactly the one named). The commit is
+// carried nowhere and the walk's own FilesCapped fact answers — a writing
+// command refuses at 4, a reporting one warns — never the gate code, which
+// would tell an operator to cut a tag past a commit whose true attribution
+// the cap had hidden (t-c6r5, measured: exit 3 with the wedge remedy).
 func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, owner, repo string, commits []walked, facts *walkFacts, lines []line) ([]lineWalk, []walked, error) {
 	if len(cfg.Packages) == 0 {
 		return []lineWalk{{line: lines[0], Commits: commits}}, commits, nil
@@ -285,18 +294,23 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, 
 		carriers := reach
 		if !slices.Contains(cfg.ExcludeAuthors, c.Raw.Author) {
 			if m, merr := cfg.Match(c.Raw.Message); merr == nil && m.Matched && !m.Skip {
-				files, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
+				files, capped, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
 				if ferr != nil {
 					return nil, nil, ferr
 				}
 				moved, aerr := attribution.Attribute(files, m.Groups[config.ScopeGroup], m.Sigil, cfg.Packages)
-				if aerr != nil {
+				switch {
+				case aerr != nil && capped:
+					warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but the listing was truncated, so that is not a verdict: the commit is carried nowhere, and the walk is incomplete", c.Raw.SHA, aerr)
+					carriers = nil
+				case aerr != nil:
 					return nil, nil, attributionWedge(aerr, c, owner, repo, reachedLines(lines, reach))
-				}
-				carriers = carriers[:0:0]
-				for _, i := range reach {
-					if slices.ContainsFunc(moved, func(p config.Package) bool { return p.Path == lines[i].Package.Path }) {
-						carriers = append(carriers, i)
+				default:
+					carriers = carriers[:0:0]
+					for _, i := range reach {
+						if slices.ContainsFunc(moved, func(p config.Package) bool { return p.Path == lines[i].Package.Path }) {
+							carriers = append(carriers, i)
+						}
 					}
 				}
 			}
@@ -312,25 +326,27 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, 
 // cheapest source that has them: nothing for a merge commit (attributed to
 // nothing, its diff never asked for), local git for a landed identity, the
 // API for a squash-merged pull's inner commit. An API listing that reached
-// CommitFilesCap is recorded on the facts: the files past it are unreachable,
-// not absent, and a package they touch would be missing from the verdict —
-// an incomplete walk in §4's sense.
-func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c walked, facts *walkFacts) ([]string, error) {
+// CommitFilesCap is recorded on the facts and returned as capped: the files
+// past it are unreachable, not absent, and a package they touch would be
+// missing from the verdict — an incomplete walk in §4's sense, and a listing
+// the caller must not let attribution refuse over.
+func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c walked, facts *walkFacts) (files []string, capped bool, err error) {
 	if c.Raw.Parents >= 2 {
-		return nil, nil
+		return nil, false, nil
 	}
 	if c.Landed {
-		return gitsource.DiffTreeFiles(ctx, ".", c.Raw.SHA)
+		files, err = gitsource.DiffTreeFiles(ctx, ".", c.Raw.SHA)
+		return files, false, err
 	}
-	files, capped, err := gh.CommitFiles(ctx, owner, repo, c.Raw.SHA)
+	files, capped, err = gh.CommitFiles(ctx, owner, repo, c.Raw.SHA)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if capped {
 		facts.FilesCapped = append(facts.FilesCapped, fmt.Sprintf("%.7s", c.Raw.SHA))
 		warnf("commit %.7s in pull request #%d touches at least %d files, and GitHub lists no more than that — the files past the cap could not be read, so a package they touch is missing from this verdict", c.Raw.SHA, c.Pull, github.CommitFilesCap)
 	}
-	return files, nil
+	return files, capped, nil
 }
 
 // reachedLines names the lines whose range holds a commit — the lines a

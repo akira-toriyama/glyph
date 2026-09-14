@@ -1,0 +1,27 @@
+diff --git a/internal/github/commitfiles.go b/internal/github/commitfiles.go
+index c44bf69..265116b 100644
+--- a/internal/github/commitfiles.go
++++ b/internal/github/commitfiles.go
+@@ -49,7 +49,6 @@ func (c *Client) CommitFiles(ctx context.Context, owner, repo, sha string) (file
+ 	u := fmt.Sprintf("%s/repos/%s/%s/commits/%s",
+ 		c.baseURL, url.PathEscape(owner), url.PathEscape(repo), url.PathEscape(sha))
+ 	files = []string{}
+-	entries := 0
+ 	for pages := 0; u != ""; pages++ {
+ 		if pages >= maxPages {
+ 			return nil, false, core.APIf("github: pagination exceeded %d pages", maxPages)
+@@ -59,7 +58,6 @@ func (c *Client) CommitFiles(ctx context.Context, owner, repo, sha string) (file
+ 		if gerr != nil {
+ 			return nil, false, gerr
+ 		}
+-		entries += len(page.Files)
+ 		for _, f := range page.Files {
+ 			if f.Filename != "" {
+ 				files = append(files, f.Filename)
+@@ -70,5 +68,5 @@ func (c *Client) CommitFiles(ctx context.Context, owner, repo, sha string) (file
+ 		}
+ 		u = next
+ 	}
+-	return files, entries >= CommitFilesCap, nil
++	return files, len(files) >= CommitFilesCap, nil
+ }
