@@ -1,0 +1,15 @@
+diff --git a/internal/github/identity.go b/internal/github/identity.go
+index 74ae458..576c8ce 100644
+--- a/internal/github/identity.go
++++ b/internal/github/identity.go
+@@ -16,9 +16,5 @@ var noreply = regexp.MustCompile(`^(?:[0-9]+\+)?([A-Za-z0-9](?:[A-Za-z0-9-]*[A-Z
+ // is github.com/larrasket, and @Saleh is a stranger), so a commit whose
+ // address names nobody is credited by name and pages no one.
+ func LoginFromNoreply(email string) string {
+-	m := noreply.FindStringSubmatch(email)
+-	if m == nil {
+-		return ""
+-	}
+-	return m[1]
++	return ""
+ }

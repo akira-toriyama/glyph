@@ -97,15 +97,16 @@ func TestCommitPullsPaginates(t *testing.T) {
 }
 
 // TestPullCommitsSinglePage parses inner commits, flattening commit.author.name
-// into Author and the parents array into a count.
+// into Author, the top-level author.login into Login, and the parents array
+// into a count.
 func TestPullCommitsSinglePage(t *testing.T) {
 	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Path; got != "/repos/akira-toriyama/glyph/pulls/7/commits" {
 			t.Errorf("path = %q, want the pulls/{n}/commits path", got)
 		}
 		fmt.Fprint(w, `[
-		  {"sha":"aaa","commit":{"message":":sparkles: add a thing","author":{"name":"akira-toriyama"}},"parents":[{"sha":"p1"}]},
-		  {"sha":"bbb","commit":{"message":":robot: chore(fleet): sync","author":{"name":"fleet-sync[bot]"}},"parents":[{"sha":"p1"},{"sha":"p2"}]}
+		  {"sha":"aaa","commit":{"message":":sparkles: add a thing","author":{"name":"Saleh","email":"root@lr0.org"}},"author":{"login":"larrasket"},"parents":[{"sha":"p1"}]},
+		  {"sha":"bbb","commit":{"message":":robot: chore(fleet): sync","author":{"name":"fleet-sync[bot]","email":"fleet-sync[bot]@users.noreply.github.com"}},"author":null,"parents":[{"sha":"p1"},{"sha":"p2"}]}
 		]`)
 	})
 
@@ -116,13 +117,17 @@ func TestPullCommitsSinglePage(t *testing.T) {
 	if len(commits) != 2 {
 		t.Fatalf("got %d commits, want 2: %+v", len(commits), commits)
 	}
-	want0 := Commit{SHA: "aaa", Author: "akira-toriyama", Parents: 1, Message: ":sparkles: add a thing"}
+	// The login is GitHub's own mapping and is carried apart from the name:
+	// the two differ (golang/tools, measured 2026-09-13), and the notes
+	// credit the login (t-39fy).
+	want0 := Commit{SHA: "aaa", Author: "Saleh", Email: "root@lr0.org", Login: "larrasket", Parents: 1, Message: ":sparkles: add a thing"}
 	if commits[0] != want0 {
 		t.Fatalf("commit 0 = %+v, want %+v", commits[0], want0)
 	}
 	// The bot author name (not a login) and the two-parent merge shape are exactly
 	// what internal/bump.ExcludedFromClassification keys on downstream.
-	want1 := Commit{SHA: "bbb", Author: "fleet-sync[bot]", Parents: 2, Message: ":robot: chore(fleet): sync"}
+	// author: null — GitHub mapped no account — is an empty login, not an error.
+	want1 := Commit{SHA: "bbb", Author: "fleet-sync[bot]", Email: "fleet-sync[bot]@users.noreply.github.com", Parents: 2, Message: ":robot: chore(fleet): sync"}
 	if commits[1] != want1 {
 		t.Fatalf("commit 1 = %+v, want %+v", commits[1], want1)
 	}

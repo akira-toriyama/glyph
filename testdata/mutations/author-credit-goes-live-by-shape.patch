@@ -1,0 +1,13 @@
+diff --git a/internal/notes/sigil.go b/internal/notes/sigil.go
+index c2cd6ab..ab72c40 100644
+--- a/internal/notes/sigil.go
++++ b/internal/notes/sigil.go
+@@ -147,7 +147,7 @@ func renderLine(spans []config.LineSpan, c SigilCommit, groups map[string]string
+ 		for _, p := range span.Parts {
+ 			switch {
+ 			case p.Placeholder && p.Text == config.BuiltinAuthor:
+-				l.Mention(c.Login, c.Author)
++				l.Mention(c.Author, c.Author)
+ 			case p.Placeholder:
+ 				l.Prose(resolve(p.Text))
+ 			default:

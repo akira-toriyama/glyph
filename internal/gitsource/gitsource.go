@@ -25,14 +25,16 @@ import (
 type RawCommit struct {
 	SHA     string
 	Author  string // author name (%an) — what bot/automation matching runs on
+	Email   string // author email (%ae) — the one identity git holds; a GitHub noreply address names a login
+	Login   string // GitHub login; always "" from git (github.Commit fills it from the API) — mirrored so the two convert
 	Parents int    // parent count; >= 2 marks a merge commit
 	Message string // full raw message (%B), verbatim
 }
 
-// logFormat renders one record per commit: SHA, author name, parent SHAs and
-// the raw message, unit-separated (\x1f). Records themselves are NUL-separated
-// by -z — the only byte a message cannot contain.
-const logFormat = "%H%x1f%an%x1f%P%x1f%B"
+// logFormat renders one record per commit: SHA, author name, author email,
+// parent SHAs and the raw message, unit-separated (\x1f). Records themselves
+// are NUL-separated by -z — the only byte a message cannot contain.
+const logFormat = "%H%x1f%an%x1f%ae%x1f%P%x1f%B"
 
 // Log returns the commits in revRange (e.g. "BASE..HEAD"), oldest first. An
 // empty range is a successful empty result. --end-of-options pins revRange as
@@ -410,15 +412,16 @@ func parseLog(out []byte) ([]RawCommit, error) {
 		if len(record) == 0 {
 			continue
 		}
-		fields := strings.SplitN(string(record), "\x1f", 4)
-		if len(fields) != 4 {
+		fields := strings.SplitN(string(record), "\x1f", 5)
+		if len(fields) != 5 {
 			return nil, core.APIf("git log: malformed record %q", string(record))
 		}
 		commits = append(commits, RawCommit{
 			SHA:     fields[0],
 			Author:  fields[1],
-			Parents: len(strings.Fields(fields[2])),
-			Message: fields[3],
+			Email:   fields[2],
+			Parents: len(strings.Fields(fields[3])),
+			Message: fields[4],
 		})
 	}
 	return commits, nil

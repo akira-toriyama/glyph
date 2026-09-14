@@ -375,18 +375,36 @@ over the assembled line. The fence has exactly one ratified exemption
 (2026-08-17): the built-in `$author`, so the preset's `@$author` renders as a
 live mention — crediting the contributor is intended behaviour, and every
 peer tool (git-cliff, GitHub's own generated notes, release-drafter,
-changesets) pages the author the same way. The exemption is gated by shape,
-not position: the value is git's free-text `%an`, and it goes out raw only
-when the WHOLE field is one GitHub-handle-shaped token — anything else
-(`Akira Toriyama`, `dependabot[bot]`) stays fenced, because `@Akira` would
-page a stranger, which is the t-hykw incident the fence exists to prevent.
-Group-derived values (`$subject` above all) keep the fence unconditionally:
-who a subject mentions is not the author credit. Rejected alternatives:
-rendering the raw first line (machine notation in prose, and Breaking
-Changes already says what `!` says), and dropping the fence entirely
-(subjects carry arbitrary text). (Mutation row
-`line-returns-its-bytes-unfenced.patch`; the gate lives in
-`markdown.Line.Mention`.) A **`$[ … ]` span renders only when EVERY placeholder
+changesets) pages the author the same way. The exemption is gated by
+**identity**, and by shape second (t-39fy, 2026-09-14, replacing the
+shape-only gate): what goes live is the contributor's **login** — the
+`author.login` GitHub itself attaches to a commit the API described (the
+squash arm, `--pr`), else the login a GitHub noreply author address carries
+(`<id>+<login>@users.noreply.github.com`, which every fleet commit carries
+and the fallback arm and `--range` can read from git alone), else nothing —
+and only when that login is one GitHub-handle-shaped token. The name is
+never promoted to stand in for a missing login, because a name is not a
+login and **no shape tells them apart**: measured 2026-09-13 on golang/tools,
+`%an` is `Saleh` for github.com/larrasket, and the shape gate rendered
+`@Saleh` — one handle-shaped token, and a stranger paged the moment the
+release is published. A credit with no login renders the name as plain
+prose with the template's at-sign dropped (`Robert Pająk`, not
+`` `@Robert `` `Pająk`, which fencing the would-be mention produced on
+opentelemetry-go): a credit that pages nobody is not written as a mention.
+`dependabot[bot]` fails the shape gate on its own login and renders the same
+way. Group-derived values (`$subject` above all) keep the fence
+unconditionally: who a subject mentions is not the author credit. Rejected
+alternatives: rendering the raw first line (machine notation in prose, and
+Breaking Changes already says what `!` says); dropping the fence entirely
+(subjects carry arbitrary text); asking `GET /commits/{sha}` for every landed
+commit's login (one request per commit on the free arm, for an identity the
+noreply address already carries on every commit GitHub's own UI or a
+privacy-on account writes — a personal address is then credited by name,
+which is honest); fencing the name with its at-sign (`` `@Saleh` `` reads as a
+broken mention and still shows a stranger's handle). (Mutation rows
+`line-returns-its-bytes-unfenced.patch`, `author-credit-goes-live-by-shape`,
+`noreply-address-carries-no-identity`, `unpaged-credit-keeps-its-at-sign`;
+the gate lives in `markdown.Line.Mention`, the identity in `cli.identity`.) A **`$[ … ]` span renders only when EVERY placeholder
 inside it resolves non-empty** (mutation row
 `notes-optional-span-always-renders.patch`), taking its own punctuation with
 it when one does not. Without it, punctuation written around a placeholder

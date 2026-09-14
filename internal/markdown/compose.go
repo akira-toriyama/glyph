@@ -106,28 +106,35 @@ func (l *Line) Prose(s string) {
 	l.parts = append(l.parts, part{partProse, flatten(s)})
 }
 
-// Mention appends a name the caller MEANS to page — the release-notes author
-// credit (ratified 2026-08-17): the template's literal at-sign plus this value
-// renders as a live @mention instead of being fenced. It is the one deliberate
-// hole in the fence, and it is gated by shape, not by trust in the caller: the
-// value goes live only when it is exactly one GitHub-handle-shaped token
-// (alphanumerics and interior hyphens). Anything else — a git author name with
-// a space, "dependabot[bot]", an empty resolve — falls back to Prose and stays
-// fenced, because the value here is git's free-text %an, and "@Akira Toriyama"
-// would page the stranger @Akira (the t-hykw incident, from the other
-// direction). The safety property the fence exists for is thus preserved:
-// no author-controlled FREE TEXT can page anyone; going live requires the
-// whole field to be nothing but the handle.
+// Mention appends the author credit the caller MEANS to page (ratified
+// 2026-08-17; by identity since t-39fy): login is the GitHub account that
+// authored the commit as GitHub established it — the API's author.login or
+// a noreply address — and name is git's free-text %an. The template's
+// literal at-sign plus the LOGIN renders as a live @mention instead of being
+// fenced: the one deliberate hole in the fence, gated twice. By identity: an
+// empty login is the statement that nobody established one, and the name is
+// never promoted to stand in for it, because a name is not a login and no
+// shape tells them apart — "Saleh" is one handle-shaped token and is
+// github.com/larrasket, so @Saleh paged a stranger (golang/tools, measured
+// 2026-09-13). And by shape, still: a login goes live only when it is exactly
+// one GitHub-handle-shaped token (alphanumerics and interior hyphens), so
+// "dependabot[bot]" and an empty resolve cannot open the hole either.
 //
-// The at-sign itself is not written here on purpose. It belongs to the
-// caller's template ("@$author"), so a template without one renders the bare
-// name and mentions nobody — same as today.
-func (l *Line) Mention(s string) {
-	if !handle.MatchString(s) {
-		l.Prose(s)
+// A credit that cannot go live is written as prose, by NAME, and the
+// at-sign the caller wrote directly before it is dropped: "@Robert Pająk"
+// is not a mention of anyone, and fencing it left `@Robert` in code font
+// with the surname outside (opentelemetry-go, measured 2026-09-13). The
+// at-sign is the caller's template's ("@$author"), so a template without one
+// renders the bare name and mentions nobody — same as before.
+func (l *Line) Mention(login, name string) {
+	if !handle.MatchString(login) {
+		if n := len(l.parts) - 1; n >= 0 && l.parts[n].kind == partRaw {
+			l.parts[n].s = strings.TrimSuffix(l.parts[n].s, "@")
+		}
+		l.Prose(name)
 		return
 	}
-	l.parts = append(l.parts, part{partMention, s})
+	l.parts = append(l.parts, part{partMention, login})
 }
 
 // String assembles the line and runs the two whole-line passes, in order: the

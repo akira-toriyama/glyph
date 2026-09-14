@@ -307,7 +307,12 @@ pattern's named groups, `$pr` / `$author` / `$hash` are built in, and a
 `$[ … ]` span renders only when every placeholder inside it resolves. That is
 what lets the shipped `- $subject$[ ($pr)] @$author` cite a pull when there is
 one and drop the parens with it when there is not, instead of writing `()` for
-every commit that reached main without a merged pull.
+every commit that reached main without a merged pull. `@$author` pages the
+contributor only when GitHub knows who that is — the login the API reports for
+a listed commit, or the one a `@users.noreply.github.com` author address
+carries; a commit from any other address is credited by its git author name,
+plain, so a display name that happens to look like a handle never pages the
+stranger who owns it.
 
 ## Packages — several version lines in one repository
 
