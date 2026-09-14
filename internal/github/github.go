@@ -97,6 +97,8 @@ type PullRef struct {
 type Commit struct {
 	SHA     string
 	Author  string
+	Email   string // commit.author.email, git's own
+	Login   string // author.login: the GitHub account GitHub itself mapped the commit to; "" when it mapped none
 	Parents int
 	Message string
 }
@@ -244,9 +246,17 @@ type apiCommit struct {
 	Commit struct {
 		Message string `json:"message"`
 		Author  struct {
-			Name string `json:"name"`
+			Name  string `json:"name"`
+			Email string `json:"email"`
 		} `json:"author"`
 	} `json:"commit"`
+	// Author is the GitHub user the commit's email resolved to — null when
+	// GitHub knows no account for it (measured: golang/tools lists Saleh's
+	// commits under login larrasket; a name is not a login and cannot be
+	// told from one by shape).
+	Author *struct {
+		Login string `json:"login"`
+	} `json:"author"`
 	Parents []struct {
 		SHA string `json:"sha"`
 	} `json:"parents"`
@@ -289,8 +299,12 @@ func (c *Client) PullCommits(ctx context.Context, owner, repo string, number int
 		commits[i] = Commit{
 			SHA:     ac.SHA,
 			Author:  ac.Commit.Author.Name,
+			Email:   ac.Commit.Author.Email,
 			Parents: len(ac.Parents),
 			Message: ac.Commit.Message,
+		}
+		if ac.Author != nil {
+			commits[i].Login = ac.Author.Login
 		}
 	}
 	return commits, nil

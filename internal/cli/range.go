@@ -5,6 +5,7 @@ import (
 
 	"github.com/akira-toriyama/glyph/v3/internal/bump"
 	"github.com/akira-toriyama/glyph/v3/internal/core"
+	"github.com/akira-toriyama/glyph/v3/internal/github"
 	"github.com/akira-toriyama/glyph/v3/internal/gitsource"
 	"github.com/akira-toriyama/glyph/v3/internal/notes"
 )
@@ -29,9 +30,21 @@ func sigilCommits(raws []gitsource.RawCommit) []bump.SigilCommit {
 func noteCommits(raws []gitsource.RawCommit, pull int) []notes.SigilCommit {
 	out := make([]notes.SigilCommit, 0, len(raws))
 	for _, r := range raws {
-		out = append(out, notes.SigilCommit{SHA: r.SHA, Pull: pull, Author: r.Author, Message: r.Message})
+		out = append(out, notes.SigilCommit{SHA: r.SHA, Pull: pull, Author: r.Author, Login: identity(r), Message: r.Message})
 	}
 	return out
+}
+
+// identity is the GitHub login the notes may credit a commit's author BY:
+// the login GitHub itself mapped the commit to when the API described it,
+// else the login a noreply author address carries, else "" — and "" is an
+// answer, never the author name: a name is free text and @<name> pages
+// whoever happens to own it (t-39fy).
+func identity(r gitsource.RawCommit) string {
+	if r.Login != "" {
+		return r.Login
+	}
+	return github.LoginFromNoreply(r.Email)
 }
 
 // checkRangeFlag rejects an empty or option-shaped --range before git runs —

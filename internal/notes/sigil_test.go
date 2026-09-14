@@ -152,8 +152,8 @@ title = "Fixes"
 func TestRenderLineOptionalSpan(t *testing.T) {
 	cfg := sigilCfg(t)
 	sections, err := GroupSigils([]SigilCommit{
-		{SHA: "aaaaaaaaaaaa", Pull: 61, Author: "akira-toriyama", Message: ":bug:~ fix the demo crash"},
-		{SHA: "bbbbbbbbbbbb", Pull: 0, Author: "akira-toriyama", Message: ":bug:~ fix it again by direct push"},
+		{SHA: "aaaaaaaaaaaa", Pull: 61, Author: "akira-toriyama", Login: "akira-toriyama", Message: ":bug:~ fix the demo crash"},
+		{SHA: "bbbbbbbbbbbb", Pull: 0, Author: "akira-toriyama", Login: "akira-toriyama", Message: ":bug:~ fix it again by direct push"},
 	}, cfg)
 	if err != nil {
 		t.Fatalf("GroupSigils: %v", err)
@@ -180,9 +180,9 @@ func TestRenderLineOptionalSpan(t *testing.T) {
 func TestGroupSigilsMultiCommitPullRepeatsTheCitation(t *testing.T) {
 	cfg := sigilCfg(t)
 	sections, err := GroupSigils([]SigilCommit{
-		{SHA: "aaaaaaaaaaaa", Pull: 61, Author: "akira", Message: ":bug:~ fix the first thing"},
-		{SHA: "bbbbbbbbbbbb", Pull: 61, Author: "akira", Message: ":bug:~ fix the second thing"},
-		{SHA: "cccccccccccc", Pull: 61, Author: "akira", Message: ":bug:~ fix the third thing"},
+		{SHA: "aaaaaaaaaaaa", Pull: 61, Author: "akira", Login: "akira", Message: ":bug:~ fix the first thing"},
+		{SHA: "bbbbbbbbbbbb", Pull: 61, Author: "akira", Login: "akira", Message: ":bug:~ fix the second thing"},
+		{SHA: "cccccccccccc", Pull: 61, Author: "akira", Login: "akira", Message: ":bug:~ fix the third thing"},
 	}, cfg)
 	if err != nil {
 		t.Fatalf("GroupSigils: %v", err)
@@ -243,7 +243,7 @@ title = "Fixes"
 func TestRenderLineNeutralizesMentions(t *testing.T) {
 	cfg := sigilCfg(t)
 	sections, err := GroupSigils([]SigilCommit{
-		{SHA: "aaaaaaaaaaaa", Pull: 1, Author: "akira", Message: ":bug:~ thank @someone for the report"},
+		{SHA: "aaaaaaaaaaaa", Pull: 1, Author: "akira", Login: "akira", Message: ":bug:~ thank @someone for the report"},
 	}, cfg)
 	if err != nil {
 		t.Fatalf("GroupSigils: %v", err)
@@ -257,21 +257,32 @@ func TestRenderLineNeutralizesMentions(t *testing.T) {
 	}
 }
 
-// TestRenderLineFencesFreeTextAuthor pins the gate on the exemption: the
-// author value is git's free-text %an, and only a whole handle-shaped value
-// may go live. "Akira Toriyama" would page the stranger @Akira if it slipped
-// through raw — the exact t-hykw failure the fence exists for.
-func TestRenderLineFencesFreeTextAuthor(t *testing.T) {
+// TestRenderLineCreditsByIdentityNotShape pins the gate on the exemption
+// (t-39fy): the credit goes live on the LOGIN GitHub established, never on
+// the author name, whatever its shape. "Saleh" is one handle-shaped token and
+// is github.com/larrasket — rendered by shape it paged the stranger @Saleh
+// from golang/tools' notes (measured 2026-09-13). With no login the name
+// renders plain and the template's at-sign goes with the mention it cannot
+// make; "Akira Toriyama" would otherwise page @Akira, the t-hykw failure the
+// fence exists for (mutation row author-credit-goes-live-by-shape).
+func TestRenderLineCreditsByIdentityNotShape(t *testing.T) {
 	cfg := sigilCfg(t)
-	sections, err := GroupSigils([]SigilCommit{
-		{SHA: "aaaaaaaaaaaa", Pull: 1, Author: "Akira Toriyama", Message: ":bug:~ fix a thing"},
-	}, cfg)
-	if err != nil {
-		t.Fatalf("GroupSigils: %v", err)
-	}
-	line := sections[0].Lines[0]
-	if strings.Contains(line, "@Akira") && !strings.Contains(line, "`@Akira`") {
-		t.Errorf("a free-text author name rendered as a live mention: %q", line)
+	for _, tc := range []struct{ author, login, want string }{
+		{"Saleh", "larrasket", "- :bug:~ fix a thing (#1) @larrasket"},
+		{"Saleh", "", "- :bug:~ fix a thing (#1) Saleh"},
+		{"Akira Toriyama", "", "- :bug:~ fix a thing (#1) Akira Toriyama"},
+		{"Robert Pająk", "", "- :bug:~ fix a thing (#1) Robert Pająk"},
+		{"dependabot[bot]", "dependabot[bot]", `- :bug:~ fix a thing (#1) dependabot\[bot]`},
+	} {
+		sections, err := GroupSigils([]SigilCommit{
+			{SHA: "aaaaaaaaaaaa", Pull: 1, Author: tc.author, Login: tc.login, Message: ":bug:~ fix a thing"},
+		}, cfg)
+		if err != nil {
+			t.Fatalf("GroupSigils: %v", err)
+		}
+		if got := sections[0].Lines[0]; got != tc.want {
+			t.Errorf("author %q login %q:\n got %q\nwant %q", tc.author, tc.login, got, tc.want)
+		}
 	}
 }
 

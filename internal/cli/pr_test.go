@@ -26,11 +26,24 @@ func prServer(t *testing.T, number int, body string) *httptest.Server {
 	return walkServer(t, map[string]string{pullCommitsPath(number): body})
 }
 
-// apiCommit renders one commit in the shape GET pulls/{n}/commits returns.
+// apiCommit renders one commit in the shape GET pulls/{n}/commits returns,
+// authored by a login: the name and GitHub's mapping agree, as they do on
+// every fleet commit. apiCommitBy is the shape where they do not.
 func apiCommit(sha, author, message string) string {
+	return apiCommitBy(sha, author, author, message)
+}
+
+// apiCommitBy renders one listed commit whose git author NAME and the login
+// GitHub mapped it to differ ("Saleh" / larrasket, golang/tools) — login ""
+// renders GitHub's author: null, a commit mapped to no account.
+func apiCommitBy(sha, login, name, message string) string {
 	m, _ := json.Marshal(message)
-	return fmt.Sprintf(`{"sha":%q,"commit":{"message":%s,"author":{"name":%q}},"parents":[{"sha":"p"}]}`,
-		sha, m, author)
+	who := "null"
+	if login != "" {
+		who = fmt.Sprintf(`{"login":%q}`, login)
+	}
+	return fmt.Sprintf(`{"sha":%q,"commit":{"message":%s,"author":{"name":%q}},"author":%s,"parents":[{"sha":"p"}]}`,
+		sha, m, name, who)
 }
 
 // apiMergeCommit renders a listing entry with TWO parents — the "Merge branch

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v3/internal/testutil"
 )
 
 // TestNotesMarkdown: the full Markdown body under the gemoji preset — the
@@ -201,5 +203,60 @@ func TestNotesOutsideRepoIsAPI(t *testing.T) {
 	t.Chdir(t.TempDir())
 	if code, _, _ := runGlyph(t, "notes", "--range", "main..HEAD"); code != 4 {
 		t.Fatalf("notes outside a repo should exit 4")
+	}
+}
+
+// TestNotesCreditsByIdentityNotShape (t-39fy): the author credit is a live
+// mention of the LOGIN GitHub established, never of git's free-text name.
+// Under --range the only identity git holds is a noreply address, and the
+// fixture's commits carry one (as the fleet's do), so those credits stay
+// live; a commit from a personal address is credited by name, plain, the
+// at-sign gone with the mention it cannot make — "Saleh" is handle-shaped and
+// is github.com/larrasket, so rendered by shape it paged a stranger (mutation
+// rows noreply-address-carries-no-identity, author-credit-goes-live-by-shape).
+func TestNotesCreditsByIdentityNotShape(t *testing.T) {
+	dir, base := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testutil.CommitFrom(t, dir, "Saleh", "root@lr0.org", ":bug:~ fix the parser")
+	testutil.CommitFrom(t, dir, "Robert Pająk", "robert@example.com", ":bug:~ fix the exporter")
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
+	if code != 0 {
+		t.Fatalf("notes exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	want := "## Fixes\n\n" +
+		"- :bug:~ fix a crash @akira-toriyama\n" +
+		"- :bug:~ fix the parser Saleh\n" +
+		"- :bug:~ fix the exporter Robert Pająk\n"
+	if stdout != want {
+		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
+	}
+}
+
+// TestNotesSinceTagCreditsTheListedLogin: on the walk the API describes a
+// squash-merged pull's inner commits, and its author.login — not the name —
+// is what the credit pages; a commit GitHub mapped to no account (author:
+// null) is credited by name.
+func TestNotesSinceTagCreditsTheListedLogin(t *testing.T) {
+	dir, _ := testRepo(t)
+	sha := squashCommit(t, dir, "Fix two things", 7)
+	usePR(t, walkServer(t, map[string]string{
+		commitPullsPath(sha): `[` + apiPullRef(7, "2026-09-13T00:00:00Z", sha) + `]`,
+		pullCommitsPath(7): `[` +
+			apiCommitBy("s1", "larrasket", "Saleh", ":bug:~ fix the parser") + `,` +
+			apiCommitBy("s2", "", "Saleh", ":bug:~ fix it from an unmapped address") + `]`,
+	}))
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "notes", "--since-tag")
+	if code != 0 {
+		t.Fatalf("notes --since-tag exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	want := "## Fixes\n\n" +
+		"- :bug:~ fix the parser (#7) @larrasket\n" +
+		"- :bug:~ fix it from an unmapped address (#7) Saleh\n"
+	if stdout != want {
+		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
 	}
 }

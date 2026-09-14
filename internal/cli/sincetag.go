@@ -364,7 +364,7 @@ func walkedNoteCommits(ws []walked) []notes.SigilCommit {
 		if w.Pull > 0 && !w.Landed {
 			sha = ""
 		}
-		out = append(out, notes.SigilCommit{SHA: sha, Pull: w.Pull, Author: w.Raw.Author, Message: w.Raw.Message})
+		out = append(out, notes.SigilCommit{SHA: sha, Pull: w.Pull, Author: w.Raw.Author, Login: identity(w.Raw), Message: w.Raw.Message})
 	}
 	return out
 }

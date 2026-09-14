@@ -1,0 +1,14 @@
+diff --git a/internal/markdown/compose.go b/internal/markdown/compose.go
+index 03a8742..b29d879 100644
+--- a/internal/markdown/compose.go
++++ b/internal/markdown/compose.go
+@@ -128,9 +128,6 @@ func (l *Line) Prose(s string) {
+ // renders the bare name and mentions nobody — same as before.
+ func (l *Line) Mention(login, name string) {
+ 	if !handle.MatchString(login) {
+-		if n := len(l.parts) - 1; n >= 0 && l.parts[n].kind == partRaw {
+-			l.parts[n].s = strings.TrimSuffix(l.parts[n].s, "@")
+-		}
+ 		l.Prose(name)
+ 		return
+ 	}

@@ -62,7 +62,7 @@ func TestLineSealsTheEscapeOrder(t *testing.T) {
 		l.Raw("- ")
 		l.Prose("thank @someone for the report")
 		l.Raw(" @")
-		l.Mention("akira-toriyama")
+		l.Mention("akira-toriyama", "akira-toriyama")
 		got := l.String()
 		// The subject's stranger is fenced; the credited author is live.
 		want := "- thank `@someone` for the report @akira-toriyama"
@@ -71,20 +71,37 @@ func TestLineSealsTheEscapeOrder(t *testing.T) {
 		}
 	})
 
-	t.Run("Mention falls back to the fence on free text", func(t *testing.T) {
-		// The value is git's free-text %an; only a whole handle goes live.
-		for _, c := range []struct{ name, want string }{
-			{"Akira Toriyama", "by `@Akira` Toriyama"},
-			{"dependabot[bot]", `by ` + "`@dependabot`" + `\[bot]`},
-			{"-lead-hyphen", "by @-lead-hyphen"}, // no handle starts on a hyphen, at GitHub or here
-			{"", "by @"},
+	t.Run("Mention goes live on the login alone, and a credit that cannot page drops its at-sign", func(t *testing.T) {
+		// login is what GitHub established; name is git's free-text %an. Only
+		// a whole handle-shaped LOGIN goes live — never the name, whatever its
+		// shape (t-39fy: "Saleh" is github.com/larrasket) — and a credit
+		// written as prose takes the template's at-sign with it.
+		for _, c := range []struct{ login, name, want string }{
+			{"larrasket", "Saleh", "by @larrasket"},
+			{"", "Saleh", "by Saleh"}, // handle-shaped NAME, no identity: a stranger is not paged
+			{"", "Akira Toriyama", "by Akira Toriyama"},
+			{"", "Robert Pająk", "by Robert Pająk"},
+			{"dependabot[bot]", "dependabot[bot]", `by dependabot\[bot]`},
+			{"-lead-hyphen", "-lead-hyphen", "by -lead-hyphen"}, // no handle starts on a hyphen, at GitHub or here
+			{"", "", "by "},
+			{"", "ping @bob", "by ping `@bob`"}, // a name carrying its own mention is still fenced as prose
 		} {
 			var l Line
 			l.Raw("by @")
-			l.Mention(c.name)
+			l.Mention(c.login, c.name)
 			if got := l.String(); got != c.want {
-				t.Fatalf("Mention(%q): got %q, want %q", c.name, got, c.want)
+				t.Fatalf("Mention(%q, %q): got %q, want %q", c.login, c.name, got, c.want)
 			}
+		}
+		// The at-sign is dropped only from a Raw part directly before the
+		// credit: a PROSE at-sign is author bytes, kept — and the token it
+		// then assembles with the plain name is a would-be mention the fence
+		// catches, so the stranger is still not paged.
+		var l Line
+		l.Prose("cc @")
+		l.Mention("", "Saleh")
+		if got, want := l.String(), "cc `@Saleh`"; got != want {
+			t.Fatalf("a prose at-sign is not the template's: got %q, want %q", got, want)
 		}
 	})
 
@@ -94,7 +111,7 @@ func TestLineSealsTheEscapeOrder(t *testing.T) {
 		// let the exemption widen.
 		var l Line
 		l.Raw("cc @")
-		l.Mention("akira")
+		l.Mention("akira", "akira")
 		l.Raw("s")
 		if got, want := l.String(), "cc `@akiras`"; got != want {
 			t.Fatalf("got %q, want %q", got, want)
@@ -107,7 +124,7 @@ func TestLineSealsTheEscapeOrder(t *testing.T) {
 		var l Line
 		l.Text("x`")
 		l.Raw(" @")
-		l.Mention("akira")
+		l.Mention("akira", "akira")
 		l.Raw(" ")
 		l.Prose("ping @bob")
 		got := l.String()

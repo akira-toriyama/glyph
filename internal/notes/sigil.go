@@ -17,6 +17,7 @@ type SigilCommit struct {
 	SHA     string
 	Pull    int
 	Author  string
+	Login   string // the GitHub login to credit, "" when nothing established one (cli.identity)
 	Message string
 }
 
@@ -101,11 +102,15 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
 // are commit-derived text and are escaped as prose, with the mention fence
 // running over the assembled line (the same pipeline v1 lines go through —
 // a subject must not be able to page someone from a release body). The one
-// exemption is the built-in $author (ratified 2026-08-17): crediting the
-// contributor is the intended behaviour and every peer tool pages them, so
-// the template's "@$author" renders as a live mention — but only when the
-// value is exactly one handle-shaped token; a free-text git author name stays
-// fenced (markdown.Line.Mention holds the gate and the t-hykw reasoning).
+// exemption is the built-in $author (ratified 2026-08-17, re-ratified by
+// identity with t-39fy): crediting the contributor is the intended behaviour
+// and every peer tool pages them, so the template's "@$author" renders as a
+// live mention — of the LOGIN, and only when one was established (the API's
+// author.login, or a noreply address); a commit with no login is credited by
+// its display name, plain, the template's at-sign dropped with the mention
+// it cannot make (markdown.Line.Mention holds the gate and the t-hykw
+// reasoning). "Saleh" looked like a handle and paged github.com/Saleh, a
+// stranger, from golang/tools' notes — shape cannot tell a name from a login.
 // Group-derived values and the other built-ins keep the fence: whether a
 // SUBJECT can page someone is not the author's intent to declare.
 // The built-ins $pr / $author / $hash are reserved: they win over a pattern
@@ -142,7 +147,7 @@ func renderLine(spans []config.LineSpan, c SigilCommit, groups map[string]string
 		for _, p := range span.Parts {
 			switch {
 			case p.Placeholder && p.Text == config.BuiltinAuthor:
-				l.Mention(resolve(p.Text))
+				l.Mention(c.Login, c.Author)
 			case p.Placeholder:
 				l.Prose(resolve(p.Text))
 			default:

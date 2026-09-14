@@ -27,7 +27,9 @@ func GitOrSkip(t *testing.T) {
 
 // GitEnv pins a hermetic git environment: fixed identity, the user's real
 // global/system config held out (a global commit.gpgsign would otherwise break
-// the test commits), and background maintenance off. Extra entries are
+// the test commits, under GitHub's noreply address so a local commit carries
+// the login the notes credit — the fleet's commits do), and background
+// maintenance off. Extra entries are
 // appended after the pin — the hook tests use that to put a controlled PATH in
 // front of the shell the hook runs under.
 //
@@ -44,7 +46,7 @@ func GitEnv(author string, extra ...string) []string {
 		"GIT_CONFIG_GLOBAL="+os.DevNull,
 		"GIT_CONFIG_SYSTEM="+os.DevNull,
 		"GIT_AUTHOR_NAME="+author,
-		"GIT_AUTHOR_EMAIL=test@example.invalid",
+		"GIT_AUTHOR_EMAIL=1+"+author+"@users.noreply.github.com",
 		"GIT_COMMITTER_NAME=committer",
 		"GIT_COMMITTER_EMAIL=test@example.invalid",
 		"GIT_CONFIG_COUNT=3",
@@ -94,4 +96,18 @@ func NewRepo(t *testing.T) string {
 // Commit adds one empty commit authored by author with the given message.
 func Commit(t *testing.T, dir, author, message string) {
 	Git(t, dir, author, "commit", "-q", "--allow-empty", "-m", message)
+}
+
+// CommitFrom is Commit under an explicit author address instead of GitEnv's
+// noreply one — a contributor whose commits GitHub cannot map to an account.
+//
+// #nosec G204 -- the binary is the fixed literal "git"; every argument comes
+// from the calling test's own source.
+func CommitFrom(t *testing.T, dir, author, email, message string) {
+	t.Helper()
+	cmd := exec.Command("git", "-C", dir, "commit", "-q", "--allow-empty", "-m", message)
+	cmd.Env = GitEnv(author, "GIT_AUTHOR_EMAIL="+email)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit as %s <%s>: %v\n%s", author, email, err, out)
+	}
 }
