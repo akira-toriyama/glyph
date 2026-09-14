@@ -309,9 +309,9 @@ no other package claims. *Designed, not shipped* —
 [DESIGN §4.1](DESIGN.md#41-packages--independently-versioned-lines-in-one-repository)
 carries the decisions and the `e-7hat` box on the projects board the tasks.
 
-**line** — one version series: one tag prefix, one base, one draft, one fold.
-"Which line does this commit move?" is the only question packages add to the
-walk; the answer is **attribution**.
+**line** — one version series: one tag prefix and the majors it holds, one
+base, one draft, one fold. "Which line does this commit move?" is the only
+question packages add to the walk; the answer is **attribution**.
 
 **attribution** — mapping a participating commit to the packages it moves, asked
 after the pattern match and before the fold. The tree decides: a file belongs to
@@ -333,13 +333,17 @@ touch is refused the same way.
 
 **line** — one independently versioned subtree of the repository, declared as a
 `[[packages]]` entry: its own tag prefix (`<path>/`, bare for the root package
-`path = "."`), its own walk base (the highest tag carrying that prefix), its own
-fold, verdict and rolling draft (`<path>/vX.Y.Z`, placeholder
-`<path>/Unreleased`), converged by `draftplan` on that prefix alone so one
-line's release never touches another's draft. A repository with no
-`[[packages]]` is one line with no name, and nothing synthesises a root package
-for it. A tag **names** a line: `--since-tag=haiku/v0.1.0` selects haiku alone.
-`internal/config/config.go: Package.TagPrefix`, `internal/cli/lines.go: line`
+`path = "."`, and a major version subdirectory `/vN` folded into the major —
+`pubsub/v2` is the v2 line on the `pubsub/` prefix, beside a `pubsub` line
+holding every other major, Go's own rule), its own walk base (the highest tag
+on that prefix of a major it holds), its own fold, verdict and rolling draft
+(`<path>/vX.Y.Z`, placeholder `<path>/Unreleased`), converged by `draftplan`
+on that line alone so one line's release never touches another's draft. A
+repository with no `[[packages]]` is one line with no name, and nothing
+synthesises a root package for it. A tag **names** a line:
+`--since-tag=haiku/v0.1.0` selects haiku alone, `--since-tag=pubsub/v2.7.0`
+the v2 line alone. `internal/config/tagline.go: Line, Package.TagPrefix,
+Config.LineOf`, `internal/cli/lines.go: line`
 
 **attribution** — which lines a participating commit moves, read from the
 commit's **own** diff and never a pull's net diff: files under a package move

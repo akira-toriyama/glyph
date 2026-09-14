@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 3b18426..a3f6958 100644
+index f72b30d..0af99e0 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -444,7 +444,7 @@ func highestPublished(prefix string, releases []github.Release) (bump.Version, b
- 		if r.Draft || !strings.HasPrefix(strings.TrimPrefix(r.TagName, prefix), "v") {
+@@ -461,7 +461,7 @@ func highestPublished(l config.Line, releases []github.Release) (bump.Version, b
+ 		if r.Draft || !strings.HasPrefix(strings.TrimPrefix(r.TagName, l.Prefix), "v") {
  			continue
  		}
--		v, err := bump.ParseVersionOn(prefix, r.TagName)
-+		v, err := bump.ParseVersion(strings.TrimPrefix(r.TagName, prefix))
- 		if err != nil {
+-		v, err := bump.ParseVersionOn(l.Prefix, r.TagName)
++		v, err := bump.ParseVersion(strings.TrimPrefix(r.TagName, l.Prefix))
+ 		if err != nil || !l.Holds(v.Major) {
  			continue
  		}

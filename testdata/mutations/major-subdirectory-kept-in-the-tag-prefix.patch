@@ -1,0 +1,28 @@
+diff --git a/internal/config/tagline.go b/internal/config/tagline.go
+index 5615b0f..06bcc35 100644
+--- a/internal/config/tagline.go
++++ b/internal/config/tagline.go
+@@ -78,12 +78,7 @@ func (l Line) Label() string {
+ // Major is the major a package's path locks it to — N for a path whose last
+ // segment is a major version subdirectory vN (N ≥ 2) — and 0 otherwise.
+ func (p Package) Major() int {
+-	m := majorSubdir.FindStringSubmatch(path.Base(p.Path))
+-	if m == nil {
+-		return 0
+-	}
+-	n, _ := strconv.Atoi(m[1])
+-	return n
++	return 0
+ }
+ 
+ // TagPrefix is the line's tag namespace: "" for the root package (its line
+@@ -95,9 +90,6 @@ func (p Package) Major() int {
+ // nowhere, silently).
+ func (p Package) TagPrefix() string {
+ 	dir := p.Path
+-	if p.Major() > 0 {
+-		dir = path.Dir(dir)
+-	}
+ 	if dir == "." {
+ 		return ""
+ 	}

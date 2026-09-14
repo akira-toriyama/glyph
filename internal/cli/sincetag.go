@@ -177,7 +177,7 @@ func sinceTagInput(ctx context.Context, cfg *config.Config, tagFlag, repoFlag st
 func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (revRange string, base *bump.Version, err error) {
 	tag := strings.TrimSpace(tagFlag)
 	if tag == sinceTagAuto {
-		latest, v, lerr := latestVersionTag(ctx, "", nil)
+		latest, v, lerr := latestVersionTag(ctx, config.Line{}, nil)
 		if lerr != nil {
 			return "", nil, lerr
 		}
@@ -200,7 +200,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 		if perr != nil {
 			return "", nil, core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
 		}
-		prev, v, lerr := latestVersionTag(ctx, "", &bound)
+		prev, v, lerr := latestVersionTag(ctx, config.Line{}, &bound)
 		if lerr != nil {
 			return "", nil, lerr
 		}
@@ -300,14 +300,14 @@ func wholeHistory(ctx context.Context, cfg *config.Config, whyNone string) (stri
 // A tie — the same version spelled twice, v1.2.3 beside 1.2.3 — keeps the
 // FIRST in git's order, so the answer stays deterministic without inventing a
 // preference between two tags git considers equally valid.
-func latestVersionTag(ctx context.Context, prefix string, below *bump.Version) (tag string, v bump.Version, err error) {
+func latestVersionTag(ctx context.Context, l config.Line, below *bump.Version) (tag string, v bump.Version, err error) {
 	tags, terr := gitsource.Tags(ctx, ".")
 	if terr != nil {
 		return "", bump.Version{}, terr
 	}
 	for _, t := range tags {
-		pv, perr := bump.ParseVersionOn(prefix, t)
-		if perr != nil {
+		pv, perr := bump.ParseVersionOn(l.Prefix, t)
+		if perr != nil || !l.Holds(pv.Major) {
 			continue
 		}
 		if below != nil && pv.Compare(*below) >= 0 {

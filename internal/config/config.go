@@ -123,13 +123,15 @@ type Commit struct {
 // repository with its own version line (DESIGN §4.1). Path is the subtree as
 // written, already checked to be a clean relative path — "." for the root
 // package, else a slash-separated path with no leading "./", no trailing "/"
-// and no ".." — so the tag line <path>/vX.Y.Z is derivable from it without
-// another normalisation step. Name is what a commit scope may call the
+// and no ".." — so the tag line is derivable from it without another
+// normalisation step (line.go: <path>/vX.Y.Z, a major version subdirectory
+// /vN folded into the major). Name is what a commit scope may call the
 // package: the file's `name` key when set, else the last path segment
 // (path.Base, which is "." for the root package — a scope under the shipped
 // presets cannot spell that, so a root package a scope must be able to name
-// sets `name` explicitly). Names are unique across the array; the loader
-// refuses two packages sharing one and names both.
+// sets `name` explicitly; a major version subdirectory defaults to
+// `<parent>/vN`, see defaultName). Names are unique across the array; the
+// loader refuses two packages sharing one and names both.
 //
 // There is deliberately no TagPrefix: the tag line is derived from Path and
 // is not configurable (§4.1 rejects the knob; the strict decoder refuses the
@@ -137,18 +139,6 @@ type Commit struct {
 type Package struct {
 	Path string
 	Name string
-}
-
-// TagPrefix is the line's tag namespace: "" for the root package (its line
-// is the bare vX.Y.Z) and "<path>/" for every other. It is the ONE place the
-// path-to-prefix rule lives; every resolver takes the prefix from here and
-// none re-derives it (a hand-spelled prefix without the slash would name a
-// line that exists nowhere, silently).
-func (p Package) TagPrefix() string {
-	if p.Path == "." {
-		return ""
-	}
-	return p.Path + "/"
 }
 
 // Pattern is one compiled [[patterns]] entry. Order is meaning: the first
@@ -378,10 +368,10 @@ func buildPackage(rp rawPackage) (Package, error) {
 	case path.Clean(p) != p:
 		return Package{}, fmt.Errorf("path %q is not in clean form: write %q (the path is the tag prefix, <path>/vX.Y.Z, and is read from the file as written)", p, path.Clean(p))
 	}
-	name := path.Base(p)
+	name := defaultName(p)
 	if rp.Name != nil {
 		if *rp.Name == "" {
-			return Package{}, fmt.Errorf("name is empty: drop the key to take the default (%q, the last path segment) or write the word a scope will use", name)
+			return Package{}, fmt.Errorf("name is empty: drop the key to take the default (%q) or write the word a scope will use", name)
 		}
 		name = *rp.Name
 	}

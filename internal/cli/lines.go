@@ -30,14 +30,15 @@ import (
 
 // line is one version line the walk answers for. Package is the [[packages]]
 // entry that owns it — the zero value (Path "") only on the bare line of a
-// repository that declares none. Base is what the bump steps from when the
-// walk base names a version, nil when it does not (the line's highest tag is
-// then read). Source names the line's own range in messages; Range is the
+// repository that declares none. Line is its tag line — the prefix and the
+// majors it holds (config.Config.LineOf). Base is what the bump steps from
+// when the walk base names a version, nil when it does not (the line's
+// highest tag is then read). Source names the line's own range in messages; Range is the
 // revision range whose commits are unreleased on this line, "" when every
 // walked commit is (the whole history, or a --range fold).
 type line struct {
 	Package config.Package
-	Prefix  string
+	Line    config.Line
 	Base    *bump.Version
 	Source  string
 	Range   string
@@ -94,7 +95,7 @@ func resolveLines(ctx context.Context, cfg *config.Config, tagFlag string) ([]li
 	switch {
 	case tag == sinceTagAuto:
 		for _, p := range cfg.Packages {
-			l, err := lineFromLatest(ctx, p, nil)
+			l, err := lineFromLatest(ctx, cfg, p, nil)
 			if err != nil {
 				return nil, "", err
 			}
@@ -103,16 +104,16 @@ func resolveLines(ctx context.Context, cfg *config.Config, tagFlag string) ([]li
 	case strings.HasPrefix(tag, sinceTagBelow):
 		rest := strings.TrimSpace(strings.TrimPrefix(tag, sinceTagBelow))
 		prefix, _ := bump.SplitTag(rest)
-		p, ok := packageOnLine(cfg, prefix)
-		if !ok {
-			return nil, "", core.Usagef("--since-tag=below:%s names the %s line, which no [[packages]] entry declares (declared lines: %s)", rest, lineLabel(prefix), declaredLines(cfg))
-		}
 		// checkSinceTagFlag guaranteed the bound parses on its line.
 		bound, perr := bump.ParseBaseVersionOn(prefix, rest)
 		if perr != nil {
 			return nil, "", core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
 		}
-		l, err := lineFromLatest(ctx, p, &bound)
+		p, ok := packageOnLine(cfg, prefix, bound.Major)
+		if !ok {
+			return nil, "", core.Usagef("--since-tag=below:%s names the %s line, which no [[packages]] entry declares (declared lines: %s)", rest, config.Line{Prefix: prefix}.Label(), declaredLines(cfg))
+		}
+		l, err := lineFromLatest(ctx, cfg, p, &bound)
 		if err != nil {
 			return nil, "", err
 		}
@@ -120,15 +121,15 @@ func resolveLines(ctx context.Context, cfg *config.Config, tagFlag string) ([]li
 	default:
 		prefix, _ := bump.SplitTag(tag)
 		if v, perr := bump.ParseVersionOn(prefix, tag); perr == nil {
-			p, ok := packageOnLine(cfg, prefix)
+			p, ok := packageOnLine(cfg, prefix, v.Major)
 			if !ok {
-				return nil, "", core.Usagef("--since-tag=%s names the %s line, which no [[packages]] entry declares (declared lines: %s)", tag, lineLabel(prefix), declaredLines(cfg))
+				return nil, "", core.Usagef("--since-tag=%s names the %s line, which no [[packages]] entry declares (declared lines: %s)", tag, config.Line{Prefix: prefix}.Label(), declaredLines(cfg))
 			}
-			lines = []line{{Package: p, Prefix: prefix, Base: &v, Source: tag + "..HEAD", Range: tag + "..HEAD"}}
+			lines = []line{{Package: p, Line: cfg.LineOf(p), Base: &v, Source: tag + "..HEAD", Range: tag + "..HEAD"}}
 			break
 		}
 		for _, p := range cfg.Packages {
-			lines = append(lines, line{Package: p, Prefix: p.TagPrefix(), Source: tag + "..HEAD", Range: tag + "..HEAD"})
+			lines = append(lines, line{Package: p, Line: cfg.LineOf(p), Source: tag + "..HEAD", Range: tag + "..HEAD"})
 		}
 	}
 	union, err := unionRange(ctx, cfg, lines)
@@ -140,15 +141,16 @@ func resolveLines(ctx context.Context, cfg *config.Config, tagFlag string) ([]li
 
 // lineFromLatest resolves one package's line from its own highest tag —
 // strictly below the bound when one is given — else the whole history.
-func lineFromLatest(ctx context.Context, p config.Package, below *bump.Version) (line, error) {
-	latest, v, err := latestVersionTag(ctx, p.TagPrefix(), below)
+func lineFromLatest(ctx context.Context, cfg *config.Config, p config.Package, below *bump.Version) (line, error) {
+	tl := cfg.LineOf(p)
+	latest, v, err := latestVersionTag(ctx, tl, below)
 	if err != nil {
 		return line{}, err
 	}
 	if latest == "" {
-		return line{Package: p, Prefix: p.TagPrefix(), Base: &bump.Version{}, Source: "HEAD"}, nil
+		return line{Package: p, Line: tl, Base: &bump.Version{}, Source: "HEAD"}, nil
 	}
-	return line{Package: p, Prefix: p.TagPrefix(), Base: &v, Source: latest + "..HEAD", Range: latest + "..HEAD"}, nil
+	return line{Package: p, Line: tl, Base: &v, Source: latest + "..HEAD", Range: latest + "..HEAD"}, nil
 }
 
 // unionRange is the one range the walk runs over: a single line's own range;
@@ -156,10 +158,11 @@ func lineFromLatest(ctx context.Context, p config.Package, below *bump.Version) 
 // capped and warned exactly as the single line's — as soon as any line has
 // no tag to start from.
 func unionRange(ctx context.Context, cfg *config.Config, lines []line) (string, error) {
-	var bases, untagged []string
+	var bases, untagged, labels []string
 	for _, l := range lines {
 		if l.Range == "" {
-			untagged = append(untagged, l.Prefix+"v0.0.0")
+			untagged = append(untagged, firstTagOn(l.Line))
+			labels = append(labels, l.Line.Label())
 			continue
 		}
 		base := strings.TrimSuffix(l.Range, "..HEAD")
@@ -168,7 +171,7 @@ func unionRange(ctx context.Context, cfg *config.Config, lines []line) (string, 
 		}
 	}
 	if len(untagged) > 0 {
-		revRange, _, err := wholeHistory(ctx, cfg, fmt.Sprintf("no version tag on the %s line(s) — cut %s at the commit before that line's first change to say nothing of it was released before there", strings.Join(untaggedPrefixes(untagged), ", "), strings.Join(untagged, " / ")))
+		revRange, _, err := wholeHistory(ctx, cfg, fmt.Sprintf("no version tag on the %s line(s) — cut %s at the commit before that line's first change to say nothing of it was released before there", strings.Join(labels, ", "), strings.Join(untagged, " / ")))
 		return revRange, err
 	}
 	mb, err := gitsource.MergeBase(ctx, ".", bases)
@@ -178,39 +181,32 @@ func unionRange(ctx context.Context, cfg *config.Config, lines []line) (string, 
 	return mb + "..HEAD", nil
 }
 
-func untaggedPrefixes(tags []string) []string {
-	out := make([]string, 0, len(tags))
-	for _, t := range tags {
-		out = append(out, lineLabel(strings.TrimSuffix(t, "v0.0.0")))
-	}
-	return out
+// firstTagOn is the tag that says "nothing of this line was released before
+// here": the null version on a free line, and on a locked line — which has
+// no version below its major — the major's own floor.
+func firstTagOn(l config.Line) string {
+	return bump.Version{Major: l.Major}.TagOn(l.Prefix)
 }
 
-// packageOnLine finds the declared package whose tag prefix is prefix — ""
-// selects the root package (path "."), the one line whose tags are bare.
-func packageOnLine(cfg *config.Config, prefix string) (config.Package, bool) {
+// packageOnLine finds the declared package whose line holds a version of
+// major on prefix — "" selects the bare line (the root package, or a
+// root-level vN). Two packages can share a prefix (pubsub and pubsub/v2);
+// the major is what tells their lines apart.
+func packageOnLine(cfg *config.Config, prefix string, major int) (config.Package, bool) {
 	for _, p := range cfg.Packages {
-		if p.TagPrefix() == prefix {
+		if l := cfg.LineOf(p); l.Prefix == prefix && l.Holds(major) {
 			return p, true
 		}
 	}
 	return config.Package{}, false
 }
 
-// lineLabel names a line in a message: its prefix, or the bare line.
-func lineLabel(prefix string) string {
-	if prefix == "" {
-		return "bare v*"
-	}
-	return prefix
-}
-
-// declaredLines lists every declared line's prefix for a message, the root
-// package as bare v*.
+// declaredLines lists every declared line for a message, the root package
+// as bare v*.
 func declaredLines(cfg *config.Config) string {
 	out := make([]string, 0, len(cfg.Packages))
 	for _, p := range cfg.Packages {
-		out = append(out, lineLabel(p.TagPrefix()))
+		out = append(out, cfg.LineOf(p).Label())
 	}
 	return strings.Join(out, ", ")
 }
@@ -372,7 +368,7 @@ func attributionWedge(err error, c walked, owner, repo string, reached []line) e
 	}
 	escapes := make([]string, 0, len(reached))
 	for _, l := range reached {
-		escapes = append(escapes, fmt.Sprintf("a %s tag at or past %.7s", lineLabel(l.Prefix), c.governing()))
+		escapes = append(escapes, fmt.Sprintf("a %s tag at or past %.7s", l.Line.Label(), c.governing()))
 	}
 	return &core.Error{Code: core.CodeLint, Details: []rangeViolation{{SHA: c.Raw.SHA, Subject: bump.FirstLine(c.Raw.Message), Detail: err.Error()}}, Msg: fmt.Sprintf(
 		"commit %.7s: %v — %s; the commit is already on a published branch and cannot be rewritten, so every release of a line whose range holds it wedges here until that line's walk starts past it: cut %s by hand, or name such a tag with --since-tag=<line>vX.Y.Z (DESIGN §4.1)",
@@ -395,7 +391,7 @@ func rangeLines(ctx context.Context, cfg *config.Config, revRange string) (since
 	}
 	lines := make([]line, 0, len(cfg.Packages))
 	for _, p := range cfg.Packages {
-		lines = append(lines, line{Package: p, Prefix: p.TagPrefix(), Source: revRange})
+		lines = append(lines, line{Package: p, Line: cfg.LineOf(p), Source: revRange})
 	}
 	facts := walkFacts{Pulls: []pullExpansion{}}
 	lws, all, perr := partitionLines(ctx, nil, cfg, "", "", commits, &facts, lines)
@@ -414,7 +410,7 @@ func checkLineSelection(current string, lines []lineWalk) error {
 	}
 	names := make([]string, 0, len(lines))
 	for _, l := range lines {
-		names = append(names, lineLabel(l.Prefix))
+		names = append(names, l.Line.Label())
 	}
 	return core.Usagef("--current names one version, and this walk answers for %d lines (%s) — select one line with --since-tag=<line>vX.Y.Z (or below:), or drop --current", len(lines), strings.Join(names, ", "))
 }

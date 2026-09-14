@@ -127,7 +127,7 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 			return cerr
 		}
 		warnSigilVerdicts(rows)
-		latest, current, verr := latestVersionTag(ctx, p.TagPrefix(), nil)
+		latest, current, verr := latestVersionTag(ctx, cfg.LineOf(p), nil)
 		if verr != nil {
 			return verr
 		}
@@ -171,23 +171,36 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 	var pkgs []packagePreview
 	var noteBodies []string
 	for _, tl := range touched {
-		prefix := tl.pkg.TagPrefix()
+		tline := cfg.LineOf(tl.pkg)
+		prefix := tline.Prefix
 		p := preview.Package{Path: tl.pkg.Path, Current: tl.current.TagOn(prefix), Untagged: tl.untagged,
 			PR: preview.Verdict{Level: tl.prDec.Level, Commits: previewCommits(tl.prRows)}}
 		pv := packagePreview{Path: tl.pkg.Path, Current: tl.current.String(), Untagged: tl.untagged, PR: string(tl.prDec.Level), Pending: string(bump.LevelNone)}
 		if tl.prDec.Level != bump.LevelNone {
-			p.PR.Next = tl.current.Next(tl.prDec).TagOn(prefix)
+			next, nerr := nextOn(tline, tl.current, tl.prDec)
+			if nerr != nil {
+				return nerr
+			}
+			p.PR.Next = next.TagOn(prefix)
 		}
 		pd := pending[tl.pkg.Path]
 		p.Pending.Level = orNone(pd.Level)
 		pv.Pending = string(orNone(pd.Level))
 		if pd.Level != bump.LevelNone && pd.Level != "" {
-			p.Pending.Next = tl.current.Next(pd).TagOn(prefix)
+			next, nerr := nextOn(tline, tl.current, pd)
+			if nerr != nil {
+				return nerr
+			}
+			p.Pending.Next = next.TagOn(prefix)
 		}
 		d := foldDecision(tl.prDec, pd)
 		pv.Level = string(d.Level)
 		if d.Level != bump.LevelNone {
-			pv.Next = tl.current.Next(d).String()
+			next, nerr := nextOn(tline, tl.current, d)
+			if nerr != nil {
+				return nerr
+			}
+			pv.Next = next.String()
 		}
 		in.Packages = append(in.Packages, p)
 		pkgs = append(pkgs, pv)

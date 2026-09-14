@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v3/internal/bump"
@@ -107,28 +108,31 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 		if ferr != nil {
 			return ferr
 		}
-		current, verr := currentVersion(ctx, releaseCurrent, lw.Base, lw.Prefix)
+		current, verr := currentVersion(ctx, releaseCurrent, lw.Base, lw.Line)
 		if verr != nil {
 			return verr
 		}
 		pv := packageRelease{Path: lw.Package.Path, Current: current.String(), Level: string(dec.Level), Commits: lineVerdicts}
 		noneReason := fmt.Sprintf("no release: %d commit(s) participate in %s and every level is none", len(lineVerdicts), lw.Source)
 		if dec.Level == bump.LevelNone && !cfg.Note.DraftOnNone {
-			plan := draftplan.PlanDraft(lw.Prefix, dec.Level, "", false, drafted)
+			plan := draftplan.PlanDraft(lw.Line, dec.Level, "", false, drafted)
 			pv.Action, pv.Reason = string(plan.Action), noneReason
 			stale = append(stale, staleReleases(plan.Stale)...)
 			verdicts = append(verdicts, pv)
 			reasons = append(reasons, lw.Package.Path+": "+pv.Reason)
 			continue
 		}
-		tagName := draftplan.PlaceholderTagOn(lw.Prefix)
+		tagName := draftplan.PlaceholderTagOn(lw.Line)
 		pv.Reason = noneReason
 		if dec.Level != bump.LevelNone {
-			tag := current.Next(dec)
-			if gerr := checkPublishedFloor(lw.Prefix, tag, releases); gerr != nil {
+			tag, nerr := nextOn(lw.Line, current, dec)
+			if nerr != nil {
+				return nerr
+			}
+			if gerr := checkPublishedFloor(lw.Line, tag, releases); gerr != nil {
 				return gerr
 			}
-			tagName = tag.TagOn(lw.Prefix)
+			tagName = tag.TagOn(lw.Line.Prefix)
 			pv.Next = tag.String()
 			pv.Reason = decidingReason(lineVerdicts, dec)
 			moving++
@@ -141,7 +145,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 		if footer != "" {
 			body = body + "\n---\n\n" + footer
 		}
-		plan := draftplan.PlanDraft(lw.Prefix, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
+		plan := draftplan.PlanDraft(lw.Line, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
 		body = composeDraftBody(keptBody(plan.Keep, releases), body)
 		if serr := checkReleaseBody(body); serr != nil {
 			return serr
@@ -163,9 +167,13 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 	// placeholder being claimed with the flag off. A tag that selected one
 	// line still clears it: the residue belongs to no line, so no line's
 	// selection protects it.
+	// The residue line is the bare FREE line: a declared root-level vN
+	// holds its own major's bare drafts, and they are that line's, not
+	// residue (config.Config.LineOf on an undeclared root computes exactly
+	// what is left over).
 	var residue []github.Release
-	if _, hasRoot := packageOnLine(cfg, ""); !hasRoot {
-		residue = staleReleases(draftplan.PlanDraft("", bump.LevelNone, "", false, drafted).Stale)
+	if !slices.ContainsFunc(cfg.Packages, func(p config.Package) bool { return p.Path == "." }) {
+		residue = staleReleases(draftplan.PlanDraft(cfg.LineOf(config.Package{Path: "."}), bump.LevelNone, "", false, drafted).Stale)
 		for _, r := range residue {
 			noticef("the bare draft %s (release id %d) is the single line's residue — this repository declares packages and no root package, so no line will converge it again; it is deleted, and a hand region it carried goes with it (move that prose into the line's own draft, above the marker)", r.TagName, r.ID)
 		}

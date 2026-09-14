@@ -118,7 +118,7 @@ func bumpRun(cmd *cobra.Command) error {
 		return cerr
 	}
 	warnSigilVerdicts(commits)
-	current, verr := currentVersion(ctx, bumpCurrent, base, "")
+	current, verr := currentVersion(ctx, bumpCurrent, base, config.Line{})
 	if verr != nil {
 		return verr
 	}
@@ -228,7 +228,7 @@ func bumpLines(cmd *cobra.Command, cfg *config.Config) error {
 		if ferr != nil {
 			return ferr
 		}
-		current, verr := currentVersion(ctx, bumpCurrent, lw.Base, lw.Prefix)
+		current, verr := currentVersion(ctx, bumpCurrent, lw.Base, lw.Line)
 		if verr != nil {
 			return verr
 		}
@@ -236,10 +236,13 @@ func bumpLines(cmd *cobra.Command, cfg *config.Config) error {
 		if dec.Level == bump.LevelNone {
 			pv.Reason = fmt.Sprintf("no release: %d commit(s) participate in %s and every level is none", len(verdicts), lw.Source)
 		} else {
-			next := current.Next(dec)
+			next, nerr := nextOn(lw.Line, current, dec)
+			if nerr != nil {
+				return nerr
+			}
 			pv.Next = next.String()
 			pv.Reason = decidingReason(verdicts, dec)
-			tags = append(tags, next.TagOn(lw.Prefix))
+			tags = append(tags, next.TagOn(lw.Line.Prefix))
 		}
 		reasons = append(reasons, lw.Package.Path+": "+pv.Reason)
 		pkgs = append(pkgs, pv)
@@ -264,23 +267,27 @@ func bumpLines(cmd *cobra.Command, cfg *config.Config) error {
 }
 
 // currentVersion resolves the version to step from ON ONE LINE: an explicit
-// --current (malformed ⇒ usage — it is the caller's input) wins; else the
+// --current (malformed, or of a major the line does not hold ⇒ usage — it is
+// the caller's input) wins; else the
 // base the input source itself named (--since-tag's tag — the walk base and
 // the step base must be the SAME tag); else the highest parseable tag on the
 // line (prefix "" is the bare line), which is v0.0.0 for a line before its
 // first release.
-func currentVersion(ctx context.Context, flag string, base *bump.Version, prefix string) (bump.Version, error) {
+func currentVersion(ctx context.Context, flag string, base *bump.Version, l config.Line) (bump.Version, error) {
 	if flag != "" {
 		v, err := bump.ParseVersion(flag)
 		if err != nil {
 			return bump.Version{}, core.Usagef("--current: %v", err)
+		}
+		if !l.Holds(v.Major) {
+			return bump.Version{}, core.Usagef("--current %s is not on the %s line, which holds no v%d.* version — name a version the line can step from", v, l.Label(), v.Major)
 		}
 		return v, nil
 	}
 	if base != nil {
 		return *base, nil
 	}
-	_, v, err := latestVersionTag(ctx, prefix, nil)
+	_, v, err := latestVersionTag(ctx, l, nil)
 	return v, err
 }
 
