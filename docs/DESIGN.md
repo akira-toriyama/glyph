@@ -924,7 +924,12 @@ commit: `rel="last"` at page 10, page 11 empty; a commit whose listing reaches
 that cap is an **incomplete walk** in the sense §4 already defines (a package
 it touched past the cap is unreachable, not absent), recorded in `walkFacts`
 as `FilesCapped` beside `Truncated`, so `complete()` is false and a writing
-command refuses (exit 4). Attribution is per commit and never per pull.
+command refuses (exit 4). One corollary, ratified with t-ft7p after the first
+cut got it wrong: the cap counts the **entries** GitHub listed, not the names
+returned — a rename is one entry under two names, so a whole listing of 1500
+renames is whole; counted by name it was refused at 4 with a remedy a re-run
+could never satisfy. Attribution is per
+commit and never per pull.
 `GET /pulls/{N}/files` — one call, the pull's net diff — was rejected twice
 over: a pull touching two packages with a `^` in one and a `~` in the other
 would bump both lines by the higher sigil, which discards exactly the

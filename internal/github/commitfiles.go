@@ -32,8 +32,11 @@ type apiCommitFiles struct {
 // CommitFiles returns the paths a commit's own diff touches
 // (GET /repos/{owner}/{repo}/commits/{sha}, the files array, following the
 // Link header across the listing's pages), a renamed file under both its
-// names, and whether the listing reached CommitFilesCap. It answers for a sha
-// no branch holds — a squash-merged pull's inner commits (measured 2026-09-10
+// names, and whether the listing reached CommitFilesCap — measured against the
+// ENTRIES GitHub listed, never the names returned: a rename is one entry under
+// two names, so a whole listing of 1500 renames is whole (t-ft7p: counted by
+// name, it was reported capped and release refused the range at 4 with a
+// remedy a re-run could never satisfy). It answers for a sha no branch holds — a squash-merged pull's inner commits (measured 2026-09-10
 // on glyph-test #83) — which is what the release walk needs it for; a commit
 // the checkout holds is asked of local git instead (gitsource.DiffTreeFiles),
 // free.
@@ -46,6 +49,7 @@ func (c *Client) CommitFiles(ctx context.Context, owner, repo, sha string) (file
 	u := fmt.Sprintf("%s/repos/%s/%s/commits/%s",
 		c.baseURL, url.PathEscape(owner), url.PathEscape(repo), url.PathEscape(sha))
 	files = []string{}
+	entries := 0
 	for pages := 0; u != ""; pages++ {
 		if pages >= maxPages {
 			return nil, false, core.APIf("github: pagination exceeded %d pages", maxPages)
@@ -55,6 +59,7 @@ func (c *Client) CommitFiles(ctx context.Context, owner, repo, sha string) (file
 		if gerr != nil {
 			return nil, false, gerr
 		}
+		entries += len(page.Files)
 		for _, f := range page.Files {
 			if f.Filename != "" {
 				files = append(files, f.Filename)
@@ -65,5 +70,5 @@ func (c *Client) CommitFiles(ctx context.Context, owner, repo, sha string) (file
 		}
 		u = next
 	}
-	return files, len(files) >= CommitFilesCap, nil
+	return files, entries >= CommitFilesCap, nil
 }
