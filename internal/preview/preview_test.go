@@ -392,3 +392,29 @@ func TestRenderPackagesCountsASharedCommitOnce(t *testing.T) {
 		t.Errorf("a commit moving two lines sits in both tables:\n%s", got)
 	}
 }
+
+// TestRenderPackagesPRShort: the PR-side caveat sits with the pending one,
+// under the headlines and above the tables — it qualifies the conclusion,
+// not the evidence — and is absent byte for byte when every listing was
+// whole. PRShortBlock is the same text, exported for the caller's own
+// "moves nothing" sentence.
+func TestRenderPackagesPRShort(t *testing.T) {
+	in := Input{Packages: []Package{{
+		Path: "haiku", Current: "haiku/v0.1.0",
+		PR:      Verdict{Level: bump.LevelMinor, Next: "haiku/v0.2.0", Commits: []Commit{{Sigil: "^", Level: bump.LevelMinor, Subject: "add a season"}}},
+		Pending: Verdict{Level: bump.LevelNone},
+	}}}
+	if out := Render(in); strings.Contains(out, "This PR's own side") {
+		t.Fatalf("a whole listing must render no PR-side caveat:\n%s", out)
+	}
+	in.PRShort = "1 commit(s) returned the maximum 3000 files (h1)"
+	out := Render(in)
+	caveat := "\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: 1 commit(s) returned the maximum 3000 files (h1). A line one of its commits touches only past the cap is missing from the figures above, so treat each as a floor rather than the answer.\n"
+	headline, warning, table := strings.Index(out, "**haiku**"), strings.Index(out, caveat), strings.Index(out, "### haiku")
+	if headline < 0 || warning < 0 || table < 0 || headline >= warning || warning >= table {
+		t.Fatalf("the PR-side caveat must sit under the headlines and above the tables:\n%s", out)
+	}
+	if PRShortBlock(in.PRShort) != caveat || PRShortBlock("") != "" {
+		t.Fatalf("PRShortBlock must be the rendered caveat and nothing when there is none: %q", PRShortBlock(in.PRShort))
+	}
+}
