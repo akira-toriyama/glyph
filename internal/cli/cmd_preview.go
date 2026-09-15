@@ -56,7 +56,15 @@ func newPreviewCmd() *cobra.Command {
 			"draft to name. stdout is the Markdown body (post it with `gh pr comment\n" +
 			"--body-file -`); --json emits {current,untagged,level,next,pr,pending,body}.\n" +
 			"Unlike bump and notes, a none verdict is a normal answer here and exits 0:\n" +
-			"'this PR moves nothing' is exactly what a reviewer asked.",
+			"'this PR moves nothing' is exactly what a reviewer asked.\n\n" +
+			"On a repository declaring [[packages]] the body carries one headline per\n" +
+			"line the pull touches (versions spelled as tags: haiku/v0.1.0 →\n" +
+			"haiku/v0.2.0) and one commit table per line; a line the pull does not\n" +
+			"touch is not mentioned. --json carries packages:\n" +
+			"[{path,current,untagged,level,next,pr,pending}] with the scalar\n" +
+			"current/level/next EMPTY. A commit no line can carry (a version sigil on\n" +
+			"shared files with no package scope) is refused at exit 3 here, while the\n" +
+			"branch can still be fixed.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return previewRun(cmd)
@@ -65,7 +73,7 @@ func newPreviewCmd() *cobra.Command {
 	cmd.Flags().IntVar(&previewPR, "pr", 0, "the pull request to preview, read over the API (required)")
 	cmd.Flags().StringVar(&previewRepo, "repo", "", "owner/name to query (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().BoolVar(&previewNotes, "notes", false, "fold the release-notes preview for this PR into the body")
-	cmd.Flags().BoolVar(&previewJSON, "json", false, "emit the machine verdict {current,untagged,level,next,pr,pending,body}")
+	cmd.Flags().BoolVar(&previewJSON, "json", false, "emit the machine verdict {current,untagged,level,next,pr,pending,body}; with [[packages]] declared the scalars are empty and packages[] carries one verdict per line")
 	_ = cmd.MarkFlagRequired("pr")
 	return cmd
 }

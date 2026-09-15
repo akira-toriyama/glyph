@@ -56,7 +56,12 @@ func newNotesCmd() *cobra.Command {
 			"expands each back into the pull it merged (the release-time source).\n" +
 			"stdout is the Markdown body\n" +
 			"(pipe it into a release step); --json emits {sections,reason}. Nothing\n" +
-			"release-worthy prints no body and exits 1 (soft no-release).",
+			"release-worthy prints no body and exits 1 (soft no-release).\n\n" +
+			"On a repository declaring [[packages]] the body is per line: stdout is one\n" +
+			"body per line under a `# <path>` heading (bare when a tag selects one\n" +
+			"line); --json carries packages: [{path,sections}] with the top-level\n" +
+			"sections EMPTY. --pr is refused there (exit 2: a pull's listing carries\n" +
+			"messages and no files, so nothing can be attributed to a line).",
 		Args: sinceTagArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return notesRun(cmd)
@@ -66,7 +71,7 @@ func newNotesCmd() *cobra.Command {
 	cmd.Flags().IntVar(&notesPR, "pr", 0, "render notes from a pull request's individual (pre-squash) commits, read over the API")
 	addSinceTagFlag(cmd, &notesSinceTag, "render notes from")
 	cmd.Flags().StringVar(&notesRepo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY, else the origin remote)")
-	cmd.Flags().BoolVar(&notesJSON, "json", false, "emit the machine verdict {sections,reason}")
+	cmd.Flags().BoolVar(&notesJSON, "json", false, "emit the machine verdict {sections,reason}; with [[packages]] declared sections is empty and packages[] carries one body per line")
 	markInputSourceFlags(cmd)
 	return cmd
 }

@@ -84,7 +84,16 @@ func newReleaseCmd() *cobra.Command {
 			"blank line, then the Markdown body. --json emits\n" +
 			"{current,level,tag,target,body,action,url,commits,pulls,reason} — pulls is the\n" +
 			"walk's expansion provenance (each resolved pull and its participating\n" +
-			"commit count), which is how a verdict can be audited after the fact.",
+			"commit count), which is how a verdict can be audited after the fact.\n\n" +
+			"On a repository declaring [[packages]] release converges ONE rolling draft\n" +
+			"per line (haiku/v0.2.0 beside curry/v0.1.1), every line's upsert written\n" +
+			"before any stray is deleted and --footer-file appended to each; exit 1\n" +
+			"means every line folded to none. --dry-run prints one block per line (tag\n" +
+			"line, blank line, body); --json carries packages:\n" +
+			"[{path,current,level,next,tag,body,action,url,commits,reason}] with the\n" +
+			"scalar current/level/tag/body/action/url EMPTY and target shared.\n" +
+			"--current is refused (exit 2) unless the walk selects one line\n" +
+			"(--since-tag=<path>/vX.Y.Z or below:).",
 		Args: sinceTagArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return releaseRun(cmd)
@@ -96,7 +105,7 @@ func newReleaseCmd() *cobra.Command {
 	cmd.Flags().StringVar(&releaseTarget, "target", "", "the commit sha the draft's eventual tag points at (default: the checkout's HEAD)")
 	cmd.Flags().StringVar(&releaseFooterFile, "footer-file", "", "a Markdown file appended verbatim after the notes, separated by one --- line (the per-repo install block)")
 	cmd.Flags().BoolVar(&releaseDryRun, "dry-run", false, "compute the full verdict and the draft action but write nothing to GitHub")
-	cmd.Flags().BoolVar(&releaseJSON, "json", false, "emit the machine verdict {current,level,tag,target,body,action,url,commits,pulls,reason}")
+	cmd.Flags().BoolVar(&releaseJSON, "json", false, "emit the machine verdict {current,level,tag,target,body,action,url,commits,pulls,reason}; with [[packages]] declared the scalars are empty and packages[] carries one verdict per line")
 	return cmd
 }
 

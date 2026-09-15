@@ -808,8 +808,9 @@ commit and a tag strictly past it both exited 3). Both now exit 0.
 
 ### 4.1 Packages — independently versioned lines in one repository
 
-**Status: designed 2026-09-10 (t-99rf); shipped so far: the `[[packages]]`
-schema in `internal/config`, the attribution rule as `internal/attribution`,
+**Status: shipped.** Designed 2026-09-10 (t-99rf); what landed, task by task —
+the `[[packages]]` schema in `internal/config`, the attribution rule as
+`internal/attribution`,
 and `doctor`'s path-exists check (t-exs0); the line primitives — a tag is
 parsed *on* a line (`bump.ParseVersionOn`, `config.Package.TagPrefix`), and
 the walk base, the published floor and the managed drafts are each resolved
@@ -828,9 +829,12 @@ commits over the API and renders one headline and one table per touched
 line (`internal/cli/preview_lines.go`, `preview.Package`), the pending
 side from one walk; and the reusable (t-dc9e): `release.yml` hands the
 per-line verdicts through as its `packages` output, the scalars `""`, and
-refuses `app` / `binary` once the verdict says packages.** The line is
-complete; what remains of `e-7hat` is the runbook's rollout and the live-fire
-harness. A binary older than the schema refuses the file (§2's strict
+refuses `app` / `binary` once the verdict says packages. Every `e-7hat` task
+was done by 2026-09-15: the line is complete, the fleet pins a tag that
+carries it (v3.3.0, the first), and its live fire is `glyph-monorepo-test`
+(below — the permanent packages harness, named beside `glyph-test` in
+CLAUDE.md). A binary older than the
+schema refuses the file (§2's strict
 decoder — an old pinned binary must refuse a grammar it cannot read, never
 ignore it). The decisions below are ratified so that each task inherits them
 instead of re-deriving them; the paragraphs that describe measured behaviour
@@ -1176,8 +1180,9 @@ red until the input is dropped. `lint.yml` and `pr-verdict.yml` are
 unchanged. The rollout is the runbook's: the binary change is additive, so
 `fleet-preflight` must report zero verdict moves and zero body re-renders on
 every repository without `[[packages]]`, and the live fire is
-`glyph-monorepo-test` (two Go modules, `haiku/` and `curry/`, created
-2026-09-10), whose defining probe is a pull that touches both modules with a
+`glyph-monorepo-test` (created 2026-09-10 with two Go modules, `haiku/` and
+`curry/`; five declared lines today, `travel/onsen` nested in `travel`), whose
+defining probe is a pull that touches both modules with a
 `^` in one and a `~` in the other and must move the two lines differently.
 
 **Architecture.** The attribution rule is pure — files, scope, config in;
@@ -1224,7 +1229,7 @@ internal/attribution     which declared package(s) a commit moves — pure; file
 internal/emoji           the gemoji dictionary `glyph emoji` prints — embedded table.json, advisory data nothing else reads (§2)
 internal/draftplan       draft convergence — pure; which draft a verdict keeps, retags or deletes (the Unreleased placeholder lives here)
 internal/markdown        Line: per-field escape, then the mention fence over the assembled line
-internal/notes           group by section; text/template render (no external tmpl dep)
+internal/notes           group by section; note.line rendered by hand over config.LineSpan / LinePart (the span grammar is parsed in internal/config; the optional-span drop rule lives here)
 internal/preview         merge-preview comment body — pure; no git, no API, no clock
 internal/gitsource       local `git log BASE..HEAD` (exec.CommandContext)
 internal/github          commits/{sha}/pulls, pulls/{N}/commits, release CRUD, repo object
@@ -1283,7 +1288,8 @@ gate having judged nothing.
 One command sits deliberately off the `1` rung: for `preview`, `none` is a real
 answer to the question asked — *what would merging this do?* — so a none verdict
 exits `0` there. `core.CodeNoRelease` is constructed in `cmd_bump.go`,
-`cmd_notes.go` and `cmd_release.go`, and nowhere else. Outside Go the integers
+`cmd_notes.go`, `cmd_release.go` and `release_lines.go` (the packages release,
+§4.1: `1` only when every line folds to none), and nowhere else. Outside Go the integers
 are branched on in several places — `lint.yml` on `0` and on
 `jq -e '.error.code == 3'`, `release.yml` and `goreleaser.yml` on `1` — but the
 generated commit-msg hook is the one such consumer glyph WRITES, so its gate code
