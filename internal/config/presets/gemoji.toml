@@ -5,25 +5,6 @@ schema = 1
 # (Whether they appear in the notes is decided by note.sections alone.)
 exclude_authors = ['dependabot[bot]', 'renovate[bot]']
 
-# Independently versioned lines in one repository (a monorepo). Each
-# [[packages]] entry is a subtree with its own tag line (<path>/vX.Y.Z — the
-# Go multi-module rule, not configurable), its own walk base and its own
-# rolling draft. A commit moves the lines its files lie under (a nested
-# package takes its files out of its parent); a commit touching no package's
-# files may name one in its scope, and with a version sigil MUST. Leave this
-# out for one version line, which is what every repository has without it.
-# A verdict input wherever a diff can be read — bump, notes, release,
-# preview --pr, lint --range, the pre-push hook — and the reusable
-# release.yml answers per line through its `packages` output
-# (docs/DESIGN.md §4.1).
-#
-# [[packages]]
-# path = "haiku"          # tags haiku/vX.Y.Z; a scope calls it (haiku)
-#
-# [[packages]]
-# path = "."              # the root package: bare vX.Y.Z, and every file no
-# name = "core"           # other package claims; a scope calls it (core)
-
 [commit]
 style = "gemoji"
 

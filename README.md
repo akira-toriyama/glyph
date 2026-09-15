@@ -170,8 +170,10 @@ glyph doctor            # read-only; --json for CI
 The release verdict rides on configuration glyph cannot see from inside a run:
 the `glyph.toml` every verdict command reads (present and loadable — without
 it every command refuses to run), squash merging enabled,
-`squash_merge_commit_title` / `squash_merge_commit_message`
-still landing the pull-request title as the squash subject on `main`,
+`squash_merge_commit_title = COMMIT_OR_PR_TITLE` (a single-commit pull keeps
+its own classifiable subject on `main`) and
+`squash_merge_commit_message = COMMIT_MESSAGES` (the squash body keeps the
+per-commit list, the only offline record of the pre-squash types),
 a credential that can read the repository (and, for `release`, write it),
 workflow pins on release tags, caller workflows granting what the pinned
 reusables declare and passing the inputs they require, and the installed hooks

@@ -54,13 +54,16 @@ func newHookPrePushCmd() *cobra.Command {
 			"line per ref to stdin (<local ref> <local sha> <remote ref> <remote sha>) and\n" +
 			"passes the remote on argv; this lints the commits that push would add which\n" +
 			"the remote does not already have.\n\n" +
-			"It is the only place the merge-candidate rules can fire before CI: the\n" +
-			"commit-msg hook judges one message with no branch behind it, so\n" +
-			":construction: is legal there and stays legal here — a violation blocks ONLY\n" +
-			"when the ref being written is the remote's default branch. Everywhere else it\n" +
-			"warns and exits 0, because refusing a legal mid-branch commit makes the branch\n" +
-			"unpushable and the only escape is --no-verify, which turns the gate off\n" +
-			"entirely.\n\n" +
+			"Both hooks run the same patterns; what pre-push adds is the branch behind\n" +
+			"the message. On a repository declaring [[packages]] it is where the\n" +
+			"attribution rules fire: --message and --stdin see no files, so a version\n" +
+			"sigil on a commit no line can carry (shared files, no package scope) is\n" +
+			"caught here and nowhere earlier on this machine. A violation blocks ONLY\n" +
+			"when the ref being written is the remote's default branch. Everywhere else\n" +
+			"the finding is real but the consequence is not — a repo's patterns may bless\n" +
+			"a WIP shape mid-branch that its gate rejects at the merge — so it warns and\n" +
+			"exits 0: refusing a legal mid-branch commit makes the branch unpushable and\n" +
+			"the only escape is --no-verify, which turns the gate off entirely.\n\n" +
 			"Deletions, tags and a push with nothing to do are skipped in silence. The\n" +
 			"default branch is read from the local refs/remotes/<remote>/HEAD and never\n" +
 			"over the network; where nothing records it, nothing blocks and the run says so.",
