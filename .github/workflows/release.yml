@@ -456,6 +456,17 @@ jobs:
           APP: ${{ inputs.app }}
           SMOKE: ${{ inputs.smoke }}
           SMOKE_CMD: ${{ inputs.smoke-cmd }}
+          # The tag this build is FOR, stated — never inferred. The draft's
+          # tag does not exist as a git ref until a human publishes, so a
+          # `git describe` inside package.sh can only ever name the PREVIOUS
+          # release: measured 2026-09-11, facet's draft for v7.0.2 carried an
+          # app printing 7.0.1-40-g9d6e6c4, and the published v7.0.1 ships one
+          # printing 7.0.0-42-g198ef4a. Every family release so far has shipped
+          # an artefact naming its predecessor. "" in packages mode, where the
+          # step before this one has already refused the artefact inputs.
+          # Opt-in on the caller's side, fallback kept for the local build:
+          # VERSION="${RELEASE_TAG:-$(git describe --tags --dirty)}"; VERSION="${VERSION#v}"
+          RELEASE_TAG: ${{ steps.verdict.outputs.tag }}
         run: |
           set -euo pipefail
           ./package.sh
@@ -483,6 +494,11 @@ jobs:
           BINARY: ${{ inputs.binary }}
           SMOKE: ${{ inputs.smoke }}
           SMOKE_CMD: ${{ inputs.smoke-cmd }}
+          # Stated for the same reason the app step states it, and on both
+          # arms rather than the one with a measured symptom: which artefact
+          # shape a caller ships must not decide whether its build is told the
+          # tag. build.sh stamps a version too (glyph's own does).
+          RELEASE_TAG: ${{ steps.verdict.outputs.tag }}
         run: |
           set -euo pipefail
           ./build.sh

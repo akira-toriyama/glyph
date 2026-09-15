@@ -1,0 +1,12 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 8a3fcdd..aeeb364 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -466,7 +466,6 @@ jobs:
+           # step before this one has already refused the artefact inputs.
+           # Opt-in on the caller's side, fallback kept for the local build:
+           # VERSION="${RELEASE_TAG:-$(git describe --tags --dirty)}"; VERSION="${VERSION#v}"
+-          RELEASE_TAG: ${{ steps.verdict.outputs.tag }}
+         run: |
+           set -euo pipefail
+           ./package.sh
