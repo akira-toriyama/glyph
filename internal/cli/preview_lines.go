@@ -36,6 +36,11 @@ type packagePreview struct {
 	Pending  string `json:"pending"`
 }
 
+// previewWalkEscape is the remedy preview can actually offer: it has no
+// --since-tag flag, so the refusal names only the tag the message already
+// told the operator to cut.
+const previewWalkEscape = "; cut the tag named above and re-run — preview reads the pull request, and has no --since-tag flag to name a base with"
+
 // previewLines resolves the pull's commits, attributes each to the lines
 // its own files move — over the API, one request per commit: a pull's
 // commits exist on its branch only, and this checkout may not hold them —
@@ -138,13 +143,25 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 		touched = append(touched, tl)
 	}
 
-	// The pending side: one walk over every line, run only when a touched
-	// line has released at all — the single line's release-floor guard, per
-	// line. A touched line with no tag reports its PR verdict alone.
+	// The pending side: one walk, run only when a touched line has released
+	// at all — the single line's release-floor guard, per line.
+	//
+	// The walk's RANGE comes from the touched lines alone. Resolved over every
+	// declared line it used to take one untouched line with no tag to the whole
+	// history: past the cap that refused the whole command (exit 4) for a pull
+	// that touches only released lines, and under it that bought one API
+	// round-trip per commit of the history for a line nobody asked about
+	// (t-60dc symptoms A and B, measured 2026-09-15 on a 211-commit fixture:
+	// exit 4 for a haiku-only pull, and 9 round-trips where the touched line's
+	// own range held 1).
 	pending := map[string]bump.Decision{}
 	pendingShort := ""
 	if walkNeeded {
-		w, serr := sinceTagInput(ctx, cfg, sinceTagAuto, previewRepo)
+		only := make([]config.Package, 0, len(touched))
+		for _, tl := range touched {
+			only = append(only, tl.pkg)
+		}
+		w, serr := sinceTagInputScoped(ctx, cfg, sinceTagAuto, previewRepo, &walkScope{Only: only, Escape: previewWalkEscape})
 		if serr != nil {
 			return serr
 		}
@@ -174,7 +191,15 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 		tline := cfg.LineOf(tl.pkg)
 		prefix := tline.Prefix
 		p := preview.Package{Path: tl.pkg.Path, Current: tl.current.TagOn(prefix), Untagged: tl.untagged,
-			PR: preview.Verdict{Level: tl.prDec.Level, Commits: previewCommits(tl.prRows)}}
+			// PendingWalked is the half preview.Input.Untagged used to carry on
+			// its own: "the pending side is UNCOMPUTED". On the packages path a
+			// line with no tag still gets its pending walked whenever a tagged
+			// sibling in the same pull pulls the walk to the whole history, and
+			// reusing one flag for both meanings made the same run answer twice
+			// — body "the first release here would be curry/v0.0.1", machine
+			// verdict next=v0.1.0 (t-60dc symptom C, measured 2026-09-15).
+			PendingWalked: walkNeeded,
+			PR:            preview.Verdict{Level: tl.prDec.Level, Commits: previewCommits(tl.prRows)}}
 		pv := packagePreview{Path: tl.pkg.Path, Current: tl.current.String(), Untagged: tl.untagged, PR: string(tl.prDec.Level), Pending: string(bump.LevelNone)}
 		if tl.prDec.Level != bump.LevelNone {
 			next, nerr := nextOn(tline, tl.current, tl.prDec)

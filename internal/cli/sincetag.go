@@ -135,6 +135,25 @@ func checkSinceTagFlag(tag string) error {
 // expansion provenance AND whether it could read the range at all (release
 // reports them, the others discard them).
 func sinceTagInput(ctx context.Context, cfg *config.Config, tagFlag, repoFlag string) (sinceTagWalk, error) {
+	return sinceTagInputScoped(ctx, cfg, tagFlag, repoFlag, nil)
+}
+
+// walkScope narrows the walk to the lines a caller actually asked about, and
+// names the escape hatch that caller can offer. Attribution still runs over
+// EVERY declared line — a nested package must keep taking its files out of
+// its parent — so the scope decides the RANGE only.
+//
+// preview is its one user: its pending side is asked per touched line, and a
+// declared line the pull does not touch used to drag the union to the whole
+// history and refuse the command at the cap (t-60dc symptom A), or pay one
+// API round-trip per commit of the whole history under it (symptom B).
+type walkScope struct {
+	Only   []config.Package // nil: every declared line
+	Escape string           // "": the --since-tag sentence
+}
+
+// sinceTagInputScoped is sinceTagInput with the range narrowed to scope.
+func sinceTagInputScoped(ctx context.Context, cfg *config.Config, tagFlag, repoFlag string, scope *walkScope) (sinceTagWalk, error) {
 	if err := checkSinceTagFlag(tagFlag); err != nil {
 		return sinceTagWalk{}, err
 	}
@@ -142,7 +161,7 @@ func sinceTagInput(ctx context.Context, cfg *config.Config, tagFlag, repoFlag st
 	if err != nil {
 		return sinceTagWalk{}, err
 	}
-	lines, revRange, err := resolveLines(ctx, cfg, tagFlag)
+	lines, revRange, err := resolveLinesScoped(ctx, cfg, tagFlag, scope)
 	if err != nil {
 		return sinceTagWalk{}, err
 	}
@@ -182,7 +201,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 			return "", nil, lerr
 		}
 		if latest == "" {
-			return wholeHistory(ctx, cfg, "no version tag found")
+			return wholeHistory(ctx, cfg, "no version tag found", "")
 		}
 		return latest + "..HEAD", &v, nil
 	}
@@ -208,7 +227,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 			// The repository's first release: nothing sits below it, and dying
 			// here would fail a job standing behind a tag that already exists.
 			// Same walk, same guard, as auto before the first tag.
-			return wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s", strings.TrimSpace(rest)))
+			return wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s", strings.TrimSpace(rest)), "")
 		}
 		return prev + "..HEAD", &v, nil
 	}
@@ -225,6 +244,13 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 // keeps one speculative first-release walk at a fifth of that budget. A first
 // release large enough to cross it is one the operator should bound by hand.
 const sinceTagWalkCap = 200
+
+// sinceTagEscape is the remedy for a caller that HAS --since-tag. It is a
+// parameter rather than a constant in the message because `preview` does not:
+// its flags are --pr/--repo/--notes/--json, and a refusal that sends an
+// operator to a flag the command rejects is a dead end (t-60dc, measured
+// 2026-09-15: `preview --pr` exited 4 naming --since-tag=TAG).
+const sinceTagEscape = "; name the walk base yourself with --since-tag=TAG (cutting a tag at the intended base first if none exists)"
 
 // wholeHistory is the untagged arm of a RESOLVED --since-tag (auto with no
 // version tag, below: with none under its bound): the whole history, walked —
@@ -247,7 +273,7 @@ const sinceTagWalkCap = 200
 // underneath, no retry clears it, and the escape (name the base) is in the
 // message. The count is exact, not estimated, so the refusal names the real
 // cost; the doubled `git log` on this arm is local and cheap.
-func wholeHistory(ctx context.Context, cfg *config.Config, whyNone string) (string, *bump.Version, error) {
+func wholeHistory(ctx context.Context, cfg *config.Config, whyNone, escape string) (string, *bump.Version, error) {
 	raws, err := gitsource.Log(ctx, ".", "HEAD")
 	if err != nil {
 		return "", nil, err
@@ -259,9 +285,12 @@ func wholeHistory(ctx context.Context, cfg *config.Config, whyNone string) (stri
 		}
 	}
 	if walked > sinceTagWalkCap {
+		if escape == "" {
+			escape = sinceTagEscape
+		}
 		return "", nil, core.APIf(
-			"%s, and walking this repository's whole history would ask GitHub about %d commits, one round-trip each (the cap is %d) — refusing the unbounded walk; name the walk base yourself with --since-tag=TAG (cutting a tag at the intended base first if none exists)",
-			whyNone, walked, sinceTagWalkCap)
+			"%s, and walking this repository's whole history would ask GitHub about %d commits, one round-trip each (the cap is %d) — refusing the unbounded walk%s",
+			whyNone, walked, sinceTagWalkCap, escape)
 	}
 	// One API round-trip per commit over everything — a cost the caller
 	// should see named (house rule: no silent unbounded work).

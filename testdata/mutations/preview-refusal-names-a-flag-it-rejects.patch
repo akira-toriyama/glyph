@@ -1,0 +1,13 @@
+diff --git a/internal/cli/preview_lines.go b/internal/cli/preview_lines.go
+index ab1cb22..0870fab 100644
+--- a/internal/cli/preview_lines.go
++++ b/internal/cli/preview_lines.go
+@@ -161,7 +161,7 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
+ 		for _, tl := range touched {
+ 			only = append(only, tl.pkg)
+ 		}
+-		w, serr := sinceTagInputScoped(ctx, cfg, sinceTagAuto, previewRepo, &walkScope{Only: only, Escape: previewWalkEscape})
++		w, serr := sinceTagInputScoped(ctx, cfg, sinceTagAuto, previewRepo, &walkScope{Only: only})
+ 		if serr != nil {
+ 			return serr
+ 		}

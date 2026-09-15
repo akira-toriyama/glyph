@@ -99,8 +99,17 @@ type Package struct {
 	Path     string
 	Current  string
 	Untagged bool
-	PR       Verdict
-	Pending  Verdict
+	// PendingWalked says the pending side below WAS computed for this line.
+	// It is independent of Untagged: on the packages path a line with no tag
+	// of its own still gets walked whenever another line in the same pull
+	// takes the walk to the whole history, and then "no tag yet" must not be
+	// rendered as "nothing merged earlier is folded in" — the same run's
+	// machine verdict says otherwise, and the release walk agrees with the
+	// machine verdict (t-60dc, measured 2026-09-15: body curry/v0.0.1 vs JSON
+	// and `bump` curry/v0.1.0).
+	PendingWalked bool
+	PR            Verdict
+	Pending       Verdict
 }
 
 // rank orders levels for the fold, and is the ONLY test this package applies to
@@ -245,7 +254,10 @@ func renderPackages(in Input) string {
 	var b strings.Builder
 	b.WriteString(Marker + "\n")
 	for _, p := range in.Packages {
-		fmt.Fprintf(&b, "**%s** — %s\n", p.Path, Headline(Input{Current: p.Current, Untagged: p.Untagged, PR: p.PR, Pending: p.Pending}))
+		// Untagged reaches Headline only when the pending side really is
+		// uncomputed — its documented meaning. A walked line with no tag
+		// renders like any other: its floor is the null version.
+		fmt.Fprintf(&b, "**%s** — %s\n", p.Path, Headline(Input{Current: p.Current, Untagged: p.Untagged && !p.PendingWalked, PR: p.PR, Pending: p.Pending}))
 	}
 	if in.PendingShort != "" {
 		fmt.Fprintf(&b, "\n> [!WARNING]\n> The pending side of this fold is INCOMPLETE: %s. Anything already merged but unreleased may be missing from the figures above, so treat each as a floor rather than the answer.\n", in.PendingShort)
@@ -286,7 +298,7 @@ func PRShortBlock(short string) string {
 func packagesFooter(in Input) string {
 	seen := map[string]bool{}
 	n := 0
-	var bases, untagged []string
+	var bases, untagged, untaggedWalked []string
 	for _, p := range in.Packages {
 		for _, c := range p.PR.Commits {
 			key := c.Sigil + "\x00" + c.Subject
@@ -296,7 +308,11 @@ func packagesFooter(in Input) string {
 			}
 		}
 		if p.Untagged {
-			untagged = append(untagged, p.Path)
+			if p.PendingWalked {
+				untaggedWalked = append(untaggedWalked, p.Path)
+			} else {
+				untagged = append(untagged, p.Path)
+			}
 			continue
 		}
 		bases = append(bases, fmt.Sprintf("**%s** (%s)", p.Current, p.Path))
@@ -310,6 +326,9 @@ func packagesFooter(in Input) string {
 		s += fmt.Sprintf(" — folded, per line, %s since %s", how, strings.Join(bases, ", "))
 	}
 	s += "."
+	if len(untaggedWalked) > 0 {
+		s += fmt.Sprintf(" %s has no release tag yet, so everything merged so far is folded in for it.", strings.Join(untaggedWalked, " and "))
+	}
 	if len(untagged) > 0 {
 		s += fmt.Sprintf(" %s has no release tag yet, so nothing merged earlier is folded in for it.", strings.Join(untagged, " and "))
 	}

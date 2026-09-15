@@ -1,15 +1,18 @@
 diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index c2c53e3..1c63445 100644
+index 683de08..e191598 100644
 --- a/internal/cli/sincetag.go
 +++ b/internal/cli/sincetag.go
-@@ -217,11 +217,6 @@ func wholeHistory(ctx context.Context, whyNone string) (string, *bump.Version, e
+@@ -284,14 +284,6 @@ func wholeHistory(ctx context.Context, cfg *config.Config, whyNone, escape strin
  			walked++
  		}
  	}
 -	if walked > sinceTagWalkCap {
+-		if escape == "" {
+-			escape = sinceTagEscape
+-		}
 -		return "", nil, core.APIf(
--			"%s, and walking this repository's whole history would ask GitHub about %d commits, one round-trip each (the cap is %d) — refusing the unbounded walk; name the walk base yourself with --since-tag=TAG (cutting a tag at the intended base first if none exists)",
--			whyNone, walked, sinceTagWalkCap)
+-			"%s, and walking this repository's whole history would ask GitHub about %d commits, one round-trip each (the cap is %d) — refusing the unbounded walk%s",
+-			whyNone, walked, sinceTagWalkCap, escape)
 -	}
  	// One API round-trip per commit over everything — a cost the caller
  	// should see named (house rule: no silent unbounded work).

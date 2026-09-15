@@ -1,0 +1,13 @@
+diff --git a/internal/preview/preview.go b/internal/preview/preview.go
+index 5d5d27a..6e8cfb3 100644
+--- a/internal/preview/preview.go
++++ b/internal/preview/preview.go
+@@ -257,7 +257,7 @@ func renderPackages(in Input) string {
+ 		// Untagged reaches Headline only when the pending side really is
+ 		// uncomputed — its documented meaning. A walked line with no tag
+ 		// renders like any other: its floor is the null version.
+-		fmt.Fprintf(&b, "**%s** — %s\n", p.Path, Headline(Input{Current: p.Current, Untagged: p.Untagged && !p.PendingWalked, PR: p.PR, Pending: p.Pending}))
++		fmt.Fprintf(&b, "**%s** — %s\n", p.Path, Headline(Input{Current: p.Current, Untagged: p.Untagged, PR: p.PR, Pending: p.Pending}))
+ 	}
+ 	if in.PendingShort != "" {
+ 		fmt.Fprintf(&b, "\n> [!WARNING]\n> The pending side of this fold is INCOMPLETE: %s. Anything already merged but unreleased may be missing from the figures above, so treat each as a floor rather than the answer.\n", in.PendingShort)

@@ -82,7 +82,11 @@ type sinceTagWalk struct {
 // whole history, under the same cap the single line has, with the remedy
 // §4.1 names (cut <path>/v0.0.0 at the commit before the line's first
 // change).
-func resolveLines(ctx context.Context, cfg *config.Config, tagFlag string) ([]line, string, error) {
+// A nil scope resolves every declared line; a scope narrows the UNION to its
+// lines. Every declared line is still resolved and returned, because
+// partitionLines attributes over the whole set; only the range the walk runs
+// over is decided by the subset.
+func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string, scope *walkScope) ([]line, string, error) {
 	if len(cfg.Packages) == 0 {
 		revRange, base, err := sinceTagRange(ctx, cfg, tagFlag)
 		if err != nil {
@@ -132,11 +136,42 @@ func resolveLines(ctx context.Context, cfg *config.Config, tagFlag string) ([]li
 			lines = append(lines, line{Package: p, Line: cfg.LineOf(p), Source: tag + "..HEAD", Range: tag + "..HEAD"})
 		}
 	}
-	union, err := unionRange(ctx, cfg, lines)
+	union, err := unionRange(ctx, cfg, scopedLines(lines, scope), scopeEscape(scope))
 	if err != nil {
 		return nil, "", err
 	}
 	return lines, union, nil
+}
+
+// scopedLines keeps the lines the scope asked about, in the resolved order. A
+// nil scope, an empty Only, or a subset that matches nothing keeps every line:
+// the union must never be computed from NO line, which would silently widen
+// to the merge base of an empty set.
+func scopedLines(lines []line, scope *walkScope) []line {
+	if scope == nil || len(scope.Only) == 0 {
+		return lines
+	}
+	want := make(map[string]bool, len(scope.Only))
+	for _, p := range scope.Only {
+		want[p.Path] = true
+	}
+	var kept []line
+	for _, l := range lines {
+		if want[l.Package.Path] {
+			kept = append(kept, l)
+		}
+	}
+	if len(kept) == 0 {
+		return lines
+	}
+	return kept
+}
+
+func scopeEscape(scope *walkScope) string {
+	if scope == nil {
+		return ""
+	}
+	return scope.Escape
 }
 
 // lineFromLatest resolves one package's line from its own highest tag —
@@ -157,7 +192,7 @@ func lineFromLatest(ctx context.Context, cfg *config.Config, p config.Package, b
 // the common ancestor of several lines' bases to HEAD; the whole history —
 // capped and warned exactly as the single line's — as soon as any line has
 // no tag to start from.
-func unionRange(ctx context.Context, cfg *config.Config, lines []line) (string, error) {
+func unionRange(ctx context.Context, cfg *config.Config, lines []line, escape string) (string, error) {
 	var bases, untagged, labels []string
 	for _, l := range lines {
 		if l.Range == "" {
@@ -171,7 +206,7 @@ func unionRange(ctx context.Context, cfg *config.Config, lines []line) (string, 
 		}
 	}
 	if len(untagged) > 0 {
-		revRange, _, err := wholeHistory(ctx, cfg, fmt.Sprintf("no version tag on the %s line(s) — cut %s at the commit before that line's first change to say nothing of it was released before there", strings.Join(labels, ", "), strings.Join(untagged, " / ")))
+		revRange, _, err := wholeHistory(ctx, cfg, fmt.Sprintf("no version tag on the %s line(s) — cut %s at the commit before that line's first change to say nothing of it was released before there", strings.Join(labels, ", "), strings.Join(untagged, " / ")), escape)
 		return revRange, err
 	}
 	mb, err := gitsource.MergeBase(ctx, ".", bases)

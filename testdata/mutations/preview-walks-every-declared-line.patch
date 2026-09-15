@@ -1,0 +1,13 @@
+diff --git a/internal/cli/lines.go b/internal/cli/lines.go
+index 04f930e..c40422d 100644
+--- a/internal/cli/lines.go
++++ b/internal/cli/lines.go
+@@ -140,7 +140,7 @@ func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string,
+ 			lines = append(lines, line{Package: p, Line: cfg.LineOf(p), Source: tag + "..HEAD", Range: tag + "..HEAD"})
+ 		}
+ 	}
+-	union, err := unionRange(ctx, cfg, scopedLines(lines, scope), scopeEscape(scope))
++	union, err := unionRange(ctx, cfg, lines, scopeEscape(scope))
+ 	if err != nil {
+ 		return nil, "", err
+ 	}
