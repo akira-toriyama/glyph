@@ -1128,8 +1128,25 @@ beside the pending one — a line a commit touches only past the cap is missing
 from every figure, and this comment is read by someone who never opens the
 log (`preview.Input.PRShort`). The pending side is
 the one walk, run when any touched line has a release tag (the release-floor
-guard per line); a touched line with no tag reports its PR verdict alone and
-the footer says so. The body is the single line's sentences per line: the
+guard per line), and its RANGE is resolved over the TOUCHED lines alone —
+attribution still runs over every declared line, because a nested package
+must keep taking its files out of its parent, but a line the pull does not
+touch never decides how far back the walk reaches. Resolved over every
+declared line instead, one line with no tag took the union to the whole
+history: past the cap that refused the whole command for a pull touching only
+released lines, and under it one API round-trip per commit of the history for
+a line nobody asked about (t-60dc, measured 2026-09-15 — exit 4 for a
+haiku-only pull in a 211-commit fixture, and 9 round-trips where the touched
+line's own range held 1). A touched line with no tag reports its PR verdict
+alone **only when its pending side was not walked**; when a tagged sibling in
+the same pull takes the walk to the whole history, that line's pending IS
+computed, and the body then reports it exactly as the machine verdict does.
+The earlier rule here said the untagged line always reports its PR verdict
+alone, and that was wrong in the one case it mattered: the same run answered
+`curry/v0.0.1` in prose and `v0.1.0` in `packages[]`, and `bump` on the same
+checkout answers `curry/v0.1.0` — preview predicts the walk, so the prose is
+the half that has to move. "No tag" and "pending uncomputed" are therefore two
+states, not one flag. The body is the single line's sentences per line: the
 marker, one headline per touched line led by the line's name with versions
 spelled as tags (`haiku/v0.1.0 → haiku/v0.2.0`, so two lines can never be
 confused), one commit table per line (a commit moving two lines sits in

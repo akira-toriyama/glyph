@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -216,5 +217,154 @@ func TestPreviewPackagesNotesPerLine(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "<summary>Release notes preview</summary>\n\n# haiku\n\n## Features\n") || !strings.Contains(stdout, "\n# curry\n\n## Fixes\n") {
 		t.Fatalf("notes must render per line under the line's heading:\n%s", stdout)
+	}
+}
+
+// packagesRepoWithUntaggedLine is the out-of-scope fixture: three declared
+// lines where the two the pull will not touch each widen the union in a
+// different way — `fish` has no tag at all (the whole history), and `curry`
+// is tagged one commit EARLIER than `haiku` (one commit further back). Both
+// arms matter: a scope that let tagged strangers in would be invisible
+// against same-commit tags.
+func packagesRepoWithUntaggedLine(t *testing.T) string {
+	t.Helper()
+	dir := packagesRepoWith(t, packagesConfig+"\n[[packages]]\npath = \"fish\"\n",
+		map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n", "fish/fish.go": "package fish\n"})
+	testGit(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
+	touch(t, dir, "akira-toriyama", ":memo:(haiku)= season the haiku", "haiku/haiku.go")
+	testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
+	return dir
+}
+
+// TestPreviewPackagesWalkIgnoresAnUntouchedUntaggedLine: the pending walk's
+// RANGE is the touched lines' own, never every declared line's. Resolved over
+// all of them, one declared line with no tag took the union to the whole
+// history — past the cap that refused the whole command for a pull touching
+// only released lines (measured 2026-09-15 on a 211-commit fixture: exit 4 for
+// a haiku-only pull), and under it one API round-trip per commit of the
+// history for a line nobody asked about (9 where the touched line's own range
+// held 1).
+//
+// walkServer is the assertion: it fails the test on any request the routes do
+// not carry, so a walk that reached past haiku's tag would ask about the
+// declaring commit and be caught.
+func TestPreviewPackagesWalkIgnoresAnUntouchedUntaggedLine(t *testing.T) {
+	dir := packagesRepoWithUntaggedLine(t)
+	merged := touch(t, dir, "akira-toriyama", ":memo:= note the season", "haiku/notes.md")
+	routes := map[string]string{
+		pullCommitsPath(9):      `[` + apiCommit("h1", "akira-toriyama", ":sparkles:(haiku)^ add a season") + `]`,
+		commitFilesPath("h1"):   apiFiles("haiku/season.go"),
+		commitPullsPath(merged): `[]`,
+	}
+	usePR(t, walkServer(t, routes))
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "preview", "--pr", "9", "--json")
+	if code != 0 {
+		t.Fatalf("preview exited %d, want 0 — a declared line the pull does not touch must not refuse it\nstderr: %s", code, stderr)
+	}
+	res := decodePreviewLines(t, stdout)
+	if len(res.Packages) != 1 || res.Packages[0].Path != "haiku" {
+		t.Fatalf("packages = %+v, want haiku alone — the untouched lines are not mentioned", res.Packages)
+	}
+	if strings.Contains(res.Body, "fish") || strings.Contains(res.Body, "curry") {
+		t.Errorf("the body mentions a line the pull does not touch:\n%s", res.Body)
+	}
+}
+
+// TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy: when the pull DOES
+// touch a line with no tag, the whole-history walk is the honest answer and
+// the cap may still refuse it — but the refusal must name a remedy preview
+// can perform. It named `--since-tag=TAG`, which preview does not accept
+// (measured 2026-09-15: `preview --pr` exited 4 sending an operator to a flag
+// the command rejects). Positive control: the default sentence is what the
+// other callers still get, asserted in TestPreviewRefusalNamesNoFlagPreviewLacks.
+func TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy(t *testing.T) {
+	dir := packagesRepoWith(t, packagesConfig,
+		map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n"})
+	testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0") // curry never released
+	for i := range sinceTagWalkCap + 1 {
+		testCommit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= note %d", i))
+	}
+	usePR(t, walkServer(t, crossLinePull(9)))
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "preview", "--pr", "9", "--json")
+	if code != 4 {
+		t.Fatalf("preview exited %d, want 4 — past the cap the unbounded walk is refused\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	out := stdout + stderr
+	if !strings.Contains(out, "cut curry/v0.0.0") {
+		t.Errorf("the refusal does not name the tag to cut:\n%s", out)
+	}
+	if strings.Contains(out, "name the walk base yourself with --since-tag=TAG") {
+		t.Errorf("the refusal sends the operator to a flag preview rejects:\n%s", out)
+	}
+	if !strings.Contains(out, "has no --since-tag flag") {
+		t.Errorf("the refusal does not say why --since-tag is not the way out here:\n%s", out)
+	}
+}
+
+// TestPreviewPackagesUntaggedTouchedLineAgreesWithItsVerdict: one run, one
+// answer. A touched line with no tag still has its pending side walked
+// whenever a tagged sibling in the same pull takes the walk to the whole
+// history — and the body used to deny it while the machine verdict beside it
+// reported it, because both were rendered from the same `untagged` flag.
+// Measured 2026-09-15: body "the first release here would be curry/v0.0.1"
+// against JSON next=v0.1.0, and `bump` on the same checkout answers
+// curry/v0.1.0 — the human-readable half was the wrong one.
+func TestPreviewPackagesUntaggedTouchedLineAgreesWithItsVerdict(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	testGit(t, dir, "akira-toriyama", "tag", "-d", "curry/v0.1.0")
+	touch(t, dir, "akira-toriyama", ":sparkles:^ add an ingredient", "curry/curry.go")
+	routes := crossLinePull(9)
+	// curry has no tag, so the union is the whole history: every commit in it
+	// is asked about, and walkServer fails on any route missing.
+	for sha := range strings.FieldsSeq(testGit(t, dir, "akira-toriyama", "rev-list", "HEAD")) {
+		routes[commitPullsPath(sha)] = `[]`
+	}
+	usePR(t, walkServer(t, routes))
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "preview", "--pr", "9", "--json")
+	if code != 0 {
+		t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	res := decodePreviewLines(t, stdout)
+	var curry struct{ next, pending string }
+	for _, p := range res.Packages {
+		if p.Path == "curry" {
+			curry.next, curry.pending = p.Next, p.Pending
+		}
+	}
+	if curry.pending != "minor" || curry.next != "v0.1.0" {
+		t.Fatalf("curry's machine verdict = %+v, want the walked pending minor and v0.1.0", curry)
+	}
+	if !strings.Contains(res.Body, "**curry/"+curry.next+"**") {
+		t.Errorf("the body names a different version than the machine verdict (%s):\n%s", curry.next, res.Body)
+	}
+	if strings.Contains(res.Body, "curry has no release tag yet, so nothing merged earlier is folded in for it") {
+		t.Errorf("the body denies a pending side this same run walked and reported:\n%s", res.Body)
+	}
+	if !strings.Contains(res.Body, "curry has no release tag yet, so everything merged so far is folded in for it") {
+		t.Errorf("the body must say what an untagged line's walked floor is:\n%s", res.Body)
+	}
+}
+
+// TestPreviewRefusalNamesNoFlagPreviewLacks: the whole-history refusal names
+// the escape hatch its CALLER has. `preview` reads a pull request and has no
+// --since-tag, so sending an operator there is a dead end — measured
+// 2026-09-15, `preview --pr` exited 4 telling one to "name the walk base
+// yourself with --since-tag=TAG". Positive control: the default escape does
+// name the flag, so this is a real difference and not an empty string.
+func TestPreviewRefusalNamesNoFlagPreviewLacks(t *testing.T) {
+	if !strings.Contains(sinceTagEscape, "--since-tag=TAG") {
+		t.Fatal("the default escape no longer names --since-tag — this guard's premise is gone and the case below would pass vacuously")
+	}
+	if f := newPreviewCmd().Flags().Lookup("since-tag"); f != nil {
+		t.Fatal("preview now registers --since-tag; previewWalkEscape tells operators it does not, and the two must move together")
+	}
+	if strings.Contains(previewWalkEscape, "--since-tag=TAG") {
+		t.Errorf("preview's refusal sends the operator to a flag preview rejects: %q", previewWalkEscape)
 	}
 }
