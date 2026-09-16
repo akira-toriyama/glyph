@@ -1,0 +1,16 @@
+diff --git a/internal/notes/trailers.go b/internal/notes/trailers.go
+index 3640bdd..5cf1c63 100644
+--- a/internal/notes/trailers.go
++++ b/internal/notes/trailers.go
+@@ -53,10 +53,7 @@ func trailers(message string) []trailer {
+ 		}
+ 	}
+ 
+-	block, ok := lastParagraph(lines)
+-	if !ok {
+-		return nil
+-	}
++	block := lines // MUTATION: grep the whole message instead of its trailer block
+ 
+ 	var out []trailer
+ 	for _, l := range block {
