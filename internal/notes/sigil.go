@@ -71,7 +71,7 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
 			// $subject bound to its first line and no other groups.
 			groups = map[string]string{"subject": bump.FirstLine(c.Message)}
 		}
-		j.line = renderLine(cfg.Note.Spans, c, groups)
+		j.line = renderLine(cfg.Note.Spans, cfg.Note.Trailers, c, groups)
 		js = append(js, j)
 	}
 
@@ -123,14 +123,23 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
 // shipped presets rendered the parens the author wrote around it regardless:
 // the line "- add the demo feature () @akira-toriyama" is what a release body
 // carried, measured live before this existed.
-func renderLine(spans []config.LineSpan, c SigilCommit, groups map[string]string) string {
+func renderLine(spans []config.LineSpan, declared []config.NoteTrailer, c SigilCommit, groups map[string]string) string {
 	builtins := map[string]string{
-		config.BuiltinPR:     "",
-		config.BuiltinAuthor: c.Author,
-		config.BuiltinHash:   shortSHA(c.SHA),
+		config.BuiltinPR:        "",
+		config.BuiltinAuthor:    c.Author,
+		config.BuiltinHash:      shortSHA(c.SHA),
+		config.BuiltinCoauthors: strings.Join(CoAuthorNames(c.Message), ", "),
 	}
 	if c.Pull > 0 {
 		builtins[config.BuiltinPR] = "#" + strconv.Itoa(c.Pull)
+	}
+	// A declared trailer resolves like a pattern group: absent means empty,
+	// which drops the optional span that carries it. Bound AFTER the built-ins
+	// map is seeded and BEFORE groups are consulted, so the precedence a
+	// template can rely on reads built-in > trailer > group — and buildTrailers
+	// has already refused a name that would make that ordering observable.
+	for _, t := range declared {
+		builtins[t.Name] = TrailerValue(c.Message, t.Token)
 	}
 	resolve := func(name string) string {
 		if v, ok := builtins[name]; ok {

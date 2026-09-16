@@ -174,6 +174,7 @@ type Note struct {
 	Spans       []LineSpan
 	DraftOnNone bool
 	Sections    []Section
+	Trailers    []NoteTrailer
 }
 
 // SectionAxis says which fact of a commit a section filters on. The two axes
@@ -228,6 +229,7 @@ type rawNote struct {
 	Line        string       `toml:"line"`
 	DraftOnNone bool         `toml:"draft_on_none"`
 	Sections    []rawSection `toml:"sections"`
+	Trailers    []rawTrailer `toml:"trailers"`
 }
 
 type rawSection struct {
@@ -287,11 +289,16 @@ func Load(data []byte) (*Config, error) {
 		patterns = append(patterns, p)
 	}
 
+	trailers, err := buildTrailers(r.Note.Trailers, patterns)
+	if err != nil {
+		return nil, err
+	}
+
 	spans, err := ParseLine(r.Note.Line)
 	if err != nil {
 		return nil, fmt.Errorf("note.line: %w", err)
 	}
-	if err := validateLineNames(spans, patterns); err != nil {
+	if err := validateLineNames(spans, patterns, trailers); err != nil {
 		return nil, fmt.Errorf("note.line: %w", err)
 	}
 
@@ -319,6 +326,7 @@ func Load(data []byte) (*Config, error) {
 			Spans:       spans,
 			DraftOnNone: r.Note.DraftOnNone,
 			Sections:    sections,
+			Trailers:    trailers,
 		},
 		Packages: packages,
 	}, nil

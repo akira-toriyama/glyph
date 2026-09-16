@@ -26,13 +26,14 @@ const spanOpen = "$["
 // map off these constants so the set validated at load and the set bound at
 // render cannot drift apart.
 const (
-	BuiltinPR     = "pr"
-	BuiltinAuthor = "author"
-	BuiltinHash   = "hash"
+	BuiltinPR        = "pr"
+	BuiltinAuthor    = "author"
+	BuiltinHash      = "hash"
+	BuiltinCoauthors = "coauthors"
 )
 
 // LineBuiltins is the same set as a list, for validation and for messages.
-var LineBuiltins = []string{BuiltinPR, BuiltinAuthor, BuiltinHash}
+var LineBuiltins = []string{BuiltinPR, BuiltinAuthor, BuiltinHash, BuiltinCoauthors}
 
 // LinePart is one piece of a note.line template. Text is the literal bytes
 // when Placeholder is false, and the $name without its '$' when it is true.
@@ -166,7 +167,7 @@ func holdsPlaceholder(parts []LinePart) bool {
 // The legal set is the UNION over patterns, not the intersection: which pattern
 // wins is a property of each commit, so a name any pattern captures is a name
 // the template may cite.
-func validateLineNames(spans []LineSpan, patterns []Pattern) error {
+func validateLineNames(spans []LineSpan, patterns []Pattern, trailers []NoteTrailer) error {
 	legal := make(map[string]bool, len(LineBuiltins))
 	for _, b := range LineBuiltins {
 		legal[b] = true
@@ -177,6 +178,9 @@ func validateLineNames(spans []LineSpan, patterns []Pattern) error {
 				legal[name] = true
 			}
 		}
+	}
+	for _, t := range trailers {
+		legal[t.Name] = true
 	}
 
 	known := slices.Sorted(maps.Keys(legal))

@@ -321,3 +321,86 @@ func TestGroupSigilsPromoteLandsInBreaking(t *testing.T) {
 		t.Fatalf("lines = %+v, want the promoting commit", sections[0].Lines)
 	}
 }
+
+// TestRenderLineCoauthorsAndDeclaredTrailer asserts BOTH arms of both new
+// placeholders in one template, because either alone is vacuous: with only
+// the populated arm the test passes when the optional span is deleted, and
+// with only the empty arm it passes when the binding is.
+//
+// The stakes are why both are asserted here rather than only in the parser's
+// own table. $coauthors puts a NAME on a public page, and the second commit
+// proves an absent trailer takes its punctuation with it instead of shipping
+// "- … with " or "— why: ".
+func TestRenderLineCoauthorsAndDeclaredTrailer(t *testing.T) {
+	cfg, err := config.Load([]byte(`schema = 1
+[[patterns]]
+pattern = '^(?P<semver_sigil>[=~^!]) (?P<subject>.+)'
+[note]
+line = '- $subject$[ — why: $why]$[ with $coauthors]'
+[[note.trailers]]
+token = "Why"
+name = "why"
+[[note.sections]]
+semver = "patch"
+title = "Fixes"
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	sections, err := GroupSigils([]SigilCommit{
+		{SHA: "0123456789abcdef", Author: "akira", Message: "~ round the pack up\n\nbody.\n\nWhy: not ^ — the surface golden did not move\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>"},
+		{SHA: "fedcba9876543210", Author: "akira", Message: "~ a commit that argues nothing"},
+		{SHA: "aaaabbbbccccdddd", Author: "akira", Message: "~ two hands\n\nbody.\n\nCo-authored-by: A B <a@b.c>\nCo-authored-by: C D <c@d.e>"},
+	}, cfg)
+	if err != nil {
+		t.Fatalf("GroupSigils: %v", err)
+	}
+	if len(sections) != 1 || len(sections[0].Lines) != 3 {
+		t.Fatalf("sections = %+v", sections)
+	}
+
+	const wantFull = "- round the pack up — why: not ^ — the surface golden did not move with Claude Opus 5 (1M context)"
+	if got := sections[0].Lines[0]; got != wantFull {
+		t.Errorf("populated line =\n  %q\nwant\n  %q", got, wantFull)
+	}
+	const wantBare = "- a commit that argues nothing"
+	if got := sections[0].Lines[1]; got != wantBare {
+		t.Errorf("a commit with neither trailer must render byte-identically to a repository that declared none:\n  got  %q\n  want %q", got, wantBare)
+	}
+	const wantTwo = "- two hands with A B, C D"
+	if got := sections[0].Lines[2]; got != wantTwo {
+		t.Errorf("two credits =\n  %q\nwant\n  %q", got, wantTwo)
+	}
+}
+
+// TestRenderLineNeverMentionsACoauthor is the t-39fy rule inherited at its
+// second site. A co-author address establishes no identity glyph can verify,
+// so a display name shaped like a handle must render as text and page nobody
+// — and glyph-test's own history proves the shape is reachable: every
+// Co-authored-by address in the fleet is either off GitHub's noreply host or
+// a [bot] login, so NO credit can ever be a live mention.
+func TestRenderLineNeverMentionsACoauthor(t *testing.T) {
+	cfg, err := config.Load([]byte(`schema = 1
+[[patterns]]
+pattern = '^(?P<semver_sigil>[=~^!]) (?P<subject>.+)'
+[note]
+line = '- $subject$[ with $coauthors]'
+[[note.sections]]
+semver = "patch"
+title = "Fixes"
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	sections, err := GroupSigils([]SigilCommit{
+		{SHA: "0123456789abcdef", Author: "akira", Message: "~ a fix\n\nbody.\n\nCo-authored-by: @octocat <p@q.r>"},
+	}, cfg)
+	if err != nil {
+		t.Fatalf("GroupSigils: %v", err)
+	}
+	got := sections[0].Lines[0]
+	if strings.Contains(got, "@octocat") && !strings.Contains(got, "`@octocat`") {
+		t.Errorf("a co-author display name reached the page as a live mention: %q", got)
+	}
+}
