@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -66,10 +67,8 @@ func buildTrailers(raws []rawTrailer, patterns []Pattern) ([]NoteTrailer, error)
 		if seen[rt.Name] {
 			return nil, fmt.Errorf("note.trailers[%d]: name %q is declared twice; one placeholder cannot read two trailers", i, rt.Name)
 		}
-		for _, b := range LineBuiltins {
-			if rt.Name == b {
-				return nil, fmt.Errorf("note.trailers[%d]: name %q is a built-in, which outranks it — the trailer would never render", i, rt.Name)
-			}
+		if slices.Contains(LineBuiltins, rt.Name) {
+			return nil, fmt.Errorf("note.trailers[%d]: name %q is a built-in, which outranks it — the trailer would never render", i, rt.Name)
 		}
 		for _, p := range patterns {
 			for _, g := range p.re.SubexpNames() {

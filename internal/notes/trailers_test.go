@@ -262,7 +262,7 @@ func gitTrailers(t *testing.T, msg string) []trailer {
 		t.Fatalf("git interpret-trailers: %v", err)
 	}
 	var got []trailer
-	for _, l := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+	for l := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 		if l == "" {
 			continue
 		}
