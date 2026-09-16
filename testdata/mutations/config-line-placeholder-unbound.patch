@@ -1,12 +1,12 @@
 diff --git a/internal/config/config.go b/internal/config/config.go
-index d68758a..becbf1e 100644
+index 993e154..e36d8f2 100644
 --- a/internal/config/config.go
 +++ b/internal/config/config.go
-@@ -282,9 +282,6 @@ func Load(data []byte) (*Config, error) {
+@@ -298,9 +298,6 @@ func Load(data []byte) (*Config, error) {
  	if err != nil {
  		return nil, fmt.Errorf("note.line: %w", err)
  	}
--	if err := validateLineNames(spans, patterns); err != nil {
+-	if err := validateLineNames(spans, patterns, trailers); err != nil {
 -		return nil, fmt.Errorf("note.line: %w", err)
 -	}
  
