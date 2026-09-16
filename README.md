@@ -305,7 +305,8 @@ out of lint and the fold; whether they appear in the notes is
 `[[note.sections]]`'s decision alone.
 
 `note.line` is the same idea for the release body: `$name` reads the winning
-pattern's named groups, `$pr` / `$author` / `$hash` are built in, and a
+pattern's named groups, `$pr` / `$author` / `$hash` / `$coauthors` are built
+in, and a
 `$[ … ]` span renders only when every placeholder inside it resolves. That is
 what lets the shipped `- $subject$[ ($pr)] @$author` cite a pull when there is
 one and drop the parens with it when there is not, instead of writing `()` for
@@ -315,6 +316,26 @@ a listed commit, or the one a `@users.noreply.github.com` author address
 carries; a commit from any other address is credited by its git author name,
 plain, so a display name that happens to look like a handle never pages the
 stranger who owns it.
+
+Two more of a commit's facts live below its subject, in the **git trailer
+block**, and glyph parses that block rather than grepping for the lines it
+hopes are trailers. `$coauthors` is the names its `Co-authored-by:` trailers
+credit, in message order — never a mention, because a co-author address
+establishes no identity glyph can verify. `[[note.trailers]]` binds one more
+of the repository's own vocabulary to a placeholder:
+
+```toml
+[[note.trailers]]
+token = "Why"   # the git trailer this entry reads
+name  = "why"   # the $placeholder note.line writes
+```
+
+A declared trailer renders as fenced prose, like any other text a commit
+author typed, and an absent one resolves empty so the `$[ … ]` span carrying
+it drops. What a trailer block IS follows git exactly: the last paragraph of
+the message, above any `---`, every line of it trailer-shaped — **one prose
+line in it and the whole block is not a trailer block**, credits included, so
+write the trailers together at the very bottom and indent any wrapped line.
 
 ## Packages — several version lines in one repository
 

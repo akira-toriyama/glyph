@@ -162,7 +162,7 @@ func TestLoadRefusesAPlaceholderNothingBinds(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Load accepted a placeholder no pattern can fill")
 		}
-		for _, want := range []string{"$pull", "author, hash, pr, scope, semver_sigil, subject"} {
+		for _, want := range []string{"$pull", "author, coauthors, hash, pr, scope, semver_sigil, subject"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("error = %q, want substring %q", err, want)
 			}
