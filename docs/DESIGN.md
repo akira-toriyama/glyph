@@ -369,7 +369,8 @@ shortcode as the emoji. (Mutation row `presets-subject-stops-at-the-sigil.patch`
 
 **`note.line` and the optional span.** The template substitutes `$name`
 placeholders — the winning pattern's named groups, plus the built-ins `$pr` /
-`$author` / `$hash`, which outrank a group of the same name — and literal
+`$author` / `$hash` / `$coauthors`, which outrank a group of the same name,
+plus any name `[[note.trailers]]` declares — and literal
 text passes through as the author's own Markdown, with the mention fence run
 over the assembled line. The fence has exactly one ratified exemption
 (2026-08-17): the built-in `$author`, so the preset's `@$author` renders as a
@@ -393,7 +394,40 @@ prose with the template's at-sign dropped (`Robert Pająk`, not
 opentelemetry-go): a credit that pages nobody is not written as a mention.
 `dependabot[bot]` fails the shape gate on its own login and renders the same
 way. Group-derived values (`$subject` above all) keep the fence
-unconditionally: who a subject mentions is not the author credit. Rejected
+unconditionally: who a subject mentions is not the author credit.
+
+**The trailer block, and why the exemption does not extend to it**
+(2026-09-16). Two facts worth a release line live below the subject — who
+co-authored the commit, and why it was made — and both are git trailers, so
+glyph parses the block rather than grepping. `$coauthors` is a built-in
+because `Co-authored-by` is a git-wide token with a structured value glyph
+knows how to read; `[[note.trailers]]` names the words a repository decided
+on itself (`Why`, `Ref`, `Escape`), whose values glyph cannot interpret.
+**Config names the token, glyph alone names the identity.** So the `$author`
+exemption stays the only one: a co-author address is self-asserted text that
+establishes no login glyph can verify, and a declared trailer is prose, so
+both keep the fence and neither can ever page a stranger — whether glyph
+mentions somebody is not a key a repository sets. Measured 2026-09-16 across
+glyph, glyph-test and glyph-monorepo-test: every `Co-authored-by` address in
+the fleet either sits off GitHub's noreply host (`noreply@anthropic.com`) or
+carries a `[bot]` login the handle gate rejects, so no credit could resolve
+to a live mention even if the exemption were extended.
+
+The parser is held to `git interpret-trailers --parse` by a differential
+asserting a **subset**: glyph may report fewer trailers than git, never more,
+because over-reporting is what names a person on a public page as an author
+of code the commit never claimed. Four shapes answer nothing, each silently
+(measured, git 2.54.0): a trailer in its own paragraph above the footer, a
+line below a `---`, a block holding one prose line, and a block that is the
+message's only paragraph. The third is the sharp one — an unindented wrapped
+line, or the fleet's own `Generated with …` footer placed inside the block,
+voids the whole block and takes the co-author credit with it. (Mutation row
+`notes-coauthor-is-grepped-not-parsed.patch`.) Rejected alternative: carrying
+the same two values in a `(?s)` `[[patterns]]` group. It truncates a wrapped
+value, lets trailer order decide silently whether the value binds at all,
+credits a trailer-shaped line sitting in a body paragraph, and would have to
+be hand-copied into every repository's config and re-derived per pattern
+shape — a regex over the raw message is not a trailer parser. Rejected
 alternatives: rendering the raw first line (machine notation in prose, and
 Breaking Changes already says what `!` says); dropping the fence entirely
 (subjects carry arbitrary text); asking `GET /commits/{sha}` for every landed
