@@ -67,7 +67,7 @@ homebrew_casks:
     skip_upload: auto
     directory: Casks
     homepage: https://github.com/akira-toriyama/glyph
-    description: "gitmoji-driven commit-lint, semver, and release notes for squash-merge repos"
+    description: "sigil-driven commit-lint, semver, and release notes for squash-merge repos"
     # The binary is unsigned; strip the quarantine xattr on macOS so Gatekeeper
     # allows launch (same pattern as the family's other casks).
     hooks:

@@ -58,7 +58,7 @@ a baseline**.
 
 | command | answer |
 |---|---|
-| `glyph init` | writes a starting `glyph.toml` (`--gemoji` or `--conventional`) — the file everything else reads; `--v1-window` (gemoji only) appends the migration pattern that accepts sigil-less v1 subjects as none, with a warning on every one; an existing file refuses without `--force` |
+| `glyph init` | writes a starting `glyph.toml` (`--gemoji` or `--conventional`) — the file everything else reads; an existing file refuses without `--force` |
 | `glyph lint` | commit-convention gate over `--range`, one `--message`, `--stdin`, or a PR title via `--pr` (the subject a squash merge lands): does one of the repository's patterns claim the message, and does it yield a sigil? |
 | `glyph bump` | the next version — or **"no release"** — from `--range`, `--pr`, or the release-time walk `--since-tag`; a commit no pattern claims refuses the whole range |
 | `glyph notes` | the release-notes body: `[[note.sections]]` order, one line per commit through the `note.line` template |
@@ -154,12 +154,11 @@ you. `glyph doctor` flags any unpinned reference it finds in your workflows.
 glyph init --gemoji     # or --conventional; edit the file freely afterwards
 ```
 
-A repository with pre-sigil gitmoji history adds `--v1-window`: sigil-less
-subjects then lint clean **with a warning** and fold as `=` none instead of
-failing the range. The window is meant to be deleted once every commit behind
-the release walk's base carries a sigil — its comment in the generated file
-says so, and the per-commit warning is what keeps it from quietly becoming
-permanent.
+glyph ships no migration window: a subject no pattern claims is a violation at
+the gate and refuses the release walk, so a repository whose history predates
+the sigil does not teach its grammar to accept the old subjects — it baselines
+the walk with a tag at the commit where the convention starts ("Adopting on a
+repository with deep history", below), and the walk never reads past that tag.
 
 **1. Check the repository matches the model:**
 
@@ -299,8 +298,10 @@ Everything is the pattern file's to change: `[[patterns]]` are ordered RE2
 regexes (first match wins) over the whole message, the named group
 `semver_sigil` carries the signal, a pattern-level `semver_sigil` key
 supplies one for messages that carry none (the presets make a raw
-`git revert` a patch), and `skip = true` drops a matching commit from every
-check (merge commits, autosquash artifacts). `exclude_authors` keeps bots
+`git revert` a patch), `skip = true` drops a matching commit from every
+check (merge commits, autosquash artifacts), and `warn = '…'` keeps a match
+legal but says so at every gate — for a pattern you accept and would rather
+not see. `exclude_authors` keeps bots
 out of lint and the fold; whether they appear in the notes is
 `[[note.sections]]`'s decision alone.
 

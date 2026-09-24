@@ -3,8 +3,8 @@ index b647b17..9dcc002 100644
 --- a/internal/config/lint.go
 +++ b/internal/config/lint.go
 @@ -54,7 +54,7 @@ func (c *Config) Lint(message, author string) LintVerdict {
- // sigil-less window warning and this refusal spell the same line, and a
- // config with no template gets the bare pointer instead.
+ // same line this refusal now does), and a config with no template gets the
+ // bare pointer instead.
  func (c *Config) unmatchedReason() string {
 -	form := c.SubjectForm()
 +	form := ""

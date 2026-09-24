@@ -9,7 +9,7 @@ index de9b430..5264bae 100644
 -    skip_upload: auto
      directory: Casks
      homepage: https://github.com/akira-toriyama/glyph
-     description: "gitmoji-driven commit-lint, semver, and release notes for squash-merge repos"
+     description: "sigil-driven commit-lint, semver, and release notes for squash-merge repos"
 @@ -96,4 +95,3 @@ release:
    # breaking grammar on a real binary the reusables install (t-x3ed) without
    # yet claiming the fleet should move to it. Deleting rc assets afterwards

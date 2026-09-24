@@ -50,9 +50,10 @@ func (c *Config) Lint(message, author string) LintVerdict {
 // unmatchedReason is the no-pattern-matches violation. It quotes the
 // subject form from commit.template (t-s1q0): the author of a refused
 // message otherwise has to open glyph.toml and read the winning regex back
-// into a shape, every time. The form is the file's own words, so its
-// sigil-less window warning and this refusal spell the same line, and a
-// config with no template gets the bare pointer instead.
+// into a shape, every time. The form is the file's own words (measured
+// beside the since-retired v1-acceptance window, whose warning spelled the
+// same line this refusal now does), and a config with no template gets the
+// bare pointer instead.
 func (c *Config) unmatchedReason() string {
 	form := c.SubjectForm()
 	if form == "" {

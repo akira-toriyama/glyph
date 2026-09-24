@@ -4,7 +4,7 @@
   # vendorHash pins the vendored go modules; when go.mod/go.sum change, set it
   # back to pkgs.lib.fakeHash, run `nix build`, and paste the hash nix prints
   # ("got: sha256-...").
-  description = "gitmoji-driven commit-lint, semver, and release notes for squash-merge repos";
+  description = "sigil-driven commit-lint, semver, and release notes for squash-merge repos";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -36,7 +36,7 @@
           ];
           subPackages = [ "cmd/glyph" ];
           meta = with pkgs.lib; {
-            description = "gitmoji-driven commit-lint, semver, and release notes for squash-merge repos";
+            description = "sigil-driven commit-lint, semver, and release notes for squash-merge repos";
             homepage = "https://github.com/akira-toriyama/glyph";
             license = licenses.mit;
             mainProgram = "glyph";

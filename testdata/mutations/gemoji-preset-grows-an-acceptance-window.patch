@@ -1,0 +1,18 @@
+diff --git a/internal/config/presets/gemoji.toml b/internal/config/presets/gemoji.toml
+index d95c2fc..015d1d0 100644
+--- a/internal/config/presets/gemoji.toml
++++ b/internal/config/presets/gemoji.toml
+@@ -61,6 +61,13 @@ skip = true
+ pattern = '^(fixup|squash)! '
+ skip = true
+ 
++[[patterns]]
++# the retired v1-acceptance window, back: a sigil-less gitmoji subject lints
++# clean with a warning and folds as none
++pattern = '^:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))? (?P<subject>.+)'
++semver_sigil = '='
++warn = 'no version sigil: folds as none'
++
+ [note]
+ # One line per commit. $xxx reads the winning pattern's named groups;
+ # $pr / $author / $hash are built in. A commit no pattern matches (bots)

@@ -122,10 +122,9 @@ design, so a tree that does not compile turns the local gate into a silent no-op
 
 ## Generated and pinned data — regenerate, never hand-edit
 
-- `glyph.toml` ← `glyph init --gemoji --v1-window`, guarded by
-  `TestGlyphOwnConfigIsTheComposedV1WindowPreset` (byte equality). Edit the sources —
-  `internal/config/presets/gemoji.toml` and `presets/v1window.snippet` — then regenerate with
-  `go run ./cmd/glyph init --gemoji --v1-window --force`.
+- `glyph.toml` ← `glyph init --gemoji`, guarded by `TestGlyphOwnConfigIsTheGemojiPreset` (byte
+  equality). Edit the source — `internal/config/presets/gemoji.toml` — then regenerate with
+  `go run ./cmd/glyph init --gemoji --force`.
 - Rewriting an `-update` golden (`internal/cli/testdata/release_dry_run.golden.md`,
   `internal/markdown/testdata/exported-surface.golden.txt`) requires a
   `Golden-change: <reason>` trailer on every non-merge commit (golden-gate). Read the golden

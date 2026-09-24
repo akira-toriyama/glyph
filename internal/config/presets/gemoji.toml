@@ -29,7 +29,9 @@ template = '''
 # way out: it lands exactly on 1.0.0, and behaves as `!` from 1.x on.
 # A pattern-level `semver_sigil` key supplies a fixed value when the message
 # carries none. `skip = true` drops a matching commit from lint, bump and
-# notes entirely (a skipped commit is not a violation).
+# notes entirely (a skipped commit is not a violation). `warn = '<message>'`
+# keeps a match legal and says so at every gate — for a pattern you accept
+# but would rather not see.
 [[patterns]]
 # The subject group is the WHOLE line, gitmoji + scope + sigil included, so a
 # release-body line reads exactly as its commit does (`:sparkles:(cli)^ add

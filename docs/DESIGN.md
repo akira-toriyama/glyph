@@ -115,14 +115,25 @@ pattern says it means:
   deliberate — a warning loud at one gate and silent at another teaches the
   reader that the loud gate is noise. `warn` on a `skip` pattern is a load
   error (a skipped commit is outside every verdict, so the warning would fire
-  for nobody), and so is an empty `warn`. The key exists for the
-  **v1-acceptance window** (t-37xj): the migration pattern that accepts a
-  sigil-less gitmoji subject as `=` none, where before the warning a
-  forgotten sigil passed lint green and folded silently — measured on
-  dotfiles as a release that simply stopped (v1 verdict v1.0.0, v2 verdict
-  none, nothing said). `glyph init --gemoji --v1-window` generates the
-  window with the warning in place; the block's own comment says when to
-  remove it.
+  for nobody), and so is an empty `warn`. The key was made for the
+  **v1-acceptance window** (t-37xj): the migration pattern that accepted a
+  sigil-less gitmoji subject as `=` none while the fleet's histories still
+  held pre-sigil commits, where before the warning a forgotten sigil passed
+  lint green and folded silently — measured on dotfiles as a release that
+  simply stopped (v1 verdict v1.0.0, v2 verdict none, nothing said).
+  - **The window is retired** (t-j4c5, ships as v4.0.0; ratified 2026-09-16,
+    reaffirmed 2026-09-24: zero migration debt, breaking changes accepted).
+    `init --v1-window`, the embedded snippet and glyph's own window block are
+    gone — `glyph.toml` here is the bare gemoji preset, byte for byte
+    (`TestGlyphOwnConfigIsTheGemojiPreset`), and a sigil-less subject is a
+    violation under the shipped grammar (mutation row
+    `gemoji-preset-grows-an-acceptance-window.patch`). The block's own
+    trigger — every commit behind the release walk's base carries a sigil —
+    was met here at v3.3.1. A repository still carrying the block deletes it
+    once its own walk base clears its pre-sigil history, and until then its
+    verdicts do not move: the window was config, never binary. `warn` stays —
+    a grammar key any pattern may carry, published in the machine verdict,
+    not the window's private hole.
 - **`exclude_authors`** removes a commit from lint and the fold before its
   message is ever matched — the key exists for bots, whose messages are
   exactly the ones the patterns do not describe. Whether such a commit
@@ -145,8 +156,8 @@ pattern says it means:
   as <:code:>[(scope)]<semver_sigil> <subject> with a semver_sigil of = ~ ^ !
   or %` — so the refused author is told the shape instead of re-deriving it
   from the winning regex on every failure (measured: the envelope said only
-  "see glyph.toml", while the v1-window warning next to it already spelled the
-  line). The template stays unparsed: glyph quotes it, it does not interpret a
+  "see glyph.toml", while the window warning then sitting next to it already
+  spelled the line). The template stays unparsed: glyph quotes it, it does not interpret a
   placeholder, and a file with no `[commit]` block gets the bare pointer.
 - Unknown keys, an unknown `schema`, an uncompilable pattern, a malformed
   `note.line` and a section that does not state exactly one axis are LOAD

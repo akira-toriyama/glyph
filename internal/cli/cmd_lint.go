@@ -46,8 +46,8 @@ func newLintCmd() *cobra.Command {
 			"exit 3 with a structured stderr envelope; a clean run is silent, EXCEPT\n" +
 			"for two loud-and-still-0 cases: a --range which judged no commit at all\n" +
 			"says so (`0` means \"everything I checked conforms\", which is vacuous when\n" +
-			"nothing was checked), and a pattern carrying a warn — the v1 window —\n" +
-			"annotates every commit it claims.",
+			"nothing was checked), and a pattern carrying a warn annotates every\n" +
+			"commit it claims.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{

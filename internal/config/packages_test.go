@@ -44,8 +44,8 @@ name = "core"
 }
 
 // TestNoPackagesMeansOneLine pins the additive contract: a file with no
-// [[packages]] — every shipped preset, the composed init artifact and glyph's
-// own committed glyph.toml — loads with NO packages, not a synthesised root
+// [[packages]] — every shipped preset and glyph's own committed glyph.toml —
+// loads with NO packages, not a synthesised root
 // package. Every consumer that branches on len(Packages) > 0 reads that as
 // "the author declared lines", and the single line's verdicts must stay byte
 // for byte what they were before the key existed.
@@ -55,11 +55,6 @@ func TestNoPackagesMeansOneLine(t *testing.T) {
 		data, _ := Preset(name)
 		sources["preset "+name] = data
 	}
-	composed, err := PresetWithV1Window("gemoji")
-	if err != nil {
-		t.Fatalf("PresetWithV1Window: %v", err)
-	}
-	sources["composed --v1-window"] = composed
 	own, err := os.ReadFile("../../glyph.toml")
 	if err != nil {
 		t.Fatalf("read glyph.toml: %v", err)

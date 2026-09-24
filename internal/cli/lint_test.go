@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -589,59 +590,80 @@ func TestLintRangeUsageGuards(t *testing.T) {
 	}
 }
 
-// useV1WindowConfig swaps the fixture repo's glyph.toml for the composed
-// --v1-window artifact — the config a migrating fleet repository actually
-// runs under.
-func useV1WindowConfig(t *testing.T, dir string) {
+// warnedPattern is a pattern in the shape the warn key exists for — legal
+// but undesirable: a work-in-progress commit is claimed and folds none, and
+// the file's author says why that is worth a word. It sits below the strict
+// pattern, so a :construction: subject carrying a sigil still reads its sigil
+// and only the sigil-less one is warned.
+const warnedPattern = `
+[[patterns]]
+pattern = '^(?P<subject>:construction:(\((?P<scope>[a-z0-9-]+)\))? .+)'
+semver_sigil = '='
+warn = 'work in progress: folds as none — squash or reword it before the release walk reads it'
+`
+
+// useWarnedPatternConfig swaps the fixture repo's glyph.toml for the gemoji
+// preset plus warnedPattern, spliced above [note] the way a repository adds
+// a pattern of its own.
+func useWarnedPatternConfig(t *testing.T, dir string) {
 	t.Helper()
-	data, err := config.PresetWithV1Window("gemoji")
-	if err != nil {
-		t.Fatalf("PresetWithV1Window: %v", err)
+	preset, ok := config.Preset("gemoji")
+	if !ok {
+		t.Fatalf("gemoji preset missing")
 	}
-	if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), data, 0o644); err != nil {
+	i := bytes.Index(preset, []byte("\n[note]\n"))
+	if i < 0 {
+		t.Fatalf("gemoji preset carries no [note] table to splice above")
+	}
+	var data bytes.Buffer
+	data.Write(preset[:i])
+	data.WriteString(warnedPattern)
+	data.Write(preset[i:])
+	if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), data.Bytes(), 0o644); err != nil {
 		t.Fatalf("write glyph.toml: %v", err)
 	}
 }
 
-// TestLintRangeWarnsOnTheV1WindowAndStaysGreen pins the window's lint
-// verdict end to end: a sigil-less gitmoji subject is CLEAN (exit 0 — the
-// window exists so v1 history and v1 habits do not break the gate) and LOUD
-// (one ::warning:: naming the commit and the fix). Green-and-silent is the
-// measured pre-warn state this exists to keep from coming back: the sigil's
-// whole write-reminder role was off for as long as the window lived.
-func TestLintRangeWarnsOnTheV1WindowAndStaysGreen(t *testing.T) {
+// TestLintRangeWarnsOnAWarnedPatternAndStaysGreen pins a warned pattern's
+// lint verdict end to end: the commit it claims is CLEAN (exit 0 — a warn
+// changes no verdict) and LOUD (one ::warning:: naming the commit and the
+// message the file's author wrote). Green-and-silent is the measured state
+// this exists to keep from coming back: under the fleet's v1-acceptance
+// window, before the key existed, a forgotten sigil passed every gate with
+// nothing said.
+func TestLintRangeWarnsOnAWarnedPatternAndStaysGreen(t *testing.T) {
 	dir, base := testRepo(t)
-	useV1WindowConfig(t, dir)
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(x) a v1 subject with no sigil")
+	useWarnedPatternConfig(t, dir)
+	testCommit(t, dir, "akira-toriyama", ":construction:(x) try the thing")
 	testCommit(t, dir, "akira-toriyama", ":bug:~ a strict fix")
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
 	if code != 0 {
-		t.Fatalf("lint --range exited %d, want 0 — the window keeps the verdict green\nstderr: %s", code, stderr)
+		t.Fatalf("lint --range exited %d, want 0 — a warn changes no verdict\nstderr: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "v1-acceptance window") {
+	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "work in progress") {
 		t.Fatalf("the warned commit must annotate:\n%s", stderr)
 	}
-	if strings.Count(stderr, "v1-acceptance window") != 1 {
-		t.Fatalf("exactly the sigil-less commit warns, not the strict one:\n%s", stderr)
+	if strings.Count(stderr, "work in progress") != 1 {
+		t.Fatalf("exactly the warned commit annotates, not the strict one:\n%s", stderr)
 	}
 }
 
-// TestLintStdinWarnsOnTheV1Window is the authoring half of the same pin: the
-// hook path surfaces the warning at commit time, where adding the sigil
-// costs one keystroke instead of a rebase.
-func TestLintStdinWarnsOnTheV1Window(t *testing.T) {
+// TestLintStdinWarnsOnAWarnedPattern is the authoring half of the same pin:
+// the hook path surfaces the warning at commit time, where acting on it
+// costs one edit instead of a rebase.
+func TestLintStdinWarnsOnAWarnedPattern(t *testing.T) {
 	dir, _ := testRepo(t)
-	useV1WindowConfig(t, dir)
+	useWarnedPatternConfig(t, dir)
 	t.Chdir(dir)
-	setStdin(t, ":sparkles:(x) a v1 subject with no sigil\n")
+	setStdin(t, ":construction:(x) try the thing\n")
 
 	code, _, stderr := runGlyph(t, "lint", "--stdin")
 	if code != 0 {
 		t.Fatalf("lint --stdin exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "v1-acceptance window") {
+	if !strings.Contains(stderr, "work in progress") {
 		t.Fatalf("the authoring path must surface the warning:\n%s", stderr)
 	}
 }

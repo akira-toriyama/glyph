@@ -230,9 +230,10 @@ func TestFoldSigilsPropagatesConfigBug(t *testing.T) {
 // mechanism: a commit claimed by a warned pattern folds normally — the
 // verdict is unchanged — and its row carries the pattern's message, which is
 // how the machine surface (bump --json) names the warned commits and the CLI
-// surfaces each one. Silent here would mean the v1-acceptance window's
-// sigil-less commits fold as none with nothing said, the exact hole the warn
-// key exists to keep visible.
+// surfaces each one. Silent here would mean a warned pattern's commits fold
+// as none with nothing said — the exact hole the warn key exists to keep
+// visible (measured under the fleet's retired v1-acceptance window as a
+// release that simply stopped).
 func TestFoldSigilsCarriesTheWinningPatternsWarn(t *testing.T) {
 	cfg, err := config.Load([]byte(`schema = 1
 
