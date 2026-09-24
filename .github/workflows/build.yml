@@ -173,7 +173,7 @@ jobs:
           # assertion below — two of them used to name an integer and assert
           # only non-zero, which is green through the renumbering they exist
           # to catch.
-          /tmp/glyph lint --message ':bug: fix a crash'
+          /tmp/glyph lint --message ':bug:~ fix a crash'
           status=0
           /tmp/glyph lint --message 'no gitmoji' >/dev/null 2>&1 || status=$?
           if [ "$status" -ne 3 ]; then

@@ -156,9 +156,10 @@ type Pattern struct {
 	// Warn is the pattern-level warn key: a message the author of the FILE
 	// wrote for the author of a COMMIT, emitted wherever this pattern wins a
 	// verdict (lint, and the version fold). It exists for patterns that are
-	// legal but undesirable — the v1-acceptance window, where a sigil-less
-	// subject folds none: without a warning that hole is silent for exactly
-	// as long as the pattern lives. Empty means no warning.
+	// legal but undesirable: a match that folds none with nothing said is a
+	// hole that stays silent for exactly as long as the pattern lives (the
+	// fleet's retired v1-acceptance window was the first such pattern). Empty
+	// means no warning.
 	Warn string
 
 	re *regexp.Regexp

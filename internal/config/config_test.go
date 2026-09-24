@@ -80,6 +80,32 @@ func TestConventionalPresetGrammar(t *testing.T) {
 	}
 }
 
+// TestGemojiPresetRefusesTheSigillessSubject pins the gemoji half of the same
+// rule, and the retirement behind it: the v1-acceptance window that accepted
+// a sigil-less gitmoji subject as a warned none was a migration pattern,
+// retired at v4.0.0 (t-j4c5) once the fleet's histories were all-sigil behind
+// their walk bases. The shipped grammar carries no such pattern, so the
+// subject that once warned now violates — no pattern claims it, and nothing
+// warns in its place.
+func TestGemojiPresetRefusesTheSigillessSubject(t *testing.T) {
+	cfg := loadGemoji(t)
+	for _, message := range []string{
+		":sparkles: add a feature with no sigil",
+		":bug:(config) fix without a sigil",
+	} {
+		if v := cfg.Lint(message, "akira"); v.OK || v.Excluded || v.Warn != "" {
+			t.Errorf("Lint(%q) = %+v, want a violation — the migration window is retired", message, v)
+		}
+		m, err := cfg.Match(message)
+		if err != nil {
+			t.Fatalf("Match(%q): %v", message, err)
+		}
+		if m.Matched {
+			t.Errorf("Match(%q) = %+v, want no pattern to claim it", message, m)
+		}
+	}
+}
+
 func TestLoadGemojiConfig(t *testing.T) {
 	cfg := loadGemoji(t)
 
