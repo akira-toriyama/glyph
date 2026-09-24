@@ -1,5 +1,5 @@
 // Package version carries the build version, overridden at release time via
-// -ldflags "-X github.com/akira-toriyama/glyph/internal/version.Version=...".
+// -ldflags "-X github.com/akira-toriyama/glyph/v4/internal/version.Version=...".
 // Default "dev" means a local/source build (see .goreleaser.yaml). It holds no
 // logic beyond rendering the build identity.
 package version

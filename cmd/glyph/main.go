@@ -12,7 +12,7 @@ package main
 import (
 	"os"
 
-	"github.com/akira-toriyama/glyph/v3/internal/cli"
+	"github.com/akira-toriyama/glyph/v4/internal/cli"
 )
 
 func main() {

@@ -13,8 +13,8 @@ package draftplan
 import (
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v3/internal/bump"
-	"github.com/akira-toriyama/glyph/v3/internal/config"
+	"github.com/akira-toriyama/glyph/v4/internal/bump"
+	"github.com/akira-toriyama/glyph/v4/internal/config"
 )
 
 // PlaceholderTag is the tag name of the draft a none verdict maintains when

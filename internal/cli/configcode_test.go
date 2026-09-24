@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v3/internal/core"
+	"github.com/akira-toriyama/glyph/v4/internal/core"
 )
 
 // The config a verdict command loads is the YARDSTICK, not the subject. On

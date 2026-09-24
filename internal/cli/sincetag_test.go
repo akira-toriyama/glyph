@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v3/internal/bump"
-	"github.com/akira-toriyama/glyph/v3/internal/config"
-	"github.com/akira-toriyama/glyph/v3/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v4/internal/bump"
+	"github.com/akira-toriyama/glyph/v4/internal/config"
+	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
 )
 
 // apiUnknownSHA is the route body meaning "answer this path the way GitHub

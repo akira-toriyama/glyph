@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v3/internal/config"
-	"github.com/akira-toriyama/glyph/v3/internal/core"
+	"github.com/akira-toriyama/glyph/v4/internal/config"
+	"github.com/akira-toriyama/glyph/v4/internal/core"
 	"github.com/spf13/cobra"
 )
 

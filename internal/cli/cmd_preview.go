@@ -3,10 +3,10 @@ package cli
 import (
 	"fmt"
 
-	"github.com/akira-toriyama/glyph/v3/internal/bump"
-	"github.com/akira-toriyama/glyph/v3/internal/config"
-	"github.com/akira-toriyama/glyph/v3/internal/notes"
-	"github.com/akira-toriyama/glyph/v3/internal/preview"
+	"github.com/akira-toriyama/glyph/v4/internal/bump"
+	"github.com/akira-toriyama/glyph/v4/internal/config"
+	"github.com/akira-toriyama/glyph/v4/internal/notes"
+	"github.com/akira-toriyama/glyph/v4/internal/preview"
 	"github.com/spf13/cobra"
 )
 

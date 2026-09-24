@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v3/internal/core"
+	"github.com/akira-toriyama/glyph/v4/internal/core"
 )
 
 // The exit-code contract is a machine API with ONE implementation

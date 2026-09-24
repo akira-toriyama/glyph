@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v3/internal/core"
-	"github.com/akira-toriyama/glyph/v3/internal/hook"
-	"github.com/akira-toriyama/glyph/v3/internal/testutil"
+	"github.com/akira-toriyama/glyph/v4/internal/core"
+	"github.com/akira-toriyama/glyph/v4/internal/hook"
+	"github.com/akira-toriyama/glyph/v4/internal/testutil"
 )
 
 func TestHookInstallWritesIntoTheGitHooksDir(t *testing.T) {
@@ -255,7 +255,7 @@ func buildGlyph(t *testing.T) string {
 		t.Skip("go toolchain is not available")
 	}
 	bin := filepath.Join(t.TempDir(), "glyph")
-	cmd := exec.Command("go", "build", "-o", bin, "github.com/akira-toriyama/glyph/v3/cmd/glyph")
+	cmd := exec.Command("go", "build", "-o", bin, "github.com/akira-toriyama/glyph/v4/cmd/glyph")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("building glyph: %v\n%s", err, out)
 	}

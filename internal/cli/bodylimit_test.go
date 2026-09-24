@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/akira-toriyama/glyph/v3/internal/core"
+	"github.com/akira-toriyama/glyph/v4/internal/core"
 )
 
 // TestReleaseBodyCapBoundary pins the measured cap at its exact edge, in the
