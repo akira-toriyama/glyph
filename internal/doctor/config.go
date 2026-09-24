@@ -14,7 +14,7 @@ import (
 	"io/fs"
 	"path/filepath"
 
-	"github.com/akira-toriyama/glyph/v3/internal/config"
+	"github.com/akira-toriyama/glyph/v4/internal/config"
 )
 
 // checkConfig reports whether the glyph.toml every verdict command reads

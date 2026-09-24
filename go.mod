@@ -1,4 +1,4 @@
-module github.com/akira-toriyama/glyph/v3
+module github.com/akira-toriyama/glyph/v4
 
 // Floor is a supported minor (never an EOL pin); `toolchain` names the build
 // toolchain. CI leaves GOTOOLCHAIN unset so setup-go reads this file, honors the

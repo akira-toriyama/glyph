@@ -3,9 +3,9 @@ package cli
 import (
 	"fmt"
 
-	"github.com/akira-toriyama/glyph/v3/internal/bump"
-	"github.com/akira-toriyama/glyph/v3/internal/config"
-	"github.com/akira-toriyama/glyph/v3/internal/core"
+	"github.com/akira-toriyama/glyph/v4/internal/bump"
+	"github.com/akira-toriyama/glyph/v4/internal/config"
+	"github.com/akira-toriyama/glyph/v4/internal/core"
 )
 
 // nextOn steps current by dec ON a line (DESIGN §4.1, "The tag line"). The

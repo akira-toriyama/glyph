@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v3/internal/core"
-	"github.com/akira-toriyama/glyph/v3/internal/hook"
+	"github.com/akira-toriyama/glyph/v4/internal/core"
+	"github.com/akira-toriyama/glyph/v4/internal/hook"
 )
 
 // hooksDirWith writes body as the commit-msg hook in a throwaway hooks

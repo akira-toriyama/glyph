@@ -6,9 +6,9 @@ import (
 	"io/fs"
 	"path/filepath"
 
-	"github.com/akira-toriyama/glyph/v3/internal/config"
-	"github.com/akira-toriyama/glyph/v3/internal/core"
-	"github.com/akira-toriyama/glyph/v3/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v4/internal/config"
+	"github.com/akira-toriyama/glyph/v4/internal/core"
+	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
 )
 
 // loadConfig reads the ONE glyph.toml every verdict is judged under: the one

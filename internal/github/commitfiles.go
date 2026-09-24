@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/akira-toriyama/glyph/v3/internal/core"
+	"github.com/akira-toriyama/glyph/v4/internal/core"
 )
 
 // CommitFilesCap is where GitHub stops listing a commit's files however far

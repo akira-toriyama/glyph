@@ -228,7 +228,7 @@ func modulePath(t *testing.T) string {
 // went red: the proxy is not consulted by any build, test or release here, and
 // fleet-preflight probes lint findings and bump levels only.
 //
-// Know what this does NOT catch: it reads no tags, so a v4 tag cut over a /v3
+// Know what this does NOT catch: it reads no tags, so a v5 tag cut over a /v4
 // go.mod passes here. Comparing the module's major against the repository's
 // highest tag needs a real repository, which is `doctor`'s side of the fence
 // (t-nag8, the `go-module-major` check). What this holds is the copy drift —

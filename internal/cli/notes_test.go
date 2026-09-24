@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v3/internal/testutil"
+	"github.com/akira-toriyama/glyph/v4/internal/testutil"
 )
 
 // TestNotesMarkdown: the full Markdown body under the gemoji preset — the

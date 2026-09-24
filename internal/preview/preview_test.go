@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v3/internal/bump"
+	"github.com/akira-toriyama/glyph/v4/internal/bump"
 )
 
 func feat() Commit {

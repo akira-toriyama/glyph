@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v3/internal/config"
+	"github.com/akira-toriyama/glyph/v4/internal/config"
 )
 
 // checkPackagePaths reports whether every declared package path is a

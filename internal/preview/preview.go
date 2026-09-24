@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v3/internal/bump"
-	"github.com/akira-toriyama/glyph/v3/internal/markdown"
+	"github.com/akira-toriyama/glyph/v4/internal/bump"
+	"github.com/akira-toriyama/glyph/v4/internal/markdown"
 )
 
 // Marker leads every rendered body. The comment is sticky — a caller finds its

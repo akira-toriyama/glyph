@@ -6,13 +6,13 @@ import (
 	"io"
 	"os"
 
-	"github.com/akira-toriyama/glyph/v3/internal/attribution"
-	"github.com/akira-toriyama/glyph/v3/internal/bump"
-	"github.com/akira-toriyama/glyph/v3/internal/cleanup"
-	"github.com/akira-toriyama/glyph/v3/internal/config"
-	"github.com/akira-toriyama/glyph/v3/internal/core"
-	"github.com/akira-toriyama/glyph/v3/internal/gitsource"
-	"github.com/akira-toriyama/glyph/v3/internal/hook"
+	"github.com/akira-toriyama/glyph/v4/internal/attribution"
+	"github.com/akira-toriyama/glyph/v4/internal/bump"
+	"github.com/akira-toriyama/glyph/v4/internal/cleanup"
+	"github.com/akira-toriyama/glyph/v4/internal/config"
+	"github.com/akira-toriyama/glyph/v4/internal/core"
+	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v4/internal/hook"
 	"github.com/spf13/cobra"
 )
 

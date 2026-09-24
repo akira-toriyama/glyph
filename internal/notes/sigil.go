@@ -4,10 +4,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v3/internal/bump"
-	"github.com/akira-toriyama/glyph/v3/internal/config"
-	"github.com/akira-toriyama/glyph/v3/internal/core"
-	"github.com/akira-toriyama/glyph/v3/internal/markdown"
+	"github.com/akira-toriyama/glyph/v4/internal/bump"
+	"github.com/akira-toriyama/glyph/v4/internal/config"
+	"github.com/akira-toriyama/glyph/v4/internal/core"
+	"github.com/akira-toriyama/glyph/v4/internal/markdown"
 )
 
 // SigilCommit is the slice of a commit the v2 notes read. Nothing is parsed
