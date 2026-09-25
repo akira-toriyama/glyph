@@ -65,19 +65,37 @@ skip = true
 
 [note]
 # One line per commit. $xxx reads the winning pattern's named groups;
-# $pr / $author / $hash are built in. A commit no pattern matches (bots)
-# falls back to its raw first line.
+# $pr / $author / $hash / $coauthors are built in. A commit no pattern
+# matches (bots) falls back to its raw first line.
 #
 # $[ ... ] is an optional span: it renders only when EVERY $xxx inside it
 # resolves to something, and takes its own punctuation with it when one does
 # not. $pr is empty for every commit that reached main without a merged pull,
 # which is every commit under --range — so the parens below sit inside a span.
 # Written outside one they shipped as a bare `()` in the release body.
-line = '- $subject$[ ($pr)] @$author'
+#
+# $coauthors is the commit's `Co-authored-by` names — address stripped,
+# comma-joined, read with git's own trailer parser rather than grepped. Most
+# commits carry none, so it takes a span of its own. It renders as prose and
+# never as a mention: a co-author address asserts a login glyph cannot verify.
+line = '- $subject$[ ($pr)] @$author$[ with $coauthors]'
 
 # Keep an "Unreleased" placeholder draft alive across merges that do not
 # move the version (false = no draft until something does).
 draft_on_none = false
+
+# [[note.trailers]] binds one of THIS repository's own trailer words to a
+# $name the line above can render. glyph cannot interpret such a value, so it
+# renders as prose and can never become a mention — which is why naming the
+# word is a repository's business and naming an identity is not. None is
+# declared here; a name that binds to a trailer nobody writes renders empty
+# forever. Declare what this repository actually writes:
+#
+#   [[note.trailers]]
+#   token = "Why"
+#   name = "why"
+#
+# and reference it in the line above, inside a span: `$[ — $why]`.
 
 # Section order is render order. Each section filters on exactly one axis
 # (semver or author); a commit may appear in several sections.

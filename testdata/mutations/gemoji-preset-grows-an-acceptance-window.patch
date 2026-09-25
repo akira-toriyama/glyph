@@ -1,8 +1,8 @@
 diff --git a/internal/config/presets/gemoji.toml b/internal/config/presets/gemoji.toml
-index d95c2fc..015d1d0 100644
+index 0706f5b..8b50181 100644
 --- a/internal/config/presets/gemoji.toml
 +++ b/internal/config/presets/gemoji.toml
-@@ -61,6 +61,13 @@ skip = true
+@@ -63,6 +63,13 @@ skip = true
  pattern = '^(fixup|squash)! '
  skip = true
  
@@ -15,4 +15,4 @@ index d95c2fc..015d1d0 100644
 +
  [note]
  # One line per commit. $xxx reads the winning pattern's named groups;
- # $pr / $author / $hash are built in. A commit no pattern matches (bots)
+ # $pr / $author / $hash / $coauthors are built in. A commit no pattern
