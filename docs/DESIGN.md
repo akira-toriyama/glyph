@@ -657,6 +657,17 @@ published release, cli/cli#9367), residual drafts are deleted on a none
 verdict, and **no tag is created** — GitHub tags the target commit when a
 human publishes.
 
+What that publish *starts* is GitHub's rule, not glyph's, and it was measured
+rather than assumed (glyph-test's `tag-probe.yml`, 2026-07-22 to 2026-09-25,
+listening on `push: tags`, `create` and `release`): a publish made by a person
+— the UI, or `gh` under a personal token — fires all three, so a tag-driven
+pipeline such as glyph's own GoReleaser runs (v0.2.0, v0.3.0, v0.4.0, v0.4.1,
+v0.5.0 and v1.0.0 there: three runs each); a publish made with a workflow's
+`GITHUB_TOKEN` creates the same tag and fires **nothing** (v0.2.1 and v2.0.0
+there, published by `token-publish.yml`: zero runs). A caller that automates
+the publish from inside Actions therefore also has to start whatever the tag
+was meant to start, or publish under a token that is not `GITHUB_TOKEN`.
+
 Convergence is on the verdict, and a verdict is a claim about the range only
 when the walk **read** the range. A walk that came back short — every commit
 unknown to the queried repository, a merged pull whose merge point nothing
