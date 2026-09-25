@@ -144,7 +144,7 @@ func TestLoadGemojiConfig(t *testing.T) {
 		t.Errorf("Patterns[3].Skip = false, want true (autosquash artifacts leave processing)")
 	}
 
-	if cfg.Note.Line != "- $subject$[ ($pr)] @$author" {
+	if cfg.Note.Line != "- $subject$[ ($pr)] @$author$[ with $coauthors]" {
 		t.Errorf("Note.Line = %q", cfg.Note.Line)
 	}
 	if cfg.Note.DraftOnNone {
