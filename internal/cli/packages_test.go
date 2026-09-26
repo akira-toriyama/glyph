@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -447,6 +448,110 @@ func TestSinceTagPackagesBelowNothingUnderTheBoundNamesTheBound(t *testing.T) {
 	res := decodePackagesVerdict(t, stdout)
 	if len(res.Packages) != 1 || res.Packages[0].Path != "haiku" || res.Packages[0].Current != "v0.0.0" {
 		t.Fatalf("below: selects haiku alone, stepping from v0.0.0 before its first release, got %s", stdout)
+	}
+}
+
+// lineSection returns the notes rendered under "# <path>" — from that
+// heading to the next line heading — and "" when the line has no section.
+func lineSection(stdout, path string) string {
+	_, after, ok := strings.Cut(stdout, "# "+path+"\n")
+	if !ok {
+		return ""
+	}
+	section, _, _ := strings.Cut(after, "\n# ")
+	return section
+}
+
+// TestSinceTagPackagesExcludedAuthorIsPlacedByItsFiles: a commit the fold
+// does not read is placed by its own diff, never by its message and never
+// on every line (DESIGN §4.1; mutation row
+// packages-excluded-author-placed-on-every-line). An exclude_authors commit
+// moves no version — the fold still drops it — and appears in the notes of
+// the lines its files touch: a haiku-only bump under haiku alone, the
+// fleet-shaped `Bump X from A to B` (a message no pattern claims) under the
+// line whose go.mod it touched, and a bump of root CI under no line at all,
+// the shape rule 3 gives a shared-only `=`. The landed bot commits have no
+// pulls route: the walk's author gate never resolves them, so the placement
+// costs local git alone.
+//
+// Measured before the fix (t-sr1c, 2026-09-11 on glyph-monorepo-test): the
+// haiku-only bump rendered under all five line headings, and lines with no
+// commit of their own grew a section for it.
+func TestSinceTagPackagesExcludedAuthorIsPlacedByItsFiles(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	touch(t, dir, "dependabot[bot]", ":arrow_up:(haiku)~ bump a haiku-only dependency", "haiku/poem.go")
+	touch(t, dir, "dependabot[bot]", "Bump golang.org/x/net from 0.1.0 to 0.2.0", "curry/go.mod")
+	touch(t, dir, "dependabot[bot]", "Bump actions/checkout from 4 to 5", ".github/workflows/ci.yml")
+	fix := touch(t, dir, "akira-toriyama", ":bug:(curry)~ a curry fix", "curry/rice.go")
+	usePR(t, walkServer(t, map[string]string{commitPullsPath(fix): `[]`}))
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "notes", "--since-tag")
+	if code != 0 {
+		t.Fatalf("notes --since-tag exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	haiku, curry := lineSection(stdout, "haiku"), lineSection(stdout, "curry")
+	if !strings.Contains(haiku, "bump a haiku-only dependency") || strings.Contains(curry, "bump a haiku-only dependency") {
+		t.Fatalf("a haiku-only bump is placed on haiku alone:\n%s", stdout)
+	}
+	if !strings.Contains(curry, "Bump golang.org/x/net") || strings.Contains(haiku, "Bump golang.org/x/net") {
+		t.Fatalf("an unmatched bot subject is placed by its files, on curry alone:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "Bump actions/checkout") {
+		t.Fatalf("a bot commit under no package is placed nowhere:\n%s", stdout)
+	}
+	if !strings.Contains(haiku, "## Dependencies") {
+		t.Fatalf("the bump renders through the author section note.sections gives it:\n%s", stdout)
+	}
+
+	code, stdout, stderr = runGlyph(t, "bump", "--since-tag", "--json")
+	if code != 0 {
+		t.Fatalf("bump --since-tag --json exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	res := decodePackagesVerdict(t, stdout)
+	h, c := res.Packages[0], res.Packages[1]
+	if h.Level != "none" || len(h.Commits) != 0 {
+		t.Fatalf("haiku = %+v, want none over 0 commits — placement moves no version", h)
+	}
+	if c.Level != "patch" || len(c.Commits) != 1 {
+		t.Fatalf("curry = %+v, want patch over the one fix — the bot commit is placed on it, never folded", c)
+	}
+}
+
+// TestSinceTagPackagesExcludedAuthorInnerCommitIsPlacedByItsFiles is the
+// squash arm of the same rule: a human's pull carrying a dependabot commit is
+// expanded (the pull's author is not excluded), and the bot's inner commit
+// exists on no branch, so its files come from the API like any other inner
+// commit's — the one request DESIGN §4.1's price names, recorded here as the
+// positive control (the first cut never asked, and placed the commit on every
+// line). Measured in this fixture: a pull of one human and one dependabot
+// commit costs 4 requests, 2 + k over k = 2, where the first cut paid 3.
+func TestSinceTagPackagesExcludedAuthorInnerCommitIsPlacedByItsFiles(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	sha := touch(t, dir, "akira-toriyama", "Bump a haiku dependency and fix curry (#8)", "haiku/go.mod", "curry/curry.go")
+	srv, seen := recordingWalkServer(t, map[string]string{
+		commitPullsPath(sha): `[` + apiPullRef(8, "2026-09-26T00:00:00Z", sha) + `]`,
+		pullCommitsPath(8): `[` +
+			apiCommit("d1", "dependabot[bot]", "Bump golang.org/x/net from 0.1.0 to 0.2.0") + `,` +
+			apiCommit("c1", "akira-toriyama", ":bug:~ swap an ingredient") + `]`,
+		commitFilesPath("d1"): apiFiles("haiku/go.mod"),
+		commitFilesPath("c1"): apiFiles("curry/curry.go"),
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "notes", "--since-tag")
+	if code != 0 {
+		t.Fatalf("notes --since-tag exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if haiku, curry := lineSection(stdout, "haiku"), lineSection(stdout, "curry"); !strings.Contains(haiku, "Bump golang.org/x/net") || strings.Contains(curry, "Bump golang.org/x/net") {
+		t.Fatalf("the bot's inner commit is placed by its files, on haiku alone:\n%s", stdout)
+	}
+	if !slices.Contains(*seen, commitFilesPath("d1")) {
+		t.Fatalf("the bot's inner commit's files must be asked for — that is the placement; requests: %v", *seen)
+	}
+	if len(*seen) != 4 {
+		t.Fatalf("requests = %d %v, want 4 = 2 + k over k = 2 inner commits", len(*seen), *seen)
 	}
 }
 

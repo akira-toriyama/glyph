@@ -62,19 +62,20 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 	}
 	gh := newGitHub()
 
-	// Which lines does each participating commit move? Judged exactly as the
-	// walk judges a squash-arm inner commit: not an excluded author, not a
-	// skip, matched — then its files, then attribution.
+	// Which lines does each commit move? Placed exactly as the walk places a
+	// squash-arm inner commit (placeOf): by its files — scope and sigil too
+	// when the fold reads the message, files alone for an exclude_authors
+	// commit — or not at all: a skip appears nowhere, and an unmatched
+	// message refuses the whole-listing fold below, as it does for the
+	// single line, so it is not attributed first. The first cut dropped
+	// excluded authors here while the walk placed them on every line — two
+	// answers in one run (t-sr1c, measured 2026-09-11; mutation row
+	// preview-packages-excluded-author-dropped).
 	perLine := make([][]gitsource.RawCommit, len(cfg.Packages))
 	var prCapped []string
 	for _, r := range raws {
-		if slices.Contains(cfg.ExcludeAuthors, r.Author) {
-			continue
-		}
-		m, merr := cfg.Match(r.Message)
-		if merr != nil || !m.Matched || m.Skip {
-			// An unmatched message refuses the fold below, as it does for
-			// the single line; it is not attributed to anything first.
+		place, scope, sigil := placeOf(cfg, r)
+		if place != placedByFiles {
 			continue
 		}
 		var files []string
@@ -90,7 +91,7 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 				warnf("commit %.7s in pull request #%d touches at least %d files, and GitHub lists no more than that — a package it touches past the cap is missing from this preview", r.SHA, previewPR, github.CommitFilesCap)
 			}
 		}
-		moved, aerr := attribution.Attribute(files, m.Groups[config.ScopeGroup], m.Sigil, cfg.Packages)
+		moved, aerr := attribution.Attribute(files, scope, sigil, cfg.Packages)
 		if aerr != nil && capped {
 			warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but the listing was truncated, so that is not a verdict: the commit is attributed to no line", r.SHA, aerr)
 			continue

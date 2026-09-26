@@ -1,0 +1,13 @@
+diff --git a/internal/cli/lines.go b/internal/cli/lines.go
+index 6384a00..6e045e0 100644
+--- a/internal/cli/lines.go
++++ b/internal/cli/lines.go
+@@ -318,7 +318,7 @@ const (
+ // nowhere, the shape rule 3 gives a shared-only `=`).
+ func placeOf(cfg *config.Config, raw gitsource.RawCommit) (placement, string, config.Sigil) {
+ 	if slices.Contains(cfg.ExcludeAuthors, raw.Author) {
+-		return placedByFiles, "", config.SigilNone
++		return placedEverywhere, "", config.SigilNone
+ 	}
+ 	m, err := cfg.Match(raw.Message)
+ 	if err != nil || !m.Matched {

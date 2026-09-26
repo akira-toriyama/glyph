@@ -137,7 +137,8 @@ pattern says it means:
 - **`exclude_authors`** removes a commit from lint and the fold before its
   message is ever matched — the key exists for bots, whose messages are
   exactly the ones the patterns do not describe. Whether such a commit
-  appears in the notes is `[[note.sections]]`'s decision alone (§3). An
+  appears in the notes is `[[note.sections]]`'s decision alone (§3), and
+  under `[[packages]]` which lines' notes is its files' (§4.1). An
   **empty entry is refused at load**: the authoring path has no commit yet, so
   `lint --message` and `lint --stdin` judge under an empty author, and
   `exclude_authors = ['']` excluded every message the commit-msg hook was ever
@@ -982,13 +983,31 @@ path = "."                  # the root package: the bare vX.Y.Z line, and every 
   would be N grammars for the same message, with the winning one decided by a
   path the message does not carry.
 
-**Attribution — path decides, scope carries what path cannot.** Each
-participating commit (after `exclude_authors`, after a skip pattern, after
-the pattern match — nothing is attributed that the fold would not read) is
-mapped to the packages whose subtree its own diff touches; a file belongs to
-the package with the **longest** path prefix, so a nested package takes its
-files out of its parent and the root package holds the remainder. The rules,
-in the order they are asked:
+**Attribution — path decides, scope carries what path cannot.** Every
+participating commit that is not a merge commit is placed by the packages
+whose subtree its own diff touches; a file belongs to the package with the
+**longest** path prefix, so a nested package takes its files out of its
+parent and the root package holds the remainder. What attribution may read of
+the *message* is decided first, by what the fold reads: a commit the fold
+reads (not an `exclude_authors` author, not a skip pattern, matched) is placed
+by the rules below, scope and sigil included; a commit the fold does not read
+is placed by rule 1 alone — its files, never its message, because the message
+is exactly what glyph declared it would not judge. So an `exclude_authors`
+commit moves no version and appears in the notes of the lines its files
+touch, and on no line when they touch none (the shape rule 3 gives a
+shared-only `=`) — a bump of root CI in a repository with no root package is
+in no line's notes; a skip-pattern commit appears nowhere and is placed
+nowhere, its files never asked for; and a message no pattern claims joins
+every line it is unreleased on, so the fold refuses it there (§3). The first
+cut placed everything the fold would not read on every line (measured
+2026-09-11 on the live-fire harness: a dependabot commit touching only
+`haiku/poem.go` rendered under all five line headings, lines with no commit of
+their own grew a Dependencies section for it, `release --dry-run` wrote it
+into every other line's draft, and `preview` dropped the same commit from
+every line — two answers in one run; ratified 2026-09-26, t-sr1c; mutation
+rows `packages-excluded-author-placed-on-every-line`,
+`preview-packages-excluded-author-dropped`). The rules, in the order they are
+asked:
 
 1. Its files lie under one or more packages → it participates in **each** of
    them, with its one sigil. A commit that renames across two modules moves
@@ -1026,10 +1045,18 @@ squash arm, whose listed shas exist on no branch, the API does:
 branch holds — **measured** 2026-09-10 on glyph-test #83 (inner `2aff743`,
 unknown to local git, answered with one file where the pull's net diff had
 two). So the price of attribution is one round trip per squash-arm inner
-commit, on top of §4's one per merge point and one per pull — a squash-merged
-pull of *k* commits costs 2 + *k* requests where it cost 2 (measured
-2026-09-10 on glyph-monorepo-test, pulls #1 and #2 of one and two commits:
-seven requests, four of them the merge points and the listings);
+commit that is placed by its files — every one the fold reads and, since
+t-sr1c, every one an `exclude_authors` author wrote, a bot's bump inside a
+human's pull being placed by its diff like any other's; a skip is placed
+nowhere and never asked for — on top of §4's one per merge point and one per
+pull: a squash-merged pull of *k* such commits costs 2 + *k* requests where
+it cost 2 (measured 2026-09-10 on glyph-monorepo-test, pulls #1 and #2 of one
+and two commits: seven requests, four of them the merge points and the
+listings; and 2026-09-26 in the fixture, a pull of one human and one
+dependabot commit: four requests where the first cut paid three). A pull
+whose merge point an excluded author wrote is never expanded at all (§4's
+author gate), so the routine dependabot squash — authored by `dependabot[bot]`,
+as GitHub writes it — is placed by its landed net diff from local git, free;
 nothing else in the walk changes price, and a repository without
 `[[packages]]` pays nothing new because no file is ever asked for. The
 whole-history cap (`sinceTagWalkCap`) still counts commits, not requests: a

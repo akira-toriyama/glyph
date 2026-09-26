@@ -303,7 +303,8 @@ check (merge commits, autosquash artifacts), and `warn = '…'` keeps a match
 legal but says so at every gate — for a pattern you accept and would rather
 not see. `exclude_authors` keeps bots
 out of lint and the fold; whether they appear in the notes is
-`[[note.sections]]`'s decision alone.
+`[[note.sections]]`'s decision alone, and under `[[packages]]` the files a
+bot commit touches decide which line's notes.
 
 `note.line` is the same idea for the release body: `$name` reads the winning
 pattern's named groups, `$pr` / `$author` / `$hash` / `$coauthors` are built

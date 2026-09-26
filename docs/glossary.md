@@ -351,10 +351,14 @@ it (longest path prefix wins; a rename counts under both names), a commit under
 no package moves the package its scope names, and a commit under no package
 with no such scope moves nothing when its sigil is `=` and is refused when the
 sigil claims a version impact — as is a scope naming a package the diff does not
-touch. Asked only of a commit the fold would read; the files come from local git
-for a landed identity and from `GET /commits/{sha}` for a squash-merged pull's
-inner commit. `internal/attribution/attribution.go: Attribute`,
-`internal/cli/lines.go: partitionLines`
+touch. Asked of every walked commit that is not a merge commit: with scope and
+sigil for a commit the fold reads, by files alone for one it does not — an
+`exclude_authors` commit moves no version and appears in the notes of the lines
+its files touch (nowhere under no package), a skip is placed nowhere, and a
+message no pattern claims joins every line so the fold refuses it. The files
+come from local git for a landed identity and from `GET /commits/{sha}` for a
+squash-merged pull's inner commit. `internal/attribution/attribution.go:
+Attribute`, `internal/cli/lines.go: placeOf, partitionLines`
 
 **governing commit** — the on-branch identity a line's range judges a walked
 commit by: the commit's own sha when it landed on the released branch, else the

@@ -1,32 +1,32 @@
 diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index b52c574..abf5b6a 100644
+index 6384a00..ea4d760 100644
 --- a/internal/cli/lines.go
 +++ b/internal/cli/lines.go
-@@ -294,15 +294,12 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
- 		carriers := reach
- 		if !slices.Contains(cfg.ExcludeAuthors, c.Raw.Author) {
- 			if m, merr := cfg.Match(c.Raw.Message); merr == nil && m.Matched && !m.Skip {
--				files, capped, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
-+				files, _, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
- 				if ferr != nil {
- 					return nil, nil, ferr
- 				}
- 				moved, aerr := attribution.Attribute(files, m.Groups[config.ScopeGroup], m.Sigil, cfg.Packages)
- 				switch {
--				case aerr != nil && capped:
--					warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but the listing was truncated, so that is not a verdict: the commit is carried nowhere, and the walk is incomplete", c.Raw.SHA, aerr)
--					carriers = nil
- 				case aerr != nil:
- 					return nil, nil, attributionWedge(aerr, c, owner, repo, reachedLines(lines, reach))
- 				default:
+@@ -412,15 +412,12 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
+ 			carriers = reach
+ 		case placedNowhere:
+ 		case placedByFiles:
+-			files, capped, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
++			files, _, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
+ 			if ferr != nil {
+ 				return nil, nil, ferr
+ 			}
+ 			moved, aerr := attribution.Attribute(files, scope, sigil, cfg.Packages)
+ 			switch {
+-			case aerr != nil && capped:
+-				warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but the listing was truncated, so that is not a verdict: the commit is carried nowhere, and the walk is incomplete", c.Raw.SHA, aerr)
+-				carriers = nil
+ 			case aerr != nil:
+ 				return nil, nil, attributionWedge(aerr, c, owner, repo, reachedLines(lines, reach))
+ 			default:
 diff --git a/internal/cli/preview_lines.go b/internal/cli/preview_lines.go
-index 0283eef..ccd880c 100644
+index b80fdeb..85689ae 100644
 --- a/internal/cli/preview_lines.go
 +++ b/internal/cli/preview_lines.go
-@@ -86,10 +86,6 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
+@@ -92,10 +92,6 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
  			}
  		}
- 		moved, aerr := attribution.Attribute(files, m.Groups[config.ScopeGroup], m.Sigil, cfg.Packages)
+ 		moved, aerr := attribution.Attribute(files, scope, sigil, cfg.Packages)
 -		if aerr != nil && capped {
 -			warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but the listing was truncated, so that is not a verdict: the commit is attributed to no line", r.SHA, aerr)
 -			continue
