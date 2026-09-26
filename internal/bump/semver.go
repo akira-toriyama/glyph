@@ -45,11 +45,13 @@ var baseVersionRE = regexp.MustCompile(
 
 // ParseBaseVersion parses a tag that MAY carry semver's pre-release or build
 // suffix and returns the plain triple in front of it: v3.0.0-rc.1 → v3.0.0,
-// v3.0.0 → v3.0.0. It exists for one caller, --since-tag=below:TAG, and is
-// deliberately not what ParseVersion became.
+// v3.0.0 → v3.0.0. It exists for --since-tag's two named forms — below:TAG's
+// bound, and under [[packages]] the plain form's line selection (a tag names
+// a line when it is version-shaped on it, DESIGN §4.1) — and is deliberately
+// not what ParseVersion became.
 //
 // The split matters because the two questions differ. ParseVersion decides
-// which tags may BE an answer — a walk base, a version to step from — and house
+// which tags may BE an answer — a resolved walk base, a version to step from — and house
 // releases are exactly vX.Y.Z, so a candidate set that admitted v1.0.0-rc1
 // would hand a release the predecessor of a candidate (measured, and the reason
 // the shell derivation this replaced was retired: t-s5n4). ParseBaseVersion
@@ -184,7 +186,10 @@ func ParseVersionOn(prefix, tag string) (Version, error) {
 
 // ParseBaseVersionOn is ParseBaseVersion on a line: the prefix must match
 // exactly, and the remainder may carry a pre-release or build suffix. It is
-// what --since-tag=below:<prefix>vX.Y.Z-rc.1 parses its bound with.
+// what --since-tag=below:<prefix>vX.Y.Z-rc.1 parses its bound with, and what
+// decides whether a plain --since-tag=TAG names a declared line at all — a
+// candidate on the line does, and selects it alone (mutation row
+// packages-candidate-tag-walks-every-line).
 func ParseBaseVersionOn(prefix, tag string) (Version, error) {
 	rest, ok := strings.CutPrefix(tag, prefix)
 	if !ok || strings.Contains(rest, "/") {

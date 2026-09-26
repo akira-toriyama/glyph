@@ -289,6 +289,31 @@ func TestReleasePackagesATagConvergesOneLineAlone(t *testing.T) {
 	}
 }
 
+// TestReleasePackagesACandidateTagConvergesOneLineAlone is the candidate
+// shape of the test above — the consequence t-gt9n named: with every line
+// walking from haiku's candidate, this run rewrote curry's rolling draft
+// from a range nobody asked about. A candidate names its line, and that
+// line alone is converged.
+func TestReleasePackagesACandidateTagConvergesOneLineAlone(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.2.0-rc.1")
+	_, routes := squashAcrossLines(t, dir, 7)
+	var writes []apiWrite
+	usePR(t, releaseServer(t, routes, `[`+draftJSON(91, "curry/v0.5.0")+`]`, &writes))
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "release", "--since-tag=haiku/v0.2.0-rc.1", "--json")
+	if code != 0 {
+		t.Fatalf("release exited %d\nstderr: %s", code, stderr)
+	}
+	if len(writes) != 1 || writes[0].method != "POST" || writes[0].body["tag_name"] != "haiku/v0.2.0" {
+		t.Fatalf("writes = %+v, want haiku's POST alone; curry's draft 91 is not this run's", writes)
+	}
+	if res := decodeReleaseLines(t, stdout); len(res.Packages) != 1 || res.Packages[0].Path != "haiku" {
+		t.Fatalf("a selected line is the only verdict: %s", stdout)
+	}
+}
+
 // TestReleasePackagesDryRunGolden pins the composed dry-run output over two
 // lines — each draft's tag line, blank line, marker, sections and the footer
 // appended to EVERY draft — as bytes, the way the single line's golden does.

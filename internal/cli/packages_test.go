@@ -345,6 +345,111 @@ func TestSinceTagPackagesATagNamesALine(t *testing.T) {
 	}
 }
 
+// TestSinceTagPackagesACandidateTagNamesALine: a tag names a line whenever
+// it is version-SHAPED on that line, not only when it is a plain version —
+// haiku/v0.2.0-rc.1 and curry/v0.1.1+build.1 select their line exactly as
+// below: reads its bound (DESIGN §4.1; mutation row
+// packages-candidate-tag-walks-every-line). The candidate is never an
+// answer: the selected line steps from its highest PLAIN tag, as the single
+// line does with a tag that names no base. The undeclared-line guard is
+// reached for the shape too — exit 2, never git's "bad revision" at 4 — and
+// a tag that is not version-shaped on any line (haiku/nightly) still names
+// no line: every line walks from it.
+//
+// Measured before the fix (t-gt9n, 2026-09-11): the plain arm parsed only
+// vX.Y.Z, so a candidate on a declared line fell through to "not a version
+// on any line" and every declared line walked haiku/v3.0.0-rc.1..HEAD —
+// each sibling re-folding commits it had released and stepping past its own
+// highest tag, exit 0, nothing on stderr.
+func TestSinceTagPackagesACandidateTagNamesALine(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	for _, tag := range []string{"haiku/v0.2.0-rc.1", "curry/v0.1.1+build.1", "haiku/nightly"} {
+		testGit(t, dir, "akira-toriyama", "tag", tag)
+	}
+	_, routes := squashAcrossLines(t, dir, 7)
+	usePR(t, walkServer(t, routes))
+	t.Chdir(dir)
+
+	for name, tc := range map[string]struct {
+		args []string
+		code int
+		want string // stdout on 0, a stderr fragment otherwise
+	}{
+		"a candidate selects haiku":          {[]string{"bump", "--since-tag=haiku/v0.2.0-rc.1"}, 0, "haiku/v0.2.0\n"},
+		"build metadata selects curry":       {[]string{"bump", "--since-tag=curry/v0.1.1+build.1"}, 0, "curry/v0.1.1\n"},
+		"current on the candidate's line":    {[]string{"bump", "--since-tag=haiku/v0.2.0-rc.1", "--current", "v1.0.0"}, 0, "haiku/v1.1.0\n"},
+		"a candidate on an undeclared line":  {[]string{"bump", "--since-tag=fish/v0.1.0-rc.1"}, 2, "no [[packages]] entry declares"},
+		"a bare candidate with no root line": {[]string{"bump", "--since-tag=v0.1.0-rc.1"}, 2, "bare v* line"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			code, stdout, stderr := runGlyph(t, tc.args...)
+			if code != tc.code {
+				t.Fatalf("%v exited %d, want %d\nstderr: %s", tc.args, code, tc.code, stderr)
+			}
+			if code == 0 && stdout != tc.want {
+				t.Fatalf("%v stdout = %q, want %q", tc.args, stdout, tc.want)
+			}
+			if code != 0 && !strings.Contains(stderr, tc.want) {
+				t.Fatalf("%v stderr is missing %q:\n%s", tc.args, tc.want, stderr)
+			}
+		})
+	}
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=haiku/v0.2.0-rc.1", "--json")
+	if code != 0 {
+		t.Fatalf("bump --since-tag=haiku/v0.2.0-rc.1 --json exited %d\nstderr: %s", code, stderr)
+	}
+	res := decodePackagesVerdict(t, stdout)
+	if len(res.Packages) != 1 || res.Packages[0].Path != "haiku" {
+		t.Fatalf("a candidate names its line, and that line is the ONLY verdict — a sibling walking from haiku's candidate re-folds what it released; got %s", stdout)
+	}
+	if res.Packages[0].Current != "v0.1.0" {
+		t.Fatalf("the selected line steps from its highest PLAIN tag (a candidate is a question, never an answer), got current=%q", res.Packages[0].Current)
+	}
+
+	code, stdout, stderr = runGlyph(t, "bump", "--since-tag=haiku/nightly", "--json")
+	if code != 0 {
+		t.Fatalf("bump --since-tag=haiku/nightly --json exited %d\nstderr: %s", code, stderr)
+	}
+	if res := decodePackagesVerdict(t, stdout); len(res.Packages) != 2 {
+		t.Fatalf("a tag that is not version-shaped on any line names no line — every line walks from it; got %s", stdout)
+	}
+}
+
+// TestSinceTagPackagesBelowNothingUnderTheBoundNamesTheBound: below: on a
+// line whose tags all sit at or above the bound walks the whole history —
+// that line's first release, as the single line does — and the warning says
+// WHY: no version tag BELOW THE BOUND on that line. The remedy is the same
+// tag as for a line with no tag at all (cut <path>/v0.0.0 before the line's
+// first change), the diagnosis is not: the first cut reported "no version
+// tag on the haiku/ line", a sentence `git tag -l 'haiku/v*'` refutes, and
+// past the walk cap that sentence is the exit-4 refusal body the operator
+// is stopped by (t-gt9n).
+func TestSinceTagPackagesBelowNothingUnderTheBoundNamesTheBound(t *testing.T) {
+	dir, base := packagesRepo(t)
+	root := testGit(t, dir, "akira-toriyama", "rev-list", "--max-parents=0", "HEAD")
+	_, routes := squashAcrossLines(t, dir, 7)
+	routes[commitPullsPath(root)] = `[]`
+	routes[commitPullsPath(base)] = `[]`
+	usePR(t, walkServer(t, routes))
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=below:haiku/v0.1.0", "--json")
+	if code != 0 {
+		t.Fatalf("bump --since-tag=below:haiku/v0.1.0 exited %d, want 0 (a first release walks the whole history)\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "no version tag below haiku/v0.1.0 on the haiku/ line") || !strings.Contains(stderr, "cut haiku/v0.0.0") {
+		t.Fatalf("the warning must name the bound the line has nothing under, and the remedy:\n%s", stderr)
+	}
+	if strings.Contains(stderr, "no version tag on the") {
+		t.Fatalf("the line HAS a tag — the diagnosis must not claim otherwise:\n%s", stderr)
+	}
+	res := decodePackagesVerdict(t, stdout)
+	if len(res.Packages) != 1 || res.Packages[0].Path != "haiku" || res.Packages[0].Current != "v0.0.0" {
+		t.Fatalf("below: selects haiku alone, stepping from v0.0.0 before its first release, got %s", stdout)
+	}
+}
+
 // TestSinceTagPackagesReleasedOnOneLineStaysReleased pins "the walk is one
 // walk" (DESIGN §4.1): with haiku already released past a commit that curry
 // has not released past, the union walk visits that commit — and it moves

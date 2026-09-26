@@ -1099,9 +1099,21 @@ not converged), which is what tag-time note rendering needs (`goreleaser.yml`
 already runs `notes --since-tag=below:TAG` from the tagged commit); a bare
 `--since-tag` walks every line; a tag on a line no `[[packages]]` entry
 declares — `fish/v1.0.0`, or a bare `v1.0.0` with no root package — is usage
-(exit 2), never a walk of some other line; a tag that is not a version on any
-line names no line, so every line walks from it and steps from its own
-highest tag, as the single line does. `--current` is accepted only when one
+(exit 2), never a walk of some other line; a tag that is not version-shaped on
+any line names no line, so every line walks from it and steps from its own
+highest tag, as the single line does. **Version-shaped** is `ParseBaseVersion`'s
+question, the one `below:` has always asked of its bound: a release candidate
+or a build-metadata tag on a declared line (`haiku/v3.0.0-rc.1`) names that
+line, and the line steps from its highest *plain* tag — a candidate is a
+question, never an answer (t-s5n4) — exactly as the single line falls back for
+a tag that names no base. The first cut asked the plain form `ParseVersion`'s
+question instead, so `haiku/v3.0.0-rc.1` was "not a version on any line": every
+line of the live-fire harness walked `haiku/v3.0.0-rc.1..HEAD`, each sibling
+re-folding what it had released and stepping past its own highest tag with
+nothing on stderr — the accident the per-line base exists to prevent, reached
+through the flag — and `fish/v1.0.0-rc.1` died in git at exit 4 instead of at
+the usage guard (t-gt9n, measured 2026-09-11; mutation row
+`packages-candidate-tag-walks-every-line`). `--current` is accepted only when one
 line is selected, refused at exit 2 otherwise: with two lines it would name a
 version for a verdict that has two. `--pr` on `bump` and `notes` is refused
 under packages for the reason the lint paragraph gives — a pull's listing

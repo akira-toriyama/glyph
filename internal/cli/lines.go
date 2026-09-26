@@ -33,15 +33,20 @@ import (
 // repository that declares none. Line is its tag line — the prefix and the
 // majors it holds (config.Config.LineOf). Base is what the bump steps from
 // when the walk base names a version, nil when it does not (the line's
-// highest tag is then read). Source names the line's own range in messages; Range is the
-// revision range whose commits are unreleased on this line, "" when every
-// walked commit is (the whole history, or a --range fold).
+// highest tag is then read). Source names the line's own range in messages;
+// Range is the revision range whose commits are unreleased on this line, ""
+// when every walked commit is (the whole history, or a --range fold). Bound
+// is the below: bound as typed when that form resolved the line, "" for the
+// other forms: with Range "" it tells the two whole-history causes apart —
+// no tag UNDER the bound is not no tag at all, and a line's diagnosis must
+// not be a sentence `git tag -l` refutes (t-gt9n).
 type line struct {
 	Package config.Package
 	Line    config.Line
 	Base    *bump.Version
 	Source  string
 	Range   string
+	Bound   string
 }
 
 // lineWalk is one line's slice of the walk: the commits that participate in
@@ -74,8 +79,19 @@ type sinceTagWalk struct {
 // --since-tag=below:<prefix>vX.Y.Z and --since-tag=<prefix>vX.Y.Z select
 // that line alone, and a prefix no [[packages]] entry declares is usage —
 // asking about a line that does not exist must not silently walk another. A
-// tag that is not a version on any line names no line: every line walks
-// from it and steps from its own highest tag, as the single line does.
+// tag that is not version-shaped on any line names no line: every line
+// walks from it and steps from its own highest tag, as the single line does.
+//
+// Version-SHAPED is bump.ParseBaseVersionOn's question, the one below: has
+// always asked of its bound: a release candidate or a build-metadata tag on
+// a declared line names that line, and the line steps from its highest PLAIN
+// tag — a candidate is a question, never an answer — as the single line does
+// with a tag that names no base. The first cut asked ParseVersionOn's
+// question of the plain form, so haiku/v3.0.0-rc.1 was "not a version on any
+// line" and every declared line walked from haiku's candidate, stepping past
+// its own highest tag with nothing on stderr; and fish/v1.0.0-rc.1 died in
+// git at 4 instead of at the usage guard (t-gt9n; mutation row
+// packages-candidate-tag-walks-every-line).
 //
 // The union is the range from the bases' common ancestor to HEAD, which
 // contains every line's range; a line with no tag of its own makes it the
@@ -121,15 +137,23 @@ func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string,
 		if err != nil {
 			return nil, "", err
 		}
+		l.Bound = rest
 		lines = []line{l}
 	default:
 		prefix, _ := bump.SplitTag(tag)
-		if v, perr := bump.ParseVersionOn(prefix, tag); perr == nil {
-			p, ok := packageOnLine(cfg, prefix, v.Major)
+		if shape, perr := bump.ParseBaseVersionOn(prefix, tag); perr == nil {
+			p, ok := packageOnLine(cfg, prefix, shape.Major)
 			if !ok {
 				return nil, "", core.Usagef("--since-tag=%s names the %s line, which no [[packages]] entry declares (declared lines: %s)", tag, config.Line{Prefix: prefix}.Label(), declaredLines(cfg))
 			}
-			lines = []line{{Package: p, Line: cfg.LineOf(p), Base: &v, Source: tag + "..HEAD", Range: tag + "..HEAD"}}
+			l := line{Package: p, Line: cfg.LineOf(p), Source: tag + "..HEAD", Range: tag + "..HEAD"}
+			if v, verr := bump.ParseVersionOn(prefix, tag); verr == nil {
+				// A plain version is the step base too — the walk base and the
+				// step base are ONE tag (sinceTagRange). A candidate is not, and
+				// the line's highest plain tag answers (currentVersion).
+				l.Base = &v
+			}
+			lines = []line{l}
 			break
 		}
 		for _, p := range cfg.Packages {
@@ -191,13 +215,20 @@ func lineFromLatest(ctx context.Context, cfg *config.Config, p config.Package, b
 // unionRange is the one range the walk runs over: a single line's own range;
 // the common ancestor of several lines' bases to HEAD; the whole history —
 // capped and warned exactly as the single line's — as soon as any line has
-// no tag to start from.
+// no tag to start from. The diagnosis tells a line with no tag at all from
+// one with none under its below: bound: the remedy is the same tag, the
+// sentence is not, and past the cap it is the refusal body an operator reads
+// beside `git tag -l` (t-gt9n).
 func unionRange(ctx context.Context, cfg *config.Config, lines []line, escape string) (string, error) {
-	var bases, untagged, labels []string
+	var bases, untagged, unbounded, bounded []string
 	for _, l := range lines {
 		if l.Range == "" {
 			untagged = append(untagged, firstTagOn(l.Line))
-			labels = append(labels, l.Line.Label())
+			if l.Bound != "" {
+				bounded = append(bounded, fmt.Sprintf("no version tag below %s on the %s line", l.Bound, l.Line.Label()))
+			} else {
+				unbounded = append(unbounded, l.Line.Label())
+			}
 			continue
 		}
 		base := strings.TrimSuffix(l.Range, "..HEAD")
@@ -206,7 +237,12 @@ func unionRange(ctx context.Context, cfg *config.Config, lines []line, escape st
 		}
 	}
 	if len(untagged) > 0 {
-		revRange, _, err := wholeHistory(ctx, cfg, fmt.Sprintf("no version tag on the %s line(s) — cut %s at the commit before that line's first change to say nothing of it was released before there", strings.Join(labels, ", "), strings.Join(untagged, " / ")), escape)
+		var causes []string
+		if len(unbounded) > 0 {
+			causes = append(causes, fmt.Sprintf("no version tag on the %s line(s)", strings.Join(unbounded, ", ")))
+		}
+		causes = append(causes, bounded...)
+		revRange, _, err := wholeHistory(ctx, cfg, fmt.Sprintf("%s — cut %s at the commit before that line's first change to say nothing of it was released before there", strings.Join(causes, "; "), strings.Join(untagged, " / ")), escape)
 		return revRange, err
 	}
 	mb, err := gitsource.MergeBase(ctx, ".", bases)
