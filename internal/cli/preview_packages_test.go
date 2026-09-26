@@ -14,6 +14,7 @@ import (
 // previewVerdictLines decodes preview --json in packages mode.
 type previewVerdictLines struct {
 	Current  string `json:"current"`
+	Untagged bool   `json:"untagged"`
 	Level    string `json:"level"`
 	Next     string `json:"next"`
 	PR       string `json:"pr"`
@@ -58,10 +59,14 @@ func crossLinePull(number int) map[string]string {
 // TestPreviewPackagesOneVerdictPerTouchedLine: the defining probe previewed
 // — two headlines, haiku minor and curry patch, each with its own table; a
 // third declared line the pull does not touch (fish) is not mentioned; the
-// shared-only = commit sits in no line; the scalars are empty and packages
-// carries the folded verdict per line (mutation rows
-// preview-packages-untouched-line-is-mentioned and
-// preview-packages-scalar-verdict-describes-one-line).
+// shared-only = commit sits in no line; every scalar is at its zero value and
+// packages carries the folded verdict per line (mutation rows
+// preview-packages-untouched-line-is-mentioned,
+// preview-packages-scalar-verdict-describes-one-line and
+// preview-packages-scalar-claims-the-pull-moves-nothing). pr and pending are
+// scalars like the rest: the first cut set them to none — "this pull moves
+// nothing" beside a packages[] whose lines move (t-xbk0, measured 2026-09-26
+// on glyph-monorepo-test #30, haiku folding major under pr=none).
 func TestPreviewPackagesOneVerdictPerTouchedLine(t *testing.T) {
 	dir, base := packagesRepo(t)
 	appendTo(t, dir, "glyph.toml", "\n[[packages]]\npath = \"fish\"\n")
@@ -81,8 +86,11 @@ func TestPreviewPackagesOneVerdictPerTouchedLine(t *testing.T) {
 		t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
 	}
 	res := decodePreviewLines(t, stdout)
-	if res.Current != "" || res.Level != "" || res.Next != "" || res.PR != "none" || res.Pending != "none" {
+	if res.Current != "" || res.Level != "" || res.Next != "" {
 		t.Fatalf("scalars must describe no line under packages: %s", stdout)
+	}
+	if res.PR != "" || res.Pending != "" {
+		t.Fatalf("pr / pending must be empty — not computed — under packages; pr=%q pending=%q claims the pull moves nothing beside a packages[] whose lines move: %s", res.PR, res.Pending, stdout)
 	}
 	if len(res.Packages) != 2 || res.Packages[0].Path != "haiku" || res.Packages[1].Path != "curry" {
 		t.Fatalf("packages = %+v, want haiku then curry (fish untouched, unmentioned)", res.Packages)
@@ -181,6 +189,9 @@ func TestPreviewPackagesNothingTouchedSaysSo(t *testing.T) {
 	res := decodePreviewLines(t, stdout)
 	if len(res.Packages) != 0 {
 		t.Fatalf("packages = %+v, want none", res.Packages)
+	}
+	if res.Current != "" || res.Level != "" || res.Next != "" || res.PR != "" || res.Pending != "" || res.Untagged {
+		t.Fatalf("under packages every scalar is at its zero value whatever the pull touches — the mode decides, not the content: %s", stdout)
 	}
 	if !strings.HasPrefix(res.Body, "<!-- glyph-pr-verdict -->\n⏸️ Merging this PR moves nothing — its 1 commit(s) touch no declared package.") {
 		t.Fatalf("body = %q", res.Body)

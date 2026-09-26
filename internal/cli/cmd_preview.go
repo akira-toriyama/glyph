@@ -23,9 +23,12 @@ var (
 // answer — what the version becomes if this PR merges — so a caller never
 // re-derives it from the two sides; pr and pending are the two sides it folded,
 // reported separately so a comment can show the working. With packages
-// declared the scalars are empty (pr and pending read "none") and packages
-// carries one folded verdict per touched line (DESIGN §4.1): pr-verdict.yml's
-// level output is then "", which its callers already treat as not computed.
+// declared every scalar carries its zero value — the strings empty, untagged
+// false — and packages carries one folded verdict per touched line (DESIGN
+// §4.1): pr-verdict.yml's level output is then "", which its callers already
+// treat as not computed, and its breaking output follows level into "". A
+// pr or pending of none there would claim the pull moves nothing beside a
+// packages[] whose lines move (t-xbk0).
 type previewResult struct {
 	Current  string           `json:"current"`
 	Untagged bool             `json:"untagged"`
@@ -61,10 +64,10 @@ func newPreviewCmd() *cobra.Command {
 			"line the pull touches (versions spelled as tags: haiku/v0.1.0 →\n" +
 			"haiku/v0.2.0) and one commit table per line; a line the pull does not\n" +
 			"touch is not mentioned. --json carries packages:\n" +
-			"[{path,current,untagged,level,next,pr,pending}] with the scalar\n" +
-			"current/level/next EMPTY. A commit no line can carry (a version sigil on\n" +
-			"shared files with no package scope) is refused at exit 3 here, while the\n" +
-			"branch can still be fixed.",
+			"[{path,current,untagged,level,next,pr,pending}] with every scalar at its\n" +
+			"zero value (current/level/next/pr/pending EMPTY, untagged false). A commit\n" +
+			"no line can carry (a version sigil on shared files with no package scope)\n" +
+			"is refused at exit 3 here, while the branch can still be fixed.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return previewRun(cmd)
