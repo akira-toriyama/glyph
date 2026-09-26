@@ -1,0 +1,13 @@
+diff --git a/internal/cli/lines.go b/internal/cli/lines.go
+index 79a5f24..5c65925 100644
+--- a/internal/cli/lines.go
++++ b/internal/cli/lines.go
+@@ -141,7 +141,7 @@ func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string,
+ 		lines = []line{l}
+ 	default:
+ 		prefix, _ := bump.SplitTag(tag)
+-		if shape, perr := bump.ParseBaseVersionOn(prefix, tag); perr == nil {
++		if shape, perr := bump.ParseVersionOn(prefix, tag); perr == nil {
+ 			p, ok := packageOnLine(cfg, prefix, shape.Major)
+ 			if !ok {
+ 				return nil, "", core.Usagef("--since-tag=%s names the %s line, which no [[packages]] entry declares (declared lines: %s)", tag, config.Line{Prefix: prefix}.Label(), declaredLines(cfg))
