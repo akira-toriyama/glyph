@@ -409,7 +409,9 @@ notes preview per line; a line the pull does not touch is not mentioned, and
 a shared-only `^` is refused at exit 3 here first, while the branch can
 still be fixed. The reusables (`pr-verdict.yml`, `release.yml`) render what
 the binary hands them: `release.yml` passes the per-line verdicts through as
-its `packages` output and refuses `app` / `binary` on a packages repository.
+its `packages` output and refuses `app` / `binary` on a packages repository,
+and every `pr-verdict.yml` output — `breaking` included — is `""` there, not
+computed, so a gate fails safe.
 A repository without `[[packages]]` is untouched by all of this, byte for
 byte.
 

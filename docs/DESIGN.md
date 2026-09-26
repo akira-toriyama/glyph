@@ -1211,8 +1211,8 @@ out — the same fail-loud the single line has, and the reason
 are attributed to, in config order, each with that line's current version and
 next; a package the pull does not touch is not mentioned, and a pull whose
 commits carry nothing (`=` everywhere, or shared-only `=`) says it moves
-nothing, as today. `pr-verdict.yml` renders what the binary hands it and
-needs no change. The pull's commits exist on its branch only, so their files
+nothing, as today. `pr-verdict.yml` renders what the binary hands it; its one
+packages change is `breaking` (below). The pull's commits exist on its branch only, so their files
 come from `GET /commits/{sha}` — one request per participating commit, the
 squash arm's price paid before the merge — and a commit attribution refuses
 is refused here at exit 3, the same lint-class answer the walk will give
@@ -1248,9 +1248,23 @@ confused), one commit table per line (a commit moving two lines sits in
 both, counted once in the footer), the notes preview under the notes' own
 `# <path>` headings, and the incomplete-walk warning once — one walk read
 every line. The machine verdict gains `packages: [{path, current, untagged,
-level, next, pr, pending}]` with the scalars empty, so `pr-verdict.yml`'s
-`level` output is `""` — not computed — exactly as its callers already read
-it.
+level, next, pr, pending}]` with **every scalar at its zero value** — the
+strings empty, `untagged` false, whatever the pull touches — so
+`pr-verdict.yml`'s `level` output is `""` — not computed — exactly as its
+callers already read it, and `breaking`, `level`'s readable alias, follows it
+into `""`. Both halves were first cut wrong in the same direction (t-xbk0,
+measured 2026-09-26 with the reusable's own step and a real binary on
+glyph-monorepo-test #30, where haiku folds major): the envelope's `pr` and
+`pending` read `none` — a claim that the pull moves nothing, beside a
+`packages[]` whose haiku line moves major; #219's class, a scalar answering
+where it should say not computed — and the reusable derived `breaking` as
+`[ "$level" = "major" ]` over the empty level and published `false`, the
+definite "no" §3 names as the failure that rejected a fifth `Level` word. An
+any-line-major `breaking` was rejected with it: it is a scalar describing
+lines, and a consumer written for the single line reads it as the one line's
+answer, which is the reading every scalar here exists to refuse (mutation
+rows `preview-packages-scalar-claims-the-pull-moves-nothing`,
+`pr-verdict-breaking-reads-not-computed-as-false`).
 
 **Lint.** Attribution needs files, so it belongs to the inputs that have them:
 `lint --range` (local git) applies rules 2–3 and the contradiction check when
@@ -1288,8 +1302,9 @@ because the declaration lives in the caller's `glyph.toml`, which that step
 has not checked out and which glyph alone reads (a grep for `[[packages]]` in
 the workflow would fork the grammar, the defect class the outputs exist to
 avoid); the drafts written first are correct, and the misconfigured run stays
-red until the input is dropped. `lint.yml` and `pr-verdict.yml` are
-unchanged. The rollout is the runbook's: the binary change is additive, so
+red until the input is dropped. `lint.yml` is unchanged, and
+`pr-verdict.yml`'s one change is `breaking` following `level` into `""`
+(Preview, above). The rollout is the runbook's: the binary change is additive, so
 `fleet-preflight` must report zero verdict moves and zero body re-renders on
 every repository without `[[packages]]`, and the live fire is
 `glyph-monorepo-test` (created 2026-09-10 with two Go modules, `haiku/` and

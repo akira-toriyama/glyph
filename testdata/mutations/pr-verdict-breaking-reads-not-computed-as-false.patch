@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/pr-verdict.yml b/.github/workflows/pr-verdict.yml
+index 3668a22..a7f9c3a 100644
+--- a/.github/workflows/pr-verdict.yml
++++ b/.github/workflows/pr-verdict.yml
+@@ -314,7 +314,7 @@ jobs:
+           # `[ x = y ] && flag=true`: under `set -e` that idiom exits the step
+           # whenever the test is false, so every non-major PR would fail the job.
+           case "$level" in
+-            "") breaking="" ;;
++            "") breaking=false ;;
+             major) breaking=true ;;
+             *) breaking=false ;;
+           esac

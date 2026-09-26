@@ -1,17 +1,13 @@
 diff --git a/internal/cli/preview_lines.go b/internal/cli/preview_lines.go
-index 8afec4c..f22f793 100644
+index 8afec4c..b2ce95b 100644
 --- a/internal/cli/preview_lines.go
 +++ b/internal/cli/preview_lines.go
-@@ -257,7 +257,11 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
+@@ -257,7 +257,7 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
  		// Every scalar at its zero value, pr and pending included: none is a
  		// level word, and a scalar saying the pull moves nothing beside a
  		// packages[] whose lines move is the #219 class (t-xbk0).
 -		printCompact(previewResult{Body: body, Packages: pkgs})
-+		res := previewResult{Body: body, Packages: pkgs}
-+		if len(pkgs) > 0 {
-+			res.Current, res.Level, res.Next = pkgs[0].Current, pkgs[0].Level, pkgs[0].Next
-+		}
-+		printCompact(res)
++		printCompact(previewResult{Pending: string(bump.LevelNone), PR: string(bump.LevelNone), Body: body, Packages: pkgs})
  		return nil
  	}
  	fmt.Fprint(out, body)

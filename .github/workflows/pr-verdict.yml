@@ -104,7 +104,7 @@ name: glyph-pr-verdict
 #       steps:
 #         - run: |
 #             if [ -z "${{ needs.verdict.outputs.level }}" ]; then
-#               echo "::error::verdict unavailable (fork PR, or the verdict job failed) — refusing to pass the gate"
+#               echo "::error::verdict unavailable (fork PR, a failed verdict job, or a [[packages]] repository, whose verdict is per line) — refusing to pass the gate"
 #               exit 1
 #             fi
 #             # ...then compare ${{ needs.verdict.outputs.breaking }} against
@@ -134,6 +134,11 @@ on:
       # "". Empty therefore means NOT COMPUTED, never "no change" — a caller
       # gating on these MUST fail safe on empty rather than read it as `none`.
       #
+      # A REPOSITORY DECLARING [[packages]] (glyph DESIGN §4.1) => EVERY OUTPUT
+      # IS "" TOO: its verdict is per line — one headline per touched line in
+      # the comment — and no scalar describes one line, so a caller written
+      # for the single line fails safe exactly as it does on a skipped job.
+      #
       # This job stays ADVISORY: it is not a required check, and adding outputs
       # does not change that. Whether a verdict blocks a merge is the caller's
       # policy, expressed in the caller's own `if:` — the reusable computes, the
@@ -156,8 +161,10 @@ on:
         value: ${{ jobs.verdict.outputs.current }}
       breaking:
         description: >-
-          "true" when level is major, else "false" — the readable alias for a
-          caller's `if:`. Empty when the job was skipped, which is NOT "false".
+          "true" when level is major, "false" when it is another level — the
+          readable alias for a caller's `if:` — and empty whenever level is
+          (the job was skipped, or the repository declares [[packages]]),
+          which is NOT "false".
         value: ${{ jobs.verdict.outputs.breaking }}
 
 permissions:
@@ -299,14 +306,18 @@ jobs:
           level="$(jq -r '.level' "$RUNNER_TEMP/verdict.json")"
           next="$(jq -r '.next // ""' "$RUNNER_TEMP/verdict.json")"
           current="$(jq -r '.current // ""' "$RUNNER_TEMP/verdict.json")"
-          # An `if`, not `[ x = y ] && flag=true`: under `set -e` that idiom
-          # exits the step whenever the test is false, so every non-major PR
-          # would fail the job.
-          if [ "$level" = "major" ]; then
-            breaking=true
-          else
-            breaking=false
-          fi
+          # `breaking` is level's alias, so it is empty exactly when level is —
+          # on a repository declaring [[packages]], where no one line has a
+          # level to describe. Derived as `[ "$level" = "major" ]` it published
+          # "false" there: a definite "no" for a pull that breaks a line
+          # (t-xbk0, measured on glyph-monorepo-test #30). A `case`, not
+          # `[ x = y ] && flag=true`: under `set -e` that idiom exits the step
+          # whenever the test is false, so every non-major PR would fail the job.
+          case "$level" in
+            "") breaking="" ;;
+            major) breaking=true ;;
+            *) breaking=false ;;
+          esac
           {
             echo "level=$level"
             echo "next=$next"
