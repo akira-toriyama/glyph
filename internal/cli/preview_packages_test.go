@@ -220,6 +220,45 @@ func TestPreviewPackagesNotesPerLine(t *testing.T) {
 	}
 }
 
+// TestPreviewPackagesExcludedAuthorIsPlacedByItsFiles: preview renders the
+// set the walk will render (DESIGN §4.1: preview says what CI will say). The
+// first cut dropped an exclude_authors commit from every line while the walk
+// placed it on every line — two answers in one run (t-sr1c, measured
+// 2026-09-11 on glyph-monorepo-test #4 and #22). A bot commit is placed by
+// its files: the line it touches is mentioned, with the bump in its notes
+// and a verdict of none, and a bot commit under no package touches nothing
+// (mutation row preview-packages-excluded-author-dropped).
+func TestPreviewPackagesExcludedAuthorIsPlacedByItsFiles(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	usePR(t, walkServer(t, map[string]string{
+		pullCommitsPath(9): `[` +
+			apiCommit("d1", "dependabot[bot]", "Bump golang.org/x/net from 0.1.0 to 0.2.0") + `,` +
+			apiCommit("c1", "akira-toriyama", ":bug:~ swap an ingredient") + `]`,
+		commitFilesPath("d1"): apiFiles("haiku/go.mod"),
+		commitFilesPath("c1"): apiFiles("curry/curry.go"),
+		pullCommitsPath(10):   `[` + apiCommit("d2", "dependabot[bot]", "Bump actions/checkout from 4 to 5") + `]`,
+		commitFilesPath("d2"): apiFiles(".github/workflows/ci.yml"),
+	}))
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "preview", "--pr", "9", "--notes", "--json")
+	if code != 0 {
+		t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	res := decodePreviewLines(t, stdout)
+	if len(res.Packages) != 2 || res.Packages[0].Path != "haiku" || res.Packages[0].PR != "none" || res.Packages[1].Path != "curry" || res.Packages[1].PR != "patch" {
+		t.Fatalf("a bot commit places its line in the preview (verdict none) beside the human's: %s", stdout)
+	}
+	if haiku, curry := lineSection(res.Body, "haiku"), lineSection(res.Body, "curry"); !strings.Contains(haiku, "Bump golang.org/x/net") || strings.Contains(curry, "Bump golang.org/x/net") {
+		t.Fatalf("the bump renders under haiku's notes alone:\n%s", res.Body)
+	}
+
+	code, stdout, stderr = runGlyph(t, "preview", "--pr", "10")
+	if code != 0 || !strings.Contains(stdout, "moves nothing") {
+		t.Fatalf("a bot commit under no package touches nothing: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+}
+
 // packagesRepoWithUntaggedLine is the out-of-scope fixture: three declared
 // lines where the two the pull will not touch each widen the union in a
 // different way — `fish` has no tag at all (the whole history), and `curry`

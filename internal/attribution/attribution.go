@@ -8,9 +8,12 @@
 // Prohibitions the callers rely on: no package here is ever invented (a
 // commit under no package with no scope is carried nowhere, never by "every
 // line"); no `all` scope exists; the answer never depends on anything but the
-// four inputs. Nothing here decides whether a commit participates at all —
-// exclude_authors, skip patterns and the pattern match run first, and a commit
-// the fold would not read is never handed to Attribute.
+// four inputs. Nothing here decides what a commit's message may say —
+// exclude_authors, skip patterns and the pattern match run first (cli's
+// placeOf): a commit the fold reads arrives with its scope and sigil, and a
+// commit the fold does not read arrives with no scope and the none sigil, so
+// its files alone place it and nothing here can refuse it (DESIGN §4.1,
+// t-sr1c).
 package attribution
 
 import (

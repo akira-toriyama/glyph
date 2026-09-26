@@ -293,20 +293,68 @@ func (w walked) governing() string {
 	return w.MergePoint
 }
 
+// placement is how partitionLines and previewLines place one commit on the
+// declared lines.
+type placement int
+
+const (
+	// placedByFiles: the commit's own diff decides — with its scope and sigil
+	// when the fold reads the message, by files alone when it does not.
+	placedByFiles placement = iota
+	// placedEverywhere: a message no pattern claims joins every line it is
+	// unreleased on, so the fold refuses it there (§3); it is not attributed.
+	placedEverywhere
+	// placedNowhere: a skip-pattern commit is in no fold and no section, so
+	// no line holds it and its files are never asked for.
+	placedNowhere
+)
+
+// placeOf reads what attribution may read of a commit's message: its scope
+// and sigil when the fold reads the message, nothing when it does not. An
+// exclude_authors commit is placed by its files alone — the message is
+// exactly what glyph declared it would not judge, so neither its scope nor
+// its sigil may carry it or refuse it (attribution.Attribute with no scope
+// and the none sigil: files decide, and under no package it is placed
+// nowhere, the shape rule 3 gives a shared-only `=`).
+func placeOf(cfg *config.Config, raw gitsource.RawCommit) (placement, string, config.Sigil) {
+	if slices.Contains(cfg.ExcludeAuthors, raw.Author) {
+		return placedByFiles, "", config.SigilNone
+	}
+	m, err := cfg.Match(raw.Message)
+	if err != nil || !m.Matched {
+		return placedEverywhere, "", config.SigilNone
+	}
+	if m.Skip {
+		return placedNowhere, "", config.SigilNone
+	}
+	return placedByFiles, m.Groups[config.ScopeGroup], m.Sigil
+}
+
 // partitionLines splits the walk's commits over the lines. With no packages
 // declared it is the identity: one line holding every commit, nothing asked
 // of git or the API.
 //
 // With packages, a commit participates in line p when it is UNRELEASED on p
-// (its governing commit is in p's range) AND its diff MOVES p (attribution).
-// The first question is git's, answered per line from the line's own range;
-// the second is asked only of a commit the fold would read — not an
-// exclude_authors author, not a skip-pattern match, not a message no pattern
-// claims (those three join every line they are unreleased on: the fold and
-// the notes already decide what to do with each, and an unmatched commit
-// must still refuse the range it is in). Files come from local git for a
-// landed identity and from the API for a squash-merged pull's inner commit,
-// the one shape no branch holds; a merge commit's diff is never asked for.
+// (its governing commit is in p's range) AND its own diff PLACES it on p
+// (attribution). The first question is git's, answered per line from the
+// line's own range; the second is asked of every commit's files (placeOf):
+// with its scope and sigil when the fold reads the message, by files alone
+// when it does not — an exclude_authors commit moves no version and appears
+// in the notes of the lines its files touch, on no line when they touch
+// none, because its message is exactly what glyph declared it would not
+// judge. A skip-pattern commit appears nowhere, so it is placed nowhere and
+// its files are never asked for; a message no pattern claims joins every
+// line it is unreleased on, so the fold refuses it there (§3). Files come
+// from local git for a landed identity and from the API for a squash-merged
+// pull's inner commit, the one shape no branch holds; a merge commit's diff
+// is never asked for.
+//
+// The first cut placed every commit the fold would not read on every line:
+// a dependabot bump touching only haiku/poem.go rendered under all five line
+// headings of the live-fire harness, lines with no commit of their own grew
+// a section for it, and release wrote it into every draft — while preview
+// dropped the same commit from every line (t-sr1c, measured 2026-09-11;
+// mutation row packages-excluded-author-placed-on-every-line).
 //
 // A commit inside the union walk that is released on every line — possible
 // on a history where the bases' common ancestor sits before both — is
@@ -358,26 +406,27 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, 
 			continue
 		}
 		all = append(all, c)
-		carriers := reach
-		if !slices.Contains(cfg.ExcludeAuthors, c.Raw.Author) {
-			if m, merr := cfg.Match(c.Raw.Message); merr == nil && m.Matched && !m.Skip {
-				files, capped, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
-				if ferr != nil {
-					return nil, nil, ferr
-				}
-				moved, aerr := attribution.Attribute(files, m.Groups[config.ScopeGroup], m.Sigil, cfg.Packages)
-				switch {
-				case aerr != nil && capped:
-					warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but the listing was truncated, so that is not a verdict: the commit is carried nowhere, and the walk is incomplete", c.Raw.SHA, aerr)
-					carriers = nil
-				case aerr != nil:
-					return nil, nil, attributionWedge(aerr, c, owner, repo, reachedLines(lines, reach))
-				default:
-					carriers = carriers[:0:0]
-					for _, i := range reach {
-						if slices.ContainsFunc(moved, func(p config.Package) bool { return p.Path == lines[i].Package.Path }) {
-							carriers = append(carriers, i)
-						}
+		var carriers []int
+		switch place, scope, sigil := placeOf(cfg, c.Raw); place {
+		case placedEverywhere:
+			carriers = reach
+		case placedNowhere:
+		case placedByFiles:
+			files, capped, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
+			if ferr != nil {
+				return nil, nil, ferr
+			}
+			moved, aerr := attribution.Attribute(files, scope, sigil, cfg.Packages)
+			switch {
+			case aerr != nil && capped:
+				warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but the listing was truncated, so that is not a verdict: the commit is carried nowhere, and the walk is incomplete", c.Raw.SHA, aerr)
+				carriers = nil
+			case aerr != nil:
+				return nil, nil, attributionWedge(aerr, c, owner, repo, reachedLines(lines, reach))
+			default:
+				for _, i := range reach {
+					if slices.ContainsFunc(moved, func(p config.Package) bool { return p.Path == lines[i].Package.Path }) {
+						carriers = append(carriers, i)
 					}
 				}
 			}

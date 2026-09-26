@@ -48,7 +48,7 @@ func newNotesCmd() *cobra.Command {
 			"commit no pattern matches renders its raw first line as $subject).\n" +
 			"skip-pattern commits appear nowhere; exclude_authors appear wherever\n" +
 			"note.sections says they do — whether a commit is in the notes is the\n" +
-			"sections' decision alone.\n" +
+			"sections' decision alone (under [[packages]], on the lines its files touch).\n" +
 			"There are three input sources, exactly one of which is required.\n" +
 			"--range reads a local git revision range; --pr reads a pull request's\n" +
 			"INDIVIDUAL commits over the API, so a squash-merge cannot collapse them\n" +

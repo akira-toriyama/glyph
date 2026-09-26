@@ -28,7 +28,16 @@ const apiUnknownSHA = "\x00 422 unknown sha"
 // about (bot commits must stay off the API).
 func walkServer(t *testing.T, routes map[string]string) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(walkHandler(t, routes))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// walkHandler is walkServer's body, split out so recordingWalkServer can
+// count what it answers.
+func walkHandler(t *testing.T, routes map[string]string) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
 		body, ok := routes[r.URL.Path]
 		if !ok {
 			t.Errorf("unexpected request %q", r.URL.Path)
@@ -41,9 +50,22 @@ func walkServer(t *testing.T, routes map[string]string) *httptest.Server {
 			return
 		}
 		fmt.Fprint(w, body)
+	}
+}
+
+// recordingWalkServer is walkServer plus the request paths it answered, in
+// order — the positive control a "these files are asked for" claim needs,
+// since a route nobody requests is silent.
+func recordingWalkServer(t *testing.T, routes map[string]string) (*httptest.Server, *[]string) {
+	t.Helper()
+	var seen []string
+	h := walkHandler(t, routes)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.URL.Path)
+		h(w, r)
 	}))
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, &seen
 }
 
 // commitPullsPath / pullCommitsPath name the two endpoints the walk touches,

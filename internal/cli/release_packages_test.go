@@ -314,6 +314,36 @@ func TestReleasePackagesACandidateTagConvergesOneLineAlone(t *testing.T) {
 	}
 }
 
+// TestReleasePackagesExcludedAuthorBumpStaysOnItsLine: the draft is where the
+// leak was user-visible — the first cut wrote a haiku-only dependabot bump
+// into every line's rolling draft (measured 2026-09-11 on
+// glyph-monorepo-test: curry/v0.1.1's body carried it under Fixes and
+// Dependencies). Placed by its files, the bump is in haiku's draft alone.
+func TestReleasePackagesExcludedAuthorBumpStaysOnItsLine(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	_, routes := squashAcrossLines(t, dir, 7)
+	touch(t, dir, "dependabot[bot]", ":arrow_up:(haiku)~ bump a haiku-only dependency", "haiku/poem.go")
+	var writes []apiWrite
+	usePR(t, releaseServer(t, routes, `[]`, &writes))
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "release")
+	if code != 0 {
+		t.Fatalf("release exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if len(writes) != 2 || writes[0].body["tag_name"] != "haiku/v0.2.0" || writes[1].body["tag_name"] != "curry/v0.1.1" {
+		t.Fatalf("writes = %+v, want haiku/v0.2.0 then curry/v0.1.1", writes)
+	}
+	h, _ := writes[0].body["body"].(string)
+	c, _ := writes[1].body["body"].(string)
+	if !strings.Contains(h, "bump a haiku-only dependency") {
+		t.Fatalf("haiku's draft must carry the bump its files placed on haiku:\n%s", h)
+	}
+	if strings.Contains(c, "bump a haiku-only dependency") {
+		t.Fatalf("curry's draft must not carry a haiku-only bump:\n%s", c)
+	}
+}
+
 // TestReleasePackagesDryRunGolden pins the composed dry-run output over two
 // lines — each draft's tag line, blank line, marker, sections and the footer
 // appended to EVERY draft — as bytes, the way the single line's golden does.
