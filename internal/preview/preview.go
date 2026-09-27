@@ -170,6 +170,15 @@ func Headline(in Input) string {
 		return fmt.Sprintf("⏸️ This PR does not move the version — the next release stays **%s**.", in.Pending.Next)
 	case pr > qr && qr == 0:
 		return fmt.Sprintf("%s Merging this PR raises **%s** — the next release becomes **%s → %s**.", icon(pl), pl, in.Current, in.PR.Next)
+	case pr > qr && in.PR.Next != "" && in.PR.Next == in.Pending.Next:
+		// The level rises but the version does not: on 0.x a major steps the
+		// minor (DESIGN §3), so a `!` pull over a pending `^` lands exactly
+		// where the pending side already does. The escalates arm below drew
+		// that as "v0.4.0 → v0.4.0" (t-d0d9, measured on glyph-monorepo-test
+		// #31). "raises major" stays — classification is version-blind and
+		// the breakingness must remain visible — and the sentence says the
+		// version holds, and why.
+		return fmt.Sprintf("%s Merging this PR raises **%s** — the next release stays **%s** (on 0.x a %s steps the minor, and a **%s** bump is already pending).", icon(pl), pl, in.Pending.Next, pl, ql)
 	case pr > qr:
 		return fmt.Sprintf("%s Merging this PR raises **%s** — the next release escalates **%s → %s**.", icon(pl), pl, in.Pending.Next, in.PR.Next)
 	default:

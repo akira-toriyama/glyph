@@ -45,6 +45,20 @@ func TestHeadline(t *testing.T) {
 			want: "💥 Merging this PR raises **major** — the next release escalates **v1.3.0 → v2.0.0**.",
 		},
 		{
+			name: "0.x — PR major over pending minor: the level rises, the version holds",
+			in: Input{Current: "v0.3.0",
+				PR:      Verdict{Level: bump.LevelMajor, Next: "v0.4.0"},
+				Pending: Verdict{Level: bump.LevelMinor, Next: "v0.4.0"}},
+			want: "💥 Merging this PR raises **major** — the next release stays **v0.4.0** (on 0.x a major steps the minor, and a **minor** bump is already pending).",
+		},
+		{
+			name: "0.x — the same on a package line, spelled as tags",
+			in: Input{Current: "camp/v0.3.0",
+				PR:      Verdict{Level: bump.LevelMajor, Next: "camp/v0.4.0"},
+				Pending: Verdict{Level: bump.LevelMinor, Next: "camp/v0.4.0"}},
+			want: "💥 Merging this PR raises **major** — the next release stays **camp/v0.4.0** (on 0.x a major steps the minor, and a **minor** bump is already pending).",
+		},
+		{
 			name: "PR is lower than what is pending — version unmoved",
 			in: Input{Current: "v1.2.3",
 				PR:      Verdict{Level: bump.LevelPatch, Next: "v1.2.4"},
@@ -88,21 +102,72 @@ func TestHeadlineNeverNamesADraft(t *testing.T) {
 	for _, untagged := range []bool{false, true} {
 		for _, pl := range levels {
 			for _, ql := range levels {
-				in := Input{
-					Current:  "v1.2.3",
-					Untagged: untagged,
-					PR:       Verdict{Level: pl, Next: "v9.9.9"},
-					Pending:  Verdict{Level: ql, Next: "v8.8.8"},
-				}
-				got := strings.ToLower(Headline(in))
-				if strings.Contains(got, "draft") {
-					t.Errorf("headline names a draft (untagged=%v pr=%s pending=%s): %s", untagged, pl, ql, got)
-				}
-				if got == "" {
-					t.Errorf("empty headline for untagged=%v pr=%s pending=%s", untagged, pl, ql)
+				// same drives the two Nexts equal, the 0.x collapse's shape.
+				for _, same := range []bool{false, true} {
+					pending := "v8.8.8"
+					if same {
+						pending = "v9.9.9"
+					}
+					in := Input{
+						Current:  "v1.2.3",
+						Untagged: untagged,
+						PR:       Verdict{Level: pl, Next: "v9.9.9"},
+						Pending:  Verdict{Level: ql, Next: pending},
+					}
+					got := strings.ToLower(Headline(in))
+					if strings.Contains(got, "draft") {
+						t.Errorf("headline names a draft (untagged=%v pr=%s pending=%s same=%v): %s", untagged, pl, ql, same, got)
+					}
+					if got == "" {
+						t.Errorf("empty headline for untagged=%v pr=%s pending=%s same=%v", untagged, pl, ql, same)
+					}
 				}
 			}
 		}
+	}
+}
+
+// TestHeadlineNeverEscalatesToTheSameVersion pins the sentence against the
+// arithmetic it describes: every (current, PR level, pending level) the
+// lattice allows is stepped with bump.Version.Next — the one place the 0.x
+// rule lives — and no headline may draw an arrow from a version to itself.
+// On 0.x a major over a pending minor lands where the minor already does,
+// and the escalates arm rendered that as "v0.4.0 → v0.4.0" (t-d0d9,
+// measured 2026-09-26 on glyph-monorepo-test #31). The other rows are the
+// positive control: there every higher level steps to a different version
+// and the escalates arm must still fire, as must the 0.x pairs over a patch.
+func TestHeadlineNeverEscalatesToTheSameVersion(t *testing.T) {
+	levels := []bump.Level{bump.LevelPatch, bump.LevelMinor, bump.LevelMajor}
+	escalated := 0
+	for _, current := range []string{"v0.3.0", "v1.2.3"} {
+		cur, err := bump.ParseVersion(current)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, pl := range levels {
+			for _, ql := range levels {
+				prNext := cur.Next(bump.Decision{Level: pl}).String()
+				pendingNext := cur.Next(bump.Decision{Level: ql}).String()
+				got := Headline(Input{Current: current,
+					PR:      Verdict{Level: pl, Next: prNext},
+					Pending: Verdict{Level: ql, Next: pendingNext}})
+				if strings.Contains(got, "**"+prNext+" → "+prNext+"**") {
+					t.Errorf("%s pr=%s pending=%s: the headline escalates a version to itself: %s", current, pl, ql, got)
+				}
+				if prNext == pendingNext && rank(pl) > rank(ql) && !strings.Contains(got, "stays **"+pendingNext+"**") {
+					t.Errorf("%s pr=%s pending=%s: same next version, but the headline does not say it stays: %s", current, pl, ql, got)
+				}
+				if strings.Contains(got, "escalates") {
+					escalated++
+				}
+			}
+		}
+	}
+	// The pairs a higher level really moves: all three on v1.2.3, and on
+	// v0.3.0 the two over a pending patch (v0.3.1 → v0.4.0) — only major
+	// over minor collapses there.
+	if escalated != 5 {
+		t.Errorf("escalates fired %d times over the lattice, want 5 (the pairs a higher level really moves)", escalated)
 	}
 }
 
