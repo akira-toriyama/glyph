@@ -1,0 +1,30 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+index a43a3a5..4a74e41 100644
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -213,11 +213,11 @@ jobs:
+           # DESIGN §2 promises a warning loud at every gate or it teaches the
+           # reader the loud gate is noise. jq never fails the step on a non-JSON
+           # envelope — the preserved glyph exit code is the verdict.
+-          cat /tmp/glyph-lint.err >&2
+           if [ "$status" -eq 0 ]; then
+             echo "all commits OK"
+             exit 0
+           fi
++          cat /tmp/glyph-lint.err >&2
+           # That stream is annotations AND the envelope, and jq over the two
+           # together is a parse error — a lint run that warned before it failed
+           # would emit no annotations at all. The envelope is written last, so
+@@ -272,11 +272,11 @@ jobs:
+           glyph lint --pr "$PR_NUMBER" 2>/tmp/glyph-title.err || status=$?
+           # Replayed before the green exit for the same reason as the range step:
+           # a warn-pattern title is green AND annotated, or the warning dies.
+-          cat /tmp/glyph-title.err >&2
+           if [ "$status" -eq 0 ]; then
+             echo "title OK"
+             exit 0
+           fi
++          cat /tmp/glyph-title.err >&2
+           sed -n '/^[{]/,$p' /tmp/glyph-title.err > /tmp/glyph-title.json
+           if jq -e .error /tmp/glyph-title.json >/dev/null 2>&1; then
+             # The retitle hint is for convention violations (exit 3) only — an

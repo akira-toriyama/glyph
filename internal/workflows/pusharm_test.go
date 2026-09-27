@@ -17,12 +17,13 @@ func lintBody(t *testing.T) string {
 // TestLintPushArmJudgesOnlyTheDefaultBranch pins the boundary of the push arm:
 // pushes to the default branch and nothing else.
 //
-// The boundary is a ratification, not a convenience. DESIGN §2 makes
-// :construction: a violation only for merge candidates — a topic branch is
-// exactly where WIP is legal — so a push arm that linted every branch would
-// reverse that decision repo-wide the day a caller widened its trigger. And the
-// wrong ref must REFUSE, not skip: a silent skip on an unexpected ref is the
-// very defect class the push arm was added to close (a gate that answers green
+// The boundary is a decision, not a convenience. A topic branch is judged by
+// the pull_request arm as the merge candidate it becomes; a push there is
+// mid-branch — rewritable, not yet proposed for main — so a push arm that
+// linted every branch would duplicate the PR gate or annotate commits that
+// may never land, the day a caller widened its trigger. And the wrong ref
+// must REFUSE, not skip: a silent skip on an unexpected ref is the very
+// defect class the push arm was added to close (a gate that answers green
 // without judging), so the guard's failure mode has to be loud.
 func TestLintPushArmJudgesOnlyTheDefaultBranch(t *testing.T) {
 	body := lintBody(t)
@@ -30,8 +31,8 @@ func TestLintPushArmJudgesOnlyTheDefaultBranch(t *testing.T) {
 	if !strings.Contains(body, guard) {
 		t.Errorf("lint.yml's push arm no longer compares the pushed ref against the default "+
 			"branch (%s missing) — a caller with a wide push trigger would now lint topic "+
-			"branches, where :construction: is legal by DESIGN §2, reversing that ratification "+
-			"fleet-wide at the pin", guard)
+			"branches mid-branch, duplicating the PR gate on rewritable commits, fleet-wide "+
+			"at the pin", guard)
 	}
 	if !strings.Contains(body, "lints pushes to the default branch only") {
 		t.Errorf("the wrong-ref refusal no longer says what it refuses and why — the message is " +

@@ -390,6 +390,7 @@ func TestLintRange(t *testing.T) {
 	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	testCommit(t, dir, "dependabot[bot]", "build(deps): bump a dep")    // bot: skipped
 	testCommit(t, dir, "akira-toriyama", "fixup! :bug:~ fix a crash")   // autosquash: skipped
+	testCommit(t, dir, "akira-toriyama", "amend! :bug:~ fix a crash")   // autosquash too (--fixup=amend:/reword:): skipped
 	testCommit(t, dir, "akira-toriyama", ":construction:= try an idea") // WIP with a sigil: the author's call, clean
 	testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")      // unmatched: violation
 	t.Chdir(dir)
@@ -409,6 +410,9 @@ func TestLintRange(t *testing.T) {
 	}
 	if strings.Contains(stderr, "build(deps)") {
 		t.Fatalf("bot commit leaked into the violations:\n%s", stderr)
+	}
+	if strings.Contains(stderr, "amend!") {
+		t.Fatalf("an amend! commit is an autosquash artifact like fixup!; the preset must skip it, not refuse the subject git wrote:\n%s", stderr)
 	}
 	if !strings.Contains(stderr, `"sha"`) {
 		t.Fatalf("range violations must carry commit SHAs:\n%s", stderr)

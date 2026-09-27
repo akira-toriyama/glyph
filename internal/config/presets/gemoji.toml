@@ -60,7 +60,8 @@ skip = true
 
 [[patterns]]
 # autosquash artifacts — rewritten away by rebase --autosquash before landing
-pattern = '^(fixup|squash)! '
+# (fixup!, squash!, and the amend! that --fixup=amend:/reword: writes)
+pattern = '^(fixup|squash|amend)! '
 skip = true
 
 [note]

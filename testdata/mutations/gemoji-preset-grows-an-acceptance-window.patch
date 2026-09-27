@@ -2,8 +2,8 @@ diff --git a/internal/config/presets/gemoji.toml b/internal/config/presets/gemoj
 index 0706f5b..8b50181 100644
 --- a/internal/config/presets/gemoji.toml
 +++ b/internal/config/presets/gemoji.toml
-@@ -63,6 +63,13 @@ skip = true
- pattern = '^(fixup|squash)! '
+@@ -64,6 +64,13 @@ skip = true
+ pattern = '^(fixup|squash|amend)! '
  skip = true
  
 +[[patterns]]

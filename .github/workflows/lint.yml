@@ -161,12 +161,15 @@ jobs:
               BASE="$PR_BASE"; HEAD="$PR_HEAD"
               ;;
             push)
-              # Default branch only. On a topic branch :construction: is legal
-              # (DESIGN §2 — WIP is a violation only for merge candidates), so
-              # linting every branch's pushes would reverse that ratification
-              # repo-wide. Refuse rather than skip: a push event arriving from
-              # another ref is a caller trigger bug, and a silent skip is this
-              # gate's own defect class — the reason the push arm exists.
+              # Default branch only. A topic branch is judged by the pull_request
+              # arm as the merge candidate it becomes; a push there is mid-branch
+              # by construction — rewritable, not yet proposed for main — so a
+              # verdict on it is either a duplicate of the PR gate or an
+              # annotation on commits that may never land (the pre-push hook
+              # draws the same line, internal/cli/prepush.go). Refuse rather than
+              # skip: a push event arriving from another ref is a caller trigger
+              # bug, and a silent skip is this gate's own defect class — the
+              # reason the push arm exists.
               if [ "$PUSHED_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
                 echo "::error::glyph-lint lints pushes to the default branch only ($PUSHED_REF is not refs/heads/$DEFAULT_BRANCH); narrow the caller's push trigger to branches: [$DEFAULT_BRANCH]."
                 exit 1
@@ -197,18 +200,24 @@ jobs:
           esac
           status=0
           glyph lint --range "$BASE..$HEAD" 2>/tmp/glyph-lint.err || status=$?
+          # The whole diagnostic stream goes to the log verbatim, on EVERY exit:
+          # glyph has already written one `::error::` per finding onto it — and,
+          # on a green run, one `::warning::` per warn-pattern commit plus the
+          # "nothing linted" warning — so the annotations a reviewer sees are the
+          # ones the binary computed rather than a shell reconstruction of them.
+          # Rebuilding them here is what went silently missing when a run warned
+          # before it failed (t-sws7); replaying the stream only on failure, as
+          # this step once did, silenced every green-run warning fleet-wide —
+          # measured on glyph-test#91 (a window-pattern commit, no annotation)
+          # and dotfiles#393 (a bot-only range, no "nothing linted") — when
+          # DESIGN §2 promises a warning loud at every gate or it teaches the
+          # reader the loud gate is noise. jq never fails the step on a non-JSON
+          # envelope — the preserved glyph exit code is the verdict.
+          cat /tmp/glyph-lint.err >&2
           if [ "$status" -eq 0 ]; then
             echo "all commits OK"
             exit 0
           fi
-          # The whole diagnostic stream goes to the log verbatim: glyph has
-          # already written one `::error::` per finding onto it, so the
-          # annotations a reviewer sees are the ones the binary computed rather
-          # than a shell reconstruction of them. Rebuilding them here is what
-          # went silently missing when a run warned before it failed (t-sws7).
-          # jq never fails the step on a non-JSON envelope — the preserved glyph
-          # exit code is the verdict.
-          cat /tmp/glyph-lint.err >&2
           # That stream is annotations AND the envelope, and jq over the two
           # together is a parse error — a lint run that warned before it failed
           # would emit no annotations at all. The envelope is written last, so
@@ -261,11 +270,13 @@ jobs:
           set -euo pipefail
           status=0
           glyph lint --pr "$PR_NUMBER" 2>/tmp/glyph-title.err || status=$?
+          # Replayed before the green exit for the same reason as the range step:
+          # a warn-pattern title is green AND annotated, or the warning dies.
+          cat /tmp/glyph-title.err >&2
           if [ "$status" -eq 0 ]; then
             echo "title OK"
             exit 0
           fi
-          cat /tmp/glyph-title.err >&2
           sed -n '/^[{]/,$p' /tmp/glyph-title.err > /tmp/glyph-title.json
           if jq -e .error /tmp/glyph-title.json >/dev/null 2>&1; then
             # The retitle hint is for convention violations (exit 3) only — an
