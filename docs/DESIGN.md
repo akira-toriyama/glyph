@@ -328,7 +328,15 @@ one split the 0.x rule rests on, and it is why the rule lives in
 - In 0.x, `!` and `^` therefore produce the same version. That collapse is
   accepted: `v0.y.z` has two moving digits and the lattice has three moving
   rungs, so some pair must collapse, and the pair chosen keeps `~` distinct —
-  a fix and a break are the two a reader most needs to tell apart.
+  a fix and a break are the two a reader most needs to tell apart. The
+  preview's headline says so rather than drawing it: a `!` pull over a
+  pending `^` reads *raises **major** — the next release stays **v0.4.0***,
+  never *escalates **v0.4.0 → v0.4.0*** (t-d0d9, measured 2026-09-26 on
+  glyph-monorepo-test #31; mutation row
+  `preview-headline-escalates-to-the-same-version.patch`). The level still
+  rises in the sentence because classification is version-blind — the
+  break stays visible — and only the arrow, which the arithmetic would have
+  drawn from a version to itself, is withheld.
 
 **Promote is not a fifth rung.** `bump.Decision` carries `{Level, Promote}`,
 and a `%` commit classifies as **major** like any other breaking change; the
