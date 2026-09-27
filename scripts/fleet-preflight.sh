@@ -278,7 +278,7 @@ probe() { # probe <bin> <dir> <errfile> <subcommand-and-args...>
 # line, or a placeholder when there is none. Sieved like probe_lint's envelope:
 # annotations can precede the JSON on the same stream.
 why() { # why <errfile>
-  _m="$(sed -n '/^[{]/,$p' "$1" 2>/dev/null | jq -r '.error.message // empty' 2>/dev/null | head -1 | cut -c1-200 || true)"
+  _m="$(sed -n '/^[{]/,$p' "$1" 2>/dev/null | jq -r '.error.message // empty | .[0:200]' 2>/dev/null | head -1 || true)"
   printf '%s' "${_m:-no error envelope}"
 }
 
@@ -413,10 +413,13 @@ lintword() { # lintword <code> <signature>
 API_URL="${GITHUB_API_URL:-https://api.github.com}"
 BUDGET_MAX_WAIT=5400
 WAITED_S=0
+BUDGET_GAVE_UP=''
 
+# The token reaches curl on stdin (`-H @-`), never in argv, where any local
+# user's `ps` would read it.
 rate_headers() { # → "<http-status> <remaining> <limit> <reset-epoch>", or nothing when unreadable
-  curl -sS -o /dev/null -D - --max-time 20 \
-    -H "Authorization: Bearer $GITHUB_TOKEN" -H 'Accept: application/vnd.github+json' \
+  printf 'Authorization: Bearer %s\n' "$GITHUB_TOKEN" |
+    curl -sS -o /dev/null -D - --max-time 20 -H @- -H 'Accept: application/vnd.github+json' \
     "$API_URL/repos/$OWNER/glyph" 2>/dev/null |
     tr -d '\r' | awk '
       NR == 1 { code = $2 }
@@ -426,8 +429,12 @@ rate_headers() { # → "<http-status> <remaining> <limit> <reset-epoch>", or not
       END { if (code != "" && rem != "" && lim != "" && rst != "") print code, rem, lim, rst }' || true
 }
 
-budget_for() { # budget_for <repo> <need> — returns once the budget covers <need>, or gives up after BUDGET_MAX_WAIT
+# BUDGET_MAX_WAIT caps one repo's wait, and the first give-up ends waiting for
+# the rest of the run: a budget that has not come back in 90 minutes will not
+# for the next repo either, and 35 capped waits would be a two-day run.
+budget_for() { # budget_for <repo> <need> — returns once the budget covers <need>, or gives up
   _repo="$1"; _need="$2"; _waited=0
+  [ -z "$BUDGET_GAVE_UP" ] || return 0
   while :; do
     _hdr="$(rate_headers)"
     # Unreadable headers say nothing about the budget. Probe anyway: a probe
@@ -436,8 +443,10 @@ budget_for() { # budget_for <repo> <need> — returns once the budget covers <ne
     read -r _code _rem _lim _rst <<HDR
 $_hdr
 HDR
-    # A repo costing more than a whole window cannot be covered by waiting.
-    [ "$_need" -le "$_lim" ] || _need="$_lim"
+    # A repo costing a whole window or more cannot be covered by waiting, and
+    # a fresh window never reads full — the read that measures it spends one.
+    # Nine tenths of it is what a reset can actually deliver.
+    [ "$_need" -lt "$_lim" ] || _need=$((_lim * 9 / 10))
     if [ "$_code" = 200 ] && [ "$_rem" -ge "$_need" ]; then return 0; fi
     # Only a spent budget is worth waiting out: a 200 short of the estimate, or
     # the 403/429 GitHub answers once nothing remains. Any other status (a bad
@@ -449,13 +458,18 @@ HDR
       *) return 0 ;;
     esac
     if [ "$_waited" -ge "$BUDGET_MAX_WAIT" ]; then
-      echo "  ! $_repo: API budget still $_rem (HTTP $_code) after $((_waited / 60)) min waiting for ~$_need — probing anyway"
+      echo "  ! $_repo: API budget still $_rem (HTTP $_code) after $((_waited / 60)) min waiting for ~$_need — probing anyway, and no longer waiting for later repos"
+      BUDGET_GAVE_UP=1
       return 0
     fi
     _nap=$(( _rst - $(date +%s) + 30 ))
     [ "$_nap" -ge 60 ] || _nap=60
+    [ "$_nap" -le $((BUDGET_MAX_WAIT - _waited)) ] || _nap=$((BUDGET_MAX_WAIT - _waited))
     [ "$_waited" -gt 0 ] || echo "  … $_repo: API budget $_rem of $_lim (HTTP $_code), ~$_need needed — waiting for the reset"
-    sleep "$_nap"
+    # In the background and waited on, so a SIGTERM reaches the trap now rather
+    # than after a nap that can run an hour.
+    sleep "$_nap" &
+    wait $!
     _waited=$((_waited + _nap))
     WAITED_S=$((WAITED_S + _nap))
   done
@@ -603,13 +617,15 @@ while IFS= read -r name; do
   # The four API walks below, estimated at two requests per walked commit (its
   # pull, that pull's commits) plus the releases listing the body probe pages
   # through. An estimate, not a meter — anything it misses still names itself on
-  # a skip line. An untagged history past the walk cap (sinceTagWalkCap in
-  # internal/cli) is refused before any request, so it costs nothing.
+  # a skip line. An untagged history is walked whole up to the walk cap
+  # (sinceTagWalkCap in internal/cli, 200), which glyph counts without its
+  # exclude_authors commits, so a longer history is estimated at the cap: an
+  # upper bound, never the zero a refusal would cost.
   if [ -n "$tag" ]; then
     walked="$(git -C "$dir" rev-list --count "$tag..$wh" 2>/dev/null || echo 0)"
   else
     walked="$(git -C "$dir" rev-list --count "$wh" 2>/dev/null || echo 0)"
-    [ "$walked" -le 200 ] || walked=0
+    [ "$walked" -le 200 ] || walked=200
   fi
   budget_for "$name" $((8 * walked + 10))
 
