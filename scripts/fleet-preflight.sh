@@ -493,6 +493,7 @@ FETCH_FAILED=0
 BEHIND_PIN=0
 PIN_UNVERIFIED=0
 LOST_ANSWER=0
+IN_PLACE=0
 : > "$WORK/rows"
 : > "$WORK/body_rows"
 : > "$WORK/skips"
@@ -611,8 +612,29 @@ while IFS= read -r name; do
   CONSUMERS=$((CONSUMERS + 1))
   [ -n "$local_note" ] && LOCAL_HEAD=$((LOCAL_HEAD + 1))
 
-  o_lint="$(probe_lint "$BASELINE"  "$dir" "$rng" "$WORK/lint.old.err")"
-  n_lint="$(probe_lint "$CANDIDATE" "$dir" "$rng" "$WORK/lint.new.err")"
+  # Every probe runs in a throwaway clone detached at $wh, never in $dir. bump
+  # and body take no ref — `--since-tag` walks <tag>..HEAD of the checkout —
+  # and all three read glyph.toml from the working tree, so run in $dir they
+  # answer about whatever branch the clone was left on, while the row says
+  # $wh. Measured 2026-09-27 on pare, parked on a topic branch 1 ahead and 8
+  # behind origin/HEAD: the bump walk read 63 commits there and 81 at
+  # origin/HEAD. A --shared clone borrows the objects, carries every tag, and
+  # writes nothing into $dir. Refs cross into it as shas: its origin/* names
+  # $dir's local branches, not the remote's.
+  pdir="$dir"; prng="$rng"
+  wsha="$(git -C "$dir" rev-parse --verify --quiet "$wh^{commit}" 2>/dev/null || true)"
+  rm -rf "$WORK/at"
+  if [ -n "$wsha" ] &&
+     git clone -q --shared --no-checkout "$dir" "$WORK/at" >/dev/null 2>&1 &&
+     git -c core.hooksPath=/dev/null -C "$WORK/at" checkout -q --detach "$wsha" >/dev/null 2>&1; then
+    pdir="$WORK/at"; prng="${rng%..*}..$wsha"
+  else
+    IN_PLACE=$((IN_PLACE + 1))
+    local_note="${local_note:+$local_note,}in-place"
+  fi
+
+  o_lint="$(probe_lint "$BASELINE"  "$pdir" "$prng" "$WORK/lint.old.err")"
+  n_lint="$(probe_lint "$CANDIDATE" "$pdir" "$prng" "$WORK/lint.new.err")"
 
   # The four API walks below, estimated at two requests per walked commit (its
   # pull, that pull's commits) plus the releases listing the body probe pages
@@ -632,13 +654,14 @@ while IFS= read -r name; do
   # The release job's own invocation, aimed at the repo it belongs to. It reads
   # the API, which is why a token is required up front rather than discovered
   # here as thirty-five identical exit 4s.
-  o_bump="$(probe "$BASELINE"  "$dir" "$WORK/bump.old.err" bump --since-tag --repo "$OWNER/$name")"
-  n_bump="$(probe "$CANDIDATE" "$dir" "$WORK/bump.new.err" bump --since-tag --repo "$OWNER/$name")"
+  o_bump="$(probe "$BASELINE"  "$pdir" "$WORK/bump.old.err" bump --since-tag --repo "$OWNER/$name")"
+  n_bump="$(probe "$CANDIDATE" "$pdir" "$WORK/bump.new.err" bump --since-tag --repo "$OWNER/$name")"
   # The rendering surface, via the release job's own command. Same API cost
   # class as the bump probe (it runs the same walk, plus the releases listing
   # the dry run reads too).
-  ob_body="$(probe_body "$BASELINE"  "$dir" "$OWNER/$name" "$WORK/body.old" "$WORK/body.old.err")"
-  nb_body="$(probe_body "$CANDIDATE" "$dir" "$OWNER/$name" "$WORK/body.new" "$WORK/body.new.err")"
+  ob_body="$(probe_body "$BASELINE"  "$pdir" "$OWNER/$name" "$WORK/body.old" "$WORK/body.old.err")"
+  nb_body="$(probe_body "$CANDIDATE" "$pdir" "$OWNER/$name" "$WORK/body.new" "$WORK/body.new.err")"
+  rm -rf "$WORK/at"
 
   ol_code="${o_lint%%	*}"; nl_code="${n_lint%%	*}"
   ol_sig="${o_lint#*	}";  nl_sig="${n_lint#*	}"
@@ -784,6 +807,7 @@ elif [ "$FETCH_FAILED" -gt 0 ]; then
 fi
 [ "$UNPROBED" -gt 0 ] && NOTE="$NOTE — $UNPROBED of $FLEET_TOTAL never probed"
 [ "$LOCAL_HEAD" -gt 0 ] && NOTE="$NOTE — $LOCAL_HEAD repo(s) walked at local HEAD (no remote-tracking ref)"
+[ "$IN_PLACE" -gt 0 ] && NOTE="$NOTE — $IN_PLACE repo(s) probed in their own checkout (no clone at the walked ref), so bump/body and the config read may describe another branch"
 [ "$BEHIND_PIN" -gt 0 ] && NOTE="$NOTE — $BEHIND_PIN repo(s) pinned BELOW the baseline, so their real change exceeds their row"
 [ "$PIN_UNVERIFIED" -gt 0 ] && NOTE="$NOTE — $PIN_UNVERIFIED repo(s) showed a non-baseline pin at last fetch (unverified; --fetch to assert)"
 [ "$LOST_ANSWER" -gt 0 ] && NOTE="$NOTE — $LOST_ANSWER gate(s) LOST their answer under the candidate"
