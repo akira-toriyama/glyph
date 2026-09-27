@@ -68,6 +68,13 @@ homebrew_casks:
     directory: Casks
     homepage: https://github.com/akira-toriyama/glyph
     description: "sigil-driven commit-lint, semver, and release notes for squash-merge repos"
+    # The tap lints its own history with glyph, and GoReleaser's default
+    # subject ("Brew cask update for glyph version vX.Y.Z") matches no gemoji
+    # pattern — all 31 glyph cask commits in the tap (v0.1.0 through v4.1.0)
+    # exit 3 under the tap's glyph.toml (measured 2026-09-27). `=`: a cask bump
+    # moves no version of the tap. The same subject the hub's update-tap.yml
+    # writes for every other formula in that tap.
+    commit_msg_template: ":package:(tap)= bump {{ .ProjectName }} to {{ .Tag }}"
     # The binary is unsigned; strip the quarantine xattr on macOS so Gatekeeper
     # allows launch (same pattern as the family's other casks).
     hooks:
