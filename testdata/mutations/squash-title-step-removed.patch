@@ -1,12 +1,11 @@
 diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
-index 2f9a96a..f409a42 100644
+index a43a3a5..659b044 100644
 --- a/.github/workflows/lint.yml
 +++ b/.github/workflows/lint.yml
-@@ -250,30 +250,4 @@ jobs:
-       # writes one ::error:: per finding itself, the step replays the stream
+@@ -261,31 +261,3 @@ jobs:
        # verbatim and frames only the summary. Bot pulls are excluded inside the
        # binary (a squash attributes the landed commit to the pull's author), so
--      # dependabot's daily titles cannot red the gate.
+       # dependabot's daily titles cannot red the gate.
 -      - name: Lint the squash title
 -        if: github.event_name == 'pull_request'
 -        env:
@@ -16,11 +15,13 @@ index 2f9a96a..f409a42 100644
 -          set -euo pipefail
 -          status=0
 -          glyph lint --pr "$PR_NUMBER" 2>/tmp/glyph-title.err || status=$?
+-          # Replayed before the green exit for the same reason as the range step:
+-          # a warn-pattern title is green AND annotated, or the warning dies.
+-          cat /tmp/glyph-title.err >&2
 -          if [ "$status" -eq 0 ]; then
 -            echo "title OK"
 -            exit 0
 -          fi
--          cat /tmp/glyph-title.err >&2
 -          sed -n '/^[{]/,$p' /tmp/glyph-title.err > /tmp/glyph-title.json
 -          if jq -e .error /tmp/glyph-title.json >/dev/null 2>&1; then
 -            # The retitle hint is for convention violations (exit 3) only — an
@@ -33,5 +34,3 @@ index 2f9a96a..f409a42 100644
 -            fi
 -          fi
 -          exit "$status"
-+      # dependabot's daily titles cannot red the gate.
-\ No newline at end of file
