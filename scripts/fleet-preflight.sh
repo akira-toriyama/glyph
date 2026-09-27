@@ -111,6 +111,11 @@
 # NOT a check.sh gate and never should be: check.sh mirrors CI, this answers a
 # question no CI job asks, and wiring a network call into the local pre-push
 # loop is how the local pre-push loop stops being run.
+#
+# It also spends the authed GitHub API budget: four release-path walks per repo,
+# more than one hourly window holds across the fleet. When a repo would overrun
+# what is left, the run waits for the reset (see "API budget" below) rather than
+# probing into a 403.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -257,11 +262,33 @@ fi
 # the run did not produce one. Keeping the raw integer in the record is what lets
 # the classifier below tell a finding from a broken probe instead of guessing
 # from a non-zero.
-probe() { # probe <bin> <dir> <subcommand-and-args...>
-  _bin="$1"; _dir="$2"; shift 2
+#
+# Every probe keeps its stderr in <errfile>, never /dev/null: a probe that did
+# not answer is reported with glyph's own sentence for why (see why() below).
+# Discarding it made a spent API budget and a real GitHub refusal print the same
+# "unanswered (exit 4)" row (t-gjxq).
+probe() { # probe <bin> <dir> <errfile> <subcommand-and-args...>
+  _bin="$1"; _dir="$2"; _errf="$3"; shift 3
   _st=0
-  _out="$( cd "$_dir" && "$_bin" "$@" 2>/dev/null )" || _st=$?
+  _out="$( cd "$_dir" && "$_bin" "$@" 2>"$_errf" )" || _st=$?
   printf '%s\t%s\n' "$_st" "$(printf '%s' "$_out" | head -1)"
+}
+
+# why prints the error envelope's message from a probe's stderr file, cut to one
+# line, or a placeholder when there is none. Sieved like probe_lint's envelope:
+# annotations can precede the JSON on the same stream.
+why() { # why <errfile>
+  _m="$(sed -n '/^[{]/,$p' "$1" 2>/dev/null | jq -r '.error.message // empty' 2>/dev/null | head -1 | cut -c1-200 || true)"
+  printf '%s' "${_m:-no error envelope}"
+}
+
+# whys renders both sides' reasons for a skip or lost-answer line, once when the
+# two binaries said the same thing (the ordinary case: both ran out of budget).
+whys() { # whys <baseline-errfile> <candidate-errfile>
+  _o="$(why "$1")"; _n="$(why "$2")"
+  if [ "$_o" = "$_n" ]; then printf '%s' "$_o"
+  else printf 'baseline: %s | candidate: %s' "$_o" "$_n"
+  fi
 }
 
 # probe_lint exists because the exit code is NOT the whole verdict, and treating
@@ -271,18 +298,22 @@ probe() { # probe <bin> <dir> <subcommand-and-args...>
 # violations under the v1.0.0 candidate while being counted as agreeing. The
 # headline "10 would change" was wrong by eight.
 #
-# So the comparable thing is the FINDING SET: every (sha, rule) pair the run
-# reported. The envelope is sieved with `sed -n '/^[{]/,$p'` rather than fed to
-# jq whole, because a lint run that warns before it fails writes annotations
-# ahead of the JSON and jq over the two together is a parse error — the same
-# incident internal/workflows pins for lint.yml (t-sws7).
-probe_lint() { # probe_lint <bin> <dir> <range>
+# So the comparable thing is the FINDING SET: the commits the run reported. A v2
+# finding is one per commit and carries no rule id — its `detail` is the config's
+# own prose — so the set is keyed by sha alone. Keying it by the detail would
+# report every rewording of a refusal sentence as a moved verdict. The envelope
+# is sieved with `sed -n '/^[{]/,$p'` rather than fed to jq whole, because a lint
+# run that warns before it fails writes annotations ahead of the JSON and jq over
+# the two together is a parse error — the same incident internal/workflows pins
+# for lint.yml (t-sws7).
+probe_lint() { # probe_lint <bin> <dir> <range> <errfile>
   _st=0
   _err="$( cd "$2" && "$1" lint --range "$3" 2>&1 >/dev/null )" || _st=$?
+  printf '%s\n' "$_err" > "$4"
   _sig=''
   if [ "$_st" -eq 3 ]; then
     _sig="$(printf '%s\n' "$_err" | sed -n '/^[{]/,$p' |
-      jq -r '[(.error.details // [])[] | "\(.sha[0:7]):\(.rule)"] | sort | join(" ")' 2>/dev/null || true)"
+      jq -r '[(.error.details // [])[] | (.sha // "no-sha")[0:7]] | sort | join(" ")' 2>/dev/null || true)"
     # A code-3 run with no readable detail list is not "no violations"; it is a
     # signature this script cannot compare. Say so rather than emit an empty
     # string that would compare equal to a clean run's.
@@ -300,9 +331,9 @@ probe_lint() { # probe_lint <bin> <dir> <range>
 # posture as the other probes); no --footer-file, because the footer is the
 # caller's text appended verbatim and identical under both binaries — the
 # question here is what GLYPH renders.
-probe_body() { # probe_body <bin> <dir> <owner/name> <bodyfile>
+probe_body() { # probe_body <bin> <dir> <owner/name> <bodyfile> <errfile>
   _st=0
-  _out="$( cd "$2" && "$1" release --dry-run --json --repo "$3" 2>/dev/null )" || _st=$?
+  _out="$( cd "$2" && "$1" release --dry-run --json --repo "$3" 2>"$5" )" || _st=$?
   if [ "$_st" -eq 0 ]; then
     printf '%s' "$_out" | jq -r '.body // ""' > "$4" 2>/dev/null || : > "$4"
   else
@@ -363,6 +394,73 @@ lintword() { # lintword <code> <signature>
 # or em-dash in a cell silently narrows that row against the header — measured
 # at 2 columns per row before this.
 
+# ─── API budget ──────────────────────────────────────────────────────────────
+# bump and body each run the release-path walk, which asks GitHub for every
+# walked commit's pull and that pull's commits, once per binary: four walks per
+# repo. Measured 2026-09-15: that spends the authed 5000/h core budget by about
+# the 14th repo, and every bump/body probe after it exits 4 on both sides. A
+# budget that runs dry BETWEEN the baseline's probe and the candidate's is worse
+# than a skip: it files a lost answer, the gravest row this report has, over
+# nothing but the clock. So before a repo's API probes, the budget is read and,
+# when it cannot cover the repo's estimated cost, the run waits for the reset.
+#
+# The budget comes from a REAL request's headers, and the wait ends on a real
+# request answering 200 — never on /rate_limit and never on the clock. Both
+# were measured wrong: /rate_limit reported 5000 remaining while real requests
+# answered 403 with X-RateLimit-Remaining: 0 (2026-09-15), and for about seven
+# minutes after the hourly reset real requests kept answering 403 under the OLD
+# reset time (2026-09-27, the v4.1.0 preflight).
+API_URL="${GITHUB_API_URL:-https://api.github.com}"
+BUDGET_MAX_WAIT=5400
+WAITED_S=0
+
+rate_headers() { # → "<http-status> <remaining> <limit> <reset-epoch>", or nothing when unreadable
+  curl -sS -o /dev/null -D - --max-time 20 \
+    -H "Authorization: Bearer $GITHUB_TOKEN" -H 'Accept: application/vnd.github+json' \
+    "$API_URL/repos/$OWNER/glyph" 2>/dev/null |
+    tr -d '\r' | awk '
+      NR == 1 { code = $2 }
+      tolower($1) == "x-ratelimit-remaining:" { rem = $2 }
+      tolower($1) == "x-ratelimit-limit:"     { lim = $2 }
+      tolower($1) == "x-ratelimit-reset:"     { rst = $2 }
+      END { if (code != "" && rem != "" && lim != "" && rst != "") print code, rem, lim, rst }' || true
+}
+
+budget_for() { # budget_for <repo> <need> — returns once the budget covers <need>, or gives up after BUDGET_MAX_WAIT
+  _repo="$1"; _need="$2"; _waited=0
+  while :; do
+    _hdr="$(rate_headers)"
+    # Unreadable headers say nothing about the budget. Probe anyway: a probe
+    # that then hits the limit names it on its skip line.
+    [ -n "$_hdr" ] || return 0
+    read -r _code _rem _lim _rst <<HDR
+$_hdr
+HDR
+    # A repo costing more than a whole window cannot be covered by waiting.
+    [ "$_need" -le "$_lim" ] || _need="$_lim"
+    if [ "$_code" = 200 ] && [ "$_rem" -ge "$_need" ]; then return 0; fi
+    # Only a spent budget is worth waiting out: a 200 short of the estimate, or
+    # the 403/429 GitHub answers once nothing remains. Any other status (a bad
+    # token's 401, an outage's 5xx) no reset will fix — probe, and let the probe
+    # name it.
+    case "$_code" in
+      200) ;;
+      403|429) [ "$_rem" -eq 0 ] || return 0 ;;
+      *) return 0 ;;
+    esac
+    if [ "$_waited" -ge "$BUDGET_MAX_WAIT" ]; then
+      echo "  ! $_repo: API budget still $_rem (HTTP $_code) after $((_waited / 60)) min waiting for ~$_need — probing anyway"
+      return 0
+    fi
+    _nap=$(( _rst - $(date +%s) + 30 ))
+    [ "$_nap" -ge 60 ] || _nap=60
+    [ "$_waited" -gt 0 ] || echo "  … $_repo: API budget $_rem of $_lim (HTTP $_code), ~$_need needed — waiting for the reset"
+    sleep "$_nap"
+    _waited=$((_waited + _nap))
+    WAITED_S=$((WAITED_S + _nap))
+  done
+}
+
 
 # ─── Walk ────────────────────────────────────────────────────────────────────
 # Counters are updated in THIS shell, never inside a pipeline: `cmd | while read`
@@ -384,6 +482,7 @@ LOST_ANSWER=0
 : > "$WORK/rows"
 : > "$WORK/body_rows"
 : > "$WORK/skips"
+: > "$WORK/lost"
 
 # RECENT_CAP bounds the walk in a repo that has never released. Such a repo has
 # no release floor, and dropping it would drop a real consumer — sixteen of
@@ -498,18 +597,32 @@ while IFS= read -r name; do
   CONSUMERS=$((CONSUMERS + 1))
   [ -n "$local_note" ] && LOCAL_HEAD=$((LOCAL_HEAD + 1))
 
-  o_lint="$(probe_lint "$BASELINE"  "$dir" "$rng")"
-  n_lint="$(probe_lint "$CANDIDATE" "$dir" "$rng")"
+  o_lint="$(probe_lint "$BASELINE"  "$dir" "$rng" "$WORK/lint.old.err")"
+  n_lint="$(probe_lint "$CANDIDATE" "$dir" "$rng" "$WORK/lint.new.err")"
+
+  # The four API walks below, estimated at two requests per walked commit (its
+  # pull, that pull's commits) plus the releases listing the body probe pages
+  # through. An estimate, not a meter — anything it misses still names itself on
+  # a skip line. An untagged history past the walk cap (sinceTagWalkCap in
+  # internal/cli) is refused before any request, so it costs nothing.
+  if [ -n "$tag" ]; then
+    walked="$(git -C "$dir" rev-list --count "$tag..$wh" 2>/dev/null || echo 0)"
+  else
+    walked="$(git -C "$dir" rev-list --count "$wh" 2>/dev/null || echo 0)"
+    [ "$walked" -le 200 ] || walked=0
+  fi
+  budget_for "$name" $((8 * walked + 10))
+
   # The release job's own invocation, aimed at the repo it belongs to. It reads
   # the API, which is why a token is required up front rather than discovered
   # here as thirty-five identical exit 4s.
-  o_bump="$(probe "$BASELINE"  "$dir" bump --since-tag --repo "$OWNER/$name")"
-  n_bump="$(probe "$CANDIDATE" "$dir" bump --since-tag --repo "$OWNER/$name")"
+  o_bump="$(probe "$BASELINE"  "$dir" "$WORK/bump.old.err" bump --since-tag --repo "$OWNER/$name")"
+  n_bump="$(probe "$CANDIDATE" "$dir" "$WORK/bump.new.err" bump --since-tag --repo "$OWNER/$name")"
   # The rendering surface, via the release job's own command. Same API cost
   # class as the bump probe (it runs the same walk, plus the releases listing
   # the dry run reads too).
-  ob_body="$(probe_body "$BASELINE"  "$dir" "$OWNER/$name" "$WORK/body.old")"
-  nb_body="$(probe_body "$CANDIDATE" "$dir" "$OWNER/$name" "$WORK/body.new")"
+  ob_body="$(probe_body "$BASELINE"  "$dir" "$OWNER/$name" "$WORK/body.old" "$WORK/body.old.err")"
+  nb_body="$(probe_body "$CANDIDATE" "$dir" "$OWNER/$name" "$WORK/body.new" "$WORK/body.new.err")"
 
   ol_code="${o_lint%%	*}"; nl_code="${n_lint%%	*}"
   ol_sig="${o_lint#*	}";  nl_sig="${n_lint#*	}"
@@ -534,10 +647,11 @@ while IFS= read -r name; do
     moved_lint=1
     LOST_ANSWER=$((LOST_ANSWER + 1))
     lint_cell="$(lintword "$ol_code" "$ol_sig") -> NO ANSWER(exit $nl_code)"
+    printf '%s\tlint\t%s\n' "$name" "$(why "$WORK/lint.new.err")" >> "$WORK/lost"
   else
     moved_lint=''
-    printf '%s\tlint gate unanswered over %s (baseline exit %s, candidate exit %s)\n' \
-      "$name" "$rng" "$ol_code" "$nl_code" >> "$WORK/skips"
+    printf '%s\tlint gate unanswered over %s (baseline exit %s, candidate exit %s): %s\n' \
+      "$name" "$rng" "$ol_code" "$nl_code" "$(whys "$WORK/lint.old.err" "$WORK/lint.new.err")" >> "$WORK/skips"
   fi
 
   bump_cell='-'
@@ -549,10 +663,11 @@ while IFS= read -r name; do
     moved_bump=1
     LOST_ANSWER=$((LOST_ANSWER + 1))
     bump_cell="$(verdict bump "$ob_code" "$ob_out") -> NO ANSWER(exit $nb_code)"
+    printf '%s\tbump\t%s\n' "$name" "$(why "$WORK/bump.new.err")" >> "$WORK/lost"
   else
     moved_bump=''
-    printf '%s\tbump gate unanswered over %s (baseline exit %s, candidate exit %s)\n' \
-      "$name" "$rng" "$ob_code" "$nb_code" >> "$WORK/skips"
+    printf '%s\tbump gate unanswered over %s (baseline exit %s, candidate exit %s): %s\n' \
+      "$name" "$rng" "$ob_code" "$nb_code" "$(whys "$WORK/bump.old.err" "$WORK/bump.new.err")" >> "$WORK/skips"
   fi
 
   # The rendering comparison, gated the way the header says: only two release
@@ -569,8 +684,8 @@ while IFS= read -r name; do
         "$name" "$rng" "$delta" "$local_note" >> "$WORK/body_rows"
     fi
   else
-    printf '%s\tbody gate unanswered over %s (baseline exit %s, candidate exit %s)\n' \
-      "$name" "$rng" "$ob_body" "$nb_body" >> "$WORK/skips"
+    printf '%s\tbody gate unanswered over %s (baseline exit %s, candidate exit %s): %s\n' \
+      "$name" "$rng" "$ob_body" "$nb_body" "$(whys "$WORK/body.old.err" "$WORK/body.new.err")" >> "$WORK/skips"
   fi
 
   moved=''
@@ -596,7 +711,11 @@ if [ "$CHANGED" -gt 0 ]; then
   if [ "$LOST_ANSWER" -gt 0 ]; then
     echo "  !! $LOST_ANSWER gate(s) show NO ANSWER under the candidate where the baseline had one."
     echo "     That is not a changed verdict, it is a LOST one: the release makes glyph stop"
-    echo "     computing a result for a repo that has one today. Read those rows first."
+    echo "     computing a result for a repo that has one today. Read those rows first —"
+    echo "     the candidate's own reason for each (a spent API budget is not a regression):"
+    while IFS='	' read -r name gate reason; do
+      printf '     %-18s %-5s %s\n' "$name" "$gate" "$reason"
+    done < "$WORK/lost"
     echo
   fi
   echo "  lint moves are a PREDICTION: CI lints a pull request's own commits, so"
@@ -661,4 +780,7 @@ case "$NOTE" in *?*) NOTE="$NOTE — so the counts are FLOORS" ;; esac
 # the clones". Say what was probed and leave the reasons to the list above.
 # The two counts stay two: a re-rendered body is not a changed verdict, so
 # summing them would launder rendering churn into the number a tag is cut on.
+# Waiting for the API budget is not a weakening of the claim — every probe after
+# it ran with budget — so it is said here and not in the ✓ line's caveats.
+[ "$WAITED_S" -eq 0 ] || echo "→ waited $(( (WAITED_S + 59) / 60 )) min in all for the GitHub API budget to reset"
 echo "✓ preflight: probed $CONSUMERS of $FLEET_TOTAL fleet repos; $CHANGED verdict(s) would change, $BODY_CHANGED body(ies) would re-render — baseline $BASELINE_LABEL$NOTE"
