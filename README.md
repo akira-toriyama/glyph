@@ -226,6 +226,16 @@ next, tag, action, commits, reason}]`, each line's body and url stripped —
 and the four scalars are `""` there, so a caller written for one line
 fails safe.
 
+The build step the reusable does run — `./package.sh` in `app` mode,
+`./build.sh` in `binary` mode — is told the tag it builds for as
+`RELEASE_TAG`. The draft's tag exists as a git ref only once a human
+publishes, so a `git describe` inside that script names the *previous*
+release (measured 2026-09-25 on facet's v7.0.2 draft: the app inside printed
+7.0.1-48-g729d4a7); a script that stamps a version reads
+`${RELEASE_TAG:-$(git describe --tags --dirty)}` and keeps the fallback for a
+local build. On a packages repository the variable is empty, and the artefact
+inputs are refused there before either build step runs.
+
 An artefact the reusable did not build — a firmware image from a Docker job,
 say — is attached by a follow-up job in the caller, not by a new input: gate
 it on `needs.release.outputs.next != ''` and on the dry-run input, then
