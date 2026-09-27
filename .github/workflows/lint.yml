@@ -161,12 +161,15 @@ jobs:
               BASE="$PR_BASE"; HEAD="$PR_HEAD"
               ;;
             push)
-              # Default branch only. On a topic branch :construction: is legal
-              # (DESIGN §2 — WIP is a violation only for merge candidates), so
-              # linting every branch's pushes would reverse that ratification
-              # repo-wide. Refuse rather than skip: a push event arriving from
-              # another ref is a caller trigger bug, and a silent skip is this
-              # gate's own defect class — the reason the push arm exists.
+              # Default branch only. A topic branch is judged by the pull_request
+              # arm as the merge candidate it becomes; a push there is mid-branch
+              # by construction — rewritable, not yet proposed for main — so a
+              # verdict on it is either a duplicate of the PR gate or an
+              # annotation on commits that may never land (the pre-push hook
+              # draws the same line, internal/cli/prepush.go). Refuse rather than
+              # skip: a push event arriving from another ref is a caller trigger
+              # bug, and a silent skip is this gate's own defect class — the
+              # reason the push arm exists.
               if [ "$PUSHED_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
                 echo "::error::glyph-lint lints pushes to the default branch only ($PUSHED_REF is not refs/heads/$DEFAULT_BRANCH); narrow the caller's push trigger to branches: [$DEFAULT_BRANCH]."
                 exit 1
