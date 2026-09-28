@@ -312,7 +312,8 @@ regexes (first match wins) over the whole message, the named group
 `semver_sigil` carries the signal, a pattern-level `semver_sigil` key
 supplies one for messages that carry none (the presets make a raw
 `git revert` a patch), `skip = true` drops a matching commit from every
-check (merge commits, autosquash artifacts), `warn = '…'` keeps a match
+check (merge commits, the `fixup!`/`squash!` autosquash artifacts),
+`warn = '…'` keeps a match
 legal but says so at every gate — for a pattern you accept and would rather
 not see — and `unlandable = '…'` marks a message that may be written but must
 not land: the commit-msg hook lets it through with that reason as a warning,

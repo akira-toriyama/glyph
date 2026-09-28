@@ -101,8 +101,9 @@ pattern says it means:
 - A pattern may carry a fixed **`semver_sigil`** key — the sigil a match
   yields when the message captures none (the presets use it to make a raw
   `git revert` a patch) — or **`skip = true`**, which drops a matching commit
-  from lint, bump and notes entirely (the presets skip merge commits and
-  autosquash artifacts; v1 carried both as hardcoded exemptions, and the hook
+  from lint, bump and notes entirely (the presets skip merge commits and the
+  `fixup!`/`squash!` autosquash artifacts; v1 carried both as hardcoded
+  exemptions, and the hook
   path is where they matter most — an author cannot rewrite a subject git
   generated, so judging it forces `--no-verify`, which turns the gate off).
 - A pattern may carry **`warn = '<message>'`** — a message the file's author
@@ -164,6 +165,15 @@ pattern says it means:
     exists. `TestUnlandableAmendEndToEnd` asks git for every step: the
     installed hook on both `--fixup` forms, the range gates on the history
     git recorded, and the verdict after a real `rebase --autosquash`.
+  - **The presets do not claim amend! yet — they leave it unmatched**
+    (`TestPresetsNeverSkipAmend`, `TestShippedPresetRefusesAnUnsquashedAmend`;
+    mutation row `presets-skip-amend.patch`). That is every gate refusing it,
+    the hook included, which is v4.1.0's behaviour. A key only works where
+    the binary reading the file knows it: glyph's own CI runs a pinned
+    release, `glyph.toml` here is the gemoji preset byte for byte, and a
+    release older than the key refuses the whole file at exit 2. So the key
+    ships first, and the presets claim `amend!` as unlandable only once every
+    pin that reads a preset-derived file reads a release carrying the key.
 - **`exclude_authors`** removes a commit from lint and the fold before its
   message is ever matched — the key exists for bots, whose messages are
   exactly the ones the patterns do not describe. Whether such a commit

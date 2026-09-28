@@ -164,3 +164,31 @@ func TestLintAuthoringLetsUnlandableThrough(t *testing.T) {
 		}
 	}
 }
+
+// TestPresetsNeverSkipAmend pins the preset half of t-t84a in every shipped
+// preset: fixup! and squash! are skipped — autosquash keeps their target's
+// subject, and so its sigil — and amend! is not, because autosquash REPLACES
+// its target's message with the amend! body. glyph#241 put amend beside the
+// other two and every gate folded ':bug:~' plus a reword to ':boom:!' as
+// patch. Whether a preset leaves amend! unmatched or claims it as unlandable,
+// it must never come back as a skip or a sigil.
+func TestPresetsNeverSkipAmend(t *testing.T) {
+	for _, name := range PresetNames() {
+		t.Run(name, func(t *testing.T) {
+			data, _ := Preset(name)
+			cfg := mustLoad(t, string(data))
+			for _, msg := range []string{"fixup! :bug:~ fix b", "squash! fix(b)~: fix b"} {
+				m, err := cfg.Match(msg)
+				if err != nil || !m.Matched || !m.Skip {
+					t.Errorf("%q = %+v (err %v), want the autosquash skip", msg, m, err)
+				}
+			}
+			for _, msg := range []string{"amend! :bug:~ fix b\n\n:boom:! fix b", "amend! fix(b)~: fix b\n\nfix(b)!: fix b"} {
+				m, err := cfg.Match(msg)
+				if err != nil || m.Matched {
+					t.Errorf("%q = %+v (err %v), want it unclaimed: a skip or a sigil reads the message autosquash discards", msg, m, err)
+				}
+			}
+		})
+	}
+}

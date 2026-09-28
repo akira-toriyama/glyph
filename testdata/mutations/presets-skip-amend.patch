@@ -1,0 +1,26 @@
+diff --git a/internal/config/presets/conventional.toml b/internal/config/presets/conventional.toml
+index 171d2a1..b76cfdb 100644
+--- a/internal/config/presets/conventional.toml
++++ b/internal/config/presets/conventional.toml
+@@ -76,7 +76,7 @@ skip = true
+ # amend! body, so a skip would fold the sigil the rewrite discards and miss
+ # the one it lands. Unmatched, every gate refuses it until it is autosquashed
+ # — the commit-msg hook included, so reword through `git rebase -i` instead.
+-pattern = '^(fixup|squash)! '
++pattern = '^(fixup|squash|amend)! '
+ skip = true
+ 
+ [note]
+diff --git a/internal/config/presets/gemoji.toml b/internal/config/presets/gemoji.toml
+index 2fbdeb4..bccbe3b 100644
+--- a/internal/config/presets/gemoji.toml
++++ b/internal/config/presets/gemoji.toml
+@@ -71,7 +71,7 @@ skip = true
+ # amend! body, so a skip would fold the sigil the rewrite discards and miss
+ # the one it lands. Unmatched, every gate refuses it until it is autosquashed
+ # — the commit-msg hook included, so reword through `git rebase -i` instead.
+-pattern = '^(fixup|squash)! '
++pattern = '^(fixup|squash|amend)! '
+ skip = true
+ 
+ [note]

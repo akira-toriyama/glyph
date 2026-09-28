@@ -232,3 +232,43 @@ func TestUnlandableAmendEndToEnd(t *testing.T) {
 		}
 	})
 }
+
+// TestShippedPresetRefusesAnUnsquashedAmend is t-t84a's reproduction under
+// the preset `glyph init --gemoji` writes, with git spelling every message:
+// a reword through `--fixup=reword:` must not leave any gate folding the
+// history it has not rewritten yet. With amend! skipped, this history folded
+// to v1.0.1 with lint green; the history autosquash writes folds to v2.0.0.
+func TestShippedPresetRefusesAnUnsquashedAmend(t *testing.T) {
+	dir, _ := testRepo(t)
+	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix b")
+	target := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
+	editor := filepath.Join(t.TempDir(), "reword-editor")
+	script := "#!/bin/sh\n{ head -n1 \"$1\"; printf '\\n:boom:! fix b\\n'; } > \"$1.new\" && mv \"$1.new\" \"$1\"\n"
+	if err := os.WriteFile(editor, []byte(script), 0o700); err != nil { // #nosec G306 -- an editor must be executable
+		t.Fatalf("write editor: %v", err)
+	}
+	cmd := exec.Command("git", "-C", dir, "commit", "-q", "--fixup=reword:"+target)
+	cmd.Env = testutil.GitEnv("akira-toriyama", "GIT_EDITOR="+editor)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit --fixup=reword: %v\n%s", err, out)
+	}
+	t.Chdir(dir)
+
+	if code, _, stderr := runGlyph(t, "lint", "--range", "v1.0.0..HEAD"); code != int(core.CodeLint) || !strings.Contains(stderr, "amend!") {
+		t.Errorf("lint --range = %d, want 3 naming the amend! commit\nstderr: %s", code, stderr)
+	}
+	if code, stdout, stderr := runGlyph(t, "bump", "--range", "v1.0.0..HEAD"); code != int(core.CodeLint) || stdout != "" {
+		t.Errorf("bump --range = %d %q, want 3 and no version — v1.0.1 is the skip's answer\nstderr: %s", code, stdout, stderr)
+	}
+
+	rebase := exec.Command("git", "-C", dir, "rebase", "-q", "-i", "--autosquash", "v1.0.0")
+	rebase.Env = testutil.GitEnv("akira-toriyama", "GIT_SEQUENCE_EDITOR=:", "GIT_EDITOR=:")
+	if out, err := rebase.CombinedOutput(); err != nil {
+		t.Fatalf("git rebase --autosquash: %v\n%s", err, out)
+	}
+	if code, stdout, stderr := runGlyph(t, "bump", "--range", "v1.0.0..HEAD"); code != 0 || stdout != "v2.0.0\n" {
+		t.Errorf("after autosquash bump --range = %d %q, want v2.0.0\nstderr: %s", code, stdout, stderr)
+	}
+}

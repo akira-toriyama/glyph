@@ -159,24 +159,13 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 			}
 		})
 
-		// git 2.32 added a third autosquash subject, `amend! <subject>`, written
-		// by --fixup=amend:<c> and --fixup=reword:<c>; the presets skipped only
-		// fixup! and squash! until 2026-09-27, so the hook refused both at exit 3
-		// (measured on git 2.54). These two ask git for the subject rather than
-		// typing it, because the prefix is git's to spell.
-		t.Run("amend", func(t *testing.T) {
-			appendFile(t, dir, "amend.txt")
-			testGit(t, dir, "akira-toriyama", "add", "-A")
-			if out, err := commitFlagsWith(dir, pathWithGlyph, "--fixup=amend:"+head); err != nil {
-				t.Fatalf("git commit --fixup=amend: was blocked by the hook: %v\n%s", err, out)
-			}
-		})
-
-		t.Run("reword", func(t *testing.T) {
-			if out, err := runGit(dir, pathWithGlyph, "commit", "-q", "--allow-empty", "--fixup=reword:"+head, "--no-edit"); err != nil {
-				t.Fatalf("git commit --fixup=reword: was blocked by the hook: %v\n%s", err, out)
-			}
-		})
+		// git's third autosquash subject, `amend! <subject>` (--fixup=amend:
+		// and --fixup=reword:), is deliberately NOT here. Autosquash replaces
+		// its target's message with the amend! body, so a skip reads the wrong
+		// sigil (t-t84a), and the shipped presets leave it unmatched — refused
+		// at this hook too — until they can claim it as unlandable, a key the
+		// fleet's pinned glyph must read first. The pass-with-a-warning shape
+		// is TestUnlandableAmendEndToEnd's, under a config that declares it.
 
 		// A blocked merge is worse than a blocked commit: git has already
 		// written MERGE_HEAD, and the follow-up `git commit` runs the same hook
