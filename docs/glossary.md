@@ -355,7 +355,8 @@ touch. Asked of every walked commit that is not a merge commit: with scope and
 sigil for a commit the fold reads, by files alone for one it does not — an
 `exclude_authors` commit moves no version and appears in the notes of the lines
 its files touch (nowhere under no package), a skip is placed nowhere, and a
-message no pattern claims joins every line so the fold refuses it. The files
+message no pattern claims (an **unlandable** one included) joins every line so
+the fold refuses it. The files
 come from local git for a landed identity and from `GET /commits/{sha}` for a
 squash-merged pull's inner commit. `internal/attribution/attribution.go:
 Attribute`, `internal/cli/lines.go: placeOf, partitionLines`
@@ -478,11 +479,22 @@ the words for the machinery that reads the convention and enforces it.
 RE2 regex applied to the whole message, in file order, first match wins. A
 pattern may capture the named group `semver_sigil`, supply a fixed
 `semver_sigil` value for messages that carry none, or declare `skip = true`
-(the commit leaves lint, bump and notes entirely). Retired v1 vocabulary this
+(the commit leaves lint, bump and notes entirely); `warn = '…'` keeps its
+match legal and says so at every gate, and `unlandable = '…'` makes it an
+**unlandable** message. Retired v1 vocabulary this
 replaces: *profile*, *rules table*, *rule id*, *legacy token*, *merge
 candidate*, *generated subject* — all were properties of glyph's own grammars,
 and glyph no longer owns one. `internal/config/config.go: Pattern`,
 `internal/config/match.go: Match`
+
+**unlandable** — a message an `unlandable = '<reason>'` pattern claims: legal
+to write, never to land. The commit-msg hook's modes pass it at 0 with the
+reason as a warning (`Config.LintAuthoring`); every gate that judges an
+existing commit reads it as a message no pattern claims, with the reason as
+the finding (`Config.Lint`, the fold's refusal, the notes' raw-line fallback).
+Distinguish from **skip**, under which the commit lands and is never judged.
+Made for git's `amend!` subject (DESIGN §2). `internal/config/match.go: Match,
+UnclaimedDetail`, `internal/config/lint.go: LintAuthoring`
 
 **dictionary** — the ordered gemoji table `glyph emoji` prints: one code per
 kind of change, the first description that fits wins, and each entry names the

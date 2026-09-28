@@ -192,6 +192,14 @@ func TestLoadErrors(t *testing.T) {
 		// "warned wherever it wins a verdict" a statement with no exceptions.
 		{"skip contradicts warn", "schema = 1\n[[patterns]]\npattern = '^Merge '\nskip = true\nwarn = 'x'\n", "contradict"},
 		{"empty warn", "schema = 1\n[[patterns]]\npattern = '^x'\nsemver_sigil = '='\nwarn = ''\n", "warn is empty"},
+		// unlandable is the third per-pattern verdict key beside skip and
+		// warn, and each pairing names two answers for one match: a skipped
+		// commit lands unjudged, a fixed sigil folds, a warned one is legal
+		// at every gate — all three are what unlandable refuses.
+		{"skip contradicts unlandable", "schema = 1\n[[patterns]]\npattern = '^amend! '\nskip = true\nunlandable = 'x'\n", "skip = true and unlandable contradict"},
+		{"fixed sigil contradicts unlandable", "schema = 1\n[[patterns]]\npattern = '^amend! '\nsemver_sigil = '~'\nunlandable = 'x'\n", "unlandable and semver_sigil"},
+		{"warn contradicts unlandable", "schema = 1\n[[patterns]]\npattern = '^amend! '\nwarn = 'x'\nunlandable = 'y'\n", "unlandable and warn contradict"},
+		{"empty unlandable", "schema = 1\n[[patterns]]\npattern = '^amend! '\nunlandable = ''\n", "unlandable is empty"},
 		{"fixed sigil invalid", "schema = 1\n[[patterns]]\npattern = '^x'\nsemver_sigil = '+'\n", "invalid semver_sigil"},
 		{"section with both axes", "schema = 1\n" + minimalPatterns + "[[note.sections]]\nsemver = 'major'\nauthor = 'x'\ntitle = 'T'\n", "exactly one"},
 		{"section with no axis", "schema = 1\n" + minimalPatterns + "[[note.sections]]\ntitle = 'T'\n", "state its axis"},

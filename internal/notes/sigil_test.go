@@ -404,3 +404,55 @@ title = "Fixes"
 		t.Errorf("a co-author display name reached the page as a live mention: %q", got)
 	}
 }
+
+// TestGroupSigilsRendersUnlandableAsUnclaimed: the notes read an unlandable
+// message the way they read one no pattern claims — the raw-line fallback, in
+// author sections only — never as a refusal. The notes do not consult
+// exclude_authors (the sections decide), so a refusal here would fail notes,
+// release and preview over a bot's amend! that bump and lint both exclude.
+// Refusing belongs to the fold, which runs first wherever a release is
+// decided.
+func TestGroupSigilsRendersUnlandableAsUnclaimed(t *testing.T) {
+	cfg, err := config.Load([]byte(`schema = 1
+exclude_authors = ['dependabot[bot]']
+
+[[patterns]]
+pattern = '^(?P<subject>:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!%]) .+)'
+
+[[patterns]]
+pattern = '^amend! '
+unlandable = 'rebase with --autosquash before it lands'
+
+[note]
+line = '- $subject'
+
+[[note.sections]]
+semver = 'patch'
+title = 'Fixes'
+
+[[note.sections]]
+author = 'dependabot[bot]'
+title = 'Dependencies'
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	sections, err := GroupSigils([]SigilCommit{
+		{SHA: "aaaaaaaaaaaa", Author: "akira", Message: ":bug:~ fix b"},
+		{SHA: "bbbbbbbbbbbb", Author: "akira", Message: "amend! :bug:~ fix b\n\n:boom:! fix b\n"},
+		{SHA: "cccccccccccc", Author: "dependabot[bot]", Message: "amend! Bump x from 1 to 2"},
+	}, cfg)
+	if err != nil {
+		t.Fatalf("GroupSigils refused an unlandable message: %v", err)
+	}
+	got := map[string][]string{}
+	for _, s := range sections {
+		got[s.Title] = s.Lines
+	}
+	if want := []string{"- :bug:~ fix b"}; strings.Join(got["Fixes"], "|") != strings.Join(want, "|") {
+		t.Errorf("Fixes = %q, want %q: an unlandable message has no level, so no semver section", got["Fixes"], want)
+	}
+	if want := []string{"- amend! Bump x from 1 to 2"}; strings.Join(got["Dependencies"], "|") != strings.Join(want, "|") {
+		t.Errorf("Dependencies = %q, want %q: the raw-line fallback in the author section", got["Dependencies"], want)
+	}
+}

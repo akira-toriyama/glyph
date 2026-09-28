@@ -265,3 +265,60 @@ warn = 'no sigil: folds as none'
 		t.Errorf("strict commit's row = %+v, want no warning", verdicts[1])
 	}
 }
+
+// TestFoldSigilsRefusesUnlandable is Q2 applied to the unlandable key: a
+// range holding a message an unlandable pattern claims is refused whole, with
+// that pattern's reason, and never folds as the level of whatever else the
+// range holds. The measured hole this closes (t-t84a): with git's amend!
+// skipped, ':bug:~ fix b' plus its `--fixup=reword:` carrying ':boom:! fix b'
+// folded to patch, while the history autosquash writes folds to major.
+//
+// The remedy tail is part of the decision: the unmatched one says "add a
+// pattern, or exclude the author", which for an unlandable message is how the
+// refusal gets defeated rather than satisfied.
+func TestFoldSigilsRefusesUnlandable(t *testing.T) {
+	cfg, err := config.Load([]byte(`schema = 1
+exclude_authors = ['dependabot[bot]']
+
+[[patterns]]
+pattern = '^:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!%]) (?P<subject>.+)'
+
+[[patterns]]
+pattern = '^amend! '
+unlandable = 'rebase with --autosquash before it lands'
+`))
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	_, _, err = FoldSigils([]SigilCommit{
+		{SHA: "aaa1", Author: "akira", Message: ":bug:~ fix b"},
+		{SHA: "bbb2", Author: "akira", Message: "amend! :bug:~ fix b\n\n:boom:! fix b\n"},
+	}, cfg)
+	if err == nil {
+		t.Fatalf("FoldSigils folded a range holding an unlandable amend! — the verdict it returns is the pre-autosquash one")
+	}
+	var ce *core.Error
+	if !errors.As(err, &ce) || ce.Code != core.CodeLint {
+		t.Fatalf("err = %v, want *core.Error with CodeLint (exit 3)", err)
+	}
+	for _, want := range []string{"bbb2", "unlandable: rebase with --autosquash before it lands", "refusing to version the range", "must start past it"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal %q is missing %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "add a pattern") {
+		t.Errorf("refusal %q advises adding a pattern, which is how an unlandable refusal is defeated", err)
+	}
+	refusals, ok := ce.Details.([]Refusal)
+	if !ok || len(refusals) != 1 || !strings.Contains(refusals[0].Detail, "unlandable") {
+		t.Errorf("details = %#v, want one refusal carrying the unlandable reason", ce.Details)
+	}
+
+	// Exclusion still precedes the message: a bot's amend! is not refused.
+	if _, got, err := FoldSigils([]SigilCommit{
+		{SHA: "a", Author: "dependabot[bot]", Message: "amend! Bump x"},
+		{SHA: "b", Author: "akira", Message: ":bug:~ fix"},
+	}, cfg); err != nil || got.Level != LevelPatch {
+		t.Errorf("an excluded author's unlandable message: level %v err %v, want patch and no refusal", got.Level, err)
+	}
+}

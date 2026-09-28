@@ -38,16 +38,19 @@ func newLintCmd() *cobra.Command {
 			"what a subject looks like are the pattern file's decisions, and glyph has\n" +
 			"no opinion on combinations (a docs commit carrying ! is the author's call).\n" +
 			"--range lints every commit on its way into main (exclude_authors are\n" +
-			"skipped, and so is anything a skip pattern claims — merge commits and\n" +
-			"autosquash artifacts under the shipped presets). --pr lints a pull\n" +
-			"request's TITLE over the API, as the merge candidate it is: a squash merge\n" +
-			"records that title as the landed commit's subject. --message and --stdin\n" +
-			"lint one message at authoring time — the commit-msg hook path. Violations\n" +
-			"exit 3 with a structured stderr envelope; a clean run is silent, EXCEPT\n" +
-			"for two loud-and-still-0 cases: a --range which judged no commit at all\n" +
-			"says so (`0` means \"everything I checked conforms\", which is vacuous when\n" +
-			"nothing was checked), and a pattern carrying a warn annotates every\n" +
-			"commit it claims.",
+			"skipped, and so is anything a skip pattern claims — merge commits and the\n" +
+			"fixup!/squash! autosquash artifacts under the shipped presets). --pr lints\n" +
+			"a pull request's TITLE over the API, as the merge candidate it is: a squash\n" +
+			"merge records that title as the landed commit's subject. --message and\n" +
+			"--stdin lint one message at authoring time — the commit-msg hook path —\n" +
+			"where a message an unlandable pattern claims passes with its reason as a\n" +
+			"warning; every other mode refuses it, because it may be written but must\n" +
+			"not land. Violations exit 3 with a structured stderr envelope; a clean run\n" +
+			"is silent, EXCEPT for three loud-and-still-0 cases: a --range which judged\n" +
+			"no commit at all says so (`0` means \"everything I checked conforms\",\n" +
+			"which is vacuous when nothing was checked), a pattern carrying a warn\n" +
+			"annotates every commit it claims, and an unlandable message at authoring\n" +
+			"time says the later gates will refuse it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{
@@ -169,11 +172,12 @@ func hookCleanupMode(ctx context.Context) cleanup.Mode {
 // an empty exclude_authors entry: slices.Contains matched one happily, so an
 // entry of the empty string excused every message this function was ever
 // handed — the installed hook turned off by a stray comma, at exit 0. Whatever
-// tolerance authoring needs (a merge in progress, an autosquash artifact) is
-// the pattern file's to grant through skip patterns, and the shipped presets
-// grant exactly those two.
+// tolerance authoring needs is the pattern file's to grant: skip patterns
+// (the presets skip a merge in progress and the fixup!/squash! autosquash
+// artifacts) and unlandable ones, which pass here with a warning and nowhere
+// else (config.LintAuthoring).
 func lintOne(message string, cfg *config.Config) error {
-	v := cfg.Lint(message, "")
+	v := cfg.LintAuthoring(message)
 	if v.OK || v.Excluded {
 		if v.Warn != "" {
 			warnf("%s", v.Warn)

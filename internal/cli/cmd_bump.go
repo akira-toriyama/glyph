@@ -67,7 +67,8 @@ func newBumpCmd() *cobra.Command {
 			"by a % commit saying so; from 1.x on, % is a plain major.\n" +
 			"exclude_authors stay out of the fold; a skip-pattern commit stays out of\n" +
 			"everything; a commit NO pattern claims refuses the whole range (exit 3) —\n" +
-			"an unmatched commit folded as none would be a silent hole.\n" +
+			"an unmatched commit folded as none would be a silent hole — and so does\n" +
+			"one an unlandable pattern claims, with that pattern's reason.\n" +
 			"There are three input sources, exactly one of which is required.\n" +
 			"--range reads a local git revision range; --pr reads a pull request's\n" +
 			"INDIVIDUAL commits over the API, which is what makes the verdict\n" +

@@ -349,6 +349,32 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		}
 	})
 
+	// The claim check must judge the probe as the FIRED hook does. The hook
+	// asks LintAuthoring, which lets an unlandable claim through at 0; asking
+	// Lint instead called that 0 a dead gate — a false FAIL on a working chain.
+	t.Run("an unlandable claim on the probe is a working chain's 0", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		cfg, err := os.ReadFile("glyph.toml")
+		if err != nil {
+			t.Fatalf("read glyph.toml: %v", err)
+		}
+		cfg = append(cfg, []byte("\n[[patterns]]\npattern = '^this doctor probe '\nunlandable = 'probe text: rewrite before it lands'\n")...)
+		if err := os.WriteFile("glyph.toml", cfg, 0o600); err != nil {
+			t.Fatalf("write glyph.toml: %v", err)
+		}
+		installCurrentHook(t)
+		stubGlyphOnPATH(t, 0)
+
+		_, stdout, stderr := runGlyph(t, "doctor", "--json")
+		rep := decodeDoctorJSON(t, stdout)
+		c := checkByID(t, rep, "commit-msg-hook-fires")
+		if c.Status != "pass" || !strings.Contains(c.Observed, "claims that message") {
+			t.Errorf("a hook passing a message the config claims as unlandable is the verdict a working chain gives, got %s: %s\nstderr: %s",
+				c.Status, c.Observed, stderr)
+		}
+	})
+
 	t.Run("a foreign hook is not fired", func(t *testing.T) {
 		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 		useDoctorCheckout(t, pinnedCaller)

@@ -134,6 +134,36 @@ pattern says it means:
     verdicts do not move: the window was config, never binary. `warn` stays —
     a grammar key any pattern may carry, published in the machine verdict,
     not the window's private hole.
+- A pattern may carry **`unlandable = '<reason>'`** (t-t84a) — a message
+  that may be WRITTEN but must never LAND. Every gate that judges a commit
+  which already exists reads it exactly as a message no pattern claims, with
+  the reason in place of the no-match sentence: `lint --range` and the
+  pre-push hook report a violation, `lint --pr` refuses the title, the fold
+  refuses the range (Q2, §3), the notes render the raw first line in author
+  sections only, and `exclude_authors` still comes first. Only the
+  commit-msg hook's modes (`--stdin`, `--message`) let it through, at 0,
+  printing the reason and that the later gates refuse it — an argued gap
+  between the hook and CI (§2.1). `Match` reports it in the UNMATCHED
+  shape on purpose (mutation row `config-unlandable-lands-in-history.patch`):
+  every history consumer already refuses that shape and already checks
+  `exclude_authors` first, so one that never reads the reason still fails
+  closed, where a matched shape would have handed the fold a zero sigil —
+  a silent none — wherever a consumer missed the new arm. It contradicts
+  `skip`, `warn` and a fixed `semver_sigil`, each of which would give the
+  match a second answer, and an empty reason: all load errors.
+  - The key was made for git's `amend!` subject and stands on that case.
+    `git commit --fixup=amend:<c>` and `--fixup=reword:<c>` write
+    `amend! <subject>`, and `rebase --autosquash` REPLACES the target's
+    message with the amend! body — unlike `fixup!` and `squash!`, whose
+    target keeps its subject, and with it its sigil. Skipping amend! (the
+    presets did, glyph#241 until t-t84a) dropped the only commit carrying the
+    new sigil: `:bug:~ fix b` plus a reword to `:boom:! fix b` folded to
+    patch with every gate green, while the history autosquash writes folds
+    to major. Leaving it unmatched refuses it at the hook too, which forces
+    `--no-verify` for a subject git spells itself — the reason `skip`
+    exists. `TestUnlandableAmendEndToEnd` asks git for every step: the
+    installed hook on both `--fixup` forms, the range gates on the history
+    git recorded, and the verdict after a real `rebase --autosquash`.
 - **`exclude_authors`** removes a commit from lint and the fold before its
   message is ever matched — the key exists for bots, whose messages are
   exactly the ones the patterns do not describe. Whether such a commit
@@ -185,6 +215,18 @@ SAME verdict on one commit; a gap is glyph lying in one of two directions, and
 the two are not equally bad. Blessing a message CI will reject costs a round
 trip. Refusing one CI would accept costs the commit — the only way past the hook
 is `--no-verify`, which turns the whole gate off.
+
+**One gap is argued rather than accidental: a message an `unlandable`
+pattern claims** (§2). The hook passes it and CI refuses it, deliberately,
+in the direction this section calls the cheaper one — blessing costs a round
+trip, refusing costs the commit, and the message is one git spelled, so a
+refusal here could only be answered with `--no-verify`. What keeps the gap
+honest is that the pass is loud: the hook prints the file's reason and says
+the later gates refuse the commit (`config.LintAuthoring`; mutation row
+`config-unlandable-refused-at-authoring.patch`). doctor's hook probe judges
+its message through the same function, since it must answer exactly as the
+fired hook does. A repository whose patterns claim nothing as unlandable has
+no such gap.
 
 **Which cleanup runs is a per-commit question, and the hook can answer it.** git
 has five modes and picks between two of them by whether an editor will run;
@@ -353,7 +395,9 @@ a failure anyone would see.
 **A non-excluded commit no pattern claims refuses the WHOLE range** (ratified
 Q2; mutation row `bump-unmatched-commit-folds-as-silent-none.patch`): folded
 as none instead, a commit stops existing for versioning the moment someone's
-regex misses it — the silent hole v2 exists to close. The refusal is the lint
+regex misses it — the silent hole v2 exists to close. A commit an
+`unlandable` pattern claims is refused the same way (§2), with that
+pattern's reason as the refusal's detail. The refusal is the lint
 class (exit 3), walks the whole range before it goes out (one red run carries
 every finding — the v1 three-red-runs incident, kept fixed), and is exempted
 exactly twice: `exclude_authors` (checked BEFORE matching — mutation row
@@ -365,8 +409,9 @@ wrote, so it is dropped and recorded in the walk facts, never a refusal).
 section filters on one axis (`semver` or `author`), and a commit lands in
 EVERY section whose filter matches it (mutation row
 `notes-first-section-wins.patch` — dedupe on first placement and section
-order silently decides which section owns a commit). An unmatched commit has
-no level, so it can only surface through an author section, rendered through
+order silently decides which section owns a commit). An unmatched commit —
+one an `unlandable` pattern claims included — has no level, so it can only
+surface through an author section, rendered through
 the same `note.line` template with `$subject` bound to its raw first line —
 the ratified bot fallback. `skip` is total: no section at all, which is what
 separates it from `exclude_authors`.
@@ -1005,8 +1050,9 @@ commit moves no version and appears in the notes of the lines its files
 touch, and on no line when they touch none (the shape rule 3 gives a
 shared-only `=`) — a bump of root CI in a repository with no root package is
 in no line's notes; a skip-pattern commit appears nowhere and is placed
-nowhere, its files never asked for; and a message no pattern claims joins
-every line it is unreleased on, so the fold refuses it there (§3). The first
+nowhere, its files never asked for; and a message no pattern claims (one an
+`unlandable` pattern claims included) joins every line it is unreleased on,
+so the fold refuses it there (§3). The first
 cut placed everything the fold would not read on every line (measured
 2026-09-11 on the live-fire harness: a dependabot commit touching only
 `haiku/poem.go` rendered under all five line headings, lines with no commit of
@@ -1280,9 +1326,10 @@ packages are declared, and `hook pre-push` inherits it, which is where a
 shared-only `^` is caught before it is pushed. `--message`, `--stdin` and
 `--pr` judge a message alone, as today: the commit-msg hook cannot see a diff
 that is not yet a commit, and a pull's title is not attributed to anything.
-This is the one place the hook's verdict is weaker than CI's, and it is stated
-here rather than left to be discovered: the pre-push hook closes it on the
-same machine, one step later.
+This is one of two places the hook's verdict is weaker than CI's — the other
+is an `unlandable` pattern, argued in §2.1 — and it is stated here rather
+than left to be discovered: the pre-push hook closes it on the same machine,
+one step later.
 
 **Doctor** gains three checks: every declared `path` is a directory in the
 checkout (`package-paths-exist`, shipped — a path with no subtree claims no

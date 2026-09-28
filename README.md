@@ -203,7 +203,10 @@ call glyph, so they cannot fall out of lockstep when the rules move. Without gly
 on `PATH` they warn and let you through; the commit-lint CI job stays the
 authority. The verdict `commit-msg` gives is the verdict CI will give: glyph
 reduces the message exactly as git's cleanup mode will before linting it
-(DESIGN §2.1).
+(DESIGN §2.1). Two gaps are stated rather than hidden: a message a pattern
+marks `unlandable` passes the hook with a warning that CI will refuse it, and
+under `[[packages]]` the hook cannot see a diff that is not yet a commit —
+`pre-push` judges that one step later.
 
 **3. Wire CI** — the `lint.yml` caller above for the gate, `pr-verdict.yml`
 for a merge-preview comment on every PR, and `release.yml` to keep a rolling
@@ -309,9 +312,15 @@ regexes (first match wins) over the whole message, the named group
 `semver_sigil` carries the signal, a pattern-level `semver_sigil` key
 supplies one for messages that carry none (the presets make a raw
 `git revert` a patch), `skip = true` drops a matching commit from every
-check (merge commits, autosquash artifacts), and `warn = '…'` keeps a match
+check (merge commits, autosquash artifacts), `warn = '…'` keeps a match
 legal but says so at every gate — for a pattern you accept and would rather
-not see. `exclude_authors` keeps bots
+not see — and `unlandable = '…'` marks a message that may be written but must
+not land: the commit-msg hook lets it through with that reason as a warning,
+and every gate that judges an existing commit (`lint --range`, a push to the
+default branch, `lint --pr`, the release walk) refuses it. It exists for
+git's own `amend!` subject, which `rebase --autosquash` turns into a
+replacement of its target's message — skipping it would fold the version the
+history had before the rewrite. `exclude_authors` keeps bots
 out of lint and the fold; whether they appear in the notes is
 `[[note.sections]]`'s decision alone, and under `[[packages]]` the files a
 bot commit touches decide which line's notes.

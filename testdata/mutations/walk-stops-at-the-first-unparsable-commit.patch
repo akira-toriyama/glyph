@@ -1,11 +1,11 @@
 diff --git a/internal/bump/sigilfold.go b/internal/bump/sigilfold.go
-index 1e1de68..34bac81 100644
+index b3a42e1..a991a4a 100644
 --- a/internal/bump/sigilfold.go
 +++ b/internal/bump/sigilfold.go
-@@ -108,7 +108,7 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Deci
- 		}
- 		if !m.Matched {
- 			refusals = append(refusals, Refusal{SHA: c.SHA, Subject: FirstLine(c.Message), Detail: fmt.Sprintf("matches none of the %d configured patterns", len(cfg.Patterns))})
+@@ -113,7 +113,7 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Deci
+ 				firstUnlandable = m.Unlandable != ""
+ 			}
+ 			refusals = append(refusals, Refusal{SHA: c.SHA, Subject: FirstLine(c.Message), Detail: cfg.UnclaimedDetail(m)})
 -			continue
 +			break
  		}

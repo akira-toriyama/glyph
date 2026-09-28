@@ -158,7 +158,7 @@ func probeClaimed(ctx context.Context, configPath string, pathErr error) bool {
 	if err != nil {
 		return false
 	}
-	v := cfg.Lint(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx)), "")
+	v := cfg.LintAuthoring(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx)))
 	return v.OK
 }
 
