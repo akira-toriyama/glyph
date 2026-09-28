@@ -1,0 +1,16 @@
+diff --git a/internal/config/match.go b/internal/config/match.go
+index 6ee0788..b8d5013 100644
+--- a/internal/config/match.go
++++ b/internal/config/match.go
+@@ -59,6 +59,11 @@ type Match struct {
+ // pattern declares no fixed fallback. Both are config bugs surfaced at the
+ // first commit that hits them.
+ func (c *Config) Match(message string) (Match, error) {
++	for i := range c.Patterns {
++		if p := &c.Patterns[i]; p.Unlandable != "" && p.re.MatchString(message) {
++			return Match{PatternIndex: -1, Unlandable: fmt.Sprintf("patterns[%d] marks this message unlandable: %s", i, p.Unlandable)}, nil
++		}
++	}
+ 	for i := range c.Patterns {
+ 		p := &c.Patterns[i]
+ 		sub := p.re.FindStringSubmatch(message)

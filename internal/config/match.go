@@ -8,10 +8,24 @@ import "fmt"
 // violation, bump refuses the range), Skip=true (a pattern claimed it and
 // drops it from all processing), or a Sigil with the winning pattern's named
 // groups.
+//
+// A message an unlandable pattern claims comes back in the FIRST shape, with
+// Unlandable carrying why. That is deliberate: every consumer already refuses
+// an unclaimed message wherever a commit exists (the fold, lint, the release
+// walk's wedge, packages placement) and already puts exclude_authors ahead
+// of it, so a consumer that never reads the field still fails closed, and the
+// notes render it through the raw-line fallback like any message no pattern
+// claims. Only LintAuthoring reads the field to let the message through.
 type Match struct {
-	// Matched is false when no pattern's regex matched the message. Sigil,
-	// Skip, Groups and PatternIndex mean nothing in that case.
+	// Matched is false when no pattern's regex matched the message, or when
+	// the first one that did is unlandable. Sigil, Skip, Groups and
+	// PatternIndex mean nothing in that case.
 	Matched bool
+	// Unlandable is set only on an unmatched shape: the sentence naming the
+	// unlandable pattern that claimed the message and the file author's
+	// reason. "" when no pattern claimed it at all. UnclaimedDetail is the
+	// one reader history gates use.
+	Unlandable string
 	// Skip is true when the winning pattern declares skip = true: the commit
 	// leaves lint, bump and notes entirely and Sigil means nothing.
 	Skip bool
@@ -54,6 +68,9 @@ func (c *Config) Match(message string) (Match, error) {
 		if p.Skip {
 			return Match{Matched: true, Skip: true, PatternIndex: i}, nil
 		}
+		if p.Unlandable != "" {
+			return Match{PatternIndex: -1, Unlandable: fmt.Sprintf("patterns[%d] marks this message unlandable: %s", i, p.Unlandable)}, nil
+		}
 
 		groups := make(map[string]string)
 		captured := ""
@@ -84,4 +101,14 @@ func (c *Config) Match(message string) (Match, error) {
 		return Match{Matched: true, Sigil: sigil, Groups: groups, Warn: p.Warn, PatternIndex: i}, nil
 	}
 	return Match{PatternIndex: -1}, nil
+}
+
+// UnclaimedDetail is the one sentence a history gate gives a message Match
+// left unclaimed: the unlandable pattern's reason when one claimed it, the
+// bare count otherwise. It is only meaningful when m.Matched is false.
+func (c *Config) UnclaimedDetail(m Match) string {
+	if m.Unlandable != "" {
+		return m.Unlandable
+	}
+	return fmt.Sprintf("matches none of the %d configured patterns", len(c.Patterns))
 }

@@ -192,32 +192,51 @@ func FuzzMatch(f *testing.F) {
 	f.Add("Merge branch 'main'")
 	f.Add("")
 	f.Add(":bug:~ subject\n\nbody with (?P<semver_sigil>!) inside")
+	f.Add(amendMessage)
+	f.Add("amend! fixup! :bug:~ fix b")
 	data, ok := Preset("gemoji")
 	if !ok {
 		f.Fatalf("Preset(gemoji) missing")
 	}
-	cfg, err := Load(data)
-	if err != nil {
-		f.Fatalf("Load: %v", err)
+	// The preset plus a config that claims amend! as unlandable: no shipped
+	// preset declares the key yet, and the unlandable shape is one of the
+	// outcomes this target must see to hold it to the unmatched form.
+	var cfgs []*Config
+	for _, src := range [][]byte{data, []byte(unlandableToml)} {
+		cfg, err := Load(src)
+		if err != nil {
+			f.Fatalf("Load: %v", err)
+		}
+		cfgs = append(cfgs, cfg)
 	}
 	f.Fuzz(func(t *testing.T, message string) {
-		m, err := cfg.Match(message)
-		if err != nil {
-			return // a config-bug error is a legal outcome, not a panic
-		}
-		switch {
-		case !m.Matched:
-			if m.Skip || m.PatternIndex != -1 {
-				t.Fatalf("unmatched shape corrupt: %+v", m)
-			}
-		case m.Skip:
-			// no sigil to check
-		default:
-			switch m.Sigil {
-			case SigilNone, SigilPatch, SigilMinor, SigilMajor, SigilPromote:
-			default:
-				t.Fatalf("Sigil = %v outside the alphabet", m.Sigil)
-			}
+		for _, cfg := range cfgs {
+			checkMatchShape(t, cfg, message)
 		}
 	})
+}
+
+func checkMatchShape(t *testing.T, cfg *Config, message string) {
+	t.Helper()
+	m, err := cfg.Match(message)
+	if err != nil {
+		return // a config-bug error is a legal outcome, not a panic
+	}
+	if m.Matched && m.Unlandable != "" {
+		t.Fatalf("an unlandable claim must come back unmatched: %+v", m)
+	}
+	switch {
+	case !m.Matched:
+		if m.Skip || m.PatternIndex != -1 {
+			t.Fatalf("unmatched shape corrupt: %+v", m)
+		}
+	case m.Skip:
+		// no sigil to check
+	default:
+		switch m.Sigil {
+		case SigilNone, SigilPatch, SigilMinor, SigilMajor, SigilPromote:
+		default:
+			t.Fatalf("Sigil = %v outside the alphabet", m.Sigil)
+		}
+	}
 }

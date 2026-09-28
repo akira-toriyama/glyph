@@ -1,8 +1,8 @@
 diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
-index 2f9a96a..e9db9bd 100644
+index d32e69d..4e19669 100644
 --- a/.github/workflows/lint.yml
 +++ b/.github/workflows/lint.yml
-@@ -223,7 +223,7 @@ jobs:
+@@ -234,7 +234,7 @@ jobs:
              # glyph's own, above.
              # The commit-format hint is for convention violations (exit 3) only —
              # an infra failure (git/API, exit 4) gets the bare message.
@@ -10,4 +10,4 @@ index 2f9a96a..e9db9bd 100644
 +            if jq -e '.error.code == 2' /tmp/glyph-lint.json >/dev/null 2>&1; then
                # The convention is the repository's own glyph.toml, so the hint
                # points at the file rather than at any embedded grammar.
-               jq -r '"::error::glyph lint: \(.error.message) — the convention is this repository'"'"'s glyph.toml; write the message to match one of its patterns"' \
+               jq -r '"::error::glyph lint: \(.error.message) — the convention is this repository'"'"'s glyph.toml; each finding above names its remedy"' \

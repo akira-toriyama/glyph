@@ -660,7 +660,7 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
 					return wedgeHint(core.Lintf("commit %.7s: %v", r.SHA, merr), owner, repo, number, canonical, onMain(r.SHA, inRange))
 				}
 				if !m.Matched {
-					return wedgeHint(core.Lintf("commit %.7s matches none of the %d configured patterns", r.SHA, len(cfg.Patterns)), owner, repo, number, canonical, onMain(r.SHA, inRange))
+					return wedgeHint(core.Lintf("commit %.7s: %s", r.SHA, cfg.UnclaimedDetail(m)), owner, repo, number, canonical, onMain(r.SHA, inRange))
 				}
 			}
 			if r.SHA != "" {
@@ -772,7 +772,13 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
 			// in facts.Dropped so release refuses to ACT on the incomplete
 			// walk while bump and notes merely report it.
 			if m, merr := cfg.Match(raw.Message); merr != nil || !m.Matched {
-				warnf("commit %.7s is not known to GitHub yet (API lag) and its own message matches no pattern — nothing was counted from it; re-run once GitHub has indexed the commit", raw.SHA)
+				why := ""
+				if merr != nil {
+					why = merr.Error()
+				} else {
+					why = cfg.UnclaimedDetail(m)
+				}
+				warnf("commit %.7s is not known to GitHub yet (API lag) and its own message cannot be folded (%s) — nothing was counted from it; re-run once GitHub has indexed the commit", raw.SHA, why)
 				facts.Dropped = append(facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
 				continue
 			}

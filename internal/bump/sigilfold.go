@@ -86,7 +86,8 @@ type Refusal struct {
 // not describe, so exclusion must not depend on a match — and a matching
 // pattern with skip = true drops the commit the same way.
 //
-// A non-excluded commit that no pattern claims refuses the WHOLE range
+// A non-excluded commit that no pattern claims — or that an unlandable
+// pattern claims, which Match reports the same way — refuses the WHOLE range
 // (ratified Q2): the alternative — quietly folding it as none — is a commit
 // that stops existing for versioning the moment someone's regex misses it,
 // which is the silent hole v2 exists to close. The refusal is the lint class
@@ -97,6 +98,7 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Deci
 	var promote bool
 	levels := make([]Level, 0, len(commits))
 	var refusals []Refusal
+	firstUnlandable := false
 	for _, c := range commits {
 		if slices.Contains(cfg.ExcludeAuthors, c.Author) {
 			continue
@@ -107,7 +109,10 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Deci
 			continue
 		}
 		if !m.Matched {
-			refusals = append(refusals, Refusal{SHA: c.SHA, Subject: FirstLine(c.Message), Detail: fmt.Sprintf("matches none of the %d configured patterns", len(cfg.Patterns))})
+			if len(refusals) == 0 {
+				firstUnlandable = m.Unlandable != ""
+			}
+			refusals = append(refusals, Refusal{SHA: c.SHA, Subject: FirstLine(c.Message), Detail: cfg.UnclaimedDetail(m)})
 			continue
 		}
 		if m.Skip {
@@ -125,7 +130,17 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Deci
 		})
 	}
 	if len(refusals) > 0 {
-		msg := fmt.Sprintf("commit %.7s: %s; refusing to version the range (an unmatched commit folded as none would be a silent hole — fix the message, add a pattern, or exclude the author)", refusals[0].SHA, refusals[0].Detail)
+		// The unmatched remedy list is wrong for an unlandable message: a
+		// pattern DID claim it, and adding one or excluding the author is how
+		// the refusal would be defeated. Its reason says what must happen
+		// before the commit lands; the fold also serves the release walk, where
+		// a direct push has already landed it and only a range starting past it
+		// gets out.
+		remedy := " (an unmatched commit folded as none would be a silent hole — fix the message, add a pattern, or exclude the author)"
+		if firstUnlandable {
+			remedy = " (rewrite it as its reason says before it lands; a commit already on a published branch cannot be rewritten, so the range must start past it)"
+		}
+		msg := fmt.Sprintf("commit %.7s: %s; refusing to version the range%s", refusals[0].SHA, refusals[0].Detail, remedy)
 		if extra := len(refusals) - 1; extra > 0 {
 			msg = fmt.Sprintf("commit %.7s: %s (+%d more violation(s), all in details); refusing to version the range", refusals[0].SHA, refusals[0].Detail, extra)
 		}

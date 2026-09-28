@@ -44,10 +44,11 @@ name: glyph-lint
 #
 # What the lint enforces (exit 3 on violation): the repository's own
 # glyph.toml — a commit means what the first matching [[patterns]] entry says
-# (docs/DESIGN.md §2), and a message no pattern claims is the violation.
+# (docs/DESIGN.md §2), and a message no pattern claims is the violation —
+# as is one an unlandable pattern claims, carrying that pattern's reason.
 # exclude_authors and skip-pattern commits (the presets skip merge commits and
-# autosquash artifacts) are skipped, never failed; a warn-pattern match
-# annotates a ::warning:: and stays green.
+# the fixup!/squash! autosquash artifacts) are skipped, never failed; a
+# warn-pattern match annotates a ::warning:: and stays green.
 
 on:
   workflow_call:
@@ -236,7 +237,7 @@ jobs:
             if jq -e '.error.code == 3' /tmp/glyph-lint.json >/dev/null 2>&1; then
               # The convention is the repository's own glyph.toml, so the hint
               # points at the file rather than at any embedded grammar.
-              jq -r '"::error::glyph lint: \(.error.message) — the convention is this repository'"'"'s glyph.toml; write the message to match one of its patterns"' \
+              jq -r '"::error::glyph lint: \(.error.message) — the convention is this repository'"'"'s glyph.toml; each finding above names its remedy"' \
                 /tmp/glyph-lint.json || true
             else
               jq -r '"::error::glyph lint: \(.error.message)"' /tmp/glyph-lint.json || true

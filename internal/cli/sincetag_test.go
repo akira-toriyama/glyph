@@ -1784,7 +1784,7 @@ func TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark(t *testing.T) {
 	if code != 1 || stdout != "" {
 		t.Fatalf("with the API dark: exit %d stdout %q, want 1 / empty — an unlinted PR title is what the fallback reads\nstderr: %s", code, stdout, stderr)
 	}
-	if !strings.Contains(stderr, "matches no pattern") {
+	if want := fmt.Sprintf("cannot be folded (matches none of the %d configured patterns)", len(testCfg(t).Patterns)); !strings.Contains(stderr, want) {
 		t.Fatalf("the loss must say the subject matched no pattern:\n%s", stderr)
 	}
 }

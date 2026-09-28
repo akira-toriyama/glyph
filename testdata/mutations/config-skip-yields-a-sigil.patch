@@ -1,14 +1,14 @@
 diff --git a/internal/config/match.go b/internal/config/match.go
+index 41c4d44..c9deb12 100644
 --- a/internal/config/match.go
 +++ b/internal/config/match.go
-@@ -45,10 +45,6 @@
+@@ -66,9 +66,6 @@ func (c *Config) Match(message string) (Match, error) {
  		if sub == nil {
  			continue
  		}
 -		if p.Skip {
 -			return Match{Matched: true, Skip: true, PatternIndex: i}, nil
 -		}
--
- 		groups := make(map[string]string)
- 		captured := ""
- 		for gi, name := range p.re.SubexpNames() {
+ 		if p.Unlandable != "" {
+ 			return Match{PatternIndex: -1, Unlandable: fmt.Sprintf("patterns[%d] marks this message unlandable: %s", i, p.Unlandable)}, nil
+ 		}

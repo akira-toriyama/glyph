@@ -36,7 +36,11 @@ template = '''
 # carries none. `skip = true` drops a matching commit from lint, bump and
 # notes entirely (a skipped commit is not a violation). `warn = '<message>'`
 # keeps a match legal and says so at every gate — for a pattern you accept
-# but would rather not see.
+# but would rather not see. `unlandable = '<reason>'` marks a message that may
+# be written but must not land: the commit-msg hook lets it through with the
+# reason as a warning, and every gate that judges an existing commit refuses
+# it (needs glyph v4.2.0 wherever this file is read — an older glyph refuses
+# the unknown key).
 [[patterns]]
 # The subject group is the WHOLE line, type + scope + sigil included, so a
 # release-body line reads exactly as its commit does (`feat(cli)^: add the
@@ -64,9 +68,15 @@ pattern = '^Merge '
 skip = true
 
 [[patterns]]
-# autosquash artifacts — rewritten away by rebase --autosquash before landing
-# (fixup!, squash!, and the amend! that --fixup=amend:/reword: writes)
-pattern = '^(fixup|squash|amend)! '
+# autosquash artifacts — fixup! and squash!, what --fixup=<c> and --squash=<c>
+# write. rebase --autosquash folds each into its target with the TARGET's
+# subject, and so its sigil, intact.
+# amend! (what --fixup=amend:<c> and --fixup=reword:<c> write) is left
+# unmatched on purpose: autosquash REPLACES its target's message with the
+# amend! body, so a skip would fold the sigil the rewrite discards and miss
+# the one it lands. Unmatched, every gate refuses it until it is autosquashed
+# — the commit-msg hook included, so reword through `git rebase -i` instead.
+pattern = '^(fixup|squash)! '
 skip = true
 
 [note]

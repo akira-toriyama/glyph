@@ -1,0 +1,13 @@
+diff --git a/internal/config/lint.go b/internal/config/lint.go
+index 1a3ebb9..ee41c6a 100644
+--- a/internal/config/lint.go
++++ b/internal/config/lint.go
+@@ -68,7 +68,7 @@ func (c *Config) Lint(message, author string) LintVerdict {
+ // probe) calls this, never Lint.
+ func (c *Config) LintAuthoring(message string) LintVerdict {
+ 	m, err := c.Match(message)
+-	if err == nil && !m.Matched && m.Unlandable != "" {
++	if false && err == nil && !m.Matched && m.Unlandable != "" {
+ 		return LintVerdict{OK: true, Warn: m.Unlandable + " — the commit-msg hook lets it through, but every gate that judges an existing commit refuses it (lint --range, a push to the default branch, --pr, the release walk)"}
+ 	}
+ 	return c.Lint(message, "")

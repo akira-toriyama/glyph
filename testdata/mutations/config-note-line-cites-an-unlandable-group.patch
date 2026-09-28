@@ -1,0 +1,14 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index f9f7f73..2e776fb 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -176,9 +176,6 @@ func validateLineNames(spans []LineSpan, patterns []Pattern, trailers []NoteTrai
+ 		legal[b] = true
+ 	}
+ 	for _, p := range patterns {
+-		if p.Unlandable != "" {
+-			continue
+-		}
+ 		for _, name := range p.re.SubexpNames() {
+ 			if name != "" {
+ 				legal[name] = true

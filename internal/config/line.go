@@ -166,13 +166,19 @@ func holdsPlaceholder(parts []LinePart) bool {
 //
 // The legal set is the UNION over patterns, not the intersection: which pattern
 // wins is a property of each commit, so a name any pattern captures is a name
-// the template may cite.
+// the template may cite. An unlandable pattern is left out of it: Match reports
+// its claim unmatched with no groups, and the notes render such a commit
+// through the raw-line fallback, which binds $subject alone — a name only it
+// captures resolves empty for every commit.
 func validateLineNames(spans []LineSpan, patterns []Pattern, trailers []NoteTrailer) error {
 	legal := make(map[string]bool, len(LineBuiltins))
 	for _, b := range LineBuiltins {
 		legal[b] = true
 	}
 	for _, p := range patterns {
+		if p.Unlandable != "" {
+			continue
+		}
 		for _, name := range p.re.SubexpNames() {
 			if name != "" {
 				legal[name] = true

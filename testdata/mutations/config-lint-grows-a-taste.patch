@@ -1,9 +1,9 @@
 diff --git a/internal/config/lint.go b/internal/config/lint.go
-index b647b17..6a3f470 100644
+index 1a3ebb9..0903c69 100644
 --- a/internal/config/lint.go
 +++ b/internal/config/lint.go
-@@ -44,6 +44,9 @@ func (c *Config) Lint(message, author string) LintVerdict {
- 	if !m.Matched {
+@@ -50,6 +50,9 @@ func (c *Config) Lint(message, author string) LintVerdict {
+ 		}
  		return LintVerdict{Reason: c.unmatchedReason()}
  	}
 +	if !m.Skip && m.Sigil == SigilMajor && strings.HasPrefix(message, ":memo:") {

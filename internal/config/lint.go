@@ -8,8 +8,9 @@ import (
 
 // LintVerdict is one message's standing under the config. Exactly one of
 // three shapes: Excluded (the author is in exclude_authors — the message was
-// never judged), OK (a pattern claimed it: a sigil obtained, or skip = true),
-// or a violation (OK false, Reason says why).
+// never judged), OK (a pattern claimed it: a sigil obtained, or skip = true;
+// at authoring time also an unlandable pattern), or a violation (OK false,
+// Reason says why).
 type LintVerdict struct {
 	Excluded bool
 	OK       bool
@@ -25,10 +26,12 @@ type LintVerdict struct {
 // Lint judges a single commit message: does any pattern claim it, and does
 // the claim yield a verdict? That is the whole check — v2 lint deliberately
 // has no opinion on combinations (a :memo: subject carrying ! is the
-// author's call; glyph parses and computes, it does not taste). The three
-// violations are exactly the three ways a message can fail to mean anything
-// under the file: no pattern matches, the semver_sigil capture is outside
-// the alphabet, or the capture is empty with no fixed fallback.
+// author's call; glyph parses and computes, it does not taste). The four
+// violations are exactly the four ways a message can fail to mean anything
+// under the file: no pattern matches, an unlandable pattern claims it, the
+// semver_sigil capture is outside the alphabet, or the capture is empty with
+// no fixed fallback. This is the history judgement — CI's range, the pre-push
+// hook, a pull request's title; the authoring one is LintAuthoring.
 //
 // An exclude_authors author is excluded before matching, same order as the
 // fold (its mutation row) and for the same reason: the key exists for bots,
@@ -42,9 +45,33 @@ func (c *Config) Lint(message, author string) LintVerdict {
 		return LintVerdict{Reason: err.Error()}
 	}
 	if !m.Matched {
+		if m.Unlandable != "" {
+			return LintVerdict{Reason: m.Unlandable}
+		}
 		return LintVerdict{Reason: c.unmatchedReason()}
 	}
 	return LintVerdict{OK: true, Warn: m.Warn}
+}
+
+// LintAuthoring judges a message at authoring time — the commit-msg hook's
+// question (`lint --stdin` / `--message`), asked before any commit exists, so
+// under the empty author. It is Lint with one difference: a message an
+// unlandable pattern claims is OK, carrying its reason as the warning plus
+// what every later gate will do with it. The hook cannot make git write
+// another subject (git spells `amend!` itself), and refusing one there forces
+// --no-verify, which turns the gate off for everything else in that commit.
+//
+// This is an argued disagreement between the hook and CI on one message
+// (DESIGN §2.1), and it runs in the direction §2.1 calls the cheaper one: blessing costs a round trip, refusing costs the commit. The
+// warning is what keeps it honest — it says CI will refuse the commit.
+// Anything that must judge a message exactly as the hook does (doctor's hook
+// probe) calls this, never Lint.
+func (c *Config) LintAuthoring(message string) LintVerdict {
+	m, err := c.Match(message)
+	if err == nil && !m.Matched && m.Unlandable != "" {
+		return LintVerdict{OK: true, Warn: m.Unlandable + " — the commit-msg hook lets it through, but every gate that judges an existing commit refuses it (lint --range, a push to the default branch, --pr, the release walk)"}
+	}
+	return c.Lint(message, "")
 }
 
 // unmatchedReason is the no-pattern-matches violation. It quotes the

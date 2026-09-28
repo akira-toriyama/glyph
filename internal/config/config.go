@@ -161,6 +161,17 @@ type Pattern struct {
 	// fleet's retired v1-acceptance window was the first such pattern). Empty
 	// means no warning.
 	Warn string
+	// Unlandable is the pattern-level unlandable key: why a message this
+	// pattern claims may be WRITTEN but must never LAND. Match reports such a
+	// message as claimed by no pattern, with this reason beside it, so every
+	// gate that judges a commit which already exists refuses it exactly as it
+	// refuses an unmatched one; only LintAuthoring — the commit-msg hook's
+	// question — lets it through, with the reason as a warning. Made for
+	// git's `amend!` subject (t-t84a): autosquash REPLACES the target's
+	// message with the amend! body, so a skip drops the only commit carrying
+	// the new sigil, and a refusal at the hook forces --no-verify. Empty
+	// means the key is absent.
+	Unlandable string
 
 	re *regexp.Regexp
 }
@@ -224,6 +235,7 @@ type rawPattern struct {
 	SemverSigil *string `toml:"semver_sigil"`
 	Skip        bool    `toml:"skip"`
 	Warn        *string `toml:"warn"`
+	Unlandable  *string `toml:"unlandable"`
 }
 
 type rawNote struct {
@@ -439,16 +451,32 @@ func compilePattern(rp rawPattern) (Pattern, error) {
 		warn = *rp.Warn
 	}
 
-	if !rp.Skip && !hasGroup && fixed == nil {
-		return Pattern{}, fmt.Errorf("pattern %q has no (?P<%s>...) group, no semver_sigil key and no skip = true: a match could never yield a verdict", *rp.Pattern, SigilGroup)
+	unlandable := ""
+	if rp.Unlandable != nil {
+		switch {
+		case rp.Skip:
+			return Pattern{}, fmt.Errorf("skip = true and unlandable contradict: a skipped commit lands unjudged, an unlandable one is refused wherever it exists")
+		case fixed != nil:
+			return Pattern{}, fmt.Errorf("unlandable and semver_sigil = %q contradict: an unlandable message is never folded, so it has no sigil to give", *rp.SemverSigil)
+		case rp.Warn != nil:
+			return Pattern{}, fmt.Errorf("unlandable and warn contradict: warn keeps a match legal at every gate, unlandable refuses it at every gate but the commit-msg hook — the unlandable reason is already the hook's warning")
+		case *rp.Unlandable == "":
+			return Pattern{}, fmt.Errorf("unlandable is empty: the reason IS the refusal every gate prints and the warning the commit-msg hook prints — say what must happen to the message before it lands, or drop the key")
+		}
+		unlandable = *rp.Unlandable
+	}
+
+	if !rp.Skip && unlandable == "" && !hasGroup && fixed == nil {
+		return Pattern{}, fmt.Errorf("pattern %q has no (?P<%s>...) group, no semver_sigil key, no skip = true and no unlandable: a match could never yield a verdict", *rp.Pattern, SigilGroup)
 	}
 
 	return Pattern{
-		Pattern: *rp.Pattern,
-		Fixed:   fixed,
-		Skip:    rp.Skip,
-		Warn:    warn,
-		re:      re,
+		Pattern:    *rp.Pattern,
+		Fixed:      fixed,
+		Skip:       rp.Skip,
+		Warn:       warn,
+		Unlandable: unlandable,
+		re:         re,
 	}, nil
 }
 
