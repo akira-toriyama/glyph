@@ -70,14 +70,29 @@ skip = true
 [[patterns]]
 # autosquash artifacts — fixup! and squash!, what --fixup=<c> and --squash=<c>
 # write. rebase --autosquash folds each into its target with the TARGET's
-# subject, and so its sigil, intact.
-# amend! (what --fixup=amend:<c> and --fixup=reword:<c> write) is left
-# unmatched on purpose: autosquash REPLACES its target's message with the
-# amend! body, so a skip would fold the sigil the rewrite discards and miss
-# the one it lands. Unmatched, every gate refuses it until it is autosquashed
-# — the commit-msg hook included, so reword through `git rebase -i` instead.
+# subject, and so its sigil, intact — the one property that makes a skip safe.
 pattern = '^(fixup|squash)! '
 skip = true
+
+[[patterns]]
+# amend! (what --fixup=amend:<c> and --fixup=reword:<c> write) is NOT skipped:
+# autosquash REPLACES its target's message with the amend! body, so a skip
+# would fold the sigil the rewrite discards and miss the one it lands. It is
+# unlandable instead: the commit-msg hook lets git's own subject through with
+# the reason below as a warning (refusing it there would force --no-verify),
+# and every gate that judges an existing commit — lint --range, --pr, bump,
+# the release walk — refuses it until rebase --autosquash has folded it away.
+# The claim reads the BODY, because the body is what lands: it covers only a
+# body that opens the way the first pattern's subject does (keep the two in
+# step). Any other body stays unmatched, refused everywhere, the hook
+# included — above all the one --fixup=amend:<a fixup! commit> prepares, that
+# fixup!'s own line, which autosquash would land as the target's whole
+# message for the skip above to drop. One chain no single message shows:
+# after a squash! of the same target, git APPENDS the body instead, and the
+# target's old first line lands unless the rebase's combined message is
+# edited — so the reason says it at the hook.
+pattern = '^amend! .*\n\n[a-z]+(\([a-z0-9-]+\))?[=~^!%]: .'
+unlandable = 'autosquash lands this body as its target message (after a squash! of the same commit git appends it instead: edit the combined message so its first line carries the sigil); run git rebase --autosquash before this history is pushed or merged'
 
 [note]
 # One line per commit. $xxx reads the winning pattern's named groups;

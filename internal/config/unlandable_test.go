@@ -170,23 +170,52 @@ func TestLintAuthoringLetsUnlandableThrough(t *testing.T) {
 // subject, and so its sigil — and amend! is not, because autosquash REPLACES
 // its target's message with the amend! body. glyph#241 put amend beside the
 // other two and every gate folded ':bug:~' plus a reword to ':boom:!' as
-// patch. Whether a preset leaves amend! unmatched or claims it as unlandable,
-// it must never come back as a skip or a sigil.
+// patch. The presets claim amend! as unlandable: Match hands it back in the
+// UNMATCHED shape carrying a reason — never a skip, never a sigil, and never
+// bare-unclaimed either, which would refuse git's own subject at the hook.
+//
+// The claim reads the body, which is what autosquash lands. A body that is not
+// the grammar's subject stays bare-unclaimed, refused at the hook too: an
+// amend of a fixup! commit prepares that fixup!'s line as the body, and
+// claiming it let the hook pass a commit whose autosquash lands the target
+// titled fixup! — skipped by every gate, the target's sigil gone (measured on
+// git 2.54: lint 0, bump none).
 func TestPresetsNeverSkipAmend(t *testing.T) {
+	grammar := map[string]struct{ fixup, squash, amend, subject, sigilOnly string }{
+		"gemoji":       {"fixup! :bug:~ fix b", "squash! :bug:~ fix b", "amend! :bug:~ fix b\n\n:boom:! fix b", ":sparkles:(x)^ add x", ":boom:! "},
+		"conventional": {"fixup! fix(b)~: fix b", "squash! fix(b)~: fix b", "amend! fix(b)~: fix b\n\nfix(b)!: fix b", "feat(x)^: add x", "fix(b)!: "},
+	}
 	for _, name := range PresetNames() {
 		t.Run(name, func(t *testing.T) {
+			g, ok := grammar[name]
+			if !ok {
+				t.Fatalf("preset %q has no messages here: say what its grammar's amend! looks like", name)
+			}
 			data, _ := Preset(name)
 			cfg := mustLoad(t, string(data))
-			for _, msg := range []string{"fixup! :bug:~ fix b", "squash! fix(b)~: fix b"} {
+			for _, msg := range []string{g.fixup, g.squash} {
 				m, err := cfg.Match(msg)
 				if err != nil || !m.Matched || !m.Skip {
 					t.Errorf("%q = %+v (err %v), want the autosquash skip", msg, m, err)
 				}
 			}
-			for _, msg := range []string{"amend! :bug:~ fix b\n\n:boom:! fix b", "amend! fix(b)~: fix b\n\nfix(b)!: fix b"} {
+			m, err := cfg.Match(g.amend)
+			if err != nil || m.Matched {
+				t.Errorf("%q = %+v (err %v), want it unclaimed: a skip or a sigil reads the message autosquash discards", g.amend, m, err)
+			}
+			if m.Unlandable == "" {
+				t.Errorf("%q = %+v, want an unlandable claim: left bare-unclaimed, the commit-msg hook refuses a subject git wrote", g.amend, m)
+			}
+			for _, msg := range []string{
+				"amend! fixup! " + g.subject + "\n\nfixup! " + g.subject,
+				"amend! squash! " + g.subject + "\n\nsquash! " + g.subject,
+				"amend! Merge branch 'x'\n\nMerge branch 'x'",
+				"amend! " + g.subject,
+				"amend! " + g.subject + "\n\n" + g.sigilOnly + "\nbody",
+			} {
 				m, err := cfg.Match(msg)
-				if err != nil || m.Matched {
-					t.Errorf("%q = %+v (err %v), want it unclaimed: a skip or a sigil reads the message autosquash discards", msg, m, err)
+				if err != nil || m.Matched || m.Unlandable != "" {
+					t.Errorf("%q = %+v (err %v), want it bare-unclaimed: that body does not open as the grammar's subject, so the hook must refuse it too", msg, m, err)
 				}
 			}
 		})
