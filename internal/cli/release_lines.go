@@ -241,7 +241,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 			}
 			return werr
 		}
-		noticef("draft release %s %sd (unpublished — the tag is created when a human publishes): %s", d.params.TagName, d.plan.Action, rel.URL)
+		noticef("draft release %s %sd at %s (unpublished — the tag is created at that commit when a human publishes): %s", d.params.TagName, d.plan.Action, d.params.Target, rel.URL)
 		urls = append(urls, rel.URL)
 		for j := range result.Packages {
 			if result.Packages[j].Path == d.verdict.Path {

@@ -303,7 +303,7 @@ func releaseRun(cmd *cobra.Command) error {
 	if werr != nil {
 		return werr
 	}
-	noticef("draft release %s %sd (unpublished — the tag is created when a human publishes): %s", tagName, plan.Action, rel.URL)
+	noticef("draft release %s %sd at %s (unpublished — the tag is created at that commit when a human publishes): %s", tagName, plan.Action, target, rel.URL)
 
 	if cerr := convergeStrays(ctx, gh, owner, repoName, stale); cerr != nil {
 		return cerr

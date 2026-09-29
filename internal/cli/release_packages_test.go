@@ -98,6 +98,48 @@ func TestReleasePackagesWritesOneDraftPerLine(t *testing.T) {
 	}
 }
 
+// TestReleasePackagesRealRunNoticeNamesTheTarget is the packages arm of
+// TestReleaseRealRunNoticeNamesTheTarget (t-wzr5): every line's draft points
+// at the one target, and each line's notice names it, as the dry run's
+// per-line notice always did.
+func TestReleasePackagesRealRunNoticeNamesTheTarget(t *testing.T) {
+	realRunStderr := func(t *testing.T, args ...string) string {
+		t.Helper()
+		dir, _ := packagesRepo(t)
+		_, routes := squashAcrossLines(t, dir, 7)
+		var writes []apiWrite
+		usePR(t, releaseServer(t, routes, `[]`, &writes))
+		t.Chdir(dir)
+
+		code, _, stderr := runGlyph(t, append([]string{"release"}, args...)...)
+		if code != 0 {
+			t.Fatalf("release exited %d, want 0\nstderr: %s", code, stderr)
+		}
+		if len(writes) != 2 {
+			t.Fatalf("writes = %+v, want one POST per line", writes)
+		}
+		return stderr
+	}
+
+	t.Run("an explicit --target is the sha every notice names", func(t *testing.T) {
+		stderr := realRunStderr(t, "--target", "cafe1234")
+		for _, tag := range []string{"haiku/v0.2.0", "curry/v0.1.1"} {
+			if !strings.Contains(stderr, "draft release "+tag+" created at cafe1234 ") {
+				t.Errorf("%s's notice must name the cafe1234 the flag named:\n%s", tag, stderr)
+			}
+		}
+	})
+	t.Run("no flag names the checkout's HEAD", func(t *testing.T) {
+		stderr := realRunStderr(t)
+		head := testGit(t, ".", "akira-toriyama", "rev-parse", "HEAD")
+		for _, tag := range []string{"haiku/v0.2.0", "curry/v0.1.1"} {
+			if !strings.Contains(stderr, "draft release "+tag+" created at "+head+" ") {
+				t.Errorf("%s's notice must name the checkout's HEAD %s:\n%s", tag, head, stderr)
+			}
+		}
+	})
+}
+
 // TestReleasePackagesUpdatesEachLinesOwnDraft: each line converges its OWN
 // draft — haiku's is updated by id with its hand region carried across,
 // curry's is retagged in place from v0.1.0 to v0.1.1 — and neither line's
