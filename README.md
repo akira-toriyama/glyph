@@ -319,9 +319,11 @@ not see — and `unlandable = '…'` marks a message that may be written but mus
 not land: the commit-msg hook lets it through with that reason as a warning,
 and every gate that judges an existing commit (`lint --range`, a push to the
 default branch, `lint --pr`, the release walk) refuses it. It exists for
-git's own `amend!` subject, which `rebase --autosquash` turns into a
-replacement of its target's message — skipping it would fold the version the
-history had before the rewrite. `exclude_authors` keeps bots
+git's own `amend!` subject: `rebase --autosquash` turns it into a
+replacement of its target's message, so skipping it would fold the version
+the history had before the rewrite. The presets claim an `amend!` whose body
+opens the way their first pattern's subject does and refuse any other at the
+hook as well — the body is what lands. `exclude_authors` keeps bots
 out of lint and the fold; whether they appear in the notes is
 `[[note.sections]]`'s decision alone, and under `[[packages]]` the files a
 bot commit touches decide which line's notes.

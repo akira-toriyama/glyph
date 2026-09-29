@@ -1,13 +1,9 @@
 diff --git a/internal/config/presets/conventional.toml b/internal/config/presets/conventional.toml
-index 0b4446b..ec8aa6c 100644
+index 0b4446b..d502e50 100644
 --- a/internal/config/presets/conventional.toml
 +++ b/internal/config/presets/conventional.toml
-@@ -71,29 +71,9 @@ skip = true
- # autosquash artifacts — fixup! and squash!, what --fixup=<c> and --squash=<c>
- # write. rebase --autosquash folds each into its target with the TARGET's
- # subject, and so its sigil, intact — the one property that makes a skip safe.
--pattern = '^(fixup|squash)! '
-+pattern = '^(fixup|squash|amend)! '
+@@ -74,26 +74,6 @@ skip = true
+ pattern = '^(fixup|squash)! '
  skip = true
  
 -[[patterns]]
@@ -34,15 +30,11 @@ index 0b4446b..ec8aa6c 100644
  # One line per commit. $xxx reads the winning pattern's named groups;
  # $pr / $author / $hash / $coauthors are built in. A commit no pattern
 diff --git a/internal/config/presets/gemoji.toml b/internal/config/presets/gemoji.toml
-index 377c0d2..67fb909 100644
+index 377c0d2..f134946 100644
 --- a/internal/config/presets/gemoji.toml
 +++ b/internal/config/presets/gemoji.toml
-@@ -66,29 +66,9 @@ skip = true
- # autosquash artifacts — fixup! and squash!, what --fixup=<c> and --squash=<c>
- # write. rebase --autosquash folds each into its target with the TARGET's
- # subject, and so its sigil, intact — the one property that makes a skip safe.
--pattern = '^(fixup|squash)! '
-+pattern = '^(fixup|squash|amend)! '
+@@ -69,26 +69,6 @@ skip = true
+ pattern = '^(fixup|squash)! '
  skip = true
  
 -[[patterns]]

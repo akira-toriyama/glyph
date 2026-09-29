@@ -128,8 +128,11 @@ func TestLoadGemojiConfig(t *testing.T) {
 		t.Errorf("Commit.Template lost the literal placeholder: %q", cfg.Commit.Template)
 	}
 
-	if len(cfg.Patterns) != 4 {
-		t.Fatalf("len(Patterns) = %d, want 4", len(cfg.Patterns))
+	if len(cfg.Patterns) != 5 {
+		t.Fatalf("len(Patterns) = %d, want 5", len(cfg.Patterns))
+	}
+	if p := cfg.Patterns[4]; p.Unlandable == "" || p.Skip || p.Fixed != nil {
+		t.Errorf("Patterns[4] should claim amend! as unlandable and nothing else: %+v", p)
 	}
 	if cfg.Patterns[0].Fixed != nil || cfg.Patterns[0].Skip {
 		t.Errorf("Patterns[0] should rely on its capture group alone: %+v", cfg.Patterns[0])

@@ -165,15 +165,36 @@ pattern says it means:
     exists. `TestUnlandableAmendEndToEnd` asks git for every step: the
     installed hook on both `--fixup` forms, the range gates on the history
     git recorded, and the verdict after a real `rebase --autosquash`.
-  - **The presets do not claim amend! yet — they leave it unmatched**
-    (`TestPresetsNeverSkipAmend`, `TestShippedPresetRefusesAnUnsquashedAmend`;
-    mutation row `presets-skip-amend.patch`). That is every gate refusing it,
-    the hook included, which is v4.1.0's behaviour. A key only works where
-    the binary reading the file knows it: glyph's own CI runs a pinned
-    release, `glyph.toml` here is the gemoji preset byte for byte, and a
-    release older than the key refuses the whole file at exit 2. So the key
-    ships first, and the presets claim `amend!` as unlandable only once every
-    pin that reads a preset-derived file reads a release carrying the key.
+  - **The presets claim `amend!` as unlandable, one release after the key**
+    (`TestPresetsNeverSkipAmend`, `TestShippedPresetRefusesAnUnsquashedAmend`,
+    `TestInstalledHookGatesRealCommits`; mutation row
+    `presets-skip-amend.patch`). A key only works where the binary reading
+    the file knows it: glyph's own CI runs a pinned release, `glyph.toml`
+    here is the gemoji preset byte for byte, and a release older than the
+    key refuses the whole file at exit 2. So v4.2.0 shipped the key with the
+    presets leaving `amend!` unmatched — every gate refusing it, the hook
+    included, v4.1.0's behaviour — and the presets claimed it only once every
+    pin that reads a preset-derived file read a release carrying the key.
+  - **The claim reads the body, not the subject** (mutation row
+    `presets-claim-any-amend-body.patch`). The body is what autosquash lands,
+    so the presets claim an `amend!` only when its body opens the way their
+    first pattern's subject does, and leave every other body unmatched —
+    refused at the hook too. The case that decided it:
+    `--fixup=amend:<a fixup! commit>` prepares that fixup!'s own line as the
+    body, and autosquash lands it as the original commit's whole message,
+    `fixup! …`, which the skip drops — lint green, bump none, the original
+    sigil gone (measured on git 2.54). Claimed on the subject alone, the hook
+    passed that commit with a warning whose remedy produced the silent none.
+    One chain no single message can show: after a `squash!` of the same
+    target, git's sequencer treats the `amend!` as a squash and APPENDS its
+    body, so the target's old first line lands unless the rebase's combined
+    message is edited — lint green, the old sigil folded (measured on git
+    2.54). glyph folds what landed, so no gate can catch it afterwards; the
+    reason names the case at the hook, the one moment the author can act.
+  - **Nothing rewrites a `glyph.toml` already written**, so each keeps what
+    its release generated: v4.1.1's skips `amend!` (the silent fold above,
+    until its repository replaces the skip with the preset's block), and every
+    other release's before the claim leaves it unmatched, refused at the hook.
 - **`exclude_authors`** removes a commit from lint and the fold before its
   message is ever matched — the key exists for bots, whose messages are
   exactly the ones the patterns do not describe. Whether such a commit

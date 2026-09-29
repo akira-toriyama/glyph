@@ -198,9 +198,10 @@ func FuzzMatch(f *testing.F) {
 	if !ok {
 		f.Fatalf("Preset(gemoji) missing")
 	}
-	// The preset plus a config that claims amend! as unlandable: no shipped
-	// preset declares the key yet, and the unlandable shape is one of the
-	// outcomes this target must see to hold it to the unmatched form.
+	// The preset plus a config that claims every amend! as unlandable. The
+	// preset claims only an amend! whose body is a gemoji subject, so the
+	// second config keeps the unlandable shape reachable from inputs the
+	// engine has not learned to spell that way.
 	var cfgs []*Config
 	for _, src := range [][]byte{data, []byte(unlandableToml)} {
 		cfg, err := Load(src)

@@ -1,10 +1,10 @@
 diff --git a/internal/config/presets/gemoji.toml b/internal/config/presets/gemoji.toml
-index 2fbdeb4..5e1ccab 100644
+index 377c0d2..8a40225 100644
 --- a/internal/config/presets/gemoji.toml
 +++ b/internal/config/presets/gemoji.toml
-@@ -74,6 +74,13 @@ skip = true
- pattern = '^(fixup|squash)! '
- skip = true
+@@ -89,6 +89,13 @@ skip = true
+ pattern = '^amend! .*\n\n:[a-z0-9_]+:(\([a-z0-9-]+\))?[=~^!%] .'
+ unlandable = 'autosquash lands this body as its target message (after a squash! of the same commit git appends it instead: edit the combined message so its first line carries the sigil); run git rebase --autosquash before this history is pushed or merged'
  
 +[[patterns]]
 +# the retired v1-acceptance window, back: a sigil-less gitmoji subject lints

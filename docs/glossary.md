@@ -493,8 +493,9 @@ reason as a warning (`Config.LintAuthoring`); every gate that judges an
 existing commit reads it as a message no pattern claims, with the reason as
 the finding (`Config.Lint`, the fold's refusal, the notes' raw-line fallback).
 Distinguish from **skip**, under which the commit lands and is never judged.
-Made for git's `amend!` subject (DESIGN §2). `internal/config/match.go: Match,
-UnclaimedDetail`, `internal/config/lint.go: LintAuthoring`
+Made for git's `amend!` subject, which the presets claim when its body — what
+lands — opens the way their first pattern's subject does (DESIGN §2).
+`internal/config/match.go: Match, UnclaimedDetail`, `internal/config/lint.go: LintAuthoring`
 
 **dictionary** — the ordered gemoji table `glyph emoji` prints: one code per
 kind of change, the first description that fits wins, and each entry names the
