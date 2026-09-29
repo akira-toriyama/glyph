@@ -380,19 +380,29 @@ func staleReleases(ds []draftplan.Draft) []github.Release {
 // whatever that line's siblings wrote.
 func convergeStrays(ctx context.Context, gh *github.Client, owner, repo string, stale []github.Release) error {
 	for _, s := range stale {
-		gone, derr := gh.DeleteRelease(ctx, owner, repo, s.ID)
-		if derr != nil {
-			if core.IsInterrupted(derr) {
-				return derr
-			}
-			warnf("the notes landed, but the stale draft %s (release id %d) would not go: %v — "+
-				"it converges on the next release; do NOT publish it, a stale tag at a stale "+
-				"target wedges the next release at the published floor", s.TagName, s.ID, derr)
-			continue
+		if _, err := convergeStray(ctx, gh, owner, repo, s); err != nil {
+			return err
 		}
-		noticef("%s the stale draft %s (release id %d)", discardedOrGone(gone), s.TagName, s.ID)
 	}
 	return nil
+}
+
+// convergeStray is convergeStrays for one draft, for a caller with more to say
+// once that draft is gone (releaseLines' bare residue): went reports that the
+// DELETE went and its notice was printed, and the only error is an interrupt.
+func convergeStray(ctx context.Context, gh *github.Client, owner, repo string, s github.Release) (went bool, err error) {
+	gone, derr := gh.DeleteRelease(ctx, owner, repo, s.ID)
+	if derr != nil {
+		if core.IsInterrupted(derr) {
+			return false, derr
+		}
+		warnf("the notes landed, but the stale draft %s (release id %d) would not go: %v — "+
+			"it converges on the next release; do NOT publish it, a stale tag at a stale "+
+			"target wedges the next release at the published floor", s.TagName, s.ID, derr)
+		return false, nil
+	}
+	noticef("%s the stale draft %s (release id %d)", discardedOrGone(gone), s.TagName, s.ID)
+	return true, nil
 }
 
 // releaseNone finishes a none verdict: the draft state converges to "no

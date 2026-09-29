@@ -419,8 +419,9 @@ its residual draft), every line's upsert written before any stray is deleted
 `packages: [{path, current, level, next, tag, body, action, url, commits,
 reason}]` with the scalars empty and `target` shared. A bare `vX.Y.Z` draft
 in a repository that declares packages but no root package is the single
-line's residue and is deleted with a notice on the first packages run — move
-any hand-written prose it carried into the line's own draft first. GitHub's
+line's residue and is deleted with a notice on the first packages run —
+`release --dry-run` names it without deleting it, so move any hand-written
+prose it carried into the line's own draft first. GitHub's
 Latest badge lands on whichever line a human published last; glyph never
 sets `make_latest`. A tag that selects one line converges that line alone.
 

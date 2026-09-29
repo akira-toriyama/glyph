@@ -66,9 +66,10 @@ type lineDraft struct {
 //   - a tag that selects one line converges that line ALONE: the other
 //     lines' drafts are not this run's to touch;
 //   - the bare vX.Y.Z draft of a repository that declares packages but no
-//     root package is the single line's residue and is deleted with a notice
-//     on the first packages run — a hand region it carried goes with it, and
-//     the notice says so;
+//     root package is the single line's residue and is deleted on the first
+//     packages run — a hand region it carried goes with it, which a dry run's
+//     notice says before anything is written and a real run's once the
+//     DELETE went;
 //   - --footer-file appends to every draft; make_latest is never set;
 //   - exit 1 is answered only when every selected line folds to none.
 func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, footer, owner, repoName string) error {
@@ -181,8 +182,13 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 	var residue []github.Release
 	if !slices.ContainsFunc(cfg.Packages, func(p config.Package) bool { return p.Path == "." }) {
 		residue = staleReleases(draftplan.PlanDraft(cfg.LineOf(config.Package{Path: "."}), bump.LevelNone, "", false, drafted).Stale)
-		for _, r := range residue {
-			noticef("the bare draft %s (release id %d) is the single line's residue — this repository declares packages and no root package, so no line will converge it again; it is deleted, and a hand region it carried goes with it (move that prose into the line's own draft, above the marker)", r.TagName, r.ID)
+	}
+	// Spoken once the residue's DELETE went, never at plan time: printed there
+	// it told a dry run, and a run that died at an upsert with the residue
+	// untouched, that the draft "is deleted" (t-xz1z).
+	residueGone := func(s github.Release) {
+		if slices.ContainsFunc(residue, func(r github.Release) bool { return r.ID == s.ID }) {
+			noticef("the bare draft %s (release id %d) is the single line's residue — this repository declares packages and no root package, so no line would converge it again; a hand region it carried is gone with it", s.TagName, s.ID)
 		}
 	}
 	// The residue is no line's, so its delete is the run's: a stray of the
@@ -220,6 +226,9 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 		}
 		if n := len(residual) + len(stale); n > 0 {
 			noticef("dry run: %d stale draft(s) to delete after the upserts", n)
+		}
+		for _, r := range residue {
+			noticef("dry run: the bare draft %s (release id %d) is the single line's residue — this repository declares packages and no root package, so no line will converge it again; it would be deleted, and a hand region it carried would go with it (move that prose into the line's own draft, above the marker, before a real run)", r.TagName, r.ID)
 		}
 		if releaseJSON {
 			printCompact(result)
@@ -274,9 +283,16 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 			return derr
 		}
 		noticef("no release is due on its line — %s the residual draft %s (release id %d)", discardedOrGone(gone), s.TagName, s.ID)
+		residueGone(s)
 	}
-	if cerr := convergeStrays(ctx, gh, owner, repoName, stale); cerr != nil {
-		return cerr
+	for _, s := range stale {
+		went, cerr := convergeStray(ctx, gh, owner, repoName, s)
+		if cerr != nil {
+			return cerr
+		}
+		if went {
+			residueGone(s)
+		}
 	}
 
 	if releaseJSON {

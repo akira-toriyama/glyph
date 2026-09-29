@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -197,8 +198,10 @@ func TestReleasePackagesNoneLineConvergesOnlyItsOwnDraft(t *testing.T) {
 
 // TestReleasePackagesBareResidueIsDeletedWithNotice: with packages declared
 // and no root package, a bare vX.Y.Z draft is the single line's residue —
-// deleted, and the notice says the hand region goes with it. With a root
-// package declared it is that package's draft and simply converges.
+// deleted, and the notice says the hand region goes with it, from whichever
+// pass deleted it (a stray beside the lines' drafts, or the whole action when
+// no line writes one). With a root package declared it is that package's
+// draft and simply converges.
 func TestReleasePackagesBareResidueIsDeletedWithNotice(t *testing.T) {
 	t.Run("no root package: the residue goes", func(t *testing.T) {
 		dir, _ := packagesRepo(t)
@@ -217,6 +220,23 @@ func TestReleasePackagesBareResidueIsDeletedWithNotice(t *testing.T) {
 			t.Fatalf("the notice must say what is deleted and that the hand region goes with it:\n%s", stderr)
 		}
 	})
+	t.Run("no line writes a draft: the residue goes, and says so", func(t *testing.T) {
+		dir, _ := packagesRepo(t)
+		walk := linesQuiet(t, dir)
+		var writes []apiWrite
+		usePR(t, releaseServer(t, walk, `[`+draftJSON(61, "v0.9.0")+`]`, &writes))
+		t.Chdir(dir)
+		code, _, stderr := runGlyph(t, "release")
+		if code != 1 {
+			t.Fatalf("release exited %d, want 1 (every line none)\nstderr: %s", code, stderr)
+		}
+		if len(writes) != 1 || writes[0].method != "DELETE" || !strings.HasSuffix(writes[0].path, "/61") {
+			t.Fatalf("writes = %+v, want the DELETE of the bare residue alone", writes)
+		}
+		if !strings.Contains(stderr, "single line's residue") || !strings.Contains(stderr, "hand region") {
+			t.Fatalf("the loud pass must speak the residue's notice once its DELETE went too:\n%s", stderr)
+		}
+	})
 	t.Run("a root package adopts it", func(t *testing.T) {
 		dir, declared := packagesRepoWithRoot(t)
 		sha := touch(t, dir, "akira-toriyama", ":bug:~ fix the workspace", "go.work")
@@ -229,6 +249,97 @@ func TestReleasePackagesBareResidueIsDeletedWithNotice(t *testing.T) {
 		}
 		if len(writes) != 1 || writes[0].method != "PATCH" || !strings.HasSuffix(writes[0].path, "/62") || writes[0].body["tag_name"] != "v0.1.1" {
 			t.Fatalf("writes = %+v, want the root line to update draft 62 in place to v0.1.1", writes)
+		}
+	})
+}
+
+// TestReleasePackagesBareResidueNoticeWaitsForTheDelete (t-xz1z): the residue
+// notice is the one warning that exists so a human can move a hand region's
+// prose before it is destroyed, and --dry-run is how they get to read it in
+// time. It used to be printed at plan time, above the dry-run fork and the
+// writes, so a dry run (which writes nothing) and a run that died at an
+// upsert (the residue untouched) both said "it is deleted". Now the dry run
+// says it would be, and the real run speaks only once the DELETE went.
+func TestReleasePackagesBareResidueNoticeWaitsForTheDelete(t *testing.T) {
+	residue := `[` + draftJSON(61, "v0.9.0") + `]`
+	serve := func(t *testing.T, fail func(*http.Request) int) (seq *[]string) {
+		t.Helper()
+		dir, _ := packagesRepo(t)
+		_, routes := squashAcrossLines(t, dir, 7)
+		var writes []apiWrite
+		inner := releaseHandler(t, routes, residue, &writes)
+		seq = &[]string{}
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				*seq = append(*seq, r.Method+" "+r.URL.Path)
+			}
+			if code := fail(r); code != 0 {
+				w.Header().Set("Retry-After", "0")
+				w.WriteHeader(code)
+				fmt.Fprint(w, `{"message":"boom"}`)
+				return
+			}
+			inner(w, r)
+		}))
+		t.Cleanup(srv.Close)
+		usePR(t, srv)
+		t.Chdir(dir)
+		return seq
+	}
+	never := func(*http.Request) int { return 0 }
+
+	t.Run("a dry run says it would be deleted", func(t *testing.T) {
+		seq := serve(t, never)
+		code, _, stderr := runGlyph(t, "release", "--dry-run")
+		if code != 0 {
+			t.Fatalf("release --dry-run exited %d, want 0\nstderr: %s", code, stderr)
+		}
+		if len(*seq) != 0 {
+			t.Fatalf("a dry run wrote: %v", *seq)
+		}
+		if strings.Contains(stderr, "is deleted") {
+			t.Errorf("a dry run deletes nothing and must not say it did:\n%s", stderr)
+		}
+		for _, want := range []string{"dry run: the bare draft v0.9.0 (release id 61) is the single line's residue", "would be deleted", "hand region"} {
+			if !strings.Contains(stderr, want) {
+				t.Errorf("the dry run must name the residue before anything is written (%q):\n%s", want, stderr)
+			}
+		}
+	})
+	t.Run("a run that died at an upsert deleted nothing and says so", func(t *testing.T) {
+		seq := serve(t, func(r *http.Request) int {
+			if r.Method == http.MethodPost {
+				return http.StatusUnprocessableEntity
+			}
+			return 0
+		})
+		code, _, stderr := runGlyph(t, "release")
+		if code != 4 {
+			t.Fatalf("a failed upsert exited %d, want 4\nstderr: %s", code, stderr)
+		}
+		if slices.ContainsFunc(*seq, func(w string) bool { return strings.HasPrefix(w, "DELETE ") }) {
+			t.Fatalf("write sequence = %v, want no DELETE after a failed upsert", *seq)
+		}
+		if strings.Contains(stderr, "is deleted") || strings.Contains(stderr, "single line's residue") {
+			t.Errorf("the residue is untouched, so no notice may speak of its deletion:\n%s", stderr)
+		}
+	})
+	t.Run("a DELETE that would not go leaves the warning alone", func(t *testing.T) {
+		serve(t, func(r *http.Request) int {
+			if r.Method == http.MethodDelete {
+				return http.StatusServiceUnavailable
+			}
+			return 0
+		})
+		code, _, stderr := runGlyph(t, "release")
+		if code != 0 {
+			t.Fatalf("release exited %d, want 0 (the residue is a stray beside the drafts that landed)\nstderr: %s", code, stderr)
+		}
+		if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "release id 61") {
+			t.Errorf("the residue that would not go must be warned about:\n%s", stderr)
+		}
+		if strings.Contains(stderr, "is deleted") || strings.Contains(stderr, "single line's residue") {
+			t.Errorf("the residue still stands, so no notice may speak of its deletion:\n%s", stderr)
 		}
 	})
 }

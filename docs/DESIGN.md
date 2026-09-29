@@ -1265,14 +1265,20 @@ did not manage untouched. The placeholder `draft_on_none` maintains becomes
 that wedges a floor. Two drafts glyph *did* write are claimed and converged
 away, on the precedent of the placeholder being claimed with the flag off: a
 bare `vX.Y.Z` draft in a repository that declares packages but no root package
-is the single line's residue and is deleted with a notice on the first
-packages run (a hand region it carried goes with it — the migration is the
-one moment to move that prose, and the notice says so); with a root package
-declared it is that package's draft and simply converges. The write order is
-§4's write-first, extended: every line's upsert lands before any draft is
-deleted, so a write that fails on the second line leaves the first line's
-notes standing and exits 4 — the next run heals it. The deletes after the
-upserts are of two kinds, and §4's two severities go with them per line. A
+is the single line's residue and is deleted on the first packages run. A hand
+region it carried goes with it, and the migration is the one moment to move
+that prose, so `release --dry-run` is how to learn it in time: its notice
+names the residue and says it would be deleted, and a real run's speaks only
+once the `DELETE` went. The first cut printed one notice at plan time, above
+the dry-run fork, so a dry run that wrote nothing and a run that died at an
+upsert with the residue untouched both said the draft "is deleted" (t-xz1z;
+`TestReleasePackagesBareResidueNoticeWaitsForTheDelete`, mutation row
+`release-packages-residue-notice-speaks-before-the-delete.patch`). With a root
+package declared it is that package's draft and simply converges. The write
+order is §4's write-first, extended: every line's upsert lands before any
+draft is deleted, so a write that fails on the second line leaves the first
+line's notes standing and exits 4 — the next run heals it. The deletes after
+the upserts are of two kinds, and §4's two severities go with them per line. A
 line that folds to none with `draft_on_none` off has one action, deleting its
 residual drafts, so a delete that will not go fails the run (4) exactly as the
 single line's none verdict does, whatever its siblings wrote; the strays
