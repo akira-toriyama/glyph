@@ -447,6 +447,12 @@ write refused off the default branch · `130` interrupted.
 The integers are a frozen machine API — CI gates branch on the exact value, so
 assert the code, never truthiness (`if glyph …` cannot tell `3` from `2`).
 
+glyph's stderr has a shape too — `::` workflow annotations, then, on a failure
+that is not silent, one JSON error envelope, written last — so read the
+envelope the way the *error envelope* entry in
+[`docs/glossary.md`](docs/glossary.md#6-exit-codes-and-streams) says, never by
+handing stderr whole to `jq`.
+
 ## Working on glyph
 
 ```sh

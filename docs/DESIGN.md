@@ -1536,6 +1536,62 @@ so `internal/workflows` bans the read itself
 (`TestNoWorkflowRebuildsPerFindingAnnotations`) and the mutation ledger holds the
 producer half (`lint-findings-lose-their-annotations`).
 
+**One channel, sieved** (t-sa7p). The obvious cure for a sieve copied into
+every consumer — a native hand-off: a root `--error-file <path>` that
+`renderError` also writes, the envelope on fd 3, a path in the environment —
+was weighed and rejected, because it could only ever be added, never swapped
+in. The stderr copy is permanent on its own account: both installed hooks hand
+glyph's stderr straight to the committing developer (`internal/hook`), and when
+`lint --stdin` refuses a message the envelope is the only diagnostic that
+reaches them (measured). And a consumer whose one probe is fired at more than
+one revision — side by side in the preflight, one dispatch per ref in the
+live-fire harnesses of glyph-test and glyph-monorepo-test, which keep older
+releases as controls — can speak only the channel every such revision shares.
+No revision has ever carried the flag (`git log --all -S error-file -- '*.go'`
+finds no commit): each refuses it as unknown at exit `2`, and the sieve
+recovers exactly one envelope from each (measured 2026-09-29 on v0.12.0,
+v2.0.0, v3.0.0-rc.3 and v4.2.0; the sieve has been the contract since
+v0.11.1). So the preflight would file every lint gate as unanswered on the
+baseline side of the release that introduced the flag, the harnesses' sharp
+controls would go red for the flag instead of for the defect each exists to
+name, and the sieve would outlive the flag in every harness — two machine
+channels for one document. The quieter shapes fail worse: a binary with no
+fd-3 or environment surface ignores it, exit code unchanged and the file empty
+or never created (measured), which is t-sws7's silent loss of the `::error::`
+heading, reached by version skew instead of by `jq`; moving the annotations
+off stderr meets the same skew, with stdout already taken by the payload.
+
+Against that, the sieve has no failing input. glyph's own code writes stderr
+in four places — `warnf`, `errorf`, `noticef`, and `renderError`, whose one
+caller is `finish` — and the first three prefix `::` and fold through
+`oneLine`; git's stderr lands in a buffer and the doctor's hook probe's in the
+null device. Short of a crash, the one other writer is cobra's hidden
+`__complete` command — its directive, and a `[Debug] [Error]` line when the
+command line being completed names a flag it cannot parse — which prints at
+exit `0` and never beside an envelope (measured). A subject, a `warn` string
+and an `unlandable` reason each spelled `{"error":{"code":0,…}}` (the last two
+across embedded newlines) still leave one `{`-opening line, the envelope's
+(measured). The reusables' half is `internal/workflows`'
+`TestReusablesSieveTheEnvelopeBeforeJQ`, and mutation row
+`lint-summary-jq-reads-the-unsieved-stream` re-breaks it the way t-sws7
+shipped it: `jq` over the annotated stream exits 5 behind the step's
+`>/dev/null 2>&1`, and every convention failure the range step reports loses
+its summary heading. The preflight's two sieves sit outside that guard — they
+take the stream through a positional parameter and a captured variable, which
+its sink rule cannot follow; pointed at the script with both sieves deleted,
+it reports neither (measured). The preflight answers for `probe_lint`'s
+itself: two lint signatures it cannot read are an unanswered gate on its ✓
+line, never agreement. They used to compare equal — hiding a move exactly as
+the exit-code comparison #103 replaced had — and a machine without `jq`
+produced them with no edit at all (measured 2026-09-29: one finding against
+two, reported as no move). Nothing answers for `why`'s: it only words the
+reasons on skip and lost-answer lines, and broken, every reason whose stream
+carries an annotation ahead of the envelope reads `no error envelope`, the ✓
+line and the exit code unchanged (measured 2026-10-04). The script refuses to
+start without `jq` for the gate that has no such answer: without it both sides
+of every release body read as empty, so a re-render reports as none under an
+answered body gate (measured 2026-10-04, the refusal removed).
+
 **Repository resolution** (`resolveRepo`, one function for every API-side
 command — `lint --pr`, `bump`/`notes` `--pr`/`--since-tag`, `preview`,
 `release`, `doctor`): an explicit `--repo` wins, else `$GITHUB_REPOSITORY`,
