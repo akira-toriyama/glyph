@@ -26,15 +26,16 @@ import (
 
 // sinceTagAuto is what a bare --since-tag parses to (the flag's NoOptDefVal):
 // resolve the walk base from the repository itself — the highest parseable v*
-// tag — so a release job never duplicates glyph's version-tag policy in shell.
+// tag HEAD contains (latestVersionTag) — so a release job never duplicates
+// glyph's version-tag policy in shell.
 const sinceTagAuto = "auto"
 
 // sinceTagBelow is the prefix of the OTHER resolved --since-tag form,
 // --since-tag=below:TAG: the walk base is the highest parseable version tag
-// STRICTLY below TAG — the predecessor of a release that already has its tag.
-// It exists for the job auto cannot serve: at tag-push time the new tag is the
-// highest v* tag, so auto resolves to the tag being cut and walks an empty
-// range. goreleaser.yml re-derived this answer in shell (`git tag
+// HEAD contains STRICTLY below TAG — the predecessor of a release that already
+// has its tag. It exists for the job auto cannot serve: at tag-push time the
+// new tag is the highest v* tag, so auto resolves to the tag being cut and
+// walks an empty range. goreleaser.yml re-derived this answer in shell (`git tag
 // --sort=v:refname | awk`) and inherited the exact defect latestVersionTag's
 // doc names — git's sort is not a version order — so with a prerelease tag
 // present the predecessor came back wrong, and for the lowest sorted tag it
@@ -48,7 +49,7 @@ const sinceTagBelow = "below:"
 // named tag must be attached with = (--since-tag=v1.2.3).
 func addSinceTagFlag(cmd *cobra.Command, target *string, verb string) {
 	cmd.Flags().StringVar(target, "since-tag", "",
-		verb+" every merged PR's individual (pre-squash) commits on main since a tag (bare --since-tag: the highest v* tag; --since-tag=TAG names one; --since-tag=below:TAG resolves the highest version tag strictly below TAG)")
+		verb+" every merged PR's individual (pre-squash) commits on main since a tag (bare --since-tag: the highest v* tag HEAD contains; --since-tag=TAG names one; --since-tag=below:TAG resolves the highest version tag HEAD contains strictly below TAG)")
 	cmd.Flags().Lookup("since-tag").NoOptDefVal = sinceTagAuto
 }
 
@@ -116,7 +117,7 @@ func checkSinceTagFlag(tag string) error {
 	if strings.TrimSpace(tag) == "" {
 		// A workflow templating an unset variable produces exactly this; auto
 		// is spelled by OMITTING the value, never by an empty one.
-		return core.Usagef("--since-tag= names an empty tag — use a bare --since-tag for the highest v* tag, or name one with --since-tag=TAG")
+		return core.Usagef("--since-tag= names an empty tag — use a bare --since-tag for the highest v* tag HEAD contains, or name one with --since-tag=TAG")
 	}
 	if strings.HasPrefix(tag, "-") {
 		return core.Usagef("--since-tag %q looks like an option, not a tag", tag)
@@ -186,13 +187,15 @@ func sinceTagInputScoped(ctx context.Context, cfg *config.Config, tagFlag, repoF
 // resolution, so the walk base and the step base are the same tag by
 // construction — naming a tag names the release being redone; stepping from a
 // different (higher) tag would version a verdict computed over another range.
-// Auto resolves the highest parseable v* tag; below:TAG the highest one
-// strictly under TAG's version — the predecessor of a tag already cut, and
-// under a RELEASE CANDIDATE the predecessor of the release it is a candidate
-// for; a repository with no such tag walks the whole history and steps from
-// v0.0.0.
+// Auto resolves the highest parseable v* tag HEAD contains; below:TAG the
+// highest one strictly under TAG's version — the predecessor of a tag already
+// cut, and under a RELEASE CANDIDATE the predecessor of the release it is a
+// candidate for; a HEAD whose history holds no such tag walks the whole
+// history and steps from v0.0.0. Only the resolved forms read the candidates:
+// an explicit tag is taken as named wherever it sits, because naming a tag
+// names the release being redone.
 // An explicit tag that is not a version still walks, but names no base (nil —
-// the bump falls back to the highest v* tag).
+// the bump falls back to the highest v* tag HEAD contains).
 func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (revRange string, base *bump.Version, err error) {
 	tag := strings.TrimSpace(tagFlag)
 	if tag == sinceTagAuto {
@@ -201,7 +204,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 			return "", nil, lerr
 		}
 		if latest == "" {
-			return wholeHistory(ctx, cfg, "no version tag found", "")
+			return wholeHistory(ctx, cfg, "no version tag in HEAD's history", "")
 		}
 		return latest + "..HEAD", &v, nil
 	}
@@ -227,7 +230,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 			// The repository's first release: nothing sits below it, and dying
 			// here would fail a job standing behind a tag that already exists.
 			// Same walk, same guard, as auto before the first tag.
-			return wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s", strings.TrimSpace(rest)), "")
+			return wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s in HEAD's history", strings.TrimSpace(rest)), "")
 		}
 		return prev + "..HEAD", &v, nil
 	}
@@ -253,8 +256,11 @@ const sinceTagWalkCap = 200
 const sinceTagEscape = "; name the walk base yourself with --since-tag=TAG (cutting a tag at the intended base first if none exists)"
 
 // wholeHistory is the untagged arm of a RESOLVED --since-tag (auto with no
-// version tag, below: with none under its bound): the whole history, walked —
-// never skipped, and never unbounded in silence.
+// version tag in HEAD's history, below: with none under its bound): the whole
+// history, walked — never skipped, and never unbounded in silence. whyNone
+// states that fact about HEAD's history, never about the repository: under a
+// candidate set of the tags HEAD contains, "no version tag found" beside a
+// `git tag -l` that lists one is the sentence t-gt9n forbids.
 //
 // Not skipped, because this walk is how a first release is computed at all:
 // preview's release-floor guard skips its pending walk on the argument that
@@ -329,8 +335,23 @@ func wholeHistory(ctx context.Context, cfg *config.Config, whyNone, escape strin
 // A tie — the same version spelled twice, v1.2.3 beside 1.2.3 — keeps the
 // FIRST in git's order, so the answer stays deterministic without inventing a
 // preference between two tags git considers equally valid.
+//
+// The candidates are the tags HEAD's history HOLDS (releasesHEADHolds), never
+// every tag the clone carries: a tag outside that history is another
+// history's release — a maintenance branch's, a side branch's, or one cut
+// later on a descendant of an older checkout — and baselining on it re-folds
+// what this branch's releases shipped or folds none at all (DESIGN §4, "The
+// walk base is a release HEAD contains"; mutation row
+// walk-base-reads-a-tag-head-does-not-contain). Every caller inherits the
+// rule: the walk base, below:'s predecessor, and the step base a source
+// without one falls back to (currentVersion, preview's current). The price is
+// paid per call, and a packages walk calls once per declared line: two git
+// processes, of which --merged is the dear one — 0.14 s over
+// google-cloud-go's 7,935 tags without a commit-graph (a fresh clone carries
+// none), 0.03 s with one, against 0.01 s for the plain listing (measured
+// 2026-09-29) — about 29 s over its 204 lines at that rate.
 func latestVersionTag(ctx context.Context, l config.Line, below *bump.Version) (tag string, v bump.Version, err error) {
-	tags, terr := gitsource.Tags(ctx, ".")
+	tags, terr := releasesHEADHolds(ctx)
 	if terr != nil {
 		return "", bump.Version{}, terr
 	}
@@ -347,6 +368,25 @@ func latestVersionTag(ctx context.Context, l config.Line, below *bump.Version) (
 		}
 	}
 	return tag, v, nil
+}
+
+// releasesHEADHolds is latestVersionTag's candidate set: the tags HEAD's
+// history holds. A shallow checkout cannot say — its history stops at the
+// depth, so --merged drops every release past it (measured: a --depth 1 clone
+// with its tags fetched read v2.0.0 -> v2.1.0 as v0.0.0 -> v0.1.0) — and it
+// reads every tag instead, the set this resolver read before. Nothing is
+// trusted on that answer that was not already: every walk over a shallow
+// checkout records it as unread (walkFacts.Shallow), which release refuses
+// (mutation row shallow-checkout-resolves-from-a-truncated-history).
+func releasesHEADHolds(ctx context.Context) ([]string, error) {
+	shallow, err := gitsource.IsShallow(ctx, ".")
+	if err != nil {
+		return nil, err
+	}
+	if shallow {
+		return gitsource.Tags(ctx, ".")
+	}
+	return gitsource.MergedTags(ctx, ".", "HEAD")
 }
 
 // walked is one folded commit plus the provenance only the walk knows: the

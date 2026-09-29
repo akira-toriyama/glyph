@@ -50,10 +50,10 @@ func newPreviewCmd() *cobra.Command {
 			"commits read over the API, and what is already merged but unreleased on\n" +
 			"the checked-out branch. Both step from the same tag, so the answer is the\n" +
 			"`next` of whichever folds higher — no caller ever does version arithmetic.\n\n" +
-			"A repository with no v* tag skips the pending walk: it would resolve the\n" +
-			"whole history at one API round-trip per commit to answer a question that\n" +
-			"cannot matter (nothing is unreleased when nothing was released), so the\n" +
-			"PR's own verdict stands alone and the body says so.\n\n" +
+			"A base branch whose history holds no v* tag skips the pending walk: it\n" +
+			"would resolve the whole history at one API round-trip per commit to\n" +
+			"answer a question that cannot matter (nothing is unreleased when nothing\n" +
+			"was released), so the PR's own verdict stands alone and the body says so.\n\n" +
 			"The body never names a rolling draft — the arithmetic is the same whether\n" +
 			"the next release is a draft or a tag cut by hand, and most repos have no\n" +
 			"draft to name. stdout is the Markdown body (post it with `gh pr comment\n" +
@@ -122,12 +122,12 @@ func previewRun(cmd *cobra.Command) error {
 	}
 
 	// RELEASE-FLOOR guard. The pending walk is the only unbounded input: with no
-	// v* tag, --since-tag resolves the entire history and pays one API
-	// round-trip per commit (sinceTagRange names the cost rather than hiding
-	// it). Distributed fleet-wide that lands on repos with a thousand commits
-	// and no release — and buys nothing, because a repo with no release has
-	// nothing merged-but-unreleased to fold in. Skip the walk; the PR's own
-	// verdict is the whole answer, and the body says why.
+	// v* tag in HEAD's history, --since-tag resolves the entire history and
+	// pays one API round-trip per commit (sinceTagRange names the cost rather
+	// than hiding it). Distributed fleet-wide that lands on repos with a
+	// thousand commits and no release — and buys nothing, because a repo with
+	// no release has nothing merged-but-unreleased to fold in. Skip the walk;
+	// the PR's own verdict is the whole answer, and the body says why.
 	untagged := latestTag == ""
 	var pendingDec bump.Decision
 	var pendingNext string
@@ -160,7 +160,7 @@ func previewRun(cmd *cobra.Command) error {
 			pendingNext = current.Next(pendingDec).String()
 		}
 	} else {
-		warnf("no v* release tag here — previewing this PR's own verdict only (the pending walk needs a release floor)")
+		warnf("no v* release tag in HEAD's history — previewing this PR's own verdict only (the pending walk needs a release floor)")
 	}
 
 	in := preview.Input{

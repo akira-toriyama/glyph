@@ -57,10 +57,10 @@ git and never calls the API, and `--pr` reads one pull request's commits over th
 API and knows nothing of any range. "Exactly one of the three" is `bump` and
 `notes` only — they are the two commands that carry all three flags and mark them
 mutually exclusive. `release` has just the walk (bare `release` walks from the
-highest v* tag, so no flag is required at all), and `preview` takes `--pr`, which
-it marks required. `internal/cli/sincetag.go: walkSince`, `internal/cli/range.go:
-participatingCommits`, `internal/cli/pr.go: participatingPull`,
-`internal/cli/sincetag.go: markInputSourceFlags` (used by
+highest v* tag HEAD contains, so no flag is required at all), and `preview` takes
+`--pr`, which it marks required. `internal/cli/sincetag.go: walkSince`,
+`internal/cli/range.go: participatingCommits`, `internal/cli/pr.go:
+participatingPull`, `internal/cli/sincetag.go: markInputSourceFlags` (used by
 `internal/cli/cmd_bump.go` and `internal/cli/cmd_notes.go` alone)
 
 **walk base** — the tag the walked range starts at. Distinguish from the **step
@@ -68,29 +68,36 @@ base** (also *version base*): the version the bump steps *from*. They are
 deliberately returned by one resolution of one tag, because naming a tag names
 the release being redone — stepping from a different, higher tag would version a
 verdict computed over another range. An explicit tag that is not a version still
-walks but names no step base, and the bump then falls back to the highest v* tag.
+walks but names no step base, and the bump then falls back to the highest v* tag
+HEAD contains. The published floor is the opposite set — every published release
+on the line, from the releases listing (DESIGN §4).
 `internal/cli/sincetag.go: sinceTagRange`, `internal/cli/cmd_bump.go:
 currentVersion`
 
 **auto** — what a bare `--since-tag` (no value) resolves to: the highest
-*parseable* version tag. Distinguish from "git's first tag": every tag is parsed
-and compared **as a version**, because `--sort=-v:refname` is a refname sort that
-orders on the leading byte first — measured on `{v0.0.1, v0.0.2, 9.9.9, 100.0.0}`
-git reports `v0.0.2` first. Taking git's order moved the walk base and the
-version base together to a tag two releases behind, silently. A tag must be
-attached with `=` (`--since-tag=v1.2.3`); the space form is caught as a usage
-error rather than walking the wrong range.
-`internal/cli/sincetag.go: sinceTagAuto, latestVersionTag, sinceTagArgs`,
-`internal/gitsource/gitsource.go: Tags`
+*parseable* version tag HEAD's history holds (`git tag --merged HEAD`; a shallow
+checkout, which cannot say, reads every tag). Distinguish from the highest tag
+the clone carries: a tag cut later on a descendant, or on a maintenance or side
+branch, is another history's release, and on an unmerged topic branch it is the
+base branch's release, which the branch has yet to follow — so a topic branch
+answers as of its fork point (t-n5tw). Distinguish also from "git's first tag":
+every tag is parsed and compared **as a version**, because `--sort=-v:refname` is
+a refname sort that orders on the leading byte first — measured on `{v0.0.1,
+v0.0.2, 9.9.9, 100.0.0}` git reports `v0.0.2` first. Taking git's order moved the
+walk base and the version base together to a tag two releases behind, silently.
+A tag must be attached with `=` (`--since-tag=v1.2.3`); the space form is caught
+as a usage error rather than walking the wrong range.
+`internal/cli/sincetag.go: sinceTagAuto, latestVersionTag, releasesHEADHolds,
+sinceTagArgs`, `internal/gitsource/gitsource.go: Tags, MergedTags`
 
 **below:** — the other *resolved* `--since-tag` form
-(`--since-tag=below:TAG`): the highest parseable version tag **strictly below**
-TAG's version — the predecessor of a tag already cut. It answers the tag-push
-question auto cannot: at tag-push time the new tag *is* the highest v\* tag, so
-auto would walk an empty range. Strictly below the bound, not "the highest
-other tag" — cutting a v0.8.3 hotfix while v0.9.0 exists resolves v0.8.2. With
-no version tag below the bound (the first release), the walk covers the whole
-history, same as auto before the first tag — bounded in both forms by the
+(`--since-tag=below:TAG`): the highest parseable version tag HEAD contains
+**strictly below** TAG's version — the predecessor of a tag already cut. It
+answers the tag-push question auto cannot: at tag-push time the new tag *is* the
+highest v\* tag, so auto would walk an empty range. Strictly below the bound, not
+"the highest other tag" — cutting a v0.8.3 hotfix while v0.9.0 exists resolves
+v0.8.2. With no version tag below the bound (the first release), the walk covers
+the whole history, same as auto before the first tag — bounded in both forms by the
 release-floor cap: past `sinceTagWalkCap` walk-visible commits the walk is
 refused (fail-loud 4) with the escape in the message, because it pays one API
 round-trip per visited commit and nothing else bounds it. The bound must itself be
@@ -336,10 +343,10 @@ touch is refused the same way.
 `path = "."`, and a major version subdirectory `/vN` folded into the major —
 `pubsub/v2` is the v2 line on the `pubsub/` prefix, beside a `pubsub` line
 holding every other major, Go's own rule), its own walk base (the highest tag
-on that prefix of a major it holds), its own fold, verdict and rolling draft
-(`<path>/vX.Y.Z`, placeholder `<path>/Unreleased`), converged by `draftplan`
-on that line alone so one line's release never touches another's draft. A
-repository with no `[[packages]]` is one line with no name, and nothing
+on that prefix, of a major it holds, that HEAD contains), its own fold, verdict
+and rolling draft (`<path>/vX.Y.Z`, placeholder `<path>/Unreleased`), converged
+by `draftplan` on that line alone so one line's release never touches another's
+draft. A repository with no `[[packages]]` is one line with no name, and nothing
 synthesises a root package for it. A tag **names** a line:
 `--since-tag=haiku/v0.1.0` selects haiku alone, `--since-tag=pubsub/v2.7.0`
 the v2 line alone. `internal/config/tagline.go: Line, Package.TagPrefix,
@@ -447,11 +454,11 @@ deleted. Fails loud (4) rather than creating an unpublishable draft.
 **pending** — what is already merged on the base branch but **not yet released**:
 the walk's own verdict since the latest tag, and one of the two sides the merge
 preview folds. Distinguish from a draft that is "pending publication", which this
-codebase does not call pending. A repository with no v* tag has an *uncomputed*
-rather than empty pending side — walking it would cost an API round-trip per
-commit of the whole history for an answer that cannot matter — and the comment
-says so. `internal/preview/preview.go: Input.Pending, Input.Untagged`,
-`internal/cli/cmd_preview.go: previewRun`
+codebase does not call pending. A base branch whose history holds no v* tag has
+an *uncomputed* rather than empty pending side — walking it would cost an API
+round-trip per commit of the whole history for an answer that cannot matter —
+and the comment says so. `internal/preview/preview.go: Input.Pending,
+Input.Untagged`, `internal/cli/cmd_preview.go: previewRun`
 
 **incomplete banner** — retired with t-pysg: the `> [!WARNING]` block an
 incompletely-walked draft used to carry at the top of its body, from the era
