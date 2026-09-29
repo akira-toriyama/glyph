@@ -257,6 +257,67 @@ func TestRenderLineNeutralizesMentions(t *testing.T) {
 	}
 }
 
+// TestRenderLineEscapesTheScopeAsProse pins DESIGN §2's ruling on a captured
+// scope: it is the author's text and renders as prose, like every value
+// note.line substitutes — never raw, and never through a plain-text policy of
+// its own. The shipped presets cannot capture any of these scopes (their
+// group is [a-z0-9-]+), so the pattern here is a repository's own, taking
+// anything but a parenthesis: the shape of v1's scope slot, where
+// fix(<i title="x">) linted clean and put a live tag into a release body
+// (#61). Every want line was rendered through GitHub (POST /markdown,
+// 2026-09-29): the tag and the link are text, and no handle is a mention.
+//
+// bite-exempt: ratifies the behaviour the tree already has, so it cannot fail
+// against pre-PR source; the mutation-ledger row
+// notes-placeholder-values-render-raw.patch is its defender instead.
+func TestRenderLineEscapesTheScopeAsProse(t *testing.T) {
+	cfg, err := config.Load([]byte(`schema = 1
+[[patterns]]
+pattern = '^:[a-z0-9_]+:(\((?P<scope>[^)]+)\))?(?P<semver_sigil>[=~^!%]) (?P<subject>.+)'
+[note]
+line = '- $[**$scope:** ]$subject'
+[[note.sections]]
+semver = "patch"
+title = "Fixes"
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	cases := []struct{ message, want string }{
+		// The incident: the '<' is escaped, so the tag renders as its text.
+		{`:bug:(<i title="x">)~ fix it`, `- **\<i title="x">:** fix it`},
+		// The other prose rules fire in a scope exactly as in a subject.
+		{`:bug:(see [x] at http://evil)~ fix it`, `- **see \[x] at http\://evil:** fix it`},
+		// An at-sign is the fence's, in its one pass over the assembled line.
+		{`:bug:(@x)~ fix it`, "- **`@x`:** fix it"},
+		// The scope's backtick reaches the line live and counts when that
+		// pass sizes the fence, so it cannot steal the subject's.
+		{":bug:(readme`)~ credit @alice and @bob for the fix", "- **readme`:** credit ``@alice`` and ``@bob`` for the fix"},
+		// No plain-text policy: ordinary punctuation takes no backslash, and
+		// emphasis keeps working — the price DESIGN §2 accepts.
+		{`:bug:(ThemeKit,prism.a)~ fix it`, `- **ThemeKit,prism.a:** fix it`},
+		{`:bug:(_x_)~ fix it`, `- **_x_:** fix it`},
+		// '-' is never escaped, so a kebab scope is byte-identical.
+		{`:bug:(grid-1f-4)~ fix it`, `- **grid-1f-4:** fix it`},
+	}
+	commits := make([]SigilCommit, 0, len(cases))
+	for _, c := range cases {
+		commits = append(commits, SigilCommit{SHA: "aaaaaaaaaaaa", Author: "akira", Message: c.message})
+	}
+	sections, err := GroupSigils(commits, cfg)
+	if err != nil {
+		t.Fatalf("GroupSigils: %v", err)
+	}
+	if len(sections) != 1 || len(sections[0].Lines) != len(cases) {
+		t.Fatalf("sections = %+v, want one Fixes section with %d lines", sections, len(cases))
+	}
+	for i, c := range cases {
+		if got := sections[0].Lines[i]; got != c.want {
+			t.Errorf("%s:\n got %q\nwant %q", c.message, got, c.want)
+		}
+	}
+}
+
 // TestRenderLineCreditsByIdentityNotShape pins the gate on the exemption
 // (t-39fy): the credit goes live on the LOGIN GitHub established, never on
 // the author name, whatever its shape. "Saleh" is one handle-shaped token and
