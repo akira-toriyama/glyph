@@ -486,15 +486,19 @@ func (e *statusError) Error() string { return e.err.Error() }
 func (e *statusError) Unwrap() error { return e.err }
 
 // flatten strips the status carrier off a failure. Every method except
-// CommitPulls and Repository flattens on the way out, so a status can only ever
-// be observed on a call whose contract documents it — a 422 from another
-// endpoint (a pulls/{n}/commits validation failure) must never read as "commit
-// unknown" and silently become a release fallback. The two exceptions each
-// export one predicate over their own status (IsCommitUnknown, IsRepoUnknown),
-// and nothing else OUTSIDE this package may read a status. DeleteRelease
-// consults its own 404 through goneOnRetry before flattening — inside the
-// package, on the one call whose contract gives that status a meaning — so no
-// status escapes.
+// CommitPulls, CommitFiles and Repository flattens on the way out, so a status
+// can only ever be observed on a call whose contract documents it — a 422 from
+// another endpoint (a pulls/{n}/commits validation failure) must never read as
+// "commit unknown" and silently become a release fallback. CommitPulls and
+// CommitFiles share IsCommitUnknown — both endpoints answer an unknown sha with
+// the same 422 — and Repository exports IsRepoUnknown; nothing else OUTSIDE
+// this package may read a status. DeleteRelease consults its own 404 through
+// goneOnRetry before flattening — inside the package, on the one call whose
+// contract gives that status a meaning — so no status escapes.
+// TestOnlyDocumentedMethodsCarryAStatusOut probes every exported method and
+// fails on one it has no row for: PullRequest and GenerateNotes carried theirs
+// out until t-esm5, and a 422 from either read as IsCommitUnknown (measured;
+// mutation row pull-request-status-escapes-the-adapter).
 func flatten(err error) error {
 	var se *statusError
 	if errors.As(err, &se) {

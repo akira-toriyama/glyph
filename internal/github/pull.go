@@ -38,7 +38,7 @@ func (c *Client) PullRequest(ctx context.Context, owner, repo string, number int
 		c.baseURL, url.PathEscape(owner), url.PathEscape(repo), number)
 	var raw apiOnePull
 	if _, err := c.get(ctx, u, &raw); err != nil {
-		return Pull{}, err
+		return Pull{}, flatten(err)
 	}
 	return Pull{Title: raw.Title, Author: raw.User.Login}, nil
 }
