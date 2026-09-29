@@ -481,14 +481,57 @@ type walkFacts struct {
 	// verdict computed over a range the walk could not read whole (DESIGN
 	// §4.1). Empty whenever no packages are declared: no file is ever asked
 	// for then.
-	FilesCapped []string
+	FilesCapped []unreadListing
+	// FilesUnknown are the squash-arm inner commits whose file listing GitHub
+	// answered 422 for (listFiles), in walk order — a capped listing holding
+	// what the pages before the 422 listed, nothing when the first page
+	// answered it, so a package touched in the files it did not list is
+	// unreachable, not absent. Not §4's lag fallback: the sha came from GitHub's own pull
+	// listing and its message was read, and the files are the one input
+	// attribution has no weaker source for (DESIGN §4.1). Empty whenever no
+	// packages are declared.
+	FilesUnknown []unreadListing
+}
+
+// unreadListing is one commit whose file listing GitHub did not give whole,
+// as the shortfall names it: its short sha, the pull it was expanded from,
+// and the tags that take it out of each line whose range holds it
+// (lineEscapes). Neither cause clears on the re-run the release refusal asks
+// for — a capped listing is capped again, and a 422 clears only once GitHub
+// lists the commit — so the escapes are the clause's own remedy (DESIGN
+// §4.1). Pull 0 and no escapes on preview's PR side, where the pull has no
+// merge point to cut a tag at.
+type unreadListing struct {
+	SHA     string
+	Pull    int
+	Escapes []string
+}
+
+// unreadClause names the unread listings for a shortfall clause, each with
+// remedy — what this cause leaves a re-run — ahead of its escapes, or bare
+// when it has none. Bare shas join with commas, as the PR side's always
+// have; a remedy carries commas of its own, so entries that have one join
+// with semicolons.
+func unreadClause(ls []unreadListing, remedy string) string {
+	parts := make([]string, 0, len(ls))
+	sep := ", "
+	for _, l := range ls {
+		if len(l.Escapes) == 0 {
+			parts = append(parts, l.SHA)
+			continue
+		}
+		sep = "; "
+		parts = append(parts, fmt.Sprintf("%s in pull request #%d — %s cut %s", l.SHA, l.Pull, remedy, strings.Join(l.Escapes, " / ")))
+	}
+	return strings.Join(parts, sep)
 }
 
 // complete reports that the walk read the range it was asked about. Everything
 // glyph does that it cannot take back — deleting a draft, lowering the version a
 // human is about to publish — is gated on it.
 func (f walkFacts) complete() bool {
-	return !f.AllUnknown && !f.Shallow && len(f.LostPulls) == 0 && len(f.Dropped) == 0 && len(f.Truncated) == 0 && len(f.FilesCapped) == 0
+	return !f.AllUnknown && !f.Shallow && len(f.LostPulls) == 0 && len(f.Dropped) == 0 && len(f.Truncated) == 0 &&
+		len(f.FilesCapped) == 0 && len(f.FilesUnknown) == 0
 }
 
 // shortfall says, in one clause, what the walk could not read — for the warning
@@ -512,7 +555,10 @@ func (f walkFacts) shortfall(owner, repo string) string {
 		parts = append(parts, fmt.Sprintf("merged pull request #%d returned the maximum %d commits, so GitHub truncated its listing and the rest could not be read", n, github.PullCommitsCap))
 	}
 	if len(f.FilesCapped) > 0 {
-		parts = append(parts, fmt.Sprintf("%d commit(s) returned the maximum %d files, so GitHub truncated the listing and a package touched past it could not be read (%s)", len(f.FilesCapped), github.CommitFilesCap, strings.Join(f.FilesCapped, ", ")))
+		parts = append(parts, fmt.Sprintf("%d commit(s) returned the maximum %d files, so GitHub truncated the listing and a package touched past it could not be read (%s)", len(f.FilesCapped), github.CommitFilesCap, unreadClause(f.FilesCapped, "no re-run lists past the cap:")))
+	}
+	if len(f.FilesUnknown) > 0 {
+		parts = append(parts, fmt.Sprintf("GitHub answered 422 for the file listing of %d commit(s), so a line they touch in files it did not list could not be read (%s)", len(f.FilesUnknown), unreadClause(f.FilesUnknown, "re-run once GitHub lists its files, else")))
 	}
 	return strings.Join(parts, "; ")
 }

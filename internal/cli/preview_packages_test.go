@@ -418,3 +418,116 @@ func TestPreviewRefusalNamesNoFlagPreviewLacks(t *testing.T) {
 		t.Errorf("preview's refusal sends the operator to a flag preview rejects: %q", previewWalkEscape)
 	}
 }
+
+// TestPreviewPackagesUnlistedFilesAreCaveated: a 422 for one of the pull's
+// own commits' file listing is the walk's unread listing on the PR side
+// (DESIGN §4.1, t-esm5): preview exits 0 and the body carries the PR-side
+// INCOMPLETE caveat naming the commit, in the cause-neutral sentence — the
+// capped one said "only past the cap" for a listing GitHub never gave. A
+// refusal over the empty listing is withheld, so the unscoped ~ is attributed
+// to no line and curry goes unmentioned; a scope naming curry still carries
+// it there (rule 2). Every sentence is true in both: the warning says a line
+// MAY be missing, as the walk's does, because the scoped commit's curry is
+// in the preview. When c1 is the pull's only commit, the "moves nothing"
+// body claims nothing about files GitHub did not list and points at no
+// figures it does not carry. When the pending walk meets the same 422 on a
+// merged pull, the pending caveat names it. Before the fix every case died
+// at 4 on the raw `github: GET …/commits/c1: 422`, taking the whole comment
+// down (mutation row unlisted-commit-files-die-as-a-raw-api-error).
+func TestPreviewPackagesUnlistedFilesAreCaveated(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		message string
+		curry   bool
+	}{
+		{"unscoped, attributed to no line", ":bug:~ swap an ingredient", false},
+		{"scoped, carried by its scope", ":bug:(curry)~ swap an ingredient", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, _ := packagesRepo(t)
+			routes := crossLinePull(9)
+			routes[pullCommitsPath(9)] = `[` +
+				apiCommit("h1", "akira-toriyama", ":sparkles:(haiku)^ add a season") + `,` +
+				apiCommit("c1", "akira-toriyama", tc.message) + `]`
+			routes[commitFilesPath("c1")] = apiUnknownSHA
+			usePR(t, walkServer(t, routes))
+			t.Chdir(dir)
+
+			code, stdout, stderr := runGlyph(t, "preview", "--pr", "9", "--json")
+			if code != 0 {
+				t.Fatalf("preview exited %d, want 0 — an unread listing is caveated, not a failure\nstdout: %s\nstderr: %s", code, stdout, stderr)
+			}
+			res := decodePreviewLines(t, stdout)
+			var lines []string
+			for _, p := range res.Packages {
+				lines = append(lines, p.Path+":"+p.PR)
+			}
+			want := []string{"haiku:minor"}
+			if tc.curry {
+				want = append(want, "curry:patch")
+			}
+			if strings.Join(lines, " ") != strings.Join(want, " ") {
+				t.Fatalf("packages = %v, want %v", lines, want)
+			}
+			caveat := "> This PR's own side of this fold is INCOMPLETE: GitHub answered 422 for the file listing of 1 commit(s), so a line they touch in files it did not list could not be read (c1). A line one of those commits touches in files GitHub did not list may be missing from the figures above, so treat each as a floor rather than the answer."
+			if !strings.Contains(res.Body, caveat) {
+				t.Fatalf("the body must carry the PR-side caveat naming c1:\n%s", res.Body)
+			}
+			if strings.Contains(res.Body, "past the cap") {
+				t.Errorf("the caveat blames the cap for a listing GitHub never gave:\n%s", res.Body)
+			}
+			if strings.Contains(res.Body, "**curry**") != tc.curry {
+				t.Errorf("curry is mentioned exactly when c1's scope carried it there (%t):\n%s", tc.curry, res.Body)
+			}
+			if !strings.Contains(stderr, "::warning::glyph: commit c1 in pull request #9: GitHub answered 422 for its file listing, so a line it touches in files GitHub did not list may be missing from this preview") {
+				t.Errorf("preview must warn about the unlisted files, saying only what it knows:\n%s", stderr)
+			}
+		})
+	}
+
+	t.Run("the only commit, moves nothing it could read", func(t *testing.T) {
+		dir, _ := packagesRepo(t)
+		usePR(t, walkServer(t, map[string]string{
+			pullCommitsPath(9):    `[` + apiCommit("c1", "akira-toriyama", ":bug:~ swap an ingredient") + `]`,
+			commitFilesPath("c1"): apiUnknownSHA,
+		}))
+		t.Chdir(dir)
+
+		code, stdout, stderr := runGlyph(t, "preview", "--pr", "9", "--json")
+		if code != 0 {
+			t.Fatalf("preview exited %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
+		}
+		res := decodePreviewLines(t, stdout)
+		headline := "<!-- glyph-pr-verdict -->\n⏸️ Merging this PR moves nothing in the files GitHub listed — its 1 commit(s) touch no declared package there.\n"
+		caveat := "(c1). A line one of those commits touches in files GitHub did not list may move all the same, so treat \"moves nothing\" as a floor rather than the answer."
+		if !strings.HasPrefix(res.Body, headline) || !strings.Contains(res.Body, caveat) {
+			t.Fatalf("the body must say it moves nothing only in the files GitHub listed, and caveat that naming c1:\n%s", res.Body)
+		}
+		if strings.Contains(res.Body, "figures above") {
+			t.Errorf("the caveat points at figures the moves-nothing body does not carry:\n%s", res.Body)
+		}
+	})
+
+	t.Run("the pending walk meets it", func(t *testing.T) {
+		dir, _ := packagesRepo(t)
+		_, routes := squashAcrossLines(t, dir, 7)
+		routes[commitFilesPath("c1")] = apiUnknownSHA
+		routes[pullCommitsPath(9)] = `[` + apiCommit("p1", "akira-toriyama", ":sparkles:(haiku)^ add a verse") + `]`
+		routes[commitFilesPath("p1")] = apiFiles("haiku/verse.go")
+		usePR(t, walkServer(t, routes))
+		t.Chdir(dir)
+
+		code, stdout, stderr := runGlyph(t, "preview", "--pr", "9", "--json")
+		if code != 0 {
+			t.Fatalf("preview exited %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
+		}
+		res := decodePreviewLines(t, stdout)
+		pending := "> The pending side of this fold is INCOMPLETE: GitHub answered 422 for the file listing of 1 commit(s), so a line they touch in files it did not list could not be read (c1 in pull request #7"
+		if !strings.Contains(res.Body, pending) {
+			t.Fatalf("the pending caveat must name the merged pull's unlisted commit:\n%s", res.Body)
+		}
+		if strings.Contains(res.Body, "This PR's own side of this fold is INCOMPLETE") {
+			t.Errorf("the pull's own listing was whole, so its side carries no caveat:\n%s", res.Body)
+		}
+	})
+}

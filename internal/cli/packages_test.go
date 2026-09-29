@@ -3,6 +3,8 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -663,12 +665,180 @@ func TestSinceTagPackagesFilesCapIsAnIncompleteWalk(t *testing.T) {
 		t.Fatalf("the cap must be warned about:\n%s", stderr)
 	}
 
-	facts := walkFacts{FilesCapped: []string{"h1"}}
+	// The PR side's shape — no pull, no escapes — renders bare shas joined
+	// by commas, as preview's caveat always has.
+	facts := walkFacts{FilesCapped: []unreadListing{{SHA: "h1"}, {SHA: "h2"}}}
 	if facts.complete() {
 		t.Fatalf("a walk with a capped file listing reports itself complete")
 	}
-	if s := facts.shortfall("o", "r"); !strings.Contains(s, "maximum 3000 files") {
-		t.Fatalf("shortfall does not name the cap: %q", s)
+	if s := facts.shortfall("o", "r"); !strings.Contains(s, "maximum 3000 files") || !strings.HasSuffix(s, "(h1, h2)") {
+		t.Fatalf("shortfall does not name the cap and the bare shas: %q", s)
+	}
+	if (walkFacts{FilesUnknown: []unreadListing{{SHA: "c1"}}}).complete() {
+		t.Fatalf("a walk with a file listing GitHub answered 422 for reports itself complete")
+	}
+}
+
+// TestSinceTagPackagesUnlistedFilesAreAnIncompleteWalk: GitHub answering 422
+// for a squash-arm inner commit's file listing is a capped listing with
+// nothing listed (DESIGN §4.1, t-esm5) — neither API lag nor a raw API
+// failure. bump and notes report and warn naming the commit; release refuses
+// the walk at 4 with the shortfall and its own remedy. Before the fix all
+// three died at 4 on the raw `github: GET …/commits/c1: 422`. A refusal
+// attribution would hand down over the empty listing is withheld, so the
+// unscoped ~ is carried nowhere; a scope naming a package still carries it
+// there (rule 2), the answer a truncated listing already lets stand (mutation
+// row unlisted-commit-files-die-as-a-raw-api-error).
+func TestSinceTagPackagesUnlistedFilesAreAnIncompleteWalk(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		message      string
+		curryLevel   string
+		curryCommits int
+	}{
+		{"unscoped, carried nowhere", ":bug:~ swap an ingredient", "none", 0},
+		{"scoped, carried by its scope", ":bug:(curry)~ swap an ingredient", "patch", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, _ := packagesRepo(t)
+			merge, routes := squashAcrossLines(t, dir, 7)
+			routes[pullCommitsPath(7)] = `[` +
+				apiCommit("h1", "akira-toriyama", ":sparkles:(haiku)^ add a season") + `,` +
+				apiCommit("c1", "akira-toriyama", tc.message) + `]`
+			routes[commitFilesPath("c1")] = apiUnknownSHA
+			usePR(t, dryServer(t, routes))
+			t.Chdir(dir)
+
+			unlisted := "commit c1 in pull request #7: GitHub answered 422 for its file listing"
+			code, stdout, stderr := runGlyph(t, "bump", "--since-tag", "--json")
+			if code != 0 {
+				t.Fatalf("bump --since-tag exited %d, want 0 (bump reports an incomplete walk, it does not act)\nstdout: %s\nstderr: %s", code, stdout, stderr)
+			}
+			res := decodePackagesVerdict(t, stdout)
+			h, c := res.Packages[0], res.Packages[1]
+			if h.Level != "minor" || len(h.Commits) != 1 {
+				t.Fatalf("haiku = %+v, want minor over h1 — its listing was whole", h)
+			}
+			if c.Level != tc.curryLevel || len(c.Commits) != tc.curryCommits {
+				t.Fatalf("curry = %+v, want %s over %d commit(s)", c, tc.curryLevel, tc.curryCommits)
+			}
+			if !strings.Contains(stderr, "::warning::glyph: "+unlisted) || strings.Contains(stderr, "github: GET") {
+				t.Fatalf("bump must warn about the unlisted files, never hand back the raw API error:\n%s", stderr)
+			}
+
+			code, stdout, stderr = runGlyph(t, "notes", "--since-tag")
+			if code != 0 {
+				t.Fatalf("notes --since-tag exited %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
+			}
+			if !strings.Contains(stdout, "add a season") || strings.Contains(stdout, "swap an ingredient") != (tc.curryCommits == 1) {
+				t.Fatalf("notes must carry h1, and c1 only where its scope carried it:\n%s", stdout)
+			}
+			if !strings.Contains(stderr, "::warning::glyph: "+unlisted) {
+				t.Fatalf("notes must warn about the unlisted files:\n%s", stderr)
+			}
+
+			code, _, stderr = runGlyph(t, "release", "--dry-run", "--json")
+			if code != 4 {
+				t.Fatalf("release exited %d, want 4 (an incomplete walk)\nstderr: %s", code, stderr)
+			}
+			env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+			if env.Code != 4 {
+				t.Fatalf("envelope code = %d, want 4", env.Code)
+			}
+			for _, want := range []string{
+				"did not read",
+				"GitHub answered 422 for the file listing of 1 commit(s)",
+				"c1 in pull request #7",
+				"re-run once GitHub lists its files",
+				"a haiku/ tag at or past " + merge[:7],
+				"a curry/ tag at or past " + merge[:7],
+			} {
+				if !strings.Contains(env.Message, want) {
+					t.Errorf("the refusal must name the unlisted files and their remedy (missing %q):\n%s", want, env.Message)
+				}
+			}
+			if strings.Contains(env.Message, "github: GET") {
+				t.Errorf("the refusal is the raw API error, not the walk's shortfall:\n%s", env.Message)
+			}
+		})
+	}
+}
+
+// laterPage422Server is releaseServer with one commit's file listing paged:
+// page 1 answers page1 with a rel="next" link, and page 2 answers GitHub's
+// 422 — a stand-in only, since no live trigger for a 422 past the first page
+// is known.
+func laterPage422Server(t *testing.T, routes map[string]string, sha, page1 string, writes *[]apiWrite) *httptest.Server {
+	t.Helper()
+	h := releaseHandler(t, routes, `[]`, writes)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != commitFilesPath(sha) {
+			h(w, r)
+			return
+		}
+		if r.URL.Query().Get("page") == "2" {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			fmt.Fprint(w, `{"message":"No commit found for SHA"}`)
+			return
+		}
+		w.Header().Set("Link", fmt.Sprintf(`<http://%s%s?page=2>; rel="next"`, r.Host, r.URL.Path))
+		fmt.Fprint(w, page1)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestSinceTagPackagesLaterPage422KeepsTheListedFiles: a 422 on page 2 of a
+// commit's file listing keeps the files page 1 listed — the capped
+// listing's rule (DESIGN §4.1): attribution runs over what GitHub did list,
+// the listing is recorded as unread, and only the refusal that needs the
+// whole listing is withheld. Page 1 lists curry/curry.go for the unscoped
+// ~, so bump moves curry and warns, and release still refuses the walk at 4.
+// Thrown away, the listed file left curry at none and the warning claimed
+// attribution over "the files GitHub listed" found no package (mutation row
+// later-page-422-discards-the-listed-files).
+func TestSinceTagPackagesLaterPage422KeepsTheListedFiles(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	merge, routes := squashAcrossLines(t, dir, 7)
+	delete(routes, commitFilesPath("c1"))
+	var writes []apiWrite
+	usePR(t, laterPage422Server(t, routes, "c1", apiFiles("curry/curry.go"), &writes))
+	t.Chdir(dir)
+
+	unlisted := "::warning::glyph: commit c1 in pull request #7: GitHub answered 422 for its file listing"
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag", "--json")
+	if code != 0 {
+		t.Fatalf("bump --since-tag exited %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	res := decodePackagesVerdict(t, stdout)
+	h, c := res.Packages[0], res.Packages[1]
+	if h.Level != "minor" || len(h.Commits) != 1 {
+		t.Fatalf("haiku = %+v, want minor over h1", h)
+	}
+	if c.Level != "patch" || len(c.Commits) != 1 || c.Commits[0].SHA != "c1" {
+		t.Fatalf("curry = %+v, want patch over c1 — page 1 listed curry/curry.go", c)
+	}
+	if !strings.Contains(stderr, unlisted) || strings.Contains(stderr, "attribution would refuse") {
+		t.Fatalf("bump must warn about the unread listing and refuse nothing over the file it did list:\n%s", stderr)
+	}
+
+	code, stdout, stderr = runGlyph(t, "notes", "--since-tag")
+	if code != 0 || !strings.Contains(stdout, "swap an ingredient") || !strings.Contains(stderr, unlisted) {
+		t.Fatalf("notes --since-tag exited %d, want 0 carrying c1 under curry with the warning\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+
+	code, _, stderr = runGlyph(t, "release", "--dry-run", "--json")
+	if code != 4 {
+		t.Fatalf("release exited %d, want 4 (the listing is still unread)\nstderr: %s", code, stderr)
+	}
+	env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+	for _, want := range []string{"GitHub answered 422 for the file listing of 1 commit(s)", "c1 in pull request #7", "a curry/ tag at or past " + merge[:7]} {
+		if env.Code != 4 || !strings.Contains(env.Message, want) {
+			t.Errorf("the refusal must be the unread listing at 4 (code %d, missing %q):\n%s", env.Code, want, env.Message)
+		}
+	}
+	if len(writes) != 0 {
+		t.Errorf("a dry run wrote to the API: %+v", writes)
 	}
 }
 

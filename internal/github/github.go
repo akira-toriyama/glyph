@@ -519,11 +519,18 @@ func goneOnRetry(err error) bool {
 	return errors.As(err, &se) && se.retried && se.status == http.StatusNotFound
 }
 
-// IsCommitUnknown reports whether err is commits/{sha}/pulls answering 422 —
-// how GitHub says it does not (yet) know the SHA. That is the release walk's
-// API-lag case (the walk runs moments after a push), so the walk branches here
-// to fall back instead of hard-failing the release. Deliberately NOT true for
-// a 404: that is how a bad credential against a private repository answers for
+// IsCommitUnknown reports whether err is one of the two commit endpoints —
+// commits/{sha}/pulls (CommitPulls) or commits/{sha} (CommitFiles) —
+// answering 422, how GitHub says it does not (yet) know the SHA. Both answer
+// with the same status and message, "No commit found for SHA: <sha>", the
+// bodies differing only in documentation_url (measured 2026-09-29). What the
+// answer means is the caller's: on the pulls sub-resource it is the release
+// walk's API-lag case (the walk runs moments after a push), so the walk falls
+// back to the commit's own message instead of hard-failing the release; on
+// the files listing there is no weaker source to fall back on, so the caller
+// records the listing as unread (internal/cli's walkFacts.FilesUnknown) —
+// an incomplete walk, never a lag fallback. Deliberately NOT true for a 404:
+// that is how a bad credential against a private repository answers for
 // every commit, and degrading a whole walk to fallbacks on an auth failure
 // would be silent corruption.
 func IsCommitUnknown(err error) bool {

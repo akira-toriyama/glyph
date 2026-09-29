@@ -227,7 +227,11 @@ reaches the fallback path: a 403 rate limit, a 5xx that outlived the retry
 schedule (t-bjrv) and a dead socket leave the walk as an error and exit 4 — the
 outage window is an exit-code question, not a classification one. Deliberately
 not true of a 404, which is how a bad credential answers for *every* commit of a
-private repository. `internal/github/github.go: IsCommitUnknown`
+private repository. The same 422 on a commit's file listing
+(`GET /commits/{sha}`, asked only under `[[packages]]`) is **not** lag:
+attribution has no weaker source for a commit's files, so the listing is
+recorded as unread (`walkFacts.FilesUnknown`), never the fallback.
+`internal/github/github.go: IsCommitUnknown`, `internal/cli/lines.go: listFiles`
 
 **shallow checkout** — a `--depth` clone, in which git cannot answer the
 footprint question at all: a commit it does not *have* is indistinguishable from
@@ -259,13 +263,15 @@ body. `internal/cli/sincetag.go: walkFacts.complete`,
 `internal/cli/cmd_release.go: releaseRun`
 
 **walkFacts** — the struct carrying the above: `Pulls` (provenance) plus the
-**five** ways a walk can come back short — `AllUnknown` (every commit unknown to
+**seven** ways a walk can come back short — `AllUnknown` (every commit unknown to
 the queried repository, which is what a wrong `--repo` or an inherited
 `$GITHUB_REPOSITORY` looks like from inside), `Shallow`, `LostPulls`, `Dropped`,
-`Truncated`. `complete()` is exactly "none of the five". `internal/cli/sincetag.go:
-walkFacts`
+`Truncated`, and the two only a packages walk meets: `FilesCapped` (a commit's
+file listing at GitHub's 3000 cap) and `FilesUnknown` (a file listing GitHub
+answered 422 for). `complete()` is exactly "none of the seven".
+`internal/cli/sincetag.go: walkFacts`
 
-**Dropped** — the narrowest of the five, and the one whose name over-promises.
+**Dropped** — of the seven, the one whose name over-promises.
 Nothing is recorded unless the commit reached the fallback path through *API lag*
 — the 422 arm, where GitHub did not know the sha. Under that condition two
 outcomes record: a merge commit excluded on its parent count (a merge point that

@@ -361,14 +361,19 @@ func placeOf(cfg *config.Config, raw gitsource.RawCommit) (placement, string, co
 // dropped with a notice; it was walked because the union had to contain it,
 // and it belongs to no line's verdict.
 //
-// A refusal attribution hands down over a listing GitHub TRUNCATED is not a
-// finding and never wedges: "no carrier" and "the scope names a package the
-// files do not touch" are both claims about files the walk could not read
-// (the package past the cap may be exactly the one named). The commit is
-// carried nowhere and the walk's own FilesCapped fact answers — a writing
-// command refuses at 4, a reporting one warns — never the gate code, which
-// would tell an operator to cut a tag past a commit whose true attribution
-// the cap had hidden (t-c6r5, measured: exit 3 with the wedge remedy).
+// A refusal attribution hands down over a listing GitHub did not give whole
+// — TRUNCATED at its cap, or cut short by a 422 (listFiles) — is not a
+// finding and never wedges: "no carrier" and "the scope names a
+// package the files do not touch" are both claims about files the walk
+// could not read (the package past the cap may be exactly the one named).
+// The commit is carried nowhere and the walk's own FilesCapped or
+// FilesUnknown fact answers — a writing command refuses at 4, a reporting
+// one warns — never the gate code, which would tell an operator to cut a tag
+// past a commit whose true attribution the listing had hidden (t-c6r5,
+// measured: exit 3 with the wedge remedy). A non-refusal answer stands over
+// such a listing, so a scope naming a package still carries the commit
+// there (rule 2), and so do the files the listing did hold, whatever cut it
+// short (t-esm5).
 func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, owner, repo string, commits []walked, facts *walkFacts, lines []line) ([]lineWalk, []walked, error) {
 	if len(cfg.Packages) == 0 {
 		return []lineWalk{{line: lines[0], Commits: commits}}, commits, nil
@@ -412,14 +417,14 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, 
 			carriers = reach
 		case placedNowhere:
 		case placedByFiles:
-			files, capped, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
+			files, incomplete, ferr := walkedFiles(ctx, gh, owner, repo, c, facts, reachedLines(lines, reach))
 			if ferr != nil {
 				return nil, nil, ferr
 			}
 			moved, aerr := attribution.Attribute(files, scope, sigil, cfg.Packages)
 			switch {
-			case aerr != nil && capped:
-				warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but the listing was truncated, so that is not a verdict: the commit is carried nowhere, and the walk is incomplete", c.Raw.SHA, aerr)
+			case aerr != nil && incomplete:
+				warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but GitHub did not list the commit's whole diff, so that is not a verdict: the commit is carried nowhere, and the walk is incomplete", c.Raw.SHA, aerr)
 				carriers = nil
 			case aerr != nil:
 				return nil, nil, attributionWedge(aerr, c, owner, repo, reachedLines(lines, reach))
@@ -441,12 +446,15 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, 
 // walkedFiles fetches the paths a walked commit's own diff touches from the
 // cheapest source that has them: nothing for a merge commit (attributed to
 // nothing, its diff never asked for), local git for a landed identity, the
-// API for a squash-merged pull's inner commit. An API listing that reached
-// CommitFilesCap is recorded on the facts and returned as capped: the files
-// past it are unreachable, not absent, and a package they touch would be
-// missing from the verdict — an incomplete walk in §4's sense, and a listing
-// the caller must not let attribution refuse over.
-func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c walked, facts *walkFacts) (files []string, capped bool, err error) {
+// API for a squash-merged pull's inner commit. An API listing GitHub did not
+// give whole — one that reached CommitFilesCap, or one a 422 cut short
+// (listFiles) — is recorded on the facts with the tags that take the
+// commit out of the lines reached (the shortfall's remedy), and returned as
+// incomplete: the files it did not list are unreachable, not absent, and a
+// package they touch would be missing from the verdict — an incomplete walk
+// in §4's sense, and a listing the caller must not let attribution refuse
+// over.
+func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c walked, facts *walkFacts, reached []line) (files []string, incomplete bool, err error) {
 	if c.Raw.Parents >= 2 {
 		return nil, false, nil
 	}
@@ -454,15 +462,58 @@ func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c w
 		files, err = gitsource.DiffTreeFiles(ctx, ".", c.Raw.SHA)
 		return files, false, err
 	}
-	files, capped, err = gh.CommitFiles(ctx, owner, repo, c.Raw.SHA)
+	l, err := listFiles(ctx, gh, owner, repo, c.Raw.SHA)
 	if err != nil {
 		return nil, false, err
 	}
-	if capped {
-		facts.FilesCapped = append(facts.FilesCapped, fmt.Sprintf("%.7s", c.Raw.SHA))
+	unread := unreadListing{SHA: fmt.Sprintf("%.7s", c.Raw.SHA), Pull: c.Pull, Escapes: lineEscapes(c, reached)}
+	switch {
+	case l.Unknown:
+		facts.FilesUnknown = append(facts.FilesUnknown, unread)
+		warnf("commit %.7s in pull request #%d: GitHub answered 422 for its file listing, so a line it touches in files GitHub did not list may be missing from this verdict", c.Raw.SHA, c.Pull)
+	case l.Capped:
+		facts.FilesCapped = append(facts.FilesCapped, unread)
 		warnf("commit %.7s in pull request #%d touches at least %d files, and GitHub lists no more than that — the files past the cap could not be read, so a package they touch is missing from this verdict", c.Raw.SHA, c.Pull, github.CommitFilesCap)
 	}
-	return files, capped, nil
+	return l.Files, l.incomplete(), nil
+}
+
+// fileListing is GitHub's answer for one commit's files, classified: the
+// paths it listed, Capped when the listing stopped at github.CommitFilesCap,
+// Unknown when GitHub answered 422 — Files then holds what the pages before
+// the 422 listed, none when the first page answered it.
+type fileListing struct {
+	Files   []string
+	Capped  bool
+	Unknown bool
+}
+
+// incomplete reports that the listing is not the commit's whole diff — the
+// listing attribution must not refuse over.
+func (l fileListing) incomplete() bool { return l.Capped || l.Unknown }
+
+// listFiles asks GitHub for the files of a commit no branch holds and
+// classifies the answer — the one place both callers, the walk
+// (walkedFiles) and preview's PR side, read CommitFiles through, so the two
+// cannot take the same listing two ways. A 422 (github.IsCommitUnknown) is
+// a capped listing holding what the pages before it listed — nothing when
+// the first page answered it (DESIGN §4.1): the sha came from GitHub's own
+// pull listing, its message was read, and the files are the one input
+// attribution has no weaker source for, so the listing is unread — never
+// §4's lag fallback. Handed back raw, it died at exit 4 on release, bump,
+// notes and preview alike (t-esm5; mutation row
+// unlisted-commit-files-die-as-a-raw-api-error); emptied, a 422 on page 2
+// threw away the files page 1 listed (mutation row
+// later-page-422-discards-the-listed-files).
+func listFiles(ctx context.Context, gh *github.Client, owner, repo, sha string) (fileListing, error) {
+	files, capped, err := gh.CommitFiles(ctx, owner, repo, sha)
+	switch {
+	case github.IsCommitUnknown(err):
+		return fileListing{Files: files, Unknown: true}, nil
+	case err != nil:
+		return fileListing{}, err
+	}
+	return fileListing{Files: files, Capped: capped}, nil
 }
 
 // reachedLines names the lines whose range holds a commit — the lines a
@@ -473,6 +524,18 @@ func reachedLines(lines []line, idx []int) []line {
 		out = append(out, lines[i])
 	}
 	return out
+}
+
+// lineEscapes names, per line whose range holds c, the tag that takes c out
+// of that line's walk: a tag on the line at or past c's governing identity.
+// attributionWedge and the unread-listing shortfall share it, so the escape
+// reads the same wherever the walk hands it down.
+func lineEscapes(c walked, reached []line) []string {
+	escapes := make([]string, 0, len(reached))
+	for _, l := range reached {
+		escapes = append(escapes, fmt.Sprintf("a %s tag at or past %.7s", l.Line.Label(), c.governing()))
+	}
+	return escapes
 }
 
 // attributionWedge is wedgeHint's sibling for the two refusals attribution
@@ -486,13 +549,9 @@ func attributionWedge(err error, c walked, owner, repo string, reached []line) e
 	if c.Pull > 0 {
 		where = fmt.Sprintf("inside merged pull request %s/%s#%d, which the release walk resolved from its merge point %.7s", owner, repo, c.Pull, c.MergePoint)
 	}
-	escapes := make([]string, 0, len(reached))
-	for _, l := range reached {
-		escapes = append(escapes, fmt.Sprintf("a %s tag at or past %.7s", l.Line.Label(), c.governing()))
-	}
 	return &core.Error{Code: core.CodeLint, Details: []rangeViolation{{SHA: c.Raw.SHA, Subject: bump.FirstLine(c.Raw.Message), Detail: err.Error()}}, Msg: fmt.Sprintf(
 		"commit %.7s: %v — %s; the commit is already on a published branch and cannot be rewritten, so every release of a line whose range holds it wedges here until that line's walk starts past it: cut %s by hand, or name such a tag with --since-tag=<line>vX.Y.Z (DESIGN §4.1)",
-		c.Raw.SHA, err, where, strings.Join(escapes, " / "))}
+		c.Raw.SHA, err, where, strings.Join(lineEscapes(c, reached), " / "))}
 }
 
 // rangeLines is the --range twin of sinceTagInput for a repository with

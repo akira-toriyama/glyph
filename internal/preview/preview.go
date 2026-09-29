@@ -74,13 +74,13 @@ type Input struct {
 	// package instead of in the caller's jq.
 	PendingShort string
 	// PRShort names what the PR side could not read: the pull's own commits
-	// whose file listing GitHub truncated, in the walk's words, so a line one
-	// of them touches only past the cap is absent from every figure — and a
-	// refusal attribution would have made over the truncated listing was
-	// withheld rather than handed down (DESIGN §4.1). Empty when every
-	// listing was whole, and always empty on the single line, which asks for
-	// no files. It is said here for PendingShort's reason: the log is not
-	// read.
+	// whose file listing GitHub truncated at its cap or cut short with a 422,
+	// in the walk's words, so a line one of them touches in files GitHub did
+	// not list may be absent from every figure — and a refusal
+	// attribution would have made over such a listing was withheld rather
+	// than handed down (DESIGN §4.1). Empty when every listing was whole, and
+	// always empty on the single line, which asks for no files. It is said
+	// here for PendingShort's reason: the log is not read.
 	PRShort string
 	// Packages is the per-line fold of a repository that declares
 	// [[packages]] (DESIGN §4.1): one entry per line the pull's commits are
@@ -271,7 +271,7 @@ func renderPackages(in Input) string {
 	if in.PendingShort != "" {
 		fmt.Fprintf(&b, "\n> [!WARNING]\n> The pending side of this fold is INCOMPLETE: %s. Anything already merged but unreleased may be missing from the figures above, so treat each as a floor rather than the answer.\n", in.PendingShort)
 	}
-	b.WriteString(PRShortBlock(in.PRShort))
+	b.WriteString(PRShortBlock(in.PRShort, true))
 	for _, p := range in.Packages {
 		if len(p.PR.Commits) == 0 {
 			continue
@@ -292,13 +292,24 @@ func renderPackages(in Input) string {
 
 // PRShortBlock is the caveat renderPackages places under the headlines when
 // PRShort is set, and "" when it is not. Exported because the packages
-// "moves nothing" sentence is the caller's own, and a pull whose one capped
-// commit was attributed to no line is exactly the body that must carry it.
-func PRShortBlock(short string) string {
+// "moves nothing" sentence is the caller's own, and a pull whose one
+// unlisted commit was attributed to no line is exactly the body that must
+// carry it. figures says whether the body carries figures for the caveat to
+// make floors of: the headlines do, the "moves nothing" sentence does not,
+// and a caveat pointing at "the figures above" there points at nothing. The
+// sentence names no cause — PRShort already does, and "only past the cap"
+// was false for a listing GitHub answered 422 for (t-esm5) — and says a line
+// MAY be missing, the walk's own word: a scope can carry a commit onto the
+// very line its unlisted files touch.
+func PRShortBlock(short string, figures bool) string {
 	if short == "" {
 		return ""
 	}
-	return fmt.Sprintf("\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: %s. A line one of its commits touches only past the cap is missing from the figures above, so treat each as a floor rather than the answer.\n", short)
+	floor := "may be missing from the figures above, so treat each as a floor rather than the answer"
+	if !figures {
+		floor = `may move all the same, so treat "moves nothing" as a floor rather than the answer`
+	}
+	return fmt.Sprintf("\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: %s. A line one of those commits touches in files GitHub did not list %s.\n", short, floor)
 }
 
 // packagesFooter is footer per line: the participating commits are counted
