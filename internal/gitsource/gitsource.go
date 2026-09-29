@@ -83,14 +83,17 @@ func LogRevs(ctx context.Context, dir string, revs []string) ([]RawCommit, error
 // RemoteTips returns the object names of every remote-tracking ref under
 // remote — what this clone last saw that remote holding.
 //
-// The trailing slash on the pattern is load-bearing: `refs/remotes/origin`
-// without it also matches a remote named `originmirror` (measured), which would
-// exclude commits the push genuinely carries.
+// The pattern's trailing slash states the intent; it does not guard anything.
+// for-each-ref matches a literal pattern "completely or from the beginning up
+// to a slash" (git-for-each-ref(1)), so `refs/remotes/origin` alone already
+// stops short of a remote named `originmirror` — measured 2026-09-29 on git
+// 2.54: both spellings list origin's refs and none of originmirror's.
 //
 // Measured equal to `--not --remotes=<remote>` on the case that rules out the
-// cheaper spellings: a branch pushed to a second remote first makes bare
-// `--remotes` report ZERO outgoing commits, i.e. a silent green over unlinted
-// work, while both the qualified form and this one report the two real ones.
+// cheaper spellings (re-measured 2026-09-29, git 2.54): a branch pushed to a
+// second remote first makes bare `--remotes` report ZERO outgoing commits, i.e.
+// a silent green over unlinted work, while both the qualified form and this
+// one report the two real ones.
 func RemoteTips(ctx context.Context, dir, remote string) ([]string, error) {
 	out, err := run(ctx, dir, "for-each-ref", "--format=%(objectname)", "--end-of-options", "refs/remotes/"+remote+"/")
 	if err != nil {
