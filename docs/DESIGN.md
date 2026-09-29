@@ -559,6 +559,64 @@ and an unpaired `[` is refused as unterminated instead of closing the span one
 character early (measured: closing at the first `]` of any kind left a stray
 `]` on every rendered line).
 
+**A placeholder no commit binds does not load** (mutation rows
+`config-line-placeholder-unbound`, `config-note-line-cites-an-unlandable-group`,
+`config-note-line-cites-a-skip-group`,
+`config-note-line-refuses-the-fallback-subject`,
+`config-note-line-cites-the-fallback-subject-alone`): a name that is not a
+built-in, not a declared trailer and not a group some rendered commit's
+winning pattern captures resolves empty on every line, and inside a span it
+takes the span with it — `$[ ($pull)]` for `$pr` rendered every line without
+its citation, at exit 0. The legal set is the union over the patterns whose
+groups a commit binds (`config.Pattern.bindsGroups`, the predicate §4.1's
+scope-word check reads): a `skip` pattern's commit is in no section and an
+`unlandable` one renders through the fallback, so neither counts. **The
+fallback's `$subject` completes a template; it never carries one.** The
+fallback binds `$subject` for every commit no pattern claims, whatever the
+patterns name their groups (`config.FallbackGroup`, the name the renderer
+keys the fallback off), and for no other commit. So where no pattern binds
+`subject`, `$subject` is legal beside a group a pattern binds —
+`- $title$subject`, each line filling the one its commit binds
+(`TestGroupSigilsFallbackBindsSubjectUnderAnyGrammar`) — and refused when
+it is the template's only name beyond the built-ins and trailers, the
+refusal naming the names the file can bind. Measured (t-f2cb): before it,
+a `$branch` only a skip pattern captured loaded and rendered empty at exit 0,
+and a file whose subject group is `title` was refused `$subject` outright
+while the fallback bound it for every bot line — so its `- $title @$author`
+rendered each such line as `-  dependabot\[bot]`, the text gone, with no
+spelling that kept it (2026-09-29). Making `$subject` legal unconditionally
+fixed that and loosened the loader (2026-10-04): the gemoji preset with its
+group renamed `subject` → `title` and `note.line` left as written, which
+adfc5e1 refused at exit 2, loaded and printed every matched commit's line
+with its text gone (`-  akira`) at exit 0, and with sections on the semver
+axis only — where the fallback never renders — `$subject` filled no line at
+all. The rule reads the template and the patterns, not `note.sections`:
+`- $title$subject` under semver sections only loads, its `$subject` empty
+beside the `$title` that carries each line's text. **A `[[note.trailers]]`
+name is held to the same set from the other side.** A trailer outranks a
+group at render, so it may not take a name a commit binds — a group of a
+pattern whose groups a commit binds, or `subject` whatever the patterns call
+their groups — and a group only a `skip` or `unlandable` pattern captures,
+which binds nothing, leaves its name free (mutation rows
+`trailers-may-shadow-the-fallback-subject`, `trailers-count-a-skip-group`).
+Measured 2026-10-04, identically before t-f2cb: a title-grammar file with a
+trailer named `subject` loaded and rendered each bot line as `- `, its text
+replaced by an absent trailer, at exit 0, and a trailer named after a
+skip-only `branch` group was refused as "$branch would mean two things".
+Rejected: refusing a template that cites a name the fallback cannot bind —
+`- [$scope] $subject`, the idiom above, renders a bot line with an empty
+scope and its text (measured: `- [] Bump foo from 1 to 2`), the per-winner
+rendering every pattern already gets (the `Revert` pattern captures no scope
+either), so that refusal would ban citing any group but `$subject`; it is
+rejected on that ground alone, since no fleet file would have moved (42
+measured, every `note.line` citing only built-ins and `$subject`). Also
+rejected: refusing a template that does not cite `$subject` — whether a bot
+line shows its text is the template author's call, not a name nothing binds
+— and deriving the fallback's name from the patterns, which is undefined
+when two of them name the text differently. The `$subject` rule above is
+neither refusal: `- $title$subject` cites a name the fallback cannot bind
+and loads, and a template citing no `$subject` is never asked about it.
+
 **`draft_on_none`** (a `glyph.toml` key; the mechanism is `internal/draftplan`): with it on, a none
 verdict maintains an `Unreleased` placeholder draft instead of deleting the
 rolling draft, and the next real verdict retags that same draft to the real

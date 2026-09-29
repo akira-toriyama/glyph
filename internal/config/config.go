@@ -187,7 +187,9 @@ type Pattern struct {
 // (claimed and dropped: placed nowhere, rendered in no section) or
 // unlandable (reported unclaimed with no groups, rendered through the
 // raw-line fallback). A group only such a pattern captures is never read, so
-// every reader of the file's group names asks this predicate, not the flags.
+// every reader of the file's group names asks this predicate, not the flags:
+// boundGroupNames (note.line's placeholders and the trailers' names) and
+// scopeSpellers (the package names).
 func (p *Pattern) bindsGroups() bool { return !p.Skip && p.Unlandable == "" }
 
 // Note carries the release-notes block: the per-commit line template and the

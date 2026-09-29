@@ -181,3 +181,77 @@ func TestLoadRefusesAPlaceholderNothingBinds(t *testing.T) {
 		}
 	})
 }
+
+// TestNoteLineMayCiteTheFallbackSubject: the raw-line fallback binds $subject
+// for every commit no pattern claims, whatever the patterns call their
+// groups, so a file that names its subject group otherwise may cite it beside
+// that group — the one spelling that renders a bot line's text. Measured
+// before (2026-09-29): such a file citing $subject was refused as resolving
+// empty for every commit, and its `- $title @$author` rendered each bot line
+// as `-  dependabot\[bot]`, the text gone, at exit 0.
+func TestNoteLineMayCiteTheFallbackSubject(t *testing.T) {
+	src := "schema = 1\n[[patterns]]\npattern = '^(?P<title>:[a-z0-9_]+:(?P<semver_sigil>[=~^!%]) .+)'\n[note]\nline = '- $title$subject'\n"
+	if _, err := Load([]byte(src)); err != nil {
+		t.Fatalf("Load refused $subject beside $title, which the fallback binds for every unmatched commit: %v", err)
+	}
+}
+
+// TestNoteLineRefusesTheFallbackSubjectAlone: where no pattern whose groups a
+// commit binds captures `subject`, the fallback binds $subject for a commit no
+// pattern claims and for no other, so it completes a template and never
+// carries one — a template whose only name beyond the built-ins and trailers
+// is that $subject renders every line a pattern claims without its text.
+// Measured (2026-10-04) with $subject legal unconditionally: the gemoji
+// preset with its group renamed to `title` and note.line left alone loaded
+// and printed `-  akira` for each matched commit at exit 0, where adfc5e1
+// refused it at exit 2; with sections on the semver axis only, the fallback
+// never renders, so $subject filled no line at all. The refusal names the
+// groups the file can bind, title among them, and not the fallback's name.
+func TestNoteLineRefusesTheFallbackSubjectAlone(t *testing.T) {
+	preset, ok := Preset("gemoji")
+	if !ok {
+		t.Fatal("gemoji preset missing")
+	}
+	renamed := strings.ReplaceAll(string(preset), "?P<subject>", "?P<title>")
+	if renamed == string(preset) {
+		t.Fatal("the gemoji preset captures no subject group to rename — re-derive this fixture")
+	}
+	const title = "schema = 1\n[[patterns]]\npattern = '^(?P<title>:[a-z0-9_]+:(?P<semver_sigil>[=~^!%]) .+)'\n"
+	for name, src := range map[string]string{
+		"the preset with its group renamed": renamed,
+		"semver sections only":              title + "[note]\nline = '- $subject @$author'\n[[note.sections]]\nsemver = 'patch'\ntitle = 'Fixes'\n",
+		"a trailer beside it":               title + "[note]\nline = '- $subject$[ — $why]'\n[[note.trailers]]\ntoken = 'Why'\nname = 'why'\n",
+		"only a skip pattern captures it":   title + "[[patterns]]\npattern = '^Merge (?P<subject>.+)'\nskip = true\n[note]\nline = '- $subject'\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Load([]byte(src))
+			if err == nil {
+				t.Fatal("Load accepted a template whose only group is the fallback's $subject: every line a pattern claims renders without its text")
+			}
+			for _, want := range []string{"note.line: $subject is not a built-in", "the names this file can bind are: ", "semver_sigil, title"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("refusal = %q, want substring %q", err, want)
+				}
+			}
+			if strings.Contains(err.Error(), ", subject") {
+				t.Errorf("refusal = %q lists subject among the names this file binds", err)
+			}
+		})
+	}
+	if _, err := Load([]byte(strings.Replace(renamed, "line = '- $subject", "line = '- $title$subject", 1))); err != nil {
+		t.Errorf("the renamed preset citing $title beside $subject did not load: %v", err)
+	}
+}
+
+// TestNoteLineCannotCiteASkipGroup: skip is total — a skipped commit is in no
+// section — so a group only a skip pattern captures binds for no rendered
+// line, exactly as one only an unlandable pattern captures. Measured before
+// (2026-09-29): `$[ (from $branch)] $branch` from a skip pattern loaded and
+// rendered `- :bug:~ fix it ` at exit 0, span dropped and the bare one empty.
+func TestNoteLineCannotCiteASkipGroup(t *testing.T) {
+	_, err := Load([]byte("schema = 1\n[[patterns]]\npattern = '^(?P<subject>:[a-z0-9_]+:(?P<semver_sigil>[=~^!%]) .+)'\n" +
+		"[[patterns]]\npattern = '^Merge (?P<branch>.+)'\nskip = true\n[note]\nline = '- $subject$[ (from $branch)]'\n"))
+	if err == nil || !strings.Contains(err.Error(), "$branch") {
+		t.Fatalf("Load = %v, want the note.line refusal naming $branch", err)
+	}
+}
