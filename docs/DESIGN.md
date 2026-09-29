@@ -423,6 +423,25 @@ one split the 0.x rule rests on, and it is why the rule lives in
   rises in the sentence because classification is version-blind — the
   break stays visible — and only the arrow, which the arithmetic would have
   drawn from a version to itself, is withheld.
+- **A version field is at most 2^31−1** (`bump.MaxField`; t-f2cb, mutation
+  row `semver-field-past-the-cap-accepted`). `Next` adds one to a field, and
+  from the `int` ceiling it wrapped — measured 2026-09-29: `bump --current
+  v9223372036854775807.0.0` over a `!` printed `v-9223372036854775808.0.0` at
+  exit 0, and a tag of that version did the same from the walk base.
+  `ParseVersion` refuses a larger field, so a `--current` past the cap is
+  usage (exit 2), and a tag past it is no version on its line: it leaves the
+  walk base's, the published floor's and the managed drafts' candidates like
+  any tag that is not version-shaped. The cap sits at parse, not in `Next`: a
+  step from a field at the cap lands one past it, which `int` holds on every
+  target glyph builds for, so `Next` stays total — and a version past the cap
+  that glyph writes is one it never reads back once tagged, so the line's next
+  step answers from below it: backwards after a stepped field (measured
+  2026-10-04: `--current v2147483647.0.0` over a `!` answers
+  `v2147483648.0.0`, and with that tagged a later `~` answers
+  `v2147483647.0.1`) and the same tag again on a major version subdirectory
+  past the cap (`pkg/v2147483648` re-proposes `pkg/v2147483648.0.0` after it
+  is tagged). Rejected: detecting the overflow in `Next`, which gives every
+  step site an error arm for a state no stepping reaches.
 
 **Promote is not a fifth rung.** `bump.Decision` carries `{Level, Promote}`,
 and a `%` commit classifies as **major** like any other breaking change; the
