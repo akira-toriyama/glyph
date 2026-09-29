@@ -92,7 +92,7 @@ func TestReleasePackagesWritesOneDraftPerLine(t *testing.T) {
 		t.Fatalf("scalars must be empty under packages: %s", stdout)
 	}
 	if res.Target == "" {
-		t.Fatalf("target is one checkout's HEAD and must be reported: %s", stdout)
+		t.Fatalf("every line's draft points at target, so it must be reported: %s", stdout)
 	}
 	if len(res.Packages) != 2 || res.Packages[0].Tag != "haiku/v0.2.0" || res.Packages[0].Action != "create" || res.Packages[0].URL == "" || res.Packages[1].Tag != "curry/v0.1.1" {
 		t.Fatalf("packages = %+v", res.Packages)
@@ -359,7 +359,10 @@ func packagesRepoWithRoot(t *testing.T) (dir, declared string) {
 
 // TestReleasePackagesAllNoneExitsOne: every line none, no draft to write —
 // exit 1 with the per-line reasons, the residual drafts of every line
-// deleted loudly (the deletes are the whole action), nothing created.
+// deleted loudly (the deletes are the whole action), nothing created, and no
+// target: target is the sha a draft's eventual tag points at, and the single
+// line's none verdict carries none either (t-xz1z; the first cut reported
+// HEAD here, on the real run and the dry run alike).
 func TestReleasePackagesAllNoneExitsOne(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	sha := touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
@@ -377,6 +380,18 @@ func TestReleasePackagesAllNoneExitsOne(t *testing.T) {
 	res := decodeReleaseLines(t, stdout)
 	if !strings.Contains(res.Reason, "every line folds to none") || res.Packages[0].Action != "delete" || res.Packages[1].Action != "none" {
 		t.Fatalf("verdict = %+v", res)
+	}
+	if res.Target != "" {
+		t.Fatalf("no line has a draft to write, so there is no target to report: %s", stdout)
+	}
+
+	writes = nil
+	code, stdout, stderr = runGlyph(t, "release", "--dry-run", "--json")
+	if code != 1 || len(writes) != 0 {
+		t.Fatalf("release --dry-run exited %d with writes %+v, want 1 and none\nstderr: %s", code, writes, stderr)
+	}
+	if res := decodeReleaseLines(t, stdout); res.Target != "" {
+		t.Fatalf("a dry run that would write no draft has no target to report: %s", stdout)
 	}
 }
 
@@ -653,7 +668,8 @@ func TestReleasePackagesDryRunGolden(t *testing.T) {
 // TestReleasePackagesDraftOnNoneMaintainsAPlaceholderPerLine: with the flag
 // on, a none line keeps <path>/Unreleased alive — created on the bare
 // collection — while the moving line gets its real draft; exit 1 still
-// answers only when every line is none.
+// answers only when every line is none, and the verdict reports the target
+// the placeholders point at.
 func TestReleasePackagesDraftOnNoneMaintainsAPlaceholderPerLine(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	sha := touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
@@ -668,5 +684,17 @@ func TestReleasePackagesDraftOnNoneMaintainsAPlaceholderPerLine(t *testing.T) {
 	}
 	if len(writes) != 2 || writes[0].body["tag_name"] != "haiku/Unreleased" || writes[1].body["tag_name"] != "curry/Unreleased" {
 		t.Fatalf("writes = %+v, want one placeholder POST per line", writes)
+	}
+
+	// A placeholder is a draft and points at target, so the verdict reports
+	// it although no line moves: the gate is the draft count, never the
+	// moving-line count.
+	code, stdout, stderr := runGlyph(t, "release", "--json")
+	if code != 1 {
+		t.Fatalf("release --json exited %d, want 1\nstderr: %s", code, stderr)
+	}
+	head := testGit(t, ".", "akira-toriyama", "rev-parse", "HEAD")
+	if res := decodeReleaseLines(t, stdout); res.Target != head {
+		t.Fatalf("target = %q, want %s — the placeholders point at it: %s", res.Target, head, stdout)
 	}
 }

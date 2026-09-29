@@ -28,8 +28,10 @@ var (
 
 // releaseResult is the machine verdict: {current, level, tag, target, body,
 // action, url, commits, pulls, reason} — plus packages when the repository
-// declares [[packages]]. tag, target and body are omitted on a none verdict
-// — there is no release to act on; url is present only when a write actually
+// declares [[packages]]. tag, target and body are present exactly when the
+// run upserts a draft (a dry run: would upsert one) — a release verdict, or
+// the Unreleased placeholder draft_on_none maintains — and omitted otherwise:
+// there is no release to act on. url is present only when a write actually
 // happened (never on a dry run). pulls is the walk's expansion provenance —
 // which merged pulls it resolved and how many participating commits each
 // contributed — which is what a human or a CI step reads to audit how a
@@ -39,9 +41,10 @@ var (
 // / url are EMPTY and packages carries one verdict and one draft per line
 // (DESIGN §4.1): a caller written for the single line — release.yml's four
 // outputs, a tag step — then fails safe on "", which its contract already
-// tells it to. target stays: one checkout, one HEAD, every line's draft
-// points at it. commits then lists every commit that participates on any
-// line.
+// tells it to. target is shared — one checkout, one HEAD, every line's draft
+// points at it — under the same rule: omitted when no line upserts a draft
+// (every selected line none, draft_on_none off). commits then lists every
+// commit that participates on any line.
 type releaseResult struct {
 	Current  string              `json:"current"`
 	Level    string              `json:"level"`
@@ -91,7 +94,8 @@ func newReleaseCmd() *cobra.Command {
 			"means every line folded to none. --dry-run prints one block per line (tag\n" +
 			"line, blank line, body); --json carries packages:\n" +
 			"[{path,current,level,next,tag,body,action,url,commits,reason}] with the\n" +
-			"scalar current/level/tag/body/action/url EMPTY and target shared.\n" +
+			"scalar current/level/tag/body/action/url EMPTY and target shared\n" +
+			"(omitted, as on the single line, when no line has a draft to write).\n" +
 			"--current is refused (exit 2) unless the walk selects one line\n" +
 			"(--since-tag=<path>/vX.Y.Z or below:).",
 		Args: sinceTagArgs,
@@ -105,7 +109,7 @@ func newReleaseCmd() *cobra.Command {
 	cmd.Flags().StringVar(&releaseTarget, "target", "", "the commit sha the draft's eventual tag points at (default: the checkout's HEAD)")
 	cmd.Flags().StringVar(&releaseFooterFile, "footer-file", "", "a Markdown file appended verbatim after the notes, separated by one --- line (the per-repo install block)")
 	cmd.Flags().BoolVar(&releaseDryRun, "dry-run", false, "compute the full verdict and the draft action but write nothing to GitHub")
-	cmd.Flags().BoolVar(&releaseJSON, "json", false, "emit the machine verdict {current,level,tag,target,body,action,url,commits,pulls,reason}; with [[packages]] declared the scalars are empty and packages[] carries one verdict per line")
+	cmd.Flags().BoolVar(&releaseJSON, "json", false, "emit the machine verdict {current,level,tag,target,body,action,url,commits,pulls,reason}; with [[packages]] declared the scalars but target are empty (target too when no line has a draft to write) and packages[] carries one verdict per line")
 	return cmd
 }
 

@@ -1294,12 +1294,32 @@ fails on that source, and mutation row
 `--footer-file` appends to every draft (one install block per repository is
 what every caller passes today; a per-package footer is a knob nobody has
 asked for and is recorded here so its absence is a decision).
-`checkReleaseBody` sizes each draft on its own. GitHub's **Latest** badge is
-one per repository and is assigned when a human *publishes*, by creation date
-unless the publisher says otherwise; glyph writes drafts, which cannot be
-latest, so it never sets `make_latest` and the badge lands on whichever line
-was published last — the shape google-cloud-go's releases page has lived with
-for years. Not a knob.
+`checkReleaseBody` sizes each draft on its own. Of the scalars that describe a
+draft — `tag`, `target`, `body`, `url` — `target` is the one packages leave
+filled (one checkout, one HEAD, every line's draft points at it), and it keeps
+the single line's rule rather than acquiring one of its own: it is present
+exactly when a draft is upserted (on a dry run, would be), a line's
+`<path>/Unreleased` placeholder included, and absent when no line has a draft
+to write, as the single line's none verdict without the placeholder carries
+none. Absent is also the fail-safe answer the scalars give: a consumer written
+for the single line that reads `.target` alone must not act on a run that
+drafts nothing. The first cut resolved it above that question and reported a
+sha no draft would ever point at, beside a `packages[]` in which no line
+carried a tag (t-xz1z; measured 2026-09-29 on an all-none fixture, the real
+run and the dry run, where `TestReleasePackagesAllNoneExitsOne` fails on that
+source, and on a selected line folding to none,
+`release --dry-run --json --since-tag=curry/v0.1.0` over a haiku-only `^`). No
+workflow or script in the fleet reads `.target` (the 55 local clones, the hub
+and glyph's own reusables grepped the same day), so dropping it moved no
+consumer. The gate is the draft count, never the moving-line count:
+`draft_on_none`'s placeholders are drafts, and they point at the target too
+(mutation rows `release-packages-target-without-a-draft.patch` and
+`release-packages-placeholder-loses-its-target.patch`). GitHub's **Latest**
+badge is one per repository and is assigned when a human *publishes*, by
+creation date unless the publisher says otherwise; glyph writes drafts, which
+cannot be latest, so it never sets `make_latest` and the badge lands on
+whichever line was published last — the shape google-cloud-go's releases page
+has lived with for years. Not a knob.
 **Measured** 2026-09-10 on glyph-monorepo-test: `releases/latest` was 404
 with two drafts standing, `haiku/v0.1.0` after haiku was published,
 `curry/v0.0.1` after curry was — the last publish, whichever line. A tag

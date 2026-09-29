@@ -212,7 +212,14 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 		drafts[i].params.Target = target
 	}
 
-	result := releaseResult{Target: target, Commits: rows, Packages: verdicts, Pulls: w.Facts.Pulls, Reason: reason}
+	result := releaseResult{Commits: rows, Packages: verdicts, Pulls: w.Facts.Pulls, Reason: reason}
+	// target is the sha a draft's eventual tag points at, so it is reported
+	// exactly when a draft is upserted — the single line's rule. The gate is
+	// the draft count, never moving: a draft_on_none placeholder is a draft
+	// that points at target too.
+	if len(drafts) > 0 {
+		result.Target = target
+	}
 	finish := func() error {
 		if moving == 0 {
 			return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}

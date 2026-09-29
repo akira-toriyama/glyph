@@ -401,9 +401,11 @@ reaches the folded level. `internal/cli/cmd_bump.go: decidingReason`
 
 **target** — `target_commitish`: the sha the draft's eventual tag will point at,
 defaulting to the checkout's HEAD. No tag exists until a human publishes. The
-verdict carries it as `target` — resolved on the dry run too, so a `--target`
-typo is visible in the preview rather than first surfacing on the real write.
-`internal/cli/cmd_release.go: releaseRun`, `internal/gitsource/gitsource.go: Head`
+verdict carries it as `target` whenever the run upserts a draft (single line and
+packages alike; a none verdict without the placeholder has none) — resolved on
+the dry run too, so a `--target` typo is visible in the preview rather than first
+surfacing on the real write. `internal/cli/cmd_release.go: releaseRun`,
+`internal/cli/release_lines.go: releaseLines`, `internal/gitsource/gitsource.go: Head`
 
 **action** — which draft convergence the run performs: `create`, `update`
 (grow/retag), `delete`, or `none`. `--dry-run` computes the action too and writes
