@@ -46,11 +46,12 @@ func newLintCmd() *cobra.Command {
 			"where a message an unlandable pattern claims passes with its reason as a\n" +
 			"warning; every other mode refuses it, because it may be written but must\n" +
 			"not land. Violations exit 3 with a structured stderr envelope; a clean run\n" +
-			"is silent, EXCEPT for three loud-and-still-0 cases: a --range which judged\n" +
+			"is silent, EXCEPT for four loud-and-still-0 cases: a --range which judged\n" +
 			"no commit at all says so (`0` means \"everything I checked conforms\",\n" +
-			"which is vacuous when nothing was checked), a pattern carrying a warn\n" +
-			"annotates every commit it claims, and an unlandable message at authoring\n" +
-			"time says the later gates will refuse it.",
+			"which is vacuous when nothing was checked), a --range in a shallow clone\n" +
+			"says it could judge only the commits the clone holds, a pattern carrying\n" +
+			"a warn annotates every commit it claims, and an unlandable message at\n" +
+			"authoring time says the later gates will refuse it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{
@@ -250,7 +251,10 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 // touch, are findings here — the pre-push hook is where a shared-only ^ is
 // caught before it is pushed, and the release walk would refuse it later
 // with no way to rewrite it. --message and --stdin never reach this: a
-// message alone has no diff. The error is git failing to read a diff (API).
+// message alone has no diff. A shallow clone's boundary commit has no diff
+// this checkout can read, so its attribution is not asked and the commit is
+// warned about instead — at both gates, like a warned pattern. The error is
+// git failing to read a diff (API).
 func lintRaws(ctx context.Context, raws []gitsource.RawCommit, cfg *config.Config) (findings, warned []rangeViolation, checked int, err error) {
 	for _, raw := range raws {
 		v := cfg.Lint(raw.Message, raw.Author)
@@ -269,10 +273,13 @@ func lintRaws(ctx context.Context, raws []gitsource.RawCommit, cfg *config.Confi
 			continue
 		}
 		reason, aerr := lintAttribution(ctx, raw, cfg)
-		if aerr != nil {
+		switch {
+		case gitsource.IsShallowBoundary(aerr):
+			warned = append(warned, rangeViolation{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message),
+				Detail: "its parents are not in this shallow clone, so its own diff cannot be read and the [[packages]] attribution was not checked — fetch the full history (fetch-depth: 0) to judge it"})
+		case aerr != nil:
 			return nil, nil, 0, aerr
-		}
-		if reason != "" {
+		case reason != "":
 			findings = append(findings, rangeViolation{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message), Detail: reason})
 		}
 	}
@@ -282,7 +289,8 @@ func lintRaws(ctx context.Context, raws []gitsource.RawCommit, cfg *config.Confi
 // lintAttribution asks attribution's question of one clean, matched commit
 // under local git, returning the refusal's sentence or "". A skip-pattern
 // match has no sigil to carry; a merge commit's diff is never asked for
-// (attributed to nothing, the same as in the walk).
+// (attributed to nothing, the same as in the walk). A shallow boundary's
+// unreadable diff comes back as DiffTreeFiles' error, for the caller to warn.
 func lintAttribution(ctx context.Context, raw gitsource.RawCommit, cfg *config.Config) (string, error) {
 	m, merr := cfg.Match(raw.Message)
 	if merr != nil || !m.Matched || m.Skip {
@@ -312,6 +320,13 @@ type rangeViolation struct {
 
 // lintRangeRun lints every commit in revRange. Excluded authors are skipped,
 // never failed — the bots exclude_authors names lint nowhere.
+//
+// A shallow checkout is asked about once and WARNED about, never refused: git
+// lists only the commits the clone holds, so a range reaching past the shallow
+// boundary is judged in part, and the verdict is about what was judged. A
+// refusal there would be a new lint semantics (DESIGN §4.1, "Lint"); silence
+// was the measured defect — a --depth 2 clone judged 2 of 6 commits and exited
+// 0 with nothing said where the full clone exits 3 (t-esm5).
 func lintRangeRun(ctx context.Context, revRange string) error {
 	if err := checkRangeFlag(revRange); err != nil {
 		return err
@@ -323,6 +338,13 @@ func lintRangeRun(ctx context.Context, revRange string) error {
 	raws, lerr := gitsource.Log(ctx, ".", revRange)
 	if lerr != nil {
 		return lerr
+	}
+	shallow, serr := gitsource.IsShallow(ctx, ".")
+	if serr != nil {
+		return serr
+	}
+	if shallow {
+		warnf("this is a SHALLOW checkout: git lists only the commits this clone holds, so a range that reaches past its shallow boundary is linted only as far as the clone goes — this verdict says nothing about the commits it cannot see. Fetch the full history (actions/checkout with fetch-depth: 0) for a verdict on the whole range")
 	}
 	findings, warned, checked, aerr := lintRaws(ctx, raws, cfg)
 	if aerr != nil {

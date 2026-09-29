@@ -372,21 +372,85 @@ func FirstParentLog(ctx context.Context, dir, rev string, n int) ([]RawCommit, e
 // answers EMPTY (git shows no diff for a merge without -m/-c), and callers do
 // not ask about one: a merge commit is attributed to nothing.
 //
+// A shallow clone's boundary commit has no diff this checkout can compute, and
+// answers an error IsShallowBoundary recognises (API class, so a caller that
+// does not ask fails at 4 rather than read a wrong diff). git reads the
+// boundary as a root — its parents were cut off — and `--root` then reported
+// its whole tree as its own diff (measured: `curry/b haiku/a` where the full
+// clone says `curry/b`; t-esm5). The boundary is told apart from a true root by
+// asking the object itself: its header still names the parent git no longer
+// traverses to. Not by `.git/shallow`, which lists a true root inside the depth
+// too, and not by "parentless in a shallow checkout", which would refuse that
+// root's diff although its tree is exactly its diff (both measured). The extra
+// read is paid only by a commit git reads as parentless: %P comes back in the
+// same diff-tree call.
+//
 // Asked only of a commit this checkout holds — the walk's landed identities
 // and every commit a --range fold reads. A squash-merged pull's inner commits
 // exist on no branch, and the walk asks the API about those instead.
 func DiffTreeFiles(ctx context.Context, dir, sha string) ([]string, error) {
-	out, err := run(ctx, dir, "diff-tree", "-z", "--no-commit-id", "--name-only", "-r", "--root", "--no-renames", "--end-of-options", sha, "--")
+	// --always prints the %P header even for an empty diff, so the header is
+	// the output up to the first NUL, and the name list — when there is one —
+	// follows it after one "\n" (measured on git 2.54).
+	out, err := run(ctx, dir, "diff-tree", "-z", "--always", "--format=%P", "--name-only", "-r", "--root", "--no-renames", "--end-of-options", sha, "--")
 	if err != nil {
 		return nil, err
 	}
+	parents, list, ok := bytes.Cut(out, []byte{0})
+	if !ok {
+		return nil, core.APIf("git diff-tree %s: no header in %q", sha, tail(out))
+	}
+	if len(parents) == 0 {
+		boundary, berr := isGraftBoundary(ctx, dir, sha)
+		if berr != nil {
+			return nil, berr
+		}
+		if boundary {
+			return nil, &shallowBoundary{err: core.APIf("commit %.7s is a shallow clone's boundary: its parents are not in this checkout, so its own diff cannot be read (fetch the full history, e.g. actions/checkout with fetch-depth: 0)", sha)}
+		}
+	}
 	var files []string
-	for entry := range bytes.SplitSeq(out, []byte{0}) {
+	for entry := range bytes.SplitSeq(bytes.TrimPrefix(list, []byte("\n")), []byte{0}) {
 		if len(entry) > 0 {
 			files = append(files, string(entry))
 		}
 	}
 	return files, nil
+}
+
+// isGraftBoundary reports whether the commit object names a parent although git
+// traverses it as a root: a shallow clone's boundary. The caller has already
+// seen git read it as parentless.
+func isGraftBoundary(ctx context.Context, dir, sha string) (bool, error) {
+	out, err := run(ctx, dir, "cat-file", "commit", "--end-of-options", sha)
+	if err != nil {
+		return false, err
+	}
+	header, _, _ := bytes.Cut(out, []byte("\n\n"))
+	for line := range bytes.SplitSeq(header, []byte("\n")) {
+		if bytes.HasPrefix(line, []byte("parent ")) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// shallowBoundary carries DiffTreeFiles' unreadable answer: an ordinary
+// *core.Error of the API class to everything that does not ask, so a caller
+// that forgets the case fails loud instead of reading a wrong diff.
+type shallowBoundary struct{ err *core.Error }
+
+func (e *shallowBoundary) Error() string { return e.err.Error() }
+func (e *shallowBoundary) Unwrap() error { return e.err }
+
+// IsShallowBoundary reports whether err is DiffTreeFiles saying the commit is a
+// shallow clone's boundary, whose own diff this checkout cannot compute. The
+// callers that can do better than exit 4 — lint judges the message and warns
+// that it could not ask attribution, the walk carries the commit on no line —
+// branch here.
+func IsShallowBoundary(err error) bool {
+	var sb *shallowBoundary
+	return errors.As(err, &sb)
 }
 
 // MergeBase returns the best common ancestor of revs (git merge-base
@@ -410,6 +474,8 @@ func MergeBase(ctx context.Context, dir string, revs []string) (string, error) {
 // asks because a truncated history makes every ancestry answer a maybe: a commit
 // git cannot see is indistinguishable from one that never landed, and the walk
 // would rather say so than quietly grade itself on a partial repository.
+// `lint --range` asks for the same reason about the range: git lists only the
+// commits the clone holds.
 func IsShallow(ctx context.Context, dir string) (bool, error) {
 	out, err := run(ctx, dir, "rev-parse", "--is-shallow-repository")
 	if err != nil {

@@ -679,6 +679,70 @@ func TestDiffTreeFiles(t *testing.T) {
 	}
 }
 
+// TestDiffTreeFilesAtAShallowBoundaryIsUnreadable: git reads a shallow clone's
+// boundary commit as a root, so `--root` reported its WHOLE tree as its own diff
+// (measured: `curry/b haiku/a` where the full clone says `curry/b`), and
+// attribution then found a carrier for anything — a shared-only `^` passed
+// `lint --range` at 0 in a --depth 1 clone and was refused at 3 in the full one
+// (t-esm5 (1)). The boundary must answer unreadable, never a diff this clone
+// cannot compute. The controls keep their diffs: the commit above the boundary,
+// and a TRUE root commit inside the same shallow clone — git lists that one in
+// .git/shallow too, but it has no parent to be cut off from, so its tree is its
+// own diff (measured).
+func TestDiffTreeFilesAtAShallowBoundaryIsUnreadable(t *testing.T) {
+	dir := newRepo(t)
+	write := func(rel, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, rel), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("haiku/a", "a\n")
+	git(t, dir, "akira-toriyama", "add", ".")
+	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:(haiku)^ start haiku")
+	write("curry/b", "b\n")
+	git(t, dir, "akira-toriyama", "add", ".")
+	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:(curry)^ start curry")
+	boundary := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	// An unrelated history merged in: its root is inside the depth-2 clone.
+	git(t, dir, "akira-toriyama", "switch", "-q", "--orphan", "side")
+	write("side/s", "s\n")
+	git(t, dir, "akira-toriyama", "add", "side/s")
+	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= another root")
+	root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	git(t, dir, "akira-toriyama", "switch", "-q", "-f", "main")
+	git(t, dir, "akira-toriyama", "merge", "-q", "--allow-unrelated-histories", "--no-ff", "-m", "Merge branch 'side'", "side")
+	write("haiku/a", "a2\n")
+	git(t, dir, "akira-toriyama", "commit", "-q", "-am", ":bug:(haiku)~ fix haiku")
+	above := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
+	clone := filepath.Join(t.TempDir(), "shallow")
+	git(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", "3", "file://"+dir, clone)
+
+	files, err := DiffTreeFiles(context.Background(), clone, boundary)
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || files != nil {
+		t.Fatalf("DiffTreeFiles at the shallow boundary = %q, %v; want no files and an API-class unreadable answer — its own diff is [curry/b], and the clone cannot compute it", files, err)
+	}
+	if !IsShallowBoundary(err) {
+		t.Fatalf("the boundary's error is not recognisable as one (IsShallowBoundary false): %v — its callers could only exit 4", err)
+	}
+	for name, tc := range map[string]struct {
+		sha  string
+		want []string
+	}{
+		"the commit above the boundary": {above, []string{"haiku/a"}},
+		"a true root inside the clone":  {root, []string{"side/s"}},
+	} {
+		got, err := DiffTreeFiles(context.Background(), clone, tc.sha)
+		if err != nil || !slices.Equal(got, tc.want) {
+			t.Errorf("%s: DiffTreeFiles = %q, %v; want %q", name, got, err, tc.want)
+		}
+	}
+}
+
 // TestDiffTreeFilesUnknownShaIsAPI: an object this checkout does not hold is
 // a git failure in the API class, never an empty answer — an empty answer
 // would attribute the commit to nothing and quietly drop it from every line.
@@ -690,6 +754,9 @@ func TestDiffTreeFilesUnknownShaIsAPI(t *testing.T) {
 	}
 	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
 		t.Fatalf("DiffTreeFiles error = %v, want CodeAPI", err)
+	}
+	if IsShallowBoundary(err) {
+		t.Fatalf("an object this checkout does not hold read as a shallow boundary: %v — the walk would carry a missing commit nowhere instead of failing", err)
 	}
 }
 

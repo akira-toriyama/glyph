@@ -669,6 +669,9 @@ knows the answer it gave was a guess, records the checkout as one it could not
 read (below). That probe is taken once per walk, before any expansion, rather
 than lazily on the first pull that expands: a walk where nothing resolves is
 still a walk over a truncated history, and it was the one that never asked.
+Under `[[packages]]` the truncation reaches one more question — which files a
+commit's own diff touches — and §4.1 answers it for the boundary commit, the
+one whose parents the clone does not hold.
 
 The order of those two questions matters, and so does the fact that the second is
 asked of **what the first did not place** rather than only when it placed nothing.
@@ -1152,7 +1155,28 @@ it.
 
 **Where the files come from.** For a commit the released branch holds — the
 fallback arm, a merge-merged pull's landed commits, and every commit a
-`--range` fold reads — local git answers (`git diff-tree`), free. For the
+`--range` fold reads — local git answers (`git diff-tree`), free. One such
+commit local git cannot answer for: a shallow clone's **boundary**, whose
+parents the clone does not hold. git reads it as a root, and `--root` answered
+its whole tree as its own diff (measured: `curry/b haiku/a` where the full
+clone says `curry/b`), so a `--depth 1` clone's `lint --range HEAD` found a
+carrier for a shared-only `^` and exited 0 where the full clone refuses it at
+3, and the walk moved every line the tree touched (t-esm5). `DiffTreeFiles`
+answers the boundary **unreadable** — told from a true root by the commit
+object's own header, which still names the parent git no longer reaches, since
+`.git/shallow` lists a true root inside the depth as well (measured; mutation
+row `gitsource-shallow-boundary-refuses-a-true-root.patch`) — and
+nothing attributes it: the walk carries it on no line with a warning, the
+capped listing's answer with nothing read, and lint judges its message and
+warns that its attribution went unchecked (`TestDiffTreeFilesAtAShallowBoundaryIsUnreadable`,
+`TestPackagesWalkCarriesAShallowBoundaryOnNoLine`,
+`TestLintRangePackagesAtAShallowBoundaryIsNotReadAsTheWholeTree`; mutation
+rows `gitsource-shallow-boundary-diffs-its-whole-tree.patch`,
+`packages-walk-attributes-a-shallow-boundary.patch`,
+`lint-attribution-exits-at-a-shallow-boundary.patch`). A caller that does not
+ask gets the answer as a git failure, 4, never as a diff. A since-tag walk
+over a shallow checkout is an incomplete walk already (§4), so `release`
+refuses it at 4 and `bump`/`notes` warn. For the
 squash arm, whose listed shas exist on no branch, the API does:
 `GET /repos/{o}/{r}/commits/{sha}` returns the commit's own files for a sha no
 branch holds — **measured** 2026-09-10 on glyph-test #83 (inner `2aff743`,
@@ -1388,7 +1412,16 @@ that is not yet a commit, and a pull's title is not attributed to anything.
 This is one of two places the hook's verdict is weaker than CI's — the other
 is an `unlandable` pattern, argued in §2.1 — and it is stated here rather
 than left to be discovered: the pre-push hook closes it on the same machine,
-one step later.
+one step later. `lint --range` asks once whether the checkout is **shallow**
+and warns when it is: git lists only the commits a shallow clone holds, so a
+range reaching past its boundary is judged in part — measured on a `--depth 2`
+clone, 2 of 6 commits judged and exit 0 with nothing said, where the full
+clone exits 3 (t-h7w2's refutation run, 2026-09-27; `TestLintRangeOnAShallowCheckoutSaysSo`,
+mutation rows `lint-range-is-silent-on-a-shallow-checkout.patch`,
+`lint-range-refuses-a-shallow-checkout.patch`). It warns and
+keeps its verdict about what it judged instead of refusing: a refusal would
+be a new lint semantics, and the walk already gives a shallow checkout to the
+reporting commands as a warning and to `release` alone as exit 4 (§4, §7).
 
 **Doctor** gains three checks: every declared `path` is a directory in the
 checkout (`package-paths-exist`, shipped — a path with no subtree claims no

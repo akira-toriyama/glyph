@@ -1,15 +1,17 @@
 diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index 6384a00..ea4d760 100644
+index 82a8dac..ed0f7f9 100644
 --- a/internal/cli/lines.go
 +++ b/internal/cli/lines.go
-@@ -412,15 +412,12 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
+@@ -415,7 +415,7 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
  			carriers = reach
  		case placedNowhere:
  		case placedByFiles:
--			files, capped, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
-+			files, _, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
+-			files, capped, unread, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
++			files, _, unread, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
  			if ferr != nil {
  				return nil, nil, ferr
+ 			}
+@@ -424,9 +424,6 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
  			}
  			moved, aerr := attribution.Attribute(files, scope, sigil, cfg.Packages)
  			switch {
@@ -20,7 +22,7 @@ index 6384a00..ea4d760 100644
  				return nil, nil, attributionWedge(aerr, c, owner, repo, reachedLines(lines, reach))
  			default:
 diff --git a/internal/cli/preview_lines.go b/internal/cli/preview_lines.go
-index b80fdeb..85689ae 100644
+index 8afec4c..1732a80 100644
 --- a/internal/cli/preview_lines.go
 +++ b/internal/cli/preview_lines.go
 @@ -92,10 +92,6 @@ func previewLines(ctx context.Context, cfg *config.Config) error {

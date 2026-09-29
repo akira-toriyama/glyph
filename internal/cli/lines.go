@@ -361,6 +361,9 @@ func placeOf(cfg *config.Config, raw gitsource.RawCommit) (placement, string, co
 // dropped with a notice; it was walked because the union had to contain it,
 // and it belongs to no line's verdict.
 //
+// A shallow clone's boundary commit, whose diff local git cannot compute, is
+// carried nowhere with a warning (walkedFiles).
+//
 // A refusal attribution hands down over a listing GitHub TRUNCATED is not a
 // finding and never wedges: "no carrier" and "the scope names a package the
 // files do not touch" are both claims about files the walk could not read
@@ -412,9 +415,12 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, 
 			carriers = reach
 		case placedNowhere:
 		case placedByFiles:
-			files, capped, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
+			files, capped, unread, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
 			if ferr != nil {
 				return nil, nil, ferr
+			}
+			if unread {
+				break // no diff to attribute: carried on no line, and walkedFiles said so
 			}
 			moved, aerr := attribution.Attribute(files, scope, sigil, cfg.Packages)
 			switch {
@@ -446,23 +452,34 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, 
 // past it are unreachable, not absent, and a package they touch would be
 // missing from the verdict — an incomplete walk in §4's sense, and a listing
 // the caller must not let attribution refuse over.
-func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c walked, facts *walkFacts) (files []string, capped bool, err error) {
+//
+// A shallow clone's boundary commit is returned as unread, with a warning:
+// git reads it as a root, and the diff it would give is the whole tree, which
+// once moved every line the tree touched (t-esm5). The caller carries it on no
+// line — the capped listing's answer, with nothing read at all — and a
+// since-tag walk over a shallow checkout already records walkFacts.Shallow, so
+// release refuses it and the reporting commands warn.
+func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c walked, facts *walkFacts) (files []string, capped, unread bool, err error) {
 	if c.Raw.Parents >= 2 {
-		return nil, false, nil
+		return nil, false, false, nil
 	}
 	if c.Landed {
 		files, err = gitsource.DiffTreeFiles(ctx, ".", c.Raw.SHA)
-		return files, false, err
+		if gitsource.IsShallowBoundary(err) {
+			warnf("commit %.7s is this shallow clone's boundary: its parents are not here, so its own diff cannot be read — it is carried on no line, and a package it touched is missing from this verdict (fetch the full history: fetch-depth: 0)", c.Raw.SHA)
+			return nil, false, true, nil
+		}
+		return files, false, false, err
 	}
 	files, capped, err = gh.CommitFiles(ctx, owner, repo, c.Raw.SHA)
 	if err != nil {
-		return nil, false, err
+		return nil, false, false, err
 	}
 	if capped {
 		facts.FilesCapped = append(facts.FilesCapped, fmt.Sprintf("%.7s", c.Raw.SHA))
 		warnf("commit %.7s in pull request #%d touches at least %d files, and GitHub lists no more than that — the files past the cap could not be read, so a package they touch is missing from this verdict", c.Raw.SHA, c.Pull, github.CommitFilesCap)
 	}
-	return files, capped, nil
+	return files, capped, false, nil
 }
 
 // reachedLines names the lines whose range holds a commit — the lines a

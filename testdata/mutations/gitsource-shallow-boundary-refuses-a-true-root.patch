@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 79f7e75..a04b709 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -401,7 +401,7 @@ func DiffTreeFiles(ctx context.Context, dir, sha string) ([]string, error) {
+ 		return nil, core.APIf("git diff-tree %s: no header in %q", sha, tail(out))
+ 	}
+ 	if len(parents) == 0 {
+-		boundary, berr := isGraftBoundary(ctx, dir, sha)
++		boundary, berr := true, error(nil)
+ 		if berr != nil {
+ 			return nil, berr
+ 		}

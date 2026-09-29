@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
+index 9f44364..31845a2 100644
+--- a/internal/cli/cmd_lint.go
++++ b/internal/cli/cmd_lint.go
+@@ -274,7 +274,7 @@ func lintRaws(ctx context.Context, raws []gitsource.RawCommit, cfg *config.Confi
+ 		}
+ 		reason, aerr := lintAttribution(ctx, raw, cfg)
+ 		switch {
+-		case gitsource.IsShallowBoundary(aerr):
++		case false && gitsource.IsShallowBoundary(aerr):
+ 			warned = append(warned, rangeViolation{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message),
+ 				Detail: "its parents are not in this shallow clone, so its own diff cannot be read and the [[packages]] attribution was not checked — fetch the full history (fetch-depth: 0) to judge it"})
+ 		case aerr != nil:
