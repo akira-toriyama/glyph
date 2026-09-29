@@ -101,11 +101,13 @@ pattern says it means:
 - A pattern may carry a fixed **`semver_sigil`** key — the sigil a match
   yields when the message captures none (the presets use it to make a raw
   `git revert` a patch) — or **`skip = true`**, which drops a matching commit
-  from lint, bump and notes entirely (the presets skip merge commits and the
-  `fixup!`/`squash!` autosquash artifacts; v1 carried both as hardcoded
-  exemptions, and the hook
-  path is where they matter most — an author cannot rewrite a subject git
-  generated, so judging it forces `--no-verify`, which turns the gate off).
+  from lint, bump and notes entirely. The presets skip merge commits alone,
+  whose diff is never read; v1 carried them and the `fixup!`/`squash!`
+  autosquash artifacts as hardcoded exemptions, and the presets skipped the
+  artifacts too until t-mfny claimed them as unlandable (below). The hook
+  path is where git's own subjects matter most — an author cannot rewrite a
+  subject git generated, so refusing it forces `--no-verify`, which turns the
+  gate off; a skip and an unlandable claim both let it through.
 - A pattern may carry **`warn = '<message>'`** — a message the file's author
   wrote for a commit's author, for a pattern that is legal but undesirable.
   The verdict is untouched; the message is surfaced **wherever the pattern
@@ -152,8 +154,9 @@ pattern says it means:
   a silent none — wherever a consumer missed the new arm. It contradicts
   `skip`, `warn` and a fixed `semver_sigil`, each of which would give the
   match a second answer, and an empty reason: all load errors.
-  - The key was made for git's `amend!` subject and stands on that case.
-    `git commit --fixup=amend:<c>` and `--fixup=reword:<c>` write
+  - The key was made for git's `amend!` subject, the first case where a
+    skip's safety property failed; `fixup!` and `squash!` are the second
+    (below). `git commit --fixup=amend:<c>` and `--fixup=reword:<c>` write
     `amend! <subject>`, and `rebase --autosquash` REPLACES the target's
     message with the amend! body — unlike `fixup!` and `squash!`, whose
     target keeps its subject, and with it its sigil. Skipping amend! (the
@@ -175,6 +178,66 @@ pattern says it means:
     presets leaving `amend!` unmatched — every gate refusing it, the hook
     included, v4.1.0's behaviour — and the presets claimed it only once every
     pin that reads a preset-derived file read a release carrying the key.
+  - **The presets claim `fixup!` and `squash!` as unlandable too** (t-mfny,
+    ratified 2026-09-29; `TestPresetsNeverSkipAutosquashArtifacts`,
+    `TestPackagesFixupIsUnlandableEndToEnd`,
+    `TestShippedPresetRefusesAFixupAutosquashCannotFold`, `TestLintRange`,
+    `TestInstalledHookGatesRealCommits`; mutation row
+    `presets-skip-autosquash-artifacts.patch`). They were skipped on the
+    argument the preset's own comment gave: `rebase --autosquash` folds each
+    into its target with the target's subject, and so its sigil, intact — "the
+    one property that makes a skip safe". But a skip answers for the commit
+    before that fold, and for good when autosquash never reaches the target,
+    and two cases break it (measured on git 2.54 with the presets as they
+    stood at adfc5e1). Under `[[packages]]` a commit's files decide which
+    lines it moves, and a skip's are never asked for (§4.1): `:sparkles:^`
+    touching `a/` plus a `--fixup` touching `b/` linted green and bumped `a`
+    minor and `b` none, while the autosquashed history moves both to minor —
+    and a squash-merge fleet's walk folds exactly the pre-squash commits (§4),
+    so `b`'s change shipped unversioned with every gate green (the same pull
+    squash-merged and walked by `bump --since-tag` over a stand-in API
+    answered the first line's tag alone; with the claim it refuses at 3,
+    naming the wedge's escape at the merge point). On one line, a `fixup!`
+    whose target is outside the commits autosquash rebases — already
+    released, already on the branch a topic was cut from, or on the parent
+    topic a stacked branch was cut from — survives autosquash untouched and
+    was skipped: `lint --range` 0 and `bump --range` "no release: 0
+    commit(s)", its change shipped as a silent none. That is the `amend!` case
+    (t-t84a) over again — a skip whose safety property fails — and it gets the
+    same answer. The hook still passes git's subject, with a reason that names
+    both ways out: run `git rebase --autosquash` before the history is pushed
+    or merged, or reword the commit with a sigil of its own when autosquash
+    leaves it as it is, its target outside the commits being rebased. The
+    reword's condition is what autosquash did, not where the target lives: the
+    first wording, "when its target is already merged or released", named no
+    escape for the stacked branch, whose target is neither (mutation row
+    `presets-fixup-reword-conditioned-on-place.patch`). Measured: the
+    installed hook passes the `--fixup` with the reason; on the packages
+    history, the released target, the topic branch and the stacked branch
+    alike, lint and bump refuse at 3; the autosquashed packages history lints
+    0 with both lines at minor; and the reworded commit lints 0 and bumps
+    patch. `skip` so keeps one meaning in the presets — merge commits, whose
+    diff is never read — and the binary still knows no git spelling: a
+    repository that skips the pair in its own file keeps that decision. The
+    price is paid in the safe case too: a `fixup!` whose target sits in the
+    same unreleased fold is refused until autosquash runs (the one-line
+    `fixup!` in `TestLintRange` is such a commit), in glyph itself and in
+    every file generated from here on, a fixture a harness generates at the
+    ref it tests included (glyph-test's `e2e-v2` arm (c) commits a `fixup!`
+    into an `init --gemoji` fixture built at its `glyph-ref`, `main` by
+    default, and asserted it skipped, so it moves when this reaches `main`,
+    not at a release) — no file already written moves (below) — and the
+    hook's pass and the reason's first escape keep that price to one rebase.
+    Rejected: claiming the pair only under `[[packages]]`, as a commented
+    claim for the adopter to uncomment — the single-line leak is real without
+    any package, and glyph's own packages fixtures (`packagesConfig`) declare
+    `[[packages]]` by appending to a generated preset, never by uncommenting
+    its block; placing a skipped commit by its files, as an `exclude_authors`
+    commit is placed — placement moves no version (the excluded-author
+    analog: a bot's `:arrow_up:^` touching `b/` leaves `b` at none, measured
+    the same day); and handing a `fixup!` its target's sigil — a second
+    implementation of autosquash's target search inside the fold, where
+    attribution is per commit.
   - **The claim reads the body, not the subject** (mutation row
     `presets-claim-any-amend-body.patch`). The body is what autosquash lands,
     so the presets claim an `amend!` only when its body opens the way their
@@ -182,9 +245,12 @@ pattern says it means:
     refused at the hook too. The case that decided it:
     `--fixup=amend:<a fixup! commit>` prepares that fixup!'s own line as the
     body, and autosquash lands it as the original commit's whole message,
-    `fixup! …`, which the skip drops — lint green, bump none, the original
-    sigil gone (measured on git 2.54). Claimed on the subject alone, the hook
-    passed that commit with a warning whose remedy produced the silent none.
+    `fixup! …` — which the skip of the day dropped (lint green, bump none,
+    the original sigil gone; measured on git 2.54), and which the claim
+    above now refuses at every gate with no autosquash left to fold it (a
+    second `rebase --autosquash` leaves it as it is; measured 2026-09-29):
+    only a reword gets it out. Claimed on the subject alone, the hook passed
+    that commit with a warning whose remedy produced it.
     One chain no single message can show: after a `squash!` of the same
     target, git's sequencer treats the `amend!` as a squash and APPENDS its
     body, so the target's old first line lands unless the rebase's combined
@@ -193,8 +259,11 @@ pattern says it means:
     reason names the case at the hook, the one moment the author can act.
   - **Nothing rewrites a `glyph.toml` already written**, so each keeps what
     its release generated: v4.1.1's skips `amend!` (the silent fold above,
-    until its repository replaces the skip with the preset's block), and every
-    other release's before the claim leaves it unmatched, refused at the hook.
+    until its repository replaces the skip with the preset's block), every
+    other release's before the claim leaves it unmatched, refused at the
+    hook, and every release's before t-mfny skips `fixup!`/`squash!` (both
+    leaks above, until its repository replaces that skip with the preset's
+    claim).
 - **`exclude_authors`** removes a commit from lint and the fold before its
   message is ever matched — the key exists for bots, whose messages are
   exactly the ones the patterns do not describe. Whether such a commit
@@ -1081,7 +1150,12 @@ commit moves no version and appears in the notes of the lines its files
 touch, and on no line when they touch none (the shape rule 3 gives a
 shared-only `=`) — a bump of root CI in a repository with no root package is
 in no line's notes; a skip-pattern commit appears nowhere and is placed
-nowhere, its files never asked for; and a message no pattern claims (one an
+nowhere, its files never asked for — which is why the presets skip only
+merge commits, whose diff is never read, and claim the `fixup!`/`squash!`
+autosquash artifacts as unlandable instead (§2; skipped, a `--fixup` whose
+files lie on another line than its target's left that line at none, where the
+autosquashed history moves it — t-mfny, measured 2026-09-29, mutation row
+`presets-skip-autosquash-artifacts`); and a message no pattern claims (one an
 `unlandable` pattern claims included) joins every line it is unreleased on,
 so the fold refuses it there (§3). The first
 cut placed everything the fold would not read on every line (measured

@@ -494,7 +494,9 @@ existing commit reads it as a message no pattern claims, with the reason as
 the finding (`Config.Lint`, the fold's refusal, the notes' raw-line fallback).
 Distinguish from **skip**, under which the commit lands and is never judged.
 Made for git's `amend!` subject, which the presets claim when its body — what
-lands — opens the way their first pattern's subject does (DESIGN §2).
+lands — opens the way their first pattern's subject does; the presets claim
+git's `fixup!` and `squash!` subjects too, which carry no sigil of their own
+until autosquash folds them into their target (DESIGN §2).
 `internal/config/match.go: Match, UnclaimedDetail`, `internal/config/lint.go: LintAuthoring`
 
 **dictionary** — the ordered gemoji table `glyph emoji` prints: one code per

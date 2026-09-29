@@ -69,10 +69,18 @@ skip = true
 
 [[patterns]]
 # autosquash artifacts — fixup! and squash!, what --fixup=<c> and --squash=<c>
-# write. rebase --autosquash folds each into its target with the TARGET's
-# subject, and so its sigil, intact — the one property that makes a skip safe.
+# write — are unlandable, not skipped. rebase --autosquash folds each into
+# its target with the TARGET's subject, and so its sigil, intact, but a skip
+# answers for the commit before that fold, and for good when autosquash
+# cannot reach the target: the commit's own files are never read, so under
+# [[packages]] a line only they touch stays at none, and one whose target is
+# outside the commits being rebased survives autosquash and ships its change
+# as a silent none (measured, DESIGN §2). The commit-msg hook lets git's
+# subject through with the reason below as a warning, and every gate that
+# judges an existing commit refuses it until autosquash has folded it away or
+# it is reworded.
 pattern = '^(fixup|squash)! '
-skip = true
+unlandable = 'the files of this commit carry no sigil until autosquash folds it into its target, whose sigil then covers them; run git rebase --autosquash before this history is pushed or merged, or reword it with a sigil of its own when autosquash leaves it as it is (its target is outside the commits being rebased)'
 
 [[patterns]]
 # amend! (what --fixup=amend:<c> and --fixup=reword:<c> write) is NOT skipped:
@@ -87,7 +95,8 @@ skip = true
 # step). Any other body stays unmatched, refused everywhere, the hook
 # included — above all the one --fixup=amend:<a fixup! commit> prepares, that
 # fixup!'s own line, which autosquash would land as the target's whole
-# message for the skip above to drop. One chain no single message shows:
+# message: a fixup! the claim above refuses and no later autosquash folds,
+# so a reword is all that gets it out. One chain no single message shows:
 # after a squash! of the same target, git APPENDS the body instead, and the
 # target's old first line lands unless the rebase's combined message is
 # edited — so the reason says it at the hook.

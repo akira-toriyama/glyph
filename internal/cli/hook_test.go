@@ -143,38 +143,44 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 	t.Run("does not block git-generated subjects", func(t *testing.T) {
 		head := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
+		// git's three autosquash subjects pass — loudly. None may be skipped:
+		// autosquash replaces an amend!'s target message with its body, so a
+		// skip would read the wrong sigil (t-t84a), and a fixup!/squash! is
+		// folded into its target only by autosquash, so a skip before it
+		// moves no line with the commit's own files and drops for good the
+		// one autosquash cannot fold (t-mfny). The shipped presets claim all
+		// three as unlandable, and the hook prints the reason and that every
+		// history gate refuses the commit until it is autosquashed. A silent
+		// pass here is the hook blessing a message CI rejects (DESIGN §2.1).
+		loud := func(t *testing.T, flag, prefix, out string) {
+			t.Helper()
+			if !strings.Contains(out, "marks this message unlandable") || !strings.Contains(out, "every gate that judges an existing commit refuses it") {
+				t.Errorf("the hook passed git's %s subject silently; it must say the later gates refuse it:\n%s", flag, out)
+			}
+			if got := testGit(t, dir, "akira-toriyama", "log", "-1", "--format=%s"); !strings.HasPrefix(got, prefix) {
+				t.Fatalf("git recorded %q, want git's %s subject", got, prefix)
+			}
+		}
+
 		t.Run("fixup", func(t *testing.T) {
 			appendFile(t, dir, "fixup.txt")
 			testGit(t, dir, "akira-toriyama", "add", "-A")
-			if out, err := commitFlagsWith(dir, pathWithGlyph, "--fixup="+head); err != nil {
+			out, err := commitFlagsWith(dir, pathWithGlyph, "--fixup="+head)
+			if err != nil {
 				t.Fatalf("git commit --fixup was blocked by the hook: %v\n%s", err, out)
 			}
+			loud(t, "--fixup", "fixup! ", out)
 		})
 
 		t.Run("squash", func(t *testing.T) {
 			appendFile(t, dir, "squash.txt")
 			testGit(t, dir, "akira-toriyama", "add", "-A")
-			if out, err := commitFlagsWith(dir, pathWithGlyph, "--squash="+head); err != nil {
+			out, err := commitFlagsWith(dir, pathWithGlyph, "--squash="+head)
+			if err != nil {
 				t.Fatalf("git commit --squash was blocked by the hook: %v\n%s", err, out)
 			}
+			loud(t, "--squash", "squash! ", out)
 		})
-
-		// git's third autosquash subject, `amend! <subject>` (--fixup=amend:
-		// and --fixup=reword:), passes too — loudly. Autosquash replaces its
-		// target's message with the amend! body, so a skip would read the
-		// wrong sigil (t-t84a); the shipped presets claim it as unlandable
-		// instead, and the hook prints the reason and that every history gate
-		// refuses the commit until it is autosquashed. A silent pass here is
-		// the hook blessing a message CI rejects (DESIGN §2.1).
-		loud := func(t *testing.T, form, out string) {
-			t.Helper()
-			if !strings.Contains(out, "marks this message unlandable") || !strings.Contains(out, "every gate that judges an existing commit refuses it") {
-				t.Errorf("the hook passed git's --fixup=%s: subject silently; it must say the later gates refuse it:\n%s", form, out)
-			}
-			if got := testGit(t, dir, "akira-toriyama", "log", "-1", "--format=%s"); !strings.HasPrefix(got, "amend! ") {
-				t.Fatalf("git recorded %q, want git's amend! subject", got)
-			}
-		}
 
 		t.Run("amend", func(t *testing.T) {
 			appendFile(t, dir, "amend.txt")
@@ -183,7 +189,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 			if err != nil {
 				t.Fatalf("git commit --fixup=amend: was blocked by the hook: %v\n%s", err, out)
 			}
-			loud(t, "amend", out)
+			loud(t, "--fixup=amend:", "amend! ", out)
 		})
 
 		// reword takes no tree change (--only), so nothing is staged for it.
@@ -192,15 +198,16 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 			if err != nil {
 				t.Fatalf("git commit --fixup=reword: was blocked by the hook: %v\n%s", err, out)
 			}
-			loud(t, "reword", out)
+			loud(t, "--fixup=reword:", "amend! ", out)
 		})
 
 		// The one amend! the presets leave unclaimed, so the hook refuses it:
 		// git prepares a fixup! commit's own line as the body when the fixup!
 		// is the target, and autosquash would land that line as the original
-		// commit's whole message — `fixup! …`, which every gate skips, taking
-		// the original sigil with it. Refusing here is the only gate that
-		// still sees the commit before it becomes that.
+		// commit's whole message — `fixup! …`, which every gate refuses and no
+		// later autosquash folds, the original sigil gone until a reword. The
+		// hook is the only gate that still sees the commit before it becomes
+		// that.
 		t.Run("amend of a fixup! is refused", func(t *testing.T) {
 			fixup := testGit(t, dir, "akira-toriyama", "log", "-1", "--format=%H", "--grep=^fixup! ")
 			if fixup == "" {
@@ -208,7 +215,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 			}
 			out, err := commitFlagsWith(dir, pathWithGlyph, "--fixup=reword:"+fixup)
 			if err == nil {
-				t.Fatalf("git commit --fixup=reword:<a fixup! commit> passed the hook; autosquash lands its body as a skipped fixup! message:\n%s", out)
+				t.Fatalf("git commit --fixup=reword:<a fixup! commit> passed the hook; autosquash lands its body as a fixup! message no later autosquash folds:\n%s", out)
 			}
 			if !strings.Contains(out, "matches none") {
 				t.Errorf("the commit failed, but not at the hook's pattern verdict:\n%s", out)
