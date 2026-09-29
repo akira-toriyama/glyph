@@ -58,7 +58,7 @@ a baseline**.
 
 | command | answer |
 |---|---|
-| `glyph init` | writes a starting `glyph.toml` (`--gemoji` or `--conventional`) — the file everything else reads; an existing file refuses without `--force` |
+| `glyph init` | writes a starting `glyph.toml` (`--gemoji` or `--conventional`) at the checkout's top level, from any subdirectory — the file everything else reads; an existing file refuses without `--force` |
 | `glyph lint` | commit-convention gate over `--range`, one `--message`, `--stdin`, or a PR title via `--pr` (the subject a squash merge lands): does one of the repository's patterns claim the message, and does it yield a sigil? |
 | `glyph bump` | the next version — or **"no release"** — from `--range`, `--pr`, or the release-time walk `--since-tag`; a commit no pattern claims refuses the whole range |
 | `glyph notes` | the release-notes body: `[[note.sections]]` order, one line per commit through the `note.line` template |

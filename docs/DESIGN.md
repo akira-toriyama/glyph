@@ -230,7 +230,20 @@ pattern says it means:
 Config resolution is one file per checkout: the `glyph.toml` at the top level
 of the working tree the command runs in (ratified Q1 — a config change
 reinterprets past commits, accepted). The commit-msg hook, CI and a
-subdirectory shell all read the same file by construction.
+subdirectory shell all read the same file by construction, and `init` writes
+that same file: it asks git for the top level as every other command does and
+writes there from any subdirectory, falling back to the current directory
+only where git names no top level (outside a checkout) — never because a
+signal interrupted the question, which exits 130 with nothing written.
+Measured before (t-f2cb, 2026-09-29 and 2026-10-04): from a subdirectory
+`init` wrote `sub/glyph.toml` at exit 0, a file no command reads, and the
+missing-config refusal's remedy — run `init` — sent the author back to the
+same command; with `glyph.toml` already at the top level, an `init` from a
+subdirectory wrote a second one there at exit 0
+(`TestInitWritesTheTopLevelFromASubdirectory`,
+`TestInitInterruptDuringTopLevelReadWritesNothing`; mutation rows
+`init-writes-the-current-directory`,
+`init-reads-a-toplevel-interrupt-as-outside-a-checkout`).
 
 ### 2.1 The text the rules judge — git's cleanup
 
