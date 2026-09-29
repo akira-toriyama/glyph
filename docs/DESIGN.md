@@ -205,7 +205,20 @@ pattern says it means:
   `exclude_authors = ['']` excluded every message the commit-msg hook was ever
   handed — measured, a message matching no pattern exited 0 with that one
   entry present and 3 with it removed. A stray comma turning the gate off
-  silently is the shape this file refuses everywhere else.
+  silently is the shape this file refuses everywhere else. The author it is
+  compared against is read from git **whole** (t-esm5): `git log`'s fields
+  were framed by the unit separator, a byte git keeps inside a name, so a
+  contributor named `dependabot[bot]<US>x` shifted every field by one, read
+  as `dependabot[bot]` and was excluded at exit 0 — measured, and a check of
+  the parents field alone still passed the same name with an empty email or
+  a 40-hex one. The fields are framed by NUL, the byte no field can hold and
+  the one the record framing already rested on, and a record whose SHA and
+  parents are not full object names fails the read at 4 rather than reach a
+  gate shifted (mutation rows
+  `gitsource-log-fields-framed-by-a-byte-a-name-holds.patch`,
+  `gitsource-log-believes-a-misframed-record.patch`). Full object names, not
+  SHA-1's 40 digits: glyph reads SHA-256 repositories and did before the check
+  (`gitsource-log-refuses-sha256-object-names.patch`).
 - **Lint has no taste** (mutation row `config-lint-grows-a-taste.patch`): a
   message either matches a pattern and yields a sigil, or it violates. Which
   combinations are wise (`:memo:!`) is the author's call — glyph parses and

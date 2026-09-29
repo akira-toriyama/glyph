@@ -32,9 +32,19 @@ type RawCommit struct {
 }
 
 // logFormat renders one record per commit: SHA, author name, author email,
-// parent SHAs and the raw message, unit-separated (\x1f). Records themselves
-// are NUL-separated by -z — the only byte a message cannot contain.
-const logFormat = "%H%x1f%an%x1f%ae%x1f%P%x1f%B"
+// parent SHAs and the raw message (%B last), each field closed by NUL and the
+// record by the NUL -z writes after it. NUL frames the fields too because it is
+// the one byte none of them can hold — git refuses it in a message ("a NUL byte
+// in commit log message not allowed", measured) and an ident is a C string —
+// and the record framing already rested on it. The unit separator that framed
+// the fields before is a byte an author NAME can hold: git keeps an interior
+// one (measured on 2.54), so `dependabot[bot]<US>x` moved every field over by
+// one, the author read as dependabot[bot], and exclude_authors passed the
+// commit unjudged at exit 0 (t-esm5; TestLogReadsAnAuthorNameHoldingTheUnitSeparator).
+const logFormat = "%H%x00%an%x00%ae%x00%P%x00%B"
+
+// logFields is how many NUL-closed fields logFormat writes per record.
+const logFields = 5
 
 // Log returns the commits in revRange (e.g. "BASE..HEAD"), oldest first. An
 // empty range is a successful empty result. --end-of-options pins revRange as
@@ -403,28 +413,84 @@ func IsShallow(ctx context.Context, dir string) (bool, error) {
 	return strings.TrimSpace(string(out)) == "true", nil
 }
 
-// parseLog splits the NUL-separated, unit-separated records logFormat produces.
-// Shared by every reader of that format so a field added to logFormat cannot be
-// decoded two ways.
+// parseLog reads the NUL-closed fields logFormat produces, logFields to a
+// record. Shared by every reader of that format so a field added to logFormat
+// cannot be decoded two ways.
+//
+// A record is checked before it is believed: its SHA must be a full object
+// name and its parents field object names of the same length, space-separated,
+// or the read fails like any other git read (API). Those are the two fields git
+// alone writes, so a record whose fields did not land where logFormat put them
+// fails there instead of reaching the gates as a commit by the wrong author.
+// Full object names, not SHA-1's 40 digits: glyph read SHA-256 repositories
+// before the check existed (TestLogReadsSHA256Repositories).
 func parseLog(out []byte) ([]RawCommit, error) {
-	var commits []RawCommit
-	for record := range bytes.SplitSeq(out, []byte{0}) {
-		if len(record) == 0 {
-			continue
-		}
-		fields := strings.SplitN(string(record), "\x1f", 5)
-		if len(fields) != 5 {
-			return nil, core.APIf("git log: malformed record %q", string(record))
+	if len(out) == 0 {
+		return nil, nil
+	}
+	if out[len(out)-1] != 0 {
+		return nil, core.APIf("git log: the output does not close its last record: %q", tail(out))
+	}
+	fields := strings.Split(string(out[:len(out)-1]), "\x00")
+	if len(fields)%logFields != 0 {
+		return nil, core.APIf("git log: %d fields do not make whole records of %d: %q", len(fields), logFields, tail(out))
+	}
+	commits := make([]RawCommit, 0, len(fields)/logFields)
+	for i := 0; i < len(fields); i += logFields {
+		f := fields[i : i+logFields]
+		parents, ok := objectNames(f[3], len(f[0]))
+		if !isObjectName(f[0]) || !ok {
+			return nil, core.APIf("git log: malformed record %q", strings.Join(f, "\x00"))
 		}
 		commits = append(commits, RawCommit{
-			SHA:     fields[0],
-			Author:  fields[1],
-			Email:   fields[2],
-			Parents: len(strings.Fields(fields[3])),
-			Message: fields[4],
+			SHA:     f[0],
+			Author:  f[1],
+			Email:   f[2],
+			Parents: parents,
+			Message: f[4],
 		})
 	}
 	return commits, nil
+}
+
+// isObjectName reports whether s is a full object name as git prints one:
+// lowercase hex, 40 digits for SHA-1 or 64 for SHA-256.
+func isObjectName(s string) bool {
+	if len(s) != 40 && len(s) != 64 {
+		return false
+	}
+	for i := range len(s) {
+		if c := s[i]; (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// objectNames counts the space-separated object names in a %P field, each the
+// length of the commit's own name, and reports false for anything else. Empty
+// is a root commit's answer.
+func objectNames(field string, length int) (int, bool) {
+	if field == "" {
+		return 0, true
+	}
+	names := strings.Split(field, " ")
+	for _, n := range names {
+		if len(n) != length || !isObjectName(n) {
+			return 0, false
+		}
+	}
+	return len(names), true
+}
+
+// tail is the end of a malformed output, for the error: enough to see where
+// the framing went wrong without quoting a whole history.
+func tail(out []byte) string {
+	const keep = 200
+	if len(out) > keep {
+		out = out[len(out)-keep:]
+	}
+	return string(out)
 }
 
 // interrupted returns the user's own abort, or nil when the run failed for any

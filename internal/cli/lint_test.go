@@ -425,6 +425,38 @@ func TestLintRange(t *testing.T) {
 	}
 }
 
+// TestLintRangeJudgesAnAuthorNameHoldingTheUnitSeparator is the gate half of
+// gitsource's record framing: an author a pull request's contributor names
+// `dependabot[bot]<US>x` is NOT dependabot[bot], so the commit is judged — exit
+// 3 for a message no pattern claims. Measured before the fix, every email below
+// excluded it at exit 0, and a check of the parents field alone still passed the
+// empty and the 40-hex one. The real bot stays excluded: the control that the
+// exclusion itself still works.
+func TestLintRangeJudgesAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
+	for label, email := range map[string]string{
+		"an ordinary email":      "t@example.invalid",
+		"an empty email":         "",
+		"a parents-shaped email": "0123456789abcdef0123456789abcdef01234567",
+	} {
+		t.Run(label, func(t *testing.T) {
+			dir, base := testRepo(t)
+			testutil.CommitFrom(t, dir, "dependabot[bot]\x1fx", email, "garbage message")
+			t.Chdir(dir)
+			if code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD"); code != 3 {
+				t.Fatalf("lint --range exited %d, want 3 — the commit was excluded as dependabot[bot]\nstderr: %s", code, stderr)
+			}
+		})
+	}
+	t.Run("the real bot is still excluded", func(t *testing.T) {
+		dir, base := testRepo(t)
+		testutil.CommitFrom(t, dir, "dependabot[bot]", "t@example.invalid", "garbage message")
+		t.Chdir(dir)
+		if code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD"); code != 0 {
+			t.Fatalf("lint --range exited %d, want 0 for an excluded author\nstderr: %s", code, stderr)
+		}
+	})
+}
+
 // TestLintRangeAnnotatesEachFinding pins the producer half of the annotation
 // contract lint.yml now leans on: one `::error::` per finding, written by the
 // binary that computed it, every one of them before the envelope so the

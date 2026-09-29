@@ -76,6 +76,97 @@ func TestLogRange(t *testing.T) {
 	}
 }
 
+// TestLogReadsAnAuthorNameHoldingTheUnitSeparator: git keeps a U+001F inside
+// an author name (it strips crud only at the ends — measured on 2.54), so a
+// field separator that byte can spell let the author choose where the next
+// field starts. `dependabot[bot]<US>x` then read as dependabot[bot], the email
+// as the parents and the parents as the head of the message; the email rows
+// below are the ones a parents-shaped check alone lets through (an empty email
+// looks like a root commit's parents, a 40-hex one like a parent), measured.
+// Every field must come back exactly as git holds it.
+func TestLogReadsAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
+	const name = "dependabot[bot]\x1fx"
+	for label, email := range map[string]string{
+		"an ordinary email":       "t@example.invalid",
+		"an empty email":          "",
+		"a parents-shaped email":  "0123456789abcdef0123456789abcdef01234567",
+		"a separator in the mail": "a\x1fb@example.invalid",
+	} {
+		t.Run(label, func(t *testing.T) {
+			dir := newRepo(t)
+			base := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			testutil.CommitFrom(t, dir, name, email, "garbage message\x1fwith a separator of its own")
+			got, err := Log(context.Background(), dir, base+"..HEAD")
+			if err != nil {
+				t.Fatalf("Log: %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("Log returned %d commits, want 1: %+v", len(got), got)
+			}
+			c := got[0]
+			if c.Author != name || c.Email != email || c.Parents != 1 || c.SHA != git(t, dir, "akira-toriyama", "rev-parse", "HEAD") ||
+				!strings.HasPrefix(c.Message, "garbage message\x1fwith a separator of its own") {
+				t.Fatalf("the record was read shifted: %+v\nwant author %q, email %q, 1 parent, the message verbatim", c, name, email)
+			}
+		})
+	}
+}
+
+// TestParseLogRefusesAMisframedRecord: a record whose fields do not land where
+// logFormat put them is a git read failure (exit 4), never a commit read with
+// its fields shifted — a shifted author is exactly how exclude_authors was
+// bypassed. The first row is the positive control: well-framed output parses,
+// so a parser that refused everything could not pass this test.
+func TestParseLogRefusesAMisframedRecord(t *testing.T) {
+	const (
+		sha    = "0123456789abcdef0123456789abcdef01234567"
+		parent = "89abcdef0123456789abcdef0123456789abcdef"
+	)
+	record := func(fields ...string) string { return strings.Join(fields, "\x00") + "\x00" }
+
+	got, err := parseLog([]byte(record(sha, "a", "a@example.invalid", parent, ":bug:~ one\n") +
+		record(parent, "b", "b@example.invalid", "", ":memo:= two\n")))
+	if err != nil || len(got) != 2 || got[0].SHA != sha || got[0].Parents != 1 || got[1].Author != "b" || got[1].Parents != 0 {
+		t.Fatalf("well-framed output = %+v, %v; want both records read whole", got, err)
+	}
+
+	for name, out := range map[string]string{
+		"a name holding a field separator":    record(sha, "dependabot[bot]", "x", "t@example.invalid", parent, "garbage"),
+		"a record one field short":            record(sha, "a", "a@example.invalid", ":bug:~ one\n"),
+		"a sha that is not an object name":    record("not-a-sha", "a", "a@example.invalid", parent, "m\n"),
+		"an abbreviated sha":                  record(sha[:12], "a", "a@example.invalid", "", "m\n"),
+		"parents that are not object names":   record(sha, "a", "a@example.invalid", "t@example.invalid", "m\n"),
+		"a parent of another hash's length":   record(sha, "a", "a@example.invalid", parent+"00", "m\n"),
+		"output that does not close a record": strings.TrimSuffix(record(sha, "a", "a@example.invalid", "", "m\n"), "\x00"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := parseLog([]byte(out))
+			if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
+				t.Fatalf("parseLog(%q) = %+v, %v; want a CodeAPI read failure", out, got, err)
+			}
+		})
+	}
+}
+
+// TestLogReadsSHA256Repositories: an object name is 64 hex digits there, and
+// glyph read such a repository before the record check existed (measured:
+// lint --range 3 on a violation, bump v0.0.1) — a check hard-wired to SHA-1's
+// 40 would have refused every one of its commits.
+func TestLogReadsSHA256Repositories(t *testing.T) {
+	gitOrSkip(t)
+	dir := t.TempDir()
+	git(t, dir, "akira-toriyama", "init", "-q", "-b", "main", "--object-format=sha256")
+	commit(t, dir, "akira-toriyama", ":tada:= begin")
+	commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	got, err := Log(context.Background(), dir, "HEAD")
+	if err != nil {
+		t.Fatalf("Log on a SHA-256 repository: %v", err)
+	}
+	if len(got) != 2 || len(got[1].SHA) != 64 || got[1].Parents != 1 {
+		t.Fatalf("Log on a SHA-256 repository = %+v, want 2 commits with 64-hex names", got)
+	}
+}
+
 // TestLogMergeParents: a merge commit reports its true parent count.
 func TestLogMergeParents(t *testing.T) {
 	dir := newRepo(t)
