@@ -2,5 +2,4 @@ func (l *Line) Mention(login, name string)
 func (l *Line) Prose(s string)
 func (l *Line) Raw(s string)
 func (l *Line) String() string
-func (l *Line) Text(s string)
 type Line struct

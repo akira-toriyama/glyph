@@ -2,9 +2,9 @@ package markdown
 
 import "strings"
 
-// This file neutralizes author text BEFORE it is assembled into a rendered line;
-// markdown.go then fences the mentions in the assembled line. The split is the
-// whole design, and it rests on one theorem:
+// This file neutralizes author text; markdown.go then fences the mentions in
+// the assembled line. The split is the whole design, and it rests on one
+// theorem:
 //
 //	glyph does not have to predict which inline construct wins. It REMOVES the
 //	competitors. Once every '<', every '[' and every extended-autolink trigger
@@ -34,6 +34,11 @@ import "strings"
 // front of a byte that was inert anyway is INVISIBLE (measured below); a
 // construct glyph failed to recognize is live. So none of the rules here tests a
 // grammar. They test a byte.
+//
+// ONE POLICY for every author field: a commit scope is prose like the subject
+// beside it. DESIGN §2 holds that ruling, the <i title="x"> incident behind it,
+// and why the plain-text escaper the scope used to get was deleted rather than
+// revived.
 
 // flatten replaces every CommonMark line terminator in s with a single space:
 // "\r\n", "\n" and a bare "\r" each become one space.
@@ -58,10 +63,10 @@ import "strings"
 // Flattening also has to happen before anything else looks at the text, because
 // it is what DECIDES the inline context: to an escaper a blank line ends the
 // paragraph and backticks on either side of it cannot pair, while in the
-// flattened line they can. Line's Text and Prose flatten before they escape for
-// exactly this reason, with a measured leak behind the rule (it was
-// preview.escapeCell's, from the era when the order was each caller's to get
-// right).
+// flattened line they can. Line.Prose flattens each field as it arrives, before
+// the line is escaped, for exactly this reason, with a measured leak behind the
+// rule (it was preview.escapeCell's, from the era when the order was each
+// caller's to get right).
 //
 // It deliberately does not live inside escapeMentions: deleting a byte would
 // break that function's no-rewriting invariant, which its fuzz oracle enforces.
@@ -231,57 +236,6 @@ func isASCIILetter(c byte) bool {
 }
 
 func isAlphanumeric(c byte) bool { return isASCIILetter(c) || isDigit(c) }
-
-// escapable is every ASCII punctuation byte CommonMark lets a backslash escape,
-// minus the two escapeText deliberately leaves alone.
-const escapable = "!\"#$%&'()*+,./:;<=>?[\\]^_`{|}~"
-
-// escapeText renders s as the literal text it is: a plain-text field, not prose.
-// It is what the commit SCOPE gets, because a scope is data — a subsystem name
-// glyph prints in bold — and nothing in it should ever become markup.
-//
-// This is a flat byte loop and deliberately not a construct scanner: "the scope
-// is a plain-text field" is exactly the statement that no grammar applies to it.
-// Escaping the backslash itself is what keeps the pass self-consistent, so an
-// authored backslash cannot eat the escaper's own.
-//
-// It is NOT idempotent, and a plain-text escaper cannot be. Call it once, at
-// render, on the raw field — never on a value that has already been through it.
-//
-// A scope is whatever bytes a repository's pattern captured — v2 imposes no
-// shape on the group, so anything but a parenthesis can arrive here. Measured,
-// that is not hypothetical — "…​fix(<i title=\"x\">): …" linted clean and put a
-// live tag in a release body; the v1 fleet carried 139 non-kebab scopes and
-// every one renders identically escaped.
-//
-// TWO EXCLUSIONS, both load-bearing:
-//
-//   - '-' is left alone. It is a marker only at the START of a line (a list
-//     bullet, a setext underline, a thematic break) and the shipped line
-//     templates never put a scope there — compose writes the "- " bullet as
-//     raw markup in front. Escaping it would put a backslash into the raw
-//     source of essentially every kebab-case scope in the fleet for zero
-//     rendered difference. Excluding it keeps those scopes byte-identical.
-//   - '@' is left alone, because escaping it is worse than useless twice over.
-//     "\@octocat" is a LIVE mention (the backslash vanishes in rendering before
-//     the mention post-processor looks), and the backslash would then trip
-//     escapeMentions' escapesTheNextByte, which correctly writes a separating
-//     space so its fence is not eaten — printing a visible "\ " for no safety at
-//     all. A mention in a scope keeps being handled where it always was: in the
-//     single escapeMentions pass over the assembled line.
-func escapeText(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	for i := 0; i < len(s); i++ {
-		// Every escapable byte is < 0x80 and every UTF-8 continuation byte is
-		// >= 0x80, so this cannot fire in the middle of a rune.
-		if strings.IndexByte(escapable, s[i]) >= 0 {
-			b.WriteByte('\\')
-		}
-		b.WriteByte(s[i])
-	}
-	return b.String()
-}
 
 // escapeProseLine applies escapeProse's rules to the ASSEMBLED line s, which is
 // the only context in which they are decidable. Detection reads the whole

@@ -4,7 +4,7 @@ The vocabulary glyph's code, its doc comments and its task bodies use as terms o
 art. It exists to stop the user and Claude Code from meaning two different things
 by one word: most of the entries below are pairs that are easy to collapse and
 expensive to collapse (*merge point* vs *merge commit*, *residual* vs *stale*
-draft, *fail* vs *unknown*, *neutralize* vs *escape* vs *fence*), and the
+draft, *fail* vs *unknown*, *neutralize* vs *fence*), and the
 **distinction is the content** — an entry that only restated the name would be
 worth nothing.
 
@@ -34,7 +34,7 @@ missing entry, because it is the one place a reader trusts not to be stale.
 1. [The release walk](#1-the-release-walk) — walk, walk base, auto, below:, range, fold, participate, merge point, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, walkFacts, Dropped, shortfall, wedge, wedge escape, package, line, root package, attribution, carrier, shared-only
 2. [Verdicts and the rolling draft](#2-verdicts-and-the-rolling-draft) — verdict, level, source, reason, target, action, rolling draft, glyph-managed draft, residual draft, stale draft, published floor, pending, incomplete banner
 3. [Convention and lint](#3-convention-and-lint) — pattern, sigil, bump lattice, section, excluded author, cleanup
-4. [The render boundary](#4-the-render-boundary) — inline context, phantom span, neutralize, escape, fence, flatten, pipe escape, over-escaping is the safe direction
+4. [The render boundary](#4-the-render-boundary) — inline context, phantom span, neutralize, fence, flatten, pipe escape, over-escaping is the safe direction
 5. [Repository preconditions (`doctor`)](#5-repository-preconditions-doctor) — check, check id, pass/fail/advice/unknown, release-tag pin
 6. [Exit codes and streams](#6-exit-codes-and-streams) — gate code, soft no-release, annotation, error envelope
 7. [Fleet distribution](#7-fleet-distribution) — fleet, reusable workflow, composite action, distribution layer, dist-gate, merge preview, sticky comment
@@ -578,8 +578,8 @@ and their observed output kept in the test files beside the code they pin — th
 mention table at the top of `markdown_test.go`, the escaped-form and raw-HTML
 tables at the top of `escape_test.go`. The one time a rule was changed from
 reasoning alone, the reasoning was wrong. Most of this vocabulary is the #61
-hardening (t-j0c6), which is the whole of `escape.go` — flatten, neutralize,
-escape. The fence half is older: the mention fence (today `escapeMentions`) and
+hardening (t-j0c6), which is the whole of `escape.go` — flatten and
+neutralize. The fence half is older: the mention fence (today `escapeMentions`) and
 `mention` arrived in #38,
 which wrapped a would-be mention in a single backtick pair, and #54 made the fence
 as long as the input demands (`longestBacktickRun`). Until now all of it existed
@@ -606,13 +606,14 @@ constructs beforehand, which makes the backtick-only model exact **by
 construction**. `internal/markdown/markdown.go: codeSpans, paragraphSpans`,
 `internal/markdown/escape.go` (file header)
 
-The next three are **three different operations**, applied at different times to
-different kinds of value. Do not use them interchangeably.
+The next two are **two different operations**, applied at different times to
+different things. Do not use them interchangeably.
 
-**neutralize** (`escapeMarkup`, reached through `Line.Prose`) — over **prose**:
-add backslashes to disarm the
-inline constructs that can inject structure, point somewhere the author never
-wrote, or *delete the author's own words*. Four rules, each testing a **byte and
+**neutralize** (`escapeProseLine`, reached through `Line.Prose` and run by
+`Line.String` over the assembled line) — over **prose**, which is every
+author-supplied value a line carries, a commit scope included: add backslashes
+to disarm the inline constructs that can inject structure, point somewhere the
+author never wrote, or *delete the author's own words*. Four rules, each testing a **byte and
 never a grammar** — `<`, the extended-autolink triggers (`://` after
 http/https/ftp, and the `.` of `www.`), `[`, and an entity-shaped `&`. Emphasis,
 strikethrough and the author's own code spans are left working: a subject is
@@ -620,19 +621,11 @@ prose the author meant to be read. It only **adds** bytes, so the author's text
 survives as a subsequence and the pass is a fixed point. Not theoretical: of the
 16 fleet subjects carrying a `<`, 14 were being **deleted** by GitHub's
 sanitizer (`<Chip>`, `Optional<Any>`, `[overlay.theme.<name>]`), and escaping
-repairs those and regresses none. `internal/markdown/escape.go: escapeMarkup,
-escapeProse`
-
-**escape** (`escapeText`, reached through `Line.Text`) — over a **plain-text
-field**, which in practice is the
-commit *scope*: backslash every ASCII punctuation byte CommonMark lets a
-backslash escape, minus two deliberate exclusions (`-`, which is a marker only at
-the start of a line and would otherwise put a backslash in essentially every
-scoped line in the fleet; and `@`, because `\@octocat` is a *live* mention and the
-backslash would additionally trip the fence's own backslash guard). It is a flat
-byte loop precisely because "this is a plain-text field" means no grammar applies
-to it. **It is not idempotent** and a plain-text escaper cannot be — call it once,
-at render, on the raw field. `internal/markdown/escape.go: escapeText, escapable`
+repairs those and regresses none. There is no second policy: the plain-text
+**escape** the scope used to get (`escapeText`, reached through `Line.Text`)
+was deleted in t-0j9r, and DESIGN §2 holds the ruling — the `<i title="x">`
+incident, why `-` and `@` stay unescaped, and why the route was not revived.
+`internal/markdown/escape.go: escapeProseLine`
 
 **fence** (`escapeMentions`, reached through `Line.String`) — wrap a would-be
 `@mention` in a backtick run so
@@ -649,8 +642,8 @@ stranger under a release's Contributors and, in a PR comment, **notifies** them
 (t-hykw). `internal/markdown/markdown.go: escapeMentions, mention,
 longestBacktickRun`
 
-**flatten** (`flatten`, the first thing `Line.Text` and `Line.Prose` do) — not
-one of the three: it *replaces* bytes (every CommonMark line terminator,
+**flatten** (`flatten`, the first thing `Line.Prose` does) — neither of the
+two: it *replaces* bytes (every CommonMark line terminator,
 including a bare CR, becomes one space) and therefore lives outside
 `escapeMentions`, whose no-rewriting invariant a fuzz oracle enforces. It must run
 **first**, because it is what *decides* the inline context — to an escaper a blank
@@ -661,9 +654,10 @@ commit could fabricate a release-notes section (t-bz0r).
 `internal/markdown/escape.go: flatten`
 
 **line builder** (`markdown.Line`) — the package's **only exported surface**:
-`Raw` appends glyph's own markup, `Text` and `Prose` append author-supplied
-fields through the passes above, `String` runs the fence over the assembled
-line. Since #104 the escape order is no longer a contract a caller could break —
+`Raw` appends glyph's own markup, `Prose` an author-supplied field (every one,
+a scope too), `Mention` the author credit, and `String` runs the prose escape
+and the fence over the assembled line. Since #104 the escape order is no
+longer a contract a caller could break —
 it is applied by construction inside the type, and the surface golden
 (`internal/markdown/testdata/exported-surface.golden.txt`, five declarations,
 all `Line`) is what keeps the passes unreachable from outside. Why that order is

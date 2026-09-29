@@ -115,7 +115,8 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
 // SUBJECT can page someone is not the author's intent to declare.
 // The built-ins $pr / $author / $hash are reserved: they win over a pattern
 // group of the same name. A placeholder that is neither built-in nor a group
-// of the winning pattern renders empty.
+// of the winning pattern renders empty. A scope is prose like any other
+// value: DESIGN §2 argues why no group gets a plain-text route.
 //
 // An optional span drops WITH its literal text when any placeholder inside it
 // resolves empty. That is the whole point of the span: $pr is empty for every

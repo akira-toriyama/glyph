@@ -109,9 +109,10 @@ import (
 //
 // A FIELD IS NOT AN INLINE CONTEXT. A notes line concatenates the scope and the
 // subject into one, and a fence sized against the subject alone is stolen by a
-// backtick the scope carried (a backtick survives lint today: the legacy token
-// grammar's scope slot is [^()]+). The renderers escape the assembled line and
-// the assembled cell for this reason:
+// backtick the scope carried (a backtick survives lint wherever a repository's
+// own pattern captures one into the scope — the presets' cannot; DESIGN §2).
+// The renderers escape the assembled line and the assembled cell for this
+// reason:
 //
 //	- 🐛 **readme`:** credit `@alice` and `@bob` for the fix (abc1234)
 //	                                        LIVE MENTION (@alice)
