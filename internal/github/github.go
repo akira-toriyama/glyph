@@ -599,11 +599,21 @@ func retryable(err error) bool {
 // retryWait picks the pause before the next attempt: the server's own
 // Retry-After (whole seconds — the shape GitHub sends), capped at
 // maxRetryAfter, else the schedule's delay.
+//
+// The cap is applied to the seconds, before they become a Duration. A
+// server-sent value past 9223372036 overflows int64 in the multiplication,
+// and a cap applied to the product let it through wrapped: 9223372037 came
+// back negative, so waitRetry skipped the sleep, and 18446744074 came back
+// as 290ms — either way the backoff schedule collapsed (t-esm5,
+// TestRetryWaitHonorsRetryAfter).
 func retryWait(err error, fallback time.Duration) time.Duration {
 	var se *statusError
 	if errors.As(err, &se) && se.retryAfter != "" {
 		if n, perr := strconv.Atoi(se.retryAfter); perr == nil && n >= 0 {
-			return min(time.Duration(n)*time.Second, maxRetryAfter)
+			if n > int(maxRetryAfter/time.Second) {
+				return maxRetryAfter
+			}
+			return time.Duration(n) * time.Second
 		}
 	}
 	return fallback
