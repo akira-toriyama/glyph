@@ -190,6 +190,11 @@ func TestPreviewPackagesNothingTouchedSaysSo(t *testing.T) {
 	if len(res.Packages) != 0 {
 		t.Fatalf("packages = %+v, want none", res.Packages)
 	}
+	// omitempty drops the key for a nil and an empty slice alike, so a pull
+	// touching no line carries no "packages" key at all.
+	if strings.Contains(stdout, `"packages"`) {
+		t.Fatalf("a pull touching no declared line carries a packages key: %s", stdout)
+	}
 	if res.Current != "" || res.Level != "" || res.Next != "" || res.PR != "" || res.Pending != "" || res.Untagged {
 		t.Fatalf("under packages every scalar is at its zero value whatever the pull touches — the mode decides, not the content: %s", stdout)
 	}
