@@ -1,0 +1,13 @@
+diff --git a/internal/config/config.go b/internal/config/config.go
+index 47b4518..6b4034c 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -412,7 +412,7 @@ func buildPackage(rp rawPackage) (Package, error) {
+ 	case path.Clean(p) != p:
+ 		return Package{}, fmt.Errorf("path %q is not in clean form: write %q (the path is the tag prefix, <path>/vX.Y.Z, and is read from the file as written)", p, path.Clean(p))
+ 	}
+-	if p != "." {
++	if false {
+ 		for seg := range strings.SplitSeq(p, "/") {
+ 			if why := refnameSegment(seg); why != "" {
+ 				return Package{}, fmt.Errorf("path %q cannot prefix a tag: its segment %q %s, which git refuses in a refname (git check-ref-format), so every tag this line steps to would be one git cannot create", p, seg, why)

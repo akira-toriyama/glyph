@@ -374,10 +374,17 @@ the single line it already is):
 path = "haiku"          # tags are haiku/vX.Y.Z — the Go multi-module rule, not configurable
                         # (a major version subdirectory folds into the major: pubsub/v2 tags as pubsub/v2.x.y)
 # name = "haiku"        # what a commit scope may call it; default: the last path segment
+                        # (a major version subdirectory keeps its parent: pubsub/v2) — a name
+                        # no pattern's scope can spell does not load
 
 [[packages]]
 path = "."              # optional: the root package keeps the bare vX.Y.Z line
+name = "core"           # its default "." is no preset scope's word: under the presets name is required
 ```
+
+A path must also be one git can tag: a segment `git check-ref-format`
+refuses (`a b`, `x.lock`, `.hidden`, `c~d`, …), or a leading `-`, which
+`git tag` refuses, does not load.
 
 Which line a commit moves is read from its **own diff**, per commit — never
 from a pull's net diff, which cannot tell a `^` under one module from a `~`

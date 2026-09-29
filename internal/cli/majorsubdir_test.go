@@ -14,9 +14,11 @@ import (
 // majorRepo is the two-lines-one-prefix fixture: pubsub (v1) and pubsub/v2,
 // each with a file, and the tags pubsub/v1.9.1 and pubsub/v2.7.0 on the
 // declaring commit. extra is appended to [[packages]] as further entries.
+// Every /vN entry sets name: the preset's scope group cannot spell the
+// default `pubsub/v2`, so the file would not load (DESIGN §4.1).
 func majorRepo(t *testing.T, extra string) (dir, base string) {
 	t.Helper()
-	dir = packagesRepoWith(t, "\n[[packages]]\npath = \"pubsub\"\n\n[[packages]]\npath = \"pubsub/v2\"\n"+extra, map[string]string{
+	dir = packagesRepoWith(t, "\n[[packages]]\npath = \"pubsub\"\n\n[[packages]]\npath = \"pubsub/v2\"\nname = \"pubsub-v2\"\n"+extra, map[string]string{
 		"pubsub/pubsub.go": "package pubsub\n", "pubsub/v2/pubsub.go": "package pubsub\n",
 	})
 	testGit(t, dir, "akira-toriyama", "tag", "pubsub/v1.9.1")
@@ -62,7 +64,7 @@ func TestBumpMajorSubdirectoryLinesShareThePrefix(t *testing.T) {
 // pubsub/v2/ prefix nothing tags (the first cut), and not the v1 tag beside
 // it — and a fix steps to pubsub/v2.7.1.
 func TestBumpMajorSubdirectoryAloneReadsItsMajor(t *testing.T) {
-	dir := packagesRepoWith(t, "\n[[packages]]\npath = \"pubsub/v2\"\n", map[string]string{"pubsub/pubsub.go": "package pubsub\n", "pubsub/v2/pubsub.go": "package pubsub\n"})
+	dir := packagesRepoWith(t, "\n[[packages]]\npath = \"pubsub/v2\"\nname = \"pubsub-v2\"\n", map[string]string{"pubsub/pubsub.go": "package pubsub\n", "pubsub/v2/pubsub.go": "package pubsub\n"})
 	testGit(t, dir, "akira-toriyama", "tag", "pubsub/v1.9.1")
 	testGit(t, dir, "akira-toriyama", "tag", "pubsub/v2.7.0")
 	sha := touch(t, dir, "akira-toriyama", ":bug:~ fix the exporter", "pubsub/v2/exporter.go")
@@ -160,7 +162,7 @@ func TestLockedLineRefusesAMajorStep(t *testing.T) {
 // releases as pubsub/v3.0.0 whatever the level — the line holds nothing
 // below its major — and the untagged remedy names that tag.
 func TestLockedLineFirstReleaseIsItsMajor(t *testing.T) {
-	dir, _ := majorRepo(t, "\n[[packages]]\npath = \"pubsub/v3\"\n")
+	dir, _ := majorRepo(t, "\n[[packages]]\npath = \"pubsub/v3\"\nname = \"pubsub-v3\"\n")
 	touch(t, dir, "akira-toriyama", ":bug:~ start the v3 client", "pubsub/v3/client.go")
 	// An untagged line walks the whole history, so every commit is asked about.
 	routes := map[string]string{}

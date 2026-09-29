@@ -1,8 +1,8 @@
 diff --git a/internal/config/config.go b/internal/config/config.go
-index 993e154..e36d8f2 100644
+index 4f87eff..17c8f65 100644
 --- a/internal/config/config.go
 +++ b/internal/config/config.go
-@@ -298,9 +298,6 @@ func Load(data []byte) (*Config, error) {
+@@ -325,9 +325,6 @@ func Load(data []byte) (*Config, error) {
  	if err != nil {
  		return nil, fmt.Errorf("note.line: %w", err)
  	}
@@ -10,5 +10,5 @@ index 993e154..e36d8f2 100644
 -		return nil, fmt.Errorf("note.line: %w", err)
 -	}
  
- 	packages, err := buildPackages(r.Packages)
+ 	packages, err := buildPackages(r.Packages, patterns)
  	if err != nil {

@@ -46,7 +46,9 @@ const SigilGroup = "semver_sigil"
 // 2): a commit whose files lie under no package participates in the package
 // its scope names. Nothing requires a pattern to capture it — a file without
 // the group simply has no scope to consult, and the shipped presets capture
-// it under this name.
+// it under this name. Once a pattern whose groups a commit binds does
+// capture it, every package name must be a word one such capture can be
+// (checkScopeWord), or no commit could name that line.
 const ScopeGroup = "scope"
 
 // Sigil is one of the five version signals a commit can carry. The alphabet
@@ -123,14 +125,18 @@ type Commit struct {
 // repository with its own version line (DESIGN §4.1). Path is the subtree as
 // written, already checked to be a clean relative path — "." for the root
 // package, else a slash-separated path with no leading "./", no trailing "/"
-// and no ".." — so the tag line is derivable from it without another
-// normalisation step (line.go: <path>/vX.Y.Z, a major version subdirectory
-// /vN folded into the major). Name is what a commit scope may call the
-// package: the file's `name` key when set, else the last path segment
-// (path.Base, which is "." for the root package — a scope under the shipped
-// presets cannot spell that, so a root package a scope must be able to name
-// sets `name` explicitly; a major version subdirectory defaults to
-// `<parent>/vN`, see defaultName). Names are unique across the array; the
+// and no ".." — whose every segment git accepts in a refname and whose first
+// character git tag accepts in a tag name, so the tag line is derivable from
+// it without another normalisation step and every tag it names is one git tag
+// can create (tagline.go: <path>/vX.Y.Z, a major version
+// subdirectory /vN folded into the major). Name is what a commit scope may
+// call the package: the file's `name` key when set, else the last path
+// segment (path.Base, "." for the root package; a major version subdirectory
+// defaults to `<parent>/vN`, see defaultName). Wherever a pattern whose groups
+// a commit binds captures a scope, the name — set or defaulted, the root's
+// included — must be a word one such scope can be, which under the presets
+// means the root and a /vN subdirectory set `name`; a file that captures no
+// scope names nothing and is exempt. Names are unique across the array; the
 // loader refuses two packages sharing one and names both.
 //
 // There is deliberately no TagPrefix: the tag line is derived from Path and
@@ -175,6 +181,14 @@ type Pattern struct {
 
 	re *regexp.Regexp
 }
+
+// bindsGroups says whether a commit this pattern claims binds its named
+// groups. Match hands the winning pattern's groups on unless it is a skip
+// (claimed and dropped: placed nowhere, rendered in no section) or
+// unlandable (reported unclaimed with no groups, rendered through the
+// raw-line fallback). A group only such a pattern captures is never read, so
+// every reader of the file's group names asks this predicate, not the flags.
+func (p *Pattern) bindsGroups() bool { return !p.Skip && p.Unlandable == "" }
 
 // Note carries the release-notes block: the per-commit line template and the
 // ordered sections. Line is the template as written, kept for display; Spans
@@ -269,8 +283,9 @@ func LoadFile(path string) (*Config, error) {
 // Load parses and validates glyph.toml content. It rejects, rather than
 // repairs: unknown keys, an unknown or missing schema, an empty
 // exclude_authors entry, an uncompilable or sigil-less pattern, a malformed
-// note.line, a note.line placeholder nothing can bind, and a section that does
-// not state exactly one axis are all load failures.
+// note.line, a note.line placeholder nothing can bind, a package path git
+// cannot prefix a tag with, a package name no read scope group can spell,
+// and a section that does not state exactly one axis are all load failures.
 func Load(data []byte) (*Config, error) {
 	var r raw
 	if err := strictUnmarshal(data, &r); err != nil {
@@ -315,7 +330,7 @@ func Load(data []byte) (*Config, error) {
 		return nil, fmt.Errorf("note.line: %w", err)
 	}
 
-	packages, err := buildPackages(r.Packages)
+	packages, err := buildPackages(r.Packages, patterns)
 	if err != nil {
 		return nil, err
 	}
@@ -345,15 +360,21 @@ func Load(data []byte) (*Config, error) {
 	}, nil
 }
 
-// buildPackages validates the [[packages]] array. It rejects rather than
-// repairs, like everything else here: a path that is not already clean is
-// refused with the clean form named instead of being normalised, because the
-// path is the tag prefix and a tag line must be readable from the file as
-// written. A nil result for an absent or empty array is the one-line shape
-// Config.Packages documents.
-func buildPackages(raws []rawPackage) ([]Package, error) {
+// buildPackages validates the [[packages]] array against the compiled
+// patterns. It rejects rather than repairs, like everything else here: a
+// path that is not already clean is refused with the clean form named
+// instead of being normalised, because the path is the tag prefix and a tag
+// line must be readable from the file as written; and a name no scope group
+// a commit binds can spell is refused with the groups it asked, because the
+// name exists only to be written in a scope. A nil result for an absent or
+// empty array is the one-line shape Config.Packages documents.
+func buildPackages(raws []rawPackage, patterns []Pattern) ([]Package, error) {
 	if len(raws) == 0 {
 		return nil, nil
+	}
+	spellers, err := scopeSpellers(patterns)
+	if err != nil {
+		return nil, err
 	}
 	packages := make([]Package, 0, len(raws))
 	byPath := make(map[string]int, len(raws))
@@ -362,6 +383,9 @@ func buildPackages(raws []rawPackage) ([]Package, error) {
 		p, err := buildPackage(rp)
 		if err != nil {
 			return nil, fmt.Errorf("packages[%d]: %w", i, err)
+		}
+		if err := checkScopeWord(p, rp.Name != nil, spellers); err != nil {
+			return nil, fmt.Errorf("packages[%d] (%q): %w", i, p.Path, err)
 		}
 		if j, dup := byPath[p.Path]; dup {
 			return nil, fmt.Errorf("packages[%d] and packages[%d] declare the same path %q: one subtree is one version line", j, i, p.Path)
@@ -388,6 +412,16 @@ func buildPackage(rp rawPackage) (Package, error) {
 		return Package{}, fmt.Errorf("path %q escapes the repository: a package is a subtree of the checkout glyph.toml sits in", p)
 	case path.Clean(p) != p:
 		return Package{}, fmt.Errorf("path %q is not in clean form: write %q (the path is the tag prefix, <path>/vX.Y.Z, and is read from the file as written)", p, path.Clean(p))
+	}
+	if p != "." {
+		for seg := range strings.SplitSeq(p, "/") {
+			if why := refnameSegment(seg); why != "" {
+				return Package{}, fmt.Errorf("path %q cannot prefix a tag: its segment %q %s, which git refuses in a refname (git check-ref-format), so every tag this line steps to would be one git cannot create", p, seg, why)
+			}
+		}
+		if why := refnameLead(p); why != "" {
+			return Package{}, fmt.Errorf("path %q cannot prefix a tag: it %s, so every tag this line steps to would be one git tag cannot create", p, why)
+		}
 	}
 	name := defaultName(p)
 	if rp.Name != nil {

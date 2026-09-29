@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/akira-toriyama/glyph/v4/internal/core"
 	"github.com/akira-toriyama/glyph/v4/internal/testutil"
 )
 
@@ -782,6 +783,32 @@ func TestLintRangePackagesJudgesTheDiff(t *testing.T) {
 	for _, want := range []string{shared[:7], "touches no declared package", contra[:7], "names a package this commit does not touch"} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("findings are missing %q:\n%s", want, stderr)
+		}
+	}
+}
+
+// TestPackagesNameNoScopeCanSpellIsUsage: a package name the shipped grammar
+// cannot spell is a config that does not load — exit 2 on every verdict
+// command, the commit-msg hook's --message included — never the 3 whose one
+// scope escape cannot be written. Measured before the rule (2026-09-29):
+// lint --range refused the shared-only ~ offering "(one of my_lib, other)",
+// and `:memo:(my_lib)~` then matched none of the patterns at every gate.
+func TestPackagesNameNoScopeCanSpellIsUsage(t *testing.T) {
+	dir := packagesRepoWith(t, "\n[[packages]]\npath = \"my_lib\"\n\n[[packages]]\npath = \"other\"\n", map[string]string{"my_lib/a.go": "package a\n", "other/b.go": "package b\n"})
+	touch(t, dir, "akira-toriyama", ":memo:~ fix the readme", "README.md")
+	t.Chdir(dir)
+
+	for _, args := range [][]string{
+		{"lint", "--range", "HEAD~1..HEAD"},
+		{"lint", "--message", ":memo:(my_lib)~ fix the readme"},
+		{"bump", "--range", "HEAD~1..HEAD"},
+	} {
+		code, _, stderr := runGlyph(t, args...)
+		if code != int(core.CodeUsage) {
+			t.Fatalf("%v exited %d, want exactly %d (a config that does not load)\nstderr: %s", args, code, core.CodeUsage, stderr)
+		}
+		if env := decodeErrorEnvelope(t, stderr); !strings.Contains(env.Message, `packages[0] ("my_lib")`) || !strings.Contains(env.Message, "set name") {
+			t.Errorf("%v refusal = %q, want it to name packages[0] (\"my_lib\") and `set name`", args, env.Message)
 		}
 	}
 }
