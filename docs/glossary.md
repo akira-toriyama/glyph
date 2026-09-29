@@ -551,17 +551,19 @@ swallow a genuinely empty message and any body line starting with `#`.
 **cleanup mode** — *which* cleanup, of git's five: `verbatim` (none),
 `whitespace`, `strip` (whitespace + comment lines), `scissors`, and `default`,
 which is not a cleanup but a choice between `strip` and `whitespace` by whether a
-message is **edited**. glyph resolves it per commit from `commit.cleanup` and
-`GIT_EDITOR`; a mode assumed instead of resolved is how the hook and CI came to
-disagree about the same message. DESIGN §2.1.
-`internal/cleanup/cleanup.go: Mode, ResolveMode`,
+message is **edited**. glyph resolves it per commit from `commit.cleanup`,
+`commit.verbose`, `GIT_EDITOR` and whether the message is `git merge`'s own
+`MERGE_MSG` (a merge cleans with verbose 0); a mode assumed instead of resolved
+is how the hook and CI came to disagree about the same message. DESIGN §2.1.
+`internal/cleanup/cleanup.go: Mode, ResolveMode, Verbose`,
 `internal/cli/cmd_lint.go: hookCleanupMode`
 
-**edited** — whether git will open an editor for this commit, which decides both
-the `default` mode and the scissors cut. The hook's only evidence is
-`GIT_EDITOR=:`, git's marker for "no editor will run" (`-m`, `-F`, `--amend
---no-edit`); **unset** is not evidence of the opposite — `core.editor` and
-`$EDITOR` both leave it unset — so unset counts as edited.
+**edited** — whether git will open an editor for this commit, which decides the
+`default` mode and — with `commit.verbose`, which cuts on its own, and `git
+merge`, which cuts only in scissors mode — the scissors cut. The hook's only
+evidence is `GIT_EDITOR=:`, git's marker for "no editor will run" (`-m`, `-F`,
+`--amend --no-edit`); **unset** is not evidence of the opposite — `core.editor`
+and `$EDITOR` both leave it unset — so unset counts as edited.
 `internal/cli/cmd_lint.go: hookCleanupMode`
 
 **cut line / scissors line** — the one literal git writes above the diff under

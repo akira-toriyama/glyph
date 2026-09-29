@@ -240,13 +240,21 @@ func TopLevel(ctx context.Context, dir string) (string, error) {
 // set it to scripts/hooks, and writing to .git/hooks there would install a hook
 // git never runs. Worktrees are handled by the same delegation.
 func HooksDir(ctx context.Context, dir string) (string, error) {
-	out, err := run(ctx, dir, "rev-parse", "--git-path", "hooks")
+	return GitPath(ctx, dir, "hooks")
+}
+
+// GitPath is `git rev-parse --git-path <name>`: where git keeps one of its own
+// files for this checkout, relative to dir or absolute. Asked of git because the
+// answer moves — a linked worktree's MERGE_MSG is under that worktree's own git
+// directory, and core.hooksPath relocates the hooks.
+func GitPath(ctx context.Context, dir, name string) (string, error) {
+	out, err := run(ctx, dir, "rev-parse", "--git-path", name)
 	if err != nil {
 		return "", err
 	}
 	path := strings.TrimSpace(string(out))
 	if path == "" {
-		return "", core.APIf("git rev-parse --git-path hooks: empty result")
+		return "", core.APIf("git rev-parse --git-path %s: empty result", name)
 	}
 	return path, nil
 }
@@ -263,9 +271,46 @@ func HooksDir(ctx context.Context, dir string) (string, error) {
 // `--get` reports the LAST value for a multiply-set key, which is git's own
 // precedence for the single-valued keys this asks about.
 func ConfigGet(ctx context.Context, dir, key string) (string, bool, error) {
+	return configGet(ctx, dir, key)
+}
+
+// ConfigBoolOrInt returns a key git reads as a bool-or-int — commit.verbose —
+// as the integer git acts on, and whether it is set at all; unset is
+// (0, false, nil), as ConfigGet's. git normalises the value itself
+// (`--type=bool-or-int` prints true for yes, on or a bare key, and 1024 for
+// 1k), so no copy of git's parser lives here. Not `--type=bool`: it prints true
+// for -1, which git commit reads as unset and does not cut at (measured).
+//
+// A value git cannot parse is an API error. `git commit` dies on it before any
+// hook runs; `git merge`, which never reads the key, runs its hook anyway, and
+// there this read exits 128 (both measured on git 2.54) — which is why the one
+// caller treats an error as unset.
+func ConfigBoolOrInt(ctx context.Context, dir, key string) (int, bool, error) {
+	raw, set, err := configGet(ctx, dir, key, "--type=bool-or-int")
+	if err != nil || !set {
+		return 0, set, err
+	}
+	switch raw {
+	case "true":
+		return 1, true, nil
+	case "false":
+		return 0, true, nil
+	}
+	n, aerr := strconv.Atoi(raw)
+	if aerr != nil {
+		return 0, true, core.APIf("git config --type=bool-or-int %s printed %q, which is neither a bool nor an int", key, raw)
+	}
+	return n, true, nil
+}
+
+// configGet is ConfigGet with git config's own type options (`--type=…`)
+// placed before `--get`.
+func configGet(ctx context.Context, dir, key string, typ ...string) (string, bool, error) {
+	args := append(append([]string{"-C", dir, "config"}, typ...), "--get", "--end-of-options", key)
 	// #nosec G204 -- the binary is the fixed literal "git"; key is a config name
-	// from this package's callers, pinned as a value by --end-of-options.
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "config", "--get", "--end-of-options", key)
+	// from this package's callers, pinned as a value by --end-of-options, and
+	// typ is this package's own constant.
+	cmd := exec.CommandContext(ctx, "git", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {

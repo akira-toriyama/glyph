@@ -92,13 +92,15 @@ func newLintCmd() *cobra.Command {
 				}
 				// --stdin is the commit-msg hook, which git invokes BEFORE its
 				// own cleanup: the file still carries the editor template, the
-				// status block and (under commit.verbose) the diff. Reduce it to
-				// the message git will record before judging it.
+				// status block and (under -v or commit.verbose, with an editor)
+				// the diff. Reduce it to the message git will record before
+				// judging it; `in` is the file the hook redirected, whose
+				// identity tells a git merge from a git commit.
 				//
 				// The hook that called this is also the one artefact nothing
 				// refreshes, so its own run is where a drifted copy is reported.
 				warnIfHookStale(cmd.Context(), hook.Kinds()[0])
-				return lintOne(cleanup.Apply(string(b), hookCleanupMode(cmd.Context())), cfg)
+				return lintOne(cleanup.Apply(string(b), hookCleanupMode(cmd.Context(), in)), cfg)
 			case cmd.Flags().Changed("message"):
 				// An empty --message is the caller naming no message, which is
 				// usage — not a message that violates the convention. The old
@@ -136,8 +138,11 @@ func newLintCmd() *cobra.Command {
 	return cmd
 }
 
-// hookCleanupMode reads the two signals a commit-msg hook has about what git is
-// about to do to the message it was handed: `commit.cleanup`, and GIT_EDITOR.
+// hookCleanupMode reads the four signals a commit-msg hook has about what git
+// is about to do to the message it was handed: `commit.cleanup`,
+// `commit.verbose`, GIT_EDITOR, and whether the message is git merge's own
+// MERGE_MSG (DESIGN §2.1). message is what the hook redirected onto stdin, nil
+// when there is no such file to ask about.
 //
 // Asking git HERE rather than having the hook script pass a `--cleanup` flag is
 // the decision worth knowing, and it is a rollout one. The hook is a file
@@ -148,23 +153,65 @@ func newLintCmd() *cobra.Command {
 // installed copy is fixed the moment the binary is. It also keeps the hook's
 // founding property intact: the hook holds no knowledge, it asks glyph.
 //
-// Neither signal is required. Outside a repository, or with git unable to answer,
-// the config read fails and this proceeds as if unset — a developer piping a file
-// into `glyph lint --stdin` by hand gets git's default-with-an-editor reading,
-// which is what that file looks like.
-func hookCleanupMode(ctx context.Context) cleanup.Mode {
+// No signal is required. Outside a repository, or with git unable to answer,
+// the config reads fail and this proceeds as if unset — a developer piping a
+// file into `glyph lint --stdin` by hand gets git's default-with-an-editor
+// reading, which is what that file looks like.
+func hookCleanupMode(ctx context.Context, message io.Reader) cleanup.Mode {
 	// An error is treated as unset on purpose: this is an advisory hook, and a
 	// git that cannot answer a config question is not a reason to refuse a lint.
 	configured, _, _ := gitsource.ConfigGet(ctx, ".", "commit.cleanup")
-	mode, known := cleanup.ResolveMode(configured, os.Getenv("GIT_EDITOR") != ":")
+	mode, known := cleanup.ResolveMode(configured, os.Getenv("GIT_EDITOR") != ":", hookVerbose(ctx, message))
 	if !known {
-		// Warn, never fail. The installed hook forwards ONLY the lint gate code
-		// and waves every other non-zero through, so exiting here would trade a
-		// typo in commit.cleanup for a repository whose commits are not linted
-		// at all — maximum strictness buying zero enforcement.
+		// Warn, never fail. git refuses an unknown mode for a plain `git commit`,
+		// `cherry-pick -e` and a rebase reword before any hook runs, but a
+		// `--cleanup=` override on the command line gets past it and the hook
+		// runs (measured) — and the installed hook forwards ONLY the lint gate
+		// code, so exiting here would leave exactly those commits unlinted.
 		warnf("commit.cleanup=%q is not a mode git knows; linting this message as if it were 'default'", configured)
 	}
 	return mode
+}
+
+// hookVerbose is what the hook can know of the verbose setting git will clean
+// the message under. `git merge` hands the hook its MERGE_MSG and cleans with
+// verbose 0 whatever commit.verbose says; `git commit` reads commit.verbose,
+// and `git -c commit.verbose=…` reaches this read too (GIT_CONFIG_PARAMETERS,
+// measured). An error is unset, as commit.cleanup's is: git commit dies on a
+// value it cannot parse before any hook runs, so a failing read comes from
+// outside git commit — a hand-run lint, doctor's probe, or a git merge whose
+// message was piped rather than redirected.
+func hookVerbose(ctx context.Context, message io.Reader) cleanup.Verbose {
+	if isGitMergeMessage(ctx, message) {
+		return cleanup.VerboseNever
+	}
+	if n, _, _ := gitsource.ConfigBoolOrInt(ctx, ".", "commit.verbose"); n > 0 {
+		return cleanup.VerboseOn
+	}
+	return cleanup.VerboseUnseen
+}
+
+// isGitMergeMessage reports whether message is the very file git merge writes
+// its message to. Only `git merge` (and `git pull`) hands the commit-msg hook
+// MERGE_MSG; concluding a conflicted merge with `git commit` hands it
+// COMMIT_EDITMSG (both measured). The installed hook redirects the file onto
+// stdin (`<"$1"`), so its identity survives; a hook that pipes the message
+// instead gets git commit's reading.
+func isGitMergeMessage(ctx context.Context, message io.Reader) bool {
+	f, ok := message.(*os.File)
+	if !ok || f == nil {
+		return false
+	}
+	got, err := f.Stat()
+	if err != nil || !got.Mode().IsRegular() {
+		return false
+	}
+	path, err := gitsource.GitPath(ctx, ".", "MERGE_MSG")
+	if err != nil {
+		return false
+	}
+	want, err := os.Stat(path)
+	return err == nil && os.SameFile(got, want)
 }
 
 // lintOne lints a single message at authoring time. The author is unknown —

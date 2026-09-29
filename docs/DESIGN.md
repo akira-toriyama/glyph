@@ -287,29 +287,79 @@ its message through the same function, since it must answer exactly as the
 fired hook does. A repository whose patterns claim nothing as unlandable has
 no such gap.
 
-**Which cleanup runs is a per-commit question, and the hook can answer it.** git
-has five modes and picks between two of them by whether an editor will run;
-assuming the editor's cleanup is what made the hook and CI disagree, measured on
-git 2.54 in both directions (`-F` with a `#` line as the subject: hook 0, CI 3;
-`-F` with an indented `  # why:` line above a footer: hook 0, CI 3 — both
-measured under the v1 grammar, whose footer rule the second case tripped; the
-disagreement belongs to git's cleanup, not to any grammar, so a v2 pattern
-file inherits it unchanged). The two signals a hook actually has:
+**Which cleanup runs is a per-commit question, and the hook can answer it from
+four signals.** git has five modes and picks between two of them by whether an
+editor will run; assuming the editor's cleanup is what made the hook and CI
+disagree, measured on git 2.54 in both directions (`-F` with a `#` line as the
+subject: hook 0, CI 3; `-F` with an indented `  # why:` line above a footer:
+hook 0, CI 3 — both measured under the v1 grammar, whose footer rule the second
+case tripped; the disagreement belongs to git's cleanup, not to any grammar, so
+a v2 pattern file inherits it unchanged). The signals a hook actually has:
 
 - `commit.cleanup`, read with `git config --get`;
+- `commit.verbose`, read through git's own parser — `git config
+  --type=bool-or-int`, on above 0 — because `yes`, a bare key and `1k` are
+  git's to spell, and `--type=bool` reads `-1` as on where `git commit` treats
+  it as unset and does not cut (measured; mutation row
+  `cleanup-reads-commit-verbose-minus-one-as-on.patch`). `git -c
+  commit.verbose=true commit` reaches the hook as config, through
+  `GIT_CONFIG_PARAMETERS` (measured);
 - `GIT_EDITOR`, which git sets to `:` when no editor will run. Only that side is
   load-bearing — with `core.editor` or `$EDITOR` supplying the editor git leaves
   `GIT_EDITOR` **unset** in the hook, so unset must mean "an editor may run".
   Read the other way, those developers get the whitespace branch, where the
-  template is never stripped and every commit is `malformed-subject`.
+  template is never stripped and every commit is `malformed-subject`;
+- **which file** the hook was handed. `git merge` (and `git pull`) hands it
+  `MERGE_MSG`, and `git commit` — concluding a conflicted merge included —
+  `COMMIT_EDITMSG` (measured). The installed hook redirects the file onto stdin
+  (`<"$1"`), so its identity survives into `lint --stdin`: the same file as
+  `git rev-parse --git-path MERGE_MSG`, linked worktrees included. A hook that
+  pipes the message in instead gets `git commit`'s reading.
 
 Resolution, then, is `commit.cleanup` × edited → `verbatim` / `whitespace` /
-`strip` / `scissors`, with the scissors cut applied whenever an editor ran (git
-truncates under `-v` in every mode) and NOT applied without one (measured:
-`commit.cleanup=scissors` with `-F` records the cut line and everything under
-it). An unrecognised mode name warns and falls back — this hook forwards only the
-lint gate code and waves everything else through, so failing there would trade a
-typo in `commit.cleanup` for a repository whose commits are not linted at all.
+`strip` / `scissors`, cut at the scissors line when `commit.verbose` is on, when
+an editor ran for `git commit`, and in scissors mode with an editor — the only
+cut under `git merge`, which cleans with verbose 0 whatever `commit.verbose`
+says (`builtin/merge.c`). git cuts under verbose — `-v` or `commit.verbose`,
+editor or not — and in scissors mode only with an editor (`cleanup_message` and
+`get_cleanup_mode`, sequencer.c). That formula held in every cell of cleanup
+source × message source × verbose source × where a typed cut line sits: 396
+cells in the D10 design run (304 recorded, 92 aborted as empty) and 880 in its
+review (593 recorded, 287 aborted), measured on git 2.54 on 2026-09-29, and the
+48 cells `TestHookCutMatchesGit` asks of real git on every run.
+
+The rule first ratified here said the cut was NOT applied without an editor,
+generalising a scissors-mode measurement (`-F` records the cut line and
+everything under it, still true); under `commit.verbose` git cuts an `-m`, `-F`
+or `--amend --no-edit` message in every mode, and the hook judged the cut line
+and all below it (t-3p3k; mutation row `cleanup-ignores-commit-verbose.patch`).
+Read that way, a merge was judged as a commit: a typed cut line opening a
+merge's message cut everything, and the installed hook stopped a merge git
+records, under `commit.verbose` with `-F` and under `--edit` in the default
+mode alike (measured; `TestInstalledHookJudgesAGitMergeByMergesCleanup`,
+mutation row `cleanup-reads-commit-verbose-under-git-merge.patch`).
+
+The editor half is a guess, and argued: `-v` reaches no hook, and under it git
+writes the cut line and the whole diff into the buffer itself (every such
+buffer, measured), so a hook that cut only on what it can see — git's own
+formula over the config — would judge that diff as the message of every `git
+commit -v`: a `$`-anchored one-line subject refused at the hook though git
+records exactly that one line (measured), and whatever pattern reads past the
+first line — the presets' own `amend!` claim reads the body, and so would a
+`(?s)` `warn`, `unlandable` or `skip` pattern — judged against code (mutation
+row `cleanup-keeps-the-diff-git-commit-v-wrote.patch`). A cut line git did not
+write is one the author typed, byte for byte. The grid is asked of real git as
+TEXT, not verdict (`TestHookCutMatchesGit`): under a subject-anchored grammar a
+message and its cut-short form get the same answer, and
+`TestHookVerdictMatchesWhatGitRecords` stayed green under the old rule and
+under git's formula alike (measured).
+
+An unrecognised mode name warns and falls back. git itself refuses one for a
+plain `git commit`, `cherry-pick -e` and a rebase reword before any hook runs
+(`Invalid cleanup mode`, measured), but a `--cleanup=` override on the command
+line gets past it and the hook runs (measured) — and this hook forwards only the
+lint gate code and waves everything else through, so failing there would leave
+exactly those commits unlinted.
 
 **Two decisions ratified by measurement, against the shape a reader expects:**
 
@@ -332,10 +382,57 @@ been taught to compute the mode, every already-installed copy would go on
 computing nothing until someone re-ran `glyph hook install` there. It also keeps
 the hook's founding property (§5): the hook holds no knowledge, it asks glyph.
 
-**What stays wrong, and is not claimed fixed:** `git commit --cleanup=<mode>` on
-the COMMAND LINE reaches neither the config nor the environment (measured), so a
-per-commit override is invisible to the hook and the message is judged under the
-repository's mode. Same for `core.commentChar`: glyph assumes `#`.
+**What stays wrong, and is not claimed fixed:** a flag on git's COMMAND LINE
+reaches neither the config nor the environment (measured), so the hook judges a
+per-commit override under the repository's settings:
+
+- `git commit --cleanup=<mode>` is judged under `commit.cleanup`;
+- `-v` with no editor cuts a typed cut line in git and not at the hook, and
+  `--no-verbose` under `commit.verbose` cuts at the hook and not in git. Both
+  move verdicts the expensive way. `--no-verbose` does under the presets: a
+  message opening with a typed cut line, in a mode that strips comments, is
+  recorded as the subject under it while the hook judges an empty message and
+  refuses — with an editor in the default mode (`commit.cleanup` unset or
+  `default`) or `strip`, and with an `-m`, `-F` or `--amend --no-edit` message
+  under `commit.cleanup=strip` (measured with the installed hook,
+  `commit.verbose` true or 2). `-v` does under a grammar that reads past the
+  subject: with the typed line below the subject, git records the subject
+  alone, the hook judges the lines under it too, and a `$`-anchored pattern
+  refuses at the hook what the range accepts (measured with `-m` and `-F`;
+  under the presets' subject-anchored grammar both answers agree). Neither
+  refusal forces `--no-verify`: the author typed the line and can delete it;
+- under an editor with neither `-v` nor `commit.verbose`, in any mode but
+  scissors, the hook cuts at a line the author typed and git keeps what is under
+  it. Nothing the hook reads besides the message separates this from `git
+  commit -v`, where git does cut: `keep`, a typed cut line and a subject record
+  both lines without `-v` and `keep` alone with it, with the environment and
+  both config reads identical and the file differing only below the typed line,
+  by the block git writes there under `-v` (measured). Under a subject-anchored
+  grammar it moves one verdict — the typed line opening the message in a mode
+  that strips comments (default with an editor, or `strip`): git records the
+  subject under it, the hook judges an empty message and refuses, and again the
+  author can delete the line;
+- an exported `GIT_EDITOR=:` (`GIT_EDITOR=: git commit --amend`) is git's
+  no-editor marker to the hook while git runs its editor cleanup, so the hook
+  judges the template git strips (measured).
+
+Three ways to close the editor and `--no-verbose` cells were measured and not
+taken. Judging the uncut text whenever the cut leaves nothing closes every cell
+where the typed cut line opens the message — since under `-v` git aborts an
+empty message anyway — but each repair needs an author to type git's 53-byte
+cut line at column 0 as the message's first line, while its cost lands on every
+`git commit -v` saved empty to abort: the refusal would quote the diff (`diff
+--git a/… b/…`) as the subject (measured). Inferring `-v` from the block git
+writes under its cut line is a content guess at a state the hook cannot see, and
+it fails three ways: git translates the explanation lines (measured under
+`LANG=de_DE.UTF-8`: `# Ändern oder entfernen Sie nicht die obige Zeile.`), `git
+commit -v --allow-empty` writes the cut line and no diff (measured), and the
+author may delete the block. And the flags themselves are visible only in the
+parent process's argv (measured with `ps`: `-v`, an alias's expansion, the
+abbreviation `--verb`), where reading them means re-implementing git's
+parse-options — abbreviations, bundled short options, `--no-` forms — an
+approximation of git of exactly the kind this section refuses. Same for
+`core.commentChar`: glyph assumes `#`.
 
 ### The gemoji dictionary (`glyph emoji`, t-0c0m)
 
@@ -1648,13 +1745,20 @@ itself. `rg '^func Fuzz'` is the current list, not this sentence. Always `-race`
 **Anything that models an external system carries one test that asks the real
 system**, because a closed loop of glyph-against-glyph proves nothing about the
 thing being modelled. `internal/cleanup` ports git's `strbuf_stripspace` and
-`wt_status_locate_end` line for line, and two oracles hold the port to the
+`wt_status_locate_end` line for line, and three oracles hold the port to the
 real git: `TestCutLineIsTheOneGitWrites` drives a real `git commit -v` and
-asserts git still writes the exact scissors line the cut matches on, and
+asserts git still writes the exact scissors line the cut matches on,
 `internal/cli`'s `TestHookVerdictMatchesWhatGitRecords` commits through a real
-git and asserts the hook's verdict matches what git recorded — both with
+git and asserts the hook's verdict matches what git recorded, and
+`TestHookCutMatchesGit` asserts the hook's text is git's in the 32 of its 48
+cells the hook can tell apart and pins the other 16, §2.1's editor and `-v`
+residuals, in the direction §2.1 states them — all with
 `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM` pinned to `/dev/null` so a personal
-config cannot move the answer. `internal/markdown`'s rules were
+config cannot move the answer, the
+in-process git calls included (`internal/cli`'s and `internal/gitsource`'s
+`TestMain`): with only the fixtures' own git commands pinned, a personal
+`commit.cleanup=strip` failed the verdict oracle and `TestConfigGet`
+(measured). `internal/markdown`'s rules were
 measured against GitHub's own renderer (`gh api -X POST /markdown`, mode=gfm),
 with the probes, their observed output and the date of the run recorded in
 `markdown_test.go`; re-run them before changing a rule, because the one rule

@@ -14,6 +14,18 @@ import (
 	"github.com/akira-toriyama/glyph/v4/internal/testutil"
 )
 
+// TestMain holds the developer's own git config out of this package's
+// IN-PROCESS git calls too. testutil.GitEnv pins the commands a test runs to
+// build its fixture, but ConfigGet and ConfigBoolOrInt run git in this
+// process's environment, where ~/.gitconfig answers: measured, a personal
+// commit.cleanup=strip failed TestConfigGet ("unset" came back set to strip).
+func TestMain(m *testing.M) {
+	for _, k := range []string{"GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"} {
+		os.Setenv(k, os.DevNull)
+	}
+	os.Exit(m.Run())
+}
+
 // The hermetic fixture (pinned identity, real git config held out, background
 // maintenance off — the incidents live on testutil.GitEnv) is testutil's; the
 // local names keep this file's call sites short.
@@ -624,6 +636,52 @@ func TestConfigGetUnreachableDirIsAPI(t *testing.T) {
 	ce := core.AsError(err)
 	if ce == nil || ce.Code != core.CodeAPI {
 		t.Fatalf("ConfigGet on a missing directory = %v, want CodeAPI", err)
+	}
+}
+
+// TestConfigBoolOrInt: commit.verbose is read as the integer git acts on,
+// through git's own normaliser — every spelling below is one git accepts — and
+// -1 is the value --type=bool gets wrong (it prints true; git commit reads -1 as
+// unset and does not cut). Unset is an answer, not an error; a value git cannot
+// parse is the API error.
+func TestConfigBoolOrInt(t *testing.T) {
+	dir := newRepo(t)
+	if n, set, err := ConfigBoolOrInt(context.Background(), dir, "commit.verbose"); err != nil || set || n != 0 {
+		t.Fatalf("unset commit.verbose = (%d, %v, %v), want (0, false, nil)", n, set, err)
+	}
+	for _, tc := range []struct {
+		value string
+		want  int
+	}{
+		{"true", 1}, {"yes", 1}, {"on", 1}, {"false", 0}, {"off", 0}, {"", 0},
+		{"2", 2}, {"1k", 1024}, {"0", 0}, {"-1", -1},
+	} {
+		git(t, dir, "akira-toriyama", "config", "commit.verbose", tc.value)
+		n, set, err := ConfigBoolOrInt(context.Background(), dir, "commit.verbose")
+		if err != nil || !set || n != tc.want {
+			t.Errorf("commit.verbose=%q = (%d, %v, %v), want (%d, true, nil)", tc.value, n, set, err, tc.want)
+		}
+	}
+	git(t, dir, "akira-toriyama", "config", "commit.verbose", "banana")
+	if _, _, err := ConfigBoolOrInt(context.Background(), dir, "commit.verbose"); core.AsError(err) == nil || core.AsError(err).Code != core.CodeAPI {
+		t.Fatalf("an unparseable commit.verbose = %v, want CodeAPI", err)
+	}
+}
+
+// TestGitPath: where git keeps one of its own files is git's answer — in a
+// linked worktree MERGE_MSG lives under that worktree's own git directory, not
+// the main checkout's, which is where the commit-msg hook's merge check looks.
+func TestGitPath(t *testing.T) {
+	dir := newRepo(t)
+	got, err := GitPath(context.Background(), dir, "MERGE_MSG")
+	if err != nil || filepath.ToSlash(got) != ".git/MERGE_MSG" {
+		t.Fatalf("GitPath(MERGE_MSG) = %q, %v; want .git/MERGE_MSG", got, err)
+	}
+	wt := filepath.Join(t.TempDir(), "wt")
+	git(t, dir, "akira-toriyama", "worktree", "add", "-q", "-b", "wt", wt)
+	got, err = GitPath(context.Background(), wt, "MERGE_MSG")
+	if err != nil || !strings.HasSuffix(filepath.ToSlash(got), ".git/worktrees/wt/MERGE_MSG") {
+		t.Fatalf("GitPath(MERGE_MSG) in a linked worktree = %q, %v; want the worktree's own git directory", got, err)
 	}
 }
 

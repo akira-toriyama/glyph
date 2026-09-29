@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
+index 7761ef7..3cad4a1 100644
+--- a/internal/cli/cmd_lint.go
++++ b/internal/cli/cmd_lint.go
+@@ -182,7 +182,7 @@ func hookCleanupMode(ctx context.Context, message io.Reader) cleanup.Mode {
+ // outside git commit — a hand-run lint, doctor's probe, or a git merge whose
+ // message was piped rather than redirected.
+ func hookVerbose(ctx context.Context, message io.Reader) cleanup.Verbose {
+-	if isGitMergeMessage(ctx, message) {
++	if false && isGitMergeMessage(ctx, message) {
+ 		return cleanup.VerboseNever
+ 	}
+ 	if n, _, _ := gitsource.ConfigBoolOrInt(ctx, ".", "commit.verbose"); n > 0 {
