@@ -1007,10 +1007,28 @@ every replay minted another identical draft (measured: two from one lost
 answer, four from a spent schedule — t-ph6p). Before each re-send the client
 now probes the release listing for what the earlier copy would have made —
 same intended tag, same draft state — and adopts it as the create's answer;
-the probe is one round trip, best-effort, and a probe that finds nothing or
-cannot look falls back to the replay, with the upsert's convergence still
-deleting any duplicate on the next run. `--dry-run` computes everything, action included, and
-writes nothing.
+the probe is one read of that listing, best-effort, and a probe that finds
+nothing or cannot look falls back to the replay, with the upsert's convergence
+still deleting any duplicate on the next run.
+
+That listing is read whole on every run, dry run included, and it prices a
+release in releases rather than commits (t-n5tw R4). The managed drafts and the
+published floor are each a question about every release on the line. GitHub's
+listing takes only `per_page` and `page`: it documents no order a partial read
+could stop on, and nothing filters drafts or a tag prefix; `releases/latest`
+names one release per repository, the newest non-draft, non-prerelease by
+`created_at` (REST docs, read 2026-09-29). So the listing costs one request per
+100 releases before anything is planned, and a whole listing again per create
+probe. Measured 2026-09-29 on a stand-in API: 7,272 releases took 73 pages
+before planning, and a create answered 503 throughout took 219 more over its
+three probes (292 pages and four `POST`s, exit 4). google-cloud-go's listing
+ran to 7,496 releases on 2026-10-04 — 75 pages (REST `releases?per_page=1`,
+its `Link` rel=last) — while GraphQL's `releases.totalCount` reported 1,000 for
+it the same day, so that count is no substitute. Recorded, not optimised: the
+largest listing in the fleet is glyph's own 37, one page (GraphQL's count over
+the 38 non-archived repositories carrying a `glyph.toml`, 2026-10-04, which
+glyph's REST listing matches at that size). `--dry-run` computes everything,
+action included, and writes nothing.
 
 **The hand region** (t-qgps): the rolling draft is the only place release
 prose can be written ("the exit codes changed, fix your gates"), and the
@@ -1343,9 +1361,54 @@ the union walk as it does today, and its remedy gains a package form the
 error names: a package with no tag of its own — the common case of a package
 added to an old repository — is baselined by cutting **`<path>/v0.0.0` at the
 commit before its first change**, a tag that says "nothing of this line was
-released before here" and steps to `<path>/v0.1.0` on the first `^`. No new
-flag: `--since-tag=TAG` and `below:TAG` keep their meanings and gain one
-reading — **a tag names a line.** A prefixed TAG selects that package alone
+released before here" and steps to `<path>/v0.1.0` on the first `^`.
+
+**Only the untagged arm is capped**, and the tagged arm's missing cap is a
+decision (t-n5tw R3). A tagged range is the unreleased work a release exists
+to read, so it is walked whatever its length. That holds for the single line's
+range (measured 2026-09-29 on a stand-in API: 300 commits past the tag, 300
+lookups, exit 0) and for the union's, whose length is the **oldest** base's
+range. So one line whose last tag is old prices every bare walk, and every
+`release`, by everything behind that tag: a lookup per merge point, a listing
+per resolved pull, and under packages a file read per squash-arm inner commit
+placed by its files — about two requests per commit where the commits are
+squash-merged pulls. Measured the same day: on the stand-in API a line tagged
+251 commits back took a bare `bump --since-tag` to 251 lookups for one
+participating commit, and google-cloud-go's union over the lines a 2026-09-13
+survey declared started at one line's `auth/oauth2adapt/v0.2.8`, cut
+2025-03-20 — 1,843 commits to main as it stood on 2026-09-13 (`git rev-list
+--count`, re-run 2026-09-29; 1,888 to main as of 2026-09-29), 1,797 of them
+pull-shaped, some 3,600 requests by that structure before any file read (an
+estimate).
+
+A cap there refuses releases with no honest remedy, because a tagged line's
+base moves only by releasing it. The saving on offer — skipping a pull whose
+landed diff misses a line — is closed twice over: the net diff is not the sum
+of the commits (the pull-level attribution rejected above), and rule 2 lets a
+shared-only inner commit's scope name a line its diff never touches, so no
+local prefilter can prove a pull quiet. So the price is named, not capped.
+Past the token's hourly budget the walk exits 4 on the rate limit, retried and
+then surfaced (`github.retryable`), never answered short. A tag that names a
+line walks that line's range alone (1 lookup for the fresh line beside the
+251, measured the same day), and `preview` resolves over the touched lines
+only (t-60dc, below).
+
+The fleet's exposure, measured 2026-09-29: the longest tagged walk is
+dotfiles', 192 commits past v0.2.0 (cut 2026-07-20) — 188 lookups once its 4
+dependabot commits are excluded, plus up to 148 listings for its pull-shaped
+subjects, about 340 requests per release run (an estimate from local git).
+That job runs on `github.token`, and every preview on a dotfiles pull walks the
+same range for its pending side, all against the repository's 1,000 requests
+an hour (the `GITHUB_TOKEN` limit GitHub documents): about three verdict runs
+in one hour reach it. It has not been hit — dotfiles' last eight release runs
+and six preview runs are green, and canon's latest failed release (run
+36527828384) was a 403 on a `PATCH`, not the rate limit — but it grows, 37
+commits in the last 30 days. A line whose draft is never published adds every
+commit to every walk, which is t-354v's untagged-arm cost, delayed; the remedy
+is publishing. glyph-monorepo-test's union is 23 of its 42 commits.
+
+No new flag: `--since-tag=TAG` and `below:TAG` keep their meanings and gain
+one reading — **a tag names a line.** A prefixed TAG selects that package alone
 (the verdict, the notes and the draft are that line's, and the other lines are
 not converged), which is what tag-time note rendering needs (`goreleaser.yml`
 already runs `notes --since-tag=below:TAG` from the tagged commit); a bare

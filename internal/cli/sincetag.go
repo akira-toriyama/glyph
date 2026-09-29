@@ -246,6 +246,11 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 // job runs under the Actions GITHUB_TOKEN's 1,000-request hourly budget — 200
 // keeps one speculative first-release walk at a fifth of that budget. A first
 // release large enough to cross it is one the operator should bound by hand.
+//
+// Only this arm is capped: a tagged range — the single line's or the packages
+// union's — is the unreleased work a release must read, and its base moves only
+// by releasing it, so a cap there would refuse a release with no remedy (DESIGN
+// §4.1, "Only the untagged arm is capped").
 const sinceTagWalkCap = 200
 
 // sinceTagEscape is the remedy for a caller that HAS --since-tag. It is a
