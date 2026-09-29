@@ -194,6 +194,56 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 	}
 }
 
+// TestEndAnchoredPatternGetsOneVerdictAtTheHookAndInTheRange: a pattern that
+// ends in `$` — the natural way to say the sigil form is the whole subject line
+// — must judge a commit the same way at the commit-msg hook and over the
+// history git recorded. Go's `$` without (?m) matches at the END OF TEXT only,
+// and `git log`'s %B closes every message with a newline cleanup.Apply never
+// leaves, so a one-line subject passed the hook and failed `lint --range` and
+// `bump --range` (t-3p3k (1), measured). Both directions are asserted: the
+// matching subject must pass everywhere, and a message the pattern does not
+// match — a body under the subject, which `.+$` cannot reach across — must
+// still be refused everywhere, so a fix that trimmed more than the record's
+// own newline could not pass this test.
+func TestEndAnchoredPatternGetsOneVerdictAtTheHookAndInTheRange(t *testing.T) {
+	for _, tc := range []struct {
+		name, message string
+		want          int
+		bump          string // bump --range's stdout when it answers 0
+	}{
+		{"a one-line subject the pattern matches", ":bug:~ fix the thing", 0, "v0.1.1\n"},
+		{"a subject with a body the pattern does not reach", ":bug:~ fix the thing\n\nwith a body", 3, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, base := testRepo(t)
+			preset, _ := config.Preset("gemoji")
+			anchored := strings.Replace(string(preset), ` .+)'`, ` .+)$'`, 1)
+			if anchored == string(preset) {
+				t.Fatal("the gemoji preset's first pattern no longer ends in ` .+)'` — re-derive the `$` variant")
+			}
+			if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), []byte(anchored), 0o644); err != nil {
+				t.Fatalf("write glyph.toml: %v", err)
+			}
+			testCommit(t, dir, "akira-toriyama", tc.message)
+			t.Chdir(dir)
+			// What the hook is handed for `git commit -m`: the message plus git's
+			// newline, with GIT_EDITOR=: because no editor runs.
+			t.Setenv("GIT_EDITOR", ":")
+			setStdin(t, tc.message+"\n")
+			hook, _, hookErr := runGlyph(t, "lint", "--stdin")
+			ci, _, ciErr := runGlyph(t, "lint", "--range", base+"..HEAD")
+			bumpCode, bumpOut, bumpErr := runGlyph(t, "bump", "--range", base+"..HEAD")
+			if hook != tc.want || ci != tc.want || bumpCode != tc.want {
+				t.Fatalf("hook %d, lint --range %d, bump --range %d; want %d at all three\n  hook: %s\n  lint --range: %s\n  bump --range: %s",
+					hook, ci, bumpCode, tc.want, hookErr, ciErr, bumpErr)
+			}
+			if bumpOut != tc.bump {
+				t.Errorf("bump --range printed %q, want %q", bumpOut, tc.bump)
+			}
+		})
+	}
+}
+
 // writeExecutable writes body at path (creating its directory) with the mode a
 // hook or an editor needs.
 func writeExecutable(t *testing.T, path, body string) {

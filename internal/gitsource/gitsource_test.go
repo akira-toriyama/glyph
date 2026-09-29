@@ -76,6 +76,32 @@ func TestLogRange(t *testing.T) {
 	}
 }
 
+// TestLogStripsOnlyTheRecordNewline: git records a cleaned message with a
+// closing newline that the text the commit-msg hook judges never has —
+// cleanup.Apply returns git's message without it — so Message is %B minus
+// exactly one trailing newline. A message recorded under --cleanup=verbatim
+// keeps what the author wrote, blank lines at the end included (measured:
+// `-m 'x\n\n'` records both newlines), so only one may go: two come back as one.
+func TestLogStripsOnlyTheRecordNewline(t *testing.T) {
+	dir := newRepo(t)
+	base := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	git(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--cleanup=verbatim", "-m", ":memo:= kept as written\n\n")
+	got, err := Log(context.Background(), dir, base+"..HEAD")
+	if err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("Log returned %d commits, want 2", len(got))
+	}
+	if got[0].Message != ":bug:~ fix a crash" {
+		t.Errorf("Message = %q, want the subject without %%B's record newline", got[0].Message)
+	}
+	if got[1].Message != ":memo:= kept as written\n" {
+		t.Errorf("verbatim Message = %q, want exactly one of the author's two trailing newlines removed", got[1].Message)
+	}
+}
+
 // TestLogReadsAnAuthorNameHoldingTheUnitSeparator: git keeps a U+001F inside
 // an author name (it strips crud only at the ends — measured on 2.54), so a
 // field separator that byte can spell let the author choose where the next

@@ -132,9 +132,11 @@ func ResolveMode(configured string, edited bool) (mode Mode, known bool) {
 // as before this function existed, never worse.
 //
 // Only the authoring path (`--stdin`) calls this. A --range walk reads messages
-// from `git log %B`, which git has already cleaned; running this there would
-// silently swallow a genuinely empty message and any body line a project chose
-// to start with '#'.
+// from `git log %B`, which git has already cleaned — internal/gitsource strips
+// the one closing newline git records a message with, the only thing that
+// separated it from this function's output shape (DESIGN §2.1); running this
+// there would silently swallow a genuinely empty message and any body line a
+// project chose to start with '#'.
 func Apply(message string, mode Mode) string {
 	if mode.Truncate {
 		message = truncateAtCutLine(message)

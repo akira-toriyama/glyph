@@ -252,7 +252,22 @@ that text is **not** the message. git runs the hook BEFORE its own cleanup, so
 the file still holds whatever the editor left: the template, the status block,
 and under `-v` a scissors line with the entire diff below it. `cleanup.Apply`
 reduces that file to the message git will record, and `--stdin` is its only
-caller (a `--range` walk reads `git log %B`, which git has already cleaned).
+caller. A `--range` walk reads `git log %B`, which git has already cleaned —
+into git's shape, not the hook's: git records a cleaned message with a closing
+newline, and `cleanup.Apply` returns the text without one. Go's `$` without
+`(?m)` matches only at the very end of the text, so a pattern ending in `$` —
+the natural way to say the sigil form is the whole subject line — passed a
+one-line subject at the hook and refused the same commit at `lint --range` and
+`bump --range` (t-3p3k, measured); and GitHub's copy of a message never carries
+the newline (measured 2026-09-29 on glyph#246: af7ee18's local `%B` ends in
+one, its entry in the pull's commit listing does not). `gitsource` strips
+exactly that one newline where it parses a record, so every reader of local
+history — `lint --range`, the pre-push hook, `bump`, `notes`, `release` and
+`preview`'s walk — judges the text the hook judged, and a verbatim message
+keeps trailing blank lines of its own
+(`TestEndAnchoredPatternGetsOneVerdictAtTheHookAndInTheRange` asserts a
+matching and a non-matching message at both gates; mutation row
+`gitsource-log-keeps-the-record-newline.patch`).
 
 **The requirement is agreement, not tidiness.** The hook and CI must reach the
 SAME verdict on one commit; a gap is glyph lying in one of two directions, and

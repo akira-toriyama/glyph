@@ -540,8 +540,9 @@ is total. `internal/bump/sigilfold.go: FoldSigils`
 commit-msg hook, still holding the editor template, the status block and, under
 `commit.verbose`, a scissors line with the whole diff) to the message git will
 actually record. Only the authoring path (`--stdin`) calls it: a `--range` walk
-reads messages git has already cleaned, and running it there would swallow a
-genuinely empty message and any body line starting with `#`.
+reads messages git has already cleaned (all but the closing newline git records
+them with, which `gitsource` strips — DESIGN §2.1), and running it there would
+swallow a genuinely empty message and any body line starting with `#`.
 `internal/cleanup/cleanup.go: Apply`
 
 **cleanup mode** — *which* cleanup, of git's five: `verbatim` (none),

@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index cd1ada0..935266d 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -452,7 +452,7 @@ func parseLog(out []byte) ([]RawCommit, error) {
+ 			Author:  f[1],
+ 			Email:   f[2],
+ 			Parents: parents,
+-			Message: strings.TrimSuffix(f[4], "\n"),
++			Message: strings.TrimRight(f[4], "\n"),
+ 		})
+ 	}
+ 	return commits, nil

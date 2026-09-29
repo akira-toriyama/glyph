@@ -21,14 +21,19 @@ import (
 
 // RawCommit is one commit as git reports it, before any parsing: the fields
 // the range assembler needs to decide participation (author, parent count) and
-// to parse (the verbatim message).
+// to parse (the message).
 type RawCommit struct {
 	SHA     string
 	Author  string // author name (%an) — what bot/automation matching runs on
 	Email   string // author email (%ae) — the one identity git holds; a GitHub noreply address names a login
 	Login   string // GitHub login; always "" from git (github.Commit fills it from the API) — mirrored so the two convert
 	Parents int    // parent count; >= 2 marks a merge commit
-	Message string // full raw message (%B), verbatim
+	// Message is the message as git recorded it (%B) minus the one closing
+	// newline git records a cleaned message with — the shape cleanup.Apply hands
+	// the authoring path, so the hook and every history reader judge one text
+	// (DESIGN §2.1). Nothing else is trimmed: a verbatim message keeps its own
+	// trailing blank lines.
+	Message string
 }
 
 // logFormat renders one record per commit: SHA, author name, author email,
@@ -447,7 +452,7 @@ func parseLog(out []byte) ([]RawCommit, error) {
 			Author:  f[1],
 			Email:   f[2],
 			Parents: parents,
-			Message: f[4],
+			Message: strings.TrimSuffix(f[4], "\n"),
 		})
 	}
 	return commits, nil
