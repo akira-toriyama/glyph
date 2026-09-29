@@ -332,6 +332,13 @@ func getAll[T any](ctx context.Context, c *Client, u string) ([]T, error) {
 // get performs one GET via send, decodes the 2xx body into into, and returns
 // the next-page URL from the Link header ("" when there is none) — admitted
 // only when it addresses the client's own origin, see nextPage.
+//
+// Every Link line is read, joined the way RFC 9110 §5.3 combines a
+// list-valued field. Header.Get returns the first line only, so a server that
+// put rel="next" on a second line ended the walk at page 1 with no error —
+// PullCommits returned 1 of 2 commits (t-esm5,
+// TestPullCommitsFollowsALinkHeaderSplitAcrossLines). api.github.com sends
+// one line (measured 2026-09-29); the join costs nothing when it does.
 func (c *Client) get(ctx context.Context, u string, into any) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -344,7 +351,7 @@ func (c *Client) get(ctx context.Context, u string, into any) (string, error) {
 	if err := json.Unmarshal(body, into); err != nil {
 		return "", core.APIf("github: decoding %s: %v", req.URL.Path, err)
 	}
-	return c.nextPage(header.Get("Link"))
+	return c.nextPage(strings.Join(header.Values("Link"), ", "))
 }
 
 // nextPage reads the next-page URL out of a response's Link header and admits

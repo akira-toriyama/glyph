@@ -158,6 +158,40 @@ func TestPullCommitsPaginates(t *testing.T) {
 	}
 }
 
+// TestPullCommitsFollowsALinkHeaderSplitAcrossLines: HTTP lets a server send
+// one list-valued field as several header lines (RFC 9110 §5.3), and
+// Header.Get reads only the first. With rel="next" on the second line the walk
+// stopped at page 1 with no error — PullCommits returned 1 of 2 commits on the
+// unfixed source (t-esm5). api.github.com sends one line carrying every rel
+// (measured 2026-09-29), so this is the shape a proxy or an Enterprise host
+// may produce, not today's.
+func TestPullCommitsFollowsALinkHeaderSplitAcrossLines(t *testing.T) {
+	var srvURL string
+	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("page") {
+		case "", "1":
+			w.Header().Add("Link", fmt.Sprintf(`<%s/x?page=2>; rel="last"`, srvURL))
+			w.Header().Add("Link", fmt.Sprintf(`<%s/x?page=2>; rel="next"`, srvURL))
+			fmt.Fprint(w, `[{"sha":"a","commit":{"message":"m1","author":{"name":"x"}}}]`)
+		case "2":
+			w.Header().Add("Link", fmt.Sprintf(`<%s/x?page=1>; rel="first"`, srvURL))
+			w.Header().Add("Link", fmt.Sprintf(`<%s/x?page=1>; rel="prev"`, srvURL))
+			fmt.Fprint(w, `[{"sha":"b","commit":{"message":"m2","author":{"name":"y"}}}]`)
+		default:
+			t.Errorf("unexpected page %q", r.URL.Query().Get("page"))
+		}
+	})
+	srvURL = c.baseURL
+
+	commits, err := c.PullCommits(context.Background(), "o", "r", 1)
+	if err != nil {
+		t.Fatalf("PullCommits: %v", err)
+	}
+	if len(commits) != 2 || commits[0].SHA != "a" || commits[1].SHA != "b" {
+		t.Fatalf("pagination = %+v, want commits a then b — rel=\"next\" sat on the second Link line", commits)
+	}
+}
+
 // TestSendsAuthAndHeaders asserts a non-empty token becomes a Bearer credential
 // and the REST version / Accept / User-Agent headers are set on every request.
 func TestSendsAuthAndHeaders(t *testing.T) {
