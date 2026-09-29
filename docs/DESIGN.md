@@ -1269,17 +1269,31 @@ is the single line's residue and is deleted with a notice on the first
 packages run (a hand region it carried goes with it — the migration is the
 one moment to move that prose, and the notice says so); with a root package
 declared it is that package's draft and simply converges. The write order is
-§4's write-first, extended: every line's upsert lands before any line's strays
-are converged, so a write that fails on the second line leaves the first
-line's notes standing and exits 4 — the next run heals it. `--footer-file`
-appends to every draft (one install block per repository is what every caller
-passes today; a per-package footer is a knob nobody has asked for and is
-recorded here so its absence is a decision). `checkReleaseBody` sizes each
-draft on its own. GitHub's **Latest** badge is one per repository and is
-assigned when a human *publishes*, by creation date unless the publisher says
-otherwise; glyph writes drafts, which cannot be latest, so it never sets
-`make_latest` and the badge lands on whichever line was published last — the
-shape google-cloud-go's releases page has lived with for years. Not a knob.
+§4's write-first, extended: every line's upsert lands before any draft is
+deleted, so a write that fails on the second line leaves the first line's
+notes standing and exits 4 — the next run heals it. The deletes after the
+upserts are of two kinds, and §4's two severities go with them per line. A
+line that folds to none with `draft_on_none` off has one action, deleting its
+residual drafts, so a delete that will not go fails the run (4) exactly as the
+single line's none verdict does, whatever its siblings wrote; the strays
+beside a draft a line wrote are bookkeeping after that write and stay a
+warning. The residuals go first, then the strays; the bare residue is a stray
+when any line wrote a draft and the whole action when none did. The first cut
+sent every delete through the lenient pass as soon as one line had written, so
+the same line, verdict and failing `DELETE` exited 4 when every line was none
+and 0 beside a moving sibling, the verdict reporting `delete` over a draft
+still standing (t-xz1z; `TestReleasePackagesNoneDeleteFailureStillFailsLoud`
+fails on that source, and mutation row
+`release-packages-none-lines-absorb-a-failed-delete-too.patch` restores it).
+`--footer-file` appends to every draft (one install block per repository is
+what every caller passes today; a per-package footer is a knob nobody has
+asked for and is recorded here so its absence is a decision).
+`checkReleaseBody` sizes each draft on its own. GitHub's **Latest** badge is
+one per repository and is assigned when a human *publishes*, by creation date
+unless the publisher says otherwise; glyph writes drafts, which cannot be
+latest, so it never sets `make_latest` and the badge lands on whichever line
+was published last — the shape google-cloud-go's releases page has lived with
+for years. Not a knob.
 **Measured** 2026-09-10 on glyph-monorepo-test: `releases/latest` was 404
 with two drafts standing, `haiku/v0.1.0` after haiku was published,
 `curry/v0.0.1` after curry was — the last publish, whichever line. A tag

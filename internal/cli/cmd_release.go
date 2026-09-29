@@ -376,7 +376,8 @@ func staleReleases(ds []draftplan.Draft) []github.Release {
 //
 // releaseNone deliberately does NOT use this: on a none verdict the delete is
 // the entire action, so absorbing its failure would mean the run did nothing
-// and reported fine.
+// and reported fine. Neither does releaseLines for a line that folds to none,
+// whatever that line's siblings wrote.
 func convergeStrays(ctx context.Context, gh *github.Client, owner, repo string, stale []github.Release) error {
 	for _, s := range stale {
 		gone, derr := gh.DeleteRelease(ctx, owner, repo, s.ID)

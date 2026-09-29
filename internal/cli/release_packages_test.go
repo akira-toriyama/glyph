@@ -172,7 +172,7 @@ func TestReleasePackagesUpdatesEachLinesOwnDraft(t *testing.T) {
 
 // TestReleasePackagesNoneLineConvergesOnlyItsOwnDraft: a line that folds to
 // none deletes ITS residual draft after the moving line's upsert — write
-// first, then strays — and a draft on a third, undeclared line is nobody's
+// first, then deletes — and a draft on a third, undeclared line is nobody's
 // stray.
 func TestReleasePackagesNoneLineConvergesOnlyItsOwnDraft(t *testing.T) {
 	dir, _ := packagesRepo(t)
@@ -306,6 +306,122 @@ func TestReleasePackagesSecondWriteFailureLeavesTheFirst(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "1 line(s) were written before this failure and stand") {
 		t.Fatalf("the failure must say what stands:\n%s", stderr)
+	}
+}
+
+// deleteFailureServer serves the releases surface with every DELETE answered
+// 503 (Retry-After 0, so the retries are immediate) and records every write
+// in ORDER — the upsert-first property the delete tests below lean on.
+func deleteFailureServer(t *testing.T, walk map[string]string, releases string, seq *[]string) *httptest.Server {
+	t.Helper()
+	var writes []apiWrite
+	inner := releaseHandler(t, walk, releases, &writes)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			*seq = append(*seq, r.Method+" "+r.URL.Path)
+		}
+		if r.Method == http.MethodDelete {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprint(w, `{"message":"Service Unavailable"}`)
+			return
+		}
+		inner(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// haikuMoves lands a ^ under haiku/ alone (haiku v0.1.0 → v0.2.0, curry none);
+// linesQuiet lands a shared-only = (every line none).
+func haikuMoves(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	sha := touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
+	return map[string]string{commitPullsPath(sha): `[]`}
+}
+
+func linesQuiet(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	sha := touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
+	return map[string]string{commitPullsPath(sha): `[]`}
+}
+
+// TestReleasePackagesNoneDeleteFailureStillFailsLoud is the packages twin of
+// TestReleaseNoneDeleteFailureStillFailsLoud (t-xz1z): for a line that folds
+// to none with draft_on_none off, deleting its residual draft is the line's
+// whole action, so a delete that will not go fails the run (4) — whatever the
+// line's siblings did. Measured before the split: the same line, the same none
+// verdict and the same failing DELETE exited 4 when every line was none and 0
+// when a sibling line had written a draft, because the residual then rode
+// convergeStrays' leniency; the verdict reported curry's action as delete with
+// the draft still standing. The bare residue follows the run: with no draft
+// written, its delete is the whole action too.
+func TestReleasePackagesNoneDeleteFailureStillFailsLoud(t *testing.T) {
+	for name, tc := range map[string]struct {
+		walk     func(*testing.T, string) map[string]string
+		releases string
+		upserts  int
+	}{
+		"a none line beside a sibling's draft":         {haikuMoves, `[` + draftJSON(51, "curry/v0.1.1") + `]`, 1},
+		"a none line when every line is none":          {linesQuiet, `[` + draftJSON(51, "curry/v0.1.1") + `]`, 0},
+		"the bare residue when no line writes a draft": {linesQuiet, `[` + draftJSON(61, "v0.9.0") + `]`, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, _ := packagesRepo(t)
+			walk := tc.walk(t, dir)
+			var seq []string
+			usePR(t, deleteFailureServer(t, walk, tc.releases, &seq))
+			t.Chdir(dir)
+
+			code, _, stderr := runGlyph(t, "release")
+			if code != 4 {
+				t.Fatalf("a residual delete that would not go exited %d, want 4 — the delete is its line's "+
+					"entire action, and a sibling's landed draft is no write of that line's to be lenient "+
+					"about\nstderr: %s", code, stderr)
+			}
+			if len(seq) <= tc.upserts || !strings.HasPrefix(seq[tc.upserts], "DELETE ") {
+				t.Fatalf("write sequence = %v, want %d upsert(s) and then the residual's DELETE", seq, tc.upserts)
+			}
+			for _, w := range seq[:tc.upserts] {
+				if !strings.HasPrefix(w, "POST ") {
+					t.Fatalf("write sequence = %v, want every upsert before any delete", seq)
+				}
+			}
+		})
+	}
+}
+
+// TestReleasePackagesStrayDeleteFailureKeepsTheNotes is the other half of the
+// split above, the packages twin of TestReleaseStrayDeleteFailureKeepsTheNotes:
+// a draft left over beside a line's landed draft — the line's second draft, or
+// the bare residue once any line has written — is convergence bookkeeping, and
+// one that will not go is a warning on a green run.
+func TestReleasePackagesStrayDeleteFailureKeepsTheNotes(t *testing.T) {
+	for name, tc := range map[string]struct {
+		releases string
+		id       string
+	}{
+		"a moving line's second draft":           {`[` + draftJSON(53, "haiku/v0.2.0") + `,` + draftJSON(52, "haiku/v0.1.5") + `]`, "release id 52"},
+		"the bare residue beside a line's draft": {`[` + draftJSON(61, "v0.9.0") + `]`, "release id 61"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, _ := packagesRepo(t)
+			walk := haikuMoves(t, dir)
+			var seq []string
+			usePR(t, deleteFailureServer(t, walk, tc.releases, &seq))
+			t.Chdir(dir)
+
+			code, stdout, stderr := runGlyph(t, "release")
+			if code != 0 {
+				t.Fatalf("a stray glyph could not delete exited %d, want 0 — haiku's notes landed\nstderr: %s", code, stderr)
+			}
+			if stdout == "" || len(seq) == 0 || strings.HasPrefix(seq[0], "DELETE ") {
+				t.Fatalf("stdout = %q, write sequence = %v; haiku's draft must be written first and reported", stdout, seq)
+			}
+			if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, tc.id) {
+				t.Errorf("the warning must name the draft that would not go (%s):\n%s", tc.id, stderr)
+			}
+		})
 	}
 }
 

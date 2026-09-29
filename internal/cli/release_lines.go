@@ -55,9 +55,14 @@ type lineDraft struct {
 //     line that refuses (the published floor, an oversized body) stops the
 //     run with nothing written;
 //   - the write order is §4's write-first, extended: every line's upsert
-//     lands before any line's strays are converged, and a write that fails
-//     on the second line leaves the first line's notes standing and exits 4
-//     — the next run heals it;
+//     lands before any delete, and a write that fails on the second line
+//     leaves the first line's notes standing and exits 4 — the next run heals
+//     it;
+//   - a line that folds to none (draft_on_none off) has its residual drafts'
+//     deletes as its whole action, so one that will not go exits 4 whatever
+//     its siblings wrote — releaseNone's rule, per line; the strays of the
+//     lines that write a draft keep convergeStrays' leniency. Deletes run
+//     after the upserts, the residuals first;
 //   - a tag that selects one line converges that line ALONE: the other
 //     lines' drafts are not this run's to touch;
 //   - the bare vX.Y.Z draft of a repository that declares packages but no
@@ -100,7 +105,9 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 
 	var verdicts []packageRelease
 	var drafts []lineDraft
-	var stale []github.Release
+	// residual: the drafts whose delete is a none line's whole action, loud.
+	// stale: the strays beside a draft a line writes, lenient once it landed.
+	var residual, stale []github.Release
 	var reasons []string
 	moving := 0
 	for _, lw := range w.Lines {
@@ -117,7 +124,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 		if dec.Level == bump.LevelNone && !cfg.Note.DraftOnNone {
 			plan := draftplan.PlanDraft(lw.Line, dec.Level, "", false, drafted)
 			pv.Action, pv.Reason = string(plan.Action), noneReason
-			stale = append(stale, staleReleases(plan.Stale)...)
+			residual = append(residual, staleReleases(plan.Stale)...)
 			verdicts = append(verdicts, pv)
 			reasons = append(reasons, lw.Package.Path+": "+pv.Reason)
 			continue
@@ -178,7 +185,13 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 			noticef("the bare draft %s (release id %d) is the single line's residue — this repository declares packages and no root package, so no line will converge it again; it is deleted, and a hand region it carried goes with it (move that prose into the line's own draft, above the marker)", r.TagName, r.ID)
 		}
 	}
-	stale = append(stale, residue...)
+	// The residue is no line's, so its delete is the run's: a stray of the
+	// upserts when any line writes a draft, the whole action when none does.
+	if len(drafts) == 0 {
+		residual = append(residual, residue...)
+	} else {
+		stale = append(stale, residue...)
+	}
 
 	// The target resolves before the dry-run fork (Q4: only the writes are
 	// skipped), once for every draft — one checkout, one HEAD.
@@ -205,8 +218,8 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 		for _, d := range drafts {
 			noticef("dry run: the upsert would %s the rolling draft %s at %s", d.plan.Action, d.params.TagName, target)
 		}
-		if len(stale) > 0 {
-			noticef("dry run: %d stale draft(s) to delete after the upserts", len(stale))
+		if n := len(residual) + len(stale); n > 0 {
+			noticef("dry run: %d stale draft(s) to delete after the upserts", n)
 		}
 		if releaseJSON {
 			printCompact(result)
@@ -223,9 +236,9 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 		return finish()
 	}
 
-	// Every line's upsert lands before any stray goes: a failure here leaves
-	// the lines already written standing and exits 4 — nothing was destroyed,
-	// and the next run heals the rest.
+	// Every line's upsert lands before any draft is deleted: a failure here
+	// leaves the lines already written standing and exits 4 — nothing was
+	// destroyed, and the next run heals the rest.
 	urls := make([]string, 0, len(drafts))
 	for i, d := range drafts {
 		var rel github.Release
@@ -249,18 +262,20 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 			}
 		}
 	}
-	if len(drafts) == 0 {
-		// No line had a draft to write, so the deletes are the whole action —
-		// loud, as releaseNone's are: absorbing a failure here would mean the
-		// run did nothing and reported fine.
-		for _, s := range stale {
-			gone, derr := gh.DeleteRelease(ctx, owner, repoName, s.ID)
-			if derr != nil {
-				return derr
-			}
-			noticef("no release is due — %s the residual draft %s (release id %d)", discardedOrGone(gone), s.TagName, s.ID)
+	// A none line's residual deletes are loud, as releaseNone's are: the
+	// delete is that line's entire action, and absorbing its failure would
+	// mean the line did nothing and the run reported fine — a sibling's
+	// landed draft is no write of this line's to be lenient about. Routed
+	// through convergeStrays whenever a sibling had written, the same line,
+	// verdict and failing DELETE exited 0 or 4 on the siblings alone (t-xz1z).
+	for _, s := range residual {
+		gone, derr := gh.DeleteRelease(ctx, owner, repoName, s.ID)
+		if derr != nil {
+			return derr
 		}
-	} else if cerr := convergeStrays(ctx, gh, owner, repoName, stale); cerr != nil {
+		noticef("no release is due on its line — %s the residual draft %s (release id %d)", discardedOrGone(gone), s.TagName, s.ID)
+	}
+	if cerr := convergeStrays(ctx, gh, owner, repoName, stale); cerr != nil {
 		return cerr
 	}
 
