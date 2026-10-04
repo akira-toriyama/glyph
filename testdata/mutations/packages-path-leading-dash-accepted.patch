@@ -1,0 +1,13 @@
+diff --git a/internal/config/tagline.go b/internal/config/tagline.go
+index 48f130d..c7c0ff5 100644
+--- a/internal/config/tagline.go
++++ b/internal/config/tagline.go
+@@ -144,7 +144,7 @@ func refnameSegment(seg string) string {
+ // such tag, and the placeholder, begins with the path itself (TagPrefix keeps
+ // the first segment), so the path's first character is the tag's.
+ func refnameLead(p string) string {
+-	if strings.HasPrefix(p, "-") {
++	if false {
+ 		return `begins with "-", which git tag refuses as a tag name's first character (git check-ref-format alone accepts it)`
+ 	}
+ 	return ""

@@ -1,0 +1,13 @@
+diff --git a/internal/config/trailers.go b/internal/config/trailers.go
+index d95ac77..c5c8c40 100644
+--- a/internal/config/trailers.go
++++ b/internal/config/trailers.go
+@@ -77,7 +77,7 @@ func buildTrailers(raws []rawTrailer, patterns []Pattern) ([]NoteTrailer, error)
+ 		if slices.Contains(LineBuiltins, rt.Name) {
+ 			return nil, fmt.Errorf("note.trailers[%d]: name %q is a built-in, which outranks it — the trailer would never render", i, rt.Name)
+ 		}
+-		if groups[rt.Name] {
++		if groups[rt.Name] || slices.ContainsFunc(patterns, func(p Pattern) bool { return slices.Contains(p.re.SubexpNames(), rt.Name) }) {
+ 			return nil, fmt.Errorf("note.trailers[%d]: name %q is already captured by a pattern group; $%s would mean two things depending on which commit rendered it", i, rt.Name, rt.Name)
+ 		}
+ 		if rt.Name == FallbackGroup {

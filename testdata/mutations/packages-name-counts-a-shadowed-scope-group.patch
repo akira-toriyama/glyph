@@ -1,0 +1,13 @@
+diff --git a/internal/config/scopeword.go b/internal/config/scopeword.go
+index 66c402b..9a911a9 100644
+--- a/internal/config/scopeword.go
++++ b/internal/config/scopeword.go
+@@ -68,7 +68,7 @@ func lastScopeGroup(re *syntax.Regexp) *syntax.Regexp {
+ 	var last *syntax.Regexp
+ 	var walk func(*syntax.Regexp)
+ 	walk = func(r *syntax.Regexp) {
+-		if r.Op == syntax.OpCapture && r.Name == ScopeGroup && (last == nil || r.Cap > last.Cap) {
++		if r.Op == syntax.OpCapture && r.Name == ScopeGroup && (last == nil || r.Cap < last.Cap) {
+ 			last = r
+ 		}
+ 		for _, sub := range r.Sub {

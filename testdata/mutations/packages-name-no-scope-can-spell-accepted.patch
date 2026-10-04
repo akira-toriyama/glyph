@@ -1,0 +1,13 @@
+diff --git a/internal/config/scopeword.go b/internal/config/scopeword.go
+index 66c402b..6afbb4e 100644
+--- a/internal/config/scopeword.go
++++ b/internal/config/scopeword.go
+@@ -90,7 +90,7 @@ func lastScopeGroup(re *syntax.Regexp) *syntax.Regexp {
+ // from being captured whole. The loader refuses what no message can spell
+ // and claims nothing more.
+ func checkScopeWord(p Package, explicit bool, spellers []scopeSpeller) error {
+-	if len(spellers) == 0 {
++	if len(spellers) >= 0 {
+ 		return nil
+ 	}
+ 	for _, s := range spellers {

@@ -43,12 +43,19 @@ type NoteTrailer struct {
 // order. It refuses rather than repairs, on the same four grounds the rest of
 // this file refuses: an empty or malformed token, a name outside note.line's
 // own placeholder alphabet, a duplicate name, and a name that already means
-// something else — a built-in or a pattern group. The last is the one that
-// matters: validateLineNames computes a union, and a union cannot be allowed
-// to grow two meanings for one name.
+// something else — a built-in, a group some commit binds, or FallbackGroup.
+// The last two are the ones that matter: validateLineNames computes a union,
+// and a union cannot be allowed to grow two meanings for one name. They read
+// the set validateLineNames reads (boundGroupNames), so a group only a skip
+// or unlandable pattern captures, which binds nothing, leaves the name free,
+// and the fallback's name is taken whatever the patterns call their groups:
+// a trailer outranks a group at render, so one named `subject` replaced every
+// fallback line's text with its own value — empty on a bot commit, at exit 0
+// (measured, t-f2cb).
 func buildTrailers(raws []rawTrailer, patterns []Pattern) ([]NoteTrailer, error) {
 	out := make([]NoteTrailer, 0, len(raws))
 	seen := make(map[string]bool, len(raws))
+	groups := boundGroupNames(patterns)
 
 	for i, rt := range raws {
 		token := strings.TrimSpace(rt.Token)
@@ -70,12 +77,11 @@ func buildTrailers(raws []rawTrailer, patterns []Pattern) ([]NoteTrailer, error)
 		if slices.Contains(LineBuiltins, rt.Name) {
 			return nil, fmt.Errorf("note.trailers[%d]: name %q is a built-in, which outranks it — the trailer would never render", i, rt.Name)
 		}
-		for _, p := range patterns {
-			for _, g := range p.re.SubexpNames() {
-				if g != "" && g == rt.Name {
-					return nil, fmt.Errorf("note.trailers[%d]: name %q is already captured by a pattern group; $%s would mean two things depending on which commit rendered it", i, rt.Name, rt.Name)
-				}
-			}
+		if groups[rt.Name] {
+			return nil, fmt.Errorf("note.trailers[%d]: name %q is already captured by a pattern group; $%s would mean two things depending on which commit rendered it", i, rt.Name, rt.Name)
+		}
+		if rt.Name == FallbackGroup {
+			return nil, fmt.Errorf("note.trailers[%d]: name %q is the one the raw-line fallback binds for a commit no pattern claims, and a trailer outranks it — $%s would mean two things depending on which commit rendered it, and every such line would render the trailer, empty where none is written, in place of its text", i, rt.Name, rt.Name)
 		}
 
 		seen[rt.Name] = true

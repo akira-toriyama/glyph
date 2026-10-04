@@ -456,3 +456,49 @@ title = 'Dependencies'
 		t.Errorf("Dependencies = %q, want %q: the raw-line fallback in the author section", got["Dependencies"], want)
 	}
 }
+
+// TestGroupSigilsFallbackBindsSubjectUnderAnyGrammar: the raw-line fallback
+// binds $subject whatever the patterns call their groups (DESIGN §3), so a
+// file whose subject group is `title` renders its bot lines by citing both —
+// each line fills whichever name its commit binds. Before the loader counted
+// the fallback's name, this file did not load, and the one it could write,
+// `- $title`, rendered the bot line with no text.
+func TestGroupSigilsFallbackBindsSubjectUnderAnyGrammar(t *testing.T) {
+	cfg, err := config.Load([]byte(`schema = 1
+exclude_authors = ['dependabot[bot]']
+
+[[patterns]]
+pattern = '^(?P<title>:[a-z0-9_]+:(?P<semver_sigil>[=~^!%]) .+)'
+
+[note]
+line = '- $title$subject'
+
+[[note.sections]]
+semver = 'patch'
+title = 'Fixes'
+
+[[note.sections]]
+author = 'dependabot[bot]'
+title = 'Dependencies'
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	sections, err := GroupSigils([]SigilCommit{
+		{SHA: "aaaaaaaaaaaa", Author: "akira", Message: ":bug:~ fix b"},
+		{SHA: "bbbbbbbbbbbb", Author: "dependabot[bot]", Message: "Bump x from 1 to 2"},
+	}, cfg)
+	if err != nil {
+		t.Fatalf("GroupSigils: %v", err)
+	}
+	got := map[string][]string{}
+	for _, s := range sections {
+		got[s.Title] = s.Lines
+	}
+	if want := "- :bug:~ fix b"; strings.Join(got["Fixes"], "|") != want {
+		t.Errorf("Fixes = %q, want %q", got["Fixes"], want)
+	}
+	if want := "- Bump x from 1 to 2"; strings.Join(got["Dependencies"], "|") != want {
+		t.Errorf("Dependencies = %q, want %q: the fallback binds the bot's first line as $subject", got["Dependencies"], want)
+	}
+}

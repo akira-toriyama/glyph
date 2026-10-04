@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v4/internal/core"
 )
 
 // TestBumpMinor: the fold over a mixed range takes the max — stdout is the
@@ -172,6 +174,30 @@ func TestBumpCurrentInvalidIsUsage(t *testing.T) {
 	t.Chdir(dir)
 	if code, _, _ := runGlyph(t, "bump", "--range", base+"..HEAD", "--current", "garbage"); code != 2 {
 		t.Fatalf("bump --current garbage should exit 2")
+	}
+}
+
+// TestBumpVersionPastTheCapIsNoVersion: a field past 2^31−1 is no version
+// glyph reads. As --current it is the caller's bad input (exit 2); as a tag it
+// is no version on its line, so the walk base is the highest tag glyph can
+// step from. Measured before the cap (2026-09-29): both printed
+// v-9223372036854775808.0.0 at exit 0 over a `!`.
+func TestBumpVersionPastTheCapIsNoVersion(t *testing.T) {
+	dir, base := testRepo(t) // tags v0.1.0
+	testCommit(t, dir, "akira-toriyama", ":boom:! drop the flag")
+	t.Chdir(dir)
+
+	for _, current := range []string{"v9223372036854775807.0.0", "v2147483648.0.0", "v1.0.2147483648"} {
+		code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD", "--current", current)
+		if code != int(core.CodeUsage) {
+			t.Fatalf("bump --current %s exited %d with stdout %q, want exactly %d\nstderr: %s", current, code, stdout, core.CodeUsage, stderr)
+		}
+	}
+	testGit(t, dir, "akira-toriyama", "tag", "v1.2.3", base)
+	testGit(t, dir, "akira-toriyama", "tag", "v9223372036854775807.0.0", base)
+	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")
+	if code != 0 || stdout != "v2.0.0\n" {
+		t.Fatalf("bump = exit %d stdout %q, want 0 / v2.0.0 — stepped from v1.2.3, the highest tag glyph can read\nstderr: %s", code, stdout, stderr)
 	}
 }
 

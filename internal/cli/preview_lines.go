@@ -251,9 +251,6 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 		body = truncateComment(preview.Render(in))
 	}
 	if previewJSON {
-		if pkgs == nil {
-			pkgs = []packagePreview{}
-		}
 		// Every scalar at its zero value, pr and pending included: none is a
 		// level word, and a scalar saying the pull moves nothing beside a
 		// packages[] whose lines move is the #219 class (t-xbk0).
