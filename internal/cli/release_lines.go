@@ -232,8 +232,11 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 		for _, d := range drafts {
 			noticef("dry run: the upsert would %s the rolling draft %s at %s", d.plan.Action, d.params.TagName, target)
 		}
-		if n := len(residual) + len(stale); n > 0 {
-			noticef("dry run: %d stale draft(s) to delete after the upserts", n)
+		if len(residual) > 0 {
+			noticef("dry run: %d residual draft(s) to delete (a delete that will not go fails the run)", len(residual))
+		}
+		if len(stale) > 0 {
+			noticef("dry run: %d stale draft(s) to delete after the upserts", len(stale))
 		}
 		for _, r := range residue {
 			noticef("dry run: the bare draft %s (release id %d) is the single line's residue — this repository declares packages and no root package, so no line will converge it again; it would be deleted, and a hand region it carried would go with it (move that prose into the line's own draft, above the marker, before a real run)", r.TagName, r.ID)

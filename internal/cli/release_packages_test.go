@@ -563,6 +563,54 @@ func TestReleasePackagesStrayDeleteFailureKeepsTheNotes(t *testing.T) {
 	}
 }
 
+// TestReleasePackagesDryRunCountsResidualAndStaleApart: the dry run names the
+// two kinds of delete with the glossary's words, because their failures differ
+// — a residual's fails the run, a stray's is a warning — and the real run
+// already calls a none line's draft residual. One "stale" count over both told
+// an all-none run, which has no upsert, of deletes "after the upserts".
+func TestReleasePackagesDryRunCountsResidualAndStaleApart(t *testing.T) {
+	for name, tc := range map[string]struct {
+		walk     func(*testing.T, string) map[string]string
+		releases string
+		want     []string
+		not      string
+	}{
+		"a none line beside a moving line's stray and the residue": {
+			haikuMoves,
+			`[` + draftJSON(53, "haiku/v0.2.0") + `,` + draftJSON(52, "haiku/v0.1.5") + `,` + draftJSON(51, "curry/v0.1.1") + `,` + draftJSON(61, "v0.9.0") + `]`,
+			[]string{"dry run: 1 residual draft(s) to delete", "dry run: 2 stale draft(s) to delete after the upserts"},
+			"",
+		},
+		"every line none": {
+			linesQuiet,
+			`[` + draftJSON(51, "curry/v0.1.1") + `,` + draftJSON(61, "v0.9.0") + `]`,
+			[]string{"dry run: 2 residual draft(s) to delete"},
+			"stale draft",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, _ := packagesRepo(t)
+			walk := tc.walk(t, dir)
+			var writes []apiWrite
+			usePR(t, releaseServer(t, walk, tc.releases, &writes))
+			t.Chdir(dir)
+
+			_, _, stderr := runGlyph(t, "release", "--dry-run")
+			if len(writes) != 0 {
+				t.Fatalf("a dry run wrote: %+v", writes)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(stderr, want) {
+					t.Errorf("the dry run must count the deletes by kind (%q):\n%s", want, stderr)
+				}
+			}
+			if tc.not != "" && strings.Contains(stderr, tc.not) {
+				t.Errorf("no line writes a draft, so nothing is a stray (%q):\n%s", tc.not, stderr)
+			}
+		})
+	}
+}
+
 // TestReleasePackagesFailedResidualStrandsNoOtherDelete pins how the two
 // delete passes meet (t-xz1z): a none line's residual that will not go fails
 // the run (4), but only once every other delete was tried — another line's
