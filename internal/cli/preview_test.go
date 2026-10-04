@@ -53,12 +53,16 @@ func TestPreviewUntaggedSkipsTheWalk(t *testing.T) {
 	if !strings.Contains(stdout, "the first release here would be **v0.1.0**") {
 		t.Errorf("untagged headline missing:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "no v* release tag yet") {
+	// Both sentences state the fact of the history the base is read from, not
+	// of the repository: a v* tag on another branch is no release of this one,
+	// and "this repository has no v* release tag" beside a `git tag -l` that
+	// lists one is the sentence t-gt9n forbids (DESIGN §4).
+	if !strings.Contains(stdout, "The base branch holds no v* release tag yet") {
 		t.Errorf("body does not explain the skipped fold:\n%s", stdout)
 	}
 	// The skipped walk must be named, not silent — the house rule is that an
 	// input glyph declines to read is a fact the log states.
-	if !strings.Contains(stderr, "no v* release tag here") {
+	if !strings.Contains(stderr, "no v* release tag in HEAD's history") {
 		t.Errorf("skipped walk not warned about: %s", stderr)
 	}
 }
@@ -307,7 +311,7 @@ func TestPreviewZeroVersionTagIsTagged(t *testing.T) {
 	if !strings.Contains(stdout, `"pending":"minor"`) {
 		t.Errorf("the pending walk must run and fold in the merged :sparkles:; got:\n%s", stdout)
 	}
-	if strings.Contains(stderr, "no v* release tag here") {
+	if strings.Contains(stderr, "no v* release tag in HEAD's history") {
 		t.Errorf("a tagged repository must not be told it has no release tag: %s", stderr)
 	}
 }

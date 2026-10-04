@@ -255,11 +255,11 @@ attaches the same way, per line: iterate the `packages` output
 verdict says packages.
 
 Adopting on a repository with deep history? Cut a version tag at the commit
-where the convention starts — the walk baselines at the highest `v*` tag, and
-with no tag at all a long history is refused past a walk cap (fail-loud, one
-API round-trip per commit is the cost it refuses; the error names this exact
-remedy) rather than walked unbounded. A young repository needs no tag: the
-first release walks the whole history.
+where the convention starts — the walk baselines at the highest `v*` tag the
+released branch holds, and with no tag at all a long history is refused past a
+walk cap (fail-loud, one API round-trip per commit is the cost it refuses; the
+error names this exact remedy) rather than walked unbounded. A young repository
+needs no tag: the first release walks the whole history.
 
 ## Commit format
 
@@ -271,9 +271,10 @@ Your `glyph.toml` decides. The shipped presets give you a starting grammar:
 ```
 
 The sigil is the version signal, and the only thing glyph interprets:
-`=` none / `~` patch / `^` minor / `!` major / `%` promote. The prefix (a
-gemoji, a conventional type, anything your pattern accepts) is for the reader
-and never decides the version. Examples under the gemoji preset:
+`=` none / `~` patch / `^` minor / `!` major / `%` promote. Under the shipped
+presets the prefix (a gemoji, a conventional type) is for the reader and never
+decides the version; a pattern you write may give one a fixed sigil, and then
+owns what it folds. Examples under the gemoji preset:
 
 ```
 :sparkles:(ui)^ add a right-click window menu            → minor
@@ -304,26 +305,34 @@ the *step*, not the meaning of the commit. One consequence worth expecting: in
 Under the conventional preset the sigil sits before the colon, so
 Conventional Commits' own `feat!:` reads as the major sigil unchanged
 (`feat^:` minors, `fix~:` patches, `chore=:` moves nothing, `feat%:` promotes)
-— and a sigil-less `feat:` is a violation: writing the version signal down is
-the point.
+— a sigil-less `feat:` is a violation, and a `BREAKING CHANGE:` footer moves
+nothing under either preset (`fix~:` with one is still a patch), because the
+sigil is the only signal: writing it down, in the subject, is the point. Plain
+Conventional Commits — the type and the footer deciding the version — ships as
+no preset; DESIGN §2 records why.
 
 Everything is the pattern file's to change: `[[patterns]]` are ordered RE2
 regexes (first match wins) over the whole message, the named group
 `semver_sigil` carries the signal, a pattern-level `semver_sigil` key
 supplies one for messages that carry none (the presets make a raw
 `git revert` a patch), `skip = true` drops a matching commit from every
-check (merge commits, the `fixup!`/`squash!` autosquash artifacts),
-`warn = '…'` keeps a match
+check (the presets skip merge commits), `warn = '…'` keeps a match
 legal but says so at every gate — for a pattern you accept and would rather
 not see — and `unlandable = '…'` marks a message that may be written but must
 not land: the commit-msg hook lets it through with that reason as a warning,
 and every gate that judges an existing commit (`lint --range`, a push to the
 default branch, `lint --pr`, the release walk) refuses it. It exists for
-git's own `amend!` subject: `rebase --autosquash` turns it into a
+git's own autosquash subjects. `rebase --autosquash` turns an `amend!` into a
 replacement of its target's message, so skipping it would fold the version
-the history had before the rewrite. The presets claim an `amend!` whose body
+the history had before the rewrite; the presets claim an `amend!` whose body
 opens the way their first pattern's subject does and refuse any other at the
-hook as well — the body is what lands. `exclude_authors` keeps bots
+hook as well — the body is what lands. A `fixup!` or `squash!` has no sigil
+of its own until autosquash folds it into its target, so a skip never reads
+its files — under `[[packages]]` a line only it touches stays at none — and
+drops for good one autosquash leaves as it is, its target outside the
+commits being rebased; the presets claim both, and their reason names the
+two ways out: autosquash, or a reword when autosquash leaves the commit as it
+is. `exclude_authors` keeps bots
 out of lint and the fold; whether they appear in the notes is
 `[[note.sections]]`'s decision alone, and under `[[packages]]` the files a
 bot commit touches decide which line's notes.
@@ -397,8 +406,9 @@ request each.
 `--since-tag=haiku/v0.1.0` or `--since-tag=below:haiku/v0.2.0` selects haiku
 alone (what a tag-time notes step needs; a release candidate on the line,
 `haiku/v0.2.0-rc.1`, selects it the same way and steps from its highest plain
-tag), a bare `--since-tag` walks every line from its own highest tag, and
-`--range` attributes from local git with every commit pending on every line.
+tag), a bare `--since-tag` walks every line from its own highest tag the
+released branch holds, and `--range` attributes from local git with every
+commit pending on every line.
 A package with no tag yet is baselined
 by cutting `<path>/v0.0.0` at the commit before its first change. On stdout
 `bump` prints the next **tag** of every line that moves, one per line
@@ -446,6 +456,12 @@ write refused off the default branch · `130` interrupted.
 
 The integers are a frozen machine API — CI gates branch on the exact value, so
 assert the code, never truthiness (`if glyph …` cannot tell `3` from `2`).
+
+glyph's stderr has a shape too — `::` workflow annotations, then, on a failure
+that is not silent, one JSON error envelope, written last — so read the
+envelope the way the *error envelope* entry in
+[`docs/glossary.md`](docs/glossary.md#6-exit-codes-and-streams) says, never by
+handing stderr whole to `jq`.
 
 ## Working on glyph
 
