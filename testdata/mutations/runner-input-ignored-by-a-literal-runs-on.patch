@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/pr-verdict.yml b/.github/workflows/pr-verdict.yml
+index 0167a0c..67c12b1 100644
+--- a/.github/workflows/pr-verdict.yml
++++ b/.github/workflows/pr-verdict.yml
+@@ -190,7 +190,7 @@ jobs:
+     if: github.event.pull_request.head.repo.full_name == github.repository
+     # The fallback is for a PASSED empty string — a caller forwarding an unset
+     # repository variable — which would otherwise leave the job with no runner.
+-    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
++    runs-on: ubuntu-latest
+     # Two API-backed walks and one comment write; bound it so a hung step
+     # can't idle a runner for hours.
+     timeout-minutes: 10
