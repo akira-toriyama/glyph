@@ -19,11 +19,16 @@ import (
 	"time"
 )
 
-// The invocation GitHub documents (workflow syntax,
-// jobs.<job_id>.steps[*].shell) for a step with no shell: key: `bash -e {0}`.
-// errexit is on before the script's first line, so a `set` that merely omits
-// -e leaves it on — only `set +e` turns it off.
-var unspecifiedShell = []string{"-e"}
+// The invocations GitHub documents (workflow syntax,
+// jobs.<job_id>.steps[*].shell; a composite step's shell: takes the same
+// table): `shell: bash` runs `bash --noprofile --norc -eo pipefail {0}`, an
+// unspecified shell `bash -e {0}`. Both turn errexit on before the script's
+// first line, so a `set` that merely omits -e leaves it on — only `set +e`
+// turns it off.
+var (
+	bashShell        = []string{"--noprofile", "--norc", "-eo", "pipefail"}
+	unspecifiedShell = []string{"-e"}
+)
 
 // requireTool resolves a tool a harness runs for real. Missing is a failure,
 // never a skip.
@@ -116,6 +121,19 @@ func recordedCalls(t *testing.T, log string) [][]string {
 		calls = append(calls, strings.Split(strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\x1f"), "\x1f"))
 	}
 	return calls
+}
+
+// readIfAny returns a file's contents, or "" when the step never wrote it.
+func readIfAny(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return ""
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }
 
 // stepShape is a steps: item as the runner sees it before running anything:

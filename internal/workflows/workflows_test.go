@@ -274,7 +274,10 @@ func TestCompositeActionIsSingleSource(t *testing.T) {
 		t.Error("install action is not `using: composite`")
 	}
 
-	// The install internals live here and only here.
+	// The install internals live here and only here. Vocabulary, deliberately:
+	// the description: scalar alone satisfies the first entry, so that each
+	// check RUNS is TestInstallActionInstallsOnlyWhatItVerified's, which
+	// executes the step.
 	for _, want := range []string{
 		"gh attestation verify",
 		"--signer-workflow akira-toriyama/glyph/.github/workflows/goreleaser.yml",
