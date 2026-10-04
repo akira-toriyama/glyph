@@ -1,135 +1,279 @@
 package workflows
 
+// lint.yml's range step ("Lint the commit range"), executed. Its run: block
+// runs under the unspecified-shell invocation inside a throwaway repository —
+// real git, so merge-base --is-ancestor answers for real, and real jq — with a
+// glyph stub that records its argv and answers a set exit code and stderr.
+// The step's env: block — which event fields feed EVENT, PR_BASE and the rest
+// — is outside the harness: it supplies each by name.
+
 import (
+	"fmt"
+	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v4/internal/testutil"
 )
 
-// lintBody returns lint.yml's executable body — the subject of every test in
-// this file. The push arm lives in one step of one reusable, so unlike the
-// sweep-style guards these read a single file on purpose.
+// lintBody returns lint.yml's executable body.
 func lintBody(t *testing.T) string {
 	t.Helper()
 	return code(repoFile(t, filepath.Join(".github", "workflows", "lint.yml")))
 }
 
-// TestLintPushArmJudgesOnlyTheDefaultBranch pins the boundary of the push arm:
-// pushes to the default branch and nothing else.
-//
-// The boundary is a decision, not a convenience. A topic branch is judged by
-// the pull_request arm as the merge candidate it becomes; a push there is
-// mid-branch — rewritable, not yet proposed for main — so a push arm that
-// linted every branch would duplicate the PR gate or annotate commits that
-// may never land, the day a caller widened its trigger. And the wrong ref
-// must REFUSE, not skip: a silent skip on an unexpected ref is the very
-// defect class the push arm was added to close (a gate that answers green
-// without judging), so the guard's failure mode has to be loud.
-func TestLintPushArmJudgesOnlyTheDefaultBranch(t *testing.T) {
-	body := lintBody(t)
-	const guard = `if [ "$PUSHED_REF" != "refs/heads/$DEFAULT_BRANCH" ]`
-	if !strings.Contains(body, guard) {
-		t.Errorf("lint.yml's push arm no longer compares the pushed ref against the default "+
-			"branch (%s missing) — a caller with a wide push trigger would now lint topic "+
-			"branches mid-branch, duplicating the PR gate on rewritable commits, fleet-wide "+
-			"at the pin", guard)
-	}
-	if !strings.Contains(body, "lints pushes to the default branch only") {
-		t.Errorf("the wrong-ref refusal no longer says what it refuses and why — the message is " +
-			"what turns a caller's trigger bug into a one-line fix instead of a silent skip")
+const (
+	lintWorkflow  = ".github/workflows/lint.yml"
+	lintRangeStep = "Lint the commit range"
+	zeroSHA       = "0000000000000000000000000000000000000000"
+)
+
+// lintRepo holds root <- main and root <- rewritten: main is the default
+// branch's tip, rewritten the commit a force push puts in its place.
+type lintRepo struct{ dir, root, main, rewritten string }
+
+func newLintRepo(t *testing.T) lintRepo {
+	t.Helper()
+	requireTool(t, "git")
+	dir := t.TempDir()
+	git := func(args ...string) string { return testutil.Git(t, dir, "fixture", args...) }
+	git("init", "-q")
+	git("commit", "-q", "--allow-empty", "-m", "root")
+	root := git("rev-parse", "HEAD")
+	git("commit", "-q", "--allow-empty", "-m", "main")
+	return lintRepo{
+		dir:       dir,
+		root:      root,
+		main:      git("rev-parse", "HEAD"),
+		rewritten: git("commit-tree", root+"^{tree}", "-p", root, "-m", "rewritten"),
 	}
 }
 
-// TestLintPushArmRefusesWhatItCannotJudgeLoudly pins the two ranges the push
-// arm cannot compute — and that each of them is a refusal, never a pass.
-//
-// An all-zeroes `before` (ref creation) has no base; a `before` that is not an
-// ancestor of `after` (force push) makes before..after hold everything EXCEPT
-// the rewritten commits, which are the ones in question. Linting either as an
-// empty range is the silent-green failure this epic exists to kill: exit 0 with
-// nothing judged. The assertion is structural — every "cannot judge" refusal
-// must be immediately followed by `exit 1` — so a mutation that downgrades one
-// refusal to a pass goes red even though the echo line survives.
-func TestLintPushArmRefusesWhatItCannotJudgeLoudly(t *testing.T) {
-	body := lintBody(t)
-	for _, want := range []string{
-		`"0000000000000000000000000000000000000000"`,
-		"git merge-base --is-ancestor",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("lint.yml's push arm no longer checks %s — the range it cannot compute "+
-				"would be linted as empty, and an empty range is a pass over work never looked at", want)
-		}
-	}
+// lintEvent is the range step's env as the runner fills it: every name set,
+// "" where the event carries no such field.
+type lintEvent struct{ event, prBase, prHead, before, after, ref string }
 
-	lines := strings.Split(body, "\n")
-	refusals := 0
-	for i, line := range lines {
-		if !strings.Contains(line, "cannot judge this push") {
-			continue
-		}
-		refusals++
-		next := ""
-		for _, l := range lines[i+1:] {
-			if strings.TrimSpace(l) != "" {
-				next = l
-				break
+// runLintRange runs the range step in repo for ev, with glyph answering
+// glyphExit and glyphStderr, and returns the run and glyph's recorded calls.
+func runLintRange(t *testing.T, repo lintRepo, ev lintEvent, glyphExit int, glyphStderr string) (stepRun, [][]string) {
+	t.Helper()
+	requireTool(t, "jq")
+	dir := t.TempDir()
+
+	// The step keeps glyph's stream in fixed /tmp/ files; each run gets its
+	// own, so concurrent runs on one host never read each other's. A path the
+	// count does not know is one the move would miss.
+	script := extractRun(t, repoFile(t, filepath.FromSlash(lintWorkflow)), lintRangeStep)
+	const tmpRefs = 8
+	if n := strings.Count(script, "/tmp/"); n != tmpRefs {
+		t.Fatalf("the range step names /tmp/ %d times, want %d — each is moved into a per-run directory "+
+			"so concurrent runs cannot read each other's files; recount, and check the new one is a "+
+			"path the move should cover", n, tmpRefs)
+	}
+	script = strings.ReplaceAll(script, "/tmp/", dir+"/")
+
+	stubs := filepath.Join(dir, "stubs")
+	if err := os.Mkdir(stubs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	glyphLog := filepath.Join(dir, "glyph-calls")
+	stderrFile := filepath.Join(dir, "glyph-stderr")
+	if err := os.WriteFile(stderrFile, []byte(glyphStderr), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeStub(t, stubs, "glyph", recordArgv(glyphLog)+"cat "+shq(stderrFile)+" >&2\nexit "+strconv.Itoa(glyphExit)+"\n")
+
+	run := runStep(t, script, unspecifiedShell, repo.dir, []string{
+		"PATH=" + stubs + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"HOME=" + dir,
+		"GIT_CONFIG_GLOBAL=" + os.DevNull,
+		"GIT_CONFIG_SYSTEM=" + os.DevNull,
+		"EVENT=" + ev.event,
+		"PR_BASE=" + ev.prBase,
+		"PR_HEAD=" + ev.prHead,
+		"PUSH_BEFORE=" + ev.before,
+		"PUSH_AFTER=" + ev.after,
+		"PUSHED_REF=" + ev.ref,
+		"DEFAULT_BRANCH=main",
+	})
+	return run, recordedCalls(t, glyphLog)
+}
+
+// TestLintNoRefusalPassesSilently runs the range step over each event it must
+// refuse and over the two it must lint. A refusal stands where the
+// alternative is a range linted as empty or never linted, so each must exit
+// 1, say what it refused, and never reach glyph. The glyph stub answers 0 —
+// what the real binary answers the empty range `..` — so a refusal that lets
+// the step through ends green. The two linted events are the positive
+// controls: glyph is reached, with exactly the range the event names.
+func TestLintNoRefusalPassesSilently(t *testing.T) {
+	repo := newLintRepo(t)
+	cases := []struct {
+		name    string
+		ev      lintEvent
+		refusal string // a phrase of the ::error:: annotation; "" for an event the step lints
+		why     string
+	}{
+		{
+			name: "a pull request is linted over base..head",
+			ev:   lintEvent{event: "pull_request", prBase: repo.root, prHead: repo.main, ref: "refs/pull/7/merge"},
+			why:  "the positive control for the pull_request arm",
+		},
+		{
+			name: "a push to the default branch is linted over before..after",
+			ev:   lintEvent{event: "push", before: repo.root, after: repo.main, ref: "refs/heads/main"},
+			why:  "the positive control for the push arm",
+		},
+		{
+			name: "a pull request without a base SHA is refused", refusal: "empty base/head SHA",
+			ev: lintEvent{event: "pull_request", prHead: repo.main, ref: "refs/pull/7/merge"},
+			why: "a pull_request payload never lacks it, and linted anyway the range collapses toward `..`, " +
+				"which glyph answers 0 (measured: `glyph lint --range ..` exits 0 with a \"nothing linted\" " +
+				"warning) — the merge gate itself green on a pull it never read",
+		},
+		{
+			name: "a pull request without a head SHA is refused", refusal: "empty base/head SHA",
+			ev:  lintEvent{event: "pull_request", prBase: repo.root, ref: "refs/pull/7/merge"},
+			why: "either half of the range missing is the same collapse",
+		},
+		{
+			name: "a push to another branch is refused", refusal: "lints pushes to the default branch only",
+			ev: lintEvent{event: "push", before: repo.root, after: repo.main, ref: "refs/heads/topic"},
+			why: "a topic branch is judged by the pull_request arm as the merge candidate it becomes; a push " +
+				"there is mid-branch and rewritable, so a caller whose trigger widened is refused with its " +
+				"one-line fix rather than linted or skipped",
+		},
+		{
+			name: "a push that created the branch is refused", refusal: "(ref creation)",
+			ev:  lintEvent{event: "push", before: zeroSHA, after: repo.main, ref: "refs/heads/main"},
+			why: "an all-zeroes before is ref creation: no base exists to lint from, and the refusal must say so",
+		},
+		{
+			name: "a force push is refused", refusal: "not an ancestor of event.after",
+			ev: lintEvent{event: "push", before: repo.main, after: repo.rewritten, ref: "refs/heads/main"},
+			why: "after a force push before..after holds everything EXCEPT the rewritten commits, which are " +
+				"the ones in question",
+		},
+		{
+			name: "an event the step does not support is refused", refusal: "(got: merge_group)",
+			ev: lintEvent{event: "merge_group"},
+			why: "merge_group lands here deliberately — the fleet runs no merge queue — and a check that " +
+				"linted nothing on such a run must not read green",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			run, calls := runLintRange(t, repo, c.ev, 0, "")
+			if c.refusal == "" {
+				var base, head string
+				if c.ev.event == "pull_request" {
+					base, head = c.ev.prBase, c.ev.prHead
+				} else {
+					base, head = c.ev.before, c.ev.after
+				}
+				want := [][]string{{"lint", "--range", base + ".." + head}}
+				if run.exit != 0 || !slices.EqualFunc(calls, want, slices.Equal) {
+					t.Errorf("the range step exited %d having called glyph %v, want exit 0 after exactly %v — %s\n%s",
+						run.exit, calls, want, c.why, run)
+				}
+				return
 			}
-		}
-		if !strings.Contains(next, "exit 1") {
-			t.Errorf("the refusal %q is not followed by `exit 1` (got %q) — a refusal that "+
-				"does not exit is an annotation on a green run, i.e. the silent pass wearing "+
-				"a warning", strings.TrimSpace(line), strings.TrimSpace(next))
-		}
-	}
-	// Non-emptiness, in the shape envelope_test.go argues for: zero refusals
-	// means the arm stopped refusing or the sentinel moved, and either way the
-	// loop above asserted nothing.
-	if refusals != 2 {
-		t.Errorf("found %d 'cannot judge this push' refusals in lint.yml, want 2 (ref creation, "+
-			"force push) — if the wording moved, move this sentinel with it", refusals)
+			if run.exit != 1 {
+				t.Errorf("the range step exited %d, want 1 — %s\n%s", run.exit, c.why, run)
+			}
+			if len(calls) != 0 {
+				t.Errorf("the range step reached glyph (%v) instead of refusing — %s\n%s", calls, c.why, run)
+			}
+			if !slices.ContainsFunc(strings.Split(run.stdout, "\n"), func(l string) bool {
+				return strings.HasPrefix(l, "::error::") && strings.Contains(l, c.refusal)
+			}) {
+				t.Errorf("the range step printed no ::error:: naming %q — a refusal must say what it refused, "+
+					"or the caller cannot tell a trigger bug from a broken gate\n%s", c.refusal, run)
+			}
+		})
 	}
 }
 
-// TestLintPushArmAnnotatesButNeverGates pins the verdict split between the two
-// arms: exit 3 fails a pull_request run and is swallowed — alone — on the push
-// arm.
-//
-// The argument for swallowing: default-branch history is immutable, so a red
-// verdict there could never be made green again, and a permanently red check is
-// the noise that trains a fleet to stop reading its own gate. The argument for
-// swallowing ONLY 3: an infra failure (exit 4) is rerunnable, and absorbing
-// every non-zero would turn a broken checkout into a green gate — the very
-// silence the arm exists to close. Both directions are asserted.
+// TestLintPushArmAnnotatesButNeverGates runs the range step with glyph
+// answering a violation (3) and an infra failure (4) on both arms. Exit 3
+// fails a pull_request run and is swallowed — alone — on the push arm:
+// default-branch history is immutable, so a red verdict there could never be
+// made green again, and a permanently red check trains a fleet to stop reading
+// its gate. An infra failure is rerunnable and stays loud on both arms;
+// absorbing every non-zero would turn a broken checkout into a green gate.
 func TestLintPushArmAnnotatesButNeverGates(t *testing.T) {
-	body := lintBody(t)
-	const swallow = `if [ "$verdict" = "annotates" ] && [ "$status" -eq 3 ]; then`
-	idx := strings.Index(body, swallow)
-	if idx < 0 {
-		t.Fatalf("lint.yml no longer swallows the gate code on the annotate arm (%s missing) — "+
-			"a direct-push violation now reds a check that can never turn green, and DESIGN §7's "+
-			"noise argument says that check stops being read", swallow)
+	repo := newLintRepo(t)
+	pr := lintEvent{event: "pull_request", prBase: repo.root, prHead: repo.main, ref: "refs/pull/7/merge"}
+	push := lintEvent{event: "push", before: repo.root, after: repo.main, ref: "refs/heads/main"}
+	cases := []struct {
+		name            string
+		ev              lintEvent
+		glyphExit, exit int
+		why             string
+	}{
+		{"a violation fails a pull request", pr, 3, 3,
+			"the pull_request arm is the merge gate, and glyph's exit code is its verdict"},
+		{"a violation on the default branch is annotated, not gated", push, 3, 0,
+			"merged history cannot be made green again, so a red check there is permanent noise"},
+		{"an infra failure fails a pull request", pr, 4, 4,
+			"an infra failure keeps its own code on the gating arm"},
+		{"an infra failure fails a default-branch push", push, 4, 4,
+			"the push arm swallows 3 alone — a broken checkout swallowed with it reads as a green gate"},
 	}
-	after := body[idx:]
-	next := ""
-	for _, l := range strings.Split(after, "\n")[1:] {
-		if strings.TrimSpace(l) != "" && !strings.HasPrefix(strings.TrimSpace(l), "echo") {
-			next = strings.TrimSpace(l)
-			break
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			stderr := fmt.Sprintf(`{"error":{"code":%d,"message":"stub verdict"}}`+"\n", c.glyphExit)
+			if c.glyphExit == 3 {
+				stderr = "::error::stub finding\n" + stderr
+			}
+			run, calls := runLintRange(t, repo, c.ev, c.glyphExit, stderr)
+			if len(calls) != 1 {
+				t.Fatalf("the range step called glyph %d times, want once — the exit below would not be "+
+					"glyph's verdict\n%s", len(calls), run)
+			}
+			if run.exit != c.exit {
+				t.Errorf("on %s, glyph's exit %d left the step at %d, want %d — %s\n%s",
+					c.ev.event, c.glyphExit, run.exit, c.exit, c.why, run)
+			}
+		})
+	}
+}
+
+// TestLintRangeStepIsUnconditional pins what the harness cannot see, because
+// it runs the step's script and nothing around it: no `if:` skips the step,
+// no `continue-on-error:` turns its failure into a passing job, and no
+// `shell:` replaces the unspecified-shell invocation the harness reproduces.
+func TestLintRangeStepIsUnconditional(t *testing.T) {
+	raw := repoFile(t, filepath.FromSlash(lintWorkflow))
+
+	shape := readStepShape(t, raw, lintRangeStep)
+	if shape.keys["run"] != "|" {
+		t.Fatalf("canary: the reader found keys %v on the range step, which has a `run: |` — every "+
+			"absence below would hold over a reader that sees nothing", shape.keys)
+	}
+	for _, key := range []string{"if", "continue-on-error", "shell"} {
+		if _, ok := readStepShape(t, withStepKey(t, raw, lintRangeStep, key, "x"), lintRangeStep).keys[key]; !ok {
+			t.Fatalf("canary: the reader does not see a `%s:` added to the range step — the check below "+
+				"would pass it", key)
 		}
 	}
-	if next != "exit 0" {
-		t.Errorf("the annotate-arm swallow is not an `exit 0` (got %q) — the branch exists "+
-			"precisely to end the job green after the annotations", next)
+
+	if !slices.Equal(shape.parents, []string{"steps", "lint", "jobs"}) {
+		t.Errorf("the range step sits under %v, want jobs.lint.steps", shape.parents)
 	}
-	if !strings.Contains(body, `exit "$status"`) {
-		t.Errorf("lint.yml no longer forwards glyph's exit code verbatim at the end of the " +
-			"step — the pull_request arm's verdict, and every infra failure on both arms, " +
-			"just lost the integer the fleet branches on")
+	for _, key := range []string{"if", "continue-on-error"} {
+		if v, ok := shape.keys[key]; ok {
+			t.Errorf("the range step carries `%s: %s` — a skipped step, or a failure the job absorbs, is a "+
+				"lint check that is green whatever the commits say, in every fleet repo at the pin", key, v)
+		}
 	}
-	if !strings.Contains(body, "verdict=annotates") || !strings.Contains(body, "verdict=gates") {
-		t.Errorf("the two-arm verdict split (verdict=gates / verdict=annotates) is gone from " +
-			"lint.yml — the swallow above is now either dead code or unconditional, and both " +
-			"are wrong in a direction this test can no longer tell")
+	if v, ok := shape.keys["shell"]; ok {
+		t.Errorf("the range step names `shell: %s` — the harness reproduces the unspecified shell's "+
+			"`bash -e {0}`; teach it the new invocation", v)
 	}
 }
