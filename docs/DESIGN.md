@@ -221,6 +221,68 @@ pattern says it means:
   "see glyph.toml", while the window warning then sitting next to it already
   spelled the line). The template stays unparsed: glyph quotes it, it does not interpret a
   placeholder, and a file with no `[commit]` block gets the bare pointer.
+- **A captured group is the author's text, and it renders as prose — the
+  scope included** (ruled 2026-09-29, t-0j9r). `notes.renderLine` hands every
+  placeholder but `$author` to `markdown.Line.Prose`: the value is flattened
+  as it arrives, then the prose escape and the mention fence each run once
+  over the assembled line (the order is argued at `markdown.Line`). A `<` a
+  pattern captured is escaped exactly as a `<` in a subject is, and an at-sign
+  is fenced exactly as one there is. The incident behind the ruling is v1's:
+  a scope slot that took anything but a parenthesis let `fix(<i title="x">): …`
+  lint clean and put a live tag into a release body (#61). v2 imposes no shape
+  on a group, so those bytes reach the renderer wherever a repository's own
+  pattern captures them — the presets cannot (their scope group is
+  `[a-z0-9-]+`, and `:bug:(<i title="x">)~ fix it` is refused at 3 under the
+  gemoji preset). Measured 2026-09-29 through `glyph notes` on a throwaway
+  repository capturing `\((?P<scope>[^)]+)\)` under
+  `line = '- $[**$scope:** ]$subject'`, each line then rendered by GitHub
+  (`POST /markdown`, mode gfm):
+
+  ```
+  - **\<i title="x">:** fix it      the tag renders as its own text
+  - **`@x`:** fix it                the handle is code, not a mention
+  - **readme`:** credit ``@alice`` and ``@bob`` for the fix
+                                    the fence is sized over the line: no mention
+  - **_x_:** fix it                 emphasis works: an italic x
+  - **a*b_c:** fix it               opens no emphasis: renders as typed
+  - **grid-1f-4:** fix it           byte-identical
+  ```
+
+  Unescaped, the first line's tag is live and leaks past the list item's
+  `</li>`. (Test `TestRenderLineEscapesTheScopeAsProse`; mutation row
+  `notes-placeholder-values-render-raw.patch` — with every value passed raw,
+  nothing else in `go test ./...` fails.)
+  - **`-` and `@` stay unescaped, deliberately**, and the prose rules test
+    neither. `-` is a list, setext or thematic-break marker only at the start
+    of a line, where no shipped template puts a value (each opens with a
+    literal `- `), so escaping it would put a backslash into the raw source of
+    every kebab-case scope for nothing (`grid\-1f\-4` renders as
+    `grid-1f-4`). `@` is the fence's: a backslash does not disarm a mention
+    (`credit \@octocat` renders a live one), and one in front of the at-sign
+    makes the fence write a separating space so the backslash cannot eat its
+    opening backtick — the reader sees `\ ` before a code-font handle
+    (measured on a `(\@x)` scope, the bytes escaping `@` would write).
+  - **The plain-text route is deleted, not revived** (`Line.Text` and
+    `escapeText`, t-0j9r). v1 rendered the scope through a flat escaper that
+    backslashed every ASCII punctuation byte but those two, on the argument
+    that a scope is data and no grammar applies to it. v2's renderer (#185)
+    sent every value through `Prose`, and once v1's renderer left with #187
+    nothing called the route again. Reviving it would need the renderer to
+    tell data from prose by a group's NAME — the pattern file's to choose, and
+    `scope` means something only to attribution (§4.1) — while the presets
+    carry the scope inside `$subject`, the whole first line (§3), where it is
+    prose regardless. And it would add fidelity, not safety: prose already
+    disarms the incident's whole class, and the two policies part only where
+    prose leaves an emphasis or code-span delimiter live, as it deliberately
+    does for the author's markup — `_x_` renders italic and `~x~` struck; a
+    lone `*` pairs with the template's own `**` (`**x*:** fix it` rendered an
+    italic `x:` and a stray `*` with no bold, where the plain-text route's
+    `x\*` kept the bold — measured 2026-10-04); and a backtick pairs with one
+    in the subject (`` (a`b) `` before ``fix `it` now`` put the stretch
+    between them in code font and broke the bold). None of that injects
+    structure, points anywhere the author did not write, or steals the fence's
+    delimiter (escape.go's theorem), so the price is rendering, paid only by a
+    repository whose own pattern captures such bytes — accepted.
 - Unknown keys, an unknown `schema`, an uncompilable pattern, a malformed
   `note.line` and a section that does not state exactly one axis are LOAD
   errors, never repairs (mutation row `config-unknown-schema-accepted.patch`):
@@ -467,7 +529,8 @@ shortcode as the emoji. (Mutation row `presets-subject-stops-at-the-sigil.patch`
 placeholders — the winning pattern's named groups, plus the built-ins `$pr` /
 `$author` / `$hash` / `$coauthors`, which outrank a group of the same name,
 plus any name `[[note.trailers]]` declares — and literal
-text passes through as the author's own Markdown, with the mention fence run
+text passes through as the author's own Markdown while every substituted value
+renders as prose, the scope included (§2), with the mention fence run
 over the assembled line. The fence has exactly one ratified exemption
 (2026-08-17): the built-in `$author`, so the preset's `@$author` renders as a
 live mention — crediting the contributor is intended behaviour, and every
@@ -1644,7 +1707,7 @@ internal/config          glyph.toml loader — user RE2 patterns, first match wi
 internal/attribution     which declared package(s) a commit moves — pure; files + scope + sigil + packages in, package set or lint-class refusal out (§4.1)
 internal/emoji           the gemoji dictionary `glyph emoji` prints — embedded table.json, advisory data nothing else reads (§2)
 internal/draftplan       draft convergence — pure; which draft a verdict keeps, retags or deletes (the Unreleased placeholder lives here)
-internal/markdown        Line: per-field escape, then the mention fence over the assembled line
+internal/markdown        Line: per-field flatten, then the prose escape and the mention fence over the assembled line
 internal/notes           group by section; note.line rendered by hand over config.LineSpan / LinePart (the span grammar is parsed in internal/config; the optional-span drop rule lives here)
 internal/preview         merge-preview comment body — pure; no git, no API, no clock
 internal/gitsource       local `git log BASE..HEAD` (exec.CommandContext)
@@ -1660,9 +1723,10 @@ internal/workflows       no runtime code — tests pinning CI-YAML invariants
 holds, and each package's doc comment argues its own internals; what belongs
 here is only why it is a package at all, and what depends on it:
 
-- `internal/markdown` — one owner for the escaping ORDER (per field, then over
-  the assembled line), because both renderers, `notes` and `preview`, have to run
-  it the same way round and a copy in each is a copy that drifts.
+- `internal/markdown` — one owner for the escaping ORDER (flatten per field,
+  then escape and fence over the assembled line), because both renderers,
+  `notes` and `preview`, have to run it the same way round and a copy in each is
+  a copy that drifts.
 - `internal/preview` — the merge fold is version arithmetic, so it sits above
   `internal/bump` rather than in `pr-verdict.yml`'s jq, where it was a second
   rank table living on the fleet's side of the pin.
