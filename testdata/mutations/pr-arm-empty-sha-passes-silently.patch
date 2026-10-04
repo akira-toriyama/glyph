@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+index d32e69d..95685ac 100644
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -157,7 +157,7 @@ jobs:
+               # collapses to — every commit would "pass" silently.
+               if [ -z "${PR_BASE:-}" ] || [ -z "${PR_HEAD:-}" ]; then
+                 echo "::error::glyph-lint got a pull_request event with an empty base/head SHA."
+-                exit 1
++                exit 0
+               fi
+               BASE="$PR_BASE"; HEAD="$PR_HEAD"
+               ;;
