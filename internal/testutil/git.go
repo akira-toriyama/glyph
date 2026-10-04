@@ -111,3 +111,45 @@ func CommitFrom(t *testing.T, dir, author, email, message string) {
 		t.Fatalf("git commit as %s <%s>: %v\n%s", author, email, err, out)
 	}
 }
+
+// SignCommits makes dir sign every later commit for real, and `git tag -s` with
+// the same key: ssh signing with a key generated in the test's own temp dir,
+// which needs no agent and no user config, and an allowed-signers file so git
+// verifies what it signed. A missing ssh-keygen FAILS the test rather than
+// skipping it — every CI runner has one, and a skip would leave the signing
+// developer's path unguarded in silence.
+//
+// #nosec G204 -- the binary is ssh-keygen from PATH; every argument is a path
+// this function just made.
+func SignCommits(t *testing.T, dir string) {
+	t.Helper()
+	keygen, err := exec.LookPath("ssh-keygen")
+	if err != nil {
+		t.Fatalf("ssh-keygen is required to make a signed commit: %v", err)
+	}
+	keys := t.TempDir()
+	key := filepath.Join(keys, "signer")
+	if out, err := exec.Command(keygen, "-q", "-t", "ed25519", "-N", "", "-C", "signer@example.invalid", "-f", key).CombinedOutput(); err != nil {
+		t.Fatalf("ssh-keygen: %v\n%s", err, out)
+	}
+	pub, err := os.ReadFile(key + ".pub") //nolint:gosec // a path this function just wrote
+	if err != nil {
+		t.Fatalf("read the public key: %v", err)
+	}
+	f := strings.Fields(string(pub))
+	if len(f) < 2 {
+		t.Fatalf("unexpected public key %q", pub)
+	}
+	allowed := filepath.Join(keys, "allowed_signers")
+	if err := os.WriteFile(allowed, []byte("signer@example.invalid "+f[0]+" "+f[1]+"\n"), 0o600); err != nil {
+		t.Fatalf("write allowed signers: %v", err)
+	}
+	for _, kv := range [][2]string{
+		{"gpg.format", "ssh"},
+		{"user.signingKey", key},
+		{"gpg.ssh.allowedSignersFile", allowed},
+		{"commit.gpgSign", "true"},
+	} {
+		Git(t, dir, "akira-toriyama", "config", kv[0], kv[1])
+	}
+}

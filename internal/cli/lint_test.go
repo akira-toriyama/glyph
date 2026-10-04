@@ -194,6 +194,56 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 	}
 }
 
+// TestEndAnchoredPatternGetsOneVerdictAtTheHookAndInTheRange: a pattern that
+// ends in `$` — the natural way to say the sigil form is the whole subject line
+// — must judge a commit the same way at the commit-msg hook and over the
+// history git recorded. Go's `$` without (?m) matches at the END OF TEXT only,
+// and `git log`'s %B closes every message with a newline cleanup.Apply never
+// leaves, so a one-line subject passed the hook and failed `lint --range` and
+// `bump --range` (t-3p3k (1), measured). Both directions are asserted: the
+// matching subject must pass everywhere, and a message the pattern does not
+// match — a body under the subject, which `.+$` cannot reach across — must
+// still be refused everywhere, so a fix that trimmed more than the record's
+// own newline could not pass this test.
+func TestEndAnchoredPatternGetsOneVerdictAtTheHookAndInTheRange(t *testing.T) {
+	for _, tc := range []struct {
+		name, message string
+		want          int
+		bump          string // bump --range's stdout when it answers 0
+	}{
+		{"a one-line subject the pattern matches", ":bug:~ fix the thing", 0, "v0.1.1\n"},
+		{"a subject with a body the pattern does not reach", ":bug:~ fix the thing\n\nwith a body", 3, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, base := testRepo(t)
+			preset, _ := config.Preset("gemoji")
+			anchored := strings.Replace(string(preset), ` .+)'`, ` .+)$'`, 1)
+			if anchored == string(preset) {
+				t.Fatal("the gemoji preset's first pattern no longer ends in ` .+)'` — re-derive the `$` variant")
+			}
+			if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), []byte(anchored), 0o644); err != nil {
+				t.Fatalf("write glyph.toml: %v", err)
+			}
+			testCommit(t, dir, "akira-toriyama", tc.message)
+			t.Chdir(dir)
+			// What the hook is handed for `git commit -m`: the message plus git's
+			// newline, with GIT_EDITOR=: because no editor runs.
+			t.Setenv("GIT_EDITOR", ":")
+			setStdin(t, tc.message+"\n")
+			hook, _, hookErr := runGlyph(t, "lint", "--stdin")
+			ci, _, ciErr := runGlyph(t, "lint", "--range", base+"..HEAD")
+			bumpCode, bumpOut, bumpErr := runGlyph(t, "bump", "--range", base+"..HEAD")
+			if hook != tc.want || ci != tc.want || bumpCode != tc.want {
+				t.Fatalf("hook %d, lint --range %d, bump --range %d; want %d at all three\n  hook: %s\n  lint --range: %s\n  bump --range: %s",
+					hook, ci, bumpCode, tc.want, hookErr, ciErr, bumpErr)
+			}
+			if bumpOut != tc.bump {
+				t.Errorf("bump --range printed %q, want %q", bumpOut, tc.bump)
+			}
+		})
+	}
+}
+
 // writeExecutable writes body at path (creating its directory) with the mode a
 // hook or an editor needs.
 func writeExecutable(t *testing.T, path, body string) {
@@ -424,6 +474,82 @@ func TestLintRange(t *testing.T) {
 	}
 	if !strings.Contains(stderr, `"sha"`) {
 		t.Fatalf("range violations must carry commit SHAs:\n%s", stderr)
+	}
+}
+
+// TestLintRangeJudgesAnAuthorNameHoldingTheUnitSeparator is the gate half of
+// gitsource's record framing: an author a pull request's contributor names
+// `dependabot[bot]<US>x` is NOT dependabot[bot], so the commit is judged — exit
+// 3 for a message no pattern claims. Measured before the fix, every email below
+// excluded it at exit 0, and a check of the parents field alone still passed the
+// empty and the 40-hex one. The real bot stays excluded: the control that the
+// exclusion itself still works.
+func TestLintRangeJudgesAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
+	for label, email := range map[string]string{
+		"an ordinary email":      "t@example.invalid",
+		"an empty email":         "",
+		"a parents-shaped email": "0123456789abcdef0123456789abcdef01234567",
+	} {
+		t.Run(label, func(t *testing.T) {
+			dir, base := testRepo(t)
+			testutil.CommitFrom(t, dir, "dependabot[bot]\x1fx", email, "garbage message")
+			t.Chdir(dir)
+			if code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD"); code != 3 {
+				t.Fatalf("lint --range exited %d, want 3 — the commit was excluded as dependabot[bot]\nstderr: %s", code, stderr)
+			}
+		})
+	}
+	t.Run("the real bot is still excluded", func(t *testing.T) {
+		dir, base := testRepo(t)
+		testutil.CommitFrom(t, dir, "dependabot[bot]", "t@example.invalid", "garbage message")
+		t.Chdir(dir)
+		if code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD"); code != 0 {
+			t.Fatalf("lint --range exited %d, want 0 for an excluded author\nstderr: %s", code, stderr)
+		}
+	})
+}
+
+// TestHistoryGatesJudgeSignedCommitsUnderShowSignature is the gates half of
+// gitsource's read under log.showSignature: git prints each signature's verdict
+// ahead of the commit's record, and with that text in the read the record check
+// failed every history gate at 4 for a developer who signs — measured: lint
+// --range 3 → 4, bump --range v0.0.1 → 4, notes --range 0 → 4, and the pre-push
+// hook 3 → 4, which the installed hook waves through, so the push gate stopped
+// judging. Each gate must answer exactly as it does for the same commits
+// unsigned.
+func TestHistoryGatesJudgeSignedCommitsUnderShowSignature(t *testing.T) {
+	work, _ := testClone(t)
+	testutil.SignCommits(t, work)
+	testGit(t, work, "akira-toriyama", "config", "log.showSignature", "true")
+	testGit(t, work, "akira-toriyama", "tag", "v0.1.0")
+	base := rev(t, work, "HEAD")
+	testCommit(t, work, "akira-toriyama", ":bug:~ fix a crash")
+	clean := rev(t, work, "HEAD")
+	testCommit(t, work, "akira-toriyama", "no gitmoji in this one")
+	head := rev(t, work, "HEAD")
+	if raw := testGit(t, work, "akira-toriyama", "log", "-1", "--format=%H"); strings.HasPrefix(raw, head) {
+		t.Fatalf("git printed no signature verdict ahead of the record under log.showSignature (%q) — the fixture no longer signs, and this test guards nothing", raw)
+	}
+	t.Chdir(work)
+
+	for _, tc := range []struct {
+		args   []string
+		want   int
+		stdout string
+	}{
+		{[]string{"lint", "--range", base + ".." + clean}, 0, ""},
+		{[]string{"lint", "--range", base + "..HEAD"}, 3, ""},
+		{[]string{"bump", "--range", base + ".." + clean}, 0, "v0.1.1\n"},
+		{[]string{"notes", "--range", base + ".." + clean}, 0, ""},
+	} {
+		code, stdout, stderr := runGlyph(t, tc.args...)
+		if code != tc.want || (tc.stdout != "" && stdout != tc.stdout) {
+			t.Errorf("%v exited %d with %q, want %d with %q\nstderr: %s", tc.args, code, stdout, tc.want, tc.stdout, stderr)
+		}
+	}
+	setStdin(t, "refs/heads/main "+head+" refs/heads/main "+rev(t, work, "origin/main")+"\n")
+	if code, _, stderr := runGlyph(t, "hook", "pre-push", "origin", "ignored"); code != 3 {
+		t.Errorf("pre-push of a violation to the default branch exited %d, want 3 — the installed hook lets every other code through\nstderr: %s", code, stderr)
 	}
 }
 

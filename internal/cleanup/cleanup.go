@@ -24,7 +24,7 @@ const cutLine = "# ------------------------ >8 ------------------------\n"
 // the resolved `--cleanup` for ONE commit, not the mode name.
 //
 // Three fields rather than a five-valued enum because git's own cleanup is three
-// orthogonal operations (builtin/commit.c: truncate when `verbose ||
+// orthogonal operations (sequencer.c, cleanup_message: truncate when `verbose ||
 // cleanup_mode == SCISSORS`, then strbuf_stripspace with or without the comment
 // prefix). A name like "strip" does not decide the truncation on its own, so an
 // enum of git's mode names cannot express `--cleanup=strip` under `-v` (truncate)
@@ -38,15 +38,40 @@ type Mode struct {
 	// Comments drops whole-line comments — git's `strip`. A comment is a line
 	// whose FIRST byte is '#'; git does not look past leading whitespace.
 	Comments bool
-	// Truncate cuts the message at git's scissors line. True whenever git may
-	// have appended its own diff, i.e. whenever an editor ran, and under
-	// `--cleanup=scissors` (which, measured, does NOT cut without an editor).
+	// Truncate cuts the message at git's scissors line: always under
+	// commit.verbose (git cuts under verbose in every mode, editor or not), in
+	// scissors mode whenever an editor ran, and — because `-v` reaches no hook
+	// and git writes its cut line and the diff into every verbose editor buffer
+	// — whenever an editor ran for `git commit` (Verbose).
 	Truncate bool
 }
 
-// ResolveMode answers what git will do to this message from the two
-// signals a commit-msg hook actually has: `commit.cleanup` (empty when unset)
-// and whether git is going to open an editor.
+// Verbose is what a commit-msg hook can know of the verbose setting git will
+// clean the message under — the one input to the scissors cut besides the mode
+// and the editor.
+type Verbose int
+
+const (
+	// VerboseUnseen is `git commit` with commit.verbose off or unset. `-v` may
+	// still be on and nothing a hook reads says so, so the cut is guessed on
+	// exactly when an editor runs: under -v git writes the cut line and the
+	// diff into the editor's buffer itself, and a cut line in any other message
+	// is one the author typed.
+	VerboseUnseen Verbose = iota
+	// VerboseOn is commit.verbose above 0: git cuts in every mode, with or
+	// without an editor.
+	VerboseOn
+	// VerboseNever is `git merge`, which cleans with verbose 0 (builtin/merge.c)
+	// and has no -v: only scissors mode with an editor cuts.
+	VerboseNever
+)
+
+// ResolveMode answers what git will do to this message from what a commit-msg
+// hook actually has: `commit.cleanup` (empty when unset), whether git is going
+// to open an editor, and what it can know of verbose. git cuts iff `verbose ||
+// cleanup_mode == SCISSORS`, and SCISSORS needs an editor (sequencer.c,
+// cleanup_message and get_cleanup_mode — that formula held in every cell of
+// internal/cli's TestHookCutMatchesGit).
 //
 // Measured on git 2.54, from a probe hook that dumped its environment:
 //
@@ -62,39 +87,35 @@ type Mode struct {
 // stripped and every commit is `malformed-subject` at the hook.
 //
 // `known` is false for a mode name git does not have. The caller must still lint
-// (with the returned fallback) and merely warn: this hook's policy is to let a
-// commit through on any answer but a violation, so failing here would turn a
-// typo in `commit.cleanup` into a silently unlinted repository — strictness
-// buying zero enforcement.
+// (with the returned fallback) and merely warn: the commits that reach a hook
+// under such a mode are the ones a `--cleanup=` override let past git's own
+// refusal of it, and failing would leave exactly those unlinted (DESIGN §2.1).
 //
-// The blind spot, unfixable from inside a hook: `git commit --cleanup=<mode>` on
-// the COMMAND LINE reaches neither the config nor the environment (measured:
-// `git config --get commit.cleanup` stays unset), so a per-commit override is
-// invisible here and glyph judges the message under the repository's mode.
-func ResolveMode(configured string, edited bool) (mode Mode, known bool) {
+// The blind spots, unfixable from inside a hook: `--cleanup=<mode>`, `-v` and
+// `--no-verbose` on git's COMMAND LINE reach neither the config nor the
+// environment (measured), so a per-commit override is judged under the
+// repository's settings (DESIGN §2.1 lists what that costs).
+func ResolveMode(configured string, edited bool, verbose Verbose) (mode Mode, known bool) {
+	cut := verbose == VerboseOn || (verbose == VerboseUnseen && edited) || (configured == "scissors" && edited)
 	switch configured {
 	case "verbatim":
-		// Nothing is cleaned — but `-v` still truncates, in every mode.
-		return Mode{Truncate: edited}, true
+		return Mode{Truncate: cut}, true
 	case "whitespace":
-		return Mode{Space: true, Truncate: edited}, true
+		return Mode{Space: true, Truncate: cut}, true
 	case "strip":
-		return Mode{Space: true, Comments: true, Truncate: edited}, true
+		return Mode{Space: true, Comments: true, Truncate: cut}, true
 	case "scissors":
-		// git truncates in this mode only "if the message is to be edited".
-		// Measured: with `commit.cleanup=scissors` and `-F`, git records the
-		// cut line AND everything below it. Cutting there would hide a footer
-		// git keeps — the false-positive direction, which stops a commit.
-		return Mode{Space: true, Truncate: edited}, true
+		// Without an editor this is whitespace: measured, `commit.cleanup=
+		// scissors` with `-F` records the cut line AND everything below it, so
+		// only verbose cuts here then. Cutting anyway would hide a footer git
+		// keeps — the false-positive direction, which stops a commit.
+		return Mode{Space: true, Truncate: cut}, true
 	case "default", "":
 		// git's default IS the editor question: strip when a message is edited,
 		// whitespace when it is not.
-		if edited {
-			return Mode{Space: true, Comments: true, Truncate: true}, true
-		}
-		return Mode{Space: true}, true
+		return Mode{Space: true, Comments: edited, Truncate: cut}, true
 	default:
-		mode, _ = ResolveMode("default", edited)
+		mode, _ = ResolveMode("default", edited, verbose)
 		return mode, false
 	}
 }
@@ -132,9 +153,11 @@ func ResolveMode(configured string, edited bool) (mode Mode, known bool) {
 // as before this function existed, never worse.
 //
 // Only the authoring path (`--stdin`) calls this. A --range walk reads messages
-// from `git log %B`, which git has already cleaned; running this there would
-// silently swallow a genuinely empty message and any body line a project chose
-// to start with '#'.
+// from `git log %B`, which git has already cleaned — internal/gitsource strips
+// the one closing newline git records a message with, the only thing that
+// separated it from this function's output shape (DESIGN §2.1); running this
+// there would silently swallow a genuinely empty message and any body line a
+// project chose to start with '#'.
 func Apply(message string, mode Mode) string {
 	if mode.Truncate {
 		message = truncateAtCutLine(message)

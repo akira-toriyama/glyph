@@ -363,6 +363,9 @@ func placeOf(cfg *config.Config, raw gitsource.RawCommit) (placement, string, co
 // dropped with a notice; it was walked because the union had to contain it,
 // and it belongs to no line's verdict.
 //
+// A shallow clone's boundary commit, whose diff local git cannot compute, is
+// carried nowhere with a warning (walkedFiles).
+//
 // A refusal attribution hands down over a listing GitHub did not give whole
 // — TRUNCATED at its cap, or cut short by a 422 (listFiles) — is not a
 // finding and never wedges: "no carrier" and "the scope names a
@@ -419,9 +422,12 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, 
 			carriers = reach
 		case placedNowhere:
 		case placedByFiles:
-			files, incomplete, ferr := walkedFiles(ctx, gh, owner, repo, c, facts, reachedLines(lines, reach))
+			files, incomplete, boundary, ferr := walkedFiles(ctx, gh, owner, repo, c, facts, reachedLines(lines, reach))
 			if ferr != nil {
 				return nil, nil, ferr
+			}
+			if boundary {
+				break // no diff to attribute: carried on no line, and walkedFiles said so
 			}
 			moved, aerr := attribution.Attribute(files, scope, sigil, cfg.Packages)
 			switch {
@@ -456,17 +462,28 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, 
 // package they touch would be missing from the verdict — an incomplete walk
 // in §4's sense, and a listing the caller must not let attribution refuse
 // over.
-func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c walked, facts *walkFacts, reached []line) (files []string, incomplete bool, err error) {
+//
+// A shallow clone's boundary commit is returned as boundary, with a warning:
+// git reads it as a root, and the diff it would give is the whole tree, which
+// once moved every line the tree touched (t-esm5). The caller carries it on no
+// line — the capped listing's answer, with nothing read at all — and a
+// since-tag walk over a shallow checkout already records walkFacts.Shallow, so
+// release refuses it and the reporting commands warn.
+func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c walked, facts *walkFacts, reached []line) (files []string, incomplete, boundary bool, err error) {
 	if c.Raw.Parents >= 2 {
-		return nil, false, nil
+		return nil, false, false, nil
 	}
 	if c.Landed {
 		files, err = gitsource.DiffTreeFiles(ctx, ".", c.Raw.SHA)
-		return files, false, err
+		if gitsource.IsShallowBoundary(err) {
+			warnf("commit %.7s is this shallow clone's boundary: its parents are not here, so its own diff cannot be read — it is carried on no line, and a package it touched is missing from this verdict (fetch the full history: fetch-depth: 0)", c.Raw.SHA)
+			return nil, false, true, nil
+		}
+		return files, false, false, err
 	}
 	l, err := listFiles(ctx, gh, owner, repo, c.Raw.SHA)
 	if err != nil {
-		return nil, false, err
+		return nil, false, false, err
 	}
 	unread := unreadListing{SHA: fmt.Sprintf("%.7s", c.Raw.SHA), Pull: c.Pull, Escapes: lineEscapes(c, reached)}
 	switch {
@@ -477,7 +494,7 @@ func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c w
 		facts.FilesCapped = append(facts.FilesCapped, unread)
 		warnf("commit %.7s in pull request #%d touches at least %d files, and GitHub lists no more than that — the files past the cap could not be read, so a package they touch is missing from this verdict", c.Raw.SHA, c.Pull, github.CommitFilesCap)
 	}
-	return l.Files, l.incomplete(), nil
+	return l.Files, l.incomplete(), false, nil
 }
 
 // fileListing is GitHub's answer for one commit's files, classified: the
@@ -562,7 +579,7 @@ func attributionWedge(err error, c walked, owner, repo string, reached []line) e
 // range), and attributed from local git. The walk facts are empty: nothing
 // was resolved over the API.
 func rangeLines(ctx context.Context, cfg *config.Config, revRange string) (sinceTagWalk, error) {
-	raws, err := gitsource.Log(ctx, ".", revRange)
+	raws, err := logRange(ctx, revRange)
 	if err != nil {
 		return sinceTagWalk{}, err
 	}

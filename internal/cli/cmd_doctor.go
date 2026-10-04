@@ -147,9 +147,11 @@ const doctorProbeMessage = "this doctor probe matches no commit grammar\n"
 
 // probeClaimed asks whether the repository's own glyph.toml claims the probe
 // message, judged exactly as the fired hook's `lint --stdin` will judge it
-// (same cleanup mode, empty author). Best-effort on purpose: an unloadable
-// config is the config check's finding, and this answers false rather than
-// aborting the probe.
+// (same cleanup mode, empty author). The mode is hookCleanupMode's with no
+// message file to ask about: the fired hook reads the probe's scratch file,
+// never git merge's MERGE_MSG, so both resolve commit.cleanup, commit.verbose
+// and GIT_EDITOR alike. Best-effort on purpose: an unloadable config is the
+// config check's finding, and this answers false rather than aborting the probe.
 func probeClaimed(ctx context.Context, configPath string, pathErr error) bool {
 	if pathErr != nil {
 		return false
@@ -158,7 +160,7 @@ func probeClaimed(ctx context.Context, configPath string, pathErr error) bool {
 	if err != nil {
 		return false
 	}
-	v := cfg.LintAuthoring(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx)))
+	v := cfg.LintAuthoring(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx, nil)))
 	return v.OK
 }
 

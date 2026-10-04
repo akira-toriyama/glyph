@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
+index 5c50010..ec78355 100644
+--- a/internal/cli/cmd_lint.go
++++ b/internal/cli/cmd_lint.go
+@@ -182,7 +182,7 @@ func hookVerbose(ctx context.Context, message io.Reader) cleanup.Verbose {
+ 	if isGitMergeMessage(ctx, message) {
+ 		return cleanup.VerboseNever
+ 	}
+-	if n, _, _ := gitsource.ConfigBoolOrInt(ctx, ".", "commit.verbose"); n > 0 {
++	if n, _, _ := gitsource.ConfigBoolOrInt(ctx, ".", "commit.verbose"); n != 0 {
+ 		return cleanup.VerboseOn
+ 	}
+ 	return cleanup.VerboseUnseen

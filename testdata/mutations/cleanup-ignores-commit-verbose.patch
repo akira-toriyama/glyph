@@ -1,0 +1,13 @@
+diff --git a/internal/cleanup/cleanup.go b/internal/cleanup/cleanup.go
+index 9c13aa7..c41a1d8 100644
+--- a/internal/cleanup/cleanup.go
++++ b/internal/cleanup/cleanup.go
+@@ -97,7 +97,7 @@ const (
+ // environment (measured), so a per-commit override is judged under the
+ // repository's settings (DESIGN §2.1 lists what that costs).
+ func ResolveMode(configured string, edited bool, verbose Verbose) (mode Mode, known bool) {
+-	cut := verbose == VerboseOn || (verbose == VerboseUnseen && edited) || (configured == "scissors" && edited)
++	cut := (verbose == VerboseUnseen && edited) || (configured == "scissors" && edited)
+ 	switch configured {
+ 	case "verbatim":
+ 		return Mode{Truncate: cut}, true

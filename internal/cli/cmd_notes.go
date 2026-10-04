@@ -6,7 +6,6 @@ import (
 
 	"github.com/akira-toriyama/glyph/v4/internal/config"
 	"github.com/akira-toriyama/glyph/v4/internal/core"
-	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
 	"github.com/akira-toriyama/glyph/v4/internal/notes"
 	"github.com/spf13/cobra"
 )
@@ -99,7 +98,7 @@ func notesInput(cmd *cobra.Command, cfg *config.Config) ([]notes.SigilCommit, st
 	if err := checkRangeFlag(notesRange); err != nil {
 		return nil, "", err
 	}
-	raws, err := gitsource.Log(ctx, ".", notesRange)
+	raws, err := logRange(ctx, notesRange)
 	return noteCommits(raws, 0), notesRange, err
 }
 

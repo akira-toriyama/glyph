@@ -21,20 +21,48 @@ import (
 
 // RawCommit is one commit as git reports it, before any parsing: the fields
 // the range assembler needs to decide participation (author, parent count) and
-// to parse (the verbatim message).
+// to parse (the message).
 type RawCommit struct {
 	SHA     string
 	Author  string // author name (%an) — what bot/automation matching runs on
 	Email   string // author email (%ae) — the one identity git holds; a GitHub noreply address names a login
 	Login   string // GitHub login; always "" from git (github.Commit fills it from the API) — mirrored so the two convert
 	Parents int    // parent count; >= 2 marks a merge commit
-	Message string // full raw message (%B), verbatim
+	// Message is the message as git recorded it (%B) minus the one closing
+	// newline git records a cleaned message with — the shape cleanup.Apply hands
+	// the authoring path, so the hook and every history reader judge one text
+	// (DESIGN §2.1). Nothing else is trimmed: a verbatim message keeps its own
+	// trailing blank lines.
+	Message string
 }
 
 // logFormat renders one record per commit: SHA, author name, author email,
-// parent SHAs and the raw message, unit-separated (\x1f). Records themselves
-// are NUL-separated by -z — the only byte a message cannot contain.
-const logFormat = "%H%x1f%an%x1f%ae%x1f%P%x1f%B"
+// parent SHAs and the raw message (%B last), each field closed by NUL and the
+// record by the NUL -z writes after it. NUL frames the fields too because it is
+// the one byte none of them can hold — git refuses it in a message ("a NUL byte
+// in commit log message not allowed", measured) and an ident is a C string —
+// and the record framing already rested on it. The unit separator that framed
+// the fields before is a byte an author NAME can hold: git keeps an interior
+// one (measured on 2.54), so `dependabot[bot]<US>x` moved every field over by
+// one, the author read as dependabot[bot], and exclude_authors passed the
+// commit unjudged at exit 0 (t-esm5; TestLogReadsAnAuthorNameHoldingTheUnitSeparator).
+const logFormat = "%H%x00%an%x00%ae%x00%P%x00%B"
+
+// logFields is how many NUL-closed fields logFormat writes per record.
+const logFields = 5
+
+// logCmd is the head of every `git log` whose output parseLog reads. A display
+// setting in the user's config must never reach that parser, and one does:
+// under log.showSignature git prints each signature's verdict — and a merged
+// signed tag's — on stdout ahead of the commit's record, --format or not, and
+// parseLog refuses any byte that is not a record, so every history read of a
+// developer who signs failed at 4 (measured on git 2.54; the installed pre-push
+// hook lets 4 through). --no-show-signature turns it off whatever the config
+// says. log.decorate, log.abbrevCommit, log.date, log.mailmap and color.ui
+// move nothing logFormat prints (measured).
+func logCmd(args ...string) []string {
+	return append([]string{"log", "-z", "--no-show-signature"}, args...)
+}
 
 // Log returns the commits in revRange (e.g. "BASE..HEAD"), oldest first. An
 // empty range is a successful empty result. --end-of-options pins revRange as
@@ -57,7 +85,7 @@ func LogRevs(ctx context.Context, dir string, revs []string) ([]RawCommit, error
 	if len(revs) == 0 {
 		return nil, nil
 	}
-	args := append([]string{"log", "-z", "--reverse", "--format=" + logFormat, "--end-of-options"}, revs...)
+	args := logCmd(append([]string{"--reverse", "--format=" + logFormat, "--end-of-options"}, revs...)...)
 	out, err := run(ctx, dir, append(args, "--")...)
 	if err != nil {
 		return nil, err
@@ -68,14 +96,17 @@ func LogRevs(ctx context.Context, dir string, revs []string) ([]RawCommit, error
 // RemoteTips returns the object names of every remote-tracking ref under
 // remote — what this clone last saw that remote holding.
 //
-// The trailing slash on the pattern is load-bearing: `refs/remotes/origin`
-// without it also matches a remote named `originmirror` (measured), which would
-// exclude commits the push genuinely carries.
+// The pattern's trailing slash states the intent; it does not guard anything.
+// for-each-ref matches a literal pattern "completely or from the beginning up
+// to a slash" (git-for-each-ref(1)), so `refs/remotes/origin` alone already
+// stops short of a remote named `originmirror` — measured 2026-09-29 on git
+// 2.54: both spellings list origin's refs and none of originmirror's.
 //
 // Measured equal to `--not --remotes=<remote>` on the case that rules out the
-// cheaper spellings: a branch pushed to a second remote first makes bare
-// `--remotes` report ZERO outgoing commits, i.e. a silent green over unlinted
-// work, while both the qualified form and this one report the two real ones.
+// cheaper spellings (re-measured 2026-09-29, git 2.54): a branch pushed to a
+// second remote first makes bare `--remotes` report ZERO outgoing commits, i.e.
+// a silent green over unlinted work, while both the qualified form and this
+// one report the two real ones.
 func RemoteTips(ctx context.Context, dir, remote string) ([]string, error) {
 	out, err := run(ctx, dir, "for-each-ref", "--format=%(objectname)", "--end-of-options", "refs/remotes/"+remote+"/")
 	if err != nil {
@@ -285,13 +316,21 @@ func TopLevel(ctx context.Context, dir string) (string, error) {
 // set it to scripts/hooks, and writing to .git/hooks there would install a hook
 // git never runs. Worktrees are handled by the same delegation.
 func HooksDir(ctx context.Context, dir string) (string, error) {
-	out, err := run(ctx, dir, "rev-parse", "--git-path", "hooks")
+	return GitPath(ctx, dir, "hooks")
+}
+
+// GitPath is `git rev-parse --git-path <name>`: where git keeps one of its own
+// files for this checkout, relative to dir or absolute. Asked of git because the
+// answer moves — a linked worktree's MERGE_MSG is under that worktree's own git
+// directory, and core.hooksPath relocates the hooks.
+func GitPath(ctx context.Context, dir, name string) (string, error) {
+	out, err := run(ctx, dir, "rev-parse", "--git-path", name)
 	if err != nil {
 		return "", err
 	}
 	path := strings.TrimSpace(string(out))
 	if path == "" {
-		return "", core.APIf("git rev-parse --git-path hooks: empty result")
+		return "", core.APIf("git rev-parse --git-path %s: empty result", name)
 	}
 	return path, nil
 }
@@ -308,9 +347,46 @@ func HooksDir(ctx context.Context, dir string) (string, error) {
 // `--get` reports the LAST value for a multiply-set key, which is git's own
 // precedence for the single-valued keys this asks about.
 func ConfigGet(ctx context.Context, dir, key string) (string, bool, error) {
+	return configGet(ctx, dir, key)
+}
+
+// ConfigBoolOrInt returns a key git reads as a bool-or-int — commit.verbose —
+// as the integer git acts on, and whether it is set at all; unset is
+// (0, false, nil), as ConfigGet's. git normalises the value itself
+// (`--type=bool-or-int` prints true for yes, on or a bare key, and 1024 for
+// 1k), so no copy of git's parser lives here. Not `--type=bool`: it prints true
+// for -1, which git commit reads as unset and does not cut at (measured).
+//
+// A value git cannot parse is an API error. `git commit` dies on it before any
+// hook runs; `git merge`, which never reads the key, runs its hook anyway, and
+// there this read exits 128 (both measured on git 2.54) — which is why the one
+// caller treats an error as unset.
+func ConfigBoolOrInt(ctx context.Context, dir, key string) (int, bool, error) {
+	raw, set, err := configGet(ctx, dir, key, "--type=bool-or-int")
+	if err != nil || !set {
+		return 0, set, err
+	}
+	switch raw {
+	case "true":
+		return 1, true, nil
+	case "false":
+		return 0, true, nil
+	}
+	n, aerr := strconv.Atoi(raw)
+	if aerr != nil {
+		return 0, true, core.APIf("git config --type=bool-or-int %s printed %q, which is neither a bool nor an int", key, raw)
+	}
+	return n, true, nil
+}
+
+// configGet is ConfigGet with git config's own type options (`--type=…`)
+// placed before `--get`.
+func configGet(ctx context.Context, dir, key string, typ ...string) (string, bool, error) {
+	args := append(append([]string{"-C", dir, "config"}, typ...), "--get", "--end-of-options", key)
 	// #nosec G204 -- the binary is the fixed literal "git"; key is a config name
-	// from this package's callers, pinned as a value by --end-of-options.
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "config", "--get", "--end-of-options", key)
+	// from this package's callers, pinned as a value by --end-of-options, and
+	// typ is this package's own constant.
+	cmd := exec.CommandContext(ctx, "git", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -397,8 +473,8 @@ func IsAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
 // Fewer than n exist near the root of a history, and the caller decides what a
 // short answer means.
 func FirstParentLog(ctx context.Context, dir, rev string, n int) ([]RawCommit, error) {
-	out, err := run(ctx, dir, "log", "-z", "--first-parent", "-n", strconv.Itoa(n),
-		"--format="+logFormat, "--end-of-options", rev, "--")
+	out, err := run(ctx, dir, logCmd("--first-parent", "-n", strconv.Itoa(n),
+		"--format="+logFormat, "--end-of-options", rev, "--")...)
 	if err != nil {
 		return nil, err
 	}
@@ -420,21 +496,85 @@ func FirstParentLog(ctx context.Context, dir, rev string, n int) ([]RawCommit, e
 // answers EMPTY (git shows no diff for a merge without -m/-c), and callers do
 // not ask about one: a merge commit is attributed to nothing.
 //
+// A shallow clone's boundary commit has no diff this checkout can compute, and
+// answers an error IsShallowBoundary recognises (API class, so a caller that
+// does not ask fails at 4 rather than read a wrong diff). git reads the
+// boundary as a root — its parents were cut off — and `--root` then reported
+// its whole tree as its own diff (measured: `curry/b haiku/a` where the full
+// clone says `curry/b`; t-esm5). The boundary is told apart from a true root by
+// asking the object itself: its header still names the parent git no longer
+// traverses to. Not by `.git/shallow`, which lists a true root inside the depth
+// too, and not by "parentless in a shallow checkout", which would refuse that
+// root's diff although its tree is exactly its diff (both measured). The extra
+// read is paid only by a commit git reads as parentless: %P comes back in the
+// same diff-tree call.
+//
 // Asked only of a commit this checkout holds — the walk's landed identities
 // and every commit a --range fold reads. A squash-merged pull's inner commits
 // exist on no branch, and the walk asks the API about those instead.
 func DiffTreeFiles(ctx context.Context, dir, sha string) ([]string, error) {
-	out, err := run(ctx, dir, "diff-tree", "-z", "--no-commit-id", "--name-only", "-r", "--root", "--no-renames", "--end-of-options", sha, "--")
+	// --always prints the %P header even for an empty diff, so the header is
+	// the output up to the first NUL, and the name list — when there is one —
+	// follows it after one "\n" (measured on git 2.54).
+	out, err := run(ctx, dir, "diff-tree", "-z", "--always", "--format=%P", "--name-only", "-r", "--root", "--no-renames", "--end-of-options", sha, "--")
 	if err != nil {
 		return nil, err
 	}
+	parents, list, ok := bytes.Cut(out, []byte{0})
+	if !ok {
+		return nil, core.APIf("git diff-tree %s: no header in %q", sha, tail(out))
+	}
+	if len(parents) == 0 {
+		boundary, berr := isGraftBoundary(ctx, dir, sha)
+		if berr != nil {
+			return nil, berr
+		}
+		if boundary {
+			return nil, &shallowBoundary{err: core.APIf("commit %.7s is a shallow clone's boundary: its parents are not in this checkout, so its own diff cannot be read (fetch the full history, e.g. actions/checkout with fetch-depth: 0)", sha)}
+		}
+	}
 	var files []string
-	for entry := range bytes.SplitSeq(out, []byte{0}) {
+	for entry := range bytes.SplitSeq(bytes.TrimPrefix(list, []byte("\n")), []byte{0}) {
 		if len(entry) > 0 {
 			files = append(files, string(entry))
 		}
 	}
 	return files, nil
+}
+
+// isGraftBoundary reports whether the commit object names a parent although git
+// traverses it as a root: a shallow clone's boundary. The caller has already
+// seen git read it as parentless.
+func isGraftBoundary(ctx context.Context, dir, sha string) (bool, error) {
+	out, err := run(ctx, dir, "cat-file", "commit", "--end-of-options", sha)
+	if err != nil {
+		return false, err
+	}
+	header, _, _ := bytes.Cut(out, []byte("\n\n"))
+	for line := range bytes.SplitSeq(header, []byte("\n")) {
+		if bytes.HasPrefix(line, []byte("parent ")) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// shallowBoundary carries DiffTreeFiles' unreadable answer: an ordinary
+// *core.Error of the API class to everything that does not ask, so a caller
+// that forgets the case fails loud instead of reading a wrong diff.
+type shallowBoundary struct{ err *core.Error }
+
+func (e *shallowBoundary) Error() string { return e.err.Error() }
+func (e *shallowBoundary) Unwrap() error { return e.err }
+
+// IsShallowBoundary reports whether err is DiffTreeFiles saying the commit is a
+// shallow clone's boundary, whose own diff this checkout cannot compute. The
+// callers that can do better than exit 4 — lint judges the message and warns
+// that it could not ask attribution, the walk carries the commit on no line —
+// branch here.
+func IsShallowBoundary(err error) bool {
+	var sb *shallowBoundary
+	return errors.As(err, &sb)
 }
 
 // MergeBase returns the best common ancestor of revs (git merge-base
@@ -458,6 +598,8 @@ func MergeBase(ctx context.Context, dir string, revs []string) (string, error) {
 // asks because a truncated history makes every ancestry answer a maybe: a commit
 // git cannot see is indistinguishable from one that never landed, and the walk
 // would rather say so than quietly grade itself on a partial repository.
+// Every `--range` read asks for the same reason about the range (internal/cli's
+// logRange): git lists only the commits the clone holds.
 func IsShallow(ctx context.Context, dir string) (bool, error) {
 	out, err := run(ctx, dir, "rev-parse", "--is-shallow-repository")
 	if err != nil {
@@ -466,28 +608,84 @@ func IsShallow(ctx context.Context, dir string) (bool, error) {
 	return strings.TrimSpace(string(out)) == "true", nil
 }
 
-// parseLog splits the NUL-separated, unit-separated records logFormat produces.
-// Shared by every reader of that format so a field added to logFormat cannot be
-// decoded two ways.
+// parseLog reads the NUL-closed fields logFormat produces, logFields to a
+// record. Shared by every reader of that format so a field added to logFormat
+// cannot be decoded two ways.
+//
+// A record is checked before it is believed: its SHA must be a full object
+// name and its parents field object names of the same length, space-separated,
+// or the read fails like any other git read (API). Those are the two fields git
+// alone writes, so a record whose fields did not land where logFormat put them
+// fails there instead of reaching the gates as a commit by the wrong author.
+// Full object names, not SHA-1's 40 digits: glyph read SHA-256 repositories
+// before the check existed (TestLogReadsSHA256Repositories).
 func parseLog(out []byte) ([]RawCommit, error) {
-	var commits []RawCommit
-	for record := range bytes.SplitSeq(out, []byte{0}) {
-		if len(record) == 0 {
-			continue
-		}
-		fields := strings.SplitN(string(record), "\x1f", 5)
-		if len(fields) != 5 {
-			return nil, core.APIf("git log: malformed record %q", string(record))
+	if len(out) == 0 {
+		return nil, nil
+	}
+	if out[len(out)-1] != 0 {
+		return nil, core.APIf("git log: the output does not close its last record: %q", tail(out))
+	}
+	fields := strings.Split(string(out[:len(out)-1]), "\x00")
+	if len(fields)%logFields != 0 {
+		return nil, core.APIf("git log: %d fields do not make whole records of %d: %q", len(fields), logFields, tail(out))
+	}
+	commits := make([]RawCommit, 0, len(fields)/logFields)
+	for i := 0; i < len(fields); i += logFields {
+		f := fields[i : i+logFields]
+		parents, ok := objectNames(f[3], len(f[0]))
+		if !isObjectName(f[0]) || !ok {
+			return nil, core.APIf("git log: malformed record %q", strings.Join(f, "\x00"))
 		}
 		commits = append(commits, RawCommit{
-			SHA:     fields[0],
-			Author:  fields[1],
-			Email:   fields[2],
-			Parents: len(strings.Fields(fields[3])),
-			Message: fields[4],
+			SHA:     f[0],
+			Author:  f[1],
+			Email:   f[2],
+			Parents: parents,
+			Message: strings.TrimSuffix(f[4], "\n"),
 		})
 	}
 	return commits, nil
+}
+
+// isObjectName reports whether s is a full object name as git prints one:
+// lowercase hex, 40 digits for SHA-1 or 64 for SHA-256.
+func isObjectName(s string) bool {
+	if len(s) != 40 && len(s) != 64 {
+		return false
+	}
+	for i := range len(s) {
+		if c := s[i]; (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// objectNames counts the space-separated object names in a %P field, each the
+// length of the commit's own name, and reports false for anything else. Empty
+// is a root commit's answer.
+func objectNames(field string, length int) (int, bool) {
+	if field == "" {
+		return 0, true
+	}
+	names := strings.Split(field, " ")
+	for _, n := range names {
+		if len(n) != length || !isObjectName(n) {
+			return 0, false
+		}
+	}
+	return len(names), true
+}
+
+// tail is the end of a malformed output, for the error: enough to see where
+// the framing went wrong without quoting a whole history.
+func tail(out []byte) string {
+	const keep = 200
+	if len(out) > keep {
+		out = out[len(out)-keep:]
+	}
+	return string(out)
 }
 
 // interrupted returns the user's own abort, or nil when the run failed for any

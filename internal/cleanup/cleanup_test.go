@@ -160,44 +160,64 @@ func TestCleanup(t *testing.T) {
 }
 
 // TestResolveCleanupMode pins the mapping from what a hook can SEE to what git
-// will DO. Every row is a real invocation; the two that carry the incidents are
+// will DO. Every row is a real invocation; the ones that carry the incidents are
 // the -m/-F rows, where assuming the editor's cleanup is what made the hook and
-// CI disagree about the same commit.
+// CI disagree about the same commit, the commit.verbose rows without an editor,
+// where git cuts and the hook used not to (t-3p3k (2)), and the git merge rows,
+// where commit.verbose means nothing to git. The real-git oracle for the grid is
+// internal/cli's TestHookCutMatchesGit.
 func TestResolveCleanupMode(t *testing.T) {
 	tests := []struct {
 		name       string
 		configured string
 		edited     bool
+		verbose    Verbose
 		want       Mode
 		wantKnown  bool
 	}{
-		{"unset + an editor is git's strip, and -v may have appended a diff",
-			"", true, Mode{Space: true, Comments: true, Truncate: true}, true},
+		{"unset + an editor is git's strip, cut because -v may have appended a diff",
+			"", true, VerboseUnseen, Mode{Space: true, Comments: true, Truncate: true}, true},
 		{"unset + no editor (-m / -F) is whitespace: comments are content, nothing is cut",
-			"", false, Mode{Space: true}, true},
+			"", false, VerboseUnseen, Mode{Space: true}, true},
+		{"unset + no editor under commit.verbose is whitespace, cut at the scissors line",
+			"", false, VerboseOn, Mode{Space: true, Truncate: true}, true},
 		{"an explicit 'default' reads exactly as unset",
-			"default", false, Mode{Space: true}, true},
+			"default", false, VerboseUnseen, Mode{Space: true}, true},
 		{"whitespace keeps comments even under an editor",
-			"whitespace", true, Mode{Space: true, Truncate: true}, true},
+			"whitespace", true, VerboseUnseen, Mode{Space: true, Truncate: true}, true},
 		{"strip drops comments even without an editor",
-			"strip", false, Mode{Space: true, Comments: true}, true},
-		{"scissors cuts only when a message is edited",
-			"scissors", true, Mode{Space: true, Truncate: true}, true},
+			"strip", false, VerboseUnseen, Mode{Space: true, Comments: true}, true},
+		{"strip without an editor under commit.verbose drops comments and cuts",
+			"strip", false, VerboseOn, Mode{Space: true, Comments: true, Truncate: true}, true},
+		{"scissors cuts when a message is edited",
+			"scissors", true, VerboseUnseen, Mode{Space: true, Truncate: true}, true},
 		{"scissors without an editor does not cut",
-			"scissors", false, Mode{Space: true}, true},
-		{"verbatim cleans nothing, but -v still truncates",
-			"verbatim", true, Mode{Truncate: true}, true},
+			"scissors", false, VerboseUnseen, Mode{Space: true}, true},
+		{"scissors without an editor cuts under commit.verbose",
+			"scissors", false, VerboseOn, Mode{Space: true, Truncate: true}, true},
+		{"verbatim cleans nothing, and an editor cuts: -v may be on and no hook sees it",
+			"verbatim", true, VerboseUnseen, Mode{Truncate: true}, true},
 		{"verbatim without an editor is the identity",
-			"verbatim", false, Mode{}, true},
+			"verbatim", false, VerboseUnseen, Mode{}, true},
+		{"verbatim without an editor under commit.verbose cleans nothing and cuts",
+			"verbatim", false, VerboseOn, Mode{Truncate: true}, true},
 		{"an unknown mode falls back to default and says so",
-			"stirp", true, Mode{Space: true, Comments: true, Truncate: true}, false},
+			"stirp", true, VerboseUnseen, Mode{Space: true, Comments: true, Truncate: true}, false},
+		{"an unknown mode keeps commit.verbose's cut on its fallback",
+			"stirp", false, VerboseOn, Mode{Space: true, Truncate: true}, false},
+		{"git merge with an editor strips and does not cut: merge cleans with verbose 0",
+			"", true, VerboseNever, Mode{Space: true, Comments: true}, true},
+		{"git merge in scissors mode with an editor cuts",
+			"scissors", true, VerboseNever, Mode{Space: true, Truncate: true}, true},
+		{"git merge without an editor does not cut, whatever commit.verbose says",
+			"strip", false, VerboseNever, Mode{Space: true, Comments: true}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, known := ResolveMode(tt.configured, tt.edited)
+			got, known := ResolveMode(tt.configured, tt.edited, tt.verbose)
 			if got != tt.want || known != tt.wantKnown {
-				t.Errorf("ResolveMode(%q, %v) = %+v, %v; want %+v, %v",
-					tt.configured, tt.edited, got, known, tt.want, tt.wantKnown)
+				t.Errorf("ResolveMode(%q, %v, %v) = %+v, %v; want %+v, %v",
+					tt.configured, tt.edited, tt.verbose, got, known, tt.want, tt.wantKnown)
 			}
 		})
 	}

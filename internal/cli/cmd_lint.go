@@ -47,11 +47,12 @@ func newLintCmd() *cobra.Command {
 			"fixup! and squash! subjects, and an amend! whose body their grammar reads);\n" +
 			"every other mode refuses it, because it may be written but must not land.\n" +
 			"Violations exit 3 with a structured stderr envelope; a clean run is silent,\n" +
-			"EXCEPT for three loud-and-still-0 cases: a --range which judged\n" +
+			"EXCEPT for four loud-and-still-0 cases: a --range which judged\n" +
 			"no commit at all says so (`0` means \"everything I checked conforms\",\n" +
-			"which is vacuous when nothing was checked), a pattern carrying a warn\n" +
-			"annotates every commit it claims, and an unlandable message at authoring\n" +
-			"time says the later gates will refuse it.",
+			"which is vacuous when nothing was checked), a --range in a shallow clone\n" +
+			"says it could judge only the commits the clone holds, a pattern carrying\n" +
+			"a warn annotates every commit it claims, and an unlandable message at\n" +
+			"authoring time says the later gates will refuse it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{
@@ -92,13 +93,15 @@ func newLintCmd() *cobra.Command {
 				}
 				// --stdin is the commit-msg hook, which git invokes BEFORE its
 				// own cleanup: the file still carries the editor template, the
-				// status block and (under commit.verbose) the diff. Reduce it to
-				// the message git will record before judging it.
+				// status block and (under -v or commit.verbose, with an editor)
+				// the diff. Reduce it to the message git will record before
+				// judging it; `in` is the file the hook redirected, whose
+				// identity tells a git merge from a git commit.
 				//
 				// The hook that called this is also the one artefact nothing
 				// refreshes, so its own run is where a drifted copy is reported.
 				warnIfHookStale(cmd.Context(), hook.Kinds()[0])
-				return lintOne(cleanup.Apply(string(b), hookCleanupMode(cmd.Context())), cfg)
+				return lintOne(cleanup.Apply(string(b), hookCleanupMode(cmd.Context(), in)), cfg)
 			case cmd.Flags().Changed("message"):
 				// An empty --message is the caller naming no message, which is
 				// usage — not a message that violates the convention. The old
@@ -136,8 +139,11 @@ func newLintCmd() *cobra.Command {
 	return cmd
 }
 
-// hookCleanupMode reads the two signals a commit-msg hook has about what git is
-// about to do to the message it was handed: `commit.cleanup`, and GIT_EDITOR.
+// hookCleanupMode reads the four signals a commit-msg hook has about what git
+// is about to do to the message it was handed: `commit.cleanup`,
+// `commit.verbose`, GIT_EDITOR, and whether the message is git merge's own
+// MERGE_MSG (DESIGN §2.1). message is what the hook redirected onto stdin, nil
+// when there is no such file to ask about.
 //
 // Asking git HERE rather than having the hook script pass a `--cleanup` flag is
 // the decision worth knowing, and it is a rollout one. The hook is a file
@@ -148,23 +154,65 @@ func newLintCmd() *cobra.Command {
 // installed copy is fixed the moment the binary is. It also keeps the hook's
 // founding property intact: the hook holds no knowledge, it asks glyph.
 //
-// Neither signal is required. Outside a repository, or with git unable to answer,
-// the config read fails and this proceeds as if unset — a developer piping a file
-// into `glyph lint --stdin` by hand gets git's default-with-an-editor reading,
-// which is what that file looks like.
-func hookCleanupMode(ctx context.Context) cleanup.Mode {
+// No signal is required. Outside a repository, or with git unable to answer,
+// the config reads fail and this proceeds as if unset — a developer piping a
+// file into `glyph lint --stdin` by hand gets git's default-with-an-editor
+// reading, which is what that file looks like.
+func hookCleanupMode(ctx context.Context, message io.Reader) cleanup.Mode {
 	// An error is treated as unset on purpose: this is an advisory hook, and a
 	// git that cannot answer a config question is not a reason to refuse a lint.
 	configured, _, _ := gitsource.ConfigGet(ctx, ".", "commit.cleanup")
-	mode, known := cleanup.ResolveMode(configured, os.Getenv("GIT_EDITOR") != ":")
+	mode, known := cleanup.ResolveMode(configured, os.Getenv("GIT_EDITOR") != ":", hookVerbose(ctx, message))
 	if !known {
-		// Warn, never fail. The installed hook forwards ONLY the lint gate code
-		// and waves every other non-zero through, so exiting here would trade a
-		// typo in commit.cleanup for a repository whose commits are not linted
-		// at all — maximum strictness buying zero enforcement.
+		// Warn, never fail. git refuses an unknown mode for a plain `git commit`,
+		// `cherry-pick -e` and a rebase reword before any hook runs, but a
+		// `--cleanup=` override on the command line gets past it and the hook
+		// runs (measured) — and the installed hook forwards ONLY the lint gate
+		// code, so exiting here would leave exactly those commits unlinted.
 		warnf("commit.cleanup=%q is not a mode git knows; linting this message as if it were 'default'", configured)
 	}
 	return mode
+}
+
+// hookVerbose is what the hook can know of the verbose setting git will clean
+// the message under. `git merge` hands the hook its MERGE_MSG and cleans with
+// verbose 0 whatever commit.verbose says; `git commit` reads commit.verbose,
+// and `git -c commit.verbose=…` reaches this read too (GIT_CONFIG_PARAMETERS,
+// measured). An error is unset, as commit.cleanup's is: git commit dies on a
+// value it cannot parse before any hook runs, so a failing read comes from
+// outside git commit — a hand-run lint, doctor's probe, or a git merge whose
+// message was piped rather than redirected.
+func hookVerbose(ctx context.Context, message io.Reader) cleanup.Verbose {
+	if isGitMergeMessage(ctx, message) {
+		return cleanup.VerboseNever
+	}
+	if n, _, _ := gitsource.ConfigBoolOrInt(ctx, ".", "commit.verbose"); n > 0 {
+		return cleanup.VerboseOn
+	}
+	return cleanup.VerboseUnseen
+}
+
+// isGitMergeMessage reports whether message is the very file git merge writes
+// its message to. Only `git merge` (and `git pull`) hands the commit-msg hook
+// MERGE_MSG; concluding a conflicted merge with `git commit` hands it
+// COMMIT_EDITMSG (both measured). The installed hook redirects the file onto
+// stdin (`<"$1"`), so its identity survives; a hook that pipes the message
+// instead gets git commit's reading.
+func isGitMergeMessage(ctx context.Context, message io.Reader) bool {
+	f, ok := message.(*os.File)
+	if !ok || f == nil {
+		return false
+	}
+	got, err := f.Stat()
+	if err != nil || !got.Mode().IsRegular() {
+		return false
+	}
+	path, err := gitsource.GitPath(ctx, ".", "MERGE_MSG")
+	if err != nil {
+		return false
+	}
+	want, err := os.Stat(path)
+	return err == nil && os.SameFile(got, want)
 }
 
 // lintOne lints a single message at authoring time. The author is unknown —
@@ -252,7 +300,10 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 // touch, are findings here — the pre-push hook is where a shared-only ^ is
 // caught before it is pushed, and the release walk would refuse it later
 // with no way to rewrite it. --message and --stdin never reach this: a
-// message alone has no diff. The error is git failing to read a diff (API).
+// message alone has no diff. A shallow clone's boundary commit has no diff
+// this checkout can read, so its attribution is not asked and the commit is
+// warned about instead — at both gates, like a warned pattern. The error is
+// git failing to read a diff (API).
 func lintRaws(ctx context.Context, raws []gitsource.RawCommit, cfg *config.Config) (findings, warned []rangeViolation, checked int, err error) {
 	for _, raw := range raws {
 		v := cfg.Lint(raw.Message, raw.Author)
@@ -271,10 +322,13 @@ func lintRaws(ctx context.Context, raws []gitsource.RawCommit, cfg *config.Confi
 			continue
 		}
 		reason, aerr := lintAttribution(ctx, raw, cfg)
-		if aerr != nil {
+		switch {
+		case gitsource.IsShallowBoundary(aerr):
+			warned = append(warned, rangeViolation{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message),
+				Detail: "its parents are not in this shallow clone, so its own diff cannot be read and the [[packages]] attribution was not checked — fetch the full history (fetch-depth: 0) to judge it"})
+		case aerr != nil:
 			return nil, nil, 0, aerr
-		}
-		if reason != "" {
+		case reason != "":
 			findings = append(findings, rangeViolation{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message), Detail: reason})
 		}
 	}
@@ -284,7 +338,8 @@ func lintRaws(ctx context.Context, raws []gitsource.RawCommit, cfg *config.Confi
 // lintAttribution asks attribution's question of one clean, matched commit
 // under local git, returning the refusal's sentence or "". A skip-pattern
 // match has no sigil to carry; a merge commit's diff is never asked for
-// (attributed to nothing, the same as in the walk).
+// (attributed to nothing, the same as in the walk). A shallow boundary's
+// unreadable diff comes back as DiffTreeFiles' error, for the caller to warn.
 func lintAttribution(ctx context.Context, raw gitsource.RawCommit, cfg *config.Config) (string, error) {
 	m, merr := cfg.Match(raw.Message)
 	if merr != nil || !m.Matched || m.Skip {
@@ -313,7 +368,9 @@ type rangeViolation struct {
 }
 
 // lintRangeRun lints every commit in revRange. Excluded authors are skipped,
-// never failed — the bots exclude_authors names lint nowhere.
+// never failed — the bots exclude_authors names lint nowhere. A shallow
+// checkout is warned about, never refused (logRange): the verdict is about the
+// commits the clone holds.
 func lintRangeRun(ctx context.Context, revRange string) error {
 	if err := checkRangeFlag(revRange); err != nil {
 		return err
@@ -322,7 +379,7 @@ func lintRangeRun(ctx context.Context, revRange string) error {
 	if err != nil {
 		return err
 	}
-	raws, lerr := gitsource.Log(ctx, ".", revRange)
+	raws, lerr := logRange(ctx, revRange)
 	if lerr != nil {
 		return lerr
 	}
