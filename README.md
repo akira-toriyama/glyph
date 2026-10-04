@@ -312,18 +312,23 @@ regexes (first match wins) over the whole message, the named group
 `semver_sigil` carries the signal, a pattern-level `semver_sigil` key
 supplies one for messages that carry none (the presets make a raw
 `git revert` a patch), `skip = true` drops a matching commit from every
-check (merge commits, the `fixup!`/`squash!` autosquash artifacts),
-`warn = '…'` keeps a match
+check (the presets skip merge commits), `warn = '…'` keeps a match
 legal but says so at every gate — for a pattern you accept and would rather
 not see — and `unlandable = '…'` marks a message that may be written but must
 not land: the commit-msg hook lets it through with that reason as a warning,
 and every gate that judges an existing commit (`lint --range`, a push to the
 default branch, `lint --pr`, the release walk) refuses it. It exists for
-git's own `amend!` subject: `rebase --autosquash` turns it into a
+git's own autosquash subjects. `rebase --autosquash` turns an `amend!` into a
 replacement of its target's message, so skipping it would fold the version
-the history had before the rewrite. The presets claim an `amend!` whose body
+the history had before the rewrite; the presets claim an `amend!` whose body
 opens the way their first pattern's subject does and refuse any other at the
-hook as well — the body is what lands. `exclude_authors` keeps bots
+hook as well — the body is what lands. A `fixup!` or `squash!` has no sigil
+of its own until autosquash folds it into its target, so a skip never reads
+its files — under `[[packages]]` a line only it touches stays at none — and
+drops for good one autosquash leaves as it is, its target outside the
+commits being rebased; the presets claim both, and their reason names the
+two ways out: autosquash, or a reword when autosquash leaves the commit as it
+is. `exclude_authors` keeps bots
 out of lint and the fold; whether they appear in the notes is
 `[[note.sections]]`'s decision alone, and under `[[packages]]` the files a
 bot commit touches decide which line's notes.

@@ -360,9 +360,9 @@ func packagesFooter(in Input) string {
 
 func footer(in Input) string {
 	n := len(in.PR.Commits)
-	// "participate" rather than "are in": bots, merges, autosquash artifacts and
-	// raw reverts are excluded upstream, so a bot's PR legitimately shows zero
-	// here and the wording must not read as a miscount.
+	// "participate" rather than "are in": bots, skip-pattern commits (merges,
+	// under the presets) and raw reverts are excluded upstream, so a bot's PR
+	// legitimately shows zero here and the wording must not read as a miscount.
 	if in.Untagged {
 		return fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. The base branch holds no v* release tag yet, so nothing merged earlier is folded in. Pushing more commits updates this comment.", n)
 	}

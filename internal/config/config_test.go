@@ -143,8 +143,8 @@ func TestLoadGemojiConfig(t *testing.T) {
 	if !cfg.Patterns[2].Skip {
 		t.Errorf("Patterns[2].Skip = false, want true (merge commits leave processing)")
 	}
-	if !cfg.Patterns[3].Skip {
-		t.Errorf("Patterns[3].Skip = false, want true (autosquash artifacts leave processing)")
+	if p := cfg.Patterns[3]; p.Unlandable == "" || p.Skip || p.Fixed != nil {
+		t.Errorf("Patterns[3] should claim the fixup!/squash! autosquash artifacts as unlandable and nothing else: %+v", p)
 	}
 
 	if cfg.Note.Line != "- $subject$[ ($pr)] @$author$[ with $coauthors]" {
