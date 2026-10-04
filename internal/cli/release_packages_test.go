@@ -216,7 +216,7 @@ func TestReleasePackagesBareResidueIsDeletedWithNotice(t *testing.T) {
 		if len(writes) != 3 || writes[2].method != "DELETE" || !strings.HasSuffix(writes[2].path, "/61") {
 			t.Fatalf("writes = %+v, want two POSTs then the DELETE of the bare residue", writes)
 		}
-		if !strings.Contains(stderr, "single line's residue") || !strings.Contains(stderr, "hand region") {
+		if !claimsResidueGone(deletionClaims(stderr, 61)) {
 			t.Fatalf("the notice must say what is deleted and that the hand region goes with it:\n%s", stderr)
 		}
 	})
@@ -233,7 +233,7 @@ func TestReleasePackagesBareResidueIsDeletedWithNotice(t *testing.T) {
 		if len(writes) != 1 || writes[0].method != "DELETE" || !strings.HasSuffix(writes[0].path, "/61") {
 			t.Fatalf("writes = %+v, want the DELETE of the bare residue alone", writes)
 		}
-		if !strings.Contains(stderr, "single line's residue") || !strings.Contains(stderr, "hand region") {
+		if !claimsResidueGone(deletionClaims(stderr, 61)) {
 			t.Fatalf("the loud pass must speak the residue's notice once its DELETE went too:\n%s", stderr)
 		}
 	})
@@ -253,6 +253,27 @@ func TestReleasePackagesBareResidueIsDeletedWithNotice(t *testing.T) {
 	})
 }
 
+// deletionClaims returns the stderr lines that name the draft with this
+// release id as a real run does — every such line but a dry run's. A dry run
+// must print none; claimsResidueGone is the positive control that the real
+// runs above print the residue's deletion claim among them, so the pattern the
+// dry run is held to is proven to see the claim it excludes.
+func deletionClaims(stderr string, id int) []string {
+	var claims []string
+	for l := range strings.SplitSeq(stderr, "\n") {
+		if strings.Contains(l, fmt.Sprintf("(release id %d)", id)) && !strings.HasPrefix(l, "::notice::glyph: dry run: ") {
+			claims = append(claims, l)
+		}
+	}
+	return claims
+}
+
+func claimsResidueGone(claims []string) bool {
+	return slices.ContainsFunc(claims, func(l string) bool {
+		return strings.Contains(l, "is the single line's residue") && strings.Contains(l, "a hand region it carried is gone with it")
+	})
+}
+
 // TestReleasePackagesBareResidueNoticeWaitsForTheDelete (t-xz1z): the residue
 // notice is the one warning that exists so a human can move a hand region's
 // prose before it is destroyed, and --dry-run is how they get to read it in
@@ -266,23 +287,8 @@ func TestReleasePackagesBareResidueNoticeWaitsForTheDelete(t *testing.T) {
 		t.Helper()
 		dir, _ := packagesRepo(t)
 		_, routes := squashAcrossLines(t, dir, 7)
-		var writes []apiWrite
-		inner := releaseHandler(t, routes, residue, &writes)
 		seq = &[]string{}
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodGet {
-				*seq = append(*seq, r.Method+" "+r.URL.Path)
-			}
-			if code := fail(r); code != 0 {
-				w.Header().Set("Retry-After", "0")
-				w.WriteHeader(code)
-				fmt.Fprint(w, `{"message":"boom"}`)
-				return
-			}
-			inner(w, r)
-		}))
-		t.Cleanup(srv.Close)
-		usePR(t, srv)
+		usePR(t, failingReleaseServer(t, routes, residue, fail, seq))
 		t.Chdir(dir)
 		return seq
 	}
@@ -297,8 +303,8 @@ func TestReleasePackagesBareResidueNoticeWaitsForTheDelete(t *testing.T) {
 		if len(*seq) != 0 {
 			t.Fatalf("a dry run wrote: %v", *seq)
 		}
-		if strings.Contains(stderr, "is deleted") {
-			t.Errorf("a dry run deletes nothing and must not say it did:\n%s", stderr)
+		if claims := deletionClaims(stderr, 61); len(claims) > 0 {
+			t.Errorf("a dry run deletes nothing, so every line naming the residue must be a dry run's:\n%s", strings.Join(claims, "\n"))
 		}
 		for _, want := range []string{"dry run: the bare draft v0.9.0 (release id 61) is the single line's residue", "would be deleted", "hand region"} {
 			if !strings.Contains(stderr, want) {
@@ -320,7 +326,7 @@ func TestReleasePackagesBareResidueNoticeWaitsForTheDelete(t *testing.T) {
 		if slices.ContainsFunc(*seq, func(w string) bool { return strings.HasPrefix(w, "DELETE ") }) {
 			t.Fatalf("write sequence = %v, want no DELETE after a failed upsert", *seq)
 		}
-		if strings.Contains(stderr, "is deleted") || strings.Contains(stderr, "single line's residue") {
+		if strings.Contains(stderr, "single line's residue") || strings.Contains(stderr, "gone with it") {
 			t.Errorf("the residue is untouched, so no notice may speak of its deletion:\n%s", stderr)
 		}
 	})
@@ -338,7 +344,7 @@ func TestReleasePackagesBareResidueNoticeWaitsForTheDelete(t *testing.T) {
 		if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "release id 61") {
 			t.Errorf("the residue that would not go must be warned about:\n%s", stderr)
 		}
-		if strings.Contains(stderr, "is deleted") || strings.Contains(stderr, "single line's residue") {
+		if strings.Contains(stderr, "single line's residue") || strings.Contains(stderr, "gone with it") {
 			t.Errorf("the residue still stands, so no notice may speak of its deletion:\n%s", stderr)
 		}
 	})

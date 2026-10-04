@@ -1284,10 +1284,12 @@ residual drafts, so a delete that will not go fails the run (4) exactly as the
 single line's none verdict does, whatever its siblings wrote; the strays
 beside a draft a line wrote are bookkeeping after that write and stay a
 warning. The bare residue is a stray when any line wrote a draft and the whole
-action when none did. The first cut sent every delete through the lenient pass
-as soon as one line had written, so the same line, verdict and failing
-`DELETE` exited 4 when every line was none and 0 beside a moving sibling, the
-verdict reporting `delete` over a draft still standing (t-xz1z;
+action when none did (mutation row
+`release-packages-residue-absorbed-when-no-line-drafts.patch`). The first cut
+sent every delete through the lenient pass as soon as one line had written, so
+the same line, verdict and failing `DELETE` exited 4 when every line was none
+and 0 beside a moving sibling, the verdict reporting `delete` over a draft
+still standing (t-xz1z;
 `TestReleasePackagesNoneDeleteFailureStillFailsLoud` fails on that source, and
 mutation row `release-packages-none-lines-absorb-a-failed-delete-too.patch`
 restores it). A residual that will not go is answered only once every other

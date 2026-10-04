@@ -1,13 +1,13 @@
 diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
-index 69c2939..98d089b 100644
+index 9a3728d..7336859 100644
 --- a/internal/cli/release_lines.go
 +++ b/internal/cli/release_lines.go
-@@ -182,6 +182,9 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
+@@ -183,6 +183,9 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
  	var residue []github.Release
  	if !slices.ContainsFunc(cfg.Packages, func(p config.Package) bool { return p.Path == "." }) {
  		residue = staleReleases(draftplan.PlanDraft(cfg.LineOf(config.Package{Path: "."}), bump.LevelNone, "", false, drafted).Stale)
 +		for _, r := range residue {
-+			noticef("the bare draft %s (release id %d) is the single line's residue — this repository declares packages and no root package, so no line will converge it again; it is deleted, and a hand region it carried goes with it (move that prose into the line's own draft, above the marker)", r.TagName, r.ID)
++			noticef("the bare draft %s (release id %d) is the single line's residue — this repository declares packages and no root package, so no line would converge it again; a hand region it carried is gone with it", r.TagName, r.ID)
 +		}
  	}
  	// Spoken once the residue's DELETE went, never at plan time: printed there
