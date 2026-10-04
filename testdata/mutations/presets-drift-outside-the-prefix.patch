@@ -1,0 +1,13 @@
+diff --git a/internal/config/presets/conventional.toml b/internal/config/presets/conventional.toml
+index 0b4446b..3392676 100644
+--- a/internal/config/presets/conventional.toml
++++ b/internal/config/presets/conventional.toml
+@@ -59,7 +59,7 @@ pattern = '^(?P<subject>(?P<type>[a-z]+)(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_s
+ # that change being made rather than undone (measured — glyph-test v0.4.1
+ # shipped `- :sparkles:(soak)^ add the page ... (#53) (#54)` in its Fixes
+ # section, describing the feature it had just removed).
+-pattern = '^(?P<subject>Revert ".+")'
++pattern = '^Revert "(?P<subject>.+)"'
+ semver_sigil = '~'
+ 
+ [[patterns]]

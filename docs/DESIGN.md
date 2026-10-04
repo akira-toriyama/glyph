@@ -108,6 +108,92 @@ pattern says it means:
   path is where git's own subjects matter most — an author cannot rewrite a
   subject git generated, so refusing it forces `--no-verify`, which turns the
   gate off; a skip and an unlandable claim both let it through.
+  - **A preset fixes, skips or claims only what git spells; a subject its
+    author writes carries its own sigil** (t-h9y7, ruled 2026-09-29;
+    `TestConventionalPresetTakesTheVersionOnlyFromTheSigil`, mutation row
+    `conventional-preset-reads-the-type-as-the-version.patch`, the twin of
+    `gemoji-preset-grows-an-acceptance-window.patch`). Beside its grammar's
+    own pattern a preset carries only messages git writes — the raw revert,
+    merges, the autosquash artifacts and `amend!` — and the two presets are
+    one grammar over two prefix vocabularies: what `init` writes differs
+    only in the header and `style` label, the vocabulary note, the
+    template's form line, the first pattern's comment and regex, and the
+    `amend!` body regex that mirrors it. `TestPresetsDifferOnlyInThePrefix`
+    holds every other byte equal, the first pattern's other keys included,
+    and `TestPresetsShareOneGrammar` holds by sample what the masked lines
+    share: every sigil over each scope shape the class admits, in the
+    grammar and in the `amend!` body, the whole-line subject, the
+    sigil-less refusal and the footer read as prose (mutation rows
+    `presets-drift-outside-the-prefix.patch` — a conventional-only revert
+    change that survived every other test —
+    `presets-grammar-grows-a-key-in-one-preset.patch`,
+    `presets-scope-class-drifts-in-one-preset.patch`,
+    `presets-amend-body-drifts-in-one-preset.patch` and
+    `presets-read-the-breaking-change-footer.patch`). So a ruling that
+    changes one preset lands in both, and one that changes a class inside a
+    masked line adds its sample there for every preset — a sample is all
+    that holds those lines. `--conventional` is therefore Conventional
+    Commits with the sigil before the colon, over the presets' lowercase
+    classes (a `[a-z]+` type and a `[a-z0-9-]+` scope, stricter than the
+    spec, which makes its units case-insensitive and asks only that a scope
+    be a noun): the spec's own `feat!:` reads as `!` unchanged, a sigil-less
+    `feat:` is refused at exit 3 by both hook modes, `lint --range` and
+    `bump`, and a `BREAKING CHANGE:` footer is prose — `fix~:` over one
+    folds patch, silently (measured 2026-09-29; lint has no taste, below).
+    That is the grammar epic e-qzpz ratified: the sigil is the only version
+    input, a prefix — a conventional type included — is for the reader, and
+    profiles and footer parsing are gone. `--conventional` was sketched
+    with a mandatory sigil group from the start (t-w7dv), refusing a
+    sigil-less `feat:` is the write-it-down half of the sigil's job
+    (`TestConventionalPresetGrammar`), and the preset exists for
+    repositories that cannot take gitmoji, not to align with Conventional
+    Commits (epic e-b3t3: no obligation to).
+  - **Plain Conventional Commits is deliberately absent** — the type
+    deciding the version, the footer raising it — with the reason, so
+    nobody re-files it as an oversight. glyph read it once, as the v1
+    grammar's conventional profile (tag v2.1.0: an embedded table, `feat`
+    minor, `fix`, `perf` and `revert` patch, the other seven types none,
+    footers parsed), and v2 deleted the table with the footer parsing
+    (glyph#187, tag v3.0.0). It ships neither as a third preset nor in
+    `--conventional`'s place, and no copy of its patterns is kept in prose:
+    a pattern block no loader reads is a copy that drifts, as the packages
+    paragraph did between the presets until one embedded snippet replaced
+    the copies (#228). A repository's own file may still say it — a `(?s)`
+    footer pattern, a `!:` capture, fixed sigils on `feat` and `fix` and a
+    none-folding catch-all read the spec's version rules (`feat` minor,
+    `fix` patch, `feat!:` and a footered `fix:` major, `chore` none —
+    measured 2026-09-29) — and "readable from the file alone" (§3) is no
+    objection: it bars verdict inputs outside the file, and patterns are
+    inside it. What keeps the block out of every file `init` writes is what
+    it brings back, each measured on it the same day. Its catch-all folds a
+    typo'd or unmarked type as a silent none: `feta: add the export command`
+    and `refactor: rename the public Parse API` lint 0 and bump none with
+    nothing said, the hole the window's retirement took out of the presets,
+    where `--conventional` refuses the first at 3 and folds `feta^:` minor —
+    which is why its type word may be free. Closing the catch-all means
+    listing the types, v1's table moved into the file. Its footer read is
+    the regex over the raw message §3 rejects as a trailer parser: a
+    `BREAKING CHANGE:` line inside a body paragraph releases a major, and
+    the spec's own token is no git trailer (the space — `git
+    interpret-trailers --parse` answers nothing for it, git 2.54), so
+    written in the trailer block it voids the block and the release line
+    drops its `$coauthors` credit. It has no `%`, so a 0.x repository could
+    never say 1.0 (`feat%:` refused, `feat!:` at v0.4.2 reads v0.5.0), and
+    adding one sets a sigil beside the implied levels — two spellings of
+    one version. Nor does it read the spec as written, the case for putting
+    it in `--conventional`'s place: over the presets' classes `Feat:`,
+    `FEAT:`, `feat(API):` and `feat(ui/button):` are refused, as
+    `--conventional` refuses them with a sigil, where the spec makes its
+    units case-insensitive and leaves a scope's spelling to the noun it
+    names. A repository that keeps plain Conventional Commits writes those
+    patterns into its own file and owns what they fold (a catch-all is
+    legal — lint has no taste). No consumer was waiting: every fleet
+    `glyph.toml` is the gemoji grammar (measured 2026-10-04 on each
+    unarchived akira-toriyama repository's default branch through the
+    GitHub API: 38 commit one, all `style = "gemoji"` with no type group,
+    and 3 commit none), and the motive — running beside another
+    repository's convention unchanged — left with the outreach path
+    declined on 2026-09-15 (t-9q9h).
 - A pattern may carry **`warn = '<message>'`** — a message the file's author
   wrote for a commit's author, for a pattern that is legal but undesirable.
   The verdict is untouched; the message is surfaced **wherever the pattern
@@ -1203,9 +1289,15 @@ the hard refusal stays with the lint gate and the range fold (§2, §3), and the
 downgrade is owned by the walk assembly, keeping `internal/bump` pure. The v1
 exception here (Q10: an unknown `:code:` carrying `!` or a `BREAKING CHANGE:`
 footer normalized to a major) is **superseded with the grammar that defined
-it**: v2 reads no body and normalizes nothing, so a breaking marker survives
-the dark path exactly when the subject carries a sigil the pattern file reads
-— which is the marker's home under §2, not a special case of the walk.
+it**: v2 normalizes nothing, and no text reaches the version except through a
+pattern the file carries. The fallback matches the commit's whole message like
+any other, so a breaking marker survives the dark path exactly when a pattern
+yields a major sigil (`!` or `%`) for it — the marker's home under §2, not a
+special case of the walk. Under the presets that is the subject's sigil
+alone: their one pattern that reads past the first line, the `amend!` claim,
+yields no sigil, and a `BREAKING CHANGE:` footer moves nothing (t-h9y7, §2).
+The body is not unread — the notes parse its trailer block for `$coauthors`
+and `[[note.trailers]]` (§3) — but that renders prose, never a level.
 
 The leniency is for the fallback path only. A lint failure **inside a
 resolved merged PR** stays a hard exit 3 even on the release walk (Q1 —

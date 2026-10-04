@@ -223,9 +223,11 @@ nowhere else: a message no pattern claims emits a `::warning::` and counts
 **none** — never a silent patch, never exit 3 (the hard refusal stays with the
 lint gate and the range fold; t-kbqx, so `internal/bump` stays pure). The v1
 exception here (Q10's footer/unknown-code normalization to `:boom:`) is
-superseded with the grammar that defined it: v2 reads no body and normalizes
-nothing, so a breaking marker survives this path exactly when the subject
-carries a sigil the pattern file reads.
+superseded with the grammar that defined it: v2 normalizes nothing, and this
+path matches the commit's whole message through the pattern file like any
+other, so a breaking marker survives it exactly when a pattern yields a major
+sigil (`!` or `%`) for it — under the presets, the subject's sigil alone (a
+`BREAKING CHANGE:` footer is prose; DESIGN §4).
 `internal/cli/sincetag.go: walkSince` (the fallback arm)
 
 **API lag** — GitHub answering **422** for a sha it does not know yet, which is

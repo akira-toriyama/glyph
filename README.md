@@ -271,9 +271,10 @@ Your `glyph.toml` decides. The shipped presets give you a starting grammar:
 ```
 
 The sigil is the version signal, and the only thing glyph interprets:
-`=` none / `~` patch / `^` minor / `!` major / `%` promote. The prefix (a
-gemoji, a conventional type, anything your pattern accepts) is for the reader
-and never decides the version. Examples under the gemoji preset:
+`=` none / `~` patch / `^` minor / `!` major / `%` promote. Under the shipped
+presets the prefix (a gemoji, a conventional type) is for the reader and never
+decides the version; a pattern you write may give one a fixed sigil, and then
+owns what it folds. Examples under the gemoji preset:
 
 ```
 :sparkles:(ui)^ add a right-click window menu            → minor
@@ -304,8 +305,11 @@ the *step*, not the meaning of the commit. One consequence worth expecting: in
 Under the conventional preset the sigil sits before the colon, so
 Conventional Commits' own `feat!:` reads as the major sigil unchanged
 (`feat^:` minors, `fix~:` patches, `chore=:` moves nothing, `feat%:` promotes)
-— and a sigil-less `feat:` is a violation: writing the version signal down is
-the point.
+— a sigil-less `feat:` is a violation, and a `BREAKING CHANGE:` footer moves
+nothing under either preset (`fix~:` with one is still a patch), because the
+sigil is the only signal: writing it down, in the subject, is the point. Plain
+Conventional Commits — the type and the footer deciding the version — ships as
+no preset; DESIGN §2 records why.
 
 Everything is the pattern file's to change: `[[patterns]]` are ordered RE2
 regexes (first match wins) over the whole message, the named group
