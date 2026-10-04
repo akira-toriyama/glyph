@@ -39,7 +39,8 @@ import (
 // is the below: bound as typed when that form resolved the line, "" for the
 // other forms: with Range "" it tells the two whole-history causes apart —
 // no tag UNDER the bound is not no tag at all, and a line's diagnosis must
-// not be a sentence `git tag -l` refutes (t-gt9n).
+// not be a sentence `git tag -l` refutes (t-gt9n) — which is also why each
+// cause is stated of HEAD's history, the set the base is read from.
 type line struct {
 	Package config.Package
 	Line    config.Line
@@ -198,8 +199,9 @@ func scopeEscape(scope *walkScope) string {
 	return scope.Escape
 }
 
-// lineFromLatest resolves one package's line from its own highest tag —
-// strictly below the bound when one is given — else the whole history.
+// lineFromLatest resolves one package's line from its own highest tag HEAD
+// contains — strictly below the bound when one is given — else the whole
+// history.
 func lineFromLatest(ctx context.Context, cfg *config.Config, p config.Package, below *bump.Version) (line, error) {
 	tl := cfg.LineOf(p)
 	latest, v, err := latestVersionTag(ctx, tl, below)
@@ -225,7 +227,7 @@ func unionRange(ctx context.Context, cfg *config.Config, lines []line, escape st
 		if l.Range == "" {
 			untagged = append(untagged, firstTagOn(l.Line))
 			if l.Bound != "" {
-				bounded = append(bounded, fmt.Sprintf("no version tag below %s on the %s line", l.Bound, l.Line.Label()))
+				bounded = append(bounded, fmt.Sprintf("no version tag below %s on the %s line in HEAD's history", l.Bound, l.Line.Label()))
 			} else {
 				unbounded = append(unbounded, l.Line.Label())
 			}
@@ -239,7 +241,7 @@ func unionRange(ctx context.Context, cfg *config.Config, lines []line, escape st
 	if len(untagged) > 0 {
 		var causes []string
 		if len(unbounded) > 0 {
-			causes = append(causes, fmt.Sprintf("no version tag on the %s line(s)", strings.Join(unbounded, ", ")))
+			causes = append(causes, fmt.Sprintf("no version tag on the %s line(s) in HEAD's history", strings.Join(unbounded, ", ")))
 		}
 		causes = append(causes, bounded...)
 		revRange, _, err := wholeHistory(ctx, cfg, fmt.Sprintf("%s — cut %s at the commit before that line's first change to say nothing of it was released before there", strings.Join(causes, "; "), strings.Join(untagged, " / ")), escape)

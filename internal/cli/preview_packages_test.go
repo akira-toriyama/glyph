@@ -166,7 +166,7 @@ func TestPreviewPackagesUntaggedLinesSkipTheWalk(t *testing.T) {
 	if !res.Packages[0].Untagged || res.Packages[0].Next != "v0.1.0" {
 		t.Fatalf("haiku = %+v, want untagged with a first release of v0.1.0", res.Packages[0])
 	}
-	if !strings.Contains(res.Body, "the first release here would be **haiku/v0.1.0**") || !strings.Contains(res.Body, "haiku and curry has no release tag yet") {
+	if !strings.Contains(res.Body, "the first release here would be **haiku/v0.1.0**") || !strings.Contains(res.Body, "haiku and curry has no release tag on the base branch yet") {
 		t.Fatalf("body must say the lines have not released:\n%s", res.Body)
 	}
 }
@@ -393,10 +393,10 @@ func TestPreviewPackagesUntaggedTouchedLineAgreesWithItsVerdict(t *testing.T) {
 	if !strings.Contains(res.Body, "**curry/"+curry.next+"**") {
 		t.Errorf("the body names a different version than the machine verdict (%s):\n%s", curry.next, res.Body)
 	}
-	if strings.Contains(res.Body, "curry has no release tag yet, so nothing merged earlier is folded in for it") {
+	if strings.Contains(res.Body, "curry has no release tag on the base branch yet, so nothing merged earlier is folded in for it") {
 		t.Errorf("the body denies a pending side this same run walked and reported:\n%s", res.Body)
 	}
-	if !strings.Contains(res.Body, "curry has no release tag yet, so everything merged so far is folded in for it") {
+	if !strings.Contains(res.Body, "curry has no release tag on the base branch yet, so everything merged so far is folded in for it") {
 		t.Errorf("the body must say what an untagged line's walked floor is:\n%s", res.Body)
 	}
 }

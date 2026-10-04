@@ -184,7 +184,7 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 			pending[lw.Package.Path] = dec
 		}
 	} else if len(touched) > 0 {
-		warnf("no release tag on any line this PR touches — previewing the PR's own verdict per line (the pending walk needs a release floor)")
+		warnf("no release tag in HEAD's history on any line this PR touches — previewing the PR's own verdict per line (the pending walk needs a release floor)")
 	}
 
 	prShort := ""

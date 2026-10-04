@@ -281,8 +281,10 @@ func bumpLines(cmd *cobra.Command, cfg *config.Config) error {
 // the caller's input) wins; else the
 // base the input source itself named (--since-tag's tag — the walk base and
 // the step base must be the SAME tag); else the highest parseable tag on the
-// line (prefix "" is the bare line), which is v0.0.0 for a line before its
-// first release.
+// line (prefix "" is the bare line) that HEAD contains, which is v0.0.0 for a
+// line whose history holds no release yet. A topic branch forked before the
+// base branch's latest release therefore steps from its fork point's release
+// (DESIGN §4).
 func currentVersion(ctx context.Context, flag string, base *bump.Version, l config.Line) (bump.Version, error) {
 	if flag != "" {
 		v, err := bump.ParseVersion(flag)

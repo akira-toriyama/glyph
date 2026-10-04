@@ -1,0 +1,15 @@
+diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
+index f991439..beb2e22 100644
+--- a/internal/cli/sincetag.go
++++ b/internal/cli/sincetag.go
+@@ -383,9 +383,7 @@ func releasesHEADHolds(ctx context.Context) ([]string, error) {
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	if shallow {
+-		return gitsource.Tags(ctx, ".")
+-	}
++	_ = shallow
+ 	return gitsource.MergedTags(ctx, ".", "HEAD")
+ }
+ 

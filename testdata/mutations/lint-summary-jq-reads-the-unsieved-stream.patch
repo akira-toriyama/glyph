@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+index d32e69d..10c0812 100644
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -228,7 +228,7 @@ jobs:
+           # a BRE is POSIX-undefined, and sed rather than grep because a grep
+           # that matches nothing exits 1 and would kill the step under
+           # `set -o pipefail` whenever the error was Silent (t-sws7).
+-          sed -n '/^[{]/,$p' /tmp/glyph-lint.err > /tmp/glyph-lint.json
++          cp /tmp/glyph-lint.err /tmp/glyph-lint.json
+           if jq -e .error /tmp/glyph-lint.json >/dev/null 2>&1; then
+             # Only the SUMMARY is framed here; the per-finding annotations are
+             # glyph's own, above.

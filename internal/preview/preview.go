@@ -47,7 +47,9 @@ type Verdict struct {
 
 // Input is everything the body is rendered from. PR is this pull request's own
 // verdict; Pending is what is already merged but unreleased. Untagged marks a
-// repository with no v* release tag: its Pending is not merely empty but
+// base branch whose history holds no v* release tag — the fact the caller
+// resolved, stated of the branch because a tag on another branch is no
+// release of this one (DESIGN §4): its Pending is not merely empty but
 // UNCOMPUTED — walking it would cost an API round-trip per commit of the whole
 // history for an answer that cannot matter (nothing is unreleased when nothing
 // was ever released), so the caller skips it and says so here.
@@ -161,7 +163,7 @@ func Headline(in Input) string {
 	pr, qr := rank(pl), rank(ql)
 	switch {
 	case in.Untagged && pr == 0:
-		return "⏸️ Merging this PR moves nothing — and this repository has no release tag yet, so there is no version to move."
+		return "⏸️ Merging this PR moves nothing — and the base branch holds no release tag yet, so there is no version to move."
 	case in.Untagged:
 		return fmt.Sprintf("%s Merging this PR raises **%s** — the first release here would be **%s**.", icon(pl), pl, in.PR.Next)
 	case pr == 0 && qr == 0:
@@ -314,7 +316,8 @@ func PRShortBlock(short string, figures bool) string {
 
 // packagesFooter is footer per line: the participating commits are counted
 // once each (a commit in two lines is one commit), and the base every line
-// was folded since is named — or the line said to have no release tag yet.
+// was folded since is named — or the line said to have no release tag on the
+// base branch yet.
 func packagesFooter(in Input) string {
 	seen := map[string]bool{}
 	n := 0
@@ -347,10 +350,10 @@ func packagesFooter(in Input) string {
 	}
 	s += "."
 	if len(untaggedWalked) > 0 {
-		s += fmt.Sprintf(" %s has no release tag yet, so everything merged so far is folded in for it.", strings.Join(untaggedWalked, " and "))
+		s += fmt.Sprintf(" %s has no release tag on the base branch yet, so everything merged so far is folded in for it.", strings.Join(untaggedWalked, " and "))
 	}
 	if len(untagged) > 0 {
-		s += fmt.Sprintf(" %s has no release tag yet, so nothing merged earlier is folded in for it.", strings.Join(untagged, " and "))
+		s += fmt.Sprintf(" %s has no release tag on the base branch yet, so nothing merged earlier is folded in for it.", strings.Join(untagged, " and "))
 	}
 	return s + " Pushing more commits updates this comment."
 }
@@ -361,7 +364,7 @@ func footer(in Input) string {
 	// raw reverts are excluded upstream, so a bot's PR legitimately shows zero
 	// here and the wording must not read as a miscount.
 	if in.Untagged {
-		return fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. This repository has no v* release tag yet, so nothing merged earlier is folded in. Pushing more commits updates this comment.", n)
+		return fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. The base branch holds no v* release tag yet, so nothing merged earlier is folded in. Pushing more commits updates this comment.", n)
 	}
 	if in.PendingShort != "" {
 		return fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them — folded with as much of what is already merged on the base branch since **%s** as the walk could read. Pushing more commits updates this comment.", n, in.Current)

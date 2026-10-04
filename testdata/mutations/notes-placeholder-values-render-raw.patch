@@ -1,0 +1,13 @@
+diff --git a/internal/notes/sigil.go b/internal/notes/sigil.go
+index 1e21dab..c732d73 100644
+--- a/internal/notes/sigil.go
++++ b/internal/notes/sigil.go
+@@ -158,7 +158,7 @@ func renderLine(spans []config.LineSpan, declared []config.NoteTrailer, c SigilC
+ 			case p.Placeholder && p.Text == config.BuiltinAuthor:
+ 				l.Mention(c.Login, c.Author)
+ 			case p.Placeholder:
+-				l.Prose(resolve(p.Text))
++				l.Raw(resolve(p.Text))
+ 			default:
+ 				l.Raw(p.Text)
+ 			}

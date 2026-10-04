@@ -81,7 +81,7 @@ func TestHeadline(t *testing.T) {
 		{
 			name: "untagged repo — nothing to move",
 			in:   Input{Current: "v0.0.0", Untagged: true},
-			want: "⏸️ Merging this PR moves nothing — and this repository has no release tag yet, so there is no version to move.",
+			want: "⏸️ Merging this PR moves nothing — and the base branch holds no release tag yet, so there is no version to move.",
 		},
 	}
 	for _, tt := range tests {
@@ -450,7 +450,7 @@ func TestRenderPackagesCountsASharedCommitOnce(t *testing.T) {
 	if !strings.Contains(got, "Computed from the 1 commit(s) participating") {
 		t.Errorf("a commit in two lines must be counted once:\n%s", got)
 	}
-	if !strings.Contains(got, "since **haiku/v0.1.0** (haiku). curry has no release tag yet, so nothing merged earlier is folded in for it.") {
+	if !strings.Contains(got, "since **haiku/v0.1.0** (haiku). curry has no release tag on the base branch yet, so nothing merged earlier is folded in for it.") {
 		t.Errorf("the untagged line must be named, not given a base:\n%s", got)
 	}
 	if strings.Count(got, "move a file across the lines") != 2 {

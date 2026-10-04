@@ -5,10 +5,11 @@
 // honest commit text into something it never meant to be.
 //
 // The pipeline is three files. escape.go comes FIRST: flatten makes each value
-// one line as it arrives, escapeText disarms a plain-text field like the scope
-// on the spot, and escapeProseLine then disarms prose over the ASSEMBLED line —
-// the constructs that can inject structure, point somewhere the author never
-// wrote, or delete the author's own words. This file comes LAST and also works
+// one line as it arrives, and escapeProseLine then disarms it over the
+// ASSEMBLED line — the constructs that can inject structure, point somewhere
+// the author never wrote, or delete the author's own words. Every value is
+// prose to it, a commit scope included (DESIGN §2 holds that ruling and why the
+// scope's plain-text route was deleted). This file comes LAST and also works
 // over the assembled line: escapeMentions fences the would-be @mentions. BOTH
 // of the last two are whole-line passes and for one reason — a code span pairs
 // backtick runs across the whole inline context, so neither question is
