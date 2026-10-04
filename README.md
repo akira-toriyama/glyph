@@ -202,11 +202,16 @@ Neither hook holds a copy of the convention, and neither computes a range — bo
 call glyph, so they cannot fall out of lockstep when the rules move. Without glyph
 on `PATH` they warn and let you through; the commit-lint CI job stays the
 authority. The verdict `commit-msg` gives is the verdict CI will give: glyph
-reduces the message exactly as git's cleanup mode will before linting it
-(DESIGN §2.1). Two gaps are stated rather than hidden: a message a pattern
-marks `unlandable` passes the hook with a warning that CI will refuse it, and
-under `[[packages]]` the hook cannot see a diff that is not yet a commit —
-`pre-push` judges that one step later.
+reduces the message as git's cleanup will before linting it — from the
+repository's `commit.cleanup` and `commit.verbose`, whether an editor runs, and
+whether the commit is a `git merge` (DESIGN §2.1). The gaps are stated rather
+than hidden: a message a pattern marks `unlandable` passes the hook with a
+warning that CI will refuse it; under `[[packages]]` the hook cannot see a diff
+that is not yet a commit — `pre-push` judges that one step later; and some of
+what git cleans by never reaches a hook — a `--cleanup=`, `-v` or
+`--no-verbose` on git's command line among it — so the hook judges those
+commits under the repository's settings, and DESIGN §2.1 lists the cases where
+its verdict and CI's part.
 
 **3. Wire CI** — the `lint.yml` caller above for the gate, `pr-verdict.yml`
 for a merge-preview comment on every PR, and `release.yml` to keep a rolling

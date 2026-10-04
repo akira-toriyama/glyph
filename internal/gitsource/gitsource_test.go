@@ -14,6 +14,18 @@ import (
 	"github.com/akira-toriyama/glyph/v4/internal/testutil"
 )
 
+// TestMain holds the developer's own git config out of this package's
+// IN-PROCESS git calls too. testutil.GitEnv pins the commands a test runs to
+// build its fixture, but ConfigGet and ConfigBoolOrInt run git in this
+// process's environment, where ~/.gitconfig answers: measured, a personal
+// commit.cleanup=strip failed TestConfigGet ("unset" came back set to strip).
+func TestMain(m *testing.M) {
+	for _, k := range []string{"GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"} {
+		os.Setenv(k, os.DevNull)
+	}
+	os.Exit(m.Run())
+}
+
 // The hermetic fixture (pinned identity, real git config held out, background
 // maintenance off — the incidents live on testutil.GitEnv) is testutil's; the
 // local names keep this file's call sites short.
@@ -73,6 +85,178 @@ func TestLogRange(t *testing.T) {
 	}
 	if !strings.HasPrefix(last, ":sparkles:(ui) add a menu\n\nBody line.") {
 		t.Fatalf("subject/body shape lost: %q", last)
+	}
+}
+
+// TestLogStripsOnlyTheRecordNewline: git records a cleaned message with a
+// closing newline that the text the commit-msg hook judges never has —
+// cleanup.Apply returns git's message without it — so Message is %B minus
+// exactly one trailing newline. A message recorded under --cleanup=verbatim
+// keeps what the author wrote, blank lines at the end included (measured:
+// `-m 'x\n\n'` records both newlines), so only one may go: two come back as one.
+func TestLogStripsOnlyTheRecordNewline(t *testing.T) {
+	dir := newRepo(t)
+	base := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	git(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--cleanup=verbatim", "-m", ":memo:= kept as written\n\n")
+	got, err := Log(context.Background(), dir, base+"..HEAD")
+	if err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("Log returned %d commits, want 2", len(got))
+	}
+	if got[0].Message != ":bug:~ fix a crash" {
+		t.Errorf("Message = %q, want the subject without %%B's record newline", got[0].Message)
+	}
+	if got[1].Message != ":memo:= kept as written\n" {
+		t.Errorf("verbatim Message = %q, want exactly one of the author's two trailing newlines removed", got[1].Message)
+	}
+}
+
+// TestLogReadsAnAuthorNameHoldingTheUnitSeparator: git keeps a U+001F inside
+// an author name (it strips crud only at the ends — measured on 2.54), so a
+// field separator that byte can spell let the author choose where the next
+// field starts. `dependabot[bot]<US>x` then read as dependabot[bot], the email
+// as the parents and the parents as the head of the message; the email rows
+// below are the ones a parents-shaped check alone lets through (an empty email
+// looks like a root commit's parents, a 40-hex one like a parent), measured.
+// Every field must come back exactly as git holds it.
+func TestLogReadsAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
+	const name = "dependabot[bot]\x1fx"
+	for label, email := range map[string]string{
+		"an ordinary email":       "t@example.invalid",
+		"an empty email":          "",
+		"a parents-shaped email":  "0123456789abcdef0123456789abcdef01234567",
+		"a separator in the mail": "a\x1fb@example.invalid",
+	} {
+		t.Run(label, func(t *testing.T) {
+			dir := newRepo(t)
+			base := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			testutil.CommitFrom(t, dir, name, email, "garbage message\x1fwith a separator of its own")
+			got, err := Log(context.Background(), dir, base+"..HEAD")
+			if err != nil {
+				t.Fatalf("Log: %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("Log returned %d commits, want 1: %+v", len(got), got)
+			}
+			c := got[0]
+			if c.Author != name || c.Email != email || c.Parents != 1 || c.SHA != git(t, dir, "akira-toriyama", "rev-parse", "HEAD") ||
+				!strings.HasPrefix(c.Message, "garbage message\x1fwith a separator of its own") {
+				t.Fatalf("the record was read shifted: %+v\nwant author %q, email %q, 1 parent, the message verbatim", c, name, email)
+			}
+		})
+	}
+}
+
+// TestParseLogRefusesAMisframedRecord: a record whose fields do not land where
+// logFormat put them is a git read failure (exit 4), never a commit read with
+// its fields shifted — a shifted author is exactly how exclude_authors was
+// bypassed. The first row is the positive control: well-framed output parses,
+// so a parser that refused everything could not pass this test.
+func TestParseLogRefusesAMisframedRecord(t *testing.T) {
+	const (
+		sha    = "0123456789abcdef0123456789abcdef01234567"
+		parent = "89abcdef0123456789abcdef0123456789abcdef"
+	)
+	record := func(fields ...string) string { return strings.Join(fields, "\x00") + "\x00" }
+
+	got, err := parseLog([]byte(record(sha, "a", "a@example.invalid", parent, ":bug:~ one\n") +
+		record(parent, "b", "b@example.invalid", "", ":memo:= two\n")))
+	if err != nil || len(got) != 2 || got[0].SHA != sha || got[0].Parents != 1 || got[1].Author != "b" || got[1].Parents != 0 {
+		t.Fatalf("well-framed output = %+v, %v; want both records read whole", got, err)
+	}
+
+	for name, out := range map[string]string{
+		"a name holding a field separator":    record(sha, "dependabot[bot]", "x", "t@example.invalid", parent, "garbage"),
+		"a record one field short":            record(sha, "a", "a@example.invalid", ":bug:~ one\n"),
+		"a sha that is not an object name":    record("not-a-sha", "a", "a@example.invalid", parent, "m\n"),
+		"an abbreviated sha":                  record(sha[:12], "a", "a@example.invalid", "", "m\n"),
+		"parents that are not object names":   record(sha, "a", "a@example.invalid", "t@example.invalid", "m\n"),
+		"a parent of another hash's length":   record(sha, "a", "a@example.invalid", parent+"00", "m\n"),
+		"output that does not close a record": strings.TrimSuffix(record(sha, "a", "a@example.invalid", "", "m\n"), "\x00"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := parseLog([]byte(out))
+			if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
+				t.Fatalf("parseLog(%q) = %+v, %v; want a CodeAPI read failure", out, got, err)
+			}
+		})
+	}
+}
+
+// TestLogReadsSHA256Repositories: an object name is 64 hex digits there, and
+// glyph read such a repository before the record check existed (measured:
+// lint --range 3 on a violation, bump v0.0.1) — a check hard-wired to SHA-1's
+// 40 would have refused every one of its commits.
+func TestLogReadsSHA256Repositories(t *testing.T) {
+	gitOrSkip(t)
+	dir := t.TempDir()
+	git(t, dir, "akira-toriyama", "init", "-q", "-b", "main", "--object-format=sha256")
+	commit(t, dir, "akira-toriyama", ":tada:= begin")
+	commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	got, err := Log(context.Background(), dir, "HEAD")
+	if err != nil {
+		t.Fatalf("Log on a SHA-256 repository: %v", err)
+	}
+	if len(got) != 2 || len(got[1].SHA) != 64 || got[1].Parents != 1 {
+		t.Fatalf("Log on a SHA-256 repository = %+v, want 2 commits with 64-hex names", got)
+	}
+}
+
+// TestLogReadsSignedCommitsUnderShowSignature: log.showSignature is a display
+// setting a signing developer turns on, and under it git prints each
+// signature's verdict on stdout AHEAD of the commit's record, --format or not —
+// a merged signed tag's verdict too (measured on git 2.54). The record check
+// refuses any byte that is not a record, so with that output in the read every
+// history read of such a developer failed at 4, where before the check the text
+// had sat in the SHA field and every message was still judged. Both readers
+// must read the records whole. The raw read first is the positive control: if
+// git stops printing there, this test no longer guards anything, and says so.
+func TestLogReadsSignedCommitsUnderShowSignature(t *testing.T) {
+	dir := newRepo(t)
+	root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.SignCommits(t, dir)
+	git(t, dir, "akira-toriyama", "config", "log.showSignature", "true")
+	git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side")
+	commit(t, dir, "akira-toriyama", ":sparkles:^ add a side feature")
+	git(t, dir, "akira-toriyama", "tag", "-s", "-m", "a signed tag", "side-v1")
+	git(t, dir, "akira-toriyama", "switch", "-q", "main")
+	commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", ":twisted_rightwards_arrows:= merge the signed tag", "side-v1")
+	head := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	if raw := git(t, dir, "akira-toriyama", "log", "-1", "--format=%H"); strings.HasPrefix(raw, head) || !strings.Contains(raw, "merged tag") {
+		t.Fatalf("git printed no signature verdicts ahead of the record under log.showSignature:\n%s\n— the fixture no longer signs or git changed, and this test guards nothing", raw)
+	}
+
+	type record struct {
+		message string
+		parents int
+	}
+	read := func(got []RawCommit) []record {
+		var out []record
+		for _, c := range got {
+			if !isObjectName(c.SHA) || c.Author != "akira-toriyama" {
+				t.Errorf("a record read shifted: %+v", c)
+			}
+			out = append(out, record{c.Message, c.Parents})
+		}
+		return out
+	}
+	got, err := Log(context.Background(), dir, root+"..HEAD")
+	if err != nil {
+		t.Fatalf("Log under log.showSignature: %v", err)
+	}
+	if want := []record{{":sparkles:^ add a side feature", 1}, {":bug:~ fix a crash", 1}, {":twisted_rightwards_arrows:= merge the signed tag", 2}}; !slices.Equal(read(got), want) || got[2].SHA != head {
+		t.Fatalf("Log read %+v, want %v ending at %s", got, want, head)
+	}
+	got, err = FirstParentLog(context.Background(), dir, "HEAD", 3)
+	if err != nil {
+		t.Fatalf("FirstParentLog under log.showSignature: %v", err)
+	}
+	if want := []record{{":tada:= begin the project", 0}, {":bug:~ fix a crash", 1}, {":twisted_rightwards_arrows:= merge the signed tag", 2}}; !slices.Equal(read(got), want) || got[2].SHA != head {
+		t.Fatalf("FirstParentLog read %+v, want %v ending at %s", got, want, head)
 	}
 }
 
@@ -510,6 +694,52 @@ func TestConfigGetUnreachableDirIsAPI(t *testing.T) {
 	}
 }
 
+// TestConfigBoolOrInt: commit.verbose is read as the integer git acts on,
+// through git's own normaliser — every spelling below is one git accepts — and
+// -1 is the value --type=bool gets wrong (it prints true; git commit reads -1 as
+// unset and does not cut). Unset is an answer, not an error; a value git cannot
+// parse is the API error.
+func TestConfigBoolOrInt(t *testing.T) {
+	dir := newRepo(t)
+	if n, set, err := ConfigBoolOrInt(context.Background(), dir, "commit.verbose"); err != nil || set || n != 0 {
+		t.Fatalf("unset commit.verbose = (%d, %v, %v), want (0, false, nil)", n, set, err)
+	}
+	for _, tc := range []struct {
+		value string
+		want  int
+	}{
+		{"true", 1}, {"yes", 1}, {"on", 1}, {"false", 0}, {"off", 0}, {"", 0},
+		{"2", 2}, {"1k", 1024}, {"0", 0}, {"-1", -1},
+	} {
+		git(t, dir, "akira-toriyama", "config", "commit.verbose", tc.value)
+		n, set, err := ConfigBoolOrInt(context.Background(), dir, "commit.verbose")
+		if err != nil || !set || n != tc.want {
+			t.Errorf("commit.verbose=%q = (%d, %v, %v), want (%d, true, nil)", tc.value, n, set, err, tc.want)
+		}
+	}
+	git(t, dir, "akira-toriyama", "config", "commit.verbose", "banana")
+	if _, _, err := ConfigBoolOrInt(context.Background(), dir, "commit.verbose"); core.AsError(err) == nil || core.AsError(err).Code != core.CodeAPI {
+		t.Fatalf("an unparseable commit.verbose = %v, want CodeAPI", err)
+	}
+}
+
+// TestGitPath: where git keeps one of its own files is git's answer — in a
+// linked worktree MERGE_MSG lives under that worktree's own git directory, not
+// the main checkout's, which is where the commit-msg hook's merge check looks.
+func TestGitPath(t *testing.T) {
+	dir := newRepo(t)
+	got, err := GitPath(context.Background(), dir, "MERGE_MSG")
+	if err != nil || filepath.ToSlash(got) != ".git/MERGE_MSG" {
+		t.Fatalf("GitPath(MERGE_MSG) = %q, %v; want .git/MERGE_MSG", got, err)
+	}
+	wt := filepath.Join(t.TempDir(), "wt")
+	git(t, dir, "akira-toriyama", "worktree", "add", "-q", "-b", "wt", wt)
+	got, err = GitPath(context.Background(), wt, "MERGE_MSG")
+	if err != nil || !strings.HasSuffix(filepath.ToSlash(got), ".git/worktrees/wt/MERGE_MSG") {
+		t.Fatalf("GitPath(MERGE_MSG) in a linked worktree = %q, %v; want the worktree's own git directory", got, err)
+	}
+}
+
 // TestDiffTreeFiles: the paths a commit's own diff touches, with a rename
 // reported under BOTH names — detection is off so a move across two subtrees
 // names the line the file left as well as the one it joined — a root commit
@@ -562,6 +792,70 @@ func TestDiffTreeFiles(t *testing.T) {
 	}
 }
 
+// TestDiffTreeFilesAtAShallowBoundaryIsUnreadable: git reads a shallow clone's
+// boundary commit as a root, so `--root` reported its WHOLE tree as its own diff
+// (measured: `curry/b haiku/a` where the full clone says `curry/b`), and
+// attribution then found a carrier for anything — a shared-only `^` passed
+// `lint --range` at 0 in a --depth 1 clone and was refused at 3 in the full one
+// (t-esm5 (1)). The boundary must answer unreadable, never a diff this clone
+// cannot compute. The controls keep their diffs: the commit above the boundary,
+// and a TRUE root commit inside the same shallow clone — git lists that one in
+// .git/shallow too, but it has no parent to be cut off from, so its tree is its
+// own diff (measured).
+func TestDiffTreeFilesAtAShallowBoundaryIsUnreadable(t *testing.T) {
+	dir := newRepo(t)
+	write := func(rel, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, rel), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("haiku/a", "a\n")
+	git(t, dir, "akira-toriyama", "add", ".")
+	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:(haiku)^ start haiku")
+	write("curry/b", "b\n")
+	git(t, dir, "akira-toriyama", "add", ".")
+	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:(curry)^ start curry")
+	boundary := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	// An unrelated history merged in: its root is inside the depth-2 clone.
+	git(t, dir, "akira-toriyama", "switch", "-q", "--orphan", "side")
+	write("side/s", "s\n")
+	git(t, dir, "akira-toriyama", "add", "side/s")
+	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= another root")
+	root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	git(t, dir, "akira-toriyama", "switch", "-q", "-f", "main")
+	git(t, dir, "akira-toriyama", "merge", "-q", "--allow-unrelated-histories", "--no-ff", "-m", "Merge branch 'side'", "side")
+	write("haiku/a", "a2\n")
+	git(t, dir, "akira-toriyama", "commit", "-q", "-am", ":bug:(haiku)~ fix haiku")
+	above := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
+	clone := filepath.Join(t.TempDir(), "shallow")
+	git(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", "3", "file://"+dir, clone)
+
+	files, err := DiffTreeFiles(context.Background(), clone, boundary)
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || files != nil {
+		t.Fatalf("DiffTreeFiles at the shallow boundary = %q, %v; want no files and an API-class unreadable answer — its own diff is [curry/b], and the clone cannot compute it", files, err)
+	}
+	if !IsShallowBoundary(err) {
+		t.Fatalf("the boundary's error is not recognisable as one (IsShallowBoundary false): %v — its callers could only exit 4", err)
+	}
+	for name, tc := range map[string]struct {
+		sha  string
+		want []string
+	}{
+		"the commit above the boundary": {above, []string{"haiku/a"}},
+		"a true root inside the clone":  {root, []string{"side/s"}},
+	} {
+		got, err := DiffTreeFiles(context.Background(), clone, tc.sha)
+		if err != nil || !slices.Equal(got, tc.want) {
+			t.Errorf("%s: DiffTreeFiles = %q, %v; want %q", name, got, err, tc.want)
+		}
+	}
+}
+
 // TestDiffTreeFilesUnknownShaIsAPI: an object this checkout does not hold is
 // a git failure in the API class, never an empty answer — an empty answer
 // would attribute the commit to nothing and quietly drop it from every line.
@@ -573,6 +867,9 @@ func TestDiffTreeFilesUnknownShaIsAPI(t *testing.T) {
 	}
 	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
 		t.Fatalf("DiffTreeFiles error = %v, want CodeAPI", err)
+	}
+	if IsShallowBoundary(err) {
+		t.Fatalf("an object this checkout does not hold read as a shallow boundary: %v — the walk would carry a missing commit nowhere instead of failing", err)
 	}
 }
 

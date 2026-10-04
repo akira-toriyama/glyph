@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 377249b..7fbb668 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -439,7 +439,7 @@ func parseLog(out []byte) ([]RawCommit, error) {
+ 	for i := 0; i < len(fields); i += logFields {
+ 		f := fields[i : i+logFields]
+ 		parents, ok := objectNames(f[3], len(f[0]))
+-		if !isObjectName(f[0]) || !ok {
++		if false && (!isObjectName(f[0]) || !ok) {
+ 			return nil, core.APIf("git log: malformed record %q", strings.Join(f, "\x00"))
+ 		}
+ 		commits = append(commits, RawCommit{
