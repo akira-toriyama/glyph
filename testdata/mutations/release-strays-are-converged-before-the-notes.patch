@@ -1,8 +1,8 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index b875d2c..9923cde 100644
+index d8bf1cb..94bc868 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -270,6 +270,9 @@ func releaseRun(cmd *cobra.Command) error {
+@@ -293,6 +293,9 @@ func releaseRun(cmd *cobra.Command) error {
  		Body:    body,
  		Draft:   true,
  	}
@@ -12,9 +12,9 @@ index b875d2c..9923cde 100644
  	var rel github.Release
  	var werr error
  	if plan.Keep != nil {
-@@ -282,10 +285,6 @@ func releaseRun(cmd *cobra.Command) error {
+@@ -305,10 +308,6 @@ func releaseRun(cmd *cobra.Command) error {
  	}
- 	noticef("draft release %s %sd (unpublished — the tag is created when a human publishes): %s", tagName, plan.Action, rel.URL)
+ 	noticef("draft release %s %sd at %s (unpublished — the tag is created at that commit when a human publishes): %s", tagName, plan.Action, target, rel.URL)
  
 -	if cerr := convergeStrays(ctx, gh, owner, repoName, stale); cerr != nil {
 -		return cerr

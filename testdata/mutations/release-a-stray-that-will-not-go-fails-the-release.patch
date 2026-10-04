@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 1f82a42..e374842 100644
+index 098773f..52b9e50 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -307,7 +307,7 @@ func convergeStrays(ctx context.Context, gh *github.Client, owner, repo string,
- 	for _, s := range stale {
- 		gone, derr := gh.DeleteRelease(ctx, owner, repo, s.ID)
- 		if derr != nil {
--			if core.IsInterrupted(derr) {
-+			if derr != nil {
- 				return derr
- 			}
- 			warnf("the notes landed, but the stale draft %s (release id %d) would not go: %v — "+
+@@ -393,7 +393,7 @@ func convergeStrays(ctx context.Context, gh *github.Client, owner, repo string,
+ func convergeStray(ctx context.Context, gh *github.Client, owner, repo string, s github.Release) (went bool, err error) {
+ 	gone, derr := gh.DeleteRelease(ctx, owner, repo, s.ID)
+ 	if derr != nil {
+-		if core.IsInterrupted(derr) {
++		if derr != nil {
+ 			return false, derr
+ 		}
+ 		warnf("the notes landed, but the stale draft %s (release id %d) would not go: %v — "+

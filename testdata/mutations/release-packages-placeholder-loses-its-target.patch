@@ -1,0 +1,13 @@
+diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
+index 7412952..7f8f327 100644
+--- a/internal/cli/release_lines.go
++++ b/internal/cli/release_lines.go
+@@ -217,7 +217,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
+ 	// exactly when a draft is upserted — the single line's rule. The gate is
+ 	// the draft count, never moving: a draft_on_none placeholder is a draft
+ 	// that points at target too.
+-	if len(drafts) > 0 {
++	if moving > 0 {
+ 		result.Target = target
+ 	}
+ 	finish := func() error {

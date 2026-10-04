@@ -1,0 +1,13 @@
+diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
+index 28a1d78..d907fb3 100644
+--- a/internal/cli/release_lines.go
++++ b/internal/cli/release_lines.go
+@@ -301,7 +301,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
+ 		case core.IsInterrupted(derr):
+ 			return derr
+ 		case residualErr == nil:
+-			residualErr = derr
++			return derr
+ 		default:
+ 			warnf("the residual draft %s (release id %d) would not go either: %v — the run fails on the first that would not, and the next run tries every one again", s.TagName, s.ID, derr)
+ 		}
