@@ -1,0 +1,15 @@
+diff --git a/internal/config/presets/conventional.toml b/internal/config/presets/conventional.toml
+index 0b4446b..b45b49a 100644
+--- a/internal/config/presets/conventional.toml
++++ b/internal/config/presets/conventional.toml
+@@ -52,6 +52,10 @@ template = '''
+ # unchanged.
+ pattern = '^(?P<subject>(?P<type>[a-z]+)(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!%]): .+)'
+ 
++[[patterns]]
++pattern = '^(?P<subject>feat(\((?P<scope>[a-z0-9-]+)\))?: .+)'
++semver_sigil = '^'
++
+ [[patterns]]
+ # raw `git revert`. The subject group takes the WHOLE line, quotes and all,
+ # so a release body says a revert happened: capturing only the text inside the
