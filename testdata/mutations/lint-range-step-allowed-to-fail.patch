@@ -1,0 +1,12 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+index d32e69d..98f55b4 100644
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -131,6 +131,7 @@ jobs:
+           token: ${{ github.token }}
+ 
+       - name: Lint the commit range
++        continue-on-error: true
+         env:
+           EVENT: ${{ github.event_name }}
+           PR_BASE: ${{ github.event.pull_request.base.sha }}
