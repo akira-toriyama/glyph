@@ -180,13 +180,76 @@ func Tags(ctx context.Context, dir string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	return tagLines(out), nil
+}
+
+// MergedTags is Tags narrowed to the tags whose commit rev's history holds
+// (`git tag --merged`): the releases rev's own history carries, in the same
+// order under the same contract. --merged peels an annotated tag to its commit
+// and leaves out a tag on a non-commit object (measured, git 2.54). The rev is
+// passed in the attached form (--merged=REV), so it is the option's value and
+// can never be read as another option.
+//
+// A rev that names no commit holds no tags. The unborn HEAD of a repository
+// before its first commit is the case that reaches here: git answers it with
+// "malformed object name HEAD" at exit 128 (measured), Tags answers empty
+// there, and a verdict that only reads a step base — `bump --pr`, `preview
+// --pr` — moved from exit 0 to exit 4 on git's failure. So the failure is
+// asked about, and only when the listing fails: the ordinary path stays one
+// git call.
+func MergedTags(ctx context.Context, dir, rev string) ([]string, error) {
+	out, err := run(ctx, dir, "tag", "--list", "--merged="+rev, "--sort=-v:refname")
+	if err != nil {
+		if core.IsInterrupted(err) {
+			return nil, err
+		}
+		named, nerr := namesCommit(ctx, dir, rev)
+		switch {
+		case nerr != nil && core.IsInterrupted(nerr):
+			return nil, nerr
+		case nerr == nil && !named:
+			return nil, nil
+		}
+		return nil, err
+	}
+	return tagLines(out), nil
+}
+
+// tagLines splits git's one-name-per-line tag listing. Shared by Tags and
+// MergedTags so the two readers cannot come to disagree about what a listing
+// holds (the runIn precedent, t-tgbs).
+func tagLines(out []byte) []string {
 	var tags []string
 	for l := range strings.SplitSeq(string(out), "\n") {
 		if l = strings.TrimSpace(l); l != "" {
 			tags = append(tags, l)
 		}
 	}
-	return tags, nil
+	return tags
+}
+
+// namesCommit reports whether rev resolves to a commit. A NO is git's exit 1
+// under --verify --quiet — an unborn HEAD, a name nothing carries, a tag on a
+// blob — and is an answer, not a failure; anything else (not a repository) is
+// the git/IO error it always was. The interrupt is asked first, as everywhere
+// in this package (see IsAncestor for why the order is the whole point).
+func namesCommit(ctx context.Context, dir, rev string) (bool, error) {
+	// #nosec G204 -- the binary is the fixed literal "git"; rev is the caller's
+	// revision, pinned as one by --end-of-options.
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--verify", "--quiet", "--end-of-options", rev+"^{commit}")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if ierr := interrupted(ctx); ierr != nil {
+			return false, ierr
+		}
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && ee.ExitCode() == 1 {
+			return false, nil
+		}
+		return false, core.APIf("git rev-parse: %s", distill(stderr.Bytes(), err))
+	}
+	return true, nil
 }
 
 // Head returns the checkout's HEAD commit sha — the target_commitish a

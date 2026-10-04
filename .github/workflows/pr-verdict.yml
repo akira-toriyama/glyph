@@ -156,8 +156,9 @@ on:
         value: ${{ jobs.verdict.outputs.next }}
       current:
         description: >-
-          The version being stepped from — the highest parseable v* tag, or
-          v0.0.0 on an untagged repo. Empty when the job was skipped.
+          The version being stepped from — the highest parseable v* tag the
+          base branch's history holds, or v0.0.0 when it holds none. Empty
+          when the job was skipped.
         value: ${{ jobs.verdict.outputs.current }}
       breaking:
         description: >-
@@ -196,8 +197,8 @@ jobs:
           # The BASE branch, not the PR ref: `--since-tag` walks main's
           # squash commits out of LOCAL git (the PR side is read purely over
           # the API by `--pr`), and both walks resolve their step base from
-          # the highest local v* tag — so the full base history and its tags
-          # must be here.
+          # the highest v* tag the checked-out history holds — so the full
+          # base history and its tags must be here.
           ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 0
           # This job never pushes; don't leave the checkout token in

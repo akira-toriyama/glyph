@@ -439,7 +439,7 @@ func TestSinceTagPackagesBelowNothingUnderTheBoundNamesTheBound(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump --since-tag=below:haiku/v0.1.0 exited %d, want 0 (a first release walks the whole history)\nstderr: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "no version tag below haiku/v0.1.0 on the haiku/ line") || !strings.Contains(stderr, "cut haiku/v0.0.0") {
+	if !strings.Contains(stderr, "no version tag below haiku/v0.1.0 on the haiku/ line in HEAD's history") || !strings.Contains(stderr, "cut haiku/v0.0.0") {
 		t.Fatalf("the warning must name the bound the line has nothing under, and the remedy:\n%s", stderr)
 	}
 	if strings.Contains(stderr, "no version tag on the") {
@@ -837,7 +837,7 @@ func TestSinceTagPackagesUntaggedLineWalksTheWholeHistory(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump --since-tag exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "no version tag on the curry/ line") || !strings.Contains(stderr, "cut curry/v0.0.0") {
+	if !strings.Contains(stderr, "no version tag on the curry/ line(s) in HEAD's history") || !strings.Contains(stderr, "cut curry/v0.0.0") {
 		t.Fatalf("the whole-history warning must name the untagged line and its remedy:\n%s", stderr)
 	}
 	res := decodePackagesVerdict(t, stdout)

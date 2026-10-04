@@ -603,7 +603,10 @@ while IFS= read -r name; do
     fi
   fi
 
-  tag="$(git -C "$dir" tag --sort=-v:refname 2>/dev/null | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
+  # The base glyph itself reads: a tag the walked ref's history holds (DESIGN
+  # §4, "The walk base is a release HEAD contains"). A tag cut on a branch $wh
+  # never took would size the lint range and the budget from another history.
+  tag="$(git -C "$dir" tag --merged "$wh" --sort=-v:refname 2>/dev/null | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
   if [ -n "$tag" ]; then
     rng="$tag..$wh"
   else
