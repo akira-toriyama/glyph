@@ -237,14 +237,14 @@ func isASCIILetter(c byte) bool {
 
 func isAlphanumeric(c byte) bool { return isASCIILetter(c) || isDigit(c) }
 
-// escapeProseLine applies escapeProse's rules to the ASSEMBLED line s, which is
-// the only context in which they are decidable. Detection reads the whole
+// escapeProseLine applies the four rules above to the ASSEMBLED line s, which
+// is the only context in which they are decidable. Detection reads the whole
 // string; a backslash is inserted only where the construct it would disarm
 // touches author prose, which prose reports for a byte range.
 //
-// escapeProse ran per field, and every one of its rules carries state or
-// context that a field boundary truncated (t-9np1, measured on the shipped
-// escaper):
+// escapeProse, which it replaced, ran per field, and every one of its rules
+// carries state or context that a field boundary truncated (t-9np1, measured
+// on the shipped escaper):
 //
 //	prose "…thing \" + prose "<h1>OWNED</h1>"   ->  \\<h1>  — the author's own
 //	   trailing backslash escaped the one the next stretch inserted, leaving a

@@ -234,9 +234,9 @@ title = "Fixes"
 	}
 }
 
-// TestRenderLineNeutralizesMentions pins the safety property v1 lines carry
-// AND its one ratified exemption (2026-08-17): a subject cannot page someone
-// from a release body — the mention fence runs over the assembled v2 line —
+// TestRenderLineNeutralizesMentions pins the line's mention safety AND its one
+// ratified exemption (2026-08-17): a subject cannot page someone from a
+// release body — the mention fence runs over the assembled line —
 // while the built-in $author, rendered through the template's own "@", goes
 // out as a live mention. Crediting the contributor is the point; the subject's
 // strangers are not.

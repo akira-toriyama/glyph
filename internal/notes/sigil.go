@@ -100,8 +100,8 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
 // renderLine substitutes the template's $xxx placeholders. Literal template
 // text is the user's own markdown and passes through raw; substituted values
 // are commit-derived text and are escaped as prose, with the mention fence
-// running over the assembled line (the same pipeline v1 lines go through —
-// a subject must not be able to page someone from a release body). The one
+// running over the assembled line (markdown.Line's pipeline — a subject
+// must not be able to page someone from a release body). The one
 // exemption is the built-in $author (ratified 2026-08-17, re-ratified by
 // identity with t-39fy): crediting the contributor is the intended behaviour
 // and every peer tool pages them, so the template's "@$author" renders as a

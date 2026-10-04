@@ -297,9 +297,10 @@ func TestEscapeMentions(t *testing.T) {
 // slipping past unnoticed, and so nobody re-derives them as new discoveries.
 //
 // BOTH ARE NOW CLOSED AT THE CALLER, and neither reaches a release body or a PR
-// comment any more: notes.entryLine and preview.escapeCell run escapeMarkup
-// first, which kills the construct in case 1 and escapes the ampersand in case
-// 2 (see internal/markdown/escape.go, and its measured before/after table).
+// comment any more: Line.String runs escapeProseLine over the assembled line
+// before the fence, which kills the construct in case 1 and escapes the
+// ampersand in case 2 (see internal/markdown/escape.go, and its measured
+// before/after table).
 // What this test still pins is the PRECONDITION that arrangement rests on —
 // escapeMentions is exact only on input where no construct outranks a backtick,
 // so a third sink that calls it on raw author text inherits both holes.

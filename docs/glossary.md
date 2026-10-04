@@ -826,7 +826,7 @@ non-archived repositories allowed merge commits and rebase merges
 `internal/doctor/doctor.go` package comment), and the fleet's history held 9,548
 commit subjects — the denominator the escaping rules' rendering cost is sized
 against, and stated where that sizing is argued rather than here
-(`internal/markdown/escape.go: escapeMarkup`, rules 3 and 4).
+(`internal/markdown/escape.go: escapeProseLine`, rules 3 and 4).
 
 **reusable workflow** — a workflow with a `workflow_call` trigger, invoked from
 another repository's workflow by `uses:` at a pinned tag. glyph ships **three**:
