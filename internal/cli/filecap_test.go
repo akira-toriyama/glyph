@@ -36,6 +36,10 @@ func underHaiku(i int) string     { return fmt.Sprintf("haiku/gen/f%d.go", i) }
 // (3); bump, which only reports, answers 0 with the warning. The control is
 // the same commit one file short of the cap: the listing is whole, and the
 // refusal stands at 3 (mutation row capped-listing-refusal-is-the-gate-code).
+// The refusal's remedy is the wedge escape per line whose range holds the
+// merge point: a re-run lists the same capped files, so "re-run the release"
+// alone was a remedy nothing could satisfy (t-esm5; mutation row
+// unread-listing-remedy-is-a-rerun).
 func TestReleasePackagesCappedRefusalIsNotTheGateCode(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -48,6 +52,7 @@ func TestReleasePackagesCappedRefusalIsNotTheGateCode(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, _ := packagesRepo(t)
 			routes := cappedPull(t, dir, tc.message, tc.files)
+			merge := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 			usePR(t, dryServer(t, routes))
 			t.Chdir(dir)
 
@@ -58,6 +63,11 @@ func TestReleasePackagesCappedRefusalIsNotTheGateCode(t *testing.T) {
 			for _, want := range []string{"did not read", "maximum 3000 files", "h1"} {
 				if !strings.Contains(stderr, want) {
 					t.Errorf("the refusal must name the cap as the shortfall (missing %q):\n%s", want, stderr)
+				}
+			}
+			for _, want := range []string{"no re-run lists past the cap", "a haiku/ tag at or past " + merge[:7], "a curry/ tag at or past " + merge[:7]} {
+				if !strings.Contains(stderr, want) {
+					t.Errorf("the refusal must name the escape a re-run cannot replace (missing %q):\n%s", want, stderr)
 				}
 			}
 			if strings.Contains(stderr, "cannot be rewritten") || strings.Contains(stderr, `"code":3`) {

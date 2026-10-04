@@ -1,70 +1,30 @@
 diff --git a/internal/config/presets/conventional.toml b/internal/config/presets/conventional.toml
-index 0b4446b..ec8aa6c 100644
+index c57c741..6e53eb0 100644
 --- a/internal/config/presets/conventional.toml
 +++ b/internal/config/presets/conventional.toml
-@@ -71,29 +71,9 @@ skip = true
- # autosquash artifacts — fixup! and squash!, what --fixup=<c> and --squash=<c>
- # write. rebase --autosquash folds each into its target with the TARGET's
- # subject, and so its sigil, intact — the one property that makes a skip safe.
--pattern = '^(fixup|squash)! '
-+pattern = '^(fixup|squash|amend)! '
- skip = true
- 
--[[patterns]]
--# amend! (what --fixup=amend:<c> and --fixup=reword:<c> write) is NOT skipped:
--# autosquash REPLACES its target's message with the amend! body, so a skip
--# would fold the sigil the rewrite discards and miss the one it lands. It is
--# unlandable instead: the commit-msg hook lets git's own subject through with
--# the reason below as a warning (refusing it there would force --no-verify),
--# and every gate that judges an existing commit — lint --range, --pr, bump,
--# the release walk — refuses it until rebase --autosquash has folded it away.
--# The claim reads the BODY, because the body is what lands: it covers only a
--# body that opens the way the first pattern's subject does (keep the two in
--# step). Any other body stays unmatched, refused everywhere, the hook
--# included — above all the one --fixup=amend:<a fixup! commit> prepares, that
--# fixup!'s own line, which autosquash would land as the target's whole
--# message for the skip above to drop. One chain no single message shows:
--# after a squash! of the same target, git APPENDS the body instead, and the
--# target's old first line lands unless the rebase's combined message is
--# edited — so the reason says it at the hook.
+@@ -100,8 +100,8 @@ unlandable = 'the files of this commit carry no sigil until autosquash folds it
+ # after a squash! of the same target, git APPENDS the body instead, and the
+ # target's old first line lands unless the rebase's combined message is
+ # edited — so the reason says it at the hook.
 -pattern = '^amend! .*\n\n[a-z]+(\([a-z0-9-]+\))?[=~^!%]: .'
 -unlandable = 'autosquash lands this body as its target message (after a squash! of the same commit git appends it instead: edit the combined message so its first line carries the sigil); run git rebase --autosquash before this history is pushed or merged'
--
++pattern = '^amend! '
++skip = true
+ 
  [note]
  # One line per commit. $xxx reads the winning pattern's named groups;
- # $pr / $author / $hash / $coauthors are built in. A commit no pattern
 diff --git a/internal/config/presets/gemoji.toml b/internal/config/presets/gemoji.toml
-index 377c0d2..67fb909 100644
+index a58d95b..82950c5 100644
 --- a/internal/config/presets/gemoji.toml
 +++ b/internal/config/presets/gemoji.toml
-@@ -66,29 +66,9 @@ skip = true
- # autosquash artifacts — fixup! and squash!, what --fixup=<c> and --squash=<c>
- # write. rebase --autosquash folds each into its target with the TARGET's
- # subject, and so its sigil, intact — the one property that makes a skip safe.
--pattern = '^(fixup|squash)! '
-+pattern = '^(fixup|squash|amend)! '
- skip = true
- 
--[[patterns]]
--# amend! (what --fixup=amend:<c> and --fixup=reword:<c> write) is NOT skipped:
--# autosquash REPLACES its target's message with the amend! body, so a skip
--# would fold the sigil the rewrite discards and miss the one it lands. It is
--# unlandable instead: the commit-msg hook lets git's own subject through with
--# the reason below as a warning (refusing it there would force --no-verify),
--# and every gate that judges an existing commit — lint --range, --pr, bump,
--# the release walk — refuses it until rebase --autosquash has folded it away.
--# The claim reads the BODY, because the body is what lands: it covers only a
--# body that opens the way the first pattern's subject does (keep the two in
--# step). Any other body stays unmatched, refused everywhere, the hook
--# included — above all the one --fixup=amend:<a fixup! commit> prepares, that
--# fixup!'s own line, which autosquash would land as the target's whole
--# message for the skip above to drop. One chain no single message shows:
--# after a squash! of the same target, git APPENDS the body instead, and the
--# target's old first line lands unless the rebase's combined message is
--# edited — so the reason says it at the hook.
+@@ -95,8 +95,8 @@ unlandable = 'the files of this commit carry no sigil until autosquash folds it
+ # after a squash! of the same target, git APPENDS the body instead, and the
+ # target's old first line lands unless the rebase's combined message is
+ # edited — so the reason says it at the hook.
 -pattern = '^amend! .*\n\n:[a-z0-9_]+:(\([a-z0-9-]+\))?[=~^!%] .'
 -unlandable = 'autosquash lands this body as its target message (after a squash! of the same commit git appends it instead: edit the combined message so its first line carries the sigil); run git rebase --autosquash before this history is pushed or merged'
--
++pattern = '^amend! '
++skip = true
+ 
  [note]
  # One line per commit. $xxx reads the winning pattern's named groups;
- # $pr / $author / $hash / $coauthors are built in. A commit no pattern

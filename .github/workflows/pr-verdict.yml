@@ -122,6 +122,19 @@ on:
           branch or SHA), which has no release binary to derive.
         type: string
         default: ""
+      runner:
+        description: >-
+          The `runs-on` label of this job: one label, or one runner group name.
+          The default keeps a caller that passes nothing on the GitHub-hosted
+          image. A repository that keeps its own runner passes its label,
+          usually by forwarding a repository variable — an unset variable
+          arrives as the empty string, which this job reads as the default.
+          No expression is spelled out here: GitHub evaluates one even inside
+          a description, and refuses the whole workflow file. The runner must
+          carry what this job and the install action call — `gh` and `jq`
+          among them; the GitHub-hosted image does.
+        type: string
+        default: ubuntu-latest
     outputs:
       # The verdict, machine-readable, so a caller can GATE on what this job
       # already computes. Without these the level was rendered into a comment
@@ -156,8 +169,9 @@ on:
         value: ${{ jobs.verdict.outputs.next }}
       current:
         description: >-
-          The version being stepped from — the highest parseable v* tag, or
-          v0.0.0 on an untagged repo. Empty when the job was skipped.
+          The version being stepped from — the highest parseable v* tag the
+          base branch's history holds, or v0.0.0 when it holds none. Empty
+          when the job was skipped.
         value: ${{ jobs.verdict.outputs.current }}
       breaking:
         description: >-
@@ -177,7 +191,9 @@ jobs:
     # of failing. Fork contributors still get the lint gate; the preview is
     # a same-repo convenience.
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    # The fallback is for a PASSED empty string — a caller forwarding an unset
+    # repository variable — which would otherwise leave the job with no runner.
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     # Two API-backed walks and one comment write; bound it so a hung step
     # can't idle a runner for hours.
     timeout-minutes: 10
@@ -196,8 +212,8 @@ jobs:
           # The BASE branch, not the PR ref: `--since-tag` walks main's
           # squash commits out of LOCAL git (the PR side is read purely over
           # the API by `--pr`), and both walks resolve their step base from
-          # the highest local v* tag — so the full base history and its tags
-          # must be here.
+          # the highest v* tag the checked-out history holds — so the full
+          # base history and its tags must be here.
           ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 0
           # This job never pushes; don't leave the checkout token in

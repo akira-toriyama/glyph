@@ -382,17 +382,19 @@ func TestLintPRTitleExcludesBots(t *testing.T) {
 	}
 }
 
-// TestLintRange: over a PR-shaped range excluded commits (bots) and skipped
-// ones (fixup!) pass rather than fail, a WIP commit carrying a sigil is the
-// author's call, and each violation carries its commit SHA. amend! is a
-// violation, not an autosquash artifact to skip: autosquash REPLACES its
-// target's message with the amend! body, so skipping it folded the sigil the
-// rewrite discards (t-t84a).
+// TestLintRange: over a PR-shaped range excluded commits (bots) pass rather
+// than fail, a WIP commit carrying a sigil is the author's call, and each
+// violation carries its commit SHA. git's three autosquash subjects are
+// violations, not artifacts to skip: autosquash REPLACES an amend!'s target
+// message with its body, so skipping it folded the sigil the rewrite discards
+// (t-t84a); and a fixup! is safe to skip only once autosquash has folded it
+// into its target — skipped before that, its files move no line, and one
+// autosquash cannot fold ships as a silent none (t-mfny).
 func TestLintRange(t *testing.T) {
 	dir, base := testRepo(t)
 	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	testCommit(t, dir, "dependabot[bot]", "build(deps): bump a dep")    // bot: skipped
-	testCommit(t, dir, "akira-toriyama", "fixup! :bug:~ fix a crash")   // autosquash: skipped
+	testCommit(t, dir, "akira-toriyama", "fixup! :bug:~ fix a crash")   // --fixup, unsquashed: violation
 	testCommit(t, dir, "akira-toriyama", "amend! :bug:~ fix a crash")   // --fixup=amend:/reword:, unsquashed: violation
 	testCommit(t, dir, "akira-toriyama", ":construction:= try an idea") // WIP with a sigil: the author's call, clean
 	testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")      // unmatched: violation
@@ -417,8 +419,8 @@ func TestLintRange(t *testing.T) {
 	if !strings.Contains(stderr, "amend!") {
 		t.Fatalf("an unsquashed amend! carries a replacement message the range cannot read; the preset must refuse it, not skip it:\n%s", stderr)
 	}
-	if strings.Contains(stderr, "fixup!") {
-		t.Fatalf("a fixup! keeps its target's subject through autosquash; the preset must skip it:\n%s", stderr)
+	if !strings.Contains(stderr, "fixup!") {
+		t.Fatalf("an unsquashed fixup! has not been folded into its target yet; the preset must refuse it, not skip it:\n%s", stderr)
 	}
 	if !strings.Contains(stderr, `"sha"`) {
 		t.Fatalf("range violations must carry commit SHAs:\n%s", stderr)

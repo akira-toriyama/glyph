@@ -155,8 +155,8 @@ on:
       current:
         description: >-
           The version the walk stepped from (the tag the walk named, else the
-          highest parseable v* tag, else v0.0.0). Empty when no verdict was
-          computed.
+          highest parseable v* tag HEAD contains, else v0.0.0). Empty when no
+          verdict was computed.
         value: ${{ jobs.release.outputs.current }}
       action:
         description: >-
