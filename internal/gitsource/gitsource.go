@@ -51,6 +51,19 @@ const logFormat = "%H%x00%an%x00%ae%x00%P%x00%B"
 // logFields is how many NUL-closed fields logFormat writes per record.
 const logFields = 5
 
+// logCmd is the head of every `git log` whose output parseLog reads. A display
+// setting in the user's config must never reach that parser, and one does:
+// under log.showSignature git prints each signature's verdict — and a merged
+// signed tag's — on stdout ahead of the commit's record, --format or not, and
+// parseLog refuses any byte that is not a record, so every history read of a
+// developer who signs failed at 4 (measured on git 2.54; the installed pre-push
+// hook lets 4 through). --no-show-signature turns it off whatever the config
+// says. log.decorate, log.abbrevCommit, log.date, log.mailmap and color.ui
+// move nothing logFormat prints (measured).
+func logCmd(args ...string) []string {
+	return append([]string{"log", "-z", "--no-show-signature"}, args...)
+}
+
 // Log returns the commits in revRange (e.g. "BASE..HEAD"), oldest first. An
 // empty range is a successful empty result. --end-of-options pins revRange as
 // a revision, so an option-shaped argument is a git error, never a flag.
@@ -72,7 +85,7 @@ func LogRevs(ctx context.Context, dir string, revs []string) ([]RawCommit, error
 	if len(revs) == 0 {
 		return nil, nil
 	}
-	args := append([]string{"log", "-z", "--reverse", "--format=" + logFormat, "--end-of-options"}, revs...)
+	args := logCmd(append([]string{"--reverse", "--format=" + logFormat, "--end-of-options"}, revs...)...)
 	out, err := run(ctx, dir, append(args, "--")...)
 	if err != nil {
 		return nil, err
@@ -397,8 +410,8 @@ func IsAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
 // Fewer than n exist near the root of a history, and the caller decides what a
 // short answer means.
 func FirstParentLog(ctx context.Context, dir, rev string, n int) ([]RawCommit, error) {
-	out, err := run(ctx, dir, "log", "-z", "--first-parent", "-n", strconv.Itoa(n),
-		"--format="+logFormat, "--end-of-options", rev, "--")
+	out, err := run(ctx, dir, logCmd("--first-parent", "-n", strconv.Itoa(n),
+		"--format="+logFormat, "--end-of-options", rev, "--")...)
 	if err != nil {
 		return nil, err
 	}

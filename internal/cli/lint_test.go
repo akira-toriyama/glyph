@@ -507,6 +507,50 @@ func TestLintRangeJudgesAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
 	})
 }
 
+// TestHistoryGatesJudgeSignedCommitsUnderShowSignature is the gates half of
+// gitsource's read under log.showSignature: git prints each signature's verdict
+// ahead of the commit's record, and with that text in the read the record check
+// failed every history gate at 4 for a developer who signs — measured: lint
+// --range 3 → 4, bump --range v0.0.1 → 4, notes --range 0 → 4, and the pre-push
+// hook 3 → 4, which the installed hook waves through, so the push gate stopped
+// judging. Each gate must answer exactly as it does for the same commits
+// unsigned.
+func TestHistoryGatesJudgeSignedCommitsUnderShowSignature(t *testing.T) {
+	work, _ := testClone(t)
+	testutil.SignCommits(t, work)
+	testGit(t, work, "akira-toriyama", "config", "log.showSignature", "true")
+	testGit(t, work, "akira-toriyama", "tag", "v0.1.0")
+	base := rev(t, work, "HEAD")
+	testCommit(t, work, "akira-toriyama", ":bug:~ fix a crash")
+	clean := rev(t, work, "HEAD")
+	testCommit(t, work, "akira-toriyama", "no gitmoji in this one")
+	head := rev(t, work, "HEAD")
+	if raw := testGit(t, work, "akira-toriyama", "log", "-1", "--format=%H"); strings.HasPrefix(raw, head) {
+		t.Fatalf("git printed no signature verdict ahead of the record under log.showSignature (%q) — the fixture no longer signs, and this test guards nothing", raw)
+	}
+	t.Chdir(work)
+
+	for _, tc := range []struct {
+		args   []string
+		want   int
+		stdout string
+	}{
+		{[]string{"lint", "--range", base + ".." + clean}, 0, ""},
+		{[]string{"lint", "--range", base + "..HEAD"}, 3, ""},
+		{[]string{"bump", "--range", base + ".." + clean}, 0, "v0.1.1\n"},
+		{[]string{"notes", "--range", base + ".." + clean}, 0, ""},
+	} {
+		code, stdout, stderr := runGlyph(t, tc.args...)
+		if code != tc.want || (tc.stdout != "" && stdout != tc.stdout) {
+			t.Errorf("%v exited %d with %q, want %d with %q\nstderr: %s", tc.args, code, stdout, tc.want, tc.stdout, stderr)
+		}
+	}
+	setStdin(t, "refs/heads/main "+head+" refs/heads/main "+rev(t, work, "origin/main")+"\n")
+	if code, _, stderr := runGlyph(t, "hook", "pre-push", "origin", "ignored"); code != 3 {
+		t.Errorf("pre-push of a violation to the default branch exited %d, want 3 — the installed hook lets every other code through\nstderr: %s", code, stderr)
+	}
+}
+
 // TestLintRangeAnnotatesEachFinding pins the producer half of the annotation
 // contract lint.yml now leans on: one `::error::` per finding, written by the
 // binary that computed it, every one of them before the envelope so the

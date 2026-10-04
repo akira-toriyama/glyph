@@ -205,6 +205,61 @@ func TestLogReadsSHA256Repositories(t *testing.T) {
 	}
 }
 
+// TestLogReadsSignedCommitsUnderShowSignature: log.showSignature is a display
+// setting a signing developer turns on, and under it git prints each
+// signature's verdict on stdout AHEAD of the commit's record, --format or not —
+// a merged signed tag's verdict too (measured on git 2.54). The record check
+// refuses any byte that is not a record, so with that output in the read every
+// history read of such a developer failed at 4, where before the check the text
+// had sat in the SHA field and every message was still judged. Both readers
+// must read the records whole. The raw read first is the positive control: if
+// git stops printing there, this test no longer guards anything, and says so.
+func TestLogReadsSignedCommitsUnderShowSignature(t *testing.T) {
+	dir := newRepo(t)
+	root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.SignCommits(t, dir)
+	git(t, dir, "akira-toriyama", "config", "log.showSignature", "true")
+	git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side")
+	commit(t, dir, "akira-toriyama", ":sparkles:^ add a side feature")
+	git(t, dir, "akira-toriyama", "tag", "-s", "-m", "a signed tag", "side-v1")
+	git(t, dir, "akira-toriyama", "switch", "-q", "main")
+	commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", ":twisted_rightwards_arrows:= merge the signed tag", "side-v1")
+	head := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	if raw := git(t, dir, "akira-toriyama", "log", "-1", "--format=%H"); strings.HasPrefix(raw, head) || !strings.Contains(raw, "merged tag") {
+		t.Fatalf("git printed no signature verdicts ahead of the record under log.showSignature:\n%s\n— the fixture no longer signs or git changed, and this test guards nothing", raw)
+	}
+
+	type record struct {
+		message string
+		parents int
+	}
+	read := func(got []RawCommit) []record {
+		var out []record
+		for _, c := range got {
+			if !isObjectName(c.SHA) || c.Author != "akira-toriyama" {
+				t.Errorf("a record read shifted: %+v", c)
+			}
+			out = append(out, record{c.Message, c.Parents})
+		}
+		return out
+	}
+	got, err := Log(context.Background(), dir, root+"..HEAD")
+	if err != nil {
+		t.Fatalf("Log under log.showSignature: %v", err)
+	}
+	if want := []record{{":sparkles:^ add a side feature", 1}, {":bug:~ fix a crash", 1}, {":twisted_rightwards_arrows:= merge the signed tag", 2}}; !slices.Equal(read(got), want) || got[2].SHA != head {
+		t.Fatalf("Log read %+v, want %v ending at %s", got, want, head)
+	}
+	got, err = FirstParentLog(context.Background(), dir, "HEAD", 3)
+	if err != nil {
+		t.Fatalf("FirstParentLog under log.showSignature: %v", err)
+	}
+	if want := []record{{":tada:= begin the project", 0}, {":bug:~ fix a crash", 1}, {":twisted_rightwards_arrows:= merge the signed tag", 2}}; !slices.Equal(read(got), want) || got[2].SHA != head {
+		t.Fatalf("FirstParentLog read %+v, want %v ending at %s", got, want, head)
+	}
+}
+
 // TestLogMergeParents: a merge commit reports its true parent count.
 func TestLogMergeParents(t *testing.T) {
 	dir := newRepo(t)

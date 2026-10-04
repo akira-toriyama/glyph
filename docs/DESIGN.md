@@ -218,7 +218,12 @@ pattern says it means:
   `gitsource-log-fields-framed-by-a-byte-a-name-holds.patch`,
   `gitsource-log-believes-a-misframed-record.patch`). Full object names, not
   SHA-1's 40 digits: glyph reads SHA-256 repositories and did before the check
-  (`gitsource-log-refuses-sha256-object-names.patch`).
+  (`gitsource-log-refuses-sha256-object-names.patch`). Because the check
+  refuses any byte git writes outside a record, `git log` runs with
+  `--no-show-signature`: under `log.showSignature` git prints each signature's
+  verdict ahead of the commit's record even under `--format`, and every history
+  read of a developer who signs failed at 4 — which the installed pre-push hook
+  lets through (measured; `gitsource-log-shows-signatures.patch`).
 - **Lint has no taste** (mutation row `config-lint-grows-a-taste.patch`): a
   message either matches a pattern and yields a sigil, or it violates. Which
   combinations are wise (`:memo:!`) is the author's call — glyph parses and
