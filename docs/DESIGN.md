@@ -273,13 +273,16 @@ pattern says it means:
     carry the scope inside `$subject`, the whole first line (§3), where it is
     prose regardless. And it would add fidelity, not safety: prose already
     disarms the incident's whole class, and the two policies part only where
-    prose deliberately keeps the author's markup working — `_x_` renders
-    italic and `~x~` struck, and a backtick pairs with one in the subject
-    (`` (a`b) `` before ``fix `it` now`` put the stretch between them in code
-    font and broke the bold). None of that injects structure, points anywhere
-    the author did not write, or steals the fence's delimiter (escape.go's
-    theorem), so the price is rendering, paid only by a repository whose own
-    pattern captures such bytes — accepted.
+    prose leaves an emphasis or code-span delimiter live, as it deliberately
+    does for the author's markup — `_x_` renders italic and `~x~` struck; a
+    lone `*` pairs with the template's own `**` (`**x*:** fix it` rendered an
+    italic `x:` and a stray `*` with no bold, where the plain-text route's
+    `x\*` kept the bold — measured 2026-10-04); and a backtick pairs with one
+    in the subject (`` (a`b) `` before ``fix `it` now`` put the stretch
+    between them in code font and broke the bold). None of that injects
+    structure, points anywhere the author did not write, or steals the fence's
+    delimiter (escape.go's theorem), so the price is rendering, paid only by a
+    repository whose own pattern captures such bytes — accepted.
 - Unknown keys, an unknown `schema`, an uncompilable pattern, a malformed
   `note.line` and a section that does not state exactly one axis are LOAD
   errors, never repairs (mutation row `config-unknown-schema-accepted.patch`):
