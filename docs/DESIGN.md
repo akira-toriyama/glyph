@@ -1283,14 +1283,29 @@ line that folds to none with `draft_on_none` off has one action, deleting its
 residual drafts, so a delete that will not go fails the run (4) exactly as the
 single line's none verdict does, whatever its siblings wrote; the strays
 beside a draft a line wrote are bookkeeping after that write and stay a
-warning. The residuals go first, then the strays; the bare residue is a stray
-when any line wrote a draft and the whole action when none did. The first cut
-sent every delete through the lenient pass as soon as one line had written, so
-the same line, verdict and failing `DELETE` exited 4 when every line was none
-and 0 beside a moving sibling, the verdict reporting `delete` over a draft
-still standing (t-xz1z; `TestReleasePackagesNoneDeleteFailureStillFailsLoud`
-fails on that source, and mutation row
-`release-packages-none-lines-absorb-a-failed-delete-too.patch` restores it).
+warning. The bare residue is a stray when any line wrote a draft and the whole
+action when none did. The first cut sent every delete through the lenient pass
+as soon as one line had written, so the same line, verdict and failing
+`DELETE` exited 4 when every line was none and 0 beside a moving sibling, the
+verdict reporting `delete` over a draft still standing (t-xz1z;
+`TestReleasePackagesNoneDeleteFailureStillFailsLoud` fails on that source, and
+mutation row `release-packages-none-lines-absorb-a-failed-delete-too.patch`
+restores it). A residual that will not go is answered only once every other
+delete has been tried — another line's residual, the strays, the bare residue:
+one line's failed action is no reason to leave another line's undone or a
+stray standing unwarned. Returning at the failure was tried and rejected for
+exactly that: beside a moving line it deleted neither that line's stray nor
+the residue, both of which the first cut deleted (measured 2026-10-04 with the
+`DELETE` of curry's residual answered 422 — returning sent `PATCH 53,
+DELETE 51` and exited 4, the first cut `PATCH 53, DELETE 52, DELETE 51,
+DELETE 61` and 0, the run now `PATCH 53, DELETE 51, DELETE 52, DELETE 61` and
+4). The residuals still go before the strays, write-first one step on: they are
+the verdict of the lines that fold to none and the strays are bookkeeping, so
+a run that an interrupt cuts short — an interrupt is never absorbed — has
+spent itself on the verdict first
+(`TestReleasePackagesFailedResidualStrandsNoOtherDelete`; mutation rows
+`release-packages-failed-residual-strands-the-other-deletes.patch` and
+`release-packages-strays-go-before-the-residuals.patch`).
 `--footer-file` appends to every draft (one install block per repository is
 what every caller passes today; a per-package footer is a knob nobody has
 asked for and is recorded here so its absence is a decision).

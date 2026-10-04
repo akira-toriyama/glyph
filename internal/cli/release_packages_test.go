@@ -435,10 +435,11 @@ func TestReleasePackagesSecondWriteFailureLeavesTheFirst(t *testing.T) {
 	}
 }
 
-// deleteFailureServer serves the releases surface with every DELETE answered
-// 503 (Retry-After 0, so the retries are immediate) and records every write
-// in ORDER — the upsert-first property the delete tests below lean on.
-func deleteFailureServer(t *testing.T, walk map[string]string, releases string, seq *[]string) *httptest.Server {
+// failingReleaseServer serves the releases surface, answers a request with
+// fail's status when it returns one (Retry-After 0, so a retried status is
+// retried at once) and records every write in ORDER — the upsert-first and
+// delete-order properties the tests below lean on.
+func failingReleaseServer(t *testing.T, walk map[string]string, releases string, fail func(*http.Request) int, seq *[]string) *httptest.Server {
 	t.Helper()
 	var writes []apiWrite
 	inner := releaseHandler(t, walk, releases, &writes)
@@ -446,16 +447,27 @@ func deleteFailureServer(t *testing.T, walk map[string]string, releases string, 
 		if r.Method != http.MethodGet {
 			*seq = append(*seq, r.Method+" "+r.URL.Path)
 		}
-		if r.Method == http.MethodDelete {
+		if code := fail(r); code != 0 {
 			w.Header().Set("Retry-After", "0")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			fmt.Fprint(w, `{"message":"Service Unavailable"}`)
+			w.WriteHeader(code)
+			fmt.Fprint(w, `{"message":"boom"}`)
 			return
 		}
 		inner(w, r)
 	}))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// deleteFailureServer answers every DELETE 503.
+func deleteFailureServer(t *testing.T, walk map[string]string, releases string, seq *[]string) *httptest.Server {
+	t.Helper()
+	return failingReleaseServer(t, walk, releases, func(r *http.Request) int {
+		if r.Method == http.MethodDelete {
+			return http.StatusServiceUnavailable
+		}
+		return 0
+	}, seq)
 }
 
 // haikuMoves lands a ^ under haiku/ alone (haiku v0.1.0 → v0.2.0, curry none);
@@ -549,6 +561,81 @@ func TestReleasePackagesStrayDeleteFailureKeepsTheNotes(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestReleasePackagesFailedResidualStrandsNoOtherDelete pins how the two
+// delete passes meet (t-xz1z): a none line's residual that will not go fails
+// the run (4), but only once every other delete was tried — another line's
+// residual, a moving line's stray, the bare residue — and the residuals go
+// before the strays. The first cut returned at the failed residual: the
+// stray and the residue beside it were neither deleted nor warned about,
+// where the run before the split had deleted both (measured 2026-10-04:
+// PATCH 53, DELETE 51:422 and exit 4, against PATCH 53, DELETE 52,
+// DELETE 51:422, DELETE 61 and exit 0).
+func TestReleasePackagesFailedResidualStrandsNoOtherDelete(t *testing.T) {
+	t.Run("a moving line's stray and the bare residue still go", func(t *testing.T) {
+		dir, _ := packagesRepo(t)
+		walk := haikuMoves(t, dir)
+		releases := `[` + draftJSON(53, "haiku/v0.2.0") + `,` + draftJSON(52, "haiku/v0.1.5") + `,` +
+			draftJSON(51, "curry/v0.1.1") + `,` + draftJSON(61, "v0.9.0") + `]`
+		var seq []string
+		usePR(t, failingReleaseServer(t, walk, releases, func(r *http.Request) int {
+			if r.Method == http.MethodDelete && strings.HasSuffix(r.URL.Path, "/51") {
+				return http.StatusUnprocessableEntity
+			}
+			return 0
+		}, &seq))
+		t.Chdir(dir)
+
+		code, _, stderr := runGlyph(t, "release")
+		if code != 4 {
+			t.Fatalf("curry's residual would not go, so the run exited %d, want 4\nstderr: %s", code, stderr)
+		}
+		want := []string{
+			"PATCH " + releasesPath + "/53",
+			"DELETE " + releasesPath + "/51",
+			"DELETE " + releasesPath + "/52",
+			"DELETE " + releasesPath + "/61",
+		}
+		if !slices.Equal(seq, want) {
+			t.Fatalf("write sequence = %v, want %v — every upsert, then the residuals, then the strays, "+
+				"and a residual that will not go strands none of the deletes after it", seq, want)
+		}
+		for _, notice := range []string{
+			"discarded the stale draft haiku/v0.1.5 (release id 52)",
+			"the bare draft v0.9.0 (release id 61) is the single line's residue",
+			releasesPath + "/51",
+		} {
+			if !strings.Contains(stderr, notice) {
+				t.Errorf("stderr must report every delete's outcome (%q):\n%s", notice, stderr)
+			}
+		}
+	})
+	t.Run("every line's residual is tried, and each that would not go is named", func(t *testing.T) {
+		dir, _ := packagesRepo(t)
+		walk := linesQuiet(t, dir)
+		releases := `[` + draftJSON(51, "curry/v0.1.1") + `,` + draftJSON(61, "v0.9.0") + `]`
+		var seq []string
+		usePR(t, deleteFailureServer(t, walk, releases, &seq))
+		t.Chdir(dir)
+
+		code, _, stderr := runGlyph(t, "release")
+		if code != 4 {
+			t.Fatalf("no residual would go, so the run exited %d, want 4\nstderr: %s", code, stderr)
+		}
+		var tried []string
+		for _, w := range seq {
+			if !slices.Contains(tried, w) {
+				tried = append(tried, w)
+			}
+		}
+		if want := []string{"DELETE " + releasesPath + "/51", "DELETE " + releasesPath + "/61"}; !slices.Equal(tried, want) {
+			t.Fatalf("deletes tried = %v, want %v — curry's failure must not strand the bare residue", tried, want)
+		}
+		if !strings.Contains(stderr, releasesPath+"/51") || !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "release id 61") {
+			t.Errorf("the run fails on the first residual and must still name the second:\n%s", stderr)
+		}
+	})
 }
 
 // TestReleasePackagesATagConvergesOneLineAlone: --since-tag=<prefix>vX.Y.Z

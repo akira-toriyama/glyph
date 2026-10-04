@@ -62,7 +62,8 @@ type lineDraft struct {
 //     deletes as its whole action, so one that will not go exits 4 whatever
 //     its siblings wrote — releaseNone's rule, per line; the strays of the
 //     lines that write a draft keep convergeStrays' leniency. Deletes run
-//     after the upserts, the residuals first;
+//     after the upserts, the residuals first, and a residual that will not
+//     go is answered only once every other delete was tried;
 //   - a tag that selects one line converges that line ALONE: the other
 //     lines' drafts are not this run's to touch;
 //   - the bare vX.Y.Z draft of a repository that declares packages but no
@@ -284,13 +285,26 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 	// landed draft is no write of this line's to be lenient about. Routed
 	// through convergeStrays whenever a sibling had written, the same line,
 	// verdict and failing DELETE exited 0 or 4 on the siblings alone (t-xz1z).
+	// The failure is answered only after every other delete was tried: one
+	// line's failed action is no reason to leave another line's undone, nor
+	// the strays standing unwarned, and returning on the spot stranded both.
+	// The residuals still go first: they are the verdict of the lines that
+	// fold to none and the strays are bookkeeping, so a run an interrupt (never
+	// absorbed) cuts short has spent itself on the verdict first.
+	var residualErr error
 	for _, s := range residual {
 		gone, derr := gh.DeleteRelease(ctx, owner, repoName, s.ID)
-		if derr != nil {
+		switch {
+		case derr == nil:
+			noticef("no release is due on its line — %s the residual draft %s (release id %d)", discardedOrGone(gone), s.TagName, s.ID)
+			residueGone(s)
+		case core.IsInterrupted(derr):
 			return derr
+		case residualErr == nil:
+			residualErr = derr
+		default:
+			warnf("the residual draft %s (release id %d) would not go either: %v — the run fails on the first that would not, and the next run tries every one again", s.TagName, s.ID, derr)
 		}
-		noticef("no release is due on its line — %s the residual draft %s (release id %d)", discardedOrGone(gone), s.TagName, s.ID)
-		residueGone(s)
 	}
 	for _, s := range stale {
 		went, cerr := convergeStray(ctx, gh, owner, repoName, s)
@@ -300,6 +314,9 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 		if went {
 			residueGone(s)
 		}
+	}
+	if residualErr != nil {
+		return residualErr
 	}
 
 	if releaseJSON {
