@@ -62,6 +62,19 @@ on:
           or SHA), which has no release binary to derive.
         type: string
         default: ""
+      runner:
+        description: >-
+          The `runs-on` label of this job: one label, or one runner group name.
+          The default keeps a caller that passes nothing on the GitHub-hosted
+          image. A repository that keeps its own runner passes its label,
+          usually by forwarding a repository variable — an unset variable
+          arrives as the empty string, which this job reads as the default.
+          No expression is spelled out here: GitHub evaluates one even inside
+          a description, and refuses the whole workflow file. The runner must
+          carry what this job and the install action call — `gh` and `jq`
+          among them; the GitHub-hosted image does.
+        type: string
+        default: ubuntu-latest
 
 # A reusable can only downgrade the caller's token, never raise it, so the
 # caller's stub must grant pull-requests: read too (it is in the stub above).
@@ -76,7 +89,9 @@ permissions:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    # The fallback is for a PASSED empty string — a caller forwarding an unset
+    # repository variable — which would otherwise leave the job with no runner.
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     # Lint is fast; bound it so a hung step can't idle a runner for hours.
     timeout-minutes: 10
     steps:

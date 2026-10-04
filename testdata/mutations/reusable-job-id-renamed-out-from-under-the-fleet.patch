@@ -1,13 +1,13 @@
 diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
-index 06b03e2..1f06735 100644
+index bebb212..75208f1 100644
 --- a/.github/workflows/lint.yml
 +++ b/.github/workflows/lint.yml
-@@ -70,7 +70,7 @@ permissions:
+@@ -86,7 +86,7 @@ permissions:
    pull-requests: read
  
  jobs:
 -  lint:
 +  commit-lint:
-     runs-on: ubuntu-latest
-     # Lint is fast; bound it so a hung step can't idle a runner for hours.
-     timeout-minutes: 10
+     # The fallback is for a PASSED empty string — a caller forwarding an unset
+     # repository variable — which would otherwise leave the job with no runner.
+     runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
