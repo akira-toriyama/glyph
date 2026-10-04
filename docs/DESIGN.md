@@ -633,13 +633,153 @@ with the flag off, so flipping the flag off converges the artifact away.
 
 ## 4. Squash-safe mechanism — release-time re-read (stateless)
 
-On a release run, walk `lastPublishedTag..HEAD` over `main`'s **merge points**;
+On a release run, walk `<walk base>..HEAD` over `main`'s **merge points**;
 for each, resolve its PR via `GET /repos/{o}/{r}/commits/{sha}/pulls` and fetch
 that PR's individual commits via `GET /pulls/{N}/commits`; classify and
 max-fold. **Nothing is persisted** — recompute-from-git each run, idempotent and
 self-healing. Every verdict command runs **inside a git checkout** of the
 repository being released — the walk base, the version base, and the draft's
 target sha all come from local git; tags are never fetched over the API.
+
+**The walk base is a release HEAD contains** (t-n5tw, ratified 2026-09-29).
+Every resolution that reads a base out of the tags takes the highest parseable
+tag on the line among the tags **HEAD's history holds** (`git tag --merged
+HEAD`), never among every tag the clone carries. That covers a bare
+`--since-tag`, `below:`, and the step base a source without one falls back to
+(`bump --range` and `--pr`, `preview`'s current). A tag outside that history is
+another history's release — or, on an unmerged topic branch, the base branch's
+release, which the branch has yet to follow — and baselining on it was silent
+both ways it happens.
+
+One cut later on a descendant — a checkout at an older commit — contains
+everything HEAD holds, so the walk folds none. glyph-monorepo-test's
+frozen-coordinate tier collapsed to `none` on every line at v3.3.0 (measured
+there 2026-09-11, line tags planted on a descendant of the coordinate), and that
+harness has pruned `git tag --no-merged "$FROZEN"` by hand ever since (#15
+there) — this rule, written in shell because the binary lacked it. A release
+run at an older commit (a re-run, which GitHub documents as running at the
+original event's sha) whose own range folds above none folded none instead and
+**deleted the rolling draft**, hand region included (measured 2026-09-29 at
+adfc5e1 on a stand-in API: v0.2.0 published on a descendant, the v0.3.0 draft
+standing, one `DELETE`); over what HEAD holds it steps to the version v0.2.0
+already published and is refused at the floor with nothing written
+(`TestReleaseAtAnOlderCommitRefusesAtTheFloor`; the fold at an older
+coordinate is `TestSinceTagFrozenCoordinateSeesItsOwnTags` and, per line,
+`TestPackagesFrozenCoordinateSeesItsOwnTags`).
+
+One on a maintenance or side branch re-admits what that branch's releases
+shipped and steps from a number this line never released. On `release/v1`,
+forked at v1.9.0 with v1.9.1 cut there after main's v2.0.0, `bump --since-tag`
+answered v2.0.1 out of the released backport; a backport pull's preview said
+the same, and `release --dry-run` drafted it. A side branch's v9.0.0, forked
+before v1.1.0, stepped main to v9.1.0 over a commit v1.1.0 had shipped (both
+measured the same day). Over what HEAD holds the maintenance line answers
+v1.9.2 and main answers v1.1.1 (`TestSinceTagMaintenanceBranchStepsItsOwnLine`,
+`TestSinceTagBaseIsAReleaseHEADContains`). The shape is not confined to
+fixtures: google-cloud-go carries 32 tags its main does not hold — maintenance
+releases such as `storage/v1.61.5` on `release-storage-1.61.5` — and on that
+branch the old rule resolves main's `storage/v1.68.0` (measured 2026-09-29).
+This is git's answer, not a heuristic: the ancestry fact the footprint mapping
+below takes as *landed*. It is also the field's: `git describe`, GoReleaser's
+previous tag (`describe tags/<tag>^`), semantic-release (`git tag --merged
+<branch>`, highest version, under a `before` bound that is `below:`'s), and
+release-please (a release whose sha the branch's history lacks is skipped).
+
+Refusing instead — take the highest tag anywhere, exit 4 when HEAD does not
+contain it — was the other candidate, and it loses where the answer is known.
+On a maintenance branch that refusal is permanent: every bare walk, every `bump
+--range` step base and every backport pull's preview refuse there (measured
+2026-09-29 on a prototype of it against a stand-in API). That is a structural
+refusal, the shape #66 declined an exit for, and on the preview it is the
+refusal this section declines for an advisory surface, since it takes the
+whole verdict comment down. It also kills the first tag-time notes of a new
+major whenever the previous major took a maintenance release above the fork:
+`notes --since-tag=below:v2.0.0` exited 4 where both other resolutions render
+the same body (the same prototype) — goreleaser's step dying behind a tag that
+already exists, t-s5n4, the failure `below:` exists to end.
+
+The published floor reads the **opposite** set on purpose: the releases
+listing, every published release on the line whether HEAD holds it or not. It
+answers a namespace question — what can still be published — and a tag name
+is taken wherever its commit sits (measured 2026-09-29: a published v0.3.0 the
+checkout lacks refuses v0.2.1 at 4). The two meet where they must. A published
+release outside HEAD's history at or above the next version is refused at the
+floor: the side branch's published v9.0.0 refuses main's v1.1.1, where the old
+rule drafted v9.1.0 (measured 2026-09-29) — and a hotfix published off the
+default branch is refused the same way, where the refusal is a price, not a
+catch (below). That is also why `release` never drafts a maintenance version:
+it writes only from the default branch (below), and even its dry run on
+`release/v1` is refused at the floor (v1.9.2 under a published v2.0.0,
+measured 2026-09-29). And a run at an older commit whose range folds above
+none is refused there whenever the release it runs behind was published from
+glyph's own verdict: the max-fold is monotone, and that release's range held
+this one.
+
+The rule has three prices, each measured 2026-09-29 on a stand-in API:
+
+- **A topic branch answers as of its fork point.** Forked between v1.0.0 and
+  v1.1.0, `bump --since-tag` answered v1.0.0 → v1.1.0 over a commit v1.1.0
+  shipped, where the old rule answered v1.1.1; forked at v1.0.0, `bump --range`
+  stepped v1.0.0 → v1.0.1 where the old rule stepped v1.1.0 → v1.1.1. No fleet
+  verdict runs there: `pr-verdict.yml` checks out the pull's base, sill's
+  `api-guard` runs `bump --range` on the pull's merge ref and reads `.level`
+  alone, and `fleet-preflight` walks `origin/HEAD` — and the authority rule
+  below already calls a walk from a non-default ref silently wrong. Ask for a
+  topic branch's verdict on its merge ref or on its base.
+- **A hotfix published off the default branch refuses main's patches at the
+  floor.** With v1.2.1 cut and published on a branch off v1.2.0, main's
+  history lacks the tagged commit whether main never takes the hotfix's change
+  or takes it by squash — to this rule the two are one input. A patch on main
+  then computes v1.2.1 from v1.2.0 and is refused at the floor (exit 4), on
+  every patch-level push until a minor lands, where the old rule drafted
+  v1.2.2. The escape is to land the tagged commit itself with a merge commit:
+  main then holds v1.2.1, and the next patch drafts v1.2.2. That merge brings
+  the hotfix's change with it; where main must not take it, `git merge -s
+  ours` records the tagged commit and keeps main's tree, with the same v1.2.2
+  (measured 2026-10-04 with `release --dry-run`: on both shapes two patches
+  were refused and a minor then drafted v1.3.0; after either merge the next
+  patch drafted v1.2.2).
+- **A stale writer is narrowed, not closed.** A release run behind its ref's
+  tip still writes from its older range, under either rule: at a docs-only `=`
+  commit behind a published v0.2.0 the range folds none, and the standing
+  v0.3.0 draft is deleted, hand region included; with no release between the
+  run and the tip, the v0.2.0 draft is retagged down to v0.1.1 at the older
+  sha. This rule closes only the case above — a range folding above none,
+  behind a release published from glyph's verdict. Closing the rest needs a
+  guard on the run's sha against its ref's tip, and no fleet incident asks for
+  one — recorded here, on the precedent of the laptop hole the authority rule
+  names.
+
+The hole is named rather than closed. A later tag cut **by hand** below
+glyph's verdict escapes the monotone argument. And a tag outside HEAD's history
+that was never published — a bare `git tag` — at exactly the next version is
+invisible to the floor: the draft takes a name the tag already holds, and a
+publish binds the release to that tag's commit. This rule opens that collision
+where the old one stepped over the tag (measured 2026-09-29: an unmerged bare
+v1.2.1 hotfix tag, main drafting v1.2.1 where it drafted v1.2.2). Measured
+2026-09-29 on clones of 22 tagged fleet repositories: none holds a tag outside
+its default branch, and glyph-monorepo-test's 24 line tags are all on main, so
+closing it would guard a class the fleet does not have.
+
+A **shallow** checkout cannot say what its history holds: `--merged` stops at
+the depth, so a `--depth 1` clone with its tags fetched held none, and v2.0.0 →
+v2.1.0 read as v0.0.0 → v0.1.0 (measured 2026-09-29). A shallow checkout therefore reads
+every tag, the set this resolver read before, and the walk records it as unread
+(below), which `release` refuses. `actions/checkout` fetches no tags at a
+non-zero depth (glyph-test's `livefire.yml` records it), and every fleet release
+and preview step checks out with `fetch-depth: 0`. An unborn HEAD — a
+repository before its first commit — holds no tags and answers empty rather
+than failing, as the unfiltered listing did
+(`TestMergedTagsOnAnUnbornHEADIsEmpty`). An explicit `--since-tag=TAG` is
+untouched: naming a tag names the release being redone, and it is the escape
+on any branch. The rule's cost is two git calls per resolution — the shallow
+probe and `git tag --merged`, the dear one — once per declared line on a
+packages walk: `--merged` took 0.14 s over google-cloud-go's 7,935 tags without
+a commit-graph, which a fresh clone lacks, against 0.01 s for the plain listing
+(measured 2026-09-29). (Mutation rows
+`walk-base-reads-a-tag-head-does-not-contain`, `merged-tags-lists-every-tag`,
+`merged-tags-fails-on-an-unborn-head`,
+`shallow-checkout-resolves-from-a-truncated-history`.)
 
 A merge point is whatever commit GitHub named `merge_commit_sha` for the pull —
 the squash commit, a rebase-merge's last commit, or (the merge-commit button)
@@ -930,10 +1070,28 @@ every replay minted another identical draft (measured: two from one lost
 answer, four from a spent schedule — t-ph6p). Before each re-send the client
 now probes the release listing for what the earlier copy would have made —
 same intended tag, same draft state — and adopts it as the create's answer;
-the probe is one round trip, best-effort, and a probe that finds nothing or
-cannot look falls back to the replay, with the upsert's convergence still
-deleting any duplicate on the next run. `--dry-run` computes everything, action included, and
-writes nothing.
+the probe is one read of that listing, best-effort, and a probe that finds
+nothing or cannot look falls back to the replay, with the upsert's convergence
+still deleting any duplicate on the next run.
+
+That listing is read whole on every run, dry run included, and it prices a
+release in releases rather than commits (t-n5tw R4). The managed drafts and the
+published floor are each a question about every release on the line. GitHub's
+listing takes only `per_page` and `page`: it documents no order a partial read
+could stop on, and nothing filters drafts or a tag prefix; `releases/latest`
+names one release per repository, the newest non-draft, non-prerelease by
+`created_at` (REST docs, read 2026-09-29). So the listing costs one request per
+100 releases before anything is planned, and a whole listing again per create
+probe. Measured 2026-09-29 on a stand-in API: 7,272 releases took 73 pages
+before planning, and a create answered 503 throughout took 219 more over its
+three probes (292 pages and four `POST`s, exit 4). google-cloud-go's listing
+ran to 7,496 releases on 2026-10-04 — 75 pages (REST `releases?per_page=1`,
+its `Link` rel=last) — while GraphQL's `releases.totalCount` reported 1,000 for
+it the same day, so that count is no substitute. Recorded, not optimised: the
+largest listing in the fleet is glyph's own 37, one page (GraphQL's count over
+the 38 non-archived repositories carrying a `glyph.toml`, 2026-10-04, which
+glyph's REST listing matches at that size). `--dry-run` computes everything,
+action included, and writes nothing.
 
 **The hand region** (t-qgps): the rolling draft is the only place release
 prose can be written ("the exit codes changed, fix your gates"), and the
@@ -1247,8 +1405,8 @@ never hear of it.
 
 **The walk is one walk.** Each package's range is `<its base>..HEAD`, its
 base resolved exactly as §4 resolves the single line's — the highest parseable
-tag carrying the package's prefix (`latestVersionTag` per prefix; a
-`curry/` tag never baselines `haiku`, mutation row
+tag carrying the package's prefix that HEAD contains (`latestVersionTag` per
+prefix; a `curry/` tag never baselines `haiku`, mutation row
 `packages-tag-of-one-line-baselines-another.patch`), else no tag and the
 whole history. The walk runs once over the **union** of those ranges (the
 range from the bases' common ancestor to `HEAD`, which contains the union),
@@ -1266,9 +1424,54 @@ the union walk as it does today, and its remedy gains a package form the
 error names: a package with no tag of its own — the common case of a package
 added to an old repository — is baselined by cutting **`<path>/v0.0.0` at the
 commit before its first change**, a tag that says "nothing of this line was
-released before here" and steps to `<path>/v0.1.0` on the first `^`. No new
-flag: `--since-tag=TAG` and `below:TAG` keep their meanings and gain one
-reading — **a tag names a line.** A prefixed TAG selects that package alone
+released before here" and steps to `<path>/v0.1.0` on the first `^`.
+
+**Only the untagged arm is capped**, and the tagged arm's missing cap is a
+decision (t-n5tw R3). A tagged range is the unreleased work a release exists
+to read, so it is walked whatever its length. That holds for the single line's
+range (measured 2026-09-29 on a stand-in API: 300 commits past the tag, 300
+lookups, exit 0) and for the union's, whose length is the **oldest** base's
+range. So one line whose last tag is old prices every bare walk, and every
+`release`, by everything behind that tag: a lookup per merge point, a listing
+per resolved pull, and under packages a file read per squash-arm inner commit
+placed by its files — about two requests per commit where the commits are
+squash-merged pulls. Measured the same day: on the stand-in API a line tagged
+251 commits back took a bare `bump --since-tag` to 251 lookups for one
+participating commit, and google-cloud-go's union over the lines a 2026-09-13
+survey declared started at one line's `auth/oauth2adapt/v0.2.8`, cut
+2025-03-20 — 1,843 commits to main as it stood on 2026-09-13 (`git rev-list
+--count`, re-run 2026-09-29; 1,888 to main as of 2026-09-29), 1,797 of them
+pull-shaped, some 3,600 requests by that structure before any file read (an
+estimate).
+
+A cap there refuses releases with no honest remedy, because a tagged line's
+base moves only by releasing it. The saving on offer — skipping a pull whose
+landed diff misses a line — is closed twice over: the net diff is not the sum
+of the commits (the pull-level attribution rejected above), and rule 2 lets a
+shared-only inner commit's scope name a line its diff never touches, so no
+local prefilter can prove a pull quiet. So the price is named, not capped.
+Past the token's hourly budget the walk exits 4 on the rate limit, retried and
+then surfaced (`github.retryable`), never answered short. A tag that names a
+line walks that line's range alone (1 lookup for the fresh line beside the
+251, measured the same day), and `preview` resolves over the touched lines
+only (t-60dc, below).
+
+The fleet's exposure, measured 2026-09-29: the longest tagged walk is
+dotfiles', 192 commits past v0.2.0 (cut 2026-07-20) — 188 lookups once its 4
+dependabot commits are excluded, plus up to 148 listings for its pull-shaped
+subjects, about 340 requests per release run (an estimate from local git).
+That job runs on `github.token`, and every preview on a dotfiles pull walks the
+same range for its pending side, all against the repository's 1,000 requests
+an hour (the `GITHUB_TOKEN` limit GitHub documents): about three verdict runs
+in one hour reach it. It has not been hit — dotfiles' last eight release runs
+and six preview runs are green, and canon's latest failed release (run
+36527828384) was a 403 on a `PATCH`, not the rate limit — but it grows, 37
+commits in the last 30 days. A line whose draft is never published adds every
+commit to every walk, which is t-354v's untagged-arm cost, delayed; the remedy
+is publishing. glyph-monorepo-test's union is 23 of its 42 commits.
+
+No new flag: `--since-tag=TAG` and `below:TAG` keep their meanings and gain
+one reading — **a tag names a line.** A prefixed TAG selects that package alone
 (the verdict, the notes and the draft are that line's, and the other lines are
 not converged), which is what tag-time note rendering needs (`goreleaser.yml`
 already runs `notes --since-tag=below:TAG` from the tagged commit); a bare
@@ -1348,12 +1551,12 @@ with two drafts standing, `haiku/v0.1.0` after haiku was published,
 `curry/v0.0.1` after curry was — the last publish, whichever line. A tag
 that selects one line converges that line **alone**: the other lines'
 drafts are not that run's to touch (goreleaser's tag-time run must not
-rewrite a sibling's draft from a range it did not ask about). The published
-floor is asked of the **checkout's** tags, so a release run on a checkout
-that has not fetched a sibling line's freshly published tag refuses at the
-floor (exit 4, measured) rather than re-drafting a version that is already
-out — the same fail-loud the single line has, and the reason
-`release.yml` checks out with tags.
+rewrite a sibling's draft from a range it did not ask about). The walk base
+is asked of the **checkout's** tags and the published floor of the releases
+listing, so a release run on a checkout that has not fetched a sibling line's
+freshly published tag refuses at the floor (exit 4, measured) rather than
+re-drafting a version that is already out — the same fail-loud the single
+line has, and the reason `release.yml` checks out with tags.
 
 **Preview.** `preview --pr` renders one verdict per package the pull's commits
 are attributed to, in config order, each with that line's current version and
@@ -1599,6 +1802,62 @@ under `|| true`, on the fleet's side of the pin where no test here could see it,
 so `internal/workflows` bans the read itself
 (`TestNoWorkflowRebuildsPerFindingAnnotations`) and the mutation ledger holds the
 producer half (`lint-findings-lose-their-annotations`).
+
+**One channel, sieved** (t-sa7p). The obvious cure for a sieve copied into
+every consumer — a native hand-off: a root `--error-file <path>` that
+`renderError` also writes, the envelope on fd 3, a path in the environment —
+was weighed and rejected, because it could only ever be added, never swapped
+in. The stderr copy is permanent on its own account: both installed hooks hand
+glyph's stderr straight to the committing developer (`internal/hook`), and when
+`lint --stdin` refuses a message the envelope is the only diagnostic that
+reaches them (measured). And a consumer whose one probe is fired at more than
+one revision — side by side in the preflight, one dispatch per ref in the
+live-fire harnesses of glyph-test and glyph-monorepo-test, which keep older
+releases as controls — can speak only the channel every such revision shares.
+No revision has ever carried the flag (`git log --all -S error-file -- '*.go'`
+finds no commit): each refuses it as unknown at exit `2`, and the sieve
+recovers exactly one envelope from each (measured 2026-09-29 on v0.12.0,
+v2.0.0, v3.0.0-rc.3 and v4.2.0; the sieve has been the contract since
+v0.11.1). So the preflight would file every lint gate as unanswered on the
+baseline side of the release that introduced the flag, the harnesses' sharp
+controls would go red for the flag instead of for the defect each exists to
+name, and the sieve would outlive the flag in every harness — two machine
+channels for one document. The quieter shapes fail worse: a binary with no
+fd-3 or environment surface ignores it, exit code unchanged and the file empty
+or never created (measured), which is t-sws7's silent loss of the `::error::`
+heading, reached by version skew instead of by `jq`; moving the annotations
+off stderr meets the same skew, with stdout already taken by the payload.
+
+Against that, the sieve has no failing input. glyph's own code writes stderr
+in four places — `warnf`, `errorf`, `noticef`, and `renderError`, whose one
+caller is `finish` — and the first three prefix `::` and fold through
+`oneLine`; git's stderr lands in a buffer and the doctor's hook probe's in the
+null device. Short of a crash, the one other writer is cobra's hidden
+`__complete` command — its directive, and a `[Debug] [Error]` line when the
+command line being completed names a flag it cannot parse — which prints at
+exit `0` and never beside an envelope (measured). A subject, a `warn` string
+and an `unlandable` reason each spelled `{"error":{"code":0,…}}` (the last two
+across embedded newlines) still leave one `{`-opening line, the envelope's
+(measured). The reusables' half is `internal/workflows`'
+`TestReusablesSieveTheEnvelopeBeforeJQ`, and mutation row
+`lint-summary-jq-reads-the-unsieved-stream` re-breaks it the way t-sws7
+shipped it: `jq` over the annotated stream exits 5 behind the step's
+`>/dev/null 2>&1`, and every convention failure the range step reports loses
+its summary heading. The preflight's two sieves sit outside that guard — they
+take the stream through a positional parameter and a captured variable, which
+its sink rule cannot follow; pointed at the script with both sieves deleted,
+it reports neither (measured). The preflight answers for `probe_lint`'s
+itself: two lint signatures it cannot read are an unanswered gate on its ✓
+line, never agreement. They used to compare equal — hiding a move exactly as
+the exit-code comparison #103 replaced had — and a machine without `jq`
+produced them with no edit at all (measured 2026-09-29: one finding against
+two, reported as no move). Nothing answers for `why`'s: it only words the
+reasons on skip and lost-answer lines, and broken, every reason whose stream
+carries an annotation ahead of the envelope reads `no error envelope`, the ✓
+line and the exit code unchanged (measured 2026-10-04). The script refuses to
+start without `jq` for the gate that has no such answer: without it both sides
+of every release body read as empty, so a re-render reports as none under an
+answered body gate (measured 2026-10-04, the refusal removed).
 
 **Repository resolution** (`resolveRepo`, one function for every API-side
 command — `lint --pr`, `bump`/`notes` `--pr`/`--since-tag`, `preview`,
