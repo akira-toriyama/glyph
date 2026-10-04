@@ -1,10 +1,10 @@
 diff --git a/internal/config/presets/conventional.toml b/internal/config/presets/conventional.toml
-index 0b4446b..d502e50 100644
+index a96fa5e..ea64181 100644
 --- a/internal/config/presets/conventional.toml
 +++ b/internal/config/presets/conventional.toml
-@@ -74,26 +74,6 @@ skip = true
+@@ -82,27 +82,6 @@ skip = true
  pattern = '^(fixup|squash)! '
- skip = true
+ unlandable = 'the files of this commit carry no sigil until autosquash folds it into its target, whose sigil then covers them; run git rebase --autosquash before this history is pushed or merged, or reword it with a sigil of its own when autosquash leaves it as it is (its target is outside the commits being rebased)'
  
 -[[patterns]]
 -# amend! (what --fixup=amend:<c> and --fixup=reword:<c> write) is NOT skipped:
@@ -19,7 +19,8 @@ index 0b4446b..d502e50 100644
 -# step). Any other body stays unmatched, refused everywhere, the hook
 -# included — above all the one --fixup=amend:<a fixup! commit> prepares, that
 -# fixup!'s own line, which autosquash would land as the target's whole
--# message for the skip above to drop. One chain no single message shows:
+-# message: a fixup! the claim above refuses and no later autosquash folds,
+-# so a reword is all that gets it out. One chain no single message shows:
 -# after a squash! of the same target, git APPENDS the body instead, and the
 -# target's old first line lands unless the rebase's combined message is
 -# edited — so the reason says it at the hook.
@@ -30,12 +31,12 @@ index 0b4446b..d502e50 100644
  # One line per commit. $xxx reads the winning pattern's named groups;
  # $pr / $author / $hash / $coauthors are built in. A commit no pattern
 diff --git a/internal/config/presets/gemoji.toml b/internal/config/presets/gemoji.toml
-index 377c0d2..f134946 100644
+index a386bbe..0c64ae6 100644
 --- a/internal/config/presets/gemoji.toml
 +++ b/internal/config/presets/gemoji.toml
-@@ -69,26 +69,6 @@ skip = true
+@@ -77,27 +77,6 @@ skip = true
  pattern = '^(fixup|squash)! '
- skip = true
+ unlandable = 'the files of this commit carry no sigil until autosquash folds it into its target, whose sigil then covers them; run git rebase --autosquash before this history is pushed or merged, or reword it with a sigil of its own when autosquash leaves it as it is (its target is outside the commits being rebased)'
  
 -[[patterns]]
 -# amend! (what --fixup=amend:<c> and --fixup=reword:<c> write) is NOT skipped:
@@ -50,7 +51,8 @@ index 377c0d2..f134946 100644
 -# step). Any other body stays unmatched, refused everywhere, the hook
 -# included — above all the one --fixup=amend:<a fixup! commit> prepares, that
 -# fixup!'s own line, which autosquash would land as the target's whole
--# message for the skip above to drop. One chain no single message shows:
+-# message: a fixup! the claim above refuses and no later autosquash folds,
+-# so a reword is all that gets it out. One chain no single message shows:
 -# after a squash! of the same target, git APPENDS the body instead, and the
 -# target's old first line lands unless the rebase's combined message is
 -# edited — so the reason says it at the hook.

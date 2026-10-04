@@ -166,10 +166,9 @@ func TestLintAuthoringLetsUnlandableThrough(t *testing.T) {
 }
 
 // TestPresetsNeverSkipAmend pins the preset half of t-t84a in every shipped
-// preset: fixup! and squash! are skipped — autosquash keeps their target's
-// subject, and so its sigil — and amend! is not, because autosquash REPLACES
-// its target's message with the amend! body. glyph#241 put amend beside the
-// other two and every gate folded ':bug:~' plus a reword to ':boom:!' as
+// preset: amend! is never skipped, because autosquash REPLACES its target's
+// message with the amend! body. glyph#241 put amend beside the fixup!/squash!
+// skip of the day and every gate folded ':bug:~' plus a reword to ':boom:!' as
 // patch. The presets claim amend! as unlandable: Match hands it back in the
 // UNMATCHED shape carrying a reason — never a skip, never a sigil, and never
 // bare-unclaimed either, which would refuse git's own subject at the hook.
@@ -178,12 +177,14 @@ func TestLintAuthoringLetsUnlandableThrough(t *testing.T) {
 // the grammar's subject stays bare-unclaimed, refused at the hook too: an
 // amend of a fixup! commit prepares that fixup!'s line as the body, and
 // claiming it let the hook pass a commit whose autosquash lands the target
-// titled fixup! — skipped by every gate, the target's sigil gone (measured on
-// git 2.54: lint 0, bump none).
+// titled fixup! — skipped by every gate while the presets skipped fixup!, the
+// target's sigil gone (measured on git 2.54: lint 0, bump none), and refused
+// by every gate since they claim it, with no later autosquash to fold it
+// (measured on git 2.54 at t-mfny: lint 3, a second autosquash leaves it).
 func TestPresetsNeverSkipAmend(t *testing.T) {
-	grammar := map[string]struct{ fixup, squash, amend, subject, sigilOnly string }{
-		"gemoji":       {"fixup! :bug:~ fix b", "squash! :bug:~ fix b", "amend! :bug:~ fix b\n\n:boom:! fix b", ":sparkles:(x)^ add x", ":boom:! "},
-		"conventional": {"fixup! fix(b)~: fix b", "squash! fix(b)~: fix b", "amend! fix(b)~: fix b\n\nfix(b)!: fix b", "feat(x)^: add x", "fix(b)!: "},
+	grammar := map[string]struct{ amend, subject, sigilOnly string }{
+		"gemoji":       {"amend! :bug:~ fix b\n\n:boom:! fix b", ":sparkles:(x)^ add x", ":boom:! "},
+		"conventional": {"amend! fix(b)~: fix b\n\nfix(b)!: fix b", "feat(x)^: add x", "fix(b)!: "},
 	}
 	for _, name := range PresetNames() {
 		t.Run(name, func(t *testing.T) {
@@ -193,12 +194,6 @@ func TestPresetsNeverSkipAmend(t *testing.T) {
 			}
 			data, _ := Preset(name)
 			cfg := mustLoad(t, string(data))
-			for _, msg := range []string{g.fixup, g.squash} {
-				m, err := cfg.Match(msg)
-				if err != nil || !m.Matched || !m.Skip {
-					t.Errorf("%q = %+v (err %v), want the autosquash skip", msg, m, err)
-				}
-			}
 			m, err := cfg.Match(g.amend)
 			if err != nil || m.Matched {
 				t.Errorf("%q = %+v (err %v), want it unclaimed: a skip or a sigil reads the message autosquash discards", g.amend, m, err)
@@ -217,6 +212,71 @@ func TestPresetsNeverSkipAmend(t *testing.T) {
 				if err != nil || m.Matched || m.Unlandable != "" {
 					t.Errorf("%q = %+v (err %v), want it bare-unclaimed: that body does not open as the grammar's subject, so the hook must refuse it too", msg, m, err)
 				}
+			}
+		})
+	}
+}
+
+// TestPresetsNeverSkipAutosquashArtifacts pins t-mfny's preset half in every
+// shipped preset: git's fixup! and squash! subjects are claimed as unlandable,
+// never skipped. The skip stood on autosquash folding each into its target
+// with the target's sigil intact, and a skip answers before that fold. Measured
+// on git 2.54 against the presets that skipped them (adfc5e1): a --fixup whose
+// files lie on another [[packages]] line than its target's linted green and
+// left that line at none, where the autosquashed history moves it; and a
+// --fixup of a released commit, which autosquash leaves as it is, linted green
+// and bumped "no release: 0 commit(s)". The reason names both ways out —
+// autosquash, and a reword for the commit autosquash cannot fold — and
+// conditions the reword on what autosquash did, not on where the target
+// lives: "when its target is already merged or released" named no escape for
+// a stacked branch's fixup!, whose target sits on the parent topic, neither
+// merged nor released, and which autosquash leaves all the same (measured on
+// git 2.54: refused at 3, the reword lints 0). Merge commits stay the presets'
+// one skip, the amend! claim stays its own, and the grammar stays patterns[0].
+func TestPresetsNeverSkipAutosquashArtifacts(t *testing.T) {
+	grammar := map[string]struct{ fixup, squash, amend, subject string }{
+		"gemoji":       {"fixup! :sparkles:(x)^ add x", "squash! :sparkles:(x)^ add x", "amend! :bug:~ fix b\n\n:boom:! fix b", ":sparkles:(x)^ add x"},
+		"conventional": {"fixup! feat(x)^: add x", "squash! feat(x)^: add x", "amend! fix(b)~: fix b\n\nfix(b)!: fix b", "feat(x)^: add x"},
+	}
+	for _, name := range PresetNames() {
+		t.Run(name, func(t *testing.T) {
+			g, ok := grammar[name]
+			if !ok {
+				t.Fatalf("preset %q has no messages here: say what its grammar's fixup! looks like", name)
+			}
+			data, _ := Preset(name)
+			cfg := mustLoad(t, string(data))
+
+			if m, err := cfg.Match(g.subject); err != nil || !m.Matched || m.PatternIndex != 0 {
+				t.Errorf("%q = %+v (err %v), want the grammar at patterns[0]", g.subject, m, err)
+			}
+			merge, err := cfg.Match("Merge branch 'x'")
+			if err != nil || !merge.Matched || !merge.Skip {
+				t.Fatalf("a merge commit = %+v (err %v), want the skip", merge, err)
+			}
+			for i, p := range cfg.Patterns {
+				if p.Skip && i != merge.PatternIndex {
+					t.Errorf("patterns[%d] (%s) is a skip: the presets skip merge commits alone, whose diff is never read", i, p.Pattern)
+				}
+			}
+
+			fixup, err := cfg.Match(g.fixup)
+			if err != nil || fixup.Matched || fixup.Skip || fixup.Unlandable == "" {
+				t.Fatalf("%q = %+v (err %v), want an unlandable claim: skipped, its files never move a line and a fixup! autosquash cannot fold ships as a silent none", g.fixup, fixup, err)
+			}
+			if squash, err := cfg.Match(g.squash); err != nil || squash.Matched || squash.Unlandable != fixup.Unlandable {
+				t.Errorf("%q = %+v (err %v), want the claim fixup! gets (%q)", g.squash, squash, err, fixup.Unlandable)
+			}
+			for _, escape := range []string{"git rebase --autosquash", "reword"} {
+				if !strings.Contains(fixup.Unlandable, escape) {
+					t.Errorf("the reason %q does not name %q: a fixup! whose target is outside the commits being rebased survives autosquash, so autosquash alone is an escape the author cannot reach", fixup.Unlandable, escape)
+				}
+			}
+			if !strings.Contains(fixup.Unlandable, "reword it with a sigil of its own when autosquash leaves it as it is") {
+				t.Errorf("the reason %q does not condition the reword on autosquash leaving the commit as it is: a condition on where the target lives misses a shape — a stacked branch's target is neither merged nor released, and autosquash leaves its fixup! all the same", fixup.Unlandable)
+			}
+			if amend, err := cfg.Match(g.amend); err != nil || amend.Matched || amend.Unlandable == "" || amend.Unlandable == fixup.Unlandable {
+				t.Errorf("%q = %+v (err %v), want the amend! claim, not fixup!'s: autosquash lands an amend! body, so its reason and its pattern are its own", g.amend, amend, err)
 			}
 		})
 	}

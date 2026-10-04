@@ -45,10 +45,12 @@ name: glyph-lint
 # What the lint enforces (exit 3 on violation): the repository's own
 # glyph.toml — a commit means what the first matching [[patterns]] entry says
 # (docs/DESIGN.md §2), and a message no pattern claims is the violation —
-# as is one an unlandable pattern claims, carrying that pattern's reason.
-# exclude_authors and skip-pattern commits (the presets skip merge commits and
-# the fixup!/squash! autosquash artifacts) are skipped, never failed; a
-# warn-pattern match annotates a ::warning:: and stays green.
+# as is one an unlandable pattern claims, carrying that pattern's reason (the
+# presets claim git's fixup! and squash! subjects this way, and an amend!
+# whose body the grammar reads).
+# exclude_authors and skip-pattern commits (the presets skip merge commits)
+# are skipped, never failed; a warn-pattern match annotates a ::warning:: and
+# stays green.
 
 on:
   workflow_call:

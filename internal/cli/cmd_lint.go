@@ -38,15 +38,16 @@ func newLintCmd() *cobra.Command {
 			"what a subject looks like are the pattern file's decisions, and glyph has\n" +
 			"no opinion on combinations (a docs commit carrying ! is the author's call).\n" +
 			"--range lints every commit on its way into main (exclude_authors are\n" +
-			"skipped, and so is anything a skip pattern claims — merge commits and the\n" +
-			"fixup!/squash! autosquash artifacts under the shipped presets). --pr lints\n" +
-			"a pull request's TITLE over the API, as the merge candidate it is: a squash\n" +
-			"merge records that title as the landed commit's subject. --message and\n" +
-			"--stdin lint one message at authoring time — the commit-msg hook path —\n" +
-			"where a message an unlandable pattern claims passes with its reason as a\n" +
-			"warning; every other mode refuses it, because it may be written but must\n" +
-			"not land. Violations exit 3 with a structured stderr envelope; a clean run\n" +
-			"is silent, EXCEPT for three loud-and-still-0 cases: a --range which judged\n" +
+			"skipped, and so is anything a skip pattern claims — merge commits under the\n" +
+			"shipped presets). --pr lints a pull request's TITLE over the API, as the\n" +
+			"merge candidate it is: a squash merge records that title as the landed\n" +
+			"commit's subject. --message and --stdin lint one message at authoring\n" +
+			"time — the commit-msg hook path — where a message an unlandable pattern\n" +
+			"claims passes with its reason as a warning (the shipped presets claim git's\n" +
+			"fixup! and squash! subjects, and an amend! whose body their grammar reads);\n" +
+			"every other mode refuses it, because it may be written but must not land.\n" +
+			"Violations exit 3 with a structured stderr envelope; a clean run is silent,\n" +
+			"EXCEPT for three loud-and-still-0 cases: a --range which judged\n" +
 			"no commit at all says so (`0` means \"everything I checked conforms\",\n" +
 			"which is vacuous when nothing was checked), a pattern carrying a warn\n" +
 			"annotates every commit it claims, and an unlandable message at authoring\n" +
@@ -173,9 +174,10 @@ func hookCleanupMode(ctx context.Context) cleanup.Mode {
 // entry of the empty string excused every message this function was ever
 // handed — the installed hook turned off by a stray comma, at exit 0. Whatever
 // tolerance authoring needs is the pattern file's to grant: skip patterns
-// (the presets skip a merge in progress and the fixup!/squash! autosquash
-// artifacts) and unlandable ones, which pass here with a warning and nowhere
-// else (config.LintAuthoring).
+// (the presets skip a merge in progress) and unlandable ones (the presets
+// claim git's fixup! and squash! subjects, and an amend! whose body their
+// grammar reads), which pass here with a warning and nowhere else
+// (config.LintAuthoring).
 func lintOne(message string, cfg *config.Config) error {
 	v := cfg.LintAuthoring(message)
 	if v.OK || v.Excluded {
