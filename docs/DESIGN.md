@@ -1385,8 +1385,52 @@ a commit whose true attribution the cap had hidden, and `lint.yml`'s push arm
 would have swallowed it as a merged violation. And the cap counts the
 **entries** GitHub listed, not the names returned: a rename is one entry under
 two names, so a whole listing of 1500 renames is whole — counted by name it was
-refused at 4 with a remedy a re-run could never satisfy. Attribution is per
-commit and never per pull.
+refused at 4 with a remedy a re-run could never satisfy. A listing GitHub will
+not give at all is the same shortfall with nothing read (t-esm5).
+`GET /commits/{sha}` answers a sha it does not know with 422 `No commit found
+for SHA: <sha>` — the same status and message `commits/{sha}/pulls` gives, the
+bodies differing only in `documentation_url` (both measured 2026-09-29) — so
+`IsCommitUnknown` reads both, and `listFiles`, the one reader the walk and
+`preview` share, takes the answer as a capped listing with nothing listed:
+`walkFacts` records it as `FilesUnknown` beside `FilesCapped`, and a refusal
+attribution would hand down over the empty listing is withheld as over a
+truncated one. An unscoped commit claiming a version impact is therefore
+carried nowhere, while a scope naming a package still carries the commit
+there — rule 2, the non-refusal answer a truncated listing already lets stand.
+A 422 on a later page keeps the files the pages before it listed, by the
+capped listing's own rule — attribution runs over what GitHub did list, the
+listing is recorded as unread, and only the refusal that needs the whole
+listing is withheld — though no live trigger for a later-page 422 is known,
+so that arm is measured with a stand-in server only
+(`TestSinceTagPackagesLaterPage422KeepsTheListedFiles`; mutation row
+`later-page-422-discards-the-listed-files`).
+`release` refuses at 4 naming it, `bump` and `notes` warn, and `preview`
+carries it in the PR-side caveat, or in the pending one when the pending walk
+meets it. It is not §4's lag fallback. That arm reads a lagging merge point's
+own message — a weaker copy of the input it lost — and stays complete; here
+the sha came from GitHub's own pull listing, its message was read, and the
+files are the one input attribution has no weaker source for. Before this,
+the same 422 died as a raw `github: GET …/commits/<sha>: 422` at exit 4 on
+every command that asked — `release`, `bump`, `notes`, and `preview`'s whole
+comment (measured on the unfixed source by the tests below) — the one unread
+input the walk handed back unclassified, against `CommitFiles`' own contract.
+A re-run clears neither shortfall for certain — a capped listing is capped
+again, and a 422 clears only once GitHub lists the commit — so each clause
+carries its own remedy: the wedge escape per line whose range holds the
+commit (a `<line>` tag at or past the pull's merge point), after a re-run for
+the 422 (`TestSinceTagPackagesUnlistedFilesAreAnIncompleteWalk`,
+`TestPreviewPackagesUnlistedFilesAreCaveated`,
+`TestReleasePackagesCappedRefusalIsNotTheGateCode`; mutation rows
+`unlisted-commit-files-die-as-a-raw-api-error`,
+`commit-files-status-flattened`, `unread-listing-remedy-is-a-rerun`).
+That escape is the act the t-c6r5 sentence above calls the harm, and it is
+offered knowingly: whoever cuts the tag settles the commit's version impact
+on each line by hand, because glyph never reads its files. What t-c6r5
+rejected was the escape handed down as the gate code — exit 3, blaming the
+message, over a conclusion the cap had made uncertain; here it comes at 4,
+beside a walk that says it is incomplete, as the one remedy left when no input
+glyph can read supplies the files.
+Attribution is per commit and never per pull.
 `GET /pulls/{N}/files` — one call, the pull's net diff — was rejected twice
 over: a pull touching two packages with a `^` in one and a `~` in the other
 would bump both lines by the higher sigil, which discards exactly the
@@ -1568,13 +1612,19 @@ come from `GET /commits/{sha}` — one request per participating commit, the
 squash arm's price paid before the merge — and a commit attribution refuses
 is refused here at exit 3, the same lint-class answer the walk will give
 once it is merged, while the branch can still be fixed. Over a listing GitHub
-truncated the refusal is withheld exactly as the walk withholds it, the commit
-is attributed to no line, and the body carries a PR-side INCOMPLETE caveat
-beside the pending one — a line a commit touches only past the cap is missing
-from every figure, and this comment is read by someone who never opens the
-log (`preview.Input.PRShort`). The pending side is
-the one walk, run when any touched line has a release tag (the release-floor
-guard per line), and its RANGE is resolved over the TOUCHED lines alone —
+truncated, or one a 422 cut short (above), the refusal is withheld exactly as
+the walk withholds it, the commit is attributed to no line, and the body
+carries a PR-side INCOMPLETE caveat beside the pending one — a line a commit
+touches in files GitHub did not list may be missing from every figure, and
+this comment is read by someone who never opens the log
+(`preview.Input.PRShort`). The caveat's own sentence names no cause, because
+the shortfall it quotes does: it said "only past the cap" of a 422 until
+t-esm5. When no line is touched, the "moves nothing" sentence claims no
+declared package only in the files GitHub listed, and the caveat makes a floor
+of that sentence rather than of figures the body does not carry. The pending
+side is the one walk, run when any touched line has a release tag (the
+release-floor guard per line), and its RANGE is resolved over the TOUCHED
+lines alone —
 attribution still runs over every declared line, because a nested package
 must keep taking its files out of its parent, but a line the pull does not
 touch never decides how far back the walk reaches. Resolved over every

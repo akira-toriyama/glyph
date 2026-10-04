@@ -462,7 +462,10 @@ func TestRenderPackagesCountsASharedCommitOnce(t *testing.T) {
 // under the headlines and above the tables — it qualifies the conclusion,
 // not the evidence — and is absent byte for byte when every listing was
 // whole. PRShortBlock is the same text, exported for the caller's own
-// "moves nothing" sentence.
+// "moves nothing" sentence, which carries no figures: there the caveat
+// makes a floor of "moves nothing" instead of pointing at figures above.
+// Its own sentence names no cause, because PRShort does: a listing GitHub
+// answered 422 for is not one it cut at the cap (t-esm5).
 func TestRenderPackagesPRShort(t *testing.T) {
 	in := Input{Packages: []Package{{
 		Path: "haiku", Current: "haiku/v0.1.0",
@@ -472,14 +475,18 @@ func TestRenderPackagesPRShort(t *testing.T) {
 	if out := Render(in); strings.Contains(out, "This PR's own side") {
 		t.Fatalf("a whole listing must render no PR-side caveat:\n%s", out)
 	}
-	in.PRShort = "1 commit(s) returned the maximum 3000 files (h1)"
+	in.PRShort = "GitHub answered 422 for the file listing of 1 commit(s), so a line they touch in files it did not list could not be read (c1)"
 	out := Render(in)
-	caveat := "\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: 1 commit(s) returned the maximum 3000 files (h1). A line one of its commits touches only past the cap is missing from the figures above, so treat each as a floor rather than the answer.\n"
+	caveat := "\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: GitHub answered 422 for the file listing of 1 commit(s), so a line they touch in files it did not list could not be read (c1). A line one of those commits touches in files GitHub did not list may be missing from the figures above, so treat each as a floor rather than the answer.\n"
 	headline, warning, table := strings.Index(out, "**haiku**"), strings.Index(out, caveat), strings.Index(out, "### haiku")
 	if headline < 0 || warning < 0 || table < 0 || headline >= warning || warning >= table {
 		t.Fatalf("the PR-side caveat must sit under the headlines and above the tables:\n%s", out)
 	}
-	if PRShortBlock(in.PRShort) != caveat || PRShortBlock("") != "" {
-		t.Fatalf("PRShortBlock must be the rendered caveat and nothing when there is none: %q", PRShortBlock(in.PRShort))
+	if PRShortBlock(in.PRShort, true) != caveat || PRShortBlock("", true) != "" || PRShortBlock("", false) != "" {
+		t.Fatalf("PRShortBlock must be the rendered caveat and nothing when there is none: %q", PRShortBlock(in.PRShort, true))
+	}
+	nothing := "\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: GitHub answered 422 for the file listing of 1 commit(s), so a line they touch in files it did not list could not be read (c1). A line one of those commits touches in files GitHub did not list may move all the same, so treat \"moves nothing\" as a floor rather than the answer.\n"
+	if got := PRShortBlock(in.PRShort, false); got != nothing {
+		t.Fatalf("PRShortBlock with no figures = %q, want %q", got, nothing)
 	}
 }

@@ -1,0 +1,13 @@
+diff --git a/internal/github/commitfiles.go b/internal/github/commitfiles.go
+index a4bbcb7..6ce1077 100644
+--- a/internal/github/commitfiles.go
++++ b/internal/github/commitfiles.go
+@@ -65,7 +65,7 @@ func (c *Client) CommitFiles(ctx context.Context, owner, repo, sha string) (file
+ 		var page apiCommitFiles
+ 		next, gerr := c.get(ctx, u, &page)
+ 		if gerr != nil {
+-			return files, false, gerr
++			return nil, false, gerr
+ 		}
+ 		entries += len(page.Files)
+ 		for _, f := range page.Files {
