@@ -238,67 +238,6 @@ func TestEscapeMarkupLeavesTheCodeSpanMapAlone(t *testing.T) {
 	}
 }
 
-// TestEscapeText pins the plain-text contract for the commit SCOPE: every ASCII
-// punctuation byte comes out escaped, except the two that must not be.
-//
-// Only the LEGACY token grammar can deliver a scope with anything to escape —
-// the canonical slot is lowercase kebab-case — so the interesting cases are all
-// legacy ones. Measured across the fleet: 139 legacy scopes are non-kebab, and
-// every one of them renders identically escaped.
-func TestEscapeText(t *testing.T) {
-	cases := []struct{ name, in, want string }{
-		{"a canonical scope is untouched", "parser", "parser"},
-		{"a hyphen is NOT escaped — it is the one punctuation a kebab scope carries", "grid-1f-4", "grid-1f-4"},
-		{"a digit-carrying scope", "v2", "v2"},
-		{"a stray backtick, which today steals the mention fence", "readme`", "readme\\`"},
-		{"a raw tag in the scope", `<i title="x">`, `\<i title\=\"x\"\>`},
-		{"a link in the scope", "[x](http://evil)", `\[x\]\(http\:\/\/evil\)`},
-		{"a dotted scope", "a.b", `a\.b`},
-		{"a comma-separated legacy scope", "ThemeKit,prism", `ThemeKit\,prism`},
-		{"emphasis markers", "a*b_c~d", `a\*b\_c\~d`},
-		{"an ampersand", "A&B", `A\&B`},
-		{"a backslash escapes itself, so it cannot eat ours", `a\b`, `a\\b`},
-		{"an at-sign is left for the mention pass", "@octocat", "@octocat"},
-		{"non-ASCII is untouched", "日本語", "日本語"},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if got := escapeText(c.in); got != c.want {
-				t.Errorf("escapeText(%q)\n got %q\nwant %q", c.in, got, c.want)
-			}
-		})
-	}
-}
-
-// TestEscapeTextLeavesNoConstruct is the falsifiable statement of what "plain
-// text" means, and it is what makes escapeMarkup(subject) sound in isolation: a
-// scope can no longer open a span, a tag or a link that reaches across the
-// "**…:** " boundary into the subject beside it.
-func TestEscapeTextLeavesNoConstruct(t *testing.T) {
-	for _, in := range []string{
-		"readme`",
-		"a `b` c",
-		`<i title="x">`,
-		"[x](http://evil)",
-		"http://a/x",
-		"www.a.com",
-		"a``b",
-		`\<not escaped>`,
-	} {
-		t.Run(in, func(t *testing.T) {
-			out := escapeText(in)
-			if spans := codeSpans(out); len(spans) != 0 {
-				t.Errorf("escapeText(%q) = %q still forms code span(s) %v", in, out, spans)
-			}
-			// escapeMarkup is the independent judge of "does a construct start
-			// here": if none does, it has nothing to add.
-			if again := escapeMarkup(out); again != out {
-				t.Errorf("escapeText(%q) = %q still carries a construct — escapeMarkup would add %d byte(s)", in, out, len(again)-len(out))
-			}
-		})
-	}
-}
-
 // FuzzEscapeMarkupNeutralizes states the two properties the design rests on over
 // arbitrary input, plus the one that actually makes the escaping safe.
 //

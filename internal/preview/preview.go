@@ -47,7 +47,9 @@ type Verdict struct {
 
 // Input is everything the body is rendered from. PR is this pull request's own
 // verdict; Pending is what is already merged but unreleased. Untagged marks a
-// repository with no v* release tag: its Pending is not merely empty but
+// base branch whose history holds no v* release tag — the fact the caller
+// resolved, stated of the branch because a tag on another branch is no
+// release of this one (DESIGN §4): its Pending is not merely empty but
 // UNCOMPUTED — walking it would cost an API round-trip per commit of the whole
 // history for an answer that cannot matter (nothing is unreleased when nothing
 // was ever released), so the caller skips it and says so here.
@@ -74,13 +76,13 @@ type Input struct {
 	// package instead of in the caller's jq.
 	PendingShort string
 	// PRShort names what the PR side could not read: the pull's own commits
-	// whose file listing GitHub truncated, in the walk's words, so a line one
-	// of them touches only past the cap is absent from every figure — and a
-	// refusal attribution would have made over the truncated listing was
-	// withheld rather than handed down (DESIGN §4.1). Empty when every
-	// listing was whole, and always empty on the single line, which asks for
-	// no files. It is said here for PendingShort's reason: the log is not
-	// read.
+	// whose file listing GitHub truncated at its cap or cut short with a 422,
+	// in the walk's words, so a line one of them touches in files GitHub did
+	// not list may be absent from every figure — and a refusal
+	// attribution would have made over such a listing was withheld rather
+	// than handed down (DESIGN §4.1). Empty when every listing was whole, and
+	// always empty on the single line, which asks for no files. It is said
+	// here for PendingShort's reason: the log is not read.
 	PRShort string
 	// Packages is the per-line fold of a repository that declares
 	// [[packages]] (DESIGN §4.1): one entry per line the pull's commits are
@@ -161,7 +163,7 @@ func Headline(in Input) string {
 	pr, qr := rank(pl), rank(ql)
 	switch {
 	case in.Untagged && pr == 0:
-		return "⏸️ Merging this PR moves nothing — and this repository has no release tag yet, so there is no version to move."
+		return "⏸️ Merging this PR moves nothing — and the base branch holds no release tag yet, so there is no version to move."
 	case in.Untagged:
 		return fmt.Sprintf("%s Merging this PR raises **%s** — the first release here would be **%s**.", icon(pl), pl, in.PR.Next)
 	case pr == 0 && qr == 0:
@@ -271,7 +273,7 @@ func renderPackages(in Input) string {
 	if in.PendingShort != "" {
 		fmt.Fprintf(&b, "\n> [!WARNING]\n> The pending side of this fold is INCOMPLETE: %s. Anything already merged but unreleased may be missing from the figures above, so treat each as a floor rather than the answer.\n", in.PendingShort)
 	}
-	b.WriteString(PRShortBlock(in.PRShort))
+	b.WriteString(PRShortBlock(in.PRShort, true))
 	for _, p := range in.Packages {
 		if len(p.PR.Commits) == 0 {
 			continue
@@ -292,18 +294,30 @@ func renderPackages(in Input) string {
 
 // PRShortBlock is the caveat renderPackages places under the headlines when
 // PRShort is set, and "" when it is not. Exported because the packages
-// "moves nothing" sentence is the caller's own, and a pull whose one capped
-// commit was attributed to no line is exactly the body that must carry it.
-func PRShortBlock(short string) string {
+// "moves nothing" sentence is the caller's own, and a pull whose one
+// unlisted commit was attributed to no line is exactly the body that must
+// carry it. figures says whether the body carries figures for the caveat to
+// make floors of: the headlines do, the "moves nothing" sentence does not,
+// and a caveat pointing at "the figures above" there points at nothing. The
+// sentence names no cause — PRShort already does, and "only past the cap"
+// was false for a listing GitHub answered 422 for (t-esm5) — and says a line
+// MAY be missing, the walk's own word: a scope can carry a commit onto the
+// very line its unlisted files touch.
+func PRShortBlock(short string, figures bool) string {
 	if short == "" {
 		return ""
 	}
-	return fmt.Sprintf("\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: %s. A line one of its commits touches only past the cap is missing from the figures above, so treat each as a floor rather than the answer.\n", short)
+	floor := "may be missing from the figures above, so treat each as a floor rather than the answer"
+	if !figures {
+		floor = `may move all the same, so treat "moves nothing" as a floor rather than the answer`
+	}
+	return fmt.Sprintf("\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: %s. A line one of those commits touches in files GitHub did not list %s.\n", short, floor)
 }
 
 // packagesFooter is footer per line: the participating commits are counted
 // once each (a commit in two lines is one commit), and the base every line
-// was folded since is named — or the line said to have no release tag yet.
+// was folded since is named — or the line said to have no release tag on the
+// base branch yet.
 func packagesFooter(in Input) string {
 	seen := map[string]bool{}
 	n := 0
@@ -336,10 +350,10 @@ func packagesFooter(in Input) string {
 	}
 	s += "."
 	if len(untaggedWalked) > 0 {
-		s += fmt.Sprintf(" %s has no release tag yet, so everything merged so far is folded in for it.", strings.Join(untaggedWalked, " and "))
+		s += fmt.Sprintf(" %s has no release tag on the base branch yet, so everything merged so far is folded in for it.", strings.Join(untaggedWalked, " and "))
 	}
 	if len(untagged) > 0 {
-		s += fmt.Sprintf(" %s has no release tag yet, so nothing merged earlier is folded in for it.", strings.Join(untagged, " and "))
+		s += fmt.Sprintf(" %s has no release tag on the base branch yet, so nothing merged earlier is folded in for it.", strings.Join(untagged, " and "))
 	}
 	return s + " Pushing more commits updates this comment."
 }
@@ -350,7 +364,7 @@ func footer(in Input) string {
 	// under the presets) and raw reverts are excluded upstream, so a bot's PR
 	// legitimately shows zero here and the wording must not read as a miscount.
 	if in.Untagged {
-		return fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. This repository has no v* release tag yet, so nothing merged earlier is folded in. Pushing more commits updates this comment.", n)
+		return fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. The base branch holds no v* release tag yet, so nothing merged earlier is folded in. Pushing more commits updates this comment.", n)
 	}
 	if in.PendingShort != "" {
 		return fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them — folded with as much of what is already merged on the base branch since **%s** as the walk could read. Pushing more commits updates this comment.", n, in.Current)

@@ -5,31 +5,32 @@ import (
 	"testing"
 )
 
-// TestLineSealsTheEscapeOrder pins the property Line exists for (t-3f4s): the
-// per-field passes run inside Text and Prose, and the mention fence runs LAST,
-// inside String, over the whole assembled line — including Raw stretches and
-// sized against backticks that other fragments contributed. The mutation ledger
-// names this test: a String that returns its bytes unfenced turns every
-// release-notes line and preview cell into a potential live @mention, which is
-// a notification to a stranger (incident t-hykw), not a rendering nit.
+// TestLineSealsTheEscapeOrder pins the property Line exists for (t-3f4s):
+// flattening runs inside Prose as each field arrives, and the prose escape and
+// then the mention fence run LAST, inside String, over the whole assembled
+// line — including Raw stretches and sized against backticks that other
+// fragments contributed. The mutation ledger names this test: a String that
+// returns its bytes unfenced turns every release-notes line and preview cell
+// into a potential live @mention, which is a notification to a stranger
+// (incident t-hykw), not a rendering nit.
 func TestLineSealsTheEscapeOrder(t *testing.T) {
 	t.Run("fence runs last and over the assembled line", func(t *testing.T) {
-		// The measured incident shape (notes.entryLine's comment, 2026-07-21):
-		// the scope carries a backtick, the subject carries the mentions, and
-		// only a fence sized over the ASSEMBLED line beats the run the scope
-		// smuggled into the shared inline context.
+		// The measured incident shape (markdown_test.go's probe table,
+		// 2026-07-21): the scope carries a backtick, the subject carries the
+		// mentions, and only a fence sized over the ASSEMBLED line beats the
+		// run the scope smuggled into the shared inline context.
 		var l Line
 		l.Raw("- 🐛 ")
 		l.Raw("**")
-		l.Text("readme`")
+		l.Prose("readme`")
 		l.Raw(":** ")
 		l.Prose("credit @alice and @bob for the fix")
 		l.Raw(" (abc1234)")
 		got := l.String()
-		// The scope's backtick arrives escaped (escapeText), still counts for
-		// fence sizing (escaped backticks pair at cmark like any other), so the
-		// fence is two — and both mentions are fenced, not just the subject's.
-		want := "- 🐛 **readme\\`:** credit ``@alice`` and ``@bob`` for the fix (abc1234)"
+		// The scope is prose like every author field (DESIGN §2), so its
+		// backtick reaches the line live and counts for fence sizing: the
+		// fence is two, and both mentions are fenced, not just the subject's.
+		want := "- 🐛 **readme`:** credit ``@alice`` and ``@bob`` for the fix (abc1234)"
 		if got != want {
 			t.Fatalf("composed line:\n got %q\nwant %q", got, want)
 		}
@@ -43,14 +44,14 @@ func TestLineSealsTheEscapeOrder(t *testing.T) {
 		}
 	})
 
-	t.Run("Text and Prose route to their field policies, flattened", func(t *testing.T) {
+	t.Run("Prose fields are flattened and disarmed over the line", func(t *testing.T) {
 		var l Line
-		l.Text("a\nb<")
+		l.Prose("a\nb<")
 		l.Raw(" ")
 		l.Prose("keep `code` kill\n<i>")
 		got := l.String()
-		// Text: flattened, every escapable byte disarmed. Prose: flattened, the
-		// author's span survives, the raw-HTML opener does not.
+		// Both fields: flattened, the author's span survives, every raw-HTML
+		// opener outside it does not.
 		want := `a b\< keep ` + "`code`" + ` kill \<i>`
 		if got != want {
 			t.Fatalf("got %q, want %q", got, want)
@@ -122,7 +123,7 @@ func TestLineSealsTheEscapeOrder(t *testing.T) {
 		// The exempt bytes still count for sizing and context: a backtick
 		// elsewhere on the line must still grow the fence on the stranger.
 		var l Line
-		l.Text("x`")
+		l.Prose("x`")
 		l.Raw(" @")
 		l.Mention("akira", "akira")
 		l.Raw(" ")

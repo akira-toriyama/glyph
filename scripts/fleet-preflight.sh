@@ -166,6 +166,19 @@ if [ ! -x "$CANDIDATE" ]; then
 fi
 CANDIDATE="$(cd "$(dirname "$CANDIDATE")" && pwd)/$(basename "$CANDIDATE")"
 
+# jq reads every envelope and every body the probes compare. Without it the
+# lint side stays loud — the lint cell files two unreadable signatures as an
+# unanswered gate, though they once compared equal (measured 2026-09-29: one
+# finding against two reported as no move) — but the body gate goes silent:
+# both sides of every body pair are empty files, so each re-render reads as
+# none under an ANSWERED gate and no weakening reaches the ✓ line (measured
+# 2026-10-04 with this check removed: 1 re-render became 0).
+if ! command -v jq >/dev/null 2>&1; then
+  echo "✗ jq is not installed, so no error envelope and no release body can be read." >&2
+  echo "  A lint gate with findings on both sides would go unanswered, and every body pair would compare as two empty files." >&2
+  exit 1
+fi
+
 WORK="$(mktemp -d)"
 BASELINE_WT=''
 # `[ -n "$X" ] && cmd` was wrong here: it is an AND-OR list whose LAST command is
@@ -316,7 +329,9 @@ probe_lint() { # probe_lint <bin> <dir> <range> <errfile>
       jq -r '[(.error.details // [])[] | (.sha // "no-sha")[0:7]] | sort | join(" ")' 2>/dev/null || true)"
     # A code-3 run with no readable detail list is not "no violations"; it is a
     # signature this script cannot compare. Say so rather than emit an empty
-    # string that would compare equal to a clean run's.
+    # string that would compare equal to a clean run's — and never compare two
+    # of them: the lint cell files such a pair as an unanswered gate, not as
+    # agreement.
     [ -n "$_sig" ] || _sig='?unreadable-envelope'
   fi
   printf '%s\t%s\n' "$_st" "$_sig"
@@ -588,7 +603,10 @@ while IFS= read -r name; do
     fi
   fi
 
-  tag="$(git -C "$dir" tag --sort=-v:refname 2>/dev/null | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
+  # The base glyph itself reads: a tag the walked ref's history holds (DESIGN
+  # §4, "The walk base is a release HEAD contains"). A tag cut on a branch $wh
+  # never took would size the lint range and the budget from another history.
+  tag="$(git -C "$dir" tag --merged "$wh" --sort=-v:refname 2>/dev/null | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
   if [ -n "$tag" ]; then
     rng="$tag..$wh"
   else
@@ -677,7 +695,15 @@ while IFS= read -r name; do
   # where it was. A regression cannot be routed into the list of things that
   # were never measured.
   lint_cell='-'
-  if answered lint "$ol_code" && answered lint "$nl_code"; then
+  if [ "$ol_sig" = '?unreadable-envelope' ] && [ "$nl_sig" = '?unreadable-envelope' ]; then
+    # Ahead of the three: both sides answered 3 and neither answer can be
+    # read. The two placeholders are equal as strings, and filing them as
+    # agreement reported no move over a finding set that had moved. Kept out
+    # of LINT_OK, so the ✓ line says its counts are floors.
+    moved_lint=''
+    printf '%s\tlint findings unreadable on both sides over %s — nothing was compared: %s\n' \
+      "$name" "$rng" "$(whys "$WORK/lint.old.err" "$WORK/lint.new.err")" >> "$WORK/skips"
+  elif answered lint "$ol_code" && answered lint "$nl_code"; then
     LINT_OK=$((LINT_OK + 1))
     # The finding SET, not the exit code. See probe_lint.
     if [ "$ol_code" != "$nl_code" ] || [ "$ol_sig" != "$nl_sig" ]; then moved_lint=1; else moved_lint=''; fi

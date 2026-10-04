@@ -255,11 +255,11 @@ attaches the same way, per line: iterate the `packages` output
 verdict says packages.
 
 Adopting on a repository with deep history? Cut a version tag at the commit
-where the convention starts — the walk baselines at the highest `v*` tag, and
-with no tag at all a long history is refused past a walk cap (fail-loud, one
-API round-trip per commit is the cost it refuses; the error names this exact
-remedy) rather than walked unbounded. A young repository needs no tag: the
-first release walks the whole history.
+where the convention starts — the walk baselines at the highest `v*` tag the
+released branch holds, and with no tag at all a long history is refused past a
+walk cap (fail-loud, one API round-trip per commit is the cost it refuses; the
+error names this exact remedy) rather than walked unbounded. A young repository
+needs no tag: the first release walks the whole history.
 
 ## Commit format
 
@@ -402,8 +402,9 @@ request each.
 `--since-tag=haiku/v0.1.0` or `--since-tag=below:haiku/v0.2.0` selects haiku
 alone (what a tag-time notes step needs; a release candidate on the line,
 `haiku/v0.2.0-rc.1`, selects it the same way and steps from its highest plain
-tag), a bare `--since-tag` walks every line from its own highest tag, and
-`--range` attributes from local git with every commit pending on every line.
+tag), a bare `--since-tag` walks every line from its own highest tag the
+released branch holds, and `--range` attributes from local git with every
+commit pending on every line.
 A package with no tag yet is baselined
 by cutting `<path>/v0.0.0` at the commit before its first change. On stdout
 `bump` prints the next **tag** of every line that moves, one per line
@@ -451,6 +452,12 @@ write refused off the default branch · `130` interrupted.
 
 The integers are a frozen machine API — CI gates branch on the exact value, so
 assert the code, never truthiness (`if glyph …` cannot tell `3` from `2`).
+
+glyph's stderr has a shape too — `::` workflow annotations, then, on a failure
+that is not silent, one JSON error envelope, written last — so read the
+envelope the way the *error envelope* entry in
+[`docs/glossary.md`](docs/glossary.md#6-exit-codes-and-streams) says, never by
+handing stderr whole to `jq`.
 
 ## Working on glyph
 

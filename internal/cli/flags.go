@@ -51,7 +51,7 @@ func checkGivenEmpty(cmd *cobra.Command, name, noun, hint string) error {
 // diagnosed the same way whichever command received it.
 const (
 	repoHint    = "omit --repo to use $GITHUB_REPOSITORY (else the origin remote), or name one with --repo=owner/name"
-	currentHint = "omit --current to step from the default (the tag the walk named, else the highest v* tag), or name one with --current=vX.Y.Z"
+	currentHint = "omit --current to step from the default (the tag the walk named, else the highest v* tag HEAD contains), or name one with --current=vX.Y.Z"
 )
 
 // currentFlagUsage is the --help line for --current, shared by bump and release
@@ -66,7 +66,7 @@ const (
 // help promised. That is the version a wrong-bump investigation starts from,
 // and --help is where the investigator looks, so the one place the CLI could
 // mislead is the one place it did.
-const currentFlagUsage = "the version to step from (default: the tag the walk named, else the highest parseable v* tag, else v0.0.0)"
+const currentFlagUsage = "the version to step from (default: the tag the walk named, else the highest parseable v* tag HEAD contains, else v0.0.0)"
 
 // checkNamingFlags rejects the empty form of each named flag, before any git or
 // API work. Flags that select the INPUT SOURCE (--range, --pr, --since-tag)

@@ -112,8 +112,9 @@ func TestCommitFilesEmptyListingIsNotNil(t *testing.T) {
 
 // TestCommitFiles422IsCommitUnknown: the status is NOT flattened here — a 422
 // from commits/{sha} means what it means on commits/{sha}/pulls, GitHub not
-// knowing the sha — so IsCommitUnknown can read it. A 404 stays a plain
-// failure, as on the pulls sub-resource.
+// knowing the sha — so IsCommitUnknown can read it, and the walk records the
+// listing as unread instead of failing on it. A 404 stays a plain failure, as
+// on the pulls sub-resource (mutation row commit-files-status-flattened).
 func TestCommitFiles422IsCommitUnknown(t *testing.T) {
 	for status, want := range map[int]bool{http.StatusUnprocessableEntity: true, http.StatusNotFound: false} {
 		c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
@@ -127,6 +128,33 @@ func TestCommitFiles422IsCommitUnknown(t *testing.T) {
 		if got := IsCommitUnknown(err); got != want {
 			t.Fatalf("status %d: IsCommitUnknown = %v, want %v (%v)", status, got, want, err)
 		}
+	}
+}
+
+// TestCommitFilesLaterPage422KeepsTheListedFiles: a 422 on page 2 comes back
+// with the files page 1 listed beside it, still readable by IsCommitUnknown —
+// the caller keeps what GitHub did list, as it keeps a capped listing's 3000
+// (DESIGN §4.1). A stand-in only: no live trigger for a later-page 422 is
+// known (mutation row later-page-422-discards-the-listed-files).
+func TestCommitFilesLaterPage422KeepsTheListedFiles(t *testing.T) {
+	var srvURL string
+	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") == "2" {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			fmt.Fprint(w, `{"message":"No commit found for SHA"}`)
+			return
+		}
+		w.Header().Set("Link", fmt.Sprintf(`<%s/repos/o/r/commits/s?page=2>; rel="next"`, srvURL))
+		fmt.Fprint(w, `{"sha":"s","files":[{"filename":"curry/curry.go"}]}`)
+	})
+	srvURL = c.baseURL
+
+	files, capped, err := c.CommitFiles(context.Background(), "o", "r", "s")
+	if !IsCommitUnknown(err) || capped {
+		t.Fatalf("CommitFiles = capped %v, err %v; want the 422 carrier, uncapped", capped, err)
+	}
+	if !slices.Equal(files, []string{"curry/curry.go"}) {
+		t.Fatalf("files = %q, want page 1's curry/curry.go beside the 422", files)
 	}
 }
 
