@@ -332,6 +332,13 @@ func getAll[T any](ctx context.Context, c *Client, u string) ([]T, error) {
 // get performs one GET via send, decodes the 2xx body into into, and returns
 // the next-page URL from the Link header ("" when there is none) — admitted
 // only when it addresses the client's own origin, see nextPage.
+//
+// Every Link line is read, joined the way RFC 9110 §5.3 combines a
+// list-valued field. Header.Get returns the first line only, so a server that
+// put rel="next" on a second line ended the walk at page 1 with no error —
+// PullCommits returned 1 of 2 commits (t-esm5,
+// TestPullCommitsFollowsALinkHeaderSplitAcrossLines). api.github.com sends
+// one line (measured 2026-09-29); the join costs nothing when it does.
 func (c *Client) get(ctx context.Context, u string, into any) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -344,7 +351,7 @@ func (c *Client) get(ctx context.Context, u string, into any) (string, error) {
 	if err := json.Unmarshal(body, into); err != nil {
 		return "", core.APIf("github: decoding %s: %v", req.URL.Path, err)
 	}
-	return c.nextPage(header.Get("Link"))
+	return c.nextPage(strings.Join(header.Values("Link"), ", "))
 }
 
 // nextPage reads the next-page URL out of a response's Link header and admits
@@ -479,15 +486,19 @@ func (e *statusError) Error() string { return e.err.Error() }
 func (e *statusError) Unwrap() error { return e.err }
 
 // flatten strips the status carrier off a failure. Every method except
-// CommitPulls and Repository flattens on the way out, so a status can only ever
-// be observed on a call whose contract documents it — a 422 from another
-// endpoint (a pulls/{n}/commits validation failure) must never read as "commit
-// unknown" and silently become a release fallback. The two exceptions each
-// export one predicate over their own status (IsCommitUnknown, IsRepoUnknown),
-// and nothing else OUTSIDE this package may read a status. DeleteRelease
-// consults its own 404 through goneOnRetry before flattening — inside the
-// package, on the one call whose contract gives that status a meaning — so no
-// status escapes.
+// CommitPulls, CommitFiles and Repository flattens on the way out, so a status
+// can only ever be observed on a call whose contract documents it — a 422 from
+// another endpoint (a pulls/{n}/commits validation failure) must never read as
+// "commit unknown" and silently become a release fallback. CommitPulls and
+// CommitFiles share IsCommitUnknown — both endpoints answer an unknown sha with
+// the same 422 — and Repository exports IsRepoUnknown; nothing else OUTSIDE
+// this package may read a status. DeleteRelease consults its own 404 through
+// goneOnRetry before flattening — inside the package, on the one call whose
+// contract gives that status a meaning — so no status escapes.
+// TestOnlyDocumentedMethodsCarryAStatusOut probes every exported method and
+// fails on one it has no row for: PullRequest and GenerateNotes carried theirs
+// out until t-esm5, and a 422 from either read as IsCommitUnknown (measured;
+// mutation row pull-request-status-escapes-the-adapter).
 func flatten(err error) error {
 	var se *statusError
 	if errors.As(err, &se) {
@@ -508,11 +519,18 @@ func goneOnRetry(err error) bool {
 	return errors.As(err, &se) && se.retried && se.status == http.StatusNotFound
 }
 
-// IsCommitUnknown reports whether err is commits/{sha}/pulls answering 422 —
-// how GitHub says it does not (yet) know the SHA. That is the release walk's
-// API-lag case (the walk runs moments after a push), so the walk branches here
-// to fall back instead of hard-failing the release. Deliberately NOT true for
-// a 404: that is how a bad credential against a private repository answers for
+// IsCommitUnknown reports whether err is one of the two commit endpoints —
+// commits/{sha}/pulls (CommitPulls) or commits/{sha} (CommitFiles) —
+// answering 422, how GitHub says it does not (yet) know the SHA. Both answer
+// with the same status and message, "No commit found for SHA: <sha>", the
+// bodies differing only in documentation_url (measured 2026-09-29). What the
+// answer means is the caller's: on the pulls sub-resource it is the release
+// walk's API-lag case (the walk runs moments after a push), so the walk falls
+// back to the commit's own message instead of hard-failing the release; on
+// the files listing there is no weaker source to fall back on, so the caller
+// records the listing as unread (internal/cli's walkFacts.FilesUnknown) —
+// an incomplete walk, never a lag fallback. Deliberately NOT true for a 404:
+// that is how a bad credential against a private repository answers for
 // every commit, and degrading a whole walk to fallbacks on an auth failure
 // would be silent corruption.
 func IsCommitUnknown(err error) bool {
@@ -599,11 +617,21 @@ func retryable(err error) bool {
 // retryWait picks the pause before the next attempt: the server's own
 // Retry-After (whole seconds — the shape GitHub sends), capped at
 // maxRetryAfter, else the schedule's delay.
+//
+// The cap is applied to the seconds, before they become a Duration. A
+// server-sent value past 9223372036 overflows int64 in the multiplication,
+// and a cap applied to the product let it through wrapped: 9223372037 came
+// back negative, so waitRetry skipped the sleep, and 18446744074 came back
+// as 290ms — either way the backoff schedule collapsed (t-esm5,
+// TestRetryWaitHonorsRetryAfter).
 func retryWait(err error, fallback time.Duration) time.Duration {
 	var se *statusError
 	if errors.As(err, &se) && se.retryAfter != "" {
 		if n, perr := strconv.Atoi(se.retryAfter); perr == nil && n >= 0 {
-			return min(time.Duration(n)*time.Second, maxRetryAfter)
+			if n > int(maxRetryAfter/time.Second) {
+				return maxRetryAfter
+			}
+			return time.Duration(n) * time.Second
 		}
 	}
 	return fallback

@@ -2,10 +2,12 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -155,6 +157,40 @@ func TestPullCommitsPaginates(t *testing.T) {
 	}
 	if len(commits) != 2 || commits[0].SHA != "a" || commits[1].SHA != "b" {
 		t.Fatalf("pagination = %+v, want commits a then b", commits)
+	}
+}
+
+// TestPullCommitsFollowsALinkHeaderSplitAcrossLines: HTTP lets a server send
+// one list-valued field as several header lines (RFC 9110 §5.3), and
+// Header.Get reads only the first. With rel="next" on the second line the walk
+// stopped at page 1 with no error — PullCommits returned 1 of 2 commits on the
+// unfixed source (t-esm5). api.github.com sends one line carrying every rel
+// (measured 2026-09-29), so this is the shape a proxy or an Enterprise host
+// may produce, not today's.
+func TestPullCommitsFollowsALinkHeaderSplitAcrossLines(t *testing.T) {
+	var srvURL string
+	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("page") {
+		case "", "1":
+			w.Header().Add("Link", fmt.Sprintf(`<%s/x?page=2>; rel="last"`, srvURL))
+			w.Header().Add("Link", fmt.Sprintf(`<%s/x?page=2>; rel="next"`, srvURL))
+			fmt.Fprint(w, `[{"sha":"a","commit":{"message":"m1","author":{"name":"x"}}}]`)
+		case "2":
+			w.Header().Add("Link", fmt.Sprintf(`<%s/x?page=1>; rel="first"`, srvURL))
+			w.Header().Add("Link", fmt.Sprintf(`<%s/x?page=1>; rel="prev"`, srvURL))
+			fmt.Fprint(w, `[{"sha":"b","commit":{"message":"m2","author":{"name":"y"}}}]`)
+		default:
+			t.Errorf("unexpected page %q", r.URL.Query().Get("page"))
+		}
+	})
+	srvURL = c.baseURL
+
+	commits, err := c.PullCommits(context.Background(), "o", "r", 1)
+	if err != nil {
+		t.Fatalf("PullCommits: %v", err)
+	}
+	if len(commits) != 2 || commits[0].SHA != "a" || commits[1].SHA != "b" {
+		t.Fatalf("pagination = %+v, want commits a then b — rel=\"next\" sat on the second Link line", commits)
 	}
 }
 
@@ -321,9 +357,11 @@ func TestCommitPulls404IsNotCommitUnknown(t *testing.T) {
 }
 
 // TestPullCommits422IsNotCommitUnknown: the commit-unknown branch belongs to
-// CommitPulls alone — a 422 from pulls/{n}/commits means a validation problem,
-// and letting it read as "API lag" would convert a hard failure into a silent
-// fallback. Every other method flattens the status away.
+// the two commit endpoints alone (CommitPulls, CommitFiles) — a 422 from
+// pulls/{n}/commits means a validation problem, and letting it read as "API
+// lag" would convert a hard failure into a silent fallback. Every method
+// without a documented status flattens it away
+// (TestOnlyDocumentedMethodsCarryAStatusOut).
 func TestPullCommits422IsNotCommitUnknown(t *testing.T) {
 	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
@@ -335,6 +373,85 @@ func TestPullCommits422IsNotCommitUnknown(t *testing.T) {
 		t.Fatal("a 422 from pulls/{n}/commits must NOT report IsCommitUnknown")
 	}
 	wantAPIError(t, err, "Validation Failed")
+}
+
+// TestOnlyDocumentedMethodsCarryAStatusOut is flatten's contract probed
+// method by method: every exported method is called against a server
+// answering 422 — the status IsCommitUnknown reads — and 404 — the one
+// IsRepoUnknown reads — and only the three whose contract documents a status
+// hand the carrier out: CommitPulls and CommitFiles to IsCommitUnknown on a
+// 422, Repository to IsRepoUnknown on a 404. PullRequest and GenerateNotes
+// handed it out until t-esm5 (a 422 from either read as IsCommitUnknown). The
+// table must name every exported method, so a new endpoint cannot join
+// without saying which side it is on.
+func TestOnlyDocumentedMethodsCarryAStatusOut(t *testing.T) {
+	ctx := context.Background()
+	params := ReleaseParams{TagName: "v1.0.0", Draft: true}
+	calls := map[string]func(*Client) error{
+		"CommitFiles":   func(c *Client) error { _, _, err := c.CommitFiles(ctx, "o", "r", "s"); return err },
+		"CommitPulls":   func(c *Client) error { _, err := c.CommitPulls(ctx, "o", "r", "s"); return err },
+		"CreateRelease": func(c *Client) error { _, err := c.CreateRelease(ctx, "o", "r", params); return err },
+		"DeleteRelease": func(c *Client) error { _, err := c.DeleteRelease(ctx, "o", "r", 11); return err },
+		"GenerateNotes": func(c *Client) error {
+			_, err := c.GenerateNotes(ctx, "o", "r", NotesParams{TagName: "v1.0.0"})
+			return err
+		},
+		"PullCommits":   func(c *Client) error { _, err := c.PullCommits(ctx, "o", "r", 7); return err },
+		"PullRequest":   func(c *Client) error { _, err := c.PullRequest(ctx, "o", "r", 7); return err },
+		"Releases":      func(c *Client) error { _, err := c.Releases(ctx, "o", "r"); return err },
+		"Repository":    func(c *Client) error { _, err := c.Repository(ctx, "o", "r"); return err },
+		"UpdateRelease": func(c *Client) error { _, err := c.UpdateRelease(ctx, "o", "r", 11, params); return err },
+	}
+	// documented is the status each sanctioned method's predicate answers for.
+	documented := map[string]struct {
+		status int
+		reads  func(error) bool
+	}{
+		"CommitFiles": {http.StatusUnprocessableEntity, IsCommitUnknown},
+		"CommitPulls": {http.StatusUnprocessableEntity, IsCommitUnknown},
+		"Repository":  {http.StatusNotFound, IsRepoUnknown},
+	}
+
+	client := reflect.TypeFor[*Client]()
+	for i := range client.NumMethod() {
+		if name := client.Method(i).Name; calls[name] == nil {
+			t.Errorf("exported method %s has no row: probe it here, and either flatten its failure or document the status it carries out", name)
+		}
+	}
+	if len(calls) != client.NumMethod() {
+		t.Errorf("the table has %d rows for %d exported methods — a row names a method that no longer exists", len(calls), client.NumMethod())
+	}
+
+	for name, call := range calls {
+		for _, status := range []int{http.StatusUnprocessableEntity, http.StatusNotFound} {
+			t.Run(fmt.Sprintf("%s answered %d", name, status), func(t *testing.T) {
+				c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(status)
+					fmt.Fprint(w, `{"message":"No commit found for SHA: s"}`)
+				})
+				err := call(c)
+				wantAPIError(t, err, fmt.Sprint(status))
+
+				var se *statusError
+				carried := errors.As(err, &se)
+				doc, sanctioned := documented[name]
+				switch {
+				case carried && !sanctioned:
+					t.Fatalf("%s carried its %d out — flatten it, or document the status and the predicate that reads it", name, status)
+				case !carried && sanctioned:
+					t.Fatalf("%s flattened its %d — its contract documents the status, and the caller's predicate can no longer tell it from an outage", name, status)
+				}
+				if sanctioned {
+					if got, want := doc.reads(err), status == doc.status; got != want {
+						t.Fatalf("%s's predicate over a %d = %t, want %t", name, status, got, want)
+					}
+				}
+				if !sanctioned && (IsCommitUnknown(err) || IsRepoUnknown(err)) {
+					t.Fatalf("a %d from %s is readable by a predicate its contract never names", status, name)
+				}
+			})
+		}
+	}
 }
 
 // TestNewDefaultClientHasATimeout: without WithHTTPClient, New must not hand

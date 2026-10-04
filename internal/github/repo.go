@@ -83,13 +83,13 @@ type apiRepo struct {
 }
 
 // Repository reads the repository object (GET /repos/{owner}/{repo}) — one
-// request, no pagination. It is also the token probe doctor reports, and it is
-// the second method (with CommitPulls) that does NOT flatten its failure: the
-// status is the only thing that separates "GitHub answered, and the answer is
-// that this credential has no such repository" from "GitHub never answered at
-// all", and doctor turns that distinction into two different exit codes. See
-// IsRepoUnknown, which is the only sanctioned reader of it — flattening here
-// made a transient 503 report as a repository defect.
+// request, no pagination. It is also the token probe doctor reports, and one
+// of the three methods (with CommitPulls and CommitFiles) that do NOT flatten
+// their failure: the status is the only thing that separates "GitHub answered,
+// and the answer is that this credential has no such repository" from "GitHub
+// never answered at all", and doctor turns that distinction into two different
+// exit codes. See IsRepoUnknown, which is the only sanctioned reader of it —
+// flattening here made a transient 503 report as a repository defect.
 func (c *Client) Repository(ctx context.Context, owner, repo string) (Repo, error) {
 	u := fmt.Sprintf("%s/repos/%s/%s", c.baseURL, url.PathEscape(owner), url.PathEscape(repo))
 	var raw apiRepo
