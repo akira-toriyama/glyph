@@ -183,6 +183,12 @@ func TestEscapeMentions(t *testing.T) {
 		{"three stray backticks", "a ` b ` c ` and @octocat", "a ` b ` c ` and ``@octocat``"},
 		{"two stray backticks pair, mention sits outside", "a ` b ` and @octocat", "a ` b ` and ``@octocat``"},
 		{"two stray backticks pair around the mention", "a ` @octocat ` and more", "a ` @octocat ` and more"},
+		// A backtick behind a backslash counts too. Whether the backslash
+		// escapes it is a parity question, and here the backslash is itself
+		// escaped, so the backtick is a live opener: a fence sized as if it were
+		// not there is one backtick long, pairs with it, and leaves @bob a LIVE
+		// mention (measured against GitHub 2026-10-04).
+		{"a backtick behind an escaped backslash is live and counts", "a \\\\` b @bob c @octocat", "a \\\\` b ``@bob`` c ``@octocat``"},
 
 		// A backtick already glued to the at-sign is GitHub's own suppressor
 		// (probe: "x `@octocat y" renders no link), and inside a prose stretch
