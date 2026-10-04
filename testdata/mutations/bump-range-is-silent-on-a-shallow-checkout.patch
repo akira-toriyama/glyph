@@ -1,0 +1,21 @@
+diff --git a/internal/cli/cmd_bump.go b/internal/cli/cmd_bump.go
+index 9c78cd2..81eb104 100644
+--- a/internal/cli/cmd_bump.go
++++ b/internal/cli/cmd_bump.go
+@@ -8,6 +8,7 @@ import (
+ 	"github.com/akira-toriyama/glyph/v4/internal/bump"
+ 	"github.com/akira-toriyama/glyph/v4/internal/config"
+ 	"github.com/akira-toriyama/glyph/v4/internal/core"
++	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
+ 	"github.com/spf13/cobra"
+ )
+ 
+@@ -189,7 +190,7 @@ func bumpInput(cmd *cobra.Command, cfg *config.Config) ([]bump.SigilCommit, stri
+ 	if err := checkRangeFlag(bumpRange); err != nil {
+ 		return nil, "", nil, err
+ 	}
+-	raws, err := logRange(ctx, bumpRange)
++	raws, err := gitsource.Log(ctx, ".", bumpRange)
+ 	return sigilCommits(raws), bumpRange, nil, err
+ }
+ 

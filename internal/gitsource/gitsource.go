@@ -535,8 +535,8 @@ func MergeBase(ctx context.Context, dir string, revs []string) (string, error) {
 // asks because a truncated history makes every ancestry answer a maybe: a commit
 // git cannot see is indistinguishable from one that never landed, and the walk
 // would rather say so than quietly grade itself on a partial repository.
-// `lint --range` asks for the same reason about the range: git lists only the
-// commits the clone holds.
+// Every `--range` read asks for the same reason about the range (internal/cli's
+// logRange): git lists only the commits the clone holds.
 func IsShallow(ctx context.Context, dir string) (bool, error) {
 	out, err := run(ctx, dir, "rev-parse", "--is-shallow-repository")
 	if err != nil {

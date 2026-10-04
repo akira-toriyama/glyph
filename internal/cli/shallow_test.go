@@ -54,6 +54,63 @@ func TestLintRangeOnAShallowCheckoutSaysSo(t *testing.T) {
 	})
 }
 
+// TestBumpAndNotesRangeOnAShallowCheckoutSaySo: a range read is a range read.
+// bump --range and notes --range list their commits with the same git log as
+// lint --range, so on a shallow clone they too read only what the clone holds
+// — measured on a --depth 2 clone before this: bump printed a version and
+// notes rendered 2 of 5 commits, both at 0 with no shallow warning, where the
+// full clone's bump refuses the range at 3; under [[packages]] only the
+// boundary commit was warned about, never the range. They warn through lint's
+// read and keep answering: they report, and release alone refuses a shallow
+// checkout. The full clone is the control: bump refuses, and nothing is said
+// about shallowness.
+func TestBumpAndNotesRangeOnAShallowCheckoutSaySo(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		build func(t *testing.T) string
+	}{
+		{"a single line", func(t *testing.T) string {
+			dir, _ := testRepo(t)
+			testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")
+			for i := range 3 {
+				testCommit(t, dir, "akira-toriyama", fmt.Sprintf(":bug:~ fix number %d", i))
+			}
+			return dir
+		}},
+		{"[[packages]]", func(t *testing.T) string {
+			dir, _ := packagesRepo(t)
+			touch(t, dir, "akira-toriyama", "no gitmoji in this one", "haiku/a.go")
+			for i := range 3 {
+				touch(t, dir, "akira-toriyama", fmt.Sprintf(":bug:(haiku)~ fix number %d", i), "haiku/haiku.go")
+			}
+			return dir
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := tc.build(t)
+			clone := shallowClone(t, dir, 2)
+			for _, c := range []struct {
+				cmd  string
+				full int
+			}{{"bump", 3}, {"notes", 0}} {
+				t.Chdir(dir)
+				code, _, stderr := runGlyph(t, c.cmd, "--range", "HEAD")
+				if code != c.full || strings.Contains(stderr, "SHALLOW") {
+					t.Fatalf("%s --range on the full clone exited %d, want %d with nothing said about shallowness\nstderr: %s", c.cmd, code, c.full, stderr)
+				}
+				t.Chdir(clone)
+				code, _, stderr = runGlyph(t, c.cmd, "--range", "HEAD")
+				if code != 0 {
+					t.Fatalf("%s --range on a shallow clone exited %d, want 0 — it warns, never refuses\nstderr: %s", c.cmd, code, stderr)
+				}
+				if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "SHALLOW checkout") {
+					t.Fatalf("%s --range over a truncated history must say so:\n%s", c.cmd, stderr)
+				}
+			}
+		})
+	}
+}
+
 // TestLintRangePackagesAtAShallowBoundaryIsNotReadAsTheWholeTree: the
 // boundary commit of a --depth 1 clone is read by git as a root, and its diff
 // used to be its whole tree — so a shared-only `^`, refused at 3 in the full

@@ -8,7 +8,6 @@ import (
 	"github.com/akira-toriyama/glyph/v4/internal/bump"
 	"github.com/akira-toriyama/glyph/v4/internal/config"
 	"github.com/akira-toriyama/glyph/v4/internal/core"
-	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
 	"github.com/spf13/cobra"
 )
 
@@ -190,7 +189,7 @@ func bumpInput(cmd *cobra.Command, cfg *config.Config) ([]bump.SigilCommit, stri
 	if err := checkRangeFlag(bumpRange); err != nil {
 		return nil, "", nil, err
 	}
-	raws, err := gitsource.Log(ctx, ".", bumpRange)
+	raws, err := logRange(ctx, bumpRange)
 	return sigilCommits(raws), bumpRange, nil, err
 }
 

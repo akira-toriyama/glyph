@@ -518,7 +518,7 @@ func attributionWedge(err error, c walked, owner, repo string, reached []line) e
 // range), and attributed from local git. The walk facts are empty: nothing
 // was resolved over the API.
 func rangeLines(ctx context.Context, cfg *config.Config, revRange string) (sinceTagWalk, error) {
-	raws, err := gitsource.Log(ctx, ".", revRange)
+	raws, err := logRange(ctx, revRange)
 	if err != nil {
 		return sinceTagWalk{}, err
 	}

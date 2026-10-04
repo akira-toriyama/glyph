@@ -235,11 +235,11 @@ one that never landed. The only member of `walkFacts` that is a property of the
 **checkout** rather than of an API answer, and the likeliest to appear
 (`actions/checkout` defaults to `fetch-depth: 1`). Probed once per walk, before
 any expansion, because a walk where nothing resolves is still a walk over a
-truncated history, and once per `lint --range`, which warns. Its **boundary**
-commit — the one whose parents were cut off — has no diff the clone can
-compute: git reads it as a root, and its whole tree is not its diff (DESIGN
-§4.1). `internal/gitsource/gitsource.go: IsShallow, IsShallowBoundary`,
-`walkFacts.Shallow`
+truncated history, and once per `--range` read (`lint`, `bump`, `notes`), which
+warns. Its **boundary** commit — the one whose parents were cut off — has no
+diff the clone can compute: git reads it as a root, and its whole tree is not
+its diff (DESIGN §4.1). `internal/gitsource/gitsource.go: IsShallow, IsShallowBoundary`,
+`walkFacts.Shallow`, `internal/cli/range.go: logRange`
 
 **truncated listing** — a pull whose commit listing came back at GitHub's hard
 cap of **250**, however far pagination follows. A listing of exactly the cap is

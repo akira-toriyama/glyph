@@ -366,14 +366,9 @@ type rangeViolation struct {
 }
 
 // lintRangeRun lints every commit in revRange. Excluded authors are skipped,
-// never failed — the bots exclude_authors names lint nowhere.
-//
-// A shallow checkout is asked about once and WARNED about, never refused: git
-// lists only the commits the clone holds, so a range reaching past the shallow
-// boundary is judged in part, and the verdict is about what was judged. A
-// refusal there would be a new lint semantics (DESIGN §4.1, "Lint"); silence
-// was the measured defect — a --depth 2 clone judged 2 of 6 commits and exited
-// 0 with nothing said where the full clone exits 3 (t-esm5).
+// never failed — the bots exclude_authors names lint nowhere. A shallow
+// checkout is warned about, never refused (logRange): the verdict is about the
+// commits the clone holds.
 func lintRangeRun(ctx context.Context, revRange string) error {
 	if err := checkRangeFlag(revRange); err != nil {
 		return err
@@ -382,16 +377,9 @@ func lintRangeRun(ctx context.Context, revRange string) error {
 	if err != nil {
 		return err
 	}
-	raws, lerr := gitsource.Log(ctx, ".", revRange)
+	raws, lerr := logRange(ctx, revRange)
 	if lerr != nil {
 		return lerr
-	}
-	shallow, serr := gitsource.IsShallow(ctx, ".")
-	if serr != nil {
-		return serr
-	}
-	if shallow {
-		warnf("this is a SHALLOW checkout: git lists only the commits this clone holds, so a range that reaches past its shallow boundary is linted only as far as the clone goes — this verdict says nothing about the commits it cannot see. Fetch the full history (actions/checkout with fetch-depth: 0) for a verdict on the whole range")
 	}
 	findings, warned, checked, aerr := lintRaws(ctx, raws, cfg)
 	if aerr != nil {

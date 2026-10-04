@@ -1,13 +1,13 @@
-diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
-index 9f44364..e0456e7 100644
---- a/internal/cli/cmd_lint.go
-+++ b/internal/cli/cmd_lint.go
-@@ -343,7 +343,7 @@ func lintRangeRun(ctx context.Context, revRange string) error {
- 	if serr != nil {
- 		return serr
+diff --git a/internal/cli/range.go b/internal/cli/range.go
+index 63473b3..e0eb378 100644
+--- a/internal/cli/range.go
++++ b/internal/cli/range.go
+@@ -66,7 +66,7 @@ func logRange(ctx context.Context, revRange string) ([]gitsource.RawCommit, erro
+ 	if err != nil {
+ 		return nil, err
  	}
 -	if shallow {
 +	if false && shallow {
- 		warnf("this is a SHALLOW checkout: git lists only the commits this clone holds, so a range that reaches past its shallow boundary is linted only as far as the clone goes — this verdict says nothing about the commits it cannot see. Fetch the full history (actions/checkout with fetch-depth: 0) for a verdict on the whole range")
+ 		warnf("this is a SHALLOW checkout: git lists only the commits this clone holds, so a range that reaches past its shallow boundary is read only as far as the clone goes — this verdict says nothing about the commits it cannot see. Fetch the full history (actions/checkout with fetch-depth: 0) for a verdict on the whole range")
  	}
- 	findings, warned, checked, aerr := lintRaws(ctx, raws, cfg)
+ 	return raws, nil

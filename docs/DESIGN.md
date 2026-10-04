@@ -1514,15 +1514,24 @@ that is not yet a commit, and a pull's title is not attributed to anything.
 This is one of two places the hook's verdict is weaker than CI's — the other
 is an `unlandable` pattern, argued in §2.1 — and it is stated here rather
 than left to be discovered: the pre-push hook closes it on the same machine,
-one step later. `lint --range` asks once whether the checkout is **shallow**
-and warns when it is: git lists only the commits a shallow clone holds, so a
-range reaching past its boundary is judged in part — measured on a `--depth 2`
-clone, 2 of 6 commits judged and exit 0 with nothing said, where the full
-clone exits 3 (t-h7w2's refutation run, 2026-09-27; `TestLintRangeOnAShallowCheckoutSaysSo`,
-mutation rows `lint-range-is-silent-on-a-shallow-checkout.patch`,
-`lint-range-refuses-a-shallow-checkout.patch`). It warns and
-keeps its verdict about what it judged instead of refusing: a refusal would
-be a new lint semantics, and the walk already gives a shallow checkout to the
+one step later. Every `--range` read — `lint`'s, `bump`'s and `notes`',
+through one function, `logRange` — asks once whether the checkout is
+**shallow** and warns when it is: git lists only the commits a shallow clone
+holds, so a range reaching past its boundary is read in part. Measured on
+`--depth 2` clones: lint judged 2 of 6 commits and exited 0 with nothing said
+where the full clone exits 3 (t-h7w2's refutation run, 2026-09-27), and bump
+printed a version and notes rendered 2 of 5 commits, both at 0 in silence,
+where the full clone's bump refuses at 3 — under `[[packages]]` only the
+boundary commit was named, never the range (2026-10-04;
+`TestLintRangeOnAShallowCheckoutSaysSo`,
+`TestBumpAndNotesRangeOnAShallowCheckoutSaySo`, mutation rows
+`lint-range-is-silent-on-a-shallow-checkout.patch`,
+`lint-range-refuses-a-shallow-checkout.patch`, and one per reader:
+`bump-range-is-silent-on-a-shallow-checkout.patch`,
+`notes-range-is-silent-on-a-shallow-checkout.patch`,
+`packages-range-is-silent-on-a-shallow-checkout.patch`). Each warns and keeps its
+verdict about what it read instead of refusing: a refusal would be a new
+lint semantics, and the walk already gives a shallow checkout to the
 reporting commands as a warning and to `release` alone as exit 4 (§4, §7).
 
 **Doctor** gains three checks: every declared `path` is a directory in the
