@@ -241,14 +241,20 @@ func extractRun(t *testing.T, body, stepName string) string {
 	if !ok {
 		t.Fatalf("step %q has no `run: |` block", stepName)
 	}
-	const indent = "          " // ten spaces: a reusable's step-script body
+	// The block's indentation is its first non-blank line's, YAML's rule for a
+	// literal scalar without an indentation indicator: ten spaces in a
+	// reusable's step, eight in the install action's composite step.
+	indent := ""
 	var out []string
 	for _, line := range strings.Split(block, "\n")[1:] {
 		if strings.TrimSpace(line) == "" {
 			out = append(out, "")
 			continue
 		}
-		if !strings.HasPrefix(line, indent) {
+		if indent == "" {
+			indent = line[:len(line)-len(strings.TrimLeft(line, " "))]
+		}
+		if indent == "" || !strings.HasPrefix(line, indent) {
 			break
 		}
 		out = append(out, strings.TrimPrefix(line, indent))

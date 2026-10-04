@@ -4,7 +4,7 @@ The vocabulary glyph's code, its doc comments and its task bodies use as terms o
 art. It exists to stop the user and Claude Code from meaning two different things
 by one word: most of the entries below are pairs that are easy to collapse and
 expensive to collapse (*merge point* vs *merge commit*, *residual* vs *stale*
-draft, *fail* vs *unknown*, *neutralize* vs *escape* vs *fence*), and the
+draft, *fail* vs *unknown*, *neutralize* vs *fence*), and the
 **distinction is the content** — an entry that only restated the name would be
 worth nothing.
 
@@ -34,7 +34,7 @@ missing entry, because it is the one place a reader trusts not to be stale.
 1. [The release walk](#1-the-release-walk) — walk, walk base, auto, below:, range, fold, participate, merge point, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, walkFacts, Dropped, shortfall, wedge, wedge escape, package, line, root package, attribution, carrier, shared-only
 2. [Verdicts and the rolling draft](#2-verdicts-and-the-rolling-draft) — verdict, level, source, reason, target, action, rolling draft, glyph-managed draft, residual draft, stale draft, published floor, pending, incomplete banner
 3. [Convention and lint](#3-convention-and-lint) — pattern, sigil, bump lattice, section, excluded author, cleanup
-4. [The render boundary](#4-the-render-boundary) — inline context, phantom span, neutralize, escape, fence, flatten, pipe escape, over-escaping is the safe direction
+4. [The render boundary](#4-the-render-boundary) — inline context, phantom span, neutralize, fence, flatten, pipe escape, over-escaping is the safe direction
 5. [Repository preconditions (`doctor`)](#5-repository-preconditions-doctor) — check, check id, pass/fail/advice/unknown, release-tag pin
 6. [Exit codes and streams](#6-exit-codes-and-streams) — gate code, soft no-release, annotation, error envelope
 7. [Fleet distribution](#7-fleet-distribution) — fleet, reusable workflow, composite action, distribution layer, dist-gate, merge preview, sticky comment
@@ -57,10 +57,10 @@ git and never calls the API, and `--pr` reads one pull request's commits over th
 API and knows nothing of any range. "Exactly one of the three" is `bump` and
 `notes` only — they are the two commands that carry all three flags and mark them
 mutually exclusive. `release` has just the walk (bare `release` walks from the
-highest v* tag, so no flag is required at all), and `preview` takes `--pr`, which
-it marks required. `internal/cli/sincetag.go: walkSince`, `internal/cli/range.go:
-participatingCommits`, `internal/cli/pr.go: participatingPull`,
-`internal/cli/sincetag.go: markInputSourceFlags` (used by
+highest v* tag HEAD contains, so no flag is required at all), and `preview` takes
+`--pr`, which it marks required. `internal/cli/sincetag.go: walkSince`,
+`internal/cli/range.go: participatingCommits`, `internal/cli/pr.go:
+participatingPull`, `internal/cli/sincetag.go: markInputSourceFlags` (used by
 `internal/cli/cmd_bump.go` and `internal/cli/cmd_notes.go` alone)
 
 **walk base** — the tag the walked range starts at. Distinguish from the **step
@@ -68,29 +68,36 @@ base** (also *version base*): the version the bump steps *from*. They are
 deliberately returned by one resolution of one tag, because naming a tag names
 the release being redone — stepping from a different, higher tag would version a
 verdict computed over another range. An explicit tag that is not a version still
-walks but names no step base, and the bump then falls back to the highest v* tag.
+walks but names no step base, and the bump then falls back to the highest v* tag
+HEAD contains. The published floor is the opposite set — every published release
+on the line, from the releases listing (DESIGN §4).
 `internal/cli/sincetag.go: sinceTagRange`, `internal/cli/cmd_bump.go:
 currentVersion`
 
 **auto** — what a bare `--since-tag` (no value) resolves to: the highest
-*parseable* version tag. Distinguish from "git's first tag": every tag is parsed
-and compared **as a version**, because `--sort=-v:refname` is a refname sort that
-orders on the leading byte first — measured on `{v0.0.1, v0.0.2, 9.9.9, 100.0.0}`
-git reports `v0.0.2` first. Taking git's order moved the walk base and the
-version base together to a tag two releases behind, silently. A tag must be
-attached with `=` (`--since-tag=v1.2.3`); the space form is caught as a usage
-error rather than walking the wrong range.
-`internal/cli/sincetag.go: sinceTagAuto, latestVersionTag, sinceTagArgs`,
-`internal/gitsource/gitsource.go: Tags`
+*parseable* version tag HEAD's history holds (`git tag --merged HEAD`; a shallow
+checkout, which cannot say, reads every tag). Distinguish from the highest tag
+the clone carries: a tag cut later on a descendant, or on a maintenance or side
+branch, is another history's release, and on an unmerged topic branch it is the
+base branch's release, which the branch has yet to follow — so a topic branch
+answers as of its fork point (t-n5tw). Distinguish also from "git's first tag":
+every tag is parsed and compared **as a version**, because `--sort=-v:refname` is
+a refname sort that orders on the leading byte first — measured on `{v0.0.1,
+v0.0.2, 9.9.9, 100.0.0}` git reports `v0.0.2` first. Taking git's order moved the
+walk base and the version base together to a tag two releases behind, silently.
+A tag must be attached with `=` (`--since-tag=v1.2.3`); the space form is caught
+as a usage error rather than walking the wrong range.
+`internal/cli/sincetag.go: sinceTagAuto, latestVersionTag, releasesHEADHolds,
+sinceTagArgs`, `internal/gitsource/gitsource.go: Tags, MergedTags`
 
 **below:** — the other *resolved* `--since-tag` form
-(`--since-tag=below:TAG`): the highest parseable version tag **strictly below**
-TAG's version — the predecessor of a tag already cut. It answers the tag-push
-question auto cannot: at tag-push time the new tag *is* the highest v\* tag, so
-auto would walk an empty range. Strictly below the bound, not "the highest
-other tag" — cutting a v0.8.3 hotfix while v0.9.0 exists resolves v0.8.2. With
-no version tag below the bound (the first release), the walk covers the whole
-history, same as auto before the first tag — bounded in both forms by the
+(`--since-tag=below:TAG`): the highest parseable version tag HEAD contains
+**strictly below** TAG's version — the predecessor of a tag already cut. It
+answers the tag-push question auto cannot: at tag-push time the new tag *is* the
+highest v\* tag, so auto would walk an empty range. Strictly below the bound, not
+"the highest other tag" — cutting a v0.8.3 hotfix while v0.9.0 exists resolves
+v0.8.2. With no version tag below the bound (the first release), the walk covers
+the whole history, same as auto before the first tag — bounded in both forms by the
 release-floor cap: past `sinceTagWalkCap` walk-visible commits the walk is
 refused (fail-loud 4) with the escape in the message, because it pays one API
 round-trip per visited commit and nothing else bounds it. The bound must itself be
@@ -216,9 +223,11 @@ nowhere else: a message no pattern claims emits a `::warning::` and counts
 **none** — never a silent patch, never exit 3 (the hard refusal stays with the
 lint gate and the range fold; t-kbqx, so `internal/bump` stays pure). The v1
 exception here (Q10's footer/unknown-code normalization to `:boom:`) is
-superseded with the grammar that defined it: v2 reads no body and normalizes
-nothing, so a breaking marker survives this path exactly when the subject
-carries a sigil the pattern file reads.
+superseded with the grammar that defined it: v2 normalizes nothing, and this
+path matches the commit's whole message through the pattern file like any
+other, so a breaking marker survives it exactly when a pattern yields a major
+sigil (`!` or `%`) for it — under the presets, the subject's sigil alone (a
+`BREAKING CHANGE:` footer is prose; DESIGN §4).
 `internal/cli/sincetag.go: walkSince` (the fallback arm)
 
 **API lag** — GitHub answering **422** for a sha it does not know yet, which is
@@ -227,7 +236,11 @@ reaches the fallback path: a 403 rate limit, a 5xx that outlived the retry
 schedule (t-bjrv) and a dead socket leave the walk as an error and exit 4 — the
 outage window is an exit-code question, not a classification one. Deliberately
 not true of a 404, which is how a bad credential answers for *every* commit of a
-private repository. `internal/github/github.go: IsCommitUnknown`
+private repository. The same 422 on a commit's file listing
+(`GET /commits/{sha}`, asked only under `[[packages]]`) is **not** lag:
+attribution has no weaker source for a commit's files, so the listing is
+recorded as unread (`walkFacts.FilesUnknown`), never the fallback.
+`internal/github/github.go: IsCommitUnknown`, `internal/cli/lines.go: listFiles`
 
 **shallow checkout** — a `--depth` clone, in which git cannot answer the
 footprint question at all: a commit it does not *have* is indistinguishable from
@@ -262,13 +275,15 @@ body. `internal/cli/sincetag.go: walkFacts.complete`,
 `internal/cli/cmd_release.go: releaseRun`
 
 **walkFacts** — the struct carrying the above: `Pulls` (provenance) plus the
-**five** ways a walk can come back short — `AllUnknown` (every commit unknown to
+**seven** ways a walk can come back short — `AllUnknown` (every commit unknown to
 the queried repository, which is what a wrong `--repo` or an inherited
 `$GITHUB_REPOSITORY` looks like from inside), `Shallow`, `LostPulls`, `Dropped`,
-`Truncated`. `complete()` is exactly "none of the five". `internal/cli/sincetag.go:
-walkFacts`
+`Truncated`, and the two only a packages walk meets: `FilesCapped` (a commit's
+file listing at GitHub's 3000 cap) and `FilesUnknown` (a file listing GitHub
+answered 422 for). `complete()` is exactly "none of the seven".
+`internal/cli/sincetag.go: walkFacts`
 
-**Dropped** — the narrowest of the five, and the one whose name over-promises.
+**Dropped** — of the seven, the one whose name over-promises.
 Nothing is recorded unless the commit reached the fallback path through *API lag*
 — the 422 arm, where GitHub did not know the sha. Under that condition two
 outcomes record: a merge commit excluded on its parent count (a merge point that
@@ -339,10 +354,10 @@ touch is refused the same way.
 `path = "."`, and a major version subdirectory `/vN` folded into the major —
 `pubsub/v2` is the v2 line on the `pubsub/` prefix, beside a `pubsub` line
 holding every other major, Go's own rule), its own walk base (the highest tag
-on that prefix of a major it holds), its own fold, verdict and rolling draft
-(`<path>/vX.Y.Z`, placeholder `<path>/Unreleased`), converged by `draftplan`
-on that line alone so one line's release never touches another's draft. A
-repository with no `[[packages]]` is one line with no name, and nothing
+on that prefix, of a major it holds, that HEAD contains), its own fold, verdict
+and rolling draft (`<path>/vX.Y.Z`, placeholder `<path>/Unreleased`), converged
+by `draftplan` on that line alone so one line's release never touches another's
+draft. A repository with no `[[packages]]` is one line with no name, and nothing
 synthesises a root package for it. A tag **names** a line:
 `--since-tag=haiku/v0.1.0` selects haiku alone, `--since-tag=pubsub/v2.7.0`
 the v2 line alone. `internal/config/tagline.go: Line, Package.TagPrefix,
@@ -450,11 +465,11 @@ deleted. Fails loud (4) rather than creating an unpublishable draft.
 **pending** — what is already merged on the base branch but **not yet released**:
 the walk's own verdict since the latest tag, and one of the two sides the merge
 preview folds. Distinguish from a draft that is "pending publication", which this
-codebase does not call pending. A repository with no v* tag has an *uncomputed*
-rather than empty pending side — walking it would cost an API round-trip per
-commit of the whole history for an answer that cannot matter — and the comment
-says so. `internal/preview/preview.go: Input.Pending, Input.Untagged`,
-`internal/cli/cmd_preview.go: previewRun`
+codebase does not call pending. A base branch whose history holds no v* tag has
+an *uncomputed* rather than empty pending side — walking it would cost an API
+round-trip per commit of the whole history for an answer that cannot matter —
+and the comment says so. `internal/preview/preview.go: Input.Pending,
+Input.Untagged`, `internal/cli/cmd_preview.go: previewRun`
 
 **incomplete banner** — retired with t-pysg: the `> [!WARNING]` block an
 incompletely-walked draft used to carry at the top of its body, from the era
@@ -497,7 +512,9 @@ existing commit reads it as a message no pattern claims, with the reason as
 the finding (`Config.Lint`, the fold's refusal, the notes' raw-line fallback).
 Distinguish from **skip**, under which the commit lands and is never judged.
 Made for git's `amend!` subject, which the presets claim when its body — what
-lands — opens the way their first pattern's subject does (DESIGN §2).
+lands — opens the way their first pattern's subject does; the presets claim
+git's `fixup!` and `squash!` subjects too, which carry no sigil of their own
+until autosquash folds them into their target (DESIGN §2).
 `internal/config/match.go: Match, UnclaimedDetail`, `internal/config/lint.go: LintAuthoring`
 
 **dictionary** — the ordered gemoji table `glyph emoji` prints: one code per
@@ -584,8 +601,8 @@ and their observed output kept in the test files beside the code they pin — th
 mention table at the top of `markdown_test.go`, the escaped-form and raw-HTML
 tables at the top of `escape_test.go`. The one time a rule was changed from
 reasoning alone, the reasoning was wrong. Most of this vocabulary is the #61
-hardening (t-j0c6), which is the whole of `escape.go` — flatten, neutralize,
-escape. The fence half is older: the mention fence (today `escapeMentions`) and
+hardening (t-j0c6), which is the whole of `escape.go` — flatten and
+neutralize. The fence half is older: the mention fence (today `escapeMentions`) and
 `mention` arrived in #38,
 which wrapped a would-be mention in a single backtick pair, and #54 made the fence
 as long as the input demands (`longestBacktickRun`). Until now all of it existed
@@ -612,13 +629,14 @@ constructs beforehand, which makes the backtick-only model exact **by
 construction**. `internal/markdown/markdown.go: codeSpans, paragraphSpans`,
 `internal/markdown/escape.go` (file header)
 
-The next three are **three different operations**, applied at different times to
-different kinds of value. Do not use them interchangeably.
+The next two are **two different operations**, applied at different times to
+different things. Do not use them interchangeably.
 
-**neutralize** (`escapeMarkup`, reached through `Line.Prose`) — over **prose**:
-add backslashes to disarm the
-inline constructs that can inject structure, point somewhere the author never
-wrote, or *delete the author's own words*. Four rules, each testing a **byte and
+**neutralize** (`escapeProseLine`, reached through `Line.Prose` and run by
+`Line.String` over the assembled line) — over **prose**, which is every
+author-supplied value a line carries, a commit scope included: add backslashes
+to disarm the inline constructs that can inject structure, point somewhere the
+author never wrote, or *delete the author's own words*. Four rules, each testing a **byte and
 never a grammar** — `<`, the extended-autolink triggers (`://` after
 http/https/ftp, and the `.` of `www.`), `[`, and an entity-shaped `&`. Emphasis,
 strikethrough and the author's own code spans are left working: a subject is
@@ -626,19 +644,11 @@ prose the author meant to be read. It only **adds** bytes, so the author's text
 survives as a subsequence and the pass is a fixed point. Not theoretical: of the
 16 fleet subjects carrying a `<`, 14 were being **deleted** by GitHub's
 sanitizer (`<Chip>`, `Optional<Any>`, `[overlay.theme.<name>]`), and escaping
-repairs those and regresses none. `internal/markdown/escape.go: escapeMarkup,
-escapeProse`
-
-**escape** (`escapeText`, reached through `Line.Text`) — over a **plain-text
-field**, which in practice is the
-commit *scope*: backslash every ASCII punctuation byte CommonMark lets a
-backslash escape, minus two deliberate exclusions (`-`, which is a marker only at
-the start of a line and would otherwise put a backslash in essentially every
-scoped line in the fleet; and `@`, because `\@octocat` is a *live* mention and the
-backslash would additionally trip the fence's own backslash guard). It is a flat
-byte loop precisely because "this is a plain-text field" means no grammar applies
-to it. **It is not idempotent** and a plain-text escaper cannot be — call it once,
-at render, on the raw field. `internal/markdown/escape.go: escapeText, escapable`
+repairs those and regresses none. There is no second policy: the plain-text
+**escape** the scope used to get (`escapeText`, reached through `Line.Text`)
+was deleted in t-0j9r, and DESIGN §2 holds the ruling — the `<i title="x">`
+incident, why `-` and `@` stay unescaped, and why the route was not revived.
+`internal/markdown/escape.go: escapeProseLine`
 
 **fence** (`escapeMentions`, reached through `Line.String`) — wrap a would-be
 `@mention` in a backtick run so
@@ -655,8 +665,8 @@ stranger under a release's Contributors and, in a PR comment, **notifies** them
 (t-hykw). `internal/markdown/markdown.go: escapeMentions, mention,
 longestBacktickRun`
 
-**flatten** (`flatten`, the first thing `Line.Text` and `Line.Prose` do) — not
-one of the three: it *replaces* bytes (every CommonMark line terminator,
+**flatten** (`flatten`, the first thing `Line.Prose` does) — neither of the
+two: it *replaces* bytes (every CommonMark line terminator,
 including a bare CR, becomes one space) and therefore lives outside
 `escapeMentions`, whose no-rewriting invariant a fuzz oracle enforces. It must run
 **first**, because it is what *decides* the inline context — to an escaper a blank
@@ -667,9 +677,10 @@ commit could fabricate a release-notes section (t-bz0r).
 `internal/markdown/escape.go: flatten`
 
 **line builder** (`markdown.Line`) — the package's **only exported surface**:
-`Raw` appends glyph's own markup, `Text` and `Prose` append author-supplied
-fields through the passes above, `String` runs the fence over the assembled
-line. Since #104 the escape order is no longer a contract a caller could break —
+`Raw` appends glyph's own markup, `Prose` an author-supplied field (every one,
+a scope too), `Mention` the author credit, and `String` runs the prose escape
+and the fence over the assembled line. Since #104 the escape order is no
+longer a contract a caller could break —
 it is applied by construction inside the type, and the surface golden
 (`internal/markdown/testdata/exported-surface.golden.txt`, five declarations,
 all `Line`) is what keeps the passes unreachable from outside. Why that order is
@@ -838,7 +849,7 @@ non-archived repositories allowed merge commits and rebase merges
 `internal/doctor/doctor.go` package comment), and the fleet's history held 9,548
 commit subjects — the denominator the escaping rules' rendering cost is sized
 against, and stated where that sizing is argued rather than here
-(`internal/markdown/escape.go: escapeMarkup`, rules 3 and 4).
+(`internal/markdown/escape.go: escapeProseLine`, rules 3 and 4).
 
 **reusable workflow** — a workflow with a `workflow_call` trigger, invoked from
 another repository's workflow by `uses:` at a pinned tag. glyph ships **three**:

@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+index bebb212..76cfea7 100644
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -72,7 +72,7 @@ on:
+           carry what this job and the install action call — `gh` and `jq`
+           among them; the GitHub-hosted image does.
+         type: string
+-        default: ubuntu-latest
++        default: self-hosted
+ 
+ # A reusable can only downgrade the caller's token, never raise it, so the
+ # caller's stub must grant pull-requests: read too (it is in the stub above).

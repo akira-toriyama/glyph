@@ -1,0 +1,13 @@
+diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
+index f991439..4cb653a 100644
+--- a/internal/cli/sincetag.go
++++ b/internal/cli/sincetag.go
+@@ -386,7 +386,7 @@ func releasesHEADHolds(ctx context.Context) ([]string, error) {
+ 	if shallow {
+ 		return gitsource.Tags(ctx, ".")
+ 	}
+-	return gitsource.MergedTags(ctx, ".", "HEAD")
++	return gitsource.Tags(ctx, ".")
+ }
+ 
+ // walked is one folded commit plus the provenance only the walk knows: the

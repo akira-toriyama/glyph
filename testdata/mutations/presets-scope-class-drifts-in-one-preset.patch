@@ -1,0 +1,13 @@
+diff --git a/internal/config/presets/conventional.toml b/internal/config/presets/conventional.toml
+index 0b4446b..319352c 100644
+--- a/internal/config/presets/conventional.toml
++++ b/internal/config/presets/conventional.toml
+@@ -50,7 +50,7 @@ template = '''
+ # adding a `$raw` group to the template) is what keeps the revert pattern and
+ # the unmatched-commit fallback — both bind `subject` alone — rendering
+ # unchanged.
+-pattern = '^(?P<subject>(?P<type>[a-z]+)(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!%]): .+)'
++pattern = '^(?P<subject>(?P<type>[a-z]+)(\((?P<scope>[a-z0-9]+)\))?(?P<semver_sigil>[=~^!%]): .+)'
+ 
+ [[patterns]]
+ # raw `git revert`. The subject group takes the WHOLE line, quotes and all,

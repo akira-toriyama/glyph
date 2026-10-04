@@ -1,36 +1,51 @@
 diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index 82a8dac..ed0f7f9 100644
+index fdac588..60a2b43 100644
 --- a/internal/cli/lines.go
 +++ b/internal/cli/lines.go
-@@ -415,7 +415,7 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
+@@ -422,7 +422,7 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
  			carriers = reach
  		case placedNowhere:
  		case placedByFiles:
--			files, capped, unread, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
-+			files, _, unread, ferr := walkedFiles(ctx, gh, owner, repo, c, facts)
+-			files, incomplete, boundary, ferr := walkedFiles(ctx, gh, owner, repo, c, facts, reachedLines(lines, reach))
++			files, _, boundary, ferr := walkedFiles(ctx, gh, owner, repo, c, facts, reachedLines(lines, reach))
  			if ferr != nil {
  				return nil, nil, ferr
  			}
-@@ -424,9 +424,6 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
+@@ -431,9 +431,6 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
  			}
  			moved, aerr := attribution.Attribute(files, scope, sigil, cfg.Packages)
  			switch {
--			case aerr != nil && capped:
--				warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but the listing was truncated, so that is not a verdict: the commit is carried nowhere, and the walk is incomplete", c.Raw.SHA, aerr)
+-			case aerr != nil && incomplete:
+-				warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but GitHub did not list the commit's whole diff, so that is not a verdict: the commit is carried nowhere, and the walk is incomplete", c.Raw.SHA, aerr)
 -				carriers = nil
  			case aerr != nil:
  				return nil, nil, attributionWedge(aerr, c, owner, repo, reachedLines(lines, reach))
  			default:
 diff --git a/internal/cli/preview_lines.go b/internal/cli/preview_lines.go
-index 8afec4c..1732a80 100644
+index 81f3e65..f67ae57 100644
 --- a/internal/cli/preview_lines.go
 +++ b/internal/cli/preview_lines.go
-@@ -92,10 +92,6 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
+@@ -80,13 +80,12 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
+ 			continue
+ 		}
+ 		var files []string
+-		incomplete := false
+ 		if r.Parents < 2 {
+ 			l, ferr := listFiles(ctx, gh, owner, repo, r.SHA)
+ 			if ferr != nil {
+ 				return ferr
+ 			}
+-			files, incomplete = l.Files, l.incomplete()
++			files = l.Files
+ 			unread := unreadListing{SHA: fmt.Sprintf("%.7s", r.SHA)}
+ 			switch {
+ 			case l.Unknown:
+@@ -98,10 +97,6 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
  			}
  		}
  		moved, aerr := attribution.Attribute(files, scope, sigil, cfg.Packages)
--		if aerr != nil && capped {
--			warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but the listing was truncated, so that is not a verdict: the commit is attributed to no line", r.SHA, aerr)
+-		if aerr != nil && incomplete {
+-			warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but GitHub did not list the commit's whole diff, so that is not a verdict: the commit is attributed to no line", r.SHA, aerr)
 -			continue
 -		}
  		if aerr != nil {

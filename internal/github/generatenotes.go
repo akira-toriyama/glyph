@@ -53,7 +53,7 @@ func (c *Client) GenerateNotes(ctx context.Context, owner, repo string, p NotesP
 	req.Header.Set("Content-Type", "application/json")
 	body, _, err := c.send(req)
 	if err != nil {
-		return "", err
+		return "", flatten(err)
 	}
 	var out struct {
 		Body string `json:"body"`

@@ -389,6 +389,64 @@ func TestTags(t *testing.T) {
 	}
 }
 
+// TestMergedTagsListsOnlyTagsRevContains: a tag on a side branch and a tag on
+// a non-commit object are no release of HEAD's history; an annotated tag on
+// it is, peeled to its commit. The plain listing, beside it, holds all four —
+// the positive control that the fixture carries something to leave out.
+func TestMergedTagsListsOnlyTagsRevContains(t *testing.T) {
+	dir := newRepo(t)
+	git(t, dir, "akira-toriyama", "tag", "v0.1.0")
+	git(t, dir, "akira-toriyama", "tag", "-a", "-m", "annotated", "v0.1.1")
+	git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "side")
+	commit(t, dir, "akira-toriyama", ":sparkles:^ side work")
+	git(t, dir, "akira-toriyama", "tag", "v9.0.0")
+	git(t, dir, "akira-toriyama", "checkout", "-q", "main")
+	blob := git(t, dir, "akira-toriyama", "rev-parse", "HEAD:glyph.toml")
+	git(t, dir, "akira-toriyama", "tag", "v8.0.0", blob)
+
+	all, err := Tags(context.Background(), dir)
+	if err != nil || len(all) != 4 {
+		t.Fatalf("Tags = %v, %v; want all four (the control)", all, err)
+	}
+	got, err := MergedTags(context.Background(), dir, "HEAD")
+	if err != nil {
+		t.Fatalf("MergedTags: %v", err)
+	}
+	slices.Sort(got)
+	if !slices.Equal(got, []string{"v0.1.0", "v0.1.1"}) {
+		t.Fatalf("MergedTags(HEAD) = %v, want [v0.1.0 v0.1.1] — the side branch's v9.0.0 and the blob's v8.0.0 are no release of HEAD", got)
+	}
+}
+
+// TestMergedTagsOnAnUnbornHEADIsEmpty: before a repository's first commit HEAD
+// names no commit, and git answers `tag --merged=HEAD` with "malformed object
+// name HEAD" at exit 128 (measured, git 2.54). An unborn history holds no
+// tags — Tags answers empty there too — so MergedTags does as well; passing
+// git's failure through turned `bump --pr` and `preview --pr` in such a
+// checkout from exit 0 into exit 4. Outside a repository the listing still
+// fails as git/IO: the empty answer is for a rev naming no commit, not for a
+// git that could not run.
+func TestMergedTagsOnAnUnbornHEADIsEmpty(t *testing.T) {
+	gitOrSkip(t)
+	dir := t.TempDir()
+	git(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
+
+	all, err := Tags(context.Background(), dir)
+	if err != nil || len(all) != 0 {
+		t.Fatalf("Tags on an unborn history = %v, %v; want empty, nil (the control)", all, err)
+	}
+	got, err := MergedTags(context.Background(), dir, "HEAD")
+	if err != nil || len(got) != 0 {
+		t.Fatalf("MergedTags(HEAD) on an unborn history = %v, %v; want empty, nil", got, err)
+	}
+
+	_, err = MergedTags(context.Background(), t.TempDir(), "HEAD")
+	ce := core.AsError(err)
+	if ce == nil || ce.Code != core.CodeAPI {
+		t.Fatalf("MergedTags outside a repository = %v, want CodeAPI", err)
+	}
+}
+
 // TestHead returns the checkout's HEAD sha — what the rolling draft's
 // target_commitish records so the eventual Publish tags the commit the
 // verdict was computed at, not whatever main has moved to since.

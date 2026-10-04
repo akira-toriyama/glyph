@@ -177,9 +177,11 @@ func (c *Client) writeRelease(ctx context.Context, method, u string, p ReleasePa
 // createLanded is CreateRelease's recovery probe: has a release matching what
 // the create asked for — the intended tag, in the requested draft state —
 // appeared? Listing is the only way to see a draft (it has no tag to GET by),
-// and the client's retries are stripped so the probe costs ONE round trip: the
-// calling loop already owns the pacing, and a probe walking its own backoff
-// schedule would multiply an outage's wall clock by the schedule's length.
+// and the client's retries are stripped so the probe is ONE read of the
+// listing — a round trip per 100 releases (measured: 73 pages per probe over
+// 7,272 releases, DESIGN §4) — with no backoff of its own: the calling loop
+// already owns the pacing, and a probe walking its own backoff schedule would
+// multiply an outage's wall clock by the schedule's length.
 // Any failure to look is a miss — the caller re-sends, which is exactly the
 // pre-probe behaviour.
 //

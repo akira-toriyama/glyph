@@ -1,0 +1,13 @@
+diff --git a/internal/github/pull.go b/internal/github/pull.go
+index 5e288d1..ef8c965 100644
+--- a/internal/github/pull.go
++++ b/internal/github/pull.go
+@@ -38,7 +38,7 @@ func (c *Client) PullRequest(ctx context.Context, owner, repo string, number int
+ 		c.baseURL, url.PathEscape(owner), url.PathEscape(repo), number)
+ 	var raw apiOnePull
+ 	if _, err := c.get(ctx, u, &raw); err != nil {
+-		return Pull{}, flatten(err)
++		return Pull{}, err
+ 	}
+ 	return Pull{Title: raw.Title, Author: raw.User.Login}, nil
+ }

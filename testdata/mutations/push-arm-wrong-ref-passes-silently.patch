@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+index d32e69d..76ff4a3 100644
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -173,7 +173,7 @@ jobs:
+               # reason the push arm exists.
+               if [ "$PUSHED_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+                 echo "::error::glyph-lint lints pushes to the default branch only ($PUSHED_REF is not refs/heads/$DEFAULT_BRANCH); narrow the caller's push trigger to branches: [$DEFAULT_BRANCH]."
+-                exit 1
++                exit 0
+               fi
+               # A range this arm cannot compute is refused, never linted as
+               # empty. An all-zeroes `before` is ref creation — no base exists.

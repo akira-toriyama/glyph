@@ -35,7 +35,7 @@ func TestStderrCarriesAnnotationsThenOneSievableEnvelope(t *testing.T) {
 		{
 			name: "a warning precedes the envelope",
 			emit: func() {
-				warnf("no v* release tag here — previewing this PR's own verdict only")
+				warnf("no v* release tag in HEAD's history — previewing this PR's own verdict only")
 				renderError(core.APIf("github: GET /repos/o/r/pulls/1/commits: 500 internal error"))
 			},
 			wantMsg: "github: GET /repos/o/r/pulls/1/commits: 500 internal error",
