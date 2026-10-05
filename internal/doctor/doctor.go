@@ -203,8 +203,11 @@ const (
 // installed commit-msg hook — which, like the config, need no network at all,
 // so they still answer when the API side is entirely dark.
 func Run(in Input) *Report {
+	// The fired hook's lint reads the same glyph.toml, so the config verdict is
+	// an input to the live-fire check — see checkHookFires.
+	config := checkConfig(in.ConfigPath, in.ConfigPathErr)
 	r := &Report{Repo: in.Repo, Checks: []Check{
-		checkConfig(in.ConfigPath, in.ConfigPathErr),
+		config,
 		checkPackagePaths(in.ConfigPath, in.ConfigPathErr),
 		checkRootLineTags(in.ConfigPath, in.ConfigPathErr, in.Tags, in.TagsErr),
 		checkTokenAccess(in),
@@ -218,7 +221,7 @@ func Run(in Input) *Report {
 		checkCallerPermissions(in.Root, in.RootVerified),
 		checkCallerInputs(in.Root, in.RootVerified),
 		checkHook(hook.Kinds()[0], IDCommitMsgHook, in.HooksDir, in.HooksErr),
-		checkHookFires(in.CommitMsgProbe, in.HooksErr),
+		checkHookFires(in.CommitMsgProbe, in.HooksErr, config.Status == StatusPass),
 		checkHook(hook.Kinds()[1], IDPrePushHook, in.HooksDir, in.HooksErr),
 	}}
 	r.OK = true

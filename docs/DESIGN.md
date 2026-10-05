@@ -2853,7 +2853,13 @@ The severities are the argued part:
   not vouch for. Executing the hook glyph itself wrote is still read-only in the
   sense the report claims — the hook lints a scratch file and changes nothing.
   A probe that cannot run, or an exit outside the script's own two-code
-  vocabulary, is unknown, never a verdict.
+  vocabulary, is unknown, never a verdict. So is a pass-through on a checkout
+  whose `glyph.toml` does not load: the fired lint exits `2` there before
+  judging anything and the hook waves `2` through as `0`, so that `0` is the
+  config's absence answering and `glyph-toml-loads` owns the finding. Failing
+  it sent the reader to repair a PATH wrapper nothing had observed broken
+  (`TestHookFiresDefersAPassThroughToAnUnloadedConfig`, mutation row
+  `doctor-hook-fires-blames-the-path-for-an-unloaded-config`).
 
 ## 8. Where we are
 

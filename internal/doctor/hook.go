@@ -133,7 +133,14 @@ func checkHook(k hook.Kind, id, dir string, dirErr error) Check {
 // must not execute code it does not vouch for. Everything not fired is
 // therefore a pass here with the sibling check named as the owner: this check
 // answers "does the current hook work", not "is a hook installed".
-func checkHookFires(probe *HookProbe, dirErr error) Check {
+//
+// configLoaded is glyph-toml-loads' verdict. The fired hook's lint reads that
+// same file, and without it lint exits 2 before judging anything — a code the
+// hook waves through as 0 — so a pass-through there is the missing config
+// answering, not the glyph on PATH. Failing it sent the reader to repair a
+// wrapper nothing had observed broken (t-fdd8 (5)); it is unknown instead,
+// owned by the config check.
+func checkHookFires(probe *HookProbe, dirErr error, configLoaded bool) Check {
 	gate := int(core.CodeLint)
 	c := Check{
 		ID: IDCommitMsgFires,
@@ -168,6 +175,13 @@ func checkHookFires(probe *HookProbe, dirErr error) Check {
 		c.Message = "the whole chain answered: the script ran, the glyph it resolves on PATH linted, and the config " +
 			"accepted — the gate is exactly as strict as the repository's own patterns (lint has no taste), so a " +
 			"config that claims the probe text has simply left this probe nothing to block on"
+	case probe.Exit == 0 && !configLoaded:
+		c.Status = StatusUnknown
+		c.Observed = "the hook let the probe message through at exit 0, and glyph.toml did not load (see " + IDConfigLoads + ")"
+		c.Message = "without a glyph.toml it can load, `glyph lint` exits 2 before judging anything, and the hook waves " +
+			"every code but the gate's through by design — so this 0 is the config's absence answering, not the glyph on " +
+			"PATH. Whether that glyph can lint is unverified until the config loads"
+		c.Fix = "resolve " + IDConfigLoads + " and re-run"
 	case probe.Exit == 0:
 		c.Status = StatusFail
 		c.Observed = "the hook let a violating message through at exit 0"

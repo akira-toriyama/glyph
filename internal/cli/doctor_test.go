@@ -375,6 +375,34 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		}
 	})
 
+	// t-fdd8 (5): with no glyph.toml the real glyph's lint exits 2 before
+	// judging anything, the hook waves 2 through as 0, and the probe's 0 says
+	// nothing about the glyph on PATH — so the check defers to
+	// glyph-toml-loads instead of blaming the wrapper.
+	t.Run("a missing config is not a broken PATH glyph", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		if err := os.Remove("glyph.toml"); err != nil {
+			t.Fatalf("remove glyph.toml: %v", err)
+		}
+		installCurrentHook(t)
+		stubGlyphOnPATH(t, 2)
+
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
+		rep := decodeDoctorJSON(t, stdout)
+		if code != 3 {
+			t.Fatalf("doctor exited %d, want 3 — glyph-toml-loads fails\nstderr: %s", code, stderr)
+		}
+		if got := status(t, rep, "glyph-toml-loads"); got != "fail" {
+			t.Errorf("glyph-toml-loads = %s, want fail", got)
+		}
+		c := checkByID(t, rep, "commit-msg-hook-fires")
+		if c.Status != "unknown" || !strings.Contains(c.Observed, "glyph-toml-loads") {
+			t.Errorf("a pass-through caused by the missing config must be unknown pointing at glyph-toml-loads, got %s: %s (fix %q)",
+				c.Status, c.Observed, c.Fix)
+		}
+	})
+
 	t.Run("a foreign hook is not fired", func(t *testing.T) {
 		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 		useDoctorCheckout(t, pinnedCaller)

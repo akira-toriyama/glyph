@@ -205,7 +205,7 @@ func TestCheckHookFiresVerdicts(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			c := checkHookFires(tc.probe, tc.dirErr)
+			c := checkHookFires(tc.probe, tc.dirErr, true)
 			if c.Status != tc.want {
 				t.Errorf("status = %q, want %q: %s", c.Status, tc.want, c.Observed)
 			}
@@ -218,5 +218,38 @@ func TestCheckHookFiresVerdicts(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestHookFiresDefersAPassThroughToAnUnloadedConfig pins t-fdd8 (5). With no
+// glyph.toml (or one that does not load) the fired hook's `glyph lint` exits 2
+// before judging anything and the hook waves 2 through as 0 by design — so the
+// probe's 0 says nothing about the glyph on PATH. The check used to fail it
+// with a fix sending the reader to repair the PATH wrapper's source checkout,
+// a diagnosis of the wrong thing: the cause is the config glyph-toml-loads
+// already fails. Unknown, pointing there. The loaded-config row is the
+// positive control: the same probe on a loaded config is still the silent
+// no-op FAIL.
+func TestHookFiresDefersAPassThroughToAnUnloadedConfig(t *testing.T) {
+	passedThrough := &HookProbe{Fired: true, Exit: 0}
+	if c := checkHookFires(passedThrough, nil, true); c.Status != StatusFail {
+		t.Fatalf("loaded config, probe through at 0: status = %s, want %s — the silent no-op is still the finding", c.Status, StatusFail)
+	}
+	c := checkHookFires(passedThrough, nil, false)
+	if c.Status != StatusUnknown {
+		t.Fatalf("unloaded config, probe through at 0: status = %s, want %s (observed %q)", c.Status, StatusUnknown, c.Observed)
+	}
+	for field, v := range map[string]string{"observed": c.Observed, "fix": c.Fix} {
+		if !strings.Contains(v, IDConfigLoads) {
+			t.Errorf("the %s must name %s, the check carrying the cause: %q", field, IDConfigLoads, v)
+		}
+	}
+	if strings.Contains(c.Fix, "wrapper") || strings.Contains(c.Fix, "command -v glyph") {
+		t.Errorf("the fix still sends the reader to the PATH wrapper, which nothing observed to be broken: %q", c.Fix)
+	}
+	// A block at the gate code is an answer whatever the config says, and the
+	// probe's own failures stay its own.
+	if c := checkHookFires(&HookProbe{Fired: true, Exit: int(core.CodeLint)}, nil, false); c.Status != StatusPass {
+		t.Errorf("unloaded config, probe blocked: status = %s, want %s", c.Status, StatusPass)
 	}
 }
