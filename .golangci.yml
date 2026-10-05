@@ -1,5 +1,3 @@
-# golangci-lint v2 config for glyph. Conservative, fast linters that catch real
-# bugs and keep style consistent without fighting the developer.
 version: "2"
 
 run:

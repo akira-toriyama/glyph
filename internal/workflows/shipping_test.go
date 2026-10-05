@@ -228,7 +228,7 @@ func modulePath(t *testing.T) string {
 // proxy stayed frozen at v1.0.0 and README's `go install …@latest` handed out a
 // two-major-old binary that rejects today's commit convention (t-f2sk). Nothing
 // went red: the proxy is not consulted by any build, test or release here, and
-// fleet-preflight probes lint findings and bump levels only.
+// none of fleet-preflight's probes (lint, bump, the release body) consults it.
 //
 // Know what this does NOT catch: it reads no tags, so a v5 tag cut over a /v4
 // go.mod passes here. Comparing the module's major against the repository's
