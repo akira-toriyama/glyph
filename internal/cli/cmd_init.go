@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v4/internal/config"
-	"github.com/akira-toriyama/glyph/v4/internal/core"
-	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v5/internal/config"
+	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
 	"github.com/spf13/cobra"
 )
 

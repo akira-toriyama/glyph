@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v4/internal/testutil"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // lintBody returns lint.yml's executable body.

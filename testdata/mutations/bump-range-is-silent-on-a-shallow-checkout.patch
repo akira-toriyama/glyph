@@ -3,10 +3,10 @@ index 9c78cd2..81eb104 100644
 --- a/internal/cli/cmd_bump.go
 +++ b/internal/cli/cmd_bump.go
 @@ -8,6 +8,7 @@ import (
- 	"github.com/akira-toriyama/glyph/v4/internal/bump"
- 	"github.com/akira-toriyama/glyph/v4/internal/config"
- 	"github.com/akira-toriyama/glyph/v4/internal/core"
-+	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
+ 	"github.com/akira-toriyama/glyph/v5/internal/bump"
+ 	"github.com/akira-toriyama/glyph/v5/internal/config"
+ 	"github.com/akira-toriyama/glyph/v5/internal/core"
++	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
  	"github.com/spf13/cobra"
  )
  

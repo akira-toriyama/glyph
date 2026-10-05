@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v4/internal/emoji"
+	"github.com/akira-toriyama/glyph/v5/internal/emoji"
 )
 
 // TestEmojiPrintsTheShippedBytes: stdout is the embedded dictionary byte for

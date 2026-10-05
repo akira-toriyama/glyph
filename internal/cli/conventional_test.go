@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v4/internal/core"
-	"github.com/akira-toriyama/glyph/v4/internal/testutil"
+	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // TestConventionalPresetTakesTheVersionOnlyFromTheSigil runs the file `glyph

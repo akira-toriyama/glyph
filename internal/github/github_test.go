@@ -14,7 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/akira-toriyama/glyph/v4/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/core"
 )
 
 // newClient spins an httptest.Server for handler and returns a Client pointed at

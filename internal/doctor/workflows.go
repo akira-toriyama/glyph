@@ -21,8 +21,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v4/internal/bump"
-	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v5/internal/bump"
+	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
 )
 
 // glyphRepo is the owner/name whose references must be pinned. Matched on the

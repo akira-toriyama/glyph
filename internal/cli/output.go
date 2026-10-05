@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v4/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/core"
 )
 
 // stdout carries the payload; stderr carries diagnostics. Everything funnels

@@ -19,7 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v4/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/core"
 )
 
 // Marker identifies a hook this command wrote. Re-installing over one is a

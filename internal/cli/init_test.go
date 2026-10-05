@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/akira-toriyama/glyph/v4/internal/config"
-	"github.com/akira-toriyama/glyph/v4/internal/core"
-	"github.com/akira-toriyama/glyph/v4/internal/testutil"
+	"github.com/akira-toriyama/glyph/v5/internal/config"
+	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // TestInitWritesThePresetVerbatim pins init's whole contract: the file on

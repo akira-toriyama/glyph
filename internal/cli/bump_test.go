@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v4/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/core"
 )
 
 // TestBumpMinor: the fold over a mixed range takes the max — stdout is the

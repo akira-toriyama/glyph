@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/akira-toriyama/glyph/v4/internal/emoji"
+	"github.com/akira-toriyama/glyph/v5/internal/emoji"
 	"github.com/spf13/cobra"
 )
 

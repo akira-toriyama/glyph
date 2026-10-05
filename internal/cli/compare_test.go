@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v4/internal/testutil"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // This file pins the compare link (DESIGN §4, "The compare link"; §4.1 per

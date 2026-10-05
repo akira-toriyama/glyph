@@ -28,7 +28,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v4/internal/config"
+	"github.com/akira-toriyama/glyph/v5/internal/config"
 )
 
 // Reason says why a commit was refused: which of §4.1's two authoring errors

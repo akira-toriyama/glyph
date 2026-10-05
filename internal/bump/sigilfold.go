@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v4/internal/config"
-	"github.com/akira-toriyama/glyph/v4/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/config"
+	"github.com/akira-toriyama/glyph/v5/internal/core"
 )
 
 // SigilLevel maps a v2 sigil onto the bump lattice. The mapping is the

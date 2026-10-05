@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v4/internal/bump"
+	"github.com/akira-toriyama/glyph/v5/internal/bump"
 )
 
 // TestCallerChecksJudgeTheCallerAtItsPin pins the D2a ruling for both caller

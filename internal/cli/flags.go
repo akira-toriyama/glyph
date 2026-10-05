@@ -3,7 +3,7 @@ package cli
 import (
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v4/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/core"
 	"github.com/spf13/cobra"
 )
 
