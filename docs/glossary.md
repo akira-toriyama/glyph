@@ -31,10 +31,10 @@ missing entry, because it is the one place a reader trusts not to be stale.
 
 **Contents**
 
-1. [The release walk](#1-the-release-walk) — walk, walk base, auto, below:, range, fold, participate, merge point, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, walkFacts, Dropped, shortfall, wedge, wedge escape, package, line, root package, attribution, carrier, shared-only
+1. [The release walk](#1-the-release-walk) — walk, walk base, auto, below:, range, fold, participate, merge point, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, walkFacts, Dropped, shortfall, wedge, wedge escape, package, root package, line, attribution, carrier, shared-only, governing commit
 2. [Verdicts and the rolling draft](#2-verdicts-and-the-rolling-draft) — verdict, level, source, reason, target, action, rolling draft, glyph-managed draft, residual draft, stale draft, published floor, pending, incomplete banner
-3. [Convention and lint](#3-convention-and-lint) — pattern, sigil, bump lattice, section, excluded author, cleanup
-4. [The render boundary](#4-the-render-boundary) — inline context, phantom span, neutralize, fence, flatten, pipe escape, over-escaping is the safe direction
+3. [Convention and lint](#3-convention-and-lint) — pattern, unlandable, dictionary, sigil, promote, 0.x clamp, bump lattice, section, excluded author, cleanup, cleanup mode, edited, cut line
+4. [The render boundary](#4-the-render-boundary) — inline context, phantom span, neutralize, fence, flatten, line builder, pipe escape, over-escaping is the safe direction
 5. [Repository preconditions (`doctor`)](#5-repository-preconditions-doctor) — check, check id, pass/fail/advice/unknown, release-tag pin
 6. [Exit codes and streams](#6-exit-codes-and-streams) — gate code, soft no-release, annotation, error envelope
 7. [Fleet distribution](#7-fleet-distribution) — fleet, reusable workflow, composite action, distribution layer, dist-gate, merge preview, sticky comment
@@ -130,7 +130,7 @@ when it does both: a shared-only `=` participates, in no line, and an
 their lines' notes. Every count of participating commits — the no-release
 reasons of `bump`, `release` and `notes`, and the preview's footer — counts
 this one set, each sha once; the walk's `pulls[].commits` is not one
-(**provenance**). Two
+(*provenance*). Two
 exclusion questions are kept rigorously apart, and conflating them is the t-7zt7
 defect: the classification side asks "is this commit's own **message**
 judged?" — `exclude_authors` drops it before matching, a matching `skip = true`
@@ -182,8 +182,8 @@ that outlives the squash (t-xxhj). Which of them a release body prints is the
 template's decision — both shipped presets place `$pr` alone, inside an optional
 span, so a line reads `- subject (#123)` and loses the parens entirely when no
 pull resolved; the `(#123, abc1234)` shape v1 hardcoded is expressible as
-`$[ ($pr, $hash)]` and is deliberately not what ships (§3).
-`internal/cli/sincetag.go: mainFootprint, foldPull, notesCommits`
+`$[ ($pr, $hash)]` and is deliberately not what ships (DESIGN §3).
+`internal/cli/sincetag.go: mainFootprint, foldPull, walkedNoteCommits`
 
 **stand aside** — what a walked commit does when it reports itself carried by a
 pull whose merge point is some *other* sha in this range: it is not counted,
@@ -221,7 +221,7 @@ foldPull`
 **provenance** (*expansion provenance*) — the walk reporting on itself: per
 resolved pull, its number and how many of its listed commits the walk took in
 (after the footprint and seen-sha filters; an excluded author's and a skipped
-merge commit among them, so it is not a count of commits that **participate**),
+merge commit among them, so it is not a count of commits that *participate*),
 published as `.pulls` on the `--json` verdict so a human or a CI step can audit
 how a verdict was assembled without re-deriving the exclusion rules in shell. It
 records what the walk **did** and never why a number is what it is: a count of
@@ -333,25 +333,47 @@ the base and why that base is the one. `internal/cli/sincetag.go: wedgeHint,
 onMain`
 
 **package** — a declared subtree of the repository with a version line of its
-own: its own tags (`<path>/vX.Y.Z`), its own walk base, its own rolling draft.
+own: its own tags (`<prefix>vX.Y.Z`), its own walk base, its own rolling draft.
 Declared as `[[packages]]` in `glyph.toml`; a repository that declares none is
-one **line** with no name, and every verdict it gets is unchanged. The **root
+one *line* with no name, and every verdict it gets is unchanged. The **root
 package** is `path = "."`: the bare `vX.Y.Z` line, and the holder of every file
-no other package claims. *Designed, not shipped* —
+no other package claims.
 [DESIGN §4.1](DESIGN.md#41-packages--independently-versioned-lines-in-one-repository)
-carries the decisions and the `e-7hat` box on the projects board the tasks.
+carries the decisions. `internal/config/config.go: Package`
 
-**line** — one version series: one tag prefix and the majors it holds, one
-base, one draft, one fold. "Which line does this commit move?" is the only
-question packages add to the walk; the answer is **attribution**.
+**line** — one independently versioned subtree of the repository, declared as a
+`[[packages]]` entry: its own tag prefix (`<path>/`, bare for the root package
+`path = "."`, and a major version subdirectory `/vN` folded into the major —
+`pubsub/v2` is the v2 line on the `pubsub/` prefix, beside a `pubsub` line
+holding every other major, Go's own rule), its own walk base (the highest tag
+on that prefix, of a major it holds, that HEAD contains), its own fold, verdict
+and rolling draft (`<prefix>vX.Y.Z`, placeholder `<path>/Unreleased`), converged
+by `draftplan` on that line alone so one line's release never touches another's
+draft. A repository with no `[[packages]]` is one line with no name, and nothing
+synthesises a root package for it. A tag **names** a line:
+`--since-tag=haiku/v0.1.0` selects haiku alone, `--since-tag=pubsub/v2.7.0`
+the v2 line alone. "Which line does this commit move?" is the only question
+packages add to the walk; the answer is *attribution*.
+`internal/config/tagline.go: Line, Package.TagPrefix, Config.LineOf`,
+`internal/cli/lines.go: line`
 
-**attribution** — placing a commit on the packages it moves, asked
-after the pattern match and before the fold. The tree decides: a file belongs to
-the package with the longest path prefix, and a commit is placed on every
-package its own diff touches. Files come from local git for a commit the
-released branch holds and from `GET /commits/{sha}` for the squash arm (measured
-to answer for a sha no branch holds). Per commit, never per pull: the pull's net
-diff is neither the sum of its commits nor fine enough to carry two sigils.
+**attribution** — which lines a commit moves, read from the
+commit's **own** diff and never a pull's net diff: files under a package move
+it (longest path prefix wins; a rename counts under both names), a commit under
+no package moves the package its scope names, and a commit under no package
+with no such scope moves nothing when its sigil is `=` and is refused when the
+sigil claims a version impact — as is, with such a sigil, a scope naming a
+package that owns none of the diff's files (a `=` is placed by its files).
+Asked of every walked commit — of a merge commit over no file, since
+its diff is never read and only its scope can carry it: with scope and
+sigil for a commit the fold reads, by files alone for one it does not — an
+`exclude_authors` commit moves no version and appears in the notes of the lines
+its files touch (nowhere under no package), a skip is placed nowhere, and a
+message no pattern claims (an *unlandable* one included) joins every line so
+the fold refuses it. The files
+come from local git for a landed identity and from `GET /commits/{sha}` for a
+squash-merged pull's inner commit. `internal/attribution/attribution.go:
+Attribute`, `internal/cli/lines.go: placeOf, attribute, partitionLines`
 
 **carrier** — the package a commit's sigil lands on. A **shared-only** commit
 (its diff lies under no package: root CI, the workspace file, a README in a
@@ -368,40 +390,6 @@ owning none of the diff's files — owning by the longest declared path, so a
 nested package's files are not its parent's nor the root package's — is
 refused the same way when the sigil claims a version impact; a `=` is placed
 by its files.
-
----
-
-**line** — one independently versioned subtree of the repository, declared as a
-`[[packages]]` entry: its own tag prefix (`<path>/`, bare for the root package
-`path = "."`, and a major version subdirectory `/vN` folded into the major —
-`pubsub/v2` is the v2 line on the `pubsub/` prefix, beside a `pubsub` line
-holding every other major, Go's own rule), its own walk base (the highest tag
-on that prefix, of a major it holds, that HEAD contains), its own fold, verdict
-and rolling draft (`<path>/vX.Y.Z`, placeholder `<path>/Unreleased`), converged
-by `draftplan` on that line alone so one line's release never touches another's
-draft. A repository with no `[[packages]]` is one line with no name, and nothing
-synthesises a root package for it. A tag **names** a line:
-`--since-tag=haiku/v0.1.0` selects haiku alone, `--since-tag=pubsub/v2.7.0`
-the v2 line alone. `internal/config/tagline.go: Line, Package.TagPrefix,
-Config.LineOf`, `internal/cli/lines.go: line`
-
-**attribution** — which lines a commit moves, read from the
-commit's **own** diff and never a pull's net diff: files under a package move
-it (longest path prefix wins; a rename counts under both names), a commit under
-no package moves the package its scope names, and a commit under no package
-with no such scope moves nothing when its sigil is `=` and is refused when the
-sigil claims a version impact — as is, with such a sigil, a scope naming a
-package that owns none of the diff's files (a `=` is placed by its files).
-Asked of every walked commit — of a merge commit over no file, since
-its diff is never read and only its scope can carry it: with scope and
-sigil for a commit the fold reads, by files alone for one it does not — an
-`exclude_authors` commit moves no version and appears in the notes of the lines
-its files touch (nowhere under no package), a skip is placed nowhere, and a
-message no pattern claims (an **unlandable** one included) joins every line so
-the fold refuses it. The files
-come from local git for a landed identity and from `GET /commits/{sha}` for a
-squash-merged pull's inner commit. `internal/attribution/attribution.go:
-Attribute`, `internal/cli/lines.go: placeOf, attribute, partitionLines`
 
 **governing commit** — the on-branch identity a line's range judges a walked
 commit by: the commit's own sha when it landed on the released branch, else the
@@ -420,7 +408,7 @@ merge landing between the walks could version one range and describe another.
 releaseResult`
 
 **level** — a rung of the bump lattice for one commit or one fold (`none`,
-`patch`, `minor`, `major`). Distinguish from **promote**, the OR-folded boolean
+`patch`, `minor`, `major`). Distinguish from *promote*, the OR-folded boolean
 a `%` commit sets beside the lattice (1.0.0 is named, not stepped); the v1
 breaking boolean is gone — breaking IS the major rung, and pr-verdict's
 `breaking` output derives from it. `internal/bump/level.go: Level, Decision`
@@ -454,17 +442,20 @@ surfacing on the real write. `internal/cli/cmd_release.go: releaseRun`,
 nothing. `internal/draftplan/draftplan.go: ActionCreate…ActionNone`
 
 **rolling draft** — the **one** glyph-managed unpublished draft release a
-repository keeps, created or updated **by release id** and retagged in place when
-the next version moves. Never a second draft. By id and not tag name because
+repository keeps — one per *line* under `[[packages]]` — created or updated
+**by release id** and retagged in place when the next version moves. Never a
+second draft on a line. By id and not tag name because
 tag-name resolution can hit a *published* release sharing the draft's intended
 tag (cli/cli#9367). `internal/draftplan/draftplan.go: PlanDraft`,
 `internal/github/release.go: UpdateRelease`
 
 **glyph-managed draft** — an unpublished draft whose tag name is the house shape
-`vX.Y.Z` (with the `v`), or the `Unreleased` placeholder (draft_on_none's
-artifact — claimed even with the flag off, so flipping it off converges the
-placeholder away). Published releases and a human's hand-named drafts are
-never glyph's to touch. `internal/draftplan/draftplan.go: PlanDraft`
+`vX.Y.Z` (with the `v`; `<prefix>vX.Y.Z` on a declared line), or the
+`Unreleased` placeholder (`<path>/Unreleased` on a declared line;
+draft_on_none's artifact — claimed even with the flag off, so flipping it off
+converges the placeholder away). Each line manages only its own: published
+releases, a human's hand-named drafts and another line's drafts are never its
+to touch. `internal/draftplan/draftplan.go: PlanDraft`
 
 **residual draft** vs **stale draft** — both are glyph-managed drafts glyph
 removes, in two different situations, and the words are not interchangeable in
@@ -485,7 +476,8 @@ loud even when a sibling line's draft landed in the same run.
 `internal/cli/release_lines.go: releaseLines` (both, per line),
 [DESIGN §4](DESIGN.md#4-squash-safe-mechanism--release-time-re-read-stateless)
 
-**published floor** — the highest **published** (non-draft) house-shaped version.
+**published floor** — the highest **published** (non-draft) house-shaped version
+on the line.
 The next version must be *strictly* greater, or the draft could never be
 published: its tag is taken, or permanently burned if a published release was
 deleted. Fails loud (4) rather than creating an unpublishable draft.
@@ -528,7 +520,7 @@ pattern may capture the named group `semver_sigil`, supply a fixed
 `semver_sigil` value for messages that carry none, or declare `skip = true`
 (the commit leaves lint, bump and notes entirely); `warn = '…'` keeps its
 match legal and says so at every gate, and `unlandable = '…'` makes it an
-**unlandable** message. Retired v1 vocabulary this
+*unlandable* message. Retired v1 vocabulary this
 replaces: *profile*, *rules table*, *rule id*, *legacy token*, *merge
 candidate*, *generated subject* — all were properties of glyph's own grammars,
 and glyph no longer owns one. `internal/config/config.go: Pattern`,
@@ -597,7 +589,7 @@ swallow a genuinely empty message and any body line starting with `#`.
 **cleanup mode** — *which* cleanup, of git's five: `verbatim` (none),
 `whitespace`, `strip` (whitespace + comment lines), `scissors`, and `default`,
 which is not a cleanup but a choice between `strip` and `whitespace` by whether a
-message is **edited**. glyph resolves it per commit from `commit.cleanup`,
+message is *edited*. glyph resolves it per commit from `commit.cleanup`,
 `commit.verbose`, `GIT_EDITOR` and whether the message is `git merge`'s own
 `MERGE_MSG` (a merge cleans with verbose 0); a mode assumed instead of resolved
 is how the hook and CI came to disagree about the same message. DESIGN §2.1.
@@ -631,7 +623,7 @@ mention table at the top of `markdown_test.go`, the escaped-form and raw-HTML
 tables at the top of `escape_test.go`. The one time a rule was changed from
 reasoning alone, the reasoning was wrong. Most of this vocabulary is the #61
 hardening (t-j0c6), which is the whole of `escape.go` — flatten and
-neutralize. The fence half is older: the mention fence (today `escapeMentions`) and
+neutralize. The fence half is older: the mention fence (today `escapeMentionsSkipping`) and
 `mention` arrived in #38,
 which wrapped a would-be mention in a single backtick pair, and #54 made the fence
 as long as the input demands (`longestBacktickRun`). Until now all of it existed
@@ -679,7 +671,7 @@ was deleted in t-0j9r, and DESIGN §2 holds the ruling — the `<i title="x">`
 incident, why `-` and `@` stay unescaped, and why the route was not revived.
 `internal/markdown/escape.go: escapeProseLine`
 
-**fence** (`escapeMentions`, reached through `Line.String`) — wrap a would-be
+**fence** (`escapeMentionsSkipping`, reached through `Line.String`) — wrap a would-be
 `@mention` in a backtick run so
 GitHub renders it as a code token and links nobody. Wrapping is the **only**
 neutralization GitHub honors: an entity (`&#64;`) or a backslash does nothing at
@@ -691,13 +683,13 @@ fused a run of the author's words into a code span and pushed the mention back
 out into prose (t-fbg3). A separating space is written where the fence would
 otherwise touch a byte that consumes it. Left raw, such a token silently lists a
 stranger under a release's Contributors and, in a PR comment, **notifies** them
-(t-hykw). `internal/markdown/markdown.go: escapeMentions, mention,
+(t-hykw). `internal/markdown/markdown.go: escapeMentionsSkipping, mention,
 longestBacktickRun`
 
 **flatten** (`flatten`, the first thing `Line.Prose` does) — neither of the
 two: it *replaces* bytes (every CommonMark line terminator,
 including a bare CR, becomes one space) and therefore lives outside
-`escapeMentions`, whose no-rewriting invariant a fuzz oracle enforces. It must run
+`escapeMentionsSkipping`, whose no-rewriting invariant a fuzz oracle enforces. It must run
 **first**, because it is what *decides* the inline context — to an escaper a blank
 line ends the paragraph and backticks on either side cannot pair, while in the
 flattened line they can. A bare CR is a line terminator at GitHub, so a subject
@@ -780,20 +772,16 @@ The fail/unknown line is drawn on **what the API said**, not on whether the call
 returned an error: a 404 from the repository read *is* an answer (there is no such
 repository for this credential) and fails at 3, while a 403 rate limit, a 5xx that
 outlived the retry schedule, a dead socket or an unparseable body is no answer at
-all. Collapsing them made a transient GitHub outage tell the fleet's CI wrappers —
-which branch on `.error.code == 3` to hard-fail and treat everything else as
-retryable infra — that the repository was misconfigured, and never retry.
+all —
+[DESIGN §7](DESIGN.md#7-repository-preconditions-glyph-doctor) has the incident
+that drew the line there.
 `internal/doctor/doctor.go: Status, checkTokenAccess`, `internal/github/github.go:
 IsRepoUnknown`
 
 Two severities are argued rather than obvious, and both are **coupled to the
-walk**: `allow_squash_merge=false` is a *fail*, not because only a squash commit
-resolves (every style does) but because squash is the only landing style with **no
-partial state** — a squash-merged pull's one commit on main *is* its
-`merge_commit_sha`, so it is never half-resolved. `allow_merge_commit` /
-`allow_rebase_merge` are *advice*, and that severity is downstream of two
-things: the walk expanding merge commits correctly, and the lost-pull warning
-staying loud. Revert either and the severity must move back to fail.
+walk**: `allow_squash_merge=false` is a *fail*, and `allow_merge_commit` /
+`allow_rebase_merge` are *advice* only while the walk expands merge commits
+correctly and the lost-pull warning stays loud — DESIGN §7 argues both.
 `internal/doctor/doctor.go: checkSquashEnabled, checkMergeCommit, checkRebaseMerge`
 
 **release-tag pin** — a `uses: akira-toriyama/glyph/…@vX.Y.Z` reference naming a
@@ -865,9 +853,9 @@ written to stderr **last**, after the command returned. This is the other half o
 the **stream contract**: stdout carries the payload, and stderr has a *shape* —
 every line is either a `::`-prefixed workflow command or part of that one
 envelope. A consumer therefore sieves the envelope out (`sed -n '/^[{]/,$p'`)
-before handing it to `jq`; `jq` over the two shapes together is a parse error, and
-both shipped reusables buried that failure under `|| true`, so a run that warned
-before it failed printed **no** `::error::` at all (t-sws7).
+before handing it to `jq`, because `jq` over the two shapes together is a parse
+error — [DESIGN §5](DESIGN.md#5-architecture-go-house-pattern)'s stream
+contract has the incident.
 `internal/cli/output.go: renderError`
 
 ---
@@ -875,14 +863,16 @@ before it failed printed **no** `::error::` at all (t-sws7).
 ## 7. Fleet distribution
 
 **fleet** — the repositories under this account that consume glyph's reusable
-workflows and the shared commit convention. Every figure for the fleet's *size*
-stated in this tree comes from one measurement, on 2026-07-21: **31 of 34**
-non-archived repositories allowed merge commits and rebase merges
+workflows and the shared commit convention. A figure for the fleet's *size* is
+a measurement on the date stated beside it, and the fleet grew between them —
+read the date with the number. On 2026-07-21 **31 of 34** non-archived
+repositories allowed merge commits and rebase merges
 ([DESIGN §7](DESIGN.md#7-repository-preconditions-glyph-doctor),
 `internal/doctor/doctor.go` package comment), and the fleet's history held 9,548
 commit subjects — the denominator the escaping rules' rendering cost is sized
 against, and stated where that sizing is argued rather than here
-(`internal/markdown/escape.go: escapeProseLine`, rules 3 and 4).
+(`internal/markdown/escape.go: escapeProseLine`, rules 3 and 4); on 2026-10-04,
+38 non-archived repositories carried a `glyph.toml` (DESIGN §2).
 
 **reusable workflow** — a workflow with a `workflow_call` trigger, invoked from
 another repository's workflow by `uses:` at a pinned tag. glyph ships **three**:
@@ -942,8 +932,8 @@ decoration. `internal/preview/preview.go: Marker`
 
 ## Not in this vocabulary
 
-**canonical pin** — a real term, but not glyph's: the phrase appears **nowhere**
-in this tree (`rg -i "canonical pin"` → no matches). It belongs to
+**canonical pin** — a real term, but not glyph's: the phrase appears **nowhere
+else** in this tree (`rg -i "canonical pin"` matches only this entry). It belongs to
 `akira-toriyama/.github`, which uses it in `docs/fleet-change-policy.md` and lays
 out the mechanism in `docs/glyph-rollout-runbook.md` ("What is pinned, and by
 whom"). There it means the glyph release the whole fleet is supposed to be on — the
