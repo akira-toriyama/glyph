@@ -1,12 +1,12 @@
 diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index 79a5f24..2f0e6e6 100644
+index 7932d15..b9a3e89 100644
 --- a/internal/cli/lines.go
 +++ b/internal/cli/lines.go
-@@ -154,7 +154,6 @@ func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string,
+@@ -168,7 +168,6 @@ func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string,
  				l.Base = &v
  			}
  			lines = []line{l}
 -			break
  		}
  		for _, p := range cfg.Packages {
- 			lines = append(lines, line{Package: p, Line: cfg.LineOf(p), Source: tag + "..HEAD", Range: tag + "..HEAD"})
+ 			lines = append(lines, line{Package: p, Line: cfg.LineOf(p), BaseTag: baseTag, Source: tag + "..HEAD", Range: tag + "..HEAD"})

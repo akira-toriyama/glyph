@@ -1,9 +1,9 @@
 diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
-index 7412952..ebd9de4 100644
+index 3771f4c..35c3aba 100644
 --- a/internal/cli/release_lines.go
 +++ b/internal/cli/release_lines.go
-@@ -212,7 +212,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
- 		drafts[i].params.Target = target
+@@ -214,7 +214,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
+ 		stale = append(stale, residue...)
  	}
  
 -	result := releaseResult{Commits: rows, Packages: verdicts, Pulls: w.Facts.Pulls, Reason: reason}

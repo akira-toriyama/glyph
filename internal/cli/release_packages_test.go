@@ -770,8 +770,9 @@ func TestReleasePackagesExcludedAuthorBumpStaysOnItsLine(t *testing.T) {
 }
 
 // TestReleasePackagesDryRunGolden pins the composed dry-run output over two
-// lines — each draft's tag line, blank line, marker, sections and the footer
-// appended to EVERY draft — as bytes, the way the single line's golden does.
+// lines — each draft's tag line, blank line, marker, sections, its own line's
+// compare link and the footer appended to EVERY draft — as bytes, the way the
+// single line's golden does, at goldenTarget for the same reason.
 // Regenerate with `go test ./internal/cli -run Golden -update`, and read the
 // diff as the spec change it is (the commit needs a Golden-change trailer).
 func TestReleasePackagesDryRunGolden(t *testing.T) {
@@ -788,7 +789,7 @@ func TestReleasePackagesDryRunGolden(t *testing.T) {
 	usePR(t, dryServer(t, routes))
 	t.Chdir(dir)
 
-	code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--footer-file", footer)
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--footer-file", footer, "--target", goldenTarget)
 	if code != 0 {
 		t.Fatalf("release --dry-run exited %d, want 0\nstderr: %s", code, stderr)
 	}

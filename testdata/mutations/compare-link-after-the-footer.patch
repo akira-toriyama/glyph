@@ -1,0 +1,20 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 92869f4..13d21f4 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -247,13 +247,14 @@ func releaseRun(cmd *cobra.Command) error {
+ 	}
+ 	// The link closes the notes, BEFORE the footer: the machine region is then
+ 	// notes' output for the same walk followed by the caller's block.
+-	body := compareLink(notes.RenderSigils(sections), owner, repoName, w.Lines[0].BaseTag, target)
++	body := notes.RenderSigils(sections)
+ 	if footer != "" {
+ 		// One --- line between the notes and the caller's install block (Q11)
+ 		// — composed here so a dry run previews the EXACT published body and
+ 		// no caller ever concatenates markdown in shell.
+ 		body = body + "\n---\n\n" + footer
+ 	}
++	body = compareLink(body, owner, repoName, w.Lines[0].BaseTag, target)
+ 	// The plan is computed BEFORE the body is final, because the body depends
+ 	// on it: an update must re-read the kept draft's current body and carry
+ 	// the hand region across (see composeDraftBody) — the rolling draft is the

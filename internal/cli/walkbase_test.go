@@ -31,7 +31,7 @@ func TestSinceTagBaseIsAReleaseHEADContains(t *testing.T) {
 	testCommit(t, dir, "akira-toriyama", ":bug:~ third")
 	t.Chdir(dir)
 
-	revRange, base, err := sinceTagRange(t.Context(), testCfg(t), sinceTagAuto)
+	revRange, _, base, err := sinceTagRange(t.Context(), testCfg(t), sinceTagAuto)
 	if err != nil {
 		t.Fatalf("sinceTagRange: %v", err)
 	}

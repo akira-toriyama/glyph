@@ -1,10 +1,10 @@
 diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index 79a5f24..5c65925 100644
+index 7932d15..b330996 100644
 --- a/internal/cli/lines.go
 +++ b/internal/cli/lines.go
-@@ -141,7 +141,7 @@ func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string,
- 		lines = []line{l}
- 	default:
+@@ -155,7 +155,7 @@ func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string,
+ 			return nil, "", terr
+ 		}
  		prefix, _ := bump.SplitTag(tag)
 -		if shape, perr := bump.ParseBaseVersionOn(prefix, tag); perr == nil {
 +		if shape, perr := bump.ParseVersionOn(prefix, tag); perr == nil {

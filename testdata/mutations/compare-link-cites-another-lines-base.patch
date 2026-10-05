@@ -1,0 +1,26 @@
+diff --git a/internal/cli/cmd_notes.go b/internal/cli/cmd_notes.go
+index b28ecca..29c80af 100644
+--- a/internal/cli/cmd_notes.go
++++ b/internal/cli/cmd_notes.go
+@@ -171,7 +171,7 @@ func notesLines(cmd *cobra.Command, cfg *config.Config) error {
+ 		if len(sections) == 0 {
+ 			continue
+ 		}
+-		said = append(said, lineBody{path: lw.Package.Path, base: lw.BaseTag, notes: notes.RenderSigils(sections)})
++		said = append(said, lineBody{path: lw.Package.Path, base: strings.TrimSuffix(w.Source, "..HEAD"), notes: notes.RenderSigils(sections)})
+ 	}
+ 	if len(said) == 0 {
+ 		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section on any line", len(w.All), w.Source)
+diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
+index 3771f4c..4493ea3 100644
+--- a/internal/cli/release_lines.go
++++ b/internal/cli/release_lines.go
+@@ -164,7 +164,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
+ 		}
+ 		// Each line's link starts at that line's own base tag — never the
+ 		// union's merge base, never a sibling's tag (§4.1).
+-		body := compareLink(notes.RenderSigils(sections), owner, repoName, lw.BaseTag, target)
++		body := compareLink(notes.RenderSigils(sections), owner, repoName, strings.TrimSuffix(w.Source, "..HEAD"), target)
+ 		if footer != "" {
+ 			body = body + "\n---\n\n" + footer
+ 		}
