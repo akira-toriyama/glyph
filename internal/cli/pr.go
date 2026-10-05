@@ -218,10 +218,10 @@ func pullInput(ctx context.Context, number int, repoFlag string) ([]gitsource.Ra
 // its walk-wide SHA set BEFORE anything parses it. A commit the walk already
 // folded in is already represented in the verdict, so re-reading its message
 // can only do harm: a pull request squash-merged into a topic branch leaves its
-// own squash subject (`Add a menu (#6)` — not gitmoji-formed, as no squash
-// subject is) inside the listing of the pull that later landed that branch, and
-// parsing it there wedged the release permanently (t-7zt7). Parse only what the
-// walk has not already accounted for.
+// own squash subject (`Add a menu (#6)`, which no pattern claims) inside the
+// listing of the pull that later landed that branch, and parsing it there
+// wedged the release permanently (t-7zt7). Parse only what the walk has not
+// already accounted for.
 func pullRawCommits(ctx context.Context, c *github.Client, owner, repo string, number int) ([]gitsource.RawCommit, error) {
 	raws, err := c.PullCommits(ctx, owner, repo, number)
 	if err != nil {

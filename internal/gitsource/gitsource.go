@@ -127,10 +127,11 @@ func RemoteTips(ctx context.Context, dir, remote string) ([]string, error) {
 
 // RemoteURLs maps each configured remote's name to its URL.
 //
-// The caller is the pre-push hook, which git hands a remote NAME or a bare URL
-// in the same argument (measured: `git push git@host:o/r.git HEAD` passes the
-// URL as both `$1` and `$2`), so the name has to be recovered from the URL
-// before anything can be asked about the remote's tracking refs.
+// For the pre-push hook the map is how a remote's name is found: git hands
+// the hook a remote NAME or a bare URL in the same argument (measured:
+// `git push git@host:o/r.git HEAD` passes the URL as both `$1` and `$2`), so
+// the name has to be recovered from the URL before anything can be asked about
+// the remote's tracking refs.
 //
 // No remotes at all is an empty map, not an error: git spells it exit 1, the
 // same shape ConfigGet documents for an unset key.

@@ -219,8 +219,8 @@ func foldDecision(a, b bump.Decision) bump.Decision {
 	return a.Merge(b)
 }
 
-// orNone normalizes an uncomputed level. Bump's zero value is "" rather than
-// "none" (it is a string type), and a skipped pending walk leaves exactly that
+// orNone normalizes an uncomputed level. bump.Level's zero value is "" rather
+// than "none" (it is a string type), and a skipped pending walk leaves exactly that
 // — which must read as "nothing pending", never as an unknown that leaks into
 // the JSON surface.
 func orNone(b bump.Level) bump.Level {

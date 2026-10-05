@@ -29,17 +29,18 @@ import (
 // previously installed hook look foreign.
 const Marker = "installed-by: glyph hook install"
 
-// Script is the commit-msg hook. Three properties are load-bearing:
+// commitMsgScript is the commit-msg hook. Three properties are load-bearing:
 //
-//   - It never matches the convention itself. No regex, no gitmoji list — those
-//     live in the binary, so the hook cannot go stale.
+//   - It never matches the convention itself. No regex, no copy of glyph.toml's
+//     patterns — glyph reads those at run time, so the hook cannot go stale.
 //   - It stops a commit for ONE reason only: glyph's lint gate code, a real
 //     convention violation. Any other failure means glyph could not answer —
 //     not on PATH, no source clone behind the wrapper, a broken build — and the
 //     commit proceeds with a warning. The hook is an early-warning device on
 //     developer machines; the commit-lint CI job is the authority. Blocking a
 //     commit because the tool is unwell would make glyph a hard dependency of
-//     committing to six repos, which is a worse failure than a late lint.
+//     committing to every repository that installs it, which is a worse failure
+//     than a late lint.
 //   - Consequently it must NEVER exit non-zero on its own account. Every path
 //     that is not "glyph said violation" ends in exit 0.
 //
@@ -92,13 +93,13 @@ exit 0
 `, Marker, int(core.CodeLint), convention, argSuffix)
 }
 
-// PrePushScript is the pre-push hook. It carries the same three properties as
-// Script and one more that is specific to it: it computes NOTHING about the
-// push. git's protocol arrives on stdin and reaches glyph untouched, and argv
+// prePushScript is the pre-push hook. It carries the same three properties as
+// commitMsgScript and one more that is specific to it: it computes NOTHING about
+// the push. git's protocol arrives on stdin and reaches glyph untouched, and argv
 // is forwarded verbatim rather than mapped onto flags.
 //
 // That last part is a rollout decision, not a style one. This file is installed
-// once into ~34 clones and nothing refreshes one — no pull, no fleet-sync, no
+// once per clone and nothing refreshes one — no pull, no fleet-sync, no
 // CI job — so a script that named git's arguments would freeze today's argv
 // shape into every copy, and the day git passes a third argument every frozen
 // copy turns a push into a usage error. The same reasoning put the commit-msg

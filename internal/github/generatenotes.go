@@ -2,7 +2,7 @@ package github
 
 // GitHub's own release-notes composer, kept as an ORACLE and nothing else.
 // glyph never ships this text — internal/notes owns what a release body says —
-// but the squash→PR resolution the walk stands on (DESIGN §1's one novel hop)
+// but the squash→PR resolution the walk stands on (prior art, DESIGN §1)
 // is a model of GitHub behaviour, and the house rule for such models is one
 // test that asks the real system. generate-notes is that system answering the
 // same question from its own side: which merged pulls does this range hold.

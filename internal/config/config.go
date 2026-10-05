@@ -139,9 +139,9 @@ type Commit struct {
 // scope names nothing and is exempt. Names are unique across the array; the
 // loader refuses two packages sharing one and names both.
 //
-// There is deliberately no TagPrefix: the tag line is derived from Path and
-// is not configurable (§4.1 rejects the knob; the strict decoder refuses the
-// key as unknown, which is the whole enforcement).
+// There is deliberately no tag_prefix key: the tag line is derived from Path
+// (TagPrefix) and is not configurable (§4.1 rejects the knob; the strict
+// decoder refuses the key as unknown, which is the whole enforcement).
 type Package struct {
 	Path string
 	Name string

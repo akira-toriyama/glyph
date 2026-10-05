@@ -34,7 +34,7 @@ const (
 	// userAgent is mandatory — GitHub rejects a request without one.
 	userAgent = "glyph"
 	// perPage asks for the largest page so pagination is the exception. Two of
-	// the three paginated endpoints (commits/{sha}/pulls, pulls/{n}/commits)
+	// the three endpoints that send it (commits/{sha}/pulls, pulls/{n}/commits)
 	// return single-digit pages in practice; the releases listing is the one that
 	// can genuinely run long on an old repository, and it is walked in full
 	// because the rolling-draft reconciliation has to see every draft.
@@ -286,7 +286,8 @@ func (c *Client) CommitPulls(ctx context.Context, owner, repo, sha string) ([]Pu
 
 // PullCommits returns a pull request's individual commits oldest first
 // (GET /repos/{owner}/{repo}/pulls/{number}/commits), following pagination —
-// the pre-squash commits whose gitmoji drive the bump and the notes.
+// the pre-squash commits whose sigils drive the bump and whose messages drive
+// the notes.
 func (c *Client) PullCommits(ctx context.Context, owner, repo string, number int) ([]Commit, error) {
 	first := fmt.Sprintf("%s/repos/%s/%s/pulls/%d/commits?per_page=%s",
 		c.baseURL, url.PathEscape(owner), url.PathEscape(repo), number, perPage)

@@ -12,9 +12,9 @@ import (
 // matches it exactly (wt_status_locate_end does strstr on "\n" + this string).
 // The loose regex that stood here (`^\s*#\s*-+\s*>8\s*-+\s*$`) cut on a line git
 // would have KEPT: an indented one is not even a comment to git, so the text
-// below it is recorded, and glyph threw it away — a `NON-BREAKING:` footer
-// sitting under such a line is invisible to the hook and present in CI, which is
-// `undeclared-removal` refusing a commit CI then accepts. Being exact fails in
+// below it is recorded, and glyph threw it away — the hook judged a message git
+// does not record (under v1's footer rule, a `NON-BREAKING:` footer below such a
+// line made the hook refuse a commit CI then accepted). Being exact fails in
 // the other direction if a future git changes the line, so the constant is not
 // trusted on faith: TestCutLineIsTheOneGitWrites drives a real `git commit -v`
 // and asserts git still writes THIS string.
@@ -84,7 +84,8 @@ const (
 // editor will run" marker — and everything else, unset included, means an editor
 // may. That asymmetry is deliberate: reading unset as "no editor" would put a
 // `core.editor` user on the whitespace branch, where the editor template is not
-// stripped and every commit is `malformed-subject` at the hook.
+// stripped and the hook judges comment lines git never records: with the
+// template above the message, its first comment is the subject the hook refuses.
 //
 // `known` is false for a mode name git does not have. The caller must still lint
 // (with the returned fallback) and merely warn: the commits that reach a hook
@@ -120,7 +121,7 @@ func ResolveMode(configured string, edited bool, verbose Verbose) (mode Mode, kn
 	}
 }
 
-// Cleanup reduces a raw commit-message FILE — what git hands a commit-msg hook —
+// Apply reduces a raw commit-message FILE — what git hands a commit-msg hook —
 // to the message git will actually record, under the cleanup git is about to
 // apply to it.
 //
@@ -140,24 +141,26 @@ func ResolveMode(configured string, edited bool, verbose Verbose) (mode Mode, kn
 //	    glyph dropped it as a comment and linted line 2 ⇒ hook 0, CI 3
 //	git commit -F msg   with an indented "  # why:" line above NON-BREAKING:
 //	    git records the line; glyph dropped it, closing the gap that made the
-//	    footer a trailer ⇒ hook 0, CI 3 (undeclared-removal)
+//	    footer a trailer ⇒ hook 0, CI 3 (v1's undeclared-removal footer rule)
 //
 // Everything below the mode is a port of git's strbuf_stripspace (strbuf.c) and
 // wt_status_locate_end (wt-status.c) rather than an approximation of them,
 // because an approximation is what the two rows above are. `git stripspace` is
-// the same function on the command line, so the port is held to it by a
-// differential test over generated messages (TestCleanupMatchesGitStripspace).
+// the same function on the command line; the differential over generated
+// messages that held the port to it left with internal/parser in v2, and real
+// git now checks the port through the commits internal/cli's hook oracles make
+// (DESIGN §5).
 //
 // The comment character is assumed to be '#'. A repo that sets core.commentChar
 // to something else keeps its comments in the linted text — the same behaviour
 // as before this function existed, never worse.
 //
-// Only the authoring path (`--stdin`) calls this. A --range walk reads messages
-// from `git log %B`, which git has already cleaned — internal/gitsource strips
-// the one closing newline git records a message with, the only thing that
-// separated it from this function's output shape (DESIGN §2.1); running this
-// there would silently swallow a genuinely empty message and any body line a
-// project chose to start with '#'.
+// Only the authoring path (`--stdin`, and doctor's replay of it) calls this. A
+// --range walk reads messages from `git log %B`, which git has already cleaned —
+// internal/gitsource strips the one closing newline git records a message with,
+// the only thing that separated it from this function's output shape (DESIGN
+// §2.1); running this there would silently swallow a genuinely empty message and
+// any body line a project chose to start with '#'.
 func Apply(message string, mode Mode) string {
 	if mode.Truncate {
 		message = truncateAtCutLine(message)
