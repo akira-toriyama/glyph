@@ -432,6 +432,38 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		}
 	})
 
+	// t-2etd (c): the pre-push hook blocks only on the default branch it reads
+	// from refs/remotes/<remote>/HEAD. A remote added without that ref leaves
+	// the hook warning and exiting 0 on every push; doctor names the remote
+	// and the command, as advice — and stops once the ref is recorded.
+	t.Run("a remote with no recorded default branch is advice on the pre-push hook", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		installCurrentHook(t)
+		if err := os.WriteFile(".git/hooks/pre-push", []byte(hook.Kinds()[1].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
+			t.Fatalf("install pre-push: %v", err)
+		}
+		stubGlyphOnPATH(t, 3)
+		testGit(t, ".", "akira-toriyama", "remote", "add", "origin", "https://example.invalid/o/r.git")
+
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
+		rep := decodeDoctorJSON(t, stdout)
+		if code != 0 {
+			t.Fatalf("doctor exited %d, want 0 — advice never moves the exit\nstderr: %s", code, stderr)
+		}
+		c := checkByID(t, rep, "pre-push-hook")
+		if c.Status != "advice" || !strings.Contains(c.Observed, "no default branch for origin") ||
+			!strings.Contains(c.Fix, "git remote set-head origin -a") {
+			t.Errorf("an unrecorded origin/HEAD must be advice naming origin and the fix, got %s: %s (fix %q)", c.Status, c.Observed, c.Fix)
+		}
+
+		testGit(t, ".", "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+		_, stdout, _ = runGlyph(t, "doctor", "--json")
+		if c := checkByID(t, decodeDoctorJSON(t, stdout), "pre-push-hook"); c.Status != "pass" {
+			t.Errorf("with origin/HEAD recorded and the commit-msg probe fired, pre-push-hook = %s (%s), want pass", c.Status, c.Observed)
+		}
+	})
+
 	t.Run("a foreign hook is not fired", func(t *testing.T) {
 		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 		useDoctorCheckout(t, pinnedCaller)
@@ -985,6 +1017,53 @@ func TestDoctorInterruptDuringActionFilesReadCarriesOut(t *testing.T) {
 	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
 	if code != 130 {
 		t.Fatalf("doctor exited %d, want 130 — an interrupt in the action-file listing is the user's own abort, not a check result", code)
+	}
+	if stdout != "" {
+		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
+	}
+}
+
+// TestDoctorInterruptDuringRemoteHeadsReadCarriesOut is the same guard, last
+// read: with a byte-identical pre-push hook installed, doctor asks git for
+// each remote's recorded default branch after every other read, so a signal
+// landing there is carried by headsErr alone — left out of the guard it is
+// laundered into pre-push-hook could-not-run at exit 4. The fake git answers
+// every earlier read and blocks on `config --get-regexp`.
+func TestDoctorInterruptDuringRemoteHeadsReadCarriesOut(t *testing.T) {
+	srv := doctorServer(t, apiRepoObject(healthySettings))
+	usePR(t, srv)
+	useDoctorCheckout(t, pinnedCaller)
+	if err := os.MkdirAll(".git/hooks", 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(".git/hooks/pre-push", []byte(hook.Kinds()[1].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
+		t.Fatal(err)
+	}
+
+	bin := t.TempDir()
+	asked := filepath.Join(bin, "asked")
+	script := "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$*\" in\n*--git-path*) echo .git/hooks; exit 0;;\n*--show-toplevel*) pwd; exit 0;;\n*\" tag \"*) exit 0;;\n*\" ls-tree \"*) exit 0;;\n*\" ls-files \"*) exit 0;;\nesac\ntouch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for range 400 {
+			if _, err := os.Stat(asked); err == nil {
+				cancel()
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel() // safety net: never leave the run behind the fake's 30s block
+	}()
+
+	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	if code != 130 {
+		t.Fatalf("doctor exited %d, want 130 — an interrupt in the remote-heads read is the user's own abort, not a check result", code)
 	}
 	if stdout != "" {
 		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)

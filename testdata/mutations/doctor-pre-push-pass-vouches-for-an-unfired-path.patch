@@ -1,13 +1,13 @@
 diff --git a/internal/doctor/hook.go b/internal/doctor/hook.go
-index f44d97e..3950b3b 100644
+index 71c0c13..5ec33d3 100644
 --- a/internal/doctor/hook.go
 +++ b/internal/doctor/hook.go
-@@ -234,7 +234,7 @@ func diffSummary(installed, want string) string {
- func checkPrePushHook(dir string, dirErr error, probe *HookProbe) Check {
- 	k := hook.Kinds()[1]
- 	c := checkHook(k, IDPrePushHook, dir, dirErr)
--	if c.Status != StatusPass || probe != nil {
-+	if c.Status != StatusPass || probe != nil || true {
+@@ -266,7 +266,7 @@ func checkPrePushHook(dir string, dirErr error, probe *HookProbe, heads map[stri
+ 		}
+ 	}
+ 	sort.Strings(unrecorded)
+-	if probe != nil && len(unrecorded) == 0 {
++	if len(unrecorded) == 0 {
  		return c
  	}
- 	body, err := os.ReadFile(filepath.Join(dir, k.Name)) // #nosec G304 -- the path git itself reported for this checkout
+ 

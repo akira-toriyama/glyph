@@ -2993,7 +2993,17 @@ The severities are the argued part:
   executed, at the severity of a hook glyph did not write: a standing choice,
   rare (none of 52 clones in t-2etd's census, 2026-09-27), and no reason to
   move `ok` (`TestPrePushHookSaysWhenNothingWasFired`, mutation row
-  `doctor-pre-push-pass-vouches-for-an-unfired-path`). Firing pre-push itself
+  `doctor-pre-push-pass-vouches-for-an-unfired-path`). The same check carries
+  one more advice line for the same reason: the hook refuses a violation only
+  on the remote's default branch, read from `refs/remotes/<remote>/HEAD` — a
+  local ref, never the network — and a clone that does not record it warns
+  and exits `0` on every push (t-2etd's triage measured `0`, then `3` once
+  `git remote set-head origin -a` had run). `internal/cli` reads each remote's
+  recorded head through `gitsource.DefaultBranch` only when the pre-push hook
+  is byte-identical, so a checkout with no hook — every CI runner — pays
+  nothing; a read that fails is `unknown`, like any unread input
+  (`TestPrePushHookSaysWhenNoRemoteHeadIsRecorded`, mutation row
+  `doctor-pre-push-ignores-an-unrecorded-remote-head`). Firing pre-push itself
   — a `PrePushProbe` beside the commit-msg one — stays unbuilt. It would carry
   a fabricated push into a read-only diagnosis: a scratch repository, a bare
   remote, a pushed base, a recorded remote HEAD and a violating commit (without

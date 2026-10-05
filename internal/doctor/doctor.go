@@ -163,6 +163,14 @@ type Input struct {
 	// stamped build cannot speak for a release newer than its own (judgeAt);
 	// `dev`, a pseudo-version or a git-describe stamp has no upper end.
 	GlyphVersion string
+	// RemoteHeads / RemoteHeadsErr are, for each configured remote, the
+	// default branch this clone records (refs/remotes/<remote>/HEAD, "" when
+	// none — gitsource.DefaultBranch, a local ref, never the network) and the
+	// failure to read them. The caller reads them only when the installed
+	// pre-push hook is byte-identical, the one arm whose pass they qualify;
+	// nil with a nil error means not read.
+	RemoteHeads    map[string]string
+	RemoteHeadsErr error
 }
 
 // HookProbe is what came back from firing a hook. Fired with Exit is a real
@@ -240,7 +248,7 @@ func Run(in Input) *Report {
 		checkCallerInputs(in.Root, in.RootVerified, in.GlyphVersion),
 		checkHook(hook.Kinds()[0], IDCommitMsgHook, in.HooksDir, in.HooksErr),
 		checkHookFires(in.CommitMsgProbe, in.HooksErr, config.Status == StatusPass),
-		checkPrePushHook(in.HooksDir, in.HooksErr, in.CommitMsgProbe),
+		checkPrePushHook(in.HooksDir, in.HooksErr, in.CommitMsgProbe, in.RemoteHeads, in.RemoteHeadsErr),
 	}}
 	r.OK = true
 	for _, c := range r.Checks {

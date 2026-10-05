@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v4/internal/core"
@@ -219,37 +220,80 @@ func diffSummary(installed, want string) string {
 
 // checkPrePushHook is checkHook for the pre-push kind, qualified where its
 // pass would vouch for more than it observed (t-2etd). probe is the commit-msg
-// probe's outcome, nil when nothing was fired.
+// probe's outcome, nil when nothing was fired; heads / headsErr are each
+// remote's recorded default branch and the failure to read them (Input).
 //
-// A byte-identical pre-push hook proves its script, not the glyph it resolves
-// on PATH. That question is answered by firing the commit-msg hook — both
-// resolve one PATH (probeCommitMsgHook, internal/cli) — so a current pre-push
-// with nothing fired beside it (pre-push installed alone by name, or a
-// commit-msg deleted or replaced after install) read all green while nobody
-// had asked whether its gate can lint. ADVICE, not unknown or fail, by the
-// rule DESIGN §7 applies to a hook glyph did not write: a standing choice,
-// rare (none of 52 clones in t-2etd's census, 2026-09-27), and no reason to
-// flip ok — the commit-msg-hook check already carries a stale or foreign
-// neighbour. Firing pre-push itself stays unbuilt (DESIGN §7).
-func checkPrePushHook(dir string, dirErr error, probe *HookProbe) Check {
+// Two things a byte-identical pre-push hook does not prove, each one ADVICE
+// line on its pass — never unknown or fail, by the rule DESIGN §7 applies to a
+// hook glyph did not write: a standing choice, rare, and no reason to flip ok.
+//
+//   - The glyph it resolves on PATH. That is answered by firing the
+//     commit-msg hook — both resolve one PATH (probeCommitMsgHook,
+//     internal/cli) — so a current pre-push with nothing fired beside it
+//     (pre-push installed alone by name, or a commit-msg deleted or replaced
+//     after install) read all green while nobody had asked whether its gate
+//     can lint (none of 52 clones in t-2etd's census, 2026-09-27). Firing
+//     pre-push itself stays unbuilt (DESIGN §7).
+//   - That it can block at all. The hook refuses a violation only on the
+//     remote's default branch, read from refs/remotes/<remote>/HEAD; a clone
+//     that does not record it warns and exits 0 on every push (t-2etd's
+//     triage: 0, then 3 once `git remote set-head origin -a` had run).
+//
+// The heads are an input like any other: unread is unknown, never the pass
+// that would say the hook can block.
+func checkPrePushHook(dir string, dirErr error, probe *HookProbe, heads map[string]string, headsErr error) Check {
 	k := hook.Kinds()[1]
 	c := checkHook(k, IDPrePushHook, dir, dirErr)
-	if c.Status != StatusPass || probe != nil {
+	if c.Status != StatusPass {
 		return c
 	}
 	body, err := os.ReadFile(filepath.Join(dir, k.Name)) // #nosec G304 -- the path git itself reported for this checkout
 	if err != nil || string(body) != k.Script {
 		return c // nothing installed: no gate to vouch for
 	}
+	if headsErr != nil {
+		c.Status = StatusUnknown
+		c.Observed += fmt.Sprintf(", but whether git records each remote's default branch could not be read: %v", headsErr)
+		c.Message = "the hook blocks a violation only on the default branch it reads from refs/remotes/<remote>/HEAD, so " +
+			"with that unread, whether this hook can block a push at all is unverified, not verified"
+		c.Fix = "re-run from inside the git checkout"
+		return c
+	}
+	var unrecorded []string
+	for remote, branch := range heads {
+		if branch == "" {
+			unrecorded = append(unrecorded, remote)
+		}
+	}
+	sort.Strings(unrecorded)
+	if probe != nil && len(unrecorded) == 0 {
+		return c
+	}
+
 	c.Status = StatusAdvice
-	c.Observed += ", but the glyph it resolves on PATH was not executed: no byte-identical commit-msg hook sits " +
-		"beside it, so nothing was fired"
-	c.Message = "doctor proves the PATH glyph can lint by firing the commit-msg hook, and that answer covers pre-push " +
-		"only because both resolve one PATH. With no byte-identical commit-msg hook — pre-push installed alone by " +
-		"name, or commit-msg deleted or replaced after install — nothing asked, and a pre-push hook over a glyph that " +
-		"cannot answer lets every push through (it blocks only on the gate code). The bytes are current; whether the " +
-		"gate they call works is unverified"
-	c.Fix = "`glyph hook install` adds the commit-msg hook doctor fires (`--force` over a foreign one); or check by " +
-		"hand what `command -v glyph` resolves to and that `glyph lint --message probe` exits 3"
+	var gaps, why, fixes []string
+	if probe == nil {
+		gaps = append(gaps, "the glyph it resolves on PATH was not executed: no byte-identical commit-msg hook sits "+
+			"beside it, so nothing was fired")
+		why = append(why, "doctor proves the PATH glyph can lint by firing the commit-msg hook, and that answer covers "+
+			"pre-push only because both resolve one PATH. With no byte-identical commit-msg hook — pre-push installed "+
+			"alone by name, or commit-msg deleted or replaced after install — nothing asked, and a pre-push hook over a "+
+			"glyph that cannot answer lets every push through (it blocks only on the gate code). The bytes are current; "+
+			"whether the gate they call works is unverified")
+		fixes = append(fixes, "`glyph hook install` adds the commit-msg hook doctor fires (`--force` over a foreign "+
+			"one); or check by hand what `command -v glyph` resolves to and that `glyph lint --message probe` exits 3")
+	}
+	if len(unrecorded) > 0 {
+		gaps = append(gaps, fmt.Sprintf("git records no default branch for %s, so a push there can block nothing", join(unrecorded)))
+		why = append(why, "the hook refuses a violation only on the remote's default branch, and learns which branch "+
+			"that is from refs/remotes/<remote>/HEAD — a local ref, never the network. A clone made before that ref "+
+			"existed, or a remote added without it, has none, and the hook then warns and exits 0 rather than guess `main`")
+		for _, remote := range unrecorded {
+			fixes = append(fixes, "git remote set-head "+remote+" -a")
+		}
+	}
+	c.Observed += ", but " + strings.Join(gaps, "; and ")
+	c.Message = strings.Join(why, ". ")
+	c.Fix = strings.Join(fixes, "; ")
 	return c
 }

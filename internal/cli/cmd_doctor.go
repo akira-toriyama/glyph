@@ -89,7 +89,9 @@ func newDoctorCmd() *cobra.Command {
 			"    byte-identical bytes still prove nothing about the glyph the hook resolves\n" +
 			"    on PATH — the chain is only healthy if the probe comes back with a verdict.\n" +
 			"    Its answer covers pre-push (one PATH); a current pre-push hook with no\n" +
-			"    current commit-msg beside it was never fired, and says so as advice\n\n" +
+			"    current commit-msg beside it was never fired, and says so as advice —\n" +
+			"    as it does for a remote whose default branch this clone does not\n" +
+			"    record (refs/remotes/<remote>/HEAD), where the hook can block nothing\n\n" +
 			"--repo moves only the API side. The workflow-pin check always reads the LOCAL\n" +
 			"checkout, because a pin is a fact about the tree in front of you — pointing\n" +
 			"--repo elsewhere diagnoses that repository's settings and THIS checkout's pins.\n\n" +
@@ -221,6 +223,37 @@ func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.H
 	return &doctor.HookProbe{Err: err}
 }
 
+// readRemoteHeads asks, for every configured remote, which default branch this
+// clone records (gitsource.DefaultBranch — a local ref, never the network): the
+// pre-push hook refuses a violation only there, and with none recorded it can
+// block nothing (t-2etd (c)). Read only when the installed pre-push hook is
+// byte-identical — the one arm whose pass this qualifies — so a checkout with no
+// hook, which is every CI runner, pays no subprocess. nil with a nil error
+// means not read.
+func readRemoteHeads(ctx context.Context, dir string, dirErr error) (map[string]string, error) {
+	if dirErr != nil {
+		return nil, nil
+	}
+	k := hook.Kinds()[1]
+	body, err := os.ReadFile(filepath.Join(dir, k.Name)) // #nosec G304 -- the path git itself reported for this checkout
+	if err != nil || string(body) != k.Script {
+		return nil, nil
+	}
+	urls, err := gitsource.RemoteURLs(ctx, ".")
+	if err != nil {
+		return nil, err
+	}
+	heads := make(map[string]string, len(urls))
+	for remote := range urls {
+		branch, berr := gitsource.DefaultBranch(ctx, ".", remote)
+		if berr != nil {
+			return nil, berr
+		}
+		heads[remote] = branch
+	}
+	return heads, nil
+}
+
 // probeErr unwraps the probe's own failure for the interrupt guard below — a
 // Ctrl-C that lands mid-probe is the user's abort, never a check result.
 func probeErr(p *doctor.HookProbe) error {
@@ -298,15 +331,16 @@ func doctorRun(cmd *cobra.Command) error {
 	if probe != nil {
 		probe.Claimed = probeClaimed(cmd.Context(), configPath, terr)
 	}
+	remoteHeads, headsErr := readRemoteHeads(cmd.Context(), hooksDir, herr)
 	// An interrupt is the user's own abort and must never be laundered into a
 	// check result: reporting "the token cannot read the repository" — or "git
 	// could not report where hooks live" — because somebody pressed Ctrl-C
-	// would be a diagnosis of the wrong thing entirely. Both reads run before
-	// this guard, and the signal lands in whichever is in flight, so both are
-	// asked: guarding rerr alone turned a mid-run SIGTERM into exit 4 with the
+	// would be a diagnosis of the wrong thing entirely. Every read runs before
+	// this guard, and the signal lands in whichever is in flight, so every one
+	// is asked: guarding rerr alone turned a mid-run SIGTERM into exit 4 with the
 	// abort rendered as the hook check's could-not-run — the one code the
 	// fleet's wrappers read as retryable infra, on a run the operator stopped.
-	if err := firstInterrupt(rerr, herr, terr, tagsErr, treesErr, actionErr, probeErr(probe)); err != nil {
+	if err := firstInterrupt(rerr, herr, terr, tagsErr, treesErr, actionErr, headsErr, probeErr(probe)); err != nil {
 		return err
 	}
 	report := doctor.Run(doctor.Input{
@@ -328,6 +362,8 @@ func doctorRun(cmd *cobra.Command) error {
 		ActionFiles:     actionFiles,
 		ActionFilesErr:  actionErr,
 		GlyphVersion:    version.Resolve().Version,
+		RemoteHeads:     remoteHeads,
+		RemoteHeadsErr:  headsErr,
 	})
 
 	// Annotations go out in BOTH modes, before the payload. On an Actions

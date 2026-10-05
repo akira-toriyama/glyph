@@ -233,14 +233,14 @@ func TestPrePushHookSaysWhenNothingWasFired(t *testing.T) {
 	dir := hooksDirWith(t, prePush.Name, prePush.Script)
 
 	fired := &HookProbe{Fired: true, Exit: int(core.CodeLint)}
-	if c := checkPrePushHook(dir, nil, fired); c.Status != StatusPass {
+	if c := checkPrePushHook(dir, nil, fired, nil, nil); c.Status != StatusPass {
 		t.Fatalf("pre-push current, commit-msg fired: status = %s (%s), want %s — the probe answered the PATH question", c.Status, c.Observed, StatusPass)
 	}
-	if c := checkPrePushHook(t.TempDir(), nil, nil); c.Status != StatusPass {
+	if c := checkPrePushHook(t.TempDir(), nil, nil, nil, nil); c.Status != StatusPass {
 		t.Fatalf("no pre-push hook, nothing fired: status = %s (%s), want %s — absence vouches for nothing", c.Status, c.Observed, StatusPass)
 	}
 
-	c := checkPrePushHook(dir, nil, nil)
+	c := checkPrePushHook(dir, nil, nil, nil, nil)
 	if c.Status != StatusAdvice {
 		t.Fatalf("pre-push current, nothing fired: status = %s (%s), want %s", c.Status, c.Observed, StatusAdvice)
 	}
@@ -260,6 +260,51 @@ func TestPrePushHookSaysWhenNothingWasFired(t *testing.T) {
 	}
 	if !r.OK {
 		t.Errorf("ok = false over advice alone — an unfired PATH is unverified, not a defect: counts %+v", r.Counts)
+	}
+}
+
+// TestPrePushHookSaysWhenNoRemoteHeadIsRecorded pins t-2etd (c). The pre-push
+// hook refuses a violation only on the remote's default branch, and learns
+// which branch that is from refs/remotes/<remote>/HEAD — a local ref. A clone
+// that does not record it gets warnings and exit 0 on every push (measured by
+// t-2etd's triage: the same violating push exited 0, then 3 once `git remote
+// set-head origin -a` had run), while the pre-push check passed. Now that is
+// one advice line naming the remote and the command that restores the ref.
+func TestPrePushHookSaysWhenNoRemoteHeadIsRecorded(t *testing.T) {
+	prePush := hook.Kinds()[1]
+	dir := hooksDirWith(t, prePush.Name, prePush.Script)
+	fired := &HookProbe{Fired: true, Exit: int(core.CodeLint)}
+
+	for name, heads := range map[string]map[string]string{
+		"every remote records its head":  {"origin": "main", "upstream": "master"},
+		"not read (no current pre-push)": nil,
+		"no remote at all":               {},
+	} {
+		if c := checkPrePushHook(dir, nil, fired, heads, nil); c.Status != StatusPass {
+			t.Errorf("%s: status = %s (%s), want %s", name, c.Status, c.Observed, StatusPass)
+		}
+	}
+
+	c := checkPrePushHook(dir, nil, fired, map[string]string{"origin": "", "upstream": "main"}, nil)
+	if c.Status != StatusAdvice {
+		t.Fatalf("origin's head unrecorded: status = %s (%s), want %s", c.Status, c.Observed, StatusAdvice)
+	}
+	if !strings.Contains(c.Observed, "origin") || strings.Contains(c.Observed, "upstream") {
+		t.Errorf("the observation must name exactly the remote with no recorded head: %q", c.Observed)
+	}
+	if !strings.Contains(c.Fix, "git remote set-head origin -a") {
+		t.Errorf("the fix must be the command that records the head: %q", c.Fix)
+	}
+
+	both := checkPrePushHook(dir, nil, nil, map[string]string{"origin": ""}, nil)
+	if both.Status != StatusAdvice || !strings.Contains(both.Observed, "nothing was fired") || !strings.Contains(both.Observed, "origin") {
+		t.Errorf("nothing fired and no head recorded: want one advice carrying both, got %s: %s", both.Status, both.Observed)
+	}
+
+	// The heads are an input like any other: unread is unknown, never the
+	// pass that would say the hook can block.
+	if c := checkPrePushHook(dir, nil, fired, nil, errors.New("git config --get-regexp: fatal: bad config")); c.Status != StatusUnknown {
+		t.Errorf("remote heads unreadable: status = %s (%s), want %s", c.Status, c.Observed, StatusUnknown)
 	}
 }
 
