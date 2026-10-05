@@ -1503,6 +1503,86 @@ addressed to the version fold); diffing the body against a re-render to
 detect edits (the base moves between pushes, so staleness and hand edits are
 indistinguishable). (Mutation row `draft-hand-region-discarded.patch`.)
 
+**The compare link** (t-v7f7): per-commit shas and `#N` citations give every
+line an address, and nothing gave the range one — glyph's own v4.2.0 page ended
+at its last bullet with no URL in it (t-v7f7's measurement). A body glyph
+renders from a walk that resolved a tag base therefore closes a non-empty notes
+body with `**Full Changelog**: https://<host>/<owner>/<repo>/compare/<base>...<end>`,
+GitHub's own generate-notes spelling of the line; an empty one gets none, as
+`notes` prints none, so a `draft_on_none` placeholder over an empty fold carries
+the marker alone. `<host>` is the API base's (`apiHost`), ports dropped — which
+links GHE.com data residency, whose API host is `api.<sub>.ghe.com`, under that
+API host: a hole named rather than closed, since no fleet repository sits in it.
+`<base>` is the tag the walk resolved, in its own spelling (never re-spelled from
+the parsed version), and only when the base is a tag. Re-spelled, a bare `1.0.0`
+tag becomes `v1.0.0`, a ref the repository does not have, and GitHub answers
+such a ref 404 (t-v7f7 measured cli/cli's `compare/2.0.0...<sha>` 404 beside
+`v2.0.0`'s 200; on glyph 2026-10-05, `4.3.0...<sha>` 404 beside `v4.3.0`'s 200).
+A typed `--since-tag` that is no tag — a branch, a remote-tracking name, a sha —
+is resolved by GitHub against its own refs, not the checkout's (`main...<sha>`
+200 and identical, `origin/main...<sha>` 404, measured on glyph the same day), so
+the explicit arm takes the value only when `refs/tags/<value>` exists
+(`gitsource.IsTag`). Each `/`-separated segment is path-escaped: git accepts
+`#`, `%` and `)` in a tag name, where pasted verbatim `#` starts a fragment and
+`%41` decodes to another ref, and GitHub decodes an escaped segment once, back to
+the tag (measured 2026-10-05 on glyph-test, the REST endpoint and the page alike,
+with a throwaway tag `rel(1)%41#x` on `v2.0.1`'s commit:
+`compare/rel%281%29%2541%23x...<sha>` 200 with `v2.0.1`'s four commits; `%41`
+left bare, 404 as `rel(1)A#x`; pasted verbatim, 404 as `main...rel(1)A`).
+`<end>` is a sha — the draft's target, or HEAD for `notes` — because a draft's
+tag does not exist until a human publishes, and `compare/<base>...<tag>` 404s for
+the draft's whole life (measured 2026-09-29 on glyph-monorepo-test by the t-v7f7
+ruling: `curry/v1.1.0...<target sha>` 200, `curry/v1.1.0...curry/v1.2.0` 404; on
+glyph 2026-10-05, `v4.3.0...v4.4.0` 404). And a **full** sha, or no link:
+`--target` reaches the API verbatim as `target_commitish`, which takes a branch
+too (a draft posted to glyph-test with `main` read back `main`, the same day),
+and GitHub resolves whatever stands on the right when the page is opened
+(`v2.0.1...main` 200 at the branch's head, likewise), so a published body
+linking `...main` would list every later push — commits the release never
+shipped. An abbreviation is held to the same rule (resolved down to
+four digits that day, which lasts only while no second object shares them), and
+the target is not resolved through the checkout instead, because `--target` has
+never had to name a commit the checkout holds. The draft's target itself is
+untouched; only the link is withheld (`fullSha`). A walk with no tag base renders none:
+the whole-history arm has no left side, and both stand-ins are wrong — `v0.0.0`
+404s, and `HEAD` answers 200 with an empty diff, a link that lies
+(`compare/HEAD...<sha>` "identical", 0 commits; on glyph 2026-10-05). The link is
+rendered by **both** commands that render a body from the walk, `release` and
+`notes --since-tag`, through one helper (`compareLink`), and it closes the notes
+before `--footer-file`'s block, so a draft's machine region is still exactly
+`notes`' output for the same walk (at the default target) followed by the
+caller's footer. `notes --since-tag` is not an incidental caller: it is the body
+glyph's own `goreleaser.yml` publishes through `--release-notes`, which
+GoReleaser loads byte for byte and wraps in nothing (`.goreleaser.yaml` sets no
+header or footer), and the body six Go CLIs publish the same way (the ruling's
+census of the fleet clones, 2026-09-29) — a link composed by `release` alone
+would have skipped glyph's own page, the page it was measured missing from.
+`--range` and `--pr` render none, by the rule that has each source render only
+the citation it can attest (`notesInput`): a local range names no repository and
+a pull no release base. `notes --json` is unchanged — sections only, no link
+key; the link lives in composed bodies, `notes`' stdout and `release`'s `body`.
+Rejected: a GoReleaser `release.footer` over `{{ .PreviousTag }}`. GoReleaser's
+previous tag is `git describe --tags --abbrev=0 <tag>^`, a second predecessor
+resolver beside `below:` — the class t-s5n4 retired from this same workflow —
+and on this repository it disagrees with the walk exactly where release
+candidates sit: `v3.3.0-rc.2` for v3.3.0 (1 commit) where `below:v3.3.0` walks
+from `v3.2.0` (13), and `v3.0.0-rc.3` for v3.0.0 (9 against 22; `git describe`
+and `git rev-list --count`, 2026-10-05), so the link would cite a different
+range than the notes above it; it is markdown composed by the caller, which Q11
+keeps inside glyph; and it would put GoReleaser's template on glyph's page and
+call it dogfooding. (`TestNotesSinceTagEndsWithTheCompareLink`,
+`TestReleaseBodyClosesTheNotesWithTheCompareLink`,
+`TestCompareLinkKeepsTheBaseTagsSpelling`, `TestCompareLinkNeedsATagBase`,
+`TestCompareLinkNeedsNotes`, `TestCompareLinkEscapesTheBase`,
+`TestCompareLinkNeedsAFullShaEnd`, `TestReleaseBodyCapCountsTheCompareLink`;
+mutation rows
+`tag-time-body-loses-the-compare-link`, `compare-link-after-the-footer`,
+`compare-link-base-respelled-from-the-version`,
+`compare-link-on-a-walk-with-no-base`, `compare-link-from-a-ref-that-is-not-a-tag`,
+`compare-link-base-pasted-unescaped`, `compare-link-without-notes`,
+`compare-link-ends-at-the-draft-tag`, `compare-link-ends-at-a-moving-ref`,
+`release-body-sized-before-the-compare-link`.)
+
 The `--json` verdict also carries the walk's expansion
 provenance (`pulls`: each resolved pull and its participating commit count), so
 how a verdict was assembled can be read back afterwards — by a human reviewing a
@@ -2162,6 +2242,27 @@ spent itself on the verdict first
 `--footer-file` appends to every draft (one install block per repository is
 what every caller passes today; a per-package footer is a knob nobody has
 asked for and is recorded here so its absence is a decision).
+The compare link (§4) is per line the same way: each line's draft, and each
+line's body under `notes --since-tag`, links `compare/<that line's base
+tag>...<end>` (the draft's target; HEAD under `notes`) — the tag the line's own
+range starts from (`haiku/v0.1.0`), never the union's merge base and never a
+sibling's tag — and a line whose walk has no tag base, or whose placeholder has
+no notes, carries none, as no line does under a `--target` that is no full sha
+(§4). A typed `--since-tag` that names no line is every line's
+walk base, so it is every line's link base exactly when it is a tag. The link is
+the line's range, not its attribution: GitHub's compare filters by no path, so
+`curry/v1.1.0...<target>` lists every commit and file between the two points
+(measured 2026-09-29 on glyph-monorepo-test by the t-v7f7 ruling: 23 commits,
+42 files across the lines), which is exactly what `<base>..HEAD` is before
+attribution partitions it, and the shape google-cloud-go publishes for every
+package release (`compare/bigtable/v1.57.0...bigtable/v1.58.0`, 6 of 6 sampled
+the same day). A prefixed ref resolves, a nested line's too:
+`travel/onsen/v2.0.0...<sha>` answered 200 over the API and on the web (the
+ruling's review, 2026-09-29). No link under packages was the alternative, and
+nothing argues for a line's draft being the one glyph body without its range's
+address (`TestReleasePackagesCompareLinkPerLine`,
+`TestNotesPackagesCompareLinkPerLine`, `TestPackagesCompareLinkNeedsATagBase`;
+mutation row `compare-link-cites-another-lines-base`).
 `checkReleaseBody` sizes each draft on its own. Of the scalars that describe a
 draft — `tag`, `target`, `body`, `url` — `target` is the one packages leave
 filled (one checkout, one HEAD, every line's draft points at it), and it keeps
@@ -3099,7 +3200,9 @@ release body with `glyph notes --since-tag=below:TAG` run from the tagged
 commit (the predecessor resolved by the binary — the workflow once re-derived
 it in shell over git's refname sort and inherited the defect that sort has,
 t-s5n4) — so the
-notes renderer is dogfooded while the rolling-draft path is not exercised
+notes renderer is dogfooded — the compare link included, since `notes
+--since-tag` renders the line `release` composes (§4) — while the
+rolling-draft path (the upsert, the hand region, the footer) is not exercised
 end to end by anything in this repository. What holds `release.yml` here is
 `internal/workflows` (the install action stays single-source, the binary version
 is derived from the caller's pin, the commented caller stub keeps its `@vX.Y.Z`

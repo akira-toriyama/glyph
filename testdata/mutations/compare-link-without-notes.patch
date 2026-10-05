@@ -1,0 +1,13 @@
+diff --git a/internal/cli/compare.go b/internal/cli/compare.go
+index 12a3707..98ad45a 100644
+--- a/internal/cli/compare.go
++++ b/internal/cli/compare.go
+@@ -34,7 +34,7 @@ const compareMark = "**Full Changelog**: "
+ // host is api.<sub>.ghe.com, would be linked under that API host — a known
+ // hole no fleet repository sits in.
+ func compareLink(body, owner, repo, base, end string) string {
+-	if body == "" || base == "" || !fullSha(end) {
++	if base == "" || !fullSha(end) {
+ 		return body
+ 	}
+ 	return body + "\n" + compareMark + "https://" + apiHost() + "/" + owner + "/" + repo +

@@ -105,6 +105,18 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 	}
 	drafted := planInput(releases)
 
+	// The target resolves before the dry-run fork (Q4: only the writes are
+	// skipped), once for every draft — one checkout, one HEAD — and above the
+	// loop, because each line's compare link ends at it and checkReleaseBody
+	// sizes the final body.
+	target := releaseTarget
+	if target == "" {
+		var herr error
+		if target, herr = gitsource.Head(ctx, "."); herr != nil {
+			return herr
+		}
+	}
+
 	var verdicts []packageRelease
 	var drafts []lineDraft
 	// residual: the drafts whose delete is a none line's whole action, loud.
@@ -150,7 +162,9 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 		if gerr != nil {
 			return gerr
 		}
-		body := notes.RenderSigils(sections)
+		// Each line's link starts at that line's own base tag — never the
+		// union's merge base, never a sibling's tag (§4.1).
+		body := compareLink(notes.RenderSigils(sections), owner, repoName, lw.BaseTag, target)
 		if footer != "" {
 			body = body + "\n---\n\n" + footer
 		}
@@ -161,7 +175,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 		}
 		pv.Tag, pv.Body, pv.Action = tagName, body, string(plan.Action)
 		stale = append(stale, staleReleases(plan.Stale)...)
-		drafts = append(drafts, lineDraft{verdict: pv, plan: plan, params: github.ReleaseParams{TagName: tagName, Name: tagName, Body: body, Draft: true}})
+		drafts = append(drafts, lineDraft{verdict: pv, plan: plan, params: github.ReleaseParams{TagName: tagName, Target: target, Name: tagName, Body: body, Draft: true}})
 		verdicts = append(verdicts, pv)
 		reasons = append(reasons, lw.Package.Path+": "+pv.Reason)
 	}
@@ -198,19 +212,6 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 		residual = append(residual, residue...)
 	} else {
 		stale = append(stale, residue...)
-	}
-
-	// The target resolves before the dry-run fork (Q4: only the writes are
-	// skipped), once for every draft — one checkout, one HEAD.
-	target := releaseTarget
-	if target == "" {
-		var herr error
-		if target, herr = gitsource.Head(ctx, "."); herr != nil {
-			return herr
-		}
-	}
-	for i := range drafts {
-		drafts[i].params.Target = target
 	}
 
 	result := releaseResult{Commits: rows, Packages: verdicts, Pulls: w.Facts.Pulls, Reason: reason}

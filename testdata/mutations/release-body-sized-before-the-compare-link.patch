@@ -1,0 +1,57 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index df7e37e..e3fa705 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -249,8 +249,10 @@ func releaseRun(cmd *cobra.Command) error {
+ 	}
+ 	// The link closes the notes, BEFORE the footer: the machine region is then
+ 	// notes' output for the same walk followed by the caller's block.
+-	body := compareLink(notes.RenderSigils(sections), owner, repoName, w.Lines[0].BaseTag, target)
++	body := notes.RenderSigils(sections)
++	linked := compareLink(body, owner, repoName, w.Lines[0].BaseTag, target)
+ 	if footer != "" {
++		linked = linked + "\n---\n\n" + footer
+ 		// One --- line between the notes and the caller's install block (Q11)
+ 		// — composed here so a dry run previews the EXACT published body and
+ 		// no caller ever concatenates markdown in shell.
+@@ -263,6 +265,7 @@ func releaseRun(cmd *cobra.Command) error {
+ 	// that prose was silently destroyed on the next push (t-qgps).
+ 	plan := draftplan.PlanDraft(config.Line{}, dec.Level, tagName, cfg.Note.DraftOnNone, planInput(releases))
+ 	body = composeDraftBody(keptBody(plan.Keep, releases), body)
++	linked = composeDraftBody(keptBody(plan.Keep, releases), linked)
+ 	// Sized BEFORE the dry-run fork: a dry run previews the real run, and a
+ 	// body the real run refuses must fail the preview identically. Sized over
+ 	// the FINAL body, hand region and compare link included — a human can
+@@ -271,6 +274,7 @@ func releaseRun(cmd *cobra.Command) error {
+ 	if serr := checkReleaseBody(body); serr != nil {
+ 		return serr
+ 	}
++	body = linked
+ 
+ 	stale := staleReleases(plan.Stale)
+ 	result := releaseResult{
+diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
+index 3771f4c..5e4cb4d 100644
+--- a/internal/cli/release_lines.go
++++ b/internal/cli/release_lines.go
+@@ -164,15 +164,19 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
+ 		}
+ 		// Each line's link starts at that line's own base tag — never the
+ 		// union's merge base, never a sibling's tag (§4.1).
+-		body := compareLink(notes.RenderSigils(sections), owner, repoName, lw.BaseTag, target)
++		body := notes.RenderSigils(sections)
++		linked := compareLink(body, owner, repoName, lw.BaseTag, target)
+ 		if footer != "" {
++			linked = linked + "\n---\n\n" + footer
+ 			body = body + "\n---\n\n" + footer
+ 		}
+ 		plan := draftplan.PlanDraft(lw.Line, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
+ 		body = composeDraftBody(keptBody(plan.Keep, releases), body)
++		linked = composeDraftBody(keptBody(plan.Keep, releases), linked)
+ 		if serr := checkReleaseBody(body); serr != nil {
+ 			return serr
+ 		}
++		body = linked
+ 		pv.Tag, pv.Body, pv.Action = tagName, body, string(plan.Action)
+ 		stale = append(stale, staleReleases(plan.Stale)...)
+ 		drafts = append(drafts, lineDraft{verdict: pv, plan: plan, params: github.ReleaseParams{TagName: tagName, Target: target, Name: tagName, Body: body, Draft: true}})

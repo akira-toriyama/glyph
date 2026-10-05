@@ -316,6 +316,30 @@ func namesCommit(ctx context.Context, dir, rev string) (bool, error) {
 	return true, nil
 }
 
+// IsTag reports whether refs/tags/<name> exists — an exact ref, never a
+// revision: rev-parse would resolve `v1.0.0~1` through the real tag and call
+// it one. A NO is git's exit 1 under show-ref --verify --quiet and is an
+// answer; anything else is the git/IO error it always was, the interrupt
+// asked first (see IsAncestor for why the order is the whole point).
+func IsTag(ctx context.Context, dir, name string) (bool, error) {
+	// #nosec G204 -- the binary is the fixed literal "git"; the one argument
+	// is a full refname under refs/tags/, so it can never read as an option.
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "show-ref", "--verify", "--quiet", "refs/tags/"+name)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if ierr := interrupted(ctx); ierr != nil {
+			return false, ierr
+		}
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && ee.ExitCode() == 1 {
+			return false, nil
+		}
+		return false, core.APIf("git show-ref: %s", distill(stderr.Bytes(), err))
+	}
+	return true, nil
+}
+
 // Head returns the checkout's HEAD commit sha — the target_commitish a
 // rolling draft records so the eventual Publish tags the commit the verdict
 // was computed at.
