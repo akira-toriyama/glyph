@@ -1510,13 +1510,26 @@ is resolved by GitHub against its own refs, not the checkout's (`main...<sha>`
 the explicit arm takes the value only when `refs/tags/<value>` exists
 (`gitsource.IsTag`). Each `/`-separated segment is path-escaped: git accepts
 `#`, `%` and `)` in a tag name, where pasted verbatim `#` starts a fragment and
-`%41` decodes to another ref, and GitHub decodes an escaped segment back to the
-tag (`v4%2E3%2E0...<sha>` 200, 3 commits, as `v4.3.0...<sha>`, the same day).
+`%41` decodes to another ref, and GitHub decodes an escaped segment once, back to
+the tag (measured 2026-10-05 on glyph-test, the REST endpoint and the page alike,
+with a throwaway tag `rel(1)%41#x` on `v2.0.1`'s commit:
+`compare/rel%281%29%2541%23x...<sha>` 200 with `v2.0.1`'s four commits; `%41`
+left bare, 404 as `rel(1)A#x`; pasted verbatim, 404 as `main...rel(1)A`).
 `<end>` is a sha — the draft's target, or HEAD for `notes` — because a draft's
 tag does not exist until a human publishes, and `compare/<base>...<tag>` 404s for
 the draft's whole life (measured 2026-09-29 on glyph-monorepo-test by the t-v7f7
 ruling: `curry/v1.1.0...<target sha>` 200, `curry/v1.1.0...curry/v1.2.0` 404; on
-glyph 2026-10-05, `v4.3.0...v4.4.0` 404). A walk with no tag base renders none:
+glyph 2026-10-05, `v4.3.0...v4.4.0` 404). And a **full** sha, or no link:
+`--target` reaches the API verbatim as `target_commitish`, which takes a branch
+too (a draft posted to glyph-test with `main` read back `main`, the same day),
+and GitHub resolves whatever stands on the right when the page is opened
+(`v2.0.1...main` 200 at the branch's head, likewise), so a published body
+linking `...main` would list every later push — commits the release never
+shipped. An abbreviation is held to the same rule (resolved down to
+four digits that day, which lasts only while no second object shares them), and
+the target is not resolved through the checkout instead, because `--target` has
+never had to name a commit the checkout holds. The draft's target itself is
+untouched; only the link is withheld (`fullSha`). A walk with no tag base renders none:
 the whole-history arm has no left side, and both stand-ins are wrong — `v0.0.0`
 404s, and `HEAD` answers 200 with an empty diff, a link that lies
 (`compare/HEAD...<sha>` "identical", 0 commits; on glyph 2026-10-05). The link is
@@ -1546,11 +1559,15 @@ keeps inside glyph; and it would put GoReleaser's template on glyph's page and
 call it dogfooding. (`TestNotesSinceTagEndsWithTheCompareLink`,
 `TestReleaseBodyClosesTheNotesWithTheCompareLink`,
 `TestCompareLinkKeepsTheBaseTagsSpelling`, `TestCompareLinkNeedsATagBase`,
-`TestCompareLinkNeedsNotes`, `TestCompareLinkEscapesTheBase`; mutation rows
+`TestCompareLinkNeedsNotes`, `TestCompareLinkEscapesTheBase`,
+`TestCompareLinkNeedsAFullShaEnd`, `TestReleaseBodyCapCountsTheCompareLink`;
+mutation rows
 `tag-time-body-loses-the-compare-link`, `compare-link-after-the-footer`,
 `compare-link-base-respelled-from-the-version`,
 `compare-link-on-a-walk-with-no-base`, `compare-link-from-a-ref-that-is-not-a-tag`,
-`compare-link-base-pasted-unescaped`, `compare-link-without-notes`.)
+`compare-link-base-pasted-unescaped`, `compare-link-without-notes`,
+`compare-link-ends-at-the-draft-tag`, `compare-link-ends-at-a-moving-ref`,
+`release-body-sized-before-the-compare-link`.)
 
 The `--json` verdict also carries the walk's expansion
 provenance (`pulls`: each resolved pull and its participating commit count), so
@@ -2176,7 +2193,8 @@ line's body under `notes --since-tag`, links `compare/<that line's base
 tag>...<end>` (the draft's target; HEAD under `notes`) — the tag the line's own
 range starts from (`haiku/v0.1.0`), never the union's merge base and never a
 sibling's tag — and a line whose walk has no tag base, or whose placeholder has
-no notes, carries none. A typed `--since-tag` that names no line is every line's
+no notes, carries none, as no line does under a `--target` that is no full sha
+(§4). A typed `--since-tag` that names no line is every line's
 walk base, so it is every line's link base exactly when it is a tag. The link is
 the line's range, not its attribution: GitHub's compare filters by no path, so
 `curry/v1.1.0...<target>` lists every commit and file between the two points

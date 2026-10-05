@@ -84,8 +84,9 @@ func newReleaseCmd() *cobra.Command {
 			"empty fold from a walk that could not look is not evidence that\n" +
 			"nothing shipped, so no verdict is handed down on it at all.\n" +
 			"The body's notes close with the range's compare link\n" +
-			"(compare/<base tag>...<target>; none when the walk has no tag base or\n" +
-			"the notes are empty), before the --footer-file block.\n" +
+			"(compare/<base tag>...<target>; none when the walk has no tag base, the\n" +
+			"notes are empty, or --target is not a full sha), before the\n" +
+			"--footer-file block.\n" +
 			"A real run prints the draft's URL; --dry-run computes everything\n" +
 			"including that action and writes nothing, printing the tag line, a\n" +
 			"blank line, then the Markdown body. --json emits\n" +

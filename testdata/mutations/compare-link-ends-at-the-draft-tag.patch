@@ -1,0 +1,26 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index df7e37e..89a70e0 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -249,7 +249,7 @@ func releaseRun(cmd *cobra.Command) error {
+ 	}
+ 	// The link closes the notes, BEFORE the footer: the machine region is then
+ 	// notes' output for the same walk followed by the caller's block.
+-	body := compareLink(notes.RenderSigils(sections), owner, repoName, w.Lines[0].BaseTag, target)
++	body := compareLink(notes.RenderSigils(sections), owner, repoName, w.Lines[0].BaseTag, tagName)
+ 	if footer != "" {
+ 		// One --- line between the notes and the caller's install block (Q11)
+ 		// — composed here so a dry run previews the EXACT published body and
+diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
+index 3771f4c..27b1bc2 100644
+--- a/internal/cli/release_lines.go
++++ b/internal/cli/release_lines.go
+@@ -164,7 +164,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
+ 		}
+ 		// Each line's link starts at that line's own base tag — never the
+ 		// union's merge base, never a sibling's tag (§4.1).
+-		body := compareLink(notes.RenderSigils(sections), owner, repoName, lw.BaseTag, target)
++		body := compareLink(notes.RenderSigils(sections), owner, repoName, lw.BaseTag, tagName)
+ 		if footer != "" {
+ 			body = body + "\n---\n\n" + footer
+ 		}

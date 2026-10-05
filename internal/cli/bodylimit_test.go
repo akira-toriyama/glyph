@@ -101,6 +101,62 @@ func TestReleaseRefusesABodyGitHubRejects(t *testing.T) {
 	}
 }
 
+// TestReleaseBodyCapCountsTheCompareLink: the guard sizes the FINAL body, the
+// compare link included (t-v7f7 (9)). The footer is padded until the body
+// without the link sits exactly at the cap — the control, read at a --target
+// that is no full sha and so renders none — and the same footer at a full
+// sha must then refuse before any write. Sized ahead of the link, that run
+// passes the guard and spends itself on the write GitHub 422s. Per line under
+// [[packages]] the same way: each draft is sized on its own, link included.
+func TestReleaseBodyCapCountsTheCompareLink(t *testing.T) {
+	refusedOverTheLink := func(t *testing.T, writes *[]apiWrite, longest func(args ...string) int) {
+		t.Helper()
+		pad := releaseBodyMaxChars - longest("--footer-file", writeFooter(t, "y\n")) + 1
+		footer := writeFooter(t, strings.Repeat("y", pad)+"\n")
+		if n := longest("--footer-file", footer); n != releaseBodyMaxChars {
+			t.Fatalf("positive control: without the link the padded body must sit at the cap, got %d characters", n)
+		}
+
+		code, _, stderr := runGlyph(t, "release", "--footer-file", footer, "--target", goldenTarget)
+		if code != 4 {
+			t.Fatalf("a body the compare link takes over the cap must refuse at exit 4, got %d\nstderr: %s", code, stderr)
+		}
+		if !strings.Contains(stderr, "125000") {
+			t.Errorf("the refusal must name the cap: %s", stderr)
+		}
+		if len(*writes) != 0 {
+			t.Errorf("the refusal must land before any write, got %+v", *writes)
+		}
+	}
+
+	t.Run("single line", func(t *testing.T) {
+		var writes []apiWrite
+		usePR(t, releaseServer(t, oneFixWalk(t), `[]`, &writes))
+		refusedOverTheLink(t, &writes, func(args ...string) int {
+			return utf8.RuneCountInString(releaseDryRunJSON(t, 0, append([]string{"--target", "main"}, args...)...).Body)
+		})
+	})
+
+	t.Run("per line", func(t *testing.T) {
+		var writes []apiWrite
+		dir, _ := packagesRepo(t)
+		_, routes := squashAcrossLines(t, dir, 7)
+		usePR(t, releaseServer(t, routes, `[]`, &writes))
+		t.Chdir(dir)
+		refusedOverTheLink(t, &writes, func(args ...string) int {
+			code, stdout, stderr := runGlyph(t, append([]string{"release", "--dry-run", "--json", "--target", "main"}, args...)...)
+			if code != 0 {
+				t.Fatalf("release --dry-run %v exited %d, want 0\nstderr: %s", args, code, stderr)
+			}
+			n := 0
+			for _, p := range decodeReleaseLines(t, stdout).Packages {
+				n = max(n, utf8.RuneCountInString(p.Body))
+			}
+			return n
+		})
+	})
+}
+
 // TestPreviewCommentStaysUnderTheCap wires the other half end to end, with the
 // opposite policy: the sticky comment is advisory, so an oversized preview is
 // truncated (marked, warned) rather than refused — and the JSON body the

@@ -24,20 +24,42 @@ const compareMark = "**Full Changelog**: "
 // base is the tag the walk resolved, in its own spelling (line.BaseTag): ""
 // renders nothing, because a walk with no tag base has no left side GitHub
 // answers truthfully. end is a sha — the draft's target, or HEAD for notes —
-// because a draft's tag does not exist until a human publishes. An empty
-// body renders nothing either: notes prints no body there, and a link under
-// a placeholder's bare marker would make the draft's machine region differ
-// from notes' output for the same walk.
+// because a draft's tag does not exist until a human publishes; an end that
+// is no full sha renders nothing (fullSha). An empty body renders nothing
+// either: notes prints no body there, and a link under a placeholder's bare
+// marker would make the draft's machine region differ from notes' output for
+// the same walk.
 //
 // The host is apiHost's, ports dropped: GHE.com data residency, whose API
 // host is api.<sub>.ghe.com, would be linked under that API host — a known
 // hole no fleet repository sits in.
 func compareLink(body, owner, repo, base, end string) string {
-	if body == "" || base == "" {
+	if body == "" || base == "" || !fullSha(end) {
 		return body
 	}
 	return body + "\n" + compareMark + "https://" + apiHost() + "/" + owner + "/" + repo +
-		"/compare/" + escapeRef(base) + "..." + escapeRef(end) + "\n"
+		"/compare/" + escapeRef(base) + "..." + end + "\n"
+}
+
+// fullSha reports whether end is 40 hex digits, the one spelling of the
+// link's right side that names the same commit for good. --target is handed
+// to the API verbatim as target_commitish, which takes a branch as well, and
+// GitHub resolves whatever stands on the right when the page is opened: a
+// branch there makes a PUBLISHED body's range grow with every later push
+// (measured 2026-10-05 on glyph-test: `v2.0.1...main` 200 at the branch's
+// head). An abbreviation resolves too — down to four digits, same day — but
+// only until a second object shares them. Not resolved through the checkout
+// instead: --target has never had to name a commit the checkout holds.
+func fullSha(end string) bool {
+	if len(end) != 40 {
+		return false
+	}
+	for _, c := range end {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
+			return false
+		}
+	}
+	return true
 }
 
 // escapeRef path-escapes each `/`-separated segment of a ref: git accepts `#`,

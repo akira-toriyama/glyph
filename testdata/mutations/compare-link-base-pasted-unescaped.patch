@@ -1,13 +1,13 @@
 diff --git a/internal/cli/compare.go b/internal/cli/compare.go
-index b267064..49faa61 100644
+index 12a3707..6593371 100644
 --- a/internal/cli/compare.go
 +++ b/internal/cli/compare.go
-@@ -37,7 +37,7 @@ func compareLink(body, owner, repo, base, end string) string {
+@@ -38,7 +38,7 @@ func compareLink(body, owner, repo, base, end string) string {
  		return body
  	}
  	return body + "\n" + compareMark + "https://" + apiHost() + "/" + owner + "/" + repo +
--		"/compare/" + escapeRef(base) + "..." + escapeRef(end) + "\n"
-+		"/compare/" + base + "..." + escapeRef(end) + "\n"
+-		"/compare/" + escapeRef(base) + "..." + end + "\n"
++		"/compare/" + base + "..." + end + "\n"
  }
  
- // escapeRef path-escapes each `/`-separated segment of a ref: git accepts `#`,
+ // fullSha reports whether end is 40 hex digits, the one spelling of the
