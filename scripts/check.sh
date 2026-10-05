@@ -43,8 +43,8 @@
 #   zizmor        (zizmor.yml)          Actions-security lint over .github/. The
 #                                       policy is the fleet's; a shell copy of it
 #                                       would drift against the canonical one.
-#   actionlint    (actionlint.yml)      Workflow syntax, expression types and
-#                                       shellcheck over `run:` blocks. The tool's
+#   actionlint    (actionlint.yml)      Workflow syntax, expression types, and
+#                                       `run:` blocks through shellcheck. The tool's
 #                                       VERSION and its SHA256 are pinned once in
 #                                       the hub's reusable and are deliberately
 #                                       not caller-tunable, so a local actionlint
@@ -226,8 +226,8 @@ ran release-history
 # claim than it reads as: a line every test executes but nobody asserts is
 # invisible to both `go test` and coverage. Each testdata/mutations/*.patch
 # breaks one argued decision and the ledger names the test that must then fail.
-# One snapshot, patch and build per row: 21s for 7 rows with a warm build cache,
-# so it sits after the fast gates but ahead of the binary smoke.
+# One snapshot copy, patch and build per row, so it sits after the fast gates
+# but ahead of the binary smoke.
 echo "→ mutation ledger (does the suite bite?)"
 sh scripts/mutations.sh
 ran mutations
