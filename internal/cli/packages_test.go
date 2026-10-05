@@ -1315,6 +1315,182 @@ func TestLintRangePackagesRootDeclarationTakesANameWhereTheLoaderAsksOne(t *test
 	}
 }
 
+// TestLintRangePackagesDropTheScopeIsProvenAgainstTheMessage: "drop the scope"
+// is offered only when the message with its scope taken out was run through
+// the patterns and came back the same pattern's, with no scope and the same
+// sigil (config.Sayable). It was read off the pattern's tree — a scope under
+// a ?, a *, a {0,n} or ONE BRANCH OF AN ALTERNATION, or a group that can
+// capture nothing, counted as droppable — and under
+// `(?:type\((?P<scope>…)\)|release)` the finding said "or drop the scope" of a
+// message that, scope dropped, matches no pattern (measured 2026-10-05 before
+// this rule: exit 3 at lint --range, bump and preview). The tree cannot say
+// what is left once the scope is gone, nor which pattern takes it: every case here
+// takes each escape its finding names and asserts the exit code, then writes
+// the dropped message a finding does not offer and shows why it must not.
+func TestLintRangePackagesDropTheScopeIsProvenAgainstTheMessage(t *testing.T) {
+	const optional = "[[patterns]]\npattern = '^(?P<subject>[a-z]+(\\((?P<scope>[a-z]+)\\))?(?P<semver_sigil>[=~^!%]): .+)'\n"
+	type rewrite struct {
+		message string
+		code    int
+		why     string
+	}
+	for name, c := range map[string]struct {
+		patterns string
+		seed     string
+		message  string
+		remedy   string // the finding's last clause
+		rewrites []rewrite
+	}{
+		"a scope in one branch of an alternation": {
+			"[[patterns]]\npattern = '^(?P<subject>(?:[a-z]+\\((?P<scope>[a-z0-9-]+)\\)|release)(?P<semver_sigil>[=~^!%]): .+)'\n",
+			"release=: declare the lines", "fix(haiku)~: swap an ingredient",
+			"write the scope of a line it moves (curry)",
+			[]rewrite{
+				{"fix(curry)~: swap an ingredient", 0, "the scope the finding names"},
+				{"fix~: swap an ingredient", 3, "the other branch is the literal `release`, so the dropped message matches no pattern"},
+			},
+		},
+		"an earlier pattern claims the message once its scope is gone": {
+			"[[patterns]]\npattern = '^wip[=~^!%]: '\nunlandable = 'a wip commit is squashed before it lands'\n\n" + optional,
+			"chore=: declare the lines", "wip(haiku)~: swap an ingredient",
+			"write the scope of a line it moves (curry)",
+			[]rewrite{
+				{"wip(curry)~: swap an ingredient", 0, "the scope the finding names"},
+				{"wip~: swap an ingredient", 3, "patterns[0] claims the dropped message and marks it unlandable"},
+			},
+		},
+		"the same file, a message no earlier pattern takes": {
+			"[[patterns]]\npattern = '^wip[=~^!%]: '\nunlandable = 'a wip commit is squashed before it lands'\n\n" + optional,
+			"chore=: declare the lines", "fix(haiku)~: swap an ingredient",
+			"write the scope of a line it moves (curry), or drop the scope",
+			[]rewrite{
+				{"fix(curry)~: swap an ingredient", 0, "the scope the finding names"},
+				{"fix~: swap an ingredient", 0, "the drop the finding names"},
+			},
+		},
+		"a ticket inside the scope's optional group": {
+			"[[patterns]]\npattern = '^(?P<subject>[a-z]+(?:\\((?P<scope>[a-z]+)#(?P<ticket>[0-9]+)\\))?(?P<semver_sigil>[=~^!%]): .+)'\n",
+			"chore=: declare the lines", "fix(haiku#12)~: swap an ingredient",
+			"write the scope of a line it moves (curry)",
+			[]rewrite{
+				{"fix(curry#12)~: swap an ingredient", 0, "the scope the finding names"},
+				{"fix(#12)~: swap an ingredient", 3, "the scope alone cannot be dropped: the ticket goes with it, which \"drop the scope\" does not say"},
+			},
+		},
+		"a scope that can be empty but not absent": {
+			"[[patterns]]\npattern = '^(?P<subject>[a-z]+\\((?P<scope>[a-z]*)\\)(?P<semver_sigil>[=~^!%]): .+)'\n",
+			"chore()=: declare the lines", "fix(haiku)~: swap an ingredient",
+			"write the scope of a line it moves (curry)",
+			[]rewrite{
+				{"fix(curry)~: swap an ingredient", 0, "the scope the finding names"},
+				{"fix~: swap an ingredient", 3, "the parentheses are not optional, so the dropped message matches no pattern"},
+			},
+		},
+		"a non-capturing {0,1} around the scope": {
+			"[[patterns]]\npattern = '^(?P<subject>[a-z]+(?:\\((?P<scope>[a-z0-9-]+)\\)){0,1}(?P<semver_sigil>[=~^!%]): .+)'\n",
+			"chore=: declare the lines", "fix(haiku)~: swap an ingredient",
+			"write the scope of a line it moves (curry), or drop the scope",
+			[]rewrite{
+				{"fix(curry)~: swap an ingredient", 0, "the scope the finding names"},
+				{"fix~: swap an ingredient", 0, "the drop the finding names"},
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := customRepo(t, c.patterns, c.seed)
+			touch(t, dir, "akira-toriyama", c.message, "curry/curry.go")
+			t.Chdir(dir)
+
+			code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
+			want := "curry/curry.go belongs to curry (curry) — the longest declared path owns a file: " + c.remedy + "\n"
+			if code != 3 || !strings.Contains(stderr, want) {
+				t.Fatalf("%q exited %d; the finding must end %q:\n%s", c.message, code, want, stderr)
+			}
+			for _, r := range c.rewrites {
+				testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", r.message)
+				if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != r.code {
+					t.Errorf("%q exited %d, want %d — %s\nstderr: %s", r.message, code, r.code, r.why, stderr)
+				}
+			}
+		})
+	}
+}
+
+// TestLintRangePackagesFixedNoneIsReachedByLeavingTheSigilOut: a pattern whose
+// sigil group cannot capture = can still read a message as = — by its fixed
+// semver_sigil, when the message leaves the sigil out. That is an escape, and
+// the refusal used to deny it existed: under `[a-z]+(?P<semver_sigil>[~^!])?: `
+// over a fixed = an empty `fix~: …` was told "nothing a message it claims can
+// write carries this commit", while `fix: …` passes (measured 2026-10-05
+// before this rule: lint 0, bump 1). It is named now, and proven the way the dropped
+// scope is: the message with its sigil taken out goes through the patterns.
+// The second grammar holds the sigil in one branch of an alternation, where
+// leaving it out matches nothing — so the escape is not named, and neither is
+// the old clause, which `chore: …` under the same pattern shows was false.
+func TestLintRangePackagesFixedNoneIsReachedByLeavingTheSigilOut(t *testing.T) {
+	const noEscape = ": patterns[0], which claimed this message, captures no = as the sigil and captures no scope"
+	lint := func(t *testing.T) (int, string) {
+		t.Helper()
+		code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
+		return code, stderr
+	}
+
+	t.Run("an optional sigil over a fixed =", func(t *testing.T) {
+		dir := customRepo(t, "[[patterns]]\npattern = '^(?P<subject>[a-z]+(?P<semver_sigil>[~^!])?: .+)'\nsemver_sigil = '='\n", "chore: declare the lines")
+		empty := touch(t, dir, "akira-toriyama", "fix~: cut a release")
+		t.Chdir(dir)
+
+		code, stderr := lint(t)
+		want := "::error::glyph: commit " + empty[:7] + ": this commit touches no file, so no package's tree can carry its sigil ~: leave the sigil out so it moves no line\n"
+		if code != 3 || !strings.Contains(stderr, want) {
+			t.Fatalf("an empty fix~ exited %d; the finding must be %q:\n%s", code, want, stderr)
+		}
+		testGit(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--amend", "-m", "fix: cut a release")
+		if code, stderr := lint(t); code != 0 {
+			t.Errorf("with the sigil left out lint exited %d, want 0 — the escape the finding names\nstderr: %s", code, stderr)
+		}
+		if code, _, stderr := runGlyph(t, "bump", "--range", "HEAD~1..HEAD"); code != 1 {
+			t.Errorf("with the sigil left out bump exited %d, want 1 (it moves no line)\nstderr: %s", code, stderr)
+		}
+
+		touch(t, dir, "akira-toriyama", "fix~: fix the readme", "README.md")
+		code, stderr = lint(t)
+		want = `nothing can carry: leave the sigil out so it moves no line, or declare the package these files belong to ([[packages]] path = "<its directory>"; path = "." declares the root package, which holds every file no other package claims)` + "\n"
+		if code != 3 || !strings.Contains(stderr, want) {
+			t.Fatalf("fix~ on a shared file exited %d; the finding must end %q:\n%s", code, want, stderr)
+		}
+		testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", "fix: fix the readme")
+		if code, stderr := lint(t); code != 0 {
+			t.Errorf("with the sigil left out lint exited %d, want 0\nstderr: %s", code, stderr)
+		}
+	})
+
+	t.Run("a sigil in one branch of an alternation", func(t *testing.T) {
+		dir := customRepo(t, "[[patterns]]\npattern = '^(?P<subject>(?:fix(?P<semver_sigil>[~^!])|chore): .+)'\nsemver_sigil = '='\n", "chore: declare the lines")
+		empty := touch(t, dir, "akira-toriyama", "fix~: cut a release")
+		t.Chdir(dir)
+
+		code, stderr := lint(t)
+		want := "::error::glyph: commit " + empty[:7] + ": this commit touches no file, so no package's tree can carry its sigil ~" + noEscape + "\n"
+		if code != 3 || !strings.Contains(stderr, want) {
+			t.Fatalf("an empty fix~ exited %d; the finding must be %q:\n%s", code, want, stderr)
+		}
+		for _, r := range []struct {
+			message string
+			code    int
+			why     string
+		}{
+			{"fix: cut a release", 3, "leaving the sigil out matches no pattern here, which is why the finding does not name it"},
+			{"chore: cut a release", 0, "a message the same pattern claims does pass, which is why the finding no longer says none can"},
+		} {
+			testGit(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--amend", "-m", r.message)
+			if code, stderr := lint(t); code != r.code {
+				t.Errorf("%q exited %d, want %d — %s\nstderr: %s", r.message, code, r.code, r.why, stderr)
+			}
+		}
+	})
+}
+
 // TestPackagesNameNoScopeCanSpellIsUsage: a package name the shipped grammar
 // cannot spell is a config that does not load — exit 2 on every verdict
 // command, the commit-msg hook's --message included — never the 3 whose one

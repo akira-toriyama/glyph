@@ -62,7 +62,7 @@ type Owned struct {
 // files (Owners, Unowned, Files, More), and what it cannot see and the caller
 // tells it (Merge, Unread, Pattern). Left untold — Attribute asked directly,
 // as its own tests do — the sentence assumes a pattern that captures every
-// name, an optional scope and its own sigil, and a diff read whole.
+// name and its own sigil, a scope the message can drop, and a diff read whole.
 type Refusal struct {
 	Reason  Reason
 	Scope   string
@@ -164,18 +164,28 @@ func (r *Refusal) contradiction() string {
 		evidence[n-1] = "and " + evidence[n-1]
 	}
 
+	// "drop the scope" is said only of a message whose scope was dropped and
+	// run through the patterns again (Sayable.ScopeDroppable) — never because
+	// the pattern's scope looks optional, which is true of
+	// `(?:type\((?P<scope>…)\)|release)` and no help to `type(haiku)~: …`.
 	var remedy string
 	switch {
-	case len(spellable) > 0 && say.ScopeOptional:
+	case len(spellable) > 0 && say.ScopeDroppable:
 		remedy = fmt.Sprintf("write the scope of a line it moves (%s), or drop the scope", strings.Join(spellable, ", "))
 	case len(spellable) > 0:
 		remedy = fmt.Sprintf("write the scope of a line it moves (%s)", strings.Join(spellable, ", "))
-	case say.ScopeOptional:
+	case say.ScopeDroppable:
 		remedy = "drop the scope"
 	default:
 		// No instruction this message can follow under its pattern: state
-		// the rule rather than name an escape that is not there.
-		remedy = fmt.Sprintf("patterns[%d], which claimed this message, requires a scope and spells none of the lines it moves — the scope must name one of them (%s) or no package", say.Pattern, strings.Join(moved, ", "))
+		// the rule rather than name an escape that is not there. "requires a
+		// scope" is said only where the tree shows it; a scope that is
+		// neither required nor proven droppable is called neither.
+		requires := ""
+		if say.ScopeRequired {
+			requires = "requires a scope and "
+		}
+		remedy = fmt.Sprintf("patterns[%d], which claimed this message, %sspells none of the lines it moves — the scope must name one of them (%s) or no package", say.Pattern, requires, strings.Join(moved, ", "))
 	}
 
 	whose := "this commit does"
@@ -195,10 +205,10 @@ func countFiles(n int, more string) string {
 
 // noCarrier words rule 3's refusal: what the tree was shown, then the
 // escapes THIS commit can take, in the order DESIGN gives them — a scope
-// naming a line, =, a declaration. An escape the claiming pattern cannot
-// write is not named: the first cut named the scope and = to every commit,
-// the raw revert included, whose pattern fixes its sigil and captures no
-// scope (t-mfny (A)).
+// naming a line, = (written, or read from a sigil left out), a declaration.
+// An escape the claiming pattern cannot write is not named: the first cut
+// named the scope and = to every commit, the raw revert included, whose
+// pattern fixes its sigil and captures no scope (t-mfny (A)).
 func (r *Refusal) noCarrier() string {
 	say := r.sayable()
 	var opening string
@@ -225,8 +235,13 @@ func (r *Refusal) noCarrier() string {
 	if len(say.Scopes) > 0 {
 		escapes = append(escapes, fmt.Sprintf("name the line it moves in the scope (one of %s)", strings.Join(say.Scopes, ", ")))
 	}
-	if say.None {
+	switch {
+	case say.None:
 		escapes = append(escapes, "write = so it moves no line")
+	case say.SigilDroppable:
+		// The pattern captures no = and reads one all the same: its fixed
+		// sigil, for a message that writes none.
+		escapes = append(escapes, "leave the sigil out so it moves no line")
 	}
 	why := ""
 	if len(escapes) == 0 {
@@ -258,23 +273,28 @@ func (r *Refusal) noCarrier() string {
 	case why == "":
 		return opening + ": " + orList(escapes)
 	case len(escapes) == 0:
-		// A file with nowhere to reword to and no files to declare: say what
-		// is known — of the claiming pattern — and claim nothing of the rest
-		// of the file, where a warn pattern Sayable leaves out may still
-		// carry the commit.
-		return opening + ": " + why + " — nothing a message it claims can write carries this commit"
+		// Nowhere to reword to and no files to declare: say what was read of
+		// the claiming pattern and stop. The sentence went on "nothing a
+		// message it claims can write carries this commit", which is a claim
+		// about every message the pattern takes, and false wherever its fixed
+		// sigil is = and some message reaches it — `chore: …` under
+		// `(?:fix(?P<semver_sigil>[~^!])|chore): ` (measured 2026-10-05: lint
+		// 0). Nor is anything claimed of the rest of the file, where a warn
+		// pattern Sayable leaves out may still carry the commit.
+		return opening + ": " + why
 	default:
 		return opening + ": " + why + " — " + orList(escapes)
 	}
 }
 
 // sayable is what the sentence assumes a message can write: what the caller
-// said of the claiming pattern, else every name and the message's own sigil.
+// said of the claiming pattern, else every name, a scope it can drop and the
+// message's own sigil.
 func (r *Refusal) sayable() config.Sayable {
 	if r.Pattern != nil {
 		return *r.Pattern
 	}
-	return config.Sayable{Pattern: -1, ScopeGroup: true, ScopeOptional: true, Scopes: r.Names, SigilGroup: true, None: true, RootNeedsName: true}
+	return config.Sayable{Pattern: -1, ScopeGroup: true, ScopeDroppable: true, Scopes: r.Names, SigilGroup: true, None: true, RootNeedsName: true}
 }
 
 // orList joins alternatives: "a", "a, or b", "a, b, or c". The comma before

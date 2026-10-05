@@ -348,7 +348,7 @@ root package or not: the root package claims files, not commits. With none, a
 `=` commit participates nowhere and any other sigil is a lint-class refusal,
 because a version claim nothing can carry is the silent-none shape with the
 polarity reversed; the refusal names the escapes that commit can take — a
-scope naming a line or `=`, where the pattern that claimed it captures them,
+scope naming a line or `=`, where the pattern that claimed it allows them,
 and declaring the package its files belong to. A scope that names a package
 owning none of the diff's files — owning by the longest declared path, so a
 nested package's files are not its parent's nor the root package's — is

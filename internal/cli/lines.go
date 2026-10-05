@@ -356,9 +356,12 @@ func placeOf(cfg *config.Config, raw gitsource.RawCommit) (placement, reading) {
 // sentence only a caller knows: that the commit is a merge commit (its diff
 // is never read, so files is nil whatever it touched), that the diff was not
 // read whole (whole false: a listing GitHub capped or cut short, a shallow
-// boundary — the refusal a caller then withholds), and what a message can
-// write under the pattern that claimed this one (config.Sayable). None of it
-// can move the answer: it is set on a refusal already returned.
+// boundary — the refusal a caller then withholds), and what this message can
+// write under the pattern that claimed it (config.Sayable, which is handed
+// the message because an escape that takes something out of it — the scope,
+// the sigil — is proven by matching the rewritten message, not read off the
+// pattern). None of it can move the answer: it is set on a refusal already
+// returned.
 //
 // One helper, because the alternative is three call sites each setting three
 // fields by hand: a site that forgets one moves no verdict, so every verdict
@@ -373,7 +376,7 @@ func attribute(cfg *config.Config, raw gitsource.RawCommit, said reading, files 
 	if errors.As(err, &r) {
 		r.Merge = raw.Parents >= 2
 		r.Unread = !whole
-		if say, ok := cfg.Sayable(said.pattern); ok {
+		if say, ok := cfg.Sayable(said.pattern, raw.Message); ok {
 			r.Pattern = &say
 		}
 	}

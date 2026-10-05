@@ -1809,9 +1809,10 @@ asked:
    **refusal of the lint class (exit 3)**: the author claimed a version impact
    and nothing can carry it. The error names the escapes the commit can
    actually take — name a line in the scope when the winning pattern captures
-   one that spells it, write `=` when the sigil is the message's own, declare
-   the package its files belong to when it has files (below) — and, in the
-   walk, the wedge escape per line.
+   one that spells it, write `=` when that pattern's sigil group can capture
+   it (or leave the sigil out, where that alone makes the message a `=`),
+   declare the package its files belong to when it has files (below) — and,
+   in the walk, the wedge escape per line.
 
 A commit that shows the tree **no file** — `git commit --allow-empty`, or a
 merge commit some pattern other than a skip claims, whose diff is never read
@@ -1902,9 +1903,11 @@ takes a form the file's author would rather not see — or the declaration
 turn; `TestNoCarrierNamesOnlyTheEscapesTheCommitCanTake` is the sentence's
 format spec; mutation rows
 `attribution-refusal-names-an-escape-its-pattern-cannot-write`,
-`sayable-rewords-under-a-pattern-no-landed-message-may-take`). Like the
-loader's check it reads each group's own sub-expression, necessary and not
-sufficient. The sentence reads more than attribution's four inputs — the
+`sayable-rewords-under-a-pattern-no-landed-message-may-take`). What a group
+can capture — the names, a `=` — it reads off the group's own
+sub-expression, like the loader's check: necessary and not sufficient. What a
+message can go without it does not read off the pattern at all (below). The
+sentence reads more than attribution's four inputs — the
 claiming pattern, that a merge commit's diff was never read, that a diff was
 not read whole — and the answer does not: one helper (`attribute`,
 `internal/cli/lines.go`) sets them on a refusal already returned, for the
@@ -1917,6 +1920,52 @@ commit was read", "the files read of it (…)" — where the same words said of
 the commit, "touches no file", would contradict the warning around them,
 which says a package it touched is missing (mutation row
 `withheld-refusal-says-of-the-commit-what-is-known-of-the-files-read`).
+
+An escape that **takes something out** of the message is proven against the
+message, never read off the pattern (found in review, 2026-10-05). There are
+two: "drop the scope", which the contradiction offers (below), and "leave the
+sigil out", for a pattern whose sigil group cannot capture `=` but whose fixed
+`semver_sigil` is `=` — `[a-z]+(?P<semver_sigil>[~^!])?: ` reads `fix: …` as a
+`=`. What a group can capture is a question about the group. What is left
+once the scope is gone, and which pattern takes it, is a question about the
+whole message and the whole file, so glyph asks it of them: the message is
+rewritten and run through `Match` — all that lint judges a message by — and
+the escape is named only when the same pattern claims the result, with no
+scope and its sigil unchanged, or as `=`. The pattern's tree only proposes
+what to take out: the span the scope group's innermost optional ancestor
+matched (a `?`, a `*` or a `{0,n}` — `(haiku)` under the presets), where what
+goes with the scope is punctuation or space alone; and the sigil's own
+capture. A wrong proposal costs an escape left unnamed, never one that fails
+when taken. The first cut answered from the tree: a scope under a `?`, a `*`,
+a `{0,n}` *or one branch of an alternation*, or a group able to capture
+nothing, was droppable. Measured 2026-10-05, before this rule, on
+`lint --range`, `bump --range`, `bump --since-tag` and `preview` alike: under
+`(?:[a-z]+\((?P<scope>…)\)|release)` the refusal told `fix(haiku)~: …` to
+"drop the scope", and `fix~: …` then matched no pattern (exit 3); and under
+the fixed-`=` pattern an empty `fix~: …` was told that nothing a message the
+pattern claims can write carries it, while `fix: …` passed (lint 0, bump 1).
+`Match` also sees what no tree can: an earlier pattern that claims the message
+once its scope is gone — first match wins, so an unlandable `^wip…` above the
+grammar takes `wip~: …` — which is why the question is put to the whole file
+and the answer must be the *same* pattern's. Where nothing is proven the
+sentence says less, not more. A scope neither proven droppable nor required
+by the pattern's tree (no `?`, `*`, `{0,n}` or alternation lets a match pass
+it by, and it cannot capture nothing — exact only as a yes) is called neither.
+And a refusal with no escape to name stops at what it read of the claiming
+pattern: the absolute it went on to state was false wherever another message
+of the pattern reaches the fixed `=` — `chore: …` under
+`(?:fix(?P<semver_sigil>[~^!])|chore): ` passes (measured the same day).
+`TestSayableProvesARemovalAgainstTheMessage` is the table, each row naming
+the rewritten message or why the tree alone would have said yes;
+`TestLintRangePackagesDropTheScopeIsProvenAgainstTheMessage` and
+`TestLintRangePackagesFixedNoneIsReachedByLeavingTheSigilOut` take each escape
+their findings name and assert the exit code, then write the one a finding
+withholds and watch it fail (mutation rows
+`refusal-drops-a-scope-the-pattern-tree-calls-optional`,
+`refusal-names-a-removal-match-never-proved`,
+`refusal-drops-a-scope-with-the-words-around-it`,
+`refusal-leaves-a-fixed-none-unsaid`,
+`refusal-says-no-message-of-the-pattern-can-pass`).
 
 Two things the rules deliberately do not do. A scope that **contradicts** the
 tree — files only under `curry/`, scope `haiku`, a version sigil — is refused
@@ -1946,7 +1995,8 @@ one file per line the commit does move, named with the package that owns it
 (`travel/onsen/o.md belongs to onsen (travel/onsen)`; the root package is
 called that), the files no package owns counted and never said to belong to
 anything, then the scopes of those lines that the claiming pattern can write
-— and "drop the scope" only where that pattern can go without one
+— and "drop the scope" only where this message, its scope dropped, was run
+through the patterns and came back that pattern's (above)
 (`TestContradictionNamesTheOwnersAndTheScopesThatWork`,
 `TestLintRangePackagesContradictionOffersNoDropWhereTheScopeIsRequired`;
 mutation row `attribution-scope-checked-by-containment`).

@@ -1,0 +1,14 @@
+diff --git a/internal/config/sayable.go b/internal/config/sayable.go
+index d71a112..46abdb8 100644
+--- a/internal/config/sayable.go
++++ b/internal/config/sayable.go
+@@ -136,7 +136,8 @@ func (c *Config) Sayable(i int, message string) (s Sayable, ok bool) {
+ 			s.ElsewhereScopes = append(s.ElsewhereScopes, pkg.Name)
+ 		}
+ 	}
+-	s.ScopeDroppable, s.SigilDroppable = c.removals(i, message)
++	_, s.SigilDroppable = c.removals(i, message)
++	s.ScopeDroppable = s.ScopeGroup && !s.ScopeRequired
+ 	s.RootNeedsName = c.rootNeedsName()
+ 	return s, true
+ }

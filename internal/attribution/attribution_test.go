@@ -238,8 +238,28 @@ func TestNoCarrierNamesOnlyTheEscapesTheCommitCanTake(t *testing.T) {
 		},
 		"a scope group that spells the root's default name": {
 			[]string{"README.md"}, config.SigilPatch, two,
-			pattern(config.Sayable{ScopeGroup: true, ScopeOptional: true, Scopes: []string{"haiku", "curry"}, SigilGroup: true, None: true}),
+			pattern(config.Sayable{ScopeGroup: true, Scopes: []string{"haiku", "curry"}, SigilGroup: true, None: true}),
 			"its files (README.md) belong to no declared package, and its sigil ~ claims a version impact nothing can carry: name the line it moves in the scope (one of haiku, curry), write = so it moves no line, or " + declareUnnamed,
+		},
+		"a fixed = behind a sigil the message can leave out": {
+			nil, config.SigilPatch, two,
+			pattern(config.Sayable{SigilGroup: true, SigilDroppable: true}),
+			"this commit touches no file, so no package's tree can carry its sigil ~: leave the sigil out so it moves no line",
+		},
+		"a sigil to leave out, beside a scope and files": {
+			[]string{"README.md"}, config.SigilPatch, two,
+			pattern(config.Sayable{ScopeGroup: true, Scopes: []string{"haiku", "curry"}, SigilGroup: true, SigilDroppable: true}),
+			"its files (README.md) belong to no declared package, and its sigil ~ claims a version impact nothing can carry: name the line it moves in the scope (one of haiku, curry), leave the sigil out so it moves no line, or " + declareUnnamed,
+		},
+		"a = the message can write or leave unwritten": {
+			nil, config.SigilPatch, two,
+			pattern(config.Sayable{SigilGroup: true, None: true, SigilDroppable: true}),
+			"this commit touches no file, so no package's tree can carry its sigil ~: write = so it moves no line",
+		},
+		"a sigil group that reads no = and cannot be left out": {
+			nil, config.SigilPatch, two,
+			pattern(config.Sayable{SigilGroup: true}),
+			"this commit touches no file, so no package's tree can carry its sigil ~: patterns[0], which claimed this message, captures no = as the sigil and captures no scope",
 		},
 		"a grammar with no scope, a root at its default name": {
 			nil, config.SigilPatch, bareRoot,
@@ -248,7 +268,7 @@ func TestNoCarrierNamesOnlyTheEscapesTheCommitCanTake(t *testing.T) {
 		},
 		"a scope the pattern captures, a sigil it fixes": {
 			nil, config.SigilPatch, two,
-			pattern(config.Sayable{ScopeGroup: true, ScopeOptional: true, Scopes: []string{"haiku", "curry"}}),
+			pattern(config.Sayable{ScopeGroup: true, Scopes: []string{"haiku", "curry"}}),
 			"this commit touches no file, so no package's tree can carry its sigil ~: name the line it moves in the scope (one of haiku, curry)",
 		},
 		"a scope group spelling one name of two": {
@@ -274,7 +294,7 @@ func TestNoCarrierNamesOnlyTheEscapesTheCommitCanTake(t *testing.T) {
 		"no escape in any pattern, no file": {
 			nil, config.SigilPatch, two,
 			pattern(config.Sayable{}),
-			"this commit touches no file, so no package's tree can carry its sigil ~: patterns[0], which claimed this message, fixes the sigil at ~ and captures no scope — nothing a message it claims can write carries this commit",
+			"this commit touches no file, so no package's tree can carry its sigil ~: patterns[0], which claimed this message, fixes the sigil at ~ and captures no scope",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -369,8 +389,10 @@ func TestContradictingNoneIsPlacedByItsFiles(t *testing.T) {
 // to belong to anything, and the root package is called that, with its name
 // where a scope can write it. The remedy names only what the claiming pattern
 // lets the message write: the scopes of the lines it moves that the pattern's
-// scope group spells, and dropping the scope where the pattern can go without
-// one.
+// scope group spells, and dropping the scope only where the caller proved it
+// of this message (Sayable.ScopeDroppable). A scope neither proven droppable
+// nor required by the pattern's tree is called neither — the state a scope in
+// one branch of an alternation is in.
 func TestContradictionNamesTheOwnersAndTheScopesThatWork(t *testing.T) {
 	const rule = " — the longest declared path owns a file: "
 	sub := []config.Package{haiku, curry, nested}
@@ -397,28 +419,38 @@ func TestContradictionNamesTheOwnersAndTheScopesThatWork(t *testing.T) {
 		},
 		"the root package owns the file": {
 			[]string{".github/CODEOWNERS"}, []config.Package{haiku, root},
-			pattern(config.Sayable{ScopeGroup: true, ScopeOptional: true, Scopes: []string{"haiku", "core"}, SigilGroup: true, None: true}),
+			pattern(config.Sayable{ScopeGroup: true, ScopeDroppable: true, Scopes: []string{"haiku", "core"}, SigilGroup: true, None: true}),
 			"scope (haiku) names a line this commit does not move: .github/CODEOWNERS belongs to core (the root package)" + rule + "write the scope of a line it moves (core), or drop the scope",
 		},
 		"a root name the claiming pattern cannot write": {
 			[]string{".github/CODEOWNERS"}, []config.Package{haiku, root},
-			pattern(config.Sayable{ScopeGroup: true, ScopeOptional: true, Scopes: []string{"haiku"}, SigilGroup: true, None: true}),
+			pattern(config.Sayable{ScopeGroup: true, ScopeDroppable: true, Scopes: []string{"haiku"}, SigilGroup: true, None: true}),
 			"scope (haiku) names a line this commit does not move: .github/CODEOWNERS belongs to the root package" + rule + "drop the scope",
 		},
 		"a scope the pattern requires": {
+			[]string{"curry/b.go"}, []config.Package{haiku, curry},
+			pattern(config.Sayable{ScopeGroup: true, ScopeRequired: true, Scopes: []string{"haiku", "curry"}, SigilGroup: true, None: true}),
+			"scope (haiku) names a line this commit does not move: curry/b.go belongs to curry (curry)" + rule + "write the scope of a line it moves (curry)",
+		},
+		"a scope not required, and not proven droppable": {
 			[]string{"curry/b.go"}, []config.Package{haiku, curry},
 			pattern(config.Sayable{ScopeGroup: true, Scopes: []string{"haiku", "curry"}, SigilGroup: true, None: true}),
 			"scope (haiku) names a line this commit does not move: curry/b.go belongs to curry (curry)" + rule + "write the scope of a line it moves (curry)",
 		},
 		"one of two moved lines spellable": {
 			[]string{"curry/b.go", "haiku/sub/x.go"}, sub,
-			pattern(config.Sayable{ScopeGroup: true, ScopeOptional: true, Scopes: []string{"haiku", "sub"}, SigilGroup: true, None: true}),
+			pattern(config.Sayable{ScopeGroup: true, ScopeDroppable: true, Scopes: []string{"haiku", "sub"}, SigilGroup: true, None: true}),
 			"scope (haiku) names a line this commit does not move: curry/b.go belongs to curry (curry), and haiku/sub/x.go belongs to sub (haiku/sub)" + rule + "write the scope of a line it moves (sub), or drop the scope",
 		},
 		"a required scope that spells no line it moves": {
 			[]string{"curry/b.go"}, []config.Package{haiku, curry},
-			pattern(config.Sayable{Pattern: 3, ScopeGroup: true, Scopes: []string{"haiku"}, SigilGroup: true, None: true}),
+			pattern(config.Sayable{Pattern: 3, ScopeGroup: true, ScopeRequired: true, Scopes: []string{"haiku"}, SigilGroup: true, None: true}),
 			"scope (haiku) names a line this commit does not move: curry/b.go belongs to curry (curry)" + rule + "patterns[3], which claimed this message, requires a scope and spells none of the lines it moves — the scope must name one of them (curry) or no package",
+		},
+		"neither required nor proven droppable, spelling no line it moves": {
+			[]string{"curry/b.go"}, []config.Package{haiku, curry},
+			pattern(config.Sayable{Pattern: 3, ScopeGroup: true, Scopes: []string{"haiku"}, SigilGroup: true, None: true}),
+			"scope (haiku) names a line this commit does not move: curry/b.go belongs to curry (curry)" + rule + "patterns[3], which claimed this message, spells none of the lines it moves — the scope must name one of them (curry) or no package",
 		},
 		"a diff the caller read in part": {
 			[]string{"curry/b.go"}, []config.Package{haiku, curry}, func(r *Refusal) { r.Unread = true },
