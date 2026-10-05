@@ -1,0 +1,12 @@
+diff --git a/internal/cli/bodylimit.go b/internal/cli/bodylimit.go
+index e7919dc..c62f65f 100644
+--- a/internal/cli/bodylimit.go
++++ b/internal/cli/bodylimit.go
+@@ -75,7 +75,6 @@ func truncateComment(body string) string {
+ 	for {
+ 		closers := strings.Repeat(detailsCloser, openDetails(head))
+ 		if utf8.RuneCountInString(head)+utf8.RuneCountInString(closers) <= budget {
+-			head += closers
+ 			break
+ 		}
+ 		head = cutAtLine(head, budget-utf8.RuneCountInString(closers))

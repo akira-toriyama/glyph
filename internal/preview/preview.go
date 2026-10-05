@@ -91,6 +91,21 @@ type Input struct {
 	// line and are ignored, except PendingShort and PRShort, which qualify
 	// every line at once (one walk read them all; one listing per commit).
 	Packages []Package
+	// Participating is how many of the pull's commits participate — the fold
+	// reads them: not an exclude_authors author, matched, not claimed by a
+	// skip pattern (DESIGN §4.1) — each counted once, and OffLine how many of
+	// those sit on no line, and so in no table. Both are the caller's counts,
+	// read by the two packages bodies alone (Render with Packages set, and
+	// RenderNoLine): the tables cannot give either. A commit moving two lines
+	// has a row in each, one sitting on no line has none, and a row carries no
+	// sha, so the first cut's count of distinct sigil-and-subject pairs made
+	// one commit of two that share a subject — "2 commit(s)" under a table of
+	// three rows, for a pull the single line counts 4 (t-rrw0 (1);
+	// TestPreviewPackagesCountsWhatTheFoldReads fails so on that source). On
+	// the single line PR.Commits is the participating set itself, and its
+	// footer counts that.
+	Participating int
+	OffLine       int
 }
 
 // Package is one line's fold: its path (the line's name), what its version
@@ -258,7 +273,8 @@ func Render(in Input) string {
 // the versions spelled as tags — then one commit table per line (a commit
 // that touches two lines sits in both, as it participates in both), the
 // notes preview once (its per-line headings are the notes' own), and a
-// footer that names every line's base. The marker and the warning block are
+// footer that counts the participating commits, says how many of them no
+// table holds, and names every line's base. The marker and the warning block are
 // the single line's, byte for byte: the sticky-comment contract and the
 // incomplete-walk caveat do not change shape because there are two lines.
 func renderPackages(in Input) string {
@@ -273,7 +289,7 @@ func renderPackages(in Input) string {
 	if in.PendingShort != "" {
 		fmt.Fprintf(&b, "\n> [!WARNING]\n> The pending side of this fold is INCOMPLETE: %s. Anything already merged but unreleased may be missing from the figures above, so treat each as a floor rather than the answer.\n", in.PendingShort)
 	}
-	b.WriteString(PRShortBlock(in.PRShort, true))
+	b.WriteString(prShortBlock(in.PRShort, true))
 	for _, p := range in.Packages {
 		if len(p.PR.Commits) == 0 {
 			continue
@@ -292,18 +308,44 @@ func renderPackages(in Input) string {
 	return b.String()
 }
 
-// PRShortBlock is the caveat renderPackages places under the headlines when
-// PRShort is set, and "" when it is not. Exported because the packages
-// "moves nothing" sentence is the caller's own, and a pull whose one
-// unlisted commit was attributed to no line is exactly the body that must
-// carry it. figures says whether the body carries figures for the caveat to
+// RenderNoLine is the body for a pull, in a repository that declares
+// [[packages]], whose commits sit on no line: nothing moves, so there is no
+// headline per line, no table and no base to name. It reads PRShort,
+// Participating and nothing else of the Input.
+//
+// The sentence carries no count. It did — "its N commit(s) touch no declared
+// package", N the raw listing — and said that of a skipped merge commit whose
+// diff nothing reads, above a footer repeating the same N as
+// "participating": 3 for a pull of a shared =, a bot and a merge
+// commit, which the single line counts 1 (t-rrw0 (2)+(3)). With the
+// participating count in its place it would read "its 1 commit(s)" in that
+// pull of three, and "its 0 commit(s)" in a pull of a bot and a merge — the
+// miscount reading footer's wording exists to avoid. So the count is the
+// footer's alone, and the sentence is about every participating commit. With
+// the PR side short it claims no more than the files GitHub listed, and the
+// caveat makes a floor of it.
+//
+// The caller picks this over Render: an Input with no Packages is the single
+// line's to Render, and nothing in it says a repository declares lines.
+func RenderNoLine(in Input) string {
+	nothing := "⏸️ Merging this PR moves nothing — no commit participating in it touches a declared package."
+	if in.PRShort != "" {
+		nothing = "⏸️ Merging this PR moves nothing in the files GitHub listed — no commit participating in it touches a declared package there."
+	}
+	return Marker + "\n" + nothing + "\n" + prShortBlock(in.PRShort, false) + "\n" + packagesFooter(in) + "\n"
+}
+
+// prShortBlock is the caveat both packages bodies place under their headline
+// when PRShort is set, and "" when it is not: a pull whose one unlisted
+// commit was attributed to no line is exactly the body that must carry it.
+// figures says whether the body carries figures for the caveat to
 // make floors of: the headlines do, the "moves nothing" sentence does not,
 // and a caveat pointing at "the figures above" there points at nothing. The
 // sentence names no cause — PRShort already does, and "only past the cap"
 // was false for a listing GitHub answered 422 for (t-esm5) — and says a line
 // MAY be missing, the walk's own word: a scope can carry a commit onto the
 // very line its unlisted files touch.
-func PRShortBlock(short string, figures bool) string {
+func prShortBlock(short string, figures bool) string {
 	if short == "" {
 		return ""
 	}
@@ -314,22 +356,23 @@ func PRShortBlock(short string, figures bool) string {
 	return fmt.Sprintf("\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: %s. A line one of those commits touches in files GitHub did not list %s.\n", short, floor)
 }
 
-// packagesFooter is footer per line: the participating commits are counted
-// once each (a commit in two lines is one commit), and the base every line
-// was folded since is named — or the line said to have no release tag on the
-// base branch yet.
+// packagesFooter is footer for both packages bodies: the participating
+// commits, counted by the caller (Input.Participating) — the single line's
+// set, so one pull reads one number whichever body it gets — and the base
+// every line was folded since, or the line said to have no release tag on
+// the base branch yet.
+//
+// Beside tables it also says how many of those commits sit on no line. They
+// are in no table, so without it a reader who counts the rows above finds
+// fewer than the footer claims: the miscount footer's wording exists to
+// avoid. It is a sentence of its own, after the one that names the bases:
+// spliced in ahead of "squash-safe, a squash-merge cannot erase them", that
+// clause would read as said of the commits on no line alone. A body with no
+// line has no table to disagree with, and its one sentence has already said
+// that no participating commit touches a package.
 func packagesFooter(in Input) string {
-	seen := map[string]bool{}
-	n := 0
 	var bases, untagged, untaggedWalked []string
 	for _, p := range in.Packages {
-		for _, c := range p.PR.Commits {
-			key := c.Sigil + "\x00" + c.Subject
-			if !seen[key] {
-				seen[key] = true
-				n++
-			}
-		}
 		if p.Untagged {
 			if p.PendingWalked {
 				untaggedWalked = append(untaggedWalked, p.Path)
@@ -340,7 +383,7 @@ func packagesFooter(in Input) string {
 		}
 		bases = append(bases, fmt.Sprintf("**%s** (%s)", p.Current, p.Path))
 	}
-	s := fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them", n)
+	s := fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them", in.Participating)
 	if len(bases) > 0 {
 		how := "with what is already merged on the base branch"
 		if in.PendingShort != "" {
@@ -349,6 +392,13 @@ func packagesFooter(in Input) string {
 		s += fmt.Sprintf(" — folded, per line, %s since %s", how, strings.Join(bases, ", "))
 	}
 	s += "."
+	if len(in.Packages) > 0 && in.OffLine > 0 {
+		sit := "sit"
+		if in.OffLine == 1 {
+			sit = "sits"
+		}
+		s += fmt.Sprintf(" %d of them %s on no line.", in.OffLine, sit)
+	}
 	if len(untaggedWalked) > 0 {
 		s += fmt.Sprintf(" %s has no release tag on the base branch yet, so everything merged so far is folded in for it.", strings.Join(untaggedWalked, " and "))
 	}
@@ -360,9 +410,11 @@ func packagesFooter(in Input) string {
 
 func footer(in Input) string {
 	n := len(in.PR.Commits)
-	// "participate" rather than "are in": bots, skip-pattern commits (merges,
-	// under the presets) and raw reverts are excluded upstream, so a bot's PR
-	// legitimately shows zero here and the wording must not read as a miscount.
+	// "participate" rather than "are in": bots and skip-pattern commits (merges,
+	// under the presets) are excluded upstream, so a bot's PR legitimately shows
+	// zero here and the wording must not read as a miscount. PR.Commits is the
+	// fold's rows, the participating set (DESIGN §4.1) — a raw revert among
+	// them: the presets' revert pattern claims it, at ~.
 	if in.Untagged {
 		return fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. The base branch holds no v* release tag yet, so nothing merged earlier is folded in. Pushing more commits updates this comment.", n)
 	}

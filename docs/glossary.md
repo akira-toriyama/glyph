@@ -59,8 +59,8 @@ API and knows nothing of any range. "Exactly one of the three" is `bump` and
 mutually exclusive. `release` has just the walk (bare `release` walks from the
 highest v* tag HEAD contains, so no flag is required at all), and `preview` takes
 `--pr`, which it marks required. `internal/cli/sincetag.go: walkSince`,
-`internal/cli/range.go: participatingCommits`, `internal/cli/pr.go:
-participatingPull`, `internal/cli/sincetag.go: markInputSourceFlags` (used by
+`internal/cli/range.go: logRange`, `internal/cli/pr.go:
+pullInput`, `internal/cli/sincetag.go: markInputSourceFlags` (used by
 `internal/cli/cmd_bump.go` and `internal/cli/cmd_notes.go` alone)
 
 **walk base** — the tag the walked range starts at. Distinguish from the **step
@@ -117,8 +117,20 @@ a version. The word is used for both the operation and its input set — "an emp
 fold" means the commit set came out empty, which is the ambiguity *walkFacts*
 exists to resolve. `internal/bump/level.go: Reduce`
 
-**participate** — a commit that survives the participation rules and reaches
-classification. An excluded commit is *skipped, never a violation*. Two
+**participate** — a commit participates when the fold reads it: not an
+`exclude_authors` author, matched, not claimed by a skip pattern — exactly the
+rows `FoldSigils` returns
+([DESIGN §4.1](DESIGN.md#41-packages--independently-versioned-lines-in-one-repository),
+"The fold, the step, the exit"). An excluded commit is *skipped, never a
+violation*; a message no pattern claims is no participant either — it refuses
+the fold wherever one runs. Under `[[packages]]` a commit **joins** a line
+when it is placed on it and unreleased on it, and **participates in** a line
+when it does both: a shared-only `=` participates, in no line, and an
+`exclude_authors` commit never participates, though its files place it in
+their lines' notes. Every count of participating commits — the no-release
+reasons of `bump`, `release` and `notes`, and the preview's footer — counts
+this one set, each sha once; the walk's `pulls[].commits` is not one
+(**provenance**). Two
 exclusion questions are kept rigorously apart, and conflating them is the t-7zt7
 defect: the classification side asks "is this commit's own **message**
 judged?" — `exclude_authors` drops it before matching, a matching `skip = true`
@@ -207,7 +219,9 @@ footprint filter and the walk-wide seen-sha filter. `internal/cli/sincetag.go:
 foldPull`
 
 **provenance** (*expansion provenance*) — the walk reporting on itself: per
-resolved pull, its number and how many participating commits it contributed,
+resolved pull, its number and how many of its listed commits the walk took in
+(after the footprint and seen-sha filters; an excluded author's and a skipped
+merge commit among them, so it is not a count of commits that **participate**),
 published as `.pulls` on the `--json` verdict so a human or a CI step can audit
 how a verdict was assembled without re-deriving the exclusion rules in shell. It
 records what the walk **did** and never why a number is what it is: a count of
@@ -331,9 +345,9 @@ carries the decisions and the `e-7hat` box on the projects board the tasks.
 base, one draft, one fold. "Which line does this commit move?" is the only
 question packages add to the walk; the answer is **attribution**.
 
-**attribution** — mapping a participating commit to the packages it moves, asked
+**attribution** — placing a commit on the packages it moves, asked
 after the pattern match and before the fold. The tree decides: a file belongs to
-the package with the longest path prefix, and a commit participates in every
+the package with the longest path prefix, and a commit is placed on every
 package its own diff touches. Files come from local git for a commit the
 released branch holds and from `GET /commits/{sha}` for the squash arm (measured
 to answer for a sha no branch holds). Per commit, never per pull: the pull's net
@@ -345,7 +359,7 @@ repository with no root package) has a carrier only if its scope names a
 package, and so does a commit with no files at all — an empty commit, or a
 merge commit a pattern other than a skip claims, whose diff is never read —
 root package or not: the root package claims files, not commits. With none, a
-`=` commit participates nowhere and any other sigil is a lint-class refusal,
+`=` commit participates in no line and any other sigil is a lint-class refusal,
 because a version claim nothing can carry is the silent-none shape with the
 polarity reversed; the refusal names the escapes that commit can take — a
 scope naming a line or `=`, where the pattern that claimed it allows them,
@@ -371,7 +385,7 @@ synthesises a root package for it. A tag **names** a line:
 the v2 line alone. `internal/config/tagline.go: Line, Package.TagPrefix,
 Config.LineOf`, `internal/cli/lines.go: line`
 
-**attribution** — which lines a participating commit moves, read from the
+**attribution** — which lines a commit moves, read from the
 commit's **own** diff and never a pull's net diff: files under a package move
 it (longest path prefix wins; a rename counts under both names), a commit under
 no package moves the package its scope names, and a commit under no package

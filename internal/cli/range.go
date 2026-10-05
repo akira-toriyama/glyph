@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v4/internal/bump"
+	"github.com/akira-toriyama/glyph/v4/internal/config"
 	"github.com/akira-toriyama/glyph/v4/internal/core"
 	"github.com/akira-toriyama/glyph/v4/internal/github"
 	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
@@ -13,8 +14,8 @@ import (
 
 // This file is the shared input plumbing that turns raw commits — from git or
 // the API, both spelled gitsource.RawCommit — into the shapes the v2 engine
-// reads. Which commits participate, and how, is no longer decided here: the
-// pattern file decides, inside bump.FoldSigils / notes.GroupSigils /
+// reads. Which commits each of them reads, and how, is no longer decided here:
+// the pattern file decides, inside bump.FoldSigils / notes.GroupSigils /
 // config.Lint, so every consumer applies identical rules by construction.
 
 // sigilCommits adapts raw commits for the fold.
@@ -34,6 +35,30 @@ func noteCommits(raws []gitsource.RawCommit, pull int) []notes.SigilCommit {
 		out = append(out, notes.SigilCommit{SHA: r.SHA, Pull: pull, Author: r.Author, Login: identity(r), Message: r.Message})
 	}
 	return out
+}
+
+// participating counts the commits the fold reads — not an exclude_authors
+// author, matched, not claimed by a skip pattern (DESIGN §4.1) — for notes'
+// no-release reason, which says "N commit(s) participate" in bump's words and
+// so must mean bump's set. notes has no fold of its own to count: GroupSigils
+// renders excluded authors and messages no pattern claims, and the listing it
+// is handed holds skips too — the reason counted that listing, 4 where bump
+// said 2 of one range (TestNotesNoReleaseCountsParticipatingCommits).
+//
+// The fold itself is asked, one commit at a time, rather than its three
+// conditions restated here: a second copy could drift from the rows bump
+// publishes, and over the whole listing the fold refuses at the first message
+// no pattern claims, where notes renders such a range and still owes a count
+// of the rest.
+func participating(cfg *config.Config, commits []notes.SigilCommit) int {
+	n := 0
+	for _, c := range commits {
+		rows, _, err := bump.FoldSigils([]bump.SigilCommit{{SHA: c.SHA, Author: c.Author, Message: c.Message}}, cfg)
+		if err == nil {
+			n += len(rows)
+		}
+	}
+	return n
 }
 
 // identity is the GitHub login the notes may credit a commit's author BY:

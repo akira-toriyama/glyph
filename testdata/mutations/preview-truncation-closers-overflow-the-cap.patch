@@ -1,0 +1,20 @@
+diff --git a/internal/cli/bodylimit.go b/internal/cli/bodylimit.go
+index 0758e82..3d718f6 100644
+--- a/internal/cli/bodylimit.go
++++ b/internal/cli/bodylimit.go
+@@ -74,14 +74,7 @@ func truncateComment(body string) string {
+ 	// where the cut falls, so the two are settled together: each pass either
+ 	// fits the head and its closers in the budget or cuts the head shorter by
+ 	// at least a character, so it ends.
+-	for {
+-		closers := strings.Repeat(detailsCloser, openDetails(head))
+-		if utf8.RuneCountInString(head)+utf8.RuneCountInString(closers) <= budget {
+-			head += closers
+-			break
+-		}
+-		head = cutAtLine(head, budget-utf8.RuneCountInString(closers))
+-	}
++	head += strings.Repeat(detailsCloser, openDetails(head))
+ 	warnf("the preview body is %d characters and GitHub caps a comment at %d — posting a truncated preview (the cut is marked in the comment)", utf8.RuneCountInString(body), commentBodyMaxChars)
+ 	return head + notice
+ }

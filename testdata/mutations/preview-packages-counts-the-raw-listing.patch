@@ -1,0 +1,13 @@
+diff --git a/internal/cli/preview_lines.go b/internal/cli/preview_lines.go
+index 79bee17..1475b45 100644
+--- a/internal/cli/preview_lines.go
++++ b/internal/cli/preview_lines.go
+@@ -211,7 +211,7 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
+ 	if len(prCapped) > 0 || len(prUnknown) > 0 {
+ 		prShort = walkFacts{FilesCapped: prCapped, FilesUnknown: prUnknown}.shortfall(owner, repo)
+ 	}
+-	in := preview.Input{PendingShort: pendingShort, PRShort: prShort, Participating: len(pullRows), OffLine: offLine}
++	in := preview.Input{PendingShort: pendingShort, PRShort: prShort, Participating: len(raws), OffLine: offLine}
+ 	var pkgs []packagePreview
+ 	var noteBodies []string
+ 	for _, tl := range touched {

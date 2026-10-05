@@ -1,0 +1,25 @@
+diff --git a/internal/preview/preview.go b/internal/preview/preview.go
+index 85ea74e..6ac48cd 100644
+--- a/internal/preview/preview.go
++++ b/internal/preview/preview.go
+@@ -372,7 +372,11 @@ func prShortBlock(short string, figures bool) string {
+ // that no participating commit touches a package.
+ func packagesFooter(in Input) string {
+ 	var bases, untagged, untaggedWalked []string
++	seen := map[string]bool{}
+ 	for _, p := range in.Packages {
++		for _, c := range p.PR.Commits {
++			seen[c.Sigil+"\x00"+c.Subject] = true
++		}
+ 		if p.Untagged {
+ 			if p.PendingWalked {
+ 				untaggedWalked = append(untaggedWalked, p.Path)
+@@ -383,7 +387,7 @@ func packagesFooter(in Input) string {
+ 		}
+ 		bases = append(bases, fmt.Sprintf("**%s** (%s)", p.Current, p.Path))
+ 	}
+-	s := fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them", in.Participating)
++	s := fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them", len(seen))
+ 	if len(bases) > 0 {
+ 		how := "with what is already merged on the base branch"
+ 		if in.PendingShort != "" {

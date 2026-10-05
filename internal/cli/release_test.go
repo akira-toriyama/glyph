@@ -771,7 +771,7 @@ type releaseVerdict struct {
 }
 
 // TestReleaseJSONReportsPullExpansion: the verdict names every merged pull the
-// walk resolved and how many participating commits each contributed — the
+// walk resolved and how many of each one's listed commits it took in — the
 // provenance that makes a verdict auditable afterwards, without
 // re-implementing the walk's exclusion rules somewhere else. A direct push
 // resolves to no pull and must

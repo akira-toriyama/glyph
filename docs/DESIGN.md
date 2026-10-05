@@ -202,7 +202,13 @@ pattern says it means:
   the machine verdict (`bump --json`'s `commits[].warn`), which `bump`,
   `release` and both of `preview`'s folds each announce. The invariant is
   deliberate — a warning loud at one gate and silent at another teaches the
-  reader that the loud gate is noise. `warn` on a `skip` pattern is a load
+  reader that the loud gate is noise. Under `[[packages]]` the preview
+  announces it over the pull's whole listing, once per participating commit:
+  announced per touched line, a warned commit on no line was silent there
+  while the single line's preview and packages `bump` said it, and one on two
+  lines was said twice (measured 2026-10-05,
+  `TestPreviewPackagesWarnsEveryParticipatingCommitOnce`; mutation row
+  `preview-packages-warns-per-touched-line`). `warn` on a `skip` pattern is a load
   error (a skipped commit is outside every verdict, so the warning would fire
   for nobody), and so is an empty `warn`. The key was made for the
   **v1-acceptance window** (t-37xj): the migration pattern that accepted a
@@ -1383,7 +1389,37 @@ escape again: cut an intermediate tag so the next walk, and its body, is
 smaller. (The preview's sticky comment takes the OPPOSITE degradation —
 truncate at its 65536-char comment cap, marked in the comment and warned on
 stderr — because that surface is advisory and refreshed on every push, and a
-refusal there would take the whole verdict comment down with it.) A next version
+refusal there would take the whole verdict comment down with it. The mark is
+only a mark where it is read, so the cut **closes every `<details>` block it
+leaves open** before the notice goes on. The notes preview is the body's last
+section and sits in one, so a comment whose tables fit the cap and whose notes
+do not is cut inside it; cut at a line boundary and no more, the comment went
+out with one `<details>` and no `</details>` (t-rrw0 (5); measured 2026-10-05
+on the unfixed cut, over a body `preview.Render` wrote and over a 200-commit
+pull through `preview --notes`: `TestCommentTruncationClosesTheFoldItCutsInside`,
+`TestPreviewCutInsideTheNotesStillClosesTheFold`). GitHub renders such a body
+with the rule and the notice *inside* the block, folded away under "Release
+notes preview" with the notes, and the closed one with both after it — asked
+of GitHub's own renderer the same day (`POST /markdown`, `gfm` mode, one body
+of each shape: `…</ul><hr><p>… truncated…</p></details>` against
+`…</ul></details><hr><p>… truncated…</p>`), and of the real surface: both
+bodies posted as comments on a closed glyph-test pull and read back as
+`body_html`, the notice inside the open block on the unfixed cut and after
+`</details>` on the fixed one (glyph-test#118, posted and deleted). Mutation row
+`preview-truncation-leaves-the-notes-fold-open`. The closers are characters
+of the comment too, so the cut and what it must close are settled together
+against the cap: appended to a head that already spent the budget, a closer
+posts a comment GitHub answers 422, and the verdict is missing on exactly the
+oversized pulls. The test sweeps the cut's line end across every distance
+from the budget, a closer's dozen among them (mutation row
+`preview-truncation-closers-overflow-the-cap`). The cut keeps whole lines, and
+a line that ends exactly at the budget is one — it is kept
+(`TestCutAtLineKeepsEveryLineThatFits`, row
+`comment-cut-drops-a-line-that-fit`). The footer is past the cut
+either way: a truncated comment carries none. Moving the notes block behind
+the footer would keep it, at the price of a new layout for every comment that
+carries notes, and the cut would still fall inside the block with the notice
+folded away — so the block is closed, and the layout stays.) A next version
 not strictly above the latest published
 release fails loud (an unpublishable draft; a deleted published release's tag
 is burned forever).
@@ -1584,7 +1620,9 @@ mutation rows
 `release-body-sized-before-the-compare-link`.)
 
 The `--json` verdict also carries the walk's expansion
-provenance (`pulls`: each resolved pull and its participating commit count), so
+provenance (`pulls`: each resolved pull and how many of its listed commits the
+walk took in — a bot's and a skipped merge commit among them, so it is no
+count of *participating* commits, §4.1), so
 how a verdict was assembled can be read back afterwards — by a human reviewing a
 draft, or by a CI step — without re-deriving the walk's exclusion rules in
 shell. It reports what the walk DID and never why a count is what it is: 0 has
@@ -1656,8 +1694,8 @@ parsed *on* a line (`bump.ParseVersionOn`, `config.Package.TagPrefix`), and
 the walk base, the published floor and the managed drafts are each resolved
 per line — plus `doctor`'s root-line advice (t-q047); and the walk itself
 (t-ws0s): `internal/cli/lines.go` resolves the lines a `--since-tag` names,
-walks the union once, fetches each participating commit's files from local
-git or the API, and partitions the walk per line, so `bump` and `notes`
+walks the union once, fetches the files of each commit it places by its diff
+from local git or the API, and partitions the walk per line, so `bump` and `notes`
 answer per line over `--since-tag` and `--range` (the `packages` array
 below, scalars empty), `lint --range` and the pre-push hook apply rules 2–3
 and the contradiction check; and the drafts (t-qecb): `release` converges
@@ -1685,7 +1723,7 @@ own version line: its own tags, its own walk base, its own rolling draft.
 Everything §4 says about the walk — footprints, the covered ledger, the
 incomplete-walk refusal, the wedge — is about *which commits are unreleased*,
 and none of it changes; what packages add is one question asked of every
-participating commit before the fold, *which line does this commit move?*,
+walked commit before the fold, *which line does this commit move?*,
 and then the fold, the version step and the draft convergence run once per
 line. A repository with no `[[packages]]` is one line with no name, and every
 verdict it gets today is unchanged byte for byte (golden-pinned; mutation row
@@ -1843,13 +1881,14 @@ name = "core"               # its default "." is no preset scope's word: under t
   would be N grammars for the same message, with the winning one decided by a
   path the message does not carry.
 
-**Attribution — path decides, scope carries what path cannot.** Every
-participating commit that is not a merge commit is placed by the packages
+**Attribution — path decides, scope carries what path cannot.** A commit
+that is not a merge commit is placed by the packages
 whose subtree its own diff touches; a file belongs to the package with the
 **longest** path prefix, so a nested package takes its files out of its
 parent and the root package holds the remainder. What attribution may read of
 the *message* is decided first, by what the fold reads: a commit the fold
-reads (not an `exclude_authors` author, not a skip pattern, matched) is placed
+reads (a *participating* commit: not an `exclude_authors` author, not a skip
+pattern, matched — "The fold, the step, the exit", below) is placed
 by the rules below, scope and sigil included; a commit the fold does not read
 is placed by rule 1 alone — its files, never its message, because the message
 is exactly what glyph declared it would not judge. So an `exclude_authors`
@@ -1875,17 +1914,17 @@ rows `packages-excluded-author-placed-on-every-line`,
 `preview-packages-excluded-author-dropped`). The rules, in the order they are
 asked:
 
-1. Its files lie under one or more packages → it participates in **each** of
+1. Its files lie under one or more packages → it is placed on **each** of
    them, with its one sigil. A commit that renames across two modules moves
    both lines; that is what it did.
 2. Its files lie under no package (a *shared-only* commit: root CI, the
    workspace file, a README, in a repository with no root package) — or it
    has no files at all, whatever is declared (below) — and the winning
-   pattern captured a `scope` naming a package → it participates in **that**
+   pattern captured a `scope` naming a package → it is placed on **that**
    package. The author said where the impact lands and the tree could not.
 3. Otherwise it has **no carrier**. With sigil `=` that is the expected shape
-   of shared housekeeping and it participates nowhere (it appears in no draft
-   — there is no line for it to appear on). With any other sigil it is a
+   of shared housekeeping and it participates in no line (it appears in no
+   draft — there is no line for it to appear on). With any other sigil it is a
    **refusal of the lint class (exit 3)**: the author claimed a version impact
    and nothing can carry it. The error names the escapes the commit can
    actually take — name a line in the scope when the winning pattern captures
@@ -2283,8 +2322,8 @@ whole history. The walk runs once over the **union** of those ranges (the
 range from the bases' common ancestor to `HEAD`, which contains the union),
 resolving each merge point once, and the range question becomes *in which
 lines* a sha is unreleased rather than a boolean (each line's own
-`base..HEAD` set, read from local git, free); a listed commit participates
-in package p when it is attributed to p **and** its governing on-branch
+`base..HEAD` set, read from local git, free); a listed commit **joins**
+package p's line when it is placed on p **and** its governing on-branch
 commit (its landing site, else its pull's merge point) is unreleased on p's
 line. A commit the union holds that is released on every line — possible
 where the common ancestor sits before both bases — is walked, because the
@@ -2308,7 +2347,7 @@ per resolved pull, and under packages a file read per squash-arm inner commit
 placed by its files — about two requests per commit where the commits are
 squash-merged pulls. Measured the same day: on the stand-in API a line tagged
 251 commits back took a bare `bump --since-tag` to 251 lookups for one
-participating commit, and google-cloud-go's union over the lines a 2026-09-13
+commit on any line, and google-cloud-go's union over the lines a 2026-09-13
 survey declared started at one line's `auth/oauth2adapt/v0.2.8`, cut
 2025-03-20 — 1,843 commits to main as it stood on 2026-09-13 (`git rev-list
 --count`, re-run 2026-09-29; 1,888 to main as of 2026-09-29), 1,797 of them
@@ -2371,7 +2410,7 @@ git, every commit unreleased on every line (a `--range` fold names no
 release base) and each line stepping from its own highest tag.
 
 **The fold, the step, the exit.** `FoldSigils` runs once per package over
-that package's participating commits, so §3 is unchanged per line: max-fold,
+the commits that joined that package's line, so §3 is unchanged per line: max-fold,
 `%` promotes that line, the 0.x rule reads that line's current version, and a
 commit no pattern claims still refuses the whole walk (it is refused before
 attribution, so a wrong grammar cannot be hidden by a wrong tree). The
@@ -2385,14 +2424,72 @@ packages are declared** — a repository with packages has no one line for them
 to describe, and a consumer that reads only the scalars is exactly the
 consumer that must not act (mutation row
 `packages-scalar-verdict-describes-one-line.patch`). The top-level `commits`
-then lists every commit that participates on any line — a shared-only `=`
-among them, on no line but read — and `notes`' verdict mirrors the shape:
+then lists every **participating** commit — a shared-only `=` among them, in
+no line but read — and `notes`' verdict mirrors the shape:
 `packages: [{path, sections}]` with the top-level `sections` empty. On
 stdout, `bump` prints the next **tag** of every line that moves, one per
 line in config order (`haiku/v0.2.0` — the prefix is what a tag step needs,
 and the single line's bare `vX.Y.Z` is the root package's spelling of the
 same thing); `notes` prints one line's body bare when a tag selects it and,
 over several lines, each body under a `# <path>` heading, the sections nested below it.
+
+**Participating** means one set, wherever the word stands (t-rrw0, t-mfny;
+ratified 2026-09-29). A commit *participates* when the fold reads it: not an
+`exclude_authors` author, matched, not claimed by a skip pattern — exactly the
+rows `FoldSigils` returns, on the single line and under packages alike. Under
+the presets that leaves out the bots and the merge commits. A `fixup!`,
+`squash!` or `amend!` is not left out but refused (§2: an unlandable claim
+reads as unmatched, and an unmatched message refuses the fold wherever one
+runs), so no count ever holds one. A commit *joins* package p's line when it
+is placed on p and unreleased on p's line (above), and it *participates in*
+p's line when it does both: it participates, and it joins. So a shared-only
+`=` participates, in no line; an `exclude_authors` commit joins the lines its
+files touch — which is how it reaches their notes — and participates in none;
+and `packages[].commits` is the commits participating in that line, the
+top-level `commits` every participating commit, each once.
+
+The definition had to be written down because the word had come to name three
+sets. The sentence above said the top-level `commits` list every commit that
+"participates on any line" of a set holding the shared-only `=` rule 3 said
+"participates nowhere", and the counts printed beside the word followed three
+readings. Every sentence that counts participating commits now counts the one
+set, each sha once. `bump`'s and `release`'s no-release reasons and the single
+line's preview footer always did. The preview's footer under packages did
+not, on either body — measured on b42ca92, each listing previewed on a single
+line too (`TestPreviewPackagesCountsWhatTheFoldReads`): the body of a pull
+touching no line counted the raw listing, 3 for a pull of a shared `=`, a bot
+and a merge commit where the single line says 1; the per-line footer counted
+each table's distinct sigil-and-subject pairs, 2 for a pull the single line
+counts 4, under a haiku table of three rows — two commits sharing a subject
+were one (a row carries no sha; t-rrw0 (1)), and the shared `=` was in no
+table. Both bodies are handed the count now (`preview.Input.Participating`,
+the rows of the one fold of the whole listing), and say what follows from it
+(Preview, below). Mutation rows `preview-packages-counts-the-raw-listing`,
+`preview-footer-counts-the-tables-distinct-subjects`.
+
+`notes`' no-release reason did not either: "N commit(s) participate" in
+`bump`'s words, over the listing `notes` was handed. Measured on b42ca92
+(`TestNotesNoReleaseCountsParticipatingCommits`, which asks `bump` over the
+same input and holds `notes` to its answer): over one single-line range of
+two `=`, a bot and a merge commit, `bump` said 2 and `notes` 4; beside a
+message no pattern claims, `notes` said 2 of a range the fold refuses at 3;
+over a `--since-tag` walk of one `=` and a bot, 2 where `bump` says 1; and
+under packages 4 where `bump`'s top-level `commits` lists 1. `notes` renders
+excluded authors and unmatched messages, so it has no fold of its own to
+count. It asks the fold, one commit at a time (`participating`,
+`internal/cli/range.go`): the three conditions restated there would be a
+second copy free to drift from the rows `bump` publishes, and over the whole
+listing the fold refuses at the first unmatched message, where `notes` still
+owes a count of the rest. The reason is prose: `goreleaser.yml` branches on
+`notes`' exit code and reads no reason.
+Mutation rows `notes-reason-counts-the-raw-listing`,
+`notes-packages-reason-counts-the-raw-walk`.
+
+The walk's `pulls[].commits` is not such a count and was never meant as one:
+it is how many of a pull's listed commits the walk took in, bots and skipped
+merge commits included (§4; measured 2026-10-05 with `release --dry-run
+--json`, a squash-merged pull listing one `~`, a bot and a merge commit
+reports `"commits":3` beside the one row of the verdict's `commits`).
 
 **Drafts, one per line.** Convergence runs `draftplan` once per package over
 the drafts carrying that package's prefix, so the founding invariants hold
@@ -2513,7 +2610,7 @@ next; a package the pull does not touch is not mentioned, and a pull whose
 commits carry nothing (`=` everywhere, or shared-only `=`) says it moves
 nothing, as today. `pr-verdict.yml` renders what the binary hands it; its one
 packages change is `breaking` (below). The pull's commits exist on its branch only, so their files
-come from `GET /commits/{sha}` — one request per participating commit, the
+come from `GET /commits/{sha}` — one request per commit placed by its files, the
 squash arm's price paid before the merge — and a commit attribution refuses
 is refused here at exit 3, the same lint-class answer the walk will give
 once it is merged, while the branch can still be fixed. Over a listing GitHub
@@ -2526,7 +2623,16 @@ this comment is read by someone who never opens the log
 the shortfall it quotes does: it said "only past the cap" of a 422 until
 t-esm5. When no line is touched, the "moves nothing" sentence claims no
 declared package only in the files GitHub listed, and the caveat makes a floor
-of that sentence rather than of figures the body does not carry. The pending
+of that sentence rather than of figures the body does not carry. That
+sentence carries **no count**: "no commit participating in it touches a
+declared package". It read "its N commit(s) touch no declared package" with N
+the raw listing — said, then, of a skipped merge commit whose diff nothing
+reads — and with the participating count in N's place it would read "its 1
+commit(s)" in a pull of three and "its 0 commit(s)" in a pull of two, a count
+that reads as a miscount of the pull. The count is the footer's alone
+(`preview.RenderNoLine`, the body moved beside the others so its prose is
+unit-tested with theirs; `TestRenderNoLine`, mutation row
+`preview-moves-nothing-counts-the-pulls-commits`). The pending
 side is the one walk, run when any touched line has a release tag (the
 release-floor guard per line), and its RANGE is resolved over the TOUCHED
 lines alone —
@@ -2551,9 +2657,18 @@ states, not one flag. The body is the single line's sentences per line: the
 marker, one headline per touched line led by the line's name with versions
 spelled as tags (`haiku/v0.1.0 → haiku/v0.2.0`, so two lines can never be
 confused), one commit table per line (a commit moving two lines sits in
-both, counted once in the footer), the notes preview under the notes' own
+both), the notes preview under the notes' own
 `# <path>` headings, and the incomplete-walk warning once — one walk read
-every line. The machine verdict gains `packages: [{path, current, untagged,
+every line. The footer counts every participating commit once ("The fold,
+the step, the exit", above) and, in a sentence of its own, says how many of
+them sit on no line — `1 of them sits on no line.` — because a shared-only
+`=`, or a commit whose refusal was withheld, is in no table, and a reader who
+counts the rows would otherwise find fewer than the footer claims. The
+sentence follows the one that names the bases: spliced in ahead of
+"squash-safe, a squash-merge cannot erase them", that clause would read as
+said of the commits on no line alone (`TestRenderPackagesSaysHowManySitOnNoLine`,
+`TestRenderPackagesCountsTwoCommitsWithOneSubjectAsTwo`; mutation row
+`preview-footer-hides-the-commits-on-no-line`). The machine verdict gains `packages: [{path, current, untagged,
 level, next, pr, pending}]` with **every scalar at its zero value** — the
 strings empty, `untagged` false, whatever the pull touches — so
 `pr-verdict.yml`'s `level` output is `""` — not computed — exactly as its

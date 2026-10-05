@@ -52,12 +52,54 @@ func checkReleaseBody(body string) error {
 // costs a scroll, while a refusal would take the whole verdict surface down
 // with it. The notice is part of the comment because a truncated preview
 // otherwise reads as a complete document that simply lists fewer commits.
+//
+// And the notice has to be READ, so the cut closes every <details> block it
+// leaves open before the notice goes on. The notes preview is the body's last
+// section and sits in one: a comment whose tables fit the cap and whose notes
+// do not is cut inside it, and GitHub closes an open block at the end of the
+// comment — the rule and the notice inside it, folded away under "Release
+// notes preview" (t-rrw0 (5); the first cut knew lines and no blocks, and
+// posted one <details> with no </details>). Both renderings were asked of
+// GitHub's renderer, the open body and the closed one (DESIGN §4 keeps the
+// method). The footer is past the cut either way: a truncated comment has
+// none.
 func truncateComment(body string) string {
 	if utf8.RuneCountInString(body) <= commentBodyMaxChars {
 		return body
 	}
 	const notice = "\n\n---\n\n… truncated: the full preview exceeds GitHub's comment cap. `glyph preview --pr <N> --notes` prints the whole document.\n"
 	budget := commentBodyMaxChars - utf8.RuneCountInString(notice)
+	head := cutAtLine(body, budget)
+	// The closers count against the cap too, and what must close depends on
+	// where the cut falls, so the two are settled together: each pass either
+	// fits the head and its closers in the budget or cuts the head shorter by
+	// at least a character, so it ends.
+	for {
+		closers := strings.Repeat(detailsCloser, openDetails(head))
+		if utf8.RuneCountInString(head)+utf8.RuneCountInString(closers) <= budget {
+			head += closers
+			break
+		}
+		head = cutAtLine(head, budget-utf8.RuneCountInString(closers))
+	}
+	warnf("the preview body is %d characters and GitHub caps a comment at %d — posting a truncated preview (the cut is marked in the comment)", utf8.RuneCountInString(body), commentBodyMaxChars)
+	return head + notice
+}
+
+// detailsCloser ends a <details> block the way internal/preview ends its own:
+// a blank line, then the tag on a line to itself.
+const detailsCloser = "\n\n</details>"
+
+// cutAtLine keeps at most budget characters of body, whole lines only, so no
+// construct is left half written ahead of the notice: a cut that falls inside
+// a line backs up to the end of the line before it, and one that falls exactly
+// at a line's end keeps that line — it fit. No budget keeps nothing:
+// truncateComment's loop relies on a shorter budget always giving a shorter
+// head.
+func cutAtLine(body string, budget int) string {
+	if budget <= 0 {
+		return ""
+	}
 	// Walk rune starts until the budget is spent; range-over-string is the
 	// boundary-safe iteration, so the cut can never split a rune.
 	cut := len(body)
@@ -70,9 +112,28 @@ func truncateComment(body string) string {
 		runes++
 	}
 	head := body[:cut]
+	if cut == len(body) || body[cut] == '\n' {
+		return head
+	}
 	if nl := strings.LastIndexByte(head, '\n'); nl > 0 {
 		head = head[:nl]
 	}
-	warnf("the preview body is %d characters and GitHub caps a comment at %d — posting a truncated preview (the cut is marked in the comment)", utf8.RuneCountInString(body), commentBodyMaxChars)
-	return head + notice
+	return head
+}
+
+// openDetails counts the <details> blocks head opens and does not close. It
+// reads whole lines, the only form internal/preview writes the tags in: a
+// subject or a notes line that mentions one is commit text, escaped or inside
+// a code span, and never sits on a line of its own.
+func openDetails(head string) int {
+	depth := 0
+	for line := range strings.SplitSeq(head, "\n") {
+		switch line {
+		case "<details>":
+			depth++
+		case "</details>":
+			depth--
+		}
+	}
+	return max(depth, 0)
 }

@@ -249,10 +249,10 @@ func TestSinceTagPackagesSharedOnlyBumpIsRefused(t *testing.T) {
 	}
 }
 
-// TestSinceTagPackagesSharedOnlyNoneParticipatesNowhere: a = under no package
-// is shared housekeeping — on no line, in no verdict, but still among the
-// commits the walk read. Every line folds to none, so exit 1.
-func TestSinceTagPackagesSharedOnlyNoneParticipatesNowhere(t *testing.T) {
+// TestSinceTagPackagesSharedOnlyNoneParticipatesInNoLine: a = under no package
+// is shared housekeeping — it participates, in no line: in no line's verdict,
+// and among the commits the walk read. Every line folds to none, so exit 1.
+func TestSinceTagPackagesSharedOnlyNoneParticipatesInNoLine(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	sha := touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
 	usePR(t, walkServer(t, map[string]string{commitPullsPath(sha): `[]`}))

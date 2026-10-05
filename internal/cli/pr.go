@@ -16,7 +16,7 @@ import (
 // This file is the GitHub-side input plumbing — the remote twin of range.go. It
 // answers "which repository, with which credential, against which host", and
 // turns a pull request's individual (pre-squash) commits into the very same
-// participating-commit list the local --range walk produces. Command logic stays
+// raw-commit list the local --range read produces. Command logic stays
 // in the cmd_*.go files; the participation rules stay in internal/bump and
 // internal/config, so a PR classifies identically whether it is read from git or
 // from the API.

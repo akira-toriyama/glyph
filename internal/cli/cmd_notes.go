@@ -130,7 +130,7 @@ func notesLinkEnds(ctx context.Context) (owner, repo, head string, err error) {
 }
 
 // notesLines is notes for a repository that declares [[packages]]: one body
-// per line, each grouped over the commits that participate on that line.
+// per line, each grouped over the commits that joined that line.
 // --pr is refused for the reason bump refuses it. stdout is the one line's
 // body when one line is selected (the tag-time rendering goreleaser.yml
 // performs, where a heading would be noise); with several lines each body
@@ -175,7 +175,7 @@ func notesLines(cmd *cobra.Command, cfg *config.Config) error {
 		said = append(said, lineBody{path: lw.Package.Path, base: lw.BaseTag, notes: notes.RenderSigils(sections)})
 	}
 	if len(said) == 0 {
-		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section on any line", len(w.All), w.Source)
+		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section on any line", participating(cfg, walkedNoteCommits(w.All)), w.Source)
 		if notesJSON {
 			printCompact(notesResult{Sections: []notes.SigilSection{}, Packages: pkgs, Reason: reason})
 			return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}
@@ -228,7 +228,7 @@ func notesRun(cmd *cobra.Command) error {
 	}
 
 	if len(sections) == 0 {
-		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section", len(commits), source)
+		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section", participating(cfg, commits), source)
 		if notesJSON {
 			printCompact(notesResult{Sections: []notes.SigilSection{}, Reason: reason})
 			return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}

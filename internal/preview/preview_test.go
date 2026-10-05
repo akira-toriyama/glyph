@@ -404,10 +404,11 @@ func TestRenderNeutralizesMarkupInTheCell(t *testing.T) {
 
 // TestRenderPackages pins the per-line body (DESIGN §4.1, "Preview"): the
 // marker, one headline per line led by the line's name with versions
-// spelled as tags, one table per line, and a footer naming every line's
-// base — the single line's sentences, per line.
+// spelled as tags, one table per line, and a footer stating the caller's
+// participating count and naming every line's base — the single line's
+// sentences, per line.
 func TestRenderPackages(t *testing.T) {
-	got := Render(Input{Packages: []Package{
+	got := Render(Input{Participating: 2, Packages: []Package{
 		{Path: "haiku", Current: "haiku/v0.1.0",
 			PR:      Verdict{Level: bump.LevelMinor, Next: "haiku/v0.2.0", Commits: []Commit{{Sigil: "^", Level: bump.LevelMinor, Subject: "add a season"}}},
 			Pending: Verdict{Level: bump.LevelNone}},
@@ -439,11 +440,12 @@ Computed from the 2 commit(s) participating in this PR — squash-safe, a squash
 }
 
 // TestRenderPackagesCountsASharedCommitOnce: a commit that moves two lines
-// sits in both tables and is one commit in the footer's count; an untagged
-// line is named as such instead of given a base.
+// sits in both tables and is one commit in the footer's count — the caller's
+// count, each sha once, never the tables' rows added up; an untagged line is
+// named as such instead of given a base.
 func TestRenderPackagesCountsASharedCommitOnce(t *testing.T) {
 	move := Commit{Sigil: "~", Level: bump.LevelPatch, Subject: "move a file across the lines"}
-	got := Render(Input{Packages: []Package{
+	got := Render(Input{Participating: 1, Packages: []Package{
 		{Path: "haiku", Current: "haiku/v0.1.0", PR: Verdict{Level: bump.LevelPatch, Next: "haiku/v0.1.1", Commits: []Commit{move}}, Pending: Verdict{Level: bump.LevelNone}},
 		{Path: "curry", Current: "curry/v0.0.0", Untagged: true, PR: Verdict{Level: bump.LevelPatch, Next: "curry/v0.0.1", Commits: []Commit{move}}},
 	}})
@@ -458,11 +460,99 @@ func TestRenderPackagesCountsASharedCommitOnce(t *testing.T) {
 	}
 }
 
+// TestRenderPackagesCountsTwoCommitsWithOneSubjectAsTwo: two commits may share
+// a subject — ":bug:(haiku)~ address review", twice — and they are two rows
+// and two commits. The footer counted the tables' distinct sigil-and-subject
+// pairs (a row carries no sha), so it said 2 under a table of three rows
+// (t-rrw0 (1)); it states the caller's count, which is taken from shas.
+// Mutation row preview-footer-counts-the-tables-distinct-subjects.
+func TestRenderPackagesCountsTwoCommitsWithOneSubjectAsTwo(t *testing.T) {
+	review := Commit{Sigil: "~", Level: bump.LevelPatch, Subject: ":bug:(haiku)~ address review"}
+	got := Render(Input{Participating: 3, Packages: []Package{{
+		Path: "haiku", Current: "haiku/v0.1.0",
+		PR:      Verdict{Level: bump.LevelMinor, Next: "haiku/v0.2.0", Commits: []Commit{{Sigil: "^", Level: bump.LevelMinor, Subject: ":sparkles:(haiku)^ add a season"}, review, review}},
+		Pending: Verdict{Level: bump.LevelNone},
+	}}})
+	if rows := strings.Count(got, "| :bug:(haiku)~ address review | `~` | patch |\n"); rows != 2 {
+		t.Fatalf("positive control: the table must hold both commits, got %d row(s):\n%s", rows, got)
+	}
+	if !strings.Contains(got, "Computed from the 3 commit(s) participating in this PR") {
+		t.Errorf("three rows of three commits, and the footer under them counts otherwise:\n%s", got)
+	}
+}
+
+// TestRenderPackagesSaysHowManySitOnNoLine: a participating commit on no line
+// is in no table, so the footer that counts it says so — else the count reads
+// as a miscount against the rows above it (DESIGN §4.1). The sentence is its
+// own, after the one naming the bases and before the untagged lines'; it
+// agrees in number; and it is absent when every participating commit is on a
+// line. Mutation row preview-footer-hides-the-commits-on-no-line.
+func TestRenderPackagesSaysHowManySitOnNoLine(t *testing.T) {
+	in := Input{Participating: 4, Packages: []Package{
+		{Path: "haiku", Current: "haiku/v0.1.0",
+			PR:      Verdict{Level: bump.LevelMinor, Next: "haiku/v0.2.0", Commits: []Commit{{Sigil: "^", Level: bump.LevelMinor, Subject: "add a season"}}},
+			Pending: Verdict{Level: bump.LevelNone}},
+		{Path: "curry", Current: "curry/v0.0.0", Untagged: true,
+			PR: Verdict{Level: bump.LevelPatch, Next: "curry/v0.0.1", Commits: []Commit{{Sigil: "~", Level: bump.LevelPatch, Subject: "swap an ingredient"}}}},
+	}}
+	const head = "Computed from the 4 commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them — folded, per line, with what is already merged on the base branch since **haiku/v0.1.0** (haiku)."
+	const tail = " curry has no release tag on the base branch yet, so nothing merged earlier is folded in for it. Pushing more commits updates this comment.\n"
+	for _, tc := range []struct {
+		offLine int
+		says    string
+	}{
+		{0, ""},
+		{1, " 1 of them sits on no line."},
+		{2, " 2 of them sit on no line."},
+	} {
+		in.OffLine = tc.offLine
+		got := Render(in)
+		if want := "\n" + head + tc.says + tail; !strings.HasSuffix(got, want) {
+			t.Errorf("OffLine %d: the body must end\n  %q\ngot:\n%s", tc.offLine, want, got)
+		}
+		if tc.offLine == 0 && strings.Contains(got, "on no line") {
+			t.Errorf("no participating commit is off a line, and the footer names some:\n%s", got)
+		}
+	}
+}
+
+// TestRenderNoLine pins the body of a pull, in a repository with lines, whose
+// commits sit on none (DESIGN §4.1, "Preview"): the marker, one sentence with
+// no count in it, and the footer's participating count — never "N of them
+// sit on no line" here, where the sentence above has said it of every one.
+// With the PR side short the sentence claims no more than the files GitHub
+// listed and the caveat makes a floor of "moves nothing", pointing at no
+// figures. Mutation row preview-moves-nothing-counts-the-pulls-commits.
+func TestRenderNoLine(t *testing.T) {
+	got := RenderNoLine(Input{Participating: 1, OffLine: 1})
+	want := `<!-- glyph-pr-verdict -->
+⏸️ Merging this PR moves nothing — no commit participating in it touches a declared package.
+
+Computed from the 1 commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. Pushing more commits updates this comment.
+`
+	if got != want {
+		t.Errorf("RenderNoLine()\n got:\n%s\nwant:\n%s", got, want)
+	}
+
+	got = RenderNoLine(Input{Participating: 1, OffLine: 1, PRShort: "GitHub answered 422 for the file listing of 1 commit(s), so a line they touch in files it did not list could not be read (c1)"})
+	want = `<!-- glyph-pr-verdict -->
+⏸️ Merging this PR moves nothing in the files GitHub listed — no commit participating in it touches a declared package there.
+
+> [!WARNING]
+> This PR's own side of this fold is INCOMPLETE: GitHub answered 422 for the file listing of 1 commit(s), so a line they touch in files it did not list could not be read (c1). A line one of those commits touches in files GitHub did not list may move all the same, so treat "moves nothing" as a floor rather than the answer.
+
+Computed from the 1 commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. Pushing more commits updates this comment.
+`
+	if got != want {
+		t.Errorf("RenderNoLine(PRShort)\n got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 // TestRenderPackagesPRShort: the PR-side caveat sits with the pending one,
 // under the headlines and above the tables — it qualifies the conclusion,
 // not the evidence — and is absent byte for byte when every listing was
-// whole. PRShortBlock is the same text, exported for the caller's own
-// "moves nothing" sentence, which carries no figures: there the caveat
+// whole. prShortBlock is the same text for the "moves nothing" body
+// (TestRenderNoLine), which carries no figures: there the caveat
 // makes a floor of "moves nothing" instead of pointing at figures above.
 // Its own sentence names no cause, because PRShort does: a listing GitHub
 // answered 422 for is not one it cut at the cap (t-esm5).
@@ -482,11 +572,11 @@ func TestRenderPackagesPRShort(t *testing.T) {
 	if headline < 0 || warning < 0 || table < 0 || headline >= warning || warning >= table {
 		t.Fatalf("the PR-side caveat must sit under the headlines and above the tables:\n%s", out)
 	}
-	if PRShortBlock(in.PRShort, true) != caveat || PRShortBlock("", true) != "" || PRShortBlock("", false) != "" {
-		t.Fatalf("PRShortBlock must be the rendered caveat and nothing when there is none: %q", PRShortBlock(in.PRShort, true))
+	if prShortBlock(in.PRShort, true) != caveat || prShortBlock("", true) != "" || prShortBlock("", false) != "" {
+		t.Fatalf("prShortBlock must be the rendered caveat and nothing when there is none: %q", prShortBlock(in.PRShort, true))
 	}
 	nothing := "\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: GitHub answered 422 for the file listing of 1 commit(s), so a line they touch in files it did not list could not be read (c1). A line one of those commits touches in files GitHub did not list may move all the same, so treat \"moves nothing\" as a floor rather than the answer.\n"
-	if got := PRShortBlock(in.PRShort, false); got != nothing {
-		t.Fatalf("PRShortBlock with no figures = %q, want %q", got, nothing)
+	if got := prShortBlock(in.PRShort, false); got != nothing {
+		t.Fatalf("prShortBlock with no figures = %q, want %q", got, nothing)
 	}
 }

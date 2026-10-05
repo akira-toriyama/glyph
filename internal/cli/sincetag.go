@@ -454,13 +454,15 @@ func walkedNoteCommits(ws []walked) []notes.SigilCommit {
 }
 
 // pullExpansion records one merged pull request the walk expanded — resolved
-// from its canonical commit — and how many participating commits it
-// contributed, after the walk-wide SHA dedup: a stacked PR whose commits all
-// rode in with its base PR reports 0, and so does a merge-merged PR whose
-// commits the walk already folded in on the fallback path. This is the walk
-// reporting its own expansion facts: how a verdict was assembled, in a form a
-// human or a CI step can read back afterwards without re-deriving the walk's
-// exclusion rules somewhere else.
+// from its canonical commit — and how many of its listed commits the walk
+// took in, after the footprint filter and the walk-wide SHA dedup: a stacked
+// PR whose commits all rode in with its base PR reports 0, and so does a
+// merge-merged PR whose commits the walk already folded in on the fallback
+// path. An excluded author's and a skipped merge commit are taken in with the
+// rest, so Commits is no count of participating commits (DESIGN §4.1). This
+// is the walk reporting its own expansion facts: how a verdict was assembled,
+// in a form a human or a CI step can read back afterwards without re-deriving
+// the walk's exclusion rules somewhere else.
 //
 // It records what the walk DID, and never why a number is what it is. A count
 // of 0 is the case that invites a wrong reading, and both of its causes are
@@ -619,7 +621,7 @@ func (f walkFacts) shortfall(owner, repo string) string {
 }
 
 // walkSince walks the range's commits oldest first and folds every merged PR's
-// individual commits into one participating list, recording per-pull expansion
+// individual commits into one walked list, recording per-pull expansion
 // provenance alongside. Author-excluded commits are skipped before any API call
 // — the routine fleet-sync direct push never costs a request. Everything else
 // is asked about: a commit's own shape cannot tell a pull request's merge point

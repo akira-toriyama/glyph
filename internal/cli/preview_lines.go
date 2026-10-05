@@ -114,8 +114,34 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 	// The whole listing is folded once first, so a message no pattern claims
 	// refuses the preview before any line is rendered — the single line's
 	// rule, and the reason unmatched commits were not attributed above.
-	if _, _, cerr := bump.FoldSigils(sigilCommits(raws), cfg); cerr != nil {
+	//
+	// Its rows are the pull's participating commits (DESIGN §4.1), the set the
+	// single line's footer counts, and the one count both bodies below state.
+	// The first cut computed these rows and dropped them: the no-line body
+	// counted len(raws) — bots, merge commits and all — and the per-line
+	// footer counted what its tables showed (t-rrw0). Those on no line are
+	// counted here because only this loop's perLine knows: a shared-only =,
+	// or a commit whose refusal was withheld above.
+	pullRows, _, cerr := bump.FoldSigils(sigilCommits(raws), cfg)
+	if cerr != nil {
 		return cerr
+	}
+	// Warned here, once per participating commit, and not per touched line
+	// below: per line, a warned commit on no line was silent in this preview
+	// while the single line's and packages bump said it, and one on two lines
+	// was said twice.
+	warnSigilVerdicts(pullRows)
+	onLine := map[string]bool{}
+	for _, commits := range perLine {
+		for _, r := range commits {
+			onLine[r.SHA] = true
+		}
+	}
+	offLine := 0
+	for _, row := range pullRows {
+		if !onLine[row.SHA] {
+			offLine++
+		}
 	}
 
 	type touchedLine struct {
@@ -137,7 +163,6 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 		if cerr != nil {
 			return cerr
 		}
-		warnSigilVerdicts(rows)
 		latest, current, verr := latestVersionTag(ctx, cfg.LineOf(p), nil)
 		if verr != nil {
 			return verr
@@ -190,7 +215,7 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 	if len(prCapped) > 0 || len(prUnknown) > 0 {
 		prShort = walkFacts{FilesCapped: prCapped, FilesUnknown: prUnknown}.shortfall(owner, repo)
 	}
-	in := preview.Input{PendingShort: pendingShort, PRShort: prShort}
+	in := preview.Input{PendingShort: pendingShort, PRShort: prShort, Participating: len(pullRows), OffLine: offLine}
 	var pkgs []packagePreview
 	var noteBodies []string
 	for _, tl := range touched {
@@ -251,13 +276,7 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 
 	var body string
 	if len(touched) == 0 {
-		// With the PR side short, "no declared package" is a claim about the
-		// files GitHub listed and no more, and the sentence says so.
-		nothing := fmt.Sprintf("⏸️ Merging this PR moves nothing — its %d commit(s) touch no declared package.", len(raws))
-		if prShort != "" {
-			nothing = fmt.Sprintf("⏸️ Merging this PR moves nothing in the files GitHub listed — its %d commit(s) touch no declared package there.", len(raws))
-		}
-		body = truncateComment(preview.Marker + "\n" + nothing + "\n" + preview.PRShortBlock(prShort, false) + "\n" + fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. Pushing more commits updates this comment.", len(raws)) + "\n")
+		body = truncateComment(preview.RenderNoLine(in))
 	} else {
 		body = truncateComment(preview.Render(in))
 	}

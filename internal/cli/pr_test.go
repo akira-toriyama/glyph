@@ -245,7 +245,7 @@ func TestPRAllBotIsNoRelease(t *testing.T) {
 	}
 }
 
-// TestPRMalformedCommitIsLint: a participating commit that does not parse is a
+// TestPRMalformedCommitIsLint: a commit the fold must read that does not parse is a
 // hard lint error (exit 3), whether it is read from git or from the API — a
 // release job must not silently bump past a malformed commit.
 func TestPRMalformedCommitIsLint(t *testing.T) {
