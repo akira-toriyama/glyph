@@ -145,6 +145,12 @@ type Input struct {
 	// check alone.
 	Tags    []string
 	TagsErr error
+	// HeadTrees / HeadTreesErr are every directory HEAD records
+	// (gitsource.HeadTrees) and the failure to list them — resolved by the
+	// caller like HooksDir, read by the package-paths check alone, which
+	// judges a declared path the way attribution reads it: as git's path.
+	HeadTrees    []string
+	HeadTreesErr error
 }
 
 // HookProbe is what came back from firing a hook. Fired with Exit is a real
@@ -208,7 +214,7 @@ func Run(in Input) *Report {
 	config := checkConfig(in.ConfigPath, in.ConfigPathErr)
 	r := &Report{Repo: in.Repo, Checks: []Check{
 		config,
-		checkPackagePaths(in.ConfigPath, in.ConfigPathErr),
+		checkPackagePaths(in.ConfigPath, in.ConfigPathErr, in.HeadTrees, in.HeadTreesErr),
 		checkRootLineTags(in.ConfigPath, in.ConfigPathErr, in.Tags, in.TagsErr),
 		checkTokenAccess(in),
 		checkTokenWrite(in),

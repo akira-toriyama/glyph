@@ -2240,10 +2240,21 @@ verdict about what it read instead of refusing: a refusal would be a new
 lint semantics, and the walk already gives a shallow checkout to the
 reporting commands as a warning and to `release` alone as exit 4 (§4, §7).
 
-**Doctor** gains three checks: every declared `path` is a directory in the
-checkout (`package-paths-exist`, shipped — a path with no subtree claims no
+**Doctor** gains three checks: every declared `path` is a directory HEAD
+records (`package-paths-exist`, shipped — a path with no subtree claims no
 file, so a typo silently moves the verdict: fail; unknown while the file
-itself has not loaded, since its packages were never read); `name`s are
+itself has not loaded, since its packages were never read, and unknown when
+git cannot list HEAD's trees). It asks git, byte for byte, and never the
+filesystem, because attribution matches git's path strings: on APFS a
+case-different `Haiku` and a symlink `currylink` (a `120000` blob to git)
+both opened as directories and passed, while `lint --range` under the same
+config refused a commit under `haiku/` at `3` (t-fdd8, measured 2026-09-11
+on glyph-monorepo-test; re-measured 2026-10-05 — the stat-based check passed
+both in `TestPackagePathsAskGitNotTheFilesystem`, and
+`TestDoctorPackagePathsAgreeWithAttribution` holds the two answers together;
+mutation row `doctor-package-paths-ask-the-filesystem`). `internal/cli` lists the trees
+(`gitsource.HeadTrees`) beside the hooks directory, as every doctor
+subprocess is; `name`s are
 unique and each is a word the file's scope grammar can spell, and every
 `path` can prefix a tag git can create (load errors all three, so
 `glyph-toml-loads` already carries each with the loader's own remedy — no

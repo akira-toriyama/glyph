@@ -310,6 +310,31 @@ func TopLevel(ctx context.Context, dir string) (string, error) {
 	return path, nil
 }
 
+// HeadTrees lists every directory HEAD's tree records, at any depth, as
+// top-level-relative slash paths exactly as git stores them — the subtrees
+// attribution can find a changed path under. Byte-exact on purpose: the
+// filesystem answers a case-different spelling on a case-insensitive volume
+// and follows a symlink git records as a 120000 blob, so it called both
+// subtrees while attribution found no file under either (t-fdd8 (1)).
+//
+// --full-tree because ls-tree otherwise lists only the part of the tree under
+// the working directory, relative to it. An unborn HEAD fails (git's "Not a
+// valid object name HEAD"): no tree was recorded to answer from, and the caller
+// renders that as could-not-run rather than as an empty answer.
+func HeadTrees(ctx context.Context, dir string) ([]string, error) {
+	out, err := run(ctx, dir, "ls-tree", "-r", "-d", "-z", "--name-only", "--full-tree", "HEAD")
+	if err != nil {
+		return nil, err
+	}
+	var trees []string
+	for p := range strings.SplitSeq(string(out), "\x00") {
+		if p != "" {
+			trees = append(trees, p)
+		}
+	}
+	return trees, nil
+}
+
 // HooksDir returns the directory git will look in for hooks, as a path relative
 // to dir (or absolute, when git reports one). It asks git rather than assuming
 // .git/hooks because core.hooksPath relocates them — the family's older repos

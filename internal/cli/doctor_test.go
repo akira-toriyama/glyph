@@ -17,6 +17,7 @@ import (
 	"github.com/akira-toriyama/glyph/v4/internal/config"
 	"github.com/akira-toriyama/glyph/v4/internal/core"
 	"github.com/akira-toriyama/glyph/v4/internal/hook"
+	"github.com/akira-toriyama/glyph/v4/internal/testutil"
 )
 
 // doctorRepoPath is the one endpoint doctor reads: the repository object for
@@ -878,6 +879,91 @@ func TestDoctorInterruptDuringTagsReadCarriesOut(t *testing.T) {
 	}
 	if stdout != "" {
 		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
+	}
+}
+
+// TestDoctorInterruptDuringHeadTreesReadCarriesOut is the same guard, fifth
+// read: HEAD's tree listing the package-paths check reads runs after the tag
+// list, so a signal landing there — every earlier read already answered — is
+// carried by treesErr alone, and left out of the guard it is laundered into
+// package-paths-exist could-not-run at exit 4. The fake git answers the hooks,
+// top-level and tag reads and blocks on ls-tree.
+func TestDoctorInterruptDuringHeadTreesReadCarriesOut(t *testing.T) {
+	srv := doctorServer(t, apiRepoObject(healthySettings))
+	usePR(t, srv)
+	useDoctorCheckout(t, pinnedCaller)
+
+	bin := t.TempDir()
+	asked := filepath.Join(bin, "asked")
+	script := "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$*\" in\n*--git-path*) echo .git/hooks; exit 0;;\n*--show-toplevel*) pwd; exit 0;;\n*\" tag \"*) exit 0;;\nesac\ntouch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for range 400 {
+			if _, err := os.Stat(asked); err == nil {
+				cancel()
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel() // safety net: never leave the run behind the fake's 30s block
+	}()
+
+	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	if code != 130 {
+		t.Fatalf("doctor exited %d, want 130 — an interrupt in the tree listing is the user's own abort, not a check result", code)
+	}
+	if stdout != "" {
+		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
+	}
+}
+
+// TestDoctorPackagePathsAgreeWithAttribution is t-fdd8 (1) end to end: one
+// config, one history, and doctor must give the answer lint --range gives.
+// `Haiku` (HEAD records haiku) and `currylink` (a symlink to haiku, a 120000
+// blob to git) both open as directories on this machine's filesystem — the
+// symlink on every OS, the case on APFS — and both passed package-paths-exist
+// while lint --range refused a commit under haiku/ at 3, "touches no declared
+// package". The check now asks HEAD's trees, as attribution does.
+func TestDoctorPackagePathsAgreeWithAttribution(t *testing.T) {
+	dir := testutil.NewRepo(t)
+	appendTo(t, dir, "glyph.toml", "\n[[packages]]\npath = \"Haiku\"\nname = \"haiku\"\n\n[[packages]]\npath = \"currylink\"\n")
+	writeFile(t, dir, "haiku/haiku.go", "package haiku\n")
+	if err := os.Symlink("haiku", filepath.Join(dir, "currylink")); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, dir, "akira-toriyama", "add", ".")
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
+	base := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
+	if code != 3 || !strings.Contains(stderr, "touches no declared package") {
+		t.Fatalf("lint --range exited %d, want 3 with the attribution finding — the fixture no longer reproduces the split\n%s", code, stderr)
+	}
+
+	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+	code, stdout, stderr := runGlyph(t, "doctor", "--json")
+	rep := decodeDoctorJSON(t, stdout)
+	c := checkByID(t, rep, "package-paths-exist")
+	if c.Status != "fail" {
+		t.Fatalf("package-paths-exist = %s (%s) where lint --range refuses the history at 3 — doctor answered a different question than attribution\nstderr: %s",
+			c.Status, c.Observed, stderr)
+	}
+	if code != 3 {
+		t.Errorf("doctor exited %d, want 3", code)
+	}
+	details := strings.Join(c.Details, "\n")
+	for _, want := range []string{"Haiku", "currylink"} {
+		if !strings.Contains(details, want) {
+			t.Errorf("details %q do not name %s", c.Details, want)
+		}
 	}
 }
 

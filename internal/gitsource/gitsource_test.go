@@ -447,6 +447,56 @@ func TestMergedTagsOnAnUnbornHEADIsEmpty(t *testing.T) {
 	}
 }
 
+// TestHeadTreesListsWhatHEADRecordsAsADirectory: the package-paths check asks
+// git, not the filesystem, whether a declared path is a subtree, because
+// attribution reads git's path strings (t-fdd8 (1)). So the listing must be
+// every tree HEAD records at any depth, byte for byte, and nothing else: a
+// symlink to a directory is a 120000 blob, a directory on disk HEAD does not
+// hold is not tracked, and asking from a subdirectory still answers for the
+// whole tree (ls-tree without --full-tree lists only cwd's part, relative to
+// it). An unborn HEAD records no tree to answer from, which is an error the
+// caller renders as could-not-run.
+func TestHeadTreesListsWhatHEADRecordsAsADirectory(t *testing.T) {
+	dir := newRepo(t)
+	for _, rel := range []string{"haiku/a", "travel/onsen/b"} {
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(rel+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink("haiku", filepath.Join(dir, "currylink")); err != nil {
+		t.Fatal(err)
+	}
+	git(t, dir, "akira-toriyama", "add", "-A")
+	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= lay out the lines")
+	if err := os.MkdirAll(filepath.Join(dir, "untracked"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, from := range []string{dir, filepath.Join(dir, "travel")} {
+		got, err := HeadTrees(context.Background(), from)
+		if err != nil {
+			t.Fatalf("HeadTrees(%s): %v", from, err)
+		}
+		if want := []string{"haiku", "travel", "travel/onsen"}; !slices.Equal(got, want) {
+			t.Errorf("HeadTrees(%s) = %q, want %q — HEAD's trees at any depth, from the top, and no symlink or untracked directory", from, got, want)
+		}
+	}
+
+	unborn := t.TempDir()
+	git(t, unborn, "akira-toriyama", "init", "-q", "-b", "main")
+	if got, err := HeadTrees(context.Background(), unborn); err == nil {
+		t.Errorf("HeadTrees on an unborn HEAD = %q, nil; want an error — no tree was recorded to answer from", got)
+	}
+	_, err := HeadTrees(context.Background(), t.TempDir())
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
+		t.Fatalf("HeadTrees outside a repository = %v, want CodeAPI", err)
+	}
+}
+
 // TestHead returns the checkout's HEAD sha — what the rolling draft's
 // target_commitish records so the eventual Publish tags the commit the
 // verdict was computed at, not whatever main has moved to since.

@@ -252,6 +252,15 @@ func doctorRun(cmd *cobra.Command) error {
 	// repository's bare v* tags are on is a config question, but whether any
 	// exist is git's to answer. A failure degrades that one check.
 	tags, tagsErr := gitsource.Tags(cmd.Context(), ".")
+	// HEAD's trees feed the package-paths check: a declared path is judged as
+	// attribution reads it, git's path byte for byte, never by the filesystem
+	// (t-fdd8 (1)). Asked at the top level git named; without one there is
+	// nothing to ask, and that failure is handed over as the listing's own.
+	var headTrees []string
+	treesErr := terr
+	if terr == nil {
+		headTrees, treesErr = gitsource.HeadTrees(cmd.Context(), top)
+	}
 	configPath := ""
 	// The workflow scans read the checkout git itself names, so running doctor
 	// from a subdirectory works, and an absent .github/workflows under that
@@ -274,7 +283,7 @@ func doctorRun(cmd *cobra.Command) error {
 	// asked: guarding rerr alone turned a mid-run SIGTERM into exit 4 with the
 	// abort rendered as the hook check's could-not-run — the one code the
 	// fleet's wrappers read as retryable infra, on a run the operator stopped.
-	if err := firstInterrupt(rerr, herr, terr, tagsErr, probeErr(probe)); err != nil {
+	if err := firstInterrupt(rerr, herr, terr, tagsErr, treesErr, probeErr(probe)); err != nil {
 		return err
 	}
 	report := doctor.Run(doctor.Input{
@@ -291,6 +300,8 @@ func doctorRun(cmd *cobra.Command) error {
 		ConfigPathErr:   terr,
 		Tags:            tags,
 		TagsErr:         tagsErr,
+		HeadTrees:       headTrees,
+		HeadTreesErr:    treesErr,
 	})
 
 	// Annotations go out in BOTH modes, before the payload. On an Actions
