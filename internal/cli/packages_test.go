@@ -1170,7 +1170,7 @@ func TestLintRangePackagesRawRevertNamesTheEscapesThatWork(t *testing.T) {
 	want := `its files (README.md) belong to no declared package, and its sigil ~ claims a version impact nothing can carry: ` +
 		`patterns[1], which claimed this message, fixes the sigil at ~ and captures no scope — ` +
 		`reword it so another pattern claims it, with a scope naming the line it moves (one of haiku, curry) or as = so it moves no line, ` +
-		`or declare the package these files belong to ([[packages]] path = "<its directory>"; path = "." declares the root package, which holds every file no other package claims)`
+		`or declare the package these files belong to ([[packages]] path = "<its directory>"; path = "." and a name declare the root package, which holds every file no other package claims)`
 	if !strings.Contains(stderr, "::error::glyph: commit ") || !strings.Contains(stderr, ": "+want+"\n") {
 		t.Fatalf("the finding must be\n  %s\ngot:\n%s", want, stderr)
 	}
@@ -1198,9 +1198,17 @@ func TestLintRangePackagesRawRevertNamesTheEscapesThatWork(t *testing.T) {
 		t.Errorf("the scoped reword's bump exited %d with %q, want 0 and curry alone\nstderr: %s", code, stdout, stderr)
 	}
 	reword(t, `Revert ":memo:= add a README"`)
-	appendTo(t, dir, "glyph.toml", "\n[[packages]]\npath = \".\"\nname = \"core\"\n")
+	declared, err := os.ReadFile(filepath.Join(dir, "glyph.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir, "glyph.toml", string(declared)+"\n[[packages]]\npath = \".\"\n")
+	if code, stderr := lint(t); code != 2 {
+		t.Errorf("the root declared with no name exited %d, want 2 — the presets' scope cannot spell its default, which is why the finding says \"and a name\"\nstderr: %s", code, stderr)
+	}
+	writeFile(t, dir, "glyph.toml", string(declared)+"\n[[packages]]\npath = \".\"\nname = \"core\"\n")
 	if code, stderr := lint(t); code != 0 {
-		t.Errorf("with the root package declared the raw revert exited %d, want 0\nstderr: %s", code, stderr)
+		t.Errorf("with the root package declared and named the raw revert exited %d, want 0\nstderr: %s", code, stderr)
 	}
 }
 

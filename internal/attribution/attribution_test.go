@@ -185,7 +185,10 @@ func refusalOf(t *testing.T, files []string, scope string, sigil config.Sigil, p
 // (t-mfny (A); measured 2026-10-05 at 135eead: `Revert ":memo:(haiku)= …"`
 // exits 3, `:rewind:= Revert "…"` exits 0).
 func TestNoCarrierNamesOnlyTheEscapesTheCommitCanTake(t *testing.T) {
-	const declare = `declare the package these files belong to ([[packages]] path = "<its directory>"; path = "." declares the root package, which holds every file no other package claims)`
+	// Where a commit can carry a scope the declaration says the root takes a
+	// name: under the presets `path = "."` alone does not load.
+	const declare = `declare the package these files belong to ([[packages]] path = "<its directory>"; path = "." and a name declare the root package, which holds every file no other package claims)`
+	const declareUnnamed = `declare the package these files belong to ([[packages]] path = "<its directory>"; path = "." declares the root package, which holds every file no other package claims)`
 	two := []config.Package{haiku, curry}
 	rooted := []config.Package{haiku, root}
 	bareRoot := []config.Package{haiku, {Path: ".", Name: "."}}
@@ -253,12 +256,12 @@ func TestNoCarrierNamesOnlyTheEscapesTheCommitCanTake(t *testing.T) {
 		"no escape in any pattern, files to declare": {
 			[]string{"README.md"}, config.SigilPatch, two,
 			pattern(config.Sayable{}),
-			"its files (README.md) belong to no declared package, and its sigil ~ claims a version impact nothing can carry: patterns[0], which claimed this message, fixes the sigil at ~ and captures no scope, and no other pattern captures a scope naming a line or allows = — " + declare,
+			"its files (README.md) belong to no declared package, and its sigil ~ claims a version impact nothing can carry: patterns[0], which claimed this message, fixes the sigil at ~ and captures no scope — " + declareUnnamed,
 		},
 		"no escape in any pattern, no file": {
 			nil, config.SigilPatch, two,
 			pattern(config.Sayable{}),
-			"this commit touches no file, so no package's tree can carry its sigil ~: patterns[0], which claimed this message, fixes the sigil at ~ and captures no scope, and no other pattern captures a scope naming a line or allows = — no message can carry it until glyph.toml's patterns change",
+			"this commit touches no file, so no package's tree can carry its sigil ~: patterns[0], which claimed this message, fixes the sigil at ~ and captures no scope — nothing a message it claims can write carries this commit",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

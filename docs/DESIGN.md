@@ -1863,7 +1863,11 @@ nothing distinguishes the root package's own files from an undeclared
 module's, the reason no third state exists. So the refusal names the
 declaration beside the scope, and does not guess its path: glyph cannot tell
 which directory is the module, and the first path segment would have offered
-`path = ".github"` for root CI, a prefix the loader refuses (above).
+`path = ".github"` for root CI, a prefix the loader refuses (above). Where a
+commit can carry a scope it says the root declaration takes a name, since
+`path = "."` alone does not load there (above;
+`TestLintRangePackagesRawRevertNamesTheEscapesThatWork` declares it both
+ways).
 
 The escapes are asked of **this commit**, not of the file (t-mfny (A)). The
 loader holds the file to "some scope group spells every name" (above); which
@@ -1876,9 +1880,10 @@ reverting a shared-only commit in a repository with no root package was
 refused with "name the package in the scope … or write =", neither of which
 that message can do. Measured 2026-10-05 at 135eead: the raw revert, `Revert
 ":memo:(haiku)= …"` and a `=` written after the quotes all exit 3, while
-`:rewind:= Revert "…"`, `:rewind:(haiku)~ Revert "…"` and declaring `path =
-"."` each pass. Its refusal now says which pattern claimed the message and
-that it fixes the sigil and captures no scope, then names what works:
+`:rewind:= Revert "…"`, `:rewind:(haiku)~ Revert "…"` and declaring the root
+package (`path = "."`, named) each pass. Its refusal now says which pattern
+claimed the message and that it fixes the sigil and captures no scope, then
+names what works:
 rewording so another pattern claims it — with what the file's other patterns
 can capture, a skip, an `unlandable` and a `warn` pattern never counted,
 since a message reworded for one of those is placed nowhere, never lands, or
@@ -1891,8 +1896,9 @@ format spec; mutation rows
 loader's check it reads each group's own sub-expression, necessary and not
 sufficient. The sentence reads more than attribution's four inputs — the
 claiming pattern, that a merge commit's diff was never read, that a diff was
-not read whole — and the answer does not: one helper (`cli.attribute`) sets
-them on a refusal already returned, for the walk, `lint --range` and
+not read whole — and the answer does not: one helper (`attribute`,
+`internal/cli/lines.go`) sets them on a refusal already returned, for the
+walk, `lint --range` and
 `preview` alike, each with a test that reads its own refusal (mutation rows
 `walk-`, `lint-` and `preview-refuses-a-merge-commit-as-touching-no-file`).
 A refusal over a diff not read whole is one the walk withholds and quotes

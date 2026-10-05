@@ -102,11 +102,21 @@ type Refusal struct {
 // quoted is how many file names a refusal spells out before counting.
 const quoted = 3
 
-// declare is the escape only files open: a declaration that owns them. The
-// path is not guessed — glyph cannot tell a module from root CI or a docs
+// declaration is the escape only files open: a declaration that owns them.
+// The path is not guessed — glyph cannot tell a module from root CI or a docs
 // tree, and the first path segment of the canonical shared-only commit is
-// `.github`, a prefix the loader refuses (DESIGN §4.1, t-n5tw R1).
-const declare = `declare the package these files belong to ([[packages]] path = "<its directory>"; path = "." declares the root package, which holds every file no other package claims)`
+// `.github`, a prefix the loader refuses (DESIGN §4.1, t-n5tw R1). Where a
+// commit can carry a scope the sentence says the root package takes a name:
+// the loader holds it to the scope grammar, and its default "." is no preset
+// scope's word, so `path = "."` alone would send the reader to a file that
+// does not load.
+func declaration(say config.Sayable) string {
+	root := `path = "." declares the root package`
+	if say.ScopeGroup || len(say.ElsewhereScopes) > 0 {
+		root = `path = "." and a name declare the root package`
+	}
+	return `declare the package these files belong to ([[packages]] path = "<its directory>"; ` + root + `, which holds every file no other package claims)`
+}
 
 func (r *Refusal) Error() string {
 	if r.Reason == Contradiction {
@@ -236,19 +246,21 @@ func (r *Refusal) noCarrier() string {
 			escapes = append(escapes, fmt.Sprintf("reword it so another pattern claims it, with a scope naming the line it moves (one of %s)", strings.Join(say.ElsewhereScopes, ", ")))
 		case say.ElsewhereNone:
 			escapes = append(escapes, "reword it so another pattern claims it as =, so it moves no line")
-		default:
-			why += ", and no other pattern captures a scope naming a line or allows ="
 		}
 	}
 	if len(r.Files) > 0 {
-		escapes = append(escapes, declare)
+		escapes = append(escapes, declaration(say))
 	}
 
 	switch {
 	case why == "":
 		return opening + ": " + orList(escapes)
 	case len(escapes) == 0:
-		return opening + ": " + why + " — no message can carry it until glyph.toml's patterns change"
+		// A file with nowhere to reword to and no files to declare: say what
+		// is known — of the claiming pattern — and claim nothing of the rest
+		// of the file, where a warn pattern Sayable leaves out may still
+		// carry the commit.
+		return opening + ": " + why + " — nothing a message it claims can write carries this commit"
 	default:
 		return opening + ": " + why + " — " + orList(escapes)
 	}
