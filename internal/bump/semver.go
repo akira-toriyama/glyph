@@ -24,9 +24,10 @@ var versionRE = regexp.MustCompile(`^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9
 // every parsed field at most MaxField, a step lands at most one past it —
 // within int on every target glyph builds for (amd64, arm64) — so Next stays
 // total and no caller grows an error arm. The one version glyph can then
-// write and not read back, a field of exactly MaxField+1, takes a hand-cut
-// tag at the cap; it surfaces as a draft a human reads before publishing,
-// the safety net Next's own doc names.
+// write and not read back, a field of exactly MaxField+1, is no candidate once
+// tagged, so the line's next step answers from below it: backwards after a
+// stepped field, the same tag again on a major version subdirectory past the
+// cap (DESIGN §3 holds the measurement).
 const MaxField = math.MaxInt32
 
 // ParseVersion parses a house version tag, accepting an optional leading v,

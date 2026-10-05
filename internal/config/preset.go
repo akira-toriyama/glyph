@@ -8,8 +8,8 @@ import (
 )
 
 // presetFS embeds the shipped glyph.toml presets — what `glyph init
-// --<preset>` writes, once Preset has composed the shared blocks in. The
-// preset files plus the snippets are the single source: the init command
+// --<preset>` writes, once Preset has spliced the packages block in. The
+// preset files plus that snippet are the single source: the init command
 // writes the composition, and this package's tests load the same bytes, so
 // the generated artifact and the loader can never drift apart silently.
 //

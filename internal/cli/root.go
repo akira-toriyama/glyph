@@ -1,7 +1,21 @@
-// Package cli is glyph's cobra adapter: it parses flags, drives the core
-// packages, and renders results — mapping everything to glyph's exit-code
-// contract via Execute() int. It holds no classification, bump, or notes logic;
-// that lives in internal/{config,bump,notes,github}.
+// Package cli is glyph's command layer: the cobra wiring and flag checks, the
+// dispatch to an input source (a message, --range, --pr, --since-tag), the
+// rendering of every verdict under DESIGN §5's stream contract, and the exit
+// funnel — Execute() int maps every error onto glyph's exit-code contract
+// (internal/core).
+//
+// Until t-gr7f extracts them it also holds the release walk of DESIGN §4 and
+// §4.1 (sincetag.go, lines.go, linestep.go: the range past the tag, the
+// squash→pull expansion and its footprints, which lines each commit joins, the
+// step on each line) and the release's write sequencing (cmd_release.go,
+// release_lines.go: carrying out the draft plan against GitHub, in order).
+//
+// It holds no copy of: a message's meaning (internal/config's pattern match),
+// the lattice, the fold and Version.Next (internal/bump), grouping and
+// rendering the notes (internal/notes), the package a commit's diff moves
+// (internal/attribution), which draft survives (internal/draftplan), the
+// preview comment's arithmetic and prose (internal/preview), or reading git
+// and calling GitHub (internal/gitsource, internal/github).
 package cli
 
 import (

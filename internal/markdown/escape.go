@@ -68,7 +68,7 @@ import "strings"
 // rule (it was preview.escapeCell's, from the era when the order was each
 // caller's to get right).
 //
-// It deliberately does not live inside escapeMentions: deleting a byte would
+// It deliberately does not live inside escapeMentionsSkipping: deleting a byte would
 // break that function's no-rewriting invariant, which its fuzz oracle enforces.
 func flatten(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", " ")

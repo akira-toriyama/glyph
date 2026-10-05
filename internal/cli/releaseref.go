@@ -39,9 +39,9 @@ var actionsEnv = []string{envActionsRef, envActionsEvent}
 // The harm is the walk, not just the write. `glyph release` walks <tag>..HEAD
 // out of local git, and off the default branch that range holds the branch's
 // unmerged commits: each resolves to no merged pull request, falls to the
-// direct-push arm and is classified from its own subject; `dropped()` records
-// only an API lag, so walkFacts stays complete and §4's exit-4 refusal for an
-// unreadable walk never fires. The upsert then adopts the one managed draft,
+// direct-push arm and is classified from its own subject; walkFacts.Dropped
+// records only an API lag, so walkFacts stays complete and §4's exit-4 refusal
+// for an unreadable walk never fires. The upsert then adopts the one managed draft,
 // retags it and re-points target_commitish at the branch tip — a green run, a
 // draft describing work the default branch never held, and Publish cutting the
 // tag there. A caller cannot close this itself: GitHub offers no way to
@@ -61,12 +61,12 @@ var actionsEnv = []string{envActionsRef, envActionsEvent}
 // would argue against output.go's position that glyph's annotations are written
 // unconditionally because "outside Actions the line is an ordinary
 // human-readable warning". Either variable present means something handed this
-// process a run identity, and then an empty counterpart is a refusal rather
-// than a shrug — a step that sets `env: GITHUB_REF:` to empty, or a runner that
-// renames one of them, must not be able to disarm the fleet's only write-side
-// ref boundary with a green run. Both absent is a laptop or
-// scripts/fleet-preflight.sh, where there is no ref to judge; the run proceeds
-// and says so.
+// process a run identity: an empty GITHUB_REF beside a payload is then a refusal
+// rather than a shrug, and a ref without a payload is judged against the
+// repository object — a step that sets `env: GITHUB_REF:` to empty, or a runner
+// that renames one of them, must not be able to disarm the fleet's only
+// write-side ref boundary with a green run. Both absent is a laptop, where there
+// is no ref to judge; the run proceeds and says so.
 func checkReleaseRef(ctx context.Context, owner, repo string, dryRun bool) error {
 	ref := strings.TrimSpace(os.Getenv(envActionsRef))
 	event := strings.TrimSpace(os.Getenv(envActionsEvent))

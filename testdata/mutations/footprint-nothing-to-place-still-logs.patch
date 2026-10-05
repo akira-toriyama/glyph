@@ -1,11 +1,11 @@
 diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index 2197cbb..6ba6835 100644
+index 6a66a39..0e72b06 100644
 --- a/internal/cli/sincetag.go
 +++ b/internal/cli/sincetag.go
-@@ -688,9 +688,6 @@ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.Ra
- 	// logging against it turns "there was nothing to align" into an exit-4 git
- 	// error mid-walk. One guard for both because it is one question: is there
- 	// anything an alignment could answer about?
+@@ -1067,9 +1067,6 @@ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.Ra
+ 	// spends a `git log -n 0` that answers nothing and lands on the same return;
+ 	// TestMainFootprintEmptyListingAsksGitNothing holds the guard with a canonical
+ 	// this checkout lacks, where falling through is an exit-4 git error.
 -	if len(window) == 0 {
 -		return landed, nil
 -	}

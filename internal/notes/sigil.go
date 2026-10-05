@@ -113,7 +113,7 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
 // stranger, from golang/tools' notes — shape cannot tell a name from a login.
 // Group-derived values and the other built-ins keep the fence: whether a
 // SUBJECT can page someone is not the author's intent to declare.
-// The built-ins $pr / $author / $hash are reserved: they win over a pattern
+// The built-ins (config.LineBuiltins) are reserved: they win over a pattern
 // group of the same name. A placeholder that is neither built-in nor a group
 // of the winning pattern renders empty. A scope is prose like any other
 // value: DESIGN §2 argues why no group gets a plain-text route.

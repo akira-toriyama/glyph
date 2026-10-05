@@ -28,7 +28,7 @@ func sigilCommits(raws []gitsource.RawCommit) []bump.SigilCommit {
 }
 
 // noteCommits adapts raw commits for the notes, all citing one pull (the
-// --pr input) or none (a local range, n = 0).
+// --pr input) or none (a local range, pull = 0).
 func noteCommits(raws []gitsource.RawCommit, pull int) []notes.SigilCommit {
 	out := make([]notes.SigilCommit, 0, len(raws))
 	for _, r := range raws {

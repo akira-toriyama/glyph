@@ -10,7 +10,7 @@
 // the author never wrote, or delete the author's own words. Every value is
 // prose to it, a commit scope included (DESIGN §2 holds that ruling and why the
 // scope's plain-text route was deleted). This file comes LAST and also works
-// over the assembled line: escapeMentions fences the would-be @mentions. BOTH
+// over the assembled line: escapeMentionsSkipping fences the would-be @mentions. BOTH
 // of the last two are whole-line passes and for one reason — a code span pairs
 // backtick runs across the whole inline context, so neither question is
 // decidable a field at a time (t-9np1). Neither order is interchangeable
@@ -97,7 +97,7 @@ const username = `[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?`
 // The backtick exclusion is load-bearing twice over. Every stretch this pattern
 // is run over is PROSE (code spans are skipped whole), so every backtick it can
 // see is literal text — exactly the shape GitHub refuses. And it is what makes
-// escapeMentions a fixed point: the escaper's own fence is a backtick glued to
+// escapeMentionsSkipping a fixed point: the escaper's own fence is a backtick glued to
 // the at-sign, so a second pass matches nothing of what the first pass wrote.
 // The one backtick that does NOT suppress is a code span's closing delimiter
 // ("`code`@octocat" IS a live mention — after rendering, the at-sign starts a
@@ -443,7 +443,7 @@ func paragraphSpans(p string, offset int) [][2]int {
 // published release body and in a pr-verdict comment.
 //
 // The cost the old note feared is real but is not this function's: a subject
-// carrying a run of 80 or more makes escapeMentions' own fence unopenable,
+// carrying a run of 80 or more makes escapeMentionsSkipping's own fence unopenable,
 // because the fence is one backtick longer than the longest run. That is a
 // fence-width problem, it exists whether or not this model is exact, and
 // longestBacktickRun is where it is answered.

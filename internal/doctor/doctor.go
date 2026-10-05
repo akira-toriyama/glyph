@@ -430,7 +430,7 @@ func permissionSummary(p *github.RepoPermissions) string {
 // is no third state. Every multi-commit landing splits those two apart.
 //
 // Land the same PR as a merge commit and that commit's own message is "Merge
-// pull request #12 from …" — no :code: at all, so the fallback skips it on its
+// pull request #12 from …" — no sigil at all, so the fallback skips it on its
 // parent count. That does NOT cost the pull request: gitsource.Log runs without
 // --first-parent, so the merged branch's commits are in the range too and each is
 // classified from its own message; at full darkness a merge-merged pull
@@ -438,7 +438,7 @@ func permissionSummary(p *github.RepoPermissions) string {
 // cli.TestSinceTagMergeCommitReproducesVerdictWhenFullyDark). The cost is
 // the PARTIAL window — a branch commit stands aside for a merge point in range
 // (mergedPullFor's covering result), and when that merge point is the one thing
-// GitHub has not indexed, or an automation authored it and ExcludedFromResolution
+// GitHub has not indexed, or an exclude_authors author authored it and the walk
 // skipped it before the API, nothing expands the pull and the whole of it counts
 // none. Loud (two warnings; `release` refuses the incomplete walk at 4, and
 // bump/notes hand down their verdict without the pull), and permanent in the
@@ -577,14 +577,14 @@ func checkMergeCommit(in Input) Check {
 // corrected, because the first draft of this check described a walk that does not
 // exist. It told the fleet that a rebase-merged PR's non-final commits are
 // "classified from their own preserved messages on the walk's fallback path",
-// where an unknown :code: only warns and counts none.
+// where a subject no pattern claims only warns and counts none.
 //
 // The walk does no such thing. GitHub points merge_commit_sha at the LAST replayed
 // commit, so that commit resolves and expands the whole pull request through the
-// API — an unknown :code: anywhere inside it hard-fails the release through
-// wedgeHint, exactly as it would for a squash — and the earlier replayed commits
-// resolve as COVERED by that same pull request and are skipped outright, so
-// nothing is classified twice and nothing is classified leniently. Rebase merging
+// API — a subject no pattern claims anywhere inside it hard-fails the release
+// through wedgeHint, exactly as it would for a squash — and the earlier replayed
+// commits resolve as COVERED by that same pull request and are skipped outright,
+// so nothing is classified twice and nothing is classified leniently. Rebase merging
 // is handled exactly as strictly as squash, the opposite of what this check used
 // to say. A diagnostic that lies about the engine is worse than no diagnostic.
 //
@@ -624,18 +624,21 @@ func checkRebaseMerge(in Input) Check {
 
 // checkSquashTitle is a hard failure, and unlike the merge methods it is not
 // about conventions at all: squash_merge_commit_title decides whether the commit
-// that lands on main carries a classifiable gitmoji subject.
+// that lands on main carries the subject its author wrote, sigil included.
 //
-// COMMIT_OR_PR_TITLE keeps a single-commit PR's own subject — gitmoji and all —
+// COMMIT_OR_PR_TITLE keeps a single-commit PR's own subject — sigil and all —
 // on main, and only borrows the PR title when a PR has several commits (the
 // erasure glyph's second hop exists to undo). PR_TITLE hands the PR title to
 // EVERY squash, including the single-commit PRs that are most of a fleet repo's
-// traffic, so main fills with subjects that no gitmoji reader can classify. The
+// traffic, so main fills with subjects nobody wrote as a commit message. The
 // verdict survives while the API answers — glyph re-reads the PR — but the
 // walk's documented fallback (a direct push, or the API lag right after a push,
 // DESIGN §4) classifies the squash commit's OWN message, and that message is now
-// unclassifiable: the release counts none and the bump is silently lost.
-// glyph-test drifted to exactly this and nothing noticed.
+// the title: its sigil alone decides, and on the lag path a title no pattern
+// claims is dropped from the fold with a warning — bump says no release
+// (cli.TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark) and release refuses
+// the incomplete walk at 4. glyph-test drifted to exactly this and nothing
+// noticed.
 func checkSquashTitle(in Input) Check {
 	return checkSquashEnum(in, IDSquashTitle, "squash_merge_commit_title",
 		in.RepoObject.SquashMergeCommitTitle, wantSquashTitle,

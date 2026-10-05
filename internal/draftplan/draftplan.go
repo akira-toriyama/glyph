@@ -33,7 +33,7 @@ type Draft struct {
 }
 
 // Action is which convergence the plan performs, mirroring the release verdict
-// vocabulary (README: create / update / delete / none).
+// vocabulary (glossary: action).
 type Action string
 
 const (

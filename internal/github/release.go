@@ -4,7 +4,7 @@ package github
 // half of the adapter. Same contract as the reads: bytes move, failures
 // classify at the source (CodeAPI, or CodeInterrupted on the user's own
 // cancel), and no draft policy lives here — which draft to keep, retag, or
-// delete is the caller's (internal/cli) decision.
+// delete is internal/draftplan's decision, executed by internal/cli.
 
 import (
 	"bytes"

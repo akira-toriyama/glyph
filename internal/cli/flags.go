@@ -84,13 +84,10 @@ func checkNamingFlags(cmd *cobra.Command, flags [][3]string) error {
 // The same Changed-versus-VALUE split, one flag kind over: a BOOLEAN group.
 //
 // cobra's MarkFlagsMutuallyExclusive groups on Changed, so it reads
-// `--json=false --md` as both flags being set and refuses the invocation with
-// "[json md] were all set" — a false statement, in the machine-readable envelope
-// other repositories parse, about an invocation that asks for one format and
-// explicitly declines the other. And the mirror case goes the other way:
-// `--md=false` is not in the group's way at all, so nothing looks at it, and the
-// caller who said "not Markdown" is handed Markdown at exit 0. That is the
-// silent ignore this file exists to forbid, wearing a bool.
+// `hook install --print=false --force` as both flags being set and refuses the
+// invocation, saying they "were all set" — a false statement, in the
+// machine-readable envelope other repositories parse, about an invocation that
+// asks to install rather than print and to force the install.
 //
 // Both guards therefore ask what the flags ARE, not whether they were mentioned.
 
