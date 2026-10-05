@@ -1,0 +1,22 @@
+diff --git a/internal/doctor/callerperms.go b/internal/doctor/callerperms.go
+index ad53865..3cf6821 100644
+--- a/internal/doctor/callerperms.go
++++ b/internal/doctor/callerperms.go
+@@ -108,7 +108,7 @@ func checkCallerPermissions(root string, rootVerified bool, glyph string) Check
+ 		}
+ 		callers++
+ 		grants, declared := callerGrants(string(body))
+-		if !declared {
++		if !declared && false {
+ 			// No explicit block: the repository's default token decides, and
+ 			// this file cannot see that setting. Not judged — see the header.
+ 			continue
+@@ -124,7 +124,7 @@ func checkCallerPermissions(root string, rootVerified bool, glyph string) Check
+ 				remedies = remember(remedies, nj.Remedy)
+ 				continue
+ 			}
+-			for _, n := range row.Needs {
++			if !declared { continue }; for _, n := range row.Needs {
+ 				if !satisfies(grants, n.Scope, n.Level) {
+ 					findings = append(findings, fmt.Sprintf(
+ 						".github/workflows/%s calls %s@%s but its permissions never grant %s: %s",

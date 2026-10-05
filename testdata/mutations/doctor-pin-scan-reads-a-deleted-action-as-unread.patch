@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/workflows.go b/internal/doctor/workflows.go
+index b758fe4..b0a0b64 100644
+--- a/internal/doctor/workflows.go
++++ b/internal/doctor/workflows.go
+@@ -119,7 +119,7 @@ func checkWorkflowPins(root string, rootVerified bool, actionFiles []gitsource.A
+ 		}
+ 		body, rerr := os.ReadFile(abs) // #nosec G304 -- a path git listed for the caller's own checkout
+ 		switch {
+-		case errors.Is(rerr, fs.ErrNotExist):
++		case false && errors.Is(rerr, fs.ErrNotExist):
+ 			// Deleted in the working tree: an observed absence, exactly as a
+ 			// missing workflows directory is under a git-named root. Only a
+ 			// read the filesystem refused is unknown (DESIGN §7).

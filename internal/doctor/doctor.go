@@ -34,6 +34,7 @@ import (
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v4/internal/github"
+	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
 )
 
 // Status is a check's verdict. Four values, and the distinction between the
@@ -145,6 +146,31 @@ type Input struct {
 	// check alone.
 	Tags    []string
 	TagsErr error
+	// HeadTrees / HeadTreesErr are every directory HEAD records
+	// (gitsource.HeadTrees) and the failure to list them — resolved by the
+	// caller like HooksDir, read by the package-paths check alone, which
+	// judges a declared path the way attribution reads it: as git's path.
+	HeadTrees    []string
+	HeadTreesErr error
+	// ActionFiles / ActionFilesErr are every action.yml / action.yaml git
+	// counts as part of the checkout (gitsource.ActionFiles, relative to Root)
+	// and the failure to list them — resolved by the caller like HooksDir,
+	// read by the pin check, which never walks the filesystem for them.
+	ActionFiles    []gitsource.ActionFile
+	ActionFilesErr error
+	// GlyphVersion is the running binary's version as version.Resolve reports
+	// it. The two caller checks judge a caller at the release it pins, and a
+	// stamped build cannot speak for a release newer than its own (judgeAt);
+	// `dev`, a pseudo-version or a git-describe stamp has no upper end.
+	GlyphVersion string
+	// RemoteHeads / RemoteHeadsErr are, for each configured remote, the
+	// default branch this clone records (refs/remotes/<remote>/HEAD, "" when
+	// none — gitsource.DefaultBranch, a local ref, never the network) and the
+	// failure to read them. The caller reads them only when the installed
+	// pre-push hook is byte-identical, the one arm whose pass they qualify;
+	// nil with a nil error means not read.
+	RemoteHeads    map[string]string
+	RemoteHeadsErr error
 }
 
 // HookProbe is what came back from firing a hook. Fired with Exit is a real
@@ -203,9 +229,12 @@ const (
 // installed commit-msg hook — which, like the config, need no network at all,
 // so they still answer when the API side is entirely dark.
 func Run(in Input) *Report {
+	// The fired hook's lint reads the same glyph.toml, so the config verdict is
+	// an input to the live-fire check — see checkHookFires.
+	config := checkConfig(in.ConfigPath, in.ConfigPathErr)
 	r := &Report{Repo: in.Repo, Checks: []Check{
-		checkConfig(in.ConfigPath, in.ConfigPathErr),
-		checkPackagePaths(in.ConfigPath, in.ConfigPathErr),
+		config,
+		checkPackagePaths(in.ConfigPath, in.ConfigPathErr, in.HeadTrees, in.HeadTreesErr),
 		checkRootLineTags(in.ConfigPath, in.ConfigPathErr, in.Tags, in.TagsErr),
 		checkTokenAccess(in),
 		checkTokenWrite(in),
@@ -214,12 +243,12 @@ func Run(in Input) *Report {
 		checkRebaseMerge(in),
 		checkSquashTitle(in),
 		checkSquashMessage(in),
-		checkWorkflowPins(in.Root, in.RootVerified),
-		checkCallerPermissions(in.Root, in.RootVerified),
-		checkCallerInputs(in.Root, in.RootVerified),
+		checkWorkflowPins(in.Root, in.RootVerified, in.ActionFiles, in.ActionFilesErr),
+		checkCallerPermissions(in.Root, in.RootVerified, in.GlyphVersion),
+		checkCallerInputs(in.Root, in.RootVerified, in.GlyphVersion),
 		checkHook(hook.Kinds()[0], IDCommitMsgHook, in.HooksDir, in.HooksErr),
-		checkHookFires(in.CommitMsgProbe, in.HooksErr),
-		checkHook(hook.Kinds()[1], IDPrePushHook, in.HooksDir, in.HooksErr),
+		checkHookFires(in.CommitMsgProbe, in.HooksErr, config.Status == StatusPass),
+		checkPrePushHook(in.HooksDir, in.HooksErr, in.CommitMsgProbe, in.RemoteHeads, in.RemoteHeadsErr),
 	}}
 	r.OK = true
 	for _, c := range r.Checks {

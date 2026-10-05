@@ -205,7 +205,7 @@ func TestCheckHookFiresVerdicts(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			c := checkHookFires(tc.probe, tc.dirErr)
+			c := checkHookFires(tc.probe, tc.dirErr, true)
 			if c.Status != tc.want {
 				t.Errorf("status = %q, want %q: %s", c.Status, tc.want, c.Observed)
 			}
@@ -218,5 +218,125 @@ func TestCheckHookFiresVerdicts(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestPrePushHookSaysWhenNothingWasFired pins t-2etd (b). A byte-identical
+// pre-push hook proves its script, not the glyph it resolves on PATH; that
+// question is answered by firing the commit-msg hook, because both resolve one
+// PATH. With no byte-identical commit-msg beside it — pre-push installed alone
+// by name, or commit-msg deleted or replaced after install — nothing was fired
+// and the report read all green. The pre-push check now says so, as ADVICE:
+// a standing choice, rare, and never a reason to flip ok.
+func TestPrePushHookSaysWhenNothingWasFired(t *testing.T) {
+	prePush := hook.Kinds()[1]
+	dir := hooksDirWith(t, prePush.Name, prePush.Script)
+
+	fired := &HookProbe{Fired: true, Exit: int(core.CodeLint)}
+	if c := checkPrePushHook(dir, nil, fired, nil, nil); c.Status != StatusPass {
+		t.Fatalf("pre-push current, commit-msg fired: status = %s (%s), want %s — the probe answered the PATH question", c.Status, c.Observed, StatusPass)
+	}
+	if c := checkPrePushHook(t.TempDir(), nil, nil, nil, nil); c.Status != StatusPass {
+		t.Fatalf("no pre-push hook, nothing fired: status = %s (%s), want %s — absence vouches for nothing", c.Status, c.Observed, StatusPass)
+	}
+
+	c := checkPrePushHook(dir, nil, nil, nil, nil)
+	if c.Status != StatusAdvice {
+		t.Fatalf("pre-push current, nothing fired: status = %s (%s), want %s", c.Status, c.Observed, StatusAdvice)
+	}
+	if !strings.Contains(c.Observed, "not executed") || !strings.Contains(c.Observed, "nothing was fired") {
+		t.Errorf("the observation must say the PATH glyph was never executed: %q", c.Observed)
+	}
+	if !strings.Contains(c.Fix, "glyph hook install") {
+		t.Errorf("the fix must name the install that adds the hook doctor fires: %q", c.Fix)
+	}
+
+	// Advice never touches ok: the rest of the report is the healthy one.
+	in := healthyInput(t)
+	in.HooksDir = dir
+	r := Run(in)
+	if got := find(t, r, IDPrePushHook).Status; got != StatusAdvice {
+		t.Fatalf("through Run: %s = %s, want %s", IDPrePushHook, got, StatusAdvice)
+	}
+	if !r.OK {
+		t.Errorf("ok = false over advice alone — an unfired PATH is unverified, not a defect: counts %+v", r.Counts)
+	}
+}
+
+// TestPrePushHookSaysWhenNoRemoteHeadIsRecorded pins t-2etd (c). The pre-push
+// hook refuses a violation only on the remote's default branch, and learns
+// which branch that is from refs/remotes/<remote>/HEAD — a local ref. A clone
+// that does not record it gets warnings and exit 0 on every push (measured by
+// t-2etd's triage: the same violating push exited 0, then 3 once `git remote
+// set-head origin -a` had run), while the pre-push check passed. Now that is
+// one advice line naming the remote and the command that restores the ref.
+func TestPrePushHookSaysWhenNoRemoteHeadIsRecorded(t *testing.T) {
+	prePush := hook.Kinds()[1]
+	dir := hooksDirWith(t, prePush.Name, prePush.Script)
+	fired := &HookProbe{Fired: true, Exit: int(core.CodeLint)}
+
+	for name, heads := range map[string]map[string]string{
+		"every remote records its head":  {"origin": "main", "upstream": "master"},
+		"not read (no current pre-push)": nil,
+		"no remote at all":               {},
+	} {
+		if c := checkPrePushHook(dir, nil, fired, heads, nil); c.Status != StatusPass {
+			t.Errorf("%s: status = %s (%s), want %s", name, c.Status, c.Observed, StatusPass)
+		}
+	}
+
+	c := checkPrePushHook(dir, nil, fired, map[string]string{"origin": "", "upstream": "main"}, nil)
+	if c.Status != StatusAdvice {
+		t.Fatalf("origin's head unrecorded: status = %s (%s), want %s", c.Status, c.Observed, StatusAdvice)
+	}
+	if !strings.Contains(c.Observed, "origin") || strings.Contains(c.Observed, "upstream") {
+		t.Errorf("the observation must name exactly the remote with no recorded head: %q", c.Observed)
+	}
+	if !strings.Contains(c.Fix, "git remote set-head origin -a") {
+		t.Errorf("the fix must be the command that records the head: %q", c.Fix)
+	}
+
+	both := checkPrePushHook(dir, nil, nil, map[string]string{"origin": ""}, nil)
+	if both.Status != StatusAdvice || !strings.Contains(both.Observed, "nothing was fired") || !strings.Contains(both.Observed, "origin") {
+		t.Errorf("nothing fired and no head recorded: want one advice carrying both, got %s: %s", both.Status, both.Observed)
+	}
+
+	// The heads are an input like any other: unread is unknown, never the
+	// pass that would say the hook can block.
+	if c := checkPrePushHook(dir, nil, fired, nil, errors.New("git config --get-regexp: fatal: bad config")); c.Status != StatusUnknown {
+		t.Errorf("remote heads unreadable: status = %s (%s), want %s", c.Status, c.Observed, StatusUnknown)
+	}
+}
+
+// TestHookFiresDefersAPassThroughToAnUnloadedConfig pins t-fdd8 (5). With no
+// glyph.toml (or one that does not load) the fired hook's `glyph lint` exits 2
+// before judging anything and the hook waves 2 through as 0 by design — so the
+// probe's 0 says nothing about the glyph on PATH. The check used to fail it
+// with a fix sending the reader to repair the PATH wrapper's source checkout,
+// a diagnosis of the wrong thing: the cause is the config glyph-toml-loads
+// already fails. Unknown, pointing there. The loaded-config row is the
+// positive control: the same probe on a loaded config is still the silent
+// no-op FAIL.
+func TestHookFiresDefersAPassThroughToAnUnloadedConfig(t *testing.T) {
+	passedThrough := &HookProbe{Fired: true, Exit: 0}
+	if c := checkHookFires(passedThrough, nil, true); c.Status != StatusFail {
+		t.Fatalf("loaded config, probe through at 0: status = %s, want %s — the silent no-op is still the finding", c.Status, StatusFail)
+	}
+	c := checkHookFires(passedThrough, nil, false)
+	if c.Status != StatusUnknown {
+		t.Fatalf("unloaded config, probe through at 0: status = %s, want %s (observed %q)", c.Status, StatusUnknown, c.Observed)
+	}
+	for field, v := range map[string]string{"observed": c.Observed, "fix": c.Fix} {
+		if !strings.Contains(v, IDConfigLoads) {
+			t.Errorf("the %s must name %s, the check carrying the cause: %q", field, IDConfigLoads, v)
+		}
+	}
+	if strings.Contains(c.Fix, "wrapper") || strings.Contains(c.Fix, "command -v glyph") {
+		t.Errorf("the fix still sends the reader to the PATH wrapper, which nothing observed to be broken: %q", c.Fix)
+	}
+	// A block at the gate code is an answer whatever the config says, and the
+	// probe's own failures stay its own.
+	if c := checkHookFires(&HookProbe{Fired: true, Exit: int(core.CodeLint)}, nil, false); c.Status != StatusPass {
+		t.Errorf("unloaded config, probe blocked: status = %s, want %s", c.Status, StatusPass)
 	}
 }

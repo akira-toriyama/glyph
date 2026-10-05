@@ -1,9 +1,10 @@
 package doctor
 
 // This file is the local half of the diagnosis: every akira-toriyama/glyph
-// reference in the checkout's own workflows and composite actions must pin a
-// concrete vX.Y.Z release tag. It reads files and nothing else — no network,
-// no git — so it still answers when the API side of the report is entirely
+// reference in the checkout's own workflows and action metadata files must pin
+// a concrete vX.Y.Z release tag. It reads files and the action-file list git
+// produced (handed in by internal/cli, which owns every subprocess) — no
+// network — so it still answers when the API side of the report is entirely
 // dark.
 //
 // What it deliberately does NOT check is whether the pin is the LATEST release.
@@ -21,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v4/internal/bump"
+	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
 )
 
 // glyphRepo is the owner/name whose references must be pinned. Matched on the
@@ -39,21 +41,23 @@ type pinRef struct {
 	Problem string
 }
 
-// checkWorkflowPins scans .github/workflows and .github/actions/**/action.yml
-// in the local checkout.
+// checkWorkflowPins scans .github/workflows and every action.yml /
+// action.yaml git lists for the local checkout (gitsource.ActionFiles, paths
+// relative to root; actionErr its failure).
 //
 // A missing WORKFLOWS directory splits on rootVerified. Under a git-named root
 // the absence is an observed fact — a repository with no workflows has nothing
-// pinned and nothing to drift, and the actions walk below still runs, so a
-// composite in .github/actions is not blessed by the workflows directory being
-// gone. Under a bare "." both readings stay live — no workflows, or doctor run
-// from the wrong directory — and that stays UNKNOWN, not a vacuous pass
-// (a fresh repository could never get doctor to exit 0 before wiring CI, which
-// is how this arm was found: the t-wzsw zero-base drill, 2026-08-26).
-func checkWorkflowPins(root string, rootVerified bool) Check {
+// pinned and nothing to drift, and the action files below are still read, so a
+// composite is not blessed by the workflows directory being gone. Under a bare
+// "." both readings stay live — no workflows, or doctor run from the wrong
+// directory — and that stays UNKNOWN, not a vacuous pass (a fresh repository
+// could never get doctor to exit 0 before wiring CI, which is how this arm was
+// found: the t-wzsw zero-base drill, 2026-08-26).
+func checkWorkflowPins(root string, rootVerified bool, actionFiles []gitsource.ActionFile, actionErr error) Check {
 	c := Check{
-		ID:       IDWorkflowPinned,
-		Expected: "every `uses: " + glyphRepo + "/…` in .github/workflows or .github/actions/**/action.yml pins a concrete @vX.Y.Z release tag",
+		ID: IDWorkflowPinned,
+		Expected: "every `uses: " + glyphRepo + "/…` in .github/workflows or in any action.yml / action.yaml in the checkout " +
+			"(submodules included) pins a concrete @vX.Y.Z release tag",
 	}
 	dir := filepath.Join(root, ".github", "workflows")
 	entries, err := os.ReadDir(dir)
@@ -89,44 +93,43 @@ func checkWorkflowPins(root string, rootVerified bool) Check {
 	}
 
 	// The workflows directory is not the only place a checkout EXECUTES a glyph
-	// reference from: DESIGN §6's consumer shape wraps the install action in
-	// the caller's own composite action — .github/actions/<name>/action.yml —
-	// and a scan fixed to the one directory answered "no reference … in this
-	// checkout" (pass) on a checkout whose composite pinned @main. Measured
-	// before this walk existed; the moving ref this check calls its one
-	// unaffordable miss sat in the file it never opened. Only the two
-	// action.yml spellings are read — GitHub takes nothing else in an action
-	// directory as metadata, so nothing else there can hold an executing
-	// `uses:` — but at any depth, because nothing makes an author keep a
-	// composite exactly one level down.
-	actionsDir := filepath.Join(root, ".github", "actions")
-	if werr := filepath.WalkDir(actionsDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				return nil // no composite actions — nothing more to scan
-			}
-			unreadable = append(unreadable, fmt.Sprintf("%s could not be listed: %v", path, err))
-			return nil
+	// reference from. GitHub runs a composite from wherever it sits — `uses:
+	// ./tools/installer` in this repository's own runs, owner/repo/<path>@ref
+	// (a root action.yml: owner/repo@ref) in a consumer's — and a moving ref
+	// inside a published action changes under every consumer while no
+	// consumer's doctor can see it. A scan fixed to .github/workflows passed a
+	// composite pinning @main under .github/actions; the walk that fixed that
+	// stopped at .github/actions and passed tools/installer/action.yml and a
+	// root action.yml pinning @main (D2b, measured at adfc5e1). So every action
+	// metadata file git lists is read, at any path. Only the two action.yml
+	// spellings: GitHub takes nothing else as action metadata.
+	var listErr string
+	if actionErr != nil {
+		listErr = fmt.Sprintf("the checkout's action files could not be listed: %v", actionErr)
+	}
+	for _, f := range actionFiles {
+		// A file directly in the workflows directory was read above.
+		if rest, ok := strings.CutPrefix(f.Path, ".github/workflows/"); ok && !strings.Contains(rest, "/") {
+			continue
 		}
-		if d.IsDir() || (d.Name() != "action.yml" && d.Name() != "action.yaml") {
-			return nil
+		abs := filepath.Join(root, filepath.FromSlash(f.Path))
+		if f.SkipWorktree {
+			unreadable = append(unreadable, fmt.Sprintf("%s is outside the sparse checkout, so its bytes are not on disk to read", abs))
+			continue
 		}
-		rel, rerr := filepath.Rel(root, path)
-		if rerr != nil {
-			rel = path
+		body, rerr := os.ReadFile(abs) // #nosec G304 -- a path git listed for the caller's own checkout
+		switch {
+		case errors.Is(rerr, fs.ErrNotExist):
+			// Deleted in the working tree: an observed absence, exactly as a
+			// missing workflows directory is under a git-named root. Only a
+			// read the filesystem refused is unknown (DESIGN §7).
+			continue
+		case rerr != nil:
+			unreadable = append(unreadable, fmt.Sprintf("%s could not be read: %v", abs, rerr))
+			continue
 		}
 		files++
-		body, berr := os.ReadFile(path) // #nosec G304 -- the caller's own checkout, walked above
-		if berr != nil {
-			unreadable = append(unreadable, fmt.Sprintf("%s could not be read: %v", path, berr))
-			return nil
-		}
-		refs = append(refs, scanUses(rel, string(body))...)
-		return nil
-	}); werr != nil {
-		// Unreachable while the callback above swallows every error, kept so a
-		// future early return cannot silently drop the walk's complaint.
-		unreadable = append(unreadable, fmt.Sprintf("%s could not be walked: %v", actionsDir, werr))
+		refs = append(refs, scanUses(f.Path, string(body))...)
 	}
 
 	var bad []pinRef
@@ -140,6 +143,9 @@ func checkWorkflowPins(root string, rootVerified bool) Check {
 		c.Details = append(c.Details, fmt.Sprintf("%s:%d uses %s — %s", r.File, r.Line, r.Uses, r.Problem))
 	}
 	c.Details = append(c.Details, unreadable...)
+	if listErr != "" {
+		c.Details = append(c.Details, listErr)
+	}
 
 	switch {
 	case len(bad) > 0:
@@ -151,12 +157,19 @@ func checkWorkflowPins(root string, rootVerified bool) Check {
 			"change under the caller between runs; a non-tag ref has no release binary to derive from at all, so the job " +
 			"hard-errors unless glyph-version is passed"
 		c.Fix = "pin each reference to a released tag: uses: " + glyphRepo + "/.github/workflows/<file>@vX.Y.Z"
-	case len(unreadable) > 0:
+	case len(unreadable) > 0 || listErr != "":
 		c.Status = StatusUnknown
-		c.Observed = fmt.Sprintf("%d workflow/action file(s) could not be read; the %d %s reference(s) that were read all pin a release tag",
-			len(unreadable), len(refs), glyphRepo)
-		c.Message = "the files that were read are clean, but a file doctor cannot read could hold anything"
-		c.Fix = "fix the file permissions and re-run"
+		var gaps []string
+		if listErr != "" {
+			gaps = append(gaps, "the checkout's action files could not be listed")
+		}
+		if len(unreadable) > 0 {
+			gaps = append(gaps, fmt.Sprintf("%d workflow/action file(s) could not be read", len(unreadable)))
+		}
+		c.Observed = fmt.Sprintf("%s; the %d %s reference(s) that were read all pin a release tag",
+			strings.Join(gaps, ", and "), len(refs), glyphRepo)
+		c.Message = "the files that were read are clean, but a file doctor cannot read — or one git never listed — could hold anything"
+		c.Fix = "re-run from inside the git checkout, with read access to the named files (a sparse checkout must include them)"
 	case len(refs) == 0:
 		c.Status = StatusPass
 		c.Observed = fmt.Sprintf("no %s reference in the %d workflow/action file(s) in this checkout", glyphRepo, files)

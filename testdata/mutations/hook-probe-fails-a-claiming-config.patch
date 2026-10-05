@@ -1,8 +1,8 @@
 diff --git a/internal/doctor/hook.go b/internal/doctor/hook.go
-index 82847dd..a6c88e0 100644
+index 0ec1fbc..b0b7f58 100644
 --- a/internal/doctor/hook.go
 +++ b/internal/doctor/hook.go
-@@ -162,12 +162,6 @@ func checkHookFires(probe *HookProbe, dirErr error) Check {
+@@ -169,12 +169,6 @@ func checkHookFires(probe *HookProbe, dirErr error, configLoaded bool) Check {
  		c.Observed = fmt.Sprintf("the hook blocked the probe message at exit %d", gate)
  		c.Message = "the whole chain answered: the script, the glyph it resolves on PATH, and the verdict that " +
  			"stops a commit are in working order on this machine"
@@ -12,6 +12,6 @@ index 82847dd..a6c88e0 100644
 -		c.Message = "the whole chain answered: the script ran, the glyph it resolves on PATH linted, and the config " +
 -			"accepted — the gate is exactly as strict as the repository's own patterns (lint has no taste), so a " +
 -			"config that claims the probe text has simply left this probe nothing to block on"
- 	case probe.Exit == 0:
- 		c.Status = StatusFail
- 		c.Observed = "the hook let a violating message through at exit 0"
+ 	case probe.Exit == 0 && !configLoaded:
+ 		c.Status = StatusUnknown
+ 		c.Observed = "the hook let the probe message through at exit 0, and glyph.toml did not load (see " + IDConfigLoads + ")"

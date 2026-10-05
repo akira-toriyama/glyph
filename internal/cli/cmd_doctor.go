@@ -14,6 +14,7 @@ import (
 	"github.com/akira-toriyama/glyph/v4/internal/doctor"
 	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
 	"github.com/akira-toriyama/glyph/v4/internal/hook"
+	"github.com/akira-toriyama/glyph/v4/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -64,16 +65,19 @@ func newDoctorCmd() *cobra.Command {
 			"  - squash_merge_commit_title=COMMIT_OR_PR_TITLE and\n" +
 			"    squash_merge_commit_message=COMMIT_MESSAGES: these decide whether the commit\n" +
 			"    that lands on main carries a subject the repository's patterns can classify\n" +
-			"  - every `uses: akira-toriyama/glyph/…` in the LOCAL .github/workflows pins a\n" +
+			"  - every `uses: akira-toriyama/glyph/…` in the LOCAL workflows and in every\n" +
+			"    action.yml in the checkout (submodules included) pins a\n" +
 			"    concrete @vX.Y.Z tag (whether the pin is the LATEST release is deliberately\n" +
 			"    NOT checked — glyph-pin-audit.yml in akira-toriyama/.github already owns\n" +
 			"    that question fleet-wide, and two answers to it would be one too many)\n" +
 			"  - every caller of a glyph reusable grants the permissions that reusable\n" +
-			"    declares: a caller granting less dies as startup_failure before any job\n" +
-			"    runs, which no runtime diagnosis — glyph's included — can see\n" +
-			"  - every caller passes the inputs its reusable marks required (release:\n" +
-			"    install-notes): the same startup death, and GitHub surfaces no error\n" +
-			"    anywhere for this one\n" +
+			"    declares at the release the caller pins: a caller granting less dies as\n" +
+			"    startup_failure before any job runs, which no runtime diagnosis — glyph's\n" +
+			"    included — can see (a pin this glyph cannot judge is could-not-run)\n" +
+			"  - every caller passes the inputs its reusable marks required at the\n" +
+			"    release the caller pins (release: install-notes): the same startup death,\n" +
+			"    and GitHub surfaces no error anywhere for this one (a pin this glyph\n" +
+			"    cannot judge is could-not-run)\n" +
 			"  - no STALE glyph-written hook is installed (one check per kind: commit-msg,\n" +
 			"    pre-push). Hooks are untracked, so\n" +
 			"    nothing refreshes one: whatever glyph was on PATH the day it was installed\n" +
@@ -83,7 +87,11 @@ func newDoctorCmd() *cobra.Command {
 			"    did not write is advice, because glyph will not overwrite it unasked\n" +
 			"  - a current commit-msg hook is also FIRED with a probe message, because\n" +
 			"    byte-identical bytes still prove nothing about the glyph the hook resolves\n" +
-			"    on PATH — the chain is only healthy if the probe comes back with a verdict\n\n" +
+			"    on PATH — the chain is only healthy if the probe comes back with a verdict.\n" +
+			"    Its answer covers pre-push (one PATH); a current pre-push hook with no\n" +
+			"    current commit-msg beside it was never fired, and says so as advice —\n" +
+			"    as it does for a remote whose default branch this clone does not\n" +
+			"    record (refs/remotes/<remote>/HEAD), where the hook can block nothing\n\n" +
 			"--repo moves only the API side. The workflow-pin check always reads the LOCAL\n" +
 			"checkout, because a pin is a fact about the tree in front of you — pointing\n" +
 			"--repo elsewhere diagnoses that repository's settings and THIS checkout's pins.\n\n" +
@@ -108,6 +116,31 @@ func newDoctorCmd() *cobra.Command {
 	cmd.Flags().StringVar(&doctorRepo, "repo", "", "owner/name to diagnose (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().BoolVar(&doctorJSON, "json", false, "emit the machine report {repo,checks,counts,ok}")
 	return cmd
+}
+
+// doctorProbeMessage is the message the hook probe commits with — one no
+// shipped preset accepts. One home: probeClaimed judges the same bytes the
+// probe fires, or the two drift and the claim check answers for a different
+// message than the hook saw.
+const doctorProbeMessage = "this doctor probe matches no commit grammar\n"
+
+// probeClaimed asks whether the repository's own glyph.toml claims the probe
+// message, judged exactly as the fired hook's `lint --stdin` will judge it
+// (same cleanup mode, empty author). The mode is hookCleanupMode's with no
+// message file to ask about: the fired hook reads the probe's scratch file,
+// never git merge's MERGE_MSG, so both resolve commit.cleanup, commit.verbose
+// and GIT_EDITOR alike. Best-effort on purpose: an unloadable config is the
+// config check's finding, and this answers false rather than aborting the probe.
+func probeClaimed(ctx context.Context, configPath string, pathErr error) bool {
+	if pathErr != nil {
+		return false
+	}
+	cfg, err := config.LoadFile(configPath)
+	if err != nil {
+		return false
+	}
+	v := cfg.LintAuthoring(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx, nil)))
+	return v.OK
 }
 
 // probeCommitMsgHook FIRES the installed commit-msg hook against a message
@@ -136,34 +169,18 @@ func newDoctorCmd() *cobra.Command {
 // firing pre-push would cost a fabricated push — a scratch repository with a
 // remote, a violating commit and a default-branch head — which is subprocess
 // choreography a read-only diagnosis should not carry for a question already
-// answered. The residual blind spot is a machine where ONLY pre-push was
-// installed by name: real, narrow, and accepted (t-2etd holds the design if
-// it is ever worth closing).
-// doctorProbeMessage is the message the hook probe commits with — one no
-// shipped preset accepts. One home: probeClaimed judges the same bytes the
-// probe fires, or the two drift and the claim check answers for a different
-// message than the hook saw.
-const doctorProbeMessage = "this doctor probe matches no commit grammar\n"
-
-// probeClaimed asks whether the repository's own glyph.toml claims the probe
-// message, judged exactly as the fired hook's `lint --stdin` will judge it
-// (same cleanup mode, empty author). The mode is hookCleanupMode's with no
-// message file to ask about: the fired hook reads the probe's scratch file,
-// never git merge's MERGE_MSG, so both resolve commit.cleanup, commit.verbose
-// and GIT_EDITOR alike. Best-effort on purpose: an unloadable config is the
-// config check's finding, and this answers false rather than aborting the probe.
-func probeClaimed(ctx context.Context, configPath string, pathErr error) bool {
-	if pathErr != nil {
-		return false
-	}
-	cfg, err := config.LoadFile(configPath)
-	if err != nil {
-		return false
-	}
-	v := cfg.LintAuthoring(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx, nil)))
-	return v.OK
-}
-
+// answered.
+//
+// "Already answered" holds only while a byte-identical commit-msg hook sits
+// beside the pre-push one, and two all-green states break it: pre-push
+// installed alone by name (`glyph hook install pre-push`), and a commit-msg
+// hook deleted or replaced after install. The default `hook install` cannot
+// reach the second by itself — it refuses a foreign commit-msg at exit 2 and,
+// planning every kind before writing any (hook.Install), writes neither — so
+// only an edit after install gets there (t-2etd). In both, nothing is fired,
+// and a pre-push hook over a glyph that cannot answer lets every push through
+// — so the pre-push check names that state as advice (checkPrePushHook in
+// internal/doctor) instead of passing it unqualified.
 func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.HookProbe {
 	if dirErr != nil {
 		return nil
@@ -204,6 +221,37 @@ func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.H
 		return &doctor.HookProbe{Fired: true, Exit: exit.ExitCode()}
 	}
 	return &doctor.HookProbe{Err: err}
+}
+
+// readRemoteHeads asks, for every configured remote, which default branch this
+// clone records (gitsource.DefaultBranch — a local ref, never the network): the
+// pre-push hook refuses a violation only there, and with none recorded it can
+// block nothing (t-2etd (c)). Read only when the installed pre-push hook is
+// byte-identical — the one arm whose pass this qualifies — so a checkout with no
+// hook, which is every CI runner, pays no subprocess. nil with a nil error
+// means not read.
+func readRemoteHeads(ctx context.Context, dir string, dirErr error) (map[string]string, error) {
+	if dirErr != nil {
+		return nil, nil
+	}
+	k := hook.Kinds()[1]
+	body, err := os.ReadFile(filepath.Join(dir, k.Name)) // #nosec G304 -- the path git itself reported for this checkout
+	if err != nil || string(body) != k.Script {
+		return nil, nil
+	}
+	urls, err := gitsource.RemoteURLs(ctx, ".")
+	if err != nil {
+		return nil, err
+	}
+	heads := make(map[string]string, len(urls))
+	for remote := range urls {
+		branch, berr := gitsource.DefaultBranch(ctx, ".", remote)
+		if berr != nil {
+			return nil, berr
+		}
+		heads[remote] = branch
+	}
+	return heads, nil
 }
 
 // probeErr unwraps the probe's own failure for the interrupt guard below — a
@@ -252,6 +300,23 @@ func doctorRun(cmd *cobra.Command) error {
 	// repository's bare v* tags are on is a config question, but whether any
 	// exist is git's to answer. A failure degrades that one check.
 	tags, tagsErr := gitsource.Tags(cmd.Context(), ".")
+	// HEAD's trees feed the package-paths check: a declared path is judged as
+	// attribution reads it, git's path byte for byte, never by the filesystem
+	// (t-fdd8 (1)). Asked at the top level git named; without one there is
+	// nothing to ask, and that failure is handed over as the listing's own.
+	var headTrees []string
+	treesErr := terr
+	if terr == nil {
+		headTrees, treesErr = gitsource.HeadTrees(cmd.Context(), top)
+	}
+	// The action files the pin scan reads are git's list — tracked, submodules
+	// included, plus untracked files no ignore rule excludes — never a walk of
+	// the filesystem (DESIGN §7). Same top level, same handover of terr.
+	var actionFiles []gitsource.ActionFile
+	actionErr := terr
+	if terr == nil {
+		actionFiles, actionErr = gitsource.ActionFiles(cmd.Context(), top)
+	}
 	configPath := ""
 	// The workflow scans read the checkout git itself names, so running doctor
 	// from a subdirectory works, and an absent .github/workflows under that
@@ -266,15 +331,16 @@ func doctorRun(cmd *cobra.Command) error {
 	if probe != nil {
 		probe.Claimed = probeClaimed(cmd.Context(), configPath, terr)
 	}
+	remoteHeads, headsErr := readRemoteHeads(cmd.Context(), hooksDir, herr)
 	// An interrupt is the user's own abort and must never be laundered into a
 	// check result: reporting "the token cannot read the repository" — or "git
 	// could not report where hooks live" — because somebody pressed Ctrl-C
-	// would be a diagnosis of the wrong thing entirely. Both reads run before
-	// this guard, and the signal lands in whichever is in flight, so both are
-	// asked: guarding rerr alone turned a mid-run SIGTERM into exit 4 with the
+	// would be a diagnosis of the wrong thing entirely. Every read runs before
+	// this guard, and the signal lands in whichever is in flight, so every one
+	// is asked: guarding rerr alone turned a mid-run SIGTERM into exit 4 with the
 	// abort rendered as the hook check's could-not-run — the one code the
 	// fleet's wrappers read as retryable infra, on a run the operator stopped.
-	if err := firstInterrupt(rerr, herr, terr, tagsErr, probeErr(probe)); err != nil {
+	if err := firstInterrupt(rerr, herr, terr, tagsErr, treesErr, actionErr, headsErr, probeErr(probe)); err != nil {
 		return err
 	}
 	report := doctor.Run(doctor.Input{
@@ -291,6 +357,13 @@ func doctorRun(cmd *cobra.Command) error {
 		ConfigPathErr:   terr,
 		Tags:            tags,
 		TagsErr:         tagsErr,
+		HeadTrees:       headTrees,
+		HeadTreesErr:    treesErr,
+		ActionFiles:     actionFiles,
+		ActionFilesErr:  actionErr,
+		GlyphVersion:    version.Resolve().Version,
+		RemoteHeads:     remoteHeads,
+		RemoteHeadsErr:  headsErr,
 	})
 
 	// Annotations go out in BOTH modes, before the payload. On an Actions

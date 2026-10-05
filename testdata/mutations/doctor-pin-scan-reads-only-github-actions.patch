@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/workflows.go b/internal/doctor/workflows.go
+index b758fe4..63e8071 100644
+--- a/internal/doctor/workflows.go
++++ b/internal/doctor/workflows.go
+@@ -109,7 +109,7 @@ func checkWorkflowPins(root string, rootVerified bool, actionFiles []gitsource.A
+ 	}
+ 	for _, f := range actionFiles {
+ 		// A file directly in the workflows directory was read above.
+-		if rest, ok := strings.CutPrefix(f.Path, ".github/workflows/"); ok && !strings.Contains(rest, "/") {
++		if rest, ok := strings.CutPrefix(f.Path, ".github/workflows/"); ok && !strings.Contains(rest, "/") || !strings.HasPrefix(f.Path, ".github/actions/") {
+ 			continue
+ 		}
+ 		abs := filepath.Join(root, filepath.FromSlash(f.Path))

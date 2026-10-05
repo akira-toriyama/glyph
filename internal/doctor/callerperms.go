@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -20,18 +21,28 @@ import (
 // distributed caller stub; the v2.0.0 rollout fixed all 35 fleet repos at the
 // canonical source, but nothing has guarded a consumer outside the fleet, or a
 // hand edit since. Reading the file is the only vantage point that works,
-// which is doctor's.
+// which is doctor's. It judges a caller at the release it pins, and only where
+// this binary can speak for that release (callerpin.go).
 
 // reusableNeeds is what each glyph reusable DECLARES — workflow level plus any
-// job-level elevation — and therefore the minimum a caller must grant. The
-// values mirror the permissions blocks in this repo's own workflow files and
-// the caller stubs those files distribute; TestReusableNeedsMatchTheShippedWorkflows
+// job-level elevation — and therefore the minimum a caller must grant, with
+// the newest release whose reusable declared otherwise (After; callerpin.go).
+// Needs mirror the permissions blocks in this repo's own workflow files and the
+// caller stubs those files distribute; TestReusableNeedsMatchTheShippedWorkflows
 // holds the two in lockstep, so a grant added to a reusable without a row here
-// fails a test instead of shipping a check that blesses broken callers.
-var reusableNeeds = map[string][]permNeed{
-	"lint.yml":       {{"contents", "read"}, {"pull-requests", "read"}},
-	"release.yml":    {{"contents", "write"}},
-	"pr-verdict.yml": {{"contents", "read"}, {"pull-requests", "write"}},
+// fails a test instead of shipping a check that blesses broken callers, and
+// TestCallerDeclarationBoundsMatchReleasedTags holds After to glyph's tags.
+var reusableNeeds = map[string]permRow{
+	"lint.yml":       {After: "v1.0.0", Needs: []permNeed{{"contents", "read"}, {"pull-requests", "read"}}},
+	"release.yml":    {After: "v0.2.0", Needs: []permNeed{{"contents", "write"}}},
+	"pr-verdict.yml": {After: "v0.3.0", Needs: []permNeed{{"contents", "read"}, {"pull-requests", "write"}}},
+}
+
+// permRow is one reusable's declaration and the bound below which this
+// binary cannot speak for it.
+type permRow struct {
+	After string
+	Needs []permNeed
 }
 
 // permNeed is one scope a reusable declares, at the level it declares it.
@@ -40,9 +51,14 @@ type permNeed struct {
 	Level string // "read" or "write"
 }
 
+// permsFloor is the release workflow-caller-permissions first shipped in —
+// the oldest glyph whose own doctor can judge its own reusables' grants.
+const permsFloor = "v2.1.0"
+
 // checkCallerPermissions scans the local checkout's workflow files for callers
 // of glyph's reusable workflows and verifies that each caller's explicit
-// `permissions:` grants cover what the pinned reusable declares.
+// `permissions:` grants cover what the reusable declares at the release the
+// caller pins. glyph is the running binary's version (judgeAt).
 //
 // Two deliberate boundaries, both on the side of never crying wolf:
 //
@@ -50,7 +66,9 @@ type permNeed struct {
 //     applies the repository's default token, which may be permissive (fine)
 //     or restricted (the same startup death) — but which one is repository
 //     configuration this file cannot see, and a red over a caller that may be
-//     perfectly healthy teaches the fleet to ignore the report.
+//     perfectly healthy teaches the fleet to ignore the report. This runs
+//     BEFORE the pin rule: the other order turns every block-less caller at
+//     an old pin unknown (D2a, measured on the prototype).
 //   - Grants are unioned across every permissions block in the file, workflow
 //     level and job level alike. GitHub only counts a grant on the calling
 //     job or above, so a grant on a sibling job could in principle satisfy
@@ -58,13 +76,8 @@ type permNeed struct {
 //     reading (workflow level only) reds every caller that grants on the job,
 //     which is legal and real. A false pass here is the pin check's own
 //     documented trade, made for the same reason.
-func checkCallerPermissions(root string, rootVerified bool) Check {
-	c := Check{
-		ID: IDCallerPerms,
-		Expected: "every workflow calling a glyph reusable grants at least what that reusable declares " +
-			"(lint: contents: read, pull-requests: read; release: contents: write; " +
-			"pr-verdict: contents: read, pull-requests: write)",
-	}
+func checkCallerPermissions(root string, rootVerified bool, glyph string) Check {
+	c := Check{ID: IDCallerPerms, Expected: permsExpected(glyph)}
 	entries, unknown := listWorkflows(root, rootVerified, &c,
 		"A caller granting less than its reusable declares dies as startup_failure before any job — "+
 			"unverified here, not verified")
@@ -73,7 +86,7 @@ func checkCallerPermissions(root string, rootVerified bool) Check {
 	}
 
 	callers := 0
-	var findings []string
+	var findings, skipped, remedies, unreadable []string
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || (!strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml")) {
@@ -82,12 +95,15 @@ func checkCallerPermissions(root string, rootVerified bool) Check {
 		path := filepath.Join(root, ".github", "workflows", name)
 		body, rerr := os.ReadFile(path) // #nosec G304 -- the caller's own checkout, listed above
 		if rerr != nil {
-			// The pin check already reports unreadable files; a second copy of
-			// the same finding would double every remediation list.
+			// Not left to the pin check: its unknown answers whether a ref is
+			// concrete, not whether a grant covers a reusable, and skipping the
+			// file here turned chmod 000 on a failing caller into this check's
+			// "nothing to judge" pass (t-fdd8 (3)).
+			unreadable = append(unreadable, fmt.Sprintf("%s could not be read: %v", path, rerr))
 			continue
 		}
-		needs := reusablesCalled(name, string(body))
-		if len(needs) == 0 {
+		calls := reusablesCalled(name, string(body))
+		if len(calls) == 0 {
 			continue
 		}
 		callers++
@@ -97,11 +113,23 @@ func checkCallerPermissions(root string, rootVerified bool) Check {
 			// this file cannot see that setting. Not judged — see the header.
 			continue
 		}
-		for _, n := range needs {
-			if !satisfies(grants, n.Scope, n.Level) {
-				findings = append(findings, fmt.Sprintf(
-					".github/workflows/%s calls %s but its permissions never grant %s: %s",
-					name, n.Reusable, n.Scope, n.Level))
+		for _, call := range calls {
+			row, known := reusableNeeds[strings.ToLower(call.Reusable)]
+			nj := unknownReusable(call.Reusable)
+			if known {
+				nj = judgeAt(call.Ref, row.After, glyph, permsFloor)
+			}
+			if nj != nil {
+				skipped = append(skipped, fmt.Sprintf(".github/workflows/%s calls %s@%s — not judged: %s", name, call.Reusable, call.Ref, nj.Why))
+				remedies = remember(remedies, nj.Remedy)
+				continue
+			}
+			for _, n := range row.Needs {
+				if !satisfies(grants, n.Scope, n.Level) {
+					findings = append(findings, fmt.Sprintf(
+						".github/workflows/%s calls %s@%s but its permissions never grant %s: %s",
+						name, call.Reusable, call.Ref, n.Scope, n.Level))
+				}
 			}
 		}
 	}
@@ -110,7 +138,7 @@ func checkCallerPermissions(root string, rootVerified bool) Check {
 	if len(findings) > 0 {
 		c.Status = StatusFail
 		c.Observed = fmt.Sprintf("%d missing grant(s) across the %d workflow file(s) that call a glyph reusable", len(findings), callers)
-		c.Details = findings
+		c.Details = slices.Concat(findings, skipped, unreadable)
 		c.Message = "a reusable can only downgrade the caller's token, never raise it, so a caller granting less than " +
 			"the reusable declares never starts: the run dies as startup_failure before any job (measured in " +
 			"akira-toriyama/.github#186) — no step runs, nothing prints, and no runtime diagnosis can see it. " +
@@ -119,15 +147,39 @@ func checkCallerPermissions(root string, rootVerified bool) Check {
 			"header is the known-good copy"
 		return c
 	}
+	if unverifiedCallers(&c, skipped, remedies, unreadable, "whether every caller gets past GitHub's startup permission gate") {
+		return c
+	}
 	c.Status = StatusPass
 	if callers == 0 {
 		c.Observed = "no workflow in this checkout calls a glyph reusable (binary-only consumers have no caller to misgrant)"
 		c.Message = "nothing to judge, observed — not assumed"
 		return c
 	}
-	c.Observed = fmt.Sprintf("%d workflow file(s) call glyph reusables; every explicit permissions block covers what the pinned reusable declares", callers)
+	c.Observed = fmt.Sprintf("%d workflow file(s) call glyph reusables; every judged caller covers what its pinned release declares", callers)
 	c.Message = "these runs get past GitHub's startup permission gate"
 	return c
+}
+
+// permsExpected renders the check's Expected from the table itself, so the
+// text cannot drift from the rows it describes.
+func permsExpected(glyph string) string {
+	names := make([]string, 0, len(reusableNeeds))
+	for name := range reusableNeeds {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	rows := make([]string, 0, len(names))
+	for _, name := range names {
+		row := reusableNeeds[name]
+		grants := make([]string, 0, len(row.Needs))
+		for _, n := range row.Needs {
+			grants = append(grants, n.Scope+": "+n.Level)
+		}
+		rows = append(rows, fmt.Sprintf("%s after %s: %s", strings.TrimSuffix(name, ".yml"), row.After, strings.Join(grants, ", ")))
+	}
+	return "every workflow calling a glyph reusable grants at least what that reusable declares at the release it pins, " +
+		"judged for " + judgedRange(glyph) + " (" + strings.Join(rows, "; ") + ") — any other pin is could-not-run"
 }
 
 // listWorkflows lists root/.github/workflows for the caller-side checks. An
@@ -149,32 +201,30 @@ func listWorkflows(root string, rootVerified bool, c *Check, consequence string)
 	return entries, false
 }
 
-// calledNeed is one reusable a workflow file calls, with one scope it must
-// therefore grant.
-type calledNeed struct {
-	Reusable string
-	Scope    string
-	Level    string
+// reusableCall is one call a workflow file makes into glyph's
+// .github/workflows, with the ref it pins.
+type reusableCall struct {
+	Reusable string // the file name as the caller spelled it
+	Ref      string
 }
 
-// reusablesCalled returns the permission needs implied by every glyph reusable
-// this workflow file executes. It rides on scanUses — the same comment,
-// block-scalar and list-dash discipline, for the same traps — and keeps only
-// references into .github/workflows/, because an action reference (the
-// install) declares nothing the caller must match.
-func reusablesCalled(file, body string) []calledNeed {
-	var needs []calledNeed
+// reusablesCalled returns every glyph reusable this workflow file executes,
+// with its pin. It rides on scanUses — the same comment, block-scalar and
+// list-dash discipline, for the same traps — and keeps only references into
+// .github/workflows/, because an action reference (the install) declares
+// nothing the caller must match. The pin is kept: GitHub starts the caller
+// against the reusable at that ref, and judgeAt decides whether this binary
+// can speak for it.
+func reusablesCalled(file, body string) []reusableCall {
+	var calls []reusableCall
 	for _, ref := range scanUses(file, body) {
 		spec, _, _ := strings.Cut(ref.Uses, "@")
-		base := spec[strings.LastIndex(spec, "/")+1:]
 		if !strings.Contains(strings.ToLower(spec), "/.github/workflows/") {
 			continue
 		}
-		for _, n := range reusableNeeds[strings.ToLower(base)] {
-			needs = append(needs, calledNeed{Reusable: base, Scope: n.Scope, Level: n.Level})
-		}
+		calls = append(calls, reusableCall{Reusable: spec[strings.LastIndex(spec, "/")+1:], Ref: ref.Ref})
 	}
-	return needs
+	return calls
 }
 
 // callerGrants returns the union of every `scope: level` pair granted by any

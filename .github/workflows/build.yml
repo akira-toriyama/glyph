@@ -124,6 +124,10 @@ jobs:
           # Build/test-only, never pushes — drop the persisted checkout token
           # (zizmor artipacked). t-yaxa
           persist-credentials: false
+          # glyph's own release tags: the release-history step below reads
+          # every one. go-ci's depth-1 checkout holds none, so the test
+          # skips there and this is its only CI home.
+          fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: 'go.mod'
@@ -131,6 +135,17 @@ jobs:
           # setup-go keys the cache off go.mod by default; go.sum is the actual
           # dependency identity, so name it explicitly.
           cache-dependency-path: go.sum
+
+      # Each caller-check table row names the newest release whose reusable
+      # declared otherwise (After); doctor judges a caller only above it
+      # (DESIGN §7). The test re-reads every release tag's reusables and fails
+      # when a row's After is not that release. -count=1 because the verdict
+      # depends on git tags, which Go's test cache does not track; the env
+      # turns the test's no-history skip into a failure. Linux-only like the
+      # fuzz smoke — the answer is a fact about the tags, not the platform.
+      - name: release-history bounds
+        if: runner.os == 'Linux'
+        run: GLYPH_RELEASE_HISTORY=required go test ./internal/doctor -run '^TestCallerDeclarationBoundsMatchReleasedTags$' -count=1
 
       - name: smoke test
         run: |

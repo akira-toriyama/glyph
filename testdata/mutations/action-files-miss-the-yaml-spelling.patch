@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index b02ddc9..01adc54 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -346,7 +346,7 @@ type ActionFile struct {
+ 
+ // actionSpecs selects the two names GitHub reads as action metadata, at any
+ // depth (`**/` matches zero directories too, so a root action.yml is in).
+-var actionSpecs = []string{"--", ":(glob)**/action.yml", ":(glob)**/action.yaml"}
++var actionSpecs = []string{"--", ":(glob)**/action.yml"}
+ 
+ // ActionFiles lists every action.yml / action.yaml git counts as part of the
+ // checkout — tracked, an initialized submodule's tracked files included, plus

@@ -31,6 +31,8 @@
 #   bite            build.yml `bite`             the hub's go-bite.sh
 #   mutations       build.yml `mutations`        `scripts/mutations.sh`
 #   fuzz-smoke      build.yml `extras`           the bounded fuzz loop
+#   release-history build.yml `extras`           the caller-check bounds against
+#                                                glyph's release tags
 #   smoke           build.yml `extras`           the shipped binary's contract
 #
 # ─── NOT MIRRORED, each with its reason ──────────────────────────────────────
@@ -100,7 +102,7 @@ cd "$(dirname "$0")/.."
 # MIRRORS is the reconciliation set: the run refuses its ✓ line unless every name
 # here was recorded by `ran`. Keeping it as data rather than as a comment is what
 # makes "a gate silently stopped running" a failure instead of a nicer-looking log.
-MIRRORS='commit-lint dist-gate golden-gate module-hygiene build vet race-test coverage golangci-lint govulncheck bite mutations fuzz-smoke smoke'
+MIRRORS='commit-lint dist-gate golden-gate module-hygiene build vet race-test coverage golangci-lint govulncheck bite mutations fuzz-smoke release-history smoke'
 NOT_MIRRORED='zizmor, actionlint, taplo, repo-policy, version-preview, task-status, goreleaser, codeql'
 RAN=''
 ran() { RAN="$RAN $1 "; }
@@ -209,6 +211,16 @@ for pkg in $(go list ./...); do
   done
 done
 ran fuzz-smoke
+
+# Mirrors build.yml's "release-history bounds" step: every caller-check table
+# row's After must be the newest release tag whose reusable declared otherwise
+# (DESIGN §7). The race run above ran the same test, but it skips without
+# glyph's tags; GLYPH_RELEASE_HISTORY=required makes a clone with no tags (or
+# a shallow one) a failure here instead. -count=1 because the answer depends
+# on the tags, which Go's test cache does not track.
+echo "→ release-history (caller-check bounds against glyph's release tags)"
+GLYPH_RELEASE_HISTORY=required go test ./internal/doctor -run '^TestCallerDeclarationBoundsMatchReleasedTags$' -count=1
+ran release-history
 
 # Does the suite BITE? The step above proves the tests PASS, which is a weaker
 # claim than it reads as: a line every test executes but nobody asserts is

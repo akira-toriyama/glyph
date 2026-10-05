@@ -192,9 +192,27 @@ func DefaultBranch(ctx context.Context, dir, remote string) (string, error) {
 		if errors.As(err, &ee) && ee.ExitCode() == 1 {
 			return "", nil
 		}
+		// A remote name config accepts and refs refuse (`remote.mirror..x.url`,
+		// hand-edited: `git remote add` refuses it) can record nothing, and
+		// symbolic-ref answers that 128 "No such ref", not 1. Asked of git
+		// rather than matched in that message: its text is not an interface.
+		if refNameRefused(ctx, prefix+"HEAD") {
+			return "", nil
+		}
 		return "", core.APIf("git symbolic-ref: %s", distill(stderr.Bytes(), err))
 	}
 	return strings.TrimPrefix(strings.TrimSpace(stdout.String()), prefix), nil
+}
+
+// refNameRefused reports whether git refuses name as a ref name outright
+// (`git check-ref-format`, exit 1). Any other outcome — a name git accepts, or
+// git unable to say — is false, so the caller's own failure stands.
+func refNameRefused(ctx context.Context, name string) bool {
+	// #nosec G204 -- the binary is the fixed literal "git" and name begins
+	// with the caller's literal "refs/", so it cannot be read as an option.
+	err := exec.CommandContext(ctx, "git", "check-ref-format", name).Run()
+	var ee *exec.ExitError
+	return errors.As(err, &ee) && ee.ExitCode() == 1
 }
 
 // Tags lists all tags in git's `--sort=-v:refname` order, unfiltered — the
@@ -347,6 +365,99 @@ func TopLevel(ctx context.Context, dir string) (string, error) {
 		return "", core.APIf("git rev-parse --show-toplevel: empty result")
 	}
 	return path, nil
+}
+
+// HeadTrees lists every directory HEAD's tree records, at any depth, as
+// top-level-relative slash paths exactly as git stores them — the subtrees
+// attribution can find a changed path under. Byte-exact on purpose: the
+// filesystem answers a case-different spelling on a case-insensitive volume
+// and follows a symlink git records as a 120000 blob, so it called both
+// subtrees while attribution found no file under either (t-fdd8 (1)).
+//
+// `-d` lists a submodule's gitlink (160000) beside the trees, and that is
+// kept: attribution's owner matches a file EQUAL to a package path as well as
+// one under it, so a declared path naming a submodule claims that submodule's
+// bumps. Filtering to trees would fail a path attribution still carries.
+//
+// --full-tree because ls-tree otherwise lists only the part of the tree under
+// the working directory, relative to it. An unborn HEAD fails (git's "Not a
+// valid object name HEAD"): no tree was recorded to answer from, and the caller
+// renders that as could-not-run rather than as an empty answer.
+func HeadTrees(ctx context.Context, dir string) ([]string, error) {
+	out, err := run(ctx, dir, "ls-tree", "-r", "-d", "-z", "--name-only", "--full-tree", "HEAD")
+	if err != nil {
+		return nil, err
+	}
+	var trees []string
+	for p := range strings.SplitSeq(string(out), "\x00") {
+		if p != "" {
+			trees = append(trees, p)
+		}
+	}
+	return trees, nil
+}
+
+// ActionFile is one action metadata file git counts as part of the checkout,
+// as a path relative to the directory ActionFiles was asked at. SkipWorktree
+// marks an entry sparse checkout keeps out of the working tree: git tracks
+// it, but no bytes were put on disk to read.
+type ActionFile struct {
+	Path         string
+	SkipWorktree bool
+}
+
+// actionSpecs selects the two names GitHub reads as action metadata, at any
+// depth (`**/` matches zero directories too, so a root action.yml is in).
+var actionSpecs = []string{"--", ":(glob)**/action.yml", ":(glob)**/action.yaml"}
+
+// ActionFiles lists every action.yml / action.yaml git counts as part of the
+// checkout — tracked, an initialized submodule's tracked files included, plus
+// untracked files no ignore rule excludes — for the pin scan (DESIGN §7). git
+// lists rather than a filesystem walk because "any path" on disk includes what
+// is not the repository (dependency checkouts under ignored build directories
+// can carry action files whose pins are someone else's), and because a walk
+// of sill's ignored .build visited 280,803 entries in 2.9 s where git answered
+// in 20 ms (the D2b ruling's measurement, 2026-09-29).
+//
+// Two listings, because `--recurse-submodules` refuses to combine with
+// --others ("fatal: ls-files --recurse-submodules unsupported mode", measured
+// on git 2.54) and a submodule's composite is code the checkout runs. -t tags
+// each tracked entry: H for an ordinary one — a working-tree deletion stays H,
+// the caller reads its absence — and S for a skip-worktree (sparse) one.
+// Ask it at the top level: ls-files reports paths relative to the directory
+// it runs in, and lists only that directory's part of the tree.
+func ActionFiles(ctx context.Context, dir string) ([]ActionFile, error) {
+	tracked, err := run(ctx, dir, append([]string{"ls-files", "-z", "-t", "--cached", "--recurse-submodules"}, actionSpecs...)...)
+	if err != nil {
+		return nil, err
+	}
+	untracked, err := run(ctx, dir, append([]string{"ls-files", "-z", "--others", "--exclude-standard"}, actionSpecs...)...)
+	if err != nil {
+		return nil, err
+	}
+	// Seen once per path: an unmerged entry is listed once per stage.
+	seen := map[string]bool{}
+	var files []ActionFile
+	for rec := range strings.SplitSeq(string(tracked), "\x00") {
+		if rec == "" {
+			continue
+		}
+		tag, path, ok := strings.Cut(rec, " ")
+		if !ok || path == "" {
+			return nil, core.APIf("git ls-files -t: malformed entry %q", rec)
+		}
+		if !seen[path] {
+			seen[path] = true
+			files = append(files, ActionFile{Path: path, SkipWorktree: tag == "S"})
+		}
+	}
+	for path := range strings.SplitSeq(string(untracked), "\x00") {
+		if path != "" && !seen[path] {
+			seen[path] = true
+			files = append(files, ActionFile{Path: path})
+		}
+	}
+	return files, nil
 }
 
 // HooksDir returns the directory git will look in for hooks, as a path relative
