@@ -2231,8 +2231,9 @@ packages are declared, and `hook pre-push` inherits it, which is where a
 shared-only `^` is caught before it is pushed. `--message`, `--stdin` and
 `--pr` judge a message alone, as today: the commit-msg hook cannot see a diff
 that is not yet a commit, and a pull's title is not attributed to anything.
-This is one of two places the hook's verdict is weaker than CI's — the other
-is an `unlandable` pattern, argued in §2.1 — and it is stated here rather
+Here the commit-msg hook's verdict is weaker than CI's by construction —
+beside the gaps §2.1 names, an `unlandable` pattern it argues and the
+per-commit overrides it does not claim fixed — and it is stated here rather
 than left to be discovered: the pre-push hook closes it on the same machine,
 one step later. Every `--range` read — `lint`'s, `bump`'s and `notes`',
 through one function, `logRange` — asks once whether the checkout is
