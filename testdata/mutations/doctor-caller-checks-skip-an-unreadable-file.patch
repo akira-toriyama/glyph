@@ -1,8 +1,8 @@
 diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
-index 6e733ea..62b41cb 100644
+index b7debca..d6399af 100644
 --- a/internal/doctor/callerinputs.go
 +++ b/internal/doctor/callerinputs.go
-@@ -55,7 +55,7 @@ func checkCallerInputs(root string, rootVerified bool) Check {
+@@ -66,7 +66,7 @@ func checkCallerInputs(root string, rootVerified bool, glyph string) Check {
  		body, rerr := os.ReadFile(path) // #nosec G304 -- the caller's own checkout, listed above
  		if rerr != nil {
  			// Unread is unknown, never "no caller" — see checkCallerPermissions.
@@ -12,10 +12,10 @@ index 6e733ea..62b41cb 100644
  		}
  		lines := strings.Split(string(body), "\n")
 diff --git a/internal/doctor/callerperms.go b/internal/doctor/callerperms.go
-index 9105621..169dfe8 100644
+index ad53865..18379fa 100644
 --- a/internal/doctor/callerperms.go
 +++ b/internal/doctor/callerperms.go
-@@ -86,7 +86,7 @@ func checkCallerPermissions(root string, rootVerified bool) Check {
+@@ -99,7 +99,7 @@ func checkCallerPermissions(root string, rootVerified bool, glyph string) Check
  			// concrete, not whether a grant covers a reusable, and skipping the
  			// file here turned chmod 000 on a failing caller into this check's
  			// "nothing to judge" pass (t-fdd8 (3)).
@@ -23,4 +23,4 @@ index 9105621..169dfe8 100644
 +			_ = rerr
  			continue
  		}
- 		needs := reusablesCalled(name, string(body))
+ 		calls := reusablesCalled(name, string(body))

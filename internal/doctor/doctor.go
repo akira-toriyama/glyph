@@ -158,6 +158,11 @@ type Input struct {
 	// read by the pin check, which never walks the filesystem for them.
 	ActionFiles    []gitsource.ActionFile
 	ActionFilesErr error
+	// GlyphVersion is the running binary's version as version.Resolve reports
+	// it. The two caller checks judge a caller at the release it pins, and a
+	// stamped build cannot speak for a release newer than its own (judgeAt);
+	// `dev`, a pseudo-version or a git-describe stamp has no upper end.
+	GlyphVersion string
 }
 
 // HookProbe is what came back from firing a hook. Fired with Exit is a real
@@ -231,8 +236,8 @@ func Run(in Input) *Report {
 		checkSquashTitle(in),
 		checkSquashMessage(in),
 		checkWorkflowPins(in.Root, in.RootVerified, in.ActionFiles, in.ActionFilesErr),
-		checkCallerPermissions(in.Root, in.RootVerified),
-		checkCallerInputs(in.Root, in.RootVerified),
+		checkCallerPermissions(in.Root, in.RootVerified, in.GlyphVersion),
+		checkCallerInputs(in.Root, in.RootVerified, in.GlyphVersion),
 		checkHook(hook.Kinds()[0], IDCommitMsgHook, in.HooksDir, in.HooksErr),
 		checkHookFires(in.CommitMsgProbe, in.HooksErr, config.Status == StatusPass),
 		checkHook(hook.Kinds()[1], IDPrePushHook, in.HooksDir, in.HooksErr),

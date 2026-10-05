@@ -14,6 +14,7 @@ import (
 	"github.com/akira-toriyama/glyph/v4/internal/doctor"
 	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
 	"github.com/akira-toriyama/glyph/v4/internal/hook"
+	"github.com/akira-toriyama/glyph/v4/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -70,11 +71,13 @@ func newDoctorCmd() *cobra.Command {
 			"    NOT checked — glyph-pin-audit.yml in akira-toriyama/.github already owns\n" +
 			"    that question fleet-wide, and two answers to it would be one too many)\n" +
 			"  - every caller of a glyph reusable grants the permissions that reusable\n" +
-			"    declares: a caller granting less dies as startup_failure before any job\n" +
-			"    runs, which no runtime diagnosis — glyph's included — can see\n" +
-			"  - every caller passes the inputs its reusable marks required (release:\n" +
-			"    install-notes): the same startup death, and GitHub surfaces no error\n" +
-			"    anywhere for this one\n" +
+			"    declares at the release the caller pins: a caller granting less dies as\n" +
+			"    startup_failure before any job runs, which no runtime diagnosis — glyph's\n" +
+			"    included — can see (a pin this glyph cannot judge is could-not-run)\n" +
+			"  - every caller passes the inputs its reusable marks required at the\n" +
+			"    release the caller pins (release: install-notes): the same startup death,\n" +
+			"    and GitHub surfaces no error anywhere for this one (a pin this glyph\n" +
+			"    cannot judge is could-not-run)\n" +
 			"  - no STALE glyph-written hook is installed (one check per kind: commit-msg,\n" +
 			"    pre-push). Hooks are untracked, so\n" +
 			"    nothing refreshes one: whatever glyph was on PATH the day it was installed\n" +
@@ -313,6 +316,7 @@ func doctorRun(cmd *cobra.Command) error {
 		HeadTreesErr:    treesErr,
 		ActionFiles:     actionFiles,
 		ActionFilesErr:  actionErr,
+		GlyphVersion:    version.Resolve().Version,
 	})
 
 	// Annotations go out in BOTH modes, before the payload. On an Actions

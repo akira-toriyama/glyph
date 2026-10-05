@@ -1,0 +1,26 @@
+diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
+index b7debca..5bc15ac 100644
+--- a/internal/doctor/callerinputs.go
++++ b/internal/doctor/callerinputs.go
+@@ -79,7 +79,7 @@ func checkCallerInputs(root string, rootVerified bool, glyph string) Check {
+ 			base := spec[strings.LastIndex(spec, "/")+1:]
+ 			called = true
+ 			row, known := reusableRequiredInputs[strings.ToLower(base)]
+-			nj := unknownReusable(base)
++			nj := (*notJudged)(nil)
+ 			if known {
+ 				nj = judgeAt(ref.Ref, row.After, glyph, inputsFloor)
+ 			}
+diff --git a/internal/doctor/callerperms.go b/internal/doctor/callerperms.go
+index ad53865..3f3ae37 100644
+--- a/internal/doctor/callerperms.go
++++ b/internal/doctor/callerperms.go
+@@ -115,7 +115,7 @@ func checkCallerPermissions(root string, rootVerified bool, glyph string) Check
+ 		}
+ 		for _, call := range calls {
+ 			row, known := reusableNeeds[strings.ToLower(call.Reusable)]
+-			nj := unknownReusable(call.Reusable)
++			nj := (*notJudged)(nil)
+ 			if known {
+ 				nj = judgeAt(call.Ref, row.After, glyph, permsFloor)
+ 			}

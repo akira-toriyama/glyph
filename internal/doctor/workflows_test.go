@@ -32,19 +32,19 @@ permissions:
   pull-requests: read
 jobs:
   lint:
-    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v0.10.1  # pin a release tag
+    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v4.2.0  # pin a release tag
 `
 
 // TestScanUsesReadsTheRealLineNotTheCommentedStub pins both halves of the trap
 // at once: the stale commented v0.9.0 must not appear as a reference at all,
-// and the one reference found must be the executable line's v0.10.1.
+// and the one reference found must be the executable line's v4.2.0.
 func TestScanUsesReadsTheRealLineNotTheCommentedStub(t *testing.T) {
 	refs := scanUses("commit-lint.yml", commentedStub)
 	if len(refs) != 1 {
 		t.Fatalf("scanUses found %d reference(s), want exactly 1 (the commented stub is documentation): %+v", len(refs), refs)
 	}
-	if refs[0].Ref != "v0.10.1" {
-		t.Errorf("read ref %q, want v0.10.1 — the commented stub's v0.9.0 must never be read as the pin", refs[0].Ref)
+	if refs[0].Ref != "v4.2.0" {
+		t.Errorf("read ref %q, want v4.2.0 — the commented stub's v0.9.0 must never be read as the pin", refs[0].Ref)
 	}
 	if refs[0].Line != 16 {
 		t.Errorf("reference reported at line %d, want 16 (the executable uses:)", refs[0].Line)

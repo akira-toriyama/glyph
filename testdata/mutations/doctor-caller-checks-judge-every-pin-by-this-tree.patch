@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/callerpin.go b/internal/doctor/callerpin.go
+index 2770066..9a8ca71 100644
+--- a/internal/doctor/callerpin.go
++++ b/internal/doctor/callerpin.go
+@@ -47,7 +47,7 @@ type notJudged struct {
+ // bump.ParseVersion and trust their own tree. bump.ParseBaseVersion must not
+ // be used here: it reads the describe output as a pre-release of v4.2.0 and
+ // would send every v4.2.0 pin to unknown.
+-func judgeAt(ref, after, glyph, floor string) *notJudged {
++func judgeAt(ref, after, glyph, floor string) *notJudged { return nil
+ 	if !isReleaseTag(ref) {
+ 		return &notJudged{
+ 			Why: fmt.Sprintf("@%s is not a release tag: a branch moves, and a sha names a commit doctor cannot map "+
