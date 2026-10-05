@@ -588,8 +588,8 @@ func (e *shallowBoundary) Unwrap() error { return e.err }
 // IsShallowBoundary reports whether err is DiffTreeFiles saying the commit is a
 // shallow clone's boundary, whose own diff this checkout cannot compute. The
 // callers that can do better than exit 4 — lint judges the message and warns
-// that it could not ask attribution, the walk carries the commit on no line —
-// branch here.
+// that it could not ask attribution, the walk places the commit by its scope
+// and sigil alone — branch here.
 func IsShallowBoundary(err error) bool {
 	var sb *shallowBoundary
 	return errors.As(err, &sb)

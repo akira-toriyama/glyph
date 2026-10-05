@@ -1,0 +1,13 @@
+diff --git a/internal/cli/lines.go b/internal/cli/lines.go
+index 2ecd619..d4f9e7c 100644
+--- a/internal/cli/lines.go
++++ b/internal/cli/lines.go
+@@ -482,7 +482,7 @@ func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c w
+ 	if c.Landed {
+ 		files, err = gitsource.DiffTreeFiles(ctx, ".", c.Raw.SHA)
+ 		if gitsource.IsShallowBoundary(err) {
+-			return nil, diffBoundary, nil
++			return nil, diffWhole, nil
+ 		}
+ 		return files, diffWhole, err
+ 	}
