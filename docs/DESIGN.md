@@ -1185,8 +1185,8 @@ push that can never move the version, and the fleet's daily sync push must not
 cost a round-trip): a merge point's subject and its parent count are how GitHub
 *shapes a pointer*, not evidence about it. Judging the shape first is what let
 one click on the merge button drop a whole PR out of both the version and the
-notes, silently, on the 31 of 34 fleet repositories that allow the button
-(t-7zt7); the message rules still apply, one step later, to any commit no pull
+notes, silently, on the fleet repositories that allow the button (31 of 34 on
+2026-07-21, §7; t-7zt7); the message rules still apply, one step later, to any commit no pull
 request explains — which is how a local `git merge` stays skipped. Because
 `git log` runs without `--first-parent`, a merge-merged PR's own commits are
 walked beside its merge point; they resolve as *covered* by that PR (or, if the
@@ -1257,8 +1257,8 @@ pre-rebase SHAs. And a rebase does **not** replay everything it is handed: it dr
 the merge commit that "merge `main` into the branch" leaves behind, GitHub permits
 rebase-merge over one, and that entry — listed, landing nowhere — made the count
 wrong and abandoned a mapping that was otherwise exact. It is kept out of the
-alignment on its **parent count**, the same fact `bump.ExcludedFromClassification`
-already reads, so nothing downstream needs it placed. What can still fail to align
+alignment on its **parent count** (`Parents >= 2`), so nothing downstream needs
+it placed. What can still fail to align
 is a rebase that dropped a commit it was asked to replay — one already upstream, or
 one that rebased empty — which stays indistinguishable from a squash and stays quiet
 (below). *Can*, not *must*: the commonest drop is a change whose duplicate sits on
@@ -1677,9 +1677,9 @@ Since a merge commit resolves (t-7zt7), that hard gate reaches **merge-merged
 PRs for the first time**: a non-conforming commit inside one now wedges the
 release where the pre-fix walk released quietly. That is the contract
 squash-merged PRs have always had, and the quiet release was the silent-drop
-bug wearing a friendly face — but it is a real change for the 31 of 34 fleet
-repositories that allow the button, and it lands as an exit 3 on their next
-release. Between t-7zt7 and t-8xsb the escape had to be stated against the merge
+bug wearing a friendly face — but it is a real change for the fleet
+repositories that allow the button (31 of 34 on 2026-07-21, §7), and it lands
+as an exit 3 on their next release. Between t-7zt7 and t-8xsb the escape had to be stated against the merge
 point for *every* shape, because expanding re-fetched the pull's whole listing
 whenever its merge point was in range (verified then: a tag at the offending
 commit and a tag strictly past it both exited 3). Both now exit 0.
@@ -2417,8 +2417,8 @@ attribution, so a wrong grammar cannot be hidden by a wrong tree). The
 published floor is per prefix. Exit `1` (no release) is answered **only when
 every line folds to none**; one line moving is a release. No new integer:
 the exit-code contract is frozen (§5), and every mixed outcome is legible in
-the machine verdict, which gains `packages: [{path, current, level, next,
-action, commits, reason}]` while the scalar `current` / `level` / `next` /
+the machine verdict, which gains a per-line `packages` array (each command's
+row is README's, "Packages") while the scalar `current` / `level` / `next` /
 `action` stay what they are for the single line and are **empty when
 packages are declared** — a repository with packages has no one line for them
 to describe, and a consumer that reads only the scalars is exactly the
@@ -2717,7 +2717,8 @@ verdict about what it read instead of refusing: a refusal would be a new
 lint semantics, and the walk already gives a shallow checkout to the
 reporting commands as a warning and to `release` alone as exit 4 (§4, §7).
 
-**Doctor** gains three checks: every declared `path` is a directory HEAD
+**Doctor** gains two checks, and leaves three questions to the loader: every
+declared `path` is a directory HEAD
 records (`package-paths-exist`, shipped — a path with no subtree claims no
 file, so a typo silently moves the verdict: fail; unknown while the file
 itself has not loaded, since its packages were never read, and unknown when
@@ -2812,7 +2813,7 @@ cmd/glyph/main.go        os.Exit(cli.Execute()) — thin process boundary only
 internal/core            exit-code contract + structured Error (no I/O, no logic)
 internal/version         ldflags build identity + ReadBuildInfo fallback
 internal/cleanup         git's message cleanup, modelled exactly (comment strip, scissors cut) — what --stdin judges is what git records
-internal/bump            Level lattice; Classify; Reduce(max); Next; stdlib semver
+internal/bump            Level lattice; SigilLevel + FoldSigils (classification and the fold); Reduce(max); Next; version parse on a tag prefix; stdlib semver
 internal/config          glyph.toml loader — user RE2 patterns, first match wins, semver_sigil extraction, the [[packages]] schema; embeds the init presets
 internal/attribution     which declared package(s) a commit moves — pure; files + scope + sigil + packages in, package set or lint-class refusal out (§4.1)
 internal/emoji           the gemoji dictionary `glyph emoji` prints — embedded table.json, advisory data nothing else reads (§2)
@@ -2820,16 +2821,16 @@ internal/draftplan       draft convergence — pure; which draft a verdict keeps
 internal/markdown        Line: per-field flatten, then the prose escape and the mention fence over the assembled line
 internal/notes           group by section; note.line rendered by hand over config.LineSpan / LinePart (the span grammar is parsed in internal/config; the optional-span drop rule lives here)
 internal/preview         merge-preview comment body — pure; no git, no API, no clock
-internal/gitsource       local `git log BASE..HEAD` (exec.CommandContext)
-internal/github          commits/{sha}/pulls, pulls/{N}/commits, release CRUD, repo object
+internal/gitsource       every git subprocess the binary runs — log, tags, ancestry, diff-tree files, shallow probe, remotes, config, HEAD's trees (exec.CommandContext)
+internal/github          commits/{sha}/pulls, commits/{sha} files, pulls/{N} and its commits, release CRUD + generate-notes, repo object
 internal/doctor          repository-precondition checks; independent, read-only (§7)
-internal/hook            commit-msg hook contents + overwrite policy (no rules of its own)
+internal/hook            commit-msg and pre-push hook contents + overwrite policy (no rules of its own)
 internal/cli             cobra adapter; Execute() int owns the exit-code funnel
 internal/testutil        the hermetic git fixture shared by tests (test-only, ships nothing)
 internal/workflows       no runtime code — tests pinning CI-YAML invariants
 ```
 
-**Why the five newest boundaries exist** — the tree says what each package
+**Why these five boundaries exist** — the tree says what each package
 holds, and each package's doc comment argues its own internals; what belongs
 here is only why it is a package at all, and what depends on it:
 
@@ -2851,8 +2852,7 @@ here is only why it is a package at all, and what depends on it:
 - `internal/testutil` — one home for the hermetic git fixture, because its
   environment pin is an incident-bearing block and verbatim copies quietly
   lose incidents (a partial copy in the hook tests had already lost the
-  maintenance pin). Imported only by `internal/cli` and `internal/gitsource`
-  tests; nothing shipping depends on it.
+  maintenance pin). Imported by tests alone; nothing shipping depends on it.
 
 **Exit-code contract** (`internal/core`): `0` ok · `1` no release · `2` usage ·
 `3` convention violation · `4` no trustworthy answer — API/git/IO, a refusal
@@ -3000,13 +3000,17 @@ rather than nothing. Enumerated from the command tree at run time by
 `internal/cli`'s `TestMachineOutputFlagHasOneSpelling`, so a new command that
 invents a third spelling fails there rather than in a caller's shell.
 
-**Preset embedding:** `//go:embed presets/*.toml` inside `internal/config` —
-the preset files are the single source: `glyph init` writes them byte for
-byte and the config package's own tests load them, so the generated artifact
-and the loader cannot drift apart silently (`TestEveryPresetLoads`).
+**Preset embedding:** `//go:embed presets/*.toml` and `presets/packages.snippet`
+inside `internal/config` — the preset files and the one commented
+`[[packages]]` paragraph every preset carries are the single source:
+`config.Preset` splices the paragraph above each preset's `[commit]` table,
+`glyph init` writes that composition byte for byte, and the config package's
+own tests load the same bytes, so the generated artifact and the loader cannot
+drift apart silently (`TestEveryPresetLoads`).
 
-**Testing** (stdlib only, no testify): table tests; a golden for the
-dry-run release body (`internal/cli/testdata/release_dry_run.golden.md`);
+**Testing** (stdlib only, no testify): table tests; goldens for the dry-run
+release body, single-line and per line
+(`internal/cli/testdata/release_dry_run*.golden.md`);
 `internal/workflows` pins what the CI YAML cannot state about itself; fuzz
 over the pattern match (never panics; every outcome one of the three legal
 shapes), the fold (order-independence), version parse/step, the `Link:`
@@ -3208,8 +3212,9 @@ The severities are the argued part:
   pull's branch commits are in the range beside its merge point; each of them
   stands aside for that merge point (`mergedPullFor`'s `covering`), and when the
   merge point alone is unresolved — GitHub indexes a merge commit *after* the
-  commits it merges, or an automation authored it and `ExcludedFromResolution`
-  skipped it before the API — nothing expands the pull and the whole of it counts
+  commits it merges, or an automation authored it and the walk's
+  `exclude_authors` gate skipped it before the API — nothing expands the pull
+  and the whole of it counts
   `none`. That is measured (`TestSinceTagMergeCommitReproducesVerdictWhenFullyDark`):
   fully dark, a merge-merged pull reproduces its live verdict (`minor` either way); with only the merge point at 422, the same
   repository is a lost pull — an incomplete walk, which `release` refuses at
@@ -3231,8 +3236,8 @@ The severities are the argued part:
   with no gitmoji — `TestSinceTagSquashMultiCommitDivergesWhenAPIDark`,
   `TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark`). One wrong level on one pull, versus a whole pull lost.
 - **`allow_merge_commit` / `allow_rebase_merge` true ⇒ advice, not failure.** A
-  merge commit *used* to be data loss (`bump.Excluded` drops 2+ parents, so the
-  PR vanished — t-7zt7); with the walk expanding merge commits correctly it costs
+  merge commit *used* to be data loss (the walk dropped every commit with 2+
+  parents before resolving it, so the PR vanished — t-7zt7); with the walk expanding merge commits correctly it costs
   no bump while the API answers, and none at full darkness either — the branch
   commits are on `main` and classify themselves. What is left is the squash-only
   house convention plus one *loud* window per style: an unresolved merge point
