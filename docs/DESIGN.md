@@ -2431,6 +2431,24 @@ the rows of the one fold of the whole listing), and say what follows from it
 (Preview, below). Mutation rows `preview-packages-counts-the-raw-listing`,
 `preview-footer-counts-the-tables-distinct-subjects`.
 
+`notes`' no-release reason did not either: "N commit(s) participate" in
+`bump`'s words, over the listing `notes` was handed. Measured on b42ca92
+(`TestNotesNoReleaseCountsParticipatingCommits`, which asks `bump` over the
+same input and holds `notes` to its answer): over one single-line range of
+two `=`, a bot and a merge commit, `bump` said 2 and `notes` 4; beside a
+message no pattern claims, `notes` said 2 of a range the fold refuses at 3;
+over a `--since-tag` walk of one `=` and a bot, 2 where `bump` says 1; and
+under packages 4 where `bump`'s top-level `commits` lists 1. `notes` renders
+excluded authors and unmatched messages, so it has no fold of its own to
+count. It asks the fold, one commit at a time (`participating`,
+`internal/cli/range.go`): the three conditions restated there would be a
+second copy free to drift from the rows `bump` publishes, and over the whole
+listing the fold refuses at the first unmatched message, where `notes` still
+owes a count of the rest. The reason is prose: `goreleaser.yml` branches on
+`notes`' exit code and reads no reason.
+Mutation rows `notes-reason-counts-the-raw-listing`,
+`notes-packages-reason-counts-the-raw-walk`.
+
 The walk's `pulls[].commits` is not such a count and was never meant as one:
 it is how many of a pull's listed commits the walk took in, bots and skipped
 merge commits included (§4; measured 2026-10-05 with `release --dry-run

@@ -128,7 +128,7 @@ when it is placed on it and unreleased on it, and **participates in** a line
 when it does both: a shared-only `=` participates, in no line, and an
 `exclude_authors` commit never participates, though its files place it in
 their lines' notes. Every count of participating commits — the no-release
-reasons of `bump` and `release`, and the preview's footer — counts
+reasons of `bump`, `release` and `notes`, and the preview's footer — counts
 this one set, each sha once; the walk's `pulls[].commits` is not one
 (**provenance**). Two
 exclusion questions are kept rigorously apart, and conflating them is the t-7zt7
