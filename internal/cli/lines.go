@@ -376,22 +376,25 @@ func placeOf(cfg *config.Config, raw gitsource.RawCommit) (placement, string, co
 // dropped with a notice; it was walked because the union had to contain it,
 // and it belongs to no line's verdict.
 //
-// A shallow clone's boundary commit, whose diff local git cannot compute, is
-// carried nowhere with a warning (walkedFiles).
-//
-// A refusal attribution hands down over a listing GitHub did not give whole
-// — TRUNCATED at its cap, or cut short by a 422 (listFiles) — is not a
-// finding and never wedges: "no carrier" and "the scope names a
-// package the files do not touch" are both claims about files the walk
-// could not read (the package past the cap may be exactly the one named).
-// The commit is carried nowhere and the walk's own FilesCapped or
-// FilesUnknown fact answers — a writing command refuses at 4, a reporting
-// one warns — never the gate code, which would tell an operator to cut a tag
-// past a commit whose true attribution the listing had hidden (t-c6r5,
-// measured: exit 3 with the wedge remedy). A non-refusal answer stands over
-// such a listing, so a scope naming a package still carries the commit
-// there (rule 2), and so do the files the listing did hold, whatever cut it
-// short (t-esm5).
+// A refusal attribution hands down over a diff the walk did not read whole
+// (diffGap) — a listing GitHub TRUNCATED at its cap or cut short with a 422
+// (listFiles), or a shallow clone's boundary, whose diff local git cannot
+// compute at all — is not a finding and never wedges: "no carrier" and "the
+// scope names a package the files do not touch" are both claims about files
+// the walk could not read (the package past the cap may be exactly the one
+// named). The commit is carried nowhere and the walk's own shortfall answers
+// — FilesCapped, FilesUnknown or Shallow, on which a writing command refuses
+// at 4 and a reporting one warns — never the gate code, which would tell an
+// operator to cut a tag past a commit whose true attribution was hidden
+// (t-c6r5, measured: exit 3 with the wedge remedy). A non-refusal answer
+// stands over such a diff, so a scope naming a package still carries the
+// commit there (rule 2), and so do the files a listing did hold, whatever cut
+// it short (t-esm5). One arm withholds for all three so they cannot come to
+// place a commit two ways again: a boundary was once carried on no line
+// whatever its scope, beside a 422 the same walk placed by scope (DESIGN
+// §4.1). The shortfall each records stays its own — a boundary is no
+// unreadListing, whose remedy is a tag past the commit; a boundary's is the
+// full history.
 func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, owner, repo string, commits []walked, facts *walkFacts, lines []line) ([]lineWalk, []walked, error) {
 	if len(cfg.Packages) == 0 {
 		return []lineWalk{{line: lines[0], Commits: commits}}, commits, nil
@@ -435,17 +438,13 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, 
 			carriers = reach
 		case placedNowhere:
 		case placedByFiles:
-			files, incomplete, boundary, ferr := walkedFiles(ctx, gh, owner, repo, c, facts, reachedLines(lines, reach))
+			files, gap, ferr := walkedFiles(ctx, gh, owner, repo, c, facts, reachedLines(lines, reach))
 			if ferr != nil {
 				return nil, nil, ferr
 			}
-			if boundary {
-				break // no diff to attribute: carried on no line, and walkedFiles said so
-			}
 			moved, aerr := attribution.Attribute(files, scope, sigil, cfg.Packages)
 			switch {
-			case aerr != nil && incomplete:
-				warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but GitHub did not list the commit's whole diff, so that is not a verdict: the commit is carried nowhere, and the walk is incomplete", c.Raw.SHA, aerr)
+			case aerr != nil && gap != diffWhole:
 				carriers = nil
 			case aerr != nil:
 				return nil, nil, attributionWedge(aerr, c, owner, repo, reachedLines(lines, reach))
@@ -455,6 +454,12 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, 
 						carriers = append(carriers, i)
 					}
 				}
+			}
+			switch {
+			case gap == diffBoundary:
+				warnBoundary(c.Raw.SHA, reachedLines(lines, carriers), aerr)
+			case aerr != nil && gap == diffUnlisted:
+				warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but GitHub did not list the commit's whole diff, so that is not a verdict: the commit is carried nowhere, and the walk is incomplete", c.Raw.SHA, aerr)
 			}
 		}
 		for _, i := range carriers {
@@ -471,32 +476,32 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, 
 // give whole — one that reached CommitFilesCap, or one a 422 cut short
 // (listFiles) — is recorded on the facts with the tags that take the
 // commit out of the lines reached (the shortfall's remedy), and returned as
-// incomplete: the files it did not list are unreachable, not absent, and a
+// diffUnlisted: the files it did not list are unreachable, not absent, and a
 // package they touch would be missing from the verdict — an incomplete walk
 // in §4's sense, and a listing the caller must not let attribution refuse
 // over.
 //
-// A shallow clone's boundary commit is returned as boundary, with a warning:
+// A shallow clone's boundary commit comes back with no file and diffBoundary:
 // git reads it as a root, and the diff it would give is the whole tree, which
-// once moved every line the tree touched (t-esm5). The caller carries it on no
-// line — the capped listing's answer, with nothing read at all — and a
-// since-tag walk over a shallow checkout already records walkFacts.Shallow, so
-// release refuses it and the reporting commands warn.
-func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c walked, facts *walkFacts, reached []line) (files []string, incomplete, boundary bool, err error) {
+// once moved every line the tree touched (t-esm5). It is recorded on no fact
+// here and warned about by the caller, once it is placed: a since-tag walk
+// over a shallow checkout already records walkFacts.Shallow, whose remedy —
+// the full history — is the boundary's, where an unreadListing would offer a
+// tag past it.
+func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c walked, facts *walkFacts, reached []line) (files []string, gap diffGap, err error) {
 	if c.Raw.Parents >= 2 {
-		return nil, false, false, nil
+		return nil, diffWhole, nil
 	}
 	if c.Landed {
 		files, err = gitsource.DiffTreeFiles(ctx, ".", c.Raw.SHA)
 		if gitsource.IsShallowBoundary(err) {
-			warnf("commit %.7s is this shallow clone's boundary: its parents are not here, so its own diff cannot be read — it is carried on no line, and a package it touched is missing from this verdict (fetch the full history: fetch-depth: 0)", c.Raw.SHA)
-			return nil, false, true, nil
+			return nil, diffBoundary, nil
 		}
-		return files, false, false, err
+		return files, diffWhole, err
 	}
 	l, err := listFiles(ctx, gh, owner, repo, c.Raw.SHA)
 	if err != nil {
-		return nil, false, false, err
+		return nil, diffWhole, err
 	}
 	unread := unreadListing{SHA: fmt.Sprintf("%.7s", c.Raw.SHA), Pull: c.Pull, Escapes: lineEscapes(c, reached)}
 	switch {
@@ -507,7 +512,46 @@ func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c w
 		facts.FilesCapped = append(facts.FilesCapped, unread)
 		warnf("commit %.7s in pull request #%d touches at least %d files, and GitHub lists no more than that — the files past the cap could not be read, so a package they touch is missing from this verdict", c.Raw.SHA, c.Pull, github.CommitFilesCap)
 	}
-	return l.Files, l.incomplete(), false, nil
+	if l.incomplete() {
+		return l.Files, diffUnlisted, nil
+	}
+	return l.Files, diffWhole, nil
+}
+
+// diffGap is how much of a commit's own diff the walk read — what decides
+// whether a refusal over its files is a verdict (partitionLines).
+type diffGap int
+
+const (
+	// diffWhole: every file the diff touches (none, for a merge commit, whose
+	// diff is never asked for).
+	diffWhole diffGap = iota
+	// diffUnlisted: GitHub's listing stopped short — capped, or cut by a 422.
+	diffUnlisted
+	// diffBoundary: nothing — a shallow clone's boundary commit.
+	diffBoundary
+)
+
+// warnBoundary is the one warning a shallow clone's boundary commit gets,
+// worded by where rules 2–3 over no file left it: on the lines its scope
+// names (carried), refused and so nowhere (withheld), or on no line. Each
+// says that no file was read, because the line a scope names may be the wrong
+// one — the full clone refuses a scope its files contradict.
+func warnBoundary(sha string, carried []line, withheld error) {
+	const head = "commit %.7s is this shallow clone's boundary: its parents are not here, so its own diff cannot be read — "
+	const remedy = " (fetch the full history: fetch-depth: 0)"
+	switch {
+	case withheld != nil:
+		warnf(head+"over no file, attribution would refuse it (%v), which is not a verdict: the commit is carried nowhere, and a package it touched is missing from this verdict"+remedy, sha, withheld)
+	case len(carried) > 0:
+		labels := make([]string, 0, len(carried))
+		for _, l := range carried {
+			labels = append(labels, l.Line.Label())
+		}
+		warnf(head+"it is carried on %s by its scope alone, with no file read to confirm that is the line it moves"+remedy, sha, strings.Join(labels, ", "))
+	default:
+		warnf(head+"it is carried on no line, and a package it touched is missing from this verdict"+remedy, sha)
+	}
 }
 
 // fileListing is GitHub's answer for one commit's files, classified: the

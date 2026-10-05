@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 5866fb4..bd8c56c 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -533,7 +533,7 @@ func DiffTreeFiles(ctx context.Context, dir, sha string) ([]string, error) {
+ 	// reason: i18n.logOutputEncoding re-encodes a non-empty header too, and a
+ 	// UTF-16 one holds a NUL after its byte-order mark, so the cut fell inside it
+ 	// and the parent's hex digits came back as the file list (measured).
+-	out, err := run(ctx, dir, "diff-tree", "-z", "--always", "--encoding=UTF-8", "--format=%P", "--name-only", "-r", "--root", "--no-renames", "--end-of-options", sha, "--")
++	out, err := run(ctx, dir, "diff-tree", "-z", "--always", "--format=%P", "--name-only", "-r", "--root", "--no-renames", "--end-of-options", sha, "--")
+ 	if err != nil {
+ 		return nil, err
+ 	}

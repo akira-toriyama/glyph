@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 6b0a4db..288bb97 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -258,7 +258,7 @@ func MergedTags(ctx context.Context, dir, rev string) ([]string, error) {
+ // bare --since-tag warned that HEAD's history holds no version tag and walked
+ // the whole of it (measured on git 2.54).
+ func tagListCmd(args ...string) []string {
+-	return append(append([]string{"tag", "--list", "--no-column"}, args...), "--sort=-v:refname")
++	return append(append([]string{"tag", "--list"}, args...), "--sort=-v:refname")
+ }
+ 
+ // tagLines splits git's one-name-per-line tag listing. Shared by Tags and

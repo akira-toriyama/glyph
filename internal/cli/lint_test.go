@@ -553,6 +553,53 @@ func TestHistoryGatesJudgeSignedCommitsUnderShowSignature(t *testing.T) {
 	}
 }
 
+// TestHistoryGatesReadThroughLogOutputEncoding is the gates half of gitsource's
+// read under i18n.logOutputEncoding, which re-encodes what `git log` prints.
+// Measured before the read named its encoding: under UTF-16 every gate here
+// answered 4 — the pre-push hook too, which the installed hook waves through,
+// so the push gate stopped judging — and under ISO-8859-1 notes wrote the
+// subject's Latin-1 bytes into the release body. Each gate must answer as it
+// does with the setting absent.
+func TestHistoryGatesReadThroughLogOutputEncoding(t *testing.T) {
+	const subject = ":bug:~ fix the café crash"
+	for _, enc := range []string{"UTF-16", "ISO-8859-1"} {
+		t.Run(enc, func(t *testing.T) {
+			work, _ := testClone(t)
+			testGit(t, work, "akira-toriyama", "tag", "v0.1.0")
+			base := rev(t, work, "HEAD")
+			testCommit(t, work, "akira-toriyama", subject)
+			clean := rev(t, work, "HEAD")
+			testCommit(t, work, "akira-toriyama", "no gitmoji in this one")
+			head := rev(t, work, "HEAD")
+			testGit(t, work, "akira-toriyama", "config", "i18n.logOutputEncoding", enc)
+			if raw := testGit(t, work, "akira-toriyama", "log", "-1", "--format=%s", clean); raw == subject {
+				t.Fatalf("git printed the subject in UTF-8 under i18n.logOutputEncoding=%s — git no longer re-encodes there, and this test guards nothing", enc)
+			}
+			t.Chdir(work)
+
+			for _, tc := range []struct {
+				args   []string
+				want   int
+				stdout string
+			}{
+				{[]string{"lint", "--range", base + ".." + clean}, 0, ""},
+				{[]string{"lint", "--range", base + "..HEAD"}, 3, ""},
+				{[]string{"bump", "--range", base + ".." + clean}, 0, "v0.1.1\n"},
+				{[]string{"notes", "--range", base + ".." + clean}, 0, "fix the café crash"},
+			} {
+				code, stdout, stderr := runGlyph(t, tc.args...)
+				if code != tc.want || !strings.Contains(stdout, tc.stdout) {
+					t.Errorf("%v exited %d with %q, want %d with %q in it\nstderr: %s", tc.args, code, stdout, tc.want, tc.stdout, stderr)
+				}
+			}
+			setStdin(t, "refs/heads/main "+head+" refs/heads/main "+rev(t, work, "origin/main")+"\n")
+			if code, _, stderr := runGlyph(t, "hook", "pre-push", "origin", "ignored"); code != 3 {
+				t.Errorf("pre-push of a violation to the default branch exited %d, want 3 — the installed hook lets every other code through\nstderr: %s", code, stderr)
+			}
+		})
+	}
+}
+
 // TestLintRangeAnnotatesEachFinding pins the producer half of the annotation
 // contract lint.yml now leans on: one `::error::` per finding, written by the
 // binary that computed it, every one of them before the envelope so the

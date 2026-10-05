@@ -1,10 +1,10 @@
 diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index fdac588..d32f7fe 100644
+index 2ecd619..3f3a6ea 100644
 --- a/internal/cli/lines.go
 +++ b/internal/cli/lines.go
-@@ -485,7 +485,7 @@ func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c w
+@@ -490,7 +490,7 @@ func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c w
  	if err != nil {
- 		return nil, false, false, err
+ 		return nil, diffWhole, err
  	}
 -	unread := unreadListing{SHA: fmt.Sprintf("%.7s", c.Raw.SHA), Pull: c.Pull, Escapes: lineEscapes(c, reached)}
 +	unread := unreadListing{SHA: fmt.Sprintf("%.7s", c.Raw.SHA), Pull: c.Pull}

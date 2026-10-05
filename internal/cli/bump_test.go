@@ -40,6 +40,45 @@ func TestBumpPatchFromTag(t *testing.T) {
 	}
 }
 
+// TestBumpReadsTheTagListUnderColumnConfig: column.ui=always lays `git tag
+// --list` out in columns even into a pipe, so two tags came back as one line
+// that parses as no version, and the step base fell to v0.0.0: the --range
+// fold stepped from it with nothing said, and the bare --since-tag walk warned
+// that HEAD's history holds no version tag — it holds two — and walked the
+// whole of it. The raw read first is the positive control.
+func TestBumpReadsTheTagListUnderColumnConfig(t *testing.T) {
+	fixture := func(t *testing.T) (dir, base string) {
+		dir, base = testRepo(t)
+		testGit(t, dir, "akira-toriyama", "tag", "v0.0.9")
+		testGit(t, dir, "akira-toriyama", "config", "column.ui", "always")
+		if raw := testGit(t, dir, "akira-toriyama", "tag", "--list"); strings.Contains(raw, "\n") {
+			t.Fatalf("git listed the tags one per line under column.ui=always:\n%s\n— git no longer columns there, and this test guards nothing", raw)
+		}
+		return dir, base
+	}
+	t.Run("--range", func(t *testing.T) {
+		dir, base := fixture(t)
+		testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+		t.Chdir(dir)
+		if code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD"); code != 0 || stdout != "v0.1.1\n" {
+			t.Fatalf("bump --range = exit %d stdout %q, want 0 / v0.1.1\nstderr: %s", code, stdout, stderr)
+		}
+	})
+	t.Run("--since-tag", func(t *testing.T) {
+		dir, _ := fixture(t)
+		sha1 := squashCommit(t, dir, "Fix a crash", 3)
+		srv := walkServer(t, map[string]string{
+			commitPullsPath(sha1): `[` + apiPullRef(3, "2026-07-13T00:00:00Z", sha1) + `]`,
+			pullCommitsPath(3):    `[` + apiCommit("c1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
+		})
+		usePR(t, srv)
+		t.Chdir(dir)
+		if code, stdout, stderr := runGlyph(t, "bump", "--since-tag"); code != 0 || stdout != "v0.1.1\n" {
+			t.Fatalf("bare bump --since-tag = exit %d stdout %q, want 0 / v0.1.1\nstderr: %s", code, stdout, stderr)
+		}
+	})
+}
+
 // TestBumpNoneHuman: a docs-only range is the soft no-release exit: nothing on
 // stdout, exit 1, the reason in the stderr envelope.
 func TestBumpNoneHuman(t *testing.T) {
