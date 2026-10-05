@@ -50,12 +50,18 @@ packages gets two rows.
 
 ## Adding a row
 
-1. Break the decision in your working tree — the smallest edit that removes it.
+1. Stage or commit the implementation, then break the decision in your working
+   tree — the smallest edit that removes it.
 2. Run the suite. **If it stays green you have found a gap**: write the test
    first, then come back. That is the ledger doing its job before it has a row.
 3. Turn the edit into a patch and revert your tree:
 
        git diff -- <file> > testdata/mutations/<name>.patch && git checkout -- <file>
+
+   Both halves read the index, which is why step 1 stages first: the patch holds
+   the mutation alone and the checkout restores the implementation. Over an
+   unstaged implementation the patch carries the fix and the checkout deletes it
+   (2026-09-10, on `release.yml`).
 
 4. Add the row, then `scripts/mutations.sh <substring>` to run just that row.
 
@@ -65,8 +71,9 @@ Name the file after **the defect the decision prevents**, not after the code —
 
 Keep every line the patch **touches or quotes** — deleted lines and context
 alike — out of dependabot's hands. A patch is bytes frozen against a moving
-file, and a pinned-SHA `uses:` line inside one re-breaks on every bump: row 18
-deleted a whole CI job, checkout SHA included, and went red on three
+file, and a pinned-SHA `uses:` line inside one re-breaks on every bump: the
+`distribution-layer-change-ships-with-no-evidence` row deleted a whole CI job,
+checkout SHA included, and went red on three
 consecutive dependabot PRs without any decision changing (t-7zy2). Mutate the
 smallest glyph-owned span that still kills the named test.
 
