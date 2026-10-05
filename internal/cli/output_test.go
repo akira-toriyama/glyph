@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v4/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/core"
 )
 
 // TestStderrCarriesAnnotationsThenOneSievableEnvelope pins the stream contract

@@ -2795,10 +2795,10 @@ refusing a `=` whose scope names another package (above).
 
 ## 5. Architecture (Go, house pattern)
 
-Binary `glyph`, module `github.com/akira-toriyama/glyph/v4` — the major suffix is
+Binary `glyph`, module `github.com/akira-toriyama/glyph/v5` — the major suffix is
 part of the path from v2 on, and a tag alone does not supply it: without it the
 proxy answers `go install …@latest` with the last unsuffixed version (v1.0.0)
-forever. Cutting v5 means editing this path. Subcommands: `lint`,
+forever. Cutting v6 means editing this path. Subcommands: `lint`,
 `init`, `bump`, `notes`, `preview`, `release`, `doctor`, `hook`, `version`, `emoji` —
 everything `glyph --help` prints except cobra's own `completion` and `help`.
 This line and the tree below are the two places in this document a new command

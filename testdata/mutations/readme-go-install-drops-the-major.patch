@@ -6,7 +6,7 @@ index 63941f7..df1b9e7 100644
  **go install**
  
  ```sh
--go install github.com/akira-toriyama/glyph/v4/cmd/glyph@latest
+-go install github.com/akira-toriyama/glyph/v5/cmd/glyph@latest
 +go install github.com/akira-toriyama/glyph/cmd/glyph@latest
  ```
  

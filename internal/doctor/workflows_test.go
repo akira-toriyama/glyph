@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
 )
 
 // commentedStub is THE trap, reproduced verbatim in shape: every glyph reusable

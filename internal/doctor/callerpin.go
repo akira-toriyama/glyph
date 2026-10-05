@@ -26,7 +26,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v4/internal/bump"
+	"github.com/akira-toriyama/glyph/v5/internal/bump"
 )
 
 // notJudged is one caller this binary cannot speak for: why, and the remedy

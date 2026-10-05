@@ -4,12 +4,12 @@ import (
 	"context"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v4/internal/bump"
-	"github.com/akira-toriyama/glyph/v4/internal/config"
-	"github.com/akira-toriyama/glyph/v4/internal/core"
-	"github.com/akira-toriyama/glyph/v4/internal/github"
-	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
-	"github.com/akira-toriyama/glyph/v4/internal/notes"
+	"github.com/akira-toriyama/glyph/v5/internal/bump"
+	"github.com/akira-toriyama/glyph/v5/internal/config"
+	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/github"
+	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v5/internal/notes"
 )
 
 // This file is the shared input plumbing that turns raw commits — from git or

@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
 )
 
 // compareMark opens the compare link's line — GitHub's own generate-notes
