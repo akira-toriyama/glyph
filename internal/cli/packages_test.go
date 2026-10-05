@@ -222,7 +222,8 @@ func TestSinceTagPackagesLandedCommitReadsFilesFromGit(t *testing.T) {
 
 // TestSinceTagPackagesSharedOnlyBumpIsRefused: a ^ under no package with no
 // scope has nothing to carry it — the lint-class refusal (exit 3), naming
-// both escapes and, on the walk, the wedge per line whose range holds it.
+// the escapes it can take and, on the walk, the wedge per line whose range
+// holds it.
 func TestSinceTagPackagesSharedOnlyBumpIsRefused(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	sha := touch(t, dir, "akira-toriyama", ":sparkles:^ add a workspace file", "go.work")
@@ -233,7 +234,11 @@ func TestSinceTagPackagesSharedOnlyBumpIsRefused(t *testing.T) {
 	if code != 3 {
 		t.Fatalf("a shared-only ^ exited %d, want 3\nstderr: %s", code, stderr)
 	}
-	for _, want := range []string{"touches no declared package", "name the package in the scope", "haiku/ tag at or past", "curry/ tag at or past", sha[:7]} {
+	for _, want := range []string{
+		"its files (go.work) belong to no declared package",
+		"name the line it moves in the scope (one of haiku, curry), write = so it moves no line, or declare the package these files belong to",
+		"haiku/ tag at or past", "curry/ tag at or past", sha[:7],
+	} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("refusal is missing %q:\n%s", want, stderr)
 		}
@@ -726,6 +731,13 @@ func TestSinceTagPackagesUnlistedFilesAreAnIncompleteWalk(t *testing.T) {
 			if !strings.Contains(stderr, "::warning::glyph: "+unlisted) || strings.Contains(stderr, "github: GET") {
 				t.Fatalf("bump must warn about the unlisted files, never hand back the raw API error:\n%s", stderr)
 			}
+			// The withheld refusal is worded over what was read — nothing —
+			// never as a fact about the commit: "touches no file" beside "GitHub
+			// did not list the commit's whole diff" is two answers in one line.
+			withheld := "over the files GitHub listed, attribution would refuse it (no file of this commit was read, so no package's tree can carry its sigil ~: "
+			if strings.Contains(stderr, withheld) != (tc.curryCommits == 0) || strings.Contains(stderr, "touches no file") {
+				t.Fatalf("an unscoped commit's withheld refusal must say no file was read, and a scoped one is not refused:\n%s", stderr)
+			}
 
 			code, stdout, stderr = runGlyph(t, "notes", "--since-tag")
 			if code != 0 {
@@ -950,10 +962,198 @@ func TestLintRangePackagesJudgesTheDiff(t *testing.T) {
 	if !strings.Contains(stderr, "2 commit-convention violation(s)") {
 		t.Fatalf("want exactly the two attribution findings:\n%s", stderr)
 	}
-	for _, want := range []string{shared[:7], "touches no declared package", contra[:7], "names a package this commit does not touch"} {
+	for _, want := range []string{shared[:7], "its files (go.work) belong to no declared package", contra[:7], "names a package this commit does not touch"} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("findings are missing %q:\n%s", want, stderr)
 		}
+	}
+}
+
+// rootedConfig declares haiku beside a named root package — the shape under
+// which every FILE has an owner, so the only commits rules 2–3 still meet are
+// the ones that show the tree no file.
+const rootedConfig = "\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \".\"\nname = \"core\"\n"
+
+// claimedMerge lands a merge commit a non-skip pattern claims: a side branch
+// touching haiku/ alone, merged --no-ff under message. The presets skip only a
+// subject that opens `Merge `, so this one is read — its scope and sigil, never
+// its diff.
+func claimedMerge(t *testing.T, dir, message string) string {
+	t.Helper()
+	testGit(t, dir, "akira-toriyama", "switch", "-q", "-c", "side")
+	touch(t, dir, "akira-toriyama", ":memo:= reword a line", "haiku/haiku.go")
+	testGit(t, dir, "akira-toriyama", "switch", "-q", "main")
+	testGit(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", message, "side")
+	return testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+}
+
+// TestLintRangePackagesNoFileCommitUnderARootPackage: a commit that shows the
+// tree no file — an empty commit, a claimed merge commit — has no carrier but
+// its scope, a root package declared or not (DESIGN §4.1, t-n5tw 3): the root
+// package is a claim on files. Each finding says which of the two it is and
+// names the root's scope among the escapes; the same empty commit scoped
+// (core) is clean, which is the escape taken. This is lint's arm of the
+// refusal's wording (cli's attribute): the merge sentence is read here, and
+// mutation row lint-refuses-a-merge-commit-as-touching-no-file hands it no commit.
+func TestLintRangePackagesNoFileCommitUnderARootPackage(t *testing.T) {
+	dir := packagesRepoWith(t, rootedConfig, map[string]string{"haiku/haiku.go": "package haiku\n"})
+	base := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	empty := touch(t, dir, "akira-toriyama", ":bookmark:~ cut a release")
+	merge := claimedMerge(t, dir, ":twisted_rightwards_arrows:~ merge the side branch")
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
+	if code != 3 {
+		t.Fatalf("lint --range exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "2 commit-convention violation(s)") {
+		t.Fatalf("want exactly the two no-file findings:\n%s", stderr)
+	}
+	const escapes = ": name the line it moves in the scope (one of haiku, core), or write = so it moves no line"
+	for _, want := range []string{
+		"commit " + empty[:7] + ": this commit touches no file, so no package's tree can carry its sigil ~" + escapes,
+		"commit " + merge[:7] + ": this merge commit's own diff is never read, so no package's tree can carry its sigil ~" + escapes,
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("findings are missing %q:\n%s", want, stderr)
+		}
+	}
+
+	scoped := touch(t, dir, "akira-toriyama", ":bookmark:(core)~ cut a release")
+	if code, stdout, stderr := runGlyph(t, "lint", "--range", scoped+"~1.."+scoped); code != 0 {
+		t.Fatalf("an empty (core)~ exited %d, want 0 — the scope is the escape the finding names\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	if code, stdout, stderr := runGlyph(t, "bump", "--range", scoped+"~1.."+scoped); code != 0 || stdout != "v0.0.1\n" {
+		t.Fatalf("bump over the empty (core)~ exited %d with %q, want 0 and the root line alone at v0.0.1\nstderr: %s", code, stdout, stderr)
+	}
+}
+
+// TestPackagesWalkRefusesAClaimedMergeInItsOwnWords is the walk's arm of the
+// refusal's wording: partitionLines reaches attribution through cli's
+// attribute, so a claimed merge commit is refused as a merge commit — its diff
+// never read — with the wedge per line, where the first cut said it "touches
+// no declared package" of a merge that touched haiku/. A haiku scope carries
+// it (rule 2). Mutation row walk-refuses-a-merge-commit-as-touching-no-file
+// hands the helper no commit.
+func TestPackagesWalkRefusesAClaimedMergeInItsOwnWords(t *testing.T) {
+	dir, base := packagesRepo(t)
+	merge := claimedMerge(t, dir, ":twisted_rightwards_arrows:~ merge the side branch")
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")
+	if code != 3 {
+		t.Fatalf("bump --range over a claimed ~ merge exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	for _, want := range []string{
+		"commit " + merge[:7] + ": this merge commit's own diff is never read, so no package's tree can carry its sigil ~: name the line it moves in the scope (one of haiku, curry), or write = so it moves no line",
+		"a haiku/ tag at or past " + merge[:7],
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the refusal is missing %q:\n%s", want, stderr)
+		}
+	}
+
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", ":twisted_rightwards_arrows:(haiku)~ merge the side branch")
+	if code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD"); code != 0 || stdout != "haiku/v0.1.1\n" {
+		t.Fatalf("the merge scoped (haiku) exited %d with %q, want 0 and haiku alone\nstderr: %s", code, stdout, stderr)
+	}
+}
+
+// TestLintRangePackagesRawRevertNamesTheEscapesThatWork: `git revert` writes
+// `Revert "…"`, which the presets claim with a pattern that fixes the sigil at
+// ~ and captures no scope. Reverting a shared-only commit in a repository with
+// no root package is therefore refused, and the refusal used to name two
+// escapes that message cannot take — "name the package in the scope … or
+// write =" (t-mfny (A)). It names the ones that work, and the test takes each
+// in turn rather than trusting the sentence: the reword as =, the reword with
+// a scope, the declaration; and it shows the two old ones still fail.
+func TestLintRangePackagesRawRevertNamesTheEscapesThatWork(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	touch(t, dir, "akira-toriyama", ":memo:= add a README", "README.md")
+	testGit(t, dir, "akira-toriyama", "revert", "--no-edit", "HEAD")
+	t.Chdir(dir)
+	lint := func(t *testing.T) (int, string) {
+		t.Helper()
+		code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
+		return code, stderr
+	}
+	reword := func(t *testing.T, message string) {
+		t.Helper()
+		testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", message)
+	}
+
+	code, stderr := lint(t)
+	if code != 3 {
+		t.Fatalf("a raw revert of a shared-only commit exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	want := `its files (README.md) belong to no declared package, and its sigil ~ claims a version impact nothing can carry: ` +
+		`patterns[1], which claimed this message, fixes the sigil at ~ and captures no scope — ` +
+		`reword it so another pattern claims it, with a scope naming the line it moves (one of haiku, curry) or as = so it moves no line, ` +
+		`or declare the package these files belong to ([[packages]] path = "<its directory>"; path = "." declares the root package, which holds every file no other package claims)`
+	if !strings.Contains(stderr, "::error::glyph: commit ") || !strings.Contains(stderr, ": "+want+"\n") {
+		t.Fatalf("the finding must be\n  %s\ngot:\n%s", want, stderr)
+	}
+	for _, unreachable := range []string{"name the line it moves in the scope", "write = so it moves no line"} {
+		if strings.Contains(stderr, unreachable) {
+			t.Errorf("the finding names %q, which no message this pattern claims can do:\n%s", unreachable, stderr)
+		}
+	}
+
+	for _, still := range []string{`Revert ":memo:(haiku)= add a README"`, `Revert ":memo:= add a README" =`} {
+		reword(t, still)
+		if code, stderr := lint(t); code != 3 {
+			t.Errorf("%q exited %d, want 3 — the revert pattern reads neither a scope nor a = from it\nstderr: %s", still, code, stderr)
+		}
+	}
+	reword(t, `:rewind:= Revert ":memo:= add a README"`)
+	if code, stderr := lint(t); code != 0 {
+		t.Errorf("reworded as = it exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	reword(t, `:rewind:(curry)~ Revert ":memo:= add a README"`)
+	if code, stderr := lint(t); code != 0 {
+		t.Errorf("reworded with a scope it exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if code, stdout, stderr := runGlyph(t, "bump", "--range", "HEAD~1..HEAD"); code != 0 || stdout != "curry/v0.1.1\n" {
+		t.Errorf("the scoped reword's bump exited %d with %q, want 0 and curry alone\nstderr: %s", code, stdout, stderr)
+	}
+	reword(t, `Revert ":memo:= add a README"`)
+	appendTo(t, dir, "glyph.toml", "\n[[packages]]\npath = \".\"\nname = \"core\"\n")
+	if code, stderr := lint(t); code != 0 {
+		t.Errorf("with the root package declared the raw revert exited %d, want 0\nstderr: %s", code, stderr)
+	}
+}
+
+// TestLintRangePackagesScopelessGrammarOffersNoScope: under a grammar that
+// captures no scope the loader exempts every package name — the root's
+// default "." included — so no commit can ever name a line, and the refusal
+// must not offer one: an empty ~ is told to write =, the one thing its
+// message can do. The positive control is the preset, whose refusal for the
+// same commit names the scopes
+// (TestLintRangePackagesNoFileCommitUnderARootPackage).
+func TestLintRangePackagesScopelessGrammarOffersNoScope(t *testing.T) {
+	dir := testutil.NewRepo(t)
+	writeFile(t, dir, "glyph.toml", "schema = 1\n\n[[patterns]]\npattern = '^(?P<subject>:[a-z0-9_]+:(?P<semver_sigil>[=~^!%]) .+)'\n\n[note]\nline = '- $subject'\n\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \".\"\n")
+	testGit(t, dir, "akira-toriyama", "add", ".")
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
+	empty := touch(t, dir, "akira-toriyama", ":bookmark:~ cut a release")
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
+	if code != 3 {
+		t.Fatalf("lint --range exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	want := "::error::glyph: commit " + empty[:7] + ": this commit touches no file, so no package's tree can carry its sigil ~: write = so it moves no line\n"
+	if !strings.Contains(stderr, want) {
+		t.Fatalf("the finding must be %q, got:\n%s", want, stderr)
+	}
+	for _, unreachable := range []string{"in the scope", "(.)", "one of"} {
+		if strings.Contains(stderr, unreachable) {
+			t.Errorf("the finding offers a scope (%q) under a grammar that captures none:\n%s", unreachable, stderr)
+		}
+	}
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--amend", "-m", ":bookmark:= cut a release")
+	if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 0 {
+		t.Fatalf("the = the finding names exited %d, want 0\nstderr: %s", code, stderr)
 	}
 }
 
@@ -1003,7 +1203,7 @@ func TestPrePushPackagesInheritsAttribution(t *testing.T) {
 	if code != 3 {
 		t.Fatalf("a shared-only ^ reaching the default branch exited %d, want 3\nstderr: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "touches no declared package") {
+	if !strings.Contains(stderr, "its files (go.work) belong to no declared package") {
 		t.Fatalf("the blocking envelope must carry the attribution finding:\n%s", stderr)
 	}
 }

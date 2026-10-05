@@ -1,0 +1,13 @@
+diff --git a/internal/attribution/attribution.go b/internal/attribution/attribution.go
+index d148e75..dd0fec2 100644
+--- a/internal/attribution/attribution.go
++++ b/internal/attribution/attribution.go
+@@ -178,7 +178,7 @@ func (r *Refusal) noCarrier() string {
+ // sayable is what the sentence assumes a message can write: what the caller
+ // said of the claiming pattern, else every name and the message's own sigil.
+ func (r *Refusal) sayable() config.Sayable {
+-	if r.Pattern != nil {
++	if r.Pattern != nil && false {
+ 		return *r.Pattern
+ 	}
+ 	return config.Sayable{Pattern: -1, ScopeGroup: true, ScopeOptional: true, Scopes: r.Names, SigilGroup: true, None: true}

@@ -1,0 +1,13 @@
+diff --git a/internal/config/sayable.go b/internal/config/sayable.go
+index d96eb63..c59fd98 100644
+--- a/internal/config/sayable.go
++++ b/internal/config/sayable.go
+@@ -65,7 +65,7 @@ func (c *Config) Sayable(i int) (s Sayable, ok bool) {
+ 	elsewhere := make(map[string]bool)
+ 	for j := range c.Patterns {
+ 		p := &c.Patterns[j]
+-		if j != i && (!p.bindsGroups() || p.Warn != "") {
++		if false && j != i && (!p.bindsGroups() || p.Warn != "") {
+ 			continue
+ 		}
+ 		// The flags regexp.Compile parses with: the tree compilePattern

@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
+index 800edf4..5813bb2 100644
+--- a/internal/cli/cmd_lint.go
++++ b/internal/cli/cmd_lint.go
+@@ -355,7 +355,7 @@ func lintAttribution(ctx context.Context, raw gitsource.RawCommit, cfg *config.C
+ 			return "", err
+ 		}
+ 	}
+-	if _, aerr := attribute(cfg, raw, readingOf(m), files, true); aerr != nil {
++	if _, aerr := attribute(cfg, gitsource.RawCommit{}, readingOf(m), files, true); aerr != nil {
+ 		return aerr.Error(), nil
+ 	}
+ 	return "", nil

@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/akira-toriyama/glyph/v4/internal/attribution"
 	"github.com/akira-toriyama/glyph/v4/internal/bump"
 	"github.com/akira-toriyama/glyph/v4/internal/cleanup"
 	"github.com/akira-toriyama/glyph/v4/internal/config"
@@ -356,7 +355,7 @@ func lintAttribution(ctx context.Context, raw gitsource.RawCommit, cfg *config.C
 			return "", err
 		}
 	}
-	if _, aerr := attribution.Attribute(files, m.Groups[config.ScopeGroup], m.Sigil, cfg.Packages); aerr != nil {
+	if _, aerr := attribute(cfg, raw, readingOf(m), files, true); aerr != nil {
 		return aerr.Error(), nil
 	}
 	return "", nil

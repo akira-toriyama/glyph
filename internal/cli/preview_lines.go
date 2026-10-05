@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v4/internal/attribution"
 	"github.com/akira-toriyama/glyph/v4/internal/bump"
 	"github.com/akira-toriyama/glyph/v4/internal/config"
 	"github.com/akira-toriyama/glyph/v4/internal/core"
@@ -75,7 +74,7 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 	perLine := make([][]gitsource.RawCommit, len(cfg.Packages))
 	var prCapped, prUnknown []unreadListing
 	for _, r := range raws {
-		place, scope, sigil := placeOf(cfg, r)
+		place, said := placeOf(cfg, r)
 		if place != placedByFiles {
 			continue
 		}
@@ -97,7 +96,7 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 				warnf("commit %.7s in pull request #%d touches at least %d files, and GitHub lists no more than that — a package it touches past the cap is missing from this preview", r.SHA, previewPR, github.CommitFilesCap)
 			}
 		}
-		moved, aerr := attribution.Attribute(files, scope, sigil, cfg.Packages)
+		moved, aerr := attribute(cfg, r, said, files, !incomplete)
 		if aerr != nil && incomplete {
 			warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but GitHub did not list the commit's whole diff, so that is not a verdict: the commit is attributed to no line", r.SHA, aerr)
 			continue

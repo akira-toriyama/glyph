@@ -1,0 +1,13 @@
+diff --git a/internal/cli/lines.go b/internal/cli/lines.go
+index 29913d7..2fc7000 100644
+--- a/internal/cli/lines.go
++++ b/internal/cli/lines.go
+@@ -475,7 +475,7 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
+ 			if ferr != nil {
+ 				return nil, nil, ferr
+ 			}
+-			moved, aerr := attribute(cfg, c.Raw, said, files, gap == diffWhole)
++			moved, aerr := attribute(cfg, gitsource.RawCommit{}, said, files, gap == diffWhole)
+ 			switch {
+ 			case aerr != nil && gap != diffWhole:
+ 				carriers = nil

@@ -215,8 +215,30 @@ func TestPreviewPackagesSharedOnlyBumpIsRefused(t *testing.T) {
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "preview", "--pr", "9")
-	if code != 3 || !strings.Contains(stderr, "touches no declared package") || !strings.Contains(stderr, "fix it on the branch") {
+	if code != 3 || !strings.Contains(stderr, "its files (go.work) belong to no declared package") || !strings.Contains(stderr, "fix it on the branch") {
 		t.Fatalf("preview exited %d, want 3 with the attribution refusal\nstderr: %s", code, stderr)
+	}
+}
+
+// TestPreviewPackagesRefusesAClaimedMergeInItsOwnWords is preview's arm of the
+// refusal's wording (cli's attribute): a pull that lists a merge commit some
+// non-skip pattern claims — its author merged the base in under a subject of
+// their own — is refused as the walk will refuse it, in the merge commit's
+// sentence: its diff is never asked of the API (no commits/{sha} route is
+// served, and the stand-in fails the test on an unexpected path), so "touches
+// no declared package" was a claim nothing had read. Mutation row
+// preview-refuses-a-merge-commit-as-touching-no-file hands the helper no commit.
+func TestPreviewPackagesRefusesAClaimedMergeInItsOwnWords(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	usePR(t, walkServer(t, map[string]string{
+		pullCommitsPath(9): `[` + apiMergeCommit("m1", "akira-toriyama", ":twisted_rightwards_arrows:~ merge main into the branch") + `]`,
+	}))
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "preview", "--pr", "9")
+	want := "commit m1 in pull request akira-toriyama/glyph#9: this merge commit's own diff is never read, so no package's tree can carry its sigil ~: name the line it moves in the scope (one of haiku, curry), or write = so it moves no line — the release walk will refuse this commit the same way"
+	if code != 3 || !strings.Contains(stderr, want) {
+		t.Fatalf("preview exited %d, want 3 with\n  %s\nstderr: %s", code, want, stderr)
 	}
 }
 

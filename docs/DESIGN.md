@@ -1799,16 +1799,108 @@ asked:
    them, with its one sigil. A commit that renames across two modules moves
    both lines; that is what it did.
 2. Its files lie under no package (a *shared-only* commit: root CI, the
-   workspace file, a README, in a repository with no root package) and the
-   winning pattern captured a `scope` naming a package → it participates in
-   **that** package. The author said where the impact lands and the tree could
-   not.
+   workspace file, a README, in a repository with no root package) — or it
+   has no files at all, whatever is declared (below) — and the winning
+   pattern captured a `scope` naming a package → it participates in **that**
+   package. The author said where the impact lands and the tree could not.
 3. Otherwise it has **no carrier**. With sigil `=` that is the expected shape
    of shared housekeeping and it participates nowhere (it appears in no draft
    — there is no line for it to appear on). With any other sigil it is a
    **refusal of the lint class (exit 3)**: the author claimed a version impact
-   and nothing can carry it. The error names both escapes — name the package
-   in the scope, or write `=` — and, in the walk, the wedge escape per line.
+   and nothing can carry it. The error names the escapes the commit can
+   actually take — name a line in the scope when the winning pattern captures
+   one that spells it, write `=` when the sigil is the message's own, declare
+   the package its files belong to when it has files (below) — and, in the
+   walk, the wedge escape per line.
+
+A commit that shows the tree **no file** — `git commit --allow-empty`, or a
+merge commit some pattern other than a skip claims, whose diff is never read
+(below) — is placed by rules 2–3 whatever is declared, a root package included
+(t-n5tw 3, t-f2cb (3); ratified 2026-09-29). The root package is a claim on
+files, "every file no other package claims", not on commits. A commit with
+none has told the tree nothing, and rule 2 exists for exactly that: the scope
+says where the impact lands. Measured 2026-10-05 at 135eead with `haiku` and
+`.` (`core`) declared: an empty `~` exits 3 naming `(core)` among the scopes,
+`(core)~` moves the root line alone, an empty `=` passes on no line, and a `~`
+merge of a haiku-only branch exits 3 while `(haiku)~` puts it on haiku
+(`TestNoFilesHaveNoCarrierUnderARootPackage`,
+`TestLintRangePackagesNoFileCommitUnderARootPackage`). Letting the root
+package carry such a commit was rejected. For a merge it steps a line the
+merge's content need not touch — the haiku-only merge would move the root line
+beside haiku's. For an empty commit it guesses which line the author meant,
+where one word of scope says it — a word only a spellable name gives, which is
+why the loader holds the root's name to the scope grammar like any other
+(above), and why under a grammar that captures no scope the refusal offers
+none (`TestLintRangePackagesScopelessGrammarOffersNoScope`). The single line
+steps on an empty `~` only because it asks no attribution; declaring packages
+is what turns the question on, the root package alone included. Measured the
+same day: an empty `~` and a claimed `~` merge each exit 0 and step v0.1.0 to
+v0.1.1 with no packages, and exit 3 with `path = "."` (`core`) the one
+declaration. The root package keeps the single line's tags and drafts, not its
+verdict on a commit without files (mutation row
+`attribution-root-carries-a-commit-with-no-files`).
+
+And a file has two states: a declared package's — with a root package
+declared, every file no other package claims is the root package's — or
+nobody's. A subtree nobody declared is not a third (t-n5tw R1; ratified
+2026-09-29). Measured 2026-10-05 at 135eead on a fixture declaring `storage`
+alone: `(spanner)^` under an undeclared `spanner/` exits 3, `(spanner)=`
+passes, declaring `spanner` moves that line alone, and `(ci)^` on
+`.github/workflows/ci.yml` exits 3 by the same path. An *undeclared module*
+state was rejected. glyph reads no manifest (above), so it has no other way to
+tell a module from root CI or a docs tree. The one signal the message carries
+— a scope naming no package — cannot be it either: it would let `(ci)^` on
+root CI through as the silent none this rule refuses (mutation row
+`attribution-unknown-scope-carried-nowhere`; before the row no test caught
+that mutation — the whole suite stayed green under it at 135eead, measured the
+same day). One `glyph.toml` judges every commit in the repository, as the
+single line always has. Partial adoption is not a mode: a repository declares
+every module whose version a commit may claim, and no gate can enforce it.
+With `storage` and `.` declared, the same `(spanner)^` exits 0 and steps the
+root line v0.1.0 to v0.2.0 with nothing on stderr (measured the same day) —
+the omission is refused without a root package and silent under one, because
+nothing distinguishes the root package's own files from an undeclared
+module's, the reason no third state exists. So the refusal names the
+declaration beside the scope, and does not guess its path: glyph cannot tell
+which directory is the module, and the first path segment would have offered
+`path = ".github"` for root CI, a prefix the loader refuses (above).
+
+The escapes are asked of **this commit**, not of the file (t-mfny (A)). The
+loader holds the file to "some scope group spells every name" (above); which
+pattern wins is a property of each commit, so the refusal asks the one that
+claimed the message (`config.Sayable`): the scope escape lists the package
+names that pattern's scope group can capture, `=` is offered when its sigil
+group can capture it, and the declaration when the commit has files. The
+shipped raw-revert pattern fixes its sigil at `~` and captures no scope, so
+reverting a shared-only commit in a repository with no root package was
+refused with "name the package in the scope … or write =", neither of which
+that message can do. Measured 2026-10-05 at 135eead: the raw revert, `Revert
+":memo:(haiku)= …"` and a `=` written after the quotes all exit 3, while
+`:rewind:= Revert "…"`, `:rewind:(haiku)~ Revert "…"` and declaring `path =
+"."` each pass. Its refusal now says which pattern claimed the message and
+that it fixes the sigil and captures no scope, then names what works:
+rewording so another pattern claims it — with what the file's other patterns
+can capture, a skip, an `unlandable` and a `warn` pattern never counted,
+since a message reworded for one of those is placed nowhere, never lands, or
+takes a form the file's author would rather not see — or the declaration
+(`TestLintRangePackagesRawRevertNamesTheEscapesThatWork` takes each escape in
+turn; `TestNoCarrierNamesOnlyTheEscapesTheCommitCanTake` is the sentence's
+format spec; mutation rows
+`attribution-refusal-names-an-escape-its-pattern-cannot-write`,
+`sayable-rewords-under-a-pattern-no-landed-message-may-take`). Like the
+loader's check it reads each group's own sub-expression, necessary and not
+sufficient. The sentence reads more than attribution's four inputs — the
+claiming pattern, that a merge commit's diff was never read, that a diff was
+not read whole — and the answer does not: one helper (`cli.attribute`) sets
+them on a refusal already returned, for the walk, `lint --range` and
+`preview` alike, each with a test that reads its own refusal (mutation rows
+`walk-`, `lint-` and `preview-refuses-a-merge-commit-as-touching-no-file`).
+A refusal over a diff not read whole is one the walk withholds and quotes
+inside its warning (below), so it speaks of the files read — "no file of this
+commit was read", "the files read of it (…)" — where the same words said of
+the commit, "touches no file", would contradict the warning around them,
+which says a package it touched is missing (mutation row
+`withheld-refusal-says-of-the-commit-what-is-known-of-the-files-read`).
 
 Two things the rules deliberately do not do. A scope that **contradicts** the
 tree — files only under `curry/`, scope `haiku` — is refused the same way, on
@@ -1982,7 +2074,9 @@ commits, not the diff — the stance the single line has always taken. Merge
 commits are attributed to nothing and their diff is never asked for: under
 the presets a skip pattern already drops them, and a merge commit some other
 pattern claims is judged on its scope and sigil alone (rules 2–3), the same
-as any commit whose diff touches no package. A file is asked about under
+as any commit whose diff touches no package — with a root package declared
+too, and its refusal says it is a merge commit's (above). A file is asked
+about under
 both names of a rename (`git diff-tree --no-renames`; the API's
 `previous_filename`), which is what rule 1's "a rename across two modules
 moves both lines" needs — with detection on, the line the file left would
@@ -2351,7 +2445,9 @@ the file (a verdict must be readable from `glyph.toml` alone, §2); cross-packag
 dependency cascades (multi-semantic-release bumps a dependent when its
 dependency moves — glyph reads no manifest and would have to start, and a
 consumer that wants the cascade expresses it by touching the dependent, which
-is a commit the rules already carry).
+is a commit the rules already carry); the root package carrying a commit with
+no files (above); an undeclared-module state between a declared package's
+files and nobody's (above).
 
 ## 5. Architecture (Go, house pattern)
 

@@ -1,14 +1,14 @@
 diff --git a/internal/cli/preview_lines.go b/internal/cli/preview_lines.go
-index 1eb8bc1..86a809c 100644
+index 5a2f966..c711e5f 100644
 --- a/internal/cli/preview_lines.go
 +++ b/internal/cli/preview_lines.go
-@@ -75,6 +75,9 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
+@@ -74,6 +74,9 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
  	perLine := make([][]gitsource.RawCommit, len(cfg.Packages))
  	var prCapped, prUnknown []unreadListing
  	for _, r := range raws {
 +		if slices.Contains(cfg.ExcludeAuthors, r.Author) {
 +			continue
 +		}
- 		place, scope, sigil := placeOf(cfg, r)
+ 		place, said := placeOf(cfg, r)
  		if place != placedByFiles {
  			continue

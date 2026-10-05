@@ -342,10 +342,15 @@ diff is neither the sum of its commits nor fine enough to carry two sigils.
 **carrier** — the package a commit's sigil lands on. A **shared-only** commit
 (its diff lies under no package: root CI, the workspace file, a README in a
 repository with no root package) has a carrier only if its scope names a
-package; with none, a `=` commit participates nowhere and any other sigil is a
-lint-class refusal, because a version claim nothing can carry is the silent-none
-shape with the polarity reversed. A scope that names a package the diff did not
-touch is refused the same way.
+package, and so does a commit with no files at all — an empty commit, or a
+merge commit a pattern other than a skip claims, whose diff is never read —
+root package or not: the root package claims files, not commits. With none, a
+`=` commit participates nowhere and any other sigil is a lint-class refusal,
+because a version claim nothing can carry is the silent-none shape with the
+polarity reversed; the refusal names the escapes that commit can take — a
+scope naming a line or `=`, where the pattern that claimed it captures them,
+and declaring the package its files belong to. A scope that names a package
+the diff did not touch is refused the same way.
 
 ---
 
@@ -369,7 +374,8 @@ it (longest path prefix wins; a rename counts under both names), a commit under
 no package moves the package its scope names, and a commit under no package
 with no such scope moves nothing when its sigil is `=` and is refused when the
 sigil claims a version impact — as is a scope naming a package the diff does not
-touch. Asked of every walked commit that is not a merge commit: with scope and
+touch. Asked of every walked commit — of a merge commit over no file, since
+its diff is never read and only its scope can carry it: with scope and
 sigil for a commit the fold reads, by files alone for one it does not — an
 `exclude_authors` commit moves no version and appears in the notes of the lines
 its files touch (nowhere under no package), a skip is placed nowhere, and a
@@ -377,7 +383,7 @@ message no pattern claims (an **unlandable** one included) joins every line so
 the fold refuses it. The files
 come from local git for a landed identity and from `GET /commits/{sha}` for a
 squash-merged pull's inner commit. `internal/attribution/attribution.go:
-Attribute`, `internal/cli/lines.go: placeOf, partitionLines`
+Attribute`, `internal/cli/lines.go: placeOf, attribute, partitionLines`
 
 **governing commit** — the on-branch identity a line's range judges a walked
 commit by: the commit's own sha when it landed on the released branch, else the

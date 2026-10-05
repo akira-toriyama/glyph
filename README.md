@@ -409,10 +409,15 @@ scope names (`:sparkles:(haiku)^ …` on a shared README); and a commit under
 no package with no such scope moves nothing when its sigil is `=`, and is
 refused (exit 3, at `lint --range`, the pre-push hook and the release walk
 alike) when its sigil claims a version impact — nothing can carry it, and the
-message names both escapes. A scope naming a package the diff does not touch
-is refused the same way. Files come from local git for every commit the
-branch holds and from the API for a squash-merged pull's inner commits, one
-request each.
+message names the escapes that commit can take: a scope naming the line or
+`=`, where the pattern that claimed it captures them (a raw `git revert`'s
+captures neither, and is told to reword), and declaring the package its files
+belong to. A commit with no files — an empty commit, or a merge commit a
+pattern other than a skip claims, whose diff glyph never reads — is carried
+only by its scope, root package or not. A scope naming a package the diff does
+not touch is refused the same way. Files come from local git for every commit
+the branch holds and from the API for a squash-merged pull's inner commits,
+one request each.
 
 `bump` and `notes` then answer per line. **A tag names a line**:
 `--since-tag=haiku/v0.1.0` or `--since-tag=below:haiku/v0.2.0` selects haiku
