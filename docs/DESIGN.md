@@ -1383,7 +1383,25 @@ escape again: cut an intermediate tag so the next walk, and its body, is
 smaller. (The preview's sticky comment takes the OPPOSITE degradation —
 truncate at its 65536-char comment cap, marked in the comment and warned on
 stderr — because that surface is advisory and refreshed on every push, and a
-refusal there would take the whole verdict comment down with it.) A next version
+refusal there would take the whole verdict comment down with it. The mark is
+only a mark where it is read, so the cut **closes every `<details>` block it
+leaves open** before the notice goes on. The notes preview is the body's last
+section and sits in one, so a comment whose tables fit the cap and whose notes
+do not is cut inside it; cut at a line boundary and no more, the comment went
+out with one `<details>` and no `</details>` (t-rrw0 (5); measured 2026-10-05
+on the unfixed cut, over a body `preview.Render` wrote and over a 200-commit
+pull through `preview --notes`: `TestCommentTruncationClosesTheFoldItCutsInside`,
+`TestPreviewCutInsideTheNotesStillClosesTheFold`). GitHub renders such a body
+with the rule and the notice *inside* the block, folded away under "Release
+notes preview" with the notes, and the closed one with both after it — asked
+of GitHub's own renderer the same day (`POST /markdown`, `gfm` mode, one body
+of each shape: `…</ul><hr><p>… truncated…</p></details>` against
+`…</ul></details><hr><p>… truncated…</p>`). Mutation row
+`preview-truncation-leaves-the-notes-fold-open`. The footer is past the cut
+either way: a truncated comment carries none. Moving the notes block behind
+the footer would keep it, at the price of a new layout for every comment that
+carries notes, and the cut would still fall inside the block with the notice
+folded away — so the block is closed, and the layout stays.) A next version
 not strictly above the latest published
 release fails loud (an unpublishable draft; a deleted published release's tag
 is burned forever).

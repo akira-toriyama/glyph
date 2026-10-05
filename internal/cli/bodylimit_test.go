@@ -2,11 +2,15 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
+	"github.com/akira-toriyama/glyph/v4/internal/bump"
 	"github.com/akira-toriyama/glyph/v4/internal/core"
+	"github.com/akira-toriyama/glyph/v4/internal/preview"
 )
 
 // TestReleaseBodyCapBoundary pins the measured cap at its exact edge, in the
@@ -68,6 +72,127 @@ func TestCommentTruncationBoundary(t *testing.T) {
 	}
 	if !strings.Contains(errBuf.String(), "::warning::") || !strings.Contains(errBuf.String(), "65536") {
 		t.Fatalf("the truncation must be announced on stderr with the cap named: %q", errBuf.String())
+	}
+}
+
+// foldLines counts the lines of body that open and that close a <details>
+// block — whole lines, the only form the renderer writes them in.
+func foldLines(body string) (opened, closed int) {
+	for line := range strings.SplitSeq(body, "\n") {
+		switch line {
+		case "<details>":
+			opened++
+		case "</details>":
+			closed++
+		}
+	}
+	return opened, closed
+}
+
+// TestCommentTruncationClosesTheFoldItCutsInside: the notes preview is the
+// body's last section and sits in a <details> block, so a comment over the cap
+// whose tables fit under it is cut INSIDE that block (t-rrw0 (5)). Cut at a
+// line boundary and no more, the posted comment held one <details> and no
+// </details>: GitHub closes the block at the end of the comment, so the
+// truncation notice — there because a cut preview otherwise reads as a whole
+// one — is rendered inside it, folded away with the notes (asked of GitHub's
+// renderer, DESIGN §4). The cut closes what it leaves open, and the notice
+// follows it.
+//
+// The body is the renderer's own (preview.Render), not a string typed to
+// look like one; TestCommentTruncationBoundary's fixture is flat and cannot
+// see this. Mutation row preview-truncation-leaves-the-notes-fold-open.
+func TestCommentTruncationClosesTheFoldItCutsInside(t *testing.T) {
+	var errBuf bytes.Buffer
+	oldErr := errOut
+	errOut = &errBuf
+	defer func() { errOut = oldErr }()
+
+	const notice = "\n\n---\n\n… truncated: "
+	var notes strings.Builder
+	notes.WriteString("## Fixes\n\n")
+	for i := range 2000 {
+		fmt.Fprintf(&notes, "- :bug:~ fix the crash numbered %04d @akira-toriyama\n", i)
+	}
+	body := preview.Render(preview.Input{
+		Current: "v1.0.0",
+		PR:      preview.Verdict{Level: bump.LevelPatch, Next: "v1.0.1", Commits: []preview.Commit{{Sigil: "~", Level: bump.LevelPatch, Subject: "fix a crash"}}},
+		Pending: preview.Verdict{Level: bump.LevelNone},
+		Notes:   notes.String(),
+	})
+	opens, closes := strings.Index(body, "\n<details>\n"), strings.Index(body, "\n</details>\n")
+	if opens < 0 || opens > 1000 || closes < commentBodyMaxChars || !strings.HasSuffix(body, "Pushing more commits updates this comment.\n") {
+		t.Fatalf("positive control: the fixture must open its notes block early and close it past the cap, the footer after it (opens at %d, closes at %d of %d)", opens, closes, len(body))
+	}
+
+	got := truncateComment(body)
+	if n := utf8.RuneCountInString(got); n > commentBodyMaxChars || n < commentBodyMaxChars-200 {
+		t.Fatalf("the truncated body is %d chars: it must fit the %d cap, and use it", n, commentBodyMaxChars)
+	}
+	if opened, closed := foldLines(got); opened != 1 || closed != 1 {
+		t.Fatalf("the truncated comment opens %d <details> block(s) and closes %d — an open one swallows everything after it, the truncation notice included:\n…%s", opened, closed, got[len(got)-300:])
+	}
+	kept, rest, cut := strings.Cut(got, "\n\n</details>")
+	if !cut || !strings.HasPrefix(rest, notice) || strings.Contains(rest, "<details>") {
+		t.Fatalf("the notice must follow the closed block, outside it:\n…%s", got[len(got)-300:])
+	}
+	if !strings.HasPrefix(body, kept+"\n") || !strings.HasSuffix(kept, "@akira-toriyama") {
+		t.Fatalf("what is kept must be the body's own text up to the end of a notes line, got …%q", kept[len(kept)-80:])
+	}
+
+	// Depth, not a flag: every block open at the cut is closed, and one closed
+	// before it is left alone.
+	long := strings.Repeat("0123456789012345678901234567890123456789\n", 2000)
+	nested := truncateComment("<details>\n<details>\ninner\n\n</details>\n<details>\n" + long + "\n</details>\n\n</details>\n")
+	if opened, closed := foldLines(nested); opened != 3 || closed != 3 || utf8.RuneCountInString(nested) > commentBodyMaxChars {
+		t.Fatalf("two blocks are open at the cut and one closed before it: got %d opened, %d closed, %d chars", opened, closed, utf8.RuneCountInString(nested))
+	}
+	if !strings.HasSuffix(strings.SplitN(nested, notice, 2)[0], "9\n\n</details>\n\n</details>") {
+		t.Fatalf("both open blocks must close ahead of the notice:\n…%s", nested[len(nested)-300:])
+	}
+	shut := truncateComment("<details>\ninner\n\n</details>\n" + long)
+	if opened, closed := foldLines(shut); opened != 1 || closed != 1 || !strings.HasSuffix(strings.SplitN(shut, notice, 2)[0], "9") {
+		t.Fatalf("a block closed before the cut gets no second closer: %d opened, %d closed", opened, closed)
+	}
+}
+
+// TestPreviewCutInsideTheNotesStillClosesTheFold is the same decision end to
+// end: `preview --notes` over a pull whose table fits the cap and whose notes
+// do not posts a comment that closes its notes block and says it was cut,
+// outside the block — on stdout and in the --json body the workflow posts.
+func TestPreviewCutInsideTheNotesStillClosesTheFold(t *testing.T) {
+	dir := testRepoUntagged(t)
+	t.Chdir(dir)
+	commits := make([]string, 0, 200)
+	for i := range 200 {
+		commits = append(commits, apiCommit(fmt.Sprintf("c%03d", i), "akira-toriyama", fmt.Sprintf(":bug:~ fix crash %03d %s", i, strings.Repeat("y", 200))))
+	}
+	usePR(t, prServer(t, 7, `[`+strings.Join(commits, ",")+`]`))
+
+	code, stdout, stderr := runGlyph(t, "preview", "--pr", "7", "--notes")
+	if code != 0 {
+		t.Fatalf("preview must truncate, not refuse: exit %d\n%s", code, stderr)
+	}
+	summary, closer, notice := strings.Index(stdout, "<summary>Release notes preview</summary>"), strings.Index(stdout, "\n\n</details>\n"), strings.Index(stdout, "… truncated: ")
+	if summary < 0 || closer < summary || notice < closer {
+		t.Fatalf("the cut must fall inside the notes block, the block must close, and the notice must follow it (summary at %d, closer at %d, notice at %d):\n…%s", summary, closer, notice, stdout[len(stdout)-400:])
+	}
+	if opened, closed := foldLines(stdout); opened != 1 || closed != 1 {
+		t.Fatalf("stdout opens %d <details> block(s) and closes %d", opened, closed)
+	}
+
+	code, stdout, stderr = runGlyph(t, "preview", "--pr", "7", "--notes", "--json")
+	if code != 0 {
+		t.Fatalf("preview --json exited %d\n%s", code, stderr)
+	}
+	var res struct {
+		Body string `json:"body"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+		t.Fatalf("preview --json stdout is not JSON: %v", err)
+	}
+	if opened, closed := foldLines(res.Body); opened != 1 || closed != 1 || utf8.RuneCountInString(res.Body) > commentBodyMaxChars {
+		t.Fatalf("the --json body opens %d <details> block(s) and closes %d, at %d chars", opened, closed, utf8.RuneCountInString(res.Body))
 	}
 }
 
