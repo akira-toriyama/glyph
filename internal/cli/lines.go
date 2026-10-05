@@ -32,16 +32,19 @@ import (
 // line is one version line the walk answers for. Package is the [[packages]]
 // entry that owns it — the zero value (Path "") only on the bare line of a
 // repository that declares none. Line is its tag line — the prefix and the
-// majors it holds (config.Config.LineOf). Base is what the bump steps from
-// when the walk base names a version, nil when it does not (the line's
-// highest tag is then read). Source names the line's own range in messages;
-// Range is the revision range whose commits are unreleased on this line, ""
-// when every walked commit is (the whole history, or a --range fold). Bound
-// is the below: bound as typed when that form resolved the line, "" for the
-// other forms: with Range "" it tells the two whole-history causes apart —
-// no tag UNDER the bound is not no tag at all, and a line's diagnosis must
-// not be a sentence `git tag -l` refutes (t-gt9n) — which is also why each
-// cause is stated of HEAD's history, the set the base is read from.
+// majors it holds (config.Config.LineOf). Base is what the bump steps from:
+// the walk base's version when the walk base is a version tag, v0.0.0 on the
+// whole-history arm, and nil — the line's highest tag is then read
+// (currentVersion) — for a typed tag that names no plain version (a
+// candidate, a non-version tag) and for a --range fold. Source names the
+// line's own range in messages; Range is the revision range whose commits are
+// unreleased on this line, "" when every walked commit is (the whole history,
+// or a --range fold). Bound is the below: bound as typed when that form
+// resolved the line, "" for the other forms: with Range "" it tells the two
+// whole-history causes apart — no tag UNDER the bound is not no tag at all,
+// and a line's diagnosis must not be a sentence `git tag -l` refutes (t-gt9n)
+// — which is also why each cause is stated of HEAD's history, the set the base
+// is read from.
 //
 // BaseTag is the tag the line's range starts from, in its own spelling — the
 // compare link's left side (compareLink) — and "" when the walk has no tag
@@ -86,7 +89,7 @@ type sinceTagWalk struct {
 	Lines  []lineWalk
 }
 
-// resolveLines turns the --since-tag value into the lines the walk answers
+// resolveLinesScoped turns the --since-tag value into the lines the walk answers
 // for and the ONE revision range the walk runs over.
 //
 // With no packages declared the single line resolves exactly as it always
@@ -726,10 +729,11 @@ func checkLineSelection(current string, lines []lineWalk) error {
 	return core.Usagef("--current names one version, and this walk answers for %d lines (%s) — select one line with --since-tag=<line>vX.Y.Z (or below:), or drop --current", len(lines), strings.Join(names, ", "))
 }
 
-// refusePullSource is the packages-mode answer to --pr on bump and notes: a
-// pull's listing carries messages and no files, so nothing can say which
-// line each commit moves. preview owns that question (DESIGN §4.1); until it
-// does, the sources that have files are the ones that answer.
+// refusePullSource is the packages-mode answer to --pr on bump and notes: they
+// read a pull's listing alone, which carries messages and no files, so they
+// cannot place a commit on a line. preview fetches each commit's files (DESIGN
+// §4.1); for bump and notes the sources that have files are the ones that
+// answer.
 func refusePullSource(cfg *config.Config) error {
 	if len(cfg.Packages) == 0 {
 		return nil

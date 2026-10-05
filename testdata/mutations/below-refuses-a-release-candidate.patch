@@ -1,9 +1,9 @@
 diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index 16739e6..996b550 100644
+index 661e040..e8cf323 100644
 --- a/internal/cli/sincetag.go
 +++ b/internal/cli/sincetag.go
-@@ -108,7 +108,7 @@ func checkSinceTagFlag(tag string) error {
- 		// resolveLines' question, asked once the config is loaded.
+@@ -109,7 +109,7 @@ func checkSinceTagFlag(tag string) error {
+ 		// resolveLinesScoped's question, asked once the config is loaded.
  		bound := strings.TrimSpace(rest)
  		prefix, _ := bump.SplitTag(bound)
 -		if _, perr := bump.ParseBaseVersionOn(prefix, bound); perr != nil {

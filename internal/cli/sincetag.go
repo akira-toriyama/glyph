@@ -95,9 +95,9 @@ func checkSinceTagFlag(tag string) error {
 		//
 		// A RELEASE CANDIDATE names one. The bound is parsed with
 		// ParseBaseVersion, not ParseVersion, because goreleaser.yml hands this
-		// flag $GITHUB_REF_NAME on a `tags: ['v*']` trigger — so the day the
-		// same file gained `prerelease: auto`, the first v3.0.0-rc.1 died right
-		// here at exit 2, behind a tag that already existed: no notes, no
+		// flag $GITHUB_REF_NAME on a `tags: ['v*']` trigger — so the day
+		// .goreleaser.yaml gained `prerelease: auto`, the first v3.0.0-rc.1 died
+		// right here at exit 2, behind a tag that already existed: no notes, no
 		// binaries, no cask, no attestation. That is the precise failure the
 		// below: form was introduced to end (t-s5n4), arriving through the one
 		// input nobody had handed it. Candidates stay out of the ANSWER set —
@@ -106,7 +106,7 @@ func checkSinceTagFlag(tag string) error {
 		//
 		// Parsed ON ITS LINE: a bound spelled haiku/v1.2.3 is version-shaped
 		// on the haiku/ line, and whether that line is declared is
-		// resolveLines' question, asked once the config is loaded.
+		// resolveLinesScoped's question, asked once the config is loaded.
 		bound := strings.TrimSpace(rest)
 		prefix, _ := bump.SplitTag(bound)
 		if _, perr := bump.ParseBaseVersionOn(prefix, bound); perr != nil {
@@ -134,7 +134,7 @@ func checkSinceTagFlag(tag string) error {
 // Base (when the tag names a version, single line only) is what the bump
 // steps from, and the walk's own facts come back with the commits — its
 // expansion provenance AND whether it could read the range at all (release
-// reports them, the others discard them).
+// refuses on them, preview reports the shortfall, bump and notes discard them).
 func sinceTagInput(ctx context.Context, cfg *config.Config, tagFlag, repoFlag string) (sinceTagWalk, error) {
 	return sinceTagInputScoped(ctx, cfg, tagFlag, repoFlag, nil)
 }
@@ -216,7 +216,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 	if rest, ok := strings.CutPrefix(tag, sinceTagBelow); ok {
 		// checkSinceTagFlag guaranteed the bound parses ON ITS LINE before
 		// anything ran; this is the single line, so a bound on any other
-		// line names a line this repository does not have (resolveLines
+		// line names a line this repository does not have (resolveLinesScoped
 		// answers for declared packages, and never reaches here with one).
 		// A pre-release bound compares as its base version — exact, not a
 		// rounding: see ParseBaseVersion for why the two select the same tag.
@@ -321,12 +321,14 @@ func wholeHistory(ctx context.Context, cfg *config.Config, whyNone, escape strin
 
 // latestVersionTag returns the highest parseable version tag ON ONE LINE and
 // its parsed version; tag is empty for a line before its first release. The
-// one resolver behind both the walk base and the bump base. prefix is the
-// line's tag namespace ("" for the bare line, config.Package.TagPrefix for a
-// package): a tag on any other line — a curry/ tag asked about haiku/, a bare
-// v* tag asked about any package, a nested line's tag asked about its parent
-// — is not a candidate, so one line's release can never move another line's
-// base (DESIGN §4.1; mutation row packages-tag-of-one-line-baselines-another).
+// one resolver behind both the walk base and the bump base. l is the line
+// asked about: l.Prefix is its tag namespace ("" for the bare line,
+// config.Package.TagPrefix for a package) and l.Holds its majors, which keeps
+// pubsub/ and pubsub/v2 apart on one prefix. A tag on any other line — a curry/
+// tag asked about haiku/, a bare v* tag asked about any package, a nested
+// line's tag asked about its parent — is not a candidate, so one line's release
+// can never move another line's base (DESIGN §4.1; mutation row
+// packages-tag-of-one-line-baselines-another).
 //
 // below, when non-nil, bounds the answer to versions STRICTLY under it — how
 // below:TAG resolves the predecessor of a tag already cut. Strictly below the
@@ -408,11 +410,11 @@ func releasesHEADHolds(ctx context.Context) ([]string, error) {
 // merged pull request it was expanded from (0 on the fallback path) and
 // whether its SHA is a *landed* identity (glossary) — a commit the released
 // branch actually holds. The two downstream consumers read different halves:
-// classification reads the bare gitsource.RawCommit (plain), the notes read the
-// citation (walkedNoteCommits) — the pull beside the sha, and the pull ALONE for a
-// footprint-less commit, whose listed sha exists on no branch and used to be
-// published anyway (t-xxhj: a body citing shas `git branch -r --contains`
-// answers nothing for).
+// classification reads the bare gitsource.RawCommit (walkedSigilCommits), the
+// notes read the citation (walkedNoteCommits) — the pull beside the sha, and
+// the pull ALONE for a footprint-less commit, whose listed sha exists on no
+// branch and used to be published anyway (t-xxhj: a body citing shas
+// `git branch -r --contains` answers nothing for).
 type walked struct {
 	Raw    gitsource.RawCommit
 	Pull   int
@@ -465,9 +467,10 @@ func walkedNoteCommits(ws []walked) []notes.SigilCommit {
 // the walk's exclusion rules somewhere else.
 //
 // It records what the walk DID, and never why a number is what it is. A count
-// of 0 is the case that invites a wrong reading, and both of its causes are
-// innocent — see the two named above — so nothing may treat 0 as "this pull
-// changed nothing".
+// of 0 is the case that invites a wrong reading — the dedup cases above report
+// it, and so does a pull whose every listed commit landed under an earlier tag
+// (the footprint filter) — so nothing may treat 0 as "this pull changed
+// nothing".
 type pullExpansion struct {
 	Number  int `json:"number"`
 	Commits int `json:"commits"`
@@ -511,9 +514,10 @@ type walkFacts struct {
 	// cannot claim to have read whole — the commits past it are unreachable, not
 	// absent, and any one of them could carry the deciding sigil.
 	//
-	// It belongs here rather than in the warning alone for the same reason the
-	// other three do: the walk already SAID it could not read the range, and then
-	// deleted a draft and lowered a version on the strength of the fold anyway.
+	// It belongs here rather than in the warning alone for the same reason every
+	// other shortfall member does: the walk already SAID it could not read the
+	// range, and then deleted a draft and lowered a version on the strength of
+	// the fold anyway.
 	// Measured before this arm existed: a pull returning 250 :memo: commits, with
 	// a v0.2.0 draft present, exited 1 with action "delete" and the write set was
 	// exactly one DELETE — in the same run whose stderr carried the truncation
@@ -591,9 +595,8 @@ func (f walkFacts) complete() bool {
 		len(f.FilesCapped) == 0 && len(f.FilesUnknown) == 0
 }
 
-// shortfall says, in one clause, what the walk could not read — for the warning
-// that explains why glyph declined to act and for the line the draft carries to
-// the human who will press Publish.
+// shortfall says, in one clause, what the walk could not read — for release's
+// exit-4 refusal and for the preview comment's PendingShort / PRShort lines.
 func (f walkFacts) shortfall(owner, repo string) string {
 	var parts []string
 	if f.AllUnknown {
@@ -1058,11 +1061,12 @@ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.Ra
 		window = append(window, i)
 	}
 	// Nothing left to place: the whole merge-button shape, and also the pull that
-	// listed no commits at all. Neither may fall through, and the reason is not
-	// the saved subprocess — `canonical` is a sha this CHECKOUT may not hold, so
-	// logging against it turns "there was nothing to align" into an exit-4 git
-	// error mid-walk. One guard for both because it is one question: is there
-	// anything an alignment could answer about?
+	// listed no commits at all. One guard for both because it is one question: is
+	// there anything an alignment could answer about? The walk hands in a
+	// `canonical` from its own local log, so for the walk falling through only
+	// spends a `git log -n 0` that answers nothing and lands on the same return;
+	// TestMainFootprintEmptyListingAsksGitNothing holds the guard with a canonical
+	// this checkout lacks, where falling through is an exit-4 git error.
 	if len(window) == 0 {
 		return landed, nil
 	}

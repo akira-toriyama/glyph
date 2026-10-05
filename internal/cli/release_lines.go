@@ -105,7 +105,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 	}
 	drafted := planInput(releases)
 
-	// The target resolves before the dry-run fork (Q4: only the writes are
+	// The target resolves before the dry-run fork (only the writes are
 	// skipped), once for every draft — one checkout, one HEAD — and above the
 	// loop, because each line's compare link ends at it and checkReleaseBody
 	// sizes the final body.

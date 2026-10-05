@@ -39,7 +39,7 @@ var (
 //
 // With packages declared, current / level / next-bearing tag / body / action
 // / url are EMPTY and packages carries one verdict and one draft per line
-// (DESIGN §4.1): a caller written for the single line — release.yml's four
+// (DESIGN §4.1): a caller written for the single line — release.yml's scalar
 // outputs, a tag step — then fails safe on "", which its contract already
 // tells it to. target is shared — one checkout, one HEAD, every line's draft
 // points at it — under the same rule: omitted when no line upserts a draft
@@ -205,8 +205,8 @@ func releaseRun(cmd *cobra.Command) error {
 
 	// The releases listing feeds both halves of the convergence decision: the
 	// glyph-managed drafts to upsert or clear, and the published floor the
-	// next version must clear. The dry run performs this read too — Q4: only
-	// the writes are skipped.
+	// next version must clear. The dry run performs this read too: only the
+	// writes are skipped.
 	gh := newGitHub()
 	releases, lerr := gh.Releases(ctx, owner, repoName)
 	if lerr != nil {
@@ -230,8 +230,8 @@ func releaseRun(cmd *cobra.Command) error {
 		tagName = tag.TagOn("")
 	}
 
-	// The target resolves BEFORE the dry-run fork — Q4 again: only the writes
-	// are skipped. This used to sit below it, which made `--dry-run --target=X`
+	// The target resolves BEFORE the dry-run fork: only the writes are
+	// skipped. This used to sit below it, which made `--dry-run --target=X`
 	// byte-identical to `--dry-run` for every X: the flag naming which commit
 	// the eventual tag points at was the one flag the preview silently ignored,
 	// so a typo surfaced only on the real run (t-nfz3). And above the body,
@@ -421,8 +421,8 @@ func convergeStray(ctx context.Context, gh *github.Client, owner, repo string, s
 }
 
 // releaseNone finishes a none verdict: the draft state converges to "no
-// release should exist" (Q3 — residual glyph-managed drafts are deleted, by
-// id), and the exit stays the uniform soft no-release (1).
+// release should exist" (residual glyph-managed drafts are deleted, by id),
+// and the exit stays the uniform soft no-release (1).
 //
 // Convergence is on the VERDICT, and by the time this runs the verdict is one
 // the walk is entitled to: releaseRun already failed loud (4) on any walk that
