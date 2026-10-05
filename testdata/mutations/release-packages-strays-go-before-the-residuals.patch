@@ -1,0 +1,36 @@
+diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
+index 28a1d78..9907292 100644
+--- a/internal/cli/release_lines.go
++++ b/internal/cli/release_lines.go
+@@ -291,6 +291,15 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
+ 	// The residuals still go first: they are the verdict of the lines that
+ 	// fold to none and the strays are bookkeeping, so a run an interrupt (never
+ 	// absorbed) cuts short has spent itself on the verdict first.
++	for _, s := range stale {
++		went, cerr := convergeStray(ctx, gh, owner, repoName, s)
++		if cerr != nil {
++			return cerr
++		}
++		if went {
++			residueGone(s)
++		}
++	}
+ 	var residualErr error
+ 	for _, s := range residual {
+ 		gone, derr := gh.DeleteRelease(ctx, owner, repoName, s.ID)
+@@ -306,15 +315,6 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
+ 			warnf("the residual draft %s (release id %d) would not go either: %v — the run fails on the first that would not, and the next run tries every one again", s.TagName, s.ID, derr)
+ 		}
+ 	}
+-	for _, s := range stale {
+-		went, cerr := convergeStray(ctx, gh, owner, repoName, s)
+-		if cerr != nil {
+-			return cerr
+-		}
+-		if went {
+-			residueGone(s)
+-		}
+-	}
+ 	if residualErr != nil {
+ 		return residualErr
+ 	}

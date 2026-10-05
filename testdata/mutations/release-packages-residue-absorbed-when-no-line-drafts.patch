@@ -1,0 +1,17 @@
+diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
+index 9a3728d..8867725 100644
+--- a/internal/cli/release_lines.go
++++ b/internal/cli/release_lines.go
+@@ -194,11 +194,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
+ 	}
+ 	// The residue is no line's, so its delete is the run's: a stray of the
+ 	// upserts when any line writes a draft, the whole action when none does.
+-	if len(drafts) == 0 {
+-		residual = append(residual, residue...)
+-	} else {
+-		stale = append(stale, residue...)
+-	}
++	stale = append(stale, residue...)
+ 
+ 	// The target resolves before the dry-run fork (Q4: only the writes are
+ 	// skipped), once for every draft — one checkout, one HEAD.

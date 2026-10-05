@@ -419,9 +419,11 @@ reaches the folded level. `internal/cli/cmd_bump.go: decidingReason`
 
 **target** — `target_commitish`: the sha the draft's eventual tag will point at,
 defaulting to the checkout's HEAD. No tag exists until a human publishes. The
-verdict carries it as `target` — resolved on the dry run too, so a `--target`
-typo is visible in the preview rather than first surfacing on the real write.
-`internal/cli/cmd_release.go: releaseRun`, `internal/gitsource/gitsource.go: Head`
+verdict carries it as `target` whenever the run upserts a draft (single line and
+packages alike; a none verdict without the placeholder has none) — resolved on
+the dry run too, so a `--target` typo is visible in the preview rather than first
+surfacing on the real write. `internal/cli/cmd_release.go: releaseRun`,
+`internal/cli/release_lines.go: releaseLines`, `internal/gitsource/gitsource.go: Head`
 
 **action** — which draft convergence the run performs: `create`, `update`
 (grow/retag), `delete`, or `none`. `--dry-run` computes the action too and writes
@@ -451,9 +453,12 @@ asymmetry runs one step further, and it is the same distinction: a stale draft
 is removed **after** the rolling draft is written, and one the API will not
 delete is a warning on a green run, because the verdict has already landed and
 the next run converges it. A residual draft's delete *is* the whole action of a
-none verdict, so it still fails loud (4).
+none verdict, so it still fails loud (4). Under `[[packages]]` both words are
+per line: a line that folds to none has residual drafts, and their delete fails
+loud even when a sibling line's draft landed in the same run.
 `internal/cli/cmd_release.go: releaseNone`
 (residual), `staleReleases` (stale), `convergeStrays` (the post-write pass),
+`internal/cli/release_lines.go: releaseLines` (both, per line),
 [DESIGN §4](DESIGN.md#4-squash-safe-mechanism--release-time-re-read-stateless)
 
 **published floor** — the highest **published** (non-draft) house-shaped version.

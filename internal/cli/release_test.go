@@ -667,6 +667,43 @@ func TestReleaseDryRunResolvesTheTarget(t *testing.T) {
 	})
 }
 
+// TestReleaseRealRunNoticeNamesTheTarget is the real run's sibling of the
+// test above (t-wzr5): the dry run's notice named the commit the eventual tag
+// points at, and the notice of the run that actually wrote the draft did not —
+// the one arm with a draft to review was the one that left the sha out. The
+// shipped presets' note.line renders no $hash, so outside --json this notice
+// is the one place a real run names the commit.
+func TestReleaseRealRunNoticeNamesTheTarget(t *testing.T) {
+	realRunStderr := func(t *testing.T, args ...string) string {
+		t.Helper()
+		var writes []apiWrite
+		walk := oneFixWalk(t)
+		usePR(t, releaseServer(t, walk, `[]`, &writes))
+
+		code, _, stderr := runGlyph(t, append([]string{"release"}, args...)...)
+		if code != 0 {
+			t.Fatalf("exited %d, want 0\nstderr: %s", code, stderr)
+		}
+		if len(writes) != 1 || writes[0].method != "POST" {
+			t.Fatalf("writes = %+v, want the one POST", writes)
+		}
+		return stderr
+	}
+
+	t.Run("an explicit --target is the sha the notice names", func(t *testing.T) {
+		if stderr := realRunStderr(t, "--target", "cafe1234"); !strings.Contains(stderr, "draft release v0.1.1 created at cafe1234 ") {
+			t.Errorf("the notice must name the cafe1234 the flag named:\n%s", stderr)
+		}
+	})
+	t.Run("no flag names the checkout's HEAD", func(t *testing.T) {
+		stderr := realRunStderr(t)
+		head := testGit(t, ".", "akira-toriyama", "rev-parse", "HEAD")
+		if !strings.Contains(stderr, "draft release v0.1.1 created at "+head+" ") {
+			t.Errorf("the notice must name the checkout's HEAD %s:\n%s", head, stderr)
+		}
+	})
+}
+
 // TestReleaseFooterFile is ratified Q11: --footer-file appends the file's
 // content verbatim after the notes, separated by one `---` line — composed by
 // glyph so the dry run previews the EXACT body the draft will carry, and the

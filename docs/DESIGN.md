@@ -2062,21 +2062,78 @@ did not manage untouched. The placeholder `draft_on_none` maintains becomes
 that wedges a floor. Two drafts glyph *did* write are claimed and converged
 away, on the precedent of the placeholder being claimed with the flag off: a
 bare `vX.Y.Z` draft in a repository that declares packages but no root package
-is the single line's residue and is deleted with a notice on the first
-packages run (a hand region it carried goes with it — the migration is the
-one moment to move that prose, and the notice says so); with a root package
-declared it is that package's draft and simply converges. The write order is
-§4's write-first, extended: every line's upsert lands before any line's strays
-are converged, so a write that fails on the second line leaves the first
-line's notes standing and exits 4 — the next run heals it. `--footer-file`
-appends to every draft (one install block per repository is what every caller
-passes today; a per-package footer is a knob nobody has asked for and is
-recorded here so its absence is a decision). `checkReleaseBody` sizes each
-draft on its own. GitHub's **Latest** badge is one per repository and is
-assigned when a human *publishes*, by creation date unless the publisher says
-otherwise; glyph writes drafts, which cannot be latest, so it never sets
-`make_latest` and the badge lands on whichever line was published last — the
-shape google-cloud-go's releases page has lived with for years. Not a knob.
+is the single line's residue and is deleted on the first packages run. A hand
+region it carried goes with it, and the migration is the one moment to move
+that prose, so `release --dry-run` is how to learn it in time: its notice
+names the residue and says it would be deleted, and a real run's speaks only
+once the `DELETE` went. The first cut printed one notice at plan time, above
+the dry-run fork, so a dry run that wrote nothing and a run that died at an
+upsert with the residue untouched both said the draft "is deleted" (t-xz1z;
+`TestReleasePackagesBareResidueNoticeWaitsForTheDelete`, mutation row
+`release-packages-residue-notice-speaks-before-the-delete.patch`). With a root
+package declared it is that package's draft and simply converges. The write
+order is §4's write-first, extended: every line's upsert lands before any
+draft is deleted, so a write that fails on the second line leaves the first
+line's notes standing and exits 4 — the next run heals it. The deletes after
+the upserts are of two kinds, and §4's two severities go with them per line. A
+line that folds to none with `draft_on_none` off has one action, deleting its
+residual drafts, so a delete that will not go fails the run (4) exactly as the
+single line's none verdict does, whatever its siblings wrote; the strays
+beside a draft a line wrote are bookkeeping after that write and stay a
+warning. The bare residue is a stray when any line wrote a draft and the whole
+action when none did (mutation row
+`release-packages-residue-absorbed-when-no-line-drafts.patch`). The first cut
+sent every delete through the lenient pass as soon as one line had written, so
+the same line, verdict and failing `DELETE` exited 4 when every line was none
+and 0 beside a moving sibling, the verdict reporting `delete` over a draft
+still standing (t-xz1z;
+`TestReleasePackagesNoneDeleteFailureStillFailsLoud` fails on that source, and
+mutation row `release-packages-none-lines-absorb-a-failed-delete-too.patch`
+restores it). A residual that will not go is answered only once every other
+delete has been tried — another line's residual, the strays, the bare residue:
+one line's failed action is no reason to leave another line's undone or a
+stray standing unwarned. Returning at the failure was tried and rejected for
+exactly that: beside a moving line it deleted neither that line's stray nor
+the residue, both of which the first cut deleted (measured 2026-10-04 with the
+`DELETE` of curry's residual answered 422 — returning sent `PATCH 53,
+DELETE 51` and exited 4, the first cut `PATCH 53, DELETE 52, DELETE 51,
+DELETE 61` and 0, the run now `PATCH 53, DELETE 51, DELETE 52, DELETE 61` and
+4). The residuals still go before the strays, write-first one step on: they are
+the verdict of the lines that fold to none and the strays are bookkeeping, so
+a run that an interrupt cuts short — an interrupt is never absorbed — has
+spent itself on the verdict first
+(`TestReleasePackagesFailedResidualStrandsNoOtherDelete`; mutation rows
+`release-packages-failed-residual-strands-the-other-deletes.patch` and
+`release-packages-strays-go-before-the-residuals.patch`).
+`--footer-file` appends to every draft (one install block per repository is
+what every caller passes today; a per-package footer is a knob nobody has
+asked for and is recorded here so its absence is a decision).
+`checkReleaseBody` sizes each draft on its own. Of the scalars that describe a
+draft — `tag`, `target`, `body`, `url` — `target` is the one packages leave
+filled (one checkout, one HEAD, every line's draft points at it), and it keeps
+the single line's rule rather than acquiring one of its own: it is present
+exactly when a draft is upserted (on a dry run, would be), a line's
+`<path>/Unreleased` placeholder included, and absent when no line has a draft
+to write, as the single line's none verdict without the placeholder carries
+none. Absent is also the fail-safe answer the scalars give: a consumer written
+for the single line that reads `.target` alone must not act on a run that
+drafts nothing. The first cut resolved it above that question and reported a
+sha no draft would ever point at, beside a `packages[]` in which no line
+carried a tag (t-xz1z; measured 2026-09-29 on an all-none fixture, the real
+run and the dry run, where `TestReleasePackagesAllNoneExitsOne` fails on that
+source, and on a selected line folding to none,
+`release --dry-run --json --since-tag=curry/v0.1.0` over a haiku-only `^`). No
+workflow or script in the fleet reads `.target` (the 55 local clones, the hub
+and glyph's own reusables grepped the same day), so dropping it moved no
+consumer. The gate is the draft count, never the moving-line count:
+`draft_on_none`'s placeholders are drafts, and they point at the target too
+(mutation rows `release-packages-target-without-a-draft.patch` and
+`release-packages-placeholder-loses-its-target.patch`). GitHub's **Latest**
+badge is one per repository and is assigned when a human *publishes*, by
+creation date unless the publisher says otherwise; glyph writes drafts, which
+cannot be latest, so it never sets `make_latest` and the badge lands on
+whichever line was published last — the shape google-cloud-go's releases page
+has lived with for years. Not a knob.
 **Measured** 2026-09-10 on glyph-monorepo-test: `releases/latest` was 404
 with two drafts standing, `haiku/v0.1.0` after haiku was published,
 `curry/v0.0.1` after curry was — the last publish, whichever line. A tag
