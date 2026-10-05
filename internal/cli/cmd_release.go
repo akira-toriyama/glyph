@@ -83,6 +83,9 @@ func newReleaseCmd() *cobra.Command {
 			"listing, a shallow checkout) exits 4 before touching anything — an\n" +
 			"empty fold from a walk that could not look is not evidence that\n" +
 			"nothing shipped, so no verdict is handed down on it at all.\n" +
+			"The body's notes close with the range's compare link\n" +
+			"(compare/<base tag>...<target>; none when the walk has no tag base or\n" +
+			"the notes are empty), before the --footer-file block.\n" +
 			"A real run prints the draft's URL; --dry-run computes everything\n" +
 			"including that action and writes nothing, printing the tag line, a\n" +
 			"blank line, then the Markdown body. --json emits\n" +
@@ -224,11 +227,27 @@ func releaseRun(cmd *cobra.Command) error {
 		tagName = tag.TagOn("")
 	}
 
+	// The target resolves BEFORE the dry-run fork — Q4 again: only the writes
+	// are skipped. This used to sit below it, which made `--dry-run --target=X`
+	// byte-identical to `--dry-run` for every X: the flag naming which commit
+	// the eventual tag points at was the one flag the preview silently ignored,
+	// so a typo surfaced only on the real run (t-nfz3). And above the body,
+	// whose compare link ends at it, so the size check reads the final body.
+	target := releaseTarget
+	if target == "" {
+		var herr error
+		if target, herr = gitsource.Head(ctx, "."); herr != nil {
+			return herr
+		}
+	}
+
 	sections, gerr := notes.GroupSigils(walkedNoteCommits(parsed), cfg)
 	if gerr != nil {
 		return gerr
 	}
-	body := notes.RenderSigils(sections)
+	// The link closes the notes, BEFORE the footer: the machine region is then
+	// notes' output for the same walk followed by the caller's block.
+	body := compareLink(notes.RenderSigils(sections), owner, repoName, w.Lines[0].BaseTag, target)
 	if footer != "" {
 		// One --- line between the notes and the caller's install block (Q11)
 		// — composed here so a dry run previews the EXACT published body and
@@ -244,23 +263,11 @@ func releaseRun(cmd *cobra.Command) error {
 	body = composeDraftBody(keptBody(plan.Keep, releases), body)
 	// Sized BEFORE the dry-run fork: a dry run previews the real run, and a
 	// body the real run refuses must fail the preview identically. Sized over
-	// the FINAL body, hand region included — a human can write the draft over
-	// the limit, and the refusal must name it before the API does.
+	// the FINAL body, hand region and compare link included — a human can
+	// write the draft over the limit, and the refusal must name it before the
+	// API does.
 	if serr := checkReleaseBody(body); serr != nil {
 		return serr
-	}
-
-	// The target resolves BEFORE the dry-run fork — Q4 again: only the writes
-	// are skipped. This used to sit below it, which made `--dry-run --target=X`
-	// byte-identical to `--dry-run` for every X: the flag naming which commit
-	// the eventual tag points at was the one flag the preview silently ignored,
-	// so a typo surfaced only on the real run (t-nfz3).
-	target := releaseTarget
-	if target == "" {
-		var herr error
-		if target, herr = gitsource.Head(ctx, "."); herr != nil {
-			return herr
-		}
 	}
 
 	stale := staleReleases(plan.Stale)

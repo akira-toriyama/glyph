@@ -255,7 +255,8 @@ func TestNotesSinceTagCreditsTheListedLogin(t *testing.T) {
 	}
 	want := "## Fixes\n\n" +
 		"- :bug:~ fix the parser (#7) @larrasket\n" +
-		"- :bug:~ fix it from an unmapped address (#7) Saleh\n"
+		"- :bug:~ fix it from an unmapped address (#7) Saleh\n" +
+		"\n" + compareLine("v0.1.0", sha)
 	if stdout != want {
 		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
 	}

@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v4/internal/config"
 	"github.com/akira-toriyama/glyph/v4/internal/core"
+	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
 	"github.com/akira-toriyama/glyph/v4/internal/notes"
 	"github.com/spf13/cobra"
 )
@@ -55,8 +57,11 @@ func newNotesCmd() *cobra.Command {
 			"into one line; --since-tag walks main's merge points since a tag and\n" +
 			"expands each back into the pull it merged (the release-time source).\n" +
 			"stdout is the Markdown body\n" +
-			"(pipe it into a release step); --json emits {sections,reason}. Nothing\n" +
-			"release-worthy prints no body and exits 1 (soft no-release).\n\n" +
+			"(pipe it into a release step); a --since-tag body closes with the range's\n" +
+			"compare link (compare/<base tag>...<HEAD sha>; none when the walk has no\n" +
+			"tag base, and none from --range or --pr). --json emits {sections,reason},\n" +
+			"unchanged — no link. Nothing release-worthy prints no body and exits 1\n" +
+			"(soft no-release).\n\n" +
 			"On a repository declaring [[packages]] the body is per line: stdout is one\n" +
 			"body per line under a `# <path>` heading (bare when a tag selects one\n" +
 			"line); --json carries packages: [{path,sections}] with the top-level\n" +
@@ -81,11 +86,16 @@ func newNotesCmd() *cobra.Command {
 // number, the bare sha for a local range — and names the source for the reason
 // line. The notes twin of bumpInput, dispatching on whether a flag was set
 // rather than on its value.
-func notesInput(cmd *cobra.Command, cfg *config.Config) ([]notes.SigilCommit, string, error) {
+//
+// The third result is the compare link's base (line.BaseTag), the one more
+// citation only the walk attests: a resolved tag base and a repository. A
+// local range names no repository and a pull no release base, so both return
+// "" and their bodies close with no link.
+func notesInput(cmd *cobra.Command, cfg *config.Config) ([]notes.SigilCommit, string, string, error) {
 	ctx := cmd.Context()
 	if cmd.Flags().Changed("pr") {
 		raws, source, err := pullInput(ctx, notesPR, notesRepo)
-		return noteCommits(raws, notesPR), source, err
+		return noteCommits(raws, notesPR), source, "", err
 	}
 	if cmd.Flags().Changed("since-tag") {
 		// The version base is bump's concern; the walk's facts are discarded for
@@ -93,13 +103,27 @@ func notesInput(cmd *cobra.Command, cfg *config.Config) ([]notes.SigilCommit, st
 		// incomplete walk already warns per cause on stderr. Nothing here writes
 		// back, so there is no irreversible act to gate.
 		w, err := sinceTagInput(ctx, cfg, notesSinceTag, notesRepo)
-		return walkedNoteCommits(w.All), w.Source, err
+		if err != nil {
+			return nil, "", "", err
+		}
+		return walkedNoteCommits(w.All), w.Source, w.Lines[0].BaseTag, nil
 	}
 	if err := checkRangeFlag(notesRange); err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	raws, err := logRange(ctx, notesRange)
-	return noteCommits(raws, 0), notesRange, err
+	return noteCommits(raws, 0), notesRange, "", err
+}
+
+// notesLinkEnds is what a notes compare link needs beside its base: the
+// repository the walk queried — resolveRepo again, the answer the walk got —
+// and HEAD, the commit the walk read up to.
+func notesLinkEnds(ctx context.Context) (owner, repo, head string, err error) {
+	if owner, repo, err = resolveRepo(ctx, notesRepo); err != nil {
+		return "", "", "", err
+	}
+	head, err = gitsource.Head(ctx, ".")
+	return owner, repo, head, err
 }
 
 // notesLines is notes for a repository that declares [[packages]]: one body
@@ -175,7 +199,7 @@ func notesRun(cmd *cobra.Command) error {
 	if len(cfg.Packages) > 0 {
 		return notesLines(cmd, cfg)
 	}
-	commits, source, perr := notesInput(cmd, cfg)
+	commits, source, base, perr := notesInput(cmd, cfg)
 	if perr != nil {
 		return perr
 	}
@@ -198,6 +222,14 @@ func notesRun(cmd *cobra.Command) error {
 		printCompact(notesResult{Sections: sections})
 		return nil
 	}
-	fmt.Fprint(out, notes.RenderSigils(sections))
+	var owner, repo, head string
+	if base != "" {
+		if owner, repo, head, err = notesLinkEnds(cmd.Context()); err != nil {
+			return err
+		}
+	}
+	// stdout is the body goreleaser.yml publishes through --release-notes
+	// verbatim, so it closes with the link release's drafts carry.
+	fmt.Fprint(out, compareLink(notes.RenderSigils(sections), owner, repo, base, head))
 	return nil
 }

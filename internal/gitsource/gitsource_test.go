@@ -447,6 +447,39 @@ func TestMergedTagsOnAnUnbornHEADIsEmpty(t *testing.T) {
 	}
 }
 
+// TestIsTagIsAnExactRef: IsTag answers whether refs/tags/<name> exists, and
+// nothing else names one — a branch, a sha, and a revision expression over a
+// real tag (`v0.1.0~0`, which rev-parse would resolve to the tag's commit)
+// are all NO, as an answer rather than an error; an annotated, prefixed tag
+// is a YES. Outside a repository it fails as git/IO.
+func TestIsTagIsAnExactRef(t *testing.T) {
+	dir := newRepo(t)
+	git(t, dir, "akira-toriyama", "tag", "v0.1.0")
+	git(t, dir, "akira-toriyama", "tag", "-a", "-m", "annotated", "curry/v0.1.0")
+	git(t, dir, "akira-toriyama", "branch", "old-main")
+	sha := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
+	for name, want := range map[string]bool{
+		"v0.1.0":       true,
+		"curry/v0.1.0": true,
+		"old-main":     false,
+		sha:            false,
+		"v0.1.0~0":     false,
+		"v0.1.0^{}":    false,
+		"v0.2.0":       false,
+	} {
+		got, err := IsTag(context.Background(), dir, name)
+		if err != nil || got != want {
+			t.Errorf("IsTag(%q) = %v, %v; want %v, nil", name, got, err, want)
+		}
+	}
+
+	_, err := IsTag(context.Background(), t.TempDir(), "v0.1.0")
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
+		t.Fatalf("IsTag outside a repository = %v, want CodeAPI", err)
+	}
+}
+
 // TestHead returns the checkout's HEAD sha — what the rolling draft's
 // target_commitish records so the eventual Publish tags the commit the
 // verdict was computed at, not whatever main has moved to since.

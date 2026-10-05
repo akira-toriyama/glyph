@@ -2014,7 +2014,7 @@ func TestSinceTagAutoWalksFromTheHighestVersion(t *testing.T) {
 	testCommit(t, dir, "akira-toriyama", ":bug:(ui)~ fix the unreleased crash")
 	t.Chdir(dir)
 
-	revRange, base, err := sinceTagRange(t.Context(), testCfg(t), sinceTagAuto)
+	revRange, _, base, err := sinceTagRange(t.Context(), testCfg(t), sinceTagAuto)
 	if err != nil {
 		t.Fatalf("sinceTagRange: %v", err)
 	}
@@ -2229,7 +2229,7 @@ func TestSinceTagUnboundedWalkRefused(t *testing.T) {
 	}
 	t.Chdir(dir)
 
-	revRange, base, err := sinceTagRange(t.Context(), testCfg(t), sinceTagAuto)
+	revRange, _, base, err := sinceTagRange(t.Context(), testCfg(t), sinceTagAuto)
 	if err != nil {
 		t.Fatalf("200 walk-visible commits are AT the cap and must still walk (a skip would "+
 			"verdict the first release out of existence), got %v", err)

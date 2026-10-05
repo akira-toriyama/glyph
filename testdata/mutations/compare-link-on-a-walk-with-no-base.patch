@@ -1,0 +1,22 @@
+diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
+index ef16960..6b9398d 100644
+--- a/internal/cli/sincetag.go
++++ b/internal/cli/sincetag.go
+@@ -209,7 +209,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
+ 		}
+ 		if latest == "" {
+ 			revRange, base, err = wholeHistory(ctx, cfg, "no version tag in HEAD's history", "")
+-			return revRange, "", base, err
++			return revRange, "HEAD", base, err
+ 		}
+ 		return latest + "..HEAD", latest, &v, nil
+ 	}
+@@ -236,7 +236,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
+ 			// here would fail a job standing behind a tag that already exists.
+ 			// Same walk, same guard, as auto before the first tag.
+ 			revRange, base, err = wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s in HEAD's history", strings.TrimSpace(rest)), "")
+-			return revRange, "", base, err
++			return revRange, "HEAD", base, err
+ 		}
+ 		return prev + "..HEAD", prev, &v, nil
+ 	}
