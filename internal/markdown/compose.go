@@ -25,8 +25,7 @@ import (
 //
 //	var l markdown.Line
 //	l.Raw("- ")        // glyph's own markup, trusted byte-for-byte
-//	l.Text(scope)      // a plain-text FIELD: flattened, every construct disarmed
-//	l.Prose(subject)   // author PROSE: disarmed in String, still readable
+//	l.Prose(subject)   // author text: disarmed in String, still readable
 //	body := l.String() // prose escape, then mention fence — over the whole line
 //
 // Why the fence comes last and sees everything: mention-safety is a property of
@@ -34,14 +33,14 @@ import (
 // than every backtick run it will share a context with, and the fields share
 // one — sizing the subject's fence against the subject alone let a backtick
 // carried by the SCOPE steal it, and the assembled line was a live mention
-// (measured against GitHub 2026-07-21; the incident is written out at
-// escapeText's doc in escape.go). The order is forced from the other side too: the fence
-// models the FINAL string, so no neutralization may follow it — a later pass
-// would rewrite the string the fence was sized and placed against, and an added
-// backslash in front of the fence swallows it outright.
+// (measured against GitHub 2026-07-21; the probe is in markdown_test.go, "A
+// FIELD IS NOT AN INLINE CONTEXT"). The order is forced from the other side
+// too: the fence models the FINAL string, so no neutralization may follow it —
+// a later pass would rewrite the string the fence was sized and placed
+// against, and an added backslash in front of the fence swallows it outright.
 //
-// Flattening sits inside Text and Prose, and first, for the same reason facing
-// the other way: it is what DECIDES the inline context. To the escaper a blank
+// Flattening sits inside Prose, and first, for the same reason facing the
+// other way: it is what DECIDES the inline context. To the escaper a blank
 // line ends the paragraph and backticks on either side of it cannot pair — but
 // the flattened line is ONE context, where they can. When the order was each
 // caller's to get right, preview escaped first and flattened after, which sized
@@ -63,7 +62,6 @@ type partKind int
 
 const (
 	partRaw     partKind = iota // glyph's own markup, byte-for-byte
-	partFinal                   // author bytes already fully disarmed (Text)
 	partProse                   // author prose, flattened but NOT yet escaped
 	partMention                 // a handle, live and exempt from the fence
 )
@@ -87,16 +85,10 @@ func (l *Line) Raw(s string) {
 	l.parts = append(l.parts, part{partRaw, s})
 }
 
-// Text appends an author-supplied PLAIN-TEXT field — data, not prose, like the
-// commit scope. The field is flattened to one line and every escapable byte is
-// disarmed (escapeText): a data field is exactly the statement that no grammar
-// applies to it, so nothing in it may become markup.
-func (l *Line) Text(s string) {
-	l.parts = append(l.parts, part{partFinal, escapeText(flatten(s))})
-}
-
-// Prose appends an author-supplied PROSE field — text the author meant to be
-// read, like the commit subject. The field is flattened to one line here; the
+// Prose appends an author-supplied field — text the author meant to be read.
+// Every author field is prose: the commit subject, the scope, any value a
+// template substitutes (DESIGN §2 holds the ruling, and why a scope has no
+// plain-text route of its own). The field is flattened to one line here; the
 // neutralizing happens in String, against the assembled line's code spans and
 // not this field's, because a backtick run in one field pairs with a run in
 // another (t-9np1). The author's code spans, emphasis and strikethrough keep
@@ -160,9 +152,10 @@ func (l *Line) Mention(login, name string) {
 // String again returns the same bytes: both passes are fixed points and the
 // parts are not consumed.
 func (l *Line) String() string {
-	// The span scan must see the bytes GitHub will see, so Text is already
-	// escaped (its backticks carry a backslash and open nothing) and Prose is
-	// flattened but raw. Prose is the only kind escaping may still rewrite.
+	// The span scan must see the bytes GitHub will see. Prose is flattened but
+	// raw here, and that is enough: escaping inserts no backtick, so the spans
+	// of this string are the spans of the escaped line (escape.go, WHY ONE PASS
+	// IS ENOUGH).
 	var pre strings.Builder
 	var owner []partKind
 	for _, p := range l.parts {

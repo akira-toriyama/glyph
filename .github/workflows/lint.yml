@@ -45,10 +45,12 @@ name: glyph-lint
 # What the lint enforces (exit 3 on violation): the repository's own
 # glyph.toml — a commit means what the first matching [[patterns]] entry says
 # (docs/DESIGN.md §2), and a message no pattern claims is the violation —
-# as is one an unlandable pattern claims, carrying that pattern's reason.
-# exclude_authors and skip-pattern commits (the presets skip merge commits and
-# the fixup!/squash! autosquash artifacts) are skipped, never failed; a
-# warn-pattern match annotates a ::warning:: and stays green.
+# as is one an unlandable pattern claims, carrying that pattern's reason (the
+# presets claim git's fixup! and squash! subjects this way, and an amend!
+# whose body the grammar reads).
+# exclude_authors and skip-pattern commits (the presets skip merge commits)
+# are skipped, never failed; a warn-pattern match annotates a ::warning:: and
+# stays green.
 
 on:
   workflow_call:
@@ -62,6 +64,19 @@ on:
           or SHA), which has no release binary to derive.
         type: string
         default: ""
+      runner:
+        description: >-
+          The `runs-on` label of this job: one label, or one runner group name.
+          The default keeps a caller that passes nothing on the GitHub-hosted
+          image. A repository that keeps its own runner passes its label,
+          usually by forwarding a repository variable — an unset variable
+          arrives as the empty string, which this job reads as the default.
+          No expression is spelled out here: GitHub evaluates one even inside
+          a description, and refuses the whole workflow file. The runner must
+          carry what this job and the install action call — `gh` and `jq`
+          among them; the GitHub-hosted image does.
+        type: string
+        default: ubuntu-latest
 
 # A reusable can only downgrade the caller's token, never raise it, so the
 # caller's stub must grant pull-requests: read too (it is in the stub above).
@@ -76,7 +91,9 @@ permissions:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    # The fallback is for a PASSED empty string — a caller forwarding an unset
+    # repository variable — which would otherwise leave the job with no runner.
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     # Lint is fast; bound it so a hung step can't idle a runner for hours.
     timeout-minutes: 10
     steps:

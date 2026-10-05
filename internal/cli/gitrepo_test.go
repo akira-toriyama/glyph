@@ -20,6 +20,10 @@ import (
 // GIT_EDITOR joins them for the same reason from the other side: `lint --stdin`
 // reads it to tell an edited message from a `-m` one, and a developer whose
 // shell exports GIT_EDITOR would otherwise run a different code path than CI.
+// The personal git config is held out for the same reason: `lint --stdin` runs
+// `git config` IN this process for commit.cleanup and commit.verbose, and a
+// ~/.gitconfig commit.cleanup=strip failed TestHookVerdictMatchesWhatGitRecords
+// (measured) — its commits pinned the config, its in-process hook side did not.
 // The run-context pair (actionsEnv: GITHUB_REF, GITHUB_EVENT_PATH) is the
 // sharpest case of all, and it is ranged over rather than re-typed here: glyph
 // runs its own `go test` on an Actions runner, where GITHUB_REF is
@@ -30,6 +34,9 @@ import (
 func TestMain(m *testing.M) {
 	for _, k := range append([]string{"GITHUB_API_URL", "GITHUB_REPOSITORY", "GITHUB_TOKEN", "GH_TOKEN", "GIT_EDITOR"}, actionsEnv...) {
 		os.Unsetenv(k)
+	}
+	for _, k := range []string{"GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"} {
+		os.Setenv(k, os.DevNull)
 	}
 	os.Exit(m.Run())
 }

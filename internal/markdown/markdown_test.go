@@ -109,9 +109,10 @@ import (
 //
 // A FIELD IS NOT AN INLINE CONTEXT. A notes line concatenates the scope and the
 // subject into one, and a fence sized against the subject alone is stolen by a
-// backtick the scope carried (a backtick survives lint today: the legacy token
-// grammar's scope slot is [^()]+). The renderers escape the assembled line and
-// the assembled cell for this reason:
+// backtick the scope carried (a backtick survives lint wherever a repository's
+// own pattern captures one into the scope — the presets' cannot; DESIGN §2).
+// The renderers escape the assembled line and the assembled cell for this
+// reason:
 //
 //	- 🐛 **readme`:** credit `@alice` and `@bob` for the fix (abc1234)
 //	                                        LIVE MENTION (@alice)
@@ -182,6 +183,12 @@ func TestEscapeMentions(t *testing.T) {
 		{"three stray backticks", "a ` b ` c ` and @octocat", "a ` b ` c ` and ``@octocat``"},
 		{"two stray backticks pair, mention sits outside", "a ` b ` and @octocat", "a ` b ` and ``@octocat``"},
 		{"two stray backticks pair around the mention", "a ` @octocat ` and more", "a ` @octocat ` and more"},
+		// A backtick behind a backslash counts too. Whether the backslash
+		// escapes it is a parity question, and here the backslash is itself
+		// escaped, so the backtick is a live opener: a fence sized as if it were
+		// not there is one backtick long, pairs with it, and leaves @bob a LIVE
+		// mention (measured against GitHub 2026-10-04).
+		{"a backtick behind an escaped backslash is live and counts", "a \\\\` b @bob c @octocat", "a \\\\` b ``@bob`` c ``@octocat``"},
 
 		// A backtick already glued to the at-sign is GitHub's own suppressor
 		// (probe: "x `@octocat y" renders no link), and inside a prose stretch
@@ -290,9 +297,10 @@ func TestEscapeMentions(t *testing.T) {
 // slipping past unnoticed, and so nobody re-derives them as new discoveries.
 //
 // BOTH ARE NOW CLOSED AT THE CALLER, and neither reaches a release body or a PR
-// comment any more: notes.entryLine and preview.escapeCell run escapeMarkup
-// first, which kills the construct in case 1 and escapes the ampersand in case
-// 2 (see internal/markdown/escape.go, and its measured before/after table).
+// comment any more: Line.String runs escapeProseLine over the assembled line
+// before the fence, which kills the construct in case 1 and escapes the
+// ampersand in case 2 (see internal/markdown/escape.go, and its measured
+// before/after table).
 // What this test still pins is the PRECONDITION that arrangement rests on —
 // escapeMentions is exact only on input where no construct outranks a backtick,
 // so a third sink that calls it on raw author text inherits both holes.

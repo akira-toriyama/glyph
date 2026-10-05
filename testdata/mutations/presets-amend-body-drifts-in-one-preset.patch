@@ -1,0 +1,13 @@
+diff --git a/internal/config/presets/conventional.toml b/internal/config/presets/conventional.toml
+index 0b4446b..07b94e1 100644
+--- a/internal/config/presets/conventional.toml
++++ b/internal/config/presets/conventional.toml
+@@ -91,7 +91,7 @@ skip = true
+ # after a squash! of the same target, git APPENDS the body instead, and the
+ # target's old first line lands unless the rebase's combined message is
+ # edited — so the reason says it at the hook.
+-pattern = '^amend! .*\n\n[a-z]+(\([a-z0-9-]+\))?[=~^!%]: .'
++pattern = '^amend! .*\n\n[a-z]+(\([a-z0-9-]+\))?[=~^!]: .'
+ unlandable = 'autosquash lands this body as its target message (after a squash! of the same commit git appends it instead: edit the combined message so its first line carries the sigil); run git rebase --autosquash before this history is pushed or merged'
+ 
+ [note]

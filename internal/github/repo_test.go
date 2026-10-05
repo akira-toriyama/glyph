@@ -85,10 +85,11 @@ func TestRepositoryClassifiesAnAnswerApartFromNoAnswer(t *testing.T) {
 	}
 }
 
-// TestRepositoryStatusDoesNotLeakIntoTheCommitBranch: the two unflattened
-// methods each own exactly one predicate. A 422 from the repository read must
-// never read as "GitHub does not know that commit yet", which the release walk
-// treats as API lag and silently falls back on.
+// TestRepositoryStatusDoesNotLeakIntoTheCommitBranch: each unflattened method
+// is read through its own predicate — IsRepoUnknown for the repository read,
+// IsCommitUnknown for the two commit endpoints. A failure from the repository
+// read must never read as "GitHub does not know that commit yet", which the
+// release walk treats as API lag and silently falls back on.
 func TestRepositoryStatusDoesNotLeakIntoTheCommitBranch(t *testing.T) {
 	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

@@ -43,8 +43,16 @@ type apiCommitFiles struct {
 //
 // The status is not flattened: a 422 here means what it means on
 // commits/{sha}/pulls — GitHub does not know the sha — and IsCommitUnknown
-// may read it. No per_page is sent: the endpoint's own page is 300 files,
-// three times the client's usual 100, and fewer round trips is the point.
+// reads it: the caller records the listing as unread
+// (walkFacts.FilesUnknown) instead of failing on it
+// (TestCommitFiles422IsCommitUnknown; mutation row
+// commit-files-status-flattened). A page that fails hands back, beside its
+// error, the files the pages before it listed — none when the first page
+// fails — so the caller reading the 422 keeps what GitHub did list, the
+// capped listing's rule (DESIGN §4.1; mutation row
+// later-page-422-discards-the-listed-files). No per_page is sent: the
+// endpoint's own page is 300 files, three times the client's usual 100, and
+// fewer round trips is the point.
 func (c *Client) CommitFiles(ctx context.Context, owner, repo, sha string) (files []string, capped bool, err error) {
 	u := fmt.Sprintf("%s/repos/%s/%s/commits/%s",
 		c.baseURL, url.PathEscape(owner), url.PathEscape(repo), url.PathEscape(sha))
@@ -57,7 +65,7 @@ func (c *Client) CommitFiles(ctx context.Context, owner, repo, sha string) (file
 		var page apiCommitFiles
 		next, gerr := c.get(ctx, u, &page)
 		if gerr != nil {
-			return nil, false, gerr
+			return files, false, gerr
 		}
 		entries += len(page.Files)
 		for _, f := range page.Files {

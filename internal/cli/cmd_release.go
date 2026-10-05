@@ -67,13 +67,14 @@ func newReleaseCmd() *cobra.Command {
 			"and the release-notes body from that single commit set — calling bump and\n" +
 			"notes separately walks twice, and a merge landing between the walks could\n" +
 			"version one range and describe another. The walk defaults to the highest\n" +
-			"v* tag (release has exactly one input source, so no bare --since-tag is\n" +
-			"required). Bare release upserts the rolling DRAFT release: the one\n" +
-			"glyph-managed draft is created or updated (tag, notes body, target sha)\n" +
-			"FIRST, and stale drafts are then removed by release id; one that will\n" +
-			"not go leaves a warning rather than failing the release, because the\n" +
-			"notes have already landed and the next run converges it — no tag is\n" +
-			"created; GitHub tags the target commit when a human publishes.\n" +
+			"v* tag HEAD contains (release has exactly one input source, so no bare\n" +
+			"--since-tag is required). Bare release upserts the rolling DRAFT\n" +
+			"release: the one glyph-managed draft is created or updated (tag, notes\n" +
+			"body, target sha) FIRST, and stale drafts are then removed by release\n" +
+			"id; one that will not go leaves a warning rather than failing the\n" +
+			"release, because the notes have already landed and the next run\n" +
+			"converges it — no tag is created; GitHub tags the target commit when a\n" +
+			"human publishes.\n" +
 			"On a none verdict any\n" +
 			"residual glyph-managed draft is deleted (the draft state converges to\n" +
 			"the verdict) and the run exits 1 (soft no-release). A walk that could\n" +

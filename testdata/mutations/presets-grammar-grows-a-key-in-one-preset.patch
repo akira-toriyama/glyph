@@ -1,0 +1,12 @@
+diff --git a/internal/config/presets/conventional.toml b/internal/config/presets/conventional.toml
+index 0b4446b..580ce99 100644
+--- a/internal/config/presets/conventional.toml
++++ b/internal/config/presets/conventional.toml
+@@ -51,6 +51,7 @@ template = '''
+ # the unmatched-commit fallback — both bind `subject` alone — rendering
+ # unchanged.
+ pattern = '^(?P<subject>(?P<type>[a-z]+)(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!%]): .+)'
++warn = 'this grammar is under review'
+ 
+ [[patterns]]
+ # raw `git revert`. The subject group takes the WHOLE line, quotes and all,

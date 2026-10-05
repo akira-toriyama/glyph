@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 377249b..d6b2b82 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -431,7 +431,7 @@ func parseLog(out []byte) ([]RawCommit, error) {
+ 	if out[len(out)-1] != 0 {
+ 		return nil, core.APIf("git log: the output does not close its last record: %q", tail(out))
+ 	}
+-	fields := strings.Split(string(out[:len(out)-1]), "\x00")
++	fields := strings.Split(strings.ReplaceAll(string(out[:len(out)-1]), "\x1f", "\x00"), "\x00")
+ 	if len(fields)%logFields != 0 {
+ 		return nil, core.APIf("git log: %d fields do not make whole records of %d: %q", len(fields), logFields, tail(out))
+ 	}

@@ -416,7 +416,10 @@ func TestCreateProbeSpendsOneAttempt(t *testing.T) {
 // TestRetryWaitHonorsRetryAfter pins the wait arithmetic: the server's own
 // Retry-After wins over the schedule when parseable, is capped so an
 // outage-mode gateway naming minutes cannot hang a job, and anything
-// unparseable falls back to the schedule.
+// unparseable falls back to the schedule. The cap holds for a value whose
+// product in nanoseconds leaves int64: capping the product instead wrapped
+// 9223372037 to a negative wait, which skips the sleep, and 18446744074 to
+// 290ms (t-esm5).
 func TestRetryWaitHonorsRetryAfter(t *testing.T) {
 	fallback := 16 * time.Second
 	cases := []struct {
@@ -428,6 +431,8 @@ func TestRetryWaitHonorsRetryAfter(t *testing.T) {
 		{"seconds win", "2", 2 * time.Second},
 		{"zero is honored", "0", 0},
 		{"capped", "9999", maxRetryAfter},
+		{"capped where the product wraps negative", "9223372037", maxRetryAfter},
+		{"capped where the product wraps past 2^64", "18446744074", maxRetryAfter},
 		{"garbage falls back", "soon", fallback},
 		{"negative falls back", "-3", fallback},
 	}

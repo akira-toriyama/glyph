@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 1ac878a..cffab3f 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -61,7 +61,7 @@ const logFields = 5
+ // says. log.decorate, log.abbrevCommit, log.date, log.mailmap and color.ui
+ // move nothing logFormat prints (measured).
+ func logCmd(args ...string) []string {
+-	return append([]string{"log", "-z", "--no-show-signature"}, args...)
++	return append([]string{"log", "-z"}, args...)
+ }
+ 
+ // Log returns the commits in revRange (e.g. "BASE..HEAD"), oldest first. An

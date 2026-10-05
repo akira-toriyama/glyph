@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
-index 6a622d4..9d52608 100644
+index 5c50010..19c3701 100644
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -142,7 +142,7 @@ func hookCleanupMode(ctx context.Context) cleanup.Mode {
+@@ -159,7 +159,7 @@ func hookCleanupMode(ctx context.Context, message io.Reader) cleanup.Mode {
  	// An error is treated as unset on purpose: this is an advisory hook, and a
  	// git that cannot answer a config question is not a reason to refuse a lint.
  	configured, _, _ := gitsource.ConfigGet(ctx, ".", "commit.cleanup")
--	mode, known := cleanup.ResolveMode(configured, os.Getenv("GIT_EDITOR") != ":")
-+	mode, known := cleanup.ResolveMode(configured, os.Getenv("GIT_EDITOR") != "" && os.Getenv("GIT_EDITOR") != ":")
+-	mode, known := cleanup.ResolveMode(configured, os.Getenv("GIT_EDITOR") != ":", hookVerbose(ctx, message))
++	mode, known := cleanup.ResolveMode(configured, os.Getenv("GIT_EDITOR") != "" && os.Getenv("GIT_EDITOR") != ":", hookVerbose(ctx, message))
  	if !known {
- 		// Warn, never fail. The installed hook forwards ONLY the lint gate code
- 		// and waves every other non-zero through, so exiting here would trade a
+ 		// Warn, never fail. git refuses an unknown mode for a plain `git commit`,
+ 		// `cherry-pick -e` and a rebase reword before any hook runs, but a
