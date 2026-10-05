@@ -33,8 +33,8 @@ var (
 // the Unreleased placeholder draft_on_none maintains — and omitted otherwise:
 // there is no release to act on. url is present only when a write actually
 // happened (never on a dry run). pulls is the walk's expansion provenance —
-// which merged pulls it resolved and how many participating commits each
-// contributed — which is what a human or a CI step reads to audit how a
+// which merged pulls it resolved and how many of each one's listed commits
+// the walk took in — which is what a human or a CI step reads to audit how a
 // verdict was assembled.
 //
 // With packages declared, current / level / next-bearing tag / body / action
@@ -44,7 +44,7 @@ var (
 // tells it to. target is shared — one checkout, one HEAD, every line's draft
 // points at it — under the same rule: omitted when no line upserts a draft
 // (every selected line none, draft_on_none off). commits then lists every
-// commit that participates on any line.
+// participating commit (bumpResult).
 type releaseResult struct {
 	Current  string              `json:"current"`
 	Level    string              `json:"level"`
@@ -91,8 +91,9 @@ func newReleaseCmd() *cobra.Command {
 			"including that action and writes nothing, printing the tag line, a\n" +
 			"blank line, then the Markdown body. --json emits\n" +
 			"{current,level,tag,target,body,action,url,commits,pulls,reason} — pulls is the\n" +
-			"walk's expansion provenance (each resolved pull and its participating\n" +
-			"commit count), which is how a verdict can be audited after the fact.\n\n" +
+			"walk's expansion provenance (each resolved pull and how many of its listed\n" +
+			"commits the walk took in), which is how a verdict can be audited after the\n" +
+			"fact.\n\n" +
 			"On a repository declaring [[packages]] release converges ONE rolling draft\n" +
 			"per line (haiku/v0.2.0 beside curry/v0.1.1), every line's upsert written\n" +
 			"before any stray is deleted, each draft's compare link from its own\n" +

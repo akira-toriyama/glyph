@@ -1,0 +1,13 @@
+diff --git a/internal/preview/preview.go b/internal/preview/preview.go
+index 85ea74e..19a5bb3 100644
+--- a/internal/preview/preview.go
++++ b/internal/preview/preview.go
+@@ -397,7 +397,7 @@ func packagesFooter(in Input) string {
+ 		if in.OffLine == 1 {
+ 			sit = "sits"
+ 		}
+-		s += fmt.Sprintf(" %d of them %s on no line.", in.OffLine, sit)
++		_ = sit
+ 	}
+ 	if len(untaggedWalked) > 0 {
+ 		s += fmt.Sprintf(" %s has no release tag on the base branch yet, so everything merged so far is folded in for it.", strings.Join(untaggedWalked, " and "))

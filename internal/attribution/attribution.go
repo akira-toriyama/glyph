@@ -1,7 +1,7 @@
 // Package attribution answers the one question packages add to the release
 // walk (DESIGN §4.1): of the version lines a repository declares, which does
 // this commit move? It is pure — a commit's files, its captured scope, its
-// sigil and the declared packages in; the participating packages or a refusal
+// sigil and the declared packages in; the packages it is placed on or a refusal
 // out — and it reads no git, no API and no clock, so the walk, lint --range
 // and preview can all ask it and get the same answer for the same commit.
 //
@@ -306,7 +306,7 @@ func orList(items []string) string {
 	return strings.Join(items[:len(items)-1], ", ") + ", or " + items[len(items)-1]
 }
 
-// Attribute maps one participating commit to the packages it moves, in config
+// Attribute maps one commit to the packages it is placed on, in config
 // order, applying §4.1's rules in their order:
 //
 //  1. Its files lie under one or more packages → each of them. A file belongs
@@ -317,7 +317,7 @@ func orList(items []string) string {
 //     merge commit whose diff the caller never reads — and scope names one →
 //     that package. The root package is a claim on files, so it does not
 //     carry a commit that shows none.
-//  3. Otherwise no carrier: sigil = participates nowhere (nil, nil — shared
+//  3. Otherwise no carrier: sigil = is placed nowhere (nil, nil — shared
 //     housekeeping has no line to appear on); any other sigil is a *Refusal,
 //     whatever the scope says: a scope naming no package is not a third
 //     state.

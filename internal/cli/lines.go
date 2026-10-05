@@ -17,7 +17,7 @@ import (
 
 // This file is the packages layer over the walk (DESIGN §4.1): which version
 // lines a --since-tag names, the ONE walk over the union of their ranges, and
-// the partition that says which line each participating commit moves. A
+// the partition that says which lines each walked commit joins. A
 // repository that declares no [[packages]] passes through it untouched — one
 // line, no files fetched, no git asked — so every single-line verdict stays
 // byte-identical (mutation row packages-absent-changes-the-single-line).
@@ -60,19 +60,24 @@ type line struct {
 	Bound   string
 }
 
-// lineWalk is one line's slice of the walk: the commits that participate in
-// it, in walk order.
+// lineWalk is one line's slice of the walk: the commits that JOIN it — placed
+// on it and unreleased on it (DESIGN §4.1) — in walk order. That is the
+// line's fold input and its notes' input, not its participating commits: an
+// exclude_authors commit joins the lines its files touch and the fold drops
+// it, and a message no pattern claims joins every line it is unreleased on so
+// the fold refuses it there.
 type lineWalk struct {
 	line
 	Commits []walked
 }
 
-// sinceTagWalk is what sinceTagInput hands back: every commit that
-// participates on at least one line (All, walk order — the single line's fold
-// input), the walk's own facts, the revision range walked, the single line's
-// step base (nil when packages are declared: each line carries its own), and
-// the per-line partition — exactly one entry, holding All, when no packages
-// are declared.
+// sinceTagWalk is what sinceTagInput hands back: every walked commit that is
+// unreleased on at least one line (All, walk order — the union fold's input,
+// and the single line's), whatever line it joins or none: partitionLines
+// appends to it before it places anything. Then the walk's own facts, the
+// revision range walked, the single line's step base (nil when packages are
+// declared: each line carries its own), and the per-line partition — exactly
+// one entry, holding All, when no packages are declared.
 type sinceTagWalk struct {
 	All    []walked
 	Facts  walkFacts
@@ -300,8 +305,8 @@ func declaredLines(cfg *config.Config) string {
 
 // governing is the on-branch commit the walk range judges a walked commit by:
 // its own sha when it landed on the released branch, else the merge point of
-// the pull it was expanded from (DESIGN §4.1: a listed commit participates in
-// a line when its governing commit is unreleased there).
+// the pull it was expanded from (DESIGN §4.1: a listed commit joins a line
+// only when its governing commit is unreleased there).
 func (w walked) governing() string {
 	if w.Landed || w.MergePoint == "" {
 		return w.Raw.SHA
@@ -400,7 +405,7 @@ func attribute(cfg *config.Config, raw gitsource.RawCommit, said reading, files 
 // declared it is the identity: one line holding every commit, nothing asked
 // of git or the API.
 //
-// With packages, a commit participates in line p when it is UNRELEASED on p
+// With packages, a commit JOINS line p when it is UNRELEASED on p
 // (its governing commit is in p's range) AND its own diff PLACES it on p
 // (attribution). The first question is git's, answered per line from the
 // line's own range; the second is asked of every commit's files (placeOf):

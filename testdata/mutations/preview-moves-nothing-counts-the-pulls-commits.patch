@@ -1,0 +1,16 @@
+diff --git a/internal/preview/preview.go b/internal/preview/preview.go
+index 85ea74e..e198c6c 100644
+--- a/internal/preview/preview.go
++++ b/internal/preview/preview.go
+@@ -328,9 +328,9 @@ func renderPackages(in Input) string {
+ // The caller picks this over Render: an Input with no Packages is the single
+ // line's to Render, and nothing in it says a repository declares lines.
+ func RenderNoLine(in Input) string {
+-	nothing := "⏸️ Merging this PR moves nothing — no commit participating in it touches a declared package."
++	nothing := fmt.Sprintf("⏸️ Merging this PR moves nothing — its %d commit(s) touch no declared package.", in.Participating)
+ 	if in.PRShort != "" {
+-		nothing = "⏸️ Merging this PR moves nothing in the files GitHub listed — no commit participating in it touches a declared package there."
++		nothing = fmt.Sprintf("⏸️ Merging this PR moves nothing in the files GitHub listed — its %d commit(s) touch no declared package there.", in.Participating)
+ 	}
+ 	return Marker + "\n" + nothing + "\n" + prShortBlock(in.PRShort, false) + "\n" + packagesFooter(in) + "\n"
+ }

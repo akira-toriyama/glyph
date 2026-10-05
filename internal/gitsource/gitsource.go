@@ -19,9 +19,9 @@ import (
 	"github.com/akira-toriyama/glyph/v4/internal/core"
 )
 
-// RawCommit is one commit as git reports it, before any parsing: the fields
-// the range assembler needs to decide participation (author, parent count) and
-// to parse (the message).
+// RawCommit is one commit as git reports it, before any parsing: what its
+// readers judge participation by (the author, the message) and what tells
+// them a merge commit, whose diff is never read (the parent count).
 type RawCommit struct {
 	SHA     string
 	Author  string // author name (%an) — what bot/automation matching runs on

@@ -13,8 +13,8 @@ import (
 
 // This file is the shared input plumbing that turns raw commits — from git or
 // the API, both spelled gitsource.RawCommit — into the shapes the v2 engine
-// reads. Which commits participate, and how, is no longer decided here: the
-// pattern file decides, inside bump.FoldSigils / notes.GroupSigils /
+// reads. Which commits each of them reads, and how, is no longer decided here:
+// the pattern file decides, inside bump.FoldSigils / notes.GroupSigils /
 // config.Lint, so every consumer applies identical rules by construction.
 
 // sigilCommits adapts raw commits for the fold.

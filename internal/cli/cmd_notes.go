@@ -130,7 +130,7 @@ func notesLinkEnds(ctx context.Context) (owner, repo, head string, err error) {
 }
 
 // notesLines is notes for a repository that declares [[packages]]: one body
-// per line, each grouped over the commits that participate on that line.
+// per line, each grouped over the commits that joined that line.
 // --pr is refused for the reason bump refuses it. stdout is the one line's
 // body when one line is selected (the tag-time rendering goreleaser.yml
 // performs, where a heading would be noise); with several lines each body

@@ -1,10 +1,10 @@
 diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index df6d5ba..1c8a148 100644
+index 1d9900e..049e784 100644
 --- a/internal/cli/lines.go
 +++ b/internal/cli/lines.go
-@@ -220,7 +220,7 @@ func declaredLines(cfg *config.Config) string {
- // the pull it was expanded from (DESIGN §4.1: a listed commit participates in
- // a line when its governing commit is unreleased there).
+@@ -308,7 +308,7 @@ func declaredLines(cfg *config.Config) string {
+ // the pull it was expanded from (DESIGN §4.1: a listed commit joins a line
+ // only when its governing commit is unreleased there).
  func (w walked) governing() string {
 -	if w.Landed || w.MergePoint == "" {
 +	if w.Landed || w.MergePoint == "" || true {

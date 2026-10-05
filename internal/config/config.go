@@ -43,7 +43,7 @@ const Schema = 1
 const SigilGroup = "semver_sigil"
 
 // ScopeGroup is the regex group name attribution reads (DESIGN §4.1, rule
-// 2): a commit whose files lie under no package participates in the package
+// 2): a commit whose files lie under no package is placed on the package
 // its scope names. Nothing requires a pattern to capture it — a file without
 // the group simply has no scope to consult, and the shipped presets capture
 // it under this name. Once a pattern whose groups a commit binds does

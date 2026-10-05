@@ -32,7 +32,8 @@ var (
 // packages has no one line for the scalars to describe, and a consumer that
 // reads only the scalars is exactly the consumer that must not act on them
 // (mutation row packages-scalar-verdict-describes-one-line). commits then
-// lists every commit that participates on any line.
+// lists every participating commit — the fold's rows over the whole walk, a
+// shared-only = among them, in no line (DESIGN §4.1).
 type bumpResult struct {
 	Current  string              `json:"current"`
 	Level    string              `json:"level"`
@@ -44,7 +45,7 @@ type bumpResult struct {
 
 // packageVerdict is one line's verdict inside bumpResult.packages: the
 // package's path (the line's name), what the line steps from, how far, to
-// what, the commits that participate on the line, and why.
+// what, the commits that participate in the line, and why.
 type packageVerdict struct {
 	Path    string              `json:"path"`
 	Current string              `json:"current"`
@@ -194,8 +195,8 @@ func bumpInput(cmd *cobra.Command, cfg *config.Config) ([]bump.SigilCommit, stri
 }
 
 // bumpLines is bump for a repository that declares [[packages]] (DESIGN
-// §4.1): one verdict per line, each folded over the commits that participate
-// on that line and stepped from that line's own base. --pr is refused — a
+// §4.1): one verdict per line, each folded over the commits that joined
+// that line and stepped from that line's own base. --pr is refused — a
 // pull's listing has no files to attribute — and --current is accepted only
 // when one line is selected. stdout is the next TAG of every line that
 // moves, one per line (haiku/v0.2.0 — the prefix is what a tag step needs);
@@ -221,7 +222,7 @@ func bumpLines(cmd *cobra.Command, cfg *config.Config) error {
 	if err := checkLineSelection(bumpCurrent, w.Lines); err != nil {
 		return err
 	}
-	// The union rows first: every participating commit is matched here, so a
+	// The union rows first: every walked commit is matched here, so a
 	// message no pattern claims refuses the walk BEFORE any line is folded
 	// (a wrong grammar cannot hide behind a wrong tree), and a shared-only =
 	// commit — on no line — still appears in what the walk read.

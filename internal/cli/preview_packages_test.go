@@ -3,6 +3,8 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -198,8 +200,156 @@ func TestPreviewPackagesNothingTouchedSaysSo(t *testing.T) {
 	if res.Current != "" || res.Level != "" || res.Next != "" || res.PR != "" || res.Pending != "" || res.Untagged {
 		t.Fatalf("under packages every scalar is at its zero value whatever the pull touches — the mode decides, not the content: %s", stdout)
 	}
-	if !strings.HasPrefix(res.Body, "<!-- glyph-pr-verdict -->\n⏸️ Merging this PR moves nothing — its 1 commit(s) touch no declared package.") {
+	if !strings.HasPrefix(res.Body, "<!-- glyph-pr-verdict -->\n⏸️ Merging this PR moves nothing — no commit participating in it touches a declared package.\n") {
 		t.Fatalf("body = %q", res.Body)
+	}
+}
+
+// participatingCount reads the number a preview body's footer states.
+func participatingCount(t *testing.T, body string) int {
+	t.Helper()
+	m := regexp.MustCompile(`Computed from the (\d+) commit\(s\) participating in this PR`).FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("the body carries no participating count:\n%s", body)
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// TestPreviewPackagesCountsWhatTheFoldReads: the footer's "participating" is
+// one set on both packages arms and on the single line — the commits the fold
+// reads, each once (DESIGN §4.1; t-rrw0 (1), (2)+(3)). Every listing is
+// previewed twice, under [[packages]] and on a single line, and the two
+// footers must state one number: the single line's footer has always counted
+// the fold's rows, so it is the oracle here, not a figure typed into the
+// table.
+//
+// Measured on the source before this test (b42ca92): the no-line arm counted
+// the raw listing — 3 for a shared =, a bot and a merge commit, where the
+// single line says 1 — and said "its 3 commit(s) touch no declared package"
+// of a listing that holds a merge commit, whose diff nothing reads; the
+// per-line arm counted each table's distinct sigil-and-subject pairs — 2 for
+// the pull the single line counts 4, under a haiku table of 3 rows (two
+// commits sharing a subject collapsed, and the shared = in no table).
+//
+// Mutation rows preview-packages-counts-the-raw-listing,
+// preview-footer-counts-the-tables-distinct-subjects and
+// preview-footer-hides-the-commits-on-no-line.
+func TestPreviewPackagesCountsWhatTheFoldReads(t *testing.T) {
+	const (
+		noLine       = "<!-- glyph-pr-verdict -->\n⏸️ Merging this PR moves nothing — no commit participating in it touches a declared package.\n\n"
+		offLine      = " sits on no line."
+		review       = "| :bug:(haiku)~ address review | `~` | patch |\n"
+		haikuSince   = "folded, per line, with what is already merged on the base branch since **haiku/v0.1.0** (haiku)."
+		pushingAgain = " Pushing more commits updates this comment.\n"
+	)
+	shared := apiCommit("s1", "akira-toriyama", ":memo:= document the lines")
+	merge := apiMergeCommit("m1", "akira-toriyama", "Merge branch 'main' into topic")
+	bot := apiCommit("d1", "dependabot[bot]", "Bump golang.org/x/net from 0.1.0 to 0.2.0")
+	season := apiCommit("h1", "akira-toriyama", ":sparkles:(haiku)^ add a season")
+	for _, tc := range []struct {
+		name    string
+		listing []string
+		files   map[string]string
+		count   int
+		check   func(t *testing.T, body string)
+	}{
+		{
+			name:    "no line touched: only the shared = participates",
+			listing: []string{shared, bot, merge},
+			files:   map[string]string{"s1": apiFiles("README.md"), "d1": apiFiles("go.work")},
+			count:   1,
+			check: func(t *testing.T, body string) {
+				want := noLine + "Computed from the 1 commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them." + pushingAgain
+				if body != want {
+					t.Errorf("body:\n got: %q\nwant: %q", body, want)
+				}
+			},
+		},
+		{
+			name:    "no line touched: nothing participates",
+			listing: []string{bot, merge},
+			files:   map[string]string{"d1": apiFiles("go.work")},
+			count:   0,
+			check: func(t *testing.T, body string) {
+				want := noLine + "Computed from the 0 commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them." + pushingAgain
+				if body != want {
+					t.Errorf("body:\n got: %q\nwant: %q", body, want)
+				}
+			},
+		},
+		{
+			name: "one line touched: two commits share a subject, and the shared = sits on no line",
+			listing: []string{season, shared, bot, merge,
+				apiCommit("r1", "akira-toriyama", ":bug:(haiku)~ address review"),
+				apiCommit("r2", "akira-toriyama", ":bug:(haiku)~ address review")},
+			files: map[string]string{"h1": apiFiles("haiku/season.go"), "s1": apiFiles("README.md"), "d1": apiFiles("haiku/go.mod"),
+				"r1": apiFiles("haiku/season.go"), "r2": apiFiles("haiku/haiku.go")},
+			count: 4,
+			check: func(t *testing.T, body string) {
+				if n := strings.Count(body, review); n != 2 {
+					t.Errorf("haiku's table must hold both review commits, got %d row(s):\n%s", n, body)
+				}
+				if want := haikuSince + " 1 of them" + offLine + pushingAgain; !strings.HasSuffix(body, want) {
+					t.Errorf("the footer must say how many of the commits it counts sit on no line — they are in no table above it; want the body to end\n  %q\ngot:\n%s", want, body)
+				}
+			},
+		},
+		{
+			name:    "one line touched by a bot alone: nothing participates, and nothing is off a line",
+			listing: []string{bot},
+			files:   map[string]string{"d1": apiFiles("haiku/go.mod")},
+			count:   0,
+			check: func(t *testing.T, body string) {
+				if want := haikuSince + pushingAgain; !strings.HasSuffix(body, want) || strings.Contains(body, offLine) {
+					t.Errorf("no participating commit is off a line, so the footer names none; want the body to end\n  %q\ngot:\n%s", want, body)
+				}
+			},
+		},
+		{
+			name:    "a commit whose refusal was withheld is on no line",
+			listing: []string{season, apiCommit("c1", "akira-toriyama", ":bug:~ swap an ingredient")},
+			files:   map[string]string{"h1": apiFiles("haiku/season.go"), "c1": apiUnknownSHA},
+			count:   2,
+			check: func(t *testing.T, body string) {
+				if want := haikuSince + " 1 of them" + offLine + pushingAgain; !strings.HasSuffix(body, want) {
+					t.Errorf("want the body to end\n  %q\ngot:\n%s", want, body)
+				}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			routes := map[string]string{pullCommitsPath(9): `[` + strings.Join(tc.listing, ",") + `]`}
+			for sha, body := range tc.files {
+				routes[commitFilesPath(sha)] = body
+			}
+			srv := walkServer(t, routes)
+
+			single, _ := testRepo(t)
+			t.Chdir(single)
+			usePR(t, srv)
+			code, stdout, stderr := runGlyph(t, "preview", "--pr", "9")
+			if code != 0 {
+				t.Fatalf("the single line's preview exited %d, want 0\nstderr: %s", code, stderr)
+			}
+			if n := participatingCount(t, stdout); n != tc.count {
+				t.Fatalf("positive control: the single line counts %d participating commit(s) in this listing, and the case expects %d:\n%s", n, tc.count, stdout)
+			}
+
+			dir, _ := packagesRepo(t)
+			t.Chdir(dir)
+			code, stdout, stderr = runGlyph(t, "preview", "--pr", "9")
+			if code != 0 {
+				t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
+			}
+			if n := participatingCount(t, stdout); n != tc.count {
+				t.Errorf("the packages preview counts %d participating commit(s) where the single line counts %d for the same pull:\n%s", n, tc.count, stdout)
+			}
+			tc.check(t, stdout)
+		})
 	}
 }
 
@@ -525,7 +675,7 @@ func TestPreviewPackagesUnlistedFilesAreCaveated(t *testing.T) {
 			t.Fatalf("preview exited %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
 		}
 		res := decodePreviewLines(t, stdout)
-		headline := "<!-- glyph-pr-verdict -->\n⏸️ Merging this PR moves nothing in the files GitHub listed — its 1 commit(s) touch no declared package there.\n"
+		headline := "<!-- glyph-pr-verdict -->\n⏸️ Merging this PR moves nothing in the files GitHub listed — no commit participating in it touches a declared package there.\n"
 		caveat := "(c1). A line one of those commits touches in files GitHub did not list may move all the same, so treat \"moves nothing\" as a floor rather than the answer."
 		if !strings.HasPrefix(res.Body, headline) || !strings.Contains(res.Body, caveat) {
 			t.Fatalf("the body must say it moves nothing only in the files GitHub listed, and caveat that naming c1:\n%s", res.Body)
