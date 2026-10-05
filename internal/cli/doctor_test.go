@@ -404,6 +404,34 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		}
 	})
 
+	// t-2etd (b): pre-push installed alone by name. Nothing is fired, so a
+	// broken glyph on PATH goes unasked — the pre-push check says so as
+	// advice, a notice that never moves the exit.
+	t.Run("a current pre-push hook with nothing fired beside it is advice", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		if err := os.MkdirAll(".git/hooks", 0o750); err != nil {
+			t.Fatalf("mkdir hooks: %v", err)
+		}
+		if err := os.WriteFile(".git/hooks/pre-push", []byte(hook.Kinds()[1].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
+			t.Fatalf("install pre-push: %v", err)
+		}
+		stubGlyphOnPATH(t, 127)
+
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
+		rep := decodeDoctorJSON(t, stdout)
+		if code != 0 {
+			t.Fatalf("doctor exited %d, want 0 — advice never moves the exit\nstderr: %s", code, stderr)
+		}
+		c := checkByID(t, rep, "pre-push-hook")
+		if c.Status != "advice" || !strings.Contains(c.Observed, "nothing was fired") {
+			t.Errorf("a current pre-push hook nobody fired must be advice saying so, got %s: %s", c.Status, c.Observed)
+		}
+		if !strings.Contains(stderr, "::notice::glyph: doctor pre-push-hook") {
+			t.Errorf("the advice must annotate as a notice:\n%s", stderr)
+		}
+	})
+
 	t.Run("a foreign hook is not fired", func(t *testing.T) {
 		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 		useDoctorCheckout(t, pinnedCaller)

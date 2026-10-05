@@ -240,7 +240,7 @@ func Run(in Input) *Report {
 		checkCallerInputs(in.Root, in.RootVerified, in.GlyphVersion),
 		checkHook(hook.Kinds()[0], IDCommitMsgHook, in.HooksDir, in.HooksErr),
 		checkHookFires(in.CommitMsgProbe, in.HooksErr, config.Status == StatusPass),
-		checkHook(hook.Kinds()[1], IDPrePushHook, in.HooksDir, in.HooksErr),
+		checkPrePushHook(in.HooksDir, in.HooksErr, in.CommitMsgProbe),
 	}}
 	r.OK = true
 	for _, c := range r.Checks {

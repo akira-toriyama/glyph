@@ -2980,6 +2980,28 @@ The severities are the argued part:
   it sent the reader to repair a PATH wrapper nothing had observed broken
   (`TestHookFiresDefersAPassThroughToAnUnloadedConfig`, mutation row
   `doctor-hook-fires-blames-the-path-for-an-unloaded-config`).
+- **A byte-identical pre-push hook nobody fired ⇒ advice (`pre-push-hook`).**
+  Only commit-msg is fired, and its answer covers pre-push because both hooks
+  resolve one `PATH` — which holds while a byte-identical commit-msg hook sits
+  beside the pre-push one, as the default `glyph hook install` writes them.
+  Two states break it with every check green: pre-push installed alone by name,
+  and a commit-msg hook deleted or replaced after install (the default install
+  cannot get there by itself: it refuses a foreign commit-msg at `2` and,
+  planning every kind before writing any, writes neither). Nothing is fired
+  in either, and a pre-push hook over a glyph that cannot answer lets every
+  push through. So the pre-push check says the glyph on `PATH` was not
+  executed, at the severity of a hook glyph did not write: a standing choice,
+  rare (none of 52 clones in t-2etd's census, 2026-09-27), and no reason to
+  move `ok` (`TestPrePushHookSaysWhenNothingWasFired`, mutation row
+  `doctor-pre-push-pass-vouches-for-an-unfired-path`). Firing pre-push itself
+  — a `PrePushProbe` beside the commit-msg one — stays unbuilt. It would carry
+  a fabricated push into a read-only diagnosis: a scratch repository, a bare
+  remote, a pushed base, a recorded remote HEAD and a violating commit (without
+  the recorded HEAD the same hook warned and exited 0, measured by t-2etd's
+  triage), for a question the commit-msg probe already answers on every
+  default install; and a new check id that can turn `ok` false on an unchanged
+  machine is a breaking change to the report. The residual states are named
+  instead of fired; the probe returns to the table if one is ever met.
 
 ## 8. Where we are
 

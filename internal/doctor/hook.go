@@ -216,3 +216,40 @@ func diffSummary(installed, want string) string {
 	}
 	return fmt.Sprintf("identical for %d line(s), then one runs on; %d bytes vs %d", min(len(got), len(expect)), len(installed), len(want))
 }
+
+// checkPrePushHook is checkHook for the pre-push kind, qualified where its
+// pass would vouch for more than it observed (t-2etd). probe is the commit-msg
+// probe's outcome, nil when nothing was fired.
+//
+// A byte-identical pre-push hook proves its script, not the glyph it resolves
+// on PATH. That question is answered by firing the commit-msg hook — both
+// resolve one PATH (probeCommitMsgHook, internal/cli) — so a current pre-push
+// with nothing fired beside it (pre-push installed alone by name, or a
+// commit-msg deleted or replaced after install) read all green while nobody
+// had asked whether its gate can lint. ADVICE, not unknown or fail, by the
+// rule DESIGN §7 applies to a hook glyph did not write: a standing choice,
+// rare (none of 52 clones in t-2etd's census, 2026-09-27), and no reason to
+// flip ok — the commit-msg-hook check already carries a stale or foreign
+// neighbour. Firing pre-push itself stays unbuilt (DESIGN §7).
+func checkPrePushHook(dir string, dirErr error, probe *HookProbe) Check {
+	k := hook.Kinds()[1]
+	c := checkHook(k, IDPrePushHook, dir, dirErr)
+	if c.Status != StatusPass || probe != nil {
+		return c
+	}
+	body, err := os.ReadFile(filepath.Join(dir, k.Name)) // #nosec G304 -- the path git itself reported for this checkout
+	if err != nil || string(body) != k.Script {
+		return c // nothing installed: no gate to vouch for
+	}
+	c.Status = StatusAdvice
+	c.Observed += ", but the glyph it resolves on PATH was not executed: no byte-identical commit-msg hook sits " +
+		"beside it, so nothing was fired"
+	c.Message = "doctor proves the PATH glyph can lint by firing the commit-msg hook, and that answer covers pre-push " +
+		"only because both resolve one PATH. With no byte-identical commit-msg hook — pre-push installed alone by " +
+		"name, or commit-msg deleted or replaced after install — nothing asked, and a pre-push hook over a glyph that " +
+		"cannot answer lets every push through (it blocks only on the gate code). The bytes are current; whether the " +
+		"gate they call works is unverified"
+	c.Fix = "`glyph hook install` adds the commit-msg hook doctor fires (`--force` over a foreign one); or check by " +
+		"hand what `command -v glyph` resolves to and that `glyph lint --message probe` exits 3"
+	return c
+}

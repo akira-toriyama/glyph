@@ -221,6 +221,48 @@ func TestCheckHookFiresVerdicts(t *testing.T) {
 	}
 }
 
+// TestPrePushHookSaysWhenNothingWasFired pins t-2etd (b). A byte-identical
+// pre-push hook proves its script, not the glyph it resolves on PATH; that
+// question is answered by firing the commit-msg hook, because both resolve one
+// PATH. With no byte-identical commit-msg beside it — pre-push installed alone
+// by name, or commit-msg deleted or replaced after install — nothing was fired
+// and the report read all green. The pre-push check now says so, as ADVICE:
+// a standing choice, rare, and never a reason to flip ok.
+func TestPrePushHookSaysWhenNothingWasFired(t *testing.T) {
+	prePush := hook.Kinds()[1]
+	dir := hooksDirWith(t, prePush.Name, prePush.Script)
+
+	fired := &HookProbe{Fired: true, Exit: int(core.CodeLint)}
+	if c := checkPrePushHook(dir, nil, fired); c.Status != StatusPass {
+		t.Fatalf("pre-push current, commit-msg fired: status = %s (%s), want %s — the probe answered the PATH question", c.Status, c.Observed, StatusPass)
+	}
+	if c := checkPrePushHook(t.TempDir(), nil, nil); c.Status != StatusPass {
+		t.Fatalf("no pre-push hook, nothing fired: status = %s (%s), want %s — absence vouches for nothing", c.Status, c.Observed, StatusPass)
+	}
+
+	c := checkPrePushHook(dir, nil, nil)
+	if c.Status != StatusAdvice {
+		t.Fatalf("pre-push current, nothing fired: status = %s (%s), want %s", c.Status, c.Observed, StatusAdvice)
+	}
+	if !strings.Contains(c.Observed, "not executed") || !strings.Contains(c.Observed, "nothing was fired") {
+		t.Errorf("the observation must say the PATH glyph was never executed: %q", c.Observed)
+	}
+	if !strings.Contains(c.Fix, "glyph hook install") {
+		t.Errorf("the fix must name the install that adds the hook doctor fires: %q", c.Fix)
+	}
+
+	// Advice never touches ok: the rest of the report is the healthy one.
+	in := healthyInput(t)
+	in.HooksDir = dir
+	r := Run(in)
+	if got := find(t, r, IDPrePushHook).Status; got != StatusAdvice {
+		t.Fatalf("through Run: %s = %s, want %s", IDPrePushHook, got, StatusAdvice)
+	}
+	if !r.OK {
+		t.Errorf("ok = false over advice alone — an unfired PATH is unverified, not a defect: counts %+v", r.Counts)
+	}
+}
+
 // TestHookFiresDefersAPassThroughToAnUnloadedConfig pins t-fdd8 (5). With no
 // glyph.toml (or one that does not load) the fired hook's `glyph lint` exits 2
 // before judging anything and the hook waves 2 through as 0 by design — so the

@@ -87,7 +87,9 @@ func newDoctorCmd() *cobra.Command {
 			"    did not write is advice, because glyph will not overwrite it unasked\n" +
 			"  - a current commit-msg hook is also FIRED with a probe message, because\n" +
 			"    byte-identical bytes still prove nothing about the glyph the hook resolves\n" +
-			"    on PATH — the chain is only healthy if the probe comes back with a verdict\n\n" +
+			"    on PATH — the chain is only healthy if the probe comes back with a verdict.\n" +
+			"    Its answer covers pre-push (one PATH); a current pre-push hook with no\n" +
+			"    current commit-msg beside it was never fired, and says so as advice\n\n" +
 			"--repo moves only the API side. The workflow-pin check always reads the LOCAL\n" +
 			"checkout, because a pin is a fact about the tree in front of you — pointing\n" +
 			"--repo elsewhere diagnoses that repository's settings and THIS checkout's pins.\n\n" +
@@ -174,7 +176,9 @@ func probeClaimed(ctx context.Context, configPath string, pathErr error) bool {
 // reach the second by itself — it refuses a foreign commit-msg at exit 2 and,
 // planning every kind before writing any (hook.Install), writes neither — so
 // only an edit after install gets there (t-2etd). In both, nothing is fired,
-// and a pre-push hook over a glyph that cannot answer lets every push through.
+// and a pre-push hook over a glyph that cannot answer lets every push through
+// — so the pre-push check names that state as advice (checkPrePushHook in
+// internal/doctor) instead of passing it unqualified.
 func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.HookProbe {
 	if dirErr != nil {
 		return nil
