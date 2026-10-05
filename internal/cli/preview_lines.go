@@ -48,9 +48,10 @@ const previewWalkEscape = "; cut the tag named above and re-run — preview read
 // touched line has released, and renders. A commit attribution refuses is
 // the same lint-class refusal the walk and lint --range hand down: preview
 // says what CI will say — including that a refusal over a listing GitHub
-// truncated is withheld (partitionLines): the commit is attributed to no
-// line, and the body says the PR side is incomplete, because a reviewer
-// reads this comment and never the log (preview.Input.PRShort).
+// truncated, or would not give (a 422), is withheld (partitionLines): the
+// commit is attributed to no line, and the body says the PR side is
+// incomplete, because a reviewer reads this comment and never the log
+// (preview.Input.PRShort).
 func previewLines(ctx context.Context, cfg *config.Config) error {
 	raws, _, perr := pullInput(ctx, previewPR, previewRepo)
 	if perr != nil {
@@ -72,28 +73,33 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 	// answers in one run (t-sr1c, measured 2026-09-11; mutation row
 	// preview-packages-excluded-author-dropped).
 	perLine := make([][]gitsource.RawCommit, len(cfg.Packages))
-	var prCapped []string
+	var prCapped, prUnknown []unreadListing
 	for _, r := range raws {
 		place, scope, sigil := placeOf(cfg, r)
 		if place != placedByFiles {
 			continue
 		}
 		var files []string
-		capped := false
+		incomplete := false
 		if r.Parents < 2 {
-			var ferr error
-			files, capped, ferr = gh.CommitFiles(ctx, owner, repo, r.SHA)
+			l, ferr := listFiles(ctx, gh, owner, repo, r.SHA)
 			if ferr != nil {
 				return ferr
 			}
-			if capped {
-				prCapped = append(prCapped, fmt.Sprintf("%.7s", r.SHA))
+			files, incomplete = l.Files, l.incomplete()
+			unread := unreadListing{SHA: fmt.Sprintf("%.7s", r.SHA)}
+			switch {
+			case l.Unknown:
+				prUnknown = append(prUnknown, unread)
+				warnf("commit %.7s in pull request #%d: GitHub answered 422 for its file listing, so a line it touches in files GitHub did not list may be missing from this preview", r.SHA, previewPR)
+			case l.Capped:
+				prCapped = append(prCapped, unread)
 				warnf("commit %.7s in pull request #%d touches at least %d files, and GitHub lists no more than that — a package it touches past the cap is missing from this preview", r.SHA, previewPR, github.CommitFilesCap)
 			}
 		}
 		moved, aerr := attribution.Attribute(files, scope, sigil, cfg.Packages)
-		if aerr != nil && capped {
-			warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but the listing was truncated, so that is not a verdict: the commit is attributed to no line", r.SHA, aerr)
+		if aerr != nil && incomplete {
+			warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but GitHub did not list the commit's whole diff, so that is not a verdict: the commit is attributed to no line", r.SHA, aerr)
 			continue
 		}
 		if aerr != nil {
@@ -178,12 +184,12 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 			pending[lw.Package.Path] = dec
 		}
 	} else if len(touched) > 0 {
-		warnf("no release tag on any line this PR touches — previewing the PR's own verdict per line (the pending walk needs a release floor)")
+		warnf("no release tag in HEAD's history on any line this PR touches — previewing the PR's own verdict per line (the pending walk needs a release floor)")
 	}
 
 	prShort := ""
-	if len(prCapped) > 0 {
-		prShort = walkFacts{FilesCapped: prCapped}.shortfall(owner, repo)
+	if len(prCapped) > 0 || len(prUnknown) > 0 {
+		prShort = walkFacts{FilesCapped: prCapped, FilesUnknown: prUnknown}.shortfall(owner, repo)
 	}
 	in := preview.Input{PendingShort: pendingShort, PRShort: prShort}
 	var pkgs []packagePreview
@@ -246,7 +252,13 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 
 	var body string
 	if len(touched) == 0 {
-		body = truncateComment(preview.Marker + "\n⏸️ Merging this PR moves nothing — its " + fmt.Sprintf("%d", len(raws)) + " commit(s) touch no declared package.\n" + preview.PRShortBlock(prShort) + "\n" + fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. Pushing more commits updates this comment.", len(raws)) + "\n")
+		// With the PR side short, "no declared package" is a claim about the
+		// files GitHub listed and no more, and the sentence says so.
+		nothing := fmt.Sprintf("⏸️ Merging this PR moves nothing — its %d commit(s) touch no declared package.", len(raws))
+		if prShort != "" {
+			nothing = fmt.Sprintf("⏸️ Merging this PR moves nothing in the files GitHub listed — its %d commit(s) touch no declared package there.", len(raws))
+		}
+		body = truncateComment(preview.Marker + "\n" + nothing + "\n" + preview.PRShortBlock(prShort, false) + "\n" + fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. Pushing more commits updates this comment.", len(raws)) + "\n")
 	} else {
 		body = truncateComment(preview.Render(in))
 	}

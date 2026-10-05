@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
-index 04751d0..0420e23 100644
+index 0bae41e..6f361ad 100644
 --- a/internal/cli/cmd_doctor.go
 +++ b/internal/cli/cmd_doctor.go
-@@ -158,7 +158,7 @@ func probeClaimed(ctx context.Context, configPath string, pathErr error) bool {
+@@ -160,7 +160,7 @@ func probeClaimed(ctx context.Context, configPath string, pathErr error) bool {
  	if err != nil {
  		return false
  	}
--	v := cfg.LintAuthoring(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx)))
-+	v := cfg.Lint(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx)), "")
+-	v := cfg.LintAuthoring(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx, nil)))
++	v := cfg.Lint(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx, nil)), "")
  	return v.OK
  }
  

@@ -100,8 +100,8 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
 // renderLine substitutes the template's $xxx placeholders. Literal template
 // text is the user's own markdown and passes through raw; substituted values
 // are commit-derived text and are escaped as prose, with the mention fence
-// running over the assembled line (the same pipeline v1 lines go through —
-// a subject must not be able to page someone from a release body). The one
+// running over the assembled line (markdown.Line's pipeline — a subject
+// must not be able to page someone from a release body). The one
 // exemption is the built-in $author (ratified 2026-08-17, re-ratified by
 // identity with t-39fy): crediting the contributor is the intended behaviour
 // and every peer tool pages them, so the template's "@$author" renders as a
@@ -115,7 +115,8 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
 // SUBJECT can page someone is not the author's intent to declare.
 // The built-ins $pr / $author / $hash are reserved: they win over a pattern
 // group of the same name. A placeholder that is neither built-in nor a group
-// of the winning pattern renders empty.
+// of the winning pattern renders empty. A scope is prose like any other
+// value: DESIGN §2 argues why no group gets a plain-text route.
 //
 // An optional span drops WITH its literal text when any placeholder inside it
 // resolves empty. That is the whole point of the span: $pr is empty for every

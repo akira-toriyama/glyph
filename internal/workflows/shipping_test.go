@@ -87,7 +87,9 @@ func TestInstallActionRetriesSpanARealOutage(t *testing.T) {
 			"(binary + checksums); --retry 3's ~7s window measurably lost to a real outage (t-yj1b)", got)
 	}
 
-	// The attestation gate keeps its five bounded attempts and still hard-fails.
+	// The attestation gate keeps its five bounded attempts. That the fifth
+	// failure still fails the step is TestInstallActionInstallsOnlyWhatItVerified's,
+	// which runs it.
 	for _, want := range []string{
 		"for i in 1 2 3 4 5",
 		`sleep "$((i * 3))"`,

@@ -1,0 +1,15 @@
+diff --git a/internal/config/presets/conventional.toml b/internal/config/presets/conventional.toml
+index 0b4446b..2afb347 100644
+--- a/internal/config/presets/conventional.toml
++++ b/internal/config/presets/conventional.toml
+@@ -41,6 +41,10 @@ template = '''
+ # reason as a warning, and every gate that judges an existing commit refuses
+ # it (needs glyph v4.2.0 wherever this file is read — an older glyph refuses
+ # the unknown key).
++[[patterns]]
++pattern = '(?s)^(?P<subject>[^\n]+).*\n(BREAKING CHANGE|BREAKING-CHANGE): '
++semver_sigil = '!'
++
+ [[patterns]]
+ # The subject group is the WHOLE line, type + scope + sigil included, so a
+ # release-body line reads exactly as its commit does (`feat(cli)^: add the

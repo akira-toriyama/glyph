@@ -1,0 +1,13 @@
+diff --git a/internal/cli/lines.go b/internal/cli/lines.go
+index 5910801..82a8dac 100644
+--- a/internal/cli/lines.go
++++ b/internal/cli/lines.go
+@@ -518,7 +518,7 @@ func attributionWedge(err error, c walked, owner, repo string, reached []line) e
+ // range), and attributed from local git. The walk facts are empty: nothing
+ // was resolved over the API.
+ func rangeLines(ctx context.Context, cfg *config.Config, revRange string) (sinceTagWalk, error) {
+-	raws, err := logRange(ctx, revRange)
++	raws, err := gitsource.Log(ctx, ".", revRange)
+ 	if err != nil {
+ 		return sinceTagWalk{}, err
+ 	}

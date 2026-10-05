@@ -1,0 +1,13 @@
+diff --git a/internal/cli/lines.go b/internal/cli/lines.go
+index 9453c82..b5fb21f 100644
+--- a/internal/cli/lines.go
++++ b/internal/cli/lines.go
+@@ -508,8 +508,6 @@ func (l fileListing) incomplete() bool { return l.Capped || l.Unknown }
+ func listFiles(ctx context.Context, gh *github.Client, owner, repo, sha string) (fileListing, error) {
+ 	files, capped, err := gh.CommitFiles(ctx, owner, repo, sha)
+ 	switch {
+-	case github.IsCommitUnknown(err):
+-		return fileListing{Files: files, Unknown: true}, nil
+ 	case err != nil:
+ 		return fileListing{}, err
+ 	}

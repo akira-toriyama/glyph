@@ -1,0 +1,26 @@
+diff --git a/internal/config/presets/conventional.toml b/internal/config/presets/conventional.toml
+index a96fa5e..466f84d 100644
+--- a/internal/config/presets/conventional.toml
++++ b/internal/config/presets/conventional.toml
+@@ -80,7 +80,7 @@ skip = true
+ # judges an existing commit refuses it until autosquash has folded it away or
+ # it is reworded.
+ pattern = '^(fixup|squash)! '
+-unlandable = 'the files of this commit carry no sigil until autosquash folds it into its target, whose sigil then covers them; run git rebase --autosquash before this history is pushed or merged, or reword it with a sigil of its own when autosquash leaves it as it is (its target is outside the commits being rebased)'
++unlandable = 'the files of this commit carry no sigil until autosquash folds it into its target, whose sigil then covers them; run git rebase --autosquash before this history is pushed or merged'
+ 
+ [[patterns]]
+ # amend! (what --fixup=amend:<c> and --fixup=reword:<c> write) is NOT skipped:
+diff --git a/internal/config/presets/gemoji.toml b/internal/config/presets/gemoji.toml
+index a386bbe..7ef5105 100644
+--- a/internal/config/presets/gemoji.toml
++++ b/internal/config/presets/gemoji.toml
+@@ -75,7 +75,7 @@ skip = true
+ # judges an existing commit refuses it until autosquash has folded it away or
+ # it is reworded.
+ pattern = '^(fixup|squash)! '
+-unlandable = 'the files of this commit carry no sigil until autosquash folds it into its target, whose sigil then covers them; run git rebase --autosquash before this history is pushed or merged, or reword it with a sigil of its own when autosquash leaves it as it is (its target is outside the commits being rebased)'
++unlandable = 'the files of this commit carry no sigil until autosquash folds it into its target, whose sigil then covers them; run git rebase --autosquash before this history is pushed or merged'
+ 
+ [[patterns]]
+ # amend! (what --fixup=amend:<c> and --fixup=reword:<c> write) is NOT skipped:

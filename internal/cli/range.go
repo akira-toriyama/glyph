@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v4/internal/bump"
@@ -45,6 +46,30 @@ func identity(r gitsource.RawCommit) string {
 		return r.Login
 	}
 	return github.LoginFromNoreply(r.Email)
+}
+
+// logRange is every --range read — lint's, bump's and notes', single line and
+// [[packages]] alike: the range's commits, and one question about the
+// checkout. git lists only the commits a shallow clone holds, so a range that
+// reaches past the shallow boundary is read in part, and a verdict over it
+// reads exactly like a whole one — measured on a --depth 2 clone, lint judged 2
+// of 6 commits and bump printed a version, both at 0 with nothing said, where
+// the full clone refuses at 3 (t-esm5). It WARNS and never refuses: a refusal
+// would be a new semantics for lint, and a shallow walk is a warning to every
+// reporting command and exit 4 to release alone (DESIGN §4.1, "Lint").
+func logRange(ctx context.Context, revRange string) ([]gitsource.RawCommit, error) {
+	raws, err := gitsource.Log(ctx, ".", revRange)
+	if err != nil {
+		return nil, err
+	}
+	shallow, err := gitsource.IsShallow(ctx, ".")
+	if err != nil {
+		return nil, err
+	}
+	if shallow {
+		warnf("this is a SHALLOW checkout: git lists only the commits this clone holds, so a range that reaches past its shallow boundary is read only as far as the clone goes — this verdict says nothing about the commits it cannot see. Fetch the full history (actions/checkout with fetch-depth: 0) for a verdict on the whole range")
+	}
+	return raws, nil
 }
 
 // checkRangeFlag rejects an empty or option-shaped --range before git runs —
