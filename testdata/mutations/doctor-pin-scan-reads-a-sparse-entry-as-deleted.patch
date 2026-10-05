@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/workflows.go b/internal/doctor/workflows.go
+index b758fe4..c35bfb5 100644
+--- a/internal/doctor/workflows.go
++++ b/internal/doctor/workflows.go
+@@ -113,7 +113,7 @@ func checkWorkflowPins(root string, rootVerified bool, actionFiles []gitsource.A
+ 			continue
+ 		}
+ 		abs := filepath.Join(root, filepath.FromSlash(f.Path))
+-		if f.SkipWorktree {
++		if false && f.SkipWorktree {
+ 			unreadable = append(unreadable, fmt.Sprintf("%s is outside the sparse checkout, so its bytes are not on disk to read", abs))
+ 			continue
+ 		}

@@ -335,6 +335,69 @@ func HeadTrees(ctx context.Context, dir string) ([]string, error) {
 	return trees, nil
 }
 
+// ActionFile is one action metadata file git counts as part of the checkout,
+// as a path relative to the directory ActionFiles was asked at. SkipWorktree
+// marks an entry sparse checkout keeps out of the working tree: git tracks
+// it, but no bytes were put on disk to read.
+type ActionFile struct {
+	Path         string
+	SkipWorktree bool
+}
+
+// actionSpecs selects the two names GitHub reads as action metadata, at any
+// depth (`**/` matches zero directories too, so a root action.yml is in).
+var actionSpecs = []string{"--", ":(glob)**/action.yml", ":(glob)**/action.yaml"}
+
+// ActionFiles lists every action.yml / action.yaml git counts as part of the
+// checkout — tracked, an initialized submodule's tracked files included, plus
+// untracked files no ignore rule excludes — for the pin scan (DESIGN §7). git
+// lists rather than a filesystem walk because "any path" on disk includes what
+// is not the repository (dependency checkouts under ignored build directories
+// can carry action files whose pins are someone else's), and because a walk
+// of sill's ignored .build visited 280,803 entries in 2.9 s where git answered
+// in 20 ms (the D2b ruling's measurement, 2026-09-29).
+//
+// Two listings, because `--recurse-submodules` refuses to combine with
+// --others ("fatal: ls-files --recurse-submodules unsupported mode", measured
+// on git 2.54) and a submodule's composite is code the checkout runs. -t tags
+// each tracked entry: H for an ordinary one — a working-tree deletion stays H,
+// the caller reads its absence — and S for a skip-worktree (sparse) one.
+// Ask it at the top level: ls-files reports paths relative to the directory
+// it runs in, and lists only that directory's part of the tree.
+func ActionFiles(ctx context.Context, dir string) ([]ActionFile, error) {
+	tracked, err := run(ctx, dir, append([]string{"ls-files", "-z", "-t", "--cached", "--recurse-submodules"}, actionSpecs...)...)
+	if err != nil {
+		return nil, err
+	}
+	untracked, err := run(ctx, dir, append([]string{"ls-files", "-z", "--others", "--exclude-standard"}, actionSpecs...)...)
+	if err != nil {
+		return nil, err
+	}
+	// Seen once per path: an unmerged entry is listed once per stage.
+	seen := map[string]bool{}
+	var files []ActionFile
+	for rec := range strings.SplitSeq(string(tracked), "\x00") {
+		if rec == "" {
+			continue
+		}
+		tag, path, ok := strings.Cut(rec, " ")
+		if !ok || path == "" {
+			return nil, core.APIf("git ls-files -t: malformed entry %q", rec)
+		}
+		if !seen[path] {
+			seen[path] = true
+			files = append(files, ActionFile{Path: path, SkipWorktree: tag == "S"})
+		}
+	}
+	for path := range strings.SplitSeq(string(untracked), "\x00") {
+		if path != "" && !seen[path] {
+			seen[path] = true
+			files = append(files, ActionFile{Path: path})
+		}
+	}
+	return files, nil
+}
+
 // HooksDir returns the directory git will look in for hooks, as a path relative
 // to dir (or absolute, when git reports one). It asks git rather than assuming
 // .git/hooks because core.hooksPath relocates them — the family's older repos

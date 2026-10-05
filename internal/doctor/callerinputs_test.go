@@ -156,7 +156,7 @@ func TestCallerInputsOutcomes(t *testing.T) {
 // unknown, because a wrong working directory reads exactly the same.
 func TestAbsentWorkflowsDirSplitsOnRootProvenance(t *testing.T) {
 	checks := map[string]func(string, bool) Check{
-		"workflow-glyph-pins":         checkWorkflowPins,
+		"workflow-glyph-pins":         func(r string, v bool) Check { return checkWorkflowPins(r, v, nil, nil) },
 		"workflow-caller-permissions": checkCallerPermissions,
 		"workflow-caller-inputs":      checkCallerInputs,
 	}

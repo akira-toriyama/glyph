@@ -34,6 +34,7 @@ import (
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v4/internal/github"
+	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
 )
 
 // Status is a check's verdict. Four values, and the distinction between the
@@ -151,6 +152,12 @@ type Input struct {
 	// judges a declared path the way attribution reads it: as git's path.
 	HeadTrees    []string
 	HeadTreesErr error
+	// ActionFiles / ActionFilesErr are every action.yml / action.yaml git
+	// counts as part of the checkout (gitsource.ActionFiles, relative to Root)
+	// and the failure to list them — resolved by the caller like HooksDir,
+	// read by the pin check, which never walks the filesystem for them.
+	ActionFiles    []gitsource.ActionFile
+	ActionFilesErr error
 }
 
 // HookProbe is what came back from firing a hook. Fired with Exit is a real
@@ -223,7 +230,7 @@ func Run(in Input) *Report {
 		checkRebaseMerge(in),
 		checkSquashTitle(in),
 		checkSquashMessage(in),
-		checkWorkflowPins(in.Root, in.RootVerified),
+		checkWorkflowPins(in.Root, in.RootVerified, in.ActionFiles, in.ActionFilesErr),
 		checkCallerPermissions(in.Root, in.RootVerified),
 		checkCallerInputs(in.Root, in.RootVerified),
 		checkHook(hook.Kinds()[0], IDCommitMsgHook, in.HooksDir, in.HooksErr),

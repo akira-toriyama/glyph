@@ -923,6 +923,84 @@ func TestDoctorInterruptDuringHeadTreesReadCarriesOut(t *testing.T) {
 	}
 }
 
+// TestDoctorInterruptDuringActionFilesReadCarriesOut is the same guard, sixth
+// read: the action-file listing the pin scan reads runs after HEAD's tree
+// listing, so a signal landing there is carried by actionErr alone, and left
+// out of the guard it is laundered into workflow-glyph-pins could-not-run at
+// exit 4. The fake git answers every earlier read and blocks on ls-files.
+func TestDoctorInterruptDuringActionFilesReadCarriesOut(t *testing.T) {
+	srv := doctorServer(t, apiRepoObject(healthySettings))
+	usePR(t, srv)
+	useDoctorCheckout(t, pinnedCaller)
+
+	bin := t.TempDir()
+	asked := filepath.Join(bin, "asked")
+	script := "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$*\" in\n*--git-path*) echo .git/hooks; exit 0;;\n*--show-toplevel*) pwd; exit 0;;\n*\" tag \"*) exit 0;;\n*\" ls-tree \"*) exit 0;;\nesac\ntouch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for range 400 {
+			if _, err := os.Stat(asked); err == nil {
+				cancel()
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel() // safety net: never leave the run behind the fake's 30s block
+	}()
+
+	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	if code != 130 {
+		t.Fatalf("doctor exited %d, want 130 — an interrupt in the action-file listing is the user's own abort, not a check result", code)
+	}
+	if stdout != "" {
+		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
+	}
+}
+
+// TestDoctorPinScanReadsEveryActionFileGitLists is D2b end to end, on a real
+// checkout git lists: a composite outside .github/actions pinning @main
+// (GitHub runs it as `uses: ./tools/installer`) fails the pin check, and a
+// composite inside a submodule checked out under .github/actions — which the
+// filesystem walk caught and a listing without --recurse-submodules missed
+// (D2b review, measured) — fails it too. An action file under an ignored
+// directory is not the repository's, and is not read.
+func TestDoctorPinScanReadsEveryActionFileGitLists(t *testing.T) {
+	const moving = "runs:\n  using: composite\n  steps:\n    - uses: akira-toriyama/glyph/.github/actions/install@main\n"
+	sub := testutil.NewRepo(t)
+	writeFile(t, sub, "inst/action.yml", moving)
+	testGit(t, sub, "akira-toriyama", "add", "-A")
+	testGit(t, sub, "akira-toriyama", "commit", "-q", "-m", ":tada:= a shared composite")
+
+	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+	useDoctorCheckout(t, pinnedCaller)
+	writeFile(t, ".", "tools/installer/action.yml", moving)
+	writeFile(t, ".", ".gitignore", "vendor/\n")
+	writeFile(t, ".", "vendor/dep/action.yml", moving)
+	testGit(t, ".", "akira-toriyama", "-c", "protocol.file.allow=always", "submodule", "--quiet", "add", sub, ".github/actions/shared")
+
+	code, stdout, stderr := runGlyph(t, "doctor", "--json")
+	rep := decodeDoctorJSON(t, stdout)
+	if code != 3 {
+		t.Fatalf("doctor exited %d, want 3 — two composites the checkout runs pin @main\nstderr: %s", code, stderr)
+	}
+	c := checkByID(t, rep, "workflow-glyph-pins")
+	details := strings.Join(c.Details, "\n")
+	for _, want := range []string{"tools/installer/action.yml:4", ".github/actions/shared/inst/action.yml:4"} {
+		if !strings.Contains(details, want) {
+			t.Errorf("workflow-glyph-pins details do not name %s:\n%s", want, details)
+		}
+	}
+	if strings.Contains(details, "vendor/") {
+		t.Errorf("an action file under an ignored directory is someone else's pin, and was read:\n%s", details)
+	}
+}
+
 // TestDoctorPackagePathsAgreeWithAttribution is t-fdd8 (1) end to end: one
 // config, one history, and doctor must give the answer lint --range gives.
 // `Haiku` (HEAD records haiku) and `currylink` (a symlink to haiku, a 120000

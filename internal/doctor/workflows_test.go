@@ -1,10 +1,14 @@
 package doctor
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
 )
 
 // commentedStub is THE trap, reproduced verbatim in shape: every glyph reusable
@@ -306,7 +310,7 @@ func TestCheckWorkflowPinsOutcomes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := checkWorkflowPins(checkoutWith(t, tt.files), true)
+			c := checkWorkflowPins(checkoutWith(t, tt.files), true, nil, nil)
 			if c.Status != tt.want {
 				t.Fatalf("status = %s, want %s (observed %q, details %v)", c.Status, tt.want, c.Observed, c.Details)
 			}
@@ -335,15 +339,46 @@ func checkoutAt(t *testing.T, files map[string]string) string {
 	return root
 }
 
-// TestCheckWorkflowPinsScansCompositeActions pins the walk past the workflows
+// gitListed stands in for gitsource.ActionFiles over a fixture checkout:
+// every action.yml / action.yaml under root, as the slash paths git reports.
+// What git itself lists — ignored files left out, submodules and untracked
+// files in, both spellings — is TestActionFilesListsWhatGitCounts's
+// (internal/gitsource); the pin check reads exactly the list it is handed.
+func gitListed(t *testing.T, root string) []gitsource.ActionFile {
+	t.Helper()
+	var files []gitsource.ActionFile
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || (d.Name() != "action.yml" && d.Name() != "action.yaml") {
+			return nil
+		}
+		rel, rerr := filepath.Rel(root, p)
+		if rerr != nil {
+			return rerr
+		}
+		files = append(files, gitsource.ActionFile{Path: filepath.ToSlash(rel)})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("listing the fixture's action files: %v", err)
+	}
+	return files
+}
+
+// TestCheckWorkflowPinsScansCompositeActions pins the scan past the workflows
 // directory. DESIGN §6's consumer shape wraps the install action in the
-// caller's own composite action, and the measured miss is the first case
+// caller's own composite action, and the first measured miss is the first case
 // verbatim: a checkout whose only glyph reference was an @main inside
 // .github/actions/setup/action.yml, which the scan fixed to .github/workflows
-// reported clean ("no akira-toriyama/glyph reference … pass").
+// reported clean ("no akira-toriyama/glyph reference … pass"). The second
+// (D2b, measured at adfc5e1) is the walk that fixed it stopping at
+// .github/actions: GitHub runs a composite from any path, and a root
+// action.yml is the published action every consumer runs.
 func TestCheckWorkflowPinsScansCompositeActions(t *testing.T) {
 	// A workflow with no glyph reference at all, so every verdict below is
-	// earned by what sits under .github/actions.
+	// earned by the action files.
 	const plainWorkflow = "jobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - run: \"true\"\n"
 	const movingComposite = "runs:\n  using: composite\n  steps:\n    - uses: akira-toriyama/glyph/.github/actions/install@main\n"
 	const pinnedComposite = "runs:\n  using: composite\n  steps:\n    - uses: akira-toriyama/glyph/.github/actions/install@v1.0.0\n"
@@ -351,6 +386,8 @@ func TestCheckWorkflowPinsScansCompositeActions(t *testing.T) {
 	tests := []struct {
 		name       string
 		files      map[string]string
+		extra      []gitsource.ActionFile // listed by git beyond what is on disk
+		listErr    error
 		want       Status
 		wantDetail string
 	}{
@@ -402,15 +439,61 @@ func TestCheckWorkflowPinsScansCompositeActions(t *testing.T) {
 			want:       StatusFail,
 			wantDetail: ".github/actions/go/setup/action.yml:4",
 		},
+		{
+			name: "a composite outside .github/actions executes too",
+			files: map[string]string{
+				".github/workflows/w.yml":    plainWorkflow,
+				"tools/installer/action.yml": movingComposite,
+			},
+			want:       StatusFail,
+			wantDetail: "tools/installer/action.yml:4",
+		},
+		{
+			name: "a root action.yml is the published action every consumer runs",
+			files: map[string]string{
+				".github/workflows/w.yml": plainWorkflow,
+				"action.yml":              movingComposite,
+			},
+			want:       StatusFail,
+			wantDetail: "action.yml:4",
+		},
+		{
+			// git lists a tracked file the working tree deleted (tag H): its
+			// absence is observed, exactly as a missing workflows directory is
+			// under a git-named root. Unknown here exited 4 over a checkout
+			// whose every executing file was read (D2b review, measured).
+			name:  "a tracked composite deleted in the working tree is an observed absence",
+			files: map[string]string{".github/workflows/w.yml": plainWorkflow},
+			extra: []gitsource.ActionFile{{Path: "tools/installer/action.yml"}},
+			want:  StatusPass,
+		},
+		{
+			name:       "a sparse-checkout entry was never on disk to read",
+			files:      map[string]string{".github/workflows/w.yml": plainWorkflow},
+			extra:      []gitsource.ActionFile{{Path: "tools/sparse/action.yml", SkipWorktree: true}},
+			want:       StatusUnknown,
+			wantDetail: "sparse checkout",
+		},
+		{
+			name:       "a listing git could not produce leaves the action files unread",
+			files:      map[string]string{".github/workflows/w.yml": plainWorkflow},
+			listErr:    errors.New("git ls-files: fatal: not a git repository"),
+			want:       StatusUnknown,
+			wantDetail: "could not be listed",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := checkWorkflowPins(checkoutAt(t, tt.files), true)
+			root := checkoutAt(t, tt.files)
+			c := checkWorkflowPins(root, true, append(gitListed(t, root), tt.extra...), tt.listErr)
 			if c.Status != tt.want {
 				t.Fatalf("status = %s, want %s (observed %q, details %v)", c.Status, tt.want, c.Observed, c.Details)
 			}
 			if tt.wantDetail != "" && !strings.Contains(strings.Join(c.Details, "\n"), tt.wantDetail) {
 				t.Errorf("details %v do not name %q — a finding must point at the line to edit", c.Details, tt.wantDetail)
+			}
+			if tt.listErr != nil && (!strings.Contains(c.Observed, "could not be listed") || strings.Contains(c.Observed, "could not be read")) {
+				t.Errorf("observed %q: a failed listing is not a file read, and must say which it was", c.Observed)
 			}
 		})
 	}
@@ -421,7 +504,7 @@ func TestCheckWorkflowPinsScansCompositeActions(t *testing.T) {
 // directory — so it must report could-not-run rather than a pass it did not
 // earn.
 func TestCheckWorkflowPinsWithoutADirectoryIsUnknown(t *testing.T) {
-	c := checkWorkflowPins(t.TempDir(), false)
+	c := checkWorkflowPins(t.TempDir(), false, nil, nil)
 	if c.Status != StatusUnknown {
 		t.Fatalf("status = %s, want %s", c.Status, StatusUnknown)
 	}

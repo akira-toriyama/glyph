@@ -497,6 +497,76 @@ func TestHeadTreesListsWhatHEADRecordsAsADirectory(t *testing.T) {
 	}
 }
 
+// TestActionFilesListsWhatGitCounts pins the pin scan's file set (DESIGN §7,
+// D2b): every action.yml / action.yaml git counts as part of the checkout, at
+// any path — tracked (an initialized submodule's tracked files included) plus
+// untracked files no ignore rule excludes — and nothing the filesystem merely
+// holds. A submodule's composite was caught by the old filesystem walk and is
+// in scope by the same principle; `--recurse-submodules` cannot be combined
+// with --others (git: "unsupported mode"), hence two listings. A tracked file
+// deleted in the working tree is still listed (the caller reads its absence as
+// observed); a sparse-checkout entry is listed and flagged, because its bytes
+// were never put on disk to read.
+func TestActionFilesListsWhatGitCounts(t *testing.T) {
+	sub := newRepo(t)
+	writeFiles(t, sub, "inst/action.yml")
+	git(t, sub, "akira-toriyama", "add", "-A")
+	git(t, sub, "akira-toriyama", "commit", "-q", "-m", ":tada:= a shared composite")
+
+	dir := newRepo(t)
+	writeFiles(t, dir, "action.yml", ".github/actions/a/action.yml", "tools/installer/action.yaml",
+		"docs/action.yml.md", "tools/sparse/action.yml", "tools/gone/action.yml", "build/dep/action.yml")
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("build/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git(t, dir, "akira-toriyama", "add", "-A")
+	git(t, dir, "akira-toriyama", "-c", "protocol.file.allow=always", "submodule", "--quiet", "add", sub, ".github/actions/shared")
+	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= lay out the actions")
+	writeFiles(t, dir, "untracked/action.yml")
+	git(t, dir, "akira-toriyama", "update-index", "--skip-worktree", "tools/sparse/action.yml")
+	for _, gone := range []string{"tools/sparse/action.yml", "tools/gone/action.yml"} {
+		if err := os.Remove(filepath.Join(dir, filepath.FromSlash(gone))); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := ActionFiles(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("ActionFiles: %v", err)
+	}
+	want := []ActionFile{
+		{Path: ".github/actions/a/action.yml"},
+		{Path: ".github/actions/shared/inst/action.yml"},
+		{Path: "action.yml"},
+		{Path: "tools/gone/action.yml"},
+		{Path: "tools/installer/action.yaml"},
+		{Path: "tools/sparse/action.yml", SkipWorktree: true},
+		{Path: "untracked/action.yml"},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("ActionFiles =\n  %+v\nwant\n  %+v\n(no ignored build/dep/action.yml, no docs/action.yml.md; the submodule's composite and the untracked one in)", got, want)
+	}
+
+	_, err = ActionFiles(context.Background(), t.TempDir())
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
+		t.Fatalf("ActionFiles outside a repository = %v, want CodeAPI", err)
+	}
+}
+
+// writeFiles writes a one-line file at each slash path under dir.
+func writeFiles(t *testing.T, dir string, rels ...string) {
+	t.Helper()
+	for _, rel := range rels {
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(rel+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // TestHead returns the checkout's HEAD sha — what the rolling draft's
 // target_commitish records so the eventual Publish tags the commit the
 // verdict was computed at, not whatever main has moved to since.

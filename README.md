@@ -144,7 +144,7 @@ attestation are checked, fail-closed):
 ```
 
 Never pin `@main`: a moving ref changes the workflow *and* the binary under
-you. `glyph doctor` flags any unpinned reference it finds in your workflows.
+you. `glyph doctor` flags any unpinned reference it finds in your workflows and actions.
 
 ## Getting started in your repository
 

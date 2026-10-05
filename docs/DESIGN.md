@@ -2794,6 +2794,50 @@ The severities are the argued part:
   owner/repo match is case-insensitive because GitHub's resolution is —
   `Akira-Toriyama/glyph/…@main` executes, and a case-sensitive scan called that
   repository clean.
+  The scan reads the two places a glyph reference executes from, and nothing
+  else: the workflow files (`.github/workflows/*.y[a]ml` — GitHub reads
+  workflows from that directory alone, so a published reusable is there too)
+  and every action metadata file (`action.yml` / `action.yaml`) at any path.
+  GitHub runs a composite from wherever it sits — `uses: ./tools/installer` in
+  this repository's own runs, `owner/repo/<path>@ref` (a root `action.yml`:
+  `owner/repo@ref`) in a consumer's — and a moving ref inside a published
+  action changes under every consumer at once while no consumer's doctor can
+  see it: the ref is not in the consumer's tree. The scan once stopped at
+  `.github/actions` because that is where the first measured miss sat; nothing
+  makes an author keep a composite there either, and a checkout whose
+  `tools/installer/action.yml` and root `action.yml` pinned `@main` passed
+  (measured at adfc5e1 by the D2b ruling). Following the workflows' local
+  `uses: ./…` references instead was rejected: it never reaches a published
+  action nothing in the repository calls (the hub's `actions/*`), and the
+  references it would follow include runtime self-checkouts that are not in
+  the tree at all (`./.glyph-action/…`, `./.go-bite-hub/…`). The action files
+  are listed by git — tracked, the tracked files of an initialized submodule
+  included, plus untracked files no ignore rule excludes — resolved in
+  `internal/cli` beside the hooks directory, never by walking the filesystem,
+  whose "any path" includes what is not the repository: dependency checkouts
+  under ignored build directories can carry action files whose pins are
+  someone else's, and sill's ignored `.build` held 280,803 entries, a 2.9 s
+  walk where git answered in 20 ms (the ruling's measurement, 2026-09-29). It
+  takes two listings because git refuses `--recurse-submodules` beside
+  `--others` ("unsupported mode"), and a submodule's composite is code the
+  checkout runs — the filesystem walk caught one under `.github/actions` that a
+  single listing missed (the D2b review's measurement; the
+  `action-files-skip-submodules` row re-breaks it). When git cannot list them
+  the check is `unknown`,
+  like any unread input; a sparse-checkout entry, tracked but never put on
+  disk, is unread too, while a tracked file the working tree deleted is an
+  observed absence, as the workflows directory's is under a git-named root.
+  The price of "any path": an action file kept as a test fixture is judged
+  like a published one — which it is, since GitHub runs it for anyone who
+  names its path. `TestCheckWorkflowPinsScansCompositeActions`,
+  `TestActionFilesListsWhatGitCounts` and
+  `TestDoctorPinScanReadsEveryActionFileGitLists` hold it; mutation rows
+  `doctor-pin-scan-blind-to-composite-actions` (re-derived onto the listed
+  files), `doctor-pin-scan-reads-only-github-actions`,
+  `doctor-pin-scan-reads-a-deleted-action-as-unread`,
+  `doctor-pin-scan-reads-a-sparse-entry-as-deleted`,
+  `action-files-skip-submodules`, and `action-files-miss-the-yaml-spelling`,
+  which holds the pathspec.
 - **A credential that cannot write releases ⇒ advice (`token-repo-write`).**
   Only `glyph release` writes; every read command is unaffected, and doctor must
   not red the fleet's read-side wiring over a command a repository does not use.

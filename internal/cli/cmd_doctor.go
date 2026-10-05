@@ -64,7 +64,8 @@ func newDoctorCmd() *cobra.Command {
 			"  - squash_merge_commit_title=COMMIT_OR_PR_TITLE and\n" +
 			"    squash_merge_commit_message=COMMIT_MESSAGES: these decide whether the commit\n" +
 			"    that lands on main carries a subject the repository's patterns can classify\n" +
-			"  - every `uses: akira-toriyama/glyph/…` in the LOCAL .github/workflows pins a\n" +
+			"  - every `uses: akira-toriyama/glyph/…` in the LOCAL workflows and in every\n" +
+			"    action.yml in the checkout (submodules included) pins a\n" +
 			"    concrete @vX.Y.Z tag (whether the pin is the LATEST release is deliberately\n" +
 			"    NOT checked — glyph-pin-audit.yml in akira-toriyama/.github already owns\n" +
 			"    that question fleet-wide, and two answers to it would be one too many)\n" +
@@ -261,6 +262,14 @@ func doctorRun(cmd *cobra.Command) error {
 	if terr == nil {
 		headTrees, treesErr = gitsource.HeadTrees(cmd.Context(), top)
 	}
+	// The action files the pin scan reads are git's list — tracked, submodules
+	// included, plus untracked files no ignore rule excludes — never a walk of
+	// the filesystem (DESIGN §7). Same top level, same handover of terr.
+	var actionFiles []gitsource.ActionFile
+	actionErr := terr
+	if terr == nil {
+		actionFiles, actionErr = gitsource.ActionFiles(cmd.Context(), top)
+	}
 	configPath := ""
 	// The workflow scans read the checkout git itself names, so running doctor
 	// from a subdirectory works, and an absent .github/workflows under that
@@ -283,7 +292,7 @@ func doctorRun(cmd *cobra.Command) error {
 	// asked: guarding rerr alone turned a mid-run SIGTERM into exit 4 with the
 	// abort rendered as the hook check's could-not-run — the one code the
 	// fleet's wrappers read as retryable infra, on a run the operator stopped.
-	if err := firstInterrupt(rerr, herr, terr, tagsErr, treesErr, probeErr(probe)); err != nil {
+	if err := firstInterrupt(rerr, herr, terr, tagsErr, treesErr, actionErr, probeErr(probe)); err != nil {
 		return err
 	}
 	report := doctor.Run(doctor.Input{
@@ -302,6 +311,8 @@ func doctorRun(cmd *cobra.Command) error {
 		TagsErr:         tagsErr,
 		HeadTrees:       headTrees,
 		HeadTreesErr:    treesErr,
+		ActionFiles:     actionFiles,
+		ActionFilesErr:  actionErr,
 	})
 
 	// Annotations go out in BOTH modes, before the payload. On an Actions
