@@ -1,0 +1,13 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index c8716ac..fba2de5 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -220,8 +220,6 @@ func validateLineNames(spans []LineSpan, patterns []Pattern, trailers []NoteTrai
+ 				if groups[part.Text] && !slices.Contains(LineBuiltins, part.Text) {
+ 					citesGroup = true
+ 				}
+-			case part.Text == FallbackGroup:
+-				citesFallback = true
+ 			default:
+ 				return fmt.Errorf("$%s is not a built-in and no commit binds it — no pattern whose groups a commit binds (not skip, not unlandable) captures it and no [[note.trailers]] entry declares it — so it resolves empty on every line; the names this file can bind are: %s", part.Text, strings.Join(known, ", "))
+ 			}

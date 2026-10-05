@@ -1,0 +1,14 @@
+diff --git a/internal/config/scopeword.go b/internal/config/scopeword.go
+index 66c402b..fe00ba9 100644
+--- a/internal/config/scopeword.go
++++ b/internal/config/scopeword.go
+@@ -37,9 +37,6 @@ func scopeSpellers(patterns []Pattern) ([]scopeSpeller, error) {
+ 	var out []scopeSpeller
+ 	for i := range patterns {
+ 		p := &patterns[i]
+-		if !p.bindsGroups() {
+-			continue
+-		}
+ 		// The flags regexp.Compile parses with, so this is the tree
+ 		// compilePattern already accepted.
+ 		tree, err := syntax.Parse(p.Pattern, syntax.Perl)

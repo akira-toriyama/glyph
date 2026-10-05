@@ -1,0 +1,13 @@
+diff --git a/internal/config/scopeword.go b/internal/config/scopeword.go
+index 66c402b..82eb843 100644
+--- a/internal/config/scopeword.go
++++ b/internal/config/scopeword.go
+@@ -91,7 +91,7 @@ func lastScopeGroup(re *syntax.Regexp) *syntax.Regexp {
+ // and claims nothing more.
+ func checkScopeWord(p Package, explicit bool, spellers []scopeSpeller) error {
+ 	if len(spellers) == 0 {
+-		return nil
++		return fmt.Errorf("name %q: no pattern captures a scope", p.Name)
+ 	}
+ 	for _, s := range spellers {
+ 		if s.word.MatchString(p.Name) {

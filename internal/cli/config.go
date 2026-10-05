@@ -51,7 +51,7 @@ func loadConfig(ctx context.Context) (*config.Config, error) {
 		var perr *fs.PathError
 		switch {
 		case errors.Is(lerr, fs.ErrNotExist):
-			return nil, core.Usagef("no glyph.toml at %s — this repository is not initialized for glyph; write one with `glyph init --gemoji` (or --conventional), or start from either preset and edit", top)
+			return nil, core.Usagef("no glyph.toml at %s — this repository is not initialized for glyph; `glyph init --gemoji` (or --conventional) writes one there from anywhere in the checkout, or start from either preset and edit", top)
 		case errors.As(lerr, &perr):
 			return nil, core.APIf("%v — glyph could not read this repository's configuration, so no commit was judged", lerr)
 		default:

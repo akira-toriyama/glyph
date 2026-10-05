@@ -2,6 +2,7 @@ package bump
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -17,9 +18,23 @@ type Version struct {
 // dot-separated non-negative decimals without leading zeros (semver §2).
 var versionRE = regexp.MustCompile(`^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
-// ParseVersion parses a house version tag, accepting an optional leading v.
-// It returns a plain error — the caller classifies it, since only the caller
-// knows whether the string came from a flag (usage) or from git (API).
+// MaxField is the largest value a version field glyph reads may hold. Next
+// adds one to a field, and from the int ceiling it wrapped: a verdict printed
+// v-9223372036854775808.0.0 at exit 0 (t-f2cb, measured 2026-09-29). With
+// every parsed field at most MaxField, a step lands at most one past it —
+// within int on every target glyph builds for (amd64, arm64) — so Next stays
+// total and no caller grows an error arm. The one version glyph can then
+// write and not read back, a field of exactly MaxField+1, takes a hand-cut
+// tag at the cap; it surfaces as a draft a human reads before publishing,
+// the safety net Next's own doc names.
+const MaxField = math.MaxInt32
+
+// ParseVersion parses a house version tag, accepting an optional leading v,
+// and refuses a field past MaxField. It returns a plain error — the caller
+// classifies it, since only the caller knows whether the string came from a
+// flag (usage) or from git (API): a flag past the cap is usage, and a tag
+// past it is not a version on its line, so it leaves every resolver's
+// candidates like any tag that is not version-shaped.
 func ParseVersion(s string) (Version, error) {
 	m := versionRE.FindStringSubmatch(s)
 	if m == nil {
@@ -27,14 +42,16 @@ func ParseVersion(s string) (Version, error) {
 	}
 	var v Version
 	for i, dst := range []*int{&v.Major, &v.Minor, &v.Patch} {
-		n, err := strconv.Atoi(m[i+1])
-		if err != nil {
-			return Version{}, fmt.Errorf("%q is not a plain semver version: %v", s, err)
+		n, err := strconv.ParseInt(m[i+1], 10, 64)
+		if err != nil || n > MaxField {
+			return Version{}, fmt.Errorf("%q is not a version glyph reads: its %s %s is past %d, the largest a version field may hold", s, fieldNames[i], m[i+1], MaxField)
 		}
-		*dst = n
+		*dst = int(n)
 	}
 	return v, nil
 }
+
+var fieldNames = [...]string{"major", "minor", "patch"}
 
 // baseVersionRE is versionRE with semver's optional pre-release and build
 // suffixes allowed after the triple, capturing the triple alone.

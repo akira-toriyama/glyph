@@ -1,0 +1,13 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index c8716ac..d3cc876 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -227,7 +227,7 @@ func validateLineNames(spans []LineSpan, patterns []Pattern, trailers []NoteTrai
+ 			}
+ 		}
+ 	}
+-	if citesFallback && !citesGroup {
++	if citesFallback && !citesGroup && false {
+ 		return fmt.Errorf("$%s is not a built-in and no pattern whose groups a commit binds captures it, so it resolves empty on every line a pattern claims — only the raw-line fallback binds it, for a commit no pattern claims — and the template cites no pattern group beside it to carry those lines' text; the names this file can bind are: %s", FallbackGroup, strings.Join(known, ", "))
+ 	}
+ 	return nil

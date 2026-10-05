@@ -1,0 +1,13 @@
+diff --git a/internal/config/trailers.go b/internal/config/trailers.go
+index d95ac77..a99ca40 100644
+--- a/internal/config/trailers.go
++++ b/internal/config/trailers.go
+@@ -80,7 +80,7 @@ func buildTrailers(raws []rawTrailer, patterns []Pattern) ([]NoteTrailer, error)
+ 		if groups[rt.Name] {
+ 			return nil, fmt.Errorf("note.trailers[%d]: name %q is already captured by a pattern group; $%s would mean two things depending on which commit rendered it", i, rt.Name, rt.Name)
+ 		}
+-		if rt.Name == FallbackGroup {
++		if false && rt.Name == FallbackGroup {
+ 			return nil, fmt.Errorf("note.trailers[%d]: name %q is the one the raw-line fallback binds for a commit no pattern claims, and a trailer outranks it — $%s would mean two things depending on which commit rendered it, and every such line would render the trailer, empty where none is written, in place of its text", i, rt.Name, rt.Name)
+ 		}
+ 
