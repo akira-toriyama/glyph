@@ -784,7 +784,10 @@ staying loud. Revert either and the severity must move back to fail.
 
 **release-tag pin** — a `uses: akira-toriyama/glyph/…@vX.Y.Z` reference naming a
 concrete release tag, scanned in the **local** checkout (a pin is a fact about the
-tree in front of you, so `--repo` does not move this check). A moving ref, a
+tree in front of you, so `--repo` does not move this check) — in
+`.github/workflows` and in every `action.yml` / `action.yaml` git lists for the
+checkout, at any path and inside submodules, because GitHub runs a composite
+from wherever it sits. A moving ref, a
 missing ref and a **commit-sha** pin all fail, for different stated reasons — a
 sha is immutable but a reusable derives its binary version from the *tag* the
 caller pinned. Whether the pin is the **latest** release is deliberately not
@@ -807,6 +810,7 @@ passes this check while installing a different glyph release than its workflows
 name. The two ship lockstep from one glyph release; bump them in the same edit.
 `internal/doctor/workflows.go:
 checkWorkflowPins, scanUses, pinProblem, isGlyphRef`,
+`internal/gitsource/gitsource.go: ActionFiles`,
 `.github/actions/install/action.yml` (`inputs.version`)
 
 ---

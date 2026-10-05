@@ -196,17 +196,22 @@ func sinceTagInputScoped(ctx context.Context, cfg *config.Config, tagFlag, repoF
 // names the release being redone.
 // An explicit tag that is not a version still walks, but names no base (nil —
 // the bump falls back to the highest v* tag HEAD contains).
-func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (revRange string, base *bump.Version, err error) {
+//
+// baseTag is the range's left side when it is a tag, in its own spelling
+// (line.BaseTag): the resolved forms' answer, a typed value only when it is a
+// tag (tagBase), "" on the whole-history arm.
+func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (revRange, baseTag string, base *bump.Version, err error) {
 	tag := strings.TrimSpace(tagFlag)
 	if tag == sinceTagAuto {
 		latest, v, lerr := latestVersionTag(ctx, config.Line{}, nil)
 		if lerr != nil {
-			return "", nil, lerr
+			return "", "", nil, lerr
 		}
 		if latest == "" {
-			return wholeHistory(ctx, cfg, "no version tag in HEAD's history", "")
+			revRange, base, err = wholeHistory(ctx, cfg, "no version tag in HEAD's history", "")
+			return revRange, "", base, err
 		}
-		return latest + "..HEAD", &v, nil
+		return latest + "..HEAD", latest, &v, nil
 	}
 	if rest, ok := strings.CutPrefix(tag, sinceTagBelow); ok {
 		// checkSinceTagFlag guaranteed the bound parses ON ITS LINE before
@@ -216,28 +221,33 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 		// A pre-release bound compares as its base version — exact, not a
 		// rounding: see ParseBaseVersion for why the two select the same tag.
 		if prefix, _ := bump.SplitTag(strings.TrimSpace(rest)); prefix != "" {
-			return "", nil, core.Usagef("--since-tag=below:%s names the %s line, but this repository declares no [[packages]] — its one line is the bare vX.Y.Z tags", strings.TrimSpace(rest), prefix)
+			return "", "", nil, core.Usagef("--since-tag=below:%s names the %s line, but this repository declares no [[packages]] — its one line is the bare vX.Y.Z tags", strings.TrimSpace(rest), prefix)
 		}
 		bound, perr := bump.ParseBaseVersion(strings.TrimSpace(rest))
 		if perr != nil {
-			return "", nil, core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
+			return "", "", nil, core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
 		}
 		prev, v, lerr := latestVersionTag(ctx, config.Line{}, &bound)
 		if lerr != nil {
-			return "", nil, lerr
+			return "", "", nil, lerr
 		}
 		if prev == "" {
 			// The repository's first release: nothing sits below it, and dying
 			// here would fail a job standing behind a tag that already exists.
 			// Same walk, same guard, as auto before the first tag.
-			return wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s in HEAD's history", strings.TrimSpace(rest)), "")
+			revRange, base, err = wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s in HEAD's history", strings.TrimSpace(rest)), "")
+			return revRange, "", base, err
 		}
-		return prev + "..HEAD", &v, nil
+		return prev + "..HEAD", prev, &v, nil
+	}
+	baseTag, err = tagBase(ctx, tag)
+	if err != nil {
+		return "", "", nil, err
 	}
 	if v, perr := bump.ParseVersion(tag); perr == nil {
-		return tag + "..HEAD", &v, nil
+		return tag + "..HEAD", baseTag, &v, nil
 	}
-	return tag + "..HEAD", nil, nil
+	return tag + "..HEAD", baseTag, nil, nil
 }
 
 // sinceTagWalkCap bounds the whole-history walk: the most commits an untagged

@@ -1,0 +1,14 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index a3fa78b..a6dedd3 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -192,9 +192,6 @@ func DefaultBranch(ctx context.Context, dir, remote string) (string, error) {
+ 		// hand-edited: `git remote add` refuses it) can record nothing, and
+ 		// symbolic-ref answers that 128 "No such ref", not 1. Asked of git
+ 		// rather than matched in that message: its text is not an interface.
+-		if refNameRefused(ctx, prefix+"HEAD") {
+-			return "", nil
+-		}
+ 		return "", core.APIf("git symbolic-ref: %s", distill(stderr.Bytes(), err))
+ 	}
+ 	return strings.TrimPrefix(strings.TrimSpace(stdout.String()), prefix), nil

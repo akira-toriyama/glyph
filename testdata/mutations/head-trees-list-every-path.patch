@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 3729c2c..f6a63a8 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -322,7 +322,7 @@ func TopLevel(ctx context.Context, dir string) (string, error) {
+ // valid object name HEAD"): no tree was recorded to answer from, and the caller
+ // renders that as could-not-run rather than as an empty answer.
+ func HeadTrees(ctx context.Context, dir string) ([]string, error) {
+-	out, err := run(ctx, dir, "ls-tree", "-r", "-d", "-z", "--name-only", "--full-tree", "HEAD")
++	out, err := run(ctx, dir, "ls-tree", "-r", "-t", "-z", "--name-only", "--full-tree", "HEAD")
+ 	if err != nil {
+ 		return nil, err
+ 	}

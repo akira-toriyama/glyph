@@ -17,6 +17,7 @@ import (
 	"github.com/akira-toriyama/glyph/v4/internal/config"
 	"github.com/akira-toriyama/glyph/v4/internal/core"
 	"github.com/akira-toriyama/glyph/v4/internal/hook"
+	"github.com/akira-toriyama/glyph/v4/internal/testutil"
 )
 
 // doctorRepoPath is the one endpoint doctor reads: the repository object for
@@ -372,6 +373,123 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		if c.Status != "pass" || !strings.Contains(c.Observed, "claims that message") {
 			t.Errorf("a hook passing a message the config claims as unlandable is the verdict a working chain gives, got %s: %s\nstderr: %s",
 				c.Status, c.Observed, stderr)
+		}
+	})
+
+	// t-fdd8 (5): with no glyph.toml the real glyph's lint exits 2 before
+	// judging anything, the hook waves 2 through as 0, and the probe's 0 says
+	// nothing about the glyph on PATH — so the check defers to
+	// glyph-toml-loads instead of blaming the wrapper.
+	t.Run("a missing config is not a broken PATH glyph", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		if err := os.Remove("glyph.toml"); err != nil {
+			t.Fatalf("remove glyph.toml: %v", err)
+		}
+		installCurrentHook(t)
+		stubGlyphOnPATH(t, 2)
+
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
+		rep := decodeDoctorJSON(t, stdout)
+		if code != 3 {
+			t.Fatalf("doctor exited %d, want 3 — glyph-toml-loads fails\nstderr: %s", code, stderr)
+		}
+		if got := status(t, rep, "glyph-toml-loads"); got != "fail" {
+			t.Errorf("glyph-toml-loads = %s, want fail", got)
+		}
+		c := checkByID(t, rep, "commit-msg-hook-fires")
+		if c.Status != "unknown" || !strings.Contains(c.Observed, "glyph-toml-loads") {
+			t.Errorf("a pass-through caused by the missing config must be unknown pointing at glyph-toml-loads, got %s: %s (fix %q)",
+				c.Status, c.Observed, c.Fix)
+		}
+	})
+
+	// t-2etd (b): pre-push installed alone by name. Nothing is fired, so a
+	// broken glyph on PATH goes unasked — the pre-push check says so as
+	// advice, a notice that never moves the exit.
+	t.Run("a current pre-push hook with nothing fired beside it is advice", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		if err := os.MkdirAll(".git/hooks", 0o750); err != nil {
+			t.Fatalf("mkdir hooks: %v", err)
+		}
+		if err := os.WriteFile(".git/hooks/pre-push", []byte(hook.Kinds()[1].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
+			t.Fatalf("install pre-push: %v", err)
+		}
+		stubGlyphOnPATH(t, 127)
+
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
+		rep := decodeDoctorJSON(t, stdout)
+		if code != 0 {
+			t.Fatalf("doctor exited %d, want 0 — advice never moves the exit\nstderr: %s", code, stderr)
+		}
+		c := checkByID(t, rep, "pre-push-hook")
+		if c.Status != "advice" || !strings.Contains(c.Observed, "nothing was fired") {
+			t.Errorf("a current pre-push hook nobody fired must be advice saying so, got %s: %s", c.Status, c.Observed)
+		}
+		if !strings.Contains(stderr, "::notice::glyph: doctor pre-push-hook") {
+			t.Errorf("the advice must annotate as a notice:\n%s", stderr)
+		}
+	})
+
+	// t-2etd (c): the pre-push hook blocks only on the default branch it reads
+	// from refs/remotes/<remote>/HEAD. A remote added without that ref leaves
+	// the hook warning and exiting 0 on every push; doctor names the remote
+	// and the command, as advice — and stops once the ref is recorded.
+	t.Run("a remote with no recorded default branch is advice on the pre-push hook", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		installCurrentHook(t)
+		if err := os.WriteFile(".git/hooks/pre-push", []byte(hook.Kinds()[1].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
+			t.Fatalf("install pre-push: %v", err)
+		}
+		stubGlyphOnPATH(t, 3)
+		testGit(t, ".", "akira-toriyama", "remote", "add", "origin", "https://example.invalid/o/r.git")
+
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
+		rep := decodeDoctorJSON(t, stdout)
+		if code != 0 {
+			t.Fatalf("doctor exited %d, want 0 — advice never moves the exit\nstderr: %s", code, stderr)
+		}
+		c := checkByID(t, rep, "pre-push-hook")
+		if c.Status != "advice" || !strings.Contains(c.Observed, "no default branch for origin") ||
+			!strings.Contains(c.Fix, "git remote set-head origin -a") {
+			t.Errorf("an unrecorded origin/HEAD must be advice naming origin and the fix, got %s: %s (fix %q)", c.Status, c.Observed, c.Fix)
+		}
+
+		testGit(t, ".", "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+		_, stdout, _ = runGlyph(t, "doctor", "--json")
+		if c := checkByID(t, decodeDoctorJSON(t, stdout), "pre-push-hook"); c.Status != "pass" {
+			t.Errorf("with origin/HEAD recorded and the commit-msg probe fired, pre-push-hook = %s (%s), want pass", c.Status, c.Observed)
+		}
+	})
+
+	// A remote name git's config accepts and its refs refuse can record no
+	// default branch at all. `git symbolic-ref` answers that 128, not the 1 of
+	// an absent ref, and read as a failure it made pre-push-hook could-not-run
+	// and an all-green machine's doctor exit 4 — over a remote the hook can
+	// block nothing on either (measured on 8dacf7d). `git remote add` refuses
+	// such a name; a hand-edited config does not. origin's head is recorded,
+	// so the advice is this remote's alone.
+	t.Run("a remote whose name can hold no ref is the same advice, not could-not-run", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		installCurrentHook(t)
+		if err := os.WriteFile(".git/hooks/pre-push", []byte(hook.Kinds()[1].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
+			t.Fatalf("install pre-push: %v", err)
+		}
+		stubGlyphOnPATH(t, 3)
+		testGit(t, ".", "akira-toriyama", "remote", "add", "origin", "https://example.invalid/o/r.git")
+		testGit(t, ".", "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+		testGit(t, ".", "akira-toriyama", "config", "remote.mirror..x.url", "https://example.invalid/o/mirror.git")
+
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
+		if code != 0 {
+			t.Fatalf("doctor exited %d, want 0 — advice never moves the exit\nstderr: %s", code, stderr)
+		}
+		c := checkByID(t, decodeDoctorJSON(t, stdout), "pre-push-hook")
+		if c.Status != "advice" || !strings.Contains(c.Observed, "no default branch for mirror..x") {
+			t.Errorf("a remote that can record no head must be advice naming it, got %s: %s", c.Status, c.Observed)
 		}
 	})
 
@@ -850,6 +968,216 @@ func TestDoctorInterruptDuringTagsReadCarriesOut(t *testing.T) {
 	}
 	if stdout != "" {
 		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
+	}
+}
+
+// TestDoctorInterruptDuringHeadTreesReadCarriesOut is the same guard, fifth
+// read: HEAD's tree listing the package-paths check reads runs after the tag
+// list, so a signal landing there — every earlier read already answered — is
+// carried by treesErr alone, and left out of the guard it is laundered into
+// package-paths-exist could-not-run at exit 4. The fake git answers the hooks,
+// top-level and tag reads and blocks on ls-tree.
+func TestDoctorInterruptDuringHeadTreesReadCarriesOut(t *testing.T) {
+	srv := doctorServer(t, apiRepoObject(healthySettings))
+	usePR(t, srv)
+	useDoctorCheckout(t, pinnedCaller)
+
+	bin := t.TempDir()
+	asked := filepath.Join(bin, "asked")
+	script := "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$*\" in\n*--git-path*) echo .git/hooks; exit 0;;\n*--show-toplevel*) pwd; exit 0;;\n*\" tag \"*) exit 0;;\nesac\ntouch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for range 400 {
+			if _, err := os.Stat(asked); err == nil {
+				cancel()
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel() // safety net: never leave the run behind the fake's 30s block
+	}()
+
+	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	if code != 130 {
+		t.Fatalf("doctor exited %d, want 130 — an interrupt in the tree listing is the user's own abort, not a check result", code)
+	}
+	if stdout != "" {
+		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
+	}
+}
+
+// TestDoctorInterruptDuringActionFilesReadCarriesOut is the same guard, sixth
+// read: the action-file listing the pin scan reads runs after HEAD's tree
+// listing, so a signal landing there is carried by actionErr alone, and left
+// out of the guard it is laundered into workflow-glyph-pins could-not-run at
+// exit 4. The fake git answers every earlier read and blocks on ls-files.
+func TestDoctorInterruptDuringActionFilesReadCarriesOut(t *testing.T) {
+	srv := doctorServer(t, apiRepoObject(healthySettings))
+	usePR(t, srv)
+	useDoctorCheckout(t, pinnedCaller)
+
+	bin := t.TempDir()
+	asked := filepath.Join(bin, "asked")
+	script := "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$*\" in\n*--git-path*) echo .git/hooks; exit 0;;\n*--show-toplevel*) pwd; exit 0;;\n*\" tag \"*) exit 0;;\n*\" ls-tree \"*) exit 0;;\nesac\ntouch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for range 400 {
+			if _, err := os.Stat(asked); err == nil {
+				cancel()
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel() // safety net: never leave the run behind the fake's 30s block
+	}()
+
+	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	if code != 130 {
+		t.Fatalf("doctor exited %d, want 130 — an interrupt in the action-file listing is the user's own abort, not a check result", code)
+	}
+	if stdout != "" {
+		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
+	}
+}
+
+// TestDoctorInterruptDuringRemoteHeadsReadCarriesOut is the same guard, last
+// read: with a byte-identical pre-push hook installed, doctor asks git for
+// each remote's recorded default branch after every other read, so a signal
+// landing there is carried by headsErr alone — left out of the guard it is
+// laundered into pre-push-hook could-not-run at exit 4. The fake git answers
+// every earlier read and blocks on `config --get-regexp`.
+func TestDoctorInterruptDuringRemoteHeadsReadCarriesOut(t *testing.T) {
+	srv := doctorServer(t, apiRepoObject(healthySettings))
+	usePR(t, srv)
+	useDoctorCheckout(t, pinnedCaller)
+	if err := os.MkdirAll(".git/hooks", 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(".git/hooks/pre-push", []byte(hook.Kinds()[1].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
+		t.Fatal(err)
+	}
+
+	bin := t.TempDir()
+	asked := filepath.Join(bin, "asked")
+	script := "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$*\" in\n*--git-path*) echo .git/hooks; exit 0;;\n*--show-toplevel*) pwd; exit 0;;\n*\" tag \"*) exit 0;;\n*\" ls-tree \"*) exit 0;;\n*\" ls-files \"*) exit 0;;\nesac\ntouch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for range 400 {
+			if _, err := os.Stat(asked); err == nil {
+				cancel()
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel() // safety net: never leave the run behind the fake's 30s block
+	}()
+
+	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	if code != 130 {
+		t.Fatalf("doctor exited %d, want 130 — an interrupt in the remote-heads read is the user's own abort, not a check result", code)
+	}
+	if stdout != "" {
+		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
+	}
+}
+
+// TestDoctorPinScanReadsEveryActionFileGitLists is D2b end to end, on a real
+// checkout git lists: a composite outside .github/actions pinning @main
+// (GitHub runs it as `uses: ./tools/installer`) fails the pin check, and a
+// composite inside a submodule checked out under .github/actions — which the
+// filesystem walk caught and a listing without --recurse-submodules missed
+// (D2b review, measured) — fails it too. An action file under an ignored
+// directory is not the repository's, and is not read.
+func TestDoctorPinScanReadsEveryActionFileGitLists(t *testing.T) {
+	const moving = "runs:\n  using: composite\n  steps:\n    - uses: akira-toriyama/glyph/.github/actions/install@main\n"
+	sub := testutil.NewRepo(t)
+	writeFile(t, sub, "inst/action.yml", moving)
+	testGit(t, sub, "akira-toriyama", "add", "-A")
+	testGit(t, sub, "akira-toriyama", "commit", "-q", "-m", ":tada:= a shared composite")
+
+	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+	useDoctorCheckout(t, pinnedCaller)
+	writeFile(t, ".", "tools/installer/action.yml", moving)
+	writeFile(t, ".", ".gitignore", "vendor/\n")
+	writeFile(t, ".", "vendor/dep/action.yml", moving)
+	testGit(t, ".", "akira-toriyama", "-c", "protocol.file.allow=always", "submodule", "--quiet", "add", sub, ".github/actions/shared")
+
+	code, stdout, stderr := runGlyph(t, "doctor", "--json")
+	rep := decodeDoctorJSON(t, stdout)
+	if code != 3 {
+		t.Fatalf("doctor exited %d, want 3 — two composites the checkout runs pin @main\nstderr: %s", code, stderr)
+	}
+	c := checkByID(t, rep, "workflow-glyph-pins")
+	details := strings.Join(c.Details, "\n")
+	for _, want := range []string{"tools/installer/action.yml:4", ".github/actions/shared/inst/action.yml:4"} {
+		if !strings.Contains(details, want) {
+			t.Errorf("workflow-glyph-pins details do not name %s:\n%s", want, details)
+		}
+	}
+	if strings.Contains(details, "vendor/") {
+		t.Errorf("an action file under an ignored directory is someone else's pin, and was read:\n%s", details)
+	}
+}
+
+// TestDoctorPackagePathsAgreeWithAttribution is t-fdd8 (1) end to end: one
+// config, one history, and doctor must give the answer lint --range gives.
+// `Haiku` (HEAD records haiku) and `currylink` (a symlink to haiku, a 120000
+// blob to git) both open as directories on this machine's filesystem — the
+// symlink on every OS, the case on APFS — and both passed package-paths-exist
+// while lint --range refused a commit under haiku/ at 3, "touches no declared
+// package". The check now asks HEAD's trees, as attribution does.
+func TestDoctorPackagePathsAgreeWithAttribution(t *testing.T) {
+	dir := testutil.NewRepo(t)
+	appendTo(t, dir, "glyph.toml", "\n[[packages]]\npath = \"Haiku\"\nname = \"haiku\"\n\n[[packages]]\npath = \"currylink\"\n")
+	writeFile(t, dir, "haiku/haiku.go", "package haiku\n")
+	if err := os.Symlink("haiku", filepath.Join(dir, "currylink")); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, dir, "akira-toriyama", "add", ".")
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
+	base := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
+	if code != 3 || !strings.Contains(stderr, "touches no declared package") {
+		t.Fatalf("lint --range exited %d, want 3 with the attribution finding — the fixture no longer reproduces the split\n%s", code, stderr)
+	}
+
+	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+	code, stdout, stderr := runGlyph(t, "doctor", "--json")
+	rep := decodeDoctorJSON(t, stdout)
+	c := checkByID(t, rep, "package-paths-exist")
+	if c.Status != "fail" {
+		t.Fatalf("package-paths-exist = %s (%s) where lint --range refuses the history at 3 — doctor answered a different question than attribution\nstderr: %s",
+			c.Status, c.Observed, stderr)
+	}
+	if code != 3 {
+		t.Errorf("doctor exited %d, want 3", code)
+	}
+	details := strings.Join(c.Details, "\n")
+	for _, want := range []string{"Haiku", "currylink"} {
+		if !strings.Contains(details, want) {
+			t.Errorf("details %q do not name %s", c.Details, want)
+		}
 	}
 }
 

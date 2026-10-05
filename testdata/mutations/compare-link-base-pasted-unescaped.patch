@@ -1,0 +1,13 @@
+diff --git a/internal/cli/compare.go b/internal/cli/compare.go
+index 12a3707..6593371 100644
+--- a/internal/cli/compare.go
++++ b/internal/cli/compare.go
+@@ -38,7 +38,7 @@ func compareLink(body, owner, repo, base, end string) string {
+ 		return body
+ 	}
+ 	return body + "\n" + compareMark + "https://" + apiHost() + "/" + owner + "/" + repo +
+-		"/compare/" + escapeRef(base) + "..." + end + "\n"
++		"/compare/" + base + "..." + end + "\n"
+ }
+ 
+ // fullSha reports whether end is 40 hex digits, the one spelling of the

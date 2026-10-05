@@ -1,0 +1,12 @@
+diff --git a/internal/cli/cmd_notes.go b/internal/cli/cmd_notes.go
+index 2c37a82..416f750 100644
+--- a/internal/cli/cmd_notes.go
++++ b/internal/cli/cmd_notes.go
+@@ -230,6 +230,6 @@ func notesRun(cmd *cobra.Command) error {
+ 	}
+ 	// stdout is the body goreleaser.yml publishes through --release-notes
+ 	// verbatim, so it closes with the link release's drafts carry.
+-	fmt.Fprint(out, compareLink(notes.RenderSigils(sections), owner, repo, base, head))
++	fmt.Fprint(out, compareLink(notes.RenderSigils(sections), owner, repo, "", head))
+ 	return nil
+ }

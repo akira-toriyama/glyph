@@ -17,7 +17,7 @@ func caller(reusable, permissions string) string {
 	if permissions != "" {
 		b += permissions + "\n"
 	}
-	return b + "jobs:\n  j:\n    uses: akira-toriyama/glyph/.github/workflows/" + reusable + "@v1.2.3\n"
+	return b + "jobs:\n  j:\n    uses: akira-toriyama/glyph/.github/workflows/" + reusable + "@v4.2.0\n"
 }
 
 // TestReusableNeedsMatchTheShippedWorkflows holds the requirements table to
@@ -29,7 +29,7 @@ func caller(reusable, permissions string) string {
 // instead. callerGrants is deliberately the reader on both sides, so the
 // comparison cannot drift from the parser the check itself uses.
 func TestReusableNeedsMatchTheShippedWorkflows(t *testing.T) {
-	for reusable, needs := range reusableNeeds {
+	for reusable, row := range reusableNeeds {
 		body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", reusable))
 		if err != nil {
 			t.Fatalf("reading the shipped reusable: %v", err)
@@ -38,15 +38,21 @@ func TestReusableNeedsMatchTheShippedWorkflows(t *testing.T) {
 		if !seen {
 			t.Fatalf("%s declares no permissions at all — the table row is fiction", reusable)
 		}
-		want := map[string]string{}
-		for _, n := range needs {
-			want[n.Scope] = n.Level
-		}
-		if fmt.Sprint(declared) != fmt.Sprint(want) {
-			t.Errorf("%s declares %v but reusableNeeds says %v — the check now blesses callers GitHub refuses (or reds ones it accepts)",
-				reusable, declared, want)
+		if fmt.Sprint(declared) != fmt.Sprint(needsOf(row)) {
+			t.Errorf("%s declares %v but reusableNeeds says %v — the check now blesses callers GitHub refuses (or reds ones it accepts). "+
+				"Update the row, and move its After to the newest release tag: every release so far declared otherwise",
+				reusable, declared, needsOf(row))
 		}
 	}
+}
+
+// needsOf renders a row's needs as the grant map callerGrants produces.
+func needsOf(row permRow) map[string]string {
+	want := map[string]string{}
+	for _, n := range row.Needs {
+		want[n.Scope] = n.Level
+	}
+	return want
 }
 
 // TestCallerPermissionsOutcomes walks the verdicts over real files: the
@@ -97,12 +103,12 @@ func TestCallerPermissionsOutcomes(t *testing.T) {
 		},
 		{
 			name:  "a job-level grant counts — GitHub accepts it, so redding it would cry wolf",
-			files: map[string]string{"commit-lint.yml": "name: c\non:\n  pull_request:\njobs:\n  j:\n    permissions:\n      contents: read\n      pull-requests: read\n    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v1.2.3\n"},
+			files: map[string]string{"commit-lint.yml": "name: c\non:\n  pull_request:\njobs:\n  j:\n    permissions:\n      contents: read\n      pull-requests: read\n    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v4.2.0\n"},
 			want:  StatusPass,
 		},
 		{
 			name:  "a heredoc that WRITES a permissions block grants nothing — the fleet-sync trap, again",
-			files: map[string]string{"fleet-sync.yml": "name: f\non:\n  pull_request:\npermissions:\n  contents: read\njobs:\n  j:\n    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v1.2.3\n  w:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          cat > stub.yml <<'YAML'\n          permissions:\n            pull-requests: read\n          YAML\n"},
+			files: map[string]string{"fleet-sync.yml": "name: f\non:\n  pull_request:\npermissions:\n  contents: read\njobs:\n  j:\n    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v4.2.0\n  w:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          cat > stub.yml <<'YAML'\n          permissions:\n            pull-requests: read\n          YAML\n"},
 			want:  StatusFail, wantDetail: "pull-requests: read",
 		},
 		{
@@ -113,7 +119,7 @@ func TestCallerPermissionsOutcomes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := checkCallerPermissions(checkoutWith(t, tt.files), true)
+			c := checkCallerPermissions(checkoutWith(t, tt.files), true, "dev")
 			if c.Status != tt.want {
 				t.Fatalf("status = %s, want %s\nobserved: %s\ndetails: %v", c.Status, tt.want, c.Observed, c.Details)
 			}
@@ -135,11 +141,68 @@ func TestCallerPermissionsOutcomes(t *testing.T) {
 	}
 }
 
+// TestCallerChecksNeverPassOverAnUnreadableFile pins t-fdd8 (3) for both caller
+// checks. A caller file the check could not read was skipped with `continue`,
+// so chmod 000 on the one caller turned a measured fail into "no workflow in
+// this checkout calls a glyph reusable … observed — not assumed": a positive
+// claim about bytes nobody saw. A reader branching on the check id (the
+// report's API) took that as the startup-death question answered. Unread
+// bytes are unknown; a defect observed in a file that WAS read still fails.
+func TestCallerChecksNeverPassOverAnUnreadableFile(t *testing.T) {
+	// Fails both checks when readable: release needs contents: write and the
+	// install-notes input, and this caller gives neither.
+	const starved = "name: c\non:\n  push:\npermissions:\n  contents: read\njobs:\n  r:\n" +
+		"    uses: akira-toriyama/glyph/.github/workflows/release.yml@v4.2.0\n"
+	checks := map[string]func(string, bool) Check{
+		IDCallerPerms:  func(r string, v bool) Check { return checkCallerPermissions(r, v, "dev") },
+		IDCallerInputs: func(r string, v bool) Check { return checkCallerInputs(r, v, "dev") },
+	}
+	for id, check := range checks {
+		t.Run(id, func(t *testing.T) {
+			// Positive control: the fixture is a finding when it can be read,
+			// so the unknown below is earned by the unread bytes alone.
+			if c := check(checkoutWith(t, map[string]string{"release.yml": starved}), true); c.Status != StatusFail {
+				t.Fatalf("readable starved caller: status = %s, want %s (observed %q) — the fixture no longer exercises a finding", c.Status, StatusFail, c.Observed)
+			}
+
+			root := checkoutWith(t, map[string]string{"release.yml": starved})
+			locked := filepath.Join(root, ".github", "workflows", "release.yml")
+			lockFile(t, locked)
+			c := check(root, true)
+			if c.Status != StatusUnknown {
+				t.Fatalf("unreadable caller alone: status = %s, want %s (observed %q)", c.Status, StatusUnknown, c.Observed)
+			}
+			if !strings.Contains(strings.Join(c.Details, "\n"), locked) {
+				t.Errorf("details %v do not name the unread file %s", c.Details, locked)
+			}
+
+			root = checkoutWith(t, map[string]string{"release.yml": starved, "other.yml": starved})
+			lockFile(t, filepath.Join(root, ".github", "workflows", "other.yml"))
+			if c := check(root, true); c.Status != StatusFail {
+				t.Errorf("a finding beside an unreadable file: status = %s, want %s — a defect observed outranks a file unread (observed %q)", c.Status, StatusFail, c.Observed)
+			}
+		})
+	}
+}
+
+// lockFile makes path unreadable, skipping the test where mode 000 does not
+// stop a read (root, or a filesystem that ignores modes).
+func lockFile(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+	if _, err := os.ReadFile(path); err == nil { //nolint:gosec // the fixture this test just wrote
+		t.Skip("this filesystem (or a root-equivalent uid) ignores mode 000, so unreadable cannot be staged")
+	}
+}
+
 // TestCallerPermissionsWithoutADirectoryIsUnknown mirrors the pin check's
 // contract: an unlistable workflows directory observed nothing, and "we could
 // not check" is not "it is fine".
 func TestCallerPermissionsWithoutADirectoryIsUnknown(t *testing.T) {
-	c := checkCallerPermissions(t.TempDir(), false)
+	c := checkCallerPermissions(t.TempDir(), false, "dev")
 	if c.Status != StatusUnknown {
 		t.Fatalf("status = %s, want %s", c.Status, StatusUnknown)
 	}

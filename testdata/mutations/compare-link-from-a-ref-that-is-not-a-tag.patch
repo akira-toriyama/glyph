@@ -1,0 +1,13 @@
+diff --git a/internal/cli/compare.go b/internal/cli/compare.go
+index b267064..86bf644 100644
+--- a/internal/cli/compare.go
++++ b/internal/cli/compare.go
+@@ -64,7 +64,7 @@ func escapeRef(ref string) string {
+ func tagBase(ctx context.Context, value string) (string, error) {
+ 	ok, err := gitsource.IsTag(ctx, ".", value)
+ 	if err != nil || !ok {
+-		return "", err
++		return value, err
+ 	}
+ 	return value, nil
+ }

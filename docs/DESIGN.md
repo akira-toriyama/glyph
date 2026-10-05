@@ -1503,6 +1503,86 @@ addressed to the version fold); diffing the body against a re-render to
 detect edits (the base moves between pushes, so staleness and hand edits are
 indistinguishable). (Mutation row `draft-hand-region-discarded.patch`.)
 
+**The compare link** (t-v7f7): per-commit shas and `#N` citations give every
+line an address, and nothing gave the range one — glyph's own v4.2.0 page ended
+at its last bullet with no URL in it (t-v7f7's measurement). A body glyph
+renders from a walk that resolved a tag base therefore closes a non-empty notes
+body with `**Full Changelog**: https://<host>/<owner>/<repo>/compare/<base>...<end>`,
+GitHub's own generate-notes spelling of the line; an empty one gets none, as
+`notes` prints none, so a `draft_on_none` placeholder over an empty fold carries
+the marker alone. `<host>` is the API base's (`apiHost`), ports dropped — which
+links GHE.com data residency, whose API host is `api.<sub>.ghe.com`, under that
+API host: a hole named rather than closed, since no fleet repository sits in it.
+`<base>` is the tag the walk resolved, in its own spelling (never re-spelled from
+the parsed version), and only when the base is a tag. Re-spelled, a bare `1.0.0`
+tag becomes `v1.0.0`, a ref the repository does not have, and GitHub answers
+such a ref 404 (t-v7f7 measured cli/cli's `compare/2.0.0...<sha>` 404 beside
+`v2.0.0`'s 200; on glyph 2026-10-05, `4.3.0...<sha>` 404 beside `v4.3.0`'s 200).
+A typed `--since-tag` that is no tag — a branch, a remote-tracking name, a sha —
+is resolved by GitHub against its own refs, not the checkout's (`main...<sha>`
+200 and identical, `origin/main...<sha>` 404, measured on glyph the same day), so
+the explicit arm takes the value only when `refs/tags/<value>` exists
+(`gitsource.IsTag`). Each `/`-separated segment is path-escaped: git accepts
+`#`, `%` and `)` in a tag name, where pasted verbatim `#` starts a fragment and
+`%41` decodes to another ref, and GitHub decodes an escaped segment once, back to
+the tag (measured 2026-10-05 on glyph-test, the REST endpoint and the page alike,
+with a throwaway tag `rel(1)%41#x` on `v2.0.1`'s commit:
+`compare/rel%281%29%2541%23x...<sha>` 200 with `v2.0.1`'s four commits; `%41`
+left bare, 404 as `rel(1)A#x`; pasted verbatim, 404 as `main...rel(1)A`).
+`<end>` is a sha — the draft's target, or HEAD for `notes` — because a draft's
+tag does not exist until a human publishes, and `compare/<base>...<tag>` 404s for
+the draft's whole life (measured 2026-09-29 on glyph-monorepo-test by the t-v7f7
+ruling: `curry/v1.1.0...<target sha>` 200, `curry/v1.1.0...curry/v1.2.0` 404; on
+glyph 2026-10-05, `v4.3.0...v4.4.0` 404). And a **full** sha, or no link:
+`--target` reaches the API verbatim as `target_commitish`, which takes a branch
+too (a draft posted to glyph-test with `main` read back `main`, the same day),
+and GitHub resolves whatever stands on the right when the page is opened
+(`v2.0.1...main` 200 at the branch's head, likewise), so a published body
+linking `...main` would list every later push — commits the release never
+shipped. An abbreviation is held to the same rule (resolved down to
+four digits that day, which lasts only while no second object shares them), and
+the target is not resolved through the checkout instead, because `--target` has
+never had to name a commit the checkout holds. The draft's target itself is
+untouched; only the link is withheld (`fullSha`). A walk with no tag base renders none:
+the whole-history arm has no left side, and both stand-ins are wrong — `v0.0.0`
+404s, and `HEAD` answers 200 with an empty diff, a link that lies
+(`compare/HEAD...<sha>` "identical", 0 commits; on glyph 2026-10-05). The link is
+rendered by **both** commands that render a body from the walk, `release` and
+`notes --since-tag`, through one helper (`compareLink`), and it closes the notes
+before `--footer-file`'s block, so a draft's machine region is still exactly
+`notes`' output for the same walk (at the default target) followed by the
+caller's footer. `notes --since-tag` is not an incidental caller: it is the body
+glyph's own `goreleaser.yml` publishes through `--release-notes`, which
+GoReleaser loads byte for byte and wraps in nothing (`.goreleaser.yaml` sets no
+header or footer), and the body six Go CLIs publish the same way (the ruling's
+census of the fleet clones, 2026-09-29) — a link composed by `release` alone
+would have skipped glyph's own page, the page it was measured missing from.
+`--range` and `--pr` render none, by the rule that has each source render only
+the citation it can attest (`notesInput`): a local range names no repository and
+a pull no release base. `notes --json` is unchanged — sections only, no link
+key; the link lives in composed bodies, `notes`' stdout and `release`'s `body`.
+Rejected: a GoReleaser `release.footer` over `{{ .PreviousTag }}`. GoReleaser's
+previous tag is `git describe --tags --abbrev=0 <tag>^`, a second predecessor
+resolver beside `below:` — the class t-s5n4 retired from this same workflow —
+and on this repository it disagrees with the walk exactly where release
+candidates sit: `v3.3.0-rc.2` for v3.3.0 (1 commit) where `below:v3.3.0` walks
+from `v3.2.0` (13), and `v3.0.0-rc.3` for v3.0.0 (9 against 22; `git describe`
+and `git rev-list --count`, 2026-10-05), so the link would cite a different
+range than the notes above it; it is markdown composed by the caller, which Q11
+keeps inside glyph; and it would put GoReleaser's template on glyph's page and
+call it dogfooding. (`TestNotesSinceTagEndsWithTheCompareLink`,
+`TestReleaseBodyClosesTheNotesWithTheCompareLink`,
+`TestCompareLinkKeepsTheBaseTagsSpelling`, `TestCompareLinkNeedsATagBase`,
+`TestCompareLinkNeedsNotes`, `TestCompareLinkEscapesTheBase`,
+`TestCompareLinkNeedsAFullShaEnd`, `TestReleaseBodyCapCountsTheCompareLink`;
+mutation rows
+`tag-time-body-loses-the-compare-link`, `compare-link-after-the-footer`,
+`compare-link-base-respelled-from-the-version`,
+`compare-link-on-a-walk-with-no-base`, `compare-link-from-a-ref-that-is-not-a-tag`,
+`compare-link-base-pasted-unescaped`, `compare-link-without-notes`,
+`compare-link-ends-at-the-draft-tag`, `compare-link-ends-at-a-moving-ref`,
+`release-body-sized-before-the-compare-link`.)
+
 The `--json` verdict also carries the walk's expansion
 provenance (`pulls`: each resolved pull and its participating commit count), so
 how a verdict was assembled can be read back afterwards — by a human reviewing a
@@ -2368,6 +2448,27 @@ spent itself on the verdict first
 `--footer-file` appends to every draft (one install block per repository is
 what every caller passes today; a per-package footer is a knob nobody has
 asked for and is recorded here so its absence is a decision).
+The compare link (§4) is per line the same way: each line's draft, and each
+line's body under `notes --since-tag`, links `compare/<that line's base
+tag>...<end>` (the draft's target; HEAD under `notes`) — the tag the line's own
+range starts from (`haiku/v0.1.0`), never the union's merge base and never a
+sibling's tag — and a line whose walk has no tag base, or whose placeholder has
+no notes, carries none, as no line does under a `--target` that is no full sha
+(§4). A typed `--since-tag` that names no line is every line's
+walk base, so it is every line's link base exactly when it is a tag. The link is
+the line's range, not its attribution: GitHub's compare filters by no path, so
+`curry/v1.1.0...<target>` lists every commit and file between the two points
+(measured 2026-09-29 on glyph-monorepo-test by the t-v7f7 ruling: 23 commits,
+42 files across the lines), which is exactly what `<base>..HEAD` is before
+attribution partitions it, and the shape google-cloud-go publishes for every
+package release (`compare/bigtable/v1.57.0...bigtable/v1.58.0`, 6 of 6 sampled
+the same day). A prefixed ref resolves, a nested line's too:
+`travel/onsen/v2.0.0...<sha>` answered 200 over the API and on the web (the
+ruling's review, 2026-09-29). No link under packages was the alternative, and
+nothing argues for a line's draft being the one glyph body without its range's
+address (`TestReleasePackagesCompareLinkPerLine`,
+`TestNotesPackagesCompareLinkPerLine`, `TestPackagesCompareLinkNeedsATagBase`;
+mutation row `compare-link-cites-another-lines-base`).
 `checkReleaseBody` sizes each draft on its own. Of the scalars that describe a
 draft — `tag`, `target`, `body`, `url` — `target` is the one packages leave
 filled (one checkout, one HEAD, every line's draft points at it), and it keeps
@@ -2501,10 +2602,25 @@ verdict about what it read instead of refusing: a refusal would be a new
 lint semantics, and the walk already gives a shallow checkout to the
 reporting commands as a warning and to `release` alone as exit 4 (§4, §7).
 
-**Doctor** gains three checks: every declared `path` is a directory in the
-checkout (`package-paths-exist`, shipped — a path with no subtree claims no
+**Doctor** gains three checks: every declared `path` is a directory HEAD
+records (`package-paths-exist`, shipped — a path with no subtree claims no
 file, so a typo silently moves the verdict: fail; unknown while the file
-itself has not loaded, since its packages were never read); `name`s are
+itself has not loaded, since its packages were never read, and unknown when
+git cannot list HEAD's trees). It asks git, byte for byte, and never the
+filesystem, because attribution matches git's path strings: on APFS a
+case-different `Haiku` and a symlink `currylink` (a `120000` blob to git)
+both opened as directories and passed, while `lint --range` under the same
+config refused a commit under `haiku/` at `3` (t-fdd8, measured 2026-09-11
+on glyph-monorepo-test; re-measured 2026-10-05 — the stat-based check passed
+both in `TestPackagePathsAskGitNotTheFilesystem`, and
+`TestDoctorPackagePathsAgreeWithAttribution` holds the two answers together;
+mutation row `doctor-package-paths-ask-the-filesystem`). A submodule's gitlink
+counts as such a directory, on purpose: attribution's `owner` matches a file
+equal to a package path as well as one under it, so a path naming a submodule
+claims that submodule's bumps (`TestHeadTreesListsWhatHEADRecordsAsADirectory`).
+`internal/cli` lists the trees
+(`gitsource.HeadTrees`) beside the hooks directory, as every doctor
+subprocess is; `name`s are
 unique and each is a word the file's scope grammar can spell, and every
 `path` can prefix a tag git can create (load errors all three, so
 `glyph-toml-loads` already carries each with the loader's own remedy — no
@@ -3047,6 +3163,50 @@ The severities are the argued part:
   owner/repo match is case-insensitive because GitHub's resolution is —
   `Akira-Toriyama/glyph/…@main` executes, and a case-sensitive scan called that
   repository clean.
+  The scan reads the two places a glyph reference executes from, and nothing
+  else: the workflow files (`.github/workflows/*.y[a]ml` — GitHub reads
+  workflows from that directory alone, so a published reusable is there too)
+  and every action metadata file (`action.yml` / `action.yaml`) at any path.
+  GitHub runs a composite from wherever it sits — `uses: ./tools/installer` in
+  this repository's own runs, `owner/repo/<path>@ref` (a root `action.yml`:
+  `owner/repo@ref`) in a consumer's — and a moving ref inside a published
+  action changes under every consumer at once while no consumer's doctor can
+  see it: the ref is not in the consumer's tree. The scan once stopped at
+  `.github/actions` because that is where the first measured miss sat; nothing
+  makes an author keep a composite there either, and a checkout whose
+  `tools/installer/action.yml` and root `action.yml` pinned `@main` passed
+  (measured at adfc5e1 by the D2b ruling). Following the workflows' local
+  `uses: ./…` references instead was rejected: it never reaches a published
+  action nothing in the repository calls (the hub's `actions/*`), and the
+  references it would follow include runtime self-checkouts that are not in
+  the tree at all (`./.glyph-action/…`, `./.go-bite-hub/…`). The action files
+  are listed by git — tracked, the tracked files of an initialized submodule
+  included, plus untracked files no ignore rule excludes — resolved in
+  `internal/cli` beside the hooks directory, never by walking the filesystem,
+  whose "any path" includes what is not the repository: dependency checkouts
+  under ignored build directories can carry action files whose pins are
+  someone else's, and sill's ignored `.build` held 280,803 entries, a 2.9 s
+  walk where git answered in 20 ms (the ruling's measurement, 2026-09-29). It
+  takes two listings because git refuses `--recurse-submodules` beside
+  `--others` ("unsupported mode"), and a submodule's composite is code the
+  checkout runs — the filesystem walk caught one under `.github/actions` that a
+  single listing missed (the D2b review's measurement; the
+  `action-files-skip-submodules` row re-breaks it). When git cannot list them
+  the check is `unknown`,
+  like any unread input; a sparse-checkout entry, tracked but never put on
+  disk, is unread too, while a tracked file the working tree deleted is an
+  observed absence, as the workflows directory's is under a git-named root.
+  The price of "any path": an action file kept as a test fixture is judged
+  like a published one — which it is, since GitHub runs it for anyone who
+  names its path. `TestCheckWorkflowPinsScansCompositeActions`,
+  `TestActionFilesListsWhatGitCounts` and
+  `TestDoctorPinScanReadsEveryActionFileGitLists` hold it; mutation rows
+  `doctor-pin-scan-blind-to-composite-actions` (re-derived onto the listed
+  files), `doctor-pin-scan-reads-only-github-actions`,
+  `doctor-pin-scan-reads-a-deleted-action-as-unread`,
+  `doctor-pin-scan-reads-a-sparse-entry-as-deleted`,
+  `action-files-skip-submodules`, and `action-files-miss-the-yaml-spelling`,
+  which holds the pathspec.
 - **A credential that cannot write releases ⇒ advice (`token-repo-write`).**
   Only `glyph release` writes; every read command is unaffected, and doctor must
   not red the fleet's read-side wiring over a command a repository does not use.
@@ -3069,8 +3229,83 @@ The severities are the argued part:
   in the run, not in the check suite, not in the API (measured, glyph-test3
   2026-08-26: three pushes, three silent `startup_failure`s). The required-set
   is a table mirroring the shipped reusables' `workflow_call.inputs`, held
-  lockstep by test exactly as the permissions table is; today it holds one row
-  (`release.yml`: `install-notes`).
+  lockstep by test exactly as the permissions table is. Both caller checks read
+  every workflow file, and one they cannot read leaves them `unknown`, never
+  skipped: skipping it once turned `chmod 000` on a failing caller into a pass
+  whose observation claimed no caller existed — the pin check's own unknown
+  did not cover it, because that one answers whether a ref is concrete, not
+  whether a caller starts. A defect observed in a file that was read still
+  fails (`TestCallerChecksNeverPassOverAnUnreadableFile`, mutation row
+  `doctor-caller-checks-skip-an-unreadable-file`).
+- **Both caller checks judge a caller at the release it pins, and only where
+  this binary can speak for that release — any other caller is `unknown`,
+  never a verdict.** GitHub starts a caller against the reusable at the
+  caller's `@ref`; the two tables mirror the reusables of the tree this binary
+  was built from. They are one object only while the declarations hold still,
+  and they have moved: read with the checks' own parsers at every release tag
+  (33 on 2026-09-29, and confirmed with an independent YAML parser by the
+  ruling's review), `lint.yml` gained `pull-requests: read` at v2.0.0 and
+  `release.yml` stopped requiring `app` at v0.8.0. Judging every pin by the
+  running binary's tables was wrong both ways at adfc5e1: a `lint.yml@v1.0.0`
+  caller granting exactly what v1.0.0 declares failed at `3` — crying wolf, on
+  nine of the 57 local checkouts measured (stale branches and worktrees, each
+  granting `contents: read` at a lint tag that declares nothing more) — and a
+  `release.yml@v0.4.0` caller omitting the `app` v0.4.0 requires passed, the
+  silent startup death this check exists for. So each table row also names the
+  newest release whose reusable declared otherwise (`After`, verified against
+  glyph's own tags by `TestCallerDeclarationBoundsMatchReleasedTags` — all 34
+  plain tags through v4.3.0 on 2026-10-05), and a caller is judged when it
+  pins a release tag above its row's bound and — for a stamped build, which
+  knows its own release — not above that release. Everything else is
+  could-not-run: at or below the bound the binary knows the declarations
+  differ but not what they were; above its own release it cannot know; a
+  branch moves, and a sha names a commit doctor cannot map to a release
+  offline (`workflow-glyph-pins` already fails both); and a call into a
+  reusable this binary has no row for — one added after it was built — is
+  unjudged too, never skipped (skipped, a `notes.yml@v5.0.0` caller passed as
+  "no workflow calls a glyph reusable … observed — not assumed", measured by
+  the review). A defect observed in any judged caller still fails, and the
+  no-`permissions:`-block exemption runs before the pin rule, so a block-less
+  caller at an old pin is the exemption's pass. An unreleased build — `dev`, a
+  Go pseudo-version, or `build.sh`'s git-describe stamp (`v4.2.0-3-g…`) — has
+  no upper end and trusts its own tree, which misjudges only a release cut
+  after a declaration change the build predates. Those stamps are read with
+  `bump.ParseVersion`, never `ParseBaseVersion`, which would read the describe
+  stamp as its base triple v4.2.0 and cap the build there: every pin above
+  v4.2.0 would be `unknown` to a tree built past it (the pseudo-version case of
+  `TestCallerChecksJudgeTheCallerAtItsPin`; mutation row
+  `doctor-caller-checks-cap-an-unreleased-build-at-its-base-tag`).
+  This is not a latest-ness check — the pin check's stance holds: a pin
+  several releases old whose reusable declares what this tree declares is
+  judged exactly, offline. The price, said once: when a newer glyph moves a
+  bound, a caller pinned at or below it is could-not-run for that glyph until
+  its pin moves. Two alternatives lost. A per-tag history table, judging every
+  pin at its own release: for every era today's bounds retire no release
+  binary carries those facts either — the checks arrived at v2.1.0 and v3.1.0,
+  after every bound (glyph v0.4.0 has no doctor at all; v1.0.0's has no caller
+  checks) — and no live pin sits there (every live pin was v4.2.0 on
+  2026-09-29, above every bound); any future bound is v4.2.0 or later, and the doctor of a pin from
+  v3.1.0 on judges its own reusables exactly, so a history table would serve no
+  caller. The `Fix` therefore offers "run the doctor of the release you pin"
+  only for a pin at or above the check's first release (mutation row
+  `doctor-caller-fix-offers-a-doctor-below-its-floor`). Rewording to "what
+  this glyph declares" and degrading pins older than the binary lost too: the
+  source-build wrapper doctor actually runs as reports `dev` (measured
+  2026-09-29), where "older than the binary" is undefined, and a release that
+  left the declarations alone would stop judging the fleet's pins for
+  nothing. It is the hooks' rule seen from the other side: each artefact is
+  judged against what executes with it — a hook against the binary on
+  `PATH`, a caller against the reusable at its pin. The bound moves only when
+  a reusable's grants or required inputs change, and the lockstep tests fail
+  at exactly that commit; its own test needs glyph's tags, so `build.yml`'s
+  `extras` job checks out full history to run it under
+  `GLYPH_RELEASE_HISTORY=required`, and `scripts/check.sh` mirrors it as the
+  `release-history` gate (a depth-1 checkout, or the mutation ledger's
+  `.git`-less snapshot, skips it). Mutation rows
+  `doctor-caller-checks-judge-every-pin-by-this-tree`,
+  `doctor-caller-checks-trust-a-binary-older-than-the-pin`,
+  `doctor-caller-checks-skip-a-reusable-they-do-not-know` and
+  `doctor-caller-perms-judges-the-pin-before-the-exemption`.
 - **A stale glyph-written hook ⇒ fail; no hook at all ⇒ pass.** One check per
   kind (`commit-msg-hook`, `pre-push-hook`), because a `Check` carries ONE
   observed/expected pair and folding the two would collapse "commit-msg current,
@@ -3110,7 +3345,46 @@ The severities are the argued part:
   not vouch for. Executing the hook glyph itself wrote is still read-only in the
   sense the report claims — the hook lints a scratch file and changes nothing.
   A probe that cannot run, or an exit outside the script's own two-code
-  vocabulary, is unknown, never a verdict.
+  vocabulary, is unknown, never a verdict. So is a pass-through on a checkout
+  whose `glyph.toml` does not load: the fired lint exits `2` there (`4` when
+  the file cannot be read) before judging anything and the hook waves both
+  through as `0`, so that `0` is the
+  config's absence answering and `glyph-toml-loads` owns the finding. Failing
+  it sent the reader to repair a PATH wrapper nothing had observed broken
+  (`TestHookFiresDefersAPassThroughToAnUnloadedConfig`, mutation row
+  `doctor-hook-fires-blames-the-path-for-an-unloaded-config`).
+- **A byte-identical pre-push hook nobody fired ⇒ advice (`pre-push-hook`).**
+  Only commit-msg is fired, and its answer covers pre-push because both hooks
+  resolve one `PATH` — which holds while a byte-identical commit-msg hook sits
+  beside the pre-push one, as the default `glyph hook install` writes them.
+  Two states break it with every check green: pre-push installed alone by name,
+  and a commit-msg hook deleted or replaced after install (the default install
+  cannot get there by itself: it refuses a foreign commit-msg at `2` and,
+  planning every kind before writing any, writes neither). Nothing is fired
+  in either, and a pre-push hook over a glyph that cannot answer lets every
+  push through. So the pre-push check says the glyph on `PATH` was not
+  executed, at the severity of a hook glyph did not write: a standing choice,
+  rare (none of 52 clones in t-2etd's census, 2026-09-27), and no reason to
+  move `ok` (`TestPrePushHookSaysWhenNothingWasFired`, mutation row
+  `doctor-pre-push-pass-vouches-for-an-unfired-path`). The same check carries
+  one more advice line for the same reason: the hook refuses a violation only
+  on the remote's default branch, read from `refs/remotes/<remote>/HEAD` — a
+  local ref, never the network — and a clone that does not record it warns
+  and exits `0` on every push (t-2etd's triage measured `0`, then `3` once
+  `git remote set-head origin -a` had run). `internal/cli` reads each remote's
+  recorded head through `gitsource.DefaultBranch` only when the pre-push hook
+  is byte-identical, so a checkout with no hook — every CI runner — pays
+  nothing; a read that fails is `unknown`, like any unread input
+  (`TestPrePushHookSaysWhenNoRemoteHeadIsRecorded`, mutation row
+  `doctor-pre-push-ignores-an-unrecorded-remote-head`). Firing pre-push itself
+  — a `PrePushProbe` beside the commit-msg one — stays unbuilt. It would carry
+  a fabricated push into a read-only diagnosis: a scratch repository, a bare
+  remote, a pushed base, a recorded remote HEAD and a violating commit (without
+  the recorded HEAD the same hook warned and exited 0, measured by t-2etd's
+  triage), for a question the commit-msg probe already answers on every
+  default install; and a new check id that can turn `ok` false on an unchanged
+  machine is a breaking change to the report. The residual states are named
+  instead of fired; the probe returns to the table if one is ever met.
 
 ## 8. Where we are
 
@@ -3135,7 +3409,9 @@ release body with `glyph notes --since-tag=below:TAG` run from the tagged
 commit (the predecessor resolved by the binary — the workflow once re-derived
 it in shell over git's refname sort and inherited the defect that sort has,
 t-s5n4) — so the
-notes renderer is dogfooded while the rolling-draft path is not exercised
+notes renderer is dogfooded — the compare link included, since `notes
+--since-tag` renders the line `release` composes (§4) — while the
+rolling-draft path (the upsert, the hand region, the footer) is not exercised
 end to end by anything in this repository. What holds `release.yml` here is
 `internal/workflows` (the install action stays single-source, the binary version
 is derived from the caller's pin, the commented caller stub keeps its `@vX.Y.Z`

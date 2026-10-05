@@ -1,8 +1,8 @@
 diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
-index 6d3c49e..1a09cca 100644
+index 3771f4c..00ceab8 100644
 --- a/internal/cli/release_lines.go
 +++ b/internal/cli/release_lines.go
-@@ -190,7 +190,8 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
+@@ -211,7 +211,8 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
  	if len(drafts) == 0 {
  		residual = append(residual, residue...)
  	} else {
@@ -11,4 +11,4 @@ index 6d3c49e..1a09cca 100644
 +		residual = nil
  	}
  
- 	// The target resolves before the dry-run fork (Q4: only the writes are
+ 	result := releaseResult{Commits: rows, Packages: verdicts, Pulls: w.Facts.Pulls, Reason: reason}

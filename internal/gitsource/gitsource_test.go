@@ -483,6 +483,189 @@ func TestMergedTagsOnAnUnbornHEADIsEmpty(t *testing.T) {
 	}
 }
 
+// TestHeadTreesListsWhatHEADRecordsAsADirectory: the package-paths check asks
+// git, not the filesystem, whether a declared path is a subtree, because
+// attribution reads git's path strings (t-fdd8 (1)). So the listing must be
+// every tree HEAD records at any depth, byte for byte, and nothing else: a
+// symlink to a directory is a 120000 blob, a directory on disk HEAD does not
+// hold is not tracked, and asking from a subdirectory still answers for the
+// whole tree (ls-tree without --full-tree lists only cwd's part, relative to
+// it). A submodule's gitlink IS listed: attribution's owner matches a file
+// equal to a package path, so a path naming a submodule claims its bumps, and
+// a listing narrowed to trees would fail a path attribution still carries. An
+// unborn HEAD records no tree to answer from, which is an error the caller
+// renders as could-not-run.
+func TestHeadTreesListsWhatHEADRecordsAsADirectory(t *testing.T) {
+	dir := newRepo(t)
+	gitlink := "160000," + git(t, dir, "akira-toriyama", "rev-parse", "HEAD") + ",sub"
+	for _, rel := range []string{"haiku/a", "travel/onsen/b"} {
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(rel+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink("haiku", filepath.Join(dir, "currylink")); err != nil {
+		t.Fatal(err)
+	}
+	git(t, dir, "akira-toriyama", "add", "-A")
+	git(t, dir, "akira-toriyama", "update-index", "--add", "--cacheinfo", gitlink)
+	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= lay out the lines")
+	if err := os.MkdirAll(filepath.Join(dir, "untracked"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, from := range []string{dir, filepath.Join(dir, "travel")} {
+		got, err := HeadTrees(context.Background(), from)
+		if err != nil {
+			t.Fatalf("HeadTrees(%s): %v", from, err)
+		}
+		if want := []string{"haiku", "sub", "travel", "travel/onsen"}; !slices.Equal(got, want) {
+			t.Errorf("HeadTrees(%s) = %q, want %q — HEAD's trees at any depth and its gitlink, from the top, and no symlink or untracked directory", from, got, want)
+		}
+	}
+
+	unborn := t.TempDir()
+	git(t, unborn, "akira-toriyama", "init", "-q", "-b", "main")
+	if got, err := HeadTrees(context.Background(), unborn); err == nil {
+		t.Errorf("HeadTrees on an unborn HEAD = %q, nil; want an error — no tree was recorded to answer from", got)
+	}
+	_, err := HeadTrees(context.Background(), t.TempDir())
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
+		t.Fatalf("HeadTrees outside a repository = %v, want CodeAPI", err)
+	}
+}
+
+// TestDefaultBranchReadsARemoteNoRefCanNameAsUnrecorded: "" means nothing
+// records the remote's default branch, and a remote whose name git's refs
+// refuse (`remote.mirror..x.url` — config accepts it, `git remote add` does
+// not) can have nothing recorded. git answers the two differently — an absent
+// ref exits 1, a name no ref can carry exits 128 "No such ref" (measured on
+// git 2.54) — and read as a failure the second made every caller's "nothing
+// recorded" arm unreachable for that remote. A read that really fails, outside
+// a repository, is still an error.
+func TestDefaultBranchReadsARemoteNoRefCanNameAsUnrecorded(t *testing.T) {
+	dir := newRepo(t)
+	git(t, dir, "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+
+	for remote, want := range map[string]string{"origin": "main", "upstream": "", "mirror..x": ""} {
+		got, err := DefaultBranch(context.Background(), dir, remote)
+		if err != nil || got != want {
+			t.Errorf("DefaultBranch(%q) = %q, %v; want %q, nil", remote, got, err, want)
+		}
+	}
+
+	_, err := DefaultBranch(context.Background(), t.TempDir(), "origin")
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
+		t.Fatalf("DefaultBranch outside a repository = %v, want CodeAPI", err)
+	}
+}
+
+// TestActionFilesListsWhatGitCounts pins the pin scan's file set (DESIGN §7,
+// D2b): every action.yml / action.yaml git counts as part of the checkout, at
+// any path — tracked (an initialized submodule's tracked files included) plus
+// untracked files no ignore rule excludes — and nothing the filesystem merely
+// holds. A submodule's composite was caught by the old filesystem walk and is
+// in scope by the same principle; `--recurse-submodules` cannot be combined
+// with --others (git: "unsupported mode"), hence two listings. A tracked file
+// deleted in the working tree is still listed (the caller reads its absence as
+// observed); a sparse-checkout entry is listed and flagged, because its bytes
+// were never put on disk to read.
+func TestActionFilesListsWhatGitCounts(t *testing.T) {
+	sub := newRepo(t)
+	writeFiles(t, sub, "inst/action.yml")
+	git(t, sub, "akira-toriyama", "add", "-A")
+	git(t, sub, "akira-toriyama", "commit", "-q", "-m", ":tada:= a shared composite")
+
+	dir := newRepo(t)
+	writeFiles(t, dir, "action.yml", ".github/actions/a/action.yml", "tools/installer/action.yaml",
+		"docs/action.yml.md", "tools/sparse/action.yml", "tools/gone/action.yml", "build/dep/action.yml")
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("build/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git(t, dir, "akira-toriyama", "add", "-A")
+	git(t, dir, "akira-toriyama", "-c", "protocol.file.allow=always", "submodule", "--quiet", "add", sub, ".github/actions/shared")
+	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= lay out the actions")
+	writeFiles(t, dir, "untracked/action.yml")
+	git(t, dir, "akira-toriyama", "update-index", "--skip-worktree", "tools/sparse/action.yml")
+	for _, gone := range []string{"tools/sparse/action.yml", "tools/gone/action.yml"} {
+		if err := os.Remove(filepath.Join(dir, filepath.FromSlash(gone))); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := ActionFiles(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("ActionFiles: %v", err)
+	}
+	want := []ActionFile{
+		{Path: ".github/actions/a/action.yml"},
+		{Path: ".github/actions/shared/inst/action.yml"},
+		{Path: "action.yml"},
+		{Path: "tools/gone/action.yml"},
+		{Path: "tools/installer/action.yaml"},
+		{Path: "tools/sparse/action.yml", SkipWorktree: true},
+		{Path: "untracked/action.yml"},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("ActionFiles =\n  %+v\nwant\n  %+v\n(no ignored build/dep/action.yml, no docs/action.yml.md; the submodule's composite and the untracked one in)", got, want)
+	}
+
+	_, err = ActionFiles(context.Background(), t.TempDir())
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
+		t.Fatalf("ActionFiles outside a repository = %v, want CodeAPI", err)
+	}
+}
+
+// writeFiles writes a one-line file at each slash path under dir.
+func writeFiles(t *testing.T, dir string, rels ...string) {
+	t.Helper()
+	for _, rel := range rels {
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(rel+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestIsTagIsAnExactRef: IsTag answers whether refs/tags/<name> exists, and
+// nothing else names one — a branch, a sha, and a revision expression over a
+// real tag (`v0.1.0~0`, which rev-parse would resolve to the tag's commit)
+// are all NO, as an answer rather than an error; an annotated, prefixed tag
+// is a YES. Outside a repository it fails as git/IO.
+func TestIsTagIsAnExactRef(t *testing.T) {
+	dir := newRepo(t)
+	git(t, dir, "akira-toriyama", "tag", "v0.1.0")
+	git(t, dir, "akira-toriyama", "tag", "-a", "-m", "annotated", "curry/v0.1.0")
+	git(t, dir, "akira-toriyama", "branch", "old-main")
+	sha := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
+	for name, want := range map[string]bool{
+		"v0.1.0":       true,
+		"curry/v0.1.0": true,
+		"old-main":     false,
+		sha:            false,
+		"v0.1.0~0":     false,
+		"v0.1.0^{}":    false,
+		"v0.2.0":       false,
+	} {
+		got, err := IsTag(context.Background(), dir, name)
+		if err != nil || got != want {
+			t.Errorf("IsTag(%q) = %v, %v; want %v, nil", name, got, err, want)
+		}
+	}
+
+	_, err := IsTag(context.Background(), t.TempDir(), "v0.1.0")
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
+		t.Fatalf("IsTag outside a repository = %v, want CodeAPI", err)
+	}
+}
+
 // TestTagListingsStayOnePerLineUnderColumnConfig: column.ui=always — and
 // column.tag=always, the same switch for this one command — lays `git tag
 // --list` out in columns even into a pipe (measured on git 2.54), so three tags

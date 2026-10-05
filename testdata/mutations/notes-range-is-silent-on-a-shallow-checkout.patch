@@ -1,21 +1,13 @@
 diff --git a/internal/cli/cmd_notes.go b/internal/cli/cmd_notes.go
-index 5fa659f..c870535 100644
+index 2c37a82..f129986 100644
 --- a/internal/cli/cmd_notes.go
 +++ b/internal/cli/cmd_notes.go
-@@ -6,6 +6,7 @@ import (
- 
- 	"github.com/akira-toriyama/glyph/v4/internal/config"
- 	"github.com/akira-toriyama/glyph/v4/internal/core"
-+	"github.com/akira-toriyama/glyph/v4/internal/gitsource"
- 	"github.com/akira-toriyama/glyph/v4/internal/notes"
- 	"github.com/spf13/cobra"
- )
-@@ -98,7 +99,7 @@ func notesInput(cmd *cobra.Command, cfg *config.Config) ([]notes.SigilCommit, st
+@@ -111,7 +111,7 @@ func notesInput(cmd *cobra.Command, cfg *config.Config) ([]notes.SigilCommit, st
  	if err := checkRangeFlag(notesRange); err != nil {
- 		return nil, "", err
+ 		return nil, "", "", err
  	}
 -	raws, err := logRange(ctx, notesRange)
 +	raws, err := gitsource.Log(ctx, ".", notesRange)
- 	return noteCommits(raws, 0), notesRange, err
+ 	return noteCommits(raws, 0), notesRange, "", err
  }
  

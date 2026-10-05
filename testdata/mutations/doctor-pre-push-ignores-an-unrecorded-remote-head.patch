@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/hook.go b/internal/doctor/hook.go
+index 71c0c13..326f430 100644
+--- a/internal/doctor/hook.go
++++ b/internal/doctor/hook.go
+@@ -261,7 +261,7 @@ func checkPrePushHook(dir string, dirErr error, probe *HookProbe, heads map[stri
+ 	}
+ 	var unrecorded []string
+ 	for remote, branch := range heads {
+-		if branch == "" {
++		if false && branch == "" {
+ 			unrecorded = append(unrecorded, remote)
+ 		}
+ 	}

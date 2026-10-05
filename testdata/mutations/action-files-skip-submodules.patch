@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index b02ddc9..3e579a0 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -365,7 +365,7 @@ var actionSpecs = []string{"--", ":(glob)**/action.yml", ":(glob)**/action.yaml"
+ // Ask it at the top level: ls-files reports paths relative to the directory
+ // it runs in, and lists only that directory's part of the tree.
+ func ActionFiles(ctx context.Context, dir string) ([]ActionFile, error) {
+-	tracked, err := run(ctx, dir, append([]string{"ls-files", "-z", "-t", "--cached", "--recurse-submodules"}, actionSpecs...)...)
++	tracked, err := run(ctx, dir, append([]string{"ls-files", "-z", "-t", "--cached"}, actionSpecs...)...)
+ 	if err != nil {
+ 		return nil, err
+ 	}

@@ -10,6 +10,8 @@ v0.2.0
 
 - :bug:~ fix a crash (#8) @akira-toriyama
 
+**Full Changelog**: https://127.0.0.1/akira-toriyama/glyph/compare/v0.1.0...cafe1234cafe1234cafe1234cafe1234cafe1234
+
 ---
 
 ## Install

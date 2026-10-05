@@ -169,6 +169,7 @@ func TestRemainingChecksDescribeMeasuredBehaviour(t *testing.T) {
 		".github/workflows/w.yml":          "jobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - run: \"true\"\n",
 		".github/actions/setup/action.yml": "runs:\n  using: composite\n  steps:\n    - uses: akira-toriyama/glyph/.github/actions/install@main\n",
 	})
+	movingComposite.ActionFiles = gitListed(t, movingComposite.Root)
 
 	tests := []struct {
 		name    string

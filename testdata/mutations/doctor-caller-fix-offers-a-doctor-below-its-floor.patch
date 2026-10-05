@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/callerpin.go b/internal/doctor/callerpin.go
+index 2770066..c76b6a0 100644
+--- a/internal/doctor/callerpin.go
++++ b/internal/doctor/callerpin.go
+@@ -68,7 +68,7 @@ func judgeAt(ref, after, glyph, floor string) *notJudged {
+ 		// 2026-10-05: workflow-caller-permissions first ships at v2.1.0,
+ 		// workflow-caller-inputs at v3.1.0), so below the floor the offer would
+ 		// send the reader to a check that does not exist.
+-		if f, ferr := bump.ParseVersion(floor); ferr == nil && pin.Compare(f) >= 0 {
++		if f, ferr := bump.ParseVersion(floor); ferr == nil && (pin.Compare(f) >= 0 || true) {
+ 			nj.Remedy += ", or run doctor with glyph " + ref + ", whose tables are lockstep with its own reusables"
+ 		}
+ 		return nj

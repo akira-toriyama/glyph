@@ -42,10 +42,19 @@ import (
 // no tag UNDER the bound is not no tag at all, and a line's diagnosis must
 // not be a sentence `git tag -l` refutes (t-gt9n) — which is also why each
 // cause is stated of HEAD's history, the set the base is read from.
+//
+// BaseTag is the tag the line's range starts from, in its own spelling — the
+// compare link's left side (compareLink) — and "" when the walk has no tag
+// base: the whole history, a --range fold, or a typed value that is no tag
+// (tagBase). It is a field rather than cut out of Range because Range cannot
+// say it: the single line's whole-history Range is "HEAD", a packages
+// line's is "", a typed branch looks like any tag, and Base is the parsed
+// version, whose String() re-adds the v a bare `1.0.0` tag does not have.
 type line struct {
 	Package config.Package
 	Line    config.Line
 	Base    *bump.Version
+	BaseTag string
 	Source  string
 	Range   string
 	Bound   string
@@ -106,11 +115,11 @@ type sinceTagWalk struct {
 // over is decided by the subset.
 func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string, scope *walkScope) ([]line, string, error) {
 	if len(cfg.Packages) == 0 {
-		revRange, base, err := sinceTagRange(ctx, cfg, tagFlag)
+		revRange, baseTag, base, err := sinceTagRange(ctx, cfg, tagFlag)
 		if err != nil {
 			return nil, "", err
 		}
-		return []line{{Base: base, Source: revRange, Range: revRange}}, revRange, nil
+		return []line{{Base: base, BaseTag: baseTag, Source: revRange, Range: revRange}}, revRange, nil
 	}
 	tag := strings.TrimSpace(tagFlag)
 	var lines []line
@@ -142,13 +151,17 @@ func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string,
 		l.Bound = rest
 		lines = []line{l}
 	default:
+		baseTag, terr := tagBase(ctx, tag)
+		if terr != nil {
+			return nil, "", terr
+		}
 		prefix, _ := bump.SplitTag(tag)
 		if shape, perr := bump.ParseBaseVersionOn(prefix, tag); perr == nil {
 			p, ok := packageOnLine(cfg, prefix, shape.Major)
 			if !ok {
 				return nil, "", core.Usagef("--since-tag=%s names the %s line, which no [[packages]] entry declares (declared lines: %s)", tag, config.Line{Prefix: prefix}.Label(), declaredLines(cfg))
 			}
-			l := line{Package: p, Line: cfg.LineOf(p), Source: tag + "..HEAD", Range: tag + "..HEAD"}
+			l := line{Package: p, Line: cfg.LineOf(p), BaseTag: baseTag, Source: tag + "..HEAD", Range: tag + "..HEAD"}
 			if v, verr := bump.ParseVersionOn(prefix, tag); verr == nil {
 				// A plain version is the step base too — the walk base and the
 				// step base are ONE tag (sinceTagRange). A candidate is not, and
@@ -159,7 +172,7 @@ func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string,
 			break
 		}
 		for _, p := range cfg.Packages {
-			lines = append(lines, line{Package: p, Line: cfg.LineOf(p), Source: tag + "..HEAD", Range: tag + "..HEAD"})
+			lines = append(lines, line{Package: p, Line: cfg.LineOf(p), BaseTag: baseTag, Source: tag + "..HEAD", Range: tag + "..HEAD"})
 		}
 	}
 	union, err := unionRange(ctx, cfg, scopedLines(lines, scope), scopeEscape(scope))
@@ -212,7 +225,7 @@ func lineFromLatest(ctx context.Context, cfg *config.Config, p config.Package, b
 	if latest == "" {
 		return line{Package: p, Line: tl, Base: &bump.Version{}, Source: "HEAD"}, nil
 	}
-	return line{Package: p, Line: tl, Base: &v, Source: latest + "..HEAD", Range: latest + "..HEAD"}, nil
+	return line{Package: p, Line: tl, Base: &v, BaseTag: latest, Source: latest + "..HEAD", Range: latest + "..HEAD"}, nil
 }
 
 // unionRange is the one range the walk runs over: a single line's own range;

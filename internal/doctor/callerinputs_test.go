@@ -10,7 +10,7 @@ import (
 // callerWith renders a minimal workflow calling one glyph reusable, with the
 // given with: block spliced in verbatim under the job ("" omits it).
 func callerWith(reusable, with string) string {
-	b := "name: caller\non:\n  pull_request:\njobs:\n  j:\n    uses: akira-toriyama/glyph/.github/workflows/" + reusable + "@v1.2.3\n"
+	b := "name: caller\non:\n  pull_request:\njobs:\n  j:\n    uses: akira-toriyama/glyph/.github/workflows/" + reusable + "@v4.2.0\n"
 	if with != "" {
 		b += with + "\n"
 	}
@@ -25,22 +25,24 @@ func callerWith(reusable, with string) string {
 // crude discipline the check itself lives by — a `required: true` line inside
 // the workflow_call inputs block belongs to the nearest input key above it.
 func TestReusableRequiredInputsMatchTheShippedWorkflows(t *testing.T) {
-	for reusable, want := range reusableRequiredInputs {
+	for reusable, row := range reusableRequiredInputs {
 		body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", reusable))
 		if err != nil {
 			t.Fatalf("reading the shipped reusable: %v", err)
 		}
 		got := shippedRequiredInputs(t, string(body))
 		wantSet := map[string]bool{}
-		for _, w := range want {
+		for _, w := range row.Required {
 			wantSet[w] = true
 		}
 		if len(got) != len(wantSet) {
-			t.Fatalf("%s requires %v but reusableRequiredInputs says %v", reusable, got, want)
+			t.Fatalf("%s requires %v but reusableRequiredInputs says %v — update the row, and move its After to the newest "+
+				"release tag: every release so far required otherwise", reusable, got, row.Required)
 		}
 		for name := range got {
 			if !wantSet[name] {
-				t.Errorf("%s marks %q required but the table does not list it — the check now blesses callers GitHub kills", reusable, name)
+				t.Errorf("%s marks %q required but the table does not list it — the check now blesses callers GitHub kills. "+
+					"Add it, and move the row's After to the newest release tag", reusable, name)
 			}
 		}
 	}
@@ -113,7 +115,7 @@ func TestCallerInputsOutcomes(t *testing.T) {
 		{
 			name: "with: written ABOVE its uses: — YAML orders siblings freely",
 			files: map[string]string{"release.yml": "name: caller\non:\n  push:\njobs:\n  j:\n" +
-				blockWith + "    uses: akira-toriyama/glyph/.github/workflows/release.yml@v1.2.3\n"},
+				blockWith + "    uses: akira-toriyama/glyph/.github/workflows/release.yml@v4.2.0\n"},
 			want: StatusPass,
 		},
 		{
@@ -135,7 +137,7 @@ func TestCallerInputsOutcomes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := checkCallerInputs(checkoutWith(t, tt.files), true)
+			c := checkCallerInputs(checkoutWith(t, tt.files), true, "dev")
 			if c.Status != tt.want {
 				t.Fatalf("status = %s, want %s (observed %q, details %v)", c.Status, tt.want, c.Observed, c.Details)
 			}
@@ -156,9 +158,9 @@ func TestCallerInputsOutcomes(t *testing.T) {
 // unknown, because a wrong working directory reads exactly the same.
 func TestAbsentWorkflowsDirSplitsOnRootProvenance(t *testing.T) {
 	checks := map[string]func(string, bool) Check{
-		"workflow-glyph-pins":         checkWorkflowPins,
-		"workflow-caller-permissions": checkCallerPermissions,
-		"workflow-caller-inputs":      checkCallerInputs,
+		"workflow-glyph-pins":         func(r string, v bool) Check { return checkWorkflowPins(r, v, nil, nil) },
+		"workflow-caller-permissions": func(r string, v bool) Check { return checkCallerPermissions(r, v, "dev") },
+		"workflow-caller-inputs":      func(r string, v bool) Check { return checkCallerInputs(r, v, "dev") },
 	}
 	for name, fn := range checks {
 		t.Run(name, func(t *testing.T) {

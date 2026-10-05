@@ -61,8 +61,8 @@ a baseline**.
 | `glyph init` | writes a starting `glyph.toml` (`--gemoji` or `--conventional`) at the checkout's top level, from any subdirectory — the file everything else reads; an existing file refuses without `--force` |
 | `glyph lint` | commit-convention gate over `--range`, one `--message`, `--stdin`, or a PR title via `--pr` (the subject a squash merge lands): does one of the repository's patterns claim the message, and does it yield a sigil? |
 | `glyph bump` | the next version — or **"no release"** — from `--range`, `--pr`, or the release-time walk `--since-tag`; a commit no pattern claims refuses the whole range |
-| `glyph notes` | the release-notes body: `[[note.sections]]` order, one line per commit through the `note.line` template |
-| `glyph release` | upserts one rolling **draft** release (tag, target, body — `--footer-file` appends a per-repo Markdown footer); publishing — and therefore the tag — stays a human act |
+| `glyph notes` | the release-notes body: `[[note.sections]]` order, one line per commit through the `note.line` template — over `--since-tag`, closed by the range's compare link |
+| `glyph release` | upserts one rolling **draft** release (tag, target, body closed by the range's compare link — `--footer-file` appends a per-repo Markdown footer); publishing — and therefore the tag — stays a human act |
 | `glyph preview` | the whole merge-preview comment for a PR: what merging it does to the version, with the evidence; `--notes` folds the release-notes preview in |
 | `glyph doctor` | read-only checks that the repository still matches what glyph assumes; each failing check prints the command that fixes it |
 | `glyph hook install` | local `commit-msg` and `pre-push` hooks that run the same lint the CI gate runs |
@@ -144,7 +144,7 @@ attestation are checked, fail-closed):
 ```
 
 Never pin `@main`: a moving ref changes the workflow *and* the binary under
-you. `glyph doctor` flags any unpinned reference it finds in your workflows.
+you. `glyph doctor` flags any unpinned reference it finds in your workflows and actions.
 
 ## Getting started in your repository
 
@@ -445,7 +445,9 @@ refused on both — a pull's listing carries messages and no files.
 second draft on a line, retagged in place, a line that folds to none loses
 its residual draft), every line's upsert written before any stray is deleted
 (a write that fails on the second line leaves the first standing and exits
-`4`), `--footer-file` appended to every draft, and `--json` carrying
+`4`), each line's draft — and each line's `notes --since-tag` body — closing
+its notes with a compare link from that line's own base tag (none for a line
+with no tag), `--footer-file` appended to every draft, and `--json` carrying
 `packages: [{path, current, level, next, tag, body, action, url, commits,
 reason}]` with the scalars empty and `target` shared — omitted, as the single
 line omits it, when no line has a draft to write. A bare `vX.Y.Z` draft in a

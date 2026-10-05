@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/callerpin.go b/internal/doctor/callerpin.go
+index 01c7536..9add3ab 100644
+--- a/internal/doctor/callerpin.go
++++ b/internal/doctor/callerpin.go
+@@ -74,7 +74,7 @@ func judgeAt(ref, after, glyph, floor string) *notJudged {
+ 		}
+ 		return nj
+ 	}
+-	if own, err := bump.ParseVersion(glyph); err == nil && pin.Compare(own) > 0 {
++	if own, err := bump.ParseBaseVersion(glyph); err == nil && pin.Compare(own) > 0 {
+ 		return &notJudged{
+ 			Why:    fmt.Sprintf("%s is newer than this glyph (%s), which cannot know what that release declares", ref, glyph),
+ 			Remedy: "run doctor with glyph " + ref + " or later",
