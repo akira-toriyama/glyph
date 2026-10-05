@@ -185,8 +185,11 @@ func refusalOf(t *testing.T, files []string, scope string, sigil config.Sigil, p
 // (t-mfny (A); measured 2026-10-05 at 135eead: `Revert ":memo:(haiku)= …"`
 // exits 3, `:rewind:= Revert "…"` exits 0).
 func TestNoCarrierNamesOnlyTheEscapesTheCommitCanTake(t *testing.T) {
-	// Where a commit can carry a scope the declaration says the root takes a
-	// name: under the presets `path = "."` alone does not load.
+	// Where the loader would refuse the root's default name the declaration
+	// says the root takes a name: under the presets `path = "."` alone does
+	// not load. The caller says which (Sayable.RootNeedsName); no other field
+	// decides it — a scope only a warn pattern captures leaves the message
+	// nothing to write and the loader still asking for the name.
 	const declare = `declare the package these files belong to ([[packages]] path = "<its directory>"; path = "." and a name declare the root package, which holds every file no other package claims)`
 	const declareUnnamed = `declare the package these files belong to ([[packages]] path = "<its directory>"; path = "." declares the root package, which holds every file no other package claims)`
 	two := []config.Package{haiku, curry}
@@ -225,8 +228,18 @@ func TestNoCarrierNamesOnlyTheEscapesTheCommitCanTake(t *testing.T) {
 		},
 		"the shipped revert pattern": {
 			[]string{"README.md"}, config.SigilPatch, two,
-			pattern(config.Sayable{Pattern: 1, ElsewhereScopes: []string{"haiku", "curry"}, ElsewhereNone: true}),
+			pattern(config.Sayable{Pattern: 1, ElsewhereScopes: []string{"haiku", "curry"}, ElsewhereNone: true, RootNeedsName: true}),
 			"its files (README.md) belong to no declared package, and its sigil ~ claims a version impact nothing can carry: patterns[1], which claimed this message, fixes the sigil at ~ and captures no scope — reword it so another pattern claims it, with a scope naming the line it moves (one of haiku, curry) or as = so it moves no line, or " + declare,
+		},
+		"a scope only a warned pattern captures, files to declare": {
+			[]string{"README.md"}, config.SigilPatch, two,
+			pattern(config.Sayable{SigilGroup: true, None: true, RootNeedsName: true}),
+			"its files (README.md) belong to no declared package, and its sigil ~ claims a version impact nothing can carry: write = so it moves no line, or " + declare,
+		},
+		"a scope group that spells the root's default name": {
+			[]string{"README.md"}, config.SigilPatch, two,
+			pattern(config.Sayable{ScopeGroup: true, ScopeOptional: true, Scopes: []string{"haiku", "curry"}, SigilGroup: true, None: true}),
+			"its files (README.md) belong to no declared package, and its sigil ~ claims a version impact nothing can carry: name the line it moves in the scope (one of haiku, curry), write = so it moves no line, or " + declareUnnamed,
 		},
 		"a grammar with no scope, a root at its default name": {
 			nil, config.SigilPatch, bareRoot,

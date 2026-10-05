@@ -38,13 +38,13 @@ func TestSayableUnderTheShippedPresets(t *testing.T) {
 			src := append(append([]byte{}, data...), block...)
 
 			grammar := sayableOf(t, src, 0)
-			want := Sayable{Pattern: 0, ScopeGroup: true, ScopeOptional: true, Scopes: []string{"haiku", "core"}, SigilGroup: true, None: true}
+			want := Sayable{Pattern: 0, ScopeGroup: true, ScopeOptional: true, Scopes: []string{"haiku", "core"}, SigilGroup: true, None: true, RootNeedsName: true}
 			if !sameSayable(grammar, want) {
 				t.Errorf("patterns[0] = %+v, want %+v", grammar, want)
 			}
 
 			revert := sayableOf(t, src, 1)
-			want = Sayable{Pattern: 1, ElsewhereScopes: []string{"haiku", "core"}, ElsewhereNone: true}
+			want = Sayable{Pattern: 1, ElsewhereScopes: []string{"haiku", "core"}, ElsewhereNone: true, RootNeedsName: true}
 			if !sameSayable(revert, want) {
 				t.Errorf("patterns[1] = %+v, want %+v — the revert pattern fixes its sigil and captures no scope", revert, want)
 			}
@@ -55,6 +55,7 @@ func TestSayableUnderTheShippedPresets(t *testing.T) {
 func sameSayable(a, b Sayable) bool {
 	return a.Pattern == b.Pattern && a.ScopeGroup == b.ScopeGroup && a.ScopeOptional == b.ScopeOptional &&
 		a.SigilGroup == b.SigilGroup && a.None == b.None && a.ElsewhereNone == b.ElsewhereNone &&
+		a.RootNeedsName == b.RootNeedsName &&
 		slices.Equal(a.Scopes, b.Scopes) && slices.Equal(a.ElsewhereScopes, b.ElsewhereScopes)
 }
 
@@ -119,6 +120,7 @@ func TestSayableReadsTheClaimingPatternsOwnGroups(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			got := sayableOf(t, []byte("schema = 1\n[[patterns]]\n"+c.pattern+"\n"+wide+packages), 0)
 			c.want.ElsewhereScopes = []string{"haiku", "curry"}
+			c.want.RootNeedsName = true // wide's scope group is read and does not spell "."
 			if !sameSayable(got, c.want) {
 				t.Errorf("Sayable(0) = %+v, want %+v", got, c.want)
 			}
@@ -158,6 +160,43 @@ func TestSayableElsewhereCountsOnlyWhereALandedMessageMayGo(t *testing.T) {
 			}
 			if got.ScopeGroup || got.SigilGroup || len(got.Scopes) != 0 || got.None {
 				t.Errorf("the claiming pattern's own facts leaked from another pattern: %+v", got)
+			}
+		})
+	}
+}
+
+// TestSayableRootNeedsNameIsTheLoadersAnswer: whether a refusal says the root
+// declaration takes a name is the loader's verdict on `path = "."` alone —
+// every pattern whose groups a commit binds, a warn pattern included — and not
+// a reading of where a message could be reworded to, which leaves warn
+// patterns out. Each case is put to Load itself with the root declared and no
+// name, and the two must agree: a model of the loader's rule checked against
+// itself would have passed the defect. Read off the reword view, a file whose
+// only scope group sits in a warn pattern was told `path = "."` declares the
+// root package, and that file exits 2 (measured 2026-10-05 at d0c1da7 on
+// lint --range, bump --range, bump --since-tag and preview).
+func TestSayableRootNeedsNameIsTheLoadersAnswer(t *testing.T) {
+	const scopeless = "[[patterns]]\npattern = '^:[a-z_]+:(?P<semver_sigil>[=~^!%]) '\n"
+	for name, c := range map[string]struct {
+		patterns string
+		want     bool
+	}{
+		"no pattern captures a scope":             {scopeless, false},
+		"the claiming pattern captures one":       {"[[patterns]]\npattern = '^:[a-z_]+:(\\((?P<scope>[a-z0-9-]+)\\))?(?P<semver_sigil>[=~^!%]) '\n", true},
+		"only a warned pattern captures one":      {scopeless + "[[patterns]]\npattern = '^:[a-z_]+:\\((?P<scope>[a-z0-9-]+)\\)(?P<semver_sigil>[=~^!%]) '\nwarn = 'scoped subjects are discouraged here'\n", true},
+		"only a skip pattern captures one":        {scopeless + "[[patterns]]\npattern = '^Merge \\((?P<scope>[a-z]+)\\)'\nskip = true\n", false},
+		"only an unlandable pattern captures one": {scopeless + "[[patterns]]\npattern = '^fixup! \\((?P<scope>[a-z]+)\\)'\nunlandable = 'autosquash first'\n", false},
+		"a scope group that spells the default":   {"[[patterns]]\npattern = '^:[a-z_]+:(\\((?P<scope>[a-z0-9.-]+)\\))?(?P<semver_sigil>[=~^!%]) '\n", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			src := "schema = 1\n" + c.patterns + "\n[[packages]]\npath = \"haiku\"\n"
+			got := sayableOf(t, []byte(src), 0)
+			if got.RootNeedsName != c.want {
+				t.Errorf("RootNeedsName = %v, want %v", got.RootNeedsName, c.want)
+			}
+			_, err := Load([]byte(src + "\n[[packages]]\npath = \".\"\n"))
+			if refused := err != nil; refused != got.RootNeedsName {
+				t.Errorf("RootNeedsName = %v, but the loader's answer to the root declared with no name is: %v", got.RootNeedsName, err)
 			}
 		})
 	}

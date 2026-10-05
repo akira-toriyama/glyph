@@ -105,14 +105,16 @@ const quoted = 3
 // declaration is the escape only files open: a declaration that owns them.
 // The path is not guessed — glyph cannot tell a module from root CI or a docs
 // tree, and the first path segment of the canonical shared-only commit is
-// `.github`, a prefix the loader refuses (DESIGN §4.1, t-n5tw R1). Where a
-// commit can carry a scope the sentence says the root package takes a name:
-// the loader holds it to the scope grammar, and its default "." is no preset
-// scope's word, so `path = "."` alone would send the reader to a file that
-// does not load.
+// `.github`, a prefix the loader refuses (DESIGN §4.1, t-n5tw R1). Where the
+// loader would refuse the root's default name the sentence says the root
+// package takes a name: it holds that name to the scope grammar, and "." is
+// no preset scope's word, so `path = "."` alone would send the reader to a
+// file that does not load. Whether it would is the loader's to say
+// (Sayable.RootNeedsName), not something to read off what the message can
+// write.
 func declaration(say config.Sayable) string {
 	root := `path = "." declares the root package`
-	if say.ScopeGroup || len(say.ElsewhereScopes) > 0 {
+	if say.RootNeedsName {
 		root = `path = "." and a name declare the root package`
 	}
 	return `declare the package these files belong to ([[packages]] path = "<its directory>"; ` + root + `, which holds every file no other package claims)`
@@ -272,7 +274,7 @@ func (r *Refusal) sayable() config.Sayable {
 	if r.Pattern != nil {
 		return *r.Pattern
 	}
-	return config.Sayable{Pattern: -1, ScopeGroup: true, ScopeOptional: true, Scopes: r.Names, SigilGroup: true, None: true}
+	return config.Sayable{Pattern: -1, ScopeGroup: true, ScopeOptional: true, Scopes: r.Names, SigilGroup: true, None: true, RootNeedsName: true}
 }
 
 // orList joins alternatives: "a", "a, or b", "a, b, or c". The comma before

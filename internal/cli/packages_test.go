@@ -1246,6 +1246,75 @@ func TestLintRangePackagesScopelessGrammarOffersNoScope(t *testing.T) {
 	}
 }
 
+// customRepo is a two-line repository (haiku, curry) under a hand-written
+// pattern file — the shape a refusal's escapes are taken literally under,
+// where the presets cannot show what a grammar of another shape is told.
+// patterns is the file's [[patterns]] blocks; seed is its declaring commit's
+// message, which those patterns must claim.
+func customRepo(t *testing.T, patterns, seed string) string {
+	t.Helper()
+	dir := testutil.NewRepo(t)
+	writeFile(t, dir, "glyph.toml", "schema = 1\n\n"+patterns+"\n[note]\nline = '- $subject'\n"+packagesConfig)
+	writeFile(t, dir, "haiku/haiku.go", "package haiku\n")
+	writeFile(t, dir, "curry/curry.go", "package curry\n")
+	testGit(t, dir, "akira-toriyama", "add", ".")
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", seed)
+	return dir
+}
+
+// TestLintRangePackagesRootDeclarationTakesANameWhereTheLoaderAsksOne: the
+// declaration escape says the root takes a name exactly where the loader
+// would refuse its default — and whether it would is asked of the loader's own
+// check, a warn pattern's scope group included. Read off what a message could
+// be reworded to, which leaves warn patterns out, a file whose only scope
+// group sits in a warn pattern was told `path = "."` declares the root
+// package, and the file so written does not load (measured 2026-10-05: exit
+// 2). Each case takes the declaration as its finding words it and watches the
+// commit pass; the first also writes the declaration the finding must not
+// send anyone to.
+func TestLintRangePackagesRootDeclarationTakesANameWhereTheLoaderAsksOne(t *testing.T) {
+	const scopeless = "[[patterns]]\npattern = '^(?P<subject>:[a-z0-9_]+:(?P<semver_sigil>[=~^!%]) .+)'\n"
+	const warned = "\n[[patterns]]\npattern = '^(?P<subject>:[a-z0-9_]+:\\((?P<scope>[a-z0-9-]+)\\)(?P<semver_sigil>[=~^!%]) .+)'\nwarn = 'scoped subjects are discouraged here'\n"
+	for name, c := range map[string]struct {
+		patterns string
+		root     string // the clause the finding gives the root declaration
+		declared string // that declaration, written as worded
+	}{
+		"only a warned pattern captures a scope": {scopeless + warned, `path = "." and a name declare the root package`, "\n[[packages]]\npath = \".\"\nname = \"core\"\n"},
+		"no pattern captures a scope":            {scopeless, `path = "." declares the root package`, "\n[[packages]]\npath = \".\"\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := customRepo(t, c.patterns, ":tada:= declare the lines")
+			touch(t, dir, "akira-toriyama", ":bug:~ fix the readme", "README.md")
+			t.Chdir(dir)
+			file, err := os.ReadFile(filepath.Join(dir, "glyph.toml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
+			want := `: write = so it moves no line, or declare the package these files belong to ([[packages]] path = "<its directory>"; ` + c.root + ", which holds every file no other package claims)\n"
+			if code != 3 || !strings.Contains(stderr, want) {
+				t.Fatalf("exited %d; the finding must end %q:\n%s", code, want, stderr)
+			}
+
+			if strings.Contains(c.declared, "name") {
+				writeFile(t, dir, "glyph.toml", string(file)+"\n[[packages]]\npath = \".\"\n")
+				if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 2 {
+					t.Errorf("the root declared with no name exited %d, want 2 — the warn pattern's scope group cannot spell its default, which is why the finding says \"and a name\"\nstderr: %s", code, stderr)
+				}
+			}
+			writeFile(t, dir, "glyph.toml", string(file)+c.declared)
+			if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 0 {
+				t.Errorf("with the root declared as the finding words it lint exited %d, want 0\nstderr: %s", code, stderr)
+			}
+			if code, stdout, stderr := runGlyph(t, "bump", "--range", "HEAD~1..HEAD"); code != 0 || stdout != "v0.0.1\n" {
+				t.Errorf("with the root declared as the finding words it bump exited %d with %q, want 0 and the root line alone at v0.0.1\nstderr: %s", code, stdout, stderr)
+			}
+		})
+	}
+}
+
 // TestPackagesNameNoScopeCanSpellIsUsage: a package name the shipped grammar
 // cannot spell is a config that does not load — exit 2 on every verdict
 // command, the commit-msg hook's --message included — never the 3 whose one

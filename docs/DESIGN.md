@@ -1863,11 +1863,21 @@ nothing distinguishes the root package's own files from an undeclared
 module's, the reason no third state exists. So the refusal names the
 declaration beside the scope, and does not guess its path: glyph cannot tell
 which directory is the module, and the first path segment would have offered
-`path = ".github"` for root CI, a prefix the loader refuses (above). Where a
-commit can carry a scope it says the root declaration takes a name, since
-`path = "."` alone does not load there (above;
-`TestLintRangePackagesRawRevertNamesTheEscapesThatWork` declares it both
-ways).
+`path = ".github"` for root CI, a prefix the loader refuses (above). Where
+the loader would refuse the root's default name it says the root declaration
+takes a name, since `path = "."` alone does not load there (above). Whether
+it would is asked of the loader's own check, put to the default `.` over
+every pattern whose groups a commit binds, a `warn` pattern included. It is
+not read off where the message could be reworded to (below), which leaves
+`warn` patterns out: read that way, a file whose only scope group sits in a
+`warn` pattern was told `path = "."` declares the root package, and the file
+so written exits 2 at `lint --range`, `bump` and `preview` alike (measured
+2026-10-05). `TestSayableRootNeedsNameIsTheLoadersAnswer` puts each grammar
+to the loader itself;
+`TestLintRangePackagesRootDeclarationTakesANameWhereTheLoaderAsksOne` takes
+the declaration as worded under that grammar and under one that captures no
+scope, and `TestLintRangePackagesRawRevertNamesTheEscapesThatWork` under the
+presets (mutation row `refusal-declares-a-root-package-the-loader-refuses`).
 
 The escapes are asked of **this commit**, not of the file (t-mfny (A)). The
 loader holds the file to "some scope group spells every name" (above); which

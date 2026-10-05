@@ -52,6 +52,15 @@ type Sayable struct {
 	// for ElsewhereNone beside one that captures it.
 	ElsewhereScopes []string
 	ElsewhereNone   bool
+
+	// RootNeedsName: declaring the root package takes a name — the loader
+	// would refuse `path = "."` alone (rootNeedsName). It is the loader's
+	// answer and is derived from none of the fields above: they leave a warn
+	// pattern out as no form to send a message to, while the loader reads its
+	// scope group like any other. Decided from them, a file whose only scope
+	// group sits in a warn pattern was told `path = "."` declares the root
+	// package, and the file so written exits 2 (measured 2026-10-05).
+	RootNeedsName bool
 }
 
 // Sayable reports what a message patterns[i] claims can write, and what the
@@ -98,7 +107,22 @@ func (c *Config) Sayable(i int) (s Sayable, ok bool) {
 			s.ElsewhereScopes = append(s.ElsewhereScopes, pkg.Name)
 		}
 	}
+	s.RootNeedsName = c.rootNeedsName()
 	return s, true
+}
+
+// rootNeedsName asks the loader whether `[[packages]] path = "."` loads with
+// no name key: the root's default name put to checkScopeWord over the file's
+// own spellers. Asked, never restated — "which patterns count" kept in a
+// second place is what drifted from the loader.
+func (c *Config) rootNeedsName() bool {
+	spellers, err := scopeSpellers(c.Patterns)
+	if err != nil {
+		// Unreachable for a file Load accepted with packages declared, the
+		// only kind a refusal is worded for.
+		return true
+	}
+	return checkScopeWord(Package{Path: ".", Name: defaultName(".")}, false, spellers) != nil
 }
 
 // capture is one named group of one pattern as Match reads it: the last
