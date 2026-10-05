@@ -126,6 +126,11 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 	if cerr != nil {
 		return cerr
 	}
+	// Warned here, once per participating commit, and not per touched line
+	// below: per line, a warned commit on no line was silent in this preview
+	// while the single line's and packages bump said it, and one on two lines
+	// was said twice.
+	warnSigilVerdicts(pullRows)
 	onLine := map[string]bool{}
 	for _, commits := range perLine {
 		for _, r := range commits {
@@ -158,7 +163,6 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 		if cerr != nil {
 			return cerr
 		}
-		warnSigilVerdicts(rows)
 		latest, current, verr := latestVersionTag(ctx, cfg.LineOf(p), nil)
 		if verr != nil {
 			return verr

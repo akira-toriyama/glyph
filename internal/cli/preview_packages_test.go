@@ -3,6 +3,8 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -349,6 +351,65 @@ func TestPreviewPackagesCountsWhatTheFoldReads(t *testing.T) {
 				t.Errorf("the packages preview counts %d participating commit(s) where the single line counts %d for the same pull:\n%s", n, tc.count, stdout)
 			}
 			tc.check(t, stdout)
+		})
+	}
+}
+
+// TestPreviewPackagesWarnsEveryParticipatingCommitOnce: a pattern's warning
+// follows its commit into every command that folds it (warnSigilVerdicts: loud
+// in one and silent in another is how a warning dies). The packages preview
+// warned per touched line, so a warned commit on NO line was silent here while
+// the single line's preview said it — measured on 4a8183b: no warning against
+// one — and a commit on two lines was said twice. The whole listing's rows are
+// the pull's participating commits, and each is warned once.
+func TestPreviewPackagesWarnsEveryParticipatingCommitOnce(t *testing.T) {
+	const warning = "::warning::glyph: commit w1: a construction commit is legal here and unwelcome"
+	const warned = "[[patterns]]\npattern = '^(?P<subject>:construction:(?P<semver_sigil>[=~^!%]) .+)'\nwarn = 'a construction commit is legal here and unwelcome'\n\n"
+	// First match wins, so the warn pattern goes ahead of the preset's.
+	warnFirst := func(t *testing.T, dir string) {
+		t.Helper()
+		path := filepath.Join(dir, "glyph.toml")
+		b, err := os.ReadFile(path) // #nosec G304 -- a path under the test's own temp dir
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(b), "[[patterns]]\n") {
+			t.Fatalf("the fixture's glyph.toml declares no pattern to go ahead of")
+		}
+		if err := os.WriteFile(path, []byte(strings.Replace(string(b), "[[patterns]]\n", warned+"[[patterns]]\n", 1)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, files := range map[string][]string{
+		"on no line":   {"README.md"},
+		"on one line":  {"haiku/haiku.go"},
+		"on two lines": {"haiku/haiku.go", "curry/curry.go"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := walkServer(t, map[string]string{
+				pullCommitsPath(9):    `[` + apiCommit("w1", "akira-toriyama", ":construction:= scaffold the work") + `]`,
+				commitFilesPath("w1"): apiFiles(files...),
+			})
+
+			single, _ := testRepo(t)
+			warnFirst(t, single)
+			t.Chdir(single)
+			usePR(t, srv)
+			code, _, stderr := runGlyph(t, "preview", "--pr", "9")
+			if code != 0 || strings.Count(stderr, warning) != 1 {
+				t.Fatalf("positive control: the single line's preview exits 0 and says the warning once, got exit %d:\n%s", code, stderr)
+			}
+
+			dir, _ := packagesRepo(t)
+			warnFirst(t, dir)
+			t.Chdir(dir)
+			code, _, stderr = runGlyph(t, "preview", "--pr", "9")
+			if code != 0 {
+				t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
+			}
+			if n := strings.Count(stderr, warning); n != 1 {
+				t.Errorf("the packages preview says the warning %d time(s) for a commit the single line warns once:\n%s", n, stderr)
+			}
 		})
 	}
 }

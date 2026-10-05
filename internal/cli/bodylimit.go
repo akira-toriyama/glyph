@@ -90,10 +90,12 @@ func truncateComment(body string) string {
 // a blank line, then the tag on a line to itself.
 const detailsCloser = "\n\n</details>"
 
-// cutAtLine keeps at most budget characters of body and then backs up to the
-// end of the last whole line, so no construct is left half written ahead of
-// the notice. No budget keeps nothing: truncateComment's loop relies on a
-// shorter budget always giving a shorter head.
+// cutAtLine keeps at most budget characters of body, whole lines only, so no
+// construct is left half written ahead of the notice: a cut that falls inside
+// a line backs up to the end of the line before it, and one that falls exactly
+// at a line's end keeps that line — it fit. No budget keeps nothing:
+// truncateComment's loop relies on a shorter budget always giving a shorter
+// head.
 func cutAtLine(body string, budget int) string {
 	if budget <= 0 {
 		return ""
@@ -110,6 +112,9 @@ func cutAtLine(body string, budget int) string {
 		runes++
 	}
 	head := body[:cut]
+	if cut == len(body) || body[cut] == '\n' {
+		return head
+	}
 	if nl := strings.LastIndexByte(head, '\n'); nl > 0 {
 		head = head[:nl]
 	}

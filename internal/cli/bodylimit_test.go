@@ -140,6 +140,31 @@ func TestCommentTruncationClosesTheFoldItCutsInside(t *testing.T) {
 		t.Fatalf("what is kept must be the body's own text up to the end of a notes line, got …%q", kept[len(kept)-80:])
 	}
 
+	// The closer counts against the cap. Padding the subject a character at a
+	// time walks the cut's line end across every distance from the budget, the
+	// dozen shorter than a closer among them: there a closer appended to a head
+	// that already spent the budget posts a comment GitHub answers 422, and the
+	// verdict is missing on exactly the oversized pulls (mutation row
+	// preview-truncation-closers-overflow-the-cap). The budget is read off the
+	// notice as posted, so a reworded notice cannot empty the sweep, and
+	// `tight` is its positive control.
+	budget := commentBodyMaxChars - utf8.RuneCountInString(got[strings.Index(got, notice):])
+	tight := 0
+	for pad := range 64 {
+		padded := strings.Replace(body, "fix a crash", "fix a crash"+strings.Repeat("x", pad), 1)
+		if budget-utf8.RuneCountInString(cutAtLine(padded, budget)) < utf8.RuneCountInString(detailsCloser) {
+			tight++
+		}
+		out := truncateComment(padded)
+		opened, closed := foldLines(out)
+		if n := utf8.RuneCountInString(out); n > commentBodyMaxChars || opened != 1 || closed != 1 {
+			t.Fatalf("with the subject padded by %d the truncated comment is %d chars against the %d cap, %d block(s) opened and %d closed", pad, n, commentBodyMaxChars, opened, closed)
+		}
+	}
+	if tight == 0 {
+		t.Fatalf("positive control: no padding left the first cut within a closer of the budget, so the sweep never asked whether the closer fits")
+	}
+
 	// Depth, not a flag: every block open at the cut is closed, and one closed
 	// before it is left alone.
 	long := strings.Repeat("0123456789012345678901234567890123456789\n", 2000)
@@ -153,6 +178,32 @@ func TestCommentTruncationClosesTheFoldItCutsInside(t *testing.T) {
 	shut := truncateComment("<details>\ninner\n\n</details>\n" + long)
 	if opened, closed := foldLines(shut); opened != 1 || closed != 1 || !strings.HasSuffix(strings.SplitN(shut, notice, 2)[0], "9") {
 		t.Fatalf("a block closed before the cut gets no second closer: %d opened, %d closed", opened, closed)
+	}
+}
+
+// TestCutAtLineKeepsEveryLineThatFits: the cut keeps whole lines only, and a
+// line that ends exactly where the budget does is whole — it fit. Backing up
+// from that boundary as well dropped a line the cap had room for, and
+// truncateComment's second pass, which makes room for the closers, can land on
+// it again. A cut inside a line still backs up to the end of the line before.
+func TestCutAtLineKeepsEveryLineThatFits(t *testing.T) {
+	const body = "ab\ncd\nef\n"
+	for budget, want := range map[int]string{
+		0:   "",
+		4:   "ab",
+		5:   "ab\ncd",
+		6:   "ab\ncd",
+		7:   "ab\ncd",
+		8:   "ab\ncd\nef",
+		9:   body,
+		100: body,
+	} {
+		if got := cutAtLine(body, budget); got != want {
+			t.Errorf("cutAtLine(%q, %d) = %q, want %q", body, budget, got, want)
+		}
+	}
+	if got := cutAtLine("é\né\n", 1); got != "é" {
+		t.Errorf("the budget is characters, and a two-byte line that fits is kept: got %q", got)
 	}
 }
 

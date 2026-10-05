@@ -1,0 +1,14 @@
+diff --git a/internal/cli/bodylimit.go b/internal/cli/bodylimit.go
+index 0758e82..2ad348d 100644
+--- a/internal/cli/bodylimit.go
++++ b/internal/cli/bodylimit.go
+@@ -112,9 +112,6 @@ func cutAtLine(body string, budget int) string {
+ 		runes++
+ 	}
+ 	head := body[:cut]
+-	if cut == len(body) || body[cut] == '\n' {
+-		return head
+-	}
+ 	if nl := strings.LastIndexByte(head, '\n'); nl > 0 {
+ 		head = head[:nl]
+ 	}

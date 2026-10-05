@@ -202,7 +202,13 @@ pattern says it means:
   the machine verdict (`bump --json`'s `commits[].warn`), which `bump`,
   `release` and both of `preview`'s folds each announce. The invariant is
   deliberate — a warning loud at one gate and silent at another teaches the
-  reader that the loud gate is noise. `warn` on a `skip` pattern is a load
+  reader that the loud gate is noise. Under `[[packages]]` the preview
+  announces it over the pull's whole listing, once per participating commit:
+  announced per touched line, a warned commit on no line was silent there
+  while the single line's preview and packages `bump` said it, and one on two
+  lines was said twice (measured 2026-10-05,
+  `TestPreviewPackagesWarnsEveryParticipatingCommitOnce`; mutation row
+  `preview-packages-warns-per-touched-line`). `warn` on a `skip` pattern is a load
   error (a skipped commit is outside every verdict, so the warning would fire
   for nobody), and so is an empty `warn`. The key was made for the
   **v1-acceptance window** (t-37xj): the migration pattern that accepted a
@@ -1396,8 +1402,20 @@ with the rule and the notice *inside* the block, folded away under "Release
 notes preview" with the notes, and the closed one with both after it — asked
 of GitHub's own renderer the same day (`POST /markdown`, `gfm` mode, one body
 of each shape: `…</ul><hr><p>… truncated…</p></details>` against
-`…</ul></details><hr><p>… truncated…</p>`). Mutation row
-`preview-truncation-leaves-the-notes-fold-open`. The footer is past the cut
+`…</ul></details><hr><p>… truncated…</p>`), and of the real surface: both
+bodies posted as comments on a closed glyph-test pull and read back as
+`body_html`, the notice inside the open block on the unfixed cut and after
+`</details>` on the fixed one (glyph-test#118, posted and deleted). Mutation row
+`preview-truncation-leaves-the-notes-fold-open`. The closers are characters
+of the comment too, so the cut and what it must close are settled together
+against the cap: appended to a head that already spent the budget, a closer
+posts a comment GitHub answers 422, and the verdict is missing on exactly the
+oversized pulls. The test sweeps the cut's line end across every distance
+from the budget, a closer's dozen among them (mutation row
+`preview-truncation-closers-overflow-the-cap`). The cut keeps whole lines, and
+a line that ends exactly at the budget is one — it is kept
+(`TestCutAtLineKeepsEveryLineThatFits`, row
+`comment-cut-drops-a-line-that-fit`). The footer is past the cut
 either way: a truncated comment carries none. Moving the notes block behind
 the footer would keep it, at the price of a new layout for every comment that
 carries notes, and the cut would still fall inside the block with the notice
