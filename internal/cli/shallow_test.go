@@ -142,39 +142,171 @@ func TestLintRangePackagesAtAShallowBoundaryIsNotReadAsTheWholeTree(t *testing.T
 	})
 }
 
-// TestPackagesWalkCarriesAShallowBoundaryOnNoLine: the walk's side of the same
-// read. A --depth 1 clone's HEAD touched haiku/ alone, and its whole-tree diff
-// moved curry too (measured: both lines patch). The boundary is carried on no
-// line with a warning — the FilesCapped answer to files the walk could not
-// read — so no line moves on a diff nobody could compute. The full clone is
-// the control: haiku moves, curry does not.
-func TestPackagesWalkCarriesAShallowBoundaryOnNoLine(t *testing.T) {
-	dir, _ := packagesRepo(t)
-	fix := touch(t, dir, "akira-toriyama", ":bug:(haiku)~ fix a line", "haiku/haiku.go")
-	clone := shallowClone(t, dir, 1)
-
-	levels := func(v packagesVerdict) map[string]string {
-		out := map[string]string{}
-		for _, p := range v.Packages {
-			out[p.Path] = p.Level
-		}
-		return out
+// TestPackagesWalkPlacesAShallowBoundaryByScopeAndSigil: the walk's side of
+// the same read. A --depth 1 clone's HEAD touched haiku/ alone, and its
+// whole-tree diff moved curry too (measured: both lines patch). The boundary's
+// diff is unread, so rules 2–3 place it over no file, exactly as they place a
+// commit whose file listing GitHub answered with a 422 (DESIGN §4.1): a scope
+// naming a package carries it there, a refusal is withheld — the gate code
+// over files nobody read would be a verdict about nothing — and one warning
+// says where it went and that no file was read. The first cut carried it on no
+// line whatever its scope, so one walk placed a 422 by its scope and the
+// boundary nowhere. The price is pinned by the last two cases: a scope the
+// files contradict — another package's file, or one the root package owns —
+// moves the line it names, where the full clone refuses at 3. So is where the
+// step starts: a --depth 1 clone fetched no tag, and the line steps from
+// v0.0.0.
+func TestPackagesWalkPlacesAShallowBoundaryByScopeAndSigil(t *testing.T) {
+	type verdict struct {
+		haiku, curry string // levels
+		next         string // haiku's next version, "" when it does not move
 	}
-	t.Run("the full clone moves haiku alone", func(t *testing.T) {
-		t.Chdir(dir)
-		code, stdout, stderr := runGlyph(t, "bump", "--range", "HEAD~1..HEAD", "--json")
-		if got := levels(decodePackagesVerdict(t, stdout)); code != 0 || got["haiku"] != "patch" || got["curry"] != "none" {
-			t.Fatalf("bump --range exited %d with levels %v, want 0 with haiku patch and curry none\nstderr: %s", code, got, stderr)
+	read := func(t *testing.T, stdout string) verdict {
+		t.Helper()
+		var v verdict
+		for _, p := range decodePackagesVerdict(t, stdout).Packages {
+			switch p.Path {
+			case "haiku":
+				v.haiku, v.next = p.Level, p.Next
+			case "curry":
+				v.curry = p.Level
+			}
 		}
-	})
-	t.Run("the shallow clone moves no line on an unreadable diff", func(t *testing.T) {
-		t.Chdir(clone)
-		code, stdout, stderr := runGlyph(t, "bump", "--range", "HEAD", "--json")
-		if got := levels(decodePackagesVerdict(t, stdout)); code != 1 || got["haiku"] != "none" || got["curry"] != "none" {
-			t.Fatalf("bump --range exited %d with levels %v, want 1 with every line none\nstderr: %s", code, got, stderr)
+		return v
+	}
+	for _, tc := range []struct {
+		name, message, path string
+		root                bool    // declare the root package too
+		full                int     // the full clone's bump over the same commit
+		fullVerdict         verdict // not asked at 3, which prints no verdict
+		bump, notes         int     // the shallow clone's exits
+		shallow             verdict
+		warning             string
+	}{
+		{"its scope carries it, to the line its files move in the full clone",
+			":bug:(haiku)~ fix a line", "haiku/haiku.go", false,
+			0, verdict{"patch", "none", "v0.1.1"}, 0, 0, verdict{"patch", "none", "v0.0.1"},
+			"it is carried on haiku/ by its scope alone, with no file read"},
+		{"with no scope its refusal is withheld, never handed down as the gate code",
+			":bug:~ fix a line", "haiku/haiku.go", false,
+			0, verdict{"patch", "none", "v0.1.1"}, 1, 1, verdict{"none", "none", ""},
+			"which is not a verdict: the commit is carried nowhere"},
+		{"a = with no scope is on no line",
+			":memo:= reword a line", "haiku/haiku.go", false,
+			1, verdict{"none", "none", ""}, 1, 1, verdict{"none", "none", ""},
+			"it is carried on no line"},
+		{"a scope another package's file contradicts moves the line it names — the accepted price",
+			":bug:(haiku)~ fix a line", "curry/curry.go", false,
+			3, verdict{}, 0, 0, verdict{"patch", "none", "v0.0.1"},
+			"it is carried on haiku/ by its scope alone, with no file read"},
+		{"and so does one a root-package file contradicts",
+			":bug:(haiku)~ fix a line", "README.md", true,
+			3, verdict{}, 0, 0, verdict{"patch", "none", "v0.0.1"},
+			"it is carried on haiku/ by its scope alone, with no file read"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, _ := packagesRepo(t)
+			if tc.root {
+				dir, _ = packagesRepoWithRoot(t)
+			}
+			boundary := touch(t, dir, "akira-toriyama", tc.message, tc.path)
+			clone := shallowClone(t, dir, 1)
+
+			t.Chdir(dir)
+			code, stdout, stderr := runGlyph(t, "bump", "--range", "HEAD~1..HEAD", "--json")
+			if code != tc.full || (code != 3 && read(t, stdout) != tc.fullVerdict) {
+				t.Fatalf("the full clone's bump --range exited %d with %q, want %d with %+v\nstderr: %s", code, stdout, tc.full, tc.fullVerdict, stderr)
+			}
+			t.Chdir(clone)
+			code, stdout, stderr = runGlyph(t, "bump", "--range", "HEAD", "--json")
+			if code != tc.bump || read(t, stdout) != tc.shallow {
+				t.Fatalf("the shallow clone's bump --range exited %d with %q, want %d with %+v\nstderr: %s", code, stdout, tc.bump, tc.shallow, stderr)
+			}
+			if !strings.Contains(stderr, "commit "+boundary[:7]+" is this shallow clone's boundary") || !strings.Contains(stderr, tc.warning) {
+				t.Fatalf("the boundary must be named with where it went (%q):\n%s", tc.warning, stderr)
+			}
+			if strings.Count(stderr, boundary[:7]) != 1 || strings.Contains(stderr, "GitHub") {
+				t.Fatalf("a boundary gets one warning, in git's terms — nothing here came from GitHub:\n%s", stderr)
+			}
+			if code, stdout, stderr = runGlyph(t, "notes", "--range", "HEAD"); code != tc.notes || strings.Contains(stdout, "a line") != (tc.notes == 0) {
+				t.Fatalf("the shallow clone's notes --range exited %d with %q, want %d and the commit rendered only where a line carries it\nstderr: %s", code, stdout, tc.notes, stderr)
+			}
+		})
+	}
+}
+
+// TestReleasePackagesShallowBoundaryIsTheCheckoutsShortfall: a boundary's
+// unread diff is the checkout's shortfall, not the commit's. Recorded beside
+// the unread listings it was refused in a 422's words with a 422's remedy —
+// GitHub answered 422 for its file listing, re-run, else cut a tag at or past
+// it (measured on that mutant) — though nothing was asked of GitHub and no tag
+// past the boundary gives the clone its parents. The boundary is this walk's
+// only unread input, so the refusal names the shallow checkout and nothing
+// else.
+func TestReleasePackagesShallowBoundaryIsTheCheckoutsShortfall(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	boundary := touch(t, dir, "akira-toriyama", ":bug:(curry)~ thicken the roux", "curry/curry.go")
+	head := touch(t, dir, "akira-toriyama", ":bug:(haiku)~ fix a line", "haiku/haiku.go")
+	usePR(t, dryServer(t, map[string]string{commitPullsPath(boundary): `[]`, commitPullsPath(head): `[]`}))
+	t.Chdir(shallowClone(t, dir, 2))
+
+	code, _, stderr := runGlyph(t, "release", "--dry-run", "--json")
+	if code != 4 {
+		t.Fatalf("release --dry-run exited %d, want 4 (an incomplete walk)\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "commit "+boundary[:7]+" is this shallow clone's boundary") {
+		t.Fatalf("the fixture's boundary was never met — this test guards nothing:\n%s", stderr)
+	}
+	env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+	if env.Code != 4 || !strings.Contains(env.Message, "this is a shallow checkout") {
+		t.Fatalf("the refusal must name the shallow checkout (code %d):\n%s", env.Code, env.Message)
+	}
+	for _, foreign := range []string{"422", "tag at or past", boundary[:7]} {
+		if strings.Contains(env.Message, foreign) {
+			t.Errorf("the refusal reads the boundary as an unread listing (%q):\n%s", foreign, env.Message)
 		}
-		if !strings.Contains(stderr, "commit "+fix[:7]+" is this shallow clone's boundary") {
-			t.Fatalf("the boundary carried on no line must be named:\n%s", stderr)
+	}
+}
+
+// TestSinceTagPackagesPlacesABoundaryAndAnUnlistedCommitAlike: one walk, two
+// commits whose files nobody read — a landed `:bug:(curry)~` that is a --depth
+// 2 clone's boundary, and a squash-merged pull's inner `:bug:(curry)~` whose
+// file listing GitHub answers with a 422. Both name curry and the full clone
+// carries both there; the shallow walk carried the 422 on curry and the
+// boundary on no line (measured on the source before this rule: curry patch
+// over 1 commit). One rule places both. The shallow checkout is an incomplete
+// walk either way, so release still refuses at 4.
+func TestSinceTagPackagesPlacesABoundaryAndAnUnlistedCommitAlike(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	landed := touch(t, dir, "akira-toriyama", ":bug:(curry)~ thicken the roux", "curry/curry.go")
+	squash := touch(t, dir, "akira-toriyama", "Swap an ingredient (#9)", "curry/curry.go")
+	routes := map[string]string{
+		commitPullsPath(landed): `[]`,
+		commitPullsPath(squash): `[` + apiPullRef(9, "2026-09-10T00:00:00Z", squash) + `]`,
+		pullCommitsPath(9):      `[` + apiCommit("c9", "akira-toriyama", ":bug:(curry)~ swap an ingredient") + `]`,
+		commitFilesPath("c9"):   apiUnknownSHA,
+	}
+	usePR(t, dryServer(t, routes))
+	clone := shallowClone(t, dir, 2)
+
+	for _, where := range []struct {
+		name, dir string
+	}{{"the full clone", dir}, {"the shallow clone", clone}} {
+		t.Chdir(where.dir)
+		code, stdout, stderr := runGlyph(t, "bump", "--since-tag", "--json")
+		if code != 0 {
+			t.Fatalf("%s: bump --since-tag exited %d, want 0\nstdout: %s\nstderr: %s", where.name, code, stdout, stderr)
 		}
-	})
+		res := decodePackagesVerdict(t, stdout)
+		h, c := res.Packages[0], res.Packages[1]
+		if h.Level != "none" || c.Level != "patch" || len(c.Commits) != 2 {
+			t.Fatalf("%s: haiku = %s, curry = %s over %d commit(s); want none, and patch over both\nstderr: %s", where.name, h.Level, c.Level, len(c.Commits), stderr)
+		}
+	}
+	if code, _, stderr := runGlyph(t, "bump", "--since-tag", "--json"); code != 0 || !strings.Contains(stderr, "commit "+landed[:7]+" is this shallow clone's boundary") || !strings.Contains(stderr, "it is carried on curry/ by its scope alone") {
+		t.Fatalf("the shallow walk exited %d; it must say the boundary was placed by its scope with no file read:\n%s", code, stderr)
+	}
+	if code, _, stderr := runGlyph(t, "release", "--dry-run", "--json"); code != 4 {
+		t.Fatalf("release --dry-run on the shallow clone exited %d, want 4 (an incomplete walk)\nstderr: %s", code, stderr)
+	}
 }

@@ -378,7 +378,21 @@ pattern says it means:
   `--no-show-signature`: under `log.showSignature` git prints each signature's
   verdict ahead of the commit's record even under `--format`, and every history
   read of a developer who signs failed at 4 — which the installed pre-push hook
-  lets through (measured; `gitsource-log-shows-signatures.patch`).
+  lets through (measured; `gitsource-log-shows-signatures.patch`). Two more
+  display settings reached a parser the same way and are held out the same way
+  (t-esm5, measured 2026-10-05 on git 2.54). `i18n.logOutputEncoding`
+  re-encodes what `git log` prints and `diff-tree`'s `%P` header with it:
+  under UTF-16 every history read failed at 4, and under ISO-8859-1 `notes`
+  wrote a subject's Latin-1 bytes into the release body, so both reads name
+  `--encoding=UTF-8`. And `column.ui=always` columns `git tag --list` even
+  into a pipe: a row of tags read as one name that parses as no version, so
+  the step base fell to v0.0.0 — `bump --range` printed v0.0.1 with nothing
+  said where the answer is v0.1.1, and a bare `--since-tag` warned that HEAD's
+  history holds no version tag and walked the whole of it — and the listing
+  runs with `--no-column` (mutation rows
+  `gitsource-log-reads-in-the-configured-output-encoding.patch`,
+  `gitsource-diff-tree-header-reads-in-the-configured-output-encoding.patch`,
+  `gitsource-tag-listing-follows-column-config.patch`).
 - **Lint has no taste** (mutation row `config-lint-grows-a-taste.patch`): a
   message either matches a pattern and yields a sigil, or it violates. Which
   combinations are wise (`:memo:!`) is the author's call — glyph parses and
@@ -1821,19 +1835,59 @@ carrier for a shared-only `^` and exited 0 where the full clone refuses it at
 answers the boundary **unreadable** — told from a true root by the commit
 object's own header, which still names the parent git no longer reaches, since
 `.git/shallow` lists a true root inside the depth as well (measured; mutation
-row `gitsource-shallow-boundary-refuses-a-true-root.patch`) — and
-nothing attributes it: the walk carries it on no line with a warning, the
-capped listing's answer with nothing read, and lint judges its message and
-warns that its attribution went unchecked (`TestDiffTreeFilesAtAShallowBoundaryIsUnreadable`,
-`TestPackagesWalkCarriesAShallowBoundaryOnNoLine`,
+row `gitsource-shallow-boundary-refuses-a-true-root.patch`) — and the
+walk places it by **rules 2–3 over no file**, the rule for a file listing
+GitHub will not give at all (below): a scope naming a package carries the
+commit there, a refusal is withheld and the commit carried nowhere, and one
+warning says which happened and that no file was read to confirm it; lint
+judges its message and warns that its attribution went unchecked
+(`TestDiffTreeFilesAtAShallowBoundaryIsUnreadable`,
+`TestPackagesWalkPlacesAShallowBoundaryByScopeAndSigil`,
 `TestLintRangePackagesAtAShallowBoundaryIsNotReadAsTheWholeTree`; mutation
 rows `gitsource-shallow-boundary-diffs-its-whole-tree.patch`,
-`packages-walk-attributes-a-shallow-boundary.patch`,
+`packages-walk-carries-a-scoped-shallow-boundary-on-no-line.patch`,
+`packages-walk-refuses-a-shallow-boundary-over-no-file.patch`,
 `lint-attribution-exits-at-a-shallow-boundary.patch`). A caller that does not
-ask gets the answer as a git failure, 4, never as a diff. A since-tag walk
-over a shallow checkout is an incomplete walk already (§4), so `release`
-refuses it at 4 and `bump`/`notes` warn. For the
-squash arm, whose listed shas exist on no branch, the API does:
+ask gets the answer as a git failure, 4, never as a diff.
+
+That placement **overturns the first cut** (#253), which carried the boundary
+on no line whatever its scope and called it the capped listing's answer with
+nothing read. It was not: #250 had already ruled that a listing with nothing
+read still lets a scope carry (below), so one shallow walk placed an unlisted
+`:bug:(curry)~` on curry and a boundary `:bug:(curry)~` on no line, where the
+full clone carries both (found by #253's integration review, 2026-10-04;
+measured again before this rule, curry patch over one commit of the two —
+`TestSinceTagPackagesPlacesABoundaryAndAnUnlistedCommitAlike`). No incident
+stood behind "no line" itself; the incident was the whole-tree read, and that
+stays closed. One arm of the walk now withholds for a truncated listing, a
+422 and a boundary alike, so the three cannot come to place a commit two ways
+again. The rule was put to an independent refutation before it was taken
+(t-esm5, 2026-10-05) and held: replaying glyph-monorepo-test's history with
+each version-claiming commit in turn as the boundary, scope and sigil placed
+4 of 11 as the full clone does and "no line" none, and moved no line the full
+clone would not. Its price is named, and pinned by the first test's last
+two cases: a scope the unread files **contradict** moves the line it names —
+`:bug:(haiku)~` over a file under `curry/`, or over one the root package
+owns, steps haiku where the full clone refuses at 3 — which is what a claimed
+merge commit already does in a full clone (below; measured in the same run
+against the files its branch touched) and a scoped 422 since #250. Carrying
+nothing was the other consistent rule, and it would have taken #250's scope
+arm with it. What moves is a report, never a write: under `[[packages]]`, a
+`bump` or `notes` over a shallow checkout whose boundary names a package
+answers at 0 with that line where it answered 1 with every line none — no new
+code — and steps from v0.0.0 where the clone fetched no tag, which a `--depth
+1` clone does not (v0.0.1 where the full clone says v0.1.1; the same test).
+A since-tag walk over a shallow checkout is an incomplete walk already (§4),
+so `release` refuses it at 4 and `bump`/`notes` warn. That shortfall is the
+checkout's and stays the checkout's: a boundary is recorded as no unread
+listing, whose remedy — a tag past the commit — is the wrong one where the
+full history is the right one. Recorded as one, `release` refused it in a
+422's words, naming a pull request that does not exist and a tag to cut past
+the boundary (`TestReleasePackagesShallowBoundaryIsTheCheckoutsShortfall`;
+mutation row
+`packages-walk-records-a-shallow-boundary-as-an-unread-listing.patch`).
+
+For the squash arm, whose listed shas exist on no branch, the API does:
 `GET /repos/{o}/{r}/commits/{sha}` returns the commit's own files for a sha no
 branch holds — **measured** 2026-09-10 on glyph-test #83 (inner `2aff743`,
 unknown to local git, answered with one file where the pull's net diff had
@@ -2217,8 +2271,9 @@ packages are declared, and `hook pre-push` inherits it, which is where a
 shared-only `^` is caught before it is pushed. `--message`, `--stdin` and
 `--pr` judge a message alone, as today: the commit-msg hook cannot see a diff
 that is not yet a commit, and a pull's title is not attributed to anything.
-This is one of two places the hook's verdict is weaker than CI's — the other
-is an `unlandable` pattern, argued in §2.1 — and it is stated here rather
+Here the commit-msg hook's verdict is weaker than CI's by construction —
+beside the gaps §2.1 names, an `unlandable` pattern it argues and the
+per-commit overrides it does not claim fixed — and it is stated here rather
 than left to be discovered: the pre-push hook closes it on the same machine,
 one step later. Every `--range` read — `lint`'s, `bump`'s and `notes`',
 through one function, `logRange` — asks once whether the checkout is
