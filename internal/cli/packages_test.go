@@ -222,7 +222,8 @@ func TestSinceTagPackagesLandedCommitReadsFilesFromGit(t *testing.T) {
 
 // TestSinceTagPackagesSharedOnlyBumpIsRefused: a ^ under no package with no
 // scope has nothing to carry it — the lint-class refusal (exit 3), naming
-// both escapes and, on the walk, the wedge per line whose range holds it.
+// the escapes it can take and, on the walk, the wedge per line whose range
+// holds it.
 func TestSinceTagPackagesSharedOnlyBumpIsRefused(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	sha := touch(t, dir, "akira-toriyama", ":sparkles:^ add a workspace file", "go.work")
@@ -233,7 +234,11 @@ func TestSinceTagPackagesSharedOnlyBumpIsRefused(t *testing.T) {
 	if code != 3 {
 		t.Fatalf("a shared-only ^ exited %d, want 3\nstderr: %s", code, stderr)
 	}
-	for _, want := range []string{"touches no declared package", "name the package in the scope", "haiku/ tag at or past", "curry/ tag at or past", sha[:7]} {
+	for _, want := range []string{
+		"its files (go.work) belong to no declared package",
+		"name the line it moves in the scope (one of haiku, curry), write = so it moves no line, or declare the package these files belong to",
+		"haiku/ tag at or past", "curry/ tag at or past", sha[:7],
+	} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("refusal is missing %q:\n%s", want, stderr)
 		}
@@ -273,8 +278,9 @@ func TestSinceTagPackagesSharedOnlyNoneParticipatesNowhere(t *testing.T) {
 
 // TestSinceTagPackagesScopeCarriesAndContradicts: rule 2 — a shared-only
 // commit whose scope names a package moves that package — and the
-// contradiction check: a scope naming a package the diff does not touch is
-// refused, however the files fall.
+// contradiction check: with a version sigil, a scope naming a package that
+// owns none of the diff's files is refused, the finding naming a file with
+// the package that owns it.
 func TestSinceTagPackagesScopeCarriesAndContradicts(t *testing.T) {
 	t.Run("scope carries a shared-only commit", func(t *testing.T) {
 		dir, _ := packagesRepo(t)
@@ -295,8 +301,8 @@ func TestSinceTagPackagesScopeCarriesAndContradicts(t *testing.T) {
 		if code != 3 {
 			t.Fatalf("a contradicting scope exited %d, want 3\nstderr: %s", code, stderr)
 		}
-		if !strings.Contains(stderr, "names a package this commit does not touch") {
-			t.Fatalf("refusal must name the contradiction:\n%s", stderr)
+		if want := "scope (haiku) names a line this commit does not move: curry/curry.go belongs to curry (curry) — the longest declared path owns a file: write the scope of a line it moves (curry), or drop the scope"; !strings.Contains(stderr, want) {
+			t.Fatalf("refusal must name the contradiction (%q):\n%s", want, stderr)
 		}
 	})
 }
@@ -726,6 +732,13 @@ func TestSinceTagPackagesUnlistedFilesAreAnIncompleteWalk(t *testing.T) {
 			if !strings.Contains(stderr, "::warning::glyph: "+unlisted) || strings.Contains(stderr, "github: GET") {
 				t.Fatalf("bump must warn about the unlisted files, never hand back the raw API error:\n%s", stderr)
 			}
+			// The withheld refusal is worded over what was read — nothing —
+			// never as a fact about the commit: "touches no file" beside "GitHub
+			// did not list the commit's whole diff" is two answers in one line.
+			withheld := "over the files GitHub listed, attribution would refuse it (no file of this commit was read, so no package's tree can carry its sigil ~: "
+			if strings.Contains(stderr, withheld) != (tc.curryCommits == 0) || strings.Contains(stderr, "touches no file") {
+				t.Fatalf("an unscoped commit's withheld refusal must say no file was read, and a scoped one is not refused:\n%s", stderr)
+			}
 
 			code, stdout, stderr = runGlyph(t, "notes", "--since-tag")
 			if code != 0 {
@@ -932,8 +945,12 @@ func TestPackagesRangeAndPullSources(t *testing.T) {
 
 // TestLintRangePackagesJudgesTheDiff: with packages declared, lint --range
 // applies rules 2–3 and the contradiction check to each clean commit's own
-// diff — a shared-only ^ and a scope contradicting the tree are findings; a
-// shared-only =, a scope-carried ^ and a commit under a package are clean.
+// diff — a shared-only ^ and a version-claiming scope contradicting the tree
+// are findings; a shared-only =, a scope-carried ^, a commit under a package
+// and a = whose scope names another package are clean. That last one claims
+// no version impact, so the tree has nothing to contradict (DESIGN §4.1,
+// t-n5tw R2): it was a third finding, and once merged a wedge, over a commit
+// that moves no line.
 func TestLintRangePackagesJudgesTheDiff(t *testing.T) {
 	dir, base := packagesRepo(t)
 	shared := touch(t, dir, "akira-toriyama", ":sparkles:^ add a workspace file", "go.work")
@@ -941,6 +958,7 @@ func TestLintRangePackagesJudgesTheDiff(t *testing.T) {
 	touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
 	touch(t, dir, "akira-toriyama", ":sparkles:(curry)^ describe the ingredient API", "README.md")
 	touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
+	retag := touch(t, dir, "akira-toriyama", ":wrench:(haiku)= retag the curry notes", "curry/curry.go")
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
@@ -950,11 +968,527 @@ func TestLintRangePackagesJudgesTheDiff(t *testing.T) {
 	if !strings.Contains(stderr, "2 commit-convention violation(s)") {
 		t.Fatalf("want exactly the two attribution findings:\n%s", stderr)
 	}
-	for _, want := range []string{shared[:7], "touches no declared package", contra[:7], "names a package this commit does not touch"} {
+	for _, want := range []string{
+		shared[:7], "its files (go.work) belong to no declared package",
+		"commit " + contra[:7] + ": scope (haiku) names a line this commit does not move: curry/curry.go belongs to curry (curry) — the longest declared path owns a file: write the scope of a line it moves (curry), or drop the scope",
+	} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("findings are missing %q:\n%s", want, stderr)
 		}
 	}
+
+	// The = is placed by its files: on curry's line, moving nothing — the
+	// shape glyph-monorepo-test's e2e fires as live ammunition.
+	code, stdout, stderr := runGlyph(t, "bump", "--range", retag+"~1.."+retag, "--json")
+	if code != 1 {
+		t.Fatalf("bump over the (haiku)= on a curry file exited %d, want 1 (every line none)\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	res := decodePackagesVerdict(t, stdout)
+	if h, c := res.Packages[0], res.Packages[1]; len(h.Commits) != 0 || len(c.Commits) != 1 || c.Level != "none" {
+		t.Fatalf("haiku = %+v, curry = %+v; want the = on curry's line alone, at none", h, c)
+	}
+}
+
+// TestLintRangePackagesScopeIsCheckedByOwnership: the contradiction check asks
+// which package OWNS a file — the longest declared path — never which contains
+// it. With travel and travel/onsen declared, (travel)~ on a file under
+// travel/onsen names a line the commit does not move, and is refused naming
+// the file with its owner and the scope that is true; (onsen)~ and no scope
+// move travel/onsen alone and leave travel at none. Accepted by containment,
+// the message would claim travel's line while only its nested package's moved
+// (DESIGN §4.1, t-mfny (C); measured 2026-10-05 at 135eead: exit 3 with
+// "does not touch (its files lie under travel/onsen)").
+func TestLintRangePackagesScopeIsCheckedByOwnership(t *testing.T) {
+	dir := packagesRepoWith(t, "\n[[packages]]\npath = \"travel\"\n\n[[packages]]\npath = \"travel/onsen\"\n",
+		map[string]string{"travel/t.md": "travel\n", "travel/onsen/o.md": "onsen\n"})
+	touch(t, dir, "akira-toriyama", ":bug:(travel)~ warm the water", "travel/onsen/o.md")
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
+	want := "scope (travel) names a line this commit does not move: travel/onsen/o.md belongs to onsen (travel/onsen) — the longest declared path owns a file: write the scope of a line it moves (onsen), or drop the scope"
+	if code != 3 || !strings.Contains(stderr, want) {
+		t.Fatalf("(travel)~ on travel/onsen's file exited %d, want 3 with\n  %s\nstderr: %s", code, want, stderr)
+	}
+	for _, message := range []string{":bug:(onsen)~ warm the water", ":bug:~ warm the water"} {
+		testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", message)
+		if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 0 {
+			t.Errorf("%q exited %d, want 0 — the escape the finding names\nstderr: %s", message, code, stderr)
+		}
+		if code, stdout, stderr := runGlyph(t, "bump", "--range", "HEAD~1..HEAD"); code != 0 || stdout != "travel/onsen/v0.0.1\n" {
+			t.Errorf("%q bumped %q at exit %d, want travel/onsen alone\nstderr: %s", message, stdout, code, stderr)
+		}
+	}
+}
+
+// TestLintRangePackagesContradictionOffersNoDropWhereTheScopeIsRequired: the
+// remedy is asked of the pattern that claimed the message. Under a grammar
+// whose scope is not optional "or drop the scope" is no escape — the message
+// without one matches no pattern — so the finding names the true scope alone,
+// and the test takes it, then shows the dropped scope failing.
+func TestLintRangePackagesContradictionOffersNoDropWhereTheScopeIsRequired(t *testing.T) {
+	dir := testutil.NewRepo(t)
+	writeFile(t, dir, "glyph.toml", "schema = 1\n\n[[patterns]]\npattern = '^(?P<subject>[a-z]+\\((?P<scope>[a-z]+)\\)(?P<semver_sigil>[=~^!%]): .+)'\n\n[note]\nline = '- $subject'\n"+packagesConfig)
+	writeFile(t, dir, "haiku/haiku.go", "package haiku\n")
+	writeFile(t, dir, "curry/curry.go", "package curry\n")
+	testGit(t, dir, "akira-toriyama", "add", ".")
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", "chore(repo)=: declare the lines")
+	touch(t, dir, "akira-toriyama", "fix(haiku)~: swap an ingredient", "curry/curry.go")
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
+	want := "curry/curry.go belongs to curry (curry) — the longest declared path owns a file: write the scope of a line it moves (curry)\n"
+	if code != 3 || !strings.Contains(stderr, want) || strings.Contains(stderr, "drop the scope") {
+		t.Fatalf("exited %d; the finding must end %q and offer no dropped scope:\n%s", code, want, stderr)
+	}
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", "fix(curry)~: swap an ingredient")
+	if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 0 {
+		t.Fatalf("the scope the finding names exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", "fix~: swap an ingredient")
+	if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 3 || !strings.Contains(stderr, "matches none of the 1 configured patterns") {
+		t.Fatalf("the dropped scope exited %d, want 3 as a message no pattern claims — the escape the finding must not name\nstderr: %s", code, stderr)
+	}
+}
+
+// rootedConfig declares haiku beside a named root package — the shape under
+// which every FILE has an owner, so the only commits rules 2–3 still meet are
+// the ones that show the tree no file.
+const rootedConfig = "\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \".\"\nname = \"core\"\n"
+
+// claimedMerge lands a merge commit a non-skip pattern claims: a side branch
+// touching haiku/ alone, merged --no-ff under message. The presets skip only a
+// subject that opens `Merge `, so this one is read — its scope and sigil, never
+// its diff.
+func claimedMerge(t *testing.T, dir, message string) string {
+	t.Helper()
+	testGit(t, dir, "akira-toriyama", "switch", "-q", "-c", "side")
+	touch(t, dir, "akira-toriyama", ":memo:= reword a line", "haiku/haiku.go")
+	testGit(t, dir, "akira-toriyama", "switch", "-q", "main")
+	testGit(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", message, "side")
+	return testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+}
+
+// TestLintRangePackagesNoFileCommitUnderARootPackage: a commit that shows the
+// tree no file — an empty commit, a claimed merge commit — has no carrier but
+// its scope, a root package declared or not (DESIGN §4.1, t-n5tw 3): the root
+// package is a claim on files. Each finding says which of the two it is and
+// names the root's scope among the escapes; the same empty commit scoped
+// (core) is clean, which is the escape taken. This is lint's arm of the
+// refusal's wording (cli's attribute): the merge sentence is read here, and
+// mutation row lint-refuses-a-merge-commit-as-touching-no-file hands it no commit.
+func TestLintRangePackagesNoFileCommitUnderARootPackage(t *testing.T) {
+	dir := packagesRepoWith(t, rootedConfig, map[string]string{"haiku/haiku.go": "package haiku\n"})
+	base := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	empty := touch(t, dir, "akira-toriyama", ":bookmark:~ cut a release")
+	merge := claimedMerge(t, dir, ":twisted_rightwards_arrows:~ merge the side branch")
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
+	if code != 3 {
+		t.Fatalf("lint --range exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "2 commit-convention violation(s)") {
+		t.Fatalf("want exactly the two no-file findings:\n%s", stderr)
+	}
+	const escapes = ": name the line it moves in the scope (one of haiku, core), or write = so it moves no line"
+	for _, want := range []string{
+		"commit " + empty[:7] + ": this commit touches no file, so no package's tree can carry its sigil ~" + escapes,
+		"commit " + merge[:7] + ": this merge commit's own diff is never read, so no package's tree can carry its sigil ~" + escapes,
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("findings are missing %q:\n%s", want, stderr)
+		}
+	}
+
+	scoped := touch(t, dir, "akira-toriyama", ":bookmark:(core)~ cut a release")
+	if code, stdout, stderr := runGlyph(t, "lint", "--range", scoped+"~1.."+scoped); code != 0 {
+		t.Fatalf("an empty (core)~ exited %d, want 0 — the scope is the escape the finding names\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	if code, stdout, stderr := runGlyph(t, "bump", "--range", scoped+"~1.."+scoped); code != 0 || stdout != "v0.0.1\n" {
+		t.Fatalf("bump over the empty (core)~ exited %d with %q, want 0 and the root line alone at v0.0.1\nstderr: %s", code, stdout, stderr)
+	}
+}
+
+// TestPackagesWalkRefusesAClaimedMergeInItsOwnWords is the walk's arm of the
+// refusal's wording: partitionLines reaches attribution through cli's
+// attribute, so a claimed merge commit is refused as a merge commit — its diff
+// never read — with the wedge per line, where the first cut said it "touches
+// no declared package" of a merge that touched haiku/. A haiku scope carries
+// it (rule 2). Mutation row walk-refuses-a-merge-commit-as-touching-no-file
+// hands the helper no commit.
+func TestPackagesWalkRefusesAClaimedMergeInItsOwnWords(t *testing.T) {
+	dir, base := packagesRepo(t)
+	merge := claimedMerge(t, dir, ":twisted_rightwards_arrows:~ merge the side branch")
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")
+	if code != 3 {
+		t.Fatalf("bump --range over a claimed ~ merge exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	for _, want := range []string{
+		"commit " + merge[:7] + ": this merge commit's own diff is never read, so no package's tree can carry its sigil ~: name the line it moves in the scope (one of haiku, curry), or write = so it moves no line",
+		"a haiku/ tag at or past " + merge[:7],
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the refusal is missing %q:\n%s", want, stderr)
+		}
+	}
+
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", ":twisted_rightwards_arrows:(haiku)~ merge the side branch")
+	if code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD"); code != 0 || stdout != "haiku/v0.1.1\n" {
+		t.Fatalf("the merge scoped (haiku) exited %d with %q, want 0 and haiku alone\nstderr: %s", code, stdout, stderr)
+	}
+}
+
+// TestLintRangePackagesRawRevertNamesTheEscapesThatWork: `git revert` writes
+// `Revert "…"`, which the presets claim with a pattern that fixes the sigil at
+// ~ and captures no scope. Reverting a shared-only commit in a repository with
+// no root package is therefore refused, and the refusal used to name two
+// escapes that message cannot take — "name the package in the scope … or
+// write =" (t-mfny (A)). It names the ones that work, and the test takes each
+// in turn rather than trusting the sentence: the reword as =, the reword with
+// a scope, the declaration; and it shows the two old ones still fail.
+func TestLintRangePackagesRawRevertNamesTheEscapesThatWork(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	touch(t, dir, "akira-toriyama", ":memo:= add a README", "README.md")
+	testGit(t, dir, "akira-toriyama", "revert", "--no-edit", "HEAD")
+	t.Chdir(dir)
+	lint := func(t *testing.T) (int, string) {
+		t.Helper()
+		code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
+		return code, stderr
+	}
+	reword := func(t *testing.T, message string) {
+		t.Helper()
+		testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", message)
+	}
+
+	code, stderr := lint(t)
+	if code != 3 {
+		t.Fatalf("a raw revert of a shared-only commit exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	want := `its files (README.md) belong to no declared package, and its sigil ~ claims a version impact nothing can carry: ` +
+		`patterns[1], which claimed this message, fixes the sigil at ~ and captures no scope — ` +
+		`reword it so another pattern claims it, with a scope naming the line it moves (one of haiku, curry) or as = so it moves no line, ` +
+		`or declare the package these files belong to ([[packages]] path = "<its directory>"; path = "." and a name declare the root package, which holds every file no other package claims)`
+	if !strings.Contains(stderr, "::error::glyph: commit ") || !strings.Contains(stderr, ": "+want+"\n") {
+		t.Fatalf("the finding must be\n  %s\ngot:\n%s", want, stderr)
+	}
+	for _, unreachable := range []string{"name the line it moves in the scope", "write = so it moves no line"} {
+		if strings.Contains(stderr, unreachable) {
+			t.Errorf("the finding names %q, which no message this pattern claims can do:\n%s", unreachable, stderr)
+		}
+	}
+
+	for _, still := range []string{`Revert ":memo:(haiku)= add a README"`, `Revert ":memo:= add a README" =`} {
+		reword(t, still)
+		if code, stderr := lint(t); code != 3 {
+			t.Errorf("%q exited %d, want 3 — the revert pattern reads neither a scope nor a = from it\nstderr: %s", still, code, stderr)
+		}
+	}
+	reword(t, `:rewind:= Revert ":memo:= add a README"`)
+	if code, stderr := lint(t); code != 0 {
+		t.Errorf("reworded as = it exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	reword(t, `:rewind:(curry)~ Revert ":memo:= add a README"`)
+	if code, stderr := lint(t); code != 0 {
+		t.Errorf("reworded with a scope it exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if code, stdout, stderr := runGlyph(t, "bump", "--range", "HEAD~1..HEAD"); code != 0 || stdout != "curry/v0.1.1\n" {
+		t.Errorf("the scoped reword's bump exited %d with %q, want 0 and curry alone\nstderr: %s", code, stdout, stderr)
+	}
+	reword(t, `Revert ":memo:= add a README"`)
+	declared, err := os.ReadFile(filepath.Join(dir, "glyph.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir, "glyph.toml", string(declared)+"\n[[packages]]\npath = \".\"\n")
+	if code, stderr := lint(t); code != 2 {
+		t.Errorf("the root declared with no name exited %d, want 2 — the presets' scope cannot spell its default, which is why the finding says \"and a name\"\nstderr: %s", code, stderr)
+	}
+	writeFile(t, dir, "glyph.toml", string(declared)+"\n[[packages]]\npath = \".\"\nname = \"core\"\n")
+	if code, stderr := lint(t); code != 0 {
+		t.Errorf("with the root package declared and named the raw revert exited %d, want 0\nstderr: %s", code, stderr)
+	}
+}
+
+// TestLintRangePackagesScopelessGrammarOffersNoScope: under a grammar that
+// captures no scope the loader exempts every package name — the root's
+// default "." included — so no commit can ever name a line, and the refusal
+// must not offer one: an empty ~ is told to write =, the one thing its
+// message can do. The positive control is the preset, whose refusal for the
+// same commit names the scopes
+// (TestLintRangePackagesNoFileCommitUnderARootPackage).
+func TestLintRangePackagesScopelessGrammarOffersNoScope(t *testing.T) {
+	dir := testutil.NewRepo(t)
+	writeFile(t, dir, "glyph.toml", "schema = 1\n\n[[patterns]]\npattern = '^(?P<subject>:[a-z0-9_]+:(?P<semver_sigil>[=~^!%]) .+)'\n\n[note]\nline = '- $subject'\n\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \".\"\n")
+	testGit(t, dir, "akira-toriyama", "add", ".")
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
+	empty := touch(t, dir, "akira-toriyama", ":bookmark:~ cut a release")
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
+	if code != 3 {
+		t.Fatalf("lint --range exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	want := "::error::glyph: commit " + empty[:7] + ": this commit touches no file, so no package's tree can carry its sigil ~: write = so it moves no line\n"
+	if !strings.Contains(stderr, want) {
+		t.Fatalf("the finding must be %q, got:\n%s", want, stderr)
+	}
+	for _, unreachable := range []string{"in the scope", "(.)", "one of"} {
+		if strings.Contains(stderr, unreachable) {
+			t.Errorf("the finding offers a scope (%q) under a grammar that captures none:\n%s", unreachable, stderr)
+		}
+	}
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--amend", "-m", ":bookmark:= cut a release")
+	if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 0 {
+		t.Fatalf("the = the finding names exited %d, want 0\nstderr: %s", code, stderr)
+	}
+}
+
+// customRepo is a two-line repository (haiku, curry) under a hand-written
+// pattern file — the shape a refusal's escapes are taken literally under,
+// where the presets cannot show what a grammar of another shape is told.
+// patterns is the file's [[patterns]] blocks; seed is its declaring commit's
+// message, which those patterns must claim.
+func customRepo(t *testing.T, patterns, seed string) string {
+	t.Helper()
+	dir := testutil.NewRepo(t)
+	writeFile(t, dir, "glyph.toml", "schema = 1\n\n"+patterns+"\n[note]\nline = '- $subject'\n"+packagesConfig)
+	writeFile(t, dir, "haiku/haiku.go", "package haiku\n")
+	writeFile(t, dir, "curry/curry.go", "package curry\n")
+	testGit(t, dir, "akira-toriyama", "add", ".")
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", seed)
+	return dir
+}
+
+// TestLintRangePackagesRootDeclarationTakesANameWhereTheLoaderAsksOne: the
+// declaration escape says the root takes a name exactly where the loader
+// would refuse its default — and whether it would is asked of the loader's own
+// check, a warn pattern's scope group included. Read off what a message could
+// be reworded to, which leaves warn patterns out, a file whose only scope
+// group sits in a warn pattern was told `path = "."` declares the root
+// package, and the file so written does not load (measured 2026-10-05: exit
+// 2). Each case takes the declaration as its finding words it and watches the
+// commit pass; the first also writes the declaration the finding must not
+// send anyone to.
+func TestLintRangePackagesRootDeclarationTakesANameWhereTheLoaderAsksOne(t *testing.T) {
+	const scopeless = "[[patterns]]\npattern = '^(?P<subject>:[a-z0-9_]+:(?P<semver_sigil>[=~^!%]) .+)'\n"
+	const warned = "\n[[patterns]]\npattern = '^(?P<subject>:[a-z0-9_]+:\\((?P<scope>[a-z0-9-]+)\\)(?P<semver_sigil>[=~^!%]) .+)'\nwarn = 'scoped subjects are discouraged here'\n"
+	for name, c := range map[string]struct {
+		patterns string
+		root     string // the clause the finding gives the root declaration
+		declared string // that declaration, written as worded
+	}{
+		"only a warned pattern captures a scope": {scopeless + warned, `path = "." and a name declare the root package`, "\n[[packages]]\npath = \".\"\nname = \"core\"\n"},
+		"no pattern captures a scope":            {scopeless, `path = "." declares the root package`, "\n[[packages]]\npath = \".\"\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := customRepo(t, c.patterns, ":tada:= declare the lines")
+			touch(t, dir, "akira-toriyama", ":bug:~ fix the readme", "README.md")
+			t.Chdir(dir)
+			file, err := os.ReadFile(filepath.Join(dir, "glyph.toml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
+			want := `: write = so it moves no line, or declare the package these files belong to ([[packages]] path = "<its directory>"; ` + c.root + ", which holds every file no other package claims)\n"
+			if code != 3 || !strings.Contains(stderr, want) {
+				t.Fatalf("exited %d; the finding must end %q:\n%s", code, want, stderr)
+			}
+
+			if strings.Contains(c.declared, "name") {
+				writeFile(t, dir, "glyph.toml", string(file)+"\n[[packages]]\npath = \".\"\n")
+				if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 2 {
+					t.Errorf("the root declared with no name exited %d, want 2 — the warn pattern's scope group cannot spell its default, which is why the finding says \"and a name\"\nstderr: %s", code, stderr)
+				}
+			}
+			writeFile(t, dir, "glyph.toml", string(file)+c.declared)
+			if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 0 {
+				t.Errorf("with the root declared as the finding words it lint exited %d, want 0\nstderr: %s", code, stderr)
+			}
+			if code, stdout, stderr := runGlyph(t, "bump", "--range", "HEAD~1..HEAD"); code != 0 || stdout != "v0.0.1\n" {
+				t.Errorf("with the root declared as the finding words it bump exited %d with %q, want 0 and the root line alone at v0.0.1\nstderr: %s", code, stdout, stderr)
+			}
+		})
+	}
+}
+
+// TestLintRangePackagesDropTheScopeIsProvenAgainstTheMessage: "drop the scope"
+// is offered only when the message with its scope taken out was run through
+// the patterns and came back the same pattern's, with no scope and the same
+// sigil (config.Sayable). It was read off the pattern's tree — a scope under
+// a ?, a *, a {0,n} or ONE BRANCH OF AN ALTERNATION, or a group that can
+// capture nothing, counted as droppable — and under
+// `(?:type\((?P<scope>…)\)|release)` the finding said "or drop the scope" of a
+// message that, scope dropped, matches no pattern (measured 2026-10-05 before
+// this rule: exit 3 at lint --range, bump and preview). The tree cannot say
+// what is left once the scope is gone, nor which pattern takes it: every case here
+// takes each escape its finding names and asserts the exit code, then writes
+// the dropped message a finding does not offer and shows why it must not.
+func TestLintRangePackagesDropTheScopeIsProvenAgainstTheMessage(t *testing.T) {
+	const optional = "[[patterns]]\npattern = '^(?P<subject>[a-z]+(\\((?P<scope>[a-z]+)\\))?(?P<semver_sigil>[=~^!%]): .+)'\n"
+	type rewrite struct {
+		message string
+		code    int
+		why     string
+	}
+	for name, c := range map[string]struct {
+		patterns string
+		seed     string
+		message  string
+		remedy   string // the finding's last clause
+		rewrites []rewrite
+	}{
+		"a scope in one branch of an alternation": {
+			"[[patterns]]\npattern = '^(?P<subject>(?:[a-z]+\\((?P<scope>[a-z0-9-]+)\\)|release)(?P<semver_sigil>[=~^!%]): .+)'\n",
+			"release=: declare the lines", "fix(haiku)~: swap an ingredient",
+			"write the scope of a line it moves (curry)",
+			[]rewrite{
+				{"fix(curry)~: swap an ingredient", 0, "the scope the finding names"},
+				{"fix~: swap an ingredient", 3, "the other branch is the literal `release`, so the dropped message matches no pattern"},
+			},
+		},
+		"an earlier pattern claims the message once its scope is gone": {
+			"[[patterns]]\npattern = '^wip[=~^!%]: '\nunlandable = 'a wip commit is squashed before it lands'\n\n" + optional,
+			"chore=: declare the lines", "wip(haiku)~: swap an ingredient",
+			"write the scope of a line it moves (curry)",
+			[]rewrite{
+				{"wip(curry)~: swap an ingredient", 0, "the scope the finding names"},
+				{"wip~: swap an ingredient", 3, "patterns[0] claims the dropped message and marks it unlandable"},
+			},
+		},
+		"the same file, a message no earlier pattern takes": {
+			"[[patterns]]\npattern = '^wip[=~^!%]: '\nunlandable = 'a wip commit is squashed before it lands'\n\n" + optional,
+			"chore=: declare the lines", "fix(haiku)~: swap an ingredient",
+			"write the scope of a line it moves (curry), or drop the scope",
+			[]rewrite{
+				{"fix(curry)~: swap an ingredient", 0, "the scope the finding names"},
+				{"fix~: swap an ingredient", 0, "the drop the finding names"},
+			},
+		},
+		"a ticket inside the scope's optional group": {
+			"[[patterns]]\npattern = '^(?P<subject>[a-z]+(?:\\((?P<scope>[a-z]+)#(?P<ticket>[0-9]+)\\))?(?P<semver_sigil>[=~^!%]): .+)'\n",
+			"chore=: declare the lines", "fix(haiku#12)~: swap an ingredient",
+			"write the scope of a line it moves (curry)",
+			[]rewrite{
+				{"fix(curry#12)~: swap an ingredient", 0, "the scope the finding names"},
+				{"fix(#12)~: swap an ingredient", 3, "the scope alone cannot be dropped: the ticket goes with it, which \"drop the scope\" does not say"},
+			},
+		},
+		"a scope that can be empty but not absent": {
+			"[[patterns]]\npattern = '^(?P<subject>[a-z]+\\((?P<scope>[a-z]*)\\)(?P<semver_sigil>[=~^!%]): .+)'\n",
+			"chore()=: declare the lines", "fix(haiku)~: swap an ingredient",
+			"write the scope of a line it moves (curry)",
+			[]rewrite{
+				{"fix(curry)~: swap an ingredient", 0, "the scope the finding names"},
+				{"fix~: swap an ingredient", 3, "the parentheses are not optional, so the dropped message matches no pattern"},
+			},
+		},
+		"a non-capturing {0,1} around the scope": {
+			"[[patterns]]\npattern = '^(?P<subject>[a-z]+(?:\\((?P<scope>[a-z0-9-]+)\\)){0,1}(?P<semver_sigil>[=~^!%]): .+)'\n",
+			"chore=: declare the lines", "fix(haiku)~: swap an ingredient",
+			"write the scope of a line it moves (curry), or drop the scope",
+			[]rewrite{
+				{"fix(curry)~: swap an ingredient", 0, "the scope the finding names"},
+				{"fix~: swap an ingredient", 0, "the drop the finding names"},
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := customRepo(t, c.patterns, c.seed)
+			touch(t, dir, "akira-toriyama", c.message, "curry/curry.go")
+			t.Chdir(dir)
+
+			code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
+			want := "curry/curry.go belongs to curry (curry) — the longest declared path owns a file: " + c.remedy + "\n"
+			if code != 3 || !strings.Contains(stderr, want) {
+				t.Fatalf("%q exited %d; the finding must end %q:\n%s", c.message, code, want, stderr)
+			}
+			for _, r := range c.rewrites {
+				testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", r.message)
+				if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != r.code {
+					t.Errorf("%q exited %d, want %d — %s\nstderr: %s", r.message, code, r.code, r.why, stderr)
+				}
+			}
+		})
+	}
+}
+
+// TestLintRangePackagesFixedNoneIsReachedByLeavingTheSigilOut: a pattern whose
+// sigil group cannot capture = can still read a message as = — by its fixed
+// semver_sigil, when the message leaves the sigil out. That is an escape, and
+// the refusal used to deny it existed: under `[a-z]+(?P<semver_sigil>[~^!])?: `
+// over a fixed = an empty `fix~: …` was told "nothing a message it claims can
+// write carries this commit", while `fix: …` passes (measured 2026-10-05
+// before this rule: lint 0, bump 1). It is named now, and proven the way the dropped
+// scope is: the message with its sigil taken out goes through the patterns.
+// The second grammar holds the sigil in one branch of an alternation, where
+// leaving it out matches nothing — so the escape is not named, and neither is
+// the old clause, which `chore: …` under the same pattern shows was false.
+func TestLintRangePackagesFixedNoneIsReachedByLeavingTheSigilOut(t *testing.T) {
+	const noEscape = ": patterns[0], which claimed this message, captures no = as the sigil and captures no scope"
+	lint := func(t *testing.T) (int, string) {
+		t.Helper()
+		code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
+		return code, stderr
+	}
+
+	t.Run("an optional sigil over a fixed =", func(t *testing.T) {
+		dir := customRepo(t, "[[patterns]]\npattern = '^(?P<subject>[a-z]+(?P<semver_sigil>[~^!])?: .+)'\nsemver_sigil = '='\n", "chore: declare the lines")
+		empty := touch(t, dir, "akira-toriyama", "fix~: cut a release")
+		t.Chdir(dir)
+
+		code, stderr := lint(t)
+		want := "::error::glyph: commit " + empty[:7] + ": this commit touches no file, so no package's tree can carry its sigil ~: leave the sigil out so it moves no line\n"
+		if code != 3 || !strings.Contains(stderr, want) {
+			t.Fatalf("an empty fix~ exited %d; the finding must be %q:\n%s", code, want, stderr)
+		}
+		testGit(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--amend", "-m", "fix: cut a release")
+		if code, stderr := lint(t); code != 0 {
+			t.Errorf("with the sigil left out lint exited %d, want 0 — the escape the finding names\nstderr: %s", code, stderr)
+		}
+		if code, _, stderr := runGlyph(t, "bump", "--range", "HEAD~1..HEAD"); code != 1 {
+			t.Errorf("with the sigil left out bump exited %d, want 1 (it moves no line)\nstderr: %s", code, stderr)
+		}
+
+		touch(t, dir, "akira-toriyama", "fix~: fix the readme", "README.md")
+		code, stderr = lint(t)
+		want = `nothing can carry: leave the sigil out so it moves no line, or declare the package these files belong to ([[packages]] path = "<its directory>"; path = "." declares the root package, which holds every file no other package claims)` + "\n"
+		if code != 3 || !strings.Contains(stderr, want) {
+			t.Fatalf("fix~ on a shared file exited %d; the finding must end %q:\n%s", code, want, stderr)
+		}
+		testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", "fix: fix the readme")
+		if code, stderr := lint(t); code != 0 {
+			t.Errorf("with the sigil left out lint exited %d, want 0\nstderr: %s", code, stderr)
+		}
+	})
+
+	t.Run("a sigil in one branch of an alternation", func(t *testing.T) {
+		dir := customRepo(t, "[[patterns]]\npattern = '^(?P<subject>(?:fix(?P<semver_sigil>[~^!])|chore): .+)'\nsemver_sigil = '='\n", "chore: declare the lines")
+		empty := touch(t, dir, "akira-toriyama", "fix~: cut a release")
+		t.Chdir(dir)
+
+		code, stderr := lint(t)
+		want := "::error::glyph: commit " + empty[:7] + ": this commit touches no file, so no package's tree can carry its sigil ~" + noEscape + "\n"
+		if code != 3 || !strings.Contains(stderr, want) {
+			t.Fatalf("an empty fix~ exited %d; the finding must be %q:\n%s", code, want, stderr)
+		}
+		for _, r := range []struct {
+			message string
+			code    int
+			why     string
+		}{
+			{"fix: cut a release", 3, "leaving the sigil out matches no pattern here, which is why the finding does not name it"},
+			{"chore: cut a release", 0, "a message the same pattern claims does pass, which is why the finding no longer says none can"},
+		} {
+			testGit(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--amend", "-m", r.message)
+			if code, stderr := lint(t); code != r.code {
+				t.Errorf("%q exited %d, want %d — %s\nstderr: %s", r.message, code, r.code, r.why, stderr)
+			}
+		}
+	})
 }
 
 // TestPackagesNameNoScopeCanSpellIsUsage: a package name the shipped grammar
@@ -1003,7 +1537,7 @@ func TestPrePushPackagesInheritsAttribution(t *testing.T) {
 	if code != 3 {
 		t.Fatalf("a shared-only ^ reaching the default branch exited %d, want 3\nstderr: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "touches no declared package") {
+	if !strings.Contains(stderr, "its files (go.work) belong to no declared package") {
 		t.Fatalf("the blocking envelope must carry the attribution finding:\n%s", stderr)
 	}
 }

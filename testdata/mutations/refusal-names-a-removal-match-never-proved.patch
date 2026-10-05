@@ -1,0 +1,19 @@
+diff --git a/internal/config/sayable.go b/internal/config/sayable.go
+index d71a112..6659306 100644
+--- a/internal/config/sayable.go
++++ b/internal/config/sayable.go
+@@ -174,12 +174,10 @@ func (c *Config) removals(i int, message string) (scope, sigil bool) {
+ 	}
+ 	p := &c.Patterns[i]
+ 	if dropped, ok := withoutScope(p.Pattern, message); ok {
+-		after, ok := c.claimedBy(i, dropped)
+-		scope = ok && after.Groups[ScopeGroup] == "" && after.Sigil == before.Sigil
++		scope = before.Matched && dropped != message
+ 	}
+ 	if left, ok := withoutSigil(p.re, message); ok {
+-		after, ok := c.claimedBy(i, left)
+-		sigil = ok && after.Sigil == SigilNone
++		sigil = left != message && p.Fixed != nil && *p.Fixed == SigilNone
+ 	}
+ 	return scope, sigil
+ }

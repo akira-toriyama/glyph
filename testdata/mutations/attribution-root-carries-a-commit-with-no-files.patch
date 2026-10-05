@@ -1,0 +1,18 @@
+diff --git a/internal/attribution/attribution.go b/internal/attribution/attribution.go
+index d148e75..5abcba9 100644
+--- a/internal/attribution/attribution.go
++++ b/internal/attribution/attribution.go
+@@ -255,6 +255,13 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
+ 	if hasNamed {
+ 		return []config.Package{packages[named]}, nil
+ 	}
++	if len(files) == 0 {
++		for _, p := range packages {
++			if p.Path == "." {
++				return []config.Package{p}, nil
++			}
++		}
++	}
+ 	if sigil == config.SigilNone {
+ 		return nil, nil
+ 	}

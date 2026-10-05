@@ -31,7 +31,7 @@ func underHaiku(i int) string     { return fmt.Sprintf("haiku/gen/f%d.go", i) }
 
 // TestReleasePackagesCappedRefusalIsNotTheGateCode: a capped inner commit
 // whose visible files attribution would refuse — under no package with a ^,
-// or with a scope naming a package the visible files do not touch — makes
+// or with a scope naming a package that owns none of the visible files — makes
 // release refuse the walk as INCOMPLETE (4), not the commit as a violation
 // (3); bump, which only reports, answers 0 with the warning. The control is
 // the same commit one file short of the cap: the listing is whole, and the
@@ -42,12 +42,15 @@ func underHaiku(i int) string     { return fmt.Sprintf("haiku/gen/f%d.go", i) }
 // unread-listing-remedy-is-a-rerun).
 func TestReleasePackagesCappedRefusalIsNotTheGateCode(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		message string
-		files   string
+		name     string
+		message  string
+		files    string
+		withheld string // the refusal as the warning quotes it: over the files READ
 	}{
-		{"no carrier", ":sparkles:^ add a season", listing(github.CommitFilesCap, underNoPackage)},
-		{"contradiction", ":sparkles:(curry)^ add a season", listing(github.CommitFilesCap, underHaiku)},
+		{"no carrier", ":sparkles:^ add a season", listing(github.CommitFilesCap, underNoPackage),
+			"attribution would refuse it (the files read of it (docs/f00000.md, docs/f00001.md, docs/f00002.md and 2997 more) belong to no declared package, and its sigil ^ claims"},
+		{"contradiction", ":sparkles:(curry)^ add a season", listing(github.CommitFilesCap, underHaiku),
+			"attribution would refuse it (scope (curry) names a line the files read of this commit do not move: haiku/gen/f0.go belongs to haiku (haiku), and 2999 more files likewise — "},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, _ := packagesRepo(t)
@@ -73,8 +76,8 @@ func TestReleasePackagesCappedRefusalIsNotTheGateCode(t *testing.T) {
 			if strings.Contains(stderr, "cannot be rewritten") || strings.Contains(stderr, `"code":3`) {
 				t.Errorf("the wedge remedy was handed down over a truncated listing:\n%s", stderr)
 			}
-			if !strings.Contains(stderr, "not a verdict") {
-				t.Errorf("the withheld refusal must be warned about:\n%s", stderr)
+			if !strings.Contains(stderr, "over the files GitHub listed, "+tc.withheld) || !strings.Contains(stderr, "not a verdict") {
+				t.Errorf("the withheld refusal must be warned about, in terms of the files read (%q):\n%s", tc.withheld, stderr)
 			}
 
 			// bump reports and does not act: the commit is carried nowhere,
@@ -97,7 +100,7 @@ func TestReleasePackagesCappedRefusalIsNotTheGateCode(t *testing.T) {
 		t.Chdir(dir)
 
 		code, _, stderr := runGlyph(t, "release", "--dry-run")
-		if code != 3 || !strings.Contains(stderr, "touches no declared package") {
+		if code != 3 || !strings.Contains(stderr, "its files (docs/f00000.md, docs/f00001.md, docs/f00002.md and 2996 more) belong to no declared package") {
 			t.Fatalf("release exited %d, want 3 with the attribution refusal over a whole listing\nstderr: %s", code, stderr)
 		}
 	})
@@ -132,8 +135,8 @@ func TestPreviewPackagesCappedRefusalIsNotTheGateCode(t *testing.T) {
 		if !strings.Contains(res.Body, "moves nothing") || !strings.Contains(res.Body, caveat) || !strings.Contains(res.Body, "(h1)") {
 			t.Fatalf("the moves-nothing body must carry the PR-side caveat naming the commit:\n%s", res.Body)
 		}
-		if !strings.Contains(stderr, "not a verdict") {
-			t.Errorf("the withheld refusal must be warned about:\n%s", stderr)
+		if !strings.Contains(stderr, "over the files GitHub listed, attribution would refuse it (the files read of it (docs/f00000.md, docs/f00001.md, docs/f00002.md and 2997 more) belong to no declared package") || !strings.Contains(stderr, "not a verdict") {
+			t.Errorf("the withheld refusal must be warned about, in terms of the files read:\n%s", stderr)
 		}
 	})
 
@@ -170,7 +173,7 @@ func TestPreviewPackagesCappedRefusalIsNotTheGateCode(t *testing.T) {
 		t.Chdir(dir)
 
 		code, _, stderr := runGlyph(t, "preview", "--pr", "9")
-		if code != 3 || !strings.Contains(stderr, "touches no declared package") {
+		if code != 3 || !strings.Contains(stderr, "its files (docs/f00000.md, docs/f00001.md, docs/f00002.md and 2996 more) belong to no declared package") {
 			t.Fatalf("preview exited %d, want 3 with the attribution refusal over a whole listing\nstderr: %s", code, stderr)
 		}
 	})

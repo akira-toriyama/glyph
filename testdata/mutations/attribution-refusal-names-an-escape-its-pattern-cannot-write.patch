@@ -1,0 +1,13 @@
+diff --git a/internal/attribution/attribution.go b/internal/attribution/attribution.go
+index eb405cc..3f6b404 100644
+--- a/internal/attribution/attribution.go
++++ b/internal/attribution/attribution.go
+@@ -291,7 +291,7 @@ func (r *Refusal) noCarrier() string {
+ // said of the claiming pattern, else every name, a scope it can drop and the
+ // message's own sigil.
+ func (r *Refusal) sayable() config.Sayable {
+-	if r.Pattern != nil {
++	if r.Pattern != nil && false {
+ 		return *r.Pattern
+ 	}
+ 	return config.Sayable{Pattern: -1, ScopeGroup: true, ScopeDroppable: true, Scopes: r.Names, SigilGroup: true, None: true, RootNeedsName: true}

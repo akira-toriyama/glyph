@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/akira-toriyama/glyph/v4/internal/attribution"
 	"github.com/akira-toriyama/glyph/v4/internal/bump"
 	"github.com/akira-toriyama/glyph/v4/internal/cleanup"
 	"github.com/akira-toriyama/glyph/v4/internal/config"
@@ -300,8 +299,9 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 //
 // With [[packages]] declared, a clean message is judged once more against
 // the commit's own diff (DESIGN §4.1): a commit under no package whose sigil
-// claims a version impact, and a scope naming a package the diff does not
-// touch, are findings here — the pre-push hook is where a shared-only ^ is
+// claims a version impact, and — when the sigil claims one; a = is placed by
+// its files — a scope naming a package that owns none of the diff's files,
+// are findings here — the pre-push hook is where a shared-only ^ is
 // caught before it is pushed, and the release walk would refuse it later
 // with no way to rewrite it. --message and --stdin never reach this: a
 // message alone has no diff. A shallow clone's boundary commit has no diff
@@ -356,7 +356,7 @@ func lintAttribution(ctx context.Context, raw gitsource.RawCommit, cfg *config.C
 			return "", err
 		}
 	}
-	if _, aerr := attribution.Attribute(files, m.Groups[config.ScopeGroup], m.Sigil, cfg.Packages); aerr != nil {
+	if _, aerr := attribute(cfg, raw, readingOf(m), files, true); aerr != nil {
 		return aerr.Error(), nil
 	}
 	return "", nil

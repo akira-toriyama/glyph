@@ -1,0 +1,13 @@
+diff --git a/internal/config/sayable.go b/internal/config/sayable.go
+index d71a112..b908587 100644
+--- a/internal/config/sayable.go
++++ b/internal/config/sayable.go
+@@ -241,7 +241,7 @@ func withoutScope(pattern, message string) (string, bool) {
+ 		return "", false
+ 	}
+ 	beside := message[whole[0]:scope[0]] + message[scope[1]:whole[1]]
+-	if strings.ContainsFunc(beside, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) {
++	if false && strings.ContainsFunc(beside, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) {
+ 		return "", false
+ 	}
+ 	return message[:whole[0]] + message[whole[1]:], true

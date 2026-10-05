@@ -46,14 +46,11 @@ func scopeSpellers(patterns []Pattern) ([]scopeSpeller, error) {
 		if err != nil {
 			return nil, fmt.Errorf("patterns[%d]: parse %q: %w", i, p.Pattern, err)
 		}
-		group := lastScopeGroup(tree)
+		group := lastGroup(tree, ScopeGroup)
 		if group == nil {
 			continue
 		}
-		// String round-trips to an equivalent expression, flags included
-		// (regexp/syntax's TestToStringEquivalentParse); it is compiled, never
-		// shown — the refusal quotes the source instead.
-		word, err := regexp.Compile(`\A(?:` + group.Sub[0].String() + `)\z`)
+		word, err := wholeGroup(group)
 		if err != nil {
 			return nil, fmt.Errorf("patterns[%d]: the %s group of %q does not compile on its own: %w", i, ScopeGroup, p.Pattern, err)
 		}
@@ -62,13 +59,14 @@ func scopeSpellers(patterns []Pattern) ([]scopeSpeller, error) {
 	return out, nil
 }
 
-// lastScopeGroup is the capture named ScopeGroup with the highest index —
-// the one whose value Match keeps — or nil when the pattern names none.
-func lastScopeGroup(re *syntax.Regexp) *syntax.Regexp {
+// lastGroup is the capture called name with the highest index — the one
+// whose value Match keeps, for the scope and the sigil alike: it fills both
+// in index order — or nil when the pattern names none.
+func lastGroup(re *syntax.Regexp, name string) *syntax.Regexp {
 	var last *syntax.Regexp
 	var walk func(*syntax.Regexp)
 	walk = func(r *syntax.Regexp) {
-		if r.Op == syntax.OpCapture && r.Name == ScopeGroup && (last == nil || r.Cap > last.Cap) {
+		if r.Op == syntax.OpCapture && r.Name == name && (last == nil || r.Cap > last.Cap) {
 			last = r
 		}
 		for _, sub := range r.Sub {
@@ -77,6 +75,14 @@ func lastScopeGroup(re *syntax.Regexp) *syntax.Regexp {
 	}
 	walk(re)
 	return last
+}
+
+// wholeGroup compiles a capture's own sub-expression anchored whole: every
+// value that group can hand on. String round-trips to an equivalent
+// expression, flags included (regexp/syntax's TestToStringEquivalentParse);
+// it is compiled, never shown — a refusal quotes the source instead.
+func wholeGroup(group *syntax.Regexp) (*regexp.Regexp, error) {
+	return regexp.Compile(`\A(?:` + group.Sub[0].String() + `)\z`)
 }
 
 // checkScopeWord refuses a package whose name none of the spellers captures.

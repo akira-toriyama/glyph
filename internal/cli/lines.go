@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -324,6 +325,23 @@ const (
 	placedNowhere
 )
 
+// reading is what attribution may read of one commit's message: the scope
+// and sigil the claiming pattern handed on, and which pattern that was —
+// which decides no placement and only words a refusal (attribute). unjudged
+// is the reading of a message it may read nothing of: no scope, the none
+// sigil, no pattern, so files alone place the commit and nothing refuses it.
+type reading struct {
+	scope   string
+	sigil   config.Sigil
+	pattern int // position in cfg.Patterns; -1 when the message is not read
+}
+
+var unjudged = reading{sigil: config.SigilNone, pattern: -1}
+
+func readingOf(m config.Match) reading {
+	return reading{scope: m.Groups[config.ScopeGroup], sigil: m.Sigil, pattern: m.PatternIndex}
+}
+
 // placeOf reads what attribution may read of a commit's message: its scope
 // and sigil when the fold reads the message, nothing when it does not. An
 // exclude_authors commit is placed by its files alone — the message is
@@ -331,18 +349,51 @@ const (
 // its sigil may carry it or refuse it (attribution.Attribute with no scope
 // and the none sigil: files decide, and under no package it is placed
 // nowhere, the shape rule 3 gives a shared-only `=`).
-func placeOf(cfg *config.Config, raw gitsource.RawCommit) (placement, string, config.Sigil) {
+func placeOf(cfg *config.Config, raw gitsource.RawCommit) (placement, reading) {
 	if slices.Contains(cfg.ExcludeAuthors, raw.Author) {
-		return placedByFiles, "", config.SigilNone
+		return placedByFiles, unjudged
 	}
 	m, err := cfg.Match(raw.Message)
 	if err != nil || !m.Matched {
-		return placedEverywhere, "", config.SigilNone
+		return placedEverywhere, unjudged
 	}
 	if m.Skip {
-		return placedNowhere, "", config.SigilNone
+		return placedNowhere, unjudged
 	}
-	return placedByFiles, m.Groups[config.ScopeGroup], m.Sigil
+	return placedByFiles, readingOf(m)
+}
+
+// attribute is the one door the walk, lint --range and preview ask
+// attribution through. The verdict is attribution.Attribute's, over the four
+// inputs it has always read. What this adds is the half of a refusal's
+// sentence only a caller knows: that the commit is a merge commit (its diff
+// is never read, so files is nil whatever it touched), that the diff was not
+// read whole (whole false: a listing GitHub capped or cut short, a shallow
+// boundary — the refusal a caller then withholds), and what this message can
+// write under the pattern that claimed it (config.Sayable, which is handed
+// the message because an escape that takes something out of it — the scope,
+// the sigil — is proven by matching the rewritten message, not read off the
+// pattern). None of it can move the answer: it is set on a refusal already
+// returned.
+//
+// One helper, because the alternative is three call sites each setting three
+// fields by hand: a site that forgets one moves no verdict, so every verdict
+// test stays green while its refusal goes back to the first cut's words —
+// which told a raw revert's author to write a scope and a = its pattern never
+// captures (t-mfny (A); DESIGN §4.1). Each arm has a test that reads its
+// refusal's own words, and a mutation row that hands this door no commit
+// (<arm>-refuses-a-merge-commit-as-touching-no-file).
+func attribute(cfg *config.Config, raw gitsource.RawCommit, said reading, files []string, whole bool) ([]config.Package, error) {
+	moved, err := attribution.Attribute(files, said.scope, said.sigil, cfg.Packages)
+	var r *attribution.Refusal
+	if errors.As(err, &r) {
+		r.Merge = raw.Parents >= 2
+		r.Unread = !whole
+		if say, ok := cfg.Sayable(said.pattern, raw.Message); ok {
+			r.Pattern = &say
+		}
+	}
+	return moved, err
 }
 
 // partitionLines splits the walk's commits over the lines. With no packages
@@ -380,7 +431,7 @@ func placeOf(cfg *config.Config, raw gitsource.RawCommit) (placement, string, co
 // (diffGap) — a listing GitHub TRUNCATED at its cap or cut short with a 422
 // (listFiles), or a shallow clone's boundary, whose diff local git cannot
 // compute at all — is not a finding and never wedges: "no carrier" and "the
-// scope names a package the files do not touch" are both claims about files
+// scope names a package owning none of the files" are both claims about files
 // the walk could not read (the package past the cap may be exactly the one
 // named). The commit is carried nowhere and the walk's own shortfall answers
 // — FilesCapped, FilesUnknown or Shallow, on which a writing command refuses
@@ -433,7 +484,7 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, 
 		}
 		all = append(all, c)
 		var carriers []int
-		switch place, scope, sigil := placeOf(cfg, c.Raw); place {
+		switch place, said := placeOf(cfg, c.Raw); place {
 		case placedEverywhere:
 			carriers = reach
 		case placedNowhere:
@@ -442,7 +493,7 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, 
 			if ferr != nil {
 				return nil, nil, ferr
 			}
-			moved, aerr := attribution.Attribute(files, scope, sigil, cfg.Packages)
+			moved, aerr := attribute(cfg, c.Raw, said, files, gap == diffWhole)
 			switch {
 			case aerr != nil && gap != diffWhole:
 				carriers = nil

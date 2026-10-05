@@ -126,7 +126,7 @@ func TestLintRangePackagesAtAShallowBoundaryIsNotReadAsTheWholeTree(t *testing.T
 	t.Run("the full clone refuses the shared-only bump", func(t *testing.T) {
 		t.Chdir(dir)
 		code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
-		if code != 3 || !strings.Contains(stderr, "touches no declared package") {
+		if code != 3 || !strings.Contains(stderr, "its files (go.work) belong to no declared package") {
 			t.Fatalf("lint --range exited %d, want 3 with the no-carrier finding\nstderr: %s", code, stderr)
 		}
 	})
@@ -190,7 +190,10 @@ func TestPackagesWalkPlacesAShallowBoundaryByScopeAndSigil(t *testing.T) {
 		{"with no scope its refusal is withheld, never handed down as the gate code",
 			":bug:~ fix a line", "haiku/haiku.go", false,
 			0, verdict{"patch", "none", "v0.1.1"}, 1, 1, verdict{"none", "none", ""},
-			"which is not a verdict: the commit is carried nowhere"},
+			// The withheld refusal speaks of what was READ: said of the commit
+			// ("touches no file") it contradicted the warning around it, which
+			// says a package it touched is missing.
+			"over no file, attribution would refuse it (no file of this commit was read, so no package's tree can carry its sigil ~: name the line it moves in the scope (one of haiku, curry), or write = so it moves no line), which is not a verdict: the commit is carried nowhere"},
 		{"a = with no scope is on no line",
 			":memo:= reword a line", "haiku/haiku.go", false,
 			1, verdict{"none", "none", ""}, 1, 1, verdict{"none", "none", ""},

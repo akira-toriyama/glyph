@@ -1,0 +1,13 @@
+diff --git a/internal/attribution/attribution.go b/internal/attribution/attribution.go
+index eb405cc..b414ee8 100644
+--- a/internal/attribution/attribution.go
++++ b/internal/attribution/attribution.go
+@@ -281,7 +281,7 @@ func (r *Refusal) noCarrier() string {
+ 		// `(?:fix(?P<semver_sigil>[~^!])|chore): ` (measured 2026-10-05: lint
+ 		// 0). Nor is anything claimed of the rest of the file, where a warn
+ 		// pattern Sayable leaves out may still carry the commit.
+-		return opening + ": " + why
++		return opening + ": " + why + " — nothing a message it claims can write carries this commit"
+ 	default:
+ 		return opening + ": " + why + " — " + orList(escapes)
+ 	}
