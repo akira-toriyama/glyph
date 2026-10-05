@@ -93,7 +93,7 @@
 #     smoke block, and the same incident behind it.
 #
 # ─── Usage ───────────────────────────────────────────────────────────────────
-#     sh scripts/fleet-preflight.sh <candidate-binary> [baseline-binary]
+#     sh scripts/fleet-preflight.sh [--fetch] <candidate-binary> [baseline-binary]
 #
 # The candidate is an ARGUMENT and not `glyph` from PATH on purpose: the whole
 # instrument exists to judge a binary that has no release yet, and the PATH
