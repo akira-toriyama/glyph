@@ -51,7 +51,8 @@ cut, then wrong fleet-wide until the pins move back.
 - **Assert the exact code, never truthiness** — `if glyph …; then` cannot tell `3` from `2`.
 - Do not add another prose copy: implemented once in `internal/core/errors.go`, spelled out in
   README.md's Exit codes section, DESIGN §5 and glossary §6, which
-  `internal/workflows/exitcodes_test.go` holds lockstep.
+  `internal/workflows/exitcodes_test.go` holds lockstep — and once more as `doctor`'s subset in
+  README.md's doctor section, which no test holds: move that one by hand.
 
 Why: every fleet repo's lint gate, glyph's three reusable workflows, the installed commit-msg
 hook and `scripts/check.sh` all branch on the exact value. `lint --stdin=false` once exited

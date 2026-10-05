@@ -31,12 +31,12 @@ missing entry, because it is the one place a reader trusts not to be stale.
 
 **Contents**
 
-1. [The release walk](#1-the-release-walk) — walk, walk base, auto, below:, range, fold, participate, merge point, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, walkFacts, Dropped, shortfall, wedge, wedge escape, package, root package, line, attribution, carrier, shared-only, governing commit
+1. [The release walk](#1-the-release-walk) — walk, walk base, step base, auto, below:, range, fold, participate, merge point, merge commit, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, walkFacts, Dropped, shortfall, wedge, wedge escape, package, root package, line, attribution, carrier, shared-only, governing commit
 2. [Verdicts and the rolling draft](#2-verdicts-and-the-rolling-draft) — verdict, level, source, reason, target, action, rolling draft, glyph-managed draft, residual draft, stale draft, published floor, pending, incomplete banner
 3. [Convention and lint](#3-convention-and-lint) — pattern, unlandable, dictionary, sigil, promote, 0.x clamp, bump lattice, section, excluded author, cleanup, cleanup mode, edited, cut line
 4. [The render boundary](#4-the-render-boundary) — inline context, phantom span, neutralize, fence, flatten, line builder, pipe escape, over-escaping is the safe direction
 5. [Repository preconditions (`doctor`)](#5-repository-preconditions-doctor) — check, check id, pass/fail/advice/unknown, release-tag pin
-6. [Exit codes and streams](#6-exit-codes-and-streams) — gate code, soft no-release, annotation, error envelope
+6. [Exit codes and streams](#6-exit-codes-and-streams) — gate code, soft no-release, annotation, error envelope, stream contract
 7. [Fleet distribution](#7-fleet-distribution) — fleet, reusable workflow, composite action, distribution layer, dist-gate, merge preview, sticky comment
 
 ---
@@ -347,9 +347,10 @@ carries the decisions. `internal/config/config.go: Package`
 `pubsub/v2` is the v2 line on the `pubsub/` prefix, beside a `pubsub` line
 holding every other major, Go's own rule), its own walk base (the highest tag
 on that prefix, of a major it holds, that HEAD contains), its own fold, verdict
-and rolling draft (`<prefix>vX.Y.Z`, placeholder `<path>/Unreleased`), converged
-by `draftplan` on that line alone so one line's release never touches another's
-draft. A repository with no `[[packages]]` is one line with no name, and nothing
+and rolling draft (`<prefix>vX.Y.Z`; placeholder `<path>/Unreleased`, bare
+`Unreleased` for the root package), converged by `draftplan` on that line alone
+so one line's release never touches another's draft. A repository with no
+`[[packages]]` is one line with no name, and nothing
 synthesises a root package for it. A tag **names** a line:
 `--since-tag=haiku/v0.1.0` selects haiku alone, `--since-tag=pubsub/v2.7.0`
 the v2 line alone. "Which line does this commit move?" is the only question
@@ -451,9 +452,10 @@ tag (cli/cli#9367). `internal/draftplan/draftplan.go: PlanDraft`,
 
 **glyph-managed draft** — an unpublished draft whose tag name is the house shape
 `vX.Y.Z` (with the `v`; `<prefix>vX.Y.Z` on a declared line), or the
-`Unreleased` placeholder (`<path>/Unreleased` on a declared line;
-draft_on_none's artifact — claimed even with the flag off, so flipping it off
-converges the placeholder away). Each line manages only its own: published
+`Unreleased` placeholder (`<path>/Unreleased` on a declared line, still bare on
+the root package's; draft_on_none's artifact — claimed even with the flag off,
+so flipping it off converges the placeholder away). Each line manages only its
+own: published
 releases, a human's hand-named drafts and another line's drafts are never its
 to touch. `internal/draftplan/draftplan.go: PlanDraft`
 
@@ -531,7 +533,7 @@ to write, never to land. The commit-msg hook's modes pass it at 0 with the
 reason as a warning (`Config.LintAuthoring`); every gate that judges an
 existing commit reads it as a message no pattern claims, with the reason as
 the finding (`Config.Lint`, the fold's refusal, the notes' raw-line fallback).
-Distinguish from **skip**, under which the commit lands and is never judged.
+Distinguish from *skip*, under which the commit lands and is never judged.
 Made for git's `amend!` subject, which the presets claim when its body — what
 lands — opens the way their first pattern's subject does; the presets claim
 git's `fixup!` and `squash!` subjects too, which carry no sigil of their own
@@ -574,7 +576,7 @@ a commit appears in the notes at all is the sections' decision alone.
 **excluded author** — an `exclude_authors` entry: its commits leave lint and
 the fold before matching (the key exists for bots, whose messages the
 patterns do not describe) and skip release-walk resolution, but still reach
-the notes machinery — the sections decide. Distinguish from **skip**, which
+the notes machinery — the sections decide. Distinguish from *skip*, which
 is total. `internal/bump/sigilfold.go: FoldSigils`
 
 **cleanup** — the reduction of a raw commit-message **file** (what git hands a

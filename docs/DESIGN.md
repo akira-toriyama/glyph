@@ -632,7 +632,7 @@ exactly those commits unlinted.
 **Deriving this inside the binary rather than in the hook script is a rollout
 decision, and the pre-push hook is the same decision applied to a bigger
 quantity** — it computes no range at all, because a range computed by a script
-nobody refreshes is a wrong verdict rather than a loud failure. The script is a file installed once into ~34 repositories; had it
+nobody refreshes is a wrong verdict rather than a loud failure. The script is a file installed once into each clone; had it
 been taught to compute the mode, every already-installed copy would go on
 computing nothing until someone re-ran `glyph hook install` there. It also keeps
 the hook's founding property (§5): the hook holds no knowledge, it asks glyph.
