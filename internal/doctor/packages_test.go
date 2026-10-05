@@ -67,8 +67,8 @@ func TestPackagePathFileIsAFailure(t *testing.T) {
 // attribution asks: on a case-insensitive volume (APFS, measured) `Haiku`
 // resolves to haiku/, and a symlink `currylink` -> haiku resolves to a
 // directory while git records it as a 120000 blob — both passed, while
-// `lint --range` under the same config exited 3 (touches no declared package)
-// on a commit under haiku/. Attribution reads git's path strings, so the
+// `lint --range` under the same config exited 3 (its files belong to no
+// declared package) on a commit under haiku/. Attribution reads git's path strings, so the
 // check asks HEAD's trees, byte for byte. The on-disk layout below is real,
 // so a Stat-based check passes the symlink on every OS and `Haiku` on macOS.
 func TestPackagePathsAskGitNotTheFilesystem(t *testing.T) {

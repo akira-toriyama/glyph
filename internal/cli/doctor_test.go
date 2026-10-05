@@ -1142,8 +1142,9 @@ func TestDoctorPinScanReadsEveryActionFileGitLists(t *testing.T) {
 // `Haiku` (HEAD records haiku) and `currylink` (a symlink to haiku, a 120000
 // blob to git) both open as directories on this machine's filesystem — the
 // symlink on every OS, the case on APFS — and both passed package-paths-exist
-// while lint --range refused a commit under haiku/ at 3, "touches no declared
-// package". The check now asks HEAD's trees, as attribution does.
+// while lint --range refused a commit under haiku/ at 3, its files belonging
+// "to no declared package". The check now asks HEAD's trees, as attribution
+// does.
 func TestDoctorPackagePathsAgreeWithAttribution(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	appendTo(t, dir, "glyph.toml", "\n[[packages]]\npath = \"Haiku\"\nname = \"haiku\"\n\n[[packages]]\npath = \"currylink\"\n")
@@ -1158,7 +1159,7 @@ func TestDoctorPackagePathsAgreeWithAttribution(t *testing.T) {
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
-	if code != 3 || !strings.Contains(stderr, "touches no declared package") {
+	if code != 3 || !strings.Contains(stderr, "its files (haiku/season.go) belong to no declared package") {
 		t.Fatalf("lint --range exited %d, want 3 with the attribution finding — the fixture no longer reproduces the split\n%s", code, stderr)
 	}
 
