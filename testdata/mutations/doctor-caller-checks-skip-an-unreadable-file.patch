@@ -1,0 +1,26 @@
+diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
+index 6e733ea..62b41cb 100644
+--- a/internal/doctor/callerinputs.go
++++ b/internal/doctor/callerinputs.go
+@@ -55,7 +55,7 @@ func checkCallerInputs(root string, rootVerified bool) Check {
+ 		body, rerr := os.ReadFile(path) // #nosec G304 -- the caller's own checkout, listed above
+ 		if rerr != nil {
+ 			// Unread is unknown, never "no caller" — see checkCallerPermissions.
+-			unreadable = append(unreadable, fmt.Sprintf("%s could not be read: %v", path, rerr))
++			_ = rerr
+ 			continue
+ 		}
+ 		lines := strings.Split(string(body), "\n")
+diff --git a/internal/doctor/callerperms.go b/internal/doctor/callerperms.go
+index 9105621..169dfe8 100644
+--- a/internal/doctor/callerperms.go
++++ b/internal/doctor/callerperms.go
+@@ -86,7 +86,7 @@ func checkCallerPermissions(root string, rootVerified bool) Check {
+ 			// concrete, not whether a grant covers a reusable, and skipping the
+ 			// file here turned chmod 000 on a failing caller into this check's
+ 			// "nothing to judge" pass (t-fdd8 (3)).
+-			unreadable = append(unreadable, fmt.Sprintf("%s could not be read: %v", path, rerr))
++			_ = rerr
+ 			continue
+ 		}
+ 		needs := reusablesCalled(name, string(body))

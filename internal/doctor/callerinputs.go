@@ -45,7 +45,7 @@ func checkCallerInputs(root string, rootVerified bool) Check {
 	}
 
 	callers := 0
-	var findings []string
+	var findings, unreadable []string
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || (!strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml")) {
@@ -54,7 +54,8 @@ func checkCallerInputs(root string, rootVerified bool) Check {
 		path := filepath.Join(root, ".github", "workflows", name)
 		body, rerr := os.ReadFile(path) // #nosec G304 -- the caller's own checkout, listed above
 		if rerr != nil {
-			// The pin check already reports unreadable files; see callerperms.
+			// Unread is unknown, never "no caller" — see checkCallerPermissions.
+			unreadable = append(unreadable, fmt.Sprintf("%s could not be read: %v", path, rerr))
 			continue
 		}
 		lines := strings.Split(string(body), "\n")
@@ -87,14 +88,24 @@ func checkCallerInputs(root string, rootVerified bool) Check {
 	}
 	sort.Strings(findings)
 
-	if len(findings) > 0 {
+	switch {
+	case len(findings) > 0:
 		c.Status = StatusFail
 		c.Observed = fmt.Sprintf("%d missing required input(s) across the %d workflow file(s) that call a glyph reusable", len(findings), callers)
-		c.Details = findings
+		c.Details = append(findings, unreadable...)
 		c.Message = "GitHub kills a reusable call that omits a required input as startup_failure before any job — and " +
 			"it surfaces no error anywhere: not in the run, not in the check suite, not in the API (measured, " +
 			"glyph-test3 2026-08-26). This static read is the only check that can see it coming"
 		c.Fix = "add the missing input to the caller's with: block — the commented stub in each reusable's header is the known-good copy"
+		return c
+	case len(unreadable) > 0:
+		c.Status = StatusUnknown
+		c.Observed = fmt.Sprintf("%d workflow file(s) could not be read; the %d that were read and call a glyph reusable pass what it requires",
+			len(unreadable), callers)
+		c.Details = unreadable
+		c.Message = "a file doctor cannot read could hold a caller omitting a required input — the silent startup death " +
+			"this check exists for — so the checkout is unverified here, not verified"
+		c.Fix = "fix the file permissions and re-run"
 		return c
 	}
 	c.Status = StatusPass

@@ -73,7 +73,7 @@ func checkCallerPermissions(root string, rootVerified bool) Check {
 	}
 
 	callers := 0
-	var findings []string
+	var findings, unreadable []string
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || (!strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml")) {
@@ -82,8 +82,11 @@ func checkCallerPermissions(root string, rootVerified bool) Check {
 		path := filepath.Join(root, ".github", "workflows", name)
 		body, rerr := os.ReadFile(path) // #nosec G304 -- the caller's own checkout, listed above
 		if rerr != nil {
-			// The pin check already reports unreadable files; a second copy of
-			// the same finding would double every remediation list.
+			// Not left to the pin check: its unknown answers whether a ref is
+			// concrete, not whether a grant covers a reusable, and skipping the
+			// file here turned chmod 000 on a failing caller into this check's
+			// "nothing to judge" pass (t-fdd8 (3)).
+			unreadable = append(unreadable, fmt.Sprintf("%s could not be read: %v", path, rerr))
 			continue
 		}
 		needs := reusablesCalled(name, string(body))
@@ -107,16 +110,26 @@ func checkCallerPermissions(root string, rootVerified bool) Check {
 	}
 	sort.Strings(findings)
 
-	if len(findings) > 0 {
+	switch {
+	case len(findings) > 0:
 		c.Status = StatusFail
 		c.Observed = fmt.Sprintf("%d missing grant(s) across the %d workflow file(s) that call a glyph reusable", len(findings), callers)
-		c.Details = findings
+		c.Details = append(findings, unreadable...)
 		c.Message = "a reusable can only downgrade the caller's token, never raise it, so a caller granting less than " +
 			"the reusable declares never starts: the run dies as startup_failure before any job (measured in " +
 			"akira-toriyama/.github#186) — no step runs, nothing prints, and no runtime diagnosis can see it. " +
 			"This static read is the only check that can"
 		c.Fix = "add the missing grant to the caller's permissions block — the commented stub in each reusable's " +
 			"header is the known-good copy"
+		return c
+	case len(unreadable) > 0:
+		c.Status = StatusUnknown
+		c.Observed = fmt.Sprintf("%d workflow file(s) could not be read; the %d that were read and call a glyph reusable grant what it declares",
+			len(unreadable), callers)
+		c.Details = unreadable
+		c.Message = "a file doctor cannot read could hold a caller granting less than its reusable declares — the " +
+			"startup death this check exists for — so the checkout is unverified here, not verified"
+		c.Fix = "fix the file permissions and re-run"
 		return c
 	}
 	c.Status = StatusPass

@@ -135,6 +135,63 @@ func TestCallerPermissionsOutcomes(t *testing.T) {
 	}
 }
 
+// TestCallerChecksNeverPassOverAnUnreadableFile pins t-fdd8 (3) for both caller
+// checks. A caller file the check could not read was skipped with `continue`,
+// so chmod 000 on the one caller turned a measured fail into "no workflow in
+// this checkout calls a glyph reusable … observed — not assumed": a positive
+// claim about bytes nobody saw. A reader branching on the check id (the
+// report's API) took that as the startup-death question answered. Unread
+// bytes are unknown; a defect observed in a file that WAS read still fails.
+func TestCallerChecksNeverPassOverAnUnreadableFile(t *testing.T) {
+	// Fails both checks when readable: release needs contents: write and the
+	// install-notes input, and this caller gives neither.
+	const starved = "name: c\non:\n  push:\npermissions:\n  contents: read\njobs:\n  r:\n" +
+		"    uses: akira-toriyama/glyph/.github/workflows/release.yml@v4.2.0\n"
+	checks := map[string]func(string, bool) Check{
+		IDCallerPerms:  checkCallerPermissions,
+		IDCallerInputs: checkCallerInputs,
+	}
+	for id, check := range checks {
+		t.Run(id, func(t *testing.T) {
+			// Positive control: the fixture is a finding when it can be read,
+			// so the unknown below is earned by the unread bytes alone.
+			if c := check(checkoutWith(t, map[string]string{"release.yml": starved}), true); c.Status != StatusFail {
+				t.Fatalf("readable starved caller: status = %s, want %s (observed %q) — the fixture no longer exercises a finding", c.Status, StatusFail, c.Observed)
+			}
+
+			root := checkoutWith(t, map[string]string{"release.yml": starved})
+			locked := filepath.Join(root, ".github", "workflows", "release.yml")
+			lockFile(t, locked)
+			c := check(root, true)
+			if c.Status != StatusUnknown {
+				t.Fatalf("unreadable caller alone: status = %s, want %s (observed %q)", c.Status, StatusUnknown, c.Observed)
+			}
+			if !strings.Contains(strings.Join(c.Details, "\n"), locked) {
+				t.Errorf("details %v do not name the unread file %s", c.Details, locked)
+			}
+
+			root = checkoutWith(t, map[string]string{"release.yml": starved, "other.yml": starved})
+			lockFile(t, filepath.Join(root, ".github", "workflows", "other.yml"))
+			if c := check(root, true); c.Status != StatusFail {
+				t.Errorf("a finding beside an unreadable file: status = %s, want %s — a defect observed outranks a file unread (observed %q)", c.Status, StatusFail, c.Observed)
+			}
+		})
+	}
+}
+
+// lockFile makes path unreadable, skipping the test where mode 000 does not
+// stop a read (root, or a filesystem that ignores modes).
+func lockFile(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+	if _, err := os.ReadFile(path); err == nil { //nolint:gosec // the fixture this test just wrote
+		t.Skip("this filesystem (or a root-equivalent uid) ignores mode 000, so unreadable cannot be staged")
+	}
+}
+
 // TestCallerPermissionsWithoutADirectoryIsUnknown mirrors the pin check's
 // contract: an unlistable workflows directory observed nothing, and "we could
 // not check" is not "it is fine".

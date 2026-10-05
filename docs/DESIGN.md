@@ -2806,7 +2806,14 @@ The severities are the argued part:
   2026-08-26: three pushes, three silent `startup_failure`s). The required-set
   is a table mirroring the shipped reusables' `workflow_call.inputs`, held
   lockstep by test exactly as the permissions table is; today it holds one row
-  (`release.yml`: `install-notes`).
+  (`release.yml`: `install-notes`). Both caller checks read every workflow
+  file, and one they cannot read leaves them `unknown`, never skipped:
+  skipping it once turned `chmod 000` on a failing caller into a pass whose
+  observation claimed no caller existed — the pin check's own unknown did not
+  cover it, because that one answers whether a ref is concrete, not whether a
+  caller starts. A defect observed in a file that was read still fails
+  (`TestCallerChecksNeverPassOverAnUnreadableFile`, mutation row
+  `doctor-caller-checks-skip-an-unreadable-file`).
 - **A stale glyph-written hook ⇒ fail; no hook at all ⇒ pass.** One check per
   kind (`commit-msg-hook`, `pre-push-hook`), because a `Check` carries ONE
   observed/expected pair and folding the two would collapse "commit-msg current,
