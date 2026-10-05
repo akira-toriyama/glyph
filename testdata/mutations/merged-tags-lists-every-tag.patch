@@ -1,13 +1,13 @@
 diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
-index 02770f0..c14eea4 100644
+index 5866fb4..9264fdd 100644
 --- a/internal/gitsource/gitsource.go
 +++ b/internal/gitsource/gitsource.go
-@@ -198,7 +198,7 @@ func Tags(ctx context.Context, dir string) ([]string, error) {
+@@ -233,7 +233,7 @@ func Tags(ctx context.Context, dir string) ([]string, error) {
  // asked about, and only when the listing fails: the ordinary path stays one
  // git call.
  func MergedTags(ctx context.Context, dir, rev string) ([]string, error) {
--	out, err := run(ctx, dir, "tag", "--list", "--merged="+rev, "--sort=-v:refname")
-+	out, err := run(ctx, dir, "tag", "--list", "--sort=-v:refname")
+-	out, err := run(ctx, dir, tagListCmd("--merged="+rev)...)
++	out, err := run(ctx, dir, tagListCmd()...)
  	if err != nil {
  		if core.IsInterrupted(err) {
  			return nil, err

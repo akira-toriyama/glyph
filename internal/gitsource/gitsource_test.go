@@ -260,6 +260,42 @@ func TestLogReadsSignedCommitsUnderShowSignature(t *testing.T) {
 	}
 }
 
+// TestLogReadsUTF8UnderLogOutputEncoding: i18n.logOutputEncoding is a display
+// setting too, and git re-encodes what `git log` prints to it (measured on git
+// 2.54): under ISO-8859-1 the author and the message arrive as bytes that are
+// not UTF-8, and under UTF-16 the whole record does, which parseLog refuses —
+// every history read failed at 4. Both readers must hand back the text as
+// recorded. The raw read first is the positive control.
+func TestLogReadsUTF8UnderLogOutputEncoding(t *testing.T) {
+	const author, message = "Zoë Ünïcode", ":bug:~ fix the café crash"
+	for _, enc := range []string{"ISO-8859-1", "UTF-16"} {
+		t.Run(enc, func(t *testing.T) {
+			dir := newRepo(t)
+			root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			testutil.CommitFrom(t, dir, author, "zoe@example.invalid", message)
+			git(t, dir, "akira-toriyama", "config", "i18n.logOutputEncoding", enc)
+			if raw := git(t, dir, "akira-toriyama", "log", "-1", "--format=%an"); raw == author {
+				t.Fatalf("git printed the author in UTF-8 under i18n.logOutputEncoding=%s — git no longer re-encodes there, and this test guards nothing", enc)
+			}
+
+			got, err := Log(context.Background(), dir, root+"..HEAD")
+			if err != nil {
+				t.Fatalf("Log: %v", err)
+			}
+			if len(got) != 1 || got[0].Author != author || got[0].Message != message {
+				t.Fatalf("Log read %+v, want one commit by %q saying %q", got, author, message)
+			}
+			got, err = FirstParentLog(context.Background(), dir, "HEAD", 1)
+			if err != nil {
+				t.Fatalf("FirstParentLog: %v", err)
+			}
+			if len(got) != 1 || got[0].Author != author || got[0].Message != message {
+				t.Fatalf("FirstParentLog read %+v, want one commit by %q saying %q", got, author, message)
+			}
+		})
+	}
+}
+
 // TestLogMergeParents: a merge commit reports its true parent count.
 func TestLogMergeParents(t *testing.T) {
 	dir := newRepo(t)
@@ -444,6 +480,36 @@ func TestMergedTagsOnAnUnbornHEADIsEmpty(t *testing.T) {
 	ce := core.AsError(err)
 	if ce == nil || ce.Code != core.CodeAPI {
 		t.Fatalf("MergedTags outside a repository = %v, want CodeAPI", err)
+	}
+}
+
+// TestTagListingsStayOnePerLineUnderColumnConfig: column.ui=always — and
+// column.tag=always, the same switch for this one command — lays `git tag
+// --list` out in columns even into a pipe (measured on git 2.54), so three tags
+// came back as one line and were read as one name. The raw read first is the
+// positive control.
+func TestTagListingsStayOnePerLineUnderColumnConfig(t *testing.T) {
+	for _, key := range []string{"column.ui", "column.tag"} {
+		t.Run(key, func(t *testing.T) {
+			dir := newRepo(t)
+			for _, tag := range []string{"v0.1.0", "v0.2.0", "v0.1.1"} {
+				git(t, dir, "akira-toriyama", "tag", tag)
+			}
+			git(t, dir, "akira-toriyama", "config", key, "always")
+			if raw := git(t, dir, "akira-toriyama", "tag", "--list"); strings.Contains(raw, "\n") {
+				t.Fatalf("git listed the tags one per line under %s=always:\n%s\n— git no longer columns there, and this test guards nothing", key, raw)
+			}
+
+			want := []string{"v0.2.0", "v0.1.1", "v0.1.0"}
+			got, err := Tags(context.Background(), dir)
+			if err != nil || !slices.Equal(got, want) {
+				t.Fatalf("Tags = %q, %v; want %q", got, err, want)
+			}
+			got, err = MergedTags(context.Background(), dir, "HEAD")
+			if err != nil || !slices.Equal(got, want) {
+				t.Fatalf("MergedTags(HEAD) = %q, %v; want %q", got, err, want)
+			}
+		})
 	}
 }
 
@@ -839,6 +905,44 @@ func TestDiffTreeFiles(t *testing.T) {
 		"two subtrees":          {two, []string{"curry/c.go", "haiku/h.go"}},
 		"a rename names both":   {moved, []string{"curry/h.go", "haiku/h.go"}},
 		"a merge commit is nil": {merge, nil},
+	} {
+		got, err := DiffTreeFiles(context.Background(), dir, tc.sha)
+		if err != nil {
+			t.Fatalf("%s: DiffTreeFiles: %v", name, err)
+		}
+		if !slices.Equal(got, tc.want) {
+			t.Fatalf("%s: DiffTreeFiles = %q, want %q", name, got, tc.want)
+		}
+	}
+}
+
+// TestDiffTreeFilesReadsItsHeaderUnderLogOutputEncoding: diff-tree's %P header
+// is pretty-printed, so i18n.logOutputEncoding re-encodes it like `git log`'s
+// record (measured on git 2.54: under UTF-16 a non-empty one opens with a
+// byte-order mark and holds a NUL per digit). Read as it came, the header was
+// cut at its own first NUL and the parent's hex digits came back as the file
+// list. A root's header is empty and stays empty — the control beside it. The
+// raw read first is the positive control.
+func TestDiffTreeFilesReadsItsHeaderUnderLogOutputEncoding(t *testing.T) {
+	dir := newRepo(t)
+	root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(t, dir, "akira-toriyama", "add", ".")
+	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:^ add a file")
+	head := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	git(t, dir, "akira-toriyama", "config", "i18n.logOutputEncoding", "UTF-16")
+	if raw := git(t, dir, "akira-toriyama", "diff-tree", "--always", "--format=%P", "--name-only", "-r", head); strings.HasPrefix(raw, root) {
+		t.Fatalf("git printed the %%P header as plain hex under i18n.logOutputEncoding=UTF-16 (%q) — git no longer re-encodes there, and this test guards nothing", raw)
+	}
+
+	for name, tc := range map[string]struct {
+		sha  string
+		want []string
+	}{
+		"the root commit":    {root, []string{"glyph.toml"}},
+		"an ordinary commit": {head, []string{"a.txt"}},
 	} {
 		got, err := DiffTreeFiles(context.Background(), dir, tc.sha)
 		if err != nil {

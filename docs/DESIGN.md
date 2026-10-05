@@ -378,7 +378,21 @@ pattern says it means:
   `--no-show-signature`: under `log.showSignature` git prints each signature's
   verdict ahead of the commit's record even under `--format`, and every history
   read of a developer who signs failed at 4 — which the installed pre-push hook
-  lets through (measured; `gitsource-log-shows-signatures.patch`).
+  lets through (measured; `gitsource-log-shows-signatures.patch`). Two more
+  display settings reached a parser the same way and are held out the same way
+  (t-esm5, measured 2026-10-05 on git 2.54). `i18n.logOutputEncoding`
+  re-encodes what `git log` prints and `diff-tree`'s `%P` header with it:
+  under UTF-16 every history read failed at 4, and under ISO-8859-1 `notes`
+  wrote a subject's Latin-1 bytes into the release body, so both reads name
+  `--encoding=UTF-8`. And `column.ui=always` columns `git tag --list` even
+  into a pipe: a row of tags read as one name that parses as no version, so
+  the step base fell to v0.0.0 — `bump --range` printed v0.0.1 with nothing
+  said where the answer is v0.1.1, and a bare `--since-tag` warned that HEAD's
+  history holds no version tag and walked the whole of it — and the listing
+  runs with `--no-column` (mutation rows
+  `gitsource-log-reads-in-the-configured-output-encoding.patch`,
+  `gitsource-diff-tree-header-reads-in-the-configured-output-encoding.patch`,
+  `gitsource-tag-listing-follows-column-config.patch`).
 - **Lint has no taste** (mutation row `config-lint-grows-a-taste.patch`): a
   message either matches a pattern and yields a sigil, or it violates. Which
   combinations are wise (`:memo:!`) is the author's call — glyph parses and
