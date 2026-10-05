@@ -1,7 +1,8 @@
 // Package cli is glyph's command layer: the cobra wiring and flag checks, the
 // dispatch to an input source (a message, --range, --pr, --since-tag), the
-// rendering of every verdict to stdout, and the exit funnel — Execute() int
-// maps every error onto glyph's exit-code contract (internal/core).
+// rendering of every verdict under DESIGN §5's stream contract, and the exit
+// funnel — Execute() int maps every error onto glyph's exit-code contract
+// (internal/core).
 //
 // Until t-gr7f extracts them it also holds the release walk of DESIGN §4 and
 // §4.1 (sincetag.go, lines.go, linestep.go: the range past the tag, the
