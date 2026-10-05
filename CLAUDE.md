@@ -17,8 +17,9 @@ the reasons and the incidents that ratified them follow.
 Why: every fleet repo runs this binary as its commit-lint gate and merge-preview verdict, but
 only at **the tag it pins**. No single mechanism moves all five pin sites — `fleet-sync`
 byte-copies two, `glyph-pin-rewrite` opens a pull request for the other three (they live in
-files each repo owns), and merging those is still a human step. So a wrong answer is wrong in
-this repo until a tag is cut, then wrong fleet-wide until the pins move back.
+files each repo owns), and `fleet-automerge` arms auto-merge on those pulls below a major — a
+major's pin pulls are a human merge. So a wrong answer is wrong in this repo until a tag is
+cut, then wrong fleet-wide until the pins move back.
 
 ## Where the facts live
 
@@ -49,8 +50,9 @@ this repo until a tag is cut, then wrong fleet-wide until the pins move back.
 - Treat a new exit code as a breaking change; the integers are frozen.
 - **Assert the exact code, never truthiness** — `if glyph …; then` cannot tell `3` from `2`.
 - Do not add another prose copy: implemented once in `internal/core/errors.go`, spelled out in
-  README.md (twice — the table and `doctor`'s subset), DESIGN §5 and glossary §6, and
-  `internal/workflows/exitcodes_test.go` holds every copy lockstep.
+  README.md's Exit codes section, DESIGN §5 and glossary §6, which
+  `internal/workflows/exitcodes_test.go` holds lockstep — and once more as `doctor`'s subset in
+  README.md's doctor section, which no test holds: move that one by hand.
 
 Why: every fleet repo's lint gate, glyph's three reusable workflows, the installed commit-msg
 hook and `scripts/check.sh` all branch on the exact value. `lint --stdin=false` once exited
@@ -123,13 +125,13 @@ design, so a tree that does not compile turns the local gate into a silent no-op
 ## Generated and pinned data — regenerate, never hand-edit
 
 - `glyph.toml` ← `glyph init --gemoji`, guarded by `TestGlyphOwnConfigIsTheGemojiPreset` (byte
-  equality). Edit the source — `internal/config/presets/gemoji.toml` — then regenerate with
-  `go run ./cmd/glyph init --gemoji --force`.
-- Rewriting an `-update` golden (`internal/cli/testdata/release_dry_run.golden.md`,
-  `internal/markdown/testdata/exported-surface.golden.txt`) requires a
-  `Golden-change: <reason>` trailer on every non-merge commit (golden-gate). Read the golden
-  diff as the format spec it is before committing it — `-update` makes a rendering bug look
-  intentional.
+  equality). Edit the source — `internal/config/presets/gemoji.toml`, or
+  `internal/config/presets/packages.snippet` for the commented `[[packages]]` paragraph every
+  preset carries — then regenerate with `go run ./cmd/glyph init --gemoji --force`.
+- Rewriting an `-update` golden (any `*.golden.*` under a `testdata/` — `GOLDEN_PATTERN` in
+  `scripts/golden-gate.sh`) requires a `Golden-change: <reason>` trailer on every non-merge
+  commit (golden-gate). Read the golden diff as the format spec it is before committing it —
+  `-update` makes a rendering bug look intentional.
 - Treat `testdata/fuzz` as a regression corpus, not scratch: a **new** file there is the
   engine reporting an input the code fails. Rename it after the defect (Go replays any
   filename in the target directory) and commit it; never delete one to go green. Six entries
@@ -145,10 +147,10 @@ design, so a tree that does not compile turns the local gate into a silent no-op
   takes over under `absorbs`, and leave `emoji` as `"?"`: `go test ./internal/emoji` then prints
   the code points GitHub maps the shortcode to, rejects a code GitHub does not draw, and names the
   first line off canonical form.
-- The oracle is `testdata/gemoji.tsv`, a dated `GET /emojis` snapshot — refresh it with the
-  command in its header, never by hand. Nothing regenerates the table and nothing else reads it;
-  the argued decisions (what is deliberately absent, and why) are DESIGN §2, "The gemoji
-  dictionary".
+- The oracle is `internal/emoji/testdata/gemoji.tsv`, a dated `GET /emojis` snapshot — refresh
+  it with the command in its header, never by hand. Nothing regenerates the table and nothing
+  else reads it; the argued decisions (what is deliberately absent, and why) are DESIGN §2,
+  "The gemoji dictionary".
 
 ## CI gates that fail for reasons the diff does not show
 
@@ -171,9 +173,9 @@ design, so a tree that does not compile turns the local gate into a silent no-op
   `@vX.Y.Z` placeholder in a **commented** caller stub (a tag is cut on an already-frozen
   tree, so a concrete version in a comment is stale on arrival) and pin a real `vX.Y.Z` in
   every **executable** `uses:` — it fails you for fixing the placeholder. When you add a
-  guard that asserts an absence, copy the **positive control** shape four of its eight guards
-  carry: a regex guard with no canary proving the pattern still matches a real instance is
-  how a fleet invariant dies green.
+  guard that asserts an absence, copy the **positive control** shape of
+  `TestNaiveGrepSeesNoPinInTheReusables`: a regex guard with no canary proving the pattern
+  still matches a real instance is how a fleet invariant dies green.
 - **zizmor** — full-SHA pin third-party actions (`actions/*` and `akira-toriyama/*` may ride
   tags); give any new `actions/checkout` an explicit `persist-credentials:`.
 
