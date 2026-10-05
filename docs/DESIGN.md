@@ -465,7 +465,20 @@ pattern says it means:
 Config resolution is one file per checkout: the `glyph.toml` at the top level
 of the working tree the command runs in (ratified Q1 — a config change
 reinterprets past commits, accepted). The commit-msg hook, CI and a
-subdirectory shell all read the same file by construction.
+subdirectory shell all read the same file by construction, and `init` writes
+that same file: it asks git for the top level as every other command does and
+writes there from any subdirectory, falling back to the current directory
+only where git names no top level (outside a checkout) — never because a
+signal interrupted the question, which exits 130 with nothing written.
+Measured before (t-f2cb, 2026-09-29 and 2026-10-04): from a subdirectory
+`init` wrote `sub/glyph.toml` at exit 0, a file no command reads, and the
+missing-config refusal's remedy — run `init` — sent the author back to the
+same command; with `glyph.toml` already at the top level, an `init` from a
+subdirectory wrote a second one there at exit 0
+(`TestInitWritesTheTopLevelFromASubdirectory`,
+`TestInitInterruptDuringTopLevelReadWritesNothing`; mutation rows
+`init-writes-the-current-directory`,
+`init-reads-a-toplevel-interrupt-as-outside-a-checkout`).
 
 ### 2.1 The text the rules judge — git's cleanup
 
@@ -757,6 +770,25 @@ one split the 0.x rule rests on, and it is why the rule lives in
   rises in the sentence because classification is version-blind — the
   break stays visible — and only the arrow, which the arithmetic would have
   drawn from a version to itself, is withheld.
+- **A version field is at most 2^31−1** (`bump.MaxField`; t-f2cb, mutation
+  row `semver-field-past-the-cap-accepted`). `Next` adds one to a field, and
+  from the `int` ceiling it wrapped — measured 2026-09-29: `bump --current
+  v9223372036854775807.0.0` over a `!` printed `v-9223372036854775808.0.0` at
+  exit 0, and a tag of that version did the same from the walk base.
+  `ParseVersion` refuses a larger field, so a `--current` past the cap is
+  usage (exit 2), and a tag past it is no version on its line: it leaves the
+  walk base's, the published floor's and the managed drafts' candidates like
+  any tag that is not version-shaped. The cap sits at parse, not in `Next`: a
+  step from a field at the cap lands one past it, which `int` holds on every
+  target glyph builds for, so `Next` stays total — and a version past the cap
+  that glyph writes is one it never reads back once tagged, so the line's next
+  step answers from below it: backwards after a stepped field (measured
+  2026-10-04: `--current v2147483647.0.0` over a `!` answers
+  `v2147483648.0.0`, and with that tagged a later `~` answers
+  `v2147483647.0.1`) and the same tag again on a major version subdirectory
+  past the cap (`pkg/v2147483648` re-proposes `pkg/v2147483648.0.0` after it
+  is tagged). Rejected: detecting the overflow in `Next`, which gives every
+  step site an error arm for a state no stepping reaches.
 
 **Promote is not a fifth rung.** `bump.Decision` carries `{Level, Promote}`,
 and a `%` commit classifies as **major** like any other breaking change; the
@@ -906,6 +938,64 @@ is the first at depth zero, so `$[ [$scope]]` renders `[cli]` or leaves whole,
 and an unpaired `[` is refused as unterminated instead of closing the span one
 character early (measured: closing at the first `]` of any kind left a stray
 `]` on every rendered line).
+
+**A placeholder no commit binds does not load** (mutation rows
+`config-line-placeholder-unbound`, `config-note-line-cites-an-unlandable-group`,
+`config-note-line-cites-a-skip-group`,
+`config-note-line-refuses-the-fallback-subject`,
+`config-note-line-cites-the-fallback-subject-alone`): a name that is not a
+built-in, not a declared trailer and not a group some rendered commit's
+winning pattern captures resolves empty on every line, and inside a span it
+takes the span with it — `$[ ($pull)]` for `$pr` rendered every line without
+its citation, at exit 0. The legal set is the union over the patterns whose
+groups a commit binds (`config.Pattern.bindsGroups`, the predicate §4.1's
+scope-word check reads): a `skip` pattern's commit is in no section and an
+`unlandable` one renders through the fallback, so neither counts. **The
+fallback's `$subject` completes a template; it never carries one.** The
+fallback binds `$subject` for every commit no pattern claims, whatever the
+patterns name their groups (`config.FallbackGroup`, the name the renderer
+keys the fallback off), and for no other commit. So where no pattern binds
+`subject`, `$subject` is legal beside a group a pattern binds —
+`- $title$subject`, each line filling the one its commit binds
+(`TestGroupSigilsFallbackBindsSubjectUnderAnyGrammar`) — and refused when
+it is the template's only name beyond the built-ins and trailers, the
+refusal naming the names the file can bind. Measured (t-f2cb): before it,
+a `$branch` only a skip pattern captured loaded and rendered empty at exit 0,
+and a file whose subject group is `title` was refused `$subject` outright
+while the fallback bound it for every bot line — so its `- $title @$author`
+rendered each such line as `-  dependabot\[bot]`, the text gone, with no
+spelling that kept it (2026-09-29). Making `$subject` legal unconditionally
+fixed that and loosened the loader (2026-10-04): the gemoji preset with its
+group renamed `subject` → `title` and `note.line` left as written, which
+adfc5e1 refused at exit 2, loaded and printed every matched commit's line
+with its text gone (`-  akira`) at exit 0, and with sections on the semver
+axis only — where the fallback never renders — `$subject` filled no line at
+all. The rule reads the template and the patterns, not `note.sections`:
+`- $title$subject` under semver sections only loads, its `$subject` empty
+beside the `$title` that carries each line's text. **A `[[note.trailers]]`
+name is held to the same set from the other side.** A trailer outranks a
+group at render, so it may not take a name a commit binds — a group of a
+pattern whose groups a commit binds, or `subject` whatever the patterns call
+their groups — and a group only a `skip` or `unlandable` pattern captures,
+which binds nothing, leaves its name free (mutation rows
+`trailers-may-shadow-the-fallback-subject`, `trailers-count-a-skip-group`).
+Measured 2026-10-04, identically before t-f2cb: a title-grammar file with a
+trailer named `subject` loaded and rendered each bot line as `- `, its text
+replaced by an absent trailer, at exit 0, and a trailer named after a
+skip-only `branch` group was refused as "$branch would mean two things".
+Rejected: refusing a template that cites a name the fallback cannot bind —
+`- [$scope] $subject`, the idiom above, renders a bot line with an empty
+scope and its text (measured: `- [] Bump foo from 1 to 2`), the per-winner
+rendering every pattern already gets (the `Revert` pattern captures no scope
+either), so that refusal would ban citing any group but `$subject`; it is
+rejected on that ground alone, since no fleet file would have moved (42
+measured, every `note.line` citing only built-ins and `$subject`). Also
+rejected: refusing a template that does not cite `$subject` — whether a bot
+line shows its text is the template author's call, not a name nothing binds
+— and deriving the fallback's name from the patterns, which is undefined
+when two of them name the text differently. The `$subject` rule above is
+neither refusal: `- $title$subject` cites a name the fallback cannot bind
+and loads, and a template citing no `$subject` is never asked about it.
 
 **`draft_on_none`** (a `glyph.toml` key; the mechanism is `internal/draftplan`): with it on, a none
 verdict maintains an `Unreleased` placeholder draft instead of deleting the
@@ -1518,6 +1608,7 @@ path = "haiku"              # the subtree; the tag line is haiku/vX.Y.Z
 
 [[packages]]
 path = "."                  # the root package: the bare vX.Y.Z line, and every file no other package claims
+name = "core"               # its default "." is no preset scope's word: under the presets name is required
 ```
 
 - **The tag line is `<path>/vX.Y.Z`, derived, not configurable — with the
@@ -1568,15 +1659,91 @@ path = "."                  # the root package: the bare vX.Y.Z line, and every 
   producible; glyph writes no manifest versions for those ecosystems either,
   so that door was never open. `path = "."` is the one exception by
   definition: the root module's line is bare `vX.Y.Z`, which is why a
-  repository that declares it keeps every tag and draft it has.
+  repository that declares it keeps every tag and draft it has. Because the
+  path is the tag's prefix, **a path git cannot tag does not load**: every
+  segment must be a refname component `git check-ref-format` accepts — no
+  leading `.`, no `.lock` suffix, no `..`, no `@{`, no space, control
+  character or any of `~ ^ : ? * [ \` (the rules that bind a whole name's
+  end — a trailing dot, a lone `@` — never reach a prefix, since every tag
+  ends `vX.Y.Z` and every placeholder `Unreleased`) — and the path may not
+  begin with `-`, which `git tag` refuses as a tag name's first character
+  though `check-ref-format` accepts it (the first character only: `a/-b`
+  tags). Measured before the rule (t-f2cb, 2026-09-29): `path = "a b"`
+  loaded, `bump` printed `a b/v0.0.1` at exit 0 (as it did for `x.lock`,
+  `c~d` and `.hid`), `git tag` refused every one, and `doctor` passed both
+  `glyph-toml-loads` and `package-paths-exist` on `a b`; and before its `-`
+  half (2026-10-04, git 2.54.0), `path = "-dash"` loaded and `bump` printed
+  `-dash/v0.0.1` at exit 0, a name `git tag` refuses. Of the 32 paths
+  `TestLoadRefusesAPathGitCannotTag` asks git about, the 21 git refuses all
+  loaded at adfc5e1. The test asks git — `check-ref-format` and `git tag`
+  both — for each path's stepped tag and placeholder rather than restating
+  the rules — a model checked against itself proves nothing (mutation rows
+  `packages-path-git-cannot-tag-accepted`,
+  `packages-path-leading-dash-accepted`).
 - **`name` is the scope's word for the package**, defaulting to the last path
   segment — for a major version subdirectory the segment before it with the
   suffix kept, `pubsub/v2`, which is what such monorepos write in the scope
   (google-cloud-go: `feat(pubsub/v2): …`) — and must be unique across packages
   (a load error names the two; the remedy is to set one). It exists because
   the presets' scope group is `[a-z0-9-]+` and cannot spell
-  `exporters/prometheus` or `pubsub/v2`. It names nothing else: the draft is
-  named by its tag, the notes by their section titles.
+  `exporters/prometheus` or `pubsub/v2`, and the loader holds every name to
+  that: **a name no scope can spell does not load** (exit 2 on every verdict
+  command — §5, the config is the yardstick; `doctor` fails
+  `glyph-toml-loads`, exit 3). Each name, set or defaulted, is asked of the
+  `scope` group's own sub-expression, anchored whole, in the patterns whose
+  groups a commit binds — not `skip` (placed nowhere, its message never read)
+  and not `unlandable` (reported unmatched, with no groups) — and, in a
+  pattern that names two groups `scope`, only the last: the one `Match`
+  keeps, since a later capture overwrites an earlier one even when its
+  alternative did not take part. One such group accepting the name is
+  enough: which pattern wins is a property of each commit, the union
+  `config.validateLineNames` already takes for `note.line`'s names. The
+  refusal names the package, the rule that produced the name, each pattern it
+  asked, as written, and both remedies — set `name` to a word one of them
+  spells, or change a scope group so it spells this one (with
+  `(?P<scope>api|web)` and packages `api`, `web`, `db`, setting a name alone
+  lands on the duplicate-name refusal) — and suggests no word: glyph quotes
+  the grammar, it does not invent the author's vocabulary. The root package
+  is no exception: its default is `.`, which no preset's scope spells, so a
+  root declared under the presets sets `name` — the `name = "core"` of init's
+  snippet and the `set name` doctor's root-line advice already gives. Its
+  name is read like any other: a zero-file commit scoped `(core)` lands on
+  the root line (`bump` steps `.` from v0.0.0 to v0.0.1), and a `(core)` on a
+  commit touching only `haiku/` is a contradiction (exit 3; both measured
+  2026-09-29). A file whose patterns capture no scope at all is exempt, not
+  refused — whether a scope exists is the pattern file's decision (§2), and
+  its packages are placed by their paths alone. The group's own alphabet is
+  necessary, not sufficient — context around the group (a lazy quantifier,
+  an overlapping neighbour) can still keep a word it spells from being
+  captured whole; the loader refuses what no message can spell and claims
+  nothing more. Measured before the rule (t-mfny, t-f2cb; 2026-09-29 at
+  adfc5e1): `path = "my_lib"` loaded, a shared-only `~` was refused "name the
+  package in the scope (one of my_lib, other)", and `:memo:(my_lib)~` then
+  failed `lint --range` and `lint --message` alike as matching none of the
+  patterns — the refusal's one scope escape could not be written, so a
+  shared-only change meant for `my_lib` had no carrier but `=`, and no scope
+  could ever trip the contradiction check on it; `MyLib`, `v2.0`, the root's
+  `.` and the `pubsub/v2` default were offered the same way. Rejected:
+  widening the presets' group to spell `/` (it changes only what `init`
+  writes — nothing rewrites a `glyph.toml` already written (§2) — so the
+  fleet's files (42 in its local clones, 75 scope groups, all `[a-z0-9-]+`,
+  measured 2026-09-29; every one loads under the rule) keep the old alphabet
+  unless every one is rewritten, the amend! body pattern moving in step —
+  for a spelling no declared package uses, and it leaves `my_lib`,
+  `MyLib`, `v2.0` and the root where they were); a spellable default for a
+  major version subdirectory (`pubsub-v2` is a word glyph would invent where
+  the ecosystem's own scope is `pubsub/v2` (google-cloud-go), and the bare
+  `v2` collides across modules); every scope group having to spell every
+  name (a group narrowed on purpose — a literal `(?P<scope>deps)` — would
+  refuse every package in the file); a warning or a doctor check instead (a
+  warning leaves `bump` and `release` running on a line no commit can name,
+  and a load error is what `glyph-toml-loads` already carries). Mutation rows
+  `packages-name-no-scope-can-spell-accepted`,
+  `packages-name-union-becomes-intersection`,
+  `packages-name-counts-an-unread-scope`,
+  `packages-name-counts-a-shadowed-scope-group`, `packages-root-name-exempt`,
+  `packages-scopeless-grammar-refuses-names`. It names nothing else: the
+  draft is named by its tag, the notes by their section titles.
 - **One `glyph.toml`, at the top level, as today.** A per-package file was
   rejected: a commit is one message judged under one pattern file, and N files
   would be N grammars for the same message, with the winning one decided by a
@@ -2020,11 +2187,14 @@ reporting commands as a warning and to `release` alone as exit 4 (§4, §7).
 checkout (`package-paths-exist`, shipped — a path with no subtree claims no
 file, so a typo silently moves the verdict: fail; unknown while the file
 itself has not loaded, since its packages were never read); `name`s are
-unique (a load error, so `glyph-toml-loads` already carries it with the
-loader's own remedy — no second check repeats it); and a bare `v*` tag exists
-while no root package is declared (`root-line-tags`, shipped) — advice, not a
-defect: those tags baseline nothing now, and the note says which package
-declaration would adopt them.
+unique and each is a word the file's scope grammar can spell, and every
+`path` can prefix a tag git can create (load errors all three, so
+`glyph-toml-loads` already carries each with the loader's own remedy — no
+second check repeats them; before the path rule `package-paths-exist` passed
+`path = "a b"` green, a line no tag could ever be cut on); and a bare `v*`
+tag exists while no root package is declared (`root-line-tags`, shipped) —
+advice, not a defect: those tags baseline nothing now, and the note says
+which package declaration would adopt them.
 
 **The reusables.** `release.yml` gains a `packages` output (the JSON array
 above, as a string) and keeps its four scalars with the empty-in-packages-mode

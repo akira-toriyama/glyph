@@ -1,6 +1,7 @@
 package bump
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -50,6 +51,38 @@ func TestParseVersionRejects(t *testing.T) {
 		if got, err := ParseVersion(in); err == nil {
 			t.Fatalf("ParseVersion(%q) should fail, got %+v", in, got)
 		}
+	}
+}
+
+// TestParseVersionCapsEachField: a version field past 2^31−1 is no version
+// glyph reads, so no step from a parsed version can wrap negative. Measured
+// before the cap (2026-09-29): `bump --current v9223372036854775807.0.0` over
+// a `!` printed v-9223372036854775808.0.0 at exit 0, v1.0.9223372036854775807
+// over a `~` printed v1.0.-9223372036854775808, and a tag of that version did
+// the same from the walk base. The line-aware and base parsers inherit it.
+func TestParseVersionCapsEachField(t *testing.T) {
+	const max = 2147483647
+	if got, err := ParseVersion("v2147483647.2147483647.2147483647"); err != nil || got != (Version{max, max, max}) {
+		t.Fatalf("ParseVersion at the cap = %+v, %v; want it accepted whole", got, err)
+	}
+	for _, in := range []string{
+		"v2147483648.0.0", "v0.2147483648.0", "v0.0.2147483648",
+		"v9223372036854775807.0.0", "v1.0.9223372036854775807", "v9223372036854775808.0.0",
+	} {
+		got, err := ParseVersion(in)
+		if err == nil {
+			t.Errorf("ParseVersion(%q) = %+v, want a refusal: a field past %d can step past the int it is held in", in, got, max)
+			continue
+		}
+		if !strings.Contains(err.Error(), "2147483647") {
+			t.Errorf("ParseVersion(%q) error = %q, want it to name the cap", in, err)
+		}
+	}
+	if got, err := ParseBaseVersion("v2147483648.0.0-rc.1"); err == nil {
+		t.Errorf("ParseBaseVersion past the cap = %+v, want a refusal", got)
+	}
+	if got, err := ParseVersionOn("haiku/", "haiku/v0.0.2147483648"); err == nil {
+		t.Errorf("ParseVersionOn past the cap = %+v, want a refusal", got)
 	}
 }
 
@@ -286,11 +319,14 @@ func FuzzVersionNext(f *testing.F) {
 	f.Add(4, 5, 6, "none", false)
 	f.Add(0, 5, 3, "major", true)
 	f.Add(2, 0, 0, "major", true)
+	f.Add(MaxField, MaxField, MaxField, "major", false)
+	f.Add(1, MaxField, MaxField, "patch", false)
 	f.Fuzz(func(t *testing.T, major, minor, patch int, level string, promote bool) {
 		// Clamp to the production-reachable shape: ParseVersion only ever
-		// yields non-negative components.
-		if major < 0 || minor < 0 || patch < 0 {
-			t.Skip("unreachable: parsed versions are non-negative")
+		// yields components in [0, MaxField], which is what keeps a step from
+		// wrapping.
+		if major < 0 || minor < 0 || patch < 0 || major > MaxField || minor > MaxField || patch > MaxField {
+			t.Skip("unreachable: parsed versions hold every component in [0, MaxField]")
 		}
 		b := Level(level)
 		if b.Rank() < 0 {

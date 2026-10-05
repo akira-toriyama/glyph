@@ -104,6 +104,52 @@ func (p Package) TagPrefix() string {
 	return dir + "/"
 }
 
+// refnameSegment says why git refuses seg as one slash-separated component of
+// a refname (git check-ref-format), "" when it does not. Every segment of a
+// package path is such a component twice over — in each tag <prefix>vX.Y.Z
+// and in the placeholder <path>/Unreleased — so a segment git refuses is a
+// line no tag can ever be cut on. The rules that bind a whole name's end (no
+// trailing dot, not a lone @) never reach a segment: both names end past it.
+// The one that binds its start is refnameLead's. TestLoadRefusesAPathGitCannotTag
+// holds both to git itself.
+func refnameSegment(seg string) string {
+	switch {
+	case strings.HasPrefix(seg, "."):
+		return "begins with a dot"
+	case strings.HasSuffix(seg, ".lock"):
+		return "ends with .lock"
+	case strings.Contains(seg, ".."):
+		return "holds two consecutive dots"
+	case strings.Contains(seg, "@{"):
+		return "holds @{"
+	}
+	for i := 0; i < len(seg); i++ {
+		switch c := seg[i]; {
+		case c < 0x20 || c == 0x7f:
+			return "holds a control character"
+		case c == ' ':
+			return "holds a space"
+		case strings.IndexByte(`~^:?*[\`, c) >= 0:
+			return fmt.Sprintf("holds %q", c)
+		}
+	}
+	return ""
+}
+
+// refnameLead says why `git tag` refuses every tag a non-root package path's
+// line names because of how the path begins, "" when it does not. git tag
+// refuses a tag name whose first character is '-' — a rule of git tag's own,
+// on top of git check-ref-format, which accepts the name — and only the whole
+// name's first character: `a/-b/v0.0.1` tags (measured, git 2.54.0). Every
+// such tag, and the placeholder, begins with the path itself (TagPrefix keeps
+// the first segment), so the path's first character is the tag's.
+func refnameLead(p string) string {
+	if strings.HasPrefix(p, "-") {
+		return `begins with "-", which git tag refuses as a tag name's first character (git check-ref-format alone accepts it)`
+	}
+	return ""
+}
+
 // LineOf is the line a package is versioned on, among the packages declared:
 // a locked line holds its major; a free line holds every major no sibling on
 // the same prefix locks. p need not be declared — the bare line of a
@@ -127,7 +173,9 @@ func (c *Config) LineOf(p Package) Line {
 // segment, or for a major version subdirectory the segment before it with
 // the suffix kept — `pubsub/v2` for pubsub/v2, which is what monorepos write
 // in the scope (google-cloud-go: `feat(pubsub/v2): …`), and `v2` for a
-// root-level one. A scope grammar that cannot spell it sets `name`.
+// root-level one. The loader refuses the default wherever the file's scope
+// grammar cannot spell it (checkScopeWord) — under the presets always for a
+// /vN subdirectory and for the root's ".", which then set `name`.
 func defaultName(p string) string {
 	base := path.Base(p)
 	if majorSubdir.MatchString(base) {
@@ -136,4 +184,16 @@ func defaultName(p string) string {
 		}
 	}
 	return strings.TrimSuffix(base, "/")
+}
+
+// defaultNameRule names the arm of defaultName that produced p's default, for
+// a refusal that has to say where an unwritten name came from.
+func defaultNameRule(p string) string {
+	switch {
+	case p == ".":
+		return "the root package's path"
+	case strings.Contains(defaultName(p), "/"):
+		return "a major version subdirectory keeps its parent"
+	}
+	return "the last path segment"
 }

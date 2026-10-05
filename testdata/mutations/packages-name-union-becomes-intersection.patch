@@ -1,0 +1,22 @@
+diff --git a/internal/config/scopeword.go b/internal/config/scopeword.go
+index 66c402b..b0b170f 100644
+--- a/internal/config/scopeword.go
++++ b/internal/config/scopeword.go
+@@ -93,11 +93,15 @@ func checkScopeWord(p Package, explicit bool, spellers []scopeSpeller) error {
+ 	if len(spellers) == 0 {
+ 		return nil
+ 	}
++	spelled := true
+ 	for _, s := range spellers {
+-		if s.word.MatchString(p.Name) {
+-			return nil
++		if !s.word.MatchString(p.Name) {
++			spelled = false
+ 		}
+ 	}
++	if spelled {
++		return nil
++	}
+ 	what := fmt.Sprintf("name %q", p.Name)
+ 	if !explicit {
+ 		what = fmt.Sprintf("the default name %q (%s)", p.Name, defaultNameRule(p.Path))

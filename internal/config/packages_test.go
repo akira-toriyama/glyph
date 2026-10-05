@@ -93,6 +93,12 @@ func TestLoadPackagesErrors(t *testing.T) {
 		{"duplicate path", "[[packages]]\npath = 'haiku'\n[[packages]]\npath = 'haiku'\nname = 'other'\n", "packages[0] and packages[1] declare the same path"},
 		{"duplicate default names", "[[packages]]\npath = 'a/util'\n[[packages]]\npath = 'b/util'\n", `share the name "util"`},
 		{"explicit name collides with a default", "[[packages]]\npath = 'haiku'\n[[packages]]\npath = 'curry'\nname = 'haiku'\n", `share the name "haiku"`},
+		// The path is the tag prefix, so a segment git refuses in a refname
+		// is a line no tag can be cut on; the refusal names the segment.
+		{"space in a segment", "[[packages]]\npath = 'a b'\n", `its segment "a b" holds a space`},
+		{"lock suffix", "[[packages]]\npath = 'x.lock'\n", `its segment "x.lock" ends with .lock`},
+		{"hidden segment", "[[packages]]\npath = 'a/.hid'\n", `its segment ".hid" begins with a dot`},
+		{"leading dash", "[[packages]]\npath = '-dash'\n", `path "-dash" cannot prefix a tag: it begins with "-", which git tag refuses`},
 		// tag_prefix was rejected by design (§4.1): the tag line is derived
 		// from path. The strict decoder is the whole enforcement, and this
 		// row keeps it that way.

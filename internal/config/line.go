@@ -35,6 +35,15 @@ const (
 // LineBuiltins is the same set as a list, for validation and for messages.
 var LineBuiltins = []string{BuiltinPR, BuiltinAuthor, BuiltinHash, BuiltinCoauthors}
 
+// FallbackGroup is the one name the notes' raw-line fallback binds for a
+// commit no pattern claims (DESIGN §3, the ratified bot fallback): its first
+// line, whatever the file's patterns call their groups. Where no pattern
+// captures it, it completes a template and never carries one (see
+// validateLineNames). The renderer keys the fallback off this constant for
+// the same reason it keys the built-ins: the name validated at load and the
+// name bound at render cannot drift apart.
+const FallbackGroup = "subject"
+
 // LinePart is one piece of a note.line template. Text is the literal bytes
 // when Placeholder is false, and the $name without its '$' when it is true.
 type LinePart struct {
@@ -151,8 +160,10 @@ func holdsPlaceholder(parts []LinePart) bool {
 	return false
 }
 
-// validateLineNames refuses a $placeholder that nothing can ever fill: not a
-// built-in, and captured by none of the file's patterns.
+// validateLineNames refuses a $placeholder that no rendered line can fill:
+// not a built-in, not a declared trailer, and captured by no pattern whose
+// groups a commit binds — and $subject that only the fallback binds, unless
+// the template cites a pattern group beside it.
 //
 // ParseLine already refuses a span with no placeholder — "it says optional and
 // means always". This is the mirror, and the span made it worse: a name nothing
@@ -166,36 +177,79 @@ func holdsPlaceholder(parts []LinePart) bool {
 //
 // The legal set is the UNION over patterns, not the intersection: which pattern
 // wins is a property of each commit, so a name any pattern captures is a name
-// the template may cite. An unlandable pattern is left out of it: Match reports
-// its claim unmatched with no groups, and the notes render such a commit
-// through the raw-line fallback, which binds $subject alone — a name only it
-// captures resolves empty for every commit.
+// the template may cite. Only the patterns whose groups a commit binds count
+// (Pattern.bindsGroups): a skip pattern's commit is in no section, and an
+// unlandable one's claim comes back unmatched with no groups, so a name only
+// such a pattern captures resolves empty for every rendered line.
+//
+// The raw-line fallback binds FallbackGroup for a commit no pattern claims,
+// whatever the patterns name their groups — and for no other commit. So
+// where no pattern binds `subject`, $subject COMPLETES a template, it never
+// carries one: legal when the template also cites a group a pattern binds
+// (`- $title$subject` — each line fills the one its commit binds), refused
+// when it is the template's only name beyond the built-ins and trailers,
+// because every line a pattern claims would render without its text.
+// Measured (t-f2cb, DESIGN §3): a skip pattern's $branch loaded and rendered
+// empty at exit 0; a file whose subject group is `title` was refused
+// `- $title$subject`, the one spelling that renders a bot line's text; and
+// with $subject legal unconditionally, the gemoji preset with its group
+// renamed to `title` and note.line left alone loaded and printed every
+// matched commit's line with its text gone, at exit 0.
 func validateLineNames(spans []LineSpan, patterns []Pattern, trailers []NoteTrailer) error {
-	legal := make(map[string]bool, len(LineBuiltins))
+	groups := boundGroupNames(patterns)
+	legal := make(map[string]bool, len(LineBuiltins)+len(groups)+len(trailers))
 	for _, b := range LineBuiltins {
 		legal[b] = true
 	}
-	for _, p := range patterns {
-		if p.Unlandable != "" {
-			continue
-		}
-		for _, name := range p.re.SubexpNames() {
-			if name != "" {
-				legal[name] = true
-			}
-		}
+	for g := range groups {
+		legal[g] = true
 	}
 	for _, t := range trailers {
 		legal[t.Name] = true
 	}
 
 	known := slices.Sorted(maps.Keys(legal))
+	citesFallback, citesGroup := false, false
 	for _, span := range spans {
 		for _, part := range span.Parts {
-			if part.Placeholder && !legal[part.Text] {
-				return fmt.Errorf("$%s is not a built-in and no pattern captures it, so it resolves empty for every commit; the names this file can bind are: %s", part.Text, strings.Join(known, ", "))
+			switch {
+			case !part.Placeholder:
+			case legal[part.Text]:
+				// A built-in outranks a group of its name, so citing one
+				// binds no group.
+				if groups[part.Text] && !slices.Contains(LineBuiltins, part.Text) {
+					citesGroup = true
+				}
+			case part.Text == FallbackGroup:
+				citesFallback = true
+			default:
+				return fmt.Errorf("$%s is not a built-in and no commit binds it — no pattern whose groups a commit binds (not skip, not unlandable) captures it and no [[note.trailers]] entry declares it — so it resolves empty on every line; the names this file can bind are: %s", part.Text, strings.Join(known, ", "))
 			}
 		}
 	}
+	if citesFallback && !citesGroup {
+		return fmt.Errorf("$%s is not a built-in and no pattern whose groups a commit binds captures it, so it resolves empty on every line a pattern claims — only the raw-line fallback binds it, for a commit no pattern claims — and the template cites no pattern group beside it to carry those lines' text; the names this file can bind are: %s", FallbackGroup, strings.Join(known, ", "))
+	}
 	return nil
+}
+
+// boundGroupNames is the set of group names some commit can bind: those
+// captured by a pattern whose groups a commit binds (Pattern.bindsGroups).
+// validateLineNames reads it for the names a template may cite and
+// buildTrailers for the names a trailer may not take, so the two read one
+// set.
+func boundGroupNames(patterns []Pattern) map[string]bool {
+	names := make(map[string]bool)
+	for i := range patterns {
+		p := &patterns[i]
+		if !p.bindsGroups() {
+			continue
+		}
+		for _, name := range p.re.SubexpNames() {
+			if name != "" {
+				names[name] = true
+			}
+		}
+	}
+	return names
 }

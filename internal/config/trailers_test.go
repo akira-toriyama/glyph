@@ -85,6 +85,39 @@ func TestLoadAcceptsADeclaredTrailer(t *testing.T) {
 	}
 }
 
+// titleGrammar captures no subject group: the file whose bot lines only the
+// fallback's $subject can carry.
+const titleGrammar = "schema = 1\n[[patterns]]\npattern = '^(?P<title>:[a-z0-9_]+:(?P<semver_sigil>[=~^!%]) .+)'\n"
+
+// TestATrailerCannotTakeTheFallbackSubject: the raw-line fallback binds
+// $subject for every commit no pattern claims, whatever the patterns call
+// their groups, and a trailer outranks a group at render — so a trailer named
+// subject is a second meaning for the name even where no pattern captures
+// it. Measured (2026-10-04, the same before t-f2cb): this file loaded and
+// rendered each bot line as `- `, its text replaced by an absent trailer, at
+// exit 0.
+func TestATrailerCannotTakeTheFallbackSubject(t *testing.T) {
+	_, err := Load([]byte(titleGrammar + "[note]\nline = '- $title$subject'\n[[note.trailers]]\ntoken = 'Subject'\nname = 'subject'\n"))
+	if err == nil || !strings.Contains(err.Error(), `name "subject" is the one the raw-line fallback binds`) {
+		t.Fatalf("Load = %v, want the refusal of a trailer named after the fallback's $subject", err)
+	}
+}
+
+// TestATrailerMayTakeASkipGroupName: a trailer's name is refused only where
+// it would mean two things on a rendered line, so it reads the groups a
+// commit binds — the set note.line's names are checked against — and a group
+// only a skip pattern captures binds nothing. Measured (2026-10-04, the same
+// before t-f2cb): this file was refused as "$branch would mean two things".
+func TestATrailerMayTakeASkipGroupName(t *testing.T) {
+	cfg, err := Load([]byte(titleGrammar + "[[patterns]]\npattern = '^Merge (?P<branch>.+)'\nskip = true\n[note]\nline = '- $title$[ ($branch)]'\n[[note.trailers]]\ntoken = 'Branch'\nname = 'branch'\n"))
+	if err != nil {
+		t.Fatalf("Load refused a trailer named after a group only a skip pattern captures, which binds nothing: %v", err)
+	}
+	if len(cfg.Note.Trailers) != 1 || cfg.Note.Trailers[0].Name != "branch" {
+		t.Errorf("Trailers = %+v, want the one branch entry", cfg.Note.Trailers)
+	}
+}
+
 // A declared name joins the legal set note.line validates against, which is
 // the whole point of declaring it — and an UNdeclared one still fails, so the
 // union grew by exactly what was declared.

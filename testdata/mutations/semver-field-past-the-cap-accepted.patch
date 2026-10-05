@@ -1,0 +1,13 @@
+diff --git a/internal/bump/semver.go b/internal/bump/semver.go
+index 2e7d9bd..4d60228 100644
+--- a/internal/bump/semver.go
++++ b/internal/bump/semver.go
+@@ -43,7 +43,7 @@ func ParseVersion(s string) (Version, error) {
+ 	var v Version
+ 	for i, dst := range []*int{&v.Major, &v.Minor, &v.Patch} {
+ 		n, err := strconv.ParseInt(m[i+1], 10, 64)
+-		if err != nil || n > MaxField {
++		if err != nil {
+ 			return Version{}, fmt.Errorf("%q is not a version glyph reads: its %s %s is past %d, the largest a version field may hold", s, fieldNames[i], m[i+1], MaxField)
+ 		}
+ 		*dst = int(n)
