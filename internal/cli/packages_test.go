@@ -278,8 +278,9 @@ func TestSinceTagPackagesSharedOnlyNoneParticipatesNowhere(t *testing.T) {
 
 // TestSinceTagPackagesScopeCarriesAndContradicts: rule 2 — a shared-only
 // commit whose scope names a package moves that package — and the
-// contradiction check: a scope naming a package the diff does not touch is
-// refused, however the files fall.
+// contradiction check: with a version sigil, a scope naming a package that
+// owns none of the diff's files is refused, the finding naming a file with
+// the package that owns it.
 func TestSinceTagPackagesScopeCarriesAndContradicts(t *testing.T) {
 	t.Run("scope carries a shared-only commit", func(t *testing.T) {
 		dir, _ := packagesRepo(t)
@@ -300,8 +301,8 @@ func TestSinceTagPackagesScopeCarriesAndContradicts(t *testing.T) {
 		if code != 3 {
 			t.Fatalf("a contradicting scope exited %d, want 3\nstderr: %s", code, stderr)
 		}
-		if !strings.Contains(stderr, "names a package this commit does not touch") {
-			t.Fatalf("refusal must name the contradiction:\n%s", stderr)
+		if want := "scope (haiku) names a line this commit does not move: curry/curry.go belongs to curry (curry) — the longest declared path owns a file: write the scope of a line it moves (curry), or drop the scope"; !strings.Contains(stderr, want) {
+			t.Fatalf("refusal must name the contradiction (%q):\n%s", want, stderr)
 		}
 	})
 }
@@ -944,8 +945,12 @@ func TestPackagesRangeAndPullSources(t *testing.T) {
 
 // TestLintRangePackagesJudgesTheDiff: with packages declared, lint --range
 // applies rules 2–3 and the contradiction check to each clean commit's own
-// diff — a shared-only ^ and a scope contradicting the tree are findings; a
-// shared-only =, a scope-carried ^ and a commit under a package are clean.
+// diff — a shared-only ^ and a version-claiming scope contradicting the tree
+// are findings; a shared-only =, a scope-carried ^, a commit under a package
+// and a = whose scope names another package are clean. That last one claims
+// no version impact, so the tree has nothing to contradict (DESIGN §4.1,
+// t-n5tw R2): it was a third finding, and once merged a wedge, over a commit
+// that moves no line.
 func TestLintRangePackagesJudgesTheDiff(t *testing.T) {
 	dir, base := packagesRepo(t)
 	shared := touch(t, dir, "akira-toriyama", ":sparkles:^ add a workspace file", "go.work")
@@ -953,6 +958,7 @@ func TestLintRangePackagesJudgesTheDiff(t *testing.T) {
 	touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
 	touch(t, dir, "akira-toriyama", ":sparkles:(curry)^ describe the ingredient API", "README.md")
 	touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
+	retag := touch(t, dir, "akira-toriyama", ":wrench:(haiku)= retag the curry notes", "curry/curry.go")
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
@@ -962,10 +968,85 @@ func TestLintRangePackagesJudgesTheDiff(t *testing.T) {
 	if !strings.Contains(stderr, "2 commit-convention violation(s)") {
 		t.Fatalf("want exactly the two attribution findings:\n%s", stderr)
 	}
-	for _, want := range []string{shared[:7], "its files (go.work) belong to no declared package", contra[:7], "names a package this commit does not touch"} {
+	for _, want := range []string{
+		shared[:7], "its files (go.work) belong to no declared package",
+		"commit " + contra[:7] + ": scope (haiku) names a line this commit does not move: curry/curry.go belongs to curry (curry) — the longest declared path owns a file: write the scope of a line it moves (curry), or drop the scope",
+	} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("findings are missing %q:\n%s", want, stderr)
 		}
+	}
+
+	// The = is placed by its files: on curry's line, moving nothing — the
+	// shape glyph-monorepo-test's e2e fires as live ammunition.
+	code, stdout, stderr := runGlyph(t, "bump", "--range", retag+"~1.."+retag, "--json")
+	if code != 1 {
+		t.Fatalf("bump over the (haiku)= on a curry file exited %d, want 1 (every line none)\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	res := decodePackagesVerdict(t, stdout)
+	if h, c := res.Packages[0], res.Packages[1]; len(h.Commits) != 0 || len(c.Commits) != 1 || c.Level != "none" {
+		t.Fatalf("haiku = %+v, curry = %+v; want the = on curry's line alone, at none", h, c)
+	}
+}
+
+// TestLintRangePackagesScopeIsCheckedByOwnership: the contradiction check asks
+// which package OWNS a file — the longest declared path — never which contains
+// it. With travel and travel/onsen declared, (travel)~ on a file under
+// travel/onsen names a line the commit does not move, and is refused naming
+// the file with its owner and the scope that is true; (onsen)~ and no scope
+// move travel/onsen alone and leave travel at none. Accepted by containment,
+// the message would claim travel's line while only its nested package's moved
+// (DESIGN §4.1, t-mfny (C); measured 2026-10-05 at 135eead: exit 3 with
+// "does not touch (its files lie under travel/onsen)").
+func TestLintRangePackagesScopeIsCheckedByOwnership(t *testing.T) {
+	dir := packagesRepoWith(t, "\n[[packages]]\npath = \"travel\"\n\n[[packages]]\npath = \"travel/onsen\"\n",
+		map[string]string{"travel/t.md": "travel\n", "travel/onsen/o.md": "onsen\n"})
+	touch(t, dir, "akira-toriyama", ":bug:(travel)~ warm the water", "travel/onsen/o.md")
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
+	want := "scope (travel) names a line this commit does not move: travel/onsen/o.md belongs to onsen (travel/onsen) — the longest declared path owns a file: write the scope of a line it moves (onsen), or drop the scope"
+	if code != 3 || !strings.Contains(stderr, want) {
+		t.Fatalf("(travel)~ on travel/onsen's file exited %d, want 3 with\n  %s\nstderr: %s", code, want, stderr)
+	}
+	for _, message := range []string{":bug:(onsen)~ warm the water", ":bug:~ warm the water"} {
+		testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", message)
+		if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 0 {
+			t.Errorf("%q exited %d, want 0 — the escape the finding names\nstderr: %s", message, code, stderr)
+		}
+		if code, stdout, stderr := runGlyph(t, "bump", "--range", "HEAD~1..HEAD"); code != 0 || stdout != "travel/onsen/v0.0.1\n" {
+			t.Errorf("%q bumped %q at exit %d, want travel/onsen alone\nstderr: %s", message, stdout, code, stderr)
+		}
+	}
+}
+
+// TestLintRangePackagesContradictionOffersNoDropWhereTheScopeIsRequired: the
+// remedy is asked of the pattern that claimed the message. Under a grammar
+// whose scope is not optional "or drop the scope" is no escape — the message
+// without one matches no pattern — so the finding names the true scope alone,
+// and the test takes it, then shows the dropped scope failing.
+func TestLintRangePackagesContradictionOffersNoDropWhereTheScopeIsRequired(t *testing.T) {
+	dir := testutil.NewRepo(t)
+	writeFile(t, dir, "glyph.toml", "schema = 1\n\n[[patterns]]\npattern = '^(?P<subject>[a-z]+\\((?P<scope>[a-z]+)\\)(?P<semver_sigil>[=~^!%]): .+)'\n\n[note]\nline = '- $subject'\n"+packagesConfig)
+	writeFile(t, dir, "haiku/haiku.go", "package haiku\n")
+	writeFile(t, dir, "curry/curry.go", "package curry\n")
+	testGit(t, dir, "akira-toriyama", "add", ".")
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", "chore(repo)=: declare the lines")
+	touch(t, dir, "akira-toriyama", "fix(haiku)~: swap an ingredient", "curry/curry.go")
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
+	want := "curry/curry.go belongs to curry (curry) — the longest declared path owns a file: write the scope of a line it moves (curry)\n"
+	if code != 3 || !strings.Contains(stderr, want) || strings.Contains(stderr, "drop the scope") {
+		t.Fatalf("exited %d; the finding must end %q and offer no dropped scope:\n%s", code, want, stderr)
+	}
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", "fix(curry)~: swap an ingredient")
+	if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 0 {
+		t.Fatalf("the scope the finding names exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", "fix~: swap an ingredient")
+	if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 3 || !strings.Contains(stderr, "matches none of the 1 configured patterns") {
+		t.Fatalf("the dropped scope exited %d, want 3 as a message no pattern claims — the escape the finding must not name\nstderr: %s", code, stderr)
 	}
 }
 

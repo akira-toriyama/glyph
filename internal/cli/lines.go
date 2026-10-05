@@ -415,7 +415,7 @@ func attribute(cfg *config.Config, raw gitsource.RawCommit, said reading, files 
 // (diffGap) — a listing GitHub TRUNCATED at its cap or cut short with a 422
 // (listFiles), or a shallow clone's boundary, whose diff local git cannot
 // compute at all — is not a finding and never wedges: "no carrier" and "the
-// scope names a package the files do not touch" are both claims about files
+// scope names a package owning none of the files" are both claims about files
 // the walk could not read (the package past the cap may be exactly the one
 // named). The commit is carried nowhere and the walk's own shortfall answers
 // — FilesCapped, FilesUnknown or Shallow, on which a writing command refuses

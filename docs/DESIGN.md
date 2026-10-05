@@ -1903,13 +1903,59 @@ which says a package it touched is missing (mutation row
 `withheld-refusal-says-of-the-commit-what-is-known-of-the-files-read`).
 
 Two things the rules deliberately do not do. A scope that **contradicts** the
-tree — files only under `curry/`, scope `haiku` — is refused the same way, on
-the same reasoning as rule 3: the scope is checked only when it names a
-package, so `(ci)`, `(deps)` and every free-form scope in the fleet stay
-untouched, and a package-named scope on a commit that touched another package
-is an authoring error the gate can see. And there is no `all` scope and no
-"shared moves everything" arm (knope has the first, and the second was the
-obvious default): a shared-only `~` that steps every line is fixed versioning
+tree — files only under `curry/`, scope `haiku`, a version sigil — is refused
+the same way, on the same reasoning as rule 3: the scope is checked only when
+it names a package, so `(ci)`, `(deps)` and every free-form scope in the fleet
+stay untouched, and a scope naming a package that owns none of the commit's
+files is an authoring error the gate can see. *Owns* is rule 1's word — the
+longest prefix — and the check asks nothing else (t-mfny (C), t-n5tw 4;
+ratified 2026-09-29). With `travel` and `travel/onsen` declared, `(travel)~`
+on a commit touching only `travel/onsen/o.md` is a contradiction, and so is
+the root package's name on a file a declared package owns. Measured
+2026-10-05 at 135eead: each is refused at exit 3, while `(onsen)~` or no
+scope moves `travel/onsen` alone and leaves `travel` at none
+(`TestLintRangePackagesScopeIsCheckedByOwnership`). Containment — refuse only
+a package that neither owns nor contains the files — was rejected on three
+counts. A nested package takes its files out of its parent (Go's rule for a
+nested module, the one the tag line follows), so the parent's line does not
+move, and the accepted message would name a line the commit leaves where it
+is — the silence this check exists to break. Every file lies under `.`, so
+the root package's name would be the one scope no commit can contradict. And
+a parent's scope over its nested package's files asks for the cascade
+rejected below: refused, the author is told; accepted, the request is dropped
+with nothing said. What was wrong was the sentence. It said the commit "does
+not touch" `travel` while naming files under `travel/onsen`, and it printed
+root-owned files as lying "under ." (t-n5tw 5). The refusal speaks ownership:
+one file per line the commit does move, named with the package that owns it
+(`travel/onsen/o.md belongs to onsen (travel/onsen)`; the root package is
+called that), the files no package owns counted and never said to belong to
+anything, then the scopes of those lines that the claiming pattern can write
+— and "drop the scope" only where that pattern can go without one
+(`TestContradictionNamesTheOwnersAndTheScopesThatWork`,
+`TestLintRangePackagesContradictionOffersNoDropWhereTheScopeIsRequired`;
+mutation row `attribution-scope-checked-by-containment`).
+
+The check takes rule 3's exemption with its reasoning (t-n5tw R2; ratified
+2026-09-29). What it guards is a message that claims one line while the diff
+moves another, and a `=` moves none: a `=` whose scope names another package
+is placed by its files like any other `=`. Declaring a root package is what
+showed it. `:wrench:(haiku)= update CODEOWNERS` on a root file is carried by
+haiku under rule 2 while no root package is declared, and became a
+contradiction — exit 3, and a wedge once merged — the moment `.` was;
+`:bug:(haiku)~ fix CODEOWNERS` flips the same way (measured 2026-10-05 at
+135eead: without a root package lint passes both, haiku at none and at patch;
+with `.` declared lint and bump exit 3 for both). For the version sigil the
+flip is right: the declaration changes where the claim lands, so the refusal
+protects which line moves. For `=` every line folds to none whichever package
+carries it, so the refusal protected nothing a version can show, and wedged
+the walk. A scope on a `=` is the author's taste, and lint has none (§2)
+(`TestContradictingNoneIsPlacedByItsFiles`,
+`TestLintRangePackagesJudgesTheDiff`; mutation row
+`attribution-contradiction-refuses-a-none`).
+
+And — the second thing — there is no `all` scope and no "shared moves
+everything" arm (knope has the first, and the second was the obvious
+default): a shared-only `~` that steps every line is fixed versioning
 entering through the back door, and the independent mode exists so that a
 line moves for its own reasons. A change that really does alter every
 package's behaviour touches every package's files, and rule 1 already answers
@@ -2008,8 +2054,8 @@ it touched past the cap is unreachable, not absent), recorded in `walkFacts`
 as `FilesCapped` beside `Truncated`, so `complete()` is false and a writing
 command refuses (exit 4). Two corollaries, both ratified with t-c6r5 and
 t-ft7p after the first cut got them wrong. A refusal attribution would hand
-down over a truncated listing — no carrier, or a scope naming a package the
-*visible* files do not touch — is **withheld**: both are claims about files
+down over a truncated listing — no carrier, or a scope naming a package that
+owns none of the *visible* files — is **withheld**: both are claims about files
 the walk could not read (the package past the cap may be exactly the one
 named), so the commit is carried nowhere and the walk's own incompleteness
 answers, never the gate code; measured before the fix, a capped commit under
@@ -2447,7 +2493,8 @@ dependency moves — glyph reads no manifest and would have to start, and a
 consumer that wants the cascade expresses it by touching the dependent, which
 is a commit the rules already carry); the root package carrying a commit with
 no files (above); an undeclared-module state between a declared package's
-files and nobody's (above).
+files and nobody's (above); containment for the contradiction check, and
+refusing a `=` whose scope names another package (above).
 
 ## 5. Architecture (Go, house pattern)
 

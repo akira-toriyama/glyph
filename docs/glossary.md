@@ -350,7 +350,10 @@ because a version claim nothing can carry is the silent-none shape with the
 polarity reversed; the refusal names the escapes that commit can take — a
 scope naming a line or `=`, where the pattern that claimed it captures them,
 and declaring the package its files belong to. A scope that names a package
-the diff did not touch is refused the same way.
+owning none of the diff's files — owning by the longest declared path, so a
+nested package's files are not its parent's nor the root package's — is
+refused the same way when the sigil claims a version impact; a `=` is placed
+by its files.
 
 ---
 
@@ -373,8 +376,9 @@ commit's **own** diff and never a pull's net diff: files under a package move
 it (longest path prefix wins; a rename counts under both names), a commit under
 no package moves the package its scope names, and a commit under no package
 with no such scope moves nothing when its sigil is `=` and is refused when the
-sigil claims a version impact — as is a scope naming a package the diff does not
-touch. Asked of every walked commit — of a merge commit over no file, since
+sigil claims a version impact — as is, with such a sigil, a scope naming a
+package that owns none of the diff's files (a `=` is placed by its files).
+Asked of every walked commit — of a merge commit over no file, since
 its diff is never read and only its scope can carry it: with scope and
 sigil for a commit the fold reads, by files alone for one it does not — an
 `exclude_authors` commit moves no version and appears in the notes of the lines

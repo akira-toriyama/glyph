@@ -269,21 +269,47 @@ func TestNoCarrierNamesOnlyTheEscapesTheCommitCanTake(t *testing.T) {
 	}
 }
 
-// TestScopeContradictingTheTreeIsRefused pins the contradiction check: a
-// package-named scope on a commit whose files lie under another package is
-// refused, and the message says where the files actually are. A scope that
-// names no package — (ci), (deps) — is never checked.
+// TestScopeContradictingTheTreeIsRefused pins the contradiction check: with a
+// version sigil, a scope naming a package that owns none of the commit's files
+// is refused, and the message names a file with the package that owns it. Owns
+// is rule 1's word, the longest prefix: a parent's name over its nested
+// package's file, and the root package's name over a declared package's, are
+// contradictions too — containment would accept a message naming a line the
+// commit leaves where it is, and make the root's name the one scope nothing
+// can contradict (DESIGN §4.1, t-mfny (C)). A scope that names no package —
+// (ci), (deps) — is never checked.
 func TestScopeContradictingTheTreeIsRefused(t *testing.T) {
-	got, err := Attribute([]string{"curry/b.go"}, "haiku", config.SigilNone, []config.Package{haiku, curry})
-	var r *Refusal
-	if !errors.As(err, &r) || r.Reason != Contradiction {
-		t.Fatalf("(haiku) over curry/ → [%s], %v; want a Contradiction refusal", paths(got), err)
-	}
-	if !strings.Contains(err.Error(), "curry") {
-		t.Errorf("the refusal must say where the files lie, got %q", err)
+	travel := config.Package{Path: "travel", Name: "travel"}
+	onsen := config.Package{Path: "travel/onsen", Name: "onsen"}
+	for name, c := range map[string]struct {
+		files []string
+		scope string
+		pkgs  []config.Package
+		owned string
+	}{
+		"another package's file":                    {[]string{"curry/b.go"}, "haiku", []config.Package{haiku, curry}, "curry/b.go belongs to curry (curry)"},
+		"a parent's name over its nested package":   {[]string{"travel/onsen/o.md"}, "travel", []config.Package{travel, onsen}, "travel/onsen/o.md belongs to onsen (travel/onsen)"},
+		"the root's name over a declared package":   {[]string{"haiku/a.go"}, "core", []config.Package{haiku, root}, "haiku/a.go belongs to haiku (haiku)"},
+		"the deciding file listed after loose ones": {[]string{".github/workflows/a.yml", "Makefile", "curry/b.go"}, "haiku", []config.Package{haiku, curry}, "curry/b.go belongs to curry (curry)"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := Attribute(c.files, c.scope, config.SigilPatch, c.pkgs)
+			var r *Refusal
+			if !errors.As(err, &r) || r.Reason != Contradiction {
+				t.Fatalf("(%s)~ over %v → [%s], %v; want a Contradiction refusal", c.scope, c.files, paths(got), err)
+			}
+			if !strings.Contains(err.Error(), c.owned) {
+				t.Errorf("the refusal must name a file with its owner (%q), got %q", c.owned, err)
+			}
+			for _, old := range []string{"does not touch", "lie under ."} {
+				if strings.Contains(err.Error(), old) {
+					t.Errorf("the refusal still says %q: %q", old, err)
+				}
+			}
+		})
 	}
 	// Naming one of two touched packages is not a contradiction.
-	got, err = Attribute([]string{"curry/b.go", "haiku/a.go"}, "haiku", config.SigilMinor, []config.Package{haiku, curry})
+	got, err := Attribute([]string{"curry/b.go", "haiku/a.go"}, "haiku", config.SigilMinor, []config.Package{haiku, curry})
 	if err != nil || paths(got) != "haiku curry" {
 		t.Errorf("(haiku) over both → [%s], %v; want both lines, no refusal", paths(got), err)
 	}
@@ -291,6 +317,103 @@ func TestScopeContradictingTheTreeIsRefused(t *testing.T) {
 	got, err = Attribute([]string{"curry/b.go"}, "ci", config.SigilMinor, []config.Package{haiku, curry})
 	if err != nil || paths(got) != "curry" {
 		t.Errorf("(ci) over curry/ → [%s], %v; want curry, no refusal", paths(got), err)
+	}
+}
+
+// TestContradictingNoneIsPlacedByItsFiles pins the check's one exemption: a =
+// claims no version impact, so there is nothing for the tree to contradict,
+// and a = whose scope names another package is placed by its files like any
+// other = (DESIGN §4.1, t-n5tw R2). Refused, `:wrench:(haiku)= update
+// CODEOWNERS` on a root file — carried by haiku under rule 2 while no root
+// package is declared — wedged the walk the moment `.` was, over a commit
+// that moves no version on any line either way (measured 2026-10-05 at
+// 135eead: lint and bump exit 3).
+func TestContradictingNoneIsPlacedByItsFiles(t *testing.T) {
+	for name, c := range map[string]struct {
+		files []string
+		pkgs  []config.Package
+		want  string
+	}{
+		"another package's file": {[]string{"curry/b.go"}, []config.Package{haiku, curry}, "curry"},
+		"a root-owned file":      {[]string{".github/CODEOWNERS"}, []config.Package{haiku, root}, "."},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := Attribute(c.files, "haiku", config.SigilNone, c.pkgs)
+			if err != nil || paths(got) != c.want {
+				t.Errorf("(haiku)= over %v → [%s], %v; want [%s] and no refusal", c.files, paths(got), err, c.want)
+			}
+		})
+	}
+}
+
+// TestContradictionNamesTheOwnersAndTheScopesThatWork is the contradiction
+// sentence's format spec, whole strings on purpose (consumers grep them). The
+// evidence is one owned file per package the commit moves, in config order,
+// with the rest counted — a file no package owns is counted and never said
+// to belong to anything, and the root package is called that, with its name
+// where a scope can write it. The remedy names only what the claiming pattern
+// lets the message write: the scopes of the lines it moves that the pattern's
+// scope group spells, and dropping the scope where the pattern can go without
+// one.
+func TestContradictionNamesTheOwnersAndTheScopesThatWork(t *testing.T) {
+	const rule = " — the longest declared path owns a file: "
+	sub := []config.Package{haiku, curry, nested}
+	pattern := func(s config.Sayable) func(*Refusal) {
+		return func(r *Refusal) { r.Pattern = &s }
+	}
+	for name, c := range map[string]struct {
+		files []string
+		pkgs  []config.Package
+		tell  func(*Refusal)
+		want  string
+	}{
+		"one owner, a pattern nobody described": {
+			[]string{"curry/b.go"}, []config.Package{haiku, curry}, nil,
+			"scope (haiku) names a line this commit does not move: curry/b.go belongs to curry (curry)" + rule + "write the scope of a line it moves (curry), or drop the scope",
+		},
+		"two owners in config order, the rest counted": {
+			[]string{"haiku/sub/z.go", "Makefile", "curry/b.go", "curry/a.go", "haiku/sub/x.go", ".github/ci.yml", "curry/c.go"}, sub, nil,
+			"scope (haiku) names a line this commit does not move: curry/b.go belongs to curry (curry), haiku/sub/z.go belongs to sub (haiku/sub), 3 more files likewise, and 2 files under no package" + rule + "write the scope of a line it moves (curry, sub), or drop the scope",
+		},
+		"one more file, one loose file": {
+			[]string{"curry/b.go", "curry/a.go", "go.work"}, []config.Package{haiku, curry}, nil,
+			"scope (haiku) names a line this commit does not move: curry/b.go belongs to curry (curry), 1 more file likewise, and 1 file under no package" + rule + "write the scope of a line it moves (curry), or drop the scope",
+		},
+		"the root package owns the file": {
+			[]string{".github/CODEOWNERS"}, []config.Package{haiku, root},
+			pattern(config.Sayable{ScopeGroup: true, ScopeOptional: true, Scopes: []string{"haiku", "core"}, SigilGroup: true, None: true}),
+			"scope (haiku) names a line this commit does not move: .github/CODEOWNERS belongs to core (the root package)" + rule + "write the scope of a line it moves (core), or drop the scope",
+		},
+		"a root name the claiming pattern cannot write": {
+			[]string{".github/CODEOWNERS"}, []config.Package{haiku, root},
+			pattern(config.Sayable{ScopeGroup: true, ScopeOptional: true, Scopes: []string{"haiku"}, SigilGroup: true, None: true}),
+			"scope (haiku) names a line this commit does not move: .github/CODEOWNERS belongs to the root package" + rule + "drop the scope",
+		},
+		"a scope the pattern requires": {
+			[]string{"curry/b.go"}, []config.Package{haiku, curry},
+			pattern(config.Sayable{ScopeGroup: true, Scopes: []string{"haiku", "curry"}, SigilGroup: true, None: true}),
+			"scope (haiku) names a line this commit does not move: curry/b.go belongs to curry (curry)" + rule + "write the scope of a line it moves (curry)",
+		},
+		"one of two moved lines spellable": {
+			[]string{"curry/b.go", "haiku/sub/x.go"}, sub,
+			pattern(config.Sayable{ScopeGroup: true, ScopeOptional: true, Scopes: []string{"haiku", "sub"}, SigilGroup: true, None: true}),
+			"scope (haiku) names a line this commit does not move: curry/b.go belongs to curry (curry), and haiku/sub/x.go belongs to sub (haiku/sub)" + rule + "write the scope of a line it moves (sub), or drop the scope",
+		},
+		"a required scope that spells no line it moves": {
+			[]string{"curry/b.go"}, []config.Package{haiku, curry},
+			pattern(config.Sayable{Pattern: 3, ScopeGroup: true, Scopes: []string{"haiku"}, SigilGroup: true, None: true}),
+			"scope (haiku) names a line this commit does not move: curry/b.go belongs to curry (curry)" + rule + "patterns[3], which claimed this message, requires a scope and spells none of the lines it moves — the scope must name one of them (curry) or no package",
+		},
+		"a diff the caller read in part": {
+			[]string{"curry/b.go"}, []config.Package{haiku, curry}, func(r *Refusal) { r.Unread = true },
+			"scope (haiku) names a line the files read of this commit do not move: curry/b.go belongs to curry (curry)" + rule + "write the scope of a line it moves (curry), or drop the scope",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := refusalOf(t, c.files, "haiku", config.SigilPatch, c.pkgs, c.tell); got != c.want {
+				t.Errorf("refusal =\n  %q\nwant\n  %q", got, c.want)
+			}
+		})
 	}
 }
 

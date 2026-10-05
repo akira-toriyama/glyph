@@ -31,7 +31,7 @@ func underHaiku(i int) string     { return fmt.Sprintf("haiku/gen/f%d.go", i) }
 
 // TestReleasePackagesCappedRefusalIsNotTheGateCode: a capped inner commit
 // whose visible files attribution would refuse — under no package with a ^,
-// or with a scope naming a package the visible files do not touch — makes
+// or with a scope naming a package that owns none of the visible files — makes
 // release refuse the walk as INCOMPLETE (4), not the commit as a violation
 // (3); bump, which only reports, answers 0 with the warning. The control is
 // the same commit one file short of the cap: the listing is whole, and the
@@ -50,7 +50,7 @@ func TestReleasePackagesCappedRefusalIsNotTheGateCode(t *testing.T) {
 		{"no carrier", ":sparkles:^ add a season", listing(github.CommitFilesCap, underNoPackage),
 			"attribution would refuse it (the files read of it (docs/f00000.md, docs/f00001.md, docs/f00002.md and 2997 more) belong to no declared package, and its sigil ^ claims"},
 		{"contradiction", ":sparkles:(curry)^ add a season", listing(github.CommitFilesCap, underHaiku),
-			"attribution would refuse it (scope (curry) names"},
+			"attribution would refuse it (scope (curry) names a line the files read of this commit do not move: haiku/gen/f0.go belongs to haiku (haiku), and 2999 more files likewise — "},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, _ := packagesRepo(t)

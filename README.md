@@ -414,10 +414,13 @@ message names the escapes that commit can take: a scope naming the line or
 captures neither, and is told to reword), and declaring the package its files
 belong to. A commit with no files — an empty commit, or a merge commit a
 pattern other than a skip claims, whose diff glyph never reads — is carried
-only by its scope, root package or not. A scope naming a package the diff does
-not touch is refused the same way. Files come from local git for every commit
-the branch holds and from the API for a squash-merged pull's inner commits,
-one request each.
+only by its scope, root package or not. A scope naming a package that owns
+none of the diff's files — the longest declared path owns a file, so a nested
+package's files are not its parent's, and a declared package's are not the root
+package's — is refused the same way when the sigil claims a version impact; a
+`=` is placed by its files. Files come from local git for every commit the
+branch holds and from the API for a squash-merged pull's inner commits, one
+request each.
 
 `bump` and `notes` then answer per line. **A tag names a line**:
 `--since-tag=haiku/v0.1.0` or `--since-tag=below:haiku/v0.2.0` selects haiku

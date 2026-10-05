@@ -25,6 +25,7 @@ package attribution
 import (
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v4/internal/config"
@@ -39,10 +40,18 @@ const (
 	// no scope names one, and its sigil claims a version impact. Nothing can
 	// carry the claim.
 	NoCarrier Reason = iota
-	// Contradiction — the scope names a package the commit's files do not
-	// touch. The author said where the impact lands and the tree disagrees.
+	// Contradiction — the scope names a package that owns none of the
+	// commit's files, and its sigil claims a version impact. The author said
+	// where the impact lands and the tree disagrees.
 	Contradiction
 )
+
+// Owned is one file with the package that owns it (the longest declared
+// prefix): a Contradiction's evidence for a line the commit does move.
+type Owned struct {
+	File    string
+	Package config.Package
+}
 
 // Refusal is the lint-class error Attribute returns (the caller maps it to
 // exit 3; this package, like config, does not decide exit codes). Its fields
@@ -50,22 +59,31 @@ const (
 //
 // Reason, Scope, Sigil, Touched and Names are the verdict's own terms. The
 // rest only words the sentence, in two halves: what Attribute saw of the
-// files (Files, More), and what it cannot see and the caller tells it (Merge,
-// Unread, Pattern). Left untold — Attribute asked directly, as its own tests
-// do — the sentence assumes a pattern that captures every name and its own
-// sigil, and a diff read whole.
+// files (Owners, Unowned, Files, More), and what it cannot see and the caller
+// tells it (Merge, Unread, Pattern). Left untold — Attribute asked directly,
+// as its own tests do — the sentence assumes a pattern that captures every
+// name, an optional scope and its own sigil, and a diff read whole.
 type Refusal struct {
 	Reason  Reason
 	Scope   string
 	Sigil   config.Sigil
-	Touched []config.Package // packages the files lie under (empty for NoCarrier)
+	Touched []config.Package // packages that own the commit's files, in config order (empty for NoCarrier)
 	Names   []string         // every package name, in config order
 
+	// Owners is a Contradiction's evidence: one owned file per touched
+	// package, in config order, so the file that decides is named wherever it
+	// sits in the diff — the first three files of `.github/a.yml, Makefile,
+	// curry/b.go` are two no package owns before the one that matters.
+	// Unowned counts the files no package owns, which are never said to
+	// belong to anything.
+	Owners  []Owned
+	Unowned int
 	// Files is a NoCarrier's evidence: the first of the commit's files, none
 	// of which a package owns — nil when the commit arrived with no file.
-	// More counts the files it leaves out.
 	Files []string
-	More  int
+	// More counts what the evidence leaves out: the owned files past Owners,
+	// or the files past Files.
+	More int
 
 	// Merge: the commit is a merge commit, whose diff no caller reads.
 	Merge bool
@@ -86,20 +104,81 @@ const quoted = 3
 
 // declare is the escape only files open: a declaration that owns them. The
 // path is not guessed — glyph cannot tell a module from root CI or a docs
-// tree, and a first path segment gave `path = ".github"` for the canonical
-// shared-only commit, a prefix no tag can carry (DESIGN §4.1, t-n5tw R1).
+// tree, and the first path segment of the canonical shared-only commit is
+// `.github`, a prefix the loader refuses (DESIGN §4.1, t-n5tw R1).
 const declare = `declare the package these files belong to ([[packages]] path = "<its directory>"; path = "." declares the root package, which holds every file no other package claims)`
 
 func (r *Refusal) Error() string {
 	if r.Reason == Contradiction {
-		touched := make([]string, 0, len(r.Touched))
-		for _, p := range r.Touched {
-			touched = append(touched, p.Path)
-		}
-		return fmt.Sprintf("scope (%s) names a package this commit does not touch (its files lie under %s): write the scope of a package it touches, or drop the scope",
-			r.Scope, strings.Join(touched, ", "))
+		return r.contradiction()
 	}
 	return r.noCarrier()
+}
+
+// contradiction words the scope check in ownership's terms: each line the
+// commit does move, shown by a file and the package that owns it, then the
+// scopes that would be true. The first cut said the commit "does not touch"
+// travel while naming files under travel/onsen, and printed root-owned files
+// as lying "under ." — a filesystem reading of a rule that is about the
+// longest prefix (t-mfny (C), t-n5tw 5).
+func (r *Refusal) contradiction() string {
+	say := r.sayable()
+	evidence := make([]string, 0, len(r.Owners)+2)
+	var moved, spellable []string
+	for _, o := range r.Owners {
+		// The root package has no path worth printing ("."), and its name is
+		// shown only where a scope can write it.
+		label := fmt.Sprintf("%s (%s)", o.Package.Name, o.Package.Path)
+		writable := slices.Contains(say.Scopes, o.Package.Name)
+		if o.Package.Path == "." {
+			label = "the root package"
+			if writable {
+				label = o.Package.Name + " (the root package)"
+			}
+		}
+		evidence = append(evidence, fmt.Sprintf("%s belongs to %s", o.File, label))
+		moved = append(moved, o.Package.Name)
+		if writable {
+			spellable = append(spellable, o.Package.Name)
+		}
+	}
+	if r.More > 0 {
+		evidence = append(evidence, countFiles(r.More, "more ")+" likewise")
+	}
+	if r.Unowned > 0 {
+		evidence = append(evidence, countFiles(r.Unowned, "")+" under no package")
+	}
+	if n := len(evidence); n > 1 {
+		evidence[n-1] = "and " + evidence[n-1]
+	}
+
+	var remedy string
+	switch {
+	case len(spellable) > 0 && say.ScopeOptional:
+		remedy = fmt.Sprintf("write the scope of a line it moves (%s), or drop the scope", strings.Join(spellable, ", "))
+	case len(spellable) > 0:
+		remedy = fmt.Sprintf("write the scope of a line it moves (%s)", strings.Join(spellable, ", "))
+	case say.ScopeOptional:
+		remedy = "drop the scope"
+	default:
+		// No instruction this message can follow under its pattern: state
+		// the rule rather than name an escape that is not there.
+		remedy = fmt.Sprintf("patterns[%d], which claimed this message, requires a scope and spells none of the lines it moves — the scope must name one of them (%s) or no package", say.Pattern, strings.Join(moved, ", "))
+	}
+
+	whose := "this commit does"
+	if r.Unread {
+		whose = "the files read of this commit do"
+	}
+	return fmt.Sprintf("scope (%s) names a line %s not move: %s — the longest declared path owns a file: %s",
+		r.Scope, whose, strings.Join(evidence, ", "), remedy)
+}
+
+func countFiles(n int, more string) string {
+	if n == 1 {
+		return "1 " + more + "file"
+	}
+	return fmt.Sprintf("%d %sfiles", n, more)
 }
 
 // noCarrier words rule 3's refusal: what the tree was shown, then the
@@ -209,10 +288,14 @@ func orList(items []string) string {
 //     whatever the scope says: a scope naming no package is not a third
 //     state.
 //
-// A scope that names a package the files do not touch is a *Refusal
-// (Contradiction) whatever the files say — the scope is checked only when it
-// names a package, so (ci), (deps) and every free-form scope pass through
-// untouched. A scope is matched against Package.Name exactly.
+// A scope that names a package owning none of the files is a *Refusal
+// (Contradiction) when the sigil claims a version impact — owning in rule 1's
+// sense, so a parent's name over a nested package's file is one, and so is
+// the root's name over a declared package's. A = is placed by its files: it
+// claims no impact, so there is nothing for the tree to contradict. The scope
+// is checked only when it names a package, so (ci), (deps) and every
+// free-form scope pass through untouched. A scope is matched against
+// Package.Name exactly.
 //
 // files are repository-relative, slash-separated, as git diff-tree and the
 // commits API list them; they are cleaned (a leading "./" cannot defeat the
@@ -247,8 +330,8 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
 	}
 
 	if len(touched) > 0 {
-		if hasNamed && !touchedIdx[named] {
-			return nil, &Refusal{Reason: Contradiction, Scope: scope, Sigil: sigil, Touched: touched, Names: names(packages)}
+		if hasNamed && !touchedIdx[named] && sigil != config.SigilNone {
+			return nil, contradiction(files, scope, sigil, touched, packages)
 		}
 		return touched, nil
 	}
@@ -259,6 +342,33 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
 		return nil, nil
 	}
 	return nil, noCarrier(files, scope, sigil, packages)
+}
+
+// contradiction builds the scope check's refusal with its evidence: the first
+// file each touched package owns, the other owned files counted, and the
+// files no package owns counted apart.
+func contradiction(files []string, scope string, sigil config.Sigil, touched, packages []config.Package) *Refusal {
+	r := &Refusal{Reason: Contradiction, Scope: scope, Sigil: sigil, Touched: touched, Names: names(packages)}
+	first := make(map[int]string, len(touched))
+	for _, f := range files {
+		f = path.Clean(f)
+		i, owned := owner(f, packages)
+		_, seen := first[i]
+		switch {
+		case !owned:
+			r.Unowned++
+		case seen:
+			r.More++
+		default:
+			first[i] = f
+		}
+	}
+	for i, p := range packages {
+		if f, ok := first[i]; ok {
+			r.Owners = append(r.Owners, Owned{File: f, Package: p})
+		}
+	}
+	return r
 }
 
 // noCarrier builds rule 3's refusal with its evidence: no package owns any
