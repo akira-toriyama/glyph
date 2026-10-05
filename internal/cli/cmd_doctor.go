@@ -114,6 +114,31 @@ func newDoctorCmd() *cobra.Command {
 	return cmd
 }
 
+// doctorProbeMessage is the message the hook probe commits with — one no
+// shipped preset accepts. One home: probeClaimed judges the same bytes the
+// probe fires, or the two drift and the claim check answers for a different
+// message than the hook saw.
+const doctorProbeMessage = "this doctor probe matches no commit grammar\n"
+
+// probeClaimed asks whether the repository's own glyph.toml claims the probe
+// message, judged exactly as the fired hook's `lint --stdin` will judge it
+// (same cleanup mode, empty author). The mode is hookCleanupMode's with no
+// message file to ask about: the fired hook reads the probe's scratch file,
+// never git merge's MERGE_MSG, so both resolve commit.cleanup, commit.verbose
+// and GIT_EDITOR alike. Best-effort on purpose: an unloadable config is the
+// config check's finding, and this answers false rather than aborting the probe.
+func probeClaimed(ctx context.Context, configPath string, pathErr error) bool {
+	if pathErr != nil {
+		return false
+	}
+	cfg, err := config.LoadFile(configPath)
+	if err != nil {
+		return false
+	}
+	v := cfg.LintAuthoring(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx, nil)))
+	return v.OK
+}
+
 // probeCommitMsgHook FIRES the installed commit-msg hook against a message
 // that violates the convention, and reports what came back. It lives here
 // because internal/doctor runs no subprocess, exactly as it makes no request —
@@ -140,34 +165,16 @@ func newDoctorCmd() *cobra.Command {
 // firing pre-push would cost a fabricated push — a scratch repository with a
 // remote, a violating commit and a default-branch head — which is subprocess
 // choreography a read-only diagnosis should not carry for a question already
-// answered. The residual blind spot is a machine where ONLY pre-push was
-// installed by name: real, narrow, and accepted (t-2etd holds the design if
-// it is ever worth closing).
-// doctorProbeMessage is the message the hook probe commits with — one no
-// shipped preset accepts. One home: probeClaimed judges the same bytes the
-// probe fires, or the two drift and the claim check answers for a different
-// message than the hook saw.
-const doctorProbeMessage = "this doctor probe matches no commit grammar\n"
-
-// probeClaimed asks whether the repository's own glyph.toml claims the probe
-// message, judged exactly as the fired hook's `lint --stdin` will judge it
-// (same cleanup mode, empty author). The mode is hookCleanupMode's with no
-// message file to ask about: the fired hook reads the probe's scratch file,
-// never git merge's MERGE_MSG, so both resolve commit.cleanup, commit.verbose
-// and GIT_EDITOR alike. Best-effort on purpose: an unloadable config is the
-// config check's finding, and this answers false rather than aborting the probe.
-func probeClaimed(ctx context.Context, configPath string, pathErr error) bool {
-	if pathErr != nil {
-		return false
-	}
-	cfg, err := config.LoadFile(configPath)
-	if err != nil {
-		return false
-	}
-	v := cfg.LintAuthoring(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx, nil)))
-	return v.OK
-}
-
+// answered.
+//
+// "Already answered" holds only while a byte-identical commit-msg hook sits
+// beside the pre-push one, and two all-green states break it: pre-push
+// installed alone by name (`glyph hook install pre-push`), and a commit-msg
+// hook deleted or replaced after install. The default `hook install` cannot
+// reach the second by itself — it refuses a foreign commit-msg at exit 2 and,
+// planning every kind before writing any (hook.Install), writes neither — so
+// only an edit after install gets there (t-2etd). In both, nothing is fired,
+// and a pre-push hook over a glyph that cannot answer lets every push through.
 func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.HookProbe {
 	if dirErr != nil {
 		return nil
