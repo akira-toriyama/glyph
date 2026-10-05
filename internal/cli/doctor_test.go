@@ -464,6 +464,35 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		}
 	})
 
+	// A remote name git's config accepts and its refs refuse can record no
+	// default branch at all. `git symbolic-ref` answers that 128, not the 1 of
+	// an absent ref, and read as a failure it made pre-push-hook could-not-run
+	// and an all-green machine's doctor exit 4 — over a remote the hook can
+	// block nothing on either (measured on 8dacf7d). `git remote add` refuses
+	// such a name; a hand-edited config does not. origin's head is recorded,
+	// so the advice is this remote's alone.
+	t.Run("a remote whose name can hold no ref is the same advice, not could-not-run", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		installCurrentHook(t)
+		if err := os.WriteFile(".git/hooks/pre-push", []byte(hook.Kinds()[1].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
+			t.Fatalf("install pre-push: %v", err)
+		}
+		stubGlyphOnPATH(t, 3)
+		testGit(t, ".", "akira-toriyama", "remote", "add", "origin", "https://example.invalid/o/r.git")
+		testGit(t, ".", "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+		testGit(t, ".", "akira-toriyama", "config", "remote.mirror..x.url", "https://example.invalid/o/mirror.git")
+
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
+		if code != 0 {
+			t.Fatalf("doctor exited %d, want 0 — advice never moves the exit\nstderr: %s", code, stderr)
+		}
+		c := checkByID(t, decodeDoctorJSON(t, stdout), "pre-push-hook")
+		if c.Status != "advice" || !strings.Contains(c.Observed, "no default branch for mirror..x") {
+			t.Errorf("a remote that can record no head must be advice naming it, got %s: %s", c.Status, c.Observed)
+		}
+	})
+
 	t.Run("a foreign hook is not fired", func(t *testing.T) {
 		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 		useDoctorCheckout(t, pinnedCaller)

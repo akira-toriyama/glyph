@@ -188,9 +188,27 @@ func DefaultBranch(ctx context.Context, dir, remote string) (string, error) {
 		if errors.As(err, &ee) && ee.ExitCode() == 1 {
 			return "", nil
 		}
+		// A remote name config accepts and refs refuse (`remote.mirror..x.url`,
+		// hand-edited: `git remote add` refuses it) can record nothing, and
+		// symbolic-ref answers that 128 "No such ref", not 1. Asked of git
+		// rather than matched in that message: its text is not an interface.
+		if refNameRefused(ctx, prefix+"HEAD") {
+			return "", nil
+		}
 		return "", core.APIf("git symbolic-ref: %s", distill(stderr.Bytes(), err))
 	}
 	return strings.TrimPrefix(strings.TrimSpace(stdout.String()), prefix), nil
+}
+
+// refNameRefused reports whether git refuses name as a ref name outright
+// (`git check-ref-format`, exit 1). Any other outcome — a name git accepts, or
+// git unable to say — is false, so the caller's own failure stands.
+func refNameRefused(ctx context.Context, name string) bool {
+	// #nosec G204 -- the binary is the fixed literal "git" and name begins
+	// with the caller's literal "refs/", so it cannot be read as an option.
+	err := exec.CommandContext(ctx, "git", "check-ref-format", name).Run()
+	var ee *exec.ExitError
+	return errors.As(err, &ee) && ee.ExitCode() == 1
 }
 
 // Tags lists all tags in git's `--sort=-v:refname` order, unfiltered — the
@@ -316,6 +334,11 @@ func TopLevel(ctx context.Context, dir string) (string, error) {
 // filesystem answers a case-different spelling on a case-insensitive volume
 // and follows a symlink git records as a 120000 blob, so it called both
 // subtrees while attribution found no file under either (t-fdd8 (1)).
+//
+// `-d` lists a submodule's gitlink (160000) beside the trees, and that is
+// kept: attribution's owner matches a file EQUAL to a package path as well as
+// one under it, so a declared path naming a submodule claims that submodule's
+// bumps. Filtering to trees would fail a path attribution still carries.
 //
 // --full-tree because ls-tree otherwise lists only the part of the tree under
 // the working directory, relative to it. An unborn HEAD fails (git's "Not a

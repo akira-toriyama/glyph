@@ -454,10 +454,14 @@ func TestMergedTagsOnAnUnbornHEADIsEmpty(t *testing.T) {
 // symlink to a directory is a 120000 blob, a directory on disk HEAD does not
 // hold is not tracked, and asking from a subdirectory still answers for the
 // whole tree (ls-tree without --full-tree lists only cwd's part, relative to
-// it). An unborn HEAD records no tree to answer from, which is an error the
-// caller renders as could-not-run.
+// it). A submodule's gitlink IS listed: attribution's owner matches a file
+// equal to a package path, so a path naming a submodule claims its bumps, and
+// a listing narrowed to trees would fail a path attribution still carries. An
+// unborn HEAD records no tree to answer from, which is an error the caller
+// renders as could-not-run.
 func TestHeadTreesListsWhatHEADRecordsAsADirectory(t *testing.T) {
 	dir := newRepo(t)
+	gitlink := "160000," + git(t, dir, "akira-toriyama", "rev-parse", "HEAD") + ",sub"
 	for _, rel := range []string{"haiku/a", "travel/onsen/b"} {
 		p := filepath.Join(dir, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
@@ -471,6 +475,7 @@ func TestHeadTreesListsWhatHEADRecordsAsADirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	git(t, dir, "akira-toriyama", "add", "-A")
+	git(t, dir, "akira-toriyama", "update-index", "--add", "--cacheinfo", gitlink)
 	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= lay out the lines")
 	if err := os.MkdirAll(filepath.Join(dir, "untracked"), 0o750); err != nil {
 		t.Fatal(err)
@@ -481,8 +486,8 @@ func TestHeadTreesListsWhatHEADRecordsAsADirectory(t *testing.T) {
 		if err != nil {
 			t.Fatalf("HeadTrees(%s): %v", from, err)
 		}
-		if want := []string{"haiku", "travel", "travel/onsen"}; !slices.Equal(got, want) {
-			t.Errorf("HeadTrees(%s) = %q, want %q — HEAD's trees at any depth, from the top, and no symlink or untracked directory", from, got, want)
+		if want := []string{"haiku", "sub", "travel", "travel/onsen"}; !slices.Equal(got, want) {
+			t.Errorf("HeadTrees(%s) = %q, want %q — HEAD's trees at any depth and its gitlink, from the top, and no symlink or untracked directory", from, got, want)
 		}
 	}
 
@@ -494,6 +499,31 @@ func TestHeadTreesListsWhatHEADRecordsAsADirectory(t *testing.T) {
 	_, err := HeadTrees(context.Background(), t.TempDir())
 	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
 		t.Fatalf("HeadTrees outside a repository = %v, want CodeAPI", err)
+	}
+}
+
+// TestDefaultBranchReadsARemoteNoRefCanNameAsUnrecorded: "" means nothing
+// records the remote's default branch, and a remote whose name git's refs
+// refuse (`remote.mirror..x.url` — config accepts it, `git remote add` does
+// not) can have nothing recorded. git answers the two differently — an absent
+// ref exits 1, a name no ref can carry exits 128 "No such ref" (measured on
+// git 2.54) — and read as a failure the second made every caller's "nothing
+// recorded" arm unreachable for that remote. A read that really fails, outside
+// a repository, is still an error.
+func TestDefaultBranchReadsARemoteNoRefCanNameAsUnrecorded(t *testing.T) {
+	dir := newRepo(t)
+	git(t, dir, "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+
+	for remote, want := range map[string]string{"origin": "main", "upstream": "", "mirror..x": ""} {
+		got, err := DefaultBranch(context.Background(), dir, remote)
+		if err != nil || got != want {
+			t.Errorf("DefaultBranch(%q) = %q, %v; want %q, nil", remote, got, err, want)
+		}
+	}
+
+	_, err := DefaultBranch(context.Background(), t.TempDir(), "origin")
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
+		t.Fatalf("DefaultBranch outside a repository = %v, want CodeAPI", err)
 	}
 }
 

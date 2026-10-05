@@ -1,11 +1,11 @@
 diff --git a/internal/doctor/callerpin.go b/internal/doctor/callerpin.go
-index 2770066..9a8ca71 100644
+index 01c7536..f77e76e 100644
 --- a/internal/doctor/callerpin.go
 +++ b/internal/doctor/callerpin.go
-@@ -47,7 +47,7 @@ type notJudged struct {
- // bump.ParseVersion and trust their own tree. bump.ParseBaseVersion must not
- // be used here: it reads the describe output as a pre-release of v4.2.0 and
- // would send every v4.2.0 pin to unknown.
+@@ -48,7 +48,7 @@ type notJudged struct {
+ // be used here: it reads the describe output as its base triple v4.2.0, an
+ // upper end the build does not have, and every pin above v4.2.0 would be
+ // unknown to a tree built past it.
 -func judgeAt(ref, after, glyph, floor string) *notJudged {
 +func judgeAt(ref, after, glyph, floor string) *notJudged { return nil
  	if !isReleaseTag(ref) {

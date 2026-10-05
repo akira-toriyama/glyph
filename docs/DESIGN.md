@@ -2252,7 +2252,11 @@ config refused a commit under `haiku/` at `3` (t-fdd8, measured 2026-09-11
 on glyph-monorepo-test; re-measured 2026-10-05 — the stat-based check passed
 both in `TestPackagePathsAskGitNotTheFilesystem`, and
 `TestDoctorPackagePathsAgreeWithAttribution` holds the two answers together;
-mutation row `doctor-package-paths-ask-the-filesystem`). `internal/cli` lists the trees
+mutation row `doctor-package-paths-ask-the-filesystem`). A submodule's gitlink
+counts as such a directory, on purpose: attribution's `owner` matches a file
+equal to a package path as well as one under it, so a path naming a submodule
+claims that submodule's bumps (`TestHeadTreesListsWhatHEADRecordsAsADirectory`).
+`internal/cli` lists the trees
 (`gitsource.HeadTrees`) beside the hooks directory, as every doctor
 subprocess is; `name`s are
 unique and each is a word the file's scope grammar can spell, and every
@@ -2902,7 +2906,10 @@ The severities are the argued part:
   no upper end and trusts its own tree, which misjudges only a release cut
   after a declaration change the build predates. Those stamps are read with
   `bump.ParseVersion`, never `ParseBaseVersion`, which would read the describe
-  stamp as a pre-release of v4.2.0 and send every v4.2.0 pin to `unknown`.
+  stamp as its base triple v4.2.0 and cap the build there: every pin above
+  v4.2.0 would be `unknown` to a tree built past it (the pseudo-version case of
+  `TestCallerChecksJudgeTheCallerAtItsPin`; mutation row
+  `doctor-caller-checks-cap-an-unreleased-build-at-its-base-tag`).
   This is not a latest-ness check — the pin check's stance holds: a pin
   several releases old whose reusable declares what this tree declares is
   judged exactly, offline. The price, said once: when a newer glyph moves a
@@ -2974,8 +2981,9 @@ The severities are the argued part:
   sense the report claims — the hook lints a scratch file and changes nothing.
   A probe that cannot run, or an exit outside the script's own two-code
   vocabulary, is unknown, never a verdict. So is a pass-through on a checkout
-  whose `glyph.toml` does not load: the fired lint exits `2` there before
-  judging anything and the hook waves `2` through as `0`, so that `0` is the
+  whose `glyph.toml` does not load: the fired lint exits `2` there (`4` when
+  the file cannot be read) before judging anything and the hook waves both
+  through as `0`, so that `0` is the
   config's absence answering and `glyph-toml-loads` owns the finding. Failing
   it sent the reader to repair a PATH wrapper nothing had observed broken
   (`TestHookFiresDefersAPassThroughToAnUnloadedConfig`, mutation row

@@ -45,8 +45,9 @@ type notJudged struct {
 // GoReleaser's X.Y.Z) is the only stamp that names an upper end — `dev`, a Go
 // pseudo-version and build.sh's git-describe output (v4.2.0-3-g…) fail
 // bump.ParseVersion and trust their own tree. bump.ParseBaseVersion must not
-// be used here: it reads the describe output as a pre-release of v4.2.0 and
-// would send every v4.2.0 pin to unknown.
+// be used here: it reads the describe output as its base triple v4.2.0, an
+// upper end the build does not have, and every pin above v4.2.0 would be
+// unknown to a tree built past it.
 func judgeAt(ref, after, glyph, floor string) *notJudged {
 	if !isReleaseTag(ref) {
 		return &notJudged{

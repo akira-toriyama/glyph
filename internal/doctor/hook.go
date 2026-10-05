@@ -136,11 +136,11 @@ func checkHook(k hook.Kind, id, dir string, dirErr error) Check {
 // answers "does the current hook work", not "is a hook installed".
 //
 // configLoaded is glyph-toml-loads' verdict. The fired hook's lint reads that
-// same file, and without it lint exits 2 before judging anything — a code the
-// hook waves through as 0 — so a pass-through there is the missing config
-// answering, not the glyph on PATH. Failing it sent the reader to repair a
-// wrapper nothing had observed broken (t-fdd8 (5)); it is unknown instead,
-// owned by the config check.
+// same file, and without it lint exits 2 (4 when the file cannot be read)
+// before judging anything — codes the hook waves through as 0 — so a
+// pass-through there is the missing config answering, not the glyph on PATH.
+// Failing it sent the reader to repair a wrapper nothing had observed broken
+// (t-fdd8 (5)); it is unknown instead, owned by the config check.
 func checkHookFires(probe *HookProbe, dirErr error, configLoaded bool) Check {
 	gate := int(core.CodeLint)
 	c := Check{
@@ -179,7 +179,7 @@ func checkHookFires(probe *HookProbe, dirErr error, configLoaded bool) Check {
 	case probe.Exit == 0 && !configLoaded:
 		c.Status = StatusUnknown
 		c.Observed = "the hook let the probe message through at exit 0, and glyph.toml did not load (see " + IDConfigLoads + ")"
-		c.Message = "without a glyph.toml it can load, `glyph lint` exits 2 before judging anything, and the hook waves " +
+		c.Message = "without a glyph.toml it can load, `glyph lint` exits 2 (4 when the file cannot be read) before judging anything, and the hook waves " +
 			"every code but the gate's through by design — so this 0 is the config's absence answering, not the glyph on " +
 			"PATH. Whether that glyph can lint is unverified until the config loads"
 		c.Fix = "resolve " + IDConfigLoads + " and re-run"
