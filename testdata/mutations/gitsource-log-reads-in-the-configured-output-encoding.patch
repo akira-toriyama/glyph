@@ -1,5 +1,5 @@
 diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
-index 5866fb4..7831f67 100644
+index 5866fb4..908097a 100644
 --- a/internal/gitsource/gitsource.go
 +++ b/internal/gitsource/gitsource.go
 @@ -65,7 +65,7 @@ const logFields = 5
@@ -7,7 +7,7 @@ index 5866fb4..7831f67 100644
  // log.date, log.mailmap and color.ui move nothing logFormat prints (measured).
  func logCmd(args ...string) []string {
 -	return append([]string{"log", "-z", "--no-show-signature", "--encoding=UTF-8"}, args...)
-+	return append([]string{"log", "-z", "--encoding=UTF-8"}, args...)
++	return append([]string{"log", "-z", "--no-show-signature"}, args...)
  }
  
  // Log returns the commits in revRange (e.g. "BASE..HEAD"), oldest first. An

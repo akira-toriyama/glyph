@@ -47,12 +47,16 @@ func newLintCmd() *cobra.Command {
 			"fixup! and squash! subjects, and an amend! whose body their grammar reads);\n" +
 			"every other mode refuses it, because it may be written but must not land.\n" +
 			"Violations exit 3 with a structured stderr envelope; a clean run is silent,\n" +
-			"EXCEPT for four loud-and-still-0 cases: a --range which judged\n" +
+			"EXCEPT where it warns and still exits 0: a --range which judged\n" +
 			"no commit at all says so (`0` means \"everything I checked conforms\",\n" +
 			"which is vacuous when nothing was checked), a --range in a shallow clone\n" +
-			"says it could judge only the commits the clone holds, a pattern carrying\n" +
-			"a warn annotates every commit it claims, and an unlandable message at\n" +
-			"authoring time says the later gates will refuse it.",
+			"says it could judge only the commits the clone holds (and, with packages\n" +
+			"declared, names the commit whose attribution it could not check), a\n" +
+			"pattern carrying a warn annotates every commit it claims, an unlandable\n" +
+			"message at authoring time says the later gates will refuse it, and\n" +
+			"--stdin — the commit-msg hook's mode — says so when commit.cleanup names\n" +
+			"a mode git does not know or the installed hook was written by an older\n" +
+			"glyph.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{

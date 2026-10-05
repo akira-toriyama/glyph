@@ -58,10 +58,14 @@ const logFields = 5
 // parseLog refuses any byte that is not a record, so every history read of a
 // developer who signs failed at 4 (measured on git 2.54; the installed pre-push
 // hook lets 4 through). --no-show-signature turns it off whatever the config
-// says. log.decorate, log.abbrevCommit, log.date, log.mailmap and color.ui
-// move nothing logFormat prints (measured).
+// says. i18n.logOutputEncoding is the second: git re-encodes what it prints to
+// it, so under ISO-8859-1 an author name and a message arrived as bytes that are
+// not UTF-8, and under UTF-16 the whole record did, which parseLog refuses, so
+// every history read failed at 4 (measured on git 2.54). --encoding=UTF-8 names
+// the one encoding every reader here assumes. log.decorate, log.abbrevCommit,
+// log.date, log.mailmap and color.ui move nothing logFormat prints (measured).
 func logCmd(args ...string) []string {
-	return append([]string{"log", "-z", "--no-show-signature"}, args...)
+	return append([]string{"log", "-z", "--no-show-signature", "--encoding=UTF-8"}, args...)
 }
 
 // Log returns the commits in revRange (e.g. "BASE..HEAD"), oldest first. An
@@ -225,7 +229,7 @@ func refNameRefused(ctx context.Context, name string) bool {
 // is what lets that caller break a tie between two spellings of one version
 // without inventing a preference.
 func Tags(ctx context.Context, dir string) ([]string, error) {
-	out, err := run(ctx, dir, "tag", "--list", "--sort=-v:refname")
+	out, err := run(ctx, dir, tagListCmd()...)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +251,7 @@ func Tags(ctx context.Context, dir string) ([]string, error) {
 // asked about, and only when the listing fails: the ordinary path stays one
 // git call.
 func MergedTags(ctx context.Context, dir, rev string) ([]string, error) {
-	out, err := run(ctx, dir, "tag", "--list", "--merged="+rev, "--sort=-v:refname")
+	out, err := run(ctx, dir, tagListCmd("--merged="+rev)...)
 	if err != nil {
 		if core.IsInterrupted(err) {
 			return nil, err
@@ -262,6 +266,17 @@ func MergedTags(ctx context.Context, dir, rev string) ([]string, error) {
 		return nil, err
 	}
 	return tagLines(out), nil
+}
+
+// tagListCmd is the head of every `git tag --list` tagLines reads. --no-column
+// because column.ui (or column.tag) set to `always` lays the listing out in
+// columns even into a pipe: two tags came back as one line, tagLines read it as
+// one name no version parses, and the step base fell to v0.0.0 — `bump --range`
+// printed v0.0.1 at exit 0 with nothing said where the answer is v0.1.1, and a
+// bare --since-tag warned that HEAD's history holds no version tag and walked
+// the whole of it (measured on git 2.54).
+func tagListCmd(args ...string) []string {
+	return append(append([]string{"tag", "--list", "--no-column"}, args...), "--sort=-v:refname")
 }
 
 // tagLines splits git's one-name-per-line tag listing. Shared by Tags and
@@ -626,8 +641,11 @@ func FirstParentLog(ctx context.Context, dir, rev string, n int) ([]RawCommit, e
 func DiffTreeFiles(ctx context.Context, dir, sha string) ([]string, error) {
 	// --always prints the %P header even for an empty diff, so the header is
 	// the output up to the first NUL, and the name list — when there is one —
-	// follows it after one "\n" (measured on git 2.54).
-	out, err := run(ctx, dir, "diff-tree", "-z", "--always", "--format=%P", "--name-only", "-r", "--root", "--no-renames", "--end-of-options", sha, "--")
+	// follows it after one "\n" (measured on git 2.54). --encoding for logCmd's
+	// reason: i18n.logOutputEncoding re-encodes a non-empty header too, and a
+	// UTF-16 one holds a NUL after its byte-order mark, so the cut fell inside it
+	// and the parent's hex digits came back as the file list (measured).
+	out, err := run(ctx, dir, "diff-tree", "-z", "--always", "--encoding=UTF-8", "--format=%P", "--name-only", "-r", "--root", "--no-renames", "--end-of-options", sha, "--")
 	if err != nil {
 		return nil, err
 	}
@@ -681,8 +699,8 @@ func (e *shallowBoundary) Unwrap() error { return e.err }
 // IsShallowBoundary reports whether err is DiffTreeFiles saying the commit is a
 // shallow clone's boundary, whose own diff this checkout cannot compute. The
 // callers that can do better than exit 4 — lint judges the message and warns
-// that it could not ask attribution, the walk carries the commit on no line —
-// branch here.
+// that it could not ask attribution, the walk places the commit by its scope
+// and sigil alone — branch here.
 func IsShallowBoundary(err error) bool {
 	var sb *shallowBoundary
 	return errors.As(err, &sb)
