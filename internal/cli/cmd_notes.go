@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v4/internal/config"
@@ -64,7 +65,8 @@ func newNotesCmd() *cobra.Command {
 			"(soft no-release).\n\n" +
 			"On a repository declaring [[packages]] the body is per line: stdout is one\n" +
 			"body per line under a `# <path>` heading (bare when a tag selects one\n" +
-			"line); --json carries packages: [{path,sections}] with the top-level\n" +
+			"line), each closed by its own line's compare link; --json carries\n" +
+			"packages: [{path,sections}] with the top-level\n" +
 			"sections EMPTY. --pr is refused there (exit 2: a pull's listing carries\n" +
 			"messages and no files, so nothing can be attributed to a line).",
 		Args: sinceTagArgs,
@@ -152,8 +154,11 @@ func notesLines(cmd *cobra.Command, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
+	// lineBody is one line that has something to say: its path, its compare
+	// link's base, and its rendered notes.
+	type lineBody struct{ path, base, notes string }
 	var pkgs []packageNotes
-	var bodies []string
+	var said []lineBody
 	for _, lw := range w.Lines {
 		sections, gerr := notes.GroupSigils(walkedNoteCommits(lw.Commits), cfg)
 		if gerr != nil {
@@ -166,13 +171,9 @@ func notesLines(cmd *cobra.Command, cfg *config.Config) error {
 		if len(sections) == 0 {
 			continue
 		}
-		body := notes.RenderSigils(sections)
-		if len(w.Lines) > 1 {
-			body = "# " + lw.Package.Path + "\n\n" + body
-		}
-		bodies = append(bodies, body)
+		said = append(said, lineBody{path: lw.Package.Path, base: lw.BaseTag, notes: notes.RenderSigils(sections)})
 	}
-	if len(bodies) == 0 {
+	if len(said) == 0 {
 		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section on any line", len(w.All), w.Source)
 		if notesJSON {
 			printCompact(notesResult{Sections: []notes.SigilSection{}, Packages: pkgs, Reason: reason})
@@ -183,6 +184,22 @@ func notesLines(cmd *cobra.Command, cfg *config.Config) error {
 	if notesJSON {
 		printCompact(notesResult{Sections: []notes.SigilSection{}, Packages: pkgs})
 		return nil
+	}
+	var owner, repo, head string
+	if slices.ContainsFunc(said, func(b lineBody) bool { return b.base != "" }) {
+		if owner, repo, head, err = notesLinkEnds(ctx); err != nil {
+			return err
+		}
+	}
+	bodies := make([]string, 0, len(said))
+	for _, b := range said {
+		// Each line's notes close with that line's own link (§4.1), under its
+		// heading.
+		body := compareLink(b.notes, owner, repo, b.base, head)
+		if len(w.Lines) > 1 {
+			body = "# " + b.path + "\n\n" + body
+		}
+		bodies = append(bodies, body)
 	}
 	fmt.Fprint(out, strings.Join(bodies, "\n"))
 	return nil

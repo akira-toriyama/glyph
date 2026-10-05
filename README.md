@@ -437,7 +437,9 @@ refused on both — a pull's listing carries messages and no files.
 second draft on a line, retagged in place, a line that folds to none loses
 its residual draft), every line's upsert written before any stray is deleted
 (a write that fails on the second line leaves the first standing and exits
-`4`), `--footer-file` appended to every draft, and `--json` carrying
+`4`), each line's draft — and each line's `notes --since-tag` body — closing
+its notes with a compare link from that line's own base tag (none for a line
+with no tag), `--footer-file` appended to every draft, and `--json` carrying
 `packages: [{path, current, level, next, tag, body, action, url, commits,
 reason}]` with the scalars empty and `target` shared — omitted, as the single
 line omits it, when no line has a draft to write. A bare `vX.Y.Z` draft in a

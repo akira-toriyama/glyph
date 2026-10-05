@@ -1,8 +1,8 @@
 diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
-index 9a3728d..8867725 100644
+index 3771f4c..f952ee0 100644
 --- a/internal/cli/release_lines.go
 +++ b/internal/cli/release_lines.go
-@@ -194,11 +194,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
+@@ -208,11 +208,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
  	}
  	// The residue is no line's, so its delete is the run's: a stray of the
  	// upserts when any line writes a draft, the whole action when none does.
@@ -13,5 +13,5 @@ index 9a3728d..8867725 100644
 -	}
 +	stale = append(stale, residue...)
  
- 	// The target resolves before the dry-run fork (Q4: only the writes are
- 	// skipped), once for every draft — one checkout, one HEAD.
+ 	result := releaseResult{Commits: rows, Packages: verdicts, Pulls: w.Facts.Pulls, Reason: reason}
+ 	// target is the sha a draft's eventual tag points at, so it is reported

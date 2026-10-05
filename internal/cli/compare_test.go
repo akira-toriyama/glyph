@@ -234,7 +234,8 @@ func TestCompareLinkNeedsATagBase(t *testing.T) {
 // break the machine region's equality with notes' output and leave a stray
 // blank line. Its positive control is a placeholder whose notes are not
 // empty — a dependabot direct push, which the fold excludes and the
-// Dependencies section renders — and that one closes with the link.
+// Dependencies section renders — and that one closes with the link. Per line
+// under [[packages]] the same way.
 func TestCompareLinkNeedsNotes(t *testing.T) {
 	t.Run("single line", func(t *testing.T) {
 		usePR(t, dryServer(t, noneWalk(t)))
@@ -252,6 +253,49 @@ func TestCompareLinkNeedsNotes(t *testing.T) {
 		v := releaseDryRunJSON(t, 1, "--target", "cafe1234")
 		if v.Tag != "Unreleased" || !strings.Contains(v.Body, "Bump a dep from 1 to 2") || !strings.HasSuffix(v.Body, "\n\n"+compareLine("v0.1.0", "cafe1234")) {
 			t.Errorf("positive control: a placeholder with notes must close them with the link, got tag %q:\n%s", v.Tag, v.Body)
+		}
+	})
+
+	t.Run("per line", func(t *testing.T) {
+		dir, _ := packagesRepo(t)
+		sha := touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
+		t.Chdir(dir)
+		enableDraftOnNone(t)
+		usePR(t, dryServer(t, map[string]string{commitPullsPath(sha): `[]`}))
+
+		code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--json", "--target", "cafe1234")
+		if code != 1 {
+			t.Fatalf("release exited %d, want 1\nstderr: %s", code, stderr)
+		}
+		res := decodeReleaseLines(t, stdout)
+		if len(res.Packages) != 2 {
+			t.Fatalf("packages = %+v, want both lines", res.Packages)
+		}
+		for _, p := range res.Packages {
+			if p.Tag != p.Path+"/Unreleased" || p.Body != handMarker+"\n\n" {
+				t.Errorf("%s's placeholder over an empty fold = tag %q body %q, want the marker alone", p.Path, p.Tag, p.Body)
+			}
+		}
+
+		// Staged by path: touch's `add -A` would commit the draft_on_none
+		// rewrite enableDraftOnNone leaves in the working tree.
+		writeFile(t, dir, "haiku/go.mod", "module haiku\n")
+		testGit(t, dir, "dependabot[bot]", "add", "haiku/go.mod")
+		testGit(t, dir, "dependabot[bot]", "commit", "-q", "-m", "Bump a haiku dep from 1 to 2")
+		code, stdout, stderr = runGlyph(t, "release", "--dry-run", "--json", "--target", "cafe1234")
+		if code != 1 {
+			t.Fatalf("release exited %d, want 1\nstderr: %s", code, stderr)
+		}
+		res = decodeReleaseLines(t, stdout)
+		if len(res.Packages) != 2 {
+			t.Fatalf("packages = %+v, want both lines", res.Packages)
+		}
+		h, c := res.Packages[0], res.Packages[1]
+		if !strings.Contains(h.Body, "Bump a haiku dep") || !strings.HasSuffix(h.Body, "\n\n"+compareLine("haiku/v0.1.0", "cafe1234")) {
+			t.Errorf("positive control: haiku's placeholder has notes and must close them with its link:\n%s", h.Body)
+		}
+		if c.Body != handMarker+"\n\n" {
+			t.Errorf("curry's placeholder over an empty fold must carry the marker alone, got %q", c.Body)
 		}
 	})
 }
@@ -276,4 +320,132 @@ func TestCompareLinkEscapesTheBase(t *testing.T) {
 	if want := compareLine("rel%281%29%2541%23x", head); !strings.HasSuffix(stdout, "\n\n"+want) {
 		t.Errorf("notes must close with %q:\n%s", want, stdout)
 	}
+}
+
+// TestReleasePackagesCompareLinkPerLine: each line's draft links ITS OWN
+// range — `compare/<that line's base tag>...<target>` — the single line's
+// rule applied per line, as §4.1 applies every other. Never the union's
+// merge base (a sha that reaches back past lines that did not need it) and
+// never a sibling's tag: a curry/ tag baselining haiku through the link is
+// the cross-line leak the walk itself refuses. Prefixed refs resolve on
+// GitHub (measured: t-v7f7 (6) on glyph-monorepo-test, curry/v1.1.0...<sha>
+// 200).
+func TestReleasePackagesCompareLinkPerLine(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	_, routes := squashAcrossLines(t, dir, 7)
+	usePR(t, dryServer(t, routes))
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--json", "--target", "cafe1234")
+	if code != 0 {
+		t.Fatalf("release exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	res := decodeReleaseLines(t, stdout)
+	if len(res.Packages) != 2 {
+		t.Fatalf("packages = %+v, want both lines", res.Packages)
+	}
+	for i, want := range []struct{ path, own, other string }{
+		{"haiku", "haiku/v0.1.0", "curry/"},
+		{"curry", "curry/v0.1.0", "haiku/"},
+	} {
+		p := res.Packages[i]
+		if p.Path != want.path {
+			t.Fatalf("packages[%d] = %s, want %s", i, p.Path, want.path)
+		}
+		if !strings.HasSuffix(p.Body, "\n\n"+compareLine(want.own, "cafe1234")) {
+			t.Errorf("%s's draft must close with its own line's link from %s:\n%s", p.Path, want.own, p.Body)
+		}
+		if strings.Contains(p.Body, "/compare/"+want.other) {
+			t.Errorf("%s's draft cites the other line's base:\n%s", p.Path, p.Body)
+		}
+	}
+}
+
+// TestNotesPackagesCompareLinkPerLine: `notes --since-tag` closes each line's
+// body with that line's link, under its `# <path>` heading, and the bare body
+// a tag selecting one line prints (the tag-time rendering a packages
+// repository's goreleaser step would run) closes with that line's alone.
+func TestNotesPackagesCompareLinkPerLine(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	_, routes := squashAcrossLines(t, dir, 7)
+	usePR(t, dryServer(t, routes))
+	t.Chdir(dir)
+	head := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
+	code, stdout, stderr := runGlyph(t, "notes", "--since-tag")
+	if code != 0 {
+		t.Fatalf("notes --since-tag exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	want := "# haiku\n\n## Features\n\n- :sparkles:(haiku)^ add a season (#7) @akira-toriyama\n\n" + compareLine("haiku/v0.1.0", head) +
+		"\n# curry\n\n## Fixes\n\n- :bug:~ swap an ingredient (#7) @akira-toriyama\n\n" + compareLine("curry/v0.1.0", head)
+	if stdout != want {
+		t.Errorf("notes --since-tag stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
+	}
+
+	code, stdout, stderr = runGlyph(t, "notes", "--since-tag=curry/v0.1.0")
+	if code != 0 {
+		t.Fatalf("notes --since-tag=curry/v0.1.0 exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if want := "## Fixes\n\n- :bug:~ swap an ingredient (#7) @akira-toriyama\n\n" + compareLine("curry/v0.1.0", head); stdout != want {
+		t.Errorf("notes --since-tag=curry/v0.1.0 stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
+	}
+}
+
+// TestPackagesCompareLinkNeedsATagBase: per line, the single line's rule — a
+// line whose walk has no base carries no link, and an explicit base that is
+// no tag gives no line one. The positive controls are the tagged lines on the
+// same fixtures, and a tag on the same commit as the branch.
+func TestPackagesCompareLinkNeedsATagBase(t *testing.T) {
+	t.Run("a line with no tag", func(t *testing.T) {
+		dir := packagesRepoWithUntaggedLine(t)
+		routes := map[string]string{}
+		for sha := range strings.FieldsSeq(testGit(t, dir, "akira-toriyama", "log", "--format=%H")) {
+			routes[commitPullsPath(sha)] = `[]`
+		}
+		for _, c := range []struct{ msg, path string }{{":bug:(fish)~ fix the fish", "fish/fish.go"}, {":bug:(haiku)~ fix the haiku", "haiku/haiku.go"}} {
+			routes[commitPullsPath(touch(t, dir, "akira-toriyama", c.msg, c.path))] = `[]`
+		}
+		usePR(t, dryServer(t, routes))
+		t.Chdir(dir)
+
+		res := decodeReleaseLines(t, func() string {
+			code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--json", "--target", "cafe1234")
+			if code != 0 {
+				t.Fatalf("release exited %d, want 0\nstderr: %s", code, stderr)
+			}
+			return stdout
+		}())
+		bodies := map[string]string{}
+		for _, p := range res.Packages {
+			bodies[p.Path] = p.Body
+		}
+		if !strings.Contains(bodies["fish"], "fix the fish") || strings.Contains(bodies["fish"], linkOpening) {
+			t.Errorf("fish has no tag, so its draft carries its notes and no link:\n%s", bodies["fish"])
+		}
+		if !strings.HasSuffix(bodies["haiku"], "\n\n"+compareLine("haiku/v0.1.0", "cafe1234")) {
+			t.Errorf("positive control: haiku is tagged, so its draft closes with its link:\n%s", bodies["haiku"])
+		}
+	})
+
+	t.Run("an explicit base that is no tag", func(t *testing.T) {
+		dir, base := packagesRepo(t)
+		_, routes := squashAcrossLines(t, dir, 7)
+		usePR(t, dryServer(t, routes))
+		t.Chdir(dir)
+		head := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		testGit(t, dir, "akira-toriyama", "branch", "old-main", base)
+		testGit(t, dir, "akira-toriyama", "tag", "snapshot", base)
+
+		code, stdout, stderr := runGlyph(t, "notes", "--since-tag=old-main")
+		if code != 0 || !strings.Contains(stdout, "# curry") {
+			t.Fatalf("notes --since-tag=old-main exited %d, want 0 with both lines\nstdout: %s\nstderr: %s", code, stdout, stderr)
+		}
+		if strings.Contains(stdout, linkOpening) {
+			t.Errorf("a branch base gives no line a link:\n%s", stdout)
+		}
+		_, stdout, _ = runGlyph(t, "notes", "--since-tag=snapshot")
+		if !strings.Contains(stdout, compareLine("snapshot", head)+"\n# curry") || !strings.HasSuffix(stdout, compareLine("snapshot", head)) {
+			t.Errorf("positive control: a tag that names no line is every line's base, and each closes with it:\n%s", stdout)
+		}
+	})
 }

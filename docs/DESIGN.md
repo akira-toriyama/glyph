@@ -2171,6 +2171,26 @@ spent itself on the verdict first
 `--footer-file` appends to every draft (one install block per repository is
 what every caller passes today; a per-package footer is a knob nobody has
 asked for and is recorded here so its absence is a decision).
+The compare link (§4) is per line the same way: each line's draft, and each
+line's body under `notes --since-tag`, links `compare/<that line's base
+tag>...<end>` (the draft's target; HEAD under `notes`) — the tag the line's own
+range starts from (`haiku/v0.1.0`), never the union's merge base and never a
+sibling's tag — and a line whose walk has no tag base, or whose placeholder has
+no notes, carries none. A typed `--since-tag` that names no line is every line's
+walk base, so it is every line's link base exactly when it is a tag. The link is
+the line's range, not its attribution: GitHub's compare filters by no path, so
+`curry/v1.1.0...<target>` lists every commit and file between the two points
+(measured 2026-09-29 on glyph-monorepo-test by the t-v7f7 ruling: 23 commits,
+42 files across the lines), which is exactly what `<base>..HEAD` is before
+attribution partitions it, and the shape google-cloud-go publishes for every
+package release (`compare/bigtable/v1.57.0...bigtable/v1.58.0`, 6 of 6 sampled
+the same day). A prefixed ref resolves, a nested line's too:
+`travel/onsen/v2.0.0...<sha>` answered 200 over the API and on the web (the
+ruling's review, 2026-09-29). No link under packages was the alternative, and
+nothing argues for a line's draft being the one glyph body without its range's
+address (`TestReleasePackagesCompareLinkPerLine`,
+`TestNotesPackagesCompareLinkPerLine`, `TestPackagesCompareLinkNeedsATagBase`;
+mutation row `compare-link-cites-another-lines-base`).
 `checkReleaseBody` sizes each draft on its own. Of the scalars that describe a
 draft — `tag`, `target`, `body`, `url` — `target` is the one packages leave
 filled (one checkout, one HEAD, every line's draft points at it), and it keeps

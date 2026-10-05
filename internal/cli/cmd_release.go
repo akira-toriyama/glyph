@@ -94,7 +94,8 @@ func newReleaseCmd() *cobra.Command {
 			"commit count), which is how a verdict can be audited after the fact.\n\n" +
 			"On a repository declaring [[packages]] release converges ONE rolling draft\n" +
 			"per line (haiku/v0.2.0 beside curry/v0.1.1), every line's upsert written\n" +
-			"before any stray is deleted and --footer-file appended to each; exit 1\n" +
+			"before any stray is deleted, each draft's compare link from its own\n" +
+			"line's base tag, and --footer-file appended to each; exit 1\n" +
 			"means every line folded to none. --dry-run prints one block per line (tag\n" +
 			"line, blank line, body); --json carries packages:\n" +
 			"[{path,current,level,next,tag,body,action,url,commits,reason}] with the\n" +
