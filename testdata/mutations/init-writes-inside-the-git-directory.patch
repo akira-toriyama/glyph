@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_init.go b/internal/cli/cmd_init.go
-index ff6626b..38d29c1 100644
+index a064705..8617529 100644
 --- a/internal/cli/cmd_init.go
 +++ b/internal/cli/cmd_init.go
-@@ -109,7 +109,7 @@ func initPath(ctx context.Context) (string, error) {
- 	switch {
- 	case core.IsInterrupted(gerr):
+@@ -116,7 +116,7 @@ func initPath(ctx context.Context) (string, error) {
+ 	case gerr != nil:
  		return "", gerr
--	case gerr == nil && inGitDir:
-+	case gerr == nil && inGitDir && false:
- 		return "", core.Usagef("this directory is inside a git directory, which has no work tree — run glyph init from the checkout's work tree, where every command reads glyph.toml")
+ 	case inGitDir:
+-		return "", core.Usagef("this directory is inside a git directory, which has no work tree — run glyph init from the checkout's work tree, where every command reads glyph.toml")
++		return "glyph.toml", nil
  	}
- 	return "glyph.toml", nil
+ 	// git reads a repository here and calls this its work tree, yet named no
+ 	// top level: its own failure is the answer.

@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_init.go b/internal/cli/cmd_init.go
-index ff6626b..d3f3ee7 100644
+index a064705..8d4b97c 100644
 --- a/internal/cli/cmd_init.go
 +++ b/internal/cli/cmd_init.go
-@@ -107,8 +107,6 @@ func initPath(ctx context.Context) (string, error) {
+@@ -111,7 +111,7 @@ func initPath(ctx context.Context) (string, error) {
  	}
  	inGitDir, gerr := gitsource.InsideGitDir(ctx, ".")
  	switch {
--	case core.IsInterrupted(gerr):
--		return "", gerr
- 	case gerr == nil && inGitDir:
- 		return "", core.Usagef("this directory is inside a git directory, which has no work tree — run glyph init from the checkout's work tree, where every command reads glyph.toml")
- 	}
+-	case errors.Is(gerr, gitsource.ErrNoRepository):
++	case errors.Is(gerr, gitsource.ErrNoRepository) || core.IsInterrupted(gerr):
+ 		return "glyph.toml", nil
+ 	case gerr != nil:
+ 		return "", gerr
