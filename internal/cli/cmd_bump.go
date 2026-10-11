@@ -81,12 +81,13 @@ func newBumpCmd() *cobra.Command {
 			"On a repository declaring [[packages]] the verdict is per line: stdout is\n" +
 			"the next TAG of every line that moves, one per line (haiku/v0.2.0), and\n" +
 			"exit 1 means every line folded to none; --json carries packages:\n" +
-			"[{path,current,level,next,commits,reason}] and the scalar\n" +
-			"current/level/next are EMPTY — there is no one line for them to describe,\n" +
-			"so read the array. --pr is refused there (exit 2: a pull's listing carries\n" +
+			"[{path,current,level,next,commits,reason}] with the scalar current/level\n" +
+			"EMPTY and next absent — there is no one line for them to describe, so read\n" +
+			"the array. --pr is refused there (exit 2: a pull's listing carries\n" +
 			"messages and no files, so nothing can be attributed to a line), and\n" +
 			"--current is refused (exit 2) unless the walk selects one line\n" +
-			"(--since-tag=<path>/vX.Y.Z or below:).",
+			"(--since-tag=<prefix>vX.Y.Z or below:, <prefix> being the line's tag\n" +
+			"prefix: haiku/, or nothing for the root package).",
 		Args: sinceTagArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return bumpRun(cmd)
@@ -97,7 +98,7 @@ func newBumpCmd() *cobra.Command {
 	addSinceTagFlag(cmd, &bumpSinceTag, "fold")
 	cmd.Flags().StringVar(&bumpRepo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().StringVar(&bumpCurrent, "current", "", currentFlagUsage)
-	cmd.Flags().BoolVar(&bumpJSON, "json", false, "emit the machine verdict {current,level,next,commits,reason}; with [[packages]] declared the scalars are empty and packages[] carries one verdict per line")
+	cmd.Flags().BoolVar(&bumpJSON, "json", false, "emit the machine verdict {current,level,next,commits,reason}; with [[packages]] declared current/level are empty, next is absent, and packages[] carries one verdict per line")
 	markInputSourceFlags(cmd)
 	return cmd
 }

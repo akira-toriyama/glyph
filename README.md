@@ -438,8 +438,10 @@ by cutting `<path>/v0.0.0` at the commit before its first change. On stdout
 `bump` prints the next **tag** of every line that moves, one per line
 (`haiku/v0.2.0`), and exits `1` only when every line folds to none; `--json`
 carries `packages: [{path, current, level, next, commits, reason}]` with the
-scalar `current` / `level` / `next` **empty** — there is no one line for them
-to describe, so a consumer reading only the scalars fails safe. `notes`
+scalar `current` / `level` **empty** and `next` absent, as on a none verdict —
+there is no one line for them to describe, so a consumer reading only the
+scalars fails safe provided it reads an absent key as empty
+(`jq -r '.next // empty'`; a plain `.next` prints `null`). `notes`
 mirrors it: `packages: [{path, sections}]`, and on stdout one body per line
 under a `# <path>` heading (bare when one line is selected). `--pr` is
 refused on both — a pull's listing carries messages and no files.
@@ -453,7 +455,8 @@ its residual draft), every line's upsert written before any stray is deleted
 its notes with a compare link from that line's own base tag (none for a line
 with no tag), `--footer-file` appended to every draft, and `--json` carrying
 `packages: [{path, current, level, next, tag, body, action, url, commits,
-reason}]` with the scalars empty and `target` shared — omitted, as the single
+reason}]` with the scalar `current` / `level` / `action` empty, `tag` /
+`body` / `url` absent, and `target` shared — omitted, as the single
 line omits it, when no line has a draft to write. A bare `vX.Y.Z` draft in a
 repository that declares packages but no root package is the single
 line's residue and is deleted with a notice on the first packages run —

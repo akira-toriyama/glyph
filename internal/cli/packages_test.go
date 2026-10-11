@@ -238,6 +238,7 @@ func TestSinceTagPackagesSharedOnlyBumpIsRefused(t *testing.T) {
 		"its files (go.work) belong to no declared package",
 		"name the line it moves in the scope (one of haiku, curry), write = so it moves no line, or declare the package these files belong to",
 		"haiku/ tag at or past", "curry/ tag at or past", sha[:7],
+		"--since-tag=<prefix>vX.Y.Z",
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("refusal is missing %q:\n%s", want, stderr)
@@ -324,13 +325,14 @@ func TestSinceTagPackagesATagNamesALine(t *testing.T) {
 		code int
 		want string // stdout on 0, a stderr fragment otherwise
 	}{
-		"explicit tag selects haiku":   {[]string{"bump", "--since-tag=haiku/v0.1.0"}, 0, "haiku/v0.2.0\n"},
-		"below selects curry":          {[]string{"bump", "--since-tag=below:curry/v0.2.0"}, 0, "curry/v0.1.1\n"},
-		"current on one selected line": {[]string{"bump", "--since-tag=curry/v0.1.0", "--current", "v1.0.0"}, 0, "curry/v1.0.1\n"},
-		"current over every line":      {[]string{"bump", "--since-tag", "--current", "v1.0.0"}, 2, "answers for 2 lines"},
-		"an undeclared line is usage":  {[]string{"bump", "--since-tag=fish/v0.1.0"}, 2, "no [[packages]] entry declares"},
-		"below an undeclared line":     {[]string{"bump", "--since-tag=below:fish/v0.2.0"}, 2, "no [[packages]] entry declares"},
-		"a bare tag with no root line": {[]string{"bump", "--since-tag=v0.1.0"}, 2, "bare v* line"},
+		"explicit tag selects haiku":    {[]string{"bump", "--since-tag=haiku/v0.1.0"}, 0, "haiku/v0.2.0\n"},
+		"below selects curry":           {[]string{"bump", "--since-tag=below:curry/v0.2.0"}, 0, "curry/v0.1.1\n"},
+		"current on one selected line":  {[]string{"bump", "--since-tag=curry/v0.1.0", "--current", "v1.0.0"}, 0, "curry/v1.0.1\n"},
+		"current over every line":       {[]string{"bump", "--since-tag", "--current", "v1.0.0"}, 2, "answers for 2 lines"},
+		"the refusal spells a line tag": {[]string{"bump", "--since-tag", "--current", "v1.0.0"}, 2, "--since-tag=<prefix>vX.Y.Z (or below:)"},
+		"an undeclared line is usage":   {[]string{"bump", "--since-tag=fish/v0.1.0"}, 2, "no [[packages]] entry declares"},
+		"below an undeclared line":      {[]string{"bump", "--since-tag=below:fish/v0.2.0"}, 2, "no [[packages]] entry declares"},
+		"a bare tag with no root line":  {[]string{"bump", "--since-tag=v0.1.0"}, 2, "bare v* line"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			code, stdout, stderr := runGlyph(t, tc.args...)
