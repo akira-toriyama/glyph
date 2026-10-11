@@ -59,9 +59,9 @@ func TestReleaseRefGuardWritesFromTheDefaultBranchOnly(t *testing.T) {
 				"RELEASE_REF="+c.ref, "DEFAULT_BRANCH="+c.defBranch, "DRY_RUN="+c.dryRun)
 			out, err := cmd.CombinedOutput()
 			exit := 0
-			var ee *exec.ExitError
+			ee, exited := errors.AsType[*exec.ExitError](err)
 			switch {
-			case errors.As(err, &ee):
+			case exited:
 				exit = ee.ExitCode()
 			case err != nil:
 				t.Fatalf("running the ref guard: %v", err)

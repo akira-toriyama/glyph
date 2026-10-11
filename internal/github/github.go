@@ -501,8 +501,7 @@ func (e *statusError) Unwrap() error { return e.err }
 // out until t-esm5, and a 422 from either read as IsCommitUnknown (measured;
 // mutation row pull-request-status-escapes-the-adapter).
 func flatten(err error) error {
-	var se *statusError
-	if errors.As(err, &se) {
+	if se, ok := errors.AsType[*statusError](err); ok {
 		return se.err
 	}
 	return err
@@ -516,8 +515,8 @@ func flatten(err error) error {
 // unexported and opt-in for that reason: a future endpoint that deletes
 // something whose absence is NOT the goal simply does not ask.
 func goneOnRetry(err error) bool {
-	var se *statusError
-	return errors.As(err, &se) && se.retried && se.status == http.StatusNotFound
+	se, ok := errors.AsType[*statusError](err)
+	return ok && se.retried && se.status == http.StatusNotFound
 }
 
 // IsCommitUnknown reports whether err is one of the two commit endpoints —
@@ -535,8 +534,8 @@ func goneOnRetry(err error) bool {
 // every commit, and degrading a whole walk to fallbacks on an auth failure
 // would be silent corruption.
 func IsCommitUnknown(err error) bool {
-	var se *statusError
-	return errors.As(err, &se) && se.status == http.StatusUnprocessableEntity
+	se, ok := errors.AsType[*statusError](err)
+	return ok && se.status == http.StatusUnprocessableEntity
 }
 
 // IsRepoUnknown reports whether err is Repository answering 404 — GitHub saying
@@ -557,8 +556,8 @@ func IsCommitUnknown(err error) bool {
 // an unclassifiable failure on the "we learned nothing" side, which is the only
 // safe direction for a diagnostic.
 func IsRepoUnknown(err error) bool {
-	var se *statusError
-	return errors.As(err, &se) && se.status == http.StatusNotFound
+	se, ok := errors.AsType[*statusError](err)
+	return ok && se.status == http.StatusNotFound
 }
 
 // failed classifies a request that never produced a usable response. Only a
@@ -576,8 +575,7 @@ func failed(ctx context.Context, what string, err error) error {
 	// classified message naming both origins. Carry it out whole: re-wrapping
 	// would bury the operator's answer inside `github: GET /x: Get "…": github:
 	// refusing…` and, worse, flatten the carrier that tells send not to retry it.
-	var rr *redirectRefused
-	if errors.As(err, &rr) {
+	if rr, ok := errors.AsType[*redirectRefused](err); ok {
 		return rr
 	}
 	return core.APIf("github: %s: %v", what, err)
@@ -602,12 +600,10 @@ func retryable(err error) bool {
 	// A refused redirect is this package's own verdict, not the wire's: the same
 	// Location would be refused three more times. Checked first, because the
 	// fallback below says yes to every CodeAPI failure and this one is one.
-	var rr *redirectRefused
-	if errors.As(err, &rr) {
+	if _, ok := errors.AsType[*redirectRefused](err); ok {
 		return false
 	}
-	var se *statusError
-	if errors.As(err, &se) {
+	if se, ok := errors.AsType[*statusError](err); ok {
 		return se.status >= 500 || se.status == http.StatusTooManyRequests ||
 			se.status == http.StatusForbidden
 	}
@@ -626,8 +622,7 @@ func retryable(err error) bool {
 // as 290ms — either way the backoff schedule collapsed (t-esm5,
 // TestRetryWaitHonorsRetryAfter).
 func retryWait(err error, fallback time.Duration) time.Duration {
-	var se *statusError
-	if errors.As(err, &se) && se.retryAfter != "" {
+	if se, ok := errors.AsType[*statusError](err); ok && se.retryAfter != "" {
 		if n, perr := strconv.Atoi(se.retryAfter); perr == nil && n >= 0 {
 			if n > int(maxRetryAfter/time.Second) {
 				return maxRetryAfter

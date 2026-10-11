@@ -75,10 +75,10 @@ func runStep(t *testing.T, script string, shell []string, dir string, env []stri
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
 	run := stepRun{stdout: stdout.String(), stderr: stderr.String()}
-	var ee *exec.ExitError
+	ee, exited := errors.AsType[*exec.ExitError](err)
 	switch {
 	case err == nil:
-	case errors.As(err, &ee) && ctx.Err() == nil:
+	case exited && ctx.Err() == nil:
 		run.exit = ee.ExitCode()
 	default:
 		t.Fatalf("running the step: %v\n%s", err, run)

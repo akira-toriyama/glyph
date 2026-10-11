@@ -393,8 +393,7 @@ func placeOf(cfg *config.Config, raw gitsource.RawCommit) (placement, reading) {
 // (<arm>-refuses-a-merge-commit-as-touching-no-file).
 func attribute(cfg *config.Config, raw gitsource.RawCommit, said reading, files []string, whole bool) ([]config.Package, error) {
 	moved, err := attribution.Attribute(files, said.scope, said.sigil, cfg.Packages)
-	var r *attribution.Refusal
-	if errors.As(err, &r) {
+	if r, ok := errors.AsType[*attribution.Refusal](err); ok {
 		r.Merge = raw.Parents >= 2
 		r.Unread = !whole
 		if say, ok := cfg.Sayable(said.pattern, raw.Message); ok {
