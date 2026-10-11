@@ -1,0 +1,20 @@
+diff --git a/internal/cli/preview_lines.go b/internal/cli/preview_lines.go
+index 0918f0f..162c05d 100644
+--- a/internal/cli/preview_lines.go
++++ b/internal/cli/preview_lines.go
+@@ -206,12 +206,13 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
+ 		if cerr != nil {
+ 			return cerr
+ 		}
+-		warnSigilVerdicts(unionRows)
++		_ = unionRows
+ 		for _, lw := range w.Lines {
+-			_, dec, cerr := bump.FoldSigils(walkedSigilCommits(lw.Commits), cfg)
++			rows, dec, cerr := bump.FoldSigils(walkedSigilCommits(lw.Commits), cfg)
+ 			if cerr != nil {
+ 				return cerr
+ 			}
++			warnSigilVerdicts(rows)
+ 			pending[lw.Package.Path] = dec
+ 		}
+ 	} else if len(touched) > 0 {

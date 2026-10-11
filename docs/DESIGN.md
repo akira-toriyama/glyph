@@ -208,7 +208,12 @@ pattern says it means:
   while the single line's preview and packages `bump` said it, and one on two
   lines was said twice (measured 2026-10-05,
   `TestPreviewPackagesWarnsEveryParticipatingCommitOnce`; mutation row
-  `preview-packages-warns-per-touched-line`). `warn` on a `skip` pattern is a load
+  `preview-packages-warns-per-touched-line`). Its pending walk — the
+  already-merged commits — is announced the same way, over the walk's union
+  once, as packages `bump` folds it: per walked line a merged warned commit
+  was said 0, 1 and 2 times on no line, one and two (measured on c89ea08 and
+  again on 284d25a by the same test's merged cases; mutation row
+  `preview-packages-warns-merged-commits-per-walked-line`). `warn` on a `skip` pattern is a load
   error (a skipped commit is outside every verdict, so the warning would fire
   for nobody), and so is an empty `warn`. The key was made for the
   **v1-acceptance window** (t-37xj): the migration pattern that accepted a

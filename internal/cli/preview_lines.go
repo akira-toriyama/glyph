@@ -199,12 +199,19 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 		if !w.Facts.complete() {
 			pendingShort = w.Facts.shortfall(owner, repo)
 		}
+		// The union once, as packages bump folds it, and for the pull's reason
+		// above: warned per walked line, a merged warned commit on no line was
+		// silent and one on two lines was said twice.
+		unionRows, _, cerr := bump.FoldSigils(walkedSigilCommits(w.All), cfg)
+		if cerr != nil {
+			return cerr
+		}
+		warnSigilVerdicts(unionRows)
 		for _, lw := range w.Lines {
-			rows, dec, cerr := bump.FoldSigils(walkedSigilCommits(lw.Commits), cfg)
+			_, dec, cerr := bump.FoldSigils(walkedSigilCommits(lw.Commits), cfg)
 			if cerr != nil {
 				return cerr
 			}
-			warnSigilVerdicts(rows)
 			pending[lw.Package.Path] = dec
 		}
 	} else if len(touched) > 0 {
