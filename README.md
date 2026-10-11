@@ -183,9 +183,10 @@ reusables declare and passing the inputs they require, and the installed hooks
 nothing goes red — the verdict is just computed over a repository that no
 longer matches the model, which is exactly what `doctor` exists to catch.
 Nothing is ever modified: each failing check prints the command that fixes it.
-Exit `0` all clear · `3` a check failed · `4` a check could not run
-(unverified, which is not the same as fine) — an API that never answered is
-always the second, never the first.
+A failing check exits as a convention violation and a check that could not run
+as no trustworthy answer ([Exit codes](#exit-codes)) — unverified, which is not
+the same as fine — and an API that never answered is always the second, never
+the first.
 
 **2. Move the lint to the moment you write the message:**
 
@@ -230,8 +231,7 @@ and exit 3 is swallowed on that arm alone. And `release.yml` hands its verdict
 back as `workflow_call` outputs (`level`, `next`, `current`, `action`) so a
 caller can gate follow-up steps without re-deriving it; empty means **not
 computed**, never "none", so gate fail-safe on `""`. The draft's URL is
-deliberately not among them — with the handle in hand, auto-publishing would
-be a two-line caller step, and publishing staying human is the safety net.
+deliberately not among them (DESIGN §6).
 A repository that declares `[[packages]]` answers through `packages`
 instead — one JSON array of per-line verdicts, `[{path, current, level,
 next, tag, action, commits, reason}]`, each line's body and url stripped —
@@ -254,9 +254,7 @@ it on `needs.release.outputs.next != ''` and on the dry-run input, then
 `gh release upload "$next" <files> --clobber`. gh resolves an unpublished
 draft by its intended tag (the REST `releases/tags/<tag>` lookup alone does
 not — gh falls back to the listing), the same call the reusable's own upload
-step makes. Measured on glyph-test's `v2.0.0` draft, 2026-09-10: upload,
-`--clobber` replace and `gh release delete-asset` each resolved the draft by
-tag. It is a follow-up job rather than a `needs:`-fed input because the
+step makes. It is a follow-up job rather than a `needs:`-fed input because the
 reusable upserts before it builds — DESIGN §6 argues why. A monorepo
 attaches the same way, per line: iterate the `packages` output
 (`jq -r '.[] | select(.tag != null) | .tag'`) and upload to each `tag`;
@@ -350,9 +348,9 @@ bot commit touches decide which line's notes.
 pattern's named groups, `$pr` / `$author` / `$hash` / `$coauthors` are built
 in, and a
 `$[ … ]` span renders only when every placeholder inside it resolves. That is
-what lets the shipped `- $subject$[ ($pr)] @$author` cite a pull when there is
-one and drop the parens with it when there is not, instead of writing `()` for
-every commit that reached main without a merged pull. `@$author` pages the
+what lets the shipped `- $subject$[ ($pr)] @$author$[ with $coauthors]` cite a
+pull when there is one and drop the parens with it when there is not, instead
+of writing `()` for every commit that reached main without a merged pull. `@$author` pages the
 contributor only when GitHub knows who that is — the login the API reports for
 a listed commit, or the one a `@users.noreply.github.com` author address
 carries; a commit from any other address is credited by its git author name,
