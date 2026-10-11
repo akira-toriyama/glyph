@@ -305,10 +305,7 @@ if command -v golangci-lint >/dev/null 2>&1; then
   # the ✓ line is what gets read, so the ✓ line is where a weakened claim has to
   # appear.
   LINT_SKEW=""
-  want_lint="$(sed -n "s/.*golangci-lint-version:.*default:[[:space:]]*'v\{0,1\}\([0-9][0-9.]*\)'.*/\1/p" "$HUB/.github/workflows/go-ci.yml" 2>/dev/null | head -1)"
-  if [ -z "$want_lint" ]; then
-    want_lint="$(sed -n "s/.*default:[[:space:]]*'v\([0-9][0-9.]*\)'.*/\1/p" "$HUB/.github/workflows/go-ci.yml" 2>/dev/null | head -1)"
-  fi
+  want_lint="$(sed -n "/golangci-lint-version:/,/default:/s/.*default:[[:space:]]*'v\{0,1\}\([0-9][0-9.]*\)'.*/\1/p" "$HUB/.github/workflows/go-ci.yml" 2>/dev/null | head -1)"
   got_lint="$(golangci-lint --version 2>/dev/null | sed -n 's/.*version[[:space:]]*v\{0,1\}\([0-9][0-9.]*\).*/\1/p' | head -1)"
   if [ -z "$want_lint" ]; then
     LINT_SKEW="golangci-lint: could not read the version go-ci.yml pins, so this run cannot say it matched CI"
