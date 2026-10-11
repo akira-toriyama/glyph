@@ -432,8 +432,7 @@ func TestOnlyDocumentedMethodsCarryAStatusOut(t *testing.T) {
 				err := call(c)
 				wantAPIError(t, err, fmt.Sprint(status))
 
-				var se *statusError
-				carried := errors.As(err, &se)
+				_, carried := errors.AsType[*statusError](err)
 				doc, sanctioned := documented[name]
 				switch {
 				case carried && !sanctioned:

@@ -115,8 +115,7 @@ func TestFoldSigilsRefusesUnmatched(t *testing.T) {
 	if err == nil {
 		t.Fatalf("FoldSigils accepted a range holding an unmatched commit")
 	}
-	var ce *core.Error
-	if !errors.As(err, &ce) || ce.Code != core.CodeLint {
+	if ce, ok := errors.AsType[*core.Error](err); !ok || ce.Code != core.CodeLint {
 		t.Fatalf("err = %v, want *core.Error with CodeLint (exit 3)", err)
 	}
 	if !strings.Contains(err.Error(), "bbb2") {
@@ -217,8 +216,7 @@ func TestFoldSigilsPropagatesConfigBug(t *testing.T) {
 	if err == nil {
 		t.Fatalf("FoldSigils accepted an unparseable sigil capture")
 	}
-	var ce *core.Error
-	if !errors.As(err, &ce) || ce.Code != core.CodeLint {
+	if ce, ok := errors.AsType[*core.Error](err); !ok || ce.Code != core.CodeLint {
 		t.Fatalf("err = %v, want *core.Error with CodeLint", err)
 	}
 	if !strings.Contains(err.Error(), "abc3") {
@@ -297,8 +295,8 @@ unlandable = 'rebase with --autosquash before it lands'
 	if err == nil {
 		t.Fatalf("FoldSigils folded a range holding an unlandable amend! — the verdict it returns is the pre-autosquash one")
 	}
-	var ce *core.Error
-	if !errors.As(err, &ce) || ce.Code != core.CodeLint {
+	ce, ok := errors.AsType[*core.Error](err)
+	if !ok || ce.Code != core.CodeLint {
 		t.Fatalf("err = %v, want *core.Error with CodeLint (exit 3)", err)
 	}
 	for _, want := range []string{"bbb2", "unlandable: rebase with --autosquash before it lands", "refusing to version the range", "must start past it"} {
