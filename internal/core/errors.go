@@ -118,8 +118,7 @@ func ExitCode(err error) int {
 	if err == nil {
 		return int(CodeOK)
 	}
-	var ce *Error
-	if errors.As(err, &ce) {
+	if ce, ok := errors.AsType[*Error](err); ok {
 		return int(ce.Code)
 	}
 	return int(CodeAPI)
@@ -128,8 +127,7 @@ func ExitCode(err error) int {
 // AsError returns the *Error in err's chain, or nil, when the CLI needs the
 // structured fields rather than just the exit code.
 func AsError(err error) *Error {
-	var ce *Error
-	if errors.As(err, &ce) {
+	if ce, ok := errors.AsType[*Error](err); ok {
 		return ce
 	}
 	return nil

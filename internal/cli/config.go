@@ -48,11 +48,11 @@ func loadConfig(ctx context.Context) (*config.Config, error) {
 	if lerr != nil {
 		// Order matters: a missing file is itself a *fs.PathError, so the
 		// not-exist arm has to be asked first.
-		var perr *fs.PathError
+		_, isPathErr := errors.AsType[*fs.PathError](lerr)
 		switch {
 		case errors.Is(lerr, fs.ErrNotExist):
 			return nil, core.Usagef("no glyph.toml at %s — this repository is not initialized for glyph; `glyph init --gemoji` (or --conventional) writes one there from anywhere in the checkout, or start from either preset and edit", top)
-		case errors.As(lerr, &perr):
+		case isPathErr:
 			return nil, core.APIf("%v — glyph could not read this repository's configuration, so no commit was judged", lerr)
 		default:
 			return nil, core.Usagef("%v", lerr)

@@ -98,8 +98,7 @@ func TestGroupSigilsPropagatesConfigBug(t *testing.T) {
 	if err == nil {
 		t.Fatalf("GroupSigils accepted an unparseable sigil capture")
 	}
-	var ce *core.Error
-	if !errors.As(err, &ce) || ce.Code != core.CodeLint {
+	if ce, ok := errors.AsType[*core.Error](err); !ok || ce.Code != core.CodeLint {
 		t.Fatalf("err = %v, want *core.Error with CodeLint", err)
 	}
 }

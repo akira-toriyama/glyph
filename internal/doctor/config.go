@@ -52,7 +52,7 @@ func checkConfig(path string, pathErr error) Check {
 		return c
 	}
 	cfg, err := config.LoadFile(path)
-	var perr *fs.PathError
+	_, isPathErr := errors.AsType[*fs.PathError](err)
 	switch {
 	case err == nil:
 		c.Status = StatusPass
@@ -68,7 +68,7 @@ func checkConfig(path string, pathErr error) Check {
 			"gate down, which is exactly the state this check exists to name before the pin moves"
 		c.Fix = "glyph init --gemoji (or --conventional) — then edit the generated glyph.toml freely"
 		return c
-	case errors.As(err, &perr):
+	case isPathErr:
 		c.Status = StatusUnknown
 		c.Observed = fmt.Sprintf("glyph.toml could not be read: %v", err)
 		c.Message = "the file is there but its content was never observed, so this is unverified — not broken, not fine"
