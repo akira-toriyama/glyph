@@ -193,10 +193,10 @@ func TestRemainingChecksDescribeMeasuredBehaviour(t *testing.T) {
 			mention: []string{
 				// The dark-window mechanism, pinned live by
 				// TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark: the fallback
-				// classifies the commit's own message, and a sigil-less subject
-				// a window pattern claims counts none.
+				// classifies the commit's own message, and a title no pattern
+				// claims is dropped with a warning — bump exits 1 (none), loud.
 				"classifies the squash commit's own message",
-				"counts none",
+				"dropped from the fold with a warning",
 			},
 		},
 		{

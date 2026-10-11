@@ -647,8 +647,8 @@ func checkSquashTitle(in Input) Check {
 		"every squash commit takes the PR TITLE as its subject, including single-commit PRs — so a commit's own sigil "+
 			"never lands on main. The verdict holds while the API answers, but the walk's fallback "+
 			"(a direct push, or API lag right after a push) classifies the squash commit's own message: the title's sigil "+
-			"alone decides, a title no pattern claims refuses the fold, and one a window pattern claims counts none — "+
-			"the bump is lost silently")
+			"alone decides, and a title no pattern claims is dropped from the fold with a warning — bump says no release "+
+			"and release refuses the incomplete walk at exit 4")
 }
 
 // checkSquashMessage is the body half of the same policy. COMMIT_MESSAGES keeps
