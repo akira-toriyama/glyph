@@ -203,8 +203,9 @@ call glyph, so they cannot fall out of lockstep when the rules move. Without gly
 on `PATH` they warn and let you through; the commit-lint CI job stays the
 authority. The verdict `commit-msg` gives is the verdict CI will give: glyph
 reduces the message as git's cleanup will before linting it — from the
-repository's `commit.cleanup` and `commit.verbose`, whether an editor runs, and
-whether the commit is a `git merge` (DESIGN §2.1). The gaps are stated rather
+repository's `commit.cleanup`, `commit.verbose` and comment prefix
+(`core.commentChar`; `auto` is read as `#`), whether an editor runs, and whether
+the commit is a `git merge` (DESIGN §2.1). The gaps are stated rather
 than hidden: a message a pattern marks `unlandable` passes the hook with a
 warning that CI will refuse it; under `[[packages]]` the hook cannot see a diff
 that is not yet a commit — `pre-push` judges that one step later; and some of

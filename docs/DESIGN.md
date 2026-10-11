@@ -620,14 +620,18 @@ exactly those commits unlinted.
 
 - the cleanup is a **port** of git's `strbuf_stripspace`, not an approximation of
   it — trailing `" \t\r"` per line (git's own `isspace`: a `\v` is content),
-  interior blank runs collapsed, comments recognised at **column 0 only**. Held
-  to `git stripspace` by a differential test over generated messages, because
-  every earlier approximation passed its hand-written cases;
+  interior blank runs collapsed, comments recognised at **column 0 only**, by
+  the repository's own comment prefix. Held to `git stripspace` by a
+  differential test (`TestApplyMatchesGitStripspace`: every message of its table
+  under five prefixes — `#`, `;`, `//`, `.*`, `$` — in both whitespace and strip,
+  equal to `git -c core.commentChar=<prefix> stripspace` on the same bytes),
+  because every earlier approximation passed its hand-written cases;
 - the scissors line is matched **exactly** — git's `wt_status_locate_end` does a
   `strstr` for one literal string, so a loose match cuts messages git records,
   and everything below a stray cut line (footers included) vanishes from the
-  hook's view. A test drives a real `commit -v` and asserts git still writes that
-  literal, because exactness fails the other way if git ever changes it.
+  hook's view. A test drives a real `commit -v` under three comment prefixes and
+  asserts git still writes the prefix and that literal, because exactness fails
+  the other way if git ever changes it.
 
 **Deriving this inside the binary rather than in the hook script is a rollout
 decision, and the pre-push hook is the same decision applied to a bigger
@@ -686,8 +690,42 @@ author may delete the block. And the flags themselves are visible only in the
 parent process's argv (measured with `ps`: `-v`, an alias's expansion, the
 abbreviation `--verb`), where reading them means re-implementing git's
 parse-options — abbreviations, bundled short options, `--no-` forms — an
-approximation of git of exactly the kind this section refuses. Same for
-`core.commentChar`: glyph assumes `#`.
+approximation of git of exactly the kind this section refuses.
+
+**The comment prefix is the repository's, read the way git reads it.** Assuming
+`#` cost both directions (t-nbhz, measured on git 2.54): under
+`core.commentChar=';'` an editor commit whose `; Please enter…` template sat
+above the subject was recorded as the subject while `lint --stdin` judged the
+template line and exited 3, and under `commit.cleanup=strip` a `#` line git
+keeps as the subject was dropped at the hook. `core.commentString` is the same
+setting under another name — git reads both through one handler, so the last
+definition under either name wins (measured in both orders, in one file and
+across `-c`), which is why the read is one `git config --get-regexp` in git's
+order (`gitsource.ConfigLastOf`) rather than one `--get` per name (mutation row
+`cleanup-ignores-core-commentstring.patch`). The prefix
+may be several bytes and is matched literally; the scissors line under it is
+the prefix, a space and git's dashes (`TestApplyMatchesGitStripspace`,
+`TestScissorsUnderACommentPrefixMatchesGit`, `TestCutLineIsTheOneGitWrites`,
+and the commentChar rows of `TestHookVerdictMatchesWhatGitRecords`; mutation
+row `cleanup-strips-hash-under-any-comment-char.patch`).
+
+`core.commentChar=auto` is read as `#`, and that is a boundary, not a port. git
+picks the character per commit from what the message already holds, and
+nothing a hook reads names the pick: the config says `auto`, and the file it is
+handed already carries the template in the chosen character, beside whatever
+lines the author opened with it. Measured on git 2.54: a fresh editor commit and an amend whose body
+opens a line with `#` both got a `#` template and lost their `#` lines (so `#`
+agrees). What `#` misjudges is a class: a message git is handed **before** its
+cleanup (measured with `-F`) whose line 1 opens with `#`, in a mode that strips
+comments. git then picks another character, keeps that line and records
+it as the subject; the hook drops it as a `#` comment and judges line 2, the
+lenient direction (hook 0, CI 3). Two measured instances: `-F` under
+`commit.cleanup=strip`, and `git commit -F <file> -e` with no cleanup config at
+all — git writes the template in `;`, strips it and records `# note`, and the
+same with `--cleanup=strip -e` (both measured with `# note` above a valid subject;
+mutation row `cleanup-reads-comment-char-auto-literally.patch` guards the
+fallback itself). git deprecates `auto` for Git 3.0 and warns on every commit
+made under it.
 
 ### The gemoji dictionary (`glyph emoji`, t-0c0m)
 
@@ -3024,10 +3062,12 @@ itself. `rg '^func Fuzz'` is the current list, not this sentence. Always `-race`
 **Anything that models an external system carries one test that asks the real
 system**, because a closed loop of glyph-against-glyph proves nothing about the
 thing being modelled. `internal/cleanup` ports git's `strbuf_stripspace` and
-`wt_status_locate_end` line for line, and three oracles hold the port to the
+`wt_status_locate_end` line for line, and five oracles hold the port to the
 real git: `TestCutLineIsTheOneGitWrites` drives a real `git commit -v` and
 asserts git still writes the exact scissors line the cut matches on,
-`internal/cli`'s `TestHookVerdictMatchesWhatGitRecords` commits through a real
+`TestApplyMatchesGitStripspace` compares the strip with `git stripspace` under
+five comment prefixes, `TestScissorsUnderACommentPrefixMatchesGit` compares the
+cut under a set prefix with a real commit, `internal/cli`'s `TestHookVerdictMatchesWhatGitRecords` commits through a real
 git and asserts the hook's verdict matches what git recorded, and
 `TestHookCutMatchesGit` asserts the hook's text is git's in the 32 of its 48
 cells the hook can tell apart and pins the other 16, §2.1's editor and `-v`

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"io"
 	"os/exec"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -524,6 +525,45 @@ func ConfigBoolOrInt(ctx context.Context, dir, key string) (int, bool, error) {
 		return 0, true, core.APIf("git config --type=bool-or-int %s printed %q, which is neither a bool nor an int", key, raw)
 	}
 	return n, true, nil
+}
+
+// ConfigLastOf returns the value of whichever of keys git defines LAST, and
+// whether any of them is set — for a setting git spells under several names and
+// reads through one handler, where the last definition under any name wins
+// (core.commentChar and core.commentString, measured on git 2.54). Asking each
+// name with ConfigGet cannot answer that: it loses the order between names.
+// `--get-regexp` lists definitions in git's own read order, `-c` last.
+//
+// keys are `section.name` without a subsection: they are matched lowercased,
+// as git canonicalises them. The value is raw — `-z` keeps a quoted trailing
+// space that ConfigGet's trim would drop, and for a comment prefix that space
+// is part of the value. Unset is ("", false, nil), as ConfigGet's.
+func ConfigLastOf(ctx context.Context, dir string, keys ...string) (string, bool, error) {
+	names := make([]string, len(keys))
+	for i, k := range keys {
+		names[i] = regexp.QuoteMeta(strings.ToLower(k))
+	}
+	pattern := "^(" + strings.Join(names, "|") + ")$"
+	// #nosec G204 -- the binary is the fixed literal "git"; pattern is built
+	// from this package's callers' key names, quoted, and pinned as a value by
+	// --end-of-options.
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "config", "-z", "--get-regexp", "--end-of-options", pattern)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		if ierr := interrupted(ctx); ierr != nil {
+			return "", false, ierr
+		}
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 1 {
+			return "", false, nil
+		}
+		return "", false, core.APIf("git config: %s", distill(stderr.Bytes(), err))
+	}
+	records := strings.Split(strings.TrimSuffix(stdout.String(), "\x00"), "\x00")
+	// Each record is key, newline, value; a bare key (no `=`) has no newline
+	// and reads as the empty value.
+	_, value, _ := strings.Cut(records[len(records)-1], "\n")
+	return value, true, nil
 }
 
 // configGet is ConfigGet with git config's own type options (`--type=…`)

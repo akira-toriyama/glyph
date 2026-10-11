@@ -594,8 +594,10 @@ which is not a cleanup but a choice between `strip` and `whitespace` by whether 
 message is *edited*. glyph resolves it per commit from `commit.cleanup`,
 `commit.verbose`, `GIT_EDITOR` and whether the message is `git merge`'s own
 `MERGE_MSG` (a merge cleans with verbose 0); a mode assumed instead of resolved
-is how the hook and CI came to disagree about the same message. DESIGN §2.1.
-`internal/cleanup/cleanup.go: Mode, ResolveMode, Verbose`,
+is how the hook and CI came to disagree about the same message. The comment
+prefix those comment lines open with is resolved beside it, from the last of
+`core.commentChar` / `core.commentString` (`auto` reads as `#`). DESIGN §2.1.
+`internal/cleanup/cleanup.go: Mode, ResolveMode, Verbose, CommentPrefix`,
 `internal/cli/cmd_lint.go: hookCleanupMode`
 
 **edited** — whether git will open an editor for this commit, which decides the
@@ -607,10 +609,11 @@ and `$EDITOR` both leave it unset — so unset counts as edited.
 `internal/cli/cmd_lint.go: hookCleanupMode`
 
 **cut line / scissors line** — the one literal git writes above the diff under
-`commit -v`: `# ` followed by 24 dashes, ` >8 `, 24 dashes. Matched exactly and at
+`commit -v`: the comment prefix (the last of `core.commentChar` /
+`core.commentString`, `#` when neither is set or the value is `auto`) and a space, followed by 24 dashes, ` >8 `, 24 dashes. Matched exactly and at
 the start of a line, because git matches it that way; an indented lookalike is
 neither a cut nor even a comment to git, so cutting there hides text git records.
-`internal/cleanup/cleanup.go: cutLine, truncateAtCutLine`
+`internal/cleanup/cleanup.go: cutTail, truncateAtCutLine`
 
 ---
 
