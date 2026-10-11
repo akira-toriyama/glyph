@@ -15,7 +15,8 @@ package workflows
 //     host, so the script picks the tool the host has);
 //   - stubs for gh (records its argv, fails a set number of times), sleep (the
 //     retry schedule costs no test time), and the release's own binary (a
-//     script that leaves a marker when it runs).
+//     script that leaves a marker when it runs and answers `version --json`
+//     with the stamp the case gives it); the host's real jq reads that answer.
 // The step's env: block — which inputs feed VER and GH_TOKEN — is outside the
 // harness: it supplies both by name.
 
@@ -41,8 +42,12 @@ const (
 	installAction  = ".github/actions/install/action.yml"
 	installStep    = "Install glyph (pinned release binary, checksum + provenance verified)"
 	installVersion = "v9.8.7"
-	releasePath    = "/akira-toriyama/glyph/releases/download/" + installVersion + "/"
 )
+
+// releasePath is where the release host serves version's assets.
+func releasePath(version string) string {
+	return "/akira-toriyama/glyph/releases/download/" + version + "/"
+}
 
 // wantVerify is the provenance check the gate must ask of gh, after `gh`. The
 // signer identity is part of the check: a verify against another workflow
@@ -53,9 +58,8 @@ func wantVerify(tarball string) []string {
 		"--signer-workflow", "akira-toriyama/glyph/.github/workflows/goreleaser.yml"}
 }
 
-// hostRunner names the test host as a runner names itself, and the release
-// asset the action fetches for it.
-func hostRunner(t *testing.T) (runnerOS, runnerArch, asset string) {
+// hostRunner names the test host as a runner names itself.
+func hostRunner(t *testing.T) (runnerOS, runnerArch string) {
 	t.Helper()
 	switch runtime.GOOS {
 	case "linux":
@@ -75,17 +79,20 @@ func hostRunner(t *testing.T) (runnerOS, runnerArch, asset string) {
 	default:
 		t.Fatalf("no GitHub runner arch the install action serves maps to GOARCH %s", runtime.GOARCH)
 	}
-	return runnerOS, runnerArch, releaseAsset(runtime.GOOS, runtime.GOARCH)
+	return runnerOS, runnerArch
 }
 
-func releaseAsset(goos, goarch string) string {
-	return "glyph_" + strings.TrimPrefix(installVersion, "v") + "_" + goos + "_" + goarch + ".tar.gz"
+// releaseAsset names version's tarball for one platform as GoReleaser's
+// archive name_template writes it: {{ .Version }}, the tag without its v.
+func releaseAsset(version, goos, goarch string) string {
+	return "glyph_" + strings.TrimPrefix(version, "v") + "_" + goos + "_" + goarch + ".tar.gz"
 }
 
 // releaseTarball is a release asset in GoReleaser's shape — LICENSE and
 // README.md beside the binary — whose binary appends its argv to marker when
-// it runs. salt changes the bytes, not what the binary does.
-func releaseTarball(t *testing.T, marker, salt string) []byte {
+// it runs and answers `version --json` with stamp as its version. salt changes
+// the bytes, not what the binary does.
+func releaseTarball(t *testing.T, marker, stamp, salt string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
@@ -97,7 +104,8 @@ func releaseTarball(t *testing.T, marker, salt string) []byte {
 	}{
 		{"LICENSE", 0o644, "MIT\n"},
 		{"README.md", 0o644, "# glyph\n"},
-		{"glyph", 0o755, "#!/bin/sh\n# " + salt + "\nprintf '%s\\n' \"$*\" >> " + shq(marker) + "\n"},
+		{"glyph", 0o755, "#!/bin/sh\n# " + salt + "\nprintf '%s\\n' \"$*\" >> " + shq(marker) + "\n" +
+			"if [ \"$*\" = 'version --json' ]; then printf '{\"version\":\"%s\",\"commit\":\"abc1234\"}\\n' " + shq(stamp) + "; fi\n"},
 	} {
 		hdr := &tar.Header{Name: f.name, Mode: f.mode, Size: int64(len(f.body)), Typeflag: tar.TypeReg, ModTime: time.Now()}
 		if err := tw.WriteHeader(hdr); err != nil {
@@ -176,7 +184,8 @@ func TestInstallActionInstallsOnlyWhatItVerified(t *testing.T) {
 	script := extractRun(t, repoFile(t, filepath.FromSlash(installAction)), installStep)
 	realCurl := requireTool(t, "curl")
 	requireTool(t, "tar")
-	hostOS, hostArch, asset := hostRunner(t)
+	requireTool(t, "jq")
+	hostOS, hostArch := hostRunner(t)
 
 	const (
 		anyCalls = -1      // the case does not pin how many gh calls precede the refusal
@@ -184,6 +193,8 @@ func TestInstallActionInstallsOnlyWhatItVerified(t *testing.T) {
 	)
 	cases := []struct {
 		name                 string
+		version              string // the version input; "" is installVersion
+		stamp                string // what the binary reports as its version; "" is the version input
 		runnerOS, runnerArch string // "" names the host
 		tarball, checksums   int    // the HTTP status each download answers; 0 serves it
 		tampered             bool   // the tarball served is not the one checksums.txt hashes
@@ -193,13 +204,14 @@ func TestInstallActionInstallsOnlyWhatItVerified(t *testing.T) {
 		exit       int
 		ghCalls    int
 		installed  bool
+		queried    bool   // a refused install asked the verified binary its version and went no further
 		offline    bool   // nothing may be fetched
 		annotation string // a line stdout must carry
 		why        string
 	}{
 		{
 			name: "a verified release installs the binary and only the binary", ghCalls: 1, installed: true,
-			why: "the positive control: a release whose checksum and provenance both hold must install",
+			why: "the positive control: a release whose checksum, provenance and version all hold must install",
 		},
 		{
 			name: "a missing tarball fails at its own download", tarball: http.StatusNotFound, exit: 22,
@@ -242,10 +254,67 @@ func TestInstallActionInstallsOnlyWhatItVerified(t *testing.T) {
 			annotation: "::error::glyph install: unsupported runner arch 'X86'",
 			why:        "the release ships amd64 and arm64 tarballs only",
 		},
+		{
+			name: "latest is refused before any download", version: "latest", exit: 1, offline: true,
+			annotation: "::error::glyph install: version latest is not a release tag (vX.Y.Z, or vX.Y.Z-<pre-release>)",
+			why: "the version goes into the download URL, where `latest` is a 404 on a URL nobody published — " +
+				"reported as a curl failure (exit 22) instead of as the input it is",
+		},
+		{
+			name: "a version without its v is refused before any download", version: "9.8.7", exit: 1, offline: true,
+			annotation: "::error::glyph install: version 9.8.7 is not a release tag (vX.Y.Z, or vX.Y.Z-<pre-release>)",
+			why:        "glyph's tags carry the v, so a v-less version names a release that does not exist",
+		},
+		{
+			name: "a truncated version is refused before any download", version: "v9.8", exit: 1, offline: true,
+			annotation: "::error::glyph install: version v9.8 is not a release tag (vX.Y.Z, or vX.Y.Z-<pre-release>)",
+			why:        "a typo is a 404 too, and must read as the input it is",
+		},
+		{
+			name: "a version carrying a newline is refused on one annotation line", version: "v9.8.7\n::warning::x",
+			exit: 1, offline: true,
+			annotation: `::error::glyph install: version $'v9.8.7\n::warning::x' is not a release tag (vX.Y.Z, or vX.Y.Z-<pre-release>)`,
+			why: "the refusal echoes the input onto stdout, where a raw newline would open a second workflow " +
+				"command of the caller's choosing",
+		},
+		{
+			name: "a release candidate installs", version: "v9.8.7-rc.1", ghCalls: 1, installed: true,
+			why: "the reusables install release candidates by design — an rc is proved as a fleet gate before " +
+				"the pins move (.goreleaser.yaml marks it prerelease), so the tag check must not refuse one",
+		},
+		{
+			name: "a binary stamped without the v installs", stamp: strings.TrimPrefix(installVersion, "v"),
+			ghCalls: 1, installed: true,
+			why: "every release through v5.0.0 was stamped with GoReleaser's {{.Version}}, which drops the v " +
+				"(measured 2026-10-11: the v5.0.0 asset reports \"5.0.0\"), and a reusable pinned at a SHA still " +
+				"installs one through glyph-version",
+		},
+		{
+			name: "a binary reporting another release is refused off PATH", stamp: "v9.8.6", exit: 1, ghCalls: 1,
+			queried:    true,
+			annotation: `::error::glyph install: the v9.8.7 release binary reports version v9.8.6`,
+			why: "checksums and provenance prove who built the tarball, not which version it is — the caller " +
+				"asked for one release and would run another",
+		},
+		{
+			name: "a binary whose stamp missed is refused off PATH", stamp: "dev", exit: 1, ghCalls: 1, queried: true,
+			annotation: `::error::glyph install: the v9.8.7 release binary reports version dev`,
+			why: "Go's -X ignores an unknown symbol, so a release built with a stale injection path reports " +
+				"\"dev\" and exits 0 — installed, it is a binary nobody can identify",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
+			version := installVersion
+			if c.version != "" {
+				version = c.version
+			}
+			stamp := version
+			if c.stamp != "" {
+				stamp = c.stamp
+			}
+			asset := releaseAsset(version, runtime.GOOS, runtime.GOARCH)
 			dir := t.TempDir()
 			home := filepath.Join(dir, "home")
 			temp := filepath.Join(dir, "runner-temp")
@@ -262,15 +331,15 @@ func TestInstallActionInstallsOnlyWhatItVerified(t *testing.T) {
 			marker := filepath.Join(dir, "glyph-ran")
 			ghLog := filepath.Join(dir, "gh-calls")
 
-			release := releaseTarball(t, marker, "release")
+			release := releaseTarball(t, marker, stamp, "release")
 			served := release
 			if c.tampered {
-				served = releaseTarball(t, marker, "tampered")
+				served = releaseTarball(t, marker, stamp, "tampered")
 			}
 			var sums strings.Builder
 			for _, goos := range []string{"darwin", "linux"} {
 				for _, goarch := range []string{"amd64", "arm64"} {
-					a := releaseAsset(goos, goarch)
+					a := releaseAsset(version, goos, goarch)
 					switch {
 					case a != asset:
 						fmt.Fprintf(&sums, "%x  %s\n", sha256.Sum256([]byte(a)), a)
@@ -281,12 +350,12 @@ func TestInstallActionInstallsOnlyWhatItVerified(t *testing.T) {
 			}
 			host := &releaseHost{
 				files: map[string][]byte{
-					releasePath + asset:           served,
-					releasePath + "checksums.txt": []byte(sums.String()),
+					releasePath(version) + asset:           served,
+					releasePath(version) + "checksums.txt": []byte(sums.String()),
 				},
 				status: map[string]int{
-					releasePath + asset:           c.tarball,
-					releasePath + "checksums.txt": c.checksums,
+					releasePath(version) + asset:           c.tarball,
+					releasePath(version) + "checksums.txt": c.checksums,
 				},
 			}
 			srv := httptest.NewServer(host)
@@ -312,7 +381,7 @@ func TestInstallActionInstallsOnlyWhatItVerified(t *testing.T) {
 				"RUNNER_OS=" + runnerOS,
 				"RUNNER_ARCH=" + runnerArch,
 				"GITHUB_PATH=" + githubPath,
-				"VER=" + installVersion,
+				"VER=" + version,
 				"GH_TOKEN=stub-token",
 			})
 
@@ -348,11 +417,17 @@ func TestInstallActionInstallsOnlyWhatItVerified(t *testing.T) {
 			}
 			ran := readIfAny(t, marker)
 			onPath := readIfAny(t, githubPath)
+			const query = "version --json\n"
 			if !c.installed {
-				if len(extracted) != 0 || ran != "" || onPath != "" {
-					t.Errorf("a refused install extracted %v, ran the binary (%q) and wrote %q to GITHUB_PATH, "+
-						"want none of it — nothing unverified may be extracted, executed or put on PATH, and "+
-						"the step that would run it holds GH_TOKEN in its env\n%s", extracted, ran, onPath, run)
+				wantRan := ""
+				if c.queried {
+					wantRan = query
+				}
+				if len(extracted) != 0 || ran != wantRan || onPath != "" {
+					t.Errorf("a refused install extracted %v, ran the binary with %q (want %q) and wrote %q to "+
+						"GITHUB_PATH — nothing unverified may be extracted, executed or put on PATH, the step "+
+						"that would run it holds GH_TOKEN in its env, and a binary refused for its version is "+
+						"one the caller's later steps must not find\n%s", extracted, ran, wantRan, onPath, run)
 				}
 				return
 			}
@@ -361,8 +436,9 @@ func TestInstallActionInstallsOnlyWhatItVerified(t *testing.T) {
 					"README.md beside the binary (measured on v4.2.0's darwin_arm64 asset, 2026-09-29), and "+
 					"this directory goes onto PATH for every later step of the caller's job", extracted)
 			}
-			if ran != "version\n" {
-				t.Errorf("the installed binary ran with %q, want exactly one `glyph version` smoke", ran)
+			if ran != query {
+				t.Errorf("the installed binary ran with %q, want exactly one `glyph version --json` — the "+
+					"question whose answer is compared with the version input", ran)
 			}
 			if want := binDir + "\n"; onPath != want {
 				t.Errorf("GITHUB_PATH holds %q, want %q — the caller's later steps call bare `glyph`", onPath, want)

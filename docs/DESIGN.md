@@ -3129,6 +3129,30 @@ so it cannot drift from the workflow revision — replacing a hand-bumped
 v0.5.0 tag while callers pinned @v0.5.0); `internal/workflows` tests guard both
 the single-source install and the derived version.
 
+Two checks bracket the download (t-vw55). Before it, the `version` input must
+be a release tag — `vX.Y.Z`, or `vX.Y.Z-<pre-release>`, since the reusables
+install release candidates by design — so `latest`, a v-less `1.0.0` or a typo
+is refused as the input it is instead of surfacing as a curl 404 on a URL
+nobody published. After the checksum and provenance gates, the binary is
+extracted to a staging directory and asked `version --json`, and only one
+reporting the requested tag reaches `PATH`: checksums and provenance prove who
+built the tarball, not which version it is, and Go's `-X` ignores a stale
+symbol in silence, so a release whose stamp missed would install a binary
+reporting `dev` at exit 0. The compare also accepts the tag without its `v`.
+Every release through v5.0.0 was stamped with GoReleaser's `{{.Version}}`,
+which strips it — the v5.0.0 asset reports `5.0.0` (measured 2026-10-11) —
+and those releases stay installable: a reusable pinned at a SHA or branch
+names one through `glyph-version`. `.goreleaser.yaml` stamps `{{.Tag}}`
+(`TestLdflagsNameTheRealVersionSymbols`), so build.sh, `go install` and the
+release asset agree on `vX.Y.Z`. Both checks run in
+`TestInstallActionInstallsOnlyWhatItVerified`; mutation rows
+`install-fetches-a-version-that-is-no-release-tag`,
+`install-refuses-a-release-candidate`,
+`install-trusts-a-binary-that-reports-another-version`,
+`install-refuses-the-v-less-stamp-older-releases-carry`,
+`install-version-input-reopens-a-workflow-command` and
+`release-binary-reports-its-version-without-the-v`.
+
 A CONSUMER that just wants the glyph CLI on a laptop-in-CI (e.g. a macOS
 `swift package diagnose-api-breaking-changes` gate that also reads
 `glyph bump --range "$BASE..HEAD" --json | jq -r .level` — the same rules,

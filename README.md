@@ -136,7 +136,8 @@ jobs:
 ```
 
 or put the verified binary on a job's PATH yourself (checksum **and**
-attestation are checked, fail-closed):
+attestation are checked, fail-closed, and the binary must report the release
+tag you passed as `version`):
 
 ```yaml
 - uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z
