@@ -432,7 +432,7 @@ func TestSinceTagPackagesACandidateTagNamesALine(t *testing.T) {
 // line whose tags all sit at or above the bound walks the whole history —
 // that line's first release, as the single line does — and the warning says
 // WHY: no version tag BELOW THE BOUND on that line. The remedy is the same
-// tag as for a line with no tag at all (cut <path>/v0.0.0 before the line's
+// tag as for a line with no tag at all (cut <prefix>v0.0.0 before the line's
 // first change), the diagnosis is not: the first cut reported "no version
 // tag on the haiku/ line", a sentence `git tag -l 'haiku/v*'` refutes, and
 // past the walk cap that sentence is the exit-4 refusal body the operator
@@ -1547,7 +1547,7 @@ func TestPrePushPackagesInheritsAttribution(t *testing.T) {
 // TestSinceTagPackagesUntaggedLineWalksTheWholeHistory: a package with no tag
 // of its own baselines at nothing — the whole history is walked, under the
 // single line's cap, and the warning names the remedy §4.1 gives (cut
-// <path>/v0.0.0 at the commit before the line's first change).
+// <prefix>v0.0.0 at the commit before the line's first change).
 func TestSinceTagPackagesUntaggedLineWalksTheWholeHistory(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	appendTo(t, dir, "glyph.toml", packagesConfig)

@@ -115,7 +115,7 @@ type sinceTagWalk struct {
 // The union is the range from the bases' common ancestor to HEAD, which
 // contains every line's range; a line with no tag of its own makes it the
 // whole history, under the same cap the single line has, with the remedy
-// §4.1 names (cut <path>/v0.0.0 at the commit before the line's first
+// §4.1 names (cut <prefix>v0.0.0 at the commit before the line's first
 // change).
 // A nil scope resolves every declared line; a scope narrows the UNION to its
 // lines. Every declared line is still resolved and returned, because

@@ -161,8 +161,9 @@ func (v Version) Next(d Decision) Version {
 }
 
 // A version LINE is a tag namespace (DESIGN §4.1): the bare line's tags are
-// vX.Y.Z, and a package's are <path>/vX.Y.Z, with a major version
-// subdirectory /vN folded into the major (pubsub/v2 tags as pubsub/v2.x.y).
+// vX.Y.Z, and a package's are <prefix>vX.Y.Z, the prefix being <path>/ with a
+// major version subdirectory /vN folded into the major (pubsub/v2 tags as
+// pubsub/v2.x.y).
 // The prefix and the majors held are the whole difference — config.Line,
 // derived by config.Config.LineOf, never spelled by hand; the functions
 // below know the prefix only, and the caller filters by major. Every
