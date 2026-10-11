@@ -111,6 +111,21 @@ gh attestation verify glyph_*.tar.gz --repo akira-toriyama/glyph
 go install github.com/akira-toriyama/glyph/v5/cmd/glyph@latest
 ```
 
+**From a checkout**
+
+```sh
+git clone https://github.com/akira-toriyama/glyph && cd glyph
+sh install.sh          # → ~/.local/bin/glyph
+```
+
+`install.sh` runs `build.sh` — a `go build` stamped from the checkout's
+`git describe`, so `glyph version` names the commit it was built from
+(`-dirty` included) — and copies `bin/glyph` to `~/.local/bin/glyph`, printing
+the line to add to your shell rc when that directory is not on `PATH`. The
+build uses the Go already installed (`GOTOOLCHAIN=local`: it never downloads a
+toolchain, so that Go must be at least `go.mod`'s `go` line). `sh build.sh`
+alone stops at `bin/glyph`.
+
 **Nix**
 
 ```sh
