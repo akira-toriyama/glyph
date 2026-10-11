@@ -1389,7 +1389,17 @@ escape again: cut an intermediate tag so the next walk, and its body, is
 smaller. (The preview's sticky comment takes the OPPOSITE degradation —
 truncate at its 65536-char comment cap, marked in the comment and warned on
 stderr — because that surface is advisory and refreshed on every push, and a
-refusal there would take the whole verdict comment down with it. The mark is
+refusal there would take the whole verdict comment down with it. The mark
+says only that the preview was cut because the full document exceeds
+GitHub's comment cap; it **names no command to read the rest** (t-pcfj, ruled
+2026-10-06). It used to name `glyph preview --pr <N> --notes`, and that
+command's stdout is the very body the workflow posts, cut at the same place
+under the same notice — a reviewer measured 65489 characters ending in it, no
+footer, over a 200-commit pull of 200-character subjects;
+`TestPreviewCutInsideTheNotesStillClosesTheFold` now pins the cut stdout's
+notice, mutation row `preview-truncation-notice-names-a-command-that-prints-the-same-cut`.
+The alternative, an output that does not truncate, would be a new surface for
+a cap no fleet comment had reached (zero, t-rrw0's triage). The mark is
 only a mark where it is read, so the cut **closes every `<details>` block it
 leaves open** before the notice goes on. The notes preview is the body's last
 section and sits in one, so a comment whose tables fit the cap and whose notes

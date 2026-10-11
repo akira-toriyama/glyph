@@ -51,7 +51,9 @@ func checkReleaseBody(body string) error {
 // sticky comment is advisory and refreshed on every push, so a shortened one
 // costs a scroll, while a refusal would take the whole verdict surface down
 // with it. The notice is part of the comment because a truncated preview
-// otherwise reads as a complete document that simply lists fewer commits.
+// otherwise reads as a complete document that simply lists fewer commits. It
+// names no command to read the rest (t-pcfj, DESIGN §4): the one that would
+// be named, `preview --notes`, prints this same cut body.
 //
 // And the notice has to be READ, so the cut closes every <details> block it
 // leaves open before the notice goes on. The notes preview is the body's last
@@ -67,7 +69,7 @@ func truncateComment(body string) string {
 	if utf8.RuneCountInString(body) <= commentBodyMaxChars {
 		return body
 	}
-	const notice = "\n\n---\n\n… truncated: the full preview exceeds GitHub's comment cap. `glyph preview --pr <N> --notes` prints the whole document.\n"
+	const notice = "\n\n---\n\n… truncated: the full preview exceeds GitHub's comment cap.\n"
 	budget := commentBodyMaxChars - utf8.RuneCountInString(notice)
 	head := cutAtLine(body, budget)
 	// The closers count against the cap too, and what must close depends on
