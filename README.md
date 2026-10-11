@@ -389,10 +389,13 @@ plain, so a display name that happens to look like a handle never pages the
 stranger who owns it.
 
 The commit author's own text — the subject, the scope, any group a pattern
-captures — renders as prose that cannot reach past its line: glyph puts a
-backslash before every `<`, every `[`, the `:` of an `http://` / `https://` /
-`ftp://`, the `.` of a `www.` and an entity-shaped `&`, and fences every
-`@handle` as code, while emphasis keeps working. A subject written as
+captures — renders as prose that cannot reach past its line: outside the
+author's own code spans, glyph puts a backslash before every `<`, every `[`,
+the `:` of an `http://` / `https://` / `ftp://`, the `.` of a `www.` and an
+entity-shaped `&`, and fences every `@handle` as code, while emphasis keeps
+working. A code span the author wrote passes through byte for byte —
+``unwrap `Optional<Any>` and [x]`` lands as ``unwrap `Optional<Any>` and \[x]``.
+A subject written as
 
 ```
 :sparkles:^ [click here](https://evil.example) and @octocat and <img src=x onerror=1> and **bold**
