@@ -369,6 +369,30 @@ func TopLevel(ctx context.Context, dir string) (string, error) {
 	return path, nil
 }
 
+// RemoteCanRecordHead reports whether git can record remote's default branch
+// at all: refs/remotes/<remote>/HEAD must be a refname git accepts. Config
+// accepts names refs refuse — `my fork`, `mirror..x` — and for those
+// `git remote set-head` cannot succeed (unquoted it exits 129, quoted 1:
+// "Not a valid ref"); the remedy is renaming the remote. Asked of
+// `git check-ref-format` rather than reimplemented: its rules are git's.
+func RemoteCanRecordHead(ctx context.Context, dir, remote string) (bool, error) {
+	// #nosec G204 -- the binary is the fixed literal "git"; the one argument
+	// opens with refs/remotes/, so it can never read as an option.
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "check-ref-format", "refs/remotes/"+remote+"/HEAD")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if ierr := interrupted(ctx); ierr != nil {
+			return false, ierr
+		}
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 1 {
+			return false, nil
+		}
+		return false, core.APIf("git check-ref-format: %s", distill(stderr.Bytes(), err))
+	}
+	return true, nil
+}
+
 // ErrNoRepository is InsideGitDir's answer where git itself says dir is in no
 // repository — the one failure that means "outside a checkout".
 var ErrNoRepository = errors.New("not a git repository")

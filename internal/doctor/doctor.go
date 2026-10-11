@@ -171,6 +171,10 @@ type Input struct {
 	// nil with a nil error means not read.
 	RemoteHeads    map[string]string
 	RemoteHeadsErr error
+	// RemoteRefless marks, among the remotes RemoteHeads reports unrecorded,
+	// those whose name git cannot place in a ref
+	// (gitsource.RemoteCanRecordHead): set-head is no remedy for them.
+	RemoteRefless map[string]bool
 }
 
 // HookProbe is what came back from firing a hook. Fired with Exit is a real
@@ -248,7 +252,7 @@ func Run(in Input) *Report {
 		checkCallerInputs(in.Root, in.RootVerified, in.GlyphVersion),
 		checkHook(hook.Kinds()[0], IDCommitMsgHook, in.HooksDir, in.HooksErr),
 		checkHookFires(in.CommitMsgProbe, in.HooksErr, config.Status == StatusPass),
-		checkPrePushHook(in.HooksDir, in.HooksErr, in.CommitMsgProbe, in.RemoteHeads, in.RemoteHeadsErr),
+		checkPrePushHook(in.HooksDir, in.HooksErr, in.CommitMsgProbe, in.RemoteHeads, in.RemoteRefless, in.RemoteHeadsErr),
 	}}
 	r.OK = true
 	for _, c := range r.Checks {

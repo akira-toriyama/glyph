@@ -491,6 +491,9 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		if c.Status != "advice" || !strings.Contains(c.Observed, "no default branch for mirror..x") {
 			t.Errorf("a remote that can record no head must be advice naming it, got %s: %s", c.Status, c.Observed)
 		}
+		if c.Fix != "git remote rename 'mirror..x' <name> && git remote set-head <name> -a" {
+			t.Errorf("set-head cannot record a head under mirror..x; the fix must rename it, got %q", c.Fix)
+		}
 	})
 
 	// A remote name holding a space is read whole. The remote list used to be
@@ -513,6 +516,11 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		c := checkByID(t, decodeDoctorJSON(t, stdout), "pre-push-hook")
 		if c.Status != "advice" || !strings.Contains(c.Observed, "no default branch for my fork,") {
 			t.Errorf("the advice must name the remote `my fork`, got %s: %s", c.Status, c.Observed)
+		}
+		// git cannot place `my fork` in a ref: set-head exits 129 unquoted and
+		// 1 quoted, so the fix renames the remote (review u6-2).
+		if c.Fix != "git remote rename 'my fork' <name> && git remote set-head <name> -a" {
+			t.Errorf("the fix for `my fork` must rename the remote, got %q", c.Fix)
 		}
 	})
 

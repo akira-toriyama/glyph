@@ -241,7 +241,7 @@ func diffSummary(installed, want string) string {
 //
 // The heads are an input like any other: unread is unknown, never the pass
 // that would say the hook can block.
-func checkPrePushHook(dir string, dirErr error, probe *HookProbe, heads map[string]string, headsErr error) Check {
+func checkPrePushHook(dir string, dirErr error, probe *HookProbe, heads map[string]string, refless map[string]bool, headsErr error) Check {
 	k := hook.Kinds()[1]
 	c := checkHook(k, IDPrePushHook, dir, dirErr)
 	if c.Status != StatusPass {
@@ -288,8 +288,16 @@ func checkPrePushHook(dir string, dirErr error, probe *HookProbe, heads map[stri
 		why = append(why, "the hook refuses a violation only on the remote's default branch, and learns which branch "+
 			"that is from refs/remotes/<remote>/HEAD — a local ref, never the network. A clone made before that ref "+
 			"existed, or a remote added without it, has none, and the hook then warns and exits 0 rather than guess `main`")
+		var unplaceable []string
 		for _, remote := range unrecorded {
-			fixes = append(fixes, "git remote set-head "+remote+" -a")
+			fixes = append(fixes, hook.SetHeadRemedy(remote, !refless[remote]))
+			if refless[remote] {
+				unplaceable = append(unplaceable, remote)
+			}
+		}
+		if len(unplaceable) > 0 {
+			why = append(why, fmt.Sprintf("git cannot place the name %s in a ref, so no default branch can ever be "+
+				"recorded under it and `git remote set-head` fails there — rename the remote first", join(unplaceable)))
 		}
 	}
 	c.Observed += ", but " + strings.Join(gaps, "; and ")

@@ -589,6 +589,19 @@ func TestRemoteURLsKeepsASpacedRemoteName(t *testing.T) {
 	}
 }
 
+// TestRemoteCanRecordHeadAsksGit: a name git's refs refuse can record no
+// default branch, so `git remote set-head` is no remedy for it (t-3jws's
+// residue, review u6-2). A plain name can; a space or `..` cannot.
+func TestRemoteCanRecordHeadAsksGit(t *testing.T) {
+	dir := newRepo(t)
+	for remote, want := range map[string]bool{"origin": true, "my-fork": true, "my fork": false, "mirror..x": false} {
+		got, err := RemoteCanRecordHead(context.Background(), dir, remote)
+		if err != nil || got != want {
+			t.Errorf("RemoteCanRecordHead(%q) = %v, %v; want %v, nil", remote, got, err, want)
+		}
+	}
+}
+
 // TestActionFilesListsWhatGitCounts pins the pin scan's file set (DESIGN §7,
 // D2b): every action.yml / action.yaml git counts as part of the checkout, at
 // any path — tracked (an initialized submodule's tracked files included) plus

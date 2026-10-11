@@ -3525,7 +3525,15 @@ The severities are the argued part:
   is byte-identical, so a checkout with no hook — every CI runner — pays
   nothing; a read that fails is `unknown`, like any unread input
   (`TestPrePushHookSaysWhenNoRemoteHeadIsRecorded`, mutation row
-  `doctor-pre-push-ignores-an-unrecorded-remote-head`). Firing pre-push itself
+  `doctor-pre-push-ignores-an-unrecorded-remote-head`). The remedy is
+  `git remote set-head <remote> -a` only where git can record a head at all:
+  a name config accepts and refs refuse (`my fork`, `mirror..x`) makes
+  set-head exit 129 unquoted and 1 quoted (review u6-2, git 2.54), so for a
+  name `git check-ref-format refs/remotes/<name>/HEAD` refuses, doctor's fix
+  and the hook's own warning both say to `git remote rename` it first
+  (`hook.SetHeadRemedy`, `gitsource.RemoteCanRecordHead`; measured through
+  both with the three names, and `git remote rename 'my fork' myfork` exits
+  0). Firing pre-push itself
   — a `PrePushProbe` beside the commit-msg one — stays unbuilt. It would carry
   a fabricated push into a read-only diagnosis: a scratch repository, a bare
   remote, a pushed base, a recorded remote HEAD and a violating commit (without

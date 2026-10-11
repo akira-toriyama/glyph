@@ -242,6 +242,11 @@ func TestPrePushResolvesASpacedRemoteNameFromItsURL(t *testing.T) {
 	if !strings.Contains(stderr, "does not record my fork's default branch") {
 		t.Fatalf("the URL must resolve to the remote `my fork`:\n%s", stderr)
 	}
+	// git cannot place `my fork` in a ref, so set-head is no remedy (it exits
+	// 129 unquoted, 1 quoted); renaming the remote is (review u6-2).
+	if !strings.Contains(stderr, "`git remote rename 'my fork' <name> && git remote set-head <name> -a` restores it") || strings.Contains(stderr, "set-head my fork") {
+		t.Fatalf("the remedy for `my fork` must rename the remote, never set-head it:\n%s", stderr)
+	}
 }
 
 // TestPrePushMalformedProtocolIsNotALintFailure: a line glyph cannot read means

@@ -155,6 +155,20 @@ type Kind struct {
 	Asks string
 }
 
+// SetHeadRemedy is the command that lets the pre-push hook block on remote:
+// it refuses a violation only on the default branch it reads from
+// refs/remotes/<remote>/HEAD, and `git remote set-head <remote> -a` records
+// that. canRecord false (gitsource.RemoteCanRecordHead) is a name git cannot
+// place in a ref — `my fork`, `mirror..x` — where set-head exits 129 unquoted
+// and 1 quoted, so the remedy renames the remote first (review u6-2, measured
+// on git 2.54). One home for both doctor's fix and the hook's own warning.
+func SetHeadRemedy(remote string, canRecord bool) string {
+	if canRecord {
+		return "git remote set-head " + remote + " -a"
+	}
+	return "git remote rename '" + strings.ReplaceAll(remote, "'", `'\''`) + "' <name> && git remote set-head <name> -a"
+}
+
 // Kinds is every hook glyph writes, in install order. A bare
 // `glyph hook install` writes all of them. The v1 profile interpolation is
 // gone with profiles themselves: the convention lives in the repository's
