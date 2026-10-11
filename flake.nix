@@ -49,9 +49,9 @@
         };
 
         devShells.default = pkgs.mkShell {
-          # go (not a pinned go_1_xx): nixpkgs removed EOL go versions; go.mod's
-          # floor is satisfied by any current toolchain (GOTOOLCHAIN=local). No
-          # git-cliff: glyph replaces it, so its own dev shell never carries it.
+          # pkgs.go is only the driver: GOTOOLCHAIN stays auto, so it fetches and
+          # runs go.mod's `toolchain`, the Go CI and the release build with. Not
+          # a pinned go_1_xx — nixpkgs removes EOL versions.
           packages = [ pkgs.go pkgs.golangci-lint pkgs.goreleaser ];
         };
       });
