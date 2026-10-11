@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/pr-verdict.yml b/.github/workflows/pr-verdict.yml
+index af833c8..43f9979 100644
+--- a/.github/workflows/pr-verdict.yml
++++ b/.github/workflows/pr-verdict.yml
+@@ -362,7 +362,7 @@ jobs:
+           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+         run: |
+           set -euo pipefail
+-          if [ "$COMPOSE_OUTCOME" != success ]; then
++          if [ ! -f "$RUNNER_TEMP/body.md" ]; then
+             {
+               echo '<!-- glyph-pr-verdict -->'
+               echo "⚠️ No release verdict for this push (\`${HEAD_SHA:0:7}\`) — glyph could not compute one, so the verdict an earlier push posted here no longer applies."

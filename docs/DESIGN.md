@@ -3081,6 +3081,29 @@ withheld: with the API handle in hand, auto-publishing the draft is a two-line
 caller step, and the human act of publishing — the safety net everything above
 rests on — stays structurally out of a caller's reach.
 
+`pr-verdict.yml` is advisory and not meant to be a required check:
+convention enforcement is `lint.yml`'s. A pull carrying a commit the lint
+rejects fails the verdict job too — the walk refuses an unclassifiable commit
+(§3) — and the job goes red without repeating commit-lint's per-commit
+annotations, which stay the one authoritative signal. Its comment is
+refreshed on every push, a red one included: when the compose step does not
+succeed (preview exit 3 or 4, or a step before it failed), the upsert still
+runs (`if: ${{ !cancelled() }}`) and replaces the comment with the workflow's
+own short body — no verdict at this head, the head's sha, a pointer at
+commit-lint and at the run's log. Before, the upsert was skipped with the
+failed step, and the comment a previous green push posted kept that push's
+verdict beside a red head (glyph-test run 37306205001, 2026-10-05: compose
+`failure`, upsert `skipped`). The outcome decides, not whether `body.md`
+exists — the compose step writes it before reading the verdict fields — and
+the fallback quotes no glyph output, so nothing author-supplied reaches it.
+`!cancelled()` rather than `always()`: a run cancelled by a newer push must
+not write over that push's comment. Executed by
+`TestPRVerdictCommentNeverOutlivesARedPush`, wired by
+`TestPRVerdictUpsertRunsAfterAFailedCompose`; mutation rows
+`pr-verdict-upsert-skipped-after-a-failed-compose`,
+`pr-verdict-red-push-keeps-the-previous-verdict` and
+`pr-verdict-fallback-keyed-on-a-leftover-body`.
+
 An `assets` input — files a caller built elsewhere in the run, attached by the
 reusable — was requested (zmk-hid-host, 2026-09-10: a Zephyr firmware build
 that fits neither `app` nor `binary`) and declined; the shape for it is a
