@@ -4,7 +4,8 @@ description: >-
   checksums.txt AND its build provenance (`gh attestation verify`, fail-closed
   with a bounded retry), confirm it reports the release it was asked for, and
   add it to $GITHUB_PATH. Detects the runner's OS and arch, so the one action
-  serves the Linux lint/preview jobs and the macOS release job alike.
+  serves the Linux lint/preview jobs and the macOS release job alike. Runs
+  curl, tar, gh and jq; every GitHub-hosted Linux and macOS image has them.
 
 # This action is the SINGLE SOURCE of glyph's security-critical install logic.
 # It used to live inline in three reusable workflows (lint.yml, pr-verdict.yml,
@@ -22,6 +23,13 @@ description: >-
 # (e.g. sill's api-guard) references it the other way, by full path + tag:
 #   - uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z
 #     with: { version: vX.Y.Z, token: ${{ github.token }} }
+#
+# The step runs curl, tar, gh, jq and sha256sum (Linux) or shasum (macOS). jq
+# reads the binary's `version --json`; a runner without it fails the compare
+# with the "reports version ''" annotation, which reads as the binary's fault.
+# Every GitHub-hosted image lists jq — the Ubuntu 22.04/24.04/26.04 and macOS
+# 14/15/26 READMEs in actions/runner-images (read 2026-10-11 at 8197087) — so
+# only a self-hosted runner has anything to install.
 
 inputs:
   version:
