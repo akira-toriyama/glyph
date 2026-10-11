@@ -832,6 +832,43 @@ func runGlyphCtx(t *testing.T, ctx context.Context, args ...string) (code int, s
 	return code, outBuf.String(), errBuf.String()
 }
 
+// cancelOnceAsked returns a context cancelled once the fake git has touched
+// asked — the read under test is in flight — and a check, called after the
+// run, that fails the test unless it was. Without that check the tests were
+// vacuous under load: the safety net used to fire after 4s, so on a machine
+// slow enough that the API read was still in flight then, the cancel landed
+// there, the rerr half of the guard carried 130 out, and a mutation dropping
+// the read under test passed (measured on 934288b at load average 33-38: three
+// of the six doctor interrupt rows survived, a different three each run, and a
+// fake API answering after 5s turned the top-level row's test green over the
+// mutated tree with the fake git never reached). The net is now 25s, under the
+// fakes' 30s sleep, so it only bounds a run that never reaches the read.
+func cancelOnceAsked(t *testing.T, asked string) (context.Context, func(read string)) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go func() {
+		defer cancel()
+		deadline := time.Now().Add(25 * time.Second)
+		for time.Now().Before(deadline) {
+			if _, err := os.Stat(asked); err == nil {
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+	}()
+	return ctx, func(read string) {
+		t.Helper()
+		if _, err := os.Stat(asked); err != nil {
+			t.Fatalf("the fake git never reached %s, so the cancel landed elsewhere and the run proves nothing: %v", read, err)
+		}
+	}
+}
+
 // TestFirstInterruptChecksEveryRead pins the predicate doctorRun guards its two
 // independent reads with. The order matters only for which error carries out;
 // what must never regress is that the SECOND position is consulted at all —
@@ -886,20 +923,9 @@ func TestDoctorInterruptDuringHooksReadCarriesOut(t *testing.T) {
 	}
 	t.Setenv("PATH", bin)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		for range 400 {
-			if _, err := os.Stat(asked); err == nil {
-				cancel()
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		cancel() // safety net: never leave the run behind the fake's 30s block
-	}()
-
+	ctx, reached := cancelOnceAsked(t, asked)
 	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	reached("the hooks read")
 	if code != 130 {
 		t.Fatalf("doctor exited %d, want 130 — an interrupt in the hooks read is the user's own abort, not a check result", code)
 	}
@@ -929,20 +955,9 @@ func TestDoctorInterruptDuringTopLevelReadCarriesOut(t *testing.T) {
 	}
 	t.Setenv("PATH", bin)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		for range 400 {
-			if _, err := os.Stat(asked); err == nil {
-				cancel()
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		cancel() // safety net: never leave the run behind the fake's 30s block
-	}()
-
+	ctx, reached := cancelOnceAsked(t, asked)
 	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	reached("the top-level read")
 	if code != 130 {
 		t.Fatalf("doctor exited %d, want 130 — an interrupt in the top-level read is the user's own abort, not a check result", code)
 	}
@@ -972,20 +987,9 @@ func TestDoctorInterruptDuringTagsReadCarriesOut(t *testing.T) {
 	}
 	t.Setenv("PATH", bin)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		for range 400 {
-			if _, err := os.Stat(asked); err == nil {
-				cancel()
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		cancel() // safety net: never leave the run behind the fake's 30s block
-	}()
-
+	ctx, reached := cancelOnceAsked(t, asked)
 	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	reached("the tags read")
 	if code != 130 {
 		t.Fatalf("doctor exited %d, want 130 — an interrupt in the tag read is the user's own abort, not a check result", code)
 	}
@@ -1013,20 +1017,9 @@ func TestDoctorInterruptDuringHeadTreesReadCarriesOut(t *testing.T) {
 	}
 	t.Setenv("PATH", bin)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		for range 400 {
-			if _, err := os.Stat(asked); err == nil {
-				cancel()
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		cancel() // safety net: never leave the run behind the fake's 30s block
-	}()
-
+	ctx, reached := cancelOnceAsked(t, asked)
 	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	reached("the tree listing")
 	if code != 130 {
 		t.Fatalf("doctor exited %d, want 130 — an interrupt in the tree listing is the user's own abort, not a check result", code)
 	}
@@ -1053,20 +1046,9 @@ func TestDoctorInterruptDuringActionFilesReadCarriesOut(t *testing.T) {
 	}
 	t.Setenv("PATH", bin)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		for range 400 {
-			if _, err := os.Stat(asked); err == nil {
-				cancel()
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		cancel() // safety net: never leave the run behind the fake's 30s block
-	}()
-
+	ctx, reached := cancelOnceAsked(t, asked)
 	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	reached("the action-file listing")
 	if code != 130 {
 		t.Fatalf("doctor exited %d, want 130 — an interrupt in the action-file listing is the user's own abort, not a check result", code)
 	}
@@ -1100,20 +1082,9 @@ func TestDoctorInterruptDuringRemoteHeadsReadCarriesOut(t *testing.T) {
 	}
 	t.Setenv("PATH", bin)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		for range 400 {
-			if _, err := os.Stat(asked); err == nil {
-				cancel()
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		cancel() // safety net: never leave the run behind the fake's 30s block
-	}()
-
+	ctx, reached := cancelOnceAsked(t, asked)
 	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	reached("the remote-heads read")
 	if code != 130 {
 		t.Fatalf("doctor exited %d, want 130 — an interrupt in the remote-heads read is the user's own abort, not a check result", code)
 	}

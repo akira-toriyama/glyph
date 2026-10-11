@@ -2,12 +2,10 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/akira-toriyama/glyph/v5/internal/config"
 	"github.com/akira-toriyama/glyph/v5/internal/core"
@@ -219,23 +217,9 @@ func interruptInit(t *testing.T, read, prelude string) {
 	}
 	t.Setenv("PATH", bin)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		for range 400 {
-			if _, err := os.Stat(asked); err == nil {
-				cancel()
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		cancel() // safety net: never leave the run behind the fake's 30s block
-	}()
-
+	ctx, reached := cancelOnceAsked(t, asked)
 	code, stdout, _ := runGlyphCtx(t, ctx, "init", "--gemoji")
-	if _, err := os.Stat(asked); err != nil {
-		t.Fatalf("the fake git never reached %s, so the run proves nothing: %v", read, err)
-	}
+	reached(read)
 	if code != int(core.CodeInterrupted) {
 		t.Errorf("init exited %d, want exactly %d — an interrupt in %s is the user's own abort, not \"outside a checkout\"", code, core.CodeInterrupted, read)
 	}
