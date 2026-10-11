@@ -87,9 +87,10 @@ func TestCompletionRejectsAnUnknownShell(t *testing.T) {
 // but it means an in-process test cannot observe the script, and asserting on a
 // stream a test cannot capture is how a green assertion stops meaning anything.
 //
-// So the control lives where the claim is actually observable: scripts/check.sh
-// and build.yml's smoke run the real binary and assert the split — the script on
-// stdout for a known shell, nothing on stdout and exit 2 for an unknown one.
+// So the control lives where the claim is actually observable: scripts/smoke.sh
+// (run by build.yml's extras job and by scripts/check.sh) runs the real binary
+// and asserts the split — the script on stdout for a known shell, nothing on
+// stdout and exit 2 for an unknown one.
 
 // TestCompletionBareIsHelpAtZero: a parent command with no subcommand named
 // prints help and exits 0 — the shape bare `glyph` and `glyph hook` already

@@ -24,22 +24,27 @@
 #   build           go-ci.yml                    `go build ./...`
 #   vet             go-ci.yml                    `go vet ./...`
 #   race-test       go-ci.yml                    `go test -race ./...`
-#   coverage        build.yml `coverage`         total line off the race run's
+#   coverage        go-ci.yml (`coverage: true`) total line off the race run's
 #                                                profile — a REPORT, never a gate
 #   golangci-lint   go-ci.yml                    `golangci-lint run ./...`
-#   govulncheck     govulncheck.yml → go-vuln.yml `govulncheck ./...`
+#   govulncheck     govulncheck.yml → go-vuln.yml source + `-mode binary`
 #   bite            build.yml `bite`             the hub's go-bite.sh
 #   mutations       build.yml `mutations`        `scripts/mutations.sh`
-#   fuzz-smoke      build.yml `extras`           the bounded fuzz loop
+#   fuzz-smoke      build.yml `extras`           `scripts/fuzz-smoke.sh`
 #   release-history build.yml `extras`           the caller-check bounds against
 #                                                glyph's release tags
-#   smoke           build.yml `extras`           the shipped binary's contract
+#   smoke           build.yml `extras`           `scripts/smoke.sh <binary>`
 #
 # ─── NOT MIRRORED, each with its reason ──────────────────────────────────────
 # Naming these is the honest half. Reproducing every CI job would cost more to
 # maintain than the code it guards, and a hand-written second implementation of
 # a fleet policy is a second source of truth — the thing this repo refuses
 # everywhere else.
+#   commit-lint title (lint.yml 'Lint the squash title') `glyph lint --pr N`:
+#                                       the squash title is a pull request's, and
+#                                       exists nowhere locally. Check a planned
+#                                       one by hand with
+#                                       `glyph lint --message "<title>"`.
 #   zizmor        (zizmor.yml)          Actions-security lint over .github/. The
 #                                       policy is the fleet's; a shell copy of it
 #                                       would drift against the canonical one.
@@ -99,11 +104,21 @@
 set -eu
 cd "$(dirname "$0")/.."
 
+# Every file this run writes lives in WORK. bin/ is build.sh's, and the path
+# fleet-preflight.sh is handed its candidate at: a smoke build there replaced a
+# candidate mid-preflight with an unstamped binary (2026-09-10). A handler that
+# only cleans up lets the shell carry on after a signal, so INT and TERM
+# re-raise (fleet-preflight.sh's measurement).
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+trap 'rm -rf "$WORK"; trap - INT;  kill -INT  $$' INT
+trap 'rm -rf "$WORK"; trap - TERM; kill -TERM $$' TERM
+
 # MIRRORS is the reconciliation set: the run refuses its ✓ line unless every name
 # here was recorded by `ran`. Keeping it as data rather than as a comment is what
 # makes "a gate silently stopped running" a failure instead of a nicer-looking log.
 MIRRORS='commit-lint dist-gate golden-gate module-hygiene build vet race-test coverage golangci-lint govulncheck bite mutations fuzz-smoke release-history smoke'
-NOT_MIRRORED='zizmor, actionlint, taplo, repo-policy, version-preview, task-status, goreleaser, codeql'
+NOT_MIRRORED='commit-lint title, zizmor, actionlint, taplo, repo-policy, version-preview, task-status, goreleaser, codeql'
 RAN=''
 ran() { RAN="$RAN $1 "; }
 
@@ -183,7 +198,7 @@ ran vet
 # move this script AWAY from CI, not towards it. Add it by hand when chasing a
 # flake — a cached green is a real risk, it is just not a mirror defect.
 echo "→ go test -race (coverage rides the same run)"
-COVER="$(mktemp)"
+COVER="$WORK/cover.out"
 go test -race -covermode=atomic -coverprofile="$COVER" ./...
 ran race-test
 # The total line off the profile the race run just wrote — a REPORT, never a
@@ -193,23 +208,10 @@ ran race-test
 # below stays the authority on whether tests bite — 93% coverage has been
 # measured beside three surviving mutations.
 go tool cover -func="$COVER" | tail -n 1
-rm -f "$COVER"
 ran coverage
 
-# Mirrors build.yml's Linux-only "fuzz smoke (bounded)" step: discover every
-# Fuzz target and run each briefly so a new target needs no edit here either.
-# The bound is an execution COUNT, not a duration: a wall-clock -fuzztime makes
-# the fuzz engine race its own deadline at shutdown and FAIL green runs with a
-# spurious "context deadline exceeded" under machine load (Go's own builders
-# flake on this), whereas a count bound never creates that deadline. Real hangs
-# are still caught by the engine's per-input 10s limit.
 echo "→ fuzz smoke (bounded)"
-for pkg in $(go list ./...); do
-  targets=$(go test -list '^Fuzz' "$pkg" | grep '^Fuzz' || true)
-  for f in $targets; do
-    go test "$pkg" -run '^$' -fuzz "^${f}\$" -fuzztime 200000x
-  done
-done
+sh scripts/fuzz-smoke.sh
 ran fuzz-smoke
 
 # Mirrors build.yml's "release-history bounds" step: every caller-check table
@@ -284,7 +286,7 @@ BASE_SHA="$(git rev-parse origin/main)" HEAD_SHA="$(git rev-parse HEAD)" \
   GOROOT="$BITE_GOROOT" PATH="$BITE_GOROOT/bin:$PATH" sh "$BITE"
 ran bite
 
-# Both linters are CI gates, so a missing one is a FAILURE and not a skip. The old
+# A CI gate whose tool is missing is a FAILURE and not a skip. The old
 # `command -v` guard printed "skipped" and let the run finish with its success
 # line, which on this machine meant govulncheck never ran and nothing said so.
 if command -v golangci-lint >/dev/null 2>&1; then
@@ -303,10 +305,7 @@ if command -v golangci-lint >/dev/null 2>&1; then
   # the ✓ line is what gets read, so the ✓ line is where a weakened claim has to
   # appear.
   LINT_SKEW=""
-  want_lint="$(sed -n "s/.*golangci-lint-version:.*default:[[:space:]]*'v\{0,1\}\([0-9][0-9.]*\)'.*/\1/p" "$HUB/.github/workflows/go-ci.yml" 2>/dev/null | head -1)"
-  if [ -z "$want_lint" ]; then
-    want_lint="$(sed -n "s/.*default:[[:space:]]*'v\([0-9][0-9.]*\)'.*/\1/p" "$HUB/.github/workflows/go-ci.yml" 2>/dev/null | head -1)"
-  fi
+  want_lint="$(sed -n "/golangci-lint-version:/,/default:/s/.*default:[[:space:]]*'v\{0,1\}\([0-9][0-9.]*\)'.*/\1/p" "$HUB/.github/workflows/go-ci.yml" 2>/dev/null | head -1)"
   got_lint="$(golangci-lint --version 2>/dev/null | sed -n 's/.*version[[:space:]]*v\{0,1\}\([0-9][0-9.]*\).*/\1/p' | head -1)"
   if [ -z "$want_lint" ]; then
     LINT_SKEW="golangci-lint: could not read the version go-ci.yml pins, so this run cannot say it matched CI"
@@ -324,107 +323,23 @@ else
   exit 1
 fi
 
-if command -v govulncheck >/dev/null 2>&1; then
-  echo "→ govulncheck"
-  govulncheck ./...
-  ran govulncheck
-else
-  echo "✗ govulncheck is not installed, and .github/workflows/govulncheck.yml runs it — so" >&2
-  echo "  this run cannot claim a green CI. \`nix develop\` supplies it (flake.nix's devShell)," >&2
-  echo "  or \`go install golang.org/x/vuln/cmd/govulncheck@latest\`." >&2
-  exit 1
-fi
-
 echo "→ build binary for live checks"
-go build -o bin/glyph ./cmd/glyph
-BIN="$(pwd)/bin/glyph"
+go build -o "$WORK/glyph" ./cmd/glyph
 
-echo "→ smoke: version / init / help / usage errors"
-"$BIN" version >/dev/null
-"$BIN" version --json >/dev/null   # the machine flag is spelled --json on every command that has one
-"$BIN" --version >/dev/null
-"$BIN" --help >/dev/null
-# init refuses to clobber this repository's own glyph.toml (usage, 2)
-status=0
-"$BIN" init --gemoji >/dev/null 2>&1 || status=$?
-if [ "$status" -ne 2 ]; then
-  echo "  expected exit 2 (usage) for init over an existing glyph.toml, got $status" >&2
-  exit 1
-fi
-# two presets at once must exit 2 (usage), not crash
-if "$BIN" init --gemoji --conventional >/dev/null 2>&1; then
-  echo "  expected a usage error for init --gemoji --conventional" >&2
-  exit 1
-fi
+# go-vuln.yml's two halves, with its scanner: govulncheck@latest (the hub
+# refuses a pinned one — a frozen scanner reports less and stays green) over
+# the source, then `-mode binary` over the built binary, which catches stdlib
+# vulnerabilities reachable in the shipped artifact that source mode can miss.
+# A govulncheck from PATH or the devShell is whatever version was installed,
+# a different scanner from CI's. GOTOOLCHAIN=auto lets the scanner build under
+# an installed Go older than x/vuln's own `go` line; the scans still resolve
+# go.mod's toolchain, as every gate here does.
+echo "→ govulncheck (source + -mode binary)"
+GOTOOLCHAIN=auto go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+GOTOOLCHAIN=auto go run golang.org/x/vuln/cmd/govulncheck@latest -mode binary "$WORK/glyph"
+ran govulncheck
 
-# `completion` is cobra's command, and its output is redirected into a file the
-# shell SOURCES — so an unknown shell reporting success is not a cosmetic exit
-# code. `glyph completion zshh > _glyph` used to exit 0 and write the parent's
-# English help where a completion script belongs. Both halves are asserted here
-# rather than in a Go test because cobra binds the completion writer once, when
-# the command tree is built, so an in-process test cannot observe which stream
-# the script went to (see internal/cli/root_test.go).
-echo "→ smoke: completion writes a script, or refuses"
-"$BIN" completion zsh | head -1 | grep -q '^#compdef' || {
-  echo "  expected 'completion zsh' to write a zsh script to stdout" >&2
-  exit 1
-}
-status=0
-out=$("$BIN" completion bogus 2>/dev/null) || status=$?
-if [ "$status" -ne 2 ]; then
-  echo "  expected exit 2 (usage) for an unknown completion shell, got $status" >&2
-  exit 1
-fi
-if [ -n "$out" ]; then
-  echo "  'completion bogus' wrote to stdout, which is what a caller redirects into a sourced file" >&2
-  exit 1
-fi
-
-echo "→ smoke: lint / bump exit-code contract"
-# The CODE is the assertion, not merely non-zero: `--stdin=false` used to exit 3,
-# telling a CI gate that a commit violated the convention when none was
-# submitted, and a plain `if "$BIN" …; then` cannot tell 3 from 2. That rule
-# governs EVERY assertion in this block. Three of them used to state an integer
-# in the failure message and assert only non-zero — a smoke that would have
-# stayed green through the very renumbering it was written to catch.
-"$BIN" lint --message ':bug:~ fix a crash'   # clean → 0
-status=0
-"$BIN" lint --message 'no gitmoji' >/dev/null 2>&1 || status=$?
-if [ "$status" -ne 3 ]; then
-  echo "  expected exit 3 (convention violation) for a malformed message, got $status" >&2
-  exit 1
-fi
-status=0
-"$BIN" lint --stdin=false </dev/null >/dev/null 2>&1 || status=$?
-if [ "$status" -ne 2 ]; then
-  echo "  expected exit 2 (usage) for lint --stdin=false, got $status" >&2
-  exit 1
-fi
-status=0
-"$BIN" bump --range HEAD~1..HEAD --current= >/dev/null 2>&1 || status=$?
-if [ "$status" -ne 2 ]; then
-  echo "  expected exit 2 (usage) for an empty --current, got $status" >&2
-  exit 1
-fi
-# this checkout is a repo: an empty range is the soft no-release exit (1)
-status=0
-"$BIN" bump --range HEAD..HEAD >/dev/null 2>&1 || status=$?
-if [ "$status" -ne 1 ]; then
-  echo "  expected exit 1 (no release-worthy change) for an empty bump range, got $status" >&2
-  exit 1
-fi
-
-echo "→ smoke: doctor's input guard (no network — the repo never resolves)"
-"$BIN" doctor --help >/dev/null
-# A malformed --repo is the caller's input and is rejected BEFORE any request
-# goes out, so this smoke stays hermetic: a doctor run that reached the network
-# here would hang or flake on an offline machine.
-status=0
-"$BIN" doctor --repo notaslash >/dev/null 2>&1 || status=$?
-if [ "$status" -ne 2 ]; then
-  echo "  expected exit 2 (usage) for a malformed doctor --repo, got $status" >&2
-  exit 1
-fi
+sh scripts/smoke.sh "$WORK/glyph"
 ran smoke
 
 # Reconciliation. Every gate that got this far exited 0 under `set -e`, so what is

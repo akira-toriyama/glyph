@@ -13,10 +13,11 @@
 # wide, parsed by `git interpret-trailers` exactly as go-bite's `Bite-exempt:`
 # is, so a line inside a body paragraph asserts nothing.
 #
-# Unlike dist-gate.sh (whose shape this copies), the trailer here is not a
-# waiver of some stronger demand — it IS the demand. No test can prove a golden
-# diff correct; the golden is the assertion. All a gate can force is a named,
-# human-stated reason in the history of every commit that rewrote the spec.
+# Unlike dist-gate.sh (whose trailer rule this shares through
+# scripts/lib/range-gate.sh), the trailer here is not a waiver of some stronger
+# demand — it IS the demand. No test can prove a golden diff correct; the
+# golden is the assertion. All a gate can force is a named, human-stated reason
+# in the history of every commit that rewrote the spec.
 #
 # What counts as a golden is GOLDEN_PATTERN below: the -update-rewritable
 # goldens (testdata/*.golden.*). Deliberately absent: the fuzz corpus, which is
@@ -39,12 +40,9 @@ GOLDEN_PATTERN='^.*/testdata/.*\.golden\..*$'
 
 base="${1:?usage: sh scripts/golden-gate.sh <base-ref>}"
 
-if ! git rev-parse --verify --quiet "$base^{commit}" >/dev/null; then
-  echo "golden-gate: base '$base' does not resolve — fetch it first; a stale or shallow checkout cannot form the diff CI judges" >&2
-  exit 1
-fi
-
-changed="$(git diff --name-only "$base"...HEAD)"
+# shellcheck source=scripts/lib/range-gate.sh
+. ./scripts/lib/range-gate.sh
+changed="$(range_gate_changed "$base")"
 
 goldens="$(printf '%s\n' "$changed" | grep -E "$GOLDEN_PATTERN" || true)"
 if [ -z "$goldens" ]; then
@@ -52,30 +50,7 @@ if [ -z "$goldens" ]; then
   exit 0
 fi
 
-# Range-wide claims cannot be made by one commit in the range, so — exactly as
-# go-bite demands for Bite-exempt — every non-merge commit must carry the
-# trailer, each with a real reason.
-examined=0
-missing=''
-for commit in $(git rev-list --no-merges "$base"..HEAD); do
-  examined=$((examined + 1))
-  line="$(git show -s --format=%B "$commit" | git interpret-trailers --parse | grep '^Golden-change:' | sed -n '1p')"
-  if [ -z "$line" ]; then
-    missing="$commit"
-    break
-  fi
-  reason="$(printf '%s' "${line#Golden-change:}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-  case "$reason" in
-    '')
-      echo "golden-gate: the Golden-change trailer on $(git rev-parse --short "$commit") states no reason" >&2
-      exit 1 ;;
-    '<'*'>')
-      echo "golden-gate: the Golden-change trailer on $(git rev-parse --short "$commit") is still the placeholder — state the real reason" >&2
-      exit 1 ;;
-  esac
-done
-
-if [ "$examined" -gt 0 ] && [ -z "$missing" ]; then
+if require_trailer_on_every_commit Golden-change "$base"; then
   echo "golden-gate: every commit in the range states its Golden-change reason for:"
   printf '%s\n' "$goldens" | sed 's/^/  /'
   exit 0
@@ -83,5 +58,5 @@ fi
 
 printf '%s\n' "$goldens" | sed 's/^/  /' >&2
 printf '::error::golden-gate: this change rewrites the golden files above and %s carries no Golden-change trailer. A golden is the format spec — `-update` regenerates it from whatever the code now produces, so the diff IS the spec change: read it as one, then put `Golden-change: <reason>` on every commit in the range (a real trailer; `git interpret-trailers` must parse it).\n' \
-  "$([ -n "$missing" ] && git rev-parse --short "$missing" || echo 'an empty commit range')" >&2
+  "$([ -n "$RANGE_GATE_MISSING" ] && git rev-parse --short "$RANGE_GATE_MISSING" || echo 'an empty commit range')" >&2
 exit 1

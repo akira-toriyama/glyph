@@ -65,12 +65,7 @@ func TestGoldenGateGuardsTheGoldenFiles(t *testing.T) {
 
 	// The demand must stay a parsed trailer, not a substring search: a
 	// `Golden-change:` line inside a body paragraph must assert nothing.
-	for _, want := range []string{"git interpret-trailers --parse", "Golden-change:"} {
-		if !strings.Contains(script, want) {
-			t.Errorf("scripts/golden-gate.sh no longer contains %q; the demand is either gone "+
-				"or has degraded into a substring match a body paragraph can satisfy", want)
-		}
-	}
+	assertParsedTrailerDemand(t, "scripts/golden-gate.sh", script, "Golden-change")
 }
 
 // TestGoldenGatePatternCoversTheRealGoldens is the non-vacuity half: the
