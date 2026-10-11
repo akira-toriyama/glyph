@@ -23,8 +23,8 @@ var (
 // answer — what the version becomes if this PR merges — so a caller never
 // re-derives it from the two sides; pr and pending are the two sides it folded,
 // reported separately so a comment can show the working. With packages
-// declared every scalar carries its zero value — the strings empty, untagged
-// false — and packages carries one folded verdict per touched line (DESIGN
+// declared every scalar carries its zero value — the strings empty (next,
+// omitempty, absent), untagged false — and packages carries one folded verdict per touched line (DESIGN
 // §4.1): pr-verdict.yml's level output is then "", which its callers already
 // treat as not computed, and its breaking output follows level into "". A
 // pr or pending of none there would claim the pull moves nothing beside a
@@ -64,8 +64,8 @@ func newPreviewCmd() *cobra.Command {
 			"line the pull touches (versions spelled as tags: haiku/v0.1.0 →\n" +
 			"haiku/v0.2.0) and one commit table per line; a line the pull does not\n" +
 			"touch is not mentioned. --json carries packages:\n" +
-			"[{path,current,untagged,level,next,pr,pending}] with every scalar at its\n" +
-			"zero value (current/level/next/pr/pending EMPTY, untagged false). A commit\n" +
+			"[{path,current,untagged,level,next,pr,pending}] with the scalars\n" +
+			"current/level/pr/pending EMPTY, untagged false and next absent. A commit\n" +
 			"no line can carry (a version sigil on shared files with no package scope)\n" +
 			"is refused at exit 3 here, while the branch can still be fixed.",
 		Args: cobra.NoArgs,
@@ -76,7 +76,7 @@ func newPreviewCmd() *cobra.Command {
 	cmd.Flags().IntVar(&previewPR, "pr", 0, "the pull request to preview, read over the API (required)")
 	cmd.Flags().StringVar(&previewRepo, "repo", "", "owner/name to query (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().BoolVar(&previewNotes, "notes", false, "fold the release-notes preview for this PR into the body")
-	cmd.Flags().BoolVar(&previewJSON, "json", false, "emit the machine verdict {current,untagged,level,next,pr,pending,body}; with [[packages]] declared the scalars are empty and packages[] carries one verdict per line")
+	cmd.Flags().BoolVar(&previewJSON, "json", false, "emit the machine verdict {current,untagged,level,next,pr,pending,body}; with [[packages]] declared current/level/pr/pending are empty, untagged false, next absent, and packages[] carries one verdict per line")
 	_ = cmd.MarkFlagRequired("pr")
 	return cmd
 }
