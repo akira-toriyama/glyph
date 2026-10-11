@@ -1764,7 +1764,7 @@ per line — plus `doctor`'s root-line advice (t-q047); and the walk itself
 walks the union once, fetches the files of each commit it places by its diff
 from local git or the API, and partitions the walk per line, so `bump` and `notes`
 answer per line over `--since-tag` and `--range` (the `packages` array
-below, scalars empty), `lint --range` and the pre-push hook apply rules 2–3
+below, scalars empty or absent), `lint --range` and the pre-push hook apply rules 2–3
 and the contradiction check; and the drafts (t-qecb): `release` converges
 one rolling draft per line (`internal/cli/release_lines.go` — every line's
 upsert before any stray, the single line's bare draft deleted as residue,
@@ -2487,8 +2487,9 @@ every line folds to none**; one line moving is a release. No new integer:
 the exit-code contract is frozen (§5), and every mixed outcome is legible in
 the machine verdict, which gains a per-line `packages` array (each command's
 row is README's, "Packages") while the scalar `current` / `level` / `next` /
-`action` stay what they are for the single line and are **empty when
-packages are declared** — a repository with packages has no one line for them
+`action` stay what they are for the single line; when packages are declared
+`current` / `level` / `action` are **empty** and `next` (release: `tag` /
+`body` / `url`) is **absent** — a repository with packages has no one line for them
 to describe, and a consumer that reads only the scalars is exactly the
 consumer that must not act (mutation row
 `packages-scalar-verdict-describes-one-line.patch`). The top-level `commits`
