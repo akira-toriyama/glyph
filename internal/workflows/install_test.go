@@ -42,6 +42,7 @@ const (
 	installAction  = ".github/actions/install/action.yml"
 	installStep    = "Install glyph (pinned release binary, checksum + provenance verified)"
 	installVersion = "v9.8.7"
+	noAnswer       = "<no answer>" // a stamp for a binary whose `version --json` fails
 )
 
 // releasePath is where the release host serves version's assets.
@@ -90,10 +91,15 @@ func releaseAsset(version, goos, goarch string) string {
 
 // releaseTarball is a release asset in GoReleaser's shape — LICENSE and
 // README.md beside the binary — whose binary appends its argv to marker when
-// it runs and answers `version --json` with stamp as its version. salt changes
-// the bytes, not what the binary does.
+// it runs and answers `version --json` with stamp as its version — or, for
+// stamp == noAnswer, exits 1 without writing anything. salt changes the bytes,
+// not what the binary does.
 func releaseTarball(t *testing.T, marker, stamp, salt string) []byte {
 	t.Helper()
+	answer := "printf '{\"version\":\"%s\",\"commit\":\"abc1234\"}\\n' " + shq(stamp)
+	if stamp == noAnswer {
+		answer = "exit 1"
+	}
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
@@ -105,7 +111,7 @@ func releaseTarball(t *testing.T, marker, stamp, salt string) []byte {
 		{"LICENSE", 0o644, "MIT\n"},
 		{"README.md", 0o644, "# glyph\n"},
 		{"glyph", 0o755, "#!/bin/sh\n# " + salt + "\nprintf '%s\\n' \"$*\" >> " + shq(marker) + "\n" +
-			"if [ \"$*\" = 'version --json' ]; then printf '{\"version\":\"%s\",\"commit\":\"abc1234\"}\\n' " + shq(stamp) + "; fi\n"},
+			"if [ \"$*\" = 'version --json' ]; then " + answer + "; fi\n"},
 	} {
 		hdr := &tar.Header{Name: f.name, Mode: f.mode, Size: int64(len(f.body)), Typeflag: tar.TypeReg, ModTime: time.Now()}
 		if err := tw.WriteHeader(hdr); err != nil {
@@ -295,6 +301,20 @@ func TestInstallActionInstallsOnlyWhatItVerified(t *testing.T) {
 			annotation: `::error::glyph install: the v9.8.7 release binary reports version v9.8.6`,
 			why: "checksums and provenance prove who built the tarball, not which version it is — the caller " +
 				"asked for one release and would run another",
+		},
+		{
+			name: "a binary stamped as a pre-release of the tag is refused off PATH", stamp: "v9.8.7-rc.1", exit: 1,
+			ghCalls: 1, queried: true,
+			annotation: `::error::glyph install: the v9.8.7 release binary reports version v9.8.7-rc.1`,
+			why: "the compare is exact: a candidate's binary shares the release's prefix, and a prefix match would " +
+				"install an rc as the release the caller pinned",
+		},
+		{
+			name: "a binary that cannot answer is refused off PATH with the annotation", stamp: noAnswer, exit: 1,
+			ghCalls: 1, queried: true,
+			annotation: `::error::glyph install: the v9.8.7 release binary reports version ''`,
+			why: "a failed `version --json` under set -e would end the step with no word on what was refused — the " +
+				"step reads it as the empty version and refuses it like any other mismatch",
 		},
 		{
 			name: "a binary whose stamp missed is refused off PATH", stamp: "dev", exit: 1, ghCalls: 1, queried: true,

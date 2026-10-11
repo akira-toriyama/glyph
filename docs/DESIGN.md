@@ -3175,7 +3175,8 @@ release asset agree on `vX.Y.Z`. Both checks run in
 `install-trusts-a-binary-that-reports-another-version`,
 `install-refuses-the-v-less-stamp-older-releases-carry`,
 `install-version-input-reopens-a-workflow-command`,
-`install-version-refusal-leaves-the-binary-on-path` and
+`install-version-refusal-leaves-the-binary-on-path`,
+`install-compare-takes-a-same-prefix-stamp` and
 `release-binary-reports-its-version-without-the-v`.
 
 A CONSUMER that just wants the glyph CLI on a laptop-in-CI (e.g. a macOS
