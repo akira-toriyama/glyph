@@ -38,9 +38,12 @@ const DefaultComment = "#"
 // character per commit from what the message already holds, and no input a hook
 // has names the pick. Measured on git 2.54: a fresh editor commit, and an amend
 // whose body opens a line with '#', both got a '#' template and lost their '#'
-// lines; `-F` under commit.cleanup=strip with "# note" as line 1 got another
-// character and recorded "# note" as the subject — the row this reading misjudges
-// (DESIGN §2.1). git deprecates `auto` for Git 3.0 and warns on every commit.
+// lines. What this reading misjudges is a class: a message git is handed before
+// its cleanup (measured with -F) whose line 1 opens with '#', cleaned with
+// comments stripped — git picks another character and records that line as the
+// subject, the hook drops it. Measured instances: `-F` under
+// commit.cleanup=strip, and `-F <file> -e` with no cleanup config (DESIGN §2.1).
+// git deprecates `auto` for Git 3.0 and warns on every commit.
 //
 // An empty value, or one holding a newline, also answers DefaultComment: git
 // refuses both before any hook runs (`must have at least one character`,

@@ -609,8 +609,8 @@ and `$EDITOR` both leave it unset — so unset counts as edited.
 `internal/cli/cmd_lint.go: hookCleanupMode`
 
 **cut line / scissors line** — the one literal git writes above the diff under
-`commit -v`: the comment prefix (`#` unless `core.commentChar` says otherwise)
-and a space, followed by 24 dashes, ` >8 `, 24 dashes. Matched exactly and at
+`commit -v`: the comment prefix (the last of `core.commentChar` /
+`core.commentString`, `#` when neither is set or the value is `auto`) and a space, followed by 24 dashes, ` >8 `, 24 dashes. Matched exactly and at
 the start of a line, because git matches it that way; an indented lookalike is
 neither a cut nor even a comment to git, so cutting there hides text git records.
 `internal/cleanup/cleanup.go: cutTail, truncateAtCutLine`

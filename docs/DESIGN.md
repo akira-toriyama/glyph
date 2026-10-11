@@ -715,10 +715,17 @@ nothing a hook reads names the pick: the config says `auto`, and the file it is
 handed already carries the template in the chosen character, beside whatever
 lines the author opened with it. Measured on git 2.54: a fresh editor commit and an amend whose body
 opens a line with `#` both got a `#` template and lost their `#` lines (so `#`
-agrees), while `-F` under `commit.cleanup=strip` with `# note` as line 1 got
-another character and recorded `# note` as the subject, where the hook drops it
-and judges line 2 (mutation row `cleanup-reads-comment-char-auto-literally.patch`).
-git deprecates `auto` for Git 3.0 and warns on every commit made under it.
+agrees). What `#` misjudges is a class: a message git is handed **before** its
+cleanup (measured with `-F`) whose line 1 opens with `#`, in a mode that strips
+comments. git then picks another character, keeps that line and records
+it as the subject; the hook drops it as a `#` comment and judges line 2, the
+lenient direction (hook 0, CI 3). Two measured instances: `-F` under
+`commit.cleanup=strip`, and `git commit -F <file> -e` with no cleanup config at
+all — git writes the template in `;`, strips it and records `# note`, and the
+same with `--cleanup=strip -e` (both measured with `# note` above a valid subject;
+mutation row `cleanup-reads-comment-char-auto-literally.patch` guards the
+fallback itself). git deprecates `auto` for Git 3.0 and warns on every commit
+made under it.
 
 ### The gemoji dictionary (`glyph emoji`, t-0c0m)
 
