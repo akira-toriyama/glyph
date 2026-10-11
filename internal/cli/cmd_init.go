@@ -28,13 +28,17 @@ func newInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Write a glyph.toml preset at the checkout's top level",
-		Long: "init writes glyph.toml — the v2 configuration in which YOUR regex patterns\n" +
+		Long: "init writes glyph.toml — the configuration in which YOUR regex patterns\n" +
 			"decide the commit grammar and the named group semver_sigil (= none / ~ patch /\n" +
 			"^ minor / ! major / % promote to 1.0.0) is the only input to version\n" +
 			"calculation.\n\n" +
 			"The file lands at the top level of the git checkout init runs in, from any\n" +
 			"subdirectory — the one glyph.toml every other command reads — and in the\n" +
-			"current directory only outside a checkout.\n\n" +
+			"current directory only where git says there is no repository at all. Inside\n" +
+			"a git directory (.git, a bare repository), which has no work tree, init\n" +
+			"refuses (exit 2); where git cannot read the repository (dubious ownership,\n" +
+			"a broken config, no git on PATH) it writes nothing and exits 4 with the\n" +
+			"error it hit.\n\n" +
 			"One preset flag is required (--" + strings.Join(names, ", --") + "); the file it\n" +
 			"writes is a starting point to edit, not a contract to keep. An existing\n" +
 			"glyph.toml is never touched without --force.",
