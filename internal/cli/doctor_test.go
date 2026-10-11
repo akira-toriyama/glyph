@@ -1205,6 +1205,78 @@ func TestDoctorAnnotationsStayOnOneLine(t *testing.T) {
 	}
 }
 
+// TestDoctorHumanReportIsOneLinePerCheck is the same fold on the human report:
+// a check's line is `<status> <id> <observed>`, and the observed text here is a
+// remote error body. Unfolded, the nginx page below split token-repo-read over
+// six lines whose first words are not a status, so a reader (or a grep for
+// `^fail`) lost the check boundaries. The JSON run is the oracle for how many
+// checks there are; --json itself never had the defect.
+func TestDoctorHumanReportIsOneLinePerCheck(t *testing.T) {
+	failingAPI(t, http.StatusNotFound, "<html>\r\n<head><title>404 Not Found</title></head>\n<body>\n<center>nginx</center>\n</body>\n</html>")
+
+	code, stdout, _ := runGlyph(t, "doctor", "--json")
+	if code != 3 {
+		t.Fatalf("--json exit %d, want 3", code)
+	}
+	checks := len(decodeDoctorJSON(t, stdout).Checks)
+
+	code, stdout, _ = runGlyph(t, "doctor")
+	if code != 3 {
+		t.Fatalf("human exit %d, want 3", code)
+	}
+	if !strings.Contains(stdout, "</html>") {
+		t.Fatalf("the fold must keep the whole remote body, not drop it:\n%s", stdout)
+	}
+	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
+	body := lines[2 : len(lines)-1] // header and its blank line above, summary below
+	statusLines := 0
+	for _, line := range body {
+		switch {
+		case line == "", strings.HasPrefix(line, doctorIndent):
+		case strings.HasPrefix(line, "pass "), strings.HasPrefix(line, "fail "),
+			strings.HasPrefix(line, "advice "), strings.HasPrefix(line, "unknown "):
+			statusLines++
+		default:
+			t.Fatalf("line %q is neither a check nor indented under one — a multi-line field broke the layout:\n%s", line, stdout)
+		}
+	}
+	if statusLines != checks {
+		t.Errorf("%d status lines, want one per check (%d):\n%s", statusLines, checks, stdout)
+	}
+}
+
+// TestDoctorAdviceNoticeSaysHouseConventionOnce: the merge-method checks carry
+// "(house convention: squash-only)" in Expected, which is that phrase's one
+// home. The notice used to wrap Expected in a second "(house convention: …)",
+// printing it twice in nested parentheses on every Actions run of a repository
+// that is not squash-only — and calling every other advice check's expectation
+// (token-write, the hooks, root-line tags) a house convention it is not.
+func TestDoctorAdviceNoticeSaysHouseConventionOnce(t *testing.T) {
+	permissive := `"allow_squash_merge":true,"allow_merge_commit":true,"allow_rebase_merge":true,` +
+		`"squash_merge_commit_title":"COMMIT_OR_PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES"`
+	usePR(t, doctorServer(t, apiRepoObject(permissive)))
+	useDoctorCheckout(t, pinnedCaller)
+
+	code, _, stderr := runGlyph(t, "doctor")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0", code)
+	}
+	for _, id := range []string{"merge-commit-enabled", "rebase-merge-enabled"} {
+		var notice string
+		for line := range strings.SplitSeq(stderr, "\n") {
+			if strings.HasPrefix(line, "::notice::glyph: doctor "+id+":") {
+				notice = line
+			}
+		}
+		if notice == "" {
+			t.Fatalf("no notice for %s:\n%s", id, stderr)
+		}
+		if n := strings.Count(notice, "house convention"); n != 1 {
+			t.Errorf("%s notice says \"house convention\" %d times, want once:\n%s", id, n, notice)
+		}
+	}
+}
+
 // TestDoctorReadsTheRealUsesNotTheCommentedStub is the trap end to end. The API
 // side is perfect, so the exit code is entirely the pin check's verdict: a
 // stale COMMENTED stub above a good pin must pass, and a good comment above a

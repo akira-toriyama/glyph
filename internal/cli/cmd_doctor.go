@@ -377,7 +377,7 @@ func doctorRun(cmd *cobra.Command) error {
 		case doctor.StatusUnknown:
 			warnf("doctor %s could not run: %s", c.ID, c.Observed)
 		case doctor.StatusAdvice:
-			noticef("doctor %s: %s (house convention: %s)", c.ID, c.Observed, c.Expected)
+			noticef("doctor %s: %s (expected %s)", c.ID, c.Observed, c.Expected)
 		case doctor.StatusPass:
 		}
 	}
@@ -442,18 +442,18 @@ func printDoctorHuman(r *doctor.Report) {
 	// summary is separated from the checks exactly once however the report ends.
 	spaced := false
 	for _, c := range r.Checks {
-		fmt.Fprintf(out, "%-8s %-28s %s\n", c.Status, c.ID, c.Observed)
+		fmt.Fprintf(out, "%-8s %-28s %s\n", c.Status, c.ID, oneLine(c.Observed))
 		if c.Status == doctor.StatusPass {
 			spaced = false
 			continue
 		}
-		fmt.Fprintf(out, "%s expected: %s\n", doctorIndent, c.Expected)
-		fmt.Fprintf(out, "%s why:      %s\n", doctorIndent, c.Message)
+		fmt.Fprintf(out, "%s expected: %s\n", doctorIndent, oneLine(c.Expected))
+		fmt.Fprintf(out, "%s why:      %s\n", doctorIndent, oneLine(c.Message))
 		for _, d := range c.Details {
-			fmt.Fprintf(out, "%s   - %s\n", doctorIndent, d)
+			fmt.Fprintf(out, "%s   - %s\n", doctorIndent, oneLine(d))
 		}
 		if c.Fix != "" {
-			fmt.Fprintf(out, "%s fix:      %s\n", doctorIndent, c.Fix)
+			fmt.Fprintf(out, "%s fix:      %s\n", doctorIndent, oneLine(c.Fix))
 		}
 		fmt.Fprintln(out)
 		spaced = true
