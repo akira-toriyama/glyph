@@ -462,10 +462,11 @@ func permissionSummary(p *github.RepoPermissions) string {
 // the outage window belongs to the exit-code contract, not to this argument.
 //
 // The cost squash itself carries in that window is bounded and worth naming:
-// under COMMIT_OR_PR_TITLE a MULTI-commit squash's subject is the PR TITLE, which
-// no lint gate checks (the commit-lint job lints the PR's COMMITS, never its
-// title), so a dark run classifies that one unlinted subject — one wrong level on
-// one pull, against a whole pull lost.
+// under COMMIT_OR_PR_TITLE a MULTI-commit squash's subject is the PR TITLE.
+// lint.yml's "Lint the squash title" step holds that title to the grammar, never
+// to the level the pull's commits fold to, so a dark run classifies one subject
+// whose sigil is its author's own — one wrong level on one pull, against a whole
+// pull lost.
 //
 // Hence fail rather than advice, and hence the asymmetry with the two checks
 // below: ALLOWING another merge method leaves squash there for the traffic that
