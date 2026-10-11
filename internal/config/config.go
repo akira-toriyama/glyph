@@ -413,7 +413,7 @@ func buildPackage(rp rawPackage) (Package, error) {
 	case p == ".." || strings.HasPrefix(p, "../"):
 		return Package{}, fmt.Errorf("path %q escapes the repository: a package is a subtree of the checkout glyph.toml sits in", p)
 	case path.Clean(p) != p:
-		return Package{}, fmt.Errorf("path %q is not in clean form: write %q (the path is the tag prefix, <path>/vX.Y.Z, and is read from the file as written)", p, path.Clean(p))
+		return Package{}, fmt.Errorf("path %q is not in clean form: write %q (the line's tags, <prefix>vX.Y.Z, take their prefix from the path as written)", p, path.Clean(p))
 	}
 	if p != "." {
 		for seg := range strings.SplitSeq(p, "/") {

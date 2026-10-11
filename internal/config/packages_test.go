@@ -86,6 +86,7 @@ func TestLoadPackagesErrors(t *testing.T) {
 		{"parent path", "[[packages]]\npath = '..'\n", "escapes the repository"},
 		{"escaping path", "[[packages]]\npath = '../haiku'\n", "escapes the repository"},
 		{"trailing slash", "[[packages]]\npath = 'haiku/'\n", `write "haiku"`},
+		{"the clean-form refusal spells a line tag", "[[packages]]\npath = 'haiku/'\n", "<prefix>vX.Y.Z"},
 		{"leading dot-slash", "[[packages]]\npath = './haiku'\n", `write "haiku"`},
 		{"double slash", "[[packages]]\npath = 'a//b'\n", `write "a/b"`},
 		{"inner parent segment", "[[packages]]\npath = 'a/../b'\n", `write "b"`},
