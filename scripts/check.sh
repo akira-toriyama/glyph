@@ -99,6 +99,16 @@
 set -eu
 cd "$(dirname "$0")/.."
 
+# Every file this run writes lives in WORK. bin/ is build.sh's, and the path
+# fleet-preflight.sh is handed its candidate at: a smoke build there replaced a
+# candidate mid-preflight with an unstamped binary (2026-09-10). A handler that
+# only cleans up lets the shell carry on after a signal, so INT and TERM
+# re-raise (fleet-preflight.sh's measurement).
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+trap 'rm -rf "$WORK"; trap - INT;  kill -INT  $$' INT
+trap 'rm -rf "$WORK"; trap - TERM; kill -TERM $$' TERM
+
 # MIRRORS is the reconciliation set: the run refuses its ✓ line unless every name
 # here was recorded by `ran`. Keeping it as data rather than as a comment is what
 # makes "a gate silently stopped running" a failure instead of a nicer-looking log.
@@ -183,7 +193,7 @@ ran vet
 # move this script AWAY from CI, not towards it. Add it by hand when chasing a
 # flake — a cached green is a real risk, it is just not a mirror defect.
 echo "→ go test -race (coverage rides the same run)"
-COVER="$(mktemp)"
+COVER="$WORK/cover.out"
 go test -race -covermode=atomic -coverprofile="$COVER" ./...
 ran race-test
 # The total line off the profile the race run just wrote — a REPORT, never a
@@ -193,7 +203,6 @@ ran race-test
 # below stays the authority on whether tests bite — 93% coverage has been
 # measured beside three surviving mutations.
 go tool cover -func="$COVER" | tail -n 1
-rm -f "$COVER"
 ran coverage
 
 # Mirrors build.yml's Linux-only "fuzz smoke (bounded)" step: discover every
@@ -336,8 +345,8 @@ else
 fi
 
 echo "→ build binary for live checks"
-go build -o bin/glyph ./cmd/glyph
-BIN="$(pwd)/bin/glyph"
+go build -o "$WORK/glyph" ./cmd/glyph
+BIN="$WORK/glyph"
 
 echo "→ smoke: version / init / help / usage errors"
 "$BIN" version >/dev/null
