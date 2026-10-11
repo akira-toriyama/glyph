@@ -8,21 +8,18 @@ name: goreleaser
 # Renamed from release.yml at v0.3.0: release.yml is now the reusable
 # rolling-draft release the FAMILY consumes (DESIGN §6), while this file cuts
 # glyph's OWN releases. This path is also the attestation SIGNER identity —
-# what `gh attestation verify --signer-workflow` checks. Artifacts up to
-# v0.2.0 were attested as release.yml, v0.3.0+ as goreleaser.yml; every
-# reusable's glyph-version default is in lockstep with its own tag, so each
-# pinned reusable verifies against the signer that actually built its binary
-# and old pins stay valid. Renaming this file again would rotate the signer
-# identity — don't, without bumping the verify paths in lint.yml / release.yml
-# in the same release.
+# what `gh attestation verify --signer-workflow` checks (artifacts up to v0.2.0
+# were attested as release.yml, v0.3.0+ as goreleaser.yml). The path is written
+# once, in .github/actions/install/action.yml, and every reusable installs the
+# binary of the tag it is pinned at through the action of that same tag — so
+# renaming this file rotates the signer for every later pin. Rename it only
+# together with the path in action.yml, in the same release.
 #
-# Divergence from the other family Go CLIs (cifail/furrow): glyph does NOT run
-# git-cliff here. glyph is the tool that replaces git-cliff, so depending on it for
-# glyph's own release notes would be self-contradictory. Instead glyph dogfoods
-# itself: the notes step below runs `glyph notes` FROM THE TAGGED COMMIT (a
-# binary built right there — no published binary in the loop, so there is no
-# bootstrap circularity) and hands
-# the result to GoReleaser via --release-notes. This closes t-8hqn: GoReleaser's
+# The notes step below builds `glyph notes` FROM THE TAGGED COMMIT instead of
+# installing a release binary through the install action, as the other
+# glyph-noted repositories do: the tag being cut has no release binary yet —
+# this run is what makes it. The result goes to GoReleaser via
+# --release-notes. This closes t-8hqn: GoReleaser's
 # built-in changelog printed raw commit subjects, so a subject containing `@v2`
 # or `@mentions` pinged strangers from glyph's own releases — the one surface
 # t-hykw's escaping did not cover.

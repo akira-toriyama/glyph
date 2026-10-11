@@ -63,17 +63,15 @@ func runLintRange(t *testing.T, repo lintRepo, ev lintEvent, glyphExit int, glyp
 	requireTool(t, "jq")
 	dir := t.TempDir()
 
-	// The step keeps glyph's stream in fixed /tmp/ files; each run gets its
-	// own, so concurrent runs on one host never read each other's. A path the
-	// count does not know is one the move would miss.
+	// The step keeps glyph's stream under $RUNNER_TEMP, which each run gets as
+	// its own directory. A count that moved is a file this harness no longer
+	// knows the step writes.
 	script := extractRun(t, repoFile(t, filepath.FromSlash(lintWorkflow)), lintRangeStep)
-	const tmpRefs = 8
-	if n := strings.Count(script, "/tmp/"); n != tmpRefs {
-		t.Fatalf("the range step names /tmp/ %d times, want %d — each is moved into a per-run directory "+
-			"so concurrent runs cannot read each other's files; recount, and check the new one is a "+
-			"path the move should cover", n, tmpRefs)
+	const tempRefs = 8
+	if n := strings.Count(script, `"$RUNNER_TEMP/`); n != tempRefs {
+		t.Fatalf("the range step names \"$RUNNER_TEMP/ %d times, want %d — recount, and check the new path "+
+			"is one a concurrent run must not share", n, tempRefs)
 	}
-	script = strings.ReplaceAll(script, "/tmp/", dir+"/")
 
 	stubs := filepath.Join(dir, "stubs")
 	if err := os.Mkdir(stubs, 0o755); err != nil {
@@ -89,6 +87,7 @@ func runLintRange(t *testing.T, repo lintRepo, ev lintEvent, glyphExit int, glyp
 	run := runStep(t, script, unspecifiedShell, repo.dir, []string{
 		"PATH=" + stubs + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"HOME=" + dir,
+		"RUNNER_TEMP=" + dir,
 		"GIT_CONFIG_GLOBAL=" + os.DevNull,
 		"GIT_CONFIG_SYSTEM=" + os.DevNull,
 		"EVENT=" + ev.event,

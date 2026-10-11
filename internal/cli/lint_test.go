@@ -103,6 +103,55 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 			message: ":fire:(x)= drop the thing\n\nwhy: it was dead\n",
 			want:    0,
 		},
+		{
+			name: "core.commentChar=';': the ';' template above the message is not the subject",
+			// t-nbhz, measured on git 2.54: git strips the '; Please enter…'
+			// lines and records the author's line, while a hook that assumed
+			// '#' judged the template's first line as the subject: hook 3, CI 0.
+			config:  [][2]string{{"core.commentChar", ";"}},
+			editor:  true,
+			below:   true,
+			message: ":sparkles:(x)^ add the thing\n",
+			want:    0,
+		},
+		{
+			name: "core.commentChar=';' under commit.cleanup=strip: a '#' line is content",
+			// The lenient direction of the same assumption: git keeps the '#'
+			// line as the subject, a '#'-assuming hook dropped it and passed.
+			config:  [][2]string{{"core.commentChar", ";"}, {"commit.cleanup", "strip"}},
+			message: "# not a comment under ';'\n:bug:(x)~ fix the thing\n",
+			want:    3,
+		},
+		{
+			name: "core.commentString set after core.commentChar wins",
+			// One handler reads both names, so the later definition is the
+			// prefix (measured on git 2.54 in both orders).
+			config:  [][2]string{{"core.commentChar", ";"}, {"core.commentString", "//"}},
+			editor:  true,
+			below:   true,
+			message: ":sparkles:(x)^ add the thing\n",
+			want:    0,
+		},
+		{
+			name:    "core.commentChar set after core.commentString wins",
+			config:  [][2]string{{"core.commentString", "//"}, {"core.commentChar", ";"}},
+			editor:  true,
+			below:   true,
+			message: ":sparkles:(x)^ add the thing\n",
+			want:    0,
+		},
+		{
+			name: "core.commentChar=auto: a fresh editor commit's '#' template is stripped",
+			// git picks the character per commit and no hook input names the
+			// pick, so glyph reads auto as '#' — which is the character git
+			// picks here (measured on git 2.54). DESIGN §2.1 names the -F row
+			// where it is not.
+			config:  [][2]string{{"core.commentChar", "auto"}},
+			editor:  true,
+			below:   true,
+			message: ":sparkles:(x)^ add the thing\n",
+			want:    0,
+		},
 	}
 
 	for _, tc := range cases {

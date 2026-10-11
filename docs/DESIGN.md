@@ -639,14 +639,18 @@ exactly those commits unlinted.
 
 - the cleanup is a **port** of git's `strbuf_stripspace`, not an approximation of
   it — trailing `" \t\r"` per line (git's own `isspace`: a `\v` is content),
-  interior blank runs collapsed, comments recognised at **column 0 only**. Held
-  to `git stripspace` by a differential test over generated messages, because
-  every earlier approximation passed its hand-written cases;
+  interior blank runs collapsed, comments recognised at **column 0 only**, by
+  the repository's own comment prefix. Held to `git stripspace` by a
+  differential test (`TestApplyMatchesGitStripspace`: every message of its table
+  under five prefixes — `#`, `;`, `//`, `.*`, `$` — in both whitespace and strip,
+  equal to `git -c core.commentChar=<prefix> stripspace` on the same bytes),
+  because every earlier approximation passed its hand-written cases;
 - the scissors line is matched **exactly** — git's `wt_status_locate_end` does a
   `strstr` for one literal string, so a loose match cuts messages git records,
   and everything below a stray cut line (footers included) vanishes from the
-  hook's view. A test drives a real `commit -v` and asserts git still writes that
-  literal, because exactness fails the other way if git ever changes it.
+  hook's view. A test drives a real `commit -v` under three comment prefixes and
+  asserts git still writes the prefix and that literal, because exactness fails
+  the other way if git ever changes it.
 
 **Deriving this inside the binary rather than in the hook script is a rollout
 decision, and the pre-push hook is the same decision applied to a bigger
@@ -705,8 +709,42 @@ author may delete the block. And the flags themselves are visible only in the
 parent process's argv (measured with `ps`: `-v`, an alias's expansion, the
 abbreviation `--verb`), where reading them means re-implementing git's
 parse-options — abbreviations, bundled short options, `--no-` forms — an
-approximation of git of exactly the kind this section refuses. Same for
-`core.commentChar`: glyph assumes `#`.
+approximation of git of exactly the kind this section refuses.
+
+**The comment prefix is the repository's, read the way git reads it.** Assuming
+`#` cost both directions (t-nbhz, measured on git 2.54): under
+`core.commentChar=';'` an editor commit whose `; Please enter…` template sat
+above the subject was recorded as the subject while `lint --stdin` judged the
+template line and exited 3, and under `commit.cleanup=strip` a `#` line git
+keeps as the subject was dropped at the hook. `core.commentString` is the same
+setting under another name — git reads both through one handler, so the last
+definition under either name wins (measured in both orders, in one file and
+across `-c`), which is why the read is one `git config --get-regexp` in git's
+order (`gitsource.ConfigLastOf`) rather than one `--get` per name (mutation row
+`cleanup-ignores-core-commentstring.patch`). The prefix
+may be several bytes and is matched literally; the scissors line under it is
+the prefix, a space and git's dashes (`TestApplyMatchesGitStripspace`,
+`TestScissorsUnderACommentPrefixMatchesGit`, `TestCutLineIsTheOneGitWrites`,
+and the commentChar rows of `TestHookVerdictMatchesWhatGitRecords`; mutation
+row `cleanup-strips-hash-under-any-comment-char.patch`).
+
+`core.commentChar=auto` is read as `#`, and that is a boundary, not a port. git
+picks the character per commit from what the message already holds, and
+nothing a hook reads names the pick: the config says `auto`, and the file it is
+handed already carries the template in the chosen character, beside whatever
+lines the author opened with it. Measured on git 2.54: a fresh editor commit and an amend whose body
+opens a line with `#` both got a `#` template and lost their `#` lines (so `#`
+agrees). What `#` misjudges is a class: a message git is handed **before** its
+cleanup (measured with `-F`) whose line 1 opens with `#`, in a mode that strips
+comments. git then picks another character, keeps that line and records
+it as the subject; the hook drops it as a `#` comment and judges line 2, the
+lenient direction (hook 0, CI 3). Two measured instances: `-F` under
+`commit.cleanup=strip`, and `git commit -F <file> -e` with no cleanup config at
+all — git writes the template in `;`, strips it and records `# note`, and the
+same with `--cleanup=strip -e` (both measured with `# note` above a valid subject;
+mutation row `cleanup-reads-comment-char-auto-literally.patch` guards the
+fallback itself). git deprecates `auto` for Git 3.0 and warns on every commit
+made under it.
 
 ### The gemoji dictionary (`glyph emoji`, t-0c0m)
 
@@ -3053,10 +3091,12 @@ itself. `rg '^func Fuzz'` is the current list, not this sentence. Always `-race`
 **Anything that models an external system carries one test that asks the real
 system**, because a closed loop of glyph-against-glyph proves nothing about the
 thing being modelled. `internal/cleanup` ports git's `strbuf_stripspace` and
-`wt_status_locate_end` line for line, and three oracles hold the port to the
+`wt_status_locate_end` line for line, and five oracles hold the port to the
 real git: `TestCutLineIsTheOneGitWrites` drives a real `git commit -v` and
 asserts git still writes the exact scissors line the cut matches on,
-`internal/cli`'s `TestHookVerdictMatchesWhatGitRecords` commits through a real
+`TestApplyMatchesGitStripspace` compares the strip with `git stripspace` under
+five comment prefixes, `TestScissorsUnderACommentPrefixMatchesGit` compares the
+cut under a set prefix with a real commit, `internal/cli`'s `TestHookVerdictMatchesWhatGitRecords` commits through a real
 git and asserts the hook's verdict matches what git recorded, and
 `TestHookCutMatchesGit` asserts the hook's text is git's in the 32 of its 48
 cells the hook can tell apart and pins the other 16, §2.1's editor and `-v`
@@ -3096,6 +3136,30 @@ is structural: writes are draft-only, a human publishes, the published floor
 guards the tag space, and `--dry-run` previews any verdict. Full rollout — and
 everything else still open — is tracked in the `projects` furrow board, which is
 the single home for it (§8 keeps no copy).
+
+`pr-verdict.yml` is advisory and not meant to be a required check:
+convention enforcement is `lint.yml`'s. A pull carrying a commit the lint
+rejects fails the verdict job too — the walk refuses an unclassifiable commit
+(§3) — and the job goes red without repeating commit-lint's per-commit
+annotations, which stay the one authoritative signal. Its comment is
+refreshed on every push, a red one included: when the compose step does not
+succeed (preview exit 3 or 4, or a step before it failed), the upsert still
+runs (`if: ${{ !cancelled() }}`) and replaces the comment with the workflow's
+own short body — no verdict at this head, the head's sha, a pointer at
+commit-lint and at the run's log. Before, the upsert was skipped with the
+failed step, and the comment a previous green push posted kept that push's
+verdict beside a red head (glyph-test run 37306205001, 2026-10-05: compose
+`failure`, upsert `skipped`). The outcome decides, not whether `body.md`
+exists — the compose step writes it before reading the verdict fields — and
+the fallback quotes no glyph output, so nothing author-supplied reaches it.
+`!cancelled()` rather than `always()`: a run cancelled by a newer push must
+not write over that push's comment. Executed by
+`TestPRVerdictCommentNeverOutlivesARedPush`, wired by
+`TestPRVerdictUpsertRunsAfterAFailedCompose`; mutation rows
+`pr-verdict-upsert-skipped-after-a-failed-compose`,
+`pr-verdict-cancelled-run-overwrites-the-newer-comment`,
+`pr-verdict-red-push-keeps-the-previous-verdict` and
+`pr-verdict-fallback-keyed-on-a-leftover-body`.
 
 Two behaviours of the shipped workflows are contract, not implementation
 detail. `lint.yml` carries a second, annotate-only arm (#140): a caller may add
@@ -3157,6 +3221,32 @@ so it cannot drift from the workflow revision — replacing a hand-bumped
 `glyph-version` default that did drift once (lint.yml sat at v0.4.0 through the
 v0.5.0 tag while callers pinned @v0.5.0); `internal/workflows` tests guard both
 the single-source install and the derived version.
+
+Two checks bracket the download (t-vw55). Before it, the `version` input must
+be a release tag — `vX.Y.Z`, or `vX.Y.Z-<pre-release>`, since the reusables
+install release candidates by design — so `latest`, a v-less `1.0.0` or a typo
+is refused as the input it is instead of surfacing as a curl 404 on a URL
+nobody published. After the checksum and provenance gates, the binary is
+extracted to a staging directory and asked `version --json`, and only one
+reporting the requested tag reaches `PATH`: checksums and provenance prove who
+built the tarball, not which version it is, and Go's `-X` ignores a stale
+symbol in silence, so a release whose stamp missed would install a binary
+reporting `dev` at exit 0. The compare also accepts the tag without its `v`.
+Every release through v5.0.0 was stamped with GoReleaser's `{{.Version}}`,
+which strips it — the v5.0.0 asset reports `5.0.0` (measured 2026-10-11) —
+and those releases stay installable: a reusable pinned at a SHA or branch
+names one through `glyph-version`. `.goreleaser.yaml` stamps `{{.Tag}}`
+(`TestLdflagsNameTheRealVersionSymbols`), so build.sh, `go install` and the
+release asset agree on `vX.Y.Z`. Both checks run in
+`TestInstallActionInstallsOnlyWhatItVerified`; mutation rows
+`install-fetches-a-version-that-is-no-release-tag`,
+`install-refuses-a-release-candidate`,
+`install-trusts-a-binary-that-reports-another-version`,
+`install-refuses-the-v-less-stamp-older-releases-carry`,
+`install-version-input-reopens-a-workflow-command`,
+`install-version-refusal-leaves-the-binary-on-path`,
+`install-compare-takes-a-same-prefix-stamp` and
+`release-binary-reports-its-version-without-the-v`.
 
 A CONSUMER that just wants the glyph CLI on a laptop-in-CI (e.g. a macOS
 `swift package diagnose-api-breaking-changes` gate that also reads

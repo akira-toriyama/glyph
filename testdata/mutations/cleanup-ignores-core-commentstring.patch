@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
+index 72dea5f..35c1a9e 100644
+--- a/internal/cli/cmd_lint.go
++++ b/internal/cli/cmd_lint.go
+@@ -176,7 +176,7 @@ func hookCleanupMode(ctx context.Context, message io.Reader) cleanup.Mode {
+ 	}
+ 	// An error is unset here too, and `auto` is '#' without a warning: git
+ 	// already warns about auto on every commit, and CommentPrefix says why '#'.
+-	comment, set, _ := gitsource.ConfigLastOf(ctx, ".", "core.commentChar", "core.commentString")
++	comment, set, _ := gitsource.ConfigGet(ctx, ".", "core.commentChar")
+ 	mode.Comment = cleanup.CommentPrefix(comment, set)
+ 	return mode
+ }

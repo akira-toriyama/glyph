@@ -1069,6 +1069,52 @@ func TestConfigBoolOrInt(t *testing.T) {
 	}
 }
 
+// TestConfigLastOf: of two names git reads through one handler, the LAST
+// definition wins whichever name it carries — in one file, in both orders, and
+// with `-c` (GIT_CONFIG_PARAMETERS) after every file — and the value comes back
+// raw, a quoted trailing space included. core.commentChar / core.commentString
+// are the names, and git 2.54's own cleanup agreed with every row (measured with
+// `git stripspace --strip-comments`; internal/cli's
+// TestHookVerdictMatchesWhatGitRecords asks real commits).
+func TestConfigLastOf(t *testing.T) {
+	dir := newRepo(t)
+	last := func() (string, bool) {
+		t.Helper()
+		v, set, err := ConfigLastOf(context.Background(), dir, "core.commentChar", "core.commentString")
+		if err != nil {
+			t.Fatalf("ConfigLastOf: %v", err)
+		}
+		return v, set
+	}
+	if v, set := last(); set || v != "" {
+		t.Fatalf("both unset = (%q, %v), want (\"\", false)", v, set)
+	}
+	git(t, dir, "akira-toriyama", "config", "core.commentcharx", "decoy")
+	if v, set := last(); set {
+		t.Fatalf("a key that only starts with a wanted name was read: %q", v)
+	}
+	git(t, dir, "akira-toriyama", "config", "core.commentChar", ";")
+	git(t, dir, "akira-toriyama", "config", "core.commentString", "//")
+	if v, _ := last(); v != "//" {
+		t.Fatalf("commentChar then commentString = %q, want the later \"//\"", v)
+	}
+	git(t, dir, "akira-toriyama", "config", "--unset", "core.commentChar")
+	git(t, dir, "akira-toriyama", "config", "core.commentChar", ";")
+	if v, _ := last(); v != ";" {
+		t.Fatalf("commentString then commentChar = %q, want the later \";\"", v)
+	}
+	t.Setenv("GIT_CONFIG_PARAMETERS", "'core.commentstring=@'")
+	if v, _ := last(); v != "@" {
+		t.Fatalf("-c after the file = %q, want \"@\"", v)
+	}
+	t.Setenv("GIT_CONFIG_PARAMETERS", "")
+	git(t, dir, "akira-toriyama", "config", "--unset", "core.commentChar")
+	git(t, dir, "akira-toriyama", "config", "core.commentString", "// ")
+	if v, _ := last(); v != "// " {
+		t.Fatalf("a quoted trailing space = %q, want it kept", v)
+	}
+}
+
 // TestGitPath: where git keeps one of its own files is git's answer — in a
 // linked worktree MERGE_MSG lives under that worktree's own git directory, not
 // the main checkout's, which is where the commit-msg hook's merge check looks.

@@ -1,9 +1,9 @@
 diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
-index 37b04c7..ede4253 100644
+index ebb170e..78ec32e 100644
 --- a/.github/workflows/lint.yml
 +++ b/.github/workflows/lint.yml
-@@ -221,12 +221,4 @@ jobs:
-               jq -r '"::error::glyph lint: \(.error.message)"' /tmp/glyph-lint.json || true
+@@ -260,14 +260,6 @@ jobs:
+               jq -r '"::error::glyph lint: \(.error.message)"' "$RUNNER_TEMP/glyph-lint.json" || true
              fi
            fi
 -          # The annotate-only arm swallows the GATE code and nothing else: an
@@ -15,3 +15,5 @@ index 37b04c7..ede4253 100644
 -            exit 0
 -          fi
            exit "$status"
+ 
+       # The squash title: a squash merge records the PR title as the subject of

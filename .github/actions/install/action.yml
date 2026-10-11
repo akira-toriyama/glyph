@@ -2,9 +2,10 @@ name: Install glyph
 description: >-
   Download a pinned glyph release binary, verify it against the release's
   checksums.txt AND its build provenance (`gh attestation verify`, fail-closed
-  with a bounded retry), and add it to $GITHUB_PATH. Detects the runner's OS and
-  arch, so the one action serves the Linux lint/preview jobs and the macOS
-  release job alike.
+  with a bounded retry), confirm it reports the release it was asked for, and
+  add it to $GITHUB_PATH. Detects the runner's OS and arch, so the one action
+  serves the Linux lint/preview jobs and the macOS release job alike. Runs
+  curl, tar, gh and jq; every GitHub-hosted Linux and macOS image has them.
 
 # This action is the SINGLE SOURCE of glyph's security-critical install logic.
 # It used to live inline in three reusable workflows (lint.yml, pr-verdict.yml,
@@ -22,11 +23,19 @@ description: >-
 # (e.g. sill's api-guard) references it the other way, by full path + tag:
 #   - uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z
 #     with: { version: vX.Y.Z, token: ${{ github.token }} }
+#
+# The step runs curl, tar, gh, jq and sha256sum (Linux) or shasum (macOS). jq
+# reads the binary's `version --json`; a runner without it fails the compare
+# with the "reports version ''" annotation, which reads as the binary's fault.
+# Every GitHub-hosted image lists jq — the Ubuntu 22.04/24.04/26.04 and macOS
+# 14/15/26 READMEs in actions/runner-images (read 2026-10-11 at 8197087) — so
+# only a self-hosted runner has anything to install.
 
 inputs:
   version:
     description: >-
-      The glyph release to install (vX.Y.Z). Required. glyph's own reusables
+      The glyph release to install: a release tag, vX.Y.Z or a
+      vX.Y.Z-<pre-release> candidate. Required. glyph's own reusables
       derive it from job.workflow_ref (the tag the caller pinned), so the binary
       revision always matches the workflow revision with no hand-bumped default
       to drift; a consumer passes the tag it pinned this action to.
@@ -53,6 +62,18 @@ runs:
       run: |
         set -euo pipefail
         ver="$VER"
+
+        # Refused before anything is fetched: the value goes into the download
+        # URL, where `latest`, a v-less 1.0.0 or a typo is a 404 on a URL nobody
+        # published, reported as a curl failure. A pre-release suffix passes —
+        # the reusables install release candidates by design (.goreleaser.yaml
+        # marks them prerelease). %q keeps a newline in the input from opening a
+        # second workflow command.
+        tag_re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+        if ! [[ $ver =~ $tag_re ]]; then
+          printf '::error::glyph install: version %q is not a release tag (vX.Y.Z, or vX.Y.Z-<pre-release>)\n' "$ver"
+          exit 1
+        fi
 
         # GoReleaser ships glyph_<ver>_<os>_<arch>.tar.gz for {linux,darwin} x
         # {amd64,arm64}. Map the runner's OWN OS/arch (RUNNER_OS / RUNNER_ARCH
@@ -110,10 +131,33 @@ runs:
           sleep "$((i * 3))"
         done
 
+        # The binary must say it is the release it was fetched as before it
+        # goes onto PATH: an -X stamp that missed ships a binary reporting
+        # "dev", and the checks above prove only who built the tarball, not
+        # which version it is. It runs from a staging directory, so a refusal
+        # leaves nothing in the PATH directory. The v-less form is the stamp of
+        # every release through v5.0.0 (GoReleaser's {{.Version}}), and it
+        # stays installable: a reusable pinned at a SHA or branch takes its
+        # binary from the glyph-version input, which names an already released
+        # tag (glyph-test's release.yml records a drill doing exactly that).
+        # That .goreleaser.yaml now stamps {{.Tag}} is internal/workflows' to hold.
+        stage="$RUNNER_TEMP/glyph-install"
+        mkdir -p "$stage"
+        tar -xzf "$RUNNER_TEMP/$file" -C "$stage" glyph
+        # A binary that cannot answer (no --json before v1.0.0, or a crash)
+        # reports "" and is refused with the same annotation.
+        got="$("$stage/glyph" version --json | jq -r .version)" || got=""
+        case "$got" in
+          "$ver" | "${ver#v}") ;;
+          *)
+            printf '::error::glyph install: the %s release binary reports version %q\n' "$ver" "$got"
+            exit 1
+            ;;
+        esac
+
         mkdir -p "$HOME/.local/bin"
-        tar -xzf "$RUNNER_TEMP/$file" -C "$HOME/.local/bin" glyph
-        # Propagates to later JOB steps (not to this step — a composite action's
-        # own step cannot see its GITHUB_PATH write), so the smoke below runs the
-        # binary by absolute path while downstream steps call bare `glyph`.
+        mv "$stage/glyph" "$HOME/.local/bin/glyph"
+        # Propagates to later JOB steps, not to this one — a composite action's
+        # own step cannot see its GITHUB_PATH write.
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-        "$HOME/.local/bin/glyph" version
+        echo "installed glyph $got"

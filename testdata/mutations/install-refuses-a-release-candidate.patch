@@ -1,0 +1,13 @@
+diff --git a/.github/actions/install/action.yml b/.github/actions/install/action.yml
+index 46b4007..c43ec30 100644
+--- a/.github/actions/install/action.yml
++++ b/.github/actions/install/action.yml
+@@ -61,7 +61,7 @@ runs:
+         # the reusables install release candidates by design (.goreleaser.yaml
+         # marks them prerelease). %q keeps a newline in the input from opening a
+         # second workflow command.
+-        tag_re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
++        tag_re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+         if ! [[ $ver =~ $tag_re ]]; then
+           printf '::error::glyph install: version %q is not a release tag (vX.Y.Z, or vX.Y.Z-<pre-release>)\n' "$ver"
+           exit 1

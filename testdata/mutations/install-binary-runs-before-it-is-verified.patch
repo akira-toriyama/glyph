@@ -1,29 +1,72 @@
 diff --git a/.github/actions/install/action.yml b/.github/actions/install/action.yml
-index cfe4fde..97ad65c 100644
+index 46b4007..f78e59a 100644
 --- a/.github/actions/install/action.yml
 +++ b/.github/actions/install/action.yml
-@@ -81,6 +81,13 @@ runs:
+@@ -94,35 +94,6 @@ runs:
          # an outage resets connections as often as it answers 5xx.
          curl -fsSL --retry 5 --retry-connrefused -o "$RUNNER_TEMP/$file" "$base/$file"
          curl -fsSL --retry 5 --retry-connrefused -o "$RUNNER_TEMP/glyph-checksums.txt" "$base/checksums.txt"
-+        mkdir -p "$HOME/.local/bin"
-+        tar -xzf "$RUNNER_TEMP/$file" -C "$HOME/.local/bin" glyph
-+        # Propagates to later JOB steps (not to this step — a composite action's
-+        # own step cannot see its GITHUB_PATH write), so the smoke below runs the
-+        # binary by absolute path while downstream steps call bare `glyph`.
-+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-+        "$HOME/.local/bin/glyph" version
-         # An empty grep (checksum line missing) yields empty stdin, which the
-         # `-c` check fails — so a missing entry fails the step, by design.
-         ( cd "$RUNNER_TEMP" && grep -F "  $file" glyph-checksums.txt | sha_check )
-@@ -110,10 +117,3 @@ runs:
-           sleep "$((i * 3))"
-         done
- 
--        mkdir -p "$HOME/.local/bin"
--        tar -xzf "$RUNNER_TEMP/$file" -C "$HOME/.local/bin" glyph
--        # Propagates to later JOB steps (not to this step — a composite action's
--        # own step cannot see its GITHUB_PATH write), so the smoke below runs the
--        # binary by absolute path while downstream steps call bare `glyph`.
--        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
--        "$HOME/.local/bin/glyph" version
+-        # An empty grep (checksum line missing) yields empty stdin, which the
+-        # `-c` check fails — so a missing entry fails the step, by design.
+-        ( cd "$RUNNER_TEMP" && grep -F "  $file" glyph-checksums.txt | sha_check )
+-
+-        # Provenance gate: the sha256 above only proves the tarball matches THIS
+-        # release's own checksums.txt (self-consistent — a forged release could
+-        # ship a matching pair). `gh attestation verify` also proves the artifact
+-        # was built by glyph's release workflow (goreleaser.yml — the signer
+-        # identity for v0.3.0+; earlier releases were attested under the
+-        # pre-rename release.yml, and their lockstep reusable tags carry that
+-        # path). Fail-closed, with a bounded retry sized like the curls' window
+-        # (~30s): the attestations API / Sigstore transparency log rides the
+-        # same infrastructure that just proved able to stay down past a short
+-        # retry (t-yj1b), and a CI gate must not go red on a transient hiccup.
+-        # Still hard-fails after the last attempt.
+-        for i in 1 2 3 4 5; do
+-          if gh attestation verify "$RUNNER_TEMP/$file" \
+-               --repo akira-toriyama/glyph \
+-               --signer-workflow akira-toriyama/glyph/.github/workflows/goreleaser.yml; then
+-            break
+-          fi
+-          if [ "$i" -eq 5 ]; then
+-            echo "attestation verification failed after 5 attempts" >&2
+-            exit 1
+-          fi
+-          echo "attestation verify failed (attempt $i); retrying" >&2
+-          sleep "$((i * 3))"
+-        done
+-
+         # The binary must say it is the release it was fetched as before it
+         # goes onto PATH: an -X stamp that missed ships a binary reporting
+         # "dev", and the checks above prove only who built the tarball, not
+@@ -153,3 +124,31 @@ runs:
+         # own step cannot see its GITHUB_PATH write.
+         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+         echo "installed glyph $got"
++        # An empty grep (checksum line missing) yields empty stdin, which the
++        # `-c` check fails — so a missing entry fails the step, by design.
++        ( cd "$RUNNER_TEMP" && grep -F "  $file" glyph-checksums.txt | sha_check )
++
++        # Provenance gate: the sha256 above only proves the tarball matches THIS
++        # release's own checksums.txt (self-consistent — a forged release could
++        # ship a matching pair). `gh attestation verify` also proves the artifact
++        # was built by glyph's release workflow (goreleaser.yml — the signer
++        # identity for v0.3.0+; earlier releases were attested under the
++        # pre-rename release.yml, and their lockstep reusable tags carry that
++        # path). Fail-closed, with a bounded retry sized like the curls' window
++        # (~30s): the attestations API / Sigstore transparency log rides the
++        # same infrastructure that just proved able to stay down past a short
++        # retry (t-yj1b), and a CI gate must not go red on a transient hiccup.
++        # Still hard-fails after the last attempt.
++        for i in 1 2 3 4 5; do
++          if gh attestation verify "$RUNNER_TEMP/$file" \
++               --repo akira-toriyama/glyph \
++               --signer-workflow akira-toriyama/glyph/.github/workflows/goreleaser.yml; then
++            break
++          fi
++          if [ "$i" -eq 5 ]; then
++            echo "attestation verification failed after 5 attempts" >&2
++            exit 1
++          fi
++          echo "attestation verify failed (attempt $i); retrying" >&2
++          sleep "$((i * 3))"
++        done
