@@ -176,9 +176,9 @@ func TestArtifactArityAcceptsNeither(t *testing.T) {
 			cmd.Env = append(os.Environ(), "APP="+c.app, "BINARY="+c.bin)
 			out, err := cmd.CombinedOutput()
 			exit := 0
-			var ee *exec.ExitError
+			ee, exited := errors.AsType[*exec.ExitError](err)
 			switch {
-			case errors.As(err, &ee):
+			case exited:
 				exit = ee.ExitCode()
 			case err != nil:
 				t.Fatalf("running the validation step: %v", err)

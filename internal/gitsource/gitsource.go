@@ -149,8 +149,7 @@ func RemoteURLs(ctx context.Context, dir string) (map[string]string, error) {
 		if ierr := interrupted(ctx); ierr != nil {
 			return nil, ierr
 		}
-		var ee *exec.ExitError
-		if errors.As(err, &ee) && ee.ExitCode() == 1 {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 1 {
 			return map[string]string{}, nil
 		}
 		return nil, core.APIf("git config --get-regexp: %s", distill(stderr.Bytes(), err))
@@ -193,8 +192,7 @@ func DefaultBranch(ctx context.Context, dir, remote string) (string, error) {
 		if ierr := interrupted(ctx); ierr != nil {
 			return "", ierr
 		}
-		var ee *exec.ExitError
-		if errors.As(err, &ee) && ee.ExitCode() == 1 {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 1 {
 			return "", nil
 		}
 		// A remote name config accepts and refs refuse (`remote.mirror..x.url`,
@@ -216,8 +214,8 @@ func refNameRefused(ctx context.Context, name string) bool {
 	// #nosec G204 -- the binary is the fixed literal "git" and name begins
 	// with the caller's literal "refs/", so it cannot be read as an option.
 	err := exec.CommandContext(ctx, "git", "check-ref-format", name).Run()
-	var ee *exec.ExitError
-	return errors.As(err, &ee) && ee.ExitCode() == 1
+	ee, ok := errors.AsType[*exec.ExitError](err)
+	return ok && ee.ExitCode() == 1
 }
 
 // Tags lists all tags in git's `--sort=-v:refname` order, unfiltered — the
@@ -312,8 +310,7 @@ func namesCommit(ctx context.Context, dir, rev string) (bool, error) {
 		if ierr := interrupted(ctx); ierr != nil {
 			return false, ierr
 		}
-		var ee *exec.ExitError
-		if errors.As(err, &ee) && ee.ExitCode() == 1 {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 1 {
 			return false, nil
 		}
 		return false, core.APIf("git rev-parse: %s", distill(stderr.Bytes(), err))
@@ -336,8 +333,7 @@ func IsTag(ctx context.Context, dir, name string) (bool, error) {
 		if ierr := interrupted(ctx); ierr != nil {
 			return false, ierr
 		}
-		var ee *exec.ExitError
-		if errors.As(err, &ee) && ee.ExitCode() == 1 {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 1 {
 			return false, nil
 		}
 		return false, core.APIf("git show-ref: %s", distill(stderr.Bytes(), err))
@@ -559,8 +555,7 @@ func configGet(ctx context.Context, dir, key string, typ ...string) (string, boo
 		if ierr := interrupted(ctx); ierr != nil {
 			return "", false, ierr
 		}
-		var ee *exec.ExitError
-		if errors.As(err, &ee) && ee.ExitCode() == 1 {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 1 {
 			return "", false, nil
 		}
 		return "", false, core.APIf("git config: %s", distill(stderr.Bytes(), err))
@@ -624,8 +619,7 @@ func IsAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
 		if ierr := interrupted(ctx); ierr != nil {
 			return false, ierr
 		}
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
+		if _, ok := errors.AsType[*exec.ExitError](err); ok {
 			return false, nil
 		}
 		return false, core.APIf("git merge-base: %s", distill(stderr.Bytes(), err))
@@ -742,8 +736,8 @@ func (e *shallowBoundary) Unwrap() error { return e.err }
 // that it could not ask attribution, the walk places the commit by its scope
 // and sigil alone — branch here.
 func IsShallowBoundary(err error) bool {
-	var sb *shallowBoundary
-	return errors.As(err, &sb)
+	_, ok := errors.AsType[*shallowBoundary](err)
+	return ok
 }
 
 // MergeBase returns the best common ancestor of revs (git merge-base

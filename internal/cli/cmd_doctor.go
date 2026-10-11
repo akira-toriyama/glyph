@@ -216,8 +216,7 @@ func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.H
 	if err == nil {
 		return &doctor.HookProbe{Fired: true, Exit: 0}
 	}
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 		return &doctor.HookProbe{Fired: true, Exit: exit.ExitCode()}
 	}
 	return &doctor.HookProbe{Err: err}

@@ -295,8 +295,7 @@ func gitRead(dir string, args ...string) (string, error) {
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull)
 	out, err := cmd.Output()
 	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 			return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(ee.Stderr)))
 		}
 		return "", err
