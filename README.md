@@ -238,6 +238,22 @@ for a merge-preview comment on every PR, and `release.yml` to keep a rolling
 draft release maintained on every push to `main`. Publishing the draft is the
 release: the tag is created by that human act, never by CI.
 
+The draft is always one a human can publish. Every published release sets a
+**floor** (per line under `[[packages]]`), wherever its commit sits: a
+computed version that is not strictly greater than the highest of them — equal included, because that
+tag is taken, or burned for good if its release was deleted — is refused at
+exit 4 before anything is written, `--dry-run` included, with both versions
+named. DESIGN §4 has the rule and its prices.
+
+A tag-push job — a GoReleaser step rendering the body of the tag it was just
+handed — cannot walk with a bare `--since-tag`: at that moment the new tag is
+itself the highest, and the range would be empty. `--since-tag=below:vX.Y.Z`
+resolves the highest version tag HEAD contains strictly **below** the bound
+instead, so cutting a v0.8.3 hotfix while v0.9.0 exists walks from v0.8.2,
+and with nothing below the bound it walks the whole history, as a first
+release does. glyph's own `goreleaser.yml` renders its release notes with
+`glyph notes --since-tag="below:$GITHUB_REF_NAME"`.
+
 Two wired-in behaviours worth knowing before you read them out of the YAML:
 the lint caller's optional `push: branches: [main]` arm runs the same rules
 over each direct push to the default branch but only **annotates** — that
@@ -371,6 +387,28 @@ a listed commit, or the one a `@users.noreply.github.com` author address
 carries; a commit from any other address is credited by its git author name,
 plain, so a display name that happens to look like a handle never pages the
 stranger who owns it.
+
+The commit author's own text — the subject, the scope, any group a pattern
+captures — renders as prose that cannot reach past its line: glyph puts a
+backslash before every `<`, every `[`, the `:` of an `http://` / `https://` /
+`ftp://`, the `.` of a `www.` and an entity-shaped `&`, and fences every
+`@handle` as code, while emphasis keeps working. A subject written as
+
+```
+:sparkles:^ [click here](https://evil.example) and @octocat and <img src=x onerror=1> and **bold**
+```
+
+reaches the notes as
+
+```
+:sparkles:^ \[click here](https\://evil.example) and `@octocat` and \<img src=x onerror=1> and **bold**
+```
+
+— no link, no mention, no live tag, the bold still bold. A raw tag is not
+only a risk: GitHub deletes an unknown one outright (`Optional<Any>` renders
+as `Optional`), so the escape is also what keeps real subjects whole. DESIGN
+§2 and §3 hold the rulings, and `internal/markdown/escape.go` the rules with
+the renderer measurements behind each.
 
 Two more of a commit's facts live below its subject, in the **git trailer
 block**, and glyph parses that block rather than grepping for the lines it
