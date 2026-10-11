@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"slices"
 	"strconv"
@@ -368,15 +369,36 @@ func TopLevel(ctx context.Context, dir string) (string, error) {
 	return path, nil
 }
 
+// ErrNoRepository is InsideGitDir's answer where git itself says dir is in no
+// repository — the one failure that means "outside a checkout".
+var ErrNoRepository = errors.New("not a git repository")
+
 // InsideGitDir reports whether dir is inside a git directory — a checkout's
 // .git or a bare repository — the places TopLevel fails although a repository
-// is there. Outside any repository it fails, as TopLevel does.
+// is there. Where git answers "not a git repository" it returns
+// ErrNoRepository; every other failure (dubious ownership, a broken config, no
+// git) is a core.APIf carrying git's message, because a repository git will
+// not read is not the absence of one (TestInitCannotRunWhereGitWillNotReadTheRepository).
+//
+// Both kinds exit 128, so the message is the only discriminator, and it is
+// read under LC_ALL=C: git translates it through gettext.
 func InsideGitDir(ctx context.Context, dir string) (bool, error) {
-	out, err := run(ctx, dir, "rev-parse", "--is-inside-git-dir")
-	if err != nil {
-		return false, err
+	// #nosec G204 -- the binary is the fixed literal "git" and every argument
+	// here is a constant of this package.
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--is-inside-git-dir")
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		if ierr := interrupted(ctx); ierr != nil {
+			return false, ierr
+		}
+		if strings.HasPrefix(strings.TrimSpace(stderr.String()), "fatal: not a git repository") {
+			return false, ErrNoRepository
+		}
+		return false, core.APIf("git rev-parse --is-inside-git-dir: %s", distill(stderr.Bytes(), err))
 	}
-	return strings.TrimSpace(string(out)) == "true", nil
+	return strings.TrimSpace(stdout.String()) == "true", nil
 }
 
 // HeadTrees lists every directory HEAD's tree records, at any depth, as

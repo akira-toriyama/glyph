@@ -493,9 +493,15 @@ reinterprets past commits, accepted). The commit-msg hook, CI and a
 subdirectory shell all read the same file by construction, and `init` writes
 that same file: it asks git for the top level as every other command does and
 writes there from any subdirectory, falling back to the current directory
-only where git reports no repository at all (outside a checkout) — never
-because a signal interrupted the question, which exits 130 with nothing
-written. Inside a git directory (a checkout's `.git`, a bare repository) git
+only where git itself answers "not a git repository" (outside a checkout;
+read under `LC_ALL=C`, since git translates it) — never because a signal
+interrupted the question, which exits 130 with nothing written, and never
+because git failed some other way: a repository git will not read (dubious
+ownership, a broken `.git/config`) or no git at all **exits 4** with git's
+message and writes nothing. Falling back there wrote `sub/glyph.toml` at exit
+0 — the same inert file — for both measured shapes (ca118a8;
+`TestInitCannotRunWhereGitWillNotReadTheRepository`, mutation row
+`init-writes-where-git-will-not-read-the-repository`). Inside a git directory (a checkout's `.git`, a bare repository) git
 names no top level either, and `init` **refuses at exit 2**, naming the work
 tree: falling back there wrote `.git/glyph.toml` at exit 0, a file no command
 reads, while `lint` at the top level still said there was none (measured on

@@ -178,6 +178,49 @@ func TestInitRefusesInsideTheGitDirectory(t *testing.T) {
 	}
 }
 
+// TestInitCannotRunWhereGitWillNotReadTheRepository: a repository git refuses
+// to read — dubious ownership (safe.directory, common in containers and CI) or
+// a broken .git/config — fails both of init's reads with 128, and init read
+// that as "no repository" and wrote sub/glyph.toml at exit 0, the inert file
+// t-f2cb stopped (measured on ca118a8 for both). Only git's own "not a git
+// repository" is the current directory's case; anything else is no
+// trustworthy answer, exit 4, with git's message, and nothing written.
+func TestInitCannotRunWhereGitWillNotReadTheRepository(t *testing.T) {
+	testutil.GitOrSkip(t)
+	for name, arrange := range map[string]func(t *testing.T, top string){
+		"dubious ownership": func(t *testing.T, _ string) {
+			t.Setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
+		},
+		"a broken .git/config": func(t *testing.T, top string) {
+			appendTo(t, top, ".git/config", "[core\n bad\n")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			top := t.TempDir()
+			testutil.Git(t, top, "akira-toriyama", "init", "-q", "-b", "main")
+			sub := filepath.Join(top, "sub")
+			if err := os.MkdirAll(sub, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			arrange(t, top)
+			t.Chdir(sub)
+
+			code, stdout, stderr := runGlyph(t, "init", "--gemoji")
+			if code != int(core.CodeAPI) {
+				t.Fatalf("init in a repository git will not read exited %d, want exactly %d\nstdout: %s\nstderr: %s", code, core.CodeAPI, stdout, stderr)
+			}
+			if !strings.Contains(stderr, "fatal:") {
+				t.Errorf("the error must carry git's own message:\n%s", stderr)
+			}
+			for _, dir := range []string{sub, top} {
+				if _, err := os.Lstat(filepath.Join(dir, "glyph.toml")); !os.IsNotExist(err) {
+					t.Errorf("init could not run and still wrote %s", filepath.Join(dir, "glyph.toml"))
+				}
+			}
+		})
+	}
+}
+
 // TestInitInterruptDuringTopLevelReadWritesNothing: init asks git for the top
 // level before it writes, and a signal landing while that question is in
 // flight is the user's abort — not git saying "no checkout here", the one
