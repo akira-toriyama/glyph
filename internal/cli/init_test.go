@@ -221,6 +221,26 @@ func TestInitCannotRunWhereGitWillNotReadTheRepository(t *testing.T) {
 	}
 }
 
+// TestInitOutsideARepositoryReadsGitsAnswerPastItsTrace: "not a git repository"
+// is recognised on the first fatal: line, not at the start of stderr. Under
+// GIT_TRACE=1 git writes trace lines before it, and matching the stream's start
+// turned an ordinary outside-a-checkout init into exit 4 with nothing written
+// (review u6b-3, measured on 20576c8; base wrote ./glyph.toml).
+func TestInitOutsideARepositoryReadsGitsAnswerPastItsTrace(t *testing.T) {
+	testutil.GitOrSkip(t)
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	t.Setenv("GIT_TRACE", "1")
+
+	code, _, stderr := runGlyph(t, "init", "--gemoji")
+	if code != 0 {
+		t.Fatalf("init outside a repository under GIT_TRACE=1 exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(cwd, "glyph.toml")); err != nil {
+		t.Fatalf("outside a repository init writes ./glyph.toml: %v", err)
+	}
+}
+
 // TestInitInterruptDuringTopLevelReadWritesNothing: init asks git for the top
 // level before it writes, and a signal landing while that question is in
 // flight is the user's abort — not git saying "no checkout here", the one

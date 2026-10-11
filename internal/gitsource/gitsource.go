@@ -418,10 +418,13 @@ func InsideGitDir(ctx context.Context, dir string) (bool, error) {
 		if ierr := interrupted(ctx); ierr != nil {
 			return false, ierr
 		}
-		if strings.HasPrefix(strings.TrimSpace(stderr.String()), "fatal: not a git repository") {
+		// distill's first fatal: line, not the stream's start: GIT_TRACE and
+		// friends write lines ahead of it (TestInitOutsideARepositoryReadsGitsAnswerPastItsTrace).
+		why := distill(stderr.Bytes(), err)
+		if strings.HasPrefix(why, "fatal: not a git repository") {
 			return false, ErrNoRepository
 		}
-		return false, core.APIf("git rev-parse --is-inside-git-dir: %s", distill(stderr.Bytes(), err))
+		return false, core.APIf("git rev-parse --is-inside-git-dir: %s", why)
 	}
 	return strings.TrimSpace(stdout.String()) == "true", nil
 }
