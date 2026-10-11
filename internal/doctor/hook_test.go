@@ -292,7 +292,7 @@ func TestPrePushHookSaysWhenNoRemoteHeadIsRecorded(t *testing.T) {
 	if !strings.Contains(c.Observed, "origin") || strings.Contains(c.Observed, "upstream") {
 		t.Errorf("the observation must name exactly the remote with no recorded head: %q", c.Observed)
 	}
-	if !strings.Contains(c.Fix, "git remote set-head origin -a") {
+	if !strings.Contains(c.Fix, "git remote set-head 'origin' -a") {
 		t.Errorf("the fix must be the command that records the head: %q", c.Fix)
 	}
 
@@ -303,10 +303,10 @@ func TestPrePushHookSaysWhenNoRemoteHeadIsRecorded(t *testing.T) {
 	if refless.Status != StatusAdvice || !strings.Contains(refless.Observed, "my fork") {
 		t.Fatalf("an unplaceable remote: want advice naming it, got %s: %s", refless.Status, refless.Observed)
 	}
-	if !strings.Contains(refless.Fix, "git remote rename 'my fork' <name>") || strings.Contains(refless.Fix, "set-head my fork") {
-		t.Errorf("the fix for `my fork` must rename the remote, never set-head it: %q", refless.Fix)
+	if !strings.Contains(refless.Fix, hook.SetHeadRemedy("my fork", false)) || strings.Contains(refless.Fix, "set-head 'my fork'") {
+		t.Errorf("the fix for `my fork` must rename its section, never set-head it: %q", refless.Fix)
 	}
-	if !strings.Contains(refless.Fix, "git remote set-head plain -a") {
+	if !strings.Contains(refless.Fix, "git remote set-head 'plain' -a") {
 		t.Errorf("a plain name keeps set-head: %q", refless.Fix)
 	}
 

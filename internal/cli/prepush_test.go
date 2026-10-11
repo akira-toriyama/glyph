@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/config"
+	"github.com/akira-toriyama/glyph/v5/internal/hook"
 	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
@@ -167,7 +168,7 @@ func TestPrePushDefaultBranchUnresolvedWarnsOnly(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("an unresolved default branch must not block; exited %d\nstderr: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "git remote set-head origin -a") {
+	if !strings.Contains(stderr, "git remote set-head 'origin' -a") {
 		t.Fatalf("the warning must name the command that restores the ref:\n%s", stderr)
 	}
 }
@@ -243,9 +244,9 @@ func TestPrePushResolvesASpacedRemoteNameFromItsURL(t *testing.T) {
 		t.Fatalf("the URL must resolve to the remote `my fork`:\n%s", stderr)
 	}
 	// git cannot place `my fork` in a ref, so set-head is no remedy (it exits
-	// 129 unquoted, 1 quoted); renaming the remote is (review u6-2).
-	if !strings.Contains(stderr, "`git remote rename 'my fork' <name> && git remote set-head <name> -a` restores it") || strings.Contains(stderr, "set-head my fork") {
-		t.Fatalf("the remedy for `my fork` must rename the remote, never set-head it:\n%s", stderr)
+	// 129 unquoted, 1 quoted); renaming its section is (reviews u6-2, u6b-1).
+	if !strings.Contains(stderr, "`"+hook.SetHeadRemedy("my fork", false)+"` restores it") || strings.Contains(stderr, "set-head 'my fork'") {
+		t.Fatalf("the remedy for `my fork` must rename its section, never set-head it:\n%s", stderr)
 	}
 }
 

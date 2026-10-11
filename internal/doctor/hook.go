@@ -297,7 +297,8 @@ func checkPrePushHook(dir string, dirErr error, probe *HookProbe, heads map[stri
 		}
 		if len(unplaceable) > 0 {
 			why = append(why, fmt.Sprintf("git cannot place the name %s in a ref, so no default branch can ever be "+
-				"recorded under it and `git remote set-head` fails there — rename the remote first", join(unplaceable)))
+				"recorded under it and `git remote set-head` fails there; `git remote rename` fails too once the remote has git's "+
+				"usual fetch refspec, so the fix renames its config section, rewrites the refspec and fetches first", join(unplaceable)))
 		}
 	}
 	c.Observed += ", but " + strings.Join(gaps, "; and ")
