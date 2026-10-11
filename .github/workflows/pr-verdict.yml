@@ -365,7 +365,7 @@ jobs:
           if [ "$COMPOSE_OUTCOME" != success ]; then
             {
               echo '<!-- glyph-pr-verdict -->'
-              echo "⚠️ No release verdict for this push (\`${HEAD_SHA:0:7}\`) — glyph could not compute one, so the verdict an earlier push posted here no longer applies."
+              echo "⚠️ glyph could not compute a release verdict at \`${HEAD_SHA:0:7}\`."
               echo
               echo "A commit the convention rejects is the usual cause, and the **commit-lint** check names it; otherwise [this run's log]($GITHUB_SERVER_URL/$GH_REPO_SLUG/actions/runs/$GITHUB_RUN_ID) carries glyph's error. The next push whose verdict computes replaces this comment."
             } > "$RUNNER_TEMP/body.md"

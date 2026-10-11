@@ -143,12 +143,21 @@ esac
 				}
 				return
 			}
-			for _, part := range []string{preview.Marker + "\n", "`" + headSHA[:7] + "`", "commit-lint", runURL} {
+			for _, part := range []string{
+				preview.Marker + "\n",
+				"could not compute a release verdict at `" + headSHA[:7] + "`",
+				"commit-lint", runURL,
+			} {
 				if !strings.Contains(body, part) {
 					t.Errorf("the fallback body lacks %q — it must carry the marker the next push finds it by, "+
-						"name the head it speaks for, and point at commit-lint and this run's log — %s\nsent: %q",
-						part, c.why, body)
+						"say no verdict was computed at the head it names, and point at commit-lint and this "+
+						"run's log — %s\nsent: %q", part, c.why, body)
 				}
+			}
+			// The same body opens the comment on a pull whose first push is red,
+			// where no earlier verdict exists to speak of.
+			if strings.Contains(body, "earlier") {
+				t.Errorf("the fallback body refers to an earlier verdict, which a first red push never had\nsent: %q", body)
 			}
 			if !strings.HasPrefix(body, preview.Marker) {
 				t.Errorf("the fallback body does not open with %q, so the next push's lookup (startswith) "+

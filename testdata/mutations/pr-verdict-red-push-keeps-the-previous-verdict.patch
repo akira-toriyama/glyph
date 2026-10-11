@@ -1,5 +1,5 @@
 diff --git a/.github/workflows/pr-verdict.yml b/.github/workflows/pr-verdict.yml
-index af833c8..c7248f0 100644
+index 4787a90..03ed3c1 100644
 --- a/.github/workflows/pr-verdict.yml
 +++ b/.github/workflows/pr-verdict.yml
 @@ -362,7 +362,7 @@ jobs:
@@ -10,4 +10,4 @@ index af833c8..c7248f0 100644
 +          if false && [ "$COMPOSE_OUTCOME" != success ]; then
              {
                echo '<!-- glyph-pr-verdict -->'
-               echo "⚠️ No release verdict for this push (\`${HEAD_SHA:0:7}\`) — glyph could not compute one, so the verdict an earlier push posted here no longer applies."
+               echo "⚠️ glyph could not compute a release verdict at \`${HEAD_SHA:0:7}\`."
