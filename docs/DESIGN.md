@@ -3101,6 +3101,7 @@ not write over that push's comment. Executed by
 `TestPRVerdictCommentNeverOutlivesARedPush`, wired by
 `TestPRVerdictUpsertRunsAfterAFailedCompose`; mutation rows
 `pr-verdict-upsert-skipped-after-a-failed-compose`,
+`pr-verdict-cancelled-run-overwrites-the-newer-comment`,
 `pr-verdict-red-push-keeps-the-previous-verdict` and
 `pr-verdict-fallback-keyed-on-a-leftover-body`.
 
@@ -3173,7 +3174,8 @@ release asset agree on `vX.Y.Z`. Both checks run in
 `install-refuses-a-release-candidate`,
 `install-trusts-a-binary-that-reports-another-version`,
 `install-refuses-the-v-less-stamp-older-releases-carry`,
-`install-version-input-reopens-a-workflow-command` and
+`install-version-input-reopens-a-workflow-command`,
+`install-version-refusal-leaves-the-binary-on-path` and
 `release-binary-reports-its-version-without-the-v`.
 
 A CONSUMER that just wants the glyph CLI on a laptop-in-CI (e.g. a macOS

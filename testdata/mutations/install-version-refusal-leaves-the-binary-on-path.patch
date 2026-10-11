@@ -1,0 +1,13 @@
+diff --git a/.github/actions/install/action.yml b/.github/actions/install/action.yml
+index 46b4007..547b8ac 100644
+--- a/.github/actions/install/action.yml
++++ b/.github/actions/install/action.yml
+@@ -133,7 +133,7 @@ runs:
+         # binary from the glyph-version input, which names an already released
+         # tag (glyph-test's release.yml records a drill doing exactly that).
+         # That .goreleaser.yaml now stamps {{.Tag}} is internal/workflows' to hold.
+-        stage="$RUNNER_TEMP/glyph-install"
++        stage="$HOME/.local/bin"
+         mkdir -p "$stage"
+         tar -xzf "$RUNNER_TEMP/$file" -C "$stage" glyph
+         # A binary that cannot answer (no --json before v1.0.0, or a crash)
