@@ -46,12 +46,9 @@ EVIDENCE_PATTERN='^internal/workflows/.*_test\.go$'
 
 base="${1:?usage: sh scripts/dist-gate.sh <base-ref>}"
 
-if ! git rev-parse --verify --quiet "$base^{commit}" >/dev/null; then
-  echo "dist-gate: base '$base' does not resolve — fetch it first; a stale or shallow checkout cannot form the diff CI judges" >&2
-  exit 1
-fi
-
-changed="$(git diff --name-only "$base"...HEAD)"
+# shellcheck source=scripts/lib/range-gate.sh
+. ./scripts/lib/range-gate.sh
+changed="$(range_gate_changed "$base")"
 
 dist="$(printf '%s\n' "$changed" | grep -E "$DIST_PATTERN" || true)"
 if [ -z "$dist" ]; then
@@ -65,29 +62,8 @@ if printf '%s\n' "$changed" | grep -qE "$EVIDENCE_PATTERN"; then
   exit 0
 fi
 
-# The waiver. Range-wide claims cannot be made by one commit in the range, so —
-# exactly as go-bite demands for Bite-exempt — every non-merge commit must carry
-# the trailer, each with a real reason.
-waiver=''
-waived=1
-for commit in $(git rev-list --no-merges "$base"..HEAD); do
-  line="$(git show -s --format=%B "$commit" | git interpret-trailers --parse | grep '^Dist-gate-exempt:' | sed -n '1p')"
-  if [ -z "$line" ]; then
-    waived=0
-    break
-  fi
-  waiver="$(printf '%s' "${line#Dist-gate-exempt:}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-  case "$waiver" in
-    '')
-      echo "dist-gate: the Dist-gate-exempt trailer on $(git rev-parse --short "$commit") states no reason" >&2
-      exit 1 ;;
-    '<'*'>')
-      echo "dist-gate: the Dist-gate-exempt trailer on $(git rev-parse --short "$commit") is still the placeholder — state the real reason" >&2
-      exit 1 ;;
-  esac
-done
-if [ "$waived" = 1 ] && [ -n "$waiver" ]; then
-  echo "dist-gate: waived by a Dist-gate-exempt trailer on every commit — $waiver"
+if require_trailer_on_every_commit Dist-gate-exempt "$base"; then
+  echo "dist-gate: waived by a Dist-gate-exempt trailer on every commit — $RANGE_GATE_REASON"
   exit 0
 fi
 

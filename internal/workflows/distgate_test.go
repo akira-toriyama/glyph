@@ -65,10 +65,30 @@ func TestDistGateGuardsTheDistributionLayer(t *testing.T) {
 
 	// The waiver must stay a parsed trailer, not a substring search: a
 	// `Dist-gate-exempt:` line inside a body paragraph must waive nothing.
-	for _, want := range []string{"git interpret-trailers --parse", "Dist-gate-exempt:"} {
-		if !strings.Contains(script, want) {
-			t.Errorf("scripts/dist-gate.sh no longer contains %q; the waiver is either gone "+
-				"or has degraded into a substring match a body paragraph can satisfy", want)
+	assertParsedTrailerDemand(t, "scripts/dist-gate.sh", script, "Dist-gate-exempt")
+}
+
+// assertParsedTrailerDemand holds a range gate to the trailer rule both gates
+// share through scripts/lib/range-gate.sh: the gate sources the library and
+// demands its own key from it, and the library reads that key out of `git
+// interpret-trailers --parse` rather than out of the raw message.
+func assertParsedTrailerDemand(t *testing.T, name, script, key string) {
+	t.Helper()
+	body := code(script)
+	for _, want := range []string{
+		". ./scripts/lib/range-gate.sh",
+		"require_trailer_on_every_commit " + key + " ",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("%s no longer runs %q; the %s demand is either gone or no longer goes "+
+				"through the shared trailer rule", name, want, key)
+		}
+	}
+	lib := code(repoFile(t, filepath.Join("scripts", "lib", "range-gate.sh")))
+	for _, want := range []string{"git interpret-trailers --parse", `grep "^$1:"`} {
+		if !strings.Contains(lib, want) {
+			t.Errorf("scripts/lib/range-gate.sh no longer contains %q; the trailer rule has "+
+				"degraded into a substring match a body paragraph can satisfy", want)
 		}
 	}
 }

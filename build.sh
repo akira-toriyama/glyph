@@ -13,7 +13,7 @@ DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 PKG="github.com/akira-toriyama/glyph/v5/internal/version"
 
 mkdir -p bin
-GOTOOLCHAIN=local go build -trimpath \
+go build -trimpath \
   -ldflags "-s -w -X '${PKG}.Version=${VERSION}' -X '${PKG}.Commit=${COMMIT}' -X '${PKG}.Date=${DATE}'" \
   -o bin/glyph ./cmd/glyph
 

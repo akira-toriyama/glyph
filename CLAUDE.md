@@ -54,7 +54,7 @@ cut, then wrong fleet-wide until the pins move back.
   `internal/workflows/exitcodes_test.go` holds lockstep.
 
 Why: every fleet repo's lint gate, glyph's three reusable workflows, the installed commit-msg
-hook and `scripts/check.sh` all branch on the exact value. `lint --stdin=false` once exited
+hook and `scripts/smoke.sh` all branch on the exact value. `lint --stdin=false` once exited
 `3`, telling a CI gate that a commit violated the convention when none had been submitted.
 
 ## `glyph` on PATH is not your working tree
@@ -79,8 +79,9 @@ design, so a tree that does not compile turns the local gate into a silent no-op
   gate that did not run means no `✓` line and a non-zero exit).
   - It exits 2 on a dirty tree; `ALLOW_DIRTY=1` runs anyway and says so in the final line
     (a green over uncommitted work is a claim about nothing reproducible).
-  - A missing tool is a failure, not a skip — `nix develop` supplies `golangci-lint` and
-    `govulncheck`.
+  - A missing tool is a failure, not a skip — `nix develop` supplies `golangci-lint`.
+    govulncheck is not a local tool: the run fetches `@latest` as CI does, so it needs the
+    network.
   - Its `bite` step needs the `akira-toriyama/.github` clone beside this repo (or
     `GLYPH_FLEET_HUB`) and reads **committed** history only — an uncommitted test is
     invisible to it.
@@ -135,7 +136,8 @@ design, so a tree that does not compile turns the local gate into a silent no-op
   engine reporting an input the code fails. Rename it after the defect (Go replays any
   filename in the target directory) and commit it; never delete one to go green. Six entries
   are committed, all under `internal/markdown/`, and plain `go test` replays each as a named
-  subtest. A new `Fuzz` target needs no CI or check.sh edit — both loops discover targets.
+  subtest. A new `Fuzz` target needs no CI or check.sh edit — `scripts/fuzz-smoke.sh`, which
+  both run, discovers targets.
 
 ## `internal/emoji/table.json` is hand-edited, in order
 
