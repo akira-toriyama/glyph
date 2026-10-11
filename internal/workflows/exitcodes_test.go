@@ -288,7 +288,7 @@ func TestOutOfGoConsumersBranchOnTheContractIntegers(t *testing.T) {
 	if got := statusBranch.FindStringSubmatch(`          if [ "$status" -eq 1 ]; then`); got == nil || got[1] != "1" {
 		t.Fatalf("statusBranch no longer extracts the integer from a real shell branch (got %v)", got)
 	}
-	if got := jqCodeBranch.FindStringSubmatch(`jq -e '.error.code == 3' /tmp/glyph-lint.json`); got == nil || got[1] != "3" {
+	if got := jqCodeBranch.FindStringSubmatch(`jq -e '.error.code == 3' "$RUNNER_TEMP/glyph-lint.json"`); got == nil || got[1] != "3" {
 		t.Fatalf("jqCodeBranch no longer extracts the integer from a real jq branch (got %v)", got)
 	}
 
@@ -352,9 +352,9 @@ func TestOutOfGoConsumersBranchOnTheContractIntegers(t *testing.T) {
 		}
 	}
 
-	// NON-EMPTINESS, in the shape envelope_test.go uses. Measured floor is 18
-	// sites; zero means the branches were deleted or the scan broke, and both
-	// deserve a red test rather than a silent pass.
+	// NON-EMPTINESS, in the shape envelope_test.go uses: zero means the branches
+	// were deleted or the scan broke, and both deserve a red test rather than a
+	// silent pass.
 	if sites == 0 {
 		t.Error("the scan found no exit-code branches at all under .github/workflows or " +
 			"scripts. Either the fleet's machine consumers are gone, or this test is now " +

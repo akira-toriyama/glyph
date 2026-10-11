@@ -1,8 +1,8 @@
 diff --git a/.github/actions/install/action.yml b/.github/actions/install/action.yml
-index cfe4fde..3c98515 100644
+index 46b4007..96e5b50 100644
 --- a/.github/actions/install/action.yml
 +++ b/.github/actions/install/action.yml
-@@ -51,7 +51,7 @@ runs:
+@@ -52,7 +52,7 @@ runs:
          VER: ${{ inputs.version }}
          GH_TOKEN: ${{ inputs.token }}
        run: |
@@ -10,4 +10,4 @@ index cfe4fde..3c98515 100644
 +        set +e -uo pipefail
          ver="$VER"
  
-         # GoReleaser ships glyph_<ver>_<os>_<arch>.tar.gz for {linux,darwin} x
+         # Refused before anything is fetched: the value goes into the download

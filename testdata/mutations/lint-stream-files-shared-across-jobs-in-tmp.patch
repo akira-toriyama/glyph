@@ -1,0 +1,35 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+index ebb170e..f1214a0 100644
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -287,23 +287,23 @@ jobs:
+         run: |
+           set -euo pipefail
+           status=0
+-          glyph lint --pr "$PR_NUMBER" 2>"$RUNNER_TEMP/glyph-title.err" || status=$?
++          glyph lint --pr "$PR_NUMBER" 2>/tmp/glyph-title.err || status=$?
+           # Replayed before the green exit for the same reason as the range step:
+           # a warn-pattern title is green AND annotated, or the warning dies.
+-          cat "$RUNNER_TEMP/glyph-title.err" >&2
++          cat /tmp/glyph-title.err >&2
+           if [ "$status" -eq 0 ]; then
+             echo "title OK"
+             exit 0
+           fi
+-          sed -n '/^[{]/,$p' "$RUNNER_TEMP/glyph-title.err" > "$RUNNER_TEMP/glyph-title.json"
+-          if jq -e .error "$RUNNER_TEMP/glyph-title.json" >/dev/null 2>&1; then
++          sed -n '/^[{]/,$p' /tmp/glyph-title.err > /tmp/glyph-title.json
++          if jq -e .error /tmp/glyph-title.json >/dev/null 2>&1; then
+             # The retitle hint is for convention violations (exit 3) only — an
+             # infra failure (API/permissions, exit 4) gets the bare message.
+-            if jq -e '.error.code == 3' "$RUNNER_TEMP/glyph-title.json" >/dev/null 2>&1; then
++            if jq -e '.error.code == 3' /tmp/glyph-title.json >/dev/null 2>&1; then
+               jq -r '"::error::glyph lint: \(.error.message) — retitle the pull request to match one of this repository'"'"'s glyph.toml patterns"' \
+-                "$RUNNER_TEMP/glyph-title.json" || true
++                /tmp/glyph-title.json || true
+             else
+-              jq -r '"::error::glyph lint: \(.error.message)"' "$RUNNER_TEMP/glyph-title.json" || true
++              jq -r '"::error::glyph lint: \(.error.message)"' /tmp/glyph-title.json || true
+             fi
+           fi
+           exit "$status"

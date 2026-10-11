@@ -892,7 +892,8 @@ through the v0.5.0 tag). `.github/workflows/{lint,release,pr-verdict}.yml`,
 **composite action** — `.github/actions/install`: the **single** source of glyph's
 security-critical install logic (download the pinned tarball, verify it against
 `checksums.txt` **and** its build provenance with `gh attestation verify`,
-fail-closed with bounded retry, add it to `PATH`), auto-detecting the runner's
+fail-closed with bounded retry, confirm it reports the requested release tag,
+add it to `PATH`), auto-detecting the runner's
 OS/arch. The distinction that bites: a **relative** `uses: ./…` inside a
 *reusable workflow* resolves against the **caller's** workspace, never the
 reusable's own repo — so glyph's reusables check out glyph's source at

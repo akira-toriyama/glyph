@@ -1,0 +1,13 @@
+diff --git a/.github/actions/install/action.yml b/.github/actions/install/action.yml
+index 46b4007..508ffc4 100644
+--- a/.github/actions/install/action.yml
++++ b/.github/actions/install/action.yml
+@@ -140,7 +140,7 @@ runs:
+         # reports "" and is refused with the same annotation.
+         got="$("$stage/glyph" version --json | jq -r .version)" || got=""
+         case "$got" in
+-          "$ver" | "${ver#v}") ;;
++          "$ver"* | "${ver#v}"*) ;;
+           *)
+             printf '::error::glyph install: the %s release binary reports version %q\n' "$ver" "$got"
+             exit 1

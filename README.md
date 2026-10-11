@@ -136,7 +136,10 @@ jobs:
 ```
 
 or put the verified binary on a job's PATH yourself (checksum **and**
-attestation are checked, fail-closed):
+attestation are checked, fail-closed, and the binary must report the release
+tag you passed as `version`). The action runs `curl`, `tar`, `gh` and `jq`,
+which every GitHub-hosted Linux and macOS runner already has; a self-hosted
+runner needs them installed:
 
 ```yaml
 - uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z

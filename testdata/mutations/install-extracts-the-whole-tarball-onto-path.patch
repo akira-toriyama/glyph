@@ -1,13 +1,22 @@
 diff --git a/.github/actions/install/action.yml b/.github/actions/install/action.yml
-index cfe4fde..2ff2671 100644
+index 46b4007..a90873b 100644
 --- a/.github/actions/install/action.yml
 +++ b/.github/actions/install/action.yml
-@@ -111,7 +111,7 @@ runs:
-         done
+@@ -135,7 +135,7 @@ runs:
+         # That .goreleaser.yaml now stamps {{.Tag}} is internal/workflows' to hold.
+         stage="$RUNNER_TEMP/glyph-install"
+         mkdir -p "$stage"
+-        tar -xzf "$RUNNER_TEMP/$file" -C "$stage" glyph
++        tar -xzf "$RUNNER_TEMP/$file" -C "$stage"
+         # A binary that cannot answer (no --json before v1.0.0, or a crash)
+         # reports "" and is refused with the same annotation.
+         got="$("$stage/glyph" version --json | jq -r .version)" || got=""
+@@ -148,7 +148,7 @@ runs:
+         esac
  
          mkdir -p "$HOME/.local/bin"
--        tar -xzf "$RUNNER_TEMP/$file" -C "$HOME/.local/bin" glyph
-+        tar -xzf "$RUNNER_TEMP/$file" -C "$HOME/.local/bin"
-         # Propagates to later JOB steps (not to this step — a composite action's
-         # own step cannot see its GITHUB_PATH write), so the smoke below runs the
-         # binary by absolute path while downstream steps call bare `glyph`.
+-        mv "$stage/glyph" "$HOME/.local/bin/glyph"
++        mv "$stage"/* "$HOME/.local/bin/"
+         # Propagates to later JOB steps, not to this one — a composite action's
+         # own step cannot see its GITHUB_PATH write.
+         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
