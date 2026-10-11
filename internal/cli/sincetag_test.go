@@ -1762,10 +1762,11 @@ func TestSinceTagSquashMultiCommitDivergesWhenAPIDark(t *testing.T) {
 }
 
 // TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark is the same divergence at its
-// floor. A PR title carrying no gitmoji at all is perfectly legal — no gate reads
-// it — so under COMMIT_OR_PR_TITLE a multi-commit squash can put an unparseable
-// subject on main. Live the pull's commits still decide; dark there is nothing to
-// classify and the whole release counts none.
+// floor. A PR title carrying no gitmoji at all can still reach main — lint.yml's
+// squash-title step excludes bot pulls, and a repository need not call lint.yml —
+// so under COMMIT_OR_PR_TITLE a multi-commit squash can put an unparseable
+// subject on main. Live the pull's commits still decide; dark the subject is
+// dropped from the fold with a warning and the whole release counts none.
 func TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark(t *testing.T) {
 	dir, _ := testRepo(t)
 	sha := squashOf(t, dir, "Add a refresh endpoint", 6)
