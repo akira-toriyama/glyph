@@ -120,8 +120,7 @@ func TestEveryKindsScriptExitsOnlyOnAViolation(t *testing.T) {
 				out, err := cmd.CombinedOutput()
 
 				got := 0
-				var ee *exec.ExitError
-				if errors.As(err, &ee) {
+				if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 					got = ee.ExitCode()
 				} else if err != nil {
 					t.Fatalf("running the hook: %v\n%s", err, out)

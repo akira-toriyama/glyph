@@ -66,9 +66,9 @@ func TestPRVerdictBreakingFollowsLevelIntoNotComputed(t *testing.T) {
 				"RUNNER_TEMP="+dir,
 				"GITHUB_OUTPUT="+output)
 			out, err := cmd.CombinedOutput()
-			var ee *exec.ExitError
+			ee, exited := errors.AsType[*exec.ExitError](err)
 			switch {
-			case errors.As(err, &ee):
+			case exited:
 				t.Fatalf("the verdict step exited %d over %s:\n%s", ee.ExitCode(), c.envelope, out)
 			case err != nil:
 				t.Fatalf("running the verdict step: %v", err)

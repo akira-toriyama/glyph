@@ -290,8 +290,7 @@ func gitRead(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...) // #nosec G204 -- fixed binary, the test's own arguments
 	out, err := cmd.Output()
 	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 			return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(ee.Stderr)))
 		}
 		return "", err
