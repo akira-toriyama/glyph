@@ -35,6 +35,13 @@ func TestReleaseBodyCapBoundary(t *testing.T) {
 	}
 }
 
+// truncationNotice is the mark a cut preview comment ends in. It names no
+// command, by ruling (t-pcfj, option C): it used to say `glyph preview --pr <N>
+// --notes` prints the whole document, but that command's stdout IS the body
+// the workflow posts, cut at the same place under the same notice
+// (TestPreviewCutInsideTheNotesStillClosesTheFold).
+const truncationNotice = "… truncated: the full preview exceeds GitHub's comment cap."
+
 // TestCommentTruncationBoundary: under and at the cap the body passes through
 // byte-identical and silent; over it, the result fits the cap, ends in the
 // notice, cuts at a line boundary, and says so on the diagnostic stream.
@@ -61,8 +68,8 @@ func TestCommentTruncationBoundary(t *testing.T) {
 	if n := utf8.RuneCountInString(got); n > commentBodyMaxChars {
 		t.Fatalf("truncated body is %d chars, still over the %d cap", n, commentBodyMaxChars)
 	}
-	if !strings.Contains(got, "truncated") {
-		t.Fatalf("the cut must be marked in the comment itself:\n%.200s", got)
+	if !strings.HasSuffix(got, "\n\n---\n\n"+truncationNotice+"\n") {
+		t.Fatalf("the cut must be marked in the comment itself, with the notice as ruled:\n…%s", got[len(got)-200:])
 	}
 	head := got[:strings.Index(got, "\n\n---\n\n")]
 	if !strings.HasSuffix(head, "9") || strings.HasSuffix(head, "\n") {
@@ -230,6 +237,11 @@ func TestPreviewCutInsideTheNotesStillClosesTheFold(t *testing.T) {
 	}
 	if opened, closed := foldLines(stdout); opened != 1 || closed != 1 {
 		t.Fatalf("stdout opens %d <details> block(s) and closes %d", opened, closed)
+	}
+	// This stdout is the command a notice naming one would name, and it is cut:
+	// the notice can only say that the preview was cut, never where to read it.
+	if !strings.HasSuffix(stdout, truncationNotice+"\n") || strings.Contains(stdout[notice:], "glyph ") {
+		t.Fatalf("the notice must say the preview was cut and name no command:\n…%s", stdout[notice:])
 	}
 
 	code, stdout, stderr = runGlyph(t, "preview", "--pr", "7", "--notes", "--json")

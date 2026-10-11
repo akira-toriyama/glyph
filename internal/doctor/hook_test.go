@@ -233,14 +233,14 @@ func TestPrePushHookSaysWhenNothingWasFired(t *testing.T) {
 	dir := hooksDirWith(t, prePush.Name, prePush.Script)
 
 	fired := &HookProbe{Fired: true, Exit: int(core.CodeLint)}
-	if c := checkPrePushHook(dir, nil, fired, nil, nil); c.Status != StatusPass {
+	if c := checkPrePushHook(dir, nil, fired, nil, nil, nil); c.Status != StatusPass {
 		t.Fatalf("pre-push current, commit-msg fired: status = %s (%s), want %s — the probe answered the PATH question", c.Status, c.Observed, StatusPass)
 	}
-	if c := checkPrePushHook(t.TempDir(), nil, nil, nil, nil); c.Status != StatusPass {
+	if c := checkPrePushHook(t.TempDir(), nil, nil, nil, nil, nil); c.Status != StatusPass {
 		t.Fatalf("no pre-push hook, nothing fired: status = %s (%s), want %s — absence vouches for nothing", c.Status, c.Observed, StatusPass)
 	}
 
-	c := checkPrePushHook(dir, nil, nil, nil, nil)
+	c := checkPrePushHook(dir, nil, nil, nil, nil, nil)
 	if c.Status != StatusAdvice {
 		t.Fatalf("pre-push current, nothing fired: status = %s (%s), want %s", c.Status, c.Observed, StatusAdvice)
 	}
@@ -280,30 +280,44 @@ func TestPrePushHookSaysWhenNoRemoteHeadIsRecorded(t *testing.T) {
 		"not read (no current pre-push)": nil,
 		"no remote at all":               {},
 	} {
-		if c := checkPrePushHook(dir, nil, fired, heads, nil); c.Status != StatusPass {
+		if c := checkPrePushHook(dir, nil, fired, heads, nil, nil); c.Status != StatusPass {
 			t.Errorf("%s: status = %s (%s), want %s", name, c.Status, c.Observed, StatusPass)
 		}
 	}
 
-	c := checkPrePushHook(dir, nil, fired, map[string]string{"origin": "", "upstream": "main"}, nil)
+	c := checkPrePushHook(dir, nil, fired, map[string]string{"origin": "", "upstream": "main"}, nil, nil)
 	if c.Status != StatusAdvice {
 		t.Fatalf("origin's head unrecorded: status = %s (%s), want %s", c.Status, c.Observed, StatusAdvice)
 	}
 	if !strings.Contains(c.Observed, "origin") || strings.Contains(c.Observed, "upstream") {
 		t.Errorf("the observation must name exactly the remote with no recorded head: %q", c.Observed)
 	}
-	if !strings.Contains(c.Fix, "git remote set-head origin -a") {
+	if !strings.Contains(c.Fix, "git remote set-head 'origin' -a") {
 		t.Errorf("the fix must be the command that records the head: %q", c.Fix)
 	}
 
-	both := checkPrePushHook(dir, nil, nil, map[string]string{"origin": ""}, nil)
+	// A name git cannot place in a ref can record no head: set-head is no
+	// remedy there (it exits 129 unquoted, 1 quoted), renaming the remote is.
+	// The plain name beside it keeps set-head.
+	refless := checkPrePushHook(dir, nil, fired, map[string]string{"my fork": "", "plain": ""}, map[string]bool{"my fork": true}, nil)
+	if refless.Status != StatusAdvice || !strings.Contains(refless.Observed, "my fork") {
+		t.Fatalf("an unplaceable remote: want advice naming it, got %s: %s", refless.Status, refless.Observed)
+	}
+	if !strings.Contains(refless.Fix, hook.SetHeadRemedy("my fork", false)) || strings.Contains(refless.Fix, "set-head 'my fork'") {
+		t.Errorf("the fix for `my fork` must rename its section, never set-head it: %q", refless.Fix)
+	}
+	if !strings.Contains(refless.Fix, "git remote set-head 'plain' -a") {
+		t.Errorf("a plain name keeps set-head: %q", refless.Fix)
+	}
+
+	both := checkPrePushHook(dir, nil, nil, map[string]string{"origin": ""}, nil, nil)
 	if both.Status != StatusAdvice || !strings.Contains(both.Observed, "nothing was fired") || !strings.Contains(both.Observed, "origin") {
 		t.Errorf("nothing fired and no head recorded: want one advice carrying both, got %s: %s", both.Status, both.Observed)
 	}
 
 	// The heads are an input like any other: unread is unknown, never the
 	// pass that would say the hook can block.
-	if c := checkPrePushHook(dir, nil, fired, nil, errors.New("git config --get-regexp: fatal: bad config")); c.Status != StatusUnknown {
+	if c := checkPrePushHook(dir, nil, fired, nil, nil, errors.New("git config --get-regexp: fatal: bad config")); c.Status != StatusUnknown {
 		t.Errorf("remote heads unreadable: status = %s (%s), want %s", c.Status, c.Observed, StatusUnknown)
 	}
 }

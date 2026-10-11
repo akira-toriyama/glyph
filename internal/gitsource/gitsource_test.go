@@ -2,6 +2,7 @@ package gitsource
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -563,6 +564,44 @@ func TestDefaultBranchReadsARemoteNoRefCanNameAsUnrecorded(t *testing.T) {
 	}
 }
 
+// TestRemoteURLsKeepsASpacedRemoteName: a remote name may hold a space —
+// `[remote "my fork"]` in a hand-edited config, which git reads — and
+// `--get-regexp`'s line form separates key and value with a space too, so
+// cutting at the first one named the remote `my` and gave it the URL
+// `fork.url https://…`. Doctor's pre-push advice then told the user to run
+// `git remote set-head my -a` on a remote that does not exist (measured on
+// 4a90a1d, t-3jws). The NUL-framed form is unambiguous: `key\nvalue\0`.
+func TestRemoteURLsKeepsASpacedRemoteName(t *testing.T) {
+	dir := newRepo(t)
+	git(t, dir, "akira-toriyama", "config", "remote.origin.url", "https://example.invalid/o/r.git")
+	git(t, dir, "akira-toriyama", "config", "remote.my fork.url", "https://example.invalid/me/r.git")
+
+	got, err := RemoteURLs(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("RemoteURLs: %v", err)
+	}
+	want := map[string]string{
+		"origin":  "https://example.invalid/o/r.git",
+		"my fork": "https://example.invalid/me/r.git",
+	}
+	if !maps.Equal(got, want) {
+		t.Fatalf("RemoteURLs = %q, want %q", got, want)
+	}
+}
+
+// TestRemoteCanRecordHeadAsksGit: a name git's refs refuse can record no
+// default branch, so `git remote set-head` is no remedy for it (t-3jws's
+// residue, review u6-2). A plain name can; a space or `..` cannot.
+func TestRemoteCanRecordHeadAsksGit(t *testing.T) {
+	dir := newRepo(t)
+	for remote, want := range map[string]bool{"origin": true, "my-fork": true, "my fork": false, "mirror..x": false} {
+		got, err := RemoteCanRecordHead(context.Background(), dir, remote)
+		if err != nil || got != want {
+			t.Errorf("RemoteCanRecordHead(%q) = %v, %v; want %v, nil", remote, got, err, want)
+		}
+	}
+}
+
 // TestActionFilesListsWhatGitCounts pins the pin scan's file set (DESIGN §7,
 // D2b): every action.yml / action.yaml git counts as part of the checkout, at
 // any path — tracked (an initialized submodule's tracked files included) plus
@@ -1027,6 +1066,52 @@ func TestConfigBoolOrInt(t *testing.T) {
 	git(t, dir, "akira-toriyama", "config", "commit.verbose", "banana")
 	if _, _, err := ConfigBoolOrInt(context.Background(), dir, "commit.verbose"); core.AsError(err) == nil || core.AsError(err).Code != core.CodeAPI {
 		t.Fatalf("an unparseable commit.verbose = %v, want CodeAPI", err)
+	}
+}
+
+// TestConfigLastOf: of two names git reads through one handler, the LAST
+// definition wins whichever name it carries — in one file, in both orders, and
+// with `-c` (GIT_CONFIG_PARAMETERS) after every file — and the value comes back
+// raw, a quoted trailing space included. core.commentChar / core.commentString
+// are the names, and git 2.54's own cleanup agreed with every row (measured with
+// `git stripspace --strip-comments`; internal/cli's
+// TestHookVerdictMatchesWhatGitRecords asks real commits).
+func TestConfigLastOf(t *testing.T) {
+	dir := newRepo(t)
+	last := func() (string, bool) {
+		t.Helper()
+		v, set, err := ConfigLastOf(context.Background(), dir, "core.commentChar", "core.commentString")
+		if err != nil {
+			t.Fatalf("ConfigLastOf: %v", err)
+		}
+		return v, set
+	}
+	if v, set := last(); set || v != "" {
+		t.Fatalf("both unset = (%q, %v), want (\"\", false)", v, set)
+	}
+	git(t, dir, "akira-toriyama", "config", "core.commentcharx", "decoy")
+	if v, set := last(); set {
+		t.Fatalf("a key that only starts with a wanted name was read: %q", v)
+	}
+	git(t, dir, "akira-toriyama", "config", "core.commentChar", ";")
+	git(t, dir, "akira-toriyama", "config", "core.commentString", "//")
+	if v, _ := last(); v != "//" {
+		t.Fatalf("commentChar then commentString = %q, want the later \"//\"", v)
+	}
+	git(t, dir, "akira-toriyama", "config", "--unset", "core.commentChar")
+	git(t, dir, "akira-toriyama", "config", "core.commentChar", ";")
+	if v, _ := last(); v != ";" {
+		t.Fatalf("commentString then commentChar = %q, want the later \";\"", v)
+	}
+	t.Setenv("GIT_CONFIG_PARAMETERS", "'core.commentstring=@'")
+	if v, _ := last(); v != "@" {
+		t.Fatalf("-c after the file = %q, want \"@\"", v)
+	}
+	t.Setenv("GIT_CONFIG_PARAMETERS", "")
+	git(t, dir, "akira-toriyama", "config", "--unset", "core.commentChar")
+	git(t, dir, "akira-toriyama", "config", "core.commentString", "// ")
+	if v, _ := last(); v != "// " {
+		t.Fatalf("a quoted trailing space = %q, want it kept", v)
 	}
 }
 

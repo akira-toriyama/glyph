@@ -2,12 +2,10 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/akira-toriyama/glyph/v5/internal/config"
 	"github.com/akira-toriyama/glyph/v5/internal/core"
@@ -142,6 +140,107 @@ func TestInitWritesTheTopLevelFromASubdirectory(t *testing.T) {
 	}
 }
 
+// TestInitRefusesInsideTheGitDirectory: inside a git directory — a checkout's
+// .git, or a bare repository — git names no top level, and init read that as
+// "outside a checkout" and wrote glyph.toml where it stood: .git/glyph.toml at
+// exit 0, a file no command reads, while lint at the top level still said
+// "no glyph.toml" (measured on c89ea08). Only where git reports no repository
+// at all is the current directory the answer; here init refuses at the code
+// it refuses an existing file with, and names the work tree.
+func TestInitRefusesInsideTheGitDirectory(t *testing.T) {
+	testutil.GitOrSkip(t)
+	checkout := t.TempDir()
+	testutil.Git(t, checkout, "akira-toriyama", "init", "-q", "-b", "main")
+	bare := filepath.Join(t.TempDir(), "bare.git")
+	testutil.Git(t, checkout, "akira-toriyama", "init", "-q", "--bare", "-b", "main", bare)
+
+	for name, dir := range map[string]string{
+		"a checkout's .git":   filepath.Join(checkout, ".git"),
+		"a .git subdirectory": filepath.Join(checkout, ".git", "refs"),
+		"a bare repository":   bare,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Chdir(dir)
+			code, stdout, stderr := runGlyph(t, "init", "--gemoji")
+			if code != int(core.CodeUsage) {
+				t.Fatalf("init inside the git directory exited %d, want exactly %d\nstdout: %s\nstderr: %s", code, core.CodeUsage, stdout, stderr)
+			}
+			if !strings.Contains(stderr, "work tree") {
+				t.Errorf("the refusal must send the user to the work tree:\n%s", stderr)
+			}
+			if _, err := os.Lstat(filepath.Join(dir, "glyph.toml")); !os.IsNotExist(err) {
+				t.Errorf("the refused init still wrote %s", filepath.Join(dir, "glyph.toml"))
+			}
+		})
+	}
+	if _, err := os.Lstat(filepath.Join(checkout, "glyph.toml")); !os.IsNotExist(err) {
+		t.Errorf("a refused init wrote the top level anyway")
+	}
+}
+
+// TestInitCannotRunWhereGitWillNotReadTheRepository: a repository git refuses
+// to read — dubious ownership (safe.directory, common in containers and CI) or
+// a broken .git/config — fails both of init's reads with 128, and init read
+// that as "no repository" and wrote sub/glyph.toml at exit 0, the inert file
+// t-f2cb stopped (measured on ca118a8 for both). Only git's own "not a git
+// repository" is the current directory's case; anything else is no
+// trustworthy answer, exit 4, with git's message, and nothing written.
+func TestInitCannotRunWhereGitWillNotReadTheRepository(t *testing.T) {
+	testutil.GitOrSkip(t)
+	for name, arrange := range map[string]func(t *testing.T, top string){
+		"dubious ownership": func(t *testing.T, _ string) {
+			t.Setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
+		},
+		"a broken .git/config": func(t *testing.T, top string) {
+			appendTo(t, top, ".git/config", "[core\n bad\n")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			top := t.TempDir()
+			testutil.Git(t, top, "akira-toriyama", "init", "-q", "-b", "main")
+			sub := filepath.Join(top, "sub")
+			if err := os.MkdirAll(sub, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			arrange(t, top)
+			t.Chdir(sub)
+
+			code, stdout, stderr := runGlyph(t, "init", "--gemoji")
+			if code != int(core.CodeAPI) {
+				t.Fatalf("init in a repository git will not read exited %d, want exactly %d\nstdout: %s\nstderr: %s", code, core.CodeAPI, stdout, stderr)
+			}
+			if !strings.Contains(stderr, "fatal:") {
+				t.Errorf("the error must carry git's own message:\n%s", stderr)
+			}
+			for _, dir := range []string{sub, top} {
+				if _, err := os.Lstat(filepath.Join(dir, "glyph.toml")); !os.IsNotExist(err) {
+					t.Errorf("init could not run and still wrote %s", filepath.Join(dir, "glyph.toml"))
+				}
+			}
+		})
+	}
+}
+
+// TestInitOutsideARepositoryReadsGitsAnswerPastItsTrace: "not a git repository"
+// is recognised on the first fatal: line, not at the start of stderr. Under
+// GIT_TRACE=1 git writes trace lines before it, and matching the stream's start
+// turned an ordinary outside-a-checkout init into exit 4 with nothing written
+// (review u6b-3, measured on 20576c8; base wrote ./glyph.toml).
+func TestInitOutsideARepositoryReadsGitsAnswerPastItsTrace(t *testing.T) {
+	testutil.GitOrSkip(t)
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	t.Setenv("GIT_TRACE", "1")
+
+	code, _, stderr := runGlyph(t, "init", "--gemoji")
+	if code != 0 {
+		t.Fatalf("init outside a repository under GIT_TRACE=1 exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(cwd, "glyph.toml")); err != nil {
+		t.Fatalf("outside a repository init writes ./glyph.toml: %v", err)
+	}
+}
+
 // TestInitInterruptDuringTopLevelReadWritesNothing: init asks git for the top
 // level before it writes, and a signal landing while that question is in
 // flight is the user's abort — not git saying "no checkout here", the one
@@ -153,36 +252,39 @@ func TestInitWritesTheTopLevelFromASubdirectory(t *testing.T) {
 // the read is in flight, then blocks, and only then is the context cancelled
 // — the shape of TestDoctorInterruptDuringTopLevelReadCarriesOut.
 func TestInitInterruptDuringTopLevelReadWritesNothing(t *testing.T) {
+	interruptInit(t, "the top-level read", "")
+}
+
+// TestInitInterruptDuringGitDirReadWritesNothing: the same abort one read
+// later. When git names no top level, init asks whether it stands inside a git
+// directory before it falls back to the current directory, and a signal during
+// that question must not be read as "no repository" either. The fake answers
+// the top-level read as git does outside a repository and blocks on the next.
+func TestInitInterruptDuringGitDirReadWritesNothing(t *testing.T) {
+	interruptInit(t, "the git-directory read",
+		"case \"$*\" in *--show-toplevel*) echo 'fatal: not a git repository' >&2; exit 128;; esac\n")
+}
+
+// interruptInit runs init against a fake git that runs prelude, then signals
+// that a read is in flight and blocks; the context is cancelled once it has.
+func interruptInit(t *testing.T, read, prelude string) {
+	t.Helper()
 	cwd := t.TempDir()
 	t.Chdir(cwd)
 
 	bin := t.TempDir()
 	asked := filepath.Join(bin, "asked")
-	script := "#!/bin/sh\nPATH=/usr/bin:/bin\ntouch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
+	script := "#!/bin/sh\nPATH=/usr/bin:/bin\n" + prelude + "touch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
 	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		for range 400 {
-			if _, err := os.Stat(asked); err == nil {
-				cancel()
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		cancel() // safety net: never leave the run behind the fake's 30s block
-	}()
-
+	ctx, reached := cancelOnceAsked(t, asked)
 	code, stdout, _ := runGlyphCtx(t, ctx, "init", "--gemoji")
-	if _, err := os.Stat(asked); err != nil {
-		t.Fatalf("the fake git was never asked for the top level, so the run proves nothing: %v", err)
-	}
+	reached(read)
 	if code != int(core.CodeInterrupted) {
-		t.Errorf("init exited %d, want exactly %d — an interrupt in the top-level read is the user's own abort, not \"outside a checkout\"", code, core.CodeInterrupted)
+		t.Errorf("init exited %d, want exactly %d — an interrupt in %s is the user's own abort, not \"outside a checkout\"", code, core.CodeInterrupted, read)
 	}
 	if _, err := os.Lstat(filepath.Join(cwd, "glyph.toml")); !os.IsNotExist(err) {
 		t.Errorf("an interrupted init wrote glyph.toml into the directory it ran from (stdout %q)", stdout)

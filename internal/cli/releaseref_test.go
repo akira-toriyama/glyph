@@ -53,6 +53,10 @@ func repoObjectServer(t *testing.T, walk map[string]string, releases string, wri
 		if r.Method == http.MethodGet && r.URL.Path == "/repos/akira-toriyama/glyph" {
 			hits++
 			if object == "" {
+				// A timing knob, as in doctor's failingAPI: a retryable status
+				// with no Retry-After rides the 1s/4s/16s default schedule for
+				// real — 21.1s of one subtest, the suite's slowest.
+				w.Header().Set("Retry-After", "0")
 				w.WriteHeader(status)
 				return
 			}

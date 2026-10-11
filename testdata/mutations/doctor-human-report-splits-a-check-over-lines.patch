@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
+index acb55e1..7c0f097 100644
+--- a/internal/cli/cmd_doctor.go
++++ b/internal/cli/cmd_doctor.go
+@@ -442,7 +442,7 @@ func printDoctorHuman(r *doctor.Report) {
+ 	// summary is separated from the checks exactly once however the report ends.
+ 	spaced := false
+ 	for _, c := range r.Checks {
+-		fmt.Fprintf(out, "%-8s %-28s %s\n", c.Status, c.ID, oneLine(c.Observed))
++		fmt.Fprintf(out, "%-8s %-28s %s\n", c.Status, c.ID, c.Observed)
+ 		if c.Status == doctor.StatusPass {
+ 			spaced = false
+ 			continue

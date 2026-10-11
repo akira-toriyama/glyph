@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -91,16 +92,33 @@ func runInit(ctx context.Context, preset string) error {
 // subdirectory. Writing the current directory instead left, from a
 // subdirectory, a file nothing reads at exit 0 while loadConfig's remedy sent
 // the author back to the same command (t-f2cb, measured 2026-09-29). Only
-// where git names no top level — outside a checkout, or with no git at all —
-// is the current directory the answer; an interrupt is the user's abort,
-// never a reason to write somewhere else.
+// where git itself says "not a git repository" is the current directory the
+// answer. Inside a git directory git names no top level either, and writing
+// there left .git/glyph.toml at exit 0, the same inert file
+// (TestInitRefusesInsideTheGitDirectory), so that case is refused at 2. Any
+// other git failure — a repository git will not read (dubious ownership, a
+// broken config), or no git at all — is no trustworthy answer: exit 4 with
+// git's message and nothing written, where falling back wrote sub/glyph.toml
+// at exit 0 (TestInitCannotRunWhereGitWillNotReadTheRepository). An interrupt
+// in either read is the user's abort, never a reason to write somewhere else.
 func initPath(ctx context.Context) (string, error) {
 	top, err := gitsource.TopLevel(ctx, ".")
 	switch {
 	case core.IsInterrupted(err):
 		return "", err
-	case err != nil:
-		return "glyph.toml", nil
+	case err == nil:
+		return filepath.Join(top, "glyph.toml"), nil
 	}
-	return filepath.Join(top, "glyph.toml"), nil
+	inGitDir, gerr := gitsource.InsideGitDir(ctx, ".")
+	switch {
+	case errors.Is(gerr, gitsource.ErrNoRepository):
+		return "glyph.toml", nil
+	case gerr != nil:
+		return "", gerr
+	case inGitDir:
+		return "", core.Usagef("this directory is inside a git directory, which has no work tree — run glyph init from the checkout's work tree, where every command reads glyph.toml")
+	}
+	// git reads a repository here and calls this its work tree, yet named no
+	// top level: its own failure is the answer.
+	return "", err
 }

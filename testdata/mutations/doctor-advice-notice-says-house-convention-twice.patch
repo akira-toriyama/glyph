@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
+index acb55e1..c867f6d 100644
+--- a/internal/cli/cmd_doctor.go
++++ b/internal/cli/cmd_doctor.go
+@@ -377,7 +377,7 @@ func doctorRun(cmd *cobra.Command) error {
+ 		case doctor.StatusUnknown:
+ 			warnf("doctor %s could not run: %s", c.ID, c.Observed)
+ 		case doctor.StatusAdvice:
+-			noticef("doctor %s: %s (expected %s)", c.ID, c.Observed, c.Expected)
++			noticef("doctor %s: %s (house convention: %s)", c.ID, c.Observed, c.Expected)
+ 		case doctor.StatusPass:
+ 		}
+ 	}

@@ -453,7 +453,7 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		}
 		c := checkByID(t, rep, "pre-push-hook")
 		if c.Status != "advice" || !strings.Contains(c.Observed, "no default branch for origin") ||
-			!strings.Contains(c.Fix, "git remote set-head origin -a") {
+			!strings.Contains(c.Fix, "git remote set-head 'origin' -a") {
 			t.Errorf("an unrecorded origin/HEAD must be advice naming origin and the fix, got %s: %s (fix %q)", c.Status, c.Observed, c.Fix)
 		}
 
@@ -490,6 +490,37 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		c := checkByID(t, decodeDoctorJSON(t, stdout), "pre-push-hook")
 		if c.Status != "advice" || !strings.Contains(c.Observed, "no default branch for mirror..x") {
 			t.Errorf("a remote that can record no head must be advice naming it, got %s: %s", c.Status, c.Observed)
+		}
+		if c.Fix != hook.SetHeadRemedy("mirror..x", false) {
+			t.Errorf("set-head cannot record a head under mirror..x; the fix must rename it, got %q", c.Fix)
+		}
+	})
+
+	// A remote name holding a space is read whole. The remote list used to be
+	// cut at the first space of `git config --get-regexp`'s `key value` line,
+	// so this advice named a remote `my` that does not exist (t-3jws).
+	t.Run("a remote whose name holds a space is named whole", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		installCurrentHook(t)
+		if err := os.WriteFile(".git/hooks/pre-push", []byte(hook.Kinds()[1].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
+			t.Fatalf("install pre-push: %v", err)
+		}
+		stubGlyphOnPATH(t, 3)
+		testGit(t, ".", "akira-toriyama", "config", "remote.my fork.url", "https://example.invalid/me/r.git")
+
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
+		if code != 0 {
+			t.Fatalf("doctor exited %d, want 0 — advice never moves the exit\nstderr: %s", code, stderr)
+		}
+		c := checkByID(t, decodeDoctorJSON(t, stdout), "pre-push-hook")
+		if c.Status != "advice" || !strings.Contains(c.Observed, "no default branch for my fork,") {
+			t.Errorf("the advice must name the remote `my fork`, got %s: %s", c.Status, c.Observed)
+		}
+		// git cannot place `my fork` in a ref: set-head exits 129 unquoted and
+		// 1 quoted, so the fix renames its section (reviews u6-2, u6b-1).
+		if c.Fix != hook.SetHeadRemedy("my fork", false) {
+			t.Errorf("the fix for `my fork` must rename its section, got %q", c.Fix)
 		}
 	})
 
@@ -809,6 +840,43 @@ func runGlyphCtx(t *testing.T, ctx context.Context, args ...string) (code int, s
 	return code, outBuf.String(), errBuf.String()
 }
 
+// cancelOnceAsked returns a context cancelled once the fake git has touched
+// asked — the read under test is in flight — and a check, called after the
+// run, that fails the test unless it was. Without that check the tests were
+// vacuous under load: the safety net used to fire after 4s, so on a machine
+// slow enough that the API read was still in flight then, the cancel landed
+// there, the rerr half of the guard carried 130 out, and a mutation dropping
+// the read under test passed (measured on 934288b at load average 33-38: three
+// of the six doctor interrupt rows survived, a different three each run, and a
+// fake API answering after 5s turned the top-level row's test green over the
+// mutated tree with the fake git never reached). The net is now 25s, under the
+// fakes' 30s sleep, so it only bounds a run that never reaches the read.
+func cancelOnceAsked(t *testing.T, asked string) (context.Context, func(read string)) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go func() {
+		defer cancel()
+		deadline := time.Now().Add(25 * time.Second)
+		for time.Now().Before(deadline) {
+			if _, err := os.Stat(asked); err == nil {
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+	}()
+	return ctx, func(read string) {
+		t.Helper()
+		if _, err := os.Stat(asked); err != nil {
+			t.Fatalf("the fake git never reached %s, so the cancel landed elsewhere and the run proves nothing: %v", read, err)
+		}
+	}
+}
+
 // TestFirstInterruptChecksEveryRead pins the predicate doctorRun guards its two
 // independent reads with. The order matters only for which error carries out;
 // what must never regress is that the SECOND position is consulted at all —
@@ -863,20 +931,9 @@ func TestDoctorInterruptDuringHooksReadCarriesOut(t *testing.T) {
 	}
 	t.Setenv("PATH", bin)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		for range 400 {
-			if _, err := os.Stat(asked); err == nil {
-				cancel()
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		cancel() // safety net: never leave the run behind the fake's 30s block
-	}()
-
+	ctx, reached := cancelOnceAsked(t, asked)
 	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	reached("the hooks read")
 	if code != 130 {
 		t.Fatalf("doctor exited %d, want 130 — an interrupt in the hooks read is the user's own abort, not a check result", code)
 	}
@@ -906,20 +963,9 @@ func TestDoctorInterruptDuringTopLevelReadCarriesOut(t *testing.T) {
 	}
 	t.Setenv("PATH", bin)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		for range 400 {
-			if _, err := os.Stat(asked); err == nil {
-				cancel()
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		cancel() // safety net: never leave the run behind the fake's 30s block
-	}()
-
+	ctx, reached := cancelOnceAsked(t, asked)
 	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	reached("the top-level read")
 	if code != 130 {
 		t.Fatalf("doctor exited %d, want 130 — an interrupt in the top-level read is the user's own abort, not a check result", code)
 	}
@@ -949,20 +995,9 @@ func TestDoctorInterruptDuringTagsReadCarriesOut(t *testing.T) {
 	}
 	t.Setenv("PATH", bin)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		for range 400 {
-			if _, err := os.Stat(asked); err == nil {
-				cancel()
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		cancel() // safety net: never leave the run behind the fake's 30s block
-	}()
-
+	ctx, reached := cancelOnceAsked(t, asked)
 	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	reached("the tags read")
 	if code != 130 {
 		t.Fatalf("doctor exited %d, want 130 — an interrupt in the tag read is the user's own abort, not a check result", code)
 	}
@@ -990,20 +1025,9 @@ func TestDoctorInterruptDuringHeadTreesReadCarriesOut(t *testing.T) {
 	}
 	t.Setenv("PATH", bin)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		for range 400 {
-			if _, err := os.Stat(asked); err == nil {
-				cancel()
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		cancel() // safety net: never leave the run behind the fake's 30s block
-	}()
-
+	ctx, reached := cancelOnceAsked(t, asked)
 	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	reached("the tree listing")
 	if code != 130 {
 		t.Fatalf("doctor exited %d, want 130 — an interrupt in the tree listing is the user's own abort, not a check result", code)
 	}
@@ -1030,20 +1054,9 @@ func TestDoctorInterruptDuringActionFilesReadCarriesOut(t *testing.T) {
 	}
 	t.Setenv("PATH", bin)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		for range 400 {
-			if _, err := os.Stat(asked); err == nil {
-				cancel()
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		cancel() // safety net: never leave the run behind the fake's 30s block
-	}()
-
+	ctx, reached := cancelOnceAsked(t, asked)
 	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	reached("the action-file listing")
 	if code != 130 {
 		t.Fatalf("doctor exited %d, want 130 — an interrupt in the action-file listing is the user's own abort, not a check result", code)
 	}
@@ -1077,20 +1090,9 @@ func TestDoctorInterruptDuringRemoteHeadsReadCarriesOut(t *testing.T) {
 	}
 	t.Setenv("PATH", bin)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		for range 400 {
-			if _, err := os.Stat(asked); err == nil {
-				cancel()
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		cancel() // safety net: never leave the run behind the fake's 30s block
-	}()
-
+	ctx, reached := cancelOnceAsked(t, asked)
 	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	reached("the remote-heads read")
 	if code != 130 {
 		t.Fatalf("doctor exited %d, want 130 — an interrupt in the remote-heads read is the user's own abort, not a check result", code)
 	}
@@ -1202,6 +1204,78 @@ func TestDoctorAnnotationsStayOnOneLine(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "</html>") || !strings.Contains(stderr, "fix:") && !strings.Contains(stderr, "GITHUB_TOKEN") {
 		t.Errorf("the folded annotation must still carry the whole error and the fix:\n%s", stderr)
+	}
+}
+
+// TestDoctorHumanReportIsOneLinePerCheck is the same fold on the human report:
+// a check's line is `<status> <id> <observed>`, and the observed text here is a
+// remote error body. Unfolded, the nginx page below split token-repo-read over
+// six lines whose first words are not a status, so a reader (or a grep for
+// `^fail`) lost the check boundaries. The JSON run is the oracle for how many
+// checks there are; --json itself never had the defect.
+func TestDoctorHumanReportIsOneLinePerCheck(t *testing.T) {
+	failingAPI(t, http.StatusNotFound, "<html>\r\n<head><title>404 Not Found</title></head>\n<body>\n<center>nginx</center>\n</body>\n</html>")
+
+	code, stdout, _ := runGlyph(t, "doctor", "--json")
+	if code != 3 {
+		t.Fatalf("--json exit %d, want 3", code)
+	}
+	checks := len(decodeDoctorJSON(t, stdout).Checks)
+
+	code, stdout, _ = runGlyph(t, "doctor")
+	if code != 3 {
+		t.Fatalf("human exit %d, want 3", code)
+	}
+	if !strings.Contains(stdout, "</html>") {
+		t.Fatalf("the fold must keep the whole remote body, not drop it:\n%s", stdout)
+	}
+	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
+	body := lines[2 : len(lines)-1] // header and its blank line above, summary below
+	statusLines := 0
+	for _, line := range body {
+		switch {
+		case line == "", strings.HasPrefix(line, doctorIndent):
+		case strings.HasPrefix(line, "pass "), strings.HasPrefix(line, "fail "),
+			strings.HasPrefix(line, "advice "), strings.HasPrefix(line, "unknown "):
+			statusLines++
+		default:
+			t.Fatalf("line %q is neither a check nor indented under one — a multi-line field broke the layout:\n%s", line, stdout)
+		}
+	}
+	if statusLines != checks {
+		t.Errorf("%d status lines, want one per check (%d):\n%s", statusLines, checks, stdout)
+	}
+}
+
+// TestDoctorAdviceNoticeSaysHouseConventionOnce: the merge-method checks carry
+// "(house convention: squash-only)" in Expected, which is that phrase's one
+// home. The notice used to wrap Expected in a second "(house convention: …)",
+// printing it twice in nested parentheses on every Actions run of a repository
+// that is not squash-only — and calling every other advice check's expectation
+// (token-write, the hooks, root-line tags) a house convention it is not.
+func TestDoctorAdviceNoticeSaysHouseConventionOnce(t *testing.T) {
+	permissive := `"allow_squash_merge":true,"allow_merge_commit":true,"allow_rebase_merge":true,` +
+		`"squash_merge_commit_title":"COMMIT_OR_PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES"`
+	usePR(t, doctorServer(t, apiRepoObject(permissive)))
+	useDoctorCheckout(t, pinnedCaller)
+
+	code, _, stderr := runGlyph(t, "doctor")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0", code)
+	}
+	for _, id := range []string{"merge-commit-enabled", "rebase-merge-enabled"} {
+		var notice string
+		for line := range strings.SplitSeq(stderr, "\n") {
+			if strings.HasPrefix(line, "::notice::glyph: doctor "+id+":") {
+				notice = line
+			}
+		}
+		if notice == "" {
+			t.Fatalf("no notice for %s:\n%s", id, stderr)
+		}
+		if n := strings.Count(notice, "house convention"); n != 1 {
+			t.Errorf("%s notice says \"house convention\" %d times, want once:\n%s", id, n, notice)
+		}
 	}
 }
 

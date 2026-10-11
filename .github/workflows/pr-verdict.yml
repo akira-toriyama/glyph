@@ -25,12 +25,10 @@ name: glyph-pr-verdict
 # with tests (internal/preview), not in a heredoc. `glyph preview --pr N`
 # prints these exact bytes locally.
 #
-# The comment is advisory, refreshed on every push, and this workflow is NOT
-# meant to be a required check — the lint gate (lint.yml) owns convention
-# enforcement. A PR carrying a commit the lint would reject fails this job
-# too (the walk hard-errors on an unclassifiable commit, by design); the
-# commit-lint check is the authoritative signal for that, so this job just
-# goes red without duplicating the per-commit annotations.
+# The comment is advisory, refreshed on every push — a red one included — and
+# this workflow is NOT meant to be a required check: DESIGN §6 holds its
+# division of labour with lint.yml and what the comment says at a head whose
+# verdict does not compute.
 #
 # This is glyph's OFFICIAL PR-preview integration: the workflow and the
 # binary it runs ship from the same repo and the same release, so a caller
@@ -347,13 +345,31 @@ jobs:
       # comment is mine" assumption breaks the day any other workflow comments
       # as github-actions[bot]. The body reaches the API as a FILE: it carries
       # author-supplied commit subjects and must never be expanded by a shell.
+      #
+      # It runs after a failed compose too (DESIGN §6): skipped with it, the
+      # comment an earlier push posted kept that push's verdict beside a red
+      # head (glyph-test run 37306205001). With no computed verdict the body
+      # is this step's own — the outcome decides, not whether body.md exists,
+      # since the compose step writes it before it can still fail — and it
+      # carries nothing author-supplied: the head sha and this run's URL.
       - name: Upsert the sticky comment
+        if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO_SLUG: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMPOSE_OUTCOME: ${{ steps.verdict.outcome }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
+          if [ "$COMPOSE_OUTCOME" != success ]; then
+            {
+              echo '<!-- glyph-pr-verdict -->'
+              echo "⚠️ glyph could not compute a release verdict at \`${HEAD_SHA:0:7}\`."
+              echo
+              echo "A commit the convention rejects is the usual cause, and the **commit-lint** check names it; otherwise [this run's log]($GITHUB_SERVER_URL/$GH_REPO_SLUG/actions/runs/$GITHUB_RUN_ID) carries glyph's error. The next push whose verdict computes replaces this comment."
+            } > "$RUNNER_TEMP/body.md"
+          fi
           cid="$(gh api "repos/$GH_REPO_SLUG/issues/$PR_NUMBER/comments" --paginate \
             --jq '[.[] | select(.body | startswith("<!-- glyph-pr-verdict -->"))][0].id // empty')"
           if [ -n "$cid" ]; then

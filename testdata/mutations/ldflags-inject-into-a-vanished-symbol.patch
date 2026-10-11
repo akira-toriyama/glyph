@@ -1,15 +1,15 @@
 diff --git a/.goreleaser.yaml b/.goreleaser.yaml
-index 75dd09d..5edf8d9 100644
+index ff65c95..2f61c06 100644
 --- a/.goreleaser.yaml
 +++ b/.goreleaser.yaml
-@@ -12,9 +12,9 @@ builds:
-     flags: [-trimpath]
-     ldflags:
-       - -s -w
--      - -X github.com/akira-toriyama/glyph/v5/internal/version.Version={{.Version}}
+@@ -17,9 +17,9 @@ builds:
+       # install …@vX.Y.Z` and README say vX.Y.Z — and the install action
+       # compares this stamp with the tag it was asked for. The archive name
+       # below keeps {{ .Version }}: the install action derives it as ${ver#v}.
+-      - -X github.com/akira-toriyama/glyph/v5/internal/version.Version={{.Tag}}
 -      - -X github.com/akira-toriyama/glyph/v5/internal/version.Commit={{.Commit}}
 -      - -X github.com/akira-toriyama/glyph/v5/internal/version.Date={{.Date}}
-+      - -X github.com/akira-toriyama/glyph/v5/internal/buildinfo.Version={{.Version}}
++      - -X github.com/akira-toriyama/glyph/v5/internal/buildinfo.Version={{.Tag}}
 +      - -X github.com/akira-toriyama/glyph/v5/internal/buildinfo.Commit={{.Commit}}
 +      - -X github.com/akira-toriyama/glyph/v5/internal/buildinfo.Date={{.Date}}
      goos: [linux, darwin]

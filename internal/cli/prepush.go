@@ -304,7 +304,18 @@ func prePushRun(ctx context.Context, args []string) error {
 	warnf("%d commit-convention violation(s) in this push — not blocking off the default branch, but the commit-lint job will reject them: %s",
 		len(findings), summariseFindings(findings))
 	if defaultBranch == "" {
-		warnf("this clone does not record %s's default branch, so nothing in this push could block; `git remote set-head %s -a` restores it", remoteLabel(remote), remoteLabel(remote))
+		// Which remedy to name is all this read decides, so a git failure here
+		// keeps set-head rather than failing a push the findings above already
+		// let through; only the user's abort carries out.
+		canRecord := true
+		if remote != "" {
+			can, cerr := gitsource.RemoteCanRecordHead(ctx, ".", remote)
+			if core.IsInterrupted(cerr) {
+				return cerr
+			}
+			canRecord = cerr != nil || can
+		}
+		warnf("this clone does not record %s's default branch, so nothing in this push could block; `%s` restores it", remoteLabel(remote), hook.SetHeadRemedy(remoteLabel(remote), canRecord))
 	}
 	return nil
 }

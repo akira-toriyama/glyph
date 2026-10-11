@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index c6804a5..00a1d46 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -142,7 +142,7 @@ func RemoteTips(ctx context.Context, dir, remote string) ([]string, error) {
+ func RemoteURLs(ctx context.Context, dir string) (map[string]string, error) {
+ 	// #nosec G204 -- the binary is the fixed literal "git" and every argument
+ 	// here is a constant of this package.
+-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "config", "-z", "--get-regexp", `^remote\..*\.url$`)
++	cmd := exec.CommandContext(ctx, "git", "-C", dir, "config", "--get-regexp", `^remote\..*\.url$`)
+ 	var stdout, stderr bytes.Buffer
+ 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+ 	if err := cmd.Run(); err != nil {

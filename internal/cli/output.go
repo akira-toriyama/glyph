@@ -99,7 +99,9 @@ func noticef(format string, a ...any) {
 // Actions just as often as inside it, and %0A there is line noise.
 //
 // renderError folds through this same helper, for the same reason one step
-// later: a consumer interpolates .error.message straight into `::error::`.
+// later: a consumer interpolates .error.message straight into `::error::`. So
+// does doctor's human report, whose layout is one line per check
+// (TestDoctorHumanReportIsOneLinePerCheck).
 func oneLine(s string) string {
 	var parts []string
 	for line := range strings.SplitSeq(s, "\n") {

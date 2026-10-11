@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // The hooks' whole reason to exist is that they hold no copy of the convention.
@@ -303,4 +304,85 @@ func readHook(t *testing.T, dir string) string {
 		t.Fatalf("reading the hook: %v", err)
 	}
 	return string(b)
+}
+
+// TestSetHeadRemedyText pins both arms' wording: the name single-quoted in
+// both (a name `git remote add` accepts — `a;b`, `it's` — pasted raw ran
+// something else, review u6b-2), and for a name git cannot place in a ref the
+// chain review u6b-1 measured at rc=0, behind a placeholder the reader fills
+// once. No sanitised name is computed: that would reimplement git's ref rules.
+func TestSetHeadRemedyText(t *testing.T) {
+	for _, tc := range []struct {
+		remote    string
+		canRecord bool
+		want      string
+	}{
+		{"origin", true, `git remote set-head 'origin' -a`},
+		{"a;b", true, `git remote set-head 'a;b' -a`},
+		{"it's", true, `git remote set-head 'it'\''s' -a`},
+		{"my fork", false, `pick a name git accepts for <new-name>, then ` +
+			`git config --rename-section 'remote.my fork' remote.<new-name> && ` +
+			`git config --replace-all remote.<new-name>.fetch '+refs/heads/*:refs/remotes/<new-name>/*' && ` +
+			`git fetch <new-name> && git remote set-head <new-name> -a`},
+	} {
+		if got := SetHeadRemedy(tc.remote, tc.canRecord); got != tc.want {
+			t.Errorf("SetHeadRemedy(%q, %v) =\n  %s\nwant\n  %s", tc.remote, tc.canRecord, got, tc.want)
+		}
+	}
+}
+
+// TestSetHeadRemedyRunsPasted runs each remedy the way a reader pastes it,
+// through sh, against a local bare remote: the placeholder substituted once
+// and the leading clause dropped. Both config shapes a refless remote can
+// have are covered — the url alone, and with git's usual fetch refspec, where
+// `git remote rename` itself dies on the invalid refspec (rc=128, measured) —
+// and the set-head arm with names a shell would split. Success is git
+// recording refs/remotes/<name>/HEAD.
+func TestSetHeadRemedyRunsPasted(t *testing.T) {
+	testutil.GitOrSkip(t)
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("no sh to paste into")
+	}
+	root := t.TempDir()
+	up := filepath.Join(root, "up.git")
+	testutil.Git(t, root, "akira-toriyama", "init", "-q", "--bare", "-b", "main", up)
+	seed := testutil.NewRepo(t)
+	testutil.Git(t, seed, "akira-toriyama", "push", "-q", up, "main")
+
+	paste := func(t *testing.T, dir, command string) {
+		t.Helper()
+		cmd := exec.Command("sh", "-c", command)
+		cmd.Dir = dir
+		cmd.Env = testutil.GitEnv("akira-toriyama")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("the pasted remedy failed: %v\n%s\n%s", err, command, out)
+		}
+	}
+	const clause = "pick a name git accepts for <new-name>, then "
+	for name, fetch := range map[string]bool{"url only": false, "with a fetch refspec": true} {
+		for _, old := range []string{"my fork", "mirror..x"} {
+			t.Run(name+"/"+old, func(t *testing.T) {
+				dir := testutil.NewRepo(t)
+				testutil.Git(t, dir, "akira-toriyama", "config", "remote."+old+".url", up)
+				if fetch {
+					testutil.Git(t, dir, "akira-toriyama", "config", "remote."+old+".fetch", "+refs/heads/*:refs/remotes/"+old+"/*")
+				}
+				remedy := SetHeadRemedy(old, false)
+				if !strings.HasPrefix(remedy, clause) {
+					t.Fatalf("the refless remedy must open with the substitution clause: %q", remedy)
+				}
+				paste(t, dir, strings.ReplaceAll(strings.TrimPrefix(remedy, clause), "<new-name>", "renamed"))
+				testutil.Git(t, dir, "akira-toriyama", "symbolic-ref", "refs/remotes/renamed/HEAD")
+			})
+		}
+	}
+	for _, remote := range []string{"a;b", "it's"} {
+		t.Run("set-head/"+remote, func(t *testing.T) {
+			dir := testutil.NewRepo(t)
+			testutil.Git(t, dir, "akira-toriyama", "remote", "add", remote, up)
+			testutil.Git(t, dir, "akira-toriyama", "fetch", "-q", remote)
+			paste(t, dir, SetHeadRemedy(remote, true))
+			testutil.Git(t, dir, "akira-toriyama", "symbolic-ref", "refs/remotes/"+remote+"/HEAD")
+		})
+	}
 }

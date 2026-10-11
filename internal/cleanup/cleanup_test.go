@@ -17,6 +17,9 @@ var (
 	verbatimGiven  = Mode{}                                            // commit.cleanup=verbatim, no editor
 )
 
+// cutLine is git's scissors line with no comment prefix configured.
+const cutLine = DefaultComment + cutTail
+
 func TestCleanup(t *testing.T) {
 	tests := []struct {
 		name string
@@ -233,56 +236,180 @@ func TestCleanupIsNotSafeForAlreadyCleanedMessages(t *testing.T) {
 	}
 }
 
-// TestCutLineIsTheOneGitWrites is the real-git oracle cleanup.go's cutLine
+// pinnedGit runs the installed git in dir with no personal or system config —
+// the oracle answers for git, not for whoever runs the test — and returns its
+// stdout.
+func pinnedGit(t *testing.T, dir, stdin string, extraEnv []string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader(stdin)
+	cmd.Env = append(append(os.Environ(),
+		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
+		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid",
+	), extraEnv...)
+	var stdout, stderr strings.Builder
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, stderr.String())
+	}
+	return stdout.String()
+}
+
+// TestCutLineIsTheOneGitWrites is the real-git oracle cleanup.go's cutTail
 // constant names: `git commit -v` writes the scissors line into the message
-// file, and this test asserts it writes EXACTLY the constant — matched by
-// strstr in git's wt_status_locate_end, so one drifted byte in a future git
-// silently moves the cut. The v1 parser carried this oracle and it died with
-// that package; the constant sat un-vouched-for until this restored it.
+// file, and this test asserts it writes EXACTLY the comment prefix and the
+// constant — matched by strstr in git's wt_status_locate_end, so one drifted
+// byte in a future git silently moves the cut. The v1 parser carried this
+// oracle and it died with that package; the constant sat un-vouched-for until
+// this restored it. It asks under the default prefix and under two set ones,
+// because the prefix is the part glyph now builds rather than copies.
 // The editor deliberately aborts (exit 1): the message file is already
 // written when the editor runs, so the scissors line is captured without a
 // commit ever being made.
 func TestCutLineIsTheOneGitWrites(t *testing.T) {
+	for _, prefix := range []string{"", ";", "//"} {
+		t.Run("core.commentChar="+prefix, func(t *testing.T) {
+			dir := t.TempDir()
+			pinnedGit(t, dir, "", nil, "init", "-q", "-b", "main")
+			if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("x\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			pinnedGit(t, dir, "", nil, "add", "a.txt")
+
+			captured := filepath.Join(dir, "captured.txt")
+			editor := filepath.Join(dir, "editor.sh")
+			if err := os.WriteFile(editor, []byte("#!/bin/sh\ncp \"$1\" "+captured+"\nexit 1\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			args := []string{"commit", "-v"}
+			if prefix != "" {
+				args = append([]string{"-c", "core.commentChar=" + prefix}, args...)
+			}
+			commit := exec.Command("git", args...)
+			commit.Dir = dir
+			commit.Env = append(os.Environ(),
+				"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
+				"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
+				"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid",
+				"GIT_EDITOR="+editor,
+			)
+			_ = commit.Run() // the editor aborts by design; the message file is what matters
+
+			body, err := os.ReadFile(captured)
+			if err != nil {
+				t.Fatalf("the editor never captured the message file: %v", err)
+			}
+			want := CommentPrefix(prefix, prefix != "") + cutTail
+			if !strings.Contains(string(body), "\n"+want) {
+				t.Fatalf("git commit -v wrote no line equal to %q — git's scissors changed, and truncateAtCutLine now cuts on a line git does not write:\n%s", want, body)
+			}
+		})
+	}
+}
+
+// TestCommentPrefix pins how a configured value becomes the prefix. Every row
+// is a measurement on git 2.54 (CommentPrefix's doc names them); the
+// precedence between core.commentChar and core.commentString is not here
+// because it is gitsource.ConfigLastOf's, held by internal/cli's
+// TestHookVerdictMatchesWhatGitRecords.
+func TestCommentPrefix(t *testing.T) {
+	tests := []struct {
+		name       string
+		configured string
+		set        bool
+		want       string
+	}{
+		{"unset is git's default", "", false, "#"},
+		{"a character is itself", ";", true, ";"},
+		{"a multi-character string is itself", "//", true, "//"},
+		{"a quoted trailing space belongs to the prefix", "// ", true, "// "},
+		{"auto is '#': the per-commit pick reaches no hook", "auto", true, "#"},
+		{"git compares auto without case", "AUTO", true, "#"},
+		{"an empty value git refuses to start under is '#'", "", true, "#"},
+		{"a newline git refuses to start under is '#'", "a\nb", true, "#"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CommentPrefix(tt.configured, tt.set); got != tt.want {
+				t.Errorf("CommentPrefix(%q, %v) = %q, want %q", tt.configured, tt.set, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestApplyMatchesGitStripspace is the differential DESIGN §2.1 names: for
+// every message × comment prefix, Apply's whitespace and strip cleanups equal
+// `git -c core.commentChar=<prefix> stripspace [--strip-comments]` run on the
+// same bytes. `git stripspace` is the strbuf_stripspace git commit calls, so
+// this holds the port line for line; the prefixes include a multi-character one
+// and regex metacharacters, which git matches literally. The scissors line
+// under a set prefix is a comment like any other here — the cut itself is
+// TestScissorsUnderACommentPrefixMatchesGit's.
+func TestApplyMatchesGitStripspace(t *testing.T) {
 	dir := t.TempDir()
-	git := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(),
-			"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
-			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
-			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid",
-		)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
+	prefixes := []string{"#", ";", "//", ".*", "$"}
+	for _, prefix := range prefixes {
+		messages := []string{
+			"",
+			"\n\n",
+			"a\n# hash\n; semi\n// slash\n.* dotstar\n$ dollar\nb\n",
+			prefix + " only a comment\n",
+			"subject\n\n" + prefix + "\n" + prefix + "x\n  " + prefix + " indented\nbody  \r\n\n\n" + prefix + prefix + " doubled\ntail\t\n",
+			"subject\n" + prefix + " between\n\n" + prefix + " after a blank\nTrailer: kept\n",
+			"/ half of a two-byte prefix\n. half again\n*\n",
+			"subject\n\nbody\n" + prefix + cutTail + "below the scissors\n",
+			"\n" + prefix + " template first\n\n:sparkles:(x)^ add the thing\n",
+		}
+		for i, msg := range messages {
+			for _, strip := range []bool{false, true} {
+				args := []string{"-c", "core.commentChar=" + prefix, "stripspace"}
+				if strip {
+					args = append(args, "--strip-comments")
+				}
+				want := strings.TrimSuffix(pinnedGit(t, dir, msg, nil, args...), "\n")
+				got := Apply(msg, Mode{Space: true, Comments: strip, Comment: prefix})
+				if got != want {
+					t.Errorf("prefix %q, message %d, strip=%v:\n  in:   %q\n  glyph %q\n  git   %q", prefix, i, strip, msg, got, want)
+				}
+			}
 		}
 	}
-	git("init", "-q", "-b", "main")
-	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("x\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	git("add", "a.txt")
+}
 
-	captured := filepath.Join(dir, "captured.txt")
-	editor := filepath.Join(dir, "editor.sh")
-	if err := os.WriteFile(editor, []byte("#!/bin/sh\ncp \"$1\" "+captured+"\nexit 1\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	commit := exec.Command("git", "commit", "-v")
-	commit.Dir = dir
-	commit.Env = append(os.Environ(),
-		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
-		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
-		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid",
-		"GIT_EDITOR="+editor,
-	)
-	_ = commit.Run() // the editor aborts by design; the message file is what matters
+// TestScissorsUnderACommentPrefixMatchesGit holds the cut to a real commit:
+// under a set prefix git cuts at that prefix's scissors line and not at the
+// '#' one, which is content to it. `git stripspace` does not truncate, so each
+// row is a `git commit --cleanup=scissors` through an editor that writes the
+// message, read back from the commit object.
+func TestScissorsUnderACommentPrefixMatchesGit(t *testing.T) {
+	dir := t.TempDir()
+	pinnedGit(t, dir, "", nil, "init", "-q", "-b", "main")
+	for _, prefix := range []string{";", "//", ".*"} {
+		t.Run(prefix, func(t *testing.T) {
+			message := "subject\n\nbody\n" + cutLine + "kept under a set prefix\n" + prefix + cutTail + "below the scissors\n"
+			buffer := filepath.Join(t.TempDir(), "message.txt")
+			if err := os.WriteFile(buffer, []byte(message), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			editor := filepath.Join(t.TempDir(), "editor.sh")
+			if err := os.WriteFile(editor, []byte("#!/bin/sh\ncp \""+buffer+"\" \"$1\"\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			pinnedGit(t, dir, "", []string{"GIT_EDITOR=" + editor},
+				"-c", "core.commentChar="+prefix, "commit", "-q", "--allow-empty", "--cleanup=scissors")
+			object := pinnedGit(t, dir, "", nil, "cat-file", "commit", "HEAD")
+			_, recorded, _ := strings.Cut(object, "\n\n")
+			recorded = strings.TrimSuffix(recorded, "\n")
 
-	body, err := os.ReadFile(captured)
-	if err != nil {
-		t.Fatalf("the editor never captured the message file: %v", err)
-	}
-	if !strings.Contains(string(body), cutLine) {
-		t.Fatalf("git commit -v wrote no line equal to cutLine %q — git's scissors changed, and truncateAtCutLine now cuts on a line git does not write:\n%s", cutLine, body)
+			got := Apply(message, Mode{Space: true, Truncate: true, Comment: prefix})
+			if got != recorded {
+				t.Fatalf("prefix %q:\n  glyph    %q\n  recorded %q", prefix, got, recorded)
+			}
+			if strings.Contains(recorded, "below the scissors") || !strings.Contains(recorded, "kept under a set prefix") {
+				t.Fatalf("prefix %q: git no longer cuts where this test says it does — re-measure before trusting the row:\n%q", prefix, recorded)
+			}
+		})
 	}
 }

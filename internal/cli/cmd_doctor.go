@@ -228,29 +228,41 @@ func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.H
 // block nothing (t-2etd (c)). Read only when the installed pre-push hook is
 // byte-identical — the one arm whose pass this qualifies — so a checkout with no
 // hook, which is every CI runner, pays no subprocess. nil with a nil error
-// means not read.
-func readRemoteHeads(ctx context.Context, dir string, dirErr error) (map[string]string, error) {
+// means not read. refless marks the unrecorded remotes whose name git cannot
+// place in a ref, for which set-head is no remedy (review u6-2).
+func readRemoteHeads(ctx context.Context, dir string, dirErr error) (heads map[string]string, refless map[string]bool, err error) {
 	if dirErr != nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	k := hook.Kinds()[1]
-	body, err := os.ReadFile(filepath.Join(dir, k.Name)) // #nosec G304 -- the path git itself reported for this checkout
-	if err != nil || string(body) != k.Script {
-		return nil, nil
+	body, rerr := os.ReadFile(filepath.Join(dir, k.Name)) // #nosec G304 -- the path git itself reported for this checkout
+	if rerr != nil || string(body) != k.Script {
+		return nil, nil, nil
 	}
 	urls, err := gitsource.RemoteURLs(ctx, ".")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	heads := make(map[string]string, len(urls))
+	heads = make(map[string]string, len(urls))
+	refless = map[string]bool{}
 	for remote := range urls {
 		branch, berr := gitsource.DefaultBranch(ctx, ".", remote)
 		if berr != nil {
-			return nil, berr
+			return nil, nil, berr
 		}
 		heads[remote] = branch
+		if branch != "" {
+			continue
+		}
+		can, cerr := gitsource.RemoteCanRecordHead(ctx, ".", remote)
+		if cerr != nil {
+			return nil, nil, cerr
+		}
+		if !can {
+			refless[remote] = true
+		}
 	}
-	return heads, nil
+	return heads, refless, nil
 }
 
 // probeErr unwraps the probe's own failure for the interrupt guard below — a
@@ -330,7 +342,7 @@ func doctorRun(cmd *cobra.Command) error {
 	if probe != nil {
 		probe.Claimed = probeClaimed(cmd.Context(), configPath, terr)
 	}
-	remoteHeads, headsErr := readRemoteHeads(cmd.Context(), hooksDir, herr)
+	remoteHeads, remoteRefless, headsErr := readRemoteHeads(cmd.Context(), hooksDir, herr)
 	// An interrupt is the user's own abort and must never be laundered into a
 	// check result: reporting "the token cannot read the repository" — or "git
 	// could not report where hooks live" — because somebody pressed Ctrl-C
@@ -363,6 +375,7 @@ func doctorRun(cmd *cobra.Command) error {
 		GlyphVersion:    version.Resolve().Version,
 		RemoteHeads:     remoteHeads,
 		RemoteHeadsErr:  headsErr,
+		RemoteRefless:   remoteRefless,
 	})
 
 	// Annotations go out in BOTH modes, before the payload. On an Actions
@@ -376,7 +389,7 @@ func doctorRun(cmd *cobra.Command) error {
 		case doctor.StatusUnknown:
 			warnf("doctor %s could not run: %s", c.ID, c.Observed)
 		case doctor.StatusAdvice:
-			noticef("doctor %s: %s (house convention: %s)", c.ID, c.Observed, c.Expected)
+			noticef("doctor %s: %s (expected %s)", c.ID, c.Observed, c.Expected)
 		case doctor.StatusPass:
 		}
 	}
@@ -441,18 +454,18 @@ func printDoctorHuman(r *doctor.Report) {
 	// summary is separated from the checks exactly once however the report ends.
 	spaced := false
 	for _, c := range r.Checks {
-		fmt.Fprintf(out, "%-8s %-28s %s\n", c.Status, c.ID, c.Observed)
+		fmt.Fprintf(out, "%-8s %-28s %s\n", c.Status, c.ID, oneLine(c.Observed))
 		if c.Status == doctor.StatusPass {
 			spaced = false
 			continue
 		}
-		fmt.Fprintf(out, "%s expected: %s\n", doctorIndent, c.Expected)
-		fmt.Fprintf(out, "%s why:      %s\n", doctorIndent, c.Message)
+		fmt.Fprintf(out, "%s expected: %s\n", doctorIndent, oneLine(c.Expected))
+		fmt.Fprintf(out, "%s why:      %s\n", doctorIndent, oneLine(c.Message))
 		for _, d := range c.Details {
-			fmt.Fprintf(out, "%s   - %s\n", doctorIndent, d)
+			fmt.Fprintf(out, "%s   - %s\n", doctorIndent, oneLine(d))
 		}
 		if c.Fix != "" {
-			fmt.Fprintf(out, "%s fix:      %s\n", doctorIndent, c.Fix)
+			fmt.Fprintf(out, "%s fix:      %s\n", doctorIndent, oneLine(c.Fix))
 		}
 		fmt.Fprintln(out)
 		spaced = true
