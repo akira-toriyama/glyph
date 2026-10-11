@@ -219,6 +219,31 @@ func TestPrePushResolvesTheRemoteFromItsURL(t *testing.T) {
 	}
 }
 
+// TestPrePushResolvesASpacedRemoteNameFromItsURL: the URL-to-name recovery
+// reads the same remote map doctor does, so a remote named `my fork` (a
+// hand-edited `[remote "my fork"]`) must come back whole. Cut at the first
+// space the map held `my` → `fork.url <url>`, no URL matched, and the warning
+// fell back to `<remote>` (t-3jws). Such a name can carry no ref, so the
+// default branch is unrecorded, and the warning that says so — printed beside
+// a finding — is the observable.
+func TestPrePushResolvesASpacedRemoteNameFromItsURL(t *testing.T) {
+	work, remote := testClone(t)
+	t.Chdir(work)
+	testutil.Git(t, work, "akira-toriyama", "config", "remote.my fork.url", remote)
+	testutil.Git(t, work, "akira-toriyama", "remote", "remove", "origin")
+	testutil.Git(t, work, "akira-toriyama", "checkout", "-q", "-b", "topic")
+	testutil.Commit(t, work, "akira-toriyama", "no gitmoji here")
+
+	setStdin(t, "refs/heads/topic "+rev(t, work, "HEAD")+" refs/heads/main "+zeros+"\n")
+	code, _, stderr := runGlyph(t, "hook", "pre-push", remote, remote)
+	if code != 0 {
+		t.Fatalf("exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "does not record my fork's default branch") {
+		t.Fatalf("the URL must resolve to the remote `my fork`:\n%s", stderr)
+	}
+}
+
 // TestPrePushMalformedProtocolIsNotALintFailure: a line glyph cannot read means
 // glyph has misunderstood git's own wire format, not that a commit violates the
 // convention. It must never be the gate code — the installed hook forwards 3

@@ -2,6 +2,7 @@ package gitsource
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -560,6 +561,31 @@ func TestDefaultBranchReadsARemoteNoRefCanNameAsUnrecorded(t *testing.T) {
 	_, err := DefaultBranch(context.Background(), t.TempDir(), "origin")
 	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
 		t.Fatalf("DefaultBranch outside a repository = %v, want CodeAPI", err)
+	}
+}
+
+// TestRemoteURLsKeepsASpacedRemoteName: a remote name may hold a space —
+// `[remote "my fork"]` in a hand-edited config, which git reads — and
+// `--get-regexp`'s line form separates key and value with a space too, so
+// cutting at the first one named the remote `my` and gave it the URL
+// `fork.url https://…`. Doctor's pre-push advice then told the user to run
+// `git remote set-head my -a` on a remote that does not exist (measured on
+// 4a90a1d, t-3jws). The NUL-framed form is unambiguous: `key\nvalue\0`.
+func TestRemoteURLsKeepsASpacedRemoteName(t *testing.T) {
+	dir := newRepo(t)
+	git(t, dir, "akira-toriyama", "config", "remote.origin.url", "https://example.invalid/o/r.git")
+	git(t, dir, "akira-toriyama", "config", "remote.my fork.url", "https://example.invalid/me/r.git")
+
+	got, err := RemoteURLs(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("RemoteURLs: %v", err)
+	}
+	want := map[string]string{
+		"origin":  "https://example.invalid/o/r.git",
+		"my fork": "https://example.invalid/me/r.git",
+	}
+	if !maps.Equal(got, want) {
+		t.Fatalf("RemoteURLs = %q, want %q", got, want)
 	}
 }
 

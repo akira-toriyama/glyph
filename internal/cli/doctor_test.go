@@ -493,6 +493,29 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		}
 	})
 
+	// A remote name holding a space is read whole. The remote list used to be
+	// cut at the first space of `git config --get-regexp`'s `key value` line,
+	// so this advice named a remote `my` that does not exist (t-3jws).
+	t.Run("a remote whose name holds a space is named whole", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		installCurrentHook(t)
+		if err := os.WriteFile(".git/hooks/pre-push", []byte(hook.Kinds()[1].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
+			t.Fatalf("install pre-push: %v", err)
+		}
+		stubGlyphOnPATH(t, 3)
+		testGit(t, ".", "akira-toriyama", "config", "remote.my fork.url", "https://example.invalid/me/r.git")
+
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
+		if code != 0 {
+			t.Fatalf("doctor exited %d, want 0 — advice never moves the exit\nstderr: %s", code, stderr)
+		}
+		c := checkByID(t, decodeDoctorJSON(t, stdout), "pre-push-hook")
+		if c.Status != "advice" || !strings.Contains(c.Observed, "no default branch for my fork,") {
+			t.Errorf("the advice must name the remote `my fork`, got %s: %s", c.Status, c.Observed)
+		}
+	})
+
 	t.Run("a foreign hook is not fired", func(t *testing.T) {
 		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 		useDoctorCheckout(t, pinnedCaller)
