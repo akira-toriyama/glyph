@@ -372,6 +372,17 @@ func TopLevel(ctx context.Context, dir string) (string, error) {
 	return path, nil
 }
 
+// InsideGitDir reports whether dir is inside a git directory — a checkout's
+// .git or a bare repository — the places TopLevel fails although a repository
+// is there. Outside any repository it fails, as TopLevel does.
+func InsideGitDir(ctx context.Context, dir string) (bool, error) {
+	out, err := run(ctx, dir, "rev-parse", "--is-inside-git-dir")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(string(out)) == "true", nil
+}
+
 // HeadTrees lists every directory HEAD's tree records, at any depth, as
 // top-level-relative slash paths exactly as git stores them — the subtrees
 // attribution can find a changed path under. Byte-exact on purpose: the
