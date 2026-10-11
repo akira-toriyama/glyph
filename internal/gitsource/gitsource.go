@@ -554,8 +554,7 @@ func ConfigLastOf(ctx context.Context, dir string, keys ...string) (string, bool
 		if ierr := interrupted(ctx); ierr != nil {
 			return "", false, ierr
 		}
-		var ee *exec.ExitError
-		if errors.As(err, &ee) && ee.ExitCode() == 1 {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 1 {
 			return "", false, nil
 		}
 		return "", false, core.APIf("git config: %s", distill(stderr.Bytes(), err))
