@@ -701,7 +701,8 @@ keeps as the subject was dropped at the hook. `core.commentString` is the same
 setting under another name — git reads both through one handler, so the last
 definition under either name wins (measured in both orders, in one file and
 across `-c`), which is why the read is one `git config --get-regexp` in git's
-order (`gitsource.ConfigLastOf`) rather than one `--get` per name. The prefix
+order (`gitsource.ConfigLastOf`) rather than one `--get` per name (mutation row
+`cleanup-ignores-core-commentstring.patch`). The prefix
 may be several bytes and is matched literally; the scissors line under it is
 the prefix, a space and git's dashes (`TestApplyMatchesGitStripspace`,
 `TestScissorsUnderACommentPrefixMatchesGit`, `TestCutLineIsTheOneGitWrites`,
