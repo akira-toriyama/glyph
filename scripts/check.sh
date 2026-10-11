@@ -30,10 +30,10 @@
 #   govulncheck     govulncheck.yml → go-vuln.yml `govulncheck ./...`
 #   bite            build.yml `bite`             the hub's go-bite.sh
 #   mutations       build.yml `mutations`        `scripts/mutations.sh`
-#   fuzz-smoke      build.yml `extras`           the bounded fuzz loop
+#   fuzz-smoke      build.yml `extras`           `scripts/fuzz-smoke.sh`
 #   release-history build.yml `extras`           the caller-check bounds against
 #                                                glyph's release tags
-#   smoke           build.yml `extras`           the shipped binary's contract
+#   smoke           build.yml `extras`           `scripts/smoke.sh <binary>`
 #
 # ─── NOT MIRRORED, each with its reason ──────────────────────────────────────
 # Naming these is the honest half. Reproducing every CI job would cost more to
@@ -205,20 +205,8 @@ ran race-test
 go tool cover -func="$COVER" | tail -n 1
 ran coverage
 
-# Mirrors build.yml's Linux-only "fuzz smoke (bounded)" step: discover every
-# Fuzz target and run each briefly so a new target needs no edit here either.
-# The bound is an execution COUNT, not a duration: a wall-clock -fuzztime makes
-# the fuzz engine race its own deadline at shutdown and FAIL green runs with a
-# spurious "context deadline exceeded" under machine load (Go's own builders
-# flake on this), whereas a count bound never creates that deadline. Real hangs
-# are still caught by the engine's per-input 10s limit.
 echo "→ fuzz smoke (bounded)"
-for pkg in $(go list ./...); do
-  targets=$(go test -list '^Fuzz' "$pkg" | grep '^Fuzz' || true)
-  for f in $targets; do
-    go test "$pkg" -run '^$' -fuzz "^${f}\$" -fuzztime 200000x
-  done
-done
+sh scripts/fuzz-smoke.sh
 ran fuzz-smoke
 
 # Mirrors build.yml's "release-history bounds" step: every caller-check table
@@ -346,94 +334,7 @@ fi
 
 echo "→ build binary for live checks"
 go build -o "$WORK/glyph" ./cmd/glyph
-BIN="$WORK/glyph"
-
-echo "→ smoke: version / init / help / usage errors"
-"$BIN" version >/dev/null
-"$BIN" version --json >/dev/null   # the machine flag is spelled --json on every command that has one
-"$BIN" --version >/dev/null
-"$BIN" --help >/dev/null
-# init refuses to clobber this repository's own glyph.toml (usage, 2)
-status=0
-"$BIN" init --gemoji >/dev/null 2>&1 || status=$?
-if [ "$status" -ne 2 ]; then
-  echo "  expected exit 2 (usage) for init over an existing glyph.toml, got $status" >&2
-  exit 1
-fi
-# two presets at once must exit 2 (usage), not crash
-if "$BIN" init --gemoji --conventional >/dev/null 2>&1; then
-  echo "  expected a usage error for init --gemoji --conventional" >&2
-  exit 1
-fi
-
-# `completion` is cobra's command, and its output is redirected into a file the
-# shell SOURCES — so an unknown shell reporting success is not a cosmetic exit
-# code. `glyph completion zshh > _glyph` used to exit 0 and write the parent's
-# English help where a completion script belongs. Both halves are asserted here
-# rather than in a Go test because cobra binds the completion writer once, when
-# the command tree is built, so an in-process test cannot observe which stream
-# the script went to (see internal/cli/root_test.go).
-echo "→ smoke: completion writes a script, or refuses"
-"$BIN" completion zsh | head -1 | grep -q '^#compdef' || {
-  echo "  expected 'completion zsh' to write a zsh script to stdout" >&2
-  exit 1
-}
-status=0
-out=$("$BIN" completion bogus 2>/dev/null) || status=$?
-if [ "$status" -ne 2 ]; then
-  echo "  expected exit 2 (usage) for an unknown completion shell, got $status" >&2
-  exit 1
-fi
-if [ -n "$out" ]; then
-  echo "  'completion bogus' wrote to stdout, which is what a caller redirects into a sourced file" >&2
-  exit 1
-fi
-
-echo "→ smoke: lint / bump exit-code contract"
-# The CODE is the assertion, not merely non-zero: `--stdin=false` used to exit 3,
-# telling a CI gate that a commit violated the convention when none was
-# submitted, and a plain `if "$BIN" …; then` cannot tell 3 from 2. That rule
-# governs EVERY assertion in this block. Three of them used to state an integer
-# in the failure message and assert only non-zero — a smoke that would have
-# stayed green through the very renumbering it was written to catch.
-"$BIN" lint --message ':bug:~ fix a crash'   # clean → 0
-status=0
-"$BIN" lint --message 'no gitmoji' >/dev/null 2>&1 || status=$?
-if [ "$status" -ne 3 ]; then
-  echo "  expected exit 3 (convention violation) for a malformed message, got $status" >&2
-  exit 1
-fi
-status=0
-"$BIN" lint --stdin=false </dev/null >/dev/null 2>&1 || status=$?
-if [ "$status" -ne 2 ]; then
-  echo "  expected exit 2 (usage) for lint --stdin=false, got $status" >&2
-  exit 1
-fi
-status=0
-"$BIN" bump --range HEAD~1..HEAD --current= >/dev/null 2>&1 || status=$?
-if [ "$status" -ne 2 ]; then
-  echo "  expected exit 2 (usage) for an empty --current, got $status" >&2
-  exit 1
-fi
-# this checkout is a repo: an empty range is the soft no-release exit (1)
-status=0
-"$BIN" bump --range HEAD..HEAD >/dev/null 2>&1 || status=$?
-if [ "$status" -ne 1 ]; then
-  echo "  expected exit 1 (no release-worthy change) for an empty bump range, got $status" >&2
-  exit 1
-fi
-
-echo "→ smoke: doctor's input guard (no network — the repo never resolves)"
-"$BIN" doctor --help >/dev/null
-# A malformed --repo is the caller's input and is rejected BEFORE any request
-# goes out, so this smoke stays hermetic: a doctor run that reached the network
-# here would hang or flake on an offline machine.
-status=0
-"$BIN" doctor --repo notaslash >/dev/null 2>&1 || status=$?
-if [ "$status" -ne 2 ]; then
-  echo "  expected exit 2 (usage) for a malformed doctor --repo, got $status" >&2
-  exit 1
-fi
+sh scripts/smoke.sh "$WORK/glyph"
 ran smoke
 
 # Reconciliation. Every gate that got this far exited 0 under `set -e`, so what is

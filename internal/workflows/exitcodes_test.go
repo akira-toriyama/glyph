@@ -249,8 +249,7 @@ func TestOutOfGoConsumersBranchOnTheContractIntegers(t *testing.T) {
 	release := filepath.Join(".github", "workflows", "release.yml")
 	goreleaser := filepath.Join(".github", "workflows", "goreleaser.yml")
 	prVerdict := filepath.Join(".github", "workflows", "pr-verdict.yml")
-	build := filepath.Join(".github", "workflows", "build.yml")
-	check := filepath.Join("scripts", "check.sh")
+	smoke := filepath.Join("scripts", "smoke.sh")
 	preflight := filepath.Join("scripts", "fleet-preflight.sh")
 
 	rows := []consumer{
@@ -274,12 +273,9 @@ func TestOutOfGoConsumersBranchOnTheContractIntegers(t *testing.T) {
 		{goreleaser, core.CodeNoRelease, shEq},
 		{goreleaser, core.CodeOK, shNe},
 		{prVerdict, core.CodeOK, shNe},
-		{build, core.CodeUsage, shNe},
-		{build, core.CodeLint, shNe},
-		{build, core.CodeNoRelease, shNe},
-		{check, core.CodeUsage, shNe},
-		{check, core.CodeLint, shNe},
-		{check, core.CodeNoRelease, shNe},
+		{smoke, core.CodeUsage, shNe},
+		{smoke, core.CodeLint, shNe},
+		{smoke, core.CodeNoRelease, shNe},
 	}
 
 	// POSITIVE CONTROLS for the two matchers, on real lines from the tree. A

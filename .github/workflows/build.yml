@@ -147,91 +147,17 @@ jobs:
         if: runner.os == 'Linux'
         run: GLYPH_RELEASE_HISTORY=required go test ./internal/doctor -run '^TestCallerDeclarationBoundsMatchReleasedTags$' -count=1
 
+      # The binary's CLI contract and the bounded fuzz loop live once, in
+      # scripts/smoke.sh and scripts/fuzz-smoke.sh; scripts/check.sh runs the
+      # same two files.
       - name: smoke test
         run: |
           go build -o /tmp/glyph ./cmd/glyph
-          /tmp/glyph version
-          /tmp/glyph --version
-          /tmp/glyph --help >/dev/null
-          # init refuses to clobber this repository's own glyph.toml (usage, 2).
-          status=0
-          /tmp/glyph init --gemoji >/dev/null 2>&1 || status=$?
-          if [ "$status" -ne 2 ]; then
-            echo "expected exit 2 (usage) for init over an existing glyph.toml, got $status" >&2
-            exit 1
-          fi
-          # two presets at once must be a usage error (exit 2), not a crash.
-          if /tmp/glyph init --gemoji --conventional >/dev/null 2>&1; then
-            echo "expected a usage error for init --gemoji --conventional" >&2
-            exit 1
-          fi
-          # `completion`'s output is redirected into a file the shell SOURCES, so
-          # an unknown shell reporting success writes prose where a script belongs.
-          # Asserted on the real process because cobra binds the completion writer
-          # when the command tree is built, so no in-process test can see which
-          # stream the script took (internal/cli/root_test.go says so).
-          /tmp/glyph completion zsh | head -1 | grep -q '^#compdef'
-          status=0
-          out=$(/tmp/glyph completion bogus 2>/dev/null) || status=$?
-          if [ "$status" -ne 2 ]; then
-            echo "expected exit 2 (usage) for an unknown completion shell, got $status" >&2
-            exit 1
-          fi
-          if [ -n "$out" ]; then
-            echo "'completion bogus' wrote to stdout" >&2
-            exit 1
-          fi
-          # lint / bump exit-code contract on the shipped binary.
-          # The CODE is the assertion, not merely non-zero: `--stdin=false` used
-          # to exit 3, telling this very gate that a commit violated the
-          # convention when none was submitted. That rule governs EVERY
-          # assertion below — two of them used to name an integer and assert
-          # only non-zero, which is green through the renumbering they exist
-          # to catch.
-          /tmp/glyph lint --message ':bug:~ fix a crash'
-          status=0
-          /tmp/glyph lint --message 'no gitmoji' >/dev/null 2>&1 || status=$?
-          if [ "$status" -ne 3 ]; then
-            echo "expected exit 3 (convention violation) for a malformed message, got $status" >&2
-            exit 1
-          fi
-          status=0
-          /tmp/glyph lint --stdin=false </dev/null >/dev/null 2>&1 || status=$?
-          if [ "$status" -ne 2 ]; then
-            echo "expected exit 2 (usage) for lint --stdin=false, got $status" >&2
-            exit 1
-          fi
-          status=0
-          /tmp/glyph bump --range HEAD~1..HEAD --current= >/dev/null 2>&1 || status=$?
-          if [ "$status" -ne 2 ]; then
-            echo "expected exit 2 (usage) for an empty --current, got $status" >&2
-            exit 1
-          fi
-          # the checkout is a repo: an empty range is the soft no-release exit (1).
-          status=0
-          /tmp/glyph bump --range HEAD..HEAD >/dev/null 2>&1 || status=$?
-          if [ "$status" -ne 1 ]; then
-            echo "expected exit 1 (no release-worthy change) for an empty bump range, got $status" >&2
-            exit 1
-          fi
+          sh scripts/smoke.sh /tmp/glyph
 
-      # Bounded fuzz over every Fuzz target (never-panic / round-trip / fold
-      # invariants). Auto-discovered per package so a new target needs no
-      # workflow edit; scripts/check.sh mirrors this loop. The bound is an
-      # execution COUNT, not a duration: a wall-clock -fuzztime makes the fuzz
-      # engine race its own deadline at shutdown and FAIL green runs with a
-      # spurious "context deadline exceeded" on loaded runners (Go's own
-      # builders flake on this), whereas a count bound never creates that
-      # deadline. Real hangs are still caught by the per-input 10s limit.
       - name: fuzz smoke (bounded)
         if: runner.os == 'Linux'
-        run: |
-          for pkg in $(go list ./...); do
-            targets=$(go test -list '^Fuzz' "$pkg" | grep '^Fuzz' || true)
-            for f in $targets; do
-              go test "$pkg" -run '^$' -fuzz "^${f}\$" -fuzztime 200000x
-            done
-          done
+        run: sh scripts/fuzz-smoke.sh
 
   # Coverage as a REPORT, never a gate (t-37mg). The number is read for risk —
   # an unexecuted branch is the cheap way to find candidates for the mutation
