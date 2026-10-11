@@ -66,7 +66,7 @@ a baseline**.
 | `glyph preview` | the whole merge-preview comment for a PR: what merging it does to the version, with the evidence; `--notes` folds the release-notes preview in |
 | `glyph doctor` | read-only checks that the repository still matches what glyph assumes; each failing check prints the command that fixes it |
 | `glyph hook install` | local `commit-msg` and `pre-push` hooks that run the same lint the CI gate runs |
-| `glyph version` | the build identity — release tag, commit, build date; the one command that reaches nothing (no git, no API), so it answers anywhere |
+| `glyph version` | the build identity — release tag, commit, build date; like `emoji` it reaches nothing (no git, no API), so it answers anywhere |
 | `glyph emoji` | the gemoji dictionary as JSON: for each kind of change the one shortcode to write, when to pick it, and the gitmoji codes it absorbed; advice only — lint never reads it, and like `version` it reaches nothing |
 
 `lint --range/--message/--stdin` and `init` work offline against local git
@@ -110,6 +110,21 @@ gh attestation verify glyph_*.tar.gz --repo akira-toriyama/glyph
 ```sh
 go install github.com/akira-toriyama/glyph/v5/cmd/glyph@latest
 ```
+
+**From a checkout**
+
+```sh
+git clone https://github.com/akira-toriyama/glyph && cd glyph
+sh install.sh          # → ~/.local/bin/glyph
+```
+
+`install.sh` runs `build.sh` — a `go build` stamped from the checkout's
+`git describe`, so `glyph version` names the commit it was built from
+(`-dirty` included) — and copies `bin/glyph` to `~/.local/bin/glyph`, printing
+the line to add to your shell rc when that directory is not on `PATH`. The
+build uses the Go already installed (`GOTOOLCHAIN=local`: it never downloads a
+toolchain, so that Go must be at least `go.mod`'s `go` line). `sh build.sh`
+alone stops at `bin/glyph`.
 
 **Nix**
 
@@ -183,9 +198,10 @@ reusables declare and passing the inputs they require, and the installed hooks
 nothing goes red — the verdict is just computed over a repository that no
 longer matches the model, which is exactly what `doctor` exists to catch.
 Nothing is ever modified: each failing check prints the command that fixes it.
-Exit `0` all clear · `3` a check failed · `4` a check could not run
-(unverified, which is not the same as fine) — an API that never answered is
-always the second, never the first.
+A failing check exits as a convention violation and a check that could not run
+as no trustworthy answer ([Exit codes](#exit-codes)) — unverified, which is not
+the same as fine — and an API that never answered is always the second, never
+the first.
 
 **2. Move the lint to the moment you write the message:**
 
@@ -222,6 +238,22 @@ for a merge-preview comment on every PR, and `release.yml` to keep a rolling
 draft release maintained on every push to `main`. Publishing the draft is the
 release: the tag is created by that human act, never by CI.
 
+The draft is always one a human can publish. Every published release sets a
+**floor** (per line under `[[packages]]`), wherever its commit sits: a
+computed version that is not strictly greater than the highest of them — equal included, because that
+tag is taken, or burned for good if its release was deleted — is refused at
+exit 4 before anything is written, `--dry-run` included, with both versions
+named. DESIGN §4 has the rule and its prices.
+
+A tag-push job — a GoReleaser step rendering the body of the tag it was just
+handed — cannot walk with a bare `--since-tag`: at that moment the new tag is
+itself the highest, and the range would be empty. `--since-tag=below:vX.Y.Z`
+resolves the highest version tag HEAD contains strictly **below** the bound
+instead, so cutting a v0.8.3 hotfix while v0.9.0 exists walks from v0.8.2,
+and with nothing below the bound it walks the whole history, as a first
+release does. glyph's own `goreleaser.yml` renders its release notes with
+`glyph notes --since-tag="below:$GITHUB_REF_NAME"`.
+
 Two wired-in behaviours worth knowing before you read them out of the YAML:
 the lint caller's optional `push: branches: [main]` arm runs the same rules
 over each direct push to the default branch but only **annotates** — that
@@ -230,8 +262,7 @@ and exit 3 is swallowed on that arm alone. And `release.yml` hands its verdict
 back as `workflow_call` outputs (`level`, `next`, `current`, `action`) so a
 caller can gate follow-up steps without re-deriving it; empty means **not
 computed**, never "none", so gate fail-safe on `""`. The draft's URL is
-deliberately not among them — with the handle in hand, auto-publishing would
-be a two-line caller step, and publishing staying human is the safety net.
+deliberately not among them (DESIGN §6).
 A repository that declares `[[packages]]` answers through `packages`
 instead — one JSON array of per-line verdicts, `[{path, current, level,
 next, tag, action, commits, reason}]`, each line's body and url stripped —
@@ -254,9 +285,7 @@ it on `needs.release.outputs.next != ''` and on the dry-run input, then
 `gh release upload "$next" <files> --clobber`. gh resolves an unpublished
 draft by its intended tag (the REST `releases/tags/<tag>` lookup alone does
 not — gh falls back to the listing), the same call the reusable's own upload
-step makes. Measured on glyph-test's `v2.0.0` draft, 2026-09-10: upload,
-`--clobber` replace and `gh release delete-asset` each resolved the draft by
-tag. It is a follow-up job rather than a `needs:`-fed input because the
+step makes. It is a follow-up job rather than a `needs:`-fed input because the
 reusable upserts before it builds — DESIGN §6 argues why. A monorepo
 attaches the same way, per line: iterate the `packages` output
 (`jq -r '.[] | select(.tag != null) | .tag'`) and upload to each `tag`;
@@ -350,14 +379,39 @@ bot commit touches decide which line's notes.
 pattern's named groups, `$pr` / `$author` / `$hash` / `$coauthors` are built
 in, and a
 `$[ … ]` span renders only when every placeholder inside it resolves. That is
-what lets the shipped `- $subject$[ ($pr)] @$author` cite a pull when there is
-one and drop the parens with it when there is not, instead of writing `()` for
-every commit that reached main without a merged pull. `@$author` pages the
+what lets the shipped `- $subject$[ ($pr)] @$author$[ with $coauthors]` cite a
+pull when there is one and drop the parens with it when there is not, instead
+of writing `()` for every commit that reached main without a merged pull. `@$author` pages the
 contributor only when GitHub knows who that is — the login the API reports for
 a listed commit, or the one a `@users.noreply.github.com` author address
 carries; a commit from any other address is credited by its git author name,
 plain, so a display name that happens to look like a handle never pages the
 stranger who owns it.
+
+The commit author's own text — the subject, the scope, any group a pattern
+captures — renders as prose that cannot reach past its line: outside the
+author's own code spans, glyph puts a backslash before every `<`, every `[`,
+the `:` of an `http://` / `https://` / `ftp://`, the `.` of a `www.` and an
+entity-shaped `&`, and fences every `@handle` as code, while emphasis keeps
+working. A code span the author wrote passes through byte for byte —
+``unwrap `Optional<Any>` and [x]`` lands as ``unwrap `Optional<Any>` and \[x]``.
+A subject written as
+
+```
+:sparkles:^ [click here](https://evil.example) and @octocat and <img src=x onerror=1> and **bold**
+```
+
+reaches the notes as
+
+```
+:sparkles:^ \[click here](https\://evil.example) and `@octocat` and \<img src=x onerror=1> and **bold**
+```
+
+— no link, no mention, no live tag, the bold still bold. A raw tag is not
+only a risk: GitHub deletes an unknown one outright (`Optional<Any>` renders
+as `Optional`), so the escape is also what keeps real subjects whole. DESIGN
+§2 and §3 hold the rulings, and `internal/markdown/escape.go` the rules with
+the renderer measurements behind each.
 
 Two more of a commit's facts live below its subject, in the **git trailer
 block**, and glyph parses that block rather than grepping for the lines it
@@ -434,12 +488,15 @@ tag), a bare `--since-tag` walks every line from its own highest tag the
 released branch holds, and `--range` attributes from local git with every
 commit pending on every line.
 A package with no tag yet is baselined
-by cutting `<path>/v0.0.0` at the commit before its first change. On stdout
+by cutting `<prefix>v0.0.0` (`haiku/v0.0.0`) at the commit before its first
+change. On stdout
 `bump` prints the next **tag** of every line that moves, one per line
 (`haiku/v0.2.0`), and exits `1` only when every line folds to none; `--json`
 carries `packages: [{path, current, level, next, commits, reason}]` with the
-scalar `current` / `level` / `next` **empty** — there is no one line for them
-to describe, so a consumer reading only the scalars fails safe. `notes`
+scalar `current` / `level` **empty** and `next` absent, as on a none verdict —
+there is no one line for them to describe, so a consumer reading only the
+scalars fails safe provided it reads an absent key as empty
+(`jq -r '.next // empty'`; a plain `.next` prints `null`). `notes`
 mirrors it: `packages: [{path, sections}]`, and on stdout one body per line
 under a `# <path>` heading (bare when one line is selected). `--pr` is
 refused on both — a pull's listing carries messages and no files.
@@ -453,7 +510,8 @@ its residual draft), every line's upsert written before any stray is deleted
 its notes with a compare link from that line's own base tag (none for a line
 with no tag), `--footer-file` appended to every draft, and `--json` carrying
 `packages: [{path, current, level, next, tag, body, action, url, commits,
-reason}]` with the scalars empty and `target` shared — omitted, as the single
+reason}]` with the scalar `current` / `level` / `action` empty, `tag` /
+`body` / `url` absent, and `target` shared — omitted, as the single
 line omits it, when no line has a draft to write. A bare `vX.Y.Z` draft in a
 repository that declares packages but no root package is the single
 line's residue and is deleted with a notice on the first packages run —
@@ -479,8 +537,9 @@ byte.
 
 `0` ok · `1` no release-worthy change · `2` usage · `3` convention violation
 (a commit under `lint`, the repository's own configuration under `doctor`) ·
-`4` API/git/IO, a `release` walk that could not read its range, or a `release`
-write refused off the default branch · `130` interrupted.
+`4` no trustworthy answer — API/git/IO, a `release` walk that could not read
+its range, or a `release` write refused off the default branch · `130`
+interrupted.
 
 The integers are a frozen machine API — CI gates branch on the exact value, so
 assert the code, never truthiness (`if glyph …` cannot tell `3` from `2`).

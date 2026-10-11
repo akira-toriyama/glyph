@@ -115,7 +115,7 @@ type sinceTagWalk struct {
 // The union is the range from the bases' common ancestor to HEAD, which
 // contains every line's range; a line with no tag of its own makes it the
 // whole history, under the same cap the single line has, with the remedy
-// §4.1 names (cut <path>/v0.0.0 at the commit before the line's first
+// §4.1 names (cut <prefix>v0.0.0 at the commit before the line's first
 // change).
 // A nil scope resolves every declared line; a scope narrows the UNION to its
 // lines. Every declared line is still resolved and returned, because
@@ -684,7 +684,7 @@ func attributionWedge(err error, c walked, owner, repo string, reached []line) e
 		where = fmt.Sprintf("inside merged pull request %s/%s#%d, which the release walk resolved from its merge point %.7s", owner, repo, c.Pull, c.MergePoint)
 	}
 	return &core.Error{Code: core.CodeLint, Details: []rangeViolation{{SHA: c.Raw.SHA, Subject: bump.FirstLine(c.Raw.Message), Detail: err.Error()}}, Msg: fmt.Sprintf(
-		"commit %.7s: %v — %s; the commit is already on a published branch and cannot be rewritten, so every release of a line whose range holds it wedges here until that line's walk starts past it: cut %s by hand, or name such a tag with --since-tag=<line>vX.Y.Z (DESIGN §4.1)",
+		"commit %.7s: %v — %s; the commit is already on a published branch and cannot be rewritten, so every release of a line whose range holds it wedges here until that line's walk starts past it: cut %s by hand, or name such a tag with --since-tag=<prefix>vX.Y.Z (DESIGN §4.1)",
 		c.Raw.SHA, err, where, strings.Join(lineEscapes(c, reached), " / "))}
 }
 
@@ -725,7 +725,7 @@ func checkLineSelection(current string, lines []lineWalk) error {
 	for _, l := range lines {
 		names = append(names, l.Line.Label())
 	}
-	return core.Usagef("--current names one version, and this walk answers for %d lines (%s) — select one line with --since-tag=<line>vX.Y.Z (or below:), or drop --current", len(lines), strings.Join(names, ", "))
+	return core.Usagef("--current names one version, and this walk answers for %d lines (%s) — select one line with --since-tag=<prefix>vX.Y.Z (or below:), or drop --current", len(lines), strings.Join(names, ", "))
 }
 
 // refusePullSource is the packages-mode answer to --pr on bump and notes: they

@@ -46,7 +46,8 @@ func newNotesCmd() *cobra.Command {
 			"[[note.sections]] order is render order, each section filters on one axis\n" +
 			"(semver or author), a commit lands in EVERY section whose filter matches\n" +
 			"it, and each line renders through the note.line template ($xxx reads the\n" +
-			"winning pattern's named groups; $pr / $author / $hash are built in; a\n" +
+			"winning pattern's named groups; $pr / $author / $hash / $coauthors are\n" +
+			"built in, and a [[note.trailers]] entry adds its own name; a\n" +
 			"commit no pattern matches, or an unlandable one claims, renders its raw\n" +
 			"first line as $subject).\n" +
 			"skip-pattern commits appear nowhere; exclude_authors appear wherever\n" +

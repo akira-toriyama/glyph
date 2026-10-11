@@ -108,7 +108,7 @@ func TestNeverASecondDraft(t *testing.T) {
 
 // TestManagedIsPerLine pins the line boundary of convergence: a draft is
 // managed only by the line its tag is on. The bare line claims v* drafts and
-// the bare placeholder; a package's line claims <path>/v* drafts and
+// the bare placeholder; a package's line claims <prefix>v* drafts and
 // <path>/Unreleased; nothing claims across, and a nested line's draft is not
 // its parent's. Without this, the first line converged would delete every
 // other line's rolling draft as a stray.

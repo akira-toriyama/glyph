@@ -1,5 +1,5 @@
 diff --git a/README.md b/README.md
-index 63941f7..df1b9e7 100644
+index cd8be74..c64aa79 100644
 --- a/README.md
 +++ b/README.md
 @@ -108,7 +108,7 @@ gh attestation verify glyph_*.tar.gz --repo akira-toriyama/glyph
@@ -10,4 +10,4 @@ index 63941f7..df1b9e7 100644
 +go install github.com/akira-toriyama/glyph/cmd/glyph@latest
  ```
  
- **Nix**
+ **From a checkout**

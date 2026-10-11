@@ -59,7 +59,7 @@ for the cited detail. What it changed:
   (release-drafter falls back to `patch` whenever no category matches, so it can
   never say "nothing shipped"), and glyph's walk is self-baselining
   (release-drafter requires a previously PUBLISHED release or it warns and returns
-  nothing — which is also the strongest argument for the backlogged initial-tag knob).
+  nothing).
 
 Only permitted external dependencies: cobra (the CLI frame, per house pattern;
 its flag package pflag rides along as a direct require) and go-toml (the
@@ -1764,7 +1764,7 @@ per line — plus `doctor`'s root-line advice (t-q047); and the walk itself
 walks the union once, fetches the files of each commit it places by its diff
 from local git or the API, and partitions the walk per line, so `bump` and `notes`
 answer per line over `--since-tag` and `--range` (the `packages` array
-below, scalars empty), `lint --range` and the pre-push hook apply rules 2–3
+below, scalars empty or absent), `lint --range` and the pre-push hook apply rules 2–3
 and the contradiction check; and the drafts (t-qecb): `release` converges
 one rolling draft per line (`internal/cli/release_lines.go` — every line's
 upsert before any stray, the single line's bare draft deleted as residue,
@@ -1810,8 +1810,9 @@ path = "."                  # the root package: the bare vX.Y.Z line, and every 
 name = "core"               # its default "." is no preset scope's word: under the presets name is required
 ```
 
-- **The tag line is `<path>/vX.Y.Z`, derived, not configurable — with the
-  path's major version subdirectory folded into the major.** That is the Go
+- **The tag line is `<prefix>vX.Y.Z`, the prefix derived from the path, not
+  configurable — `<path>/` with the path's major version subdirectory folded
+  into the major, and empty for the root package.** That is the Go
   multi-module rule (go.dev/ref/mod, "Module paths": the tag prefix is the
   module subdirectory *not including the major version suffix*, and a module
   at major N ≥ 2 may live in a `/vN` subdirectory), the one ecosystem that
@@ -2399,9 +2400,9 @@ ranges would resolve the same pulls N times for the same answers, and were
 rejected on cost alone. The whole-history cap applies to
 the union walk as it does today, and its remedy gains a package form the
 error names: a package with no tag of its own — the common case of a package
-added to an old repository — is baselined by cutting **`<path>/v0.0.0` at the
+added to an old repository — is baselined by cutting **`<prefix>v0.0.0` at the
 commit before its first change**, a tag that says "nothing of this line was
-released before here" and steps to `<path>/v0.1.0` on the first `^`.
+released before here" and steps to `<prefix>v0.1.0` on the first `^`.
 
 **Only the untagged arm is capped**, and the tagged arm's missing cap is a
 decision (t-n5tw R3). A tagged range is the unreleased work a release exists
@@ -2486,8 +2487,9 @@ every line folds to none**; one line moving is a release. No new integer:
 the exit-code contract is frozen (§5), and every mixed outcome is legible in
 the machine verdict, which gains a per-line `packages` array (each command's
 row is README's, "Packages") while the scalar `current` / `level` / `next` /
-`action` stay what they are for the single line and are **empty when
-packages are declared** — a repository with packages has no one line for them
+`action` stay what they are for the single line; when packages are declared
+`current` / `level` / `action` are **empty** and `next` (release: `tag` /
+`body` / `url`) is **absent** — a repository with packages has no one line for them
 to describe, and a consumer that reads only the scalars is exactly the
 consumer that must not act (mutation row
 `packages-scalar-verdict-describes-one-line.patch`). The top-level `commits`
@@ -3677,7 +3679,6 @@ placeholder, the checkout stays `fetch-depth: 0`) plus the fake-API tests behind
 pointer §6 already carries, not a second copy of it here: a doc-side task list
 is a second source of truth, and the two go stale against each other. (The
 fleet migration this paragraph used to name completed: every consumer pins
-v1.0.0 or later, audited daily.) Two design decisions this document names in place, so that
-dropping the phase list does not lose them: the initial-tag knob (§1), and
-narrowing the reconciliation refusal to the merge-button shape, which is
-placeable without a canonical commit (§4).
+v1.0.0 or later, audited daily.) One design decision this document names in place, so that
+dropping the phase list does not lose it: narrowing the reconciliation refusal
+to the merge-button shape, which is placeable without a canonical commit (§4).

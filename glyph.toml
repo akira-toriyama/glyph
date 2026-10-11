@@ -6,7 +6,7 @@ schema = 1
 exclude_authors = ['dependabot[bot]', 'renovate[bot]']
 
 # Independently versioned lines in one repository (a monorepo). Each
-# [[packages]] entry is a subtree with its own tag line (<path>/vX.Y.Z — the
+# [[packages]] entry is a subtree with its own tag line (<prefix>vX.Y.Z — the
 # Go multi-module rule, not configurable), its own walk base and its own
 # rolling draft. A commit moves the lines its files lie under (a nested
 # package takes its files out of its parent); a commit touching no package's

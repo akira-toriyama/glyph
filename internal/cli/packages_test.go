@@ -238,6 +238,7 @@ func TestSinceTagPackagesSharedOnlyBumpIsRefused(t *testing.T) {
 		"its files (go.work) belong to no declared package",
 		"name the line it moves in the scope (one of haiku, curry), write = so it moves no line, or declare the package these files belong to",
 		"haiku/ tag at or past", "curry/ tag at or past", sha[:7],
+		"--since-tag=<prefix>vX.Y.Z",
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("refusal is missing %q:\n%s", want, stderr)
@@ -324,13 +325,14 @@ func TestSinceTagPackagesATagNamesALine(t *testing.T) {
 		code int
 		want string // stdout on 0, a stderr fragment otherwise
 	}{
-		"explicit tag selects haiku":   {[]string{"bump", "--since-tag=haiku/v0.1.0"}, 0, "haiku/v0.2.0\n"},
-		"below selects curry":          {[]string{"bump", "--since-tag=below:curry/v0.2.0"}, 0, "curry/v0.1.1\n"},
-		"current on one selected line": {[]string{"bump", "--since-tag=curry/v0.1.0", "--current", "v1.0.0"}, 0, "curry/v1.0.1\n"},
-		"current over every line":      {[]string{"bump", "--since-tag", "--current", "v1.0.0"}, 2, "answers for 2 lines"},
-		"an undeclared line is usage":  {[]string{"bump", "--since-tag=fish/v0.1.0"}, 2, "no [[packages]] entry declares"},
-		"below an undeclared line":     {[]string{"bump", "--since-tag=below:fish/v0.2.0"}, 2, "no [[packages]] entry declares"},
-		"a bare tag with no root line": {[]string{"bump", "--since-tag=v0.1.0"}, 2, "bare v* line"},
+		"explicit tag selects haiku":    {[]string{"bump", "--since-tag=haiku/v0.1.0"}, 0, "haiku/v0.2.0\n"},
+		"below selects curry":           {[]string{"bump", "--since-tag=below:curry/v0.2.0"}, 0, "curry/v0.1.1\n"},
+		"current on one selected line":  {[]string{"bump", "--since-tag=curry/v0.1.0", "--current", "v1.0.0"}, 0, "curry/v1.0.1\n"},
+		"current over every line":       {[]string{"bump", "--since-tag", "--current", "v1.0.0"}, 2, "answers for 2 lines"},
+		"the refusal spells a line tag": {[]string{"bump", "--since-tag", "--current", "v1.0.0"}, 2, "--since-tag=<prefix>vX.Y.Z (or below:)"},
+		"an undeclared line is usage":   {[]string{"bump", "--since-tag=fish/v0.1.0"}, 2, "no [[packages]] entry declares"},
+		"below an undeclared line":      {[]string{"bump", "--since-tag=below:fish/v0.2.0"}, 2, "no [[packages]] entry declares"},
+		"a bare tag with no root line":  {[]string{"bump", "--since-tag=v0.1.0"}, 2, "bare v* line"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			code, stdout, stderr := runGlyph(t, tc.args...)
@@ -430,7 +432,7 @@ func TestSinceTagPackagesACandidateTagNamesALine(t *testing.T) {
 // line whose tags all sit at or above the bound walks the whole history —
 // that line's first release, as the single line does — and the warning says
 // WHY: no version tag BELOW THE BOUND on that line. The remedy is the same
-// tag as for a line with no tag at all (cut <path>/v0.0.0 before the line's
+// tag as for a line with no tag at all (cut <prefix>v0.0.0 before the line's
 // first change), the diagnosis is not: the first cut reported "no version
 // tag on the haiku/ line", a sentence `git tag -l 'haiku/v*'` refutes, and
 // past the walk cap that sentence is the exit-4 refusal body the operator
@@ -1545,7 +1547,7 @@ func TestPrePushPackagesInheritsAttribution(t *testing.T) {
 // TestSinceTagPackagesUntaggedLineWalksTheWholeHistory: a package with no tag
 // of its own baselines at nothing — the whole history is walked, under the
 // single line's cap, and the warning names the remedy §4.1 gives (cut
-// <path>/v0.0.0 at the commit before the line's first change).
+// <prefix>v0.0.0 at the commit before the line's first change).
 func TestSinceTagPackagesUntaggedLineWalksTheWholeHistory(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	appendTo(t, dir, "glyph.toml", packagesConfig)

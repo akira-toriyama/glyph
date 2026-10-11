@@ -128,8 +128,8 @@ type Commit struct {
 // and no ".." — whose every segment git accepts in a refname and whose first
 // character git tag accepts in a tag name, so the tag line is derivable from
 // it without another normalisation step and every tag it names is one git tag
-// can create (tagline.go: <path>/vX.Y.Z, a major version
-// subdirectory /vN folded into the major). Name is what a commit scope may
+// can create (tagline.go: <prefix>vX.Y.Z, the prefix <path>/ with a major
+// version subdirectory /vN folded into the major, empty for the root). Name is what a commit scope may
 // call the package: the file's `name` key when set, else the last path
 // segment (path.Base, "." for the root package; a major version subdirectory
 // defaults to `<parent>/vN`, see defaultName). Wherever a pattern whose groups
@@ -413,7 +413,7 @@ func buildPackage(rp rawPackage) (Package, error) {
 	case p == ".." || strings.HasPrefix(p, "../"):
 		return Package{}, fmt.Errorf("path %q escapes the repository: a package is a subtree of the checkout glyph.toml sits in", p)
 	case path.Clean(p) != p:
-		return Package{}, fmt.Errorf("path %q is not in clean form: write %q (the path is the tag prefix, <path>/vX.Y.Z, and is read from the file as written)", p, path.Clean(p))
+		return Package{}, fmt.Errorf("path %q is not in clean form: write %q (the line's tags, <prefix>vX.Y.Z, take their prefix from the path as written)", p, path.Clean(p))
 	}
 	if p != "." {
 		for seg := range strings.SplitSeq(p, "/") {

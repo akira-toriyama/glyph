@@ -40,6 +40,14 @@ func newDoctorCmd() *cobra.Command {
 			"    compilable patterns, a semver_sigil for every match): the config is what\n" +
 			"    every verdict command reads before anything else, so a repository that\n" +
 			"    pins glyph without one has its whole gate down\n" +
+			"  - every [[packages]] path is a directory HEAD records, spelled byte for byte\n" +
+			"    as git records it: a path with no such subtree claims no file, so every\n" +
+			"    commit under the directory meant is attributed to another line or to none —\n" +
+			"    a typo silently moves the verdict\n" +
+			"  - with [[packages]] declared and no root package (path \".\"), a bare v* tag\n" +
+			"    no declared line holds is advice: such tags baseline no line any more, and\n" +
+			"    the note names the declaration that adopts them. Both package checks\n" +
+			"    answer only once glyph.toml loads\n" +
 			"  - the credential can read the repository at all, and what the API itself says\n" +
 			"    about its permissions (never a guess at scopes the API did not report);\n" +
 			"    a credential that could not write releases is advice — only `glyph release`\n" +
@@ -52,8 +60,8 @@ func newDoctorCmd() *cobra.Command {
 			"    gate, but the fallback still classifies that one subject instead of the\n" +
 			"    pull's commits.)\n" +
 			"  - merge commits / rebase merges are off — advice, not a defect: the walk\n" +
-			"    resolves and expands both (a merge commit since t-7zt7, a rebase from its\n" +
-			"    last replayed commit, which is what GitHub names merge_commit_sha). What is\n" +
+			"    resolves and expands both (a merge commit from itself, a rebase from its\n" +
+			"    last replayed commit — each what GitHub names merge_commit_sha). What is\n" +
 			"    left is a house convention plus one named, LOUD window per style — a merge\n" +
 			"    point GitHub has not indexed yet (or an automation authored) drops its pull\n" +
 			"    with two warnings (release refuses the incomplete walk at exit 4;\n" +
