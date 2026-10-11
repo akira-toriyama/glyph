@@ -1270,6 +1270,7 @@ func TestReleaseNoneReportsAnUnwitnessedDeleteHonestly(t *testing.T) {
 			// is already gone.
 			deletes++
 			if deletes == 1 {
+				w.Header().Set("Retry-After", "0") // timing only: the default schedule's first 1s
 				w.WriteHeader(http.StatusServiceUnavailable)
 				fmt.Fprint(w, `{"message":"Service Unavailable"}`)
 				return

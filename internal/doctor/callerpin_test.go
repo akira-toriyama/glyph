@@ -203,7 +203,7 @@ func TestCallerDeclarationBoundsMatchReleasedTags(t *testing.T) {
 	if shallow, serr := gitRead(repo, "rev-parse", "--is-shallow-repository"); serr != nil || shallow != "false" {
 		unavailable("the checkout is shallow (%q, %v)", shallow, serr)
 	}
-	list, err := gitRead(repo, "tag", "--list", "v*")
+	list, err := gitRead(repo, "tag", "--list", "--no-column", "v*")
 	if err != nil {
 		unavailable("git tag --list: %v", err)
 	}
@@ -285,9 +285,14 @@ func isReusable(body string) bool {
 }
 
 // gitRead runs one read-only git command in dir and returns its trimmed
-// stdout. Test-only: internal/doctor's shipped code runs no git.
+// stdout. Test-only: internal/doctor's shipped code runs no git. The user's
+// global and system config are held out: under column.ui=always `tag --list`
+// came back columned and the release-history test found "no vX.Y.Z tag"
+// (gitsource answers the same config with --no-column, which the tag listing
+// below passes too).
 func gitRead(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...) // #nosec G204 -- fixed binary, the test's own arguments
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull)
 	out, err := cmd.Output()
 	if err != nil {
 		var ee *exec.ExitError
