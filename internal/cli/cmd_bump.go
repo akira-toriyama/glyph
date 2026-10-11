@@ -26,7 +26,7 @@ var (
 // The commit rows are bump.SigilVerdict — the v1 "code" and "breaking" keys
 // died with the embedded table; the sigil IS the classification input now.
 //
-// With packages declared the scalars current / level / next are EMPTY and
+// With packages declared current / level are EMPTY, next is absent, and
 // packages carries one verdict per line (DESIGN §4.1): a repository with
 // packages has no one line for the scalars to describe, and a consumer that
 // reads only the scalars is exactly the consumer that must not act on them

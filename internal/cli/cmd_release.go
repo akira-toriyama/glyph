@@ -37,11 +37,11 @@ var (
 // the walk took in — which is what a human or a CI step reads to audit how a
 // verdict was assembled.
 //
-// With packages declared, current / level / next-bearing tag / body / action
-// / url are EMPTY and packages carries one verdict and one draft per line
+// With packages declared, current / level / action are EMPTY, tag / body /
+// url are absent, and packages carries one verdict and one draft per line
 // (DESIGN §4.1): a caller written for the single line — release.yml's scalar
-// outputs, a tag step — then fails safe on "", which its contract already
-// tells it to. target is shared — one checkout, one HEAD, every line's draft
+// outputs, a tag step — then fails safe on "" or an absent key, which its
+// contract already tells it to. target is shared — one checkout, one HEAD, every line's draft
 // points at it — under the same rule: omitted when no line upserts a draft
 // (every selected line none, draft_on_none off). commits then lists every
 // participating commit (bumpResult).
