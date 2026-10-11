@@ -489,9 +489,9 @@ func checkSquashEnabled(in Input) Check {
 			"API or falls back on that one message, and no part of it can stand aside for a merge point that never resolves. " +
 			"That is the guarantee; identical verdicts are NOT. Under COMMIT_OR_PR_TITLE a MULTI-commit squash carries the PR " +
 			"title, whose sigil is its own, so an API-dark run classifies that one subject instead of the pull's commits: a " +
-			"^+~ pull titled ~ reads minor with the API and patch without, and a title no pattern claims refuses the fold " +
-			"outright. Squash bounds an API-dark window to one wrong level on one pull; a multi-commit landing can lose a " +
-			"whole one"
+			"^+~ pull titled ~ reads minor with the API and patch without, and a title no pattern claims is dropped from the " +
+			"fold with a warning, so the pull counts none. Squash bounds an API-dark window to one wrong level on one pull; " +
+			"a multi-commit landing can lose a whole one"
 		return c
 	}
 	c.Status = StatusFail

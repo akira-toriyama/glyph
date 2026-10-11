@@ -288,11 +288,15 @@ func TestMergeMethodChecksDescribeTheWalkThatExists(t *testing.T) {
 			want:  StatusPass,
 			mention: []string{
 				"never half-resolved", // the guarantee squash actually gives
+				// The lag path TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark
+				// pins: an unclaimed title is dropped with a warning, bump none.
+				"dropped from the fold with a warning",
 			},
 			forbid: []string{
 				// The sentence this whole round existed to delete: measured
 				// minor -> patch, and minor -> none for an unlinted PR title.
 				"whether or not the",
+				"refuses the fold", // the lag path never refuses an unclaimed title
 			},
 		},
 		{
