@@ -12,7 +12,12 @@ builds:
     flags: [-trimpath]
     ldflags:
       - -s -w
-      - -X github.com/akira-toriyama/glyph/v5/internal/version.Version={{.Version}}
+      # {{.Tag}}, not {{.Version}}: GoReleaser's Version drops the leading v, so
+      # every release through v5.0.0 reported "5.0.0" while build.sh, `go
+      # install …@vX.Y.Z` and README say vX.Y.Z — and the install action
+      # compares this stamp with the tag it was asked for. The archive name
+      # below keeps {{ .Version }}: the install action derives it as ${ver#v}.
+      - -X github.com/akira-toriyama/glyph/v5/internal/version.Version={{.Tag}}
       - -X github.com/akira-toriyama/glyph/v5/internal/version.Commit={{.Commit}}
       - -X github.com/akira-toriyama/glyph/v5/internal/version.Date={{.Date}}
     goos: [linux, darwin]

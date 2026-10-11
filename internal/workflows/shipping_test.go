@@ -172,6 +172,16 @@ func TestLdflagsNameTheRealVersionSymbols(t *testing.T) {
 		}
 		declared(".goreleaser.yaml", m[2])
 	}
+	// The release stamp is the tag itself. GoReleaser's {{.Version}} drops the
+	// v: the v5.0.0 asset answers `glyph version --json` with "5.0.0" (measured
+	// 2026-10-11 on the downloaded darwin_arm64 asset; v3.3.0-rc.2's answers
+	// "3.3.0-rc.2"), where build.sh, `go install …@v5.0.0` and README all say
+	// v5.0.0 — and the install action refuses a binary whose stamp is not the
+	// tag it was asked for.
+	if want := "-X " + wantPkg + ".Version={{.Tag}}"; !strings.Contains(repoFile(t, ".goreleaser.yaml"), want) {
+		t.Errorf(".goreleaser.yaml does not inject %q — any other template stamps released binaries with "+
+			"something that is not their tag ({{.Version}} drops the v: the v5.0.0 asset reports \"5.0.0\")", want)
+	}
 
 	// build.sh routes the same path through one PKG= variable, so the literal
 	// lives once and the injections name ${PKG}.
