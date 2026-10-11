@@ -27,8 +27,10 @@ if [ "$status" -ne 2 ]; then
   exit 1
 fi
 # two presets at once must exit 2 (usage), not crash
-if "$BIN" init --gemoji --conventional >/dev/null 2>&1; then
-  echo "  expected a usage error for init --gemoji --conventional" >&2
+status=0
+"$BIN" init --gemoji --conventional >/dev/null 2>&1 || status=$?
+if [ "$status" -ne 2 ]; then
+  echo "  expected exit 2 (usage) for init --gemoji --conventional, got $status" >&2
   exit 1
 fi
 
