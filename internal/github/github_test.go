@@ -413,8 +413,8 @@ func TestOnlyDocumentedMethodsCarryAStatusOut(t *testing.T) {
 	}
 
 	client := reflect.TypeFor[*Client]()
-	for i := range client.NumMethod() {
-		if name := client.Method(i).Name; calls[name] == nil {
+	for m := range client.Methods() {
+		if name := m.Name; calls[name] == nil {
 			t.Errorf("exported method %s has no row: probe it here, and either flatten its failure or document the status it carries out", name)
 		}
 	}
