@@ -3068,19 +3068,6 @@ guards the tag space, and `--dry-run` previews any verdict. Full rollout — and
 everything else still open — is tracked in the `projects` furrow board, which is
 the single home for it (§8 keeps no copy).
 
-Two behaviours of the shipped workflows are contract, not implementation
-detail. `lint.yml` carries a second, annotate-only arm (#140): a caller may add
-`push: branches: [main]` and the same rules run over each direct push to the
-default branch, but exit 3 is swallowed on that arm alone — that history is
-immutable, so a red verdict there could never be made green again, and a
-permanently red check trains a fleet to stop reading its own gate. And
-`release.yml` hands its verdict back as `workflow_call` outputs — `level`,
-`next`, `current`, `action`, where empty means NOT COMPUTED, never "none", so a
-caller gates fail-safe on `""` (#155). The draft's URL is deliberately
-withheld: with the API handle in hand, auto-publishing the draft is a two-line
-caller step, and the human act of publishing — the safety net everything above
-rests on — stays structurally out of a caller's reach.
-
 `pr-verdict.yml` is advisory and not meant to be a required check:
 convention enforcement is `lint.yml`'s. A pull carrying a commit the lint
 rejects fails the verdict job too — the walk refuses an unclassifiable commit
@@ -3104,6 +3091,19 @@ not write over that push's comment. Executed by
 `pr-verdict-cancelled-run-overwrites-the-newer-comment`,
 `pr-verdict-red-push-keeps-the-previous-verdict` and
 `pr-verdict-fallback-keyed-on-a-leftover-body`.
+
+Two behaviours of the shipped workflows are contract, not implementation
+detail. `lint.yml` carries a second, annotate-only arm (#140): a caller may add
+`push: branches: [main]` and the same rules run over each direct push to the
+default branch, but exit 3 is swallowed on that arm alone — that history is
+immutable, so a red verdict there could never be made green again, and a
+permanently red check trains a fleet to stop reading its own gate. And
+`release.yml` hands its verdict back as `workflow_call` outputs — `level`,
+`next`, `current`, `action`, where empty means NOT COMPUTED, never "none", so a
+caller gates fail-safe on `""` (#155). The draft's URL is deliberately
+withheld: with the API handle in hand, auto-publishing the draft is a two-line
+caller step, and the human act of publishing — the safety net everything above
+rests on — stays structurally out of a caller's reach.
 
 An `assets` input — files a caller built elsewhere in the run, attached by the
 reusable — was requested (zmk-hid-host, 2026-09-10: a Zephyr firmware build
