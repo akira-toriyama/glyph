@@ -59,7 +59,7 @@ for the cited detail. What it changed:
   (release-drafter falls back to `patch` whenever no category matches, so it can
   never say "nothing shipped"), and glyph's walk is self-baselining
   (release-drafter requires a previously PUBLISHED release or it warns and returns
-  nothing — which is also the strongest argument for the backlogged initial-tag knob).
+  nothing).
 
 Only permitted external dependencies: cobra (the CLI frame, per house pattern;
 its flag package pflag rides along as a direct require) and go-toml (the
@@ -3677,7 +3677,6 @@ placeholder, the checkout stays `fetch-depth: 0`) plus the fake-API tests behind
 pointer §6 already carries, not a second copy of it here: a doc-side task list
 is a second source of truth, and the two go stale against each other. (The
 fleet migration this paragraph used to name completed: every consumer pins
-v1.0.0 or later, audited daily.) Two design decisions this document names in place, so that
-dropping the phase list does not lose them: the initial-tag knob (§1), and
-narrowing the reconciliation refusal to the merge-button shape, which is
-placeable without a canonical commit (§4).
+v1.0.0 or later, audited daily.) One design decision this document names in place, so that
+dropping the phase list does not lose it: narrowing the reconciliation refusal
+to the merge-button shape, which is placeable without a canonical commit (§4).
