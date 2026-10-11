@@ -142,11 +142,11 @@ func newLintCmd() *cobra.Command {
 	return cmd
 }
 
-// hookCleanupMode reads the four signals a commit-msg hook has about what git
+// hookCleanupMode reads the five signals a commit-msg hook has about what git
 // is about to do to the message it was handed: `commit.cleanup`,
-// `commit.verbose`, GIT_EDITOR, and whether the message is git merge's own
-// MERGE_MSG (DESIGN §2.1). message is what the hook redirected onto stdin, nil
-// when there is no such file to ask about.
+// `commit.verbose`, the comment prefix, GIT_EDITOR, and whether the message is
+// git merge's own MERGE_MSG (DESIGN §2.1). message is what the hook redirected
+// onto stdin, nil when there is no such file to ask about.
 //
 // Asking git HERE rather than having the hook script pass a `--cleanup` flag is
 // the decision worth knowing, and it is a rollout one. The hook is a file
@@ -174,6 +174,10 @@ func hookCleanupMode(ctx context.Context, message io.Reader) cleanup.Mode {
 		// code, so exiting here would leave exactly those commits unlinted.
 		warnf("commit.cleanup=%q is not a mode git knows; linting this message as if it were 'default'", configured)
 	}
+	// An error is unset here too, and `auto` is '#' without a warning: git
+	// already warns about auto on every commit, and CommentPrefix says why '#'.
+	comment, set, _ := gitsource.ConfigLastOf(ctx, ".", "core.commentChar", "core.commentString")
+	mode.Comment = cleanup.CommentPrefix(comment, set)
 	return mode
 }
 

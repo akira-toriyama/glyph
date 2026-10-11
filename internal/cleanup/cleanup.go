@@ -4,12 +4,14 @@ import (
 	"strings"
 )
 
-// cutLine is git's scissors line, byte for byte: comment char, one space, then
-// wt-status.c's `cut_line` (24 dashes, " >8 ", 24 dashes). git writes it above
-// the diff under `commit --verbose` and truncates the message at it.
+// cutTail is git's scissors line after the comment prefix, byte for byte: one
+// space, then wt-status.c's `cut_line` (24 dashes, " >8 ", 24 dashes). git
+// writes the prefix and this above the diff under `commit --verbose` and
+// truncates the message at it.
 //
 // Matched EXACTLY — column 0, that dash count, newline-terminated — because git
-// matches it exactly (wt_status_locate_end does strstr on "\n" + this string).
+// matches it exactly (wt_status_locate_end does strstr on "\n", the prefix and
+// this).
 // The loose regex that stood here (`^\s*#\s*-+\s*>8\s*-+\s*$`) cut on a line git
 // would have KEPT: an indented one is not even a comment to git, so the text
 // below it is recorded, and glyph threw it away — the hook judged a message git
@@ -17,8 +19,41 @@ import (
 // line made the hook refuse a commit CI then accepted). Being exact fails in
 // the other direction if a future git changes the line, so the constant is not
 // trusted on faith: TestCutLineIsTheOneGitWrites drives a real `git commit -v`
-// and asserts git still writes THIS string.
-const cutLine = "# ------------------------ >8 ------------------------\n"
+// under several comment prefixes and asserts git still writes the prefix and
+// THIS string.
+const cutTail = " ------------------------ >8 ------------------------\n"
+
+// DefaultComment is git's comment prefix when neither core.commentChar nor
+// core.commentString is set.
+const DefaultComment = "#"
+
+// CommentPrefix answers the comment prefix git's cleanup uses, from the value
+// of the LAST definition of core.commentChar or core.commentString and whether
+// either is set. git reads both names through one handler, so whichever it read
+// last wins: measured on git 2.54 in both orders within one file and across
+// `-c`, and pinned by internal/cli's TestHookVerdictMatchesWhatGitRecords.
+//
+// `auto` (in any case — git compares it that way, measured) answers
+// DefaultComment, an accepted boundary rather than a port. Under it git picks the
+// character per commit from what the message already holds, and no input a hook
+// has names the pick. Measured on git 2.54: a fresh editor commit, and an amend
+// whose body opens a line with '#', both got a '#' template and lost their '#'
+// lines; `-F` under commit.cleanup=strip with "# note" as line 1 got another
+// character and recorded "# note" as the subject — the row this reading misjudges
+// (DESIGN §2.1). git deprecates `auto` for Git 3.0 and warns on every commit.
+//
+// An empty value, or one holding a newline, also answers DefaultComment: git
+// refuses both before any hook runs (`must have at least one character`,
+// `cannot contain newline`, measured), so only a hand-run lint meets one. Any
+// other value is the prefix byte for byte — `git config` has already unquoted
+// it, and a quoted trailing space belongs to it (measured: under
+// core.commentString="// " git drops "// x" and keeps "//y").
+func CommentPrefix(configured string, set bool) string {
+	if !set || configured == "" || strings.EqualFold(configured, "auto") || strings.Contains(configured, "\n") {
+		return DefaultComment
+	}
+	return configured
+}
 
 // Mode is what git will do to a commit message before recording it —
 // the resolved `--cleanup` for ONE commit, not the mode name.
@@ -36,7 +71,8 @@ type Mode struct {
 	// blank lines dropped. False only for `verbatim`.
 	Space bool
 	// Comments drops whole-line comments — git's `strip`. A comment is a line
-	// whose FIRST byte is '#'; git does not look past leading whitespace.
+	// that opens with Comment at column 0; git does not look past leading
+	// whitespace.
 	Comments bool
 	// Truncate cuts the message at git's scissors line: always under
 	// commit.verbose (git cuts under verbose in every mode, editor or not), in
@@ -44,6 +80,11 @@ type Mode struct {
 	// and git writes its cut line and the diff into every verbose editor buffer
 	// — whenever an editor ran for `git commit` (Verbose).
 	Truncate bool
+	// Comment is the repository's comment prefix (CommentPrefix): the lines
+	// Comments drops open with it, and so does git's scissors line. Empty means
+	// DefaultComment. ResolveMode leaves it empty; the caller that read git's
+	// config sets it.
+	Comment string
 }
 
 // Verbose is what a commit-msg hook can know of the verbose setting git will
@@ -146,14 +187,15 @@ func ResolveMode(configured string, edited bool, verbose Verbose) (mode Mode, kn
 // Everything below the mode is a port of git's strbuf_stripspace (strbuf.c) and
 // wt_status_locate_end (wt-status.c) rather than an approximation of them,
 // because an approximation is what the two rows above are. `git stripspace` is
-// the same function on the command line; the differential over generated
-// messages that held the port to it left with internal/parser in v2, and real
-// git now checks the port through the commits internal/cli's hook oracles make
-// (DESIGN §5).
+// the same function on the command line, and TestApplyMatchesGitStripspace
+// holds the port to it under several comment prefixes;
+// TestScissorsUnderACommentPrefixMatchesGit holds the cut to a real commit, and
+// internal/cli's hook oracles check the whole through real commits (DESIGN §5).
 //
-// The comment character is assumed to be '#'. A repo that sets core.commentChar
-// to something else keeps its comments in the linted text — the same behaviour
-// as before this function existed, never worse.
+// The comment prefix is mode.Comment, not '#': assuming '#' under
+// core.commentChar=';' made the template above an editor-typed subject the
+// "subject", and the hook refused a message git records and the range accepts
+// (t-nbhz, measured on git 2.54).
 //
 // Only the authoring path (`--stdin`, and doctor's replay of it) calls this. A
 // --range walk reads messages from `git log %B`, which git has already cleaned —
@@ -162,8 +204,12 @@ func ResolveMode(configured string, edited bool, verbose Verbose) (mode Mode, kn
 // §2.1); running this there would silently swallow a genuinely empty message and
 // any body line a project chose to start with '#'.
 func Apply(message string, mode Mode) string {
+	comment := mode.Comment
+	if comment == "" {
+		comment = DefaultComment
+	}
 	if mode.Truncate {
-		message = truncateAtCutLine(message)
+		message = truncateAtCutLine(message, comment+cutTail)
 	}
 	if !mode.Space {
 		// verbatim: git records the bytes as they are, so glyph judges them as
@@ -171,12 +217,15 @@ func Apply(message string, mode Mode) string {
 		// output shape constant for its caller.
 		return strings.TrimSuffix(message, "\n")
 	}
-	return stripspace(message, mode.Comments)
+	if !mode.Comments {
+		comment = ""
+	}
+	return stripspace(message, comment)
 }
 
 // truncateAtCutLine is git's wt_status_locate_end: the cut is the FIRST cut line
 // that opens a line, and a message that starts with one cleans to nothing.
-func truncateAtCutLine(message string) string {
+func truncateAtCutLine(message, cutLine string) string {
 	if strings.HasPrefix(message, cutLine) {
 		return ""
 	}
@@ -197,10 +246,11 @@ func truncateAtCutLine(message string) string {
 // `git stripspace` disagreed on 82 of them before the CR went in, every one of
 // them a line ending in CR followed by spaces.
 //
-// git's output ends with a newline whenever it is non-empty; this returns the
-// same text without it, so a caller can compare against a message rather than a
-// file.
-func stripspace(message string, dropComments bool) string {
+// comment is the prefix of the lines to drop, empty to drop none — git's NULL
+// comment_prefix. git's output ends with a newline whenever it is non-empty;
+// this returns the same text without it, so a caller can compare against a
+// message rather than a file.
+func stripspace(message, comment string) string {
 	var b strings.Builder
 	blank, wrote := false, false
 	for line := range strings.SplitSeq(message, "\n") {
@@ -209,7 +259,7 @@ func stripspace(message string, dropComments bool) string {
 		// touching its `empties` counter). "a\n# c\nb" is therefore "a\nb", not
 		// "a\n\nb" — and a trailer stacked under a commented-out line stays a
 		// trailer.
-		if dropComments && strings.HasPrefix(line, "#") {
+		if comment != "" && strings.HasPrefix(line, comment) {
 			continue
 		}
 		trimmed := strings.TrimRight(line, " \t\r")
