@@ -27,7 +27,7 @@
 #   coverage        go-ci.yml (`coverage: true`) total line off the race run's
 #                                                profile — a REPORT, never a gate
 #   golangci-lint   go-ci.yml                    `golangci-lint run ./...`
-#   govulncheck     govulncheck.yml → go-vuln.yml `govulncheck ./...`
+#   govulncheck     govulncheck.yml → go-vuln.yml source + `-mode binary`
 #   bite            build.yml `bite`             the hub's go-bite.sh
 #   mutations       build.yml `mutations`        `scripts/mutations.sh`
 #   fuzz-smoke      build.yml `extras`           `scripts/fuzz-smoke.sh`
@@ -281,7 +281,7 @@ BASE_SHA="$(git rev-parse origin/main)" HEAD_SHA="$(git rev-parse HEAD)" \
   GOROOT="$BITE_GOROOT" PATH="$BITE_GOROOT/bin:$PATH" sh "$BITE"
 ran bite
 
-# Both linters are CI gates, so a missing one is a FAILURE and not a skip. The old
+# A CI gate whose tool is missing is a FAILURE and not a skip. The old
 # `command -v` guard printed "skipped" and let the run finish with its success
 # line, which on this machine meant govulncheck never ran and nothing said so.
 if command -v golangci-lint >/dev/null 2>&1; then
@@ -321,19 +321,22 @@ else
   exit 1
 fi
 
-if command -v govulncheck >/dev/null 2>&1; then
-  echo "→ govulncheck"
-  govulncheck ./...
-  ran govulncheck
-else
-  echo "✗ govulncheck is not installed, and .github/workflows/govulncheck.yml runs it — so" >&2
-  echo "  this run cannot claim a green CI. \`nix develop\` supplies it (flake.nix's devShell)," >&2
-  echo "  or \`go install golang.org/x/vuln/cmd/govulncheck@latest\`." >&2
-  exit 1
-fi
-
 echo "→ build binary for live checks"
 go build -o "$WORK/glyph" ./cmd/glyph
+
+# go-vuln.yml's two halves, with its scanner: govulncheck@latest (the hub
+# refuses a pinned one — a frozen scanner reports less and stays green) over
+# the source, then `-mode binary` over the built binary, which catches stdlib
+# vulnerabilities reachable in the shipped artifact that source mode can miss.
+# A govulncheck from PATH or the devShell is whatever version was installed,
+# a different scanner from CI's. GOTOOLCHAIN=auto lets the scanner build under
+# an installed Go older than x/vuln's own `go` line; the scans still resolve
+# go.mod's toolchain, as every gate here does.
+echo "→ govulncheck (source + -mode binary)"
+GOTOOLCHAIN=auto go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+GOTOOLCHAIN=auto go run golang.org/x/vuln/cmd/govulncheck@latest -mode binary "$WORK/glyph"
+ran govulncheck
+
 sh scripts/smoke.sh "$WORK/glyph"
 ran smoke
 

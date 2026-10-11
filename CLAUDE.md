@@ -80,8 +80,9 @@ design, so a tree that does not compile turns the local gate into a silent no-op
   gate that did not run means no `✓` line and a non-zero exit).
   - It exits 2 on a dirty tree; `ALLOW_DIRTY=1` runs anyway and says so in the final line
     (a green over uncommitted work is a claim about nothing reproducible).
-  - A missing tool is a failure, not a skip — `nix develop` supplies `golangci-lint` and
-    `govulncheck`.
+  - A missing tool is a failure, not a skip — `nix develop` supplies `golangci-lint`.
+    govulncheck is not a local tool: the run fetches `@latest` as CI does, so it needs the
+    network.
   - Its `bite` step needs the `akira-toriyama/.github` clone beside this repo (or
     `GLYPH_FLEET_HUB`) and reads **committed** history only — an uncommitted test is
     invisible to it.
