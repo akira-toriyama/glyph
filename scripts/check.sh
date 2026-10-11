@@ -24,7 +24,7 @@
 #   build           go-ci.yml                    `go build ./...`
 #   vet             go-ci.yml                    `go vet ./...`
 #   race-test       go-ci.yml                    `go test -race ./...`
-#   coverage        build.yml `coverage`         total line off the race run's
+#   coverage        go-ci.yml (`coverage: true`) total line off the race run's
 #                                                profile — a REPORT, never a gate
 #   golangci-lint   go-ci.yml                    `golangci-lint run ./...`
 #   govulncheck     govulncheck.yml → go-vuln.yml `govulncheck ./...`
