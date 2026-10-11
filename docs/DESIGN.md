@@ -208,7 +208,12 @@ pattern says it means:
   while the single line's preview and packages `bump` said it, and one on two
   lines was said twice (measured 2026-10-05,
   `TestPreviewPackagesWarnsEveryParticipatingCommitOnce`; mutation row
-  `preview-packages-warns-per-touched-line`). `warn` on a `skip` pattern is a load
+  `preview-packages-warns-per-touched-line`). Its pending walk — the
+  already-merged commits — is announced the same way, over the walk's union
+  once, as packages `bump` folds it: per walked line a merged warned commit
+  was said 0, 1 and 2 times on no line, one and two (measured on c89ea08 and
+  again on 284d25a by the same test's merged cases; mutation row
+  `preview-packages-warns-merged-commits-per-walked-line`). `warn` on a `skip` pattern is a load
   error (a skipped commit is outside every verdict, so the warning would fire
   for nobody), and so is an empty `warn`. The key was made for the
   **v1-acceptance window** (t-37xj): the migration pattern that accepted a
@@ -488,8 +493,22 @@ reinterprets past commits, accepted). The commit-msg hook, CI and a
 subdirectory shell all read the same file by construction, and `init` writes
 that same file: it asks git for the top level as every other command does and
 writes there from any subdirectory, falling back to the current directory
-only where git names no top level (outside a checkout) — never because a
-signal interrupted the question, which exits 130 with nothing written.
+only where git itself answers "not a git repository" (outside a checkout;
+read under `LC_ALL=C`, since git translates it) — never because a signal
+interrupted the question, which exits 130 with nothing written, and never
+because git failed some other way: a repository git will not read (dubious
+ownership, a broken `.git/config`) or no git at all **exits 4** with git's
+message and writes nothing. Falling back there wrote `sub/glyph.toml` at exit
+0 — the same inert file — for both measured shapes (ca118a8;
+`TestInitCannotRunWhereGitWillNotReadTheRepository`, mutation row
+`init-writes-where-git-will-not-read-the-repository`). Inside a git directory (a checkout's `.git`, a bare repository) git
+names no top level either, and `init` **refuses at exit 2**, naming the work
+tree: falling back there wrote `.git/glyph.toml` at exit 0, a file no command
+reads, while `lint` at the top level still said there was none (measured on
+c89ea08; `TestInitRefusesInsideTheGitDirectory`,
+`TestInitInterruptDuringGitDirReadWritesNothing`; mutation rows
+`init-writes-inside-the-git-directory`,
+`init-reads-a-git-dir-interrupt-as-no-repository`).
 Measured before (t-f2cb, 2026-09-29 and 2026-10-04): from a subdirectory
 `init` wrote `sub/glyph.toml` at exit 0, a file no command reads, and the
 missing-config refusal's remedy — run `init` — sent the author back to the
@@ -1427,7 +1446,17 @@ escape again: cut an intermediate tag so the next walk, and its body, is
 smaller. (The preview's sticky comment takes the OPPOSITE degradation —
 truncate at its 65536-char comment cap, marked in the comment and warned on
 stderr — because that surface is advisory and refreshed on every push, and a
-refusal there would take the whole verdict comment down with it. The mark is
+refusal there would take the whole verdict comment down with it. The mark
+says only that the preview was cut because the full document exceeds
+GitHub's comment cap; it **names no command to read the rest** (t-pcfj, ruled
+2026-10-06). It used to name `glyph preview --pr <N> --notes`, and that
+command's stdout is the very body the workflow posts, cut at the same place
+under the same notice — a reviewer measured 65489 characters ending in it, no
+footer, over a 200-commit pull of 200-character subjects;
+`TestPreviewCutInsideTheNotesStillClosesTheFold` now pins the cut stdout's
+notice, mutation row `preview-truncation-notice-names-a-command-that-prints-the-same-cut`.
+The alternative, an output that does not truncate, would be a new surface for
+a cap no fleet comment had reached (zero, t-rrw0's triage). The mark is
 only a mark where it is read, so the cut **closes every `<details>` block it
 leaves open** before the notice goes on. The notes preview is the body's last
 section and sits in one, so a comment whose tables fit the cap and whose notes
@@ -3586,7 +3615,22 @@ The severities are the argued part:
   is byte-identical, so a checkout with no hook — every CI runner — pays
   nothing; a read that fails is `unknown`, like any unread input
   (`TestPrePushHookSaysWhenNoRemoteHeadIsRecorded`, mutation row
-  `doctor-pre-push-ignores-an-unrecorded-remote-head`). Firing pre-push itself
+  `doctor-pre-push-ignores-an-unrecorded-remote-head`). The remedy is
+  `git remote set-head <remote> -a` only where git can record a head at all:
+  a name config accepts and refs refuse (`my fork`, `mirror..x`) makes
+  set-head exit 129 unquoted and 1 quoted (review u6-2, git 2.54). `git remote
+  rename` is no remedy either: with git's usual fetch refspec it dies on that
+  refspec (rc=128), and with the url alone the renamed remote has no refspec
+  for set-head to read (rc=1; review u6b-1, re-measured). So for a name
+  `git check-ref-format refs/remotes/<name>/HEAD` refuses, doctor's fix and
+  the hook's own warning both offer "pick a name git accepts for
+  `<new-name>`, then" `git config --rename-section`, a rewritten fetch
+  refspec, `git fetch` and set-head — rc=0 in both shapes, pasted through `sh`
+  with the placeholder filled (`TestSetHeadRemedyRunsPasted`). No sanitised
+  name is computed: that would reimplement git's ref rules. Both arms
+  single-quote the old name, since `git remote add` accepts names a shell
+  splits (`a;b`, `it's`; review u6b-2) (`hook.SetHeadRemedy`,
+  `gitsource.RemoteCanRecordHead`). Firing pre-push itself
   — a `PrePushProbe` beside the commit-msg one — stays unbuilt. It would carry
   a fabricated push into a read-only diagnosis: a scratch repository, a bare
   remote, a pushed base, a recorded remote HEAD and a violating commit (without

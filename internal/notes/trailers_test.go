@@ -4,6 +4,8 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // The table is the measurement. Every `want` below was read off
@@ -226,12 +228,14 @@ func TestTrailersAreASubsetOfGit(t *testing.T) {
 	}
 	tails := []string{"", "\n", "\n\n"}
 
+	// Outside any repository, so no repository config answers either.
+	dir := t.TempDir()
 	checked := 0
 	for _, h := range heads {
 		for _, b := range blocks {
 			for _, tl := range tails {
 				msg := h + b + tl
-				oracle := gitTrailers(t, msg)
+				oracle := gitTrailers(t, dir, msg)
 				mine := trailers(msg)
 				checked++
 
@@ -253,9 +257,16 @@ func TestTrailersAreASubsetOfGit(t *testing.T) {
 // gitTrailers asks git what the message's trailers are. `--only-trailers`
 // keeps the answer to the block itself, and `--unfold` folds continuations
 // the way this package does, so the two answers are comparable.
-func gitTrailers(t *testing.T, msg string) []trailer {
+//
+// The oracle is git with no config but its defaults: trailer.separators and
+// trailer.<token>.* change what interpret-trailers answers, and a personal
+// `trailer.separators = "#"` failed this test with glyph's parser untouched.
+// glyph's notes never read that config, so the defaults are the comparison.
+func gitTrailers(t *testing.T, dir, msg string) []trailer {
 	t.Helper()
 	cmd := exec.Command("git", "interpret-trailers", "--parse", "--only-trailers", "--unfold")
+	cmd.Dir = dir
+	cmd.Env = testutil.GitEnv("akira-toriyama")
 	cmd.Stdin = strings.NewReader(msg + "\n")
 	out, err := cmd.Output()
 	if err != nil {

@@ -171,6 +171,10 @@ type Input struct {
 	// nil with a nil error means not read.
 	RemoteHeads    map[string]string
 	RemoteHeadsErr error
+	// RemoteRefless marks, among the remotes RemoteHeads reports unrecorded,
+	// those whose name git cannot place in a ref
+	// (gitsource.RemoteCanRecordHead): set-head is no remedy for them.
+	RemoteRefless map[string]bool
 }
 
 // HookProbe is what came back from firing a hook. Fired with Exit is a real
@@ -248,7 +252,7 @@ func Run(in Input) *Report {
 		checkCallerInputs(in.Root, in.RootVerified, in.GlyphVersion),
 		checkHook(hook.Kinds()[0], IDCommitMsgHook, in.HooksDir, in.HooksErr),
 		checkHookFires(in.CommitMsgProbe, in.HooksErr, config.Status == StatusPass),
-		checkPrePushHook(in.HooksDir, in.HooksErr, in.CommitMsgProbe, in.RemoteHeads, in.RemoteHeadsErr),
+		checkPrePushHook(in.HooksDir, in.HooksErr, in.CommitMsgProbe, in.RemoteHeads, in.RemoteRefless, in.RemoteHeadsErr),
 	}}
 	r.OK = true
 	for _, c := range r.Checks {
@@ -462,10 +466,11 @@ func permissionSummary(p *github.RepoPermissions) string {
 // the outage window belongs to the exit-code contract, not to this argument.
 //
 // The cost squash itself carries in that window is bounded and worth naming:
-// under COMMIT_OR_PR_TITLE a MULTI-commit squash's subject is the PR TITLE, which
-// no lint gate checks (the commit-lint job lints the PR's COMMITS, never its
-// title), so a dark run classifies that one unlinted subject — one wrong level on
-// one pull, against a whole pull lost.
+// under COMMIT_OR_PR_TITLE a MULTI-commit squash's subject is the PR TITLE.
+// lint.yml's "Lint the squash title" step holds that title to the grammar, never
+// to the level the pull's commits fold to, so a dark run classifies one subject
+// whose sigil is its author's own — one wrong level on one pull, against a whole
+// pull lost.
 //
 // Hence fail rather than advice, and hence the asymmetry with the two checks
 // below: ALLOWING another merge method leaves squash there for the traffic that
@@ -488,9 +493,9 @@ func checkSquashEnabled(in Input) Check {
 			"API or falls back on that one message, and no part of it can stand aside for a merge point that never resolves. " +
 			"That is the guarantee; identical verdicts are NOT. Under COMMIT_OR_PR_TITLE a MULTI-commit squash carries the PR " +
 			"title, whose sigil is its own, so an API-dark run classifies that one subject instead of the pull's commits: a " +
-			"^+~ pull titled ~ reads minor with the API and patch without, and a title no pattern claims refuses the fold " +
-			"outright. Squash bounds an API-dark window to one wrong level on one pull; a multi-commit landing can lose a " +
-			"whole one"
+			"^+~ pull titled ~ reads minor with the API and patch without, and a title no pattern claims is dropped from the " +
+			"fold with a warning, so the pull counts none. Squash bounds an API-dark window to one wrong level on one pull; " +
+			"a multi-commit landing can lose a whole one"
 		return c
 	}
 	c.Status = StatusFail
@@ -646,8 +651,8 @@ func checkSquashTitle(in Input) Check {
 		"every squash commit takes the PR TITLE as its subject, including single-commit PRs — so a commit's own sigil "+
 			"never lands on main. The verdict holds while the API answers, but the walk's fallback "+
 			"(a direct push, or API lag right after a push) classifies the squash commit's own message: the title's sigil "+
-			"alone decides, a title no pattern claims refuses the fold, and one a window pattern claims counts none — "+
-			"the bump is lost silently")
+			"alone decides, and a title no pattern claims is dropped from the fold with a warning — bump says no release "+
+			"and release refuses the incomplete walk at exit 4")
 }
 
 // checkSquashMessage is the body half of the same policy. COMMIT_MESSAGES keeps

@@ -193,10 +193,10 @@ func TestRemainingChecksDescribeMeasuredBehaviour(t *testing.T) {
 			mention: []string{
 				// The dark-window mechanism, pinned live by
 				// TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark: the fallback
-				// classifies the commit's own message, and a sigil-less subject
-				// a window pattern claims counts none.
+				// classifies the commit's own message, and a title no pattern
+				// claims is dropped with a warning — bump exits 1 (none), loud.
 				"classifies the squash commit's own message",
-				"counts none",
+				"dropped from the fold with a warning",
 			},
 		},
 		{
@@ -288,11 +288,15 @@ func TestMergeMethodChecksDescribeTheWalkThatExists(t *testing.T) {
 			want:  StatusPass,
 			mention: []string{
 				"never half-resolved", // the guarantee squash actually gives
+				// The lag path TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark
+				// pins: an unclaimed title is dropped with a warning, bump none.
+				"dropped from the fold with a warning",
 			},
 			forbid: []string{
 				// The sentence this whole round existed to delete: measured
 				// minor -> patch, and minor -> none for an unlinted PR title.
 				"whether or not the",
+				"refuses the fold", // the lag path never refuses an unclaimed title
 			},
 		},
 		{

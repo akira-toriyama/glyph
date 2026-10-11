@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/config"
+	"github.com/akira-toriyama/glyph/v5/internal/hook"
 	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
@@ -167,7 +168,7 @@ func TestPrePushDefaultBranchUnresolvedWarnsOnly(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("an unresolved default branch must not block; exited %d\nstderr: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "git remote set-head origin -a") {
+	if !strings.Contains(stderr, "git remote set-head 'origin' -a") {
 		t.Fatalf("the warning must name the command that restores the ref:\n%s", stderr)
 	}
 }
@@ -216,6 +217,36 @@ func TestPrePushResolvesTheRemoteFromItsURL(t *testing.T) {
 	if !strings.Contains(stderr, "1 commit-convention violation(s)") {
 		t.Fatalf("a URL-only push must still exclude what the remote holds — the seed commit "+
 			"leaked into the judged set:\n%s", stderr)
+	}
+}
+
+// TestPrePushResolvesASpacedRemoteNameFromItsURL: the URL-to-name recovery
+// reads the same remote map doctor does, so a remote named `my fork` (a
+// hand-edited `[remote "my fork"]`) must come back whole. Cut at the first
+// space the map held `my` → `fork.url <url>`, no URL matched, and the warning
+// fell back to `<remote>` (t-3jws). Such a name can carry no ref, so the
+// default branch is unrecorded, and the warning that says so — printed beside
+// a finding — is the observable.
+func TestPrePushResolvesASpacedRemoteNameFromItsURL(t *testing.T) {
+	work, remote := testClone(t)
+	t.Chdir(work)
+	testutil.Git(t, work, "akira-toriyama", "config", "remote.my fork.url", remote)
+	testutil.Git(t, work, "akira-toriyama", "remote", "remove", "origin")
+	testutil.Git(t, work, "akira-toriyama", "checkout", "-q", "-b", "topic")
+	testutil.Commit(t, work, "akira-toriyama", "no gitmoji here")
+
+	setStdin(t, "refs/heads/topic "+rev(t, work, "HEAD")+" refs/heads/main "+zeros+"\n")
+	code, _, stderr := runGlyph(t, "hook", "pre-push", remote, remote)
+	if code != 0 {
+		t.Fatalf("exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "does not record my fork's default branch") {
+		t.Fatalf("the URL must resolve to the remote `my fork`:\n%s", stderr)
+	}
+	// git cannot place `my fork` in a ref, so set-head is no remedy (it exits
+	// 129 unquoted, 1 quoted); renaming its section is (reviews u6-2, u6b-1).
+	if !strings.Contains(stderr, "`"+hook.SetHeadRemedy("my fork", false)+"` restores it") || strings.Contains(stderr, "set-head 'my fork'") {
+		t.Fatalf("the remedy for `my fork` must rename its section, never set-head it:\n%s", stderr)
 	}
 }
 

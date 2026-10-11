@@ -155,6 +155,37 @@ type Kind struct {
 	Asks string
 }
 
+// SetHeadRemedy is the command that lets the pre-push hook block on remote:
+// it refuses a violation only on the default branch it reads from
+// refs/remotes/<remote>/HEAD, and `git remote set-head <remote> -a` records
+// that. canRecord false (gitsource.RemoteCanRecordHead) is a name git cannot
+// place in a ref — `my fork`, `mirror..x` — where set-head exits 129 unquoted
+// and 1 quoted (review u6-2). `git remote rename` is no remedy there either:
+// with git's usual fetch refspec it dies on that refspec (rc=128), and with
+// the url alone the renamed remote has no refspec for set-head to read
+// (review u6b-1). So the section is renamed, its refspec rewritten, and the
+// remote fetched before set-head — rc=0 in both shapes
+// (TestSetHeadRemedyRunsPasted). The new name stays a placeholder the reader
+// fills once: computing one would reimplement git's ref rules. The old name
+// is single-quoted in both arms, since `git remote add` accepts names a shell
+// splits (`a;b`, `it's`; review u6b-2). One home for doctor's fix and the
+// hook's own warning.
+func SetHeadRemedy(remote string, canRecord bool) string {
+	if canRecord {
+		return "git remote set-head " + shellQuote(remote) + " -a"
+	}
+	return "pick a name git accepts for <new-name>, then " +
+		"git config --rename-section " + shellQuote("remote."+remote) + " remote.<new-name> && " +
+		"git config --replace-all remote.<new-name>.fetch '+refs/heads/*:refs/remotes/<new-name>/*' && " +
+		"git fetch <new-name> && git remote set-head <new-name> -a"
+}
+
+// shellQuote single-quotes s for a POSIX shell, closing and reopening the
+// quote around each embedded single quote.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // Kinds is every hook glyph writes, in install order. A bare
 // `glyph hook install` writes all of them. The v1 profile interpolation is
 // gone with profiles themselves: the convention lives in the repository's

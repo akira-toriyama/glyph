@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"regexp"
 	"slices"
@@ -136,10 +137,14 @@ func RemoteTips(ctx context.Context, dir, remote string) ([]string, error) {
 //
 // No remotes at all is an empty map, not an error: git spells it exit 1, the
 // same shape ConfigGet documents for an unset key.
+//
+// Read NUL-framed (`key\nvalue\0`): the line form separates key and value with
+// a space, and a remote name may hold one (`[remote "my fork"]`), which the
+// line form cut to `my` (t-3jws, TestRemoteURLsKeepsASpacedRemoteName).
 func RemoteURLs(ctx context.Context, dir string) (map[string]string, error) {
 	// #nosec G204 -- the binary is the fixed literal "git" and every argument
 	// here is a constant of this package.
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "config", "--get-regexp", `^remote\..*\.url$`)
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "config", "-z", "--get-regexp", `^remote\..*\.url$`)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -152,8 +157,8 @@ func RemoteURLs(ctx context.Context, dir string) (map[string]string, error) {
 		return nil, core.APIf("git config --get-regexp: %s", distill(stderr.Bytes(), err))
 	}
 	urls := map[string]string{}
-	for line := range strings.SplitSeq(stdout.String(), "\n") {
-		key, url, ok := strings.Cut(strings.TrimSpace(line), " ")
+	for rec := range strings.SplitSeq(stdout.String(), "\x00") {
+		key, url, ok := strings.Cut(rec, "\n")
 		if !ok {
 			continue
 		}
@@ -363,6 +368,65 @@ func TopLevel(ctx context.Context, dir string) (string, error) {
 		return "", core.APIf("git rev-parse --show-toplevel: empty result")
 	}
 	return path, nil
+}
+
+// RemoteCanRecordHead reports whether git can record remote's default branch
+// at all: refs/remotes/<remote>/HEAD must be a refname git accepts. Config
+// accepts names refs refuse — `my fork`, `mirror..x` — and for those
+// `git remote set-head` cannot succeed (unquoted it exits 129, quoted 1:
+// "Not a valid ref"); the remedy is renaming the remote. Asked of
+// `git check-ref-format` rather than reimplemented: its rules are git's.
+func RemoteCanRecordHead(ctx context.Context, dir, remote string) (bool, error) {
+	// #nosec G204 -- the binary is the fixed literal "git"; the one argument
+	// opens with refs/remotes/, so it can never read as an option.
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "check-ref-format", "refs/remotes/"+remote+"/HEAD")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if ierr := interrupted(ctx); ierr != nil {
+			return false, ierr
+		}
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 1 {
+			return false, nil
+		}
+		return false, core.APIf("git check-ref-format: %s", distill(stderr.Bytes(), err))
+	}
+	return true, nil
+}
+
+// ErrNoRepository is InsideGitDir's answer where git itself says dir is in no
+// repository — the one failure that means "outside a checkout".
+var ErrNoRepository = errors.New("not a git repository")
+
+// InsideGitDir reports whether dir is inside a git directory — a checkout's
+// .git or a bare repository — the places TopLevel fails although a repository
+// is there. Where git answers "not a git repository" it returns
+// ErrNoRepository; every other failure (dubious ownership, a broken config, no
+// git) is a core.APIf carrying git's message, because a repository git will
+// not read is not the absence of one (TestInitCannotRunWhereGitWillNotReadTheRepository).
+//
+// Both kinds exit 128, so the message is the only discriminator, and it is
+// read under LC_ALL=C: git translates it through gettext.
+func InsideGitDir(ctx context.Context, dir string) (bool, error) {
+	// #nosec G204 -- the binary is the fixed literal "git" and every argument
+	// here is a constant of this package.
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--is-inside-git-dir")
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		if ierr := interrupted(ctx); ierr != nil {
+			return false, ierr
+		}
+		// distill's first fatal: line, not the stream's start: GIT_TRACE and
+		// friends write lines ahead of it (TestInitOutsideARepositoryReadsGitsAnswerPastItsTrace).
+		why := distill(stderr.Bytes(), err)
+		if strings.HasPrefix(why, "fatal: not a git repository") {
+			return false, ErrNoRepository
+		}
+		return false, core.APIf("git rev-parse --is-inside-git-dir: %s", why)
+	}
+	return strings.TrimSpace(stdout.String()) == "true", nil
 }
 
 // HeadTrees lists every directory HEAD's tree records, at any depth, as

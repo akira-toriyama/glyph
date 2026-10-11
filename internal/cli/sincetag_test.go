@@ -1762,10 +1762,11 @@ func TestSinceTagSquashMultiCommitDivergesWhenAPIDark(t *testing.T) {
 }
 
 // TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark is the same divergence at its
-// floor. A PR title carrying no gitmoji at all is perfectly legal — no gate reads
-// it — so under COMMIT_OR_PR_TITLE a multi-commit squash can put an unparseable
-// subject on main. Live the pull's commits still decide; dark there is nothing to
-// classify and the whole release counts none.
+// floor. A PR title carrying no gitmoji at all can still reach main — lint.yml's
+// squash-title step excludes bot pulls, and a repository need not call lint.yml —
+// so under COMMIT_OR_PR_TITLE a multi-commit squash can put an unparseable
+// subject on main. Live the pull's commits still decide; dark the subject is
+// dropped from the fold with a warning and the whole release counts none.
 func TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark(t *testing.T) {
 	dir, _ := testRepo(t)
 	sha := squashOf(t, dir, "Add a refresh endpoint", 6)
@@ -2318,14 +2319,13 @@ func TestMainFootprintSurvivesAListingLongerThanMain(t *testing.T) {
 	}
 }
 
-// TestMainFootprintEmptyListingAsksGitNothing covers the other early return, and
-// pins the property that makes it more than a micro-optimisation: with no commits
-// to place there is nothing to ask git ABOUT, and the canonical commit is a sha
-// this checkout may not hold. Falling through would run `git log` against it and
-// turn "this pull listed nothing" into an exit-4 API/git error mid-walk.
-//
-// The unknown canonical is the assertion. A guard removed here does not merely
-// cost a subprocess: it fails the run.
+// TestMainFootprintEmptyListingAsksGitNothing covers the other early return:
+// with no commits to place there is nothing to ask git ABOUT, so mainFootprint
+// answers without consulting git about the canonical commit. The walk hands in
+// a canonical from its own local log, where falling through only spends a
+// `git log -n 0` that lands on the same return — invisible. A canonical this
+// checkout lacks is the input that makes the fall-through observable (an exit-4
+// git error), so the unknown canonical is the assertion.
 //
 // The guard it now exercises is the ALIGNMENT WINDOW's, not a private one for the
 // empty listing. Once the window became "what is left after ancestry placed what

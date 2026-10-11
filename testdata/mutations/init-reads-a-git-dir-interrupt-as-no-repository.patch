@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_init.go b/internal/cli/cmd_init.go
+index a064705..8d4b97c 100644
+--- a/internal/cli/cmd_init.go
++++ b/internal/cli/cmd_init.go
+@@ -111,7 +111,7 @@ func initPath(ctx context.Context) (string, error) {
+ 	}
+ 	inGitDir, gerr := gitsource.InsideGitDir(ctx, ".")
+ 	switch {
+-	case errors.Is(gerr, gitsource.ErrNoRepository):
++	case errors.Is(gerr, gitsource.ErrNoRepository) || core.IsInterrupted(gerr):
+ 		return "glyph.toml", nil
+ 	case gerr != nil:
+ 		return "", gerr

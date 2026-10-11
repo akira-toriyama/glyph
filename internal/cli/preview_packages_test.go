@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -409,6 +410,59 @@ func TestPreviewPackagesWarnsEveryParticipatingCommitOnce(t *testing.T) {
 			}
 			if n := strings.Count(stderr, warning); n != 1 {
 				t.Errorf("the packages preview says the warning %d time(s) for a commit the single line warns once:\n%s", n, stderr)
+			}
+		})
+	}
+
+	// The pending half: an already-merged warned commit, read by the walk the
+	// pull's haiku commit sets off. Warned per walked line it was said 0 / 1 /
+	// 2 times on no line / one / two, where the single line's preview and
+	// packages bump say it once (review residue of #262, measured 0/1/2 on
+	// c89ea08). The walk's union is folded once and its rows warned once.
+	for name, files := range map[string][]string{
+		"merged, on no line":   {"README.md"},
+		"merged, on one line":  {"haiku/haiku.go"},
+		"merged, on two lines": {"haiku/haiku.go", "curry/curry.go"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			pull := map[string]string{
+				pullCommitsPath(9):    `[` + apiCommit("h1", "akira-toriyama", ":sparkles:(haiku)^ add a season") + `]`,
+				commitFilesPath("h1"): apiFiles("haiku/season.go"),
+			}
+			withMerged := func(sha string) map[string]string {
+				routes := map[string]string{commitPullsPath(sha): `[]`}
+				maps.Copy(routes, pull)
+				return routes
+			}
+
+			single, _ := testRepo(t)
+			warnFirst(t, single)
+			testGit(t, single, "akira-toriyama", "commit", "-q", "-am", ":wrench:= warn on construction")
+			testGit(t, single, "akira-toriyama", "tag", "v0.2.0")
+			merged := touch(t, single, "akira-toriyama", ":construction:= scaffold the work", files...)
+			t.Chdir(single)
+			usePR(t, walkServer(t, withMerged(merged)))
+			code, _, stderr := runGlyph(t, "preview", "--pr", "9")
+			want := fmt.Sprintf("::warning::glyph: commit %.7s: a construction commit is legal here and unwelcome", merged)
+			if code != 0 || strings.Count(stderr, want) != 1 {
+				t.Fatalf("positive control: the single line's preview exits 0 and says the merged commit's warning once, got exit %d:\n%s", code, stderr)
+			}
+
+			dir, _ := packagesRepo(t)
+			warnFirst(t, dir)
+			testGit(t, dir, "akira-toriyama", "commit", "-q", "-am", ":wrench:= warn on construction")
+			testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.2.0")
+			testGit(t, dir, "akira-toriyama", "tag", "curry/v0.2.0")
+			merged = touch(t, dir, "akira-toriyama", ":construction:= scaffold the work", files...)
+			t.Chdir(dir)
+			usePR(t, walkServer(t, withMerged(merged)))
+			code, _, stderr = runGlyph(t, "preview", "--pr", "9")
+			if code != 0 {
+				t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
+			}
+			want = fmt.Sprintf("::warning::glyph: commit %.7s: a construction commit is legal here and unwelcome", merged)
+			if n := strings.Count(stderr, want); n != 1 {
+				t.Errorf("the packages preview says the merged commit's warning %d time(s) where the single line says it once:\n%s", n, stderr)
 			}
 		})
 	}

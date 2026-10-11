@@ -10,7 +10,7 @@ index 9c67dcb..dec2e49 100644
 -		switch {
 -		case errors.Is(lerr, fs.ErrNotExist):
 +		if errors.Is(lerr, fs.ErrNotExist) {
- 			return nil, core.Usagef("no glyph.toml at %s — this repository is not initialized for glyph; `glyph init --gemoji` (or --conventional) writes one there from anywhere in the checkout, or start from either preset and edit", top)
+ 			return nil, core.Usagef("no glyph.toml at %s — this repository is not initialized for glyph; `glyph init --gemoji` (or --conventional) writes one there from anywhere in the work tree, or start from either preset and edit", top)
 -		case isPathErr:
 -			return nil, core.APIf("%v — glyph could not read this repository's configuration, so no commit was judged", lerr)
 -		default:

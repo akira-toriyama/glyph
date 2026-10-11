@@ -1,0 +1,13 @@
+diff --git a/internal/cli/bodylimit.go b/internal/cli/bodylimit.go
+index 87573a9..d172171 100644
+--- a/internal/cli/bodylimit.go
++++ b/internal/cli/bodylimit.go
+@@ -69,7 +69,7 @@ func truncateComment(body string) string {
+ 	if utf8.RuneCountInString(body) <= commentBodyMaxChars {
+ 		return body
+ 	}
+-	const notice = "\n\n---\n\n… truncated: the full preview exceeds GitHub's comment cap.\n"
++	const notice = "\n\n---\n\n… truncated: the full preview exceeds GitHub's comment cap. `glyph preview --pr <N> --notes` prints the whole document.\n"
+ 	budget := commentBodyMaxChars - utf8.RuneCountInString(notice)
+ 	head := cutAtLine(body, budget)
+ 	// The closers count against the cap too, and what must close depends on
