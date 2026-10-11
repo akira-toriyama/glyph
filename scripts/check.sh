@@ -40,6 +40,11 @@
 # maintain than the code it guards, and a hand-written second implementation of
 # a fleet policy is a second source of truth — the thing this repo refuses
 # everywhere else.
+#   commit-lint title (lint.yml 'Lint the squash title') `glyph lint --pr N`:
+#                                       the squash title is a pull request's, and
+#                                       exists nowhere locally. Check a planned
+#                                       one by hand with
+#                                       `glyph lint --message "<title>"`.
 #   zizmor        (zizmor.yml)          Actions-security lint over .github/. The
 #                                       policy is the fleet's; a shell copy of it
 #                                       would drift against the canonical one.
@@ -113,7 +118,7 @@ trap 'rm -rf "$WORK"; trap - TERM; kill -TERM $$' TERM
 # here was recorded by `ran`. Keeping it as data rather than as a comment is what
 # makes "a gate silently stopped running" a failure instead of a nicer-looking log.
 MIRRORS='commit-lint dist-gate golden-gate module-hygiene build vet race-test coverage golangci-lint govulncheck bite mutations fuzz-smoke release-history smoke'
-NOT_MIRRORED='zizmor, actionlint, taplo, repo-policy, version-preview, task-status, goreleaser, codeql'
+NOT_MIRRORED='commit-lint title, zizmor, actionlint, taplo, repo-policy, version-preview, task-status, goreleaser, codeql'
 RAN=''
 ran() { RAN="$RAN $1 "; }
 
