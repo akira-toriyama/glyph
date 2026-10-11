@@ -41,9 +41,10 @@
 #                 range walks the commits on the branch. They are not the same
 #                 set and they do not give the same answer — measured on canon,
 #                 where `--range v2.0.0..origin/main` refuses the whole range
-#                 over one `:robot:` subject fleet-sync wrote (a code not in
-#                 glyph's table) while `--since-tag` returns v2.0.1 without
-#                 hesitating. Nine repos were being reported as "bump gate
+#                 over one `:robot:` subject fleet-sync wrote (an unmatched
+#                 commit — measured 2026-08-04, under v1, whose embedded
+#                 table had no `:robot:`) while `--since-tag` returns v2.0.1
+#                 without hesitating. Nine repos were being reported as "bump gate
 #                 unanswered" on the strength of that, and the one thing a
 #                 preflight may not do is describe a gate it is not running.
 #
