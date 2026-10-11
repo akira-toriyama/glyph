@@ -485,7 +485,8 @@ tag), a bare `--since-tag` walks every line from its own highest tag the
 released branch holds, and `--range` attributes from local git with every
 commit pending on every line.
 A package with no tag yet is baselined
-by cutting `<path>/v0.0.0` at the commit before its first change. On stdout
+by cutting `<prefix>v0.0.0` (`haiku/v0.0.0`) at the commit before its first
+change. On stdout
 `bump` prints the next **tag** of every line that moves, one per line
 (`haiku/v0.2.0`), and exits `1` only when every line folds to none; `--json`
 carries `packages: [{path, current, level, next, commits, reason}]` with the

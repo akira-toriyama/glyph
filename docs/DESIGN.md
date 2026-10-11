@@ -1810,8 +1810,9 @@ path = "."                  # the root package: the bare vX.Y.Z line, and every 
 name = "core"               # its default "." is no preset scope's word: under the presets name is required
 ```
 
-- **The tag line is `<path>/vX.Y.Z`, derived, not configurable — with the
-  path's major version subdirectory folded into the major.** That is the Go
+- **The tag line is `<prefix>vX.Y.Z`, the prefix derived from the path, not
+  configurable — `<path>/` with the path's major version subdirectory folded
+  into the major, and empty for the root package.** That is the Go
   multi-module rule (go.dev/ref/mod, "Module paths": the tag prefix is the
   module subdirectory *not including the major version suffix*, and a module
   at major N ≥ 2 may live in a `/vN` subdirectory), the one ecosystem that
@@ -2399,9 +2400,9 @@ ranges would resolve the same pulls N times for the same answers, and were
 rejected on cost alone. The whole-history cap applies to
 the union walk as it does today, and its remedy gains a package form the
 error names: a package with no tag of its own — the common case of a package
-added to an old repository — is baselined by cutting **`<path>/v0.0.0` at the
+added to an old repository — is baselined by cutting **`<prefix>v0.0.0` at the
 commit before its first change**, a tag that says "nothing of this line was
-released before here" and steps to `<path>/v0.1.0` on the first `^`.
+released before here" and steps to `<prefix>v0.1.0` on the first `^`.
 
 **Only the untagged arm is capped**, and the tagged arm's missing cap is a
 decision (t-n5tw R3). A tagged range is the unreleased work a release exists
