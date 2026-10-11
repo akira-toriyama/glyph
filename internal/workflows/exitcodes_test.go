@@ -352,9 +352,9 @@ func TestOutOfGoConsumersBranchOnTheContractIntegers(t *testing.T) {
 		}
 	}
 
-	// NON-EMPTINESS, in the shape envelope_test.go uses. Measured floor is 18
-	// sites; zero means the branches were deleted or the scan broke, and both
-	// deserve a red test rather than a silent pass.
+	// NON-EMPTINESS, in the shape envelope_test.go uses: zero means the branches
+	// were deleted or the scan broke, and both deserve a red test rather than a
+	// silent pass.
 	if sites == 0 {
 		t.Error("the scan found no exit-code branches at all under .github/workflows or " +
 			"scripts. Either the fleet's machine consumers are gone, or this test is now " +
