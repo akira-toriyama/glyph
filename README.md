@@ -66,7 +66,7 @@ a baseline**.
 | `glyph preview` | the whole merge-preview comment for a PR: what merging it does to the version, with the evidence; `--notes` folds the release-notes preview in |
 | `glyph doctor` | read-only checks that the repository still matches what glyph assumes; each failing check prints the command that fixes it |
 | `glyph hook install` | local `commit-msg` and `pre-push` hooks that run the same lint the CI gate runs |
-| `glyph version` | the build identity — release tag, commit, build date; the one command that reaches nothing (no git, no API), so it answers anywhere |
+| `glyph version` | the build identity — release tag, commit, build date; like `emoji` it reaches nothing (no git, no API), so it answers anywhere |
 | `glyph emoji` | the gemoji dictionary as JSON: for each kind of change the one shortcode to write, when to pick it, and the gitmoji codes it absorbed; advice only — lint never reads it, and like `version` it reaches nothing |
 
 `lint --range/--message/--stdin` and `init` work offline against local git
