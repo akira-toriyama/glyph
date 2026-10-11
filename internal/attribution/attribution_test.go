@@ -99,8 +99,7 @@ func TestSharedOnlyNoneIsCarriedNowhere(t *testing.T) {
 func TestSharedOnlyBumpIsRefused(t *testing.T) {
 	for _, sigil := range []config.Sigil{config.SigilPatch, config.SigilMinor, config.SigilMajor, config.SigilPromote} {
 		got, err := Attribute([]string{"README.md"}, "", sigil, []config.Package{haiku, curry})
-		var r *Refusal
-		if !errors.As(err, &r) || r.Reason != NoCarrier {
+		if r, ok := errors.AsType[*Refusal](err); !ok || r.Reason != NoCarrier {
 			t.Fatalf("sigil %s on a shared-only commit → [%s], %v; want a NoCarrier refusal", sigil, paths(got), err)
 		}
 		for _, escape := range []string{"haiku", "curry", "write =", "declare the package these files belong to"} {
@@ -115,8 +114,7 @@ func TestSharedOnlyBumpIsRefused(t *testing.T) {
 		{".github/workflows/ci.yml", "ci"},
 	} {
 		got, err := Attribute([]string{c.file}, c.scope, config.SigilMinor, []config.Package{storage})
-		var r *Refusal
-		if !errors.As(err, &r) || r.Reason != NoCarrier {
+		if r, ok := errors.AsType[*Refusal](err); !ok || r.Reason != NoCarrier {
 			t.Fatalf("(%s)^ on %s → [%s], %v; want a NoCarrier refusal — a scope naming no package carries nothing and excuses nothing", c.scope, c.file, paths(got), err)
 		}
 		// The declaration is named, its path is not guessed: glyph cannot tell
@@ -143,8 +141,7 @@ func TestSharedOnlyBumpIsRefused(t *testing.T) {
 func TestNoFilesHaveNoCarrierUnderARootPackage(t *testing.T) {
 	pkgs := []config.Package{haiku, root}
 	got, err := Attribute(nil, "", config.SigilPatch, pkgs)
-	var r *Refusal
-	if !errors.As(err, &r) || r.Reason != NoCarrier {
+	if r, ok := errors.AsType[*Refusal](err); !ok || r.Reason != NoCarrier {
 		t.Fatalf("an empty ~ under a root package → [%s], %v; want a NoCarrier refusal", paths(got), err)
 	}
 	if want := "this commit touches no file, so no package's tree can carry its sigil ~: name the line it moves in the scope (one of haiku, core), or write = so it moves no line"; err.Error() != want {
@@ -163,8 +160,8 @@ func TestNoFilesHaveNoCarrierUnderARootPackage(t *testing.T) {
 func refusalOf(t *testing.T, files []string, scope string, sigil config.Sigil, pkgs []config.Package, tell func(*Refusal)) string {
 	t.Helper()
 	_, err := Attribute(files, scope, sigil, pkgs)
-	var r *Refusal
-	if !errors.As(err, &r) {
+	r, ok := errors.AsType[*Refusal](err)
+	if !ok {
 		t.Fatalf("Attribute(%v, %q, %s) = %v, want a refusal", files, scope, sigil, err)
 	}
 	if tell != nil {
@@ -330,8 +327,7 @@ func TestScopeContradictingTheTreeIsRefused(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, err := Attribute(c.files, c.scope, config.SigilPatch, c.pkgs)
-			var r *Refusal
-			if !errors.As(err, &r) || r.Reason != Contradiction {
+			if r, ok := errors.AsType[*Refusal](err); !ok || r.Reason != Contradiction {
 				t.Fatalf("(%s)~ over %v → [%s], %v; want a Contradiction refusal", c.scope, c.files, paths(got), err)
 			}
 			if !strings.Contains(err.Error(), c.owned) {

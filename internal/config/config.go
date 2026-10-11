@@ -439,8 +439,7 @@ func strictUnmarshal(data []byte, r *raw) error {
 	d := toml.NewDecoder(bytes.NewReader(data))
 	d.DisallowUnknownFields()
 	if err := d.Decode(r); err != nil {
-		var strict *toml.StrictMissingError
-		if errors.As(err, &strict) {
+		if strict, ok := errors.AsType[*toml.StrictMissingError](err); ok {
 			return fmt.Errorf("unknown key (typo, or written for a newer schema?):\n%s", strict.String())
 		}
 		return fmt.Errorf("parse glyph.toml: %w", err)
