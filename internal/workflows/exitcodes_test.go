@@ -288,7 +288,7 @@ func TestOutOfGoConsumersBranchOnTheContractIntegers(t *testing.T) {
 	if got := statusBranch.FindStringSubmatch(`          if [ "$status" -eq 1 ]; then`); got == nil || got[1] != "1" {
 		t.Fatalf("statusBranch no longer extracts the integer from a real shell branch (got %v)", got)
 	}
-	if got := jqCodeBranch.FindStringSubmatch(`jq -e '.error.code == 3' /tmp/glyph-lint.json`); got == nil || got[1] != "3" {
+	if got := jqCodeBranch.FindStringSubmatch(`jq -e '.error.code == 3' "$RUNNER_TEMP/glyph-lint.json"`); got == nil || got[1] != "3" {
 		t.Fatalf("jqCodeBranch no longer extracts the integer from a real jq branch (got %v)", got)
 	}
 

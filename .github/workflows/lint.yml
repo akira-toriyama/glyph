@@ -217,7 +217,7 @@ jobs:
               ;;
           esac
           status=0
-          glyph lint --range "$BASE..$HEAD" 2>/tmp/glyph-lint.err || status=$?
+          glyph lint --range "$BASE..$HEAD" 2>"$RUNNER_TEMP/glyph-lint.err" || status=$?
           # The whole diagnostic stream goes to the log verbatim, on EVERY exit:
           # glyph has already written one `::error::` per finding onto it — and,
           # on a green run, one `::warning::` per warn-pattern commit plus the
@@ -231,7 +231,7 @@ jobs:
           # DESIGN §2 promises a warning loud at every gate or it teaches the
           # reader the loud gate is noise. jq never fails the step on a non-JSON
           # envelope — the preserved glyph exit code is the verdict.
-          cat /tmp/glyph-lint.err >&2
+          cat "$RUNNER_TEMP/glyph-lint.err" >&2
           if [ "$status" -eq 0 ]; then
             echo "all commits OK"
             exit 0
@@ -245,19 +245,19 @@ jobs:
           # a BRE is POSIX-undefined, and sed rather than grep because a grep
           # that matches nothing exits 1 and would kill the step under
           # `set -o pipefail` whenever the error was Silent (t-sws7).
-          sed -n '/^[{]/,$p' /tmp/glyph-lint.err > /tmp/glyph-lint.json
-          if jq -e .error /tmp/glyph-lint.json >/dev/null 2>&1; then
+          sed -n '/^[{]/,$p' "$RUNNER_TEMP/glyph-lint.err" > "$RUNNER_TEMP/glyph-lint.json"
+          if jq -e .error "$RUNNER_TEMP/glyph-lint.json" >/dev/null 2>&1; then
             # Only the SUMMARY is framed here; the per-finding annotations are
             # glyph's own, above.
             # The commit-format hint is for convention violations (exit 3) only —
             # an infra failure (git/API, exit 4) gets the bare message.
-            if jq -e '.error.code == 3' /tmp/glyph-lint.json >/dev/null 2>&1; then
+            if jq -e '.error.code == 3' "$RUNNER_TEMP/glyph-lint.json" >/dev/null 2>&1; then
               # The convention is the repository's own glyph.toml, so the hint
               # points at the file rather than at any embedded grammar.
               jq -r '"::error::glyph lint: \(.error.message) — the convention is this repository'"'"'s glyph.toml; each finding above names its remedy"' \
-                /tmp/glyph-lint.json || true
+                "$RUNNER_TEMP/glyph-lint.json" || true
             else
-              jq -r '"::error::glyph lint: \(.error.message)"' /tmp/glyph-lint.json || true
+              jq -r '"::error::glyph lint: \(.error.message)"' "$RUNNER_TEMP/glyph-lint.json" || true
             fi
           fi
           # The annotate-only arm swallows the GATE code and nothing else: an
@@ -287,23 +287,23 @@ jobs:
         run: |
           set -euo pipefail
           status=0
-          glyph lint --pr "$PR_NUMBER" 2>/tmp/glyph-title.err || status=$?
+          glyph lint --pr "$PR_NUMBER" 2>"$RUNNER_TEMP/glyph-title.err" || status=$?
           # Replayed before the green exit for the same reason as the range step:
           # a warn-pattern title is green AND annotated, or the warning dies.
-          cat /tmp/glyph-title.err >&2
+          cat "$RUNNER_TEMP/glyph-title.err" >&2
           if [ "$status" -eq 0 ]; then
             echo "title OK"
             exit 0
           fi
-          sed -n '/^[{]/,$p' /tmp/glyph-title.err > /tmp/glyph-title.json
-          if jq -e .error /tmp/glyph-title.json >/dev/null 2>&1; then
+          sed -n '/^[{]/,$p' "$RUNNER_TEMP/glyph-title.err" > "$RUNNER_TEMP/glyph-title.json"
+          if jq -e .error "$RUNNER_TEMP/glyph-title.json" >/dev/null 2>&1; then
             # The retitle hint is for convention violations (exit 3) only — an
             # infra failure (API/permissions, exit 4) gets the bare message.
-            if jq -e '.error.code == 3' /tmp/glyph-title.json >/dev/null 2>&1; then
+            if jq -e '.error.code == 3' "$RUNNER_TEMP/glyph-title.json" >/dev/null 2>&1; then
               jq -r '"::error::glyph lint: \(.error.message) — retitle the pull request to match one of this repository'"'"'s glyph.toml patterns"' \
-                /tmp/glyph-title.json || true
+                "$RUNNER_TEMP/glyph-title.json" || true
             else
-              jq -r '"::error::glyph lint: \(.error.message)"' /tmp/glyph-title.json || true
+              jq -r '"::error::glyph lint: \(.error.message)"' "$RUNNER_TEMP/glyph-title.json" || true
             fi
           fi
           exit "$status"
