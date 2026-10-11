@@ -1,6 +1,6 @@
 name: glyph-lint
 
-# Reusable workflow — gitmoji commit lint over a commit range, run by
+# Reusable workflow — commit lint over a commit range, run by
 # `glyph lint`: a pull request's BASE..HEAD (the gate), or a direct push to the
 # default branch (annotate-only — see the lint step for why that verdict may
 # not gate). This is glyph's OFFICIAL commit-lint integration: the workflow
