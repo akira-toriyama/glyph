@@ -69,38 +69,33 @@ func checkCallerInputs(root string, rootVerified bool, glyph string) Check {
 			unreadable = append(unreadable, fmt.Sprintf("%s could not be read: %v", path, rerr))
 			continue
 		}
+		calls := reusablesCalled(name, string(body))
+		if len(calls) == 0 {
+			continue
+		}
+		callers++
 		lines := strings.Split(string(body), "\n")
-		called := false
-		for _, ref := range scanUses(name, string(body)) {
-			spec, _, _ := strings.Cut(ref.Uses, "@")
-			if !strings.Contains(strings.ToLower(spec), "/.github/workflows/") {
-				continue
-			}
-			base := spec[strings.LastIndex(spec, "/")+1:]
-			called = true
-			row, known := reusableRequiredInputs[strings.ToLower(base)]
-			nj := unknownReusable(base)
+		for _, call := range calls {
+			row, known := reusableRequiredInputs[strings.ToLower(call.Reusable)]
+			nj := unknownReusable(call.Reusable)
 			if known {
-				nj = judgeAt(ref.Ref, row.After, glyph, inputsFloor)
+				nj = judgeAt(call.Ref, row.After, glyph, inputsFloor)
 			}
 			if nj != nil {
-				skipped = append(skipped, fmt.Sprintf(".github/workflows/%s calls %s@%s — not judged: %s", name, base, ref.Ref, nj.Why))
+				skipped = append(skipped, fmt.Sprintf(".github/workflows/%s calls %s@%s — not judged: %s", name, call.Reusable, call.Ref, nj.Why))
 				remedies = remember(remedies, nj.Remedy)
 				continue
 			}
 			if len(row.Required) == 0 {
 				continue
 			}
-			keys := jobWithKeys(lines, ref.Line)
+			keys := jobWithKeys(lines, call.Line)
 			for _, want := range row.Required {
 				if !keys[want] {
 					findings = append(findings, fmt.Sprintf(
-						".github/workflows/%s calls %s@%s but its with: never names %s", name, base, ref.Ref, want))
+						".github/workflows/%s calls %s@%s but its with: never names %s", name, call.Reusable, call.Ref, want))
 				}
 			}
-		}
-		if called {
-			callers++
 		}
 	}
 	sort.Strings(findings)

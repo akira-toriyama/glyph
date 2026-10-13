@@ -1,5 +1,5 @@
 diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
-index b7debca..d6399af 100644
+index 5dd61f7..0e6f025 100644
 --- a/internal/doctor/callerinputs.go
 +++ b/internal/doctor/callerinputs.go
 @@ -66,7 +66,7 @@ func checkCallerInputs(root string, rootVerified bool, glyph string) Check {
@@ -10,9 +10,9 @@ index b7debca..d6399af 100644
 +			_ = rerr
  			continue
  		}
- 		lines := strings.Split(string(body), "\n")
+ 		calls := reusablesCalled(name, string(body))
 diff --git a/internal/doctor/callerperms.go b/internal/doctor/callerperms.go
-index ad53865..18379fa 100644
+index d42a65e..8c41a7c 100644
 --- a/internal/doctor/callerperms.go
 +++ b/internal/doctor/callerperms.go
 @@ -99,7 +99,7 @@ func checkCallerPermissions(root string, rootVerified bool, glyph string) Check
