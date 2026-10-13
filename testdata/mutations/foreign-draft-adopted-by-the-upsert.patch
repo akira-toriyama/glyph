@@ -1,14 +1,22 @@
 diff --git a/internal/draftplan/draftplan.go b/internal/draftplan/draftplan.go
-index e980bf2..f176b09 100644
+index 9b4c03f..f3b744c 100644
 --- a/internal/draftplan/draftplan.go
 +++ b/internal/draftplan/draftplan.go
-@@ -94,8 +94,7 @@ func managed(l config.Line, releases []Draft) []Draft {
- 		if !strings.HasPrefix(strings.TrimPrefix(r.TagName, l.Prefix), "v") {
+@@ -11,6 +11,8 @@
+ package draftplan
+ 
+ import (
++	"strings"
++
+ 	"github.com/akira-toriyama/glyph/v5/internal/bump"
+ 	"github.com/akira-toriyama/glyph/v5/internal/config"
+ )
+@@ -89,7 +91,7 @@ func managed(l config.Line, releases []Draft) []Draft {
+ 			drafts = append(drafts, r)
  			continue
  		}
--		v, err := bump.ParseVersionOn(l.Prefix, r.TagName)
--		if err != nil || !l.Holds(v.Major) {
-+		if v, err := bump.ParseVersionOn(l.Prefix, r.TagName); false && (err != nil || !l.Holds(v.Major)) {
+-		if _, ok := bump.HouseTagOn(l, r.TagName); !ok {
++		if !strings.HasPrefix(strings.TrimPrefix(r.TagName, l.Prefix), "v") {
  			continue
  		}
  		drafts = append(drafts, r)

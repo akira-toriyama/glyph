@@ -179,9 +179,8 @@ func notesLines(cmd *cobra.Command, cfg *config.Config) error {
 		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section on any line", participating(cfg, walkedNoteCommits(w.All)), w.Source)
 		if notesJSON {
 			printCompact(notesResult{Sections: []notes.SigilSection{}, Packages: pkgs, Reason: reason})
-			return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}
 		}
-		return core.NoReleasef("%s", reason)
+		return core.NoReleasef("%s", reason).Quiet(notesJSON)
 	}
 	if notesJSON {
 		printCompact(notesResult{Sections: []notes.SigilSection{}, Packages: pkgs})
@@ -232,9 +231,8 @@ func notesRun(cmd *cobra.Command) error {
 		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section", participating(cfg, commits), source)
 		if notesJSON {
 			printCompact(notesResult{Sections: []notes.SigilSection{}, Reason: reason})
-			return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}
 		}
-		return core.NoReleasef("%s", reason)
+		return core.NoReleasef("%s", reason).Quiet(notesJSON)
 	}
 
 	if notesJSON {

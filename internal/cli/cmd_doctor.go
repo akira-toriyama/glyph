@@ -433,20 +433,12 @@ func doctorRun(cmd *cobra.Command) error {
 // bump and release make on a none verdict.
 func doctorVerdict(r *doctor.Report) error {
 	if failed := r.IDs(doctor.StatusFail); len(failed) > 0 {
-		return &core.Error{
-			Code:    core.CodeLint,
-			Msg:     fmt.Sprintf("doctor: %d check(s) failed — this repository does not satisfy what glyph assumes about it", len(failed)),
-			Details: failed,
-			Silent:  doctorJSON,
-		}
+		return core.Lintf("doctor: %d check(s) failed — this repository does not satisfy what glyph assumes about it", len(failed)).
+			WithDetails(failed).Quiet(doctorJSON)
 	}
 	if unknown := r.IDs(doctor.StatusUnknown); len(unknown) > 0 {
-		return &core.Error{
-			Code:    core.CodeAPI,
-			Msg:     fmt.Sprintf("doctor: %d check(s) could not run — the repository is unverified, not verified-good", len(unknown)),
-			Details: unknown,
-			Silent:  doctorJSON,
-		}
+		return core.APIf("doctor: %d check(s) could not run — the repository is unverified, not verified-good", len(unknown)).
+			WithDetails(unknown).Quiet(doctorJSON)
 	}
 	return nil
 }

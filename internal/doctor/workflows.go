@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v5/internal/bump"
+	"github.com/akira-toriyama/glyph/v5/internal/config"
 	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
 )
 
@@ -351,16 +352,12 @@ func pinProblem(ref string, hasRef bool) string {
 		"and glyph's tag space holds only full vX.Y.Z releases — no v1 or v0.10 alias exists to resolve"
 }
 
-// isReleaseTag reports whether ref is a house release tag. bump.ParseVersion is
-// the one authority on the version shape (it accepts a bare X.Y.Z too), and the
-// leading v is required on top of it: GoReleaser cuts glyph's tags as vX.Y.Z,
-// so a v-less tag simply does not exist to pin.
+// isReleaseTag reports whether ref is a house release tag on glyph's own bare
+// line: GoReleaser cuts glyph's tags as vX.Y.Z, so a v-less tag simply does
+// not exist to pin.
 func isReleaseTag(ref string) bool {
-	if !strings.HasPrefix(ref, "v") {
-		return false
-	}
-	_, err := bump.ParseVersion(ref)
-	return err == nil
+	_, ok := bump.HouseTagOn(config.Line{}, ref)
+	return ok
 }
 
 // isCommitSHA reports whether ref looks like a git object name: hex, and long

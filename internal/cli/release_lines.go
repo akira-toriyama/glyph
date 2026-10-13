@@ -134,17 +134,17 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 			return verr
 		}
 		pv := packageRelease{Path: lw.Package.Path, Current: current.String(), Level: string(dec.Level), Commits: lineVerdicts}
-		noneReason := fmt.Sprintf("no release: %d commit(s) participate in %s and every level is none", len(lineVerdicts), lw.Source)
+		none := noneReason(len(lineVerdicts), lw.Source)
 		if dec.Level == bump.LevelNone && !cfg.Note.DraftOnNone {
 			plan := draftplan.PlanDraft(lw.Line, dec.Level, "", false, drafted)
-			pv.Action, pv.Reason = string(plan.Action), noneReason
+			pv.Action, pv.Reason = string(plan.Action), none
 			residual = append(residual, staleReleases(plan.Stale)...)
 			verdicts = append(verdicts, pv)
 			reasons = append(reasons, lw.Package.Path+": "+pv.Reason)
 			continue
 		}
 		tagName := draftplan.PlaceholderTagOn(lw.Line)
-		pv.Reason = noneReason
+		pv.Reason = none
 		if dec.Level != bump.LevelNone {
 			tag, nerr := nextOn(lw.Line, current, dec)
 			if nerr != nil {
@@ -181,7 +181,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 	}
 	reason := strings.Join(reasons, "; ")
 	if moving == 0 {
-		reason = "no release: every line folds to none (" + reason + ")"
+		reason = everyLineNone(reason)
 	}
 
 	// The bare line's residue: with packages declared and no root package,
@@ -222,9 +222,12 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 	if len(drafts) > 0 {
 		result.Target = target
 	}
-	finish := func() error {
+	// finish is the exit once stdout is written: exit 1 when no line moves,
+	// quiet when stdout carries the verdict — the JSON, or at least one
+	// draft's block or URL — and the envelope otherwise.
+	finish := func(verdictOnStdout bool) error {
 		if moving == 0 {
-			return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}
+			return core.NoReleasef("%s", reason).Quiet(verdictOnStdout)
 		}
 		return nil
 	}
@@ -244,17 +247,19 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 		}
 		if releaseJSON {
 			printCompact(result)
-			return finish()
+			return finish(true)
 		}
 		if len(drafts) == 0 {
-			return core.NoReleasef("%s", reason)
+			// Nothing to print, and no zero-byte write: on macOS an empty
+			// write to a pipe whose reader has gone is still a SIGPIPE.
+			return finish(false)
 		}
 		blocks := make([]string, 0, len(drafts))
 		for _, d := range drafts {
 			blocks = append(blocks, d.params.TagName+"\n\n"+d.params.Body)
 		}
 		fmt.Fprint(out, strings.Join(blocks, "\n"))
-		return finish()
+		return finish(true)
 	}
 
 	// Every line's upsert lands before any draft is deleted: a failure here
@@ -325,13 +330,10 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
 
 	if releaseJSON {
 		printCompact(result)
-		return finish()
+		return finish(true)
 	}
 	for _, u := range urls {
 		fmt.Fprintln(out, u)
 	}
-	if moving == 0 && len(drafts) == 0 {
-		return core.NoReleasef("%s", reason)
-	}
-	return finish()
+	return finish(len(drafts) > 0)
 }

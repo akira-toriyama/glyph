@@ -291,16 +291,10 @@ func releaseRun(cmd *cobra.Command) error {
 		noticef("dry run: the upsert would %s the rolling draft %s at %s (%d stale draft(s) to delete)", plan.Action, tagName, target, len(stale))
 		if releaseJSON {
 			printCompact(result)
-			if dec.Level == bump.LevelNone {
-				return &core.Error{Code: core.CodeNoRelease, Msg: result.Reason, Silent: true}
-			}
-			return nil
+		} else {
+			fmt.Fprintf(out, "%s\n\n%s", tagName, body)
 		}
-		fmt.Fprintf(out, "%s\n\n%s", tagName, body)
-		if dec.Level == bump.LevelNone {
-			return &core.Error{Code: core.CodeNoRelease, Msg: result.Reason, Silent: true}
-		}
-		return nil
+		return maintainedNone(dec, result.Reason)
 	}
 	params := github.ReleaseParams{
 		TagName: tagName,
@@ -328,18 +322,22 @@ func releaseRun(cmd *cobra.Command) error {
 	result.URL = rel.URL
 	if releaseJSON {
 		printCompact(result)
-		if dec.Level == bump.LevelNone {
-			return &core.Error{Code: core.CodeNoRelease, Msg: result.Reason, Silent: true}
-		}
+	} else {
+		fmt.Fprintln(out, rel.URL)
+	}
+	return maintainedNone(dec, result.Reason)
+}
+
+// maintainedNone is the exit of a run whose draft stands and whose verdict
+// is none: the placeholder is maintained and the run still reports "no
+// release is due" — draft_on_none keeps a door open, it does not release.
+// stdout already carries the verdict (the JSON, or the tag line and body, or
+// the draft's URL), so the envelope stays quiet. nil on a release verdict.
+func maintainedNone(dec bump.Decision, reason string) error {
+	if dec.Level != bump.LevelNone {
 		return nil
 	}
-	fmt.Fprintln(out, rel.URL)
-	if dec.Level == bump.LevelNone {
-		// The placeholder is maintained and the run still reports "no release
-		// is due" — draft_on_none keeps a door open, it does not release.
-		return &core.Error{Code: core.CodeNoRelease, Msg: result.Reason, Silent: true}
-	}
-	return nil
+	return core.NoReleasef("%s", reason).Quiet(true)
 }
 
 // planInput adapts the releases listing for draftplan, which decides what is
@@ -446,12 +444,11 @@ func releaseNone(ctx context.Context, gh *github.Client, owner, repo string, cur
 	case len(drafts) > 0:
 		noticef("dry run: no release is due — the upsert would delete %d residual draft(s)", len(drafts))
 	}
-	reason := fmt.Sprintf("no release: %d commit(s) participate in %s and every level is none", len(commits), source)
+	reason := noneReason(len(commits), source)
 	if releaseJSON {
 		printCompact(releaseResult{Current: current.String(), Level: string(bump.LevelNone), Action: action, Commits: commits, Pulls: facts.Pulls, Reason: reason})
-		return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}
 	}
-	return core.NoReleasef("%s", reason)
+	return core.NoReleasef("%s", reason).Quiet(releaseJSON)
 }
 
 // discardedOrGone words a delete's notice for what actually happened. A delete
@@ -482,8 +479,8 @@ func checkPublishedFloor(l config.Line, next bump.Version, releases []github.Rel
 		next.TagOn(l.Prefix), floor.TagOn(l.Prefix))
 }
 
-// highestPublished returns the highest published (non-draft) house-shaped
-// version ON ONE LINE among the releases; ok is false when there is none —
+// highestPublished returns the highest published (non-draft) house version
+// (bump.HouseTagOn) ON ONE LINE among the releases; ok is false when there is none —
 // a line before its first publish has no floor. The floor is per line by
 // construction (DESIGN §4.1): a published haiku/v2.0.0 is no floor under a
 // curry/ draft, a published bare v2.0.0 is none under either package, and a
@@ -494,11 +491,11 @@ func highestPublished(l config.Line, releases []github.Release) (bump.Version, b
 	var floor bump.Version
 	found := false
 	for _, r := range releases {
-		if r.Draft || !strings.HasPrefix(strings.TrimPrefix(r.TagName, l.Prefix), "v") {
+		if r.Draft {
 			continue
 		}
-		v, err := bump.ParseVersionOn(l.Prefix, r.TagName)
-		if err != nil || !l.Holds(v.Major) {
+		v, ok := bump.HouseTagOn(l, r.TagName)
+		if !ok {
 			continue
 		}
 		if !found || v.Compare(floor) > 0 {

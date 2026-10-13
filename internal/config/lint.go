@@ -45,10 +45,7 @@ func (c *Config) Lint(message, author string) LintVerdict {
 		return LintVerdict{Reason: err.Error()}
 	}
 	if !m.Matched {
-		if m.Unlandable != "" {
-			return LintVerdict{Reason: m.Unlandable}
-		}
-		return LintVerdict{Reason: c.unmatchedReason()}
+		return LintVerdict{Reason: c.unclaimedReason(m)}
 	}
 	return LintVerdict{OK: true, Warn: m.Warn}
 }
@@ -74,19 +71,27 @@ func (c *Config) LintAuthoring(message string) LintVerdict {
 	return c.Lint(message, "")
 }
 
-// unmatchedReason is the no-pattern-matches violation. It quotes the
+// unclaimedReason is the violation for a message Match left unclaimed: the
+// sentence every history gate gives it (UnclaimedDetail — the fold's and the
+// walk's refusals quote the same words, so an operator grepping one finds
+// the other), and for the no-pattern case a remedy. The remedy quotes the
 // subject form from commit.template (t-s1q0): the author of a refused
 // message otherwise has to open glyph.toml and read the winning regex back
 // into a shape, every time. The form is the file's own words (measured
 // beside the since-retired v1-acceptance window, whose warning spelled the
 // same line this refusal now does), and a config with no template gets the
-// bare pointer instead.
-func (c *Config) unmatchedReason() string {
+// bare pointer instead. An unlandable message carries no remedy here: its
+// sentence already says what must happen before it lands.
+func (c *Config) unclaimedReason(m Match) string {
+	reason := c.UnclaimedDetail(m)
+	if m.Unlandable != "" {
+		return reason
+	}
 	form := c.SubjectForm()
 	if form == "" {
-		return fmt.Sprintf("message matches none of the %d configured patterns — write it to match one (see glyph.toml), or exclude the author", len(c.Patterns))
+		return "message " + reason + " — write it to match one (see glyph.toml), or exclude the author"
 	}
-	return fmt.Sprintf("message matches none of the %d configured patterns — write it as %s with a semver_sigil of = ~ ^ ! or %% (commit.template in glyph.toml), or exclude the author", len(c.Patterns), form)
+	return fmt.Sprintf("message %s — write it as %s with a semver_sigil of = ~ ^ ! or %% (commit.template in glyph.toml), or exclude the author", reason, form)
 }
 
 // SubjectForm is the first non-blank line of commit.template — the shape of

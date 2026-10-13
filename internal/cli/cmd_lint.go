@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 
@@ -241,11 +240,8 @@ func lintOne(message string, cfg *config.Config) error {
 		}
 		return nil
 	}
-	return &core.Error{
-		Code:    core.CodeLint,
-		Msg:     "1 commit-convention violation",
-		Details: []rangeViolation{{Subject: bump.FirstLine(message), Detail: v.Reason}},
-	}
+	return core.Lintf("1 commit-convention violation").
+		WithDetails([]rangeViolation{{Subject: bump.FirstLine(message), Detail: v.Reason}})
 }
 
 // lintPRRun lints the one line of a pull request a squash merge writes into
@@ -283,12 +279,9 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 	// One annotation for the finding, written by the binary that computed it —
 	// the same producer contract lintRangeRun holds (t-sws7).
 	errorf("%s/%s#%d title: %s", owner, repo, number, v.Reason)
-	return &core.Error{
-		Code: core.CodeLint,
-		Msg: fmt.Sprintf("1 commit-convention violation in the title of %s/%s#%d — a squash merge records this title as the landed commit's subject",
-			owner, repo, number),
-		Details: []rangeViolation{{Subject: pull.Title, Detail: v.Reason}},
-	}
+	return core.Lintf("1 commit-convention violation in the title of %s/%s#%d — a squash merge records this title as the landed commit's subject",
+		owner, repo, number).
+		WithDetails([]rangeViolation{{Subject: pull.Title, Detail: v.Reason}})
 }
 
 // lintRaws lints raw commits, returning every finding, every warned-but-clean
@@ -405,11 +398,7 @@ func lintRangeRun(ctx context.Context, revRange string) error {
 		for _, f := range findings {
 			errorf("commit %.7s: %s", f.SHA, f.Detail)
 		}
-		return &core.Error{
-			Code:    core.CodeLint,
-			Msg:     fmt.Sprintf("%d commit-convention violation(s)", len(findings)),
-			Details: findings,
-		}
+		return core.Lintf("%d commit-convention violation(s)", len(findings)).WithDetails(findings)
 	}
 	if checked == 0 {
 		// The two causes need different sentences: an empty walk means the

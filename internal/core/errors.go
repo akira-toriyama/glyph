@@ -68,6 +68,28 @@ type Error struct {
 
 func (e *Error) Error() string { return e.Msg }
 
+// WithDetails attaches the machine-actionable payload and returns e, so a
+// refusal is one expression — Lintf(…).WithDetails(findings) — rather than a
+// literal re-spelling what the builder already decided. Every Error outside
+// this package is built by a builder below.
+func (e *Error) WithDetails(details any) *Error {
+	e.Details = details
+	return e
+}
+
+// Quiet sets Silent to verdictOnStdout and returns e: the envelope is
+// suppressed when stdout already carries, in machine form, every field the
+// envelope would (the --json object; release's tag line and body, or its
+// draft URL). The writer knows that as a boolean it already holds, so it
+// passes the boolean: one error, no branch, instead of two literals per
+// site that must agree on everything but Silent (the shape bump, notes and
+// release once carried ten times). Interrupted is the other Silent exit,
+// for its own reason, and builds itself.
+func (e *Error) Quiet(verdictOnStdout bool) *Error {
+	e.Silent = verdictOnStdout
+	return e
+}
+
 // Usagef builds a CodeUsage error (bad input — do not retry).
 func Usagef(format string, a ...any) *Error {
 	return &Error{Code: CodeUsage, Msg: fmt.Sprintf(format, a...)}

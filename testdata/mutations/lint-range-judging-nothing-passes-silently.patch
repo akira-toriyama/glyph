@@ -1,10 +1,10 @@
 diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
-index 6a622d4..740a131 100644
+index ffe956f..659f33e 100644
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -266,7 +266,7 @@ func lintRangeRun(ctx context.Context, revRange string) error {
- 			Details: findings,
+@@ -400,7 +400,7 @@ func lintRangeRun(ctx context.Context, revRange string) error {
  		}
+ 		return core.Lintf("%d commit-convention violation(s)", len(findings)).WithDetails(findings)
  	}
 -	if checked == 0 {
 +	if false && checked == 0 {
