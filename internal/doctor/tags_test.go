@@ -15,7 +15,7 @@ const noRootPackages = minimalConfig + "\n[[packages]]\npath = 'haiku'\n\n[[pack
 func TestRootLineTagsOrphanedIsAdvice(t *testing.T) {
 	c := checkRootLineTags(loaded(t, noRootPackages), []string{"v0.1.0", "haiku/v1.0.0", "v0.2.0", "not-a-version"}, nil)
 	if c.Status != StatusAdvice {
-		t.Fatalf("%s = %s (%s), want %s", IDRootLineTags, c.Status, c.Observed, StatusAdvice)
+		t.Fatalf("%s = %s (%s), want %s", idRootLineTags, c.Status, c.Observed, StatusAdvice)
 	}
 	if !strings.Contains(c.Observed, "2 bare vX.Y.Z tag(s)") || !strings.Contains(c.Observed, "highest v0.2.0") {
 		t.Errorf("the observation must count the bare tags and name the highest, got %q", c.Observed)
@@ -38,7 +38,7 @@ func TestRootLineTagsPasses(t *testing.T) {
 	}
 	for name, c := range cases {
 		if c.Status != StatusPass {
-			t.Errorf("%s: %s = %s (%s), want pass", name, IDRootLineTags, c.Status, c.Observed)
+			t.Errorf("%s: %s = %s (%s), want pass", name, idRootLineTags, c.Status, c.Observed)
 		}
 	}
 }
@@ -50,12 +50,12 @@ func TestRootLineTagsPasses(t *testing.T) {
 // file), and its observation points at the check that owns the reason.
 func TestRootLineTagsDegradeWithUnobservedInputs(t *testing.T) {
 	unloaded := checkRootLineTags(nil, []string{"v0.1.0"}, nil)
-	if unloaded.Status != StatusUnknown || !strings.Contains(unloaded.Observed, IDConfigLoads) {
-		t.Errorf("config not loaded: %s = %s (%s), want unknown pointing at %s", IDRootLineTags, unloaded.Status, unloaded.Observed, IDConfigLoads)
+	if unloaded.Status != StatusUnknown || !strings.Contains(unloaded.Observed, idConfigLoads) {
+		t.Errorf("config not loaded: %s = %s (%s), want unknown pointing at %s", idRootLineTags, unloaded.Status, unloaded.Observed, idConfigLoads)
 	}
 	unlisted := checkRootLineTags(loaded(t, noRootPackages), nil, errors.New("git tag: boom"))
 	if unlisted.Status != StatusUnknown || !strings.Contains(unlisted.Observed, "git tag: boom") {
-		t.Errorf("tags unlisted: %s = %s (%s), want unknown carrying git's reason", IDRootLineTags, unlisted.Status, unlisted.Observed)
+		t.Errorf("tags unlisted: %s = %s (%s), want unknown carrying git's reason", idRootLineTags, unlisted.Status, unlisted.Observed)
 	}
 }
 
@@ -65,6 +65,6 @@ func TestRootLineTagsDegradeWithUnobservedInputs(t *testing.T) {
 func TestRootLineTagsRootMajorSubdirectoryHoldsItsMajorOnly(t *testing.T) {
 	c := checkRootLineTags(loaded(t, noRootPackages+"\n[[packages]]\npath = 'v2'\n"), []string{"v1.0.0", "v2.0.0", "v1.1.0"}, nil)
 	if c.Status != StatusAdvice || !strings.Contains(c.Observed, "2 bare vX.Y.Z tag(s)") || !strings.Contains(c.Observed, "highest v1.1.0") {
-		t.Fatalf("%s = %s (%s), want advice over the two v1 tags", IDRootLineTags, c.Status, c.Observed)
+		t.Fatalf("%s = %s (%s), want advice over the two v1 tags", idRootLineTags, c.Status, c.Observed)
 	}
 }

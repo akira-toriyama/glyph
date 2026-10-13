@@ -33,7 +33,7 @@ import (
 //   - The config not loaded (configUnread), or the tags unlistable →
 //     unknown: one of the two inputs was never observed.
 func checkRootLineTags(cfg *config.Config, tags []string, tagsErr error) Check {
-	c := Check{ID: IDRootLineTags, Expected: "every bare vX.Y.Z tag belongs to a declared line (no [[packages]], or a root package)"}
+	c := Check{ID: idRootLineTags, Expected: "every bare vX.Y.Z tag belongs to a declared line (no [[packages]], or a root package)"}
 	if configUnread(&c, cfg) {
 		return c
 	}

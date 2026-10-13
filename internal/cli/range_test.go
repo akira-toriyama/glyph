@@ -55,7 +55,7 @@ func TestBumpRangeReturnsEveryViolation(t *testing.T) {
 		t.Errorf("message = %q — the first failure keeps its `commit <sha>:` head (the walk's refusal "+
 			"opens the same way) and the rest ride as a count", env.Message)
 	}
-	var details []rangeViolation
+	var details []bump.Refusal
 	if err := json.Unmarshal(env.Details, &details); err != nil {
 		t.Fatalf("decoding details: %v\n%s", err, stderr)
 	}

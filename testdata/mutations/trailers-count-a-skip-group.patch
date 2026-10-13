@@ -1,9 +1,9 @@
 diff --git a/internal/config/trailers.go b/internal/config/trailers.go
-index d95ac77..c5c8c40 100644
+index 98ba65a..8538626 100644
 --- a/internal/config/trailers.go
 +++ b/internal/config/trailers.go
 @@ -77,7 +77,7 @@ func buildTrailers(raws []rawTrailer, patterns []Pattern) ([]NoteTrailer, error)
- 		if slices.Contains(LineBuiltins, rt.Name) {
+ 		if slices.Contains(lineBuiltins, rt.Name) {
  			return nil, fmt.Errorf("note.trailers[%d]: name %q is a built-in, which outranks it — the trailer would never render", i, rt.Name)
  		}
 -		if groups[rt.Name] {

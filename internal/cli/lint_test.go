@@ -366,6 +366,16 @@ func TestLintMessageViolations(t *testing.T) {
 	if details[0].Subject != "Fix a crash without any pattern shape" {
 		t.Fatalf("finding must carry the subject, got %+v", details[0])
 	}
+	// A message that is no commit yet anchors to none: the row carries no
+	// sha key at all, not an empty one, so a consumer anchoring findings to
+	// commits is never handed a commit that does not exist.
+	var rows []map[string]json.RawMessage
+	if err := json.Unmarshal(env.Details, &rows); err != nil {
+		t.Fatalf("decoding the rows: %v", err)
+	}
+	if _, has := rows[0]["sha"]; has {
+		t.Fatalf("a --message finding carries a sha key (%s), want none — the message is no commit", rows[0]["sha"])
+	}
 }
 
 // TestLintStdin: --stdin reads the message from the input stream (the

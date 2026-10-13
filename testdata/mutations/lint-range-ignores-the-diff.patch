@@ -1,10 +1,10 @@
 diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
-index 10971e7..c1b7698 100644
+index 28be7f8..918ff9d 100644
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -261,7 +261,7 @@ func lintRaws(ctx context.Context, raws []gitsource.RawCommit, cfg *config.Confi
+@@ -319,7 +319,7 @@ func lintRaws(ctx context.Context, raws []gitsource.RawCommit, cfg *config.Confi
  		if v.Warn != "" {
- 			warned = append(warned, rangeViolation{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message), Detail: v.Warn})
+ 			warned = append(warned, bump.Refusal{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message), Detail: v.Warn})
  		}
 -		if len(cfg.Packages) == 0 {
 +		if len(cfg.Packages) >= 0 {

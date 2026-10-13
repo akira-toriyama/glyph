@@ -12,7 +12,6 @@ package emoji
 
 import (
 	_ "embed"
-	"encoding/json"
 )
 
 // Entry is one kind of change. Code is the shortcode as it is written at the
@@ -44,13 +43,3 @@ var tableJSON []byte
 // JSON returns the dictionary exactly as shipped: the embedded file, byte for
 // byte, trailing newline included.
 func JSON() []byte { return tableJSON }
-
-// Table decodes the dictionary. The file is embedded at compile time, so a
-// decode failure is a build defect, not a runtime condition.
-func Table() []Entry {
-	var t []Entry
-	if err := json.Unmarshal(tableJSON, &t); err != nil {
-		panic("emoji: embedded table.json is not the dictionary: " + err.Error())
-	}
-	return t
-}

@@ -172,9 +172,9 @@ func TestCoAuthorNames(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := CoAuthorNames(tc.msg)
+			got := coAuthorNames(tc.msg)
 			if strings.Join(got, "|") != strings.Join(tc.want, "|") {
-				t.Errorf("CoAuthorNames() = %q, want %q", got, tc.want)
+				t.Errorf("coAuthorNames() = %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -182,11 +182,11 @@ func TestCoAuthorNames(t *testing.T) {
 
 func TestTrailerValueTakesTheLastMatch(t *testing.T) {
 	msg := "subject\n\nbody\n\nWhy: the first reason\nWhy: the corrected reason"
-	if got := TrailerValue(msg, "why"); got != "the corrected reason" {
-		t.Errorf("TrailerValue() = %q, want the LAST match", got)
+	if got := trailerValue(msg, "why"); got != "the corrected reason" {
+		t.Errorf("trailerValue() = %q, want the LAST match", got)
 	}
-	if got := TrailerValue(msg, "nosuch"); got != "" {
-		t.Errorf("TrailerValue() for an absent token = %q, want empty", got)
+	if got := trailerValue(msg, "nosuch"); got != "" {
+		t.Errorf("trailerValue() for an absent token = %q, want empty", got)
 	}
 }
 

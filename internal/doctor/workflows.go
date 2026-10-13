@@ -56,7 +56,7 @@ type pinRef struct {
 // found: the t-wzsw zero-base drill, 2026-08-26).
 func checkWorkflowPins(root string, rootVerified bool, actionFiles []gitsource.ActionFile, actionErr error) Check {
 	c := Check{
-		ID: IDWorkflowPinned,
+		ID: idWorkflowPinned,
 		Expected: "every `uses: " + glyphRepo + "/…` in .github/workflows or in any action.yml / action.yaml in the checkout " +
 			"(submodules included) pins a concrete @vX.Y.Z release tag",
 	}

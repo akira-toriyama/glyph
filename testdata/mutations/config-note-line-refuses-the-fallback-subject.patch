@@ -1,9 +1,9 @@
 diff --git a/internal/config/line.go b/internal/config/line.go
-index c8716ac..fba2de5 100644
+index 939fb36..655231c 100644
 --- a/internal/config/line.go
 +++ b/internal/config/line.go
 @@ -220,8 +220,6 @@ func validateLineNames(spans []LineSpan, patterns []Pattern, trailers []NoteTrai
- 				if groups[part.Text] && !slices.Contains(LineBuiltins, part.Text) {
+ 				if groups[part.Text] && !slices.Contains(lineBuiltins, part.Text) {
  					citesGroup = true
  				}
 -			case part.Text == FallbackGroup:

@@ -54,18 +54,11 @@ const Marker = "installed-by: glyph hook install"
 // glyph no longer emits — i.e. one that waves every violation through — with the
 // whole suite green, because the test pinned the literal too. A generated hook
 // cannot disagree with the constant it is generated from.
-//
-// The interpolated words are constants since profiles left (their bytes must
-// stay IDENTICAL to every installed copy, or a fleet refresh reports every
-// clone drifted); the gate code is interpolated exactly as before — generated,
-// never retyped. The founding property holds: the hook holds no knowledge,
-// it asks glyph.
 func commitMsgScript() string {
-	const argSuffix, convention = "", "the repository's glyph.toml convention"
 	return fmt.Sprintf(`#!/bin/sh
 # glyph commit-msg hook — %s
 #
-# Lints the message being written against %[3]s by calling
+# Lints the message being written against the repository's glyph.toml convention by calling
 # glyph, which holds the rules. Do not add a regex here: a local copy of the
 # convention is exactly what drifts out of lockstep when the rules move.
 #
@@ -75,7 +68,7 @@ if ! command -v glyph >/dev/null 2>&1; then
 	exit 0
 fi
 
-glyph lint --stdin%[4]s <"$1"
+glyph lint --stdin <"$1"
 status=$?
 
 # %[2]d is glyph's commit-convention violation code — the one answer that should
@@ -90,7 +83,7 @@ if [ "$status" -ne 0 ]; then
 	echo "glyph: could not lint this message (exit $status) — letting the commit through; CI still enforces the convention" >&2
 fi
 exit 0
-`, Marker, int(core.CodeLint), convention, argSuffix)
+`, Marker, int(core.CodeLint))
 }
 
 // prePushScript is the pre-push hook. It carries the same three properties as
@@ -107,7 +100,6 @@ exit 0
 // the range arithmetic there too, which matters more, because a range computed
 // by a stale script is a wrong verdict rather than a loud failure.
 func prePushScript() string {
-	const argSuffix = ""
 	return fmt.Sprintf(`#!/bin/sh
 # glyph pre-push hook — %s
 #
@@ -121,7 +113,7 @@ if ! command -v glyph >/dev/null 2>&1; then
 	exit 0
 fi
 
-glyph hook pre-push%[3]s -- "$@"
+glyph hook pre-push -- "$@"
 status=$?
 
 # %[2]d is glyph's commit-convention violation code — the one answer that should
@@ -136,7 +128,7 @@ if [ "$status" -ne 0 ]; then
 	echo "glyph: could not lint the outgoing range (exit $status) — letting the push through; CI still enforces the convention" >&2
 fi
 exit 0
-`, Marker, int(core.CodeLint), argSuffix)
+`, Marker, int(core.CodeLint))
 }
 
 // Kind is one hook glyph writes: the name git looks the file up by, and the

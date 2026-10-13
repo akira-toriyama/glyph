@@ -103,7 +103,7 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
 		}
 		if aerr != nil {
 			return core.Lintf("commit %.7s in pull request %s/%s#%d: %v — the release walk will refuse this commit the same way once it is merged, and a merged commit cannot be rewritten; fix it on the branch", r.SHA, owner, repo, previewPR, aerr).
-				WithDetails([]rangeViolation{{SHA: r.SHA, Subject: bump.FirstLine(r.Message), Detail: aerr.Error()}})
+				WithDetails([]bump.Refusal{{SHA: r.SHA, Subject: bump.FirstLine(r.Message), Detail: aerr.Error()}})
 		}
 		for i, p := range cfg.Packages {
 			if slices.ContainsFunc(moved, func(q config.Package) bool { return q.Path == p.Path }) {

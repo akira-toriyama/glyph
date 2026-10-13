@@ -75,9 +75,9 @@ func (l Line) Label() string {
 	return l.Prefix
 }
 
-// Major is the major a package's path locks it to — N for a path whose last
+// major is the major a package's path locks it to — N for a path whose last
 // segment is a major version subdirectory vN (N ≥ 2) — and 0 otherwise.
-func (p Package) Major() int {
+func (p Package) major() int {
 	m := majorSubdir.FindStringSubmatch(path.Base(p.Path))
 	if m == nil {
 		return 0
@@ -86,16 +86,16 @@ func (p Package) Major() int {
 	return n
 }
 
-// TagPrefix is the line's tag namespace: "" for the root package (its line
+// tagPrefix is the line's tag namespace: "" for the root package (its line
 // is the bare vX.Y.Z) and "<path>/" for every other, the path taken WITHOUT
 // a major version subdirectory — `pubsub/v2` tags as `pubsub/vX.Y.Z`, and a
 // root-level `v2` as bare `vX.Y.Z`. It is the ONE place the path-to-prefix
 // rule lives; every resolver takes the prefix from here and none re-derives
 // it (a hand-spelled prefix without the slash would name a line that exists
 // nowhere, silently).
-func (p Package) TagPrefix() string {
+func (p Package) tagPrefix() string {
 	dir := p.Path
-	if p.Major() > 0 {
+	if p.major() > 0 {
 		dir = path.Dir(dir)
 	}
 	if dir == "." {
@@ -141,7 +141,7 @@ func refnameSegment(seg string) string {
 // refuses a tag name whose first character is '-' — a rule of git tag's own,
 // on top of git check-ref-format, which accepts the name — and only the whole
 // name's first character: `a/-b/v0.0.1` tags (measured, git 2.54.0). Every
-// such tag, and the placeholder, begins with the path itself (TagPrefix keeps
+// such tag, and the placeholder, begins with the path itself (tagPrefix keeps
 // the first segment), so the path's first character is the tag's.
 func refnameLead(p string) string {
 	if strings.HasPrefix(p, "-") {
@@ -156,13 +156,13 @@ func refnameLead(p string) string {
 // repository with no root package is LineOf(Package{Path: "."}), and it
 // still yields to a declared root-level vN.
 func (c *Config) LineOf(p Package) Line {
-	l := Line{Prefix: p.TagPrefix(), Major: p.Major()}
+	l := Line{Prefix: p.tagPrefix(), Major: p.major()}
 	if l.Major > 0 {
 		return l
 	}
 	for _, q := range c.Packages {
-		if q.Path != p.Path && q.TagPrefix() == l.Prefix && q.Major() > 0 {
-			l.Claimed = append(l.Claimed, q.Major())
+		if q.Path != p.Path && q.tagPrefix() == l.Prefix && q.major() > 0 {
+			l.Claimed = append(l.Claimed, q.major())
 		}
 	}
 	slices.Sort(l.Claimed)

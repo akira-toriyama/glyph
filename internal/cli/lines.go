@@ -383,19 +383,19 @@ func placeOf(cfg *config.Config, raw gitsource.RawCommit) (placement, reading) {
 //
 // One helper, because the alternative is three call sites each setting three
 // fields by hand: a site that forgets one moves no verdict, so every verdict
-// test stays green while its refusal goes back to the first cut's words —
-// which told a raw revert's author to write a scope and a = its pattern never
-// captures (t-mfny (A); DESIGN §4.1). Each arm has a test that reads its
-// refusal's own words, and a mutation row that hands this door no commit
+// test stays green while its refusal words a pattern nobody described: the
+// zero Sayable names patterns[0] in either arm, and a no-carrier refusal then
+// offers a bare `path = "."`, which a preset-shaped file's loader refuses —
+// the first cut's defect in a new coat (t-mfny (A); DESIGN §4.1; measured in
+// review, 2026-10-13). Each arm has a test that reads its refusal's own
+// words, and a mutation row that hands this door no commit
 // (<arm>-refuses-a-merge-commit-as-touching-no-file).
 func attribute(cfg *config.Config, raw gitsource.RawCommit, said reading, files []string, whole bool) ([]config.Package, error) {
 	moved, err := attribution.Attribute(files, said.scope, said.sigil, cfg.Packages)
 	if r, ok := errors.AsType[*attribution.Refusal](err); ok {
 		r.Merge = raw.Parents >= 2
 		r.Unread = !whole
-		if say, ok := cfg.Sayable(said.pattern, raw.Message); ok {
-			r.Pattern = &say
-		}
+		r.Sayable, _ = cfg.Sayable(said.pattern, raw.Message)
 	}
 	return moved, err
 }
@@ -683,7 +683,7 @@ func attributionWedge(err error, c walked, owner, repo string, reached []line) e
 	return core.Lintf(
 		"commit %.7s: %v — %s; the commit is already on a published branch and cannot be rewritten, so every release of a line whose range holds it wedges here until that line's walk starts past it: cut %s by hand, or name such a tag with --since-tag=<prefix>vX.Y.Z (DESIGN §4.1)",
 		c.Raw.SHA, err, where, strings.Join(lineEscapes(c, reached), " / ")).
-		WithDetails([]rangeViolation{{SHA: c.Raw.SHA, Subject: bump.FirstLine(c.Raw.Message), Detail: err.Error()}})
+		WithDetails([]bump.Refusal{{SHA: c.Raw.SHA, Subject: bump.FirstLine(c.Raw.Message), Detail: err.Error()}})
 }
 
 // rangeLines is the --range twin of sinceTagInput for a repository with

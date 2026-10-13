@@ -129,26 +129,17 @@ type Package struct {
 	Pending       Verdict
 }
 
-// rank orders levels for the fold, and is the ONLY test this package applies to
-// a level — never `== bump.LevelNone`. bump.Level is a string type whose zero
-// value is "" and not "none", so an unset level (a caller that computed no
-// pending verdict, a struct built field by field) compares unequal to
-// bump.LevelNone and would fall through to the wrong sentence. Ranking is
-// total: anything unrecognized ranks 0 = nothing moves, which is also the only
-// safe direction — a preview that over-claims a bump is worse than one that
-// under-claims, because the reviewer checks the table against the claim.
+// rank is the ONLY test this package applies to a level — never
+// `== bump.LevelNone`. bump.Level is a string type whose zero value is "" and
+// not "none", so an unset level (a caller that computed no pending verdict, a
+// struct built field by field) compares unequal to bump.LevelNone and would
+// fall through to the wrong sentence. The order is bump's (Level.Rank); what
+// is preview's is that an unknown level ranks with none = nothing moves,
+// which is also the only safe direction — a preview that over-claims a bump
+// is worse than one that under-claims, because the reviewer checks the table
+// against the claim.
 func rank(b bump.Level) int {
-	switch b {
-	case bump.LevelPatch:
-		return 1
-	case bump.LevelMinor:
-		return 2
-	case bump.LevelMajor:
-		return 3
-	case bump.LevelNone:
-		return 0
-	}
-	return 0 // an unset or unrecognized level: nothing moves
+	return max(0, b.Rank())
 }
 
 func icon(b bump.Level) string {
@@ -165,7 +156,7 @@ func icon(b bump.Level) string {
 	return "⏸️"
 }
 
-// Headline is the one sentence a reviewer actually reads.
+// headline is the one sentence a reviewer actually reads.
 //
 // It says "the next release", never "the rolling draft". The arithmetic is
 // identical whether that release is a draft release.yml keeps or a tag cut by
@@ -173,7 +164,7 @@ func icon(b bump.Level) string {
 // on repos that tag straight from main, and naming a draft they do not have
 // would not be noise — it would be false. The neutral noun is true in both
 // worlds, because a draft's tag IS the next release.
-func Headline(in Input) string {
+func headline(in Input) string {
 	pl, ql := in.PR.Level, in.Pending.Level
 	pr, qr := rank(pl), rank(ql)
 	switch {
@@ -241,10 +232,10 @@ func Render(in Input) string {
 	}
 	var b strings.Builder
 	b.WriteString(Marker + "\n")
-	b.WriteString(Headline(in) + "\n")
+	b.WriteString(headline(in) + "\n")
 
 	// Directly under the headline, because it QUALIFIES the headline: every
-	// sentence Headline can produce about the pending side is a claim this walk
+	// sentence headline can produce about the pending side is a claim this walk
 	// did not fully earn. Below the table would read as a footnote to the
 	// evidence rather than a caveat on the conclusion.
 	if in.PendingShort != "" {
@@ -281,10 +272,10 @@ func renderPackages(in Input) string {
 	var b strings.Builder
 	b.WriteString(Marker + "\n")
 	for _, p := range in.Packages {
-		// Untagged reaches Headline only when the pending side really is
+		// Untagged reaches headline only when the pending side really is
 		// uncomputed — its documented meaning. A walked line with no tag
 		// renders like any other: its floor is the null version.
-		fmt.Fprintf(&b, "**%s** — %s\n", p.Path, Headline(Input{Current: p.Current, Untagged: p.Untagged && !p.PendingWalked, PR: p.PR, Pending: p.Pending}))
+		fmt.Fprintf(&b, "**%s** — %s\n", p.Path, headline(Input{Current: p.Current, Untagged: p.Untagged && !p.PendingWalked, PR: p.PR, Pending: p.Pending}))
 	}
 	if in.PendingShort != "" {
 		fmt.Fprintf(&b, "\n> [!WARNING]\n> The pending side of this fold is INCOMPLETE: %s. Anything already merged but unreleased may be missing from the figures above, so treat each as a floor rather than the answer.\n", in.PendingShort)

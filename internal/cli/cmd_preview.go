@@ -90,9 +90,6 @@ func previewRun(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	if err := checkPRFlag(previewPR); err != nil {
-		return err
-	}
 	if len(cfg.Packages) > 0 {
 		return previewLines(ctx, cfg)
 	}

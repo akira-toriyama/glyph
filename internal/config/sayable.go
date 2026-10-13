@@ -112,7 +112,7 @@ func (c *Config) Sayable(i int, message string) (s Sayable, ok bool) {
 		if err != nil {
 			continue
 		}
-		scope, sigil := captureOf(tree, ScopeGroup), captureOf(tree, SigilGroup)
+		scope, sigil := captureOf(tree, ScopeGroup), captureOf(tree, sigilGroup)
 		var names []string
 		for _, pkg := range c.Packages {
 			if scope.spells(pkg.Name) {
@@ -256,7 +256,7 @@ func withoutSigil(re *regexp.Regexp, message string) (string, bool) {
 	if loc == nil {
 		return "", false
 	}
-	sigil := span(re, loc, SigilGroup)
+	sigil := span(re, loc, sigilGroup)
 	if sigil[0] < 0 || sigil[0] == sigil[1] {
 		return "", false
 	}

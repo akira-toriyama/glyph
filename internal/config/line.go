@@ -32,8 +32,8 @@ const (
 	BuiltinCoauthors = "coauthors"
 )
 
-// LineBuiltins is the same set as a list, for validation and for messages.
-var LineBuiltins = []string{BuiltinPR, BuiltinAuthor, BuiltinHash, BuiltinCoauthors}
+// lineBuiltins is the same set as a list, for validation and for messages.
+var lineBuiltins = []string{BuiltinPR, BuiltinAuthor, BuiltinHash, BuiltinCoauthors}
 
 // FallbackGroup is the one name the notes' raw-line fallback binds for a
 // commit no pattern claims (DESIGN §3, the ratified bot fallback): its first
@@ -62,7 +62,7 @@ type LineSpan struct {
 	Optional bool
 }
 
-// ParseLine compiles a note.line template into spans, rejecting rather than
+// parseLine compiles a note.line template into spans, rejecting rather than
 // repairing three malformed shapes: an unterminated `$[`, a nested one, and a
 // span holding no placeholder. Callers parse at LOAD time so a bad template
 // fails the config — the same exit every other config error takes — rather
@@ -70,7 +70,7 @@ type LineSpan struct {
 //
 // An empty template is not an error: [note] is optional, and a config with no
 // line renders no lines.
-func ParseLine(template string) ([]LineSpan, error) {
+func parseLine(template string) ([]LineSpan, error) {
 	var spans []LineSpan
 	var plain []LinePart
 	flush := func() {
@@ -165,7 +165,7 @@ func holdsPlaceholder(parts []LinePart) bool {
 // groups a commit binds — and $subject that only the fallback binds, unless
 // the template cites a pattern group beside it.
 //
-// ParseLine already refuses a span with no placeholder — "it says optional and
+// parseLine already refuses a span with no placeholder — "it says optional and
 // means always". This is the mirror, and the span made it worse: a name nothing
 // binds resolves empty for every commit, so inside a span it drops the span on
 // every line and takes the punctuation with it, leaving a release body quietly
@@ -197,8 +197,8 @@ func holdsPlaceholder(parts []LinePart) bool {
 // matched commit's line with its text gone, at exit 0.
 func validateLineNames(spans []LineSpan, patterns []Pattern, trailers []NoteTrailer) error {
 	groups := boundGroupNames(patterns)
-	legal := make(map[string]bool, len(LineBuiltins)+len(groups)+len(trailers))
-	for _, b := range LineBuiltins {
+	legal := make(map[string]bool, len(lineBuiltins)+len(groups)+len(trailers))
+	for _, b := range lineBuiltins {
 		legal[b] = true
 	}
 	for g := range groups {
@@ -217,7 +217,7 @@ func validateLineNames(spans []LineSpan, patterns []Pattern, trailers []NoteTrai
 			case legal[part.Text]:
 				// A built-in outranks a group of its name, so citing one
 				// binds no group.
-				if groups[part.Text] && !slices.Contains(LineBuiltins, part.Text) {
+				if groups[part.Text] && !slices.Contains(lineBuiltins, part.Text) {
 					citesGroup = true
 				}
 			case part.Text == FallbackGroup:

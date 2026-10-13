@@ -25,7 +25,7 @@ func packagesConfig(paths ...string) string {
 func TestPackagePathsAbsentIsAFailure(t *testing.T) {
 	c := checkPackagePaths(t.TempDir(), loaded(t, packagesConfig("haiku", "curry")), []string{"haiku"}, nil)
 	if c.Status != StatusFail {
-		t.Fatalf("%s with curry/ absent = %s (%s), want %s", IDPackagePaths, c.Status, c.Observed, StatusFail)
+		t.Fatalf("%s with curry/ absent = %s (%s), want %s", idPackagePaths, c.Status, c.Observed, StatusFail)
 	}
 	if len(c.Details) != 1 || !strings.HasPrefix(c.Details[0], "curry") {
 		t.Errorf("Details = %q, want exactly the missing path", c.Details)
@@ -41,7 +41,7 @@ func TestPackagePathsAbsentIsAFailure(t *testing.T) {
 func TestPackagePathsPresentPasses(t *testing.T) {
 	c := checkPackagePaths(t.TempDir(), loaded(t, packagesConfig("haiku", "exporters/prometheus", ".")), []string{"exporters", "exporters/prometheus", "haiku"}, nil)
 	if c.Status != StatusPass {
-		t.Fatalf("%s = %s (%s), want %s", IDPackagePaths, c.Status, c.Observed, StatusPass)
+		t.Fatalf("%s = %s (%s), want %s", idPackagePaths, c.Status, c.Observed, StatusPass)
 	}
 	if !strings.Contains(c.Observed, "3 package(s)") {
 		t.Errorf("the observation must say what was checked, got %q", c.Observed)
@@ -56,7 +56,7 @@ func TestPackagePathFileIsAFailure(t *testing.T) {
 	}
 	c := checkPackagePaths(root, loaded(t, packagesConfig("haiku")), nil, nil)
 	if c.Status != StatusFail || !strings.Contains(strings.Join(c.Details, "\n"), "haiku — a file") {
-		t.Fatalf("%s over a file = %s (%s, %q), want fail naming the file", IDPackagePaths, c.Status, c.Observed, c.Details)
+		t.Fatalf("%s over a file = %s (%s, %q), want fail naming the file", idPackagePaths, c.Status, c.Observed, c.Details)
 	}
 }
 
@@ -115,7 +115,7 @@ func TestPackagePathsWithoutGitsAnswerAreUnknown(t *testing.T) {
 func TestNoPackagesPasses(t *testing.T) {
 	c := checkPackagePaths(t.TempDir(), loaded(t, minimalConfig), nil, nil)
 	if c.Status != StatusPass || !strings.Contains(c.Observed, "no [[packages]]") {
-		t.Fatalf("%s with no packages = %s (%s), want pass", IDPackagePaths, c.Status, c.Observed)
+		t.Fatalf("%s with no packages = %s (%s), want pass", idPackagePaths, c.Status, c.Observed)
 	}
 }
 
@@ -128,9 +128,9 @@ func TestNoPackagesPasses(t *testing.T) {
 func TestPackagePathsDegradeWithTheUnloadedConfig(t *testing.T) {
 	c := checkPackagePaths(".", nil, []string{"haiku"}, nil)
 	if c.Status != StatusUnknown {
-		t.Fatalf("%s = %s (%s), want unknown", IDPackagePaths, c.Status, c.Observed)
+		t.Fatalf("%s = %s (%s), want unknown", idPackagePaths, c.Status, c.Observed)
 	}
-	if !strings.Contains(c.Observed, IDConfigLoads) || !strings.Contains(c.Fix, IDConfigLoads) {
-		t.Errorf("the observation and the fix must point at %s, which owns the reason: %q / %q", IDConfigLoads, c.Observed, c.Fix)
+	if !strings.Contains(c.Observed, idConfigLoads) || !strings.Contains(c.Fix, idConfigLoads) {
+		t.Errorf("the observation and the fix must point at %s, which owns the reason: %q / %q", idConfigLoads, c.Observed, c.Fix)
 	}
 }

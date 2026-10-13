@@ -1,8 +1,8 @@
 diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index a907314..1583c66 100644
+index c3f4b04..cbde54a 100644
 --- a/internal/cli/lines.go
 +++ b/internal/cli/lines.go
-@@ -502,8 +502,6 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
+@@ -497,8 +497,6 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
  			}
  			moved, aerr := attribute(cfg, c.Raw, said, files, gap == diffWhole)
  			switch {
@@ -12,7 +12,7 @@ index a907314..1583c66 100644
  				return nil, nil, attributionWedge(aerr, c, owner, repo, reachedLines(lines, reach))
  			default:
 diff --git a/internal/cli/preview_lines.go b/internal/cli/preview_lines.go
-index a1ddaf9..cac2ac0 100644
+index fbf9883..4263851 100644
 --- a/internal/cli/preview_lines.go
 +++ b/internal/cli/preview_lines.go
 @@ -97,10 +97,6 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
@@ -25,4 +25,4 @@ index a1ddaf9..cac2ac0 100644
 -		}
  		if aerr != nil {
  			return core.Lintf("commit %.7s in pull request %s/%s#%d: %v — the release walk will refuse this commit the same way once it is merged, and a merged commit cannot be rewritten; fix it on the branch", r.SHA, owner, repo, previewPR, aerr).
- 				WithDetails([]rangeViolation{{SHA: r.SHA, Subject: bump.FirstLine(r.Message), Detail: aerr.Error()}})
+ 				WithDetails([]bump.Refusal{{SHA: r.SHA, Subject: bump.FirstLine(r.Message), Detail: aerr.Error()}})

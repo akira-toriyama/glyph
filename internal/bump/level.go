@@ -38,13 +38,13 @@ type Decision struct {
 // are commutative and idempotent, so the whole fold stays order-independent —
 // squash order cannot move the version, promotion included.
 func (d Decision) Merge(o Decision) Decision {
-	return Decision{Level: Reduce([]Level{d.Level, o.Level}), Promote: d.Promote || o.Promote}
+	return Decision{Level: reduce([]Level{d.Level, o.Level}), Promote: d.Promote || o.Promote}
 }
 
-// Reduce folds levels with max over the lattice. The fold is
+// reduce folds levels with max over the lattice. The fold is
 // order-independent and idempotent (fuzz-pinned); an empty input is none —
 // no release.
-func Reduce(levels []Level) Level {
+func reduce(levels []Level) Level {
 	top := LevelNone
 	for _, l := range levels {
 		if l.Rank() > top.Rank() {

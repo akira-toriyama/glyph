@@ -144,11 +144,11 @@ func TestPackageTagPrefix(t *testing.T) {
 	}
 	for path, want := range cases {
 		p := Package{Path: path}
-		if got := p.TagPrefix(); got != want.prefix {
-			t.Errorf("Package{Path: %q}.TagPrefix() = %q, want %q", path, got, want.prefix)
+		if got := p.tagPrefix(); got != want.prefix {
+			t.Errorf("Package{Path: %q}.tagPrefix() = %q, want %q", path, got, want.prefix)
 		}
-		if got := p.Major(); got != want.major {
-			t.Errorf("Package{Path: %q}.Major() = %d, want %d", path, got, want.major)
+		if got := p.major(); got != want.major {
+			t.Errorf("Package{Path: %q}.major() = %d, want %d", path, got, want.major)
 		}
 	}
 }

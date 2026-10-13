@@ -10,6 +10,17 @@ import (
 	"testing"
 )
 
+// table decodes the dictionary; the binary never does (JSON hands the file
+// out byte for byte), so a decode failure is a defect of the file, named here.
+func table(t *testing.T) []Entry {
+	t.Helper()
+	var entries []Entry
+	if err := json.Unmarshal(JSON(), &entries); err != nil {
+		t.Fatalf("table.json is not the dictionary: %v", err)
+	}
+	return entries
+}
+
 // TestTableIsCanonical holds table.json to the bytes the JSON encoder would
 // write for it (2-space indent, HTML escaping off, one trailing newline), so
 // the file on GitHub and `glyph emoji`'s stdout are the same bytes without
@@ -20,7 +31,7 @@ func TestTableIsCanonical(t *testing.T) {
 	e := json.NewEncoder(&b)
 	e.SetEscapeHTML(false)
 	e.SetIndent("", "  ")
-	if err := e.Encode(Table()); err != nil {
+	if err := e.Encode(table(t)); err != nil {
 		t.Fatalf("encode: %v", err)
 	}
 	if got, want := JSON(), b.Bytes(); !bytes.Equal(got, want) {
@@ -35,7 +46,7 @@ func TestTableIsCanonical(t *testing.T) {
 // hesitation the dictionary was built to remove.
 func TestOneMeaningOneEmoji(t *testing.T) {
 	names, codes := map[string]string{}, map[string]bool{}
-	for _, en := range Table() {
+	for _, en := range table(t) {
 		if en.Code == "" || en.Emoji == "" || en.Name == "" || en.Description == "" {
 			t.Errorf("%+v: every field but absorbs is required", en)
 		}
@@ -48,7 +59,7 @@ func TestOneMeaningOneEmoji(t *testing.T) {
 		}
 		codes[en.Code] = true
 	}
-	for _, en := range Table() {
+	for _, en := range table(t) {
 		for _, a := range en.Absorbs {
 			if codes[a] {
 				t.Errorf("%s absorbs %s, which is also an entry — a code cannot be both a kind and an alias of one", en.Code, a)
@@ -67,7 +78,7 @@ func TestOneMeaningOneEmoji(t *testing.T) {
 // header when GitHub's vocabulary moves; never edit it by hand.
 func TestEveryCodeRendersOnGitHub(t *testing.T) {
 	gemoji := loadGemoji(t)
-	for _, en := range Table() {
+	for _, en := range table(t) {
 		cps, ok := gemoji[strings.Trim(en.Code, ":")]
 		if !ok {
 			t.Errorf("%s is not a GitHub shortcode — GitHub would render it as the literal text", en.Code)

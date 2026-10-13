@@ -20,7 +20,7 @@ func retryClient(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	c := New("", WithBaseURL(srv.URL), WithHTTPClient(srv.Client()))
+	c := New("", WithBaseURL(srv.URL), withHTTPClient(srv.Client()))
 	c.retryDelays = []time.Duration{0, 0, 0}
 	return c
 }
@@ -247,7 +247,7 @@ func TestCancelDuringBackoffIsInterrupted(t *testing.T) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	t.Cleanup(srv.Close)
-	c := New("", WithBaseURL(srv.URL), WithHTTPClient(srv.Client()))
+	c := New("", WithBaseURL(srv.URL), withHTTPClient(srv.Client()))
 	c.retryDelays = []time.Duration{time.Hour} // only a cut-short can finish this test
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -1,13 +1,13 @@
 diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index 607d7f6..c3e3e02 100644
+index c3f4b04..ed90aa6 100644
 --- a/internal/cli/lines.go
 +++ b/internal/cli/lines.go
-@@ -395,7 +395,7 @@ func attribute(cfg *config.Config, raw gitsource.RawCommit, said reading, files
+@@ -392,7 +392,7 @@ func attribute(cfg *config.Config, raw gitsource.RawCommit, said reading, files
  	moved, err := attribution.Attribute(files, said.scope, said.sigil, cfg.Packages)
  	if r, ok := errors.AsType[*attribution.Refusal](err); ok {
  		r.Merge = raw.Parents >= 2
 -		r.Unread = !whole
 +		r.Unread = false && !whole
- 		if say, ok := cfg.Sayable(said.pattern, raw.Message); ok {
- 			r.Pattern = &say
- 		}
+ 		r.Sayable, _ = cfg.Sayable(said.pattern, raw.Message)
+ 	}
+ 	return moved, err

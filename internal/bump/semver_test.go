@@ -319,14 +319,14 @@ func FuzzVersionNext(f *testing.F) {
 	f.Add(4, 5, 6, "none", false)
 	f.Add(0, 5, 3, "major", true)
 	f.Add(2, 0, 0, "major", true)
-	f.Add(MaxField, MaxField, MaxField, "major", false)
-	f.Add(1, MaxField, MaxField, "patch", false)
+	f.Add(maxField, maxField, maxField, "major", false)
+	f.Add(1, maxField, maxField, "patch", false)
 	f.Fuzz(func(t *testing.T, major, minor, patch int, level string, promote bool) {
 		// Clamp to the production-reachable shape: ParseVersion only ever
-		// yields components in [0, MaxField], which is what keeps a step from
+		// yields components in [0, maxField], which is what keeps a step from
 		// wrapping.
-		if major < 0 || minor < 0 || patch < 0 || major > MaxField || minor > MaxField || patch > MaxField {
-			t.Skip("unreachable: parsed versions hold every component in [0, MaxField]")
+		if major < 0 || minor < 0 || patch < 0 || major > maxField || minor > maxField || patch > maxField {
+			t.Skip("unreachable: parsed versions hold every component in [0, maxField]")
 		}
 		b := Level(level)
 		if b.Rank() < 0 {

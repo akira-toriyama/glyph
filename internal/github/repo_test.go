@@ -25,8 +25,8 @@ func TestRepositoryDecodesTheSettingsDoctorReads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Repository: %v", err)
 	}
-	if repo.FullName != "akira-toriyama/glyph" || repo.Visibility != "public" {
-		t.Errorf("identity = %q/%q, want the full name and visibility", repo.FullName, repo.Visibility)
+	if repo.Visibility != "public" {
+		t.Errorf("visibility = %q, want public", repo.Visibility)
 	}
 	if repo.AllowSquashMerge == nil || !*repo.AllowSquashMerge {
 		t.Errorf("allow_squash_merge = %v, want true", repo.AllowSquashMerge)

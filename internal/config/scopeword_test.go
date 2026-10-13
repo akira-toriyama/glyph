@@ -138,7 +138,7 @@ func TestLoadRefusesAPathGitCannotTag(t *testing.T) {
 		"y^z", "a@{b", "w\\x", "a\tb", "del\x7f", "nul\x01",
 	} {
 		gitAccepts := true
-		for _, name := range []string{Package{Path: p}.TagPrefix() + "v0.1.0", p + "/Unreleased"} {
+		for _, name := range []string{Package{Path: p}.tagPrefix() + "v0.1.0", p + "/Unreleased"} {
 			if exec.Command("git", "check-ref-format", "refs/tags/"+name).Run() != nil || !gitTag(name) {
 				gitAccepts = false
 			}

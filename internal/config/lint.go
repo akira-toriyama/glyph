@@ -87,18 +87,18 @@ func (c *Config) unclaimedReason(m Match) string {
 	if m.Unlandable != "" {
 		return reason
 	}
-	form := c.SubjectForm()
+	form := c.subjectForm()
 	if form == "" {
 		return "message " + reason + " — write it to match one (see glyph.toml), or exclude the author"
 	}
 	return fmt.Sprintf("message %s — write it as %s with a semver_sigil of = ~ ^ ! or %% (commit.template in glyph.toml), or exclude the author", reason, form)
 }
 
-// SubjectForm is the first non-blank line of commit.template — the shape of
+// subjectForm is the first non-blank line of commit.template — the shape of
 // a subject line as the file's author wrote it for a reader. It is quoted,
 // never parsed: no placeholder is interpreted, and an absent [commit] block
 // yields "".
-func (c *Config) SubjectForm() string {
+func (c *Config) subjectForm() string {
 	for line := range strings.SplitSeq(c.Commit.Template, "\n") {
 		if line = strings.TrimSpace(line); line != "" {
 			return line

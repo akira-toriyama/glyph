@@ -57,20 +57,22 @@ type SigilVerdict struct {
 	Warn    string `json:"warn,omitempty"`
 }
 
-// Refusal is one commit the fold refused, in the machine error's details.
-// The WHOLE range is walked before the refusal goes out: stopping at the
-// first unreadable commit answered a three-commit cleanup with three
-// separate red runs (measured — the caller re-ran lint in a loop to find
-// the rest).
+// Refusal is one finding about a commit or a message: every row of a
+// machine error's details that names one (doctor's details are check ids),
+// and lint's warned rows, share this shape; SHA is empty for a message that
+// is no commit yet (lint --message, a pull request's title). The fold walks
+// the WHOLE range before its refusal goes out: stopping at the first
+// unreadable commit answered a three-commit cleanup with three separate red
+// runs (measured — the caller re-ran lint in a loop to find the rest).
 type Refusal struct {
-	SHA     string `json:"sha"`
+	SHA     string `json:"sha,omitempty"`
 	Subject string `json:"subject"`
 	Detail  string `json:"detail"`
 }
 
 // FoldSigils computes the release level of a commit range under a v2 config:
 // each commit's sigil via cfg.Match, folded with max over the lattice (the
-// same order-independent Reduce as always, so squash order can never move
+// same order-independent reduce as always, so squash order can never move
 // the version). It returns the per-commit rows beside the fold — one verdict
 // computation, so a listing can never disagree with the level it came from.
 // An empty range folds to none — no release; verdicts is non-nil so the JSON
@@ -147,7 +149,7 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Deci
 		}
 		return nil, Decision{}, core.Lintf("%s", msg).WithDetails(refusals)
 	}
-	return verdicts, Decision{Level: Reduce(levels), Promote: promote}, nil
+	return verdicts, Decision{Level: reduce(levels), Promote: promote}, nil
 }
 
 // FirstLine returns a raw message's subject line (CR trimmed) — the one

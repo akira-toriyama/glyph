@@ -50,7 +50,7 @@ func TestConfigLoadsPasses(t *testing.T) {
 	root, cfg, err := loadedAt(configPathWith(t, minimalConfig))
 	c := checkConfig(root, nil, cfg, err)
 	if c.Status != StatusPass {
-		t.Fatalf("%s = %s (%s), want %s", IDConfigLoads, c.Status, c.Observed, StatusPass)
+		t.Fatalf("%s = %s (%s), want %s", idConfigLoads, c.Status, c.Observed, StatusPass)
 	}
 	if !strings.Contains(c.Observed, "schema 1") || !strings.Contains(c.Observed, "1 pattern(s)") {
 		t.Errorf("the observation must say what loaded, got %q", c.Observed)
@@ -67,7 +67,7 @@ func TestConfigMissingIsAFailureNotUnknown(t *testing.T) {
 	root, cfg, err := loadedAt(filepath.Join(t.TempDir(), "glyph.toml"))
 	c := checkConfig(root, nil, cfg, err)
 	if c.Status != StatusFail {
-		t.Fatalf("%s on a missing glyph.toml = %s, want %s", IDConfigLoads, c.Status, StatusFail)
+		t.Fatalf("%s on a missing glyph.toml = %s, want %s", idConfigLoads, c.Status, StatusFail)
 	}
 	if !strings.Contains(c.Fix, "glyph init") {
 		t.Errorf("the fix must hand over the init command, got %q", c.Fix)
@@ -87,7 +87,7 @@ func TestConfigUnloadableIsAFailure(t *testing.T) {
 			root, cfg, err := loadedAt(configPathWith(t, content))
 			c := checkConfig(root, nil, cfg, err)
 			if c.Status != StatusFail {
-				t.Fatalf("%s = %s (%s), want %s", IDConfigLoads, c.Status, c.Observed, StatusFail)
+				t.Fatalf("%s = %s (%s), want %s", idConfigLoads, c.Status, c.Observed, StatusFail)
 			}
 			if !strings.Contains(c.Observed, "does not load") {
 				t.Errorf("the observation must carry the loader's verdict, got %q", c.Observed)
@@ -102,7 +102,7 @@ func TestConfigUnloadableIsAFailure(t *testing.T) {
 func TestConfigUnresolvableTopLevelIsCouldNotRun(t *testing.T) {
 	c := checkConfig(".", errors.New("git rev-parse --show-toplevel: not a git repository"), nil, nil)
 	if c.Status != StatusUnknown {
-		t.Fatalf("%s = %s, want %s — nothing was observed", IDConfigLoads, c.Status, StatusUnknown)
+		t.Fatalf("%s = %s, want %s — nothing was observed", idConfigLoads, c.Status, StatusUnknown)
 	}
 	if !strings.Contains(c.Observed, "not a git repository") {
 		t.Errorf("the observation must carry git's own reason — the checks that read the loaded file point here for it, got %q", c.Observed)
@@ -124,6 +124,6 @@ func TestConfigUnreadableIsCouldNotRunNotAFailure(t *testing.T) {
 	root, cfg, err := loadedAt(path)
 	c := checkConfig(root, nil, cfg, err)
 	if c.Status != StatusUnknown {
-		t.Fatalf("%s on an unreadable glyph.toml = %s, want %s", IDConfigLoads, c.Status, StatusUnknown)
+		t.Fatalf("%s on an unreadable glyph.toml = %s, want %s", idConfigLoads, c.Status, StatusUnknown)
 	}
 }

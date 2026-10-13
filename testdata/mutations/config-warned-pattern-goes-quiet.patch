@@ -1,9 +1,9 @@
 diff --git a/internal/config/match.go b/internal/config/match.go
-index ab05456..1c5fa71 100644
+index a73f720..1f1747d 100644
 --- a/internal/config/match.go
 +++ b/internal/config/match.go
-@@ -81,7 +81,7 @@ func (c *Config) Match(message string) (Match, error) {
- 			return Match{}, fmt.Errorf("patterns[%d] matched but its %s group captured nothing and no fixed semver_sigil is set", i, SigilGroup)
+@@ -98,7 +98,7 @@ func (c *Config) Match(message string) (Match, error) {
+ 			return Match{}, fmt.Errorf("patterns[%d] matched but its %s group captured nothing and no fixed semver_sigil is set", i, sigilGroup)
  		}
  
 -		return Match{Matched: true, Sigil: sigil, Groups: groups, Warn: p.Warn, PatternIndex: i}, nil

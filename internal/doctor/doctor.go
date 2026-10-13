@@ -195,26 +195,26 @@ type HookProbe struct {
 	Err     error
 }
 
-// The stable check ids. They are the report's API — rename one and every CI
-// gate branching on it silently stops matching, so treat this block as the
-// versioned surface it is.
+// The stable check ids. The strings are the report's API — change one and
+// every CI gate branching on it silently stops matching, so treat them as the
+// versioned surface they are; the Go names are nobody's.
 const (
-	IDConfigLoads    = "glyph-toml-loads"
-	IDPackagePaths   = "package-paths-exist"
-	IDRootLineTags   = "root-line-tags"
-	IDTokenAccess    = "token-repo-read"
-	IDTokenWrite     = "token-repo-write"
-	IDSquashEnabled  = "squash-merge-enabled"
-	IDMergeCommit    = "merge-commit-enabled"
-	IDRebaseMerge    = "rebase-merge-enabled"
-	IDSquashTitle    = "squash-commit-title"
-	IDSquashMessage  = "squash-commit-message"
-	IDWorkflowPinned = "workflow-glyph-pins"
-	IDCallerPerms    = "workflow-caller-permissions"
-	IDCallerInputs   = "workflow-caller-inputs"
-	IDCommitMsgHook  = "commit-msg-hook"
-	IDCommitMsgFires = "commit-msg-hook-fires"
-	IDPrePushHook    = "pre-push-hook"
+	idConfigLoads    = "glyph-toml-loads"
+	idPackagePaths   = "package-paths-exist"
+	idRootLineTags   = "root-line-tags"
+	idTokenAccess    = "token-repo-read"
+	idTokenWrite     = "token-repo-write"
+	idSquashEnabled  = "squash-merge-enabled"
+	idMergeCommit    = "merge-commit-enabled"
+	idRebaseMerge    = "rebase-merge-enabled"
+	idSquashTitle    = "squash-commit-title"
+	idSquashMessage  = "squash-commit-message"
+	idWorkflowPinned = "workflow-glyph-pins"
+	idCallerPerms    = "workflow-caller-permissions"
+	idCallerInputs   = "workflow-caller-inputs"
+	idCommitMsgHook  = "commit-msg-hook"
+	idCommitMsgFires = "commit-msg-hook-fires"
+	idPrePushHook    = "pre-push-hook"
 )
 
 // Expected values for the two squash enums, as GitHub spells them.
@@ -257,7 +257,7 @@ func Run(in Input) *Report {
 		checkWorkflowPins(in.Root, rootVerified, in.ActionFiles, in.ActionFilesErr),
 		checkCallerPermissions(in.Root, rootVerified, in.GlyphVersion),
 		checkCallerInputs(in.Root, rootVerified, in.GlyphVersion),
-		checkHook(hook.Kinds()[0], IDCommitMsgHook, in.HooksDir, in.HooksErr),
+		checkHook(hook.Kinds()[0], idCommitMsgHook, in.HooksDir, in.HooksErr),
 		checkHookFires(in.CommitMsgProbe, in.HooksErr, config.Status == StatusPass),
 		checkPrePushHook(in.HooksDir, in.HooksErr, in.CommitMsgProbe, in.RemoteHeads, in.RemoteRefless, in.RemoteHeadsErr),
 	}}
@@ -314,7 +314,7 @@ func (r *Report) IDs(s Status) []string {
 // while every other glyph command classifies the same outage as 4 and gets
 // retried. Both directions were wrong at once.
 func checkTokenAccess(in Input) Check {
-	c := Check{ID: IDTokenAccess, Expected: "the credential can read " + in.Repo}
+	c := Check{ID: idTokenAccess, Expected: "the credential can read " + in.Repo}
 	credential := "no credential (GITHUB_TOKEN/GH_TOKEN unset — an anonymous read)"
 	if in.TokenConfigured {
 		credential = "a token from GITHUB_TOKEN/GH_TOKEN"
@@ -365,12 +365,12 @@ func checkTokenAccess(in Input) Check {
 // permissionSummary narrates): glyph never infers a scope the API did not
 // report — see github.Repo.Permissions.
 func checkTokenWrite(in Input) Check {
-	c := Check{ID: IDTokenWrite, Expected: "the credential can write releases in " + in.Repo + " (needed only by `glyph release`)"}
+	c := Check{ID: idTokenWrite, Expected: "the credential can write releases in " + in.Repo + " (needed only by `glyph release`)"}
 	if in.RepoErr != nil {
 		c.Status = StatusUnknown
-		c.Observed = "the repository object was never read (see " + IDTokenAccess + "), so the API reported nothing about write access"
-		c.Message = "unverified, not a verdict — this check reads the same response as " + IDTokenAccess + " and answers with it"
-		c.Fix = "resolve " + IDTokenAccess + " and re-run"
+		c.Observed = "the repository object was never read (see " + idTokenAccess + "), so the API reported nothing about write access"
+		c.Message = "unverified, not a verdict — this check reads the same response as " + idTokenAccess + " and answers with it"
+		c.Fix = "resolve " + idTokenAccess + " and re-run"
 		return c
 	}
 	c.Observed = permissionSummary(in.RepoObject.Permissions)
@@ -487,7 +487,7 @@ func permissionSummary(p *github.RepoPermissions) string {
 // notes grouping, the PR preview and the release reusable are all calibrated on
 // one commit per PR.
 func checkSquashEnabled(in Input) Check {
-	c := Check{ID: IDSquashEnabled, Expected: "allow_squash_merge=true"}
+	c := Check{ID: idSquashEnabled, Expected: "allow_squash_merge=true"}
 	if u, ok := available(in, c, "allow_squash_merge", in.RepoObject.AllowSquashMerge); !ok {
 		return u
 	}
@@ -560,7 +560,7 @@ func checkSquashEnabled(in Input) Check {
 // setting becomes a silent total loss; the severity must move to StatusFail with
 // it, for the same reason as the coupling above.
 func checkMergeCommit(in Input) Check {
-	c := Check{ID: IDMergeCommit, Expected: "allow_merge_commit=false (house convention: squash-only)"}
+	c := Check{ID: idMergeCommit, Expected: "allow_merge_commit=false (house convention: squash-only)"}
 	if u, ok := available(in, c, "allow_merge_commit", in.RepoObject.AllowMergeCommit); !ok {
 		return u
 	}
@@ -608,7 +608,7 @@ func checkMergeCommit(in Input) Check {
 // and a narrow window, not a defect — hence advice, at the same weight as the
 // merge-commit convention rather than as a claim about correctness.
 func checkRebaseMerge(in Input) Check {
-	c := Check{ID: IDRebaseMerge, Expected: "allow_rebase_merge=false (house convention: squash-only)"}
+	c := Check{ID: idRebaseMerge, Expected: "allow_rebase_merge=false (house convention: squash-only)"}
 	if u, ok := available(in, c, "allow_rebase_merge", in.RepoObject.AllowRebaseMerge); !ok {
 		return u
 	}
@@ -652,7 +652,7 @@ func checkRebaseMerge(in Input) Check {
 // the incomplete walk at 4. glyph-test drifted to exactly this and nothing
 // noticed.
 func checkSquashTitle(in Input) Check {
-	return checkSquashEnum(in, IDSquashTitle, "squash_merge_commit_title",
+	return checkSquashEnum(in, idSquashTitle, "squash_merge_commit_title",
 		in.RepoObject.SquashMergeCommitTitle, wantSquashTitle,
 		"a single-commit PR keeps its own classifiable subject on main; only a multi-commit squash borrows the PR title",
 		"every squash commit takes the PR TITLE as its subject, including single-commit PRs — so a commit's own sigil "+
@@ -672,7 +672,7 @@ func checkSquashTitle(in Input) Check {
 // the only offline record of a PR's contents, and the drift alarm that made
 // glyph-test's drift discoverable at all.
 func checkSquashMessage(in Input) Check {
-	return checkSquashEnum(in, IDSquashMessage, "squash_merge_commit_message",
+	return checkSquashEnum(in, idSquashMessage, "squash_merge_commit_message",
 		in.RepoObject.SquashMergeCommitMessage, wantSquashMessage,
 		"the squash body keeps the per-commit messages, the only offline record of a PR's pre-squash types",
 		"the squash body is the PR DESCRIPTION instead of the per-commit messages, so the pre-squash commit types survive "+
@@ -721,7 +721,7 @@ func available(in Input, c Check, field string, value *bool) (Check, bool) {
 func unreadableRepo(c Check, field string) Check {
 	c.Status = StatusUnknown
 	c.Observed = "not checked — the repository object could not be read"
-	c.Message = "this setting is unverified, not verified-good: " + field + " was never observed. See the " + IDTokenAccess + " check"
+	c.Message = "this setting is unverified, not verified-good: " + field + " was never observed. See the " + idTokenAccess + " check"
 	c.Fix = "fix the credential and re-run"
 	return c
 }

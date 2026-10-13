@@ -1,10 +1,10 @@
 diff --git a/internal/doctor/hook.go b/internal/doctor/hook.go
-index 0ec1fbc..7231585 100644
+index 2b527a6..04fc060 100644
 --- a/internal/doctor/hook.go
 +++ b/internal/doctor/hook.go
-@@ -183,7 +183,7 @@ func checkHookFires(probe *HookProbe, dirErr error, configLoaded bool) Check {
+@@ -184,7 +184,7 @@ func checkHookFires(probe *HookProbe, dirErr error, configLoaded bool) Check {
  			"PATH. Whether that glyph can lint is unverified until the config loads"
- 		c.Fix = "resolve " + IDConfigLoads + " and re-run"
+ 		c.Fix = "resolve " + idConfigLoads + " and re-run"
  	case probe.Exit == 0:
 -		c.Status = StatusFail
 +		c.Status = StatusPass

@@ -1,16 +1,16 @@
 diff --git a/internal/attribution/attribution.go b/internal/attribution/attribution.go
-index ae8a894..bf66133 100644
+index f62e197..b7d180d 100644
 --- a/internal/attribution/attribution.go
 +++ b/internal/attribution/attribution.go
-@@ -338,10 +338,7 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
+@@ -361,10 +361,7 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
  	if hasNamed {
  		return []config.Package{packages[named]}, nil
  	}
 -	if sigil == config.SigilNone {
 -		return nil, nil
 -	}
--	return nil, noCarrier(files, scope, sigil, packages)
+-	return nil, refuseNoCarrier(files, scope, sigil, packages)
 +	return nil, nil
  }
  
- // contradiction builds the scope check's refusal with its evidence: the first
+ // refuseContradiction builds the scope check's refusal with its evidence: the first
