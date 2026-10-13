@@ -80,6 +80,43 @@ func TestNotesSinceTagEndsWithTheCompareLink(t *testing.T) {
 	check("--since-tag=below:v0.1.1")
 }
 
+// TestNotesCompareLinkCitesTheRepoFlag: the link's repository is the one the
+// walk queried — --repo when given, $GITHUB_REPOSITORY otherwise — because
+// the link is an address on that repository's page. notesLinkEnds asks
+// resolveRepo the same question the walk asked; read from the environment
+// instead, a body rendered for other/name pointed at the caller's own
+// compare page while every cli test stayed green (measured in review;
+// mutation row notes-compare-link-ignores-the-repo-flag). Each case's
+// stand-in serves only its own repository's route, and walkServer fails
+// the test on any other, so the walk's --repo is pinned here too: with the
+// flag dropped from the walk, pulls were expanded from $GITHUB_REPOSITORY
+// under a link that said other/name (review, the same green suite;
+// mutation row walk-ignores-the-repo-flag).
+func TestNotesCompareLinkCitesTheRepoFlag(t *testing.T) {
+	dir, _ := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	head := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
+	for _, tc := range []struct{ flag, repo string }{
+		{"", "akira-toriyama/glyph"},
+		{"--repo=other/name", "other/name"},
+	} {
+		t.Run(tc.repo, func(t *testing.T) {
+			usePR(t, walkServer(t, map[string]string{"/repos/" + tc.repo + "/commits/" + head + "/pulls": `[]`}))
+			t.Chdir(dir)
+			args := []string{"notes", "--since-tag"}
+			if tc.flag != "" {
+				args = append(args, tc.flag)
+			}
+			code, stdout, stderr := runGlyph(t, args...)
+			want := "https://127.0.0.1/" + tc.repo + "/compare/v0.1.0..." + head
+			if code != 0 || !strings.Contains(stdout, want) {
+				t.Errorf("notes %v exited %d, want 0 with the link %s\nstdout: %s\nstderr: %s", args[1:], code, want, stdout, stderr)
+			}
+		})
+	}
+}
+
 // TestReleaseBodyClosesTheNotesWithTheCompareLink: the link closes the NOTES,
 // before --footer-file's block, and ends at the draft's target — a sha,
 // because the draft's own tag does not exist until a human publishes and

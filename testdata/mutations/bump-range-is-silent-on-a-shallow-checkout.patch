@@ -1,21 +1,13 @@
-diff --git a/internal/cli/cmd_bump.go b/internal/cli/cmd_bump.go
-index 9c78cd2..81eb104 100644
---- a/internal/cli/cmd_bump.go
-+++ b/internal/cli/cmd_bump.go
-@@ -8,6 +8,7 @@ import (
- 	"github.com/akira-toriyama/glyph/v5/internal/bump"
- 	"github.com/akira-toriyama/glyph/v5/internal/config"
- 	"github.com/akira-toriyama/glyph/v5/internal/core"
-+	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
- 	"github.com/spf13/cobra"
- )
- 
-@@ -189,7 +190,7 @@ func bumpInput(cmd *cobra.Command, cfg *config.Config) ([]bump.SigilCommit, stri
- 	if err := checkRangeFlag(bumpRange); err != nil {
- 		return nil, "", nil, err
+diff --git a/internal/cli/lines.go b/internal/cli/lines.go
+index a494c0d..3108e52 100644
+--- a/internal/cli/lines.go
++++ b/internal/cli/lines.go
+@@ -727,7 +727,7 @@ func pendingWalk(ctx context.Context, cfg *config.Config, commits []walked, sour
+ // range is a landed identity, pending on every line, and attributed from
+ // local git.
+ func rangeLines(ctx context.Context, cfg *config.Config, revRange string) (sinceTagWalk, error) {
+-	raws, err := logRange(ctx, revRange)
++	raws, err := gitsource.Log(ctx, ".", revRange)
+ 	if err != nil {
+ 		return sinceTagWalk{}, err
  	}
--	raws, err := logRange(ctx, bumpRange)
-+	raws, err := gitsource.Log(ctx, ".", bumpRange)
- 	return sigilCommits(raws), bumpRange, nil, err
- }
- 

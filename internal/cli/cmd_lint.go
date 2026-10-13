@@ -15,7 +15,7 @@ import (
 )
 
 // The four lint input modes; exactly one is required (cobra-enforced).
-// lintRepo rides alongside --pr the way bumpRepo rides alongside bump's.
+// lintRepo rides alongside --pr the way --repo rides alongside bump's.
 var (
 	lintRange   string
 	lintMessage string

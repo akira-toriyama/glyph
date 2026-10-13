@@ -1661,7 +1661,7 @@ header or footer), and the body six Go CLIs publish the same way (the ruling's
 census of the fleet clones, 2026-09-29) — a link composed by `release` alone
 would have skipped glyph's own page, the page it was measured missing from.
 `--range` and `--pr` render none, by the rule that has each source render only
-the citation it can attest (`notesInput`): a local range names no repository and
+the citation it can attest (`pendingLines`): a local range names no repository and
 a pull no release base. `notes --json` is unchanged — sections only, no link
 key; the link lives in composed bodies, `notes`' stdout and `release`'s `body`.
 Rejected: a GoReleaser `release.footer` over `{{ .PreviousTag }}`. GoReleaser's
@@ -2559,8 +2559,9 @@ the rows of the one fold of the whole listing), and say what follows from it
 
 `notes`' no-release reason did not either: "N commit(s) participate" in
 `bump`'s words, over the listing `notes` was handed. Measured on b42ca92
-(`TestNotesNoReleaseCountsParticipatingCommits`, which asks `bump` over the
-same input and holds `notes` to its answer): over one single-line range of
+(`TestNotesNoReleaseCountsParticipatingCommits` and, for the packages case,
+`TestNotesPackagesNoReleaseCountsParticipatingCommits`, which ask `bump` over
+the same input and hold `notes` to its answer): over one single-line range of
 two `=`, a bot and a merge commit, `bump` said 2 and `notes` 4; beside a
 message no pattern claims, `notes` said 2 of a range the fold refuses at 3;
 over a `--since-tag` walk of one `=` and a bot, 2 where `bump` says 1; and
@@ -2797,8 +2798,8 @@ printed a version and notes rendered 2 of 5 commits, both at 0 in silence,
 where the full clone's bump refuses at 3 — under `[[packages]]` only the
 boundary commit was named, never the range (2026-10-04;
 `TestLintRangeOnAShallowCheckoutSaysSo`,
-`TestBumpAndNotesRangeOnAShallowCheckoutSaySo`, mutation rows
-`lint-range-is-silent-on-a-shallow-checkout.patch`,
+`TestBumpRangeOnAShallowCheckoutSaysSo` and its notes and packages siblings,
+mutation rows `lint-range-is-silent-on-a-shallow-checkout.patch`,
 `lint-range-refuses-a-shallow-checkout.patch`, and one per reader:
 `bump-range-is-silent-on-a-shallow-checkout.patch`,
 `notes-range-is-silent-on-a-shallow-checkout.patch`,

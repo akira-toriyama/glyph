@@ -1,12 +1,13 @@
 diff --git a/internal/cli/cmd_notes.go b/internal/cli/cmd_notes.go
-index 2c37a82..416f750 100644
+index 7867f0a..e2dd212 100644
 --- a/internal/cli/cmd_notes.go
 +++ b/internal/cli/cmd_notes.go
-@@ -230,6 +230,6 @@ func notesRun(cmd *cobra.Command) error {
- 	}
- 	// stdout is the body goreleaser.yml publishes through --release-notes
- 	// verbatim, so it closes with the link release's drafts carry.
--	fmt.Fprint(out, compareLink(notes.RenderSigils(sections), owner, repo, base, head))
-+	fmt.Fprint(out, compareLink(notes.RenderSigils(sections), owner, repo, "", head))
- 	return nil
- }
+@@ -164,7 +164,7 @@ func notesRun(ctx context.Context, o notesOptions) error {
+ 	for _, b := range said {
+ 		// Each line's notes close with that line's own link (§4.1), under its
+ 		// heading when there is more than one line to head.
+-		body := compareLink(b.notes, owner, repo, b.base, head)
++		body := compareLink(b.notes, owner, repo, "", head)
+ 		if len(w.Lines) > 1 {
+ 			body = "# " + b.path + "\n\n" + body
+ 		}

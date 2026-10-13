@@ -36,23 +36,24 @@ import (
 // the walk base's version when the walk base is a version tag, v0.0.0 on the
 // whole-history arm, and nil — the line's highest tag is then read
 // (currentVersion) — for a typed tag that names no plain version (a
-// candidate, a non-version tag) and for a --range fold. Source names the
-// line's own range in messages; Range is the revision range whose commits are
-// unreleased on this line, "" when every walked commit is (the whole history,
-// or a --range fold). Bound is the below: bound as typed when that form
-// resolved the line, "" for the other forms: with Range "" it tells the two
-// whole-history causes apart — no tag UNDER the bound is not no tag at all,
-// and a line's diagnosis must not be a sentence `git tag -l` refutes (t-gt9n)
-// — which is also why each cause is stated of HEAD's history, the set the base
-// is read from.
+// candidate, a non-version tag), for a --range fold and for a pull's listing.
+// Source names the line's own range in messages; Range is the revision range
+// whose commits are unreleased on this line, "" when every walked commit is
+// (the whole history, a --range fold, a pull's listing). Bound is the below:
+// bound as typed when that form resolved the line, "" for the other forms:
+// with Range "" it tells the two whole-history causes apart — no tag UNDER
+// the bound is not no tag at all, and a line's diagnosis must not be a
+// sentence `git tag -l` refutes (t-gt9n) — which is also why each cause is
+// stated of HEAD's history, the set the base is read from.
 //
 // BaseTag is the tag the line's range starts from, in its own spelling — the
 // compare link's left side (compareLink) — and "" when the walk has no tag
-// base: the whole history, a --range fold, or a typed value that is no tag
-// (tagBase). It is a field rather than cut out of Range because Range cannot
-// say it: the single line's whole-history Range is "HEAD", a packages
-// line's is "", a typed branch looks like any tag, and Base is the parsed
-// version, whose String() re-adds the v a bare `1.0.0` tag does not have.
+// base: the whole history, a --range fold, a pull's listing, or a typed
+// value that is no tag (tagBase). It is a field rather than cut out of Range
+// because Range cannot say it: the single line's whole-history Range is
+// "HEAD", a packages line's is "", a typed branch looks like any tag, and
+// Base is the parsed version, whose String() re-adds the v a bare `1.0.0`
+// tag does not have.
 type line struct {
 	Package config.Package
 	Line    config.Line
@@ -74,10 +75,13 @@ type lineWalk struct {
 	Commits []walked
 }
 
-// sinceTagWalk is what sinceTagInput hands back: every walked commit that is
-// unreleased on at least one line (All, walk order — the union fold's input,
-// and the single line's), whatever line it joins or none: partitionLines
-// appends to it before it places anything. Then the walk's own facts, the
+// sinceTagWalk is the shape bump, notes, release and preview's pending side
+// read their commits in — from sinceTagInput for the walk, and from
+// rangeLines and pullLines for the sources that are no walk (readSource):
+// every walked commit that is unreleased on at least one line (All, walk
+// order — the union fold's input, and the single line's), whatever line it
+// joins or none: partitionLines appends to it before it places anything.
+// Then the walk's own facts, the
 // revision range walked, the single line's step base (nil when packages are
 // declared: each line carries its own), and the per-line partition — exactly
 // one entry, holding All, when no packages are declared.
@@ -686,11 +690,43 @@ func attributionWedge(err error, c walked, owner, repo string, reached []line) e
 		WithDetails([]bump.Refusal{{SHA: c.Raw.SHA, Subject: bump.FirstLine(c.Raw.Message), Detail: err.Error()}})
 }
 
-// rangeLines is the --range twin of sinceTagInput for a repository with
-// packages: every commit in the local range is a landed identity, unreleased
-// on every line (a --range fold names no release base — the caller chose the
-// range), and attributed from local git. The walk facts are empty: nothing
-// was resolved over the API.
+// pendingLines are the lines a source that names no release base answers
+// for — every declared line, or the bare line of a repository that declares
+// none — with every commit pending on each: a --range fold names no base
+// (the caller chose the range) and a pull's listing is unreleased by
+// definition. Source names the input in messages; Range is "" (every commit
+// is unreleased), Base nil (the line's highest tag answers, currentVersion)
+// and BaseTag "" (no compare link: a local range names no repository and a
+// pull no release base — DESIGN §4, the citation each source can attest).
+func pendingLines(cfg *config.Config, source string) []line {
+	if len(cfg.Packages) == 0 {
+		return []line{{Source: source}}
+	}
+	lines := make([]line, 0, len(cfg.Packages))
+	for _, p := range cfg.Packages {
+		lines = append(lines, line{Package: p, Line: cfg.LineOf(p), Source: source})
+	}
+	return lines
+}
+
+// pendingWalk partitions commits read outside the walk over pendingLines.
+// The walk facts are empty: nothing was resolved over the API. The API
+// client is nil, so attribution reads local git alone — which is why the
+// commits must be landed identities the checkout holds (walkedFiles), as a
+// local range's are, and why a pull's listing reaches it only on the bare
+// line, where partitionLines is the identity and no file is read.
+func pendingWalk(ctx context.Context, cfg *config.Config, commits []walked, source string) (sinceTagWalk, error) {
+	facts := walkFacts{Pulls: []pullExpansion{}}
+	lws, all, err := partitionLines(ctx, nil, cfg, "", "", commits, &facts, pendingLines(cfg, source))
+	if err != nil {
+		return sinceTagWalk{}, err
+	}
+	return sinceTagWalk{All: all, Facts: facts, Source: source, Lines: lws}, nil
+}
+
+// rangeLines is the --range twin of sinceTagInput: every commit in the local
+// range is a landed identity, pending on every line, and attributed from
+// local git.
 func rangeLines(ctx context.Context, cfg *config.Config, revRange string) (sinceTagWalk, error) {
 	raws, err := logRange(ctx, revRange)
 	if err != nil {
@@ -700,16 +736,33 @@ func rangeLines(ctx context.Context, cfg *config.Config, revRange string) (since
 	for _, r := range raws {
 		commits = append(commits, walked{Raw: r, Landed: true})
 	}
-	lines := make([]line, 0, len(cfg.Packages))
-	for _, p := range cfg.Packages {
-		lines = append(lines, line{Package: p, Line: cfg.LineOf(p), Source: revRange})
+	return pendingWalk(ctx, cfg, commits, revRange)
+}
+
+// pullLines is the --pr twin: a pull request's individual (pre-squash)
+// commits over the API, each cited by the pull (the notes' $pr) under its
+// own sha. Landed is set so the citation keeps the sha: walkedNoteCommits
+// blanks a sha only for a pull's commit that landed under no identity of its
+// own (the squash arm, whose listed shas no branch holds — t-xxhj), and an
+// open pull's listed shas are what its head branch holds and what a
+// `notes --pr` body has always cited. The flag is read for nothing else
+// here: the listing stays on the bare line, where partitionLines is the
+// identity and no diff is asked for. Refused under [[packages]] before the
+// number is examined (refusePullSource): the listing carries no files, so
+// nothing could place a commit on a declared line.
+func pullLines(ctx context.Context, cfg *config.Config, number int, repoFlag string) (sinceTagWalk, error) {
+	if err := refusePullSource(cfg); err != nil {
+		return sinceTagWalk{}, err
 	}
-	facts := walkFacts{Pulls: []pullExpansion{}}
-	lws, all, perr := partitionLines(ctx, nil, cfg, "", "", commits, &facts, lines)
-	if perr != nil {
-		return sinceTagWalk{}, perr
+	raws, name, err := pullInput(ctx, number, repoFlag)
+	if err != nil {
+		return sinceTagWalk{}, err
 	}
-	return sinceTagWalk{All: all, Facts: facts, Source: revRange, Lines: lws}, nil
+	commits := make([]walked, 0, len(raws))
+	for _, r := range raws {
+		commits = append(commits, walked{Raw: r, Pull: number, Landed: true})
+	}
+	return pendingWalk(ctx, cfg, commits, name)
 }
 
 // checkLineSelection refuses --current unless exactly one line is selected:

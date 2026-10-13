@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_notes.go b/internal/cli/cmd_notes.go
-index 4d20b64..71e385b 100644
+index 7867f0a..8f40c86 100644
 --- a/internal/cli/cmd_notes.go
 +++ b/internal/cli/cmd_notes.go
-@@ -228,7 +228,7 @@ func notesRun(cmd *cobra.Command) error {
+@@ -144,7 +144,7 @@ func notesRun(ctx context.Context, o notesOptions) error {
+ 		said = append(said, lineBody{path: lw.Package.Path, base: lw.BaseTag, notes: notes.RenderSigils(sections)})
  	}
- 
- 	if len(sections) == 0 {
--		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section", participating(cfg, commits), source)
-+		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section", len(commits), source)
- 		if notesJSON {
- 			printCompact(notesResult{Sections: []notes.SigilSection{}, Reason: reason})
+ 	if len(said) == 0 {
+-		reason := noNotesReason(cfg, participating(cfg, walkedNoteCommits(w.All)), w.Source)
++		reason := noNotesReason(cfg, len(w.All), w.Source)
+ 		if o.json {
+ 			printCompact(notesVerdict(cfg, pkgs, reason))
  		}

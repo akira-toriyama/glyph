@@ -1,0 +1,14 @@
+diff --git a/internal/cli/cmd_notes.go b/internal/cli/cmd_notes.go
+index 7867f0a..afb6c02 100644
+--- a/internal/cli/cmd_notes.go
++++ b/internal/cli/cmd_notes.go
+@@ -191,8 +191,6 @@ func notesVerdict(cfg *config.Config, pkgs []packageNotes, reason string) notesR
+ // it of.
+ func noNotesReason(cfg *config.Config, participating int, source string) string {
+ 	s := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section", participating, source)
+-	if len(cfg.Packages) > 0 {
+-		s += " on any line"
+-	}
++	s += " on any line"
+ 	return s
+ }
