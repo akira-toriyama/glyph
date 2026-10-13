@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v5/internal/config"
@@ -111,12 +110,12 @@ func initPath(ctx context.Context) (string, error) {
 	case core.IsInterrupted(err):
 		return "", err
 	case err == nil:
-		return filepath.Join(top, "glyph.toml"), nil
+		return configPathAt(top), nil
 	}
 	inGitDir, gerr := gitsource.InsideGitDir(ctx, ".")
 	switch {
 	case errors.Is(gerr, gitsource.ErrNoRepository):
-		return "glyph.toml", nil
+		return configPathAt("."), nil
 	case gerr != nil:
 		return "", gerr
 	case inGitDir:

@@ -344,7 +344,7 @@ func doctorRun(cmd *cobra.Command) error {
 	// checks say so instead of passing vacuously.
 	root, rootVerified := ".", false
 	if terr == nil {
-		configPath = filepath.Join(top, "glyph.toml")
+		configPath = configPathAt(top)
 		root, rootVerified = top, true
 	}
 	if probe != nil {

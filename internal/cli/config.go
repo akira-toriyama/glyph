@@ -11,6 +11,17 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
 )
 
+// configPathAt is where a checkout keeps its glyph.toml: its top level (git's
+// answer; the current directory only where init finds no repository at all)
+// plus the one file name. The single spelling of that location — the verdict
+// commands read it, init writes it, doctor loads it — because the copies have
+// disagreed once: init wrote the current directory while every other command
+// read the top level, a file nothing reads at exit 0 (t-f2cb, measured
+// 2026-09-29).
+func configPathAt(top string) string {
+	return filepath.Join(top, "glyph.toml")
+}
+
 // loadConfig reads the ONE glyph.toml every verdict is judged under: the one
 // at the root of the checkout glyph runs in (ratified Q1 — the currently
 // checked-out tree decides, accepting that a config change reinterprets past
@@ -43,8 +54,7 @@ func loadConfig(ctx context.Context) (*config.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	path := filepath.Join(top, "glyph.toml")
-	cfg, lerr := config.LoadFile(path)
+	cfg, lerr := config.LoadFile(configPathAt(top))
 	if lerr != nil {
 		// Order matters: a missing file is itself a *fs.PathError, so the
 		// not-exist arm has to be asked first.
