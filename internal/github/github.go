@@ -78,13 +78,7 @@ const maxRetryAfter = 30 * time.Second
 // caller (internal/cli's mergedPullFor) matches MergeCommitSHA == sha to pick
 // the exact one.
 type PullRef struct {
-	Number int
-	// State is decoded because the endpoint returns it, but nothing branches on
-	// it: "merged" is not one of its values (GitHub reports a merged pull as
-	// closed), so MergedAt is what the walk actually asks. Kept so a reader
-	// comparing this struct against the API response does not go looking for a
-	// field that was dropped.
-	State          string
+	Number         int
 	MergedAt       string // RFC3339, empty when the PR is not merged
 	MergeCommitSHA string
 }
@@ -234,7 +228,6 @@ func (e *redirectRefused) Unwrap() error { return e.err }
 // release walk reads are decoded.
 type apiPull struct {
 	Number         int    `json:"number"`
-	State          string `json:"state"`
 	MergedAt       string `json:"merged_at"`
 	MergeCommitSHA string `json:"merge_commit_sha"`
 }

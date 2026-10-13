@@ -25,7 +25,6 @@ import (
 // nil means "the API did not say" and every check reading one degrades to
 // could-not-run. The two squash enums encode the same absence as "".
 type Repo struct {
-	FullName   string
 	Private    bool
 	Visibility string
 
@@ -66,7 +65,6 @@ type RepoPermissions struct {
 // field turns the conversion below into a compile error rather than a silent
 // drop.
 type apiRepo struct {
-	FullName   string `json:"full_name"`
 	Private    bool   `json:"private"`
 	Visibility string `json:"visibility"`
 

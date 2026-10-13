@@ -66,7 +66,7 @@ func TestCommitPullsSinglePage(t *testing.T) {
 	if len(pulls) != 1 {
 		t.Fatalf("got %d pulls, want 1: %+v", len(pulls), pulls)
 	}
-	want := PullRef{Number: 7, State: "closed", MergedAt: "2026-07-12T00:00:00Z", MergeCommitSHA: "deadbeef"}
+	want := PullRef{Number: 7, MergedAt: "2026-07-12T00:00:00Z", MergeCommitSHA: "deadbeef"}
 	if pulls[0] != want {
 		t.Fatalf("pull = %+v, want %+v", pulls[0], want)
 	}

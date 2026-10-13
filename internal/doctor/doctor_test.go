@@ -23,7 +23,7 @@ func healthyInput(t *testing.T) Input {
 		Config:          loaded(t, minimalConfig),
 		TokenConfigured: true,
 		RepoObject: github.Repo{
-			FullName: "akira-toriyama/glyph", Visibility: "public",
+			Visibility:       "public",
 			AllowSquashMerge: yes(), AllowMergeCommit: no(), AllowRebaseMerge: no(),
 			SquashMergeCommitTitle:   wantSquashTitle,
 			SquashMergeCommitMessage: wantSquashMessage,
