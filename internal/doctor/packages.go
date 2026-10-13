@@ -4,10 +4,11 @@ package doctor
 // "Doctor"): a declared [[packages]] path that is no subtree of the repository
 // claims no file, so every commit under the directory the author meant is
 // attributed elsewhere — a typo here is a silently moved verdict, the class
-// this report exists to name. It reads the file at the path git resolved, and
-// judges each path against the trees HEAD records — git's answer, handed in by
-// internal/cli like the hooks directory — never against the filesystem: the
-// question is the one attribution asks, and attribution reads git's paths.
+// this report exists to name. It reads the glyph.toml internal/cli loaded
+// once at the top level git named, and judges each path against the trees
+// HEAD records — git's answer, handed in by internal/cli like the hooks
+// directory — never against the filesystem: the question is the one
+// attribution asks, and attribution reads git's paths.
 
 import (
 	"fmt"
@@ -19,8 +20,9 @@ import (
 )
 
 // checkPackagePaths reports whether every declared package path is a
-// directory HEAD records, byte for byte. trees / treesErr are
-// gitsource.HeadTrees' answer. The severities:
+// directory HEAD records, byte for byte. root is the checkout's top level,
+// cfg the glyph.toml loaded there (nil when it was not), and trees / treesErr
+// are gitsource.HeadTrees' answer. The severities:
 //
 //   - No [[packages]] is a pass with nothing to check — the single line. It
 //     needs no tree listing, so an unborn HEAD cannot make it unknown.
@@ -30,27 +32,15 @@ import (
 //     filesystem instead passed a case-different `Haiku` on APFS and a
 //     symlink (a 120000 blob to git) on every OS, while `lint --range` under
 //     the same config refused a commit under haiku/ at 3 (t-fdd8 (1)).
-//   - A glyph.toml that could not be resolved or did not load is UNKNOWN
-//     here: its packages were never read. The config check carries the
-//     failure; this one says only that it could not run — the same shape
-//     checkTokenWrite takes when the repository object was never read.
+//   - A glyph.toml that was not loaded — no top level to resolve it against,
+//     or a file that is missing, unreadable or invalid — is UNKNOWN here:
+//     its packages were never read. The config check carries the failure;
+//     this one says only that it could not run (configUnread).
 //   - Packages declared and no tree listing (an unborn HEAD, git failing) is
 //     unknown too: nothing was compared.
-func checkPackagePaths(path string, pathErr error, trees []string, treesErr error) Check {
+func checkPackagePaths(root string, cfg *config.Config, trees []string, treesErr error) Check {
 	c := Check{ID: IDPackagePaths, Expected: "every [[packages]] path in glyph.toml is a directory HEAD records (git's path, byte for byte)"}
-	if pathErr != nil {
-		c.Status = StatusUnknown
-		c.Observed = fmt.Sprintf("git could not name this checkout's top level: %v", pathErr)
-		c.Message = "the package paths are subtrees of the checkout glyph.toml sits in, and without a top level neither the file nor the subtrees have a location to check. Unverified, not a verdict"
-		c.Fix = "re-run from inside a git checkout of the repository being diagnosed"
-		return c
-	}
-	cfg, err := config.LoadFile(path)
-	if err != nil {
-		c.Status = StatusUnknown
-		c.Observed = "glyph.toml was not loaded (see " + IDConfigLoads + "), so its [[packages]] were never read"
-		c.Message = "unverified, not a verdict — this check reads the same file as " + IDConfigLoads + " and answers only once it loads"
-		c.Fix = "resolve " + IDConfigLoads + " and re-run"
+	if configUnread(&c, cfg) {
 		return c
 	}
 	if len(cfg.Packages) == 0 {
@@ -72,7 +62,6 @@ func checkPackagePaths(path string, pathErr error, trees []string, treesErr erro
 	for _, t := range trees {
 		recorded[t] = true
 	}
-	root := filepath.Dir(path)
 	var missing []string
 	for _, p := range cfg.Packages {
 		// The root package is HEAD's own tree, which any listing that

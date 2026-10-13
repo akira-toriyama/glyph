@@ -23,8 +23,7 @@ func packagesConfig(paths ...string) string {
 // the directory the author meant would be attributed elsewhere without a word.
 // Fail, and the details name each missing path.
 func TestPackagePathsAbsentIsAFailure(t *testing.T) {
-	path := configPathWith(t, packagesConfig("haiku", "curry"))
-	c := checkPackagePaths(path, nil, []string{"haiku"}, nil)
+	c := checkPackagePaths(t.TempDir(), loaded(t, packagesConfig("haiku", "curry")), []string{"haiku"}, nil)
 	if c.Status != StatusFail {
 		t.Fatalf("%s with curry/ absent = %s (%s), want %s", IDPackagePaths, c.Status, c.Observed, StatusFail)
 	}
@@ -40,8 +39,7 @@ func TestPackagePathsAbsentIsAFailure(t *testing.T) {
 }
 
 func TestPackagePathsPresentPasses(t *testing.T) {
-	path := configPathWith(t, packagesConfig("haiku", "exporters/prometheus", "."))
-	c := checkPackagePaths(path, nil, []string{"exporters", "exporters/prometheus", "haiku"}, nil)
+	c := checkPackagePaths(t.TempDir(), loaded(t, packagesConfig("haiku", "exporters/prometheus", ".")), []string{"exporters", "exporters/prometheus", "haiku"}, nil)
 	if c.Status != StatusPass {
 		t.Fatalf("%s = %s (%s), want %s", IDPackagePaths, c.Status, c.Observed, StatusPass)
 	}
@@ -52,11 +50,11 @@ func TestPackagePathsPresentPasses(t *testing.T) {
 
 // TestPackagePathFileIsAFailure — a path present as a FILE names no subtree.
 func TestPackagePathFileIsAFailure(t *testing.T) {
-	path := configPathWith(t, packagesConfig("haiku"))
-	if err := os.WriteFile(filepath.Join(filepath.Dir(path), "haiku"), []byte("x"), 0o600); err != nil {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "haiku"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	c := checkPackagePaths(path, nil, nil, nil)
+	c := checkPackagePaths(root, loaded(t, packagesConfig("haiku")), nil, nil)
 	if c.Status != StatusFail || !strings.Contains(strings.Join(c.Details, "\n"), "haiku — a file") {
 		t.Fatalf("%s over a file = %s (%s, %q), want fail naming the file", IDPackagePaths, c.Status, c.Observed, c.Details)
 	}
@@ -72,8 +70,7 @@ func TestPackagePathFileIsAFailure(t *testing.T) {
 // check asks HEAD's trees, byte for byte. The on-disk layout below is real,
 // so a Stat-based check passes the symlink on every OS and `Haiku` on macOS.
 func TestPackagePathsAskGitNotTheFilesystem(t *testing.T) {
-	path := configPathWith(t, packagesConfig("Haiku", "currylink"))
-	root := filepath.Dir(path)
+	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "haiku"), 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -84,15 +81,11 @@ func TestPackagePathsAskGitNotTheFilesystem(t *testing.T) {
 
 	// Positive control, over the same layout: the declaration git does record
 	// passes.
-	control := filepath.Join(root, "control.toml")
-	if err := os.WriteFile(control, []byte(packagesConfig("haiku")), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if c := checkPackagePaths(control, nil, trees, nil); c.Status != StatusPass {
+	if c := checkPackagePaths(root, loaded(t, packagesConfig("haiku")), trees, nil); c.Status != StatusPass {
 		t.Fatalf("haiku against HEAD's haiku: status = %s (%s), want %s", c.Status, c.Observed, StatusPass)
 	}
 
-	c := checkPackagePaths(path, nil, trees, nil)
+	c := checkPackagePaths(root, loaded(t, packagesConfig("Haiku", "currylink")), trees, nil)
 	if c.Status != StatusFail {
 		t.Fatalf("Haiku and a symlink against HEAD's trees: status = %s (%s), want %s", c.Status, c.Observed, StatusFail)
 	}
@@ -110,17 +103,17 @@ func TestPackagePathsAskGitNotTheFilesystem(t *testing.T) {
 // listing and still passes.
 func TestPackagePathsWithoutGitsAnswerAreUnknown(t *testing.T) {
 	noTree := errors.New("git ls-tree: fatal: Not a valid object name HEAD")
-	if c := checkPackagePaths(configPathWith(t, packagesConfig("haiku")), nil, nil, noTree); c.Status != StatusUnknown {
+	if c := checkPackagePaths(t.TempDir(), loaded(t, packagesConfig("haiku")), nil, noTree); c.Status != StatusUnknown {
 		t.Errorf("packages declared, no tree listing: status = %s (%s), want %s", c.Status, c.Observed, StatusUnknown)
 	}
-	if c := checkPackagePaths(configPathWith(t, minimalConfig), nil, nil, noTree); c.Status != StatusPass {
+	if c := checkPackagePaths(t.TempDir(), loaded(t, minimalConfig), nil, noTree); c.Status != StatusPass {
 		t.Errorf("no packages, no tree listing: status = %s (%s), want %s", c.Status, c.Observed, StatusPass)
 	}
 }
 
 // TestNoPackagesPasses — the single line has nothing to check and says so.
 func TestNoPackagesPasses(t *testing.T) {
-	c := checkPackagePaths(configPathWith(t, minimalConfig), nil, nil, nil)
+	c := checkPackagePaths(t.TempDir(), loaded(t, minimalConfig), nil, nil)
 	if c.Status != StatusPass || !strings.Contains(c.Observed, "no [[packages]]") {
 		t.Fatalf("%s with no packages = %s (%s), want pass", IDPackagePaths, c.Status, c.Observed)
 	}
@@ -129,16 +122,15 @@ func TestNoPackagesPasses(t *testing.T) {
 // TestPackagePathsDegradeWithTheUnloadedConfig pins independence: a config
 // that is missing, unloadable or unresolvable was never read here, so this
 // check is unknown — the config check carries the failure, and this one may
-// not repeat it as a second finding nor pass over it.
+// not repeat it as a second finding nor pass over it. The caller loads the
+// file once, so every one of those reasons reaches this check as the same
+// nil, and the observation points at the check that names the reason.
 func TestPackagePathsDegradeWithTheUnloadedConfig(t *testing.T) {
-	cases := map[string]Check{
-		"missing":      checkPackagePaths(filepath.Join(t.TempDir(), "glyph.toml"), nil, nil, nil),
-		"unloadable":   checkPackagePaths(configPathWith(t, "schema = 999\n"), nil, nil, nil),
-		"no top level": checkPackagePaths("", errors.New("git rev-parse --show-toplevel: not a git repository"), nil, nil),
+	c := checkPackagePaths(".", nil, []string{"haiku"}, nil)
+	if c.Status != StatusUnknown {
+		t.Fatalf("%s = %s (%s), want unknown", IDPackagePaths, c.Status, c.Observed)
 	}
-	for name, c := range cases {
-		if c.Status != StatusUnknown {
-			t.Errorf("%s: %s = %s (%s), want unknown", name, IDPackagePaths, c.Status, c.Observed)
-		}
+	if !strings.Contains(c.Observed, IDConfigLoads) || !strings.Contains(c.Fix, IDConfigLoads) {
+		t.Errorf("the observation and the fix must point at %s, which owns the reason: %q / %q", IDConfigLoads, c.Observed, c.Fix)
 	}
 }

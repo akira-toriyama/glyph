@@ -684,6 +684,102 @@ func TestDoctorMissingConfigFailsAtTheLintCode(t *testing.T) {
 	if got := status(t, rep, "squash-merge-enabled"); got != "pass" {
 		t.Errorf("squash-merge-enabled = %s, want pass — independence holds in this direction too", got)
 	}
+	// The file is loaded once, by doctorRun, and the checks that read it are
+	// handed what it loaded: nothing. A stand-in config on a load failure
+	// (an empty one, a stale one) would pass both over a file nobody read.
+	assertDependentsUnread(t, rep)
+}
+
+// TestDoctorUnloadableConfigLeavesTheDependentsUnread is the second load
+// failure: a glyph.toml that exists and does not load. glyph-toml-loads
+// fails with the loader's error, and the checks that read the loaded file
+// are handed nothing — a stand-in reserved for this arm (one the missing-file
+// case cannot see) would pass both over a file the loader rejected, behind
+// the same exit 3.
+func TestDoctorUnloadableConfigLeavesTheDependentsUnread(t *testing.T) {
+	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+	useDoctorCheckout(t, pinnedCaller)
+	if err := os.WriteFile("glyph.toml", []byte("schema = 999\n"), 0o600); err != nil {
+		t.Fatalf("write glyph.toml: %v", err)
+	}
+	code, stdout, _ := runGlyph(t, "doctor", "--json")
+	rep := decodeDoctorJSON(t, stdout)
+	if code != 3 {
+		t.Fatalf("doctor on a glyph.toml that does not load exited %d, want 3", code)
+	}
+	if c := checkByID(t, rep, "glyph-toml-loads"); c.Status != "fail" || !strings.Contains(c.Observed, "does not load") {
+		t.Errorf("glyph-toml-loads = %s (%s), want fail carrying the loader's verdict", c.Status, c.Observed)
+	}
+	assertDependentsUnread(t, rep)
+}
+
+// TestDoctorUnreadableConfigLeavesTheDependentsUnread is the third load
+// failure: a glyph.toml the filesystem refuses to read. glyph-toml-loads is
+// unknown (its content was never observed), and the checks that read the
+// loaded file are handed nothing — a stand-in reserved for a read failure
+// (one neither the missing nor the invalid case can see) would pass both
+// over bytes nobody saw, behind the same exit 4.
+func TestDoctorUnreadableConfigLeavesTheDependentsUnread(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, where an unreadable file does not exist")
+	}
+	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+	useDoctorCheckout(t, pinnedCaller)
+	if err := os.Chmod("glyph.toml", 0o000); err != nil {
+		t.Fatalf("chmod glyph.toml: %v", err)
+	}
+	code, stdout, _ := runGlyph(t, "doctor", "--json")
+	rep := decodeDoctorJSON(t, stdout)
+	if code != 4 {
+		t.Fatalf("doctor on a glyph.toml it cannot read exited %d, want 4 (unverified)", code)
+	}
+	if c := checkByID(t, rep, "glyph-toml-loads"); c.Status != "unknown" || !strings.Contains(c.Observed, "could not be read") {
+		t.Errorf("glyph-toml-loads = %s (%s), want unknown — nothing about the content was observed", c.Status, c.Observed)
+	}
+	assertDependentsUnread(t, rep)
+}
+
+// assertDependentsUnread holds the two checks that read the loaded glyph.toml
+// to the one state doctorRun leaves them in when it loaded nothing: unknown,
+// pointing at the check that owns the reason.
+func assertDependentsUnread(t *testing.T, rep doctorReport) {
+	t.Helper()
+	for _, id := range []string{"package-paths-exist", "root-line-tags"} {
+		c := checkByID(t, rep, id)
+		if c.Status != "unknown" || !strings.Contains(c.Observed, "glyph-toml-loads") {
+			t.Errorf("%s = %s (%s), want unknown pointing at glyph-toml-loads — the file was never loaded, so it read nothing", id, c.Status, c.Observed)
+		}
+	}
+}
+
+// TestDoctorOutsideACheckoutHandsNoConfigToTheReport: with no top level for
+// git to name there is no glyph.toml to load, and doctorRun must hand the
+// report nothing — not the glyph.toml in the current directory, which no
+// verdict command reads. A fallback load there turns package-paths-exist and
+// root-line-tags into passes over that file, while the exit (4,
+// glyph-toml-loads unverified) stays the same and hides it.
+func TestDoctorOutsideACheckoutHandsNoConfigToTheReport(t *testing.T) {
+	testutil.GitOrSkip(t)
+	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	preset, ok := config.Preset("gemoji")
+	if !ok {
+		t.Fatalf("gemoji preset missing")
+	}
+	if err := os.WriteFile(filepath.Join(cwd, "glyph.toml"), preset, 0o600); err != nil {
+		t.Fatalf("write glyph.toml: %v", err)
+	}
+	code, stdout, stderr := runGlyph(t, "doctor", "--repo", "akira-toriyama/glyph", "--json")
+	rep := decodeDoctorJSON(t, stdout)
+	if code != 4 {
+		t.Fatalf("doctor outside a checkout exited %d, want 4 (unverified)\nstderr: %s", code, stderr)
+	}
+	c := checkByID(t, rep, "glyph-toml-loads")
+	if c.Status != "unknown" || !strings.Contains(c.Observed, "top level") {
+		t.Errorf("glyph-toml-loads = %s (%s), want unknown carrying git's reason", c.Status, c.Observed)
+	}
+	assertDependentsUnread(t, rep)
 }
 
 // TestDoctorUnreportedSettingsAreUnknownNotFalse is the reason the settings

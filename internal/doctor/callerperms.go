@@ -202,10 +202,11 @@ func listWorkflows(root string, rootVerified bool, c *Check, consequence string)
 }
 
 // reusableCall is one call a workflow file makes into glyph's
-// .github/workflows, with the ref it pins.
+// .github/workflows, with the ref it pins and the line its `uses:` sits on.
 type reusableCall struct {
 	Reusable string // the file name as the caller spelled it
 	Ref      string
+	Line     int // 1-indexed, the job's `uses:` line (jobWithKeys reads its block from here)
 }
 
 // reusablesCalled returns every glyph reusable this workflow file executes,
@@ -214,7 +215,8 @@ type reusableCall struct {
 // .github/workflows/, because an action reference (the install) declares
 // nothing the caller must match. The pin is kept: GitHub starts the caller
 // against the reusable at that ref, and judgeAt decides whether this binary
-// can speak for it.
+// can speak for it. It is the ONE answer to "which uses: calls a glyph
+// reusable" — both caller checks read it.
 func reusablesCalled(file, body string) []reusableCall {
 	var calls []reusableCall
 	for _, ref := range scanUses(file, body) {
@@ -222,7 +224,7 @@ func reusablesCalled(file, body string) []reusableCall {
 		if !strings.Contains(strings.ToLower(spec), "/.github/workflows/") {
 			continue
 		}
-		calls = append(calls, reusableCall{Reusable: spec[strings.LastIndex(spec, "/")+1:], Ref: ref.Ref})
+		calls = append(calls, reusableCall{Reusable: spec[strings.LastIndex(spec, "/")+1:], Ref: ref.Ref, Line: ref.Line})
 	}
 	return calls
 }

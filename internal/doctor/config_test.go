@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v5/internal/config"
 )
 
 // minimalConfig is the smallest glyph.toml the loader accepts — one pattern
@@ -14,8 +16,8 @@ import (
 // hold the presets loadable.
 const minimalConfig = "schema = 1\n\n[[patterns]]\npattern = '^(?P<semver_sigil>[=~^!%]) (?P<subject>.+)'\n"
 
-// configPathWith writes content as a throwaway glyph.toml and returns its
-// path — the resolved location Input.ConfigPath carries.
+// configPathWith writes content as a throwaway glyph.toml at the top level of
+// a throwaway checkout and returns its path.
 func configPathWith(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "glyph.toml")
@@ -25,8 +27,28 @@ func configPathWith(t *testing.T, content string) string {
 	return path
 }
 
+// loadedAt loads the glyph.toml at path exactly as internal/cli does once per
+// doctor run, and returns the checkout's top level with the loader's answer —
+// the three Input fields the config check classifies.
+func loadedAt(path string) (root string, cfg *config.Config, err error) {
+	cfg, err = config.LoadFile(path)
+	return filepath.Dir(path), cfg, err
+}
+
+// loaded is the glyph.toml content as the checks that read the loaded file
+// receive it; content that does not load is the test's own mistake.
+func loaded(t *testing.T, content string) *config.Config {
+	t.Helper()
+	cfg, err := config.Load([]byte(content))
+	if err != nil {
+		t.Fatalf("the fixture config does not load: %v", err)
+	}
+	return cfg
+}
+
 func TestConfigLoadsPasses(t *testing.T) {
-	c := checkConfig(configPathWith(t, minimalConfig), nil)
+	root, cfg, err := loadedAt(configPathWith(t, minimalConfig))
+	c := checkConfig(root, nil, cfg, err)
 	if c.Status != StatusPass {
 		t.Fatalf("%s = %s (%s), want %s", IDConfigLoads, c.Status, c.Observed, StatusPass)
 	}
@@ -42,7 +64,8 @@ func TestConfigLoadsPasses(t *testing.T) {
 // CLI's exit 3), never unknown (nothing was unobservable) and never advice
 // (nothing about the gate being down is optional).
 func TestConfigMissingIsAFailureNotUnknown(t *testing.T) {
-	c := checkConfig(filepath.Join(t.TempDir(), "glyph.toml"), nil)
+	root, cfg, err := loadedAt(filepath.Join(t.TempDir(), "glyph.toml"))
+	c := checkConfig(root, nil, cfg, err)
 	if c.Status != StatusFail {
 		t.Fatalf("%s on a missing glyph.toml = %s, want %s", IDConfigLoads, c.Status, StatusFail)
 	}
@@ -61,7 +84,8 @@ func TestConfigUnloadableIsAFailure(t *testing.T) {
 		"not toml at all":    "{\n",
 	} {
 		t.Run(name, func(t *testing.T) {
-			c := checkConfig(configPathWith(t, content), nil)
+			root, cfg, err := loadedAt(configPathWith(t, content))
+			c := checkConfig(root, nil, cfg, err)
 			if c.Status != StatusFail {
 				t.Fatalf("%s = %s (%s), want %s", IDConfigLoads, c.Status, c.Observed, StatusFail)
 			}
@@ -76,9 +100,12 @@ func TestConfigUnloadableIsAFailure(t *testing.T) {
 // the file's location does not exist to check — unverified, never a verdict,
 // exactly like every other unreadable input in the report.
 func TestConfigUnresolvableTopLevelIsCouldNotRun(t *testing.T) {
-	c := checkConfig("", errors.New("git rev-parse --show-toplevel: not a git repository"))
+	c := checkConfig(".", errors.New("git rev-parse --show-toplevel: not a git repository"), nil, nil)
 	if c.Status != StatusUnknown {
 		t.Fatalf("%s = %s, want %s — nothing was observed", IDConfigLoads, c.Status, StatusUnknown)
+	}
+	if !strings.Contains(c.Observed, "not a git repository") {
+		t.Errorf("the observation must carry git's own reason — the checks that read the loaded file point here for it, got %q", c.Observed)
 	}
 }
 
@@ -94,7 +121,8 @@ func TestConfigUnreadableIsCouldNotRunNotAFailure(t *testing.T) {
 	if err := os.Chmod(path, 0o000); err != nil {
 		t.Fatalf("chmod: %v", err)
 	}
-	c := checkConfig(path, nil)
+	root, cfg, err := loadedAt(path)
+	c := checkConfig(root, nil, cfg, err)
 	if c.Status != StatusUnknown {
 		t.Fatalf("%s on an unreadable glyph.toml = %s, want %s", IDConfigLoads, c.Status, StatusUnknown)
 	}

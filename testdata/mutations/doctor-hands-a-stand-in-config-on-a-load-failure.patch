@@ -1,0 +1,14 @@
+diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
+index 46a8c1f..4173609 100644
+--- a/internal/cli/cmd_doctor.go
++++ b/internal/cli/cmd_doctor.go
+@@ -323,6 +323,9 @@ func doctorRun(cmd *cobra.Command) error {
+ 	var cfgErr error
+ 	if terr == nil {
+ 		cfg, cfgErr = config.LoadFile(configPathAt(top))
++		if cfgErr != nil {
++			cfg = &config.Config{}
++		}
+ 	}
+ 	// The tag list feeds the root-line check (DESIGN §4.1): which line the
+ 	// repository's bare v* tags are on is a config question, but whether any

@@ -28,13 +28,13 @@
 package doctor
 
 import (
-	"github.com/akira-toriyama/glyph/v5/internal/hook"
-
 	"fmt"
 	"strings"
 
+	"github.com/akira-toriyama/glyph/v5/internal/config"
 	"github.com/akira-toriyama/glyph/v5/internal/github"
 	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v5/internal/hook"
 )
 
 // Status is a check's verdict. Four values, and the distinction between the
@@ -103,15 +103,26 @@ type Report struct {
 type Input struct {
 	// Repo is owner/name, for the report header.
 	Repo string
-	// Root is the local checkout whose .github/workflows are scanned.
-	Root string
-	// RootVerified reports that Root came from git itself (rev-parse
-	// --show-toplevel), not from an assumption about cwd. It decides how the
-	// local scans read an absent .github/workflows: under a git-named root
-	// that absence is an observed fact about the repository (pass — nothing
-	// to scan), while under a bare "." it could equally be a wrong working
-	// directory, which must stay unknown.
-	RootVerified bool
+	// Root is the local checkout whose .github/workflows are scanned and
+	// whose glyph.toml Config was loaded from: git's own top level (rev-parse
+	// --show-toplevel), or a bare "." — with nothing loaded — when git could
+	// not name one. RootErr is that failure, verbatim — resolved by the
+	// caller for the same reason HooksDir is: naming the top level takes a
+	// subprocess, and internal/doctor runs none. It decides how the local
+	// scans read an absent .github/workflows: under a git-named root that
+	// absence is an observed fact about the repository (pass — nothing to
+	// scan), while under a bare "." it could equally be a wrong working
+	// directory, which must stay unknown; and it is the config check's
+	// could-not-run.
+	Root    string
+	RootErr error
+	// Config / ConfigErr are the checkout's glyph.toml, loaded ONCE by the
+	// caller at Root, and config.LoadFile's failure handed over VERBATIM like
+	// RepoErr: the config check classifies it (absent, unreadable, invalid)
+	// and must see the loader's own error. Neither is set when RootErr is.
+	// Every check that reads the file reads Config — nothing here opens it.
+	Config    *config.Config
+	ConfigErr error
 	// RepoObject / RepoErr are the outcome of GET /repos/{owner}/{repo}.
 	// RepoErr must be handed over VERBATIM, exactly as internal/github
 	// returned it: the token check asks github.IsRepoUnknown about it, and
@@ -135,12 +146,6 @@ type Input struct {
 	// bytes are exactly this binary's hook (see probeCommitMsgHook). nil means
 	// nothing was fired.
 	CommitMsgProbe *HookProbe
-	// ConfigPath / ConfigPathErr are git's answer to where this checkout's
-	// glyph.toml must sit (top level + "glyph.toml") and the failure to get
-	// one — resolved by the caller for the same reason HooksDir is: naming
-	// the top level takes a subprocess, and internal/doctor runs none.
-	ConfigPath    string
-	ConfigPathErr error
 	// Tags / TagsErr are git's tag list for the checkout and the failure to
 	// get one — resolved by the caller like HooksDir, read by the root-line
 	// check alone.
@@ -225,8 +230,9 @@ const (
 // Check order is the report order and is chosen for reading: glyph.toml
 // first, because it is the precondition every verdict command reads before
 // anything else — with it down nothing else glyph does can run, however
-// healthy the rest of the report is — and the package paths it declares
-// right behind it, the one check that reads the loaded file. Then the token checks, because the read
+// healthy the rest of the report is — and the two checks that read the loaded
+// file, the package paths it declares and the root line's tags, right behind
+// it. Then the token checks, because the read
 // explains every could-not-run below it (and the write advisory rides on the
 // same response), then the three merge methods, then the squash policy they
 // enable, then the remaining LOCAL checks — the workflow pins and the
@@ -235,11 +241,12 @@ const (
 func Run(in Input) *Report {
 	// The fired hook's lint reads the same glyph.toml, so the config verdict is
 	// an input to the live-fire check — see checkHookFires.
-	config := checkConfig(in.ConfigPath, in.ConfigPathErr)
+	config := checkConfig(in.Root, in.RootErr, in.Config, in.ConfigErr)
+	rootVerified := in.RootErr == nil
 	r := &Report{Repo: in.Repo, Checks: []Check{
 		config,
-		checkPackagePaths(in.ConfigPath, in.ConfigPathErr, in.HeadTrees, in.HeadTreesErr),
-		checkRootLineTags(in.ConfigPath, in.ConfigPathErr, in.Tags, in.TagsErr),
+		checkPackagePaths(in.Root, in.Config, in.HeadTrees, in.HeadTreesErr),
+		checkRootLineTags(in.Config, in.Tags, in.TagsErr),
 		checkTokenAccess(in),
 		checkTokenWrite(in),
 		checkSquashEnabled(in),
@@ -247,9 +254,9 @@ func Run(in Input) *Report {
 		checkRebaseMerge(in),
 		checkSquashTitle(in),
 		checkSquashMessage(in),
-		checkWorkflowPins(in.Root, in.RootVerified, in.ActionFiles, in.ActionFilesErr),
-		checkCallerPermissions(in.Root, in.RootVerified, in.GlyphVersion),
-		checkCallerInputs(in.Root, in.RootVerified, in.GlyphVersion),
+		checkWorkflowPins(in.Root, rootVerified, in.ActionFiles, in.ActionFilesErr),
+		checkCallerPermissions(in.Root, rootVerified, in.GlyphVersion),
+		checkCallerInputs(in.Root, rootVerified, in.GlyphVersion),
 		checkHook(hook.Kinds()[0], IDCommitMsgHook, in.HooksDir, in.HooksErr),
 		checkHookFires(in.CommitMsgProbe, in.HooksErr, config.Status == StatusPass),
 		checkPrePushHook(in.HooksDir, in.HooksErr, in.CommitMsgProbe, in.RemoteHeads, in.RemoteRefless, in.RemoteHeadsErr),
