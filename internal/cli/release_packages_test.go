@@ -94,8 +94,28 @@ func TestReleasePackagesWritesOneDraftPerLine(t *testing.T) {
 	if res.Target == "" {
 		t.Fatalf("every line's draft points at target, so it must be reported: %s", stdout)
 	}
-	if len(res.Packages) != 2 || res.Packages[0].Tag != "haiku/v0.2.0" || res.Packages[0].Action != "create" || res.Packages[0].URL == "" || res.Packages[1].Tag != "curry/v0.1.1" {
-		t.Fatalf("packages = %+v", res.Packages)
+	if len(res.Packages) != 2 || res.Packages[0].Tag != "haiku/v0.2.0" || res.Packages[0].Action != "create" || res.Packages[0].URL == "" || res.Packages[1].Tag != "curry/v0.1.1" || res.Packages[1].URL == "" {
+		t.Fatalf("packages = %+v — every written line carries a url", res.Packages)
+	}
+}
+
+// TestReleasePackagesCurrentOverTwoLinesIsUsage: release refuses --current
+// unless the walk selects one line (checkLineSelection), as bump does — the
+// refusal is in release's help and was asserted for bump alone until the
+// U15 review found the release call removable without a red test.
+func TestReleasePackagesCurrentOverTwoLinesIsUsage(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	_, routes := squashAcrossLines(t, dir, 7)
+	var writes []apiWrite
+	usePR(t, releaseServer(t, routes, `[]`, &writes))
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "release", "--dry-run", "--current", "v1.0.0")
+	if code != 2 || !strings.Contains(stderr, "names one version") {
+		t.Fatalf("release --current over two lines exited %d, want 2 saying --current names one version\nstderr: %s", code, stderr)
+	}
+	if len(writes) != 0 {
+		t.Errorf("a refused run wrote: %+v", writes)
 	}
 }
 
@@ -497,7 +517,7 @@ func linesQuiet(t *testing.T, dir string) map[string]string {
 // line's siblings did. Measured before the split: the same line, the same none
 // verdict and the same failing DELETE exited 4 when every line was none and 0
 // when a sibling line had written a draft, because the residual then rode
-// convergeStrays' leniency; the verdict reported curry's action as delete with
+// convergeStray's leniency; the verdict reported curry's action as delete with
 // the draft still standing. The bare residue follows the run: with no draft
 // written, its delete is the whole action too.
 func TestReleasePackagesNoneDeleteFailureStillFailsLoud(t *testing.T) {

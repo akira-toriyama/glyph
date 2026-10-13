@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -492,7 +493,7 @@ func TestReleaseUpsertNeverAdoptsUnparseableVDrafts(t *testing.T) {
 		if !strings.Contains(stderr, "would create the rolling draft v0.1.1") {
 			t.Errorf("the dry run does not preview a CREATE — it would adopt the foreign draft:\n%s", stderr)
 		}
-		if !strings.Contains(stderr, "(0 stale draft(s) to delete)") {
+		if strings.Contains(stderr, "stale draft") {
 			t.Errorf("the dry run counts a human's drafts as stale:\n%s", stderr)
 		}
 	})
@@ -1197,12 +1198,12 @@ func TestReleaseStrayDeleteFailureKeepsTheNotes(t *testing.T) {
 }
 
 // TestReleaseNoneDeleteFailureStillFailsLoud is the boundary of the leniency
-// above, and the guard against a later tidy-up that routes releaseNone through
-// convergeStrays too.
+// above, and the guard against a later tidy-up that routes a none verdict's
+// residual deletes through convergeStray too.
 //
-// The two paths differ in exactly one thing: whether a write already succeeded.
-// On a none verdict the delete IS the whole action, so absorbing its failure
-// would mean the run did nothing and reported fine.
+// The two passes differ in exactly one thing: whether a write already
+// succeeded. On a none verdict the delete IS the whole action, so absorbing
+// its failure would mean the run did nothing and reported fine.
 func TestReleaseNoneDeleteFailureStillFailsLoud(t *testing.T) {
 	walk := noneWalk(t)
 	releases := `[` + draftJSON(11, "v0.1.1") + `]`
@@ -1497,5 +1498,130 @@ func TestHighestPublishedIsPerLine(t *testing.T) {
 	}
 	if err := checkPublishedFloor(config.Line{Prefix: "haiku/"}, bump.Version{Major: 1, Minor: 5}, rels); err == nil || !strings.Contains(err.Error(), "haiku/v1.5.0") {
 		t.Errorf("haiku/v1.5.0 under a published haiku/v1.5.0 must be refused naming the line's tag; got %v", err)
+	}
+}
+
+// TestReleaseNoneTriesEveryResidual: on the bare line, as under [[packages]]
+// (TestReleasePackagesFailedResidualStrandsNoOtherDelete), a none verdict's
+// residual that will not go fails the run (4) only once every other residual
+// was tried, and each that would not go is named. The single line's own path
+// returned at the first failure — measured before the two paths were one:
+// DELETE 11 answered 422, exit 4, draft 12 left standing — and one failed
+// delete is no reason to leave another undone (DESIGN §4.1).
+func TestReleaseNoneTriesEveryResidual(t *testing.T) {
+	walk := noneWalk(t)
+	releases := `[` + draftJSON(11, "v0.1.1") + `,` + draftJSON(12, "v0.1.2") + `]`
+	var seq []string
+	usePR(t, failingReleaseServer(t, walk, releases, func(r *http.Request) int {
+		if r.Method == http.MethodDelete && strings.HasSuffix(r.URL.Path, "/11") {
+			return http.StatusUnprocessableEntity
+		}
+		return 0
+	}, &seq))
+
+	code, stdout, stderr := runGlyph(t, "release")
+	if code != 4 {
+		t.Fatalf("a residual that would not go exited %d, want 4\nstderr: %s", code, stderr)
+	}
+	if stdout != "" {
+		t.Errorf("a none verdict wrote a payload:\n%s", stdout)
+	}
+	if want := []string{"DELETE " + releasesPath + "/11", "DELETE " + releasesPath + "/12"}; !slices.Equal(seq, want) {
+		t.Fatalf("write sequence = %v, want %v — the first residual's failure must not strand the second", seq, want)
+	}
+	for _, want := range []string{releasesPath + "/11", "discarded the residual draft v0.1.2 (release id 12)"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr must report every residual's outcome (%q):\n%s", want, stderr)
+		}
+	}
+}
+
+// TestReleaseRunsFromOptionsWithoutCobra: the run below RunE is a function of
+// its options — no command built, no flag parsed — so the walk's tag, the
+// target and the dry run reach it as fields, not as package state a cobra
+// run has to set first.
+func TestReleaseRunsFromOptionsWithoutCobra(t *testing.T) {
+	walk := oneFixWalk(t)
+	usePR(t, dryServer(t, walk))
+	stdout, stderr, restore := captureOut()
+	defer restore()
+
+	err := releaseRun(context.Background(), releaseOptions{tag: sinceTagAuto, target: goldenTarget, dryRun: true})
+	if err != nil || !strings.HasPrefix(stdout.String(), "v0.1.1\n\n"+handMarker) {
+		t.Fatalf("releaseRun from options: %v, stdout %q, want the v0.1.1 draft previewed\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), compareLine("v0.1.0", goldenTarget)) {
+		t.Errorf("the target from options must end the compare link:\n%s", stdout.String())
+	}
+}
+
+// TestReleaseNoneAnswersTheFirstFailedResidual: with two residuals that will
+// not go, the envelope carries the FIRST failure, as the warning on the
+// second says ("the run fails on the first that would not"); the second is
+// a warning that names it. Unpinned until the U15 review found "answer the
+// last one" surviving the whole suite on both trees.
+func TestReleaseNoneAnswersTheFirstFailedResidual(t *testing.T) {
+	walk := noneWalk(t)
+	releases := `[` + draftJSON(11, "v0.1.1") + `,` + draftJSON(12, "v0.1.2") + `]`
+	var seq []string
+	usePR(t, failingReleaseServer(t, walk, releases, func(r *http.Request) int {
+		switch {
+		case r.Method != http.MethodDelete:
+			return 0
+		case strings.HasSuffix(r.URL.Path, "/11"):
+			return http.StatusUnprocessableEntity
+		default:
+			return http.StatusGone
+		}
+	}, &seq))
+
+	code, _, stderr := runGlyph(t, "release")
+	if code != 4 {
+		t.Fatalf("no residual would go, so the run exited %d, want 4\nstderr: %s", code, stderr)
+	}
+	// The envelope is the JSON object at the end of stderr; the warning is
+	// its own line above it.
+	_, envelope, found := strings.Cut(stderr, "{")
+	if !found || !strings.Contains(envelope, releasesPath+"/11: 422") {
+		t.Errorf("the envelope must carry the first residual's failure (DELETE 11, 422):\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "would not go either: github: DELETE "+releasesPath+"/12: 410") {
+		t.Errorf("the second residual's failure is the warning that names it (DELETE 12, 410):\n%s", stderr)
+	}
+}
+
+// TestReleaseMalformedCurrentIsUsageBeforeTheListing: --current is the
+// caller's input, refused at 2 before the releases listing is fetched — so
+// a listing that would not answer cannot turn the usage error into its own
+// 4. The single line's path once parsed the flag first and the packages
+// path once did not; the one loop asks before either pays (U15 review: the
+// double fault exited 4 on the candidate's first cut).
+func TestReleaseMalformedCurrentIsUsageBeforeTheListing(t *testing.T) {
+	walk := oneFixWalk(t)
+	listed := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == releasesPath {
+			listed = true
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprint(w, `{"message":"Service Unavailable"}`)
+			return
+		}
+		body, ok := walk[r.URL.Path]
+		if !ok {
+			t.Errorf("unexpected %s %q", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprint(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	usePR(t, srv)
+
+	code, _, stderr := runGlyph(t, "release", "--dry-run", "--current", "garbage")
+	if code != 2 || !strings.Contains(stderr, "--current") {
+		t.Fatalf("a malformed --current exited %d, want 2 naming the flag\nstderr: %s", code, stderr)
+	}
+	if listed {
+		t.Errorf("the releases listing was fetched before the caller's input was refused")
 	}
 }
