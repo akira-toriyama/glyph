@@ -99,9 +99,11 @@ func TestSharedOnlyNoneIsCarriedNowhere(t *testing.T) {
 func TestSharedOnlyBumpIsRefused(t *testing.T) {
 	for _, sigil := range []config.Sigil{config.SigilPatch, config.SigilMinor, config.SigilMajor, config.SigilPromote} {
 		got, err := Attribute([]string{"README.md"}, "", sigil, []config.Package{haiku, curry})
-		if r, ok := errors.AsType[*Refusal](err); !ok || r.Reason != NoCarrier {
+		r, ok := errors.AsType[*Refusal](err)
+		if !ok || r.Reason != NoCarrier {
 			t.Fatalf("sigil %s on a shared-only commit → [%s], %v; want a NoCarrier refusal", sigil, paths(got), err)
 		}
+		r.Sayable = sayAll("haiku", "curry")
 		for _, escape := range []string{"haiku", "curry", "write =", "declare the package these files belong to"} {
 			if !strings.Contains(err.Error(), escape) {
 				t.Errorf("the refusal must name the escape %q, got %q", escape, err)
@@ -114,9 +116,11 @@ func TestSharedOnlyBumpIsRefused(t *testing.T) {
 		{".github/workflows/ci.yml", "ci"},
 	} {
 		got, err := Attribute([]string{c.file}, c.scope, config.SigilMinor, []config.Package{storage})
-		if r, ok := errors.AsType[*Refusal](err); !ok || r.Reason != NoCarrier {
+		r, ok := errors.AsType[*Refusal](err)
+		if !ok || r.Reason != NoCarrier {
 			t.Fatalf("(%s)^ on %s → [%s], %v; want a NoCarrier refusal — a scope naming no package carries nothing and excuses nothing", c.scope, c.file, paths(got), err)
 		}
+		r.Sayable = sayAll("storage")
 		// The declaration is named, its path is not guessed: glyph cannot tell
 		// a module from root CI, and a first path segment is `.github` here —
 		// a path no tag can carry (the loader refuses a leading dot).
@@ -141,9 +145,11 @@ func TestSharedOnlyBumpIsRefused(t *testing.T) {
 func TestNoFilesHaveNoCarrierUnderARootPackage(t *testing.T) {
 	pkgs := []config.Package{haiku, root}
 	got, err := Attribute(nil, "", config.SigilPatch, pkgs)
-	if r, ok := errors.AsType[*Refusal](err); !ok || r.Reason != NoCarrier {
+	r, ok := errors.AsType[*Refusal](err)
+	if !ok || r.Reason != NoCarrier {
 		t.Fatalf("an empty ~ under a root package → [%s], %v; want a NoCarrier refusal", paths(got), err)
 	}
+	r.Sayable = sayAll("haiku", "core")
 	if want := "this commit touches no file, so no package's tree can carry its sigil ~: name the line it moves in the scope (one of haiku, core), or write = so it moves no line"; err.Error() != want {
 		t.Errorf("refusal = %q\n   want   %q", err, want)
 	}
@@ -155,8 +161,15 @@ func TestNoFilesHaveNoCarrierUnderARootPackage(t *testing.T) {
 	}
 }
 
+// sayAll is the Sayable cli sets for a pattern that captures a droppable
+// scope spelling every name and a sigil that reads =.
+func sayAll(names ...string) config.Sayable {
+	return config.Sayable{ScopeGroup: true, ScopeDroppable: true, Scopes: names, SigilGroup: true, None: true, RootNeedsName: true}
+}
+
 // refusalOf is Attribute's refusal for a commit, with what only a caller
-// knows set on it the way cli's attribute sets it.
+// knows set on it the way cli's attribute sets it: a Sayable spelling every
+// escape unless tell says what the claiming pattern can write.
 func refusalOf(t *testing.T, files []string, scope string, sigil config.Sigil, pkgs []config.Package, tell func(*Refusal)) string {
 	t.Helper()
 	_, err := Attribute(files, scope, sigil, pkgs)
@@ -164,6 +177,7 @@ func refusalOf(t *testing.T, files []string, scope string, sigil config.Sigil, p
 	if !ok {
 		t.Fatalf("Attribute(%v, %q, %s) = %v, want a refusal", files, scope, sigil, err)
 	}
+	r.Sayable = sayAll(r.Names...)
 	if tell != nil {
 		tell(r)
 	}
@@ -194,7 +208,7 @@ func TestNoCarrierNamesOnlyTheEscapesTheCommitCanTake(t *testing.T) {
 	bareRoot := []config.Package{haiku, {Path: ".", Name: "."}}
 	docs := []string{"docs/a.md", "./docs/b.md", "docs/c.md", "docs/d.md", "docs/e.md"}
 	pattern := func(s config.Sayable) func(*Refusal) {
-		return func(r *Refusal) { r.Pattern = &s }
+		return func(r *Refusal) { r.Sayable = s }
 	}
 	for name, c := range map[string]struct {
 		files []string
@@ -203,7 +217,7 @@ func TestNoCarrierNamesOnlyTheEscapesTheCommitCanTake(t *testing.T) {
 		tell  func(*Refusal)
 		want  string
 	}{
-		"files no package owns, a pattern nobody described": {
+		"files no package owns, a pattern spelling every escape": {
 			[]string{"README.md"}, config.SigilMinor, two, nil,
 			"its files (README.md) belong to no declared package, and its sigil ^ claims a version impact nothing can carry: name the line it moves in the scope (one of haiku, curry), write = so it moves no line, or " + declare,
 		},
@@ -393,7 +407,7 @@ func TestContradictionNamesTheOwnersAndTheScopesThatWork(t *testing.T) {
 	const rule = " — the longest declared path owns a file: "
 	sub := []config.Package{haiku, curry, nested}
 	pattern := func(s config.Sayable) func(*Refusal) {
-		return func(r *Refusal) { r.Pattern = &s }
+		return func(r *Refusal) { r.Sayable = s }
 	}
 	for name, c := range map[string]struct {
 		files []string
@@ -401,7 +415,7 @@ func TestContradictionNamesTheOwnersAndTheScopesThatWork(t *testing.T) {
 		tell  func(*Refusal)
 		want  string
 	}{
-		"one owner, a pattern nobody described": {
+		"one owner, a pattern spelling every escape": {
 			[]string{"curry/b.go"}, []config.Package{haiku, curry}, nil,
 			"scope (haiku) names a line this commit does not move: curry/b.go belongs to curry (curry)" + rule + "write the scope of a line it moves (curry), or drop the scope",
 		},

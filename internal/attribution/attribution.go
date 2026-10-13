@@ -60,9 +60,7 @@ type Owned struct {
 // Reason, Scope, Sigil, Touched and Names are the verdict's own terms. The
 // rest only words the sentence, in two halves: what Attribute saw of the
 // files (Owners, Unowned, Files, More), and what it cannot see and the caller
-// tells it (Merge, Unread, Pattern). Left untold — Attribute asked directly,
-// as its own tests do — the sentence assumes a pattern that captures every
-// name and its own sigil, a scope the message can drop, and a diff read whole.
+// tells it (Merge, Unread, Sayable).
 type Refusal struct {
 	Reason  Reason
 	Scope   string
@@ -93,10 +91,11 @@ type Refusal struct {
 	// caller withholds (cli's partitionLines). The sentence must not state
 	// of the commit what is known only of the files read.
 	Unread bool
-	// Pattern is what a message can write under the pattern that claimed
-	// this one, and under the file's others (config.Sayable). Nil when
-	// nobody said.
-	Pattern *config.Sayable
+	// Sayable is what a message can write under the pattern that claimed
+	// this one, and under the file's others. The caller sets it, and every
+	// refusal has one: the commit the fold does not read (config.Sayable's
+	// -1) carries = and is never refused.
+	Sayable config.Sayable
 }
 
 // quoted is how many file names a refusal spells out before counting.
@@ -134,7 +133,7 @@ func (r *Refusal) Error() string {
 // as lying "under ." — a filesystem reading of a rule that is about the
 // longest prefix (t-mfny (C), t-n5tw 5).
 func (r *Refusal) contradiction() string {
-	say := r.sayable()
+	say := r.Sayable
 	evidence := make([]string, 0, len(r.Owners)+2)
 	var moved, spellable []string
 	for _, o := range r.Owners {
@@ -210,7 +209,7 @@ func countFiles(n int, more string) string {
 // named the scope and = to every commit, the raw revert included, whose
 // pattern fixes its sigil and captures no scope (t-mfny (A)).
 func (r *Refusal) noCarrier() string {
-	say := r.sayable()
+	say := r.Sayable
 	var opening string
 	switch {
 	case len(r.Files) > 0:
@@ -285,16 +284,6 @@ func (r *Refusal) noCarrier() string {
 	default:
 		return opening + ": " + why + " — " + orList(escapes)
 	}
-}
-
-// sayable is what the sentence assumes a message can write: what the caller
-// said of the claiming pattern, else every name, a scope it can drop and the
-// message's own sigil.
-func (r *Refusal) sayable() config.Sayable {
-	if r.Pattern != nil {
-		return *r.Pattern
-	}
-	return config.Sayable{Pattern: -1, ScopeGroup: true, ScopeDroppable: true, Scopes: r.Names, SigilGroup: true, None: true, RootNeedsName: true}
 }
 
 // orList joins alternatives: "a", "a, or b", "a, b, or c". The comma before
