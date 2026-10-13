@@ -1,13 +1,15 @@
-diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
-index 3771f4c..35c3aba 100644
---- a/internal/cli/release_lines.go
-+++ b/internal/cli/release_lines.go
-@@ -214,7 +214,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
- 		stale = append(stale, residue...)
- 	}
- 
--	result := releaseResult{Commits: rows, Packages: verdicts, Pulls: w.Facts.Pulls, Reason: reason}
-+	result := releaseResult{Target: target, Commits: rows, Packages: verdicts, Pulls: w.Facts.Pulls, Reason: reason}
- 	// target is the sha a draft's eventual tag points at, so it is reported
- 	// exactly when a draft is upserted — the single line's rule. The gate is
- 	// the draft count, never moving: a draft_on_none placeholder is a draft
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 8a21f7e..1719032 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -526,9 +526,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ // points at target too.
+ func newReleaseResult(cfg *config.Config, w sinceTagWalk, rows []bump.SigilVerdict, verdicts []packageRelease, target string, drafted bool, moving int) releaseResult {
+ 	res := releaseResult{Commits: rows, Pulls: w.Facts.Pulls}
+-	if drafted {
+-		res.Target = target
+-	}
++	res.Target = target
+ 	if len(cfg.Packages) == 0 {
+ 		one := verdicts[0]
+ 		res.Current, res.Level, res.Tag, res.Body, res.Action, res.URL, res.Reason = one.Current, one.Level, one.Tag, one.Body, one.Action, one.URL, one.Reason

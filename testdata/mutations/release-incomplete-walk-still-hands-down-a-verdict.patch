@@ -1,15 +1,15 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 511bf82..6d984b4 100644
+index 23141f2..50c7cfb 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -163,10 +163,6 @@ func releaseRun(cmd *cobra.Command) error {
+@@ -246,10 +246,6 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
  	// and a walk blind to a whole pull is exactly what this exit is for. The
  	// escape is the wedge escape: cut a tag at or past what the walk cannot
  	// read, or fix the checkout (fetch-depth: 0) when the shortfall names it.
--	if !facts.complete() {
+-	if !w.Facts.complete() {
 -		return core.APIf("this walk did not read %s (%s) — refusing to hand down a verdict computed from a range it could not read; re-run the release once the walk can read the range",
--			source, facts.shortfall(owner, repoName))
+-			w.Source, w.Facts.shortfall(owner, repoName))
 -	}
- 
- 	commits, dec, cerr := bump.FoldSigils(walkedSigilCommits(parsed), cfg)
- 	if cerr != nil {
+ 	if err := checkLineSelection(o.current, w.Lines); err != nil {
+ 		return err
+ 	}

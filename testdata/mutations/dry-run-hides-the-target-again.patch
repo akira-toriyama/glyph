@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 511bf82..8ed9d2d 100644
+index 23141f2..48afd82 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -240,7 +240,7 @@ func releaseRun(cmd *cobra.Command) error {
- 		Current: current.String(),
- 		Level:   string(dec.Level),
- 		Tag:     tagName,
--		Target:  target,
-+		Target:  "",
- 		Body:    body,
- 		Action:  string(plan.Action),
- 		Commits: commits,
+@@ -517,7 +517,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ func newReleaseResult(cfg *config.Config, w sinceTagWalk, rows []bump.SigilVerdict, verdicts []packageRelease, target string, drafted bool, moving int) releaseResult {
+ 	res := releaseResult{Commits: rows, Pulls: w.Facts.Pulls}
+ 	if drafted {
+-		res.Target = target
++		res.Target = ""
+ 	}
+ 	if len(cfg.Packages) == 0 {
+ 		one := verdicts[0]

@@ -11,16 +11,16 @@ index 7867f0a..ab03297 100644
  	}
  	if len(said) == 0 {
  		reason := noNotesReason(cfg, participating(cfg, walkedNoteCommits(w.All)), w.Source)
-diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
-index ebfa017..5e07e3f 100644
---- a/internal/cli/release_lines.go
-+++ b/internal/cli/release_lines.go
-@@ -164,7 +164,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
- 		}
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 23141f2..cb81175 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -338,7 +338,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 		// then notes' output for the same walk followed by the caller's block.
  		// Each line's link starts at that line's own base tag — never the
  		// union's merge base, never a sibling's tag (§4.1).
 -		body := compareLink(notes.RenderSigils(sections), owner, repoName, lw.BaseTag, target)
 +		body := compareLink(notes.RenderSigils(sections), owner, repoName, strings.TrimSuffix(w.Source, "..HEAD"), target)
  		if footer != "" {
- 			body = body + "\n---\n\n" + footer
- 		}
+ 			// One --- line between the notes and the caller's install block
+ 			// (Q11) — composed here so a dry run previews the EXACT published
