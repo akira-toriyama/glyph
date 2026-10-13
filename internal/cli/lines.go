@@ -141,12 +141,9 @@ func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string,
 			lines = append(lines, l)
 		}
 	case strings.HasPrefix(tag, sinceTagBelow):
-		rest := strings.TrimSpace(strings.TrimPrefix(tag, sinceTagBelow))
-		prefix := bump.LinePrefix(rest)
-		// checkSinceTagFlag guaranteed the bound parses on its line.
-		bound, perr := bump.ParseBaseVersionOn(prefix, rest)
+		rest, prefix, bound, perr := belowBound(strings.TrimPrefix(tag, sinceTagBelow))
 		if perr != nil {
-			return nil, "", core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
+			return nil, "", perr
 		}
 		p, ok := packageOnLine(cfg, prefix, bound.Major)
 		if !ok {

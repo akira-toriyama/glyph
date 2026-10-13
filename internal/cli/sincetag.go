@@ -86,7 +86,7 @@ func checkSinceTagFlag(tag string) error {
 	if tag == sinceTagAuto {
 		return nil
 	}
-	if rest, ok := strings.CutPrefix(tag, sinceTagBelow); ok {
+	if rest, ok := strings.CutPrefix(strings.TrimSpace(tag), sinceTagBelow); ok {
 		// The bound must NAME a version — a predecessor is found by comparing
 		// under it, and there is no comparing under a tag that is not one. A
 		// workflow templating an unset variable produces the bare prefix, so
@@ -107,12 +107,8 @@ func checkSinceTagFlag(tag string) error {
 		// Parsed ON ITS LINE: a bound spelled haiku/v1.2.3 is version-shaped
 		// on the haiku/ line, and whether that line is declared is
 		// resolveLinesScoped's question, asked once the config is loaded.
-		bound := strings.TrimSpace(rest)
-		prefix := bump.LinePrefix(bound)
-		if _, perr := bump.ParseBaseVersionOn(prefix, bound); perr != nil {
-			return core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
-		}
-		return nil
+		_, _, _, err := belowBound(rest)
+		return err
 	}
 	if strings.TrimSpace(tag) == "" {
 		// A workflow templating an unset variable produces exactly this; auto
@@ -214,20 +210,19 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 		return latest + "..HEAD", latest, &v, nil
 	}
 	if rest, ok := strings.CutPrefix(tag, sinceTagBelow); ok {
-		// checkSinceTagFlag guaranteed the bound parses ON ITS LINE before
-		// anything ran; this is the single line, so a bound on any other
-		// line names a line this repository does not have (resolveLinesScoped
-		// answers for declared packages, and never reaches here with one).
-		// A pre-release bound compares as its base version — exact, not a
-		// rounding: see ParseBaseVersion for why the two select the same tag.
-		if prefix := bump.LinePrefix(strings.TrimSpace(rest)); prefix != "" {
-			return "", "", nil, core.Usagef("--since-tag=below:%s names the %s line, but this repository declares no [[packages]] — its one line is the bare vX.Y.Z tags", strings.TrimSpace(rest), prefix)
-		}
-		bound, perr := bump.ParseBaseVersion(strings.TrimSpace(rest))
+		// This is the single line, so a bound on any other line names a line
+		// this repository does not have (resolveLinesScoped answers for
+		// declared packages, and never reaches here with one). A pre-release
+		// bound compares as its base version — exact, not a rounding: see
+		// ParseBaseVersion for why the two select the same tag.
+		bound, prefix, under, perr := belowBound(rest)
 		if perr != nil {
-			return "", "", nil, core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
+			return "", "", nil, perr
 		}
-		prev, v, lerr := latestVersionTag(ctx, config.Line{}, &bound)
+		if prefix != "" {
+			return "", "", nil, core.Usagef("--since-tag=below:%s names the %s line, but this repository declares no [[packages]] — its one line is the bare vX.Y.Z tags", bound, prefix)
+		}
+		prev, v, lerr := latestVersionTag(ctx, config.Line{}, &under)
 		if lerr != nil {
 			return "", "", nil, lerr
 		}
@@ -235,7 +230,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 			// The repository's first release: nothing sits below it, and dying
 			// here would fail a job standing behind a tag that already exists.
 			// Same walk, same guard, as auto before the first tag.
-			revRange, base, err = wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s in HEAD's history", strings.TrimSpace(rest)), "")
+			revRange, base, err = wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s in HEAD's history", bound), "")
 			return revRange, "", base, err
 		}
 		return prev + "..HEAD", prev, &v, nil
@@ -248,6 +243,22 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 		return tag + "..HEAD", baseTag, &v, nil
 	}
 	return tag + "..HEAD", baseTag, nil, nil
+}
+
+// belowBound parses what follows --since-tag=below: — the one place the
+// bound is read. bound is the tag as written (trimmed), prefix the line it
+// names, v its base version (a candidate's triple, ParseBaseVersionOn).
+// checkSinceTagFlag calls it to refuse the flag before anything runs;
+// sinceTagRange and resolveLinesScoped call it for the values, so the
+// refusal has one sentence and the two resolvers carry none of their own.
+func belowBound(rest string) (bound, prefix string, v bump.Version, err error) {
+	bound = strings.TrimSpace(rest)
+	prefix = bump.LinePrefix(bound)
+	v, perr := bump.ParseBaseVersionOn(prefix, bound)
+	if perr != nil {
+		return "", "", bump.Version{}, core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
+	}
+	return bound, prefix, v, nil
 }
 
 // sinceTagWalkCap bounds the whole-history walk: the most commits an untagged
