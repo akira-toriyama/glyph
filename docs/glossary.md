@@ -457,7 +457,9 @@ the root package's; draft_on_none's artifact — claimed even with the flag off,
 so flipping it off converges the placeholder away). Each line manages only its
 own: published
 releases, a human's hand-named drafts and another line's drafts are never its
-to touch. `internal/draftplan/draftplan.go: PlanDraft`
+to touch. `internal/draftplan/draftplan.go: PlanDraft`; the house shape itself,
+and why it is stricter than the walk base's reading, is
+`internal/bump/semver.go: HouseTagOn`
 
 **residual draft** vs **stale draft** — both are glyph-managed drafts glyph
 removes, in two different situations, and the words are not interchangeable in
@@ -484,6 +486,7 @@ The next version must be *strictly* greater, or the draft could never be
 published: its tag is taken, or permanently burned if a published release was
 deleted. Fails loud (4) rather than creating an unpublishable draft.
 `internal/cli/cmd_release.go: checkPublishedFloor, highestPublished`
+(`internal/bump/semver.go: HouseTagOn` decides the shape)
 
 **pending** — what is already merged on the base branch but **not yet released**:
 the walk's own verdict since the latest tag, and one of the two sides the merge

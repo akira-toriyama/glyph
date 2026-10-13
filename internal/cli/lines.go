@@ -142,7 +142,7 @@ func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string,
 		}
 	case strings.HasPrefix(tag, sinceTagBelow):
 		rest := strings.TrimSpace(strings.TrimPrefix(tag, sinceTagBelow))
-		prefix, _ := bump.SplitTag(rest)
+		prefix := bump.LinePrefix(rest)
 		// checkSinceTagFlag guaranteed the bound parses on its line.
 		bound, perr := bump.ParseBaseVersionOn(prefix, rest)
 		if perr != nil {
@@ -163,7 +163,7 @@ func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string,
 		if terr != nil {
 			return nil, "", terr
 		}
-		prefix, _ := bump.SplitTag(tag)
+		prefix := bump.LinePrefix(tag)
 		if shape, perr := bump.ParseBaseVersionOn(prefix, tag); perr == nil {
 			p, ok := packageOnLine(cfg, prefix, shape.Major)
 			if !ok {

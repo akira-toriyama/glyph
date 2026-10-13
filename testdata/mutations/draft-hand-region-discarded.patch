@@ -1,8 +1,8 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 03849ab..a0e8ee5 100644
+index 4415955..5aabdfc 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -504,11 +504,7 @@ func keptBody(keep *draftplan.Draft, releases []github.Release) string {
+@@ -547,11 +547,8 @@ func keptBody(keep *draftplan.Draft, releases []github.Release) string {
  // output, and guessing would resurrect old machine text as if a human had
  // written it.
  func composeDraftBody(existing, generated string) string {
@@ -11,6 +11,7 @@ index 03849ab..a0e8ee5 100644
 -		hand = ""
 -	}
 -	return hand + handMarker + "\n\n" + generated
++	_, _, _ = strings.Cut(existing, handMarker)
 +	return handMarker + "\n\n" + generated
  }
  

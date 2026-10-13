@@ -108,7 +108,7 @@ func checkSinceTagFlag(tag string) error {
 		// on the haiku/ line, and whether that line is declared is
 		// resolveLinesScoped's question, asked once the config is loaded.
 		bound := strings.TrimSpace(rest)
-		prefix, _ := bump.SplitTag(bound)
+		prefix := bump.LinePrefix(bound)
 		if _, perr := bump.ParseBaseVersionOn(prefix, bound); perr != nil {
 			return core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
 		}
@@ -220,7 +220,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 		// answers for declared packages, and never reaches here with one).
 		// A pre-release bound compares as its base version — exact, not a
 		// rounding: see ParseBaseVersion for why the two select the same tag.
-		if prefix, _ := bump.SplitTag(strings.TrimSpace(rest)); prefix != "" {
+		if prefix := bump.LinePrefix(strings.TrimSpace(rest)); prefix != "" {
 			return "", "", nil, core.Usagef("--since-tag=below:%s names the %s line, but this repository declares no [[packages]] — its one line is the bare vX.Y.Z tags", strings.TrimSpace(rest), prefix)
 		}
 		bound, perr := bump.ParseBaseVersion(strings.TrimSpace(rest))

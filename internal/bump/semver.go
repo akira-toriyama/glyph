@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/akira-toriyama/glyph/v5/internal/config"
 )
 
 // Version is a plain semver triple. House tags are exactly vX.Y.Z — no
@@ -30,8 +32,9 @@ var versionRE = regexp.MustCompile(`^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9
 // cap (DESIGN §3 holds the measurement).
 const MaxField = math.MaxInt32
 
-// ParseVersion parses a house version tag, accepting an optional leading v,
-// and refuses a field past MaxField. It returns a plain error — the caller
+// ParseVersion parses a version in the house triple shape, accepting an
+// optional leading v (HouseTagOn is the house tag proper, v required), and
+// refuses a field past MaxField. It returns a plain error — the caller
 // classifies it, since only the caller knows whether the string came from a
 // flag (usage) or from git (API): a flag past the cap is usage, and a tag
 // past it is not a version on its line, so it leaves every resolver's
@@ -165,8 +168,9 @@ func (v Version) Next(d Decision) Version {
 // major version subdirectory /vN folded into the major (pubsub/v2 tags as
 // pubsub/v2.x.y).
 // The prefix and the majors held are the whole difference — config.Line,
-// derived by config.Config.LineOf, never spelled by hand; the functions
-// below know the prefix only, and the caller filters by major. Every
+// derived by config.Config.LineOf, never spelled by hand; the parsers
+// below know the prefix only and the caller filters by major, and
+// HouseTagOn takes the whole line because its answer is the line's. Every
 // resolver that picks a tag (the walk base, the published floor, the managed
 // drafts) asks the question ON a line, so a tag from one line can never
 // answer for another: a curry/ tag never baselines haiku, a bare v* tag
@@ -174,16 +178,38 @@ func (v Version) Next(d Decision) Version {
 // v1 line beside it (mutation rows
 // packages-tag-of-one-line-baselines-another, line-reads-tags-of-every-major).
 
-// SplitTag splits a tag into its line prefix — everything through the LAST
-// '/', "" for a bare tag — and the remainder. It names the line a tag is on;
-// whether that line is declared, and whether the remainder is a version, are
-// the caller's questions (ParseVersionOn answers the second).
-func SplitTag(tag string) (prefix, rest string) {
-	i := strings.LastIndexByte(tag, '/')
-	if i < 0 {
-		return "", tag
+// LinePrefix is the line prefix a tag spells — everything through the LAST
+// '/', "" for a bare tag. It names the line a tag is on; whether that line
+// is declared, and whether what follows is a version, are the caller's
+// questions (ParseVersionOn and ParseBaseVersionOn answer the second).
+func LinePrefix(tag string) string {
+	return tag[:strings.LastIndexByte(tag, '/')+1]
+}
+
+// HouseTagOn reads tag as a HOUSE tag on a line — <prefix>vX.Y.Z, the v
+// REQUIRED on top of ParseVersionOn's shape, and a major the line holds —
+// and reports whether it is one.
+//
+// glyph answers "is 1.2.3 a release" two ways on purpose, and these are the
+// two functions that name them. The house rule is for what glyph itself cuts
+// or claims: the drafts it manages (draftplan), the published floor a draft
+// must clear (cli.checkPublishedFloor) and a reusable's pin (doctor) — glyph
+// writes vX.Y.Z and never a v-less tag, so a v-less tag is never its draft,
+// never its floor and never a release a caller can pin. The tolerant rule,
+// ParseVersion and ParseVersionOn with their optional v, is for what glyph
+// reads as a release of someone else's making — the walk base and the step
+// base (cli.latestVersionTag, --since-tag, --current) and doctor's bare-tag
+// residue — where a 1.2.3 cut by hand is a release HEAD contains however it
+// is spelled, and a base that skipped it would re-fold what it shipped.
+func HouseTagOn(l config.Line, tag string) (Version, bool) {
+	if !strings.HasPrefix(strings.TrimPrefix(tag, l.Prefix), "v") {
+		return Version{}, false
 	}
-	return tag[:i+1], tag[i+1:]
+	v, err := ParseVersionOn(l.Prefix, tag)
+	if err != nil || !l.Holds(v.Major) {
+		return Version{}, false
+	}
+	return v, true
 }
 
 // ParseVersionOn parses tag as a version on the line with the given prefix:

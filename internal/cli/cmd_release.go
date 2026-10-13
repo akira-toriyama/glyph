@@ -482,8 +482,8 @@ func checkPublishedFloor(l config.Line, next bump.Version, releases []github.Rel
 		next.TagOn(l.Prefix), floor.TagOn(l.Prefix))
 }
 
-// highestPublished returns the highest published (non-draft) house-shaped
-// version ON ONE LINE among the releases; ok is false when there is none —
+// highestPublished returns the highest published (non-draft) house version
+// (bump.HouseTagOn) ON ONE LINE among the releases; ok is false when there is none —
 // a line before its first publish has no floor. The floor is per line by
 // construction (DESIGN §4.1): a published haiku/v2.0.0 is no floor under a
 // curry/ draft, a published bare v2.0.0 is none under either package, and a
@@ -494,11 +494,11 @@ func highestPublished(l config.Line, releases []github.Release) (bump.Version, b
 	var floor bump.Version
 	found := false
 	for _, r := range releases {
-		if r.Draft || !strings.HasPrefix(strings.TrimPrefix(r.TagName, l.Prefix), "v") {
+		if r.Draft {
 			continue
 		}
-		v, err := bump.ParseVersionOn(l.Prefix, r.TagName)
-		if err != nil || !l.Holds(v.Major) {
+		v, ok := bump.HouseTagOn(l, r.TagName)
+		if !ok {
 			continue
 		}
 		if !found || v.Compare(floor) > 0 {

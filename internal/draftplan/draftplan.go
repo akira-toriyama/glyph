@@ -11,8 +11,6 @@
 package draftplan
 
 import (
-	"strings"
-
 	"github.com/akira-toriyama/glyph/v5/internal/bump"
 	"github.com/akira-toriyama/glyph/v5/internal/config"
 )
@@ -66,8 +64,8 @@ func PlaceholderTagOn(l config.Line) string {
 }
 
 // managed says which drafts are glyph's to converge ON ONE LINE: unpublished
-// drafts tagged with a house-shaped version on that line (prefix + vX.Y.Z,
-// the v required, and a major the line holds), plus that line's placeholder.
+// drafts tagged with a house version on that line (bump.HouseTagOn — the v
+// required, a major the line holds), plus that line's placeholder.
 // A draft on any other line is not this convergence's to touch — a haiku/
 // draft is never a stray of the curry/ line, neither is a bare v* draft of
 // either, and a pubsub/v2.7.1 draft is the v2 line's, never a stray of the
@@ -91,11 +89,7 @@ func managed(l config.Line, releases []Draft) []Draft {
 			drafts = append(drafts, r)
 			continue
 		}
-		if !strings.HasPrefix(strings.TrimPrefix(r.TagName, l.Prefix), "v") {
-			continue
-		}
-		v, err := bump.ParseVersionOn(l.Prefix, r.TagName)
-		if err != nil || !l.Holds(v.Major) {
+		if _, ok := bump.HouseTagOn(l, r.TagName); !ok {
 			continue
 		}
 		drafts = append(drafts, r)
