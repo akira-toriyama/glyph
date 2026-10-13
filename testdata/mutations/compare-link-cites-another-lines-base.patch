@@ -1,8 +1,8 @@
 diff --git a/internal/cli/cmd_notes.go b/internal/cli/cmd_notes.go
-index 7e7f06f..3316b9f 100644
+index 7867f0a..ab03297 100644
 --- a/internal/cli/cmd_notes.go
 +++ b/internal/cli/cmd_notes.go
-@@ -172,7 +172,7 @@ func notesLines(cmd *cobra.Command, cfg *config.Config) error {
+@@ -141,7 +141,7 @@ func notesRun(ctx context.Context, o notesOptions) error {
  		if len(sections) == 0 {
  			continue
  		}
@@ -10,9 +10,9 @@ index 7e7f06f..3316b9f 100644
 +		said = append(said, lineBody{path: lw.Package.Path, base: strings.TrimSuffix(w.Source, "..HEAD"), notes: notes.RenderSigils(sections)})
  	}
  	if len(said) == 0 {
- 		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section on any line", participating(cfg, walkedNoteCommits(w.All)), w.Source)
+ 		reason := noNotesReason(cfg, participating(cfg, walkedNoteCommits(w.All)), w.Source)
 diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
-index 3771f4c..4493ea3 100644
+index ebfa017..5e07e3f 100644
 --- a/internal/cli/release_lines.go
 +++ b/internal/cli/release_lines.go
 @@ -164,7 +164,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f

@@ -205,6 +205,46 @@ func reasonCount(t *testing.T, reason string) int {
 	return n
 }
 
+// notesNoReleaseReason runs `notes --json` with args, requires the empty
+// verdict (exit 1) and returns its reason.
+func notesNoReleaseReason(t *testing.T, args ...string) string {
+	t.Helper()
+	code, stdout, stderr := runGlyph(t, append([]string{"notes", "--json"}, args...)...)
+	if code != 1 {
+		t.Fatalf("notes %v exited %d, want 1 — the case must land nothing in a section\nstdout: %s\nstderr: %s", args, code, stdout, stderr)
+	}
+	var res struct {
+		Reason string `json:"reason"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+		t.Fatalf("notes --json stdout is not JSON: %v\n%s", err, stdout)
+	}
+	return res.Reason
+}
+
+// bumpNoReleaseVerdict runs `bump --json` with args, requires the none
+// verdict (exit 1) and returns it — the positive control for what
+// "participate" counts.
+func bumpNoReleaseVerdict(t *testing.T, args ...string) packagesVerdict {
+	t.Helper()
+	code, stdout, stderr := runGlyph(t, append([]string{"bump", "--json"}, args...)...)
+	if code != 1 {
+		t.Fatalf("bump %v exited %d, want 1\nstdout: %s\nstderr: %s", args, code, stdout, stderr)
+	}
+	return decodePackagesVerdict(t, stdout)
+}
+
+// wantBareLineReason requires the single line's spelling of the empty
+// reason: it ends at "none lands in a section" — "on any line" is said only
+// of lines, and a repository that declares none has no lines to say it of
+// (mutation row notes-bare-line-reason-says-on-any-line).
+func wantBareLineReason(t *testing.T, reason string) {
+	t.Helper()
+	if !strings.HasSuffix(reason, "none lands in a section") {
+		t.Errorf("the bare line's reason must end at \"none lands in a section\":\n%s", reason)
+	}
+}
+
 // TestNotesNoReleaseCountsParticipatingCommits: notes' no-release reason says
 // "N commit(s) participate", bump's words, so N is bump's set — the commits
 // the fold reads: not an exclude_authors author, matched, not claimed by a
@@ -216,32 +256,9 @@ func reasonCount(t *testing.T, reason string) int {
 // commit, bump said 2 and notes 4; with a message no pattern claims beside one
 // =, notes said 2 over a range the fold refuses; over a --since-tag walk of
 // one = and a bot, 2 against bump's 1; and under [[packages]], 4 where bump's
-// top-level commits lists 1. Mutation rows notes-reason-counts-the-raw-listing
-// (the single line) and notes-packages-reason-counts-the-raw-walk.
+// top-level commits lists 1. Mutation row notes-reason-counts-the-raw-listing;
+// the packages case is TestNotesPackagesNoReleaseCountsParticipatingCommits.
 func TestNotesNoReleaseCountsParticipatingCommits(t *testing.T) {
-	notesReason := func(t *testing.T, args ...string) string {
-		t.Helper()
-		code, stdout, stderr := runGlyph(t, append([]string{"notes", "--json"}, args...)...)
-		if code != 1 {
-			t.Fatalf("notes %v exited %d, want 1 — the case must land nothing in a section\nstdout: %s\nstderr: %s", args, code, stdout, stderr)
-		}
-		var res struct {
-			Reason string `json:"reason"`
-		}
-		if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-			t.Fatalf("notes --json stdout is not JSON: %v\n%s", err, stdout)
-		}
-		return res.Reason
-	}
-	bumpVerdict := func(t *testing.T, args ...string) packagesVerdict {
-		t.Helper()
-		code, stdout, stderr := runGlyph(t, append([]string{"bump", "--json"}, args...)...)
-		if code != 1 {
-			t.Fatalf("bump %v exited %d, want 1\nstdout: %s\nstderr: %s", args, code, stdout, stderr)
-		}
-		return decodePackagesVerdict(t, stdout)
-	}
-
 	t.Run("a range holding a bot and a merge commit", func(t *testing.T) {
 		dir, base := testRepo(t)
 		testCommit(t, dir, "akira-toriyama", ":memo:= document the notes model")
@@ -249,13 +266,15 @@ func TestNotesNoReleaseCountsParticipatingCommits(t *testing.T) {
 		mergeInto(t, dir, "akira-toriyama", "akira-toriyama", "topic", "Merge branch 'topic'", ":memo:= document the sections")
 		t.Chdir(dir)
 
-		b := bumpVerdict(t, "--range", base+"..HEAD")
+		b := bumpNoReleaseVerdict(t, "--range", base+"..HEAD")
 		if n := reasonCount(t, b.Reason); n != 2 || len(b.Commits) != 2 {
 			t.Fatalf("positive control: bump reads the two = alone, got %d in %q over %d row(s)", n, b.Reason, len(b.Commits))
 		}
-		if reason := notesReason(t, "--range", base+"..HEAD"); reasonCount(t, reason) != 2 {
+		reason := notesNoReleaseReason(t, "--range", base+"..HEAD")
+		if reasonCount(t, reason) != 2 {
 			t.Errorf("notes counts the bot and the merge commit as participating — bump says 2 of this range:\n%s", reason)
 		}
+		wantBareLineReason(t, reason)
 	})
 
 	t.Run("a message no pattern claims", func(t *testing.T) {
@@ -267,9 +286,11 @@ func TestNotesNoReleaseCountsParticipatingCommits(t *testing.T) {
 		if code, _, stderr := runGlyph(t, "bump", "--range", base+"..HEAD"); code != 3 {
 			t.Fatalf("positive control: the fold refuses this range at 3, got %d\nstderr: %s", code, stderr)
 		}
-		if reason := notesReason(t, "--range", base+"..HEAD"); reasonCount(t, reason) != 1 {
+		reason := notesNoReleaseReason(t, "--range", base+"..HEAD")
+		if reasonCount(t, reason) != 1 {
 			t.Errorf("a message the fold refuses is not one it reads, so it does not participate:\n%s", reason)
 		}
+		wantBareLineReason(t, reason)
 	})
 
 	t.Run("a since-tag walk", func(t *testing.T) {
@@ -280,34 +301,40 @@ func TestNotesNoReleaseCountsParticipatingCommits(t *testing.T) {
 		usePR(t, walkServer(t, map[string]string{commitPullsPath(pushed): `[]`}))
 		t.Chdir(dir)
 
-		b := bumpVerdict(t, "--since-tag")
+		b := bumpNoReleaseVerdict(t, "--since-tag")
 		if n := reasonCount(t, b.Reason); n != 1 {
 			t.Fatalf("positive control: bump reads the one =, got %d in %q", n, b.Reason)
 		}
-		if reason := notesReason(t, "--since-tag"); reasonCount(t, reason) != 1 {
+		reason := notesNoReleaseReason(t, "--since-tag")
+		if reasonCount(t, reason) != 1 {
 			t.Errorf("notes counts the bot as participating — bump says 1 of this walk:\n%s", reason)
 		}
+		wantBareLineReason(t, reason)
 	})
+}
 
-	t.Run("under packages", func(t *testing.T) {
-		dir, base := packagesRepo(t)
-		touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
-		touch(t, dir, "renovate[bot]", "Update dependency x to v2", "curry/go.mod")
-		testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic")
-		touch(t, dir, "renovate[bot]", "Update dependency y to v3", "haiku/go.mod")
-		testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
-		testGit(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", "Merge branch 'topic'", "topic")
-		t.Chdir(dir)
+// TestNotesPackagesNoReleaseCountsParticipatingCommits is the per-line arm
+// of TestNotesNoReleaseCountsParticipatingCommits, its own test so the
+// ledger row for the lines names a test holding only the packages assertion
+// (notes-packages-reason-counts-the-raw-walk).
+func TestNotesPackagesNoReleaseCountsParticipatingCommits(t *testing.T) {
+	dir, base := packagesRepo(t)
+	touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
+	touch(t, dir, "renovate[bot]", "Update dependency x to v2", "curry/go.mod")
+	testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic")
+	touch(t, dir, "renovate[bot]", "Update dependency y to v3", "haiku/go.mod")
+	testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
+	testGit(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", "Merge branch 'topic'", "topic")
+	t.Chdir(dir)
 
-		b := bumpVerdict(t, "--range", base+"..HEAD")
-		if len(b.Commits) != 1 {
-			t.Fatalf("positive control: bump's top-level commits lists the shared = alone, got %d row(s): %+v", len(b.Commits), b.Commits)
-		}
-		reason := notesReason(t, "--range", base+"..HEAD")
-		if reasonCount(t, reason) != 1 || !strings.Contains(reason, "none lands in a section on any line") {
-			t.Errorf("notes counts the bots and the merge commit as participating — bump lists 1 commit of this range:\n%s", reason)
-		}
-	})
+	b := bumpNoReleaseVerdict(t, "--range", base+"..HEAD")
+	if len(b.Commits) != 1 {
+		t.Fatalf("positive control: bump's top-level commits lists the shared = alone, got %d row(s): %+v", len(b.Commits), b.Commits)
+	}
+	reason := notesNoReleaseReason(t, "--range", base+"..HEAD")
+	if reasonCount(t, reason) != 1 || !strings.Contains(reason, "none lands in a section on any line") {
+		t.Errorf("notes counts the bots and the merge commit as participating — bump lists 1 commit of this range:\n%s", reason)
+	}
 }
 
 // TestNotesRequiresRange: notes with no input mode at all is usage. The

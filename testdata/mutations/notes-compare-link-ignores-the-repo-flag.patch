@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_notes.go b/internal/cli/cmd_notes.go
+index 7867f0a..cd344ff 100644
+--- a/internal/cli/cmd_notes.go
++++ b/internal/cli/cmd_notes.go
+@@ -156,7 +156,7 @@ func notesRun(ctx context.Context, o notesOptions) error {
+ 	}
+ 	var owner, repo, head string
+ 	if slices.ContainsFunc(said, func(b lineBody) bool { return b.base != "" }) {
+-		if owner, repo, head, err = notesLinkEnds(ctx, o.repo); err != nil {
++		if owner, repo, head, err = notesLinkEnds(ctx, ""); err != nil {
+ 			return err
+ 		}
+ 	}

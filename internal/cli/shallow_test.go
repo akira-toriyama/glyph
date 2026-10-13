@@ -54,8 +54,9 @@ func TestLintRangeOnAShallowCheckoutSaysSo(t *testing.T) {
 	})
 }
 
-// TestBumpAndNotesRangeOnAShallowCheckoutSaySo: a range read is a range read.
-// bump --range and notes --range list their commits with the same git log as
+// shallowRangeSaysSo is the body of the four shallow --range tests: a range
+// read is a range read. bump --range and notes --range list their commits
+// with the same git log as
 // lint --range, so on a shallow clone they too read only what the clone holds
 // — measured on a --depth 2 clone before this: bump printed a version and
 // notes rendered 2 of 5 commits, both at 0 with no shallow warning, where the
@@ -64,51 +65,75 @@ func TestLintRangeOnAShallowCheckoutSaysSo(t *testing.T) {
 // read and keep answering: they report, and release alone refuses a shallow
 // checkout. The full clone is the control: bump refuses, and nothing is said
 // about shallowness.
-func TestBumpAndNotesRangeOnAShallowCheckoutSaySo(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		build func(t *testing.T) string
-	}{
-		{"a single line", func(t *testing.T) string {
-			dir, _ := testRepo(t)
-			testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")
-			for i := range 3 {
-				testCommit(t, dir, "akira-toriyama", fmt.Sprintf(":bug:~ fix number %d", i))
-			}
-			return dir
-		}},
-		{"[[packages]]", func(t *testing.T) string {
-			dir, _ := packagesRepo(t)
-			touch(t, dir, "akira-toriyama", "no gitmoji in this one", "haiku/a.go")
-			for i := range 3 {
-				touch(t, dir, "akira-toriyama", fmt.Sprintf(":bug:(haiku)~ fix number %d", i), "haiku/haiku.go")
-			}
-			return dir
-		}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := tc.build(t)
-			clone := shallowClone(t, dir, 2)
-			for _, c := range []struct {
-				cmd  string
-				full int
-			}{{"bump", 3}, {"notes", 0}} {
-				t.Chdir(dir)
-				code, _, stderr := runGlyph(t, c.cmd, "--range", "HEAD")
-				if code != c.full || strings.Contains(stderr, "SHALLOW") {
-					t.Fatalf("%s --range on the full clone exited %d, want %d with nothing said about shallowness\nstderr: %s", c.cmd, code, c.full, stderr)
-				}
-				t.Chdir(clone)
-				code, _, stderr = runGlyph(t, c.cmd, "--range", "HEAD")
-				if code != 0 {
-					t.Fatalf("%s --range on a shallow clone exited %d, want 0 — it warns, never refuses\nstderr: %s", c.cmd, code, stderr)
-				}
-				if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "SHALLOW checkout") {
-					t.Fatalf("%s --range over a truncated history must say so:\n%s", c.cmd, stderr)
-				}
-			}
-		})
+//
+// One test per reader and shape, because the three ledger rows that defend
+// this decision now mutate the one read every reader shares (rangeLines):
+// a row names the test that holds only its own assertion, so that
+// assertion going missing is what turns the row red, not a sibling's.
+func shallowRangeSaysSo(t *testing.T, dir, cmd string, full int) {
+	t.Helper()
+	clone := shallowClone(t, dir, 2)
+	t.Chdir(dir)
+	code, _, stderr := runGlyph(t, cmd, "--range", "HEAD")
+	if code != full || strings.Contains(stderr, "SHALLOW") {
+		t.Fatalf("%s --range on the full clone exited %d, want %d with nothing said about shallowness\nstderr: %s", cmd, code, full, stderr)
 	}
+	t.Chdir(clone)
+	code, _, stderr = runGlyph(t, cmd, "--range", "HEAD")
+	if code != 0 {
+		t.Fatalf("%s --range on a shallow clone exited %d, want 0 — it warns, never refuses\nstderr: %s", cmd, code, stderr)
+	}
+	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "SHALLOW checkout") {
+		t.Fatalf("%s --range over a truncated history must say so:\n%s", cmd, stderr)
+	}
+}
+
+// shallowSingleRepo is the single-line fixture: one message no pattern
+// claims, then three fixes — the full clone refuses the range at 3, the
+// --depth 2 clone cannot see the refused commit.
+func shallowSingleRepo(t *testing.T) string {
+	t.Helper()
+	dir, _ := testRepo(t)
+	testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")
+	for i := range 3 {
+		testCommit(t, dir, "akira-toriyama", fmt.Sprintf(":bug:~ fix number %d", i))
+	}
+	return dir
+}
+
+// shallowPackagesRepo is the same shape under [[packages]], every commit on
+// the haiku line.
+func shallowPackagesRepo(t *testing.T) string {
+	t.Helper()
+	dir, _ := packagesRepo(t)
+	touch(t, dir, "akira-toriyama", "no gitmoji in this one", "haiku/a.go")
+	for i := range 3 {
+		touch(t, dir, "akira-toriyama", fmt.Sprintf(":bug:(haiku)~ fix number %d", i), "haiku/haiku.go")
+	}
+	return dir
+}
+
+// TestBumpRangeOnAShallowCheckoutSaysSo: bump --range on the bare line
+// (ledger row bump-range-is-silent-on-a-shallow-checkout).
+func TestBumpRangeOnAShallowCheckoutSaysSo(t *testing.T) {
+	shallowRangeSaysSo(t, shallowSingleRepo(t), "bump", 3)
+}
+
+// TestNotesRangeOnAShallowCheckoutSaysSo: notes --range on the bare line
+// (ledger row notes-range-is-silent-on-a-shallow-checkout).
+func TestNotesRangeOnAShallowCheckoutSaysSo(t *testing.T) {
+	shallowRangeSaysSo(t, shallowSingleRepo(t), "notes", 0)
+}
+
+// TestBumpPackagesRangeOnAShallowCheckoutSaysSo and its notes sibling: the
+// same read under [[packages]] (ledger row
+// packages-range-is-silent-on-a-shallow-checkout names both).
+func TestBumpPackagesRangeOnAShallowCheckoutSaysSo(t *testing.T) {
+	shallowRangeSaysSo(t, shallowPackagesRepo(t), "bump", 3)
+}
+
+func TestNotesPackagesRangeOnAShallowCheckoutSaysSo(t *testing.T) {
+	shallowRangeSaysSo(t, shallowPackagesRepo(t), "notes", 0)
 }
 
 // TestLintRangePackagesAtAShallowBoundaryIsNotReadAsTheWholeTree: the

@@ -1,13 +1,13 @@
-diff --git a/internal/cli/cmd_notes.go b/internal/cli/cmd_notes.go
-index 2c37a82..f129986 100644
---- a/internal/cli/cmd_notes.go
-+++ b/internal/cli/cmd_notes.go
-@@ -111,7 +111,7 @@ func notesInput(cmd *cobra.Command, cfg *config.Config) ([]notes.SigilCommit, st
- 	if err := checkRangeFlag(notesRange); err != nil {
- 		return nil, "", "", err
+diff --git a/internal/cli/lines.go b/internal/cli/lines.go
+index a494c0d..3108e52 100644
+--- a/internal/cli/lines.go
++++ b/internal/cli/lines.go
+@@ -727,7 +727,7 @@ func pendingWalk(ctx context.Context, cfg *config.Config, commits []walked, sour
+ // range is a landed identity, pending on every line, and attributed from
+ // local git.
+ func rangeLines(ctx context.Context, cfg *config.Config, revRange string) (sinceTagWalk, error) {
+-	raws, err := logRange(ctx, revRange)
++	raws, err := gitsource.Log(ctx, ".", revRange)
+ 	if err != nil {
+ 		return sinceTagWalk{}, err
  	}
--	raws, err := logRange(ctx, notesRange)
-+	raws, err := gitsource.Log(ctx, ".", notesRange)
- 	return noteCommits(raws, 0), notesRange, "", err
- }
- 

@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_bump.go b/internal/cli/cmd_bump.go
-index 0cd2003..0d32f73 100644
+index 1b6ddfd..827bb64 100644
 --- a/internal/cli/cmd_bump.go
 +++ b/internal/cli/cmd_bump.go
-@@ -265,7 +265,7 @@ func bumpLines(cmd *cobra.Command, cfg *config.Config) error {
- 		return core.NoReleasef("%s", reason).Quiet(bumpJSON)
+@@ -174,7 +174,7 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
+ 		reasons = append(reasons, lw.Package.Path+": "+pv.Reason)
+ 		pkgs = append(pkgs, pv)
  	}
- 	if bumpJSON {
--		printCompact(bumpResult{Commits: rows, Packages: pkgs, Reason: reason})
-+		printCompact(bumpResult{Current: pkgs[0].Current, Level: pkgs[0].Level, Next: pkgs[0].Next, Commits: rows, Packages: pkgs, Reason: reason})
- 		return nil
- 	}
- 	for _, tag := range tags {
+-	res := bumpResult{Commits: rows, Packages: pkgs, Reason: strings.Join(reasons, "; ")}
++	res := bumpResult{Current: pkgs[0].Current, Level: pkgs[0].Level, Next: pkgs[0].Next, Commits: rows, Packages: pkgs, Reason: strings.Join(reasons, "; ")}
+ 	switch {
+ 	case len(cfg.Packages) == 0:
+ 		one := pkgs[0]
