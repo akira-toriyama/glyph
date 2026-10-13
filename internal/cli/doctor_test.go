@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -923,15 +922,13 @@ func TestDoctorUnansweredAPIIsCouldNotRunNotAViolation(t *testing.T) {
 // tests that needs to cancel mid-run — the wiring a live SIGINT/SIGTERM uses.
 func runGlyphCtx(t *testing.T, ctx context.Context, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
-	var outBuf, errBuf bytes.Buffer
-	oldOut, oldErr := out, errOut
-	out, errOut = &outBuf, &errBuf
-	defer func() { out, errOut = oldOut, oldErr }()
+	outBuf, errBuf, restore := captureOut()
+	defer restore()
 
 	root := newRootCmd()
 	root.SetArgs(args)
-	root.SetOut(&errBuf)
-	root.SetErr(&errBuf)
+	root.SetOut(errBuf)
+	root.SetErr(errBuf)
 	code = finish(root.ExecuteContext(ctx))
 	return code, outBuf.String(), errBuf.String()
 }

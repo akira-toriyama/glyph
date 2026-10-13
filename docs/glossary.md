@@ -432,8 +432,12 @@ at all. It is also not a key on any `--json` surface — none of `{current, leve
 next, commits, reason}`, `{sections, reason}`, `{current, level, tag, target,
 body, action, url, commits, pulls, reason}` or `{current, untagged, level, next,
 pr, pending, body}` carries it, so a consumer that wants to know what was walked
-reads the flags it passed, not the verdict. `internal/cli/cmd_bump.go: bumpInput`,
-`internal/cli/cmd_notes.go: notesInput`, `internal/cli/pr.go: pullInput`
+reads the flags it passed, not the verdict. `internal/cli/lines.go: sinceTagWalk.Source`
+(the range walked, or the range or pull read in its place — what notes' reason,
+release's refusal of an unread walk and release's bare-line none reason name),
+`line.Source` (each line's own range, or on the bare line the walk's, the range's
+or the pull's name — what bump's and release's per-line reasons name),
+`internal/cli/pr.go: pullInput`
 
 **reason** — the one-line answer to "why this bump": the **oldest** commit that
 reaches the folded level. `internal/cli/cmd_bump.go: decidingReason`

@@ -1661,7 +1661,7 @@ header or footer), and the body six Go CLIs publish the same way (the ruling's
 census of the fleet clones, 2026-09-29) — a link composed by `release` alone
 would have skipped glyph's own page, the page it was measured missing from.
 `--range` and `--pr` render none, by the rule that has each source render only
-the citation it can attest (`notesInput`): a local range names no repository and
+the citation it can attest (`pendingLines`): a local range names no repository and
 a pull no release base. `notes --json` is unchanged — sections only, no link
 key; the link lives in composed bodies, `notes`' stdout and `release`'s `body`.
 Rejected: a GoReleaser `release.footer` over `{{ .PreviousTag }}`. GoReleaser's

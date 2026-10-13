@@ -13,14 +13,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	notesRange    string
-	notesPR       int
-	notesSinceTag string
-	notesRepo     string
-	notesJSON     bool
-)
-
 // notesResult is the machine verdict: {sections, reason} — plus packages
 // when the repository declares [[packages]], and then sections is EMPTY:
 // each line renders its own body (DESIGN §4.1), and the top-level sections
@@ -38,7 +30,17 @@ type packageNotes struct {
 	Sections []notes.SigilSection `json:"sections"`
 }
 
+// notesOptions is what one notes run was asked, snapshotted at RunE: the
+// input source and --json. Nothing below RunE reads a flag — notesRun is a
+// function of these alone (TestNotesRunsFromOptionsWithoutCobra).
+type notesOptions struct {
+	source
+	json bool
+}
+
 func newNotesCmd() *cobra.Command {
+	var f sourceFlags
+	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "notes",
 		Short: "Render section-grouped release notes from a range of commits",
@@ -72,87 +74,53 @@ func newNotesCmd() *cobra.Command {
 			"sections EMPTY. --pr is refused there (exit 2: a pull's listing carries\n" +
 			"messages and no files, so nothing can be attributed to a line).",
 		Args: sinceTagArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return notesRun(cmd)
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {
+				return err
+			}
+			return notesRun(cmd.Context(), notesOptions{source: sourceOf(cmd, f), json: asJSON})
 		},
 	}
-	cmd.Flags().StringVar(&notesRange, "range", "", "render notes for every commit in a git revision range (BASE..HEAD)")
-	cmd.Flags().IntVar(&notesPR, "pr", 0, "render notes from a pull request's individual (pre-squash) commits, read over the API")
-	addSinceTagFlag(cmd, &notesSinceTag, "render notes from")
-	cmd.Flags().StringVar(&notesRepo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY, else the origin remote)")
-	cmd.Flags().BoolVar(&notesJSON, "json", false, "emit the machine verdict {sections,reason}; with [[packages]] declared sections is empty and packages[] carries one body per line")
+	cmd.Flags().StringVar(&f.rng, "range", "", "render notes for every commit in a git revision range (BASE..HEAD)")
+	cmd.Flags().IntVar(&f.pull, "pr", 0, "render notes from a pull request's individual (pre-squash) commits, read over the API")
+	addSinceTagFlag(cmd, &f.tag, "render notes from")
+	cmd.Flags().StringVar(&f.repo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY, else the origin remote)")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit the machine verdict {sections,reason}; with [[packages]] declared sections is empty and packages[] carries one body per line")
 	markInputSourceFlags(cmd)
 	return cmd
-}
-
-// notesInput reads the commits the notes are rendered from — with the citation
-// each source can attest: the walk's per-commit pull, the --pr flag's own
-// number, the bare sha for a local range — and names the source for the reason
-// line. The notes twin of bumpInput, dispatching on whether a flag was set
-// rather than on its value.
-//
-// The third result is the compare link's base (line.BaseTag), the one more
-// citation only the walk attests: a resolved tag base and a repository. A
-// local range names no repository and a pull no release base, so both return
-// "" and their bodies close with no link.
-func notesInput(cmd *cobra.Command, cfg *config.Config) ([]notes.SigilCommit, string, string, error) {
-	ctx := cmd.Context()
-	if cmd.Flags().Changed("pr") {
-		raws, source, err := pullInput(ctx, notesPR, notesRepo)
-		return noteCommits(raws, notesPR), source, "", err
-	}
-	if cmd.Flags().Changed("since-tag") {
-		// The version base is bump's concern; the walk's facts are discarded for
-		// the reason spelled out at bump's own call site — notes REPORTS, and an
-		// incomplete walk already warns per cause on stderr. Nothing here writes
-		// back, so there is no irreversible act to gate.
-		w, err := sinceTagInput(ctx, cfg, notesSinceTag, notesRepo)
-		if err != nil {
-			return nil, "", "", err
-		}
-		return walkedNoteCommits(w.All), w.Source, w.Lines[0].BaseTag, nil
-	}
-	if err := checkRangeFlag(notesRange); err != nil {
-		return nil, "", "", err
-	}
-	raws, err := logRange(ctx, notesRange)
-	return noteCommits(raws, 0), notesRange, "", err
 }
 
 // notesLinkEnds is what a notes compare link needs beside its base: the
 // repository the walk queried — resolveRepo again, the answer the walk got —
 // and HEAD, the commit the walk read up to.
-func notesLinkEnds(ctx context.Context) (owner, repo, head string, err error) {
-	if owner, repo, err = resolveRepo(ctx, notesRepo); err != nil {
+func notesLinkEnds(ctx context.Context, repoFlag string) (owner, repo, head string, err error) {
+	if owner, repo, err = resolveRepo(ctx, repoFlag); err != nil {
 		return "", "", "", err
 	}
 	head, err = gitsource.Head(ctx, ".")
 	return owner, repo, head, err
 }
 
-// notesLines is notes for a repository that declares [[packages]]: one body
-// per line, each grouped over the commits that joined that line.
-// --pr is refused for the reason bump refuses it. stdout is the one line's
-// body when one line is selected (the tag-time rendering goreleaser.yml
-// performs, where a heading would be noise); with several lines each body
-// sits under a `# <path>` heading, the sections keeping their `##` below it,
-// in config order, lines with nothing to say omitted. Exit 1 only when no
-// line lands anything in a section.
-func notesLines(cmd *cobra.Command, cfg *config.Config) error {
-	ctx := cmd.Context()
-	var w sinceTagWalk
-	var err error
-	switch {
-	case cmd.Flags().Changed("pr"):
-		return refusePullSource(cfg)
-	case cmd.Flags().Changed("since-tag"):
-		w, err = sinceTagInput(ctx, cfg, notesSinceTag, notesRepo)
-	default:
-		if err = checkRangeFlag(notesRange); err != nil {
-			return err
-		}
-		w, err = rangeLines(ctx, cfg, notesRange)
+// notesRun is notes below its flags: the one walk result whatever the source
+// (readSource), one body per line, and the render. A repository without
+// [[packages]] walks as one bare line, so the per-line loop is the only loop
+// and the render alone tells the shapes apart: the bare line's sections are
+// --json's top level and its body stands alone on stdout, closed by the
+// compare link when the walk has a tag base — the body goreleaser.yml
+// publishes through --release-notes verbatim, so it closes with the link
+// release's drafts carry. With packages declared (DESIGN §4.1) --json's
+// sections is EMPTY and packages[] carries one body per line; stdout is the
+// one line's body when one line is selected (the tag-time rendering
+// goreleaser.yml performs, where a heading would be noise), and with several
+// lines each body sits under a `# <path>` heading, the sections keeping
+// their `##` below it, in config order, lines with nothing to say omitted.
+// Exit 1 only when no line lands anything in a section.
+func notesRun(ctx context.Context, o notesOptions) error {
+	cfg, err := loadConfig(ctx)
+	if err != nil {
+		return err
 	}
+	w, err := readSource(ctx, cfg, o.source)
 	if err != nil {
 		return err
 	}
@@ -176,26 +144,26 @@ func notesLines(cmd *cobra.Command, cfg *config.Config) error {
 		said = append(said, lineBody{path: lw.Package.Path, base: lw.BaseTag, notes: notes.RenderSigils(sections)})
 	}
 	if len(said) == 0 {
-		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section on any line", participating(cfg, walkedNoteCommits(w.All)), w.Source)
-		if notesJSON {
-			printCompact(notesResult{Sections: []notes.SigilSection{}, Packages: pkgs, Reason: reason})
+		reason := noNotesReason(cfg, participating(cfg, walkedNoteCommits(w.All)), w.Source)
+		if o.json {
+			printCompact(notesVerdict(cfg, pkgs, reason))
 		}
-		return core.NoReleasef("%s", reason).Quiet(notesJSON)
+		return core.NoReleasef("%s", reason).Quiet(o.json)
 	}
-	if notesJSON {
-		printCompact(notesResult{Sections: []notes.SigilSection{}, Packages: pkgs})
+	if o.json {
+		printCompact(notesVerdict(cfg, pkgs, ""))
 		return nil
 	}
 	var owner, repo, head string
 	if slices.ContainsFunc(said, func(b lineBody) bool { return b.base != "" }) {
-		if owner, repo, head, err = notesLinkEnds(ctx); err != nil {
+		if owner, repo, head, err = notesLinkEnds(ctx, o.repo); err != nil {
 			return err
 		}
 	}
 	bodies := make([]string, 0, len(said))
 	for _, b := range said {
 		// Each line's notes close with that line's own link (§4.1), under its
-		// heading.
+		// heading when there is more than one line to head.
 		body := compareLink(b.notes, owner, repo, b.base, head)
 		if len(w.Lines) > 1 {
 			body = "# " + b.path + "\n\n" + body
@@ -206,47 +174,25 @@ func notesLines(cmd *cobra.Command, cfg *config.Config) error {
 	return nil
 }
 
-func notesRun(cmd *cobra.Command) error {
-	if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {
-		return err
+// notesVerdict is the --json shape (notesResult): with [[packages]] declared
+// sections is EMPTY and packages[] carries one body per line; without, the
+// bare line's sections are the top level and packages is absent. reason
+// rides only on an empty verdict.
+func notesVerdict(cfg *config.Config, pkgs []packageNotes, reason string) notesResult {
+	if len(cfg.Packages) == 0 {
+		return notesResult{Sections: pkgs[0].Sections, Reason: reason}
 	}
-	cfg, err := loadConfig(cmd.Context())
-	if err != nil {
-		return err
-	}
+	return notesResult{Sections: []notes.SigilSection{}, Packages: pkgs, Reason: reason}
+}
+
+// noNotesReason is the empty verdict's reason line: the count is bump's
+// participating set in bump's words (participating), the source the walk's
+// own name, and "on any line" is said exactly when there are lines to say
+// it of.
+func noNotesReason(cfg *config.Config, participating int, source string) string {
+	s := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section", participating, source)
 	if len(cfg.Packages) > 0 {
-		return notesLines(cmd, cfg)
+		s += " on any line"
 	}
-	commits, source, base, perr := notesInput(cmd, cfg)
-	if perr != nil {
-		return perr
-	}
-
-	sections, nerr := notes.GroupSigils(commits, cfg)
-	if nerr != nil {
-		return nerr
-	}
-
-	if len(sections) == 0 {
-		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section", participating(cfg, commits), source)
-		if notesJSON {
-			printCompact(notesResult{Sections: []notes.SigilSection{}, Reason: reason})
-		}
-		return core.NoReleasef("%s", reason).Quiet(notesJSON)
-	}
-
-	if notesJSON {
-		printCompact(notesResult{Sections: sections})
-		return nil
-	}
-	var owner, repo, head string
-	if base != "" {
-		if owner, repo, head, err = notesLinkEnds(cmd.Context()); err != nil {
-			return err
-		}
-	}
-	// stdout is the body goreleaser.yml publishes through --release-notes
-	// verbatim, so it closes with the link release's drafts carry.
-	fmt.Fprint(out, compareLink(notes.RenderSigils(sections), owner, repo, base, head))
-	return nil
+	return s
 }

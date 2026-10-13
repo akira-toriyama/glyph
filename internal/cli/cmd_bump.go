@@ -11,15 +11,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	bumpRange    string
-	bumpPR       int
-	bumpSinceTag string
-	bumpRepo     string
-	bumpCurrent  string
-	bumpJSON     bool
-)
-
 // bumpResult is the machine verdict: {current, level, next, commits, reason}
 // — plus packages when the repository declares [[packages]].
 // next is omitted on a none verdict — there is no next version to act on.
@@ -54,7 +45,20 @@ type packageVerdict struct {
 	Reason  string              `json:"reason"`
 }
 
+// bumpOptions is what one bump run was asked, snapshotted at RunE: the input
+// source, --current and --json. Nothing below RunE reads a flag — bumpRun is
+// a function of these alone, so the verdict runs with no command built and
+// no flag parsed (TestBumpRunsFromOptionsWithoutCobra).
+type bumpOptions struct {
+	source
+	current string
+	json    bool
+}
+
 func newBumpCmd() *cobra.Command {
+	var f sourceFlags
+	var current string
+	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "bump",
 		Short: "Compute the next version from a range of commits",
@@ -89,142 +93,56 @@ func newBumpCmd() *cobra.Command {
 			"(--since-tag=<prefix>vX.Y.Z or below:, <prefix> being the line's tag\n" +
 			"prefix: haiku/, or nothing for the root package).",
 		Args: sinceTagArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return bumpRun(cmd)
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := checkNamingFlags(cmd, [][3]string{
+				{"current", "version", currentHint},
+				{"repo", "repository", repoHint},
+			}); err != nil {
+				return err
+			}
+			return bumpRun(cmd.Context(), bumpOptions{source: sourceOf(cmd, f), current: current, json: asJSON})
 		},
 	}
-	cmd.Flags().StringVar(&bumpRange, "range", "", "fold every commit in a git revision range (BASE..HEAD)")
-	cmd.Flags().IntVar(&bumpPR, "pr", 0, "fold a pull request's individual (pre-squash) commits, read over the API")
-	addSinceTagFlag(cmd, &bumpSinceTag, "fold")
-	cmd.Flags().StringVar(&bumpRepo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY, else the origin remote)")
-	cmd.Flags().StringVar(&bumpCurrent, "current", "", currentFlagUsage)
-	cmd.Flags().BoolVar(&bumpJSON, "json", false, "emit the machine verdict {current,level,next,commits,reason}; with [[packages]] declared current/level are empty, next is absent, and packages[] carries one verdict per line")
+	cmd.Flags().StringVar(&f.rng, "range", "", "fold every commit in a git revision range (BASE..HEAD)")
+	cmd.Flags().IntVar(&f.pull, "pr", 0, "fold a pull request's individual (pre-squash) commits, read over the API")
+	addSinceTagFlag(cmd, &f.tag, "fold")
+	cmd.Flags().StringVar(&f.repo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY, else the origin remote)")
+	cmd.Flags().StringVar(&current, "current", "", currentFlagUsage)
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit the machine verdict {current,level,next,commits,reason}; with [[packages]] declared current/level are empty, next is absent, and packages[] carries one verdict per line")
 	markInputSourceFlags(cmd)
 	return cmd
 }
 
-func bumpRun(cmd *cobra.Command) error {
-	if err := checkNamingFlags(cmd, [][3]string{
-		{"current", "version", currentHint},
-		{"repo", "repository", repoHint},
-	}); err != nil {
-		return err
-	}
-	ctx := cmd.Context()
+// bumpRun is bump below its flags: the one walk result whatever the source
+// (readSource), the union fold, one verdict per line, and the render. A
+// repository without [[packages]] walks as one bare line (pendingLines,
+// resolveLinesScoped), so the per-line loop is the only loop and the render
+// alone tells the shapes apart. The bare line's verdict IS the scalars —
+// its reason unprefixed, its next version bare on stdout — the pre-packages
+// surface byte for byte (mutation row packages-absent-changes-the-single-line).
+// With packages declared (DESIGN §4.1) the scalars stay empty, packages[]
+// carries one verdict per line, each folded over the commits that joined
+// that line and stepped from that line's own base, --current is accepted
+// only when one line is selected, and stdout is the next TAG of every line
+// that moves, one per line (haiku/v0.2.0 — the prefix is what a tag step
+// needs); exit 1 only when every line folds to none.
+func bumpRun(ctx context.Context, o bumpOptions) error {
 	cfg, err := loadConfig(ctx)
 	if err != nil {
 		return err
 	}
-	if len(cfg.Packages) > 0 {
-		return bumpLines(cmd, cfg)
-	}
-	raws, source, base, perr := bumpInput(cmd, cfg)
-	if perr != nil {
-		return perr
-	}
-
-	commits, dec, cerr := bump.FoldSigils(raws, cfg)
-	if cerr != nil {
-		return cerr
-	}
-	warnSigilVerdicts(commits)
-	current, verr := currentVersion(ctx, bumpCurrent, base, config.Line{})
-	if verr != nil {
-		return verr
-	}
-
-	if dec.Level == bump.LevelNone {
-		reason := noneReason(len(commits), source)
-		if bumpJSON {
-			printCompact(bumpResult{Current: current.String(), Level: string(dec.Level), Commits: commits, Reason: reason})
-		}
-		return core.NoReleasef("%s", reason).Quiet(bumpJSON)
-	}
-
-	next := current.Next(dec)
-	reason := decidingReason(commits, dec)
-	if bumpJSON {
-		printCompact(bumpResult{
-			Current: current.String(),
-			Level:   string(dec.Level),
-			Next:    next.String(),
-			Commits: commits,
-			Reason:  reason,
-		})
-		return nil
-	}
-	fmt.Fprintln(out, next.String())
-	return nil
-}
-
-// bumpInput reads the commits the verdict is computed from, names the source
-// for the reason line — a local revision range, a pull request's individual
-// (pre-squash) commits over the API, or the release walk since a tag — and,
-// when the source itself names a version (--since-tag), the base the bump
-// steps from. It dispatches on whether a flag was set, not on its value — so
-// an explicit --pr 0 (what a workflow yields from a null PR number) reaches
-// the --pr guard and is diagnosed as a bad --pr, not misrouted into a --range
-// complaint.
-func bumpInput(cmd *cobra.Command, cfg *config.Config) ([]bump.SigilCommit, string, *bump.Version, error) {
-	ctx := cmd.Context()
-	if cmd.Flags().Changed("pr") {
-		raws, source, err := pullInput(ctx, bumpPR, bumpRepo)
-		return sigilCommits(raws), source, nil, err
-	}
-	if cmd.Flags().Changed("since-tag") {
-		// Both halves of the walk's facts are discarded here, and for the same
-		// reason: bump REPORTS, it does not act. The expansion provenance is
-		// release's audit trail, and an incomplete walk is already a ::warning::
-		// per cause on stderr — the channel the operator and the Actions
-		// annotation layer both read. What made discarding it wrong for release
-		// is that release acts on its verdict irreversibly, which is why it
-		// fails loud (4) on an incomplete walk; bump writes nothing back, so
-		// the warning is the whole remedy. (preview is the exception among the
-		// readers: its answer is pasted into a pull request and read later by
-		// someone who never opens the log, so it carries the shortfall in the
-		// body itself.)
-		w, err := sinceTagInput(ctx, cfg, bumpSinceTag, bumpRepo)
-		return walkedSigilCommits(w.All), w.Source, w.Base, err
-	}
-	if err := checkRangeFlag(bumpRange); err != nil {
-		return nil, "", nil, err
-	}
-	raws, err := logRange(ctx, bumpRange)
-	return sigilCommits(raws), bumpRange, nil, err
-}
-
-// bumpLines is bump for a repository that declares [[packages]] (DESIGN
-// §4.1): one verdict per line, each folded over the commits that joined
-// that line and stepped from that line's own base. --pr is refused — a
-// pull's listing has no files to attribute — and --current is accepted only
-// when one line is selected. stdout is the next TAG of every line that
-// moves, one per line (haiku/v0.2.0 — the prefix is what a tag step needs);
-// exit 1 only when every line folds to none.
-func bumpLines(cmd *cobra.Command, cfg *config.Config) error {
-	ctx := cmd.Context()
-	var w sinceTagWalk
-	var err error
-	switch {
-	case cmd.Flags().Changed("pr"):
-		return refusePullSource(cfg)
-	case cmd.Flags().Changed("since-tag"):
-		w, err = sinceTagInput(ctx, cfg, bumpSinceTag, bumpRepo)
-	default:
-		if err = checkRangeFlag(bumpRange); err != nil {
-			return err
-		}
-		w, err = rangeLines(ctx, cfg, bumpRange)
-	}
+	w, err := readSource(ctx, cfg, o.source)
 	if err != nil {
 		return err
 	}
-	if err := checkLineSelection(bumpCurrent, w.Lines); err != nil {
+	if err := checkLineSelection(o.current, w.Lines); err != nil {
 		return err
 	}
 	// The union rows first: every walked commit is matched here, so a
 	// message no pattern claims refuses the walk BEFORE any line is folded
 	// (a wrong grammar cannot hide behind a wrong tree), and a shared-only =
-	// commit — on no line — still appears in what the walk read.
+	// commit — on no line — still appears in what the walk read. On the bare
+	// line the union is the line, and these rows are its rows.
 	rows, _, cerr := bump.FoldSigils(walkedSigilCommits(w.All), cfg)
 	if cerr != nil {
 		return cerr
@@ -237,7 +155,7 @@ func bumpLines(cmd *cobra.Command, cfg *config.Config) error {
 		if ferr != nil {
 			return ferr
 		}
-		current, verr := currentVersion(ctx, bumpCurrent, lw.Base, lw.Line)
+		current, verr := currentVersion(ctx, o.current, lw.Base, lw.Line)
 		if verr != nil {
 			return verr
 		}
@@ -256,16 +174,22 @@ func bumpLines(cmd *cobra.Command, cfg *config.Config) error {
 		reasons = append(reasons, lw.Package.Path+": "+pv.Reason)
 		pkgs = append(pkgs, pv)
 	}
-	reason := strings.Join(reasons, "; ")
-	if len(tags) == 0 {
-		reason = everyLineNone(reason)
-		if bumpJSON {
-			printCompact(bumpResult{Commits: rows, Packages: pkgs, Reason: reason})
-		}
-		return core.NoReleasef("%s", reason).Quiet(bumpJSON)
+	res := bumpResult{Commits: rows, Packages: pkgs, Reason: strings.Join(reasons, "; ")}
+	switch {
+	case len(cfg.Packages) == 0:
+		one := pkgs[0]
+		res = bumpResult{Current: one.Current, Level: one.Level, Next: one.Next, Commits: rows, Reason: one.Reason}
+	case len(tags) == 0:
+		res.Reason = everyLineNone(res.Reason)
 	}
-	if bumpJSON {
-		printCompact(bumpResult{Commits: rows, Packages: pkgs, Reason: reason})
+	if len(tags) == 0 {
+		if o.json {
+			printCompact(res)
+		}
+		return core.NoReleasef("%s", res.Reason).Quiet(o.json)
+	}
+	if o.json {
+		printCompact(res)
 		return nil
 	}
 	for _, tag := range tags {

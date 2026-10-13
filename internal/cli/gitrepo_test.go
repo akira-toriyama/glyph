@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"strings"
@@ -115,15 +114,13 @@ func testCommit(t *testing.T, dir, author, message string) {
 // what was written to the payload and diagnostic streams.
 func runGlyph(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
-	var outBuf, errBuf bytes.Buffer
-	oldOut, oldErr := out, errOut
-	out, errOut = &outBuf, &errBuf
-	defer func() { out, errOut = oldOut, oldErr }()
+	outBuf, errBuf, restore := captureOut()
+	defer restore()
 
 	root := newRootCmd()
 	root.SetArgs(args)
-	root.SetOut(&errBuf) // cobra's own usage/help output is diagnostics here
-	root.SetErr(&errBuf)
+	root.SetOut(errBuf) // cobra's own usage/help output is diagnostics here
+	root.SetErr(errBuf)
 	code = finish(root.Execute())
 	return code, outBuf.String(), errBuf.String()
 }
