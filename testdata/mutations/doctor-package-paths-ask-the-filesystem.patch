@@ -1,8 +1,8 @@
 diff --git a/internal/doctor/packages.go b/internal/doctor/packages.go
-index 3322ca4..fd6d8ee 100644
+index 4bf7207..df05bce 100644
 --- a/internal/doctor/packages.go
 +++ b/internal/doctor/packages.go
-@@ -77,7 +77,7 @@ func checkPackagePaths(path string, pathErr error, trees []string, treesErr erro
+@@ -66,7 +66,7 @@ func checkPackagePaths(root string, cfg *config.Config, trees []string, treesErr
  	for _, p := range cfg.Packages {
  		// The root package is HEAD's own tree, which any listing that
  		// answered implies.

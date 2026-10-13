@@ -1,0 +1,15 @@
+diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
+index 46a8c1f..1807ac4 100644
+--- a/internal/cli/cmd_doctor.go
++++ b/internal/cli/cmd_doctor.go
+@@ -321,9 +321,7 @@ func doctorRun(cmd *cobra.Command) error {
+ 	top, terr := gitsource.TopLevel(cmd.Context(), ".")
+ 	var cfg *config.Config
+ 	var cfgErr error
+-	if terr == nil {
+-		cfg, cfgErr = config.LoadFile(configPathAt(top))
+-	}
++	cfg, cfgErr = config.LoadFile(configPathAt(top))
+ 	// The tag list feeds the root-line check (DESIGN §4.1): which line the
+ 	// repository's bare v* tags are on is a config question, but whether any
+ 	// exist is git's to answer. A failure degrades that one check.

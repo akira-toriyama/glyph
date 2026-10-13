@@ -7,7 +7,8 @@ package doctor
 // history, and the walk never reads them), but it is the one migration
 // surprise a monorepo author meets first, and the fix is one declaration.
 // Tags are read by the caller (internal/cli owns every subprocess) and handed
-// over with their error, as the hooks directory is.
+// over with their error, as the hooks directory is; the declared lines come
+// from the glyph.toml the caller loaded once.
 
 import (
 	"fmt"
@@ -29,23 +30,11 @@ import (
 //     those tags baseline no line, and the note says which declaration
 //     adopts them. Never a failure — leaving history untouched is a
 //     legitimate choice.
-//   - The config unresolved or unloaded, or the tags unlistable → unknown:
-//     one of the two inputs was never observed.
-func checkRootLineTags(path string, pathErr error, tags []string, tagsErr error) Check {
+//   - The config not loaded (configUnread), or the tags unlistable →
+//     unknown: one of the two inputs was never observed.
+func checkRootLineTags(cfg *config.Config, tags []string, tagsErr error) Check {
 	c := Check{ID: IDRootLineTags, Expected: "every bare vX.Y.Z tag belongs to a declared line (no [[packages]], or a root package)"}
-	if pathErr != nil {
-		c.Status = StatusUnknown
-		c.Observed = fmt.Sprintf("git could not name this checkout's top level: %v", pathErr)
-		c.Message = "without glyph.toml's location the declared lines are unknown, so nothing can be said about which line a tag is on. Unverified, not a verdict"
-		c.Fix = "re-run from inside a git checkout of the repository being diagnosed"
-		return c
-	}
-	cfg, err := config.LoadFile(path)
-	if err != nil {
-		c.Status = StatusUnknown
-		c.Observed = "glyph.toml was not loaded (see " + IDConfigLoads + "), so its [[packages]] were never read"
-		c.Message = "unverified, not a verdict — this check reads the same file as " + IDConfigLoads + " and answers only once it loads"
-		c.Fix = "resolve " + IDConfigLoads + " and re-run"
+	if configUnread(&c, cfg) {
 		return c
 	}
 	if len(cfg.Packages) == 0 {

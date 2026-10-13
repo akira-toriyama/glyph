@@ -1,9 +1,9 @@
 diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
-index 0bae41e..6f361ad 100644
+index c7aa176..308484c 100644
 --- a/internal/cli/cmd_doctor.go
 +++ b/internal/cli/cmd_doctor.go
-@@ -160,7 +160,7 @@ func probeClaimed(ctx context.Context, configPath string, pathErr error) bool {
- 	if err != nil {
+@@ -144,7 +144,7 @@ func probeClaimed(ctx context.Context, cfg *config.Config) bool {
+ 	if cfg == nil {
  		return false
  	}
 -	v := cfg.LintAuthoring(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx, nil)))

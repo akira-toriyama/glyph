@@ -132,19 +132,16 @@ func newDoctorCmd() *cobra.Command {
 // message than the hook saw.
 const doctorProbeMessage = "this doctor probe matches no commit grammar\n"
 
-// probeClaimed asks whether the repository's own glyph.toml claims the probe
-// message, judged exactly as the fired hook's `lint --stdin` will judge it
-// (same cleanup mode, empty author). The mode is hookCleanupMode's with no
-// message file to ask about: the fired hook reads the probe's scratch file,
-// never git merge's MERGE_MSG, so both resolve commit.cleanup, commit.verbose
-// and GIT_EDITOR alike. Best-effort on purpose: an unloadable config is the
+// probeClaimed asks whether the repository's own glyph.toml (cfg, the one
+// doctorRun loaded; nil when it did not load) claims the probe message,
+// judged exactly as the fired hook's `lint --stdin` will judge it (same
+// cleanup mode, empty author). The mode is hookCleanupMode's with no message
+// file to ask about: the fired hook reads the probe's scratch file, never git
+// merge's MERGE_MSG, so both resolve commit.cleanup, commit.verbose and
+// GIT_EDITOR alike. Best-effort on purpose: an unloadable config is the
 // config check's finding, and this answers false rather than aborting the probe.
-func probeClaimed(ctx context.Context, configPath string, pathErr error) bool {
-	if pathErr != nil {
-		return false
-	}
-	cfg, err := config.LoadFile(configPath)
-	if err != nil {
+func probeClaimed(ctx context.Context, cfg *config.Config) bool {
+	if cfg == nil {
 		return false
 	}
 	v := cfg.LintAuthoring(cleanup.Apply(doctorProbeMessage, hookCleanupMode(ctx, nil)))
@@ -313,8 +310,20 @@ func doctorRun(cmd *cobra.Command) error {
 	probe := probeCommitMsgHook(cmd.Context(), hooksDir, herr)
 	// git also names the top level glyph.toml sits at — the same file loadConfig
 	// resolves for every verdict command, asked here for the same reason
-	// HooksDir is. A failure degrades the config check alone.
+	// HooksDir is. A failure degrades the config check alone, and the checks
+	// that read the loaded file with it. The file is loaded ONCE, here, and
+	// handed over loaded with the loader's error verbatim: the config check
+	// classifies the error; the package checks and the hook probe's claim
+	// read the loaded file, and no check opens it again (the fired hook's
+	// lint is its own process and reads it for itself). Outside a checkout
+	// nothing is loaded — the glyph.toml in the current directory is not the
+	// checkout's, and no verdict command reads it.
 	top, terr := gitsource.TopLevel(cmd.Context(), ".")
+	var cfg *config.Config
+	var cfgErr error
+	if terr == nil {
+		cfg, cfgErr = config.LoadFile(configPathAt(top))
+	}
 	// The tag list feeds the root-line check (DESIGN §4.1): which line the
 	// repository's bare v* tags are on is a config question, but whether any
 	// exist is git's to answer. A failure degrades that one check.
@@ -336,19 +345,17 @@ func doctorRun(cmd *cobra.Command) error {
 	if terr == nil {
 		actionFiles, actionErr = gitsource.ActionFiles(cmd.Context(), top)
 	}
-	configPath := ""
 	// The workflow scans read the checkout git itself names, so running doctor
 	// from a subdirectory works, and an absent .github/workflows under that
 	// root is an observed absence rather than a maybe-wrong cwd. Only when git
 	// cannot answer does the scan fall back to cwd — unverified, and the
 	// checks say so instead of passing vacuously.
-	root, rootVerified := ".", false
+	root := "."
 	if terr == nil {
-		configPath = configPathAt(top)
-		root, rootVerified = top, true
+		root = top
 	}
 	if probe != nil {
-		probe.Claimed = probeClaimed(cmd.Context(), configPath, terr)
+		probe.Claimed = probeClaimed(cmd.Context(), cfg)
 	}
 	remoteHeads, remoteRefless, headsErr := readRemoteHeads(cmd.Context(), hooksDir, herr)
 	// An interrupt is the user's own abort and must never be laundered into a
@@ -365,15 +372,15 @@ func doctorRun(cmd *cobra.Command) error {
 	report := doctor.Run(doctor.Input{
 		Repo:            owner + "/" + name,
 		Root:            root,
-		RootVerified:    rootVerified,
+		RootErr:         terr,
+		Config:          cfg,
+		ConfigErr:       cfgErr,
 		RepoObject:      repoObject,
 		RepoErr:         rerr,
 		TokenConfigured: githubToken() != "",
 		HooksDir:        hooksDir,
 		HooksErr:        herr,
 		CommitMsgProbe:  probe,
-		ConfigPath:      configPath,
-		ConfigPathErr:   terr,
 		Tags:            tags,
 		TagsErr:         tagsErr,
 		HeadTrees:       headTrees,
