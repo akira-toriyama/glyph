@@ -17,6 +17,12 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/core"
 )
 
+// withHTTPClient injects the HTTP client — an httptest.Server's Client(), one
+// object per server. It chooses how bytes move (transport, TLS, timeout); it
+// does NOT choose who may receive the token, because New re-installs the
+// origin gate over whatever is injected — see guardRedirects.
+func withHTTPClient(h *http.Client) Option { return func(c *Client) { c.http = h } }
+
 // newClient spins an httptest.Server for handler and returns a Client pointed at
 // it with the given token, using the server's own HTTP client. Retries are
 // disabled so every failure test exercises exactly one attempt — the retry
@@ -25,7 +31,7 @@ func newClient(t *testing.T, token string, handler http.HandlerFunc) *Client {
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	c := New(token, WithBaseURL(srv.URL), WithHTTPClient(srv.Client()))
+	c := New(token, WithBaseURL(srv.URL), withHTTPClient(srv.Client()))
 	c.retryDelays = nil
 	return c
 }
@@ -453,7 +459,7 @@ func TestOnlyDocumentedMethodsCarryAStatusOut(t *testing.T) {
 	}
 }
 
-// TestNewDefaultClientHasATimeout: without WithHTTPClient, New must not hand
+// TestNewDefaultClientHasATimeout: without withHTTPClient, New must not hand
 // out http.DefaultClient — it has no timeout, so a hung GitHub would block a
 // release job until the runner kills it, and the deadline→CodeAPI
 // classification above would never be reachable in production. The release
@@ -815,7 +821,7 @@ func TestRedirectOffTheConfiguredOriginIsRefused(t *testing.T) {
 			// the gate the request really does land there (a handshake failure
 			// would have hidden the leak this test is about). It reaches the plain
 			// origin server just as well.
-			c := New("s3cret", WithBaseURL(srv.URL), WithHTTPClient(target.Client()))
+			c := New("s3cret", WithBaseURL(srv.URL), withHTTPClient(target.Client()))
 			c.retryDelays = []time.Duration{0, 0, 0} // armed, and must go unused
 
 			pulls, err := c.CommitPulls(context.Background(), "o", "r", "s")
@@ -868,7 +874,7 @@ func TestSameOriginRedirectIsFollowedWithTheCredential(t *testing.T) {
 	t.Cleanup(srv.Close)
 	srvURL = srv.URL
 
-	c := New("s3cret", WithBaseURL(srv.URL), WithHTTPClient(srv.Client()))
+	c := New("s3cret", WithBaseURL(srv.URL), withHTTPClient(srv.Client()))
 	c.retryDelays = nil
 
 	pulls, err := c.CommitPulls(context.Background(), "o", "r", "s")
@@ -906,7 +912,7 @@ func TestRedirectLimitTerminates(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	c := New("s3cret", WithBaseURL(srv.URL), WithHTTPClient(srv.Client()))
+	c := New("s3cret", WithBaseURL(srv.URL), withHTTPClient(srv.Client()))
 	c.retryDelays = nil
 
 	_, err := c.CommitPulls(context.Background(), "o", "r", "s")
@@ -920,14 +926,14 @@ func TestRedirectLimitTerminates(t *testing.T) {
 	}
 }
 
-// TestGuardRedirectsCopiesTheInjectedClient pins the precedence WithHTTPClient
+// TestGuardRedirectsCopiesTheInjectedClient pins the precedence withHTTPClient
 // gets: the gate is installed on a COPY, so glyph's policy always wins for its
 // own requests (the credential is the Client's, not the transport's) while the
 // caller's client object — routinely shared, one per httptest.Server here — is
 // left exactly as it was handed in.
 func TestGuardRedirectsCopiesTheInjectedClient(t *testing.T) {
 	injected := &http.Client{Timeout: 7 * time.Second}
-	c := New("s3cret", WithHTTPClient(injected))
+	c := New("s3cret", withHTTPClient(injected))
 
 	if c.http == injected {
 		t.Fatal("New installed its redirect policy on the caller's own client instead of a copy")
@@ -939,7 +945,7 @@ func TestGuardRedirectsCopiesTheInjectedClient(t *testing.T) {
 		t.Fatal("an injected client escaped the origin gate: its redirects follow net/http's hostname-only rule")
 	}
 	if c.http.Timeout != injected.Timeout {
-		t.Fatalf("the copy's Timeout = %v, want the injected %v — WithHTTPClient still chooses how bytes move", c.http.Timeout, injected.Timeout)
+		t.Fatalf("the copy's Timeout = %v, want the injected %v — withHTTPClient still chooses how bytes move", c.http.Timeout, injected.Timeout)
 	}
 }
 

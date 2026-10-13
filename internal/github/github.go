@@ -104,13 +104,6 @@ type Option func(*Client)
 // httptest.Server). A trailing slash is trimmed so path joins stay clean.
 func WithBaseURL(u string) Option { return func(c *Client) { c.baseURL = strings.TrimRight(u, "/") } }
 
-// WithHTTPClient injects the HTTP client — an httptest.Server's Client() in
-// tests, or a rate-limit/timeout-tuned client in production. It chooses how
-// bytes move (transport, TLS, timeout); it does NOT choose who may receive the
-// token, because New re-installs the origin gate over whatever is injected —
-// see guardRedirects.
-func WithHTTPClient(h *http.Client) Option { return func(c *Client) { c.http = h } }
-
 // Client talks to one GitHub REST host with one credential.
 type Client struct {
 	baseURL string
@@ -126,7 +119,7 @@ type Client struct {
 // empty token still reads public repos, at the anonymous rate limit.
 //
 // The origin gate is installed LAST, after every option has run, so it covers a
-// client handed in by WithHTTPClient exactly as it covers the default one: the
+// client an option injected exactly as it covers the default one: the
 // invariant "this client speaks its credential only to the origin baseURL
 // names" has to hold for every Client this constructor returns, or it is not an
 // invariant. See guardRedirects for why an injected client's own policy loses.
@@ -142,13 +135,12 @@ func New(token string, opts ...Option) *Client {
 
 // guardRedirects returns h with checkRedirect installed as its redirect policy.
 //
-// It works on a shallow COPY and never mutates h. The client passed to
-// WithHTTPClient belongs to the caller and is routinely shared — every test in
-// this package hands in httptest.Server.Client(), one object per server, and a
-// production caller may well reuse one tuned client for several things —
-// so reaching into it to rewrite how it follows redirects is a side effect a
-// constructor has no business having. The copy carries Transport, Timeout, Jar
-// and the rest over untouched: those are what WithHTTPClient exists to choose.
+// It works on a shallow COPY and never mutates h. An injected client belongs
+// to the caller and is routinely shared — every test in this package hands in
+// httptest.Server.Client(), one object per server — so reaching into it to
+// rewrite how it follows redirects is a side effect a constructor has no
+// business having. The copy carries Transport, Timeout, Jar and the rest over
+// untouched: those are what injecting a client chooses.
 //
 // An injected CheckRedirect is deliberately REPLACED, not chained to and not
 // respected. The credential belongs to the Client, not to the transport: send
