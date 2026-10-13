@@ -1,0 +1,13 @@
+diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
+index 0071752..08ae404 100644
+--- a/internal/cli/sincetag.go
++++ b/internal/cli/sincetag.go
+@@ -1278,7 +1278,7 @@ func walkRefusal(wedges []wedge) error {
+ // that clears on retry. What was not read may hold more refused commits
+ // than the sentence counts. An interrupt carries out as itself.
+ func refusedFirst(wedges []wedge, err error) error {
+-	if len(wedges) == 0 || core.IsInterrupted(err) {
++	if true || len(wedges) == 0 || core.IsInterrupted(err) {
+ 		return err
+ 	}
+ 	warnf("the walk could not read the rest of the range (%v) — the refusal below is the verdict, and what was not read may hold more refused commits than it counts", err)

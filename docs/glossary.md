@@ -232,10 +232,14 @@ walkFacts.Pulls`
 
 **fallback path** — where a walked commit that resolved to *no* merged pull
 request is classified from its **own message** (a direct push, a local `git
-merge`, or the API not knowing the sha yet). Leniency is confined here and
-nowhere else: a message no pattern claims emits a `::warning::` and counts
-**none** — never a silent patch, never exit 3 (the hard refusal stays with the
-lint gate and the range fold; t-kbqx, so `internal/bump` stays pure). The v1
+merge`, or the API not knowing the sha yet). Leniency is confined to the
+**lag** arm — a sha GitHub has not indexed — and nowhere else: there a message
+no pattern claims emits a `::warning::`, counts **none** and is carried as a
+shortfall — never a silent patch, never exit 3 (t-kbqx, so `internal/bump`
+stays pure). A **direct push** GitHub knows is on the released branch for good,
+so an unclaimed message there is the walk's own refusal — exit 3 with the wedge
+escape at the commit itself, for every consumer of the walk, `notes` included
+(`internal/cli/sincetag.go: unclaimed, walkRefusal`). The v1
 exception here (Q10's footer/unknown-code normalization to `:boom:`) is
 superseded with the grammar that defined it: v2 normalizes nothing, and this
 path matches the commit's whole message through the pattern file like any
@@ -316,10 +320,11 @@ reads days later, and into the PR comment's caveat. `internal/cli/sincetag.go:
 walkFacts.shortfall`
 
 **wedge** — the state a repository is in when a commit that bypassed the lint
-gate sits inside a *resolved* pull request: the lint failure stays hard (exit 3,
-ratified Q1/t-2nzf — never a silent patch), and published history is immutable,
-so the **same** failure recurs on every future release until the walk starts past
-it. `internal/cli/sincetag.go: wedgeHint`
+gate sits inside a *resolved* pull request, or was pushed straight to the
+released branch: the lint failure stays hard (exit 3, ratified Q1/t-2nzf — never
+a silent patch), and published history is immutable, so the **same** failure
+recurs on every future release until the walk starts past it.
+`internal/cli/sincetag.go: unclaimed, wedge, walkRefusal`
 
 **wedge escape** — the base that clears a wedge, and which one depends on whether
 the offending commit is somewhere a tag can be cut. A merge- or rebase-merged
@@ -328,9 +333,12 @@ commit** clears it — the nearest escape, which matters because every commit
 between it and the merge point is one a farther base would silently drop. A
 **squash-merged** pull has no such commit: its commits exist only over the API
 and its one commit on main *is* its merge point, so nothing short of a base at or
-past that merge point works. The error message names the pull, the merge point,
-the base and why that base is the one. `internal/cli/sincetag.go: wedgeHint,
-onMain`
+past that merge point works. A commit pushed straight to the released branch
+is its own escape: a base at or past the commit itself. The error message names
+where the commit sits, the base and why that base is the one; with several
+refused commits it names the first, counts the rest, lists every one in
+`details` and names every wedge's escape (a pull's merge point is in no
+details row). `internal/cli/sincetag.go: wedge, walkRefusal, onMain`
 
 **package** — a declared subtree of the repository with a version line of its
 own: its own tags (`<prefix>vX.Y.Z`), its own walk base, its own rolling draft.

@@ -1,8 +1,8 @@
 diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index ef16960..4d42810 100644
+index 41f2efb..f0a4a86 100644
 --- a/internal/cli/sincetag.go
 +++ b/internal/cli/sincetag.go
-@@ -211,7 +211,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
+@@ -207,7 +207,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
  			revRange, base, err = wholeHistory(ctx, cfg, "no version tag in HEAD's history", "")
  			return revRange, "", base, err
  		}
@@ -10,4 +10,4 @@ index ef16960..4d42810 100644
 +		return latest + "..HEAD", v.String(), &v, nil
  	}
  	if rest, ok := strings.CutPrefix(tag, sinceTagBelow); ok {
- 		// checkSinceTagFlag guaranteed the bound parses ON ITS LINE before
+ 		// This is the single line, so a bound on any other line names a line

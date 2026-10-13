@@ -1,13 +1,13 @@
 diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index 1dac3f9..c50dfb1 100644
+index 41f2efb..a1a477f 100644
 --- a/internal/cli/sincetag.go
 +++ b/internal/cli/sincetag.go
-@@ -109,7 +109,7 @@ func checkSinceTagFlag(tag string) error {
- 		// resolveLinesScoped's question, asked once the config is loaded.
- 		bound := strings.TrimSpace(rest)
- 		prefix := bump.LinePrefix(bound)
--		if _, perr := bump.ParseBaseVersionOn(prefix, bound); perr != nil {
-+		if _, perr := bump.ParseVersionOn(prefix, bound); perr != nil {
- 			return core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
- 		}
- 		return nil
+@@ -254,7 +254,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
+ func belowBound(rest string) (bound, prefix string, v bump.Version, err error) {
+ 	bound = strings.TrimSpace(rest)
+ 	prefix = bump.LinePrefix(bound)
+-	v, perr := bump.ParseBaseVersionOn(prefix, bound)
++	v, perr := bump.ParseVersionOn(prefix, bound)
+ 	if perr != nil {
+ 		return "", "", bump.Version{}, core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
+ 	}

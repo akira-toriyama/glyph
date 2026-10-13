@@ -1,0 +1,13 @@
+diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
+index 0071752..c91413d 100644
+--- a/internal/cli/sincetag.go
++++ b/internal/cli/sincetag.go
+@@ -775,7 +775,7 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
+ 				// below compare like with like.
+ 				r.SHA = on
+ 			}
+-			if i, refused := wedged[r.SHA]; refused {
++			if i, refused := wedged[r.SHA]; false && refused {
+ 				// A refused commit a second pull lists (a stacked pull carries
+ 				// its base pull's commits) is one row with one more escape:
+ 				// this pull's merge point wedges too, and a base that clears

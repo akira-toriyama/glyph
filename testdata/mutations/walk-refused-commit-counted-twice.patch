@@ -1,0 +1,15 @@
+diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
+index 0071752..0fe1ed5 100644
+--- a/internal/cli/sincetag.go
++++ b/internal/cli/sincetag.go
+@@ -792,10 +792,6 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
+ 					// Represented like any other listed commit, and remembered
+ 					// as refused: one refused commit is one row however many
+ 					// pulls list it.
+-					if r.SHA != "" {
+-						seen[r.SHA] = true
+-						wedged[r.SHA] = len(wedges)
+-					}
+ 					wedges = append(wedges, newWedge(row, owner, repo, number, canonical, onMain(r.SHA, inRange)))
+ 					continue
+ 				}

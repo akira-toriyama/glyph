@@ -141,12 +141,9 @@ func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string,
 			lines = append(lines, l)
 		}
 	case strings.HasPrefix(tag, sinceTagBelow):
-		rest := strings.TrimSpace(strings.TrimPrefix(tag, sinceTagBelow))
-		prefix := bump.LinePrefix(rest)
-		// checkSinceTagFlag guaranteed the bound parses on its line.
-		bound, perr := bump.ParseBaseVersionOn(prefix, rest)
+		rest, prefix, bound, perr := belowBound(strings.TrimPrefix(tag, sinceTagBelow))
 		if perr != nil {
-			return nil, "", core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
+			return nil, "", perr
 		}
 		p, ok := packageOnLine(cfg, prefix, bound.Major)
 		if !ok {
@@ -672,7 +669,7 @@ func lineEscapes(c walked, reached []line) []string {
 	return escapes
 }
 
-// attributionWedge is wedgeHint's sibling for the two refusals attribution
+// attributionWedge is walkRefusal's sibling for the two refusals attribution
 // hands down (DESIGN §4.1, rule 3 and the contradiction): lint class, like
 // every message the walk refuses, and decorated with where the commit sits
 // and the escape PER LINE — a refused commit wedges every line whose range

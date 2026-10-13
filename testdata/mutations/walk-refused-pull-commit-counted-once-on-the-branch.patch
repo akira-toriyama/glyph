@@ -1,0 +1,13 @@
+diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
+index cdfbccb..b86176c 100644
+--- a/internal/cli/sincetag.go
++++ b/internal/cli/sincetag.go
+@@ -894,7 +894,7 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
+ 			facts.Dropped = append(facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
+ 			continue
+ 		}
+-		if i, refused := wedged[raw.SHA]; refused {
++		if i, refused := wedged[raw.SHA]; false && refused {
+ 			// Refused inside a pull the walk expanded earlier, and now met on
+ 			// the released branch itself: one row, one more escape — the
+ 			// commit is its own base here — and no "counted once" for a

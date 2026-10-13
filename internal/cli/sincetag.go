@@ -86,7 +86,7 @@ func checkSinceTagFlag(tag string) error {
 	if tag == sinceTagAuto {
 		return nil
 	}
-	if rest, ok := strings.CutPrefix(tag, sinceTagBelow); ok {
+	if rest, ok := strings.CutPrefix(strings.TrimSpace(tag), sinceTagBelow); ok {
 		// The bound must NAME a version — a predecessor is found by comparing
 		// under it, and there is no comparing under a tag that is not one. A
 		// workflow templating an unset variable produces the bare prefix, so
@@ -107,12 +107,8 @@ func checkSinceTagFlag(tag string) error {
 		// Parsed ON ITS LINE: a bound spelled haiku/v1.2.3 is version-shaped
 		// on the haiku/ line, and whether that line is declared is
 		// resolveLinesScoped's question, asked once the config is loaded.
-		bound := strings.TrimSpace(rest)
-		prefix := bump.LinePrefix(bound)
-		if _, perr := bump.ParseBaseVersionOn(prefix, bound); perr != nil {
-			return core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
-		}
-		return nil
+		_, _, _, err := belowBound(rest)
+		return err
 	}
 	if strings.TrimSpace(tag) == "" {
 		// A workflow templating an unset variable produces exactly this; auto
@@ -214,20 +210,19 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 		return latest + "..HEAD", latest, &v, nil
 	}
 	if rest, ok := strings.CutPrefix(tag, sinceTagBelow); ok {
-		// checkSinceTagFlag guaranteed the bound parses ON ITS LINE before
-		// anything ran; this is the single line, so a bound on any other
-		// line names a line this repository does not have (resolveLinesScoped
-		// answers for declared packages, and never reaches here with one).
-		// A pre-release bound compares as its base version — exact, not a
-		// rounding: see ParseBaseVersion for why the two select the same tag.
-		if prefix := bump.LinePrefix(strings.TrimSpace(rest)); prefix != "" {
-			return "", "", nil, core.Usagef("--since-tag=below:%s names the %s line, but this repository declares no [[packages]] — its one line is the bare vX.Y.Z tags", strings.TrimSpace(rest), prefix)
-		}
-		bound, perr := bump.ParseBaseVersion(strings.TrimSpace(rest))
+		// This is the single line, so a bound on any other line names a line
+		// this repository does not have (resolveLinesScoped answers for
+		// declared packages, and never reaches here with one). A pre-release
+		// bound compares as its base version — exact, not a rounding: see
+		// ParseBaseVersion for why the two select the same tag.
+		bound, prefix, under, perr := belowBound(rest)
 		if perr != nil {
-			return "", "", nil, core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
+			return "", "", nil, perr
 		}
-		prev, v, lerr := latestVersionTag(ctx, config.Line{}, &bound)
+		if prefix != "" {
+			return "", "", nil, core.Usagef("--since-tag=below:%s names the %s line, but this repository declares no [[packages]] — its one line is the bare vX.Y.Z tags", bound, prefix)
+		}
+		prev, v, lerr := latestVersionTag(ctx, config.Line{}, &under)
 		if lerr != nil {
 			return "", "", nil, lerr
 		}
@@ -235,7 +230,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 			// The repository's first release: nothing sits below it, and dying
 			// here would fail a job standing behind a tag that already exists.
 			// Same walk, same guard, as auto before the first tag.
-			revRange, base, err = wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s in HEAD's history", strings.TrimSpace(rest)), "")
+			revRange, base, err = wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s in HEAD's history", bound), "")
 			return revRange, "", base, err
 		}
 		return prev + "..HEAD", prev, &v, nil
@@ -248,6 +243,22 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
 		return tag + "..HEAD", baseTag, &v, nil
 	}
 	return tag + "..HEAD", baseTag, nil, nil
+}
+
+// belowBound parses what follows --since-tag=below: — the one place the
+// bound is read. bound is the tag as written (trimmed), prefix the line it
+// names, v its base version (a candidate's triple, ParseBaseVersionOn).
+// checkSinceTagFlag calls it to refuse the flag before anything runs;
+// sinceTagRange and resolveLinesScoped call it for the values, so the
+// refusal has one sentence and the two resolvers carry none of their own.
+func belowBound(rest string) (bound, prefix string, v bump.Version, err error) {
+	bound = strings.TrimSpace(rest)
+	prefix = bump.LinePrefix(bound)
+	v, perr := bump.ParseBaseVersionOn(prefix, bound)
+	if perr != nil {
+		return "", "", bump.Version{}, core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
+	}
+	return bound, prefix, v, nil
 }
 
 // sinceTagWalkCap bounds the whole-history walk: the most commits an untagged
@@ -678,6 +689,14 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
 	// squash commit inside the listing of the pull that later landed that
 	// branch.
 	seen := map[string]bool{}
+	// wedges is every commit the walk refused, from either arm. The refusal
+	// goes out after the WHOLE range is walked, as the fold's does
+	// (bump.Refusal): stopping at the first answered a cleanup of several
+	// commits with one red run per commit.
+	var wedges []wedge
+	// wedged is each refused sha's index in wedges, for a pull that lists a
+	// commit another pull already had refused.
+	wedged := map[string]int{}
 	// inRange is every SHA this walk will visit. It is what makes "covered"
 	// mean something checkable: a commit stands aside only for a pull whose
 	// canonical commit is IN HERE, so a pull left unexpanded at the end is a
@@ -720,11 +739,11 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
 	// inner commit no pattern claims would refuse the fold downstream anyway
 	// (same Match, same config — it cannot disagree), but down there the PR
 	// association is gone, and a bare per-commit refusal is uniquely unhelpful
-	// HERE — see wedgeHint.
+	// HERE — see wedge.
 	foldPull := func(number int, canonical string) error {
 		listing, perr := pullRawCommits(ctx, c, owner, repo, number)
 		if perr != nil {
-			return wedgeHint(perr, owner, repo, number, canonical, "")
+			return perr
 		}
 		// Asked HERE and not inside pullRawCommits, which the --pr path shares and
 		// which carries no facts: only a walk has a verdict that can be acted on
@@ -756,17 +775,29 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
 				// below compare like with like.
 				r.SHA = on
 			}
+			if i, refused := wedged[r.SHA]; refused {
+				// A refused commit a second pull lists (a stacked pull carries
+				// its base pull's commits) is one row with one more escape:
+				// this pull's merge point wedges too, and a base that clears
+				// the first pull's alone leaves the next run red on this one.
+				wedges[i].escapes = append(wedges[i].escapes, placeEscape(owner, repo, number, canonical, onMain(r.SHA, inRange)))
+				continue
+			}
 			if r.SHA != "" && seen[r.SHA] {
 				noticef("commit %.7s in pull request #%d is already represented in this walk (a stacked branch carries its base PR's pre-squash commits; a merge-merged PR's commits sit on main under these same SHAs; a sub-PR's squash commit rides inside the PR that landed its branch) — counted once", r.SHA, number)
 				continue
 			}
 			if !slices.Contains(cfg.ExcludeAuthors, r.Author) {
-				m, merr := cfg.Match(r.Message)
-				if merr != nil {
-					return wedgeHint(core.Lintf("commit %.7s: %v", r.SHA, merr), owner, repo, number, canonical, onMain(r.SHA, inRange))
-				}
-				if !m.Matched {
-					return wedgeHint(core.Lintf("commit %.7s: %s", r.SHA, cfg.UnclaimedDetail(m)), owner, repo, number, canonical, onMain(r.SHA, inRange))
+				if row, ok := unclaimed(cfg, r); ok {
+					// Represented like any other listed commit, and remembered
+					// as refused: one refused commit is one row however many
+					// pulls list it.
+					if r.SHA != "" {
+						seen[r.SHA] = true
+						wedged[r.SHA] = len(wedges)
+					}
+					wedges = append(wedges, newWedge(row, owner, repo, number, canonical, onMain(r.SHA, inRange)))
+					continue
 				}
 			}
 			if r.SHA != "" {
@@ -823,10 +854,10 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
 			unknown++
 			lag = true
 		case rerr != nil:
-			return nil, walkFacts{}, rerr
+			return nil, walkFacts{}, refusedFirst(wedges, rerr)
 		case found:
 			if ferr := foldPull(number, raw.SHA); ferr != nil {
-				return nil, walkFacts{}, ferr
+				return nil, walkFacts{}, refusedFirst(wedges, ferr)
 			}
 			// The canonical commit is now represented BY that expansion, so it
 			// joins the same set — recorded after the expansion, never before,
@@ -863,6 +894,14 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
 			facts.Dropped = append(facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
 			continue
 		}
+		if i, refused := wedged[raw.SHA]; refused {
+			// Refused inside a pull the walk expanded earlier, and now met on
+			// the released branch itself: one row, one more escape — the
+			// commit is its own base here — and no "counted once" for a
+			// commit that was not.
+			wedges[i].escapes = append(wedges[i].escapes, placeEscape(owner, repo, 0, "", raw.SHA))
+			continue
+		}
 		if raw.SHA != "" && seen[raw.SHA] {
 			noticef("commit %.7s was already folded in by a merged pull request — counted once", raw.SHA)
 			continue
@@ -877,24 +916,37 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
 			// the commit is dropped from the fold, warned about, and carried
 			// in facts.Dropped so release refuses to ACT on the incomplete
 			// walk while bump and notes merely report it.
-			if m, merr := cfg.Match(raw.Message); merr != nil || !m.Matched {
-				why := ""
-				if merr != nil {
-					why = merr.Error()
-				} else {
-					why = cfg.UnclaimedDetail(m)
-				}
-				warnf("commit %.7s is not known to GitHub yet (API lag) and its own message cannot be folded (%s) — nothing was counted from it; re-run once GitHub has indexed the commit", raw.SHA, why)
+			if row, ok := unclaimed(cfg, raw); ok {
+				warnf("commit %.7s is not known to GitHub yet (API lag) and its own message cannot be folded (%s) — nothing was counted from it; re-run once GitHub has indexed the commit", raw.SHA, row.Detail)
 				facts.Dropped = append(facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
 				continue
 			}
 			warnf("commit %.7s is not known to GitHub yet (API lag) — reading its own message", raw.SHA)
-		} else if m, merr := cfg.Match(raw.Message); merr != nil || !m.Matched || !m.Skip {
-			// A skip-pattern commit (a local git merge under the presets) is
-			// passed over in silence, as v1 skipped structural merges; every
-			// other fallback announces that a message, not a pull request, is
-			// the evidence.
-			warnf("commit %.7s has no merged pull request (a direct push, or the API lagging) — reading its own message", raw.SHA)
+		} else {
+			// Judged HERE, like a pull's inner commit, and for the same reason:
+			// bump's fold downstream would refuse the same message with the
+			// same Match (notes has no fold: it left the commit out of every
+			// section, or rendered its raw subject under a section that
+			// claimed its author), but the fold's remedy is authoring's (fix
+			// the message, add a pattern — right for --range and --pr), and
+			// this commit is on the released branch, where the only way out
+			// is a base at or past it. The refusal is the wedge's, with the
+			// escape at the commit itself.
+			if row, ok := unclaimed(cfg, raw); ok {
+				if raw.SHA != "" {
+					seen[raw.SHA] = true
+					wedged[raw.SHA] = len(wedges)
+				}
+				wedges = append(wedges, newWedge(row, owner, repo, 0, "", raw.SHA))
+				continue
+			}
+			if m, merr := cfg.Match(raw.Message); merr != nil || !m.Matched || !m.Skip {
+				// A skip-pattern commit (a local git merge under the presets)
+				// is passed over in silence, as v1 skipped structural merges;
+				// every other fallback announces that a message, not a pull
+				// request, is the evidence.
+				warnf("commit %.7s has no merged pull request (a direct push, or the API lagging) — reading its own message", raw.SHA)
+			}
 		}
 		if raw.SHA != "" {
 			seen[raw.SHA] = true
@@ -942,6 +994,9 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
 		// context) looks like. Still a soft fallback — but named, so the
 		// misconfiguration is findable in the log.
 		warnf("all %d commit(s) in %s were unknown to %s/%s — unless they were pushed moments ago, check that --repo/$GITHUB_REPOSITORY names the repository this checkout belongs to", visited, revRange, owner, repo)
+	}
+	if len(wedges) > 0 {
+		return nil, walkFacts{}, walkRefusal(wedges)
 	}
 	return commits, facts, nil
 }
@@ -1088,21 +1143,41 @@ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.Ra
 	return landed, nil
 }
 
-// wedgeHint decorates a lint failure surfaced while expanding a merged PR on
-// the release walk (ratified Q1/t-2nzf: such failures stay hard — never a
-// silent patch). A bare per-commit lint line is uniquely unhelpful here: the
-// caller never named a PR (the walk resolved it), and published history is
-// immutable, so the SAME failure — a commit that bypassed the lint gate —
-// wedges every future release until the walk range moves past it. The message
-// therefore names the pull request and the escape. Non-lint failures pass
-// through untouched.
+// unclaimed judges a walked commit against the pattern file — a message that
+// yields no sigil, or one no pattern (or an unlandable one) claims — and
+// returns it as the refusal's details row ({sha, subject, detail}, the shape
+// every refusal of the gate code carries). ok is false when the commit is
+// claimed. Both arms of the walk ask it, the pull's listing and the released
+// branch's own commit, so the two can never word the same commit differently.
+func unclaimed(cfg *config.Config, c gitsource.RawCommit) (row rangeViolation, ok bool) {
+	m, merr := cfg.Match(c.Message)
+	detail := ""
+	switch {
+	case merr != nil:
+		detail = merr.Error()
+	case !m.Matched:
+		detail = cfg.UnclaimedDetail(m)
+	default:
+		return rangeViolation{}, false
+	}
+	return rangeViolation{SHA: c.SHA, Subject: bump.FirstLine(c.Message), Detail: detail}, true
+}
+
+// wedge is one commit the release walk refused — inside a merged pull the
+// walk resolved, or on the released branch itself — with where it sits and
+// the base that clears it (ratified Q1/t-2nzf: such failures stay hard, never
+// a silent patch). A bare per-commit lint line is uniquely unhelpful here:
+// the caller never named a PR (the walk resolved it), and published history
+// is immutable, so the SAME failure — a commit that bypassed the lint gate —
+// wedges every future release until the walk range moves past it.
 //
 // "Published history", not "squash history": since a merge commit resolves
 // (t-7zt7), the offending commit is just as often one a merge-merged PR put on
-// main under its own SHA. Neither shape is rewritable on a branch other repos
-// have pulled — but a message that named only squashes read as inapplicable to
-// exactly the repositories where this newly happens, which is the worst moment
-// to sound like someone else's problem.
+// main under its own SHA, and since the walk judges its own commits it is a
+// direct push too. None is rewritable on a branch other repos have pulled —
+// but a message that named only squashes read as inapplicable to exactly the
+// repositories where this newly happens, which is the worst moment to sound
+// like someone else's problem.
 //
 // WHERE THE ESCAPE POINTS depends on whether the offending commit is somewhere a
 // tag can be cut, and onMain is what answers that. A merge- or rebase-merged
@@ -1111,7 +1186,10 @@ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.Ra
 // offending commit clears the wedge, the intuitive escape, restored. A
 // SQUASH-merged pull has no such commit: its listing exists only over the API,
 // its one commit on main IS its merge point, and nothing short of a base at or
-// past that merge point stops the walk from re-fetching the whole listing.
+// past that merge point stops the walk from re-fetching the whole listing. A
+// direct push is on the branch by definition, so it is its own escape. A commit
+// two pulls list (a stacked pull carries its base pull's) has one escape per
+// pull: each merge point wedges on its own.
 //
 // That distinction used to be invisible, and the cost was a hint that lied by
 // omission. Before mainFootprint, expanding a pull re-read its entire listing
@@ -1121,18 +1199,101 @@ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.Ra
 // it both still exited 3). Now both subtests exit 0, so pointing a merge-merged
 // pull at its merge point would throw away every commit between — a short
 // release recommended by glyph itself.
-func wedgeHint(err error, owner, repo string, number int, mergePoint, offending string) error {
-	ce := core.AsError(err)
-	if ce == nil || ce.Code != core.CodeLint {
-		return err
+type wedge struct {
+	row     rangeViolation
+	where   string
+	escapes []escape
+}
+
+// escape is one base that clears a wedge: the sha, why that base is the one,
+// and the pull the commit was refused inside ("" for a direct push).
+type escape struct {
+	base, why, via string
+}
+
+// newWedge places a refused commit: number is the pull the walk resolved it
+// from (0 for a commit the API resolves to no pull), mergePoint that pull's
+// merge point, and offending the commit's own sha when it is on the released
+// branch (onMain), "" when it lives only in the pull's listing.
+func newWedge(row rangeViolation, owner, repo string, number int, mergePoint, offending string) wedge {
+	e := placeEscape(owner, repo, number, mergePoint, offending)
+	where := "pushed straight to the released branch (no merged pull request resolves it)"
+	if number > 0 {
+		where = fmt.Sprintf("inside merged pull request %s/%s#%d, which the release walk resolved from its merge point %.7s", owner, repo, number, mergePoint)
 	}
-	base, why := mergePoint, "the pull request was squash-merged, so its commits exist only over the API and re-reading the listing is the only way the walk sees them at all; its ONE commit on the released branch is that merge point"
-	if offending != "" {
-		base, why = offending, "the offending commit is itself on the released branch (the pull was merge- or rebase-merged), and the walk no longer folds back a listed commit that landed outside the range"
+	return wedge{row: row, where: where, escapes: []escape{e}}
+}
+
+// placeEscape is the base that clears one refusal, by the shape newWedge
+// describes.
+func placeEscape(owner, repo string, number int, mergePoint, offending string) escape {
+	switch {
+	case number == 0:
+		return escape{base: offending, why: "the commit is on the released branch itself"}
+	case offending != "":
+		// Stated as the fact the walk measured (the commit is on the
+		// branch and in range), not as the merge method it implies: a
+		// squash pull's listing can hold a commit that also sits on main.
+		return escape{base: offending, why: "the offending commit is itself on the released branch, and the walk no longer folds back a listed commit that landed outside the range", via: fmt.Sprintf("%s/%s#%d", owner, repo, number)}
+	default:
+		return escape{base: mergePoint, why: "the pull request was squash-merged, so its commits exist only over the API and re-reading the listing is the only way the walk sees them at all; its ONE commit on the released branch is that merge point", via: fmt.Sprintf("%s/%s#%d", owner, repo, number)}
+	}
+}
+
+// walkRefusal is the walk's one refusal, built once the whole range is
+// walked: the first refused commit's sentence and where it sits, the count
+// of the rest, every refused commit in details, and every distinct escape —
+// a base must clear all of them, and a pull's merge point is in no details
+// row (the row names the inner commit, which a squash put on no branch), so
+// the sentence is the only place a reader learns it. With one escape the
+// sentence is the single-commit one; with several, each escape names the
+// commit and pull it clears.
+func walkRefusal(wedges []wedge) error {
+	first := wedges[0]
+	more := ""
+	if n := len(wedges) - 1; n > 0 {
+		more = fmt.Sprintf(" (+%d more refused commit(s), all in details)", n)
+	}
+	rows := make([]rangeViolation, 0, len(wedges))
+	var escapes []string
+	named := map[string]bool{}
+	for _, w := range wedges {
+		rows = append(rows, w.row)
+		for _, e := range w.escapes {
+			if named[e.base] {
+				continue
+			}
+			named[e.base] = true
+			of := ""
+			if e.via != "" {
+				of = " of " + e.via
+			}
+			escapes = append(escapes, fmt.Sprintf("%.7s (commit %.7s%s) — %s", e.base, w.row.SHA, of, e.why))
+		}
+	}
+	there := "at or past all of them"
+	if len(escapes) == 1 {
+		escapes[0] = fmt.Sprintf("%.7s — %s", first.escapes[0].base, first.escapes[0].why)
+		there = "there"
 	}
 	return core.Lintf(
-		"%s — inside merged pull request %s/%s#%d, which the release walk resolved from its merge point %.7s; the commit is already on a published branch and cannot be rewritten, so every release wedges here until the walk starts past it. The walk must start AT OR PAST %.7s — %s. Cut a release tag there by hand, or name such a tag with an explicit --since-tag=TAG (DESIGN §4)",
-		ce.Msg, owner, repo, number, mergePoint, base, why).WithDetails(ce.Details)
+		"commit %.7s: %s%s — %s; the commit is already on a published branch and cannot be rewritten, so every release wedges here until the walk starts past it. The walk must start AT OR PAST %s. Cut a release tag %s by hand, or name such a tag with an explicit --since-tag=TAG (DESIGN §4)",
+		first.row.SHA, first.row.Detail, more, first.where, strings.Join(escapes, ", and AT OR PAST "), there).WithDetails(rows)
+}
+
+// refusedFirst is the error a walk that already refused a commit hands down
+// when it then fails to read the rest: the refusal, with the failure said on
+// stderr — the range holds a commit that wedges it whatever else it holds,
+// and the walk that stopped at the first refusal never read past it either,
+// so a 4 here would hide a verdict the operator must act on behind a failure
+// that clears on retry. What was not read may hold more refused commits
+// than the sentence counts. An interrupt carries out as itself.
+func refusedFirst(wedges []wedge, err error) error {
+	if len(wedges) == 0 || core.IsInterrupted(err) {
+		return err
+	}
+	warnf("the walk could not read the rest of the range (%v) — the refusal below is the verdict, and what was not read may hold more refused commits than it counts", err)
+	return walkRefusal(wedges)
 }
 
 // onMain reports the sha a wedge escape can be cut at: the commit itself when

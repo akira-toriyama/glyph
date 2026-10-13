@@ -1,0 +1,19 @@
+diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
+index 0071752..1cbcd8c 100644
+--- a/internal/cli/sincetag.go
++++ b/internal/cli/sincetag.go
+@@ -924,14 +924,6 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
+ 			// this commit is on the released branch, where the only way out
+ 			// is a base at or past it. The refusal is the wedge's, with the
+ 			// escape at the commit itself.
+-			if row, ok := unclaimed(cfg, raw); ok {
+-				if raw.SHA != "" {
+-					seen[raw.SHA] = true
+-					wedged[raw.SHA] = len(wedges)
+-				}
+-				wedges = append(wedges, newWedge(row, owner, repo, 0, "", raw.SHA))
+-				continue
+-			}
+ 			if m, merr := cfg.Match(raw.Message); merr != nil || !m.Matched || !m.Skip {
+ 				// A skip-pattern commit (a local git merge under the presets)
+ 				// is passed over in silence, as v1 skipped structural merges;
