@@ -1,8 +1,8 @@
-diff --git a/internal/github/generatenotes.go b/internal/github/generatenotes.go
-index 80923cf..d380ea4 100644
---- a/internal/github/generatenotes.go
-+++ b/internal/github/generatenotes.go
-@@ -67,7 +67,7 @@ func (c *Client) GenerateNotes(ctx context.Context, owner, repo string, p NotesP
+diff --git a/internal/github/generatenotes_test.go b/internal/github/generatenotes_test.go
+index 5c5ba8e..6b2a3fb 100644
+--- a/internal/github/generatenotes_test.go
++++ b/internal/github/generatenotes_test.go
+@@ -69,7 +69,7 @@ func (c *Client) GenerateNotes(ctx context.Context, owner, repo string, p NotesP
  // pullURLRE finds the pull a generated line cites: generate-notes writes each
  // entry as "* <title> by @<login> in https://<host>/<owner>/<repo>/pull/<n>",
  // so the /pull/<n> path segment is the machine-readable part of the prose.

@@ -1,13 +1,13 @@
 diff --git a/internal/hook/hook.go b/internal/hook/hook.go
-index 67a5ce9..96b7bd7 100644
+index b79506c..deaa159 100644
 --- a/internal/hook/hook.go
 +++ b/internal/hook/hook.go
-@@ -121,7 +121,7 @@ if ! command -v glyph >/dev/null 2>&1; then
+@@ -113,7 +113,7 @@ if ! command -v glyph >/dev/null 2>&1; then
  	exit 0
  fi
  
--glyph hook pre-push%[3]s -- "$@"
-+git rev-list --not --remotes | glyph hook pre-push%[3]s -- "$@"
+-glyph hook pre-push -- "$@"
++git rev-list --not --remotes | glyph hook pre-push -- "$@"
  status=$?
  
  # %[2]d is glyph's commit-convention violation code — the one answer that should
