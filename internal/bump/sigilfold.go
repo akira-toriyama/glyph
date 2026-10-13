@@ -57,13 +57,15 @@ type SigilVerdict struct {
 	Warn    string `json:"warn,omitempty"`
 }
 
-// Refusal is one commit the fold refused, in the machine error's details.
-// The WHOLE range is walked before the refusal goes out: stopping at the
-// first unreadable commit answered a three-commit cleanup with three
-// separate red runs (measured — the caller re-ran lint in a loop to find
-// the rest).
+// Refusal is one finding about a commit or a message: every row of a
+// machine error's details that names one (doctor's details are check ids),
+// and lint's warned rows, share this shape; SHA is empty for a message that
+// is no commit yet (lint --message, a pull request's title). The fold walks
+// the WHOLE range before its refusal goes out: stopping at the first
+// unreadable commit answered a three-commit cleanup with three separate red
+// runs (measured — the caller re-ran lint in a loop to find the rest).
 type Refusal struct {
-	SHA     string `json:"sha"`
+	SHA     string `json:"sha,omitempty"`
 	Subject string `json:"subject"`
 	Detail  string `json:"detail"`
 }

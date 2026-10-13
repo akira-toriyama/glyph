@@ -241,7 +241,7 @@ func lintOne(message string, cfg *config.Config) error {
 		return nil
 	}
 	return core.Lintf("1 commit-convention violation").
-		WithDetails([]rangeViolation{{Subject: bump.FirstLine(message), Detail: v.Reason}})
+		WithDetails([]bump.Refusal{{Subject: bump.FirstLine(message), Detail: v.Reason}})
 }
 
 // lintPRRun lints the one line of a pull request a squash merge writes into
@@ -281,7 +281,7 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 	errorf("%s/%s#%d title: %s", owner, repo, number, v.Reason)
 	return core.Lintf("1 commit-convention violation in the title of %s/%s#%d — a squash merge records this title as the landed commit's subject",
 		owner, repo, number).
-		WithDetails([]rangeViolation{{Subject: pull.Title, Detail: v.Reason}})
+		WithDetails([]bump.Refusal{{Subject: pull.Title, Detail: v.Reason}})
 }
 
 // lintRaws lints raw commits, returning every finding, every warned-but-clean
@@ -305,7 +305,7 @@ func lintPRRun(ctx context.Context, number int, repoFlag string) error {
 // this checkout can read, so its attribution is not asked and the commit is
 // warned about instead — at both gates, like a warned pattern. The error is
 // git failing to read a diff (API).
-func lintRaws(ctx context.Context, raws []gitsource.RawCommit, cfg *config.Config) (findings, warned []rangeViolation, checked int, err error) {
+func lintRaws(ctx context.Context, raws []gitsource.RawCommit, cfg *config.Config) (findings, warned []bump.Refusal, checked int, err error) {
 	for _, raw := range raws {
 		v := cfg.Lint(raw.Message, raw.Author)
 		if v.Excluded {
@@ -313,11 +313,11 @@ func lintRaws(ctx context.Context, raws []gitsource.RawCommit, cfg *config.Confi
 		}
 		checked++
 		if !v.OK {
-			findings = append(findings, rangeViolation{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message), Detail: v.Reason})
+			findings = append(findings, bump.Refusal{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message), Detail: v.Reason})
 			continue
 		}
 		if v.Warn != "" {
-			warned = append(warned, rangeViolation{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message), Detail: v.Warn})
+			warned = append(warned, bump.Refusal{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message), Detail: v.Warn})
 		}
 		if len(cfg.Packages) == 0 {
 			continue
@@ -325,12 +325,12 @@ func lintRaws(ctx context.Context, raws []gitsource.RawCommit, cfg *config.Confi
 		reason, aerr := lintAttribution(ctx, raw, cfg)
 		switch {
 		case gitsource.IsShallowBoundary(aerr):
-			warned = append(warned, rangeViolation{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message),
+			warned = append(warned, bump.Refusal{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message),
 				Detail: "its parents are not in this shallow clone, so its own diff cannot be read and the [[packages]] attribution was not checked — fetch the full history (fetch-depth: 0) to judge it"})
 		case aerr != nil:
 			return nil, nil, 0, aerr
 		case reason != "":
-			findings = append(findings, rangeViolation{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message), Detail: reason})
+			findings = append(findings, bump.Refusal{SHA: raw.SHA, Subject: bump.FirstLine(raw.Message), Detail: reason})
 		}
 	}
 	return findings, warned, checked, nil
@@ -357,15 +357,6 @@ func lintAttribution(ctx context.Context, raw gitsource.RawCommit, cfg *config.C
 		return aerr.Error(), nil
 	}
 	return "", nil
-}
-
-// rangeViolation is one finding, anchored to its commit where one exists.
-// The v1 rule-id vocabulary is gone with the embedded grammar: a v2 finding
-// is the config's own sentence about why the message means nothing under it.
-type rangeViolation struct {
-	SHA     string `json:"sha,omitempty"`
-	Subject string `json:"subject"`
-	Detail  string `json:"detail"`
 }
 
 // lintRangeRun lints every commit in revRange. Excluded authors are skipped,

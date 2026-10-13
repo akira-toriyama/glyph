@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/akira-toriyama/glyph/v5/internal/bump"
 	"github.com/akira-toriyama/glyph/v5/internal/core"
 	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
@@ -111,7 +112,7 @@ func TestLintRangeRefusesUnlandable(t *testing.T) {
 		t.Fatalf("lint --range exited %d, want 3\nstderr: %s", code, stderr)
 	}
 	env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "\n{")+1:])
-	var details []rangeViolation
+	var details []bump.Refusal
 	if err := json.Unmarshal(env.Details, &details); err != nil {
 		t.Fatalf("details: %v", err)
 	}
@@ -137,7 +138,7 @@ func TestLintPRRefusesUnlandable(t *testing.T) {
 		t.Fatalf("lint --pr = %d stdout %q, want 3\nstderr: %s", code, stdout, stderr)
 	}
 	env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "\n{")+1:])
-	var details []rangeViolation
+	var details []bump.Refusal
 	if err := json.Unmarshal(env.Details, &details); err != nil {
 		t.Fatalf("details: %v", err)
 	}
@@ -332,7 +333,7 @@ func TestPackagesFixupIsUnlandableEndToEnd(t *testing.T) {
 			t.Fatalf("lint --range = %d, want 3 — green here is curry's change left at none\nstderr: %s", code, stderr)
 		}
 		env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "\n{")+1:])
-		var details []rangeViolation
+		var details []bump.Refusal
 		if err := json.Unmarshal(env.Details, &details); err != nil {
 			t.Fatalf("details: %v", err)
 		}

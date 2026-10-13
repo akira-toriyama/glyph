@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/akira-toriyama/glyph/v5/internal/bump"
 	"github.com/akira-toriyama/glyph/v5/internal/core"
 	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
 	"github.com/akira-toriyama/glyph/v5/internal/hook"
@@ -283,7 +284,7 @@ func prePushRun(ctx context.Context, args []string) error {
 		return nil
 	}
 
-	var blocking []rangeViolation
+	var blocking []bump.Refusal
 	for _, f := range findings {
 		if onDefault[f.SHA] {
 			blocking = append(blocking, f)
@@ -318,7 +319,7 @@ func prePushRun(ctx context.Context, args []string) error {
 }
 
 // summariseFindings folds the findings onto the one line an annotation is.
-func summariseFindings(fs []rangeViolation) string {
+func summariseFindings(fs []bump.Refusal) string {
 	parts := make([]string, 0, len(fs))
 	for _, f := range fs {
 		parts = append(parts, fmt.Sprintf("%.7s %s", f.SHA, f.Detail))

@@ -1149,7 +1149,7 @@ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.Ra
 // every refusal of the gate code carries). ok is false when the commit is
 // claimed. Both arms of the walk ask it, the pull's listing and the released
 // branch's own commit, so the two can never word the same commit differently.
-func unclaimed(cfg *config.Config, c gitsource.RawCommit) (row rangeViolation, ok bool) {
+func unclaimed(cfg *config.Config, c gitsource.RawCommit) (row bump.Refusal, ok bool) {
 	m, merr := cfg.Match(c.Message)
 	detail := ""
 	switch {
@@ -1158,9 +1158,9 @@ func unclaimed(cfg *config.Config, c gitsource.RawCommit) (row rangeViolation, o
 	case !m.Matched:
 		detail = cfg.UnclaimedDetail(m)
 	default:
-		return rangeViolation{}, false
+		return bump.Refusal{}, false
 	}
-	return rangeViolation{SHA: c.SHA, Subject: bump.FirstLine(c.Message), Detail: detail}, true
+	return bump.Refusal{SHA: c.SHA, Subject: bump.FirstLine(c.Message), Detail: detail}, true
 }
 
 // wedge is one commit the release walk refused — inside a merged pull the
@@ -1200,7 +1200,7 @@ func unclaimed(cfg *config.Config, c gitsource.RawCommit) (row rangeViolation, o
 // pull at its merge point would throw away every commit between — a short
 // release recommended by glyph itself.
 type wedge struct {
-	row     rangeViolation
+	row     bump.Refusal
 	where   string
 	escapes []escape
 }
@@ -1215,7 +1215,7 @@ type escape struct {
 // from (0 for a commit the API resolves to no pull), mergePoint that pull's
 // merge point, and offending the commit's own sha when it is on the released
 // branch (onMain), "" when it lives only in the pull's listing.
-func newWedge(row rangeViolation, owner, repo string, number int, mergePoint, offending string) wedge {
+func newWedge(row bump.Refusal, owner, repo string, number int, mergePoint, offending string) wedge {
 	e := placeEscape(owner, repo, number, mergePoint, offending)
 	where := "pushed straight to the released branch (no merged pull request resolves it)"
 	if number > 0 {
@@ -1254,7 +1254,7 @@ func walkRefusal(wedges []wedge) error {
 	if n := len(wedges) - 1; n > 0 {
 		more = fmt.Sprintf(" (+%d more refused commit(s), all in details)", n)
 	}
-	rows := make([]rangeViolation, 0, len(wedges))
+	rows := make([]bump.Refusal, 0, len(wedges))
 	var escapes []string
 	named := map[string]bool{}
 	for _, w := range wedges {
