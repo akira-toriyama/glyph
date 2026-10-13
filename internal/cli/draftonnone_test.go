@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/draftplan"
@@ -147,5 +148,32 @@ func TestReleaseDraftOnNoneOffConvergesThePlaceholderAway(t *testing.T) {
 	}
 	if _, ok := raw["tag"]; ok {
 		t.Errorf("a converged-away none verdict must carry no tag key: %s", stdout)
+	}
+}
+
+// TestReleaseDraftOnNoneReasonIsTheNoneReason: a maintained none's reason is
+// the none reason — what bump and every packages line answer, and what
+// release.yml prints as the run's notice — not the oldest = commit, which
+// the single line's own path once named (`<sha> = "subject" → none`,
+// measured on dfc1740). Neither spelling was pinned, which is how the two
+// paths diverged unseen (U15 review).
+func TestReleaseDraftOnNoneReasonIsTheNoneReason(t *testing.T) {
+	walk := noneWalk(t)
+	enableDraftOnNone(t)
+	usePR(t, dryServer(t, walk))
+
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--json")
+	if code != 1 {
+		t.Fatalf("release exited %d, want 1 (no release is due)\nstderr: %s", code, stderr)
+	}
+	var v struct {
+		Tag    string `json:"tag"`
+		Reason string `json:"reason"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout)
+	}
+	if v.Tag != draftplan.PlaceholderTag || !strings.HasPrefix(v.Reason, "no release: 1 commit(s) participate in ") || !strings.HasSuffix(v.Reason, " and every level is none") {
+		t.Fatalf("tag %q, reason %q — a maintained none reports the none reason, not its oldest = commit", v.Tag, v.Reason)
 	}
 }

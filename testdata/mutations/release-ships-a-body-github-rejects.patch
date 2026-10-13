@@ -1,19 +1,19 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 92869f4..b36158e 100644
+index 23141f2..033b0d0 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -261,14 +261,6 @@ func releaseRun(cmd *cobra.Command) error {
- 	// that prose was silently destroyed on the next push (t-qgps).
- 	plan := draftplan.PlanDraft(config.Line{}, dec.Level, tagName, cfg.Note.DraftOnNone, planInput(releases))
- 	body = composeDraftBody(keptBody(plan.Keep, releases), body)
--	// Sized BEFORE the dry-run fork: a dry run previews the real run, and a
--	// body the real run refuses must fail the preview identically. Sized over
--	// the FINAL body, hand region and compare link included — a human can
--	// write the draft over the limit, and the refusal must name it before the
--	// API does.
--	if serr := checkReleaseBody(body); serr != nil {
--		return serr
--	}
- 
- 	stale := staleReleases(plan.Stale)
- 	result := releaseResult{
+@@ -353,14 +353,6 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 		// next push (t-qgps).
+ 		plan := draftplan.PlanDraft(lw.Line, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
+ 		body = composeDraftBody(keptBody(plan.Keep, releases), body)
+-		// Sized BEFORE the dry-run fork: a dry run previews the real run, and
+-		// a body the real run refuses must fail the preview identically. Sized
+-		// over the FINAL body, hand region and compare link included — a human
+-		// can write the draft over the limit, and the refusal must name it
+-		// before the API does.
+-		if serr := checkReleaseBody(body); serr != nil {
+-			return serr
+-		}
+ 		pv.Tag, pv.Body, pv.Action = tagName, body, string(plan.Action)
+ 		stale = append(stale, staleReleases(plan.Stale)...)
+ 		drafts = append(drafts, lineDraft{at: len(verdicts), plan: plan, params: github.ReleaseParams{TagName: tagName, Target: target, Name: tagName, Body: body, Draft: true}})

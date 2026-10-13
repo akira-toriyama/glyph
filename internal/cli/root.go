@@ -7,8 +7,8 @@
 // Until t-gr7f extracts them it also holds the release walk of DESIGN §4 and
 // §4.1 (sincetag.go, lines.go, linestep.go: the range past the tag, the
 // squash→pull expansion and its footprints, which lines each commit joins, the
-// step on each line) and the release's write sequencing (cmd_release.go,
-// release_lines.go: carrying out the draft plan against GitHub, in order).
+// step on each line) and the release's write sequencing (cmd_release.go:
+// carrying out the draft plan against GitHub, in order).
 //
 // It holds no copy of: a message's meaning (internal/config's pattern match),
 // the lattice, the fold and Version.Next (internal/bump), grouping and

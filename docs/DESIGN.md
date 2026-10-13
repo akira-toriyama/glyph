@@ -1787,7 +1787,8 @@ from local git or the API, and partitions the walk per line, so `bump` and `note
 answer per line over `--since-tag` and `--range` (the `packages` array
 below, scalars empty or absent), `lint --range` and the pre-push hook apply rules 2–3
 and the contradiction check; and the drafts (t-qecb): `release` converges
-one rolling draft per line (`internal/cli/release_lines.go` — every line's
+one rolling draft per line (`internal/cli/cmd_release.go: releaseRun`, one
+loop over the lines, the bare line among them — every line's
 upsert before any stray, the single line's bare draft deleted as residue,
 the footer on every draft, `packages[]` in the verdict with the scalars
 empty); and the preview (t-npye): `preview --pr` attributes the pull's
@@ -2632,7 +2633,15 @@ a run that an interrupt cuts short — an interrupt is never absorbed — has
 spent itself on the verdict first
 (`TestReleasePackagesFailedResidualStrandsNoOtherDelete`; mutation rows
 `release-packages-failed-residual-strands-the-other-deletes.patch` and
-`release-packages-strays-go-before-the-residuals.patch`).
+`release-packages-strays-go-before-the-residuals.patch`). The bare line is
+one line of the same loop since U15 (t-radc), so its own second residual is
+tried too: its separate path returned at the first failure (measured
+2026-10-13 on dfc1740 with `DELETE 11` answered 422: `DELETE 11`, exit 4,
+draft 12 left standing; now `DELETE 11, DELETE 12`, exit 4, the second named —
+`TestReleaseNoneTriesEveryResidual`). With it the bare line took the rest of
+the packages rule: a maintained none's `reason` (`draft_on_none`) is the none
+reason that `bump` and every packages line already give, not its oldest `=`
+commit.
 `--footer-file` appends to every draft (one install block per repository is
 what every caller passes today; a per-package footer is a knob nobody has
 asked for and is recorded here so its absence is a decision).
@@ -2969,9 +2978,9 @@ gate having judged nothing.
 One command sits deliberately off the `1` rung: for `preview`, `none` is a real
 answer to the question asked — *what would merging this do?* — so a none verdict
 exits `0` there. `core.CodeNoRelease` is constructed in `cmd_bump.go`,
-`cmd_notes.go`, `cmd_release.go` and `release_lines.go` (the packages release,
-§4.1: `1` only when every line folds to none), and nowhere else. Outside Go the integers
-are branched on in several places — `lint.yml` on `0` and on
+`cmd_notes.go` and `cmd_release.go` (`releaseExit` — §4.1: `1` only when every
+line folds to none, the bare line being the one line), and nowhere else.
+Outside Go the integers are branched on in several places — `lint.yml` on `0` and on
 `jq -e '.error.code == 3'`, `release.yml` and `goreleaser.yml` on `1` — but the
 generated commit-msg hook is the one such consumer glyph WRITES, so its gate code
 is interpolated from `core.CodeLint` rather than typed as a shell literal; it

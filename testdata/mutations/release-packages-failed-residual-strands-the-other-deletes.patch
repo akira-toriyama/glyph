@@ -1,8 +1,8 @@
-diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
-index 28a1d78..d907fb3 100644
---- a/internal/cli/release_lines.go
-+++ b/internal/cli/release_lines.go
-@@ -301,7 +301,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 23141f2..88cca48 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -476,7 +476,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
  		case core.IsInterrupted(derr):
  			return derr
  		case residualErr == nil:

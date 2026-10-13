@@ -1,13 +1,13 @@
-diff --git a/internal/cli/release_lines.go b/internal/cli/release_lines.go
-index 9aa6cc2..0281a10 100644
---- a/internal/cli/release_lines.go
-+++ b/internal/cli/release_lines.go
-@@ -219,7 +219,7 @@ func releaseLines(ctx context.Context, cmd *cobra.Command, cfg *config.Config, f
- 	// exactly when a draft is upserted — the single line's rule. The gate is
- 	// the draft count, never moving: a draft_on_none placeholder is a draft
- 	// that points at target too.
--	if len(drafts) > 0 {
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 8a21f7e..c1ad318 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -526,7 +526,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ // points at target too.
+ func newReleaseResult(cfg *config.Config, w sinceTagWalk, rows []bump.SigilVerdict, verdicts []packageRelease, target string, drafted bool, moving int) releaseResult {
+ 	res := releaseResult{Commits: rows, Pulls: w.Facts.Pulls}
+-	if drafted {
 +	if moving > 0 {
- 		result.Target = target
+ 		res.Target = target
  	}
- 	// finish is the exit once stdout is written: exit 1 when no line moves,
+ 	if len(cfg.Packages) == 0 {

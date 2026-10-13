@@ -1,25 +1,36 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index d8bf1cb..94bc868 100644
+index 23141f2..4196cb6 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -293,6 +293,9 @@ func releaseRun(cmd *cobra.Command) error {
- 		Body:    body,
- 		Draft:   true,
- 	}
-+	if cerr := convergeStrays(ctx, gh, owner, repoName, stale); cerr != nil {
-+		return cerr
+@@ -433,6 +433,15 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 	// Every line's upsert lands before any draft is deleted: a failure here
+ 	// leaves the lines already written standing and exits 4 — nothing was
+ 	// destroyed, and the next run heals the rest.
++	for _, s := range stale {
++		went, cerr := convergeStray(ctx, gh, owner, repoName, s)
++		if cerr != nil {
++			return cerr
++		}
++		if went {
++			residueGone(s)
++		}
 +	}
- 	var rel github.Release
- 	var werr error
- 	if plan.Keep != nil {
-@@ -305,10 +308,6 @@ func releaseRun(cmd *cobra.Command) error {
+ 	urls := make([]string, 0, len(drafts))
+ 	for i, d := range drafts {
+ 		var rel github.Release
+@@ -481,15 +490,6 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 			warnf("the residual draft %s (release id %d) would not go either: %v — the run fails on the first that would not, and the next run tries every one again", s.TagName, s.ID, derr)
+ 		}
  	}
- 	noticef("draft release %s %sd at %s (unpublished — the tag is created at that commit when a human publishes): %s", tagName, plan.Action, target, rel.URL)
- 
--	if cerr := convergeStrays(ctx, gh, owner, repoName, stale); cerr != nil {
--		return cerr
+-	for _, s := range stale {
+-		went, cerr := convergeStray(ctx, gh, owner, repoName, s)
+-		if cerr != nil {
+-			return cerr
+-		}
+-		if went {
+-			residueGone(s)
+-		}
 -	}
--
- 	result.URL = rel.URL
- 	if releaseJSON {
- 		printCompact(result)
+ 	if residualErr != nil {
+ 		return residualErr
+ 	}

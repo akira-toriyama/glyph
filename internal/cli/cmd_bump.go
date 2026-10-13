@@ -208,21 +208,36 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
 // base branch's latest release therefore steps from its fork point's release
 // (DESIGN §4).
 func currentVersion(ctx context.Context, flag string, base *bump.Version, l config.Line) (bump.Version, error) {
-	if flag != "" {
-		v, err := bump.ParseVersion(flag)
-		if err != nil {
-			return bump.Version{}, core.Usagef("--current: %v", err)
-		}
+	v, err := parseCurrent(flag)
+	if err != nil {
+		return bump.Version{}, err
+	}
+	if v != nil {
 		if !l.Holds(v.Major) {
 			return bump.Version{}, core.Usagef("--current %s is not on the %s line, which holds no v%d.* version — name a version the line can step from", v, l.Label(), v.Major)
 		}
-		return v, nil
+		return *v, nil
 	}
 	if base != nil {
 		return *base, nil
 	}
-	_, v, err := latestVersionTag(ctx, l, nil)
-	return v, err
+	_, latest, err := latestVersionTag(ctx, l, nil)
+	return latest, err
+}
+
+// parseCurrent reads --current: nil when the flag is absent, the version it
+// names, or usage (2) — the caller's input. release asks before the releases
+// listing is fetched, so a malformed flag is answered 2 even when that
+// listing would fail at 4.
+func parseCurrent(flag string) (*bump.Version, error) {
+	if flag == "" {
+		return nil, nil
+	}
+	v, err := bump.ParseVersion(flag)
+	if err != nil {
+		return nil, core.Usagef("--current: %v", err)
+	}
+	return &v, nil
 }
 
 // warnSigilVerdicts surfaces each folded commit's pattern warning
