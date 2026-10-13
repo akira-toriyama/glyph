@@ -669,7 +669,7 @@ func lineEscapes(c walked, reached []line) []string {
 	return escapes
 }
 
-// attributionWedge is wedgeHint's sibling for the two refusals attribution
+// attributionWedge is walkRefusal's sibling for the two refusals attribution
 // hands down (DESIGN §4.1, rule 3 and the contradiction): lint class, like
 // every message the walk refuses, and decorated with where the commit sits
 // and the escape PER LINE — a refused commit wedges every line whose range

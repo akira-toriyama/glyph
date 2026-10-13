@@ -1703,12 +1703,31 @@ source of truth); enforcing the squash **subject** as an aggregate (lossy — on
 line can't carry N grouped entries); owning the squash **body** via
 `COMMIT_MESSAGES` (kept only as an optional drift alarm, never the primary).
 
-Fallbacks never hard-fail a release: a direct-push commit or an API lag emits a
-`::warning::` and classifies the squash commit's own message under the pattern
-file. On this fallback path only, a message no pattern claims also degrades to
-a `::warning::` and counts **none** — never a silent patch, and never exit 3:
-the hard refusal stays with the lint gate and the range fold (§2, §3), and the
-downgrade is owned by the walk assembly, keeping `internal/bump` pure. The v1
+A commit the API resolves to no merged pull is read from its own message under
+the pattern file, a claimed one with a `::warning::` saying so (a skip-pattern
+merge in silence). Which fallback it is decides
+what an unclaimed message does. A commit GitHub has **not indexed yet** (API
+lag) is the one soft arm: its true content is a pull the walk cannot see, so
+the commit is dropped from the fold with a `::warning::`, counts **none**, and
+is carried as a shortfall (`release` refuses to act on it; `bump` and `notes`
+report it) — never a silent patch, and never exit 3 for the minutes GitHub
+lags. A **direct push** GitHub knows and resolves to nothing is on the released
+branch for good, so an unclaimed message there is refused at 3 by the walk's
+own refusal, the same producer as a pull's inner commit, with the escape at the
+commit itself (`internal/cli/sincetag.go: unclaimed, wedge, walkRefusal`). The
+refusal is the walk's, so every consumer of the walk answers it — `bump`,
+`release`, `preview` and `notes` alike (`notes` has no fold: before the walk
+judged its own commits it left such a commit out of every section, or rendered
+its raw subject under a `[[note.sections]]` entry that claimed its author) —
+and it goes out once the
+whole range is walked, every refused commit in `details` and every wedge's
+escape in the sentence, and a refusal already found outranks a later failure to
+read the rest (the walk that stopped at the first refusal never read past it
+either). It precedes the incomplete-walk refusal (§4, exit 4): a range the walk
+refuses to version is not a range it hands a verdict on. The fold's authoring remedy (fix
+the message, add a pattern) is kept for `--range` and `--pr`, where the commit
+may still be rewritten. The downgrade on the lag arm is owned by the walk
+assembly, keeping `internal/bump` pure. The v1
 exception here (Q10: an unknown `:code:` carrying `!` or a `BREAKING CHANGE:`
 footer normalized to a major) is **superseded with the grammar that defined
 it**: v2 normalizes nothing, and no text reaches the version except through a
@@ -1721,13 +1740,15 @@ yields no sigil, and a `BREAKING CHANGE:` footer moves nothing (t-h9y7, §2).
 The body is not unread — the notes parse its trailer block for `$coauthors`
 and `[[note.trailers]]` (§3) — but that renders prose, never a level.
 
-The leniency is for the fallback path only. A lint failure **inside a
-resolved merged PR** stays a hard exit 3 even on the release walk (Q1 —
-"never a silent patch" at full strength; only a commit that bypassed the lint
-gate can produce one). Published history is immutable, so that commit wedges
-every release until the walk starts past it: cut a release tag there by hand, or
-name such a tag with an explicit `--since-tag=TAG`. The error names the PR, its
-merge point, the base that clears it and why that base is the one.
+The leniency is for the lag arm only. A lint failure **inside a resolved
+merged PR** — or in a commit pushed straight to the released branch — stays a
+hard exit 3 even on the release walk (Q1 — "never a silent patch" at full
+strength; only a commit that bypassed the lint gate can produce one). Published
+history is immutable, so that commit wedges every release until the walk starts
+past it: cut a release tag there by hand, or name such a tag with an explicit
+`--since-tag=TAG`. The error names where the commit sits (the PR and its merge
+point, or the released branch), the base that clears it and why that base is
+the one.
 
 **Which base clears it depends on whether the offending commit is somewhere a
 tag can be cut**, and the two answers are the two halves of the footprint rule
@@ -3385,9 +3406,9 @@ The severities are the argued part:
   **off** is a failure.
 - **The squash title/message policy ⇒ fail.** `PR_TITLE` hands the PR title to
   *every* squash, single-commit PRs included, so `main` fills with subjects the
-  repository's patterns cannot classify — and §4's documented fallback (direct push, or API
-  lag right after a push) classifies exactly that message, so a release counts
-  none and the bump is lost. `PR_BODY` drops the per-commit list that is the only
+  repository's patterns cannot classify — and while GitHub has not indexed the
+  squash (the lag arm, right after a push) §4's fallback judges exactly that
+  message and counts none, so the bump is lost. `PR_BODY` drops the per-commit list that is the only
   offline record of a PR's pre-squash types.
 - **Workflow pins ⇒ fail on any non-`vX.Y.Z` ref**, scanned in the LOCAL
   checkout. Whether the pin is the *latest* release is deliberately NOT checked:

@@ -1,0 +1,13 @@
+diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
+index 0071752..76d9c0c 100644
+--- a/internal/cli/sincetag.go
++++ b/internal/cli/sincetag.go
+@@ -1267,7 +1267,7 @@ func walkRefusal(wedges []wedge) error {
+ 	}
+ 	return core.Lintf(
+ 		"commit %.7s: %s%s — %s; the commit is already on a published branch and cannot be rewritten, so every release wedges here until the walk starts past it. The walk must start AT OR PAST %s. Cut a release tag %s by hand, or name such a tag with an explicit --since-tag=TAG (DESIGN §4)",
+-		first.row.SHA, first.row.Detail, more, first.where, strings.Join(escapes, ", and AT OR PAST "), there).WithDetails(rows)
++		first.row.SHA, first.row.Detail, more, first.where, strings.Join(escapes, ", and AT OR PAST "), there)
+ }
+ 
+ // refusedFirst is the error a walk that already refused a commit hands down

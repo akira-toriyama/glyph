@@ -587,7 +587,7 @@ func checkMergeCommit(in Input) Check {
 // The walk does no such thing. GitHub points merge_commit_sha at the LAST replayed
 // commit, so that commit resolves and expands the whole pull request through the
 // API — a subject no pattern claims anywhere inside it hard-fails the release
-// through wedgeHint, exactly as it would for a squash — and the earlier replayed
+// through the walk's refusal (cli.walkRefusal), exactly as it would for a squash — and the earlier replayed
 // commits resolve as COVERED by that same pull request and are skipped outright,
 // so nothing is classified twice and nothing is classified leniently. Rebase merging
 // is handled exactly as strictly as squash, the opposite of what this check used
@@ -637,10 +637,10 @@ func checkRebaseMerge(in Input) Check {
 // EVERY squash, including the single-commit PRs that are most of a fleet repo's
 // traffic, so main fills with subjects nobody wrote as a commit message. The
 // verdict survives while the API answers — glyph re-reads the PR — but the
-// walk's documented fallback (a direct push, or the API lag right after a push,
-// DESIGN §4) classifies the squash commit's OWN message, and that message is now
-// the title: its sigil alone decides, and on the lag path a title no pattern
-// claims is dropped from the fold with a warning — bump says no release
+// walk's documented fallback (the API lag right after a push, DESIGN §4)
+// classifies the squash commit's OWN message, and that message is now the
+// title: its sigil alone decides, and a title no pattern claims is dropped
+// from the fold with a warning — bump says no release
 // (cli.TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark) and release refuses
 // the incomplete walk at 4. glyph-test drifted to exactly this and nothing
 // noticed.
@@ -650,7 +650,7 @@ func checkSquashTitle(in Input) Check {
 		"a single-commit PR keeps its own classifiable subject on main; only a multi-commit squash borrows the PR title",
 		"every squash commit takes the PR TITLE as its subject, including single-commit PRs — so a commit's own sigil "+
 			"never lands on main. The verdict holds while the API answers, but the walk's fallback "+
-			"(a direct push, or API lag right after a push) classifies the squash commit's own message: the title's sigil "+
+			"(the API lag right after a push) classifies the squash commit's own message: the title's sigil "+
 			"alone decides, and a title no pattern claims is dropped from the fold with a warning — bump says no release "+
 			"and release refuses the incomplete walk at exit 4")
 }

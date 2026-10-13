@@ -34,8 +34,8 @@ func TestFirstLine(t *testing.T) {
 // stable rule id and fix, not three runs each revealing the next (measured:
 // `bump --range --json` returned one commit with no rule id and no details,
 // and the caller re-ran lint in a loop to find the rest). The Msg keeps the
-// exact `commit <sha>:` head the first failure always had — wedgeHint prefixes
-// that string and the wedge needs one commit to point at.
+// exact `commit <sha>:` head the first failure always had — the walk's own
+// refusal (cli.walkRefusal) opens the same way, one shape at both gates.
 func TestBumpRangeReturnsEveryViolation(t *testing.T) {
 	dir, base := testRepo(t)
 	testCommit(t, dir, "akira-toriyama", "no gitmoji one")
@@ -52,8 +52,8 @@ func TestBumpRangeReturnsEveryViolation(t *testing.T) {
 	}
 	env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
 	if !strings.HasPrefix(env.Message, "commit ") || !strings.Contains(env.Message, "+1 more") {
-		t.Errorf("message = %q — the first failure keeps its `commit <sha>:` head (wedgeHint prefixes "+
-			"it) and the rest ride as a count", env.Message)
+		t.Errorf("message = %q — the first failure keeps its `commit <sha>:` head (the walk's refusal "+
+			"opens the same way) and the rest ride as a count", env.Message)
 	}
 	var details []rangeViolation
 	if err := json.Unmarshal(env.Details, &details); err != nil {
