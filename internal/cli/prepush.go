@@ -290,11 +290,8 @@ func prePushRun(ctx context.Context, args []string) error {
 		}
 	}
 	if len(blocking) > 0 {
-		return &core.Error{
-			Code:    core.CodeLint,
-			Msg:     fmt.Sprintf("%d commit-convention violation(s) among %d commit(s) being pushed to %s", len(blocking), checked, defaultBranch),
-			Details: blocking,
-		}
+		return core.Lintf("%d commit-convention violation(s) among %d commit(s) being pushed to %s", len(blocking), checked, defaultBranch).
+			WithDetails(blocking)
 	}
 
 	// Off the default branch the finding is real but the consequence is not: this

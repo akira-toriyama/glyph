@@ -134,12 +134,11 @@ func bumpRun(cmd *cobra.Command) error {
 	}
 
 	if dec.Level == bump.LevelNone {
-		reason := fmt.Sprintf("no release: %d commit(s) participate in %s and every level is none", len(commits), source)
+		reason := noneReason(len(commits), source)
 		if bumpJSON {
 			printCompact(bumpResult{Current: current.String(), Level: string(dec.Level), Commits: commits, Reason: reason})
-			return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}
 		}
-		return core.NoReleasef("%s", reason)
+		return core.NoReleasef("%s", reason).Quiet(bumpJSON)
 	}
 
 	next := current.Next(dec)
@@ -244,7 +243,7 @@ func bumpLines(cmd *cobra.Command, cfg *config.Config) error {
 		}
 		pv := packageVerdict{Path: lw.Package.Path, Current: current.String(), Level: string(dec.Level), Commits: verdicts}
 		if dec.Level == bump.LevelNone {
-			pv.Reason = fmt.Sprintf("no release: %d commit(s) participate in %s and every level is none", len(verdicts), lw.Source)
+			pv.Reason = noneReason(len(verdicts), lw.Source)
 		} else {
 			next, nerr := nextOn(lw.Line, current, dec)
 			if nerr != nil {
@@ -259,12 +258,11 @@ func bumpLines(cmd *cobra.Command, cfg *config.Config) error {
 	}
 	reason := strings.Join(reasons, "; ")
 	if len(tags) == 0 {
-		reason = "no release: every line folds to none (" + reason + ")"
+		reason = everyLineNone(reason)
 		if bumpJSON {
 			printCompact(bumpResult{Commits: rows, Packages: pkgs, Reason: reason})
-			return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}
 		}
-		return core.NoReleasef("%s", reason)
+		return core.NoReleasef("%s", reason).Quiet(bumpJSON)
 	}
 	if bumpJSON {
 		printCompact(bumpResult{Commits: rows, Packages: pkgs, Reason: reason})
@@ -314,6 +312,17 @@ func warnSigilVerdicts(commits []bump.SigilVerdict) {
 			warnf("commit %.7s: %s", c.SHA, c.Warn)
 		}
 	}
+}
+
+// noneReason is the none verdict's reason line — the single line's and each
+// packages line's, one spelling. release.yml and operators read it, and
+// DESIGN §4.1 makes "participate" one set, so the sentence is a contract.
+func noneReason(participating int, source string) string {
+	return fmt.Sprintf("no release: %d commit(s) participate in %s and every level is none", participating, source)
+}
+
+func everyLineNone(reasons string) string {
+	return "no release: every line folds to none (" + reasons + ")"
 }
 
 // decidingReason names the oldest commit that reaches the folded level — the

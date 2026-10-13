@@ -75,7 +75,7 @@ func finish(err error) int {
 		if strings.HasPrefix(msg, "unknown command ") {
 			msg += " — run 'glyph --help' for the command list"
 		}
-		ce = &core.Error{Code: core.CodeUsage, Msg: msg}
+		ce = core.Usagef("%s", msg)
 	}
 	if !ce.Silent {
 		renderError(ce)

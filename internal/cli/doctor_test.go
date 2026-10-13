@@ -883,7 +883,7 @@ func cancelOnceAsked(t *testing.T, asked string) (context.Context, func(read str
 // see TestDoctorInterruptDuringHooksReadCarriesOut for why cancelling before
 // the run cannot cover that.
 func TestFirstInterruptChecksEveryRead(t *testing.T) {
-	interrupt := &core.Error{Code: core.CodeInterrupted, Msg: "interrupted", Silent: true}
+	interrupt := core.Interrupted()
 	plain := core.APIf("git: boom")
 
 	if got := firstInterrupt(nil, nil); got != nil {

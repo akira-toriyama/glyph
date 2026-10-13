@@ -24,7 +24,7 @@ func captureErr(t *testing.T) *bytes.Buffer {
 // job grepping stderr for {"error":...} must not see one.
 func TestFinishSilentInterrupt(t *testing.T) {
 	stderr := captureErr(t)
-	code := finish(&core.Error{Code: core.CodeInterrupted, Msg: "interrupted", Silent: true})
+	code := finish(core.Interrupted())
 	if code != 130 {
 		t.Fatalf("finish(interrupted) = %d, want 130", code)
 	}

@@ -1,10 +1,10 @@
 diff --git a/internal/config/lint.go b/internal/config/lint.go
-index 1a3ebb9..0903c69 100644
+index 1277abc..77a671f 100644
 --- a/internal/config/lint.go
 +++ b/internal/config/lint.go
-@@ -50,6 +50,9 @@ func (c *Config) Lint(message, author string) LintVerdict {
- 		}
- 		return LintVerdict{Reason: c.unmatchedReason()}
+@@ -47,6 +47,9 @@ func (c *Config) Lint(message, author string) LintVerdict {
+ 	if !m.Matched {
+ 		return LintVerdict{Reason: c.unclaimedReason(m)}
  	}
 +	if !m.Skip && m.Sigil == SigilMajor && strings.HasPrefix(message, ":memo:") {
 +		return LintVerdict{Reason: "a docs change cannot be breaking"}

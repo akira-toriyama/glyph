@@ -683,9 +683,10 @@ func attributionWedge(err error, c walked, owner, repo string, reached []line) e
 	if c.Pull > 0 {
 		where = fmt.Sprintf("inside merged pull request %s/%s#%d, which the release walk resolved from its merge point %.7s", owner, repo, c.Pull, c.MergePoint)
 	}
-	return &core.Error{Code: core.CodeLint, Details: []rangeViolation{{SHA: c.Raw.SHA, Subject: bump.FirstLine(c.Raw.Message), Detail: err.Error()}}, Msg: fmt.Sprintf(
+	return core.Lintf(
 		"commit %.7s: %v — %s; the commit is already on a published branch and cannot be rewritten, so every release of a line whose range holds it wedges here until that line's walk starts past it: cut %s by hand, or name such a tag with --since-tag=<prefix>vX.Y.Z (DESIGN §4.1)",
-		c.Raw.SHA, err, where, strings.Join(lineEscapes(c, reached), " / "))}
+		c.Raw.SHA, err, where, strings.Join(lineEscapes(c, reached), " / ")).
+		WithDetails([]rangeViolation{{SHA: c.Raw.SHA, Subject: bump.FirstLine(c.Raw.Message), Detail: err.Error()}})
 }
 
 // rangeLines is the --range twin of sinceTagInput for a repository with

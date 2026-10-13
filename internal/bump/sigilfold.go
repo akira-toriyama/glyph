@@ -144,7 +144,7 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Deci
 		if extra := len(refusals) - 1; extra > 0 {
 			msg = fmt.Sprintf("commit %.7s: %s (+%d more violation(s), all in details); refusing to version the range", refusals[0].SHA, refusals[0].Detail, extra)
 		}
-		return nil, Decision{}, &core.Error{Code: core.CodeLint, Msg: msg, Details: refusals}
+		return nil, Decision{}, core.Lintf("%s", msg).WithDetails(refusals)
 	}
 	return verdicts, Decision{Level: Reduce(levels), Promote: promote}, nil
 }

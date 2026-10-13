@@ -61,6 +61,29 @@ func TestErrorFields(t *testing.T) {
 	}
 }
 
+// TestBuildersCarryDetailsAndSilence pins the one way an Error is built: a
+// builder, then WithDetails for the payload and Quiet for the stdout rule —
+// each returning the same error, leaving code and message untouched, so no
+// site needs the literal form to say "and details" or "and silent".
+func TestBuildersCarryDetailsAndSilence(t *testing.T) {
+	e := NoReleasef("no release: %d", 0)
+	if got := e.WithDetails([]string{"a"}).Quiet(true); got != e {
+		t.Fatalf("WithDetails(...).Quiet(...) returned %p, want the receiver %p", got, e)
+	}
+	if e.Code != CodeNoRelease || e.Error() != "no release: 0" {
+		t.Errorf("code/message changed: %d %q", int(e.Code), e.Error())
+	}
+	if d, ok := e.Details.([]string); !ok || len(d) != 1 || d[0] != "a" {
+		t.Errorf("Details = %#v, want the attached payload", e.Details)
+	}
+	if !e.Silent {
+		t.Error("Quiet(true) left Silent false")
+	}
+	if e.Quiet(false).Silent {
+		t.Error("Quiet(false) left Silent true — the boolean is the rule, not a one-way switch")
+	}
+}
+
 // Interrupted's whole contract is that both writing sides emit the SAME error:
 // CodeInterrupted, the constant message, and Silent — the operator caused the
 // stop, so the envelope must stay quiet and the exit code carries the verdict.

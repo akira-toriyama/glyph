@@ -1130,9 +1130,9 @@ func wedgeHint(err error, owner, repo string, number int, mergePoint, offending 
 	if offending != "" {
 		base, why = offending, "the offending commit is itself on the released branch (the pull was merge- or rebase-merged), and the walk no longer folds back a listed commit that landed outside the range"
 	}
-	return &core.Error{Code: core.CodeLint, Details: ce.Details, Msg: fmt.Sprintf(
+	return core.Lintf(
 		"%s — inside merged pull request %s/%s#%d, which the release walk resolved from its merge point %.7s; the commit is already on a published branch and cannot be rewritten, so every release wedges here until the walk starts past it. The walk must start AT OR PAST %.7s — %s. Cut a release tag there by hand, or name such a tag with an explicit --since-tag=TAG (DESIGN §4)",
-		ce.Msg, owner, repo, number, mergePoint, base, why)}
+		ce.Msg, owner, repo, number, mergePoint, base, why).WithDetails(ce.Details)
 }
 
 // onMain reports the sha a wedge escape can be cut at: the commit itself when

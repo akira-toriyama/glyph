@@ -1,5 +1,5 @@
 diff --git a/internal/cli/cmd_notes.go b/internal/cli/cmd_notes.go
-index 7e7f06f..d98b05c 100644
+index 4d20b64..71e385b 100644
 --- a/internal/cli/cmd_notes.go
 +++ b/internal/cli/cmd_notes.go
 @@ -228,7 +228,7 @@ func notesRun(cmd *cobra.Command) error {
@@ -10,4 +10,4 @@ index 7e7f06f..d98b05c 100644
 +		reason := fmt.Sprintf("no release notes: %d commit(s) participate in %s and none lands in a section", len(commits), source)
  		if notesJSON {
  			printCompact(notesResult{Sections: []notes.SigilSection{}, Reason: reason})
- 			return &core.Error{Code: core.CodeNoRelease, Msg: reason, Silent: true}
+ 		}
