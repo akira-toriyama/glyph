@@ -129,26 +129,17 @@ type Package struct {
 	Pending       Verdict
 }
 
-// rank orders levels for the fold, and is the ONLY test this package applies to
-// a level — never `== bump.LevelNone`. bump.Level is a string type whose zero
-// value is "" and not "none", so an unset level (a caller that computed no
-// pending verdict, a struct built field by field) compares unequal to
-// bump.LevelNone and would fall through to the wrong sentence. Ranking is
-// total: anything unrecognized ranks 0 = nothing moves, which is also the only
-// safe direction — a preview that over-claims a bump is worse than one that
-// under-claims, because the reviewer checks the table against the claim.
+// rank is the ONLY test this package applies to a level — never
+// `== bump.LevelNone`. bump.Level is a string type whose zero value is "" and
+// not "none", so an unset level (a caller that computed no pending verdict, a
+// struct built field by field) compares unequal to bump.LevelNone and would
+// fall through to the wrong sentence. The order is bump's (Level.Rank); what
+// is preview's is that an unknown level ranks with none = nothing moves,
+// which is also the only safe direction — a preview that over-claims a bump
+// is worse than one that under-claims, because the reviewer checks the table
+// against the claim.
 func rank(b bump.Level) int {
-	switch b {
-	case bump.LevelPatch:
-		return 1
-	case bump.LevelMinor:
-		return 2
-	case bump.LevelMajor:
-		return 3
-	case bump.LevelNone:
-		return 0
-	}
-	return 0 // an unset or unrecognized level: nothing moves
+	return max(0, b.Rank())
 }
 
 func icon(b bump.Level) string {
