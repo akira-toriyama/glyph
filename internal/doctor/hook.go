@@ -144,7 +144,7 @@ func checkHook(k hook.Kind, id, dir string, dirErr error) Check {
 func checkHookFires(probe *HookProbe, dirErr error, configLoaded bool) Check {
 	gate := int(core.CodeLint)
 	c := Check{
-		ID: IDCommitMsgFires,
+		ID: idCommitMsgFires,
 		Expected: fmt.Sprintf("fired with a violating message, the byte-identical commit-msg hook blocks at exit %d — "+
 			"proof the glyph it resolves on PATH can actually lint", gate),
 	}
@@ -178,11 +178,11 @@ func checkHookFires(probe *HookProbe, dirErr error, configLoaded bool) Check {
 			"config that claims the probe text has simply left this probe nothing to block on"
 	case probe.Exit == 0 && !configLoaded:
 		c.Status = StatusUnknown
-		c.Observed = "the hook let the probe message through at exit 0, and glyph.toml did not load (see " + IDConfigLoads + ")"
+		c.Observed = "the hook let the probe message through at exit 0, and glyph.toml did not load (see " + idConfigLoads + ")"
 		c.Message = "without a glyph.toml it can load, `glyph lint` exits 2 (4 when the file cannot be read) before judging anything, and the hook waves " +
 			"every code but the gate's through by design — so this 0 is the config's absence answering, not the glyph on " +
 			"PATH. Whether that glyph can lint is unverified until the config loads"
-		c.Fix = "resolve " + IDConfigLoads + " and re-run"
+		c.Fix = "resolve " + idConfigLoads + " and re-run"
 	case probe.Exit == 0:
 		c.Status = StatusFail
 		c.Observed = "the hook let a violating message through at exit 0"
@@ -243,7 +243,7 @@ func diffSummary(installed, want string) string {
 // that would say the hook can block.
 func checkPrePushHook(dir string, dirErr error, probe *HookProbe, heads map[string]string, refless map[string]bool, headsErr error) Check {
 	k := hook.Kinds()[1]
-	c := checkHook(k, IDPrePushHook, dir, dirErr)
+	c := checkHook(k, idPrePushHook, dir, dirErr)
 	if c.Status != StatusPass {
 		return c
 	}

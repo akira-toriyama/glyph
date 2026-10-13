@@ -72,7 +72,7 @@ type Refusal struct {
 
 // FoldSigils computes the release level of a commit range under a v2 config:
 // each commit's sigil via cfg.Match, folded with max over the lattice (the
-// same order-independent Reduce as always, so squash order can never move
+// same order-independent reduce as always, so squash order can never move
 // the version). It returns the per-commit rows beside the fold — one verdict
 // computation, so a listing can never disagree with the level it came from.
 // An empty range folds to none — no release; verdicts is non-nil so the JSON
@@ -149,7 +149,7 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Deci
 		}
 		return nil, Decision{}, core.Lintf("%s", msg).WithDetails(refusals)
 	}
-	return verdicts, Decision{Level: Reduce(levels), Promote: promote}, nil
+	return verdicts, Decision{Level: reduce(levels), Promote: promote}, nil
 }
 
 // FirstLine returns a raw message's subject line (CR trimmed) — the one

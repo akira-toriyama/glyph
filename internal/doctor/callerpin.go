@@ -53,7 +53,7 @@ func judgeAt(ref, after, glyph, floor string) *notJudged {
 		return &notJudged{
 			Why: fmt.Sprintf("@%s is not a release tag: a branch moves, and a sha names a commit doctor cannot map "+
 				"to a release offline", ref),
-			Remedy: "pin a release tag (" + IDWorkflowPinned + " names each such ref)",
+			Remedy: "pin a release tag (" + idWorkflowPinned + " names each such ref)",
 		}
 	}
 	pin, _ := bump.ParseVersion(ref)

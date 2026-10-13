@@ -86,8 +86,8 @@ func TestHeadline(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := Headline(tt.in); got != tt.want {
-				t.Errorf("Headline()\n got: %s\nwant: %s", got, tt.want)
+			if got := headline(tt.in); got != tt.want {
+				t.Errorf("headline()\n got: %s\nwant: %s", got, tt.want)
 			}
 		})
 	}
@@ -114,7 +114,7 @@ func TestHeadlineNeverNamesADraft(t *testing.T) {
 						PR:       Verdict{Level: pl, Next: "v9.9.9"},
 						Pending:  Verdict{Level: ql, Next: pending},
 					}
-					got := strings.ToLower(Headline(in))
+					got := strings.ToLower(headline(in))
 					if strings.Contains(got, "draft") {
 						t.Errorf("headline names a draft (untagged=%v pr=%s pending=%s same=%v): %s", untagged, pl, ql, same, got)
 					}
@@ -148,7 +148,7 @@ func TestHeadlineNeverEscalatesToTheSameVersion(t *testing.T) {
 			for _, ql := range levels {
 				prNext := cur.Next(bump.Decision{Level: pl}).String()
 				pendingNext := cur.Next(bump.Decision{Level: ql}).String()
-				got := Headline(Input{Current: current,
+				got := headline(Input{Current: current,
 					PR:      Verdict{Level: pl, Next: prNext},
 					Pending: Verdict{Level: ql, Next: pendingNext}})
 				if strings.Contains(got, "**"+prNext+" → "+prNext+"**") {

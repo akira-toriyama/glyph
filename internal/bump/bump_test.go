@@ -19,8 +19,8 @@ func TestReduce(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := Reduce(c.levels); got != c.want {
-				t.Fatalf("Reduce(%v) = %s, want %s", c.levels, got, c.want)
+			if got := reduce(c.levels); got != c.want {
+				t.Fatalf("reduce(%v) = %s, want %s", c.levels, got, c.want)
 			}
 		})
 	}
@@ -36,31 +36,31 @@ func FuzzReduceInvariants(f *testing.F) {
 		for i, b := range seed {
 			levels[i] = rungs[int(b)%len(rungs)]
 		}
-		want := Reduce(levels)
+		want := reduce(levels)
 
 		reversed := make([]Level, len(levels))
 		for i, l := range levels {
 			reversed[len(levels)-1-i] = l
 		}
-		if got := Reduce(reversed); got != want {
-			t.Fatalf("Reduce(reversed %v) = %s, want %s", levels, got, want)
+		if got := reduce(reversed); got != want {
+			t.Fatalf("reduce(reversed %v) = %s, want %s", levels, got, want)
 		}
 
 		if len(levels) > 0 {
 			k := ((rot % len(levels)) + len(levels)) % len(levels)
 			rotated := append(append([]Level{}, levels[k:]...), levels[:k]...)
-			if got := Reduce(rotated); got != want {
-				t.Fatalf("Reduce(rotated %v by %d) = %s, want %s", levels, k, got, want)
+			if got := reduce(rotated); got != want {
+				t.Fatalf("reduce(rotated %v by %d) = %s, want %s", levels, k, got, want)
 			}
 		}
 
-		if got := Reduce(append(append([]Level{}, levels...), want)); got != want {
-			t.Fatalf("Reduce is not idempotent: folding %s back into %v gave %s", want, levels, got)
+		if got := reduce(append(append([]Level{}, levels...), want)); got != want {
+			t.Fatalf("reduce is not idempotent: folding %s back into %v gave %s", want, levels, got)
 		}
 
 		for n := range levels {
-			if Reduce(levels[:n]).Rank() > want.Rank() {
-				t.Fatalf("Reduce(%v[:%d]) exceeds Reduce of the whole", levels, n)
+			if reduce(levels[:n]).Rank() > want.Rank() {
+				t.Fatalf("reduce(%v[:%d]) exceeds reduce of the whole", levels, n)
 			}
 		}
 	})

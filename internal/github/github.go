@@ -22,9 +22,9 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/core"
 )
 
-// DefaultBaseURL is the public GitHub REST host. A GitHub Enterprise host or an
+// defaultBaseURL is the public GitHub REST host. A GitHub Enterprise host or an
 // httptest.Server overrides it with WithBaseURL.
-const DefaultBaseURL = "https://api.github.com"
+const defaultBaseURL = "https://api.github.com"
 
 const (
 	// apiVersion pins the REST schema so a future default bump on GitHub's side
@@ -124,7 +124,7 @@ type Client struct {
 // names" has to hold for every Client this constructor returns, or it is not an
 // invariant. See guardRedirects for why an injected client's own policy loses.
 func New(token string, opts ...Option) *Client {
-	c := &Client{baseURL: DefaultBaseURL, http: &http.Client{Timeout: defaultTimeout},
+	c := &Client{baseURL: defaultBaseURL, http: &http.Client{Timeout: defaultTimeout},
 		token: token, retryDelays: defaultRetryDelays}
 	for _, o := range opts {
 		o(c)

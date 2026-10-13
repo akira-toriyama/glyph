@@ -113,7 +113,7 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
 // stranger, from golang/tools' notes — shape cannot tell a name from a login.
 // Group-derived values and the other built-ins keep the fence: whether a
 // SUBJECT can page someone is not the author's intent to declare.
-// The built-ins (config.LineBuiltins) are reserved: they win over a pattern
+// The built-ins (config.BuiltinPR and its siblings) are reserved: they win over a pattern
 // group of the same name. A placeholder that is neither built-in nor a group
 // of the winning pattern renders empty. A scope is prose like any other
 // value: DESIGN §2 argues why no group gets a plain-text route.
@@ -129,7 +129,7 @@ func renderLine(spans []config.LineSpan, declared []config.NoteTrailer, c SigilC
 		config.BuiltinPR:        "",
 		config.BuiltinAuthor:    c.Author,
 		config.BuiltinHash:      shortSHA(c.SHA),
-		config.BuiltinCoauthors: strings.Join(CoAuthorNames(c.Message), ", "),
+		config.BuiltinCoauthors: strings.Join(coAuthorNames(c.Message), ", "),
 	}
 	if c.Pull > 0 {
 		builtins[config.BuiltinPR] = "#" + strconv.Itoa(c.Pull)
@@ -140,7 +140,7 @@ func renderLine(spans []config.LineSpan, declared []config.NoteTrailer, c SigilC
 	// template can rely on reads built-in > trailer > group — and buildTrailers
 	// has already refused a name that would make that ordering observable.
 	for _, t := range declared {
-		builtins[t.Name] = TrailerValue(c.Message, t.Token)
+		builtins[t.Name] = trailerValue(c.Message, t.Token)
 	}
 	resolve := func(name string) string {
 		if v, ok := builtins[name]; ok {

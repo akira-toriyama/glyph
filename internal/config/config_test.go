@@ -264,17 +264,17 @@ func TestParseSigil(t *testing.T) {
 		{"%", SigilPromote},
 	}
 	for _, c := range cases {
-		got, err := ParseSigil(c.in)
+		got, err := parseSigil(c.in)
 		if err != nil {
-			t.Fatalf("ParseSigil(%q): %v", c.in, err)
+			t.Fatalf("parseSigil(%q): %v", c.in, err)
 		}
 		if got != c.want {
-			t.Errorf("ParseSigil(%q) = %v, want %v", c.in, got, c.want)
+			t.Errorf("parseSigil(%q) = %v, want %v", c.in, got, c.want)
 		}
 	}
 	for _, bad := range []string{"", "+", "==", "≈", "major"} {
-		if _, err := ParseSigil(bad); err == nil {
-			t.Errorf("ParseSigil(%q) succeeded, want error", bad)
+		if _, err := parseSigil(bad); err == nil {
+			t.Errorf("parseSigil(%q) succeeded, want error", bad)
 		}
 	}
 }

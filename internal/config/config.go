@@ -32,15 +32,15 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// Schema is the one glyph.toml schema this binary understands. A file that
+// schema is the one glyph.toml schema this binary understands. A file that
 // declares any other value is rejected whole — interpreting a config written
 // for a future schema with today's field meanings would judge commits by
 // rules the author never wrote.
-const Schema = 1
+const schema = 1
 
-// SigilGroup is the regex group name every verdict flows through. RE2 group
+// sigilGroup is the regex group name every verdict flows through. RE2 group
 // names cannot contain '-', which is why it is snake_case.
-const SigilGroup = "semver_sigil"
+const sigilGroup = "semver_sigil"
 
 // ScopeGroup is the regex group name attribution reads (DESIGN §4.1, rule
 // 2): a commit whose files lie under no package is placed on the package
@@ -71,11 +71,11 @@ const (
 	SigilPromote Sigil = '%' // 0.x → 1.0.0; a major step at 1.x and above
 )
 
-// ParseSigil maps a captured semver_sigil group (or a pattern's fixed
+// parseSigil maps a captured semver_sigil group (or a pattern's fixed
 // semver_sigil key) to its Sigil. Anything but the five one-rune signals is
 // an error — a pattern loose enough to capture something else is a config
 // bug, not a new kind of sigil.
-func ParseSigil(s string) (Sigil, error) {
+func parseSigil(s string) (Sigil, error) {
 	switch s {
 	case "=":
 		return SigilNone, nil
@@ -113,7 +113,7 @@ type Config struct {
 
 // Commit carries the human-facing template block. glyph never parses it —
 // the preset bytes init writes are its one home, and no validation applies
-// beyond TOML well-formedness. Its one reader is Config.SubjectForm, which
+// beyond TOML well-formedness. Its one reader is Config.subjectForm, which
 // quotes the template's first line back inside the no-pattern-matches lint
 // violation, verbatim.
 type Commit struct {
@@ -140,7 +140,7 @@ type Commit struct {
 // loader refuses two packages sharing one and names both.
 //
 // There is deliberately no tag_prefix key: the tag line is derived from Path
-// (TagPrefix) and is not configurable (§4.1 rejects the knob; the strict
+// (tagPrefix) and is not configurable (§4.1 rejects the knob; the strict
 // decoder refuses the key as unknown, which is the whole enforcement).
 type Package struct {
 	Path string
@@ -295,10 +295,10 @@ func Load(data []byte) (*Config, error) {
 	}
 
 	if r.Schema == nil {
-		return nil, fmt.Errorf("schema is required (this glyph understands schema = %d)", Schema)
+		return nil, fmt.Errorf("schema is required (this glyph understands schema = %d)", schema)
 	}
-	if *r.Schema != Schema {
-		return nil, fmt.Errorf("unsupported schema = %d (this glyph understands schema = %d); refusing to guess what its fields mean", *r.Schema, Schema)
+	if *r.Schema != schema {
+		return nil, fmt.Errorf("unsupported schema = %d (this glyph understands schema = %d); refusing to guess what its fields mean", *r.Schema, schema)
 	}
 
 	for i, a := range r.ExcludeAuthors {
@@ -324,7 +324,7 @@ func Load(data []byte) (*Config, error) {
 		return nil, err
 	}
 
-	spans, err := ParseLine(r.Note.Line)
+	spans, err := parseLine(r.Note.Line)
 	if err != nil {
 		return nil, fmt.Errorf("note.line: %w", err)
 	}
@@ -458,7 +458,7 @@ func compilePattern(rp rawPattern) (Pattern, error) {
 
 	hasGroup := false
 	for _, name := range re.SubexpNames() {
-		if name == SigilGroup {
+		if name == sigilGroup {
 			hasGroup = true
 		}
 	}
@@ -468,7 +468,7 @@ func compilePattern(rp rawPattern) (Pattern, error) {
 		if rp.Skip {
 			return Pattern{}, fmt.Errorf("skip = true and semver_sigil = %q contradict: a skipped commit has no sigil to give", *rp.SemverSigil)
 		}
-		s, err := ParseSigil(*rp.SemverSigil)
+		s, err := parseSigil(*rp.SemverSigil)
 		if err != nil {
 			return Pattern{}, err
 		}
@@ -502,7 +502,7 @@ func compilePattern(rp rawPattern) (Pattern, error) {
 	}
 
 	if !rp.Skip && unlandable == "" && !hasGroup && fixed == nil {
-		return Pattern{}, fmt.Errorf("pattern %q has no (?P<%s>...) group, no semver_sigil key, no skip = true and no unlandable: a match could never yield a verdict", *rp.Pattern, SigilGroup)
+		return Pattern{}, fmt.Errorf("pattern %q has no (?P<%s>...) group, no semver_sigil key, no skip = true and no unlandable: a match could never yield a verdict", *rp.Pattern, sigilGroup)
 	}
 
 	return Pattern{

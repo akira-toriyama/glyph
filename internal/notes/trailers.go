@@ -126,14 +126,14 @@ func splitTrailer(l string) (token, value string, ok bool) {
 	return token, strings.TrimSpace(l[i+1:]), true
 }
 
-// TrailerValue returns the value of the LAST trailer whose token matches,
+// trailerValue returns the value of the LAST trailer whose token matches,
 // case-insensitively, or "".
 //
 // Last, not first: a trailer block is append-ordered, so a session that
 // rewrote its reason leaves the corrected one at the bottom. Case-insensitive
 // because git itself is — the fleet's own history writes `Co-authored-by:`
 // and `Co-Authored-By:` for the same trailer.
-func TrailerValue(message, token string) string {
+func trailerValue(message, token string) string {
 	var v string
 	for _, t := range trailers(message) {
 		if strings.EqualFold(t.Token, token) {
@@ -149,7 +149,7 @@ func TrailerValue(message, token string) string {
 // vocabulary `[[note.trailers]]` names.
 const coAuthoredBy = "Co-authored-by"
 
-// CoAuthorNames returns the display names credited by the message's
+// coAuthorNames returns the display names credited by the message's
 // `Co-authored-by` trailers, in message order, without addresses.
 //
 // A credit is the trailer value with its `<address>` removed. A credit that
@@ -160,7 +160,7 @@ const coAuthoredBy = "Co-authored-by"
 // Names are returned verbatim for the renderer to fence. A display name is
 // never a login — a co-author address establishes no identity glyph can
 // verify — so nothing here may ever become an @mention (DESIGN §2, t-39fy).
-func CoAuthorNames(message string) []string {
+func coAuthorNames(message string) []string {
 	var out []string
 	for _, t := range trailers(message) {
 		if !strings.EqualFold(t.Token, coAuthoredBy) {

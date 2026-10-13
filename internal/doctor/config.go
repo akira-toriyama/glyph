@@ -44,7 +44,7 @@ import (
 //     unknown: nothing about its content was observed, and "we could not
 //     check" is not "it is broken" any more than it is "it is fine".
 func checkConfig(root string, rootErr error, cfg *config.Config, loadErr error) Check {
-	c := Check{ID: IDConfigLoads, Expected: "glyph.toml at the checkout's top level exists and loads (valid schema, compilable patterns, a semver_sigil for every match)"}
+	c := Check{ID: idConfigLoads, Expected: "glyph.toml at the checkout's top level exists and loads (valid schema, compilable patterns, a semver_sigil for every match)"}
 	if rootErr != nil {
 		c.Status = StatusUnknown
 		c.Observed = fmt.Sprintf("git could not name this checkout's top level: %v", rootErr)
@@ -96,8 +96,8 @@ func configUnread(c *Check, cfg *config.Config) bool {
 		return false
 	}
 	c.Status = StatusUnknown
-	c.Observed = "glyph.toml was not loaded (see " + IDConfigLoads + "), so its [[packages]] were never read"
-	c.Message = "unverified, not a verdict — this check reads the same file as " + IDConfigLoads + " and answers only once it loads"
-	c.Fix = "resolve " + IDConfigLoads + " and re-run"
+	c.Observed = "glyph.toml was not loaded (see " + idConfigLoads + "), so its [[packages]] were never read"
+	c.Message = "unverified, not a verdict — this check reads the same file as " + idConfigLoads + " and answers only once it loads"
+	c.Fix = "resolve " + idConfigLoads + " and re-run"
 	return true
 }

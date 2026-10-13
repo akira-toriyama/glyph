@@ -79,7 +79,7 @@ func (c *Config) Match(message string) (Match, error) {
 				continue
 			}
 			groups[name] = sub[gi]
-			if name == SigilGroup {
+			if name == sigilGroup {
 				captured = sub[gi]
 			}
 		}
@@ -87,7 +87,7 @@ func (c *Config) Match(message string) (Match, error) {
 		var sigil Sigil
 		switch {
 		case captured != "":
-			s, err := ParseSigil(captured)
+			s, err := parseSigil(captured)
 			if err != nil {
 				return Match{}, fmt.Errorf("patterns[%d] matched but %w", i, err)
 			}
@@ -95,7 +95,7 @@ func (c *Config) Match(message string) (Match, error) {
 		case p.Fixed != nil:
 			sigil = *p.Fixed
 		default:
-			return Match{}, fmt.Errorf("patterns[%d] matched but its %s group captured nothing and no fixed semver_sigil is set", i, SigilGroup)
+			return Match{}, fmt.Errorf("patterns[%d] matched but its %s group captured nothing and no fixed semver_sigil is set", i, sigilGroup)
 		}
 
 		return Match{Matched: true, Sigil: sigil, Groups: groups, Warn: p.Warn, PatternIndex: i}, nil

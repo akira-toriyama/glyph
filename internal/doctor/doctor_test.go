@@ -68,9 +68,9 @@ func TestUnansweredRepoReadIsCouldNotRunNotAFailure(t *testing.T) {
 	in.RepoErr = errors.New("github: GET /repos/akira-toriyama/glyph: 403 API rate limit exceeded")
 
 	r := Run(in)
-	token := find(t, r, IDTokenAccess)
+	token := find(t, r, idTokenAccess)
 	if token.Status != StatusUnknown {
-		t.Fatalf("%s = %s, want %s — nothing about the repository was observed", IDTokenAccess, token.Status, StatusUnknown)
+		t.Fatalf("%s = %s, want %s — nothing about the repository was observed", idTokenAccess, token.Status, StatusUnknown)
 	}
 	if !strings.Contains(token.Observed, "no answer") {
 		t.Errorf("the observation must say the read produced no answer, got %q", token.Observed)
@@ -80,11 +80,11 @@ func TestUnansweredRepoReadIsCouldNotRunNotAFailure(t *testing.T) {
 	}
 	// Independence still holds: the settings degrade with it, the local check
 	// does not.
-	if got := find(t, r, IDSquashEnabled).Status; got != StatusUnknown {
-		t.Errorf("%s = %s, want unknown", IDSquashEnabled, got)
+	if got := find(t, r, idSquashEnabled).Status; got != StatusUnknown {
+		t.Errorf("%s = %s, want unknown", idSquashEnabled, got)
 	}
-	if got := find(t, r, IDWorkflowPinned).Status; got != StatusPass {
-		t.Errorf("%s = %s, want pass — the local check needs no credential", IDWorkflowPinned, got)
+	if got := find(t, r, idWorkflowPinned).Status; got != StatusPass {
+		t.Errorf("%s = %s, want pass — the local check needs no credential", idWorkflowPinned, got)
 	}
 	if r.OK {
 		t.Error("ok must be false: unverified is not verified-good")
@@ -115,9 +115,9 @@ func TestTokenWriteIsAdviceNeverAFailure(t *testing.T) {
 			in := healthyInput(t)
 			in.RepoObject.Permissions = tt.perm
 			r := Run(in)
-			c := find(t, r, IDTokenWrite)
+			c := find(t, r, idTokenWrite)
 			if c.Status != tt.want {
-				t.Fatalf("%s = %s, want %s (observed: %s)", IDTokenWrite, c.Status, tt.want, c.Observed)
+				t.Fatalf("%s = %s, want %s (observed: %s)", idTokenWrite, c.Status, tt.want, c.Observed)
 			}
 			if tt.want == StatusAdvice {
 				if !r.OK || r.Counts.Fail != 0 {
@@ -140,9 +140,9 @@ func TestTokenWriteDegradesWithTheUnreadRepo(t *testing.T) {
 	in := healthyInput(t)
 	in.RepoObject = github.Repo{}
 	in.RepoErr = errors.New("github: GET /repos/akira-toriyama/glyph: 403 API rate limit exceeded")
-	c := find(t, Run(in), IDTokenWrite)
+	c := find(t, Run(in), idTokenWrite)
 	if c.Status != StatusUnknown {
-		t.Fatalf("%s = %s, want %s — nothing about write access was observed", IDTokenWrite, c.Status, StatusUnknown)
+		t.Fatalf("%s = %s, want %s — nothing about write access was observed", idTokenWrite, c.Status, StatusUnknown)
 	}
 }
 
@@ -179,7 +179,7 @@ func TestRemainingChecksDescribeMeasuredBehaviour(t *testing.T) {
 	}{
 		{
 			name:  "an unanswered read is unverified, never a verdict",
-			check: find(t, Run(unanswered), IDTokenAccess),
+			check: find(t, Run(unanswered), idTokenAccess),
 			want:  StatusUnknown,
 			mention: []string{
 				"nothing was observed about the repository", // the split the check exists for
@@ -188,7 +188,7 @@ func TestRemainingChecksDescribeMeasuredBehaviour(t *testing.T) {
 		},
 		{
 			name:  "PR_TITLE is argued from the fallback the walk actually runs",
-			check: find(t, Run(titleOff), IDSquashTitle),
+			check: find(t, Run(titleOff), idSquashTitle),
 			want:  StatusFail,
 			mention: []string{
 				// The dark-window mechanism, pinned live by
@@ -201,7 +201,7 @@ func TestRemainingChecksDescribeMeasuredBehaviour(t *testing.T) {
 		},
 		{
 			name:  "PR_BODY is argued from the offline record, not from glyph's own needs",
-			check: find(t, Run(bodyOff), IDSquashMessage),
+			check: find(t, Run(bodyOff), idSquashMessage),
 			want:  StatusFail,
 			mention: []string{
 				// DESIGN §4 rejected the squash body as a signal, so the cost
@@ -212,7 +212,7 @@ func TestRemainingChecksDescribeMeasuredBehaviour(t *testing.T) {
 		},
 		{
 			name:  "a moving pin is argued from the tag-derived version, not from taste",
-			check: find(t, Run(movingComposite), IDWorkflowPinned),
+			check: find(t, Run(movingComposite), idWorkflowPinned),
 			want:  StatusFail,
 			mention: []string{
 				"ONE repository at ONE tag", // the lockstep the pin preserves
@@ -271,7 +271,7 @@ func TestMergeMethodChecksDescribeTheWalkThatExists(t *testing.T) {
 	}{
 		{
 			name:  "rebase merging is strict, not lenient",
-			check: find(t, Run(permissive), IDRebaseMerge),
+			check: find(t, Run(permissive), idRebaseMerge),
 			want:  StatusAdvice,
 			mention: []string{
 				"expands the whole pull request", // it resolves exactly, like a squash
@@ -284,7 +284,7 @@ func TestMergeMethodChecksDescribeTheWalkThatExists(t *testing.T) {
 		},
 		{
 			name:  "squash on promises all-or-nothing, never an identical verdict",
-			check: find(t, Run(healthyInput(t)), IDSquashEnabled),
+			check: find(t, Run(healthyInput(t)), idSquashEnabled),
 			want:  StatusPass,
 			mention: []string{
 				"never half-resolved", // the guarantee squash actually gives
@@ -301,7 +301,7 @@ func TestMergeMethodChecksDescribeTheWalkThatExists(t *testing.T) {
 		},
 		{
 			name:  "squash off is argued from the partial window, not from a blackout",
-			check: find(t, Run(squashOff), IDSquashEnabled),
+			check: find(t, Run(squashOff), idSquashEnabled),
 			want:  StatusFail,
 			mention: []string{
 				"own message",    // §4's fallback classifies the commit itself
@@ -316,7 +316,7 @@ func TestMergeMethodChecksDescribeTheWalkThatExists(t *testing.T) {
 		},
 		{
 			name:  "allowing merge commits leaves a window, so it cannot claim nothing breaks",
-			check: find(t, Run(mergeCommitOn), IDMergeCommit),
+			check: find(t, Run(mergeCommitOn), idMergeCommit),
 			want:  StatusAdvice,
 			mention: []string{
 				"counts none", // the partial window the setting still costs
@@ -355,7 +355,7 @@ func TestUnreportedSettingIsUnknownNotFalse(t *testing.T) {
 	in := healthyInput(t)
 	in.RepoObject.AllowSquashMerge = nil
 
-	c := find(t, Run(in), IDSquashEnabled)
+	c := find(t, Run(in), idSquashEnabled)
 	if c.Status != StatusUnknown {
 		t.Fatalf("status = %s, want %s", c.Status, StatusUnknown)
 	}

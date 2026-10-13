@@ -43,9 +43,9 @@ func render(spans []LineSpan, vals map[string]string) string {
 // only the populated arm would pass with Optional ignored. The pair is the
 // assertion.
 func TestParseLineOptionalSpan(t *testing.T) {
-	spans, err := ParseLine("- $subject$[ ($pr)] @$author")
+	spans, err := parseLine("- $subject$[ ($pr)] @$author")
 	if err != nil {
-		t.Fatalf("ParseLine: %v", err)
+		t.Fatalf("parseLine: %v", err)
 	}
 	withPull := render(spans, map[string]string{"subject": "add the demo feature", "pr": "#61", "author": "akira-toriyama"})
 	if withPull != "- add the demo feature (#61) @akira-toriyama" {
@@ -62,9 +62,9 @@ func TestParseLineOptionalSpan(t *testing.T) {
 // link — and compiling it as a span would silently delete the text inside it
 // for any commit whose scope is empty.
 func TestParseLineLeavesABareBracketLiteral(t *testing.T) {
-	spans, err := ParseLine("- [$scope] $subject [docs](https://example.invalid)")
+	spans, err := parseLine("- [$scope] $subject [docs](https://example.invalid)")
 	if err != nil {
-		t.Fatalf("ParseLine: %v", err)
+		t.Fatalf("parseLine: %v", err)
 	}
 	for _, s := range spans {
 		if s.Optional {
@@ -84,9 +84,9 @@ func TestParseLineLeavesABareBracketLiteral(t *testing.T) {
 // one character early. Both arms again: the bracketed group renders when the
 // scope resolves, and the whole span leaves when it does not.
 func TestParseLineSpanBracketsNest(t *testing.T) {
-	spans, err := ParseLine("- $subject$[ [$scope]]")
+	spans, err := parseLine("- $subject$[ [$scope]]")
 	if err != nil {
-		t.Fatalf("ParseLine: %v", err)
+		t.Fatalf("parseLine: %v", err)
 	}
 	if got, want := render(spans, map[string]string{"subject": "fix the scoped thing", "scope": "cli"}), "- fix the scoped thing [cli]"; got != want {
 		t.Errorf("scoped: got %q, want %q", got, want)
@@ -111,9 +111,9 @@ func TestParseLineRefusals(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := ParseLine(c.line)
+			_, err := parseLine(c.line)
 			if err == nil {
-				t.Fatalf("ParseLine(%q) succeeded, want an error containing %q", c.line, c.want)
+				t.Fatalf("parseLine(%q) succeeded, want an error containing %q", c.line, c.want)
 			}
 			if !strings.Contains(err.Error(), c.want) {
 				t.Errorf("error = %q, want substring %q", err, c.want)

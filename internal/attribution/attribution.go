@@ -31,23 +31,23 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/config"
 )
 
-// Reason says why a commit was refused: which of §4.1's two authoring errors
-// it is. A consumer branches on it to name the escape.
-type Reason int
+// reason says why a commit was refused: which of §4.1's two authoring errors
+// it is; Error branches on it to word the sentence.
+type reason int
 
 const (
-	// NoCarrier — the commit's files belong to no package (or it has none),
+	// noCarrier — the commit's files belong to no package (or it has none),
 	// no scope names one, and its sigil claims a version impact. Nothing can
 	// carry the claim.
-	NoCarrier Reason = iota
-	// Contradiction — the scope names a package that owns none of the
+	noCarrier reason = iota
+	// contradiction — the scope names a package that owns none of the
 	// commit's files, and its sigil claims a version impact. The author said
 	// where the impact lands and the tree disagrees.
-	Contradiction
+	contradiction
 )
 
 // Owned is one file with the package that owns it (the longest declared
-// prefix): a Contradiction's evidence for a line the commit does move.
+// prefix): a contradiction's evidence for a line the commit does move.
 type Owned struct {
 	File    string
 	Package config.Package
@@ -62,13 +62,13 @@ type Owned struct {
 // files (Owners, Unowned, Files, More), and what it cannot see and the caller
 // tells it (Merge, Unread, Sayable).
 type Refusal struct {
-	Reason  Reason
+	Reason  reason
 	Scope   string
 	Sigil   config.Sigil
-	Touched []config.Package // packages that own the commit's files, in config order (empty for NoCarrier)
+	Touched []config.Package // packages that own the commit's files, in config order (empty for noCarrier)
 	Names   []string         // every package name, in config order
 
-	// Owners is a Contradiction's evidence: one owned file per touched
+	// Owners is a contradiction's evidence: one owned file per touched
 	// package, in config order, so the file that decides is named wherever it
 	// sits in the diff — the first three files of `.github/a.yml, Makefile,
 	// curry/b.go` are two no package owns before the one that matters.
@@ -76,7 +76,7 @@ type Refusal struct {
 	// belong to anything.
 	Owners  []Owned
 	Unowned int
-	// Files is a NoCarrier's evidence: the first of the commit's files, none
+	// Files is a noCarrier's evidence: the first of the commit's files, none
 	// of which a package owns — nil when the commit arrived with no file.
 	Files []string
 	// More counts what the evidence leaves out: the owned files past Owners,
@@ -120,19 +120,19 @@ func declaration(say config.Sayable) string {
 }
 
 func (r *Refusal) Error() string {
-	if r.Reason == Contradiction {
-		return r.contradiction()
+	if r.Reason == contradiction {
+		return r.contradictionSentence()
 	}
-	return r.noCarrier()
+	return r.noCarrierSentence()
 }
 
-// contradiction words the scope check in ownership's terms: each line the
+// contradictionSentence words the scope check in ownership's terms: each line the
 // commit does move, shown by a file and the package that owns it, then the
 // scopes that would be true. The first cut said the commit "does not touch"
 // travel while naming files under travel/onsen, and printed root-owned files
 // as lying "under ." — a filesystem reading of a rule that is about the
 // longest prefix (t-mfny (C), t-n5tw 5).
-func (r *Refusal) contradiction() string {
+func (r *Refusal) contradictionSentence() string {
 	say := r.Sayable
 	evidence := make([]string, 0, len(r.Owners)+2)
 	var moved, spellable []string
@@ -202,13 +202,13 @@ func countFiles(n int, more string) string {
 	return fmt.Sprintf("%d %sfiles", n, more)
 }
 
-// noCarrier words rule 3's refusal: what the tree was shown, then the
+// noCarrierSentence words rule 3's refusal: what the tree was shown, then the
 // escapes THIS commit can take, in the order DESIGN gives them — a scope
 // naming a line, = (written, or read from a sigil left out), a declaration.
 // An escape the claiming pattern cannot write is not named: the first cut
 // named the scope and = to every commit, the raw revert included, whose
 // pattern fixes its sigil and captures no scope (t-mfny (A)).
-func (r *Refusal) noCarrier() string {
+func (r *Refusal) noCarrierSentence() string {
 	say := r.Sayable
 	var opening string
 	switch {
@@ -312,7 +312,7 @@ func orList(items []string) string {
 //     state.
 //
 // A scope that names a package owning none of the files is a *Refusal
-// (Contradiction) when the sigil claims a version impact — owning in rule 1's
+// (contradiction) when the sigil claims a version impact — owning in rule 1's
 // sense, so a parent's name over a nested package's file is one, and so is
 // the root's name over a declared package's. A = is placed by its files: it
 // claims no impact, so there is nothing for the tree to contradict. The scope
@@ -354,7 +354,7 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
 
 	if len(touched) > 0 {
 		if hasNamed && !touchedIdx[named] && sigil != config.SigilNone {
-			return nil, contradiction(files, scope, sigil, touched, packages)
+			return nil, refuseContradiction(files, scope, sigil, touched, packages)
 		}
 		return touched, nil
 	}
@@ -364,14 +364,14 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
 	if sigil == config.SigilNone {
 		return nil, nil
 	}
-	return nil, noCarrier(files, scope, sigil, packages)
+	return nil, refuseNoCarrier(files, scope, sigil, packages)
 }
 
-// contradiction builds the scope check's refusal with its evidence: the first
+// refuseContradiction builds the scope check's refusal with its evidence: the first
 // file each touched package owns, the other owned files counted, and the
 // files no package owns counted apart.
-func contradiction(files []string, scope string, sigil config.Sigil, touched, packages []config.Package) *Refusal {
-	r := &Refusal{Reason: Contradiction, Scope: scope, Sigil: sigil, Touched: touched, Names: names(packages)}
+func refuseContradiction(files []string, scope string, sigil config.Sigil, touched, packages []config.Package) *Refusal {
+	r := &Refusal{Reason: contradiction, Scope: scope, Sigil: sigil, Touched: touched, Names: names(packages)}
 	first := make(map[int]string, len(touched))
 	for _, f := range files {
 		f = path.Clean(f)
@@ -394,10 +394,10 @@ func contradiction(files []string, scope string, sigil config.Sigil, touched, pa
 	return r
 }
 
-// noCarrier builds rule 3's refusal with its evidence: no package owns any
+// refuseNoCarrier builds rule 3's refusal with its evidence: no package owns any
 // of files, so the first few stand for all of them.
-func noCarrier(files []string, scope string, sigil config.Sigil, packages []config.Package) *Refusal {
-	r := &Refusal{Reason: NoCarrier, Scope: scope, Sigil: sigil, Names: names(packages)}
+func refuseNoCarrier(files []string, scope string, sigil config.Sigil, packages []config.Package) *Refusal {
+	r := &Refusal{Reason: noCarrier, Scope: scope, Sigil: sigil, Names: names(packages)}
 	for i, f := range files {
 		if i == quoted {
 			r.More = len(files) - quoted

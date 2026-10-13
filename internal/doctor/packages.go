@@ -39,7 +39,7 @@ import (
 //   - Packages declared and no tree listing (an unborn HEAD, git failing) is
 //     unknown too: nothing was compared.
 func checkPackagePaths(root string, cfg *config.Config, trees []string, treesErr error) Check {
-	c := Check{ID: IDPackagePaths, Expected: "every [[packages]] path in glyph.toml is a directory HEAD records (git's path, byte for byte)"}
+	c := Check{ID: idPackagePaths, Expected: "every [[packages]] path in glyph.toml is a directory HEAD records (git's path, byte for byte)"}
 	if configUnread(&c, cfg) {
 		return c
 	}

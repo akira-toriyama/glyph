@@ -334,7 +334,7 @@ func wholeHistory(ctx context.Context, cfg *config.Config, whyNone, escape strin
 // its parsed version; tag is empty for a line before its first release. The
 // one resolver behind both the walk base and the bump base. l is the line
 // asked about: l.Prefix is its tag namespace ("" for the bare line,
-// config.Package.TagPrefix for a package) and l.Holds its majors, which keeps
+// config.Package.tagPrefix for a package) and l.Holds its majors, which keeps
 // pubsub/ and pubsub/v2 apart on one prefix. A tag on any other line — a curry/
 // tag asked about haiku/, a bare v* tag asked about any package, a nested
 // line's tag asked about its parent — is not a candidate, so one line's release

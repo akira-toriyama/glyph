@@ -154,8 +154,8 @@ func TestCallerChecksNeverPassOverAnUnreadableFile(t *testing.T) {
 	const starved = "name: c\non:\n  push:\npermissions:\n  contents: read\njobs:\n  r:\n" +
 		"    uses: akira-toriyama/glyph/.github/workflows/release.yml@v4.2.0\n"
 	checks := map[string]func(string, bool) Check{
-		IDCallerPerms:  func(r string, v bool) Check { return checkCallerPermissions(r, v, "dev") },
-		IDCallerInputs: func(r string, v bool) Check { return checkCallerInputs(r, v, "dev") },
+		idCallerPerms:  func(r string, v bool) Check { return checkCallerPermissions(r, v, "dev") },
+		idCallerInputs: func(r string, v bool) Check { return checkCallerInputs(r, v, "dev") },
 	}
 	for id, check := range checks {
 		t.Run(id, func(t *testing.T) {

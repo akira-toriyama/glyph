@@ -77,7 +77,7 @@ const permsFloor = "v2.1.0"
 //     which is legal and real. A false pass here is the pin check's own
 //     documented trade, made for the same reason.
 func checkCallerPermissions(root string, rootVerified bool, glyph string) Check {
-	c := Check{ID: IDCallerPerms, Expected: permsExpected(glyph)}
+	c := Check{ID: idCallerPerms, Expected: permsExpected(glyph)}
 	entries, unknown := listWorkflows(root, rootVerified, &c,
 		"A caller granting less than its reusable declares dies as startup_failure before any job — "+
 			"unverified here, not verified")

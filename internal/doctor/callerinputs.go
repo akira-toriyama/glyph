@@ -48,7 +48,7 @@ const inputsFloor = "v3.1.0"
 // every input the reusable requires at the release the caller pins. glyph is
 // the running binary's version (judgeAt).
 func checkCallerInputs(root string, rootVerified bool, glyph string) Check {
-	c := Check{ID: IDCallerInputs, Expected: inputsExpected(glyph)}
+	c := Check{ID: idCallerInputs, Expected: inputsExpected(glyph)}
 	entries, unknown := listWorkflows(root, rootVerified, &c,
 		"A caller omitting a required input dies as startup_failure before any job — unverified here, not verified")
 	if unknown {

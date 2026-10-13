@@ -650,7 +650,7 @@ func TestNextPageAdmitsOnlyTheConfiguredOrigin(t *testing.T) {
 	// The base is the public API host, not an httptest server: the check must
 	// compare against whatever WithBaseURL was given (Enterprise, an
 	// httptest.Server), and this table reads as the fleet's real deployment.
-	c := New("s3cret", WithBaseURL(DefaultBaseURL))
+	c := New("s3cret", WithBaseURL(defaultBaseURL))
 
 	tests := []struct {
 		name string
@@ -955,7 +955,7 @@ func TestGuardRedirectsCopiesTheInjectedClient(t *testing.T) {
 // literally instead of calling sameOrigin, so a bug inside the comparison
 // cannot make the property agree with itself.
 func FuzzNextPageOrigin(f *testing.F) {
-	c := New("s3cret", WithBaseURL(DefaultBaseURL))
+	c := New("s3cret", WithBaseURL(defaultBaseURL))
 	f.Add(`<https://api.github.com/x?page=2>; rel="next"`)
 	f.Add(`<https://api.github.com.evil.test/x?page=2>; rel="next"`)
 	f.Add(`<https://api.github.com:8443/x>; rel="next"`)
@@ -979,7 +979,7 @@ func FuzzNextPageOrigin(f *testing.F) {
 		}
 		if !strings.EqualFold(u.Scheme, "https") || !strings.EqualFold(u.Hostname(), "api.github.com") ||
 			(u.Port() != "" && u.Port() != "443") {
-			t.Fatalf("nextPage(%q) admitted %q, which is not on %s", header, got, DefaultBaseURL)
+			t.Fatalf("nextPage(%q) admitted %q, which is not on %s", header, got, defaultBaseURL)
 		}
 	})
 }

@@ -20,21 +20,21 @@ type Version struct {
 // dot-separated non-negative decimals without leading zeros (semver §2).
 var versionRE = regexp.MustCompile(`^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
-// MaxField is the largest value a version field glyph reads may hold. Next
+// maxField is the largest value a version field glyph reads may hold. Next
 // adds one to a field, and from the int ceiling it wrapped: a verdict printed
 // v-9223372036854775808.0.0 at exit 0 (t-f2cb, measured 2026-09-29). With
-// every parsed field at most MaxField, a step lands at most one past it —
+// every parsed field at most maxField, a step lands at most one past it —
 // within int on every target glyph builds for (amd64, arm64) — so Next stays
 // total and no caller grows an error arm. The one version glyph can then
-// write and not read back, a field of exactly MaxField+1, is no candidate once
+// write and not read back, a field of exactly maxField+1, is no candidate once
 // tagged, so the line's next step answers from below it: backwards after a
 // stepped field, the same tag again on a major version subdirectory past the
 // cap (DESIGN §3 holds the measurement).
-const MaxField = math.MaxInt32
+const maxField = math.MaxInt32
 
 // ParseVersion parses a version in the house triple shape, accepting an
 // optional leading v (HouseTagOn is the house tag proper, v required), and
-// refuses a field past MaxField. It returns a plain error — the caller
+// refuses a field past maxField. It returns a plain error — the caller
 // classifies it, since only the caller knows whether the string came from a
 // flag (usage) or from git (API): a flag past the cap is usage, and a tag
 // past it is not a version on its line, so it leaves every resolver's
@@ -47,8 +47,8 @@ func ParseVersion(s string) (Version, error) {
 	var v Version
 	for i, dst := range []*int{&v.Major, &v.Minor, &v.Patch} {
 		n, err := strconv.ParseInt(m[i+1], 10, 64)
-		if err != nil || n > MaxField {
-			return Version{}, fmt.Errorf("%q is not a version glyph reads: its %s %s is past %d, the largest a version field may hold", s, fieldNames[i], m[i+1], MaxField)
+		if err != nil || n > maxField {
+			return Version{}, fmt.Errorf("%q is not a version glyph reads: its %s %s is past %d, the largest a version field may hold", s, fieldNames[i], m[i+1], maxField)
 		}
 		*dst = int(n)
 	}

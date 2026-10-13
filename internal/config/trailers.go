@@ -74,7 +74,7 @@ func buildTrailers(raws []rawTrailer, patterns []Pattern) ([]NoteTrailer, error)
 		if seen[rt.Name] {
 			return nil, fmt.Errorf("note.trailers[%d]: name %q is declared twice; one placeholder cannot read two trailers", i, rt.Name)
 		}
-		if slices.Contains(LineBuiltins, rt.Name) {
+		if slices.Contains(lineBuiltins, rt.Name) {
 			return nil, fmt.Errorf("note.trailers[%d]: name %q is a built-in, which outranks it — the trailer would never render", i, rt.Name)
 		}
 		if groups[rt.Name] {

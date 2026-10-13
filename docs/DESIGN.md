@@ -806,12 +806,12 @@ and `:recycle:` and `:broom:` and `:bulb:` for the same tidy. Ratified
 ## 3. Sigils → semver
 
 Lattice: `none(0) < patch(1) < minor(2) < major(3)`, owned by `internal/bump`
-(`Level`, `Reduce`). The sigil IS the classification: `=` none, `~` patch,
+(`Level`, `reduce`). The sigil IS the classification: `=` none, `~` patch,
 `^` minor, `!` major, `%` major — fixed in the binary beside the alphabet
 (`bump.SigilLevel`), not configurable, because a repository that could remap
 `!` to patch would make every pinned verdict unreadable from the file alone.
 
-**Combination across a range:** `Reduce` folds with max — order-independent
+**Combination across a range:** `reduce` folds with max — order-independent
 and idempotent (fuzz-pinned), so squash order can never change the version.
 All-none ⇒ no release (exit 1).
 
@@ -847,7 +847,7 @@ one split the 0.x rule rests on, and it is why the rule lives in
   rises in the sentence because classification is version-blind — the
   break stays visible — and only the arrow, which the arithmetic would have
   drawn from a version to itself, is withheld.
-- **A version field is at most 2^31−1** (`bump.MaxField`; t-f2cb, mutation
+- **A version field is at most 2^31−1** (`bump.maxField`; t-f2cb, mutation
   row `semver-field-past-the-cap-accepted`). `Next` adds one to a field, and
   from the `int` ceiling it wrapped — measured 2026-09-29: `bump --current
   v9223372036854775807.0.0` over a `!` printed `v-9223372036854775808.0.0` at
@@ -1778,7 +1778,7 @@ commit and a tag strictly past it both exited 3). Both now exit 0.
 the `[[packages]]` schema in `internal/config`, the attribution rule as
 `internal/attribution`,
 and `doctor`'s path-exists check (t-exs0); the line primitives — a tag is
-parsed *on* a line (`bump.ParseVersionOn`, `config.Package.TagPrefix`), and
+parsed *on* a line (`bump.ParseVersionOn`, `config.Package.tagPrefix`), and
 the walk base, the published floor and the managed drafts are each resolved
 per line — plus `doctor`'s root-line advice (t-q047); and the walk itself
 (t-ws0s): `internal/cli/lines.go` resolves the lines a `--since-tag` names,
@@ -1845,7 +1845,7 @@ name = "core"               # its default "." is no preset scope's word: under t
   etcd `client/v3/` tags `client/v3.6.0`). So `path = "pubsub/v2"` is the
   **v2 line on the `pubsub/` prefix**, and a `path = "pubsub"` beside it is the
   free line holding every other major; a root-level `path = "v2"` is the bare
-  v2.\* line the same way (`config.Package.TagPrefix`, `Config.LineOf`;
+  v2.\* line the same way (`config.Package.tagPrefix`, `Config.LineOf`;
   mutation rows `major-subdirectory-kept-in-the-tag-prefix`,
   `line-reads-tags-of-every-major`). Every reader of tags — the walk base,
   the published floor, the managed drafts, `--since-tag`'s line selection —
@@ -2903,7 +2903,7 @@ cmd/glyph/main.go        os.Exit(cli.Execute()) — thin process boundary only
 internal/core            exit-code contract + structured Error (no I/O, no logic)
 internal/version         ldflags build identity + ReadBuildInfo fallback
 internal/cleanup         git's message cleanup, modelled exactly (comment strip, scissors cut) — what --stdin judges is what git records
-internal/bump            Level lattice; SigilLevel + FoldSigils (classification and the fold); Reduce(max); Next; version parse on a tag prefix; stdlib semver
+internal/bump            Level lattice; SigilLevel + FoldSigils (classification and the fold); reduce(max); Next; version parse on a tag prefix; stdlib semver
 internal/config          glyph.toml loader — user RE2 patterns, first match wins, semver_sigil extraction, the [[packages]] schema; embeds the init presets
 internal/attribution     which declared package(s) a commit moves — pure; files + scope + sigil + packages in, package set or lint-class refusal out (§4.1)
 internal/emoji           the gemoji dictionary `glyph emoji` prints — embedded table.json, advisory data nothing else reads (§2)

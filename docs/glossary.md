@@ -115,7 +115,7 @@ appends `..HEAD` itself, so a value containing `..` is rejected as usage.
 order-independent and idempotent (fuzz-pinned), so squash order can never change
 a version. The word is used for both the operation and its input set — "an empty
 fold" means the commit set came out empty, which is the ambiguity *walkFacts*
-exists to resolve. `internal/bump/level.go: Reduce`
+exists to resolve. `internal/bump/level.go: reduce`
 
 **participate** — a commit participates when the fold reads it: not an
 `exclude_authors` author, matched, not claimed by a skip pattern — exactly the
@@ -363,7 +363,7 @@ synthesises a root package for it. A tag **names** a line:
 `--since-tag=haiku/v0.1.0` selects haiku alone, `--since-tag=pubsub/v2.7.0`
 the v2 line alone. "Which line does this commit move?" is the only question
 packages add to the walk; the answer is *attribution*.
-`internal/config/tagline.go: Line, Package.TagPrefix, Config.LineOf`,
+`internal/config/tagline.go: Line, Package.tagPrefix, Config.LineOf`,
 `internal/cli/lines.go: line`
 
 **attribution** — which lines a commit moves, read from the
@@ -576,7 +576,7 @@ commit still reads *major* in every verdict, section and output.
 `internal/bump/semver.go: Version.Next`
 
 **bump lattice** — `none(0) < patch(1) < minor(2) < major(3)`, the fold's
-order. `internal/bump/level.go: Level, Reduce`
+order. `internal/bump/level.go: Level, reduce`
 
 **section** — one `[[note.sections]]` entry: a title plus a filter on exactly
 one axis (`semver` or `author`). Config order is render order; a commit lands
@@ -770,7 +770,7 @@ gate read this file). `internal/doctor/doctor.go: Check, Run`
 **check id** — the stable kebab-case machine key (`squash-merge-enabled`,
 `workflow-glyph-pins`, …). Branch on the id, **never** on the message, which is
 prose and will be reworded. Treat the id block as the versioned surface it is.
-`internal/doctor/doctor.go: IDConfigLoads…IDPrePushHook`
+`internal/doctor/doctor.go: idConfigLoads…idPrePushHook`
 
 **pass / fail / advice / unknown** — four statuses, and the last two are the
 point.
@@ -938,7 +938,7 @@ with what is already *pending* on the base branch, both stepping from the same
 tag. It says "the next release", never "the rolling draft" — distributed
 fleet-wide it lands mostly on repos that tag straight from main, where naming a
 draft would not be noise but *false*. `internal/preview/preview.go: Render,
-Headline`, `internal/cli/cmd_preview.go`
+headline`, `internal/cli/cmd_preview.go`
 
 **sticky comment** — one PR comment edited in place on every push rather than a
 new comment each time. The caller finds its previous comment by the leading
