@@ -147,14 +147,8 @@ func newLintCmd() *cobra.Command {
 // git merge's own MERGE_MSG (DESIGN §2.1). message is what the hook redirected
 // onto stdin, nil when there is no such file to ask about.
 //
-// Asking git HERE rather than having the hook script pass a `--cleanup` flag is
-// the decision worth knowing, and it is a rollout one. The hook is a file
-// installed once into ~34 repositories; a script that had to compute the mode
-// would leave every already-installed copy computing nothing, so the fix would
-// reach a repo only when someone re-ran `glyph hook install` there. Deriving it
-// inside the binary means the hook script does not change at all and every
-// installed copy is fixed the moment the binary is. It also keeps the hook's
-// founding property intact: the hook holds no knowledge, it asks glyph.
+// It asks git here rather than taking a `--cleanup` flag from the hook script
+// because nothing refreshes an installed hook (DESIGN §2.1).
 //
 // No signal is required. Outside a repository, or with git unable to answer,
 // the config reads fail and this proceeds as if unset — a developer piping a

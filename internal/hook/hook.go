@@ -91,14 +91,10 @@ exit 0
 // the push. git's protocol arrives on stdin and reaches glyph untouched, and argv
 // is forwarded verbatim rather than mapped onto flags.
 //
-// That last part is a rollout decision, not a style one. This file is installed
-// once per clone and nothing refreshes one — no pull, no fleet-sync, no
-// CI job — so a script that named git's arguments would freeze today's argv
-// shape into every copy, and the day git passes a third argument every frozen
-// copy turns a push into a usage error. The same reasoning put the commit-msg
-// hook's cleanup-mode derivation inside the binary (DESIGN 2.1); here it keeps
-// the range arithmetic there too, which matters more, because a range computed
-// by a stale script is a wrong verdict rather than a loud failure.
+// That last part is a rollout decision, not a style one: nothing refreshes an
+// installed hook (DESIGN §2.1), so a script that mapped git's arguments onto
+// flags would freeze today's argv shape into every copy: an argument git adds
+// later would never reach glyph.
 func prePushScript() string {
 	return fmt.Sprintf(`#!/bin/sh
 # glyph pre-push hook — %s

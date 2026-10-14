@@ -164,17 +164,19 @@ func TestPRVerdictExposesTheVerdictToCallers(t *testing.T) {
 			"machine verdict must come from one payload, not two walks that can disagree")
 	}
 
-	// `[ x = y ] && flag=true` under `set -e` exits the step whenever the test
-	// is false — it would fail the job on every non-major PR. This shipped as a
-	// near-miss while writing t-eb6h; pin the shape that replaced it.
+	// `[ x = y ] && flag=true` leaves the flag unset whenever the test is false,
+	// and the step's `set -u` then aborts at the echo that writes it: every
+	// non-major PR would fail the job. A near-miss while writing t-eb6h; pin the
+	// shape that replaced it.
 	breakingByAnd := regexp.MustCompile(`\[\s*"\$level"\s*=\s*"major"\s*\]\s*&&`)
 	const canary = `[ "$level" = "major" ] && breaking=true`
 	if !breakingByAnd.MatchString(canary) {
 		t.Fatalf("the pattern no longer matches the shape it bans (%q) — the absence asserted below is vacuous", canary)
 	}
 	if breakingByAnd.MatchString(body) {
-		t.Error("breaking is derived with `[ ... ] && flag=true`, which exits under `set -e` " +
-			"on every non-major PR; use an if/else")
+		t.Error("breaking is derived with `[ ... ] && flag=true`, which leaves breaking unset on " +
+			"every non-major PR, so the step's set -u fails the job; derive it with the case " +
+			"whose empty arm keeps an empty level empty (t-xbk0), not an if/else")
 	}
 
 	// The fork-skip contract has to stay documented: it is the one way a caller

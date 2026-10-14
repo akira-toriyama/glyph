@@ -32,12 +32,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Execute builds the root command, runs it, and maps the result to glyph's
-// exit-code contract:
-//
-//	0 ok / 1 no release / 2 usage|bad input / 3 lint / 4 API|IO / 130 interrupted
-//
-// On a non-zero exit it prints {"error":{...}} to stderr, keeping stdout pure.
+// Execute builds the root command, runs it, and returns the exit code finish
+// maps its result to (the contract is core.Code).
 //
 // A root context is derived from SIGINT/SIGTERM so a Ctrl-C cancels in-flight
 // work (subprocesses and HTTP requests) rather than orphaning it; once cancelled
