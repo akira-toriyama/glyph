@@ -1,0 +1,24 @@
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 858b206..9036ce7 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -258,9 +258,6 @@ type touchedLine struct {
+ // the commit sits: on a branch that can still be fixed.
+ func attributePull(ctx context.Context, gh *github.Client, cfg *config.Config, owner, repo string, number int, raws []gitsource.RawCommit, name string) ([]touchedLine, string, error) {
+ 	lines := pendingLines(cfg, name)
+-	if len(cfg.Packages) == 0 {
+-		return []touchedLine{{line: lines[0], commits: raws}}, "", nil
+-	}
+ 	perLine := make([][]gitsource.RawCommit, len(lines))
+ 	var facts walkFacts
+ 	for _, r := range raws {
+@@ -282,6 +279,9 @@ func attributePull(ctx context.Context, gh *github.Client, cfg *config.Config, o
+ 			}
+ 		}
+ 	}
++	if len(cfg.Packages) == 0 {
++		return []touchedLine{{line: lines[0], commits: raws}}, "", nil
++	}
+ 	var touched []touchedLine
+ 	for i, l := range lines {
+ 		if len(perLine[i]) == 0 {

@@ -1,13 +1,13 @@
 diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index 6384a00..3accd74 100644
+index 4181ebe..69461d2 100644
 --- a/internal/cli/lines.go
 +++ b/internal/cli/lines.go
-@@ -425,7 +425,7 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
- 				return nil, nil, attributionWedge(aerr, c, owner, repo, reachedLines(lines, reach))
- 			default:
- 				for _, i := range reach {
--					if slices.ContainsFunc(moved, func(p config.Package) bool { return p.Path == lines[i].Package.Path }) {
-+					if len(moved) >= 0 {
- 						carriers = append(carriers, i)
- 					}
+@@ -490,7 +490,7 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
+ 				return nil, nil, attributionWedge(placed.refused, c, owner, repo, reached)
+ 			}
+ 			for _, i := range reach {
+-				if slices.ContainsFunc(placed.moved, func(p config.Package) bool { return p.Path == lines[i].Package.Path }) {
++				if len(placed.moved) >= 0 {
+ 					carriers = append(carriers, i)
  				}
+ 			}

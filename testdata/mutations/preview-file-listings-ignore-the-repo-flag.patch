@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 858b206..4c381e1 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -140,7 +140,7 @@ func previewRun(ctx context.Context, o previewOptions) error {
+ 	if err != nil {
+ 		return err
+ 	}
+-	owner, repo, err := resolveRepo(ctx, o.repo)
++	owner, repo, err := resolveRepo(ctx, "")
+ 	if err != nil {
+ 		return err
+ 	}

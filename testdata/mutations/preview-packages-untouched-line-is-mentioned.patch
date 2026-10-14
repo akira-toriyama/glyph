@@ -1,13 +1,13 @@
-diff --git a/internal/cli/preview_lines.go b/internal/cli/preview_lines.go
-index 9c8d0a8..b8fb9ee 100644
---- a/internal/cli/preview_lines.go
-+++ b/internal/cli/preview_lines.go
-@@ -110,7 +110,7 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 858b206..f8e73d6 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -284,7 +284,7 @@ func attributePull(ctx context.Context, gh *github.Client, cfg *config.Config, o
+ 	}
  	var touched []touchedLine
- 	walkNeeded := false
- 	for i, p := range cfg.Packages {
+ 	for i, l := range lines {
 -		if len(perLine[i]) == 0 {
 +		if len(perLine[i]) < 0 {
  			continue
  		}
- 		rows, dec, cerr := bump.FoldSigils(sigilCommits(perLine[i]), cfg)
+ 		touched = append(touched, touchedLine{line: l, commits: perLine[i]})

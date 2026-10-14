@@ -1,0 +1,16 @@
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 222022a..606be9e 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -389,10 +389,7 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
+ // are said exactly when there are lines to say them of (noNotesReason's rule;
+ // mutation row preview-bare-line-floor-warning-says-on-any-line).
+ func skippedWalkWarning(cfg *config.Config) string {
+-	where, per := "", ""
+-	if len(cfg.Packages) > 0 {
+-		where, per = " on any line this PR touches", " per line"
+-	}
++	where, per := " on any line this PR touches", " per line"
+ 	return "no release tag in HEAD's history" + where + " — previewing the PR's own verdict" + per + " (the pending walk needs a release floor)"
+ }
+ 

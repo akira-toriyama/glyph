@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 222022a..dfc299a 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -348,7 +348,7 @@ func foldTouched(ctx context.Context, cfg *config.Config, touched []touchedLine)
+ // enough on this path.
+ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, repo string, touched []touchedLine) (map[string]bump.Decision, string, bool, error) {
+ 	if !slices.ContainsFunc(touched, func(tl touchedLine) bool { return tl.tag != "" }) {
+-		if len(touched) > 0 {
++		if true {
+ 			warnf("%s", skippedWalkWarning(cfg))
+ 		}
+ 		return nil, "", false, nil

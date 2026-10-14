@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 858b206..5e20162 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -136,7 +136,7 @@ func previewRun(ctx context.Context, o previewOptions) error {
+ 	if err != nil {
+ 		return err
+ 	}
+-	raws, name, err := pullInput(ctx, o.pr, o.repo)
++	raws, name, err := pullInput(ctx, o.pr, "")
+ 	if err != nil {
+ 		return err
+ 	}
