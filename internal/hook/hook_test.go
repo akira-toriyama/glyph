@@ -339,9 +339,9 @@ func TestSetHeadRemedyText(t *testing.T) {
 // and the set-head arm with names a shell would split. Success is git
 // recording refs/remotes/<name>/HEAD.
 func TestSetHeadRemedyRunsPasted(t *testing.T) {
-	testutil.GitOrSkip(t)
+	testutil.RequireGit(t)
 	if _, err := exec.LookPath("sh"); err != nil {
-		t.Skip("no sh to paste into")
+		t.Fatalf("sh is not on PATH, and this test pastes the remedy into it — install it rather than skip: %v", err)
 	}
 	root := t.TempDir()
 	up := filepath.Join(root, "up.git")

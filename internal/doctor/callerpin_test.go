@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/bump"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // TestCallerChecksJudgeTheCallerAtItsPin pins the D2a ruling for both caller
@@ -40,7 +41,7 @@ func TestCallerChecksJudgeTheCallerAtItsPin(t *testing.T) {
 	}{
 		{
 			name:       "a lint caller granting exactly what v1.0.0 declares is not judged by v2.0.0's grants",
-			files:      map[string]string{"c.yml": lintAt("v1.0.0", "permissions:\n  contents: read")},
+			files:      map[string]string{".github/workflows/c.yml": lintAt("v1.0.0", "permissions:\n  contents: read")},
 			glyph:      "dev",
 			perms:      StatusUnknown,
 			inputs:     StatusPass, // lint's inputs bound is v0.1.0, and it requires none
@@ -49,7 +50,7 @@ func TestCallerChecksJudgeTheCallerAtItsPin(t *testing.T) {
 		},
 		{
 			name: "a release caller at v0.4.0 omitting the app it then required is not blessed",
-			files: map[string]string{"r.yml": "name: r\non:\n  push:\npermissions:\n  contents: write\njobs:\n  r:\n" +
+			files: map[string]string{".github/workflows/r.yml": "name: r\non:\n  push:\npermissions:\n  contents: write\njobs:\n  r:\n" +
 				"    uses: akira-toriyama/glyph/.github/workflows/release.yml@v0.4.0\n    with:\n      install-notes: x\n"},
 			glyph:      "dev",
 			perms:      StatusPass, // release's grants bound is v0.2.0
@@ -59,14 +60,14 @@ func TestCallerChecksJudgeTheCallerAtItsPin(t *testing.T) {
 		},
 		{
 			name:   "a pin above every bound is judged, and short is still a fail",
-			files:  map[string]string{"c.yml": lintAt("v4.2.0", "permissions:\n  contents: read")},
+			files:  map[string]string{".github/workflows/c.yml": lintAt("v4.2.0", "permissions:\n  contents: read")},
 			glyph:  "dev",
 			perms:  StatusFail,
 			inputs: StatusPass,
 		},
 		{
 			name:       "a branch pin resolves to whatever the branch holds, which doctor cannot know offline",
-			files:      map[string]string{"c.yml": lintAt("main", granted)},
+			files:      map[string]string{".github/workflows/c.yml": lintAt("main", granted)},
 			glyph:      "dev",
 			perms:      StatusUnknown,
 			inputs:     StatusUnknown,
@@ -74,7 +75,7 @@ func TestCallerChecksJudgeTheCallerAtItsPin(t *testing.T) {
 		},
 		{
 			name:       "a pin newer than a stamped glyph is beyond what that glyph knows",
-			files:      map[string]string{"c.yml": lintAt("v4.3.0", granted)},
+			files:      map[string]string{".github/workflows/c.yml": lintAt("v4.3.0", granted)},
 			glyph:      "4.2.0",
 			perms:      StatusUnknown,
 			inputs:     StatusUnknown,
@@ -84,7 +85,7 @@ func TestCallerChecksJudgeTheCallerAtItsPin(t *testing.T) {
 		{
 			// dev, a pseudo-version and a git-describe stamp have no upper end.
 			name:   "the same pin under an unreleased build is judged",
-			files:  map[string]string{"c.yml": lintAt("v4.3.0", granted)},
+			files:  map[string]string{".github/workflows/c.yml": lintAt("v4.3.0", granted)},
 			glyph:  "v4.2.1-0.20260929061233-adfc5e185dd1",
 			perms:  StatusPass,
 			inputs: StatusPass,
@@ -92,8 +93,8 @@ func TestCallerChecksJudgeTheCallerAtItsPin(t *testing.T) {
 		{
 			name: "a defect in a judged caller fails beside a caller nobody can judge",
 			files: map[string]string{
-				"old.yml": lintAt("v1.0.0", "permissions:\n  contents: read"),
-				"new.yml": lintAt("v4.2.0", "permissions:\n  contents: read"),
+				".github/workflows/old.yml": lintAt("v1.0.0", "permissions:\n  contents: read"),
+				".github/workflows/new.yml": lintAt("v4.2.0", "permissions:\n  contents: read"),
 			},
 			glyph:      "dev",
 			perms:      StatusFail,
@@ -105,7 +106,7 @@ func TestCallerChecksJudgeTheCallerAtItsPin(t *testing.T) {
 			// no row for was skipped, and the check passed as "no workflow
 			// calls a glyph reusable … observed — not assumed".
 			name: "a reusable this glyph does not ship is unknown, never skipped",
-			files: map[string]string{"n.yml": "name: n\non:\n  push:\npermissions:\n  contents: write\njobs:\n  n:\n" +
+			files: map[string]string{".github/workflows/n.yml": "name: n\non:\n  push:\npermissions:\n  contents: write\njobs:\n  n:\n" +
 				"    uses: akira-toriyama/glyph/.github/workflows/notes.yml@v5.0.0\n"},
 			glyph:      "4.2.0",
 			perms:      StatusUnknown,
@@ -116,7 +117,7 @@ func TestCallerChecksJudgeTheCallerAtItsPin(t *testing.T) {
 			// The no-permissions-block exemption runs BEFORE the pin rule:
 			// the repository default decides such a caller at any pin.
 			name:   "a caller with no permissions block at an old pin is the exemption's pass",
-			files:  map[string]string{"c.yml": lintAt("v1.0.0", "")},
+			files:  map[string]string{".github/workflows/c.yml": lintAt("v1.0.0", "")},
 			glyph:  "dev",
 			perms:  StatusPass,
 			inputs: StatusPass,
@@ -124,7 +125,7 @@ func TestCallerChecksJudgeTheCallerAtItsPin(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			root := checkoutWith(t, tt.files)
+			root := checkoutAt(t, tt.files)
 			for _, run := range []struct {
 				check Check
 				want  Status
@@ -179,6 +180,7 @@ func TestCallerFixNeverSendsAReaderToADoctorThatCannotJudge(t *testing.T) {
 // and scripts/check.sh's release-history gate set on a full clone. Run it with
 // -count=1: Go's test cache does not track the tags it reads.
 func TestCallerDeclarationBoundsMatchReleasedTags(t *testing.T) {
+	testutil.RequireGit(t)
 	unavailable := func(format string, args ...any) {
 		t.Helper()
 		if os.Getenv("GLYPH_RELEASE_HISTORY") == "required" {
@@ -292,7 +294,7 @@ func isReusable(body string) bool {
 // below passes too).
 func gitRead(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...) // #nosec G204 -- fixed binary, the test's own arguments
-	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull)
+	cmd.Env = testutil.GitEnv("t")
 	out, err := cmd.Output()
 	if err != nil {
 		if ee, ok := errors.AsType[*exec.ExitError](err); ok {

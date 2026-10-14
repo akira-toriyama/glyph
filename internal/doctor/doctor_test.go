@@ -19,7 +19,7 @@ func healthyInput(t *testing.T) Input {
 	t.Helper()
 	return Input{
 		Repo:            "akira-toriyama/glyph",
-		Root:            checkoutWith(t, map[string]string{"commit-lint.yml": commentedStub}),
+		Root:            checkoutAt(t, map[string]string{".github/workflows/commit-lint.yml": commentedStub}),
 		Config:          loaded(t, minimalConfig),
 		TokenConfigured: true,
 		RepoObject: github.Repo{

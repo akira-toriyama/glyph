@@ -17,7 +17,7 @@ import (
 // itself, and hand-forging them would test glyph against glyph.
 func testClone(t *testing.T) (work, remote string) {
 	t.Helper()
-	testutil.GitOrSkip(t)
+	testutil.RequireGit(t)
 	root := t.TempDir()
 	remote = filepath.Join(root, "remote.git")
 	work = filepath.Join(root, "work")

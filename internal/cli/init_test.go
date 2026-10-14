@@ -93,7 +93,7 @@ func TestInitFlagGrammar(t *testing.T) {
 // remedy — and with glyph.toml already at the top level, an init from a
 // subdirectory wrote a second one there at exit 0.
 func TestInitWritesTheTopLevelFromASubdirectory(t *testing.T) {
-	testutil.GitOrSkip(t)
+	testutil.RequireGit(t)
 	dir := t.TempDir()
 	testutil.Git(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
 	top, err := filepath.EvalSymlinks(dir) // git names the real path
@@ -148,7 +148,7 @@ func TestInitWritesTheTopLevelFromASubdirectory(t *testing.T) {
 // at all is the current directory the answer; here init refuses at the code
 // it refuses an existing file with, and names the work tree.
 func TestInitRefusesInsideTheGitDirectory(t *testing.T) {
-	testutil.GitOrSkip(t)
+	testutil.RequireGit(t)
 	checkout := t.TempDir()
 	testutil.Git(t, checkout, "akira-toriyama", "init", "-q", "-b", "main")
 	bare := filepath.Join(t.TempDir(), "bare.git")
@@ -186,7 +186,7 @@ func TestInitRefusesInsideTheGitDirectory(t *testing.T) {
 // repository" is the current directory's case; anything else is no
 // trustworthy answer, exit 4, with git's message, and nothing written.
 func TestInitCannotRunWhereGitWillNotReadTheRepository(t *testing.T) {
-	testutil.GitOrSkip(t)
+	testutil.RequireGit(t)
 	for name, arrange := range map[string]func(t *testing.T, top string){
 		"dubious ownership": func(t *testing.T, _ string) {
 			t.Setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
@@ -227,7 +227,7 @@ func TestInitCannotRunWhereGitWillNotReadTheRepository(t *testing.T) {
 // turned an ordinary outside-a-checkout init into exit 4 with nothing written
 // (review u6b-3, measured on 20576c8; base wrote ./glyph.toml).
 func TestInitOutsideARepositoryReadsGitsAnswerPastItsTrace(t *testing.T) {
-	testutil.GitOrSkip(t)
+	testutil.RequireGit(t)
 	cwd := t.TempDir()
 	t.Chdir(cwd)
 	t.Setenv("GIT_TRACE", "1")

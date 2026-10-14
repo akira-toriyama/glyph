@@ -35,7 +35,7 @@ const hookCutLine = "# ------------------------ >8 ------------------------"
 //     too, and git keeps the text under a line the author typed;
 //   - -v on the command line and no editor: git cuts, and nothing tells the hook.
 func TestHookCutMatchesGit(t *testing.T) {
-	testutil.GitOrSkip(t)
+	testutil.RequireGit(t)
 	const below = "kept only where git does not cut"
 	message := ":bug:(x)~ fix the thing\n\n" + hookCutLine + "\n" + below + "\n"
 

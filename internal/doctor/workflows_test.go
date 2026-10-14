@@ -244,25 +244,9 @@ func TestPinProblemNamesTheShape(t *testing.T) {
 	}
 }
 
-// checkoutWith writes workflow files into a throwaway checkout and returns its
-// root — the local tree the pin check reads.
-func checkoutWith(t *testing.T, files map[string]string) string {
-	t.Helper()
-	root := t.TempDir()
-	dir := filepath.Join(root, ".github", "workflows")
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	for name, body := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
-	}
-	return root
-}
-
-// TestCheckWorkflowPinsOutcomes walks the check's four outcomes over a real
-// directory: clean, drifted, nothing to check, and no directory at all.
+// TestCheckWorkflowPinsOutcomes walks the check's outcomes over a real
+// directory: clean, drifted, and nothing to check — an empty workflows
+// directory among them. An absent one is TestAbsentWorkflowsDirSplitsOnRootProvenance's.
 func TestCheckWorkflowPinsOutcomes(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -272,7 +256,7 @@ func TestCheckWorkflowPinsOutcomes(t *testing.T) {
 	}{
 		{
 			name:  "a real pin under a stale commented stub",
-			files: map[string]string{"commit-lint.yml": commentedStub},
+			files: map[string]string{".github/workflows/commit-lint.yml": commentedStub},
 			want:  StatusPass,
 		},
 		{
@@ -280,7 +264,7 @@ func TestCheckWorkflowPinsOutcomes(t *testing.T) {
 			// the executable line is not. A scan reading the comment would call
 			// this repository healthy.
 			name: "a good comment over a moving real ref",
-			files: map[string]string{"commit-lint.yml": "# uses: akira-toriyama/glyph/.github/workflows/lint.yml@v0.10.1\n" +
+			files: map[string]string{".github/workflows/commit-lint.yml": "# uses: akira-toriyama/glyph/.github/workflows/lint.yml@v0.10.1\n" +
 				"jobs:\n  lint:\n    uses: akira-toriyama/glyph/.github/workflows/lint.yml@main\n"},
 			want:       StatusFail,
 			wantDetail: ".github/workflows/commit-lint.yml:4",
@@ -289,28 +273,28 @@ func TestCheckWorkflowPinsOutcomes(t *testing.T) {
 			// End to end: the check must not fail a repository over a `uses:`
 			// its fleet-sync step writes into someone else's checkout.
 			name:  "a fleet-sync step that writes a caller stub is not drift",
-			files: map[string]string{"fleet-sync.yml": fleetSyncCaller},
+			files: map[string]string{".github/workflows/fleet-sync.yml": fleetSyncCaller},
 			want:  StatusPass,
 		},
 		{
 			name:  "the .yaml spelling is scanned too",
-			files: map[string]string{"verdict.yaml": "jobs:\n  v:\n    uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@v1\n"},
+			files: map[string]string{".github/workflows/verdict.yaml": "jobs:\n  v:\n    uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@v1\n"},
 			want:  StatusFail,
 		},
 		{
 			name:  "a repo that consumes nothing from glyph",
-			files: map[string]string{"ci.yml": "jobs:\n  t:\n    uses: akira-toriyama/.github/.github/workflows/go-ci.yml@v2\n"},
+			files: map[string]string{".github/workflows/ci.yml": "jobs:\n  t:\n    uses: akira-toriyama/.github/.github/workflows/go-ci.yml@v2\n"},
 			want:  StatusPass,
 		},
 		{
 			name:  "no workflows at all",
-			files: map[string]string{},
+			files: map[string]string{".github/workflows/": ""},
 			want:  StatusPass,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := checkWorkflowPins(checkoutWith(t, tt.files), true, nil, nil)
+			c := checkWorkflowPins(checkoutAt(t, tt.files), true, nil, nil)
 			if c.Status != tt.want {
 				t.Fatalf("status = %s, want %s (observed %q, details %v)", c.Status, tt.want, c.Observed, c.Details)
 			}
@@ -321,14 +305,21 @@ func TestCheckWorkflowPinsOutcomes(t *testing.T) {
 	}
 }
 
-// checkoutAt writes files at paths relative to a throwaway checkout's root —
-// the shape checkoutWith cannot express now that the scan reads more than one
-// directory.
+// checkoutAt writes files at slash paths relative to a throwaway checkout's
+// root and returns the root — the local tree the doctor checks read. A key
+// ending in "/" makes that directory and writes nothing: an empty
+// .github/workflows is a different checkout from none.
 func checkoutAt(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
 	for rel, body := range files {
 		path := filepath.Join(root, filepath.FromSlash(rel))
+		if strings.HasSuffix(rel, "/") {
+			if err := os.MkdirAll(path, 0o750); err != nil {
+				t.Fatalf("mkdir: %v", err)
+			}
+			continue
+		}
 		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}

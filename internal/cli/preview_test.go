@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/config"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // The skipped pending walk is named in one sentence (skippedWalkWarning),
@@ -29,9 +29,7 @@ const (
 // point.
 func testRepoUntagged(t *testing.T) string {
 	t.Helper()
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not installed")
-	}
+	testutil.RequireGit(t)
 	dir := t.TempDir()
 	testGit(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
 	preset, _ := config.Preset("gemoji")

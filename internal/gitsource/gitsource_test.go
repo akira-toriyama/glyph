@@ -30,9 +30,9 @@ func TestMain(m *testing.M) {
 // The hermetic fixture (pinned identity, real git config held out, background
 // maintenance off — the incidents live on testutil.GitEnv) is testutil's; the
 // local names keep this file's call sites short.
-func gitOrSkip(t *testing.T) {
+func requireGit(t *testing.T) {
 	t.Helper()
-	testutil.GitOrSkip(t)
+	testutil.RequireGit(t)
 }
 
 func git(t *testing.T, dir, author string, args ...string) string {
@@ -192,7 +192,7 @@ func TestParseLogRefusesAMisframedRecord(t *testing.T) {
 // lint --range 3 on a violation, bump v0.0.1) — a check hard-wired to SHA-1's
 // 40 would have refused every one of its commits.
 func TestLogReadsSHA256Repositories(t *testing.T) {
-	gitOrSkip(t)
+	requireGit(t)
 	dir := t.TempDir()
 	git(t, dir, "akira-toriyama", "init", "-q", "-b", "main", "--object-format=sha256")
 	commit(t, dir, "akira-toriyama", ":tada:= begin")
@@ -464,7 +464,7 @@ func TestMergedTagsListsOnlyTagsRevContains(t *testing.T) {
 // fails as git/IO: the empty answer is for a rev naming no commit, not for a
 // git that could not run.
 func TestMergedTagsOnAnUnbornHEADIsEmpty(t *testing.T) {
-	gitOrSkip(t)
+	requireGit(t)
 	dir := t.TempDir()
 	git(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
 
@@ -755,7 +755,7 @@ func TestHead(t *testing.T) {
 // TestHeadErrorsAreAPI: a directory that is not a repository fails as an
 // ordinary git/IO error (4) carrying git's own fatal line.
 func TestHeadErrorsAreAPI(t *testing.T) {
-	gitOrSkip(t)
+	requireGit(t)
 	_, err := Head(context.Background(), t.TempDir())
 	if err == nil {
 		t.Fatal("want an error outside a repository")
@@ -999,7 +999,7 @@ func TestHooksDir(t *testing.T) {
 // TestHooksDirErrorsAreAPI: outside a repository there is no answer to give,
 // and a git/IO failure is exit 4 by contract.
 func TestHooksDirErrorsAreAPI(t *testing.T) {
-	gitOrSkip(t)
+	requireGit(t)
 	_, err := HooksDir(context.Background(), t.TempDir())
 	ce := core.AsError(err)
 	if ce == nil || ce.Code != core.CodeAPI {
@@ -1032,7 +1032,7 @@ func TestConfigGet(t *testing.T) {
 // that is unambiguously not an unset key: outside a repository git still answers
 // from the global config, and answers exit 1.
 func TestConfigGetUnreachableDirIsAPI(t *testing.T) {
-	gitOrSkip(t)
+	requireGit(t)
 	_, _, err := ConfigGet(context.Background(), filepath.Join(t.TempDir(), "no-such-dir"), "commit.cleanup")
 	ce := core.AsError(err)
 	if ce == nil || ce.Code != core.CodeAPI {

@@ -98,46 +98,46 @@ func TestCallerInputsOutcomes(t *testing.T) {
 	}{
 		{
 			name:  "the measured incident: a release caller with no with: at all",
-			files: map[string]string{"release.yml": callerWith("release.yml", "")},
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", "")},
 			want:  StatusFail, wantDetail: "install-notes",
 		},
 		{
 			name: "a with: block that names other keys but not the required one",
-			files: map[string]string{"release.yml": callerWith("release.yml",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
 				"    with:\n      dry-run: true\n")},
 			want: StatusFail, wantDetail: "install-notes",
 		},
 		{
 			name:  "install-notes passed as a block scalar",
-			files: map[string]string{"release.yml": callerWith("release.yml", blockWith)},
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml", blockWith)},
 			want:  StatusPass,
 		},
 		{
 			name: "with: written ABOVE its uses: — YAML orders siblings freely",
-			files: map[string]string{"release.yml": "name: caller\non:\n  push:\njobs:\n  j:\n" +
+			files: map[string]string{".github/workflows/release.yml": "name: caller\non:\n  push:\njobs:\n  j:\n" +
 				blockWith + "    uses: akira-toriyama/glyph/.github/workflows/release.yml@v4.2.0\n"},
 			want: StatusPass,
 		},
 		{
 			name: "flow-form with: { install-notes: x }",
-			files: map[string]string{"release.yml": callerWith("release.yml",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
 				"    with: { install-notes: nothing, dry-run: false }")},
 			want: StatusPass,
 		},
 		{
 			name:  "a lint caller needs no inputs",
-			files: map[string]string{"commit-lint.yml": callerWith("lint.yml", "")},
+			files: map[string]string{".github/workflows/commit-lint.yml": callerWith("lint.yml", "")},
 			want:  StatusPass,
 		},
 		{
 			name:  "no glyph caller at all",
-			files: map[string]string{"ci.yml": "name: ci\non:\n  push:\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n"},
+			files: map[string]string{".github/workflows/ci.yml": "name: ci\non:\n  push:\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n"},
 			want:  StatusPass,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := checkCallerInputs(checkoutWith(t, tt.files), true, "dev")
+			c := checkCallerInputs(checkoutAt(t, tt.files), true, "dev")
 			if c.Status != tt.want {
 				t.Fatalf("status = %s, want %s (observed %q, details %v)", c.Status, tt.want, c.Observed, c.Details)
 			}

@@ -758,7 +758,7 @@ func assertDependentsUnread(t *testing.T, rep doctorReport) {
 // root-line-tags into passes over that file, while the exit (4,
 // glyph-toml-loads unverified) stays the same and hides it.
 func TestDoctorOutsideACheckoutHandsNoConfigToTheReport(t *testing.T) {
-	testutil.GitOrSkip(t)
+	testutil.RequireGit(t)
 	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 	cwd := t.TempDir()
 	t.Chdir(cwd)
