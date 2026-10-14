@@ -1,10 +1,10 @@
 diff --git a/.github/workflows/pr-verdict.yml b/.github/workflows/pr-verdict.yml
-index 3668a22..a7f9c3a 100644
+index 44f2d7c..b2dd064 100644
 --- a/.github/workflows/pr-verdict.yml
 +++ b/.github/workflows/pr-verdict.yml
-@@ -314,7 +314,7 @@ jobs:
-           # `[ x = y ] && flag=true`: under `set -e` that idiom exits the step
-           # whenever the test is false, so every non-major PR would fail the job.
+@@ -326,7 +326,7 @@ jobs:
+           # "false" there: a definite "no" for a pull that breaks a line
+           # (t-xbk0, measured on glyph-monorepo-test #30).
            case "$level" in
 -            "") breaking="" ;;
 +            "") breaking=false ;;

@@ -324,9 +324,7 @@ jobs:
           # on a repository declaring [[packages]], where no one line has a
           # level to describe. Derived as `[ "$level" = "major" ]` it published
           # "false" there: a definite "no" for a pull that breaks a line
-          # (t-xbk0, measured on glyph-monorepo-test #30). A `case`, not
-          # `[ x = y ] && flag=true`: under `set -e` that idiom exits the step
-          # whenever the test is false, so every non-major PR would fail the job.
+          # (t-xbk0, measured on glyph-monorepo-test #30).
           case "$level" in
             "") breaking="" ;;
             major) breaking=true ;;
