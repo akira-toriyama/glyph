@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -31,9 +30,7 @@ import (
 // stripped comments and cut at scissors in ALL of them, which is what git does
 // only when an editor runs.
 func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not installed")
-	}
+	testutil.RequireGit(t)
 
 	cases := []struct {
 		name string

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // The four modes as a commit-msg hook resolves them, named once so the tables
@@ -244,11 +246,7 @@ func pinnedGit(t *testing.T, dir, stdin string, extraEnv []string, args ...strin
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(stdin)
-	cmd.Env = append(append(os.Environ(),
-		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
-		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
-		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid",
-	), extraEnv...)
+	cmd.Env = testutil.GitEnv("t", extraEnv...)
 	var stdout, stderr strings.Builder
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -289,12 +287,7 @@ func TestCutLineIsTheOneGitWrites(t *testing.T) {
 			}
 			commit := exec.Command("git", args...)
 			commit.Dir = dir
-			commit.Env = append(os.Environ(),
-				"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
-				"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
-				"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid",
-				"GIT_EDITOR="+editor,
-			)
+			commit.Env = testutil.GitEnv("t", "GIT_EDITOR="+editor)
 			_ = commit.Run() // the editor aborts by design; the message file is what matters
 
 			body, err := os.ReadFile(captured)

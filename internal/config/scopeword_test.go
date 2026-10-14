@@ -127,8 +127,9 @@ func TestPackagesUnderAScopelessGrammarAreNotNamed(t *testing.T) {
 // loaded and printed `-dash/v0.0.1`, which check-ref-format accepts and git
 // tag refuses.
 func TestLoadRefusesAPathGitCannotTag(t *testing.T) {
+	// testutil.RequireGit, which this package cannot import (see tagRepo).
 	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not installed")
+		t.Fatalf("git is not on PATH, and this test runs it — install it rather than skip: %v", err)
 	}
 	gitTag := tagRepo(t)
 	for _, p := range []string{

@@ -1,9 +1,9 @@
-// Package testutil is the single source of the hermetic git fixture that
-// internal/cli and internal/gitsource both exercise glyph against. The
-// environment pin below used to live as verbatim copies in each package (and a
-// third, partial copy in the hook tests had already lost the maintenance pin)
-// — copies of an incident-bearing block are how one side quietly loses the
-// incident, so the block lives here once and the callers import it.
+// Package testutil is the single source of the hermetic git fixture glyph's
+// tests run git under. The environment pin below used to live as verbatim
+// copies in each package (and a third, partial copy in the hook tests had
+// already lost the maintenance pin) — copies of an incident-bearing block are
+// how one side quietly loses the incident, so the block lives here once and
+// the callers import it.
 package testutil
 
 import (
@@ -16,12 +16,12 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/config"
 )
 
-// GitOrSkip skips the test when git is absent (never on CI, where git is a
-// given — this guards exotic local environments only).
-func GitOrSkip(t *testing.T) {
+// RequireGit fails the test when git is not on PATH. Never a skip: every
+// caller runs git, so a host without it has no green to earn.
+func RequireGit(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not installed")
+		t.Fatalf("git is not on PATH, and this test runs it — install it rather than skip: %v", err)
 	}
 }
 
@@ -78,7 +78,7 @@ func Git(t *testing.T, dir, author string, args ...string) string {
 // answers every command with "not initialized".
 func NewRepo(t *testing.T) string {
 	t.Helper()
-	GitOrSkip(t)
+	RequireGit(t)
 	dir := t.TempDir()
 	Git(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
 	preset, ok := config.Preset("gemoji")

@@ -68,58 +68,58 @@ func TestCallerPermissionsOutcomes(t *testing.T) {
 	}{
 		{
 			name:  "the measured incident: a lint caller granting only contents: read",
-			files: map[string]string{"commit-lint.yml": caller("lint.yml", "permissions:\n  contents: read")},
+			files: map[string]string{".github/workflows/commit-lint.yml": caller("lint.yml", "permissions:\n  contents: read")},
 			want:  StatusFail, wantDetail: "pull-requests: read",
 		},
 		{
 			name:  "the distributed lint stub passes",
-			files: map[string]string{"commit-lint.yml": caller("lint.yml", "permissions:\n  contents: read\n  pull-requests: read")},
+			files: map[string]string{".github/workflows/commit-lint.yml": caller("lint.yml", "permissions:\n  contents: read\n  pull-requests: read")},
 			want:  StatusPass,
 		},
 		{
 			name:  "a release caller must grant contents: write, read is the same death",
-			files: map[string]string{"release.yml": caller("release.yml", "permissions:\n  contents: read")},
+			files: map[string]string{".github/workflows/release.yml": caller("release.yml", "permissions:\n  contents: read")},
 			want:  StatusFail, wantDetail: "contents: write",
 		},
 		{
 			name:  "a pr-verdict caller granting pull-requests: read is short of the comment write",
-			files: map[string]string{"version-preview.yml": caller("pr-verdict.yml", "permissions:\n  contents: read\n  pull-requests: read")},
+			files: map[string]string{".github/workflows/version-preview.yml": caller("pr-verdict.yml", "permissions:\n  contents: read\n  pull-requests: read")},
 			want:  StatusFail, wantDetail: "pull-requests: write",
 		},
 		{
 			name:  "no permissions block is not judged — the repository default decides, and this file cannot see it",
-			files: map[string]string{"commit-lint.yml": caller("lint.yml", "")},
+			files: map[string]string{".github/workflows/commit-lint.yml": caller("lint.yml", "")},
 			want:  StatusPass,
 		},
 		{
 			name:  "write covers read, and a flow mapping is a block",
-			files: map[string]string{"release.yml": caller("release.yml", "permissions: { contents: write, pull-requests: read }")},
+			files: map[string]string{".github/workflows/release.yml": caller("release.yml", "permissions: { contents: write, pull-requests: read }")},
 			want:  StatusPass,
 		},
 		{
 			name:  "read-all covers every read but no write",
-			files: map[string]string{"release.yml": caller("release.yml", "permissions: read-all")},
+			files: map[string]string{".github/workflows/release.yml": caller("release.yml", "permissions: read-all")},
 			want:  StatusFail, wantDetail: "contents: write",
 		},
 		{
 			name:  "a job-level grant counts — GitHub accepts it, so redding it would cry wolf",
-			files: map[string]string{"commit-lint.yml": "name: c\non:\n  pull_request:\njobs:\n  j:\n    permissions:\n      contents: read\n      pull-requests: read\n    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v4.2.0\n"},
+			files: map[string]string{".github/workflows/commit-lint.yml": "name: c\non:\n  pull_request:\njobs:\n  j:\n    permissions:\n      contents: read\n      pull-requests: read\n    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v4.2.0\n"},
 			want:  StatusPass,
 		},
 		{
 			name:  "a heredoc that WRITES a permissions block grants nothing — the fleet-sync trap, again",
-			files: map[string]string{"fleet-sync.yml": "name: f\non:\n  pull_request:\npermissions:\n  contents: read\njobs:\n  j:\n    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v4.2.0\n  w:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          cat > stub.yml <<'YAML'\n          permissions:\n            pull-requests: read\n          YAML\n"},
+			files: map[string]string{".github/workflows/fleet-sync.yml": "name: f\non:\n  pull_request:\npermissions:\n  contents: read\njobs:\n  j:\n    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v4.2.0\n  w:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          cat > stub.yml <<'YAML'\n          permissions:\n            pull-requests: read\n          YAML\n"},
 			want:  StatusFail, wantDetail: "pull-requests: read",
 		},
 		{
 			name:  "a checkout with no glyph reusable caller has nothing to judge",
-			files: map[string]string{"ci.yml": "name: ci\non:\n  pull_request:\npermissions:\n  contents: read\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - run: \"true\"\n"},
+			files: map[string]string{".github/workflows/ci.yml": "name: ci\non:\n  pull_request:\npermissions:\n  contents: read\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - run: \"true\"\n"},
 			want:  StatusPass,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := checkCallerPermissions(checkoutWith(t, tt.files), true, "dev")
+			c := checkCallerPermissions(checkoutAt(t, tt.files), true, "dev")
 			if c.Status != tt.want {
 				t.Fatalf("status = %s, want %s\nobserved: %s\ndetails: %v", c.Status, tt.want, c.Observed, c.Details)
 			}
@@ -161,11 +161,11 @@ func TestCallerChecksNeverPassOverAnUnreadableFile(t *testing.T) {
 		t.Run(id, func(t *testing.T) {
 			// Positive control: the fixture is a finding when it can be read,
 			// so the unknown below is earned by the unread bytes alone.
-			if c := check(checkoutWith(t, map[string]string{"release.yml": starved}), true); c.Status != StatusFail {
+			if c := check(checkoutAt(t, map[string]string{".github/workflows/release.yml": starved}), true); c.Status != StatusFail {
 				t.Fatalf("readable starved caller: status = %s, want %s (observed %q) — the fixture no longer exercises a finding", c.Status, StatusFail, c.Observed)
 			}
 
-			root := checkoutWith(t, map[string]string{"release.yml": starved})
+			root := checkoutAt(t, map[string]string{".github/workflows/release.yml": starved})
 			locked := filepath.Join(root, ".github", "workflows", "release.yml")
 			lockFile(t, locked)
 			c := check(root, true)
@@ -176,7 +176,7 @@ func TestCallerChecksNeverPassOverAnUnreadableFile(t *testing.T) {
 				t.Errorf("details %v do not name the unread file %s", c.Details, locked)
 			}
 
-			root = checkoutWith(t, map[string]string{"release.yml": starved, "other.yml": starved})
+			root = checkoutAt(t, map[string]string{".github/workflows/release.yml": starved, ".github/workflows/other.yml": starved})
 			lockFile(t, filepath.Join(root, ".github", "workflows", "other.yml"))
 			if c := check(root, true); c.Status != StatusFail {
 				t.Errorf("a finding beside an unreadable file: status = %s, want %s — a defect observed outranks a file unread (observed %q)", c.Status, StatusFail, c.Observed)

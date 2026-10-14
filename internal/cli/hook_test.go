@@ -314,9 +314,6 @@ func runGit(dir, path string, args ...string) (string, error) {
 // developer's shell would.
 func buildGlyph(t *testing.T) string {
 	t.Helper()
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain is not available")
-	}
 	bin := filepath.Join(t.TempDir(), "glyph")
 	cmd := exec.Command("go", "build", "-o", bin, "github.com/akira-toriyama/glyph/v5/cmd/glyph")
 	if out, err := cmd.CombinedOutput(); err != nil {
