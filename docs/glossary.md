@@ -508,7 +508,7 @@ codebase does not call pending. A base branch whose history holds no v* tag has
 an *uncomputed* rather than empty pending side — walking it would cost an API
 round-trip per commit of the whole history for an answer that cannot matter —
 and the comment says so. `internal/preview/preview.go: Input.Pending,
-Input.Untagged`, `internal/cli/cmd_preview.go: previewRun`
+Input.Untagged`, `internal/cli/cmd_preview.go: previewPending`
 
 **incomplete banner** — retired with t-pysg: the `> [!WARNING]` block an
 incompletely-walked draft used to carry at the top of its body, from the era

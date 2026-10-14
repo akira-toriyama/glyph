@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -177,4 +178,58 @@ func TestPreviewPackagesCappedRefusalIsNotTheGateCode(t *testing.T) {
 			t.Fatalf("preview exited %d, want 3 with the attribution refusal over a whole listing\nstderr: %s", code, stderr)
 		}
 	})
+}
+
+// TestWalkAndPreviewWarnAnUnreadListingInOneSentence: the walk and preview's
+// pull side place a commit by its files through one helper (placeByFiles),
+// so one event — a listing GitHub answered 422 for or capped, and the refusal
+// attribution would make over it, withheld — is warned of in one sentence by
+// both: bump --since-tag over a squash-merged pull's inner commit, preview
+// over the open pull that lists the same commit. Two copies said it in two
+// wordings ("… missing from this preview" against "… from this verdict",
+// "attributed to no line" against "carried nowhere, and the walk is
+// incomplete").
+func TestWalkAndPreviewWarnAnUnreadListingInOneSentence(t *testing.T) {
+	const message = ":sparkles:^ add a season"
+	// unreadWarnings keeps the warnings about commit h1, its pull spelled #N.
+	unreadWarnings := func(stderr string, pull int) []string {
+		var out []string
+		for line := range strings.SplitSeq(stderr, "\n") {
+			if strings.HasPrefix(line, "::warning::glyph: commit h1") {
+				out = append(out, strings.ReplaceAll(line, fmt.Sprintf("pull request #%d", pull), "pull request #N"))
+			}
+		}
+		return out
+	}
+	for _, tc := range []struct{ name, files string }{
+		{"422", apiUnknownSHA},
+		{"capped", listing(github.CommitFilesCap, underNoPackage)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			walkDir, _ := packagesRepo(t)
+			routes := cappedPull(t, walkDir, message, tc.files)
+			usePR(t, walkServer(t, routes))
+			t.Chdir(walkDir)
+			code, _, walkErr := runGlyph(t, "bump", "--since-tag")
+			if code != 1 {
+				t.Fatalf("bump --since-tag exited %d, want 1 (the commit is carried nowhere)\nstderr: %s", code, walkErr)
+			}
+
+			pullDir, _ := packagesRepo(t)
+			usePR(t, walkServer(t, map[string]string{
+				pullCommitsPath(9):    `[` + apiCommit("h1", "akira-toriyama", message) + `]`,
+				commitFilesPath("h1"): tc.files,
+			}))
+			t.Chdir(pullDir)
+			code, _, pullErr := runGlyph(t, "preview", "--pr", "9")
+			if code != 0 {
+				t.Fatalf("preview exited %d, want 0\nstderr: %s", code, pullErr)
+			}
+
+			walked, pulled := unreadWarnings(walkErr, 7), unreadWarnings(pullErr, 9)
+			if len(walked) != 2 || !slices.Equal(walked, pulled) {
+				t.Errorf("the walk and preview warn of one unread listing differently:\n walk:    %q\n preview: %q", walked, pulled)
+			}
+		})
+	}
 }

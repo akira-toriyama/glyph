@@ -571,8 +571,8 @@ type walkFacts struct {
 // (lineEscapes). Neither cause clears on the re-run the release refusal asks
 // for — a capped listing is capped again, and a 422 clears only once GitHub
 // lists the commit — so the escapes are the clause's own remedy (DESIGN
-// §4.1). Pull 0 and no escapes on preview's PR side, where the pull has no
-// merge point to cut a tag at.
+// §4.1). On preview's PR side Pull is the pull under review and there are
+// no escapes: that pull has no merge point to cut a tag at.
 type unreadListing struct {
 	SHA     string
 	Pull    int

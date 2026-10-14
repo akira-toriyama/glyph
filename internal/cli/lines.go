@@ -318,7 +318,7 @@ func (w walked) governing() string {
 	return w.MergePoint
 }
 
-// placement is how partitionLines and previewLines place one commit on the
+// placement is how partitionLines and attributePull place one commit on the
 // declared lines.
 type placement int
 
@@ -385,7 +385,7 @@ func placeOf(cfg *config.Config, raw gitsource.RawCommit) (placement, reading) {
 // pattern). None of it can move the answer: it is set on a refusal already
 // returned.
 //
-// One helper, because the alternative is three call sites each setting three
+// One helper, because the alternative is each call site setting three
 // fields by hand: a site that forgets one moves no verdict, so every verdict
 // test stays green while its refusal words a pattern nobody described: the
 // zero Sayable names patterns[0] in either arm, and a no-carrier refusal then
@@ -435,25 +435,9 @@ func attribute(cfg *config.Config, raw gitsource.RawCommit, said reading, files 
 // dropped with a notice; it was walked because the union had to contain it,
 // and it belongs to no line's verdict.
 //
-// A refusal attribution hands down over a diff the walk did not read whole
-// (diffGap) — a listing GitHub TRUNCATED at its cap or cut short with a 422
-// (listFiles), or a shallow clone's boundary, whose diff local git cannot
-// compute at all — is not a finding and never wedges: "no carrier" and "the
-// scope names a package owning none of the files" are both claims about files
-// the walk could not read (the package past the cap may be exactly the one
-// named). The commit is carried nowhere and the walk's own shortfall answers
-// — FilesCapped, FilesUnknown or Shallow, on which a writing command refuses
-// at 4 and a reporting one warns — never the gate code, which would tell an
-// operator to cut a tag past a commit whose true attribution was hidden
-// (t-c6r5, measured: exit 3 with the wedge remedy). A non-refusal answer
-// stands over such a diff, so a scope naming a package still carries the
-// commit there (rule 2), and so do the files a listing did hold, whatever cut
-// it short (t-esm5). One arm withholds for all three so they cannot come to
-// place a commit two ways again: a boundary was once carried on no line
-// whatever its scope, beside a 422 the same walk placed by scope (DESIGN
-// §4.1). The shortfall each records stays its own — a boundary is no
-// unreadListing, whose remedy is a tag past the commit; a boundary's is the
-// full history.
+// A commit its diff places is placed by placeByFiles, which withholds a
+// refusal over a diff the walk did not read whole; one over a diff read
+// whole wedges every line whose range holds the commit (attributionWedge).
 func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, owner, repo string, commits []walked, facts *walkFacts, lines []line) ([]lineWalk, []walked, error) {
 	if len(cfg.Packages) == 0 {
 		return []lineWalk{{line: lines[0], Commits: commits}}, commits, nil
@@ -497,28 +481,21 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, 
 			carriers = reach
 		case placedNowhere:
 		case placedByFiles:
-			files, gap, ferr := walkedFiles(ctx, gh, owner, repo, c, facts, reachedLines(lines, reach))
+			reached := reachedLines(lines, reach)
+			placed, ferr := placeByFiles(ctx, gh, cfg, owner, repo, c, said, facts, reached)
 			if ferr != nil {
 				return nil, nil, ferr
 			}
-			moved, aerr := attribute(cfg, c.Raw, said, files, gap == diffWhole)
-			switch {
-			case aerr != nil && gap != diffWhole:
-				carriers = nil
-			case aerr != nil:
-				return nil, nil, attributionWedge(aerr, c, owner, repo, reachedLines(lines, reach))
-			default:
-				for _, i := range reach {
-					if slices.ContainsFunc(moved, func(p config.Package) bool { return p.Path == lines[i].Package.Path }) {
-						carriers = append(carriers, i)
-					}
+			if placed.refused != nil {
+				return nil, nil, attributionWedge(placed.refused, c, owner, repo, reached)
+			}
+			for _, i := range reach {
+				if slices.ContainsFunc(placed.moved, func(p config.Package) bool { return p.Path == lines[i].Package.Path }) {
+					carriers = append(carriers, i)
 				}
 			}
-			switch {
-			case gap == diffBoundary:
-				warnBoundary(c.Raw.SHA, reachedLines(lines, carriers), aerr)
-			case aerr != nil && gap == diffUnlisted:
-				warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but GitHub did not list the commit's whole diff, so that is not a verdict: the commit is carried nowhere, and the walk is incomplete", c.Raw.SHA, aerr)
+			if placed.gap == diffBoundary {
+				warnBoundary(c.Raw.SHA, reachedLines(lines, carriers), placed.withheld)
 			}
 		}
 		for _, i := range carriers {
@@ -528,17 +505,78 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config, 
 	return lws, all, nil
 }
 
+// filePlacement is where a commit's own diff places it (placeByFiles): the
+// packages its files move, how much of the diff was read, and attribution's
+// refusal — refused over a diff read whole, which each caller words for
+// where the commit sits, or withheld over one that was not, which is no
+// verdict and leaves the commit on no line.
+type filePlacement struct {
+	moved    []config.Package
+	gap      diffGap
+	refused  error
+	withheld error
+}
+
+// placeByFiles places one commit by its own diff — the one place the walk
+// (partitionLines) and preview's pull side (attributePull) do it, so the two
+// cannot read a listing, record it unread or withhold a refusal two ways:
+// each did all three, and warned of the unread listing and the withheld
+// refusal in its own words. walkedFiles reads the files and records a
+// listing GitHub did not give whole on facts, with the escapes of the lines
+// reached — none on preview's pull side, which has no merge point a tag
+// could be cut at.
+//
+// A refusal attribution hands down over a diff not read whole (diffGap) — a
+// listing GitHub TRUNCATED at its cap or cut short with a 422 (listFiles),
+// or a shallow clone's boundary, whose diff local git cannot compute at all
+// — is not a finding and never wedges: "no carrier" and "the scope names a
+// package owning none of the files" are both claims about files nobody read
+// (the package past the cap may be exactly the one named). The commit is
+// carried nowhere and the caller's shortfall answers — the walk's
+// FilesCapped, FilesUnknown or Shallow, on which a writing command refuses
+// at 4 and a reporting one warns; preview's PR-side caveat — never the gate
+// code, which would tell an operator to cut a tag past a commit whose true
+// attribution was hidden (t-c6r5, measured: exit 3 with the wedge remedy). A
+// non-refusal answer stands over such a diff, so a scope naming a package
+// still carries the commit there (rule 2), and so do the files a listing did
+// hold, whatever cut it short (t-esm5). One arm withholds for all three so
+// they cannot come to place a commit two ways again: a boundary was once
+// carried on no line whatever its scope, beside a 422 the same walk placed
+// by scope (DESIGN §4.1). The shortfall each records stays its own — a
+// boundary is no unreadListing, whose remedy is a tag past the commit; a
+// boundary's is the full history — and so does its warning, which names the
+// lines the walk carried it on (warnBoundary).
+func placeByFiles(ctx context.Context, gh *github.Client, cfg *config.Config, owner, repo string, c walked, said reading, facts *walkFacts, reached []line) (filePlacement, error) {
+	files, gap, err := walkedFiles(ctx, gh, owner, repo, c, facts, reached)
+	if err != nil {
+		return filePlacement{}, err
+	}
+	moved, aerr := attribute(cfg, c.Raw, said, files, gap == diffWhole)
+	switch {
+	case aerr != nil && gap != diffWhole:
+		if gap == diffUnlisted {
+			warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but GitHub did not list the commit's whole diff, so that is not a verdict: the commit is attributed to no line", c.Raw.SHA, aerr)
+		}
+		return filePlacement{gap: gap, withheld: aerr}, nil
+	case aerr != nil:
+		return filePlacement{gap: gap, refused: aerr}, nil
+	}
+	return filePlacement{moved: moved, gap: gap}, nil
+}
+
 // walkedFiles fetches the paths a walked commit's own diff touches from the
 // cheapest source that has them: nothing for a merge commit (attributed to
 // nothing, its diff never asked for), local git for a landed identity, the
-// API for a squash-merged pull's inner commit. An API listing GitHub did not
-// give whole — one that reached CommitFilesCap, or one a 422 cut short
-// (listFiles) — is recorded on the facts with the tags that take the
-// commit out of the lines reached (the shortfall's remedy), and returned as
-// diffUnlisted: the files it did not list are unreachable, not absent, and a
-// package they touch would be missing from the verdict — an incomplete walk
-// in §4's sense, and a listing the caller must not let attribution refuse
-// over.
+// API for a commit this checkout may not hold — a squash-merged pull's inner
+// commit, or one of the pull preview reads, which exists on that pull's
+// branch only. An API listing GitHub did not give whole — one that reached
+// CommitFilesCap, or one a 422 cut short (listFiles) — is recorded on the
+// facts with the tags that take the commit out of the lines reached (the
+// shortfall's remedy), and returned as diffUnlisted: the files it did not
+// list are unreachable, not absent, and a package they touch would be
+// missing from the verdict — an incomplete walk in §4's sense, or an
+// incomplete PR side in a preview, and a listing attribution must not refuse
+// over (placeByFiles).
 //
 // A shallow clone's boundary commit comes back with no file and diffBoundary:
 // git reads it as a root, and the diff it would give is the whole tree, which
@@ -578,7 +616,7 @@ func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c w
 }
 
 // diffGap is how much of a commit's own diff the walk read — what decides
-// whether a refusal over its files is a verdict (partitionLines).
+// whether a refusal over its files is a verdict (placeByFiles).
 type diffGap int
 
 const (
@@ -628,9 +666,9 @@ type fileListing struct {
 func (l fileListing) incomplete() bool { return l.Capped || l.Unknown }
 
 // listFiles asks GitHub for the files of a commit no branch holds and
-// classifies the answer — the one place both callers, the walk
-// (walkedFiles) and preview's PR side, read CommitFiles through, so the two
-// cannot take the same listing two ways. A 422 (github.IsCommitUnknown) is
+// classifies the answer — the one place CommitFiles is read (walkedFiles,
+// which the walk and preview's pull side both reach through placeByFiles),
+// so the two cannot take the same listing two ways. A 422 (github.IsCommitUnknown) is
 // a capped listing holding what the pages before it listed — nothing when
 // the first page answered it (DESIGN §4.1): the sha came from GitHub's own
 // pull listing, its message was read, and the files are the one input
