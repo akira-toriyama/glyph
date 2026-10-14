@@ -29,9 +29,8 @@ import (
 //   - A declared path HEAD does not record as a tree is a FAILURE: the config
 //     names a subtree the repository's history does not have, and the verdict
 //     commands would run over that mismatch without a word. Asking the
-//     filesystem instead passed a case-different `Haiku` on APFS and a
-//     symlink (a 120000 blob to git) on every OS, while `lint --range` under
-//     the same config refused a commit under haiku/ at 3 (t-fdd8 (1)).
+//     filesystem instead passed a case-different spelling and a symlink,
+//     neither of which attribution matches (t-fdd8 (1); DESIGN §4.1).
 //   - A glyph.toml that was not loaded — no top level to resolve it against,
 //     or a file that is missing, unreadable or invalid — is UNKNOWN here:
 //     its packages were never read. The config check carries the failure;
@@ -93,9 +92,10 @@ func checkPackagePaths(root string, cfg *config.Config, trees []string, treesErr
 }
 
 // whyNotATree explains a path git does not record as a tree, from the two
-// shapes the filesystem used to bless: a spelling HEAD records under another
-// case, and a symlink. The filesystem is consulted only for this wording —
-// never for the verdict, which git's listing has already given.
+// shapes a filesystem check passed on APFS (DESIGN §4.1): a spelling HEAD
+// records under another case, and a symlink. The filesystem is consulted only
+// for this wording — never for the verdict, which git's listing has already
+// given.
 func whyNotATree(root, p string, trees []string) string {
 	for _, t := range trees {
 		if strings.EqualFold(t, p) {

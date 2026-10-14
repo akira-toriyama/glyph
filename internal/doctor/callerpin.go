@@ -1,25 +1,14 @@
 package doctor
 
-// This file is the one rule both caller checks judge a pin by (DESIGN §7, the
-// D2a ruling). GitHub starts a caller against the reusable at the caller's
-// @ref, while reusableNeeds and reusableRequiredInputs mirror the reusables of
-// the tree this binary was built from. The two are one object only while the
-// declarations hold still, and they have moved (lint.yml gained
-// pull-requests: read at v2.0.0; release.yml stopped requiring `app` at
-// v0.8.0). Judging every pin by this tree failed a lint.yml@v1.0.0 caller
-// granting exactly what v1.0.0 declares and passed a release.yml@v0.4.0 caller
-// omitting the `app` v0.4.0 required (both measured at adfc5e1). So each row
+// This file is the one rule both caller checks judge a pin by (DESIGN §7 has
+// the measurements behind it and the alternatives it beat). GitHub starts a
+// caller against the reusable at the caller's @ref, while reusableNeeds and
+// reusableRequiredInputs mirror the reusables of the tree this binary was
+// built from — one object only while the declarations hold still. So each row
 // carries After — the newest release whose reusable declared otherwise,
 // verified against glyph's own tags by TestCallerDeclarationBoundsMatchReleasedTags
 // — and a caller is judged only where this binary can speak for its release.
 // Everything else is could-not-run, never a pass and never a fail.
-//
-// No per-tag history table: for every era today's bounds retire, no release
-// binary carries the facts either (the checks arrived at v2.1.0 / v3.1.0,
-// after every bound) and no live pin sits there, so its rows would serve no
-// caller. The standing rule instead: a commit that changes a reusable's
-// permissions or its required inputs moves that row's After to the newest
-// release tag in the same commit.
 
 import (
 	"fmt"
@@ -84,10 +73,9 @@ func judgeAt(ref, after, glyph, floor string) *notJudged {
 }
 
 // unknownReusable is a call into glyph's .github/workflows that names no row:
-// a reusable added after this binary was built, or one it never shipped.
-// Skipping it reported "no workflow calls a glyph reusable … observed — not
-// assumed" for a notes.yml@v5.0.0 caller (D2a review, measured), so the
-// newer-than-this-glyph rule never fired for a reusable that is itself new.
+// a reusable added after this binary was built, or one it never shipped. It
+// is unjudged, never skipped — a skip read such a caller as no caller at all
+// (DESIGN §7).
 func unknownReusable(file string) *notJudged {
 	return &notJudged{
 		Why:    "this glyph ships no reusable named " + file + "; the pinned release may",

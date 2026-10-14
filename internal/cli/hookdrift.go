@@ -12,12 +12,10 @@ import (
 // warnIfHookStale tells the developer, at the moment the hook runs, that the
 // hook running is not the one this binary writes.
 //
-// The installed hook is the only artefact in this system that drifts with
-// nobody watching (DESIGN §7): hooks are untracked, so no pull, no fleet-sync
-// and no CI job refreshes one, and a stale hook still exits 0 — indistinguishable
-// from a clean message. `doctor` detects it, and nothing in this repository or
-// the fleet runs `doctor` on a schedule, so the detector existed and the signal
-// never reached anyone. The hook's own run is the one moment the developer is
+// The installed hook drifts with nobody watching, in the quiet direction
+// (DESIGN §7). `doctor` detects it, and nothing in this repository or the fleet
+// runs `doctor` on a schedule, so the detector existed and the signal never
+// reached anyone. The hook's own run is the one moment the developer is
 // certain to be present.
 //
 // Every failure is silence, without exception. This is advice riding inside a

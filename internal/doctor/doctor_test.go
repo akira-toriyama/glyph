@@ -242,7 +242,7 @@ func TestRemainingChecksDescribeMeasuredBehaviour(t *testing.T) {
 //
 // The second round was the same defect in the squash argument, every clause of it
 // re-measured against this walk (t-nnb7): a squash-merged pull does NOT reach the
-// same verdict dark as live (a multi-commit squash carries the unlinted PR title
+// same verdict dark as live (a multi-commit squash carries the PR title
 // — minor live, patch dark), a merge-merged pull does NOT count none at full
 // darkness (gitsource.Log runs without --first-parent, so its branch commits are
 // in the range and classify themselves — minor either way), and an outage does

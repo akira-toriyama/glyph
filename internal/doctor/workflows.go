@@ -1,17 +1,14 @@
 package doctor
 
-// This file is the local half of the diagnosis: every akira-toriyama/glyph
-// reference in the checkout's own workflows and action metadata files must pin
-// a concrete vX.Y.Z release tag. It reads files and the action-file list git
-// produced (handed in by internal/cli, which owns every subprocess) — no
-// network — so it still answers when the API side of the report is entirely
-// dark.
+// This file is the workflow-pin check: every akira-toriyama/glyph reference in
+// the checkout's own workflows and action metadata files must pin a concrete
+// vX.Y.Z release tag. It reads files and the action-file list git produced
+// (handed in by internal/cli, which owns every subprocess) — no network — so
+// it still answers when the API side of the report is entirely dark.
 //
-// What it deliberately does NOT check is whether the pin is the LATEST release.
-// That audit already runs daily as glyph-pin-audit.yml in akira-toriyama/.github
-// across the whole fleet, and a second implementation of "which version is
-// current" would be a second source of truth for the one question the fleet
-// already has an answer to. This check asks only: is the pin CONCRETE.
+// It asks only whether the pin is CONCRETE, never whether it is the LATEST
+// release: glyph-pin-audit.yml in akira-toriyama/.github owns that question
+// (DESIGN §7).
 
 import (
 	"errors"
@@ -94,16 +91,10 @@ func checkWorkflowPins(root string, rootVerified bool, actionFiles []gitsource.A
 	}
 
 	// The workflows directory is not the only place a checkout EXECUTES a glyph
-	// reference from. GitHub runs a composite from wherever it sits — `uses:
-	// ./tools/installer` in this repository's own runs, owner/repo/<path>@ref
-	// (a root action.yml: owner/repo@ref) in a consumer's — and a moving ref
-	// inside a published action changes under every consumer while no
-	// consumer's doctor can see it. A scan fixed to .github/workflows passed a
-	// composite pinning @main under .github/actions; the walk that fixed that
-	// stopped at .github/actions and passed tools/installer/action.yml and a
-	// root action.yml pinning @main (D2b, measured at adfc5e1). So every action
-	// metadata file git lists is read, at any path. Only the two action.yml
-	// spellings: GitHub takes nothing else as action metadata.
+	// reference from: GitHub runs a composite from wherever it sits, so every
+	// action metadata file git lists is read, at any path (DESIGN §7 has the
+	// misses that drew this boundary). Only the two action.yml spellings:
+	// GitHub takes nothing else as action metadata.
 	var listErr string
 	if actionErr != nil {
 		listErr = fmt.Sprintf("the checkout's action files could not be listed: %v", actionErr)
@@ -187,29 +178,11 @@ func checkWorkflowPins(root string, rootVerified bool, actionFiles []gitsource.A
 // scanUses extracts every akira-toriyama/glyph `uses:` reference from one
 // workflow file, with its verdict.
 //
-// THE TRAP, which has been got wrong in every direction: a `uses:`-shaped line
-// is not necessarily an executing step.
-//
-//   - Every glyph reusable workflow ships a COMMENTED caller stub in its header
-//     — a line whose first non-space character is # that nevertheless contains
-//     `uses:`. A scan that ignores comments reports glyph itself as drifted
-//     forever; a scan that takes the FIRST match in a file (a `head -1` shape)
-//     reads the stub instead of the real line and reports the wrong version
-//     everywhere. Those stubs now carry the @vX.Y.Z PLACEHOLDER rather than a
-//     concrete tag, which removes the second half of the trap at its source —
-//     but this scan must keep handling both, because it reads OTHER
-//     repositories' workflows too, and nothing makes them follow that rule.
-//     internal/workflows/workflows_test.go is what holds glyph's own stubs to
-//     the placeholder; see it rather than a quoted example line, which is
-//     exactly the thing that goes stale here.
-//   - One shape further out, and the reason this loop carries state: a fleet-sync
-//     step WRITES caller stubs, so a `run: |` block holds a heredoc whose text is
-//     `uses: akira-toriyama/glyph/.github/workflows/lint.yml@main`. That is data
-//     the step emits into another repository, not a pin this repository executes
-//     — reading it as one failed doctor (exit 3) on a repository whose every
-//     executing `uses:` was correctly pinned.
-//
-// So: block scalars are skipped whole, whole-line comments are dropped, and
+// A `uses:`-shaped line is not necessarily an executing step (DESIGN §7 has
+// the trap): every glyph reusable ships a COMMENTED caller stub in its header,
+// and a fleet-sync step WRITES caller stubs from a `run: |` heredoc — data it
+// emits into another repository, and the reason this loop carries state. So
+// block scalars are skipped whole, whole-line comments are dropped, and
 // `uses:` is only recognised as the YAML key at the start of the (optionally
 // list-dashed) line — never as text found anywhere in it, which also keeps a
 // trailing `# uses: …` inline comment from being read as a second reference.
@@ -322,12 +295,8 @@ func usesValue(line string) (string, bool) {
 // isGlyphRef reports whether a uses: spec (the part before @) names the glyph
 // repository — its first two path segments, so a sibling repo whose name merely
 // starts with "glyph" is not swept in, and a local `./…` action is not either.
-//
-// The comparison is case-INSENSITIVE because GitHub's is: it resolves
-// `Akira-Toriyama/glyph/.github/workflows/lint.yml@main` to this repository and
-// runs it. A case-sensitive scan reported "no akira-toriyama/glyph reference"
-// and exited 0 on a repository running a moving ref — the check's own blind
-// spot, and the one failure mode it cannot afford.
+// The comparison is case-INSENSITIVE because GitHub's resolution is
+// (DESIGN §7).
 func isGlyphRef(spec string) bool {
 	parts := strings.SplitN(spec, "/", 3)
 	return len(parts) >= 2 && strings.EqualFold(parts[0]+"/"+parts[1], glyphRepo)

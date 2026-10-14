@@ -11,12 +11,9 @@ import (
 
 // The second member of the failure class checkCallerPermissions exists for: a
 // caller omitting an input its reusable marks `required: true` also dies as
-// startup_failure before any job — and unlike the permissions death, GitHub
-// surfaces NO error anywhere for it: not in the run, not in the check suite,
-// not in the API (measured on glyph-test3, 2026-08-26, t-wzsw — three pushes,
-// three silent startup_failures). Reading the caller's `with:` block against
-// what the reusable requires at the caller's pin is again the only vantage
-// point that works, which is doctor's (callerpin.go).
+// startup_failure before any job, and GitHub surfaces NO error anywhere for it
+// (DESIGN §7, measured on glyph-test3). This check reads the caller's `with:`
+// block against what the reusable requires at the caller's pin (callerpin.go).
 
 // reusableRequiredInputs is every input a glyph reusable marks required — the
 // minimum a caller's `with:` must name — with the newest release whose

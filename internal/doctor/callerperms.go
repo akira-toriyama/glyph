@@ -14,15 +14,10 @@ import (
 // This check exists for a failure class NO runtime diagnosis can see —
 // glyph's included (checkCallerInputs guards the other member: a missing
 // required input). A caller workflow granting less than the reusable it calls
-// declares never starts: the run dies as startup_failure before any job, so
-// there is no step to print an error, no exit code to classify, and nothing
-// red in the caller's own YAML. Measured in akira-toriyama/.github#186 (a
-// commit-lint caller granting only contents: read) and recorded in the
-// distributed caller stub; the v2.0.0 rollout fixed all 35 fleet repos at the
-// canonical source, but nothing has guarded a consumer outside the fleet, or a
-// hand edit since. Reading the file is the only vantage point that works,
-// which is doctor's. It judges a caller at the release it pins, and only where
-// this binary can speak for that release (callerpin.go).
+// declares never starts: the run dies as startup_failure before any job
+// (DESIGN §7, measured in akira-toriyama/.github#186). It judges a caller at
+// the release it pins, and only where this binary can speak for that release
+// (callerpin.go).
 
 // reusableNeeds is what each glyph reusable DECLARES — workflow level plus any
 // job-level elevation — and therefore the minimum a caller must grant, with
@@ -60,22 +55,18 @@ const permsFloor = "v2.1.0"
 // `permissions:` grants cover what the reusable declares at the release the
 // caller pins. glyph is the running binary's version (judgeAt).
 //
-// Two deliberate boundaries, both on the side of never crying wolf:
+// Two deliberate boundaries, both on the side of never crying wolf (DESIGN §7):
 //
-//   - A caller with NO permissions block anywhere is not judged. GitHub then
-//     applies the repository's default token, which may be permissive (fine)
-//     or restricted (the same startup death) — but which one is repository
-//     configuration this file cannot see, and a red over a caller that may be
-//     perfectly healthy teaches the fleet to ignore the report. This runs
-//     BEFORE the pin rule: the other order turns every block-less caller at
-//     an old pin unknown (D2a, measured on the prototype).
+//   - A caller with NO permissions block anywhere is not judged: the
+//     repository's default token then decides, and this file cannot see it.
+//     This runs BEFORE the pin rule, so a block-less caller at an old pin is
+//     the exemption's pass, never unknown.
 //   - Grants are unioned across every permissions block in the file, workflow
 //     level and job level alike. GitHub only counts a grant on the calling
 //     job or above, so a grant on a sibling job could in principle satisfy
 //     this check while the run still dies — accepted, because the opposite
 //     reading (workflow level only) reds every caller that grants on the job,
-//     which is legal and real. A false pass here is the pin check's own
-//     documented trade, made for the same reason.
+//     which is legal and real.
 func checkCallerPermissions(root string, rootVerified bool, glyph string) Check {
 	c := Check{ID: idCallerPerms, Expected: permsExpected(glyph)}
 	entries, unknown := listWorkflows(root, rootVerified, &c,

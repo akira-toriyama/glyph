@@ -1,14 +1,11 @@
 package doctor
 
-// This file is the config half of the local diagnosis: the v2 invariant is
-// config-first — glyph.toml is read before any commit is judged, so a
-// repository whose pin moves before its config exists fails every gate at
-// exit 2 with nothing having checked for that state in advance. This check is
-// that advance warning. The file is loaded ONCE, by internal/cli at the top
-// level git named (the same file every verdict command reads), and handed in
-// with the loader's error verbatim: this check classifies that error, and the
-// checks that read the loaded file — package paths, root-line tags, the hook
-// probe's claim — read what it loaded and never open the file themselves.
+// This file is the glyph.toml check, the first of the local diagnosis. glyph
+// is config-first — glyph.toml is read before any commit is judged, so a
+// repository whose pin moves before its config exists fails every gate at exit
+// 2 with nothing having checked for that state in advance. This check is that
+// advance warning (DESIGN §7). It classifies the loader's error; the file
+// itself is loaded once, by internal/cli (Input.Config).
 
 import (
 	"errors"
@@ -25,24 +22,17 @@ import (
 // answer at that root.
 //
 // The severities draw the same line the rest of the report draws — on what
-// was OBSERVED:
+// was OBSERVED (DESIGN §7 argues them):
 //
-//   - MISSING is a failure, not usage and not unknown. The absence was
-//     observed and it is a finding about the repository: every verdict
-//     command (lint, bump, notes, preview, release) refuses to run without
-//     the file, so a repository that pins glyph without one has its whole
-//     gate down. The verdict commands themselves exit 2 there, because for
-//     THEM the caller assumed a v2 repository and the invocation was the
-//     mistake; doctor was asked whether the repository satisfies glyph's
-//     preconditions and the honest answer is no — the same class as every
-//     other violated precondition, exit 3.
+//   - MISSING is a failure (exit 3), not usage and not unknown, though the
+//     verdict commands themselves exit 2 there: doctor was asked whether the
+//     repository satisfies glyph's preconditions, and the observed absence
+//     answers no.
 //   - A file that exists but does not load — bad TOML, an unknown schema, a
 //     pattern that cannot compile or captures no semver_sigil — is the same
-//     failure: config.Load already rejects rather than repairs (no silent
-//     none), and doctor repeats its verdict with the loader's own error.
+//     failure, carrying the loader's own error.
 //   - A file that could not be READ (a permission error, an I/O fault) is
-//     unknown: nothing about its content was observed, and "we could not
-//     check" is not "it is broken" any more than it is "it is fine".
+//     unknown: nothing about its content was observed.
 func checkConfig(root string, rootErr error, cfg *config.Config, loadErr error) Check {
 	c := Check{ID: idConfigLoads, Expected: "glyph.toml at the checkout's top level exists and loads (valid schema, compilable patterns, a semver_sigil for every match)"}
 	if rootErr != nil {

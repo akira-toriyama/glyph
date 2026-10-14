@@ -3429,10 +3429,11 @@ The severities are the argued part:
   `glyph-pin-audit.yml` in `akira-toriyama/.github` already owns that question
   fleet-wide, and a second implementation would be a second source of truth. The
   scan's trap is that a `uses:`-shaped line need not be an executing step: every
-  reusable ships a permanently-stale COMMENTED caller stub containing `uses:` and
-  an old version (ignore comments and glyph reports itself as drifted forever;
-  read the first match in a file and you read the comment instead of the real
-  line), and a fleet-sync step *writes* stubs from a `run: |` heredoc, so the
+  reusable ships a COMMENTED caller stub containing `uses:` and a version that
+  is never the live pin (glyph's own carry the `@vX.Y.Z` placeholder; scan
+  comments and glyph reports that version as a pin, read the first match in
+  a file and you read the comment instead of the real line), and a fleet-sync
+  step *writes* stubs from a `run: |` heredoc, so the
   scan must skip block scalars whole or it fails a repository over text it emits
   rather than runs. Whole-line comments are dropped, block scalars are skipped by
   indentation, `uses:` is only recognised as the line's own YAML key, and the

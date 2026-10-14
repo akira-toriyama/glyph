@@ -52,8 +52,9 @@ const (
 )
 
 // Error is glyph's structured error. On a non-zero exit the CLI prints it to
-// stderr as {"error":{"code","message"[,"details"]}} so callers get a
-// machine-readable failure. Plain (non-*Error) errors are treated as CodeAPI.
+// stderr as {"error":{"code","message"[,"details"]}}, unless it is Silent, so
+// callers get a machine-readable failure. ExitCode says what a plain
+// (non-*Error) error resolves to.
 type Error struct {
 	Code Code
 	Msg  string
@@ -61,7 +62,7 @@ type Error struct {
 	// message alone isn't enough to act on (e.g. the offending commit SHAs for a
 	// lint failure). Rendered as "details" in the envelope when non-nil.
 	Details any
-	// Silent suppresses the stderr error envelope in the CLI's Execute — used
+	// Silent suppresses the stderr error envelope in the CLI's finish — used
 	// when a command already wrote its verdict to stdout and needs only a
 	// nonzero exit code.
 	Silent bool

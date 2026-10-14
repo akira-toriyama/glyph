@@ -1,14 +1,8 @@
 // Package doctor verifies that a repository actually SATISFIES the assumptions
 // glyph's release machinery makes about it — the configuration glyph depends on
-// but cannot see from the inside.
-//
-// It exists because that configuration drifts silently and nothing notices. The
-// fleet measurement that motivated it (2026-07-21) found 31 of 34 non-archived
-// repositories allowing merge commits and rebase merges, and glyph-test drifted
-// to squash_merge_commit_title=PR_TITLE / squash_merge_commit_message=PR_BODY —
-// neither fact detected by anything, in either direction, until a human ran
-// `gh api` by hand. Every workflow stayed green throughout; the release verdict
-// was simply computed over a repository that no longer matched the model.
+// but cannot see from the inside. Why that configuration needs a check, and the
+// argument behind each check's severity, are DESIGN §7's (§4.1's for the two
+// package checks).
 //
 // Two properties are load-bearing and hold for every check here:
 //
@@ -16,15 +10,9 @@
 //     file. It reports and hands over the command to run; a diagnostic that
 //     mutates cannot be run casually, and this one is meant to be run casually.
 //   - INDEPENDENT. One unreadable input (a repository object a token cannot
-//     fetch, a checkout with no .github/workflows) degrades THAT check to
+//     fetch, a workflow file the filesystem refuses) degrades THAT check to
 //     StatusUnknown and no other. A report that aborts halfway is a report that
 //     hides the finding you needed.
-//
-// The severities are the other deliberate part, argued at each check. An
-// advisory about a house convention is a weaker claim than a defect, and it is
-// kept weaker on purpose: a report that fails over settings glyph itself handles
-// correctly teaches the fleet to ignore the report, which is the one failure
-// mode a voluntary check cannot survive.
 package doctor
 
 import (
@@ -37,8 +25,8 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/hook"
 )
 
-// Status is a check's verdict. Four values, and the distinction between the
-// last two is the point: a check that FAILED observed a real defect, a check
+// Status is a check's verdict. Four values, and the distinction between fail
+// and unknown is the point: a check that FAILED observed a real defect, a check
 // that could not RUN observed nothing and proves nothing — collapsing them
 // would let an unreadable repository read as a clean bill of health.
 type Status string
@@ -49,8 +37,8 @@ const (
 	// StatusFail — the assumption is violated and something concrete breaks.
 	// Drives the non-zero exit.
 	StatusFail Status = "fail"
-	// StatusAdvice — a divergence from a house convention that costs glyph
-	// nothing mechanically. Worth seeing, never worth failing a job over.
+	// StatusAdvice — worth seeing, never worth failing a job over. Each
+	// advising check's case is DESIGN §7's (§4.1's for root-line-tags).
 	StatusAdvice Status = "advice"
 	// StatusUnknown — the check could not run: the input it needed was
 	// unreadable or the API declined to report it. Not a pass.
@@ -86,8 +74,7 @@ type Counts struct {
 // the single boolean a CI gate wants.
 //
 // OK is deliberately false for an unknown as well as a fail: "we could not
-// check" is not "it is fine". Advice never touches it — house conventions are
-// not gates.
+// check" is not "it is fine". Advice never touches it.
 type Report struct {
 	Repo   string  `json:"repo"`
 	Checks []Check `json:"checks"`
@@ -232,12 +219,12 @@ const (
 // anything else — with it down nothing else glyph does can run, however
 // healthy the rest of the report is — and the two checks that read the loaded
 // file, the package paths it declares and the root line's tags, right behind
-// it. Then the token checks, because the read
-// explains every could-not-run below it (and the write advisory rides on the
+// it. Then the token checks, because the read explains every settings
+// check's could-not-run below it (and the write advisory rides on the
 // same response), then the three merge methods, then the squash policy they
-// enable, then the remaining LOCAL checks — the workflow pins and the
-// installed commit-msg hook — which, like the config, need no network at all,
-// so they still answer when the API side is entirely dark.
+// enable, then the remaining LOCAL checks — the workflow pins, the two caller
+// checks and the three hook checks — which, like the config, need no network
+// at all, so they still answer when the API side is entirely dark.
 func Run(in Input) *Report {
 	// The fired hook's lint reads the same glyph.toml, so the config verdict is
 	// an input to the live-fire check — see checkHookFires.
@@ -299,20 +286,10 @@ func (r *Report) IDs(s Status) []string {
 // diagnostic inventing evidence, so the check reports the permissions block or
 // says plainly that there was none.
 //
-// A read failure splits in two, and the split is the whole point of the check:
-//
-//   - GitHub ANSWERED 404 — there is no such repository for this credential.
-//     That is a finding: the answer is no, and it will still be no on a retry.
-//     Fail, which the CLI exits 3 on.
-//   - Anything else — a 403 rate limit, a 5xx that outlived the retry schedule,
-//     a dead socket, a body that did not parse. Nothing about the repository was
-//     observed, so nothing may be concluded about it. Could-not-run, exit 4.
-//
-// Collapsing the two (any error is a failed check) is the bug this shape exists
-// to prevent: it made a transient GitHub outage exit 3, which .github's fleet
-// wrappers read as "this repository is misconfigured — hard-fail, do not retry",
-// while every other glyph command classifies the same outage as 4 and gets
-// retried. Both directions were wrong at once.
+// A read failure splits on what GitHub answered (github.IsRepoUnknown): a 404
+// is a finding (StatusFail, exit 3), and anything else observed nothing about
+// the repository (StatusUnknown, exit 4). The split, and the outage that
+// collapsing it misreported to the fleet's CI wrappers: DESIGN §7.
 func checkTokenAccess(in Input) Check {
 	c := Check{ID: idTokenAccess, Expected: "the credential can read " + in.Repo}
 	credential := "no credential (GITHUB_TOKEN/GH_TOKEN unset — an anonymous read)"
@@ -350,20 +327,12 @@ func checkTokenAccess(in Input) Check {
 }
 
 // checkTokenWrite asks whether the credential could WRITE the rolling draft —
-// the one thing `glyph release` does that every read command does not. A
-// read-only GITHUB_TOKEN passes every check above and then dies at the draft
-// upsert with a 403 after the walk has already run, which is exactly the
-// silent class this report exists to name before it costs a release run.
-//
-// It is deliberately never a FAILURE: a read-only credential is the correct
-// configuration for a repository that never runs release, and doctor must not
-// red the fleet's read-side wiring over a command it does not use. So push
-// granted is a pass, anything less is ADVICE naming the release-only
-// consequence — and a repository object that was never read degrades to
-// unknown exactly like every other check fed by that read. The verdict
-// branches only on what the API SAID (the same reported block
-// permissionSummary narrates): glyph never infers a scope the API did not
-// report — see github.Repo.Permissions.
+// the one thing `glyph release` does that every read command does not. A push
+// grant passes and anything less is ADVICE, never a failure (DESIGN §7); a
+// repository object that was never read degrades to unknown exactly like
+// every other check fed by that read. The verdict branches only on what the
+// API SAID (the same reported block permissionSummary narrates): glyph never
+// infers a scope the API did not report — see github.Repo.Permissions.
 func checkTokenWrite(in Input) Check {
 	c := Check{ID: idTokenWrite, Expected: "the credential can write releases in " + in.Repo + " (needed only by `glyph release`)"}
 	if in.RepoErr != nil {
@@ -423,69 +392,15 @@ func permissionSummary(p *github.RepoPermissions) string {
 	return "the API reports permissions: " + join(granted)
 }
 
-// checkSquashEnabled is the one merge-method setting that is a hard failure,
-// and the reason is mechanical rather than stylistic — but it is NOT the reason
-// the first draft of this file gave. That draft argued from the exact path ("only
-// a squash commit carries merge_commit_sha") and from a lenient fallback for a
-// rebase; both are false, as checkRebaseMerge now spells out. The engine resolves
-// EVERY merge style on the exact path: GitHub points merge_commit_sha at whichever
-// commit represents the merge — the squash commit, a rebase's last replayed
-// commit, or the merge commit itself — and the walk expands the pull request from
-// there (internal/cli/sincetag.go, t-7zt7). While the API answers, squash being
-// off costs nothing at all.
-//
-// What squash being off removes is not a fallback — it is the guarantee that a
-// pull request resolves all-or-nothing. A squash-merged PR puts exactly ONE
-// commit on main and that commit IS its merge_commit_sha, so the walk either
-// expands the whole pull from the API or falls back on that one message; there
-// is no third state. Every multi-commit landing splits those two apart.
-//
-// Land the same PR as a merge commit and that commit's own message is "Merge
-// pull request #12 from …" — no sigil at all, so the fallback skips it on its
-// parent count. That does NOT cost the pull request: gitsource.Log runs without
-// --first-parent, so the merged branch's commits are in the range too and each is
-// classified from its own message; at full darkness a merge-merged pull
-// reproduces its live verdict exactly (measured: minor either way —
-// cli.TestSinceTagMergeCommitReproducesVerdictWhenFullyDark). The cost is
-// the PARTIAL window — a branch commit stands aside for a merge point in range
-// (mergedPullFor's covering result), and when that merge point is the one thing
-// GitHub has not indexed, or an exclude_authors author authored it and the walk
-// skipped it before the API, nothing expands the pull and the whole of it counts
-// none. Loud (two warnings; `release` refuses the incomplete walk at 4, and
-// bump/notes hand down their verdict without the pull), and permanent in the
-// automation case.
-// Land it as a rebase and the messages survive but the shas do not — GitHub always
-// writes new commits, none of which appear in the PR's own commit listing. The walk
-// closes that by aligning the listing against the first-parent run ending at the
-// canonical commit (t-8xsb), so a replayed commit classified during the lag is
-// recognised when the pull expands and counted once, out loud. The alignment is
-// verified message by message and abandoned whole if any differs, and THERE the
-// old double fold survives: a rebase that dropped a commit it was asked to replay
-// — one already upstream, or one that rebased empty — cannot be aligned, and the
-// same change renders twice with nothing that says so.
-//
-// That window is not hypothetical: the walk runs seconds after a push, where
-// GitHub answers 422 for a sha it does not know yet — and 422 is the ONLY status
-// that reaches the fallback. A 403 rate limit, a 5xx that outlives the retry
-// schedule (t-bjrv) or an unreachable host is not an API-dark walk at all:
-// walkSince returns it and the run exits 4 (measured —
-// cli.TestSinceTagFallbackOnlyOnUnknownCommit). Cite the lag window here;
-// the outage window belongs to the exit-code contract, not to this argument.
-//
-// The cost squash itself carries in that window is bounded and worth naming:
-// under COMMIT_OR_PR_TITLE a MULTI-commit squash's subject is the PR TITLE.
-// lint.yml's "Lint the squash title" step holds that title to the grammar, never
-// to the level the pull's commits fold to, so a dark run classifies one subject
-// whose sigil is its author's own — one wrong level on one pull, against a whole
-// pull lost.
-//
-// Hence fail rather than advice, and hence the asymmetry with the two checks
-// below: ALLOWING another merge method leaves squash there for the traffic that
-// matters, while turning squash off removes the only landing style with no
-// partial state at all. Everything downstream is drawn on it too — the two squash
-// policy checks describe a commit this repository can no longer produce, and the
-// notes grouping, the PR preview and the release reusable are all calibrated on
-// one commit per PR.
+// checkSquashEnabled fails when squash merging is off, because squash is the
+// one landing style with no partial state: a squash-merged pull puts exactly
+// ONE commit on main and that commit IS its merge_commit_sha, so the walk
+// either expands the whole pull from the API or falls back on that one
+// message. Every multi-commit landing splits those two states. Why that makes
+// this a failure while allowing another method is advice (checkMergeCommit,
+// checkRebaseMerge), and what squash itself still costs with the API dark:
+// DESIGN §7. With squash off, the two squash policy checks describe a commit
+// this repository can no longer produce.
 func checkSquashEnabled(in Input) Check {
 	c := Check{ID: idSquashEnabled, Expected: "allow_squash_merge=true"}
 	if u, ok := available(in, c, "allow_squash_merge", in.RepoObject.AllowSquashMerge); !ok {
@@ -527,25 +442,11 @@ func checkSquashEnabled(in Input) Check {
 	return c
 }
 
-// checkMergeCommit reports allow_merge_commit, and its severity is the one
-// deliberate judgement call in this file.
-//
-// A merge commit USED to be data loss: v1's classification dropped any commit with 2+
-// parents, so a PR landed with the merge button's "Create a merge commit"
-// vanished from the release walk entirely and its gitmoji never reached the
-// verdict — a whole PR's worth of change shipping as no release at all (t-7zt7).
-// If that were still true, this would be a hard failure and the honest one.
-//
-// t-7zt7 fixes the walk to resolve and expand a merge commit exactly like a
-// squash commit, so the setting no longer costs a bump whenever the API answers,
-// and no longer costs one at full darkness either (measured —
-// cli.TestSinceTagMergeCommitReproducesVerdictWhenFullyDark) — what it still
-// costs is the partial window below, which is loud and, for a bot-authored merge,
-// permanent. What remains is a house convention — the fleet is squash-only so
-// that main carries one commit per PR and the walk is one round-trip per PR — and
-// doctor reports it at that weight. Failing over a setting glyph now handles
-// correctly would be crying wolf, and a diagnostic nobody is obliged to run
-// cannot afford to be ignored.
+// checkMergeCommit reports allow_merge_commit at ADVICE: the release walk's
+// fix for t-7zt7 resolves and expands a merge commit exactly like a squash
+// commit, so what the setting still costs is the squash-only house convention
+// plus the partial window, where an unresolved merge point loses its whole
+// pull out loud (DESIGN §7).
 //
 // The coupling runs the other way too: this severity is downstream of that fix.
 // If the merge-commit walk is ever reverted or regresses, this check must move
@@ -585,28 +486,11 @@ func checkMergeCommit(in Input) Check {
 	return c
 }
 
-// checkRebaseMerge reports allow_rebase_merge. Advice — and the reason had to be
-// corrected, because the first draft of this check described a walk that does not
-// exist. It told the fleet that a rebase-merged PR's non-final commits are
-// "classified from their own preserved messages on the walk's fallback path",
-// where a subject no pattern claims only warns and counts none.
-//
-// The walk does no such thing. GitHub points merge_commit_sha at the LAST replayed
-// commit, so that commit resolves and expands the whole pull request through the
-// API — a subject no pattern claims anywhere inside it hard-fails the release
-// through the walk's refusal (cli.walkRefusal), exactly as it would for a squash — and the earlier replayed
-// commits resolve as COVERED by that same pull request and are skipped outright,
-// so nothing is classified twice and nothing is classified leniently. Rebase merging
-// is handled exactly as strictly as squash, the opposite of what this check used
-// to say. A diagnostic that lies about the engine is worse than no diagnostic.
-//
-// What it does cost is one API round-trip per replayed commit instead of one per
-// pull request, and the walk's dedup key: GitHub always writes NEW shas when it
-// rebases, and none of them appear in the pull request's own commit listing, so
-// inside the API-lag window (DESIGN §4) a replayed commit classified from its own
-// message can be folded in a second time when the last one expands the PR. A cost
-// and a narrow window, not a defect — hence advice, at the same weight as the
-// merge-commit convention rather than as a claim about correctness.
+// checkRebaseMerge reports allow_rebase_merge at ADVICE, the merge-commit
+// convention's weight: the LAST replayed commit expands the whole pull request
+// exactly as strictly as a squash commit (a subject no pattern claims fails the
+// release through cli.walkRefusal), so rebase merging costs one API round-trip
+// per replayed commit and a narrow lag window, not strictness (DESIGN §7).
 func checkRebaseMerge(in Input) Check {
 	c := Check{ID: idRebaseMerge, Expected: "allow_rebase_merge=false (house convention: squash-only)"}
 	if u, ok := available(in, c, "allow_rebase_merge", in.RepoObject.AllowRebaseMerge); !ok {
@@ -634,23 +518,11 @@ func checkRebaseMerge(in Input) Check {
 	return c
 }
 
-// checkSquashTitle is a hard failure, and unlike the merge methods it is not
-// about conventions at all: squash_merge_commit_title decides whether the commit
-// that lands on main carries the subject its author wrote, sigil included.
-//
-// COMMIT_OR_PR_TITLE keeps a single-commit PR's own subject — sigil and all —
-// on main, and only borrows the PR title when a PR has several commits (the
-// erasure glyph's second hop exists to undo). PR_TITLE hands the PR title to
-// EVERY squash, including the single-commit PRs that are most of a fleet repo's
-// traffic, so main fills with subjects nobody wrote as a commit message. The
-// verdict survives while the API answers — glyph re-reads the PR — but the
-// walk's documented fallback (the API lag right after a push, DESIGN §4)
-// classifies the squash commit's OWN message, and that message is now the
-// title: its sigil alone decides, and a title no pattern claims is dropped
-// from the fold with a warning — bump says no release
-// (cli.TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark) and release refuses
-// the incomplete walk at 4. glyph-test drifted to exactly this and nothing
-// noticed.
+// checkSquashTitle fails unless squash_merge_commit_title is
+// COMMIT_OR_PR_TITLE: the setting decides whether the commit that lands on main
+// carries the subject its author wrote, sigil included, and only
+// COMMIT_OR_PR_TITLE keeps a single-commit PR's own subject. Why PR_TITLE is a
+// failure: DESIGN §7.
 func checkSquashTitle(in Input) Check {
 	return checkSquashEnum(in, idSquashTitle, "squash_merge_commit_title",
 		in.RepoObject.SquashMergeCommitTitle, wantSquashTitle,
@@ -662,15 +534,11 @@ func checkSquashTitle(in Input) Check {
 			"and release refuses the incomplete walk at exit 4")
 }
 
-// checkSquashMessage is the body half of the same policy. COMMIT_MESSAGES keeps
-// the per-commit message list in the squash body — the human-readable record of
-// what was actually in the PR, on main, forever. PR_BODY replaces it with the
-// pull request description, so once GitHub's API is unavailable or the PR is
-// gone the pre-squash types exist nowhere in the repository. glyph deliberately
-// does not depend on that body (DESIGN §4 rejected owning it as the primary
-// signal — the fragility is exactly why glyph reads the API instead), but it is
-// the only offline record of a PR's contents, and the drift alarm that made
-// glyph-test's drift discoverable at all.
+// checkSquashMessage is the body half of the same policy: COMMIT_MESSAGES
+// keeps the per-commit message list in the squash body, the only offline
+// record of a PR's pre-squash types. glyph does not depend on that body
+// (DESIGN §4 keeps it only as a drift alarm); why PR_BODY is a failure all the
+// same: DESIGN §7.
 func checkSquashMessage(in Input) Check {
 	return checkSquashEnum(in, idSquashMessage, "squash_merge_commit_message",
 		in.RepoObject.SquashMergeCommitMessage, wantSquashMessage,

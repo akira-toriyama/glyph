@@ -1,21 +1,10 @@
 package doctor
 
-// This file is doctor's second local check, and the only one whose subject is a
-// file glyph itself WROTE: the commit-msg hook installed in this checkout must
-// be byte-identical to the one this binary would write today.
-//
-// It exists because internal/hook's central safeguard stops at the moment of
-// writing. That package interpolates the lint gate code from core.CodeLint
-// rather than typing it as a shell literal, precisely so a renumbered constant
-// cannot leave behind a hook that compares against a code glyph no longer emits
-// — one that waves every violation through, with the whole suite green. The
-// interpolation guarantees that about the hook glyph WRITES. It guarantees
-// nothing about the hook already sitting in a developer's .git/hooks, which was
-// written by whichever glyph was on PATH that day and is never revisited: hooks
-// are not tracked by git, so no pull, no fleet-sync and no CI job can refresh
-// one. The installed copy is the only artefact in this system that drifts with
-// nobody watching, and it drifts in the direction of silence — a stale hook
-// still exits 0, so its verdict looks exactly like a clean message.
+// This file holds doctor's hook checks, whose subject is a file glyph itself
+// WROTE: an installed hook must be byte-identical to the one this binary would
+// write today, and the outcome of firing the byte-identical commit-msg hook
+// (internal/cli fires it) is judged here. Why an installed hook drifts with
+// nobody watching: DESIGN §7.
 //
 // Read-only like every other check: it reports the refresh command and leaves
 // running it to the developer.
@@ -33,23 +22,15 @@ import (
 
 // checkHook asks whether a STALE glyph-written hook of kind k is
 // installed here. Not "is a hook installed" — the difference decides three of
-// the four verdicts:
+// the four verdicts (DESIGN §7 argues each):
 //
 //   - identical -> pass.
-//   - written by glyph, and different -> FAIL. This is the drift, and it fails
-//     in the quiet direction. What breaks is concrete: the gate code it compares
-//     against and the arguments it hands `glyph lint` were both frozen at
-//     install time.
-//   - nothing installed -> PASS, and this is the argued one. Absence is not
-//     drift: the hook is opt-in, CI is the authority, and hooks do not clone, so
-//     a checkout on an Actions runner has none BY CONSTRUCTION. Grading that as
-//     advice would post a notice on every doctor run in every repository, for a
-//     condition no repository can avoid — which is how a fleet learns to skip
-//     the report, the one failure mode a voluntary check cannot survive (§7).
-//     `glyph hook install` is offered where it belongs, in the pass message.
-//   - a hook somebody else wrote -> advice. glyph refuses to overwrite it
-//     (hook.Install), so this is a standing choice rather than drift, and unlike
-//     absence it is rare enough that saying so once costs nothing.
+//   - written by glyph, and different -> FAIL: the drift, frozen at install
+//     time.
+//   - nothing installed -> PASS. `glyph hook install` is offered in the pass
+//     message.
+//   - a hook somebody else wrote -> advice: hook.Install refuses to overwrite
+//     it, so it is a standing choice rather than drift.
 func checkHook(k hook.Kind, id, dir string, dirErr error) Check {
 	c := Check{
 		ID: id,
@@ -116,31 +97,20 @@ func checkHook(k hook.Kind, id, dir string, dirErr error) Check {
 
 // checkHookFires reports what happened when the installed commit-msg hook was
 // actually FIRED with a violating message — the live half of the hook
-// diagnosis, and the half the byte-compare above cannot supply.
-//
-// Byte-identical bytes prove the SCRIPT is current; they prove nothing about
-// the glyph the script reaches at run time. The script resolves `glyph` on
-// PATH, and by design it blocks only on the lint gate code and waves every
-// other failure through — so a PATH wrapper that builds a different checkout
-// (CLAUDE.md documents this exactly: inside a worktree the wrapper builds the
-// PRIMARY clone), or a source tree that no longer compiles, turns the local
-// gate into a silent no-op while its bytes still compare clean. Firing the
-// hook with a message that violates the convention asks the only question that
-// covers the whole chain: does this hook, on this machine, today, block?
-//
-// The probe is the CALLER's (internal/cli owns every subprocess), and it fires
-// ONLY the byte-identical arm. Someone else's hook is theirs to run, and a
-// stale glyph hook already fails the drift check above — a read-only diagnosis
-// must not execute code it does not vouch for. Everything not fired is
-// therefore a pass here with the sibling check named as the owner: this check
-// answers "does the current hook work", not "is a hook installed".
+// diagnosis: current bytes prove the script, never the glyph it resolves on
+// PATH. The probe is internal/cli's (probeCommitMsgHook) and fires ONLY the
+// byte-identical arm, so a hook it does not fire (absent, foreign, stale or
+// unreadable) passes here with the sibling check named as the owner, which
+// grades an unreadable one unknown: this check answers "does the current hook
+// work", not "is a hook installed". A hooks directory git could not name, or
+// a probe that ran and failed, is unknown here. Why the probe exists and fires
+// nothing else: DESIGN §7.
 //
 // configLoaded is glyph-toml-loads' verdict. The fired hook's lint reads that
 // same file, and without it lint exits 2 (4 when the file cannot be read)
 // before judging anything — codes the hook waves through as 0 — so a
-// pass-through there is the missing config answering, not the glyph on PATH.
-// Failing it sent the reader to repair a wrapper nothing had observed broken
-// (t-fdd8 (5)); it is unknown instead, owned by the config check.
+// pass-through there is unknown, owned by the config check, never a failure
+// blamed on the glyph on PATH (t-fdd8 (5); DESIGN §7).
 func checkHookFires(probe *HookProbe, dirErr error, configLoaded bool) Check {
 	gate := int(core.CodeLint)
 	c := Check{
@@ -225,19 +195,16 @@ func diffSummary(installed, want string) string {
 //
 // Two things a byte-identical pre-push hook does not prove, each one ADVICE
 // line on its pass — never unknown or fail, by the rule DESIGN §7 applies to a
-// hook glyph did not write: a standing choice, rare, and no reason to flip ok.
+// hook glyph did not write (the measurements behind both are there too):
 //
-//   - The glyph it resolves on PATH. That is answered by firing the
-//     commit-msg hook — both resolve one PATH (probeCommitMsgHook,
-//     internal/cli) — so a current pre-push with nothing fired beside it
-//     (pre-push installed alone by name, or a commit-msg deleted or replaced
-//     after install) read all green while nobody had asked whether its gate
-//     can lint (none of 52 clones in t-2etd's census, 2026-09-27). Firing
-//     pre-push itself stays unbuilt (DESIGN §7).
+//   - The glyph it resolves on PATH. Firing the commit-msg hook answers that
+//     for both, since both resolve one PATH (probeCommitMsgHook,
+//     internal/cli); with nothing fired beside it — pre-push installed alone
+//     by name, or a commit-msg deleted or replaced after install — nothing
+//     asked whether its gate can lint. Firing pre-push itself stays unbuilt.
 //   - That it can block at all. The hook refuses a violation only on the
 //     remote's default branch, read from refs/remotes/<remote>/HEAD; a clone
-//     that does not record it warns and exits 0 on every push (t-2etd's
-//     triage: 0, then 3 once `git remote set-head origin -a` had run).
+//     that does not record it warns and exits 0 on every push.
 //
 // The heads are an input like any other: unread is unknown, never the pass
 // that would say the hook can block.

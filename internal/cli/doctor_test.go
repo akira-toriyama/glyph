@@ -994,7 +994,7 @@ func TestFirstInterruptChecksEveryRead(t *testing.T) {
 }
 
 // TestDoctorInterruptDuringHooksReadCarriesOut pins the guard over doctor's
-// SECOND read. Both reads run before the guard, and the signal lands in
+// hooks read. Every read runs before the guard, and the signal lands in
 // whichever is in flight; measured before the fix, a SIGTERM landing in the
 // hooks read exited 4 — stdout carried a report with commit-msg-hook rendered
 // as "could not run: … interrupted" — and 4 is the one code the fleet's

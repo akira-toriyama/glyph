@@ -9,12 +9,10 @@ import (
 )
 
 // CommitFilesCap is where GitHub stops listing a commit's files however far
-// the pagination follows — an API contract, so the adapter owns the number.
-// Measured 2026-09-10 on torvalds/linux's root commit (17k files): 300 per
-// page by default, rel="last" at page 10, page 11 empty. A listing of exactly
-// this many files may be missing some, and a package touched only past the
-// cap is unreachable, not absent — the caller records that as an incomplete
-// walk (DESIGN §4.1).
+// the pagination follows — an API contract, so the adapter owns the number. A
+// listing of exactly this many files may be missing some, and a package
+// touched only past the cap is unreachable, not absent — the caller records
+// that as an incomplete walk. The measurement and that rule: DESIGN §4.1.
 const CommitFilesCap = 3000
 
 // apiCommitFiles is the slice of GET commits/{sha} the attribution reads: the
