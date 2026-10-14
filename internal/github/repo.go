@@ -86,8 +86,7 @@ type apiRepo struct {
 // their failure: the status is the only thing that separates "GitHub answered,
 // and the answer is that this credential has no such repository" from "GitHub
 // never answered at all", and doctor turns that distinction into two different
-// exit codes. See IsRepoUnknown, which is the only sanctioned reader of it —
-// flattening here made a transient 503 report as a repository defect.
+// exit codes. See IsRepoUnknown, which is the only sanctioned reader of it.
 func (c *Client) Repository(ctx context.Context, owner, repo string) (Repo, error) {
 	u := fmt.Sprintf("%s/repos/%s/%s", c.baseURL, url.PathEscape(owner), url.PathEscape(repo))
 	var raw apiRepo

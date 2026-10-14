@@ -9,9 +9,7 @@ import (
 // author-supplied fields, applying this package's escaping pipeline in the only
 // order that is safe: flatten each field as it arrives, then — over the
 // assembled whole, in String — the prose escape and the mention fence, one pass
-// each. BOTH whole-line passes are load-bearing and for the same reason; the
-// escape pass was per field until t-9np1 measured a live link out of the seam
-// between two of them. It is the package's ONLY exported surface, and that is the
+// each. It is the package's ONLY exported surface, and that is the
 // point (ratified 2026-07-22, t-3f4s): the order used to be a contract written
 // in doc comments on two call sites, and a third caller handing raw author text
 // to the mention fence would have resurrected the phantom-span hole SILENTLY —
@@ -27,6 +25,15 @@ import (
 //	l.Raw("- ")        // glyph's own markup, trusted byte-for-byte
 //	l.Prose(subject)   // author text: disarmed in String, still readable
 //	body := l.String() // prose escape, then mention fence — over the whole line
+//
+// Why the prose escape runs over the whole line: a code span is what makes
+// escapeProseLine leave author bytes alone, and CommonMark pairs backtick RUNS
+// across the whole inline context — the line, not the field. Escaped a field at
+// a time, a subject ending in an unclosed backtick re-paired with the first
+// backtick of the author name, and `[CLICK ME](https://evil)` written across
+// that seam reached a published release body LIVE on the shipped preset, with
+// `glyph lint` exiting 0 on the commit (t-9np1, measured at e41051d;
+// TestProseFieldsCannotPairBacktickRunsAcrossFields).
 //
 // Why the fence comes last and sees everything: mention-safety is a property of
 // the rendered INLINE CONTEXT and of no field in it. The fence must be longer
@@ -52,8 +59,8 @@ import (
 type Line struct {
 	// parts are the fragments in render order. They are held rather than
 	// concatenated because the prose escape, like the fence, is a property of
-	// the assembled line and cannot be decided a field at a time — see
-	// String.
+	// the assembled line and cannot be decided a field at a time (the type's
+	// doc says why).
 	parts []part
 }
 
@@ -88,34 +95,31 @@ func (l *Line) Raw(s string) {
 // Prose appends an author-supplied field — text the author meant to be read.
 // Every author field is prose: the commit subject, the scope, any value a
 // template substitutes (DESIGN §2 holds the ruling, and why a scope has no
-// plain-text route of its own). The field is flattened to one line here; the
-// neutralizing happens in String, against the assembled line's code spans and
-// not this field's, because a backtick run in one field pairs with a run in
-// another (t-9np1). The author's code spans, emphasis and strikethrough keep
-// rendering; the constructs that can inject structure, point somewhere the
-// author never wrote or steal a code-span delimiter are disarmed.
+// plain-text route of its own). The field is flattened to one line here and
+// neutralized in String, over the assembled line (Line's doc says why). The
+// author's code spans, emphasis and strikethrough keep rendering; the
+// constructs that can inject structure, point somewhere the author never wrote
+// or steal a code-span delimiter are disarmed.
 func (l *Line) Prose(s string) {
 	l.parts = append(l.parts, part{partProse, flatten(s)})
 }
 
-// Mention appends the author credit the caller MEANS to page (ratified
-// 2026-08-17; by identity since t-39fy): login is the GitHub account that
+// Mention appends the author credit the caller MEANS to page (DESIGN §3 holds
+// the ruling and its measurements, t-39fy): login is the GitHub account that
 // authored the commit as GitHub established it — the API's author.login or
 // a noreply address — and name is git's free-text %an. The template's
 // literal at-sign plus the LOGIN renders as a live @mention instead of being
 // fenced: the one deliberate hole in the fence, gated twice. By identity: an
 // empty login is the statement that nobody established one, and the name is
 // never promoted to stand in for it, because a name is not a login and no
-// shape tells them apart — "Saleh" is one handle-shaped token and is
-// github.com/larrasket, so @Saleh paged a stranger (golang/tools, measured
-// 2026-09-13). And by shape, still: a login goes live only when it is exactly
-// one GitHub-handle-shaped token (alphanumerics and interior hyphens), so
-// "dependabot[bot]" and an empty resolve cannot open the hole either.
+// shape tells them apart. And by shape, still: a login goes live only when it
+// is exactly one GitHub-handle-shaped token (alphanumerics and interior
+// hyphens), so "dependabot[bot]" and an empty resolve cannot open the hole
+// either.
 //
 // A credit that cannot go live is written as prose, by NAME, and the
 // at-sign the caller wrote directly before it is dropped: "@Robert Pająk"
-// is not a mention of anyone, and fencing it left `@Robert` in code font
-// with the surname outside (opentelemetry-go, measured 2026-09-13). The
+// is not a mention of anyone, and fencing it splits the name (DESIGN §3). The
 // at-sign is the caller's template's ("@$author"), so a template without one
 // renders the bare name and mentions nobody — same as before.
 func (l *Line) Mention(login, name string) {
@@ -130,27 +134,14 @@ func (l *Line) Mention(login, name string) {
 }
 
 // String assembles the line and runs the two whole-line passes, in order: the
-// prose escape, then the mention fence.
+// prose escape, then the mention fence (Line's doc says why both see the whole
+// line).
 //
-// Both are properties of the assembled line, and for the same reason. A code
-// span is what makes escapeProseLine leave author bytes alone, and CommonMark
-// pairs backtick RUNS across the whole inline context — which is the line, not
-// the field. Escaping each field against its own spans therefore asked the
-// wrong question, and answered it in the under-escaping direction that
-// escape.go's ONE DESIGN RULE forbids: a subject ending in an unclosed backtick
-// re-paired with the first backtick of the author name, glyph believed the
-// bytes between them were inside a code span, and `[CLICK ME](https://evil)`
-// written across that seam reached a published release body LIVE — on the
-// shipped preset, whose `- $subject$[ ($pr)] @$author` puts two prose fields in
-// one context, and with `glyph lint` exiting 0 on the commit (t-9np1, measured
-// at e41051d). The fence pass had already been moved here for the mirror-image
-// bug; this is the same move for the escape pass.
-//
-// The mention exemption is unchanged: ranges Mention wrote stay live. A token
-// that only PARTLY overlaps such a range (template glue extending the name, a
-// chain swallowing it) is fenced whole — the exemption never widens. Calling
-// String again returns the same bytes: both passes are fixed points and the
-// parts are not consumed.
+// Mention's exemption: the ranges it wrote stay live. A token that only PARTLY
+// overlaps such a range (template glue extending the name, a chain swallowing
+// it) is fenced whole — the exemption never widens. Calling String again
+// returns the same bytes: both passes are fixed points and the parts are not
+// consumed.
 func (l *Line) String() string {
 	// The span scan must see the bytes GitHub will see. Prose is flattened but
 	// raw here, and that is enough: escaping inserts no backtick, so the spans

@@ -4,21 +4,12 @@
 // each function neutralizes one specific GitHub rendering behavior that turns
 // honest commit text into something it never meant to be.
 //
-// The pipeline is three files. escape.go comes FIRST: flatten makes each value
-// one line as it arrives, and escapeProseLine then disarms it over the
-// ASSEMBLED line — the constructs that can inject structure, point somewhere
-// the author never wrote, or delete the author's own words. Every value is
-// prose to it, a commit scope included (DESIGN §2 holds that ruling and why the
-// scope's plain-text route was deleted). This file comes LAST and also works
-// over the assembled line: escapeMentionsSkipping fences the would-be @mentions. BOTH
-// of the last two are whole-line passes and for one reason — a code span pairs
-// backtick runs across the whole inline context, so neither question is
-// decidable a field at a time (t-9np1). Neither order is interchangeable
-// — and no caller gets to choose one: compose.go's Line builder, the package's
-// only exported surface, runs the pipeline itself and is where both reasons are
-// written down. The order used to be a doc-comment contract on each call site,
-// which held for exactly as long as every future call site would read it
-// (ratified out 2026-07-22, t-3f4s).
+// The pipeline is three files: escape.go disarms author prose (flatten, then
+// escapeProseLine), this file fences the would-be @mentions
+// (escapeMentionsSkipping), and compose.go's Line — the package's only
+// exported surface — runs them in the one safe order. No caller gets to choose
+// another (t-3f4s); Line's doc holds the order and the measured leaks that
+// forced it.
 //
 // Everything here is a MODEL of a renderer no unit test can call. Every rule
 // below was measured against GitHub's own renderer (`gh api -X POST /markdown`,

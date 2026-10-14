@@ -34,12 +34,11 @@ type apiCommitFiles struct {
 // Link header across the listing's pages), a renamed file under both its
 // names, and whether the listing reached CommitFilesCap — measured against the
 // ENTRIES GitHub listed, never the names returned: a rename is one entry under
-// two names, so a whole listing of 1500 renames is whole (t-ft7p: counted by
-// name, it was reported capped and release refused the range at 4 with a
-// remedy a re-run could never satisfy). It answers for a sha no branch holds — a squash-merged pull's inner commits (measured 2026-09-10
-// on glyph-test #83) — which is what the release walk needs it for; a commit
-// the checkout holds is asked of local git instead (gitsource.DiffTreeFiles),
-// free.
+// two names, so a whole listing of 1500 renames is whole (t-ft7p; DESIGN §4.1
+// has what counting names cost). It answers for a sha no branch holds — a
+// squash-merged pull's inner commits (measured 2026-09-10 on glyph-test #83) —
+// which is what the release walk needs it for; a commit the checkout holds is
+// asked of local git instead (gitsource.DiffTreeFiles), free.
 //
 // The status is not flattened: a 422 here means what it means on
 // commits/{sha}/pulls — GitHub does not know the sha — and IsCommitUnknown

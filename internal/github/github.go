@@ -118,11 +118,10 @@ type Client struct {
 // New builds a client. token is sent as a Bearer credential when non-empty; an
 // empty token still reads public repos, at the anonymous rate limit.
 //
-// The origin gate is installed LAST, after every option has run, so it covers a
-// client an option injected exactly as it covers the default one: the
-// invariant "this client speaks its credential only to the origin baseURL
-// names" has to hold for every Client this constructor returns, or it is not an
-// invariant. See guardRedirects for why an injected client's own policy loses.
+// The redirect half of the origin gate (nextPage states the invariant) is
+// installed LAST, after every option has run, so it covers a client an option
+// injected exactly as it covers the default one. See guardRedirects for why an
+// injected client's own policy loses.
 func New(token string, opts ...Option) *Client {
 	c := &Client{baseURL: defaultBaseURL, http: &http.Client{Timeout: defaultTimeout},
 		token: token, retryDelays: defaultRetryDelays}
@@ -136,20 +135,18 @@ func New(token string, opts ...Option) *Client {
 // guardRedirects returns h with checkRedirect installed as its redirect policy.
 //
 // It works on a shallow COPY and never mutates h. An injected client belongs
-// to the caller and is routinely shared — every test in this package hands in
-// httptest.Server.Client(), one object per server — so reaching into it to
-// rewrite how it follows redirects is a side effect a constructor has no
+// to the caller and is routinely shared — nearly every test in this package
+// hands in httptest.Server.Client(), one object per server — so reaching into
+// it to rewrite how it follows redirects is a side effect a constructor has no
 // business having. The copy carries Transport, Timeout, Jar and the rest over
 // untouched: those are what injecting a client chooses.
 //
 // An injected CheckRedirect is deliberately REPLACED, not chained to and not
-// respected. The credential belongs to the Client, not to the transport: send
-// attaches "Authorization: Bearer <token>" — contents: write in a release job —
-// to every request, so where that header may travel is this package's invariant
-// to keep and not a knob a caller widens by handing in a client. A caller that
-// wants different redirect handling is asking for a different security
-// contract, and would be silently granted one if this deferred to whatever it
-// injected.
+// respected. The credential belongs to the Client, not to the transport: where
+// it may travel is this package's invariant (nextPage), not a knob a caller
+// widens by handing in a client. A caller that wants different redirect
+// handling is asking for a different security contract, and would be silently
+// granted one if this deferred to whatever it injected.
 func (c *Client) guardRedirects(h *http.Client) *http.Client {
 	guarded := *h
 	guarded.CheckRedirect = c.checkRedirect
@@ -162,9 +159,9 @@ func (c *Client) guardRedirects(h *http.Client) *http.Client {
 // turns a server-side redirect loop into an infinite one inside a CI job.
 const maxRedirects = 10
 
-// checkRedirect is the redirect half of the origin gate nextPage opens: every
-// hop must land on the origin baseURL names, and one that leaves it fails the
-// request instead of being followed.
+// checkRedirect is the redirect half of the origin gate whose invariant
+// nextPage states: every hop must land on the origin baseURL names, and one
+// that leaves it fails the request instead of being followed.
 //
 // It exists because net/http's own protection is WEAKER than the Link-header
 // gate. shouldCopyHeaderOnRedirect compares the HOSTNAME only — scheme and port
@@ -172,10 +169,8 @@ const maxRedirects = 10
 // so the standard client happily carries "Authorization: Bearer <token>" from
 // https://ghe.corp to http://ghe.corp:8080, i.e. to another service, in
 // plaintext. Verified empirically between two httptest servers on 127.0.0.1:
-// the second port logged the bearer token. That is exactly the shape nextPage
-// refuses one hop earlier, and a gate whose back door is wider than its front
-// door is not a gate — which mattered the moment this package started claiming
-// the invariant out loud.
+// the second port logged the bearer token — the shape nextPage refuses in a
+// Link header.
 //
 // The verdict is REFUSAL, not "follow it with the header stripped". Stripping
 // keeps the credential home but still lets a foreign host ANSWER, and its JSON
@@ -206,9 +201,8 @@ func (c *Client) checkRedirect(req *http.Request, via []*http.Request) error {
 // redirectRefused carries a checkRedirect verdict back out through net/http,
 // which wraps whatever CheckRedirect returns in a *url.Error. It marks the
 // failure as glyph's own policy rather than a wire hiccup, so send's retry loop
-// does not replay a decision that cannot change: the t-bjrv backoff exists to
-// ride out a GitHub outage, and spending ~21s re-refusing the same redirect
-// before failing anyway would only delay the CI log the operator needs.
+// does not spend the backoff schedule (defaultRetryDelays, ~21s) replaying a
+// decision that cannot change.
 // Unwrap keeps the wrapped *core.Error reachable, so to everything outside this
 // package (core.AsError, core.ExitCode) it is an ordinary CodeAPI failure.
 type redirectRefused struct{ err *core.Error }
@@ -344,20 +338,18 @@ func (c *Client) get(ctx context.Context, u string, into any) (string, error) {
 // it only when it addresses the client's OWN origin — the scheme, host and
 // port baseURL names. "" (no next page) passes through as the walk's stop.
 //
-// Why the gate exists: send attaches "Authorization: Bearer <token>" to
-// whatever URL it is handed, and in a release job that credential carries
-// contents: write. net/http drops the header when a *redirect* crosses hosts,
-// but this hop is hand-written and sits outside that protection, so without
-// the check a response that merely *says* "your next page is over there" would
-// hand the token to an arbitrary host. (net/http's redirect rule is also too
-// coarse to lean on even where it does apply — it compares hostnames only —
-// which is why checkRedirect re-applies THIS rule to every hop; the two are one
-// invariant with two entry points.) Reaching that requires already
-// controlling the API host's answers (an Enterprise install, a proxy) — an
-// actor who by then holds the token anyway — so this is defense in depth, not
-// a live exploit. It is here because "this client speaks its credential only
-// to the host it was pointed at" is an invariant worth stating in code rather
-// than in a comment about who we happen to talk to today.
+// Why the gate exists: the package's one origin invariant is that the client
+// speaks its credential only to the origin baseURL names. send attaches
+// "Authorization: Bearer <token>" to whatever URL it is handed, and in a
+// release job that credential carries contents: write. net/http drops the
+// header when a *redirect* crosses hosts, but this hop is hand-written and
+// sits outside that protection, so without the check a response that merely
+// *says* "your next page is over there" would hand the token to an arbitrary
+// host. Redirects get the same rule from checkRedirect, because net/http's own
+// check compares hostnames only (measured there). Reaching that requires
+// already controlling the API host's answers (an Enterprise install, a proxy)
+// — an actor who by then holds the token anyway — so this is defense in
+// depth, not a live exploit.
 //
 // It sits HERE, in get, rather than in getAll: get is what turns a Link header
 // into a return value a caller will follow, so validating on the way out means
@@ -408,17 +400,15 @@ func (c *Client) nextPage(header string) (string, error) {
 }
 
 // sameOrigin reports whether two absolute URLs address the same origin — the
-// single rule both gates apply, nextPage to a Link header and checkRedirect to
-// a Location, so the two can never drift into disagreeing about what "the
-// configured host" means. The
+// one comparison both halves of the origin gate apply (nextPage to a Link
+// header, checkRedirect to a Location), so they cannot drift apart. The
 // comparison is on PARSED components, never a string prefix: the whole point is
 // to reject api.github.com.evil.test, which has https://api.github.com as a
 // prefix. Scheme and host compare case-insensitively (RFC 3986 §3.1 and
 // §3.2.2 — url.Parse already lowercases the scheme, the host it leaves
 // verbatim). PATH is deliberately not compared: GitHub's own Link headers
 // rewrite a /repos/{owner}/{repo}/… request into the /repositories/{id}/… form
-// on later pages, so anything stricter than origin would break real pagination
-// — and origin is exactly the line that decides who receives the credential.
+// on later pages, so anything stricter than origin would break real pagination.
 func sameOrigin(a, b *url.URL) bool {
 	return strings.EqualFold(a.Scheme, b.Scheme) &&
 		strings.EqualFold(a.Hostname(), b.Hostname()) &&
@@ -527,19 +517,10 @@ func IsCommitUnknown(err error) bool {
 // there is no such repository FOR THIS CREDENTIAL (it answers 404 rather than
 // 403 for a private repository a credential cannot see, so the existence of the
 // repository is never disclosed). It is the one failure of that read which is an
-// answer ABOUT the repository rather than a failure to obtain one, which is
-// exactly the line `glyph doctor` draws: a 404 is a finding the repository owns
-// (exit 3), everything else — a 403 rate limit, a 5xx that outlived the retry
-// schedule, a dead socket, an unparseable body — is glyph failing to observe
-// anything (exit 4).
-//
-// The polarity is deliberate and is the fix for a real inversion: doctor used to
-// call ANY error from this read a failed check, so a transient GitHub 503 exited
-// 3 — "this repository is misconfigured" — at a fleet CI wrapper that branches on
-// `.error.code == 3` to hard-fail and treats everything else as a retryable infra
-// failure. Naming the single answering status and degrading everything else keeps
-// an unclassifiable failure on the "we learned nothing" side, which is the only
-// safe direction for a diagnostic.
+// answer ABOUT the repository rather than a failure to obtain one — the line
+// `glyph doctor` draws between exit 3 and exit 4 (DESIGN §7, with the outage
+// that once exited 3). It names the single answering status, so anything
+// unclassifiable stays on the "we learned nothing" side.
 func IsRepoUnknown(err error) bool {
 	se, ok := errors.AsType[*statusError](err)
 	return ok && se.status == http.StatusNotFound

@@ -87,9 +87,8 @@ func (c *Client) Releases(ctx context.Context, owner, repo string) ([]Release, e
 //
 // The create is the one write here whose blind replay is not idempotent: a
 // draft has no tag for GitHub to collide on, so every re-sent copy of a POST
-// whose answer was lost mints another identical draft — one 503-answered
-// create measured leaving two, and a spent schedule four, for a human to pick
-// through (t-ph6p). So before each re-send, createLanded asks whether the
+// whose answer was lost mints another identical draft (t-ph6p; DESIGN §4 has
+// the measured count). So before each re-send, createLanded asks whether the
 // earlier copy already reached its goal, and a found release is adopted as
 // this create's answer instead of a sibling being minted. On a probe that
 // finds nothing — or cannot look — the loop falls back to what it always did:
@@ -178,10 +177,10 @@ func (c *Client) writeRelease(ctx context.Context, method, u string, p ReleasePa
 // the create asked for — the intended tag, in the requested draft state —
 // appeared? Listing is the only way to see a draft (it has no tag to GET by),
 // and the client's retries are stripped so the probe is ONE read of the
-// listing — a round trip per 100 releases (measured: 73 pages per probe over
-// 7,272 releases, DESIGN §4) — with no backoff of its own: the calling loop
-// already owns the pacing, and a probe walking its own backoff schedule would
-// multiply an outage's wall clock by the schedule's length.
+// listing — a round trip per 100 releases, priced in DESIGN §4 — with no
+// backoff of its own: the calling loop already owns the pacing, and a probe
+// walking its own backoff schedule would multiply an outage's wall clock by
+// the schedule's length.
 // Any failure to look is a miss — the caller re-sends, which is exactly the
 // pre-probe behaviour.
 //
@@ -212,10 +211,8 @@ func (c *Client) createLanded(ctx context.Context, owner, repo string, p Release
 // send performs one logical request with the standard headers and returns the
 // 2xx body and response headers — the one funnel every read and write goes
 // through. Transient failures (a 5xx, a rate-limit answer, a transport error)
-// are retried on the client's backoff schedule before the failure escapes:
-// GitHub's minor outages answer 503 for tens of seconds, and hard-failing a
-// whole verdict job on one such answer traded a 16-second wait for a wave of
-// manual reruns (t-bjrv). Retrying a write is safe here because every write
+// are retried on the client's backoff schedule (defaultRetryDelays says why)
+// before the failure escapes. Retrying a write is safe here because every write
 // names its key: a replayed PATCH rewrites the same release, and a replayed
 // DELETE whose first copy already landed is read through goneOnRetry. The one
 // verb that has no key to name — the create, whose key GitHub mints in the
