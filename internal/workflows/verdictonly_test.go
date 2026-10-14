@@ -1,9 +1,7 @@
 package workflows
 
 import (
-	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -172,23 +170,17 @@ func TestArtifactArityAcceptsNeither(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			cmd := exec.Command("bash", "-c", script)
-			cmd.Env = append(os.Environ(), "APP="+c.app, "BINARY="+c.bin)
-			out, err := cmd.CombinedOutput()
-			exit := 0
-			ee, exited := errors.AsType[*exec.ExitError](err)
-			switch {
-			case exited:
-				exit = ee.ExitCode()
-			case err != nil:
-				t.Fatalf("running the validation step: %v", err)
+			run := runStep(t, script, unspecifiedShell, t.TempDir(), []string{
+				"PATH=" + os.Getenv("PATH"),
+				"APP=" + c.app,
+				"BINARY=" + c.bin,
+			})
+			if run.exit != c.wantExit {
+				t.Errorf("app=%q binary=%q exited %d, want %d\n%s", c.app, c.bin, run.exit, c.wantExit, run)
 			}
-			if exit != c.wantExit {
-				t.Errorf("app=%q binary=%q exited %d, want %d\n%s", c.app, c.bin, exit, c.wantExit, out)
-			}
-			if c.wantOutput != "" && !strings.Contains(string(out), c.wantOutput) {
+			if c.wantOutput != "" && !strings.Contains(run.stdout+run.stderr, c.wantOutput) {
 				t.Errorf("app=%q binary=%q printed no %q — the mode is silent about itself:\n%s",
-					c.app, c.bin, c.wantOutput, out)
+					c.app, c.bin, c.wantOutput, run)
 			}
 		})
 	}

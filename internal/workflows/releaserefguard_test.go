@@ -1,9 +1,7 @@
 package workflows
 
 import (
-	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -54,26 +52,20 @@ func TestReleaseRefGuardWritesFromTheDefaultBranchOnly(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			cmd := exec.Command("bash", "-c", script)
-			cmd.Env = append(os.Environ(),
-				"RELEASE_REF="+c.ref, "DEFAULT_BRANCH="+c.defBranch, "DRY_RUN="+c.dryRun)
-			out, err := cmd.CombinedOutput()
-			exit := 0
-			ee, exited := errors.AsType[*exec.ExitError](err)
-			switch {
-			case exited:
-				exit = ee.ExitCode()
-			case err != nil:
-				t.Fatalf("running the ref guard: %v", err)
-			}
-			if exit != c.wantExit {
+			run := runStep(t, script, unspecifiedShell, t.TempDir(), []string{
+				"PATH=" + os.Getenv("PATH"),
+				"RELEASE_REF=" + c.ref,
+				"DEFAULT_BRANCH=" + c.defBranch,
+				"DRY_RUN=" + c.dryRun,
+			})
+			if run.exit != c.wantExit {
 				t.Errorf("ref=%q default_branch=%q dry_run=%s exited %d, want %d\n%s",
-					c.ref, c.defBranch, c.dryRun, exit, c.wantExit, out)
+					c.ref, c.defBranch, c.dryRun, run.exit, c.wantExit, run)
 			}
-			if c.wantOutput != "" && !strings.Contains(string(out), c.wantOutput) {
+			if c.wantOutput != "" && !strings.Contains(run.stdout+run.stderr, c.wantOutput) {
 				t.Errorf("ref=%q default_branch=%q dry_run=%s printed no %q — a refusal nobody can "+
 					"diagnose gets worked around instead of fixed:\n%s",
-					c.ref, c.defBranch, c.dryRun, c.wantOutput, out)
+					c.ref, c.defBranch, c.dryRun, c.wantOutput, run)
 			}
 		})
 	}

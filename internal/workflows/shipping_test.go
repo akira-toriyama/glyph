@@ -29,7 +29,13 @@ func TestReleasePublishesAtTagTime(t *testing.T) {
 			"anonymous clients while the tap already names the new version — every draft is a " +
 			"broken-brew window bounded only by a human remembering to publish (1015774)")
 	}
-	if regexp.MustCompile(`(?m)^\s*draft:\s*["']?true`).MatchString(config) {
+	truthyDraft := regexp.MustCompile(`(?m)^\s*draft:\s*["']?true`)
+	// Positive control: the line 1015774 replaced (6cad6ae).
+	const canary = "  draft: true"
+	if !truthyDraft.MatchString(canary) {
+		t.Fatalf("the pattern no longer matches the draft line it bans (%q) — the absence asserted below is vacuous", canary)
+	}
+	if truthyDraft.MatchString(config) {
 		t.Error(".goreleaser.yaml sets a truthy `draft:`; publish at tag time — see the release block's rationale")
 	}
 }

@@ -62,6 +62,14 @@ func code(raw string) string {
 }
 
 func TestReusablesInstallThroughComposite(t *testing.T) {
+	// Positive control: the default lint.yml carried from fc97b56 until 14bf397
+	// derived the version.
+	const canary = "        default: v0.4.0"
+	if !hardcodedVersionDefault.MatchString(canary) {
+		t.Fatalf("hardcodedVersionDefault no longer matches the default it was written to ban (%q) — "+
+			"the absence asserted below is vacuous", canary)
+	}
+
 	for _, name := range reusables {
 		t.Run(name, func(t *testing.T) {
 			raw := repoFile(t, filepath.Join(".github", "workflows", name))
@@ -159,7 +167,12 @@ func TestPRVerdictExposesTheVerdictToCallers(t *testing.T) {
 	// `[ x = y ] && flag=true` under `set -e` exits the step whenever the test
 	// is false — it would fail the job on every non-major PR. This shipped as a
 	// near-miss while writing t-eb6h; pin the shape that replaced it.
-	if regexp.MustCompile(`\[\s*"\$level"\s*=\s*"major"\s*\]\s*&&`).MatchString(body) {
+	breakingByAnd := regexp.MustCompile(`\[\s*"\$level"\s*=\s*"major"\s*\]\s*&&`)
+	const canary = `[ "$level" = "major" ] && breaking=true`
+	if !breakingByAnd.MatchString(canary) {
+		t.Fatalf("the pattern no longer matches the shape it bans (%q) — the absence asserted below is vacuous", canary)
+	}
+	if breakingByAnd.MatchString(body) {
 		t.Error("breaking is derived with `[ ... ] && flag=true`, which exits under `set -e` " +
 			"on every non-major PR; use an if/else")
 	}
@@ -204,6 +217,12 @@ func TestReleaseNotesReachGoReleaser(t *testing.T) {
 	}
 
 	// Half two: the changelog pipe stays enabled so that flag is actually read.
+	// Positive control: the line v0.8.2 shipped with (135cb8d).
+	const canary = "  disable: true"
+	if !changelogDisable.MatchString(canary) {
+		t.Fatalf("changelogDisable no longer matches the line that emptied v0.8.2's body (%q) — "+
+			"the absence asserted below is vacuous", canary)
+	}
 	if loc := changelogDisable.FindString(code(config)); loc != "" {
 		t.Errorf(".goreleaser.yaml sets %q; that skips the changelog pipe, which is the "+
 			"pipe that loads --release-notes — the release body ships EMPTY (v0.8.2 did). "+
@@ -626,6 +645,12 @@ func jobIDsIn(body string) []string {
 // rename, and that is measured by the mutation ledger row
 // reusable-job-id-renamed-out-from-under-the-fleet.patch.
 func TestReusableJobIDsAreTheContextsConsumersRequire(t *testing.T) {
+	// Positive control: jobNameOverride must see a job that names itself.
+	const named = "jobs:\n  lint:\n    name: Commit lint\n    runs-on: ubuntu-latest\n"
+	if !jobNameOverride(named, "lint") {
+		t.Fatalf("jobNameOverride does not see the display name in %q — the check below is vacuous", named)
+	}
+
 	for _, name := range reusables {
 		t.Run(name, func(t *testing.T) {
 			raw := repoFile(t, filepath.Join(".github", "workflows", name))
