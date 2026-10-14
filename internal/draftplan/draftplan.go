@@ -1,4 +1,4 @@
-// Package draftplan is the v2 release's draft-convergence brain: given a
+// Package draftplan is the release's draft-convergence brain: given a
 // fold verdict, the flag draft_on_none and what drafts exist, it says which
 // ONE draft survives, what tag it converges to, and which are stale; of the
 // draft a release writes, whether its tag clears the published floor

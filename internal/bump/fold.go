@@ -9,7 +9,7 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/core"
 )
 
-// SigilLevel maps a v2 sigil onto the bump lattice. The mapping is the
+// LevelOf maps a sigil onto the bump lattice. The mapping is the
 // sigil's definition (= none / ~ patch / ^ minor / ! major), fixed in the
 // binary alongside the alphabet itself.
 //
@@ -18,7 +18,7 @@ import (
 // Level — note sections, preview's icon, pr-verdict's `breaking` — would
 // answer a fifth word by quietly doing nothing. What makes '%' more than a
 // major is carried in Decision.Promote, beside the lattice, not in it.
-func SigilLevel(s config.Sigil) Level {
+func LevelOf(s config.Sigil) Level {
 	switch s {
 	case config.SigilPatch:
 		return LevelPatch
@@ -32,24 +32,24 @@ func SigilLevel(s config.Sigil) Level {
 	return LevelNone
 }
 
-// SigilCommit is the slice of a commit the v2 fold reads: nothing is parsed,
+// Commit is the slice of a commit the fold reads: nothing is parsed,
 // so there is no grammar struct — the pattern file decides what the message
 // means. Author carries whatever identity fact the walk resolved; the fold
 // compares it literally against exclude_authors.
-type SigilCommit struct {
+type Commit struct {
 	SHA     string
 	Author  string
 	Message string
 }
 
-// SigilVerdict is one folded commit's row in the machine verdict: the sigil
+// Row is one folded commit in the machine verdict: the sigil
 // the message carried (or the pattern supplied) and the level it folds to.
 // Excluded authors and skip-pattern commits have no row — they are not in
 // the fold. Warn is the winning pattern's warn message (config.Pattern.Warn),
 // on the row so the machine surface names the warned commits and the CLI can
 // surface each one — a warned pattern must be loud wherever it wins a
 // verdict.
-type SigilVerdict struct {
+type Row struct {
 	SHA     string `json:"sha"`
 	Subject string `json:"subject"`
 	Sigil   string `json:"sigil"`
@@ -70,12 +70,12 @@ type Refusal struct {
 	Detail  string `json:"detail"`
 }
 
-// FoldSigils computes the release level of a commit range under a v2 config:
-// each commit's sigil via cfg.Match, folded with max over the lattice (the
-// same order-independent reduce as always, so squash order can never move
-// the version). It returns the per-commit rows beside the fold — one verdict
-// computation, so a listing can never disagree with the level it came from.
-// An empty range folds to none — no release; verdicts is non-nil so the JSON
+// Fold computes the release level of a commit range: each commit's sigil via
+// cfg.Match, folded with max over the lattice (the same order-independent
+// reduce as always, so squash order can never move the version). It returns
+// the per-commit rows beside the fold — one verdict computation, so a listing
+// can never disagree with the level it came from.
+// An empty range folds to none — no release; rows is non-nil so the JSON
 // surface serializes [].
 //
 // A '%' anywhere in the range also sets Decision.Promote, OR-folded, so that
@@ -91,12 +91,12 @@ type Refusal struct {
 // A non-excluded commit that no pattern claims — or that an unlandable
 // pattern claims, which Match reports the same way — refuses the WHOLE range
 // (ratified Q2): the alternative — quietly folding it as none — is a commit
-// that stops existing for versioning the moment someone's regex misses it,
-// which is the silent hole v2 exists to close. The refusal is the lint class
-// (exit 3): the range holds a message the repository's own convention cannot
-// read, which is the same verdict lint would hand that message.
-func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Decision, error) {
-	verdicts := []SigilVerdict{}
+// that stops existing for versioning the moment someone's regex misses it.
+// The refusal is the lint class (exit 3): the range holds a message the
+// repository's own convention cannot read, which is the same verdict lint
+// would hand that message.
+func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
+	rows := []Row{}
 	var promote bool
 	levels := make([]Level, 0, len(commits))
 	var refusals []Refusal
@@ -120,10 +120,10 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Deci
 		if m.Skip {
 			continue
 		}
-		level := SigilLevel(m.Sigil)
+		level := LevelOf(m.Sigil)
 		promote = promote || m.Sigil == config.SigilPromote
 		levels = append(levels, level)
-		verdicts = append(verdicts, SigilVerdict{
+		rows = append(rows, Row{
 			SHA:     c.SHA,
 			Subject: FirstLine(c.Message),
 			Sigil:   m.Sigil.String(),
@@ -149,7 +149,7 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Deci
 		}
 		return nil, Decision{}, core.Lintf("%s", msg).WithDetails(refusals)
 	}
-	return verdicts, Decision{Level: reduce(levels), Promote: promote}, nil
+	return rows, Decision{Level: reduce(levels), Promote: promote}, nil
 }
 
 // FirstLine returns a raw message's subject line (CR trimmed) — the one
@@ -169,7 +169,7 @@ func FirstLine(message string) string {
 // and major share a level. Otherwise the reason for landing on 1.0.0 would
 // point at whichever breaking commit came first, and the one commit that
 // actually chose the version would not appear in the answer at all.
-func DecidingReason(commits []SigilVerdict, dec Decision) string {
+func DecidingReason(commits []Row, dec Decision) string {
 	if dec.Promote {
 		for _, c := range commits {
 			if c.Sigil == config.SigilPromote.String() {

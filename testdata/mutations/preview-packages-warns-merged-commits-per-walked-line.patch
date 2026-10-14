@@ -1,21 +1,21 @@
 diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
-index 858b206..6585181 100644
+index a0fa05d..5a19973 100644
 --- a/internal/cli/cmd_preview.go
 +++ b/internal/cli/cmd_preview.go
 @@ -372,13 +372,14 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
  	if err != nil {
  		return nil, "", false, err
  	}
--	warnSigilVerdicts(rows)
+-	warnBumpRows(rows)
 +	_ = rows
  	pending := make(map[string]bump.Decision, len(w.Lines))
  	for _, lw := range w.Lines {
--		_, dec, err := bump.FoldSigils(walkedSigilCommits(lw.Commits), cfg)
-+		lineRows, dec, err := bump.FoldSigils(walkedSigilCommits(lw.Commits), cfg)
+-		_, dec, err := bump.Fold(walkedBumpCommits(lw.Commits), cfg)
++		lineRows, dec, err := bump.Fold(walkedBumpCommits(lw.Commits), cfg)
  		if err != nil {
  			return nil, "", false, err
  		}
-+		warnSigilVerdicts(lineRows)
++		warnBumpRows(lineRows)
  		pending[lw.Package.Path] = dec
  	}
  	return pending, short, true, nil

@@ -24,7 +24,7 @@ type LintVerdict struct {
 }
 
 // Lint judges a single commit message: does any pattern claim it, and does
-// the claim yield a verdict? That is the whole check — v2 lint deliberately
+// the claim yield a verdict? That is the whole check — lint deliberately
 // has no opinion on combinations (a :memo: subject carrying ! is the
 // author's call; glyph parses and computes, it does not taste). The four
 // violations are exactly the four ways a message can fail to mean anything

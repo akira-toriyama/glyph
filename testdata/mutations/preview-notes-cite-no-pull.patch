@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
-index 858b206..21f684f 100644
+index 6aefaa9..284aa9f 100644
 --- a/internal/cli/cmd_preview.go
 +++ b/internal/cli/cmd_preview.go
 @@ -180,7 +180,7 @@ func previewRun(ctx context.Context, o previewOptions) error {
  		}
  		n := ""
  		if o.notes {
--			sections, err := notes.GroupSigils(noteCommits(tl.commits, o.pr), cfg)
-+			sections, err := notes.GroupSigils(noteCommits(tl.commits, 0), cfg)
+-			sections, err := notes.Group(noteCommits(tl.commits, o.pr), cfg)
++			sections, err := notes.Group(noteCommits(tl.commits, 0), cfg)
  			if err != nil {
  				return err
  			}

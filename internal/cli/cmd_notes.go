@@ -19,15 +19,15 @@ import (
 // describe no one line, exactly as bump's scalars describe no one line.
 // reason appears only on an empty verdict — it explains why nothing rendered.
 type notesResult struct {
-	Sections []notes.SigilSection `json:"sections"`
-	Packages []packageNotes       `json:"packages,omitempty"`
-	Reason   string               `json:"reason,omitempty"`
+	Sections []notes.Section `json:"sections"`
+	Packages []packageNotes  `json:"packages,omitempty"`
+	Reason   string          `json:"reason,omitempty"`
 }
 
 // packageNotes is one line's rendered notes inside notesResult.packages.
 type packageNotes struct {
-	Path     string               `json:"path"`
-	Sections []notes.SigilSection `json:"sections"`
+	Path     string          `json:"path"`
+	Sections []notes.Section `json:"sections"`
 }
 
 // notesOptions is what one notes run was asked, snapshotted at RunE: the
@@ -130,18 +130,18 @@ func notesRun(ctx context.Context, o notesOptions) error {
 	var pkgs []packageNotes
 	var said []lineBody
 	for _, lw := range w.Lines {
-		sections, gerr := notes.GroupSigils(walkedNoteCommits(lw.Commits), cfg)
+		sections, gerr := notes.Group(walkedNoteCommits(lw.Commits), cfg)
 		if gerr != nil {
 			return gerr
 		}
 		if sections == nil {
-			sections = []notes.SigilSection{}
+			sections = []notes.Section{}
 		}
 		pkgs = append(pkgs, packageNotes{Path: lw.Package.Path, Sections: sections})
 		if len(sections) == 0 {
 			continue
 		}
-		said = append(said, lineBody{path: lw.Package.Path, base: lw.BaseTag, notes: notes.RenderSigils(sections)})
+		said = append(said, lineBody{path: lw.Package.Path, base: lw.BaseTag, notes: notes.Render(sections)})
 	}
 	if len(said) == 0 {
 		reason := noNotesReason(cfg, participating(cfg, walkedNoteCommits(w.All)), w.Source)
@@ -182,7 +182,7 @@ func notesVerdict(cfg *config.Config, pkgs []packageNotes, reason string) notesR
 	if len(cfg.Packages) == 0 {
 		return notesResult{Sections: pkgs[0].Sections, Reason: reason}
 	}
-	return notesResult{Sections: []notes.SigilSection{}, Packages: pkgs, Reason: reason}
+	return notesResult{Sections: []notes.Section{}, Packages: pkgs, Reason: reason}
 }
 
 // noNotesReason is the empty verdict's reason line: the count is bump's

@@ -332,7 +332,7 @@ func FuzzVersionNext(f *testing.F) {
 		if b.Rank() < 0 {
 			t.Skip("out-of-lattice level")
 		}
-		// Promote is only reachable beside a major: SigilLevel maps '%' onto
+		// Promote is only reachable beside a major: LevelOf maps '%' onto
 		// major, so a promoting decision always carries that rung.
 		if promote && b != LevelMajor {
 			t.Skip("unreachable: promote always folds as major")

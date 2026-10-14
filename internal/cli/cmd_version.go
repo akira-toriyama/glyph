@@ -10,10 +10,6 @@ import (
 // versionJSON: the version subcommand owns its own --json flag. A root-level
 // one would be a LOCAL (not persistent) flag and would not reach a subcommand,
 // so `glyph version --json` would otherwise error.
-//
-// It was spelled --ndjson until v1.0.0, which named a format glyph has never
-// emitted — printCompact writes one object, not a stream — and split the
-// machine flag into two spellings a caller had to memorise per subcommand.
 var versionJSON bool
 
 func newVersionCmd() *cobra.Command {

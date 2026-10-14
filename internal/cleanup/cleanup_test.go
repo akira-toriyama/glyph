@@ -259,10 +259,9 @@ func pinnedGit(t *testing.T, dir, stdin string, extraEnv []string, args ...strin
 // constant names: `git commit -v` writes the scissors line into the message
 // file, and this test asserts it writes EXACTLY the comment prefix and the
 // constant — matched by strstr in git's wt_status_locate_end, so one drifted
-// byte in a future git silently moves the cut. The v1 parser carried this
-// oracle and it died with that package; the constant sat un-vouched-for until
-// this restored it. It asks under the default prefix and under two set ones,
-// because the prefix is the part glyph now builds rather than copies.
+// byte in a future git silently moves the cut. It asks under the default
+// prefix and under two set ones, because the prefix is the part glyph now
+// builds rather than copies.
 // The editor deliberately aborts (exit 1): the message file is already
 // written when the editor runs, so the scissors line is captured without a
 // commit ever being made.

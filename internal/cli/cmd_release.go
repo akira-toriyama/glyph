@@ -38,17 +38,17 @@ import (
 // participating commit (bumpResult). newReleaseResult is the one producer of
 // both shapes.
 type releaseResult struct {
-	Current  string              `json:"current"`
-	Level    string              `json:"level"`
-	Tag      string              `json:"tag,omitempty"`
-	Target   string              `json:"target,omitempty"`
-	Body     string              `json:"body,omitempty"`
-	Action   string              `json:"action"`
-	URL      string              `json:"url,omitempty"`
-	Commits  []bump.SigilVerdict `json:"commits"`
-	Packages []packageRelease    `json:"packages,omitempty"`
-	Pulls    []pullExpansion     `json:"pulls"`
-	Reason   string              `json:"reason"`
+	Current  string           `json:"current"`
+	Level    string           `json:"level"`
+	Tag      string           `json:"tag,omitempty"`
+	Target   string           `json:"target,omitempty"`
+	Body     string           `json:"body,omitempty"`
+	Action   string           `json:"action"`
+	URL      string           `json:"url,omitempty"`
+	Commits  []bump.Row       `json:"commits"`
+	Packages []packageRelease `json:"packages,omitempty"`
+	Pulls    []pullExpansion  `json:"pulls"`
+	Reason   string           `json:"reason"`
 }
 
 // packageRelease is one line's verdict: what bump's packageVerdict carries,
@@ -56,16 +56,16 @@ type releaseResult struct {
 // performed and, after a real write, its URL. Under [[packages]] it is one
 // entry of releaseResult.packages; on the bare line it fills the scalars.
 type packageRelease struct {
-	Path    string              `json:"path"`
-	Current string              `json:"current"`
-	Level   string              `json:"level"`
-	Next    string              `json:"next,omitempty"`
-	Tag     string              `json:"tag,omitempty"`
-	Body    string              `json:"body,omitempty"`
-	Action  string              `json:"action"`
-	URL     string              `json:"url,omitempty"`
-	Commits []bump.SigilVerdict `json:"commits"`
-	Reason  string              `json:"reason"`
+	Path    string     `json:"path"`
+	Current string     `json:"current"`
+	Level   string     `json:"level"`
+	Next    string     `json:"next,omitempty"`
+	Tag     string     `json:"tag,omitempty"`
+	Body    string     `json:"body,omitempty"`
+	Action  string     `json:"action"`
+	URL     string     `json:"url,omitempty"`
+	Commits []bump.Row `json:"commits"`
+	Reason  string     `json:"reason"`
 }
 
 // lineDraft is one line's planned write: which verdict it belongs to (an
@@ -257,11 +257,11 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	// The union rows first: a message no pattern claims refuses the walk
 	// before any line is folded, and the rows are what the verdict reports as
 	// the commits it read. On the bare line the union is the line.
-	rows, _, cerr := bump.FoldSigils(walkedSigilCommits(w.All), cfg)
+	rows, _, cerr := bump.Fold(walkedBumpCommits(w.All), cfg)
 	if cerr != nil {
 		return cerr
 	}
-	warnSigilVerdicts(rows)
+	warnBumpRows(rows)
 	// --current is the caller's input, so its shape is refused here, after
 	// the fold's warnings and before the releases listing is paid for: a
 	// malformed flag beside a listing that will not answer is usage (2), not
@@ -305,7 +305,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	var residual, stale []github.Release
 	moving := 0
 	for _, lw := range w.Lines {
-		lineVerdicts, dec, ferr := bump.FoldSigils(walkedSigilCommits(lw.Commits), cfg)
+		lineRows, dec, ferr := bump.Fold(walkedBumpCommits(lw.Commits), cfg)
 		if ferr != nil {
 			return ferr
 		}
@@ -313,7 +313,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 		if verr != nil {
 			return verr
 		}
-		pv := packageRelease{Path: lw.Package.Path, Current: current.String(), Level: string(dec.Level), Commits: lineVerdicts, Reason: noneReason(len(lineVerdicts), lw.Source)}
+		pv := packageRelease{Path: lw.Package.Path, Current: current.String(), Level: string(dec.Level), Commits: lineRows, Reason: noneReason(len(lineRows), lw.Source)}
 		if dec.Level == bump.LevelNone && !cfg.Note.DraftOnNone {
 			plan := draftplan.PlanDraft(lw.Line, dec.Level, "", false, drafted)
 			pv.Action = string(plan.Action)
@@ -336,10 +336,10 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 			}
 			tagName = tag.TagOn(lw.Line.Prefix)
 			pv.Next = tag.String()
-			pv.Reason = bump.DecidingReason(lineVerdicts, dec)
+			pv.Reason = bump.DecidingReason(lineRows, dec)
 			moving++
 		}
-		sections, gerr := notes.GroupSigils(walkedNoteCommits(lw.Commits), cfg)
+		sections, gerr := notes.Group(walkedNoteCommits(lw.Commits), cfg)
 		if gerr != nil {
 			return gerr
 		}
@@ -347,7 +347,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 		// then notes' output for the same walk followed by the caller's block.
 		// Each line's link starts at that line's own base tag — never the
 		// union's merge base, never a sibling's tag (§4.1).
-		body := compareLink(notes.RenderSigils(sections), owner, repoName, lw.BaseTag, target)
+		body := compareLink(notes.Render(sections), owner, repoName, lw.BaseTag, target)
 		if footer != "" {
 			// One --- line between the notes and the caller's install block
 			// (Q11) — composed here so a dry run previews the EXACT published
@@ -523,7 +523,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 // upserted (drafted), single line and packages alike: the gate is the draft
 // count, never moving, because a draft_on_none placeholder is a draft that
 // points at target too.
-func newReleaseResult(cfg *config.Config, w sinceTagWalk, rows []bump.SigilVerdict, verdicts []packageRelease, target string, drafted bool, moving int) releaseResult {
+func newReleaseResult(cfg *config.Config, w sinceTagWalk, rows []bump.Row, verdicts []packageRelease, target string, drafted bool, moving int) releaseResult {
 	res := releaseResult{Commits: rows, Pulls: w.Facts.Pulls}
 	if drafted {
 		res.Target = target

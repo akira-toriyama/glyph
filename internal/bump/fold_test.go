@@ -9,10 +9,10 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/core"
 )
 
-// sigilConfig is the ratified `glyph init --gemoji` shape, reduced to what
+// testCfg is the ratified `glyph init --gemoji` shape, reduced to what
 // the fold reads: the gemoji pattern, the raw-revert fixed sigil, the merge
 // skip, and the bot exclusions.
-func sigilConfig(t *testing.T) *config.Config {
+func testCfg(t *testing.T) *config.Config {
 	t.Helper()
 	cfg, err := config.Load([]byte(`schema = 1
 exclude_authors = ['dependabot[bot]']
@@ -34,7 +34,7 @@ skip = true
 	return cfg
 }
 
-func TestSigilLevel(t *testing.T) {
+func TestLevelOf(t *testing.T) {
 	cases := []struct {
 		sigil config.Sigil
 		want  Level
@@ -48,72 +48,72 @@ func TestSigilLevel(t *testing.T) {
 		{config.SigilPromote, LevelMajor},
 	}
 	for _, c := range cases {
-		if got := SigilLevel(c.sigil); got != c.want {
-			t.Errorf("SigilLevel(%v) = %v, want %v", c.sigil, got, c.want)
+		if got := LevelOf(c.sigil); got != c.want {
+			t.Errorf("LevelOf(%v) = %v, want %v", c.sigil, got, c.want)
 		}
 	}
 }
 
-func TestFoldSigils(t *testing.T) {
-	cfg := sigilConfig(t)
+func TestFold(t *testing.T) {
+	cfg := testCfg(t)
 	cases := []struct {
 		name    string
-		commits []SigilCommit
+		commits []Commit
 		want    Level
 	}{
 		{"empty range is none", nil, LevelNone},
-		{"max wins over the lattice", []SigilCommit{
+		{"max wins over the lattice", []Commit{
 			{SHA: "a", Author: "akira", Message: ":memo:= reword"},
 			{SHA: "b", Author: "akira", Message: ":sparkles:^ add"},
 			{SHA: "c", Author: "akira", Message: ":bug:~ fix"},
 		}, LevelMinor},
-		{"order cannot move the version", []SigilCommit{
+		{"order cannot move the version", []Commit{
 			{SHA: "c", Author: "akira", Message: ":bug:~ fix"},
 			{SHA: "b", Author: "akira", Message: ":sparkles:^ add"},
 			{SHA: "a", Author: "akira", Message: ":memo:= reword"},
 		}, LevelMinor},
-		{"major short-circuits nothing but still tops", []SigilCommit{
+		{"major short-circuits nothing but still tops", []Commit{
 			{SHA: "a", Author: "akira", Message: ":boom:! drop the flag"},
 			{SHA: "b", Author: "akira", Message: ":memo:= reword"},
 		}, LevelMajor},
-		{"fixed sigil folds like a captured one", []SigilCommit{
+		{"fixed sigil folds like a captured one", []Commit{
 			{SHA: "a", Author: "akira", Message: `Revert ":sparkles:^ add"`},
 		}, LevelPatch},
-		{"skip pattern leaves the fold", []SigilCommit{
+		{"skip pattern leaves the fold", []Commit{
 			{SHA: "a", Author: "akira", Message: "Merge pull request #1"},
 			{SHA: "b", Author: "akira", Message: ":bug:~ fix"},
 		}, LevelPatch},
-		{"all-none folds to none", []SigilCommit{
+		{"all-none folds to none", []Commit{
 			{SHA: "a", Author: "akira", Message: ":memo:= reword"},
 		}, LevelNone},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, got, err := FoldSigils(c.commits, cfg)
+			_, got, err := Fold(c.commits, cfg)
 			if err != nil {
-				t.Fatalf("FoldSigils: %v", err)
+				t.Fatalf("Fold: %v", err)
 			}
 			if got.Level != c.want {
-				t.Errorf("FoldSigils = %v, want %v", got.Level, c.want)
+				t.Errorf("Fold = %v, want %v", got.Level, c.want)
 			}
 			if got.Promote {
-				t.Errorf("FoldSigils promoted a range holding no '%%' commit")
+				t.Errorf("Fold promoted a range holding no '%%' commit")
 			}
 		})
 	}
 }
 
-// TestFoldSigilsRefusesUnmatched asserts the ratified Q2 decision: a
+// TestFoldRefusesUnmatched asserts the ratified Q2 decision: a
 // non-excluded commit no pattern claims refuses the whole range with the lint
 // verdict, never folds as a silent none.
-func TestFoldSigilsRefusesUnmatched(t *testing.T) {
-	cfg := sigilConfig(t)
-	_, _, err := FoldSigils([]SigilCommit{
+func TestFoldRefusesUnmatched(t *testing.T) {
+	cfg := testCfg(t)
+	_, _, err := Fold([]Commit{
 		{SHA: "aaa1", Author: "akira", Message: ":bug:~ fine"},
 		{SHA: "bbb2", Author: "akira", Message: "fix: wrong grammar entirely"},
 	}, cfg)
 	if err == nil {
-		t.Fatalf("FoldSigils accepted a range holding an unmatched commit")
+		t.Fatalf("Fold accepted a range holding an unmatched commit")
 	}
 	if ce, ok := errors.AsType[*core.Error](err); !ok || ce.Code != core.CodeLint {
 		t.Fatalf("err = %v, want *core.Error with CodeLint (exit 3)", err)
@@ -123,78 +123,78 @@ func TestFoldSigilsRefusesUnmatched(t *testing.T) {
 	}
 }
 
-// TestFoldSigilsExcludesAuthorBeforeMatching asserts the exclusion ORDER:
+// TestFoldExcludesAuthorBeforeMatching asserts the exclusion ORDER:
 // exclude_authors exists for bots, whose messages are exactly the ones the
 // patterns do not describe, so the author check must run before the message
 // is matched — a bot's unmatched message is not a range refusal.
-func TestFoldSigilsExcludesAuthorBeforeMatching(t *testing.T) {
-	cfg := sigilConfig(t)
-	_, got, err := FoldSigils([]SigilCommit{
+func TestFoldExcludesAuthorBeforeMatching(t *testing.T) {
+	cfg := testCfg(t)
+	_, got, err := Fold([]Commit{
 		{SHA: "a", Author: "dependabot[bot]", Message: "Bump golang.org/x/text from 0.1 to 0.2"},
 		{SHA: "b", Author: "akira", Message: ":bug:~ fix"},
 	}, cfg)
 	if err != nil {
-		t.Fatalf("FoldSigils refused a range over an excluded author's message: %v", err)
+		t.Fatalf("Fold refused a range over an excluded author's message: %v", err)
 	}
 	if got.Level != LevelPatch {
-		t.Errorf("FoldSigils = %v, want patch (bot commit contributes nothing)", got.Level)
+		t.Errorf("Fold = %v, want patch (bot commit contributes nothing)", got.Level)
 	}
 	// The exclusion also silences a would-be level, not only a would-be error.
-	_, got, err = FoldSigils([]SigilCommit{
+	_, got, err = Fold([]Commit{
 		{SHA: "a", Author: "dependabot[bot]", Message: ":boom:! bot claims a major"},
 		{SHA: "b", Author: "akira", Message: ":memo:= reword"},
 	}, cfg)
 	if err != nil {
-		t.Fatalf("FoldSigils: %v", err)
+		t.Fatalf("Fold: %v", err)
 	}
 	if got.Level != LevelNone {
-		t.Errorf("FoldSigils = %v, want none (excluded author cannot move the version)", got.Level)
+		t.Errorf("Fold = %v, want none (excluded author cannot move the version)", got.Level)
 	}
 }
 
-// TestFoldSigilsPromoteIsOrderIndependent asserts that the promote half of
+// TestFoldPromoteIsOrderIndependent asserts that the promote half of
 // the fold is OR — a '%' anywhere in the range promotes it, and where it sits
 // among the other commits cannot change the answer. Order-independence is the
 // property that lets a squash merge reorder a pull request's commits without
 // moving the version, and promote had to earn it separately from the lattice.
-func TestFoldSigilsPromoteIsOrderIndependent(t *testing.T) {
-	cfg := sigilConfig(t)
-	promote := SigilCommit{SHA: "p", Author: "akira", Message: ":rocket:% call it 1.0"}
-	fix := SigilCommit{SHA: "f", Author: "akira", Message: ":bug:~ fix"}
-	feature := SigilCommit{SHA: "s", Author: "akira", Message: ":sparkles:^ add"}
-	orders := map[string][]SigilCommit{
+func TestFoldPromoteIsOrderIndependent(t *testing.T) {
+	cfg := testCfg(t)
+	promote := Commit{SHA: "p", Author: "akira", Message: ":rocket:% call it 1.0"}
+	fix := Commit{SHA: "f", Author: "akira", Message: ":bug:~ fix"}
+	feature := Commit{SHA: "s", Author: "akira", Message: ":sparkles:^ add"}
+	orders := map[string][]Commit{
 		"first":  {promote, fix, feature},
 		"middle": {fix, promote, feature},
 		"last":   {fix, feature, promote},
 	}
 	for name, commits := range orders {
 		t.Run(name, func(t *testing.T) {
-			_, got, err := FoldSigils(commits, cfg)
+			_, got, err := Fold(commits, cfg)
 			if err != nil {
-				t.Fatalf("FoldSigils: %v", err)
+				t.Fatalf("Fold: %v", err)
 			}
 			if !got.Promote {
-				t.Fatalf("FoldSigils dropped the promote with '%%' %s: %+v", name, got)
+				t.Fatalf("Fold dropped the promote with '%%' %s: %+v", name, got)
 			}
 			if got.Level != LevelMajor {
-				t.Fatalf("FoldSigils = %v, want major (a promotion is breaking)", got.Level)
+				t.Fatalf("Fold = %v, want major (a promotion is breaking)", got.Level)
 			}
 		})
 	}
 }
 
-// TestFoldSigilsPromoteClassifiesAsMajor pins the verdict ROW a '%' commit
+// TestFoldPromoteClassifiesAsMajor pins the verdict ROW a '%' commit
 // produces, which is what the release notes and pr-verdict read: the sigil
 // column keeps the '%' the author wrote, and the level column says major so
 // the commit lands in Breaking Changes instead of vanishing from every
 // surface that filters on a closed four-word vocabulary.
-func TestFoldSigilsPromoteClassifiesAsMajor(t *testing.T) {
-	cfg := sigilConfig(t)
-	rows, got, err := FoldSigils([]SigilCommit{
+func TestFoldPromoteClassifiesAsMajor(t *testing.T) {
+	cfg := testCfg(t)
+	rows, got, err := Fold([]Commit{
 		{SHA: "p", Author: "akira", Message: ":rocket:% call it 1.0"},
 	}, cfg)
 	if err != nil {
-		t.Fatalf("FoldSigils: %v", err)
+		t.Fatalf("Fold: %v", err)
 	}
 	if !got.Promote || got.Level != LevelMajor {
 		t.Fatalf("fold = %+v, want {major true}", got)
@@ -207,14 +207,14 @@ func TestFoldSigilsPromoteClassifiesAsMajor(t *testing.T) {
 	}
 }
 
-func TestFoldSigilsPropagatesConfigBug(t *testing.T) {
+func TestFoldPropagatesConfigBug(t *testing.T) {
 	cfg, err := config.Load([]byte("schema = 1\n[[patterns]]\npattern = '^(?P<semver_sigil>.) '\n"))
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	_, _, err = FoldSigils([]SigilCommit{{SHA: "abc3", Author: "akira", Message: "z captured outside the alphabet"}}, cfg)
+	_, _, err = Fold([]Commit{{SHA: "abc3", Author: "akira", Message: "z captured outside the alphabet"}}, cfg)
 	if err == nil {
-		t.Fatalf("FoldSigils accepted an unparseable sigil capture")
+		t.Fatalf("Fold accepted an unparseable sigil capture")
 	}
 	if ce, ok := errors.AsType[*core.Error](err); !ok || ce.Code != core.CodeLint {
 		t.Fatalf("err = %v, want *core.Error with CodeLint", err)
@@ -224,7 +224,7 @@ func TestFoldSigilsPropagatesConfigBug(t *testing.T) {
 	}
 }
 
-// TestFoldSigilsCarriesTheWinningPatternsWarn pins the fold half of the warn
+// TestFoldCarriesTheWinningPatternsWarn pins the fold half of the warn
 // mechanism: a commit claimed by a warned pattern folds normally — the
 // verdict is unchanged — and its row carries the pattern's message, which is
 // how the machine surface (bump --json) names the warned commits and the CLI
@@ -232,7 +232,7 @@ func TestFoldSigilsPropagatesConfigBug(t *testing.T) {
 // as none with nothing said — the exact hole the warn key exists to keep
 // visible (measured under the fleet's retired v1-acceptance window as a
 // release that simply stopped).
-func TestFoldSigilsCarriesTheWinningPatternsWarn(t *testing.T) {
+func TestFoldCarriesTheWinningPatternsWarn(t *testing.T) {
 	cfg, err := config.Load([]byte(`schema = 1
 
 [[patterns]]
@@ -246,25 +246,25 @@ warn = 'no sigil: folds as none'
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	verdicts, dec, ferr := FoldSigils([]SigilCommit{
+	rows, dec, ferr := Fold([]Commit{
 		{SHA: "aaaa", Author: "akira", Message: ":sparkles: v1 subject with no sigil"},
 		{SHA: "bbbb", Author: "akira", Message: ":bug:~ a strict fix"},
 	}, cfg)
 	if ferr != nil {
-		t.Fatalf("FoldSigils: %v", ferr)
+		t.Fatalf("Fold: %v", ferr)
 	}
 	if dec.Level != LevelPatch {
 		t.Fatalf("level = %v, want patch — a warned match must not change the verdict", dec.Level)
 	}
-	if verdicts[0].Warn != "no sigil: folds as none" {
-		t.Errorf("warned commit's row = %+v, want the pattern's warn message on it", verdicts[0])
+	if rows[0].Warn != "no sigil: folds as none" {
+		t.Errorf("warned commit's row = %+v, want the pattern's warn message on it", rows[0])
 	}
-	if verdicts[1].Warn != "" {
-		t.Errorf("strict commit's row = %+v, want no warning", verdicts[1])
+	if rows[1].Warn != "" {
+		t.Errorf("strict commit's row = %+v, want no warning", rows[1])
 	}
 }
 
-// TestFoldSigilsRefusesUnlandable is Q2 applied to the unlandable key: a
+// TestFoldRefusesUnlandable is Q2 applied to the unlandable key: a
 // range holding a message an unlandable pattern claims is refused whole, with
 // that pattern's reason, and never folds as the level of whatever else the
 // range holds. The measured hole this closes (t-t84a): with git's amend!
@@ -274,7 +274,7 @@ warn = 'no sigil: folds as none'
 // The remedy tail is part of the decision: the unmatched one says "add a
 // pattern, or exclude the author", which for an unlandable message is how the
 // refusal gets defeated rather than satisfied.
-func TestFoldSigilsRefusesUnlandable(t *testing.T) {
+func TestFoldRefusesUnlandable(t *testing.T) {
 	cfg, err := config.Load([]byte(`schema = 1
 exclude_authors = ['dependabot[bot]']
 
@@ -288,12 +288,12 @@ unlandable = 'rebase with --autosquash before it lands'
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	_, _, err = FoldSigils([]SigilCommit{
+	_, _, err = Fold([]Commit{
 		{SHA: "aaa1", Author: "akira", Message: ":bug:~ fix b"},
 		{SHA: "bbb2", Author: "akira", Message: "amend! :bug:~ fix b\n\n:boom:! fix b\n"},
 	}, cfg)
 	if err == nil {
-		t.Fatalf("FoldSigils folded a range holding an unlandable amend! — the verdict it returns is the pre-autosquash one")
+		t.Fatalf("Fold folded a range holding an unlandable amend! — the verdict it returns is the pre-autosquash one")
 	}
 	ce, ok := errors.AsType[*core.Error](err)
 	if !ok || ce.Code != core.CodeLint {
@@ -313,7 +313,7 @@ unlandable = 'rebase with --autosquash before it lands'
 	}
 
 	// Exclusion still precedes the message: a bot's amend! is not refused.
-	if _, got, err := FoldSigils([]SigilCommit{
+	if _, got, err := Fold([]Commit{
 		{SHA: "a", Author: "dependabot[bot]", Message: "amend! Bump x"},
 		{SHA: "b", Author: "akira", Message: ":bug:~ fix"},
 	}, cfg); err != nil || got.Level != LevelPatch {
@@ -325,7 +325,7 @@ unlandable = 'rebase with --autosquash before it lands'
 // at the folded level, and on a promoted range the oldest '%' row even when a
 // '!' before it reaches the same level — the '%' is what chose the version.
 func TestDecidingReasonNamesTheCommitThatDecided(t *testing.T) {
-	rows := []SigilVerdict{
+	rows := []Row{
 		{SHA: "1111111aaaa", Subject: "fix a crash", Sigil: "~", Level: "patch"},
 		{SHA: "2222222bbbb", Subject: "drop the old API", Sigil: "!", Level: "major"},
 		{SHA: "3333333cccc", Subject: "call it 1.0", Sigil: "%", Level: "major"},

@@ -151,7 +151,7 @@ func TestLoadGemojiConfig(t *testing.T) {
 		t.Errorf("Note.Line = %q", cfg.Note.Line)
 	}
 	if cfg.Note.DraftOnNone {
-		t.Errorf("Note.DraftOnNone = true, want false (v1-compatible default)")
+		t.Errorf("Note.DraftOnNone = true, want false (the default)")
 	}
 	wantSections := []Section{
 		{Axis: AxisSemver, Value: "major", Title: "Breaking Changes"},

@@ -13,16 +13,16 @@ import (
 )
 
 // This file is the shared input plumbing that turns raw commits — from git or
-// the API, both spelled gitsource.RawCommit — into the shapes the v2 engine
-// reads. Which commits each of them reads, and how, is no longer decided here:
-// the pattern file decides, inside bump.FoldSigils / notes.GroupSigils /
+// the API, both spelled gitsource.RawCommit — into the shapes bump, notes and
+// lint read. Which commits each of them reads, and how, is not decided here:
+// the pattern file decides, inside bump.Fold / notes.Group /
 // config.Lint, so every consumer applies identical rules by construction.
 
-// sigilCommits adapts raw commits for the fold.
-func sigilCommits(raws []gitsource.RawCommit) []bump.SigilCommit {
-	out := make([]bump.SigilCommit, 0, len(raws))
+// bumpCommits adapts raw commits for the fold.
+func bumpCommits(raws []gitsource.RawCommit) []bump.Commit {
+	out := make([]bump.Commit, 0, len(raws))
 	for _, r := range raws {
-		out = append(out, bump.SigilCommit{SHA: r.SHA, Author: r.Author, Message: r.Message})
+		out = append(out, bump.Commit{SHA: r.SHA, Author: r.Author, Message: r.Message})
 	}
 	return out
 }
@@ -30,10 +30,10 @@ func sigilCommits(raws []gitsource.RawCommit) []bump.SigilCommit {
 // noteCommits adapts a pull's listed commits for the notes, all citing that
 // pull — preview's read of the pull under review (bump and notes read a pull
 // through pullLines, as walked commits).
-func noteCommits(raws []gitsource.RawCommit, pull int) []notes.SigilCommit {
-	out := make([]notes.SigilCommit, 0, len(raws))
+func noteCommits(raws []gitsource.RawCommit, pull int) []notes.Commit {
+	out := make([]notes.Commit, 0, len(raws))
 	for _, r := range raws {
-		out = append(out, notes.SigilCommit{SHA: r.SHA, Pull: pull, Author: r.Author, Login: identity(r), Message: r.Message})
+		out = append(out, notes.Commit{SHA: r.SHA, Pull: pull, Author: r.Author, Login: identity(r), Message: r.Message})
 	}
 	return out
 }
@@ -41,7 +41,7 @@ func noteCommits(raws []gitsource.RawCommit, pull int) []notes.SigilCommit {
 // participating counts the commits the fold reads — not an exclude_authors
 // author, matched, not claimed by a skip pattern (DESIGN §4.1) — for notes'
 // no-release reason, which says "N commit(s) participate" in bump's words and
-// so must mean bump's set. notes has no fold of its own to count: GroupSigils
+// so must mean bump's set. notes has no fold of its own to count: notes.Group
 // renders excluded authors and messages no pattern claims, and the listing it
 // is handed holds skips too — the reason counted that listing, 4 where bump
 // said 2 of one range (TestNotesNoReleaseCountsParticipatingCommits).
@@ -51,10 +51,10 @@ func noteCommits(raws []gitsource.RawCommit, pull int) []notes.SigilCommit {
 // publishes, and over the whole listing the fold refuses at the first message
 // no pattern claims, where notes renders such a range and still owes a count
 // of the rest.
-func participating(cfg *config.Config, commits []notes.SigilCommit) int {
+func participating(cfg *config.Config, commits []notes.Commit) int {
 	n := 0
 	for _, c := range commits {
-		rows, _, err := bump.FoldSigils([]bump.SigilCommit{{SHA: c.SHA, Author: c.Author, Message: c.Message}}, cfg)
+		rows, _, err := bump.Fold([]bump.Commit{{SHA: c.SHA, Author: c.Author, Message: c.Message}}, cfg)
 		if err == nil {
 			n += len(rows)
 		}
