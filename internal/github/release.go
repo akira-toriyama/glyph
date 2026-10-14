@@ -129,20 +129,10 @@ func (c *Client) DeleteRelease(ctx context.Context, owner, repo string, id int64
 	}
 	// A 204 carries no body, and none is wanted — only the status matters.
 	_, _, err = c.send(req)
-	// A 404 answering a RETRIED delete is this delete's own goal, reported late.
-	// send replays a DELETE whenever the first answer is lost (a 503 from a
-	// gateway that had already forwarded it, a reset socket), and the replay is
-	// told the release is gone — which is what was asked for. Failing there
-	// aborted a whole draft upsert over work that had SUCCEEDED, leaving the
-	// rolling draft without its new notes (t-yq7m).
-	//
-	// The ambiguity is real and deliberately accepted: 404 is also how GitHub
-	// answers for a repository this credential can no longer see (IsRepoUnknown),
-	// and a DELETE cannot tell the two apart. Hence alreadyGone rather than a
-	// silent nil — the caller must not claim it deleted something it did not
-	// watch disappear. A 404 on the FIRST attempt is untouched: nothing of
-	// glyph's removed that id, so it stays the "it vanished under us" failure the
-	// convergence claim depends on hearing.
+	// A 404 answering a RETRIED delete is this delete's own goal, reported
+	// late; a 404 on the FIRST attempt stays a failure — nothing of glyph's
+	// removed that id. The incident, and the 404 ambiguity alreadyGone carries
+	// to the caller: DESIGN §4 (t-yq7m).
 	if goneOnRetry(err) {
 		return true, nil
 	}

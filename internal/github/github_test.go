@@ -19,8 +19,9 @@ import (
 
 // withHTTPClient injects the HTTP client — an httptest.Server's Client(), one
 // object per server. It chooses how bytes move (transport, TLS, timeout); it
-// does NOT choose who may receive the token, because New re-installs the
-// origin gate over whatever is injected — see guardRedirects.
+// does NOT choose who may receive the token: New installs the origin gate's
+// redirect half over whatever is injected (guardRedirects), and nextPage gates
+// every Link hop inside get, whatever the client.
 func withHTTPClient(h *http.Client) Option { return func(c *Client) { c.http = h } }
 
 // newClient spins an httptest.Server for handler and returns a Client pointed at
@@ -767,19 +768,15 @@ func recorder(mu *sync.Mutex, seen *[]string) http.HandlerFunc {
 }
 
 // TestRedirectOffTheConfiguredOriginIsRefused is the redirect half of the
-// origin gate, and the reason it had to be written: net/http's own rule
-// (shouldCopyHeaderOnRedirect) compares the HOSTNAME only, so with the default
-// policy a 302 from the configured host to the SAME hostname on another port —
-// or another scheme — still arrives carrying "Authorization: Bearer s3cret".
-// Reviewer-verified before the gate existed: the second server logged the
-// bearer token. Both shapes are exactly what nextPage refuses one hop earlier,
-// so leaving them open made the gate's own doc comment untrue.
+// origin gate (checkRedirect; nextPage states the invariant): a 302 from the
+// configured host to the SAME hostname on another port — or another scheme —
+// must be refused, where net/http's default policy would carry
+// "Authorization: Bearer s3cret" there (checkRedirect has the measurement).
 //
 // The assertion is at the RECEIVING server (it must see nothing at all), not on
 // the error text, and the origin server's hit count is checked with a retry
 // schedule armed: a refusal is glyph's verdict, not a transient wire failure,
-// so replaying it on the t-bjrv backoff would burn ~21s to reach the same
-// answer.
+// so it must not ride defaultRetryDelays.
 func TestRedirectOffTheConfiguredOriginIsRefused(t *testing.T) {
 	tests := []struct {
 		name string
