@@ -1,8 +1,17 @@
-diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 4415955..11d838f 100644
---- a/internal/cli/cmd_release.go
-+++ b/internal/cli/cmd_release.go
-@@ -494,7 +494,7 @@ func highestPublished(l config.Line, releases []github.Release) (bump.Version, b
+diff --git a/internal/draftplan/floor.go b/internal/draftplan/floor.go
+index 233ca92..9dc37c9 100644
+--- a/internal/draftplan/floor.go
++++ b/internal/draftplan/floor.go
+@@ -1,6 +1,8 @@
+ package draftplan
+ 
+ import (
++	"strings"
++
+ 	"github.com/akira-toriyama/glyph/v5/internal/bump"
+ 	"github.com/akira-toriyama/glyph/v5/internal/config"
+ 	"github.com/akira-toriyama/glyph/v5/internal/core"
+@@ -36,7 +38,7 @@ func highestPublished(l config.Line, releases []Draft) (bump.Version, bool) {
  		if r.Draft {
  			continue
  		}

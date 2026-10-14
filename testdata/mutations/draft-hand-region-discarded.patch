@@ -1,11 +1,11 @@
-diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 4415955..5aabdfc 100644
---- a/internal/cli/cmd_release.go
-+++ b/internal/cli/cmd_release.go
-@@ -547,11 +547,8 @@ func keptBody(keep *draftplan.Draft, releases []github.Release) string {
- // output, and guessing would resurrect old machine text as if a human had
- // written it.
- func composeDraftBody(existing, generated string) string {
+diff --git a/internal/draftplan/body.go b/internal/draftplan/body.go
+index 39296b4..4a8e40e 100644
+--- a/internal/draftplan/body.go
++++ b/internal/draftplan/body.go
+@@ -32,9 +32,6 @@ func ComposeBody(keep *Draft, generated string) string {
+ 	if keep != nil {
+ 		existing = keep.Body
+ 	}
 -	hand, _, found := strings.Cut(existing, handMarker)
 -	if !found {
 -		hand = ""
@@ -14,5 +14,3 @@ index 4415955..5aabdfc 100644
 +	_, _, _ = strings.Cut(existing, handMarker)
 +	return handMarker + "\n\n" + generated
  }
- 
- // readFooter reads the --footer-file when one is named. The path is the

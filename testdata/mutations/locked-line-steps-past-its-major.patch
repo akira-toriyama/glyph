@@ -1,9 +1,9 @@
-diff --git a/internal/cli/linestep.go b/internal/cli/linestep.go
-index 247bd1d..49a75d7 100644
---- a/internal/cli/linestep.go
-+++ b/internal/cli/linestep.go
-@@ -31,9 +31,7 @@ func nextOn(l config.Line, current bump.Version, dec bump.Decision) (bump.Versio
- 		return bump.Version{Major: l.Major}, nil
+diff --git a/internal/bump/linestep.go b/internal/bump/linestep.go
+index f2b6580..8a72b34 100644
+--- a/internal/bump/linestep.go
++++ b/internal/bump/linestep.go
+@@ -30,9 +30,7 @@ func NextOn(l config.Line, current Version, dec Decision) (Version, error) {
+ 		return Version{Major: l.Major}, nil
  	}
  	next := current.Next(dec)
 -	if l.Holds(next.Major) {
@@ -12,4 +12,4 @@ index 247bd1d..49a75d7 100644
 +	return next, nil
  	where := fmt.Sprintf("%sv%d", l.Prefix, next.Major)
  	if l.Locked() {
- 		return bump.Version{}, core.Lintf(
+ 		return Version{}, core.Lintf(
