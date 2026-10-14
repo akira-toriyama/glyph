@@ -13,7 +13,7 @@ import "strings"
 //	becomes exact BY CONSTRUCTION.
 //
 // The pass itself is escapeProseLine, at the foot of this file: it runs over the
-// ASSEMBLED line, because a code span pairs across fields (t-9np1).
+// ASSEMBLED line, for the reason Line's doc gives (t-9np1).
 //
 // That is why the known limitation codeSpans used to carry (an autolink or a
 // raw HTML tag swallowing a backtick, so glyph believed a PHANTOM span and left
@@ -60,13 +60,9 @@ import "strings"
 //
 // The order matters — CRLF first, so a CRLF yields ONE space rather than two.
 //
-// Flattening also has to happen before anything else looks at the text, because
-// it is what DECIDES the inline context: to an escaper a blank line ends the
-// paragraph and backticks on either side of it cannot pair, while in the
-// flattened line they can. Line.Prose flattens each field as it arrives, before
-// the line is escaped, for exactly this reason, with a measured leak behind the
-// rule (it was preview.escapeCell's, from the era when the order was each
-// caller's to get right).
+// Line.Prose flattens each field as it arrives, before anything else looks at
+// the text: flattening is what decides the inline context the later passes
+// model (Line's doc has the order and the measured leak behind it).
 //
 // It deliberately does not live inside escapeMentionsSkipping: deleting a byte would
 // break that function's no-rewriting invariant, which its fuzz oracle enforces.
