@@ -440,7 +440,7 @@ or the pull's name — what bump's and release's per-line reasons name),
 `internal/cli/pr.go: pullInput`
 
 **reason** — the one-line answer to "why this bump": the **oldest** commit that
-reaches the folded level. `internal/cli/cmd_bump.go: decidingReason`
+reaches the folded level. `internal/bump/sigilfold.go: DecidingReason`
 
 **target** — `target_commitish`: the sha the draft's eventual tag will point at,
 defaulting to the checkout's HEAD. No tag exists until a human publishes. The
@@ -498,7 +498,7 @@ on the line.
 The next version must be *strictly* greater, or the draft could never be
 published: its tag is taken, or permanently burned if a published release was
 deleted. Fails loud (4) rather than creating an unpublishable draft.
-`internal/cli/cmd_release.go: checkPublishedFloor, highestPublished`
+`internal/draftplan/floor.go: CheckPublishedFloor, highestPublished`
 (`internal/bump/semver.go: HouseTagOn` decides the shape)
 
 **pending** — what is already merged on the base branch but **not yet released**:

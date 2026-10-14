@@ -134,7 +134,7 @@ func TestReleaseBodyClosesTheNotesWithTheCompareLink(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("release --dry-run exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	want := "v0.1.1\n\n" + handMarker + "\n\n" +
+	want := "v0.1.1\n\n" + wantMarker + "\n\n" +
 		"## Fixes\n\n- :bug:~ fix a crash (#8) @akira-toriyama\n\n" +
 		compareLine("v0.1.0", goldenTarget) +
 		"\n---\n\n" + install
@@ -147,7 +147,7 @@ func TestReleaseBodyClosesTheNotesWithTheCompareLink(t *testing.T) {
 		t.Fatalf("notes --since-tag exited %d, want 0\nstderr: %s", code, stderr)
 	}
 	v := releaseDryRunJSON(t, 0, "--footer-file", footer)
-	if machine := strings.TrimPrefix(v.Body, handMarker+"\n\n"); machine != notesOut+"\n---\n\n"+install {
+	if machine := strings.TrimPrefix(v.Body, wantMarker+"\n\n"); machine != notesOut+"\n---\n\n"+install {
 		t.Errorf("the draft's machine region is not notes' output plus the footer:\n--- machine region ---\n%s\n--- notes ---\n%s", machine, notesOut)
 	}
 }
@@ -341,7 +341,7 @@ func TestCompareLinkNeedsNotes(t *testing.T) {
 		if code != 1 {
 			t.Fatalf("notes over a fold with nothing to say exited %d, want 1", code)
 		}
-		if v := releaseDryRunJSON(t, 1, "--target", goldenTarget); v.Tag != "Unreleased" || v.Body != handMarker+"\n\n" {
+		if v := releaseDryRunJSON(t, 1, "--target", goldenTarget); v.Tag != "Unreleased" || v.Body != wantMarker+"\n\n" {
 			t.Errorf("the placeholder over an empty fold = tag %q body %q, want Unreleased carrying the marker alone", v.Tag, v.Body)
 		}
 
@@ -368,7 +368,7 @@ func TestCompareLinkNeedsNotes(t *testing.T) {
 			t.Fatalf("packages = %+v, want both lines", res.Packages)
 		}
 		for _, p := range res.Packages {
-			if p.Tag != p.Path+"/Unreleased" || p.Body != handMarker+"\n\n" {
+			if p.Tag != p.Path+"/Unreleased" || p.Body != wantMarker+"\n\n" {
 				t.Errorf("%s's placeholder over an empty fold = tag %q body %q, want the marker alone", p.Path, p.Tag, p.Body)
 			}
 		}
@@ -390,7 +390,7 @@ func TestCompareLinkNeedsNotes(t *testing.T) {
 		if !strings.Contains(h.Body, "Bump a haiku dep") || !strings.HasSuffix(h.Body, "\n\n"+compareLine("haiku/v0.1.0", goldenTarget)) {
 			t.Errorf("positive control: haiku's placeholder has notes and must close them with its link:\n%s", h.Body)
 		}
-		if c.Body != handMarker+"\n\n" {
+		if c.Body != wantMarker+"\n\n" {
 			t.Errorf("curry's placeholder over an empty fold must carry the marker alone, got %q", c.Body)
 		}
 	})

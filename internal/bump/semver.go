@@ -134,13 +134,14 @@ func (v Version) Compare(o Version) int {
 // point — reaching 1.0 is an author's declaration, not an accident of the
 // third breaking change. Promote lands exactly on 1.0.0 from any 0.x; from
 // 1.x and above it is a plain major step, so it can never move the version
-// backwards or stall it (checkPublishedFloor would reject that anyway, and a
-// constant 1.0.0 would trip it on every repo that has already shipped 1.x).
+// backwards or stall it (draftplan.CheckPublishedFloor would reject that
+// anyway, and a constant 1.0.0 would trip it on every repo that has already
+// shipped 1.x).
 //
 // Nothing double-checks that arithmetic before a release goes out, and nothing
 // is meant to: the safety net is that glyph only ever writes a DRAFT, a human
-// presses Publish, and checkPublishedFloor refuses a version that is not
-// strictly above the highest published release.
+// presses Publish, and draftplan.CheckPublishedFloor refuses a version that is
+// not strictly above the highest published release.
 func (v Version) Next(d Decision) Version {
 	if d.Promote {
 		if v.Major == 0 {
@@ -193,14 +194,15 @@ func LinePrefix(tag string) string {
 // glyph answers "is 1.2.3 a release" two ways on purpose, and these are the
 // two functions that name them. The house rule is for what glyph itself cuts
 // or claims: the drafts it manages (draftplan), the published floor a draft
-// must clear (cli.checkPublishedFloor) and a reusable's pin (doctor) — glyph
-// writes vX.Y.Z and never a v-less tag, so a v-less tag is never its draft,
-// never its floor and never a release a caller can pin. The tolerant rule,
-// ParseVersion and ParseVersionOn with their optional v, is for what glyph
-// reads as a release of someone else's making — the walk base and the step
-// base (cli.latestVersionTag, --since-tag, --current) and doctor's bare-tag
-// residue — where a 1.2.3 cut by hand is a release HEAD contains however it
-// is spelled, and a base that skipped it would re-fold what it shipped.
+// must clear (draftplan.CheckPublishedFloor) and a reusable's pin (doctor) —
+// glyph writes vX.Y.Z and never a v-less tag, so a v-less tag is never its
+// draft, never its floor and never a release a caller can pin. The tolerant
+// rule, ParseVersion and ParseVersionOn with their optional v, is for what
+// glyph reads as a release of someone else's making — the walk base and the
+// step base (cli.latestVersionTag, --since-tag, --current) and doctor's
+// bare-tag residue — where a 1.2.3 cut by hand is a release HEAD contains
+// however it is spelled, and a base that skipped it would re-fold what it
+// shipped.
 func HouseTagOn(l config.Line, tag string) (Version, bool) {
 	if !strings.HasPrefix(strings.TrimPrefix(tag, l.Prefix), "v") {
 		return Version{}, false

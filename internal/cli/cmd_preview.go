@@ -399,8 +399,8 @@ func skippedWalkWarning(cfg *config.Config) string {
 // lineVerdict is one touched line's verdict in the two shapes the render
 // reads: the body's, its versions spelled as the line's tags, and the
 // machine verdict's, its versions bare. Each side steps from the line's own
-// current version on its own line (nextOn), and the answer is the higher of
-// the two (foldDecision).
+// current version on its own line (bump.NextOn), and the answer is the
+// higher of the two (foldDecision).
 func lineVerdict(tl touchedLine, pending bump.Decision, pendingWalked bool) (preview.Package, packagePreview, error) {
 	prefix := tl.Line.Prefix
 	untagged := tl.tag == ""
@@ -416,7 +416,7 @@ func lineVerdict(tl touchedLine, pending bump.Decision, pendingWalked bool) (pre
 		PR:            preview.Verdict{Level: tl.pr.Level, Commits: previewCommits(tl.rows)}}
 	pv := packagePreview{Path: tl.Package.Path, Current: tl.current.String(), Untagged: untagged, PR: string(tl.pr.Level), Pending: string(orNone(pending.Level))}
 	if tl.pr.Level != bump.LevelNone {
-		next, err := nextOn(tl.Line, tl.current, tl.pr)
+		next, err := bump.NextOn(tl.Line, tl.current, tl.pr)
 		if err != nil {
 			return preview.Package{}, packagePreview{}, err
 		}
@@ -424,7 +424,7 @@ func lineVerdict(tl touchedLine, pending bump.Decision, pendingWalked bool) (pre
 	}
 	p.Pending.Level = orNone(pending.Level)
 	if pending.Level != bump.LevelNone && pending.Level != "" {
-		next, err := nextOn(tl.Line, tl.current, pending)
+		next, err := bump.NextOn(tl.Line, tl.current, pending)
 		if err != nil {
 			return preview.Package{}, packagePreview{}, err
 		}
@@ -433,7 +433,7 @@ func lineVerdict(tl touchedLine, pending bump.Decision, pendingWalked bool) (pre
 	d := foldDecision(tl.pr, pending)
 	pv.Level = string(d.Level)
 	if d.Level != bump.LevelNone {
-		next, err := nextOn(tl.Line, tl.current, d)
+		next, err := bump.NextOn(tl.Line, tl.current, d)
 		if err != nil {
 			return preview.Package{}, packagePreview{}, err
 		}

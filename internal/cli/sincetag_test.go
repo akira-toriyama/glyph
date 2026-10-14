@@ -2459,8 +2459,8 @@ func TestSinceTagBelowNeedsAVersion(t *testing.T) {
 // on every push of a repository that has not released yet — measured on the
 // v0.11.1 rollout, four untagged fleet repositories walked their entire
 // histories. Past sinceTagWalkCap glyph refuses BEFORE the first API call
-// (fail-loud 4, the checkPublishedFloor family: nothing broken, no retry
-// clears it, the escape is in the message). Under the cap the walk runs
+// (fail-loud 4, the draftplan.CheckPublishedFloor family: nothing broken, no
+// retry clears it, the escape is in the message). Under the cap the walk runs
 // exactly as before — a skip would fold zero commits and verdict the first
 // release out of existence — and the count excludes the bot authors the walk
 // itself never asks about.

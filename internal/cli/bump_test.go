@@ -373,9 +373,9 @@ func TestBumpPromoteReachesV1(t *testing.T) {
 
 // TestBumpPromoteFrom1xIsAPlainMajor: from 1.x a '%' must step like '!'. A
 // constant v1.0.0 would sit at or below the current version, which is the one
-// shape checkPublishedFloor rejects outright (exit 4) — so this is the test
-// that keeps a promotion from deadlocking every repository that already
-// reached 1.0.
+// shape draftplan.CheckPublishedFloor rejects outright (exit 4) — so this is
+// the test that keeps a promotion from deadlocking every repository that
+// already reached 1.0.
 func TestBumpPromoteFrom1xIsAPlainMajor(t *testing.T) {
 	dir, base := testRepo(t)
 	testCommit(t, dir, "akira-toriyama", ":rocket:% call it 1.0")

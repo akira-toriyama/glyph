@@ -457,7 +457,7 @@ func TestExitCodeFourIsNotOnlyAnIOFailure(t *testing.T) {
 	}
 
 	const why = "exit 4 stopped meaning only I/O the day cmd_release.go began returning it for " +
-		"an incomplete walk (ratified t-pysg) and for checkPublishedFloor — deliberate refusals " +
+		"an incomplete walk (ratified t-pysg) and for the published floor — deliberate refusals " +
 		"with nothing broken underneath. State that here, or the next author reads 4 as " +
 		"\"retry later\" and reaches for a new integer"
 

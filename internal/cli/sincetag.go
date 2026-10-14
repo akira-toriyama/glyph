@@ -301,10 +301,10 @@ const sinceTagEscape = "; name the walk base yourself with --since-tag=TAG (cutt
 // walked their entire histories (t-354v). So the commits the walk would visit
 // are counted FIRST, from the same log and under the same author exclusion
 // the walk itself applies, and past the cap glyph refuses: a fail-loud
-// CodeAPI refusal in the checkPublishedFloor family — nothing is broken
-// underneath, no retry clears it, and the escape (name the base) is in the
-// message. The count is exact, not estimated, so the refusal names the real
-// cost; the doubled `git log` on this arm is local and cheap.
+// CodeAPI refusal in the draftplan.CheckPublishedFloor family — nothing is
+// broken underneath, no retry clears it, and the escape (name the base) is in
+// the message. The count is exact, not estimated, so the refusal names the
+// real cost; the doubled `git log` on this arm is local and cheap.
 func wholeHistory(ctx context.Context, cfg *config.Config, whyNone, escape string) (string, *bump.Version, error) {
 	raws, err := gitsource.Log(ctx, ".", "HEAD")
 	if err != nil {
