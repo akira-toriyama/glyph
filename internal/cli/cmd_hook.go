@@ -40,12 +40,10 @@ func newHookCmd() *cobra.Command {
 // newHookPrePushCmd is what a pre-push hook calls. It takes git's argv
 // verbatim and reads git's protocol on stdin.
 //
-// ArbitraryArgs, and no flags at all, is the rollout decision. The script that
-// calls this is installed once into ~34 clones and nothing refreshes one, so a
-// named flag would freeze today's argv shape into every copy: the day git passes
-// a third argument, every frozen script turns a push into a usage error. Passing
-// argv through unread is the only shape that survives its own installed base —
-// the same reasoning DESIGN §2.1 used to put the cleanup mode in the binary.
+// ArbitraryArgs and no flags: every installed script runs
+// `glyph hook pre-push -- "$@"` and nothing refreshes it (DESIGN §2.1), so an
+// arity check would make its run a usage error the day git's argv changes, and
+// a flag is one no installed copy could ever set.
 func newHookPrePushCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "pre-push [remote] [url]",

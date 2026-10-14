@@ -14,15 +14,9 @@ import (
 
 // This file is `glyph hook pre-push`: the verdict a pre-push hook asks for.
 // git hands it the refs about to be pushed on stdin and the remote on argv; it
-// answers by linting the commits the remote does not already have.
-//
-// Why the range arithmetic is HERE and not in the hook script: the script is a
-// file installed once into ~34 clones that nothing refreshes — no pull, no
-// fleet-sync, no CI job — so a script that computed anything would go on
-// computing the old thing forever, in every repository, invisibly. DESIGN §2.1
-// ratified exactly this split for the commit-msg hook's cleanup mode, and it is
-// the same argument. The script's whole knowledge is "pipe stdin to glyph and
-// forward one exit code".
+// answers by linting the commits the remote does not already have. The range
+// arithmetic lives here and not in the hook script because nothing refreshes an
+// installed hook (DESIGN §2.1).
 
 // pushRef is one line of git's pre-push protocol: four space-separated fields,
 // newline-terminated. Measured against git 2.54, the shapes that are NOT a
