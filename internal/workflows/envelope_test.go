@@ -93,9 +93,9 @@ func TestNoWorkflowRebuildsPerFindingAnnotations(t *testing.T) {
 // silent hole in a fleet-distributed gate.
 func TestReusablesSieveTheEnvelopeBeforeJQ(t *testing.T) {
 	// Positive control, for the same reason TestNaiveGrepSeesNoPinInTheReusables
-	// carries one. Every assertion below is nested inside "for each sink this
-	// file has", so a file with no sink asserts NOTHING — and most files have
-	// none, which is normal (they never run glyph). If stderrSink stopped
+	// carries one. Every sink assertion below is nested inside "for each sink
+	// this file has", so a file with no sink asserts NOTHING — and most files
+	// have none, which is normal (they never run glyph). If stderrSink stopped
 	// matching real redirects, every subtest would go quiet in exactly the way a
 	// clean run looks, and this guard on a fleet-distributed contract would be
 	// gone with nothing to show for it. So: prove the pattern still bites, and
@@ -104,6 +104,13 @@ func TestReusablesSieveTheEnvelopeBeforeJQ(t *testing.T) {
 	if m := stderrSink.FindStringSubmatch(canary); m == nil || strings.Trim(m[1], `"`) != "$ERR" {
 		t.Fatalf("stderrSink no longer finds the sink in a real redirect (%q) — every subtest below "+
 			"would pass vacuously", canary)
+	}
+	// mergedIntoJQ is asserted outside the sink loop, so the corpus count does
+	// not cover it; it needs its own control.
+	const merged = `          glyph preview --pr "$PR_NUMBER" --json 2>&1 | jq -r '.level'`
+	if !mergedIntoJQ.MatchString(merged) {
+		t.Fatalf("mergedIntoJQ no longer matches a merged stream piped into jq (%q) — its check below "+
+			"is vacuous", merged)
 	}
 
 	found := 0

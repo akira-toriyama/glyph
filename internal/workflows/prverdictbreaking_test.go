@@ -1,9 +1,7 @@
 package workflows
 
 import (
-	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,9 +22,7 @@ import (
 // and its envelope was read (mutation row
 // pr-verdict-breaking-reads-not-computed-as-false).
 func TestPRVerdictBreakingFollowsLevelIntoNotComputed(t *testing.T) {
-	if _, err := exec.LookPath("jq"); err != nil {
-		t.Fatal("jq is not on PATH, and the step under test is jq — install it rather than skip: an unrun guard is a green nobody earned")
-	}
+	requireTool(t, "jq")
 	script := extractRun(t, repoFile(t, filepath.Join(".github", "workflows", "pr-verdict.yml")), "Compose the verdict comment")
 
 	const packagesEnvelope = `{"current":"","untagged":false,"level":"","pr":"","pending":"","body":"b","packages":[{"path":"haiku","current":"v2.1.0","untagged":false,"level":"major","next":"v3.0.0","pr":"major","pending":"major"}]}`
@@ -58,20 +54,15 @@ func TestPRVerdictBreakingFollowsLevelIntoNotComputed(t *testing.T) {
 			if err := os.WriteFile(output, nil, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			cmd := exec.Command("bash", "-c", script)
-			cmd.Env = append(os.Environ(),
-				"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
-				"STUB_ENVELOPE="+envelope,
+			run := runStep(t, script, unspecifiedShell, dir, []string{
+				"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+				"STUB_ENVELOPE=" + envelope,
 				"PR_NUMBER=7",
-				"RUNNER_TEMP="+dir,
-				"GITHUB_OUTPUT="+output)
-			out, err := cmd.CombinedOutput()
-			ee, exited := errors.AsType[*exec.ExitError](err)
-			switch {
-			case exited:
-				t.Fatalf("the verdict step exited %d over %s:\n%s", ee.ExitCode(), c.envelope, out)
-			case err != nil:
-				t.Fatalf("running the verdict step: %v", err)
+				"RUNNER_TEMP=" + dir,
+				"GITHUB_OUTPUT=" + output,
+			})
+			if run.exit != 0 {
+				t.Fatalf("the verdict step exited %d over %s:\n%s", run.exit, c.envelope, run)
 			}
 			raw, rerr := os.ReadFile(output)
 			if rerr != nil {
