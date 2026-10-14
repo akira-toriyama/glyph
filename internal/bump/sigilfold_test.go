@@ -320,3 +320,29 @@ unlandable = 'rebase with --autosquash before it lands'
 		t.Errorf("an excluded author's unlandable message: level %v err %v, want patch and no refusal", got.Level, err)
 	}
 }
+
+// TestDecidingReasonNamesTheCommitThatDecided: the reason is the oldest row
+// at the folded level, and on a promoted range the oldest '%' row even when a
+// '!' before it reaches the same level — the '%' is what chose the version.
+func TestDecidingReasonNamesTheCommitThatDecided(t *testing.T) {
+	rows := []SigilVerdict{
+		{SHA: "1111111aaaa", Subject: "fix a crash", Sigil: "~", Level: "patch"},
+		{SHA: "2222222bbbb", Subject: "drop the old API", Sigil: "!", Level: "major"},
+		{SHA: "3333333cccc", Subject: "call it 1.0", Sigil: "%", Level: "major"},
+		{SHA: "4444444dddd", Subject: "call it 1.0 again", Sigil: "%", Level: "major"},
+	}
+	cases := []struct {
+		name string
+		dec  Decision
+		want string
+	}{
+		{"oldest row at the level", Decision{Level: LevelMajor}, `2222222 ! "drop the old API" → major`},
+		{"promoted range", Decision{Level: LevelMajor, Promote: true}, `3333333 % "call it 1.0" → promote`},
+		{"no row at the level", Decision{Level: LevelMinor}, "level minor"},
+	}
+	for _, c := range cases {
+		if got := DecidingReason(rows, c.dec); got != c.want {
+			t.Errorf("%s: DecidingReason = %q, want %q", c.name, got, c.want)
+		}
+	}
+}

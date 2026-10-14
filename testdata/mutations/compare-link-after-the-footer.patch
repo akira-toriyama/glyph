@@ -1,8 +1,8 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 23141f2..3ee0724 100644
+index 8a90f16..054797d 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -338,13 +338,14 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+@@ -347,13 +347,14 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
  		// then notes' output for the same walk followed by the caller's block.
  		// Each line's link starts at that line's own base tag — never the
  		// union's merge base, never a sibling's tag (§4.1).
@@ -17,4 +17,4 @@ index 23141f2..3ee0724 100644
 +		body = compareLink(body, owner, repoName, lw.BaseTag, target)
  		// The plan is computed BEFORE the body is final, because the body
  		// depends on it: an update must re-read the kept draft's current body
- 		// and carry the hand region across (see composeDraftBody) — the
+ 		// and carry the hand region across (see draftplan.ComposeBody) — the

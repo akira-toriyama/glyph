@@ -71,7 +71,7 @@ func TestReleasePackagesWritesOneDraftPerLine(t *testing.T) {
 		if wr.body["draft"] != true {
 			t.Fatalf("every write must be a DRAFT: %+v", wr.body)
 		}
-		if body, _ := wr.body["body"].(string); !strings.Contains(body, handMarker) {
+		if body, _ := wr.body["body"].(string); !strings.Contains(body, wantMarker) {
 			t.Fatalf("draft %v carries no hand marker:\n%s", wr.body["tag_name"], body)
 		}
 	}
@@ -169,7 +169,7 @@ func TestReleasePackagesUpdatesEachLinesOwnDraft(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	_, routes := squashAcrossLines(t, dir, 7)
 	var writes []apiWrite
-	releases := `[` + draftJSONBody(41, "haiku/v0.2.0", "hand-written above\n"+handMarker+"\n\nold machine text") + `,` + draftJSON(42, "curry/v0.1.0") + `]`
+	releases := `[` + draftJSONBody(41, "haiku/v0.2.0", "hand-written above\n"+wantMarker+"\n\nold machine text") + `,` + draftJSON(42, "curry/v0.1.0") + `]`
 	usePR(t, releaseServer(t, routes, releases, &writes))
 	t.Chdir(dir)
 
@@ -183,7 +183,7 @@ func TestReleasePackagesUpdatesEachLinesOwnDraft(t *testing.T) {
 	if !strings.HasSuffix(writes[0].path, "/41") || !strings.HasSuffix(writes[1].path, "/42") {
 		t.Fatalf("drafts must be updated by id: %s / %s", writes[0].path, writes[1].path)
 	}
-	if body, _ := writes[0].body["body"].(string); !strings.HasPrefix(body, "hand-written above\n"+handMarker) || strings.Contains(body, "old machine text") {
+	if body, _ := writes[0].body["body"].(string); !strings.HasPrefix(body, "hand-written above\n"+wantMarker) || strings.Contains(body, "old machine text") {
 		t.Fatalf("haiku's hand region must survive and its machine region be rewritten:\n%s", body)
 	}
 	if writes[1].body["tag_name"] != "curry/v0.1.1" {

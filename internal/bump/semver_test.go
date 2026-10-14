@@ -230,7 +230,7 @@ func TestNext0xMajorFoldsToMinor(t *testing.T) {
 // TestNextPromoteLandsOnV1 pins the '%' sigil, the only door out of 0.x now
 // that a '!' cannot open one. From 1.x it must be a plain major step: a
 // constant v1.0.0 would sit at or below every already-published 1.x release
-// and checkPublishedFloor would refuse the whole release (exit 4).
+// and draftplan.CheckPublishedFloor would refuse the whole release (exit 4).
 func TestNextPromoteLandsOnV1(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"v0.0.0", "v1.0.0"},

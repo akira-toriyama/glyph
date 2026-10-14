@@ -161,3 +161,26 @@ func FirstLine(message string) string {
 	}
 	return strings.TrimSuffix(message, "\r")
 }
+
+// DecidingReason names the oldest commit that reaches the folded level — the
+// one-line answer to "why this bump".
+//
+// A promoted range names its oldest '%' commit instead, even though promote
+// and major share a level. Otherwise the reason for landing on 1.0.0 would
+// point at whichever breaking commit came first, and the one commit that
+// actually chose the version would not appear in the answer at all.
+func DecidingReason(commits []SigilVerdict, dec Decision) string {
+	if dec.Promote {
+		for _, c := range commits {
+			if c.Sigil == config.SigilPromote.String() {
+				return fmt.Sprintf("%.7s %s %q → promote", c.SHA, c.Sigil, c.Subject)
+			}
+		}
+	}
+	for _, c := range commits {
+		if c.Level == string(dec.Level) {
+			return fmt.Sprintf("%.7s %s %q → %s", c.SHA, c.Sigil, c.Subject, dec.Level)
+		}
+	}
+	return fmt.Sprintf("level %s", dec.Level)
+}

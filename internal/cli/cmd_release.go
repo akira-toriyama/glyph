@@ -239,7 +239,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	// GitHub had not indexed, a truncated pull listing, a shallow checkout —
 	// stops here, before the releases listing is even fetched: fail loud (4),
 	// like every other place glyph refuses to judge what it could not read
-	// (the wedge, the covered pull, checkPublishedFloor). Ratified t-pysg,
+	// (the wedge, the covered pull, the published floor). Ratified t-pysg,
 	// replacing #66's warn-and-refuse-to-destroy: that compromise existed for
 	// the repository whose merge button an automation presses, which then
 	// warned on every release structurally — but merge points resolve now
@@ -327,16 +327,16 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 		// quiet merge keeps the door open instead of deleting the draft).
 		tagName := draftplan.PlaceholderTagOn(lw.Line)
 		if dec.Level != bump.LevelNone {
-			tag, nerr := nextOn(lw.Line, current, dec)
+			tag, nerr := bump.NextOn(lw.Line, current, dec)
 			if nerr != nil {
 				return nerr
 			}
-			if gerr := checkPublishedFloor(lw.Line, tag, releases); gerr != nil {
+			if gerr := draftplan.CheckPublishedFloor(lw.Line, tag, drafted); gerr != nil {
 				return gerr
 			}
 			tagName = tag.TagOn(lw.Line.Prefix)
 			pv.Next = tag.String()
-			pv.Reason = decidingReason(lineVerdicts, dec)
+			pv.Reason = bump.DecidingReason(lineVerdicts, dec)
 			moving++
 		}
 		sections, gerr := notes.GroupSigils(walkedNoteCommits(lw.Commits), cfg)
@@ -356,12 +356,12 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 		}
 		// The plan is computed BEFORE the body is final, because the body
 		// depends on it: an update must re-read the kept draft's current body
-		// and carry the hand region across (see composeDraftBody) — the
+		// and carry the hand region across (see draftplan.ComposeBody) — the
 		// rolling draft is the one place a human can write release prose, and
 		// rewriting it blind is how that prose was silently destroyed on the
 		// next push (t-qgps).
 		plan := draftplan.PlanDraft(lw.Line, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
-		body = composeDraftBody(keptBody(plan.Keep, releases), body)
+		body = draftplan.ComposeBody(plan.Keep, body)
 		// Sized BEFORE the dry-run fork: a dry run previews the real run, and
 		// a body the real run refuses must fail the preview identically. Sized
 		// over the FINAL body, hand region and compare link included — a human
@@ -557,12 +557,14 @@ func releaseExit(moving int, reason string, verdictOnStdout bool) error {
 	return core.NoReleasef("%s", reason).Quiet(verdictOnStdout)
 }
 
-// planInput adapts the releases listing for draftplan, which decides what is
-// glyph-managed (house-shaped drafts and the Unreleased placeholder).
+// planInput adapts the releases listing for draftplan, which reads all of it:
+// the drafts for what is glyph-managed (house-shaped drafts and the
+// Unreleased placeholder) and the kept draft's body, the published releases
+// for the floor.
 func planInput(releases []github.Release) []draftplan.Draft {
 	out := make([]draftplan.Draft, 0, len(releases))
 	for _, r := range releases {
-		out = append(out, draftplan.Draft{ID: r.ID, TagName: r.TagName, Draft: r.Draft})
+		out = append(out, draftplan.Draft{ID: r.ID, TagName: r.TagName, Draft: r.Draft, Body: r.Body})
 	}
 	return out
 }
@@ -636,96 +638,6 @@ func discardedOrGone(alreadyGone bool) string {
 		return "found already gone (the retried delete was answered 404, so this is unconfirmed):"
 	}
 	return "discarded"
-}
-
-// checkPublishedFloor is the deadlock guard (immutable releases): the next
-// version must be STRICTLY greater than the latest published release, or the
-// draft could never be published — its tag is taken, or permanently burned if
-// a published release was deleted. The repository's state is off, so this
-// fails loud (4) instead of creating an unpublishable draft.
-func checkPublishedFloor(l config.Line, next bump.Version, releases []github.Release) error {
-	floor, ok := highestPublished(l, releases)
-	if !ok || next.Compare(floor) > 0 {
-		return nil
-	}
-	return core.APIf(
-		"computed version %s is not greater than the latest published release %s — refusing the draft (it would collide with or regress below a published release; if a published release was deleted its tag is permanently burned — bump past it)",
-		next.TagOn(l.Prefix), floor.TagOn(l.Prefix))
-}
-
-// highestPublished returns the highest published (non-draft) house version
-// (bump.HouseTagOn) ON ONE LINE among the releases; ok is false when there is none —
-// a line before its first publish has no floor. The floor is per line by
-// construction (DESIGN §4.1): a published haiku/v2.0.0 is no floor under a
-// curry/ draft, a published bare v2.0.0 is none under either package, and a
-// published pubsub/v2.7.0 is none under the pubsub/ v1 line beside it
-// (mutation rows published-floor-read-across-lines and
-// line-reads-tags-of-every-major).
-func highestPublished(l config.Line, releases []github.Release) (bump.Version, bool) {
-	var floor bump.Version
-	found := false
-	for _, r := range releases {
-		if r.Draft {
-			continue
-		}
-		v, ok := bump.HouseTagOn(l, r.TagName)
-		if !ok {
-			continue
-		}
-		if !found || v.Compare(floor) > 0 {
-			floor, found = v, true
-		}
-	}
-	return floor, found
-}
-
-// handMarker is the line that splits a rolling draft's body into a hand
-// region (above) and a machine region (below). It is an HTML comment on
-// purpose — GitHub renders it as nothing, so a published release carries no
-// trace of it — and its text is the contract, stated in the one place a human
-// is when the contract matters: the draft's edit box. The rolling draft is
-// the only place release prose can be written ("the exit codes changed, fix
-// your gates"), and before this marker existed the next push rewrote the
-// whole body and destroyed that prose with no warning (t-qgps).
-//
-// Everything ABOVE the marker is preserved byte-for-byte across every upsert;
-// everything below is glyph's and is rewritten every time. An edit below the
-// marker is still lost — that boundary has to exist for the machine region to
-// stay truthful — but now the boundary is printed where the human is typing,
-// instead of being an unwritten rule they learn by losing work.
-const handMarker = "<!-- glyph: notes written ABOVE this line survive every push; glyph rewrites everything BELOW it -->"
-
-// keptBody returns the current body of the draft the plan keeps, "" when the
-// plan creates one (or the kept id is somehow not in the listing — treated as
-// a fresh body rather than an error, because the listing and the plan came
-// from the same response and a miss means GitHub's answer changed under us;
-// the upsert's own PATCH-by-id semantics still converge).
-func keptBody(keep *draftplan.Draft, releases []github.Release) string {
-	if keep == nil {
-		return ""
-	}
-	for _, r := range releases {
-		if r.ID == keep.ID {
-			return r.Body
-		}
-	}
-	return ""
-}
-
-// composeDraftBody assembles the draft body the upsert writes: the existing
-// body's hand region (everything above the marker, byte-for-byte — including
-// the CRLF line endings a web edit stores), the marker, then the freshly
-// generated machine region. A body with no marker — a pre-marker draft, or
-// one where a human deleted the marker line — contributes no hand region:
-// glyph cannot tell that body's hand-written lines from its own stale
-// output, and guessing would resurrect old machine text as if a human had
-// written it.
-func composeDraftBody(existing, generated string) string {
-	hand, _, found := strings.Cut(existing, handMarker)
-	if !found {
-		hand = ""
-	}
-	return hand + handMarker + "\n\n" + generated
 }
 
 // readFooter reads the --footer-file when one is named. The path is the

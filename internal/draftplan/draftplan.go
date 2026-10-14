@@ -1,13 +1,15 @@
 // Package draftplan is the v2 release's draft-convergence brain: given a
 // fold verdict, the flag draft_on_none and what drafts exist, it says which
-// ONE draft survives, what tag it converges to, and which are stale. It is
-// pure — no git, no API, no clock — and holds the founding planning invariants:
-// never a second draft, the kept draft is retagged in place, and
-// everything glyph did not manage is not glyph's to touch. What is new is
-// the placeholder: with draft_on_none = true a none verdict keeps an
-// "Unreleased" draft alive instead of converging to nothing, and the next
-// real verdict retags that same draft to the real version (the ratified
-// retag; the machinery is the same update-in-place).
+// ONE draft survives, what tag it converges to, and which are stale; of the
+// draft a release writes, whether its tag clears the published floor
+// (CheckPublishedFloor) and what body it carries, its hand region kept
+// (ComposeBody). It is pure — no git, no API, no clock — and holds the
+// founding planning invariants: never a second draft, the kept draft is
+// retagged in place, and everything glyph did not manage is not glyph's to
+// touch. What is new is the placeholder: with draft_on_none = true a none
+// verdict keeps an "Unreleased" draft alive instead of converging to
+// nothing, and the next real verdict retags that same draft to the real
+// version (the ratified retag; the machinery is the same update-in-place).
 package draftplan
 
 import (
@@ -23,11 +25,13 @@ const PlaceholderTag = "Unreleased"
 
 // Draft is the slice of a release this package reads. ID is the identity
 // drafts are kept and deleted by (tag-name resolution can hit a published
-// release sharing the tag — cli/cli#9367).
+// release sharing the tag — cli/cli#9367). Body is the release's current
+// body, read only off the draft a plan keeps (ComposeBody).
 type Draft struct {
 	ID      int64
 	TagName string
 	Draft   bool
+	Body    string
 }
 
 // Action is which convergence the plan performs, mirroring the release verdict

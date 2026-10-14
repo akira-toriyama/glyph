@@ -833,8 +833,8 @@ one split the 0.x rule rests on, and it is why the rule lives in
   0.x, which is the point — reaching 1.0 becomes something an author says,
   not an accident of the third breaking change. The 1.x arm is not symmetry
   for its own sake: a constant `v1.0.0` would sit at or below every published
-  1.x release and `checkPublishedFloor` would refuse the release outright
-  (exit 4).
+  1.x release and `draftplan.CheckPublishedFloor` would refuse the release
+  outright (exit 4).
 - In 0.x, `!` and `^` therefore produce the same version. That collapse is
   accepted: `v0.y.z` has two moving digits and the lattice has three moving
   rungs, so some pair must collapse, and the pair chosen keeps `~` distinct —

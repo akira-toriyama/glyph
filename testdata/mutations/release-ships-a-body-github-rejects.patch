@@ -1,11 +1,11 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 23141f2..033b0d0 100644
+index 8a90f16..26de3e6 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -353,14 +353,6 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+@@ -362,14 +362,6 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
  		// next push (t-qgps).
  		plan := draftplan.PlanDraft(lw.Line, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
- 		body = composeDraftBody(keptBody(plan.Keep, releases), body)
+ 		body = draftplan.ComposeBody(plan.Keep, body)
 -		// Sized BEFORE the dry-run fork: a dry run previews the real run, and
 -		// a body the real run refuses must fail the preview identically. Sized
 -		// over the FINAL body, hand region and compare link included — a human

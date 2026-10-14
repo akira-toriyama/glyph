@@ -5,17 +5,19 @@
 // (internal/core).
 //
 // Until t-gr7f extracts them it also holds the release walk of DESIGN §4 and
-// §4.1 (sincetag.go, lines.go, linestep.go: the range past the tag, the
-// squash→pull expansion and its footprints, which lines each commit joins, the
-// step on each line) and the release's write sequencing (cmd_release.go:
-// carrying out the draft plan against GitHub, in order).
+// §4.1 (sincetag.go, lines.go: the range past the tag, the squash→pull
+// expansion and its footprints, which lines each commit joins) and the
+// release's write sequencing (cmd_release.go: carrying out the draft plan
+// against GitHub, in order).
 //
 // It holds no copy of: a message's meaning (internal/config's pattern match),
-// the lattice, the fold and Version.Next (internal/bump), grouping and
-// rendering the notes (internal/notes), the package a commit's diff moves
-// (internal/attribution), which draft survives (internal/draftplan), the
-// preview comment's arithmetic and prose (internal/preview), or reading git
-// and calling GitHub (internal/gitsource, internal/github).
+// the lattice, the fold and the commit that decides it, Version.Next and the
+// step on a line (internal/bump), grouping and rendering the notes
+// (internal/notes), the package a commit's diff moves (internal/attribution),
+// which draft survives, the published floor its tag must clear and the hand
+// region its body keeps (internal/draftplan), the preview comment's
+// arithmetic and prose (internal/preview), or reading git and calling GitHub
+// (internal/gitsource, internal/github).
 package cli
 
 import (
