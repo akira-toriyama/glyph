@@ -108,9 +108,10 @@ func Group(commits []Commit, cfg *config.Config) ([]Section, error) {
 // live mention — of the LOGIN, and only when one was established (the API's
 // author.login, or a noreply address); a commit with no login is credited by
 // its display name, plain, the template's at-sign dropped with the mention
-// it cannot make (markdown.Line.Mention holds the gate and the t-hykw
-// reasoning). "Saleh" looked like a handle and paged github.com/Saleh, a
-// stranger, from golang/tools' notes — shape cannot tell a name from a login.
+// it cannot make (markdown.Line.Mention holds the gate, DESIGN §3 the ruling
+// and its measurements). "Saleh" looked like a handle and paged
+// github.com/Saleh, a stranger, from golang/tools' notes — shape cannot tell
+// a name from a login.
 // Group-derived values and the other built-ins keep the fence: whether a
 // SUBJECT can page someone is not the author's intent to declare.
 // The built-ins (config.BuiltinPR and its siblings) are reserved: they win over a pattern
