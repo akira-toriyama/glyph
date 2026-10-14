@@ -157,35 +157,10 @@ func probeClaimed(ctx context.Context, cfg *config.Config) bool {
 // arm the byte-compare check passes. Someone else's hook is theirs to run and
 // a stale glyph hook already fails the drift check, so executing either would
 // have a read-only diagnosis run code it does not vouch for. nil means nothing
-// was fired, and internal/doctor renders why from its own checks.
-//
-// What the probe buys over the byte-compare: the script blocks only on the
-// lint gate code and waves every other failure through by design, so current
-// bytes over a glyph that cannot answer — a PATH wrapper building a different
-// checkout (the documented worktree trap), a tree that does not compile — are
-// a silent no-op the compare calls healthy. Only firing the hook asks the
-// question end to end.
-//
-// commit-msg is fired and pre-push is NOT, and the asymmetry is argued, not
-// an accident. What a live fire proves is a property of the MACHINE — that
-// the glyph the hook resolves on PATH can actually lint — and both hooks
-// resolve the same PATH, so one answer covers both for the default `glyph
-// hook install`, which writes the pair. Firing commit-msg costs a temp file;
-// firing pre-push would cost a fabricated push — a scratch repository with a
-// remote, a violating commit and a default-branch head — which is subprocess
-// choreography a read-only diagnosis should not carry for a question already
-// answered.
-//
-// "Already answered" holds only while a byte-identical commit-msg hook sits
-// beside the pre-push one, and two all-green states break it: pre-push
-// installed alone by name (`glyph hook install pre-push`), and a commit-msg
-// hook deleted or replaced after install. The default `hook install` cannot
-// reach the second by itself — it refuses a foreign commit-msg at exit 2 and,
-// planning every kind before writing any (hook.Install), writes neither — so
-// only an edit after install gets there (t-2etd). In both, nothing is fired,
-// and a pre-push hook over a glyph that cannot answer lets every push through
-// — so the pre-push check names that state as advice (checkPrePushHook in
-// internal/doctor) instead of passing it unqualified.
+// was fired, and internal/doctor renders why from its own checks
+// (checkHookFires judges the outcome, and checkPrePushHook qualifies the
+// pre-push pass with it). Why the probe exists, and why pre-push is not fired
+// as well: DESIGN §7.
 func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.HookProbe {
 	if dirErr != nil {
 		return nil
@@ -280,8 +255,8 @@ func probeErr(p *doctor.HookProbe) error {
 }
 
 // firstInterrupt returns the first of errs carrying the user's interrupt, or
-// nil. Split out of doctorRun so the guard over its two independent reads (the
-// API, then git) is testable without arranging a live signal — cancelling the
+// nil. Split out of doctorRun so the guard over its independent reads (the
+// API, then git's) is testable without arranging a live signal — cancelling the
 // context before doctorRun makes the FIRST read interrupted and the guard
 // passes for the wrong reason, hiding a dropped herr entirely.
 func firstInterrupt(errs ...error) error {
@@ -417,22 +392,12 @@ func doctorRun(cmd *cobra.Command) error {
 	return doctorVerdict(report)
 }
 
-// doctorVerdict maps the report to glyph's exit-code contract. No new integers:
-//
-//   - A FAILED check is a convention violation in the subject glyph was asked to
-//     judge — a repository's configuration here, a commit message under `lint` —
-//     so it takes the same code 3 the lint gate uses. It is emphatically not
-//     usage (2: the invocation was fine) and not an API failure (4: glyph did its
-//     job and the answer is no).
-//   - A check that could NOT RUN is glyph failing to do its job — the API never
-//     answered, the file was unreadable — which is exactly what 4 means. Nothing
-//     was proven, so it cannot be 0. This is where a rate limit or a 5xx that
-//     outlived the retry schedule lands (see checkTokenAccess): the fleet's CI
-//     wrappers branch on `.error.code == 3` to hard-fail and treat everything
-//     else as a retryable infra failure, so classifying an outage as 3 would
-//     hard-fail a healthy repository as "misconfigured" and never retry it.
-//   - Failure outranks could-not-run: a definite defect is the more actionable
-//     verdict and must not be masked by an unrelated blind spot.
+// doctorVerdict maps the report to glyph's exit-code contract, with no new
+// integer: a FAILED check takes the gate code 3 (core.CodeLint: a repository's
+// configuration is the subject doctor judges), and a check that could NOT RUN
+// takes 4 (core.CodeAPI: nothing was proven). Why an outage must never read as
+// 3: DESIGN §7. Failure outranks could-not-run: a definite defect is the more
+// actionable verdict and must not be masked by an unrelated blind spot.
 //
 // The report is already on stdout, so in --json mode the error is Silent (the
 // payload carries every field the envelope would) and otherwise renders the

@@ -409,12 +409,11 @@ func TestHookInstallJSONFalseIsTheHumanSummary(t *testing.T) {
 	}
 }
 
-// TestStaleHookIsReportedWhenTheHookItselfRuns: the installed hook is the one
-// artefact nothing refreshes — hooks are untracked, so no pull, no fleet-sync
-// and no CI job updates one — and a stale one still exits 0, which is exactly
-// what a clean message looks like. `doctor` detects it and nothing runs `doctor`
-// on a schedule, so the hook's own run is the one moment the developer is
-// certainly present to be told.
+// TestStaleHookIsReportedWhenTheHookItselfRuns: nothing refreshes an installed
+// hook and a stale one still exits 0, exactly what a clean message looks like
+// (DESIGN §7). `doctor` detects it and nothing runs `doctor` on a schedule, so
+// the hook's own run is the one moment the developer is certainly present to be
+// told.
 //
 // The three states are asserted together because only the middle one is drift:
 // a foreign hook is a standing choice glyph refuses to overwrite, and warning

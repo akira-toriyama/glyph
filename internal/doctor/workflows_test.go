@@ -11,12 +11,12 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
 )
 
-// commentedStub is THE trap, reproduced verbatim in shape: every glyph reusable
-// workflow ships a permanently-stale caller stub in its header comment, and the
-// repository's real caller sits below it pinned to a later tag. A scan that
-// ignores the comment marker reports glyph itself as drifted forever; a scan
-// that stops at the first match reads v0.9.0 and reports the wrong version for
-// every repository in the fleet. Both directions are pinned below.
+// commentedStub is THE trap, reproduced in shape: a caller file that kept a
+// copy of an old concrete stub in its header comment, above its real caller
+// pinned to a later tag (glyph's own reusables carry the @vX.Y.Z placeholder,
+// DESIGN §7). A scan that ignores the comment marker reports the stub's
+// version as the pin; a scan that stops at the first match reads v0.9.0 and
+// reports the wrong version. Both directions are pinned below.
 const commentedStub = `name: commit-lint
 
 # Reusable caller stub — copy this into a family repo:
@@ -193,9 +193,9 @@ func TestScanUsesShapes(t *testing.T) {
 // breaks the version derivation; a moving ref changes under the caller.
 // FuzzScanUsesCitesOnlyRealUsesLines throws arbitrary bytes at the one
 // hand-written stateful scanner in the tree whose input is EXTERNAL — scanUses
-// walks other repositories' workflow YAML, and its own doc comment records
-// that the comment/stub/block-scalar traps have been got wrong in every
-// direction. The properties held here are the ones a caller relies on
+// walks other repositories' workflow YAML, and the comment/stub/block-scalar
+// traps it survives have been got wrong in every direction (DESIGN §7, which
+// its doc points at). The properties held here are the ones a caller relies on
 // regardless of input shape: no panic, and every returned reference is
 // traceable to a real, non-comment line whose value really names the glyph
 // repository — a scanner confused by an adversarial block scalar must fail

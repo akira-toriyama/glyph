@@ -148,12 +148,10 @@ func TestDiffSummaryNamesAPrefixRatherThanALine(t *testing.T) {
 // the pre-push hook gets the same four verdicts the commit-msg one does — and
 // in particular the argued one, absence passing.
 //
-// Absence is not drift. A hook is opt-in, CI is the authority, and hooks do not
-// clone, so a checkout on an Actions runner has none by construction. Grading
-// that as advice would post a notice on every doctor run in every repository,
-// for a condition no repository can avoid — the noise that teaches a fleet to
-// skip the report (§7). The drift arm is asserted beside it because a check
-// that only ever passes is not a check.
+// Absence is not drift: an Actions checkout has no hook by construction, so
+// grading absence as advice would be noise on every run (DESIGN §7). The drift
+// arm is asserted beside it because a check that only ever passes is not a
+// check.
 func TestEveryHookKindIsCheckedTheSameWay(t *testing.T) {
 	ids := map[string]string{"commit-msg": idCommitMsgHook, "pre-push": idPrePushHook}
 	for _, k := range hook.Kinds() {
@@ -181,8 +179,8 @@ func TestEveryHookKindIsCheckedTheSameWay(t *testing.T) {
 // silent no-op — current bytes over a glyph that cannot answer — and it FAILS;
 // a probe that could not run, or an exit outside the script's own vocabulary
 // (it exits only 0 or the gate code), is unknown, never a verdict about the
-// hook. Everything not fired belongs to the byte-compare check and passes here
-// with the sibling named.
+// hook. A hook the probe did not fire passes here with the sibling named; a
+// hooks directory git could not name is unknown.
 func TestCheckHookFiresVerdicts(t *testing.T) {
 	gate := int(core.CodeLint)
 	cases := []struct {

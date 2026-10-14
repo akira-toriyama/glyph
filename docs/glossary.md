@@ -777,17 +777,18 @@ gate read this file). `internal/doctor/doctor.go: Check, Run`
 prose and will be reworded. Treat the id block as the versioned surface it is.
 `internal/doctor/doctor.go: idConfigLoads…idPrePushHook`
 
-**pass / fail / advice / unknown** — four statuses, and the last two are the
-point.
+**pass / fail / advice / unknown** — four statuses, and the line between fail
+and unknown is the point.
 - **fail** — the assumption is violated and something concrete breaks. Drives
   exit 3.
 - **unknown** — the check could not **run**: nothing was observed, so nothing may
   be concluded. Drives exit 4. "We could not check" is not "it is fine", so
   `OK` is false for unknown as well as fail.
-- **advice** — a divergence from a house convention that costs glyph nothing
-  mechanically. Never affects the exit: a report that fails over settings glyph
-  handles correctly teaches the fleet to ignore the report, which is the one
-  failure mode a voluntary check cannot survive.
+- **advice** — worth seeing, never worth failing a job over; DESIGN §7 argues
+  each advising check's case (§4.1 root-line-tags'). Never affects the exit: a
+  report that fails a job over what is only worth seeing teaches the fleet to
+  ignore the report, which is the one failure mode a voluntary check cannot
+  survive.
 
 The fail/unknown line is drawn on **what the API said**, not on whether the call
 returned an error: a 404 from the repository read *is* an answer (there is no such
@@ -887,11 +888,10 @@ contract has the incident.
 workflows and the shared commit convention. A figure for the fleet's *size* is
 a measurement on the date stated beside it, and the fleet grew between them —
 read the date with the number. On 2026-07-21 **31 of 34** non-archived
-repositories allowed merge commits and rebase merges
-([DESIGN §7](DESIGN.md#7-repository-preconditions-glyph-doctor),
-`internal/doctor/doctor.go` package comment), and the fleet's history held 9,548
-commit subjects — the denominator the escaping rules' rendering cost is sized
-against, and stated where that sizing is argued rather than here
+repositories allowed merge commits and rebase merges ([DESIGN
+§7](DESIGN.md#7-repository-preconditions-glyph-doctor)), and the fleet's history
+held 9,548 commit subjects — the denominator the escaping rules' rendering cost
+is sized against, and stated where that sizing is argued rather than here
 (`internal/markdown/escape.go: escapeProseLine`, rules 3 and 4); on 2026-10-04,
 38 non-archived repositories carried a `glyph.toml` (DESIGN §2).
 
