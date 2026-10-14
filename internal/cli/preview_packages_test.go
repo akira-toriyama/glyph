@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -507,6 +508,32 @@ func TestPreviewPackagesRefusesAClaimedMergeInItsOwnWords(t *testing.T) {
 	}
 }
 
+// TestPreviewPackagesAsksNoFileOfAnUnclaimedMessage: a message no pattern
+// claims refuses the whole listing's fold, so it is never attributed first —
+// its files are not asked for, and the refusal is the fold's (3), as on the
+// bare line. The stand-in serves the unclaimed commit's listing too and
+// records what it answered, so a placement that asked for it is counted here.
+func TestPreviewPackagesAsksNoFileOfAnUnclaimedMessage(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	srv, seen := recordingWalkServer(t, map[string]string{
+		pullCommitsPath(9): `[` +
+			apiCommit("h1", "akira-toriyama", ":sparkles:(haiku)^ add a season") + `,` +
+			apiCommit("u1", "akira-toriyama", "Add stuff") + `]`,
+		commitFilesPath("h1"): apiFiles("haiku/season.go"),
+		commitFilesPath("u1"): apiFiles("haiku/stuff.go"),
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "preview", "--pr", "9")
+	if want := []string{pullCommitsPath(9), commitFilesPath("h1")}; !slices.Equal(*seen, want) {
+		t.Errorf("requests = %q, want %q", *seen, want)
+	}
+	if code != 3 || !strings.Contains(stderr, "commit u1: ") || !strings.Contains(stderr, "refusing to version the range") {
+		t.Fatalf("preview exited %d, want 3 with the fold's refusal of u1\nstderr: %s", code, stderr)
+	}
+}
+
 // TestPreviewPackagesNotesPerLine: --notes folds one notes preview per
 // touched line into the block, under the line's own heading.
 func TestPreviewPackagesNotesPerLine(t *testing.T) {
@@ -771,7 +798,7 @@ func TestPreviewPackagesUnlistedFilesAreCaveated(t *testing.T) {
 			if strings.Contains(res.Body, "**curry**") != tc.curry {
 				t.Errorf("curry is mentioned exactly when c1's scope carried it there (%t):\n%s", tc.curry, res.Body)
 			}
-			if !strings.Contains(stderr, "::warning::glyph: commit c1 in pull request #9: GitHub answered 422 for its file listing, so a line it touches in files GitHub did not list may be missing from this preview") {
+			if !strings.Contains(stderr, "::warning::glyph: commit c1 in pull request #9: GitHub answered 422 for its file listing, so a line it touches in files GitHub did not list may be missing from this verdict") {
 				t.Errorf("preview must warn about the unlisted files, saying only what it knows:\n%s", stderr)
 			}
 		})

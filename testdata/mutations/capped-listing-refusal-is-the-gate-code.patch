@@ -1,28 +1,16 @@
 diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index c3f4b04..cbde54a 100644
+index 4181ebe..4401c7d 100644
 --- a/internal/cli/lines.go
 +++ b/internal/cli/lines.go
-@@ -497,8 +497,6 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
- 			}
- 			moved, aerr := attribute(cfg, c.Raw, said, files, gap == diffWhole)
- 			switch {
--			case aerr != nil && gap != diffWhole:
--				carriers = nil
- 			case aerr != nil:
- 				return nil, nil, attributionWedge(aerr, c, owner, repo, reachedLines(lines, reach))
- 			default:
-diff --git a/internal/cli/preview_lines.go b/internal/cli/preview_lines.go
-index fbf9883..4263851 100644
---- a/internal/cli/preview_lines.go
-+++ b/internal/cli/preview_lines.go
-@@ -97,10 +97,6 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
- 			}
- 		}
- 		moved, aerr := attribute(cfg, r, said, files, !incomplete)
--		if aerr != nil && incomplete {
--			warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but GitHub did not list the commit's whole diff, so that is not a verdict: the commit is attributed to no line", r.SHA, aerr)
--			continue
+@@ -553,11 +553,6 @@ func placeByFiles(ctx context.Context, gh *github.Client, cfg *config.Config, ow
+ 	}
+ 	moved, aerr := attribute(cfg, c.Raw, said, files, gap == diffWhole)
+ 	switch {
+-	case aerr != nil && gap != diffWhole:
+-		if gap == diffUnlisted {
+-			warnf("commit %.7s: over the files GitHub listed, attribution would refuse it (%v) — but GitHub did not list the commit's whole diff, so that is not a verdict: the commit is attributed to no line", c.Raw.SHA, aerr)
 -		}
- 		if aerr != nil {
- 			return core.Lintf("commit %.7s in pull request %s/%s#%d: %v — the release walk will refuse this commit the same way once it is merged, and a merged commit cannot be rewritten; fix it on the branch", r.SHA, owner, repo, previewPR, aerr).
- 				WithDetails([]bump.Refusal{{SHA: r.SHA, Subject: bump.FirstLine(r.Message), Detail: aerr.Error()}})
+-		return filePlacement{gap: gap, withheld: aerr}, nil
+ 	case aerr != nil:
+ 		return filePlacement{gap: gap, refused: aerr}, nil
+ 	}

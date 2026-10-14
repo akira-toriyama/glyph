@@ -1,20 +1,20 @@
-diff --git a/internal/cli/preview_lines.go b/internal/cli/preview_lines.go
-index b1aab91..2aeb4a0 100644
---- a/internal/cli/preview_lines.go
-+++ b/internal/cli/preview_lines.go
-@@ -130,7 +130,6 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
- 	// below: per line, a warned commit on no line was silent in this preview
- 	// while the single line's and packages bump said it, and one on two lines
- 	// was said twice.
--	warnSigilVerdicts(pullRows)
- 	onLine := map[string]bool{}
- 	for _, commits := range perLine {
- 		for _, r := range commits {
-@@ -163,6 +162,7 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
- 		if cerr != nil {
- 			return cerr
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 858b206..d6f738d 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -161,7 +161,6 @@ func previewRun(ctx context.Context, o previewOptions) error {
+ 	if err != nil {
+ 		return err
+ 	}
+-	warnSigilVerdicts(rows)
+ 	if err := foldTouched(ctx, cfg, touched); err != nil {
+ 		return err
+ 	}
+@@ -313,6 +312,7 @@ func foldTouched(ctx context.Context, cfg *config.Config, touched []touchedLine)
+ 		if err != nil {
+ 			return err
  		}
 +		warnSigilVerdicts(rows)
- 		latest, current, verr := latestVersionTag(ctx, cfg.LineOf(p), nil)
- 		if verr != nil {
- 			return verr
+ 		tag, current, err := latestVersionTag(ctx, tl.Line, nil)
+ 		if err != nil {
+ 			return err

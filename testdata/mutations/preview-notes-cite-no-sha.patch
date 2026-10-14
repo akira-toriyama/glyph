@@ -1,0 +1,13 @@
+diff --git a/internal/cli/range.go b/internal/cli/range.go
+index 91c35e7..d967eca 100644
+--- a/internal/cli/range.go
++++ b/internal/cli/range.go
+@@ -33,7 +33,7 @@ func sigilCommits(raws []gitsource.RawCommit) []bump.SigilCommit {
+ func noteCommits(raws []gitsource.RawCommit, pull int) []notes.SigilCommit {
+ 	out := make([]notes.SigilCommit, 0, len(raws))
+ 	for _, r := range raws {
+-		out = append(out, notes.SigilCommit{SHA: r.SHA, Pull: pull, Author: r.Author, Login: identity(r), Message: r.Message})
++		out = append(out, notes.SigilCommit{SHA: "", Pull: pull, Author: r.Author, Login: identity(r), Message: r.Message})
+ 	}
+ 	return out
+ }

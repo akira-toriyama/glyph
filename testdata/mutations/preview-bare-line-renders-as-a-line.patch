@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 858b206..489d61c 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -194,7 +194,7 @@ func previewRun(ctx context.Context, o previewOptions) error {
+ 	in := preview.Input{PendingShort: pendingShort, PRShort: prShort}
+ 	res := previewResult{Packages: verdicts}
+ 	render := preview.Render
+-	if len(cfg.Packages) == 0 {
++	if len(cfg.Packages) < 0 {
+ 		one, v := lines[0], verdicts[0]
+ 		in.Current, in.Untagged, in.PR, in.Pending, in.Notes = one.Current, one.Untagged, one.PR, one.Pending, lineNotes[0]
+ 		res = previewResult{Current: v.Current, Untagged: v.Untagged, Level: v.Level, Next: v.Next, PR: v.PR, Pending: v.Pending}

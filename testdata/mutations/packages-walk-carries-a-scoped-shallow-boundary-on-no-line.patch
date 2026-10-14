@@ -1,14 +1,14 @@
 diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index 29913d7..9913dcc 100644
+index 4181ebe..67e7ced 100644
 --- a/internal/cli/lines.go
 +++ b/internal/cli/lines.go
-@@ -475,6 +475,9 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
- 			if ferr != nil {
- 				return nil, nil, ferr
- 			}
-+			if gap == diffBoundary {
-+				said = unjudged
-+			}
- 			moved, aerr := attribute(cfg, c.Raw, said, files, gap == diffWhole)
- 			switch {
- 			case aerr != nil && gap != diffWhole:
+@@ -551,6 +551,9 @@ func placeByFiles(ctx context.Context, gh *github.Client, cfg *config.Config, ow
+ 	if err != nil {
+ 		return filePlacement{}, err
+ 	}
++	if gap == diffBoundary {
++		said = unjudged
++	}
+ 	moved, aerr := attribute(cfg, c.Raw, said, files, gap == diffWhole)
+ 	switch {
+ 	case aerr != nil && gap != diffWhole:

@@ -1793,7 +1793,8 @@ upsert before any stray, the single line's bare draft deleted as residue,
 the footer on every draft, `packages[]` in the verdict with the scalars
 empty); and the preview (t-npye): `preview --pr` attributes the pull's
 commits over the API and renders one headline and one table per touched
-line (`internal/cli/preview_lines.go`, `preview.Package`), the pending
+line (`internal/cli/cmd_preview.go: previewRun`, one loop over the lines
+the pull touches, the bare line among them; `preview.Package`), the pending
 side from one walk; and the reusable (t-dc9e): `release.yml` hands the
 per-line verdicts through as its `packages` output, the scalars `""`, and
 refuses `app` / `binary` once the verdict says packages. Every `e-7hat` task
@@ -2713,12 +2714,15 @@ packages change is `breaking` (below). The pull's commits exist on its branch on
 come from `GET /commits/{sha}` — one request per commit placed by its files, the
 squash arm's price paid before the merge — and a commit attribution refuses
 is refused here at exit 3, the same lint-class answer the walk will give
-once it is merged, while the branch can still be fixed. Over a listing GitHub
-truncated, or one a 422 cut short (above), the refusal is withheld exactly as
-the walk withholds it, the commit is attributed to no line, and the body
-carries a PR-side INCOMPLETE caveat beside the pending one — a line a commit
-touches in files GitHub did not list may be missing from every figure, and
-this comment is read by someone who never opens the log
+once it is merged, while the branch can still be fixed. Each commit is placed
+by the walk's own placement (`placeByFiles`): one reader of its listing, one
+withholding rule, and one sentence each for an unread listing and a withheld
+refusal (`TestWalkAndPreviewWarnAnUnreadListingInOneSentence`). Over a listing
+GitHub truncated, or one a 422 cut short (above), the refusal is withheld
+exactly as the walk withholds it, the commit is attributed to no line, and the
+body carries a PR-side INCOMPLETE caveat beside the pending one — a line a
+commit touches in files GitHub did not list may be missing from every figure,
+and this comment is read by someone who never opens the log
 (`preview.Input.PRShort`). The caveat's own sentence names no cause, because
 the shortfall it quotes does: it said "only past the cap" of a 422 until
 t-esm5. When no line is touched, the "moves nothing" sentence claims no

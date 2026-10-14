@@ -1,10 +1,10 @@
-diff --git a/internal/cli/preview_lines.go b/internal/cli/preview_lines.go
-index 5a2f966..c711e5f 100644
---- a/internal/cli/preview_lines.go
-+++ b/internal/cli/preview_lines.go
-@@ -74,6 +74,9 @@ func previewLines(ctx context.Context, cfg *config.Config) error {
- 	perLine := make([][]gitsource.RawCommit, len(cfg.Packages))
- 	var prCapped, prUnknown []unreadListing
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 858b206..21f002d 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -264,6 +264,9 @@ func attributePull(ctx context.Context, gh *github.Client, cfg *config.Config, o
+ 	perLine := make([][]gitsource.RawCommit, len(lines))
+ 	var facts walkFacts
  	for _, r := range raws {
 +		if slices.Contains(cfg.ExcludeAuthors, r.Author) {
 +			continue

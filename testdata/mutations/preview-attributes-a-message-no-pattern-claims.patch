@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 858b206..e03ddba 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -265,7 +265,7 @@ func attributePull(ctx context.Context, gh *github.Client, cfg *config.Config, o
+ 	var facts walkFacts
+ 	for _, r := range raws {
+ 		place, said := placeOf(cfg, r)
+-		if place != placedByFiles {
++		if place == placedNowhere {
+ 			continue
+ 		}
+ 		placed, err := placeByFiles(ctx, gh, cfg, owner, repo, walked{Raw: r, Pull: number}, said, &facts, nil)

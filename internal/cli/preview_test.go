@@ -1,14 +1,25 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/config"
+)
+
+// The skipped pending walk is named in one sentence (skippedWalkWarning),
+// spelled for the bare line and, with "on any line this PR touches" and
+// "per line", for the lines.
+const (
+	floorWarningBare  = "::warning::glyph: no release tag in HEAD's history — previewing the PR's own verdict (the pending walk needs a release floor)\n"
+	floorWarningLines = "::warning::glyph: no release tag in HEAD's history on any line this PR touches — previewing the PR's own verdict per line (the pending walk needs a release floor)\n"
 )
 
 // testRepoUntagged is testRepo without its v0.1.0 tag — a repository before its
@@ -62,7 +73,7 @@ func TestPreviewUntaggedSkipsTheWalk(t *testing.T) {
 	}
 	// The skipped walk must be named, not silent — the house rule is that an
 	// input glyph declines to read is a fact the log states.
-	if !strings.Contains(stderr, "no v* release tag in HEAD's history") {
+	if !strings.Contains(stderr, floorWarningBare) {
 		t.Errorf("skipped walk not warned about: %s", stderr)
 	}
 }
@@ -311,7 +322,7 @@ func TestPreviewZeroVersionTagIsTagged(t *testing.T) {
 	if !strings.Contains(stdout, `"pending":"minor"`) {
 		t.Errorf("the pending walk must run and fold in the merged :sparkles:; got:\n%s", stdout)
 	}
-	if strings.Contains(stderr, "no v* release tag in HEAD's history") {
+	if strings.Contains(stderr, "no release tag in HEAD's history") {
 		t.Errorf("a tagged repository must not be told it has no release tag: %s", stderr)
 	}
 }
@@ -348,5 +359,279 @@ func TestPreviewIncompletePendingWalkSaysSoInTheBody(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "as the walk could read") {
 		t.Errorf("the footer must stop claiming a complete fold:\n%s", stdout)
+	}
+}
+
+// TestPreviewRunsFromOptionsWithoutCobra: the run below RunE is a function of
+// its options — no command built, no flag parsed — so the pull, --notes and
+// --json reach it as fields, not as package state a cobra run has to set
+// first.
+func TestPreviewRunsFromOptionsWithoutCobra(t *testing.T) {
+	dir := testRepoUntagged(t)
+	t.Chdir(dir)
+	usePR(t, prServer(t, 7, `[`+apiCommit("aaa1111", "akira-toriyama", ":sparkles:(ui)^ add the palette")+`]`))
+	stdout, stderr, restore := captureOut()
+	defer restore()
+
+	err := previewRun(context.Background(), previewOptions{pr: 7, notes: true, json: true})
+	const verdict = `{"current":"v0.0.0","untagged":true,"level":"minor","next":"v0.1.0","pr":"minor","pending":"none","body":"<!-- glyph-pr-verdict -->`
+	if err != nil || !strings.HasPrefix(stdout.String(), verdict) || !strings.Contains(stdout.String(), "Release notes preview") {
+		t.Fatalf("previewRun from options: %v, stdout %q, want the JSON verdict with the notes folded in\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+}
+
+// TestPreviewBareLineAsksForNoFile: a repository without [[packages]] holds
+// the whole pull on its one bare line, so no commit's files are asked for —
+// partitionLines' identity arm, on the pull's side as on the walk's. The
+// stand-in serves every commit's file listing and records what it answered,
+// so a preview that placed the pull by its files would be counted here, not
+// failed as an unknown route; tagged, the pending side is walked once.
+func TestPreviewBareLineAsksForNoFile(t *testing.T) {
+	pull := map[string]string{
+		pullCommitsPath(7): `[` +
+			apiCommit("aaa1111", "akira-toriyama", ":sparkles:(ui)^ add the palette") + `,` +
+			apiCommit("bbb2222", "akira-toriyama", ":bug:~ fix a crash") + `]`,
+		commitFilesPath("aaa1111"): apiFiles("ui/palette.go"),
+		commitFilesPath("bbb2222"): apiFiles("crash.go"),
+	}
+	t.Run("untagged: the pull's listing alone", func(t *testing.T) {
+		dir := testRepoUntagged(t)
+		t.Chdir(dir)
+		srv, seen := recordingWalkServer(t, pull)
+		usePR(t, srv)
+
+		code, _, stderr := runGlyph(t, "preview", "--pr", "7", "--json")
+		if want := []string{pullCommitsPath(7)}; !slices.Equal(*seen, want) {
+			t.Errorf("requests = %q, want %q", *seen, want)
+		}
+		if code != 0 {
+			t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
+		}
+	})
+	t.Run("tagged: the listing, then one walk", func(t *testing.T) {
+		dir, _ := testRepo(t)
+		testCommit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
+		head := strings.TrimSpace(testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
+		t.Chdir(dir)
+		routes := map[string]string{
+			commitPullsPath(head):      `[` + apiPullRef(3, "2026-07-17T00:00:00Z", head) + `]`,
+			pullCommitsPath(3):         `[` + apiCommit("ccc3333", "akira-toriyama", ":sparkles:^ land a feature") + `]`,
+			commitFilesPath("ccc3333"): apiFiles("feature.go"),
+		}
+		maps.Copy(routes, pull)
+		srv, seen := recordingWalkServer(t, routes)
+		usePR(t, srv)
+
+		code, _, stderr := runGlyph(t, "preview", "--pr", "7", "--json")
+		if want := []string{pullCommitsPath(7), commitPullsPath(head), pullCommitsPath(3)}; !slices.Equal(*seen, want) {
+			t.Errorf("requests = %q, want %q", *seen, want)
+		}
+		if code != 0 {
+			t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
+		}
+	})
+}
+
+// TestPreviewBareLineRendersTheScalarBody: without [[packages]] the bare line
+// is the one line of preview's one loop, and the render alone keeps its shape
+// — preview.Render's scalar body and the scalar verdict, the pre-packages
+// surface byte for byte. Rendered as a line, as a root package is, the same
+// pull heads its headline "**** — ", opens its table "### " and closes
+// "folded, per line, … since **v0.1.0** ()" (mutation row
+// preview-bare-line-renders-as-a-line), so the bytes are pinned whole:
+// untagged with the notes folded in, and tagged with a pending side, as the
+// body and as the --json verdict.
+func TestPreviewBareLineRendersTheScalarBody(t *testing.T) {
+	const untaggedBody = "<!-- glyph-pr-verdict -->\n" +
+		"🔼 Merging this PR raises **minor** — the first release here would be **v0.1.0**.\n\n" +
+		"| commit | sigil | bump |\n|---|---|---|\n" +
+		"| :sparkles:(ui)^ add the palette | `^` | minor |\n" +
+		"| :memo:= note the palette | `=` | none |\n\n" +
+		"<details>\n<summary>Release notes preview</summary>\n\n" +
+		"## Features\n\n- :sparkles:(ui)^ add the palette (#7) @akira-toriyama\n\n" +
+		"## Dependencies\n\n- Bump golang.org/x/net from 0.1.0 to 0.2.0 (#7) dependabot\\[bot]\n\n" +
+		"</details>\n\n" +
+		"Computed from the 2 commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. The base branch holds no v* release tag yet, so nothing merged earlier is folded in. Pushing more commits updates this comment.\n"
+	const taggedBody = "<!-- glyph-pr-verdict -->\n" +
+		"🔧 Merging this PR adds **patch**-level changes — the next release stays **v0.2.0** (a **minor** bump is already pending).\n\n" +
+		"| commit | sigil | bump |\n|---|---|---|\n" +
+		"| :bug:~ fix a crash | `~` | patch |\n\n" +
+		"Computed from the 1 commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them — folded with what is already merged on the base branch since **v0.1.0**. Pushing more commits updates this comment.\n"
+
+	t.Run("untagged, with the notes", func(t *testing.T) {
+		dir := testRepoUntagged(t)
+		t.Chdir(dir)
+		usePR(t, prServer(t, 7, `[`+
+			apiCommit("aaa1111", "akira-toriyama", ":sparkles:(ui)^ add the palette")+`,`+
+			apiCommit("bbb2222", "akira-toriyama", ":memo:= note the palette")+`,`+
+			apiCommit("ddd4444", "dependabot[bot]", "Bump golang.org/x/net from 0.1.0 to 0.2.0")+`]`))
+
+		code, stdout, stderr := runGlyph(t, "preview", "--pr", "7", "--notes")
+		if code != 0 || stdout != untaggedBody {
+			t.Fatalf("exit %d, body:\n got: %q\nwant: %q\nstderr: %s", code, stdout, untaggedBody, stderr)
+		}
+	})
+	t.Run("tagged, with a pending side", func(t *testing.T) {
+		dir, _ := testRepo(t)
+		testCommit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
+		head := strings.TrimSpace(testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
+		t.Chdir(dir)
+		usePR(t, walkServer(t, map[string]string{
+			pullCommitsPath(7):    `[` + apiCommit("bbb2222", "akira-toriyama", ":bug:~ fix a crash") + `]`,
+			commitPullsPath(head): `[` + apiPullRef(3, "2026-07-17T00:00:00Z", head) + `]`,
+			pullCommitsPath(3):    `[` + apiCommit("ccc3333", "akira-toriyama", ":sparkles:^ land a feature") + `]`,
+		}))
+
+		code, stdout, stderr := runGlyph(t, "preview", "--pr", "7")
+		if code != 0 || stdout != taggedBody {
+			t.Fatalf("exit %d, body:\n got: %q\nwant: %q\nstderr: %s", code, stdout, taggedBody, stderr)
+		}
+		verdict := `{"current":"v0.1.0","untagged":false,"level":"minor","next":"v0.2.0","pr":"patch","pending":"minor","body":"` +
+			strings.ReplaceAll(taggedBody, "\n", `\n`) + "\"}\n"
+		code, stdout, stderr = runGlyph(t, "preview", "--pr", "7", "--json")
+		if code != 0 || stdout != verdict {
+			t.Fatalf("exit %d, --json:\n got: %q\nwant: %q\nstderr: %s", code, stdout, verdict, stderr)
+		}
+	})
+}
+
+// TestPreviewReleaseFloorWarningIsOneSentence: a skipped pending walk is named
+// on stderr by one producer whatever the shape — on the bare line in a
+// sentence that says nothing of lines, for a pull whose touched lines have no
+// tag with "on any line this PR touches" and "per line" — and not at all when
+// the pull touches no line, where there was nothing to walk for. The bare line used to say it in words of
+// its own ("no v* release tag in HEAD's history — previewing this PR's own
+// verdict only"), and the packages half was asserted nowhere.
+func TestPreviewReleaseFloorWarningIsOneSentence(t *testing.T) {
+	bare := testRepoUntagged(t)
+	lines, _ := packagesRepo(t)
+	testGit(t, lines, "akira-toriyama", "tag", "-d", "haiku/v0.1.0")
+	testGit(t, lines, "akira-toriyama", "tag", "-d", "curry/v0.1.0")
+	sharedOnly := map[string]string{
+		pullCommitsPath(9):    `[` + apiCommit("s1", "akira-toriyama", ":memo:= document the lines") + `]`,
+		commitFilesPath("s1"): apiFiles("README.md"),
+	}
+	for _, tc := range []struct {
+		name   string
+		dir    string
+		routes map[string]string
+		want   string
+		count  int
+	}{
+		{"bare line", bare, crossLinePull(9), floorWarningBare, 1},
+		{"untagged lines", lines, crossLinePull(9), floorWarningLines, 1},
+		{"no line touched", lines, sharedOnly, floorWarningLines, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Chdir(tc.dir)
+			usePR(t, walkServer(t, tc.routes))
+
+			code, _, stderr := runGlyph(t, "preview", "--pr", "9")
+			if code != 0 {
+				t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
+			}
+			if n := strings.Count(stderr, tc.want); n != tc.count {
+				t.Errorf("the skipped walk is named %d time(s), want %d:\n%s", n, tc.count, stderr)
+			}
+		})
+	}
+}
+
+// TestPreviewReadsTheRepoItIsGiven: --repo names the repository every read
+// asks — the pull's listing, its commits' file listings and the pending walk
+// — over $GITHUB_REPOSITORY, which usePR sets to another. No test ran preview
+// with --repo, so a read that dropped the flag for the environment's
+// repository survived the whole suite at each of the three. The stand-in
+// serves both repositories and records what it answered, so a read of the
+// wrong one is counted here rather than failed as an unknown route.
+func TestPreviewReadsTheRepoItIsGiven(t *testing.T) {
+	other := func(path string) string {
+		return strings.Replace(path, "/repos/akira-toriyama/glyph/", "/repos/other/name/", 1)
+	}
+	for _, tc := range []struct {
+		name  string
+		setup func(t *testing.T) (dir string, routes map[string]string, want []string)
+	}{
+		{"bare line: the listing and the walk", func(t *testing.T) (string, map[string]string, []string) {
+			dir, _ := testRepo(t)
+			testCommit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
+			head := strings.TrimSpace(testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
+			routes := map[string]string{
+				pullCommitsPath(9):    `[` + apiCommit("h1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
+				commitPullsPath(head): `[` + apiPullRef(3, "2026-07-17T00:00:00Z", head) + `]`,
+				pullCommitsPath(3):    `[` + apiCommit("ccc3333", "akira-toriyama", ":sparkles:^ land a feature") + `]`,
+			}
+			return dir, routes, []string{pullCommitsPath(9), commitPullsPath(head), pullCommitsPath(3)}
+		}},
+		{"lines: the listing, the files and the walk", func(t *testing.T) (string, map[string]string, []string) {
+			dir, _ := packagesRepo(t)
+			merged := touch(t, dir, "akira-toriyama", ":sparkles:^ add an ingredient", "curry/curry.go")
+			routes := crossLinePull(9)
+			routes[commitPullsPath(merged)] = `[]`
+			return dir, routes, []string{pullCommitsPath(9), commitFilesPath("h1"), commitFilesPath("c1"), commitFilesPath("s1"), commitPullsPath(merged)}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, routes, want := tc.setup(t)
+			both := map[string]string{}
+			for path, body := range routes {
+				both[path], both[other(path)] = body, body
+			}
+			srv, seen := recordingWalkServer(t, both)
+			usePR(t, srv)
+			t.Chdir(dir)
+
+			code, _, stderr := runGlyph(t, "preview", "--pr", "9", "--repo", "other/name")
+			for i := range want {
+				want[i] = other(want[i])
+			}
+			if !slices.Equal(*seen, want) {
+				t.Errorf("preview --repo other/name asked:\n %q\nwant:\n %q", *seen, want)
+			}
+			if code != 0 {
+				t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
+			}
+		})
+	}
+}
+
+// TestPreviewNotesCiteThePullUnderReview: the notes preview cites each commit
+// by the pull under review and by its own sha, which that pull's head branch
+// holds — on the bare line and per line alike. The presets' note line names
+// no $hash, so the citation is read through one that names both: neither half
+// was asserted on either shape, and a preview citing no pull, or no sha,
+// survived the whole suite.
+func TestPreviewNotesCiteThePullUnderReview(t *testing.T) {
+	const presetLine = "line = '- $subject$[ ($pr)] @$author$[ with $coauthors]'"
+	citing := func(t *testing.T, dir string) {
+		t.Helper()
+		path := filepath.Join(dir, "glyph.toml")
+		b, err := os.ReadFile(path) // #nosec G304 -- a path under the test's own temp dir
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(b), presetLine) {
+			t.Fatalf("the fixture's glyph.toml carries no %s to replace", presetLine)
+		}
+		if err := os.WriteFile(path, []byte(strings.Replace(string(b), presetLine, "line = '- $subject ($hash, $pr)'", 1)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bare := testRepoUntagged(t)
+	lines, _ := packagesRepo(t)
+	for _, tc := range []struct{ name, dir string }{{"bare line", bare}, {"lines", lines}} {
+		t.Run(tc.name, func(t *testing.T) {
+			citing(t, tc.dir)
+			t.Chdir(tc.dir)
+			usePR(t, walkServer(t, crossLinePull(9)))
+
+			code, stdout, stderr := runGlyph(t, "preview", "--pr", "9", "--notes")
+			if code != 0 {
+				t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
+			}
+			if !strings.Contains(stdout, "\n- :sparkles:(haiku)^ add a season (h1, #9)\n") {
+				t.Errorf("the notes must cite the listed sha and the pull under review:\n%s", stdout)
+			}
+		})
 	}
 }

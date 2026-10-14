@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
-index 15639da..8001900 100644
+index 858b206..ddd436d 100644
 --- a/internal/cli/cmd_preview.go
 +++ b/internal/cli/cmd_preview.go
-@@ -166,7 +166,7 @@ func previewRun(cmd *cobra.Command) error {
+@@ -214,7 +214,7 @@ func previewRun(ctx context.Context, o previewOptions) error {
  	// Truncated (never refused) before EITHER output path: the workflow posts
  	// the --json payload's body, so an oversized comment has to be cut in the
  	// one place both surfaces share.
--	body := truncateComment(preview.Render(in))
-+	body := preview.Render(in)
- 	if previewJSON {
- 		d := foldDecision(prDec, pendingDec)
- 		res := previewResult{
+-	res.Body = truncateComment(render(in))
++	res.Body = render(in)
+ 	if o.json {
+ 		printCompact(res)
+ 		return nil
