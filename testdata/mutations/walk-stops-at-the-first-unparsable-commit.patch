@@ -1,8 +1,8 @@
-diff --git a/internal/bump/sigilfold.go b/internal/bump/sigilfold.go
-index b3a42e1..a991a4a 100644
---- a/internal/bump/sigilfold.go
-+++ b/internal/bump/sigilfold.go
-@@ -113,7 +113,7 @@ func FoldSigils(commits []SigilCommit, cfg *config.Config) ([]SigilVerdict, Deci
+diff --git a/internal/bump/fold.go b/internal/bump/fold.go
+index bfdbd50..039c149 100644
+--- a/internal/bump/fold.go
++++ b/internal/bump/fold.go
+@@ -115,7 +115,7 @@ func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
  				firstUnlandable = m.Unlandable != ""
  			}
  			refusals = append(refusals, Refusal{SHA: c.SHA, Subject: FirstLine(c.Message), Detail: cfg.UnclaimedDetail(m)})

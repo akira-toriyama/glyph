@@ -30,7 +30,7 @@ const amendMessage = "amend! :bug:~ fix b\n\n:boom:! fix b\n"
 // claim comes back as the UNMATCHED shape with the reason beside it, never as
 // a match. Every history consumer already refuses an unmatched message and
 // already checks exclude_authors first, so one that never reads the new field
-// fails closed; a Matched=true shape would hand SigilLevel a zero sigil and
+// fails closed; a Matched=true shape would hand bump.LevelOf a zero sigil and
 // fold the commit as a silent none wherever a consumer forgot the new arm.
 func TestMatchReportsUnlandableAsUnclaimed(t *testing.T) {
 	cfg := mustLoad(t, unlandableToml)

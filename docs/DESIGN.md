@@ -808,7 +808,7 @@ and `:recycle:` and `:broom:` and `:bulb:` for the same tidy. Ratified
 Lattice: `none(0) < patch(1) < minor(2) < major(3)`, owned by `internal/bump`
 (`Level`, `reduce`). The sigil IS the classification: `=` none, `~` patch,
 `^` minor, `!` major, `%` major — fixed in the binary beside the alphabet
-(`bump.SigilLevel`), not configurable, because a repository that could remap
+(`bump.LevelOf`), not configurable, because a repository that could remap
 `!` to patch would make every pinned verdict unreadable from the file alone.
 
 **Combination across a range:** `reduce` folds with max — order-independent
@@ -870,7 +870,7 @@ one split the 0.x rule rests on, and it is why the rule lives in
 **Promote is not a fifth rung.** `bump.Decision` carries `{Level, Promote}`,
 and a `%` commit classifies as **major** like any other breaking change; the
 promotion rides beside the lattice, OR-folded so it stays order-independent
-(mutation row `sigilfold-promote-is-dropped.patch`). A fifth `Level` word was
+(mutation row `fold-promote-is-dropped.patch`). A fifth `Level` word was
 rejected because `Level` is a closed four-word vocabulary that three consumers
 read as data and all three answer an unknown word by silently doing nothing:
 a `[[note.sections]]` `semver` filter (the promoting commit vanishes from the
@@ -1034,7 +1034,7 @@ patterns name their groups (`config.FallbackGroup`, the name the renderer
 keys the fallback off), and for no other commit. So where no pattern binds
 `subject`, `$subject` is legal beside a group a pattern binds —
 `- $title$subject`, each line filling the one its commit binds
-(`TestGroupSigilsFallbackBindsSubjectUnderAnyGrammar`) — and refused when
+(`TestGroupFallbackBindsSubjectUnderAnyGrammar`) — and refused when
 it is the template's only name beyond the built-ins and trailers, the
 refusal naming the names the file can bind. Measured (t-f2cb): before it,
 a `$branch` only a skip pattern captured loaded and rendered empty at exit 0,
@@ -2500,7 +2500,7 @@ carries messages and no files — and `--range` answers per line from local
 git, every commit unreleased on every line (a `--range` fold names no
 release base) and each line stepping from its own highest tag.
 
-**The fold, the step, the exit.** `FoldSigils` runs once per package over
+**The fold, the step, the exit.** `bump.Fold` runs once per package over
 the commits that joined that package's line, so §3 is unchanged per line: max-fold,
 `%` promotes that line, the 0.x rule reads that line's current version, and a
 commit no pattern claims still refuses the whole walk (it is refused before
@@ -2528,7 +2528,7 @@ over several lines, each body under a `# <path>` heading, the sections nested be
 **Participating** means one set, wherever the word stands (t-rrw0, t-mfny;
 ratified 2026-09-29). A commit *participates* when the fold reads it: not an
 `exclude_authors` author, matched, not claimed by a skip pattern — exactly the
-rows `FoldSigils` returns, on the single line and under packages alike. Under
+rows `bump.Fold` returns, on the single line and under packages alike. Under
 the presets that leaves out the bots and the merge commits. A `fixup!`,
 `squash!` or `amend!` is not left out but refused (§2: an unlandable claim
 reads as unmatched, and an unmatched message refuses the fold wherever one
@@ -2881,8 +2881,8 @@ package set or refusal out — and gets a package of its own beside `draftplan`
 and `preview` (§5's tree is updated by the task that creates it, because
 `TestDesignTreeNamesEveryInternalPackage` reconciles the tree with the
 filesystem and a row for a package that does not exist yet fails it). The
-`Commit` struct §5 sketches gains nothing: attribution consumes files the
-walk fetches beside the listing, and the fold reads `SigilCommit` as today.
+fold's input, `bump.Commit`, gains nothing: attribution consumes files the
+walk fetches beside the listing, and the fold reads the commit as today.
 
 **Rejected, in one place**, so the next reader does not re-argue them:
 intent files (changesets — the signal leaves the commits, README says why);
@@ -2917,7 +2917,7 @@ cmd/glyph/main.go        os.Exit(cli.Execute()) — thin process boundary only
 internal/core            exit-code contract + structured Error (no I/O, no logic)
 internal/version         ldflags build identity + ReadBuildInfo fallback
 internal/cleanup         git's message cleanup, modelled exactly (comment strip, scissors cut) — what --stdin judges is what git records
-internal/bump            Level lattice; SigilLevel + FoldSigils (classification and the fold); reduce(max); Next; version parse on a tag prefix; stdlib semver
+internal/bump            Level lattice; LevelOf + Fold (classification and the fold); reduce(max); Next; version parse on a tag prefix; stdlib semver
 internal/config          glyph.toml loader — user RE2 patterns, first match wins, semver_sigil extraction, the [[packages]] schema; embeds the init presets
 internal/attribution     which declared package(s) a commit moves — pure; files + scope + sigil + packages in, package set or lint-class refusal out (§4.1)
 internal/emoji           the gemoji dictionary `glyph emoji` prints — embedded table.json, advisory data nothing else reads (§2)

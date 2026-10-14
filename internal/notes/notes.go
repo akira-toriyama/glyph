@@ -10,10 +10,10 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/markdown"
 )
 
-// SigilCommit is the slice of a commit the v2 notes read. Nothing is parsed
+// Commit is the slice of a commit the v2 notes read. Nothing is parsed
 // here either: the pattern file decides what the message means, and Pull is
 // whatever the walk resolved (0 = none).
-type SigilCommit struct {
+type Commit struct {
 	SHA     string
 	Pull    int
 	Author  string
@@ -21,15 +21,15 @@ type SigilCommit struct {
 	Message string
 }
 
-// SigilSection is one rendered v2 group: the section's own title (the user's
+// Section is one rendered v2 group: the section's own title (the user's
 // text, rendered as they wrote it) and its fully rendered lines in commit
 // order.
-type SigilSection struct {
+type Section struct {
 	Title string   `json:"title"`
 	Lines []string `json:"lines"`
 }
 
-// GroupSigils maps commits onto the config's [[note.sections]], in the
+// Group maps commits onto the config's [[note.sections]], in the
 // config's order — order is render order, and a commit lands in EVERY
 // section whose filter matches it (a major by dependabot sits in Breaking
 // Changes and in Dependencies both; deduplicating would make section order
@@ -45,9 +45,9 @@ type SigilSection struct {
 //
 // exclude_authors is deliberately not consulted: whether a commit appears in
 // the notes is note.sections' decision alone.
-func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, error) {
+func Group(commits []Commit, cfg *config.Config) ([]Section, error) {
 	type judged struct {
-		c       SigilCommit
+		c       Commit
 		matched bool
 		level   string // meaningful only when matched
 		line    string
@@ -64,7 +64,7 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
 		j := judged{c: c, matched: m.Matched}
 		groups := m.Groups
 		if m.Matched {
-			j.level = string(bump.SigilLevel(m.Sigil))
+			j.level = string(bump.LevelOf(m.Sigil))
 		} else {
 			// The unmatched fallback the design names "use the raw first
 			// line": the commit renders through the same template with
@@ -75,9 +75,9 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
 		js = append(js, j)
 	}
 
-	sections := make([]SigilSection, 0, len(cfg.Note.Sections))
+	sections := make([]Section, 0, len(cfg.Note.Sections))
 	for _, s := range cfg.Note.Sections {
-		out := SigilSection{Title: s.Title}
+		out := Section{Title: s.Title}
 		for _, j := range js {
 			switch s.Axis {
 			case config.AxisSemver:
@@ -124,7 +124,7 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
 // shipped presets rendered the parens the author wrote around it regardless:
 // the line "- add the demo feature () @akira-toriyama" is what a release body
 // carried, measured live before this existed.
-func renderLine(spans []config.LineSpan, declared []config.NoteTrailer, c SigilCommit, groups map[string]string) string {
+func renderLine(spans []config.LineSpan, declared []config.NoteTrailer, c Commit, groups map[string]string) string {
 	builtins := map[string]string{
 		config.BuiltinPR:        "",
 		config.BuiltinAuthor:    c.Author,
@@ -189,11 +189,11 @@ func shortSHA(s string) string {
 	return s
 }
 
-// RenderSigils draws v2 sections as Markdown, mirroring the v1 body shape:
+// Render draws v2 sections as Markdown, mirroring the v1 body shape:
 // `## title` headings in section order, lines under each, no version line
 // (the release title carries the version). No sections render to the empty
 // string; the no-release verdict is the caller's to make.
-func RenderSigils(sections []SigilSection) string {
+func Render(sections []Section) string {
 	var b strings.Builder
 	for i, s := range sections {
 		if i > 0 {

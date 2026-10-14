@@ -9,7 +9,7 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/core"
 )
 
-func sigilCfg(t *testing.T) *config.Config {
+func testCfg(t *testing.T) *config.Config {
 	t.Helper()
 	data, ok := config.Preset("gemoji")
 	if !ok {
@@ -22,9 +22,9 @@ func sigilCfg(t *testing.T) *config.Config {
 	return cfg
 }
 
-func TestGroupSigilsAxes(t *testing.T) {
-	cfg := sigilCfg(t)
-	sections, err := GroupSigils([]SigilCommit{
+func TestGroupAxes(t *testing.T) {
+	cfg := testCfg(t)
+	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Pull: 10, Author: "akira", Message: ":boom:! drop the flag"},
 		{SHA: "bbbbbbbbbbbb", Pull: 11, Author: "akira", Message: ":sparkles:(cli)^ add a thing"},
 		{SHA: "cccccccccccc", Pull: 12, Author: "akira", Message: ":bug:~ fix a thing"},
@@ -32,7 +32,7 @@ func TestGroupSigilsAxes(t *testing.T) {
 		{SHA: "eeeeeeeeeeee", Pull: 13, Author: "dependabot[bot]", Message: "Bump x from 1 to 2"},
 	}, cfg)
 	if err != nil {
-		t.Fatalf("GroupSigils: %v", err)
+		t.Fatalf("Group: %v", err)
 	}
 	titles := make([]string, 0, len(sections))
 	for _, s := range sections {
@@ -54,16 +54,16 @@ func TestGroupSigilsAxes(t *testing.T) {
 	}
 }
 
-// TestGroupSigilsDuplicates asserts the ratified stance that a commit lands
+// TestGroupDuplicates asserts the ratified stance that a commit lands
 // in EVERY section whose filter matches it: deduplicating would make section
 // order silently decide which section wins.
-func TestGroupSigilsDuplicates(t *testing.T) {
-	cfg := sigilCfg(t)
-	sections, err := GroupSigils([]SigilCommit{
+func TestGroupDuplicates(t *testing.T) {
+	cfg := testCfg(t)
+	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Pull: 7, Author: "dependabot[bot]", Message: ":boom:! bot ships a breaking bump"},
 	}, cfg)
 	if err != nil {
-		t.Fatalf("GroupSigils: %v", err)
+		t.Fatalf("Group: %v", err)
 	}
 	if len(sections) != 2 || sections[0].Title != "Breaking Changes" || sections[1].Title != "Dependencies" {
 		t.Fatalf("a breaking dependabot commit must land in both its semver and its author section, got %+v", sections)
@@ -73,30 +73,30 @@ func TestGroupSigilsDuplicates(t *testing.T) {
 	}
 }
 
-// TestGroupSigilsSkipIsTotal asserts what separates skip from
+// TestGroupSkipIsTotal asserts what separates skip from
 // exclude_authors: a skip-pattern commit is in NO section, even one whose
 // author filter would catch it.
-func TestGroupSigilsSkipIsTotal(t *testing.T) {
-	cfg := sigilCfg(t)
-	sections, err := GroupSigils([]SigilCommit{
+func TestGroupSkipIsTotal(t *testing.T) {
+	cfg := testCfg(t)
+	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Author: "dependabot[bot]", Message: "Merge pull request #9 from x"},
 	}, cfg)
 	if err != nil {
-		t.Fatalf("GroupSigils: %v", err)
+		t.Fatalf("Group: %v", err)
 	}
 	if len(sections) != 0 {
 		t.Fatalf("a skip-pattern commit must appear in no section, got %+v", sections)
 	}
 }
 
-func TestGroupSigilsPropagatesConfigBug(t *testing.T) {
+func TestGroupPropagatesConfigBug(t *testing.T) {
 	cfg, err := config.Load([]byte("schema = 1\n[[patterns]]\npattern = '^(?P<semver_sigil>.) (?P<subject>.+)'\n[note]\nline = '- $subject'\n"))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	_, err = GroupSigils([]SigilCommit{{SHA: "abc9", Author: "akira", Message: "z boom"}}, cfg)
+	_, err = Group([]Commit{{SHA: "abc9", Author: "akira", Message: "z boom"}}, cfg)
 	if err == nil {
-		t.Fatalf("GroupSigils accepted an unparseable sigil capture")
+		t.Fatalf("Group accepted an unparseable sigil capture")
 	}
 	if ce, ok := errors.AsType[*core.Error](err); !ok || ce.Code != core.CodeLint {
 		t.Fatalf("err = %v, want *core.Error with CodeLint", err)
@@ -116,12 +116,12 @@ title = "Fixes"
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	sections, err := GroupSigils([]SigilCommit{
+	sections, err := Group([]Commit{
 		{SHA: "0123456789abcdef", Pull: 42, Author: "akira", Message: "(cli) ~ fix the thing"},
 		{SHA: "fedcba9876543210", Pull: 0, Author: "akira", Message: "~ fix without scope or pull"},
 	}, cfg)
 	if err != nil {
-		t.Fatalf("GroupSigils: %v", err)
+		t.Fatalf("Group: %v", err)
 	}
 	if len(sections) != 1 || len(sections[0].Lines) != 2 {
 		t.Fatalf("sections = %+v", sections)
@@ -149,13 +149,13 @@ title = "Fixes"
 // with the parens around an empty $pr, for every commit that reached main
 // without a merged pull — which is every commit the --range walk sees.
 func TestRenderLineOptionalSpan(t *testing.T) {
-	cfg := sigilCfg(t)
-	sections, err := GroupSigils([]SigilCommit{
+	cfg := testCfg(t)
+	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Pull: 61, Author: "akira-toriyama", Login: "akira-toriyama", Message: ":bug:~ fix the demo crash"},
 		{SHA: "bbbbbbbbbbbb", Pull: 0, Author: "akira-toriyama", Login: "akira-toriyama", Message: ":bug:~ fix it again by direct push"},
 	}, cfg)
 	if err != nil {
-		t.Fatalf("GroupSigils: %v", err)
+		t.Fatalf("Group: %v", err)
 	}
 	if len(sections) != 1 || len(sections[0].Lines) != 2 {
 		t.Fatalf("sections = %+v", sections)
@@ -168,7 +168,7 @@ func TestRenderLineOptionalSpan(t *testing.T) {
 	}
 }
 
-// TestGroupSigilsMultiCommitPullRepeatsTheCitation pins, for the first time,
+// TestGroupMultiCommitPullRepeatsTheCitation pins, for the first time,
 // what a multi-commit pull looks like in the notes: one line PER COMMIT, each
 // citing the SAME (#N). This is the mechanical consequence of renderLine
 // binding $pr per commit, and until t-njmw nothing asserted it — the shape
@@ -176,15 +176,15 @@ func TestRenderLineOptionalSpan(t *testing.T) {
 // noticing. Whether the repetition is the *right* rendering is a separate,
 // unratified question; this test freezes the current answer so a change to it
 // has to be a decision.
-func TestGroupSigilsMultiCommitPullRepeatsTheCitation(t *testing.T) {
-	cfg := sigilCfg(t)
-	sections, err := GroupSigils([]SigilCommit{
+func TestGroupMultiCommitPullRepeatsTheCitation(t *testing.T) {
+	cfg := testCfg(t)
+	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Pull: 61, Author: "akira", Login: "akira", Message: ":bug:~ fix the first thing"},
 		{SHA: "bbbbbbbbbbbb", Pull: 61, Author: "akira", Login: "akira", Message: ":bug:~ fix the second thing"},
 		{SHA: "cccccccccccc", Pull: 61, Author: "akira", Login: "akira", Message: ":bug:~ fix the third thing"},
 	}, cfg)
 	if err != nil {
-		t.Fatalf("GroupSigils: %v", err)
+		t.Fatalf("Group: %v", err)
 	}
 	if len(sections) != 1 || len(sections[0].Lines) != 3 {
 		t.Fatalf("sections = %+v, want one Fixes section with three lines", sections)
@@ -218,12 +218,12 @@ title = "Fixes"
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	sections, err := GroupSigils([]SigilCommit{
+	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Pull: 61, Author: "akira", Message: "~ #999 fix the thing"},
 		{SHA: "bbbbbbbbbbbb", Pull: 0, Author: "akira", Message: "~ #999 fix the other thing"},
 	}, cfg)
 	if err != nil {
-		t.Fatalf("GroupSigils: %v", err)
+		t.Fatalf("Group: %v", err)
 	}
 	if got, want := sections[0].Lines[0], "- fix the thing (#61)"; got != want {
 		t.Errorf("the built-in $pr must outrank the pattern group of the same name: got %q, want %q", got, want)
@@ -240,12 +240,12 @@ title = "Fixes"
 // out as a live mention. Crediting the contributor is the point; the subject's
 // strangers are not.
 func TestRenderLineNeutralizesMentions(t *testing.T) {
-	cfg := sigilCfg(t)
-	sections, err := GroupSigils([]SigilCommit{
+	cfg := testCfg(t)
+	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Pull: 1, Author: "akira", Login: "akira", Message: ":bug:~ thank @someone for the report"},
 	}, cfg)
 	if err != nil {
-		t.Fatalf("GroupSigils: %v", err)
+		t.Fatalf("Group: %v", err)
 	}
 	line := sections[0].Lines[0]
 	if strings.Contains(line, "@someone") && !strings.Contains(line, "`@someone`") {
@@ -299,13 +299,13 @@ title = "Fixes"
 		// '-' is never escaped, so a kebab scope is byte-identical.
 		{`:bug:(grid-1f-4)~ fix it`, `- **grid-1f-4:** fix it`},
 	}
-	commits := make([]SigilCommit, 0, len(cases))
+	commits := make([]Commit, 0, len(cases))
 	for _, c := range cases {
-		commits = append(commits, SigilCommit{SHA: "aaaaaaaaaaaa", Author: "akira", Message: c.message})
+		commits = append(commits, Commit{SHA: "aaaaaaaaaaaa", Author: "akira", Message: c.message})
 	}
-	sections, err := GroupSigils(commits, cfg)
+	sections, err := Group(commits, cfg)
 	if err != nil {
-		t.Fatalf("GroupSigils: %v", err)
+		t.Fatalf("Group: %v", err)
 	}
 	if len(sections) != 1 || len(sections[0].Lines) != len(cases) {
 		t.Fatalf("sections = %+v, want one Fixes section with %d lines", sections, len(cases))
@@ -326,7 +326,7 @@ title = "Fixes"
 // make; "Akira Toriyama" would otherwise page @Akira, the t-hykw failure the
 // fence exists for (mutation row author-credit-goes-live-by-shape).
 func TestRenderLineCreditsByIdentityNotShape(t *testing.T) {
-	cfg := sigilCfg(t)
+	cfg := testCfg(t)
 	for _, tc := range []struct{ author, login, want string }{
 		{"Saleh", "larrasket", "- :bug:~ fix a thing (#1) @larrasket"},
 		{"Saleh", "", "- :bug:~ fix a thing (#1) Saleh"},
@@ -334,11 +334,11 @@ func TestRenderLineCreditsByIdentityNotShape(t *testing.T) {
 		{"Robert Pająk", "", "- :bug:~ fix a thing (#1) Robert Pająk"},
 		{"dependabot[bot]", "dependabot[bot]", `- :bug:~ fix a thing (#1) dependabot\[bot]`},
 	} {
-		sections, err := GroupSigils([]SigilCommit{
+		sections, err := Group([]Commit{
 			{SHA: "aaaaaaaaaaaa", Pull: 1, Author: tc.author, Login: tc.login, Message: ":bug:~ fix a thing"},
 		}, cfg)
 		if err != nil {
-			t.Fatalf("GroupSigils: %v", err)
+			t.Fatalf("Group: %v", err)
 		}
 		if got := sections[0].Lines[0]; got != tc.want {
 			t.Errorf("author %q login %q:\n got %q\nwant %q", tc.author, tc.login, got, tc.want)
@@ -346,33 +346,33 @@ func TestRenderLineCreditsByIdentityNotShape(t *testing.T) {
 	}
 }
 
-func TestRenderSigils(t *testing.T) {
-	got := RenderSigils([]SigilSection{
+func TestRender(t *testing.T) {
+	got := Render([]Section{
 		{Title: "Breaking Changes", Lines: []string{"- one", "- two"}},
 		{Title: "Fixes", Lines: []string{"- three"}},
 	})
 	want := "## Breaking Changes\n\n- one\n- two\n\n## Fixes\n\n- three\n"
 	if got != want {
-		t.Errorf("RenderSigils = %q, want %q", got, want)
+		t.Errorf("Render = %q, want %q", got, want)
 	}
-	if RenderSigils(nil) != "" {
+	if Render(nil) != "" {
 		t.Errorf("no sections must render to the empty string")
 	}
 }
 
-// TestGroupSigilsPromoteLandsInBreaking is the standing detector for the one
+// TestGroupPromoteLandsInBreaking is the standing detector for the one
 // way a fifth level word could have been introduced without anything failing
 // to compile: a section filters on `semver = "major"`, and a promoting commit
 // that classified as anything else would simply not be written into the
 // release body — no error, no empty section, just a missing line in the notes
 // for the commit that decided the version.
-func TestGroupSigilsPromoteLandsInBreaking(t *testing.T) {
-	cfg := sigilCfg(t)
-	sections, err := GroupSigils([]SigilCommit{
+func TestGroupPromoteLandsInBreaking(t *testing.T) {
+	cfg := testCfg(t)
+	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Pull: 20, Author: "akira", Message: ":rocket:% call it 1.0"},
 	}, cfg)
 	if err != nil {
-		t.Fatalf("GroupSigils: %v", err)
+		t.Fatalf("Group: %v", err)
 	}
 	if len(sections) != 1 || sections[0].Title != "Breaking Changes" {
 		t.Fatalf("sections = %+v, want one Breaking Changes section", sections)
@@ -408,13 +408,13 @@ title = "Fixes"
 		t.Fatalf("Load: %v", err)
 	}
 
-	sections, err := GroupSigils([]SigilCommit{
+	sections, err := Group([]Commit{
 		{SHA: "0123456789abcdef", Author: "akira", Message: "~ round the pack up\n\nbody.\n\nWhy: not ^ — the surface golden did not move\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>"},
 		{SHA: "fedcba9876543210", Author: "akira", Message: "~ a commit that argues nothing"},
 		{SHA: "aaaabbbbccccdddd", Author: "akira", Message: "~ two hands\n\nbody.\n\nCo-authored-by: A B <a@b.c>\nCo-authored-by: C D <c@d.e>"},
 	}, cfg)
 	if err != nil {
-		t.Fatalf("GroupSigils: %v", err)
+		t.Fatalf("Group: %v", err)
 	}
 	if len(sections) != 1 || len(sections[0].Lines) != 3 {
 		t.Fatalf("sections = %+v", sections)
@@ -453,11 +453,11 @@ title = "Fixes"
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	sections, err := GroupSigils([]SigilCommit{
+	sections, err := Group([]Commit{
 		{SHA: "0123456789abcdef", Author: "akira", Message: "~ a fix\n\nbody.\n\nCo-authored-by: @octocat <p@q.r>"},
 	}, cfg)
 	if err != nil {
-		t.Fatalf("GroupSigils: %v", err)
+		t.Fatalf("Group: %v", err)
 	}
 	got := sections[0].Lines[0]
 	if strings.Contains(got, "@octocat") && !strings.Contains(got, "`@octocat`") {
@@ -465,14 +465,14 @@ title = "Fixes"
 	}
 }
 
-// TestGroupSigilsRendersUnlandableAsUnclaimed: the notes read an unlandable
+// TestGroupRendersUnlandableAsUnclaimed: the notes read an unlandable
 // message the way they read one no pattern claims — the raw-line fallback, in
 // author sections only — never as a refusal. The notes do not consult
 // exclude_authors (the sections decide), so a refusal here would fail notes,
 // release and preview over a bot's amend! that bump and lint both exclude.
 // Refusing belongs to the fold, which runs first wherever a release is
 // decided.
-func TestGroupSigilsRendersUnlandableAsUnclaimed(t *testing.T) {
+func TestGroupRendersUnlandableAsUnclaimed(t *testing.T) {
 	cfg, err := config.Load([]byte(`schema = 1
 exclude_authors = ['dependabot[bot]']
 
@@ -497,13 +497,13 @@ title = 'Dependencies'
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	sections, err := GroupSigils([]SigilCommit{
+	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Author: "akira", Message: ":bug:~ fix b"},
 		{SHA: "bbbbbbbbbbbb", Author: "akira", Message: "amend! :bug:~ fix b\n\n:boom:! fix b\n"},
 		{SHA: "cccccccccccc", Author: "dependabot[bot]", Message: "amend! Bump x from 1 to 2"},
 	}, cfg)
 	if err != nil {
-		t.Fatalf("GroupSigils refused an unlandable message: %v", err)
+		t.Fatalf("Group refused an unlandable message: %v", err)
 	}
 	got := map[string][]string{}
 	for _, s := range sections {
@@ -517,13 +517,13 @@ title = 'Dependencies'
 	}
 }
 
-// TestGroupSigilsFallbackBindsSubjectUnderAnyGrammar: the raw-line fallback
+// TestGroupFallbackBindsSubjectUnderAnyGrammar: the raw-line fallback
 // binds $subject whatever the patterns call their groups (DESIGN §3), so a
 // file whose subject group is `title` renders its bot lines by citing both —
 // each line fills whichever name its commit binds. Before the loader counted
 // the fallback's name, this file did not load, and the one it could write,
 // `- $title`, rendered the bot line with no text.
-func TestGroupSigilsFallbackBindsSubjectUnderAnyGrammar(t *testing.T) {
+func TestGroupFallbackBindsSubjectUnderAnyGrammar(t *testing.T) {
 	cfg, err := config.Load([]byte(`schema = 1
 exclude_authors = ['dependabot[bot]']
 
@@ -544,12 +544,12 @@ title = 'Dependencies'
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	sections, err := GroupSigils([]SigilCommit{
+	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Author: "akira", Message: ":bug:~ fix b"},
 		{SHA: "bbbbbbbbbbbb", Author: "dependabot[bot]", Message: "Bump x from 1 to 2"},
 	}, cfg)
 	if err != nil {
-		t.Fatalf("GroupSigils: %v", err)
+		t.Fatalf("Group: %v", err)
 	}
 	got := map[string][]string{}
 	for _, s := range sections {

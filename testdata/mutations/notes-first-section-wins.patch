@@ -1,14 +1,14 @@
-diff --git a/internal/notes/sigil.go b/internal/notes/sigil.go
-index cd2be67..fb771d0 100644
---- a/internal/notes/sigil.go
-+++ b/internal/notes/sigil.go
-@@ -81,17 +81,23 @@ func GroupSigils(commits []SigilCommit, cfg *config.Config) ([]SigilSection, err
+diff --git a/internal/notes/notes.go b/internal/notes/notes.go
+index 302f6a2..538279f 100644
+--- a/internal/notes/notes.go
++++ b/internal/notes/notes.go
+@@ -76,17 +76,23 @@ func Group(commits []Commit, cfg *config.Config) ([]Section, error) {
  	}
  
- 	sections := make([]SigilSection, 0, len(cfg.Note.Sections))
+ 	sections := make([]Section, 0, len(cfg.Note.Sections))
 +	placed := make(map[string]bool)
  	for _, s := range cfg.Note.Sections {
- 		out := SigilSection{Title: s.Title}
+ 		out := Section{Title: s.Title}
  		for _, j := range js {
 +			if placed[j.c.SHA] {
 +				continue

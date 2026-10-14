@@ -23,7 +23,7 @@ import (
 // byte-identical (mutation row packages-absent-changes-the-single-line).
 //
 // Layer contract: nothing here judges a message (config.Match does), folds
-// (bump.FoldSigils does) or decides which package a diff belongs to
+// (bump.Fold does) or decides which package a diff belongs to
 // (attribution.Attribute does). It resolves lines, fetches the files the
 // attribution needs from the cheapest source that has them, and intersects
 // two answers — which lines a commit is UNRELEASED on and which lines its

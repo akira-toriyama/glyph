@@ -1,9 +1,9 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 23141f2..48afd82 100644
+index cb04669..4c02bcd 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -517,7 +517,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
- func newReleaseResult(cfg *config.Config, w sinceTagWalk, rows []bump.SigilVerdict, verdicts []packageRelease, target string, drafted bool, moving int) releaseResult {
+@@ -526,7 +526,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ func newReleaseResult(cfg *config.Config, w sinceTagWalk, rows []bump.Row, verdicts []packageRelease, target string, drafted bool, moving int) releaseResult {
  	res := releaseResult{Commits: rows, Pulls: w.Facts.Pulls}
  	if drafted {
 -		res.Target = target

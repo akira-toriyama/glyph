@@ -1,7 +1,8 @@
-diff --git a/internal/notes/sigil.go b/internal/notes/sigil.go
---- a/internal/notes/sigil.go
-+++ b/internal/notes/sigil.go
-@@ -148,11 +148,7 @@
+diff --git a/internal/notes/notes.go b/internal/notes/notes.go
+index 302f6a2..88971d6 100644
+--- a/internal/notes/notes.go
++++ b/internal/notes/notes.go
+@@ -172,11 +172,7 @@ func renderLine(spans []config.LineSpan, declared []config.NoteTrailer, c Commit
  // not any: a span carries one piece of punctuation around its placeholders,
  // so a partly-resolved span renders that punctuation around a hole.
  func allResolve(span config.LineSpan, resolve func(string) string) bool {

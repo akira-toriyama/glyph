@@ -421,7 +421,7 @@ func releasesHEADHolds(ctx context.Context) ([]string, error) {
 // merged pull request it was expanded from (0 on the fallback path) and
 // whether its SHA is a *landed* identity (glossary) — a commit the released
 // branch actually holds. The two downstream consumers read different halves:
-// classification reads the bare gitsource.RawCommit (walkedSigilCommits), the
+// classification reads the bare gitsource.RawCommit (walkedBumpCommits), the
 // notes read the citation (walkedNoteCommits) — the pull beside the sha, and
 // the pull ALONE for a footprint-less commit, whose listed sha exists on no
 // branch and used to be published anyway (t-xxhj: a body citing shas
@@ -438,14 +438,14 @@ type walked struct {
 	MergePoint string
 }
 
-// walkedSigilCommits strips the provenance for the fold: FoldSigils reads
+// walkedBumpCommits strips the provenance for the fold: bump.Fold reads
 // commits, not citations.
-func walkedSigilCommits(ws []walked) []bump.SigilCommit {
+func walkedBumpCommits(ws []walked) []bump.Commit {
 	raws := make([]gitsource.RawCommit, 0, len(ws))
 	for _, w := range ws {
 		raws = append(raws, w.Raw)
 	}
-	return sigilCommits(raws)
+	return bumpCommits(raws)
 }
 
 // walkedNoteCommits hands the fold to the notes with its citation: the pull
@@ -454,14 +454,14 @@ func walkedSigilCommits(ws []walked) []bump.SigilCommit {
 // listed shas no branch holds. Blanked HERE, where DESIGN §4's arms are a
 // known fact, because internal/notes renders what it is given and holds no
 // arm knowledge.
-func walkedNoteCommits(ws []walked) []notes.SigilCommit {
-	out := make([]notes.SigilCommit, 0, len(ws))
+func walkedNoteCommits(ws []walked) []notes.Commit {
+	out := make([]notes.Commit, 0, len(ws))
 	for _, w := range ws {
 		sha := w.Raw.SHA
 		if w.Pull > 0 && !w.Landed {
 			sha = ""
 		}
-		out = append(out, notes.SigilCommit{SHA: sha, Pull: w.Pull, Author: w.Raw.Author, Login: identity(w.Raw), Message: w.Raw.Message})
+		out = append(out, notes.Commit{SHA: sha, Pull: w.Pull, Author: w.Raw.Author, Login: identity(w.Raw), Message: w.Raw.Message})
 	}
 	return out
 }

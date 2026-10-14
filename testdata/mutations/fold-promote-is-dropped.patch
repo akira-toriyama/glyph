@@ -1,0 +1,12 @@
+diff --git a/internal/bump/fold.go b/internal/bump/fold.go
+index bfdbd50..e4f68a0 100644
+--- a/internal/bump/fold.go
++++ b/internal/bump/fold.go
+@@ -121,7 +121,6 @@ func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
+ 			continue
+ 		}
+ 		level := LevelOf(m.Sigil)
+-		promote = promote || m.Sigil == config.SigilPromote
+ 		levels = append(levels, level)
+ 		rows = append(rows, Row{
+ 			SHA:     c.SHA,

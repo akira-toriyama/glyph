@@ -119,7 +119,7 @@ exists to resolve. `internal/bump/level.go: reduce`
 
 **participate** — a commit participates when the fold reads it: not an
 `exclude_authors` author, matched, not claimed by a skip pattern — exactly the
-rows `FoldSigils` returns
+rows `bump.Fold` returns
 ([DESIGN §4.1](DESIGN.md#41-packages--independently-versioned-lines-in-one-repository),
 "The fold, the step, the exit"). An excluded commit is *skipped, never a
 violation*; a message no pattern claims is no participant either — it refuses
@@ -138,7 +138,7 @@ pattern drops it after — and governs lint, the fold and the fallback path; the
 resolution side asks "can this commit on main **point at** a merged pull
 request?" and takes the **author alone** — a merge point's subject and parent
 count are how GitHub *shapes a pointer*, not evidence about it.
-`internal/bump/sigilfold.go: FoldSigils`, `internal/cli/sincetag.go: walkSince`
+`internal/bump/fold.go: Fold`, `internal/cli/sincetag.go: walkSince`
 (the resolution gate)
 
 **merge point** — whatever commit GitHub named `merge_commit_sha` for a pull
@@ -413,7 +413,7 @@ the folded level and the reason (plus tag, target, body and action for `release`
 `release` computes it **once** and derives both the version and the notes from
 that single commit set — calling `bump` and `notes` separately walks twice, and a
 merge landing between the walks could version one range and describe another.
-`internal/bump/sigilfold.go: FoldSigils`, `internal/cli/cmd_release.go:
+`internal/bump/fold.go: Fold`, `internal/cli/cmd_release.go:
 releaseResult`
 
 **level** — a rung of the bump lattice for one commit or one fold (`none`,
@@ -440,7 +440,7 @@ or the pull's name — what bump's and release's per-line reasons name),
 `internal/cli/pr.go: pullInput`
 
 **reason** — the one-line answer to "why this bump": the **oldest** commit that
-reaches the folded level. `internal/bump/sigilfold.go: DecidingReason`
+reaches the folded level. `internal/bump/fold.go: DecidingReason`
 
 **target** — `target_commitish`: the sha the draft's eventual tag will point at,
 defaulting to the checkout's HEAD. No tag exists until a human publishes. The
@@ -566,7 +566,7 @@ decides the version. `internal/emoji/table.json`, `internal/emoji/emoji.go: Entr
 `^` minor / `!` major / `%` promote, read from the `semver_sigil` capture (or
 a pattern's fixed value). The alphabet and its meaning are fixed in the
 binary; where the sigil sits is the pattern's decision.
-`internal/config/config.go: Sigil`, `internal/bump/sigilfold.go: SigilLevel`
+`internal/config/config.go: Sigil`, `internal/bump/fold.go: LevelOf`
 
 **promote** — what `%` asks for: the version `v1.0.0` rather than a distance
 from the current one. It is not a rung — a `%` commit classifies as *major*
@@ -587,13 +587,13 @@ order. `internal/bump/level.go: Level, reduce`
 one axis (`semver` or `author`). Config order is render order; a commit lands
 in every section whose filter matches it; empty sections are omitted; whether
 a commit appears in the notes at all is the sections' decision alone.
-`internal/config/config.go: Section`, `internal/notes/sigil.go: GroupSigils`
+`internal/config/config.go: Section`, `internal/notes/notes.go: Group`
 
 **excluded author** — an `exclude_authors` entry: its commits leave lint and
 the fold before matching (the key exists for bots, whose messages the
 patterns do not describe) and skip release-walk resolution, but still reach
 the notes machinery — the sections decide. Distinguish from *skip*, which
-is total. `internal/bump/sigilfold.go: FoldSigils`
+is total. `internal/bump/fold.go: Fold`
 
 **cleanup** — the reduction of a raw commit-message **file** (what git hands a
 commit-msg hook, still holding the editor template, the status block and, under
@@ -657,7 +657,7 @@ assembled inline context** and of no single field in it — which is why the fen
 runs last, over the assembled line: escaping fields separately sized the
 subject's fence against the subject alone, and a backtick carried by the *scope*
 stole it, producing a live mention out of a commit that lints clean today.
-`internal/notes/sigil.go: renderLine`, `internal/preview/preview.go: escapeCell`
+`internal/notes/notes.go: renderLine`, `internal/preview/preview.go: escapeCell`
 
 **phantom span** — a code span glyph's backtick-only scanner believes in that
 GitHub does **not** form, because some construct parsed earlier ate a backtick: a

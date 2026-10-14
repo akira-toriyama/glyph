@@ -1,8 +1,8 @@
-diff --git a/internal/bump/sigilfold.go b/internal/bump/sigilfold.go
-index ecf8280..081ba77 100644
---- a/internal/bump/sigilfold.go
-+++ b/internal/bump/sigilfold.go
-@@ -65,7 +65,7 @@ type SigilVerdict struct {
+diff --git a/internal/bump/fold.go b/internal/bump/fold.go
+index bfdbd50..6fd5b62 100644
+--- a/internal/bump/fold.go
++++ b/internal/bump/fold.go
+@@ -65,7 +65,7 @@ type Row struct {
  // unreadable commit answered a three-commit cleanup with three separate red
  // runs (measured — the caller re-ran lint in a loop to find the rest).
  type Refusal struct {

@@ -1,8 +1,8 @@
-diff --git a/internal/notes/sigil.go b/internal/notes/sigil.go
-index c2cd6ab..ab72c40 100644
---- a/internal/notes/sigil.go
-+++ b/internal/notes/sigil.go
-@@ -147,7 +147,7 @@ func renderLine(spans []config.LineSpan, c SigilCommit, groups map[string]string
+diff --git a/internal/notes/notes.go b/internal/notes/notes.go
+index 302f6a2..b1ae4fb 100644
+--- a/internal/notes/notes.go
++++ b/internal/notes/notes.go
+@@ -157,7 +157,7 @@ func renderLine(spans []config.LineSpan, declared []config.NoteTrailer, c Commit
  		for _, p := range span.Parts {
  			switch {
  			case p.Placeholder && p.Text == config.BuiltinAuthor:

@@ -358,7 +358,7 @@ func TestPreviewPackagesCountsWhatTheFoldReads(t *testing.T) {
 }
 
 // TestPreviewPackagesWarnsEveryParticipatingCommitOnce: a pattern's warning
-// follows its commit into every command that folds it (warnSigilVerdicts: loud
+// follows its commit into every command that folds it (warnBumpRows: loud
 // in one and silent in another is how a warning dies). The packages preview
 // warned per touched line, so a warned commit on NO line was silent here while
 // the single line's preview said it — measured on 4a8183b: no warning against

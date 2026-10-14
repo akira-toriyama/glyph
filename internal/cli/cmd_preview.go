@@ -157,11 +157,11 @@ func previewRun(ctx context.Context, o previewOptions) error {
 	// where one was (t-rrw0) — and each row's pattern warning is said here,
 	// once: said per touched line, a warned commit on no line was silent while
 	// bump said it, and one on two lines was said twice.
-	rows, _, err := bump.FoldSigils(sigilCommits(raws), cfg)
+	rows, _, err := bump.Fold(bumpCommits(raws), cfg)
 	if err != nil {
 		return err
 	}
-	warnSigilVerdicts(rows)
+	warnBumpRows(rows)
 	if err := foldTouched(ctx, cfg, touched); err != nil {
 		return err
 	}
@@ -180,12 +180,12 @@ func previewRun(ctx context.Context, o previewOptions) error {
 		}
 		n := ""
 		if o.notes {
-			sections, err := notes.GroupSigils(noteCommits(tl.commits, o.pr), cfg)
+			sections, err := notes.Group(noteCommits(tl.commits, o.pr), cfg)
 			if err != nil {
 				return err
 			}
 			if len(sections) > 0 {
-				n = notes.RenderSigils(sections)
+				n = notes.Render(sections)
 			}
 		}
 		lines, verdicts, lineNotes = append(lines, p), append(verdicts, pv), append(lineNotes, n)
@@ -230,7 +230,7 @@ func previewRun(ctx context.Context, o previewOptions) error {
 type touchedLine struct {
 	line
 	commits []gitsource.RawCommit
-	rows    []bump.SigilVerdict
+	rows    []bump.Row
 	pr      bump.Decision
 	tag     string
 	current bump.Version
@@ -309,7 +309,7 @@ func attributePull(ctx context.Context, gh *github.Client, cfg *config.Config, o
 func foldTouched(ctx context.Context, cfg *config.Config, touched []touchedLine) error {
 	for i := range touched {
 		tl := &touched[i]
-		rows, dec, err := bump.FoldSigils(sigilCommits(tl.commits), cfg)
+		rows, dec, err := bump.Fold(bumpCommits(tl.commits), cfg)
 		if err != nil {
 			return err
 		}
@@ -368,14 +368,14 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
 	// The union once, as bump folds it, and for the pull's reason (previewRun):
 	// warned per walked line, a merged warned commit on no line was silent and
 	// one on two lines was said twice.
-	rows, _, err := bump.FoldSigils(walkedSigilCommits(w.All), cfg)
+	rows, _, err := bump.Fold(walkedBumpCommits(w.All), cfg)
 	if err != nil {
 		return nil, "", false, err
 	}
-	warnSigilVerdicts(rows)
+	warnBumpRows(rows)
 	pending := make(map[string]bump.Decision, len(w.Lines))
 	for _, lw := range w.Lines {
-		_, dec, err := bump.FoldSigils(walkedSigilCommits(lw.Commits), cfg)
+		_, dec, err := bump.Fold(walkedBumpCommits(lw.Commits), cfg)
 		if err != nil {
 			return nil, "", false, err
 		}
@@ -445,7 +445,7 @@ func lineVerdict(tl touchedLine, pending bump.Decision, pendingWalked bool) (pre
 // offLine counts the participating commits no touched line holds — a
 // shared-only =, or a commit whose refusal was withheld — which no table
 // shows, so the packages footer says how many there are.
-func offLine(rows []bump.SigilVerdict, touched []touchedLine) int {
+func offLine(rows []bump.Row, touched []touchedLine) int {
 	onLine := map[string]bool{}
 	for _, tl := range touched {
 		for _, r := range tl.commits {
@@ -484,9 +484,9 @@ func orNone(b bump.Level) bump.Level {
 }
 
 // previewCommits maps the shared verdict rows onto the render's own type. The
-// two are deliberately separate: bump.SigilVerdict is a JSON surface other
+// two are deliberately separate: bump.Row is a JSON surface other
 // commands publish, and preview must be free to show a column it does not.
-func previewCommits(cs []bump.SigilVerdict) []preview.Commit {
+func previewCommits(cs []bump.Row) []preview.Commit {
 	out := make([]preview.Commit, 0, len(cs))
 	for _, c := range cs {
 		out = append(out, preview.Commit{

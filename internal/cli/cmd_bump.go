@@ -14,7 +14,7 @@ import (
 // bumpResult is the machine verdict: {current, level, next, commits, reason}
 // — plus packages when the repository declares [[packages]].
 // next is omitted on a none verdict — there is no next version to act on.
-// The commit rows are bump.SigilVerdict — the v1 "code" and "breaking" keys
+// The commit rows are bump.Row — the v1 "code" and "breaking" keys
 // died with the embedded table; the sigil IS the classification input now.
 //
 // With packages declared current / level are EMPTY, next is absent, and
@@ -25,24 +25,24 @@ import (
 // lists every participating commit — the fold's rows over the whole walk, a
 // shared-only = among them, in no line (DESIGN §4.1).
 type bumpResult struct {
-	Current  string              `json:"current"`
-	Level    string              `json:"level"`
-	Next     string              `json:"next,omitempty"`
-	Commits  []bump.SigilVerdict `json:"commits"`
-	Packages []packageVerdict    `json:"packages,omitempty"`
-	Reason   string              `json:"reason"`
+	Current  string           `json:"current"`
+	Level    string           `json:"level"`
+	Next     string           `json:"next,omitempty"`
+	Commits  []bump.Row       `json:"commits"`
+	Packages []packageVerdict `json:"packages,omitempty"`
+	Reason   string           `json:"reason"`
 }
 
 // packageVerdict is one line's verdict inside bumpResult.packages: the
 // package's path (the line's name), what the line steps from, how far, to
 // what, the commits that participate in the line, and why.
 type packageVerdict struct {
-	Path    string              `json:"path"`
-	Current string              `json:"current"`
-	Level   string              `json:"level"`
-	Next    string              `json:"next,omitempty"`
-	Commits []bump.SigilVerdict `json:"commits"`
-	Reason  string              `json:"reason"`
+	Path    string     `json:"path"`
+	Current string     `json:"current"`
+	Level   string     `json:"level"`
+	Next    string     `json:"next,omitempty"`
+	Commits []bump.Row `json:"commits"`
+	Reason  string     `json:"reason"`
 }
 
 // bumpOptions is what one bump run was asked, snapshotted at RunE: the input
@@ -143,15 +143,15 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
 	// (a wrong grammar cannot hide behind a wrong tree), and a shared-only =
 	// commit — on no line — still appears in what the walk read. On the bare
 	// line the union is the line, and these rows are its rows.
-	rows, _, cerr := bump.FoldSigils(walkedSigilCommits(w.All), cfg)
+	rows, _, cerr := bump.Fold(walkedBumpCommits(w.All), cfg)
 	if cerr != nil {
 		return cerr
 	}
-	warnSigilVerdicts(rows)
+	warnBumpRows(rows)
 	var pkgs []packageVerdict
 	var reasons, tags []string
 	for _, lw := range w.Lines {
-		verdicts, dec, ferr := bump.FoldSigils(walkedSigilCommits(lw.Commits), cfg)
+		lineRows, dec, ferr := bump.Fold(walkedBumpCommits(lw.Commits), cfg)
 		if ferr != nil {
 			return ferr
 		}
@@ -159,16 +159,16 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
 		if verr != nil {
 			return verr
 		}
-		pv := packageVerdict{Path: lw.Package.Path, Current: current.String(), Level: string(dec.Level), Commits: verdicts}
+		pv := packageVerdict{Path: lw.Package.Path, Current: current.String(), Level: string(dec.Level), Commits: lineRows}
 		if dec.Level == bump.LevelNone {
-			pv.Reason = noneReason(len(verdicts), lw.Source)
+			pv.Reason = noneReason(len(lineRows), lw.Source)
 		} else {
 			next, nerr := bump.NextOn(lw.Line, current, dec)
 			if nerr != nil {
 				return nerr
 			}
 			pv.Next = next.String()
-			pv.Reason = bump.DecidingReason(verdicts, dec)
+			pv.Reason = bump.DecidingReason(lineRows, dec)
 			tags = append(tags, next.TagOn(lw.Line.Prefix))
 		}
 		reasons = append(reasons, lw.Package.Path+": "+pv.Reason)
@@ -240,12 +240,12 @@ func parseCurrent(flag string) (*bump.Version, error) {
 	return &v, nil
 }
 
-// warnSigilVerdicts surfaces each folded commit's pattern warning
+// warnBumpRows surfaces each folded commit's pattern warning
 // (config.Pattern.Warn). Every command that folds a range calls this right
-// after FoldSigils — bump, release, and both of preview's folds — because a
+// after bump.Fold — bump, release, and both of preview's folds — because a
 // warned pattern loud in one command and silent in another teaches the reader
 // that the loud one is noise, which is how a warning dies.
-func warnSigilVerdicts(commits []bump.SigilVerdict) {
+func warnBumpRows(commits []bump.Row) {
 	for _, c := range commits {
 		if c.Warn != "" {
 			warnf("commit %.7s: %s", c.SHA, c.Warn)

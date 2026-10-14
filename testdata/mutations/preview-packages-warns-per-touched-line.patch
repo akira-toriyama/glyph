@@ -1,12 +1,12 @@
 diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
-index 858b206..d6f738d 100644
+index a0fa05d..566fb5e 100644
 --- a/internal/cli/cmd_preview.go
 +++ b/internal/cli/cmd_preview.go
 @@ -161,7 +161,6 @@ func previewRun(ctx context.Context, o previewOptions) error {
  	if err != nil {
  		return err
  	}
--	warnSigilVerdicts(rows)
+-	warnBumpRows(rows)
  	if err := foldTouched(ctx, cfg, touched); err != nil {
  		return err
  	}
@@ -14,7 +14,7 @@ index 858b206..d6f738d 100644
  		if err != nil {
  			return err
  		}
-+		warnSigilVerdicts(rows)
++		warnBumpRows(rows)
  		tag, current, err := latestVersionTag(ctx, tl.Line, nil)
  		if err != nil {
  			return err
