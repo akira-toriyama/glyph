@@ -1,13 +1,11 @@
 // Package bump owns glyph's version semantics: the bump lattice, folding a
 // set of levels (max — order-independent, so squash order can never change
 // the version), stepping a version, and the sigil fold that maps a commit
-// range onto the lattice under a v2 config. It is pure — no I/O.
+// range onto the lattice. It is pure — no I/O.
 package bump
 
 // Level is a rung on the semver lattice none < patch < minor < major. It is
 // a string so it round-trips through JSON surfaces as a human-readable token.
-// It lives here — the package that owns version semantics — since v2 removed
-// the embedded rules table that used to carry it.
 type Level string
 
 const (

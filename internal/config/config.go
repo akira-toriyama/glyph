@@ -1,4 +1,4 @@
-// Package config loads and validates glyph.toml — the v2 configuration in
+// Package config loads and validates glyph.toml — the configuration in
 // which user-defined RE2 patterns decide the message grammar and the named
 // group semver_sigil is the only input to version calculation. The sigil
 // alphabet is fixed in the binary (= none / ~ patch / ^ minor / ! major /
@@ -10,12 +10,12 @@
 // is lenient: unknown schema, unknown keys and half-specified patterns are
 // errors, never clamped or ignored, because this file decides CI verdicts and
 // a silently-misread key is a silently-changed verdict — the exact hole the
-// v2 design refuses to open (no silent none). There is no Default(): a
+// design refuses to open (no silent none). There is no Default(): a
 // missing or invalid glyph.toml is the caller's fact to act on, not this
 // package's to paper over.
 //
 // Errors are plain errors on purpose, not *core.Error: which exit code a bad
-// glyph.toml maps to is the v2 CLI's contract to define at its boundary, and
+// glyph.toml maps to is the CLI's contract to define at its boundary, and
 // every error this package returns is the same class (bad config), so the
 // caller classifies by call site, never by string match.
 package config

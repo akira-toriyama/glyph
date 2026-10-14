@@ -9,10 +9,10 @@ import (
 
 func d(id int64, tag string) Draft { return Draft{ID: id, TagName: tag, Draft: true} }
 
-// TestNoneWithoutFlagIsV1 pins v1 parity: draft_on_none off, a none verdict
-// converges the draft state to "no release is due" — every managed draft is
-// stale (including a lingering placeholder), nothing is kept.
-func TestNoneWithoutFlagIsV1(t *testing.T) {
+// TestNoneWithoutFlagKeepsNoDraft pins the default: draft_on_none off, a none
+// verdict converges the draft state to "no release is due" — every managed
+// draft is stale (including a lingering placeholder), nothing is kept.
+func TestNoneWithoutFlagKeepsNoDraft(t *testing.T) {
 	p := PlanDraft(config.Line{}, bump.LevelNone, "v1.3.0", false, []Draft{d(1, "v1.2.3"), d(2, PlaceholderTag)})
 	if p.Action != ActionDelete || p.Keep != nil || len(p.Stale) != 2 {
 		t.Fatalf("plan = %+v, want delete of both managed drafts", p)
@@ -41,8 +41,8 @@ func TestNoneWithFlagMaintainsPlaceholder(t *testing.T) {
 }
 
 // TestRealVerdictRetagsThePlaceholder pins the promise's second half: when
-// the bump becomes real, the SAME draft retags to the real version — v1's
-// update-in-place, never a delete-and-recreate.
+// the bump becomes real, the SAME draft retags to the real version — an
+// update in place, never a delete-and-recreate.
 func TestRealVerdictRetagsThePlaceholder(t *testing.T) {
 	p := PlanDraft(config.Line{}, bump.LevelMinor, "v1.3.0", true, []Draft{d(7, PlaceholderTag)})
 	if p.Action != ActionUpdate || p.Keep == nil || p.Keep.ID != 7 {
@@ -73,7 +73,7 @@ func TestPlaceholderClaimedWithFlagOff(t *testing.T) {
 	}
 }
 
-// TestUnmanagedIsUntouchable pins the v1 boundary: published releases and a
+// TestUnmanagedIsUntouchable pins the boundary: published releases and a
 // human's hand-named drafts never appear in a plan, whatever the verdict.
 func TestUnmanagedIsUntouchable(t *testing.T) {
 	human := []Draft{
@@ -93,7 +93,7 @@ func TestUnmanagedIsUntouchable(t *testing.T) {
 	}
 }
 
-// TestNeverASecondDraft pins the v1 invariant surviving into v2: whatever
+// TestNeverASecondDraft pins the founding invariant: whatever
 // exists, at most one draft is kept and everything else managed is stale.
 func TestNeverASecondDraft(t *testing.T) {
 	many := []Draft{d(1, "v1.0.0"), d(2, "v1.1.0"), d(3, PlaceholderTag), d(4, "v0.9.0")}

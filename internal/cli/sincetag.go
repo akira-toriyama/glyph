@@ -942,9 +942,8 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
 			}
 			if m, merr := cfg.Match(raw.Message); merr != nil || !m.Matched || !m.Skip {
 				// A skip-pattern commit (a local git merge under the presets)
-				// is passed over in silence, as v1 skipped structural merges;
-				// every other fallback announces that a message, not a pull
-				// request, is the evidence.
+				// is passed over in silence; every other fallback announces
+				// that a message, not a pull request, is the evidence.
 				warnf("commit %.7s has no merged pull request (a direct push, or the API lagging) — reading its own message", raw.SHA)
 			}
 		}

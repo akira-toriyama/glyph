@@ -1207,11 +1207,10 @@ func TestSinceTagEmptyWalkIsNoRelease(t *testing.T) {
 	}
 }
 
-// TestSinceTagFreePrefixBangFallbackIsMajor: v2 has no code table — the
-// prefix is the author's free choice, and the ! sigil alone majors a
-// direct-push fallback commit. What v1 achieved by normalizing an unknown
-// breaking code to :boom: (never suppress a breaking marker) the sigil now
-// does by construction.
+// TestSinceTagFreePrefixBangFallbackIsMajor: no code table classifies the
+// prefix — it is the author's free choice — and the ! sigil alone majors a
+// direct-push fallback commit, so an unknown prefix can never suppress a
+// breaking marker.
 func TestSinceTagFreePrefixBangFallbackIsMajor(t *testing.T) {
 	dir, _ := testRepo(t)
 	testCommit(t, dir, "akira-toriyama", ":notarealmoji:! drop the legacy flag")

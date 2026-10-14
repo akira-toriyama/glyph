@@ -312,7 +312,7 @@ whys() { # whys <baseline-errfile> <candidate-errfile>
 # violations under the v1.0.0 candidate while being counted as agreeing. The
 # headline "10 would change" was wrong by eight.
 #
-# So the comparable thing is the FINDING SET: the commits the run reported. A v2
+# So the comparable thing is the FINDING SET: the commits the run reported. A
 # finding is one per commit and carries no rule id — its `detail` is the config's
 # own prose — so the set is keyed by sha alone. Keying it by the detail would
 # report every rewording of a refusal sentence as a moved verdict. The envelope

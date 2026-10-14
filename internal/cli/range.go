@@ -13,8 +13,8 @@ import (
 )
 
 // This file is the shared input plumbing that turns raw commits — from git or
-// the API, both spelled gitsource.RawCommit — into the shapes the v2 engine
-// reads. Which commits each of them reads, and how, is no longer decided here:
+// the API, both spelled gitsource.RawCommit — into the shapes bump, notes and
+// lint read. Which commits each of them reads, and how, is not decided here:
 // the pattern file decides, inside bump.Fold / notes.Group /
 // config.Lint, so every consumer applies identical rules by construction.
 

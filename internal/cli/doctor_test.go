@@ -659,7 +659,7 @@ func TestDoctorSquashDisabledFails(t *testing.T) {
 	}
 }
 
-// TestDoctorMissingConfigFailsAtTheLintCode pins the exit decided for the v2
+// TestDoctorMissingConfigFailsAtTheLintCode pins the exit decided for the
 // config-first invariant: an absent glyph.toml is a finding about the
 // repository — its whole gate is down, every verdict command refuses to run —
 // so doctor fails it at 3, the convention class. Not 2: doctor's invocation

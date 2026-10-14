@@ -73,7 +73,7 @@ func Git(t *testing.T, dir, author string, args ...string) string {
 }
 
 // NewRepo creates a temp repository with one root commit and returns its
-// path. The root commit carries the gemoji-preset glyph.toml — the v2 engine
+// path. The root commit carries the gemoji-preset glyph.toml — glyph
 // reads the config from the checkout's top level, so a fixture without one
 // answers every command with "not initialized".
 func NewRepo(t *testing.T) string {

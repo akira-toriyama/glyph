@@ -239,13 +239,11 @@ shortfall — never a silent patch, never exit 3 (t-kbqx, so `internal/bump`
 stays pure). A **direct push** GitHub knows is on the released branch for good,
 so an unclaimed message there is the walk's own refusal — exit 3 with the wedge
 escape at the commit itself, for every consumer of the walk, `notes` included
-(`internal/cli/sincetag.go: unclaimed, walkRefusal`). The v1
-exception here (Q10's footer/unknown-code normalization to `:boom:`) is
-superseded with the grammar that defined it: v2 normalizes nothing, and this
-path matches the commit's whole message through the pattern file like any
-other, so a breaking marker survives it exactly when a pattern yields a major
-sigil (`!` or `%`) for it — under the presets, the subject's sigil alone (a
-`BREAKING CHANGE:` footer is prose; DESIGN §4).
+(`internal/cli/sincetag.go: unclaimed, walkRefusal`). Nothing is normalized
+on this path: it matches the commit's whole message through the pattern file
+like any other, so a breaking marker survives it exactly when a pattern yields
+a major sigil (`!` or `%`) for it — under the presets, the subject's sigil
+alone (a `BREAKING CHANGE:` footer is prose; DESIGN §4).
 `internal/cli/sincetag.go: walkSince` (the fallback arm)
 
 **API lag** — GitHub answering **422** for a sha it does not know yet, which is
@@ -418,8 +416,8 @@ releaseResult`
 
 **level** — a rung of the bump lattice for one commit or one fold (`none`,
 `patch`, `minor`, `major`). Distinguish from *promote*, the OR-folded boolean
-a `%` commit sets beside the lattice (1.0.0 is named, not stepped); the v1
-breaking boolean is gone — breaking IS the major rung, and pr-verdict's
+a `%` commit sets beside the lattice (1.0.0 is named, not stepped). There is
+no separate breaking flag — breaking IS the major rung, and pr-verdict's
 `breaking` output derives from it. `internal/bump/level.go: Level, Decision`
 
 **source** — the human name of what the verdict was computed over: a revision

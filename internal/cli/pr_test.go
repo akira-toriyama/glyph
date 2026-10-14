@@ -66,7 +66,7 @@ func usePR(t *testing.T, srv *httptest.Server) {
 	t.Setenv("GITHUB_REPOSITORY", "akira-toriyama/glyph")
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
-	// The v2 engine reads glyph.toml from the checkout's top level before any
+	// glyph reads glyph.toml from the checkout's top level before any
 	// request goes out, so an API-backed test must run inside an initialized
 	// repository. Tests that build their own fixture chdir before or after
 	// this call; only when the current directory is NOT an initialized repo

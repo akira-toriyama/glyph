@@ -175,10 +175,7 @@ func shellQuote(s string) string {
 }
 
 // Kinds is every hook glyph writes, in install order. A bare
-// `glyph hook install` writes all of them. The v1 profile interpolation is
-// gone with profiles themselves: the convention lives in the repository's
-// glyph.toml, which the binary reads — the hook still carries no copy of
-// anything.
+// `glyph hook install` writes all of them.
 func Kinds() []Kind {
 	return []Kind{
 		{Name: "commit-msg", Script: commitMsgScript(), Asks: "glyph lint --stdin"},

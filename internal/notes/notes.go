@@ -10,7 +10,7 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/markdown"
 )
 
-// Commit is the slice of a commit the v2 notes read. Nothing is parsed
+// Commit is the slice of a commit the notes read. Nothing is parsed
 // here either: the pattern file decides what the message means, and Pull is
 // whatever the walk resolved (0 = none).
 type Commit struct {
@@ -21,7 +21,7 @@ type Commit struct {
 	Message string
 }
 
-// Section is one rendered v2 group: the section's own title (the user's
+// Section is one rendered group: the section's own title (the user's
 // text, rendered as they wrote it) and its fully rendered lines in commit
 // order.
 type Section struct {
@@ -189,7 +189,7 @@ func shortSHA(s string) string {
 	return s
 }
 
-// Render draws v2 sections as Markdown, mirroring the v1 body shape:
+// Render draws sections as Markdown:
 // `## title` headings in section order, lines under each, no version line
 // (the release title carries the version). No sections render to the empty
 // string; the no-release verdict is the caller's to make.

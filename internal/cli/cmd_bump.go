@@ -14,8 +14,6 @@ import (
 // bumpResult is the machine verdict: {current, level, next, commits, reason}
 // — plus packages when the repository declares [[packages]].
 // next is omitted on a none verdict — there is no next version to act on.
-// The commit rows are bump.Row — the v1 "code" and "breaking" keys
-// died with the embedded table; the sigil IS the classification input now.
 //
 // With packages declared current / level are EMPTY, next is absent, and
 // packages carries one verdict per line (DESIGN §4.1): a repository with

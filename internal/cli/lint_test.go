@@ -57,7 +57,8 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 		{
 			name: "-F: an indented comment is content in both readings",
 			// git only drops a '#' at column 0; this one stays in the body,
-			// which v2 never reads — the subject matches either way.
+			// which the gemoji pattern claiming it never reads — the subject
+			// matches either way.
 			message: ":fire:(x)= drop the thing\n\n  # why: leftover note here\n",
 			want:    0,
 		},

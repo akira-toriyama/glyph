@@ -75,7 +75,7 @@ func TestBumpRangeReturnsEveryViolation(t *testing.T) {
 }
 
 // TestBumpRangeStaysLenientAboutAuthoringRules is the control that keeps the
-// accumulation from quietly strictening the walk — v2 has no taste: a subject
+// accumulation from quietly strictening the walk — glyph has no taste: a subject
 // the pattern claims folds whatever its capitalization or punctuation; only a
 // message NO pattern claims refuses the range.
 func TestBumpRangeStaysLenientAboutAuthoringRules(t *testing.T) {

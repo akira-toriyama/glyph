@@ -9,7 +9,7 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/core"
 )
 
-// LevelOf maps a v2 sigil onto the bump lattice. The mapping is the
+// LevelOf maps a sigil onto the bump lattice. The mapping is the
 // sigil's definition (= none / ~ patch / ^ minor / ! major), fixed in the
 // binary alongside the alphabet itself.
 //
@@ -32,7 +32,7 @@ func LevelOf(s config.Sigil) Level {
 	return LevelNone
 }
 
-// Commit is the slice of a commit the v2 fold reads: nothing is parsed,
+// Commit is the slice of a commit the fold reads: nothing is parsed,
 // so there is no grammar struct — the pattern file decides what the message
 // means. Author carries whatever identity fact the walk resolved; the fold
 // compares it literally against exclude_authors.
@@ -70,11 +70,11 @@ type Refusal struct {
 	Detail  string `json:"detail"`
 }
 
-// Fold computes the release level of a commit range under a v2 config:
-// each commit's sigil via cfg.Match, folded with max over the lattice (the
-// same order-independent reduce as always, so squash order can never move
-// the version). It returns the per-commit rows beside the fold — one verdict
-// computation, so a listing can never disagree with the level it came from.
+// Fold computes the release level of a commit range: each commit's sigil via
+// cfg.Match, folded with max over the lattice (the same order-independent
+// reduce as always, so squash order can never move the version). It returns
+// the per-commit rows beside the fold — one verdict computation, so a listing
+// can never disagree with the level it came from.
 // An empty range folds to none — no release; rows is non-nil so the JSON
 // surface serializes [].
 //
@@ -91,10 +91,10 @@ type Refusal struct {
 // A non-excluded commit that no pattern claims — or that an unlandable
 // pattern claims, which Match reports the same way — refuses the WHOLE range
 // (ratified Q2): the alternative — quietly folding it as none — is a commit
-// that stops existing for versioning the moment someone's regex misses it,
-// which is the silent hole v2 exists to close. The refusal is the lint class
-// (exit 3): the range holds a message the repository's own convention cannot
-// read, which is the same verdict lint would hand that message.
+// that stops existing for versioning the moment someone's regex misses it.
+// The refusal is the lint class (exit 3): the range holds a message the
+// repository's own convention cannot read, which is the same verdict lint
+// would hand that message.
 func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
 	rows := []Row{}
 	var promote bool

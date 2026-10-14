@@ -463,7 +463,7 @@ func TestStaleHookNoticeIsSilentWhereItCannotLook(t *testing.T) {
 	t.Chdir(t.TempDir())
 	setStdin(t, ":bug:(x)~ fix a crash\n")
 	code, _, stderr := runGlyph(t, "lint", "--stdin")
-	// v2 reads glyph.toml from the checkout, so outside a repository the run
+	// glyph reads glyph.toml from the checkout, so outside a repository the run
 	// fails — but with git's own failure (4), never the violation code (3),
 	// which is the ONLY code the installed hook blocks on. The founding
 	// contract (a tool that is unwell must never stop anyone committing)
