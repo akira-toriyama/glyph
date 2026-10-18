@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -160,5 +161,73 @@ func TestSinceReadsThroughItsPorts(t *testing.T) {
 	if len(rep.lines) != 2 || !strings.HasPrefix(rep.lines[0], "warning: no version tag in HEAD's history — walking the repository's whole history") ||
 		!strings.HasSuffix(rep.lines[1], "has no merged pull request (a direct push, or the API lagging) — reading its own message") {
 		t.Errorf("reporter heard %q, want the whole-history warning and the root commit read as a direct push", rep.lines)
+	}
+}
+
+// TestSinceReadsThroughItsPortsUnderPackages reaches the port calls the bare
+// line never makes — the merge base of two lines' bases, each line's own
+// range, a landed commit's files from local git, and a typed tag's
+// existence — so that, with TestMain running the test outside any
+// repository, bypassing any one of them fails here (the bare-line test
+// covers the other nine; measured one call at a time).
+func TestSinceReadsThroughItsPortsUnderPackages(t *testing.T) {
+	dir := testutil.NewRepo(t)
+	preset, _ := config.Preset("gemoji")
+	snippet := "\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \"curry\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), append(append([]byte{}, preset...), snippet...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(append(append([]byte{}, preset...), snippet...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(rel, content string) {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, rel), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("haiku/haiku.go", "package haiku\n")
+	write("curry/curry.go", "package curry\n")
+	testGit(t, dir, "akira-toriyama", "add", ".")
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
+	testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
+	write("curry/curry.go", "package curry // spiced\n")
+	testGit(t, dir, "akira-toriyama", "add", ".")
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:(curry)^ spice the curry")
+	spice := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testGit(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
+	write("haiku/haiku.go", "package haiku // fixed\n")
+	testGit(t, dir, "akira-toriyama", "add", ".")
+	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":bug:(haiku)~ fix the haiku")
+	fix := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
+	pulls := &fakePulls{}
+	w := Walker{Git: gitsource.Checkout{Dir: dir}, Pulls: pulls, Report: &recorder{}}
+	res, err := w.Since(t.Context(), cfg, Auto, "akira-toriyama", "glyph", nil)
+	if err != nil {
+		t.Fatalf("Since over two lines: %v", err)
+	}
+	// The union starts at the bases' merge base — haiku's tag — so the spice
+	// commit is walked, unreleased on haiku's line and placed on curry's, and
+	// joins neither; the fix joins haiku alone, its files read from git.
+	if len(res.Lines) != 2 || len(res.Lines[0].Commits) != 1 || res.Lines[0].Commits[0].Raw.SHA != fix || len(res.Lines[1].Commits) != 0 {
+		t.Fatalf("lines = %+v, want the fix on haiku and nothing on curry", res.Lines)
+	}
+	if len(res.All) != 2 || res.All[0].Raw.SHA != spice || !res.Facts.Complete() {
+		t.Errorf("all = %d commit(s), facts %+v; want the spice and the fix, complete", len(res.All), res.Facts)
+	}
+	if want := []string{"pulls:" + spice, "pulls:" + fix}; strings.Join(pulls.asked, " ") != strings.Join(want, " ") {
+		t.Errorf("requests = %q, want each direct push resolved once and no file asked (both are landed)", pulls.asked)
+	}
+
+	one, err := w.Since(t.Context(), cfg, "haiku/v0.1.0", "akira-toriyama", "glyph", nil)
+	if err != nil {
+		t.Fatalf("Since from a typed tag: %v", err)
+	}
+	if len(one.Lines) != 1 || one.Lines[0].Package.Path != "haiku" || one.Lines[0].BaseTag != "haiku/v0.1.0" || len(one.Lines[0].Commits) != 1 {
+		t.Errorf("a typed tag names its line alone with the tag as its base: got %+v", one.Lines)
 	}
 }
