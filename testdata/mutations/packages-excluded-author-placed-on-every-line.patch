@@ -1,13 +1,13 @@
-diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index 29913d7..5a8eec0 100644
---- a/internal/cli/lines.go
-+++ b/internal/cli/lines.go
-@@ -337,7 +337,7 @@ func readingOf(m config.Match) reading {
+diff --git a/internal/walk/partition.go b/internal/walk/partition.go
+index 6d457c4..623142b 100644
+--- a/internal/walk/partition.go
++++ b/internal/walk/partition.go
+@@ -58,7 +58,7 @@ func ReadingOf(m config.Match) Reading {
  // nowhere, the shape rule 3 gives a shared-only `=`).
- func placeOf(cfg *config.Config, raw gitsource.RawCommit) (placement, reading) {
+ func PlaceOf(cfg *config.Config, raw gitsource.RawCommit) (Place, Reading) {
  	if slices.Contains(cfg.ExcludeAuthors, raw.Author) {
--		return placedByFiles, unjudged
-+		return placedEverywhere, unjudged
+-		return PlacedByFiles, unjudged
++		return PlacedEverywhere, unjudged
  	}
  	m, err := cfg.Match(raw.Message)
  	if err != nil || !m.Matched {

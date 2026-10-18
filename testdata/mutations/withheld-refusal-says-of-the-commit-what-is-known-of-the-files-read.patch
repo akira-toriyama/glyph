@@ -1,8 +1,8 @@
-diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index c3f4b04..ed90aa6 100644
---- a/internal/cli/lines.go
-+++ b/internal/cli/lines.go
-@@ -392,7 +392,7 @@ func attribute(cfg *config.Config, raw gitsource.RawCommit, said reading, files
+diff --git a/internal/walk/partition.go b/internal/walk/partition.go
+index 6d457c4..2485d66 100644
+--- a/internal/walk/partition.go
++++ b/internal/walk/partition.go
+@@ -89,7 +89,7 @@ func Attribute(cfg *config.Config, raw gitsource.RawCommit, said Reading, files
  	moved, err := attribution.Attribute(files, said.scope, said.sigil, cfg.Packages)
  	if r, ok := errors.AsType[*attribution.Refusal](err); ok {
  		r.Merge = raw.Parents >= 2

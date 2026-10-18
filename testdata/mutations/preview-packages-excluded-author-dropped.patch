@@ -1,14 +1,14 @@
 diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
-index 858b206..21f002d 100644
+index 4c7e193..3e2696c 100644
 --- a/internal/cli/cmd_preview.go
 +++ b/internal/cli/cmd_preview.go
-@@ -264,6 +264,9 @@ func attributePull(ctx context.Context, gh *github.Client, cfg *config.Config, o
- 	perLine := make([][]gitsource.RawCommit, len(lines))
- 	var facts walkFacts
- 	for _, r := range raws {
+@@ -265,6 +265,9 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
+ 	var facts walk.Facts
+ 	for _, c := range commits {
+ 		r := c.Raw
 +		if slices.Contains(cfg.ExcludeAuthors, r.Author) {
 +			continue
 +		}
- 		place, said := placeOf(cfg, r)
- 		if place != placedByFiles {
+ 		place, said := walk.PlaceOf(cfg, r)
+ 		if place != walk.PlacedByFiles {
  			continue

@@ -181,7 +181,7 @@ func TestPreviewPackagesCappedRefusalIsNotTheGateCode(t *testing.T) {
 }
 
 // TestWalkAndPreviewWarnAnUnreadListingInOneSentence: the walk and preview's
-// pull side place a commit by its files through one helper (placeByFiles),
+// pull side place a commit by its files through one helper (walk.PlaceByFiles),
 // so one event — a listing GitHub answered 422 for or capped, and the refusal
 // attribution would make over it, withheld — is warned of in one sentence by
 // both: bump --since-tag over a squash-merged pull's inner commit, preview

@@ -1,13 +1,13 @@
-diff --git a/internal/cli/range.go b/internal/cli/range.go
-index f967e68..409e585 100644
---- a/internal/cli/range.go
-+++ b/internal/cli/range.go
-@@ -33,7 +33,7 @@ func bumpCommits(raws []gitsource.RawCommit) []bump.Commit {
- func noteCommits(raws []gitsource.RawCommit, pull int) []notes.Commit {
- 	out := make([]notes.Commit, 0, len(raws))
+diff --git a/internal/cli/source.go b/internal/cli/source.go
+index 8070617..ad2ac7e 100644
+--- a/internal/cli/source.go
++++ b/internal/cli/source.go
+@@ -151,7 +151,7 @@ func refusePullSource(cfg *config.Config) error {
+ func pullCommits(raws []gitsource.RawCommit, number int) []walk.Commit {
+ 	commits := make([]walk.Commit, 0, len(raws))
  	for _, r := range raws {
--		out = append(out, notes.Commit{SHA: r.SHA, Pull: pull, Author: r.Author, Login: identity(r), Message: r.Message})
-+		out = append(out, notes.Commit{SHA: "", Pull: pull, Author: r.Author, Login: identity(r), Message: r.Message})
+-		commits = append(commits, walk.Commit{Raw: r, Pull: number, Landed: true})
++		commits = append(commits, walk.Commit{Raw: r, Pull: number, Landed: false})
  	}
- 	return out
+ 	return commits
  }

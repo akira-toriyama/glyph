@@ -143,7 +143,7 @@ func TestParseBaseVersion(t *testing.T) {
 
 // TestParseVersionStillRefusesCandidates guards the half of the split that is
 // easy to lose: ParseBaseVersion exists so the CANDIDATE SET does not have to
-// change. latestVersionTag parses every tag HEAD's history holds
+// change. walk.LatestVersionTag parses every tag HEAD's history holds
 // (releasesHEADHolds; every tag on a shallow checkout) with ParseVersion and
 // skips what fails, so the moment ParseVersion accepts a pre-release, a
 // release resolves the predecessor of a candidate — the exact

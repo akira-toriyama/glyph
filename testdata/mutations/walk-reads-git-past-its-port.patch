@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index c42cc14..3e88864 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -29,7 +29,7 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
+ 	// Asked once per WALK, before any expansion, never lazily on the first
+ 	// pull that expands: a walk where no pull resolves is still a walk over a
+ 	// truncated history, and it was the one that never asked (DESIGN §4).
+-	shallow, serr := w.Git.IsShallow(ctx)
++	shallow, serr := gitsource.IsShallow(ctx, ".")
+ 	if serr != nil {
+ 		return nil, Facts{}, serr
+ 	}

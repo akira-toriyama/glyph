@@ -31,7 +31,7 @@ missing entry, because it is the one place a reader trusts not to be stale.
 
 **Contents**
 
-1. [The release walk](#1-the-release-walk) — walk, walk base, step base, auto, below:, range, fold, participate, merge point, merge commit, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, walkFacts, Dropped, shortfall, wedge, wedge escape, package, root package, line, attribution, carrier, shared-only, governing commit
+1. [The release walk](#1-the-release-walk) — walk, walk base, step base, auto, below:, range, fold, participate, merge point, merge commit, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, Facts, Dropped, shortfall, wedge, wedge escape, package, root package, line, attribution, carrier, shared-only, governing commit
 2. [Verdicts and the rolling draft](#2-verdicts-and-the-rolling-draft) — verdict, level, source, reason, target, action, rolling draft, glyph-managed draft, residual draft, stale draft, published floor, pending, incomplete banner
 3. [Convention and lint](#3-convention-and-lint) — pattern, unlandable, dictionary, sigil, promote, 0.x clamp, bump lattice, section, excluded author, cleanup, cleanup mode, edited, cut line
 4. [The render boundary](#4-the-render-boundary) — inline context, phantom span, neutralize, fence, flatten, line builder, pipe escape, over-escaping is the safe direction
@@ -58,9 +58,9 @@ API and knows nothing of any range. "Exactly one of the three" is `bump` and
 `notes` only — they are the two commands that carry all three flags and mark them
 mutually exclusive. `release` has just the walk (bare `release` walks from the
 highest v* tag HEAD contains, so no flag is required at all), and `preview` takes
-`--pr`, which it marks required. `internal/cli/sincetag.go: walkSince`,
+`--pr`, which it marks required. `internal/walk/expand.go: walkSince`,
 `internal/cli/range.go: logRange`, `internal/cli/pr.go:
-pullInput`, `internal/cli/sincetag.go: markInputSourceFlags` (used by
+pullInput`, `internal/cli/flags.go: markInputSourceFlags` (used by
 `internal/cli/cmd_bump.go` and `internal/cli/cmd_notes.go` alone)
 
 **walk base** — the tag the walked range starts at. Distinguish from the **step
@@ -71,7 +71,7 @@ verdict computed over another range. An explicit tag that is not a version still
 walks but names no step base, and the bump then falls back to the highest v* tag
 HEAD contains. The published floor is the opposite set — every published release
 on the line, from the releases listing (DESIGN §4).
-`internal/cli/sincetag.go: sinceTagRange`, `internal/cli/cmd_bump.go:
+`internal/walk/base.go: sinceTagRange`, `internal/cli/cmd_bump.go:
 currentVersion`
 
 **auto** — what a bare `--since-tag` (no value) resolves to: the highest
@@ -87,8 +87,8 @@ v0.0.2, 9.9.9, 100.0.0}` git reports `v0.0.2` first. Taking git's order moved th
 walk base and the version base together to a tag two releases behind, silently.
 A tag must be attached with `=` (`--since-tag=v1.2.3`); the space form is caught
 as a usage error rather than walking the wrong range.
-`internal/cli/sincetag.go: sinceTagAuto, latestVersionTag, releasesHEADHolds,
-sinceTagArgs`, `internal/gitsource/gitsource.go: Tags, MergedTags`
+`internal/walk/base.go: Auto, LatestVersionTag, releasesHEADHolds`,
+`internal/cli/flags.go: sinceTagArgs`, `internal/gitsource/gitsource.go: Tags, MergedTags`
 
 **below:** — the other *resolved* `--since-tag` form
 (`--since-tag=below:TAG`): the highest parseable version tag HEAD contains
@@ -98,23 +98,23 @@ highest v\* tag, so auto would walk an empty range. Strictly below the bound, no
 "the highest other tag" — cutting a v0.8.3 hotfix while v0.9.0 exists resolves
 v0.8.2. With no version tag below the bound (the first release), the walk covers
 the whole history, same as auto before the first tag — bounded in both forms by the
-release-floor cap: past `sinceTagWalkCap` walk-visible commits the walk is
+release-floor cap: past `walk.Cap` walk-visible commits the walk is
 refused (fail-loud 4) with the escape in the message, because it pays one API
 round-trip per visited commit and nothing else bounds it. The bound must itself be
 version-shaped (usage error otherwise), and the sentinel cannot collide with a
 real tag: git forbids `:` in refnames. This resolution used to be re-derived in
 shell inside `goreleaser.yml` and inherited the refname-sort defect above
-(t-s5n4). `internal/cli/sincetag.go: sinceTagBelow, sinceTagRange`
+(t-s5n4). `internal/walk/base.go: Below, sinceTagRange`
 
 **range** — the `TAG..HEAD` revision range string (the code calls it `revRange`,
 and reports it as `source`). `--since-tag` names the **tag alone**; the walk
 appends `..HEAD` itself, so a value containing `..` is rejected as usage.
-`internal/cli/sincetag.go: checkSinceTagFlag`
+`internal/walk/base.go: CheckTag`
 
 **fold** — the max-reduce of commit levels over the bump lattice. It is
 order-independent and idempotent (fuzz-pinned), so squash order can never change
 a version. The word is used for both the operation and its input set — "an empty
-fold" means the commit set came out empty, which is the ambiguity *walkFacts*
+fold" means the commit set came out empty, which is the ambiguity *Facts*
 exists to resolve. `internal/bump/level.go: reduce`
 
 **participate** — a commit participates when the fold reads it: not an
@@ -138,7 +138,7 @@ pattern drops it after — and governs lint, the fold and the fallback path; the
 resolution side asks "can this commit on main **point at** a merged pull
 request?" and takes the **author alone** — a merge point's subject and parent
 count are how GitHub *shapes a pointer*, not evidence about it.
-`internal/bump/fold.go: Fold`, `internal/cli/sincetag.go: walkSince`
+`internal/bump/fold.go: Fold`, `internal/walk/expand.go: walkSince`
 (the resolution gate)
 
 **merge point** — whatever commit GitHub named `merge_commit_sha` for a pull
@@ -147,13 +147,13 @@ merge-commit button) the merge commit itself, whose `merge_commit_sha` is its ow
 sha. One equality resolves all three styles. Distinguish sharply from **merge
 commit**, which is a *shape* (2+ parents) — a merge point need not be a merge
 commit, and judging the shape before resolving is what dropped whole pull
-requests out of releases silently (t-7zt7). `internal/cli/sincetag.go:
+requests out of releases silently (t-7zt7). `internal/walk/expand.go:
 mergedPullFor`
 
 **canonical commit** — the same object seen from the walk's side: the *walked*
 commit that resolved to a pull request, and the anchor the footprint mapping
 needs. Only a resolved canonical commit may expand a pull.
-`internal/cli/sincetag.go: foldPull, mainFootprint`
+`internal/walk/expand.go: foldPull, mainFootprint`
 
 **footprint** — the answer, per commit in a pull's API listing, to "which commit
 on the released branch did this land as" — decided from **local git alone**,
@@ -167,7 +167,7 @@ footprint at all, and the pull alone governs. This is what lets the walk's
 *range* (a git fact) govern a listing that knows nothing about it; without it a
 tag cut inside a landed pull's footprint folded already-shipped commits into the
 next release (t-8xsb — exit 0, empty stderr, a minor invented out of released
-work). `internal/cli/sincetag.go: mainFootprint`, `internal/gitsource/gitsource.go:
+work). `internal/walk/expand.go: mainFootprint`, `internal/gitsource/gitsource.go:
 Have, IsAncestor, FirstParentLog`
 
 **landed** — a listed commit's on-branch identity, or empty when it landed under
@@ -183,13 +183,13 @@ template's decision — both shipped presets place `$pr` alone, inside an option
 span, so a line reads `- subject (#123)` and loses the parens entirely when no
 pull resolved; the `(#123, abc1234)` shape v1 hardcoded is expressible as
 `$[ ($pr, $hash)]` and is deliberately not what ships (DESIGN §3).
-`internal/cli/sincetag.go: mainFootprint, foldPull, walkedNoteCommits`
+`internal/walk/expand.go: mainFootprint, foldPull`, `internal/walk/walk.go: NoteCommits`
 
 **stand aside** — what a walked commit does when it reports itself carried by a
 pull whose merge point is some *other* sha in this range: it is not counted,
 because that merge point is supposed to expand the whole pull. Safe only if
 something stands in — hence the covered/lost reconciliation below.
-`internal/cli/sincetag.go: mergedPullFor` (its `covering` return)
+`internal/walk/expand.go: mergedPullFor` (its `covering` return)
 
 **covered pull** — a merged pull a walked commit stands aside for. `covering` is
 reported by **number**, not as a bool, so the end of the walk can reconcile
@@ -198,7 +198,7 @@ a merged pull disappear whenever its merge point failed to resolve (t-7zt7).
 *Covered* is gated on the pull's canonical commit being **in this range**:
 without that gate it is not a claim about this release at all, since a pull
 merged into another base branch is associated with commits that reached main
-another way. `internal/cli/sincetag.go: mergedPullFor` (`covering`, `inRange`)
+another way. `internal/walk/expand.go: mergedPullFor` (`covering`, `inRange`)
 
 **lost pull** — a covered pull that was never expanded, because its canonical
 commit never resolved (GitHub had not indexed the merge commit yet, or an
@@ -210,12 +210,12 @@ shipped under the previous tag manufactures a minor out of released work). The
 release is genuinely short by whatever that pull changed. Note what the warning
 does *not* promise: API lag clears itself and warns once, but a repository whose
 merge button an **automation** presses warns on every release, structurally.
-`internal/cli/sincetag.go: walkSince` (the `coveredOrder` reconciliation),
-`walkFacts.LostPulls`
+`internal/walk/expand.go: walkSince` (the `coveredOrder` reconciliation),
+`Facts.LostPulls`
 
 **expansion** — turning one resolved pull request into its individual commits and
 folding them in, after two filters applied *before anything is parsed*: the
-footprint filter and the walk-wide seen-sha filter. `internal/cli/sincetag.go:
+footprint filter and the walk-wide seen-sha filter. `internal/walk/expand.go:
 foldPull`
 
 **provenance** (*expansion provenance*) — the walk reporting on itself: per
@@ -227,8 +227,8 @@ how a verdict was assembled without re-deriving the exclusion rules in shell. It
 records what the walk **did** and never why a number is what it is: a count of
 **0** has two innocent causes (a stacked pull whose commits rode in with its base
 pull; a merge-merged pull whose commits the fallback already folded), so 0 never
-means "this pull changed nothing". `internal/cli/sincetag.go: pullExpansion,
-walkFacts.Pulls`
+means "this pull changed nothing". `internal/walk/facts.go: PullExpansion,
+Facts.Pulls`
 
 **fallback path** — where a walked commit that resolved to *no* merged pull
 request is classified from its **own message** (a direct push, a local `git
@@ -239,12 +239,12 @@ shortfall — never a silent patch, never exit 3 (t-kbqx, so `internal/bump`
 stays pure). A **direct push** GitHub knows is on the released branch for good,
 so an unclaimed message there is the walk's own refusal — exit 3 with the wedge
 escape at the commit itself, for every consumer of the walk, `notes` included
-(`internal/cli/sincetag.go: unclaimed, walkRefusal`). Nothing is normalized
+(`internal/walk/refusal.go: unclaimed, walkRefusal`). Nothing is normalized
 on this path: it matches the commit's whole message through the pattern file
 like any other, so a breaking marker survives it exactly when a pattern yields
 a major sigil (`!` or `%`) for it — under the presets, the subject's sigil
 alone (a `BREAKING CHANGE:` footer is prose; DESIGN §4).
-`internal/cli/sincetag.go: walkSince` (the fallback arm)
+`internal/walk/expand.go: walkSince` (the fallback arm)
 
 **API lag** — GitHub answering **422** for a sha it does not know yet, which is
 what a walk running seconds after a push meets. It is the **only** status that
@@ -255,12 +255,12 @@ not true of a 404, which is how a bad credential answers for *every* commit of a
 private repository. The same 422 on a commit's file listing
 (`GET /commits/{sha}`, asked only under `[[packages]]`) is **not** lag:
 attribution has no weaker source for a commit's files, so the listing is
-recorded as unread (`walkFacts.FilesUnknown`), never the fallback.
-`internal/github/github.go: IsCommitUnknown`, `internal/cli/lines.go: listFiles`
+recorded as unread (`Facts.FilesUnknown`), never the fallback.
+`internal/github/github.go: IsCommitUnknown`, `internal/walk/partition.go: listFiles`
 
 **shallow checkout** — a `--depth` clone, in which git cannot answer the
 footprint question at all: a commit it does not *have* is indistinguishable from
-one that never landed. The only member of `walkFacts` that is a property of the
+one that never landed. The only member of `Facts` that is a property of the
 **checkout** rather than of an API answer, and the likeliest to appear
 (`actions/checkout` defaults to `fetch-depth: 1`). Probed once per walk, before
 any expansion, because a walk where nothing resolves is still a walk over a
@@ -268,13 +268,13 @@ truncated history, and once per `--range` read (`lint`, `bump`, `notes`), which
 warns. Its **boundary** commit — the one whose parents were cut off — has no
 diff the clone can compute: git reads it as a root, and its whole tree is not
 its diff (DESIGN §4.1). `internal/gitsource/gitsource.go: IsShallow, IsShallowBoundary`,
-`walkFacts.Shallow`, `internal/cli/range.go: logRange`
+`Facts.Shallow`, `internal/cli/range.go: logRange`
 
 **truncated listing** — a pull whose commit listing came back at GitHub's hard
 cap of **250**, however far pagination follows. A listing of exactly the cap is
 one glyph cannot claim to have read whole: the commits past it are *unreachable,
 not absent*, and any of them could carry the deciding sigil.
-`internal/github/github.go: PullCommitsCap`, `walkFacts.Truncated`
+`internal/github/github.go: PullCommitsCap`, `Facts.Truncated`
 
 **incomplete walk** — a walk that came back knowing it had **not** read the whole
 range. The distinction it exists to make: downstream, a range that genuinely
@@ -287,17 +287,17 @@ delete, no retag, no draft, no verdict — the same refusal to judge an unread
 range as the wedge and the covered pull (ratified t-pysg, replacing #66's
 warn-and-refuse-to-destroy). The commands that only *report* — `bump`, `notes`
 — warn per cause instead, and `preview` carries the shortfall in its comment
-body. `internal/cli/sincetag.go: walkFacts.complete`,
+body. `internal/walk/facts.go: Facts.Complete`,
 `internal/cli/cmd_release.go: releaseRun`
 
-**walkFacts** — the struct carrying the above: `Pulls` (provenance) plus the
+**Facts** — the struct carrying the above (`internal/walk/facts.go`): `Pulls` (provenance) plus the
 **seven** ways a walk can come back short — `AllUnknown` (every commit unknown to
 the queried repository, which is what a wrong `--repo` or an inherited
 `$GITHUB_REPOSITORY` looks like from inside), `Shallow`, `LostPulls`, `Dropped`,
 `Truncated`, and the two only a packages walk meets: `FilesCapped` (a commit's
 file listing at GitHub's 3000 cap) and `FilesUnknown` (a file listing GitHub
-answered 422 for). `complete()` is exactly "none of the seven".
-`internal/cli/sincetag.go: walkFacts`
+answered 422 for). `Complete()` is exactly "none of the seven".
+`internal/walk/facts.go: Facts`
 
 **Dropped** — of the seven, the one whose name over-promises.
 Nothing is recorded unless the commit reached the fallback path through *API lag*
@@ -309,20 +309,20 @@ records nothing, including the same shapes reached because the commit simply
 has no pull request — a direct push or a local `git merge` is a message glyph
 **read** and judged, not evidence it could not obtain. So `Dropped` is not "the
 fold used second-best evidence"; it is "something is missing from the fold, and
-only GitHub can supply it". `internal/cli/sincetag.go: walkFacts.Dropped` (both
+only GitHub can supply it". `internal/walk/facts.go: Facts.Dropped` (both
 arms sit in `walkSince`'s lag fallback)
 
 **shortfall** — the one-clause sentence naming what the walk could not read, so
 the same fact can be spliced into a `::warning::`, into the draft body a human
-reads days later, and into the PR comment's caveat. `internal/cli/sincetag.go:
-walkFacts.shortfall`
+reads days later, and into the PR comment's caveat. `internal/walk/facts.go:
+Facts.Shortfall`
 
 **wedge** — the state a repository is in when a commit that bypassed the lint
 gate sits inside a *resolved* pull request, or was pushed straight to the
 released branch: the lint failure stays hard (exit 3, ratified Q1/t-2nzf — never
 a silent patch), and published history is immutable, so the **same** failure
 recurs on every future release until the walk starts past it.
-`internal/cli/sincetag.go: unclaimed, wedge, walkRefusal`
+`internal/walk/refusal.go: unclaimed, wedge, walkRefusal`
 
 **wedge escape** — the base that clears a wedge, and which one depends on whether
 the offending commit is somewhere a tag can be cut. A merge- or rebase-merged
@@ -336,7 +336,7 @@ is its own escape: a base at or past the commit itself. The error message names
 where the commit sits, the base and why that base is the one; with several
 refused commits it names the first, counts the rest, lists every one in
 `details` and names every wedge's escape (a pull's merge point is in no
-details row). `internal/cli/sincetag.go: wedge, walkRefusal, onMain`
+details row). `internal/walk/refusal.go: wedge, walkRefusal, onMain`
 
 **package** — a declared subtree of the repository with a version line of its
 own: its own tags (`<prefix>vX.Y.Z`), its own walk base, its own rolling draft.
@@ -362,7 +362,7 @@ synthesises a root package for it. A tag **names** a line:
 the v2 line alone. "Which line does this commit move?" is the only question
 packages add to the walk; the answer is *attribution*.
 `internal/config/tagline.go: Line, Package.tagPrefix, Config.LineOf`,
-`internal/cli/lines.go: line`
+`internal/walk/lines.go: Line`
 
 **attribution** — which lines a commit moves, read from the
 commit's **own** diff and never a pull's net diff: files under a package move
@@ -380,7 +380,7 @@ message no pattern claims (an *unlandable* one included) joins every line so
 the fold refuses it. The files
 come from local git for a landed identity and from `GET /commits/{sha}` for a
 squash-merged pull's inner commit. `internal/attribution/attribution.go:
-Attribute`, `internal/cli/lines.go: placeOf, attribute, partitionLines`
+Attribute`, `internal/walk/partition.go: PlaceOf, Attribute, partitionLines`
 
 **carrier** — the package a commit's sigil lands on. A **shared-only** commit
 (its diff lies under no package: root CI, the workspace file, a README in a
@@ -402,7 +402,7 @@ by its files.
 commit by: the commit's own sha when it landed on the released branch, else the
 merge point of the pull it was expanded from. A squash-merged pull's inner
 commits exist on no branch, so without this a line could never hold them.
-`internal/cli/lines.go: walked.governing`
+`internal/walk/walk.go: Commit.Governing`
 
 ## 2. Verdicts and the rolling draft
 
@@ -430,10 +430,10 @@ at all. It is also not a key on any `--json` surface — none of `{current, leve
 next, commits, reason}`, `{sections, reason}`, `{current, level, tag, target,
 body, action, url, commits, pulls, reason}` or `{current, untagged, level, next,
 pr, pending, body}` carries it, so a consumer that wants to know what was walked
-reads the flags it passed, not the verdict. `internal/cli/lines.go: sinceTagWalk.Source`
+reads the flags it passed, not the verdict. `internal/walk/walk.go: Result.Source`
 (the range walked, or the range or pull read in its place — what notes' reason,
 release's refusal of an unread walk and release's bare-line none reason name),
-`line.Source` (each line's own range, or on the bare line the walk's, the range's
+`Line.Source` (each line's own range, or on the bare line the walk's, the range's
 or the pull's name — what bump's and release's per-line reasons name),
 `internal/cli/pr.go: pullInput`
 

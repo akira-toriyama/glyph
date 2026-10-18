@@ -4,9 +4,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-
-	"github.com/akira-toriyama/glyph/v5/internal/bump"
-	"github.com/akira-toriyama/glyph/v5/internal/config"
 )
 
 // This file pins the walk base's candidate set (DESIGN §4, "The walk base is
@@ -15,30 +12,6 @@ import (
 // three shapes where the two sets differ — a side branch's tag, a
 // maintenance branch's, a tag cut later on a descendant — and the shallow
 // checkout, where git cannot say which set is which.
-
-// TestSinceTagBaseIsAReleaseHEADContains: a v9.0.0 cut on a side branch that
-// forked before v0.2.0 is another history's release. Read as the base it
-// walks v9.0.0..HEAD — which re-admits the commit v0.2.0 already shipped —
-// and steps main to v9.x (measured at adfc5e1: v9.1.0 over two commits).
-func TestSinceTagBaseIsAReleaseHEADContains(t *testing.T) {
-	dir, _ := testRepo(t) // tags v0.1.0
-	testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "side")
-	testCommit(t, dir, "akira-toriyama", ":sparkles:^ side work")
-	testGit(t, dir, "akira-toriyama", "tag", "v9.0.0")
-	testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
-	testCommit(t, dir, "akira-toriyama", ":sparkles:^ second")
-	testGit(t, dir, "akira-toriyama", "tag", "v0.2.0")
-	testCommit(t, dir, "akira-toriyama", ":bug:~ third")
-	t.Chdir(dir)
-
-	revRange, _, base, err := sinceTagRange(t.Context(), testCfg(t), sinceTagAuto)
-	if err != nil {
-		t.Fatalf("sinceTagRange: %v", err)
-	}
-	if revRange != "v0.2.0..HEAD" || base == nil || *base != (bump.Version{Minor: 2}) {
-		t.Fatalf("range/base = %q/%v, want v0.2.0..HEAD / v0.2.0 (the highest release HEAD contains, not the side branch's v9.0.0)", revRange, base)
-	}
-}
 
 // TestSinceTagMaintenanceBranchStepsItsOwnLine: release/v1 forked at v1.9.0,
 // and v1.9.1 was cut there after main cut v2.0.0. On the maintenance branch
@@ -152,34 +125,5 @@ func TestPackagesFrozenCoordinateSeesItsOwnTags(t *testing.T) {
 	}
 	if got["haiku"] != "v0.1.0:minor" || got["curry"] != "v0.1.0:none" {
 		t.Errorf("lines = %v, want haiku v0.1.0:minor and curry v0.1.0:none", got)
-	}
-}
-
-// TestLatestVersionTagOnAShallowCheckoutReadsEveryTag: a --depth clone that
-// fetched its tags holds v0.2.0 as an object but not the history joining it
-// to HEAD, so --merged answers nothing and the base would fall to v0.0.0. A
-// shallow checkout cannot say what its history holds; it reads every tag, as
-// before, and the walk records the checkout as unread.
-//
-// bite-exempt: pins the behaviour the change preserves on the one input where --merged cannot answer
-func TestLatestVersionTagOnAShallowCheckoutReadsEveryTag(t *testing.T) {
-	src, _ := testRepo(t) // tags v0.1.0
-	testCommit(t, src, "akira-toriyama", ":sparkles:^ second")
-	testGit(t, src, "akira-toriyama", "tag", "v0.2.0")
-	testCommit(t, src, "akira-toriyama", ":bug:~ third")
-	dir := t.TempDir()
-	testGit(t, dir, "akira-toriyama", "clone", "-q", "--depth", "1", "file://"+src, ".")
-	testGit(t, dir, "akira-toriyama", "fetch", "-q", "--depth", "1", "origin", "refs/tags/*:refs/tags/*")
-	if merged := testGit(t, dir, "akira-toriyama", "tag", "--merged", "HEAD"); merged != "" {
-		t.Fatalf("premise gone: the shallow clone's HEAD now holds %q", merged)
-	}
-	if all := testGit(t, dir, "akira-toriyama", "tag", "--list", "v0.2.0"); all != "v0.2.0" {
-		t.Fatalf("premise gone: the shallow clone did not fetch v0.2.0 (tag --list = %q)", all)
-	}
-	t.Chdir(dir)
-
-	tag, _, err := latestVersionTag(t.Context(), config.Line{}, nil)
-	if err != nil || tag != "v0.2.0" {
-		t.Fatalf("latestVersionTag on a shallow checkout = %q, %v; want v0.2.0 (every tag, the walk says the checkout is shallow)", tag, err)
 	}
 }

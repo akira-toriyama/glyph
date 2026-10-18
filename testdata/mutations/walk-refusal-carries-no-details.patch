@@ -1,8 +1,8 @@
-diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index 0071752..76d9c0c 100644
---- a/internal/cli/sincetag.go
-+++ b/internal/cli/sincetag.go
-@@ -1267,7 +1267,7 @@ func walkRefusal(wedges []wedge) error {
+diff --git a/internal/walk/refusal.go b/internal/walk/refusal.go
+index 206f477..28da5e2 100644
+--- a/internal/walk/refusal.go
++++ b/internal/walk/refusal.go
+@@ -121,7 +121,7 @@ func walkRefusal(wedges []wedge) error {
  	}
  	return core.Lintf(
  		"commit %.7s: %s%s — %s; the commit is already on a published branch and cannot be rewritten, so every release wedges here until the walk starts past it. The walk must start AT OR PAST %s. Cut a release tag %s by hand, or name such a tag with an explicit --since-tag=TAG (DESIGN §4)",

@@ -1,8 +1,8 @@
-diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index 2197cbb..000071e 100644
---- a/internal/cli/sincetag.go
-+++ b/internal/cli/sincetag.go
-@@ -695,9 +695,6 @@ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.Ra
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index c42cc14..8378421 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -379,9 +379,6 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
  	if err != nil {
  		return nil, err
  	}

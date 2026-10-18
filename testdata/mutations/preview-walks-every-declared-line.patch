@@ -1,13 +1,13 @@
-diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index 7932d15..c933514 100644
---- a/internal/cli/lines.go
-+++ b/internal/cli/lines.go
-@@ -174,7 +174,7 @@ func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string,
- 			lines = append(lines, line{Package: p, Line: cfg.LineOf(p), BaseTag: baseTag, Source: tag + "..HEAD", Range: tag + "..HEAD"})
+diff --git a/internal/walk/lines.go b/internal/walk/lines.go
+index 9538c4b..f4b8baa 100644
+--- a/internal/walk/lines.go
++++ b/internal/walk/lines.go
+@@ -138,7 +138,7 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
+ 			lines = append(lines, Line{Package: p, TagLine: cfg.LineOf(p), BaseTag: baseTag, Source: tag + "..HEAD", Range: tag + "..HEAD"})
  		}
  	}
--	union, err := unionRange(ctx, cfg, scopedLines(lines, scope), scopeEscape(scope))
-+	union, err := unionRange(ctx, cfg, lines, scopeEscape(scope))
+-	union, err := w.unionRange(ctx, cfg, scopedLines(lines, scope), scopeEscape(scope))
++	union, err := w.unionRange(ctx, cfg, lines, scopeEscape(scope))
  	if err != nil {
  		return nil, "", err
  	}

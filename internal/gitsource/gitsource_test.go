@@ -397,7 +397,7 @@ func TestLogDeadlineIsAPI(t *testing.T) {
 // ordering and this test must not be read as promising one: it is a REFNAME
 // sort, so it orders on the leading byte first and puts every `v…` above every
 // `1…`. The fixture here happens to agree because every tag in it starts with v.
-// See Tags' own doc, and latestVersionTag, which read an earlier version of
+// See Tags' own doc, and walk.LatestVersionTag, which read an earlier version of
 // this comment as a promise and took git's first parseable entry.
 // A repo without tags yields an empty list.
 func TestTags(t *testing.T) {

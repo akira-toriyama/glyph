@@ -31,7 +31,7 @@ const (
 	// REFUSAL to hand down a verdict with nothing broken underneath: an
 	// incomplete walk (`cmd_release.go`, ratified t-pysg),
 	// `draftplan.CheckPublishedFloor`, and the unbounded first-release walk
-	// (`sincetag.go: wholeHistory`, past its cap) all return it, because a
+	// (`internal/walk: wholeHistory`, past its cap) all return it, because a
 	// verdict computed over a range glyph could not read — or could only read
 	// at a cost nobody named — is worse than no verdict at all. A release run
 	// started from a ref that is not the repository's default branch

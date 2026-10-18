@@ -14,6 +14,7 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/github"
 	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
 	"github.com/akira-toriyama/glyph/v5/internal/notes"
+	"github.com/akira-toriyama/glyph/v5/internal/walk"
 	"github.com/spf13/cobra"
 )
 
@@ -38,17 +39,17 @@ import (
 // participating commit (bumpResult). newReleaseResult is the one producer of
 // both shapes.
 type releaseResult struct {
-	Current  string           `json:"current"`
-	Level    string           `json:"level"`
-	Tag      string           `json:"tag,omitempty"`
-	Target   string           `json:"target,omitempty"`
-	Body     string           `json:"body,omitempty"`
-	Action   string           `json:"action"`
-	URL      string           `json:"url,omitempty"`
-	Commits  []bump.Row       `json:"commits"`
-	Packages []packageRelease `json:"packages,omitempty"`
-	Pulls    []pullExpansion  `json:"pulls"`
-	Reason   string           `json:"reason"`
+	Current  string               `json:"current"`
+	Level    string               `json:"level"`
+	Tag      string               `json:"tag,omitempty"`
+	Target   string               `json:"target,omitempty"`
+	Body     string               `json:"body,omitempty"`
+	Action   string               `json:"action"`
+	URL      string               `json:"url,omitempty"`
+	Commits  []bump.Row           `json:"commits"`
+	Packages []packageRelease     `json:"packages,omitempty"`
+	Pulls    []walk.PullExpansion `json:"pulls"`
+	Reason   string               `json:"reason"`
 }
 
 // packageRelease is one line's verdict: what bump's packageVerdict carries,
@@ -80,7 +81,7 @@ type lineDraft struct {
 // releaseOptions is what one release run was asked, snapshotted at RunE.
 // Nothing below RunE reads a flag — releaseRun is a function of these alone,
 // so the run drives with no command built
-// (TestReleaseRunsFromOptionsWithoutCobra). tag is sinceTagAuto when
+// (TestReleaseRunsFromOptionsWithoutCobra). tag is walk.Auto when
 // --since-tag was not given: release has exactly one input source, so a bare
 // flag is not required.
 type releaseOptions struct {
@@ -155,7 +156,7 @@ func newReleaseCmd() *cobra.Command {
 				return err
 			}
 			if !cmd.Flags().Changed("since-tag") {
-				o.tag = sinceTagAuto
+				o.tag = walk.Auto
 			}
 			return releaseRun(cmd.Context(), o)
 		},
@@ -247,9 +248,9 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	// and a walk blind to a whole pull is exactly what this exit is for. The
 	// escape is the wedge escape: cut a tag at or past what the walk cannot
 	// read, or fix the checkout (fetch-depth: 0) when the shortfall names it.
-	if !w.Facts.complete() {
+	if !w.Facts.Complete() {
 		return core.APIf("this walk did not read %s (%s) — refusing to hand down a verdict computed from a range it could not read; re-run the release once the walk can read the range",
-			w.Source, w.Facts.shortfall(owner, repoName))
+			w.Source, w.Facts.Shortfall(owner, repoName))
 	}
 	if err := checkLineSelection(o.current, w.Lines); err != nil {
 		return err
@@ -257,7 +258,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	// The union rows first: a message no pattern claims refuses the walk
 	// before any line is folded, and the rows are what the verdict reports as
 	// the commits it read. On the bare line the union is the line.
-	rows, _, cerr := bump.Fold(walkedBumpCommits(w.All), cfg)
+	rows, _, cerr := bump.Fold(walk.BumpCommits(w.All), cfg)
 	if cerr != nil {
 		return cerr
 	}
@@ -305,17 +306,17 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	var residual, stale []github.Release
 	moving := 0
 	for _, lw := range w.Lines {
-		lineRows, dec, ferr := bump.Fold(walkedBumpCommits(lw.Commits), cfg)
+		lineRows, dec, ferr := bump.Fold(walk.BumpCommits(lw.Commits), cfg)
 		if ferr != nil {
 			return ferr
 		}
-		current, verr := currentVersion(ctx, o.current, lw.Base, lw.Line)
+		current, verr := currentVersion(ctx, o.current, lw.Base, lw.TagLine)
 		if verr != nil {
 			return verr
 		}
 		pv := packageRelease{Path: lw.Package.Path, Current: current.String(), Level: string(dec.Level), Commits: lineRows, Reason: noneReason(len(lineRows), lw.Source)}
 		if dec.Level == bump.LevelNone && !cfg.Note.DraftOnNone {
-			plan := draftplan.PlanDraft(lw.Line, dec.Level, "", false, drafted)
+			plan := draftplan.PlanDraft(lw.TagLine, dec.Level, "", false, drafted)
 			pv.Action = string(plan.Action)
 			residual = append(residual, staleReleases(plan.Stale)...)
 			verdicts = append(verdicts, pv)
@@ -325,21 +326,21 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 		// version on a release verdict, the Unreleased placeholder on a
 		// maintained none (draft_on_none — the flag's whole point is that a
 		// quiet merge keeps the door open instead of deleting the draft).
-		tagName := draftplan.PlaceholderTagOn(lw.Line)
+		tagName := draftplan.PlaceholderTagOn(lw.TagLine)
 		if dec.Level != bump.LevelNone {
-			tag, nerr := bump.NextOn(lw.Line, current, dec)
+			tag, nerr := bump.NextOn(lw.TagLine, current, dec)
 			if nerr != nil {
 				return nerr
 			}
-			if gerr := draftplan.CheckPublishedFloor(lw.Line, tag, drafted); gerr != nil {
+			if gerr := draftplan.CheckPublishedFloor(lw.TagLine, tag, drafted); gerr != nil {
 				return gerr
 			}
-			tagName = tag.TagOn(lw.Line.Prefix)
+			tagName = tag.TagOn(lw.TagLine.Prefix)
 			pv.Next = tag.String()
 			pv.Reason = bump.DecidingReason(lineRows, dec)
 			moving++
 		}
-		sections, gerr := notes.Group(walkedNoteCommits(lw.Commits), cfg)
+		sections, gerr := notes.Group(walk.NoteCommits(lw.Commits), cfg)
 		if gerr != nil {
 			return gerr
 		}
@@ -360,7 +361,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 		// rolling draft is the one place a human can write release prose, and
 		// rewriting it blind is how that prose was silently destroyed on the
 		// next push (t-qgps).
-		plan := draftplan.PlanDraft(lw.Line, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
+		plan := draftplan.PlanDraft(lw.TagLine, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
 		body = draftplan.ComposeBody(plan.Keep, body)
 		// Sized BEFORE the dry-run fork: a dry run previews the real run, and
 		// a body the real run refuses must fail the preview identically. Sized
@@ -523,7 +524,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 // upserted (drafted), single line and packages alike: the gate is the draft
 // count, never moving, because a draft_on_none placeholder is a draft that
 // points at target too.
-func newReleaseResult(cfg *config.Config, w sinceTagWalk, rows []bump.Row, verdicts []packageRelease, target string, drafted bool, moving int) releaseResult {
+func newReleaseResult(cfg *config.Config, w walk.Result, rows []bump.Row, verdicts []packageRelease, target string, drafted bool, moving int) releaseResult {
 	res := releaseResult{Commits: rows, Pulls: w.Facts.Pulls}
 	if drafted {
 		res.Target = target

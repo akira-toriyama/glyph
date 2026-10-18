@@ -75,7 +75,7 @@ const maxRetryAfter = 30 * time.Second
 // PullRef is the slice of a pull request the release walk needs to resolve a
 // squash commit to the PR it came from: its number, whether/when it merged, and
 // merge_commit_sha — a commit can be associated with more than one PR, so the
-// caller (internal/cli's mergedPullFor) matches MergeCommitSHA == sha to pick
+// caller (internal/walk's mergedPullFor) matches MergeCommitSHA == sha to pick
 // the exact one.
 type PullRef struct {
 	Number         int
@@ -503,7 +503,7 @@ func goneOnRetry(err error) bool {
 // walk's API-lag case (the walk runs moments after a push), so the walk falls
 // back to the commit's own message instead of hard-failing the release; on
 // the files listing there is no weaker source to fall back on, so the caller
-// records the listing as unread (internal/cli's walkFacts.FilesUnknown) —
+// records the listing as unread (internal/walk's Facts.FilesUnknown) —
 // an incomplete walk, never a lag fallback. Deliberately NOT true for a 404:
 // that is how a bad credential against a private repository answers for
 // every commit, and degrading a whole walk to fallbacks on an auth failure

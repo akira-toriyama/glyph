@@ -3,7 +3,7 @@ package doctor
 // This file is the workflow-pin check: every akira-toriyama/glyph reference in
 // the checkout's own workflows and action metadata files must pin a concrete
 // vX.Y.Z release tag. It reads files and the action-file list git produced
-// (handed in by internal/cli, which owns every subprocess) — no network — so
+// (handed in by internal/cli, which runs every subprocess doctor needs) — no network — so
 // it still answers when the API side of the report is entirely dark.
 //
 // It asks only whether the pin is CONCRETE, never whether it is the LATEST

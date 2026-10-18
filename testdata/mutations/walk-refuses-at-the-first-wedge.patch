@@ -1,8 +1,8 @@
-diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index 0071752..139384d 100644
---- a/internal/cli/sincetag.go
-+++ b/internal/cli/sincetag.go
-@@ -797,7 +797,7 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index c42cc14..f3cc287 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -138,7 +138,7 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
  						wedged[r.SHA] = len(wedges)
  					}
  					wedges = append(wedges, newWedge(row, owner, repo, number, canonical, onMain(r.SHA, inRange)))
@@ -11,12 +11,12 @@ index 0071752..139384d 100644
  				}
  			}
  			if r.SHA != "" {
-@@ -930,7 +930,7 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
+@@ -258,7 +258,7 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
  					wedged[raw.SHA] = len(wedges)
  				}
  				wedges = append(wedges, newWedge(row, owner, repo, 0, "", raw.SHA))
 -				continue
-+				return nil, walkFacts{}, walkRefusal(wedges)
++				return nil, Facts{}, walkRefusal(wedges)
  			}
  			if m, merr := cfg.Match(raw.Message); merr != nil || !m.Matched || !m.Skip {
  				// A skip-pattern commit (a local git merge under the presets)

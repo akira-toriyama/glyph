@@ -41,7 +41,7 @@ type apiCommitFiles struct {
 // The status is not flattened: a 422 here means what it means on
 // commits/{sha}/pulls — GitHub does not know the sha — and IsCommitUnknown
 // reads it: the caller records the listing as unread
-// (walkFacts.FilesUnknown) instead of failing on it
+// (walk.Facts.FilesUnknown) instead of failing on it
 // (TestCommitFiles422IsCommitUnknown; mutation row
 // commit-files-status-flattened). A page that fails hands back, beside its
 // error, the files the pages before it listed — none when the first page

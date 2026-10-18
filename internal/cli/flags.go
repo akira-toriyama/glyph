@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/walk"
 	"github.com/spf13/cobra"
 )
 
@@ -114,4 +115,52 @@ func checkExclusiveBool(cmd *cobra.Command, names ...string) error {
 		return core.Usagef("%s cannot be combined — they select different behaviour", strings.Join(on, " and "))
 	}
 	return nil
+}
+
+// addSinceTagFlag wires --since-tag onto a command. The value is optional
+// (pflag's NoOptDefVal grammar): a bare --since-tag resolves the tag itself; a
+// named tag must be attached with = (--since-tag=v1.2.3).
+func addSinceTagFlag(cmd *cobra.Command, target *string, verb string) {
+	cmd.Flags().StringVar(target, "since-tag", "",
+		verb+" every merged PR's individual (pre-squash) commits on main since a tag (bare --since-tag: the highest v* tag HEAD contains; --since-tag=TAG names one; --since-tag=below:TAG resolves the highest version tag HEAD contains strictly below TAG)")
+	cmd.Flags().Lookup("since-tag").NoOptDefVal = walk.Auto
+}
+
+// markInputSourceFlags is the source-selection grammar bump and notes share:
+// exactly one of --range / --pr / --since-tag, and --repo only with the
+// API-backed sources — combined with the purely local --range it would be
+// silently ignored, and glyph does not ignore input silently.
+func markInputSourceFlags(cmd *cobra.Command) {
+	cmd.MarkFlagsOneRequired("range", "pr", "since-tag")
+	cmd.MarkFlagsMutuallyExclusive("range", "pr", "since-tag")
+	cmd.MarkFlagsMutuallyExclusive("range", "repo")
+}
+
+// sinceTagArgs is the Args guard for the commands carrying --since-tag: they
+// take no positionals, and the one stray positional users actually produce is
+// the space form of the flag's optional value (`--since-tag v1.2.3`), which
+// pflag parses as a bare --since-tag plus a leftover. Walking the WRONG range
+// silently is the worst outcome, so that shape gets a usage error spelling out
+// the = form instead of cobra's generic unknown-command complaint.
+func sinceTagArgs(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 && cmd.Flags().Changed("since-tag") {
+		if tag, _ := cmd.Flags().GetString("since-tag"); tag == walk.Auto {
+			return core.Usagef("--since-tag takes its tag attached with '=': --since-tag=%s", args[0])
+		}
+	}
+	return cobra.NoArgs(cmd, args)
+}
+
+// checkLineSelection refuses --current unless exactly one line is selected:
+// --current names one version, and a walk over two lines has two verdicts
+// for it to describe (DESIGN §4.1).
+func checkLineSelection(current string, lines []walk.LineWalk) error {
+	if current == "" || len(lines) == 1 {
+		return nil
+	}
+	names := make([]string, 0, len(lines))
+	for _, l := range lines {
+		names = append(names, l.TagLine.Label())
+	}
+	return core.Usagef("--current names one version, and this walk answers for %d lines (%s) — select one line with --since-tag=<prefix>vX.Y.Z (or below:), or drop --current", len(lines), strings.Join(names, ", "))
 }

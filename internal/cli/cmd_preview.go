@@ -9,10 +9,9 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/bump"
 	"github.com/akira-toriyama/glyph/v5/internal/config"
 	"github.com/akira-toriyama/glyph/v5/internal/core"
-	"github.com/akira-toriyama/glyph/v5/internal/github"
-	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
 	"github.com/akira-toriyama/glyph/v5/internal/notes"
 	"github.com/akira-toriyama/glyph/v5/internal/preview"
+	"github.com/akira-toriyama/glyph/v5/internal/walk"
 	"github.com/spf13/cobra"
 )
 
@@ -144,7 +143,8 @@ func previewRun(ctx context.Context, o previewOptions) error {
 	if err != nil {
 		return err
 	}
-	touched, prShort, err := attributePull(ctx, newGitHub(), cfg, owner, repo, o.pr, raws, name)
+	commits := pullCommits(raws, o.pr)
+	touched, prShort, err := attributePull(ctx, apiWalker(newGitHub()), cfg, owner, repo, o.pr, commits, name)
 	if err != nil {
 		return err
 	}
@@ -157,7 +157,7 @@ func previewRun(ctx context.Context, o previewOptions) error {
 	// where one was (t-rrw0) — and each row's pattern warning is said here,
 	// once: said per touched line, a warned commit on no line was silent while
 	// bump said it, and one on two lines was said twice.
-	rows, _, err := bump.Fold(bumpCommits(raws), cfg)
+	rows, _, err := bump.Fold(walk.BumpCommits(commits), cfg)
 	if err != nil {
 		return err
 	}
@@ -180,7 +180,7 @@ func previewRun(ctx context.Context, o previewOptions) error {
 		}
 		n := ""
 		if o.notes {
-			sections, err := notes.Group(noteCommits(tl.commits, o.pr), cfg)
+			sections, err := notes.Group(walk.NoteCommits(tl.commits), cfg)
 			if err != nil {
 				return err
 			}
@@ -228,8 +228,8 @@ func previewRun(ctx context.Context, o previewOptions) error {
 // the line's highest tag HEAD holds — "" when it holds none — with the
 // version that tag parses to, v0.0.0 without one.
 type touchedLine struct {
-	line
-	commits []gitsource.RawCommit
+	walk.Line
+	commits []walk.Commit
 	rows    []bump.Row
 	pr      bump.Decision
 	tag     string
@@ -242,7 +242,7 @@ type touchedLine struct {
 // (preview.Input.PRShort). Without [[packages]] the bare line holds the whole
 // pull and no file is asked for: partitionLines' identity arm. With packages
 // each commit is placed as the walk places a squash-merged pull's inner
-// commit (placeByFiles), its files read over the API, one request per commit
+// commit (walk.PlaceByFiles), its files read over the API, one request per commit
 // — a pull's commits exist on its branch only, and this checkout may not hold
 // them — by its files, with its scope and sigil when the fold reads the
 // message and by files alone for an exclude_authors commit; or not at all: a
@@ -256,29 +256,30 @@ type touchedLine struct {
 // A refusal over a diff read whole is the lint-class refusal the walk and
 // lint --range hand down — preview says what CI will say — worded for where
 // the commit sits: on a branch that can still be fixed.
-func attributePull(ctx context.Context, gh *github.Client, cfg *config.Config, owner, repo string, number int, raws []gitsource.RawCommit, name string) ([]touchedLine, string, error) {
-	lines := pendingLines(cfg, name)
+func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner, repo string, number int, commits []walk.Commit, name string) ([]touchedLine, string, error) {
+	lines := walk.PendingLines(cfg, name)
 	if len(cfg.Packages) == 0 {
-		return []touchedLine{{line: lines[0], commits: raws}}, "", nil
+		return []touchedLine{{Line: lines[0], commits: commits}}, "", nil
 	}
-	perLine := make([][]gitsource.RawCommit, len(lines))
-	var facts walkFacts
-	for _, r := range raws {
-		place, said := placeOf(cfg, r)
-		if place != placedByFiles {
+	perLine := make([][]walk.Commit, len(lines))
+	var facts walk.Facts
+	for _, c := range commits {
+		r := c.Raw
+		place, said := walk.PlaceOf(cfg, r)
+		if place != walk.PlacedByFiles {
 			continue
 		}
-		placed, err := placeByFiles(ctx, gh, cfg, owner, repo, walked{Raw: r, Pull: number}, said, &facts, nil)
+		placed, err := w.PlaceByFiles(ctx, cfg, owner, repo, walk.Commit{Raw: r, Pull: number}, said, &facts, nil)
 		if err != nil {
 			return nil, "", err
 		}
-		if placed.refused != nil {
-			return nil, "", core.Lintf("commit %.7s in pull request %s/%s#%d: %v — the release walk will refuse this commit the same way once it is merged, and a merged commit cannot be rewritten; fix it on the branch", r.SHA, owner, repo, number, placed.refused).
-				WithDetails([]bump.Refusal{{SHA: r.SHA, Subject: bump.FirstLine(r.Message), Detail: placed.refused.Error()}})
+		if placed.Refused != nil {
+			return nil, "", core.Lintf("commit %.7s in pull request %s/%s#%d: %v — the release walk will refuse this commit the same way once it is merged, and a merged commit cannot be rewritten; fix it on the branch", r.SHA, owner, repo, number, placed.Refused).
+				WithDetails([]bump.Refusal{{SHA: r.SHA, Subject: bump.FirstLine(r.Message), Detail: placed.Refused.Error()}})
 		}
 		for i, l := range lines {
-			if slices.ContainsFunc(placed.moved, func(p config.Package) bool { return p.Path == l.Package.Path }) {
-				perLine[i] = append(perLine[i], r)
+			if slices.ContainsFunc(placed.Moved, func(p config.Package) bool { return p.Path == l.Package.Path }) {
+				perLine[i] = append(perLine[i], c)
 			}
 		}
 	}
@@ -287,11 +288,11 @@ func attributePull(ctx context.Context, gh *github.Client, cfg *config.Config, o
 		if len(perLine[i]) == 0 {
 			continue
 		}
-		touched = append(touched, touchedLine{line: l, commits: perLine[i]})
+		touched = append(touched, touchedLine{Line: l, commits: perLine[i]})
 	}
 	short := ""
-	if !facts.complete() {
-		short = facts.shortfall(owner, repo)
+	if !facts.Complete() {
+		short = facts.Shortfall(owner, repo)
 	}
 	return touched, short, nil
 }
@@ -309,11 +310,11 @@ func attributePull(ctx context.Context, gh *github.Client, cfg *config.Config, o
 func foldTouched(ctx context.Context, cfg *config.Config, touched []touchedLine) error {
 	for i := range touched {
 		tl := &touched[i]
-		rows, dec, err := bump.Fold(bumpCommits(tl.commits), cfg)
+		rows, dec, err := bump.Fold(walk.BumpCommits(tl.commits), cfg)
 		if err != nil {
 			return err
 		}
-		tag, current, err := latestVersionTag(ctx, tl.Line, nil)
+		tag, current, err := localWalker().LatestVersionTag(ctx, tl.TagLine, nil)
 		if err != nil {
 			return err
 		}
@@ -357,25 +358,25 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
 	for _, tl := range touched {
 		only = append(only, tl.Package)
 	}
-	w, err := sinceTagInputScoped(ctx, cfg, sinceTagAuto, repoFlag, &walkScope{Only: only, Escape: previewWalkEscape})
+	w, err := sinceTagInputScoped(ctx, cfg, walk.Auto, repoFlag, &walk.Scope{Only: only, Escape: previewWalkEscape})
 	if err != nil {
 		return nil, "", false, err
 	}
 	short := ""
-	if !w.Facts.complete() {
-		short = w.Facts.shortfall(owner, repo)
+	if !w.Facts.Complete() {
+		short = w.Facts.Shortfall(owner, repo)
 	}
 	// The union once, as bump folds it, and for the pull's reason (previewRun):
 	// warned per walked line, a merged warned commit on no line was silent and
 	// one on two lines was said twice.
-	rows, _, err := bump.Fold(walkedBumpCommits(w.All), cfg)
+	rows, _, err := bump.Fold(walk.BumpCommits(w.All), cfg)
 	if err != nil {
 		return nil, "", false, err
 	}
 	warnBumpRows(rows)
 	pending := make(map[string]bump.Decision, len(w.Lines))
 	for _, lw := range w.Lines {
-		_, dec, err := bump.Fold(walkedBumpCommits(lw.Commits), cfg)
+		_, dec, err := bump.Fold(walk.BumpCommits(lw.Commits), cfg)
 		if err != nil {
 			return nil, "", false, err
 		}
@@ -402,7 +403,7 @@ func skippedWalkWarning(cfg *config.Config) string {
 // current version on its own line (bump.NextOn), and the answer is the
 // higher of the two (foldDecision).
 func lineVerdict(tl touchedLine, pending bump.Decision, pendingWalked bool) (preview.Package, packagePreview, error) {
-	prefix := tl.Line.Prefix
+	prefix := tl.TagLine.Prefix
 	untagged := tl.tag == ""
 	p := preview.Package{Path: tl.Package.Path, Current: tl.current.TagOn(prefix), Untagged: untagged,
 		// PendingWalked is the half preview.Input.Untagged used to carry on
@@ -416,7 +417,7 @@ func lineVerdict(tl touchedLine, pending bump.Decision, pendingWalked bool) (pre
 		PR:            preview.Verdict{Level: tl.pr.Level, Commits: previewCommits(tl.rows)}}
 	pv := packagePreview{Path: tl.Package.Path, Current: tl.current.String(), Untagged: untagged, PR: string(tl.pr.Level), Pending: string(orNone(pending.Level))}
 	if tl.pr.Level != bump.LevelNone {
-		next, err := bump.NextOn(tl.Line, tl.current, tl.pr)
+		next, err := bump.NextOn(tl.TagLine, tl.current, tl.pr)
 		if err != nil {
 			return preview.Package{}, packagePreview{}, err
 		}
@@ -424,7 +425,7 @@ func lineVerdict(tl touchedLine, pending bump.Decision, pendingWalked bool) (pre
 	}
 	p.Pending.Level = orNone(pending.Level)
 	if pending.Level != bump.LevelNone && pending.Level != "" {
-		next, err := bump.NextOn(tl.Line, tl.current, pending)
+		next, err := bump.NextOn(tl.TagLine, tl.current, pending)
 		if err != nil {
 			return preview.Package{}, packagePreview{}, err
 		}
@@ -433,7 +434,7 @@ func lineVerdict(tl touchedLine, pending bump.Decision, pendingWalked bool) (pre
 	d := foldDecision(tl.pr, pending)
 	pv.Level = string(d.Level)
 	if d.Level != bump.LevelNone {
-		next, err := bump.NextOn(tl.Line, tl.current, d)
+		next, err := bump.NextOn(tl.TagLine, tl.current, d)
 		if err != nil {
 			return preview.Package{}, packagePreview{}, err
 		}
@@ -448,8 +449,8 @@ func lineVerdict(tl touchedLine, pending bump.Decision, pendingWalked bool) (pre
 func offLine(rows []bump.Row, touched []touchedLine) int {
 	onLine := map[string]bool{}
 	for _, tl := range touched {
-		for _, r := range tl.commits {
-			onLine[r.SHA] = true
+		for _, c := range tl.commits {
+			onLine[c.Raw.SHA] = true
 		}
 	}
 	n := 0

@@ -1227,7 +1227,8 @@ untouched: naming a tag names the release being redone, and it is the escape
 on any branch. The rule's cost is two git calls per resolution — the shallow
 probe and `git tag --merged`, the dear one — once per declared line on a
 packages walk: `--merged` took 0.14 s over google-cloud-go's 7,935 tags without
-a commit-graph, which a fresh clone lacks, against 0.01 s for the plain listing
+a commit-graph, which a fresh clone lacks, 0.03 s with one, against 0.01 s for
+the plain listing — about 29 s over its 204 lines at the fresh-clone rate
 (measured 2026-09-29). (Mutation rows
 `walk-base-reads-a-tag-head-does-not-contain`, `merged-tags-lists-every-tag`,
 `merged-tags-fails-on-an-unborn-head`,
@@ -1661,7 +1662,7 @@ header or footer), and the body six Go CLIs publish the same way (the ruling's
 census of the fleet clones, 2026-09-29) — a link composed by `release` alone
 would have skipped glyph's own page, the page it was measured missing from.
 `--range` and `--pr` render none, by the rule that has each source render only
-the citation it can attest (`pendingLines`): a local range names no repository and
+the citation it can attest (`walk.PendingLines`): a local range names no repository and
 a pull no release base. `notes --json` is unchanged — sections only, no link
 key; the link lives in composed bodies, `notes`' stdout and `release`'s `body`.
 Rejected: a GoReleaser `release.footer` over `{{ .PreviousTag }}`. GoReleaser's
@@ -1714,7 +1715,7 @@ report it) — never a silent patch, and never exit 3 for the minutes GitHub
 lags. A **direct push** GitHub knows and resolves to nothing is on the released
 branch for good, so an unclaimed message there is refused at 3 by the walk's
 own refusal, the same producer as a pull's inner commit, with the escape at the
-commit itself (`internal/cli/sincetag.go: unclaimed, wedge, walkRefusal`). The
+commit itself (`internal/walk/refusal.go: unclaimed, wedge, walkRefusal`). The
 refusal is the walk's, so every consumer of the walk answers it — `bump`,
 `release`, `preview` and `notes` alike (`notes` has no fold: before the walk
 judged its own commits it left such a commit out of every section, or rendered
@@ -1781,9 +1782,10 @@ and `doctor`'s path-exists check (t-exs0); the line primitives — a tag is
 parsed *on* a line (`bump.ParseVersionOn`, `config.Package.tagPrefix`), and
 the walk base, the published floor and the managed drafts are each resolved
 per line — plus `doctor`'s root-line advice (t-q047); and the walk itself
-(t-ws0s): `internal/cli/lines.go` resolves the lines a `--since-tag` names,
-walks the union once, fetches the files of each commit it places by its diff
-from local git or the API, and partitions the walk per line, so `bump` and `notes`
+(t-ws0s): `internal/walk` resolves the lines a `--since-tag` names
+(`lines.go`), walks the union once (`expand.go`), fetches the files of each
+commit it places by its diff from local git or the API, and partitions the walk
+per line (`partition.go`), so `bump` and `notes`
 answer per line over `--since-tag` and `--range` (the `packages` array
 below, scalars empty or absent), `lint --range` and the pre-push hook apply rules 2–3
 and the contradiction check; and the drafts (t-qecb): `release` converges
@@ -2119,8 +2121,8 @@ sub-expression, like the loader's check: necessary and not sufficient. What a
 message can go without it does not read off the pattern at all (below). The
 sentence reads more than attribution's four inputs — the
 claiming pattern, that a merge commit's diff was never read, that a diff was
-not read whole — and the answer does not: one helper (`attribute`,
-`internal/cli/lines.go`) sets them on a refusal already returned, for the
+not read whole — and the answer does not: one helper (`Attribute`,
+`internal/walk/partition.go`) sets them on a refusal already returned, for the
 walk, `lint --range` and
 `preview` alike, each with a test that reads its own refusal (mutation rows
 `walk-`, `lint-` and `preview-refuses-a-merge-commit-as-touching-no-file`).
@@ -2320,14 +2322,14 @@ author gate), so the routine dependabot squash — authored by `dependabot[bot]`
 as GitHub writes it — is placed by its landed net diff from local git, free;
 nothing else in the walk changes price, and a repository without
 `[[packages]]` pays nothing new because no file is ever asked for. The
-whole-history cap (`sinceTagWalkCap`) still counts commits, not requests: a
+whole-history cap (`walk.Cap`) still counts commits, not requests: a
 capped first walk of a packages repository may cost up to twice the cap. The
 endpoint pages its file list at 300 per page (`Link: rel="next"`, followed)
 and stops at 3000 — **measured** 2026-09-10 on torvalds/linux's 17k-file root
 commit: `rel="last"` at page 10, page 11 empty; a commit whose listing reaches
 that cap is an **incomplete walk** in the sense §4 already defines (a package
-it touched past the cap is unreachable, not absent), recorded in `walkFacts`
-as `FilesCapped` beside `Truncated`, so `complete()` is false and a writing
+it touched past the cap is unreachable, not absent), recorded in the walk's
+`Facts` as `FilesCapped` beside `Truncated`, so `Complete()` is false and a writing
 command refuses (exit 4). Two corollaries, both ratified with t-c6r5 and
 t-ft7p after the first cut got them wrong. A refusal attribution would hand
 down over a truncated listing — no carrier, or a scope naming a package that
@@ -2347,7 +2349,7 @@ for SHA: <sha>` — the same status and message `commits/{sha}/pulls` gives, the
 bodies differing only in `documentation_url` (both measured 2026-09-29) — so
 `IsCommitUnknown` reads both, and `listFiles`, the one reader the walk and
 `preview` share, takes the answer as a capped listing with nothing listed:
-`walkFacts` records it as `FilesUnknown` beside `FilesCapped`, and a refusal
+the walk's `Facts` record it as `FilesUnknown` beside `FilesCapped`, and a refusal
 attribution would hand down over the empty listing is withheld as over a
 truncated one. An unscoped commit claiming a version impact is therefore
 carried nowhere, while a scope naming a package still carries the commit
@@ -2406,7 +2408,7 @@ never hear of it.
 
 **The walk is one walk.** Each package's range is `<its base>..HEAD`, its
 base resolved exactly as §4 resolves the single line's — the highest parseable
-tag carrying the package's prefix that HEAD contains (`latestVersionTag` per
+tag carrying the package's prefix that HEAD contains (`walk.LatestVersionTag` per
 prefix; a `curry/` tag never baselines `haiku`, mutation row
 `packages-tag-of-one-line-baselines-another.patch`), else no tag and the
 whole history. The walk runs once over the **union** of those ranges (the
@@ -2715,7 +2717,7 @@ come from `GET /commits/{sha}` — one request per commit placed by its files, t
 squash arm's price paid before the merge — and a commit attribution refuses
 is refused here at exit 3, the same lint-class answer the walk will give
 once it is merged, while the branch can still be fixed. Each commit is placed
-by the walk's own placement (`placeByFiles`): one reader of its listing, one
+by the walk's own placement (`walk.PlaceByFiles`): one reader of its listing, one
 withholding rule, and one sentence each for an unread listing and a withheld
 refusal (`TestWalkAndPreviewWarnAnUnreadListingInOneSentence`). Over a listing
 GitHub truncated, or one a 422 cut short (above), the refusal is withheld
@@ -2925,16 +2927,17 @@ internal/draftplan       draft convergence — pure; which draft a verdict keeps
 internal/markdown        Line: per-field flatten, then the prose escape and the mention fence over the assembled line
 internal/notes           group by section; note.line rendered by hand over config.LineSpan / LinePart (the span grammar is parsed in internal/config; the optional-span drop rule lives here)
 internal/preview         merge-preview comment body — pure; no git, no API, no clock
+internal/walk            the release walk (§4, §4.1): the base past a tag, the squash→pull expansion and its footprints, the facts of what it could not read, which lines each commit joins — git and GitHub reached through the ports it declares
 internal/gitsource       every git subprocess the binary runs — log, tags, ancestry, diff-tree files, shallow probe, remotes, config, HEAD's trees (exec.CommandContext)
 internal/github          commits/{sha}/pulls, commits/{sha} files, pulls/{N} and its commits, release CRUD + generate-notes, repo object
 internal/doctor          repository-precondition checks; independent, read-only (§7)
 internal/hook            commit-msg and pre-push hook contents + overwrite policy (no rules of its own)
-internal/cli             cobra adapter; Execute() int owns the exit-code funnel
-internal/testutil        the hermetic git fixture shared by tests (test-only, ships nothing)
+internal/cli             cobra adapter; Execute() int owns the exit-code funnel; composes the walk's ports and carries out the release's writes in order
+internal/testutil        the fixtures two or more packages' tests share — the hermetic git fixture, the loaded gemoji config (test-only, ships nothing)
 internal/workflows       no runtime code — tests pinning CI-YAML invariants
 ```
 
-**Why these five boundaries exist** — the tree says what each package
+**Why these six boundaries exist** — the tree says what each package
 holds, and each package's doc comment argues its own internals; what belongs
 here is only why it is a package at all, and what depends on it:
 
@@ -2945,6 +2948,17 @@ here is only why it is a package at all, and what depends on it:
 - `internal/preview` — the merge fold is version arithmetic, so it sits above
   `internal/bump` rather than in `pr-verdict.yml`'s jq, where it was a second
   rank table living on the fleet's side of the pin.
+- `internal/walk` — the walk is the §4 policy, and from its first week
+  (2026-07-16) until 2026-10-18 it sat
+  in `internal/cli` under a package doc that disowned it, so its rules could
+  be driven only through cobra and every walk test was a command test
+  (t-gr7f). It declares what it reads — `Git`, `Pulls`, `Reporter` — and
+  `internal/cli` composes them: `gitsource.Checkout` at the working
+  directory, the API client, and its own stderr writers, which is how §5's
+  stream order holds for the walk's warnings without the walk knowing a
+  stream. The data types stay where they are read from
+  (`gitsource.RawCommit`, github's `PullRef` and `Commit`); the ports are the
+  behaviour boundary, not a second copy of the shapes.
 - `internal/hook` — the generated hook is a consumer of the exit-code contract
   that glyph WRITES, so its gate code is interpolated from `core.CodeLint`
   (below) instead of typed as a shell literal. `internal/cli` imports it to
@@ -2956,7 +2970,11 @@ here is only why it is a package at all, and what depends on it:
 - `internal/testutil` — one home for the hermetic git fixture, because its
   environment pin is an incident-bearing block and verbatim copies quietly
   lose incidents (a partial copy in the hook tests had already lost the
-  maintenance pin). Imported by tests alone; nothing shipping depends on it.
+  maintenance pin). The rule: test-only, importable by any package's tests,
+  importing nothing above `internal/config`, and holding a fixture exactly
+  when two packages' tests share it — the git fixture, and since t-gr7f the
+  loaded gemoji config (`Config`) that `internal/cli`'s and `internal/walk`'s
+  tests both start from. Nothing shipping depends on it.
 
 **Exit-code contract** (`internal/core`): `0` ok · `1` no release · `2` usage ·
 `3` convention violation · `4` no trustworthy answer — API/git/IO, a refusal

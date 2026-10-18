@@ -7,7 +7,7 @@
 // It is pure — no git, no API, no clock — and renders what it is given. It
 // holds no walk knowledge: which commits a range holds, the pull each came
 // from, the login to credit and whether a sha may be cited are the caller's
-// (cli's walkedNoteCommits blanks the sha of a commit no branch holds before
+// (walk.NoteCommits blanks the sha of a commit no branch holds before
 // it arrives here). It decides no version and no release: a commit's level is
 // bump.LevelOf over config's match, and whether a release happens, the
 // version and the compare link are the caller's. Commit-derived text is

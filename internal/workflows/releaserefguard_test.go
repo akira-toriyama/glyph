@@ -20,7 +20,7 @@ import (
 // those writes is wrong and nothing downstream notices: the walk's range is
 // <tag>..HEAD over that ref, the branch's unmerged commits enter the notes,
 // each resolves to no merged pull request and is classified from its own
-// subject on the direct-push arm, and walkFacts stays complete (only an API
+// subject on the direct-push arm, and the walk's Facts stay complete (only an API
 // lag is recorded as dropped) so the exit-4 refusal for an unreadable walk
 // never fires. The run is green, the draft holds unmerged work, and Publish
 // puts the tag on the branch tip. A caller cannot close this itself: GitHub

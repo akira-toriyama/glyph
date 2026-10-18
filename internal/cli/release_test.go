@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/github"
+	"github.com/akira-toriyama/glyph/v5/internal/walk"
 )
 
 // releasesPath is the releases collection for the repository the tests query.
@@ -1307,7 +1308,7 @@ func resolvablePatch(t *testing.T, dir string, routes map[string]string) {
 // exit 4 before the releases listing is even fetched (ratified t-pysg,
 // replacing #66's warn-and-refuse-to-destroy).
 //
-// The shapes are the family walkFacts records, and each carried a measured
+// The shapes are the family walk.Facts records, and each carried a measured
 // defect when glyph still handed down a verdict on it: the none verdict deleted
 // the rolling draft on the very reading it had just told the operator to re-run
 // (t-441z); a `:boom:` pull lost to an unresolved merge point beside one
@@ -1460,12 +1461,12 @@ func TestReleaseNoneTriesEveryResidual(t *testing.T) {
 // target and the dry run reach it as fields, not as package state a cobra
 // run has to set first.
 func TestReleaseRunsFromOptionsWithoutCobra(t *testing.T) {
-	walk := oneFixWalk(t)
-	usePR(t, dryServer(t, walk))
+	routes := oneFixWalk(t)
+	usePR(t, dryServer(t, routes))
 	stdout, stderr, restore := captureOut()
 	defer restore()
 
-	err := releaseRun(context.Background(), releaseOptions{tag: sinceTagAuto, target: goldenTarget, dryRun: true})
+	err := releaseRun(context.Background(), releaseOptions{tag: walk.Auto, target: goldenTarget, dryRun: true})
 	if err != nil || !strings.HasPrefix(stdout.String(), "v0.1.1\n\n"+wantMarker) {
 		t.Fatalf("releaseRun from options: %v, stdout %q, want the v0.1.1 draft previewed\nstderr: %s", err, stdout.String(), stderr.String())
 	}

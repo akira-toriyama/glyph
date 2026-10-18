@@ -39,8 +39,8 @@ var actionsEnv = []string{envActionsRef, envActionsEvent}
 // The harm is the walk, not just the write. `glyph release` walks <tag>..HEAD
 // out of local git, and off the default branch that range holds the branch's
 // unmerged commits: each resolves to no merged pull request, falls to the
-// direct-push arm and is classified from its own subject; walkFacts.Dropped
-// records only an API lag, so walkFacts stays complete and §4's exit-4 refusal
+// direct-push arm and is classified from its own subject; walk.Facts.Dropped
+// records only an API lag, so the facts stay complete and §4's exit-4 refusal
 // for an unreadable walk never fires. The upsert then adopts the one managed draft,
 // retags it and re-points target_commitish at the branch tip — a green run, a
 // draft describing work the default branch never held, and Publish cutting the

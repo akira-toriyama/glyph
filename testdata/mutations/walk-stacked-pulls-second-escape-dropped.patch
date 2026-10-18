@@ -1,8 +1,8 @@
-diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index 0071752..c91413d 100644
---- a/internal/cli/sincetag.go
-+++ b/internal/cli/sincetag.go
-@@ -775,7 +775,7 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index c42cc14..2dbbb5b 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -116,7 +116,7 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
  				// below compare like with like.
  				r.SHA = on
  			}

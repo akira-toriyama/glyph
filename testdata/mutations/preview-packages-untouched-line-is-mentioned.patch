@@ -1,8 +1,8 @@
 diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
-index 858b206..f8e73d6 100644
+index 4c7e193..95e3034 100644
 --- a/internal/cli/cmd_preview.go
 +++ b/internal/cli/cmd_preview.go
-@@ -284,7 +284,7 @@ func attributePull(ctx context.Context, gh *github.Client, cfg *config.Config, o
+@@ -285,7 +285,7 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
  	}
  	var touched []touchedLine
  	for i, l := range lines {
@@ -10,4 +10,4 @@ index 858b206..f8e73d6 100644
 +		if len(perLine[i]) < 0 {
  			continue
  		}
- 		touched = append(touched, touchedLine{line: l, commits: perLine[i]})
+ 		touched = append(touched, touchedLine{Line: l, commits: perLine[i]})

@@ -1,8 +1,8 @@
-diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index 2197cbb..cba5248 100644
---- a/internal/cli/sincetag.go
-+++ b/internal/cli/sincetag.go
-@@ -677,9 +677,6 @@ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.Ra
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index c42cc14..61dee04 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -362,9 +362,6 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
  		}
  		// A merge commit is never replayed by a rebase (measured — see above), so
  		// it has no landing site to find and no position to hold.
@@ -11,4 +11,4 @@ index 2197cbb..cba5248 100644
 -		}
  		window = append(window, i)
  	}
- 	// Nothing left to place: the whole merge-button shape, and also the pull that
+ 	// Nothing left to place — the whole merge-button shape, or an empty listing

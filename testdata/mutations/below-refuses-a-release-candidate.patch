@@ -1,8 +1,8 @@
-diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index 41f2efb..a1a477f 100644
---- a/internal/cli/sincetag.go
-+++ b/internal/cli/sincetag.go
-@@ -254,7 +254,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
+diff --git a/internal/walk/base.go b/internal/walk/base.go
+index 6c113a8..abec051 100644
+--- a/internal/walk/base.go
++++ b/internal/walk/base.go
+@@ -131,7 +131,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
  func belowBound(rest string) (bound, prefix string, v bump.Version, err error) {
  	bound = strings.TrimSpace(rest)
  	prefix = bump.LinePrefix(bound)

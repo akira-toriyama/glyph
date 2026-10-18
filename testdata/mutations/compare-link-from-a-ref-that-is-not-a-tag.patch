@@ -1,10 +1,10 @@
-diff --git a/internal/cli/compare.go b/internal/cli/compare.go
-index b267064..86bf644 100644
---- a/internal/cli/compare.go
-+++ b/internal/cli/compare.go
-@@ -64,7 +64,7 @@ func escapeRef(ref string) string {
- func tagBase(ctx context.Context, value string) (string, error) {
- 	ok, err := gitsource.IsTag(ctx, ".", value)
+diff --git a/internal/walk/base.go b/internal/walk/base.go
+index 6c113a8..0e63e72 100644
+--- a/internal/walk/base.go
++++ b/internal/walk/base.go
+@@ -259,7 +259,7 @@ func (w Walker) releasesHEADHolds(ctx context.Context) ([]string, error) {
+ func (w Walker) tagBase(ctx context.Context, value string) (string, error) {
+ 	ok, err := w.Git.IsTag(ctx, value)
  	if err != nil || !ok {
 -		return "", err
 +		return value, err

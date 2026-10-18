@@ -1,9 +1,9 @@
-diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index df6d5ba..4b3074b 100644
---- a/internal/cli/lines.go
-+++ b/internal/cli/lines.go
-@@ -273,7 +273,7 @@ func partitionLines(ctx context.Context, gh *github.Client, cfg *config.Config,
- 		gov := c.governing()
+diff --git a/internal/walk/partition.go b/internal/walk/partition.go
+index 6d457c4..7c9836f 100644
+--- a/internal/walk/partition.go
++++ b/internal/walk/partition.go
+@@ -141,7 +141,7 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
+ 		gov := c.Governing()
  		var reach []int
  		for i := range lines {
 -			if unreleased[i] == nil || unreleased[i][gov] {

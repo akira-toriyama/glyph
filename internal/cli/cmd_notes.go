@@ -10,6 +10,7 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/core"
 	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
 	"github.com/akira-toriyama/glyph/v5/internal/notes"
+	"github.com/akira-toriyama/glyph/v5/internal/walk"
 	"github.com/spf13/cobra"
 )
 
@@ -130,7 +131,7 @@ func notesRun(ctx context.Context, o notesOptions) error {
 	var pkgs []packageNotes
 	var said []lineBody
 	for _, lw := range w.Lines {
-		sections, gerr := notes.Group(walkedNoteCommits(lw.Commits), cfg)
+		sections, gerr := notes.Group(walk.NoteCommits(lw.Commits), cfg)
 		if gerr != nil {
 			return gerr
 		}
@@ -144,7 +145,7 @@ func notesRun(ctx context.Context, o notesOptions) error {
 		said = append(said, lineBody{path: lw.Package.Path, base: lw.BaseTag, notes: notes.Render(sections)})
 	}
 	if len(said) == 0 {
-		reason := noNotesReason(cfg, participating(cfg, walkedNoteCommits(w.All)), w.Source)
+		reason := noNotesReason(cfg, participating(cfg, walk.NoteCommits(w.All)), w.Source)
 		if o.json {
 			printCompact(notesVerdict(cfg, pkgs, reason))
 		}

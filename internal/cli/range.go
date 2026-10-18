@@ -7,36 +7,15 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/bump"
 	"github.com/akira-toriyama/glyph/v5/internal/config"
 	"github.com/akira-toriyama/glyph/v5/internal/core"
-	"github.com/akira-toriyama/glyph/v5/internal/github"
 	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
 	"github.com/akira-toriyama/glyph/v5/internal/notes"
 )
 
-// This file is the shared input plumbing that turns raw commits — from git or
-// the API, both spelled gitsource.RawCommit — into the shapes bump, notes and
-// lint read. Which commits each of them reads, and how, is not decided here:
-// the pattern file decides, inside bump.Fold / notes.Group /
-// config.Lint, so every consumer applies identical rules by construction.
-
-// bumpCommits adapts raw commits for the fold.
-func bumpCommits(raws []gitsource.RawCommit) []bump.Commit {
-	out := make([]bump.Commit, 0, len(raws))
-	for _, r := range raws {
-		out = append(out, bump.Commit{SHA: r.SHA, Author: r.Author, Message: r.Message})
-	}
-	return out
-}
-
-// noteCommits adapts a pull's listed commits for the notes, all citing that
-// pull — preview's read of the pull under review (bump and notes read a pull
-// through pullLines, as walked commits).
-func noteCommits(raws []gitsource.RawCommit, pull int) []notes.Commit {
-	out := make([]notes.Commit, 0, len(raws))
-	for _, r := range raws {
-		out = append(out, notes.Commit{SHA: r.SHA, Pull: pull, Author: r.Author, Login: identity(r), Message: r.Message})
-	}
-	return out
-}
+// This file is the --range read lint, bump and notes share, and the count
+// notes owes for its no-release reason. Which commits each of them reads, and
+// how, is not decided here: the pattern file decides, inside bump.Fold /
+// notes.Group / config.Lint, so every consumer applies identical rules by
+// construction.
 
 // participating counts the commits the fold reads — not an exclude_authors
 // author, matched, not claimed by a skip pattern (DESIGN §4.1) — for notes'
@@ -60,18 +39,6 @@ func participating(cfg *config.Config, commits []notes.Commit) int {
 		}
 	}
 	return n
-}
-
-// identity is the GitHub login the notes may credit a commit's author BY:
-// the login GitHub itself mapped the commit to when the API described it,
-// else the login a noreply author address carries, else "" — and "" is an
-// answer, never the author name: a name is free text and @<name> pages
-// whoever happens to own it (t-39fy).
-func identity(r gitsource.RawCommit) string {
-	if r.Login != "" {
-		return r.Login
-	}
-	return github.LoginFromNoreply(r.Email)
 }
 
 // logRange is every --range read — lint's, bump's and notes', single line and
