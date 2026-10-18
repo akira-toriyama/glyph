@@ -14,15 +14,28 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
-// The walk's own git calls run through gitsource.Checkout, so the same pin
+// The walk's git calls run through gitsource.Checkout, so the same pin
 // internal/cli's and internal/gitsource's TestMain carry holds here: a
 // personal git config must not move an answer (DESIGN §5, "Anything that
-// models an external system").
+// models an external system"). Every test then runs from a directory that
+// is no repository: the package directory sits inside glyph's own clone,
+// where a git call made past the Git port would still be answered, and
+// from here it fails — measured by swapping one w.Git call for the
+// gitsource function at "." (the walk tests go red).
 func TestMain(m *testing.M) {
 	for _, k := range []string{"GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"} {
 		os.Setenv(k, os.DevNull)
 	}
-	os.Exit(m.Run())
+	nowhere, err := os.MkdirTemp("", "glyph-walk-nowhere")
+	if err != nil {
+		panic(err)
+	}
+	if err := os.Chdir(nowhere); err != nil {
+		panic(err)
+	}
+	code := m.Run()
+	os.RemoveAll(nowhere)
+	os.Exit(code)
 }
 
 // recorder is the Reporter the tests read the walk's warnings and notices
@@ -39,9 +52,8 @@ func (r *recorder) Noticef(format string, a ...any) {
 	r.lines = append(r.lines, "notice: "+fmt.Sprintf(format, a...))
 }
 
-// at is the walk over the fixture at dir, with no API behind it: the tests
-// never change directory, so a git call that reached past the Git port
-// would run in the package directory and fail.
+// at is the walk over the fixture at dir, with no API behind it. The fixture
+// is named by path alone (TestMain runs every test outside any repository).
 func at(dir string) Walker {
 	return Walker{Git: gitsource.Checkout{Dir: dir}, Report: &recorder{}}
 }
@@ -99,8 +111,9 @@ func (p *fakePulls) CommitFiles(_ context.Context, _, _, sha string) ([]string, 
 // named by path alone: a squash-merged pull's inner commits fold in, its
 // squash subject never reaches the fold, the bot push costs no request, and
 // the whole-history warning lands on the Reporter rather than on a stream.
-// Nothing here changes directory, so a git call made past the Git port, or a
-// warning written past the Reporter, fails this test.
+// A warning written past the Reporter is never heard, and a git call made
+// past the Git port runs where TestMain put the test — outside any
+// repository — and fails.
 func TestSinceReadsThroughItsPorts(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	testCommit(t, dir, "akira-toriyama", "Add a menu (#7)")

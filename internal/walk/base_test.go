@@ -34,13 +34,13 @@ func TestLatestVersionTagComparesVersionsNotRefnames(t *testing.T) {
 
 	tag, v, err := at(dir).LatestVersionTag(t.Context(), config.Line{}, nil)
 	if err != nil {
-		t.Fatalf("latestVersionTag: %v", err)
+		t.Fatalf("LatestVersionTag: %v", err)
 	}
 	if tag != "100.0.0" {
-		t.Errorf("latestVersionTag tag = %q, want %q (the highest version, not git's first entry)", tag, "100.0.0")
+		t.Errorf("LatestVersionTag tag = %q, want %q (the highest version, not git's first entry)", tag, "100.0.0")
 	}
 	if want := (bump.Version{Major: 100}); v != want {
-		t.Errorf("latestVersionTag version = %v, want %v", v, want)
+		t.Errorf("LatestVersionTag version = %v, want %v", v, want)
 	}
 }
 
@@ -61,10 +61,10 @@ func TestLatestVersionTagBreaksATieOnGitsOrder(t *testing.T) {
 
 	tag, _, err := at(dir).LatestVersionTag(t.Context(), config.Line{}, nil)
 	if err != nil {
-		t.Fatalf("latestVersionTag: %v", err)
+		t.Fatalf("LatestVersionTag: %v", err)
 	}
 	if tag != "v1.2.3" {
-		t.Errorf("latestVersionTag tag = %q, want %q (git lists it first among the two spellings)", tag, "v1.2.3")
+		t.Errorf("LatestVersionTag tag = %q, want %q (git lists it first among the two spellings)", tag, "v1.2.3")
 	}
 }
 
@@ -90,17 +90,17 @@ func TestLatestVersionTagIsPerLine(t *testing.T) {
 	for prefix, want := range cases {
 		tag, _, err := at(dir).LatestVersionTag(t.Context(), config.Line{Prefix: prefix}, nil)
 		if err != nil {
-			t.Fatalf("latestVersionTag(%q): %v", prefix, err)
+			t.Fatalf("LatestVersionTag(%q): %v", prefix, err)
 		}
 		if tag != want {
-			t.Errorf("latestVersionTag(%q) = %q, want %q", prefix, tag, want)
+			t.Errorf("LatestVersionTag(%q) = %q, want %q", prefix, tag, want)
 		}
 	}
 	// below: on a line is the predecessor ON THAT LINE.
 	below := bump.Version{Major: 2}
 	tag, v, err := at(dir).LatestVersionTag(t.Context(), config.Line{Prefix: "haiku/"}, &below)
 	if err != nil || tag != "haiku/v1.9.0" || v != (bump.Version{Major: 1, Minor: 9}) {
-		t.Errorf("latestVersionTag(haiku/, below v2.0.0) = %q, %v, %v; want haiku/v1.9.0", tag, v, err)
+		t.Errorf("LatestVersionTag(haiku/, below v2.0.0) = %q, %v, %v; want haiku/v1.9.0", tag, v, err)
 	}
 }
 
@@ -128,7 +128,7 @@ func TestLatestVersionTagOnAShallowCheckoutReadsEveryTag(t *testing.T) {
 
 	tag, _, err := at(dir).LatestVersionTag(t.Context(), config.Line{}, nil)
 	if err != nil || tag != "v0.2.0" {
-		t.Fatalf("latestVersionTag on a shallow checkout = %q, %v; want v0.2.0 (every tag, the walk says the checkout is shallow)", tag, err)
+		t.Fatalf("LatestVersionTag on a shallow checkout = %q, %v; want v0.2.0 (every tag, the walk says the checkout is shallow)", tag, err)
 	}
 }
 
@@ -177,17 +177,12 @@ func TestSinceTagBaseIsAReleaseHEADContains(t *testing.T) {
 	}
 }
 
-// TestSinceTagUnboundedWalkRefused: the release-floor guard on the untagged
-// arm (t-354v). A resolved --since-tag with no tag to bound it walks the WHOLE
-// history at one API round-trip per visited commit, and release.yml runs that
-// on every push of a repository that has not released yet — measured on the
-// v0.11.1 rollout, four untagged fleet repositories walked their entire
-// histories. Past sinceTagWalkCap glyph refuses BEFORE the first API call
-// (fail-loud 4, the draftplan.CheckPublishedFloor family: nothing broken, no
-// retry clears it, the escape is in the message). Under the cap the walk runs
-// exactly as before — a skip would fold zero commits and verdict the first
-// release out of existence — and the count excludes the bot authors the walk
-// itself never asks about.
+// TestWholeHistoryAtTheCapStillWalks is the untagged arm's half of the cap
+// decision that cli's TestSinceTagUnboundedWalkRefused cannot pin: a history
+// of exactly Cap walk-visible commits still walks (a skip would fold zero
+// commits and verdict the first release out of existence), and the count
+// excludes the bot authors the walk itself never asks about. The refusal one
+// commit past the cap, and its exit 4 and escape, are that cli test's.
 func TestWholeHistoryAtTheCapStillWalks(t *testing.T) {
 	dir, _ := testRepo(t)
 	testGit(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
