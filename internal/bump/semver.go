@@ -199,7 +199,7 @@ func LinePrefix(tag string) string {
 // draft, never its floor and never a release a caller can pin. The tolerant
 // rule, ParseVersion and ParseVersionOn with their optional v, is for what
 // glyph reads as a release of someone else's making — the walk base and the
-// step base (cli.latestVersionTag, --since-tag, --current) and doctor's
+// step base (walk.LatestVersionTag, --since-tag, --current) and doctor's
 // bare-tag residue — where a 1.2.3 cut by hand is a release HEAD contains
 // however it is spelled, and a base that skipped it would re-fold what it
 // shipped.

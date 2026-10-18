@@ -1308,7 +1308,7 @@ func resolvablePatch(t *testing.T, dir string, routes map[string]string) {
 // exit 4 before the releases listing is even fetched (ratified t-pysg,
 // replacing #66's warn-and-refuse-to-destroy).
 //
-// The shapes are the family walkFacts records, and each carried a measured
+// The shapes are the family walk.Facts records, and each carried a measured
 // defect when glyph still handed down a verdict on it: the none verdict deleted
 // the rolling draft on the very reading it had just told the operator to re-run
 // (t-441z); a `:boom:` pull lost to an unresolved merge point beside one

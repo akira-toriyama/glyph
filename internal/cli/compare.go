@@ -18,7 +18,7 @@ const compareMark = "**Full Changelog**: "
 // the body goreleaser.yml publishes through --release-notes carries the same
 // line the rolling drafts do.
 //
-// base is the tag the walk resolved, in its own spelling (line.BaseTag): ""
+// base is the tag the walk resolved, in its own spelling (walk.Line.BaseTag): ""
 // renders nothing, because a walk with no tag base has no left side GitHub
 // answers truthfully. end is a sha — the draft's target, or HEAD for notes —
 // because a draft's tag does not exist until a human publishes; an end that

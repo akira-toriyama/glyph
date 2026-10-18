@@ -83,8 +83,8 @@ type Report struct {
 }
 
 // Input is everything the checks read. The repository object is fetched by the
-// caller (internal/cli owns every network decision, as it does for every other
-// command) and handed over WITH its error: RepoErr non-nil is not a fatal
+// caller (internal/cli makes every request on doctor's behalf — doctor itself
+// speaks to no network) and handed over WITH its error: RepoErr non-nil is not a fatal
 // condition here, it is the input to the token check and the reason the
 // settings checks report could-not-run.
 type Input struct {
@@ -123,7 +123,7 @@ type Input struct {
 	// HooksDir / HooksErr are git's answer to where this checkout's hooks live
 	// (core.hooksPath relocates them, so it must be ASKED, not assumed) and the
 	// failure to get one. Resolved by the caller for the same reason RepoObject
-	// is: internal/cli owns every subprocess, as it owns every request. A nil
+	// is: the caller runs doctor's subprocesses, as it makes its requests. A nil
 	// error with an empty directory cannot happen — git names one or fails.
 	HooksDir string
 	HooksErr error
@@ -489,7 +489,7 @@ func checkMergeCommit(in Input) Check {
 // checkRebaseMerge reports allow_rebase_merge at ADVICE, the merge-commit
 // convention's weight: the LAST replayed commit expands the whole pull request
 // exactly as strictly as a squash commit (a subject no pattern claims fails the
-// release through cli.walkRefusal), so rebase merging costs one API round-trip
+// release through the walk's refusal, internal/walk), so rebase merging costs one API round-trip
 // per replayed commit and a narrow lag window, not strictness (DESIGN §7).
 func checkRebaseMerge(in Input) Check {
 	c := Check{ID: idRebaseMerge, Expected: "allow_rebase_merge=false (house convention: squash-only)"}

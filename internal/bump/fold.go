@@ -138,7 +138,7 @@ func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
 		// before the commit lands, and --range over a published branch can
 		// hold one already landed, where only a range starting past it gets
 		// out. (The release walk refuses its own commits before the fold, with
-		// the wedge's escape — cli.unclaimed, cli.walkRefusal.)
+		// the wedge's escape — internal/walk's unclaimed and walkRefusal.)
 		remedy := " (an unmatched commit folded as none would be a silent hole — fix the message, add a pattern, or exclude the author)"
 		if firstUnlandable {
 			remedy = " (rewrite it as its reason says before it lands; a commit already on a published branch cannot be rewritten, so the range must start past it)"

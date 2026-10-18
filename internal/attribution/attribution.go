@@ -11,15 +11,15 @@
 // package is a claim on files); no `all` scope exists; the answer never
 // depends on anything but the four inputs. Nothing here decides what a
 // commit's message may say — exclude_authors, skip patterns and the pattern
-// match run first (cli's placeOf): a commit the fold reads arrives with its
+// match run first (walk.PlaceOf): a commit the fold reads arrives with its
 // scope and sigil, and a commit the fold does not read arrives with no scope
 // and the none sigil, so its files alone place it and nothing here can refuse
 // it (DESIGN §4.1, t-sr1c).
 //
 // A Refusal's SENTENCE reads more than the four inputs — which pattern
 // claimed the message, whether the diff was a merge commit's or went unread —
-// and the caller sets those on the refusal after the verdict (cli's
-// attribute). They choose words, never an answer.
+// and the caller sets those on the refusal after the verdict
+// (walk.Attribute). They choose words, never an answer.
 package attribution
 
 import (
@@ -88,7 +88,7 @@ type Refusal struct {
 	// Unread: the caller did not read the commit's diff whole — a file
 	// listing GitHub capped or cut short, a shallow clone's boundary — so the
 	// files are what it did read, perhaps none, and the refusal is one the
-	// caller withholds (cli's partitionLines). The sentence must not state
+	// caller withholds (the walk's partitionLines). The sentence must not state
 	// of the commit what is known only of the files read.
 	Unread bool
 	// Sayable is what a message can write under the pattern that claimed

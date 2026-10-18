@@ -114,7 +114,7 @@ func newBumpCmd() *cobra.Command {
 
 // bumpRun is bump below its flags: the one walk result whatever the source
 // (readSource), the union fold, one verdict per line, and the render. A
-// repository without [[packages]] walks as one bare line (pendingLines,
+// repository without [[packages]] walks as one bare line (walk.PendingLines,
 // resolveLinesScoped), so the per-line loop is the only loop and the render
 // alone tells the shapes apart. The bare line's verdict IS the scalars —
 // its reason unprefixed, its next version bare on stdout — the pre-packages

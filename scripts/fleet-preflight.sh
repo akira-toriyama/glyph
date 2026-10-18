@@ -659,7 +659,7 @@ while IFS= read -r name; do
   # pull, that pull's commits) plus the releases listing the body probe pages
   # through. An estimate, not a meter — anything it misses still names itself on
   # a skip line. An untagged history is walked whole up to the walk cap
-  # (sinceTagWalkCap in internal/cli, 200), which glyph counts without its
+  # (walk.Cap in internal/walk, 200), which glyph counts without its
   # exclude_authors commits, so a longer history is estimated at the cap: an
   # upper bound, never the zero a refusal would cost.
   if [ -n "$tag" ]; then

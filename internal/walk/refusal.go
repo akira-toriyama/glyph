@@ -32,40 +32,16 @@ func unclaimed(cfg *config.Config, c gitsource.RawCommit) (row bump.Refusal, ok 
 
 // wedge is one commit the release walk refused — inside a merged pull the
 // walk resolved, or on the released branch itself — with where it sits and
-// the base that clears it (ratified Q1/t-2nzf: such failures stay hard, never
-// a silent patch). A bare per-commit lint line is uniquely unhelpful here:
-// the caller never named a PR (the walk resolved it), and published history
-// is immutable, so the SAME failure — a commit that bypassed the lint gate —
-// wedges every future release until the walk range moves past it.
-//
-// "Published history", not "squash history": since a merge commit resolves
-// (t-7zt7), the offending commit is just as often one a merge-merged PR put on
-// main under its own SHA, and since the walk judges its own commits it is a
-// direct push too. None is rewritable on a branch other repos have pulled —
-// but a message that named only squashes read as inapplicable to exactly the
-// repositories where this newly happens, which is the worst moment to sound
-// like someone else's problem.
-//
-// WHERE THE ESCAPE POINTS depends on whether the offending commit is somewhere a
-// tag can be cut, and onMain is what answers that. A merge- or rebase-merged
-// pull put its commits on the released branch, so the walk can now drop the ones
-// an earlier tag already shipped (mainFootprint) — which means a base past the
-// offending commit clears the wedge, the intuitive escape, restored. A
-// SQUASH-merged pull has no such commit: its listing exists only over the API,
-// its one commit on main IS its merge point, and nothing short of a base at or
-// past that merge point stops the walk from re-fetching the whole listing. A
-// direct push is on the branch by definition, so it is its own escape. A commit
-// two pulls list (a stacked pull carries its base pull's) has one escape per
-// pull: each merge point wedges on its own.
-//
-// That distinction used to be invisible, and the cost was a hint that lied by
-// omission. Before mainFootprint, expanding a pull re-read its entire listing
-// whenever its merge point was in range, so for a merge-merged pull a base past
-// the offending commit wedged again and the hint had to send everyone to the
-// merge point (verified then: tag AT the offending commit and tag strictly past
-// it both still exited 3). Now both subtests exit 0, so pointing a merge-merged
-// pull at its merge point would throw away every commit between — a short
-// release recommended by glyph itself.
+// the base that clears it. Such a failure stays hard (Q1; glossary, "wedge"):
+// published history is immutable, so the same commit wedges every release
+// until the walk starts past it, and a bare per-commit lint line names
+// neither the pull nor a base. WHERE THE ESCAPE POINTS is the footprint
+// rule's other half (DESIGN §4, "Which base clears it"): a commit the walk
+// sees on the released branch (onMain — a merge- or rebase-merged pull's, a
+// direct push) is cleared by a base at or past itself, the nearest escape;
+// a squash-merged pull's inner commit exists only over the API, so only a
+// base at or past its merge point stops the walk re-reading the listing. A
+// commit two pulls list has one escape per pull.
 type wedge struct {
 	row     bump.Refusal
 	where   string

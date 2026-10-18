@@ -13,7 +13,7 @@ import (
 // This file is the input-source dispatch bump and notes share: which of
 // --range / --pr / --since-tag a command was GIVEN, read once at RunE so
 // nothing below it asks cobra, and the one read that turns the named source
-// into the shape every verdict loop reads (sinceTagWalk, lines.go). A
+// into the shape every verdict loop reads (walk.Result). A
 // repository that declares no [[packages]] comes back as one bare line
 // holding every commit, so a command has one per-line loop and no second
 // arm, and the render alone tells the single line from the lines.
@@ -108,13 +108,8 @@ func rangeLines(ctx context.Context, cfg *config.Config, revRange string) (walk.
 }
 
 // pullLines is the --pr twin: a pull request's individual (pre-squash)
-// commits over the API, each cited by the pull (the notes' $pr) under its
-// own sha. Landed is set so the citation keeps the sha: walkedNoteCommits
-// blanks a sha only for a pull's commit that landed under no identity of its
-// own (the squash arm, whose listed shas no branch holds — t-xxhj), and an
-// open pull's listed shas are what its head branch holds and what a
-// `notes --pr` body has always cited. The flag is read for nothing else
-// here: the listing stays on the bare line, where partitionLines is the
+// commits over the API, each cited by the pull under its own sha
+// (pullCommits), on the bare line alone — where partitionLines is the
 // identity and no diff is asked for. Refused under [[packages]] before the
 // number is examined (refusePullSource): the listing carries no files, so
 // nothing could place a commit on a declared line.

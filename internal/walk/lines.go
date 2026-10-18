@@ -11,31 +11,28 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/core"
 )
 
-// line is one version line the walk answers for. Package is the [[packages]]
+// Line is one version line the walk answers for. Package is the [[packages]]
 // entry that owns it — the zero value (Path "") only on the bare line of a
-// repository that declares none. Line is its tag line — the prefix and the
+// repository that declares none. TagLine is its tag line — the prefix and the
 // majors it holds (config.Config.LineOf). Base is what the bump steps from:
 // the walk base's version when the walk base is a version tag, v0.0.0 on the
-// whole-history arm, and nil — the line's highest tag is then read
-// (currentVersion) — for a typed tag that names no plain version (a
-// candidate, a non-version tag), for a --range fold and for a pull's listing.
-// Source names the line's own range in messages; Range is the revision range
-// whose commits are unreleased on this line, "" when every walked commit is
-// (the whole history, a --range fold, a pull's listing). Bound is the below:
-// bound as typed when that form resolved the line, "" for the other forms:
-// with Range "" it tells the two whole-history causes apart — no tag UNDER
-// the bound is not no tag at all, and a line's diagnosis must not be a
-// sentence `git tag -l` refutes (t-gt9n) — which is also why each cause is
-// stated of HEAD's history, the set the base is read from.
+// whole-history arm, and nil — the line's highest tag is then read (cli's
+// currentVersion) — for a typed tag that names no plain version, for a
+// --range fold and for a pull's listing. Source names the line's own range in
+// messages; Range is the revision range whose commits are unreleased on this
+// line, "" when every walked commit is (the whole history, a --range fold, a
+// pull's listing). Bound is the below: bound as typed when that form resolved
+// the line, "" for the other forms: with Range "" it tells the two
+// whole-history causes apart, and a line's diagnosis must not be a sentence
+// `git tag -l` refutes (t-gt9n).
 //
 // BaseTag is the tag the line's range starts from, in its own spelling — the
-// compare link's left side (compareLink) — and "" when the walk has no tag
-// base: the whole history, a --range fold, a pull's listing, or a typed
-// value that is no tag (tagBase). It is a field rather than cut out of Range
-// because Range cannot say it: the single line's whole-history Range is
-// "HEAD", a packages line's is "", a typed branch looks like any tag, and
-// Base is the parsed version, whose String() re-adds the v a bare `1.0.0`
-// tag does not have.
+// compare link's left side — and "" when the walk has no tag base: the whole
+// history, a --range fold, a pull's listing, or a typed value that is no tag
+// (tagBase). A field rather than cut out of Range, because Range cannot say
+// it: the single line's whole-history Range is "HEAD", a packages line's is
+// "", a typed branch looks like any tag, and Base is the parsed version,
+// whose String() re-adds the v a bare `1.0.0` tag does not have.
 type Line struct {
 	Package config.Package
 	TagLine config.Line
@@ -72,19 +69,12 @@ type LineWalk struct {
 // Version-SHAPED is bump.ParseBaseVersionOn's question, the one below: has
 // always asked of its bound: a release candidate or a build-metadata tag on
 // a declared line names that line, and the line steps from its highest PLAIN
-// tag — a candidate is a question, never an answer — as the single line does
-// with a tag that names no base. The first cut asked ParseVersionOn's
-// question of the plain form, so haiku/v3.0.0-rc.1 was "not a version on any
-// line" and every declared line walked from haiku's candidate, stepping past
-// its own highest tag with nothing on stderr; and fish/v1.0.0-rc.1 died in
-// git at 4 instead of at the usage guard (t-gt9n; mutation row
+// tag — a candidate is a question, never an answer (t-gt9n; mutation row
 // packages-candidate-tag-walks-every-line).
 //
 // The union is the range from the bases' common ancestor to HEAD, which
 // contains every line's range; a line with no tag of its own makes it the
-// whole history, under the same cap the single line has, with the remedy
-// §4.1 names (cut <prefix>v0.0.0 at the commit before the line's first
-// change).
+// whole history, under the single line's cap and with the remedy §4.1 names.
 // A nil scope resolves every declared line; a scope narrows the UNION to its
 // lines. Every declared line is still resolved and returned, because
 // partitionLines attributes over the whole set; only the range the walk runs
@@ -271,14 +261,14 @@ func declaredLines(cfg *config.Config) string {
 	return strings.Join(out, ", ")
 }
 
-// pendingLines are the lines a source that names no release base answers
+// PendingLines are the lines a source that names no release base answers
 // for — every declared line, or the bare line of a repository that declares
 // none — with every commit pending on each: a --range fold names no base
 // (the caller chose the range) and a pull's listing is unreleased by
 // definition. Source names the input in messages; Range is "" (every commit
-// is unreleased), Base nil (the line's highest tag answers, currentVersion)
-// and BaseTag "" (no compare link: a local range names no repository and a
-// pull no release base — DESIGN §4, the citation each source can attest).
+// is unreleased), Base nil (the line's highest tag answers) and BaseTag ""
+// (no compare link: a local range names no repository and a pull no release
+// base — DESIGN §4, the citation each source can attest).
 func PendingLines(cfg *config.Config, source string) []Line {
 	if len(cfg.Packages) == 0 {
 		return []Line{{Source: source}}

@@ -33,7 +33,7 @@ const (
 
 // Reading is what attribution may read of one commit's message: the scope
 // and sigil the claiming pattern handed on, and which pattern that was —
-// which decides no placement and only words a refusal (attribute). unjudged
+// which decides no placement and only words a refusal (Attribute). unjudged
 // is the Reading of a message it may read nothing of: no scope, the none
 // sigil, no pattern, so files alone place the commit and nothing refuses it.
 type Reading struct {
@@ -44,11 +44,12 @@ type Reading struct {
 
 var unjudged = Reading{sigil: config.SigilNone, pattern: -1}
 
+// ReadingOf is the Reading of a message the fold reads, from its match.
 func ReadingOf(m config.Match) Reading {
 	return Reading{scope: m.Groups[config.ScopeGroup], sigil: m.Sigil, pattern: m.PatternIndex}
 }
 
-// placeOf reads what attribution may read of a commit's message: its scope
+// PlaceOf reads what attribution may read of a commit's message: its scope
 // and sigil when the fold reads the message, nothing when it does not. An
 // exclude_authors commit is placed by its files alone — the message is
 // exactly what glyph declared it would not judge, so neither its scope nor
@@ -69,7 +70,7 @@ func PlaceOf(cfg *config.Config, raw gitsource.RawCommit) (Place, Reading) {
 	return PlacedByFiles, ReadingOf(m)
 }
 
-// attribute is the one door the walk, lint --range and preview ask
+// Attribute is the one door the walk, lint --range and preview ask
 // attribution through. The verdict is attribution.Attribute's, over the four
 // inputs it has always read. What this adds is the half of a refusal's
 // sentence only a caller knows: that the commit is a merge commit (its diff
@@ -80,17 +81,10 @@ func PlaceOf(cfg *config.Config, raw gitsource.RawCommit) (Place, Reading) {
 // the message because an escape that takes something out of it — the scope,
 // the sigil — is proven by matching the rewritten message, not read off the
 // pattern). None of it can move the answer: it is set on a refusal already
-// returned.
-//
-// One helper, because the alternative is each call site setting three
-// fields by hand: a site that forgets one moves no verdict, so every verdict
-// test stays green while its refusal words a pattern nobody described: the
-// zero Sayable names patterns[0] in either arm, and a no-carrier refusal then
-// offers a bare `path = "."`, which a preset-shaped file's loader refuses —
-// the first cut's defect in a new coat (t-mfny (A); DESIGN §4.1; measured in
-// review, 2026-10-13). Each arm has a test that reads its refusal's own
-// words, and a mutation row that hands this door no commit
-// (<arm>-refuses-a-merge-commit-as-touching-no-file).
+// returned. One door, because a call site that forgets one field moves no
+// verdict and every test stays green while its refusal words a pattern
+// nobody described (t-mfny; DESIGN §4.1; mutation rows
+// <arm>-refuses-a-merge-commit-as-touching-no-file).
 func Attribute(cfg *config.Config, raw gitsource.RawCommit, said Reading, files []string, whole bool) ([]config.Package, error) {
 	moved, err := attribution.Attribute(files, said.scope, said.sigil, cfg.Packages)
 	if r, ok := errors.AsType[*attribution.Refusal](err); ok {
@@ -105,36 +99,20 @@ func Attribute(cfg *config.Config, raw gitsource.RawCommit, said Reading, files 
 // declared it is the identity: one line holding every commit, nothing asked
 // of git or the API.
 //
-// With packages, a commit JOINS line p when it is UNRELEASED on p
-// (its governing commit is in p's range) AND its own diff PLACES it on p
-// (attribution). The first question is git's, answered per line from the
-// line's own range; the second is asked of every commit's files (placeOf):
-// with its scope and sigil when the fold reads the message, by files alone
-// when it does not — an exclude_authors commit moves no version and appears
-// in the notes of the lines its files touch, on no line when they touch
-// none, because its message is exactly what glyph declared it would not
-// judge. A skip-pattern commit appears nowhere, so it is placed nowhere and
-// its files are never asked for; a message no pattern claims joins every
-// line it is unreleased on, so the fold refuses it there (§3). Files come
-// from local git for a landed identity and from the API for a squash-merged
-// pull's inner commit, the one shape no branch holds; a merge commit's diff
-// is never asked for.
-//
-// The first cut placed every commit the fold would not read on every line:
-// a dependabot bump touching only haiku/poem.go rendered under all five line
-// headings of the live-fire harness, lines with no commit of their own grew
-// a section for it, and release wrote it into every draft — while preview
-// dropped the same commit from every line (t-sr1c, measured 2026-09-11;
-// mutation row packages-excluded-author-placed-on-every-line).
-//
-// A commit inside the union walk that is released on every line — possible
-// on a history where the bases' common ancestor sits before both — is
-// dropped with a notice; it was walked because the union had to contain it,
-// and it belongs to no line's verdict.
-//
-// A commit its diff places is placed by placeByFiles, which withholds a
-// refusal over a diff the walk did not read whole; one over a diff read
-// whole wedges every line whose range holds the commit (attributionWedge).
+// With packages, a commit JOINS line p when it is UNRELEASED on p (its
+// governing commit is in p's range) AND its own diff PLACES it on p
+// (DESIGN §4.1, "The walk is one walk"). The first question is git's,
+// answered per line from the line's own range; the second is asked of every
+// commit's files (PlaceOf): with its scope and sigil when the fold reads the
+// message, by files alone for an exclude_authors commit — on no line when
+// its files touch none (t-sr1c; mutation row
+// packages-excluded-author-placed-on-every-line) — nowhere for a skip, and
+// on every line it is unreleased on for a message no pattern claims, so the
+// fold refuses it there (§3). A commit the union holds that is released on
+// every line is dropped with a notice: it was walked because the union had
+// to contain it. PlaceByFiles withholds a refusal over a diff the walk did
+// not read whole; one over a diff read whole wedges every line whose range
+// holds the commit (attributionWedge).
 func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, repo string, commits []Commit, facts *Facts, lines []Line) ([]LineWalk, []Commit, error) {
 	if len(cfg.Packages) == 0 {
 		return []LineWalk{{Line: lines[0], Commits: commits}}, commits, nil
@@ -202,9 +180,9 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
 	return lws, all, nil
 }
 
-// FilePlacement is where a commit's own diff places it (placeByFiles): the
+// FilePlacement is where a commit's own diff places it (PlaceByFiles): the
 // packages its files move, how much of the diff was read, and attribution's
-// refusal — refused over a diff read whole, which each caller words for
+// refusal — Refused over a diff read whole, which each caller words for
 // where the commit sits, or withheld over one that was not, which is no
 // verdict and leaves the commit on no line.
 type FilePlacement struct {
@@ -214,35 +192,23 @@ type FilePlacement struct {
 	withheld error
 }
 
-// placeByFiles places one commit by its own diff — the one place the walk
-// (partitionLines) and preview's pull side (attributePull) do it, so the two
-// cannot read a listing, record it unread or withhold a refusal two ways:
-// each did all three, and warned of the unread listing and the withheld
-// refusal in its own words. walkedFiles reads the files and records a
-// listing GitHub did not give whole on facts, with the escapes of the lines
-// reached — none on preview's pull side, which has no merge point a tag
-// could be cut at.
+// PlaceByFiles places one commit by its own diff — the one place the walk
+// (partitionLines) and preview's pull side do it, so the two cannot read a
+// listing, record it unread or withhold a refusal two ways. walkedFiles reads
+// the files and records a listing GitHub did not give whole on facts, with
+// the escapes of the lines reached — none on preview's pull side, which has
+// no merge point a tag could be cut at.
 //
-// A refusal attribution hands down over a diff not read whole (diffGap) — a
-// listing GitHub TRUNCATED at its cap or cut short with a 422 (listFiles),
-// or a shallow clone's boundary, whose diff local git cannot compute at all
-// — is not a finding and never wedges: "no carrier" and "the scope names a
-// package owning none of the files" are both claims about files nobody read
-// (the package past the cap may be exactly the one named). The commit is
-// carried nowhere and the caller's shortfall answers — the walk's
-// FilesCapped, FilesUnknown or Shallow, on which a writing command refuses
-// at 4 and a reporting one warns; preview's PR-side caveat — never the gate
-// code, which would tell an operator to cut a tag past a commit whose true
-// attribution was hidden (t-c6r5, measured: exit 3 with the wedge remedy). A
-// non-refusal answer stands over such a diff, so a scope naming a package
-// still carries the commit there (rule 2), and so do the files a listing did
-// hold, whatever cut it short (t-esm5). One arm withholds for all three so
-// they cannot come to place a commit two ways again: a boundary was once
-// carried on no line whatever its scope, beside a 422 the same walk placed
-// by scope (DESIGN §4.1). The shortfall each records stays its own — a
-// boundary is no UnreadListing, whose remedy is a tag past the commit; a
-// boundary's is the full history — and so does its warning, which names the
-// lines the walk carried it on (warnBoundary).
+// A refusal over a diff not read whole (diffGap: a capped or 422-cut
+// listing, a shallow clone's boundary) is not a finding and never wedges —
+// "no carrier" is a claim about files nobody read, and the package past the
+// cap may be the one named — so the commit is carried nowhere and the
+// caller's shortfall answers, never the gate code (t-c6r5). A non-refusal
+// answer stands over such a diff: a scope still carries the commit (rule 2),
+// and so do the files a listing did hold (t-esm5). One arm withholds for all
+// three so they cannot come to place a commit two ways again (DESIGN §4.1,
+// "Where the files come from"); each shortfall stays its own — a boundary is
+// no UnreadListing — and so does its warning (warnBoundary).
 func (w Walker) PlaceByFiles(ctx context.Context, cfg *config.Config, owner, repo string, c Commit, said Reading, facts *Facts, reached []Line) (FilePlacement, error) {
 	files, gap, err := w.walkedFiles(ctx, owner, repo, c, facts, reached)
 	if err != nil {
@@ -262,26 +228,17 @@ func (w Walker) PlaceByFiles(ctx context.Context, cfg *config.Config, owner, rep
 }
 
 // walkedFiles fetches the paths a walked commit's own diff touches from the
-// cheapest source that has them: nothing for a merge commit (attributed to
-// nothing, its diff never asked for), local git for a landed identity, the
-// API for a commit this checkout may not hold — a squash-merged pull's inner
-// commit, or one of the pull preview reads, which exists on that pull's
-// branch only. An API listing GitHub did not give whole — one that reached
-// CommitFilesCap, or one a 422 cut short (listFiles) — is recorded on the
-// facts with the tags that take the commit out of the lines reached (the
-// shortfall's remedy), and returned as diffUnlisted: the files it did not
-// list are unreachable, not absent, and a package they touch would be
-// missing from the verdict — an incomplete walk in §4's sense, or an
-// incomplete PR side in a preview, and a listing attribution must not refuse
-// over (placeByFiles).
-//
-// A shallow clone's boundary commit comes back with no file and diffBoundary:
-// git reads it as a root, and the diff it would give is the whole tree, which
-// once moved every line the tree touched (t-esm5). It is recorded on no fact
-// here and warned about by the caller, once it is placed: a since-tag walk
-// over a shallow checkout already records Facts.Shallow, whose remedy —
-// the full history — is the boundary's, where an UnreadListing would offer a
-// tag past it.
+// cheapest source that has them: nothing for a merge commit (its diff is
+// never asked for), local git for a landed identity, the API for a commit
+// this checkout may not hold — a squash-merged pull's inner commit, or one
+// of the pull preview reads (DESIGN §4.1, "Where the files come from"). A
+// listing GitHub did not give whole — capped, or cut short by a 422
+// (listFiles) — is recorded on the facts with the escapes of the lines
+// reached and returned as diffUnlisted: the files it did not list are
+// unreachable, not absent. A shallow clone's boundary comes back with no
+// file and diffBoundary — git reads it as a root, and its whole tree is not
+// its diff (t-esm5) — recorded on no fact here, since Facts.Shallow already
+// carries the checkout's remedy, and warned about by the caller once placed.
 func (w Walker) walkedFiles(ctx context.Context, owner, repo string, c Commit, facts *Facts, reached []Line) (files []string, gap diffGap, err error) {
 	if c.Raw.Parents >= 2 {
 		return nil, diffWhole, nil
@@ -363,17 +320,13 @@ type fileListing struct {
 func (l fileListing) incomplete() bool { return l.Capped || l.Unknown }
 
 // listFiles asks GitHub for the files of a commit no branch holds and
-// classifies the answer — the one place CommitFiles is read (walkedFiles,
-// which the walk and preview's pull side both reach through placeByFiles),
-// so the two cannot take the same listing two ways. A 422 (github.IsCommitUnknown) is
-// a capped listing holding what the pages before it listed — nothing when
-// the first page answered it (DESIGN §4.1): the sha came from GitHub's own
-// pull listing, its message was read, and the files are the one input
-// attribution has no weaker source for, so the listing is unread — never
-// §4's lag fallback. Handed back raw, it died at exit 4 on release, bump,
-// notes and preview alike (t-esm5; mutation row
-// unlisted-commit-files-die-as-a-raw-api-error); emptied, a 422 on page 2
-// threw away the files page 1 listed (mutation row
+// classifies the answer — the one place CommitFiles is read, so the walk and
+// preview's pull side cannot take one listing two ways. A 422
+// (github.IsCommitUnknown) is a capped listing holding what the pages before
+// it listed: the sha came from GitHub's own pull listing and the files are
+// the one input attribution has no weaker source for, so the listing is
+// unread, never §4's lag fallback (DESIGN §4.1; t-esm5; mutation rows
+// unlisted-commit-files-die-as-a-raw-api-error,
 // later-page-422-discards-the-listed-files).
 func (w Walker) listFiles(ctx context.Context, owner, repo, sha string) (fileListing, error) {
 	files, capped, err := w.Pulls.CommitFiles(ctx, owner, repo, sha)

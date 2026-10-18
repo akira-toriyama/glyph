@@ -242,7 +242,7 @@ type touchedLine struct {
 // (preview.Input.PRShort). Without [[packages]] the bare line holds the whole
 // pull and no file is asked for: partitionLines' identity arm. With packages
 // each commit is placed as the walk places a squash-merged pull's inner
-// commit (placeByFiles), its files read over the API, one request per commit
+// commit (walk.PlaceByFiles), its files read over the API, one request per commit
 // — a pull's commits exist on its branch only, and this checkout may not hold
 // them — by its files, with its scope and sigil when the fold reads the
 // message and by files alone for an exclude_authors commit; or not at all: a

@@ -7,22 +7,14 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/github"
 )
 
-// PullExpansion records one merged pull request the walk expanded — resolved
-// from its canonical commit — and how many of its listed commits the walk
-// took in, after the footprint filter and the walk-wide SHA dedup: a stacked
-// PR whose commits all rode in with its base PR reports 0, and so does a
-// merge-merged PR whose commits the walk already folded in on the fallback
-// path. An excluded author's and a skipped merge commit are taken in with the
-// rest, so Commits is no count of participating commits (DESIGN §4.1). This
-// is the walk reporting its own expansion facts: how a verdict was assembled,
-// in a form a human or a CI step can read back afterwards without re-deriving
-// the walk's exclusion rules somewhere else.
-//
-// It records what the walk DID, and never why a number is what it is. A count
-// of 0 is the case that invites a wrong reading — the dedup cases above report
-// it, and so does a pull whose every listed commit landed under an earlier tag
-// (the footprint filter) — so nothing may treat 0 as "this pull changed
-// nothing".
+// PullExpansion records one merged pull the walk expanded and how many of
+// its listed commits it took in, after the footprint filter and the walk-wide
+// dedup — the `pulls` provenance a verdict reports (DESIGN §4). It records
+// what the walk DID, never why: 0 has only innocent causes (a stacked pull
+// whose commits rode in with its base, a merge-merged pull the fallback
+// already folded, a pull whose every commit landed under an earlier tag), and
+// an excluded author's and a skipped merge commit are taken in with the rest,
+// so Commits is no count of participating commits (§4.1).
 type PullExpansion struct {
 	Number  int `json:"number"`
 	Commits int `json:"commits"`
@@ -30,15 +22,11 @@ type PullExpansion struct {
 
 // Facts is what the walk observed about ITSELF, beside the commits it
 // folded: the expansion provenance the verdict reports, and whether the walk
-// came back knowing it had NOT read the whole range.
-//
-// That second half exists because downstream the two are indistinguishable — a
-// range that genuinely holds nothing and a range the walk could not read both
-// arrive as an empty fold — and glyph acted on the difference: it deleted the
-// rolling draft on a verdict it had just told the operator to re-run, and it
-// wrote a draft whose version was computed without the pull it had just
-// reported missing. The walk already warns about every one of these; this is
-// the same fact in a form a decision can be taken on.
+// came back knowing it had NOT read the whole range. Downstream a range that
+// holds nothing and a range the walk could not read arrive as the same empty
+// fold, and glyph acted on both alike (DESIGN §4, "fails loud (4)"); the walk
+// warns about every cause, and this is the warning's fact in a form a
+// decision gates on.
 type Facts struct {
 	// Pulls is the per-pull expansion provenance (see PullExpansion).
 	Pulls []PullExpansion
@@ -61,31 +49,16 @@ type Facts struct {
 	// used second-best evidence".
 	Dropped []string
 	// Truncated are pulls whose commit listing came back at GitHub's hard cap
-	// (github.PullCommitsCap), in walk order. The API stops at that many however
-	// far the pagination follows, so a listing of exactly the cap is one glyph
-	// cannot claim to have read whole — the commits past it are unreachable, not
-	// absent, and any one of them could carry the deciding sigil.
-	//
-	// It belongs here rather than in the warning alone for the same reason every
-	// other shortfall member does: the walk already SAID it could not read the
-	// range, and then deleted a draft and lowered a version on the strength of
-	// the fold anyway.
-	// Measured before this arm existed: a pull returning 250 :memo: commits, with
-	// a v0.2.0 draft present, exited 1 with action "delete" and the write set was
-	// exactly one DELETE — in the same run whose stderr carried the truncation
-	// warning.
+	// (github.PullCommitsCap), in walk order: the API stops at that many
+	// however far the pagination follows, so the commits past it are
+	// unreachable, not absent, and any one could carry the deciding sigil.
 	Truncated []int
 	// Shallow: this checkout is a --depth clone, so git cannot answer the
-	// footprint question at all — a commit it does not HAVE is indistinguishable
-	// from one that never landed on the released branch.
-	//
-	// It is the only member of this struct that is a property of the CHECKOUT
-	// rather than of what the API returned, and it is the one most likely to
-	// appear: actions/checkout defaults to fetch-depth: 1, so a single line
-	// removed from a release workflow produces it. Measured on a real
-	// `git clone --depth 1`: the walk folds commits an earlier tag already
-	// shipped and answers minor where the full-history control on the same
-	// repository answers patch — loud (two warnings) and green.
+	// footprint question at all — a commit it does not HAVE is
+	// indistinguishable from one that never landed on the released branch.
+	// The one member that is a property of the CHECKOUT rather than of what
+	// the API returned, and the likeliest: actions/checkout defaults to
+	// fetch-depth: 1 (DESIGN §4).
 	Shallow bool
 	// FilesCapped are the squash-arm inner commits whose file listing came
 	// back at GitHub's hard cap (github.CommitFilesCap), in walk order — the
@@ -139,15 +112,15 @@ func unreadClause(ls []UnreadListing, remedy string) string {
 	return strings.Join(parts, sep)
 }
 
-// complete reports that the walk read the range it was asked about. Everything
-// glyph does that it cannot take back — deleting a draft, lowering the version a
-// human is about to publish — is gated on it.
+// Complete reports that the walk read the range it was asked about.
+// Everything glyph does that it cannot take back — deleting a draft, lowering
+// the version a human is about to publish — is gated on it.
 func (f Facts) Complete() bool {
 	return !f.AllUnknown && !f.Shallow && len(f.LostPulls) == 0 && len(f.Dropped) == 0 && len(f.Truncated) == 0 &&
 		len(f.FilesCapped) == 0 && len(f.FilesUnknown) == 0
 }
 
-// shortfall says, in one clause, what the walk could not read — for release's
+// Shortfall says, in one clause, what the walk could not read — for release's
 // exit-4 refusal and for the preview comment's PendingShort / PRShort lines.
 func (f Facts) Shortfall(owner, repo string) string {
 	var parts []string

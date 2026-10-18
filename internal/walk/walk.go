@@ -69,16 +69,14 @@ type Walker struct {
 	Report Reporter
 }
 
-// Result is the shape bump, notes, release and preview's pending side
-// read their commits in — from sinceTagInput for the walk, and from
-// rangeLines and pullLines for the sources that are no walk (readSource):
-// every walked commit that is unreleased on at least one line (All, walk
-// order — the union fold's input, and the single line's), whatever line it
-// joins or none: partitionLines appends to it before it places anything.
-// Then the walk's own facts, the
-// revision range walked, the single line's step base (nil when packages are
-// declared: each line carries its own), and the per-line partition — exactly
-// one entry, holding All, when no packages are declared.
+// Result is the shape bump, notes, release and preview's pending side read
+// their commits in — from Since for the walk, from Pending for the sources
+// that are no walk: every walked commit unreleased on at least one line (All,
+// walk order — the union fold's input, and the single line's), whatever line
+// it joins or none; the walk's Facts; the revision range walked (Source); the
+// single line's step base (nil when packages are declared: each line carries
+// its own); and the per-line partition — exactly one entry, holding All, when
+// no packages are declared.
 type Result struct {
 	All    []Commit
 	Facts  Facts
@@ -101,7 +99,10 @@ type Scope struct {
 	Escape string           // "": the --since-tag sentence
 }
 
-// sinceTagInputScoped is sinceTagInput with the range narrowed to scope.
+// Since is the release walk: the lines tag names and the ONE range over them
+// (resolveLinesScoped), the walk itself (walkSince) and the partition
+// (partitionLines). tag is a value CheckTag accepted; owner and repo name the
+// repository Pulls is asked about; a nil scope walks every declared line.
 func (w Walker) Since(ctx context.Context, cfg *config.Config, tagFlag, owner, repo string, scope *Scope) (Result, error) {
 	lines, revRange, err := w.resolveLinesScoped(ctx, cfg, tagFlag, scope)
 	if err != nil {
@@ -122,12 +123,12 @@ func (w Walker) Since(ctx context.Context, cfg *config.Config, tagFlag, owner, r
 	return Result{All: all, Facts: facts, Source: revRange, Base: base, Lines: lws}, nil
 }
 
-// pendingWalk partitions commits read outside the walk over pendingLines.
-// The walk facts are empty: nothing was resolved over the API. The API
-// client is nil, so attribution reads local git alone — which is why the
-// commits must be landed identities the checkout holds (walkedFiles), as a
-// local range's are, and why a pull's listing reaches it only on the bare
-// line, where partitionLines is the identity and no file is read.
+// Pending partitions commits read outside the walk — a --range fold, a
+// pull's listing — over PendingLines. Facts are empty (nothing was resolved
+// over the API) and Pulls is never asked, which is why the commits must be
+// landed identities the checkout holds (walkedFiles), as a local range's
+// are, and why a pull's listing reaches it only on the bare line, where
+// partitionLines is the identity and no file is read.
 func (w Walker) Pending(ctx context.Context, cfg *config.Config, commits []Commit, source string) (Result, error) {
 	facts := Facts{Pulls: []PullExpansion{}}
 	lws, all, err := w.partitionLines(ctx, cfg, "", "", commits, &facts, PendingLines(cfg, source))
@@ -137,15 +138,13 @@ func (w Walker) Pending(ctx context.Context, cfg *config.Config, commits []Commi
 	return Result{All: all, Facts: facts, Source: source, Lines: lws}, nil
 }
 
-// walked is one folded commit plus the provenance only the walk knows: the
-// merged pull request it was expanded from (0 on the fallback path) and
-// whether its SHA is a *landed* identity (glossary) — a commit the released
-// branch actually holds. The two downstream consumers read different halves:
-// classification reads the bare gitsource.RawCommit (walkedBumpCommits), the
-// notes read the citation (walkedNoteCommits) — the pull beside the sha, and
-// the pull ALONE for a footprint-less commit, whose listed sha exists on no
-// branch and used to be published anyway (t-xxhj: a body citing shas
-// `git branch -r --contains` answers nothing for).
+// Commit is one folded commit plus the provenance only the walk knows: the
+// merged pull it was expanded from (0 on the fallback path) and whether its
+// SHA is a *landed* identity (glossary) — a commit the released branch holds.
+// The two downstream consumers read different halves: the fold reads the
+// bare gitsource.RawCommit (BumpCommits), the notes read the citation
+// (NoteCommits) — the pull beside the sha, and the pull ALONE for a
+// footprint-less commit, whose listed sha exists on no branch (t-xxhj).
 type Commit struct {
 	Raw    gitsource.RawCommit
 	Pull   int
@@ -153,12 +152,12 @@ type Commit struct {
 	// MergePoint is the on-branch commit the pull was resolved from — GitHub's
 	// merge_commit_sha — "" on the fallback path. With packages declared it
 	// is the identity the lines' ranges judge a footprint-less commit by
-	// (walked.governing): a squash-merged pull's inner commit is unreleased
-	// on a line exactly when its merge point is.
+	// (Governing): a squash-merged pull's inner commit is unreleased on a
+	// line exactly when its merge point is.
 	MergePoint string
 }
 
-// governing is the on-branch commit the walk range judges a walked commit by:
+// Governing is the on-branch commit the walk range judges a walked commit by:
 // its own sha when it landed on the released branch, else the merge point of
 // the pull it was expanded from (DESIGN §4.1: a listed commit joins a line
 // only when its governing commit is unreleased there).
@@ -169,8 +168,8 @@ func (c Commit) Governing() string {
 	return c.MergePoint
 }
 
-// walkedBumpCommits strips the provenance for the fold: bump.Fold reads
-// commits, not citations.
+// BumpCommits strips the provenance for the fold: bump.Fold reads commits,
+// not citations.
 func BumpCommits(ws []Commit) []bump.Commit {
 	out := make([]bump.Commit, 0, len(ws))
 	for _, w := range ws {
@@ -179,12 +178,12 @@ func BumpCommits(ws []Commit) []bump.Commit {
 	return out
 }
 
-// walkedNoteCommits hands the fold to the notes with its citation: the pull
-// number beside every expanded commit, and the SHA blanked for a commit that
-// landed under no identity of its own — the squash arm, the one arm whose
-// listed shas no branch holds. Blanked HERE, where DESIGN §4's arms are a
-// known fact, because internal/notes renders what it is given and holds no
-// arm knowledge.
+// NoteCommits hands the fold to the notes with its citation: the pull number
+// beside every expanded commit, and the SHA blanked for a commit that landed
+// under no identity of its own — the squash arm, the one arm whose listed
+// shas no branch holds. Blanked HERE, where DESIGN §4's arms are a known
+// fact, because internal/notes renders what it is given and holds no arm
+// knowledge.
 func NoteCommits(ws []Commit) []notes.Commit {
 	out := make([]notes.Commit, 0, len(ws))
 	for _, w := range ws {

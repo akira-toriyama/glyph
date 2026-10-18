@@ -26,15 +26,9 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 	if err != nil {
 		return nil, Facts{}, err
 	}
-	// Asked once per WALK, before anything else, and not inside the expansion.
-	//
-	// It used to be asked lazily on the first pull that actually expanded, to
-	// save one `git rev-parse` on a release that folds nothing. That saving cost
-	// the fact: a walk where no pull resolves — the API lagging, an automation
-	// authoring the merge commits, a range of direct pushes — never asked at all,
-	// so the shallowest reading of the shallowest checkout was the one that went
-	// unreported. The question is about the CHECKOUT, not about any pull, so it
-	// belongs where the checkout is first read.
+	// Asked once per WALK, before any expansion, never lazily on the first
+	// pull that expands: a walk where no pull resolves is still a walk over a
+	// truncated history, and it was the one that never asked (DESIGN §4).
 	shallow, serr := w.Git.IsShallow(ctx)
 	if serr != nil {
 		return nil, Facts{}, serr
@@ -47,24 +41,15 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 	// indexable on every verdict, the none verdict included, with no null-check
 	// at each consumer.
 	facts := Facts{Pulls: []PullExpansion{}, Shallow: shallow}
-	// seen holds every SHA already REPRESENTED in the fold. One commit can be
-	// reachable from TWO merged PRs — a stacked branch carries its base PR's
-	// pre-squash commits, so after both squash-merge, both listings contain
-	// them — and without this set each occurrence would land in the notes and
-	// the fold once per PR. A merge-merged PR is the other producer: its commits
-	// sit on main under the SHAs the PR listing reports, so the walk meets each
-	// of them twice (once as a walked commit, once inside the expansion). The
-	// walk runs oldest first, so a shared commit is attributed to whatever first
-	// landed it on main — and git's revision walk reaches a parent only through
-	// its child, so a merge point is always walked AFTER the commits it merges,
-	// whatever the commit clocks say.
-	//
-	// "Represented" is the whole membership rule, so it holds the CANONICAL
-	// commit of every resolved pull too, not only the inner commits that pull
-	// expanded into (see the found arm). Both are equally already-counted, and
-	// both come back around: a pull squash-merged into a topic branch leaves its
-	// squash commit inside the listing of the pull that later landed that
-	// branch.
+	// seen holds every SHA already REPRESENTED in the fold — a commit two
+	// merged pulls list (a stacked branch carries its base pull's), a
+	// merge-merged pull's commits met on main and again inside its listing —
+	// and the CANONICAL commit of every resolved pull, which comes back around
+	// too (a pull squash-merged into a topic branch leaves its squash commit
+	// inside the listing of the pull that landed the branch). The walk runs
+	// oldest first, so a shared commit is attributed to whatever first landed
+	// it, and a merge point is always walked AFTER the commits it merges
+	// (DESIGN §4).
 	seen := map[string]bool{}
 	// wedges is every commit the walk refused, from either arm. The refusal
 	// goes out after the WHOLE range is walked, as the fold's does
@@ -74,58 +59,37 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 	// wedged is each refused sha's index in wedges, for a pull that lists a
 	// commit another pull already had refused.
 	wedged := map[string]int{}
-	// inRange is every SHA this walk will visit. It is what makes "covered"
-	// mean something checkable: a commit stands aside only for a pull whose
-	// canonical commit is IN HERE, so a pull left unexpanded at the end is a
-	// resolution failure and never a pull that lives in some other history. A
-	// pull merged into a DIFFERENT base branch (a backport line, a fork) is
-	// associated with commits that reached main another way while its own merge
-	// point is nowhere on main — deferring to it would drop those commits, and
-	// expanding it would fold a branch main never took.
+	// inRange is every SHA this walk will visit — what makes "covered"
+	// checkable: a commit stands aside only for a pull whose canonical commit
+	// is IN HERE, never for one merged into another base branch (DESIGN §4,
+	// "Covered is deliberately gated").
 	inRange := make(map[string]bool, len(raws))
 	for _, raw := range raws {
 		if raw.SHA != "" {
 			inRange[raw.SHA] = true
 		}
 	}
-	// The covered ledger, in walk order, and the pulls actually expanded. A
-	// commit that reports itself covered by pull #N stands aside for #N's own
-	// canonical commit — and if that commit never resolves, #N is a merged pull
-	// request nothing in the walk represents. Every commit of it would then skip
-	// itself and the release would lose it in silence, which is exactly the
-	// t-7zt7 failure the fix exists to end (found by review, on this path). The
-	// end of the walk reconciles the two sets.
+	// The covered ledger, in walk order, and the pulls actually expanded; the
+	// end of the walk reconciles the two, because a covered pull nothing
+	// expanded is a merged pull every commit of which stood aside (t-7zt7).
 	coveredPulls, coveredOrder, expanded := map[int]bool{}, []int{}, map[int]bool{}
-	// foldPull expands one merged pull request into the walk, canonical being the
-	// walked commit that resolved to it (its merge point): the listing is
-	// filtered BEFORE anything judges it (see the two filters below), and the
-	// pull's contribution is recorded. Only a RESOLVED canonical commit may
-	// expand a pull — the reconciliation at the end of the walk deliberately
-	// does not call this (see there), because a listing fetched without a
-	// canonical commit in range says nothing about which of its commits belong
-	// to this walk.
-	//
-	// What the listing DOES say is filtered twice: by where each commit landed
-	// on the released branch (mainFootprint — the range governs anything git
-	// can place, which is what stops a pull from folding back work an earlier
-	// tag shipped), and by seen (an already-represented commit must never be
-	// able to fail the release — its message may be a squash subject, which
-	// need not match any pattern).
-	//
-	// What remains is PRE-FLIGHTED against the pattern file: a non-excluded
-	// inner commit no pattern claims would refuse the fold downstream anyway
-	// (same Match, same config — it cannot disagree), but down there the PR
-	// association is gone, and a bare per-commit refusal is uniquely unhelpful
-	// HERE — see wedge.
+	// foldPull expands one RESOLVED merged pull into the walk, canonical being
+	// the merge point that resolved to it; the reconciliation at the end never
+	// calls it, because a listing fetched without a canonical commit in range
+	// says nothing about which of its commits belong to this walk (DESIGN §4,
+	// "warns and does not expand"). The listing is filtered BEFORE anything
+	// judges it — by where each commit landed (mainFootprint: the range governs
+	// whatever git can place) and by seen (an already-represented commit must
+	// never fail the release; its message may be a squash subject) — and what
+	// remains is pre-flighted against the pattern file HERE, where the pull
+	// association still exists to word the refusal (wedge).
 	foldPull := func(number int, canonical string) error {
 		listing, perr := w.PullRawCommits(ctx, owner, repo, number)
 		if perr != nil {
 			return perr
 		}
-		// Asked HERE and not inside pullRawCommits, which the --pr path shares and
-		// which carries no facts: only a walk has a verdict that can be acted on
-		// irreversibly, so only a walk needs the fact rather than the warning.
-		// pullRawCommits still emits that warning for both callers.
+		// Recorded HERE, not in PullRawCommits, which --pr shares and which
+		// carries no facts: only a walk acts on its verdict irreversibly.
 		if len(listing) >= github.PullCommitsCap {
 			facts.Truncated = append(facts.Truncated, number)
 		}
@@ -189,18 +153,13 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 	}
 	visited, unknown := 0, 0
 	for _, raw := range raws {
-		// A merge point here is a POINTER to a pull request, not a message
-		// being judged, so only its AUTHOR excludes it before resolution — and
-		// the authors are the config's exclude_authors, whose commits can never
-		// move the version, so resolving one would buy nothing and must not
-		// cost an API round-trip (the routine bot push runs on every
-		// repository, every day). The commit itself still joins the walk:
-		// whether it appears in the notes is note.sections' decision, not the
-		// resolution gate's. Neither its subject nor its shape may exclude it:
-		// a two-parent commit is what the "Create a merge commit" button
-		// writes — skipping it for that dropped the entire pull request out of
-		// the release, silently (t-7zt7). Message rules apply where a message
-		// IS judged: in the fold, the lint and the notes downstream.
+		// A merge point is a POINTER to a pull request, not a message being
+		// judged, so only its AUTHOR excludes it before resolution: an
+		// exclude_authors commit can never move the version, and the fleet's
+		// daily bot push must not cost a round-trip. Neither its subject nor
+		// its parent count may — judging the shape dropped a whole pull out of
+		// a release in silence (t-7zt7; DESIGN §4). The commit still joins the
+		// walk; whether the notes show it is their decision.
 		if slices.Contains(cfg.ExcludeAuthors, raw.Author) {
 			if raw.SHA != "" && seen[raw.SHA] {
 				continue
@@ -245,27 +204,19 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 			}
 			continue
 		case len(covering) > 0:
-			// Part of a merged PR whose canonical (merge_commit_sha) commit is
-			// in this very range and represents it: a rebase-merge's non-final
-			// commits, and — now that a merge commit resolves — every commit a
-			// merge-merged PR put on main beside its merge point (gitsource.Log
-			// runs without --first-parent, so the walk sees both). That
-			// canonical commit expands the whole PR, so counting this one too
-			// would double it. If it never does, the ledger above names the pull
-			// at the end — standing aside is only safe because something in the
-			// walk was supposed to stand in, and when nothing did, a human has to
-			// hear about it.
+			// Covered: part of a merged pull whose canonical commit is in this
+			// range and expands it — a rebase-merge's earlier commits, a
+			// merge-merged pull's branch commits (the log runs without
+			// --first-parent). Counting this one too would double it; if the
+			// canonical commit never resolves, the ledger names the pull at the
+			// end.
 			continue
 		}
-		// The fallback: no merged pull request explains this commit (a direct
-		// push, or the API lagging), so its own message is the evidence — the
-		// same evidence the fold and the notes read for every commit. One case
-		// deserves more than the default: a merge commit GitHub has not
-		// indexed yet is a merge POINT the walk could not resolve, and its own
-		// message never says what it merged (the pattern file will skip it as
-		// a merge), so the pull behind it is lost to this run. That is a fact
-		// a release decision needs, not only a warning (t-7zt7's silence, in
-		// miniature).
+		// The fallback: no merged pull explains this commit (a direct push, or
+		// the API lagging), so its own message is the evidence. A merge commit
+		// GitHub has not indexed yet is a merge POINT the walk could not
+		// resolve, and its message never says what it merged — a fact a
+		// release decision needs (Facts.Dropped), not only a warning.
 		if lag && raw.Parents >= 2 {
 			w.Report.Warnf("merge commit %.7s is not known to GitHub yet (API lag), so the pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA)
 			facts.Dropped = append(facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
@@ -284,15 +235,11 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 			continue
 		}
 		if lag {
-			// The lag fallback stays SOFT on an unmatched message, unlike the
-			// fold (Q2): this commit's true content is the pull request the
-			// API has not indexed yet — a squash subject is not a commit
-			// message anyone wrote — so refusing the range here would red
-			// every release for the minutes GitHub lags behind a merge.
-			// DESIGN §4 blesses the weaker source and records the shortfall:
-			// the commit is dropped from the fold, warned about, and carried
-			// in facts.Dropped so release refuses to ACT on the incomplete
-			// walk while bump and notes merely report it.
+			// The lag arm stays SOFT on an unmatched message, unlike the fold:
+			// this commit's true content is a pull the API has not indexed, so
+			// it is dropped from the fold, warned about and carried in
+			// Facts.Dropped — release refuses to ACT on it, bump and notes
+			// report it (DESIGN §4).
 			if row, ok := unclaimed(cfg, raw); ok {
 				w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) and its own message cannot be folded (%s) — nothing was counted from it; re-run once GitHub has indexed the commit", raw.SHA, row.Detail)
 				facts.Dropped = append(facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
@@ -300,15 +247,11 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 			}
 			w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) — reading its own message", raw.SHA)
 		} else {
-			// Judged HERE, like a pull's inner commit, and for the same reason:
-			// bump's fold downstream would refuse the same message with the
-			// same Match (notes has no fold: it left the commit out of every
-			// section, or rendered its raw subject under a section that
-			// claimed its author), but the fold's remedy is authoring's (fix
-			// the message, add a pattern — right for --range and --pr), and
-			// this commit is on the released branch, where the only way out
-			// is a base at or past it. The refusal is the wedge's, with the
-			// escape at the commit itself.
+			// A direct push GitHub knows is judged HERE, like a pull's inner
+			// commit: the fold's remedy (fix the message, add a pattern) is
+			// authoring's, and this commit is on the released branch, where
+			// the only way out is a base at or past it — the wedge's refusal,
+			// with the escape at the commit itself (DESIGN §4).
 			if row, ok := unclaimed(cfg, raw); ok {
 				if raw.SHA != "" {
 					seen[raw.SHA] = true
@@ -331,31 +274,14 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 		// itself, an identity the released branch holds.
 		commits = append(commits, Commit{Raw: raw, Landed: true})
 	}
-	// Reconcile the ledger: a pull the walk only ever saw from the INSIDE. Its
-	// commits stood aside for a canonical commit that never resolved — GitHub
-	// not knowing the merge commit yet (a release job runs seconds after the
-	// merge, and the merge commit is indexed after the commits it merges), or
-	// an exclude_authors author having authored it (the author gate skips it
-	// before the API).
-	//
-	// WARN, and deliberately do NOT expand. An earlier round of t-7zt7 folded the
-	// pull's whole listing in here, and it was unsound for one reason: a pull's
-	// API listing is the pull's ENTIRE history and carries nothing about this
-	// walk's range, which is a git fact the listing never saw. Expanding it is
-	// therefore guessing which of the pull's commits belong to THIS release, and
-	// review broke that guess twice —
-	//
-	//   - double counting: a rebase-merged pull lists its ORIGINAL pre-rebase
-	//     SHAs, which can never equal the main-branch SHAs seen holds, so the
-	//     filter above passes them and the same change renders twice;
-	//   - resurrecting released work: a pull whose earlier commits shipped under
-	//     the previous tag has them folded straight back in — a minor bump
-	//     manufactured out of a commit released one tag ago, announced by nothing.
-	//
-	// Both are the silent-wrong-verdict class this file exists to kill, so the
-	// honest answer is to say what was lost and refuse to guess: a named warning
-	// turns a silent loss (exit 1, `no release`, not one diagnostic — the t-7zt7
-	// silence surviving on the new path) into a visible one.
+	// Reconcile the ledger: a pull the walk saw only from the INSIDE, its
+	// commits standing aside for a canonical commit that never resolved (API
+	// lag, or an exclude_authors author merged it with a real merge commit).
+	// WARN, and deliberately do NOT expand: a listing carries nothing about
+	// this range, and expanding it was unsound both ways — a rebase-merge's
+	// pre-rebase SHAs double-count, released work comes back (DESIGN §4, "The
+	// walk warns and does not expand"). Naming the loss is what turns
+	// t-7zt7's silence into a visible one.
 	for _, number := range coveredOrder {
 		if expanded[number] {
 			continue
@@ -377,81 +303,31 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 	return commits, facts, nil
 }
 
-// mainFootprint answers, for each commit in a merged pull request's API listing,
-// which commit on the RELEASED branch it landed as — the empty string when it
-// landed under no identity of its own.
+// mainFootprint answers, for each commit in a merged pull's API listing,
+// which commit on the RELEASED branch it landed as — "" when it landed under
+// no identity of its own. It is what lets the walk's range govern a listing
+// that knows nothing about it (DESIGN §4, "A pull's listing is governed by the
+// walk's range, not by the pull"; t-8xsb). Two questions, of local git alone,
+// in this order because the first is a fact and the second an inference the
+// first narrows:
 //
-// This is the missing half of the expansion. A pull's listing is the pull's
-// ENTIRE history and carries nothing about the walk's range, which is a git
-// fact; DESIGN §4 says so, and says it as the reason the walk refuses to expand
-// an UNRESOLVED pull. The resolved arm expanded the listing whole anyway, and
-// the gap between the two is a fabricated release: with a version tag cut inside
-// a merge-merged pull's topic branch, commits that shipped under that tag were
-// folded back into the next one (t-8xsb — exit 0, empty stderr, a minor invented
-// out of released work). Once each listed commit is mapped to where it landed,
-// the range can govern it, and both arms follow the same principle.
+//  1. Did the listed commit land under its OWN sha — held by this repository
+//     and an ancestor of HEAD? Asked of HEAD, not of the merge commit: a
+//     commit that reached the branch by another route is just as released,
+//     and a change that landed twice keeps the landing git states (t-nsww).
+//  2. Does whatever is LEFT align against the first-parent run ending at the
+//     merge point, the run a rebase would have written? Verified message by
+//     message and abandoned WHOLE unless every entry matches — half a mapping
+//     is worse than none — and reaching past the run to the commit a dropped
+//     replay was redundant with.
 //
-// Two questions, asked of LOCAL GIT alone — GitHub reports no merge method, and
-// asking for one would be a round-trip per pull to learn something git already
-// knows. They are asked in this order because the first is a git FACT and the
-// second is an inference the first narrows:
-//
-//  1. Did this listed commit land under its OWN sha? The merge button leaves the
-//     pull's commits on the released branch verbatim, so a listed sha that this
-//     repository holds AND that is an ancestor of HEAD landed as itself. Asked of
-//     HEAD rather than of the merge commit on purpose: a commit that reached the
-//     branch by another route is just as released, and the range is what decides
-//     whether it belongs here. That holds even when this pull's rebase ALSO wrote
-//     a copy of the change — the double landing keeps git's answer, ratified
-//     (t-nsww, DESIGN §4).
-//  2. Whatever is LEFT, does it align against the run a rebase would have
-//     written? A rebase rewrites the commits it replays but preserves their
-//     messages and their order, and GitHub names the LAST of the run as
-//     merge_commit_sha — so the N first-parent commits ending there align
-//     positionally with the N unplaced entries, in listing order. The alignment
-//     is VERIFIED message by message and abandoned whole unless every one
-//     matches: a guess about which commits belong to a release is precisely what
-//     this function exists to remove, and half a mapping is worse than none.
-//     The window can also reach PAST the run: a replay the rebase dropped as
-//     already upstream aligns, message-verified, to the older commit that made
-//     it redundant — the other half of the ratified double-landing answer
-//     (t-nsww, DESIGN §4).
-//
-// Step 2 used to run only when step 1 placed NOTHING, on the reading that a
-// listing is either all-verbatim or all-rewritten. It is neither, and both ways
-// out of that assumption were measured against the real API on
-// akira-toriyama/glyph-test (drill for t-7h15):
-//
-//   - A listing can be MIXED. A stacked pull request carries its base pull's
-//     commits, and GitHub computes the listing against a STORED base sha rather
-//     than re-deriving it, so those commits stay listed after the base pull lands
-//     them on main under their own shas (measured: pull #28 still listed the
-//     merge-button-landed ed1bd9e after #27 merged). Rebase-merge the stacked
-//     pull and step 1 places that one entry, step 2 never ran, and every REWRITTEN
-//     entry kept an empty landing site — which foldPull reads as "the pull alone
-//     governs" and folds regardless of the range. That is t-8xsb resurrected
-//     through the front door: measured minor where patch was correct, exit 0, no
-//     warning, and the notes citing pre-rebase shas main does not contain.
-//   - A rebase does NOT replay everything it is given. It drops the base-merge
-//     commit that "merge main into the branch" leaves — an entirely ordinary
-//     branch, and GitHub permits rebase-merge over it (measured: pull #26 listed
-//     three commits, two landed). That entry has no landing site under any shape,
-//     so leaving it in the window made the count wrong and the alignment was
-//     abandoned WHOLE, taking the two commits it could have placed with it. It is
-//     excluded on its parent count — the same RawCommit.Parents fact the walk
-//     already reads everywhere it handles a merge commit, so nothing
-//     downstream needs it placed.
-//
-// A squash leaves no footprint at all and reaches step 2 with the whole listing,
-// where it fails to align: the pull alone governs it, exactly as before.
-//
-// The unalignable case therefore still degrades to the old behaviour rather than
-// to an error or a warning. A squash and a rebase whose window does not align are
-// not distinguishable without the merge method — including when step 1 placed
-// some of the listing, since a squash-merged STACKED pull is that shape too — and
-// squash is the fleet's norm, so a diagnostic here would fire on nearly every
-// release and teach people to ignore it. What it costs is bounded: exactly the
-// expansion that ran before any of this existed.
+// Step 2 runs over what step 1 did not place, not only when it placed
+// nothing (a listing can be MIXED), and a merge commit leaves the window on
+// its parent count (a rebase never replays it) — both measured against the
+// real API (DESIGN §4, "The order of those two questions matters"; t-7h15). A
+// squash fails to align and the pull alone governs it, quietly: without the
+// merge method a squash and an unaligned rebase are one shape, and squash is
+// the fleet's norm.
 func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []gitsource.RawCommit) ([]string, error) {
 	landed := make([]string, len(listing))
 	shas := make([]string, 0, len(listing))
@@ -491,13 +367,11 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
 		}
 		window = append(window, i)
 	}
-	// Nothing left to place: the whole merge-button shape, and also the pull that
-	// listed no commits at all. One guard for both because it is one question: is
-	// there anything an alignment could answer about? The walk hands in a
-	// `canonical` from its own local log, so for the walk falling through only
-	// spends a `git log -n 0` that answers nothing and lands on the same return;
-	// TestMainFootprintEmptyListingAsksGitNothing holds the guard with a canonical
-	// this checkout lacks, where falling through is an exit-4 git error.
+	// Nothing left to place — the whole merge-button shape, or an empty listing
+	// — is one question, so one guard. The walk's canonical comes from its own
+	// log, where falling through would only spend a `git log -n 0`;
+	// TestMainFootprintEmptyListingAsksGitNothing hands in a canonical the
+	// checkout lacks, where it is an exit-4 git error.
 	if len(window) == 0 {
 		return landed, nil
 	}
@@ -519,29 +393,16 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
 	return landed, nil
 }
 
-// mergedPullFor resolves a merge point on main to the pull request that merged
-// it: a commit can be ASSOCIATED with many PRs (a revert, a mention), so the
-// match is MergeCommitSHA == sha and actually merged — never list order. One
-// equality serves every merge style, because GitHub points merge_commit_sha at
-// whichever commit represents the merge: the squash commit, the last rebased
-// commit, or — for the merge button — the merge commit itself.
-//
-// covering reports the other side of that equality, by NUMBER and not merely as
-// a flag: every merged pull that carries this commit while some OTHER sha
-// represents it (a rebase-merge's earlier commits, a merge-merged PR's branch
-// commits, a sub-PR's squash commit riding inside the branch of the pull that
-// landed it). Such a commit stands aside for that pull's canonical commit — so
-// the walk must be able to tell, at the end, whether that canonical commit ever
-// turned up. The numbers are what make that reconciliation possible; a bare
-// bool let a merged pull request disappear whenever its merge point failed to
-// resolve (t-7zt7). Both results can be non-empty at once, and both are used.
-//
-// inRange gates covering on the canonical commit being one this walk visits.
-// Without that gate "covered" is not a claim about this release at all: a pull
-// merged into ANOTHER base branch is associated with commits that reached main
-// by a different route, and its merge point is on a history main never took —
-// standing aside for it would drop a commit from the release, and rescuing it
-// would fold in a branch that was never merged here.
+// mergedPullFor resolves a merge point to the pull that merged it: a commit
+// can be ASSOCIATED with many pulls (a revert, a mention), so the match is
+// MergeCommitSHA == sha and actually merged — never list order — and one
+// equality serves every merge style (DESIGN §4). covering is the other side
+// of that equality, by NUMBER: every merged pull that carries this commit
+// while some OTHER sha in range represents it, so the walk can tell at the
+// end whether that sha ever resolved (a bare bool lost whole pulls, t-7zt7).
+// Both can be non-empty at once. inRange gates covering: a pull merged into
+// another base branch is no claim about this release (DESIGN §4, "Covered is
+// deliberately gated").
 func (w Walker) mergedPullFor(ctx context.Context, owner, repo, sha string, inRange map[string]bool) (number int, found bool, covering []int, err error) {
 	pulls, err := w.Pulls.CommitPulls(ctx, owner, repo, sha)
 	if err != nil {
@@ -566,18 +427,13 @@ func (w Walker) mergedPullFor(ctx context.Context, owner, repo, sha string, inRa
 	return number, found, covering, nil
 }
 
-// pullRawCommits is the read half of pullInput: the listing as GitHub
-// returns it, converted to the local raw shape and with the truncation warning
-// already emitted, but NOT yet parsed.
-//
-// The split exists for the release walk, which must filter this listing against
-// its walk-wide SHA set BEFORE anything parses it. A commit the walk already
-// folded in is already represented in the verdict, so re-reading its message
-// can only do harm: a pull request squash-merged into a topic branch leaves its
-// own squash subject (`Add a menu (#6)`, which no pattern claims) inside the
-// listing of the pull that later landed that branch, and parsing it there
-// wedged the release permanently (t-7zt7). Parse only what the walk has not
-// already accounted for.
+// PullRawCommits is a pull's listing as GitHub returns it, converted to the
+// raw shape and with the truncation warning said, NOT yet parsed: the walk
+// filters it against its walk-wide SHA set before anything parses it (a pull
+// squash-merged into a topic branch leaves its own squash subject inside the
+// listing of the pull that landed the branch, and parsing it there wedged
+// the release — t-7zt7). bump, notes and preview read a pull through it too
+// (cli's pullInput).
 func (w Walker) PullRawCommits(ctx context.Context, owner, repo string, number int) ([]gitsource.RawCommit, error) {
 	raws, err := w.Pulls.PullCommits(ctx, owner, repo, number)
 	if err != nil {

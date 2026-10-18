@@ -76,7 +76,7 @@ func repoObjectServer(t *testing.T, walk map[string]string, releases string, wri
 // The defect: `glyph release` walks <tag>..HEAD out of local git, so off the
 // default branch the range holds the branch's unmerged commits. Each resolves
 // to no merged pull request, falls to the direct-push arm and is classified
-// from its own subject; walkFacts stays complete, so §4's exit-4 refusal for an
+// from its own subject; walk.Facts stays complete, so §4's exit-4 refusal for an
 // unreadable walk never fires. The upsert then retags the one managed draft and
 // re-points its target at the branch tip — green run, wrong draft, and Publish
 // cuts the tag on a commit the default branch never held. GitHub cannot

@@ -17,7 +17,7 @@ type Commit struct {
 	SHA     string
 	Pull    int
 	Author  string
-	Login   string // the GitHub login to credit, "" when nothing established one (cli.identity)
+	Login   string // the GitHub login to credit, "" when nothing established one (walk's identity)
 	Message string
 }
 
