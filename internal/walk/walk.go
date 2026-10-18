@@ -29,7 +29,11 @@ import (
 // Git is the checkout the walk reads: the ten questions it asks local git,
 // each the gitsource function of the same name bound to one directory
 // (gitsource.Checkout). Every verdict command runs inside a checkout of the
-// repository being released (DESIGN §4), and this is that checkout.
+// repository being released (DESIGN §4), and this is that checkout. The one
+// error the walk classifies rather than hands down is DiffTreeFiles' shallow
+// boundary, read through gitsource.IsShallowBoundary — an answer only
+// gitsource's own error type gives, so another implementation cannot signal
+// a boundary; every other error is the API class as the walk received it.
 type Git interface {
 	Log(ctx context.Context, revRange string) ([]gitsource.RawCommit, error)
 	IsShallow(ctx context.Context) (bool, error)
@@ -45,7 +49,12 @@ type Git interface {
 
 // Pulls is GitHub as the walk asks it: which merged pull a merge point
 // belongs to, a pull's own commits, and the files of a commit no branch
-// holds. *github.Client is the one implementation that ships.
+// holds. *github.Client is the one implementation that ships, and the one
+// that can say "GitHub does not know this sha": the walk's lag fallback and
+// its unread file listing branch on github.IsCommitUnknown, which only
+// github's own error type satisfies, so an implementation answered from
+// memory (the tests' fakePulls) reaches neither arm. Every other error is
+// handed down as received.
 type Pulls interface {
 	CommitPulls(ctx context.Context, owner, repo, sha string) ([]github.PullRef, error)
 	PullCommits(ctx context.Context, owner, repo string, number int) ([]github.Commit, error)
