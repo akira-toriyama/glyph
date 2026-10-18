@@ -1,5 +1,5 @@
 diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
-index a0fa05d..566fb5e 100644
+index 4c7e193..9dd9a96 100644
 --- a/internal/cli/cmd_preview.go
 +++ b/internal/cli/cmd_preview.go
 @@ -161,7 +161,6 @@ func previewRun(ctx context.Context, o previewOptions) error {
@@ -10,11 +10,11 @@ index a0fa05d..566fb5e 100644
  	if err := foldTouched(ctx, cfg, touched); err != nil {
  		return err
  	}
-@@ -313,6 +312,7 @@ func foldTouched(ctx context.Context, cfg *config.Config, touched []touchedLine)
+@@ -314,6 +313,7 @@ func foldTouched(ctx context.Context, cfg *config.Config, touched []touchedLine)
  		if err != nil {
  			return err
  		}
 +		warnBumpRows(rows)
- 		tag, current, err := latestVersionTag(ctx, tl.Line, nil)
+ 		tag, current, err := localWalker().LatestVersionTag(ctx, tl.TagLine, nil)
  		if err != nil {
  			return err

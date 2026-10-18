@@ -1,8 +1,8 @@
-diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index 0071752..0fe1ed5 100644
---- a/internal/cli/sincetag.go
-+++ b/internal/cli/sincetag.go
-@@ -792,10 +792,6 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index c42cc14..9c4c8db 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -133,10 +133,6 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
  					// Represented like any other listed commit, and remembered
  					// as refused: one refused commit is one row however many
  					// pulls list it.

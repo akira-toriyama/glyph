@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
-index 858b206..5170cf5 100644
+index 4c7e193..4268b95 100644
 --- a/internal/cli/cmd_preview.go
 +++ b/internal/cli/cmd_preview.go
-@@ -357,7 +357,7 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
+@@ -358,7 +358,7 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
  	for _, tl := range touched {
  		only = append(only, tl.Package)
  	}
--	w, err := sinceTagInputScoped(ctx, cfg, sinceTagAuto, repoFlag, &walkScope{Only: only, Escape: previewWalkEscape})
-+	w, err := sinceTagInputScoped(ctx, cfg, sinceTagAuto, repoFlag, &walkScope{Only: only})
+-	w, err := sinceTagInputScoped(ctx, cfg, walk.Auto, repoFlag, &walk.Scope{Only: only, Escape: previewWalkEscape})
++	w, err := sinceTagInputScoped(ctx, cfg, walk.Auto, repoFlag, &walk.Scope{Only: only})
  	if err != nil {
  		return nil, "", false, err
  	}

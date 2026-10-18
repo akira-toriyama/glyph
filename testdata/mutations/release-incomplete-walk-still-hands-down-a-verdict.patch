@@ -1,14 +1,14 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 23141f2..50c7cfb 100644
+index bf9e970..581ce52 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -246,10 +246,6 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+@@ -248,10 +248,6 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
  	// and a walk blind to a whole pull is exactly what this exit is for. The
  	// escape is the wedge escape: cut a tag at or past what the walk cannot
  	// read, or fix the checkout (fetch-depth: 0) when the shortfall names it.
--	if !w.Facts.complete() {
+-	if !w.Facts.Complete() {
 -		return core.APIf("this walk did not read %s (%s) — refusing to hand down a verdict computed from a range it could not read; re-run the release once the walk can read the range",
--			w.Source, w.Facts.shortfall(owner, repoName))
+-			w.Source, w.Facts.Shortfall(owner, repoName))
 -	}
  	if err := checkLineSelection(o.current, w.Lines); err != nil {
  		return err

@@ -1,14 +1,14 @@
-diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index 6a66a39..0e72b06 100644
---- a/internal/cli/sincetag.go
-+++ b/internal/cli/sincetag.go
-@@ -1067,9 +1067,6 @@ func mainFootprint(ctx context.Context, canonical string, listing []gitsource.Ra
- 	// spends a `git log -n 0` that answers nothing and lands on the same return;
- 	// TestMainFootprintEmptyListingAsksGitNothing holds the guard with a canonical
- 	// this checkout lacks, where falling through is an exit-4 git error.
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index c42cc14..4cb9932 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -372,9 +372,6 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
+ 	// log, where falling through would only spend a `git log -n 0`;
+ 	// TestMainFootprintEmptyListingAsksGitNothing hands in a canonical the
+ 	// checkout lacks, where it is an exit-4 git error.
 -	if len(window) == 0 {
 -		return landed, nil
 -	}
- 	mains, err := gitsource.FirstParentLog(ctx, ".", canonical, len(window))
+ 	mains, err := w.Git.FirstParentLog(ctx, canonical, len(window))
  	if err != nil {
  		return nil, err

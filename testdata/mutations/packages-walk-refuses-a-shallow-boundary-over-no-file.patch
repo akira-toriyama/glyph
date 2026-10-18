@@ -1,10 +1,10 @@
-diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index 2ecd619..d4f9e7c 100644
---- a/internal/cli/lines.go
-+++ b/internal/cli/lines.go
-@@ -482,7 +482,7 @@ func walkedFiles(ctx context.Context, gh *github.Client, owner, repo string, c w
+diff --git a/internal/walk/partition.go b/internal/walk/partition.go
+index 6d457c4..71db947 100644
+--- a/internal/walk/partition.go
++++ b/internal/walk/partition.go
+@@ -246,7 +246,7 @@ func (w Walker) walkedFiles(ctx context.Context, owner, repo string, c Commit, f
  	if c.Landed {
- 		files, err = gitsource.DiffTreeFiles(ctx, ".", c.Raw.SHA)
+ 		files, err = w.Git.DiffTreeFiles(ctx, c.Raw.SHA)
  		if gitsource.IsShallowBoundary(err) {
 -			return nil, diffBoundary, nil
 +			return nil, diffWhole, nil

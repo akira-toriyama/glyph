@@ -1,35 +1,35 @@
-diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index ce1b9af..bba8146 100644
---- a/internal/cli/lines.go
-+++ b/internal/cli/lines.go
-@@ -228,7 +228,7 @@ func lineFromLatest(ctx context.Context, cfg *config.Config, p config.Package, b
- 		return line{}, err
- 	}
- 	if latest == "" {
--		return line{Package: p, Line: tl, Base: &bump.Version{}, Source: "HEAD"}, nil
-+		return line{Package: p, Line: tl, Base: &bump.Version{}, BaseTag: "HEAD", Source: "HEAD"}, nil
- 	}
- 	return line{Package: p, Line: tl, Base: &v, BaseTag: latest, Source: latest + "..HEAD", Range: latest + "..HEAD"}, nil
- }
-diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index 41f2efb..a443c99 100644
---- a/internal/cli/sincetag.go
-+++ b/internal/cli/sincetag.go
-@@ -205,7 +205,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
+diff --git a/internal/walk/base.go b/internal/walk/base.go
+index 6c113a8..4744eee 100644
+--- a/internal/walk/base.go
++++ b/internal/walk/base.go
+@@ -84,7 +84,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
  		}
  		if latest == "" {
- 			revRange, base, err = wholeHistory(ctx, cfg, "no version tag in HEAD's history", "")
+ 			revRange, base, err = w.wholeHistory(ctx, cfg, "no version tag in HEAD's history", "")
 -			return revRange, "", base, err
 +			return revRange, "HEAD", base, err
  		}
  		return latest + "..HEAD", latest, &v, nil
  	}
-@@ -231,7 +231,7 @@ func sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (rev
+@@ -108,7 +108,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
  			// here would fail a job standing behind a tag that already exists.
  			// Same walk, same guard, as auto before the first tag.
- 			revRange, base, err = wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s in HEAD's history", bound), "")
+ 			revRange, base, err = w.wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s in HEAD's history", bound), "")
 -			return revRange, "", base, err
 +			return revRange, "HEAD", base, err
  		}
  		return prev + "..HEAD", prev, &v, nil
  	}
+diff --git a/internal/walk/lines.go b/internal/walk/lines.go
+index 9538c4b..9dde61d 100644
+--- a/internal/walk/lines.go
++++ b/internal/walk/lines.go
+@@ -186,7 +186,7 @@ func (w Walker) lineFromLatest(ctx context.Context, cfg *config.Config, p config
+ 		return Line{}, err
+ 	}
+ 	if latest == "" {
+-		return Line{Package: p, TagLine: tl, Base: &bump.Version{}, Source: "HEAD"}, nil
++		return Line{Package: p, TagLine: tl, Base: &bump.Version{}, BaseTag: "HEAD", Source: "HEAD"}, nil
+ 	}
+ 	return Line{Package: p, TagLine: tl, Base: &v, BaseTag: latest, Source: latest + "..HEAD", Range: latest + "..HEAD"}, nil
+ }

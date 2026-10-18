@@ -1,13 +1,13 @@
-diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index 4181ebe..ed82404 100644
---- a/internal/cli/lines.go
-+++ b/internal/cli/lines.go
-@@ -551,7 +551,7 @@ func placeByFiles(ctx context.Context, gh *github.Client, cfg *config.Config, ow
+diff --git a/internal/walk/partition.go b/internal/walk/partition.go
+index 6d457c4..a476e04 100644
+--- a/internal/walk/partition.go
++++ b/internal/walk/partition.go
+@@ -214,7 +214,7 @@ func (w Walker) PlaceByFiles(ctx context.Context, cfg *config.Config, owner, rep
  	if err != nil {
- 		return filePlacement{}, err
+ 		return FilePlacement{}, err
  	}
--	moved, aerr := attribute(cfg, c.Raw, said, files, gap == diffWhole)
-+	moved, aerr := attribute(cfg, gitsource.RawCommit{}, said, files, gap == diffWhole)
+-	moved, aerr := Attribute(cfg, c.Raw, said, files, gap == diffWhole)
++	moved, aerr := Attribute(cfg, gitsource.RawCommit{}, said, files, gap == diffWhole)
  	switch {
  	case aerr != nil && gap != diffWhole:
  		if gap == diffUnlisted {

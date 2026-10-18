@@ -1,8 +1,8 @@
-diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index a907314..4436431 100644
---- a/internal/cli/lines.go
-+++ b/internal/cli/lines.go
-@@ -164,7 +164,7 @@ func resolveLinesScoped(ctx context.Context, cfg *config.Config, tagFlag string,
+diff --git a/internal/walk/lines.go b/internal/walk/lines.go
+index 9538c4b..5d5b79d 100644
+--- a/internal/walk/lines.go
++++ b/internal/walk/lines.go
+@@ -119,7 +119,7 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
  			return nil, "", terr
  		}
  		prefix := bump.LinePrefix(tag)

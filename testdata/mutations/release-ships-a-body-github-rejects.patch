@@ -1,10 +1,10 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 8a90f16..26de3e6 100644
+index bf9e970..4c7edf5 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -362,14 +362,6 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+@@ -363,14 +363,6 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
  		// next push (t-qgps).
- 		plan := draftplan.PlanDraft(lw.Line, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
+ 		plan := draftplan.PlanDraft(lw.TagLine, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
  		body = draftplan.ComposeBody(plan.Keep, body)
 -		// Sized BEFORE the dry-run fork: a dry run previews the real run, and
 -		// a body the real run refuses must fail the preview identically. Sized

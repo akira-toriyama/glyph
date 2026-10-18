@@ -1,8 +1,8 @@
-diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index cd28094..f45f399 100644
---- a/internal/cli/sincetag.go
-+++ b/internal/cli/sincetag.go
-@@ -310,9 +310,6 @@ func latestVersionTag(ctx context.Context, l config.Line, below *bump.Version) (
+diff --git a/internal/walk/base.go b/internal/walk/base.go
+index 6c113a8..a35e462 100644
+--- a/internal/walk/base.go
++++ b/internal/walk/base.go
+@@ -225,9 +225,6 @@ func (w Walker) LatestVersionTag(ctx context.Context, l config.Line, below *bump
  		if perr != nil || !l.Holds(pv.Major) {
  			continue
  		}

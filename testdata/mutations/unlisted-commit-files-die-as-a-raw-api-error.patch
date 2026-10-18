@@ -1,10 +1,10 @@
-diff --git a/internal/cli/lines.go b/internal/cli/lines.go
-index 9453c82..b5fb21f 100644
---- a/internal/cli/lines.go
-+++ b/internal/cli/lines.go
-@@ -508,8 +508,6 @@ func (l fileListing) incomplete() bool { return l.Capped || l.Unknown }
- func listFiles(ctx context.Context, gh *github.Client, owner, repo, sha string) (fileListing, error) {
- 	files, capped, err := gh.CommitFiles(ctx, owner, repo, sha)
+diff --git a/internal/walk/partition.go b/internal/walk/partition.go
+index 6d457c4..a3f0a77 100644
+--- a/internal/walk/partition.go
++++ b/internal/walk/partition.go
+@@ -331,8 +331,6 @@ func (l fileListing) incomplete() bool { return l.Capped || l.Unknown }
+ func (w Walker) listFiles(ctx context.Context, owner, repo, sha string) (fileListing, error) {
+ 	files, capped, err := w.Pulls.CommitFiles(ctx, owner, repo, sha)
  	switch {
 -	case github.IsCommitUnknown(err):
 -		return fileListing{Files: files, Unknown: true}, nil

@@ -1,12 +1,12 @@
 diff --git a/internal/cli/cmd_notes.go b/internal/cli/cmd_notes.go
-index 4fe7029..e5851b9 100644
+index fec0dcc..10c73b5 100644
 --- a/internal/cli/cmd_notes.go
 +++ b/internal/cli/cmd_notes.go
-@@ -144,7 +144,7 @@ func notesRun(ctx context.Context, o notesOptions) error {
+@@ -145,7 +145,7 @@ func notesRun(ctx context.Context, o notesOptions) error {
  		said = append(said, lineBody{path: lw.Package.Path, base: lw.BaseTag, notes: notes.Render(sections)})
  	}
  	if len(said) == 0 {
--		reason := noNotesReason(cfg, participating(cfg, walkedNoteCommits(w.All)), w.Source)
+-		reason := noNotesReason(cfg, participating(cfg, walk.NoteCommits(w.All)), w.Source)
 +		reason := noNotesReason(cfg, len(w.All), w.Source)
  		if o.json {
  			printCompact(notesVerdict(cfg, pkgs, reason))

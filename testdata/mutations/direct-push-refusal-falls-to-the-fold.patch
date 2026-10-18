@@ -1,11 +1,11 @@
-diff --git a/internal/cli/sincetag.go b/internal/cli/sincetag.go
-index 508f584..8ac6877 100644
---- a/internal/cli/sincetag.go
-+++ b/internal/cli/sincetag.go
-@@ -932,14 +932,6 @@ func walkSince(ctx context.Context, c *github.Client, cfg *config.Config, owner,
- 			// this commit is on the released branch, where the only way out
- 			// is a base at or past it. The refusal is the wedge's, with the
- 			// escape at the commit itself.
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index c42cc14..a74de53 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -252,14 +252,6 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
+ 			// authoring's, and this commit is on the released branch, where
+ 			// the only way out is a base at or past it — the wedge's refusal,
+ 			// with the escape at the commit itself (DESIGN §4).
 -			if row, ok := unclaimed(cfg, raw); ok {
 -				if raw.SHA != "" {
 -					seen[raw.SHA] = true
