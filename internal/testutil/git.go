@@ -1,9 +1,11 @@
-// Package testutil is the single source of the hermetic git fixture glyph's
-// tests run git under. The environment pin below used to live as verbatim
-// copies in each package (and a third, partial copy in the hook tests had
-// already lost the maintenance pin) — copies of an incident-bearing block are
-// how one side quietly loses the incident, so the block lives here once and
-// the callers import it.
+// Package testutil is the one home of the fixtures two or more packages'
+// tests share: the hermetic git fixture glyph's tests run git under, and the
+// loaded gemoji config (Config). The environment pin below used to live as
+// verbatim copies in each package (and a third, partial copy in the hook tests
+// had already lost the maintenance pin) — copies of an incident-bearing block
+// are how one side quietly loses the incident, so the block lives here once
+// and the callers import it. Test-only, imported by any package's tests,
+// importing nothing above internal/config; nothing shipping depends on it.
 package testutil
 
 import (

@@ -31,7 +31,7 @@ missing entry, because it is the one place a reader trusts not to be stale.
 
 **Contents**
 
-1. [The release walk](#1-the-release-walk) — walk, walk base, step base, auto, below:, range, fold, participate, merge point, merge commit, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, walkFacts, Dropped, shortfall, wedge, wedge escape, package, root package, line, attribution, carrier, shared-only, governing commit
+1. [The release walk](#1-the-release-walk) — walk, walk base, step base, auto, below:, range, fold, participate, merge point, merge commit, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, Facts, Dropped, shortfall, wedge, wedge escape, package, root package, line, attribution, carrier, shared-only, governing commit
 2. [Verdicts and the rolling draft](#2-verdicts-and-the-rolling-draft) — verdict, level, source, reason, target, action, rolling draft, glyph-managed draft, residual draft, stale draft, published floor, pending, incomplete banner
 3. [Convention and lint](#3-convention-and-lint) — pattern, unlandable, dictionary, sigil, promote, 0.x clamp, bump lattice, section, excluded author, cleanup, cleanup mode, edited, cut line
 4. [The render boundary](#4-the-render-boundary) — inline context, phantom span, neutralize, fence, flatten, line builder, pipe escape, over-escaping is the safe direction
@@ -98,7 +98,7 @@ highest v\* tag, so auto would walk an empty range. Strictly below the bound, no
 "the highest other tag" — cutting a v0.8.3 hotfix while v0.9.0 exists resolves
 v0.8.2. With no version tag below the bound (the first release), the walk covers
 the whole history, same as auto before the first tag — bounded in both forms by the
-release-floor cap: past `sinceTagWalkCap` walk-visible commits the walk is
+release-floor cap: past `walk.Cap` walk-visible commits the walk is
 refused (fail-loud 4) with the escape in the message, because it pays one API
 round-trip per visited commit and nothing else bounds it. The bound must itself be
 version-shaped (usage error otherwise), and the sentinel cannot collide with a
@@ -114,7 +114,7 @@ appends `..HEAD` itself, so a value containing `..` is rejected as usage.
 **fold** — the max-reduce of commit levels over the bump lattice. It is
 order-independent and idempotent (fuzz-pinned), so squash order can never change
 a version. The word is used for both the operation and its input set — "an empty
-fold" means the commit set came out empty, which is the ambiguity *walkFacts*
+fold" means the commit set came out empty, which is the ambiguity *Facts*
 exists to resolve. `internal/bump/level.go: reduce`
 
 **participate** — a commit participates when the fold reads it: not an
@@ -255,12 +255,12 @@ not true of a 404, which is how a bad credential answers for *every* commit of a
 private repository. The same 422 on a commit's file listing
 (`GET /commits/{sha}`, asked only under `[[packages]]`) is **not** lag:
 attribution has no weaker source for a commit's files, so the listing is
-recorded as unread (`walkFacts.FilesUnknown`), never the fallback.
+recorded as unread (`Facts.FilesUnknown`), never the fallback.
 `internal/github/github.go: IsCommitUnknown`, `internal/walk/partition.go: listFiles`
 
 **shallow checkout** — a `--depth` clone, in which git cannot answer the
 footprint question at all: a commit it does not *have* is indistinguishable from
-one that never landed. The only member of `walkFacts` that is a property of the
+one that never landed. The only member of `Facts` that is a property of the
 **checkout** rather than of an API answer, and the likeliest to appear
 (`actions/checkout` defaults to `fetch-depth: 1`). Probed once per walk, before
 any expansion, because a walk where nothing resolves is still a walk over a
@@ -274,7 +274,7 @@ its diff (DESIGN §4.1). `internal/gitsource/gitsource.go: IsShallow, IsShallowB
 cap of **250**, however far pagination follows. A listing of exactly the cap is
 one glyph cannot claim to have read whole: the commits past it are *unreachable,
 not absent*, and any of them could carry the deciding sigil.
-`internal/github/github.go: PullCommitsCap`, `walkFacts.Truncated`
+`internal/github/github.go: PullCommitsCap`, `Facts.Truncated`
 
 **incomplete walk** — a walk that came back knowing it had **not** read the whole
 range. The distinction it exists to make: downstream, a range that genuinely
@@ -290,7 +290,7 @@ warn-and-refuse-to-destroy). The commands that only *report* — `bump`, `notes`
 body. `internal/walk/facts.go: Facts.Complete`,
 `internal/cli/cmd_release.go: releaseRun`
 
-**walkFacts** — the struct carrying the above: `Pulls` (provenance) plus the
+**Facts** — the struct carrying the above (`internal/walk/facts.go`): `Pulls` (provenance) plus the
 **seven** ways a walk can come back short — `AllUnknown` (every commit unknown to
 the queried repository, which is what a wrong `--repo` or an inherited
 `$GITHUB_REPOSITORY` looks like from inside), `Shallow`, `LostPulls`, `Dropped`,
