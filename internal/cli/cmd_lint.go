@@ -11,6 +11,7 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/core"
 	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
 	"github.com/akira-toriyama/glyph/v5/internal/hook"
+	"github.com/akira-toriyama/glyph/v5/internal/walk"
 	"github.com/spf13/cobra"
 )
 
@@ -347,7 +348,7 @@ func lintAttribution(ctx context.Context, raw gitsource.RawCommit, cfg *config.C
 			return "", err
 		}
 	}
-	if _, aerr := attribute(cfg, raw, readingOf(m), files, true); aerr != nil {
+	if _, aerr := walk.Attribute(cfg, raw, walk.ReadingOf(m), files, true); aerr != nil {
 		return aerr.Error(), nil
 	}
 	return "", nil

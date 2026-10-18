@@ -68,15 +68,7 @@ func decodeErrorEnvelope(t *testing.T, stderr string) errEnvelope {
 // for tests that call the plumbing directly rather than through runGlyph.
 func testCfg(t *testing.T) *config.Config {
 	t.Helper()
-	preset, ok := config.Preset("gemoji")
-	if !ok {
-		t.Fatalf("gemoji preset missing")
-	}
-	cfg, err := config.Load(preset)
-	if err != nil {
-		t.Fatalf("load gemoji preset: %v", err)
-	}
-	return cfg
+	return testutil.Config(t)
 }
 
 // setStdin points the lint --stdin input stream at s for one test.

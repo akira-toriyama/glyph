@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/github"
+	"github.com/akira-toriyama/glyph/v5/internal/walk"
 )
 
 // releasesPath is the releases collection for the repository the tests query.
@@ -1460,12 +1461,12 @@ func TestReleaseNoneTriesEveryResidual(t *testing.T) {
 // target and the dry run reach it as fields, not as package state a cobra
 // run has to set first.
 func TestReleaseRunsFromOptionsWithoutCobra(t *testing.T) {
-	walk := oneFixWalk(t)
-	usePR(t, dryServer(t, walk))
+	routes := oneFixWalk(t)
+	usePR(t, dryServer(t, routes))
 	stdout, stderr, restore := captureOut()
 	defer restore()
 
-	err := releaseRun(context.Background(), releaseOptions{tag: sinceTagAuto, target: goldenTarget, dryRun: true})
+	err := releaseRun(context.Background(), releaseOptions{tag: walk.Auto, target: goldenTarget, dryRun: true})
 	if err != nil || !strings.HasPrefix(stdout.String(), "v0.1.1\n\n"+wantMarker) {
 		t.Fatalf("releaseRun from options: %v, stdout %q, want the v0.1.1 draft previewed\nstderr: %s", err, stdout.String(), stderr.String())
 	}

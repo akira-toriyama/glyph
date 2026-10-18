@@ -153,3 +153,19 @@ func SignCommits(t *testing.T, dir string) {
 		Git(t, dir, "akira-toriyama", "config", kv[0], kv[1])
 	}
 }
+
+// Config is the gemoji preset loaded — the glyph.toml every NewRepo fixture
+// carries — for tests that call a package's plumbing directly rather than
+// through a command.
+func Config(t *testing.T) *config.Config {
+	t.Helper()
+	preset, ok := config.Preset("gemoji")
+	if !ok {
+		t.Fatalf("gemoji preset missing")
+	}
+	cfg, err := config.Load(preset)
+	if err != nil {
+		t.Fatalf("load gemoji preset: %v", err)
+	}
+	return cfg
+}

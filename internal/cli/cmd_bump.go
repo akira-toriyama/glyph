@@ -8,6 +8,7 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/bump"
 	"github.com/akira-toriyama/glyph/v5/internal/config"
 	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/walk"
 	"github.com/spf13/cobra"
 )
 
@@ -141,7 +142,7 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
 	// (a wrong grammar cannot hide behind a wrong tree), and a shared-only =
 	// commit — on no line — still appears in what the walk read. On the bare
 	// line the union is the line, and these rows are its rows.
-	rows, _, cerr := bump.Fold(walkedBumpCommits(w.All), cfg)
+	rows, _, cerr := bump.Fold(walk.BumpCommits(w.All), cfg)
 	if cerr != nil {
 		return cerr
 	}
@@ -149,11 +150,11 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
 	var pkgs []packageVerdict
 	var reasons, tags []string
 	for _, lw := range w.Lines {
-		lineRows, dec, ferr := bump.Fold(walkedBumpCommits(lw.Commits), cfg)
+		lineRows, dec, ferr := bump.Fold(walk.BumpCommits(lw.Commits), cfg)
 		if ferr != nil {
 			return ferr
 		}
-		current, verr := currentVersion(ctx, o.current, lw.Base, lw.Line)
+		current, verr := currentVersion(ctx, o.current, lw.Base, lw.TagLine)
 		if verr != nil {
 			return verr
 		}
@@ -161,13 +162,13 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
 		if dec.Level == bump.LevelNone {
 			pv.Reason = noneReason(len(lineRows), lw.Source)
 		} else {
-			next, nerr := bump.NextOn(lw.Line, current, dec)
+			next, nerr := bump.NextOn(lw.TagLine, current, dec)
 			if nerr != nil {
 				return nerr
 			}
 			pv.Next = next.String()
 			pv.Reason = bump.DecidingReason(lineRows, dec)
-			tags = append(tags, next.TagOn(lw.Line.Prefix))
+			tags = append(tags, next.TagOn(lw.TagLine.Prefix))
 		}
 		reasons = append(reasons, lw.Package.Path+": "+pv.Reason)
 		pkgs = append(pkgs, pv)
@@ -219,7 +220,7 @@ func currentVersion(ctx context.Context, flag string, base *bump.Version, l conf
 	if base != nil {
 		return *base, nil
 	}
-	_, latest, err := latestVersionTag(ctx, l, nil)
+	_, latest, err := localWalker().LatestVersionTag(ctx, l, nil)
 	return latest, err
 }
 

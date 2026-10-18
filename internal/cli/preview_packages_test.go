@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v5/internal/walk"
 )
 
 // This file pins `glyph preview` for a packages repository (DESIGN §4.1,
@@ -652,7 +654,7 @@ func TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy(t *testing.T) {
 	dir := packagesRepoWith(t, packagesConfig,
 		map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n"})
 	testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0") // curry never released
-	for i := range sinceTagWalkCap + 1 {
+	for i := range walk.Cap + 1 {
 		testCommit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= note %d", i))
 	}
 	usePR(t, walkServer(t, crossLinePull(9)))
@@ -727,7 +729,7 @@ func TestPreviewPackagesUntaggedTouchedLineAgreesWithItsVerdict(t *testing.T) {
 // yourself with --since-tag=TAG". Positive control: the default escape does
 // name the flag, so this is a real difference and not an empty string.
 func TestPreviewRefusalNamesNoFlagPreviewLacks(t *testing.T) {
-	if !strings.Contains(sinceTagEscape, "--since-tag=TAG") {
+	if !strings.Contains(walk.FlagEscape, "--since-tag=TAG") {
 		t.Fatal("the default escape no longer names --since-tag — this guard's premise is gone and the case below would pass vacuously")
 	}
 	if f := newPreviewCmd().Flags().Lookup("since-tag"); f != nil {

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/walk"
 )
 
 // captureOut swaps the payload and diagnostic streams for the buffers it
@@ -50,7 +51,7 @@ func TestReadSourceAnswersOneLineWithoutPackages(t *testing.T) {
 	}{
 		{"range", rangeSource(base + "..HEAD"), base + "..HEAD", "", 0},
 		{"pull", source{kind: sourcePull, sourceFlags: sourceFlags{pull: 7}}, "akira-toriyama/glyph#7", "", 7},
-		{"walk", source{kind: sourceWalk, sourceFlags: sourceFlags{tag: sinceTagAuto}}, "v0.1.0..HEAD", "v0.1.0", 0},
+		{"walk", source{kind: sourceWalk, sourceFlags: sourceFlags{tag: walk.Auto}}, "v0.1.0..HEAD", "v0.1.0", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w, err := readSource(ctx, cfg, tc.src)
@@ -64,7 +65,7 @@ func TestReadSourceAnswersOneLineWithoutPackages(t *testing.T) {
 			if w.Source != tc.named || lw.Source != tc.named || lw.BaseTag != tc.baseTag || lw.Package.Path != "" {
 				t.Fatalf("source = %q / %q, base tag = %q, package = %q — want source %q, base tag %q on the bare line", w.Source, lw.Source, lw.BaseTag, lw.Package.Path, tc.named, tc.baseTag)
 			}
-			if cited := walkedNoteCommits(lw.Commits)[0]; cited.SHA == "" || cited.Pull != tc.pull {
+			if cited := walk.NoteCommits(lw.Commits)[0]; cited.SHA == "" || cited.Pull != tc.pull {
 				t.Fatalf("the notes would cite sha %q pull %d, want the sha kept and pull %d", cited.SHA, cited.Pull, tc.pull)
 			}
 		})
@@ -98,7 +99,7 @@ func TestReadSourceRefusesAPullUnderPackages(t *testing.T) {
 	}
 	for i, lw := range w.Lines {
 		if lw.Package.Path != cfg.Packages[i].Path || lw.Source != base+"..HEAD" || lw.BaseTag != "" {
-			t.Fatalf("line %d = %+v, want package %q, source %q, no tag base", i, lw.line, cfg.Packages[i].Path, base+"..HEAD")
+			t.Fatalf("line %d = %+v, want package %q, source %q, no tag base", i, lw.Line, cfg.Packages[i].Path, base+"..HEAD")
 		}
 	}
 }

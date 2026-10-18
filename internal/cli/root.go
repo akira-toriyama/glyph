@@ -1,18 +1,18 @@
 // Package cli is glyph's command layer: the cobra wiring and flag checks, the
 // dispatch to an input source (a message, --range, --pr, --since-tag), the
-// rendering of every verdict under DESIGN §5's stream contract, and the exit
-// funnel — Execute() int maps every error onto glyph's exit-code contract
-// (internal/core).
+// composition of the walk's ports (walk.go: the checkout, the API client and
+// the diagnostic stream it reads and reports through), the rendering of every
+// verdict under DESIGN §5's stream contract, and the exit funnel — Execute()
+// int maps every error onto glyph's exit-code contract (internal/core).
 //
-// Until t-gr7f extracts them it also holds the release walk of DESIGN §4 and
-// §4.1 (sincetag.go, lines.go: the range past the tag, the squash→pull
-// expansion and its footprints, which lines each commit joins) and the
-// release's write sequencing (cmd_release.go: carrying out the draft plan
-// against GitHub, in order).
+// Until t-gr7f's last unit it also holds the release's write sequencing
+// (cmd_release.go: carrying out the draft plan against GitHub, in order).
 //
 // It holds no copy of: a message's meaning (internal/config's pattern match),
 // the lattice, the fold and the commit that decides it, Version.Next and the
-// step on a line (internal/bump), grouping and rendering the notes
+// step on a line (internal/bump), the release walk — the base past a tag, the
+// expansion of each merge point, which lines a commit joins and what the walk
+// could not read (internal/walk) — grouping and rendering the notes
 // (internal/notes), the package a commit's diff moves (internal/attribution),
 // which draft survives, the published floor its tag must clear and the hand
 // region its body keeps (internal/draftplan), the preview comment's

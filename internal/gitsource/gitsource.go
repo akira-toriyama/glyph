@@ -228,7 +228,7 @@ func refNameRefused(ctx context.Context, name string) bool {
 // the leading byte first: every `refs/tags/v…` lands above every
 // `refs/tags/1…`, and on {v0.0.1, v0.0.2, 9.9.9, 100.0.0} git reports v0.0.2
 // ahead of the highest version there is. A caller that wants the highest
-// VERSION must parse every entry and compare (internal/cli's latestVersionTag,
+// VERSION must parse every entry and compare (internal/walk's LatestVersionTag,
 // which read this doc's earlier promise of "version-sorted descending" and took
 // the first parseable entry). What the order IS good for is being STABLE, which
 // is what lets that caller break a tie between two spellings of one version
@@ -654,7 +654,7 @@ func configGet(ctx context.Context, dir, key string, typ ...string) (string, boo
 
 // Have reports which of shas this repository actually holds, as a set. It is the
 // cheap first half of the footprint question the release walk asks about a pull
-// request's commit listing (internal/cli: mainFootprint): most listed shas — a
+// request's commit listing (internal/walk: mainFootprint): most listed shas — a
 // squash's pre-squash commits, a rebase-merge's pre-rebase ones — exist in no
 // clone of the released branch, and answering that for the whole listing in ONE
 // call keeps the expensive per-sha ancestry test off them.

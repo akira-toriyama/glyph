@@ -1714,7 +1714,7 @@ report it) — never a silent patch, and never exit 3 for the minutes GitHub
 lags. A **direct push** GitHub knows and resolves to nothing is on the released
 branch for good, so an unclaimed message there is refused at 3 by the walk's
 own refusal, the same producer as a pull's inner commit, with the escape at the
-commit itself (`internal/cli/sincetag.go: unclaimed, wedge, walkRefusal`). The
+commit itself (`internal/walk/refusal.go: unclaimed, wedge, walkRefusal`). The
 refusal is the walk's, so every consumer of the walk answers it — `bump`,
 `release`, `preview` and `notes` alike (`notes` has no fold: before the walk
 judged its own commits it left such a commit out of every section, or rendered
@@ -1781,7 +1781,7 @@ and `doctor`'s path-exists check (t-exs0); the line primitives — a tag is
 parsed *on* a line (`bump.ParseVersionOn`, `config.Package.tagPrefix`), and
 the walk base, the published floor and the managed drafts are each resolved
 per line — plus `doctor`'s root-line advice (t-q047); and the walk itself
-(t-ws0s): `internal/cli/lines.go` resolves the lines a `--since-tag` names,
+(t-ws0s): `internal/walk/lines.go` resolves the lines a `--since-tag` names,
 walks the union once, fetches the files of each commit it places by its diff
 from local git or the API, and partitions the walk per line, so `bump` and `notes`
 answer per line over `--since-tag` and `--range` (the `packages` array
@@ -2119,8 +2119,8 @@ sub-expression, like the loader's check: necessary and not sufficient. What a
 message can go without it does not read off the pattern at all (below). The
 sentence reads more than attribution's four inputs — the
 claiming pattern, that a merge commit's diff was never read, that a diff was
-not read whole — and the answer does not: one helper (`attribute`,
-`internal/cli/lines.go`) sets them on a refusal already returned, for the
+not read whole — and the answer does not: one helper (`Attribute`,
+`internal/walk/partition.go`) sets them on a refusal already returned, for the
 walk, `lint --range` and
 `preview` alike, each with a test that reads its own refusal (mutation rows
 `walk-`, `lint-` and `preview-refuses-a-merge-commit-as-touching-no-file`).
@@ -2925,16 +2925,17 @@ internal/draftplan       draft convergence — pure; which draft a verdict keeps
 internal/markdown        Line: per-field flatten, then the prose escape and the mention fence over the assembled line
 internal/notes           group by section; note.line rendered by hand over config.LineSpan / LinePart (the span grammar is parsed in internal/config; the optional-span drop rule lives here)
 internal/preview         merge-preview comment body — pure; no git, no API, no clock
+internal/walk            the release walk (§4, §4.1): the base past a tag, the squash→pull expansion and its footprints, the facts of what it could not read, which lines each commit joins — git and GitHub reached through the ports it declares
 internal/gitsource       every git subprocess the binary runs — log, tags, ancestry, diff-tree files, shallow probe, remotes, config, HEAD's trees (exec.CommandContext)
 internal/github          commits/{sha}/pulls, commits/{sha} files, pulls/{N} and its commits, release CRUD + generate-notes, repo object
 internal/doctor          repository-precondition checks; independent, read-only (§7)
 internal/hook            commit-msg and pre-push hook contents + overwrite policy (no rules of its own)
-internal/cli             cobra adapter; Execute() int owns the exit-code funnel
+internal/cli             cobra adapter; Execute() int owns the exit-code funnel; composes the walk's ports and carries out the release's writes in order
 internal/testutil        the hermetic git fixture shared by tests (test-only, ships nothing)
 internal/workflows       no runtime code — tests pinning CI-YAML invariants
 ```
 
-**Why these five boundaries exist** — the tree says what each package
+**Why these six boundaries exist** — the tree says what each package
 holds, and each package's doc comment argues its own internals; what belongs
 here is only why it is a package at all, and what depends on it:
 
@@ -2945,6 +2946,16 @@ here is only why it is a package at all, and what depends on it:
 - `internal/preview` — the merge fold is version arithmetic, so it sits above
   `internal/bump` rather than in `pr-verdict.yml`'s jq, where it was a second
   rank table living on the fleet's side of the pin.
+- `internal/walk` — the walk is the §4 policy, and for its first year it sat
+  in `internal/cli` under a package doc that disowned it, so its rules could
+  be driven only through cobra and every walk test was a command test
+  (t-gr7f). It declares what it reads — `Git`, `Pulls`, `Reporter` — and
+  `internal/cli` composes them: `gitsource.Checkout` at the working
+  directory, the API client, and its own stderr writers, which is how §5's
+  stream order holds for the walk's warnings without the walk knowing a
+  stream. The data types stay where they are read from
+  (`gitsource.RawCommit`, github's `PullRef` and `Commit`); the ports are the
+  behaviour boundary, not a second copy of the shapes.
 - `internal/hook` — the generated hook is a consumer of the exit-code contract
   that glyph WRITES, so its gate code is interpolated from `core.CodeLint`
   (below) instead of typed as a shell literal. `internal/cli` imports it to

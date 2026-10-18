@@ -1,11 +1,8 @@
 package cli
 
 import (
-	"context"
 	"net/url"
 	"strings"
-
-	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
 )
 
 // compareMark opens the compare link's line — GitHub's own generate-notes
@@ -73,20 +70,4 @@ func escapeRef(ref string) string {
 		segs[i] = url.PathEscape(s)
 	}
 	return strings.Join(segs, "/")
-}
-
-// tagBase is the compare link's base for a --since-tag value typed by the
-// caller: the value, when refs/tags/<value> exists, else "". The resolved
-// forms (auto, below:) read their answer out of the tag listing and need no
-// asking. A typed value can be a branch, a remote-tracking name, a sha or a
-// revision expression, and GitHub resolves such a spelling against ITS refs,
-// not the checkout's — measured 2026-10-05 on glyph: `main...<sha>` 200 and
-// identical, `origin/main...<sha>` 404 — so only a tag is the walk's base on
-// both sides.
-func tagBase(ctx context.Context, value string) (string, error) {
-	ok, err := gitsource.IsTag(ctx, ".", value)
-	if err != nil || !ok {
-		return "", err
-	}
-	return value, nil
 }
