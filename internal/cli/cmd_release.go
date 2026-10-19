@@ -17,9 +17,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// releaseResult is the machine verdict: {current, level, tag, target, body,
-// action, url, commits, pulls, reason} — plus packages when the repository
-// declares [[packages]]. tag, target and body are present exactly when the
+// releaseResult is the machine verdict: {current, level, next, tag, target,
+// body, action, url, commits, pulls, reason} — plus packages when the
+// repository declares [[packages]]. next is present exactly on a release
+// verdict, as bump's is. tag, target and body are present exactly when the
 // run upserts a draft (a dry run: would upsert one) — a release verdict, or
 // the Unreleased placeholder draft_on_none maintains — and omitted otherwise:
 // there is no release to act on. url is present only when a write actually
@@ -28,8 +29,8 @@ import (
 // the walk took in — which is what a human or a CI step reads to audit how a
 // verdict was assembled.
 //
-// With packages declared, current / level / action are EMPTY, tag / body /
-// url are absent, and packages carries one verdict and one draft per line
+// With packages declared, current / level / action are EMPTY, next / tag /
+// body / url are absent, and packages carries one verdict and one draft per line
 // (DESIGN §4.1): a caller written for the single line — release.yml's scalar
 // outputs, a tag step — then fails safe on "" or an absent key, which its
 // contract already tells it to. target is shared — one checkout, one HEAD, every line's draft
@@ -40,6 +41,7 @@ import (
 type releaseResult struct {
 	Current  string               `json:"current"`
 	Level    string               `json:"level"`
+	Next     string               `json:"next,omitempty"`
 	Tag      string               `json:"tag,omitempty"`
 	Target   string               `json:"target,omitempty"`
 	Body     string               `json:"body,omitempty"`
@@ -116,10 +118,10 @@ func newReleaseCmd() *cobra.Command {
 			"A real run prints the draft's URL; --dry-run computes everything\n" +
 			"including that action and writes nothing, printing the tag line, a\n" +
 			"blank line, then the Markdown body. --json emits\n" +
-			"{current,level,tag,target,body,action,url,commits,pulls,reason} — pulls is the\n" +
-			"walk's expansion provenance (each resolved pull and how many of its listed\n" +
-			"commits the walk took in), which is how a verdict can be audited after the\n" +
-			"fact.\n\n" +
+			"{current,level,next,tag,target,body,action,url,commits,pulls,reason} —\n" +
+			"pulls is the walk's expansion provenance (each resolved pull and how many\n" +
+			"of its listed commits the walk took in), which is how a verdict can be\n" +
+			"audited after the fact.\n\n" +
 			"On a repository declaring [[packages]] release converges ONE rolling draft\n" +
 			"per line (haiku/v0.2.0 beside curry/v0.1.1), every line's upsert written\n" +
 			"before any stray is deleted, each draft's compare link from its own\n" +
@@ -127,7 +129,7 @@ func newReleaseCmd() *cobra.Command {
 			"means every line folded to none. --dry-run prints one block per line (tag\n" +
 			"line, blank line, body); --json carries packages:\n" +
 			"[{path,current,level,next,tag,body,action,url,commits,reason}] with the\n" +
-			"scalar current/level/action EMPTY, tag/body/url absent, and target shared\n" +
+			"scalar current/level/action EMPTY, next/tag/body/url absent, and target shared\n" +
 			"(omitted, as on the single line, when no line has a draft to write).\n" +
 			"--current is refused (exit 2) unless the walk selects one line\n" +
 			"(--since-tag=<prefix>vX.Y.Z or below:, <prefix> being the line's tag\n" +
@@ -157,7 +159,7 @@ func newReleaseCmd() *cobra.Command {
 	cmd.Flags().StringVar(&o.target, "target", "", "the commit sha the draft's eventual tag points at (default: the checkout's HEAD)")
 	cmd.Flags().StringVar(&o.footerFile, "footer-file", "", "a Markdown file appended verbatim after the notes, separated by one --- line (the per-repo install block)")
 	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "compute the full verdict and the draft action but write nothing to GitHub")
-	cmd.Flags().BoolVar(&o.json, "json", false, "emit the machine verdict {current,level,tag,target,body,action,url,commits,pulls,reason}; with [[packages]] declared current/level/action are empty, tag/body/url absent (target too when no line has a draft to write), and packages[] carries one verdict per line")
+	cmd.Flags().BoolVar(&o.json, "json", false, "emit the machine verdict {current,level,next,tag,target,body,action,url,commits,pulls,reason}; with [[packages]] declared current/level/action are empty, next/tag/body/url absent (target too when no line has a draft to write), and packages[] carries one verdict per line")
 	return cmd
 }
 
@@ -466,7 +468,7 @@ func newReleaseResult(cfg *config.Config, w walk.Result, rows []bump.Row, verdic
 	}
 	if len(cfg.Packages) == 0 {
 		one := verdicts[0]
-		res.Current, res.Level, res.Tag, res.Body, res.Action, res.URL, res.Reason = one.Current, one.Level, one.Tag, one.Body, one.Action, one.URL, one.Reason
+		res.Current, res.Level, res.Next, res.Tag, res.Body, res.Action, res.URL, res.Reason = one.Current, one.Level, one.Next, one.Tag, one.Body, one.Action, one.URL, one.Reason
 		return res
 	}
 	reasons := make([]string, 0, len(verdicts))

@@ -741,6 +741,7 @@ func TestReleaseFooterFileMissingIsUsage(t *testing.T) {
 type releaseVerdict struct {
 	Current string `json:"current"`
 	Level   string `json:"level"`
+	Next    string `json:"next"`
 	Tag     string `json:"tag"`
 	Target  string `json:"target"`
 	Body    string `json:"body"`
@@ -822,7 +823,8 @@ func TestReleaseNoReleaseJSONPullsNormalized(t *testing.T) {
 
 // TestReleaseJSON: the machine verdict carries everything the rolling-draft
 // step will need in one object — the tag to draft and the body to attach —
-// plus the same audit trail bump --json emits.
+// plus the same audit trail bump --json emits, and the next version under
+// the key bump's verdict and every packages[] row spell it with (next).
 func TestReleaseJSON(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
@@ -841,8 +843,8 @@ func TestReleaseJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
 		t.Fatalf("release --json stdout is not one JSON object: %v\n%s", err, stdout)
 	}
-	if v.Current != "v0.1.0" || v.Level != "minor" || v.Tag != "v0.2.0" {
-		t.Errorf("verdict = current %q level %q tag %q, want v0.1.0/minor/v0.2.0", v.Current, v.Level, v.Tag)
+	if v.Current != "v0.1.0" || v.Level != "minor" || v.Next != "v0.2.0" || v.Tag != "v0.2.0" {
+		t.Errorf("verdict = current %q level %q next %q tag %q, want v0.1.0/minor/v0.2.0/v0.2.0", v.Current, v.Level, v.Next, v.Tag)
 	}
 	if !strings.Contains(v.Body, "add a menu") {
 		t.Errorf("verdict body is missing the entry:\n%s", v.Body)

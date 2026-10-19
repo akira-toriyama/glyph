@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 1221459..bd6bd7b 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -475,7 +475,7 @@ func newReleaseResult(cfg *config.Config, w walk.Result, rows []bump.Row, verdic
+ 	for _, v := range verdicts {
+ 		reasons = append(reasons, v.Path+": "+v.Reason)
+ 	}
+-	res.Packages = verdicts
++	res.Packages, res.Current, res.Level, res.Next, res.Action = verdicts, verdicts[0].Current, verdicts[0].Level, verdicts[0].Next, verdicts[0].Action
+ 	res.Reason = strings.Join(reasons, "; ")
+ 	if moving == 0 {
+ 		res.Reason = everyLineNone(res.Reason)

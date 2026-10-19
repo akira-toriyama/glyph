@@ -2517,12 +2517,17 @@ every line folds to none**; one line moving is a release. No new integer:
 the exit-code contract is frozen (§5), and every mixed outcome is legible in
 the machine verdict, which gains a per-line `packages` array (each command's
 row is README's, "Packages") while the scalar `current` / `level` / `next` /
-`action` stay what they are for the single line; when packages are declared
-`current` / `level` / `action` are **empty** and `next` (release: `tag` /
-`body` / `url`) is **absent** — a repository with packages has no one line for them
+`action` stay what they are for the single line — every verdict that names
+the next version spells it `next`, release's beside `tag`, the tag its draft
+carries, and a none verdict names none (mutation rows
+`release-bare-line-names-next-only-as-tag.patch` and
+`release-none-verdict-names-a-next-version.patch`); when packages
+are declared `current` / `level` / `action` are **empty** and `next` (and
+release's `tag` / `body` / `url`) is **absent** — a repository with packages has no one line for them
 to describe, and a consumer that reads only the scalars is exactly the
-consumer that must not act (mutation row
-`packages-scalar-verdict-describes-one-line.patch`). The top-level `commits`
+consumer that must not act (mutation rows
+`packages-scalar-verdict-describes-one-line.patch` and, for release,
+`release-packages-scalar-verdict-describes-one-line.patch`). The top-level `commits`
 then lists every **participating** commit — a shared-only `=` among them, in
 no line but read — and `notes`' verdict mirrors the shape:
 `packages: [{path, sections}]` with the top-level `sections` empty. On

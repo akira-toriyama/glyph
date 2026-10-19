@@ -428,8 +428,8 @@ commit(s) participate in *source* and every level is none"), and into the
 sentences a run writes when the walk could not read the range; an ordinary release
 verdict's reason names the deciding commit instead, and the string does not appear
 at all. It is also not a key on any `--json` surface — none of `{current, level,
-next, commits, reason}`, `{sections, reason}`, `{current, level, tag, target,
-body, action, url, commits, pulls, reason}` or `{current, untagged, level, next,
+next, commits, reason}`, `{sections, reason}`, `{current, level, next, tag,
+target, body, action, url, commits, pulls, reason}` or `{current, untagged, level, next,
 pr, pending, body}` carries it, so a consumer that wants to know what was walked
 reads the flags it passed, not the verdict. `internal/walk/walk.go: Result.Source`
 (the range walked, or the range or pull read in its place — what notes' reason,
