@@ -95,6 +95,16 @@ func NewRepo(t *testing.T) string {
 	return dir
 }
 
+// NewTaggedRepo is NewRepo with a v0.1.0 tag on the root commit, and returns
+// the root sha beside the path: the shape the walk-base and --range tests
+// start from, so bump has a current version to step from.
+func NewTaggedRepo(t *testing.T) (dir, base string) {
+	t.Helper()
+	dir = NewRepo(t)
+	Git(t, dir, "akira-toriyama", "tag", "v0.1.0")
+	return dir, Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+}
+
 // Commit adds one empty commit authored by author with the given message.
 func Commit(t *testing.T, dir, author, message string) {
 	t.Helper()
