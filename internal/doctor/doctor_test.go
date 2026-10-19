@@ -251,7 +251,8 @@ func TestRemainingChecksDescribeMeasuredBehaviour(t *testing.T) {
 //
 // So the forbid lists are the load-bearing half: every entry is a phrase that
 // SHIPPED and was false, and the walk behind each correction is pinned by a test
-// in internal/cli's sincetag_test.go. The mention lists stay short on purpose —
+// in internal/cli's walkexpand_test.go, walkfallback_test.go or
+// walkrefusal_test.go. The mention lists stay short on purpose —
 // this is a guard against resurrecting a lie, not a golden file, so a rewording
 // stays a review question instead of becoming a test failure.
 func TestMergeMethodChecksDescribeTheWalkThatExists(t *testing.T) {

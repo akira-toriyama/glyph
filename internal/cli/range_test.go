@@ -9,7 +9,7 @@ import (
 )
 
 // TestFirstLine pins the contract bump.FirstLine's comment states and every
-// exclusion path relies on (cmd_lint.go, sincetag.go, the notes fallback): the subject
+// exclusion path relies on (cmd_lint.go, internal/walk, the notes fallback): the subject
 // the participation rules match against is the first line with its CR trimmed.
 // A CRLF message — what the GitHub API hands back verbatim, unlike git's own
 // cleanup — must not present `subject\r` to the prefix rules.

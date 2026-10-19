@@ -202,3 +202,121 @@ func TestMachineOutputFlagHasOneSpelling(t *testing.T) {
 		}
 	}
 }
+
+// TestSinceTagNeedsARepo: the walk resolves PRs over the API, so the repository
+// must be known up front — no repo is the caller's input, usage (2), before any
+// request or git walk runs.
+func TestSinceTagNeedsARepo(t *testing.T) {
+	t.Setenv("GITHUB_REPOSITORY", "")
+	dir, _ := testRepo(t)
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 2 {
+		t.Fatalf("bump --since-tag with no repository exited %d, want 2 (usage)", code)
+	}
+	if !strings.Contains(stderr, "repo") {
+		t.Fatalf("the error should name the missing repository input:\n%s", stderr)
+	}
+}
+
+// TestSinceTagIsExclusiveWithTheOtherSources: --range, --pr and --since-tag are
+// three sources for the same answer; combining any two would silently pick one.
+func TestSinceTagIsExclusiveWithTheOtherSources(t *testing.T) {
+	dir, base := testRepo(t)
+	t.Chdir(dir)
+	for _, extra := range [][]string{
+		{"--range", base + "..HEAD"},
+		{"--pr", "7"},
+	} {
+		args := append([]string{"bump", "--since-tag"}, extra...)
+		if code, _, _ := runGlyph(t, args...); code != 2 {
+			t.Fatalf("bump --since-tag with %v should exit 2 (usage)", extra)
+		}
+	}
+}
+
+// TestSinceTagExplicitEmptyIsUsage: `--since-tag=` (a workflow templating an
+// unset variable) must not silently degrade to auto — the caller NAMED a tag
+// and the name is empty. Usage, before anything runs.
+func TestSinceTagExplicitEmptyIsUsage(t *testing.T) {
+	t.Setenv("GITHUB_REPOSITORY", "akira-toriyama/glyph") // so the repo guard cannot mask the tag guard
+	dir, _ := testRepo(t)
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "bump", "--since-tag=")
+	if code != 2 {
+		t.Fatalf("bump --since-tag= exited %d, want 2 (usage — an empty tag is not auto)", code)
+	}
+	if !strings.Contains(stderr, "since-tag") {
+		t.Fatalf("the error should name the flag:\n%s", stderr)
+	}
+}
+
+// TestSinceTagOptionShapedTagIsUsage: symmetric with checkRangeFlag — an
+// option-shaped or range-shaped tag is the caller's input, rejected as usage
+// (2) before git runs, not surfaced as a retryable-looking API failure (4).
+func TestSinceTagOptionShapedTagIsUsage(t *testing.T) {
+	t.Setenv("GITHUB_REPOSITORY", "akira-toriyama/glyph") // so the repo guard cannot mask the tag guard
+	dir, _ := testRepo(t)
+	t.Chdir(dir)
+	for _, tag := range []string{"-v0.1.0", "v0.1.0..HEAD"} {
+		code, _, stderr := runGlyph(t, "bump", "--since-tag="+tag)
+		if code != 2 {
+			t.Fatalf("bump --since-tag=%q exited %d, want 2 (usage)", tag, code)
+		}
+		if !strings.Contains(stderr, "since-tag") {
+			t.Fatalf("the error for %q should name --since-tag:\n%s", tag, stderr)
+		}
+	}
+}
+
+// TestSinceTagSpaceFormIsGuided: --since-tag takes its optional value only in
+// the = form (pflag's NoOptDefVal grammar), so `--since-tag v0.1.0` parses as a
+// bare --since-tag plus a stray positional. That must not walk the WRONG range
+// silently — it is a usage error that spells out the = form.
+func TestSinceTagSpaceFormIsGuided(t *testing.T) {
+	dir, _ := testRepo(t)
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "bump", "--since-tag", "v0.1.0")
+	if code != 2 {
+		t.Fatalf("bump --since-tag v0.1.0 (space form) exited %d, want 2 (usage)", code)
+	}
+	if !strings.Contains(stderr, "--since-tag=v0.1.0") {
+		t.Fatalf("the error should spell out the = form:\n%s", stderr)
+	}
+}
+
+// TestRepoWithRangeIsUsage: --repo configures the API-backed sources (--pr,
+// --since-tag); combined with the purely local --range it used to be silently
+// ignored. No silent ignores — it is a usage error.
+func TestRepoWithRangeIsUsage(t *testing.T) {
+	dir, base := testRepo(t)
+	t.Chdir(dir)
+
+	code, _, _ := runGlyph(t, "bump", "--range", base+"..HEAD", "--repo", "akira-toriyama/glyph")
+	if code != 2 {
+		t.Fatalf("bump --range with --repo exited %d, want 2 (usage — --repo would be silently ignored)", code)
+	}
+}
+
+// TestSinceTagBelowNeedsAVersion: the bound is compared UNDER, so it must name
+// a version — and a workflow templating an unset variable produces the bare
+// prefix, which must die as the caller's input (usage, 2) instead of resolving
+// to a tag it did not mean or surfacing as a retryable-looking git failure (4).
+func TestSinceTagBelowNeedsAVersion(t *testing.T) {
+	dir, _ := testRepo(t)
+	t.Chdir(dir)
+
+	for _, bound := range []string{"below:", "below:main", "below:v1.0"} {
+		code, _, stderr := runGlyph(t, "bump", "--since-tag="+bound)
+		if code != 2 {
+			t.Errorf("bump --since-tag=%s exited %d, want 2 (usage)", bound, code)
+			continue
+		}
+		if !strings.Contains(stderr, "version-shaped") {
+			t.Errorf("the error for %q should say a version-shaped tag is needed:\n%s", bound, stderr)
+		}
+	}
+}
