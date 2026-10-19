@@ -1,36 +1,13 @@
-diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 23141f2..4196cb6 100644
---- a/internal/cli/cmd_release.go
-+++ b/internal/cli/cmd_release.go
-@@ -433,6 +433,15 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
- 	// Every line's upsert lands before any draft is deleted: a failure here
- 	// leaves the lines already written standing and exits 4 — nothing was
- 	// destroyed, and the next run heals the rest.
-+	for _, s := range stale {
-+		went, cerr := convergeStray(ctx, gh, owner, repoName, s)
-+		if cerr != nil {
-+			return cerr
-+		}
-+		if went {
-+			residueGone(s)
-+		}
-+	}
- 	urls := make([]string, 0, len(drafts))
- 	for i, d := range drafts {
- 		var rel github.Release
-@@ -481,15 +490,6 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
- 			warnf("the residual draft %s (release id %d) would not go either: %v — the run fails on the first that would not, and the next run tries every one again", s.TagName, s.ID, derr)
+diff --git a/internal/draftplan/run.go b/internal/draftplan/run.go
+index dc73560..7b3b57c 100644
+--- a/internal/draftplan/run.go
++++ b/internal/draftplan/run.go
+@@ -83,7 +83,7 @@ func PlanRun(lines []LinePlan, residue []Draft) []Write {
  		}
+ 		residuals = append(residuals, w)
  	}
--	for _, s := range stale {
--		went, cerr := convergeStray(ctx, gh, owner, repoName, s)
--		if cerr != nil {
--			return cerr
--		}
--		if went {
--			residueGone(s)
--		}
--	}
- 	if residualErr != nil {
- 		return residualErr
- 	}
+-	return slices.Concat(upserts, residuals, stales)
++	return slices.Concat(stales, upserts, residuals)
+ }
+ 
+ // Residue is the bare line's residue: with packages declared and no root

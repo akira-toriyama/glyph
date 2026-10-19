@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 23141f2..88cca48 100644
+index 959b182..7a96bc5 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -476,7 +476,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
- 		case core.IsInterrupted(derr):
- 			return derr
- 		case residualErr == nil:
--			residualErr = derr
-+			return derr
- 		default:
- 			warnf("the residual draft %s (release id %d) would not go either: %v — the run fails on the first that would not, and the next run tries every one again", s.TagName, s.ID, derr)
- 		}
+@@ -420,7 +420,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 			case core.IsInterrupted(derr):
+ 				return derr
+ 			case residualErr == nil:
+-				residualErr = derr
++				return derr
+ 			default:
+ 				warnf("the residual draft %s (release id %d) would not go either: %v — the run fails on the first that would not, and the next run tries every one again", wr.Draft.TagName, wr.Draft.ID, derr)
+ 			}

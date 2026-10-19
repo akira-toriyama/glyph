@@ -1,8 +1,8 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index bf9e970..4c7edf5 100644
+index 959b182..8c02a3d 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -363,14 +363,6 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+@@ -315,14 +315,6 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
  		// next push (t-qgps).
  		plan := draftplan.PlanDraft(lw.TagLine, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
  		body = draftplan.ComposeBody(plan.Keep, body)
@@ -15,5 +15,5 @@ index bf9e970..4c7edf5 100644
 -			return serr
 -		}
  		pv.Tag, pv.Body, pv.Action = tagName, body, string(plan.Action)
- 		stale = append(stale, staleReleases(plan.Stale)...)
- 		drafts = append(drafts, lineDraft{at: len(verdicts), plan: plan, params: github.ReleaseParams{TagName: tagName, Target: target, Name: tagName, Body: body, Draft: true}})
+ 		verdicts = append(verdicts, pv)
+ 		lines = append(lines, draftplan.LinePlan{Plan: plan, Body: body})

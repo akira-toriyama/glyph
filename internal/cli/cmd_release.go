@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v5/internal/bump"
@@ -67,15 +66,6 @@ type packageRelease struct {
 	URL     string     `json:"url,omitempty"`
 	Commits []bump.Row `json:"commits"`
 	Reason  string     `json:"reason"`
-}
-
-// lineDraft is one line's planned write: which verdict it belongs to (an
-// index into the run's verdicts, where its URL lands once written) and the
-// draft it converges to (nil plan Keep means create).
-type lineDraft struct {
-	at     int
-	plan   draftplan.Plan
-	params github.ReleaseParams
 }
 
 // releaseOptions is what one release run was asked, snapshotted at RunE.
@@ -171,36 +161,13 @@ func newReleaseCmd() *cobra.Command {
 	return cmd
 }
 
-// releaseRun is release below its flags: one walk, one verdict and one
-// rolling draft per line, converged by draftplan on that line's own tag
-// prefix so the founding invariants — never a second draft, retagged in
-// place, nothing glyph did not manage touched — hold per line. A repository
-// without [[packages]] walks as one bare line (sinceTagInput), so the
-// per-line loop is the only loop; newReleaseResult tells the shapes apart at
-// the render, and the residue guard below the loop is the one other place
-// that asks. The decisions it carries, each ratified in §4 and §4.1:
-//
-//   - every line's verdict, body and plan are computed BEFORE any write, so a
-//     line that refuses (the published floor, an oversized body) stops the
-//     run with nothing written;
-//   - the write order is write-first: every line's upsert lands before any
-//     delete, and a write that fails on the second line leaves the first
-//     line's notes standing and exits 4 — the next run heals it;
-//   - a line that folds to none (draft_on_none off) has its residual drafts'
-//     deletes as its whole action, so one that will not go exits 4 whatever
-//     its siblings wrote; the strays of the lines that write a draft keep
-//     convergeStray's leniency. Deletes run after the upserts, the residuals
-//     first, and a residual that will not go is answered only once every
-//     other delete was tried;
-//   - a tag that selects one line converges that line ALONE: the other
-//     lines' drafts are not this run's to touch;
-//   - the bare vX.Y.Z draft of a repository that declares packages but no
-//     root package is the single line's residue and is deleted on the first
-//     packages run — a hand region it carried goes with it, which a dry run's
-//     notice says before anything is written and a real run's once the
-//     DELETE went;
-//   - --footer-file appends to every draft; make_latest is never set;
-//   - exit 1 is answered only when every selected line folds to none.
+// releaseRun is release below its flags. Every line's verdict, body and plan
+// exist before any write, so a line that refuses — the published floor, an
+// oversized body — stops the run with nothing written; the writes are
+// draftplan.PlanRun's list, carried out here in order with the policy each
+// kind of write names. A repository without [[packages]] walks as one bare
+// line (sinceTagInput), so the per-line loop is the only loop, and
+// newReleaseResult tells the shapes apart at the render.
 func releaseRun(ctx context.Context, o releaseOptions) error {
 	// Caller-input problems surface before any network or git work — and
 	// before the environment is judged: the footer file is read up front, and
@@ -233,21 +200,12 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	if perr != nil {
 		return perr
 	}
-	// A verdict is a claim about the range only when the walk READ the range,
-	// and release is the command that acts on its verdict irreversibly. So a
-	// walk that came back short — every commit unknown to the queried
-	// repository, a merged pull whose merge point nothing resolved, a commit
-	// GitHub had not indexed, a truncated pull listing, a shallow checkout —
-	// stops here, before the releases listing is even fetched: fail loud (4),
-	// like every other place glyph refuses to judge what it could not read
-	// (the wedge, the covered pull, the published floor). Ratified t-pysg,
-	// replacing #66's warn-and-refuse-to-destroy: that compromise existed for
-	// the repository whose merge button an automation presses, which then
-	// warned on every release structurally — but merge points resolve now
-	// (t-7zt7), so what remains of that shape is a bot-authored merge commit,
-	// and a walk blind to a whole pull is exactly what this exit is for. The
-	// escape is the wedge escape: cut a tag at or past what the walk cannot
-	// read, or fix the checkout (fetch-depth: 0) when the shortfall names it.
+	// A verdict is a claim about the range only when the walk READ it, and
+	// release acts on its verdict irreversibly: a walk that came back short
+	// stops here, before the releases listing is fetched — fail loud (4), like
+	// every other refusal to judge an unread range (DESIGN §4, "fails loud
+	// (4)"; the escape is the wedge's, or fetch-depth: 0 when the shortfall
+	// names the checkout).
 	if !w.Facts.Complete() {
 		return core.APIf("this walk did not read %s (%s) — refusing to hand down a verdict computed from a range it could not read; re-run the release once the walk can read the range",
 			w.Source, w.Facts.Shortfall(owner, repoName))
@@ -282,15 +240,10 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	}
 	drafted := planInput(releases)
 
-	// The target resolves BEFORE the dry-run fork (only the writes are
-	// skipped), once for every draft — one checkout, one HEAD — and above the
-	// loop, because each line's compare link ends at it and checkReleaseBody
-	// sizes the final body; so every run without --target reads HEAD once,
-	// a none verdict and a refusal below included. It used to sit below the
-	// fork, which made `--dry-run --target=X` byte-identical to `--dry-run`
-	// for every X: the flag naming which commit the eventual tag points at
-	// was the one flag the preview silently ignored, so a typo surfaced only
-	// on the real run (t-nfz3).
+	// Resolved BEFORE the dry-run fork and above the loop: every line's
+	// compare link ends at it and checkReleaseBody sizes the final body, and a
+	// dry run must preview the real run's --target — below the fork the flag
+	// was the one the preview silently ignored (t-nfz3).
 	target := o.target
 	if target == "" {
 		var herr error
@@ -299,11 +252,10 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 		}
 	}
 
+	// verdicts and lines are appended together, one entry per line, so a
+	// Write.Line indexes both.
 	var verdicts []packageRelease
-	var drafts []lineDraft
-	// residual: the drafts whose delete is a none line's whole action, loud.
-	// stale: the strays beside a draft a line writes, lenient once it landed.
-	var residual, stale []github.Release
+	lines := make([]draftplan.LinePlan, 0, len(w.Lines))
 	moving := 0
 	for _, lw := range w.Lines {
 		lineRows, dec, ferr := bump.Fold(walk.BumpCommits(lw.Commits), cfg)
@@ -318,8 +270,8 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 		if dec.Level == bump.LevelNone && !cfg.Note.DraftOnNone {
 			plan := draftplan.PlanDraft(lw.TagLine, dec.Level, "", false, drafted)
 			pv.Action = string(plan.Action)
-			residual = append(residual, staleReleases(plan.Stale)...)
 			verdicts = append(verdicts, pv)
+			lines = append(lines, draftplan.LinePlan{Plan: plan})
 			continue
 		}
 		// tagName is what the kept (or created) draft converges to: the next
@@ -372,138 +324,121 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 			return serr
 		}
 		pv.Tag, pv.Body, pv.Action = tagName, body, string(plan.Action)
-		stale = append(stale, staleReleases(plan.Stale)...)
-		drafts = append(drafts, lineDraft{at: len(verdicts), plan: plan, params: github.ReleaseParams{TagName: tagName, Target: target, Name: tagName, Body: body, Draft: true}})
 		verdicts = append(verdicts, pv)
+		lines = append(lines, draftplan.LinePlan{Plan: plan, Body: body})
 	}
-
-	// The bare line's residue: with packages declared and no root package,
-	// a bare vX.Y.Z (or Unreleased) draft is what the single line left behind
-	// and nothing will ever converge it again. Claimed on the precedent of the
-	// placeholder being claimed with the flag off. A tag that selected one
-	// line still clears it: the residue belongs to no line, so no line's
-	// selection protects it.
-	// The residue line is the bare FREE line: a declared root-level vN
-	// holds its own major's bare drafts, and they are that line's, not
-	// residue (config.Config.LineOf on an undeclared root computes exactly
-	// what is left over). Without packages there is no residue: the bare
-	// line is the walk's one line, and its drafts were planned above.
-	var residue []github.Release
-	if len(cfg.Packages) > 0 && !slices.ContainsFunc(cfg.Packages, func(p config.Package) bool { return p.Path == "." }) {
-		residue = staleReleases(draftplan.PlanDraft(cfg.LineOf(config.Package{Path: "."}), bump.LevelNone, "", false, drafted).Stale)
-	}
-	// Spoken once the residue's DELETE went, never at plan time: printed there
-	// it told a dry run, and a run that died at an upsert with the residue
-	// untouched, that the draft "is deleted" (t-xz1z).
-	residueGone := func(s github.Release) {
-		if slices.ContainsFunc(residue, func(r github.Release) bool { return r.ID == s.ID }) {
-			noticef("the bare draft %s (release id %d) is the single line's residue — this repository declares packages and no root package, so no line would converge it again; a hand region it carried is gone with it", s.TagName, s.ID)
+	run := draftplan.PlanRun(lines, draftplan.Residue(cfg, drafted))
+	var upserts []draftplan.Write
+	residuals, stale := 0, 0
+	for _, wr := range run {
+		switch wr.Kind {
+		case draftplan.Upsert:
+			upserts = append(upserts, wr)
+		case draftplan.Residual:
+			residuals++
+		case draftplan.Stale:
+			stale++
 		}
 	}
-	// The residue is no line's, so its delete is the run's: a stray of the
-	// upserts when any line writes a draft, the whole action when none does.
-	if len(drafts) == 0 {
-		residual = append(residual, residue...)
-	} else {
-		stale = append(stale, residue...)
+	// Spoken once the residue's DELETE went, never at plan time (DESIGN §4.1,
+	// "Drafts, one per line"; t-xz1z).
+	residueGone := func(wr draftplan.Write) {
+		if wr.IsResidue() {
+			noticef("the bare draft %s (release id %d) is the single line's residue — this repository declares packages and no root package, so no line would converge it again; a hand region it carried is gone with it", wr.Draft.TagName, wr.Draft.ID)
+		}
 	}
 
-	result := newReleaseResult(cfg, w, rows, verdicts, target, len(drafts) > 0, moving)
+	result := newReleaseResult(cfg, w, rows, verdicts, target, len(upserts) > 0, moving)
 
 	if o.dryRun {
-		for _, d := range drafts {
-			noticef("dry run: the upsert would %s the rolling draft %s at %s", d.plan.Action, d.params.TagName, target)
+		for _, u := range upserts {
+			noticef("dry run: the upsert would %s the rolling draft %s at %s", u.Action, u.Tag, target)
 		}
-		if len(residual) > 0 {
-			noticef("dry run: %d residual draft(s) to delete (a delete that will not go fails the run)", len(residual))
+		if residuals > 0 {
+			noticef("dry run: %d residual draft(s) to delete (a delete that will not go fails the run)", residuals)
 		}
-		if len(stale) > 0 {
-			noticef("dry run: %d stale draft(s) to delete after the upserts", len(stale))
+		if stale > 0 {
+			noticef("dry run: %d stale draft(s) to delete after the upserts", stale)
 		}
-		for _, r := range residue {
-			noticef("dry run: the bare draft %s (release id %d) is the single line's residue — this repository declares packages and no root package, so no line will converge it again; it would be deleted, and a hand region it carried would go with it (move that prose into the line's own draft, above the marker, before a real run)", r.TagName, r.ID)
+		for _, wr := range run {
+			if wr.IsResidue() {
+				noticef("dry run: the bare draft %s (release id %d) is the single line's residue — this repository declares packages and no root package, so no line will converge it again; it would be deleted, and a hand region it carried would go with it (move that prose into the line's own draft, above the marker, before a real run)", wr.Draft.TagName, wr.Draft.ID)
+			}
 		}
 		if o.json {
 			printCompact(result)
 			return releaseExit(moving, result.Reason, true)
 		}
-		if len(drafts) == 0 {
+		if len(upserts) == 0 {
 			// Nothing to print, and no zero-byte write: on macOS an empty
 			// write to a pipe whose reader has gone is still a SIGPIPE.
 			return releaseExit(moving, result.Reason, false)
 		}
-		blocks := make([]string, 0, len(drafts))
-		for _, d := range drafts {
-			blocks = append(blocks, d.params.TagName+"\n\n"+d.params.Body)
+		blocks := make([]string, 0, len(upserts))
+		for _, u := range upserts {
+			blocks = append(blocks, u.Tag+"\n\n"+u.Body)
 		}
 		fmt.Fprint(out, strings.Join(blocks, "\n"))
 		return releaseExit(moving, result.Reason, true)
 	}
 
-	// Every line's upsert lands before any draft is deleted: a failure here
-	// leaves the lines already written standing and exits 4 — nothing was
-	// destroyed, and the next run heals the rest.
-	urls := make([]string, 0, len(drafts))
-	for i, d := range drafts {
-		var rel github.Release
-		var werr error
-		if d.plan.Keep != nil {
-			rel, werr = gh.UpdateRelease(ctx, owner, repoName, d.plan.Keep.ID, d.params)
-		} else {
-			rel, werr = gh.CreateRelease(ctx, owner, repoName, d.params)
-		}
-		if werr != nil {
-			if i > 0 {
-				warnf("%d line(s) were written before this failure and stand; the remaining lines converge on the next run", i)
-			}
-			return werr
-		}
-		noticef("draft release %s %sd at %s (unpublished — the tag is created at that commit when a human publishes): %s", d.params.TagName, d.plan.Action, d.params.Target, rel.URL)
-		urls = append(urls, rel.URL)
-		verdicts[d.at].URL = rel.URL
-	}
-	// A none line's residual deletes are loud: the delete is that line's
-	// entire action, and absorbing its failure would mean the line did
-	// nothing and the run reported fine — a sibling's landed draft is no
-	// write of this line's to be lenient about. Routed through convergeStray
-	// whenever a sibling had written, the same line, verdict and failing
-	// DELETE exited 0 or 4 on the siblings alone (t-xz1z). The failure is
-	// answered only after every other delete was tried: one line's failed
-	// action is no reason to leave another line's undone, nor the strays
-	// standing unwarned, and returning on the spot stranded both (DESIGN
-	// §4.1, the bare line included). The residuals still go first: they are
-	// the verdict of the lines that fold to none and the strays are
-	// bookkeeping, so a run an interrupt (never absorbed) cuts short has
-	// spent itself on the verdict first.
+	// The list is carried out in order; what a failure means is the write's
+	// kind, and the policy for each is here (DESIGN §4, "the order is the
+	// general fix"; §4.1, "Drafts, one per line"). An upsert's failure
+	// returns, the lines already written standing. A residual's is answered only after every
+	// other delete was tried — one line's failed action is no reason to leave
+	// another's undone or a stale draft standing unwarned — and an interrupt
+	// is never absorbed. A stale draft's is convergeStray's warning.
+	urls := make([]string, 0, len(upserts))
 	var residualErr error
-	for _, s := range residual {
-		gone, derr := gh.DeleteRelease(ctx, owner, repoName, s.ID)
-		switch {
-		case derr == nil:
-			noticef("no release is due — %s the residual draft %s (release id %d)", discardedOrGone(gone), s.TagName, s.ID)
-			residueGone(s)
-		case core.IsInterrupted(derr):
-			return derr
-		case residualErr == nil:
-			residualErr = derr
-		default:
-			warnf("the residual draft %s (release id %d) would not go either: %v — the run fails on the first that would not, and the next run tries every one again", s.TagName, s.ID, derr)
-		}
-	}
-	for _, s := range stale {
-		went, cerr := convergeStray(ctx, gh, owner, repoName, s)
-		if cerr != nil {
-			return cerr
-		}
-		if went {
-			residueGone(s)
+	for _, wr := range run {
+		switch wr.Kind {
+		case draftplan.Upsert:
+			params := github.ReleaseParams{TagName: wr.Tag, Target: target, Name: wr.Tag, Body: wr.Body, Draft: true}
+			var rel github.Release
+			var werr error
+			if wr.Action == draftplan.ActionUpdate {
+				rel, werr = gh.UpdateRelease(ctx, owner, repoName, wr.Draft.ID, params)
+			} else {
+				rel, werr = gh.CreateRelease(ctx, owner, repoName, params)
+			}
+			if werr != nil {
+				if len(urls) > 0 {
+					warnf("%d line(s) were written before this failure and stand; the remaining lines converge on the next run", len(urls))
+				}
+				return werr
+			}
+			noticef("draft release %s %sd at %s (unpublished — the tag is created at that commit when a human publishes): %s", wr.Tag, wr.Action, target, rel.URL)
+			urls = append(urls, rel.URL)
+			verdicts[wr.Line].URL = rel.URL
+		case draftplan.Residual:
+			gone, derr := gh.DeleteRelease(ctx, owner, repoName, wr.Draft.ID)
+			switch {
+			case derr == nil:
+				noticef("no release is due — %s the residual draft %s (release id %d)", discardedOrGone(gone), wr.Draft.TagName, wr.Draft.ID)
+				residueGone(wr)
+			case core.IsInterrupted(derr):
+				return derr
+			case residualErr == nil:
+				residualErr = derr
+			default:
+				warnf("the residual draft %s (release id %d) would not go either: %v — the run fails on the first that would not, and the next run tries every one again", wr.Draft.TagName, wr.Draft.ID, derr)
+			}
+		case draftplan.Stale:
+			went, cerr := convergeStray(ctx, gh, owner, repoName, *wr.Draft)
+			if cerr != nil {
+				return cerr
+			}
+			if went {
+				residueGone(wr)
+			}
 		}
 	}
 	if residualErr != nil {
 		return residualErr
 	}
 
-	result = newReleaseResult(cfg, w, rows, verdicts, target, len(drafts) > 0, moving)
+	result = newReleaseResult(cfg, w, rows, verdicts, target, len(upserts) > 0, moving)
 	if o.json {
 		printCompact(result)
 		return releaseExit(moving, result.Reason, true)
@@ -511,7 +446,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	for _, u := range urls {
 		fmt.Fprintln(out, u)
 	}
-	return releaseExit(moving, result.Reason, len(drafts) > 0)
+	return releaseExit(moving, result.Reason, len(upserts) > 0)
 }
 
 // newReleaseResult is the one producer of the machine verdict, and where the
@@ -570,50 +505,13 @@ func planInput(releases []github.Release) []draftplan.Draft {
 	return out
 }
 
-// staleReleases converts a plan's stale set back to the shape the delete
-// calls and their notices read.
-func staleReleases(ds []draftplan.Draft) []github.Release {
-	out := make([]github.Release, 0, len(ds))
-	for _, d := range ds {
-		out = append(out, github.Release{ID: d.ID, TagName: d.TagName, Draft: d.Draft})
-	}
-	return out
-}
-
-// convergeStray deletes one stale glyph-managed draft AFTER the rolling draft
-// has been written, and treats one that will not go as a WARNING rather than
-// a failure: went reports that the DELETE went and its notice was printed,
-// and the only error is an interrupt.
-//
-// Both halves are the same argument. The upsert used to delete first, so a
-// delete that would not go spent the run's ONLY chance to land the notes:
-// measured against a fake API answering every DELETE with 503, the run burned
-// the whole 1s→4s→16s schedule, exited 4, and sent the PATCH zero times — the
-// rolling draft never received the release it was computed for. t-yq7m absorbed
-// one shape of this (a resent DELETE whose lost answer returns 404); the harm
-// it named is general, and the order is the general fix. It also removes the
-// mirror-image loss: with the delete first, a write that failed left the strays
-// already gone, so the run destroyed state and landed nothing.
-//
-// The leniency is bounded by what already succeeded. The exit code of `release`
-// answers one question — did the verdict land? — and after the write it did.
-// What remains is convergence bookkeeping over a DRAFT: no tag exists, nothing
-// is published, and no new draft is created while one exists, so the stray set
-// is self-limiting and the same failure simply repeats next run (DESIGN §4:
-// nothing is persisted, the upsert converges, and even a duplicate self-heals).
-// Failing here instead would red the release job at release.yml's `status -ne 0`
-// gate, before it reads the verdict — so a stray GitHub will not delete would
-// stop the repository shipping artefacts while its notes were correct.
-//
-// An interrupt is never absorbed: internal/github classifies a canceled context
-// as CodeInterrupted, so a Ctrl-C during convergence still leaves the process
-// exiting 130 rather than 0 with a warning.
-//
-// A residual draft — one a none verdict leaves — deliberately does NOT take
-// this path: there the delete is the line's entire action, so absorbing its
-// failure would mean the run did nothing and reported fine, whatever that
-// line's siblings wrote.
-func convergeStray(ctx context.Context, gh *github.Client, owner, repo string, s github.Release) (went bool, err error) {
+// convergeStray deletes one stale draft AFTER the upserts landed and treats
+// one that will not go as a WARNING, never a failure: the exit code answers
+// whether the verdict landed, and after the write it did (DESIGN §4, "the
+// order is the general fix"; t-yq7m). went reports that the DELETE went and
+// its notice was printed. An interrupt is never absorbed (internal/github
+// classifies a canceled context as CodeInterrupted).
+func convergeStray(ctx context.Context, gh *github.Client, owner, repo string, s draftplan.Draft) (went bool, err error) {
 	gone, derr := gh.DeleteRelease(ctx, owner, repo, s.ID)
 	if derr != nil {
 		if core.IsInterrupted(derr) {

@@ -1,14 +1,16 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 23141f2..4aef930 100644
+index 959b182..b059e1c 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -446,6 +446,9 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
- 			if i > 0 {
- 				warnf("%d line(s) were written before this failure and stand; the remaining lines converge on the next run", i)
+@@ -406,6 +406,11 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 				if len(urls) > 0 {
+ 					warnf("%d line(s) were written before this failure and stand; the remaining lines converge on the next run", len(urls))
+ 				}
++				for _, s := range run {
++					if s.Kind == draftplan.Stale {
++						_, _ = convergeStray(ctx, gh, owner, repoName, *s.Draft)
++					}
++				}
+ 				return werr
  			}
-+			for _, s := range stale {
-+				_, _ = convergeStray(ctx, gh, owner, repoName, s)
-+			}
- 			return werr
- 		}
- 		noticef("draft release %s %sd at %s (unpublished — the tag is created at that commit when a human publishes): %s", d.params.TagName, d.plan.Action, d.params.Target, rel.URL)
+ 			noticef("draft release %s %sd at %s (unpublished — the tag is created at that commit when a human publishes): %s", wr.Tag, wr.Action, target, rel.URL)

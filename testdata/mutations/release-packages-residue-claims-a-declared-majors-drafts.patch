@@ -1,0 +1,11 @@
+diff --git a/internal/draftplan/run.go b/internal/draftplan/run.go
+index dc73560..d722279 100644
+--- a/internal/draftplan/run.go
++++ b/internal/draftplan/run.go
+@@ -100,5 +100,5 @@ func Residue(cfg *config.Config, releases []Draft) []Draft {
+ 	if len(cfg.Packages) == 0 || slices.ContainsFunc(cfg.Packages, func(p config.Package) bool { return p.Path == "." }) {
+ 		return nil
+ 	}
+-	return managed(cfg.LineOf(config.Package{Path: "."}), releases)
++	return managed(config.Line{}, releases)
+ }

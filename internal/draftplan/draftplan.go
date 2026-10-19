@@ -1,13 +1,15 @@
 // Package draftplan is the release's draft-convergence brain: given a
 // fold verdict, the flag draft_on_none and what drafts exist, it says which
-// ONE draft survives, what tag it converges to, and which are stale; of the
-// draft a release writes, whether its tag clears the published floor
-// (CheckPublishedFloor) and what body it carries, its hand region kept
-// (ComposeBody). It is pure — no git, no API, no clock — and holds the
-// founding planning invariants: never a second draft, the kept draft is
-// retagged in place, and everything glyph did not manage is not glyph's to
-// touch. What is new is the placeholder: with draft_on_none = true a none
-// verdict keeps an "Unreleased" draft alive instead of converging to
+// ONE draft survives, what tag it converges to, and which are stale
+// (PlanDraft); of the draft a release writes, whether its tag clears the
+// published floor (CheckPublishedFloor) and what body it carries, its hand
+// region kept (ComposeBody); and of the whole run, which drafts are the bare
+// line's residue (Residue) and every write in order with its kind (PlanRun)
+// — internal/cli carries the list out and renders. It is pure — no git, no
+// API, no clock — and holds the founding planning invariants: never a second
+// draft, the kept draft is retagged in place, and everything glyph did not
+// manage is not glyph's to touch. The placeholder: with draft_on_none = true
+// a none verdict keeps an "Unreleased" draft alive instead of converging to
 // nothing, and the next real verdict retags that same draft to the real
 // version (the ratified retag; the machinery is the same update-in-place).
 package draftplan

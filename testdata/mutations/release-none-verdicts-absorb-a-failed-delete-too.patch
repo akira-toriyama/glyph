@@ -1,27 +1,27 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 8a21f7e..43a9187 100644
+index 959b182..d5a2946 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -477,17 +477,12 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
- 	// spent itself on the verdict first.
- 	var residualErr error
- 	for _, s := range residual {
--		gone, derr := gh.DeleteRelease(ctx, owner, repoName, s.ID)
--		switch {
--		case derr == nil:
--			noticef("no release is due — %s the residual draft %s (release id %d)", discardedOrGone(gone), s.TagName, s.ID)
--			residueGone(s)
--		case core.IsInterrupted(derr):
-+		went, derr := convergeStray(ctx, gh, owner, repoName, s)
-+		if derr != nil {
- 			return derr
--		case residualErr == nil:
--			residualErr = derr
--		default:
--			warnf("the residual draft %s (release id %d) would not go either: %v — the run fails on the first that would not, and the next run tries every one again", s.TagName, s.ID, derr)
-+		}
-+		if went {
-+			residueGone(s)
- 		}
- 	}
- 	for _, s := range stale {
+@@ -412,17 +412,12 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 			urls = append(urls, rel.URL)
+ 			verdicts[wr.Line].URL = rel.URL
+ 		case draftplan.Residual:
+-			gone, derr := gh.DeleteRelease(ctx, owner, repoName, wr.Draft.ID)
+-			switch {
+-			case derr == nil:
+-				noticef("no release is due — %s the residual draft %s (release id %d)", discardedOrGone(gone), wr.Draft.TagName, wr.Draft.ID)
+-				residueGone(wr)
+-			case core.IsInterrupted(derr):
++			went, derr := convergeStray(ctx, gh, owner, repoName, *wr.Draft)
++			if derr != nil {
+ 				return derr
+-			case residualErr == nil:
+-				residualErr = derr
+-			default:
+-				warnf("the residual draft %s (release id %d) would not go either: %v — the run fails on the first that would not, and the next run tries every one again", wr.Draft.TagName, wr.Draft.ID, derr)
++			}
++			if went {
++				residueGone(wr)
+ 			}
+ 		case draftplan.Stale:
+ 			went, cerr := convergeStray(ctx, gh, owner, repoName, *wr.Draft)

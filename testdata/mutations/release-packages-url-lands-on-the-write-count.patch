@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 959b182..723ac6e 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -410,7 +410,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 			}
+ 			noticef("draft release %s %sd at %s (unpublished — the tag is created at that commit when a human publishes): %s", wr.Tag, wr.Action, target, rel.URL)
+ 			urls = append(urls, rel.URL)
+-			verdicts[wr.Line].URL = rel.URL
++			verdicts[len(urls)-1].URL = rel.URL
+ 		case draftplan.Residual:
+ 			gone, derr := gh.DeleteRelease(ctx, owner, repoName, wr.Draft.ID)
+ 			switch {

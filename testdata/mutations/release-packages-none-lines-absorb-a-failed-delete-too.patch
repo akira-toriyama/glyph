@@ -1,14 +1,18 @@
-diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 23141f2..3efd78a 100644
---- a/internal/cli/cmd_release.go
-+++ b/internal/cli/cmd_release.go
-@@ -395,7 +395,8 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
- 	if len(drafts) == 0 {
- 		residual = append(residual, residue...)
- 	} else {
--		stale = append(stale, residue...)
-+		stale = append(append(stale, residual...), residue...)
-+		residual = nil
+diff --git a/internal/draftplan/run.go b/internal/draftplan/run.go
+index dc73560..11f83e1 100644
+--- a/internal/draftplan/run.go
++++ b/internal/draftplan/run.go
+@@ -74,6 +74,13 @@ func PlanRun(lines []LinePlan, residue []Draft) []Write {
+ 		case ActionNone:
+ 		}
  	}
- 
- 	result := newReleaseResult(cfg, w, rows, verdicts, target, len(drafts) > 0, moving)
++	if len(upserts) > 0 {
++		for _, r := range residuals {
++			r.Kind = Stale
++			stales = append(stales, r)
++		}
++		residuals = nil
++	}
+ 	for _, r := range residue {
+ 		w := Write{Line: -1, Kind: Residual, Action: ActionDelete, Draft: &r}
+ 		if len(upserts) > 0 {
