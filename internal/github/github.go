@@ -472,9 +472,7 @@ func (e *statusError) Unwrap() error { return e.err }
 // goneOnRetry before flattening — inside the package, on the one call whose
 // contract gives that status a meaning — so no status escapes.
 // TestOnlyDocumentedMethodsCarryAStatusOut probes every exported method and
-// fails on one it has no row for: PullRequest and GenerateNotes carried theirs
-// out until t-esm5, and a 422 from either read as IsCommitUnknown (measured;
-// mutation row pull-request-status-escapes-the-adapter).
+// fails on one it has no row for.
 func flatten(err error) error {
 	if se, ok := errors.AsType[*statusError](err); ok {
 		return se.err
@@ -651,15 +649,10 @@ func clamp(s string) string {
 // distill pulls the most useful line out of a GitHub error body: its "message"
 // field when the body is the standard JSON error, else a trimmed snippet.
 //
-// BOTH arms are clamped, which is the point of the shared helper. Only the
-// snippet arm was, on the reasonable-sounding assumption that a JSON "message"
-// is a sentence — but the body is remote text glyph does not author, and the
-// arm that skips the clamp is the one that fires on a WELL-FORMED answer. A
-// validation error listing every offending field, or a proxy that wraps its
-// page in a JSON envelope behind an enterprise GITHUB_API_URL, arrives as a
-// "message" of arbitrary length. Measured before this change: a JSON body
-// carrying a 5000-character message came back at 5000 characters, while a
-// 5000-byte non-JSON body came back at 200.
+// BOTH arms are clamped: the body is remote text glyph does not author, so a
+// JSON "message" arrives at arbitrary length too — a validation error listing
+// every offending field, or a proxy's page wrapped in a JSON envelope behind an
+// enterprise GITHUB_API_URL (TestDistillClampsTheJSONMessageToo).
 //
 // Nothing downstream clamps either — internal/cli's oneLine folds newlines and
 // renderError passes the text through — so the whole of it lands on one physical

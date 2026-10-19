@@ -13,9 +13,8 @@ import (
 // could name, which can this commit's message actually write? checkScopeWord
 // holds the FILE to "some read scope group spells every name"; which pattern
 // wins is a property of each commit, so a refusal asks again of the one that
-// claimed it. The shipped raw-revert pattern fixes its sigil and captures no
-// scope, and rule 3 told its author to name the package in the scope or write
-// = — neither of which that message can do (t-mfny (A)).
+// claimed it (DESIGN §4.1, "The escapes are asked of this commit", has the
+// raw-revert case).
 //
 // Wording only. Nothing here places a commit, moves a verdict or loads a
 // file: it is computed when a refusal is worded, from the patterns Load

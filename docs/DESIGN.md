@@ -1859,12 +1859,15 @@ name = "core"               # its default "." is no preset scope's word: under t
   one prefix never read each other's tags, and a locked line's placeholder
   draft is `<path>/Unreleased` (under the path, the one name that is
   unambiguously its). The first cut derived `pubsub/v2/` and gave the module
-  a tag line nothing in the Go ecosystem reads: zero tags, a current of
-  v0.0.0 (or the deprecated v1 line's, with `pubsub` declared alone), and a
-  `^` that drafted `pubsub/v2/v2.3.0` — two minors *behind* the published
-  `pubsub/v2.3.0` of the day, under a name `go get` never resolves; the
-  published floor could not catch it because it read the same dead prefix
-  (t-z9d3). Two steps follow from a locked line holding one major: its
+  a tag line nothing in the Go ecosystem reads any more: the five tags left
+  there from before the line moved to `pubsub/v2.x` (the last
+  `pubsub/v2/v2.2.1`), so a current of v2.2.1, and a `^` on #13457 that
+  drafted `pubsub/v2/v2.3.0` — a version published as `pubsub/v2.3.0` months
+  earlier and two minors *behind* the `pubsub/v2.5.0` due after `v2.4.0`,
+  under a name `go get` never resolves; the published floor could not catch it
+  because it read the same dead prefix (t-z9d3; measured 2026-10-19 with the
+  GitHub API: `pubsub/v2.3.0` 2025-10-22, `v2.4.0` 2026-02-04, #13457 merged
+  2026-03-11, `v2.5.0` 2026-03-19). Two steps follow from a locked line holding one major: its
   **first release is `vN.0.0`** whatever the level (nothing below the major
   is on it), and a step that would leave the major — a `!` on `pubsub/v2`
   stepping to `pubsub/v3.0.0`, which the module path `/v2` disowns, or a `!`

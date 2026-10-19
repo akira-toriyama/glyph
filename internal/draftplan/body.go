@@ -6,16 +6,13 @@ import "strings"
 // region (above) and a machine region (below). It is an HTML comment on
 // purpose — GitHub renders it as nothing, so a published release carries no
 // trace of it — and its text is the contract, stated in the one place a human
-// is when the contract matters: the draft's edit box. The rolling draft is
-// the only place release prose can be written ("the exit codes changed, fix
-// your gates"), and before this marker existed the next push rewrote the
-// whole body and destroyed that prose with no warning (t-qgps).
+// is when the contract matters: the draft's edit box (DESIGN §4, "The hand
+// region").
 //
 // Everything ABOVE the marker is preserved byte-for-byte across every upsert;
 // everything below is glyph's and is rewritten every time. An edit below the
-// marker is still lost — that boundary has to exist for the machine region to
-// stay truthful — but now the boundary is printed where the human is typing,
-// instead of being an unwritten rule they learn by losing work.
+// marker is lost: that boundary has to exist for the machine region to stay
+// truthful.
 const handMarker = "<!-- glyph: notes written ABOVE this line survive every push; glyph rewrites everything BELOW it -->"
 
 // ComposeBody assembles the draft body the upsert writes: the hand region of

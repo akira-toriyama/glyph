@@ -3,11 +3,9 @@
 // hook, which judges the commits a push would add.
 //
 // The hook holds NO copy of the convention — it shells straight back to
-// `glyph lint --stdin`. That is the whole point: the per-repo hand-written
-// regexes it replaces encoded the retired Conventional form and silently fell
-// out of lockstep when the convention moved, so four repos could not commit in
-// the current style while CI happily accepted it. With the binary as the only
-// source of the rules, a hook installed once cannot drift.
+// `glyph lint --stdin`. A copy falls out of lockstep when the convention
+// moves, and the hook then refuses commits CI accepts; with the binary as the
+// only source of the rules, a hook installed once cannot drift.
 //
 // It decides file contents and the overwrite policy; the filesystem writes live
 // in Install, and the CLI wiring in internal/cli.
@@ -130,10 +128,9 @@ exit 0
 // Kind is one hook glyph writes: the name git looks the file up by, and the
 // script that goes there.
 //
-// One ordered list rather than a switch in each caller, because the hook name
-// was previously spelled independently in the installer, the doctor check and
-// the tests — three places a second kind would have had to be added to by hand,
-// with nothing failing if one were missed.
+// One ordered list rather than a switch in each caller: the installer writes,
+// and the doctor checks read, the file each entry names with the script it
+// holds, so what is installed and what is checked cannot disagree about a hook.
 type Kind struct {
 	Name   string
 	Script string
@@ -147,17 +144,10 @@ type Kind struct {
 // it refuses a violation only on the default branch it reads from
 // refs/remotes/<remote>/HEAD, and `git remote set-head <remote> -a` records
 // that. canRecord false (gitsource.RemoteCanRecordHead) is a name git cannot
-// place in a ref — `my fork`, `mirror..x` — where set-head exits 129 unquoted
-// and 1 quoted (review u6-2). `git remote rename` is no remedy there either:
-// with git's usual fetch refspec it dies on that refspec (rc=128), and with
-// the url alone the renamed remote has no refspec for set-head to read
-// (review u6b-1). So the section is renamed, its refspec rewritten, and the
-// remote fetched before set-head — rc=0 in both shapes
-// (TestSetHeadRemedyRunsPasted). The new name stays a placeholder the reader
-// fills once: computing one would reimplement git's ref rules. The old name
-// is single-quoted in both arms, since `git remote add` accepts names a shell
-// splits (`a;b`, `it's`; review u6b-2). One home for doctor's fix and the
-// hook's own warning.
+// place in a ref, where neither set-head nor `git remote rename` records a
+// head; DESIGN §7's pre-push-hook advice measures each arm, and
+// TestSetHeadRemedyRunsPasted runs both pasted. One home for doctor's fix and
+// the hook's own warning.
 func SetHeadRemedy(remote string, canRecord bool) string {
 	if canRecord {
 		return "git remote set-head " + shellQuote(remote) + " -a"

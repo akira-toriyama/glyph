@@ -17,11 +17,7 @@ import (
 var presetFS embed.FS
 
 // packagesSnippet is the commented [[packages]] paragraph every preset
-// carries, embedded as the ONE source of the block. Before this existed the
-// paragraph was typed into each preset separately, and the copies drifted:
-// the gemoji preset was corrected to say packages is a verdict input while
-// the conventional preset kept writing "not yet a verdict input" into every
-// adopter's glyph.toml for the same shipped binary.
+// carries, embedded as the ONE source of the block.
 //
 //go:embed presets/packages.snippet
 var packagesSnippet []byte

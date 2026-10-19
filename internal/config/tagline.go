@@ -18,11 +18,9 @@ import (
 // module subdirectory NOT including a major version suffix, and a module at
 // major N ≥ 2 may live in a /vN subdirectory. So `pubsub/v2` is versioned by
 // `pubsub/v2.7.0`, on the same prefix as `pubsub/v1.9.1` — two lines, one
-// prefix, told apart by the major. Deriving `pubsub/v2/` instead (the first
-// cut) gave that module a tag line nothing in the Go ecosystem reads: zero
-// tags, a current of v0.0.0, and a bump that rewound a published v2.7.0 to
-// `pubsub/v2/v2.3.0` (t-z9d3, measured 2026-09-13 on google-cloud-go and
-// etcd's client/v3).
+// prefix, told apart by the major. Deriving `pubsub/v2/` instead gives a tag
+// line nothing in the Go ecosystem reads; DESIGN's "The tag line" holds the
+// measurement.
 
 // majorSubdir is the shape of a major version subdirectory name: v followed
 // by an integer of 2 or more without a leading zero. v0 and v1 are plain

@@ -54,7 +54,7 @@ func judgeAt(ref, after, glyph, floor string) *notJudged {
 		}
 		// The pinned release's own doctor is a remedy only from the release
 		// the check shipped in: glyph v0.4.0 has no doctor at all and v1.0.0's
-		// has no caller checks (D2a review, measured; git grep at the tags,
+		// has no caller checks (measured with git grep at the tags,
 		// 2026-10-05: workflow-caller-permissions first ships at v2.1.0,
 		// workflow-caller-inputs at v3.1.0), so below the floor the offer would
 		// send the reader to a check that does not exist.

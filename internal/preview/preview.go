@@ -1,10 +1,10 @@
 // Package preview renders the merge preview: what merging a pull request does
 // to the version, as one Markdown comment body.
 //
-// This is the arithmetic and the prose that used to live as ~60 lines of jq
-// inside the pr-verdict reusable. It moved here for three reasons. The fold is
-// a VERSION decision — the caller was picking the higher of two levels in a jq
-// rank table, duplicating in shell the one thing internal/bump exists to own.
+// The arithmetic and the prose live here, not in the pr-verdict reusable, for
+// three reasons. The fold is a VERSION decision — picking the higher of two
+// levels in a jq rank table would duplicate in shell the one thing
+// internal/bump exists to own.
 // The prose makes claims that must stay true everywhere the workflow is
 // distributed (it may not name a rolling draft a repo does not keep), and a
 // claim that subtle belongs somewhere it can be unit-tested rather than
@@ -98,12 +98,8 @@ type Input struct {
 	// read by the two packages bodies alone (Render with Packages set, and
 	// RenderNoLine): the tables cannot give either. A commit moving two lines
 	// has a row in each, one sitting on no line has none, and a row carries no
-	// sha, so the first cut's count of distinct sigil-and-subject pairs made
-	// one commit of two that share a subject — "2 commit(s)" under a table of
-	// three rows, for a pull the single line counts 4 (t-rrw0 (1);
-	// TestPreviewPackagesCountsWhatTheFoldReads fails so on that source). On
-	// the single line PR.Commits is the participating set itself, and its
-	// footer counts that.
+	// sha (DESIGN §4.1, "Participating"). On the single line PR.Commits is the
+	// participating set itself, and its footer counts that.
 	Participating int
 	OffLine       int
 }
@@ -120,10 +116,8 @@ type Package struct {
 	// It is independent of Untagged: on the packages path a line with no tag
 	// of its own still gets walked whenever another line in the same pull
 	// takes the walk to the whole history, and then "no tag yet" must not be
-	// rendered as "nothing merged earlier is folded in" — the same run's
-	// machine verdict says otherwise, and the release walk agrees with the
-	// machine verdict (t-60dc, measured 2026-09-15: body curry/v0.0.1 vs JSON
-	// and `bump` curry/v0.1.0).
+	// rendered as "nothing merged earlier is folded in" (DESIGN §4.1,
+	// "Preview").
 	PendingWalked bool
 	PR            Verdict
 	Pending       Verdict
@@ -304,17 +298,11 @@ func renderPackages(in Input) string {
 // headline per line, no table and no base to name. It reads PRShort,
 // Participating and nothing else of the Input.
 //
-// The sentence carries no count. It did — "its N commit(s) touch no declared
-// package", N the raw listing — and said that of a skipped merge commit whose
-// diff nothing reads, above a footer repeating the same N as
-// "participating": 3 for a pull of a shared =, a bot and a merge
-// commit, which the single line counts 1 (t-rrw0 (2)+(3)). With the
-// participating count in its place it would read "its 1 commit(s)" in that
-// pull of three, and "its 0 commit(s)" in a pull of a bot and a merge — the
-// miscount reading footer's wording exists to avoid. So the count is the
-// footer's alone, and the sentence is about every participating commit. With
-// the PR side short it claims no more than the files GitHub listed, and the
-// caveat makes a floor of it.
+// The sentence carries no count: the count is the footer's alone, and the
+// sentence is about every participating commit (DESIGN §4.1, "Participating"
+// and "Preview", holds the miscounts a count here would read). With the PR
+// side short it claims no more than the files GitHub listed, and the caveat
+// makes a floor of it.
 //
 // The caller picks this over Render: an Input with no Packages is the single
 // line's to Render, and nothing in it says a repository declares lines.

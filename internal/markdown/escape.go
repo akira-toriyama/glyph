@@ -15,19 +15,9 @@ import "strings"
 // The pass itself is escapeProseLine, at the foot of this file: it runs over the
 // ASSEMBLED line, for the reason Line's doc gives (t-9np1).
 //
-// That is why the known limitation codeSpans used to carry (an autolink or a
-// raw HTML tag swallowing a backtick, so glyph believed a PHANTOM span and left
-// the mention inside it raw) is closed here rather than there. Teaching
-// codeSpans the autolink and raw-HTML grammars would have been eleven chances
-// to be wrong in the under-escaping direction — and wrong is a notification —
-// while a scanner that models those two constructs is STILL incomplete: a link
-// destination eats a backtick too. Measured 2026-07-21:
-//
-//	see [a](b`c) @octocat `d` end                      LIVE MENTION
-//
-// cmark reaches the ']', parses "(b`c)" as a link destination and consumes the
-// backtick, so GitHub leaves the at-sign in prose. Killing the construct closes
-// that door and every door like it, including ones nobody has found yet.
+// codeSpans' doc holds the four measured constructs that swallow a backtick —
+// a link destination among them — and why that scan is not taught their
+// grammars.
 //
 // THE ONE DESIGN RULE, and a later "let me make this more precise" pass must not
 // violate it: every inexactness falls on the OVER-escaping side. A backslash in
@@ -82,9 +72,9 @@ func flatten(s string) string {
 // It only ADDS backslashes — never rewrites or drops a byte — so the author's
 // text survives as a subsequence of the result, and it is a fixed point.
 //
-// WHAT IT REPAIRS, not merely what it prevents. Raw HTML in a subject is not a
-// theoretical injection; it is silently eating real release notes today.
-// GitHub's sanitizer gives a raw tag one of three fates, measured 2026-07-21:
+// WHAT IT REPAIRS, not merely what it prevents: left raw, a tag in a subject
+// can delete the author's own words from the notes. GitHub's sanitizer gives a
+// raw tag one of three fates, measured 2026-07-21:
 //
 //	<i>, <kbd>, <img src=…>          LIVE — the tag renders, and it LEAKS past
 //	                                 the list item and out of a <details> block

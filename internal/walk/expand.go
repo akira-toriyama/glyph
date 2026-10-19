@@ -475,8 +475,8 @@ func (w Walker) mergedPullFor(ctx context.Context, owner, repo, sha string, inRa
 		}
 		if p.MergeCommitSHA == sha {
 			if !found {
-				// First match wins, as before this returned early: list order is
-				// GitHub's and the verdict must not start depending on it.
+				// First match wins: list order is GitHub's, and the loop running
+				// on for covering pulls must not change which pull claims sha.
 				number, found = p.Number, true
 			}
 			continue

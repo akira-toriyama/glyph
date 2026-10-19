@@ -28,11 +28,9 @@ type Repo struct {
 	Private    bool
 	Visibility string
 
-	// DefaultBranch is the release path's SECOND source for the branch a write
-	// is allowed from (`internal/cli/releaseref.go`). The first is the event
-	// payload, which costs nothing; this one costs the request and exists so a
-	// payload that stops carrying the field degrades one repository's release
-	// to a slower answer instead of refusing every pinned repository at once.
+	// DefaultBranch is the release ref guard's second source for the default
+	// branch (internal/cli's releaseDefaultBranch; DESIGN §4, "The boundary is
+	// read from the event payload").
 	DefaultBranch string
 
 	AllowMergeCommit *bool
