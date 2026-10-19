@@ -1,0 +1,13 @@
+diff --git a/internal/walk/base.go b/internal/walk/base.go
+index 4abe3ad..cd1d626 100644
+--- a/internal/walk/base.go
++++ b/internal/walk/base.go
+@@ -96,7 +96,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
+ 		if perr != nil {
+ 			return "", "", nil, perr
+ 		}
+-		if prefix != "" {
++		if false && prefix != "" {
+ 			return "", "", nil, core.Usagef("--since-tag=below:%s names the %s line, but this repository declares no [[packages]] — its one line is the bare vX.Y.Z tags", bound, prefix)
+ 		}
+ 		prev, v, lerr := w.LatestVersionTag(ctx, config.Line{}, &under)

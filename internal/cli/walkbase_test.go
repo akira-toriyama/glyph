@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/akira-toriyama/glyph/v5/internal/core"
 	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
@@ -419,6 +420,31 @@ func TestSinceTagBelowFirstVersionWalksTheWholeHistory(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "whole history") {
 		t.Fatalf("walking everything is a cost the caller should see named:\n%s", stderr)
+	}
+}
+
+// TestSinceTagBelowOnAnUndeclaredLineIsUsage: below:<prefix>vX.Y.Z names a
+// line, and a repository that declares no [[packages]] has one — the bare
+// vX.Y.Z tags — so the bound is the caller's input and dies as usage (2),
+// naming the line and the missing declaration, before anything is walked:
+// read on the bare line it would resolve to a predecessor the caller never
+// meant (mutation row below-on-an-undeclared-line-walks-the-bare-line).
+func TestSinceTagBelowOnAnUndeclaredLineIsUsage(t *testing.T) {
+	dir, _ := testRepo(t) // v0.1.0 — what a bare-line read under 1.0.0 would find
+	testCommit(t, dir, "akira-toriyama", ":sparkles:^ add it")
+	usePR(t, walkServer(t, map[string]string{})) // any request fails the test
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=below:haiku/v1.0.0")
+	if code != int(core.CodeUsage) {
+		t.Fatalf("bump --since-tag=below:haiku/v1.0.0 without [[packages]] exited %d, want exactly %d (usage)\nstdout: %s\nstderr: %s", code, core.CodeUsage, stdout, stderr)
+	}
+	if stdout != "" {
+		t.Errorf("a refused bound still answered on stdout: %q", stdout)
+	}
+	env := decodeErrorEnvelope(t, stderr)
+	if env.Code != int(core.CodeUsage) || !strings.Contains(env.Message, "names the haiku/ line") || !strings.Contains(env.Message, "declares no [[packages]]") {
+		t.Errorf("envelope = %+v, want code %d naming the line and the missing declaration", env, core.CodeUsage)
 	}
 }
 

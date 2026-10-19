@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v5/internal/core"
 )
 
 // This file pins `glyph release` for a packages repository (DESIGN §4.1,
@@ -598,18 +600,21 @@ func TestReleasePackagesDryRunCountsResidualAndStaleApart(t *testing.T) {
 	for name, tc := range map[string]struct {
 		walk     func(*testing.T, string) map[string]string
 		releases string
+		wantCode int
 		want     []string
 		not      string
 	}{
 		"a none line beside a moving line's stray and the residue": {
 			haikuMoves,
 			`[` + draftJSON(53, "haiku/v0.2.0") + `,` + draftJSON(52, "haiku/v0.1.5") + `,` + draftJSON(51, "curry/v0.1.1") + `,` + draftJSON(61, "v0.9.0") + `]`,
+			int(core.CodeOK),
 			[]string{"dry run: 1 residual draft(s) to delete", "dry run: 2 stale draft(s) to delete after the upserts"},
 			"",
 		},
 		"every line none": {
 			linesQuiet,
 			`[` + draftJSON(51, "curry/v0.1.1") + `,` + draftJSON(61, "v0.9.0") + `]`,
+			int(core.CodeNoRelease),
 			[]string{"dry run: 2 residual draft(s) to delete"},
 			"stale draft",
 		},
@@ -621,7 +626,10 @@ func TestReleasePackagesDryRunCountsResidualAndStaleApart(t *testing.T) {
 			usePR(t, releaseServer(t, walk, tc.releases, &writes))
 			t.Chdir(dir)
 
-			_, _, stderr := runGlyph(t, "release", "--dry-run")
+			code, _, stderr := runGlyph(t, "release", "--dry-run")
+			if code != tc.wantCode {
+				t.Fatalf("release --dry-run exited %d, want exactly %d — every line none is the soft no-release (1), a moving line 0\nstderr: %s", code, tc.wantCode, stderr)
+			}
 			if len(writes) != 0 {
 				t.Fatalf("a dry run wrote: %+v", writes)
 			}

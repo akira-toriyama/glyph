@@ -95,6 +95,40 @@ func TestHookInstallPrintDoesNotWrite(t *testing.T) {
 	}
 }
 
+// TestHookInstallPrintTakesExactlyOneKind: --print writes ONE script, so no
+// kind (which installs every kind) and two kinds (two scripts concatenated
+// are not a script) are the caller's mistake — usage (2), nothing on stdout,
+// nothing installed — never a script a shell would run as one (mutation row
+// hook-print-writes-every-script-at-once).
+func TestHookInstallPrintTakesExactlyOneKind(t *testing.T) {
+	for name, args := range map[string][]string{
+		"no kind":   {"hook", "install", "--print"},
+		"two kinds": {"hook", "install", "--print", "commit-msg", "pre-push"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, _ := testRepo(t)
+			t.Chdir(dir)
+
+			code, stdout, stderr := runGlyph(t, args...)
+			if code != int(core.CodeUsage) {
+				t.Fatalf("%v exited %d, want exactly %d (usage)\nstderr: %s", args, code, core.CodeUsage, stderr)
+			}
+			if stdout != "" {
+				t.Errorf("%v wrote on stdout over a refusal:\n%s", args, stdout)
+			}
+			env := decodeErrorEnvelope(t, stderr)
+			if env.Code != int(core.CodeUsage) || !strings.Contains(env.Message, "ONE hook script") {
+				t.Errorf("envelope = %+v, want code %d saying --print writes one script", env, core.CodeUsage)
+			}
+			for _, k := range hook.Kinds() {
+				if _, err := os.Stat(filepath.Join(dir, ".git", "hooks", k.Name)); err == nil {
+					t.Errorf("a refused --print installed the %s hook", k.Name)
+				}
+			}
+		})
+	}
+}
+
 // The end-to-end proof: git itself runs the installed hook, a violating message
 // is rejected, and a conforming one commits. Everything above this test asserts
 // file contents — only this one shows the hook actually gates a commit.

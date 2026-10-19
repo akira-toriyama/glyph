@@ -1,0 +1,11 @@
+diff --git a/internal/cli/releaseref.go b/internal/cli/releaseref.go
+index 5bb84d0..74e9835 100644
+--- a/internal/cli/releaseref.go
++++ b/internal/cli/releaseref.go
+@@ -151,5 +151,5 @@ func releaseDefaultBranch(ctx context.Context, owner, repo string) (name, source
+ 	if got := strings.TrimSpace(r.DefaultBranch); got != "" {
+ 		return got, "from the repository object", nil
+ 	}
+-	return "", "", core.APIf("neither the event payload nor the repository object %s/%s names a default branch, so the ref this release writes from cannot be judged; refusing rather than upserting the rolling draft against an unverified boundary", owner, repo)
++	return "main", "assumed", nil
+ }

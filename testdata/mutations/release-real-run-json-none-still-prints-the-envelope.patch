@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 528b694..7fbfe1e 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -441,7 +441,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 	result = newReleaseResult(cfg, w, rows, verdicts, target, len(upserts) > 0, moving)
+ 	if o.json {
+ 		printCompact(result)
+-		return releaseExit(moving, result.Reason, true)
++		return releaseExit(moving, result.Reason, false)
+ 	}
+ 	for _, u := range urls {
+ 		fmt.Fprintln(out, u)
