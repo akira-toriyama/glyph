@@ -88,10 +88,13 @@ func apiPullRef(number int, mergedAt, mergeSHA string) string {
 		number, mergedAt, mergeSHA)
 }
 
-// squashCommit adds one commit shaped like a squash-merge writes it — the PR
-// title plus (#N), deliberately NOT gitmoji-formed — and returns its SHA. If
-// the walk classified this subject instead of the PR's individual commits, the
-// tests below would fail, which is the squash-safety being pinned.
+// squashCommit lands one commit on main shaped the way a squash merge lands
+// when its subject is the PR title — the title plus (#N), what
+// COMMIT_OR_PR_TITLE writes for a multi-commit pull (a single-commit pull
+// keeps its own subject) — and returns its SHA. With the API answering, the
+// walk folds the pull's own commits and never classifies this subject (the
+// squash safety the tests pin); dark, the fallback has nothing else to read
+// (walkfallback_test.go's divergence tests).
 func squashCommit(t *testing.T, dir string, title string, number int) string {
 	t.Helper()
 	testCommit(t, dir, "akira-toriyama", fmt.Sprintf("%s (#%d)", title, number))

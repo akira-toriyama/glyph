@@ -2,10 +2,12 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/core"
@@ -310,16 +312,50 @@ func runGit(dir, path string, args ...string) (string, error) {
 	return string(out), err
 }
 
-// buildGlyph compiles the real binary once so the hook can invoke it as a
-// developer's shell would.
+// glyphBinary is the one build of the real binary a package run makes, under
+// a directory of its own: a t.TempDir would go with the first test that
+// asked, so removeGlyphBinary runs from TestMain instead. A test that panics
+// never returns to TestMain, so that run's directory (13 MB under TMPDIR)
+// outlives it — the per-test TempDir was removed even then — and nothing in
+// the process can remove it (measured in review).
+var glyphBinary struct {
+	once sync.Once
+	dir  string
+	path string
+	err  error
+}
+
+// buildGlyph compiles the real binary once per package run — the hook and
+// signal tests invoke it as a developer's shell would — and fails every
+// caller on the build error, not only the first.
 func buildGlyph(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "glyph")
-	cmd := exec.Command("go", "build", "-o", bin, "github.com/akira-toriyama/glyph/v5/cmd/glyph")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("building glyph: %v\n%s", err, out)
+	glyphBinary.once.Do(func() {
+		dir, err := os.MkdirTemp("", "glyph-test-")
+		if err != nil {
+			glyphBinary.err = err
+			return
+		}
+		glyphBinary.dir = dir
+		bin := filepath.Join(dir, "glyph")
+		cmd := exec.Command("go", "build", "-o", bin, "github.com/akira-toriyama/glyph/v5/cmd/glyph")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			glyphBinary.err = fmt.Errorf("%w\n%s", err, out)
+			return
+		}
+		glyphBinary.path = bin
+	})
+	if glyphBinary.err != nil {
+		t.Fatalf("building glyph: %v", glyphBinary.err)
 	}
-	return bin
+	return glyphBinary.path
+}
+
+// removeGlyphBinary deletes the build directory once every test has run.
+func removeGlyphBinary() {
+	if glyphBinary.dir != "" {
+		os.RemoveAll(glyphBinary.dir)
+	}
 }
 
 // commitWith runs `git commit` in dir with the given PATH, returning git's

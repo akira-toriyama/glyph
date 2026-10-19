@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/config"
 	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
@@ -22,25 +21,6 @@ const (
 	floorWarningLines = "::warning::glyph: no release tag in HEAD's history on any line this PR touches — previewing the PR's own verdict per line (the pending walk needs a release floor)\n"
 )
 
-// testRepoUntagged is testRepo without its v0.1.0 tag — a repository before its
-// first release, which is the only state the release-floor guard is about. It
-// lives here rather than in gitrepo_test.go because it is the negative case of
-// that helper's central assumption, and reading the two side by side is the
-// point.
-func testRepoUntagged(t *testing.T) string {
-	t.Helper()
-	testutil.RequireGit(t)
-	dir := t.TempDir()
-	testGit(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
-	preset, _ := config.Preset("gemoji")
-	if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), preset, 0o644); err != nil {
-		t.Fatalf("write glyph.toml: %v", err)
-	}
-	testGit(t, dir, "akira-toriyama", "add", "glyph.toml")
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= begin the project")
-	return dir
-}
-
 // TestPreviewUntaggedSkipsTheWalk is the release-floor guard, and it is a COST
 // test as much as a correctness one. walkServer fails the test on any path it
 // was not given, so serving ONLY the PR's commits proves the pending walk never
@@ -49,7 +29,7 @@ func testRepoUntagged(t *testing.T) string {
 // unsafe — for an answer that cannot matter, since nothing is unreleased when
 // nothing was ever released.
 func TestPreviewUntaggedSkipsTheWalk(t *testing.T) {
-	dir := testRepoUntagged(t)
+	dir := testutil.NewRepo(t)
 	t.Chdir(dir)
 	srv := prServer(t, 7, `[`+
 		apiCommit("aaa1111", "akira-toriyama", ":sparkles:^ add the palette")+`]`)
@@ -81,7 +61,7 @@ func TestPreviewUntaggedSkipsTheWalk(t *testing.T) {
 // exactly what the reviewer asked, and a caller that must post the comment
 // cannot have the renderer exit non-zero on the commonest outcome.
 func TestPreviewNoneExitsZero(t *testing.T) {
-	dir := testRepoUntagged(t)
+	dir := testutil.NewRepo(t)
 	t.Chdir(dir)
 	srv := prServer(t, 7, `[`+apiCommit("aaa1111", "akira-toriyama", ":memo:= document it")+`]`)
 	usePR(t, srv)
@@ -102,7 +82,7 @@ func TestPreviewNoneExitsZero(t *testing.T) {
 // FOLDED answer, so a caller never re-derives the winner from the two sides —
 // which is the shell arithmetic this command exists to absorb.
 func TestPreviewJSONFoldsTheLevels(t *testing.T) {
-	dir := testRepoUntagged(t)
+	dir := testutil.NewRepo(t)
 	t.Chdir(dir)
 	srv := prServer(t, 7, `[`+apiCommit("aaa1111", "akira-toriyama", ":bug:~ fix a crash")+`]`)
 	usePR(t, srv)
@@ -146,7 +126,7 @@ func TestPreviewJSONFoldsTheLevels(t *testing.T) {
 // Off by default — the headline is the message and the notes are for whoever
 // asks.
 func TestPreviewNotes(t *testing.T) {
-	dir := testRepoUntagged(t)
+	dir := testutil.NewRepo(t)
 	t.Chdir(dir)
 	body := `[` + apiCommit("aaa1111", "akira-toriyama", ":sparkles:(ui)^ add the palette") + `]`
 	usePR(t, prServer(t, 7, body))
@@ -166,7 +146,7 @@ func TestPreviewNotes(t *testing.T) {
 // TestPreviewNotesOffByDefault guards the default: the same input without
 // --notes must carry no disclosure block.
 func TestPreviewNotesOffByDefault(t *testing.T) {
-	dir := testRepoUntagged(t)
+	dir := testutil.NewRepo(t)
 	t.Chdir(dir)
 	usePR(t, prServer(t, 7, `[`+apiCommit("aaa1111", "akira-toriyama", ":sparkles:^ add it")+`]`))
 
@@ -273,7 +253,7 @@ func TestPreviewPRMultiCommitListing(t *testing.T) {
 // TestPreviewRequiresPR: without --pr there is no pull request to preview.
 // Caller input, so usage (2) — never a walk over an empty input.
 func TestPreviewRequiresPR(t *testing.T) {
-	dir := testRepoUntagged(t)
+	dir := testutil.NewRepo(t)
 	t.Chdir(dir)
 	code, _, stderr := runGlyph(t, "preview")
 	if code != 2 {
@@ -295,7 +275,7 @@ func TestPreviewRequiresPR(t *testing.T) {
 // {"level":"minor"}. The existence question is about the TAG, so it is now
 // asked of the tag name.
 func TestPreviewZeroVersionTagIsTagged(t *testing.T) {
-	dir := testRepoUntagged(t)
+	dir := testutil.NewRepo(t)
 	testGit(t, dir, "akira-toriyama", "tag", "v0.0.0")
 	pending := squashCommit(t, dir, "Add a menu", 9)
 	t.Chdir(dir)
@@ -365,7 +345,7 @@ func TestPreviewIncompletePendingWalkSaysSoInTheBody(t *testing.T) {
 // --json reach it as fields, not as package state a cobra run has to set
 // first.
 func TestPreviewRunsFromOptionsWithoutCobra(t *testing.T) {
-	dir := testRepoUntagged(t)
+	dir := testutil.NewRepo(t)
 	t.Chdir(dir)
 	usePR(t, prServer(t, 7, `[`+apiCommit("aaa1111", "akira-toriyama", ":sparkles:(ui)^ add the palette")+`]`))
 	stdout, stderr, restore := captureOut()
@@ -393,7 +373,7 @@ func TestPreviewBareLineAsksForNoFile(t *testing.T) {
 		commitFilesPath("bbb2222"): apiFiles("crash.go"),
 	}
 	t.Run("untagged: the pull's listing alone", func(t *testing.T) {
-		dir := testRepoUntagged(t)
+		dir := testutil.NewRepo(t)
 		t.Chdir(dir)
 		srv, seen := recordingWalkServer(t, pull)
 		usePR(t, srv)
@@ -457,7 +437,7 @@ func TestPreviewBareLineRendersTheScalarBody(t *testing.T) {
 		"Computed from the 1 commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them — folded with what is already merged on the base branch since **v0.1.0**. Pushing more commits updates this comment.\n"
 
 	t.Run("untagged, with the notes", func(t *testing.T) {
-		dir := testRepoUntagged(t)
+		dir := testutil.NewRepo(t)
 		t.Chdir(dir)
 		usePR(t, prServer(t, 7, `[`+
 			apiCommit("aaa1111", "akira-toriyama", ":sparkles:(ui)^ add the palette")+`,`+
@@ -501,7 +481,7 @@ func TestPreviewBareLineRendersTheScalarBody(t *testing.T) {
 // its own ("no v* release tag in HEAD's history — previewing this PR's own
 // verdict only"), and the packages half was asserted nowhere.
 func TestPreviewReleaseFloorWarningIsOneSentence(t *testing.T) {
-	bare := testRepoUntagged(t)
+	bare := testutil.NewRepo(t)
 	lines, _ := packagesRepo(t)
 	testGit(t, lines, "akira-toriyama", "tag", "-d", "haiku/v0.1.0")
 	testGit(t, lines, "akira-toriyama", "tag", "-d", "curry/v0.1.0")
@@ -615,7 +595,7 @@ func TestPreviewNotesCiteThePullUnderReview(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	bare := testRepoUntagged(t)
+	bare := testutil.NewRepo(t)
 	lines, _ := packagesRepo(t)
 	for _, tc := range []struct{ name, dir string }{{"bare line", bare}, {"lines", lines}} {
 		t.Run(tc.name, func(t *testing.T) {

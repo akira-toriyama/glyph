@@ -293,3 +293,28 @@ func TestPrePushJudgesACommitTheRemoteHasElsewhereWhenItReachesTheDefaultBranch(
 		t.Fatalf("the blocking envelope must name the rule:\n%s", stderr)
 	}
 }
+
+// TestPrePushPackagesInheritsAttribution: the pre-push hook goes through the
+// same lintRaws, so a shared-only ^ is blocked before it reaches the default
+// branch — the one gate that can still refuse it while the commit is
+// rewritable.
+func TestPrePushPackagesInheritsAttribution(t *testing.T) {
+	work, _ := testClone(t)
+	appendTo(t, work, "glyph.toml", packagesConfig)
+	writeFile(t, work, "haiku/haiku.go", "package haiku\n")
+	writeFile(t, work, "curry/curry.go", "package curry\n")
+	testutil.Git(t, work, "akira-toriyama", "add", ".")
+	testutil.Git(t, work, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare two lines")
+	testutil.Git(t, work, "akira-toriyama", "push", "-q", "origin", "main")
+	head := touch(t, work, "akira-toriyama", ":sparkles:^ add a workspace file", "go.work")
+	t.Chdir(work)
+
+	setStdin(t, "refs/heads/main "+head+" refs/heads/main "+rev(t, work, "origin/main")+"\n")
+	code, _, stderr := runGlyph(t, "hook", "pre-push", "origin", "ignored")
+	if code != 3 {
+		t.Fatalf("a shared-only ^ reaching the default branch exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "its files (go.work) belong to no declared package") {
+		t.Fatalf("the blocking envelope must carry the attribution finding:\n%s", stderr)
+	}
+}

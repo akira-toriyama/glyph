@@ -11,6 +11,7 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/bump"
 	"github.com/akira-toriyama/glyph/v5/internal/core"
 	"github.com/akira-toriyama/glyph/v5/internal/preview"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // TestReleaseBodyCapBoundary pins the measured cap at its exact edge, in the
@@ -219,7 +220,7 @@ func TestCutAtLineKeepsEveryLineThatFits(t *testing.T) {
 // do not posts a comment that closes its notes block and says it was cut,
 // outside the block — on stdout and in the --json body the workflow posts.
 func TestPreviewCutInsideTheNotesStillClosesTheFold(t *testing.T) {
-	dir := testRepoUntagged(t)
+	dir := testutil.NewRepo(t)
 	t.Chdir(dir)
 	commits := make([]string, 0, 200)
 	for i := range 200 {
@@ -350,7 +351,7 @@ func TestReleaseBodyCapCountsTheCompareLink(t *testing.T) {
 // truncated (marked, warned) rather than refused — and the JSON body the
 // workflow actually posts is the truncated one.
 func TestPreviewCommentStaysUnderTheCap(t *testing.T) {
-	dir := testRepoUntagged(t)
+	dir := testutil.NewRepo(t)
 	t.Chdir(dir)
 	body := `[` + apiCommit("aaa1111", "akira-toriyama", ":sparkles:^ "+strings.Repeat("y", commentBodyMaxChars+100)) + `]`
 	usePR(t, prServer(t, 7, body))

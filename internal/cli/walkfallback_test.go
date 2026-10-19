@@ -446,18 +446,6 @@ func TestNotesSinceTagUnknownBreakingFallbackHoists(t *testing.T) {
 	}
 }
 
-// squashOf lands ONE commit on main shaped exactly the way GitHub writes a
-// squash merge of a MULTI-commit pull request under COMMIT_OR_PR_TITLE: the
-// subject is the PR TITLE plus (#N), whatever that title happens to be. It is
-// the sibling of squashCommit, which fixes the non-gitmoji shape; here the title
-// is the variable under test, because nothing lints it — the commit-lint job
-// runs `glyph lint --range "$BASE..$HEAD"`, i.e. over the pull's COMMITS.
-func squashOf(t *testing.T, dir, title string, number int) string {
-	t.Helper()
-	testCommit(t, dir, "akira-toriyama", fmt.Sprintf("%s (#%d)", title, number))
-	return testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-}
-
 // TestSinceTagSquashMultiCommitDivergesWhenAPIDark pins what squash actually
 // buys, against the claim doctor used to make. Squash guarantees a pull request
 // resolves ALL-OR-NOTHING — one commit on main, and it IS the merge point — but
@@ -478,7 +466,7 @@ func TestSinceTagSquashMultiCommitDivergesWhenAPIDark(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir, _ := testRepo(t)
-			sha := squashOf(t, dir, ":bug:(auth)~ fix a token refresh", 1)
+			sha := squashCommit(t, dir, ":bug:(auth)~ fix a token refresh", 1)
 			routes := map[string]string{
 				commitPullsPath(sha): `[` + apiPullRef(1, "2026-07-20T00:00:00Z", sha) + `]`,
 				pullCommitsPath(1): `[` +
@@ -511,7 +499,7 @@ func TestSinceTagSquashMultiCommitDivergesWhenAPIDark(t *testing.T) {
 // dropped from the fold with a warning and the whole release counts none.
 func TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark(t *testing.T) {
 	dir, _ := testRepo(t)
-	sha := squashOf(t, dir, "Add a refresh endpoint", 6)
+	sha := squashCommit(t, dir, "Add a refresh endpoint", 6)
 	live := map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(6, "2026-07-20T00:00:00Z", sha) + `]`,
 		pullCommitsPath(6):   `[` + apiCommit("a1", "akira-toriyama", ":sparkles:(auth)^ add a refresh endpoint") + `]`,
