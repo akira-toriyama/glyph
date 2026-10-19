@@ -475,7 +475,7 @@ func TestSinceTagPackagesSquashInnerCommitIsGovernedByItsMergePoint(t *testing.T
 // (Every pre-existing walk test proves the same by construction; this one
 // says so by name, beside the packages tests.)
 func TestSinceTagPackagesNoFilesAskedWithoutPackages(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha := squashCommit(t, dir, "Add a season and swap an ingredient", 7)
 	usePR(t, walkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(7, "2026-09-10T00:00:00Z", sha) + `]`,

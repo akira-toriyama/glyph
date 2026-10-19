@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -208,7 +209,7 @@ func TestMachineOutputFlagHasOneSpelling(t *testing.T) {
 // request or git walk runs.
 func TestSinceTagNeedsARepo(t *testing.T) {
 	t.Setenv("GITHUB_REPOSITORY", "")
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "bump", "--since-tag")
@@ -223,7 +224,7 @@ func TestSinceTagNeedsARepo(t *testing.T) {
 // TestSinceTagIsExclusiveWithTheOtherSources: --range, --pr and --since-tag are
 // three sources for the same answer; combining any two would silently pick one.
 func TestSinceTagIsExclusiveWithTheOtherSources(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 	for _, extra := range [][]string{
 		{"--range", base + "..HEAD"},
@@ -241,7 +242,7 @@ func TestSinceTagIsExclusiveWithTheOtherSources(t *testing.T) {
 // and the name is empty. Usage, before anything runs.
 func TestSinceTagExplicitEmptyIsUsage(t *testing.T) {
 	t.Setenv("GITHUB_REPOSITORY", "akira-toriyama/glyph") // so the repo guard cannot mask the tag guard
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "bump", "--since-tag=")
@@ -258,7 +259,7 @@ func TestSinceTagExplicitEmptyIsUsage(t *testing.T) {
 // (2) before git runs, not surfaced as a retryable-looking API failure (4).
 func TestSinceTagOptionShapedTagIsUsage(t *testing.T) {
 	t.Setenv("GITHUB_REPOSITORY", "akira-toriyama/glyph") // so the repo guard cannot mask the tag guard
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 	for _, tag := range []string{"-v0.1.0", "v0.1.0..HEAD"} {
 		code, _, stderr := runGlyph(t, "bump", "--since-tag="+tag)
@@ -276,7 +277,7 @@ func TestSinceTagOptionShapedTagIsUsage(t *testing.T) {
 // bare --since-tag plus a stray positional. That must not walk the WRONG range
 // silently — it is a usage error that spells out the = form.
 func TestSinceTagSpaceFormIsGuided(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "bump", "--since-tag", "v0.1.0")
@@ -292,7 +293,7 @@ func TestSinceTagSpaceFormIsGuided(t *testing.T) {
 // --since-tag); combined with the purely local --range it used to be silently
 // ignored. No silent ignores — it is a usage error.
 func TestRepoWithRangeIsUsage(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, _, _ := runGlyph(t, "bump", "--range", base+"..HEAD", "--repo", "akira-toriyama/glyph")
@@ -306,7 +307,7 @@ func TestRepoWithRangeIsUsage(t *testing.T) {
 // prefix, which must die as the caller's input (usage, 2) instead of resolving
 // to a tag it did not mean or surfacing as a retryable-looking git failure (4).
 func TestSinceTagBelowNeedsAVersion(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	for _, bound := range []string{"below:", "below:main", "below:v1.0"} {

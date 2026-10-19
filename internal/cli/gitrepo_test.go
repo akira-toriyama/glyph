@@ -6,8 +6,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // TestMain blanks the GitHub environment before any test runs: on an Actions
@@ -72,17 +70,6 @@ func setStdin(t *testing.T, s string) {
 	old := in
 	in = strings.NewReader(s)
 	t.Cleanup(func() { in = old })
-}
-
-// testRepo builds a hermetic throwaway repository for the --range commands —
-// testutil's fixture (pinned identity, real git config held out, maintenance
-// off; the incidents live on testutil.GitEnv) plus a v0.1.0 tag on the base so
-// bump has a current version to step from.
-func testRepo(t *testing.T) (dir, base string) {
-	t.Helper()
-	dir = testutil.NewRepo(t)
-	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.0")
-	return dir, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 }
 
 // runGlyph executes the root command with args, returning the exit code and

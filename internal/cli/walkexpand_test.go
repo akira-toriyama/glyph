@@ -181,7 +181,7 @@ func verdictSHAs(t *testing.T, args ...string) (code int, shas []string, stderr 
 // :sparkles:^ in PR 7 beats the :bug:~ in PR 8), so the verdict is a minor —
 // even though neither squash subject parses as a gitmoji commit at all.
 func TestBumpSinceTagExpandsSquashCommits(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
 	sha2 := squashCommit(t, dir, "Fix a crash", 8)
 	srv := walkServer(t, map[string]string{
@@ -209,7 +209,7 @@ func TestBumpSinceTagExpandsSquashCommits(t *testing.T) {
 // line per real change across every PR since the tag — not one line per squash
 // subject.
 func TestNotesSinceTag(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
 	sha2 := squashCommit(t, dir, "Fix a crash", 8)
 	srv := walkServer(t, map[string]string{
@@ -234,7 +234,7 @@ func TestNotesSinceTag(t *testing.T) {
 // commit is ASSOCIATED with — a revert PR or a mention can ride along. The walk
 // must select on MergeCommitSHA == sha AND merged, never on order.
 func TestSinceTagPicksTheMergedMatch(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha1): `[` +
@@ -256,7 +256,7 @@ func TestSinceTagPicksTheMergedMatch(t *testing.T) {
 // fleet-sync direct push) is excluded by the participation rules BEFORE any
 // resolution — walkServer would fail the test if its SHA were ever asked about.
 func TestSinceTagBotCommitsNeverReachTheAPI(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "dependabot[bot]", ":robot:= chore(fleet): sync a file")
 	sha1 := squashCommit(t, dir, "Fix a crash", 3)
 	srv := walkServer(t, map[string]string{
@@ -280,7 +280,7 @@ func TestSinceTagBotCommitsNeverReachTheAPI(t *testing.T) {
 // reverted feature still counts — a release advertising a feature that is
 // gone.
 func TestSinceTagRevertPRIsWalked(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", `Revert "Add a menu" (#9)`)
 	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
@@ -305,7 +305,7 @@ func TestSinceTagRevertPRIsWalked(t *testing.T) {
 // them would count each change twice (once rebased, once via the PR's
 // expansion) and spray direct-push warnings over a perfectly normal merge.
 func TestSinceTagRebaseMergedPRDoesNotDoubleCount(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
 	shaA := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix the menu")
@@ -348,7 +348,7 @@ func TestSinceTagRebaseMergedPRDoesNotDoubleCount(t *testing.T) {
 // and the notes, silently — a click on the wrong green button was enough, on 31
 // of the fleet's 34 repositories.
 func TestSinceTagMergeCommitPRIsExpanded(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	mp := mergePR(t, dir, "akira-toriyama", 7, ":memo:= document the menu", ":sparkles:(ui)^ add a menu")
 	ref := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`
 	srv := walkServer(t, map[string]string{
@@ -402,7 +402,7 @@ func TestSinceTagMergeCommitPRIsExpanded(t *testing.T) {
 // same commit. A resolved commit is already represented in the fold; the set
 // must record that about the commit ITSELF, not only about its expansion.
 func TestSinceTagSubPullSquashCommitIsNotRelinted(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	mp := mergeInto(t, dir, "akira-toriyama", "akira-toriyama", prTopic(7), prMergeSubject(7),
 		"Add a menu (#6)", ":bug:(ui)~ polish the menu")
 	sub, rest := mp.Branch[0], mp.Branch[1]
@@ -449,7 +449,7 @@ func TestSinceTagSubPullSquashCommitIsNotRelinted(t *testing.T) {
 // and pulls/9/commits is deliberately absent from the routes: asking for it
 // fails the test.
 func TestSinceTagCoveredByAPullOnAnotherBaseBranchStillCounts(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
@@ -480,7 +480,7 @@ func TestSinceTagCoveredByAPullOnAnotherBaseBranchStillCounts(t *testing.T) {
 // it merges, whatever the clocks say), must then fold in NOTHING new. Each
 // change lands in the verdict exactly once, whichever path reached it first.
 func TestSinceTagMergeCommitBranchCommitsCountOnce(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	mp := mergePR(t, dir, "akira-toriyama", 7, ":memo:= document the menu", ":sparkles:(ui)^ add a menu")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(mp.Branch[0]): `[]`, // not associated (yet)
@@ -523,7 +523,7 @@ func TestSinceTagMergeCommitBranchCommitsCountOnce(t *testing.T) {
 // repair from the pull's listing, so it must at least be loud — the ::warning::
 // naming the pull is the whole difference from the t-7zt7 silence.
 func TestSinceTagBotMergeCommitCostsNoLookup(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	mp := mergeInto(t, dir, "akira-toriyama", "dependabot[bot]", prTopic(7), prMergeSubject(7), ":bug:~ fix a crash")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(mp.Branch[0]): `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`,
@@ -549,7 +549,7 @@ func TestSinceTagBotMergeCommitCostsNoLookup(t *testing.T) {
 // contain them. Each shared commit must fold and render exactly once,
 // attributed to the PR the walk resolves first (the older merge on main).
 func TestSinceTagSharedPreSquashCommitCountsOnce(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
 	sha2 := squashCommit(t, dir, "Fix a crash", 8)
 	srv := walkServer(t, map[string]string{
@@ -595,7 +595,7 @@ func TestSinceTagSharedPreSquashCommitCountsOnce(t *testing.T) {
 // merged match (API lag right after a merge, or a mention from an open PR) is
 // no resolution at all — same fallback as no association.
 func TestSinceTagUnmergedAssociationFallsBack(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
@@ -620,7 +620,7 @@ func TestSinceTagUnmergedAssociationFallsBack(t *testing.T) {
 // transient server error is retryable and must never be dressed up as a
 // permanent wedge.
 func TestSinceTagAPIFailureMidWalkPassesThrough(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha := squashCommit(t, dir, "Add a menu", 7)
 	pullRef := `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha) + `]`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -676,7 +676,7 @@ func TestSinceTagAPIFailureMidWalkPassesThrough(t *testing.T) {
 // branch commit — so that commit shipped, and only the second belongs to the
 // next release. Before the fix this answered v0.2.0 with no diagnostic at all.
 func TestSinceTagDoesNotRefoldReleasedMergeMergedCommits(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	mp := mergePR(t, dir, "akira-toriyama", 7, ":sparkles:(ui)^ add a menu", ":memo:= document the menu")
 	shipped, pending := mp.Branch[0], mp.Branch[1]
 	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.1", shipped)
@@ -712,7 +712,7 @@ func TestSinceTagDoesNotRefoldReleasedMergeMergedCommits(t *testing.T) {
 // and the one that would catch an over-eager fix: with the tag BEFORE the pull,
 // every commit of it is in range and the verdict must be untouched.
 func TestSinceTagRefoldControlWholePullInRange(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	mp := mergePR(t, dir, "akira-toriyama", 7, ":sparkles:(ui)^ add a menu", ":memo:= document the menu")
 	pr7 := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`
 	srv := walkServer(t, map[string]string{
@@ -742,7 +742,7 @@ func TestSinceTagRefoldControlWholePullInRange(t *testing.T) {
 // commit — verified message by message — which fixes the range AND a defect of
 // its own: before this, the notes cited SHAs the repository does not contain.
 func TestSinceTagRebaseMergeUsesOnMainSHAs(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
 	r1 := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the menu")
@@ -812,7 +812,7 @@ func TestSinceTagRebaseMergeUsesOnMainSHAs(t *testing.T) {
 // not contain. It is t-8xsb through the front door, on the shape t-8xsb's own fix
 // introduced.
 func TestSinceTagStackedRebaseMergePlacesTheRewrittenHalf(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	// The base pull's commit, landed verbatim by the merge button.
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
 	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
@@ -865,7 +865,7 @@ func TestSinceTagStackedRebaseMergePlacesTheRewrittenHalf(t *testing.T) {
 // listing then governed itself again: phantom shas, and a :sparkles:^ from before
 // the tag folded back in.
 func TestSinceTagRebaseOverABaseMergeCommitStillAligns(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	// main moved while the pull was open — this is what the author merged in, and
 	// it is what the alignment window runs off the end into if the merge commit is
 	// left holding a position.

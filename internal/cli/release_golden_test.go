@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files from the current output")
@@ -36,7 +38,7 @@ func TestReleaseDryRunGolden(t *testing.T) {
 		t.Fatal(werr)
 	}
 
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
 	sha2 := squashCommit(t, dir, "Fix a crash", 8)
 	srv := dryServer(t, map[string]string{

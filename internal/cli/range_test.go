@@ -38,7 +38,7 @@ func TestFirstLine(t *testing.T) {
 // exact `commit <sha>:` head the first failure always had — the walk's own
 // refusal (cli.walkRefusal) opens the same way, one shape at both gates.
 func TestBumpRangeReturnsEveryViolation(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji one")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ a fine commit rides along")
 	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji two")
@@ -80,7 +80,7 @@ func TestBumpRangeReturnsEveryViolation(t *testing.T) {
 // the pattern claims folds whatever its capitalization or punctuation; only a
 // message NO pattern claims refuses the range.
 func TestBumpRangeStaysLenientAboutAuthoringRules(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ Fix The Crash.")
 	t.Chdir(dir)
 

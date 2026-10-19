@@ -21,7 +21,7 @@ import (
 // below git reports v0.0.2 first while the highest version is 100.0.0; taking
 // git's first parseable entry moved the release two tags backwards in silence.
 func TestLatestVersionTagComparesVersionsNotRefnames(t *testing.T) {
-	dir, _ := testRepo(t) // tags v0.1.0
+	dir, _ := testutil.NewTaggedRepo(t) // tags v0.1.0
 	for _, tag := range []string{"v0.0.1", "v0.0.2", "9.9.9", "100.0.0"} {
 		testutil.Git(t, dir, "akira-toriyama", "tag", tag)
 	}
@@ -55,7 +55,7 @@ func TestLatestVersionTagComparesVersionsNotRefnames(t *testing.T) {
 //
 // bite-exempt: pins the behaviour the fix preserves, not the behaviour it changes
 func TestLatestVersionTagBreaksATieOnGitsOrder(t *testing.T) {
-	dir, _ := testRepo(t) // tags v0.1.0
+	dir, _ := testutil.NewTaggedRepo(t) // tags v0.1.0
 	for _, tag := range []string{"1.2.3", "v1.2.3"} {
 		testutil.Git(t, dir, "akira-toriyama", "tag", tag)
 	}
@@ -76,7 +76,7 @@ func TestLatestVersionTagBreaksATieOnGitsOrder(t *testing.T) {
 // nested package's. A tag two lines over that baselined a walk would re-fold
 // released commits or skip unreleased ones with nothing on stderr.
 func TestLatestVersionTagIsPerLine(t *testing.T) {
-	dir, _ := testRepo(t) // tags v0.1.0
+	dir, _ := testutil.NewTaggedRepo(t) // tags v0.1.0
 	for _, tag := range []string{"haiku/v2.0.0", "haiku/v1.9.0", "curry/v0.3.0", "haiku/sub/v9.0.0", "v0.0.9"} {
 		testutil.Git(t, dir, "akira-toriyama", "tag", tag)
 	}
@@ -113,7 +113,7 @@ func TestLatestVersionTagIsPerLine(t *testing.T) {
 //
 // bite-exempt: pins the behaviour the change preserves on the one input where --merged cannot answer
 func TestLatestVersionTagOnAShallowCheckoutReadsEveryTag(t *testing.T) {
-	src, _ := testRepo(t) // tags v0.1.0
+	src, _ := testutil.NewTaggedRepo(t) // tags v0.1.0
 	testutil.Commit(t, src, "akira-toriyama", ":sparkles:^ second")
 	testutil.Git(t, src, "akira-toriyama", "tag", "v0.2.0")
 	testutil.Commit(t, src, "akira-toriyama", ":bug:~ third")
@@ -138,7 +138,7 @@ func TestLatestVersionTagOnAShallowCheckoutReadsEveryTag(t *testing.T) {
 // a bare --since-tag resolves the base, and a base two tags behind re-folds
 // commits an earlier tag already shipped.
 func TestSinceTagAutoWalksFromTheHighestVersion(t *testing.T) {
-	dir, _ := testRepo(t) // tags v0.1.0
+	dir, _ := testutil.NewTaggedRepo(t) // tags v0.1.0
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ ship the released feature")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "100.0.0")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:(ui)~ fix the unreleased crash")
@@ -160,7 +160,7 @@ func TestSinceTagAutoWalksFromTheHighestVersion(t *testing.T) {
 // walks v9.0.0..HEAD — which re-admits the commit v0.2.0 already shipped —
 // and steps main to v9.x (measured at adfc5e1: v9.1.0 over two commits).
 func TestSinceTagBaseIsAReleaseHEADContains(t *testing.T) {
-	dir, _ := testRepo(t) // tags v0.1.0
+	dir, _ := testutil.NewTaggedRepo(t) // tags v0.1.0
 	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "side")
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ side work")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "v9.0.0")
@@ -185,7 +185,7 @@ func TestSinceTagBaseIsAReleaseHEADContains(t *testing.T) {
 // excludes the bot authors the walk itself never asks about. The refusal one
 // commit past the cap, and its exit 4 and escape, are that cli test's.
 func TestWholeHistoryAtTheCapStillWalks(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
 	// 199 human commits (plus the fixture's root) and 10 bot commits: 200
 	// walk-visible, exactly AT the cap. The bot commits prove the guard counts

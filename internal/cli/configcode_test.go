@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // The config a verdict command loads is the YARDSTICK, not the subject. On
@@ -42,7 +43,7 @@ func seedConfig(t *testing.T, dir, body string) string {
 // repairs by editing a file — and a missing one is already 2, so the two take
 // the same code rather than a third answer for one condition.
 func TestLintOnAnUnparseableConfigIsUsageNotTheGateCode(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	seedConfig(t, dir, "schema = 1 {{{ this is not toml\n")
 	t.Chdir(dir)
 
@@ -70,7 +71,7 @@ func TestLintOnAnUnreadableConfigIsTheNoAnswerCode(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX mode bits do not deny the owner a read on Windows")
 	}
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	path := seedConfig(t, dir, "schema = 1\n")
 	if err := os.Chmod(path, 0o000); err != nil {
 		t.Fatalf("staging the read refusal: %v", err)
@@ -97,7 +98,7 @@ func TestLintOnAnUnreadableConfigIsTheNoAnswerCode(t *testing.T) {
 // config load at all, so an exit 2 there is the classification answering and
 // not the command failing earlier for some unrelated reason.
 func TestMissingConfigStaysUsage(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	if err := os.Remove(filepath.Join(dir, "glyph.toml")); err != nil {
 		t.Fatalf("removing glyph.toml: %v", err)
 	}
@@ -114,7 +115,7 @@ func TestMissingConfigStaysUsage(t *testing.T) {
 // fixture stopped accepting this message, every assertion above would be
 // satisfied by a command that never got as far as reading a config.
 func TestValidConfigStillPasses(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	setStdin(t, ":bug:(cli)~ fix a thing\n")

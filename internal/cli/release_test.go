@@ -94,7 +94,7 @@ func publishedJSON(id int, tag string) string {
 // input, shared by the upsert tests so each can focus on the draft surface.
 func oneFixWalk(t *testing.T) map[string]string {
 	t.Helper()
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha := squashCommit(t, dir, "Fix a crash", 8)
 	t.Chdir(dir)
 	return map[string]string{
@@ -120,7 +120,7 @@ func dryServer(t *testing.T, walk map[string]string) *httptest.Server {
 // noneWalk builds an all-none walk (one :memo:= commit) and chdirs into it.
 func noneWalk(t *testing.T) map[string]string {
 	t.Helper()
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha := squashCommit(t, dir, "Document the fold", 7)
 	t.Chdir(dir)
 	return map[string]string{
@@ -136,7 +136,7 @@ func noneWalk(t *testing.T) map[string]string {
 // --since-tag the walk defaults to auto — release has exactly one input
 // source, so demanding a bare --since-tag would be ceremony.
 func TestReleaseComposesTagAndBody(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
 	sha2 := squashCommit(t, dir, "Fix a crash", 8)
 	srv := dryServer(t, map[string]string{
@@ -767,7 +767,7 @@ type releaseVerdict struct {
 // resolves to no pull and must
 // not appear in the list.
 func TestReleaseJSONReportsPullExpansion(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
 	sha2 := squashCommit(t, dir, "Fix a crash", 8)
 	testutil.Commit(t, dir, "akira-toriyama", ":memo:= note the direct push")
@@ -802,7 +802,7 @@ func TestReleaseJSONReportsPullExpansion(t *testing.T) {
 // emits pulls as [] — the same nil-slice normalization commits gets — so
 // .pulls is indexable on the none verdict too, with no null-check.
 func TestReleaseNoReleaseJSONPullsNormalized(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":memo:= note the direct push")
 	direct := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := dryServer(t, map[string]string{
@@ -824,7 +824,7 @@ func TestReleaseNoReleaseJSONPullsNormalized(t *testing.T) {
 // step will need in one object — the tag to draft and the body to attach —
 // plus the same audit trail bump --json emits.
 func TestReleaseJSON(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
 	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
@@ -953,7 +953,7 @@ func TestReleaseNoneVerdictOnStdoutKeepsTheEnvelopeOff(t *testing.T) {
 // the walk base and the step base are the same tag by construction, so the
 // verdict is reproducible whatever tags were cut since.
 func TestReleaseExplicitSinceTag(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha1 := squashCommit(t, dir, "Fix a crash", 8)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.5.0") // a later tag that must NOT become the base
 	srv := dryServer(t, map[string]string{
@@ -975,7 +975,7 @@ func TestReleaseExplicitSinceTag(t *testing.T) {
 // TestReleaseCurrentOverride: --current outranks the walked tag, mirroring
 // bump — a redo can restate the base without moving tags.
 func TestReleaseCurrentOverride(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha1 := squashCommit(t, dir, "Fix a crash", 8)
 	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha1) + `]`,
@@ -1032,7 +1032,7 @@ func TestReleaseHasNoRangeOrPRSource(t *testing.T) {
 // asserted here on purpose: the clamp shortens the step, it does not make the
 // commit less breaking, and the release notes must keep saying so.
 func TestReleaseBreakingComposesConsistently(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha1 := squashCommit(t, dir, "Drop the legacy config", 9)
 	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(9, "2026-07-13T00:00:00Z", sha1) + `]`,
@@ -1257,7 +1257,7 @@ func TestReleaseNoneReportsAnUnwitnessedDeleteHonestly(t *testing.T) {
 // the fallback cannot classify it either and the run reaches a none verdict.
 func unreadWalk(t *testing.T) map[string]string {
 	t.Helper()
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha := squashCommit(t, dir, "Fix a crash", 8)
 	t.Chdir(dir)
 	return map[string]string{commitPullsPath(sha): apiUnknownSHA}
@@ -1272,7 +1272,7 @@ func unreadWalk(t *testing.T) map[string]string {
 // run therefore never reaches the none path at all.
 func lostPullWalk(t *testing.T, messages ...string) (map[string]string, string) {
 	t.Helper()
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	mp := mergePR(t, dir, "akira-toriyama", 7, messages...)
 	t.Chdir(dir)
 	ref := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`
@@ -1371,7 +1371,7 @@ func TestReleaseIncompleteWalkFailsLoud(t *testing.T) {
 // :boom:.
 func truncatedPullWalk(t *testing.T) map[string]string {
 	t.Helper()
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha := squashCommit(t, dir, "Document everything", 7)
 	t.Chdir(dir)
 
@@ -1396,7 +1396,7 @@ func truncatedPullWalk(t *testing.T) map[string]string {
 // IsShallow would test the plumbing and leave the premise unexamined.
 func shallowCheckout(t *testing.T) map[string]string {
 	t.Helper()
-	origin, _ := testRepo(t)
+	origin, _ := testutil.NewTaggedRepo(t)
 	sha := squashCommit(t, origin, "Fix a crash", 8)
 
 	clone := filepath.Join(t.TempDir(), "shallow")
