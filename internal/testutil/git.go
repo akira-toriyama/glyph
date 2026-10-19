@@ -97,6 +97,7 @@ func NewRepo(t *testing.T) string {
 
 // Commit adds one empty commit authored by author with the given message.
 func Commit(t *testing.T, dir, author, message string) {
+	t.Helper()
 	Git(t, dir, author, "commit", "-q", "--allow-empty", "-m", message)
 }
 
