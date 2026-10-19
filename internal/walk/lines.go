@@ -98,8 +98,8 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
 			}
 			lines = append(lines, l)
 		}
-	case strings.HasPrefix(tag, Below):
-		rest, prefix, bound, perr := belowBound(strings.TrimPrefix(tag, Below))
+	case strings.HasPrefix(tag, below):
+		rest, prefix, bound, perr := belowBound(strings.TrimPrefix(tag, below))
 		if perr != nil {
 			return nil, "", perr
 		}

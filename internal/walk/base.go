@@ -17,13 +17,13 @@ import (
 // glyph's version-tag policy in shell.
 const Auto = "auto"
 
-// Below is the prefix of the OTHER resolved --since-tag form,
+// below is the prefix of the OTHER resolved --since-tag form,
 // --since-tag=below:TAG: the walk base is the highest parseable version tag
 // HEAD contains STRICTLY below TAG — the predecessor of a release that already
 // has its tag, the job auto cannot serve at tag-push time (glossary, "below:";
 // t-s5n4 for the shell derivation this retired). git forbids ':' in a
 // refname, so no real tag can spell the sentinel.
-const Below = "below:"
+const below = "below:"
 
 // CheckTag rejects a malformed --since-tag value before anything runs —
 // caller input, so usage (2), as cli's checkRangeFlag answers --range: the
@@ -34,7 +34,7 @@ func CheckTag(tag string) error {
 	if tag == Auto {
 		return nil
 	}
-	if rest, ok := strings.CutPrefix(strings.TrimSpace(tag), Below); ok {
+	if rest, ok := strings.CutPrefix(strings.TrimSpace(tag), below); ok {
 		// The bound must NAME a version — a predecessor is found by comparing
 		// under it — and a release candidate names the release it is a
 		// candidate for (bump.ParseBaseVersionOn, not ParseVersion: goreleaser
@@ -88,7 +88,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
 		}
 		return latest + "..HEAD", latest, &v, nil
 	}
-	if rest, ok := strings.CutPrefix(tag, Below); ok {
+	if rest, ok := strings.CutPrefix(tag, below); ok {
 		// This is the single line, so a bound on any other line names a line
 		// this repository does not have (resolveLinesScoped answers for
 		// declared packages, and never reaches here with one).

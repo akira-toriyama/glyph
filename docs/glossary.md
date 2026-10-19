@@ -88,7 +88,7 @@ walk base and the version base together to a tag two releases behind, silently.
 A tag must be attached with `=` (`--since-tag=v1.2.3`); the space form is caught
 as a usage error rather than walking the wrong range.
 `internal/walk/base.go: Auto, LatestVersionTag, releasesHEADHolds`,
-`internal/cli/flags.go: sinceTagArgs`, `internal/gitsource/gitsource.go: Tags, MergedTags`
+`internal/cli/flags.go: sinceTagArgs`, `internal/gitsource/gitsource.go: Tags, mergedTags`
 
 **below:** — the other *resolved* `--since-tag` form
 (`--since-tag=below:TAG`): the highest parseable version tag HEAD contains
@@ -104,7 +104,7 @@ round-trip per visited commit and nothing else bounds it. The bound must itself 
 version-shaped (usage error otherwise), and the sentinel cannot collide with a
 real tag: git forbids `:` in refnames. This resolution used to be re-derived in
 shell inside `goreleaser.yml` and inherited the refname-sort defect above
-(t-s5n4). `internal/walk/base.go: Below, sinceTagRange`
+(t-s5n4). `internal/walk/base.go: below, sinceTagRange`
 
 **range** — the `TAG..HEAD` revision range string (the code calls it `revRange`,
 and reports it as `source`). `--since-tag` names the **tag alone**; the walk
@@ -168,7 +168,7 @@ footprint at all, and the pull alone governs. This is what lets the walk's
 tag cut inside a landed pull's footprint folded already-shipped commits into the
 next release (t-8xsb — exit 0, empty stderr, a minor invented out of released
 work). `internal/walk/expand.go: mainFootprint`, `internal/gitsource/gitsource.go:
-Have, IsAncestor, FirstParentLog`
+Have, isAncestor, firstParentLog`
 
 **landed** — a listed commit's on-branch identity, or empty when it landed under
 no identity of its own. A landed commit is folded only if its landing site is in
