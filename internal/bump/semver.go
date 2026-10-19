@@ -21,15 +21,13 @@ type Version struct {
 var versionRE = regexp.MustCompile(`^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
 // maxField is the largest value a version field glyph reads may hold. Next
-// adds one to a field, and from the int ceiling it wrapped: a verdict printed
-// v-9223372036854775808.0.0 at exit 0 (t-f2cb, measured 2026-09-29). With
-// every parsed field at most maxField, a step lands at most one past it —
-// within int on every target glyph builds for (amd64, arm64) — so Next stays
-// total and no caller grows an error arm. The one version glyph can then
-// write and not read back, a field of exactly maxField+1, is no candidate once
-// tagged, so the line's next step answers from below it: backwards after a
-// stepped field, the same tag again on a major version subdirectory past the
-// cap (DESIGN §3 holds the measurement).
+// adds one to a field: with every parsed field at most maxField, a step lands
+// at most one past it — within int on every target glyph builds for (amd64,
+// arm64) — so Next stays total and no caller grows an error arm. The one
+// version glyph can then write and not read back, a field of exactly
+// maxField+1, is no candidate once tagged, so the line's next step answers
+// from below it: backwards after a stepped field, the same tag again on a
+// major version subdirectory past the cap (DESIGN §3 holds the measurement).
 const maxField = math.MaxInt32
 
 // ParseVersion parses a version in the house triple shape, accepting an

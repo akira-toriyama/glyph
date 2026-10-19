@@ -43,11 +43,9 @@ type RawCommit struct {
 // record by the NUL -z writes after it. NUL frames the fields too because it is
 // the one byte none of them can hold — git refuses it in a message ("a NUL byte
 // in commit log message not allowed", measured) and an ident is a C string —
-// and the record framing already rested on it. The unit separator that framed
-// the fields before is a byte an author NAME can hold: git keeps an interior
-// one (measured on 2.54), so `dependabot[bot]<US>x` moved every field over by
-// one, the author read as dependabot[bot], and exclude_authors passed the
-// commit unjudged at exit 0 (t-esm5; TestLogReadsAnAuthorNameHoldingTheUnitSeparator).
+// and the record framing already rested on it. Not the unit separator: git
+// keeps one inside an author name (DESIGN §2, `exclude_authors`;
+// TestLogReadsAnAuthorNameHoldingTheUnitSeparator).
 const logFormat = "%H%x00%an%x00%ae%x00%P%x00%B"
 
 // logFields is how many NUL-closed fields logFormat writes per record.
@@ -228,11 +226,10 @@ func refNameRefused(ctx context.Context, name string) bool {
 // the leading byte first: every `refs/tags/v…` lands above every
 // `refs/tags/1…`, and on {v0.0.1, v0.0.2, 9.9.9, 100.0.0} git reports v0.0.2
 // ahead of the highest version there is. A caller that wants the highest
-// VERSION must parse every entry and compare (internal/walk's LatestVersionTag,
-// which read this doc's earlier promise of "version-sorted descending" and took
-// the first parseable entry). What the order IS good for is being STABLE, which
-// is what lets that caller break a tie between two spellings of one version
-// without inventing a preference.
+// VERSION must parse every entry and compare (internal/walk's
+// LatestVersionTag). What the order IS good for is being STABLE, which is what
+// lets that caller break a tie between two spellings of one version without
+// inventing a preference.
 func Tags(ctx context.Context, dir string) ([]string, error) {
 	out, err := run(ctx, dir, tagListCmd()...)
 	if err != nil {
@@ -478,8 +475,7 @@ var actionSpecs = []string{"--", ":(glob)**/action.yml", ":(glob)**/action.yaml"
 // lists rather than a filesystem walk because "any path" on disk includes what
 // is not the repository (dependency checkouts under ignored build directories
 // can carry action files whose pins are someone else's), and because a walk
-// of sill's ignored .build visited 280,803 entries in 2.9 s where git answered
-// in 20 ms (the D2b ruling's measurement, 2026-09-29).
+// is far slower (DESIGN §7 holds the measurement).
 //
 // Two listings, because `--recurse-submodules` refuses to combine with
 // --others ("fatal: ls-files --recurse-submodules unsupported mode", measured
@@ -974,10 +970,8 @@ func runStdin(ctx context.Context, dir, stdin string, args ...string) ([]byte, e
 	return runIn(ctx, dir, strings.NewReader(stdin), args...)
 }
 
-// runIn is the single exec site behind run and runStdin. The two used to be
-// copies differing in one line, with the reasoning for the interrupt split
-// written on only one of them — so a future fix would land on whichever copy its
-// author happened to read (t-tgbs).
+// runIn is the single exec site behind run and runStdin, so a fix to either
+// lands once.
 //
 // stdin is an io.Reader rather than a string precisely so run can pass NIL and
 // keep os/exec's own behaviour (the child gets /dev/null). Collapsing run into
