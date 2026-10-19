@@ -17,7 +17,7 @@ import (
 
 // prServer stands in for api.github.com: it serves one pull request's commits
 // at the pulls/{n}/commits path and fails the test on any other path — the
-// one-route special case of walkServer (sincetag_test.go), so there is a
+// one-route special case of walkServer (walkexpand_test.go), so there is a
 // single fake API to improve. The client finds it through GITHUB_API_URL — the
 // same variable a GitHub Enterprise runner sets — so no test-only injection
 // hook is needed.
@@ -366,5 +366,41 @@ func TestNoneVerdictNamesThePullRequest(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "akira-toriyama/glyph#12") {
 		t.Fatalf("the no-release reason should name the pull request it read:\n%s", stderr)
+	}
+}
+
+// TestPullCommitCapIsWarned: GitHub truncates pulls/{n}/commits at 250 no
+// matter the pagination. A PR that returns exactly the cap may have lost
+// commits — and a lost commit could carry THE deciding gitmoji — so the walk
+// must say so (house rule: no silent caps). One under the cap stays quiet.
+func TestPullCommitCapIsWarned(t *testing.T) {
+	build := func(n int) string {
+		commits := make([]string, n)
+		for i := range commits {
+			commits[i] = apiCommit(fmt.Sprintf("c%03d", i), "akira-toriyama", ":bug:~ fix crash number "+fmt.Sprint(i))
+		}
+		return `[` + strings.Join(commits, ",") + `]`
+	}
+	for name, tc := range map[string]struct {
+		n        int
+		wantWarn bool
+	}{
+		"at the cap": {250, true},
+		"one under":  {249, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := prServer(t, 7, build(tc.n))
+			usePR(t, srv)
+			dir, _ := testRepo(t)
+			t.Chdir(dir)
+
+			code, _, stderr := runGlyph(t, "bump", "--pr", "7")
+			if code != 0 {
+				t.Fatalf("bump --pr exited %d, want 0\nstderr: %s", code, stderr)
+			}
+			if got := strings.Contains(stderr, "::warning::"); got != tc.wantWarn {
+				t.Fatalf("warning emitted = %v, want %v for %d commits:\n%s", got, tc.wantWarn, tc.n, stderr)
+			}
+		})
 	}
 }
