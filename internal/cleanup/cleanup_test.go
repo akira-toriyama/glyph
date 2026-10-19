@@ -99,8 +99,8 @@ func TestCleanup(t *testing.T) {
 			name: "an indented comment is content, not a comment",
 			// git only ever drops a '#' in column 0. Dropping this one closed
 			// the blank-line gap above the footer, making NON-BREAKING: a
-			// trailer at the hook and prose in CI (undeclared-removal, hook 0 /
-			// CI 3 — measured).
+			// trailer at the hook and prose in CI (v1's undeclared-removal footer
+			// rule: hook 0 / CI 3 — measured).
 			mode: editedDefault,
 			in:   ":fire:(x) drop the thing\n\n  # why: leftover note here\nNON-BREAKING: it was dead\n",
 			want: ":fire:(x) drop the thing\n\n  # why: leftover note here\nNON-BREAKING: it was dead",
@@ -117,7 +117,7 @@ func TestCleanup(t *testing.T) {
 			name: "no editor: a '#' line is content, because git records it",
 			// `git commit -F` is cleanup=whitespace: comments are never
 			// stripped, so line 1 IS the subject git will record. Dropping it
-			// linted line 2 instead — hook 0, CI 3 (malformed-subject).
+			// linted line 2 instead — hook 0, CI 3 (v1's malformed-subject).
 			mode: noEditorGiven,
 			in:   "# reminder from my notes\n:sparkles:(x) add the thing\n",
 			want: "# reminder from my notes\n:sparkles:(x) add the thing",

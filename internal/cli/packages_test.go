@@ -713,7 +713,7 @@ func claimedMerge(t *testing.T, dir, message string) string {
 // package is a claim on files. Each finding says which of the two it is and
 // names the root's scope among the escapes; the same empty commit scoped
 // (core) is clean, which is the escape taken. This is lint's arm of the
-// refusal's wording (cli's attribute): the merge sentence is read here, and
+// refusal's wording (walk.Attribute): the merge sentence is read here, and
 // mutation row lint-refuses-a-merge-commit-as-touching-no-file hands it no commit.
 func TestLintRangePackagesNoFileCommitUnderARootPackage(t *testing.T) {
 	dir := packagesRepoWith(t, rootedConfig, map[string]string{"haiku/haiku.go": "package haiku\n"})
@@ -749,8 +749,8 @@ func TestLintRangePackagesNoFileCommitUnderARootPackage(t *testing.T) {
 }
 
 // TestPackagesWalkRefusesAClaimedMergeInItsOwnWords is the walk's arm of the
-// refusal's wording: partitionLines reaches attribution through cli's
-// attribute, so a claimed merge commit is refused as a merge commit — its diff
+// refusal's wording: partitionLines reaches attribution through
+// walk.Attribute, so a claimed merge commit is refused as a merge commit — its diff
 // never read — with the wedge per line, where the first cut said it "touches
 // no declared package" of a merge that touched haiku/. A haiku scope carries
 // it (rule 2). Mutation row walk-refuses-a-merge-commit-as-touching-no-file

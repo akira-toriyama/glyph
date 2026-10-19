@@ -490,7 +490,7 @@ func TestPreviewPackagesSharedOnlyBumpIsRefused(t *testing.T) {
 }
 
 // TestPreviewPackagesRefusesAClaimedMergeInItsOwnWords is preview's arm of the
-// refusal's wording (cli's attribute): a pull that lists a merge commit some
+// refusal's wording (walk.Attribute): a pull that lists a merge commit some
 // non-skip pattern claims — its author merged the base in under a subject of
 // their own — is refused as the walk will refuse it, in the merge commit's
 // sentence: its diff is never asked of the API (no commits/{sha} route is

@@ -36,7 +36,7 @@ func TestFirstLine(t *testing.T) {
 // `bump --range --json` returned one commit with no rule id and no details,
 // and the caller re-ran lint in a loop to find the rest). The Msg keeps the
 // exact `commit <sha>:` head the first failure always had — the walk's own
-// refusal (cli.walkRefusal) opens the same way, one shape at both gates.
+// refusal (walk.walkRefusal) opens the same way, one shape at both gates.
 func TestBumpRangeReturnsEveryViolation(t *testing.T) {
 	dir, base := testRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji one")

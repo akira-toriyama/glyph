@@ -168,7 +168,7 @@ func sayAll(names ...string) config.Sayable {
 }
 
 // refusalOf is Attribute's refusal for a commit, with what only a caller
-// knows set on it the way cli's attribute sets it: a Sayable spelling every
+// knows set on it the way walk.Attribute sets it: a Sayable spelling every
 // escape unless tell says what the claiming pattern can write.
 func refusalOf(t *testing.T, files []string, scope string, sigil config.Sigil, pkgs []config.Package, tell func(*Refusal)) string {
 	t.Helper()

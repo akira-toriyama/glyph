@@ -5,8 +5,10 @@
 // verdict under DESIGN §5's stream contract, and the exit funnel — Execute()
 // int maps every error onto glyph's exit-code contract (internal/core).
 //
-// Until t-gr7f's last unit it also holds the release's write sequencing
-// (cmd_release.go: carrying out the draft plan against GitHub, in order).
+// It also carries out the release's write list (cmd_release.go: the upserts
+// and deletes draftplan.PlanRun ordered, against GitHub) — the API client
+// lives here, so the writes and the failure policy each kind names stay
+// here; which writes, in what order and of which kind is draftplan's.
 //
 // It holds no copy of: a message's meaning (internal/config's pattern match),
 // the lattice, the fold and the commit that decides it, Version.Next and the

@@ -78,8 +78,8 @@ func listedDraft(ctx context.Context, t *testing.T, c *Client, owner, name strin
 }
 
 // TestLiveFireSquashResolutionIsWithinGitHubsOwn is the second live oracle,
-// for the hop DESIGN §1 calls the one novel thing glyph does: squash commit →
-// pull request, which every other test answers with an httptest fake.
+// for the walk's first hop — squash commit → pull request, prior art by
+// DESIGN §1 — which every other test answers with an httptest fake.
 // GitHub's own generate-notes endpoint answers the same question from the
 // real system's side — which merged pulls does this range hold — for free and
 // creating nothing.
