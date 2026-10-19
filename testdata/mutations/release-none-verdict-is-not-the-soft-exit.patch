@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 528b694..01d4d8c 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -490,7 +490,7 @@ func releaseExit(moving int, reason string, verdictOnStdout bool) error {
+ 	if moving > 0 {
+ 		return nil
+ 	}
+-	return core.NoReleasef("%s", reason).Quiet(verdictOnStdout)
++	return core.APIf("%s", reason).Quiet(verdictOnStdout)
+ }
+ 
+ // planInput adapts the releases listing for draftplan, which reads all of it:

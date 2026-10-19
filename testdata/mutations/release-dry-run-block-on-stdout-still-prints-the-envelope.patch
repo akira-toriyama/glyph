@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 528b694..7522510 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -379,7 +379,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 			blocks = append(blocks, u.Tag+"\n\n"+u.Body)
+ 		}
+ 		fmt.Fprint(out, strings.Join(blocks, "\n"))
+-		return releaseExit(moving, result.Reason, true)
++		return releaseExit(moving, result.Reason, false)
+ 	}
+ 
+ 	// The list is carried out in order; what a failure means is the write's

@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 528b694..c9b8b65 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -372,7 +372,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 		if len(upserts) == 0 {
+ 			// Nothing to print, and no zero-byte write: on macOS an empty
+ 			// write to a pipe whose reader has gone is still a SIGPIPE.
+-			return releaseExit(moving, result.Reason, false)
++			return releaseExit(moving, result.Reason, true)
+ 		}
+ 		blocks := make([]string, 0, len(upserts))
+ 		for _, u := range upserts {

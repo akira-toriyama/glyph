@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 528b694..d684052 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -446,7 +446,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 	for _, u := range urls {
+ 		fmt.Fprintln(out, u)
+ 	}
+-	return releaseExit(moving, result.Reason, len(upserts) > 0)
++	return releaseExit(moving, result.Reason, false)
+ }
+ 
+ // newReleaseResult is the one producer of the machine verdict, and where the
