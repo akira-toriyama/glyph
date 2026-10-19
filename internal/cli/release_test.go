@@ -43,26 +43,13 @@ func releaseServer(t *testing.T, walk map[string]string, releases string, writes
 // object ahead of it) without a second copy of the write recorder.
 func releaseHandler(t *testing.T, walk map[string]string, releases string, writes *[]apiWrite) http.HandlerFunc {
 	t.Helper()
+	walkGET := walkHandler(t, walk)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == releasesPath:
 			fmt.Fprint(w, releases)
 		case r.Method == http.MethodGet:
-			body, ok := walk[r.URL.Path]
-			if !ok {
-				t.Errorf("unexpected GET %q", r.URL.Path)
-				http.NotFound(w, r)
-				return
-			}
-			if body == apiUnknownSHA {
-				// walkServer's sentinel, honoured here too: a commit GitHub does
-				// not know yet answers 422, and the release tests need that shape
-				// beside the releases surface rather than only beside the walk.
-				w.WriteHeader(http.StatusUnprocessableEntity)
-				fmt.Fprint(w, `{"message":"No commit found for SHA"}`)
-				return
-			}
-			fmt.Fprint(w, body)
+			walkGET(w, r) // the walk's routes and its apiUnknownSHA sentinel, once
 		case r.Method == http.MethodPost && r.URL.Path == releasesPath:
 			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -1045,48 +1032,12 @@ func TestReleaseUpsertUpdateJSONCarriesTheURL(t *testing.T) {
 	}
 }
 
-// strayServer serves the two-glyph-managed-draft shape the stray-convergence
-// tests need — id 11 at the verdict's tag (kept, PATCHed) and id 12 at an older
-// tag (stale, DELETEd) — and records every WRITE in ORDER.
-//
-// The order is the whole point of these tests and is why this does not reuse
-// releaseServer: that helper records writes per-method, which cannot tell
-// "PATCH then DELETE" from "DELETE then PATCH". fail decides what every DELETE
-// answers, so one helper covers both the converging and the refusing case.
-func strayServer(t *testing.T, seq *[]string, fail func(http.ResponseWriter)) *httptest.Server {
-	t.Helper()
-	walk := oneFixWalk(t)
-	releases := `[` + draftJSON(11, "v0.1.1") + `,` + draftJSON(12, "v0.1.0") + `]`
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == releasesPath:
-			fmt.Fprint(w, releases)
-		case r.Method == http.MethodGet:
-			body, ok := walk[r.URL.Path]
-			if !ok {
-				t.Errorf("unexpected GET %q", r.URL.Path)
-				http.NotFound(w, r)
-				return
-			}
-			fmt.Fprint(w, body)
-		case r.Method == http.MethodDelete:
-			*seq = append(*seq, "DELETE "+r.URL.Path)
-			if fail != nil {
-				fail(w)
-				return
-			}
-			w.WriteHeader(http.StatusNoContent)
-		case r.Method == http.MethodPatch:
-			*seq = append(*seq, "PATCH "+r.URL.Path)
-			fmt.Fprint(w, draftJSON(11, "v0.1.1"))
-		default:
-			t.Errorf("unexpected %s %q", r.Method, r.URL.Path)
-			http.NotFound(w, r)
-		}
-	}))
-	t.Cleanup(srv.Close)
-	return srv
-}
+// strayDrafts is the two-glyph-managed-draft listing the stray-convergence
+// tests converge: id 11 at the verdict's tag (kept, PATCHed) and id 12 at an
+// older tag (stale, DELETEd). The ORDER of the two writes is what the tests
+// pin, so they run on failingReleaseServer, which records every write as it
+// arrives.
+var strayDrafts = `[` + draftJSON(11, "v0.1.1") + `,` + draftJSON(12, "v0.1.0") + `]`
 
 // TestReleaseWritesTheDraftBeforeConvergingStrays pins the ORDER on the path
 // where everything succeeds, and says nothing about failure — so it keeps
@@ -1098,7 +1049,7 @@ func strayServer(t *testing.T, seq *[]string, fail func(http.ResponseWriter)) *h
 // backoff, then exit 4, PATCH never sent).
 func TestReleaseWritesTheDraftBeforeConvergingStrays(t *testing.T) {
 	var seq []string
-	usePR(t, strayServer(t, &seq, nil))
+	usePR(t, failingReleaseServer(t, oneFixWalk(t), strayDrafts, func(*http.Request) int { return 0 }, &seq))
 
 	code, _, stderr := runGlyph(t, "release")
 	if code != 0 {
@@ -1128,11 +1079,7 @@ func TestReleaseWritesTheDraftBeforeConvergingStrays(t *testing.T) {
 // self-limiting and the failure repeats identically next run.
 func TestReleaseStrayDeleteFailureKeepsTheNotes(t *testing.T) {
 	var seq []string
-	usePR(t, strayServer(t, &seq, func(w http.ResponseWriter) {
-		w.Header().Set("Retry-After", "0")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		fmt.Fprint(w, `{"message":"Service Unavailable"}`)
-	}))
+	usePR(t, deleteFailureServer(t, oneFixWalk(t), strayDrafts, &seq))
 
 	code, stdout, stderr := runGlyph(t, "release")
 	if code != 0 {

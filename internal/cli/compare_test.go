@@ -201,7 +201,7 @@ func TestCompareLinkNeedsATagBase(t *testing.T) {
 	}
 
 	t.Run("a whole-history walk", func(t *testing.T) {
-		dir := testRepoUntagged(t)
+		dir := testutil.NewRepo(t)
 		root := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 		sha := squashCommit(t, dir, "Fix a crash", 8)
 		t.Chdir(dir)

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"strings"
@@ -37,7 +38,9 @@ func TestMain(m *testing.M) {
 	for _, k := range []string{"GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"} {
 		os.Setenv(k, os.DevNull)
 	}
-	os.Exit(m.Run())
+	code := m.Run()
+	removeGlyphBinary()
+	os.Exit(code)
 }
 
 // errEnvelope is the decoded machine error envelope glyph prints to stderr on
@@ -106,6 +109,15 @@ func testCommit(t *testing.T, dir, author, message string) {
 // what was written to the payload and diagnostic streams.
 func runGlyph(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
+	return runGlyphCtx(t, context.Background(), args...)
+}
+
+// runGlyphCtx is runGlyph with a caller-owned context, for the tests that
+// cancel mid-run — the wiring a live SIGINT/SIGTERM uses. cobra's Execute is
+// ExecuteContext over context.Background, so runGlyph is this with no
+// context of its own.
+func runGlyphCtx(t *testing.T, ctx context.Context, args ...string) (code int, stdout, stderr string) {
+	t.Helper()
 	outBuf, errBuf, restore := captureOut()
 	defer restore()
 
@@ -113,6 +125,6 @@ func runGlyph(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	root.SetArgs(args)
 	root.SetOut(errBuf) // cobra's own usage/help output is diagnostics here
 	root.SetErr(errBuf)
-	code = finish(root.Execute())
+	code = finish(root.ExecuteContext(ctx))
 	return code, outBuf.String(), errBuf.String()
 }

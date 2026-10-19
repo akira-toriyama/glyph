@@ -272,15 +272,7 @@ func interruptInit(t *testing.T, read, prelude string) {
 	cwd := t.TempDir()
 	t.Chdir(cwd)
 
-	bin := t.TempDir()
-	asked := filepath.Join(bin, "asked")
-	script := "#!/bin/sh\nPATH=/usr/bin:/bin\n" + prelude + "touch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
-
-	ctx, reached := cancelOnceAsked(t, asked)
+	ctx, reached := cancelOnceAsked(t, blockingGit(t, prelude))
 	code, stdout, _ := runGlyphCtx(t, ctx, "init", "--gemoji")
 	reached(read)
 	if code != int(core.CodeInterrupted) {

@@ -918,21 +918,6 @@ func TestDoctorUnansweredAPIIsCouldNotRunNotAViolation(t *testing.T) {
 	}
 }
 
-// runGlyphCtx is runGlyph with a caller-owned context, for the one family of
-// tests that needs to cancel mid-run — the wiring a live SIGINT/SIGTERM uses.
-func runGlyphCtx(t *testing.T, ctx context.Context, args ...string) (code int, stdout, stderr string) {
-	t.Helper()
-	outBuf, errBuf, restore := captureOut()
-	defer restore()
-
-	root := newRootCmd()
-	root.SetArgs(args)
-	root.SetOut(errBuf)
-	root.SetErr(errBuf)
-	code = finish(root.ExecuteContext(ctx))
-	return code, outBuf.String(), errBuf.String()
-}
-
 // cancelOnceAsked returns a context cancelled once the fake git has touched
 // asked — the read under test is in flight — and a check, called after the
 // run, that fails the test unless it was. Without that check the tests were
@@ -970,6 +955,23 @@ func cancelOnceAsked(t *testing.T, asked string) (context.Context, func(read str
 	}
 }
 
+// blockingGit puts a fake git on PATH that runs prelude, touches a marker to
+// say the read prelude did not answer is in flight, and blocks; it returns
+// the marker's path for cancelOnceAsked. `exec` hands the pipe fds to a
+// /dev/null-redirected sleep so the harness's output copy sees EOF at once
+// and the kill on cancel is all Wait waits for.
+func blockingGit(t *testing.T, prelude string) (asked string) {
+	t.Helper()
+	bin := t.TempDir()
+	asked = filepath.Join(bin, "asked")
+	script := "#!/bin/sh\nPATH=/usr/bin:/bin\n" + prelude + "touch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	return asked
+}
+
 // TestFirstInterruptChecksEveryRead pins the predicate doctorRun guards its two
 // independent reads with. The order matters only for which error carries out;
 // what must never regress is that the SECOND position is consulted at all —
@@ -993,6 +995,43 @@ func TestFirstInterruptChecksEveryRead(t *testing.T) {
 	}
 }
 
+// Doctor's git reads in the order doctorRun issues them, each as the case arm
+// a fake git answers it with. interruptDoctor answers the arms it is given,
+// so the first read past them is the one the interrupt lands in.
+const (
+	answersHooksPath   = "*--git-path*) echo .git/hooks; exit 0;;\n"
+	answersTopLevel    = "*--show-toplevel*) pwd; exit 0;;\n"
+	answersTags        = "*\" tag \"*) exit 0;;\n"
+	answersHeadTrees   = "*\" ls-tree \"*) exit 0;;\n"
+	answersActionFiles = "*\" ls-files \"*) exit 0;;\n"
+)
+
+// interruptDoctor runs `doctor --json` in the caller's checkout against a
+// healthy API and a fake git that answers the given arms, signals that the
+// next read is in flight and blocks; the context is cancelled once it has.
+// The run must exit 130 with nothing on stdout: an interrupt is the user's
+// own abort, never a check result — 4 is the code the fleet's wrappers
+// retry, on a run the operator stopped.
+func interruptDoctor(t *testing.T, read string, answers ...string) {
+	t.Helper()
+	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+	prelude := ""
+	if len(answers) > 0 {
+		prelude = "case \"$*\" in\n" + strings.Join(answers, "") + "esac\n"
+	}
+	asked := blockingGit(t, prelude)
+
+	ctx, reached := cancelOnceAsked(t, asked)
+	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
+	reached(read)
+	if code != 130 {
+		t.Fatalf("doctor exited %d, want 130 — an interrupt in %s is the user's own abort, not a check result", code, read)
+	}
+	if stdout != "" {
+		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
+	}
+}
+
 // TestDoctorInterruptDuringHooksReadCarriesOut pins the guard over doctor's
 // hooks read. Every read runs before the guard, and the signal lands in
 // whichever is in flight; measured before the fix, a SIGTERM landing in the
@@ -1009,30 +1048,8 @@ func TestFirstInterruptChecksEveryRead(t *testing.T) {
 // the API read completes against a healthy fake, and only when the fake git
 // signals that the hooks read is in flight is the context cancelled.
 func TestDoctorInterruptDuringHooksReadCarriesOut(t *testing.T) {
-	srv := doctorServer(t, apiRepoObject(healthySettings))
-	usePR(t, srv)
 	useDoctorCheckout(t, pinnedCaller)
-
-	// A fake git that reports being asked, then blocks. `exec` hands the pipe
-	// fds to a /dev/null-redirected sleep so the harness's output copy sees
-	// EOF at once and the kill on cancel is all Wait waits for.
-	bin := t.TempDir()
-	asked := filepath.Join(bin, "asked")
-	script := "#!/bin/sh\nPATH=/usr/bin:/bin\ntouch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
-
-	ctx, reached := cancelOnceAsked(t, asked)
-	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
-	reached("the hooks read")
-	if code != 130 {
-		t.Fatalf("doctor exited %d, want 130 — an interrupt in the hooks read is the user's own abort, not a check result", code)
-	}
-	if stdout != "" {
-		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
-	}
+	interruptDoctor(t, "the hooks read")
 }
 
 // TestDoctorInterruptDuringTopLevelReadCarriesOut is the same guard, third
@@ -1044,27 +1061,8 @@ func TestDoctorInterruptDuringHooksReadCarriesOut(t *testing.T) {
 // input) is in flight. So here the fake git answers --git-path and blocks on
 // --show-toplevel, and only then is the context cancelled.
 func TestDoctorInterruptDuringTopLevelReadCarriesOut(t *testing.T) {
-	srv := doctorServer(t, apiRepoObject(healthySettings))
-	usePR(t, srv)
 	useDoctorCheckout(t, pinnedCaller)
-
-	bin := t.TempDir()
-	asked := filepath.Join(bin, "asked")
-	script := "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$*\" in\n*--git-path*) echo .git/hooks; exit 0;;\nesac\ntouch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
-
-	ctx, reached := cancelOnceAsked(t, asked)
-	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
-	reached("the top-level read")
-	if code != 130 {
-		t.Fatalf("doctor exited %d, want 130 — an interrupt in the top-level read is the user's own abort, not a check result", code)
-	}
-	if stdout != "" {
-		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
-	}
+	interruptDoctor(t, "the top-level read", answersHooksPath)
 }
 
 // TestDoctorInterruptDuringTagsReadCarriesOut is the same guard, fourth
@@ -1076,27 +1074,8 @@ func TestDoctorInterruptDuringTopLevelReadCarriesOut(t *testing.T) {
 // retry, on a run the operator stopped. The fake git answers --git-path and
 // --show-toplevel and blocks on tag.
 func TestDoctorInterruptDuringTagsReadCarriesOut(t *testing.T) {
-	srv := doctorServer(t, apiRepoObject(healthySettings))
-	usePR(t, srv)
 	useDoctorCheckout(t, pinnedCaller)
-
-	bin := t.TempDir()
-	asked := filepath.Join(bin, "asked")
-	script := "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$*\" in\n*--git-path*) echo .git/hooks; exit 0;;\n*--show-toplevel*) pwd; exit 0;;\nesac\ntouch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
-
-	ctx, reached := cancelOnceAsked(t, asked)
-	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
-	reached("the tags read")
-	if code != 130 {
-		t.Fatalf("doctor exited %d, want 130 — an interrupt in the tag read is the user's own abort, not a check result", code)
-	}
-	if stdout != "" {
-		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
-	}
+	interruptDoctor(t, "the tags read", answersHooksPath, answersTopLevel)
 }
 
 // TestDoctorInterruptDuringHeadTreesReadCarriesOut is the same guard, fifth
@@ -1106,27 +1085,8 @@ func TestDoctorInterruptDuringTagsReadCarriesOut(t *testing.T) {
 // package-paths-exist could-not-run at exit 4. The fake git answers the hooks,
 // top-level and tag reads and blocks on ls-tree.
 func TestDoctorInterruptDuringHeadTreesReadCarriesOut(t *testing.T) {
-	srv := doctorServer(t, apiRepoObject(healthySettings))
-	usePR(t, srv)
 	useDoctorCheckout(t, pinnedCaller)
-
-	bin := t.TempDir()
-	asked := filepath.Join(bin, "asked")
-	script := "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$*\" in\n*--git-path*) echo .git/hooks; exit 0;;\n*--show-toplevel*) pwd; exit 0;;\n*\" tag \"*) exit 0;;\nesac\ntouch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
-
-	ctx, reached := cancelOnceAsked(t, asked)
-	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
-	reached("the tree listing")
-	if code != 130 {
-		t.Fatalf("doctor exited %d, want 130 — an interrupt in the tree listing is the user's own abort, not a check result", code)
-	}
-	if stdout != "" {
-		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
-	}
+	interruptDoctor(t, "the tree listing", answersHooksPath, answersTopLevel, answersTags)
 }
 
 // TestDoctorInterruptDuringActionFilesReadCarriesOut is the same guard, sixth
@@ -1135,27 +1095,8 @@ func TestDoctorInterruptDuringHeadTreesReadCarriesOut(t *testing.T) {
 // out of the guard it is laundered into workflow-glyph-pins could-not-run at
 // exit 4. The fake git answers every earlier read and blocks on ls-files.
 func TestDoctorInterruptDuringActionFilesReadCarriesOut(t *testing.T) {
-	srv := doctorServer(t, apiRepoObject(healthySettings))
-	usePR(t, srv)
 	useDoctorCheckout(t, pinnedCaller)
-
-	bin := t.TempDir()
-	asked := filepath.Join(bin, "asked")
-	script := "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$*\" in\n*--git-path*) echo .git/hooks; exit 0;;\n*--show-toplevel*) pwd; exit 0;;\n*\" tag \"*) exit 0;;\n*\" ls-tree \"*) exit 0;;\nesac\ntouch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
-
-	ctx, reached := cancelOnceAsked(t, asked)
-	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
-	reached("the action-file listing")
-	if code != 130 {
-		t.Fatalf("doctor exited %d, want 130 — an interrupt in the action-file listing is the user's own abort, not a check result", code)
-	}
-	if stdout != "" {
-		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
-	}
+	interruptDoctor(t, "the action-file listing", answersHooksPath, answersTopLevel, answersTags, answersHeadTrees)
 }
 
 // TestDoctorInterruptDuringRemoteHeadsReadCarriesOut is the same guard, last
@@ -1165,8 +1106,6 @@ func TestDoctorInterruptDuringActionFilesReadCarriesOut(t *testing.T) {
 // laundered into pre-push-hook could-not-run at exit 4. The fake git answers
 // every earlier read and blocks on `config --get-regexp`.
 func TestDoctorInterruptDuringRemoteHeadsReadCarriesOut(t *testing.T) {
-	srv := doctorServer(t, apiRepoObject(healthySettings))
-	usePR(t, srv)
 	useDoctorCheckout(t, pinnedCaller)
 	if err := os.MkdirAll(".git/hooks", 0o750); err != nil {
 		t.Fatal(err)
@@ -1174,24 +1113,7 @@ func TestDoctorInterruptDuringRemoteHeadsReadCarriesOut(t *testing.T) {
 	if err := os.WriteFile(".git/hooks/pre-push", []byte(hook.Kinds()[1].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
 		t.Fatal(err)
 	}
-
-	bin := t.TempDir()
-	asked := filepath.Join(bin, "asked")
-	script := "#!/bin/sh\nPATH=/usr/bin:/bin\ncase \"$*\" in\n*--git-path*) echo .git/hooks; exit 0;;\n*--show-toplevel*) pwd; exit 0;;\n*\" tag \"*) exit 0;;\n*\" ls-tree \"*) exit 0;;\n*\" ls-files \"*) exit 0;;\nesac\ntouch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
-
-	ctx, reached := cancelOnceAsked(t, asked)
-	code, stdout, _ := runGlyphCtx(t, ctx, "doctor", "--json")
-	reached("the remote-heads read")
-	if code != 130 {
-		t.Fatalf("doctor exited %d, want 130 — an interrupt in the remote-heads read is the user's own abort, not a check result", code)
-	}
-	if stdout != "" {
-		t.Errorf("doctor wrote a report over an interrupted run (the abort was laundered into a finding):\n%s", stdout)
-	}
+	interruptDoctor(t, "the remote-heads read", answersHooksPath, answersTopLevel, answersTags, answersHeadTrees, answersActionFiles)
 }
 
 // TestDoctorPinScanReadsEveryActionFileGitLists is D2b end to end, on a real
