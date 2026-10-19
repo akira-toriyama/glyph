@@ -22,8 +22,7 @@ import (
 // no-release reason, which says "N commit(s) participate" in bump's words and
 // so must mean bump's set. notes has no fold of its own to count: notes.Group
 // renders excluded authors and messages no pattern claims, and the listing it
-// is handed holds skips too — the reason counted that listing, 4 where bump
-// said 2 of one range (TestNotesNoReleaseCountsParticipatingCommits).
+// is handed holds skips too (TestNotesNoReleaseCountsParticipatingCommits).
 //
 // The fold itself is asked, one commit at a time, rather than its three
 // conditions restated here: a second copy could drift from the rows bump
@@ -45,9 +44,7 @@ func participating(cfg *config.Config, commits []notes.Commit) int {
 // [[packages]] alike: the range's commits, and one question about the
 // checkout. git lists only the commits a shallow clone holds, so a range that
 // reaches past the shallow boundary is read in part, and a verdict over it
-// reads exactly like a whole one — measured on a --depth 2 clone, lint judged 2
-// of 6 commits and bump printed a version, both at 0 with nothing said, where
-// the full clone refuses at 3 (t-esm5). It WARNS and never refuses: a refusal
+// reads exactly like a whole one. It WARNS and never refuses: a refusal
 // would be a new semantics for lint, and a shallow walk is a warning to every
 // reporting command and exit 4 to release alone (DESIGN §4.1, "Lint").
 func logRange(ctx context.Context, revRange string) ([]gitsource.RawCommit, error) {

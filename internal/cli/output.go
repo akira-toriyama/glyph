@@ -60,13 +60,8 @@ func warnf(format string, a ...any) {
 // diagnostic stream.
 //
 // glyph writes these itself rather than leaving a caller to rebuild them out of
-// the JSON envelope. The rebuild was real and it was where the failure lived:
-// lint.yml reconstructed one annotation per finding with `sed` and four `jq`
-// calls over a stream carrying two shapes, and a run that warned before it
-// failed emitted NO annotations at all (t-sws7) — the verdict was computed
-// correctly and then lost in shell on the caller's side of the pin, where no
-// test of glyph's could see it. A finding glyph computed is a finding glyph
-// renders.
+// the JSON envelope: a finding glyph computed is a finding glyph renders
+// (DESIGN §5, "Stream contract").
 //
 // Ordering is safe by construction: renderError writes the envelope from the
 // exit funnel after the command has returned, so every annotation precedes it
@@ -117,15 +112,10 @@ func oneLine(s string) string {
 // is the LAST thing written to the stream (see the stream contract above), so a
 // consumer recovers it with `sed -n '/^[{]/,$p'` even after annotations.
 //
-// The message folds through oneLine because a consumer interpolates it straight
-// into a `::error::`, and a workflow command is ONE physical line: the runner
-// parses up to the first newline and drops the rest. The text is not always
-// glyph's own — internal/github's distill carries a non-JSON error body through
-// verbatim, and a proxy page behind an enterprise GITHUB_API_URL arrives as a
-// dozen lines — so the fold belongs here, at the ONE boundary every arbitrary
-// remote string crosses, rather than at each source. JSON-encoding the newlines
-// (which marshal does anyway) is not enough and is what made this invisible: the
-// bytes on the wire were fine, the DECODED message a consumer used was not.
+// The message folds through oneLine (oneLine's doc says why; DESIGN §5,
+// "Stream contract"). JSON-encoding the newlines (which marshal does anyway)
+// is not enough and is what made this invisible: the bytes on the wire were
+// fine, the DECODED message a consumer used was not.
 func renderError(ce *core.Error) {
 	type errBody struct {
 		Code    int    `json:"code"`

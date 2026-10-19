@@ -60,11 +60,9 @@ func checkReleaseBody(body string) error {
 // section and sits in one: a comment whose tables fit the cap and whose notes
 // do not is cut inside it, and GitHub closes an open block at the end of the
 // comment — the rule and the notice inside it, folded away under "Release
-// notes preview" (t-rrw0 (5); the first cut knew lines and no blocks, and
-// posted one <details> with no </details>). Both renderings were asked of
-// GitHub's renderer, the open body and the closed one (DESIGN §4 keeps the
-// method). The footer is past the cut either way: a truncated comment has
-// none.
+// notes preview". Both renderings were asked of GitHub's renderer, the open
+// body and the closed one (DESIGN §4 keeps the method). The footer is past
+// the cut either way: a truncated comment has none.
 func truncateComment(body string) string {
 	if utf8.RuneCountInString(body) <= commentBodyMaxChars {
 		return body

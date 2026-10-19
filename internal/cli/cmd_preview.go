@@ -125,11 +125,9 @@ func newPreviewCmd() *cobra.Command {
 // loop and the render alone tells the shapes apart. The bare line's verdict
 // is the scalars and preview.Render's scalar body, the pre-packages surface
 // byte for byte (TestPreviewBareLineRendersTheScalarBody). Under packages
-// every scalar keeps its zero value — pr and pending included: none is a
-// level word, and a scalar saying the pull moves nothing beside a
-// packages[] whose lines move is the #219 class (t-xbk0) — packages[]
-// carries one verdict per touched line, and the body one headline per line,
-// or preview.RenderNoLine's sentence when the pull touches none.
+// every scalar keeps its zero value (previewResult); packages[] carries one
+// verdict per touched line, and the body one headline per line, or
+// preview.RenderNoLine's sentence when the pull touches none.
 func previewRun(ctx context.Context, o previewOptions) error {
 	cfg, err := loadConfig(ctx)
 	if err != nil {
@@ -151,12 +149,9 @@ func previewRun(ctx context.Context, o previewOptions) error {
 	// The whole listing is folded once, before any line: a message no pattern
 	// claims refuses the preview here on either shape, which is why
 	// attributePull places no such commit. Its rows are the pull's
-	// participating commits (DESIGN §4.1), the one count every body states —
-	// the first cut of the packages bodies counted len(raws), bots and merge
-	// commits included, where no line was touched, and what the tables showed
-	// where one was (t-rrw0) — and each row's pattern warning is said here,
-	// once: said per touched line, a warned commit on no line was silent while
-	// bump said it, and one on two lines was said twice.
+	// participating commits (DESIGN §4.1, "Participating"), the one count every
+	// body states, and each row's pattern warning is said here, once (DESIGN
+	// §2, `warn`).
 	rows, _, err := bump.Fold(walk.BumpCommits(commits), cfg)
 	if err != nil {
 		return err
@@ -245,13 +240,11 @@ type touchedLine struct {
 // commit (walk.PlaceByFiles), its files read over the API, one request per commit
 // — a pull's commits exist on its branch only, and this checkout may not hold
 // them — by its files, with its scope and sigil when the fold reads the
-// message and by files alone for an exclude_authors commit; or not at all: a
-// skip appears nowhere, and a message no pattern claims refuses the
-// whole-listing fold (previewRun), so it is not attributed first. The first
-// cut dropped excluded authors here while the walk placed them on every line
-// — two answers in one run (t-sr1c, measured 2026-09-11; mutation row
-// preview-packages-excluded-author-dropped). A line no commit was placed on
-// is not touched, and a pull whose commits carry nothing touches none.
+// message and by files alone for an exclude_authors commit (DESIGN §4.1,
+// "Attribution"); or not at all: a skip appears nowhere, and a message no
+// pattern claims refuses the whole-listing fold (previewRun), so it is not
+// attributed first. A line no commit was placed on is not touched, and a pull
+// whose commits carry nothing touches none.
 //
 // A refusal over a diff read whole is the lint-class refusal the walk and
 // lint --range hand down — preview says what CI will say — worded for where
@@ -333,14 +326,8 @@ func foldTouched(ctx context.Context, cfg *config.Config, touched []touchedLine)
 // unreleased on a line that never released. The PR's own verdict is then
 // the whole answer, and the body says why.
 //
-// The walk's RANGE comes from the touched lines alone. Resolved over every
-// declared line it used to take one untouched line with no tag to the whole
-// history: past the cap that refused the whole command (exit 4) for a pull
-// that touches only released lines, and under it that bought one API
-// round-trip per commit of the history for a line nobody asked about (t-60dc
-// symptoms A and B, measured 2026-09-15 on a 211-commit fixture: exit 4 for
-// a haiku-only pull, and 9 round-trips where the touched line's own range
-// held 1).
+// The walk's RANGE comes from the touched lines alone (walk.Scope; DESIGN
+// §4.1, "Preview").
 //
 // The pending side is the one side computed from a walk, so it is the one
 // side that can come back short. release refuses to act on that; there is
@@ -366,9 +353,8 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
 	if !w.Facts.Complete() {
 		short = w.Facts.Shortfall(owner, repo)
 	}
-	// The union once, as bump folds it, and for the pull's reason (previewRun):
-	// warned per walked line, a merged warned commit on no line was silent and
-	// one on two lines was said twice.
+	// The union once, as bump folds it, so each merged commit's warning is said
+	// once, for the pull's reason (previewRun).
 	rows, _, err := bump.Fold(walk.BumpCommits(w.All), cfg)
 	if err != nil {
 		return nil, "", false, err
@@ -406,13 +392,8 @@ func lineVerdict(tl touchedLine, pending bump.Decision, pendingWalked bool) (pre
 	prefix := tl.TagLine.Prefix
 	untagged := tl.tag == ""
 	p := preview.Package{Path: tl.Package.Path, Current: tl.current.TagOn(prefix), Untagged: untagged,
-		// PendingWalked is the half preview.Input.Untagged used to carry on
-		// its own: "the pending side is UNCOMPUTED". A line with no tag still
-		// gets its pending walked whenever a tagged sibling in the same pull
-		// pulls the walk to the whole history, and reusing one flag for both
-		// meanings made the same run answer twice — body "the first release
-		// here would be curry/v0.0.1", machine verdict next=v0.1.0 (t-60dc
-		// symptom C, measured 2026-09-15).
+		// No tag and pending-uncomputed are two states
+		// (preview.Package.PendingWalked; DESIGN §4.1, "Preview").
 		PendingWalked: pendingWalked,
 		PR:            preview.Verdict{Level: tl.pr.Level, Commits: previewCommits(tl.rows)}}
 	pv := packagePreview{Path: tl.Package.Path, Current: tl.current.String(), Untagged: untagged, PR: string(tl.pr.Level), Pending: string(orNone(pending.Level))}

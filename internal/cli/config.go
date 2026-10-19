@@ -13,11 +13,8 @@ import (
 
 // configPathAt is where a checkout keeps its glyph.toml: its top level (git's
 // answer; the current directory only where init finds no repository at all)
-// plus the one file name. The single spelling of that location — the verdict
-// commands read it, init writes it, doctor loads it — because the copies have
-// disagreed once: init wrote the current directory while every other command
-// read the top level, a file nothing reads at exit 0 (t-f2cb, measured
-// 2026-09-29).
+// plus the one file name. It is the single spelling of that location: the
+// verdict commands read it, init writes it, doctor loads it.
 func configPathAt(top string) string {
 	return filepath.Join(top, "glyph.toml")
 }

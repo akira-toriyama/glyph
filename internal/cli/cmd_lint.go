@@ -219,9 +219,7 @@ func isGitMergeMessage(ctx context.Context, message io.Reader) bool {
 // lintOne lints a single message at authoring time. The author is unknown —
 // no commit exists yet — so it stands as the empty string. That the human
 // authoring path is always judged is enforced in config.Load, which refuses
-// an empty exclude_authors entry: slices.Contains matched one happily, so an
-// entry of the empty string excused every message this function was ever
-// handed — the installed hook turned off by a stray comma, at exit 0. Whatever
+// an empty exclude_authors entry (DESIGN §2, `exclude_authors`). Whatever
 // tolerance authoring needs is the pattern file's to grant: skip patterns
 // (the presets skip a merge in progress) and unlandable ones (the presets
 // claim git's fixup! and squash! subjects, and an amend! whose body their

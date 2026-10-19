@@ -38,14 +38,9 @@ const (
 // missing or malformed value is the caller's input — usage, never an API
 // failure.
 //
-// The environment sits ABOVE origin on purpose: in Actions the variable is
-// the authority and origin is whatever actions/checkout wrote, and outside
-// Actions the variable is unset, so origin only ever answers where nobody
-// else did. Only the remote named origin is read — a second remote is a
-// choice the caller makes with --repo — and its URL must point at the host
-// the API client will query (github.com, or GITHUB_API_URL's host): a
-// clone of some other forge would otherwise be asked about on api.github.com
-// and come back as a 404 wearing the API code.
+// The environment sits above origin, only the remote named origin is read,
+// and its URL must point at the host the API client will query — github.com,
+// or GITHUB_API_URL's host (DESIGN §5, "Repository resolution").
 //
 // Interior whitespace is judged here too (ratified 2026-07-22): TrimSpace alone
 // let `a b/c` sail to the wire and come back as a 404 wearing the API code, so
