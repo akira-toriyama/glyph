@@ -1,13 +1,13 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index c42cc14..2dbbb5b 100644
+index 871c523..296e393 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -116,7 +116,7 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
- 				// below compare like with like.
- 				r.SHA = on
- 			}
--			if i, refused := wedged[r.SHA]; refused {
-+			if i, refused := wedged[r.SHA]; false && refused {
- 				// A refused commit a second pull lists (a stacked pull carries
- 				// its base pull's commits) is one row with one more escape:
- 				// this pull's merge point wedges too, and a base that clears
+@@ -238,7 +238,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
+ 			// below compare like with like.
+ 			r.SHA = on
+ 		}
+-		if i, refused := w.wedged[r.SHA]; refused {
++		if i, refused := w.wedged[r.SHA]; false && refused {
+ 			// A refused commit a second pull lists (a stacked pull carries
+ 			// its base pull's commits) is one row with one more escape:
+ 			// this pull's merge point wedges too, and a base that clears

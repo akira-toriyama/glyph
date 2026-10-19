@@ -1,22 +1,23 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index c42cc14..f3cc287 100644
+index 07a3a5e..6a4937f 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -138,7 +138,7 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
- 						wedged[r.SHA] = len(wedges)
- 					}
- 					wedges = append(wedges, newWedge(row, owner, repo, number, canonical, onMain(r.SHA, inRange)))
--					continue
-+					return walkRefusal(wedges)
- 				}
- 			}
- 			if r.SHA != "" {
-@@ -258,7 +258,7 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
- 					wedged[raw.SHA] = len(wedges)
- 				}
- 				wedges = append(wedges, newWedge(row, owner, repo, 0, "", raw.SHA))
+@@ -88,6 +88,9 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
+ 		if err := wk.visit(ctx, raw); err != nil {
+ 			return nil, Facts{}, w.refusedFirst(wk.wedges, err)
+ 		}
++		if len(wk.wedges) > 0 {
++			return nil, Facts{}, walkRefusal(wk.wedges)
++		}
+ 	}
+ 	wk.reconcile()
+ 	if len(wk.wedges) > 0 {
+@@ -247,7 +250,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
+ 		if !slices.Contains(w.cfg.ExcludeAuthors, r.Author) {
+ 			if row, ok := unclaimed(w.cfg, r); ok {
+ 				w.refuse(row, number, canonical, r.SHA)
 -				continue
-+				return nil, Facts{}, walkRefusal(wedges)
++				return walkRefusal(w.wedges)
  			}
- 			if m, merr := cfg.Match(raw.Message); merr != nil || !m.Matched || !m.Skip {
- 				// A skip-pattern commit (a local git merge under the presets)
+ 		}
+ 		if r.SHA != "" {

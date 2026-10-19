@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 07a3a5e..d52a97c 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -481,7 +481,7 @@ func (w Walker) mergedPullFor(ctx context.Context, owner, repo, sha string, inRa
+ 			}
+ 			continue
+ 		}
+-		if inRange[p.MergeCommitSHA] {
++		if true {
+ 			covering = append(covering, p.Number)
+ 		}
+ 	}

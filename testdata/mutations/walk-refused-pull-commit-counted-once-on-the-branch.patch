@@ -1,13 +1,13 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index c42cc14..a2879f4 100644
+index 871c523..9eaba6e 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -222,7 +222,7 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
- 			facts.Dropped = append(facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
- 			continue
- 		}
--		if i, refused := wedged[raw.SHA]; refused {
-+		if i, refused := wedged[raw.SHA]; false && refused {
- 			// Refused inside a pull the walk expanded earlier, and now met on
- 			// the released branch itself: one row, one more escape — the
- 			// commit is its own base here — and no "counted once" for a
+@@ -291,7 +291,7 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
+ 		w.facts.Dropped = append(w.facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
+ 		return
+ 	}
+-	if i, refused := w.wedged[raw.SHA]; refused {
++	if i, refused := w.wedged[raw.SHA]; false && refused {
+ 		// Refused inside a pull the walk expanded earlier, and now met on
+ 		// the released branch itself: one row, one more escape — the
+ 		// commit is its own base here — and no "counted once" for a

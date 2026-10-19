@@ -1,19 +1,15 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index c42cc14..a74de53 100644
+index 871c523..f6657e1 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -252,14 +252,6 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
- 			// authoring's, and this commit is on the released branch, where
- 			// the only way out is a base at or past it — the wedge's refusal,
- 			// with the escape at the commit itself (DESIGN §4).
--			if row, ok := unclaimed(cfg, raw); ok {
--				if raw.SHA != "" {
--					seen[raw.SHA] = true
--					wedged[raw.SHA] = len(wedges)
--				}
--				wedges = append(wedges, newWedge(row, owner, repo, 0, "", raw.SHA))
--				continue
--			}
- 			if m, merr := cfg.Match(raw.Message); merr != nil || !m.Matched || !m.Skip {
- 				// A skip-pattern commit (a local git merge under the presets)
- 				// is passed over in silence; every other fallback announces
+@@ -321,10 +321,6 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
+ 		// authoring's, and this commit is on the released branch, where
+ 		// the only way out is a base at or past it — the wedge's refusal,
+ 		// with the escape at the commit itself (DESIGN §4).
+-		if row, ok := unclaimed(w.cfg, raw); ok {
+-			w.refuse(row, 0, "", raw.SHA)
+-			return
+-		}
+ 		if m, merr := w.cfg.Match(raw.Message); merr != nil || !m.Matched || !m.Skip {
+ 			// A skip-pattern commit (a local git merge under the presets)
+ 			// is passed over in silence; every other fallback announces

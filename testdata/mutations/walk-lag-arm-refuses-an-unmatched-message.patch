@@ -1,0 +1,14 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 07a3a5e..c6bbbd8 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -307,8 +307,7 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
+ 		// Facts.Dropped — release refuses to ACT on it, bump and notes
+ 		// report it (DESIGN §4).
+ 		if row, ok := unclaimed(w.cfg, raw); ok {
+-			w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) and its own message cannot be folded (%s) — nothing was counted from it; re-run once GitHub has indexed the commit", raw.SHA, row.Detail)
+-			w.facts.Dropped = append(w.facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
++			w.refuse(row, 0, "", raw.SHA)
+ 			return
+ 		}
+ 		w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) — reading its own message", raw.SHA)
