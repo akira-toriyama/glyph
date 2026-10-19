@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v5/internal/core"
 )
 
 // useActionsRun hands the process the run identity an Actions runner hands it:
@@ -337,6 +339,39 @@ func TestReleaseRefGuardFailsClosedOnAnUnreadableBoundary(t *testing.T) {
 				t.Errorf("a run with an unverified boundary still wrote: %+v", writes)
 			}
 		})
+	}
+}
+
+// TestReleaseRefGuardRefusesWhenNoSourceNamesTheDefaultBranch: no payload,
+// and the repository object answers without a default_branch — GitHub said
+// nothing, which is not the API failing — so the boundary is unverified and
+// the guard fails closed: could-not-run (4), the object fetched once, no
+// write, the message naming both sources. A guess of main would let a run
+// on refs/heads/main write with the boundary never verified — on a
+// repository whose default branch is another name, the one ref that must
+// not (mutation row release-ref-guard-assumes-a-default-branch-no-source-named).
+func TestReleaseRefGuardRefusesWhenNoSourceNamesTheDefaultBranch(t *testing.T) {
+	var writes []apiWrite
+	walk := oneFixWalk(t)
+	srv, hits := repoObjectServer(t, walk, `[]`, &writes, `{"full_name":"akira-toriyama/glyph"}`, http.StatusOK)
+	usePR(t, srv)
+	useActionsRunNoPayload(t, "refs/heads/main")
+
+	code, stdout, stderr := runGlyph(t, "release")
+	if code != int(core.CodeAPI) {
+		t.Fatalf("exited %d, want exactly %d (could not run)\nstderr: %s", code, core.CodeAPI, stderr)
+	}
+	if *hits != 1 {
+		t.Errorf("the repository object was fetched %d times, want exactly 1", *hits)
+	}
+	if len(writes) != 0 {
+		t.Errorf("a run with no named default branch still wrote: %+v", writes)
+	}
+	if stdout != "" {
+		t.Errorf("a refused run still answered on stdout: %q", stdout)
+	}
+	if !strings.Contains(stderr, "neither the event payload nor the repository object") {
+		t.Errorf("the refusal must say that no source named the branch:\n%s", stderr)
 	}
 }
 

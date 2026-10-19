@@ -63,6 +63,9 @@ func TestReleaseDraftOnNoneCreatesThePlaceholder(t *testing.T) {
 	if stdout != "https://github.example/releases/900\n" {
 		t.Errorf("stdout = %q, want the placeholder draft's URL", stdout)
 	}
+	if strings.Contains(stderr, `"error"`) {
+		t.Errorf("the URL is on stdout, so the no-release envelope must stay off stderr (mutation rows release-none-verdict-on-stdout-still-prints-the-envelope and release-placeholder-url-on-stdout-still-prints-the-envelope):\n%s", stderr)
+	}
 }
 
 // TestReleaseDraftOnNoneKeepsThePlaceholderByID: a second quiet merge grows

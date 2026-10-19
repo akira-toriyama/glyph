@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/draftplan"
 	"github.com/akira-toriyama/glyph/v5/internal/github"
 	"github.com/akira-toriyama/glyph/v5/internal/walk"
 )
@@ -854,55 +856,95 @@ func TestReleaseJSON(t *testing.T) {
 
 // TestReleaseNoRelease: an all-none walk is the soft no-release outcome — no
 // payload, exit 1, the reason on the diagnostic stream — exactly the contract
-// bump and notes keep, so a release job branches on the code alone.
+// bump and notes keep, so a release job branches on the code alone. The dry
+// run and the real run answer alike, and with nothing drafted and nothing to
+// converge the real run writes nothing (mutation rows
+// release-none-with-nothing-on-stdout-goes-unsaid at the funnel, and at the
+// two arms release-dry-run-none-with-nothing-on-stdout-goes-unsaid and
+// release-real-run-none-with-nothing-on-stdout-goes-unsaid — the real run's
+// arm had no test before the latter: its mutant survived the whole suite).
 func TestReleaseNoRelease(t *testing.T) {
-	dir, _ := testRepo(t)
-	sha1 := squashCommit(t, dir, "Document the fold", 7)
-	srv := dryServer(t, map[string]string{
-		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
-		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":memo:= document the fold") + `]`,
-	})
-	usePR(t, srv)
-	t.Chdir(dir)
+	for name, args := range map[string][]string{
+		"dry run":  {"release", "--dry-run"},
+		"real run": {"release"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			usePR(t, dryServer(t, noneWalk(t)))
 
-	code, stdout, stderr := runGlyph(t, "release", "--dry-run")
-	if code != 1 {
-		t.Fatalf("all-none release exited %d, want 1\nstderr: %s", code, stderr)
-	}
-	if stdout != "" {
-		t.Errorf("all-none release wrote a payload:\n%s", stdout)
-	}
-	if !strings.Contains(stderr, "no release") {
-		t.Errorf("stderr does not name the no-release reason:\n%s", stderr)
+			code, stdout, stderr := runGlyph(t, args...)
+			if code != int(core.CodeNoRelease) {
+				t.Fatalf("all-none %v exited %d, want exactly %d\nstderr: %s", args, code, core.CodeNoRelease, stderr)
+			}
+			if stdout != "" {
+				t.Errorf("all-none %v wrote a payload:\n%s", args, stdout)
+			}
+			if !strings.Contains(stderr, "no release") {
+				t.Errorf("stderr does not name the no-release reason:\n%s", stderr)
+			}
+		})
 	}
 }
 
 // TestReleaseNoReleaseJSON: with --json the verdict still prints (current,
 // level none, commits, reason — no tag, no body) and the exit stays 1, so a
-// machine caller reads one object and one code, never an error envelope.
+// machine caller reads one object and one code, never an error envelope —
+// on the dry run and the real run alike (mutation rows
+// release-none-verdict-on-stdout-still-prints-the-envelope at the funnel,
+// release-dry-run-json-none-still-prints-the-envelope and
+// release-real-run-json-none-still-prints-the-envelope at the arms; the real
+// run's arm had no test before the latter: its mutant survived the whole suite).
 func TestReleaseNoReleaseJSON(t *testing.T) {
-	dir, _ := testRepo(t)
-	sha1 := squashCommit(t, dir, "Document the fold", 7)
-	srv := dryServer(t, map[string]string{
-		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
-		pullCommitsPath(7):    `[` + apiCommit("a1", "akira-toriyama", ":memo:= document the fold") + `]`,
-	})
-	usePR(t, srv)
-	t.Chdir(dir)
+	for name, args := range map[string][]string{
+		"dry run":  {"release", "--dry-run", "--json"},
+		"real run": {"release", "--json"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			usePR(t, dryServer(t, noneWalk(t)))
 
-	code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--json")
-	if code != 1 {
-		t.Fatalf("all-none release --json exited %d, want 1\nstderr: %s", code, stderr)
+			code, stdout, stderr := runGlyph(t, args...)
+			if code != int(core.CodeNoRelease) {
+				t.Fatalf("all-none %v exited %d, want exactly %d\nstderr: %s", args, code, core.CodeNoRelease, stderr)
+			}
+			var v releaseVerdict
+			if err := json.Unmarshal([]byte(stdout), &v); err != nil {
+				t.Fatalf("release --json stdout is not one JSON object: %v\n%s", err, stdout)
+			}
+			if v.Level != "none" || v.Tag != "" || v.Body != "" {
+				t.Errorf("verdict = level %q tag %q body %q, want none and no tag/body", v.Level, v.Tag, v.Body)
+			}
+			if strings.Contains(stderr, `"error"`) {
+				t.Errorf("no-release --json must not add an error envelope over the verdict:\n%s", stderr)
+			}
+		})
 	}
-	var v releaseVerdict
-	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
-		t.Fatalf("release --json stdout is not one JSON object: %v\n%s", err, stdout)
+}
+
+// TestReleaseNoneVerdictOnStdoutKeepsTheEnvelopeOff is releaseExit's other
+// half on the human dry run. The no-release exit (1) is quiet whenever
+// stdout carries the verdict, so a caller reading stdout is not handed it
+// twice, once as an error: TestReleaseNoReleaseJSON pins that for the JSON
+// object and TestReleaseDraftOnNoneCreatesThePlaceholder for the real run's
+// URL; here the dry run prints the maintained placeholder's block — its tag,
+// then the body — and the envelope stays off stderr behind it (mutation
+// rows release-none-verdict-on-stdout-still-prints-the-envelope, at the
+// funnel, and release-dry-run-block-on-stdout-still-prints-the-envelope, at
+// this arm: the arm's mutant survived the whole suite before this test).
+// With nothing on stdout the envelope is the run's only word —
+// TestReleaseNoRelease (row release-none-with-nothing-on-stdout-goes-unsaid).
+func TestReleaseNoneVerdictOnStdoutKeepsTheEnvelopeOff(t *testing.T) {
+	walk := noneWalk(t)
+	enableDraftOnNone(t)
+	usePR(t, dryServer(t, walk))
+
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run")
+	if code != int(core.CodeNoRelease) {
+		t.Fatalf("a maintained none's dry run exited %d, want exactly %d (no release is due)\nstderr: %s", code, core.CodeNoRelease, stderr)
 	}
-	if v.Level != "none" || v.Tag != "" || v.Body != "" {
-		t.Errorf("verdict = level %q tag %q body %q, want none and no tag/body", v.Level, v.Tag, v.Body)
+	if !strings.HasPrefix(stdout, draftplan.PlaceholderTag+"\n\n") {
+		t.Fatalf("stdout = %q, want the placeholder's block — its tag, then the body the dry run would write", stdout)
 	}
 	if strings.Contains(stderr, `"error"`) {
-		t.Errorf("no-release --json must not add an error envelope over the verdict:\n%s", stderr)
+		t.Errorf("the verdict is on stdout, so the no-release envelope must stay off stderr:\n%s", stderr)
 	}
 }
 
