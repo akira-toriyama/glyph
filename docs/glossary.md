@@ -476,7 +476,8 @@ removes, in two different situations, and the words are not interchangeable in
 this codebase. A **residual** draft is one that survives a **none** verdict —
 nothing should exist, so it is deleted and the draft state converges on "no
 release is due". A **stale** draft is one of the *others* when the verdict **is**
-a release: one draft is kept and retagged, every other one is stale. An
+a release: one draft is kept and retagged, every other one is stale — the
+*strays*, as DESIGN calls them. An
 incomplete walk deletes neither — it exits 4 before the listing is read. The
 asymmetry runs one step further, and it is the same distinction: a stale draft
 is removed **after** the rolling draft is written, and one the API will not
@@ -486,10 +487,22 @@ none verdict, so it still fails loud (4). Under `[[packages]]` both words are
 per line: a line that folds to none has residual drafts, and their delete fails
 loud even when a sibling line's draft landed in the same run — the bare
 line is one line of the same loop.
-`internal/cli/cmd_release.go: releaseRun` (both, per line: the residual pass
-and the stale pass after it), `staleReleases` (the shape both are deleted
-in), `convergeStray` (one stale draft's lenient delete),
+`internal/draftplan/run.go: PlanRun, Kind` (which delete is which, in the
+run's order: every upsert, the residual deletes, then the stale ones),
+`internal/cli/cmd_release.go: releaseRun` (the policy for each kind's
+failure), `convergeStray` (one stale draft's lenient delete),
 [DESIGN §4](DESIGN.md#4-squash-safe-mechanism--release-time-re-read-stateless)
+
+**residue** — the bare line's drafts in a repository that declares `[[packages]]`
+but no root package: the `vX.Y.Z` or `Unreleased` drafts the single line left
+behind, which no line would converge again, so the first packages run claims and
+deletes them. They are no line's — a tag that selects one line clears them too —
+and their delete takes the run's kind: stale beside a draft any line writes, the
+whole action when none does. With a root package declared they are that
+package's drafts, and a declared root-level `vN` keeps its own major's bare
+drafts (the residue line is the bare *free* line). `internal/draftplan/run.go:
+Residue`,
+[DESIGN §4.1](DESIGN.md#41-packages--independently-versioned-lines-in-one-repository)
 
 **published floor** — the highest **published** (non-draft) house-shaped version
 on the line.

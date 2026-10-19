@@ -714,20 +714,23 @@ func TestReleasePackagesFailedResidualStrandsNoOtherDelete(t *testing.T) {
 
 // TestReleasePackagesATagConvergesOneLineAlone: --since-tag=<prefix>vX.Y.Z
 // selects that line — its draft is written and the OTHER line's drafts are
-// not this run's to touch (mutation row release-packages-selected-line-converges-the-others).
+// not this run's to touch (mutation row
+// release-packages-selected-line-converges-the-others) — while the bare
+// residue, no line's, is deleted even so: no line's selection protects it
+// (mutation row release-packages-selecting-tag-spares-the-residue).
 func TestReleasePackagesATagConvergesOneLineAlone(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	_, routes := squashAcrossLines(t, dir, 7)
 	var writes []apiWrite
-	usePR(t, releaseServer(t, routes, `[`+draftJSON(91, "curry/v0.5.0")+`]`, &writes))
+	usePR(t, releaseServer(t, routes, `[`+draftJSON(91, "curry/v0.5.0")+`,`+draftJSON(61, "v0.9.0")+`]`, &writes))
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "release", "--since-tag=haiku/v0.1.0", "--json")
 	if code != 0 {
 		t.Fatalf("release exited %d\nstderr: %s", code, stderr)
 	}
-	if len(writes) != 1 || writes[0].method != "POST" || writes[0].body["tag_name"] != "haiku/v0.2.0" {
-		t.Fatalf("writes = %+v, want haiku's POST alone; curry's draft 91 is not this run's", writes)
+	if len(writes) != 2 || writes[0].method != "POST" || writes[0].body["tag_name"] != "haiku/v0.2.0" || writes[1].method != "DELETE" || writes[1].path != releasesPath+"/61" {
+		t.Fatalf("writes = %+v, want haiku's POST and then the bare residue's DELETE; curry's draft 91 is not this run's", writes)
 	}
 	if res := decodeReleaseLines(t, stdout); len(res.Packages) != 1 || res.Packages[0].Path != "haiku" {
 		t.Fatalf("a selected line is the only verdict: %s", stdout)
@@ -858,5 +861,40 @@ func TestReleasePackagesDraftOnNoneMaintainsAPlaceholderPerLine(t *testing.T) {
 	head := testGit(t, ".", "akira-toriyama", "rev-parse", "HEAD")
 	if res := decodeReleaseLines(t, stdout); res.Target != head {
 		t.Fatalf("target = %q, want %s — the placeholders point at it: %s", res.Target, head, stdout)
+	}
+}
+
+// TestReleasePackagesURLLandsOnItsLine pins where a written draft's URL
+// lands: on the verdict of the line whose draft it is, by the line the plan
+// names (draftplan.Write.Line), never by the count of writes done. The none
+// line is declared first, so the run's first write is the SECOND line's; a
+// URL placed by write count would report curry's draft under haiku, and
+// nothing else in the verdict would say so (review of U20, 2026-10-19:
+// that mutation survived the whole suite).
+func TestReleasePackagesURLLandsOnItsLine(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	sha := touch(t, dir, "akira-toriyama", ":sparkles:^ add a sauce", "curry/sauce.go")
+	var writes []apiWrite
+	srv := httptest.NewServer(releaseHandler(t, map[string]string{commitPullsPath(sha): `[]`}, `[]`, &writes))
+	t.Cleanup(srv.Close)
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "release", "--json")
+	if code != 0 {
+		t.Fatalf("release --json exited %d, want 0 (curry moves)\nstderr: %s", code, stderr)
+	}
+	res := decodeReleaseLines(t, stdout)
+	if len(res.Packages) != 2 || res.Packages[0].Path != "haiku" || res.Packages[1].Path != "curry" {
+		t.Fatalf("packages = %+v, want haiku then curry, as declared", res.Packages)
+	}
+	if len(writes) != 1 || writes[0].method != "POST" || writes[0].body["tag_name"] != "curry/v0.2.0" {
+		t.Fatalf("writes = %+v, want curry's draft created and nothing else", writes)
+	}
+	if res.Packages[1].URL != "https://github.example/releases/900" || res.Packages[1].Action != "create" {
+		t.Errorf("curry = %+v, want the created draft's URL on curry's verdict", res.Packages[1])
+	}
+	if res.Packages[0].URL != "" || res.Packages[0].Action != "none" {
+		t.Errorf("haiku = %+v, want no URL and no action: it folded to none and wrote nothing", res.Packages[0])
 	}
 }

@@ -1790,7 +1790,8 @@ answer per line over `--since-tag` and `--range` (the `packages` array
 below, scalars empty or absent), `lint --range` and the pre-push hook apply rules 2–3
 and the contradiction check; and the drafts (t-qecb): `release` converges
 one rolling draft per line (`internal/cli/cmd_release.go: releaseRun`, one
-loop over the lines, the bare line among them — every line's
+loop over the lines, the bare line among them, and
+`internal/draftplan/run.go: PlanRun` ordering the writes — every line's
 upsert before any stray, the single line's bare draft deleted as residue,
 the footer on every draft, `packages[]` in the verdict with the scalars
 empty); and the preview (t-npye): `preview --pr` attributes the pull's
@@ -2594,16 +2595,23 @@ did not manage untouched. The placeholder `draft_on_none` maintains becomes
 that wedges a floor. Two drafts glyph *did* write are claimed and converged
 away, on the precedent of the placeholder being claimed with the flag off: a
 bare `vX.Y.Z` draft in a repository that declares packages but no root package
-is the single line's residue and is deleted on the first packages run. A hand
-region it carried goes with it, and the migration is the one moment to move
-that prose, so `release --dry-run` is how to learn it in time: its notice
-names the residue and says it would be deleted, and a real run's speaks only
-once the `DELETE` went. The first cut printed one notice at plan time, above
-the dry-run fork, so a dry run that wrote nothing and a run that died at an
-upsert with the residue untouched both said the draft "is deleted" (t-xz1z;
+is the single line's residue and is deleted on the first packages run — by a
+run whose tag selects one line too, since the residue is no line's and no
+line's selection protects it (mutation row
+`release-packages-selecting-tag-spares-the-residue.patch`). A hand region it
+carried goes with it, and the migration is the one moment to move that prose,
+so `release --dry-run` is how to learn it in time: its notice names the residue
+and says it would be deleted, and a real run's speaks only once the `DELETE`
+went. The first cut printed one notice at plan time, above the dry-run fork, so
+a dry run that wrote nothing and a run that died at an upsert with the residue
+untouched both said the draft "is deleted" (t-xz1z;
 `TestReleasePackagesBareResidueNoticeWaitsForTheDelete`, mutation row
 `release-packages-residue-notice-speaks-before-the-delete.patch`). With a root
-package declared it is that package's draft and simply converges. The write
+package declared it is that package's draft and simply converges (mutation row
+`release-packages-residue-claimed-beside-a-root-package.patch`), and a declared
+root-level `vN` keeps its own major's bare drafts, the residue line being the
+bare free line
+(`release-packages-residue-claims-a-declared-majors-drafts.patch`). The write
 order is §4's write-first, extended: every line's upsert lands before any
 draft is deleted, so a write that fails on the second line leaves the first
 line's notes standing and exits 4 — the next run heals it. The deletes after
@@ -2923,7 +2931,7 @@ internal/bump            Level lattice; LevelOf + Fold (classification and the f
 internal/config          glyph.toml loader — user RE2 patterns, first match wins, semver_sigil extraction, the [[packages]] schema; embeds the init presets
 internal/attribution     which declared package(s) a commit moves — pure; files + scope + sigil + packages in, package set or lint-class refusal out (§4.1)
 internal/emoji           the gemoji dictionary `glyph emoji` prints — embedded table.json, advisory data nothing else reads (§2)
-internal/draftplan       draft convergence — pure; which draft a verdict keeps, retags or deletes (the Unreleased placeholder lives here)
+internal/draftplan       draft convergence — pure; which draft a verdict keeps, retags or deletes (the Unreleased placeholder lives here), the bare line's residue, and the run's write list — every upsert, the residual deletes, then the stale ones — each write with its kind
 internal/markdown        Line: per-field flatten, then the prose escape and the mention fence over the assembled line
 internal/notes           group by section; note.line rendered by hand over config.LineSpan / LinePart (the span grammar is parsed in internal/config; the optional-span drop rule lives here)
 internal/preview         merge-preview comment body — pure; no git, no API, no clock
@@ -2932,7 +2940,7 @@ internal/gitsource       every git subprocess the binary runs — log, tags, anc
 internal/github          commits/{sha}/pulls, commits/{sha} files, pulls/{N} and its commits, release CRUD + generate-notes, repo object
 internal/doctor          repository-precondition checks; independent, read-only (§7)
 internal/hook            commit-msg and pre-push hook contents + overwrite policy (no rules of its own)
-internal/cli             cobra adapter; Execute() int owns the exit-code funnel; composes the walk's ports and carries out the release's writes in order
+internal/cli             cobra adapter; Execute() int owns the exit-code funnel; composes the walk's ports and carries out the release's write list by kind
 internal/testutil        the fixtures two or more packages' tests share — the hermetic git fixture, the loaded gemoji config (test-only, ships nothing)
 internal/workflows       no runtime code — tests pinning CI-YAML invariants
 ```
