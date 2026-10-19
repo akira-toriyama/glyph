@@ -32,7 +32,7 @@ func rangeSource(revRange string) source {
 // the one source with a tag base (the compare link's); the pull's commits
 // keep their sha beside the pull, which a `notes --pr` body cites both of.
 func TestReadSourceAnswersOneLineWithoutPackages(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
 	head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	usePR(t, walkServer(t, map[string]string{
@@ -109,7 +109,7 @@ func TestReadSourceRefusesAPullUnderPackages(t *testing.T) {
 // of its options — no command built, no flag parsed — so --current reaches
 // the step as a field, not as package state a cobra run has to set first.
 func TestBumpRunsFromOptionsWithoutCobra(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
 	t.Chdir(dir)
 	stdout, stderr, restore := captureOut()
@@ -128,7 +128,7 @@ func TestBumpRunsFromOptionsWithoutCobra(t *testing.T) {
 // TestNotesRunsFromOptionsWithoutCobra: notesRun is the same kind of
 // function — the body renders from the options alone.
 func TestNotesRunsFromOptionsWithoutCobra(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
 	t.Chdir(dir)
 	stdout, stderr, restore := captureOut()
@@ -146,7 +146,7 @@ func TestNotesRunsFromOptionsWithoutCobra(t *testing.T) {
 // string flag (TestEveryStringFlagRejectsItsEmptyForm); this is the other
 // shape the guard names.
 func TestOptionShapedRangeIsUsage(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 	for _, cmd := range []string{"bump", "notes"} {
 		code, _, stderr := runGlyph(t, cmd, "--range", "-x")

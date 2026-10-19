@@ -16,7 +16,7 @@ import (
 )
 
 func TestHookInstallWritesIntoTheGitHooksDir(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "hook", "install")
@@ -40,7 +40,7 @@ func TestHookInstallWritesIntoTheGitHooksDir(t *testing.T) {
 // the family's older repos relocate hooks to a tracked scripts/hooks, and a
 // hook written to .git/hooks there is one git never runs.
 func TestHookInstallHonoursCoreHooksPath(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "config", "core.hooksPath", "scripts/hooks")
 	t.Chdir(dir)
 
@@ -57,7 +57,7 @@ func TestHookInstallHonoursCoreHooksPath(t *testing.T) {
 }
 
 func TestHookInstallRefusesAForeignHookWithUsageCode(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	hookPath := filepath.Join(dir, ".git", "hooks", "commit-msg")
 	if err := os.WriteFile(hookPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil { //nolint:gosec
 		t.Fatalf("seeding a foreign hook: %v", err)
@@ -80,7 +80,7 @@ func TestHookInstallRefusesAForeignHookWithUsageCode(t *testing.T) {
 
 // --print is the inspect-before-you-install path, and must not touch the disk.
 func TestHookInstallPrintDoesNotWrite(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "hook", "install", "--print", "commit-msg")
@@ -106,7 +106,7 @@ func TestHookInstallPrintTakesExactlyOneKind(t *testing.T) {
 		"two kinds": {"hook", "install", "--print", "commit-msg", "pre-push"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			dir, _ := testRepo(t)
+			dir, _ := testutil.NewTaggedRepo(t)
 			t.Chdir(dir)
 
 			code, stdout, stderr := runGlyph(t, args...)
@@ -134,7 +134,7 @@ func TestHookInstallPrintTakesExactlyOneKind(t *testing.T) {
 // file contents — only this one shows the hook actually gates a commit.
 func TestInstalledHookGatesRealCommits(t *testing.T) {
 	glyphBin := buildGlyph(t)
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	if code, _, stderr := runGlyph(t, "hook", "install"); code != int(core.CodeOK) {
@@ -418,7 +418,7 @@ func TestHookInstallPrintFalseIsNotAConflict(t *testing.T) {
 		"print and json really do conflict":      {[]string{"hook", "install", "--print", "--json"}, 2},
 	} {
 		t.Run(name, func(t *testing.T) {
-			dir, _ := testRepo(t)
+			dir, _ := testutil.NewTaggedRepo(t)
 			t.Chdir(dir)
 			code, _, stderr := runGlyph(t, tc.args...)
 			if code != tc.wantCode {
@@ -440,7 +440,7 @@ func TestHookInstallPrintFalseIsNotAConflict(t *testing.T) {
 // flag by MENTION rather than by value would break the first half while leaving
 // the second passing, so the two assertions have to sit together.
 func TestHookInstallJSONFalseIsTheHumanSummary(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "hook", "install", "--json=false")
@@ -507,7 +507,7 @@ func TestStaleHookIsReportedWhenTheHookItselfRuns(t *testing.T) {
 		"somebody else's hook":          {body: "#!/bin/sh\nexit 0\n", wantWarn: false},
 	} {
 		t.Run(name, func(t *testing.T) {
-			dir, _ := testRepo(t)
+			dir, _ := testutil.NewTaggedRepo(t)
 			t.Chdir(dir)
 			write(t, dir, tc.body)
 			setStdin(t, ":bug:(x)~ fix a crash\n")

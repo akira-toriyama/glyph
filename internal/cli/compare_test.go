@@ -93,7 +93,7 @@ func TestNotesSinceTagEndsWithTheCompareLink(t *testing.T) {
 // under a link that said other/name (review, the same green suite;
 // mutation row walk-ignores-the-repo-flag).
 func TestNotesCompareLinkCitesTheRepoFlag(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
@@ -247,7 +247,7 @@ func TestCompareLinkNeedsATagBase(t *testing.T) {
 	})
 
 	t.Run("notes --range", func(t *testing.T) {
-		dir, base := testRepo(t)
+		dir, base := testutil.NewTaggedRepo(t)
 		testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 		t.Chdir(dir)
 

@@ -27,7 +27,7 @@ func shallowClone(t *testing.T, src string, depth int) string {
 // (DESIGN §4.1, "Lint"). The full clone is the control twice over: it refuses,
 // and it says nothing about shallowness.
 func TestLintRangeOnAShallowCheckoutSaysSo(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji in this one")
 	for i := range 4 {
 		testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":bug:~ fix number %d", i))
@@ -95,7 +95,7 @@ func shallowRangeSaysSo(t *testing.T, dir, cmd string, full int) {
 // --depth 2 clone cannot see the refused commit.
 func shallowSingleRepo(t *testing.T) string {
 	t.Helper()
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji in this one")
 	for i := range 3 {
 		testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":bug:~ fix number %d", i))

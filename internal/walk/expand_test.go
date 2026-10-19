@@ -39,7 +39,7 @@ import (
 // that vacuous.) A rebase preserves messages and order, so matching them is also
 // the honest fixture for the shape.
 func TestMainFootprintSurvivesAListingLongerThanMain(t *testing.T) {
-	dir, _ := testRepo(t) // root commit ":tada:= begin the project"
+	dir, _ := testutil.NewTaggedRepo(t) // root commit ":tada:= begin the project"
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
 	canonical := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
@@ -84,7 +84,7 @@ func TestMainFootprintSurvivesAListingLongerThanMain(t *testing.T) {
 // became the same state — nothing an alignment could answer about — and a second
 // guard ahead of it would be a decision no test could reach.
 func TestMainFootprintEmptyListingAsksGitNothing(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 
 	landed, err := at(dir).mainFootprint(t.Context(), "4444444444444444444444444444444444444444", nil)
 	if err != nil {
@@ -137,7 +137,7 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 	}
 
 	t.Run("the original lands later through another pull", func(t *testing.T) {
-		dir, _ := testRepo(t)
+		dir, _ := testutil.NewTaggedRepo(t)
 		// The pull's two commits, pre-rebase, still on their branch.
 		testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-2")
 		b1 := commit(t, dir, "fix.txt", ":bug:(ui)~ fix the menu")
@@ -175,7 +175,7 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 	})
 
 	t.Run("the original and everything under it land later", func(t *testing.T) {
-		dir, _ := testRepo(t)
+		dir, _ := testutil.NewTaggedRepo(t)
 		testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-2")
 		b1 := commit(t, dir, "fix.txt", ":bug:(ui)~ fix the menu")
 		b2 := commit(t, dir, "speed.txt", ":zap:(ui)~ speed up the menu")
@@ -207,7 +207,7 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 	})
 
 	t.Run("a cherry-pick of a commit already on main", func(t *testing.T) {
-		dir, root := testRepo(t)
+		dir, root := testutil.NewTaggedRepo(t)
 		// The change is on main FIRST — and shipped. The tag is why the answer
 		// matters: C under v0.2.0 and a copy in range would straddle the base.
 		C := commit(t, dir, "shared.txt", ":bug:(core)~ fix the hotfix")

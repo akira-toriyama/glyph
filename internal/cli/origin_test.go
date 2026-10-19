@@ -49,7 +49,7 @@ func TestRepoDefaultsToOrigin(t *testing.T) {
 	t.Setenv("GITHUB_REPOSITORY", "")
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "remote", "add", "origin", srv.URL+"/akira-toriyama/glyph.git")
 	t.Chdir(dir)
 
@@ -65,7 +65,7 @@ func TestRepoDefaultsToOrigin(t *testing.T) {
 func TestEnvironmentBeatsOrigin(t *testing.T) {
 	t.Setenv("GITHUB_API_URL", "")
 	t.Setenv("GITHUB_REPOSITORY", "akira-toriyama/from-env")
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "remote", "add", "origin", "git@github.com:akira-toriyama/from-origin.git")
 	t.Chdir(dir)
 
@@ -86,7 +86,7 @@ func TestEnvironmentBeatsOrigin(t *testing.T) {
 func TestOriginOnAnotherHostIsUsage(t *testing.T) {
 	t.Setenv("GITHUB_API_URL", "")
 	t.Setenv("GITHUB_REPOSITORY", "")
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "remote", "add", "origin", "git@gitlab.com:akira-toriyama/glyph.git")
 	t.Chdir(dir)
 
@@ -107,7 +107,7 @@ func TestOriginOnAnotherHostIsUsage(t *testing.T) {
 func TestOriginWithoutACoordinateIsStillUsage(t *testing.T) {
 	t.Setenv("GITHUB_API_URL", "")
 	t.Setenv("GITHUB_REPOSITORY", "")
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "remote", "add", "origin", t.TempDir())
 	t.Chdir(dir)
 

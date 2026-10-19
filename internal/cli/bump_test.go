@@ -12,7 +12,7 @@ import (
 // TestBumpMinor: the fold over a mixed range takes the max — stdout is the
 // bare next version (pipe it straight into a tag step).
 func TestBumpMinor(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
 	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document it")
@@ -30,7 +30,7 @@ func TestBumpMinor(t *testing.T) {
 // TestBumpPatchFromTag: the current version comes from the highest parseable
 // v* tag when --current is not given.
 func TestBumpPatchFromTag(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "not-a-version") // skipped by the picker
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	t.Chdir(dir)
@@ -49,7 +49,7 @@ func TestBumpPatchFromTag(t *testing.T) {
 // whole of it. The raw read first is the positive control.
 func TestBumpReadsTheTagListUnderColumnConfig(t *testing.T) {
 	fixture := func(t *testing.T) (dir, base string) {
-		dir, base = testRepo(t)
+		dir, base = testutil.NewTaggedRepo(t)
 		testutil.Git(t, dir, "akira-toriyama", "tag", "v0.0.9")
 		testutil.Git(t, dir, "akira-toriyama", "config", "column.ui", "always")
 		if raw := testutil.Git(t, dir, "akira-toriyama", "tag", "--list"); strings.Contains(raw, "\n") {
@@ -83,7 +83,7 @@ func TestBumpReadsTheTagListUnderColumnConfig(t *testing.T) {
 // TestBumpNoneHuman: a docs-only range is the soft no-release exit: nothing on
 // stdout, exit 1, the reason in the stderr envelope.
 func TestBumpNoneHuman(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the bump model")
 	t.Chdir(dir)
 
@@ -102,7 +102,7 @@ func TestBumpNoneHuman(t *testing.T) {
 // TestBumpNoneJSON: --json still emits the machine verdict (level none, no
 // next) on stdout and exits 1 without a second stderr envelope.
 func TestBumpNoneJSON(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the bump model")
 	t.Chdir(dir)
 
@@ -137,7 +137,7 @@ func TestBumpNoneJSON(t *testing.T) {
 // TestBumpJSONShape: the machine schema is {current, level, next, commits[],
 // reason} with per-commit sha/gitmoji/level/breaking/subject.
 func TestBumpJSONShape(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
 	t.Chdir(dir)
@@ -183,7 +183,7 @@ func TestBumpJSONShape(t *testing.T) {
 // TestBumpEmptyRangeJSON: an empty range is a none verdict with commits
 // normalized to [] (never null) so a consumer can index unconditionally.
 func TestBumpEmptyRangeJSON(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "bump", "--range", "HEAD..HEAD", "--json")
@@ -197,7 +197,7 @@ func TestBumpEmptyRangeJSON(t *testing.T) {
 
 // TestBumpCurrentOverride: --current beats the tag lookup.
 func TestBumpCurrentOverride(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	t.Chdir(dir)
 
@@ -210,7 +210,7 @@ func TestBumpCurrentOverride(t *testing.T) {
 // TestBumpCurrentInvalidIsUsage: a malformed --current is the caller's input —
 // usage (exit 2), not git's fault.
 func TestBumpCurrentInvalidIsUsage(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 	if code, _, _ := runGlyph(t, "bump", "--range", base+"..HEAD", "--current", "garbage"); code != 2 {
 		t.Fatalf("bump --current garbage should exit 2")
@@ -223,7 +223,7 @@ func TestBumpCurrentInvalidIsUsage(t *testing.T) {
 // step from. Measured before the cap (2026-09-29): both printed
 // v-9223372036854775808.0.0 at exit 0 over a `!`.
 func TestBumpVersionPastTheCapIsNoVersion(t *testing.T) {
-	dir, base := testRepo(t) // tags v0.1.0
+	dir, base := testutil.NewTaggedRepo(t) // tags v0.1.0
 	testutil.Commit(t, dir, "akira-toriyama", ":boom:! drop the flag")
 	t.Chdir(dir)
 
@@ -245,7 +245,7 @@ func TestBumpVersionPastTheCapIsNoVersion(t *testing.T) {
 // v0.0.0 — the first release-worthy range yields v0.0.1 or v0.1.0 (v1.0.0
 // needs a '%'; a bare '!' cannot leave 0.x).
 func TestBumpNoTagsStartsAtZero(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ first feature")
 	t.Chdir(dir)
@@ -259,7 +259,7 @@ func TestBumpNoTagsStartsAtZero(t *testing.T) {
 // TestBumpUnknownCodeIsLint: an unknown gitmoji anywhere in the range is a
 // hard lint failure (exit 3) — never silently classified.
 func TestBumpUnknownCodeIsLint(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":not-a-real-code: mystery change")
 	t.Chdir(dir)
 
@@ -271,7 +271,7 @@ func TestBumpUnknownCodeIsLint(t *testing.T) {
 // TestBumpMalformedCommitIsLint: a non-parsing human commit in the range is a
 // lint failure carrying the offending SHA.
 func TestBumpMalformedCommitIsLint(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji in this one")
 	t.Chdir(dir)
 
@@ -316,7 +316,7 @@ func TestBumpOutsideRepoIsAPI(t *testing.T) {
 // a test that checked only the version would pass just as happily if the
 // commit had quietly stopped being breaking.
 func TestBump0xBangStaysIn0x(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":boom:! drop the legacy flag")
 	t.Chdir(dir)
 
@@ -344,7 +344,7 @@ func TestBump0xBangStaysIn0x(t *testing.T) {
 // through it — including the reason line, which must name the promoting commit
 // rather than whichever breaking commit happened to come first.
 func TestBumpPromoteReachesV1(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":boom:! drop the legacy flag")
 	testutil.Commit(t, dir, "akira-toriyama", ":rocket:% call it 1.0")
 	t.Chdir(dir)
@@ -378,7 +378,7 @@ func TestBumpPromoteReachesV1(t *testing.T) {
 // the test that keeps a promotion from deadlocking every repository that
 // already reached 1.0.
 func TestBumpPromoteFrom1xIsAPlainMajor(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":rocket:% call it 1.0")
 	t.Chdir(dir)
 
@@ -396,7 +396,7 @@ func TestBumpPromoteFrom1xIsAPlainMajor(t *testing.T) {
 // none, release silently stopped) is exactly what a warning here would have
 // named.
 func TestBumpWarnsEachWarnedCommit(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	useWarnedPatternConfig(t, dir)
 	testutil.Commit(t, dir, "akira-toriyama", ":construction:(x) try the thing")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ a strict fix")

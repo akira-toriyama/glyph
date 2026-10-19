@@ -39,7 +39,7 @@ func TestSinceTagResolvedPRLintNamesTheWedge(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			inner := tc.inner
-			dir, _ := testRepo(t)
+			dir, _ := testutil.NewTaggedRepo(t)
 			sha := squashCommit(t, dir, "Add a menu", 7)
 			srv := walkServer(t, map[string]string{
 				commitPullsPath(sha): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha) + `]`,
@@ -110,7 +110,7 @@ func TestSinceTagDirectPushUnmatchedNamesTheWedge(t *testing.T) {
 		"unknown-etmoji": ":notarealmoji: tweak something",
 	} {
 		t.Run(name, func(t *testing.T) {
-			dir, _ := testRepo(t)
+			dir, _ := testutil.NewTaggedRepo(t)
 			testutil.Commit(t, dir, "akira-toriyama", message)
 			bad := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 			testutil.Commit(t, dir, "akira-toriyama", ":bug:~ a fix between, pushed directly")
@@ -170,7 +170,7 @@ func TestSinceTagDirectPushUnmatchedNamesTheWedge(t *testing.T) {
 // in the walk like any other, so a stacked pull that lists it again does not
 // refuse it twice — one commit, one details row, no "+1 more".
 func TestSinceTagRefusedCommitIsCountedOnce(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
 	sha2 := squashCommit(t, dir, "Fix a crash", 8)
 	base := apiPullRef(7, "2026-07-12T00:00:00Z", sha1)
@@ -217,7 +217,7 @@ func TestSinceTagRefusedCommitIsCountedOnce(t *testing.T) {
 // held it, GitHub links it to no pull). One row, no "counted once" for a
 // commit that was not counted, and the commit is its own escape.
 func TestSinceTagRefusedPullCommitMetAgainOnTheBranch(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	squash := squashCommit(t, dir, "Add a menu", 9)
 	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji leads this subject")
 	bad := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
@@ -249,7 +249,7 @@ func TestSinceTagRefusedPullCommitMetAgainOnTheBranch(t *testing.T) {
 // first refusal never read past it either. A 4 here would hide a verdict the
 // operator must act on behind a failure that clears on retry.
 func TestSinceTagRefusalOutranksALaterAPIFailure(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji leads this subject")
 	bad := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	sha := squashCommit(t, dir, "Add a menu", 7)
@@ -296,7 +296,7 @@ func TestSinceTagRefusalOutranksALaterAPIFailure(t *testing.T) {
 // judges its own commits before any consumer reads them (DESIGN §4). The lag
 // arm stays soft (TestSinceTagAllCommitsUnknownWarnsAboutTheRepo).
 func TestNotesSinceTagDirectPushUnclaimedIsTheWedge(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji leads this subject")
 	bad := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{commitPullsPath(bad): `[]`})
@@ -328,7 +328,7 @@ func TestNotesSinceTagDirectPushUnclaimedIsTheWedge(t *testing.T) {
 // the merge button with a non-conforming commit B1 inside it, and #8
 // squash-merged afterwards so a cleared walk still has something to release.
 func TestSinceTagWedgeEscapeIsTheOffendingCommit(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	mp := mergePR(t, dir, "akira-toriyama", 7, "no gitmoji leads this subject", ":bug:(ui)~ polish the menu")
 	bad, good := mp.Branch[0], mp.Branch[1]
 	later := squashCommit(t, dir, "Fix a crash", 8)

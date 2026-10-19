@@ -31,7 +31,7 @@ import (
 // the server holds no route for the released one, so asking about it fails
 // the test (measured at adfc5e1: v2.0.0 -> v2.0.1 over both backports).
 func TestSinceTagMaintenanceBranchStepsItsOwnLine(t *testing.T) {
-	dir, _ := testRepo(t) // tags v0.1.0
+	dir, _ := testutil.NewTaggedRepo(t) // tags v0.1.0
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ two")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.9.0")
 	testutil.Git(t, dir, "akira-toriyama", "branch", "release/v1")
@@ -65,7 +65,7 @@ func TestSinceTagMaintenanceBranchStepsItsOwnLine(t *testing.T) {
 // frozen-coordinate tier collapsed to exactly that at v3.3.0 (#15 there),
 // and at adfc5e1 this exits 1.
 func TestSinceTagFrozenCoordinateSeesItsOwnTags(t *testing.T) {
-	dir, _ := testRepo(t) // tags v0.1.0
+	dir, _ := testutil.NewTaggedRepo(t) // tags v0.1.0
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ second")
 	frozen := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ third")
@@ -91,7 +91,7 @@ func TestSinceTagFrozenCoordinateSeesItsOwnTags(t *testing.T) {
 // that folds none still converges the draft away under either rule — the
 // stale writer DESIGN §4 narrows and does not close.
 func TestReleaseAtAnOlderCommitRefusesAtTheFloor(t *testing.T) {
-	dir, _ := testRepo(t) // tags v0.1.0
+	dir, _ := testutil.NewTaggedRepo(t) // tags v0.1.0
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ second")
 	older := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ third")
@@ -146,7 +146,7 @@ func TestPackagesFrozenCoordinateSeesItsOwnTags(t *testing.T) {
 // v0.1.0 may be walked: the tagged base commit reaching the API would show up
 // as an unexpected request.
 func TestBumpSinceTagAutoDetectsTheTag(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha1 := squashCommit(t, dir, "Fix a crash", 3)
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(3, "2026-07-13T00:00:00Z", sha1) + `]`,
@@ -169,7 +169,7 @@ func TestBumpSinceTagAutoDetectsTheTag(t *testing.T) {
 // verdict is computed from one range and versioned from another. --current
 // still wins when given.
 func TestBumpSinceTagExplicitTagIsTheStepBase(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0") // base also carries a HIGHER tag
 	sha := squashCommit(t, dir, "Fix a crash", 3)
 	srv := walkServer(t, map[string]string{
@@ -197,7 +197,7 @@ func TestBumpSinceTagExplicitTagIsTheStepBase(t *testing.T) {
 // first release has no walk base — auto walks everything from the root, and
 // the bump steps from v0.0.0.
 func TestSinceTagAutoWithoutTagsWalksTheWholeHistory(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
 	sha1 := squashCommit(t, dir, "Add a menu", 2)
 	srv := walkServer(t, map[string]string{
@@ -223,7 +223,7 @@ func TestSinceTagAutoWithoutTagsWalksTheWholeHistory(t *testing.T) {
 // TestSinceTagEmptyWalkIsNoRelease: nothing on main since the tag is the quiet
 // week — a soft no-release (1) naming the range it read, not an error.
 func TestSinceTagEmptyWalkIsNoRelease(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	srv := walkServer(t, map[string]string{})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -246,7 +246,7 @@ func TestSinceTagEmptyWalkIsNoRelease(t *testing.T) {
 // the base resolution (auto / version tag / other tag), and the one a caller
 // hits when releasing past a non-release tag (a marker like rc-1).
 func TestBumpSinceTagNonVersionTag(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "rc-1") // same commit as v0.1.0
 	sha := squashCommit(t, dir, "Fix a crash", 8)
 	srv := walkServer(t, map[string]string{
@@ -276,7 +276,7 @@ func TestBumpSinceTagNonVersionTag(t *testing.T) {
 // v1.0.0 — only the one commit after it may reach the API, and the answer must
 // equal the tag being cut.
 func TestSinceTagBelowResolvesThePredecessorAsAVersion(t *testing.T) {
-	dir, _ := testRepo(t) // tags v0.1.0
+	dir, _ := testutil.NewTaggedRepo(t) // tags v0.1.0
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ an rc-era fix")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0-rc1")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ the 1.0 fix")
@@ -332,7 +332,7 @@ func TestSinceTagBelowResolvesThePredecessorAsAVersion(t *testing.T) {
 // answer v1.0.0-rc1 here and re-fold nothing, while the correct answer walks
 // from v1.0.0 and carries exactly the commit above it.
 func TestSinceTagBelowAcceptsAReleaseCandidate(t *testing.T) {
-	dir, _ := testRepo(t) // tags v0.1.0
+	dir, _ := testutil.NewTaggedRepo(t) // tags v0.1.0
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ an rc-era fix")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0-rc1")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ the 1.0 fix")
@@ -375,7 +375,7 @@ func TestSinceTagBelowAcceptsAReleaseCandidate(t *testing.T) {
 // EMPTY range (v0.9.0 is HEAD here) and answers "no release" where the hotfix
 // verdict is due.
 func TestSinceTagBelowIsStrictlyBelowNotHighestOther(t *testing.T) {
-	dir, _ := testRepo(t) // tags v0.1.0
+	dir, _ := testutil.NewTaggedRepo(t) // tags v0.1.0
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ the 0.8.2 fix")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.8.2")
 	sha := squashCommit(t, dir, "Fix the hotfix crash", 9)
@@ -402,7 +402,7 @@ func TestSinceTagBelowIsStrictlyBelowNotHighestOther(t *testing.T) {
 // derivation this replaces answered an EMPTY predecessor here and exited 1:
 // no binaries, no cask, no attestation, behind a tag that already existed.
 func TestSinceTagBelowFirstVersionWalksTheWholeHistory(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
 	sha := squashCommit(t, dir, "Add a menu", 2)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
@@ -430,7 +430,7 @@ func TestSinceTagBelowFirstVersionWalksTheWholeHistory(t *testing.T) {
 // read on the bare line it would resolve to a predecessor the caller never
 // meant (mutation row below-on-an-undeclared-line-walks-the-bare-line).
 func TestSinceTagBelowOnAnUndeclaredLineIsUsage(t *testing.T) {
-	dir, _ := testRepo(t) // v0.1.0 — what a bare-line read under 1.0.0 would find
+	dir, _ := testutil.NewTaggedRepo(t) // v0.1.0 — what a bare-line read under 1.0.0 would find
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add it")
 	usePR(t, walkServer(t, map[string]string{})) // any request fails the test
 	t.Chdir(dir)
@@ -460,7 +460,7 @@ func TestSinceTagBelowOnAnUndeclaredLineIsUsage(t *testing.T) {
 // release out of existence — and the count excludes the bot authors the walk
 // itself never asks about.
 func TestSinceTagUnboundedWalkRefused(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
 	// 199 human commits (plus the fixture's root) and 10 bot commits: 200
 	// walk-visible, exactly AT the cap. The bot commits prove the guard counts

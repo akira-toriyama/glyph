@@ -262,7 +262,7 @@ func TestEndAnchoredPatternGetsOneVerdictAtTheHookAndInTheRange(t *testing.T) {
 		{"a subject with a body the pattern does not reach", ":bug:~ fix the thing\n\nwith a body", 3, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			dir, base := testRepo(t)
+			dir, base := testutil.NewTaggedRepo(t)
 			preset, _ := config.Preset("gemoji")
 			anchored := strings.Replace(string(preset), ` .+)'`, ` .+)$'`, 1)
 			if anchored == string(preset) {
@@ -498,7 +498,7 @@ func TestLintPRTitleExcludesBots(t *testing.T) {
 // into its target — skipped before that, its files move no line, and one
 // autosquash cannot fold ships as a silent none (t-mfny).
 func TestLintRange(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	testutil.Commit(t, dir, "dependabot[bot]", "build(deps): bump a dep")    // bot: skipped
 	testutil.Commit(t, dir, "akira-toriyama", "fixup! :bug:~ fix a crash")   // --fixup, unsquashed: violation
@@ -548,7 +548,7 @@ func TestLintRangeJudgesAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
 		"a parents-shaped email": "0123456789abcdef0123456789abcdef01234567",
 	} {
 		t.Run(label, func(t *testing.T) {
-			dir, base := testRepo(t)
+			dir, base := testutil.NewTaggedRepo(t)
 			testutil.CommitFrom(t, dir, "dependabot[bot]\x1fx", email, "garbage message")
 			t.Chdir(dir)
 			if code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD"); code != 3 {
@@ -557,7 +557,7 @@ func TestLintRangeJudgesAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
 		})
 	}
 	t.Run("the real bot is still excluded", func(t *testing.T) {
-		dir, base := testRepo(t)
+		dir, base := testutil.NewTaggedRepo(t)
 		testutil.CommitFrom(t, dir, "dependabot[bot]", "t@example.invalid", "garbage message")
 		t.Chdir(dir)
 		if code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD"); code != 0 {
@@ -671,7 +671,7 @@ func TestHistoryGatesReadThroughLogOutputEncoding(t *testing.T) {
 // reviewer acts on vanish with no red anywhere. The mutation row naming this
 // test is what keeps that from happening quietly.
 func TestLintRangeAnnotatesEachFinding(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", "first without any pattern shape")
 	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji in this one")
 	t.Chdir(dir)
@@ -739,7 +739,7 @@ func TestLintRangeAnnotatesEachFinding(t *testing.T) {
 
 // TestLintRangeClean: a range of clean and skipped commits is a silent 0.
 func TestLintRangeClean(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	testutil.Commit(t, dir, "dependabot[bot]", "build(deps): bump a dep")
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu\n\nBody.\n\n---（和訳）\nメニュー。")
@@ -775,7 +775,7 @@ func TestLintRangeClean(t *testing.T) {
 // is a daily fleet event and lint.yml forwards glyph's code verbatim, so a
 // non-zero here would red every repository's gate on a healthy push.
 func TestLintRangeJudgingNothingSaysSo(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "dependabot[bot]", "build(deps): bump a dep")
 	t.Chdir(dir)
 
@@ -874,7 +874,7 @@ func useWarnedPatternConfig(t *testing.T, dir string) {
 // window, before the key existed, a forgotten sigil passed every gate with
 // nothing said.
 func TestLintRangeWarnsOnAWarnedPatternAndStaysGreen(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	useWarnedPatternConfig(t, dir)
 	testutil.Commit(t, dir, "akira-toriyama", ":construction:(x) try the thing")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ a strict fix")
@@ -896,7 +896,7 @@ func TestLintRangeWarnsOnAWarnedPatternAndStaysGreen(t *testing.T) {
 // the hook path surfaces the warning at commit time, where acting on it
 // costs one edit instead of a rebase.
 func TestLintStdinWarnsOnAWarnedPattern(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	useWarnedPatternConfig(t, dir)
 	t.Chdir(dir)
 	setStdin(t, ":construction:(x) try the thing\n")

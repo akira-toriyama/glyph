@@ -268,7 +268,7 @@ func TestPreviewCutInsideTheNotesStillClosesTheFold(t *testing.T) {
 // hole: subject length is unbounded on every input path.
 func TestReleaseRefusesABodyGitHubRejects(t *testing.T) {
 	var writes []apiWrite
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha := squashCommit(t, dir, "Fix a crash", 8)
 	t.Chdir(dir)
 	walk := map[string]string{

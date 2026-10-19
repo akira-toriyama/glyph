@@ -335,7 +335,7 @@ func TestPreviewPackagesCountsWhatTheFoldReads(t *testing.T) {
 			}
 			srv := walkServer(t, routes)
 
-			single, _ := testRepo(t)
+			single, _ := testutil.NewTaggedRepo(t)
 			t.Chdir(single)
 			usePR(t, srv)
 			code, stdout, stderr := runGlyph(t, "preview", "--pr", "9")
@@ -396,7 +396,7 @@ func TestPreviewPackagesWarnsEveryParticipatingCommitOnce(t *testing.T) {
 				commitFilesPath("w1"): apiFiles(files...),
 			})
 
-			single, _ := testRepo(t)
+			single, _ := testutil.NewTaggedRepo(t)
 			warnFirst(t, single)
 			t.Chdir(single)
 			usePR(t, srv)
@@ -439,7 +439,7 @@ func TestPreviewPackagesWarnsEveryParticipatingCommitOnce(t *testing.T) {
 				return routes
 			}
 
-			single, _ := testRepo(t)
+			single, _ := testutil.NewTaggedRepo(t)
 			warnFirst(t, single)
 			testutil.Git(t, single, "akira-toriyama", "commit", "-q", "-am", ":wrench:= warn on construction")
 			testutil.Git(t, single, "akira-toriyama", "tag", "v0.2.0")

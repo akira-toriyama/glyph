@@ -25,7 +25,7 @@ import (
 // TestReleaseDryRunGolden, whose two lines both carry `(#N)`; break the span
 // in either direction and one of the two fails.
 func TestNotesMarkdown(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a command palette")
 	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the palette")
 	testutil.Commit(t, dir, "akira-toriyama", ":recycle:! rework the store")
@@ -53,7 +53,7 @@ func TestNotesMarkdown(t *testing.T) {
 // Dependencies section and a bot's conforming commit lands in its semver
 // section too.
 func TestNotesSectionsAloneDecide(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "dependabot[bot]", "Bump a dep from 1 to 2")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	t.Chdir(dir)
@@ -73,7 +73,7 @@ func TestNotesSectionsAloneDecide(t *testing.T) {
 // TestNotesEmptyIsNoRelease: a docs-only range is the soft no-release exit —
 // nothing on stdout, exit 1, the reason in the stderr envelope.
 func TestNotesEmptyIsNoRelease(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the notes model")
 	t.Chdir(dir)
 
@@ -93,7 +93,7 @@ func TestNotesEmptyIsNoRelease(t *testing.T) {
 // normalized to [], a reason) on stdout and exits 1 without a second stderr
 // envelope.
 func TestNotesEmptyJSON(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the notes model")
 	t.Chdir(dir)
 
@@ -121,7 +121,7 @@ func TestNotesEmptyJSON(t *testing.T) {
 // TestNotesJSONShape: the machine schema is {sections:[{title,entries:[{sha,
 // code,emoji,scope,subject,breaking}]}]} on one line.
 func TestNotesJSONShape(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a command palette")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:! drop the broken fallback")
 	t.Chdir(dir)
@@ -161,7 +161,7 @@ func TestNotesJSONShape(t *testing.T) {
 // section; whether it appears at all is note.sections' decision (the fold is
 // where an unmatched commit refuses, and bump/release run the fold).
 func TestNotesUnmatchedIsRendered(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":not_a_real_code:^ mystery change")
 	t.Chdir(dir)
 
@@ -178,7 +178,7 @@ func TestNotesUnmatchedIsRendered(t *testing.T) {
 // fold: bump and release refuse this same range (Q2), so nothing publishes a
 // version around the commit notes quietly passed over.
 func TestNotesUnmatchedLandsNowhereByDefault(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji in this one")
 	t.Chdir(dir)
 
@@ -260,7 +260,7 @@ func wantBareLineReason(t *testing.T, reason string) {
 // the packages case is TestNotesPackagesNoReleaseCountsParticipatingCommits.
 func TestNotesNoReleaseCountsParticipatingCommits(t *testing.T) {
 	t.Run("a range holding a bot and a merge commit", func(t *testing.T) {
-		dir, base := testRepo(t)
+		dir, base := testutil.NewTaggedRepo(t)
 		testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the notes model")
 		testutil.Commit(t, dir, "renovate[bot]", "Update dependency x to v2")
 		mergeInto(t, dir, "akira-toriyama", "akira-toriyama", "topic", "Merge branch 'topic'", ":memo:= document the sections")
@@ -278,7 +278,7 @@ func TestNotesNoReleaseCountsParticipatingCommits(t *testing.T) {
 	})
 
 	t.Run("a message no pattern claims", func(t *testing.T) {
-		dir, base := testRepo(t)
+		dir, base := testutil.NewTaggedRepo(t)
 		testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the notes model")
 		testutil.Commit(t, dir, "akira-toriyama", "no sigil at all")
 		t.Chdir(dir)
@@ -294,7 +294,7 @@ func TestNotesNoReleaseCountsParticipatingCommits(t *testing.T) {
 	})
 
 	t.Run("a since-tag walk", func(t *testing.T) {
-		dir, _ := testRepo(t)
+		dir, _ := testutil.NewTaggedRepo(t)
 		testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the notes model")
 		pushed := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 		testutil.Commit(t, dir, "renovate[bot]", "Update dependency x to v2")
@@ -363,7 +363,7 @@ func TestNotesOutsideRepoIsAPI(t *testing.T) {
 // is github.com/larrasket, so rendered by shape it paged a stranger (mutation
 // rows noreply-address-carries-no-identity, author-credit-goes-live-by-shape).
 func TestNotesCreditsByIdentityNotShape(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	testutil.CommitFrom(t, dir, "Saleh", "root@lr0.org", ":bug:~ fix the parser")
 	testutil.CommitFrom(t, dir, "Robert Pająk", "robert@example.com", ":bug:~ fix the exporter")
@@ -387,7 +387,7 @@ func TestNotesCreditsByIdentityNotShape(t *testing.T) {
 // is what the credit pages; a commit GitHub mapped to no account (author:
 // null) is credited by name.
 func TestNotesSinceTagCreditsTheListedLogin(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	sha := squashCommit(t, dir, "Fix two things", 7)
 	usePR(t, walkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(7, "2026-09-13T00:00:00Z", sha) + `]`,

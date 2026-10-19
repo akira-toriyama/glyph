@@ -88,7 +88,7 @@ func TestBumpPR(t *testing.T) {
 		apiCommit("a1", "akira-toriyama", ":memo:= document the fold")+`,`+
 		apiCommit("b2", "akira-toriyama", ":sparkles:(ui)^ add a menu")+`]`)
 	usePR(t, srv)
-	dir, _ := testRepo(t) // carries the v0.1.0 tag bump steps from
+	dir, _ := testutil.NewTaggedRepo(t) // carries the v0.1.0 tag bump steps from
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--pr", "7")
@@ -109,7 +109,7 @@ func TestBumpPRExcludesBots(t *testing.T) {
 		apiCommit("a1", "dependabot[bot]", ":sparkles:^ a bot must not minor the release")+`,`+
 		apiCommit("b2", "akira-toriyama", ":bug:~ fix a crash")+`]`)
 	usePR(t, srv)
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "bump", "--pr", "9")
@@ -125,7 +125,7 @@ func TestNotesPR(t *testing.T) {
 		apiCommit("a1", "akira-toriyama", ":sparkles:^ add a menu")+`,`+
 		apiCommit("b2", "akira-toriyama", ":bug:(api)~ stop dropping the last page")+`]`)
 	usePR(t, srv)
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "notes", "--pr", "7")
@@ -145,7 +145,7 @@ func TestPRRepoFlagBeatsTheEnvironment(t *testing.T) {
 	t.Setenv("GITHUB_REPOSITORY", "someone-else/wrong") // must be overridden
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "bump", "--pr", "3", "--repo", "akira-toriyama/glyph")
@@ -159,7 +159,7 @@ func TestPRRepoFlagBeatsTheEnvironment(t *testing.T) {
 // failure (nothing was ever sent).
 func TestPRWithoutARepoIsUsage(t *testing.T) {
 	t.Setenv("GITHUB_REPOSITORY", "")
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "bump", "--pr", "7")
@@ -174,7 +174,7 @@ func TestPRWithoutARepoIsUsage(t *testing.T) {
 // TestPRAndRangeAreMutuallyExclusive: they are two different sources for the same
 // answer; taking both would silently pick one.
 func TestPRAndRangeAreMutuallyExclusive(t *testing.T) {
-	dir, base := testRepo(t)
+	dir, base := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 	if code, _, _ := runGlyph(t, "bump", "--pr", "7", "--range", base+"..HEAD"); code != 2 {
 		t.Fatalf("bump --pr with --range should exit 2 (usage)")
@@ -190,7 +190,7 @@ func TestPRNumberMustBePositive(t *testing.T) {
 	t.Setenv("GITHUB_REPOSITORY", "akira-toriyama/glyph")
 	for _, n := range []string{"0", "-3"} {
 		t.Run("pr="+n, func(t *testing.T) {
-			dir, _ := testRepo(t)
+			dir, _ := testutil.NewTaggedRepo(t)
 			t.Chdir(dir)
 			code, _, stderr := runGlyph(t, "bump", "--pr", n)
 			if code != 2 {
@@ -212,7 +212,7 @@ func TestPRNotFoundIsAPI(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	usePR(t, srv)
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "bump", "--pr", "404")
@@ -233,7 +233,7 @@ func TestPRAllBotIsNoRelease(t *testing.T) {
 		apiCommit("a1", "fleet-sync[bot]", ":robot:= chore(fleet): sync a file")+`,`+
 		apiCommit("b2", "dependabot[bot]", ":arrow_up:~ build(deps): bump a thing")+`]`)
 	usePR(t, srv)
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "bump", "--pr", "5")
@@ -252,7 +252,7 @@ func TestPRMalformedCommitIsLint(t *testing.T) {
 	srv := prServer(t, 6, `[`+
 		apiCommit("a1", "akira-toriyama", "no gitmoji leads this subject")+`]`)
 	usePR(t, srv)
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "bump", "--pr", "6")
@@ -277,7 +277,7 @@ func TestPRMalformedRepoIsUsage(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	usePR(t, srv)
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 	for _, spec := range []string{
 		"notaslash", "a/b/c", "/leading", "trailing/",
@@ -303,7 +303,7 @@ func TestPRUsesGHTokenFallback(t *testing.T) {
 	t.Setenv("GITHUB_REPOSITORY", "akira-toriyama/glyph")
 	t.Setenv("GITHUB_TOKEN", "") // empty → fall back
 	t.Setenv("GH_TOKEN", "gh-fallback-token")
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	if code, _, stderr := runGlyph(t, "bump", "--pr", "7"); code != 0 {
@@ -321,7 +321,7 @@ func TestPRUsesGHTokenFallback(t *testing.T) {
 func TestBumpPRJSONVerdict(t *testing.T) {
 	srv := prServer(t, 7, `[`+apiCommit("a1", "akira-toriyama", ":sparkles:^ add a menu")+`]`)
 	usePR(t, srv)
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "bump", "--pr", "7", "--json")
@@ -357,7 +357,7 @@ func TestBumpPRJSONVerdict(t *testing.T) {
 func TestNoneVerdictNamesThePullRequest(t *testing.T) {
 	srv := prServer(t, 12, `[`+apiCommit("a1", "akira-toriyama", ":memo:= document the fold")+`]`)
 	usePR(t, srv)
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "bump", "--pr", "12")
@@ -391,7 +391,7 @@ func TestPullCommitCapIsWarned(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			srv := prServer(t, 7, build(tc.n))
 			usePR(t, srv)
-			dir, _ := testRepo(t)
+			dir, _ := testutil.NewTaggedRepo(t)
 			t.Chdir(dir)
 
 			code, _, stderr := runGlyph(t, "bump", "--pr", "7")

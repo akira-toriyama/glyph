@@ -7,23 +7,11 @@ import (
 
 	"github.com/akira-toriyama/glyph/v5/internal/config"
 	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
-func testCfg(t *testing.T) *config.Config {
-	t.Helper()
-	data, ok := config.Preset("gemoji")
-	if !ok {
-		t.Fatalf("Preset(gemoji) missing")
-	}
-	cfg, err := config.Load(data)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	return cfg
-}
-
 func TestGroupAxes(t *testing.T) {
-	cfg := testCfg(t)
+	cfg := testutil.Config(t)
 	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Pull: 10, Author: "akira", Message: ":boom:! drop the flag"},
 		{SHA: "bbbbbbbbbbbb", Pull: 11, Author: "akira", Message: ":sparkles:(cli)^ add a thing"},
@@ -58,7 +46,7 @@ func TestGroupAxes(t *testing.T) {
 // in EVERY section whose filter matches it: deduplicating would make section
 // order silently decide which section wins.
 func TestGroupDuplicates(t *testing.T) {
-	cfg := testCfg(t)
+	cfg := testutil.Config(t)
 	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Pull: 7, Author: "dependabot[bot]", Message: ":boom:! bot ships a breaking bump"},
 	}, cfg)
@@ -77,7 +65,7 @@ func TestGroupDuplicates(t *testing.T) {
 // exclude_authors: a skip-pattern commit is in NO section, even one whose
 // author filter would catch it.
 func TestGroupSkipIsTotal(t *testing.T) {
-	cfg := testCfg(t)
+	cfg := testutil.Config(t)
 	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Author: "dependabot[bot]", Message: "Merge pull request #9 from x"},
 	}, cfg)
@@ -149,7 +137,7 @@ title = "Fixes"
 // with the parens around an empty $pr, for every commit that reached main
 // without a merged pull — which is every commit the --range walk sees.
 func TestRenderLineOptionalSpan(t *testing.T) {
-	cfg := testCfg(t)
+	cfg := testutil.Config(t)
 	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Pull: 61, Author: "akira-toriyama", Login: "akira-toriyama", Message: ":bug:~ fix the demo crash"},
 		{SHA: "bbbbbbbbbbbb", Pull: 0, Author: "akira-toriyama", Login: "akira-toriyama", Message: ":bug:~ fix it again by direct push"},
@@ -177,7 +165,7 @@ func TestRenderLineOptionalSpan(t *testing.T) {
 // unratified question; this test freezes the current answer so a change to it
 // has to be a decision.
 func TestGroupMultiCommitPullRepeatsTheCitation(t *testing.T) {
-	cfg := testCfg(t)
+	cfg := testutil.Config(t)
 	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Pull: 61, Author: "akira", Login: "akira", Message: ":bug:~ fix the first thing"},
 		{SHA: "bbbbbbbbbbbb", Pull: 61, Author: "akira", Login: "akira", Message: ":bug:~ fix the second thing"},
@@ -240,7 +228,7 @@ title = "Fixes"
 // out as a live mention. Crediting the contributor is the point; the subject's
 // strangers are not.
 func TestRenderLineNeutralizesMentions(t *testing.T) {
-	cfg := testCfg(t)
+	cfg := testutil.Config(t)
 	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Pull: 1, Author: "akira", Login: "akira", Message: ":bug:~ thank @someone for the report"},
 	}, cfg)
@@ -326,7 +314,7 @@ title = "Fixes"
 // make; "Akira Toriyama" would otherwise page @Akira, the t-hykw failure the
 // fence exists for (mutation row author-credit-goes-live-by-shape).
 func TestRenderLineCreditsByIdentityNotShape(t *testing.T) {
-	cfg := testCfg(t)
+	cfg := testutil.Config(t)
 	for _, tc := range []struct{ author, login, want string }{
 		{"Saleh", "larrasket", "- :bug:~ fix a thing (#1) @larrasket"},
 		{"Saleh", "", "- :bug:~ fix a thing (#1) Saleh"},
@@ -367,7 +355,7 @@ func TestRender(t *testing.T) {
 // release body — no error, no empty section, just a missing line in the notes
 // for the commit that decided the version.
 func TestGroupPromoteLandsInBreaking(t *testing.T) {
-	cfg := testCfg(t)
+	cfg := testutil.Config(t)
 	sections, err := Group([]Commit{
 		{SHA: "aaaaaaaaaaaa", Pull: 20, Author: "akira", Message: ":rocket:% call it 1.0"},
 	}, cfg)

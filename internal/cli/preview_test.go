@@ -166,7 +166,7 @@ func TestPreviewNotesOffByDefault(t *testing.T) {
 // shell. The walk resolves the squash commit to PR 3 and re-expands it, which
 // is also what makes the pending side squash-safe.
 func TestPreviewFoldsPendingOverPR(t *testing.T) {
-	dir, _ := testRepo(t) // tagged v0.1.0
+	dir, _ := testutil.NewTaggedRepo(t) // tagged v0.1.0
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
 	t.Chdir(dir)
 	head := strings.TrimSpace(testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
@@ -220,7 +220,7 @@ func TestPreviewFoldsPendingOverPR(t *testing.T) {
 // multi-commit PR whose stronger sigil came second — which is exactly the
 // order this test uses.
 func TestPreviewPRMultiCommitListing(t *testing.T) {
-	dir, _ := testRepo(t) // tagged v0.1.0, HEAD on the tag: the pending side is empty
+	dir, _ := testutil.NewTaggedRepo(t) // tagged v0.1.0, HEAD on the tag: the pending side is empty
 	t.Chdir(dir)
 
 	srv := walkServer(t, map[string]string{
@@ -316,7 +316,7 @@ func TestPreviewZeroVersionTagIsTagged(t *testing.T) {
 // the whole reason the prose lives in a tested package is that it makes claims
 // which must stay true wherever it is distributed.
 func TestPreviewIncompletePendingWalkSaysSoInTheBody(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	// A merge point GitHub has not indexed yet: the walk knows a pull is there,
 	// cannot resolve it, and comes back short by whatever it changed.
 	pending := squashCommit(t, dir, "Add a menu", 9)
@@ -387,7 +387,7 @@ func TestPreviewBareLineAsksForNoFile(t *testing.T) {
 		}
 	})
 	t.Run("tagged: the listing, then one walk", func(t *testing.T) {
-		dir, _ := testRepo(t)
+		dir, _ := testutil.NewTaggedRepo(t)
 		testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
 		head := strings.TrimSpace(testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
 		t.Chdir(dir)
@@ -450,7 +450,7 @@ func TestPreviewBareLineRendersTheScalarBody(t *testing.T) {
 		}
 	})
 	t.Run("tagged, with a pending side", func(t *testing.T) {
-		dir, _ := testRepo(t)
+		dir, _ := testutil.NewTaggedRepo(t)
 		testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
 		head := strings.TrimSpace(testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
 		t.Chdir(dir)
@@ -531,7 +531,7 @@ func TestPreviewReadsTheRepoItIsGiven(t *testing.T) {
 		setup func(t *testing.T) (dir string, routes map[string]string, want []string)
 	}{
 		{"bare line: the listing and the walk", func(t *testing.T) (string, map[string]string, []string) {
-			dir, _ := testRepo(t)
+			dir, _ := testutil.NewTaggedRepo(t)
 			testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
 			head := strings.TrimSpace(testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
 			routes := map[string]string{

@@ -59,15 +59,6 @@ func at(dir string) Walker {
 	return Walker{Git: gitsource.Checkout{Dir: dir}, Report: &recorder{}}
 }
 
-// testRepo is testutil's hermetic fixture plus a v0.1.0 tag on the root
-// commit, the shape the walk-base tests start from.
-func testRepo(t *testing.T) (dir, base string) {
-	t.Helper()
-	dir = testutil.NewRepo(t)
-	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.0")
-	return dir, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-}
-
 // fakePulls is the Pulls port answered from memory: the merged pull each
 // merge point resolves to and each pull's listing. A sha it was not told
 // about resolves to no pull, as GitHub answers for a direct push.

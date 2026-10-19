@@ -48,12 +48,12 @@ title = 'Fixes'
 
 const unlandableReason = "autosquash replaces the target message with this body; rebase with --autosquash before it lands"
 
-// unlandableRepo is testRepo carrying unlandableConfig, committed, with v1.0.0
-// tagged on that commit so a major reads as v2.0.0 rather than through the
-// 0.x clamp.
+// unlandableRepo is testutil.NewTaggedRepo carrying unlandableConfig,
+// committed, with v1.0.0 tagged on that commit so a major reads as v2.0.0
+// rather than through the 0.x clamp.
 func unlandableRepo(t *testing.T) (dir, base string) {
 	t.Helper()
-	dir, _ = testRepo(t)
+	dir, _ = testutil.NewTaggedRepo(t)
 	if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), []byte(unlandableConfig), 0o600); err != nil {
 		t.Fatalf("write glyph.toml: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestUnlandableAmendEndToEnd(t *testing.T) {
 // history it has not rewritten yet. With amend! skipped, this history folded
 // to v1.0.1 with lint green; the history autosquash writes folds to v2.0.0.
 func TestShippedPresetRefusesAnUnsquashedAmend(t *testing.T) {
-	dir, _ := testRepo(t)
+	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix b")
 	target := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
@@ -415,7 +415,7 @@ func TestShippedPresetRefusesAFixupAutosquashCannotFold(t *testing.T) {
 		}, "v0.1.1\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			dir, _ := testRepo(t)
+			dir, _ := testutil.NewTaggedRepo(t)
 			target, base := tc.cut(t, dir)
 			writeFile(t, dir, "x.txt", "finished\n")
 			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
