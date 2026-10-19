@@ -113,7 +113,7 @@ jobs:
 func useDoctorCheckout(t *testing.T, workflow string) {
 	t.Helper()
 	root := t.TempDir()
-	testGit(t, root, "akira-toriyama", "init", "-q", "-b", "main")
+	testutil.Git(t, root, "akira-toriyama", "init", "-q", "-b", "main")
 	dir := filepath.Join(root, ".github", "workflows")
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -443,7 +443,7 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 			t.Fatalf("install pre-push: %v", err)
 		}
 		stubGlyphOnPATH(t, 3)
-		testGit(t, ".", "akira-toriyama", "remote", "add", "origin", "https://example.invalid/o/r.git")
+		testutil.Git(t, ".", "akira-toriyama", "remote", "add", "origin", "https://example.invalid/o/r.git")
 
 		code, stdout, stderr := runGlyph(t, "doctor", "--json")
 		rep := decodeDoctorJSON(t, stdout)
@@ -456,7 +456,7 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 			t.Errorf("an unrecorded origin/HEAD must be advice naming origin and the fix, got %s: %s (fix %q)", c.Status, c.Observed, c.Fix)
 		}
 
-		testGit(t, ".", "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+		testutil.Git(t, ".", "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
 		_, stdout, _ = runGlyph(t, "doctor", "--json")
 		if c := checkByID(t, decodeDoctorJSON(t, stdout), "pre-push-hook"); c.Status != "pass" {
 			t.Errorf("with origin/HEAD recorded and the commit-msg probe fired, pre-push-hook = %s (%s), want pass", c.Status, c.Observed)
@@ -478,9 +478,9 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 			t.Fatalf("install pre-push: %v", err)
 		}
 		stubGlyphOnPATH(t, 3)
-		testGit(t, ".", "akira-toriyama", "remote", "add", "origin", "https://example.invalid/o/r.git")
-		testGit(t, ".", "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
-		testGit(t, ".", "akira-toriyama", "config", "remote.mirror..x.url", "https://example.invalid/o/mirror.git")
+		testutil.Git(t, ".", "akira-toriyama", "remote", "add", "origin", "https://example.invalid/o/r.git")
+		testutil.Git(t, ".", "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+		testutil.Git(t, ".", "akira-toriyama", "config", "remote.mirror..x.url", "https://example.invalid/o/mirror.git")
 
 		code, stdout, stderr := runGlyph(t, "doctor", "--json")
 		if code != 0 {
@@ -506,7 +506,7 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 			t.Fatalf("install pre-push: %v", err)
 		}
 		stubGlyphOnPATH(t, 3)
-		testGit(t, ".", "akira-toriyama", "config", "remote.my fork.url", "https://example.invalid/me/r.git")
+		testutil.Git(t, ".", "akira-toriyama", "config", "remote.my fork.url", "https://example.invalid/me/r.git")
 
 		code, stdout, stderr := runGlyph(t, "doctor", "--json")
 		if code != 0 {
@@ -1127,15 +1127,15 @@ func TestDoctorPinScanReadsEveryActionFileGitLists(t *testing.T) {
 	const moving = "runs:\n  using: composite\n  steps:\n    - uses: akira-toriyama/glyph/.github/actions/install@main\n"
 	sub := testutil.NewRepo(t)
 	writeFile(t, sub, "inst/action.yml", moving)
-	testGit(t, sub, "akira-toriyama", "add", "-A")
-	testGit(t, sub, "akira-toriyama", "commit", "-q", "-m", ":tada:= a shared composite")
+	testutil.Git(t, sub, "akira-toriyama", "add", "-A")
+	testutil.Git(t, sub, "akira-toriyama", "commit", "-q", "-m", ":tada:= a shared composite")
 
 	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 	useDoctorCheckout(t, pinnedCaller)
 	writeFile(t, ".", "tools/installer/action.yml", moving)
 	writeFile(t, ".", ".gitignore", "vendor/\n")
 	writeFile(t, ".", "vendor/dep/action.yml", moving)
-	testGit(t, ".", "akira-toriyama", "-c", "protocol.file.allow=always", "submodule", "--quiet", "add", sub, ".github/actions/shared")
+	testutil.Git(t, ".", "akira-toriyama", "-c", "protocol.file.allow=always", "submodule", "--quiet", "add", sub, ".github/actions/shared")
 
 	code, stdout, stderr := runGlyph(t, "doctor", "--json")
 	rep := decodeDoctorJSON(t, stdout)
@@ -1169,9 +1169,9 @@ func TestDoctorPackagePathsAgreeWithAttribution(t *testing.T) {
 	if err := os.Symlink("haiku", filepath.Join(dir, "currylink")); err != nil {
 		t.Fatal(err)
 	}
-	testGit(t, dir, "akira-toriyama", "add", ".")
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
-	base := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "add", ".")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
+	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
 	t.Chdir(dir)
 
@@ -1410,7 +1410,7 @@ func TestDoctorFindsAStaleInstalledHook(t *testing.T) {
 func TestDoctorHonoursCoreHooksPath(t *testing.T) {
 	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 	useDoctorCheckout(t, pinnedCaller)
-	testGit(t, ".", "akira-toriyama", "config", "core.hooksPath", "scripts/hooks")
+	testutil.Git(t, ".", "akira-toriyama", "config", "core.hooksPath", "scripts/hooks")
 	// The decoy sits where the naive implementation would look. It is CURRENT,
 	// so a doctor reading it reports a pass — the exact wrong answer.
 	writeHook(t, filepath.Join(".git", "hooks"), hook.Kinds()[0].Script)

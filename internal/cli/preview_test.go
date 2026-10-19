@@ -167,9 +167,9 @@ func TestPreviewNotesOffByDefault(t *testing.T) {
 // is also what makes the pending side squash-safe.
 func TestPreviewFoldsPendingOverPR(t *testing.T) {
 	dir, _ := testRepo(t) // tagged v0.1.0
-	testCommit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
 	t.Chdir(dir)
-	head := strings.TrimSpace(testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
+	head := strings.TrimSpace(testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
 
 	srv := walkServer(t, map[string]string{
 		// The PR under preview: a lone bug fix.
@@ -276,7 +276,7 @@ func TestPreviewRequiresPR(t *testing.T) {
 // asked of the tag name.
 func TestPreviewZeroVersionTagIsTagged(t *testing.T) {
 	dir := testutil.NewRepo(t)
-	testGit(t, dir, "akira-toriyama", "tag", "v0.0.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.0.0")
 	pending := squashCommit(t, dir, "Add a menu", 9)
 	t.Chdir(dir)
 
@@ -388,8 +388,8 @@ func TestPreviewBareLineAsksForNoFile(t *testing.T) {
 	})
 	t.Run("tagged: the listing, then one walk", func(t *testing.T) {
 		dir, _ := testRepo(t)
-		testCommit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
-		head := strings.TrimSpace(testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
+		testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
+		head := strings.TrimSpace(testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
 		t.Chdir(dir)
 		routes := map[string]string{
 			commitPullsPath(head):      `[` + apiPullRef(3, "2026-07-17T00:00:00Z", head) + `]`,
@@ -451,8 +451,8 @@ func TestPreviewBareLineRendersTheScalarBody(t *testing.T) {
 	})
 	t.Run("tagged, with a pending side", func(t *testing.T) {
 		dir, _ := testRepo(t)
-		testCommit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
-		head := strings.TrimSpace(testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
+		testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
+		head := strings.TrimSpace(testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
 		t.Chdir(dir)
 		usePR(t, walkServer(t, map[string]string{
 			pullCommitsPath(7):    `[` + apiCommit("bbb2222", "akira-toriyama", ":bug:~ fix a crash") + `]`,
@@ -483,8 +483,8 @@ func TestPreviewBareLineRendersTheScalarBody(t *testing.T) {
 func TestPreviewReleaseFloorWarningIsOneSentence(t *testing.T) {
 	bare := testutil.NewRepo(t)
 	lines, _ := packagesRepo(t)
-	testGit(t, lines, "akira-toriyama", "tag", "-d", "haiku/v0.1.0")
-	testGit(t, lines, "akira-toriyama", "tag", "-d", "curry/v0.1.0")
+	testutil.Git(t, lines, "akira-toriyama", "tag", "-d", "haiku/v0.1.0")
+	testutil.Git(t, lines, "akira-toriyama", "tag", "-d", "curry/v0.1.0")
 	sharedOnly := map[string]string{
 		pullCommitsPath(9):    `[` + apiCommit("s1", "akira-toriyama", ":memo:= document the lines") + `]`,
 		commitFilesPath("s1"): apiFiles("README.md"),
@@ -532,8 +532,8 @@ func TestPreviewReadsTheRepoItIsGiven(t *testing.T) {
 	}{
 		{"bare line: the listing and the walk", func(t *testing.T) (string, map[string]string, []string) {
 			dir, _ := testRepo(t)
-			testCommit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
-			head := strings.TrimSpace(testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
+			testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
+			head := strings.TrimSpace(testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
 			routes := map[string]string{
 				pullCommitsPath(9):    `[` + apiCommit("h1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 				commitPullsPath(head): `[` + apiPullRef(3, "2026-07-17T00:00:00Z", head) + `]`,

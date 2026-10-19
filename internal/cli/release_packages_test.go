@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // This file pins `glyph release` for a packages repository (DESIGN §4.1,
@@ -154,7 +155,7 @@ func TestReleasePackagesRealRunNoticeNamesTheTarget(t *testing.T) {
 	})
 	t.Run("no flag names the checkout's HEAD", func(t *testing.T) {
 		stderr := realRunStderr(t)
-		head := testGit(t, ".", "akira-toriyama", "rev-parse", "HEAD")
+		head := testutil.Git(t, ".", "akira-toriyama", "rev-parse", "HEAD")
 		for _, tag := range []string{"haiku/v0.2.0", "curry/v0.1.1"} {
 			if !strings.Contains(stderr, "draft release "+tag+" created at "+head+" ") {
 				t.Errorf("%s's notice must name the checkout's HEAD %s:\n%s", tag, head, stderr)
@@ -379,10 +380,10 @@ func packagesRepoWithRoot(t *testing.T) (dir, declared string) {
 	t.Helper()
 	dir, _ = packagesRepo(t)
 	appendTo(t, dir, "glyph.toml", "\n[[packages]]\npath = \".\"\nname = \"root\"\n")
-	testGit(t, dir, "akira-toriyama", "add", "glyph.toml")
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":wrench:(root)= declare the root line")
-	testGit(t, dir, "akira-toriyama", "tag", "v0.1.0")
-	return dir, testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "add", "glyph.toml")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":wrench:(root)= declare the root line")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.0")
+	return dir, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 }
 
 // TestReleasePackagesAllNoneExitsOne: every line none, no draft to write —
@@ -752,7 +753,7 @@ func TestReleasePackagesATagConvergesOneLineAlone(t *testing.T) {
 // line alone is converged.
 func TestReleasePackagesACandidateTagConvergesOneLineAlone(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.2.0-rc.1")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.2.0-rc.1")
 	_, routes := squashAcrossLines(t, dir, 7)
 	var writes []apiWrite
 	usePR(t, releaseServer(t, routes, `[`+draftJSON(91, "curry/v0.5.0")+`]`, &writes))
@@ -866,7 +867,7 @@ func TestReleasePackagesDraftOnNoneMaintainsAPlaceholderPerLine(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("release --json exited %d, want 1\nstderr: %s", code, stderr)
 	}
-	head := testGit(t, ".", "akira-toriyama", "rev-parse", "HEAD")
+	head := testutil.Git(t, ".", "akira-toriyama", "rev-parse", "HEAD")
 	if res := decodeReleaseLines(t, stdout); res.Target != head {
 		t.Fatalf("target = %q, want %s — the placeholders point at it: %s", res.Target, head, stdout)
 	}

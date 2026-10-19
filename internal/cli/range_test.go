@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/bump"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // TestFirstLine pins the contract bump.FirstLine's comment states and every
@@ -38,9 +39,9 @@ func TestFirstLine(t *testing.T) {
 // refusal (cli.walkRefusal) opens the same way, one shape at both gates.
 func TestBumpRangeReturnsEveryViolation(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", "no gitmoji one")
-	testCommit(t, dir, "akira-toriyama", ":bug:~ a fine commit rides along")
-	testCommit(t, dir, "akira-toriyama", "no gitmoji two")
+	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji one")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ a fine commit rides along")
+	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji two")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD", "--json")
@@ -80,7 +81,7 @@ func TestBumpRangeReturnsEveryViolation(t *testing.T) {
 // message NO pattern claims refuses the range.
 func TestBumpRangeStaysLenientAboutAuthoringRules(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug:~ Fix The Crash.")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ Fix The Crash.")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")

@@ -29,8 +29,8 @@ func TestConventionalPresetTakesTheVersionOnlyFromTheSigil(t *testing.T) {
 	if code, _, stderr := runGlyph(t, "init", "--conventional", "--force"); code != int(core.CodeOK) {
 		t.Fatalf("init --conventional --force exited %d\nstderr: %s", code, stderr)
 	}
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "-am", "chore=: adopt the conventional preset")
-	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-am", "chore=: adopt the conventional preset")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
 
 	if code, _, stderr := runGlyph(t, "lint", "--message", "feat^: add x"); code != int(core.CodeOK) {
 		t.Fatalf("lint --message %q exited %d, want 0 — the conventional grammar is not the one loaded\nstderr: %s", "feat^: add x", code, stderr)
@@ -58,7 +58,7 @@ func TestConventionalPresetTakesTheVersionOnlyFromTheSigil(t *testing.T) {
 			t.Errorf("lint --stdin %q = %d, want 3 — the commit-msg hook refuses it\nstderr: %s", sigilless, code, stderr)
 		}
 
-		testCommit(t, dir, "akira-toriyama", sigilless)
+		testutil.Commit(t, dir, "akira-toriyama", sigilless)
 		if code, _, stderr := runGlyph(t, "lint", "--range", "v1.0.0..HEAD"); code != int(core.CodeLint) {
 			t.Errorf("lint --range = %d, want 3\nstderr: %s", code, stderr)
 		}
@@ -68,8 +68,8 @@ func TestConventionalPresetTakesTheVersionOnlyFromTheSigil(t *testing.T) {
 	})
 
 	t.Run("a BREAKING CHANGE footer moves nothing", func(t *testing.T) {
-		testGit(t, dir, "akira-toriyama", "reset", "-q", "--hard", "v1.0.0")
-		testCommit(t, dir, "akira-toriyama", "fix~: repair y\n\nBREAKING CHANGE: y is gone")
+		testutil.Git(t, dir, "akira-toriyama", "reset", "-q", "--hard", "v1.0.0")
+		testutil.Commit(t, dir, "akira-toriyama", "fix~: repair y\n\nBREAKING CHANGE: y is gone")
 		if code, _, stderr := runGlyph(t, "lint", "--range", "v1.0.0..HEAD"); code != int(core.CodeOK) {
 			t.Errorf("lint --range = %d, want 0\nstderr: %s", code, stderr)
 		}

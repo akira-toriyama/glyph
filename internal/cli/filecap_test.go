@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/github"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // This file pins what a file listing GitHub did not give whole — capped,
@@ -61,7 +62,7 @@ func TestReleasePackagesCappedRefusalIsNotTheGateCode(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, _ := packagesRepo(t)
 			routes := cappedPull(t, dir, tc.message, tc.files)
-			merge := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			merge := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 			usePR(t, dryServer(t, routes))
 			t.Chdir(dir)
 

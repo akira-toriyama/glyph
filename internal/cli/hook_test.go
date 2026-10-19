@@ -41,7 +41,7 @@ func TestHookInstallWritesIntoTheGitHooksDir(t *testing.T) {
 // hook written to .git/hooks there is one git never runs.
 func TestHookInstallHonoursCoreHooksPath(t *testing.T) {
 	dir, _ := testRepo(t)
-	testGit(t, dir, "akira-toriyama", "config", "core.hooksPath", "scripts/hooks")
+	testutil.Git(t, dir, "akira-toriyama", "config", "core.hooksPath", "scripts/hooks")
 	t.Chdir(dir)
 
 	if code, _, stderr := runGlyph(t, "hook", "install"); code != int(core.CodeOK) {
@@ -177,7 +177,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 	// the first cut of this hook did not, and blocked `git commit --fixup` and
 	// `git merge` fleet-wide.
 	t.Run("does not block git-generated subjects", func(t *testing.T) {
-		head := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 		// git's three autosquash subjects pass — loudly. None may be skipped:
 		// autosquash replaces an amend!'s target message with its body, so a
@@ -193,14 +193,14 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 			if !strings.Contains(out, "marks this message unlandable") || !strings.Contains(out, "every gate that judges an existing commit refuses it") {
 				t.Errorf("the hook passed git's %s subject silently; it must say the later gates refuse it:\n%s", flag, out)
 			}
-			if got := testGit(t, dir, "akira-toriyama", "log", "-1", "--format=%s"); !strings.HasPrefix(got, prefix) {
+			if got := testutil.Git(t, dir, "akira-toriyama", "log", "-1", "--format=%s"); !strings.HasPrefix(got, prefix) {
 				t.Fatalf("git recorded %q, want git's %s subject", got, prefix)
 			}
 		}
 
 		t.Run("fixup", func(t *testing.T) {
 			appendFile(t, dir, "fixup.txt")
-			testGit(t, dir, "akira-toriyama", "add", "-A")
+			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 			out, err := commitFlagsWith(dir, pathWithGlyph, "--fixup="+head)
 			if err != nil {
 				t.Fatalf("git commit --fixup was blocked by the hook: %v\n%s", err, out)
@@ -210,7 +210,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 
 		t.Run("squash", func(t *testing.T) {
 			appendFile(t, dir, "squash.txt")
-			testGit(t, dir, "akira-toriyama", "add", "-A")
+			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 			out, err := commitFlagsWith(dir, pathWithGlyph, "--squash="+head)
 			if err != nil {
 				t.Fatalf("git commit --squash was blocked by the hook: %v\n%s", err, out)
@@ -220,7 +220,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 
 		t.Run("amend", func(t *testing.T) {
 			appendFile(t, dir, "amend.txt")
-			testGit(t, dir, "akira-toriyama", "add", "-A")
+			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 			out, err := commitFlagsWith(dir, pathWithGlyph, "--fixup=amend:"+head)
 			if err != nil {
 				t.Fatalf("git commit --fixup=amend: was blocked by the hook: %v\n%s", err, out)
@@ -245,7 +245,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 		// hook is the only gate that still sees the commit before it becomes
 		// that.
 		t.Run("amend of a fixup! is refused", func(t *testing.T) {
-			fixup := testGit(t, dir, "akira-toriyama", "log", "-1", "--format=%H", "--grep=^fixup! ")
+			fixup := testutil.Git(t, dir, "akira-toriyama", "log", "-1", "--format=%H", "--grep=^fixup! ")
 			if fixup == "" {
 				t.Fatal("the fixup subtest left no fixup! commit to amend")
 			}
@@ -262,11 +262,11 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 		// written MERGE_HEAD, and the follow-up `git commit` runs the same hook
 		// on MERGE_MSG, so the repository cannot be brought out of the merge.
 		t.Run("merge", func(t *testing.T) {
-			testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic")
+			testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic")
 			appendFile(t, dir, "topic.txt")
-			testGit(t, dir, "akira-toriyama", "add", "-A")
-			testCommit(t, dir, "akira-toriyama", ":sparkles:^ land the topic")
-			testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
+			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
+			testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ land the topic")
+			testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "main")
 
 			out, err := mergeWith(dir, pathWithGlyph, "topic")
 			if err != nil {
@@ -289,7 +289,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 				"# Please enter the commit message for your changes. Lines starting\n" +
 				"# with '#' will be ignored, and an empty message aborts the commit.\n"
 			appendFile(t, dir, "template.txt")
-			testGit(t, dir, "akira-toriyama", "add", "-A")
+			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 			if out, err := commitFileWith(t, dir, pathWithGlyph, msg); err != nil {
 				t.Fatalf("a valid message under git's template was rejected: %v\n%s", err, out)
 			}
@@ -298,11 +298,11 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 		t.Run("a violation under the template is still caught", func(t *testing.T) {
 			msg := "\nno gitmoji at all\n\n# Please enter the commit message for your changes.\n"
 			appendFile(t, dir, "bad.txt")
-			testGit(t, dir, "akira-toriyama", "add", "-A")
+			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 			if _, err := commitFileWith(t, dir, pathWithGlyph, msg); err == nil {
 				t.Fatal("cleanup swallowed a real violation — the template path must still lint")
 			}
-			testGit(t, dir, "akira-toriyama", "reset", "-q")
+			testutil.Git(t, dir, "akira-toriyama", "reset", "-q")
 		})
 	})
 }
@@ -335,7 +335,7 @@ func commitFileWith(t *testing.T, dir, path, message string) (string, error) {
 	return runGit(dir, path, "commit", "-q", "-F", f)
 }
 
-// runGit differs from testGit in contract, not fixture: the hook tests assert
+// runGit differs from testutil.Git in contract, not fixture: the hook tests assert
 // on git FAILING (the hook blocking a commit), so the error comes back instead
 // of failing the test, and PATH is overridden so the hook resolves the glyph
 // binary the test built.

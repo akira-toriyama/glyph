@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 	"github.com/akira-toriyama/glyph/v5/internal/walk"
 )
 
@@ -32,14 +33,14 @@ func rangeSource(revRange string) source {
 // keep their sha beside the pull, which a `notes --pr` body cites both of.
 func TestReadSourceAnswersOneLineWithoutPackages(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
-	head := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
+	head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	usePR(t, walkServer(t, map[string]string{
 		commitPullsPath(head): `[]`,
 		pullCommitsPath(7):    `[` + apiCommit("a1b2c3d4", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 	}))
 	t.Chdir(dir)
-	cfg := testCfg(t)
+	cfg := testutil.Config(t)
 	ctx := context.Background()
 
 	for _, tc := range []struct {
@@ -109,7 +110,7 @@ func TestReadSourceRefusesAPullUnderPackages(t *testing.T) {
 // the step as a field, not as package state a cobra run has to set first.
 func TestBumpRunsFromOptionsWithoutCobra(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
 	t.Chdir(dir)
 	stdout, stderr, restore := captureOut()
 	defer restore()
@@ -128,7 +129,7 @@ func TestBumpRunsFromOptionsWithoutCobra(t *testing.T) {
 // function — the body renders from the options alone.
 func TestNotesRunsFromOptionsWithoutCobra(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
 	t.Chdir(dir)
 	stdout, stderr, restore := captureOut()
 	defer restore()

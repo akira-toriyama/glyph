@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // This file pins the wedge (DESIGN §4; internal/walk/refusal.go): a walked
@@ -109,14 +111,14 @@ func TestSinceTagDirectPushUnmatchedNamesTheWedge(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir, _ := testRepo(t)
-			testCommit(t, dir, "akira-toriyama", message)
-			bad := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-			testCommit(t, dir, "akira-toriyama", ":bug:~ a fix between, pushed directly")
-			mid := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-			testCommit(t, dir, "akira-toriyama", "another subject no pattern claims")
-			bad2 := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-			testCommit(t, dir, "akira-toriyama", ":bug:~ a later fix, also pushed directly")
-			later := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			testutil.Commit(t, dir, "akira-toriyama", message)
+			bad := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			testutil.Commit(t, dir, "akira-toriyama", ":bug:~ a fix between, pushed directly")
+			mid := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			testutil.Commit(t, dir, "akira-toriyama", "another subject no pattern claims")
+			bad2 := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			testutil.Commit(t, dir, "akira-toriyama", ":bug:~ a later fix, also pushed directly")
+			later := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 			srv := walkServer(t, map[string]string{
 				commitPullsPath(bad):   `[]`,
 				commitPullsPath(mid):   `[]`,
@@ -151,11 +153,11 @@ func TestSinceTagDirectPushUnmatchedNamesTheWedge(t *testing.T) {
 			// The escapes open: a base at or past every one of them walks
 			// only the later commit. A base at the FIRST alone still wedges
 			// on the second, whose escape the sentence also named.
-			testGit(t, dir, "akira-toriyama", "tag", "v0.2.0", bad)
+			testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0", bad)
 			if code, _, stderr := runGlyph(t, "bump", "--since-tag=v0.2.0"); code != 3 || !strings.Contains(stderr, "AT OR PAST "+bad2[:7]) {
 				t.Fatalf("bump --since-tag=v0.2.0 = exit %d, want 3 naming the second commit\nstderr: %s", code, stderr)
 			}
-			testGit(t, dir, "akira-toriyama", "tag", "v0.3.0", bad2)
+			testutil.Git(t, dir, "akira-toriyama", "tag", "v0.3.0", bad2)
 			code, stdout, stderr = runGlyph(t, "bump", "--since-tag=v0.3.0")
 			if code != 0 || stdout != "v0.3.1\n" {
 				t.Fatalf("bump --since-tag=v0.3.0 = exit %d stdout %q, want 0 / v0.3.1 (the escape must open)\nstderr: %s", code, stdout, stderr)
@@ -203,7 +205,7 @@ func TestSinceTagRefusedCommitIsCountedOnce(t *testing.T) {
 	if strings.Contains(stderr, "counted once") {
 		t.Errorf("a refused commit was announced as counted:\n%s", stderr)
 	}
-	testGit(t, dir, "akira-toriyama", "tag", "v0.2.0", sha2)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0", sha2)
 	if code, _, stderr := runGlyph(t, "bump", "--since-tag=v0.2.0"); code != 1 {
 		t.Fatalf("a base at the last escape still exited %d, want 1 (nothing left to walk)\nstderr: %s", code, stderr)
 	}
@@ -217,8 +219,8 @@ func TestSinceTagRefusedCommitIsCountedOnce(t *testing.T) {
 func TestSinceTagRefusedPullCommitMetAgainOnTheBranch(t *testing.T) {
 	dir, _ := testRepo(t)
 	squash := squashCommit(t, dir, "Add a menu", 9)
-	testCommit(t, dir, "akira-toriyama", "no gitmoji leads this subject")
-	bad := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji leads this subject")
+	bad := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(squash): `[` + apiPullRef(9, "2026-07-12T00:00:00Z", squash) + `]`,
 		pullCommitsPath(9):      `[` + apiCommit(bad, "akira-toriyama", "no gitmoji leads this subject") + `]`,
@@ -248,8 +250,8 @@ func TestSinceTagRefusedPullCommitMetAgainOnTheBranch(t *testing.T) {
 // operator must act on behind a failure that clears on retry.
 func TestSinceTagRefusalOutranksALaterAPIFailure(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", "no gitmoji leads this subject")
-	bad := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji leads this subject")
+	bad := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	sha := squashCommit(t, dir, "Add a menu", 7)
 	pullRef := `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha) + `]`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -295,8 +297,8 @@ func TestSinceTagRefusalOutranksALaterAPIFailure(t *testing.T) {
 // arm stays soft (TestSinceTagAllCommitsUnknownWarnsAboutTheRepo).
 func TestNotesSinceTagDirectPushUnclaimedIsTheWedge(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", "no gitmoji leads this subject")
-	bad := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji leads this subject")
+	bad := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{commitPullsPath(bad): `[]`})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -330,9 +332,9 @@ func TestSinceTagWedgeEscapeIsTheOffendingCommit(t *testing.T) {
 	mp := mergePR(t, dir, "akira-toriyama", 7, "no gitmoji leads this subject", ":bug:(ui)~ polish the menu")
 	bad, good := mp.Branch[0], mp.Branch[1]
 	later := squashCommit(t, dir, "Fix a crash", 8)
-	testGit(t, dir, "akira-toriyama", "tag", "v0.2.0", bad)
-	testGit(t, dir, "akira-toriyama", "tag", "v0.3.0", good)
-	testGit(t, dir, "akira-toriyama", "tag", "v0.4.0", mp.Merge)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0", bad)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.3.0", good)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.4.0", mp.Merge)
 	pr7 := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`
 	routes := map[string]string{
 		commitPullsPath(bad):      pr7,

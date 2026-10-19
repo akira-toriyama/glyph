@@ -57,9 +57,9 @@ func unlandableRepo(t *testing.T) (dir, base string) {
 	if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), []byte(unlandableConfig), 0o600); err != nil {
 		t.Fatalf("write glyph.toml: %v", err)
 	}
-	testGit(t, dir, "akira-toriyama", "add", "glyph.toml")
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":wrench:= claim amend! as unlandable")
-	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	testutil.Git(t, dir, "akira-toriyama", "add", "glyph.toml")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":wrench:= claim amend! as unlandable")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
 	return dir, "v1.0.0"
 }
 
@@ -102,9 +102,9 @@ func TestLintAuthoringPassesUnlandableWithAWarning(t *testing.T) {
 // did claim.
 func TestLintRangeRefusesUnlandable(t *testing.T) {
 	dir, base := unlandableRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix b")
-	testCommit(t, dir, "akira-toriyama", "amend! :bug:~ fix b\n\n:boom:! fix b")
-	testCommit(t, dir, "dependabot[bot]", "amend! Bump x")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix b")
+	testutil.Commit(t, dir, "akira-toriyama", "amend! :bug:~ fix b\n\n:boom:! fix b")
+	testutil.Commit(t, dir, "dependabot[bot]", "amend! Bump x")
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
@@ -164,13 +164,13 @@ func TestUnlandableAmendEndToEnd(t *testing.T) {
 	pathWithGlyph := filepath.Dir(glyphBin) + string(os.PathListSeparator) + os.Getenv("PATH")
 
 	appendFile(t, dir, "b.txt")
-	testGit(t, dir, "akira-toriyama", "add", "-A")
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix b")
-	target := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "add", "-A")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix b")
+	target := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	t.Run("the hook lets --fixup=amend: through, loudly", func(t *testing.T) {
 		appendFile(t, dir, "b2.txt")
-		testGit(t, dir, "akira-toriyama", "add", "-A")
+		testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 		out, err := commitFlagsWith(dir, pathWithGlyph, "--fixup=amend:"+target)
 		if err != nil {
 			t.Fatalf("git commit --fixup=amend: was blocked by the hook: %v\n%s", err, out)
@@ -198,7 +198,7 @@ func TestUnlandableAmendEndToEnd(t *testing.T) {
 		if !strings.Contains(string(out), unlandableReason) {
 			t.Errorf("the hook passed the amend! silently:\n%s", out)
 		}
-		if got := testGit(t, dir, "akira-toriyama", "log", "-1", "--format=%B"); got != "amend! :bug:~ fix b\n\n:boom:! fix b" {
+		if got := testutil.Git(t, dir, "akira-toriyama", "log", "-1", "--format=%B"); got != "amend! :bug:~ fix b\n\n:boom:! fix b" {
 			t.Fatalf("git recorded %q, want git's amend! subject over the reworded body", got)
 		}
 	})
@@ -224,7 +224,7 @@ func TestUnlandableAmendEndToEnd(t *testing.T) {
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git rebase --autosquash: %v\n%s", err, out)
 		}
-		if got := testGit(t, dir, "akira-toriyama", "log", "--format=%s", base+"..HEAD"); got != ":boom:! fix b" {
+		if got := testutil.Git(t, dir, "akira-toriyama", "log", "--format=%s", base+"..HEAD"); got != ":boom:! fix b" {
 			t.Fatalf("autosquash left %q, want the one commit carrying the reworded message", got)
 		}
 		code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")
@@ -241,9 +241,9 @@ func TestUnlandableAmendEndToEnd(t *testing.T) {
 // to v1.0.1 with lint green; the history autosquash writes folds to v2.0.0.
 func TestShippedPresetRefusesAnUnsquashedAmend(t *testing.T) {
 	dir, _ := testRepo(t)
-	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0")
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix b")
-	target := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix b")
+	target := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	editor := filepath.Join(t.TempDir(), "reword-editor")
 	script := "#!/bin/sh\n{ head -n1 \"$1\"; printf '\\n:boom:! fix b\\n'; } > \"$1.new\" && mv \"$1.new\" \"$1\"\n"
@@ -282,7 +282,7 @@ func TestShippedPresetRefusesAnUnsquashedAmend(t *testing.T) {
 // answers on that history are what the failure shows.
 func autosquashClaim(t *testing.T) string {
 	t.Helper()
-	m, err := testCfg(t).Match("fixup! :sparkles:^ add a season")
+	m, err := testutil.Config(t).Match("fixup! :sparkles:^ add a season")
 	if err != nil || m.Matched || m.Unlandable == "" {
 		t.Errorf("the gemoji preset reads a fixup! as %+v (err %v), want an unlandable claim", m, err)
 	}
@@ -316,7 +316,7 @@ func TestPackagesFixupIsUnlandableEndToEnd(t *testing.T) {
 	} {
 		t.Run("the hook lets "+strings.SplitN(tc.flag, "=", 2)[0]+" through, loudly", func(t *testing.T) {
 			writeFile(t, dir, tc.file, tc.flag+"\n")
-			testGit(t, dir, "akira-toriyama", "add", "-A")
+			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 			out, err := commitFlagsWith(dir, pathWithGlyph, tc.flag)
 			if err != nil {
 				t.Fatalf("git commit %s was blocked by the hook: %v\n%s", tc.flag, err, out)
@@ -362,7 +362,7 @@ func TestPackagesFixupIsUnlandableEndToEnd(t *testing.T) {
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git rebase --autosquash: %v\n%s", err, out)
 		}
-		if got := testGit(t, dir, "akira-toriyama", "log", "--format=%s", base+"..HEAD"); got != ":sparkles:^ add a season" {
+		if got := testutil.Git(t, dir, "akira-toriyama", "log", "--format=%s", base+"..HEAD"); got != ":sparkles:^ add a season" {
 			t.Fatalf("autosquash left %q, want the target alone", got)
 		}
 		if code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD"); code != int(core.CodeOK) {
@@ -404,13 +404,13 @@ func TestShippedPresetRefusesAFixupAutosquashCannotFold(t *testing.T) {
 	}{
 		{"released", func(t *testing.T, dir string) (string, string) {
 			target := touch(t, dir, "akira-toriyama", ":sparkles:^ add x", "x.txt")
-			testGit(t, dir, "akira-toriyama", "tag", "v0.2.0")
+			testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0")
 			return target, "v0.2.0"
 		}, "v0.2.1\n"},
 		{"stacked", func(t *testing.T, dir string) (string, string) {
-			testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "p1")
+			testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "p1")
 			target := touch(t, dir, "akira-toriyama", ":sparkles:^ add x", "x.txt")
-			testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "p2")
+			testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "p2")
 			return target, "p1"
 		}, "v0.1.1\n"},
 	} {
@@ -418,8 +418,8 @@ func TestShippedPresetRefusesAFixupAutosquashCannotFold(t *testing.T) {
 			dir, _ := testRepo(t)
 			target, base := tc.cut(t, dir)
 			writeFile(t, dir, "x.txt", "finished\n")
-			testGit(t, dir, "akira-toriyama", "add", "-A")
-			testGit(t, dir, "akira-toriyama", "commit", "-q", "--fixup="+target)
+			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
+			testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--fixup="+target)
 			t.Chdir(dir)
 			claim := autosquashClaim(t)
 			rng := base + "..HEAD"
@@ -429,7 +429,7 @@ func TestShippedPresetRefusesAFixupAutosquashCannotFold(t *testing.T) {
 			if out, err := rebase.CombinedOutput(); err != nil {
 				t.Fatalf("git rebase --autosquash: %v\n%s", err, out)
 			}
-			if got := testGit(t, dir, "akira-toriyama", "log", "--format=%s", rng); got != "fixup! :sparkles:^ add x" {
+			if got := testutil.Git(t, dir, "akira-toriyama", "log", "--format=%s", rng); got != "fixup! :sparkles:^ add x" {
 				t.Fatalf("autosquash left %q, want the fixup! untouched: its target is behind the rebase base", got)
 			}
 
@@ -440,7 +440,7 @@ func TestShippedPresetRefusesAFixupAutosquashCannotFold(t *testing.T) {
 				t.Errorf("bump --range = %d %q, want 3 and no version — \"no release\" is the skip's answer\nstderr: %s", code, stdout, stderr)
 			}
 
-			testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", ":bug:~ finish x")
+			testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", ":bug:~ finish x")
 			if code, _, stderr := runGlyph(t, "lint", "--range", rng); code != int(core.CodeOK) {
 				t.Errorf("after the reword lint --range = %d, want 0\nstderr: %s", code, stderr)
 			}

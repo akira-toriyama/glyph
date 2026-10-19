@@ -9,6 +9,7 @@ import (
 
 	"github.com/akira-toriyama/glyph/v5/internal/github"
 	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // The two tests below go straight at mainFootprint rather than through a walk,
@@ -39,8 +40,8 @@ import (
 // the honest fixture for the shape.
 func TestMainFootprintSurvivesAListingLongerThanMain(t *testing.T) {
 	dir, _ := testRepo(t) // root commit ":tada:= begin the project"
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
-	canonical := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
+	canonical := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	// Three listed commits against a two-commit main, oldest first — the order
 	// FirstParentLog returns. The SHAs are well-formed and absent from this
@@ -128,31 +129,31 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, file), []byte(message+"\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			testGit(t, dir, "akira-toriyama", "add", "-A")
+			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 		}
-		testGit(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty",
+		testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty",
 			"--date", fmt.Sprintf("2026-01-01T00:00:%02dZ", seq), "-m", message)
-		return testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		return testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	}
 
 	t.Run("the original lands later through another pull", func(t *testing.T) {
 		dir, _ := testRepo(t)
 		// The pull's two commits, pre-rebase, still on their branch.
-		testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-2")
+		testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-2")
 		b1 := commit(t, dir, "fix.txt", ":bug:(ui)~ fix the menu")
 		b2 := commit(t, dir, "speed.txt", ":zap:(ui)~ speed up the menu")
 		// The rebase-merge replayed both onto main; GitHub names the last
 		// replayed commit as merge_commit_sha, and the listing keeps b1 and b2.
-		testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
+		testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "main")
 		commit(t, dir, "fix.txt", ":bug:(ui)~ fix the menu")                     // b1'
 		canonical := commit(t, dir, "speed.txt", ":zap:(ui)~ speed up the menu") // b2'
 		// A later pull branches from the ORIGINAL b1 and lands through the
 		// merge button — now b1 itself is an ancestor of HEAD, and the same
 		// change sits on main twice: as b1 (that pull) and as b1' (this one).
-		testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-3", b1)
+		testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-3", b1)
 		commit(t, dir, "mention.txt", ":memo:= mention the menu")
-		testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
-		testGit(t, dir, "akira-toriyama", "merge", "-q", "--no-ff",
+		testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "main")
+		testutil.Git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff",
 			"-m", "Merge pull request #3 from akira-toriyama/topic-3", "topic-3")
 
 		landed, err := at(dir).mainFootprint(t.Context(), canonical, []gitsource.RawCommit{
@@ -175,19 +176,19 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 
 	t.Run("the original and everything under it land later", func(t *testing.T) {
 		dir, _ := testRepo(t)
-		testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-2")
+		testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-2")
 		b1 := commit(t, dir, "fix.txt", ":bug:(ui)~ fix the menu")
 		b2 := commit(t, dir, "speed.txt", ":zap:(ui)~ speed up the menu")
-		testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
+		testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "main")
 		commit(t, dir, "fix.txt", ":bug:(ui)~ fix the menu")                     // b1'
 		canonical := commit(t, dir, "speed.txt", ":zap:(ui)~ speed up the menu") // b2'
 		// The later pull branches from b2, the LAST listed commit — and a
 		// branch carries its ancestry, so landing it lands b1 as well. Step 1
 		// places the whole listing and the rebase run plays no part.
-		testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-3", b2)
+		testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-3", b2)
 		commit(t, dir, "mention.txt", ":memo:= mention the menu")
-		testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
-		testGit(t, dir, "akira-toriyama", "merge", "-q", "--no-ff",
+		testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "main")
+		testutil.Git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff",
 			"-m", "Merge pull request #3 from akira-toriyama/topic-3", "topic-3")
 
 		landed, err := at(dir).mainFootprint(t.Context(), canonical, []gitsource.RawCommit{
@@ -210,14 +211,14 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 		// The change is on main FIRST — and shipped. The tag is why the answer
 		// matters: C under v0.2.0 and a copy in range would straddle the base.
 		C := commit(t, dir, "shared.txt", ":bug:(core)~ fix the hotfix")
-		testGit(t, dir, "akira-toriyama", "tag", "v0.2.0")
+		testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0")
 		// The branch cherry-picked the same patch under its own sha, added one
 		// commit of its own, and was rebase-merged: the rebase found c's patch
 		// already upstream, dropped it, and replayed only d.
-		testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-2", root)
+		testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic-2", root)
 		c := commit(t, dir, "shared.txt", ":bug:(core)~ fix the hotfix")
 		d := commit(t, dir, "add.txt", ":sparkles:(core)^ add a thing")
-		testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
+		testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "main")
 		canonical := commit(t, dir, "add.txt", ":sparkles:(core)^ add a thing") // d'
 
 		landed, err := at(dir).mainFootprint(t.Context(), canonical, []gitsource.RawCommit{
@@ -253,7 +254,7 @@ func TestFallbackLagStaysSoftWhereADirectPushWedges(t *testing.T) {
 	raw := gitsource.RawCommit{SHA: "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", Author: "akira-toriyama", Message: "wip"}
 	begin := func() (*walk, *recorder) {
 		rep := &recorder{}
-		return newWalk(Walker{Report: rep}, testCfg(t), "akira-toriyama", "glyph", "v0.1.0..HEAD", []gitsource.RawCommit{raw}, false), rep
+		return newWalk(Walker{Report: rep}, testutil.Config(t), "akira-toriyama", "glyph", "v0.1.0..HEAD", []gitsource.RawCommit{raw}, false), rep
 	}
 
 	lagged, rep := begin()
@@ -311,7 +312,7 @@ func TestReconcileNamesACoveredPullNothingExpanded(t *testing.T) {
 		inner8: {{Number: 8, MergedAt: "2026-10-01T00:00:00Z", MergeCommitSHA: elsewhere}},
 	}}
 	rep := &recorder{}
-	wk := newWalk(Walker{Pulls: pulls, Report: rep}, testCfg(t), "akira-toriyama", "glyph", "v0.1.0..HEAD", raws, false)
+	wk := newWalk(Walker{Pulls: pulls, Report: rep}, testutil.Config(t), "akira-toriyama", "glyph", "v0.1.0..HEAD", raws, false)
 	for _, raw := range raws {
 		if err := wk.visit(t.Context(), raw); err != nil {
 			t.Fatalf("visit %.7s: %v", raw.SHA, err)

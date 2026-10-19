@@ -61,7 +61,7 @@ func releaseDryRunJSON(t *testing.T, wantCode int, args ...string) releaseVerdic
 // HEAD, the commit the walk read up to.
 func TestNotesSinceTagEndsWithTheCompareLink(t *testing.T) {
 	usePR(t, dryServer(t, oneFixWalk(t)))
-	head := testGit(t, ".", "akira-toriyama", "rev-parse", "HEAD")
+	head := testutil.Git(t, ".", "akira-toriyama", "rev-parse", "HEAD")
 	want := "## Fixes\n\n- :bug:~ fix a crash (#8) @akira-toriyama\n\n" + compareLine("v0.1.0", head)
 
 	check := func(args ...string) {
@@ -76,7 +76,7 @@ func TestNotesSinceTagEndsWithTheCompareLink(t *testing.T) {
 	}
 	check("--since-tag")
 	check("--since-tag=v0.1.0")
-	testGit(t, ".", "akira-toriyama", "tag", "v0.1.1")
+	testutil.Git(t, ".", "akira-toriyama", "tag", "v0.1.1")
 	check("--since-tag=below:v0.1.1")
 }
 
@@ -94,8 +94,8 @@ func TestNotesSinceTagEndsWithTheCompareLink(t *testing.T) {
 // mutation row walk-ignores-the-repo-flag).
 func TestNotesCompareLinkCitesTheRepoFlag(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
-	head := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	for _, tc := range []struct{ flag, repo string }{
 		{"", "akira-toriyama/glyph"},
@@ -161,7 +161,7 @@ func TestReleaseBodyClosesTheNotesWithTheCompareLink(t *testing.T) {
 // Both commands that render the link.
 func TestCompareLinkKeepsTheBaseTagsSpelling(t *testing.T) {
 	dir := testutil.NewRepo(t)
-	testGit(t, dir, "akira-toriyama", "tag", "1.0.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "1.0.0")
 	sha := squashCommit(t, dir, "Fix a crash", 8)
 	t.Chdir(dir)
 	usePR(t, dryServer(t, map[string]string{
@@ -202,7 +202,7 @@ func TestCompareLinkNeedsATagBase(t *testing.T) {
 
 	t.Run("a whole-history walk", func(t *testing.T) {
 		dir := testutil.NewRepo(t)
-		root := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 		sha := squashCommit(t, dir, "Fix a crash", 8)
 		t.Chdir(dir)
 		usePR(t, dryServer(t, map[string]string{
@@ -218,7 +218,7 @@ func TestCompareLinkNeedsATagBase(t *testing.T) {
 		assertNoLink(t, "notes over the whole history", stdout)
 		assertNoLink(t, "release over the whole history", releaseDryRunJSON(t, 0, "--target", goldenTarget).Body)
 
-		testGit(t, dir, "akira-toriyama", "tag", "v0.1.0", root)
+		testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.0", root)
 		if _, stdout, _ := runGlyph(t, "notes", "--since-tag"); !strings.HasSuffix(stdout, compareLine("v0.1.0", sha)) {
 			t.Errorf("positive control: tagged at the root, notes must close with the link:\n%s", stdout)
 		}
@@ -229,9 +229,9 @@ func TestCompareLinkNeedsATagBase(t *testing.T) {
 
 	t.Run("an explicit base that is no tag", func(t *testing.T) {
 		usePR(t, dryServer(t, oneFixWalk(t)))
-		head := testGit(t, ".", "akira-toriyama", "rev-parse", "HEAD")
-		base := testGit(t, ".", "akira-toriyama", "rev-parse", "v0.1.0")
-		testGit(t, ".", "akira-toriyama", "branch", "old-main", base)
+		head := testutil.Git(t, ".", "akira-toriyama", "rev-parse", "HEAD")
+		base := testutil.Git(t, ".", "akira-toriyama", "rev-parse", "v0.1.0")
+		testutil.Git(t, ".", "akira-toriyama", "branch", "old-main", base)
 
 		for _, from := range []string{"old-main", base} {
 			code, stdout, stderr := runGlyph(t, "notes", "--since-tag="+from)
@@ -248,7 +248,7 @@ func TestCompareLinkNeedsATagBase(t *testing.T) {
 
 	t.Run("notes --range", func(t *testing.T) {
 		dir, base := testRepo(t)
-		testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+		testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 		t.Chdir(dir)
 
 		code, stdout, stderr := runGlyph(t, "notes", "--range", "v0.1.0..HEAD")
@@ -345,7 +345,7 @@ func TestCompareLinkNeedsNotes(t *testing.T) {
 			t.Errorf("the placeholder over an empty fold = tag %q body %q, want Unreleased carrying the marker alone", v.Tag, v.Body)
 		}
 
-		testCommit(t, ".", "dependabot[bot]", "Bump a dep from 1 to 2")
+		testutil.Commit(t, ".", "dependabot[bot]", "Bump a dep from 1 to 2")
 		v := releaseDryRunJSON(t, 1, "--target", goldenTarget)
 		if v.Tag != "Unreleased" || !strings.Contains(v.Body, "Bump a dep from 1 to 2") || !strings.HasSuffix(v.Body, "\n\n"+compareLine("v0.1.0", goldenTarget)) {
 			t.Errorf("positive control: a placeholder with notes must close them with the link, got tag %q:\n%s", v.Tag, v.Body)
@@ -376,8 +376,8 @@ func TestCompareLinkNeedsNotes(t *testing.T) {
 		// Staged by path: touch's `add -A` would commit the draft_on_none
 		// rewrite enableDraftOnNone leaves in the working tree.
 		writeFile(t, dir, "haiku/go.mod", "module haiku\n")
-		testGit(t, dir, "dependabot[bot]", "add", "haiku/go.mod")
-		testGit(t, dir, "dependabot[bot]", "commit", "-q", "-m", "Bump a haiku dep from 1 to 2")
+		testutil.Git(t, dir, "dependabot[bot]", "add", "haiku/go.mod")
+		testutil.Git(t, dir, "dependabot[bot]", "commit", "-q", "-m", "Bump a haiku dep from 1 to 2")
 		code, stdout, stderr = runGlyph(t, "release", "--dry-run", "--json", "--target", goldenTarget)
 		if code != 1 {
 			t.Fatalf("release exited %d, want 1\nstderr: %s", code, stderr)
@@ -407,9 +407,9 @@ func TestCompareLinkNeedsNotes(t *testing.T) {
 // 404 as `main...rel(1)A`).
 func TestCompareLinkEscapesTheBase(t *testing.T) {
 	usePR(t, dryServer(t, oneFixWalk(t)))
-	head := testGit(t, ".", "akira-toriyama", "rev-parse", "HEAD")
+	head := testutil.Git(t, ".", "akira-toriyama", "rev-parse", "HEAD")
 	const tag = "rel(1)%41#x"
-	testGit(t, ".", "akira-toriyama", "tag", tag, "v0.1.0")
+	testutil.Git(t, ".", "akira-toriyama", "tag", tag, "v0.1.0")
 
 	code, stdout, stderr := runGlyph(t, "notes", "--since-tag="+tag)
 	if code != 0 {
@@ -468,7 +468,7 @@ func TestNotesPackagesCompareLinkPerLine(t *testing.T) {
 	_, routes := squashAcrossLines(t, dir, 7)
 	usePR(t, dryServer(t, routes))
 	t.Chdir(dir)
-	head := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	code, stdout, stderr := runGlyph(t, "notes", "--since-tag")
 	if code != 0 {
@@ -497,7 +497,7 @@ func TestPackagesCompareLinkNeedsATagBase(t *testing.T) {
 	t.Run("a line with no tag", func(t *testing.T) {
 		dir := packagesRepoWithUntaggedLine(t)
 		routes := map[string]string{}
-		for sha := range strings.FieldsSeq(testGit(t, dir, "akira-toriyama", "log", "--format=%H")) {
+		for sha := range strings.FieldsSeq(testutil.Git(t, dir, "akira-toriyama", "log", "--format=%H")) {
 			routes[commitPullsPath(sha)] = `[]`
 		}
 		for _, c := range []struct{ msg, path string }{{":bug:(fish)~ fix the fish", "fish/fish.go"}, {":bug:(haiku)~ fix the haiku", "haiku/haiku.go"}} {
@@ -530,9 +530,9 @@ func TestPackagesCompareLinkNeedsATagBase(t *testing.T) {
 		_, routes := squashAcrossLines(t, dir, 7)
 		usePR(t, dryServer(t, routes))
 		t.Chdir(dir)
-		head := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-		testGit(t, dir, "akira-toriyama", "branch", "old-main", base)
-		testGit(t, dir, "akira-toriyama", "tag", "snapshot", base)
+		head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		testutil.Git(t, dir, "akira-toriyama", "branch", "old-main", base)
+		testutil.Git(t, dir, "akira-toriyama", "tag", "snapshot", base)
 
 		code, stdout, stderr := runGlyph(t, "notes", "--since-tag=old-main")
 		if code != 0 || !strings.Contains(stdout, "# curry") {

@@ -27,37 +27,14 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// The hermetic fixture (pinned identity, real git config held out, background
-// maintenance off — the incidents live on testutil.GitEnv) is testutil's; the
-// local names keep this file's call sites short.
-func requireGit(t *testing.T) {
-	t.Helper()
-	testutil.RequireGit(t)
-}
-
-func git(t *testing.T, dir, author string, args ...string) string {
-	t.Helper()
-	return testutil.Git(t, dir, author, args...)
-}
-
-func newRepo(t *testing.T) string {
-	t.Helper()
-	return testutil.NewRepo(t)
-}
-
-func commit(t *testing.T, dir, author, message string) {
-	t.Helper()
-	testutil.Commit(t, dir, author, message)
-}
-
 // TestLogRange: Log walks BASE..HEAD oldest→newest carrying SHA, author name,
 // parent count, and the verbatim message (subject + body, CJK intact).
 func TestLogRange(t *testing.T) {
-	dir := newRepo(t)
-	base := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	commit(t, dir, "akira-toriyama", ":bug: fix a crash")
-	commit(t, dir, "dependabot[bot]", ":arrow_up: bump a dep")
-	commit(t, dir, "akira-toriyama", ":sparkles:(ui) add a menu\n\nBody line.\n\n---（和訳）\nメニュー追加。")
+	dir := testutil.NewRepo(t)
+	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	testutil.Commit(t, dir, "dependabot[bot]", ":arrow_up: bump a dep")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui) add a menu\n\nBody line.\n\n---（和訳）\nメニュー追加。")
 
 	got, err := Log(context.Background(), dir, base+"..HEAD")
 	if err != nil {
@@ -96,10 +73,10 @@ func TestLogRange(t *testing.T) {
 // keeps what the author wrote, blank lines at the end included (measured:
 // `-m 'x\n\n'` records both newlines), so only one may go: two come back as one.
 func TestLogStripsOnlyTheRecordNewline(t *testing.T) {
-	dir := newRepo(t)
-	base := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
-	git(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--cleanup=verbatim", "-m", ":memo:= kept as written\n\n")
+	dir := testutil.NewRepo(t)
+	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--cleanup=verbatim", "-m", ":memo:= kept as written\n\n")
 	got, err := Log(context.Background(), dir, base+"..HEAD")
 	if err != nil {
 		t.Fatalf("Log: %v", err)
@@ -132,8 +109,8 @@ func TestLogReadsAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
 		"a separator in the mail": "a\x1fb@example.invalid",
 	} {
 		t.Run(label, func(t *testing.T) {
-			dir := newRepo(t)
-			base := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			dir := testutil.NewRepo(t)
+			base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 			testutil.CommitFrom(t, dir, name, email, "garbage message\x1fwith a separator of its own")
 			got, err := Log(context.Background(), dir, base+"..HEAD")
 			if err != nil {
@@ -143,7 +120,7 @@ func TestLogReadsAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
 				t.Fatalf("Log returned %d commits, want 1: %+v", len(got), got)
 			}
 			c := got[0]
-			if c.Author != name || c.Email != email || c.Parents != 1 || c.SHA != git(t, dir, "akira-toriyama", "rev-parse", "HEAD") ||
+			if c.Author != name || c.Email != email || c.Parents != 1 || c.SHA != testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD") ||
 				!strings.HasPrefix(c.Message, "garbage message\x1fwith a separator of its own") {
 				t.Fatalf("the record was read shifted: %+v\nwant author %q, email %q, 1 parent, the message verbatim", c, name, email)
 			}
@@ -192,11 +169,11 @@ func TestParseLogRefusesAMisframedRecord(t *testing.T) {
 // lint --range 3 on a violation, bump v0.0.1) — a check hard-wired to SHA-1's
 // 40 would have refused every one of its commits.
 func TestLogReadsSHA256Repositories(t *testing.T) {
-	requireGit(t)
+	testutil.RequireGit(t)
 	dir := t.TempDir()
-	git(t, dir, "akira-toriyama", "init", "-q", "-b", "main", "--object-format=sha256")
-	commit(t, dir, "akira-toriyama", ":tada:= begin")
-	commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testutil.Git(t, dir, "akira-toriyama", "init", "-q", "-b", "main", "--object-format=sha256")
+	testutil.Commit(t, dir, "akira-toriyama", ":tada:= begin")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	got, err := Log(context.Background(), dir, "HEAD")
 	if err != nil {
 		t.Fatalf("Log on a SHA-256 repository: %v", err)
@@ -216,18 +193,18 @@ func TestLogReadsSHA256Repositories(t *testing.T) {
 // must read the records whole. The raw read first is the positive control: if
 // git stops printing there, this test no longer guards anything, and says so.
 func TestLogReadsSignedCommitsUnderShowSignature(t *testing.T) {
-	dir := newRepo(t)
-	root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	dir := testutil.NewRepo(t)
+	root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	testutil.SignCommits(t, dir)
-	git(t, dir, "akira-toriyama", "config", "log.showSignature", "true")
-	git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side")
-	commit(t, dir, "akira-toriyama", ":sparkles:^ add a side feature")
-	git(t, dir, "akira-toriyama", "tag", "-s", "-m", "a signed tag", "side-v1")
-	git(t, dir, "akira-toriyama", "switch", "-q", "main")
-	commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
-	git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", ":twisted_rightwards_arrows:= merge the signed tag", "side-v1")
-	head := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	if raw := git(t, dir, "akira-toriyama", "log", "-1", "--format=%H"); strings.HasPrefix(raw, head) || !strings.Contains(raw, "merged tag") {
+	testutil.Git(t, dir, "akira-toriyama", "config", "log.showSignature", "true")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a side feature")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "-s", "-m", "a signed tag", "side-v1")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "main")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testutil.Git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", ":twisted_rightwards_arrows:= merge the signed tag", "side-v1")
+	head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	if raw := testutil.Git(t, dir, "akira-toriyama", "log", "-1", "--format=%H"); strings.HasPrefix(raw, head) || !strings.Contains(raw, "merged tag") {
 		t.Fatalf("git printed no signature verdicts ahead of the record under log.showSignature:\n%s\n— the fixture no longer signs or git changed, and this test guards nothing", raw)
 	}
 
@@ -271,11 +248,11 @@ func TestLogReadsUTF8UnderLogOutputEncoding(t *testing.T) {
 	const author, message = "Zoë Ünïcode", ":bug:~ fix the café crash"
 	for _, enc := range []string{"ISO-8859-1", "UTF-16"} {
 		t.Run(enc, func(t *testing.T) {
-			dir := newRepo(t)
-			root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			dir := testutil.NewRepo(t)
+			root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 			testutil.CommitFrom(t, dir, author, "zoe@example.invalid", message)
-			git(t, dir, "akira-toriyama", "config", "i18n.logOutputEncoding", enc)
-			if raw := git(t, dir, "akira-toriyama", "log", "-1", "--format=%an"); raw == author {
+			testutil.Git(t, dir, "akira-toriyama", "config", "i18n.logOutputEncoding", enc)
+			if raw := testutil.Git(t, dir, "akira-toriyama", "log", "-1", "--format=%an"); raw == author {
 				t.Fatalf("git printed the author in UTF-8 under i18n.logOutputEncoding=%s — git no longer re-encodes there, and this test guards nothing", enc)
 			}
 
@@ -299,13 +276,13 @@ func TestLogReadsUTF8UnderLogOutputEncoding(t *testing.T) {
 
 // TestLogMergeParents: a merge commit reports its true parent count.
 func TestLogMergeParents(t *testing.T) {
-	dir := newRepo(t)
-	base := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	git(t, dir, "akira-toriyama", "switch", "-q", "-c", "feat")
-	commit(t, dir, "akira-toriyama", ":bug: fix on a branch")
-	git(t, dir, "akira-toriyama", "switch", "-q", "main")
-	commit(t, dir, "akira-toriyama", ":memo: docs on main")
-	git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", "Merge branch 'feat'", "feat")
+	dir := testutil.NewRepo(t)
+	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "-c", "feat")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug: fix on a branch")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "main")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo: docs on main")
+	testutil.Git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", "Merge branch 'feat'", "feat")
 
 	got, err := Log(context.Background(), dir, base+"..HEAD")
 	if err != nil {
@@ -324,7 +301,7 @@ func TestLogMergeParents(t *testing.T) {
 
 // TestLogEmptyRange: an empty range is a successful empty result, not an error.
 func TestLogEmptyRange(t *testing.T) {
-	dir := newRepo(t)
+	dir := testutil.NewRepo(t)
 	got, err := Log(context.Background(), dir, "HEAD..HEAD")
 	if err != nil {
 		t.Fatalf("Log(HEAD..HEAD): unexpected error: %v", err)
@@ -337,7 +314,7 @@ func TestLogEmptyRange(t *testing.T) {
 // TestLogErrorsAreAPI: a bad revision and a non-repo directory are classified
 // as API/git failures (exit 4), and the error carries git's diagnostic.
 func TestLogErrorsAreAPI(t *testing.T) {
-	dir := newRepo(t)
+	dir := testutil.NewRepo(t)
 	for name, tc := range map[string]struct{ dir, rng string }{
 		"bad revision":                         {dir, "no-such-ref..HEAD"},
 		"not a repo":                           {t.TempDir(), "HEAD~1..HEAD"},
@@ -359,7 +336,7 @@ func TestLogErrorsAreAPI(t *testing.T) {
 // TestLogCancelIsInterrupted: a canceled context is the user's own Ctrl-C — the
 // one thing CodeInterrupted means (SIGINT/SIGTERM, per the core contract).
 func TestLogCancelIsInterrupted(t *testing.T) {
-	dir := newRepo(t)
+	dir := testutil.NewRepo(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -375,7 +352,7 @@ func TestLogCancelIsInterrupted(t *testing.T) {
 // git is an ordinary I/O failure and must exit CodeAPI — exiting 130 would tell
 // a release job "the operator stopped me" when in truth git hung.
 func TestLogDeadlineIsAPI(t *testing.T) {
-	dir := newRepo(t)
+	dir := testutil.NewRepo(t)
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancel()
 
@@ -401,7 +378,7 @@ func TestLogDeadlineIsAPI(t *testing.T) {
 // this comment as a promise and took git's first parseable entry.
 // A repo without tags yields an empty list.
 func TestTags(t *testing.T) {
-	dir := newRepo(t)
+	dir := testutil.NewRepo(t)
 
 	got, err := Tags(context.Background(), dir)
 	if err != nil {
@@ -412,7 +389,7 @@ func TestTags(t *testing.T) {
 	}
 
 	for _, tag := range []string{"v0.1.0", "v0.2.0", "v0.1.1", "not-a-version"} {
-		git(t, dir, "akira-toriyama", "tag", tag)
+		testutil.Git(t, dir, "akira-toriyama", "tag", tag)
 	}
 	got, err = Tags(context.Background(), dir)
 	if err != nil {
@@ -431,15 +408,15 @@ func TestTags(t *testing.T) {
 // it is, peeled to its commit. The plain listing, beside it, holds all four —
 // the positive control that the fixture carries something to leave out.
 func TestMergedTagsListsOnlyTagsRevContains(t *testing.T) {
-	dir := newRepo(t)
-	git(t, dir, "akira-toriyama", "tag", "v0.1.0")
-	git(t, dir, "akira-toriyama", "tag", "-a", "-m", "annotated", "v0.1.1")
-	git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "side")
-	commit(t, dir, "akira-toriyama", ":sparkles:^ side work")
-	git(t, dir, "akira-toriyama", "tag", "v9.0.0")
-	git(t, dir, "akira-toriyama", "checkout", "-q", "main")
-	blob := git(t, dir, "akira-toriyama", "rev-parse", "HEAD:glyph.toml")
-	git(t, dir, "akira-toriyama", "tag", "v8.0.0", blob)
+	dir := testutil.NewRepo(t)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "-a", "-m", "annotated", "v0.1.1")
+	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "side")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ side work")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v9.0.0")
+	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "main")
+	blob := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD:glyph.toml")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v8.0.0", blob)
 
 	all, err := Tags(context.Background(), dir)
 	if err != nil || len(all) != 4 {
@@ -464,9 +441,9 @@ func TestMergedTagsListsOnlyTagsRevContains(t *testing.T) {
 // fails as git/IO: the empty answer is for a rev naming no commit, not for a
 // git that could not run.
 func TestMergedTagsOnAnUnbornHEADIsEmpty(t *testing.T) {
-	requireGit(t)
+	testutil.RequireGit(t)
 	dir := t.TempDir()
-	git(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
+	testutil.Git(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
 
 	all, err := Tags(context.Background(), dir)
 	if err != nil || len(all) != 0 {
@@ -497,8 +474,8 @@ func TestMergedTagsOnAnUnbornHEADIsEmpty(t *testing.T) {
 // unborn HEAD records no tree to answer from, which is an error the caller
 // renders as could-not-run.
 func TestHeadTreesListsWhatHEADRecordsAsADirectory(t *testing.T) {
-	dir := newRepo(t)
-	gitlink := "160000," + git(t, dir, "akira-toriyama", "rev-parse", "HEAD") + ",sub"
+	dir := testutil.NewRepo(t)
+	gitlink := "160000," + testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD") + ",sub"
 	for _, rel := range []string{"haiku/a", "travel/onsen/b"} {
 		p := filepath.Join(dir, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
@@ -511,9 +488,9 @@ func TestHeadTreesListsWhatHEADRecordsAsADirectory(t *testing.T) {
 	if err := os.Symlink("haiku", filepath.Join(dir, "currylink")); err != nil {
 		t.Fatal(err)
 	}
-	git(t, dir, "akira-toriyama", "add", "-A")
-	git(t, dir, "akira-toriyama", "update-index", "--add", "--cacheinfo", gitlink)
-	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= lay out the lines")
+	testutil.Git(t, dir, "akira-toriyama", "add", "-A")
+	testutil.Git(t, dir, "akira-toriyama", "update-index", "--add", "--cacheinfo", gitlink)
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= lay out the lines")
 	if err := os.MkdirAll(filepath.Join(dir, "untracked"), 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -529,7 +506,7 @@ func TestHeadTreesListsWhatHEADRecordsAsADirectory(t *testing.T) {
 	}
 
 	unborn := t.TempDir()
-	git(t, unborn, "akira-toriyama", "init", "-q", "-b", "main")
+	testutil.Git(t, unborn, "akira-toriyama", "init", "-q", "-b", "main")
 	if got, err := HeadTrees(context.Background(), unborn); err == nil {
 		t.Errorf("HeadTrees on an unborn HEAD = %q, nil; want an error — no tree was recorded to answer from", got)
 	}
@@ -548,8 +525,8 @@ func TestHeadTreesListsWhatHEADRecordsAsADirectory(t *testing.T) {
 // recorded" arm unreachable for that remote. A read that really fails, outside
 // a repository, is still an error.
 func TestDefaultBranchReadsARemoteNoRefCanNameAsUnrecorded(t *testing.T) {
-	dir := newRepo(t)
-	git(t, dir, "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	dir := testutil.NewRepo(t)
+	testutil.Git(t, dir, "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
 
 	for remote, want := range map[string]string{"origin": "main", "upstream": "", "mirror..x": ""} {
 		got, err := DefaultBranch(context.Background(), dir, remote)
@@ -572,9 +549,9 @@ func TestDefaultBranchReadsARemoteNoRefCanNameAsUnrecorded(t *testing.T) {
 // `git remote set-head my -a` on a remote that does not exist (measured on
 // 4a90a1d, t-3jws). The NUL-framed form is unambiguous: `key\nvalue\0`.
 func TestRemoteURLsKeepsASpacedRemoteName(t *testing.T) {
-	dir := newRepo(t)
-	git(t, dir, "akira-toriyama", "config", "remote.origin.url", "https://example.invalid/o/r.git")
-	git(t, dir, "akira-toriyama", "config", "remote.my fork.url", "https://example.invalid/me/r.git")
+	dir := testutil.NewRepo(t)
+	testutil.Git(t, dir, "akira-toriyama", "config", "remote.origin.url", "https://example.invalid/o/r.git")
+	testutil.Git(t, dir, "akira-toriyama", "config", "remote.my fork.url", "https://example.invalid/me/r.git")
 
 	got, err := RemoteURLs(context.Background(), dir)
 	if err != nil {
@@ -593,7 +570,7 @@ func TestRemoteURLsKeepsASpacedRemoteName(t *testing.T) {
 // default branch, so `git remote set-head` is no remedy for it (t-3jws's
 // residue, review u6-2). A plain name can; a space or `..` cannot.
 func TestRemoteCanRecordHeadAsksGit(t *testing.T) {
-	dir := newRepo(t)
+	dir := testutil.NewRepo(t)
 	for remote, want := range map[string]bool{"origin": true, "my-fork": true, "my fork": false, "mirror..x": false} {
 		got, err := RemoteCanRecordHead(context.Background(), dir, remote)
 		if err != nil || got != want {
@@ -613,22 +590,22 @@ func TestRemoteCanRecordHeadAsksGit(t *testing.T) {
 // observed); a sparse-checkout entry is listed and flagged, because its bytes
 // were never put on disk to read.
 func TestActionFilesListsWhatGitCounts(t *testing.T) {
-	sub := newRepo(t)
+	sub := testutil.NewRepo(t)
 	writeFiles(t, sub, "inst/action.yml")
-	git(t, sub, "akira-toriyama", "add", "-A")
-	git(t, sub, "akira-toriyama", "commit", "-q", "-m", ":tada:= a shared composite")
+	testutil.Git(t, sub, "akira-toriyama", "add", "-A")
+	testutil.Git(t, sub, "akira-toriyama", "commit", "-q", "-m", ":tada:= a shared composite")
 
-	dir := newRepo(t)
+	dir := testutil.NewRepo(t)
 	writeFiles(t, dir, "action.yml", ".github/actions/a/action.yml", "tools/installer/action.yaml",
 		"docs/action.yml.md", "tools/sparse/action.yml", "tools/gone/action.yml", "build/dep/action.yml")
 	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("build/\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	git(t, dir, "akira-toriyama", "add", "-A")
-	git(t, dir, "akira-toriyama", "-c", "protocol.file.allow=always", "submodule", "--quiet", "add", sub, ".github/actions/shared")
-	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= lay out the actions")
+	testutil.Git(t, dir, "akira-toriyama", "add", "-A")
+	testutil.Git(t, dir, "akira-toriyama", "-c", "protocol.file.allow=always", "submodule", "--quiet", "add", sub, ".github/actions/shared")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= lay out the actions")
 	writeFiles(t, dir, "untracked/action.yml")
-	git(t, dir, "akira-toriyama", "update-index", "--skip-worktree", "tools/sparse/action.yml")
+	testutil.Git(t, dir, "akira-toriyama", "update-index", "--skip-worktree", "tools/sparse/action.yml")
 	for _, gone := range []string{"tools/sparse/action.yml", "tools/gone/action.yml"} {
 		if err := os.Remove(filepath.Join(dir, filepath.FromSlash(gone))); err != nil {
 			t.Fatal(err)
@@ -678,11 +655,11 @@ func writeFiles(t *testing.T, dir string, rels ...string) {
 // are all NO, as an answer rather than an error; an annotated, prefixed tag
 // is a YES. Outside a repository it fails as git/IO.
 func TestIsTagIsAnExactRef(t *testing.T) {
-	dir := newRepo(t)
-	git(t, dir, "akira-toriyama", "tag", "v0.1.0")
-	git(t, dir, "akira-toriyama", "tag", "-a", "-m", "annotated", "curry/v0.1.0")
-	git(t, dir, "akira-toriyama", "branch", "old-main")
-	sha := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	dir := testutil.NewRepo(t)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "-a", "-m", "annotated", "curry/v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "branch", "old-main")
+	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	for name, want := range map[string]bool{
 		"v0.1.0":       true,
@@ -713,12 +690,12 @@ func TestIsTagIsAnExactRef(t *testing.T) {
 func TestTagListingsStayOnePerLineUnderColumnConfig(t *testing.T) {
 	for _, key := range []string{"column.ui", "column.tag"} {
 		t.Run(key, func(t *testing.T) {
-			dir := newRepo(t)
+			dir := testutil.NewRepo(t)
 			for _, tag := range []string{"v0.1.0", "v0.2.0", "v0.1.1"} {
-				git(t, dir, "akira-toriyama", "tag", tag)
+				testutil.Git(t, dir, "akira-toriyama", "tag", tag)
 			}
-			git(t, dir, "akira-toriyama", "config", key, "always")
-			if raw := git(t, dir, "akira-toriyama", "tag", "--list"); strings.Contains(raw, "\n") {
+			testutil.Git(t, dir, "akira-toriyama", "config", key, "always")
+			if raw := testutil.Git(t, dir, "akira-toriyama", "tag", "--list"); strings.Contains(raw, "\n") {
 				t.Fatalf("git listed the tags one per line under %s=always:\n%s\n— git no longer columns there, and this test guards nothing", key, raw)
 			}
 
@@ -739,9 +716,9 @@ func TestTagListingsStayOnePerLineUnderColumnConfig(t *testing.T) {
 // target_commitish records so the eventual Publish tags the commit the
 // verdict was computed at, not whatever main has moved to since.
 func TestHead(t *testing.T) {
-	dir := newRepo(t)
-	commit(t, dir, "akira-toriyama", ":bug: fix a crash")
-	want := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	dir := testutil.NewRepo(t)
+	testutil.Commit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	want := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	got, err := Head(context.Background(), dir)
 	if err != nil {
@@ -755,7 +732,7 @@ func TestHead(t *testing.T) {
 // TestHeadErrorsAreAPI: a directory that is not a repository fails as an
 // ordinary git/IO error (4) carrying git's own fatal line.
 func TestHeadErrorsAreAPI(t *testing.T) {
-	requireGit(t)
+	testutil.RequireGit(t)
 	_, err := Head(context.Background(), t.TempDir())
 	if err == nil {
 		t.Fatal("want an error outside a repository")
@@ -771,11 +748,11 @@ func TestHeadErrorsAreAPI(t *testing.T) {
 // is simply absent rather than an error. The listing Have is asked about is
 // GitHub's, so it routinely names commits that exist in no clone.
 func TestHave(t *testing.T) {
-	dir := newRepo(t)
-	root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	commit(t, dir, "akira-toriyama", ":bug: fix a crash")
-	head := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	tree := git(t, dir, "akira-toriyama", "rev-parse", "HEAD^{tree}")
+	dir := testutil.NewRepo(t)
+	root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	tree := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD^{tree}")
 	absent := "0123456789abcdef0123456789abcdef01234567"
 
 	got, err := Have(context.Background(), dir, []string{root, head, tree, absent, "not-a-sha"})
@@ -812,14 +789,14 @@ func TestHaveEmpty(t *testing.T) {
 // history, and exit 128 for an object this repository does not hold. The walk
 // reads both as "did not land here", so neither may surface as an error.
 func TestIsAncestor(t *testing.T) {
-	dir := newRepo(t)
-	root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	commit(t, dir, "akira-toriyama", ":bug: fix a crash")
-	head := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side", root)
-	commit(t, dir, "akira-toriyama", ":memo: a commit off the released branch")
-	offBranch := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	git(t, dir, "akira-toriyama", "switch", "-q", "main")
+	dir := testutil.NewRepo(t)
+	root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side", root)
+	testutil.Commit(t, dir, "akira-toriyama", ":memo: a commit off the released branch")
+	offBranch := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "main")
 
 	for name, tc := range map[string]struct {
 		sha  string
@@ -901,13 +878,13 @@ func TestIsAncestorCancelIsInterrupted(t *testing.T) {
 // first — the shape a rebase-merge leaves behind. A merged side branch must not
 // appear: --first-parent is what makes the run alignable.
 func TestFirstParentLog(t *testing.T) {
-	dir := newRepo(t)
-	commit(t, dir, "akira-toriyama", ":bug: first")
-	git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side")
-	commit(t, dir, "akira-toriyama", ":memo: on the side branch")
-	git(t, dir, "akira-toriyama", "switch", "-q", "main")
-	commit(t, dir, "akira-toriyama", ":sparkles: second")
-	git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", "Merge branch 'side'", "side")
+	dir := testutil.NewRepo(t)
+	testutil.Commit(t, dir, "akira-toriyama", ":bug: first")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo: on the side branch")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "main")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles: second")
+	testutil.Git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", "Merge branch 'side'", "side")
 
 	got, err := FirstParentLog(context.Background(), dir, "HEAD", 3)
 	if err != nil {
@@ -934,8 +911,8 @@ func TestFirstParentLog(t *testing.T) {
 // guard depends on. Without that guard a young repository indexes a listing-long
 // loop into a shorter slice and panics.
 func TestFirstParentLogShortNearTheRoot(t *testing.T) {
-	dir := newRepo(t)
-	commit(t, dir, "akira-toriyama", ":bug: the only other commit")
+	dir := testutil.NewRepo(t)
+	testutil.Commit(t, dir, "akira-toriyama", ":bug: the only other commit")
 
 	got, err := FirstParentLog(context.Background(), dir, "HEAD", 10)
 	if err != nil {
@@ -950,8 +927,8 @@ func TestFirstParentLogShortNearTheRoot(t *testing.T) {
 // walk branches on this because a truncated history cannot tell a commit that
 // never landed from one git simply does not have.
 func TestIsShallow(t *testing.T) {
-	dir := newRepo(t)
-	commit(t, dir, "akira-toriyama", ":bug: fix a crash")
+	dir := testutil.NewRepo(t)
+	testutil.Commit(t, dir, "akira-toriyama", ":bug: fix a crash")
 
 	full, err := IsShallow(context.Background(), dir)
 	if err != nil {
@@ -962,7 +939,7 @@ func TestIsShallow(t *testing.T) {
 	}
 
 	clone := filepath.Join(t.TempDir(), "shallow")
-	git(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", "1", "file://"+dir, clone)
+	testutil.Git(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", "1", "file://"+dir, clone)
 	shallow, err := IsShallow(context.Background(), clone)
 	if err != nil {
 		t.Fatalf("IsShallow(shallow): %v", err)
@@ -976,7 +953,7 @@ func TestIsShallow(t *testing.T) {
 // relocates them — the family's older repos set it, and writing to .git/hooks
 // there installs a hook git never runs.
 func TestHooksDir(t *testing.T) {
-	dir := newRepo(t)
+	dir := testutil.NewRepo(t)
 
 	got, err := HooksDir(context.Background(), dir)
 	if err != nil {
@@ -986,7 +963,7 @@ func TestHooksDir(t *testing.T) {
 		t.Fatalf("HooksDir = %q, want a path ending in hooks", got)
 	}
 
-	git(t, dir, "akira-toriyama", "config", "core.hooksPath", "scripts/hooks")
+	testutil.Git(t, dir, "akira-toriyama", "config", "core.hooksPath", "scripts/hooks")
 	got, err = HooksDir(context.Background(), dir)
 	if err != nil {
 		t.Fatalf("HooksDir with core.hooksPath: %v", err)
@@ -999,7 +976,7 @@ func TestHooksDir(t *testing.T) {
 // TestHooksDirErrorsAreAPI: outside a repository there is no answer to give,
 // and a git/IO failure is exit 4 by contract.
 func TestHooksDirErrorsAreAPI(t *testing.T) {
-	requireGit(t)
+	testutil.RequireGit(t)
 	_, err := HooksDir(context.Background(), t.TempDir())
 	ce := core.AsError(err)
 	if ce == nil || ce.Code != core.CodeAPI {
@@ -1012,14 +989,14 @@ func TestHooksDirErrorsAreAPI(t *testing.T) {
 // caller is the commit-msg hook deciding what git will do to the message it was
 // handed, and "unset" is the commonest correct answer it gets.
 func TestConfigGet(t *testing.T) {
-	dir := newRepo(t)
+	dir := testutil.NewRepo(t)
 
 	val, set, err := ConfigGet(context.Background(), dir, "commit.cleanup")
 	if err != nil || set || val != "" {
 		t.Fatalf("ConfigGet on an unset key = (%q, %v, %v), want (\"\", false, nil) — git spells unset as exit 1, which is not a failure", val, set, err)
 	}
 
-	git(t, dir, "akira-toriyama", "config", "commit.cleanup", "scissors")
+	testutil.Git(t, dir, "akira-toriyama", "config", "commit.cleanup", "scissors")
 	val, set, err = ConfigGet(context.Background(), dir, "commit.cleanup")
 	if err != nil || !set || val != "scissors" {
 		t.Fatalf("ConfigGet on a set key = (%q, %v, %v), want (\"scissors\", true, nil)", val, set, err)
@@ -1032,7 +1009,7 @@ func TestConfigGet(t *testing.T) {
 // that is unambiguously not an unset key: outside a repository git still answers
 // from the global config, and answers exit 1.
 func TestConfigGetUnreachableDirIsAPI(t *testing.T) {
-	requireGit(t)
+	testutil.RequireGit(t)
 	_, _, err := ConfigGet(context.Background(), filepath.Join(t.TempDir(), "no-such-dir"), "commit.cleanup")
 	ce := core.AsError(err)
 	if ce == nil || ce.Code != core.CodeAPI {
@@ -1046,7 +1023,7 @@ func TestConfigGetUnreachableDirIsAPI(t *testing.T) {
 // unset and does not cut). Unset is an answer, not an error; a value git cannot
 // parse is the API error.
 func TestConfigBoolOrInt(t *testing.T) {
-	dir := newRepo(t)
+	dir := testutil.NewRepo(t)
 	if n, set, err := ConfigBoolOrInt(context.Background(), dir, "commit.verbose"); err != nil || set || n != 0 {
 		t.Fatalf("unset commit.verbose = (%d, %v, %v), want (0, false, nil)", n, set, err)
 	}
@@ -1057,13 +1034,13 @@ func TestConfigBoolOrInt(t *testing.T) {
 		{"true", 1}, {"yes", 1}, {"on", 1}, {"false", 0}, {"off", 0}, {"", 0},
 		{"2", 2}, {"1k", 1024}, {"0", 0}, {"-1", -1},
 	} {
-		git(t, dir, "akira-toriyama", "config", "commit.verbose", tc.value)
+		testutil.Git(t, dir, "akira-toriyama", "config", "commit.verbose", tc.value)
 		n, set, err := ConfigBoolOrInt(context.Background(), dir, "commit.verbose")
 		if err != nil || !set || n != tc.want {
 			t.Errorf("commit.verbose=%q = (%d, %v, %v), want (%d, true, nil)", tc.value, n, set, err, tc.want)
 		}
 	}
-	git(t, dir, "akira-toriyama", "config", "commit.verbose", "banana")
+	testutil.Git(t, dir, "akira-toriyama", "config", "commit.verbose", "banana")
 	if _, _, err := ConfigBoolOrInt(context.Background(), dir, "commit.verbose"); core.AsError(err) == nil || core.AsError(err).Code != core.CodeAPI {
 		t.Fatalf("an unparseable commit.verbose = %v, want CodeAPI", err)
 	}
@@ -1077,7 +1054,7 @@ func TestConfigBoolOrInt(t *testing.T) {
 // `git stripspace --strip-comments`; internal/cli's
 // TestHookVerdictMatchesWhatGitRecords asks real commits).
 func TestConfigLastOf(t *testing.T) {
-	dir := newRepo(t)
+	dir := testutil.NewRepo(t)
 	last := func() (string, bool) {
 		t.Helper()
 		v, set, err := ConfigLastOf(context.Background(), dir, "core.commentChar", "core.commentString")
@@ -1089,17 +1066,17 @@ func TestConfigLastOf(t *testing.T) {
 	if v, set := last(); set || v != "" {
 		t.Fatalf("both unset = (%q, %v), want (\"\", false)", v, set)
 	}
-	git(t, dir, "akira-toriyama", "config", "core.commentcharx", "decoy")
+	testutil.Git(t, dir, "akira-toriyama", "config", "core.commentcharx", "decoy")
 	if v, set := last(); set {
 		t.Fatalf("a key that only starts with a wanted name was read: %q", v)
 	}
-	git(t, dir, "akira-toriyama", "config", "core.commentChar", ";")
-	git(t, dir, "akira-toriyama", "config", "core.commentString", "//")
+	testutil.Git(t, dir, "akira-toriyama", "config", "core.commentChar", ";")
+	testutil.Git(t, dir, "akira-toriyama", "config", "core.commentString", "//")
 	if v, _ := last(); v != "//" {
 		t.Fatalf("commentChar then commentString = %q, want the later \"//\"", v)
 	}
-	git(t, dir, "akira-toriyama", "config", "--unset", "core.commentChar")
-	git(t, dir, "akira-toriyama", "config", "core.commentChar", ";")
+	testutil.Git(t, dir, "akira-toriyama", "config", "--unset", "core.commentChar")
+	testutil.Git(t, dir, "akira-toriyama", "config", "core.commentChar", ";")
 	if v, _ := last(); v != ";" {
 		t.Fatalf("commentString then commentChar = %q, want the later \";\"", v)
 	}
@@ -1108,8 +1085,8 @@ func TestConfigLastOf(t *testing.T) {
 		t.Fatalf("-c after the file = %q, want \"@\"", v)
 	}
 	t.Setenv("GIT_CONFIG_PARAMETERS", "")
-	git(t, dir, "akira-toriyama", "config", "--unset", "core.commentChar")
-	git(t, dir, "akira-toriyama", "config", "core.commentString", "// ")
+	testutil.Git(t, dir, "akira-toriyama", "config", "--unset", "core.commentChar")
+	testutil.Git(t, dir, "akira-toriyama", "config", "core.commentString", "// ")
 	if v, _ := last(); v != "// " {
 		t.Fatalf("a quoted trailing space = %q, want it kept", v)
 	}
@@ -1119,13 +1096,13 @@ func TestConfigLastOf(t *testing.T) {
 // linked worktree MERGE_MSG lives under that worktree's own git directory, not
 // the main checkout's, which is where the commit-msg hook's merge check looks.
 func TestGitPath(t *testing.T) {
-	dir := newRepo(t)
+	dir := testutil.NewRepo(t)
 	got, err := GitPath(context.Background(), dir, "MERGE_MSG")
 	if err != nil || filepath.ToSlash(got) != ".git/MERGE_MSG" {
 		t.Fatalf("GitPath(MERGE_MSG) = %q, %v; want .git/MERGE_MSG", got, err)
 	}
 	wt := filepath.Join(t.TempDir(), "wt")
-	git(t, dir, "akira-toriyama", "worktree", "add", "-q", "-b", "wt", wt)
+	testutil.Git(t, dir, "akira-toriyama", "worktree", "add", "-q", "-b", "wt", wt)
 	got, err = GitPath(context.Background(), wt, "MERGE_MSG")
 	if err != nil || !strings.HasSuffix(filepath.ToSlash(got), ".git/worktrees/wt/MERGE_MSG") {
 		t.Fatalf("GitPath(MERGE_MSG) in a linked worktree = %q, %v; want the worktree's own git directory", got, err)
@@ -1138,8 +1115,8 @@ func TestGitPath(t *testing.T) {
 // answered against the empty tree, and a merge commit answered empty (its
 // diff is never attributed to anything).
 func TestDiffTreeFiles(t *testing.T) {
-	dir := newRepo(t)
-	root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	dir := testutil.NewRepo(t)
+	root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	write := func(rel, content string) {
 		t.Helper()
 		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o755); err != nil {
@@ -1151,19 +1128,19 @@ func TestDiffTreeFiles(t *testing.T) {
 	}
 	write("haiku/h.go", "package haiku\n")
 	write("curry/c.go", "package curry\n")
-	git(t, dir, "akira-toriyama", "add", ".")
-	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= two subtrees")
-	two := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	git(t, dir, "akira-toriyama", "mv", "haiku/h.go", "curry/h.go")
-	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":truck:~ move a file across subtrees")
-	moved := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side", root)
+	testutil.Git(t, dir, "akira-toriyama", "add", ".")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= two subtrees")
+	two := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "mv", "haiku/h.go", "curry/h.go")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":truck:~ move a file across subtrees")
+	moved := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side", root)
 	write("side.txt", "side\n")
-	git(t, dir, "akira-toriyama", "add", ".")
-	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":memo:= on the side")
-	git(t, dir, "akira-toriyama", "switch", "-q", "main")
-	git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", "Merge branch 'side'", "side")
-	merge := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "add", ".")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":memo:= on the side")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "main")
+	testutil.Git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", "Merge branch 'side'", "side")
+	merge := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	for name, tc := range map[string]struct {
 		sha  string
@@ -1192,16 +1169,16 @@ func TestDiffTreeFiles(t *testing.T) {
 // list. A root's header is empty and stays empty — the control beside it. The
 // raw read first is the positive control.
 func TestDiffTreeFilesReadsItsHeaderUnderLogOutputEncoding(t *testing.T) {
-	dir := newRepo(t)
-	root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	dir := testutil.NewRepo(t)
+	root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	git(t, dir, "akira-toriyama", "add", ".")
-	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:^ add a file")
-	head := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	git(t, dir, "akira-toriyama", "config", "i18n.logOutputEncoding", "UTF-16")
-	if raw := git(t, dir, "akira-toriyama", "diff-tree", "--always", "--format=%P", "--name-only", "-r", head); strings.HasPrefix(raw, root) {
+	testutil.Git(t, dir, "akira-toriyama", "add", ".")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:^ add a file")
+	head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "config", "i18n.logOutputEncoding", "UTF-16")
+	if raw := testutil.Git(t, dir, "akira-toriyama", "diff-tree", "--always", "--format=%P", "--name-only", "-r", head); strings.HasPrefix(raw, root) {
 		t.Fatalf("git printed the %%P header as plain hex under i18n.logOutputEncoding=UTF-16 (%q) — git no longer re-encodes there, and this test guards nothing", raw)
 	}
 
@@ -1233,7 +1210,7 @@ func TestDiffTreeFilesReadsItsHeaderUnderLogOutputEncoding(t *testing.T) {
 // .git/shallow too, but it has no parent to be cut off from, so its tree is its
 // own diff (measured).
 func TestDiffTreeFilesAtAShallowBoundaryIsUnreadable(t *testing.T) {
-	dir := newRepo(t)
+	dir := testutil.NewRepo(t)
 	write := func(rel, content string) {
 		t.Helper()
 		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o755); err != nil {
@@ -1244,26 +1221,26 @@ func TestDiffTreeFilesAtAShallowBoundaryIsUnreadable(t *testing.T) {
 		}
 	}
 	write("haiku/a", "a\n")
-	git(t, dir, "akira-toriyama", "add", ".")
-	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:(haiku)^ start haiku")
+	testutil.Git(t, dir, "akira-toriyama", "add", ".")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:(haiku)^ start haiku")
 	write("curry/b", "b\n")
-	git(t, dir, "akira-toriyama", "add", ".")
-	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:(curry)^ start curry")
-	boundary := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "add", ".")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:(curry)^ start curry")
+	boundary := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	// An unrelated history merged in: its root is inside the depth-2 clone.
-	git(t, dir, "akira-toriyama", "switch", "-q", "--orphan", "side")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "--orphan", "side")
 	write("side/s", "s\n")
-	git(t, dir, "akira-toriyama", "add", "side/s")
-	git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= another root")
-	root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	git(t, dir, "akira-toriyama", "switch", "-q", "-f", "main")
-	git(t, dir, "akira-toriyama", "merge", "-q", "--allow-unrelated-histories", "--no-ff", "-m", "Merge branch 'side'", "side")
+	testutil.Git(t, dir, "akira-toriyama", "add", "side/s")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= another root")
+	root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "-f", "main")
+	testutil.Git(t, dir, "akira-toriyama", "merge", "-q", "--allow-unrelated-histories", "--no-ff", "-m", "Merge branch 'side'", "side")
 	write("haiku/a", "a2\n")
-	git(t, dir, "akira-toriyama", "commit", "-q", "-am", ":bug:(haiku)~ fix haiku")
-	above := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-am", ":bug:(haiku)~ fix haiku")
+	above := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	clone := filepath.Join(t.TempDir(), "shallow")
-	git(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", "3", "file://"+dir, clone)
+	testutil.Git(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", "3", "file://"+dir, clone)
 
 	files, err := DiffTreeFiles(context.Background(), clone, boundary)
 	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || files != nil {
@@ -1290,7 +1267,7 @@ func TestDiffTreeFilesAtAShallowBoundaryIsUnreadable(t *testing.T) {
 // a git failure in the API class, never an empty answer — an empty answer
 // would attribute the commit to nothing and quietly drop it from every line.
 func TestDiffTreeFilesUnknownShaIsAPI(t *testing.T) {
-	dir := newRepo(t)
+	dir := testutil.NewRepo(t)
 	_, err := DiffTreeFiles(context.Background(), dir, "0123456789abcdef0123456789abcdef01234567")
 	if err == nil {
 		t.Fatalf("DiffTreeFiles on an absent sha returned no error")
@@ -1307,16 +1284,16 @@ func TestDiffTreeFilesUnknownShaIsAPI(t *testing.T) {
 // linear history and the fork point across branches; one rev answers itself
 // without shelling out.
 func TestMergeBase(t *testing.T) {
-	dir := newRepo(t)
-	root := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	commit(t, dir, "akira-toriyama", ":bug:~ first")
-	first := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	commit(t, dir, "akira-toriyama", ":bug:~ second")
-	second := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side", root)
-	commit(t, dir, "akira-toriyama", ":memo:= aside")
-	aside := git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	git(t, dir, "akira-toriyama", "switch", "-q", "main")
+	dir := testutil.NewRepo(t)
+	root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ first")
+	first := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ second")
+	second := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side", root)
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= aside")
+	aside := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "main")
 
 	for name, tc := range map[string]struct {
 		revs []string

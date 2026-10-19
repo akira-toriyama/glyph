@@ -76,7 +76,7 @@ func TestHookCutMatchesGit(t *testing.T) {
 					if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte(strings.Repeat("x", n)+"\n"), 0o600); err != nil {
 						t.Fatalf("write file: %v", err)
 					}
-					testGit(t, dir, "akira-toriyama", "add", "a.txt")
+					testutil.Git(t, dir, "akira-toriyama", "add", "a.txt")
 					args := []string{"commit", "-q"}
 					if verbose == "-v" {
 						args = append(args, "-v")
@@ -84,7 +84,7 @@ func TestHookCutMatchesGit(t *testing.T) {
 					if !edited {
 						args = append(args, "-F", buffer)
 					}
-					testGit(t, dir, "akira-toriyama", args...)
+					testutil.Git(t, dir, "akira-toriyama", args...)
 
 					raw, err := os.ReadFile(handed) //nolint:gosec // a path this test just wrote
 					if err != nil {
@@ -102,7 +102,7 @@ func TestHookCutMatchesGit(t *testing.T) {
 					// No message file to ask about: git commit hands the hook
 					// COMMIT_EDITMSG, never git merge's MERGE_MSG.
 					judged := cleanup.Apply(string(raw), hookCleanupMode(t.Context(), nil))
-					// The object's own bytes: testGit trims, and a verbatim message
+					// The object's own bytes: testutil.Git trims, and a verbatim message
 					// keeps trailing blank lines that are part of what git recorded.
 					object, err := exec.Command("git", "-C", dir, "cat-file", "commit", "HEAD").Output()
 					if err != nil {
@@ -141,7 +141,7 @@ func configure(t *testing.T, dir, key, value string) {
 		_ = cmd.Run() // exit 5 is "was not set", which is the state wanted
 		return
 	}
-	testGit(t, dir, "akira-toriyama", "config", key, value)
+	testutil.Git(t, dir, "akira-toriyama", "config", key, value)
 }
 
 // TestInstalledHookJudgesAGitMergeByMergesCleanup: `git merge` cleans its
@@ -180,26 +180,26 @@ func TestInstalledHookJudgesAGitMergeByMergesCleanup(t *testing.T) {
 			if code, _, stderr := runGlyph(t, "hook", "install"); code != int(core.CodeOK) {
 				t.Fatalf("hook install exit = %d\nstderr: %s", code, stderr)
 			}
-			testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic")
+			testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic")
 			appendFile(t, dir, "topic.txt")
-			testGit(t, dir, "akira-toriyama", "add", "-A")
-			testGit(t, dir, "akira-toriyama", "commit", "-q", "--no-verify", "-m", ":sparkles:^ land the topic")
-			testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
+			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
+			testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--no-verify", "-m", ":sparkles:^ land the topic")
+			testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "main")
 			appendFile(t, dir, "main.txt")
-			testGit(t, dir, "akira-toriyama", "add", "-A")
-			testGit(t, dir, "akira-toriyama", "commit", "-q", "--no-verify", "-m", ":sparkles:^ move main")
+			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
+			testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--no-verify", "-m", ":sparkles:^ move main")
 			for _, kv := range tc.config {
-				testGit(t, dir, "akira-toriyama", "config", kv[0], kv[1])
+				testutil.Git(t, dir, "akira-toriyama", "config", kv[0], kv[1])
 			}
 			editor := filepath.Join(t.TempDir(), "editor.sh")
 			writeExecutable(t, editor, "#!/bin/sh\ncat \""+msg+"\" > \"$1\"\n")
-			testGit(t, dir, "akira-toriyama", "config", "core.editor", editor)
+			testutil.Git(t, dir, "akira-toriyama", "config", "core.editor", editor)
 
 			out, err := runGit(dir, pathWithGlyph, append([]string{"merge", "-q", "--no-ff"}, append(tc.args, "topic")...)...)
 			if err != nil {
 				t.Fatalf("the hook stopped a merge git records: %v\n%s", err, out)
 			}
-			if got := testGit(t, dir, "akira-toriyama", "log", "-1", "--format=%B"); got != ":bug:~ fix it" {
+			if got := testutil.Git(t, dir, "akira-toriyama", "log", "-1", "--format=%B"); got != ":bug:~ fix it" {
 				t.Fatalf("git recorded %q, want the subject under the typed cut line", got)
 			}
 		})

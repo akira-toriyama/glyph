@@ -7,6 +7,7 @@ import (
 
 	"github.com/akira-toriyama/glyph/v5/internal/bump"
 	"github.com/akira-toriyama/glyph/v5/internal/config"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // TestLatestVersionTagComparesVersionsNotRefnames: the walk base and the
@@ -22,13 +23,13 @@ import (
 func TestLatestVersionTagComparesVersionsNotRefnames(t *testing.T) {
 	dir, _ := testRepo(t) // tags v0.1.0
 	for _, tag := range []string{"v0.0.1", "v0.0.2", "9.9.9", "100.0.0"} {
-		testGit(t, dir, "akira-toriyama", "tag", tag)
+		testutil.Git(t, dir, "akira-toriyama", "tag", tag)
 	}
 
 	// The premise: git really does report a lower tag first here. Without this
 	// the assertion below could pass on a git whose sort changed, proving
 	// nothing.
-	if first := testGit(t, dir, "akira-toriyama", "tag", "--list", "--sort=-v:refname"); !strings.HasPrefix(first, "v0.1.0\n") {
+	if first := testutil.Git(t, dir, "akira-toriyama", "tag", "--list", "--sort=-v:refname"); !strings.HasPrefix(first, "v0.1.0\n") {
 		t.Fatalf("premise gone: git --sort=-v:refname now leads with %q, so this test no longer exercises the refname/version gap", strings.SplitN(first, "\n", 2)[0])
 	}
 
@@ -56,7 +57,7 @@ func TestLatestVersionTagComparesVersionsNotRefnames(t *testing.T) {
 func TestLatestVersionTagBreaksATieOnGitsOrder(t *testing.T) {
 	dir, _ := testRepo(t) // tags v0.1.0
 	for _, tag := range []string{"1.2.3", "v1.2.3"} {
-		testGit(t, dir, "akira-toriyama", "tag", tag)
+		testutil.Git(t, dir, "akira-toriyama", "tag", tag)
 	}
 
 	tag, _, err := at(dir).LatestVersionTag(t.Context(), config.Line{}, nil)
@@ -77,7 +78,7 @@ func TestLatestVersionTagBreaksATieOnGitsOrder(t *testing.T) {
 func TestLatestVersionTagIsPerLine(t *testing.T) {
 	dir, _ := testRepo(t) // tags v0.1.0
 	for _, tag := range []string{"haiku/v2.0.0", "haiku/v1.9.0", "curry/v0.3.0", "haiku/sub/v9.0.0", "v0.0.9"} {
-		testGit(t, dir, "akira-toriyama", "tag", tag)
+		testutil.Git(t, dir, "akira-toriyama", "tag", tag)
 	}
 
 	cases := map[string]string{
@@ -113,16 +114,16 @@ func TestLatestVersionTagIsPerLine(t *testing.T) {
 // bite-exempt: pins the behaviour the change preserves on the one input where --merged cannot answer
 func TestLatestVersionTagOnAShallowCheckoutReadsEveryTag(t *testing.T) {
 	src, _ := testRepo(t) // tags v0.1.0
-	testCommit(t, src, "akira-toriyama", ":sparkles:^ second")
-	testGit(t, src, "akira-toriyama", "tag", "v0.2.0")
-	testCommit(t, src, "akira-toriyama", ":bug:~ third")
+	testutil.Commit(t, src, "akira-toriyama", ":sparkles:^ second")
+	testutil.Git(t, src, "akira-toriyama", "tag", "v0.2.0")
+	testutil.Commit(t, src, "akira-toriyama", ":bug:~ third")
 	dir := t.TempDir()
-	testGit(t, dir, "akira-toriyama", "clone", "-q", "--depth", "1", "file://"+src, ".")
-	testGit(t, dir, "akira-toriyama", "fetch", "-q", "--depth", "1", "origin", "refs/tags/*:refs/tags/*")
-	if merged := testGit(t, dir, "akira-toriyama", "tag", "--merged", "HEAD"); merged != "" {
+	testutil.Git(t, dir, "akira-toriyama", "clone", "-q", "--depth", "1", "file://"+src, ".")
+	testutil.Git(t, dir, "akira-toriyama", "fetch", "-q", "--depth", "1", "origin", "refs/tags/*:refs/tags/*")
+	if merged := testutil.Git(t, dir, "akira-toriyama", "tag", "--merged", "HEAD"); merged != "" {
 		t.Fatalf("premise gone: the shallow clone's HEAD now holds %q", merged)
 	}
-	if all := testGit(t, dir, "akira-toriyama", "tag", "--list", "v0.2.0"); all != "v0.2.0" {
+	if all := testutil.Git(t, dir, "akira-toriyama", "tag", "--list", "v0.2.0"); all != "v0.2.0" {
 		t.Fatalf("premise gone: the shallow clone did not fetch v0.2.0 (tag --list = %q)", all)
 	}
 
@@ -138,11 +139,11 @@ func TestLatestVersionTagOnAShallowCheckoutReadsEveryTag(t *testing.T) {
 // commits an earlier tag already shipped.
 func TestSinceTagAutoWalksFromTheHighestVersion(t *testing.T) {
 	dir, _ := testRepo(t) // tags v0.1.0
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ ship the released feature")
-	testGit(t, dir, "akira-toriyama", "tag", "100.0.0")
-	testCommit(t, dir, "akira-toriyama", ":bug:(ui)~ fix the unreleased crash")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ ship the released feature")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "100.0.0")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:(ui)~ fix the unreleased crash")
 
-	revRange, _, base, err := at(dir).sinceTagRange(t.Context(), testCfg(t), Auto)
+	revRange, _, base, err := at(dir).sinceTagRange(t.Context(), testutil.Config(t), Auto)
 	if err != nil {
 		t.Fatalf("sinceTagRange: %v", err)
 	}
@@ -160,15 +161,15 @@ func TestSinceTagAutoWalksFromTheHighestVersion(t *testing.T) {
 // and steps main to v9.x (measured at adfc5e1: v9.1.0 over two commits).
 func TestSinceTagBaseIsAReleaseHEADContains(t *testing.T) {
 	dir, _ := testRepo(t) // tags v0.1.0
-	testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "side")
-	testCommit(t, dir, "akira-toriyama", ":sparkles:^ side work")
-	testGit(t, dir, "akira-toriyama", "tag", "v9.0.0")
-	testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
-	testCommit(t, dir, "akira-toriyama", ":sparkles:^ second")
-	testGit(t, dir, "akira-toriyama", "tag", "v0.2.0")
-	testCommit(t, dir, "akira-toriyama", ":bug:~ third")
+	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "side")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ side work")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v9.0.0")
+	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "main")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ second")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ third")
 
-	revRange, _, base, err := at(dir).sinceTagRange(t.Context(), testCfg(t), Auto)
+	revRange, _, base, err := at(dir).sinceTagRange(t.Context(), testutil.Config(t), Auto)
 	if err != nil {
 		t.Fatalf("sinceTagRange: %v", err)
 	}
@@ -185,18 +186,18 @@ func TestSinceTagBaseIsAReleaseHEADContains(t *testing.T) {
 // commit past the cap, and its exit 4 and escape, are that cli test's.
 func TestWholeHistoryAtTheCapStillWalks(t *testing.T) {
 	dir, _ := testRepo(t)
-	testGit(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
 	// 199 human commits (plus the fixture's root) and 10 bot commits: 200
 	// walk-visible, exactly AT the cap. The bot commits prove the guard counts
 	// what the walk VISITS, not raw history length.
 	for i := range 199 {
-		testCommit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= human commit %d", i))
+		testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= human commit %d", i))
 	}
 	for i := range 10 {
-		testCommit(t, dir, "dependabot[bot]", fmt.Sprintf(":robot:= chore(fleet): sync %d", i))
+		testutil.Commit(t, dir, "dependabot[bot]", fmt.Sprintf(":robot:= chore(fleet): sync %d", i))
 	}
 
-	revRange, _, base, err := at(dir).sinceTagRange(t.Context(), testCfg(t), Auto)
+	revRange, _, base, err := at(dir).sinceTagRange(t.Context(), testutil.Config(t), Auto)
 	if err != nil {
 		t.Fatalf("200 walk-visible commits are AT the cap and must still walk (a skip would "+
 			"verdict the first release out of existence), got %v", err)

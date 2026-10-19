@@ -155,15 +155,15 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			testGit(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
+			testutil.Git(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
 			preset, _ := config.Preset("gemoji")
 			if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), preset, 0o644); err != nil {
 				t.Fatalf("write glyph.toml: %v", err)
 			}
-			testGit(t, dir, "akira-toriyama", "add", "glyph.toml")
-			testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= begin the project")
+			testutil.Git(t, dir, "akira-toriyama", "add", "glyph.toml")
+			testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= begin the project")
 			for _, kv := range tc.config {
-				testGit(t, dir, "akira-toriyama", "config", kv[0], kv[1])
+				testutil.Git(t, dir, "akira-toriyama", "config", kv[0], kv[1])
 			}
 
 			handed := filepath.Join(dir, "handed-to-the-hook.txt")
@@ -174,7 +174,7 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello\n"), 0o600); err != nil {
 				t.Fatalf("write file: %v", err)
 			}
-			testGit(t, dir, "akira-toriyama", "add", "a.txt")
+			testutil.Git(t, dir, "akira-toriyama", "add", "a.txt")
 
 			args := []string{"commit", "-q"}
 			if tc.verbose {
@@ -194,7 +194,7 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 					script = "#!/bin/sh\ncat " + buffer + " >> \"$1\"\n"
 				}
 				writeExecutable(t, editor, script)
-				testGit(t, dir, "akira-toriyama", "config", "core.editor", editor)
+				testutil.Git(t, dir, "akira-toriyama", "config", "core.editor", editor)
 			} else {
 				msg := filepath.Join(dir, "message.txt")
 				if err := os.WriteFile(msg, []byte(tc.message), 0o600); err != nil {
@@ -202,7 +202,7 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 				}
 				args = append(args, "-F", msg)
 			}
-			testGit(t, dir, "akira-toriyama", args...)
+			testutil.Git(t, dir, "akira-toriyama", args...)
 
 			raw, err := os.ReadFile(handed) //nolint:gosec // a path this test just wrote
 			if err != nil {
@@ -225,7 +225,7 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 			setStdin(t, string(raw))
 			hookCode, _, hookErr := runGlyph(t, "lint", "--stdin")
 			ciCode, _, ciErr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
-			recorded := testGit(t, dir, "akira-toriyama", "log", "-1", "--format=%B")
+			recorded := testutil.Git(t, dir, "akira-toriyama", "log", "-1", "--format=%B")
 
 			if hookCode != ciCode {
 				t.Fatalf("the hook and CI disagree about the same commit: hook %d, CI %d\n"+
@@ -271,7 +271,7 @@ func TestEndAnchoredPatternGetsOneVerdictAtTheHookAndInTheRange(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), []byte(anchored), 0o644); err != nil {
 				t.Fatalf("write glyph.toml: %v", err)
 			}
-			testCommit(t, dir, "akira-toriyama", tc.message)
+			testutil.Commit(t, dir, "akira-toriyama", tc.message)
 			t.Chdir(dir)
 			// What the hook is handed for `git commit -m`: the message plus git's
 			// newline, with GIT_EDITOR=: because no editor runs.
@@ -499,12 +499,12 @@ func TestLintPRTitleExcludesBots(t *testing.T) {
 // autosquash cannot fold ships as a silent none (t-mfny).
 func TestLintRange(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
-	testCommit(t, dir, "dependabot[bot]", "build(deps): bump a dep")    // bot: skipped
-	testCommit(t, dir, "akira-toriyama", "fixup! :bug:~ fix a crash")   // --fixup, unsquashed: violation
-	testCommit(t, dir, "akira-toriyama", "amend! :bug:~ fix a crash")   // --fixup=amend:/reword:, unsquashed: violation
-	testCommit(t, dir, "akira-toriyama", ":construction:= try an idea") // WIP with a sigil: the author's call, clean
-	testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")      // unmatched: violation
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testutil.Commit(t, dir, "dependabot[bot]", "build(deps): bump a dep")    // bot: skipped
+	testutil.Commit(t, dir, "akira-toriyama", "fixup! :bug:~ fix a crash")   // --fixup, unsquashed: violation
+	testutil.Commit(t, dir, "akira-toriyama", "amend! :bug:~ fix a crash")   // --fixup=amend:/reword:, unsquashed: violation
+	testutil.Commit(t, dir, "akira-toriyama", ":construction:= try an idea") // WIP with a sigil: the author's call, clean
+	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji in this one")      // unmatched: violation
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
@@ -577,14 +577,14 @@ func TestLintRangeJudgesAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
 func TestHistoryGatesJudgeSignedCommitsUnderShowSignature(t *testing.T) {
 	work, _ := testClone(t)
 	testutil.SignCommits(t, work)
-	testGit(t, work, "akira-toriyama", "config", "log.showSignature", "true")
-	testGit(t, work, "akira-toriyama", "tag", "v0.1.0")
+	testutil.Git(t, work, "akira-toriyama", "config", "log.showSignature", "true")
+	testutil.Git(t, work, "akira-toriyama", "tag", "v0.1.0")
 	base := rev(t, work, "HEAD")
-	testCommit(t, work, "akira-toriyama", ":bug:~ fix a crash")
+	testutil.Commit(t, work, "akira-toriyama", ":bug:~ fix a crash")
 	clean := rev(t, work, "HEAD")
-	testCommit(t, work, "akira-toriyama", "no gitmoji in this one")
+	testutil.Commit(t, work, "akira-toriyama", "no gitmoji in this one")
 	head := rev(t, work, "HEAD")
-	if raw := testGit(t, work, "akira-toriyama", "log", "-1", "--format=%H"); strings.HasPrefix(raw, head) {
+	if raw := testutil.Git(t, work, "akira-toriyama", "log", "-1", "--format=%H"); strings.HasPrefix(raw, head) {
 		t.Fatalf("git printed no signature verdict ahead of the record under log.showSignature (%q) — the fixture no longer signs, and this test guards nothing", raw)
 	}
 	t.Chdir(work)
@@ -622,14 +622,14 @@ func TestHistoryGatesReadThroughLogOutputEncoding(t *testing.T) {
 	for _, enc := range []string{"UTF-16", "ISO-8859-1"} {
 		t.Run(enc, func(t *testing.T) {
 			work, _ := testClone(t)
-			testGit(t, work, "akira-toriyama", "tag", "v0.1.0")
+			testutil.Git(t, work, "akira-toriyama", "tag", "v0.1.0")
 			base := rev(t, work, "HEAD")
-			testCommit(t, work, "akira-toriyama", subject)
+			testutil.Commit(t, work, "akira-toriyama", subject)
 			clean := rev(t, work, "HEAD")
-			testCommit(t, work, "akira-toriyama", "no gitmoji in this one")
+			testutil.Commit(t, work, "akira-toriyama", "no gitmoji in this one")
 			head := rev(t, work, "HEAD")
-			testGit(t, work, "akira-toriyama", "config", "i18n.logOutputEncoding", enc)
-			if raw := testGit(t, work, "akira-toriyama", "log", "-1", "--format=%s", clean); raw == subject {
+			testutil.Git(t, work, "akira-toriyama", "config", "i18n.logOutputEncoding", enc)
+			if raw := testutil.Git(t, work, "akira-toriyama", "log", "-1", "--format=%s", clean); raw == subject {
 				t.Fatalf("git printed the subject in UTF-8 under i18n.logOutputEncoding=%s — git no longer re-encodes there, and this test guards nothing", enc)
 			}
 			t.Chdir(work)
@@ -672,11 +672,11 @@ func TestHistoryGatesReadThroughLogOutputEncoding(t *testing.T) {
 // test is what keeps that from happening quietly.
 func TestLintRangeAnnotatesEachFinding(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", "first without any pattern shape")
-	testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")
+	testutil.Commit(t, dir, "akira-toriyama", "first without any pattern shape")
+	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji in this one")
 	t.Chdir(dir)
-	wipSHA := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD~1")[:7]
-	malformedSHA := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")[:7]
+	wipSHA := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD~1")[:7]
+	malformedSHA := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")[:7]
 
 	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
 	if code != 3 {
@@ -740,9 +740,9 @@ func TestLintRangeAnnotatesEachFinding(t *testing.T) {
 // TestLintRangeClean: a range of clean and skipped commits is a silent 0.
 func TestLintRangeClean(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
-	testCommit(t, dir, "dependabot[bot]", "build(deps): bump a dep")
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu\n\nBody.\n\n---（和訳）\nメニュー。")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testutil.Commit(t, dir, "dependabot[bot]", "build(deps): bump a dep")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu\n\nBody.\n\n---（和訳）\nメニュー。")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
@@ -776,7 +776,7 @@ func TestLintRangeClean(t *testing.T) {
 // non-zero here would red every repository's gate on a healthy push.
 func TestLintRangeJudgingNothingSaysSo(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "dependabot[bot]", "build(deps): bump a dep")
+	testutil.Commit(t, dir, "dependabot[bot]", "build(deps): bump a dep")
 	t.Chdir(dir)
 
 	t.Run("empty range", func(t *testing.T) {
@@ -876,8 +876,8 @@ func useWarnedPatternConfig(t *testing.T, dir string) {
 func TestLintRangeWarnsOnAWarnedPatternAndStaysGreen(t *testing.T) {
 	dir, base := testRepo(t)
 	useWarnedPatternConfig(t, dir)
-	testCommit(t, dir, "akira-toriyama", ":construction:(x) try the thing")
-	testCommit(t, dir, "akira-toriyama", ":bug:~ a strict fix")
+	testutil.Commit(t, dir, "akira-toriyama", ":construction:(x) try the thing")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ a strict fix")
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")

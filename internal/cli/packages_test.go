@@ -31,9 +31,9 @@ const packagesConfig = "\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath =
 func packagesRepo(t *testing.T) (dir, base string) {
 	t.Helper()
 	dir = packagesRepoWith(t, packagesConfig, map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n"})
-	testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
-	testGit(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
-	return dir, testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
+	return dir, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 }
 
 // packagesRepoWith is packagesRepo's body for any [[packages]] snippet and
@@ -46,8 +46,8 @@ func packagesRepoWith(t *testing.T, snippet string, files map[string]string) str
 	for rel, content := range files {
 		writeFile(t, dir, rel, content)
 	}
-	testGit(t, dir, "akira-toriyama", "add", ".")
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
+	testutil.Git(t, dir, "akira-toriyama", "add", ".")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
 	return dir
 }
 
@@ -87,9 +87,9 @@ func touch(t *testing.T, dir, author, message string, paths ...string) string {
 	for _, p := range paths {
 		writeFile(t, dir, p, fmt.Sprintf("%s\n%d\n", p, n))
 	}
-	testGit(t, dir, author, "add", "-A", ".")
-	testGit(t, dir, author, "commit", "-q", "--allow-empty", "-m", message)
-	return testGit(t, dir, author, "rev-parse", "HEAD")
+	testutil.Git(t, dir, author, "add", "-A", ".")
+	testutil.Git(t, dir, author, "commit", "-q", "--allow-empty", "-m", message)
+	return testutil.Git(t, dir, author, "rev-parse", "HEAD")
 }
 
 // commitFilesPath names the endpoint the walk asks for a squash-merged
@@ -419,7 +419,7 @@ func TestSinceTagPackagesExcludedAuthorInnerCommitIsPlacedByItsFiles(t *testing.
 func TestSinceTagPackagesReleasedOnOneLineStaysReleased(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	shipped := touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
-	testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.2.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.2.0")
 	pending := touch(t, dir, "akira-toriyama", ":bug:~ swap an ingredient", "curry/curry.go")
 	usePR(t, walkServer(t, map[string]string{
 		commitPullsPath(shipped): `[]`,
@@ -449,7 +449,7 @@ func TestSinceTagPackagesReleasedOnOneLineStaysReleased(t *testing.T) {
 func TestSinceTagPackagesSquashInnerCommitIsGovernedByItsMergePoint(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	sha, routes := squashAcrossLines(t, dir, 7)
-	testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.2.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.2.0")
 	later := touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
 	routes[commitPullsPath(later)] = `[]`
 	usePR(t, walkServer(t, routes))
@@ -649,7 +649,7 @@ func TestLintRangePackagesScopeIsCheckedByOwnership(t *testing.T) {
 		t.Fatalf("(travel)~ on travel/onsen's file exited %d, want 3 with\n  %s\nstderr: %s", code, want, stderr)
 	}
 	for _, message := range []string{":bug:(onsen)~ warm the water", ":bug:~ warm the water"} {
-		testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", message)
+		testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", message)
 		if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 0 {
 			t.Errorf("%q exited %d, want 0 — the escape the finding names\nstderr: %s", message, code, stderr)
 		}
@@ -669,8 +669,8 @@ func TestLintRangePackagesContradictionOffersNoDropWhereTheScopeIsRequired(t *te
 	writeFile(t, dir, "glyph.toml", "schema = 1\n\n[[patterns]]\npattern = '^(?P<subject>[a-z]+\\((?P<scope>[a-z]+)\\)(?P<semver_sigil>[=~^!%]): .+)'\n\n[note]\nline = '- $subject'\n"+packagesConfig)
 	writeFile(t, dir, "haiku/haiku.go", "package haiku\n")
 	writeFile(t, dir, "curry/curry.go", "package curry\n")
-	testGit(t, dir, "akira-toriyama", "add", ".")
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", "chore(repo)=: declare the lines")
+	testutil.Git(t, dir, "akira-toriyama", "add", ".")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", "chore(repo)=: declare the lines")
 	touch(t, dir, "akira-toriyama", "fix(haiku)~: swap an ingredient", "curry/curry.go")
 	t.Chdir(dir)
 
@@ -679,11 +679,11 @@ func TestLintRangePackagesContradictionOffersNoDropWhereTheScopeIsRequired(t *te
 	if code != 3 || !strings.Contains(stderr, want) || strings.Contains(stderr, "drop the scope") {
 		t.Fatalf("exited %d; the finding must end %q and offer no dropped scope:\n%s", code, want, stderr)
 	}
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", "fix(curry)~: swap an ingredient")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", "fix(curry)~: swap an ingredient")
 	if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 0 {
 		t.Fatalf("the scope the finding names exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", "fix~: swap an ingredient")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", "fix~: swap an ingredient")
 	if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 3 || !strings.Contains(stderr, "matches none of the 1 configured patterns") {
 		t.Fatalf("the dropped scope exited %d, want 3 as a message no pattern claims — the escape the finding must not name\nstderr: %s", code, stderr)
 	}
@@ -700,11 +700,11 @@ const rootedConfig = "\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \
 // its diff.
 func claimedMerge(t *testing.T, dir, message string) string {
 	t.Helper()
-	testGit(t, dir, "akira-toriyama", "switch", "-q", "-c", "side")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side")
 	touch(t, dir, "akira-toriyama", ":memo:= reword a line", "haiku/haiku.go")
-	testGit(t, dir, "akira-toriyama", "switch", "-q", "main")
-	testGit(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", message, "side")
-	return testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "main")
+	testutil.Git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", message, "side")
+	return testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 }
 
 // TestLintRangePackagesNoFileCommitUnderARootPackage: a commit that shows the
@@ -717,7 +717,7 @@ func claimedMerge(t *testing.T, dir, message string) string {
 // mutation row lint-refuses-a-merge-commit-as-touching-no-file hands it no commit.
 func TestLintRangePackagesNoFileCommitUnderARootPackage(t *testing.T) {
 	dir := packagesRepoWith(t, rootedConfig, map[string]string{"haiku/haiku.go": "package haiku\n"})
-	base := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	empty := touch(t, dir, "akira-toriyama", ":bookmark:~ cut a release")
 	merge := claimedMerge(t, dir, ":twisted_rightwards_arrows:~ merge the side branch")
 	t.Chdir(dir)
@@ -773,7 +773,7 @@ func TestPackagesWalkRefusesAClaimedMergeInItsOwnWords(t *testing.T) {
 		}
 	}
 
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", ":twisted_rightwards_arrows:(haiku)~ merge the side branch")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", ":twisted_rightwards_arrows:(haiku)~ merge the side branch")
 	if code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD"); code != 0 || stdout != "haiku/v0.1.1\n" {
 		t.Fatalf("the merge scoped (haiku) exited %d with %q, want 0 and haiku alone\nstderr: %s", code, stdout, stderr)
 	}
@@ -790,7 +790,7 @@ func TestPackagesWalkRefusesAClaimedMergeInItsOwnWords(t *testing.T) {
 func TestLintRangePackagesRawRevertNamesTheEscapesThatWork(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	touch(t, dir, "akira-toriyama", ":memo:= add a README", "README.md")
-	testGit(t, dir, "akira-toriyama", "revert", "--no-edit", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "revert", "--no-edit", "HEAD")
 	t.Chdir(dir)
 	lint := func(t *testing.T) (int, string) {
 		t.Helper()
@@ -799,7 +799,7 @@ func TestLintRangePackagesRawRevertNamesTheEscapesThatWork(t *testing.T) {
 	}
 	reword := func(t *testing.T, message string) {
 		t.Helper()
-		testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", message)
+		testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", message)
 	}
 
 	code, stderr := lint(t)
@@ -861,8 +861,8 @@ func TestLintRangePackagesRawRevertNamesTheEscapesThatWork(t *testing.T) {
 func TestLintRangePackagesScopelessGrammarOffersNoScope(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	writeFile(t, dir, "glyph.toml", "schema = 1\n\n[[patterns]]\npattern = '^(?P<subject>:[a-z0-9_]+:(?P<semver_sigil>[=~^!%]) .+)'\n\n[note]\nline = '- $subject'\n\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \".\"\n")
-	testGit(t, dir, "akira-toriyama", "add", ".")
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
+	testutil.Git(t, dir, "akira-toriyama", "add", ".")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
 	empty := touch(t, dir, "akira-toriyama", ":bookmark:~ cut a release")
 	t.Chdir(dir)
 
@@ -879,7 +879,7 @@ func TestLintRangePackagesScopelessGrammarOffersNoScope(t *testing.T) {
 			t.Errorf("the finding offers a scope (%q) under a grammar that captures none:\n%s", unreachable, stderr)
 		}
 	}
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--amend", "-m", ":bookmark:= cut a release")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--amend", "-m", ":bookmark:= cut a release")
 	if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 0 {
 		t.Fatalf("the = the finding names exited %d, want 0\nstderr: %s", code, stderr)
 	}
@@ -896,8 +896,8 @@ func customRepo(t *testing.T, patterns, seed string) string {
 	writeFile(t, dir, "glyph.toml", "schema = 1\n\n"+patterns+"\n[note]\nline = '- $subject'\n"+packagesConfig)
 	writeFile(t, dir, "haiku/haiku.go", "package haiku\n")
 	writeFile(t, dir, "curry/curry.go", "package curry\n")
-	testGit(t, dir, "akira-toriyama", "add", ".")
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", seed)
+	testutil.Git(t, dir, "akira-toriyama", "add", ".")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", seed)
 	return dir
 }
 
@@ -1046,7 +1046,7 @@ func TestLintRangePackagesDropTheScopeIsProvenAgainstTheMessage(t *testing.T) {
 				t.Fatalf("%q exited %d; the finding must end %q:\n%s", c.message, code, want, stderr)
 			}
 			for _, r := range c.rewrites {
-				testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", r.message)
+				testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", r.message)
 				if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != r.code {
 					t.Errorf("%q exited %d, want %d — %s\nstderr: %s", r.message, code, r.code, r.why, stderr)
 				}
@@ -1084,7 +1084,7 @@ func TestLintRangePackagesFixedNoneIsReachedByLeavingTheSigilOut(t *testing.T) {
 		if code != 3 || !strings.Contains(stderr, want) {
 			t.Fatalf("an empty fix~ exited %d; the finding must be %q:\n%s", code, want, stderr)
 		}
-		testGit(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--amend", "-m", "fix: cut a release")
+		testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--amend", "-m", "fix: cut a release")
 		if code, stderr := lint(t); code != 0 {
 			t.Errorf("with the sigil left out lint exited %d, want 0 — the escape the finding names\nstderr: %s", code, stderr)
 		}
@@ -1098,7 +1098,7 @@ func TestLintRangePackagesFixedNoneIsReachedByLeavingTheSigilOut(t *testing.T) {
 		if code != 3 || !strings.Contains(stderr, want) {
 			t.Fatalf("fix~ on a shared file exited %d; the finding must end %q:\n%s", code, want, stderr)
 		}
-		testGit(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", "fix: fix the readme")
+		testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", "fix: fix the readme")
 		if code, stderr := lint(t); code != 0 {
 			t.Errorf("with the sigil left out lint exited %d, want 0\nstderr: %s", code, stderr)
 		}
@@ -1122,7 +1122,7 @@ func TestLintRangePackagesFixedNoneIsReachedByLeavingTheSigilOut(t *testing.T) {
 			{"fix: cut a release", 3, "leaving the sigil out matches no pattern here, which is why the finding does not name it"},
 			{"chore: cut a release", 0, "a message the same pattern claims does pass, which is why the finding no longer says none can"},
 		} {
-			testGit(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--amend", "-m", r.message)
+			testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--amend", "-m", r.message)
 			if code, stderr := lint(t); code != r.code {
 				t.Errorf("%q exited %d, want %d — %s\nstderr: %s", r.message, code, r.code, r.why, stderr)
 			}

@@ -26,10 +26,10 @@ import (
 // in either direction and one of the two fails.
 func TestNotesMarkdown(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a command palette")
-	testCommit(t, dir, "akira-toriyama", ":memo:= document the palette")
-	testCommit(t, dir, "akira-toriyama", ":recycle:! rework the store")
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a command palette")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the palette")
+	testutil.Commit(t, dir, "akira-toriyama", ":recycle:! rework the store")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
@@ -54,8 +54,8 @@ func TestNotesMarkdown(t *testing.T) {
 // section too.
 func TestNotesSectionsAloneDecide(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "dependabot[bot]", "Bump a dep from 1 to 2")
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testutil.Commit(t, dir, "dependabot[bot]", "Bump a dep from 1 to 2")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "notes", "--range", base+"..HEAD")
@@ -74,7 +74,7 @@ func TestNotesSectionsAloneDecide(t *testing.T) {
 // nothing on stdout, exit 1, the reason in the stderr envelope.
 func TestNotesEmptyIsNoRelease(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":memo:= document the notes model")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the notes model")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
@@ -94,7 +94,7 @@ func TestNotesEmptyIsNoRelease(t *testing.T) {
 // envelope.
 func TestNotesEmptyJSON(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":memo:= document the notes model")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the notes model")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD", "--json")
@@ -122,8 +122,8 @@ func TestNotesEmptyJSON(t *testing.T) {
 // code,emoji,scope,subject,breaking}]}]} on one line.
 func TestNotesJSONShape(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a command palette")
-	testCommit(t, dir, "akira-toriyama", ":bug:! drop the broken fallback")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a command palette")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:! drop the broken fallback")
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "notes", "--range", base+"..HEAD", "--json")
@@ -162,7 +162,7 @@ func TestNotesJSONShape(t *testing.T) {
 // where an unmatched commit refuses, and bump/release run the fold).
 func TestNotesUnmatchedIsRendered(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":not_a_real_code:^ mystery change")
+	testutil.Commit(t, dir, "akira-toriyama", ":not_a_real_code:^ mystery change")
 	t.Chdir(dir)
 
 	if code, _, _ := runGlyph(t, "notes", "--range", base+"..HEAD"); code != 0 {
@@ -179,7 +179,7 @@ func TestNotesUnmatchedIsRendered(t *testing.T) {
 // version around the commit notes quietly passed over.
 func TestNotesUnmatchedLandsNowhereByDefault(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")
+	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji in this one")
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "notes", "--range", base+"..HEAD")
@@ -261,8 +261,8 @@ func wantBareLineReason(t *testing.T, reason string) {
 func TestNotesNoReleaseCountsParticipatingCommits(t *testing.T) {
 	t.Run("a range holding a bot and a merge commit", func(t *testing.T) {
 		dir, base := testRepo(t)
-		testCommit(t, dir, "akira-toriyama", ":memo:= document the notes model")
-		testCommit(t, dir, "renovate[bot]", "Update dependency x to v2")
+		testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the notes model")
+		testutil.Commit(t, dir, "renovate[bot]", "Update dependency x to v2")
 		mergeInto(t, dir, "akira-toriyama", "akira-toriyama", "topic", "Merge branch 'topic'", ":memo:= document the sections")
 		t.Chdir(dir)
 
@@ -279,8 +279,8 @@ func TestNotesNoReleaseCountsParticipatingCommits(t *testing.T) {
 
 	t.Run("a message no pattern claims", func(t *testing.T) {
 		dir, base := testRepo(t)
-		testCommit(t, dir, "akira-toriyama", ":memo:= document the notes model")
-		testCommit(t, dir, "akira-toriyama", "no sigil at all")
+		testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the notes model")
+		testutil.Commit(t, dir, "akira-toriyama", "no sigil at all")
 		t.Chdir(dir)
 
 		if code, _, stderr := runGlyph(t, "bump", "--range", base+"..HEAD"); code != 3 {
@@ -295,9 +295,9 @@ func TestNotesNoReleaseCountsParticipatingCommits(t *testing.T) {
 
 	t.Run("a since-tag walk", func(t *testing.T) {
 		dir, _ := testRepo(t)
-		testCommit(t, dir, "akira-toriyama", ":memo:= document the notes model")
-		pushed := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-		testCommit(t, dir, "renovate[bot]", "Update dependency x to v2")
+		testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the notes model")
+		pushed := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		testutil.Commit(t, dir, "renovate[bot]", "Update dependency x to v2")
 		usePR(t, walkServer(t, map[string]string{commitPullsPath(pushed): `[]`}))
 		t.Chdir(dir)
 
@@ -321,10 +321,10 @@ func TestNotesPackagesNoReleaseCountsParticipatingCommits(t *testing.T) {
 	dir, base := packagesRepo(t)
 	touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
 	touch(t, dir, "renovate[bot]", "Update dependency x to v2", "curry/go.mod")
-	testGit(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic")
+	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic")
 	touch(t, dir, "renovate[bot]", "Update dependency y to v3", "haiku/go.mod")
-	testGit(t, dir, "akira-toriyama", "checkout", "-q", "main")
-	testGit(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", "Merge branch 'topic'", "topic")
+	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "main")
+	testutil.Git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", "Merge branch 'topic'", "topic")
 	t.Chdir(dir)
 
 	b := bumpNoReleaseVerdict(t, "--range", base+"..HEAD")
@@ -364,7 +364,7 @@ func TestNotesOutsideRepoIsAPI(t *testing.T) {
 // rows noreply-address-carries-no-identity, author-credit-goes-live-by-shape).
 func TestNotesCreditsByIdentityNotShape(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	testutil.CommitFrom(t, dir, "Saleh", "root@lr0.org", ":bug:~ fix the parser")
 	testutil.CommitFrom(t, dir, "Robert Pająk", "robert@example.com", ":bug:~ fix the exporter")
 	t.Chdir(dir)

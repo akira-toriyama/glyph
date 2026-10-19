@@ -3,6 +3,8 @@ package cli
 import (
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // This file pins the major version subdirectory rule (DESIGN §4.1, "The tag
@@ -21,9 +23,9 @@ func majorRepo(t *testing.T, extra string) (dir, base string) {
 	dir = packagesRepoWith(t, "\n[[packages]]\npath = \"pubsub\"\n\n[[packages]]\npath = \"pubsub/v2\"\nname = \"pubsub-v2\"\n"+extra, map[string]string{
 		"pubsub/pubsub.go": "package pubsub\n", "pubsub/v2/pubsub.go": "package pubsub\n",
 	})
-	testGit(t, dir, "akira-toriyama", "tag", "pubsub/v1.9.1")
-	testGit(t, dir, "akira-toriyama", "tag", "pubsub/v2.7.0")
-	return dir, testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "pubsub/v1.9.1")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "pubsub/v2.7.0")
+	return dir, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 }
 
 // TestBumpMajorSubdirectoryLinesShareThePrefix: a fix under pubsub/ steps
@@ -65,8 +67,8 @@ func TestBumpMajorSubdirectoryLinesShareThePrefix(t *testing.T) {
 // it — and a fix steps to pubsub/v2.7.1.
 func TestBumpMajorSubdirectoryAloneReadsItsMajor(t *testing.T) {
 	dir := packagesRepoWith(t, "\n[[packages]]\npath = \"pubsub/v2\"\nname = \"pubsub-v2\"\n", map[string]string{"pubsub/pubsub.go": "package pubsub\n", "pubsub/v2/pubsub.go": "package pubsub\n"})
-	testGit(t, dir, "akira-toriyama", "tag", "pubsub/v1.9.1")
-	testGit(t, dir, "akira-toriyama", "tag", "pubsub/v2.7.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "pubsub/v1.9.1")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "pubsub/v2.7.0")
 	sha := touch(t, dir, "akira-toriyama", ":bug:~ fix the exporter", "pubsub/v2/exporter.go")
 	usePR(t, walkServer(t, map[string]string{commitPullsPath(sha): `[]`}))
 	t.Chdir(dir)
@@ -134,7 +136,7 @@ func TestLockedLineRefusesAMajorStep(t *testing.T) {
 	}
 	t.Run("control: no locked sibling, the free line steps its major", func(t *testing.T) {
 		dir := packagesRepoWith(t, "\n[[packages]]\npath = \"pubsub\"\n", map[string]string{"pubsub/pubsub.go": "package pubsub\n"})
-		testGit(t, dir, "akira-toriyama", "tag", "pubsub/v1.9.1")
+		testutil.Git(t, dir, "akira-toriyama", "tag", "pubsub/v1.9.1")
 		sha := touch(t, dir, "akira-toriyama", ":boom:! drop the old API", "pubsub/breaking.go")
 		usePR(t, walkServer(t, map[string]string{commitPullsPath(sha): `[]`}))
 		t.Chdir(dir)
@@ -166,7 +168,7 @@ func TestLockedLineFirstReleaseIsItsMajor(t *testing.T) {
 	touch(t, dir, "akira-toriyama", ":bug:~ start the v3 client", "pubsub/v3/client.go")
 	// An untagged line walks the whole history, so every commit is asked about.
 	routes := map[string]string{}
-	for sha := range strings.FieldsSeq(testGit(t, dir, "akira-toriyama", "rev-list", "HEAD")) {
+	for sha := range strings.FieldsSeq(testutil.Git(t, dir, "akira-toriyama", "rev-list", "HEAD")) {
 		routes[commitPullsPath(sha)] = `[]`
 	}
 	usePR(t, walkServer(t, routes))
