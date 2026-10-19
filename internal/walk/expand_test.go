@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/akira-toriyama/glyph/v5/internal/github"
 	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
 )
 
@@ -235,4 +237,103 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 			t.Errorf("landed[1] = %.7s, want %.7s — the replayed half still lands on its rewrite", landed[1], canonical)
 		}
 	})
+}
+
+// TestFallbackLagStaysSoftWhereADirectPushWedges pins the asymmetry DESIGN §4
+// argues between walk.fallback's two arms over one unmatched message. A commit
+// GitHub does not know yet is DROPPED — warned about and carried in
+// Facts.Dropped, never refused and never folded — because its true content
+// is a pull the API has not indexed; the same message on a commit GitHub
+// knows is a direct push to the released branch, refused with the escape at
+// the commit itself, said nothing about until the whole range is walked, and
+// still one row with one more escape when the branch meets it again. Measured
+// at the seam: no git and no API stand behind the walk, and the Reporter hears
+// what each arm says.
+func TestFallbackLagStaysSoftWhereADirectPushWedges(t *testing.T) {
+	raw := gitsource.RawCommit{SHA: "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", Author: "akira-toriyama", Message: "wip"}
+	begin := func() (*walk, *recorder) {
+		rep := &recorder{}
+		return newWalk(Walker{Report: rep}, testCfg(t), "akira-toriyama", "glyph", "v0.1.0..HEAD", []gitsource.RawCommit{raw}, false), rep
+	}
+
+	lagged, rep := begin()
+	lagged.fallback(raw, true)
+	if len(lagged.commits) != 0 || len(lagged.wedges) != 0 || lagged.seen[raw.SHA] {
+		t.Errorf("lag arm: %d commit(s), %d wedge(s), seen=%v; want the commit neither folded nor refused — its message is not its content", len(lagged.commits), len(lagged.wedges), lagged.seen[raw.SHA])
+	}
+	if strings.Join(lagged.facts.Dropped, ",") != "a1a1a1a" {
+		t.Errorf("lag arm: Dropped = %v, want the short sha alone", lagged.facts.Dropped)
+	}
+	if len(rep.lines) != 1 || !strings.Contains(rep.lines[0], "its own message cannot be folded") || !strings.HasPrefix(rep.lines[0], "warning: commit a1a1a1a ") {
+		t.Errorf("lag arm: reporter heard %q, want one warning that the commit's own message cannot be folded", rep.lines)
+	}
+
+	pushed, rep := begin()
+	pushed.fallback(raw, false)
+	if len(pushed.commits) != 0 || len(pushed.facts.Dropped) != 0 {
+		t.Errorf("direct push: %d commit(s), Dropped %v; want neither — the commit is refused, not read and not dropped", len(pushed.commits), pushed.facts.Dropped)
+	}
+	if len(pushed.wedges) != 1 || pushed.wedges[0].row.SHA != raw.SHA || len(pushed.wedges[0].escapes) != 1 || pushed.wedges[0].escapes[0].base != raw.SHA || pushed.wedges[0].escapes[0].via != "" {
+		t.Errorf("direct push: wedges = %+v, want one row for the commit with the escape at the commit itself and no pull", pushed.wedges)
+	}
+	pushed.fallback(raw, false)
+	if len(pushed.wedges) != 1 || len(pushed.wedges[0].escapes) != 2 || pushed.wedges[0].escapes[1].base != raw.SHA || len(pushed.commits) != 0 {
+		t.Errorf("direct push met twice: wedges = %+v, %d commit(s); want one row with two escapes and nothing folded", pushed.wedges, len(pushed.commits))
+	}
+	if len(rep.lines) != 0 {
+		t.Errorf("direct push: reporter heard %q, want nothing — the refusal is said once the whole range is walked", rep.lines)
+	}
+}
+
+// TestReconcileNamesACoveredPullNothingExpanded drives visit over a range
+// whose commits GitHub associates with two merged pulls neither of which
+// resolves from a merge point in the range. #7's merge point IS in the
+// range, so its inner commit stands aside for it; the merge point then
+// resolves to nothing (GitHub has not associated it yet) and reconcile names
+// #7 lost — without asking for its listing, which cannot say what belongs
+// to this range. #8's merge point is on another base branch, so the commit it
+// carries is no claim about this release: it is never covered, falls back to
+// its own message and #8 is not named (DESIGN §4, "Covered is deliberately
+// gated"; t-7zt7). The Pulls port is answered from memory and the Git port is
+// never reached: nothing expands, so no footprint is asked for.
+func TestReconcileNamesACoveredPullNothingExpanded(t *testing.T) {
+	inner7 := "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a"
+	point7 := "7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b"
+	inner8 := "8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a"
+	elsewhere := "8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b"
+	raws := []gitsource.RawCommit{
+		{SHA: inner7, Author: "akira-toriyama", Message: ":sparkles:(ui)^ add a menu"},
+		{SHA: inner8, Author: "akira-toriyama", Message: ":bug:(ui)~ fix the menu"},
+		{SHA: point7, Author: "akira-toriyama", Message: "Merge pull request #7 from akira-toriyama/menu", Parents: 2},
+	}
+	pulls := &fakePulls{pulls: map[string][]github.PullRef{
+		inner7: {{Number: 7, MergedAt: "2026-10-01T00:00:00Z", MergeCommitSHA: point7}},
+		inner8: {{Number: 8, MergedAt: "2026-10-01T00:00:00Z", MergeCommitSHA: elsewhere}},
+	}}
+	rep := &recorder{}
+	wk := newWalk(Walker{Pulls: pulls, Report: rep}, testCfg(t), "akira-toriyama", "glyph", "v0.1.0..HEAD", raws, false)
+	for _, raw := range raws {
+		if err := wk.visit(t.Context(), raw); err != nil {
+			t.Fatalf("visit %.7s: %v", raw.SHA, err)
+		}
+	}
+	wk.reconcile()
+
+	var shas []string
+	for _, c := range wk.commits {
+		shas = append(shas, c.Raw.SHA)
+	}
+	if want := []string{inner8, point7}; strings.Join(shas, " ") != strings.Join(want, " ") {
+		t.Errorf("walked = %v, want #8's commit and #7's merge point read from their own messages, and #7's inner commit standing aside", shas)
+	}
+	if len(wk.facts.LostPulls) != 1 || wk.facts.LostPulls[0] != 7 || wk.facts.AllUnknown {
+		t.Errorf("facts = %+v, want #7 lost and nothing else", wk.facts)
+	}
+	if want := []string{"pulls:" + inner7, "pulls:" + inner8, "pulls:" + point7}; strings.Join(pulls.asked, " ") != strings.Join(want, " ") {
+		t.Errorf("requests = %q, want each commit resolved once and no listing fetched — the walk does not guess at a lost pull", pulls.asked)
+	}
+	if len(rep.lines) != 2 || !strings.HasPrefix(rep.lines[0], "warning: commit 8a8a8a8 has no merged pull request") ||
+		!strings.HasPrefix(rep.lines[1], "warning: pull request #7 has commits in v0.1.0..HEAD but nothing in the range resolved to it") || strings.Contains(rep.lines[1], "#8") {
+		t.Errorf("reporter heard %q, want #8's direct-push reading and then #7 named lost, never #8", rep.lines)
+	}
 }

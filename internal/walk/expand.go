@@ -6,21 +6,68 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/akira-toriyama/glyph/v5/internal/bump"
 	"github.com/akira-toriyama/glyph/v5/internal/config"
 	"github.com/akira-toriyama/glyph/v5/internal/github"
 	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
 )
 
-// walkSince walks the range's commits oldest first and folds every merged PR's
-// individual commits into one walked list, recording per-pull expansion
-// provenance alongside. Author-excluded commits are skipped before any API call
-// — the routine fleet-sync direct push never costs a request. Everything else
-// is asked about: a commit's own shape cannot tell a pull request's merge point
-// from a local merge, so resolution answers that, and the unresolved ones fall
-// through to the inline fallback, which applies the message rules. A last pass
-// reconciles the pulls commits stood aside for against the pulls actually
-// expanded, so a merged pull request whose canonical commit never resolved is
-// named in a warning instead of silently lost.
+// walk is one walk over a range in progress. Its contract is an order: newWalk
+// opens it over the range's log, visit is called once per commit of that log,
+// oldest first, and reconcile closes it once after the last visit; the verdict
+// — the walked list with its facts, or the refusal of every wedge — is read
+// only then. The field docs say what each ledger keeps and why the order
+// matters.
+type walk struct {
+	Walker
+	cfg                   *config.Config
+	owner, repo, revRange string
+
+	// commits is the walked list, oldest first, every commit represented once.
+	commits []Commit
+	// facts is normalized up front so the JSON surface never emits null:
+	// .pulls is indexable on every verdict, the none verdict included, with
+	// no null-check at each consumer.
+	facts Facts
+	// seen holds every SHA already REPRESENTED in the fold — a commit two
+	// merged pulls list (a stacked branch carries its base pull's), a
+	// merge-merged pull's commits met on main and again inside its listing —
+	// and the CANONICAL commit of every resolved pull, which comes back around
+	// too (a pull squash-merged into a topic branch leaves its squash commit
+	// inside the listing of the pull that landed the branch). The walk runs
+	// oldest first, so a shared commit is attributed to whatever first landed
+	// it, and a merge point is always walked AFTER the commits it merges
+	// (DESIGN §4).
+	seen map[string]bool
+	// wedges is every commit the walk refused, from either arm. The refusal
+	// goes out after the WHOLE range is walked, as the fold's does
+	// (bump.Refusal): stopping at the first answered a cleanup of several
+	// commits with one red run per commit.
+	wedges []wedge
+	// wedged is each refused sha's index in wedges, for a pull that lists a
+	// commit another pull already had refused.
+	wedged map[string]int
+	// inRange is every SHA this walk will visit — what makes "covered"
+	// checkable: a commit stands aside only for a pull whose canonical commit
+	// is IN HERE, never for one merged into another base branch (DESIGN §4,
+	// "Covered is deliberately gated").
+	inRange map[string]bool
+	// The covered ledger, in walk order, and the pulls actually expanded;
+	// reconcile compares the two, because a covered pull nothing expanded is
+	// a merged pull every commit of which stood aside (t-7zt7).
+	coveredPulls map[int]bool
+	coveredOrder []int
+	expanded     map[int]bool
+	// visited counts the commits the walk asked GitHub about, unknown the ones
+	// GitHub did not know; reconcile reads the all-unknown shape off them.
+	visited, unknown int
+}
+
+// walkSince is the walk over revRange: the log, the shallow question asked
+// once, one visit per commit, reconcile, and the verdict — the walked list
+// with its facts, or the refusal naming every wedge. An error out of a visit is
+// the API's or git's as received; refusedFirst decides whether the wedges
+// already found outrank it.
 func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, revRange string) ([]Commit, Facts, error) {
 	raws, err := w.Git.Log(ctx, revRange)
 	if err != nil {
@@ -36,271 +83,285 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 	if shallow {
 		w.Report.Warnf("this is a SHALLOW checkout: the walk cannot tell a commit that never landed on the released branch from one git does not have, so a merged pull request's commits can be counted again even though an earlier tag shipped them. Check out with full history (actions/checkout with fetch-depth: 0) before releasing")
 	}
-	var commits []Commit
-	// Normalized to [] up front so the JSON surface never emits null: .pulls is
-	// indexable on every verdict, the none verdict included, with no null-check
-	// at each consumer.
-	facts := Facts{Pulls: []PullExpansion{}, Shallow: shallow}
-	// seen holds every SHA already REPRESENTED in the fold — a commit two
-	// merged pulls list (a stacked branch carries its base pull's), a
-	// merge-merged pull's commits met on main and again inside its listing —
-	// and the CANONICAL commit of every resolved pull, which comes back around
-	// too (a pull squash-merged into a topic branch leaves its squash commit
-	// inside the listing of the pull that landed the branch). The walk runs
-	// oldest first, so a shared commit is attributed to whatever first landed
-	// it, and a merge point is always walked AFTER the commits it merges
-	// (DESIGN §4).
-	seen := map[string]bool{}
-	// wedges is every commit the walk refused, from either arm. The refusal
-	// goes out after the WHOLE range is walked, as the fold's does
-	// (bump.Refusal): stopping at the first answered a cleanup of several
-	// commits with one red run per commit.
-	var wedges []wedge
-	// wedged is each refused sha's index in wedges, for a pull that lists a
-	// commit another pull already had refused.
-	wedged := map[string]int{}
-	// inRange is every SHA this walk will visit — what makes "covered"
-	// checkable: a commit stands aside only for a pull whose canonical commit
-	// is IN HERE, never for one merged into another base branch (DESIGN §4,
-	// "Covered is deliberately gated").
+	wk := newWalk(w, cfg, owner, repo, revRange, raws, shallow)
+	for _, raw := range raws {
+		if err := wk.visit(ctx, raw); err != nil {
+			return nil, Facts{}, w.refusedFirst(wk.wedges, err)
+		}
+	}
+	wk.reconcile()
+	if len(wk.wedges) > 0 {
+		return nil, Facts{}, walkRefusal(wk.wedges)
+	}
+	return wk.commits, wk.facts, nil
+}
+
+// newWalk opens a walk over raws, the range's log oldest first: every ledger
+// empty, every sha of the range indexed, and the checkout's shallowness
+// recorded as a fact.
+func newWalk(w Walker, cfg *config.Config, owner, repo, revRange string, raws []gitsource.RawCommit, shallow bool) *walk {
 	inRange := make(map[string]bool, len(raws))
 	for _, raw := range raws {
 		if raw.SHA != "" {
 			inRange[raw.SHA] = true
 		}
 	}
-	// The covered ledger, in walk order, and the pulls actually expanded; the
-	// end of the walk reconciles the two, because a covered pull nothing
-	// expanded is a merged pull every commit of which stood aside (t-7zt7).
-	coveredPulls, coveredOrder, expanded := map[int]bool{}, []int{}, map[int]bool{}
-	// foldPull expands one RESOLVED merged pull into the walk, canonical being
-	// the merge point that resolved to it; the reconciliation at the end never
-	// calls it, because a listing fetched without a canonical commit in range
-	// says nothing about which of its commits belong to this walk (DESIGN §4,
-	// "warns and does not expand"). The listing is filtered BEFORE anything
-	// judges it — by where each commit landed (mainFootprint: the range governs
-	// whatever git can place) and by seen (an already-represented commit must
-	// never fail the release; its message may be a squash subject) — and what
-	// remains is pre-flighted against the pattern file HERE, where the pull
-	// association still exists to word the refusal (wedge).
-	foldPull := func(number int, canonical string) error {
-		listing, perr := w.PullRawCommits(ctx, owner, repo, number)
-		if perr != nil {
-			return perr
-		}
-		// Recorded HERE, not in PullRawCommits, which --pr shares and which
-		// carries no facts: only a walk acts on its verdict irreversibly.
-		if len(listing) >= github.PullCommitsCap {
-			facts.Truncated = append(facts.Truncated, number)
-		}
-		// Where did each listed commit LAND on the released branch? That is the
-		// only question that lets the walk RANGE — a git fact — govern a listing
-		// that knows nothing about it. A commit with no landing site is governed
-		// by the pull alone and folds exactly as it always did; one that landed
-		// is folded only if its landing site is in range.
-		landed, ferr := w.mainFootprint(ctx, canonical, listing)
-		if ferr != nil {
-			return ferr
-		}
-		contributed := 0
-		for i, r := range listing {
-			if on := landed[i]; on != "" {
-				if !inRange[on] {
-					w.Report.Noticef("commit %.7s in pull request #%d landed on the released branch as %.7s, which is outside %s — it shipped under an earlier tag and is not counted again", r.SHA, number, on, revRange)
-					continue
-				}
-				// The landing site is the identity that matters downstream: the
-				// notes must cite a commit the repository actually has, and a
-				// rebase-merge's listing reports pre-rebase shas that exist on
-				// no branch. Substituting here also makes the walk-wide dedup
-				// below compare like with like.
-				r.SHA = on
-			}
-			if i, refused := wedged[r.SHA]; refused {
-				// A refused commit a second pull lists (a stacked pull carries
-				// its base pull's commits) is one row with one more escape:
-				// this pull's merge point wedges too, and a base that clears
-				// the first pull's alone leaves the next run red on this one.
-				wedges[i].escapes = append(wedges[i].escapes, placeEscape(owner, repo, number, canonical, onMain(r.SHA, inRange)))
-				continue
-			}
-			if r.SHA != "" && seen[r.SHA] {
-				w.Report.Noticef("commit %.7s in pull request #%d is already represented in this walk (a stacked branch carries its base PR's pre-squash commits; a merge-merged PR's commits sit on main under these same SHAs; a sub-PR's squash commit rides inside the PR that landed its branch) — counted once", r.SHA, number)
-				continue
-			}
-			if !slices.Contains(cfg.ExcludeAuthors, r.Author) {
-				if row, ok := unclaimed(cfg, r); ok {
-					// Represented like any other listed commit, and remembered
-					// as refused: one refused commit is one row however many
-					// pulls list it.
-					if r.SHA != "" {
-						seen[r.SHA] = true
-						wedged[r.SHA] = len(wedges)
-					}
-					wedges = append(wedges, newWedge(row, owner, repo, number, canonical, onMain(r.SHA, inRange)))
-					continue
-				}
-			}
-			if r.SHA != "" {
-				seen[r.SHA] = true
-			}
-			commits = append(commits, Commit{Raw: r, Pull: number, Landed: landed[i] != "", MergePoint: canonical})
-			contributed++
-		}
-		facts.Pulls = append(facts.Pulls, PullExpansion{Number: number, Commits: contributed})
-		expanded[number] = true
-		return nil
+	return &walk{
+		Walker:       w,
+		cfg:          cfg,
+		owner:        owner,
+		repo:         repo,
+		revRange:     revRange,
+		facts:        Facts{Pulls: []PullExpansion{}, Shallow: shallow},
+		seen:         map[string]bool{},
+		wedged:       map[string]int{},
+		inRange:      inRange,
+		coveredPulls: map[int]bool{},
+		expanded:     map[int]bool{},
 	}
-	visited, unknown := 0, 0
-	for _, raw := range raws {
-		// A merge point is a POINTER to a pull request, not a message being
-		// judged, so only its AUTHOR excludes it before resolution: an
-		// exclude_authors commit can never move the version, and the fleet's
-		// daily bot push must not cost a round-trip. Neither its subject nor
-		// its parent count may — judging the shape dropped a whole pull out of
-		// a release in silence (t-7zt7; DESIGN §4). The commit still joins the
-		// walk; whether the notes show it is their decision.
-		if slices.Contains(cfg.ExcludeAuthors, raw.Author) {
-			if raw.SHA != "" && seen[raw.SHA] {
-				continue
-			}
-			if raw.SHA != "" {
-				seen[raw.SHA] = true
-			}
-			commits = append(commits, Commit{Raw: raw, Landed: true})
-			continue
-		}
-		visited++
-		number, found, covering, rerr := w.mergedPullFor(ctx, owner, repo, raw.SHA, inRange)
-		// Ledger first, whatever this commit resolves to: a commit can name the
-		// pull that merged it AND a pull that merely carries it (a sub-PR's
-		// squash commit is inside the branch of the pull that landed it), and
-		// the reconciliation below needs both sightings.
-		for _, n := range covering {
-			if !coveredPulls[n] {
-				coveredPulls[n] = true
-				coveredOrder = append(coveredOrder, n)
-			}
-		}
-		lag := false
-		switch {
-		case github.IsCommitUnknown(rerr):
-			// GitHub does not know the SHA yet (422) — the walk outran the API
-			// right after a push. DESIGN §4's API lag: fall back, never fail.
-			unknown++
-			lag = true
-		case rerr != nil:
-			return nil, Facts{}, w.refusedFirst(wedges, rerr)
-		case found:
-			if ferr := foldPull(number, raw.SHA); ferr != nil {
-				return nil, Facts{}, w.refusedFirst(wedges, ferr)
-			}
-			// The canonical commit is now represented BY that expansion, so it
-			// joins the same set — recorded after the expansion, never before,
-			// because a rebase-merge's merge_commit_sha is the last rebased
-			// commit and appears in the listing it must still be folded from.
-			if raw.SHA != "" {
-				seen[raw.SHA] = true
-			}
-			continue
-		case len(covering) > 0:
-			// Covered: part of a merged pull whose canonical commit is in this
-			// range and expands it — a rebase-merge's earlier commits, a
-			// merge-merged pull's branch commits (the log runs without
-			// --first-parent). Counting this one too would double it; if the
-			// canonical commit never resolves, the ledger names the pull at the
-			// end.
-			continue
-		}
-		// The fallback: no merged pull explains this commit (a direct push, or
-		// the API lagging), so its own message is the evidence. A merge commit
-		// GitHub has not indexed yet is a merge POINT the walk could not
-		// resolve, and its message never says what it merged — a fact a
-		// release decision needs (Facts.Dropped), not only a warning.
-		if lag && raw.Parents >= 2 {
-			w.Report.Warnf("merge commit %.7s is not known to GitHub yet (API lag), so the pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA)
-			facts.Dropped = append(facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
-			continue
-		}
-		if i, refused := wedged[raw.SHA]; refused {
-			// Refused inside a pull the walk expanded earlier, and now met on
-			// the released branch itself: one row, one more escape — the
-			// commit is its own base here — and no "counted once" for a
-			// commit that was not.
-			wedges[i].escapes = append(wedges[i].escapes, placeEscape(owner, repo, 0, "", raw.SHA))
-			continue
-		}
-		if raw.SHA != "" && seen[raw.SHA] {
-			w.Report.Noticef("commit %.7s was already folded in by a merged pull request — counted once", raw.SHA)
-			continue
-		}
-		if lag {
-			// The lag arm stays SOFT on an unmatched message, unlike the fold:
-			// this commit's true content is a pull the API has not indexed, so
-			// it is dropped from the fold, warned about and carried in
-			// Facts.Dropped — release refuses to ACT on it, bump and notes
-			// report it (DESIGN §4).
-			if row, ok := unclaimed(cfg, raw); ok {
-				w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) and its own message cannot be folded (%s) — nothing was counted from it; re-run once GitHub has indexed the commit", raw.SHA, row.Detail)
-				facts.Dropped = append(facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
-				continue
-			}
-			w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) — reading its own message", raw.SHA)
-		} else {
-			// A direct push GitHub knows is judged HERE, like a pull's inner
-			// commit: the fold's remedy (fix the message, add a pattern) is
-			// authoring's, and this commit is on the released branch, where
-			// the only way out is a base at or past it — the wedge's refusal,
-			// with the escape at the commit itself (DESIGN §4).
-			if row, ok := unclaimed(cfg, raw); ok {
-				if raw.SHA != "" {
-					seen[raw.SHA] = true
-					wedged[raw.SHA] = len(wedges)
-				}
-				wedges = append(wedges, newWedge(row, owner, repo, 0, "", raw.SHA))
-				continue
-			}
-			if m, merr := cfg.Match(raw.Message); merr != nil || !m.Matched || !m.Skip {
-				// A skip-pattern commit (a local git merge under the presets)
-				// is passed over in silence; every other fallback announces
-				// that a message, not a pull request, is the evidence.
-				w.Report.Warnf("commit %.7s has no merged pull request (a direct push, or the API lagging) — reading its own message", raw.SHA)
-			}
+}
+
+// visit folds one commit of the range in by what resolves it: an excluded
+// author's commit joins before any request, a merge point expands the pull it
+// resolves to, a covered commit stands aside for its pull's merge point, and
+// everything else falls back to its own message. The error is the API's or
+// git's as received; walkSince decides what it means for the verdict.
+func (w *walk) visit(ctx context.Context, raw gitsource.RawCommit) error {
+	// A merge point is a POINTER to a pull request, not a message being
+	// judged, so only its AUTHOR excludes it before resolution: an
+	// exclude_authors commit can never move the version, and the fleet's
+	// daily bot push must not cost a round-trip. Neither its subject nor
+	// its parent count may — judging the shape dropped a whole pull out of
+	// a release in silence (t-7zt7; DESIGN §4). The commit still joins the
+	// walk; whether the notes show it is their decision.
+	if slices.Contains(w.cfg.ExcludeAuthors, raw.Author) {
+		if raw.SHA != "" && w.seen[raw.SHA] {
+			return nil
 		}
 		if raw.SHA != "" {
-			seen[raw.SHA] = true
+			w.seen[raw.SHA] = true
 		}
-		// Landed by construction: the fallback reads the walked commit
-		// itself, an identity the released branch holds.
-		commits = append(commits, Commit{Raw: raw, Landed: true})
+		w.commits = append(w.commits, Commit{Raw: raw, Landed: true})
+		return nil
 	}
-	// Reconcile the ledger: a pull the walk saw only from the INSIDE, its
-	// commits standing aside for a canonical commit that never resolved (API
-	// lag, or an exclude_authors author merged it with a real merge commit).
-	// WARN, and deliberately do NOT expand: a listing carries nothing about
-	// this range, and expanding it was unsound both ways — a rebase-merge's
-	// pre-rebase SHAs double-count, released work comes back (DESIGN §4, "The
-	// walk warns and does not expand"). Naming the loss is what turns
-	// t-7zt7's silence into a visible one.
-	for _, number := range coveredOrder {
-		if expanded[number] {
+	w.visited++
+	number, found, covering, rerr := w.mergedPullFor(ctx, w.owner, w.repo, raw.SHA, w.inRange)
+	// Ledger first, whatever this commit resolves to: a commit can name the
+	// pull that merged it AND a pull that merely carries it (a sub-PR's
+	// squash commit is inside the branch of the pull that landed it), and
+	// reconcile needs both sightings.
+	for _, n := range covering {
+		if !w.coveredPulls[n] {
+			w.coveredPulls[n] = true
+			w.coveredOrder = append(w.coveredOrder, n)
+		}
+	}
+	lag := false
+	switch {
+	case github.IsCommitUnknown(rerr):
+		// GitHub does not know the SHA yet (422) — the walk outran the API
+		// right after a push. DESIGN §4's API lag: fall back, never fail.
+		w.unknown++
+		lag = true
+	case rerr != nil:
+		return rerr
+	case found:
+		if err := w.expand(ctx, number, raw.SHA); err != nil {
+			return err
+		}
+		// The canonical commit is now represented BY that expansion, so it
+		// joins the same set — recorded after the expansion, never before,
+		// because a rebase-merge's merge_commit_sha is the last rebased
+		// commit and appears in the listing it must still be folded from.
+		if raw.SHA != "" {
+			w.seen[raw.SHA] = true
+		}
+		return nil
+	case len(covering) > 0:
+		// Covered: part of a merged pull whose canonical commit is in this
+		// range and expands it — a rebase-merge's earlier commits, a
+		// merge-merged pull's branch commits (the log runs without
+		// --first-parent). Counting this one too would double it; if the
+		// canonical commit never resolves, reconcile names the pull.
+		return nil
+	}
+	w.fallback(raw, lag)
+	return nil
+}
+
+// expand folds one RESOLVED merged pull into the walk, canonical being the
+// merge point that resolved to it; reconcile never calls it, because a
+// listing fetched without a canonical commit in range says nothing about
+// which of its commits belong to this walk (DESIGN §4, "warns and does not
+// expand"). The listing is filtered BEFORE anything judges it — by where
+// each commit landed (mainFootprint: the range governs whatever git can
+// place) and by seen (an already-represented commit must never fail the
+// release; its message may be a squash subject) — and what remains is
+// pre-flighted against the pattern file HERE, where the pull association
+// still exists to word the refusal (wedge).
+func (w *walk) expand(ctx context.Context, number int, canonical string) error {
+	listing, err := w.PullRawCommits(ctx, w.owner, w.repo, number)
+	if err != nil {
+		return err
+	}
+	// Recorded HERE, not in PullRawCommits, which --pr shares and which
+	// carries no facts: only a walk acts on its verdict irreversibly.
+	if len(listing) >= github.PullCommitsCap {
+		w.facts.Truncated = append(w.facts.Truncated, number)
+	}
+	// Where did each listed commit LAND on the released branch? That is the
+	// only question that lets the walk RANGE — a git fact — govern a listing
+	// that knows nothing about it. A commit with no landing site is governed
+	// by the pull alone and folds exactly as it always did; one that landed
+	// is folded only if its landing site is in range.
+	landed, err := w.mainFootprint(ctx, canonical, listing)
+	if err != nil {
+		return err
+	}
+	contributed := 0
+	for i, r := range listing {
+		if on := landed[i]; on != "" {
+			if !w.inRange[on] {
+				w.Report.Noticef("commit %.7s in pull request #%d landed on the released branch as %.7s, which is outside %s — it shipped under an earlier tag and is not counted again", r.SHA, number, on, w.revRange)
+				continue
+			}
+			// The landing site is the identity that matters downstream: the
+			// notes must cite a commit the repository actually has, and a
+			// rebase-merge's listing reports pre-rebase shas that exist on
+			// no branch. Substituting here also makes the walk-wide dedup
+			// below compare like with like.
+			r.SHA = on
+		}
+		if i, refused := w.wedged[r.SHA]; refused {
+			// A refused commit a second pull lists (a stacked pull carries
+			// its base pull's commits) is one row with one more escape:
+			// this pull's merge point wedges too, and a base that clears
+			// the first pull's alone leaves the next run red on this one.
+			w.wedges[i].escapes = append(w.wedges[i].escapes, placeEscape(w.owner, w.repo, number, canonical, onMain(r.SHA, w.inRange)))
 			continue
 		}
-		facts.LostPulls = append(facts.LostPulls, number)
-		w.Report.Warnf("pull request #%d has commits in %s but nothing in the range resolved to it — GitHub does not associate its merge commit with the pull yet, or an exclude_authors author merged it with a real merge commit (which the walk skips before resolution); those commits stood aside for that merge point and are NOT counted, so this release is short by whatever #%d changed. The pull's own commit listing is its whole history and cannot say which commits belong to %s, so the walk will not guess — re-run the release once GitHub has caught up with the merge point", number, revRange, number, revRange)
+		if r.SHA != "" && w.seen[r.SHA] {
+			w.Report.Noticef("commit %.7s in pull request #%d is already represented in this walk (a stacked branch carries its base PR's pre-squash commits; a merge-merged PR's commits sit on main under these same SHAs; a sub-PR's squash commit rides inside the PR that landed its branch) — counted once", r.SHA, number)
+			continue
+		}
+		if !slices.Contains(w.cfg.ExcludeAuthors, r.Author) {
+			if row, ok := unclaimed(w.cfg, r); ok {
+				w.refuse(row, number, canonical, r.SHA)
+				continue
+			}
+		}
+		if r.SHA != "" {
+			w.seen[r.SHA] = true
+		}
+		w.commits = append(w.commits, Commit{Raw: r, Pull: number, Landed: landed[i] != "", MergePoint: canonical})
+		contributed++
 	}
-	if visited > 0 && unknown == visited {
-		facts.AllUnknown = true
+	w.facts.Pulls = append(w.facts.Pulls, PullExpansion{Number: number, Commits: contributed})
+	w.expanded[number] = true
+	return nil
+}
+
+// refuse records a refused commit from either arm: represented like any other
+// commit, and remembered as refused, so one refused commit is one row however
+// many pulls list it and however often the released branch meets it. number
+// and mergePoint are the pull the walk resolved it from (0, "" on the
+// fallback arm); sha is the commit's own identity, and onMain places the
+// escape at it exactly when the range holds it — always for the fallback
+// arm's commit, which is the log's own (newWalk indexes every sha visit is
+// handed), and only where it landed in range for a listed one.
+func (w *walk) refuse(row bump.Refusal, number int, mergePoint, sha string) {
+	if sha != "" {
+		w.seen[sha] = true
+		w.wedged[sha] = len(w.wedges)
+	}
+	w.wedges = append(w.wedges, newWedge(row, w.owner, w.repo, number, mergePoint, onMain(sha, w.inRange)))
+}
+
+// fallback reads a commit no merged pull explains — a direct push, or the API
+// lagging — from its own message, the evidence that is left. A merge commit
+// GitHub has not indexed yet is a merge POINT the walk could not resolve, and
+// its message never says what it merged — a fact a release decision needs
+// (Facts.Dropped), not only a warning.
+func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
+	if lag && raw.Parents >= 2 {
+		w.Report.Warnf("merge commit %.7s is not known to GitHub yet (API lag), so the pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA)
+		w.facts.Dropped = append(w.facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
+		return
+	}
+	if i, refused := w.wedged[raw.SHA]; refused {
+		// Refused inside a pull the walk expanded earlier, and now met on
+		// the released branch itself: one row, one more escape — the
+		// commit is its own base here — and no "counted once" for a
+		// commit that was not.
+		w.wedges[i].escapes = append(w.wedges[i].escapes, placeEscape(w.owner, w.repo, 0, "", raw.SHA))
+		return
+	}
+	if raw.SHA != "" && w.seen[raw.SHA] {
+		w.Report.Noticef("commit %.7s was already folded in by a merged pull request — counted once", raw.SHA)
+		return
+	}
+	if lag {
+		// The lag arm stays SOFT on an unmatched message, unlike the fold:
+		// this commit's true content is a pull the API has not indexed, so
+		// it is dropped from the fold, warned about and carried in
+		// Facts.Dropped — release refuses to ACT on it, bump and notes
+		// report it (DESIGN §4).
+		if row, ok := unclaimed(w.cfg, raw); ok {
+			w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) and its own message cannot be folded (%s) — nothing was counted from it; re-run once GitHub has indexed the commit", raw.SHA, row.Detail)
+			w.facts.Dropped = append(w.facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
+			return
+		}
+		w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) — reading its own message", raw.SHA)
+	} else {
+		// A direct push GitHub knows is judged HERE, like a pull's inner
+		// commit: the fold's remedy (fix the message, add a pattern) is
+		// authoring's, and this commit is on the released branch, where
+		// the only way out is a base at or past it — the wedge's refusal,
+		// with the escape at the commit itself (DESIGN §4).
+		if row, ok := unclaimed(w.cfg, raw); ok {
+			w.refuse(row, 0, "", raw.SHA)
+			return
+		}
+		if m, merr := w.cfg.Match(raw.Message); merr != nil || !m.Matched || !m.Skip {
+			// A skip-pattern commit (a local git merge under the presets)
+			// is passed over in silence; every other fallback announces
+			// that a message, not a pull request, is the evidence.
+			w.Report.Warnf("commit %.7s has no merged pull request (a direct push, or the API lagging) — reading its own message", raw.SHA)
+		}
+	}
+	if raw.SHA != "" {
+		w.seen[raw.SHA] = true
+	}
+	// Landed by construction: the fallback reads the walked commit
+	// itself, an identity the released branch holds.
+	w.commits = append(w.commits, Commit{Raw: raw, Landed: true})
+}
+
+// reconcile closes the walk: the covered ledger against the pulls expanded,
+// and the resolution counts against each other. A pull the walk saw only from
+// the INSIDE — its commits standing aside for a canonical commit that never
+// resolved (API lag, or an exclude_authors author merged it with a real merge
+// commit) — is WARNED about and deliberately NOT expanded: a listing carries
+// nothing about this range, and expanding it was unsound both ways — a
+// rebase-merge's pre-rebase SHAs double-count, released work comes back
+// (DESIGN §4, "The walk warns and does not expand"). Naming the loss is what
+// turns t-7zt7's silence into a visible one.
+func (w *walk) reconcile() {
+	for _, number := range w.coveredOrder {
+		if w.expanded[number] {
+			continue
+		}
+		w.facts.LostPulls = append(w.facts.LostPulls, number)
+		w.Report.Warnf("pull request #%d has commits in %s but nothing in the range resolved to it — GitHub does not associate its merge commit with the pull yet, or an exclude_authors author merged it with a real merge commit (which the walk skips before resolution); those commits stood aside for that merge point and are NOT counted, so this release is short by whatever #%d changed. The pull's own commit listing is its whole history and cannot say which commits belong to %s, so the walk will not guess — re-run the release once GitHub has caught up with the merge point", number, w.revRange, number, w.revRange)
+	}
+	if w.visited > 0 && w.unknown == w.visited {
+		w.facts.AllUnknown = true
 		// One unknown SHA is lag; EVERY SHA unknown is what a wrong --repo (or
 		// an inherited GITHUB_REPOSITORY in a fork / reusable-workflow
 		// context) looks like. Still a soft fallback — but named, so the
 		// misconfiguration is findable in the log.
-		w.Report.Warnf("all %d commit(s) in %s were unknown to %s/%s — unless they were pushed moments ago, check that --repo/$GITHUB_REPOSITORY names the repository this checkout belongs to", visited, revRange, owner, repo)
+		w.Report.Warnf("all %d commit(s) in %s were unknown to %s/%s — unless they were pushed moments ago, check that --repo/$GITHUB_REPOSITORY names the repository this checkout belongs to", w.visited, w.revRange, w.owner, w.repo)
 	}
-	if len(wedges) > 0 {
-		return nil, Facts{}, walkRefusal(wedges)
-	}
-	return commits, facts, nil
 }
 
 // mainFootprint answers, for each commit in a merged pull's API listing,

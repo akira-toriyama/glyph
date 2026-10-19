@@ -141,9 +141,10 @@ func (w Walker) refusedFirst(wedges []wedge, err error) error {
 
 // onMain reports the sha a wedge escape can be cut at: the commit itself when
 // the walk can see it on the released branch, else "" for a commit that lives
-// only inside a pull request's API listing. By the time foldPull asks, a listed
+// only inside a pull request's API listing. By the time walk.expand asks, a listed
 // commit that landed outside the range has already been dropped, so being in
-// range is exactly the same question as having a landing site at all.
+// range is exactly the same question as having a landing site at all;
+// walk.fallback's commit is the range's own and always answers itself.
 func onMain(sha string, inRange map[string]bool) string {
 	if sha != "" && inRange[sha] {
 		return sha

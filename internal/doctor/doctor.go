@@ -454,8 +454,8 @@ func checkSquashEnabled(in Input) Check {
 //
 // There is a SECOND coupling, and it is the quieter one: advice is only defensible
 // because the partial window is announced. The reconciliation warning at the end
-// of walkSince (internal/walk) is what turns "this release is short by
-// a whole pull request" into something a human sees, and it fires on EVERY release
+// of the walk (internal/walk, walk.reconcile) is what turns "this release is
+// short by a whole pull request" into something a human sees, and it fires on EVERY release
 // of a repository whose merge button an automation presses — exactly the kind of
 // recurring noise somebody eventually silences. Quiet that warning and this
 // setting becomes a silent total loss; the severity must move to StatusFail with
