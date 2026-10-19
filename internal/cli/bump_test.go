@@ -6,15 +6,16 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // TestBumpMinor: the fold over a mixed range takes the max — stdout is the
 // bare next version (pipe it straight into a tag step).
 func TestBumpMinor(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
-	testCommit(t, dir, "akira-toriyama", ":memo:= document it")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document it")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")
@@ -30,8 +31,8 @@ func TestBumpMinor(t *testing.T) {
 // v* tag when --current is not given.
 func TestBumpPatchFromTag(t *testing.T) {
 	dir, base := testRepo(t)
-	testGit(t, dir, "akira-toriyama", "tag", "not-a-version") // skipped by the picker
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "not-a-version") // skipped by the picker
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "bump", "--range", base+"..HEAD")
@@ -49,16 +50,16 @@ func TestBumpPatchFromTag(t *testing.T) {
 func TestBumpReadsTheTagListUnderColumnConfig(t *testing.T) {
 	fixture := func(t *testing.T) (dir, base string) {
 		dir, base = testRepo(t)
-		testGit(t, dir, "akira-toriyama", "tag", "v0.0.9")
-		testGit(t, dir, "akira-toriyama", "config", "column.ui", "always")
-		if raw := testGit(t, dir, "akira-toriyama", "tag", "--list"); strings.Contains(raw, "\n") {
+		testutil.Git(t, dir, "akira-toriyama", "tag", "v0.0.9")
+		testutil.Git(t, dir, "akira-toriyama", "config", "column.ui", "always")
+		if raw := testutil.Git(t, dir, "akira-toriyama", "tag", "--list"); strings.Contains(raw, "\n") {
 			t.Fatalf("git listed the tags one per line under column.ui=always:\n%s\n— git no longer columns there, and this test guards nothing", raw)
 		}
 		return dir, base
 	}
 	t.Run("--range", func(t *testing.T) {
 		dir, base := fixture(t)
-		testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+		testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 		t.Chdir(dir)
 		if code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD"); code != 0 || stdout != "v0.1.1\n" {
 			t.Fatalf("bump --range = exit %d stdout %q, want 0 / v0.1.1\nstderr: %s", code, stdout, stderr)
@@ -83,7 +84,7 @@ func TestBumpReadsTheTagListUnderColumnConfig(t *testing.T) {
 // stdout, exit 1, the reason in the stderr envelope.
 func TestBumpNoneHuman(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":memo:= document the bump model")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the bump model")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")
@@ -102,7 +103,7 @@ func TestBumpNoneHuman(t *testing.T) {
 // next) on stdout and exits 1 without a second stderr envelope.
 func TestBumpNoneJSON(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":memo:= document the bump model")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the bump model")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD", "--json")
@@ -137,8 +138,8 @@ func TestBumpNoneJSON(t *testing.T) {
 // reason} with per-commit sha/gitmoji/level/breaking/subject.
 func TestBumpJSONShape(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "bump", "--range", base+"..HEAD", "--json")
@@ -197,7 +198,7 @@ func TestBumpEmptyRangeJSON(t *testing.T) {
 // TestBumpCurrentOverride: --current beats the tag lookup.
 func TestBumpCurrentOverride(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "bump", "--range", base+"..HEAD", "--current", "v3.4.5")
@@ -223,7 +224,7 @@ func TestBumpCurrentInvalidIsUsage(t *testing.T) {
 // v-9223372036854775808.0.0 at exit 0 over a `!`.
 func TestBumpVersionPastTheCapIsNoVersion(t *testing.T) {
 	dir, base := testRepo(t) // tags v0.1.0
-	testCommit(t, dir, "akira-toriyama", ":boom:! drop the flag")
+	testutil.Commit(t, dir, "akira-toriyama", ":boom:! drop the flag")
 	t.Chdir(dir)
 
 	for _, current := range []string{"v9223372036854775807.0.0", "v2147483648.0.0", "v1.0.2147483648"} {
@@ -232,8 +233,8 @@ func TestBumpVersionPastTheCapIsNoVersion(t *testing.T) {
 			t.Fatalf("bump --current %s exited %d with stdout %q, want exactly %d\nstderr: %s", current, code, stdout, core.CodeUsage, stderr)
 		}
 	}
-	testGit(t, dir, "akira-toriyama", "tag", "v1.2.3", base)
-	testGit(t, dir, "akira-toriyama", "tag", "v9223372036854775807.0.0", base)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.2.3", base)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v9223372036854775807.0.0", base)
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")
 	if code != 0 || stdout != "v2.0.0\n" {
 		t.Fatalf("bump = exit %d stdout %q, want 0 / v2.0.0 — stepped from v1.2.3, the highest tag glyph can read\nstderr: %s", code, stdout, stderr)
@@ -245,8 +246,8 @@ func TestBumpVersionPastTheCapIsNoVersion(t *testing.T) {
 // needs a '%'; a bare '!' cannot leave 0.x).
 func TestBumpNoTagsStartsAtZero(t *testing.T) {
 	dir, base := testRepo(t)
-	testGit(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
-	testCommit(t, dir, "akira-toriyama", ":sparkles:^ first feature")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ first feature")
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "bump", "--range", base+"..HEAD")
@@ -259,7 +260,7 @@ func TestBumpNoTagsStartsAtZero(t *testing.T) {
 // hard lint failure (exit 3) — never silently classified.
 func TestBumpUnknownCodeIsLint(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":not-a-real-code: mystery change")
+	testutil.Commit(t, dir, "akira-toriyama", ":not-a-real-code: mystery change")
 	t.Chdir(dir)
 
 	if code, _, _ := runGlyph(t, "bump", "--range", base+"..HEAD"); code != 3 {
@@ -271,7 +272,7 @@ func TestBumpUnknownCodeIsLint(t *testing.T) {
 // lint failure carrying the offending SHA.
 func TestBumpMalformedCommitIsLint(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")
+	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji in this one")
 	t.Chdir(dir)
 
 	// The SHA is what makes the failure actionable: published history is
@@ -280,7 +281,7 @@ func TestBumpMalformedCommitIsLint(t *testing.T) {
 	// string still had a literal in it — the message is "commit %.7s: %v", so
 	// dropping the SHA left this green. The API path already asserts the sha
 	// (pr_test.go's TestPRMalformedCommitIsLint); the local path now does too.
-	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	code, _, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")
 	if code != 3 {
@@ -316,7 +317,7 @@ func TestBumpOutsideRepoIsAPI(t *testing.T) {
 // commit had quietly stopped being breaking.
 func TestBump0xBangStaysIn0x(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":boom:! drop the legacy flag")
+	testutil.Commit(t, dir, "akira-toriyama", ":boom:! drop the legacy flag")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD", "--json")
@@ -344,8 +345,8 @@ func TestBump0xBangStaysIn0x(t *testing.T) {
 // rather than whichever breaking commit happened to come first.
 func TestBumpPromoteReachesV1(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":boom:! drop the legacy flag")
-	testCommit(t, dir, "akira-toriyama", ":rocket:% call it 1.0")
+	testutil.Commit(t, dir, "akira-toriyama", ":boom:! drop the legacy flag")
+	testutil.Commit(t, dir, "akira-toriyama", ":rocket:% call it 1.0")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD", "--json")
@@ -378,7 +379,7 @@ func TestBumpPromoteReachesV1(t *testing.T) {
 // already reached 1.0.
 func TestBumpPromoteFrom1xIsAPlainMajor(t *testing.T) {
 	dir, base := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":rocket:% call it 1.0")
+	testutil.Commit(t, dir, "akira-toriyama", ":rocket:% call it 1.0")
 	t.Chdir(dir)
 
 	code, stdout, _ := runGlyph(t, "bump", "--range", base+"..HEAD", "--current", "v1.4.2")
@@ -397,8 +398,8 @@ func TestBumpPromoteFrom1xIsAPlainMajor(t *testing.T) {
 func TestBumpWarnsEachWarnedCommit(t *testing.T) {
 	dir, base := testRepo(t)
 	useWarnedPatternConfig(t, dir)
-	testCommit(t, dir, "akira-toriyama", ":construction:(x) try the thing")
-	testCommit(t, dir, "akira-toriyama", ":bug:~ a strict fix")
+	testutil.Commit(t, dir, "akira-toriyama", ":construction:(x) try the thing")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ a strict fix")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD", "--json")

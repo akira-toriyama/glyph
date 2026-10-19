@@ -3,6 +3,8 @@ package cli
 import (
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // TestSplitRemoteURL pins the three spellings a GitHub clone's origin comes
@@ -48,7 +50,7 @@ func TestRepoDefaultsToOrigin(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
 	dir, _ := testRepo(t)
-	testGit(t, dir, "akira-toriyama", "remote", "add", "origin", srv.URL+"/akira-toriyama/glyph.git")
+	testutil.Git(t, dir, "akira-toriyama", "remote", "add", "origin", srv.URL+"/akira-toriyama/glyph.git")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--pr", "3")
@@ -64,7 +66,7 @@ func TestEnvironmentBeatsOrigin(t *testing.T) {
 	t.Setenv("GITHUB_API_URL", "")
 	t.Setenv("GITHUB_REPOSITORY", "akira-toriyama/from-env")
 	dir, _ := testRepo(t)
-	testGit(t, dir, "akira-toriyama", "remote", "add", "origin", "git@github.com:akira-toriyama/from-origin.git")
+	testutil.Git(t, dir, "akira-toriyama", "remote", "add", "origin", "git@github.com:akira-toriyama/from-origin.git")
 	t.Chdir(dir)
 
 	owner, repo, err := resolveRepo(t.Context(), "")
@@ -85,7 +87,7 @@ func TestOriginOnAnotherHostIsUsage(t *testing.T) {
 	t.Setenv("GITHUB_API_URL", "")
 	t.Setenv("GITHUB_REPOSITORY", "")
 	dir, _ := testRepo(t)
-	testGit(t, dir, "akira-toriyama", "remote", "add", "origin", "git@gitlab.com:akira-toriyama/glyph.git")
+	testutil.Git(t, dir, "akira-toriyama", "remote", "add", "origin", "git@gitlab.com:akira-toriyama/glyph.git")
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "bump", "--pr", "7")
@@ -106,7 +108,7 @@ func TestOriginWithoutACoordinateIsStillUsage(t *testing.T) {
 	t.Setenv("GITHUB_API_URL", "")
 	t.Setenv("GITHUB_REPOSITORY", "")
 	dir, _ := testRepo(t)
-	testGit(t, dir, "akira-toriyama", "remote", "add", "origin", t.TempDir())
+	testutil.Git(t, dir, "akira-toriyama", "remote", "add", "origin", t.TempDir())
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "bump", "--pr", "7")

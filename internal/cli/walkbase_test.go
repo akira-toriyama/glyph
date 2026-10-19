@@ -32,16 +32,16 @@ import (
 // the test (measured at adfc5e1: v2.0.0 -> v2.0.1 over both backports).
 func TestSinceTagMaintenanceBranchStepsItsOwnLine(t *testing.T) {
 	dir, _ := testRepo(t) // tags v0.1.0
-	testCommit(t, dir, "akira-toriyama", ":sparkles:^ two")
-	testGit(t, dir, "akira-toriyama", "tag", "v1.9.0")
-	testGit(t, dir, "akira-toriyama", "branch", "release/v1")
-	testCommit(t, dir, "akira-toriyama", ":boom:! break the api")
-	testGit(t, dir, "akira-toriyama", "tag", "v2.0.0")
-	testGit(t, dir, "akira-toriyama", "checkout", "-q", "release/v1")
-	testCommit(t, dir, "akira-toriyama", ":bug:~ backport one")
-	testGit(t, dir, "akira-toriyama", "tag", "v1.9.1")
-	testCommit(t, dir, "akira-toriyama", ":bug:~ backport two")
-	two := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ two")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.9.0")
+	testutil.Git(t, dir, "akira-toriyama", "branch", "release/v1")
+	testutil.Commit(t, dir, "akira-toriyama", ":boom:! break the api")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v2.0.0")
+	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "release/v1")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ backport one")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.9.1")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ backport two")
+	two := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{commitPullsPath(two): `[]`})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -66,11 +66,11 @@ func TestSinceTagMaintenanceBranchStepsItsOwnLine(t *testing.T) {
 // and at adfc5e1 this exits 1.
 func TestSinceTagFrozenCoordinateSeesItsOwnTags(t *testing.T) {
 	dir, _ := testRepo(t) // tags v0.1.0
-	testCommit(t, dir, "akira-toriyama", ":sparkles:^ second")
-	frozen := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	testCommit(t, dir, "akira-toriyama", ":bug:~ third")
-	testGit(t, dir, "akira-toriyama", "tag", "v0.2.0")
-	testGit(t, dir, "akira-toriyama", "checkout", "-q", "--detach", frozen)
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ second")
+	frozen := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ third")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0")
+	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "--detach", frozen)
 	srv := walkServer(t, map[string]string{commitPullsPath(frozen): `[]`})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -92,11 +92,11 @@ func TestSinceTagFrozenCoordinateSeesItsOwnTags(t *testing.T) {
 // stale writer DESIGN §4 narrows and does not close.
 func TestReleaseAtAnOlderCommitRefusesAtTheFloor(t *testing.T) {
 	dir, _ := testRepo(t) // tags v0.1.0
-	testCommit(t, dir, "akira-toriyama", ":sparkles:^ second")
-	older := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	testCommit(t, dir, "akira-toriyama", ":bug:~ third")
-	testGit(t, dir, "akira-toriyama", "tag", "v0.2.0")
-	testGit(t, dir, "akira-toriyama", "checkout", "-q", "--detach", older)
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ second")
+	older := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ third")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0")
+	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "--detach", older)
 	var writes []apiWrite
 	srv := releaseServer(t, map[string]string{commitPullsPath(older): `[]`},
 		`[`+publishedJSON(1, "v0.1.0")+`,`+publishedJSON(2, "v0.2.0")+`,`+draftJSON(3, "v0.3.0")+`]`, &writes)
@@ -120,9 +120,9 @@ func TestPackagesFrozenCoordinateSeesItsOwnTags(t *testing.T) {
 	dir, _ := packagesRepo(t) // haiku/v0.1.0, curry/v0.1.0
 	poem := touch(t, dir, "akira-toriyama", ":sparkles:(haiku)^ a poem", "haiku/poem.go")
 	touch(t, dir, "akira-toriyama", ":bug:(curry)~ a spice", "curry/curry.go")
-	testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.2.0")
-	testGit(t, dir, "akira-toriyama", "tag", "curry/v0.1.1")
-	testGit(t, dir, "akira-toriyama", "checkout", "-q", "--detach", poem)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.2.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.1")
+	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "--detach", poem)
 	srv := walkServer(t, map[string]string{commitPullsPath(poem): `[]`})
 	usePR(t, srv)
 	t.Chdir(dir)
@@ -170,7 +170,7 @@ func TestBumpSinceTagAutoDetectsTheTag(t *testing.T) {
 // still wins when given.
 func TestBumpSinceTagExplicitTagIsTheStepBase(t *testing.T) {
 	dir, _ := testRepo(t)
-	testGit(t, dir, "akira-toriyama", "tag", "v0.2.0") // base also carries a HIGHER tag
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0") // base also carries a HIGHER tag
 	sha := squashCommit(t, dir, "Fix a crash", 3)
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(3, "2026-07-15T00:00:00Z", sha) + `]`,
@@ -198,7 +198,7 @@ func TestBumpSinceTagExplicitTagIsTheStepBase(t *testing.T) {
 // the bump steps from v0.0.0.
 func TestSinceTagAutoWithoutTagsWalksTheWholeHistory(t *testing.T) {
 	dir, base := testRepo(t)
-	testGit(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
 	sha1 := squashCommit(t, dir, "Add a menu", 2)
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(base): `[]`, // the root :tada:= commit: fallback, none
@@ -247,7 +247,7 @@ func TestSinceTagEmptyWalkIsNoRelease(t *testing.T) {
 // hits when releasing past a non-release tag (a marker like rc-1).
 func TestBumpSinceTagNonVersionTag(t *testing.T) {
 	dir, _ := testRepo(t)
-	testGit(t, dir, "akira-toriyama", "tag", "rc-1") // same commit as v0.1.0
+	testutil.Git(t, dir, "akira-toriyama", "tag", "rc-1") // same commit as v0.1.0
 	sha := squashCommit(t, dir, "Fix a crash", 8)
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha) + `]`,
@@ -277,18 +277,18 @@ func TestBumpSinceTagNonVersionTag(t *testing.T) {
 // equal the tag being cut.
 func TestSinceTagBelowResolvesThePredecessorAsAVersion(t *testing.T) {
 	dir, _ := testRepo(t) // tags v0.1.0
-	testCommit(t, dir, "akira-toriyama", ":bug:~ an rc-era fix")
-	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0-rc1")
-	testCommit(t, dir, "akira-toriyama", ":bug:~ the 1.0 fix")
-	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ an rc-era fix")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0-rc1")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ the 1.0 fix")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
 	sha := squashCommit(t, dir, "Fix a crash", 7)
-	testGit(t, dir, "akira-toriyama", "tag", "v1.0.1")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.1")
 
 	// The premise: git's version sort really does slot the prerelease between
 	// the two releases, so the retired shell derivation (awk over this exact
 	// listing) picked v1.0.0-rc1 as v1.0.1's predecessor. Without this, the
 	// assertions below could pass on a git whose sort changed, proving nothing.
-	if listing := testGit(t, dir, "akira-toriyama", "tag", "--list", "v*", "--sort=v:refname"); !strings.Contains(listing, "v1.0.0\nv1.0.0-rc1\nv1.0.1") {
+	if listing := testutil.Git(t, dir, "akira-toriyama", "tag", "--list", "v*", "--sort=v:refname"); !strings.Contains(listing, "v1.0.0\nv1.0.0-rc1\nv1.0.1") {
 		t.Fatalf("premise gone: git --sort=v:refname no longer orders the prerelease above its release:\n%s", listing)
 	}
 
@@ -333,14 +333,14 @@ func TestSinceTagBelowResolvesThePredecessorAsAVersion(t *testing.T) {
 // from v1.0.0 and carries exactly the commit above it.
 func TestSinceTagBelowAcceptsAReleaseCandidate(t *testing.T) {
 	dir, _ := testRepo(t) // tags v0.1.0
-	testCommit(t, dir, "akira-toriyama", ":bug:~ an rc-era fix")
-	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0-rc1")
-	testCommit(t, dir, "akira-toriyama", ":bug:~ the 1.0 fix")
-	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ an rc-era fix")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0-rc1")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ the 1.0 fix")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
 	sha := squashCommit(t, dir, "Add the candidate feature", 11)
 	// The tag being cut IS the candidate — the tag-push shape, where auto
 	// would resolve the tag being cut and walk an empty range.
-	testGit(t, dir, "akira-toriyama", "tag", "v1.1.0-rc.1")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.1.0-rc.1")
 
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(11, "2026-07-13T00:00:00Z", sha) + `]`,
@@ -376,10 +376,10 @@ func TestSinceTagBelowAcceptsAReleaseCandidate(t *testing.T) {
 // verdict is due.
 func TestSinceTagBelowIsStrictlyBelowNotHighestOther(t *testing.T) {
 	dir, _ := testRepo(t) // tags v0.1.0
-	testCommit(t, dir, "akira-toriyama", ":bug:~ the 0.8.2 fix")
-	testGit(t, dir, "akira-toriyama", "tag", "v0.8.2")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ the 0.8.2 fix")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.8.2")
 	sha := squashCommit(t, dir, "Fix the hotfix crash", 9)
-	testGit(t, dir, "akira-toriyama", "tag", "v0.9.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.9.0")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(9, "2026-07-13T00:00:00Z", sha) + `]`,
 		pullCommitsPath(9):   `[` + apiCommit("h1", "akira-toriyama", ":bug:~ fix the hotfix crash") + `]`,
@@ -403,9 +403,9 @@ func TestSinceTagBelowIsStrictlyBelowNotHighestOther(t *testing.T) {
 // no binaries, no cask, no attestation, behind a tag that already existed.
 func TestSinceTagBelowFirstVersionWalksTheWholeHistory(t *testing.T) {
 	dir, base := testRepo(t)
-	testGit(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
 	sha := squashCommit(t, dir, "Add a menu", 2)
-	testGit(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(base): `[]`, // the root :tada:= commit: fallback, none
 		commitPullsPath(sha):  `[` + apiPullRef(2, "2026-07-13T00:00:00Z", sha) + `]`,
@@ -431,7 +431,7 @@ func TestSinceTagBelowFirstVersionWalksTheWholeHistory(t *testing.T) {
 // meant (mutation row below-on-an-undeclared-line-walks-the-bare-line).
 func TestSinceTagBelowOnAnUndeclaredLineIsUsage(t *testing.T) {
 	dir, _ := testRepo(t) // v0.1.0 — what a bare-line read under 1.0.0 would find
-	testCommit(t, dir, "akira-toriyama", ":sparkles:^ add it")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add it")
 	usePR(t, walkServer(t, map[string]string{})) // any request fails the test
 	t.Chdir(dir)
 
@@ -461,22 +461,22 @@ func TestSinceTagBelowOnAnUndeclaredLineIsUsage(t *testing.T) {
 // itself never asks about.
 func TestSinceTagUnboundedWalkRefused(t *testing.T) {
 	dir, _ := testRepo(t)
-	testGit(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
 	// 199 human commits (plus the fixture's root) and 10 bot commits: 200
 	// walk-visible, exactly AT the cap. The bot commits prove the guard counts
 	// what the walk VISITS, not raw history length.
 	for i := range 199 {
-		testCommit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= human commit %d", i))
+		testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= human commit %d", i))
 	}
 	for i := range 10 {
-		testCommit(t, dir, "dependabot[bot]", fmt.Sprintf(":robot:= chore(fleet): sync %d", i))
+		testutil.Commit(t, dir, "dependabot[bot]", fmt.Sprintf(":robot:= chore(fleet): sync %d", i))
 	}
 	t.Chdir(dir)
 
 	// One more visible commit crosses the cap: both resolved forms must refuse
 	// before anything reaches the API — the server holds no routes, so any
 	// request fails the test.
-	testCommit(t, dir, "akira-toriyama", ":memo:= the 201st visible commit")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= the 201st visible commit")
 	srv := walkServer(t, map[string]string{})
 	usePR(t, srv)
 
@@ -562,7 +562,7 @@ func TestSinceTagPackagesATagNamesALine(t *testing.T) {
 func TestSinceTagPackagesACandidateTagNamesALine(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	for _, tag := range []string{"haiku/v0.2.0-rc.1", "curry/v0.1.1+build.1", "haiku/nightly"} {
-		testGit(t, dir, "akira-toriyama", "tag", tag)
+		testutil.Git(t, dir, "akira-toriyama", "tag", tag)
 	}
 	_, routes := squashAcrossLines(t, dir, 7)
 	usePR(t, walkServer(t, routes))
@@ -625,7 +625,7 @@ func TestSinceTagPackagesACandidateTagNamesALine(t *testing.T) {
 // is stopped by (t-gt9n).
 func TestSinceTagPackagesBelowNothingUnderTheBoundNamesTheBound(t *testing.T) {
 	dir, base := packagesRepo(t)
-	root := testGit(t, dir, "akira-toriyama", "rev-list", "--max-parents=0", "HEAD")
+	root := testutil.Git(t, dir, "akira-toriyama", "rev-list", "--max-parents=0", "HEAD")
 	_, routes := squashAcrossLines(t, dir, 7)
 	routes[commitPullsPath(root)] = `[]`
 	routes[commitPullsPath(base)] = `[]`
@@ -657,11 +657,11 @@ func TestSinceTagPackagesUntaggedLineWalksTheWholeHistory(t *testing.T) {
 	appendTo(t, dir, "glyph.toml", packagesConfig)
 	writeFile(t, dir, "haiku/haiku.go", "package haiku\n")
 	writeFile(t, dir, "curry/curry.go", "package curry\n")
-	root := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	testGit(t, dir, "akira-toriyama", "add", ".")
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare two lines")
-	declared := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
+	root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "add", ".")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare two lines")
+	declared := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
 	sha := touch(t, dir, "akira-toriyama", ":bug:~ swap an ingredient", "curry/curry.go")
 	usePR(t, walkServer(t, map[string]string{
 		commitPullsPath(root):     `[]`,

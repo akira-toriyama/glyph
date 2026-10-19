@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // This file pins the walk's resolution and expansion of every merge shape
@@ -97,8 +99,8 @@ func apiPullRef(number int, mergedAt, mergeSHA string) string {
 // (walkfallback_test.go's divergence tests).
 func squashCommit(t *testing.T, dir string, title string, number int) string {
 	t.Helper()
-	testCommit(t, dir, "akira-toriyama", fmt.Sprintf("%s (#%d)", title, number))
-	return testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf("%s (#%d)", title, number))
+	return testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 }
 
 // mergePoint is one branch landed on main behind a two-parent merge commit —
@@ -138,15 +140,15 @@ func prMergeSubject(number int) string {
 // a repository auto-merges.
 func mergeInto(t *testing.T, dir, author, merger, branch, subject string, messages ...string) mergePoint {
 	t.Helper()
-	testGit(t, dir, author, "checkout", "-q", "-b", branch)
+	testutil.Git(t, dir, author, "checkout", "-q", "-b", branch)
 	mp := mergePoint{}
 	for _, m := range messages {
-		testCommit(t, dir, author, m)
-		mp.Branch = append(mp.Branch, testGit(t, dir, author, "rev-parse", "HEAD"))
+		testutil.Commit(t, dir, author, m)
+		mp.Branch = append(mp.Branch, testutil.Git(t, dir, author, "rev-parse", "HEAD"))
 	}
-	testGit(t, dir, author, "checkout", "-q", "main")
-	testGit(t, dir, merger, "merge", "-q", "--no-ff", "-m", subject, branch)
-	mp.Merge = testGit(t, dir, author, "rev-parse", "HEAD")
+	testutil.Git(t, dir, author, "checkout", "-q", "main")
+	testutil.Git(t, dir, merger, "merge", "-q", "--no-ff", "-m", subject, branch)
+	mp.Merge = testutil.Git(t, dir, author, "rev-parse", "HEAD")
 	return mp
 }
 
@@ -255,7 +257,7 @@ func TestSinceTagPicksTheMergedMatch(t *testing.T) {
 // resolution — walkServer would fail the test if its SHA were ever asked about.
 func TestSinceTagBotCommitsNeverReachTheAPI(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "dependabot[bot]", ":robot:= chore(fleet): sync a file")
+	testutil.Commit(t, dir, "dependabot[bot]", ":robot:= chore(fleet): sync a file")
 	sha1 := squashCommit(t, dir, "Fix a crash", 3)
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(3, "2026-07-13T00:00:00Z", sha1) + `]`,
@@ -279,8 +281,8 @@ func TestSinceTagBotCommitsNeverReachTheAPI(t *testing.T) {
 // gone.
 func TestSinceTagRevertPRIsWalked(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", `Revert "Add a menu" (#9)`)
-	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", `Revert "Add a menu" (#9)`)
+	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(9, "2026-07-15T00:00:00Z", sha) + `]`,
 		pullCommitsPath(9):   `[` + apiCommit("r1", "akira-toriyama", ":rewind:~ revert the menu") + `]`,
@@ -304,10 +306,10 @@ func TestSinceTagRevertPRIsWalked(t *testing.T) {
 // expansion) and spray direct-push warnings over a perfectly normal merge.
 func TestSinceTagRebaseMergedPRDoesNotDoubleCount(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
-	shaA := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix the menu")
-	shaB := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
+	shaA := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix the menu")
+	shaB := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(shaA): `[` + apiPullRef(7, "2026-07-15T00:00:00Z", shaB) + `]`,
 		commitPullsPath(shaB): `[` + apiPullRef(7, "2026-07-15T00:00:00Z", shaB) + `]`,
@@ -448,8 +450,8 @@ func TestSinceTagSubPullSquashCommitIsNotRelinted(t *testing.T) {
 // fails the test.
 func TestSinceTagCoveredByAPullOnAnotherBaseBranchStillCounts(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
-	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		// Merged — but its merge commit is not a commit of this range.
 		commitPullsPath(sha): `[` + apiPullRef(9, "2026-07-14T00:00:00Z", "amergecommitonanotherbranch") + `]`,
@@ -594,8 +596,8 @@ func TestSinceTagSharedPreSquashCommitCountsOnce(t *testing.T) {
 // no resolution at all — same fallback as no association.
 func TestSinceTagUnmergedAssociationFallsBack(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
-	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(7, "", sha) + `]`, // associated but never merged
 	})
@@ -677,7 +679,7 @@ func TestSinceTagDoesNotRefoldReleasedMergeMergedCommits(t *testing.T) {
 	dir, _ := testRepo(t)
 	mp := mergePR(t, dir, "akira-toriyama", 7, ":sparkles:(ui)^ add a menu", ":memo:= document the menu")
 	shipped, pending := mp.Branch[0], mp.Branch[1]
-	testGit(t, dir, "akira-toriyama", "tag", "v0.1.1", shipped)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.1", shipped)
 	pr7 := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(pending):  pr7,
@@ -741,11 +743,11 @@ func TestSinceTagRefoldControlWholePullInRange(t *testing.T) {
 // its own: before this, the notes cited SHAs the repository does not contain.
 func TestSinceTagRebaseMergeUsesOnMainSHAs(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
-	r1 := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	testCommit(t, dir, "akira-toriyama", ":memo:= document the menu")
-	r2 := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	testGit(t, dir, "akira-toriyama", "tag", "v0.1.1", r1)
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
+	r1 := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the menu")
+	r2 := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.1", r1)
 	// GitHub names the LAST replayed commit as merge_commit_sha, and the listing
 	// still reports the branch's original, pre-rebase SHAs.
 	pr7 := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", r2) + `]`
@@ -782,7 +784,7 @@ func TestSinceTagRebaseMergeUsesOnMainSHAs(t *testing.T) {
 			if strings.HasPrefix(sha, "pre") {
 				t.Errorf("the verdict cites a pre-rebase SHA the repository does not contain: %s", sha)
 			}
-			testGit(t, dir, "akira-toriyama", "cat-file", "-e", sha+"^{commit}")
+			testutil.Git(t, dir, "akira-toriyama", "cat-file", "-e", sha+"^{commit}")
 		}
 	})
 }
@@ -812,15 +814,15 @@ func TestSinceTagRebaseMergeUsesOnMainSHAs(t *testing.T) {
 func TestSinceTagStackedRebaseMergePlacesTheRewrittenHalf(t *testing.T) {
 	dir, _ := testRepo(t)
 	// The base pull's commit, landed verbatim by the merge button.
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
-	base := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
+	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	// The stacked pull's two commits, as the rebase rewrote them onto main. The
 	// tag sits at the first, so only the second belongs to the next release.
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(core)^ add the fold")
-	shipped := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	testGit(t, dir, "akira-toriyama", "tag", "v0.2.0", shipped)
-	testCommit(t, dir, "akira-toriyama", ":bug:(ui)~ fix the menu")
-	pending := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(core)^ add the fold")
+	shipped := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0", shipped)
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:(ui)~ fix the menu")
+	pending := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(pending): `[` + apiPullRef(7, "2026-07-20T00:00:00Z", pending) + `]`,
@@ -844,7 +846,7 @@ func TestSinceTagStackedRebaseMergePlacesTheRewrittenHalf(t *testing.T) {
 	// Every cited sha has to be one this repository holds. Placing the rewritten
 	// half is what retires the pre-rebase shas as much as it fixes the range.
 	for _, sha := range shas {
-		testGit(t, dir, "akira-toriyama", "cat-file", "-e", sha+"^{commit}")
+		testutil.Git(t, dir, "akira-toriyama", "cat-file", "-e", sha+"^{commit}")
 	}
 	if !strings.Contains(stderr, "shipped under an earlier tag") {
 		t.Errorf("the walk must name the released commits it declined to re-count:\n%s", stderr)
@@ -867,13 +869,13 @@ func TestSinceTagRebaseOverABaseMergeCommitStillAligns(t *testing.T) {
 	// main moved while the pull was open — this is what the author merged in, and
 	// it is what the alignment window runs off the end into if the merge commit is
 	// left holding a position.
-	testCommit(t, dir, "akira-toriyama", ":memo:= note something on main")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= note something on main")
 	// The pull's two commits as the rebase replayed them; the tag sits at the first.
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
-	shipped := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	testGit(t, dir, "akira-toriyama", "tag", "v0.2.0", shipped)
-	testCommit(t, dir, "akira-toriyama", ":bug:(ui)~ fix the menu")
-	pending := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
+	shipped := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0", shipped)
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:(ui)~ fix the menu")
+	pending := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(pending): `[` + apiPullRef(7, "2026-07-20T00:00:00Z", pending) + `]`,
@@ -893,7 +895,7 @@ func TestSinceTagRebaseOverABaseMergeCommitStillAligns(t *testing.T) {
 		t.Errorf("verdict counts %v, want [%.7s] alone — the base-merge commit is displacing the alignment", shas, pending)
 	}
 	for _, sha := range shas {
-		testGit(t, dir, "akira-toriyama", "cat-file", "-e", sha+"^{commit}")
+		testutil.Git(t, dir, "akira-toriyama", "cat-file", "-e", sha+"^{commit}")
 	}
 	if !strings.Contains(stderr, "shipped under an earlier tag") {
 		t.Errorf("the walk must name the released commit it declined to re-count:\n%s", stderr)

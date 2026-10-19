@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/config"
 	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
@@ -67,13 +66,6 @@ func decodeErrorEnvelope(t *testing.T, stderr string) errEnvelope {
 	return *env.Error
 }
 
-// testCfg loads the gemoji preset — the config every fixture repo carries —
-// for tests that call the plumbing directly rather than through runGlyph.
-func testCfg(t *testing.T) *config.Config {
-	t.Helper()
-	return testutil.Config(t)
-}
-
 // setStdin points the lint --stdin input stream at s for one test.
 func setStdin(t *testing.T, s string) {
 	t.Helper()
@@ -89,20 +81,8 @@ func setStdin(t *testing.T, s string) {
 func testRepo(t *testing.T) (dir, base string) {
 	t.Helper()
 	dir = testutil.NewRepo(t)
-	testGit(t, dir, "akira-toriyama", "tag", "v0.1.0")
-	return dir, testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-}
-
-// testGit runs one git command in dir as author and fails the test on error.
-func testGit(t *testing.T, dir, author string, args ...string) string {
-	t.Helper()
-	return testutil.Git(t, dir, author, args...)
-}
-
-// testCommit adds one empty commit authored by author with the given message.
-func testCommit(t *testing.T, dir, author, message string) {
-	t.Helper()
-	testutil.Commit(t, dir, author, message)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.0")
+	return dir, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 }
 
 // runGlyph executes the root command with args, returning the exit code and

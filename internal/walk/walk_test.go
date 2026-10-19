@@ -64,23 +64,8 @@ func at(dir string) Walker {
 func testRepo(t *testing.T) (dir, base string) {
 	t.Helper()
 	dir = testutil.NewRepo(t)
-	testGit(t, dir, "akira-toriyama", "tag", "v0.1.0")
-	return dir, testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-}
-
-func testGit(t *testing.T, dir, author string, args ...string) string {
-	t.Helper()
-	return testutil.Git(t, dir, author, args...)
-}
-
-func testCommit(t *testing.T, dir, author, message string) {
-	t.Helper()
-	testutil.Commit(t, dir, author, message)
-}
-
-func testCfg(t *testing.T) *config.Config {
-	t.Helper()
-	return testutil.Config(t)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.0")
+	return dir, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 }
 
 // fakePulls is the Pulls port answered from memory: the merged pull each
@@ -117,9 +102,9 @@ func (p *fakePulls) CommitFiles(_ context.Context, _, _, sha string) ([]string, 
 // repository — and fails.
 func TestSinceReadsThroughItsPorts(t *testing.T) {
 	dir := testutil.NewRepo(t)
-	testCommit(t, dir, "akira-toriyama", "Add a menu (#7)")
-	squash := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	testCommit(t, dir, "dependabot[bot]", ":robot:= chore(fleet): sync")
+	testutil.Commit(t, dir, "akira-toriyama", "Add a menu (#7)")
+	squash := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "dependabot[bot]", ":robot:= chore(fleet): sync")
 	pulls := &fakePulls{
 		pulls: map[string][]github.PullRef{
 			squash: {{Number: 7, MergedAt: "2026-10-01T00:00:00Z", MergeCommitSHA: squash}},
@@ -132,7 +117,7 @@ func TestSinceReadsThroughItsPorts(t *testing.T) {
 	rep := &recorder{}
 	w := Walker{Git: gitsource.Checkout{Dir: dir}, Pulls: pulls, Report: rep}
 
-	res, err := w.Since(t.Context(), testCfg(t), Auto, "akira-toriyama", "glyph", nil)
+	res, err := w.Since(t.Context(), testutil.Config(t), Auto, "akira-toriyama", "glyph", nil)
 	if err != nil {
 		t.Fatalf("Since: %v", err)
 	}
@@ -191,18 +176,18 @@ func TestSinceReadsThroughItsPortsUnderPackages(t *testing.T) {
 	}
 	write("haiku/haiku.go", "package haiku\n")
 	write("curry/curry.go", "package curry\n")
-	testGit(t, dir, "akira-toriyama", "add", ".")
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
-	testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "add", ".")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
 	write("curry/curry.go", "package curry // spiced\n")
-	testGit(t, dir, "akira-toriyama", "add", ".")
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:(curry)^ spice the curry")
-	spice := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	testGit(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "add", ".")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:(curry)^ spice the curry")
+	spice := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
 	write("haiku/haiku.go", "package haiku // fixed\n")
-	testGit(t, dir, "akira-toriyama", "add", ".")
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":bug:(haiku)~ fix the haiku")
-	fix := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "add", ".")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":bug:(haiku)~ fix the haiku")
+	fix := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	pulls := &fakePulls{}
 	w := Walker{Git: gitsource.Checkout{Dir: dir}, Pulls: pulls, Report: &recorder{}}

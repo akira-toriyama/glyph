@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // This file pins the walk's fallback arm (DESIGN §4; internal/walk/expand.go:
@@ -20,8 +22,8 @@ import (
 // violation and never a warning.
 func TestSinceTagRawRevertDirectPushIsAPatch(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", `Revert ":bug:~ fix a crash"`)
-	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", `Revert ":bug:~ fix a crash"`)
+	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[]`,
 	})
@@ -114,10 +116,10 @@ func TestSinceTagUnresolvableMergePointIsWarnedNotExpanded(t *testing.T) {
 func TestSinceTagUnresolvedPullIsNeverFoldedFromItsListing(t *testing.T) {
 	t.Run("a rebase-merged pull lists its pre-rebase SHAs", func(t *testing.T) {
 		dir, _ := testRepo(t)
-		testCommit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
-		shaA := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-		testCommit(t, dir, "akira-toriyama", ":bug:~ fix the menu")
-		shaB := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
+		shaA := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix the menu")
+		shaB := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 		srv := walkServer(t, map[string]string{
 			// shaB is the pull's merge point — and the API does not know it yet,
 			// so shaA stands aside for a commit that never resolves while shaB
@@ -145,7 +147,7 @@ func TestSinceTagUnresolvedPullIsNeverFoldedFromItsListing(t *testing.T) {
 		mp := mergePR(t, dir, "akira-toriyama", 7, ":sparkles:(ui)^ add a menu", ":memo:= document the menu")
 		// v0.1.1 shipped the pull's first commit already — the release walk then
 		// starts strictly after it, but the pull's listing still begins there.
-		testGit(t, dir, "akira-toriyama", "tag", "v0.1.1", mp.Branch[0])
+		testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.1", mp.Branch[0])
 		ref := `[` + apiPullRef(7, "2026-07-20T00:00:00Z", mp.Merge) + `]`
 		srv := walkServer(t, map[string]string{
 			commitPullsPath(mp.Branch[1]): ref,
@@ -203,10 +205,10 @@ func TestSinceTagHealthyRepositoryIsNeverWarnedAt(t *testing.T) {
 			}
 		},
 		"a rebase-merged pull": func(t *testing.T, dir string) map[string]string {
-			testCommit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
-			shaA := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-			testCommit(t, dir, "akira-toriyama", ":bug:~ fix the menu")
-			shaB := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
+			shaA := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix the menu")
+			shaB := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 			ref := `[` + apiPullRef(7, "2026-07-15T00:00:00Z", shaB) + `]`
 			return map[string]string{
 				commitPullsPath(shaA): ref,
@@ -271,8 +273,8 @@ func TestSinceTagPlainMergeCommitIsSkipped(t *testing.T) {
 func TestSinceTagFallbackSharesShaWithAnExpandedPR(t *testing.T) {
 	dir, _ := testRepo(t)
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
-	testCommit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
-	sha2 := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
+	sha2 := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
 		commitPullsPath(sha2): `[]`, // no PR resolves it — the fallback path
@@ -306,8 +308,8 @@ func TestSinceTagFallbackSharesShaWithAnExpandedPR(t *testing.T) {
 // misconfiguration is findable in the log.
 func TestSinceTagAllCommitsUnknownWarnsAboutTheRepo(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
-	testCommit(t, dir, "akira-toriyama", ":memo:= document it")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document it")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		fmt.Fprint(w, `{"message":"No commit found for SHA"}`)
@@ -330,8 +332,8 @@ func TestSinceTagAllCommitsUnknownWarnsAboutTheRepo(t *testing.T) {
 // (DESIGN §4): it emits a ::warning:: and is classified from its own message.
 func TestSinceTagDirectPushFallsBackToItsOwnMessage(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash, pushed directly")
-	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash, pushed directly")
+	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[]`, // no PR knows this commit
 	})
@@ -357,8 +359,8 @@ func TestSinceTagDirectPushFallsBackToItsOwnMessage(t *testing.T) {
 // hard-failing the release. (A 404 — the auth-failure shape — still fails.)
 func TestSinceTagUnknownShaFallsBack(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":bug:~ fix a crash, pushed moments ago")
-	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash, pushed moments ago")
+	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != commitPullsPath(sha) {
 			t.Errorf("unexpected request %q", r.URL.Path)
@@ -388,8 +390,8 @@ func TestSinceTagUnknownShaFallsBack(t *testing.T) {
 // breaking marker.
 func TestSinceTagFreePrefixBangFallbackIsMajor(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":notarealmoji:! drop the legacy flag")
-	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":notarealmoji:! drop the legacy flag")
+	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[]`, // a direct push — the fallback path
 	})
@@ -429,8 +431,8 @@ func TestSinceTagFreePrefixBangFallbackIsMajor(t *testing.T) {
 // normalized entry hoists into Breaking Changes with the subject verbatim.
 func TestNotesSinceTagUnknownBreakingFallbackHoists(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":notarealmoji:! drop the legacy flag")
-	sha := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":notarealmoji:! drop the legacy flag")
+	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(sha): `[]`,
 	})
@@ -515,7 +517,7 @@ func TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark(t *testing.T) {
 	if code != 1 || stdout != "" {
 		t.Fatalf("with the API dark: exit %d stdout %q, want 1 / empty — an unlinted PR title is what the fallback reads\nstderr: %s", code, stdout, stderr)
 	}
-	if want := fmt.Sprintf("cannot be folded (matches none of the %d configured patterns)", len(testCfg(t).Patterns)); !strings.Contains(stderr, want) {
+	if want := fmt.Sprintf("cannot be folded (matches none of the %d configured patterns)", len(testutil.Config(t).Patterns)); !strings.Contains(stderr, want) {
 		t.Fatalf("the loss must say the subject matched no pattern:\n%s", stderr)
 	}
 }
@@ -618,10 +620,10 @@ func TestSinceTagFallbackOnlyOnUnknownCommit(t *testing.T) {
 // because the doctor advice text and DESIGN §7 make a claim about each.
 func TestSinceTagRebaseLagCountsAReplayedCommitOnce(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
-	r1 := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	testCommit(t, dir, "akira-toriyama", ":memo:= document the menu")
-	r2 := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
+	r1 := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the menu")
+	r2 := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	// GitHub names the LAST replayed commit as merge_commit_sha, and the pull's
 	// listing still carries the ORIGINAL pre-rebase shas.

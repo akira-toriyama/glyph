@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // shallowClone clones src at depth into a fresh directory — a checkout whose
@@ -12,7 +14,7 @@ import (
 func shallowClone(t *testing.T, src string, depth int) string {
 	t.Helper()
 	clone := filepath.Join(t.TempDir(), "shallow")
-	testGit(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", fmt.Sprint(depth), "file://"+src, clone)
+	testutil.Git(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", fmt.Sprint(depth), "file://"+src, clone)
 	return clone
 }
 
@@ -26,9 +28,9 @@ func shallowClone(t *testing.T, src string, depth int) string {
 // and it says nothing about shallowness.
 func TestLintRangeOnAShallowCheckoutSaysSo(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")
+	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji in this one")
 	for i := range 4 {
-		testCommit(t, dir, "akira-toriyama", fmt.Sprintf(":bug:~ fix number %d", i))
+		testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":bug:~ fix number %d", i))
 	}
 	clone := shallowClone(t, dir, 2)
 
@@ -94,9 +96,9 @@ func shallowRangeSaysSo(t *testing.T, dir, cmd string, full int) {
 func shallowSingleRepo(t *testing.T) string {
 	t.Helper()
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", "no gitmoji in this one")
+	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji in this one")
 	for i := range 3 {
-		testCommit(t, dir, "akira-toriyama", fmt.Sprintf(":bug:~ fix number %d", i))
+		testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":bug:~ fix number %d", i))
 	}
 	return dir
 }

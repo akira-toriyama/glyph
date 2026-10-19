@@ -16,6 +16,7 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/core"
 	"github.com/akira-toriyama/glyph/v5/internal/draftplan"
 	"github.com/akira-toriyama/glyph/v5/internal/github"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 	"github.com/akira-toriyama/glyph/v5/internal/walk"
 )
 
@@ -172,7 +173,7 @@ func TestReleaseUpsertCreatesTheDraft(t *testing.T) {
 	walk := oneFixWalk(t)
 	srv := releaseServer(t, walk, `[]`, &writes)
 	usePR(t, srv)
-	head := testGit(t, ".", "akira-toriyama", "rev-parse", "HEAD")
+	head := testutil.Git(t, ".", "akira-toriyama", "rev-parse", "HEAD")
 
 	code, stdout, stderr := runGlyph(t, "release")
 	if code != 0 {
@@ -686,7 +687,7 @@ func TestReleaseRealRunNoticeNamesTheTarget(t *testing.T) {
 	})
 	t.Run("no flag names the checkout's HEAD", func(t *testing.T) {
 		stderr := realRunStderr(t)
-		head := testGit(t, ".", "akira-toriyama", "rev-parse", "HEAD")
+		head := testutil.Git(t, ".", "akira-toriyama", "rev-parse", "HEAD")
 		if !strings.Contains(stderr, "draft release v0.1.1 created at "+head+" ") {
 			t.Errorf("the notice must name the checkout's HEAD %s:\n%s", head, stderr)
 		}
@@ -769,8 +770,8 @@ func TestReleaseJSONReportsPullExpansion(t *testing.T) {
 	dir, _ := testRepo(t)
 	sha1 := squashCommit(t, dir, "Add a menu", 7)
 	sha2 := squashCommit(t, dir, "Fix a crash", 8)
-	testCommit(t, dir, "akira-toriyama", ":memo:= note the direct push")
-	direct := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= note the direct push")
+	direct := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1):   `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha1) + `]`,
 		commitPullsPath(sha2):   `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha2) + `]`,
@@ -802,8 +803,8 @@ func TestReleaseJSONReportsPullExpansion(t *testing.T) {
 // .pulls is indexable on the none verdict too, with no null-check.
 func TestReleaseNoReleaseJSONPullsNormalized(t *testing.T) {
 	dir, _ := testRepo(t)
-	testCommit(t, dir, "akira-toriyama", ":memo:= note the direct push")
-	direct := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= note the direct push")
+	direct := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	srv := dryServer(t, map[string]string{
 		commitPullsPath(direct): `[]`,
 	})
@@ -954,7 +955,7 @@ func TestReleaseNoneVerdictOnStdoutKeepsTheEnvelopeOff(t *testing.T) {
 func TestReleaseExplicitSinceTag(t *testing.T) {
 	dir, _ := testRepo(t)
 	sha1 := squashCommit(t, dir, "Fix a crash", 8)
-	testGit(t, dir, "akira-toriyama", "tag", "v0.5.0") // a later tag that must NOT become the base
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.5.0") // a later tag that must NOT become the base
 	srv := dryServer(t, map[string]string{
 		commitPullsPath(sha1): `[` + apiPullRef(8, "2026-07-13T00:00:00Z", sha1) + `]`,
 		pullCommitsPath(8):    `[` + apiCommit("b1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
@@ -1399,8 +1400,8 @@ func shallowCheckout(t *testing.T) map[string]string {
 	sha := squashCommit(t, origin, "Fix a crash", 8)
 
 	clone := filepath.Join(t.TempDir(), "shallow")
-	testGit(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", "1", "file://"+origin, clone)
-	if got := testGit(t, clone, "akira-toriyama", "rev-parse", "--is-shallow-repository"); got != "true" {
+	testutil.Git(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", "1", "file://"+origin, clone)
+	if got := testutil.Git(t, clone, "akira-toriyama", "rev-parse", "--is-shallow-repository"); got != "true" {
 		t.Fatalf("the fixture clone is not shallow (--is-shallow-repository = %q); the test would prove nothing", got)
 	}
 	t.Chdir(clone)

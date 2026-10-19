@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 	"github.com/akira-toriyama/glyph/v5/internal/walk"
 )
 
@@ -79,10 +80,10 @@ func TestPreviewPackagesOneVerdictPerTouchedLine(t *testing.T) {
 	dir, base := packagesRepo(t)
 	appendTo(t, dir, "glyph.toml", "\n[[packages]]\npath = \"fish\"\n")
 	writeFile(t, dir, "fish/fish.go", "package fish\n")
-	testGit(t, dir, "akira-toriyama", "add", ".")
-	testGit(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare a third line")
-	declared := testGit(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	testGit(t, dir, "akira-toriyama", "tag", "fish/v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "add", ".")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare a third line")
+	declared := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "fish/v0.1.0")
 	routes := crossLinePull(9)
 	routes[commitPullsPath(declared)] = `[]`
 	_ = base
@@ -161,8 +162,8 @@ func TestPreviewPackagesFoldsEachLinesPendingSide(t *testing.T) {
 // walk never ran — and each line reports its first release.
 func TestPreviewPackagesUntaggedLinesSkipTheWalk(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	testGit(t, dir, "akira-toriyama", "tag", "-d", "haiku/v0.1.0")
-	testGit(t, dir, "akira-toriyama", "tag", "-d", "curry/v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "haiku/v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "curry/v0.1.0")
 	usePR(t, walkServer(t, crossLinePull(9)))
 	t.Chdir(dir)
 
@@ -440,8 +441,8 @@ func TestPreviewPackagesWarnsEveryParticipatingCommitOnce(t *testing.T) {
 
 			single, _ := testRepo(t)
 			warnFirst(t, single)
-			testGit(t, single, "akira-toriyama", "commit", "-q", "-am", ":wrench:= warn on construction")
-			testGit(t, single, "akira-toriyama", "tag", "v0.2.0")
+			testutil.Git(t, single, "akira-toriyama", "commit", "-q", "-am", ":wrench:= warn on construction")
+			testutil.Git(t, single, "akira-toriyama", "tag", "v0.2.0")
 			merged := touch(t, single, "akira-toriyama", ":construction:= scaffold the work", files...)
 			t.Chdir(single)
 			usePR(t, walkServer(t, withMerged(merged)))
@@ -453,9 +454,9 @@ func TestPreviewPackagesWarnsEveryParticipatingCommitOnce(t *testing.T) {
 
 			dir, _ := packagesRepo(t)
 			warnFirst(t, dir)
-			testGit(t, dir, "akira-toriyama", "commit", "-q", "-am", ":wrench:= warn on construction")
-			testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.2.0")
-			testGit(t, dir, "akira-toriyama", "tag", "curry/v0.2.0")
+			testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-am", ":wrench:= warn on construction")
+			testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.2.0")
+			testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.2.0")
 			merged = touch(t, dir, "akira-toriyama", ":construction:= scaffold the work", files...)
 			t.Chdir(dir)
 			usePR(t, walkServer(t, withMerged(merged)))
@@ -601,9 +602,9 @@ func packagesRepoWithUntaggedLine(t *testing.T) string {
 	t.Helper()
 	dir := packagesRepoWith(t, packagesConfig+"\n[[packages]]\npath = \"fish\"\n",
 		map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n", "fish/fish.go": "package fish\n"})
-	testGit(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
 	touch(t, dir, "akira-toriyama", ":memo:(haiku)= season the haiku", "haiku/haiku.go")
-	testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
 	return dir
 }
 
@@ -653,9 +654,9 @@ func TestPreviewPackagesWalkIgnoresAnUntouchedUntaggedLine(t *testing.T) {
 func TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy(t *testing.T) {
 	dir := packagesRepoWith(t, packagesConfig,
 		map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n"})
-	testGit(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0") // curry never released
+	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0") // curry never released
 	for i := range walk.Cap + 1 {
-		testCommit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= note %d", i))
+		testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= note %d", i))
 	}
 	usePR(t, walkServer(t, crossLinePull(9)))
 	t.Chdir(dir)
@@ -686,12 +687,12 @@ func TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy(t *testing.T) {
 // curry/v0.1.0 — the human-readable half was the wrong one.
 func TestPreviewPackagesUntaggedTouchedLineAgreesWithItsVerdict(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	testGit(t, dir, "akira-toriyama", "tag", "-d", "curry/v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "curry/v0.1.0")
 	touch(t, dir, "akira-toriyama", ":sparkles:^ add an ingredient", "curry/curry.go")
 	routes := crossLinePull(9)
 	// curry has no tag, so the union is the whole history: every commit in it
 	// is asked about, and walkServer fails on any route missing.
-	for sha := range strings.FieldsSeq(testGit(t, dir, "akira-toriyama", "rev-list", "HEAD")) {
+	for sha := range strings.FieldsSeq(testutil.Git(t, dir, "akira-toriyama", "rev-list", "HEAD")) {
 		routes[commitPullsPath(sha)] = `[]`
 	}
 	usePR(t, walkServer(t, routes))
