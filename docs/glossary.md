@@ -225,9 +225,10 @@ merge commit among them, so it is not a count of commits that *participate*),
 published as `.pulls` on the `--json` verdict so a human or a CI step can audit
 how a verdict was assembled without re-deriving the exclusion rules in shell. It
 records what the walk **did** and never why a number is what it is: a count of
-**0** has two innocent causes (a stacked pull whose commits rode in with its base
-pull; a merge-merged pull whose commits the fallback already folded), so 0 never
-means "this pull changed nothing". `internal/walk/facts.go: PullExpansion,
+**0** has only innocent causes (a stacked pull whose commits rode in with its
+base pull; a merge-merged pull whose commits the fallback already folded; a pull
+whose every commit landed under an earlier tag), so 0 never means "this pull
+changed nothing". `internal/walk/facts.go: PullExpansion,
 Facts.Pulls`
 
 **fallback path** — where a walked commit that resolved to *no* merged pull
@@ -609,10 +610,11 @@ is total. `internal/bump/fold.go: Fold`
 **cleanup** — the reduction of a raw commit-message **file** (what git hands a
 commit-msg hook, still holding the editor template, the status block and, under
 `commit.verbose`, a scissors line with the whole diff) to the message git will
-actually record. Only the authoring path (`--stdin`) calls it: a `--range` walk
-reads messages git has already cleaned (all but the closing newline git records
-them with, which `gitsource` strips — DESIGN §2.1), and running it there would
-swallow a genuinely empty message and any body line starting with `#`.
+actually record. Only the authoring path (`--stdin`, and doctor's replay of
+it) calls it: a `--range` walk reads messages git has already cleaned (all but
+the closing newline git records them with, which `gitsource` strips — DESIGN
+§2.1), and running it there would swallow a genuinely empty message and any
+body line starting with `#`.
 `internal/cleanup/cleanup.go: Apply`
 
 **cleanup mode** — *which* cleanup, of git's five: `verbatim` (none),

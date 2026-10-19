@@ -1195,10 +1195,6 @@ func TestReleaseNoneDeleteFailureStillFailsLoud(t *testing.T) {
 // and a 404 is also how GitHub answers for a repository the credential can no
 // longer see. So the notice reports what was observed instead of claiming a
 // deletion, and says the claim is unconfirmed.
-//
-// The run takes ~1s: it exercises the SHIPPED retry schedule deliberately, so
-// the wait is the real backoff a release job would spend rather than a test
-// double's idea of one.
 func TestReleaseNoneReportsAnUnwitnessedDeleteHonestly(t *testing.T) {
 	walk := noneWalk(t)
 	var deletes int

@@ -2,7 +2,7 @@ diff --git a/internal/preview/preview.go b/internal/preview/preview.go
 index d26aeb7..38e43d0 100644
 --- a/internal/preview/preview.go
 +++ b/internal/preview/preview.go
-@@ -170,15 +170,6 @@ func Headline(in Input) string {
+@@ -170,15 +170,6 @@ func headline(in Input) string {
  		return fmt.Sprintf("⏸️ This PR does not move the version — the next release stays **%s**.", in.Pending.Next)
  	case pr > qr && qr == 0:
  		return fmt.Sprintf("%s Merging this PR raises **%s** — the next release becomes **%s → %s**.", icon(pl), pl, in.Current, in.PR.Next)

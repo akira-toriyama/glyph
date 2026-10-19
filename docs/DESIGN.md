@@ -582,7 +582,8 @@ a v2 pattern file inherits it unchanged). The signals a hook actually has:
   load-bearing — with `core.editor` or `$EDITOR` supplying the editor git leaves
   `GIT_EDITOR` **unset** in the hook, so unset must mean "an editor may run".
   Read the other way, those developers get the whitespace branch, where the
-  template is never stripped and every commit is `malformed-subject`;
+  template is never stripped and a message typed under it has the template's
+  first comment line as the subject the hook refuses;
 - **which file** the hook was handed. `git merge` (and `git pull`) hands it
   `MERGE_MSG`, and `git commit` — concluding a conflicted merge included —
   `COMMIT_EDITMSG` (measured). The installed hook redirects the file onto stdin
@@ -991,7 +992,7 @@ which is honest); fencing the name with its at-sign (`` `@Saleh` `` reads as a
 broken mention and still shows a stranger's handle). (Mutation rows
 `line-returns-its-bytes-unfenced.patch`, `author-credit-goes-live-by-shape`,
 `noreply-address-carries-no-identity`, `unpaged-credit-keeps-its-at-sign`;
-the gate lives in `markdown.Line.Mention`, the identity in `cli.identity`.) A **`$[ … ]` span renders only when EVERY placeholder
+the gate lives in `markdown.Line.Mention`, the identity in `walk.identity`.) A **`$[ … ]` span renders only when EVERY placeholder
 inside it resolves non-empty** (mutation row
 `notes-optional-span-always-renders.patch`), taking its own punctuation with
 it when one does not. Without it, punctuation written around a placeholder
@@ -1694,9 +1695,9 @@ count of *participating* commits, §4.1), so
 how a verdict was assembled can be read back afterwards — by a human reviewing a
 draft, or by a CI step — without re-deriving the walk's exclusion rules in
 shell. It reports what the walk DID and never why a count is what it is: 0 has
-two innocent causes (a stacked pull whose commits rode in with its base, a
-merge-merged pull the fallback already folded), so it never means "this pull
-changed nothing".
+only innocent causes (a stacked pull whose commits rode in with its base, a
+merge-merged pull the fallback already folded, a pull whose every commit
+landed under an earlier tag), so it never means "this pull changed nothing".
 
 Rejected alternatives: a semver **label** on the PR (note generation must re-read
 the inner commits anyway, so the label adds a weaker, mutable, git-invisible
@@ -2927,7 +2928,7 @@ cmd/glyph/main.go        os.Exit(cli.Execute()) — thin process boundary only
 internal/core            exit-code contract + structured Error (no I/O, no logic)
 internal/version         ldflags build identity + ReadBuildInfo fallback
 internal/cleanup         git's message cleanup, modelled exactly (comment strip, scissors cut) — what --stdin judges is what git records
-internal/bump            Level lattice; LevelOf + Fold (classification and the fold); reduce(max); Next; version parse on a tag prefix; stdlib semver
+internal/bump            Level lattice; LevelOf + Fold (classification and the fold); reduce(max); DecidingReason; Next and NextOn (the step on a line); version parse on a tag prefix; stdlib semver
 internal/config          glyph.toml loader — user RE2 patterns, first match wins, semver_sigil extraction, the [[packages]] schema; embeds the init presets
 internal/attribution     which declared package(s) a commit moves — pure; files + scope + sigil + packages in, package set or lint-class refusal out (§4.1)
 internal/emoji           the gemoji dictionary `glyph emoji` prints — embedded table.json, advisory data nothing else reads (§2)
