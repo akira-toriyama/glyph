@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 23141f2..3528521 100644
+index 959b182..3f9baf0 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -363,7 +363,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
- 		}
- 		pv.Tag, pv.Body, pv.Action = tagName, body, string(plan.Action)
- 		stale = append(stale, staleReleases(plan.Stale)...)
--		drafts = append(drafts, lineDraft{at: len(verdicts), plan: plan, params: github.ReleaseParams{TagName: tagName, Target: target, Name: tagName, Body: body, Draft: true}})
-+		drafts = append(drafts, lineDraft{at: len(verdicts), plan: plan, params: github.ReleaseParams{TagName: tagName, Target: target, Name: tagName, Body: body, Draft: false}})
- 		verdicts = append(verdicts, pv)
- 	}
- 
+@@ -394,7 +394,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 	for _, wr := range run {
+ 		switch wr.Kind {
+ 		case draftplan.Upsert:
+-			params := github.ReleaseParams{TagName: wr.Tag, Target: target, Name: wr.Tag, Body: wr.Body, Draft: true}
++			params := github.ReleaseParams{TagName: wr.Tag, Target: target, Name: wr.Tag, Body: wr.Body, Draft: false}
+ 			var rel github.Release
+ 			var werr error
+ 			if wr.Action == draftplan.ActionUpdate {

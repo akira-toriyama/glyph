@@ -1,0 +1,13 @@
+diff --git a/internal/draftplan/run.go b/internal/draftplan/run.go
+index dc73560..440bfc1 100644
+--- a/internal/draftplan/run.go
++++ b/internal/draftplan/run.go
+@@ -97,7 +97,7 @@ func PlanRun(lines []LinePlan, residue []Draft) []Write {
+ // and without packages the bare line is the walk's one line and plans its
+ // own — nil in both cases.
+ func Residue(cfg *config.Config, releases []Draft) []Draft {
+-	if len(cfg.Packages) == 0 || slices.ContainsFunc(cfg.Packages, func(p config.Package) bool { return p.Path == "." }) {
++	if len(cfg.Packages) == 0 {
+ 		return nil
+ 	}
+ 	return managed(cfg.LineOf(config.Package{Path: "."}), releases)

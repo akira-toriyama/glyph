@@ -1,8 +1,8 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index bf9e970..049d3e6 100644
+index 959b182..0acdac7 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -348,11 +348,13 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+@@ -300,12 +300,14 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
  		// then notes' output for the same walk followed by the caller's block.
  		// Each line's link starts at that line's own base tag — never the
  		// union's merge base, never a sibling's tag (§4.1).
@@ -13,11 +13,12 @@ index bf9e970..049d3e6 100644
  			// One --- line between the notes and the caller's install block
  			// (Q11) — composed here so a dry run previews the EXACT published
  			// body and no caller ever concatenates markdown in shell.
-+			linked = linked + "\n---\n\n" + footer
  			body = body + "\n---\n\n" + footer
++			linked = linked + "\n---\n\n" + footer
  		}
  		// The plan is computed BEFORE the body is final, because the body
-@@ -363,6 +365,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 		// depends on it: an update must re-read the kept draft's current body
+@@ -315,6 +317,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
  		// next push (t-qgps).
  		plan := draftplan.PlanDraft(lw.TagLine, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
  		body = draftplan.ComposeBody(plan.Keep, body)
@@ -25,11 +26,11 @@ index bf9e970..049d3e6 100644
  		// Sized BEFORE the dry-run fork: a dry run previews the real run, and
  		// a body the real run refuses must fail the preview identically. Sized
  		// over the FINAL body, hand region and compare link included — a human
-@@ -371,6 +374,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+@@ -323,6 +326,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
  		if serr := checkReleaseBody(body); serr != nil {
  			return serr
  		}
 +		body = linked
  		pv.Tag, pv.Body, pv.Action = tagName, body, string(plan.Action)
- 		stale = append(stale, staleReleases(plan.Stale)...)
- 		drafts = append(drafts, lineDraft{at: len(verdicts), plan: plan, params: github.ReleaseParams{TagName: tagName, Target: target, Name: tagName, Body: body, Draft: true}})
+ 		verdicts = append(verdicts, pv)
+ 		lines = append(lines, draftplan.LinePlan{Plan: plan, Body: body})

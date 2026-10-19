@@ -1,17 +1,19 @@
-diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 23141f2..9a1a394 100644
---- a/internal/cli/cmd_release.go
-+++ b/internal/cli/cmd_release.go
-@@ -392,11 +392,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+diff --git a/internal/draftplan/run.go b/internal/draftplan/run.go
+index dc73560..da83fe6 100644
+--- a/internal/draftplan/run.go
++++ b/internal/draftplan/run.go
+@@ -76,12 +76,8 @@ func PlanRun(lines []LinePlan, residue []Draft) []Write {
  	}
- 	// The residue is no line's, so its delete is the run's: a stray of the
- 	// upserts when any line writes a draft, the whole action when none does.
--	if len(drafts) == 0 {
--		residual = append(residual, residue...)
--	} else {
--		stale = append(stale, residue...)
--	}
-+	stale = append(stale, residue...)
- 
- 	result := newReleaseResult(cfg, w, rows, verdicts, target, len(drafts) > 0, moving)
- 
+ 	for _, r := range residue {
+ 		w := Write{Line: -1, Kind: Residual, Action: ActionDelete, Draft: &r}
+-		if len(upserts) > 0 {
+-			w.Kind = Stale
+-			stales = append(stales, w)
+-			continue
+-		}
+-		residuals = append(residuals, w)
++		w.Kind = Stale
++		stales = append(stales, w)
+ 	}
+ 	return slices.Concat(upserts, residuals, stales)
+ }

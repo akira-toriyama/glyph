@@ -1,9 +1,9 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 5d00ab6..9b99310 100644
+index 959b182..82b5e18 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -613,7 +613,7 @@ func staleReleases(ds []draftplan.Draft) []github.Release {
- func convergeStray(ctx context.Context, gh *github.Client, owner, repo string, s github.Release) (went bool, err error) {
+@@ -514,7 +514,7 @@ func planInput(releases []github.Release) []draftplan.Draft {
+ func convergeStray(ctx context.Context, gh *github.Client, owner, repo string, s draftplan.Draft) (went bool, err error) {
  	gone, derr := gh.DeleteRelease(ctx, owner, repo, s.ID)
  	if derr != nil {
 -		if core.IsInterrupted(derr) {
