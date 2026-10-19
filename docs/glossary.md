@@ -138,7 +138,7 @@ pattern drops it after — and governs lint, the fold and the fallback path; the
 resolution side asks "can this commit on main **point at** a merged pull
 request?" and takes the **author alone** — a merge point's subject and parent
 count are how GitHub *shapes a pointer*, not evidence about it.
-`internal/bump/fold.go: Fold`, `internal/walk/expand.go: walkSince`
+`internal/bump/fold.go: Fold`, `internal/walk/expand.go: walk.visit`
 (the resolution gate)
 
 **merge point** — whatever commit GitHub named `merge_commit_sha` for a pull
@@ -153,7 +153,7 @@ mergedPullFor`
 **canonical commit** — the same object seen from the walk's side: the *walked*
 commit that resolved to a pull request, and the anchor the footprint mapping
 needs. Only a resolved canonical commit may expand a pull.
-`internal/walk/expand.go: foldPull, mainFootprint`
+`internal/walk/expand.go: walk.expand, mainFootprint`
 
 **footprint** — the answer, per commit in a pull's API listing, to "which commit
 on the released branch did this land as" — decided from **local git alone**,
@@ -183,7 +183,7 @@ template's decision — both shipped presets place `$pr` alone, inside an option
 span, so a line reads `- subject (#123)` and loses the parens entirely when no
 pull resolved; the `(#123, abc1234)` shape v1 hardcoded is expressible as
 `$[ ($pr, $hash)]` and is deliberately not what ships (DESIGN §3).
-`internal/walk/expand.go: mainFootprint, foldPull`, `internal/walk/walk.go: NoteCommits`
+`internal/walk/expand.go: mainFootprint, walk.expand`, `internal/walk/walk.go: NoteCommits`
 
 **stand aside** — what a walked commit does when it reports itself carried by a
 pull whose merge point is some *other* sha in this range: it is not counted,
@@ -210,13 +210,13 @@ shipped under the previous tag manufactures a minor out of released work). The
 release is genuinely short by whatever that pull changed. Note what the warning
 does *not* promise: API lag clears itself and warns once, but a repository whose
 merge button an **automation** presses warns on every release, structurally.
-`internal/walk/expand.go: walkSince` (the `coveredOrder` reconciliation),
+`internal/walk/expand.go: walk.reconcile` (the `coveredOrder` ledger),
 `Facts.LostPulls`
 
 **expansion** — turning one resolved pull request into its individual commits and
 folding them in, after two filters applied *before anything is parsed*: the
 footprint filter and the walk-wide seen-sha filter. `internal/walk/expand.go:
-foldPull`
+walk.expand`
 
 **provenance** (*expansion provenance*) — the walk reporting on itself: per
 resolved pull, its number and how many of its listed commits the walk took in
@@ -244,7 +244,7 @@ on this path: it matches the commit's whole message through the pattern file
 like any other, so a breaking marker survives it exactly when a pattern yields
 a major sigil (`!` or `%`) for it — under the presets, the subject's sigil
 alone (a `BREAKING CHANGE:` footer is prose; DESIGN §4).
-`internal/walk/expand.go: walkSince` (the fallback arm)
+`internal/walk/expand.go: walk.fallback`
 
 **API lag** — GitHub answering **422** for a sha it does not know yet, which is
 what a walk running seconds after a push meets. It is the **only** status that
@@ -310,7 +310,7 @@ has no pull request — a direct push or a local `git merge` is a message glyph
 **read** and judged, not evidence it could not obtain. So `Dropped` is not "the
 fold used second-best evidence"; it is "something is missing from the fold, and
 only GitHub can supply it". `internal/walk/facts.go: Facts.Dropped` (both
-arms sit in `walkSince`'s lag fallback)
+arms sit in `walk.fallback`'s lag arm)
 
 **shortfall** — the one-clause sentence naming what the walk could not read, so
 the same fact can be spliced into a `::warning::`, into the draft body a human

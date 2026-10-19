@@ -1,15 +1,13 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index c42cc14..9c4c8db 100644
+index 871c523..bac9251 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -133,10 +133,6 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
- 					// Represented like any other listed commit, and remembered
- 					// as refused: one refused commit is one row however many
- 					// pulls list it.
--					if r.SHA != "" {
--						seen[r.SHA] = true
--						wedged[r.SHA] = len(wedges)
--					}
- 					wedges = append(wedges, newWedge(row, owner, repo, number, canonical, onMain(r.SHA, inRange)))
- 					continue
- 				}
+@@ -252,7 +252,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
+ 		}
+ 		if !slices.Contains(w.cfg.ExcludeAuthors, r.Author) {
+ 			if row, ok := unclaimed(w.cfg, r); ok {
+-				w.refuse(row, number, canonical, r.SHA)
++				w.wedges = append(w.wedges, newWedge(row, w.owner, w.repo, number, canonical, onMain(r.SHA, w.inRange)))
+ 				continue
+ 			}
+ 		}

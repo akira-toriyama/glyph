@@ -1849,7 +1849,7 @@ func TestSinceTagRebaseMergeUsesOnMainSHAs(t *testing.T) {
 // listing is half placeable by ancestry, half only by alignment.
 //
 // Before the fix the first half short-circuited the second: every REWRITTEN entry
-// kept an empty landing site, which foldPull reads as "the pull alone governs" and
+// kept an empty landing site, which the walk's expand reads as "the pull alone governs" and
 // folds whatever the range says. Measured here: minor out of a :sparkles:^ released
 // one tag ago, exit 0, no warning, and the notes citing pre-rebase shas main does
 // not contain. It is t-8xsb through the front door, on the shape t-8xsb's own fix
@@ -2075,9 +2075,9 @@ func TestSinceTagMergeCommitReproducesVerdictWhenFullyDark(t *testing.T) {
 }
 
 // TestSinceTagFallbackOnlyOnUnknownCommit is the guard that makes "an outage
-// reaches the fallback" un-writable again. Exactly ONE status branches to
-// fallbackCommit — 422, github.IsCommitUnknown, the sha GitHub has not indexed
-// yet. A 403 rate limit, a 404, a 429 and a 5xx that outlives the retry schedule
+// reaches the fallback" un-writable again. Exactly ONE status branches to the
+// walk's lag fallback — 422, github.IsCommitUnknown, the sha GitHub has not
+// indexed yet. A 403 rate limit, a 404, a 429 and a 5xx that outlives the retry schedule
 // all leave walkSince as errors and exit 4: glyph observed nothing, so it
 // classifies nothing. Retry-After: 0 keeps the retryable arms instant (the same
 // device TestSinceTagAPIFailureMidWalkPassesThrough uses) — the schedule's
