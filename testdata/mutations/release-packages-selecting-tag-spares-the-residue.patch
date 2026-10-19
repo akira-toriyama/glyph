@@ -1,10 +1,10 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 528b694..e9e25b9 100644
+index dec9482..0364440 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -327,7 +327,11 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+@@ -272,7 +272,11 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
  		verdicts = append(verdicts, pv)
- 		lines = append(lines, draftplan.LinePlan{Plan: plan, Body: body})
+ 		lines = append(lines, lp)
  	}
 -	run := draftplan.PlanRun(lines, draftplan.Residue(cfg, drafted))
 +	residue := draftplan.Residue(cfg, drafted)
@@ -13,5 +13,5 @@ index 528b694..e9e25b9 100644
 +	}
 +	run := draftplan.PlanRun(lines, residue)
  	var upserts []draftplan.Write
- 	residuals, stale := 0, 0
  	for _, wr := range run {
+ 		if wr.Kind == draftplan.Upsert {

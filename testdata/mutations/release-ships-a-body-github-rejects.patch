@@ -1,19 +1,19 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 959b182..8c02a3d 100644
+index dec9482..2eb2614 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -315,14 +315,6 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
- 		// next push (t-qgps).
- 		plan := draftplan.PlanDraft(lw.TagLine, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
- 		body = draftplan.ComposeBody(plan.Keep, body)
--		// Sized BEFORE the dry-run fork: a dry run previews the real run, and
--		// a body the real run refuses must fail the preview identically. Sized
--		// over the FINAL body, hand region and compare link included — a human
--		// can write the draft over the limit, and the refusal must name it
--		// before the API does.
--		if serr := checkReleaseBody(body); serr != nil {
--			return serr
--		}
- 		pv.Tag, pv.Body, pv.Action = tagName, body, string(plan.Action)
- 		verdicts = append(verdicts, pv)
- 		lines = append(lines, draftplan.LinePlan{Plan: plan, Body: body})
+@@ -365,14 +365,6 @@ func planLine(ctx context.Context, cfg *config.Config, currentFlag string, lw wa
+ 	// next push (t-qgps).
+ 	plan := draftplan.PlanDraft(lw.TagLine, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
+ 	body = draftplan.ComposeBody(plan.Keep, body)
+-	// Sized BEFORE the dry-run fork: a dry run previews the real run, and
+-	// a body the real run refuses must fail the preview identically. Sized
+-	// over the FINAL body, hand region and compare link included — a human
+-	// can write the draft over the limit, and the refusal must name it
+-	// before the API does.
+-	if serr := checkReleaseBody(body); serr != nil {
+-		return packageRelease{}, draftplan.LinePlan{}, false, serr
+-	}
+ 	pv.Tag, pv.Body, pv.Action = tagName, body, string(plan.Action)
+ 	return pv, draftplan.LinePlan{Plan: plan, Body: body}, moves, nil
+ }

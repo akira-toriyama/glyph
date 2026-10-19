@@ -490,7 +490,7 @@ loud even when a sibling line's draft landed in the same run — the bare
 line is one line of the same loop.
 `internal/draftplan/run.go: PlanRun, Kind` (which delete is which, in the
 run's order: every upsert, the residual deletes, then the stale ones),
-`internal/cli/cmd_release.go: releaseRun` (the policy for each kind's
+`internal/cli/cmd_release.go: carryOut` (the policy for each kind's
 failure), `convergeStray` (one stale draft's lenient delete),
 [DESIGN §4](DESIGN.md#4-squash-safe-mechanism--release-time-re-read-stateless)
 

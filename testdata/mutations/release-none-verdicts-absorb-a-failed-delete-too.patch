@@ -1,8 +1,8 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 959b182..d5a2946 100644
+index dec9482..478ddbe 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -412,17 +412,12 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+@@ -465,17 +465,12 @@ func carryOut(ctx context.Context, gh *github.Client, owner, repoName string, ru
  			urls = append(urls, rel.URL)
  			verdicts[wr.Line].URL = rel.URL
  		case draftplan.Residual:
@@ -14,7 +14,7 @@ index 959b182..d5a2946 100644
 -			case core.IsInterrupted(derr):
 +			went, derr := convergeStray(ctx, gh, owner, repoName, *wr.Draft)
 +			if derr != nil {
- 				return derr
+ 				return nil, derr
 -			case residualErr == nil:
 -				residualErr = derr
 -			default:

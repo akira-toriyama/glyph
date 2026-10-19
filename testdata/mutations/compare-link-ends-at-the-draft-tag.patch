@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 97ac948..919d6cf 100644
+index dec9482..162c526 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -347,7 +347,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
- 		// then notes' output for the same walk followed by the caller's block.
- 		// Each line's link starts at that line's own base tag — never the
- 		// union's merge base, never a sibling's tag (§4.1).
--		body := compareLink(notes.Render(sections), owner, repoName, lw.BaseTag, target)
-+		body := compareLink(notes.Render(sections), owner, repoName, lw.BaseTag, tagName)
- 		if footer != "" {
- 			// One --- line between the notes and the caller's install block
- 			// (Q11) — composed here so a dry run previews the EXACT published
+@@ -350,7 +350,7 @@ func planLine(ctx context.Context, cfg *config.Config, currentFlag string, lw wa
+ 	// then notes' output for the same walk followed by the caller's block.
+ 	// Each line's link starts at that line's own base tag — never the
+ 	// union's merge base, never a sibling's tag (§4.1).
+-	body := compareLink(notes.Render(sections), owner, repoName, lw.BaseTag, target)
++	body := compareLink(notes.Render(sections), owner, repoName, lw.BaseTag, tagName)
+ 	if footer != "" {
+ 		// One --- line between the notes and the caller's install block
+ 		// (Q11) — composed here so a dry run previews the EXACT published

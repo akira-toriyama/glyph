@@ -1,36 +1,36 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 959b182..0acdac7 100644
+index dec9482..83758a7 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -300,12 +300,14 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
- 		// then notes' output for the same walk followed by the caller's block.
- 		// Each line's link starts at that line's own base tag — never the
- 		// union's merge base, never a sibling's tag (§4.1).
--		body := compareLink(notes.Render(sections), owner, repoName, lw.BaseTag, target)
-+		body := notes.Render(sections)
-+		linked := compareLink(body, owner, repoName, lw.BaseTag, target)
- 		if footer != "" {
- 			// One --- line between the notes and the caller's install block
- 			// (Q11) — composed here so a dry run previews the EXACT published
- 			// body and no caller ever concatenates markdown in shell.
- 			body = body + "\n---\n\n" + footer
-+			linked = linked + "\n---\n\n" + footer
- 		}
- 		// The plan is computed BEFORE the body is final, because the body
- 		// depends on it: an update must re-read the kept draft's current body
-@@ -315,6 +317,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
- 		// next push (t-qgps).
- 		plan := draftplan.PlanDraft(lw.TagLine, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
- 		body = draftplan.ComposeBody(plan.Keep, body)
-+		linked = draftplan.ComposeBody(plan.Keep, linked)
- 		// Sized BEFORE the dry-run fork: a dry run previews the real run, and
- 		// a body the real run refuses must fail the preview identically. Sized
- 		// over the FINAL body, hand region and compare link included — a human
-@@ -323,6 +326,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
- 		if serr := checkReleaseBody(body); serr != nil {
- 			return serr
- 		}
-+		body = linked
- 		pv.Tag, pv.Body, pv.Action = tagName, body, string(plan.Action)
- 		verdicts = append(verdicts, pv)
- 		lines = append(lines, draftplan.LinePlan{Plan: plan, Body: body})
+@@ -350,12 +350,14 @@ func planLine(ctx context.Context, cfg *config.Config, currentFlag string, lw wa
+ 	// then notes' output for the same walk followed by the caller's block.
+ 	// Each line's link starts at that line's own base tag — never the
+ 	// union's merge base, never a sibling's tag (§4.1).
+-	body := compareLink(notes.Render(sections), owner, repoName, lw.BaseTag, target)
++	body := notes.Render(sections)
++	linked := compareLink(body, owner, repoName, lw.BaseTag, target)
+ 	if footer != "" {
+ 		// One --- line between the notes and the caller's install block
+ 		// (Q11) — composed here so a dry run previews the EXACT published
+ 		// body and no caller ever concatenates markdown in shell.
+ 		body = body + "\n---\n\n" + footer
++		linked = linked + "\n---\n\n" + footer
+ 	}
+ 	// The plan is computed BEFORE the body is final, because the body
+ 	// depends on it: an update must re-read the kept draft's current body
+@@ -365,6 +367,7 @@ func planLine(ctx context.Context, cfg *config.Config, currentFlag string, lw wa
+ 	// next push (t-qgps).
+ 	plan := draftplan.PlanDraft(lw.TagLine, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
+ 	body = draftplan.ComposeBody(plan.Keep, body)
++	linked = draftplan.ComposeBody(plan.Keep, linked)
+ 	// Sized BEFORE the dry-run fork: a dry run previews the real run, and
+ 	// a body the real run refuses must fail the preview identically. Sized
+ 	// over the FINAL body, hand region and compare link included — a human
+@@ -373,6 +376,7 @@ func planLine(ctx context.Context, cfg *config.Config, currentFlag string, lw wa
+ 	if serr := checkReleaseBody(body); serr != nil {
+ 		return packageRelease{}, draftplan.LinePlan{}, false, serr
+ 	}
++	body = linked
+ 	pv.Tag, pv.Body, pv.Action = tagName, body, string(plan.Action)
+ 	return pv, draftplan.LinePlan{Plan: plan, Body: body}, moves, nil
+ }

@@ -163,13 +163,15 @@ func newReleaseCmd() *cobra.Command {
 	return cmd
 }
 
-// releaseRun is release below its flags. Every line's verdict, body and plan
-// exist before any write, so a line that refuses — the published floor, an
-// oversized body — stops the run with nothing written; the writes are
-// draftplan.PlanRun's list, carried out here in order with the policy each
-// kind of write names. A repository without [[packages]] walks as one bare
-// line (sinceTagInput), so the per-line loop is the only loop, and
-// newReleaseResult tells the shapes apart at the render.
+// releaseRun is release below its flags: the gates and the walk, the releases
+// listing and the target, one plan per line (planLine), the run's writes in
+// order (draftplan.PlanRun), then the dry run's render (renderDryRun) or the
+// writes carried out (carryOut) and the real run's render. Every line's
+// verdict, body and plan exist before any write, so a line that refuses — the
+// published floor, an oversized body — stops the run with nothing written. A
+// repository without [[packages]] walks as one bare line (sinceTagInput), so
+// the per-line loop is the only loop, and newReleaseResult tells the shapes
+// apart at the render.
 func releaseRun(ctx context.Context, o releaseOptions) error {
 	// Caller-input problems surface before any network or git work — and
 	// before the environment is judged: the footer file is read up front, and
@@ -260,88 +262,181 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	lines := make([]draftplan.LinePlan, 0, len(w.Lines))
 	moving := 0
 	for _, lw := range w.Lines {
-		lineRows, dec, ferr := bump.Fold(walk.BumpCommits(lw.Commits), cfg)
-		if ferr != nil {
-			return ferr
+		pv, lp, moves, err := planLine(ctx, cfg, o.current, lw, owner, repoName, target, footer, drafted)
+		if err != nil {
+			return err
 		}
-		current, verr := currentVersion(ctx, o.current, lw.Base, lw.TagLine)
-		if verr != nil {
-			return verr
-		}
-		pv := packageRelease{Path: lw.Package.Path, Current: current.String(), Level: string(dec.Level), Commits: lineRows, Reason: noneReason(len(lineRows), lw.Source)}
-		if dec.Level == bump.LevelNone && !cfg.Note.DraftOnNone {
-			plan := draftplan.PlanDraft(lw.TagLine, dec.Level, "", false, drafted)
-			pv.Action = string(plan.Action)
-			verdicts = append(verdicts, pv)
-			lines = append(lines, draftplan.LinePlan{Plan: plan})
-			continue
-		}
-		// tagName is what the kept (or created) draft converges to: the next
-		// version on a release verdict, the Unreleased placeholder on a
-		// maintained none (draft_on_none — the flag's whole point is that a
-		// quiet merge keeps the door open instead of deleting the draft).
-		tagName := draftplan.PlaceholderTagOn(lw.TagLine)
-		if dec.Level != bump.LevelNone {
-			tag, nerr := bump.NextOn(lw.TagLine, current, dec)
-			if nerr != nil {
-				return nerr
-			}
-			if gerr := draftplan.CheckPublishedFloor(lw.TagLine, tag, drafted); gerr != nil {
-				return gerr
-			}
-			tagName = tag.TagOn(lw.TagLine.Prefix)
-			pv.Next = tag.String()
-			pv.Reason = bump.DecidingReason(lineRows, dec)
+		if moves {
 			moving++
 		}
-		sections, gerr := notes.Group(walk.NoteCommits(lw.Commits), cfg)
-		if gerr != nil {
-			return gerr
-		}
-		// The link closes the notes, BEFORE the footer: the machine region is
-		// then notes' output for the same walk followed by the caller's block.
-		// Each line's link starts at that line's own base tag — never the
-		// union's merge base, never a sibling's tag (§4.1).
-		body := compareLink(notes.Render(sections), owner, repoName, lw.BaseTag, target)
-		if footer != "" {
-			// One --- line between the notes and the caller's install block
-			// (Q11) — composed here so a dry run previews the EXACT published
-			// body and no caller ever concatenates markdown in shell.
-			body = body + "\n---\n\n" + footer
-		}
-		// The plan is computed BEFORE the body is final, because the body
-		// depends on it: an update must re-read the kept draft's current body
-		// and carry the hand region across (see draftplan.ComposeBody) — the
-		// rolling draft is the one place a human can write release prose, and
-		// rewriting it blind is how that prose was silently destroyed on the
-		// next push (t-qgps).
-		plan := draftplan.PlanDraft(lw.TagLine, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
-		body = draftplan.ComposeBody(plan.Keep, body)
-		// Sized BEFORE the dry-run fork: a dry run previews the real run, and
-		// a body the real run refuses must fail the preview identically. Sized
-		// over the FINAL body, hand region and compare link included — a human
-		// can write the draft over the limit, and the refusal must name it
-		// before the API does.
-		if serr := checkReleaseBody(body); serr != nil {
-			return serr
-		}
-		pv.Tag, pv.Body, pv.Action = tagName, body, string(plan.Action)
 		verdicts = append(verdicts, pv)
-		lines = append(lines, draftplan.LinePlan{Plan: plan, Body: body})
+		lines = append(lines, lp)
 	}
 	run := draftplan.PlanRun(lines, draftplan.Residue(cfg, drafted))
 	var upserts []draftplan.Write
+	for _, wr := range run {
+		if wr.Kind == draftplan.Upsert {
+			upserts = append(upserts, wr)
+		}
+	}
+
+	result := newReleaseResult(cfg, w, rows, verdicts, target, len(upserts) > 0, moving)
+	if o.dryRun {
+		return renderDryRun(run, upserts, target, result, moving, o.json)
+	}
+
+	urls, err := carryOut(ctx, gh, owner, repoName, run, target, verdicts)
+	if err != nil {
+		return err
+	}
+	result = newReleaseResult(cfg, w, rows, verdicts, target, len(upserts) > 0, moving)
+	if o.json {
+		printCompact(result)
+		return releaseExit(moving, result.Reason, true)
+	}
+	for _, u := range urls {
+		fmt.Fprintln(out, u)
+	}
+	return releaseExit(moving, result.Reason, len(upserts) > 0)
+}
+
+// planLine decides one line with nothing written and returns its verdict, its
+// plan for draftplan.PlanRun, and whether the line moves — a release verdict;
+// the placeholder draft_on_none maintains does not move. A line folding to
+// none with draft_on_none off writes no draft, so its plan is the deletion of
+// its managed drafts alone. Every other line gets its draft's tag — the next
+// version, cleared against the published floor, or the placeholder — and its
+// body: the notes closed by the compare link, the footer, composed over the
+// kept draft's hand region and sized. drafted is the releases listing.
+func planLine(ctx context.Context, cfg *config.Config, currentFlag string, lw walk.LineWalk, owner, repoName, target, footer string, drafted []draftplan.Draft) (packageRelease, draftplan.LinePlan, bool, error) {
+	lineRows, dec, ferr := bump.Fold(walk.BumpCommits(lw.Commits), cfg)
+	if ferr != nil {
+		return packageRelease{}, draftplan.LinePlan{}, false, ferr
+	}
+	current, verr := currentVersion(ctx, currentFlag, lw.Base, lw.TagLine)
+	if verr != nil {
+		return packageRelease{}, draftplan.LinePlan{}, false, verr
+	}
+	pv := packageRelease{Path: lw.Package.Path, Current: current.String(), Level: string(dec.Level), Commits: lineRows, Reason: noneReason(len(lineRows), lw.Source)}
+	if dec.Level == bump.LevelNone && !cfg.Note.DraftOnNone {
+		plan := draftplan.PlanDraft(lw.TagLine, dec.Level, "", false, drafted)
+		pv.Action = string(plan.Action)
+		return pv, draftplan.LinePlan{Plan: plan}, false, nil
+	}
+	// tagName is what the kept (or created) draft converges to: the next
+	// version on a release verdict, the Unreleased placeholder on a
+	// maintained none (draft_on_none — the flag's whole point is that a
+	// quiet merge keeps the door open instead of deleting the draft).
+	tagName := draftplan.PlaceholderTagOn(lw.TagLine)
+	moves := false
+	if dec.Level != bump.LevelNone {
+		tag, nerr := bump.NextOn(lw.TagLine, current, dec)
+		if nerr != nil {
+			return packageRelease{}, draftplan.LinePlan{}, false, nerr
+		}
+		if gerr := draftplan.CheckPublishedFloor(lw.TagLine, tag, drafted); gerr != nil {
+			return packageRelease{}, draftplan.LinePlan{}, false, gerr
+		}
+		tagName = tag.TagOn(lw.TagLine.Prefix)
+		pv.Next = tag.String()
+		pv.Reason = bump.DecidingReason(lineRows, dec)
+		moves = true
+	}
+	sections, gerr := notes.Group(walk.NoteCommits(lw.Commits), cfg)
+	if gerr != nil {
+		return packageRelease{}, draftplan.LinePlan{}, false, gerr
+	}
+	// The link closes the notes, BEFORE the footer: the machine region is
+	// then notes' output for the same walk followed by the caller's block.
+	// Each line's link starts at that line's own base tag — never the
+	// union's merge base, never a sibling's tag (§4.1).
+	body := compareLink(notes.Render(sections), owner, repoName, lw.BaseTag, target)
+	if footer != "" {
+		// One --- line between the notes and the caller's install block
+		// (Q11) — composed here so a dry run previews the EXACT published
+		// body and no caller ever concatenates markdown in shell.
+		body = body + "\n---\n\n" + footer
+	}
+	// The plan is computed BEFORE the body is final, because the body
+	// depends on it: an update must re-read the kept draft's current body
+	// and carry the hand region across (see draftplan.ComposeBody) — the
+	// rolling draft is the one place a human can write release prose, and
+	// rewriting it blind is how that prose was silently destroyed on the
+	// next push (t-qgps).
+	plan := draftplan.PlanDraft(lw.TagLine, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
+	body = draftplan.ComposeBody(plan.Keep, body)
+	// Sized BEFORE the dry-run fork: a dry run previews the real run, and
+	// a body the real run refuses must fail the preview identically. Sized
+	// over the FINAL body, hand region and compare link included — a human
+	// can write the draft over the limit, and the refusal must name it
+	// before the API does.
+	if serr := checkReleaseBody(body); serr != nil {
+		return packageRelease{}, draftplan.LinePlan{}, false, serr
+	}
+	pv.Tag, pv.Body, pv.Action = tagName, body, string(plan.Action)
+	return pv, draftplan.LinePlan{Plan: plan, Body: body}, moves, nil
+}
+
+// renderDryRun is the dry run's output once the run is planned: a notice per
+// upsert the real run would make, one count each for its residual and its
+// stale deletes, a notice per residue write, then stdout — the JSON verdict,
+// or one block per upserted draft (its tag line, a blank line, its body) — and
+// the exit. It writes nothing to GitHub. The residue's notice says it would be
+// deleted, where a real run speaks only once its DELETE went (DESIGN §4.1,
+// "Drafts, one per line").
+func renderDryRun(run, upserts []draftplan.Write, target string, result releaseResult, moving int, asJSON bool) error {
+	for _, u := range upserts {
+		noticef("dry run: the upsert would %s the rolling draft %s at %s", u.Action, u.Tag, target)
+	}
 	residuals, stale := 0, 0
 	for _, wr := range run {
 		switch wr.Kind {
 		case draftplan.Upsert:
-			upserts = append(upserts, wr)
 		case draftplan.Residual:
 			residuals++
 		case draftplan.Stale:
 			stale++
 		}
 	}
+	if residuals > 0 {
+		noticef("dry run: %d residual draft(s) to delete (a delete that will not go fails the run)", residuals)
+	}
+	if stale > 0 {
+		noticef("dry run: %d stale draft(s) to delete after the upserts", stale)
+	}
+	for _, wr := range run {
+		if wr.IsResidue() {
+			noticef("dry run: the bare draft %s (release id %d) is the single line's residue — this repository declares packages and no root package, so no line will converge it again; it would be deleted, and a hand region it carried would go with it (move that prose into the line's own draft, above the marker, before a real run)", wr.Draft.TagName, wr.Draft.ID)
+		}
+	}
+	if asJSON {
+		printCompact(result)
+		return releaseExit(moving, result.Reason, true)
+	}
+	if len(upserts) == 0 {
+		// Nothing to print, and no zero-byte write: on macOS an empty
+		// write to a pipe whose reader has gone is still a SIGPIPE.
+		return releaseExit(moving, result.Reason, false)
+	}
+	blocks := make([]string, 0, len(upserts))
+	for _, u := range upserts {
+		blocks = append(blocks, u.Tag+"\n\n"+u.Body)
+	}
+	fmt.Fprint(out, strings.Join(blocks, "\n"))
+	return releaseExit(moving, result.Reason, true)
+}
+
+// carryOut is the run's one writer: it makes the plan's writes in order and
+// returns the URL of every draft it wrote, in write order, each also set on
+// the verdict of the line its write names (verdicts[wr.Line]). What a
+// failure means is the write's kind, and the policy for each is here (DESIGN
+// §4, "the order is the general fix"; §4.1, "Drafts, one per line"). An
+// upsert's failure returns, the lines already written standing. A
+// residual's is answered only after every other delete was tried — one
+// line's failed action is no reason to leave another's undone or a stale
+// draft standing unwarned — and an interrupt is never absorbed. A stale
+// draft's is convergeStray's warning.
+func carryOut(ctx context.Context, gh *github.Client, owner, repoName string, run []draftplan.Write, target string, verdicts []packageRelease) ([]string, error) {
 	// Spoken once the residue's DELETE went, never at plan time (DESIGN §4.1,
 	// "Drafts, one per line"; t-xz1z).
 	residueGone := func(wr draftplan.Write) {
@@ -349,49 +444,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 			noticef("the bare draft %s (release id %d) is the single line's residue — this repository declares packages and no root package, so no line would converge it again; a hand region it carried is gone with it", wr.Draft.TagName, wr.Draft.ID)
 		}
 	}
-
-	result := newReleaseResult(cfg, w, rows, verdicts, target, len(upserts) > 0, moving)
-
-	if o.dryRun {
-		for _, u := range upserts {
-			noticef("dry run: the upsert would %s the rolling draft %s at %s", u.Action, u.Tag, target)
-		}
-		if residuals > 0 {
-			noticef("dry run: %d residual draft(s) to delete (a delete that will not go fails the run)", residuals)
-		}
-		if stale > 0 {
-			noticef("dry run: %d stale draft(s) to delete after the upserts", stale)
-		}
-		for _, wr := range run {
-			if wr.IsResidue() {
-				noticef("dry run: the bare draft %s (release id %d) is the single line's residue — this repository declares packages and no root package, so no line will converge it again; it would be deleted, and a hand region it carried would go with it (move that prose into the line's own draft, above the marker, before a real run)", wr.Draft.TagName, wr.Draft.ID)
-			}
-		}
-		if o.json {
-			printCompact(result)
-			return releaseExit(moving, result.Reason, true)
-		}
-		if len(upserts) == 0 {
-			// Nothing to print, and no zero-byte write: on macOS an empty
-			// write to a pipe whose reader has gone is still a SIGPIPE.
-			return releaseExit(moving, result.Reason, false)
-		}
-		blocks := make([]string, 0, len(upserts))
-		for _, u := range upserts {
-			blocks = append(blocks, u.Tag+"\n\n"+u.Body)
-		}
-		fmt.Fprint(out, strings.Join(blocks, "\n"))
-		return releaseExit(moving, result.Reason, true)
-	}
-
-	// The list is carried out in order; what a failure means is the write's
-	// kind, and the policy for each is here (DESIGN §4, "the order is the
-	// general fix"; §4.1, "Drafts, one per line"). An upsert's failure
-	// returns, the lines already written standing. A residual's is answered only after every
-	// other delete was tried — one line's failed action is no reason to leave
-	// another's undone or a stale draft standing unwarned — and an interrupt
-	// is never absorbed. A stale draft's is convergeStray's warning.
-	urls := make([]string, 0, len(upserts))
+	var urls []string
 	var residualErr error
 	for _, wr := range run {
 		switch wr.Kind {
@@ -408,7 +461,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 				if len(urls) > 0 {
 					warnf("%d line(s) were written before this failure and stand; the remaining lines converge on the next run", len(urls))
 				}
-				return werr
+				return nil, werr
 			}
 			noticef("draft release %s %sd at %s (unpublished — the tag is created at that commit when a human publishes): %s", wr.Tag, wr.Action, target, rel.URL)
 			urls = append(urls, rel.URL)
@@ -420,7 +473,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 				noticef("no release is due — %s the residual draft %s (release id %d)", discardedOrGone(gone), wr.Draft.TagName, wr.Draft.ID)
 				residueGone(wr)
 			case core.IsInterrupted(derr):
-				return derr
+				return nil, derr
 			case residualErr == nil:
 				residualErr = derr
 			default:
@@ -429,7 +482,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 		case draftplan.Stale:
 			went, cerr := convergeStray(ctx, gh, owner, repoName, *wr.Draft)
 			if cerr != nil {
-				return cerr
+				return nil, cerr
 			}
 			if went {
 				residueGone(wr)
@@ -437,18 +490,9 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 		}
 	}
 	if residualErr != nil {
-		return residualErr
+		return nil, residualErr
 	}
-
-	result = newReleaseResult(cfg, w, rows, verdicts, target, len(upserts) > 0, moving)
-	if o.json {
-		printCompact(result)
-		return releaseExit(moving, result.Reason, true)
-	}
-	for _, u := range urls {
-		fmt.Fprintln(out, u)
-	}
-	return releaseExit(moving, result.Reason, len(upserts) > 0)
+	return urls, nil
 }
 
 // newReleaseResult is the one producer of the machine verdict, and where the

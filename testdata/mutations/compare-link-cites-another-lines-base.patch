@@ -12,15 +12,14 @@ index fec0dcc..cd897c7 100644
  	if len(said) == 0 {
  		reason := noNotesReason(cfg, participating(cfg, walk.NoteCommits(w.All)), w.Source)
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index bf9e970..814769d 100644
+index dec9482..7a090df 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -348,7 +348,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
- 		// then notes' output for the same walk followed by the caller's block.
- 		// Each line's link starts at that line's own base tag — never the
- 		// union's merge base, never a sibling's tag (§4.1).
--		body := compareLink(notes.Render(sections), owner, repoName, lw.BaseTag, target)
-+		body := compareLink(notes.Render(sections), owner, repoName, strings.TrimSuffix(w.Source, "..HEAD"), target)
- 		if footer != "" {
- 			// One --- line between the notes and the caller's install block
- 			// (Q11) — composed here so a dry run previews the EXACT published
+@@ -262,6 +262,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 	lines := make([]draftplan.LinePlan, 0, len(w.Lines))
+ 	moving := 0
+ 	for _, lw := range w.Lines {
++		lw.BaseTag = strings.TrimSuffix(w.Source, "..HEAD")
+ 		pv, lp, moves, err := planLine(ctx, cfg, o.current, lw, owner, repoName, target, footer, drafted)
+ 		if err != nil {
+ 			return err
