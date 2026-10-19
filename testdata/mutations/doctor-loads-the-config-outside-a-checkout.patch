@@ -1,9 +1,9 @@
 diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
-index 46a8c1f..1807ac4 100644
+index b39ef26..142d7e9 100644
 --- a/internal/cli/cmd_doctor.go
 +++ b/internal/cli/cmd_doctor.go
-@@ -321,9 +321,7 @@ func doctorRun(cmd *cobra.Command) error {
- 	top, terr := gitsource.TopLevel(cmd.Context(), ".")
+@@ -301,9 +301,7 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
+ 	top, terr := gitsource.TopLevel(ctx, ".")
  	var cfg *config.Config
  	var cfgErr error
 -	if terr == nil {

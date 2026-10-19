@@ -13,17 +13,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// initPresetFlags carries one bool flag per shipped preset, discovered from
-// the embedded set — a preset added to internal/config/presets/ becomes a
-// flag with no edit here, so the command and the shipped artifacts cannot
-// disagree about what exists.
-var (
-	initPresetFlags = map[string]*bool{}
-	initForce       bool
-)
+// initOptions is what one init run was asked, snapshotted at RunE: the one
+// preset the flags chose, and --force. Nothing below RunE reads a flag —
+// runInit is a function of these alone (TestInitRunsFromOptionsWithoutCobra).
+type initOptions struct {
+	preset string
+	force  bool
+}
 
 func newInitCmd() *cobra.Command {
 	names := config.PresetNames()
+	// One bool flag per shipped preset, discovered from the embedded set — a
+	// preset added to internal/config/presets/ becomes a flag with no edit
+	// here, so the command and the shipped artifacts cannot disagree about
+	// what exists.
+	presetFlags := map[string]*bool{}
+	var force bool
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Write a glyph.toml preset at the checkout's top level",
@@ -48,29 +53,29 @@ func newInitCmd() *cobra.Command {
 			}
 			chosen := ""
 			for _, name := range names {
-				if *initPresetFlags[name] {
+				if *presetFlags[name] {
 					chosen = name
 				}
 			}
 			if chosen == "" {
 				return core.Usagef("pick a preset: --%s", strings.Join(names, " or --"))
 			}
-			return runInit(cmd.Context(), chosen)
+			return runInit(cmd.Context(), initOptions{preset: chosen, force: force})
 		},
 	}
 	for _, name := range names {
 		v := new(bool)
-		initPresetFlags[name] = v
+		presetFlags[name] = v
 		cmd.Flags().BoolVar(v, name, false, "write the "+name+" preset")
 	}
-	cmd.Flags().BoolVar(&initForce, "force", false, "overwrite an existing glyph.toml")
+	cmd.Flags().BoolVar(&force, "force", false, "overwrite an existing glyph.toml")
 	return cmd
 }
 
-func runInit(ctx context.Context, preset string) error {
-	data, ok := config.Preset(preset)
+func runInit(ctx context.Context, o initOptions) error {
+	data, ok := config.Preset(o.preset)
 	if !ok {
-		return core.Usagef("unknown preset %q", preset)
+		return core.Usagef("unknown preset %q", o.preset)
 	}
 	path, err := initPath(ctx)
 	if err != nil {
@@ -78,32 +83,28 @@ func runInit(ctx context.Context, preset string) error {
 	}
 	// Lstat, not Stat: a broken symlink is still something a user put there,
 	// and overwriting it silently is the same offence as overwriting a file.
-	if _, err := os.Lstat(path); err == nil && !initForce {
-		return core.Usagef("%s already exists — edit it in place, or pass --force to replace it with the %s preset", path, preset)
+	if _, err := os.Lstat(path); err == nil && !o.force {
+		return core.Usagef("%s already exists — edit it in place, or pass --force to replace it with the %s preset", path, o.preset)
 	} else if err != nil && !os.IsNotExist(err) {
 		return core.APIf("checking %s: %v", path, err)
 	}
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return core.APIf("writing %s: %v", path, err)
 	}
-	fmt.Fprintf(out, "wrote %s (%s preset)\n", path, preset)
+	fmt.Fprintf(out, "wrote %s (%s preset)\n", path, o.preset)
 	return nil
 }
 
 // initPath is where init writes: the glyph.toml at the checkout's top level,
 // the one file loadConfig resolves for every other command from any
-// subdirectory. Writing the current directory instead left, from a
-// subdirectory, a file nothing reads at exit 0 while loadConfig's remedy sent
-// the author back to the same command (t-f2cb, measured 2026-09-29). Only
-// where git itself says "not a git repository" is the current directory the
-// answer. Inside a git directory git names no top level either, and writing
-// there left .git/glyph.toml at exit 0, the same inert file
-// (TestInitRefusesInsideTheGitDirectory), so that case is refused at 2. Any
-// other git failure — a repository git will not read (dubious ownership, a
-// broken config), or no git at all — is no trustworthy answer: exit 4 with
-// git's message and nothing written, where falling back wrote sub/glyph.toml
-// at exit 0 (TestInitCannotRunWhereGitWillNotReadTheRepository). An interrupt
-// in either read is the user's abort, never a reason to write somewhere else.
+// subdirectory. Only where git itself says "not a git repository" is the
+// current directory the answer. Inside a git directory git names no top level
+// either, and that case is refused at 2. Any other git failure — a repository
+// git will not read (dubious ownership, a broken config), or no git at all —
+// is no trustworthy answer: exit 4 with git's message and nothing written. An
+// interrupt in either read is the user's abort, never a reason to write
+// somewhere else. Why each arm: DESIGN §2, "Config resolution is one file per
+// checkout".
 func initPath(ctx context.Context) (string, error) {
 	top, err := gitsource.TopLevel(ctx, ".")
 	switch {
