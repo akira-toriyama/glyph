@@ -1774,6 +1774,33 @@ point for *every* shape, because expanding re-fetched the pull's whole listing
 whenever its merge point was in range (verified then: a tag at the offending
 commit and a tag strictly past it both exited 3). Both now exit 0.
 
+**The escape tag's own release ships a placeholder body.** The escape clears
+every walk that starts at or past the tag, and the tag's own tag-time notes are
+not one: `goreleaser.yml` renders glyph's release body with
+`notes --since-tag=below:TAG`, which walks from the predecessor, so that walk
+reaches the refused commit again and refuses it at `3`. Measured 2026-10-20 at
+ec53ed3 on a throwaway repository — a direct push no pattern claims, the escape
+tag cut at it and, separately, strictly past it: `below:` exited 3 both times
+while the next release's bare `--since-tag` walk exited 0, and the step's own
+shell then exited 3 over an empty body, which fails the job before GoReleaser
+runs (t-s5n4's shape). So the step ships `3` as it ships the soft no-release
+`1`, with a placeholder body and a `::warning::` saying why: the walk below the
+tag reaches a commit glyph refuses, the tag was cut where the refusal sends it
+(at or past that commit, or a squash-merged pull's merge point) to clear the
+wedge, and the job's log carries glyph's error, which names the commit and that
+point. At tag time both exits
+are permanent — history is immutable, so a re-run walks the same range and
+answers the same, and a failed job leaves a tag with no release assets. Every
+other non-zero exit still fails the job: `4` clears on a re-run, `2` is a
+broken invocation (t-bcdz; `TestNotesStepShipsEveryVerdictOnTheRange` runs the
+step over each exit, mutation row
+`notes-wedge-exit-kills-the-escape-tag-release`). Rejected: a `below:` walk
+that warns instead of refusing — a second refusal rule keyed on a bound kind
+`release` and `bump` take too (glyph-test's `e2e-v2.yml` runs
+`release --dry-run --since-tag=below:…`), and one that drops the refused commit
+from the release body with nothing on the page saying so; tag-time leniency
+inside glyph falls to the same objection.
+
 ### 4.1 Packages — independently versioned lines in one repository
 
 **Status: shipped.** Designed 2026-09-10 (t-99rf); what landed, task by task —
@@ -3008,11 +3035,14 @@ down (t-c6r5): on a verdict command the config is the **yardstick**, so a
 all. Unreadable (permission, EISDIR) is `4`, the code `doctor` and the hook
 installer already gave that same event; unparseable is `2`, the code a
 **missing** config already carries, since both leave a human editing a file.
-Two mechanisms depend on it and both failed silently while the loader answered
+Three mechanisms depend on it. Two failed silently while the loader answered
 `3`: the installed commit-msg and pre-push hooks block on `3` alone, so a typo
 in `glyph.toml` rejected the very commit that would repair it, and `lint.yml`'s
 default-branch push arm swallows `3` alone, so an I/O failure returned a green
-gate having judged nothing.
+gate having judged nothing. The third came later: `goreleaser.yml`'s tag-time
+notes step publishes on `3` as the wedge escape's placeholder (§4, t-bcdz), so a
+config the loader answered `3` would ship a release whose body blames a commit
+nobody judged.
 
 One command sits deliberately off the `1` rung: for `preview`, `none` is a real
 answer to the question asked — *what would merging this do?* — so a none verdict
@@ -3020,7 +3050,8 @@ exits `0` there. `core.CodeNoRelease` is constructed in `cmd_bump.go`,
 `cmd_notes.go` and `cmd_release.go` (`releaseExit` — §4.1: `1` only when every
 line folds to none, the bare line being the one line), and nowhere else.
 Outside Go the integers are branched on in several places — `lint.yml` on `0` and on
-`jq -e '.error.code == 3'`, `release.yml` and `goreleaser.yml` on `1` — but the
+`jq -e '.error.code == 3'`, `release.yml` on `1`, `goreleaser.yml` on `1` and `3`
+(§4, the escape tag's own release) — but the
 generated commit-msg hook is the one such consumer glyph WRITES, so its gate code
 is interpolated from `core.CodeLint` rather than typed as a shell literal; it
 forwards `3` and only `3` and exits `0` on every other failure (`internal/hook`,

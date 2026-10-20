@@ -89,12 +89,13 @@ jobs:
         # BUILT binary, never `go run`: `go help run` states that Run's exit
         # status is not the compiled binary's — cmd/go collapses glyph's 2/3/4
         # into 1 (measured), and 1 is the one value the arm below reads as the
-        # soft no-release signal, so a wedged walk or a dark API would publish
-        # a placeholder release body behind a real tag, green. A compile
-        # failure aborts the step via -e, which is right. `glyph notes` writes
-        # straight to the file (never through a pipe), and its status is
-        # inspected explicitly below rather than left to -e, which cannot tell
-        # a soft no-release from a real failure.
+        # soft no-release signal, so a dark API would publish a placeholder
+        # release body behind a real tag, green, and a wedged walk one that
+        # says nothing was release-worthy. A compile failure aborts the step
+        # via -e, which is right. `glyph notes` writes straight to the file
+        # (never through a pipe), and its status is inspected explicitly below
+        # rather than left to -e, which cannot tell a soft no-release from a
+        # real failure.
         shell: bash
         run: |
           # `glyph notes` exits 1 as a SOFT no-release signal ("nothing
@@ -103,13 +104,25 @@ jobs:
           # over an infra-only range (all :construction_worker: / :memo:) would
           # abort the whole job: no binaries, no cask, no attestation, behind a
           # tag that already exists. Honour the contract instead: 1 ships a
-          # release that says so, anything else is a real failure.
+          # release that says so.
+          #
+          # 3 ships the same way, because at tag time it is as permanent as 1.
+          # The wedge escape (DESIGN §4) is a tag cut where glyph's refusal
+          # sends it — at or past the refused commit, or a squash-merged pull's
+          # merge point — and the walk below that tag still reaches the commit:
+          # history is immutable, so every re-run refuses it again, and a failed
+          # job leaves the escape tag with no release assets (t-bcdz). Every
+          # other exit is a real failure and keeps its code: 4 clears on a
+          # re-run, 2 is a broken invocation.
           go build -o "$RUNNER_TEMP/glyph" ./cmd/glyph
           status=0
           "$RUNNER_TEMP/glyph" notes --since-tag="below:$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md" || status=$?
           if [ "$status" -eq 1 ]; then
             echo "::warning::no release-worthy commits below $GITHUB_REF_NAME — publishing with a placeholder body"
             printf 'No release-worthy changes in %s.\n' "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
+          elif [ "$status" -eq 3 ]; then
+            echo "::warning::the walk below $GITHUB_REF_NAME reaches a commit glyph refuses, and the tag was cut where the refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear the wedge — publishing with a placeholder body; glyph's error above names the commit and that point"
+            printf "No release notes for %s: the walk below it reaches a commit glyph refuses, and this tag was cut where glyph's refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear the wedge. The release job's log carries glyph's error, which names the commit and that point.\n" "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
           elif [ "$status" -ne 0 ]; then
             echo "::error::glyph notes failed (exit $status)"
             exit "$status"

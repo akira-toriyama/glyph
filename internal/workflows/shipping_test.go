@@ -9,9 +9,11 @@ package workflows
 // is shown by re-breaking it" is enforced for lines no Go code compiles.
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -113,7 +115,8 @@ func TestInstallActionRetriesSpanARealOutage(t *testing.T) {
 // invocation kills the whole job when the range below the tag holds nothing
 // release-worthy — no binaries, no cask, no attestation, behind a tag that
 // already exists. The contract is honoured instead: 1 ships a placeholder
-// body, anything else is a real failure and keeps its code.
+// body, and a real failure keeps its code. Which exits ship and which fail
+// is TestNotesStepShipsEveryVerdictOnTheRange's, which runs the step.
 func TestNotesSoftExitShipsAPlaceholder(t *testing.T) {
 	body := code(repoFile(t, filepath.Join(".github", "workflows", "goreleaser.yml")))
 
@@ -129,6 +132,108 @@ func TestNotesSoftExitShipsAPlaceholder(t *testing.T) {
 				"range by contract, and without this arm `set -e` turns that verdict into a job "+
 				"abort behind a tag that already exists (7d8d733)", want)
 		}
+	}
+}
+
+// notesStep is goreleaser.yml's step that renders the release body.
+const notesStep = "release notes via glyph itself"
+
+// TestNotesStepShipsEveryVerdictOnTheRange runs goreleaser.yml's notes step —
+// its own shell, a stub glyph standing where `go build` puts the real one —
+// over each exit `glyph notes` can hand it. At tag time the range is
+// immutable, so a verdict on it is permanent: a re-run answers the same, and a
+// failed job leaves a tag with no release assets. The step therefore ships on
+// 1 (its placeholder byte for byte, unchanged by t-bcdz) and on 3, which is
+// how the wedge escape's own tag answers: the escape is a tag cut where glyph's
+// refusal sends it (DESIGN §4) — at or past the refused commit, or a
+// squash-merged pull's merge point — and below: walks from the predecessor, so
+// that walk reaches the commit again (t-bcdz, measured 2026-10-20 at ec53ed3 on
+// a throwaway repository: the step exited 3 over an empty body). 4 clears on a
+// re-run and 2 is a broken invocation, so both keep failing with their own
+// code. The rendered case is the positive control: the body is the stub's
+// stdout, so the stub ran and the placeholders replace the file glyph wrote
+// (mutation row notes-wedge-exit-kills-the-escape-tag-release).
+func TestNotesStepShipsEveryVerdictOnTheRange(t *testing.T) {
+	raw := repoFile(t, filepath.Join(".github", "workflows", "goreleaser.yml"))
+	script := extractRun(t, raw, notesStep)
+	shell := unspecifiedShell
+	if readStepShape(t, raw, notesStep).keys["shell"] == "bash" {
+		shell = bashShell
+	}
+
+	const (
+		tag      = "v9.8.7"
+		rendered = "## Fixes\n\n- the body glyph rendered\n"
+	)
+	cases := []struct {
+		name       string
+		glyphExit  int
+		stepExit   int
+		body       string // release-notes.md, when the step ships
+		annotation string // one whole line of the step's stdout
+	}{
+		{"a rendered body ships as rendered", 0, 0, rendered, ""},
+		{"nothing release-worthy ships the placeholder that says so", 1, 0,
+			"No release-worthy changes in " + tag + ".\n",
+			"::warning::no release-worthy commits below " + tag + " — publishing with a placeholder body"},
+		{"the wedge escape's own range ships the placeholder that says why", 3, 0,
+			"No release notes for " + tag + ": the walk below it reaches a commit glyph refuses, and this tag was cut " +
+				"where glyph's refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear " +
+				"the wedge. The release job's log carries glyph's error, which names the commit and that point.\n",
+			"::warning::the walk below " + tag + " reaches a commit glyph refuses, and the tag was cut where the refusal " +
+				"sends it (at or past that commit, or a squash-merged pull's merge point) to clear the wedge — publishing " +
+				"with a placeholder body; glyph's error above names the commit and that point"},
+		{"a transient failure fails the job for the re-run that clears it", 4, 4, "", "::error::glyph notes failed (exit 4)"},
+		{"a broken invocation fails the job", 2, 2, "", "::error::glyph notes failed (exit 2)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			bin := filepath.Join(dir, "bin")
+			temp := filepath.Join(dir, "runner-temp")
+			for _, d := range []string{bin, temp} {
+				if err := os.Mkdir(d, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			calls := filepath.Join(dir, "glyph-calls")
+			envelope := fmt.Sprintf(`{"error":{"code":%d,"message":"stub refusal"}}`, c.glyphExit)
+			say := "printf '%s\\n' " + shq(envelope) + " >&2\n"
+			if c.glyphExit == 0 {
+				say = "printf '%s' " + shq(rendered) + "\n"
+			}
+			writeStub(t, dir, "glyph", recordArgv(calls)+say+fmt.Sprintf("exit %d\n", c.glyphExit))
+			// The build is not under test: `go` puts the stub where
+			// `go build -o` would.
+			writeStub(t, bin, "go", `[ "$1 $2 $4" = "build -o ./cmd/glyph" ] || { echo "go stub: unexpected argv: $*" >&2; exit 97; }`+
+				"\ncp "+shq(filepath.Join(dir, "glyph"))+` "$3"`+"\n")
+
+			run := runStep(t, script, shell, dir, []string{
+				"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+				"RUNNER_TEMP=" + temp,
+				"GITHUB_REF_NAME=" + tag,
+			})
+
+			if run.exit != c.stepExit {
+				t.Fatalf("glyph notes exited %d and the step %d, want %d\n%s", c.glyphExit, run.exit, c.stepExit, run)
+			}
+			want := []string{"notes", "--since-tag=below:" + tag}
+			if got := recordedCalls(t, calls); len(got) != 1 || !slices.Equal(got[0], want) {
+				t.Errorf("the step ran glyph as %q, want %q once\n%s", got, want, run)
+			}
+			if c.annotation != "" && !hasLine(run.stdout, c.annotation) {
+				t.Errorf("the step printed no line %q\n%s", c.annotation, run)
+			}
+			if c.glyphExit != 0 && !strings.Contains(run.stderr, envelope) {
+				t.Errorf("glyph's stderr did not reach the job log — the exit-3 placeholder sends its reader "+
+					"there for the commit, and a failed job is diagnosed from it:\n%s", run)
+			}
+			if c.stepExit == 0 {
+				if got := readIfAny(t, filepath.Join(temp, "release-notes.md")); got != c.body {
+					t.Errorf("release-notes.md holds %q, want %q", got, c.body)
+				}
+			}
+		})
 	}
 }
 

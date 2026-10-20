@@ -271,6 +271,11 @@ func TestOutOfGoConsumersBranchOnTheContractIntegers(t *testing.T) {
 		{release, core.CodeNoRelease, shEq},
 		{release, core.CodeOK, shNe},
 		{goreleaser, core.CodeNoRelease, shEq},
+		// The tag-time notes step ships the gate code as it ships 1: the
+		// walk below the wedge escape's own tag reaches the commit it was cut
+		// to clear, on every re-run (t-bcdz). A stale integer here kills that tag's release job
+		// again, behind a tag that already exists.
+		{goreleaser, core.CodeLint, shEq},
 		{goreleaser, core.CodeOK, shNe},
 		{prVerdict, core.CodeOK, shNe},
 		{smoke, core.CodeUsage, shNe},
