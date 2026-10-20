@@ -313,7 +313,7 @@ func TestNotAFileErrorNamesEachKind(t *testing.T) {
 
 // TestLoadFileFollowsASymlinkToAFile: the type check is os.Stat's, which
 // follows symlinks, so a glyph.toml linking to a regular file keeps loading
-// — an Lstat there would refuse every such checkout as "a symlink".
+// — an Lstat there would refuse every such checkout.
 //
 // bite-exempt: a positive control by definition. It holds the refusal above to
 // what is AT the path once links are followed, which the tree already loads.

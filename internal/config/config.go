@@ -5,8 +5,8 @@
 // % promote to 1.0.0); everything else — where the sigil sits, what a subject
 // looks like, which commits are skipped — belongs to the file, not to glyph.
 //
-// The package is pure: no I/O beyond LoadFile statting and reading the one
-// path it is given, no globals. It is deliberately strict where the house config style
+// The package is pure: no I/O beyond LoadFile reading the one path it is
+// given, no globals. It is deliberately strict where the house config style
 // is lenient: unknown schema, unknown keys and half-specified patterns are
 // errors, never clamped or ignored, because this file decides CI verdicts and
 // a silently-misread key is a silently-changed verdict — the exact hole the
@@ -289,7 +289,8 @@ func (e *NotAFileError) Error() string {
 
 // Kind names what is at the path, article included, for the sentence a
 // caller words around it. The last arm is unreachable on linux and darwin,
-// where os.Stat sets one of the bits above for every type but a regular file.
+// where os.Stat sets one of the bits above for every type but a regular file
+// (Go's os/stat_linux.go and os/stat_darwin.go: a whiteout reads as a device).
 func (e *NotAFileError) Kind() string {
 	switch {
 	case e.Mode.IsDir():

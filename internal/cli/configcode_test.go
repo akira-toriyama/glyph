@@ -98,6 +98,39 @@ func TestLintOnAnUnreadableConfigIsTheNoAnswerCode(t *testing.T) {
 	}
 }
 
+// TestMissingConfigStaysUsage is the unchanged third arm, kept beside the two
+// that moved so the whole classification is read in one place — and as the
+// positive control for the pair above: it proves this fixture reaches the
+// config load at all, so an exit 2 there is the classification answering and
+// not the command failing earlier for some unrelated reason.
+func TestMissingConfigStaysUsage(t *testing.T) {
+	dir, _ := testutil.NewTaggedRepo(t)
+	if err := os.Remove(filepath.Join(dir, "glyph.toml")); err != nil {
+		t.Fatalf("removing glyph.toml: %v", err)
+	}
+	t.Chdir(dir)
+
+	setStdin(t, ":bug:(cli)~ fix a thing\n")
+	code, _, stderr := runGlyph(t, "lint", "--stdin")
+	if code != int(core.CodeUsage) {
+		t.Fatalf("exit = %d, want %d (usage)\nstderr: %s", code, core.CodeUsage, stderr)
+	}
+}
+
+// TestValidConfigStillPasses is the non-vacuity control for all three: if the
+// fixture stopped accepting this message, every assertion above would be
+// satisfied by a command that never got as far as reading a config.
+func TestValidConfigStillPasses(t *testing.T) {
+	dir, _ := testutil.NewTaggedRepo(t)
+	t.Chdir(dir)
+
+	setStdin(t, ":bug:(cli)~ fix a thing\n")
+	if code, _, stderr := runGlyph(t, "lint", "--stdin"); code != int(core.CodeOK) {
+		t.Fatalf("exit = %d, want 0 on the untouched fixture; the three tests above are then "+
+			"asserting against a command that fails before the config load\nstderr: %s", code, stderr)
+	}
+}
+
 // notAFile stages the two shapes other than a regular file that t-zvax
 // measured at a glyph.toml path: a directory and a named pipe.
 var notAFile = []struct {
@@ -171,38 +204,5 @@ func TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-// TestMissingConfigStaysUsage is the unchanged third arm, kept beside the two
-// that moved so the whole classification is read in one place — and as the
-// positive control for the pair above: it proves this fixture reaches the
-// config load at all, so an exit 2 there is the classification answering and
-// not the command failing earlier for some unrelated reason.
-func TestMissingConfigStaysUsage(t *testing.T) {
-	dir, _ := testutil.NewTaggedRepo(t)
-	if err := os.Remove(filepath.Join(dir, "glyph.toml")); err != nil {
-		t.Fatalf("removing glyph.toml: %v", err)
-	}
-	t.Chdir(dir)
-
-	setStdin(t, ":bug:(cli)~ fix a thing\n")
-	code, _, stderr := runGlyph(t, "lint", "--stdin")
-	if code != int(core.CodeUsage) {
-		t.Fatalf("exit = %d, want %d (usage)\nstderr: %s", code, core.CodeUsage, stderr)
-	}
-}
-
-// TestValidConfigStillPasses is the non-vacuity control for all three: if the
-// fixture stopped accepting this message, every assertion above would be
-// satisfied by a command that never got as far as reading a config.
-func TestValidConfigStillPasses(t *testing.T) {
-	dir, _ := testutil.NewTaggedRepo(t)
-	t.Chdir(dir)
-
-	setStdin(t, ":bug:(cli)~ fix a thing\n")
-	if code, _, stderr := runGlyph(t, "lint", "--stdin"); code != int(core.CodeOK) {
-		t.Fatalf("exit = %d, want 0 on the untouched fixture; the three tests above are then "+
-			"asserting against a command that fails before the config load\nstderr: %s", code, stderr)
 	}
 }
