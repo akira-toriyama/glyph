@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/akira-toriyama/glyph/v5/internal/config"
 	"github.com/akira-toriyama/glyph/v5/internal/core"
@@ -96,6 +97,51 @@ func TestInitRunsFromOptionsWithoutCobra(t *testing.T) {
 	}
 	if got, _ := os.ReadFile("glyph.toml"); !bytes.Equal(got, gemoji) {
 		t.Fatalf("force from options must write the gemoji preset over the file, got %q", got)
+	}
+}
+
+// TestInitRefusesWhatIsNotARegularFile: init replaces a regular file and
+// nothing else. A directory, a named pipe or a link that resolves to no file
+// at the path is refused at exit 2, with --force or without, naming what is
+// there, and is never opened. At 43cecf2 init answered each "already exists —
+// edit it in place, or pass --force", and --force then exited 4 over a
+// directory, a looping link or one through a file, hung over a named pipe in
+// os.WriteFile's open, and wrote through a link to nothing, creating its
+// target (measured 2026-10-21). Each run sits under a deadline, so that
+// regression fails here instead of hanging the package.
+func TestInitRefusesWhatIsNotARegularFile(t *testing.T) {
+	for _, k := range notAFile {
+		for _, force := range []bool{false, true} {
+			name, args := k.shape, []string{"init", "--gemoji"}
+			if force {
+				name, args = name+"/force", append(args, "--force")
+			}
+			t.Run(name, func(t *testing.T) {
+				t.Chdir(t.TempDir())
+				if err := k.stage("glyph.toml"); err != nil {
+					t.Fatalf("staging %s as glyph.toml: %v", k.shape, err)
+				}
+				before, err := os.Lstat("glyph.toml")
+				if err != nil {
+					t.Fatal(err)
+				}
+				code, stdout, stderr := runGlyphWithin(t, 30*time.Second, args...)
+				if code != int(core.CodeUsage) {
+					t.Fatalf("glyph %s over %s exited %d, want exactly %d\nstdout: %s\nstderr: %s",
+						strings.Join(args, " "), k.shape, code, core.CodeUsage, stdout, stderr)
+				}
+				env := decodeErrorEnvelope(t, stderr)
+				if !strings.Contains(env.Message, "glyph.toml is "+k.kind) || !strings.Contains(env.Message, "remove it, then re-run glyph init") {
+					t.Errorf("the refusal must name what is at the path and send the user to remove it, got %q", env.Message)
+				}
+				if after, err := os.Lstat("glyph.toml"); err != nil || after.Mode().Type() != before.Mode().Type() {
+					t.Errorf("init replaced what was at the path: %v before, %v after (%v)", before.Mode().Type(), after, err)
+				}
+				if _, err := os.Lstat("nowhere.toml"); !os.IsNotExist(err) {
+					t.Errorf("init wrote through the link to its target")
+				}
+			})
+		}
 	}
 }
 

@@ -1,16 +1,16 @@
 diff --git a/internal/cli/cmd_init.go b/internal/cli/cmd_init.go
-index cac2b6c..abd6273 100644
+index f4a35db..48c1de4 100644
 --- a/internal/cli/cmd_init.go
 +++ b/internal/cli/cmd_init.go
-@@ -5,6 +5,7 @@ import (
- 	"errors"
+@@ -6,6 +6,7 @@ import (
  	"fmt"
+ 	"io/fs"
  	"os"
 +	"path/filepath"
  	"strings"
  
  	"github.com/akira-toriyama/glyph/v5/internal/config"
-@@ -110,7 +111,7 @@ func initPath(ctx context.Context) (string, error) {
+@@ -123,7 +124,7 @@ func initPath(ctx context.Context) (string, error) {
  	case core.IsInterrupted(err):
  		return "", err
  	case err == nil:

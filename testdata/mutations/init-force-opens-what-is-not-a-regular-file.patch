@@ -1,0 +1,15 @@
+diff --git a/internal/cli/cmd_init.go b/internal/cli/cmd_init.go
+index d0c9e8f..a1d19e2 100644
+--- a/internal/cli/cmd_init.go
++++ b/internal/cli/cmd_init.go
+@@ -97,7 +97,9 @@ func runInit(ctx context.Context, o initOptions) error {
+ 			return core.Usagef("%s already exists — edit it in place, or pass --force to replace it with the %s preset", path, o.preset)
+ 		}
+ 	case isNotAFile:
+-		return core.Usagef("%v — init replaces only a regular file, even with --force; remove it, then re-run glyph init --%s", serr, o.preset)
++		if !o.force {
++			return core.Usagef("%v — init replaces only a regular file, even with --force; remove it, then re-run glyph init --%s", serr, o.preset)
++		}
+ 	case !errors.Is(serr, fs.ErrNotExist):
+ 		return core.APIf("%v — init could not tell what is there, so it wrote nothing", serr)
+ 	}
