@@ -3070,16 +3070,19 @@ through the read-error arm with its path printed twice (t-zvax, measured
 path twice then: the loader re-wrapped `os.ReadFile`'s error, which already
 names it, and now hands it over as it is
 (`TestLoadFileNamesAnUnreadablePathOnce`, mutation row
-`config-load-names-the-path-twice`). A link `os.Stat` cannot follow by its own
-fault — one to nothing, one that loops, one through a regular file, one to a
-name too long to exist (`os.Lstat` resolved the path itself, so the over-long
-name can only be the target's) — is the link itself, observed by `os.Lstat`.
-Read through `os.Stat` alone, a link to nothing took the missing arm, whose
-remedy `glyph init` refused as "already exists", and a loop, a link through a
-file or one to an over-long name took the read-error arm at `4` with "fix the
-file permissions" (measured 2026-10-21 at `43cecf2`, and for the over-long name
-still at `99f713a`; the link cases of `TestLoadFileRefusesWhatIsNotARegularFile`
-and `TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile`, mutation row
+`config-load-names-the-path-twice`), as `config.StatFile` hands over a stat
+the filesystem refused (`TestLoadFileKeepsALinkItMayNotFollowUnreadable`,
+mutation row `config-stat-names-the-path-twice`). A link `os.Stat` cannot
+follow by its own fault — one to nothing, one that loops, one through a
+regular file, one to a name too long to exist (`os.Lstat` resolved the path
+itself, so the over-long name can only be the target's) — is the link itself,
+observed by `os.Lstat`. Read through `os.Stat` alone, a link to nothing took
+the missing arm, whose remedy `glyph init` refused as "already exists", and a
+loop, a link through a file or one to an over-long name took the read-error
+arm at `4` with "fix the file permissions" (measured 2026-10-21 at `43cecf2`,
+and for the over-long name still at `99f713a`; the link cases of
+`TestLoadFileRefusesWhatIsNotARegularFile` and
+`TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile`, mutation row
 `config-stat-reads-a-broken-link-as-missing-or-unreadable`). A link it could
 not follow for a permission or an I/O fault stays `4`, since where it leads was
 never observed (`TestLoadFileKeepsALinkItMayNotFollowUnreadable`, mutation row

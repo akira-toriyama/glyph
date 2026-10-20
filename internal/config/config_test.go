@@ -364,10 +364,11 @@ func TestLoadFileNamesAnUnreadablePathOnce(t *testing.T) {
 // it stays the *fs.PathError of a stat the filesystem refused (the verdict
 // commands' 4, doctor's unknown and its permissions fix), never the
 // NotAFileError a dangling or looping link gets with its remove-it remedy.
-//
-// bite-exempt: a positive control. It holds the broken-link arm to the
-// failures that are the link's own, and the tree before that arm already
-// answers this shape so.
+// That error is os.Stat's own and already names the path, so StatFile hands
+// it over as it is. Wrapped again, lint, bump, doctor and init print the path
+// twice behind exit codes and a status no other test reads differently
+// (measured 2026-10-21 on 99f713a with the return wrapped as "stat <p>: %w"),
+// as ec53ed3's loader did through os.ReadFile's re-wrap.
 func TestLoadFileKeepsALinkItMayNotFollowUnreadable(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("running as root, where a mode-000 directory does not stop the stat")
@@ -392,6 +393,9 @@ func TestLoadFileKeepsALinkItMayNotFollowUnreadable(t *testing.T) {
 	if _, ok := errors.AsType[*fs.PathError](err); !ok || !errors.Is(err, fs.ErrPermission) {
 		t.Fatalf("LoadFile through a link into a mode-000 directory = %v (%T), want the *fs.PathError of a "+
 			"refused stat — where the link leads was never observed", err, err)
+	}
+	if n := strings.Count(err.Error(), path); n != 1 {
+		t.Errorf("error = %q names the path %d times, want once", err, n)
 	}
 }
 
