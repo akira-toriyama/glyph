@@ -91,10 +91,11 @@ func checkConfig(root string, rootErr error, cfg *config.Config, loadErr error) 
 
 // configUnread degrades c to could-not-run when glyph.toml was not loaded,
 // and reports that it did. The config check owns the reason — no top level
-// to resolve, a missing or invalid file, a read the filesystem refused — so a
-// check that reads the loaded file says only that it never did, in the one
-// spelling, and points at the owner: the same shape checkTokenWrite takes
-// when the repository object was never read.
+// to resolve, a missing file, a path that is not a regular file, an invalid
+// file, a read the filesystem refused — so a check that reads the loaded file
+// says only that it never did, in the one spelling, and points at the owner:
+// the same shape checkTokenWrite takes when the repository object was never
+// read.
 func configUnread(c *Check, cfg *config.Config) bool {
 	if cfg != nil {
 		return false
