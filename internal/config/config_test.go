@@ -251,10 +251,11 @@ func TestLoadFileMissing(t *testing.T) {
 // os.ReadFile's EISDIR under a second copy of the path ("read <p>: read <p>:
 // is a directory"), and a named pipe blocked LoadFile for good, because
 // open(2) on a FIFO waits for a writer (t-zvax, measured at ec53ed3). A link
-// os.Stat cannot follow is the link observed by os.Lstat: at 43cecf2 one to
-// nothing came back as a missing file, and one to itself or through a file as
-// a stat the filesystem refused, as one to an over-long name still did at
-// 99f713a. The call runs under a deadline so that regression fails here
+// os.Stat cannot follow is the link observed by os.Lstat. Read through os.Stat
+// alone (mutation row config-stat-reads-a-broken-link-as-missing-or-unreadable
+// restores it), one to nothing comes back as a missing file, and one to
+// itself, through a file or to an over-long name as a stat the filesystem
+// refused. The call runs under a deadline so that regression fails here
 // instead of hanging the package until go test's -timeout; on the deadline the
 // blocked goroutine is left on a FIFO inside t.TempDir that nothing will ever
 // open for writing.
@@ -367,7 +368,7 @@ func TestLoadFileNamesAnUnreadablePathOnce(t *testing.T) {
 // That error is os.Stat's own and already names the path, so StatFile hands
 // it over as it is. Wrapped again, lint, bump, doctor and init print the path
 // twice behind exit codes and a status no other test reads differently
-// (measured 2026-10-21 on 99f713a with the return wrapped as "stat <p>: %w"),
+// (mutation row config-stat-names-the-path-twice wraps it as "stat <p>: %w"),
 // as ec53ed3's loader did through os.ReadFile's re-wrap.
 func TestLoadFileKeepsALinkItMayNotFollowUnreadable(t *testing.T) {
 	if os.Geteuid() == 0 {

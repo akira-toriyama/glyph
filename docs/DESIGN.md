@@ -3076,14 +3076,13 @@ mutation row `config-stat-names-the-path-twice`). A link `os.Stat` cannot
 follow by its own fault — one to nothing, one that loops, one through a
 regular file, one to a name too long to exist (`os.Lstat` resolved the path
 itself, so the over-long name can only be the target's) — is the link itself,
-observed by `os.Lstat`. Read through `os.Stat` alone, a link to nothing took
-the missing arm, whose remedy `glyph init` refused as "already exists", and a
-loop, a link through a file or one to an over-long name took the read-error
-arm at `4` with "fix the file permissions" (measured 2026-10-21 at `43cecf2`,
-and for the over-long name still at `99f713a`; the link cases of
-`TestLoadFileRefusesWhatIsNotARegularFile` and
-`TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile`, mutation row
-`config-stat-reads-a-broken-link-as-missing-or-unreadable`). A link it could
+observed by `os.Lstat`. Read through `os.Stat` alone, a link to nothing takes
+the missing arm, whose remedy `glyph init` refuses as "already exists", and a
+loop, a link through a file or one to an over-long name takes the read-error
+arm at `4` with "fix the file permissions" — the state mutation row
+`config-stat-reads-a-broken-link-as-missing-or-unreadable` restores, and the
+link cases of `TestLoadFileRefusesWhatIsNotARegularFile` and
+`TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile` kill. A link it could
 not follow for a permission or an I/O fault stays `4`, since where it leads was
 never observed (`TestLoadFileKeepsALinkItMayNotFollowUnreadable`, mutation row
 `config-stat-calls-a-link-it-may-not-follow-broken`).
@@ -3096,13 +3095,13 @@ something existed, `init` answered each such path "already exists — edit it in
 place, or pass --force", and `--force` then exited `4` over a directory, a
 looping link, one through a file or one to an over-long name, hung over a named
 pipe in `os.WriteFile`'s open, and wrote through a link to nothing, creating its
-target (measured 2026-10-21 at `43cecf2`; `TestInitRefusesWhatIsNotARegularFile`,
+target (measured 2026-10-21 at `9ff9cca`; `TestInitRefusesWhatIsNotARegularFile`,
 mutation row `init-force-opens-what-is-not-a-regular-file`). A regular file
 keeps its answer — refused without `--force`, replaced with it
 (`TestInitRefusesToOverwrite`) — and a stat the filesystem refused is `4` with
 nothing written, `--force` or not, as it is for the loader: a link into a
 mode-000 directory, "already exists" at `2` before (measured 2026-10-21 at
-`ec53ed3` and `43cecf2`), now names the refused stat at `4`
+`ec53ed3` and `9ff9cca`), now names the refused stat at `4`
 (`TestInitOverALinkItMayNotFollowIsTheNoAnswerCode`, mutation row
 `init-calls-a-refused-stat-already-existing`).
 
@@ -3488,10 +3487,11 @@ The severities are the argued part:
   fix is the missing file's behind a removal (t-zvax: before the stat a
   directory graded `unknown` with "fix the file permissions" as its fix, and a
   named pipe hung `doctor` in the read, measured 2026-10-20 at `ec53ed3`; read
-  through `os.Stat` alone, a looping link, one through a file or one to an
-  over-long name graded `unknown` with that same fix, and a link to nothing
-  failed with the missing file's fix, which `glyph init` refused, measured
-  2026-10-21 at `43cecf2` and, for the over-long name, still at `99f713a`;
+  through `os.Stat` alone (the state mutation row
+  `config-stat-reads-a-broken-link-as-missing-or-unreadable` restores), a
+  looping link, one through a file or one to an over-long name grades
+  `unknown` with that same fix, and a link to nothing fails with the missing
+  file's fix, which `glyph init` refuses;
   `TestConfigNotARegularFileIsAFailure`, mutation rows
   `doctor-grades-a-non-file-glyph-toml-could-not-run` and
   `doctor-tells-a-non-file-glyph-toml-to-edit-its-keys`). Only content that was

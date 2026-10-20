@@ -774,8 +774,10 @@ func TestDoctorUnreadableConfigLeavesTheDependentsUnread(t *testing.T) {
 // glyph-toml-loads failed), since what is there was observed, and the checks
 // that read the loaded file are handed nothing. Before the loader stat'ed the
 // path a directory was unknown at exit 4 and a named pipe hung doctor in the
-// read (t-zvax, measured at ec53ed3); at 43cecf2 a link to itself or through a
-// file was still unknown at exit 4, and at 99f713a one to an over-long name.
+// read (t-zvax, measured at ec53ed3); read through os.Stat alone (the loader
+// mutation row config-stat-reads-a-broken-link-as-missing-or-unreadable
+// restores), a link to itself, through a file or to an over-long name is
+// unknown at exit 4.
 func TestDoctorConfigThatIsNotAFileFailsAtTheMissingCode(t *testing.T) {
 	for _, k := range notAFile {
 		t.Run(k.shape, func(t *testing.T) {

@@ -103,12 +103,12 @@ func TestInitRunsFromOptionsWithoutCobra(t *testing.T) {
 // TestInitRefusesWhatIsNotARegularFile: init replaces a regular file and
 // nothing else. A directory, a named pipe or a link that resolves to no file
 // at the path is refused at exit 2, with --force or without, naming what is
-// there, and is never opened. At 43cecf2 init answered each "already exists —
-// edit it in place, or pass --force", and --force then exited 4 over a
-// directory, a looping link, one through a file or one to an over-long name,
-// hung over a named pipe in os.WriteFile's open, and wrote through a link to
-// nothing, creating its target (measured 2026-10-21); at 99f713a the
-// over-long name was still a refused stat at 4, --force or not. Each run sits
+// there, and is never opened. When init asked os.Lstat only whether something
+// existed, it answered each "already exists — edit it in place, or pass
+// --force", and --force then exited 4 over a directory, a looping link, one
+// through a file or one to an over-long name, hung over a named pipe in
+// os.WriteFile's open, and wrote through a link to nothing, creating its target
+// (measured 2026-10-21 at 9ff9cca). Each run sits
 // under a deadline, so that regression fails here instead of hanging the
 // package.
 func TestInitRefusesWhatIsNotARegularFile(t *testing.T) {
@@ -154,7 +154,7 @@ func TestInitRefusesWhatIsNotARegularFile(t *testing.T) {
 // once, as the loader's commands do. When init asked os.Lstat only whether
 // something existed, it answered "already exists — edit it in place, or pass
 // --force" at 2, and --force then failed at the write with 4 (measured
-// 2026-10-21 at ec53ed3 and 43cecf2).
+// 2026-10-21 at ec53ed3 and 9ff9cca).
 func TestInitOverALinkItMayNotFollowIsTheNoAnswerCode(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("running as root, where a mode-000 directory does not stop the stat")

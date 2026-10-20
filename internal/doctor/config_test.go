@@ -104,10 +104,11 @@ func TestConfigUnloadableIsAFailure(t *testing.T) {
 // missing file's remedy behind a removal, never the unreadable arm. That arm
 // graded a directory unknown, quoted its path twice and told the reader to fix
 // the file permissions; a named pipe never got that far, hanging doctor in the
-// read (t-zvax, measured at ec53ed3). At 43cecf2 a link to nothing still
-// graded as a missing file whose remedy init refused, and a link to itself or
-// through a file as unknown with the permissions fix, as one to an over-long
-// name still did at 99f713a. The load runs under a deadline so that
+// read (t-zvax, measured at ec53ed3). Read through os.Stat alone (the loader
+// mutation row config-stat-reads-a-broken-link-as-missing-or-unreadable
+// restores), a link to nothing grades as a missing file whose remedy init
+// refuses, and a link to itself, through a file or to an over-long name as
+// unknown with the permissions fix. The load runs under a deadline so that
 // regression fails here instead of hanging the package.
 func TestConfigNotARegularFileIsAFailure(t *testing.T) {
 	for _, c := range []struct {

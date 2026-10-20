@@ -184,9 +184,10 @@ func runGlyphWithin(t *testing.T, d time.Duration, args ...string) (code int, st
 // and remedy, not the unreadable arm's 4. Before the loader stat'ed the path,
 // a directory answered 4 on both commands and a named pipe answered nothing at
 // all — lint --stdin and bump hung in the read (t-zvax, measured at ec53ed3).
-// At 43cecf2 a link to itself or through a file still answered 4, as one to
-// an over-long name did at 99f713a, and a link to nothing the missing file's
-// remedy, which init refused. The message is asserted beside the code because
+// Read through os.Stat alone (the loader mutation row
+// config-stat-reads-a-broken-link-as-missing-or-unreadable restores), a link to
+// itself, through a file or to an over-long name answers 4, and a link to
+// nothing the missing file's remedy, which init refuses. The message is asserted beside the code because
 // 2 is also what a bad flag answers.
 func TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile(t *testing.T) {
 	for _, k := range notAFile {
