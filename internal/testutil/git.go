@@ -8,10 +8,12 @@
 package testutil
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/config"
@@ -112,23 +114,53 @@ func NewPackagesRepo(t *testing.T, snippet string, files map[string]string) stri
 	t.Helper()
 	dir := NewRepo(t)
 	preset, _ := config.Preset("gemoji") // NewRepo has failed the test if it is missing
-	write := func(rel string, content []byte) {
-		t.Helper()
-		path := filepath.Join(dir, rel)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("mkdir for %s: %v", rel, err)
-		}
-		if err := os.WriteFile(path, content, 0o644); err != nil {
-			t.Fatalf("write %s: %v", rel, err)
-		}
-	}
-	write("glyph.toml", append(preset, snippet...))
+	WriteFile(t, dir, "glyph.toml", string(preset)+snippet)
 	for rel, content := range files {
-		write(rel, []byte(content))
+		WriteFile(t, dir, rel, content)
 	}
 	Git(t, dir, "akira-toriyama", "add", ".")
 	Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
 	return dir
+}
+
+// PackagesSnippet declares two lines, haiku/ and curry/: the [[packages]]
+// entries the packages fixtures append to the gemoji preset.
+const PackagesSnippet = "\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \"curry\"\n"
+
+// NewTwoLineRepo is NewPackagesRepo declaring PackagesSnippet's two lines with
+// one file under each, untagged: each caller tags the lines its case needs.
+func NewTwoLineRepo(t *testing.T) string {
+	t.Helper()
+	return NewPackagesRepo(t, PackagesSnippet, map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n"})
+}
+
+// WriteFile writes content at rel under dir, creating the directories above it.
+func WriteFile(t *testing.T, dir, rel, content string) {
+	t.Helper()
+	path := filepath.Join(dir, rel)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir for %s: %v", rel, err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", rel, err)
+	}
+}
+
+// touchSeq makes every Touch write distinct content, so two commits with the
+// same message under the same path still each have a diff.
+var touchSeq atomic.Int64
+
+// Touch commits one change under each of paths, as author, under message — a
+// landed identity whose files local git answers for — and returns its sha.
+func Touch(t *testing.T, dir, author, message string, paths ...string) string {
+	t.Helper()
+	n := touchSeq.Add(1)
+	for _, p := range paths {
+		WriteFile(t, dir, p, fmt.Sprintf("%s\n%d\n", p, n))
+	}
+	Git(t, dir, author, "add", "-A", ".")
+	Git(t, dir, author, "commit", "-q", "--allow-empty", "-m", message)
+	return Git(t, dir, author, "rev-parse", "HEAD")
 }
 
 // Commit adds one empty commit authored by author with the given message.
