@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,6 +64,38 @@ func TestInitRefusesToOverwrite(t *testing.T) {
 	want, _ := config.Preset("gemoji")
 	if !bytes.Equal(got, want) {
 		t.Errorf("--force should have replaced the file with the preset")
+	}
+}
+
+// TestInitRunsFromOptionsWithoutCobra: runInit is a function of its options
+// — no command built, no flag parsed — so the preset and --force reach it as
+// fields: without force a second run refuses at 2 and keeps the first file,
+// with force it writes the second preset over it.
+func TestInitRunsFromOptionsWithoutCobra(t *testing.T) {
+	t.Chdir(t.TempDir())
+	_, _, restore := captureOut()
+	defer restore()
+	ctx := context.Background()
+	conventional, _ := config.Preset("conventional")
+	gemoji, _ := config.Preset("gemoji")
+
+	if err := runInit(ctx, initOptions{preset: "conventional"}); err != nil {
+		t.Fatalf("runInit from options: %v", err)
+	}
+	if got, _ := os.ReadFile("glyph.toml"); !bytes.Equal(got, conventional) {
+		t.Fatalf("runInit from options wrote %q, want the conventional preset", got)
+	}
+	if err := runInit(ctx, initOptions{preset: "gemoji"}); core.ExitCode(err) != int(core.CodeUsage) {
+		t.Fatalf("a second runInit without force: exit %d (%v), want exactly %d", core.ExitCode(err), err, core.CodeUsage)
+	}
+	if got, _ := os.ReadFile("glyph.toml"); !bytes.Equal(got, conventional) {
+		t.Fatalf("the refusal must keep the first file, got %q", got)
+	}
+	if err := runInit(ctx, initOptions{preset: "gemoji", force: true}); err != nil {
+		t.Fatalf("runInit with force from options: %v", err)
+	}
+	if got, _ := os.ReadFile("glyph.toml"); !bytes.Equal(got, gemoji) {
+		t.Fatalf("force from options must write the gemoji preset over the file, got %q", got)
 	}
 }
 

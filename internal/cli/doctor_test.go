@@ -267,6 +267,36 @@ func TestDoctorJSONShape(t *testing.T) {
 	}
 }
 
+// TestDoctorRunsFromOptionsWithoutCobra: the run below RunE is a function of
+// its options — no command built, no flag parsed — so --repo and --json
+// reach it as fields, not as package state a cobra run has to set first.
+// $GITHUB_REPOSITORY names another repository, so only the repo field can
+// name the one the stand-in answers; and the JSON run is followed by a human
+// one, because a package-state regression of --json would pass the JSON half
+// alone whenever an earlier test's --json run left the state set (measured
+// in review: TestDoctorJSONShape runs first in this file).
+func TestDoctorRunsFromOptionsWithoutCobra(t *testing.T) {
+	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+	useDoctorCheckout(t, pinnedCaller)
+	t.Setenv("GITHUB_REPOSITORY", "akira-toriyama/elsewhere")
+	stdout, stderr, restore := captureOut()
+	defer restore()
+
+	if err := doctorRun(context.Background(), doctorOptions{repo: "akira-toriyama/glyph", json: true}); err != nil {
+		t.Fatalf("doctorRun from options: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if rep := decodeDoctorJSON(t, stdout.String()); !rep.OK || rep.Repo != "akira-toriyama/glyph" {
+		t.Fatalf("doctorRun from options: ok=%t repo=%q, want ok on akira-toriyama/glyph\nstderr: %s", rep.OK, rep.Repo, stderr.String())
+	}
+	stdout.Reset()
+	if err := doctorRun(context.Background(), doctorOptions{repo: "akira-toriyama/glyph"}); err != nil {
+		t.Fatalf("doctorRun from options without json: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.HasPrefix(stdout.String(), "glyph doctor — akira-toriyama/glyph") {
+		t.Fatalf("doctorRun from options without json must print the human report, got:\n%s", stdout.String())
+	}
+}
+
 // installCurrentHook writes THIS binary's commit-msg hook into the checkout's
 // hooks directory, exactly as `glyph hook install` would — the byte-identical
 // arm, the only one the probe fires.

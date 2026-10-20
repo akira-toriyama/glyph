@@ -18,12 +18,17 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	doctorRepo string
-	doctorJSON bool
-)
+// doctorOptions is what one doctor run was asked, snapshotted at RunE.
+// Nothing below RunE reads a flag — doctorRun is a function of these alone,
+// so the diagnosis runs with no command built
+// (TestDoctorRunsFromOptionsWithoutCobra).
+type doctorOptions struct {
+	repo string
+	json bool
+}
 
 func newDoctorCmd() *cobra.Command {
+	var o doctorOptions
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check that this repository satisfies the assumptions glyph's release machinery makes",
@@ -118,11 +123,14 @@ func newDoctorCmd() *cobra.Command {
 			"  glyph doctor --json | jq -e .ok       # CI pre-flight",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return doctorRun(cmd)
+			if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {
+				return err
+			}
+			return doctorRun(cmd.Context(), o)
 		},
 	}
-	cmd.Flags().StringVar(&doctorRepo, "repo", "", "owner/name to diagnose (default: $GITHUB_REPOSITORY, else the origin remote)")
-	cmd.Flags().BoolVar(&doctorJSON, "json", false, "emit the machine report {repo,checks,counts,ok}")
+	cmd.Flags().StringVar(&o.repo, "repo", "", "owner/name to diagnose (default: $GITHUB_REPOSITORY, else the origin remote)")
+	cmd.Flags().BoolVar(&o.json, "json", false, "emit the machine report {repo,checks,counts,ok}")
 	return cmd
 }
 
@@ -268,21 +276,18 @@ func firstInterrupt(errs ...error) error {
 	return nil
 }
 
-func doctorRun(cmd *cobra.Command) error {
-	if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {
-		return err
-	}
-	owner, name, err := resolveRepo(cmd.Context(), doctorRepo)
+func doctorRun(ctx context.Context, o doctorOptions) error {
+	owner, name, err := resolveRepo(ctx, o.repo)
 	if err != nil {
 		return err
 	}
-	repoObject, rerr := newGitHub().Repository(cmd.Context(), owner, name)
+	repoObject, rerr := newGitHub().Repository(ctx, owner, name)
 	// git names the hooks directory (core.hooksPath relocates it), and this is
 	// the only place allowed to ask: internal/doctor runs no subprocess, exactly
 	// as it makes no request. A failure here is handed over verbatim and becomes
 	// that one check's could-not-run — never an aborted report.
-	hooksDir, herr := gitsource.HooksDir(cmd.Context(), ".")
-	probe := probeCommitMsgHook(cmd.Context(), hooksDir, herr)
+	hooksDir, herr := gitsource.HooksDir(ctx, ".")
+	probe := probeCommitMsgHook(ctx, hooksDir, herr)
 	// git also names the top level glyph.toml sits at — the same file loadConfig
 	// resolves for every verdict command, asked here for the same reason
 	// HooksDir is. A failure degrades the config check alone, and the checks
@@ -293,7 +298,7 @@ func doctorRun(cmd *cobra.Command) error {
 	// lint is its own process and reads it for itself). Outside a checkout
 	// nothing is loaded — the glyph.toml in the current directory is not the
 	// checkout's, and no verdict command reads it.
-	top, terr := gitsource.TopLevel(cmd.Context(), ".")
+	top, terr := gitsource.TopLevel(ctx, ".")
 	var cfg *config.Config
 	var cfgErr error
 	if terr == nil {
@@ -302,7 +307,7 @@ func doctorRun(cmd *cobra.Command) error {
 	// The tag list feeds the root-line check (DESIGN §4.1): which line the
 	// repository's bare v* tags are on is a config question, but whether any
 	// exist is git's to answer. A failure degrades that one check.
-	tags, tagsErr := gitsource.Tags(cmd.Context(), ".")
+	tags, tagsErr := gitsource.Tags(ctx, ".")
 	// HEAD's trees feed the package-paths check: a declared path is judged as
 	// attribution reads it, git's path byte for byte, never by the filesystem
 	// (t-fdd8 (1)). Asked at the top level git named; without one there is
@@ -310,7 +315,7 @@ func doctorRun(cmd *cobra.Command) error {
 	var headTrees []string
 	treesErr := terr
 	if terr == nil {
-		headTrees, treesErr = gitsource.HeadTrees(cmd.Context(), top)
+		headTrees, treesErr = gitsource.HeadTrees(ctx, top)
 	}
 	// The action files the pin scan reads are git's list — tracked, submodules
 	// included, plus untracked files no ignore rule excludes — never a walk of
@@ -318,7 +323,7 @@ func doctorRun(cmd *cobra.Command) error {
 	var actionFiles []gitsource.ActionFile
 	actionErr := terr
 	if terr == nil {
-		actionFiles, actionErr = gitsource.ActionFiles(cmd.Context(), top)
+		actionFiles, actionErr = gitsource.ActionFiles(ctx, top)
 	}
 	// The workflow scans read the checkout git itself names, so running doctor
 	// from a subdirectory works, and an absent .github/workflows under that
@@ -330,9 +335,9 @@ func doctorRun(cmd *cobra.Command) error {
 		root = top
 	}
 	if probe != nil {
-		probe.Claimed = probeClaimed(cmd.Context(), cfg)
+		probe.Claimed = probeClaimed(ctx, cfg)
 	}
-	remoteHeads, remoteRefless, headsErr := readRemoteHeads(cmd.Context(), hooksDir, herr)
+	remoteHeads, remoteRefless, headsErr := readRemoteHeads(ctx, hooksDir, herr)
 	// An interrupt is the user's own abort and must never be laundered into a
 	// check result: reporting "the token cannot read the repository" — or "git
 	// could not report where hooks live" — because somebody pressed Ctrl-C
@@ -384,12 +389,12 @@ func doctorRun(cmd *cobra.Command) error {
 		}
 	}
 
-	if doctorJSON {
+	if o.json {
 		printCompact(report)
 	} else {
 		printDoctorHuman(report)
 	}
-	return doctorVerdict(report)
+	return doctorVerdict(report, o.json)
 }
 
 // doctorVerdict maps the report to glyph's exit-code contract, with no new
@@ -403,14 +408,14 @@ func doctorRun(cmd *cobra.Command) error {
 // payload carries every field the envelope would) and otherwise renders the
 // envelope with the failing ids as machine-actionable details — the same split
 // bump and release make on a none verdict.
-func doctorVerdict(r *doctor.Report) error {
+func doctorVerdict(r *doctor.Report, asJSON bool) error {
 	if failed := r.IDs(doctor.StatusFail); len(failed) > 0 {
 		return core.Lintf("doctor: %d check(s) failed — this repository does not satisfy what glyph assumes about it", len(failed)).
-			WithDetails(failed).Quiet(doctorJSON)
+			WithDetails(failed).Quiet(asJSON)
 	}
 	if unknown := r.IDs(doctor.StatusUnknown); len(unknown) > 0 {
 		return core.APIf("doctor: %d check(s) could not run — the repository is unverified, not verified-good", len(unknown)).
-			WithDetails(unknown).Quiet(doctorJSON)
+			WithDetails(unknown).Quiet(asJSON)
 	}
 	return nil
 }
