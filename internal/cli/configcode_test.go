@@ -18,7 +18,7 @@ import (
 // message under `lint`, a repository's own configuration under `doctor`");
 // these tests are what makes the code obey it.
 //
-// Two live consequences ride on this, which is why the exact integers are
+// Three live consequences ride on this, which is why the exact integers are
 // asserted and not merely "non-zero":
 //
 //   - lint.yml's default-branch push arm swallows exit 3 alone. An unreadable
@@ -26,6 +26,9 @@ import (
 //   - the installed commit-msg and pre-push hooks block on exit 3 alone. A
 //     typo in glyph.toml classified as 3 blocked every commit in the clone —
 //     including the commit that would repair the typo.
+//   - goreleaser.yml's tag-time notes step publishes exit 3 as the wedge
+//     escape's placeholder. A glyph.toml classified as 3 there ships a release
+//     whose body blames a commit nobody judged.
 
 // seedConfig overwrites the fixture repo's glyph.toml with body.
 func seedConfig(t *testing.T, dir, body string) string {
