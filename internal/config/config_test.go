@@ -1,10 +1,14 @@
 package config
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // loadGemoji loads the embedded `glyph init --gemoji` preset — the exact
@@ -238,6 +242,100 @@ func TestLoadFileMissing(t *testing.T) {
 	}
 	if !os.IsNotExist(unwrapAll(err)) {
 		t.Errorf("error should preserve os.IsNotExist: %v", err)
+	}
+}
+
+// TestLoadFileRefusesWhatIsNotARegularFile: a path that exists and is not a
+// regular file is answered from os.Stat alone — typed, the path named once,
+// and never opened. Before the stat a directory came back as os.ReadFile's
+// EISDIR under a second copy of the path ("read <p>: read <p>: is a
+// directory"), and a named pipe blocked LoadFile for good, because open(2) on
+// a FIFO waits for a writer (t-zvax, measured at ec53ed3). The call runs under
+// a deadline so that regression fails here instead of hanging the package
+// until go test's -timeout; on the deadline the blocked goroutine is left on a
+// FIFO inside t.TempDir that nothing will ever open for writing.
+func TestLoadFileRefusesWhatIsNotARegularFile(t *testing.T) {
+	for _, c := range []struct {
+		kind  string
+		mode  fs.FileMode
+		stage func(path string) error
+	}{
+		{"a directory", fs.ModeDir, func(p string) error { return os.Mkdir(p, 0o700) }},
+		{"a named pipe", fs.ModeNamedPipe, func(p string) error { return syscall.Mkfifo(p, 0o600) }},
+	} {
+		t.Run(c.kind, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "glyph.toml")
+			if err := c.stage(path); err != nil {
+				t.Fatalf("staging %s at %s: %v", c.kind, path, err)
+			}
+			done := make(chan error, 1)
+			go func() {
+				_, err := LoadFile(path)
+				done <- err
+			}()
+			var err error
+			select {
+			case err = <-done:
+			case <-time.After(10 * time.Second):
+				t.Fatalf("LoadFile on %s has not returned after 10s: it opened the path, and open(2) on a named pipe blocks until a writer appears", c.kind)
+			}
+			nf, ok := errors.AsType[*NotAFileError](err)
+			if !ok {
+				t.Fatalf("LoadFile on %s = %v (%T), want a *NotAFileError — the callers branch on the type", c.kind, err, err)
+			}
+			if nf.Path != path || nf.Mode != c.mode {
+				t.Errorf("NotAFileError = {%q, %v}, want {%q, %v}", nf.Path, nf.Mode, path, c.mode)
+			}
+			if want := path + " is " + c.kind + ", not a regular file"; err.Error() != want {
+				t.Errorf("error = %q, want %q — the path named once, then what is there", err, want)
+			}
+		})
+	}
+}
+
+// TestNotAFileErrorNamesEachKind holds the phrase every caller embeds to the
+// type bits os.Stat reports, the two kinds the loader test above does not
+// stage (a socket, a device) included.
+func TestNotAFileErrorNamesEachKind(t *testing.T) {
+	for mode, want := range map[fs.FileMode]string{
+		fs.ModeDir:                        "a directory",
+		fs.ModeNamedPipe:                  "a named pipe",
+		fs.ModeSocket:                     "a socket",
+		fs.ModeDevice:                     "a device",
+		fs.ModeDevice | fs.ModeCharDevice: "a device",
+		fs.ModeIrregular:                  "a file of unknown type",
+	} {
+		if got := (&NotAFileError{Mode: mode}).Kind(); got != want {
+			t.Errorf("Kind() for %v = %q, want %q", mode, got, want)
+		}
+	}
+}
+
+// TestLoadFileFollowsASymlinkToAFile: the type check is os.Stat's, which
+// follows symlinks, so a glyph.toml linking to a regular file keeps loading
+// — an Lstat there would refuse every such checkout as "a symlink".
+//
+// bite-exempt: a positive control by definition. It holds the refusal above to
+// what is AT the path once links are followed, which the tree already loads.
+func TestLoadFileFollowsASymlinkToAFile(t *testing.T) {
+	dir := t.TempDir()
+	data, ok := Preset("gemoji")
+	if !ok {
+		t.Fatalf("Preset(gemoji) missing")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "shared.toml"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "glyph.toml")
+	if err := os.Symlink("shared.toml", path); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadFile(path)
+	if err != nil {
+		t.Fatalf("LoadFile through a symlink to a regular file: %v", err)
+	}
+	if len(cfg.Patterns) == 0 {
+		t.Errorf("the linked preset loaded with no patterns")
 	}
 }
 

@@ -5,8 +5,8 @@
 // % promote to 1.0.0); everything else — where the sigil sits, what a subject
 // looks like, which commits are skipped — belongs to the file, not to glyph.
 //
-// The package is pure: no I/O beyond LoadFile reading the one path it is
-// given, no globals. It is deliberately strict where the house config style
+// The package is pure: no I/O beyond LoadFile statting and reading the one
+// path it is given, no globals. It is deliberately strict where the house config style
 // is lenient: unknown schema, unknown keys and half-specified patterns are
 // errors, never clamped or ignored, because this file decides CI verdicts and
 // a silently-misread key is a silently-changed verdict — the exact hole the
@@ -14,16 +14,18 @@
 // missing or invalid glyph.toml is the caller's fact to act on, not this
 // package's to paper over.
 //
-// Errors are plain errors on purpose, not *core.Error: which exit code a bad
-// glyph.toml maps to is the CLI's contract to define at its boundary, and
-// every error this package returns is the same class (bad config), so the
-// caller classifies by call site, never by string match.
+// Errors are never *core.Error: which exit code a bad glyph.toml maps to is
+// the CLI's contract to define at its boundary. Every error Load returns is
+// the same class (bad content), a plain error; LoadFile adds the
+// filesystem's answers as types — *fs.PathError and *NotAFileError — so the
+// caller classifies by type and call site, never by string match.
 package config
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"regexp"
@@ -267,13 +269,62 @@ type rawSection struct {
 	Title  string  `toml:"title"`
 }
 
-// LoadFile reads and validates the glyph.toml at path. A missing file is the
-// caller's condition to handle (os.IsNotExist on the wrapped error), not a
-// default-config case.
+// NotAFileError is LoadFile's answer for a path that exists and is not a
+// regular file — a directory, a named pipe, a socket, a device. What is there
+// was OBSERVED, by os.Stat, and the path was never opened: open(2) on a named
+// pipe blocks until a writer appears, so a FIFO named glyph.toml hung every
+// command that loads the config, and a directory surfaced as a read error
+// whose remedy was the file's permissions (t-zvax). The callers answer it as
+// they answer a missing file, not as a read that failed (DESIGN §5, §7).
+type NotAFileError struct {
+	Path string
+	// Mode is the path's type bits (fs.FileMode.Type) as os.Stat reported
+	// them, symlinks followed; never 0, which is a regular file.
+	Mode fs.FileMode
+}
+
+func (e *NotAFileError) Error() string {
+	return e.Path + " is " + e.Kind() + ", not a regular file"
+}
+
+// Kind names what is at the path, article included, for the sentence a
+// caller words around it. The last arm is unreachable on linux and darwin,
+// where os.Stat sets one of the bits above for every type but a regular file.
+func (e *NotAFileError) Kind() string {
+	switch {
+	case e.Mode.IsDir():
+		return "a directory"
+	case e.Mode&fs.ModeNamedPipe != 0:
+		return "a named pipe"
+	case e.Mode&fs.ModeSocket != 0:
+		return "a socket"
+	case e.Mode&fs.ModeDevice != 0:
+		return "a device"
+	}
+	return "a file of unknown type"
+}
+
+// LoadFile reads and validates the glyph.toml at path. Its failures are three
+// shapes, told apart by type alone:
+//
+//   - a *fs.PathError, os.Stat's or os.ReadFile's own and unwrapped (it
+//     already names the operation and the path): fs.ErrNotExist when nothing
+//     is there — the caller's condition to handle, not a default-config case
+//     — else a stat or read the filesystem refused;
+//   - a *NotAFileError when something other than a regular file is there;
+//   - any other error is the content's, from Load, prefixed with path.
 func LoadFile(path string) (*Config, error) {
+	// Stat, never open-then-fstat: the open is what blocks on a named pipe.
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, &NotAFileError{Path: path, Mode: info.Mode().Type()}
+	}
 	data, err := os.ReadFile(path) // #nosec G304 -- the caller's own glyph.toml; reading a named path is this function's contract
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
+		return nil, err
 	}
 	cfg, err := Load(data)
 	if err != nil {
