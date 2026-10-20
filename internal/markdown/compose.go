@@ -49,11 +49,10 @@ import (
 // Flattening sits inside Prose, and first, for the same reason facing the
 // other way: it is what DECIDES the inline context. To the escaper a blank
 // line ends the paragraph and backticks on either side of it cannot pair — but
-// the flattened line is ONE context, where they can. When the order was each
-// caller's to get right, preview escaped first and flattened after, which sized
-// the fence against a context the caller then destroyed, and this cell was a
-// live mention from a subject the escaper had already declared safe (measured
-// against GitHub 2026-07-21):
+// the flattened line is ONE context, where they can. Flattened after the
+// escape, the line loses the context the fence was sized against: this cell
+// was a live mention from a subject the escaper had already declared safe
+// (measured against GitHub 2026-07-21, with preview escaping first):
 //
 //	| a ` b  c `@octocat d` | 🐛 `:bug:` | patch |
 type Line struct {

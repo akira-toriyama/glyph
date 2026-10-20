@@ -18,8 +18,8 @@ import (
 // topic branch): the file is present, readable, ~7.4 kB, and carries
 // `.repository.default_branch` on a workflow_dispatch payload. That the
 // expression resolves — what #156 measured — is evidence about the runner's
-// template engine and says nothing about a process's filesystem, so it was
-// measured separately before this guard was written against it.
+// template engine and says nothing about a process's filesystem, which is what
+// the measurement above reads.
 const (
 	envActionsRef   = "GITHUB_REF"
 	envActionsEvent = "GITHUB_EVENT_PATH"

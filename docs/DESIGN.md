@@ -327,7 +327,8 @@ pattern says it means:
     hook's pass and the reason's first escape keep that price to one rebase.
     Rejected: claiming the pair only under `[[packages]]`, as a commented
     claim for the adopter to uncomment — the single-line leak is real without
-    any package, and glyph's own packages fixtures (`packagesConfig`) declare
+    any package, and glyph's own packages fixtures
+    (`testutil.PackagesSnippet`) declare
     `[[packages]]` by appending to a generated preset, never by uncommenting
     its block; placing a skipped commit by its files, as an `exclude_authors`
     commit is placed — placement moves no version (the excluded-author

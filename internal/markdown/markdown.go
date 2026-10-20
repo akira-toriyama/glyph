@@ -66,19 +66,19 @@ const username = `[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?`
 //	credit x_@octocat_y for the repro                      safe  ← intraword
 //	mail foo_@example.com now                              safe  ← intraword
 //
-// An earlier version of this rule exempted an underscore run with an
-// alphanumeric glued to its left, on the reasoning that CommonMark cannot read
-// such a run as an emphasis OPENER. That reasoning is half the story and the
-// missing half leaks: the very same condition makes the run right-flanking, so
-// it can CLOSE emphasis opened earlier in the line — rows two and three above,
-// which the exemption skipped and GitHub linked. Worse, glyph's own fence could
-// manufacture the opener: fencing the head of "cc @v1_x_@octocat now" yields
-// "cc `@v1`_x_@octocat now", where the fence puts punctuation to the left of the
-// first underscore and the mention goes live out of input that was safe.
+// Exempting an underscore run with an alphanumeric glued to its left, on the
+// reasoning that CommonMark cannot read such a run as an emphasis OPENER, is
+// half the story, and the missing half leaks: the very same condition makes the
+// run right-flanking, so it can CLOSE emphasis opened earlier in the line —
+// rows two and three above, which that exemption skips and GitHub links. Worse,
+// glyph's own fence would manufacture the opener: fencing the head of
+// "cc @v1_x_@octocat now" yields "cc `@v1`_x_@octocat now", where the fence
+// puts punctuation to the left of the first underscore and the mention goes
+// live out of input that was safe.
 //
 // Deciding it properly means finding the opener, i.e. parsing emphasis over the
-// whole inline context — a second renderer inside the escaper. So the exemption
-// is gone and every at-sign behind an underscore is fenced. The asymmetry
+// whole inline context — a second renderer inside the escaper. So there is no
+// exemption: every at-sign behind an underscore is fenced. The asymmetry
 // justifies it: over-fencing costs one code span on "mail foo_@example.com"
 // (the only shape that loses, and note "first_last@example.com" is untouched —
 // the byte in front of its at-sign is a letter), while under-fencing costs a
@@ -313,10 +313,9 @@ func longestBacktickRun(s string) int {
 // inside an escaper, and — as the fourth line shows — a scanner that learned
 // autolinks and raw HTML would STILL have been wrong. escapeProseLine removes the
 // competing constructs before this runs (see escape.go), which makes the
-// backtick-only model exact by construction instead of nearly right. Line is
-// what holds that precondition now: String runs escapeProseLine before the fence
-// ever sees the bytes, and nothing outside this package can reach the fence any
-// other way.
+// backtick-only model exact by construction instead of nearly right. Line holds
+// that precondition: String runs escapeProseLine before the fence ever sees the
+// bytes, and nothing outside this package can reach the fence any other way.
 //
 // The blindness in the other direction — fencing a mention inside an autolinked
 // URL — is cosmetic and stays.
@@ -336,13 +335,13 @@ func codeSpans(s string) [][2]int {
 // coordinates of the whole string (offset is where the paragraph starts).
 //
 // This is a hand-written scan because the rule cannot be written as a regexp.
-// The implementation this replaced tried ("`[^`]*`" — a backtick, non-backticks,
-// a backtick) and that pattern is wrong in both directions: it takes an
-// UNMATCHED backtick for an opener, and it cannot see a multi-backtick span at
-// all. Both directions leaked live mentions — in the line below there is no
-// code span at GitHub, because a run of one cannot be closed by a run of two,
-// but the pattern claimed one around the mention and glyph left it raw, which
-// is a notification:
+// The obvious one ("`[^`]*`" — a backtick, non-backticks, a backtick) is wrong
+// in both directions: it takes an UNMATCHED backtick for an opener, and it
+// cannot see a multi-backtick span at all. Both directions leak live mentions —
+// in the line below there is no code span at GitHub, because a run of one
+// cannot be closed by a run of two, but the pattern claims one around the
+// mention and a scan built on it leaves the mention raw, which is a
+// notification:
 //
 //	a ` b @octocat c `` d
 //
@@ -422,16 +421,15 @@ func paragraphSpans(p string, offset int) [][2]int {
 //
 // cmark's other bound IS modelled, as maxBacktickRun below: it refuses to OPEN
 // or CLOSE a span with a run longer than 80 backticks, the width of the memo
-// array. Leaving it out was argued once (2026-07) on the grounds that the fence
-// is a second line of defence — the fence stays glued to the at-sign as literal
-// text and the mention filter refuses it there — and that argument is about
-// MENTIONS alone. It does not carry to the other consumer of these spans:
-// escapeProseLine skips a span because the bytes in it are inert, so a span glyph
-// believes in and cmark does not is a stretch of author bytes shipped RAW. That
-// is the under-escaping direction escape.go forbids, and it was measured live
-// (t-9np1): 81 backticks, a payload, 81 backticks, in one commit subject on the
-// shipped preset, yields a live link, live raw HTML and a live @mention in a
-// published release body and in a pr-verdict comment.
+// array. The case for leaving it out — the fence is a second line of defence:
+// it stays glued to the at-sign as literal text and the mention filter refuses
+// it there — is about MENTIONS alone. It does not carry to the other consumer
+// of these spans: escapeProseLine skips a span because the bytes in it are
+// inert, so a span glyph believes in and cmark does not is a stretch of author
+// bytes shipped RAW. That is the under-escaping direction escape.go forbids,
+// and it was measured live (t-9np1): 81 backticks, a payload, 81 backticks, in
+// one commit subject on the shipped preset, yields a live link, live raw HTML
+// and a live @mention in a published release body and in a pr-verdict comment.
 //
 // A run of 80 or more does have a cost, but it is not this function's: a subject
 // carrying one makes escapeMentionsSkipping's own fence unopenable, because the
