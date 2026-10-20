@@ -104,6 +104,33 @@ func NewTaggedRepo(t *testing.T) (dir, base string) {
 	return dir, Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 }
 
+// NewPackagesRepo is NewRepo with lines declared: snippet — the [[packages]]
+// entries — appended to its glyph.toml and files (path under the top level →
+// content) written, in one commit on the root and with no tag: the shape the
+// packages tests start from, each tagging the lines its case needs.
+func NewPackagesRepo(t *testing.T, snippet string, files map[string]string) string {
+	t.Helper()
+	dir := NewRepo(t)
+	preset, _ := config.Preset("gemoji") // NewRepo has failed the test if it is missing
+	write := func(rel string, content []byte) {
+		t.Helper()
+		path := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir for %s: %v", rel, err)
+		}
+		if err := os.WriteFile(path, content, 0o644); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+	}
+	write("glyph.toml", append(preset, snippet...))
+	for rel, content := range files {
+		write(rel, []byte(content))
+	}
+	Git(t, dir, "akira-toriyama", "add", ".")
+	Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
+	return dir
+}
+
 // Commit adds one empty commit authored by author with the given message.
 func Commit(t *testing.T, dir, author, message string) {
 	t.Helper()
