@@ -27,13 +27,13 @@ import (
 )
 
 // Git is the checkout the walk reads: the ten questions it asks local git,
-// each the gitsource function of the same name bound to one directory
-// (gitsource.Checkout). Every verdict command runs inside a checkout of the
-// repository being released (DESIGN §4), and this is that checkout. The one
-// error the walk classifies rather than hands down is DiffTreeFiles' shallow
-// boundary, read through gitsource.IsShallowBoundary — an answer only
-// gitsource's own error type gives, so another implementation cannot signal
-// a boundary; every other error is the API class as the walk received it.
+// each a gitsource.Checkout method bound to one directory. Every verdict
+// command runs inside a checkout of the repository being released (DESIGN
+// §4), and this is that checkout. The one error the walk classifies rather
+// than hands down is DiffTreeFiles' shallow boundary, read through
+// gitsource.IsShallowBoundary — an answer only gitsource's own error type
+// gives, so another implementation cannot signal a boundary; every other
+// error is the API class as the walk received it.
 type Git interface {
 	Log(ctx context.Context, revRange string) ([]gitsource.RawCommit, error)
 	IsShallow(ctx context.Context) (bool, error)

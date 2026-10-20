@@ -229,12 +229,12 @@ func TestLogReadsSignedCommitsUnderShowSignature(t *testing.T) {
 	if want := []record{{":sparkles:^ add a side feature", 1}, {":bug:~ fix a crash", 1}, {":twisted_rightwards_arrows:= merge the signed tag", 2}}; !slices.Equal(read(got), want) || got[2].SHA != head {
 		t.Fatalf("Log read %+v, want %v ending at %s", got, want, head)
 	}
-	got, err = FirstParentLog(context.Background(), dir, "HEAD", 3)
+	got, err = firstParentLog(context.Background(), dir, "HEAD", 3)
 	if err != nil {
-		t.Fatalf("FirstParentLog under log.showSignature: %v", err)
+		t.Fatalf("firstParentLog under log.showSignature: %v", err)
 	}
 	if want := []record{{":tada:= begin the project", 0}, {":bug:~ fix a crash", 1}, {":twisted_rightwards_arrows:= merge the signed tag", 2}}; !slices.Equal(read(got), want) || got[2].SHA != head {
-		t.Fatalf("FirstParentLog read %+v, want %v ending at %s", got, want, head)
+		t.Fatalf("firstParentLog read %+v, want %v ending at %s", got, want, head)
 	}
 }
 
@@ -263,12 +263,12 @@ func TestLogReadsUTF8UnderLogOutputEncoding(t *testing.T) {
 			if len(got) != 1 || got[0].Author != author || got[0].Message != message {
 				t.Fatalf("Log read %+v, want one commit by %q saying %q", got, author, message)
 			}
-			got, err = FirstParentLog(context.Background(), dir, "HEAD", 1)
+			got, err = firstParentLog(context.Background(), dir, "HEAD", 1)
 			if err != nil {
-				t.Fatalf("FirstParentLog: %v", err)
+				t.Fatalf("firstParentLog: %v", err)
 			}
 			if len(got) != 1 || got[0].Author != author || got[0].Message != message {
-				t.Fatalf("FirstParentLog read %+v, want one commit by %q saying %q", got, author, message)
+				t.Fatalf("firstParentLog read %+v, want one commit by %q saying %q", got, author, message)
 			}
 		})
 	}
@@ -422,20 +422,20 @@ func TestMergedTagsListsOnlyTagsRevContains(t *testing.T) {
 	if err != nil || len(all) != 4 {
 		t.Fatalf("Tags = %v, %v; want all four (the control)", all, err)
 	}
-	got, err := MergedTags(context.Background(), dir, "HEAD")
+	got, err := mergedTags(context.Background(), dir, "HEAD")
 	if err != nil {
-		t.Fatalf("MergedTags: %v", err)
+		t.Fatalf("mergedTags: %v", err)
 	}
 	slices.Sort(got)
 	if !slices.Equal(got, []string{"v0.1.0", "v0.1.1"}) {
-		t.Fatalf("MergedTags(HEAD) = %v, want [v0.1.0 v0.1.1] — the side branch's v9.0.0 and the blob's v8.0.0 are no release of HEAD", got)
+		t.Fatalf("mergedTags(HEAD) = %v, want [v0.1.0 v0.1.1] — the side branch's v9.0.0 and the blob's v8.0.0 are no release of HEAD", got)
 	}
 }
 
 // TestMergedTagsOnAnUnbornHEADIsEmpty: before a repository's first commit HEAD
 // names no commit, and git answers `tag --merged=HEAD` with "malformed object
 // name HEAD" at exit 128 (measured, git 2.54). An unborn history holds no
-// tags — Tags answers empty there too — so MergedTags does as well; passing
+// tags — Tags answers empty there too — so mergedTags does as well; passing
 // git's failure through turned `bump --pr` and `preview --pr` in such a
 // checkout from exit 0 into exit 4. Outside a repository the listing still
 // fails as git/IO: the empty answer is for a rev naming no commit, not for a
@@ -449,15 +449,15 @@ func TestMergedTagsOnAnUnbornHEADIsEmpty(t *testing.T) {
 	if err != nil || len(all) != 0 {
 		t.Fatalf("Tags on an unborn history = %v, %v; want empty, nil (the control)", all, err)
 	}
-	got, err := MergedTags(context.Background(), dir, "HEAD")
+	got, err := mergedTags(context.Background(), dir, "HEAD")
 	if err != nil || len(got) != 0 {
-		t.Fatalf("MergedTags(HEAD) on an unborn history = %v, %v; want empty, nil", got, err)
+		t.Fatalf("mergedTags(HEAD) on an unborn history = %v, %v; want empty, nil", got, err)
 	}
 
-	_, err = MergedTags(context.Background(), t.TempDir(), "HEAD")
+	_, err = mergedTags(context.Background(), t.TempDir(), "HEAD")
 	ce := core.AsError(err)
 	if ce == nil || ce.Code != core.CodeAPI {
-		t.Fatalf("MergedTags outside a repository = %v, want CodeAPI", err)
+		t.Fatalf("mergedTags outside a repository = %v, want CodeAPI", err)
 	}
 }
 
@@ -649,7 +649,7 @@ func writeFiles(t *testing.T, dir string, rels ...string) {
 	}
 }
 
-// TestIsTagIsAnExactRef: IsTag answers whether refs/tags/<name> exists, and
+// TestIsTagIsAnExactRef: isTag answers whether refs/tags/<name> exists, and
 // nothing else names one — a branch, a sha, and a revision expression over a
 // real tag (`v0.1.0~0`, which rev-parse would resolve to the tag's commit)
 // are all NO, as an answer rather than an error; an annotated, prefixed tag
@@ -670,15 +670,15 @@ func TestIsTagIsAnExactRef(t *testing.T) {
 		"v0.1.0^{}":    false,
 		"v0.2.0":       false,
 	} {
-		got, err := IsTag(context.Background(), dir, name)
+		got, err := isTag(context.Background(), dir, name)
 		if err != nil || got != want {
-			t.Errorf("IsTag(%q) = %v, %v; want %v, nil", name, got, err, want)
+			t.Errorf("isTag(%q) = %v, %v; want %v, nil", name, got, err, want)
 		}
 	}
 
-	_, err := IsTag(context.Background(), t.TempDir(), "v0.1.0")
+	_, err := isTag(context.Background(), t.TempDir(), "v0.1.0")
 	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
-		t.Fatalf("IsTag outside a repository = %v, want CodeAPI", err)
+		t.Fatalf("isTag outside a repository = %v, want CodeAPI", err)
 	}
 }
 
@@ -704,9 +704,9 @@ func TestTagListingsStayOnePerLineUnderColumnConfig(t *testing.T) {
 			if err != nil || !slices.Equal(got, want) {
 				t.Fatalf("Tags = %q, %v; want %q", got, err, want)
 			}
-			got, err = MergedTags(context.Background(), dir, "HEAD")
+			got, err = mergedTags(context.Background(), dir, "HEAD")
 			if err != nil || !slices.Equal(got, want) {
-				t.Fatalf("MergedTags(HEAD) = %q, %v; want %q", got, err, want)
+				t.Fatalf("mergedTags(HEAD) = %q, %v; want %q", got, err, want)
 			}
 		})
 	}
@@ -809,12 +809,12 @@ func TestIsAncestor(t *testing.T) {
 		"a name that is not an sha": {"not-a-sha", false},
 	} {
 		t.Run(name, func(t *testing.T) {
-			got, err := IsAncestor(context.Background(), dir, tc.sha, "HEAD")
+			got, err := isAncestor(context.Background(), dir, tc.sha, "HEAD")
 			if err != nil {
-				t.Fatalf("IsAncestor(%q): unexpected error: %v", tc.sha, err)
+				t.Fatalf("isAncestor(%q): unexpected error: %v", tc.sha, err)
 			}
 			if got != tc.want {
-				t.Fatalf("IsAncestor(%q) = %v, want %v", tc.sha, got, tc.want)
+				t.Fatalf("isAncestor(%q) = %v, want %v", tc.sha, got, tc.want)
 			}
 		})
 	}
@@ -867,10 +867,10 @@ func TestIsAncestorCancelIsInterrupted(t *testing.T) {
 		}
 	}()
 
-	_, err := IsAncestor(ctx, dir, "any-sha", "HEAD")
+	_, err := isAncestor(ctx, dir, "any-sha", "HEAD")
 	ce := core.AsError(err)
 	if ce == nil || ce.Code != core.CodeInterrupted {
-		t.Fatalf("IsAncestor cancelled mid-run = %v, want CodeInterrupted (%d) — a killed child arrives as an *exec.ExitError, so reading the exit status before the context turns the abort into a silent \"did not land\"", err, core.CodeInterrupted)
+		t.Fatalf("isAncestor cancelled mid-run = %v, want CodeInterrupted (%d) — a killed child arrives as an *exec.ExitError, so reading the exit status before the context turns the abort into a silent \"did not land\"", err, core.CodeInterrupted)
 	}
 }
 
@@ -886,12 +886,12 @@ func TestFirstParentLog(t *testing.T) {
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles: second")
 	testutil.Git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", "Merge branch 'side'", "side")
 
-	got, err := FirstParentLog(context.Background(), dir, "HEAD", 3)
+	got, err := firstParentLog(context.Background(), dir, "HEAD", 3)
 	if err != nil {
-		t.Fatalf("FirstParentLog: %v", err)
+		t.Fatalf("firstParentLog: %v", err)
 	}
 	if len(got) != 3 {
-		t.Fatalf("FirstParentLog(3) returned %d commits, want 3: %+v", len(got), got)
+		t.Fatalf("firstParentLog(3) returned %d commits, want 3: %+v", len(got), got)
 	}
 	if !strings.HasPrefix(got[0].Message, ":bug: first") {
 		t.Fatalf("commits are not oldest-first: first is %q", got[0].Message)
@@ -914,12 +914,12 @@ func TestFirstParentLogShortNearTheRoot(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug: the only other commit")
 
-	got, err := FirstParentLog(context.Background(), dir, "HEAD", 10)
+	got, err := firstParentLog(context.Background(), dir, "HEAD", 10)
 	if err != nil {
-		t.Fatalf("FirstParentLog past the root: %v", err)
+		t.Fatalf("firstParentLog past the root: %v", err)
 	}
 	if len(got) != 2 {
-		t.Fatalf("FirstParentLog(10) on a 2-commit history = %d commits, want 2", len(got))
+		t.Fatalf("firstParentLog(10) on a 2-commit history = %d commits, want 2", len(got))
 	}
 }
 
@@ -1304,12 +1304,12 @@ func TestMergeBase(t *testing.T) {
 		"across a fork: the root":   {[]string{second, aside}, root},
 		"three revs, one on a fork": {[]string{first, second, aside}, root},
 	} {
-		got, err := MergeBase(context.Background(), dir, tc.revs)
+		got, err := mergeBase(context.Background(), dir, tc.revs)
 		if err != nil {
-			t.Fatalf("%s: MergeBase: %v", name, err)
+			t.Fatalf("%s: mergeBase: %v", name, err)
 		}
 		if got != tc.want {
-			t.Fatalf("%s: MergeBase = %.7s, want %.7s", name, got, tc.want)
+			t.Fatalf("%s: mergeBase = %.7s, want %.7s", name, got, tc.want)
 		}
 	}
 }

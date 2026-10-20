@@ -2,7 +2,7 @@ diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
 index 9de8828..d614f8b 100644
 --- a/internal/gitsource/gitsource.go
 +++ b/internal/gitsource/gitsource.go
-@@ -601,12 +601,12 @@ func IsAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
+@@ -601,12 +601,12 @@ func isAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
  	var stderr bytes.Buffer
  	cmd.Stderr = &stderr
  	if err := cmd.Run(); err != nil {

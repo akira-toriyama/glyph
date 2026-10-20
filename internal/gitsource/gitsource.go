@@ -43,11 +43,9 @@ type RawCommit struct {
 // record by the NUL -z writes after it. NUL frames the fields too because it is
 // the one byte none of them can hold — git refuses it in a message ("a NUL byte
 // in commit log message not allowed", measured) and an ident is a C string —
-// and the record framing already rested on it. The unit separator that framed
-// the fields before is a byte an author NAME can hold: git keeps an interior
-// one (measured on 2.54), so `dependabot[bot]<US>x` moved every field over by
-// one, the author read as dependabot[bot], and exclude_authors passed the
-// commit unjudged at exit 0 (t-esm5; TestLogReadsAnAuthorNameHoldingTheUnitSeparator).
+// and the record framing already rested on it. Not the unit separator: git
+// keeps one inside an author name (DESIGN §2, `exclude_authors`;
+// TestLogReadsAnAuthorNameHoldingTheUnitSeparator).
 const logFormat = "%H%x00%an%x00%ae%x00%P%x00%B"
 
 // logFields is how many NUL-closed fields logFormat writes per record.
@@ -228,11 +226,10 @@ func refNameRefused(ctx context.Context, name string) bool {
 // the leading byte first: every `refs/tags/v…` lands above every
 // `refs/tags/1…`, and on {v0.0.1, v0.0.2, 9.9.9, 100.0.0} git reports v0.0.2
 // ahead of the highest version there is. A caller that wants the highest
-// VERSION must parse every entry and compare (internal/walk's LatestVersionTag,
-// which read this doc's earlier promise of "version-sorted descending" and took
-// the first parseable entry). What the order IS good for is being STABLE, which
-// is what lets that caller break a tie between two spellings of one version
-// without inventing a preference.
+// VERSION must parse every entry and compare (internal/walk's
+// LatestVersionTag). What the order IS good for is being STABLE, which is what
+// lets that caller break a tie between two spellings of one version without
+// inventing a preference.
 func Tags(ctx context.Context, dir string) ([]string, error) {
 	out, err := run(ctx, dir, tagListCmd()...)
 	if err != nil {
@@ -241,7 +238,7 @@ func Tags(ctx context.Context, dir string) ([]string, error) {
 	return tagLines(out), nil
 }
 
-// MergedTags is Tags narrowed to the tags whose commit rev's history holds
+// mergedTags is Tags narrowed to the tags whose commit rev's history holds
 // (`git tag --merged`): the releases rev's own history carries, in the same
 // order under the same contract. --merged peels an annotated tag to its commit
 // and leaves out a tag on a non-commit object (measured, git 2.54). The rev is
@@ -255,7 +252,7 @@ func Tags(ctx context.Context, dir string) ([]string, error) {
 // --pr` — moved from exit 0 to exit 4 on git's failure. So the failure is
 // asked about, and only when the listing fails: the ordinary path stays one
 // git call.
-func MergedTags(ctx context.Context, dir, rev string) ([]string, error) {
+func mergedTags(ctx context.Context, dir, rev string) ([]string, error) {
 	out, err := run(ctx, dir, tagListCmd("--merged="+rev)...)
 	if err != nil {
 		if core.IsInterrupted(err) {
@@ -285,7 +282,7 @@ func tagListCmd(args ...string) []string {
 }
 
 // tagLines splits git's one-name-per-line tag listing. Shared by Tags and
-// MergedTags so the two readers cannot come to disagree about what a listing
+// mergedTags so the two readers cannot come to disagree about what a listing
 // holds (the runIn precedent, t-tgbs).
 func tagLines(out []byte) []string {
 	var tags []string
@@ -301,7 +298,7 @@ func tagLines(out []byte) []string {
 // under --verify --quiet — an unborn HEAD, a name nothing carries, a tag on a
 // blob — and is an answer, not a failure; anything else (not a repository) is
 // the git/IO error it always was. The interrupt is asked first, as everywhere
-// in this package (see IsAncestor for why the order is the whole point).
+// in this package (see isAncestor for why the order is the whole point).
 func namesCommit(ctx context.Context, dir, rev string) (bool, error) {
 	// #nosec G204 -- the binary is the fixed literal "git"; rev is the caller's
 	// revision, pinned as one by --end-of-options.
@@ -320,12 +317,12 @@ func namesCommit(ctx context.Context, dir, rev string) (bool, error) {
 	return true, nil
 }
 
-// IsTag reports whether refs/tags/<name> exists — an exact ref, never a
+// isTag reports whether refs/tags/<name> exists — an exact ref, never a
 // revision: rev-parse would resolve `v1.0.0~1` through the real tag and call
 // it one. A NO is git's exit 1 under show-ref --verify --quiet and is an
 // answer; anything else is the git/IO error it always was, the interrupt
-// asked first (see IsAncestor for why the order is the whole point).
-func IsTag(ctx context.Context, dir, name string) (bool, error) {
+// asked first (see isAncestor for why the order is the whole point).
+func isTag(ctx context.Context, dir, name string) (bool, error) {
 	// #nosec G204 -- the binary is the fixed literal "git"; the one argument
 	// is a full refname under refs/tags/, so it can never read as an option.
 	cmd := exec.CommandContext(ctx, "git", "-C", dir, "show-ref", "--verify", "--quiet", "refs/tags/"+name)
@@ -478,8 +475,7 @@ var actionSpecs = []string{"--", ":(glob)**/action.yml", ":(glob)**/action.yaml"
 // lists rather than a filesystem walk because "any path" on disk includes what
 // is not the repository (dependency checkouts under ignored build directories
 // can carry action files whose pins are someone else's), and because a walk
-// of sill's ignored .build visited 280,803 entries in 2.9 s where git answered
-// in 20 ms (the D2b ruling's measurement, 2026-09-29).
+// is far slower (DESIGN §7 holds the measurement).
 //
 // Two listings, because `--recurse-submodules` refuses to combine with
 // --others ("fatal: ls-files --recurse-submodules unsupported mode", measured
@@ -681,7 +677,7 @@ func Have(ctx context.Context, dir string, shas []string) (map[string]bool, erro
 	return have, nil
 }
 
-// IsAncestor reports whether sha is an ancestor of rev, or is rev itself.
+// isAncestor reports whether sha is an ancestor of rev, or is rev itself.
 //
 // A NO is reported as (false, nil) however git spells it: exit 1 (the honest
 // no), and exit 128 (no such object) for a sha this repository does not hold or
@@ -697,7 +693,7 @@ func Have(ctx context.Context, dir string, shas []string) (map[string]bool, erro
 // other order, a Ctrl-C during the footprint walk is swallowed into "this commit
 // never landed" — a wrong answer to a question that governs which commits a
 // release counts, returned with a nil error so nothing downstream can tell.
-func IsAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
+func isAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
 	// #nosec G204 -- the binary is the fixed literal "git"; sha and rev are
 	// object names the caller took from git or from a GitHub sha field, and
 	// --end-of-options pins both as revisions rather than options.
@@ -716,12 +712,12 @@ func IsAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
 	return true, nil
 }
 
-// FirstParentLog returns the n commits ending at rev along the FIRST-PARENT
+// firstParentLog returns the n commits ending at rev along the FIRST-PARENT
 // chain, oldest first — the shape a rebase-merge leaves on the released branch,
 // and the only reading under which a rebased pull's commits are consecutive.
 // Fewer than n exist near the root of a history, and the caller decides what a
 // short answer means.
-func FirstParentLog(ctx context.Context, dir, rev string, n int) ([]RawCommit, error) {
+func firstParentLog(ctx context.Context, dir, rev string, n int) ([]RawCommit, error) {
 	out, err := run(ctx, dir, logCmd("--first-parent", "-n", strconv.Itoa(n),
 		"--format="+logFormat, "--end-of-options", rev, "--")...)
 	if err != nil {
@@ -829,13 +825,13 @@ func IsShallowBoundary(err error) bool {
 	return ok
 }
 
-// MergeBase returns the best common ancestor of revs (git merge-base
+// mergeBase returns the best common ancestor of revs (git merge-base
 // --octopus) — the commit the packages walk starts from when the lines' bases
 // differ, so that one walk's range contains every line's range (DESIGN
 // §4.1, "the walk is one walk"). One rev answers itself. Every rev must be
 // an object this checkout holds; an unknown one is a git failure (API), and
 // the caller took them from git's own tag list.
-func MergeBase(ctx context.Context, dir string, revs []string) (string, error) {
+func mergeBase(ctx context.Context, dir string, revs []string) (string, error) {
 	if len(revs) == 1 {
 		return revs[0], nil
 	}
@@ -953,7 +949,7 @@ func tail(out []byte) string {
 //
 // Callers ask this BEFORE reading the child's exit status, never after. A
 // cancelled context kills the child, so the abort arrives wearing an
-// *exec.ExitError and any status-first reading absorbs it — see IsAncestor,
+// *exec.ExitError and any status-first reading absorbs it — see isAncestor,
 // where that ordering turned a Ctrl-C into a wrong answer about the repository.
 func interrupted(ctx context.Context) error {
 	if errors.Is(ctx.Err(), context.Canceled) {
@@ -974,10 +970,8 @@ func runStdin(ctx context.Context, dir, stdin string, args ...string) ([]byte, e
 	return runIn(ctx, dir, strings.NewReader(stdin), args...)
 }
 
-// runIn is the single exec site behind run and runStdin. The two used to be
-// copies differing in one line, with the reasoning for the interrupt split
-// written on only one of them — so a future fix would land on whichever copy its
-// author happened to read (t-tgbs).
+// runIn is the single exec site behind run and runStdin, so a fix to either
+// lands once.
 //
 // stdin is an io.Reader rather than a string precisely so run can pass NIL and
 // keep os/exec's own behaviour (the child gets /dev/null). Collapsing run into
@@ -986,7 +980,7 @@ func runStdin(ctx context.Context, dir, stdin string, args ...string) ([]byte, e
 // deduplication — and one nobody had measured.
 //
 // #nosec G204 -- the binary is the fixed literal "git". Every argument is
-// structured by this package's own exported funcs; the caller-supplied values
+// structured by this package's own funcs; the caller-supplied values
 // among them (a revision range, an object name) are pinned as revisions by
 // --end-of-options at their call sites, so none can be read as an option.
 func runIn(ctx context.Context, dir string, stdin io.Reader, args ...string) ([]byte, error) {

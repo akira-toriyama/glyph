@@ -1,5 +1,5 @@
 diff --git a/internal/walk/base.go b/internal/walk/base.go
-index 6c113a8..40f2a3e 100644
+index 2e9efb9..2dd670e 100644
 --- a/internal/walk/base.go
 +++ b/internal/walk/base.go
 @@ -86,7 +86,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
@@ -9,5 +9,5 @@ index 6c113a8..40f2a3e 100644
 -		return latest + "..HEAD", latest, &v, nil
 +		return latest + "..HEAD", v.String(), &v, nil
  	}
- 	if rest, ok := strings.CutPrefix(tag, Below); ok {
+ 	if rest, ok := strings.CutPrefix(tag, below); ok {
  		// This is the single line, so a bound on any other line names a line

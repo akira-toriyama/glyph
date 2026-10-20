@@ -78,8 +78,8 @@ func TestParseVersionCapsEachField(t *testing.T) {
 			t.Errorf("ParseVersion(%q) error = %q, want it to name the cap", in, err)
 		}
 	}
-	if got, err := ParseBaseVersion("v2147483648.0.0-rc.1"); err == nil {
-		t.Errorf("ParseBaseVersion past the cap = %+v, want a refusal", got)
+	if got, err := parseBaseVersion("v2147483648.0.0-rc.1"); err == nil {
+		t.Errorf("parseBaseVersion past the cap = %+v, want a refusal", got)
 	}
 	if got, err := ParseVersionOn("haiku/", "haiku/v0.0.2147483648"); err == nil {
 		t.Errorf("ParseVersionOn past the cap = %+v, want a refusal", got)
@@ -107,13 +107,13 @@ func TestParseBaseVersion(t *testing.T) {
 		{"v1.2.3+build.5", Version{1, 2, 3}},
 		{"v1.2.3-rc.1+build.5", Version{1, 2, 3}},
 	} {
-		got, err := ParseBaseVersion(c.in)
+		got, err := parseBaseVersion(c.in)
 		if err != nil {
-			t.Errorf("ParseBaseVersion(%q): unexpected error: %v", c.in, err)
+			t.Errorf("parseBaseVersion(%q): unexpected error: %v", c.in, err)
 			continue
 		}
 		if got != c.want {
-			t.Errorf("ParseBaseVersion(%q) = %+v, want %+v", c.in, got, c.want)
+			t.Errorf("parseBaseVersion(%q) = %+v, want %+v", c.in, got, c.want)
 		}
 	}
 
@@ -135,14 +135,14 @@ func TestParseBaseVersion(t *testing.T) {
 		"v1.2.3-rc 1", // whitespace is not in semver's pre-release alphabet
 		"v1.2-rc.1",   // the suffix cannot complete an incomplete triple
 	} {
-		if got, err := ParseBaseVersion(in); err == nil {
-			t.Errorf("ParseBaseVersion(%q) should fail, got %+v", in, got)
+		if got, err := parseBaseVersion(in); err == nil {
+			t.Errorf("parseBaseVersion(%q) should fail, got %+v", in, got)
 		}
 	}
 }
 
 // TestParseVersionStillRefusesCandidates guards the half of the split that is
-// easy to lose: ParseBaseVersion exists so the CANDIDATE SET does not have to
+// easy to lose: parseBaseVersion exists so the CANDIDATE SET does not have to
 // change. walk.LatestVersionTag parses every tag HEAD's history holds
 // (releasesHEADHolds; every tag on a shallow checkout) with ParseVersion and
 // skips what fails, so the moment ParseVersion accepts a pre-release, a
@@ -157,8 +157,8 @@ func TestParseVersionStillRefusesCandidates(t *testing.T) {
 		}
 		// Positive control: the same string IS a valid bound, so a failure
 		// above cannot be blamed on the string being malformed.
-		if _, err := ParseBaseVersion(in); err != nil {
-			t.Errorf("ParseBaseVersion(%q) rejects it too (%v) — this table is asserting nothing", in, err)
+		if _, err := parseBaseVersion(in); err != nil {
+			t.Errorf("parseBaseVersion(%q) rejects it too (%v) — this table is asserting nothing", in, err)
 		}
 	}
 }

@@ -1627,7 +1627,7 @@ A typed `--since-tag` that is no tag — a branch, a remote-tracking name, a sha
 is resolved by GitHub against its own refs, not the checkout's (`main...<sha>`
 200 and identical, `origin/main...<sha>` 404, measured on glyph the same day), so
 the explicit arm takes the value only when `refs/tags/<value>` exists
-(`gitsource.IsTag`). Each `/`-separated segment is path-escaped: git accepts
+(`gitsource.isTag`). Each `/`-separated segment is path-escaped: git accepts
 `#`, `%` and `)` in a tag name, where pasted verbatim `#` starts a fragment and
 `%41` decodes to another ref, and GitHub decodes an escaped segment once, back to
 the tag (measured 2026-10-05 on glyph-test, the REST endpoint and the page alike,
@@ -2487,7 +2487,7 @@ already runs `notes --since-tag=below:TAG` from the tagged commit); a bare
 declares — `fish/v1.0.0`, or a bare `v1.0.0` with no root package — is usage
 (exit 2), never a walk of some other line; a tag that is not version-shaped on
 any line names no line, so every line walks from it and steps from its own
-highest tag, as the single line does. **Version-shaped** is `ParseBaseVersion`'s
+highest tag, as the single line does. **Version-shaped** is `parseBaseVersion`'s
 question, the one `below:` has always asked of its bound: a release candidate
 or a build-metadata tag on a declared line (`haiku/v3.0.0-rc.1`) names that
 line, and the line steps from its highest *plain* tag — a candidate is a
@@ -3577,7 +3577,7 @@ The severities are the argued part:
   Go pseudo-version, or `build.sh`'s git-describe stamp (`v4.2.0-3-g…`) — has
   no upper end and trusts its own tree, which misjudges only a release cut
   after a declaration change the build predates. Those stamps are read with
-  `bump.ParseVersion`, never `ParseBaseVersion`, which would read the describe
+  `bump.ParseVersion`, never `ParseBaseVersionOn`, which would read the describe
   stamp as its base triple v4.2.0 and cap the build there: every pin above
   v4.2.0 would be `unknown` to a tree built past it (the pseudo-version case of
   `TestCallerChecksJudgeTheCallerAtItsPin`; mutation row
