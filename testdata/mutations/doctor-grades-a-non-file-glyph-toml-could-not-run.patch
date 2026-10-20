@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/config.go b/internal/doctor/config.go
+index 8aa39ca..164b586 100644
+--- a/internal/doctor/config.go
++++ b/internal/doctor/config.go
+@@ -65,7 +65,7 @@ func checkConfig(root string, rootErr error, cfg *config.Config, loadErr error)
+ 		c.Fix = "glyph init --gemoji (or --conventional) — then edit the generated glyph.toml freely"
+ 		return c
+ 	case isNotAFile:
+-		c.Status = StatusFail
++		c.Status = StatusUnknown
+ 		c.Observed = fmt.Sprintf("glyph.toml at %s is %s, not a regular file", root, notAFile.Kind())
+ 		c.Message = "glyph reads its configuration from a regular file at that path and from nothing else: every verdict " +
+ 			"command — lint, bump, notes, preview, release — refuses it the way it refuses a missing file (exit 2, before " +

@@ -3427,9 +3427,16 @@ The severities are the argued part:
   satisfies glyph's preconditions, and an observed absence is the honest answer
   no: the whole gate is down, at `3` like every other violated precondition. A
   file that exists but does not load is the same failure carrying the loader's
-  own error (the loader rejects rather than repairs — no silent none). Only
-  content that was never *observed* — a read the filesystem refused, no top
-  level to resolve the path against — is `unknown` at `4`.
+  own error (the loader rejects rather than repairs — no silent none). So is a
+  path that holds something other than a regular file — a directory, a named
+  pipe, a socket, a device: the loader stats it and never opens it, so what is
+  there was observed, and the fix is the missing file's behind a removal
+  (t-zvax: before the stat a directory graded `unknown` with "fix the file
+  permissions" as its fix, and a named pipe hung `doctor` in the read, measured
+  2026-10-20 at `ec53ed3`; `TestConfigNotARegularFileIsAFailure`, mutation row
+  `doctor-grades-a-non-file-glyph-toml-could-not-run`). Only content that was
+  never *observed* — a read the filesystem refused (permission denied, an I/O
+  fault), no top level to resolve the path against — is `unknown` at `4`.
 - **`allow_squash_merge` false ⇒ fail.** *Not* because only a squash commit
   resolves — every style does. GitHub points `merge_commit_sha` at whichever
   commit represents the merge (the squash commit, a rebase's **last** replayed
