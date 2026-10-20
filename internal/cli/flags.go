@@ -12,13 +12,8 @@ import (
 // what it means for a flag to have been GIVEN.
 //
 // pflag answers two different questions ("was it set?" via Changed, "what is
-// its value?" via the bound variable) and every silent misread glyph has had
-// came from a command asking one and acting on the other: `lint --stdin=false`
-// satisfied a one-required group by Changed and then matched no VALUE arm, so a
-// bad invocation was answered with the lint gate's own exit code; `--current=`
-// was checked for emptiness rather than for having been given, so a workflow
-// that templated an unset variable got a version nobody asked for, at exit 0,
-// with nothing on stderr.
+// its value?" via the bound variable), and a command asking one and acting on
+// the other misreads its invocation in silence.
 //
 // The rule these guards enforce: a flag GIVEN with an empty value is usage (2).
 // Every string flag glyph takes NAMES something — a revision range, a tag, a
@@ -57,16 +52,6 @@ const (
 
 // currentFlagUsage is the --help line for --current, shared by bump and release
 // because they share currentVersion and therefore share the default.
-//
-// Naming the default is the whole job, and stating it in each command's own
-// string got it wrong: bump's read "highest parseable v* tag, else v0.0.0",
-// omitting the arm that runs FIRST. currentVersion prefers the base the input
-// source named, so under --since-tag=TAG the step base is TAG — measured on a
-// repo tagged v0.1.0 and v0.5.0 at the same commit, where
-// `bump --since-tag=v0.1.0 --json` answers current v0.1.0, not the v0.5.0 the
-// help promised. That is the version a wrong-bump investigation starts from,
-// and --help is where the investigator looks, so the one place the CLI could
-// mislead is the one place it did.
 const currentFlagUsage = "the version to step from (default: the tag the walk named, else the highest parseable v* tag HEAD contains, else v0.0.0)"
 
 // checkNamingFlags rejects the empty form of each named flag, before any git or

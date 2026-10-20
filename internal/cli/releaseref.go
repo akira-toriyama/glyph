@@ -34,28 +34,13 @@ const (
 var actionsEnv = []string{envActionsRef, envActionsEvent}
 
 // checkReleaseRef refuses a release WRITE started from a ref that is not the
-// repository's default branch.
-//
-// The harm is the walk, not just the write. `glyph release` walks <tag>..HEAD
-// out of local git, and off the default branch that range holds the branch's
-// unmerged commits: each resolves to no merged pull request, falls to the
-// direct-push arm and is classified from its own subject; walk.Facts.Dropped
-// records only an API lag, so the facts stay complete and §4's exit-4 refusal
-// for an unreadable walk never fires. The upsert then adopts the one managed draft,
-// retags it and re-points target_commitish at the branch tip — a green run, a
-// draft describing work the default branch never held, and Publish cutting the
-// tag there. A caller cannot close this itself: GitHub offers no way to
-// restrict which ref a workflow_dispatch runs from.
+// repository's default branch. The harm, and why no caller can close it, are
+// DESIGN §4's ("the only release-time refusal a dry run does not reproduce").
 //
 // This is the same boundary `.github/workflows/release.yml` draws in its
 // "Refuse a release run from a non-default ref" step, and the two must never
-// drift on polarity — same exact-match predicate, same dry-run exemption. They
-// are kept deliberately, at two layers with different reach and different cost:
-// the workflow step refuses before the checkout and the Xcode setup, so a
-// mis-triggered macOS run spends no runner minutes, but it only covers repos
-// that call the reusable. Four repos — canon, dotfiles, sill, swift-toml-edit —
-// hand-copy the release step instead and call no reusable at all, so this is
-// the only layer that ever reaches them.
+// drift on polarity — same exact-match predicate, same dry-run exemption. Why
+// both layers are kept: DESIGN §4, "the cheaper half".
 //
 // Arming is by EVIDENCE, not by provider detection: `GITHUB_ACTIONS == "true"`
 // would argue against output.go's position that glyph's annotations are written
@@ -72,11 +57,8 @@ func checkReleaseRef(ctx context.Context, owner, repo string, dryRun bool) error
 	event := strings.TrimSpace(os.Getenv(envActionsEvent))
 
 	// A dry run writes nothing, so it has no authority in question. This is
-	// the one release-time refusal a preview deliberately does NOT reproduce,
-	// against the rule stated for the body cap and --target in cmd_release.go
-	// ("a dry run previews the real run"): those are properties of the WORK a
-	// run would publish, so hiding them would preview a lie, while the ref is a
-	// property of the WRITE. Exempting it cannot make the preview more
+	// the one release-time refusal a preview deliberately does NOT reproduce
+	// (DESIGN §4, "the argued exception"). Exempting it cannot make the preview more
 	// permissive than the run it previews, because the real run from the same
 	// ref refuses unconditionally — and judging it would red the sanctioned
 	// preview path every consumer exposes as a dispatch input, on the day the
@@ -110,12 +92,8 @@ func checkReleaseRef(ctx context.Context, owner, repo string, dryRun bool) error
 // releaseDefaultBranch resolves the branch a release may be written from, and
 // names where the answer came from so a refusal can be argued with.
 //
-// Two sources, cheapest first. The event payload costs nothing and is the one
-// #156 measured. The repository object costs one request against a walk that
-// already pays at least one per commit, and it exists so that a payload which
-// stops carrying the field degrades ONE repository's release to a slower answer
-// instead of refusing every pinned repository at once — the single-source
-// failure mode whose only recovery is reverting the pin in eleven repos.
+// Two sources, cheapest first: the event payload, which costs nothing, then
+// the repository object, one request (why two: DESIGN §4, "eleven pin reverts").
 //
 // gitsource.DefaultBranch is deliberately not a third source: it reads
 // refs/remotes/<remote>/HEAD, which actions/checkout never writes, so in CI it

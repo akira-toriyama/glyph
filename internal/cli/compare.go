@@ -39,14 +39,8 @@ func compareLink(body, owner, repo, base, end string) string {
 }
 
 // fullSha reports whether end is 40 hex digits, the one spelling of the
-// link's right side that names the same commit for good. --target is handed
-// to the API verbatim as target_commitish, which takes a branch as well, and
-// GitHub resolves whatever stands on the right when the page is opened: a
-// branch there makes a PUBLISHED body's range grow with every later push
-// (measured 2026-10-05 on glyph-test: `v2.0.1...main` 200 at the branch's
-// head). An abbreviation resolves too — down to four digits, same day — but
-// only until a second object shares them. Not resolved through the checkout
-// instead: --target has never had to name a commit the checkout holds.
+// link's right side that names the same commit for good (DESIGN §4, "The
+// compare link").
 func fullSha(end string) bool {
 	if len(end) != 40 {
 		return false
