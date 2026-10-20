@@ -98,23 +98,33 @@ func TestConfigUnloadableIsAFailure(t *testing.T) {
 	}
 }
 
-// TestConfigNotARegularFileIsAFailure: a glyph.toml path holding a directory
-// or a named pipe was OBSERVED — the loader stats it and never opens it — so
-// it is the missing file's failure with the missing file's remedy behind a
-// removal, never the unreadable arm. That arm graded a directory unknown,
-// quoted its path twice and told the reader to fix the file permissions; a
-// named pipe never got that far, hanging doctor in the read (t-zvax, measured
-// at ec53ed3). The load runs under a deadline so that regression fails here
-// instead of hanging the package.
+// TestConfigNotARegularFileIsAFailure: a glyph.toml path holding a directory,
+// a named pipe or a link that resolves to no file was OBSERVED — the loader
+// stats it and never opens it — so it is the missing file's failure with the
+// missing file's remedy behind a removal, never the unreadable arm. That arm
+// graded a directory unknown, quoted its path twice and told the reader to fix
+// the file permissions; a named pipe never got that far, hanging doctor in the
+// read (t-zvax, measured at ec53ed3). At 43cecf2 a link to nothing still
+// graded as a missing file whose remedy init refused, and a link to itself or
+// through a file as unknown with the permissions fix. The load runs under a
+// deadline so that regression fails here instead of hanging the package.
 func TestConfigNotARegularFileIsAFailure(t *testing.T) {
 	for _, c := range []struct {
-		kind  string
-		stage func(path string) error
+		shape, kind string
+		stage       func(path string) error
 	}{
-		{"a directory", func(p string) error { return os.Mkdir(p, 0o700) }},
-		{"a named pipe", func(p string) error { return syscall.Mkfifo(p, 0o600) }},
+		{"a directory", "a directory", func(p string) error { return os.Mkdir(p, 0o700) }},
+		{"a named pipe", "a named pipe", func(p string) error { return syscall.Mkfifo(p, 0o600) }},
+		{"a link to nothing", "a broken symbolic link", func(p string) error { return os.Symlink("nowhere.toml", p) }},
+		{"a link to itself", "a broken symbolic link", func(p string) error { return os.Symlink(filepath.Base(p), p) }},
+		{"a link through a file", "a broken symbolic link", func(p string) error {
+			if err := os.WriteFile(filepath.Join(filepath.Dir(p), "shared.toml"), nil, 0o600); err != nil {
+				return err
+			}
+			return os.Symlink("shared.toml/glyph.toml", p)
+		}},
 	} {
-		t.Run(c.kind, func(t *testing.T) {
+		t.Run(c.shape, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "glyph.toml")
 			if err := c.stage(path); err != nil {
 				t.Fatalf("staging %s at %s: %v", c.kind, path, err)

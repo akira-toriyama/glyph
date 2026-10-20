@@ -36,10 +36,11 @@ func configPathAt(top string) string {
 //
 //   - missing (2): the invocation assumed an initialized repository and this
 //     one is not yet — the fix, `glyph init`, is the caller's.
-//   - not a regular file (2): a directory, a named pipe, a socket or a device
-//     at the path, which config.LoadFile stats and never opens. What is there
-//     was observed, so it takes the missing case's code, with removal ahead
-//     of the same fix (DESIGN §5).
+//   - not a regular file (2): a directory, a named pipe, a socket, a device
+//     or a symbolic link that resolves to no file at the path, which
+//     config.StatFile classifies and nothing opens. What is there was
+//     observed, so it takes the missing case's code, with removal ahead of
+//     the same fix (DESIGN §5).
 //   - unreadable (4): permission denied, an I/O fault, a vanishing mount.
 //     glyph could not reach an answer at all, which is what 4 means; `doctor`
 //     and the hook installer already classify the identical event that way.

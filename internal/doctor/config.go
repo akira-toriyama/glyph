@@ -28,10 +28,11 @@ import (
 //     verdict commands themselves exit 2 there: doctor was asked whether the
 //     repository satisfies glyph's preconditions, and the observed absence
 //     answers no.
-//   - NOT A REGULAR FILE — a directory, a named pipe, a socket, a device at
-//     the path — is the same failure: the loader stat'ed what is there and
-//     never opened it, so it was observed, and the verdict commands refuse it
-//     at 2 like a missing file. Only the remedy differs: remove it first.
+//   - NOT A REGULAR FILE — a directory, a named pipe, a socket, a device or a
+//     symbolic link that resolves to no file at the path — is the same
+//     failure: the loader stat'ed what is there and never opened it, so it
+//     was observed, and the verdict commands refuse it at 2 like a missing
+//     file. Only the remedy differs: remove it first.
 //   - A file that exists but does not load — bad TOML, an unknown schema, a
 //     pattern that cannot compile or captures no semver_sigil — is the same
 //     failure, carrying the loader's own error.

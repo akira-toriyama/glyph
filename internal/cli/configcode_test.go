@@ -131,14 +131,24 @@ func TestValidConfigStillPasses(t *testing.T) {
 	}
 }
 
-// notAFile stages the two shapes other than a regular file that t-zvax
-// measured at a glyph.toml path: a directory and a named pipe.
+// notAFile stages the shapes other than a regular file that t-zvax measured at
+// a glyph.toml path: a directory, a named pipe, and a link that resolves to no
+// file — to nothing, to itself, through a regular file. kind is the phrase
+// config.NotAFileError names it by.
 var notAFile = []struct {
-	kind  string
-	stage func(path string) error
+	shape, kind string
+	stage       func(path string) error
 }{
-	{"a directory", func(p string) error { return os.Mkdir(p, 0o700) }},
-	{"a named pipe", func(p string) error { return syscall.Mkfifo(p, 0o600) }},
+	{"a directory", "a directory", func(p string) error { return os.Mkdir(p, 0o700) }},
+	{"a named pipe", "a named pipe", func(p string) error { return syscall.Mkfifo(p, 0o600) }},
+	{"a link to nothing", "a broken symbolic link", func(p string) error { return os.Symlink("nowhere.toml", p) }},
+	{"a link to itself", "a broken symbolic link", func(p string) error { return os.Symlink(filepath.Base(p), p) }},
+	{"a link through a file", "a broken symbolic link", func(p string) error {
+		if err := os.WriteFile(filepath.Join(filepath.Dir(p), "shared.toml"), nil, 0o600); err != nil {
+			return err
+		}
+		return os.Symlink("shared.toml/glyph.toml", p)
+	}},
 }
 
 // runGlyphWithin is runGlyph under a deadline, for a run a regression can
@@ -168,16 +178,18 @@ func runGlyphWithin(t *testing.T, d time.Duration, args ...string) (code int, st
 }
 
 // TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile pins exit 2 for a
-// glyph.toml path holding a directory or a named pipe: what is there was
-// observed, so it takes the missing config's code and remedy, not the
-// unreadable arm's 4. Before the loader stat'ed the path, a directory answered
-// 4 on both commands and a named pipe answered nothing at all — lint --stdin
-// and bump hung in the read (t-zvax, measured at ec53ed3). The message is
+// glyph.toml path holding a directory, a named pipe or a link that resolves to
+// no file: what is there was observed, so it takes the missing config's code
+// and remedy, not the unreadable arm's 4. Before the loader stat'ed the path,
+// a directory answered 4 on both commands and a named pipe answered nothing at
+// all — lint --stdin and bump hung in the read (t-zvax, measured at ec53ed3).
+// At 43cecf2 a link to itself or through a file still answered 4, and a link
+// to nothing the missing file's remedy, which init refused. The message is
 // asserted beside the code because 2 is also what a bad flag answers.
 func TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile(t *testing.T) {
 	for _, k := range notAFile {
 		for _, args := range [][]string{{"lint", "--stdin"}, {"bump", "--range", "v0.1.0..HEAD"}} {
-			t.Run(k.kind+"/"+args[0], func(t *testing.T) {
+			t.Run(k.shape+"/"+args[0], func(t *testing.T) {
 				dir, _ := testutil.NewTaggedRepo(t)
 				top, err := filepath.EvalSymlinks(dir) // git names the real path
 				if err != nil {

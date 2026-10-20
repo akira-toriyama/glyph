@@ -245,25 +245,40 @@ func TestLoadFileMissing(t *testing.T) {
 	}
 }
 
-// TestLoadFileRefusesWhatIsNotARegularFile: a path that exists and is not a
-// regular file is answered from os.Stat alone — typed, the path named once,
-// and never opened. Before the stat a directory came back as os.ReadFile's
-// EISDIR under a second copy of the path ("read <p>: read <p>: is a
-// directory"), and a named pipe blocked LoadFile for good, because open(2) on
-// a FIFO waits for a writer (t-zvax, measured at ec53ed3). The call runs under
-// a deadline so that regression fails here instead of hanging the package
-// until go test's -timeout; on the deadline the blocked goroutine is left on a
-// FIFO inside t.TempDir that nothing will ever open for writing.
+// TestLoadFileRefusesWhatIsNotARegularFile: a path that holds something other
+// than a regular file is answered from StatFile alone — typed, the path named
+// once, and never opened. Before the stat a directory came back as
+// os.ReadFile's EISDIR under a second copy of the path ("read <p>: read <p>:
+// is a directory"), and a named pipe blocked LoadFile for good, because
+// open(2) on a FIFO waits for a writer (t-zvax, measured at ec53ed3). A link
+// os.Stat cannot follow is the link observed by os.Lstat: at 43cecf2 one to
+// nothing came back as a missing file, and one to itself or through a file as
+// a stat the filesystem refused. The call runs under a deadline so that
+// regression fails here instead of hanging the package until go test's
+// -timeout; on the deadline the blocked goroutine is left on a FIFO inside
+// t.TempDir that nothing will ever open for writing.
 func TestLoadFileRefusesWhatIsNotARegularFile(t *testing.T) {
 	for _, c := range []struct {
-		kind  string
-		mode  fs.FileMode
-		stage func(path string) error
+		shape, kind string
+		mode        fs.FileMode
+		stage       func(path string) error
 	}{
-		{"a directory", fs.ModeDir, func(p string) error { return os.Mkdir(p, 0o700) }},
-		{"a named pipe", fs.ModeNamedPipe, func(p string) error { return syscall.Mkfifo(p, 0o600) }},
+		{"a directory", "a directory", fs.ModeDir, func(p string) error { return os.Mkdir(p, 0o700) }},
+		{"a named pipe", "a named pipe", fs.ModeNamedPipe, func(p string) error { return syscall.Mkfifo(p, 0o600) }},
+		{"a link to nothing", "a broken symbolic link", fs.ModeSymlink, func(p string) error {
+			return os.Symlink("nowhere.toml", p)
+		}},
+		{"a link to itself", "a broken symbolic link", fs.ModeSymlink, func(p string) error {
+			return os.Symlink(filepath.Base(p), p)
+		}},
+		{"a link through a file", "a broken symbolic link", fs.ModeSymlink, func(p string) error {
+			if err := os.WriteFile(filepath.Join(filepath.Dir(p), "shared.toml"), nil, 0o600); err != nil {
+				return err
+			}
+			return os.Symlink("shared.toml/glyph.toml", p)
+		}},
 	} {
-		t.Run(c.kind, func(t *testing.T) {
+		t.Run(c.shape, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "glyph.toml")
 			if err := c.stage(path); err != nil {
 				t.Fatalf("staging %s at %s: %v", c.kind, path, err)
@@ -294,7 +309,7 @@ func TestLoadFileRefusesWhatIsNotARegularFile(t *testing.T) {
 }
 
 // TestNotAFileErrorNamesEachKind holds the phrase every caller embeds to the
-// type bits os.Stat reports, the two kinds the loader test above does not
+// type bits StatFile reports, the two kinds the loader test above does not
 // stage (a socket, a device) included.
 func TestNotAFileErrorNamesEachKind(t *testing.T) {
 	for mode, want := range map[fs.FileMode]string{
@@ -303,11 +318,48 @@ func TestNotAFileErrorNamesEachKind(t *testing.T) {
 		fs.ModeSocket:                     "a socket",
 		fs.ModeDevice:                     "a device",
 		fs.ModeDevice | fs.ModeCharDevice: "a device",
+		fs.ModeSymlink:                    "a broken symbolic link",
 		fs.ModeIrregular:                  "a file of unknown type",
 	} {
 		if got := (&NotAFileError{Mode: mode}).Kind(); got != want {
 			t.Errorf("Kind() for %v = %q, want %q", mode, got, want)
 		}
+	}
+}
+
+// TestLoadFileKeepsALinkItMayNotFollowUnreadable: a link os.Stat cannot follow
+// for a permission is no broken link — where it leads was never observed — so
+// it stays the *fs.PathError of a stat the filesystem refused (the verdict
+// commands' 4, doctor's unknown and its permissions fix), never the
+// NotAFileError a dangling or looping link gets with its remove-it remedy.
+//
+// bite-exempt: a positive control. It holds the broken-link arm to the
+// failures that are the link's own, and the tree before that arm already
+// answers this shape so.
+func TestLoadFileKeepsALinkItMayNotFollowUnreadable(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, where a mode-000 directory does not stop the stat")
+	}
+	dir := t.TempDir()
+	locked := filepath.Join(dir, "locked")
+	if err := os.Mkdir(locked, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(locked, "glyph.toml"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatalf("staging the refused stat: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+	path := filepath.Join(dir, "glyph.toml")
+	if err := os.Symlink(filepath.Join("locked", "glyph.toml"), path); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadFile(path)
+	if _, ok := errors.AsType[*fs.PathError](err); !ok || !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("LoadFile through a link into a mode-000 directory = %v (%T), want the *fs.PathError of a "+
+			"refused stat — where the link leads was never observed", err, err)
 	}
 }
 

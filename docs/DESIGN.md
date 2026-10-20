@@ -3054,17 +3054,28 @@ release whose body blames a commit nobody judged.
 
 The `2`/`4` line is drawn on what was observed, as `doctor`'s severities are
 (§7): a `glyph.toml` path holding something other than a regular file — a
-directory, a named pipe, a socket, a device — is `2` with the missing file,
-because what is there was observed and the remedy is a human's (remove it, then
-`glyph init`). `config.LoadFile` stats the path and never opens a non-regular
-one (`*config.NotAFileError`): open(2) on a named pipe blocks until a writer
+directory, a named pipe, a socket, a device, or a symbolic link that resolves
+to no file — is `2` with the missing file, because what is there was observed
+and the remedy is a human's (remove it, then `glyph init`). `config.StatFile`
+is the one classification of the path, and nothing opens a non-regular one
+(`*config.NotAFileError`): open(2) on a named pipe blocks until a writer
 appears, so before the stat a FIFO named `glyph.toml` hung `lint --stdin`,
 `bump`, `notes`, `preview`, `release` and `doctor`, and a directory answered `4`
 through the read-error arm with its path printed twice (t-zvax, measured
 2026-10-20 at `ec53ed3`; `TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile`,
 `TestLoadFileRefusesWhatIsNotARegularFile`, mutation rows
 `verdict-commands-answer-a-non-file-glyph-toml-as-unreadable` and
-`config-load-opens-what-is-not-a-regular-file`).
+`config-load-opens-what-is-not-a-regular-file`). A link `os.Stat` cannot follow
+by its own fault — one to nothing, one that loops, one through a regular file —
+is the link itself, observed by `os.Lstat`. Read through `os.Stat` alone, a link
+to nothing took the missing arm, whose remedy `glyph init` refused as "already
+exists", and a loop or a link through a file took the read-error arm at `4` with
+"fix the file permissions" (measured 2026-10-21 at `43cecf2`; the link cases of
+both tests above, mutation row
+`config-stat-reads-a-broken-link-as-missing-or-unreadable`). A link it could not
+follow for a permission or an I/O fault stays `4`, since where it leads was
+never observed (`TestLoadFileKeepsALinkItMayNotFollowUnreadable`, mutation row
+`config-stat-calls-a-link-it-may-not-follow-broken`).
 
 One command sits deliberately off the `1` rung: for `preview`, `none` is a real
 answer to the question asked — *what would merging this do?* — so a none verdict
@@ -3443,11 +3454,15 @@ The severities are the argued part:
   file that exists but does not load is the same failure carrying the loader's
   own error (the loader rejects rather than repairs — no silent none). So is a
   path that holds something other than a regular file — a directory, a named
-  pipe, a socket, a device: the loader stats it and never opens it, so what is
-  there was observed, and the fix is the missing file's behind a removal
-  (t-zvax: before the stat a directory graded `unknown` with "fix the file
-  permissions" as its fix, and a named pipe hung `doctor` in the read, measured
-  2026-10-20 at `ec53ed3`; `TestConfigNotARegularFileIsAFailure`, mutation row
+  pipe, a socket, a device, or a symbolic link that resolves to no file: the
+  loader stats it and never opens it, so what is there was observed, and the
+  fix is the missing file's behind a removal (t-zvax: before the stat a
+  directory graded `unknown` with "fix the file permissions" as its fix, and a
+  named pipe hung `doctor` in the read, measured 2026-10-20 at `ec53ed3`; read
+  through `os.Stat` alone, a looping link or one through a file graded
+  `unknown` with that same fix, and a link to nothing failed with the missing
+  file's fix, which `glyph init` refused, measured 2026-10-21 at `43cecf2`;
+  `TestConfigNotARegularFileIsAFailure`, mutation row
   `doctor-grades-a-non-file-glyph-toml-could-not-run`). Only content that was
   never *observed* — a read the filesystem refused (permission denied, an I/O
   fault), no top level to resolve the path against — is `unknown` at `4`.

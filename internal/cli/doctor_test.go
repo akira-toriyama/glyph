@@ -769,15 +769,16 @@ func TestDoctorUnreadableConfigLeavesTheDependentsUnread(t *testing.T) {
 }
 
 // TestDoctorConfigThatIsNotAFileFailsAtTheMissingCode is the fourth load
-// failure: a glyph.toml path holding a directory or a named pipe. doctor
-// exits what it exits for a missing file (3, glyph-toml-loads failed), since
-// what is there was observed, and the checks that read the loaded file are
-// handed nothing. Before the loader stat'ed the path a directory was unknown
-// at exit 4 and a named pipe hung doctor in the read (t-zvax, measured at
-// ec53ed3).
+// failure: a glyph.toml path holding a directory, a named pipe or a link that
+// resolves to no file. doctor exits what it exits for a missing file (3,
+// glyph-toml-loads failed), since what is there was observed, and the checks
+// that read the loaded file are handed nothing. Before the loader stat'ed the
+// path a directory was unknown at exit 4 and a named pipe hung doctor in the
+// read (t-zvax, measured at ec53ed3); at 43cecf2 a link to itself or through a
+// file was still unknown at exit 4.
 func TestDoctorConfigThatIsNotAFileFailsAtTheMissingCode(t *testing.T) {
 	for _, k := range notAFile {
-		t.Run(k.kind, func(t *testing.T) {
+		t.Run(k.shape, func(t *testing.T) {
 			usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 			useDoctorCheckout(t, pinnedCaller)
 			if err := os.Remove("glyph.toml"); err != nil {
