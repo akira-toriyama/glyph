@@ -2,9 +2,7 @@ package cli
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -253,23 +251,15 @@ func TestSinceTagRefusalOutranksALaterAPIFailure(t *testing.T) {
 	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji leads this subject")
 	bad := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	sha := squashCommit(t, dir, "Add a menu", 7)
-	pullRef := `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha) + `]`
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case commitPullsPath(bad):
-			fmt.Fprint(w, `[]`)
-		case commitPullsPath(sha):
-			fmt.Fprint(w, pullRef)
-		case pullCommitsPath(7):
-			w.Header().Set("Retry-After", "0")
-			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprint(w, `{"message":"boom"}`)
-		default:
-			t.Errorf("unexpected request %q", r.URL.Path)
-			http.NotFound(w, r)
+	srv := failingWalkServer(t, map[string]string{
+		commitPullsPath(bad): `[]`,
+		commitPullsPath(sha): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha) + `]`,
+	}, func(r *http.Request) int {
+		if r.URL.Path == pullCommitsPath(7) {
+			return http.StatusInternalServerError
 		}
-	}))
-	t.Cleanup(srv.Close)
+		return 0
+	})
 	usePR(t, srv)
 	t.Chdir(dir)
 

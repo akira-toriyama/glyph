@@ -20,7 +20,7 @@ import (
 // default `pubsub/v2`, so the file would not load (DESIGN §4.1).
 func majorRepo(t *testing.T, extra string) (dir, base string) {
 	t.Helper()
-	dir = packagesRepoWith(t, "\n[[packages]]\npath = \"pubsub\"\n\n[[packages]]\npath = \"pubsub/v2\"\nname = \"pubsub-v2\"\n"+extra, map[string]string{
+	dir = testutil.NewPackagesRepo(t, "\n[[packages]]\npath = \"pubsub\"\n\n[[packages]]\npath = \"pubsub/v2\"\nname = \"pubsub-v2\"\n"+extra, map[string]string{
 		"pubsub/pubsub.go": "package pubsub\n", "pubsub/v2/pubsub.go": "package pubsub\n",
 	})
 	testutil.Git(t, dir, "akira-toriyama", "tag", "pubsub/v1.9.1")
@@ -66,7 +66,7 @@ func TestBumpMajorSubdirectoryLinesShareThePrefix(t *testing.T) {
 // pubsub/v2/ prefix nothing tags (the first cut), and not the v1 tag beside
 // it — and a fix steps to pubsub/v2.7.1.
 func TestBumpMajorSubdirectoryAloneReadsItsMajor(t *testing.T) {
-	dir := packagesRepoWith(t, "\n[[packages]]\npath = \"pubsub/v2\"\nname = \"pubsub-v2\"\n", map[string]string{"pubsub/pubsub.go": "package pubsub\n", "pubsub/v2/pubsub.go": "package pubsub\n"})
+	dir := testutil.NewPackagesRepo(t, "\n[[packages]]\npath = \"pubsub/v2\"\nname = \"pubsub-v2\"\n", map[string]string{"pubsub/pubsub.go": "package pubsub\n", "pubsub/v2/pubsub.go": "package pubsub\n"})
 	testutil.Git(t, dir, "akira-toriyama", "tag", "pubsub/v1.9.1")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "pubsub/v2.7.0")
 	sha := touch(t, dir, "akira-toriyama", ":bug:~ fix the exporter", "pubsub/v2/exporter.go")
@@ -135,7 +135,7 @@ func TestLockedLineRefusesAMajorStep(t *testing.T) {
 		})
 	}
 	t.Run("control: no locked sibling, the free line steps its major", func(t *testing.T) {
-		dir := packagesRepoWith(t, "\n[[packages]]\npath = \"pubsub\"\n", map[string]string{"pubsub/pubsub.go": "package pubsub\n"})
+		dir := testutil.NewPackagesRepo(t, "\n[[packages]]\npath = \"pubsub\"\n", map[string]string{"pubsub/pubsub.go": "package pubsub\n"})
 		testutil.Git(t, dir, "akira-toriyama", "tag", "pubsub/v1.9.1")
 		sha := touch(t, dir, "akira-toriyama", ":boom:! drop the old API", "pubsub/breaking.go")
 		usePR(t, walkServer(t, map[string]string{commitPullsPath(sha): `[]`}))

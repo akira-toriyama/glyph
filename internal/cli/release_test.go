@@ -422,10 +422,9 @@ func TestReleaseUpsertNeverTouchesForeignReleases(t *testing.T) {
 
 // TestReleaseUpsertNeverAdoptsUnparseableVDrafts closes the gap beside
 // TestReleaseUpsertNeverTouchesForeignReleases: that test's foreign drafts
-// ("nightly", "0.9.9") both fall to glyphDrafts' v-prefix arm, so its second
-// arm — bump.ParseVersion rejecting a v-prefixed tag — was reachable by no
-// test in the suite (measured: the `continue` is uncovered across every
-// package, and deleting it stays green everywhere). A draft a human named
+// ("nightly", "0.9.9") both fail bump.HouseTagOn on the missing v, so neither
+// reaches its parse — ParseVersionOn rejecting a v-prefixed tag, the other arm
+// on which draftplan.managed takes its `continue`. A draft a human named
 // vNext / v1.2 / v2026.08 wears the v but is not the house tag shape, so it
 // is not glyph's to touch: a none verdict must not DELETE it, a release
 // verdict must POST a fresh draft rather than PATCH it into glyph's, and the
@@ -735,9 +734,10 @@ func TestReleaseFooterFileMissingIsUsage(t *testing.T) {
 	}
 }
 
-// releaseVerdict decodes a --json release verdict; the struct mirrors
-// releaseResult field-for-field so a silently renamed key fails the decode
-// assertions rather than zero-filling.
+// releaseVerdict decodes a --json release verdict on the bare line: every
+// releaseResult field but Packages, whose shape releaseVerdictLines decodes,
+// so a silently renamed key fails the decode assertions rather than
+// zero-filling.
 type releaseVerdict struct {
 	Current string `json:"current"`
 	Level   string `json:"level"`
@@ -748,11 +748,10 @@ type releaseVerdict struct {
 	Action  string `json:"action"`
 	URL     string `json:"url"`
 	Commits []struct {
-		SHA      string `json:"sha"`
-		Sigil    string `json:"sigil"`
-		Level    string `json:"level"`
-		Breaking bool   `json:"breaking"`
-		Subject  string `json:"subject"`
+		SHA     string `json:"sha"`
+		Sigil   string `json:"sigil"`
+		Level   string `json:"level"`
+		Subject string `json:"subject"`
 	} `json:"commits"`
 	Pulls []struct {
 		Number  int `json:"number"`
@@ -1437,8 +1436,7 @@ func TestReleaseRunsFromOptionsWithoutCobra(t *testing.T) {
 // TestReleaseNoneAnswersTheFirstFailedResidual: with two residuals that will
 // not go, the envelope carries the FIRST failure, as the warning on the
 // second says ("the run fails on the first that would not"); the second is
-// a warning that names it. Unpinned until the U15 review found "answer the
-// last one" surviving the whole suite on both trees.
+// a warning that names it.
 func TestReleaseNoneAnswersTheFirstFailedResidual(t *testing.T) {
 	walk := noneWalk(t)
 	releases := `[` + draftJSON(11, "v0.1.1") + `,` + draftJSON(12, "v0.1.2") + `]`
@@ -1472,9 +1470,8 @@ func TestReleaseNoneAnswersTheFirstFailedResidual(t *testing.T) {
 // TestReleaseMalformedCurrentIsUsageBeforeTheListing: --current is the
 // caller's input, refused at 2 before the releases listing is fetched — so
 // a listing that would not answer cannot turn the usage error into its own
-// 4. The single line's path once parsed the flag first and the packages
-// path once did not; the one loop asks before either pays (U15 review: the
-// double fault exited 4 on the candidate's first cut).
+// 4. The one loop over the lines asks before the listing is paid for, on the
+// bare line and under packages alike.
 func TestReleaseMalformedCurrentIsUsageBeforeTheListing(t *testing.T) {
 	walk := oneFixWalk(t)
 	var seq []string

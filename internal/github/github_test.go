@@ -133,8 +133,9 @@ func TestPullCommitsSinglePage(t *testing.T) {
 	if commits[0] != want0 {
 		t.Fatalf("commit 0 = %+v, want %+v", commits[0], want0)
 	}
-	// The bot author name (not a login) and the two-parent merge shape are exactly
-	// what internal/bump.ExcludedFromClassification keys on downstream.
+	// The bot author name (not a login) is what an exclude_authors entry
+	// matches downstream, and the two-parent shape is what the walk reads as
+	// a merge (Parents >= 2).
 	// author: null — GitHub mapped no account — is an empty login, not an error.
 	want1 := Commit{SHA: "bbb", Author: "fleet-sync[bot]", Email: "fleet-sync[bot]@users.noreply.github.com", Parents: 2, Message: ":robot: chore(fleet): sync"}
 	if commits[1] != want1 {

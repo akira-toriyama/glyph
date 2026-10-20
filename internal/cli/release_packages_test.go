@@ -115,8 +115,8 @@ func TestReleasePackagesWritesOneDraftPerLine(t *testing.T) {
 
 // TestReleasePackagesCurrentOverTwoLinesIsUsage: release refuses --current
 // unless the walk selects one line (checkLineSelection), as bump does — the
-// refusal is in release's help and was asserted for bump alone until the
-// U15 review found the release call removable without a red test.
+// refusal is in release's help, and this test is what holds release's own
+// call to it.
 func TestReleasePackagesCurrentOverTwoLinesIsUsage(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	_, routes := squashAcrossLines(t, dir, 7)
@@ -475,25 +475,19 @@ func TestReleasePackagesSecondWriteFailureLeavesTheFirst(t *testing.T) {
 	}
 }
 
-// failingReleaseServer serves the releases surface, answers a request with
-// fail's status when it returns one (Retry-After 0, so a retried status is
-// retried at once) and records every write in ORDER — the upsert-first and
-// delete-order properties the tests below lean on.
+// failingReleaseServer is releaseServer behind failingHandler, recording
+// every write in ORDER, failed ones included — the upsert-first and
+// delete-order properties release's write-failure and convergence tests
+// lean on, on the bare line and per line alike.
 func failingReleaseServer(t *testing.T, walk map[string]string, releases string, fail func(*http.Request) int, seq *[]string) *httptest.Server {
 	t.Helper()
 	var writes []apiWrite
-	inner := releaseHandler(t, walk, releases, &writes)
+	answer := failingHandler(releaseHandler(t, walk, releases, &writes), fail)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			*seq = append(*seq, r.Method+" "+r.URL.Path)
 		}
-		if code := fail(r); code != 0 {
-			w.Header().Set("Retry-After", "0")
-			w.WriteHeader(code)
-			fmt.Fprint(w, `{"message":"boom"}`)
-			return
-		}
-		inner(w, r)
+		answer(w, r)
 	}))
 	t.Cleanup(srv.Close)
 	return srv
@@ -889,15 +883,13 @@ func TestReleasePackagesDraftOnNoneMaintainsAPlaceholderPerLine(t *testing.T) {
 // names (draftplan.Write.Line), never by the count of writes done. The none
 // line is declared first, so the run's first write is the SECOND line's; a
 // URL placed by write count would report curry's draft under haiku, and
-// nothing else in the verdict would say so (review of U20, 2026-10-19:
-// that mutation survived the whole suite).
+// nothing else in the verdict would say so (mutation row
+// release-packages-url-lands-on-the-write-count).
 func TestReleasePackagesURLLandsOnItsLine(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	sha := touch(t, dir, "akira-toriyama", ":sparkles:^ add a sauce", "curry/sauce.go")
 	var writes []apiWrite
-	srv := httptest.NewServer(releaseHandler(t, map[string]string{commitPullsPath(sha): `[]`}, `[]`, &writes))
-	t.Cleanup(srv.Close)
-	usePR(t, srv)
+	usePR(t, releaseServer(t, map[string]string{commitPullsPath(sha): `[]`}, `[]`, &writes))
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "release", "--json")

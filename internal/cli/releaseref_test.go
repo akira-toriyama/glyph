@@ -320,10 +320,7 @@ func TestReleaseRefGuardFailsClosedOnAnUnreadableBoundary(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			var writes []apiWrite
 			walk := oneFixWalk(t)
-			// 404, not 5xx: a 4xx is the caller's input and is not retried, so
-			// these four shapes cost no backoff. The transport-failure path,
-			// which does pay the ~21s schedule, is exercised once in
-			// TestReleaseRefGuardArmsOnEitherHalfOfTheRunContext.
+			// A 404 is the caller's input, which the client does not retry.
 			srv, hits := repoObjectServer(t, walk, `[]`, &writes, "", http.StatusNotFound)
 			usePR(t, srv)
 			useActionsRunRaw(t, "refs/heads/main", c.payload)
