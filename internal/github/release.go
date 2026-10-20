@@ -24,7 +24,7 @@ import (
 // whether it is still an unpublished draft, the html_url a human reviews and
 // publishes at, and the body — which the upsert must READ before it writes,
 // because a draft body can carry a human's hand-written notes above the hand
-// marker, and rewriting blind is how they were silently destroyed (t-qgps).
+// marker (DESIGN §4, "The hand region").
 type Release struct {
 	ID      int64
 	TagName string

@@ -292,8 +292,8 @@ func longestBacktickRun(s string) int {
 // cannot reach across a blank line, and neither can the backtick bookkeeping
 // below. Line flattens every author-supplied field, so the split is unreachable
 // from there — but this scan decides where mentions stay live, and a safety
-// boundary should not owe its correctness to the builder's flattening any more
-// than it used to owe it to a caller's line discipline.
+// boundary should not owe its correctness to the builder's flattening, nor to
+// a caller's line discipline.
 //
 // THIS SCAN KNOWS ONLY BACKTICKS, AND THAT IS A PRECONDITION ON ITS INPUT, not
 // an approximation. CommonMark has other inline constructs that are parsed
@@ -433,10 +433,10 @@ func paragraphSpans(p string, offset int) [][2]int {
 // shipped preset, yields a live link, live raw HTML and a live @mention in a
 // published release body and in a pr-verdict comment.
 //
-// The cost the old note feared is real but is not this function's: a subject
-// carrying a run of 80 or more makes escapeMentionsSkipping's own fence unopenable,
-// because the fence is one backtick longer than the longest run. That is a
-// fence-width problem, it exists whether or not this model is exact, and
+// A run of 80 or more does have a cost, but it is not this function's: a subject
+// carrying one makes escapeMentionsSkipping's own fence unopenable, because the
+// fence is one backtick longer than the longest run. That is a fence-width
+// problem, it exists whether or not this model is exact, and
 // longestBacktickRun is where it is answered.
 type backtickSearch struct {
 	// lastRun maps a run length to the start of the most recent run of that

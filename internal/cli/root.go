@@ -56,12 +56,11 @@ func Execute() int {
 //
 // It CLASSIFIES and then delegates: the number itself always comes from
 // core.ExitCode, so the contract has one implementation rather than two that
-// agree by inspection. They used to disagree on paper — core.ExitCode documents
-// an unclassified error as CodeAPI and says it must never fall through to
-// usage, which is exactly what this function did to it — and the reason both
-// were right is a fact only this layer knows: cobra is silenced in newRootCmd,
-// so a bare error arriving here is a parse/usage problem and nothing else. That
-// fact belongs where it is knowable, and the mapping belongs in core.
+// agree by inspection. The classification rests on a fact only this layer
+// knows: cobra is silenced in newRootCmd, so a bare error arriving here is a
+// parse/usage problem and nothing else — core.ExitCode, which cannot know
+// that, reads an unclassified error as CodeAPI. That fact belongs where it is
+// knowable, and the mapping belongs in core.
 func finish(err error) int {
 	if err == nil {
 		return int(core.CodeOK)

@@ -22,8 +22,7 @@ import (
 // is silenced in root.go and every git subprocess writes into a buffer, so
 // nothing can print after it). A consumer therefore sieves the envelope out of
 // the stream with `sed -n '/^[{]/,$p'` before handing it to jq; jq over the two
-// shapes together is a parse error, which is how a shipped workflow's
-// `::error::` heading went missing in silence (t-sws7).
+// shapes together is a parse error (DESIGN §5, "Stream contract").
 var (
 	out    io.Writer = os.Stdout
 	errOut io.Writer = os.Stderr
@@ -114,8 +113,9 @@ func oneLine(s string) string {
 //
 // The message folds through oneLine (oneLine's doc says why; DESIGN §5,
 // "Stream contract"). JSON-encoding the newlines (which marshal does anyway)
-// is not enough and is what made this invisible: the bytes on the wire were
-// fine, the DECODED message a consumer used was not.
+// is not enough, and is what hides the loss of a multi-line message: the bytes
+// on the wire stay valid, while the DECODED message a consumer interpolates
+// into `::error::` loses everything past its first line.
 func renderError(ce *core.Error) {
 	type errBody struct {
 		Code    int    `json:"code"`

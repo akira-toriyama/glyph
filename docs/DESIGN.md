@@ -525,10 +525,11 @@ A rule is only as good as the text it is applied to, and at the commit-msg hook
 that text is **not** the message. git runs the hook BEFORE its own cleanup, so
 the file still holds whatever the editor left: the template, the status block,
 and under `-v` a scissors line with the entire diff below it. `cleanup.Apply`
-reduces that file to the message git will record, and `--stdin` is its only
-caller. A `--range` walk reads `git log %B`, which git has already cleaned —
-into git's shape, not the hook's: git records a cleaned message with a closing
-newline, and `cleanup.Apply` returns the text without one. Go's `$` without
+reduces that file to the message git will record, and only the authoring path
+calls it (`--stdin`, and doctor's replay of it). A `--range` walk reads
+`git log %B`, which git has already cleaned — into git's shape, not the hook's:
+git records a cleaned message with a closing newline, and `cleanup.Apply`
+returns the text without one. Go's `$` without
 `(?m)` matches only at the very end of the text, so a pattern ending in `$` —
 the natural way to say the sigil form is the whole subject line — passed a
 one-line subject at the hook and refused the same commit at `lint --range` and
@@ -564,11 +565,16 @@ no such gap.
 **Which cleanup runs is a per-commit question, and the hook can answer it from
 four signals.** git has five modes and picks between two of them by whether an
 editor will run; assuming the editor's cleanup is what made the hook and CI
-disagree, measured on git 2.54 in both directions (`-F` with a `#` line as the
-subject: hook 0, CI 3; `-F` with an indented `  # why:` line above a footer:
-hook 0, CI 3 — both measured under the v1 grammar, whose footer rule the second
-case tripped; the disagreement belongs to git's cleanup, not to any grammar, so
-a v2 pattern file inherits it unchanged). The signals a hook actually has:
+disagree, measured on git 2.54 (`-F` with a `#` line as the subject: hook 0,
+CI 3; `-F` with an indented `  # why:` line above a footer: hook 0, CI 3 —
+both the lenient direction, both measured under the v1 grammar, whose footer
+rule the second case tripped). The first belongs to git's cleanup, not to any
+grammar, so a v2 pattern file inherits it unchanged: under both shipped
+presets the `#` subject is refused and the line below it accepted (measured
+2026-10-21 with `lint --message`). The second came from v1's comment match,
+which dropped an indented `#` line git's strip keeps; the port matches comments
+at column 0 only, so no mode the hook resolves drops that line, and no v2
+pattern file inherits the case. The signals a hook actually has:
 
 - `commit.cleanup`, read with `git config --get`;
 - `commit.verbose`, read through git's own parser — `git config
@@ -625,9 +631,11 @@ first line — the presets' own `amend!` claim reads the body, and so would a
 row `cleanup-keeps-the-diff-git-commit-v-wrote.patch`). A cut line git did not
 write is one the author typed, byte for byte. The grid is asked of real git as
 TEXT, not verdict (`TestHookCutMatchesGit`): under a subject-anchored grammar a
-message and its cut-short form get the same answer, and
-`TestHookVerdictMatchesWhatGitRecords` stayed green under the old rule and
-under git's formula alike (measured).
+message and its cut-short form get the same answer.
+`TestHookVerdictMatchesWhatGitRecords` stays green under the old rule
+(measured); its `-v` row judges under a `$`-anchored pattern and is the one
+row that fails under git's formula (mutation row
+`cleanup-keeps-the-diff-git-commit-v-wrote.patch` names both tests).
 
 An unrecognised mode name warns and falls back. git itself refuses one for a
 plain `git commit`, `cherry-pick -e` and a rebase reword before any hook runs
@@ -2967,13 +2975,13 @@ internal/bump            Level lattice; LevelOf + Fold (classification and the f
 internal/config          glyph.toml loader — user RE2 patterns, first match wins, semver_sigil extraction, the [[packages]] schema; embeds the init presets
 internal/attribution     which declared package(s) a commit moves — pure; files + scope + sigil + packages in, package set or lint-class refusal out (§4.1)
 internal/emoji           the gemoji dictionary `glyph emoji` prints — embedded table.json, advisory data nothing else reads (§2)
-internal/draftplan       draft convergence — pure; which draft a verdict keeps, retags or deletes (the Unreleased placeholder lives here), the bare line's residue, and the run's write list — every upsert, the residual deletes, then the stale ones — each write with its kind
+internal/draftplan       draft convergence — pure; which draft a verdict keeps, retags or deletes (the Unreleased placeholder lives here), the published floor its tag must clear (CheckPublishedFloor), the body it carries with its hand region kept (ComposeBody), the bare line's residue, and the run's write list — every upsert, the residual deletes, then the stale ones — each write with its kind
 internal/markdown        Line: per-field flatten, then the prose escape and the mention fence over the assembled line
 internal/notes           group by section; note.line rendered by hand over config.LineSpan / LinePart (the span grammar is parsed in internal/config; the optional-span drop rule lives here)
 internal/preview         merge-preview comment body — pure; no git, no API, no clock
 internal/walk            the release walk (§4, §4.1): the base past a tag, the squash→pull expansion and its footprints, the facts of what it could not read, which lines each commit joins — git and GitHub reached through the ports it declares
 internal/gitsource       every git subprocess the binary runs — log, tags, ancestry, diff-tree files, shallow probe, remotes, config, HEAD's trees (exec.CommandContext)
-internal/github          commits/{sha}/pulls, commits/{sha} files, pulls/{N} and its commits, release CRUD + generate-notes, repo object
+internal/github          commits/{sha}/pulls, commits/{sha} files, pulls/{N} and its commits, release CRUD, repo object
 internal/doctor          repository-precondition checks; independent, read-only (§7)
 internal/hook            commit-msg and pre-push hook contents + overwrite policy (no rules of its own)
 internal/cli             cobra adapter; Execute() int owns the exit-code funnel; composes the walk's ports and carries out the release's write list by kind
