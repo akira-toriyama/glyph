@@ -147,28 +147,21 @@ func TestSinceReadsThroughItsPorts(t *testing.T) {
 // repository, bypassing any one of them fails here (the bare-line test
 // covers the other nine; measured one call at a time).
 func TestSinceReadsThroughItsPortsUnderPackages(t *testing.T) {
-	dir := testutil.NewRepo(t)
-	preset, _ := config.Preset("gemoji")
-	snippet := "\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \"curry\"\n"
-	if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), append(append([]byte{}, preset...), snippet...), 0o644); err != nil {
+	dir := testutil.NewPackagesRepo(t, "\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \"curry\"\n",
+		map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n"})
+	declared, err := os.ReadFile(filepath.Join(dir, "glyph.toml"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := config.Load(append(append([]byte{}, preset...), snippet...))
+	cfg, err := config.Load(declared)
 	if err != nil {
 		t.Fatal(err)
 	}
 	write := func(rel, content string) {
-		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o755); err != nil {
-			t.Fatal(err)
-		}
 		if err := os.WriteFile(filepath.Join(dir, rel), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	write("haiku/haiku.go", "package haiku\n")
-	write("curry/curry.go", "package curry\n")
-	testutil.Git(t, dir, "akira-toriyama", "add", ".")
-	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
 	write("curry/curry.go", "package curry // spiced\n")
 	testutil.Git(t, dir, "akira-toriyama", "add", ".")

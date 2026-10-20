@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/config"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // goreleaserDefaultCaskSubject is the commit subject GoReleaser writes to the
@@ -32,14 +32,7 @@ func TestCaskCommitSubjectLintsInTheTap(t *testing.T) {
 		block = block[:j[1][0]]
 	}
 
-	data, ok := config.Preset("gemoji")
-	if !ok {
-		t.Fatal("no gemoji preset")
-	}
-	cfg, err := config.Load(data)
-	if err != nil {
-		t.Fatalf("loading the gemoji preset: %v", err)
-	}
+	cfg := testutil.Config(t)
 	render := func(tmpl string) string {
 		s := strings.NewReplacer("{{ .ProjectName }}", "glyph", "{{ .Tag }}", "v4.1.0").Replace(tmpl)
 		if strings.Contains(s, "{{") {

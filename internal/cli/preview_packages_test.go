@@ -600,7 +600,7 @@ func TestPreviewPackagesExcludedAuthorIsPlacedByItsFiles(t *testing.T) {
 // against same-commit tags.
 func packagesRepoWithUntaggedLine(t *testing.T) string {
 	t.Helper()
-	dir := packagesRepoWith(t, packagesConfig+"\n[[packages]]\npath = \"fish\"\n",
+	dir := testutil.NewPackagesRepo(t, packagesConfig+"\n[[packages]]\npath = \"fish\"\n",
 		map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n", "fish/fish.go": "package fish\n"})
 	testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
 	touch(t, dir, "akira-toriyama", ":memo:(haiku)= season the haiku", "haiku/haiku.go")
@@ -652,7 +652,7 @@ func TestPreviewPackagesWalkIgnoresAnUntouchedUntaggedLine(t *testing.T) {
 // the command rejects). Positive control: the default sentence is what the
 // other callers still get, asserted in TestPreviewRefusalNamesNoFlagPreviewLacks.
 func TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy(t *testing.T) {
-	dir := packagesRepoWith(t, packagesConfig,
+	dir := testutil.NewPackagesRepo(t, packagesConfig,
 		map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n"})
 	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0") // curry never released
 	for i := range walk.Cap + 1 {

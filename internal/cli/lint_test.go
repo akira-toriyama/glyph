@@ -44,6 +44,9 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 		// it, which is where the template ends up as line 1.
 		below   bool
 		verbose bool
+		// anchored judges under endAnchoredPreset, where text the hook judges
+		// past what git records moves the verdict.
+		anchored bool
 		// want is the exit code BOTH sides must reach.
 		want int
 	}{
@@ -94,12 +97,15 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 		},
 		{
 			name: "an editor runs with -v: the diff below the cut line is not the message",
-			// The verbose diff carries lines that are prose to the linter; if it
-			// were not cut, the NON-BREAKING: footer would stop being a trailer.
-			editor:  true,
-			verbose: true,
-			message: ":fire:(x)= drop the thing\n\nwhy: it was dead\n",
-			want:    0,
+			// git records the subject line alone; a hook that judged the diff
+			// under git's cut line as a body would refuse it here (hook 3,
+			// CI 0). TestHookCutMatchesGit compares the cut text itself, cell
+			// by cell.
+			editor:   true,
+			verbose:  true,
+			anchored: true,
+			message:  ":fire:(x)= drop the thing\n",
+			want:     0,
 		},
 		{
 			name: "core.commentChar=';': the ';' template above the message is not the subject",
@@ -154,14 +160,12 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			testutil.Git(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
-			preset, _ := config.Preset("gemoji")
-			if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), preset, 0o644); err != nil {
-				t.Fatalf("write glyph.toml: %v", err)
+			dir := testutil.NewRepo(t)
+			if tc.anchored {
+				if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), endAnchoredPreset(t), 0o644); err != nil {
+					t.Fatalf("write glyph.toml: %v", err)
+				}
 			}
-			testutil.Git(t, dir, "akira-toriyama", "add", "glyph.toml")
-			testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= begin the project")
 			for _, kv := range tc.config {
 				testutil.Git(t, dir, "akira-toriyama", "config", kv[0], kv[1])
 			}
@@ -263,12 +267,7 @@ func TestEndAnchoredPatternGetsOneVerdictAtTheHookAndInTheRange(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, base := testutil.NewTaggedRepo(t)
-			preset, _ := config.Preset("gemoji")
-			anchored := strings.Replace(string(preset), ` .+)'`, ` .+)$'`, 1)
-			if anchored == string(preset) {
-				t.Fatal("the gemoji preset's first pattern no longer ends in ` .+)'` — re-derive the `$` variant")
-			}
-			if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), []byte(anchored), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, "glyph.toml"), endAnchoredPreset(t), 0o644); err != nil {
 				t.Fatalf("write glyph.toml: %v", err)
 			}
 			testutil.Commit(t, dir, "akira-toriyama", tc.message)
@@ -289,6 +288,19 @@ func TestEndAnchoredPatternGetsOneVerdictAtTheHookAndInTheRange(t *testing.T) {
 			}
 		})
 	}
+}
+
+// endAnchoredPreset is the gemoji preset with its first pattern closed by
+// `$`: only a one-line message matches, so text that one side judges and the
+// other does not moves the verdict.
+func endAnchoredPreset(t *testing.T) []byte {
+	t.Helper()
+	preset, _ := config.Preset("gemoji")
+	anchored := strings.Replace(string(preset), ` .+)'`, ` .+)$'`, 1)
+	if anchored == string(preset) {
+		t.Fatal("the gemoji preset's first pattern no longer ends in ` .+)'` — re-derive the `$` variant")
+	}
+	return []byte(anchored)
 }
 
 // writeExecutable writes body at path (creating its directory) with the mode a
@@ -334,10 +346,12 @@ func TestLintMessageClean(t *testing.T) {
 	}
 }
 
-// TestLintMessageViolations: violations exit 3 with a structured stderr
-// envelope carrying the stable rule ids, keeping stdout pure. The envelope is
-// DECODED, not grepped — its keys ("error", "code", "details", "rule") are the
-// machine API the lint reusable's jq annotations branch on.
+// TestLintMessageViolations: a violation exits 3 with a structured stderr
+// envelope, keeping stdout pure. The envelope is DECODED, not grepped: its
+// keys are the machine API — the lint reusable's jq branches on .error and
+// .error.code and prints .error.message (reading .error.details is what
+// TestNoWorkflowRebuildsPerFindingAnnotations bans), and a details row is
+// {subject, detail}, plus sha only when the finding is a commit.
 func TestLintMessageViolations(t *testing.T) {
 	t.Chdir(testutil.NewRepo(t))
 	code, stdout, stderr := runGlyph(t, "lint", "--message", "Fix a crash without any pattern shape")
@@ -675,8 +689,8 @@ func TestLintRangeAnnotatesEachFinding(t *testing.T) {
 	testutil.Commit(t, dir, "akira-toriyama", "first without any pattern shape")
 	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji in this one")
 	t.Chdir(dir)
-	wipSHA := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD~1")[:7]
-	malformedSHA := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")[:7]
+	firstSHA := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD~1")[:7]
+	secondSHA := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")[:7]
 
 	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
 	if code != 3 {
@@ -706,20 +720,20 @@ func TestLintRangeAnnotatesEachFinding(t *testing.T) {
 			"rebuilds these, so what the binary does not write, no reviewer sees:\n%s",
 			len(annotations), stderr)
 	}
-	for _, want := range []struct{ sha, rule string }{
-		{wipSHA, "matches none"},
-		{malformedSHA, "matches none"},
+	for _, want := range []struct{ sha, detail string }{
+		{firstSHA, "matches none"},
+		{secondSHA, "matches none"},
 	} {
 		anchored := false
 		for _, a := range annotations {
-			if strings.Contains(a, want.sha) && strings.Contains(a, want.rule) {
+			if strings.Contains(a, want.sha) && strings.Contains(a, want.detail) {
 				anchored = true
 				break
 			}
 		}
 		if !anchored {
-			t.Errorf("no annotation anchors %s to commit %s — a finding without its commit "+
-				"cannot be acted on:\n%s", want.rule, want.sha, stderr)
+			t.Errorf("no annotation anchors the %q finding to commit %s — a finding without its commit "+
+				"cannot be acted on:\n%s", want.detail, want.sha, stderr)
 		}
 	}
 

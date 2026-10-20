@@ -31,10 +31,10 @@ func TestFirstLine(t *testing.T) {
 }
 
 // TestBumpRangeReturnsEveryViolation pins the accumulating walk: a range with
-// three unparsable commits is ONE red run carrying all three, each with its
-// stable rule id and fix, not three runs each revealing the next (measured:
-// `bump --range --json` returned one commit with no rule id and no details,
-// and the caller re-ran lint in a loop to find the rest). The Msg keeps the
+// two unmatched commits is ONE red run carrying both, each with its sha and
+// detail, not two runs each revealing the next (measured: `bump --range
+// --json` once answered for the first commit alone, with no details, and the
+// caller re-ran lint in a loop to find the rest). The Msg keeps the
 // exact `commit <sha>:` head the first failure always had — the walk's own
 // refusal (walk.walkRefusal) opens the same way, one shape at both gates.
 func TestBumpRangeReturnsEveryViolation(t *testing.T) {

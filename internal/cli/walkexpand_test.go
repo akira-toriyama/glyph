@@ -73,6 +73,31 @@ func recordingWalkServer(t *testing.T, routes map[string]string) (*httptest.Serv
 	return srv, &seen
 }
 
+// failingWalkServer is walkServer behind failingHandler. It serves no
+// releases surface, so a releases request from a walk-only command fails the
+// test, where failingReleaseServer would answer it.
+func failingWalkServer(t *testing.T, routes map[string]string, fail func(*http.Request) int) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(failingHandler(walkHandler(t, routes), fail))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// failingHandler answers a request with fail's status when it returns one
+// (Retry-After 0, so a retried status is retried at once) and hands every
+// other request to next.
+func failingHandler(next http.HandlerFunc, fail func(*http.Request) int) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if code := fail(r); code != 0 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(code)
+			fmt.Fprint(w, `{"message":"boom"}`)
+			return
+		}
+		next(w, r)
+	}
+}
+
 // commitPullsPath / pullCommitsPath name the two endpoints the walk touches,
 // for the akira-toriyama/glyph repository the tests query.
 func commitPullsPath(sha string) string {
@@ -273,8 +298,8 @@ func TestSinceTagBotCommitsNeverReachTheAPI(t *testing.T) {
 }
 
 // TestSinceTagRevertPRIsWalked: a revert PR squash-merges with the subject
-// `Revert "..." (#N)` — the same prefix bump.ExcludedFromClassification uses to skip raw
-// git-revert messages. On the walk that subject is a POINTER to a resolvable
+// `Revert "..." (#N)` — the prefix the presets' revert pattern claims a raw
+// git-revert message by. On the walk that subject is a POINTER to a resolvable
 // PR, not a message being classified: excluding it here would silently drop
 // the whole revert (its :rewind: inner commits drive a patch) while the
 // reverted feature still counts — a release advertising a feature that is
@@ -622,24 +647,14 @@ func TestSinceTagUnmergedAssociationFallsBack(t *testing.T) {
 func TestSinceTagAPIFailureMidWalkPassesThrough(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	sha := squashCommit(t, dir, "Add a menu", 7)
-	pullRef := `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha) + `]`
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case commitPullsPath(sha):
-			fmt.Fprint(w, pullRef)
-		case pullCommitsPath(7):
-			// Retry-After: 0 keeps the client's transient-failure retries
-			// (which a 5xx now triggers) instant, so the test stays fast while
-			// still walking the whole retry schedule before the hard fail.
-			w.Header().Set("Retry-After", "0")
-			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprint(w, `{"message":"boom"}`)
-		default:
-			t.Errorf("unexpected request %q", r.URL.Path)
-			http.NotFound(w, r)
+	srv := failingWalkServer(t, map[string]string{
+		commitPullsPath(sha): `[` + apiPullRef(7, "2026-07-12T00:00:00Z", sha) + `]`,
+	}, func(r *http.Request) int {
+		if r.URL.Path == pullCommitsPath(7) {
+			return http.StatusInternalServerError
 		}
-	}))
-	t.Cleanup(srv.Close)
+		return 0
+	})
 	usePR(t, srv)
 	t.Chdir(dir)
 

@@ -71,8 +71,9 @@ func TestCleanup(t *testing.T) {
 			name: "an INDENTED scissors line is not a cut and not a comment",
 			// git matches its cut line at column 0 only, and a line that does
 			// not start with '#' is not a comment either — so git records this
-			// whole message. Cutting here hid a footer git keeps, which is the
-			// hook refusing a commit CI accepts.
+			// whole message, and cutting here hides text git records (under
+			// v1's footer rule, the hidden NON-BREAKING: footer made the hook
+			// refuse a commit CI accepted).
 			mode: editedDefault,
 			in:   ":fire:(x) drop it\n\n  # ------------------------ >8 ------------------------\nNON-BREAKING: it was dead\n",
 			want: ":fire:(x) drop it\n\n  # ------------------------ >8 ------------------------\nNON-BREAKING: it was dead",

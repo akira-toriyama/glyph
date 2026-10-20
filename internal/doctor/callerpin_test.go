@@ -14,14 +14,14 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
-// TestCallerChecksJudgeTheCallerAtItsPin pins the ruling for both caller
-// checks: GitHub starts a caller against the reusable at the caller's @ref, so
-// a caller is judged only where this binary can speak for that release —
-// above the row's After, and for a stamped build not above its own release —
-// and every other caller is unknown, never a pass and never a fail. The first
-// two rows are the two wrong verdicts measured at adfc5e1: lint.yml@v1.0.0
-// granting exactly what v1.0.0 declares FAILED, and release.yml@v0.4.0
-// omitting the `app` v0.4.0 required PASSED.
+// TestCallerChecksJudgeTheCallerAtItsPin: GitHub starts a caller against the
+// reusable at the caller's @ref, so both caller checks judge a caller only
+// where this binary can speak for that release — above the row's After, and
+// for a stamped build not above its own release — and every other caller is
+// unknown, never a pass and never a fail. The first two rows are the two
+// wrong verdicts measured at adfc5e1: lint.yml@v1.0.0 granting exactly what
+// v1.0.0 declares FAILED, and release.yml@v0.4.0 omitting the `app` v0.4.0
+// required PASSED.
 func TestCallerChecksJudgeTheCallerAtItsPin(t *testing.T) {
 	const granted = "permissions:\n  contents: read\n  pull-requests: read"
 	lintAt := func(ref, perms string) string {
@@ -102,9 +102,9 @@ func TestCallerChecksJudgeTheCallerAtItsPin(t *testing.T) {
 			wantDetail: "not judged",
 		},
 		{
-			// The hole the review measured: a reusable this binary has
-			// no row for was skipped, and the check passed as "no workflow
-			// calls a glyph reusable … observed — not assumed".
+			// A call into a reusable this binary has no row for is
+			// unjudged, not absent: skipped, it passed the check as "no
+			// workflow calls a glyph reusable … observed — not assumed".
 			name: "a reusable this glyph does not ship is unknown, never skipped",
 			files: map[string]string{".github/workflows/n.yml": "name: n\non:\n  push:\npermissions:\n  contents: write\njobs:\n  n:\n" +
 				"    uses: akira-toriyama/glyph/.github/workflows/notes.yml@v5.0.0\n"},
@@ -150,9 +150,9 @@ func TestCallerChecksJudgeTheCallerAtItsPin(t *testing.T) {
 	}
 }
 
-// TestCallerFixNeverSendsAReaderToADoctorThatCannotJudge pins the review's
-// correction: "run the doctor of the release you pin" is a remedy only from the
-// release the check shipped in. Below it the pinned glyph has no such check —
+// TestCallerFixNeverSendsAReaderToADoctorThatCannotJudge: "run the doctor of
+// the release you pin" is a remedy only from the release the check shipped
+// in. Below it the pinned glyph has no such check —
 // v0.4.0 has no doctor at all, v1.0.0's has no caller checks — so the offer
 // appears only for a pin at or above the floor.
 func TestCallerFixNeverSendsAReaderToADoctorThatCannotJudge(t *testing.T) {

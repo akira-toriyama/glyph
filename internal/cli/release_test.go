@@ -422,10 +422,9 @@ func TestReleaseUpsertNeverTouchesForeignReleases(t *testing.T) {
 
 // TestReleaseUpsertNeverAdoptsUnparseableVDrafts closes the gap beside
 // TestReleaseUpsertNeverTouchesForeignReleases: that test's foreign drafts
-// ("nightly", "0.9.9") both fall to glyphDrafts' v-prefix arm, so its second
-// arm — bump.ParseVersion rejecting a v-prefixed tag — was reachable by no
-// test in the suite (measured: the `continue` is uncovered across every
-// package, and deleting it stays green everywhere). A draft a human named
+// ("nightly", "0.9.9") both fail bump.HouseTagOn on the missing v, so neither
+// reaches its parse — ParseVersionOn rejecting a v-prefixed tag, the other arm
+// on which draftplan.managed takes its `continue`. A draft a human named
 // vNext / v1.2 / v2026.08 wears the v but is not the house tag shape, so it
 // is not glyph's to touch: a none verdict must not DELETE it, a release
 // verdict must POST a fresh draft rather than PATCH it into glyph's, and the
@@ -735,9 +734,10 @@ func TestReleaseFooterFileMissingIsUsage(t *testing.T) {
 	}
 }
 
-// releaseVerdict decodes a --json release verdict; the struct mirrors
-// releaseResult field-for-field so a silently renamed key fails the decode
-// assertions rather than zero-filling.
+// releaseVerdict decodes a --json release verdict on the bare line: every
+// releaseResult field but Packages, whose shape releaseVerdictLines decodes,
+// so a silently renamed key fails the decode assertions rather than
+// zero-filling.
 type releaseVerdict struct {
 	Current string `json:"current"`
 	Level   string `json:"level"`
@@ -748,11 +748,10 @@ type releaseVerdict struct {
 	Action  string `json:"action"`
 	URL     string `json:"url"`
 	Commits []struct {
-		SHA      string `json:"sha"`
-		Sigil    string `json:"sigil"`
-		Level    string `json:"level"`
-		Breaking bool   `json:"breaking"`
-		Subject  string `json:"subject"`
+		SHA     string `json:"sha"`
+		Sigil   string `json:"sigil"`
+		Level   string `json:"level"`
+		Subject string `json:"subject"`
 	} `json:"commits"`
 	Pulls []struct {
 		Number  int `json:"number"`

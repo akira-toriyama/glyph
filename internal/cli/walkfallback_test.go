@@ -361,14 +361,7 @@ func TestSinceTagUnknownShaFallsBack(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash, pushed moments ago")
 	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != commitPullsPath(sha) {
-			t.Errorf("unexpected request %q", r.URL.Path)
-		}
-		w.WriteHeader(http.StatusUnprocessableEntity)
-		fmt.Fprint(w, `{"message":"No commit found for SHA: `+sha+`"}`)
-	}))
-	t.Cleanup(srv.Close)
+	srv := walkServer(t, map[string]string{commitPullsPath(sha): apiUnknownSHA})
 	usePR(t, srv)
 	t.Chdir(dir)
 

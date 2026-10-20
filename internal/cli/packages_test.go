@@ -30,25 +30,10 @@ const packagesConfig = "\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath =
 // on the commit that declared them. base is that commit.
 func packagesRepo(t *testing.T) (dir, base string) {
 	t.Helper()
-	dir = packagesRepoWith(t, packagesConfig, map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n"})
+	dir = testutil.NewPackagesRepo(t, packagesConfig, map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n"})
 	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
 	return dir, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-}
-
-// packagesRepoWith is packagesRepo's body for any [[packages]] snippet and
-// file set: the preset plus the snippet, the files, one declaring commit,
-// no tags.
-func packagesRepoWith(t *testing.T, snippet string, files map[string]string) string {
-	t.Helper()
-	dir := testutil.NewRepo(t)
-	appendTo(t, dir, "glyph.toml", snippet)
-	for rel, content := range files {
-		writeFile(t, dir, rel, content)
-	}
-	testutil.Git(t, dir, "akira-toriyama", "add", ".")
-	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
-	return dir
 }
 
 func writeFile(t *testing.T, dir, rel, content string) {
@@ -638,7 +623,7 @@ func TestLintRangePackagesJudgesTheDiff(t *testing.T) {
 // (DESIGN §4.1, t-mfny (C); measured 2026-10-05 at 135eead: exit 3 with
 // "does not touch (its files lie under travel/onsen)").
 func TestLintRangePackagesScopeIsCheckedByOwnership(t *testing.T) {
-	dir := packagesRepoWith(t, "\n[[packages]]\npath = \"travel\"\n\n[[packages]]\npath = \"travel/onsen\"\n",
+	dir := testutil.NewPackagesRepo(t, "\n[[packages]]\npath = \"travel\"\n\n[[packages]]\npath = \"travel/onsen\"\n",
 		map[string]string{"travel/t.md": "travel\n", "travel/onsen/o.md": "onsen\n"})
 	touch(t, dir, "akira-toriyama", ":bug:(travel)~ warm the water", "travel/onsen/o.md")
 	t.Chdir(dir)
@@ -716,7 +701,7 @@ func claimedMerge(t *testing.T, dir, message string) string {
 // refusal's wording (walk.Attribute): the merge sentence is read here, and
 // mutation row lint-refuses-a-merge-commit-as-touching-no-file hands it no commit.
 func TestLintRangePackagesNoFileCommitUnderARootPackage(t *testing.T) {
-	dir := packagesRepoWith(t, rootedConfig, map[string]string{"haiku/haiku.go": "package haiku\n"})
+	dir := testutil.NewPackagesRepo(t, rootedConfig, map[string]string{"haiku/haiku.go": "package haiku\n"})
 	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	empty := touch(t, dir, "akira-toriyama", ":bookmark:~ cut a release")
 	merge := claimedMerge(t, dir, ":twisted_rightwards_arrows:~ merge the side branch")
@@ -1137,7 +1122,7 @@ func TestLintRangePackagesFixedNoneIsReachedByLeavingTheSigilOut(t *testing.T) {
 // lint --range refused the shared-only ~ offering "(one of my_lib, other)",
 // and `:memo:(my_lib)~` then matched none of the patterns at every gate.
 func TestPackagesNameNoScopeCanSpellIsUsage(t *testing.T) {
-	dir := packagesRepoWith(t, "\n[[packages]]\npath = \"my_lib\"\n\n[[packages]]\npath = \"other\"\n", map[string]string{"my_lib/a.go": "package a\n", "other/b.go": "package b\n"})
+	dir := testutil.NewPackagesRepo(t, "\n[[packages]]\npath = \"my_lib\"\n\n[[packages]]\npath = \"other\"\n", map[string]string{"my_lib/a.go": "package a\n", "other/b.go": "package b\n"})
 	touch(t, dir, "akira-toriyama", ":memo:~ fix the readme", "README.md")
 	t.Chdir(dir)
 

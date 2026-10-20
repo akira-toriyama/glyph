@@ -1,12 +1,10 @@
 package cli
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/config"
 	"github.com/akira-toriyama/glyph/v5/internal/hook"
 	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
@@ -23,14 +21,7 @@ func testClone(t *testing.T) (work, remote string) {
 	work = filepath.Join(root, "work")
 	testutil.Git(t, root, "akira-toriyama", "init", "-q", "--bare", "-b", "main", remote)
 
-	seed := filepath.Join(root, "seed")
-	testutil.Git(t, root, "akira-toriyama", "init", "-q", "-b", "main", seed)
-	preset, _ := config.Preset("gemoji")
-	if err := os.WriteFile(filepath.Join(seed, "glyph.toml"), preset, 0o644); err != nil {
-		t.Fatalf("write glyph.toml: %v", err)
-	}
-	testutil.Git(t, seed, "akira-toriyama", "add", "glyph.toml")
-	testutil.Git(t, seed, "akira-toriyama", "commit", "-q", "-m", ":tada:= begin the project")
+	seed := testutil.NewRepo(t)
 	testutil.Git(t, seed, "akira-toriyama", "remote", "add", "origin", remote)
 	testutil.Git(t, seed, "akira-toriyama", "push", "-q", "origin", "main")
 

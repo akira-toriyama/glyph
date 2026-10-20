@@ -475,25 +475,19 @@ func TestReleasePackagesSecondWriteFailureLeavesTheFirst(t *testing.T) {
 	}
 }
 
-// failingReleaseServer serves the releases surface, answers a request with
-// fail's status when it returns one (Retry-After 0, so a retried status is
-// retried at once) and records every write in ORDER — the upsert-first and
-// delete-order properties the tests below lean on.
+// failingReleaseServer is releaseServer behind failingHandler, recording
+// every write in ORDER, failed ones included — the upsert-first and
+// delete-order properties release's write-failure and convergence tests
+// lean on, on the bare line and per line alike.
 func failingReleaseServer(t *testing.T, walk map[string]string, releases string, fail func(*http.Request) int, seq *[]string) *httptest.Server {
 	t.Helper()
 	var writes []apiWrite
-	inner := releaseHandler(t, walk, releases, &writes)
+	answer := failingHandler(releaseHandler(t, walk, releases, &writes), fail)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			*seq = append(*seq, r.Method+" "+r.URL.Path)
 		}
-		if code := fail(r); code != 0 {
-			w.Header().Set("Retry-After", "0")
-			w.WriteHeader(code)
-			fmt.Fprint(w, `{"message":"boom"}`)
-			return
-		}
-		inner(w, r)
+		answer(w, r)
 	}))
 	t.Cleanup(srv.Close)
 	return srv
@@ -895,9 +889,7 @@ func TestReleasePackagesURLLandsOnItsLine(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	sha := touch(t, dir, "akira-toriyama", ":sparkles:^ add a sauce", "curry/sauce.go")
 	var writes []apiWrite
-	srv := httptest.NewServer(releaseHandler(t, map[string]string{commitPullsPath(sha): `[]`}, `[]`, &writes))
-	t.Cleanup(srv.Close)
-	usePR(t, srv)
+	usePR(t, releaseServer(t, map[string]string{commitPullsPath(sha): `[]`}, `[]`, &writes))
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "release", "--json")
