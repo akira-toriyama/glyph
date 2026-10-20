@@ -118,8 +118,8 @@ func TestReleaseAtAnOlderCommitRefusesAtTheFloor(t *testing.T) {
 // (measured at adfc5e1: both lines folded none, exit 1).
 func TestPackagesFrozenCoordinateSeesItsOwnTags(t *testing.T) {
 	dir, _ := packagesRepo(t) // haiku/v0.1.0, curry/v0.1.0
-	poem := touch(t, dir, "akira-toriyama", ":sparkles:(haiku)^ a poem", "haiku/poem.go")
-	touch(t, dir, "akira-toriyama", ":bug:(curry)~ a spice", "curry/curry.go")
+	poem := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:(haiku)^ a poem", "haiku/poem.go")
+	testutil.Touch(t, dir, "akira-toriyama", ":bug:(curry)~ a spice", "curry/curry.go")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.2.0")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.1")
 	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "--detach", poem)
@@ -654,15 +654,15 @@ func TestSinceTagPackagesBelowNothingUnderTheBoundNamesTheBound(t *testing.T) {
 // <prefix>v0.0.0 at the commit before the line's first change).
 func TestSinceTagPackagesUntaggedLineWalksTheWholeHistory(t *testing.T) {
 	dir := testutil.NewRepo(t)
-	appendTo(t, dir, "glyph.toml", packagesConfig)
-	writeFile(t, dir, "haiku/haiku.go", "package haiku\n")
-	writeFile(t, dir, "curry/curry.go", "package curry\n")
+	appendTo(t, dir, "glyph.toml", testutil.PackagesSnippet)
+	testutil.WriteFile(t, dir, "haiku/haiku.go", "package haiku\n")
+	testutil.WriteFile(t, dir, "curry/curry.go", "package curry\n")
 	root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	testutil.Git(t, dir, "akira-toriyama", "add", ".")
 	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare two lines")
 	declared := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
-	sha := touch(t, dir, "akira-toriyama", ":bug:~ swap an ingredient", "curry/curry.go")
+	sha := testutil.Touch(t, dir, "akira-toriyama", ":bug:~ swap an ingredient", "curry/curry.go")
 	usePR(t, walkServer(t, map[string]string{
 		commitPullsPath(root):     `[]`,
 		commitPullsPath(declared): `[]`,

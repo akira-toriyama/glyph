@@ -15,22 +15,22 @@ import (
 // offender is named at once, the refusal outranks a later API failure, and
 // the escape the error hands the operator opens the door.
 
-// TestSinceTagResolvedPRLintNamesTheWedge pins the ratified Q1/t-2nzf error
-// contract: a commit INSIDE a resolved merged PR that fails lint (a message
-// that does not parse, or an unknown gitmoji) stays a hard exit 3 on the
-// release walk — never a silent patch — but the error must not be the bare
-// per-commit lint line: the walk found the PR itself (the caller never named
-// one), and published history is immutable, so the same failure wedges EVERY
-// future release until the range moves past the pull's MERGE POINT. The message
-// therefore names the pull request, that merge point, and the escape (a hand-cut
-// tag there, or an explicit --since-tag base naming one).
+// TestSinceTagResolvedPRLintNamesTheWedge pins the wedge's error contract
+// (DESIGN §4, Q1): a commit INSIDE a resolved merged PR whose message no
+// pattern claims (no shortcode, or a shortcode with no sigil) stays a hard
+// exit 3 on the release walk — never a silent patch — but the error must not
+// be the bare per-commit lint line: the walk found the PR itself (the caller
+// never named one), and published history is immutable, so the same failure
+// wedges EVERY future release until the range moves past the pull's MERGE
+// POINT. The message therefore names the pull request, that merge point, and
+// the escape (a hand-cut tag there, or an explicit --since-tag base naming one).
 func TestSinceTagResolvedPRLintNamesTheWedge(t *testing.T) {
 	for name, tc := range map[string]struct {
 		inner string
 		shas  []string
 	}{
-		"malformed":      {apiCommit("a1", "akira-toriyama", "no gitmoji leads this subject"), []string{"a1"}},
-		"unknown-etmoji": {apiCommit("a1", "akira-toriyama", ":notarealmoji: tweak something"), []string{"a1"}},
+		"no shortcode":              {apiCommit("a1", "akira-toriyama", "no gitmoji leads this subject"), []string{"a1"}},
+		"a shortcode with no sigil": {apiCommit("a1", "akira-toriyama", ":notarealmoji: tweak something"), []string{"a1"}},
 		"two refused inner commits, one run": {apiCommit("a1", "akira-toriyama", "no gitmoji leads this subject") + "," +
 			apiCommit("a2", "akira-toriyama", ":bug:~ a fine one between") + "," +
 			apiCommit("a3", "akira-toriyama", ":notarealmoji: tweak something"), []string{"a1", "a3"}},
@@ -104,8 +104,8 @@ func assertWedgeDetails(t *testing.T, env errEnvelope, shas ...string) {
 // the first: two offenders are one red run, not two.
 func TestSinceTagDirectPushUnmatchedNamesTheWedge(t *testing.T) {
 	for name, message := range map[string]string{
-		"malformed":      "no gitmoji leads this subject",
-		"unknown-etmoji": ":notarealmoji: tweak something",
+		"no shortcode":              "no gitmoji leads this subject",
+		"a shortcode with no sigil": ":notarealmoji: tweak something",
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir, _ := testutil.NewTaggedRepo(t)

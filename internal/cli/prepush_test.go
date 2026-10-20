@@ -235,7 +235,7 @@ func TestPrePushResolvesASpacedRemoteNameFromItsURL(t *testing.T) {
 		t.Fatalf("the URL must resolve to the remote `my fork`:\n%s", stderr)
 	}
 	// git cannot place `my fork` in a ref, so set-head is no remedy (it exits
-	// 129 unquoted, 1 quoted); renaming its section is (reviews u6-2, u6b-1).
+	// 129 unquoted, 1 quoted); renaming its section is (DESIGN §7).
 	if !strings.Contains(stderr, "`"+hook.SetHeadRemedy("my fork", false)+"` restores it") || strings.Contains(stderr, "set-head 'my fork'") {
 		t.Fatalf("the remedy for `my fork` must rename its section, never set-head it:\n%s", stderr)
 	}
@@ -291,13 +291,13 @@ func TestPrePushJudgesACommitTheRemoteHasElsewhereWhenItReachesTheDefaultBranch(
 // rewritable.
 func TestPrePushPackagesInheritsAttribution(t *testing.T) {
 	work, _ := testClone(t)
-	appendTo(t, work, "glyph.toml", packagesConfig)
-	writeFile(t, work, "haiku/haiku.go", "package haiku\n")
-	writeFile(t, work, "curry/curry.go", "package curry\n")
+	appendTo(t, work, "glyph.toml", testutil.PackagesSnippet)
+	testutil.WriteFile(t, work, "haiku/haiku.go", "package haiku\n")
+	testutil.WriteFile(t, work, "curry/curry.go", "package curry\n")
 	testutil.Git(t, work, "akira-toriyama", "add", ".")
 	testutil.Git(t, work, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare two lines")
 	testutil.Git(t, work, "akira-toriyama", "push", "-q", "origin", "main")
-	head := touch(t, work, "akira-toriyama", ":sparkles:^ add a workspace file", "go.work")
+	head := testutil.Touch(t, work, "akira-toriyama", ":sparkles:^ add a workspace file", "go.work")
 	t.Chdir(work)
 
 	setStdin(t, "refs/heads/main "+head+" refs/heads/main "+rev(t, work, "origin/main")+"\n")

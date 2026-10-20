@@ -567,8 +567,8 @@ func TestRemoteURLsKeepsASpacedRemoteName(t *testing.T) {
 }
 
 // TestRemoteCanRecordHeadAsksGit: a name git's refs refuse can record no
-// default branch, so `git remote set-head` is no remedy for it (t-3jws's
-// residue, review u6-2). A plain name can; a space or `..` cannot.
+// default branch, so `git remote set-head` is no remedy for it (DESIGN §7). A
+// plain name can; a space or `..` cannot.
 func TestRemoteCanRecordHeadAsksGit(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	for remote, want := range map[string]bool{"origin": true, "my-fork": true, "my fork": false, "mirror..x": false} {
@@ -639,13 +639,7 @@ func TestActionFilesListsWhatGitCounts(t *testing.T) {
 func writeFiles(t *testing.T, dir string, rels ...string) {
 	t.Helper()
 	for _, rel := range rels {
-		p := filepath.Join(dir, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(p, []byte(rel+"\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		testutil.WriteFile(t, dir, rel, rel+"\n")
 	}
 }
 

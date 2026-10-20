@@ -35,8 +35,8 @@ func majorRepo(t *testing.T, extra string) (dir, base string) {
 // major-subdirectory-kept-in-the-tag-prefix, line-reads-tags-of-every-major).
 func TestBumpMajorSubdirectoryLinesShareThePrefix(t *testing.T) {
 	dir, _ := majorRepo(t, "")
-	s1 := touch(t, dir, "akira-toriyama", ":bug:~ fix the v1 client", "pubsub/client.go")
-	s2 := touch(t, dir, "akira-toriyama", ":sparkles:^ add keep alive support", "pubsub/v2/keepalive.go")
+	s1 := testutil.Touch(t, dir, "akira-toriyama", ":bug:~ fix the v1 client", "pubsub/client.go")
+	s2 := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add keep alive support", "pubsub/v2/keepalive.go")
 	usePR(t, walkServer(t, map[string]string{commitPullsPath(s1): `[]`, commitPullsPath(s2): `[]`}))
 	t.Chdir(dir)
 
@@ -69,7 +69,7 @@ func TestBumpMajorSubdirectoryAloneReadsItsMajor(t *testing.T) {
 	dir := testutil.NewPackagesRepo(t, "\n[[packages]]\npath = \"pubsub/v2\"\nname = \"pubsub-v2\"\n", map[string]string{"pubsub/pubsub.go": "package pubsub\n", "pubsub/v2/pubsub.go": "package pubsub\n"})
 	testutil.Git(t, dir, "akira-toriyama", "tag", "pubsub/v1.9.1")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "pubsub/v2.7.0")
-	sha := touch(t, dir, "akira-toriyama", ":bug:~ fix the exporter", "pubsub/v2/exporter.go")
+	sha := testutil.Touch(t, dir, "akira-toriyama", ":bug:~ fix the exporter", "pubsub/v2/exporter.go")
 	usePR(t, walkServer(t, map[string]string{commitPullsPath(sha): `[]`}))
 	t.Chdir(dir)
 
@@ -86,8 +86,8 @@ func TestBumpMajorSubdirectoryAloneReadsItsMajor(t *testing.T) {
 // the v1 line's stray (mutation row line-reads-tags-of-every-major).
 func TestReleaseMajorSubdirectoryFloorAndDraftsPerMajor(t *testing.T) {
 	dir, _ := majorRepo(t, "")
-	s1 := touch(t, dir, "akira-toriyama", ":bug:~ fix the v1 client", "pubsub/client.go")
-	s2 := touch(t, dir, "akira-toriyama", ":sparkles:^ add keep alive support", "pubsub/v2/keepalive.go")
+	s1 := testutil.Touch(t, dir, "akira-toriyama", ":bug:~ fix the v1 client", "pubsub/client.go")
+	s2 := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add keep alive support", "pubsub/v2/keepalive.go")
 	var writes []apiWrite
 	releases := `[` + publishedJSON(1, "pubsub/v2.7.0") + `,` + publishedJSON(2, "pubsub/v1.9.1") + `,` + draftJSON(42, "pubsub/v2.7.1") + `]`
 	usePR(t, releaseServer(t, map[string]string{commitPullsPath(s1): `[]`, commitPullsPath(s2): `[]`}, releases, &writes))
@@ -124,7 +124,7 @@ func TestLockedLineRefusesAMajorStep(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir, _ := majorRepo(t, "")
-			sha := touch(t, dir, "akira-toriyama", ":boom:! drop the old API", tc.path)
+			sha := testutil.Touch(t, dir, "akira-toriyama", ":boom:! drop the old API", tc.path)
 			usePR(t, walkServer(t, map[string]string{commitPullsPath(sha): `[]`}))
 			t.Chdir(dir)
 
@@ -137,7 +137,7 @@ func TestLockedLineRefusesAMajorStep(t *testing.T) {
 	t.Run("control: no locked sibling, the free line steps its major", func(t *testing.T) {
 		dir := testutil.NewPackagesRepo(t, "\n[[packages]]\npath = \"pubsub\"\n", map[string]string{"pubsub/pubsub.go": "package pubsub\n"})
 		testutil.Git(t, dir, "akira-toriyama", "tag", "pubsub/v1.9.1")
-		sha := touch(t, dir, "akira-toriyama", ":boom:! drop the old API", "pubsub/breaking.go")
+		sha := testutil.Touch(t, dir, "akira-toriyama", ":boom:! drop the old API", "pubsub/breaking.go")
 		usePR(t, walkServer(t, map[string]string{commitPullsPath(sha): `[]`}))
 		t.Chdir(dir)
 
@@ -165,7 +165,7 @@ func TestLockedLineRefusesAMajorStep(t *testing.T) {
 // below its major — and the untagged remedy names that tag.
 func TestLockedLineFirstReleaseIsItsMajor(t *testing.T) {
 	dir, _ := majorRepo(t, "\n[[packages]]\npath = \"pubsub/v3\"\nname = \"pubsub-v3\"\n")
-	touch(t, dir, "akira-toriyama", ":bug:~ start the v3 client", "pubsub/v3/client.go")
+	testutil.Touch(t, dir, "akira-toriyama", ":bug:~ start the v3 client", "pubsub/v3/client.go")
 	// An untagged line walks the whole history, so every commit is asked about.
 	routes := map[string]string{}
 	for sha := range strings.FieldsSeq(testutil.Git(t, dir, "akira-toriyama", "rev-list", "HEAD")) {
@@ -189,8 +189,8 @@ func TestLockedLineFirstReleaseIsItsMajor(t *testing.T) {
 // line's major is the caller's mistake (2).
 func TestSinceTagSelectsTheLineByMajor(t *testing.T) {
 	dir, _ := majorRepo(t, "")
-	s1 := touch(t, dir, "akira-toriyama", ":bug:~ fix the v1 client", "pubsub/client.go")
-	s2 := touch(t, dir, "akira-toriyama", ":sparkles:^ add keep alive support", "pubsub/v2/keepalive.go")
+	s1 := testutil.Touch(t, dir, "akira-toriyama", ":bug:~ fix the v1 client", "pubsub/client.go")
+	s2 := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add keep alive support", "pubsub/v2/keepalive.go")
 	usePR(t, walkServer(t, map[string]string{commitPullsPath(s1): `[]`, commitPullsPath(s2): `[]`}))
 	t.Chdir(dir)
 

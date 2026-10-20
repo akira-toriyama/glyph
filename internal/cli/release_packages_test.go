@@ -134,7 +134,7 @@ func TestReleasePackagesCurrentOverTwoLinesIsUsage(t *testing.T) {
 }
 
 // TestReleasePackagesRealRunNoticeNamesTheTarget is the packages arm of
-// TestReleaseRealRunNoticeNamesTheTarget (t-wzr5): every line's draft points
+// TestReleaseRealRunNoticeNamesTheTarget: every line's draft points
 // at the one target, and each line's notice names it, as the dry run's
 // per-line notice always did.
 func TestReleasePackagesRealRunNoticeNamesTheTarget(t *testing.T) {
@@ -211,7 +211,7 @@ func TestReleasePackagesUpdatesEachLinesOwnDraft(t *testing.T) {
 // stray.
 func TestReleasePackagesNoneLineConvergesOnlyItsOwnDraft(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	sha := touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
+	sha := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
 	var writes []apiWrite
 	releases := `[` + draftJSON(51, "curry/v0.1.1") + `,` + draftJSON(52, "fish/v1.0.0") + `]`
 	usePR(t, releaseServer(t, map[string]string{commitPullsPath(sha): `[]`}, releases, &writes))
@@ -273,7 +273,7 @@ func TestReleasePackagesBareResidueIsDeletedWithNotice(t *testing.T) {
 	})
 	t.Run("a root package adopts it", func(t *testing.T) {
 		dir, declared := packagesRepoWithRoot(t)
-		sha := touch(t, dir, "akira-toriyama", ":bug:~ fix the workspace", "go.work")
+		sha := testutil.Touch(t, dir, "akira-toriyama", ":bug:~ fix the workspace", "go.work")
 		var writes []apiWrite
 		usePR(t, releaseServer(t, map[string]string{commitPullsPath(sha): `[]`, commitPullsPath(declared): `[]`}, `[`+draftJSON(62, "v0.9.0")+`]`, &writes))
 		t.Chdir(dir)
@@ -405,7 +405,7 @@ func packagesRepoWithRoot(t *testing.T) (dir, declared string) {
 // HEAD here, on the real run and the dry run alike).
 func TestReleasePackagesAllNoneExitsOne(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	sha := touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
+	sha := testutil.Touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
 	var writes []apiWrite
 	usePR(t, releaseServer(t, map[string]string{commitPullsPath(sha): `[]`}, `[`+draftJSON(71, "haiku/v0.2.0")+`]`, &writes))
 	t.Chdir(dir)
@@ -439,25 +439,23 @@ func TestReleasePackagesAllNoneExitsOne(t *testing.T) {
 // (§4's write-first, extended): every line's upsert lands before any stray
 // goes, and a write that fails on the second line exits 4 with the first
 // line's draft standing and NO stray deleted — nothing destroyed, the next
-// run heals the rest (mutation row release-packages-strays-go-before-the-upserts).
+// run heals the rest (mutation row release-packages-strays-go-despite-a-failed-upsert).
 func TestReleasePackagesSecondWriteFailureLeavesTheFirst(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	_, routes := squashAcrossLines(t, dir, 7)
 	var writes []apiWrite
-	inner := releaseHandler(t, routes, `[`+draftJSON(81, "v0.9.0")+`]`, &writes)
 	posts := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			posts++
-			if posts >= 2 {
-				// 422 is not retried, so the failure is immediate rather than
-				// the end of the retry schedule.
-				w.WriteHeader(http.StatusUnprocessableEntity)
-				fmt.Fprint(w, `{"message":"boom"}`)
-				return
-			}
+	srv := httptest.NewServer(failingHandler(releaseHandler(t, routes, `[`+draftJSON(81, "v0.9.0")+`]`, &writes), func(r *http.Request) int {
+		if r.Method != http.MethodPost {
+			return 0
 		}
-		inner(w, r)
+		posts++
+		if posts < 2 {
+			return 0
+		}
+		// 422 is not retried, so the failure is immediate rather than the end
+		// of the retry schedule.
+		return http.StatusUnprocessableEntity
 	}))
 	t.Cleanup(srv.Close)
 	usePR(t, srv)
@@ -508,13 +506,13 @@ func deleteFailureServer(t *testing.T, walk map[string]string, releases string, 
 // linesQuiet lands a shared-only = (every line none).
 func haikuMoves(t *testing.T, dir string) map[string]string {
 	t.Helper()
-	sha := touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
+	sha := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
 	return map[string]string{commitPullsPath(sha): `[]`}
 }
 
 func linesQuiet(t *testing.T, dir string) map[string]string {
 	t.Helper()
-	sha := touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
+	sha := testutil.Touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
 	return map[string]string{commitPullsPath(sha): `[]`}
 }
 
@@ -784,7 +782,7 @@ func TestReleasePackagesACandidateTagConvergesOneLineAlone(t *testing.T) {
 func TestReleasePackagesExcludedAuthorBumpStaysOnItsLine(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	_, routes := squashAcrossLines(t, dir, 7)
-	touch(t, dir, "dependabot[bot]", ":arrow_up:(haiku)~ bump a haiku-only dependency", "haiku/poem.go")
+	testutil.Touch(t, dir, "dependabot[bot]", ":arrow_up:(haiku)~ bump a haiku-only dependency", "haiku/poem.go")
 	var writes []apiWrite
 	usePR(t, releaseServer(t, routes, `[]`, &writes))
 	t.Chdir(dir)
@@ -851,7 +849,7 @@ func TestReleasePackagesDryRunGolden(t *testing.T) {
 // the placeholders point at.
 func TestReleasePackagesDraftOnNoneMaintainsAPlaceholderPerLine(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	sha := touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
+	sha := testutil.Touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
 	t.Chdir(dir)
 	enableDraftOnNone(t)
 	var writes []apiWrite
@@ -887,7 +885,7 @@ func TestReleasePackagesDraftOnNoneMaintainsAPlaceholderPerLine(t *testing.T) {
 // release-packages-url-lands-on-the-write-count).
 func TestReleasePackagesURLLandsOnItsLine(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	sha := touch(t, dir, "akira-toriyama", ":sparkles:^ add a sauce", "curry/sauce.go")
+	sha := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a sauce", "curry/sauce.go")
 	var writes []apiWrite
 	usePR(t, releaseServer(t, map[string]string{commitPullsPath(sha): `[]`}, `[]`, &writes))
 	t.Chdir(dir)

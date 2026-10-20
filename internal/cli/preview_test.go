@@ -543,7 +543,7 @@ func TestPreviewReadsTheRepoItIsGiven(t *testing.T) {
 		}},
 		{"lines: the listing, the files and the walk", func(t *testing.T) (string, map[string]string, []string) {
 			dir, _ := packagesRepo(t)
-			merged := touch(t, dir, "akira-toriyama", ":sparkles:^ add an ingredient", "curry/curry.go")
+			merged := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add an ingredient", "curry/curry.go")
 			routes := crossLinePull(9)
 			routes[commitPullsPath(merged)] = `[]`
 			return dir, routes, []string{pullCommitsPath(9), commitFilesPath("h1"), commitFilesPath("c1"), commitFilesPath("s1"), commitPullsPath(merged)}

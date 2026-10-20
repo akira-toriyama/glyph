@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -17,9 +16,9 @@ import (
 // from a commit's own message, what is dropped, and what is warned about.
 
 // TestSinceTagRawRevertDirectPushIsAPatch: a raw `git revert` pushed straight
-// to main has no PR to resolve; on the fallback path the generated-subject
-// exclusion applies exactly as it does on --range — skipped silently, never a
-// violation and never a warning.
+// to main has no PR to resolve, so the fallback reads its own message — and
+// says so in a ::warning:: — and the presets' raw-revert pattern makes it a
+// patch through its fixed semver_sigil (DESIGN §2).
 func TestSinceTagRawRevertDirectPushIsAPatch(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", `Revert ":bug:~ fix a crash"`)
@@ -43,8 +42,8 @@ func TestSinceTagRawRevertDirectPushIsAPatch(t *testing.T) {
 }
 
 // TestSinceTagUnresolvableMergePointIsWarnedNotExpanded is the other half of the
-// t-7zt7 silence, found by review on the very path the fix claims to handle: the
-// branch commits of a merge-merged pull request resolve as COVERED (they name
+// t-7zt7 silence, on the very path the fix claims to handle: the branch
+// commits of a merge-merged pull request resolve as COVERED (they name
 // the pull, but its merge_commit_sha is the merge commit, not them), so they
 // skip themselves in favour of the merge point — and then the merge point does
 // not resolve. A release job runs seconds after the merge, so GitHub routinely
@@ -103,9 +102,9 @@ func TestSinceTagUnresolvableMergePointIsWarnedNotExpanded(t *testing.T) {
 // TestSinceTagUnresolvedPullIsNeverFoldedFromItsListing pins WHY the warning
 // above is warning-only. Folding the pull's listing there looks like a rescue
 // and is a guess: the listing is the pull's entire history, and the walk's range
-// is a git fact no listing carries. Two reviewers broke that guess independently,
-// and each shape gets a subtest here — in both, pulls/7/commits is deliberately
-// absent from the routes, so a walk that folds the pull fails the test outright.
+// is a git fact no listing carries. Each shape that breaks the guess gets a
+// subtest here — in both, pulls/7/commits is deliberately absent from the
+// routes, so a walk that folds the pull fails the test outright.
 //
 //   - rebase-merged: GitHub's listing reports the ORIGINAL pre-rebase SHAs,
 //     which can never equal the main-branch SHAs the walk-wide set holds, so the
@@ -309,13 +308,13 @@ func TestSinceTagFallbackSharesShaWithAnExpandedPR(t *testing.T) {
 func TestSinceTagAllCommitsUnknownWarnsAboutTheRepo(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	fix := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document it")
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnprocessableEntity)
-		fmt.Fprint(w, `{"message":"No commit found for SHA"}`)
+	doc := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	usePR(t, walkServer(t, map[string]string{
+		commitPullsPath(fix): apiUnknownSHA,
+		commitPullsPath(doc): apiUnknownSHA,
 	}))
-	t.Cleanup(srv.Close)
-	usePR(t, srv)
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "bump", "--since-tag")
@@ -449,8 +448,8 @@ func TestNotesSinceTagUnknownBreakingFallbackHoists(t *testing.T) {
 // that one subject instead of the pull's commits: a :sparkles:+:bug:~ pull titled
 // :bug:~ reads minor live and patch dark.
 //
-// This is the sentence that shipped false twice, so it owns a test rather than a
-// paragraph. Do NOT golden doctor's prose to pin it — pin the walk it describes.
+// Do NOT golden doctor's prose to pin what squash buys — pin the walk it
+// describes.
 func TestSinceTagSquashMultiCommitDivergesWhenAPIDark(t *testing.T) {
 	for name, tc := range map[string]struct {
 		dark bool
@@ -563,9 +562,9 @@ func TestSinceTagMergeCommitReproducesVerdictWhenFullyDark(t *testing.T) {
 // walk's lag fallback — 422, github.IsCommitUnknown, the sha GitHub has not
 // indexed yet. A 403 rate limit, a 404, a 429 and a 5xx that outlives the retry schedule
 // all leave walkSince as errors and exit 4: glyph observed nothing, so it
-// classifies nothing. Retry-After: 0 keeps the retryable arms instant (the same
-// device TestSinceTagAPIFailureMidWalkPassesThrough uses) — the schedule's
-// LENGTH is internal/github's business, its OUTCOME is this test's.
+// classifies nothing. failingHandler's Retry-After: 0 keeps the retryable arms
+// instant — the schedule's LENGTH is internal/github's business, its OUTCOME is
+// this test's.
 func TestSinceTagFallbackOnlyOnUnknownCommit(t *testing.T) {
 	for name, status := range map[string]int{
 		"403 rate limit":                   http.StatusForbidden,
@@ -576,13 +575,7 @@ func TestSinceTagFallbackOnlyOnUnknownCommit(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir, _ := testutil.NewTaggedRepo(t)
 			squashCommit(t, dir, "Fix a crash", 8)
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Retry-After", "0")
-				w.WriteHeader(status)
-				fmt.Fprintf(w, `{"message":"synthetic %d"}`, status)
-			}))
-			t.Cleanup(srv.Close)
-			usePR(t, srv)
+			usePR(t, failingWalkServer(t, nil, func(*http.Request) int { return status }))
 			t.Chdir(dir)
 
 			code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.0")

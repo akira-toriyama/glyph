@@ -273,8 +273,8 @@ func TestDoctorJSONShape(t *testing.T) {
 // $GITHUB_REPOSITORY names another repository, so only the repo field can
 // name the one the stand-in answers; and the JSON run is followed by a human
 // one, because a package-state regression of --json would pass the JSON half
-// alone whenever an earlier test's --json run left the state set (measured
-// in review: TestDoctorJSONShape runs first in this file).
+// alone whenever an earlier test's --json run left the state set
+// (TestDoctorJSONShape, earlier in this file, is such a run).
 func TestDoctorRunsFromOptionsWithoutCobra(t *testing.T) {
 	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 	useDoctorCheckout(t, pinnedCaller)
@@ -547,7 +547,7 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 			t.Errorf("the advice must name the remote `my fork`, got %s: %s", c.Status, c.Observed)
 		}
 		// git cannot place `my fork` in a ref: set-head exits 129 unquoted and
-		// 1 quoted, so the fix renames its section (reviews u6-2, u6b-1).
+		// 1 quoted, so the fix renames its section (DESIGN §7).
 		if c.Fix != hook.SetHeadRemedy("my fork", false) {
 			t.Errorf("the fix for `my fork` must rename its section, got %q", c.Fix)
 		}
@@ -882,13 +882,7 @@ func TestDoctorUnreportedSettingsAreUnknownNotFalse(t *testing.T) {
 // question), the settings checks report could-not-run pointing at it, and the
 // purely local pin check still answers.
 func TestDoctorTokenFailureDoesNotAbortTheReport(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprint(w, `{"message":"Not Found"}`)
-	}))
-	t.Cleanup(srv.Close)
-	usePR(t, srv)
-	useDoctorCheckout(t, pinnedCaller)
+	failingAPI(t, http.StatusNotFound, `{"message":"Not Found"}`)
 
 	code, stdout, _ := runGlyph(t, "doctor", "--json")
 	var rep doctorReport
@@ -922,10 +916,10 @@ func failingAPI(t *testing.T, status int, body string) {
 		// Retry-After: 0 is a timing knob, not a claim about GitHub's wire
 		// shape: a real primary-rate-limit 403 (this body) carries no such
 		// header, and github.go reserves a header-bearing 403 for the
-		// secondary-limit path. Without it the retryable statuses here fall
-		// back to the 1s/4s/16s default schedule, twice per doctor run — 42 of
-		// this package's 69 test seconds were that sleep. Header honouring is
-		// itself pinned by internal/github/retry_test.go.
+		// secondary-limit path. Without it a retryable status here walks the
+		// 1s/4s/16s default schedule — four requests and 21s of sleep per
+		// doctor run (measured 2026-10-21). Header honouring is itself pinned
+		// by internal/github/retry_test.go.
 		w.Header().Set("Retry-After", "0")
 		w.WriteHeader(status)
 		fmt.Fprint(w, body)
@@ -984,15 +978,15 @@ func TestDoctorUnansweredAPIIsCouldNotRunNotAViolation(t *testing.T) {
 
 // cancelOnceAsked returns a context cancelled once the fake git has touched
 // asked — the read under test is in flight — and a check, called after the
-// run, that fails the test unless it was. Without that check the tests were
-// vacuous under load: the safety net used to fire after 4s, so on a machine
-// slow enough that the API read was still in flight then, the cancel landed
-// there, the rerr half of the guard carried 130 out, and a mutation dropping
-// the read under test passed (measured on 934288b at load average 33-38: three
-// of the six doctor interrupt rows survived, a different three each run, and a
-// fake API answering after 5s turned the top-level row's test green over the
-// mutated tree with the fake git never reached). The net is now 25s, under the
-// fakes' 30s sleep, so it only bounds a run that never reaches the read.
+// run, that fails the test unless it was. Without that check a cancel that
+// lands elsewhere passes: on a loaded machine the API read can still be in
+// flight when the safety net fires, the rerr half of the guard carries 130
+// out, and a mutation dropping the read under test survives (measured on
+// 934288b at load average 33-38 with a 4s net: three of the six doctor
+// interrupt rows survived, a different three each run, and a fake API
+// answering after 5s turned the top-level row's test green over the mutated
+// tree with the fake git never reached). The net is 25s, under the fakes' 30s
+// sleep, so it bounds only a run that never reaches the read.
 func cancelOnceAsked(t *testing.T, asked string) (context.Context, func(read string)) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1185,20 +1179,21 @@ func TestDoctorInterruptDuringRemoteHeadsReadCarriesOut(t *testing.T) {
 // (GitHub runs it as `uses: ./tools/installer`) fails the pin check, and a
 // composite inside a submodule checked out under .github/actions — which the
 // filesystem walk caught and a listing without --recurse-submodules missed
-// (D2b review, measured) — fails it too. An action file under an ignored
-// directory is not the repository's, and is not read.
+// (DESIGN §7; mutation row action-files-skip-submodules) — fails it too. An
+// action file under an ignored directory is not the repository's, and is not
+// read.
 func TestDoctorPinScanReadsEveryActionFileGitLists(t *testing.T) {
 	const moving = "runs:\n  using: composite\n  steps:\n    - uses: akira-toriyama/glyph/.github/actions/install@main\n"
 	sub := testutil.NewRepo(t)
-	writeFile(t, sub, "inst/action.yml", moving)
+	testutil.WriteFile(t, sub, "inst/action.yml", moving)
 	testutil.Git(t, sub, "akira-toriyama", "add", "-A")
 	testutil.Git(t, sub, "akira-toriyama", "commit", "-q", "-m", ":tada:= a shared composite")
 
 	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 	useDoctorCheckout(t, pinnedCaller)
-	writeFile(t, ".", "tools/installer/action.yml", moving)
-	writeFile(t, ".", ".gitignore", "vendor/\n")
-	writeFile(t, ".", "vendor/dep/action.yml", moving)
+	testutil.WriteFile(t, ".", "tools/installer/action.yml", moving)
+	testutil.WriteFile(t, ".", ".gitignore", "vendor/\n")
+	testutil.WriteFile(t, ".", "vendor/dep/action.yml", moving)
 	testutil.Git(t, ".", "akira-toriyama", "-c", "protocol.file.allow=always", "submodule", "--quiet", "add", sub, ".github/actions/shared")
 
 	code, stdout, stderr := runGlyph(t, "doctor", "--json")
@@ -1229,14 +1224,14 @@ func TestDoctorPinScanReadsEveryActionFileGitLists(t *testing.T) {
 func TestDoctorPackagePathsAgreeWithAttribution(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	appendTo(t, dir, "glyph.toml", "\n[[packages]]\npath = \"Haiku\"\nname = \"haiku\"\n\n[[packages]]\npath = \"currylink\"\n")
-	writeFile(t, dir, "haiku/haiku.go", "package haiku\n")
+	testutil.WriteFile(t, dir, "haiku/haiku.go", "package haiku\n")
 	if err := os.Symlink("haiku", filepath.Join(dir, "currylink")); err != nil {
 		t.Fatal(err)
 	}
 	testutil.Git(t, dir, "akira-toriyama", "add", ".")
 	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
 	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
+	testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")

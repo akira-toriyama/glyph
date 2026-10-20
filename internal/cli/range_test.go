@@ -46,7 +46,7 @@ func TestBumpRangeReturnsEveryViolation(t *testing.T) {
 
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD", "--json")
 	if code != 3 {
-		t.Fatalf("bump over unparsable commits exited %d, want 3\nstderr: %s", code, stderr)
+		t.Fatalf("bump over unmatched commits exited %d, want 3\nstderr: %s", code, stderr)
 	}
 	if stdout != "" {
 		t.Fatalf("a refused range wrote a payload: %q", stdout)
@@ -75,19 +75,19 @@ func TestBumpRangeReturnsEveryViolation(t *testing.T) {
 	}
 }
 
-// TestBumpRangeStaysLenientAboutAuthoringRules is the control that keeps the
-// accumulation from quietly strictening the walk — glyph has no taste: a subject
-// the pattern claims folds whatever its capitalization or punctuation; only a
-// message NO pattern claims refuses the range.
-func TestBumpRangeStaysLenientAboutAuthoringRules(t *testing.T) {
+// TestBumpRangeHasNoTaste is the control that keeps the accumulation from
+// quietly strictening the walk — glyph has no taste: a subject the pattern
+// claims folds whatever its capitalization or punctuation; only a message NO
+// pattern claims refuses the range.
+func TestBumpRangeHasNoTaste(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ Fix The Crash.")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")
 	if code != 0 {
-		t.Fatalf("bump over a parsing-but-unlinted commit exited %d, want 0 — the walk judging "+
-			"authoring rules is the strictening §2 ratified against\nstderr: %s", code, stderr)
+		t.Fatalf("bump over a claimed subject with capitals and a period exited %d, want 0 — "+
+			"glyph has no taste (DESIGN §2)\nstderr: %s", code, stderr)
 	}
 	if stdout != "v0.1.1\n" {
 		t.Fatalf("stdout = %q, want v0.1.1 — the commit classifies as the patch it is", stdout)
