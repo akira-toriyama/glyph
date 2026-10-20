@@ -1,0 +1,13 @@
+diff --git a/internal/hook/hook.go b/internal/hook/hook.go
+index 22382c7..2e9b01d 100644
+--- a/internal/hook/hook.go
++++ b/internal/hook/hook.go
+@@ -276,7 +276,7 @@ func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
+ 	if mkErr := os.MkdirAll(hooksDir, 0o755); mkErr != nil { //nolint:gosec // git requires a traversable hooks dir
+ 		// MkdirAll names the directory it failed on, an ancestor when one is
+ 		// missing and cannot be made: only then is the hooks directory named too.
+-		if pe, ok := errors.AsType[*fs.PathError](mkErr); ok && pe.Path != hooksDir {
++		if pe, ok := errors.AsType[*fs.PathError](mkErr); ok && pe.Path != hooksDir && false {
+ 			return Report{}, core.APIf("%v — so the hooks directory %s could not be created", mkErr, hooksDir)
+ 		}
+ 		return Report{}, core.APIf("%v — the hooks directory could not be created", mkErr)

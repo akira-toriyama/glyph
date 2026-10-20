@@ -129,6 +129,9 @@ func TestCommitMsgHookUnreadableIsUnknown(t *testing.T) {
 	if c.Status != StatusUnknown {
 		t.Errorf("an unreadable hook is %s, want unknown: %s", c.Status, c.Observed)
 	}
+	if n := strings.Count(c.Observed, path); n != 1 {
+		t.Errorf("observed %q names the hook's path %d times, want once — the read error already carries it", c.Observed, n)
+	}
 }
 
 // TestDiffSummaryNamesAPrefixRatherThanALine covers the shape that parts

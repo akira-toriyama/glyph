@@ -732,6 +732,9 @@ func TestReleaseFooterFileMissingIsUsage(t *testing.T) {
 	if !strings.Contains(stderr, "footer-file") || !strings.Contains(stderr, "/nonexistent/install.md") {
 		t.Errorf("the error should name the flag and the path it could not read:\n%s", stderr)
 	}
+	if env := decodeErrorEnvelope(t, stderr); strings.Count(env.Message, "/nonexistent/install.md") != 1 {
+		t.Errorf("the refusal must name the path once — the read error already carries it: %q", env.Message)
+	}
 }
 
 // releaseVerdict decodes a --json release verdict on the bare line: every

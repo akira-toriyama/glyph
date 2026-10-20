@@ -90,7 +90,7 @@ func checkCallerPermissions(root string, rootVerified bool, glyph string) Check 
 			// concrete, not whether a grant covers a reusable, and skipping the
 			// file here turned chmod 000 on a failing caller into this check's
 			// "nothing to judge" pass (t-fdd8 (3)).
-			unreadable = append(unreadable, fmt.Sprintf("%s could not be read: %v", path, rerr))
+			unreadable = append(unreadable, fmt.Sprintf("a caller workflow could not be read: %v", rerr))
 			continue
 		}
 		calls := reusablesCalled(name, string(body))
@@ -184,7 +184,7 @@ func listWorkflows(root string, rootVerified bool, c *Check, consequence string)
 	entries, err := os.ReadDir(dir)
 	if err != nil && (!rootVerified || !errors.Is(err, fs.ErrNotExist)) {
 		c.Status = StatusUnknown
-		c.Observed = fmt.Sprintf("%s could not be listed: %v", dir, err)
+		c.Observed = fmt.Sprintf("the workflows directory could not be listed: %v", err)
 		c.Message = "doctor reads the LOCAL checkout for this check, so it must run from the repository root. " + consequence
 		c.Fix = "re-run from the repository root (cd into the checkout)"
 		return nil, true

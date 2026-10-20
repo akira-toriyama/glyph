@@ -102,7 +102,7 @@ func runInit(ctx context.Context, o initOptions) error {
 		return core.APIf("%v — init could not tell what is there, so it wrote nothing", serr)
 	}
 	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return core.APIf("writing %s: %v", path, err)
+		return core.APIf("%v — glyph init could not write the preset", err)
 	}
 	fmt.Fprintf(out, "wrote %s (%s preset)\n", path, o.preset)
 	return nil

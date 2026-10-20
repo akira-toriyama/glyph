@@ -195,6 +195,30 @@ func TestInitOverALinkItMayNotFollowIsTheNoAnswerCode(t *testing.T) {
 	}
 }
 
+// TestInitNamesAnUnwritablePathOnce: a write the filesystem refuses hands its
+// *fs.PathError over as it is — it already names the operation and the path —
+// behind what did not happen, at exit 4 (DESIGN §5).
+func TestInitNamesAnUnwritablePathOnce(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, where a read-only directory does not stop the write")
+	}
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatalf("staging the refused write: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	code, stdout, stderr := runGlyph(t, "init", "--gemoji")
+	if code != int(core.CodeAPI) {
+		t.Fatalf("init into a read-only directory exited %d, want exactly %d\nstdout: %s\nstderr: %s", code, core.CodeAPI, stdout, stderr)
+	}
+	env := decodeErrorEnvelope(t, stderr)
+	if n := strings.Count(env.Message, "glyph.toml"); n != 1 || !strings.Contains(env.Message, "permission denied") {
+		t.Errorf("the refusal must name the refused write with the path once, got %q (the path %d times)", env.Message, n)
+	}
+}
+
 func TestInitFlagGrammar(t *testing.T) {
 	t.Chdir(t.TempDir())
 	code, _, stderr := runGlyph(t, "init")

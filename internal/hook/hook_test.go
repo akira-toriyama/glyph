@@ -386,3 +386,64 @@ func TestSetHeadRemedyRunsPasted(t *testing.T) {
 		})
 	}
 }
+
+// TestInstallNamesARefusedPathOnce: a read or a write the filesystem refuses
+// hands its *fs.PathError over as it is — it already names the operation and
+// the path — behind what did not happen, as a no-answer refusal (DESIGN §5).
+func TestInstallNamesARefusedPathOnce(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, where file modes do not stop a read or a write")
+	}
+	check := func(t *testing.T, err error, path string) {
+		t.Helper()
+		var ce *core.Error
+		if !errors.As(err, &ce) || ce.Code != core.CodeAPI {
+			t.Fatalf("Install = %v, want a no-answer refusal (code %d)", err, core.CodeAPI)
+		}
+		if n := strings.Count(err.Error(), path); n != 1 || !strings.Contains(err.Error(), "permission denied") {
+			t.Errorf("Install = %q, want the refusal naming %s once (got %d)", err, path, n)
+		}
+	}
+	t.Run("an unreadable hook", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "commit-msg")
+		if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o000); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Install(dir, false, Kinds()[0])
+		check(t, err, path)
+	})
+	t.Run("an unwritable hooks directory", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.Chmod(dir, 0o500); err != nil {
+			t.Fatalf("staging the refused write: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+		_, err := Install(dir, false, Kinds()[0])
+		check(t, err, filepath.Join(dir, "commit-msg"))
+	})
+	t.Run("an uncreatable hooks directory", func(t *testing.T) {
+		parent := t.TempDir()
+		if err := os.Chmod(parent, 0o500); err != nil {
+			t.Fatalf("staging the refused mkdir: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(parent, 0o700) })
+		hooksDir := filepath.Join(parent, "hooks")
+		_, err := Install(hooksDir, false, Kinds()[0])
+		check(t, err, hooksDir)
+	})
+	t.Run("a hooks directory under an ancestor that cannot be made", func(t *testing.T) {
+		parent := t.TempDir()
+		if err := os.Chmod(parent, 0o500); err != nil {
+			t.Fatalf("staging the refused mkdir: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(parent, 0o700) })
+		ancestor := filepath.Join(parent, "a")
+		hooksDir := filepath.Join(ancestor, "hooks")
+		_, err := Install(hooksDir, false, Kinds()[0])
+		check(t, err, hooksDir)
+		if !strings.Contains(err.Error(), "mkdir "+ancestor+":") {
+			t.Errorf("Install = %q, want the ancestor's refused mkdir beside the hooks directory", err)
+		}
+	})
+}
