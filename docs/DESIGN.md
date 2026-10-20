@@ -116,11 +116,11 @@ pattern says it means:
     own pattern a preset carries only messages git writes — the raw revert,
     merges, the autosquash artifacts and `amend!` — and the two presets are
     one grammar over two prefix vocabularies: what `init` writes differs
-    only in the header and `style` label, the vocabulary note, the
-    template's form line, the first pattern's comment and regex, and the
-    `amend!` body regex that mirrors it. `TestPresetsDifferOnlyInThePrefix`
-    holds every other byte equal, the first pattern's other keys included,
-    and `TestPresetsShareOneGrammar` holds by sample what the masked lines
+    only in the header, the vocabulary note, the template's form line, the
+    first pattern's comment and regex, and the `amend!` body regex that
+    mirrors it. `TestPresetsDifferOnlyInThePrefix` holds every other byte
+    equal, the first pattern's other keys included, and
+    `TestPresetsShareOneGrammar` holds by sample what the masked lines
     share: every sigil over each scope shape the class admits, in the
     grammar and in the `amend!` body, the whole-line subject, the
     sigil-less refusal and the footer read as prose (mutation rows
@@ -420,6 +420,32 @@ pattern says it means:
   "see glyph.toml", while the window warning then sitting next to it already
   spelled the line). The template stays unparsed: glyph quotes it, it does not interpret a
   placeholder, and a file with no `[commit]` block gets the bare pointer.
+- **`[commit]` carries only `template`** (t-85y9; ruled 2026-10-06 in epic
+  e-13fj, a major). The `style` label every preset wrote beside it through
+  v5.0.0 (`"gemoji"`, `"conventional"`) left the schema and both presets
+  because nothing ever read it: at every tag from v3.0.0 to v5.0.0 its only
+  mentions in non-test Go code are the two struct fields it decoded into, and
+  v5.0.0 built from its tag lints alike with the line deleted from the gemoji
+  preset — 0 on a valid subject, 3 on a violation (both measured 2026-10-21,
+  `git grep` over the tags and `lint --stdin` in a throwaway repository). It
+  named a grammar the patterns alone decide. Nothing stands in for it — no
+  special-case message, no shim, no schema bump: `schema = 1` stays, because
+  no key a valid file needs changed its meaning. The strict loader refuses
+  `commit.style` as it refuses every key the schema does not declare, by the
+  path go-toml reports for it (a key inside an inline table comes without its
+  parent; the quoted context below the line still marks where it sits), under
+  a hint that names no direction (`a typo, or written for another glyph
+  version`) — a key a newer glyph introduced and one an older glyph wrote
+  reach the same refusal. A file that still has the line does not
+  load: every verdict command exits 2 naming the key, and `doctor`'s
+  `glyph-toml-loads` fails at 3 with the same error. Deleting the line is the
+  whole migration, and it precedes the pin: a repository's file drops it
+  before its pin moves to this major (t-85y9). Tests
+  `TestLoadRefusesTheRemovedCommitStyle`,
+  `TestLintCannotLoadAConfigStillCarryingCommitStyle` and
+  `TestDoctorFailsAConfigStillCarryingCommitStyle`; mutation rows
+  `config-still-takes-the-removed-style-key.patch` and
+  `config-unknown-key-hint-guesses-newer.patch`.
 - **A captured group is the author's text, and it renders as prose — the
   scope included** (ruled 2026-09-29, t-0j9r). `notes.renderLine` hands every
   placeholder but `$author` to `markdown.Line.Prose`: the value is flattened

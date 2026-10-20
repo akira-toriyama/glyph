@@ -1,0 +1,20 @@
+diff --git a/internal/config/config.go b/internal/config/config.go
+index 1f1c594..8e2401a 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -121,6 +121,7 @@ type Config struct {
+ // named a grammar the patterns alone decide, and nothing read it (DESIGN §2).
+ // The strict decoder refuses it as unknown, which is the whole enforcement.
+ type Commit struct {
++	Style    string
+ 	Template string
+ }
+ 
+@@ -245,6 +246,7 @@ type rawPackage struct {
+ }
+ 
+ type rawCommit struct {
++	Style    string `toml:"style"`
+ 	Template string `toml:"template"`
+ }
+ 

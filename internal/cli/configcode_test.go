@@ -225,3 +225,64 @@ func TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile(t *testing.T) {
 		}
 	}
 }
+
+// configWithCommitStyle is a glyph.toml whose [commit] table is shaped as
+// every preset wrote it through v5.0.0: the style label beside the template.
+// The label left the schema (t-85y9); the grammar under it is the gemoji
+// preset's in miniature, so the same file without the line lints a gemoji
+// subject green.
+const configWithCommitStyle = `schema = 1
+
+[commit]
+style = "gemoji"
+template = '<:code:>[(scope)]<semver_sigil> <subject>'
+
+[[patterns]]
+pattern = '^:[a-z0-9_]+:(\([a-z0-9-]+\))?(?P<semver_sigil>[=~^!%]) .+'
+`
+
+// withoutCommitStyle is configWithCommitStyle with the line deleted — the
+// whole migration a repository that still has it performs.
+func withoutCommitStyle(t *testing.T) string {
+	t.Helper()
+	without := strings.Replace(configWithCommitStyle, "style = \"gemoji\"\n", "", 1)
+	if without == configWithCommitStyle {
+		t.Fatal("configWithCommitStyle carries no style line to delete")
+	}
+	return without
+}
+
+// TestLintCannotLoadAConfigStillCarryingCommitStyle: a glyph.toml that still
+// has the removed [commit] style line does not load, so lint judges nothing
+// and exits 2 naming the key — never 3, which the installed hooks block on,
+// because the commit that deletes the line has to get through. The same file
+// without the line lints the same subject at 0, which is also what shows the
+// 2 is the key's and not the fixture's.
+func TestLintCannotLoadAConfigStillCarryingCommitStyle(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		body string
+		want core.Code
+	}{
+		{"with the line", configWithCommitStyle, core.CodeUsage},
+		{"without the line", withoutCommitStyle(t), core.CodeOK},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir, _ := testutil.NewTaggedRepo(t)
+			seedConfig(t, dir, c.body)
+			t.Chdir(dir)
+
+			setStdin(t, ":bug:(cli)~ fix a thing\n")
+			code, _, stderr := runGlyph(t, "lint", "--stdin")
+			if code != int(c.want) {
+				t.Fatalf("exit = %d, want %d\nstderr: %s", code, c.want, stderr)
+			}
+			if c.want != core.CodeUsage {
+				return
+			}
+			if env := decodeErrorEnvelope(t, stderr); !strings.Contains(env.Message, "commit.style") {
+				t.Errorf("envelope message = %q, want it to name commit.style, the line to delete", env.Message)
+			}
+		})
+	}
+}
