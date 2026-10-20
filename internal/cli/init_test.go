@@ -147,6 +147,54 @@ func TestInitRefusesWhatIsNotARegularFile(t *testing.T) {
 	}
 }
 
+// TestInitOverALinkItMayNotFollowIsTheNoAnswerCode: a stat the filesystem
+// refused says nothing about what is at the path — here a link into a mode-000
+// directory, staged as TestLoadFileKeepsALinkItMayNotFollowUnreadable stages
+// it — so init writes nothing and exits 4, --force or not, naming the path
+// once, as the loader's commands do. When init asked os.Lstat only whether
+// something existed, it answered "already exists — edit it in place, or pass
+// --force" at 2, and --force then failed at the write with 4 (measured
+// 2026-10-21 at ec53ed3 and 43cecf2).
+func TestInitOverALinkItMayNotFollowIsTheNoAnswerCode(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, where a mode-000 directory does not stop the stat")
+	}
+	for _, args := range [][]string{{"init", "--gemoji"}, {"init", "--gemoji", "--force"}} {
+		t.Run(strings.Join(args[1:], " "), func(t *testing.T) {
+			dir := t.TempDir()
+			t.Chdir(dir)
+			locked := filepath.Join(dir, "locked")
+			if err := os.Mkdir(locked, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(locked, "glyph.toml"), nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(locked, 0o000); err != nil {
+				t.Fatalf("staging the refused stat: %v", err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+			target := filepath.Join("locked", "glyph.toml")
+			if err := os.Symlink(target, "glyph.toml"); err != nil {
+				t.Fatal(err)
+			}
+
+			code, stdout, stderr := runGlyph(t, args...)
+			if code != int(core.CodeAPI) {
+				t.Fatalf("glyph %s over a link into a mode-000 directory exited %d, want exactly %d — nothing about what is there was observed\nstdout: %s\nstderr: %s",
+					strings.Join(args, " "), code, core.CodeAPI, stdout, stderr)
+			}
+			env := decodeErrorEnvelope(t, stderr)
+			if n := strings.Count(env.Message, "glyph.toml"); n != 1 || !strings.Contains(env.Message, "permission denied") {
+				t.Errorf("the refusal must name the refused stat with the path once, got %q (the path %d times)", env.Message, n)
+			}
+			if got, err := os.Readlink("glyph.toml"); err != nil || got != target {
+				t.Errorf("init touched the link: it reads %q (%v), want %q", got, err, target)
+			}
+		})
+	}
+}
+
 func TestInitFlagGrammar(t *testing.T) {
 	t.Chdir(t.TempDir())
 	code, _, stderr := runGlyph(t, "init")

@@ -3097,9 +3097,11 @@ target (measured 2026-10-21 at `43cecf2`; `TestInitRefusesWhatIsNotARegularFile`
 mutation row `init-force-opens-what-is-not-a-regular-file`). A regular file
 keeps its answer — refused without `--force`, replaced with it
 (`TestInitRefusesToOverwrite`) — and a stat the filesystem refused is `4` with
-nothing written, as it is for the loader: a link into a mode-000 directory,
-"already exists" at `2` before, now names the refused stat at `4` (measured
-2026-10-21).
+nothing written, `--force` or not, as it is for the loader: a link into a
+mode-000 directory, "already exists" at `2` before (measured 2026-10-21 at
+`ec53ed3` and `43cecf2`), now names the refused stat at `4`
+(`TestInitOverALinkItMayNotFollowIsTheNoAnswerCode`, mutation row
+`init-calls-a-refused-stat-already-existing`).
 
 One command sits deliberately off the `1` rung: for `preview`, `none` is a real
 answer to the question asked — *what would merging this do?* — so a none verdict
