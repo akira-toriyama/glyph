@@ -1155,29 +1155,8 @@ func TestReleaseStrayDeleteFailureKeepsTheNotes(t *testing.T) {
 // its failure would mean the run did nothing and reported fine.
 func TestReleaseNoneDeleteFailureStillFailsLoud(t *testing.T) {
 	walk := noneWalk(t)
-	releases := `[` + draftJSON(11, "v0.1.1") + `]`
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == releasesPath:
-			fmt.Fprint(w, releases)
-		case r.Method == http.MethodGet:
-			body, ok := walk[r.URL.Path]
-			if !ok {
-				t.Errorf("unexpected GET %q", r.URL.Path)
-				http.NotFound(w, r)
-				return
-			}
-			fmt.Fprint(w, body)
-		case r.Method == http.MethodDelete:
-			w.Header().Set("Retry-After", "0")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			fmt.Fprint(w, `{"message":"Service Unavailable"}`)
-		default:
-			t.Errorf("unexpected %s %q", r.Method, r.URL.Path)
-			http.NotFound(w, r)
-		}
-	}))
-	t.Cleanup(srv.Close)
+	var seq []string
+	srv := deleteFailureServer(t, walk, `[`+draftJSON(11, "v0.1.1")+`]`, &seq)
 	usePR(t, srv)
 
 	code, _, stderr := runGlyph(t, "release")
@@ -1185,6 +1164,15 @@ func TestReleaseNoneDeleteFailureStillFailsLoud(t *testing.T) {
 		t.Fatalf("a residual delete that would not go exited %d, want 4 — on a none verdict the "+
 			"delete is the entire action, so there is no landed write to be lenient "+
 			"about\nstderr: %s", code, stderr)
+	}
+	if len(seq) == 0 {
+		t.Fatal("no write reached the server — the delete under test never ran")
+	}
+	for _, w := range seq {
+		if w != "DELETE "+releasesPath+"/11" {
+			t.Errorf("writes = %v, want only the residual's DELETE — a none verdict creates and edits nothing", seq)
+			break
+		}
 	}
 }
 
@@ -1197,38 +1185,21 @@ func TestReleaseNoneDeleteFailureStillFailsLoud(t *testing.T) {
 // deletion, and says the claim is unconfirmed.
 func TestReleaseNoneReportsAnUnwitnessedDeleteHonestly(t *testing.T) {
 	walk := noneWalk(t)
+	var seq []string
 	var deletes int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == releasesPath:
-			fmt.Fprint(w, `[`+draftJSON(11, "v0.1.1")+`]`)
-		case r.Method == http.MethodGet:
-			body, ok := walk[r.URL.Path]
-			if !ok {
-				t.Errorf("unexpected GET %q", r.URL.Path)
-				http.NotFound(w, r)
-				return
-			}
-			fmt.Fprint(w, body)
-		case r.Method == http.MethodDelete:
-			// The first delete reaches GitHub and is applied; its answer is lost
-			// (the gateway says 503), so send replays it and is told the release
-			// is already gone.
-			deletes++
-			if deletes == 1 {
-				w.Header().Set("Retry-After", "0") // timing only: the default schedule's first 1s
-				w.WriteHeader(http.StatusServiceUnavailable)
-				fmt.Fprint(w, `{"message":"Service Unavailable"}`)
-				return
-			}
-			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprint(w, `{"message":"Not Found"}`)
-		default:
-			t.Errorf("unexpected %s %q", r.Method, r.URL.Path)
-			http.NotFound(w, r)
+	srv := failingReleaseServer(t, walk, `[`+draftJSON(11, "v0.1.1")+`]`, func(r *http.Request) int {
+		if r.Method != http.MethodDelete {
+			return 0
 		}
-	}))
-	t.Cleanup(srv.Close)
+		// The first delete reaches GitHub and is applied; its answer is lost (the
+		// gateway says 503), so send replays it and is told the release is
+		// already gone.
+		deletes++
+		if deletes == 1 {
+			return http.StatusServiceUnavailable
+		}
+		return http.StatusNotFound
+	}, &seq)
 	usePR(t, srv)
 
 	code, _, stderr := runGlyph(t, "release")
@@ -1236,8 +1207,8 @@ func TestReleaseNoneReportsAnUnwitnessedDeleteHonestly(t *testing.T) {
 		t.Fatalf("a none verdict whose delete was answered 404 on the retry exited %d, want 1 "+
 			"(soft no-release) — the draft is gone, which is what the run asked for\nstderr: %s", code, stderr)
 	}
-	if deletes != 2 {
-		t.Fatalf("the server saw %d delete(s), want 2 (the lost answer and its replay)", deletes)
+	if deletes != 2 || len(seq) != 2 {
+		t.Fatalf("the server saw %d delete(s) among writes %v, want 2 deletes and nothing else (the lost answer and its replay)", deletes, seq)
 	}
 	if !strings.Contains(stderr, "already gone") || !strings.Contains(stderr, "unconfirmed") {
 		t.Errorf("the notice must report what was observed, not claim a deletion glyph never watched "+
@@ -1504,23 +1475,15 @@ func TestReleaseNoneAnswersTheFirstFailedResidual(t *testing.T) {
 // double fault exited 4 on the candidate's first cut).
 func TestReleaseMalformedCurrentIsUsageBeforeTheListing(t *testing.T) {
 	walk := oneFixWalk(t)
+	var seq []string
 	listed := false
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := failingReleaseServer(t, walk, `[]`, func(r *http.Request) int {
 		if r.Method == http.MethodGet && r.URL.Path == releasesPath {
 			listed = true
-			w.WriteHeader(http.StatusServiceUnavailable)
-			fmt.Fprint(w, `{"message":"Service Unavailable"}`)
-			return
+			return http.StatusServiceUnavailable
 		}
-		body, ok := walk[r.URL.Path]
-		if !ok {
-			t.Errorf("unexpected %s %q", r.Method, r.URL.Path)
-			http.NotFound(w, r)
-			return
-		}
-		fmt.Fprint(w, body)
-	}))
-	t.Cleanup(srv.Close)
+		return 0
+	}, &seq)
 	usePR(t, srv)
 
 	code, _, stderr := runGlyph(t, "release", "--dry-run", "--current", "garbage")
@@ -1529,5 +1492,8 @@ func TestReleaseMalformedCurrentIsUsageBeforeTheListing(t *testing.T) {
 	}
 	if listed {
 		t.Errorf("the releases listing was fetched before the caller's input was refused")
+	}
+	if len(seq) != 0 {
+		t.Errorf("a dry run refused at 2 wrote %v", seq)
 	}
 }
