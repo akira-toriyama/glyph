@@ -21,8 +21,8 @@ most likely to hit. (All three are killed today — `#69` added their tests. The
 ledger is what keeps them killed.)
 
 The house rule this mechanises is "a fix is not shown by a green suite; it is
-shown by re-breaking it and watching the suite go red." That check used to exist
-only as a habit, performed by hand, remembered in prose. Here it is a gate.
+shown by re-breaking it and watching the suite go red." Here that check is a
+gate, not a habit performed by hand and remembered in prose.
 
 `go-bite` (the `bite` job in `build.yml`) asks a different and weaker question:
 of the tests a pull request adds, did **at least one** bite? It cannot notice a

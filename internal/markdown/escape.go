@@ -27,8 +27,7 @@ import "strings"
 //
 // ONE POLICY for every author field: a commit scope is prose like the subject
 // beside it. DESIGN §2 holds that ruling, the <i title="x"> incident behind it,
-// and why the plain-text escaper the scope used to get was deleted rather than
-// revived.
+// and why the plain-text route is deleted, not revived.
 
 // flatten replaces every CommonMark line terminator in s with a single space:
 // "\r\n", "\n" and a bare "\r" each become one space.
@@ -228,9 +227,8 @@ func isAlphanumeric(c byte) bool { return isASCIILetter(c) || isDigit(c) }
 // string; a backslash is inserted only where the construct it would disarm
 // touches author prose, which prose reports for a byte range.
 //
-// escapeProse, which it replaced, ran per field, and every one of its rules
-// carries state or context that a field boundary truncated (t-9np1, measured
-// on the shipped escaper):
+// Per field, every one of the rules carries state or context that a field
+// boundary truncates (t-9np1, measured on the per-field escaper that shipped):
 //
 //	prose "…thing \" + prose "<h1>OWNED</h1>"   ->  \\<h1>  — the author's own
 //	   trailing backslash escaped the one the next stretch inserted, leaving a
