@@ -6,13 +6,13 @@
 // looks like, which commits are skipped — belongs to the file, not to glyph.
 //
 // The package is pure: no I/O beyond StatFile and LoadFile looking at the one
-// path they are given, no globals. It is deliberately strict where the house config style
-// is lenient: unknown schema, unknown keys and half-specified patterns are
-// errors, never clamped or ignored, because this file decides CI verdicts and
-// a silently-misread key is a silently-changed verdict — the exact hole the
-// design refuses to open (no silent none). There is no Default(): a
-// missing or invalid glyph.toml is the caller's fact to act on, not this
-// package's to paper over.
+// path they are given, no globals. It is deliberately strict where the house
+// config style is lenient: unknown schema, unknown keys and half-specified
+// patterns are errors, never clamped or ignored, because this file decides CI
+// verdicts and a silently-misread key is a silently-changed verdict — the
+// exact hole the design refuses to open (no silent none). There is no
+// Default(): a missing or invalid glyph.toml is the caller's fact to act on,
+// not this package's to paper over.
 //
 // Errors are never *core.Error: which exit code a bad glyph.toml maps to is
 // the CLI's contract to define at its boundary. Every error Load returns is

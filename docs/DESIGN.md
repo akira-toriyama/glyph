@@ -3070,32 +3070,34 @@ through the read-error arm with its path printed twice (t-zvax, measured
 path twice then: the loader re-wrapped `os.ReadFile`'s error, which already
 names it, and now hands it over as it is
 (`TestLoadFileNamesAnUnreadablePathOnce`, mutation row
-`config-load-names-the-path-twice`). A link `os.Stat` cannot follow
-by its own fault — one to nothing, one that loops, one through a regular file —
-is the link itself, observed by `os.Lstat`. Read through `os.Stat` alone, a link
-to nothing took the missing arm, whose remedy `glyph init` refused as "already
-exists", and a loop or a link through a file took the read-error arm at `4` with
-"fix the file permissions" (measured 2026-10-21 at `43cecf2`; the link cases of
-both tests above, mutation row
-`config-stat-reads-a-broken-link-as-missing-or-unreadable`). A link it could not
-follow for a permission or an I/O fault stays `4`, since where it leads was
+`config-load-names-the-path-twice`). A link `os.Stat` cannot follow by its own
+fault — one to nothing, one that loops, one through a regular file — is the
+link itself, observed by `os.Lstat`. Read through `os.Stat` alone, a link to
+nothing took the missing arm, whose remedy `glyph init` refused as "already
+exists", and a loop or a link through a file took the read-error arm at `4`
+with "fix the file permissions" (measured 2026-10-21 at `43cecf2`; the link
+cases of `TestLoadFileRefusesWhatIsNotARegularFile` and
+`TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile`, mutation row
+`config-stat-reads-a-broken-link-as-missing-or-unreadable`). A link it could
+not follow for a permission or an I/O fault stays `4`, since where it leads was
 never observed (`TestLoadFileKeepsALinkItMayNotFollowUnreadable`, mutation row
 `config-stat-calls-a-link-it-may-not-follow-broken`).
 
 `glyph init` asks `config.StatFile` the same question before it writes, so it
 answers one path as the verdict commands do, and it replaces only a regular
 file: anything else at the path is refused at `2`, `--force` or not, naming
-what is there, and never opened. Asking `os.Lstat` only whether something
-existed, it answered each such path "already exists — edit it in place, or pass
---force", and `--force` then exited `4` over a directory, a looping link or one
-through a file, hung over a named pipe in `os.WriteFile`'s open, and wrote
-through a link to nothing, creating its target (measured 2026-10-21 at
-`43cecf2`; `TestInitRefusesWhatIsNotARegularFile`, mutation row
-`init-force-opens-what-is-not-a-regular-file`). A regular file keeps its answer
-— refused without `--force`, replaced with it (`TestInitRefusesToOverwrite`) —
-and a stat the filesystem refused is `4` with nothing written, as it is for
-the loader: a link into a mode-000 directory, "already exists" at `2` before,
-now names the refused stat at `4` (measured 2026-10-21).
+what is there, and never opened. When it asked `os.Lstat` only whether
+something existed, `init` answered each such path "already exists — edit it in
+place, or pass --force", and `--force` then exited `4` over a directory, a
+looping link or one through a file, hung over a named pipe in
+`os.WriteFile`'s open, and wrote through a link to nothing, creating its
+target (measured 2026-10-21 at `43cecf2`; `TestInitRefusesWhatIsNotARegularFile`,
+mutation row `init-force-opens-what-is-not-a-regular-file`). A regular file
+keeps its answer — refused without `--force`, replaced with it
+(`TestInitRefusesToOverwrite`) — and a stat the filesystem refused is `4` with
+nothing written, as it is for the loader: a link into a mode-000 directory,
+"already exists" at `2` before, now names the refused stat at `4` (measured
+2026-10-21).
 
 One command sits deliberately off the `1` rung: for `preview`, `none` is a real
 answer to the question asked — *what would merging this do?* — so a none verdict
