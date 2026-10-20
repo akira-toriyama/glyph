@@ -105,9 +105,10 @@ type Input struct {
 	RootErr error
 	// Config / ConfigErr are the checkout's glyph.toml, loaded ONCE by the
 	// caller at Root, and config.LoadFile's failure handed over VERBATIM like
-	// RepoErr: the config check classifies it (absent, unreadable, invalid)
-	// and must see the loader's own error. Neither is set when RootErr is.
-	// Every check that reads the file reads Config — nothing here opens it.
+	// RepoErr: the config check classifies it (absent, not a regular file,
+	// unreadable, invalid) and must see the loader's own error. Neither is
+	// set when RootErr is. Every check that reads the file reads Config —
+	// nothing here opens it.
 	Config    *config.Config
 	ConfigErr error
 	// RepoObject / RepoErr are the outcome of GET /repos/{owner}/{repo}.

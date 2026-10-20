@@ -1,0 +1,14 @@
+diff --git a/internal/config/config.go b/internal/config/config.go
+index a812645..a7a28d2 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -364,9 +364,6 @@ func linksOwnFault(err error) bool {
+ // prefixed with path — told apart as StatFile's answers are, by type and by
+ // fs.ErrNotExist within *fs.PathError.
+ func LoadFile(path string) (*Config, error) {
+-	if err := StatFile(path); err != nil {
+-		return nil, err
+-	}
+ 	data, err := os.ReadFile(path) // #nosec G304 -- the caller's own glyph.toml; reading a named path is this function's contract
+ 	if err != nil {
+ 		return nil, err

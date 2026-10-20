@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 
@@ -45,7 +46,9 @@ func newInitCmd() *cobra.Command {
 			"error it hit.\n\n" +
 			"One preset flag is required (--" + strings.Join(names, ", --") + "); the file it\n" +
 			"writes is a starting point to edit, not a contract to keep. An existing\n" +
-			"glyph.toml is never touched without --force.",
+			"glyph.toml is never touched without --force, and --force replaces only a\n" +
+			"regular file: a directory, a named pipe or a broken symbolic link at the\n" +
+			"path is refused either way (exit 2) — remove it, then re-run init.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkExclusiveBool(cmd, names...); err != nil {
@@ -68,7 +71,7 @@ func newInitCmd() *cobra.Command {
 		presetFlags[name] = v
 		cmd.Flags().BoolVar(v, name, false, "write the "+name+" preset")
 	}
-	cmd.Flags().BoolVar(&force, "force", false, "overwrite an existing glyph.toml")
+	cmd.Flags().BoolVar(&force, "force", false, "overwrite an existing glyph.toml (a regular file only)")
 	return cmd
 }
 
@@ -81,12 +84,22 @@ func runInit(ctx context.Context, o initOptions) error {
 	if err != nil {
 		return err
 	}
-	// Lstat, not Stat: a broken symlink is still something a user put there,
-	// and overwriting it silently is the same offence as overwriting a file.
-	if _, err := os.Lstat(path); err == nil && !o.force {
-		return core.Usagef("%s already exists — edit it in place, or pass --force to replace it with the %s preset", path, o.preset)
-	} else if err != nil && !os.IsNotExist(err) {
-		return core.APIf("checking %s: %v", path, err)
+	// What is at the path is config.StatFile's answer, the one every verdict
+	// command's loader gets, and only a regular file is ever replaced: the
+	// write is os.WriteFile, which blocks on a named pipe until a reader
+	// appears, fails on a directory and follows a dangling link to create its
+	// target, so anything else is refused, --force or not (DESIGN §5).
+	serr := config.StatFile(path)
+	_, isNotAFile := errors.AsType[*config.NotAFileError](serr)
+	switch {
+	case serr == nil:
+		if !o.force {
+			return core.Usagef("%s already exists — edit it in place, or pass --force to replace it with the %s preset", path, o.preset)
+		}
+	case isNotAFile:
+		return core.Usagef("%v — init replaces only a regular file, even with --force; remove it, then re-run glyph init --%s", serr, o.preset)
+	case !errors.Is(serr, fs.ErrNotExist):
+		return core.APIf("%v — init could not tell what is there, so it wrote nothing", serr)
 	}
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return core.APIf("writing %s: %v", path, err)

@@ -1,10 +1,14 @@
 package config
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // loadGemoji loads the embedded `glyph init --gemoji` preset — the exact
@@ -238,6 +242,189 @@ func TestLoadFileMissing(t *testing.T) {
 	}
 	if !os.IsNotExist(unwrapAll(err)) {
 		t.Errorf("error should preserve os.IsNotExist: %v", err)
+	}
+}
+
+// TestLoadFileRefusesWhatIsNotARegularFile: a path that holds something other
+// than a regular file is answered from StatFile alone — typed, the path named
+// once, and never opened. Before the stat a directory came back as
+// os.ReadFile's EISDIR under a second copy of the path ("read <p>: read <p>:
+// is a directory"), and a named pipe blocked LoadFile for good, because
+// open(2) on a FIFO waits for a writer (t-zvax, measured at ec53ed3). A link
+// os.Stat cannot follow is the link observed by os.Lstat. Read through os.Stat
+// alone (mutation row config-stat-reads-a-broken-link-as-missing-or-unreadable
+// restores it), one to nothing comes back as a missing file, and one to
+// itself, through a file or to an over-long name as a stat the filesystem
+// refused. The call runs under a deadline so that regression fails here
+// instead of hanging the package until go test's -timeout; on the deadline the
+// blocked goroutine is left on a FIFO inside t.TempDir that nothing will ever
+// open for writing.
+func TestLoadFileRefusesWhatIsNotARegularFile(t *testing.T) {
+	for _, c := range []struct {
+		shape, kind string
+		mode        fs.FileMode
+		stage       func(path string) error
+	}{
+		{"a directory", "a directory", fs.ModeDir, func(p string) error { return os.Mkdir(p, 0o700) }},
+		{"a named pipe", "a named pipe", fs.ModeNamedPipe, func(p string) error { return syscall.Mkfifo(p, 0o600) }},
+		{"a link to nothing", "a broken symbolic link", fs.ModeSymlink, func(p string) error {
+			return os.Symlink("nowhere.toml", p)
+		}},
+		{"a link to itself", "a broken symbolic link", fs.ModeSymlink, func(p string) error {
+			return os.Symlink(filepath.Base(p), p)
+		}},
+		{"a link through a file", "a broken symbolic link", fs.ModeSymlink, func(p string) error {
+			if err := os.WriteFile(filepath.Join(filepath.Dir(p), "shared.toml"), nil, 0o600); err != nil {
+				return err
+			}
+			return os.Symlink("shared.toml/glyph.toml", p)
+		}},
+		// One component past NAME_MAX (255): os.Lstat sees the link, and
+		// os.Stat through it fails ENAMETOOLONG.
+		{"a link to an over-long name", "a broken symbolic link", fs.ModeSymlink, func(p string) error {
+			return os.Symlink(strings.Repeat("a", 300), p)
+		}},
+	} {
+		t.Run(c.shape, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "glyph.toml")
+			if err := c.stage(path); err != nil {
+				t.Fatalf("staging %s at %s: %v", c.kind, path, err)
+			}
+			done := make(chan error, 1)
+			go func() {
+				_, err := LoadFile(path)
+				done <- err
+			}()
+			var err error
+			select {
+			case err = <-done:
+			case <-time.After(10 * time.Second):
+				t.Fatalf("LoadFile on %s has not returned after 10s: it opened the path, and open(2) on a named pipe blocks until a writer appears", c.kind)
+			}
+			nf, ok := errors.AsType[*NotAFileError](err)
+			if !ok {
+				t.Fatalf("LoadFile on %s = %v (%T), want a *NotAFileError — the callers branch on the type", c.kind, err, err)
+			}
+			if nf.Path != path || nf.Mode != c.mode {
+				t.Errorf("NotAFileError = {%q, %v}, want {%q, %v}", nf.Path, nf.Mode, path, c.mode)
+			}
+			if want := path + " is " + c.kind + ", not a regular file"; err.Error() != want {
+				t.Errorf("error = %q, want %q — the path named once, then what is there", err, want)
+			}
+		})
+	}
+}
+
+// TestNotAFileErrorNamesEachKind holds the phrase every caller embeds to the
+// type bits StatFile reports, the two kinds the loader test above does not
+// stage (a socket, a device) included.
+func TestNotAFileErrorNamesEachKind(t *testing.T) {
+	for mode, want := range map[fs.FileMode]string{
+		fs.ModeDir:                        "a directory",
+		fs.ModeNamedPipe:                  "a named pipe",
+		fs.ModeSocket:                     "a socket",
+		fs.ModeDevice:                     "a device",
+		fs.ModeDevice | fs.ModeCharDevice: "a device",
+		fs.ModeSymlink:                    "a broken symbolic link",
+		fs.ModeIrregular:                  "a file of unknown type",
+	} {
+		if got := (&NotAFileError{Mode: mode}).Kind(); got != want {
+			t.Errorf("Kind() for %v = %q, want %q", mode, got, want)
+		}
+	}
+}
+
+// TestLoadFileNamesAnUnreadablePathOnce: a read the filesystem refuses comes
+// back as os.ReadFile's own *fs.PathError, which already names the operation
+// and the path. Re-wrapped, every verdict command's refusal and doctor's
+// observation printed the path twice ("read <p>: open <p>: permission denied",
+// measured at ec53ed3) behind an unchanged exit code and status, so nothing
+// but this test sees it come back.
+func TestLoadFileNamesAnUnreadablePathOnce(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, where an unreadable file does not exist")
+	}
+	path := filepath.Join(t.TempDir(), "glyph.toml")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatalf("staging the refused read: %v", err)
+	}
+	_, err := LoadFile(path)
+	if _, ok := errors.AsType[*fs.PathError](err); !ok || !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("LoadFile on a mode-000 glyph.toml = %v (%T), want the *fs.PathError of a refused read", err, err)
+	}
+	if n := strings.Count(err.Error(), path); n != 1 {
+		t.Errorf("error = %q names the path %d times, want once", err, n)
+	}
+}
+
+// TestLoadFileKeepsALinkItMayNotFollowUnreadable: a link os.Stat cannot follow
+// for a permission is no broken link — where it leads was never observed — so
+// it stays the *fs.PathError of a stat the filesystem refused (the verdict
+// commands' 4, doctor's unknown and its permissions fix), never the
+// NotAFileError a dangling or looping link gets with its remove-it remedy.
+// That error is os.Stat's own and already names the path, so StatFile hands
+// it over as it is. Wrapped again, lint, bump, doctor and init print the path
+// twice behind exit codes and a status no other test reads differently
+// (mutation row config-stat-names-the-path-twice wraps it as "stat <p>: %w"),
+// as ec53ed3's loader did through os.ReadFile's re-wrap.
+func TestLoadFileKeepsALinkItMayNotFollowUnreadable(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, where a mode-000 directory does not stop the stat")
+	}
+	dir := t.TempDir()
+	locked := filepath.Join(dir, "locked")
+	if err := os.Mkdir(locked, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(locked, "glyph.toml"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatalf("staging the refused stat: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+	path := filepath.Join(dir, "glyph.toml")
+	if err := os.Symlink(filepath.Join("locked", "glyph.toml"), path); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadFile(path)
+	if _, ok := errors.AsType[*fs.PathError](err); !ok || !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("LoadFile through a link into a mode-000 directory = %v (%T), want the *fs.PathError of a "+
+			"refused stat — where the link leads was never observed", err, err)
+	}
+	if n := strings.Count(err.Error(), path); n != 1 {
+		t.Errorf("error = %q names the path %d times, want once", err, n)
+	}
+}
+
+// TestLoadFileFollowsASymlinkToAFile: the type check is os.Stat's, which
+// follows symlinks, so a glyph.toml linking to a regular file keeps loading
+// — an Lstat there would refuse every such checkout.
+//
+// bite-exempt: a positive control by definition. It holds the refusal above to
+// what is AT the path once links are followed, which the tree already loads.
+func TestLoadFileFollowsASymlinkToAFile(t *testing.T) {
+	dir := t.TempDir()
+	data, ok := Preset("gemoji")
+	if !ok {
+		t.Fatalf("Preset(gemoji) missing")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "shared.toml"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "glyph.toml")
+	if err := os.Symlink("shared.toml", path); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadFile(path)
+	if err != nil {
+		t.Fatalf("LoadFile through a symlink to a regular file: %v", err)
+	}
+	if len(cfg.Patterns) == 0 {
+		t.Errorf("the linked preset loaded with no patterns")
 	}
 }
 

@@ -768,6 +768,40 @@ func TestDoctorUnreadableConfigLeavesTheDependentsUnread(t *testing.T) {
 	assertDependentsUnread(t, rep)
 }
 
+// TestDoctorConfigThatIsNotAFileFailsAtTheMissingCode is the fourth load
+// failure: a glyph.toml path holding a directory, a named pipe or a link that
+// resolves to no file. doctor exits what it exits for a missing file (3,
+// glyph-toml-loads failed), since what is there was observed, and the checks
+// that read the loaded file are handed nothing. Before the loader stat'ed the
+// path a directory was unknown at exit 4 and a named pipe hung doctor in the
+// read (t-zvax, measured at ec53ed3); read through os.Stat alone (the loader
+// mutation row config-stat-reads-a-broken-link-as-missing-or-unreadable
+// restores), a link to itself, through a file or to an over-long name is
+// unknown at exit 4.
+func TestDoctorConfigThatIsNotAFileFailsAtTheMissingCode(t *testing.T) {
+	for _, k := range notAFile {
+		t.Run(k.shape, func(t *testing.T) {
+			usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+			useDoctorCheckout(t, pinnedCaller)
+			if err := os.Remove("glyph.toml"); err != nil {
+				t.Fatalf("remove glyph.toml: %v", err)
+			}
+			if err := k.stage("glyph.toml"); err != nil {
+				t.Fatalf("staging %s as glyph.toml: %v", k.kind, err)
+			}
+			code, stdout, stderr := runGlyphWithin(t, 30*time.Second, "doctor", "--json")
+			if code != 3 {
+				t.Fatalf("doctor on a glyph.toml that is %s exited %d, want 3 — the code a missing one answers\nstderr: %s", k.kind, code, stderr)
+			}
+			rep := decodeDoctorJSON(t, stdout)
+			if c := checkByID(t, rep, "glyph-toml-loads"); c.Status != "fail" || !strings.Contains(c.Observed, "is "+k.kind) {
+				t.Errorf("glyph-toml-loads = %s (%s), want fail naming what is at the path", c.Status, c.Observed)
+			}
+			assertDependentsUnread(t, rep)
+		})
+	}
+}
+
 // assertDependentsUnread holds the two checks that read the loaded glyph.toml
 // to the one state doctorRun leaves them in when it loaded nothing: unknown,
 // pointing at the check that owns the reason.

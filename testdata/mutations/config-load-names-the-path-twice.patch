@@ -1,0 +1,13 @@
+diff --git a/internal/config/config.go b/internal/config/config.go
+index d421f40..2f29c72 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -363,7 +363,7 @@ func LoadFile(path string) (*Config, error) {
+ 	}
+ 	data, err := os.ReadFile(path) // #nosec G304 -- the caller's own glyph.toml; reading a named path is this function's contract
+ 	if err != nil {
+-		return nil, err
++		return nil, fmt.Errorf("read %s: %w", path, err)
+ 	}
+ 	cfg, err := Load(data)
+ 	if err != nil {

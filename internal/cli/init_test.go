@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/akira-toriyama/glyph/v5/internal/config"
 	"github.com/akira-toriyama/glyph/v5/internal/core"
@@ -96,6 +97,101 @@ func TestInitRunsFromOptionsWithoutCobra(t *testing.T) {
 	}
 	if got, _ := os.ReadFile("glyph.toml"); !bytes.Equal(got, gemoji) {
 		t.Fatalf("force from options must write the gemoji preset over the file, got %q", got)
+	}
+}
+
+// TestInitRefusesWhatIsNotARegularFile: init replaces a regular file and
+// nothing else. A directory, a named pipe or a link that resolves to no file
+// at the path is refused at exit 2, with --force or without, naming what is
+// there, and is never opened. When init asked os.Lstat only whether something
+// existed, it answered each "already exists — edit it in place, or pass
+// --force", and --force then exited 4 over a directory, a looping link, one
+// through a file or one to an over-long name, hung over a named pipe in
+// os.WriteFile's open, and wrote through a link to nothing, creating its target
+// (measured 2026-10-21 at 9ff9cca). Each run sits
+// under a deadline, so that regression fails here instead of hanging the
+// package.
+func TestInitRefusesWhatIsNotARegularFile(t *testing.T) {
+	for _, k := range notAFile {
+		for _, force := range []bool{false, true} {
+			name, args := k.shape, []string{"init", "--gemoji"}
+			if force {
+				name, args = name+"/force", append(args, "--force")
+			}
+			t.Run(name, func(t *testing.T) {
+				t.Chdir(t.TempDir())
+				if err := k.stage("glyph.toml"); err != nil {
+					t.Fatalf("staging %s as glyph.toml: %v", k.shape, err)
+				}
+				before, err := os.Lstat("glyph.toml")
+				if err != nil {
+					t.Fatal(err)
+				}
+				code, stdout, stderr := runGlyphWithin(t, 30*time.Second, args...)
+				if code != int(core.CodeUsage) {
+					t.Fatalf("glyph %s over %s exited %d, want exactly %d\nstdout: %s\nstderr: %s",
+						strings.Join(args, " "), k.shape, code, core.CodeUsage, stdout, stderr)
+				}
+				env := decodeErrorEnvelope(t, stderr)
+				if !strings.Contains(env.Message, "glyph.toml is "+k.kind) || !strings.Contains(env.Message, "remove it, then re-run glyph init") {
+					t.Errorf("the refusal must name what is at the path and send the user to remove it, got %q", env.Message)
+				}
+				if after, err := os.Lstat("glyph.toml"); err != nil || after.Mode().Type() != before.Mode().Type() {
+					t.Errorf("init replaced what was at the path: %v before, %v after (%v)", before.Mode().Type(), after, err)
+				}
+				if _, err := os.Lstat("nowhere.toml"); !os.IsNotExist(err) {
+					t.Errorf("init wrote through the link to its target")
+				}
+			})
+		}
+	}
+}
+
+// TestInitOverALinkItMayNotFollowIsTheNoAnswerCode: a stat the filesystem
+// refused says nothing about what is at the path — here a link into a mode-000
+// directory, staged as TestLoadFileKeepsALinkItMayNotFollowUnreadable stages
+// it — so init writes nothing and exits 4, --force or not, naming the path
+// once, as the loader's commands do. When init asked os.Lstat only whether
+// something existed, it answered "already exists — edit it in place, or pass
+// --force" at 2, and --force then failed at the write with 4 (measured
+// 2026-10-21 at ec53ed3 and 9ff9cca).
+func TestInitOverALinkItMayNotFollowIsTheNoAnswerCode(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, where a mode-000 directory does not stop the stat")
+	}
+	for _, args := range [][]string{{"init", "--gemoji"}, {"init", "--gemoji", "--force"}} {
+		t.Run(strings.Join(args[1:], " "), func(t *testing.T) {
+			dir := t.TempDir()
+			t.Chdir(dir)
+			locked := filepath.Join(dir, "locked")
+			if err := os.Mkdir(locked, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(locked, "glyph.toml"), nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(locked, 0o000); err != nil {
+				t.Fatalf("staging the refused stat: %v", err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+			target := filepath.Join("locked", "glyph.toml")
+			if err := os.Symlink(target, "glyph.toml"); err != nil {
+				t.Fatal(err)
+			}
+
+			code, stdout, stderr := runGlyph(t, args...)
+			if code != int(core.CodeAPI) {
+				t.Fatalf("glyph %s over a link into a mode-000 directory exited %d, want exactly %d — nothing about what is there was observed\nstdout: %s\nstderr: %s",
+					strings.Join(args, " "), code, core.CodeAPI, stdout, stderr)
+			}
+			env := decodeErrorEnvelope(t, stderr)
+			if n := strings.Count(env.Message, "glyph.toml"); n != 1 || !strings.Contains(env.Message, "permission denied") {
+				t.Errorf("the refusal must name the refused stat with the path once, got %q (the path %d times)", env.Message, n)
+			}
+			if got, err := os.Readlink("glyph.toml"); err != nil || got != target {
+				t.Errorf("init touched the link: it reads %q (%v), want %q", got, err, target)
+			}
+		})
 	}
 }
 

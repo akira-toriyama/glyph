@@ -1,0 +1,13 @@
+diff --git a/internal/cli/config.go b/internal/cli/config.go
+index 269d212..e9de1ae 100644
+--- a/internal/cli/config.go
++++ b/internal/cli/config.go
+@@ -69,7 +69,7 @@ func loadConfig(ctx context.Context) (*config.Config, error) {
+ 		case errors.Is(lerr, fs.ErrNotExist):
+ 			return nil, core.Usagef("no glyph.toml at %s — this repository is not initialized for glyph; `glyph init --gemoji` (or --conventional) writes one there from anywhere in the work tree, or start from either preset and edit", top)
+ 		case isNotAFile:
+-			return nil, core.Usagef("%v — glyph reads its configuration from a regular file there and nothing else, so no commit was judged; remove it, then `glyph init --gemoji` (or --conventional) writes one", lerr)
++			return nil, core.APIf("%v — glyph reads its configuration from a regular file there and nothing else, so no commit was judged; remove it, then `glyph init --gemoji` (or --conventional) writes one", lerr)
+ 		case isPathErr:
+ 			return nil, core.APIf("%v — glyph could not read this repository's configuration, so no commit was judged", lerr)
+ 		default:

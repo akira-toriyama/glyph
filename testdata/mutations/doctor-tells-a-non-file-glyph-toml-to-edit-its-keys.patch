@@ -1,0 +1,27 @@
+diff --git a/internal/doctor/config.go b/internal/doctor/config.go
+index e18925d..29e9214 100644
+--- a/internal/doctor/config.go
++++ b/internal/doctor/config.go
+@@ -48,7 +48,6 @@ func checkConfig(root string, rootErr error, cfg *config.Config, loadErr error)
+ 		c.Fix = "re-run from inside a git checkout of the repository being diagnosed"
+ 		return c
+ 	}
+-	notAFile, isNotAFile := errors.AsType[*config.NotAFileError](loadErr)
+ 	_, isPathErr := errors.AsType[*fs.PathError](loadErr)
+ 	switch {
+ 	case loadErr == nil:
+@@ -65,14 +64,6 @@ func checkConfig(root string, rootErr error, cfg *config.Config, loadErr error)
+ 			"gate down, which is exactly the state this check exists to name before the pin moves"
+ 		c.Fix = "glyph init --gemoji (or --conventional) — then edit the generated glyph.toml freely"
+ 		return c
+-	case isNotAFile:
+-		c.Status = StatusFail
+-		c.Observed = fmt.Sprintf("glyph.toml at %s is %s, not a regular file", root, notAFile.Kind())
+-		c.Message = "glyph reads its configuration from a regular file at that path and from nothing else: every verdict " +
+-			"command — lint, bump, notes, preview, release — refuses it the way it refuses a missing file (exit 2, before " +
+-			"any commit is judged), so the repository's gate is down until a file is there"
+-		c.Fix = "remove it, then glyph init --gemoji (or --conventional)"
+-		return c
+ 	case isPathErr:
+ 		c.Status = StatusUnknown
+ 		c.Observed = fmt.Sprintf("glyph.toml could not be read: %v", loadErr)

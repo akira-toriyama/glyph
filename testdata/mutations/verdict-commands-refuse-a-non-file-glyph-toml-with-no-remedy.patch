@@ -1,0 +1,18 @@
+diff --git a/internal/cli/config.go b/internal/cli/config.go
+index c5a8805..2d9b6e4 100644
+--- a/internal/cli/config.go
++++ b/internal/cli/config.go
+@@ -63,13 +63,10 @@ func loadConfig(ctx context.Context) (*config.Config, error) {
+ 	if lerr != nil {
+ 		// Order matters: a missing file is itself a *fs.PathError, so the
+ 		// not-exist arm has to be asked first.
+-		_, isNotAFile := errors.AsType[*config.NotAFileError](lerr)
+ 		_, isPathErr := errors.AsType[*fs.PathError](lerr)
+ 		switch {
+ 		case errors.Is(lerr, fs.ErrNotExist):
+ 			return nil, core.Usagef("no glyph.toml at %s — this repository is not initialized for glyph; `glyph init --gemoji` (or --conventional) writes one there from anywhere in the work tree, or start from either preset and edit", top)
+-		case isNotAFile:
+-			return nil, core.Usagef("%v — glyph reads its configuration from a regular file there and nothing else, so no commit was judged; remove it, then `glyph init --gemoji` (or --conventional) writes one", lerr)
+ 		case isPathErr:
+ 			return nil, core.APIf("%v — glyph could not read this repository's configuration, so no commit was judged", lerr)
+ 		default:

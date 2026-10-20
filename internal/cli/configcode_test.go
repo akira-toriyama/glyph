@@ -4,7 +4,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/akira-toriyama/glyph/v5/internal/core"
 	"github.com/akira-toriyama/glyph/v5/internal/testutil"
@@ -125,5 +128,100 @@ func TestValidConfigStillPasses(t *testing.T) {
 	if code, _, stderr := runGlyph(t, "lint", "--stdin"); code != int(core.CodeOK) {
 		t.Fatalf("exit = %d, want 0 on the untouched fixture; the three tests above are then "+
 			"asserting against a command that fails before the config load\nstderr: %s", code, stderr)
+	}
+}
+
+// notAFile stages the shapes other than a regular file that t-zvax measured at
+// a glyph.toml path: a directory, a named pipe, and a link that resolves to no
+// file — to nothing, to itself, through a regular file, to a name past
+// NAME_MAX (255). kind is the phrase config.NotAFileError names it by.
+var notAFile = []struct {
+	shape, kind string
+	stage       func(path string) error
+}{
+	{"a directory", "a directory", func(p string) error { return os.Mkdir(p, 0o700) }},
+	{"a named pipe", "a named pipe", func(p string) error { return syscall.Mkfifo(p, 0o600) }},
+	{"a link to nothing", "a broken symbolic link", func(p string) error { return os.Symlink("nowhere.toml", p) }},
+	{"a link to itself", "a broken symbolic link", func(p string) error { return os.Symlink(filepath.Base(p), p) }},
+	{"a link through a file", "a broken symbolic link", func(p string) error {
+		if err := os.WriteFile(filepath.Join(filepath.Dir(p), "shared.toml"), nil, 0o600); err != nil {
+			return err
+		}
+		return os.Symlink("shared.toml/glyph.toml", p)
+	}},
+	{"a link to an over-long name", "a broken symbolic link", func(p string) error { return os.Symlink(strings.Repeat("a", 300), p) }},
+}
+
+// runGlyphWithin is runGlyph under a deadline, for a run a regression can
+// block for good: open(2) on a named pipe waits for a writer, and a FIFO named
+// glyph.toml hung every command that loaded it (t-zvax). On the deadline the
+// test fails and the run's goroutine is left blocked on a FIFO inside
+// t.TempDir that nothing will ever open for writing — one failed test, not a
+// package hung until go test's -timeout.
+func runGlyphWithin(t *testing.T, d time.Duration, args ...string) (code int, stdout, stderr string) {
+	t.Helper()
+	type result struct {
+		code           int
+		stdout, stderr string
+	}
+	done := make(chan result, 1)
+	go func() {
+		code, stdout, stderr := runGlyph(t, args...)
+		done <- result{code, stdout, stderr}
+	}()
+	select {
+	case r := <-done:
+		return r.code, r.stdout, r.stderr
+	case <-time.After(d):
+		t.Fatalf("glyph %s has not returned after %v", strings.Join(args, " "), d)
+		return 0, "", ""
+	}
+}
+
+// TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile pins exit 2 for a
+// glyph.toml path holding a directory, a named pipe or a link that resolves to
+// no file: what is there was observed, so it takes the missing config's code
+// and remedy, not the unreadable arm's 4. Before the loader stat'ed the path,
+// a directory answered 4 on both commands and a named pipe answered nothing at
+// all — lint --stdin and bump hung in the read (t-zvax, measured at ec53ed3).
+// Read through os.Stat alone (the loader mutation row
+// config-stat-reads-a-broken-link-as-missing-or-unreadable restores), a link to
+// itself, through a file or to an over-long name answers 4, and a link to
+// nothing the missing file's remedy, which init refuses. The message is asserted beside the code because
+// 2 is also what a bad flag answers.
+func TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile(t *testing.T) {
+	for _, k := range notAFile {
+		for _, args := range [][]string{{"lint", "--stdin"}, {"bump", "--range", "v0.1.0..HEAD"}} {
+			t.Run(k.shape+"/"+args[0], func(t *testing.T) {
+				dir, _ := testutil.NewTaggedRepo(t)
+				top, err := filepath.EvalSymlinks(dir) // git names the real path
+				if err != nil {
+					t.Fatal(err)
+				}
+				path := filepath.Join(top, "glyph.toml")
+				if err := os.Remove(path); err != nil {
+					t.Fatalf("removing glyph.toml: %v", err)
+				}
+				if err := k.stage(path); err != nil {
+					t.Fatalf("staging %s at %s: %v", k.kind, path, err)
+				}
+				t.Chdir(dir)
+
+				setStdin(t, ":bug:(cli)~ fix a thing\n")
+				code, _, stderr := runGlyphWithin(t, 30*time.Second, args...)
+				if code != int(core.CodeUsage) {
+					t.Fatalf("exit = %d, want %d (usage, the missing config's code) — what is at the path was "+
+						"observed, nothing was left unread\nstderr: %s", code, core.CodeUsage, stderr)
+				}
+				env := decodeErrorEnvelope(t, stderr)
+				// Both halves of the remedy: glyph init refuses a path that
+				// is not a regular file, so without "remove it" the
+				// refusal sends the user into a second one.
+				if !strings.Contains(env.Message, path+" is "+k.kind) || !strings.Contains(env.Message, "remove it") ||
+					!strings.Contains(env.Message, "glyph init") {
+					t.Errorf("the refusal must name what is at the path and hand over the remedy, got %q", env.Message)
+				}
+			})
+		}
 	}
 }

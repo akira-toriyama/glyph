@@ -28,6 +28,11 @@ import (
 //     verdict commands themselves exit 2 there: doctor was asked whether the
 //     repository satisfies glyph's preconditions, and the observed absence
 //     answers no.
+//   - NOT A REGULAR FILE — a directory, a named pipe, a socket, a device or a
+//     symbolic link that resolves to no file at the path — is the same
+//     failure: the loader stat'ed what is there and never opened it, so it
+//     was observed, and the verdict commands refuse it at 2 like a missing
+//     file. Only the remedy differs: remove it first.
 //   - A file that exists but does not load — bad TOML, an unknown schema, a
 //     pattern that cannot compile or captures no semver_sigil — is the same
 //     failure, carrying the loader's own error.
@@ -43,6 +48,7 @@ func checkConfig(root string, rootErr error, cfg *config.Config, loadErr error) 
 		c.Fix = "re-run from inside a git checkout of the repository being diagnosed"
 		return c
 	}
+	notAFile, isNotAFile := errors.AsType[*config.NotAFileError](loadErr)
 	_, isPathErr := errors.AsType[*fs.PathError](loadErr)
 	switch {
 	case loadErr == nil:
@@ -58,6 +64,14 @@ func checkConfig(root string, rootErr error, cfg *config.Config, loadErr error) 
 			"(exit 2, before any commit is judged). A repository that pins glyph's workflows without a config has its whole " +
 			"gate down, which is exactly the state this check exists to name before the pin moves"
 		c.Fix = "glyph init --gemoji (or --conventional) — then edit the generated glyph.toml freely"
+		return c
+	case isNotAFile:
+		c.Status = StatusFail
+		c.Observed = fmt.Sprintf("glyph.toml at %s is %s, not a regular file", root, notAFile.Kind())
+		c.Message = "glyph reads its configuration from a regular file at that path and from nothing else: every verdict " +
+			"command — lint, bump, notes, preview, release — refuses it the way it refuses a missing file (exit 2, before " +
+			"any commit is judged), so the repository's gate is down until a file is there"
+		c.Fix = "remove it, then glyph init --gemoji (or --conventional)"
 		return c
 	case isPathErr:
 		c.Status = StatusUnknown
@@ -77,10 +91,11 @@ func checkConfig(root string, rootErr error, cfg *config.Config, loadErr error) 
 
 // configUnread degrades c to could-not-run when glyph.toml was not loaded,
 // and reports that it did. The config check owns the reason — no top level
-// to resolve, a missing or invalid file, a read the filesystem refused — so a
-// check that reads the loaded file says only that it never did, in the one
-// spelling, and points at the owner: the same shape checkTokenWrite takes
-// when the repository object was never read.
+// to resolve, a missing file, a path that is not a regular file, an invalid
+// file, a read the filesystem refused — so a check that reads the loaded file
+// says only that it never did, in the one spelling, and points at the owner:
+// the same shape checkTokenWrite takes when the repository object was never
+// read.
 func configUnread(c *Check, cfg *config.Config) bool {
 	if cfg != nil {
 		return false

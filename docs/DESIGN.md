@@ -3040,17 +3040,70 @@ configuration under `doctor`. Same class, different subject; no new integer.
 The converse is the part that had to be repaired rather than merely written
 down (t-c6r5): on a verdict command the config is the **yardstick**, so a
 `glyph.toml` that will not load is never `3` there — no commit was judged at
-all. Unreadable (permission, EISDIR) is `4`, the code `doctor` and the hook
-installer already gave that same event; unparseable is `2`, the code a
-**missing** config already carries, since both leave a human editing a file.
-Three mechanisms depend on it. Two failed silently while the loader answered
-`3`: the installed commit-msg and pre-push hooks block on `3` alone, so a typo
-in `glyph.toml` rejected the very commit that would repair it, and `lint.yml`'s
-default-branch push arm swallows `3` alone, so an I/O failure returned a green
-gate having judged nothing. The third came later: `goreleaser.yml`'s tag-time
-notes step publishes on `3` as the wedge escape's placeholder (§4, t-bcdz), so a
-config the loader answered `3` would ship a release whose body blames a commit
-nobody judged.
+all. Unreadable (permission denied, an I/O fault) is `4`, the code `doctor`
+and the hook installer already gave that same event; unparseable is `2`, the
+code a **missing** config already carries, since both leave a human editing a
+file. Three mechanisms depend on it. Two failed silently while the loader
+answered `3`: the installed commit-msg and pre-push hooks block on `3` alone, so
+a typo in `glyph.toml` rejected the very commit that would repair it, and
+`lint.yml`'s default-branch push arm swallows `3` alone, so an I/O failure
+returned a green gate having judged nothing. The third came later:
+`goreleaser.yml`'s tag-time notes step publishes on `3` as the wedge escape's
+placeholder (§4, t-bcdz), so a config the loader answered `3` would ship a
+release whose body blames a commit nobody judged.
+
+The `2`/`4` line is drawn on what was observed, as `doctor`'s severities are
+(§7): a `glyph.toml` path holding something other than a regular file — a
+directory, a named pipe, a socket, a device, or a symbolic link that resolves
+to no file — is `2` with the missing file, because what is there was observed
+and the remedy is a human's (remove it, then `glyph init`). `config.StatFile`
+is the one classification of the path, and nothing opens a non-regular one
+(`*config.NotAFileError`): open(2) on a named pipe blocks until a writer
+appears, so before the stat a FIFO named `glyph.toml` hung `lint --stdin`,
+`bump`, `notes`, `preview`, `release` and `doctor`, and a directory answered `4`
+through the read-error arm with its path printed twice (t-zvax, measured
+2026-10-20 at `ec53ed3`; `TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile`,
+`TestLoadFileRefusesWhatIsNotARegularFile`, mutation rows
+`verdict-commands-answer-a-non-file-glyph-toml-as-unreadable`,
+`verdict-commands-refuse-a-non-file-glyph-toml-with-no-remedy` and
+`config-load-opens-what-is-not-a-regular-file`). Every read error printed its
+path twice then: the loader re-wrapped `os.ReadFile`'s error, which already
+names it, and now hands it over as it is
+(`TestLoadFileNamesAnUnreadablePathOnce`, mutation row
+`config-load-names-the-path-twice`), as `config.StatFile` hands over a stat
+the filesystem refused (`TestLoadFileKeepsALinkItMayNotFollowUnreadable`,
+mutation row `config-stat-names-the-path-twice`). A link `os.Stat` cannot
+follow by its own fault — one to nothing, one that loops, one through a
+regular file, one to a name too long to exist (`os.Lstat` resolved the path
+itself, so the over-long name can only be the target's) — is the link itself,
+observed by `os.Lstat`. Read through `os.Stat` alone, a link to nothing takes
+the missing arm, whose remedy `glyph init` refuses as "already exists", and a
+loop, a link through a file or one to an over-long name takes the read-error
+arm at `4` with "fix the file permissions" — the state mutation row
+`config-stat-reads-a-broken-link-as-missing-or-unreadable` restores, and the
+link cases of `TestLoadFileRefusesWhatIsNotARegularFile` and
+`TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile` kill. A link it could
+not follow for a permission or an I/O fault stays `4`, since where it leads was
+never observed (`TestLoadFileKeepsALinkItMayNotFollowUnreadable`, mutation row
+`config-stat-calls-a-link-it-may-not-follow-broken`).
+
+`glyph init` asks `config.StatFile` the same question before it writes, so it
+classifies one path as the verdict commands do, and it replaces only a regular
+file: anything else at the path is refused at `2`, `--force` or not, naming
+what is there, and never opened. When it asked `os.Lstat` only whether
+something existed, `init` answered each such path "already exists — edit it in
+place, or pass --force", and `--force` then exited `4` over a directory, a
+looping link, one through a file or one to an over-long name, hung over a named
+pipe in `os.WriteFile`'s open, and wrote through a link to nothing, creating its
+target (measured 2026-10-21 at `9ff9cca`; `TestInitRefusesWhatIsNotARegularFile`,
+mutation row `init-force-opens-what-is-not-a-regular-file`). A regular file
+keeps its answer — refused without `--force`, replaced with it
+(`TestInitRefusesToOverwrite`) — and a stat the filesystem refused is `4` with
+nothing written, `--force` or not, as it is for the loader: a link into a
+mode-000 directory, "already exists" at `2` before (measured 2026-10-21 at
+`ec53ed3` and `9ff9cca`), now names the refused stat at `4`
+(`TestInitOverALinkItMayNotFollowIsTheNoAnswerCode`, mutation row
+`init-calls-a-refused-stat-already-existing`).
 
 One command sits deliberately off the `1` rung: for `preview`, `none` is a real
 answer to the question asked — *what would merging this do?* — so a none verdict
@@ -3427,9 +3480,23 @@ The severities are the argued part:
   satisfies glyph's preconditions, and an observed absence is the honest answer
   no: the whole gate is down, at `3` like every other violated precondition. A
   file that exists but does not load is the same failure carrying the loader's
-  own error (the loader rejects rather than repairs — no silent none). Only
-  content that was never *observed* — a read the filesystem refused, no top
-  level to resolve the path against — is `unknown` at `4`.
+  own error (the loader rejects rather than repairs — no silent none). So is a
+  path that holds something other than a regular file — a directory, a named
+  pipe, a socket, a device, or a symbolic link that resolves to no file: the
+  loader stats it and never opens it, so what is there was observed, and the
+  fix is the missing file's behind a removal (t-zvax: before the stat a
+  directory graded `unknown` with "fix the file permissions" as its fix, and a
+  named pipe hung `doctor` in the read, measured 2026-10-20 at `ec53ed3`; read
+  through `os.Stat` alone (the state mutation row
+  `config-stat-reads-a-broken-link-as-missing-or-unreadable` restores), a
+  looping link, one through a file or one to an over-long name grades
+  `unknown` with that same fix, and a link to nothing fails with the missing
+  file's fix, which `glyph init` refuses;
+  `TestConfigNotARegularFileIsAFailure`, mutation rows
+  `doctor-grades-a-non-file-glyph-toml-could-not-run` and
+  `doctor-tells-a-non-file-glyph-toml-to-edit-its-keys`). Only content that was
+  never *observed* — a read the filesystem refused (permission denied, an I/O
+  fault), no top level to resolve the path against — is `unknown` at `4`.
 - **`allow_squash_merge` false ⇒ fail.** *Not* because only a squash commit
   resolves — every style does. GitHub points `merge_commit_sha` at whichever
   commit represents the merge (the squash commit, a rebase's **last** replayed

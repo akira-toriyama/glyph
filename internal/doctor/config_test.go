@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/akira-toriyama/glyph/v5/internal/config"
 )
@@ -91,6 +93,70 @@ func TestConfigUnloadableIsAFailure(t *testing.T) {
 			}
 			if !strings.Contains(c.Observed, "does not load") {
 				t.Errorf("the observation must carry the loader's verdict, got %q", c.Observed)
+			}
+		})
+	}
+}
+
+// TestConfigNotARegularFileIsAFailure: a glyph.toml path holding a directory,
+// a named pipe or a link that resolves to no file was OBSERVED — the loader
+// stats it and never opens it — so it is the missing file's failure with the
+// missing file's remedy behind a removal, never the unreadable arm. That arm
+// graded a directory unknown, quoted its path twice and told the reader to fix
+// the file permissions; a named pipe never got that far, hanging doctor in the
+// read (t-zvax, measured at ec53ed3). Read through os.Stat alone (the loader
+// mutation row config-stat-reads-a-broken-link-as-missing-or-unreadable
+// restores), a link to nothing grades as a missing file whose remedy init
+// refuses, and a link to itself, through a file or to an over-long name as
+// unknown with the permissions fix. The load runs under a deadline so that
+// regression fails here instead of hanging the package.
+func TestConfigNotARegularFileIsAFailure(t *testing.T) {
+	for _, c := range []struct {
+		shape, kind string
+		stage       func(path string) error
+	}{
+		{"a directory", "a directory", func(p string) error { return os.Mkdir(p, 0o700) }},
+		{"a named pipe", "a named pipe", func(p string) error { return syscall.Mkfifo(p, 0o600) }},
+		{"a link to nothing", "a broken symbolic link", func(p string) error { return os.Symlink("nowhere.toml", p) }},
+		{"a link to itself", "a broken symbolic link", func(p string) error { return os.Symlink(filepath.Base(p), p) }},
+		{"a link through a file", "a broken symbolic link", func(p string) error {
+			if err := os.WriteFile(filepath.Join(filepath.Dir(p), "shared.toml"), nil, 0o600); err != nil {
+				return err
+			}
+			return os.Symlink("shared.toml/glyph.toml", p)
+		}},
+		{"a link to an over-long name", "a broken symbolic link", func(p string) error { return os.Symlink(strings.Repeat("a", 300), p) }},
+	} {
+		t.Run(c.shape, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "glyph.toml")
+			if err := c.stage(path); err != nil {
+				t.Fatalf("staging %s at %s: %v", c.kind, path, err)
+			}
+			type answer struct {
+				root string
+				cfg  *config.Config
+				err  error
+			}
+			done := make(chan answer, 1)
+			go func() {
+				root, cfg, err := loadedAt(path)
+				done <- answer{root, cfg, err}
+			}()
+			var a answer
+			select {
+			case a = <-done:
+			case <-time.After(10 * time.Second):
+				t.Fatalf("loading %s as glyph.toml has not returned after 10s — doctor hangs there", c.kind)
+			}
+			ch := checkConfig(a.root, nil, a.cfg, a.err)
+			if ch.Status != StatusFail {
+				t.Fatalf("%s on %s = %s (%s), want %s — what is at the path was observed", idConfigLoads, c.kind, ch.Status, ch.Observed, StatusFail)
+			}
+			if want := "glyph.toml at " + a.root + " is " + c.kind; !strings.Contains(ch.Observed, want) {
+				t.Errorf("the observation must name what is there (%q), got %q", want, ch.Observed)
+			}
+			if !strings.Contains(ch.Fix, "remove it") || !strings.Contains(ch.Fix, "glyph init") {
+				t.Errorf("the fix must remove what is there and hand over the init command, got %q", ch.Fix)
 			}
 		})
 	}

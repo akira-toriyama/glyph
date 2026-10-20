@@ -5,29 +5,33 @@
 // % promote to 1.0.0); everything else — where the sigil sits, what a subject
 // looks like, which commits are skipped — belongs to the file, not to glyph.
 //
-// The package is pure: no I/O beyond LoadFile reading the one path it is
-// given, no globals. It is deliberately strict where the house config style
-// is lenient: unknown schema, unknown keys and half-specified patterns are
-// errors, never clamped or ignored, because this file decides CI verdicts and
-// a silently-misread key is a silently-changed verdict — the exact hole the
-// design refuses to open (no silent none). There is no Default(): a
-// missing or invalid glyph.toml is the caller's fact to act on, not this
-// package's to paper over.
+// The package is pure: no I/O beyond StatFile and LoadFile looking at the one
+// path they are given, no globals. It is deliberately strict where the house
+// config style is lenient: unknown schema, unknown keys and half-specified
+// patterns are errors, never clamped or ignored, because this file decides CI
+// verdicts and a silently-misread key is a silently-changed verdict — the
+// exact hole the design refuses to open (no silent none). There is no
+// Default(): a missing or invalid glyph.toml is the caller's fact to act on,
+// not this package's to paper over.
 //
-// Errors are plain errors on purpose, not *core.Error: which exit code a bad
-// glyph.toml maps to is the CLI's contract to define at its boundary, and
-// every error this package returns is the same class (bad config), so the
-// caller classifies by call site, never by string match.
+// Errors are never *core.Error: which exit code a bad glyph.toml maps to is
+// the CLI's contract to define at its boundary. Every error Load returns is
+// the same class (bad content), a plain error; StatFile, and LoadFile through
+// it, add the filesystem's answers as types — *fs.PathError and
+// *NotAFileError — so the caller classifies by type and call site, never by
+// string match.
 package config
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"regexp"
 	"strings"
+	"syscall"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -267,13 +271,105 @@ type rawSection struct {
 	Title  string  `toml:"title"`
 }
 
-// LoadFile reads and validates the glyph.toml at path. A missing file is the
-// caller's condition to handle (os.IsNotExist on the wrapped error), not a
-// default-config case.
+// NotAFileError is StatFile's answer for a path that holds something other
+// than a regular file — a directory, a named pipe, a socket, a device, or a
+// symbolic link that resolves to no file. What is there was OBSERVED, by
+// os.Stat or, for a link it cannot follow, os.Lstat, and the path was never
+// opened: open(2) on a named pipe blocks until a writer appears, so a FIFO
+// named glyph.toml hung every command that loads the config, and a directory
+// surfaced as a read error whose remedy was the file's permissions (t-zvax).
+// The loader's callers answer it as they answer a missing file, not as a read
+// that failed; glyph init, which writes over a missing path, refuses it
+// (DESIGN §5, §7).
+type NotAFileError struct {
+	Path string
+	// Mode is the path's type bits (fs.FileMode.Type) as os.Stat reported
+	// them, symlinks followed, or fs.ModeSymlink, os.Lstat's, for a link that
+	// resolves to no file; never 0, which is a regular file.
+	Mode fs.FileMode
+}
+
+func (e *NotAFileError) Error() string {
+	return e.Path + " is " + e.Kind() + ", not a regular file"
+}
+
+// Kind names what is at the path, article included, for the sentence a
+// caller words around it. A link is only ever os.Lstat's answer, for one
+// os.Stat could not follow: os.Stat reports what a link resolves to. The last
+// arm is unreachable on linux and darwin, where os.Stat sets one of the bits
+// above for every type but a regular file (Go's os/stat_linux.go and
+// os/stat_darwin.go: a whiteout reads as a device).
+func (e *NotAFileError) Kind() string {
+	switch {
+	case e.Mode.IsDir():
+		return "a directory"
+	case e.Mode&fs.ModeSymlink != 0:
+		return "a broken symbolic link"
+	case e.Mode&fs.ModeNamedPipe != 0:
+		return "a named pipe"
+	case e.Mode&fs.ModeSocket != 0:
+		return "a socket"
+	case e.Mode&fs.ModeDevice != 0:
+		return "a device"
+	}
+	return "a file of unknown type"
+}
+
+// StatFile is the one classification of what is at a glyph.toml path, made
+// without opening it — never open-then-fstat, because the open is what blocks
+// on a named pipe. LoadFile asks it before it reads and `glyph init` before it
+// writes, so the loader's commands and init classify one path alike. Its
+// answers are told apart by type, and by fs.ErrNotExist within *fs.PathError;
+// every *fs.PathError is os.Stat's own, unwrapped (it already names the
+// operation and the path):
+//
+//   - nil: a regular file, symlinks followed;
+//   - a *fs.PathError carrying fs.ErrNotExist: nothing is there, not even a
+//     link — the caller's condition to handle, not a default-config case;
+//   - a *NotAFileError: something other than a regular file is there;
+//   - any other *fs.PathError: a stat the filesystem refused (permission
+//     denied, an I/O fault), so nothing was observed.
+func StatFile(path string) error {
+	info, err := os.Stat(path)
+	if err == nil {
+		if !info.Mode().IsRegular() {
+			return &NotAFileError{Path: path, Mode: info.Mode().Type()}
+		}
+		return nil
+	}
+	// A link that dangles, loops, runs through a regular file or names a
+	// target too long to exist fails os.Stat by its own fault, yet os.Lstat
+	// sees the link itself — observed, so not a regular file (DESIGN §5). A
+	// link os.Stat could not follow for a permission or an I/O fault keeps
+	// that fault: where it leads was never observed.
+	if link, lerr := os.Lstat(path); lerr == nil && link.Mode()&fs.ModeSymlink != 0 && linksOwnFault(err) {
+		return &NotAFileError{Path: path, Mode: fs.ModeSymlink}
+	}
+	return err
+}
+
+// linksOwnFault reports whether os.Stat's failure on a path that is a link is
+// the link's own — a target that does not exist, a loop, a target path
+// through a regular file, a target name too long to exist. os.Lstat resolved
+// the path itself, so ENAMETOOLONG can only come from the target: a component
+// past NAME_MAX, or a path past PATH_MAX once the link is expanded.
+func linksOwnFault(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ELOOP) || errors.Is(err, syscall.ENOTDIR) ||
+		errors.Is(err, syscall.ENAMETOOLONG)
+}
+
+// LoadFile reads and validates the glyph.toml at path. Its failures are
+// StatFile's; os.ReadFile's own *fs.PathError, unwrapped, for a read the
+// filesystem refused; and any other error is the content's, from Load,
+// prefixed with path — told apart as StatFile's answers are, by type and by
+// fs.ErrNotExist within *fs.PathError.
 func LoadFile(path string) (*Config, error) {
+	if err := StatFile(path); err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(path) // #nosec G304 -- the caller's own glyph.toml; reading a named path is this function's contract
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
+		return nil, err
 	}
 	cfg, err := Load(data)
 	if err != nil {

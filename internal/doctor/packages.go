@@ -32,9 +32,9 @@ import (
 //     filesystem instead passed a case-different spelling and a symlink,
 //     neither of which attribution matches (t-fdd8 (1); DESIGN §4.1).
 //   - A glyph.toml that was not loaded — no top level to resolve it against,
-//     or a file that is missing, unreadable or invalid — is UNKNOWN here:
-//     its packages were never read. The config check carries the failure;
-//     this one says only that it could not run (configUnread).
+//     or a file that is missing, not a regular file, unreadable or invalid —
+//     is UNKNOWN here: its packages were never read. The config check carries
+//     the failure; this one says only that it could not run (configUnread).
 //   - Packages declared and no tree listing (an unborn HEAD, git failing) is
 //     unknown too: nothing was compared.
 func checkPackagePaths(root string, cfg *config.Config, trees []string, treesErr error) Check {
