@@ -96,6 +96,9 @@ func TestReleaseDraftOnNoneKeepsThePlaceholderByID(t *testing.T) {
 	if v.Action != "update" || v.Tag != draftplan.PlaceholderTag || v.Level != "none" {
 		t.Errorf("verdict = %+v, want action update, tag %q, level none", v, draftplan.PlaceholderTag)
 	}
+	if v.Next != "" {
+		t.Errorf("next = %q on a none verdict, want it absent — only a release verdict names a next version, and the placeholder's tag is not one", v.Next)
+	}
 }
 
 // TestReleaseDraftOnNoneRetagsThePlaceholder is the whole promise of the

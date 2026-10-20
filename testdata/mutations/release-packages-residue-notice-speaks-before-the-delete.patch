@@ -1,9 +1,9 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 959b182..02e4171 100644
+index dec9482..70b5844 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -328,6 +328,11 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
- 		lines = append(lines, draftplan.LinePlan{Plan: plan, Body: body})
+@@ -273,6 +273,11 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 		lines = append(lines, lp)
  	}
  	run := draftplan.PlanRun(lines, draftplan.Residue(cfg, drafted))
 +	for _, wr := range run {
@@ -12,5 +12,5 @@ index 959b182..02e4171 100644
 +		}
 +	}
  	var upserts []draftplan.Write
- 	residuals, stale := 0, 0
  	for _, wr := range run {
+ 		if wr.Kind == draftplan.Upsert {

@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index 959b182..7a96bc5 100644
+index dec9482..e7e2bf4 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -420,7 +420,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+@@ -473,7 +473,7 @@ func carryOut(ctx context.Context, gh *github.Client, owner, repoName string, ru
  			case core.IsInterrupted(derr):
- 				return derr
+ 				return nil, derr
  			case residualErr == nil:
 -				residualErr = derr
-+				return derr
++				return nil, derr
  			default:
  				warnf("the residual draft %s (release id %d) would not go either: %v — the run fails on the first that would not, and the next run tries every one again", wr.Draft.TagName, wr.Draft.ID, derr)
  			}

@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 1221459..3a6e196 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -468,7 +468,7 @@ func newReleaseResult(cfg *config.Config, w walk.Result, rows []bump.Row, verdic
+ 	}
+ 	if len(cfg.Packages) == 0 {
+ 		one := verdicts[0]
+-		res.Current, res.Level, res.Next, res.Tag, res.Body, res.Action, res.URL, res.Reason = one.Current, one.Level, one.Next, one.Tag, one.Body, one.Action, one.URL, one.Reason
++		res.Current, res.Level, res.Tag, res.Body, res.Action, res.URL, res.Reason = one.Current, one.Level, one.Tag, one.Body, one.Action, one.URL, one.Reason
+ 		return res
+ 	}
+ 	reasons := make([]string, 0, len(verdicts))

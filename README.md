@@ -510,8 +510,8 @@ its residual draft), every line's upsert written before any stray is deleted
 its notes with a compare link from that line's own base tag (none for a line
 with no tag), `--footer-file` appended to every draft, and `--json` carrying
 `packages: [{path, current, level, next, tag, body, action, url, commits,
-reason}]` with the scalar `current` / `level` / `action` empty, `tag` /
-`body` / `url` absent, and `target` shared — omitted, as the single
+reason}]` with the scalar `current` / `level` / `action` empty, `next` /
+`tag` / `body` / `url` absent, and `target` shared — omitted, as the single
 line omits it, when no line has a draft to write. A bare `vX.Y.Z` draft in a
 repository that declares packages but no root package is the single
 line's residue and is deleted with a notice on the first packages run —

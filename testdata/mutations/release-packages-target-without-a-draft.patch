@@ -1,8 +1,8 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index bf9e970..a632ec1 100644
+index 1221459..a563d79 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -526,9 +526,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+@@ -463,9 +463,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
  // points at target too.
  func newReleaseResult(cfg *config.Config, w walk.Result, rows []bump.Row, verdicts []packageRelease, target string, drafted bool, moving int) releaseResult {
  	res := releaseResult{Commits: rows, Pulls: w.Facts.Pulls}
@@ -12,4 +12,4 @@ index bf9e970..a632ec1 100644
 +	res.Target = target
  	if len(cfg.Packages) == 0 {
  		one := verdicts[0]
- 		res.Current, res.Level, res.Tag, res.Body, res.Action, res.URL, res.Reason = one.Current, one.Level, one.Tag, one.Body, one.Action, one.URL, one.Reason
+ 		res.Current, res.Level, res.Next, res.Tag, res.Body, res.Action, res.URL, res.Reason = one.Current, one.Level, one.Next, one.Tag, one.Body, one.Action, one.URL, one.Reason

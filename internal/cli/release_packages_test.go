@@ -51,8 +51,9 @@ func decodeReleaseLines(t *testing.T, stdout string) releaseVerdictLines {
 // TestReleasePackagesWritesOneDraftPerLine: the defining probe's release —
 // two POSTs in config order, haiku/v0.2.0 and curry/v0.1.1, each a DRAFT
 // carrying its own line's notes and the hand marker, no delete; stdout is
-// one URL per draft, the JSON's scalars are empty and packages carries each
-// line's tag, action and URL.
+// one URL per draft, the JSON's scalars are empty — next absent, the key
+// each packages row does carry — and packages carries each line's next, tag,
+// action and URL.
 func TestReleasePackagesWritesOneDraftPerLine(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	_, routes := squashAcrossLines(t, dir, 7)
@@ -94,8 +95,18 @@ func TestReleasePackagesWritesOneDraftPerLine(t *testing.T) {
 	if res.Current != "" || res.Level != "" || res.Tag != "" || res.Action != "" || res.URL != "" {
 		t.Fatalf("scalars must be empty under packages: %s", stdout)
 	}
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(stdout), &top); err != nil {
+		t.Fatalf("release --json stdout is not JSON: %v\n%s", err, stdout)
+	}
+	if _, ok := top["next"]; ok {
+		t.Fatalf("next names one line's version, so it is absent under packages: %s", stdout)
+	}
 	if res.Target == "" {
 		t.Fatalf("every line's draft points at target, so it must be reported: %s", stdout)
+	}
+	if len(res.Packages) != 2 || res.Packages[0].Next != "v0.2.0" || res.Packages[1].Next != "v0.1.1" {
+		t.Fatalf("packages = %+v — every moving line carries its next", res.Packages)
 	}
 	if len(res.Packages) != 2 || res.Packages[0].Tag != "haiku/v0.2.0" || res.Packages[0].Action != "create" || res.Packages[0].URL == "" || res.Packages[1].Tag != "curry/v0.1.1" || res.Packages[1].URL == "" {
 		t.Fatalf("packages = %+v — every written line carries a url", res.Packages)
