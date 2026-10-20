@@ -283,7 +283,7 @@ func tagListCmd(args ...string) []string {
 
 // tagLines splits git's one-name-per-line tag listing. Shared by Tags and
 // mergedTags so the two readers cannot come to disagree about what a listing
-// holds (the runIn precedent, t-tgbs).
+// holds, as runIn is the single exec site behind run and runStdin.
 func tagLines(out []byte) []string {
 	var tags []string
 	for l := range strings.SplitSeq(string(out), "\n") {

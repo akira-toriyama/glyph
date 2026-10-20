@@ -10,14 +10,14 @@ import (
 // order that is safe: flatten each field as it arrives, then — over the
 // assembled whole, in String — the prose escape and the mention fence, one pass
 // each. It is the package's ONLY exported surface, and that is the
-// point (ratified 2026-07-22, t-3f4s): the order used to be a contract written
-// in doc comments on two call sites, and a third caller handing raw author text
-// to the mention fence would have resurrected the phantom-span hole SILENTLY —
-// codeSpans is a backtick-only model, exact only after escapeProseLine has removed
-// the competing constructs (escape.go's header holds the theorem, and the
-// measured live mentions that killed the alternatives). A doc comment cannot
-// stop that caller. An unexported function can, and now does — the surface
-// golden in testdata/exported-surface.golden.txt is what keeps it that way.
+// point (ratified 2026-07-22, t-3f4s): a caller handing raw author text to the
+// mention fence would resurrect the phantom-span hole SILENTLY — codeSpans is a
+// backtick-only model, exact only after escapeProseLine has removed the
+// competing constructs (escape.go's header holds the theorem, and codeSpans'
+// doc in markdown.go the measured live mentions that killed the alternatives).
+// A doc comment on the call sites cannot stop that caller; an unexported
+// function can — the surface golden in testdata/exported-surface.golden.txt is
+// what keeps it that way.
 //
 // The zero value is ready to use. Append in render order:
 //

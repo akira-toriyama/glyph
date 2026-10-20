@@ -230,9 +230,8 @@ type apiCommit struct {
 		} `json:"author"`
 	} `json:"commit"`
 	// Author is the GitHub user the commit's email resolved to — null when
-	// GitHub knows no account for it (measured: golang/tools lists Saleh's
-	// commits under login larrasket; a name is not a login and cannot be
-	// told from one by shape).
+	// GitHub knows no account for it. A name is not a login and cannot be
+	// told from one by shape (DESIGN §3, "no shape tells them apart").
 	Author *struct {
 		Login string `json:"login"`
 	} `json:"author"`
@@ -555,11 +554,11 @@ func failed(ctx context.Context, what string, err error) error {
 // share one status and one message — they cannot be told apart here — so both
 // are retried: the collision heals inside the schedule, and a true permission
 // failure still fails with the same verdict, ~21s later (bounded by the
-// schedule; hand-rerunning the job, which is what the intermittent red used
-// to demand, was the same retry with far worse latency). A transport failure
-// with a live context also qualifies (an outage resets connections as often
-// as it answers 503). An interrupt never does — the user asked to stop — and
-// every other 4xx is the caller's input, which a retry cannot repair.
+// schedule; hand-rerunning the job is the same retry with far worse
+// latency). A transport failure with a live context also qualifies (an
+// outage resets connections as often as it answers 503). An interrupt never
+// does — the user asked to stop — and every other 4xx is the caller's input,
+// which a retry cannot repair.
 func retryable(err error) bool {
 	// A refused redirect is this package's own verdict, not the wire's: the same
 	// Location would be refused three more times. Checked first, because the

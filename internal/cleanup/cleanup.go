@@ -66,8 +66,7 @@ func CommentPrefix(configured string, set bool) string {
 // cleanup_mode == SCISSORS`, then strbuf_stripspace with or without the comment
 // prefix). A name like "strip" does not decide the truncation on its own, so an
 // enum of git's mode names cannot express `--cleanup=strip` under `-v` (truncate)
-// versus the same mode under `-m` (do not) — and that pair is exactly where the
-// hook and CI used to disagree.
+// versus the same mode under `-m` (do not).
 type Mode struct {
 	// Space runs git's whitespace cleanup: trailing " \t\r" off every line,
 	// an interior run of blank lines collapsed to one, leading and trailing
@@ -152,8 +151,9 @@ func ResolveMode(configured string, edited bool, verbose Verbose) (mode Mode, kn
 	case "scissors":
 		// Without an editor this is whitespace: measured, `commit.cleanup=
 		// scissors` with `-F` records the cut line AND everything below it, so
-		// only verbose cuts here then. Cutting anyway would hide a footer git
-		// keeps — the false-positive direction, which stops a commit.
+		// only verbose cuts here then. Cutting anyway would hide that text from
+		// the patterns, and the hook's verdict would part from CI's wherever a
+		// pattern reads it.
 		return Mode{Space: true, Truncate: cut}, true
 	case "default", "":
 		// git's default IS the editor question: strip when a message is edited,
@@ -177,8 +177,8 @@ func ResolveMode(configured string, edited bool, verbose Verbose) (mode Mode, kn
 // messages git was perfectly happy to record.
 //
 // It takes a mode because git's cleanup is not one behaviour, and assuming the
-// editor one cost both directions of the disagreement this function exists to
-// prevent (measured on git 2.54, reproduced as tests):
+// editor one cost the disagreement this function exists to prevent (measured
+// on git 2.54, reproduced as tests):
 //
 //	git commit -F msg   with "# reminder" as line 1
 //	    git records it verbatim (no editor ⇒ whitespace ⇒ comments are content)
