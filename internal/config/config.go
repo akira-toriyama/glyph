@@ -335,11 +335,11 @@ func StatFile(path string) error {
 		}
 		return nil
 	}
-	// A link that dangles, loops or runs through a regular file fails os.Stat
-	// by its own fault, yet os.Lstat sees the link itself — observed, so not a
-	// regular file (DESIGN §5). A link os.Stat could not follow for a
-	// permission or an I/O fault keeps that fault: where it leads was never
-	// observed.
+	// A link that dangles, loops, runs through a regular file or names a
+	// target too long to exist fails os.Stat by its own fault, yet os.Lstat
+	// sees the link itself — observed, so not a regular file (DESIGN §5). A
+	// link os.Stat could not follow for a permission or an I/O fault keeps
+	// that fault: where it leads was never observed.
 	if link, lerr := os.Lstat(path); lerr == nil && link.Mode()&fs.ModeSymlink != 0 && linksOwnFault(err) {
 		return &NotAFileError{Path: path, Mode: fs.ModeSymlink}
 	}
@@ -348,9 +348,12 @@ func StatFile(path string) error {
 
 // linksOwnFault reports whether os.Stat's failure on a path that is a link is
 // the link's own — a target that does not exist, a loop, a target path
-// through a regular file.
+// through a regular file, a target name too long to exist. os.Lstat resolved
+// the path itself, so ENAMETOOLONG can only come from the target: a component
+// past NAME_MAX, or a path past PATH_MAX once the link is expanded.
 func linksOwnFault(err error) bool {
-	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ELOOP) || errors.Is(err, syscall.ENOTDIR)
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ELOOP) || errors.Is(err, syscall.ENOTDIR) ||
+		errors.Is(err, syscall.ENAMETOOLONG)
 }
 
 // LoadFile reads and validates the glyph.toml at path. Its failures, told

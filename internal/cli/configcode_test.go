@@ -133,8 +133,8 @@ func TestValidConfigStillPasses(t *testing.T) {
 
 // notAFile stages the shapes other than a regular file that t-zvax measured at
 // a glyph.toml path: a directory, a named pipe, and a link that resolves to no
-// file — to nothing, to itself, through a regular file. kind is the phrase
-// config.NotAFileError names it by.
+// file — to nothing, to itself, through a regular file, to a name past
+// NAME_MAX (255). kind is the phrase config.NotAFileError names it by.
 var notAFile = []struct {
 	shape, kind string
 	stage       func(path string) error
@@ -149,6 +149,7 @@ var notAFile = []struct {
 		}
 		return os.Symlink("shared.toml/glyph.toml", p)
 	}},
+	{"a link to an over-long name", "a broken symbolic link", func(p string) error { return os.Symlink(strings.Repeat("a", 300), p) }},
 }
 
 // runGlyphWithin is runGlyph under a deadline, for a run a regression can
@@ -183,9 +184,10 @@ func runGlyphWithin(t *testing.T, d time.Duration, args ...string) (code int, st
 // and remedy, not the unreadable arm's 4. Before the loader stat'ed the path,
 // a directory answered 4 on both commands and a named pipe answered nothing at
 // all — lint --stdin and bump hung in the read (t-zvax, measured at ec53ed3).
-// At 43cecf2 a link to itself or through a file still answered 4, and a link
-// to nothing the missing file's remedy, which init refused. The message is
-// asserted beside the code because 2 is also what a bad flag answers.
+// At 43cecf2 a link to itself or through a file still answered 4, as one to
+// an over-long name did at 99f713a, and a link to nothing the missing file's
+// remedy, which init refused. The message is asserted beside the code because
+// 2 is also what a bad flag answers.
 func TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile(t *testing.T) {
 	for _, k := range notAFile {
 		for _, args := range [][]string{{"lint", "--stdin"}, {"bump", "--range", "v0.1.0..HEAD"}} {

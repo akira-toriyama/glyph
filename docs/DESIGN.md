@@ -3071,13 +3071,15 @@ path twice then: the loader re-wrapped `os.ReadFile`'s error, which already
 names it, and now hands it over as it is
 (`TestLoadFileNamesAnUnreadablePathOnce`, mutation row
 `config-load-names-the-path-twice`). A link `os.Stat` cannot follow by its own
-fault — one to nothing, one that loops, one through a regular file — is the
-link itself, observed by `os.Lstat`. Read through `os.Stat` alone, a link to
-nothing took the missing arm, whose remedy `glyph init` refused as "already
-exists", and a loop or a link through a file took the read-error arm at `4`
-with "fix the file permissions" (measured 2026-10-21 at `43cecf2`; the link
-cases of `TestLoadFileRefusesWhatIsNotARegularFile` and
-`TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile`, mutation row
+fault — one to nothing, one that loops, one through a regular file, one to a
+name too long to exist (`os.Lstat` resolved the path itself, so the over-long
+name can only be the target's) — is the link itself, observed by `os.Lstat`.
+Read through `os.Stat` alone, a link to nothing took the missing arm, whose
+remedy `glyph init` refused as "already exists", and a loop, a link through a
+file or one to an over-long name took the read-error arm at `4` with "fix the
+file permissions" (measured 2026-10-21 at `43cecf2`, and for the over-long name
+still at `99f713a`; the link cases of `TestLoadFileRefusesWhatIsNotARegularFile`
+and `TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile`, mutation row
 `config-stat-reads-a-broken-link-as-missing-or-unreadable`). A link it could
 not follow for a permission or an I/O fault stays `4`, since where it leads was
 never observed (`TestLoadFileKeepsALinkItMayNotFollowUnreadable`, mutation row
@@ -3089,8 +3091,8 @@ file: anything else at the path is refused at `2`, `--force` or not, naming
 what is there, and never opened. When it asked `os.Lstat` only whether
 something existed, `init` answered each such path "already exists — edit it in
 place, or pass --force", and `--force` then exited `4` over a directory, a
-looping link or one through a file, hung over a named pipe in
-`os.WriteFile`'s open, and wrote through a link to nothing, creating its
+looping link, one through a file or one to an over-long name, hung over a named
+pipe in `os.WriteFile`'s open, and wrote through a link to nothing, creating its
 target (measured 2026-10-21 at `43cecf2`; `TestInitRefusesWhatIsNotARegularFile`,
 mutation row `init-force-opens-what-is-not-a-regular-file`). A regular file
 keeps its answer — refused without `--force`, replaced with it
@@ -3481,9 +3483,10 @@ The severities are the argued part:
   fix is the missing file's behind a removal (t-zvax: before the stat a
   directory graded `unknown` with "fix the file permissions" as its fix, and a
   named pipe hung `doctor` in the read, measured 2026-10-20 at `ec53ed3`; read
-  through `os.Stat` alone, a looping link or one through a file graded
-  `unknown` with that same fix, and a link to nothing failed with the missing
-  file's fix, which `glyph init` refused, measured 2026-10-21 at `43cecf2`;
+  through `os.Stat` alone, a looping link, one through a file or one to an
+  over-long name graded `unknown` with that same fix, and a link to nothing
+  failed with the missing file's fix, which `glyph init` refused, measured
+  2026-10-21 at `43cecf2` and, for the over-long name, still at `99f713a`;
   `TestConfigNotARegularFileIsAFailure`, mutation rows
   `doctor-grades-a-non-file-glyph-toml-could-not-run` and
   `doctor-tells-a-non-file-glyph-toml-to-edit-its-keys`). Only content that was

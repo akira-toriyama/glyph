@@ -253,10 +253,11 @@ func TestLoadFileMissing(t *testing.T) {
 // open(2) on a FIFO waits for a writer (t-zvax, measured at ec53ed3). A link
 // os.Stat cannot follow is the link observed by os.Lstat: at 43cecf2 one to
 // nothing came back as a missing file, and one to itself or through a file as
-// a stat the filesystem refused. The call runs under a deadline so that
-// regression fails here instead of hanging the package until go test's
-// -timeout; on the deadline the blocked goroutine is left on a FIFO inside
-// t.TempDir that nothing will ever open for writing.
+// a stat the filesystem refused, as one to an over-long name still did at
+// 99f713a. The call runs under a deadline so that regression fails here
+// instead of hanging the package until go test's -timeout; on the deadline the
+// blocked goroutine is left on a FIFO inside t.TempDir that nothing will ever
+// open for writing.
 func TestLoadFileRefusesWhatIsNotARegularFile(t *testing.T) {
 	for _, c := range []struct {
 		shape, kind string
@@ -276,6 +277,11 @@ func TestLoadFileRefusesWhatIsNotARegularFile(t *testing.T) {
 				return err
 			}
 			return os.Symlink("shared.toml/glyph.toml", p)
+		}},
+		// One component past NAME_MAX (255): os.Lstat sees the link, and
+		// os.Stat through it fails ENAMETOOLONG.
+		{"a link to an over-long name", "a broken symbolic link", fs.ModeSymlink, func(p string) error {
+			return os.Symlink(strings.Repeat("a", 300), p)
 		}},
 	} {
 		t.Run(c.shape, func(t *testing.T) {

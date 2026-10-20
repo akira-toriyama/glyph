@@ -775,7 +775,7 @@ func TestDoctorUnreadableConfigLeavesTheDependentsUnread(t *testing.T) {
 // that read the loaded file are handed nothing. Before the loader stat'ed the
 // path a directory was unknown at exit 4 and a named pipe hung doctor in the
 // read (t-zvax, measured at ec53ed3); at 43cecf2 a link to itself or through a
-// file was still unknown at exit 4.
+// file was still unknown at exit 4, and at 99f713a one to an over-long name.
 func TestDoctorConfigThatIsNotAFileFailsAtTheMissingCode(t *testing.T) {
 	for _, k := range notAFile {
 		t.Run(k.shape, func(t *testing.T) {

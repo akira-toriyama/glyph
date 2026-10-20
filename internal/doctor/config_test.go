@@ -106,8 +106,9 @@ func TestConfigUnloadableIsAFailure(t *testing.T) {
 // the file permissions; a named pipe never got that far, hanging doctor in the
 // read (t-zvax, measured at ec53ed3). At 43cecf2 a link to nothing still
 // graded as a missing file whose remedy init refused, and a link to itself or
-// through a file as unknown with the permissions fix. The load runs under a
-// deadline so that regression fails here instead of hanging the package.
+// through a file as unknown with the permissions fix, as one to an over-long
+// name still did at 99f713a. The load runs under a deadline so that
+// regression fails here instead of hanging the package.
 func TestConfigNotARegularFileIsAFailure(t *testing.T) {
 	for _, c := range []struct {
 		shape, kind string
@@ -123,6 +124,7 @@ func TestConfigNotARegularFileIsAFailure(t *testing.T) {
 			}
 			return os.Symlink("shared.toml/glyph.toml", p)
 		}},
+		{"a link to an over-long name", "a broken symbolic link", func(p string) error { return os.Symlink(strings.Repeat("a", 300), p) }},
 	} {
 		t.Run(c.shape, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "glyph.toml")

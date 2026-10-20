@@ -105,10 +105,12 @@ func TestInitRunsFromOptionsWithoutCobra(t *testing.T) {
 // at the path is refused at exit 2, with --force or without, naming what is
 // there, and is never opened. At 43cecf2 init answered each "already exists —
 // edit it in place, or pass --force", and --force then exited 4 over a
-// directory, a looping link or one through a file, hung over a named pipe in
-// os.WriteFile's open, and wrote through a link to nothing, creating its
-// target (measured 2026-10-21). Each run sits under a deadline, so that
-// regression fails here instead of hanging the package.
+// directory, a looping link, one through a file or one to an over-long name,
+// hung over a named pipe in os.WriteFile's open, and wrote through a link to
+// nothing, creating its target (measured 2026-10-21); at 99f713a the
+// over-long name was still a refused stat at 4, --force or not. Each run sits
+// under a deadline, so that regression fails here instead of hanging the
+// package.
 func TestInitRefusesWhatIsNotARegularFile(t *testing.T) {
 	for _, k := range notAFile {
 		for _, force := range []bool{false, true} {

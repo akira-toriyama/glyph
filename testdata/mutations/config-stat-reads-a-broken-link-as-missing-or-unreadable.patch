@@ -1,11 +1,11 @@
 diff --git a/internal/config/config.go b/internal/config/config.go
-index d421f40..982d717 100644
+index bf7f8a4..737a4d2 100644
 --- a/internal/config/config.go
 +++ b/internal/config/config.go
 @@ -340,9 +340,6 @@ func StatFile(path string) error {
- 	// regular file (DESIGN §5). A link os.Stat could not follow for a
- 	// permission or an I/O fault keeps that fault: where it leads was never
- 	// observed.
+ 	// sees the link itself — observed, so not a regular file (DESIGN §5). A
+ 	// link os.Stat could not follow for a permission or an I/O fault keeps
+ 	// that fault: where it leads was never observed.
 -	if link, lerr := os.Lstat(path); lerr == nil && link.Mode()&fs.ModeSymlink != 0 && linksOwnFault(err) {
 -		return &NotAFileError{Path: path, Mode: fs.ModeSymlink}
 -	}
