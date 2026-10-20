@@ -133,6 +133,10 @@ nix run github:akira-toriyama/glyph            # one-shot
 nix profile install github:akira-toriyama/glyph
 ```
 
+The flake builds with the Go its locked nixpkgs ships, not with `go.mod`'s
+`toolchain` (`buildGoModule` never downloads a toolchain), so a Go security
+fix reaches this path when `flake.lock` moves to a nixpkgs that carries it.
+
 **GitHub Actions** — either consume a reusable workflow at a pinned release
 tag:
 
