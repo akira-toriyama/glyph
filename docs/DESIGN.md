@@ -3072,7 +3072,21 @@ names it, and now hands it over as it is
 (`TestLoadFileNamesAnUnreadablePathOnce`, mutation row
 `config-load-names-the-path-twice`), as `config.StatFile` hands over a stat
 the filesystem refused (`TestLoadFileKeepsALinkItMayNotFollowUnreadable`,
-mutation row `config-stat-names-the-path-twice`). A link `os.Stat` cannot
+mutation row `config-stat-names-the-path-twice`). So do `glyph init`'s write,
+the hook installer's read, write, directory creation and chmod, doctor's reads
+of a hook, the workflows directory and the workflow and action files, and
+`release --footer-file`: each `*fs.PathError` goes out as it is, with what did
+not happen beside it, and the hooks directory is named as well only when its
+creation failed on an ancestor (`TestInitNamesAnUnwritablePathOnce`,
+`TestInstallNamesARefusedPathOnce`, mutation rows
+`init-write-names-the-path-twice` and `hook-install-names-the-path-twice`; no
+test stages a refused chmod — on Linux, where the ledger runs, it takes a file
+another user owns, which a test cannot make without root). Every reader of the
+hooks directory — the installer planning its write, `lint --stdin`'s
+stale-hook check — would block on a named pipe at a hook's path, and nothing
+guards it: a hooks directory holding a pipe is sabotage, not a state a
+repository reaches, and git will not even stage one (ruled 2026-10-21,
+t-zvax). A link `os.Stat` cannot
 follow by its own fault — one to nothing, one that loops, one through a
 regular file, one to a name too long to exist (`os.Lstat` resolved the path
 itself, so the over-long name can only be the target's) — is the link itself,

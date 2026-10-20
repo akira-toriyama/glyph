@@ -1,0 +1,28 @@
+diff --git a/internal/hook/hook.go b/internal/hook/hook.go
+index 22382c7..3d9bdb1 100644
+--- a/internal/hook/hook.go
++++ b/internal/hook/hook.go
+@@ -279,12 +279,12 @@ func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
+ 		if pe, ok := errors.AsType[*fs.PathError](mkErr); ok && pe.Path != hooksDir {
+ 			return Report{}, core.APIf("%v — so the hooks directory %s could not be created", mkErr, hooksDir)
+ 		}
+-		return Report{}, core.APIf("%v — the hooks directory could not be created", mkErr)
++		return Report{}, core.APIf("creating %s: %v", hooksDir, mkErr)
+ 	}
+ 	for _, k := range plans {
+ 		path := filepath.Join(hooksDir, k.Name)
+ 		if wErr := os.WriteFile(path, []byte(k.Script), 0o755); wErr != nil { //nolint:gosec // a hook must be executable
+-			return Report{}, core.APIf("%v — the %s hook could not be written", wErr, k.Name)
++			return Report{}, core.APIf("writing %s: %v", path, wErr)
+ 		}
+ 	}
+ 	return rep, chmodAll(hooksDir, kinds)
+@@ -315,7 +315,7 @@ func plan(hooksDir string, k Kind, force bool) (Result, bool, error) {
+ 	case os.IsNotExist(err):
+ 		res.Action = "installed"
+ 	default:
+-		return res, false, core.APIf("%v — what the %s hook holds could not be read, so nothing was written", err, k.Name)
++		return res, false, core.APIf("reading %s: %v", path, err)
+ 	}
+ 	return res, true, nil
+ }

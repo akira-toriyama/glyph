@@ -61,7 +61,7 @@ func checkWorkflowPins(root string, rootVerified bool, actionFiles []gitsource.A
 	entries, err := os.ReadDir(dir)
 	if err != nil && (!rootVerified || !errors.Is(err, fs.ErrNotExist)) {
 		c.Status = StatusUnknown
-		c.Observed = fmt.Sprintf("%s could not be listed: %v", dir, err)
+		c.Observed = fmt.Sprintf("the workflows directory could not be listed: %v", err)
 		c.Message = "doctor reads the LOCAL checkout for this check, so it must run from the repository root. " +
 			"If this repository genuinely has no workflows there is nothing pinned and nothing to drift — but that is " +
 			"unverified, not verified"
@@ -84,7 +84,7 @@ func checkWorkflowPins(root string, rootVerified bool, actionFiles []gitsource.A
 		path := filepath.Join(dir, name)
 		body, rerr := os.ReadFile(path) // #nosec G304 -- the caller's own checkout, listed above
 		if rerr != nil {
-			unreadable = append(unreadable, fmt.Sprintf("%s could not be read: %v", path, rerr))
+			unreadable = append(unreadable, fmt.Sprintf("a workflow file could not be read: %v", rerr))
 			continue
 		}
 		refs = append(refs, scanUses(filepath.Join(".github", "workflows", name), string(body))...)
@@ -117,7 +117,7 @@ func checkWorkflowPins(root string, rootVerified bool, actionFiles []gitsource.A
 			// read the filesystem refused is unknown (DESIGN §7).
 			continue
 		case rerr != nil:
-			unreadable = append(unreadable, fmt.Sprintf("%s could not be read: %v", abs, rerr))
+			unreadable = append(unreadable, fmt.Sprintf("an action file could not be read: %v", rerr))
 			continue
 		}
 		files++

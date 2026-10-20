@@ -172,8 +172,8 @@ func TestCallerChecksNeverPassOverAnUnreadableFile(t *testing.T) {
 			if c.Status != StatusUnknown {
 				t.Fatalf("unreadable caller alone: status = %s, want %s (observed %q)", c.Status, StatusUnknown, c.Observed)
 			}
-			if !strings.Contains(strings.Join(c.Details, "\n"), locked) {
-				t.Errorf("details %v do not name the unread file %s", c.Details, locked)
+			if n := strings.Count(strings.Join(c.Details, "\n"), locked); n != 1 {
+				t.Errorf("details %v name the unread file %s %d times, want once — the read error already carries it", c.Details, locked, n)
 			}
 
 			root = checkoutAt(t, map[string]string{".github/workflows/release.yml": starved, ".github/workflows/other.yml": starved})

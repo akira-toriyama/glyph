@@ -12,7 +12,9 @@
 package hook
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -272,12 +274,17 @@ func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
 		return rep, chmodAll(hooksDir, kinds)
 	}
 	if mkErr := os.MkdirAll(hooksDir, 0o755); mkErr != nil { //nolint:gosec // git requires a traversable hooks dir
-		return Report{}, core.APIf("creating %s: %v", hooksDir, mkErr)
+		// MkdirAll names the directory it failed on, an ancestor when one is
+		// missing and cannot be made: only then is the hooks directory named too.
+		if pe, ok := errors.AsType[*fs.PathError](mkErr); ok && pe.Path != hooksDir {
+			return Report{}, core.APIf("%v — so the hooks directory %s could not be created", mkErr, hooksDir)
+		}
+		return Report{}, core.APIf("%v — the hooks directory could not be created", mkErr)
 	}
 	for _, k := range plans {
 		path := filepath.Join(hooksDir, k.Name)
 		if wErr := os.WriteFile(path, []byte(k.Script), 0o755); wErr != nil { //nolint:gosec // a hook must be executable
-			return Report{}, core.APIf("writing %s: %v", path, wErr)
+			return Report{}, core.APIf("%v — the %s hook could not be written", wErr, k.Name)
 		}
 	}
 	return rep, chmodAll(hooksDir, kinds)
@@ -308,7 +315,7 @@ func plan(hooksDir string, k Kind, force bool) (Result, bool, error) {
 	case os.IsNotExist(err):
 		res.Action = "installed"
 	default:
-		return res, false, core.APIf("reading %s: %v", path, err)
+		return res, false, core.APIf("%v — what the %s hook holds could not be read, so nothing was written", err, k.Name)
 	}
 	return res, true, nil
 }
@@ -321,7 +328,7 @@ func chmodAll(hooksDir string, kinds []Kind) error {
 			continue
 		}
 		if cerr := os.Chmod(path, 0o755); cerr != nil { //nolint:gosec // a hook must be executable
-			return core.APIf("making %s executable: %v", path, cerr)
+			return core.APIf("%v — the hook could not be made executable", cerr)
 		}
 	}
 	return nil

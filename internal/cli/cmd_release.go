@@ -594,7 +594,7 @@ func readFooter(path string) (string, error) {
 	}
 	content, err := os.ReadFile(path) // #nosec G304 -- the caller names their own footer file
 	if err != nil {
-		return "", core.Usagef("--footer-file %q cannot be read: %v", path, err)
+		return "", core.Usagef("--footer-file cannot be read: %v", err)
 	}
 	return string(content), nil
 }

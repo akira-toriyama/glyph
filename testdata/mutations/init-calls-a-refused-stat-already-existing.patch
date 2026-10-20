@@ -1,5 +1,5 @@
 diff --git a/internal/cli/cmd_init.go b/internal/cli/cmd_init.go
-index d0c9e8f..d25b3b8 100644
+index ec4cb6a..48e431d 100644
 --- a/internal/cli/cmd_init.go
 +++ b/internal/cli/cmd_init.go
 @@ -99,7 +99,7 @@ func runInit(ctx context.Context, o initOptions) error {
@@ -10,4 +10,4 @@ index d0c9e8f..d25b3b8 100644
 +		return core.Usagef("%s already exists — edit it in place, or pass --force to replace it with the %s preset", path, o.preset)
  	}
  	if err := os.WriteFile(path, data, 0o644); err != nil {
- 		return core.APIf("writing %s: %v", path, err)
+ 		return core.APIf("%v — glyph init could not write the preset", err)

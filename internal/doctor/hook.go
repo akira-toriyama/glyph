@@ -63,7 +63,7 @@ func checkHook(k hook.Kind, id, dir string, dirErr error) Check {
 		return c
 	case err != nil:
 		c.Status = StatusUnknown
-		c.Observed = fmt.Sprintf("%s could not be read: %v", path, err)
+		c.Observed = fmt.Sprintf("the %s hook could not be read: %v", k.Name, err)
 		c.Message = "a file doctor cannot read could hold anything, including a hook written by a glyph that is no longer current"
 		c.Fix = "fix the file permissions and re-run"
 		return c

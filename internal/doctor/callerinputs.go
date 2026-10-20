@@ -63,7 +63,7 @@ func checkCallerInputs(root string, rootVerified bool, glyph string) Check {
 		body, rerr := os.ReadFile(path) // #nosec G304 -- the caller's own checkout, listed above
 		if rerr != nil {
 			// Unread is unknown, never "no caller" — see checkCallerPermissions.
-			unreadable = append(unreadable, fmt.Sprintf("%s could not be read: %v", path, rerr))
+			unreadable = append(unreadable, fmt.Sprintf("a caller workflow could not be read: %v", rerr))
 			continue
 		}
 		calls := reusablesCalled(name, string(body))
