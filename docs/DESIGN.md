@@ -3089,7 +3089,7 @@ never observed (`TestLoadFileKeepsALinkItMayNotFollowUnreadable`, mutation row
 `config-stat-calls-a-link-it-may-not-follow-broken`).
 
 `glyph init` asks `config.StatFile` the same question before it writes, so it
-answers one path as the verdict commands do, and it replaces only a regular
+classifies one path as the verdict commands do, and it replaces only a regular
 file: anything else at the path is refused at `2`, `--force` or not, naming
 what is there, and never opened. When it asked `os.Lstat` only whether
 something existed, `init` answered each such path "already exists — edit it in

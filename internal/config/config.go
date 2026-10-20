@@ -278,8 +278,9 @@ type rawSection struct {
 // opened: open(2) on a named pipe blocks until a writer appears, so a FIFO
 // named glyph.toml hung every command that loads the config, and a directory
 // surfaced as a read error whose remedy was the file's permissions (t-zvax).
-// The callers answer it as they answer a missing file, not as a read that
-// failed (DESIGN §5, §7).
+// The loader's callers answer it as they answer a missing file, not as a read
+// that failed; glyph init, which writes over a missing path, refuses it
+// (DESIGN §5, §7).
 type NotAFileError struct {
 	Path string
 	// Mode is the path's type bits (fs.FileMode.Type) as os.Stat reported
@@ -317,9 +318,10 @@ func (e *NotAFileError) Kind() string {
 // StatFile is the one classification of what is at a glyph.toml path, made
 // without opening it — never open-then-fstat, because the open is what blocks
 // on a named pipe. LoadFile asks it before it reads and `glyph init` before it
-// writes, so the loader's commands and init answer one path alike. Its answers
-// are told apart by type alone, and every *fs.PathError is os.Stat's own,
-// unwrapped (it already names the operation and the path):
+// writes, so the loader's commands and init classify one path alike. Its
+// answers are told apart by type, and by fs.ErrNotExist within *fs.PathError;
+// every *fs.PathError is os.Stat's own, unwrapped (it already names the
+// operation and the path):
 //
 //   - nil: a regular file, symlinks followed;
 //   - a *fs.PathError carrying fs.ErrNotExist: nothing is there, not even a
@@ -356,10 +358,11 @@ func linksOwnFault(err error) bool {
 		errors.Is(err, syscall.ENAMETOOLONG)
 }
 
-// LoadFile reads and validates the glyph.toml at path. Its failures, told
-// apart by type alone, are StatFile's; os.ReadFile's own *fs.PathError,
-// unwrapped, for a read the filesystem refused; and any other error is the
-// content's, from Load, prefixed with path.
+// LoadFile reads and validates the glyph.toml at path. Its failures are
+// StatFile's; os.ReadFile's own *fs.PathError, unwrapped, for a read the
+// filesystem refused; and any other error is the content's, from Load,
+// prefixed with path — told apart as StatFile's answers are, by type and by
+// fs.ErrNotExist within *fs.PathError.
 func LoadFile(path string) (*Config, error) {
 	if err := StatFile(path); err != nil {
 		return nil, err

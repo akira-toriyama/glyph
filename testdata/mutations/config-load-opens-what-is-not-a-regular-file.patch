@@ -1,10 +1,10 @@
 diff --git a/internal/config/config.go b/internal/config/config.go
-index d421f40..e8fe51a 100644
+index a812645..a7a28d2 100644
 --- a/internal/config/config.go
 +++ b/internal/config/config.go
-@@ -358,9 +358,6 @@ func linksOwnFault(err error) bool {
- // unwrapped, for a read the filesystem refused; and any other error is the
- // content's, from Load, prefixed with path.
+@@ -364,9 +364,6 @@ func linksOwnFault(err error) bool {
+ // prefixed with path — told apart as StatFile's answers are, by type and by
+ // fs.ErrNotExist within *fs.PathError.
  func LoadFile(path string) (*Config, error) {
 -	if err := StatFile(path); err != nil {
 -		return nil, err
