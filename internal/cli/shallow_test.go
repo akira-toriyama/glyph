@@ -108,9 +108,9 @@ func shallowSingleRepo(t *testing.T) string {
 func shallowPackagesRepo(t *testing.T) string {
 	t.Helper()
 	dir, _ := packagesRepo(t)
-	touch(t, dir, "akira-toriyama", "no gitmoji in this one", "haiku/a.go")
+	testutil.Touch(t, dir, "akira-toriyama", "no gitmoji in this one", "haiku/a.go")
 	for i := range 3 {
-		touch(t, dir, "akira-toriyama", fmt.Sprintf(":bug:(haiku)~ fix number %d", i), "haiku/haiku.go")
+		testutil.Touch(t, dir, "akira-toriyama", fmt.Sprintf(":bug:(haiku)~ fix number %d", i), "haiku/haiku.go")
 	}
 	return dir
 }
@@ -147,7 +147,7 @@ func TestNotesPackagesRangeOnAShallowCheckoutSaysSo(t *testing.T) {
 // unchecked.
 func TestLintRangePackagesAtAShallowBoundaryIsNotReadAsTheWholeTree(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	shared := touch(t, dir, "akira-toriyama", ":sparkles:^ add a workspace file", "go.work")
+	shared := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a workspace file", "go.work")
 	clone := shallowClone(t, dir, 1)
 
 	t.Run("the full clone refuses the shared-only bump", func(t *testing.T) {
@@ -239,7 +239,7 @@ func TestPackagesWalkPlacesAShallowBoundaryByScopeAndSigil(t *testing.T) {
 			if tc.root {
 				dir, _ = packagesRepoWithRoot(t)
 			}
-			boundary := touch(t, dir, "akira-toriyama", tc.message, tc.path)
+			boundary := testutil.Touch(t, dir, "akira-toriyama", tc.message, tc.path)
 			clone := shallowClone(t, dir, 1)
 
 			t.Chdir(dir)
@@ -275,8 +275,8 @@ func TestPackagesWalkPlacesAShallowBoundaryByScopeAndSigil(t *testing.T) {
 // else.
 func TestReleasePackagesShallowBoundaryIsTheCheckoutsShortfall(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	boundary := touch(t, dir, "akira-toriyama", ":bug:(curry)~ thicken the roux", "curry/curry.go")
-	head := touch(t, dir, "akira-toriyama", ":bug:(haiku)~ fix a line", "haiku/haiku.go")
+	boundary := testutil.Touch(t, dir, "akira-toriyama", ":bug:(curry)~ thicken the roux", "curry/curry.go")
+	head := testutil.Touch(t, dir, "akira-toriyama", ":bug:(haiku)~ fix a line", "haiku/haiku.go")
 	usePR(t, dryServer(t, map[string]string{commitPullsPath(boundary): `[]`, commitPullsPath(head): `[]`}))
 	t.Chdir(shallowClone(t, dir, 2))
 
@@ -308,8 +308,8 @@ func TestReleasePackagesShallowBoundaryIsTheCheckoutsShortfall(t *testing.T) {
 // walk either way, so release still refuses at 4.
 func TestSinceTagPackagesPlacesABoundaryAndAnUnlistedCommitAlike(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	landed := touch(t, dir, "akira-toriyama", ":bug:(curry)~ thicken the roux", "curry/curry.go")
-	squash := touch(t, dir, "akira-toriyama", "Swap an ingredient (#9)", "curry/curry.go")
+	landed := testutil.Touch(t, dir, "akira-toriyama", ":bug:(curry)~ thicken the roux", "curry/curry.go")
+	squash := testutil.Touch(t, dir, "akira-toriyama", "Swap an ingredient (#9)", "curry/curry.go")
 	routes := map[string]string{
 		commitPullsPath(landed): `[]`,
 		commitPullsPath(squash): `[` + apiPullRef(9, "2026-09-10T00:00:00Z", squash) + `]`,

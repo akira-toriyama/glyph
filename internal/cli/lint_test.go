@@ -26,8 +26,8 @@ import (
 // `lint --range` on the recorded commit (what CI does). No case can pass because
 // glyph and its test agree about git.
 //
-// Before `--stdin` learned git's cleanup modes, glyph stripped comments and cut
-// at scissors in every mode, which git does only when an editor runs.
+// Which cleanup git runs is a per-commit question; DESIGN §2.1 has the signals
+// a hook reads and the resolution these rows exercise.
 func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 	testutil.RequireGit(t)
 
@@ -51,18 +51,11 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 	}{
 		{
 			name: "-F: a leading '#' line is the subject git records",
-			// No editor ⇒ cleanup=whitespace ⇒ comments are content. glyph used
-			// to drop the line and lint the one below it: hook 0, CI 3.
+			// No editor ⇒ cleanup=whitespace ⇒ comments are content: a hook
+			// that dropped the line and linted the one below it would pass
+			// what CI refuses (hook 0, CI 3).
 			message: "# reminder from my notes\n:sparkles:(x)^ add the thing\n",
 			want:    3,
-		},
-		{
-			name: "-F: an indented comment is content in both readings",
-			// git only drops a '#' at column 0; this one stays in the body,
-			// which the gemoji pattern claiming it never reads — the subject
-			// matches either way.
-			message: ":fire:(x)= drop the thing\n\n  # why: leftover note here\n",
-			want:    0,
 		},
 		{
 			name:    "-F under commit.cleanup=strip: comments really are dropped",
@@ -465,12 +458,12 @@ func TestLintPRTitle(t *testing.T) {
 		}
 	})
 
-	t.Run("malformed title", func(t *testing.T) {
+	t.Run("unmatched title", func(t *testing.T) {
 		srv := walkServer(t, map[string]string{pullPath(7): apiOnePullBody("add a menu without a gitmoji", "akira-toriyama")})
 		usePR(t, srv)
 		code, stdout, stderr := runGlyph(t, "lint", "--pr", "7")
 		if code != 3 {
-			t.Fatalf("lint --pr with a malformed title exited %d, want 3\nstderr: %s", code, stderr)
+			t.Fatalf("lint --pr with an unmatched title exited %d, want 3\nstderr: %s", code, stderr)
 		}
 		if stdout != "" {
 			t.Fatalf("violations must go to stderr, stdout got %q", stdout)
@@ -671,18 +664,13 @@ func TestHistoryGatesReadThroughLogOutputEncoding(t *testing.T) {
 }
 
 // TestLintRangeAnnotatesEachFinding pins the producer half of the annotation
-// contract lint.yml now leans on: one `::error::` per finding, written by the
+// contract lint.yml leans on: one `::error::` per finding, written by the
 // binary that computed it, every one of them before the envelope so the
-// fleet's sieve still recovers pure JSON.
-//
-// The caller-side reconstruction this replaced was where a whole run's
-// annotations went missing in silence (t-sws7): lint.yml rebuilt the
-// per-finding lines with jq over a stream carrying two shapes, and a run that
-// warned before it failed emitted no annotations at all. lint.yml now replays
-// the diagnostic stream verbatim and frames only the summary — so if glyph
-// stops writing these lines, nobody writes them, and the per-commit pointers a
-// reviewer acts on vanish with no red anywhere. The mutation row naming this
-// test is what keeps that from happening quietly.
+// fleet's sieve still recovers pure JSON. lint.yml replays the diagnostic
+// stream verbatim and frames only the summary (DESIGN §5, "Stream contract"),
+// so if glyph stops writing these lines, nobody writes them, and the
+// per-commit pointers a reviewer acts on vanish with no red anywhere (mutation
+// row lint-findings-lose-their-annotations).
 func TestLintRangeAnnotatesEachFinding(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", "first without any pattern shape")

@@ -302,7 +302,7 @@ func autosquashClaim(t *testing.T) string {
 func TestPackagesFixupIsUnlandableEndToEnd(t *testing.T) {
 	glyphBin := buildGlyph(t)
 	dir, base := packagesRepo(t)
-	target := touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
+	target := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
 	t.Chdir(dir)
 	if code, _, stderr := runGlyph(t, "hook", "install"); code != int(core.CodeOK) {
 		t.Fatalf("hook install exit = %d\nstderr: %s", code, stderr)
@@ -315,7 +315,7 @@ func TestPackagesFixupIsUnlandableEndToEnd(t *testing.T) {
 		{"--squash=" + target, "curry/menu.go"},
 	} {
 		t.Run("the hook lets "+strings.SplitN(tc.flag, "=", 2)[0]+" through, loudly", func(t *testing.T) {
-			writeFile(t, dir, tc.file, tc.flag+"\n")
+			testutil.WriteFile(t, dir, tc.file, tc.flag+"\n")
 			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 			out, err := commitFlagsWith(dir, pathWithGlyph, tc.flag)
 			if err != nil {
@@ -403,13 +403,13 @@ func TestShippedPresetRefusesAFixupAutosquashCannotFold(t *testing.T) {
 		wantBump string
 	}{
 		{"released", func(t *testing.T, dir string) (string, string) {
-			target := touch(t, dir, "akira-toriyama", ":sparkles:^ add x", "x.txt")
+			target := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add x", "x.txt")
 			testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0")
 			return target, "v0.2.0"
 		}, "v0.2.1\n"},
 		{"stacked", func(t *testing.T, dir string) (string, string) {
 			testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "p1")
-			target := touch(t, dir, "akira-toriyama", ":sparkles:^ add x", "x.txt")
+			target := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add x", "x.txt")
 			testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "p2")
 			return target, "p1"
 		}, "v0.1.1\n"},
@@ -417,7 +417,7 @@ func TestShippedPresetRefusesAFixupAutosquashCannotFold(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, _ := testutil.NewTaggedRepo(t)
 			target, base := tc.cut(t, dir)
-			writeFile(t, dir, "x.txt", "finished\n")
+			testutil.WriteFile(t, dir, "x.txt", "finished\n")
 			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 			testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--fixup="+target)
 			t.Chdir(dir)

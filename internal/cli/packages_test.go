@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/core"
@@ -21,29 +20,15 @@ import (
 // lines differently, and a squash merge never loses which of the pull's
 // commits touched which module.
 
-// packagesConfig is what a repository appends to the gemoji preset to
-// declare its lines.
-const packagesConfig = "\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \"curry\"\n"
-
-// packagesRepo builds the two-line fixture: the preset plus [[packages]] for
-// haiku/ and curry/, one file under each, and haiku/v0.1.0 + curry/v0.1.0
-// on the commit that declared them. base is that commit.
+// packagesRepo builds the two-line fixture: testutil.NewTwoLineRepo with
+// haiku/v0.1.0 + curry/v0.1.0 on the commit that declared the lines. base is
+// that commit.
 func packagesRepo(t *testing.T) (dir, base string) {
 	t.Helper()
-	dir = testutil.NewPackagesRepo(t, packagesConfig, map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n"})
+	dir = testutil.NewTwoLineRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
 	return dir, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-}
-
-func writeFile(t *testing.T, dir, rel, content string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, rel), []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func appendTo(t *testing.T, dir, rel, content string) {
@@ -58,23 +43,6 @@ func appendTo(t *testing.T, dir, rel, content string) {
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
-}
-
-// touchSeq makes every touch write distinct content, so two commits with the
-// same message under the same path still each have a diff.
-var touchSeq atomic.Int64
-
-// touch commits one change under each of paths, as author, under message —
-// a landed identity whose files local git answers for — and returns its sha.
-func touch(t *testing.T, dir, author, message string, paths ...string) string {
-	t.Helper()
-	n := touchSeq.Add(1)
-	for _, p := range paths {
-		writeFile(t, dir, p, fmt.Sprintf("%s\n%d\n", p, n))
-	}
-	testutil.Git(t, dir, author, "add", "-A", ".")
-	testutil.Git(t, dir, author, "commit", "-q", "--allow-empty", "-m", message)
-	return testutil.Git(t, dir, author, "rev-parse", "HEAD")
 }
 
 // commitFilesPath names the endpoint the walk asks for a squash-merged
@@ -128,7 +96,7 @@ func decodePackagesVerdict(t *testing.T, stdout string) packagesVerdict {
 // only in the API, where each one's files say which line it moves.
 func squashAcrossLines(t *testing.T, dir string, number int) (sha string, routes map[string]string) {
 	t.Helper()
-	sha = touch(t, dir, "akira-toriyama", fmt.Sprintf("Add a season and swap an ingredient (#%d)", number), "haiku/season.go", "curry/curry.go")
+	sha = testutil.Touch(t, dir, "akira-toriyama", fmt.Sprintf("Add a season and swap an ingredient (#%d)", number), "haiku/season.go", "curry/curry.go")
 	routes = map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(number, "2026-09-10T00:00:00Z", sha) + `]`,
 		pullCommitsPath(number): `[` +
@@ -190,7 +158,7 @@ func TestBumpSinceTagPackagesMoveIndependently(t *testing.T) {
 // touched moves.
 func TestSinceTagPackagesLandedCommitReadsFilesFromGit(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	sha := touch(t, dir, "akira-toriyama", ":bug:~ swap an ingredient", "curry/curry.go")
+	sha := testutil.Touch(t, dir, "akira-toriyama", ":bug:~ swap an ingredient", "curry/curry.go")
 	usePR(t, walkServer(t, map[string]string{commitPullsPath(sha): `[]`}))
 	t.Chdir(dir)
 
@@ -209,7 +177,7 @@ func TestSinceTagPackagesLandedCommitReadsFilesFromGit(t *testing.T) {
 // holds it.
 func TestSinceTagPackagesSharedOnlyBumpIsRefused(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	sha := touch(t, dir, "akira-toriyama", ":sparkles:^ add a workspace file", "go.work")
+	sha := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a workspace file", "go.work")
 	usePR(t, walkServer(t, map[string]string{commitPullsPath(sha): `[]`}))
 	t.Chdir(dir)
 
@@ -238,7 +206,7 @@ func TestSinceTagPackagesSharedOnlyBumpIsRefused(t *testing.T) {
 // and among the commits the walk read. Every line folds to none, so exit 1.
 func TestSinceTagPackagesSharedOnlyNoneParticipatesInNoLine(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	sha := touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
+	sha := testutil.Touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
 	usePR(t, walkServer(t, map[string]string{commitPullsPath(sha): `[]`}))
 	t.Chdir(dir)
 
@@ -268,7 +236,7 @@ func TestSinceTagPackagesSharedOnlyNoneParticipatesInNoLine(t *testing.T) {
 func TestSinceTagPackagesScopeCarriesAndContradicts(t *testing.T) {
 	t.Run("scope carries a shared-only commit", func(t *testing.T) {
 		dir, _ := packagesRepo(t)
-		sha := touch(t, dir, "akira-toriyama", ":sparkles:(haiku)^ describe the season API", "README.md")
+		sha := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:(haiku)^ describe the season API", "README.md")
 		usePR(t, walkServer(t, map[string]string{commitPullsPath(sha): `[]`}))
 		t.Chdir(dir)
 		code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
@@ -278,7 +246,7 @@ func TestSinceTagPackagesScopeCarriesAndContradicts(t *testing.T) {
 	})
 	t.Run("scope contradicting the tree is refused", func(t *testing.T) {
 		dir, _ := packagesRepo(t)
-		sha := touch(t, dir, "akira-toriyama", ":bug:(haiku)~ swap an ingredient", "curry/curry.go")
+		sha := testutil.Touch(t, dir, "akira-toriyama", ":bug:(haiku)~ swap an ingredient", "curry/curry.go")
 		usePR(t, walkServer(t, map[string]string{commitPullsPath(sha): `[]`}))
 		t.Chdir(dir)
 		code, _, stderr := runGlyph(t, "bump", "--since-tag")
@@ -319,10 +287,10 @@ func lineSection(stdout, path string) string {
 // commit of their own grew a section for it.
 func TestSinceTagPackagesExcludedAuthorIsPlacedByItsFiles(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	touch(t, dir, "dependabot[bot]", ":arrow_up:(haiku)~ bump a haiku-only dependency", "haiku/poem.go")
-	touch(t, dir, "dependabot[bot]", "Bump golang.org/x/net from 0.1.0 to 0.2.0", "curry/go.mod")
-	touch(t, dir, "dependabot[bot]", "Bump actions/checkout from 4 to 5", ".github/workflows/ci.yml")
-	fix := touch(t, dir, "akira-toriyama", ":bug:(curry)~ a curry fix", "curry/rice.go")
+	testutil.Touch(t, dir, "dependabot[bot]", ":arrow_up:(haiku)~ bump a haiku-only dependency", "haiku/poem.go")
+	testutil.Touch(t, dir, "dependabot[bot]", "Bump golang.org/x/net from 0.1.0 to 0.2.0", "curry/go.mod")
+	testutil.Touch(t, dir, "dependabot[bot]", "Bump actions/checkout from 4 to 5", ".github/workflows/ci.yml")
+	fix := testutil.Touch(t, dir, "akira-toriyama", ":bug:(curry)~ a curry fix", "curry/rice.go")
 	usePR(t, walkServer(t, map[string]string{commitPullsPath(fix): `[]`}))
 	t.Chdir(dir)
 
@@ -368,7 +336,7 @@ func TestSinceTagPackagesExcludedAuthorIsPlacedByItsFiles(t *testing.T) {
 // commit costs 4 requests, 2 + k over k = 2, where the first cut paid 3.
 func TestSinceTagPackagesExcludedAuthorInnerCommitIsPlacedByItsFiles(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	sha := touch(t, dir, "akira-toriyama", "Bump a haiku dependency and fix curry (#8)", "haiku/go.mod", "curry/curry.go")
+	sha := testutil.Touch(t, dir, "akira-toriyama", "Bump a haiku dependency and fix curry (#8)", "haiku/go.mod", "curry/curry.go")
 	srv, seen := recordingWalkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(8, "2026-09-26T00:00:00Z", sha) + `]`,
 		pullCommitsPath(8): `[` +
@@ -403,9 +371,9 @@ func TestSinceTagPackagesExcludedAuthorInnerCommitIsPlacedByItsFiles(t *testing.
 // packages-line-range-not-consulted).
 func TestSinceTagPackagesReleasedOnOneLineStaysReleased(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	shipped := touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
+	shipped := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.2.0")
-	pending := touch(t, dir, "akira-toriyama", ":bug:~ swap an ingredient", "curry/curry.go")
+	pending := testutil.Touch(t, dir, "akira-toriyama", ":bug:~ swap an ingredient", "curry/curry.go")
 	usePR(t, walkServer(t, map[string]string{
 		commitPullsPath(shipped): `[]`,
 		commitPullsPath(pending): `[]`,
@@ -435,7 +403,7 @@ func TestSinceTagPackagesSquashInnerCommitIsGovernedByItsMergePoint(t *testing.T
 	dir, _ := packagesRepo(t)
 	sha, routes := squashAcrossLines(t, dir, 7)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.2.0")
-	later := touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
+	later := testutil.Touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
 	routes[commitPullsPath(later)] = `[]`
 	usePR(t, walkServer(t, routes))
 	t.Chdir(dir)
@@ -546,8 +514,8 @@ func TestNotesSinceTagPackages(t *testing.T) {
 // tag — and --pr is refused: a pull's listing carries messages and no files.
 func TestPackagesRangeAndPullSources(t *testing.T) {
 	dir, base := packagesRepo(t)
-	touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
-	touch(t, dir, "akira-toriyama", ":bug:~ swap an ingredient", "curry/curry.go")
+	testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
+	testutil.Touch(t, dir, "akira-toriyama", ":bug:~ swap an ingredient", "curry/curry.go")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")
@@ -577,12 +545,12 @@ func TestPackagesRangeAndPullSources(t *testing.T) {
 // that moves no line.
 func TestLintRangePackagesJudgesTheDiff(t *testing.T) {
 	dir, base := packagesRepo(t)
-	shared := touch(t, dir, "akira-toriyama", ":sparkles:^ add a workspace file", "go.work")
-	contra := touch(t, dir, "akira-toriyama", ":bug:(haiku)~ swap an ingredient", "curry/curry.go")
-	touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
-	touch(t, dir, "akira-toriyama", ":sparkles:(curry)^ describe the ingredient API", "README.md")
-	touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
-	retag := touch(t, dir, "akira-toriyama", ":wrench:(haiku)= retag the curry notes", "curry/curry.go")
+	shared := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a workspace file", "go.work")
+	contra := testutil.Touch(t, dir, "akira-toriyama", ":bug:(haiku)~ swap an ingredient", "curry/curry.go")
+	testutil.Touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
+	testutil.Touch(t, dir, "akira-toriyama", ":sparkles:(curry)^ describe the ingredient API", "README.md")
+	testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
+	retag := testutil.Touch(t, dir, "akira-toriyama", ":wrench:(haiku)= retag the curry notes", "curry/curry.go")
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
@@ -625,7 +593,7 @@ func TestLintRangePackagesJudgesTheDiff(t *testing.T) {
 func TestLintRangePackagesScopeIsCheckedByOwnership(t *testing.T) {
 	dir := testutil.NewPackagesRepo(t, "\n[[packages]]\npath = \"travel\"\n\n[[packages]]\npath = \"travel/onsen\"\n",
 		map[string]string{"travel/t.md": "travel\n", "travel/onsen/o.md": "onsen\n"})
-	touch(t, dir, "akira-toriyama", ":bug:(travel)~ warm the water", "travel/onsen/o.md")
+	testutil.Touch(t, dir, "akira-toriyama", ":bug:(travel)~ warm the water", "travel/onsen/o.md")
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
@@ -651,12 +619,12 @@ func TestLintRangePackagesScopeIsCheckedByOwnership(t *testing.T) {
 // and the test takes it, then shows the dropped scope failing.
 func TestLintRangePackagesContradictionOffersNoDropWhereTheScopeIsRequired(t *testing.T) {
 	dir := testutil.NewRepo(t)
-	writeFile(t, dir, "glyph.toml", "schema = 1\n\n[[patterns]]\npattern = '^(?P<subject>[a-z]+\\((?P<scope>[a-z]+)\\)(?P<semver_sigil>[=~^!%]): .+)'\n\n[note]\nline = '- $subject'\n"+packagesConfig)
-	writeFile(t, dir, "haiku/haiku.go", "package haiku\n")
-	writeFile(t, dir, "curry/curry.go", "package curry\n")
+	testutil.WriteFile(t, dir, "glyph.toml", "schema = 1\n\n[[patterns]]\npattern = '^(?P<subject>[a-z]+\\((?P<scope>[a-z]+)\\)(?P<semver_sigil>[=~^!%]): .+)'\n\n[note]\nline = '- $subject'\n"+testutil.PackagesSnippet)
+	testutil.WriteFile(t, dir, "haiku/haiku.go", "package haiku\n")
+	testutil.WriteFile(t, dir, "curry/curry.go", "package curry\n")
 	testutil.Git(t, dir, "akira-toriyama", "add", ".")
 	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", "chore(repo)=: declare the lines")
-	touch(t, dir, "akira-toriyama", "fix(haiku)~: swap an ingredient", "curry/curry.go")
+	testutil.Touch(t, dir, "akira-toriyama", "fix(haiku)~: swap an ingredient", "curry/curry.go")
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
@@ -686,7 +654,7 @@ const rootedConfig = "\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \
 func claimedMerge(t *testing.T, dir, message string) string {
 	t.Helper()
 	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side")
-	touch(t, dir, "akira-toriyama", ":memo:= reword a line", "haiku/haiku.go")
+	testutil.Touch(t, dir, "akira-toriyama", ":memo:= reword a line", "haiku/haiku.go")
 	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "main")
 	testutil.Git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", message, "side")
 	return testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
@@ -703,7 +671,7 @@ func claimedMerge(t *testing.T, dir, message string) string {
 func TestLintRangePackagesNoFileCommitUnderARootPackage(t *testing.T) {
 	dir := testutil.NewPackagesRepo(t, rootedConfig, map[string]string{"haiku/haiku.go": "package haiku\n"})
 	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	empty := touch(t, dir, "akira-toriyama", ":bookmark:~ cut a release")
+	empty := testutil.Touch(t, dir, "akira-toriyama", ":bookmark:~ cut a release")
 	merge := claimedMerge(t, dir, ":twisted_rightwards_arrows:~ merge the side branch")
 	t.Chdir(dir)
 
@@ -724,7 +692,7 @@ func TestLintRangePackagesNoFileCommitUnderARootPackage(t *testing.T) {
 		}
 	}
 
-	scoped := touch(t, dir, "akira-toriyama", ":bookmark:(core)~ cut a release")
+	scoped := testutil.Touch(t, dir, "akira-toriyama", ":bookmark:(core)~ cut a release")
 	if code, stdout, stderr := runGlyph(t, "lint", "--range", scoped+"~1.."+scoped); code != 0 {
 		t.Fatalf("an empty (core)~ exited %d, want 0 — the scope is the escape the finding names\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
@@ -774,7 +742,7 @@ func TestPackagesWalkRefusesAClaimedMergeInItsOwnWords(t *testing.T) {
 // a scope, the declaration; and it shows the two old ones still fail.
 func TestLintRangePackagesRawRevertNamesTheEscapesThatWork(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	touch(t, dir, "akira-toriyama", ":memo:= add a README", "README.md")
+	testutil.Touch(t, dir, "akira-toriyama", ":memo:= add a README", "README.md")
 	testutil.Git(t, dir, "akira-toriyama", "revert", "--no-edit", "HEAD")
 	t.Chdir(dir)
 	lint := func(t *testing.T) (int, string) {
@@ -826,11 +794,11 @@ func TestLintRangePackagesRawRevertNamesTheEscapesThatWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, dir, "glyph.toml", string(declared)+"\n[[packages]]\npath = \".\"\n")
+	testutil.WriteFile(t, dir, "glyph.toml", string(declared)+"\n[[packages]]\npath = \".\"\n")
 	if code, stderr := lint(t); code != 2 {
 		t.Errorf("the root declared with no name exited %d, want 2 — the presets' scope cannot spell its default, which is why the finding says \"and a name\"\nstderr: %s", code, stderr)
 	}
-	writeFile(t, dir, "glyph.toml", string(declared)+"\n[[packages]]\npath = \".\"\nname = \"core\"\n")
+	testutil.WriteFile(t, dir, "glyph.toml", string(declared)+"\n[[packages]]\npath = \".\"\nname = \"core\"\n")
 	if code, stderr := lint(t); code != 0 {
 		t.Errorf("with the root package declared and named the raw revert exited %d, want 0\nstderr: %s", code, stderr)
 	}
@@ -845,10 +813,10 @@ func TestLintRangePackagesRawRevertNamesTheEscapesThatWork(t *testing.T) {
 // (TestLintRangePackagesNoFileCommitUnderARootPackage).
 func TestLintRangePackagesScopelessGrammarOffersNoScope(t *testing.T) {
 	dir := testutil.NewRepo(t)
-	writeFile(t, dir, "glyph.toml", "schema = 1\n\n[[patterns]]\npattern = '^(?P<subject>:[a-z0-9_]+:(?P<semver_sigil>[=~^!%]) .+)'\n\n[note]\nline = '- $subject'\n\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \".\"\n")
+	testutil.WriteFile(t, dir, "glyph.toml", "schema = 1\n\n[[patterns]]\npattern = '^(?P<subject>:[a-z0-9_]+:(?P<semver_sigil>[=~^!%]) .+)'\n\n[note]\nline = '- $subject'\n\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \".\"\n")
 	testutil.Git(t, dir, "akira-toriyama", "add", ".")
 	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare the lines")
-	empty := touch(t, dir, "akira-toriyama", ":bookmark:~ cut a release")
+	empty := testutil.Touch(t, dir, "akira-toriyama", ":bookmark:~ cut a release")
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
@@ -878,9 +846,9 @@ func TestLintRangePackagesScopelessGrammarOffersNoScope(t *testing.T) {
 func customRepo(t *testing.T, patterns, seed string) string {
 	t.Helper()
 	dir := testutil.NewRepo(t)
-	writeFile(t, dir, "glyph.toml", "schema = 1\n\n"+patterns+"\n[note]\nline = '- $subject'\n"+packagesConfig)
-	writeFile(t, dir, "haiku/haiku.go", "package haiku\n")
-	writeFile(t, dir, "curry/curry.go", "package curry\n")
+	testutil.WriteFile(t, dir, "glyph.toml", "schema = 1\n\n"+patterns+"\n[note]\nline = '- $subject'\n"+testutil.PackagesSnippet)
+	testutil.WriteFile(t, dir, "haiku/haiku.go", "package haiku\n")
+	testutil.WriteFile(t, dir, "curry/curry.go", "package curry\n")
 	testutil.Git(t, dir, "akira-toriyama", "add", ".")
 	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", seed)
 	return dir
@@ -909,7 +877,7 @@ func TestLintRangePackagesRootDeclarationTakesANameWhereTheLoaderAsksOne(t *test
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := customRepo(t, c.patterns, ":tada:= declare the lines")
-			touch(t, dir, "akira-toriyama", ":bug:~ fix the readme", "README.md")
+			testutil.Touch(t, dir, "akira-toriyama", ":bug:~ fix the readme", "README.md")
 			t.Chdir(dir)
 			file, err := os.ReadFile(filepath.Join(dir, "glyph.toml"))
 			if err != nil {
@@ -923,12 +891,12 @@ func TestLintRangePackagesRootDeclarationTakesANameWhereTheLoaderAsksOne(t *test
 			}
 
 			if strings.Contains(c.declared, "name") {
-				writeFile(t, dir, "glyph.toml", string(file)+"\n[[packages]]\npath = \".\"\n")
+				testutil.WriteFile(t, dir, "glyph.toml", string(file)+"\n[[packages]]\npath = \".\"\n")
 				if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 2 {
 					t.Errorf("the root declared with no name exited %d, want 2 — the warn pattern's scope group cannot spell its default, which is why the finding says \"and a name\"\nstderr: %s", code, stderr)
 				}
 			}
-			writeFile(t, dir, "glyph.toml", string(file)+c.declared)
+			testutil.WriteFile(t, dir, "glyph.toml", string(file)+c.declared)
 			if code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD"); code != 0 {
 				t.Errorf("with the root declared as the finding words it lint exited %d, want 0\nstderr: %s", code, stderr)
 			}
@@ -1022,7 +990,7 @@ func TestLintRangePackagesDropTheScopeIsProvenAgainstTheMessage(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := customRepo(t, c.patterns, c.seed)
-			touch(t, dir, "akira-toriyama", c.message, "curry/curry.go")
+			testutil.Touch(t, dir, "akira-toriyama", c.message, "curry/curry.go")
 			t.Chdir(dir)
 
 			code, _, stderr := runGlyph(t, "lint", "--range", "HEAD~1..HEAD")
@@ -1061,7 +1029,7 @@ func TestLintRangePackagesFixedNoneIsReachedByLeavingTheSigilOut(t *testing.T) {
 
 	t.Run("an optional sigil over a fixed =", func(t *testing.T) {
 		dir := customRepo(t, "[[patterns]]\npattern = '^(?P<subject>[a-z]+(?P<semver_sigil>[~^!])?: .+)'\nsemver_sigil = '='\n", "chore: declare the lines")
-		empty := touch(t, dir, "akira-toriyama", "fix~: cut a release")
+		empty := testutil.Touch(t, dir, "akira-toriyama", "fix~: cut a release")
 		t.Chdir(dir)
 
 		code, stderr := lint(t)
@@ -1077,7 +1045,7 @@ func TestLintRangePackagesFixedNoneIsReachedByLeavingTheSigilOut(t *testing.T) {
 			t.Errorf("with the sigil left out bump exited %d, want 1 (it moves no line)\nstderr: %s", code, stderr)
 		}
 
-		touch(t, dir, "akira-toriyama", "fix~: fix the readme", "README.md")
+		testutil.Touch(t, dir, "akira-toriyama", "fix~: fix the readme", "README.md")
 		code, stderr = lint(t)
 		want = `nothing can carry: leave the sigil out so it moves no line, or declare the package these files belong to ([[packages]] path = "<its directory>"; path = "." declares the root package, which holds every file no other package claims)` + "\n"
 		if code != 3 || !strings.Contains(stderr, want) {
@@ -1091,7 +1059,7 @@ func TestLintRangePackagesFixedNoneIsReachedByLeavingTheSigilOut(t *testing.T) {
 
 	t.Run("a sigil in one branch of an alternation", func(t *testing.T) {
 		dir := customRepo(t, "[[patterns]]\npattern = '^(?P<subject>(?:fix(?P<semver_sigil>[~^!])|chore): .+)'\nsemver_sigil = '='\n", "chore: declare the lines")
-		empty := touch(t, dir, "akira-toriyama", "fix~: cut a release")
+		empty := testutil.Touch(t, dir, "akira-toriyama", "fix~: cut a release")
 		t.Chdir(dir)
 
 		code, stderr := lint(t)
@@ -1123,7 +1091,7 @@ func TestLintRangePackagesFixedNoneIsReachedByLeavingTheSigilOut(t *testing.T) {
 // and `:memo:(my_lib)~` then matched none of the patterns at every gate.
 func TestPackagesNameNoScopeCanSpellIsUsage(t *testing.T) {
 	dir := testutil.NewPackagesRepo(t, "\n[[packages]]\npath = \"my_lib\"\n\n[[packages]]\npath = \"other\"\n", map[string]string{"my_lib/a.go": "package a\n", "other/b.go": "package b\n"})
-	touch(t, dir, "akira-toriyama", ":memo:~ fix the readme", "README.md")
+	testutil.Touch(t, dir, "akira-toriyama", ":memo:~ fix the readme", "README.md")
 	t.Chdir(dir)
 
 	for _, args := range [][]string{
@@ -1149,7 +1117,7 @@ func TestPackagesNameNoScopeCanSpellIsUsage(t *testing.T) {
 // line's number presented as the repository's.
 func TestBumpPackagesScalarsDescribeNoLine(t *testing.T) {
 	dir, base := packagesRepo(t)
-	touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
+	testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a season", "haiku/season.go")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD", "--json")

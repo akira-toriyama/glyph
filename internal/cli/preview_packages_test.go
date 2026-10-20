@@ -79,7 +79,7 @@ func crossLinePull(number int) map[string]string {
 func TestPreviewPackagesOneVerdictPerTouchedLine(t *testing.T) {
 	dir, base := packagesRepo(t)
 	appendTo(t, dir, "glyph.toml", "\n[[packages]]\npath = \"fish\"\n")
-	writeFile(t, dir, "fish/fish.go", "package fish\n")
+	testutil.WriteFile(t, dir, "fish/fish.go", "package fish\n")
 	testutil.Git(t, dir, "akira-toriyama", "add", ".")
 	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= declare a third line")
 	declared := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
@@ -134,7 +134,7 @@ func TestPreviewPackagesOneVerdictPerTouchedLine(t *testing.T) {
 // answer while haiku's stays the PR's own.
 func TestPreviewPackagesFoldsEachLinesPendingSide(t *testing.T) {
 	dir, _ := packagesRepo(t)
-	merged := touch(t, dir, "akira-toriyama", ":sparkles:^ add an ingredient", "curry/curry.go")
+	merged := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add an ingredient", "curry/curry.go")
 	routes := crossLinePull(9)
 	routes[commitPullsPath(merged)] = `[]`
 	usePR(t, walkServer(t, routes))
@@ -443,7 +443,7 @@ func TestPreviewPackagesWarnsEveryParticipatingCommitOnce(t *testing.T) {
 			warnFirst(t, single)
 			testutil.Git(t, single, "akira-toriyama", "commit", "-q", "-am", ":wrench:= warn on construction")
 			testutil.Git(t, single, "akira-toriyama", "tag", "v0.2.0")
-			merged := touch(t, single, "akira-toriyama", ":construction:= scaffold the work", files...)
+			merged := testutil.Touch(t, single, "akira-toriyama", ":construction:= scaffold the work", files...)
 			t.Chdir(single)
 			usePR(t, walkServer(t, withMerged(merged)))
 			code, _, stderr := runGlyph(t, "preview", "--pr", "9")
@@ -457,7 +457,7 @@ func TestPreviewPackagesWarnsEveryParticipatingCommitOnce(t *testing.T) {
 			testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-am", ":wrench:= warn on construction")
 			testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.2.0")
 			testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.2.0")
-			merged = touch(t, dir, "akira-toriyama", ":construction:= scaffold the work", files...)
+			merged = testutil.Touch(t, dir, "akira-toriyama", ":construction:= scaffold the work", files...)
 			t.Chdir(dir)
 			usePR(t, walkServer(t, withMerged(merged)))
 			code, _, stderr = runGlyph(t, "preview", "--pr", "9")
@@ -600,10 +600,10 @@ func TestPreviewPackagesExcludedAuthorIsPlacedByItsFiles(t *testing.T) {
 // against same-commit tags.
 func packagesRepoWithUntaggedLine(t *testing.T) string {
 	t.Helper()
-	dir := testutil.NewPackagesRepo(t, packagesConfig+"\n[[packages]]\npath = \"fish\"\n",
+	dir := testutil.NewPackagesRepo(t, testutil.PackagesSnippet+"\n[[packages]]\npath = \"fish\"\n",
 		map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n", "fish/fish.go": "package fish\n"})
 	testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
-	touch(t, dir, "akira-toriyama", ":memo:(haiku)= season the haiku", "haiku/haiku.go")
+	testutil.Touch(t, dir, "akira-toriyama", ":memo:(haiku)= season the haiku", "haiku/haiku.go")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
 	return dir
 }
@@ -622,7 +622,7 @@ func packagesRepoWithUntaggedLine(t *testing.T) string {
 // declaring commit and be caught.
 func TestPreviewPackagesWalkIgnoresAnUntouchedUntaggedLine(t *testing.T) {
 	dir := packagesRepoWithUntaggedLine(t)
-	merged := touch(t, dir, "akira-toriyama", ":memo:= note the season", "haiku/notes.md")
+	merged := testutil.Touch(t, dir, "akira-toriyama", ":memo:= note the season", "haiku/notes.md")
 	routes := map[string]string{
 		pullCommitsPath(9):      `[` + apiCommit("h1", "akira-toriyama", ":sparkles:(haiku)^ add a season") + `]`,
 		commitFilesPath("h1"):   apiFiles("haiku/season.go"),
@@ -652,8 +652,7 @@ func TestPreviewPackagesWalkIgnoresAnUntouchedUntaggedLine(t *testing.T) {
 // the command rejects). Positive control: the default sentence is what the
 // other callers still get, asserted in TestPreviewRefusalNamesNoFlagPreviewLacks.
 func TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy(t *testing.T) {
-	dir := testutil.NewPackagesRepo(t, packagesConfig,
-		map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n"})
+	dir := testutil.NewTwoLineRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0") // curry never released
 	for i := range walk.Cap + 1 {
 		testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= note %d", i))
@@ -688,7 +687,7 @@ func TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy(t *testing.T) {
 func TestPreviewPackagesUntaggedTouchedLineAgreesWithItsVerdict(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "curry/v0.1.0")
-	touch(t, dir, "akira-toriyama", ":sparkles:^ add an ingredient", "curry/curry.go")
+	testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add an ingredient", "curry/curry.go")
 	routes := crossLinePull(9)
 	// curry has no tag, so the union is the whole history: every commit in it
 	// is asked about, and walkServer fails on any route missing.

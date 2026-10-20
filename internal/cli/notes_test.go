@@ -319,10 +319,10 @@ func TestNotesNoReleaseCountsParticipatingCommits(t *testing.T) {
 // (notes-packages-reason-counts-the-raw-walk).
 func TestNotesPackagesNoReleaseCountsParticipatingCommits(t *testing.T) {
 	dir, base := packagesRepo(t)
-	touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
-	touch(t, dir, "renovate[bot]", "Update dependency x to v2", "curry/go.mod")
+	testutil.Touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
+	testutil.Touch(t, dir, "renovate[bot]", "Update dependency x to v2", "curry/go.mod")
 	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic")
-	touch(t, dir, "renovate[bot]", "Update dependency y to v3", "haiku/go.mod")
+	testutil.Touch(t, dir, "renovate[bot]", "Update dependency y to v3", "haiku/go.mod")
 	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "main")
 	testutil.Git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", "Merge branch 'topic'", "topic")
 	t.Chdir(dir)

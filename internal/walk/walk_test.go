@@ -147,8 +147,7 @@ func TestSinceReadsThroughItsPorts(t *testing.T) {
 // repository, bypassing any one of them fails here (the bare-line test
 // covers the other nine; measured one call at a time).
 func TestSinceReadsThroughItsPortsUnderPackages(t *testing.T) {
-	dir := testutil.NewPackagesRepo(t, "\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \"curry\"\n",
-		map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n"})
+	dir := testutil.NewTwoLineRepo(t)
 	declared, err := os.ReadFile(filepath.Join(dir, "glyph.toml"))
 	if err != nil {
 		t.Fatal(err)
@@ -157,21 +156,10 @@ func TestSinceReadsThroughItsPortsUnderPackages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	write := func(rel, content string) {
-		if err := os.WriteFile(filepath.Join(dir, rel), []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
 	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
-	write("curry/curry.go", "package curry // spiced\n")
-	testutil.Git(t, dir, "akira-toriyama", "add", ".")
-	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:(curry)^ spice the curry")
-	spice := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	spice := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:(curry)^ spice the curry", "curry/curry.go")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
-	write("haiku/haiku.go", "package haiku // fixed\n")
-	testutil.Git(t, dir, "akira-toriyama", "add", ".")
-	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":bug:(haiku)~ fix the haiku")
-	fix := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	fix := testutil.Touch(t, dir, "akira-toriyama", ":bug:(haiku)~ fix the haiku", "haiku/haiku.go")
 
 	pulls := &fakePulls{}
 	w := Walker{Git: gitsource.Checkout{Dir: dir}, Pulls: pulls, Report: &recorder{}}

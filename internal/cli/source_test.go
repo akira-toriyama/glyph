@@ -79,7 +79,7 @@ func TestReadSourceAnswersOneLineWithoutPackages(t *testing.T) {
 // commit by; a local range answers every declared line.
 func TestReadSourceRefusesAPullUnderPackages(t *testing.T) {
 	dir, base := packagesRepo(t)
-	touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
+	testutil.Touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
 	t.Chdir(dir)
 	ctx := context.Background()
 	cfg, err := loadConfig(ctx)

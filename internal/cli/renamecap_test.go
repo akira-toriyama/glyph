@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v5/internal/github"
+	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
 // This file pins t-ft7p: the files cap is GitHub's count of listed entries,
@@ -27,7 +28,7 @@ func renameListing(n int) string {
 // asks the API for, since the inner commit exists on no branch.
 func cappedPull(t *testing.T, dir, message, files string) map[string]string {
 	t.Helper()
-	sha := touch(t, dir, "akira-toriyama", "Add a season (#7)", "haiku/season.go")
+	sha := testutil.Touch(t, dir, "akira-toriyama", "Add a season (#7)", "haiku/season.go")
 	return map[string]string{
 		commitPullsPath(sha):  `[` + apiPullRef(7, "2026-09-10T00:00:00Z", sha) + `]`,
 		pullCommitsPath(7):    `[` + apiCommit("h1", "akira-toriyama", message) + `]`,

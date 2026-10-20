@@ -163,11 +163,11 @@ func TestReleaseComposesTagAndBody(t *testing.T) {
 	}
 }
 
-// TestReleaseUpsertCreatesTheDraft is the ratified bare surface (t-skd3 Q2):
-// glyph release upserts the rolling DRAFT — with no draft present, one POST
-// carrying the intended tag, the notes body, draft:true, and the checkout's
-// HEAD sha as target_commitish (Publish must tag the commit the verdict was
-// computed at). The payload is the draft's URL; no tag is created here.
+// TestReleaseUpsertCreatesTheDraft: glyph release upserts the rolling DRAFT —
+// with no draft present, one POST carrying the intended tag, the notes body,
+// draft:true, and the checkout's HEAD sha as target_commitish (Publish must
+// tag the commit the verdict was computed at). The payload is the draft's URL;
+// no tag is created here.
 func TestReleaseUpsertCreatesTheDraft(t *testing.T) {
 	var writes []apiWrite
 	walk := oneFixWalk(t)
@@ -315,7 +315,7 @@ func TestReleaseUpsertCreateWritesTheMarker(t *testing.T) {
 
 // TestReleaseUpsertMovesTheDraftTag: when the next version changed since the
 // draft was cut (another merge landed), the existing draft's intended tag is
-// UPDATED — ratified: never a second draft.
+// UPDATED — never a second draft.
 func TestReleaseUpsertMovesTheDraftTag(t *testing.T) {
 	var writes []apiWrite
 	walk := oneFixWalk(t)
@@ -368,10 +368,10 @@ func TestReleaseUpsertDeletesDuplicateDrafts(t *testing.T) {
 	}
 }
 
-// TestReleaseUpsertNoneConvergesDrafts is ratified Q3: on a none verdict the
-// draft state must converge to the verdict — no release should exist, so
-// residual glyph-managed drafts are deleted (by id) and the run still exits 1
-// (soft no-release), uniform with bump and notes.
+// TestReleaseUpsertNoneConvergesDrafts: on a none verdict the draft state must
+// converge to the verdict — no release should exist, so residual glyph-managed
+// drafts are deleted (by id) and the run still exits 1 (soft no-release),
+// uniform with bump and notes.
 func TestReleaseUpsertNoneConvergesDrafts(t *testing.T) {
 	var writes []apiWrite
 	walk := noneWalk(t)
@@ -573,9 +573,9 @@ func TestReleaseRefusesToRegressBelowPublished(t *testing.T) {
 	}
 }
 
-// TestReleaseDryRunAction is ratified Q4: the dry run computes EVERYTHING —
-// verdict plus the draft-convergence decision — and only skips the writes, so
-// the machine verdict carries the action the real run would take.
+// TestReleaseDryRunAction: the dry run computes EVERYTHING — verdict plus the
+// draft-convergence decision — and only skips the writes, so the machine
+// verdict carries the action the real run would take.
 func TestReleaseDryRunAction(t *testing.T) {
 	for name, tc := range map[string]struct {
 		walk     func(*testing.T) map[string]string
@@ -615,12 +615,13 @@ func TestReleaseDryRunAction(t *testing.T) {
 	}
 }
 
-// TestReleaseDryRunResolvesTheTarget: the target is part of "EVERYTHING" in
-// Q4 — the dry run resolves it (the checkout's HEAD when the flag is absent)
-// and reports it in the verdict, instead of silently ignoring the one flag
-// that names which commit the eventual tag points at. Measured before the
-// fix: dry-run output was byte-identical with and without --target, on
-// stdout and stderr alike, so a typo'd sha surfaced only on the real run.
+// TestReleaseDryRunResolvesTheTarget: the target is part of the EVERYTHING
+// the dry run computes (TestReleaseDryRunAction) — it resolves it (the
+// checkout's HEAD when the flag is absent) and reports it in the verdict,
+// instead of silently ignoring the one flag that names which commit the
+// eventual tag points at. Measured before the fix: dry-run output was
+// byte-identical with and without --target, on stdout and stderr alike, so a
+// typo'd sha surfaced only on the real run.
 func TestReleaseDryRunResolvesTheTarget(t *testing.T) {
 	dryRunVerdict := func(t *testing.T, args ...string) releaseVerdict {
 		t.Helper()
@@ -657,7 +658,7 @@ func TestReleaseDryRunResolvesTheTarget(t *testing.T) {
 }
 
 // TestReleaseRealRunNoticeNamesTheTarget is the real run's sibling of the
-// test above (t-wzr5): the dry run's notice named the commit the eventual tag
+// test above: the dry run's notice named the commit the eventual tag
 // points at, and the notice of the run that actually wrote the draft did not —
 // the one arm with a draft to review was the one that left the sha out. The
 // shipped presets' note.line renders no $hash, so outside --json this notice
@@ -693,10 +694,10 @@ func TestReleaseRealRunNoticeNamesTheTarget(t *testing.T) {
 	})
 }
 
-// TestReleaseFooterFile is ratified Q11: --footer-file appends the file's
-// content verbatim after the notes, separated by one `---` line — composed by
-// glyph so the dry run previews the EXACT body the draft will carry, and the
-// caller never string-concatenates markdown in shell.
+// TestReleaseFooterFile: --footer-file appends the file's content verbatim
+// after the notes, separated by one `---` line — composed by glyph so the dry
+// run previews the EXACT body the draft will carry, and the caller never
+// string-concatenates markdown in shell (Q11, DESIGN §4).
 func TestReleaseFooterFile(t *testing.T) {
 	footer := filepath.Join(t.TempDir(), "install.md")
 	if err := os.WriteFile(footer, []byte("## Install\n\n`brew install x`\n"), 0o600); err != nil {
@@ -866,8 +867,7 @@ func TestReleaseJSON(t *testing.T) {
 // converge the real run writes nothing (mutation rows
 // release-none-with-nothing-on-stdout-goes-unsaid at the funnel, and at the
 // two arms release-dry-run-none-with-nothing-on-stdout-goes-unsaid and
-// release-real-run-none-with-nothing-on-stdout-goes-unsaid — the real run's
-// arm had no test before the latter: its mutant survived the whole suite).
+// release-real-run-none-with-nothing-on-stdout-goes-unsaid).
 func TestReleaseNoRelease(t *testing.T) {
 	for name, args := range map[string][]string{
 		"dry run":  {"release", "--dry-run"},
@@ -896,8 +896,7 @@ func TestReleaseNoRelease(t *testing.T) {
 // on the dry run and the real run alike (mutation rows
 // release-none-verdict-on-stdout-still-prints-the-envelope at the funnel,
 // release-dry-run-json-none-still-prints-the-envelope and
-// release-real-run-json-none-still-prints-the-envelope at the arms; the real
-// run's arm had no test before the latter: its mutant survived the whole suite).
+// release-real-run-json-none-still-prints-the-envelope at the arms).
 func TestReleaseNoReleaseJSON(t *testing.T) {
 	for name, args := range map[string][]string{
 		"dry run":  {"release", "--dry-run", "--json"},
@@ -933,7 +932,7 @@ func TestReleaseNoReleaseJSON(t *testing.T) {
 // then the body — and the envelope stays off stderr behind it (mutation
 // rows release-none-verdict-on-stdout-still-prints-the-envelope, at the
 // funnel, and release-dry-run-block-on-stdout-still-prints-the-envelope, at
-// this arm: the arm's mutant survived the whole suite before this test).
+// this arm).
 // With nothing on stdout the envelope is the run's only word —
 // TestReleaseNoRelease (row release-none-with-nothing-on-stdout-goes-unsaid).
 func TestReleaseNoneVerdictOnStdoutKeepsTheEnvelopeOff(t *testing.T) {
@@ -1266,19 +1265,17 @@ func resolvablePatch(t *testing.T, dir string, routes map[string]string) {
 // TestReleaseIncompleteWalkFailsLoud: a verdict is a claim about the range only
 // when the walk READ the range, and release is the command that acts on its
 // verdict irreversibly — so a walk that came back short stops the release at
-// exit 4 before the releases listing is even fetched (ratified t-pysg,
-// replacing #66's warn-and-refuse-to-destroy).
+// exit 4 before the releases listing is even fetched (DESIGN §4, t-pysg).
 //
-// The shapes are the family walk.Facts records, and each carried a measured
-// defect when glyph still handed down a verdict on it: the none verdict deleted
-// the rolling draft on the very reading it had just told the operator to re-run
-// (t-441z); a `:boom:` pull lost to an unresolved merge point beside one
-// ordinary `:bug:` took the CONSTRUCTIVE path — the shape the old refusal to
-// destroy never reached — and retagged an existing v1.0.0 draft down to v0.1.1
-// at exit 0, where a human publishing it burns the tag forever; a listing
-// GitHub truncated at its 250 cap read "unreachable" as "absent"; and a shallow
-// checkout graded itself on a truncated history (actions/checkout's default
-// fetch-depth: 1, so the shape a release workflow produces by LOSING one line).
+// The shapes are the family walk.Facts records, and a verdict on each was
+// measured doing damage: the none verdict deleted the rolling draft on the
+// very reading it had just told the operator to re-run (t-441z); a `:boom:`
+// pull lost to an unresolved merge point beside one ordinary `:bug:` retagged
+// an existing v1.0.0 draft down to v0.1.1 at exit 0, where a human publishing
+// it burns the tag forever; a listing GitHub truncated at its 250 cap read
+// "unreachable" as "absent"; and a shallow checkout graded itself on a
+// truncated history (actions/checkout's default fetch-depth: 1, so the shape a
+// release workflow produces by LOSING one line).
 //
 // The dry run takes the same gate: --dry-run skips the writes, not the reading,
 // and a preview of a verdict no real run would hand down is not a preview.

@@ -536,13 +536,13 @@ func TestSinceTagMergeCommitBranchCommitsCountOnce(t *testing.T) {
 // proof that no round-trip was spent on it. That property is what keeps the
 // routine fleet-sync push (every repo, every day) free.
 //
-// The branch commit's route is stubbed the way GitHub actually answers, which
-// is the correction here: for a commit of a pull request GitHub considers
-// merged it names that pull, with merge_commit_sha pointing at the merge commit
-// — it does NOT answer []. (The stub used to answer [], a state the API cannot
-// produce, and the test then asserted a release that the realistic shape does
-// not produce on its own.) With the honest shape the pull is one the walk can
-// only ever see from the INSIDE, so the price of keeping the round-trip free is
+// The branch commit's route is stubbed the way GitHub actually answers: for a
+// commit of a pull request GitHub considers merged it names that pull, with
+// merge_commit_sha pointing at the merge commit — it does NOT answer []. A []
+// stub is a state the API cannot produce here, and under it the walk reads the
+// commit's own message and releases, which the realistic shape does not do on
+// its own. With the honest shape the pull is one the walk can only ever see
+// from the INSIDE, so the price of keeping the round-trip free is
 // paid here: the pull's commits stand aside for a merge point the walk will
 // never ask about, and the release is short. That is a loss the walk cannot
 // repair from the pull's listing, so it must at least be loud — the ::warning::
@@ -754,8 +754,8 @@ func TestSinceTagRefoldControlWholePullInRange(t *testing.T) {
 // cannot: a REBASE-merge rewrites every commit, so the pull's listing reports
 // pre-rebase SHAs that exist on no branch and can never equal a walked one. The
 // walk aligns the listing against the first-parent run ending at the canonical
-// commit — verified message by message — which fixes the range AND a defect of
-// its own: before this, the notes cited SHAs the repository does not contain.
+// commit — verified message by message — which fixes the range AND keeps the
+// notes from citing SHAs the repository does not contain.
 func TestSinceTagRebaseMergeUsesOnMainSHAs(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")
@@ -805,7 +805,7 @@ func TestSinceTagRebaseMergeUsesOnMainSHAs(t *testing.T) {
 }
 
 // The two tests below are the shapes that break "a listing is either ALL
-// verbatim or ALL rewritten" — the reading under which the alignment used to run
+// verbatim or ALL rewritten" — the reading under which the alignment would run
 // only when nothing had been placed under its own sha (t-7h15). Both were
 // measured against the real API on akira-toriyama/glyph-test before they were
 // written here, because the premise is GitHub's behaviour and not glyph's: a

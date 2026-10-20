@@ -354,7 +354,7 @@ func TestCompareLinkNeedsNotes(t *testing.T) {
 
 	t.Run("per line", func(t *testing.T) {
 		dir, _ := packagesRepo(t)
-		sha := touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
+		sha := testutil.Touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
 		t.Chdir(dir)
 		enableDraftOnNone(t)
 		usePR(t, dryServer(t, map[string]string{commitPullsPath(sha): `[]`}))
@@ -373,9 +373,9 @@ func TestCompareLinkNeedsNotes(t *testing.T) {
 			}
 		}
 
-		// Staged by path: touch's `add -A` would commit the draft_on_none
+		// Staged by path: testutil.Touch's `add -A` would commit the draft_on_none
 		// rewrite enableDraftOnNone leaves in the working tree.
-		writeFile(t, dir, "haiku/go.mod", "module haiku\n")
+		testutil.WriteFile(t, dir, "haiku/go.mod", "module haiku\n")
 		testutil.Git(t, dir, "dependabot[bot]", "add", "haiku/go.mod")
 		testutil.Git(t, dir, "dependabot[bot]", "commit", "-q", "-m", "Bump a haiku dep from 1 to 2")
 		code, stdout, stderr = runGlyph(t, "release", "--dry-run", "--json", "--target", goldenTarget)
@@ -501,7 +501,7 @@ func TestPackagesCompareLinkNeedsATagBase(t *testing.T) {
 			routes[commitPullsPath(sha)] = `[]`
 		}
 		for _, c := range []struct{ msg, path string }{{":bug:(fish)~ fix the fish", "fish/fish.go"}, {":bug:(haiku)~ fix the haiku", "haiku/haiku.go"}} {
-			routes[commitPullsPath(touch(t, dir, "akira-toriyama", c.msg, c.path))] = `[]`
+			routes[commitPullsPath(testutil.Touch(t, dir, "akira-toriyama", c.msg, c.path))] = `[]`
 		}
 		usePR(t, dryServer(t, routes))
 		t.Chdir(dir)

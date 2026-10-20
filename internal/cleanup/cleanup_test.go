@@ -31,8 +31,8 @@ func TestCleanup(t *testing.T) {
 	}{
 		{
 			name: "leading blank line does not become the subject",
-			// git's editor buffer starts empty; a developer who types the
-			// subject on line 2 used to be told the message was empty.
+			// git's editor buffer starts empty and git drops leading blank
+			// lines, so a subject typed on line 2 is the subject git records.
 			mode: editedDefault,
 			in:   "\n:sparkles:(hook) add the thing\n",
 			want: ":sparkles:(hook) add the thing",
