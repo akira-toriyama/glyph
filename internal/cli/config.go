@@ -26,7 +26,7 @@ func configPathAt(top string) string {
 // tree's top level", so a command run from a subdirectory reads the same
 // file the hook and CI read.
 //
-// None of the three failures here is the gate code. CodeLint is "what glyph
+// None of the four failures here is the gate code. CodeLint is "what glyph
 // was asked to judge violates the convention", and on these commands the
 // subject is a COMMIT — the config is the yardstick, not the thing judged. A
 // broken yardstick means no verdict was reached, so reporting 3 tells a CI
@@ -36,9 +36,14 @@ func configPathAt(top string) string {
 //
 //   - missing (2): the invocation assumed an initialized repository and this
 //     one is not yet — the fix, `glyph init`, is the caller's.
-//   - unreadable (4): permission denied, EISDIR, a vanishing mount. glyph
-//     could not reach an answer at all, which is what 4 means; `doctor` and
-//     the hook installer already classify the identical event that way.
+//   - not a regular file (2): a directory, a named pipe, a socket or a device
+//     at the path. config.LoadFile stat'ed it and never opened it, so what
+//     is there was observed — the missing case's position, with removing it
+//     ahead of the same fix (t-zvax: a directory answered 4 as a read error,
+//     and a named pipe hung the read).
+//   - unreadable (4): permission denied, an I/O fault, a vanishing mount.
+//     glyph could not reach an answer at all, which is what 4 means; `doctor`
+//     and the hook installer already classify the identical event that way.
 //   - unparseable (2): the file is there and readable but says something
 //     invalid. Same position as a missing config — an unusable configuration
 //     a human fixes by editing a file — so it takes the same code.
@@ -55,10 +60,13 @@ func loadConfig(ctx context.Context) (*config.Config, error) {
 	if lerr != nil {
 		// Order matters: a missing file is itself a *fs.PathError, so the
 		// not-exist arm has to be asked first.
+		_, isNotAFile := errors.AsType[*config.NotAFileError](lerr)
 		_, isPathErr := errors.AsType[*fs.PathError](lerr)
 		switch {
 		case errors.Is(lerr, fs.ErrNotExist):
 			return nil, core.Usagef("no glyph.toml at %s — this repository is not initialized for glyph; `glyph init --gemoji` (or --conventional) writes one there from anywhere in the work tree, or start from either preset and edit", top)
+		case isNotAFile:
+			return nil, core.Usagef("%v — glyph reads its configuration from a regular file there and nothing else, so no commit was judged; remove it, then `glyph init --gemoji` (or --conventional) writes one", lerr)
 		case isPathErr:
 			return nil, core.APIf("%v — glyph could not read this repository's configuration, so no commit was judged", lerr)
 		default:

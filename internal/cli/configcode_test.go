@@ -4,7 +4,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/akira-toriyama/glyph/v5/internal/core"
 	"github.com/akira-toriyama/glyph/v5/internal/testutil"
@@ -92,6 +95,82 @@ func TestLintOnAnUnreadableConfigIsTheNoAnswerCode(t *testing.T) {
 	env := decodeErrorEnvelope(t, stderr)
 	if env.Code != int(core.CodeAPI) {
 		t.Errorf("envelope code = %d, want %d", env.Code, core.CodeAPI)
+	}
+}
+
+// notAFile stages the two shapes other than a regular file that t-zvax
+// measured at a glyph.toml path: a directory and a named pipe.
+var notAFile = []struct {
+	kind  string
+	stage func(path string) error
+}{
+	{"a directory", func(p string) error { return os.Mkdir(p, 0o700) }},
+	{"a named pipe", func(p string) error { return syscall.Mkfifo(p, 0o600) }},
+}
+
+// runGlyphWithin is runGlyph under a deadline, for a run a regression can
+// block for good: open(2) on a named pipe waits for a writer, and a FIFO named
+// glyph.toml hung every command that loaded it (t-zvax). On the deadline the
+// test fails and the run's goroutine is left blocked on a FIFO inside
+// t.TempDir that nothing will ever open for writing — one failed test, not a
+// package hung until go test's -timeout.
+func runGlyphWithin(t *testing.T, d time.Duration, args ...string) (code int, stdout, stderr string) {
+	t.Helper()
+	type result struct {
+		code           int
+		stdout, stderr string
+	}
+	done := make(chan result, 1)
+	go func() {
+		code, stdout, stderr := runGlyph(t, args...)
+		done <- result{code, stdout, stderr}
+	}()
+	select {
+	case r := <-done:
+		return r.code, r.stdout, r.stderr
+	case <-time.After(d):
+		t.Fatalf("glyph %s has not returned after %v", strings.Join(args, " "), d)
+		return 0, "", ""
+	}
+}
+
+// TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile pins exit 2 for a
+// glyph.toml path holding a directory or a named pipe: what is there was
+// observed, so it takes the missing config's code and remedy, not the
+// unreadable arm's 4. Before the loader stat'ed the path, a directory answered
+// 4 on both commands and a named pipe answered nothing at all — lint --stdin
+// and bump hung in the read (t-zvax, measured at ec53ed3). The message is
+// asserted beside the code because 2 is also what a bad flag answers.
+func TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile(t *testing.T) {
+	for _, k := range notAFile {
+		for _, args := range [][]string{{"lint", "--stdin"}, {"bump", "--range", "v0.1.0..HEAD"}} {
+			t.Run(k.kind+"/"+args[0], func(t *testing.T) {
+				dir, _ := testutil.NewTaggedRepo(t)
+				top, err := filepath.EvalSymlinks(dir) // git names the real path
+				if err != nil {
+					t.Fatal(err)
+				}
+				path := filepath.Join(top, "glyph.toml")
+				if err := os.Remove(path); err != nil {
+					t.Fatalf("removing glyph.toml: %v", err)
+				}
+				if err := k.stage(path); err != nil {
+					t.Fatalf("staging %s at %s: %v", k.kind, path, err)
+				}
+				t.Chdir(dir)
+
+				setStdin(t, ":bug:(cli)~ fix a thing\n")
+				code, _, stderr := runGlyphWithin(t, 30*time.Second, args...)
+				if code != int(core.CodeUsage) {
+					t.Fatalf("exit = %d, want %d (usage, the missing config's code) — what is at the path was "+
+						"observed, nothing was left unread\nstderr: %s", code, core.CodeUsage, stderr)
+				}
+				env := decodeErrorEnvelope(t, stderr)
+				if !strings.Contains(env.Message, path+" is "+k.kind) || !strings.Contains(env.Message, "glyph init") {
+					t.Errorf("the refusal must name what is at the path and hand over the remedy, got %q", env.Message)
+				}
+			})
+		}
 	}
 }
 

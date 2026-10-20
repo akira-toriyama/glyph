@@ -3040,17 +3040,31 @@ configuration under `doctor`. Same class, different subject; no new integer.
 The converse is the part that had to be repaired rather than merely written
 down (t-c6r5): on a verdict command the config is the **yardstick**, so a
 `glyph.toml` that will not load is never `3` there — no commit was judged at
-all. Unreadable (permission, EISDIR) is `4`, the code `doctor` and the hook
-installer already gave that same event; unparseable is `2`, the code a
-**missing** config already carries, since both leave a human editing a file.
-Three mechanisms depend on it. Two failed silently while the loader answered
-`3`: the installed commit-msg and pre-push hooks block on `3` alone, so a typo
-in `glyph.toml` rejected the very commit that would repair it, and `lint.yml`'s
-default-branch push arm swallows `3` alone, so an I/O failure returned a green
-gate having judged nothing. The third came later: `goreleaser.yml`'s tag-time
-notes step publishes on `3` as the wedge escape's placeholder (§4, t-bcdz), so a
-config the loader answered `3` would ship a release whose body blames a commit
-nobody judged.
+all. Unreadable (permission denied, an I/O fault) is `4`, the code `doctor`
+and the hook installer already gave that same event; unparseable is `2`, the
+code a **missing** config already carries, since both leave a human editing a
+file. Three mechanisms depend on it. Two failed silently while the loader
+answered `3`: the installed commit-msg and pre-push hooks block on `3` alone, so
+a typo in `glyph.toml` rejected the very commit that would repair it, and
+`lint.yml`'s default-branch push arm swallows `3` alone, so an I/O failure
+returned a green gate having judged nothing. The third came later:
+`goreleaser.yml`'s tag-time notes step publishes on `3` as the wedge escape's
+placeholder (§4, t-bcdz), so a config the loader answered `3` would ship a
+release whose body blames a commit nobody judged.
+
+The `2`/`4` line is drawn on what was observed, as `doctor`'s severities are
+(§7): a `glyph.toml` path holding something other than a regular file — a
+directory, a named pipe, a socket, a device — is `2` with the missing file,
+because what is there was observed and the remedy is a human's (remove it, then
+`glyph init`). `config.LoadFile` stats the path and never opens a non-regular
+one (`*config.NotAFileError`): open(2) on a named pipe blocks until a writer
+appears, so before the stat a FIFO named `glyph.toml` hung `lint --stdin`,
+`bump`, `notes`, `preview`, `release` and `doctor`, and a directory answered `4`
+through the read-error arm with its path printed twice (t-zvax, measured
+2026-10-20 at `ec53ed3`; `TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile`,
+`TestLoadFileRefusesWhatIsNotARegularFile`, mutation rows
+`verdict-commands-answer-a-non-file-glyph-toml-as-unreadable` and
+`config-load-opens-what-is-not-a-regular-file`).
 
 One command sits deliberately off the `1` rung: for `preview`, `none` is a real
 answer to the question asked — *what would merging this do?* — so a none verdict
