@@ -14,7 +14,7 @@ import (
 	"github.com/akira-toriyama/glyph/v5/internal/testutil"
 )
 
-// TestCallerChecksJudgeTheCallerAtItsPin pins the D2a ruling for both caller
+// TestCallerChecksJudgeTheCallerAtItsPin pins the ruling for both caller
 // checks: GitHub starts a caller against the reusable at the caller's @ref, so
 // a caller is judged only where this binary can speak for that release —
 // above the row's After, and for a stamped build not above its own release —
@@ -102,7 +102,7 @@ func TestCallerChecksJudgeTheCallerAtItsPin(t *testing.T) {
 			wantDetail: "not judged",
 		},
 		{
-			// The hole the D2a review measured: a reusable this binary has
+			// The hole the review measured: a reusable this binary has
 			// no row for was skipped, and the check passed as "no workflow
 			// calls a glyph reusable … observed — not assumed".
 			name: "a reusable this glyph does not ship is unknown, never skipped",
@@ -150,7 +150,7 @@ func TestCallerChecksJudgeTheCallerAtItsPin(t *testing.T) {
 	}
 }
 
-// TestCallerFixNeverSendsAReaderToADoctorThatCannotJudge pins the D2a review's
+// TestCallerFixNeverSendsAReaderToADoctorThatCannotJudge pins the review's
 // correction: "run the doctor of the release you pin" is a remedy only from the
 // release the check shipped in. Below it the pinned glyph has no such check —
 // v0.4.0 has no doctor at all, v1.0.0's has no caller checks — so the offer

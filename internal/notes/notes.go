@@ -109,9 +109,7 @@ func Group(commits []Commit, cfg *config.Config) ([]Section, error) {
 // author.login, or a noreply address); a commit with no login is credited by
 // its display name, plain, the template's at-sign dropped with the mention
 // it cannot make (markdown.Line.Mention holds the gate, DESIGN §3 the ruling
-// and its measurements). "Saleh" looked like a handle and paged
-// github.com/Saleh, a stranger, from golang/tools' notes — shape cannot tell
-// a name from a login.
+// and its measurements): shape cannot tell a name from a login.
 // Group-derived values and the other built-ins keep the fence: whether a
 // SUBJECT can page someone is not the author's intent to declare.
 // The built-ins (config.BuiltinPR and its siblings) are reserved: they win over a pattern
@@ -121,10 +119,9 @@ func Group(commits []Commit, cfg *config.Config) ([]Section, error) {
 //
 // An optional span drops WITH its literal text when any placeholder inside it
 // resolves empty. That is the whole point of the span: $pr is empty for every
-// commit under --range and for every direct push under --since-tag, and the
-// shipped presets rendered the parens the author wrote around it regardless:
-// the line "- add the demo feature () @akira-toriyama" is what a release body
-// carried, measured live before this existed.
+// commit under --range and for every direct push under --since-tag, so parens
+// written around it would render around nothing (DESIGN §3 has the measured
+// line).
 func renderLine(spans []config.LineSpan, declared []config.NoteTrailer, c Commit, groups map[string]string) string {
 	builtins := map[string]string{
 		config.BuiltinPR:        "",

@@ -99,10 +99,9 @@ type Result struct {
 // EVERY declared line — a nested package must keep taking its files out of
 // its parent — so the scope decides the RANGE only.
 //
-// preview is its one user: its pending side is asked per touched line, and a
-// declared line the pull does not touch used to drag the union to the whole
-// history and refuse the command at the cap (t-60dc symptom A), or pay one
-// API round-trip per commit of the whole history under it (symptom B).
+// preview is its one user: its pending side is asked per touched line
+// (DESIGN §4.1, "Preview", holds why an untouched line must not set the
+// range).
 type Scope struct {
 	Only   []config.Package // nil: every declared line
 	Escape string           // "": the --since-tag sentence

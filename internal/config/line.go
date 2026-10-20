@@ -169,11 +169,9 @@ func holdsPlaceholder(parts []LinePart) bool {
 // means always". This is the mirror, and the span made it worse: a name nothing
 // binds resolves empty for every commit, so inside a span it drops the span on
 // every line and takes the punctuation with it, leaving a release body quietly
-// missing a column rather than visibly wrong. Measured before this check
-// existed: `$[ ($pull)]` — the built-in is `$pr` — rendered every line with no
-// citation and no parens, at exit 0, while the same name OUTSIDE a span at
-// least rendered a visible empty `()`. Optional punctuation is only safe to
-// offer if a typo inside it cannot pass for a deliberate omission.
+// missing a column rather than visibly wrong (DESIGN §3, "A placeholder no
+// commit binds does not load"). Optional punctuation is only safe to offer if
+// a typo inside it cannot pass for a deliberate omission.
 //
 // The legal set is the UNION over patterns, not the intersection: which pattern
 // wins is a property of each commit, so a name any pattern captures is a name
@@ -188,13 +186,9 @@ func holdsPlaceholder(parts []LinePart) bool {
 // carries one: legal when the template also cites a group a pattern binds
 // (`- $title$subject` — each line fills the one its commit binds), refused
 // when it is the template's only name beyond the built-ins and trailers,
-// because every line a pattern claims would render without its text.
-// Measured (t-f2cb, DESIGN §3): a skip pattern's $branch loaded and rendered
-// empty at exit 0; a file whose subject group is `title` was refused
-// `- $title$subject`, the one spelling that renders a bot line's text; and
-// with $subject legal unconditionally, the gemoji preset with its group
-// renamed to `title` and note.line left alone loaded and printed every
-// matched commit's line with its text gone, at exit 0.
+// because every line a pattern claims would render without its text
+// (DESIGN §3, "The fallback's `$subject` completes a template", has the
+// measurements).
 func validateLineNames(spans []LineSpan, patterns []Pattern, trailers []NoteTrailer) error {
 	groups := boundGroupNames(patterns)
 	legal := make(map[string]bool, len(lineBuiltins)+len(groups)+len(trailers))

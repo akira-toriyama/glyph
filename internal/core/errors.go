@@ -84,9 +84,8 @@ func (e *Error) WithDetails(details any) *Error {
 // envelope would (the --json object; release's tag line and body, or its
 // draft URL). The writer knows that as a boolean it already holds, so it
 // passes the boolean: one error, no branch, instead of two literals per
-// site that must agree on everything but Silent (the shape bump, notes and
-// release once carried ten times). Interrupted is the other Silent exit,
-// for its own reason, and builds itself.
+// site that must agree on everything but Silent. Interrupted is the other
+// Silent exit, for its own reason, and builds itself.
 func (e *Error) Quiet(verdictOnStdout bool) *Error {
 	e.Silent = verdictOnStdout
 	return e
