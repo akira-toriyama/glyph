@@ -159,10 +159,8 @@ func TestReleaseDraftOnNoneOffConvergesThePlaceholderAway(t *testing.T) {
 
 // TestReleaseDraftOnNoneReasonIsTheNoneReason: a maintained none's reason is
 // the none reason — what bump and every packages line answer, and what
-// release.yml prints as the run's notice — not the oldest = commit, which
-// the single line's own path once named (`<sha> = "subject" → none`,
-// measured on dfc1740). Neither spelling was pinned, which is how the two
-// paths diverged unseen (U15 review).
+// release.yml prints as the run's notice — never the oldest = commit
+// (`<sha> = "subject" → none`).
 func TestReleaseDraftOnNoneReasonIsTheNoneReason(t *testing.T) {
 	walk := noneWalk(t)
 	enableDraftOnNone(t)

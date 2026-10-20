@@ -26,9 +26,8 @@ import (
 // `lint --range` on the recorded commit (what CI does). No case can pass because
 // glyph and its test agree about git.
 //
-// Every row here disagreed before `--stdin` learned git's cleanup modes: glyph
-// stripped comments and cut at scissors in ALL of them, which is what git does
-// only when an editor runs.
+// Before `--stdin` learned git's cleanup modes, glyph stripped comments and cut
+// at scissors in every mode, which git does only when an editor runs.
 func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 	testutil.RequireGit(t)
 

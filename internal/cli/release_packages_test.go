@@ -115,8 +115,8 @@ func TestReleasePackagesWritesOneDraftPerLine(t *testing.T) {
 
 // TestReleasePackagesCurrentOverTwoLinesIsUsage: release refuses --current
 // unless the walk selects one line (checkLineSelection), as bump does — the
-// refusal is in release's help and was asserted for bump alone until the
-// U15 review found the release call removable without a red test.
+// refusal is in release's help, and this test is what holds release's own
+// call to it.
 func TestReleasePackagesCurrentOverTwoLinesIsUsage(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	_, routes := squashAcrossLines(t, dir, 7)
@@ -883,8 +883,8 @@ func TestReleasePackagesDraftOnNoneMaintainsAPlaceholderPerLine(t *testing.T) {
 // names (draftplan.Write.Line), never by the count of writes done. The none
 // line is declared first, so the run's first write is the SECOND line's; a
 // URL placed by write count would report curry's draft under haiku, and
-// nothing else in the verdict would say so (review of U20, 2026-10-19:
-// that mutation survived the whole suite).
+// nothing else in the verdict would say so (mutation row
+// release-packages-url-lands-on-the-write-count).
 func TestReleasePackagesURLLandsOnItsLine(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	sha := touch(t, dir, "akira-toriyama", ":sparkles:^ add a sauce", "curry/sauce.go")

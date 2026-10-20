@@ -1436,8 +1436,7 @@ func TestReleaseRunsFromOptionsWithoutCobra(t *testing.T) {
 // TestReleaseNoneAnswersTheFirstFailedResidual: with two residuals that will
 // not go, the envelope carries the FIRST failure, as the warning on the
 // second says ("the run fails on the first that would not"); the second is
-// a warning that names it. Unpinned until the U15 review found "answer the
-// last one" surviving the whole suite on both trees.
+// a warning that names it.
 func TestReleaseNoneAnswersTheFirstFailedResidual(t *testing.T) {
 	walk := noneWalk(t)
 	releases := `[` + draftJSON(11, "v0.1.1") + `,` + draftJSON(12, "v0.1.2") + `]`
@@ -1471,9 +1470,8 @@ func TestReleaseNoneAnswersTheFirstFailedResidual(t *testing.T) {
 // TestReleaseMalformedCurrentIsUsageBeforeTheListing: --current is the
 // caller's input, refused at 2 before the releases listing is fetched — so
 // a listing that would not answer cannot turn the usage error into its own
-// 4. The single line's path once parsed the flag first and the packages
-// path once did not; the one loop asks before either pays (U15 review: the
-// double fault exited 4 on the candidate's first cut).
+// 4. The one loop over the lines asks before the listing is paid for, on the
+// bare line and under packages alike.
 func TestReleaseMalformedCurrentIsUsageBeforeTheListing(t *testing.T) {
 	walk := oneFixWalk(t)
 	var seq []string
