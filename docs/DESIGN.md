@@ -3064,8 +3064,13 @@ appears, so before the stat a FIFO named `glyph.toml` hung `lint --stdin`,
 through the read-error arm with its path printed twice (t-zvax, measured
 2026-10-20 at `ec53ed3`; `TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile`,
 `TestLoadFileRefusesWhatIsNotARegularFile`, mutation rows
-`verdict-commands-answer-a-non-file-glyph-toml-as-unreadable` and
-`config-load-opens-what-is-not-a-regular-file`). A link `os.Stat` cannot follow
+`verdict-commands-answer-a-non-file-glyph-toml-as-unreadable`,
+`verdict-commands-refuse-a-non-file-glyph-toml-with-no-remedy` and
+`config-load-opens-what-is-not-a-regular-file`). Every read error printed its
+path twice then: the loader re-wrapped `os.ReadFile`'s error, which already
+names it, and now hands it over as it is
+(`TestLoadFileNamesAnUnreadablePathOnce`, mutation row
+`config-load-names-the-path-twice`). A link `os.Stat` cannot follow
 by its own fault — one to nothing, one that loops, one through a regular file —
 is the link itself, observed by `os.Lstat`. Read through `os.Stat` alone, a link
 to nothing took the missing arm, whose remedy `glyph init` refused as "already
@@ -3477,8 +3482,9 @@ The severities are the argued part:
   through `os.Stat` alone, a looping link or one through a file graded
   `unknown` with that same fix, and a link to nothing failed with the missing
   file's fix, which `glyph init` refused, measured 2026-10-21 at `43cecf2`;
-  `TestConfigNotARegularFileIsAFailure`, mutation row
-  `doctor-grades-a-non-file-glyph-toml-could-not-run`). Only content that was
+  `TestConfigNotARegularFileIsAFailure`, mutation rows
+  `doctor-grades-a-non-file-glyph-toml-could-not-run` and
+  `doctor-tells-a-non-file-glyph-toml-to-edit-its-keys`). Only content that was
   never *observed* — a read the filesystem refused (permission denied, an I/O
   fault), no top level to resolve the path against — is `unknown` at `4`.
 - **`allow_squash_merge` false ⇒ fail.** *Not* because only a squash commit

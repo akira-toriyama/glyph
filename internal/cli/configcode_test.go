@@ -211,7 +211,11 @@ func TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile(t *testing.T) {
 						"observed, nothing was left unread\nstderr: %s", code, core.CodeUsage, stderr)
 				}
 				env := decodeErrorEnvelope(t, stderr)
-				if !strings.Contains(env.Message, path+" is "+k.kind) || !strings.Contains(env.Message, "glyph init") {
+				// Both halves of the remedy: glyph init refuses a path that
+				// is not a regular file, so without "remove it" the
+				// refusal sends the user into a second one.
+				if !strings.Contains(env.Message, path+" is "+k.kind) || !strings.Contains(env.Message, "remove it") ||
+					!strings.Contains(env.Message, "glyph init") {
 					t.Errorf("the refusal must name what is at the path and hand over the remedy, got %q", env.Message)
 				}
 			})

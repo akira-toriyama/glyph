@@ -327,6 +327,32 @@ func TestNotAFileErrorNamesEachKind(t *testing.T) {
 	}
 }
 
+// TestLoadFileNamesAnUnreadablePathOnce: a read the filesystem refuses comes
+// back as os.ReadFile's own *fs.PathError, which already names the operation
+// and the path. Re-wrapped, every verdict command's refusal and doctor's
+// observation printed the path twice ("read <p>: open <p>: permission denied",
+// measured at ec53ed3) behind an unchanged exit code and status, so nothing
+// but this test sees it come back.
+func TestLoadFileNamesAnUnreadablePathOnce(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root, where an unreadable file does not exist")
+	}
+	path := filepath.Join(t.TempDir(), "glyph.toml")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatalf("staging the refused read: %v", err)
+	}
+	_, err := LoadFile(path)
+	if _, ok := errors.AsType[*fs.PathError](err); !ok || !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("LoadFile on a mode-000 glyph.toml = %v (%T), want the *fs.PathError of a refused read", err, err)
+	}
+	if n := strings.Count(err.Error(), path); n != 1 {
+		t.Errorf("error = %q names the path %d times, want once", err, n)
+	}
+}
+
 // TestLoadFileKeepsALinkItMayNotFollowUnreadable: a link os.Stat cannot follow
 // for a permission is no broken link — where it leads was never observed — so
 // it stays the *fs.PathError of a stat the filesystem refused (the verdict
