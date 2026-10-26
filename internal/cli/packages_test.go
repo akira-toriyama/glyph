@@ -1331,25 +1331,32 @@ func TestSinceTagPackagesCommitReleasedOnEveryLineIsDroppedNotRefused(t *testing
 // re-sighting adds no escape at an identity every line released (mutation row
 // packages-walk-names-an-escape-every-line-passed). Which line a CLAIMED
 // commit two pulls list joins still follows the first sighting; that predates
-// this rule and is the main loop's follow-up.
+// this rule and is the main loop's follow-up. The same commit by an
+// exclude_authors author is judged at neither sighting, so nothing is refused
+// (t-wjbs correct-r1-1, measured by review 2026-10-27: exit 0 on v5.0.0,
+// ba484da, 80c849a and 36b7c53; mutation row
+// packages-walk-judges-a-later-sighting-of-an-excluded-author).
 func TestSinceTagPackagesStackedPullJudgesEachSighting(t *testing.T) {
-	for _, before := range []bool{false, true} {
-		name := "#90 after the held pull"
-		if before {
-			name = "#90 before the held pull"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, tc := range []struct {
+		name, author string
+		before       bool
+	}{
+		{name: "#90 after the held pull", author: "akira-toriyama"},
+		{name: "#90 before the held pull", author: "akira-toriyama", before: true},
+		{name: "an excluded author's commit, #90 after the held pull", author: "dependabot[bot]"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			const stacked = "Stack a season (#90)"
 			side := ""
-			if before {
+			if tc.before {
 				side = stacked
 			}
 			cc := newCrissCross(t, "Add a season (#80)", "Swap an ingredient (#81)", side)
 			p90 := cc.side
-			if !before {
+			if !tc.before {
 				p90 = cc.touch(stacked, "haiku/y.go")
 			}
-			inner := apiCommit("u1", "akira-toriyama", "no gitmoji leads this subject")
+			inner := apiCommit("u1", tc.author, "no gitmoji leads this subject")
 			routes := map[string]string{
 				commitPullsPath(cc.a): `[` + apiPullRef(80, "2026-07-13T00:00:00Z", cc.a) + `]`,
 				pullCommitsPath(80):   `[` + inner + `]`,
@@ -1368,6 +1375,17 @@ func TestSinceTagPackagesStackedPullJudgesEachSighting(t *testing.T) {
 			usePR(t, walkServer(t, routes))
 			t.Chdir(cc.dir)
 
+			if tc.author == "dependabot[bot]" {
+				// exclude_authors is never judged by its message, at any
+				// sighting: #90's stack of a season moves haiku, and nothing
+				// is refused, on the union walk and the line's own alike.
+				for _, args := range [][]string{{"bump", "--since-tag"}, {"bump", "--since-tag=haiku/v0.1.0"}} {
+					if code, stdout, stderr := runGlyph(t, args...); code != 0 || stdout != "haiku/v0.2.0\n" {
+						t.Errorf("%v exited %d with %q, want 0 and haiku/v0.2.0: an excluded author's message is not judged\nstderr: %s", args, code, stdout, stderr)
+					}
+				}
+				return
+			}
 			code, _, stderr := runGlyph(t, "bump", "--since-tag")
 			if code != 3 {
 				t.Fatalf("bump --since-tag exited %d, want 3: #90's merge point is pending on both lines\nstderr: %s", code, stderr)
