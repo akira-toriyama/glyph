@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/github"
-	"github.com/akira-toriyama/glyph/v5/internal/testutil"
+	"github.com/akira-toriyama/glyph/v6/internal/github"
+	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
 // This file pins t-ft7p: the files cap is GitHub's count of listed entries,

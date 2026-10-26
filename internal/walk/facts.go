@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v5/internal/github"
+	"github.com/akira-toriyama/glyph/v6/internal/github"
 )
 
 // PullExpansion records one merged pull the walk expanded and how many of

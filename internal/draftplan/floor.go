@@ -1,9 +1,9 @@
 package draftplan
 
 import (
-	"github.com/akira-toriyama/glyph/v5/internal/bump"
-	"github.com/akira-toriyama/glyph/v5/internal/config"
-	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/bump"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
 )
 
 // CheckPublishedFloor is the deadlock guard (immutable releases): the next

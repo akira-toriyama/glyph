@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/config"
-	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
 )
 
 // TestNextOnStepsOnTheLine: the bare line and a free line with no locked

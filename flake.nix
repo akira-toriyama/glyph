@@ -21,7 +21,7 @@
         # version string.
         version = "dev";
         rev = self.shortRev or self.dirtyShortRev or "unknown";
-        v = "github.com/akira-toriyama/glyph/v5/internal/version";
+        v = "github.com/akira-toriyama/glyph/v6/internal/version";
       in
       {
         packages.default = pkgs.buildGoModule {

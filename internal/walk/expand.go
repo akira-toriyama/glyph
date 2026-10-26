@@ -6,10 +6,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v5/internal/bump"
-	"github.com/akira-toriyama/glyph/v5/internal/config"
-	"github.com/akira-toriyama/glyph/v5/internal/github"
-	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v6/internal/bump"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/github"
+	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
 )
 
 // walk is one walk over a range in progress. Its contract is an order: newWalk

@@ -18,7 +18,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
 )
 
 // RawCommit is one commit as git reports it, before any parsing: what its

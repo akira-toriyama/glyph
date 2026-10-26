@@ -3,8 +3,8 @@ package draftplan
 import (
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/bump"
-	"github.com/akira-toriyama/glyph/v5/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/bump"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
 )
 
 // TestManagedIsPerMajor: two lines on one prefix (pubsub and pubsub/v2)

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/cleanup"
-	"github.com/akira-toriyama/glyph/v5/internal/core"
-	"github.com/akira-toriyama/glyph/v5/internal/testutil"
+	"github.com/akira-toriyama/glyph/v6/internal/cleanup"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
 // hookCutLine is git's scissors line as the tests type it into a message.

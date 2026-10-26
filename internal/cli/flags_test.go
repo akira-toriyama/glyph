@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/testutil"
+	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )

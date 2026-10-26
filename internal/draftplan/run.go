@@ -3,7 +3,7 @@ package draftplan
 import (
 	"slices"
 
-	"github.com/akira-toriyama/glyph/v5/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
 )
 
 // Kind is which write a release run performs, and so what its failure means:

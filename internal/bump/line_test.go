@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
 )
 
 func TestLinePrefix(t *testing.T) {

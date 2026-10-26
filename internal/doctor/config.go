@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"io/fs"
 
-	"github.com/akira-toriyama/glyph/v5/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
 )
 
 // checkConfig reports whether the glyph.toml every verdict command reads

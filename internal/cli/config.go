@@ -6,9 +6,9 @@ import (
 	"io/fs"
 	"path/filepath"
 
-	"github.com/akira-toriyama/glyph/v5/internal/config"
-	"github.com/akira-toriyama/glyph/v5/internal/core"
-	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
 )
 
 // configPathAt is where a checkout keeps its glyph.toml: its top level (git's

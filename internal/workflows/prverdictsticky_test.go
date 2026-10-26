@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/preview"
+	"github.com/akira-toriyama/glyph/v6/internal/preview"
 )
 
 const (

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/testutil"
+	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
 // This file pins the major version subdirectory rule (DESIGN §4.1, "The tag

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
 )
 
 // useActionsRun hands the process the run identity an Actions runner hands it:

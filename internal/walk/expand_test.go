@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/github"
-	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
-	"github.com/akira-toriyama/glyph/v5/internal/testutil"
+	"github.com/akira-toriyama/glyph/v6/internal/github"
+	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
 // The two tests below go straight at mainFootprint rather than through a walk,

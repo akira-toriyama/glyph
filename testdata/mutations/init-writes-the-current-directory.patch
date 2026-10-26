@@ -9,7 +9,7 @@ index f4a35db..48c1de4 100644
 +	"path/filepath"
  	"strings"
  
- 	"github.com/akira-toriyama/glyph/v5/internal/config"
+ 	"github.com/akira-toriyama/glyph/v6/internal/config"
 @@ -123,7 +124,7 @@ func initPath(ctx context.Context) (string, error) {
  	case core.IsInterrupted(err):
  		return "", err

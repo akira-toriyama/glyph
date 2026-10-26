@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/testutil"
+	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
 // The four modes as a commit-msg hook resolves them, named once so the tables

@@ -19,7 +19,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
 )
 
 // defaultBaseURL is the public GitHub REST host. A GitHub Enterprise host or an

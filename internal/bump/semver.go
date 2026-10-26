@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v5/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
 )
 
 // Version is a plain semver triple. House tags are exactly vX.Y.Z — no
