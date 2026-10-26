@@ -2984,7 +2984,18 @@ refusing a `=` whose scope names another package (above).
 Binary `glyph`, module `github.com/akira-toriyama/glyph/v6` — the major suffix is
 part of the path from v2 on, and a tag alone does not supply it: without it the
 proxy answers `go install …@latest` with the last unsuffixed version (v1.0.0)
-forever. Cutting v7 means editing this path. Subcommands: `lint`,
+forever. Cutting v7 means editing this path, and `goreleaser.yml`'s first step
+holds the edit to the tag: a tag whose major the path does not carry is refused
+before any asset is built
+(`TestReleaseRefusesATagWhoseMajorTheModulePathDoesNotCarry`, mutation row
+`release-tags-a-major-the-module-path-does-not-carry`). The step exists because
+the edit was missed three times with every gate green — v2.0.0 and v3.0.0 over
+no suffix (#222), v6.0.0 over `/v5` (measured 2026-10-26: proxy.golang.org
+rejects `/v6@v6.0.0` and serves v5.1.0 for `/v5/@latest`) — since
+`TestModulePathCarriesTheMajorAndReadmeSpellsIt` reads no tag, and the tag job
+is the one place that holds both the tag and the tree. Rejected: a `doctor`
+check (t-nag8, 2026-09-15 — glyph reads no manifest, §4.1, and no workflow in
+the fleet runs `doctor`). Subcommands: `lint`,
 `init`, `bump`, `notes`, `preview`, `release`, `doctor`, `hook`, `version`, `emoji` —
 everything `glyph --help` prints except cobra's own `completion` and `help`.
 This line and the tree below are the two places in this document a new command
