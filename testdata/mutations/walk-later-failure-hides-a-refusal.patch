@@ -1,13 +1,13 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 569b5d2..97aea8d 100644
+index 5b399eb..d78922a 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -91,7 +91,7 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
+@@ -98,7 +98,7 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
  	wk := newWalk(w, cfg, owner, repo, revRange, raws, shallow, ranges)
  	for _, raw := range raws {
  		if err := wk.visit(ctx, raw); err != nil {
--			if w.outranks(len(wk.wedges) > 0, err) {
-+			if w.outranks(false, err) {
+-			if w.Outranks(len(wk.wedges) > 0, err) {
++			if w.Outranks(false, err) {
  				return nil, Facts{}, wk.walkRefusal()
  			}
  			return nil, Facts{}, err

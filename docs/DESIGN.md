@@ -2868,7 +2868,13 @@ packages change is `breaking` (below). The pull's commits exist on its branch on
 come from `GET /commits/{sha}` — one request per commit placed by its files, the
 squash arm's price paid before the merge — and a commit attribution refuses
 is refused here at exit 3, the same lint-class answer the walk will give
-once it is merged, while the branch can still be fixed. Each commit is placed
+once it is merged, while the branch can still be fixed — every such commit of
+the pull in one refusal, as the walk and the pull's commit-lint name them,
+and one already found outranks a later failure to read the rest. The first
+cut stopped at the first, so an author fixed one commit per push
+(`TestPreviewPackagesRefusesEveryAttributionRefusalAtOnce`; mutation rows
+`preview-hands-down-the-first-attribution-refusal`,
+`preview-attribution-refusal-hides-behind-a-later-failure`). Each commit is placed
 by the walk's own placement (`walk.PlaceByFiles`): one reader of its listing, one
 withholding rule, and one sentence each for an unread listing and a withheld
 refusal (`TestWalkAndPreviewWarnAnUnreadListingInOneSentence`). Over a listing

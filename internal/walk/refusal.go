@@ -139,16 +139,16 @@ func (w *walk) walkRefusal() error {
 		first.row.SHA, first.row.Detail, more, first.where, wedges, strings.Join(escapes, ", and AT OR PAST "), cut).WithDetails(rows)
 }
 
-// outranks reports whether the refusal already found (found says one was) is
+// Outranks reports whether the refusal already found (found says one was) is
 // the verdict over err, a failure to read the rest of the range, and says the
 // failure on stderr when it is. The range holds a commit that wedges it
 // whatever else it holds, and a walk that stopped at the first refusal never
 // read past it either, so a 4 here would hide a verdict the operator must act
 // on behind a failure that clears on retry. What was not read may hold more
 // refused commits than the sentence counts. An interrupt carries out as
-// itself. The walk asks it over its wedges and the partition over
-// attribution's refusals, which it collects past the first.
-func (w Walker) outranks(found bool, err error) bool {
+// itself. The walk asks it over its wedges, and the partition and preview's
+// pull side over attribution's refusals, which each collects past the first.
+func (w Walker) Outranks(found bool, err error) bool {
 	if !found || core.IsInterrupted(err) {
 		return false
 	}

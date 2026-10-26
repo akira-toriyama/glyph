@@ -1,5 +1,5 @@
 diff --git a/internal/walk/refusal.go b/internal/walk/refusal.go
-index 368a862..cbc74ce 100644
+index e18c44b..60f016c 100644
 --- a/internal/walk/refusal.go
 +++ b/internal/walk/refusal.go
 @@ -136,7 +136,7 @@ func (w *walk) walkRefusal() error {
@@ -10,4 +10,4 @@ index 368a862..cbc74ce 100644
 +		first.row.SHA, first.row.Detail, more, first.where, wedges, strings.Join(escapes, ", and AT OR PAST "), cut)
  }
  
- // outranks reports whether the refusal already found (found says one was) is
+ // Outranks reports whether the refusal already found (found says one was) is

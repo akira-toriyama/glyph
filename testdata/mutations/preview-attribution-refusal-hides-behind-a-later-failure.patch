@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 75ca3ae..e647a51 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -269,7 +269,7 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
+ 		}
+ 		placed, err := w.PlaceByFiles(ctx, cfg, owner, repo, walk.Commit{Raw: r, Pull: number}, said, &facts, nil)
+ 		if err != nil {
+-			if w.Outranks(len(refused) > 0, err) {
++			if w.Outranks(false, err) {
+ 				break
+ 			}
+ 			return nil, "", err

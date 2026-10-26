@@ -78,7 +78,7 @@ type walk struct {
 // walkSince is the walk over revRange: the log, the shallow question asked
 // once, one visit per commit, reconcile, and the verdict — the walked list
 // with its facts, or the refusal naming every wedge. An error out of a visit is
-// the API's or git's as received; outranks decides whether the wedges
+// the API's or git's as received; Outranks decides whether the wedges
 // already found are the verdict over it.
 func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, revRange string, ranges lineRanges) ([]Commit, Facts, error) {
 	raws, err := w.Git.Log(ctx, revRange)
@@ -98,7 +98,7 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 	wk := newWalk(w, cfg, owner, repo, revRange, raws, shallow, ranges)
 	for _, raw := range raws {
 		if err := wk.visit(ctx, raw); err != nil {
-			if w.outranks(len(wk.wedges) > 0, err) {
+			if w.Outranks(len(wk.wedges) > 0, err) {
 				return nil, Facts{}, wk.walkRefusal()
 			}
 			return nil, Facts{}, err

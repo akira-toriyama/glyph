@@ -175,7 +175,7 @@ func (r lineRanges) releasedEverywhere(gov string) bool {
 // caller to word (attributionWedge, rangeRefusal) — one red run for every
 // refused commit, as lint --range over the same range answers (DESIGN §4.1,
 // rule 3). A refusal already collected outranks a later failure to place
-// the rest (outranks).
+// the rest (Outranks).
 func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, repo string, commits []Commit, facts *Facts, ranges lineRanges) ([]LineWalk, []Commit, []placementRefusal, error) {
 	lines := ranges.lines
 	if len(cfg.Packages) == 0 {
@@ -202,7 +202,7 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
 		case PlacedByFiles:
 			placed, ferr := w.PlaceByFiles(ctx, cfg, owner, repo, c, said, facts, reachedLines(lines, reach))
 			if ferr != nil {
-				if w.outranks(len(refused) > 0, ferr) {
+				if w.Outranks(len(refused) > 0, ferr) {
 					return nil, nil, refused, nil
 				}
 				return nil, nil, nil, ferr
