@@ -353,12 +353,15 @@ func modulePath(t *testing.T) string {
 // went red: the proxy is not consulted by any build, test or release here, and
 // none of fleet-preflight's probes (lint, bump, the release body) consults it.
 //
-// Know what this does NOT catch: it reads no tags, so a v5 tag cut over a /v4
-// go.mod passes here. Comparing the module's major against the repository's
-// highest tag needs a real repository, which is `doctor`'s side of the fence
-// (t-nag8, the `go-module-major` check). What this holds is the copy drift —
-// go.mod is the one declaration and README, .goreleaser.yaml, build.sh and
-// flake.nix are checked against it, never against each other.
+// Know what this does NOT catch: it reads no tags, so a v6 tag cut over a /v5
+// go.mod passes here — and did (v6.0.0, after v2.0.0 and v3.0.0 over no
+// suffix). Comparing the module's major against the tag being cut needs the
+// tag, which only the tag job holds: goreleaser.yml's first step refuses it
+// there, before any asset is built
+// (TestReleaseRefusesATagWhoseMajorTheModulePathDoesNotCarry). What this holds
+// is the copy drift — go.mod is the one declaration and README,
+// .goreleaser.yaml, build.sh and flake.nix are checked against it, never
+// against each other.
 func TestModulePathCarriesTheMajorAndReadmeSpellsIt(t *testing.T) {
 	path := modulePath(t)
 

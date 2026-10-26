@@ -57,6 +57,49 @@ jobs:
           # persisted checkout token (zizmor artipacked). t-yaxa
           persist-credentials: false
 
+      # The tag's major must be the module path's. Go resolves a module by the
+      # /vN suffix in go.mod, and a tag alone supplies nothing: a v6.0.0 cut
+      # over a /v5 go.mod is no module version at all — the proxy rejects
+      # /v6@v6.0.0 and `go install …/v5/cmd/glyph@latest` keeps handing out
+      # v5.1.0 (measured 2026-10-26; v2.0.0 and v3.0.0 shipped the same way
+      # over no suffix, #222). Nothing else compares the two:
+      # TestModulePathCarriesTheMajorAndReadmeSpellsIt reads no tag by design,
+      # and a doctor check was rejected (t-nag8: glyph reads no manifest, and
+      # no workflow in the fleet runs doctor). This job is the one place that
+      # holds both the tag and the tree, so it refuses here, before any asset
+      # exists — the tag is already pushed and cannot carry the fix; the next
+      # patch under the moved path can (v6.0.1). Before setup-go: shell over
+      # go.mod's text and the ref name only. GITHUB_REF_NAME is the pushed tag,
+      # as the notes step below reads it. The grammar is the binary's own for
+      # below: (bump.parseBaseVersion — a release candidate names its
+      # release's major). internal/workflows runs this step over the tags that
+      # were cut and the ones that must not be.
+      - name: the tag's major is the module path's
+        shell: bash
+        run: |
+          tag="$GITHUB_REF_NAME"
+          re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          if [[ ! "$tag" =~ $re ]]; then
+            echo "::error::$tag is not a version tag (vX.Y.Z, with an optional -prerelease); this job releases version tags only"
+            exit 1
+          fi
+          major="${BASH_REMATCH[1]}"
+          path="$(sed -En 's/^module[[:space:]]+([^[:space:]]+)[[:space:]]*$/\1/p' go.mod | head -n 1)"
+          if [ -z "$path" ]; then
+            echo "::error::go.mod declares no module path, so nothing says which major $tag belongs to"
+            exit 1
+          fi
+          have="$(printf '%s\n' "$path" | sed -En 's#^.*(/v[0-9]+)$#\1#p')"
+          want=""
+          if [ "$major" -ge 2 ]; then
+            want="/v$major"
+          fi
+          if [ "$have" != "$want" ]; then
+            echo "::error::$tag is cut over go.mod's module path $path, whose major suffix is ${have:-none} where this tag needs ${want:-none}. Go resolves a module by that suffix, so $tag is no module version at all: the proxy rejects it and \`go install …@latest\` keeps serving the last version under the path's own major. The tag is already pushed and cannot carry the fix — move the path (go.mod and every import; DESIGN §5) and cut the next patch under it. Refusing before any asset is built."
+            exit 1
+          fi
+          echo "go.mod's module path $path carries ${have:-no major suffix}, which is what $tag needs"
+
       # No job-level `env: GOTOOLCHAIN: local` — see build.yml. It would make
       # setup-go skip go.mod's `toolchain` line and ship release binaries built
       # with the bare floor. setup-go pins GOTOOLCHAIN=local itself.
