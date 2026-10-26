@@ -9,12 +9,12 @@ import (
 // TestPresetsDifferOnlyInThePrefix: the shipped presets are one grammar over
 // two prefix vocabularies (DESIGN §2, t-h9y7), and rulings land in every
 // preset on that promise. Outside the lines a prefix forces apart — the
-// header and style label, the vocabulary note, the template's form line, the
-// first pattern's comment and regex, and the amend! body regex that mirrors
-// it — each preset is held byte for byte to gemoji, so a correction that
-// lands in one preset alone fails here. The packages paragraph drifted
-// exactly that way while it was typed into each preset (#228). What the
-// masked lines must still agree on is TestPresetsShareOneGrammar's to assert.
+// header, the vocabulary note, the template's form line, the first pattern's
+// comment and regex, and the amend! body regex that mirrors it — each preset
+// is held byte for byte to gemoji, so a correction that lands in one preset
+// alone fails here. The packages paragraph drifted exactly that way while it
+// was typed into each preset (#228). What the masked lines must still agree
+// on is TestPresetsShareOneGrammar's to assert.
 //
 // bite-exempt: ratifies the parity the tree already has, so it cannot fail
 // against pre-PR source; the mutation-ledger rows
@@ -25,7 +25,7 @@ func TestPresetsDifferOnlyInThePrefix(t *testing.T) {
 	// Each region must be found exactly once: a mask that matched nothing
 	// compares nothing, and one whose end marker is gone swallows the rest of
 	// the file — either way the comparison would pass on no evidence.
-	regions := []string{"header", "style", "vocabulary note", "template form", "first pattern", "amend! body"}
+	regions := []string{"header", "vocabulary note", "template form", "first pattern", "amend! body"}
 	mask := func(t *testing.T, name string) string {
 		t.Helper()
 		data, ok := Preset(name)
@@ -67,11 +67,8 @@ func TestPresetsDifferOnlyInThePrefix(t *testing.T) {
 				found["header"]++
 				out = append(out, "<header>")
 				continue
-			case l == `style = "`+name+`"`:
-				found["style"]++
+			case l == "[commit]":
 				in = "vocabulary note"
-				out = append(out, "<style>")
-				continue
 			case l == "template = '''":
 				in = "template form"
 			case l == "[[patterns]]" && !seenFirst:

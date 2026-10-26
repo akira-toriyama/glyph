@@ -120,8 +120,11 @@ type Config struct {
 // beyond TOML well-formedness. Its one reader is Config.subjectForm, which
 // quotes the template's first line back inside the no-pattern-matches lint
 // violation, verbatim.
+//
+// There is deliberately no style key: the label the presets once wrote here
+// named a grammar the patterns alone decide, and nothing read it (DESIGN §2).
+// The strict decoder refuses it as unknown, which is the whole enforcement.
 type Commit struct {
-	Style    string
 	Template string
 }
 
@@ -246,7 +249,6 @@ type rawPackage struct {
 }
 
 type rawCommit struct {
-	Style    string `toml:"style"`
 	Template string `toml:"template"`
 }
 
@@ -531,12 +533,24 @@ func buildPackage(rp rawPackage) (Package, error) {
 	return Package{Path: p, Name: name}, nil
 }
 
+// The unknown-key hint names no direction: a key a newer glyph introduced
+// and one an older glyph wrote but this one dropped (commit.style) reach this
+// refusal alike, so a hint that guesses "newer" is false for the second. No
+// key gets a message of its own (DESIGN §2).
 func strictUnmarshal(data []byte, r *raw) error {
 	d := toml.NewDecoder(bytes.NewReader(data))
 	d.DisallowUnknownFields()
 	if err := d.Decode(r); err != nil {
 		if strict, ok := errors.AsType[*toml.StrictMissingError](err); ok {
-			return fmt.Errorf("unknown key (typo, or written for a newer schema?):\n%s", strict.String())
+			keys := make([]string, 0, len(strict.Errors))
+			for i := range strict.Errors {
+				keys = append(keys, strings.Join(strict.Errors[i].Key(), "."))
+			}
+			noun := "key"
+			if len(keys) > 1 {
+				noun = "keys"
+			}
+			return fmt.Errorf("unknown %s %s (a typo, or written for another glyph version):\n%s", noun, strings.Join(keys, ", "), strict.String())
 		}
 		return fmt.Errorf("parse glyph.toml: %w", err)
 	}

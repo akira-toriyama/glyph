@@ -1,0 +1,13 @@
+diff --git a/internal/config/config.go b/internal/config/config.go
+index 1f1c594..57e92d6 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -454,7 +454,7 @@ func strictUnmarshal(data []byte, r *raw) error {
+ 			if len(keys) > 1 {
+ 				noun = "keys"
+ 			}
+-			return fmt.Errorf("unknown %s %s (a typo, or written for another glyph version):\n%s", noun, strings.Join(keys, ", "), strict.String())
++			return fmt.Errorf("unknown %s %s (typo, or written for a newer schema?):\n%s", noun, strings.Join(keys, ", "), strict.String())
+ 		}
+ 		return fmt.Errorf("parse glyph.toml: %w", err)
+ 	}

@@ -125,9 +125,6 @@ func TestLoadGemojiConfig(t *testing.T) {
 			t.Errorf("ExcludeAuthors[%d] = %q, want %q", i, cfg.ExcludeAuthors[i], w)
 		}
 	}
-	if cfg.Commit.Style != "gemoji" {
-		t.Errorf("Commit.Style = %q, want %q", cfg.Commit.Style, "gemoji")
-	}
 	if !strings.Contains(cfg.Commit.Template, "<semver_sigil>") {
 		t.Errorf("Commit.Template lost the literal placeholder: %q", cfg.Commit.Template)
 	}
@@ -232,6 +229,31 @@ func TestLoadErrors(t *testing.T) {
 				t.Errorf("error = %q, want substring %q", err, c.want)
 			}
 		})
+	}
+}
+
+// TestLoadRefusesTheRemovedCommitStyle: [commit] carries only template
+// (DESIGN §2, t-85y9). The strict decoder refuses style, in either label a
+// preset wrote, as it refuses any key the schema does not declare, naming its
+// dotted path; the control is the same file without the line, which loads.
+func TestLoadRefusesTheRemovedCommitStyle(t *testing.T) {
+	const without = "schema = 1\n[commit]\ntemplate = '<:code:>[(scope)]<semver_sigil> <subject>'\n" + minimalPatterns
+	if _, err := Load([]byte(without)); err != nil {
+		t.Fatalf("the control does not load: %v", err)
+	}
+	for _, label := range []string{"gemoji", "conventional"} {
+		with := strings.Replace(without, "[commit]\n", "[commit]\nstyle = \""+label+"\"\n", 1)
+		_, err := Load([]byte(with))
+		if err == nil {
+			t.Errorf("Load accepted [commit] style = %q, want the unknown-key refusal naming commit.style", label)
+			continue
+		}
+		if !strings.Contains(err.Error(), "unknown key commit.style (a typo, or written for another glyph version)") {
+			t.Errorf("style = %q: error = %q, want it to name commit.style under the hint that names no direction", label, err)
+		}
+		if strings.Contains(err.Error(), "newer") {
+			t.Errorf("style = %q: error = %q guesses a newer glyph, but an older one wrote this key", label, err)
+		}
 	}
 }
 

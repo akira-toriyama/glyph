@@ -25,7 +25,6 @@ exclude_authors = ['dependabot[bot]', 'renovate[bot]']
 # name = "core"           # other package claims; a scope calls it (core)
 
 [commit]
-style = "gemoji"
 
 # The gemoji vocabulary: https://github.com/github/gemoji
 # (machine-readable list: https://api.github.com/emojis)

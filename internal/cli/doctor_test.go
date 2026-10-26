@@ -742,6 +742,27 @@ func TestDoctorUnloadableConfigLeavesTheDependentsUnread(t *testing.T) {
 	assertDependentsUnread(t, rep)
 }
 
+// TestDoctorFailsAConfigStillCarryingCommitStyle: doctor's subject is the
+// repository's configuration (DESIGN §7), so a glyph.toml still carrying the
+// removed [commit] style line fails glyph-toml-loads at 3, with the loader's
+// error naming the key to delete; the verdict commands refuse the same file
+// at 2 (TestLintCannotLoadAConfigStillCarryingCommitStyle).
+func TestDoctorFailsAConfigStillCarryingCommitStyle(t *testing.T) {
+	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+	useDoctorCheckout(t, pinnedCaller)
+	if err := os.WriteFile("glyph.toml", []byte(configWithCommitStyle), 0o600); err != nil {
+		t.Fatalf("write glyph.toml: %v", err)
+	}
+	code, stdout, stderr := runGlyph(t, "doctor", "--json")
+	rep := decodeDoctorJSON(t, stdout)
+	if code != 3 {
+		t.Fatalf("doctor on a glyph.toml still carrying [commit] style exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	if c := checkByID(t, rep, "glyph-toml-loads"); c.Status != "fail" || !strings.Contains(c.Observed, "commit.style") {
+		t.Errorf("glyph-toml-loads = %s (%s), want fail naming commit.style", c.Status, c.Observed)
+	}
+}
+
 // TestDoctorUnreadableConfigLeavesTheDependentsUnread is the third load
 // failure: a glyph.toml the filesystem refuses to read. glyph-toml-loads is
 // unknown (its content was never observed), and the checks that read the

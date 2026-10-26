@@ -6,7 +6,6 @@ schema = 1
 exclude_authors = ['dependabot[bot]', 'renovate[bot]']
 
 [commit]
-style = "conventional"
 
 # Conventional Commits with an explicit version sigil before the colon:
 #   feat^: add a thing        (minor)
