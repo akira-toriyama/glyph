@@ -421,3 +421,43 @@ func TestReleaseRefGuardIsInertWithoutARunContext(t *testing.T) {
 		t.Errorf("an unjudged write said nothing about being unjudged:\n%s", stderr)
 	}
 }
+
+// TestReleaseRefusesAMalformedSinceTagBeforeTheRefGuard: a malformed
+// --since-tag is the caller's input, so release refuses it at 2 before the
+// repository, the config or the ref is read — the order releaseRun's own
+// comment promises. The check sat at the walk's entrance, below the ref
+// guard, so a real run off the default branch answered the guard's 4 for a
+// flag no re-run fixes (t-wjbs comments-a-1, measured 2026-10-26 on 82aebc5:
+// --since-tag=, =-x and =a..b each exit 4 from refs/heads/topic). The last
+// run is the positive control: a well-formed tag on the same ref reaches the
+// guard and answers its 4.
+func TestReleaseRefusesAMalformedSinceTagBeforeTheRefGuard(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("a refused run reached the API: %s %s", r.Method, r.URL.Path)
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	oneFixWalk(t)
+	usePR(t, srv)
+	useActionsRun(t, "refs/heads/topic", "main")
+
+	for flag, want := range map[string]string{
+		"--since-tag=":     "--since-tag= names an empty tag",
+		"--since-tag=-x":   "looks like an option, not a tag",
+		"--since-tag=a..b": "looks like a revision range",
+	} {
+		code, stdout, stderr := runGlyph(t, "release", flag)
+		if code != 2 || stdout != "" {
+			t.Errorf("release %s exited %d with %q, want 2 and nothing on stdout\nstderr: %s", flag, code, stdout, stderr)
+			continue
+		}
+		if !strings.Contains(stderr, want) || strings.Contains(stderr, "default branch") {
+			t.Errorf("release %s must be refused as the flag, before the ref is judged (%q):\n%s", flag, want, stderr)
+		}
+	}
+
+	code, _, stderr := runGlyph(t, "release", "--since-tag=v0.1.0")
+	if code != 4 || !strings.Contains(stderr, "from the default branch only") {
+		t.Fatalf("a well-formed --since-tag off the default branch exited %d, want the ref guard's 4\nstderr: %s", code, stderr)
+	}
+}

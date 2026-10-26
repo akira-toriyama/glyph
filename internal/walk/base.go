@@ -25,11 +25,12 @@ const Auto = "auto"
 // refname, so no real tag can spell the sentinel.
 const below = "below:"
 
-// CheckTag rejects a malformed --since-tag value before anything runs —
+// CheckTag rejects a malformed --since-tag value before the walk runs —
 // caller input, so usage (2), as cli's checkRangeFlag answers --range: the
 // same mistake must not surface as a retryable-looking git failure (4). cli
-// calls it at the entrance, before the repository is resolved; Since takes
-// the value as accepted. The auto sentinel is not a name and skips the checks.
+// calls it at the entrance, before the repository is resolved, and release
+// before its ref guard too; Since takes the value as accepted. The auto
+// sentinel is not a name and skips the checks.
 func CheckTag(tag string) error {
 	if tag == Auto {
 		return nil

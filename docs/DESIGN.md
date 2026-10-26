@@ -1543,7 +1543,14 @@ which ref a `workflow_dispatch` runs from — and it is not hypothetical
 plumbing: four repositories (`canon`, `dotfiles`, `sill`, `swift-toml-edit`)
 hand-copy the release step instead of calling glyph's reusable, so the binary
 is the only layer that reaches them. The escapes are `--dry-run` and re-running
-from the default branch, and both are named in the refusal.
+from the default branch, and both are named in the refusal. The caller's own
+input is judged before the guard: a malformed `--since-tag` is usage (2) on
+every run, as on `bump` and `notes`. Checked inside the walk's entrance, below
+the guard, it answered the guard's 4 off the default branch, the code that
+says a re-run can help, for a flag no re-run fixes (measured 2026-10-26 on
+82aebc5: `--since-tag=`, `=-x` and `=a..b` from `refs/heads/topic`;
+`TestReleaseRefusesAMalformedSinceTagBeforeTheRefGuard`, mutation row
+`release-since-tag-checked-below-the-ref-guard`).
 
 That the ref is exempt from the dry-run rule stated for the body cap and
 `--target` (a dry run previews the real run) is the argued exception, not an

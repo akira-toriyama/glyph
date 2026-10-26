@@ -174,10 +174,15 @@ func newReleaseCmd() *cobra.Command {
 // apart at the render.
 func releaseRun(ctx context.Context, o releaseOptions) error {
 	// Caller-input problems surface before any network or git work — and
-	// before the environment is judged: the footer file is read up front, and
-	// the repository must resolve for the releases listing (sinceTagInput
-	// re-resolves it for the walk — same answer, one source of truth in
-	// resolveRepo).
+	// before the environment is judged: --since-tag's shape is checked and
+	// the footer file read up front, and the repository must resolve for the
+	// releases listing (sinceTagInput re-resolves it for the walk — same
+	// answer, one source of truth in resolveRepo). The tag was checked only
+	// inside sinceTagInput, below the ref guard, so a malformed one off the
+	// default branch answered the guard's 4 (t-wjbs, measured 2026-10-26).
+	if err := walk.CheckTag(o.tag); err != nil {
+		return err
+	}
 	footer, ferr := readFooter(o.footerFile)
 	if ferr != nil {
 		return ferr
