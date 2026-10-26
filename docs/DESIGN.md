@@ -1595,8 +1595,17 @@ GitHub answers for a repository the credential can no longer see, and on a none
 verdict there is no following write to catch that, so such a run reports the
 draft as *found already gone* instead of *deleted* and says the claim is
 unconfirmed. A 404 on the FIRST attempt is untouched: that one is the id
-vanishing under the run. The create has the same lost-answer problem with the
-opposite polarity, and gets the mirrored fix: a draft has no tag for GitHub to
+vanishing under the run. glyph's own first `DELETE` is never that cause,
+because the listing hands each release down once, by id (`github.Releases`).
+It pages by position, so a release created between two page reads repeats an
+entry already read (reasoned in #280, not measured on GitHub), and planned
+twice, a none verdict deleted the draft and then failed the run at 4 on the
+repeat's 404, while the dry run counted two residuals (measured 2026-10-26 on
+82aebc5 and v5.0.0 alike, over a stand-in API, one page and two;
+`TestReleasesListsARepeatedReleaseOnce`,
+`TestReleaseNoneDeletesARepeatedDraftOnce`, mutation row
+`release-listing-hands-down-a-repeated-release-twice`). The create has the
+same lost-answer problem with the opposite polarity, and gets the mirrored fix: a draft has no tag for GitHub to
 collide on, so a `POST` whose answer was lost used to be replayed blind and
 every replay minted another identical draft (measured: two from one lost
 answer, four from a spent schedule — t-ph6p). Before each re-send the client

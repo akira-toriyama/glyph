@@ -1220,6 +1220,46 @@ func TestReleaseNoneReportsAnUnwitnessedDeleteHonestly(t *testing.T) {
 	}
 }
 
+// TestReleaseNoneDeletesARepeatedDraftOnce: a releases listing that names one
+// draft twice — what a release created between two page reads leaves behind —
+// is one draft, by its id. Planned twice, a none verdict deleted it twice:
+// the first DELETE went, the second's first attempt answered 404, and the run
+// failed at 4 with the draft gone, while the dry run counted two residuals
+// (t-wjbs correct-a-5, measured 2026-10-26 on 82aebc5 and v5.0.0 alike). The
+// stand-in answers a DELETE of a release it has already deleted 404, as
+// GitHub does.
+func TestReleaseNoneDeletesARepeatedDraftOnce(t *testing.T) {
+	walk := noneWalk(t)
+	listing := `[` + draftJSON(52, "v0.1.1") + `,` + draftJSON(52, "v0.1.1") + `]`
+
+	var writes []apiWrite
+	usePR(t, releaseServer(t, walk, listing, &writes))
+	code, _, stderr := runGlyph(t, "release", "--dry-run")
+	if code != 1 || len(writes) != 0 || !strings.Contains(stderr, "dry run: 1 residual draft(s) to delete") {
+		t.Fatalf("the dry run exited %d with writes %+v, want 1, nothing written and ONE residual counted\nstderr: %s", code, writes, stderr)
+	}
+
+	var seq []string
+	gone := map[string]bool{}
+	usePR(t, failingReleaseServer(t, walk, listing, func(r *http.Request) int {
+		if r.Method != http.MethodDelete {
+			return 0
+		}
+		if gone[r.URL.Path] {
+			return http.StatusNotFound
+		}
+		gone[r.URL.Path] = true
+		return 0
+	}, &seq))
+	code, _, stderr = runGlyph(t, "release")
+	if code != 1 {
+		t.Fatalf("a none verdict over a draft listed twice exited %d, want 1 — the draft is deleted, which is the whole action\nstderr: %s", code, stderr)
+	}
+	if want := []string{"DELETE " + releasesPath + "/52"}; !slices.Equal(seq, want) {
+		t.Fatalf("writes = %v, want %v — one draft, one DELETE", seq, want)
+	}
+}
+
 // unreadWalk builds the walk that comes back having read nothing: every walked
 // commit is unknown to the queried repository (422), which is what a wrong
 // --repo — or an inherited $GITHUB_REPOSITORY in a fork or reusable-workflow
