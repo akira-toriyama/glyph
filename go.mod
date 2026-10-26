@@ -6,7 +6,7 @@ module github.com/akira-toriyama/glyph/v5
 // setup-go skip the toolchain line and install the bare floor instead.
 go 1.26.0
 
-toolchain go1.26.9
+toolchain go1.26.10
 
 require (
 	github.com/pelletier/go-toml/v2 v2.4.3
