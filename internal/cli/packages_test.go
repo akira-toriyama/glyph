@@ -1520,6 +1520,33 @@ func TestSinceTagPackagesHandsDownEveryAttributionRefusalAtOnce(t *testing.T) {
 	}
 }
 
+// TestSinceTagPackagesAttributionEscapeNamesOnlyTheLinesHoldingEachCommit:
+// attribution's refusal names a tag on a line only for the refused commits
+// that line's range holds. curry is tagged on the declaring commit and haiku
+// on s1, so s1 wedges curry alone and s2 both: haiku's tag clears it at s2,
+// curry's at s1 and s2 both. Naming every line passed the whole suite, before
+// this branch and on it (t-wjbs correct-2, measured 2026-10-27 by review;
+// mutation row attribution-wedge-names-a-tag-on-every-line).
+func TestSinceTagPackagesAttributionEscapeNamesOnlyTheLinesHoldingEachCommit(t *testing.T) {
+	dir := testutil.NewTwoLineRepo(t)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
+	s1 := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a CI job", "ci.yml")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
+	s2 := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a docs page", "docs.md")
+	usePR(t, walkServer(t, map[string]string{commitPullsPath(s1): `[]`, commitPullsPath(s2): `[]`}))
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 3 {
+		t.Fatalf("bump --since-tag exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+	assertWedgeDetails(t, env, s1, s2)
+	if want := "cut a haiku/ tag at or past " + s2[:7] + " / a curry/ tag at or past all of " + s1[:7] + ", " + s2[:7] + " by hand"; !strings.Contains(env.Message, want) {
+		t.Errorf("each line's tag must name only the commits its range holds (%q):\n%s", want, env.Message)
+	}
+}
+
 // TestBumpRangePackagesAttributionRefusalIsTheAuthoringOne: --range reads a
 // local range whose commits may still be rewritten, so attribution's refusal
 // is the fold's — the escapes the commit can take and "refusing to version the
