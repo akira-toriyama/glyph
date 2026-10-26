@@ -22,6 +22,11 @@ type walk struct {
 	Walker
 	cfg                   *config.Config
 	owner, repo, revRange string
+	// ranges is the lines the walk answers for, with each line's own range
+	// under [[packages]]: what a refused commit's escape is named per line
+	// from, and what tells a commit released on every line, which the walk
+	// does not judge (judges).
+	ranges lineRanges
 
 	// commits is the walked list, oldest first, every commit represented once.
 	commits []Commit
@@ -47,6 +52,13 @@ type walk struct {
 	// wedged is each refused sha's index in wedges, for a pull that lists a
 	// commit another pull already had refused.
 	wedged map[string]int
+	// unjudged is every listed commit represented without a judgment of its
+	// message: its first sighting sat at an identity every line had released
+	// (judges). seen alone cannot tell it from a commit judged and accepted,
+	// or from a resolved pull's canonical commit, whose squash subject must
+	// never be judged (t-7zt7) — and a later pull pending on some line judges
+	// exactly these (t-wjbs design-1).
+	unjudged map[string]bool
 	// inRange is every SHA this walk will visit — what makes "covered"
 	// checkable: a commit stands aside only for a pull whose canonical commit
 	// is IN HERE, never for one merged into another base branch (DESIGN §4,
@@ -66,9 +78,9 @@ type walk struct {
 // walkSince is the walk over revRange: the log, the shallow question asked
 // once, one visit per commit, reconcile, and the verdict — the walked list
 // with its facts, or the refusal naming every wedge. An error out of a visit is
-// the API's or git's as received; refusedFirst decides whether the wedges
-// already found outrank it.
-func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, revRange string) ([]Commit, Facts, error) {
+// the API's or git's as received; Outranks decides whether the wedges
+// already found are the verdict over it.
+func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, revRange string, ranges lineRanges) ([]Commit, Facts, error) {
 	raws, err := w.Git.Log(ctx, revRange)
 	if err != nil {
 		return nil, Facts{}, err
@@ -83,15 +95,18 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 	if shallow {
 		w.Report.Warnf("this is a SHALLOW checkout: the walk cannot tell a commit that never landed on the released branch from one git does not have, so a merged pull request's commits can be counted again even though an earlier tag shipped them. Check out with full history (actions/checkout with fetch-depth: 0) before releasing")
 	}
-	wk := newWalk(w, cfg, owner, repo, revRange, raws, shallow)
+	wk := newWalk(w, cfg, owner, repo, revRange, raws, shallow, ranges)
 	for _, raw := range raws {
 		if err := wk.visit(ctx, raw); err != nil {
-			return nil, Facts{}, w.refusedFirst(wk.wedges, err)
+			if w.Outranks("the rest of the range", len(wk.wedges) > 0, err) {
+				return nil, Facts{}, wk.walkRefusal()
+			}
+			return nil, Facts{}, err
 		}
 	}
 	wk.reconcile()
 	if len(wk.wedges) > 0 {
-		return nil, Facts{}, walkRefusal(wk.wedges)
+		return nil, Facts{}, wk.walkRefusal()
 	}
 	return wk.commits, wk.facts, nil
 }
@@ -99,7 +114,7 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 // newWalk opens a walk over raws, the range's log oldest first: every ledger
 // empty, every sha of the range indexed, and the checkout's shallowness
 // recorded as a fact.
-func newWalk(w Walker, cfg *config.Config, owner, repo, revRange string, raws []gitsource.RawCommit, shallow bool) *walk {
+func newWalk(w Walker, cfg *config.Config, owner, repo, revRange string, raws []gitsource.RawCommit, shallow bool, ranges lineRanges) *walk {
 	inRange := make(map[string]bool, len(raws))
 	for _, raw := range raws {
 		if raw.SHA != "" {
@@ -112,9 +127,11 @@ func newWalk(w Walker, cfg *config.Config, owner, repo, revRange string, raws []
 		owner:        owner,
 		repo:         repo,
 		revRange:     revRange,
+		ranges:       ranges,
 		facts:        Facts{Pulls: []PullExpansion{}, Shallow: shallow},
 		seen:         map[string]bool{},
 		wedged:       map[string]int{},
+		unjudged:     map[string]bool{},
 		inRange:      inRange,
 		coveredPulls: map[int]bool{},
 		expanded:     map[int]bool{},
@@ -232,19 +249,35 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
 			// below compare like with like.
 			r.SHA = on
 		}
+		c := Commit{Raw: r, Pull: number, Landed: landed[i] != "", MergePoint: canonical}
+		judged := w.judges(c.Governing())
 		if i, refused := w.wedged[r.SHA]; refused {
 			// A refused commit a second pull lists (a stacked pull carries
 			// its base pull's commits) is one row with one more escape:
 			// this pull's merge point wedges too, and a base that clears
 			// the first pull's alone leaves the next run red on this one.
-			w.wedges[i].escapes = append(w.wedges[i].escapes, placeEscape(w.owner, w.repo, number, canonical, onMain(r.SHA, w.inRange)))
+			if judged {
+				w.wedges[i].escapes = append(w.wedges[i].escapes, placeEscape(w.owner, w.repo, number, canonical, onMain(r.SHA, w.inRange)))
+			}
 			continue
 		}
+		judgeMessage := judged && !slices.Contains(w.cfg.ExcludeAuthors, r.Author)
 		if r.SHA != "" && w.seen[r.SHA] {
+			// An earlier pull listed it at an identity every line had
+			// released, so it went in unjudged; this sighting's identity is
+			// pending on some line, so its message is judged now, and the
+			// refusal names this sighting's escape — never the other's,
+			// which every line already passed.
+			if judgeMessage && w.unjudged[r.SHA] {
+				if row, ok := unclaimed(w.cfg, r); ok {
+					w.refuse(row, number, canonical, r.SHA)
+					continue
+				}
+			}
 			w.Report.Noticef("commit %.7s in pull request #%d is already represented in this walk (a stacked branch carries its base PR's pre-squash commits; a merge-merged PR's commits sit on main under these same SHAs; a sub-PR's squash commit rides inside the PR that landed its branch) — counted once", r.SHA, number)
 			continue
 		}
-		if !slices.Contains(w.cfg.ExcludeAuthors, r.Author) {
+		if judgeMessage {
 			if row, ok := unclaimed(w.cfg, r); ok {
 				w.refuse(row, number, canonical, r.SHA)
 				continue
@@ -252,8 +285,11 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
 		}
 		if r.SHA != "" {
 			w.seen[r.SHA] = true
+			if !judged {
+				w.unjudged[r.SHA] = true
+			}
 		}
-		w.commits = append(w.commits, Commit{Raw: r, Pull: number, Landed: landed[i] != "", MergePoint: canonical})
+		w.commits = append(w.commits, c)
 		contributed++
 	}
 	w.facts.Pulls = append(w.facts.Pulls, PullExpansion{Number: number, Commits: contributed})
@@ -277,6 +313,25 @@ func (w *walk) refuse(row bump.Refusal, number int, mergePoint, sha string) {
 	w.wedges = append(w.wedges, newWedge(row, w.owner, w.repo, number, mergePoint, onMain(sha, w.inRange)))
 }
 
+// judges reports whether the walk judges one sighting of a commit by its
+// message — refuses it, or names one more escape for it — given gov, THIS
+// sighting's governing identity: always on the single line, and under
+// [[packages]] unless every line has already released that identity. A
+// sighting at such an identity is walked only because the union had to
+// contain it, and refused there it named an escape every line had already
+// taken; #274 moved this refusal ahead of the partition's drop, and a direct
+// push of the shape went from v5.0.0's notice and exit 0 to exit 3 (t-wjbs,
+// measured 2026-10-26; DESIGN §4.1). A commit two pulls list is judged under
+// each sighting's governing identity — a squash-merged pull's inner commit
+// under that pull's merge point, a landed commit under its landing site
+// whichever pull lists it — and one sighting judged is enough to refuse it:
+// the refusal names the escape of every judged sighting, never one at an
+// identity every line released (expand's seen arm; t-wjbs design-1, a
+// stacked pull's later sighting answered 0 where v5.0.0 answered 3).
+func (w *walk) judges(gov string) bool {
+	return !w.ranges.releasedEverywhere(gov)
+}
+
 // fallback reads a commit no merged pull explains — a direct push, or the API
 // lagging — from its own message, the evidence that is left. A merge commit
 // GitHub has not indexed yet is a merge POINT the walk could not resolve, and
@@ -292,7 +347,10 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
 		// Refused inside a pull the walk expanded earlier, and now met on
 		// the released branch itself: one row, one more escape — the
 		// commit is its own base here — and no "counted once" for a
-		// commit that was not.
+		// commit that was not. No judges gate: a refusal inside a pull is
+		// recorded under this sha only as the listed commit's landing site
+		// in range (mainFootprint), its governing identity there, so it was
+		// judged under this very identity and the gate could never be false.
 		w.wedges[i].escapes = append(w.wedges[i].escapes, placeEscape(w.owner, w.repo, 0, "", raw.SHA))
 		return
 	}
@@ -318,7 +376,7 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
 		// authoring's, and this commit is on the released branch, where
 		// the only way out is a base at or past it — the wedge's refusal,
 		// with the escape at the commit itself (DESIGN §4).
-		if row, ok := unclaimed(w.cfg, raw); ok {
+		if row, ok := unclaimed(w.cfg, raw); ok && w.judges(raw.SHA) {
 			w.refuse(row, 0, "", raw.SHA)
 			return
 		}

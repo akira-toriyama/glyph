@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -509,6 +510,65 @@ func TestPreviewPackagesRefusesAClaimedMergeInItsOwnWords(t *testing.T) {
 	if code != 3 || !strings.Contains(stderr, want) {
 		t.Fatalf("preview exited %d, want 3 with\n  %s\nstderr: %s", code, want, stderr)
 	}
+}
+
+// TestPreviewPackagesRefusesEveryAttributionRefusalAtOnce: every commit of the
+// pull that attribution refuses goes out in one refusal, every one in details,
+// in preview's own words — the walk and the pull's commit-lint name them all,
+// and preview, the surface a reviewer reads on the pull, stopped at the first,
+// leaving one commit per push to find (t-wjbs round 1; mutation row
+// preview-hands-down-the-first-attribution-refusal). A refusal already found
+// outranks a later failure to read the rest, as the walk's does, and the
+// warning says what was left unread in preview's terms — the rest of the
+// pull's listing, not "the rest of the range" (t-wjbs correct-r1-6).
+func TestPreviewPackagesRefusesEveryAttributionRefusalAtOnce(t *testing.T) {
+	routes := map[string]string{
+		pullCommitsPath(9): `[` +
+			apiCommit("c1", "akira-toriyama", ":sparkles:^ add a CI job") + `,` +
+			apiCommit("c2", "akira-toriyama", ":bug:(curry)~ fix a haiku") + `,` +
+			apiCommit("c3", "akira-toriyama", ":sparkles:^ add a docs page") + `]`,
+		commitFilesPath("c1"): apiFiles("ci.yml"),
+		commitFilesPath("c2"): apiFiles("haiku/x.go"),
+		commitFilesPath("c3"): apiFiles("docs.md"),
+	}
+	t.Run("every refusal at once", func(t *testing.T) {
+		dir, _ := packagesRepo(t)
+		usePR(t, walkServer(t, routes))
+		t.Chdir(dir)
+
+		code, stdout, stderr := runGlyph(t, "preview", "--pr", "9")
+		if code != 3 || stdout != "" {
+			t.Fatalf("preview exited %d with %q, want 3 and no comment\nstderr: %s", code, stdout, stderr)
+		}
+		env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+		assertWedgeDetails(t, env, "c1", "c2", "c3")
+		if want := "commit c1 in pull request akira-toriyama/glyph#9: its files (ci.yml) belong to no declared package"; !strings.HasPrefix(env.Message, want) {
+			t.Errorf("the refusal must open on the first refused commit (%q):\n%s", want, env.Message)
+		}
+		if want := " (+2 more refused commit(s), all in details) — the release walk will refuse this commit the same way once it is merged"; !strings.Contains(env.Message, want) {
+			t.Errorf("the refusal must count the rest in preview's own words (%q):\n%s", want, env.Message)
+		}
+	})
+	t.Run("a later read failure", func(t *testing.T) {
+		dir, _ := packagesRepo(t)
+		usePR(t, failingWalkServer(t, routes, func(r *http.Request) int {
+			if r.URL.Path == commitFilesPath("c2") {
+				return http.StatusInternalServerError
+			}
+			return 0
+		}))
+		t.Chdir(dir)
+
+		code, _, stderr := runGlyph(t, "preview", "--pr", "9")
+		if code != 3 {
+			t.Fatalf("a refusal followed by a 500 exited %d, want 3 (the refusal is the verdict)\nstderr: %s", code, stderr)
+		}
+		env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+		assertWedgeDetails(t, env, "c1")
+		if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "boom") || !strings.Contains(stderr, "more refused commits") || !strings.Contains(stderr, "the rest of the pull's listing could not be read") {
+			t.Errorf("the later failure must be announced beside the refusal:\n%s", stderr)
+		}
+	})
 }
 
 // TestPreviewPackagesAsksNoFileOfAnUnclaimedMessage: a message no pattern

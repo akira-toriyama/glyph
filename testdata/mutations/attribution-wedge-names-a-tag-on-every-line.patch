@@ -1,0 +1,13 @@
+diff --git a/internal/walk/partition.go b/internal/walk/partition.go
+index ece248e..f0b0a19 100644
+--- a/internal/walk/partition.go
++++ b/internal/walk/partition.go
+@@ -481,7 +481,7 @@ func attributionWedge(refused []placementRefusal, owner, repo string, lines []Li
+ 	held := make(lineBases, len(lines))
+ 	rows := make([]bump.Refusal, 0, len(refused))
+ 	for _, r := range refused {
+-		held.add(r.c.Governing(), r.reach)
++		held.add(r.c.Governing(), func() []int { all := make([]int, len(lines)); for i := range all { all[i] = i }; return all }())
+ 		rows = append(rows, r.row())
+ 	}
+ 	return core.Lintf(

@@ -1,13 +1,13 @@
 diff --git a/internal/walk/partition.go b/internal/walk/partition.go
-index 6d457c4..7c9836f 100644
+index ceca687..6a4fc63 100644
 --- a/internal/walk/partition.go
 +++ b/internal/walk/partition.go
-@@ -141,7 +141,7 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
- 		gov := c.Governing()
- 		var reach []int
- 		for i := range lines {
--			if unreleased[i] == nil || unreleased[i][gov] {
-+			if unreleased[i] == nil || unreleased[i][gov] || true {
- 				reach = append(reach, i)
- 			}
+@@ -138,7 +138,7 @@ func (w Walker) readLineRanges(ctx context.Context, cfg *config.Config, lines []
+ func (r lineRanges) reach(gov string) []int {
+ 	var out []int
+ 	for i := range r.lines {
+-		if r.holds == nil || r.holds[i] == nil || r.holds[i][gov] {
++		if r.holds == nil || r.holds[i] == nil || r.holds[i][gov] || true {
+ 			out = append(out, i)
  		}
+ 	}

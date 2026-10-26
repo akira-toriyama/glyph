@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index be99c34..97109f2 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -268,7 +268,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
+ 			// pending on some line, so its message is judged now, and the
+ 			// refusal names this sighting's escape — never the other's,
+ 			// which every line already passed.
+-			if judgeMessage && w.unjudged[r.SHA] {
++			if judgeMessage {
+ 				if row, ok := unclaimed(w.cfg, r); ok {
+ 					w.refuse(row, number, canonical, r.SHA)
+ 					continue

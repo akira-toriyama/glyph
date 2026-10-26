@@ -248,7 +248,10 @@ type touchedLine struct {
 //
 // A refusal over a diff read whole is the lint-class refusal the walk and
 // lint --range hand down — preview says what CI will say — worded for where
-// the commit sits: on a branch that can still be fixed.
+// the commit sits: on a branch that can still be fixed. Every one of the
+// pull's goes out at once, as they name them; stopping at the first left the
+// author one commit per push to find (t-wjbs round 1), and a refusal already
+// found outranks a later failure to read the rest (walk.Walker.Outranks).
 func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner, repo string, number int, commits []walk.Commit, name string) ([]touchedLine, string, error) {
 	lines := walk.PendingLines(cfg, name)
 	if len(cfg.Packages) == 0 {
@@ -256,6 +259,8 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
 	}
 	perLine := make([][]walk.Commit, len(lines))
 	var facts walk.Facts
+	var refused []bump.Refusal
+	var first error
 	for _, c := range commits {
 		r := c.Raw
 		place, said := walk.PlaceOf(cfg, r)
@@ -264,17 +269,31 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
 		}
 		placed, err := w.PlaceByFiles(ctx, cfg, owner, repo, walk.Commit{Raw: r, Pull: number}, said, &facts, nil)
 		if err != nil {
+			if w.Outranks("the rest of the pull's listing", len(refused) > 0, err) {
+				break
+			}
 			return nil, "", err
 		}
 		if placed.Refused != nil {
-			return nil, "", core.Lintf("commit %.7s in pull request %s/%s#%d: %v — the release walk will refuse this commit the same way once it is merged, and a merged commit cannot be rewritten; fix it on the branch", r.SHA, owner, repo, number, placed.Refused).
-				WithDetails([]bump.Refusal{{SHA: r.SHA, Subject: bump.FirstLine(r.Message), Detail: placed.Refused.Error()}})
+			if first == nil {
+				first = placed.Refused
+			}
+			refused = append(refused, bump.Refusal{SHA: r.SHA, Subject: bump.FirstLine(r.Message), Detail: placed.Refused.Error()})
+			continue
 		}
 		for i, l := range lines {
 			if slices.ContainsFunc(placed.Moved, func(p config.Package) bool { return p.Path == l.Package.Path }) {
 				perLine[i] = append(perLine[i], c)
 			}
 		}
+	}
+	if len(refused) > 0 {
+		more := ""
+		if n := len(refused) - 1; n > 0 {
+			more = fmt.Sprintf(" (+%d more refused commit(s), all in details)", n)
+		}
+		return nil, "", core.Lintf("commit %.7s in pull request %s/%s#%d: %v%s — the release walk will refuse this commit the same way once it is merged, and a merged commit cannot be rewritten; fix it on the branch", refused[0].SHA, owner, repo, number, first, more).
+			WithDetails(refused)
 	}
 	var touched []touchedLine
 	for i, l := range lines {

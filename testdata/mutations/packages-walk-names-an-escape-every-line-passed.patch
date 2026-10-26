@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 5c99062..cfe67dd 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -256,7 +256,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
+ 			// its base pull's commits) is one row with one more escape:
+ 			// this pull's merge point wedges too, and a base that clears
+ 			// the first pull's alone leaves the next run red on this one.
+-			if judged {
++			if true {
+ 				w.wedges[i].escapes = append(w.wedges[i].escapes, placeEscape(w.owner, w.repo, number, canonical, onMain(r.SHA, w.inRange)))
+ 			}
+ 			continue

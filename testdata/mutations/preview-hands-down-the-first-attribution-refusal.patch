@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 75ca3ae..accf243 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -279,7 +279,7 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
+ 				first = placed.Refused
+ 			}
+ 			refused = append(refused, bump.Refusal{SHA: r.SHA, Subject: bump.FirstLine(r.Message), Detail: placed.Refused.Error()})
+-			continue
++			break
+ 		}
+ 		for i, l := range lines {
+ 			if slices.ContainsFunc(placed.Moved, func(p config.Package) bool { return p.Path == l.Package.Path }) {

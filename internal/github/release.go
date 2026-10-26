@@ -68,6 +68,15 @@ type wireParams struct {
 // Releases lists the repository's releases, drafts included, following
 // pagination (GET /repos/{owner}/{repo}/releases) — what the upsert scans for
 // glyph-managed drafts and for the published floor.
+//
+// Each release is listed once, by id, the first sighting kept. The listing
+// pages by position, so a release created between two page reads shifts the
+// next page and repeats an entry already read (reasoned in #280, not
+// measured on GitHub). A release is its id to every consumer: planned twice,
+// a none verdict deleted one draft twice, and the second DELETE's first
+// attempt answered 404 and failed the run at 4 with the draft gone, while
+// the dry run counted two residuals (t-wjbs, measured 2026-10-26 on a
+// stand-in API).
 func (c *Client) Releases(ctx context.Context, owner, repo string) ([]Release, error) {
 	first := fmt.Sprintf("%s/repos/%s/%s/releases?per_page=%s",
 		c.baseURL, url.PathEscape(owner), url.PathEscape(repo), perPage)
@@ -75,9 +84,14 @@ func (c *Client) Releases(ctx context.Context, owner, repo string) ([]Release, e
 	if err != nil {
 		return nil, flatten(err)
 	}
-	rels := make([]Release, len(raw))
-	for i, r := range raw {
-		rels[i] = Release(r)
+	rels := make([]Release, 0, len(raw))
+	listed := make(map[int64]bool, len(raw))
+	for _, r := range raw {
+		if listed[r.ID] {
+			continue
+		}
+		listed[r.ID] = true
+		rels = append(rels, Release(r))
 	}
 	return rels, nil
 }

@@ -1543,7 +1543,14 @@ which ref a `workflow_dispatch` runs from — and it is not hypothetical
 plumbing: four repositories (`canon`, `dotfiles`, `sill`, `swift-toml-edit`)
 hand-copy the release step instead of calling glyph's reusable, so the binary
 is the only layer that reaches them. The escapes are `--dry-run` and re-running
-from the default branch, and both are named in the refusal.
+from the default branch, and both are named in the refusal. The caller's own
+input is judged before the guard: a malformed `--since-tag` is usage (2) on
+every run, as on `bump` and `notes`. Checked inside the walk's entrance, below
+the guard, it answered the guard's 4 off the default branch, the code that
+says a re-run can help, for a flag no re-run fixes (measured 2026-10-26 on
+82aebc5: `--since-tag=`, `=-x` and `=a..b` from `refs/heads/topic`;
+`TestReleaseRefusesAMalformedSinceTagBeforeTheRefGuard`, mutation row
+`release-since-tag-checked-below-the-ref-guard`).
 
 That the ref is exempt from the dry-run rule stated for the body cap and
 `--target` (a dry run previews the real run) is the argued exception, not an
@@ -1595,8 +1602,17 @@ GitHub answers for a repository the credential can no longer see, and on a none
 verdict there is no following write to catch that, so such a run reports the
 draft as *found already gone* instead of *deleted* and says the claim is
 unconfirmed. A 404 on the FIRST attempt is untouched: that one is the id
-vanishing under the run. The create has the same lost-answer problem with the
-opposite polarity, and gets the mirrored fix: a draft has no tag for GitHub to
+vanishing under the run. glyph's own first `DELETE` is never that cause,
+because the listing hands each release down once, by id (`github.Releases`).
+It pages by position, so a release created between two page reads repeats an
+entry already read (reasoned in #280, not measured on GitHub), and planned
+twice, a none verdict deleted the draft and then failed the run at 4 on the
+repeat's 404, while the dry run counted two residuals (measured 2026-10-26 on
+82aebc5 and v5.0.0 alike, over a stand-in API, one page and two;
+`TestReleasesListsARepeatedReleaseOnce`,
+`TestReleaseNoneDeletesARepeatedDraftOnce`, mutation row
+`release-listing-hands-down-a-repeated-release-twice`). The create has the
+same lost-answer problem with the opposite polarity, and gets the mirrored fix: a draft has no tag for GitHub to
 collide on, so a `POST` whose answer was lost used to be replayed blind and
 every replay minted another identical draft (measured: two from one lost
 answer, four from a spent schedule — t-ph6p). Before each re-send the client
@@ -1751,7 +1767,9 @@ report it) — never a silent patch, and never exit 3 for the minutes GitHub
 lags. A **direct push** GitHub knows and resolves to nothing is on the released
 branch for good, so an unclaimed message there is refused at 3 by the walk's
 own refusal, the same producer as a pull's inner commit, with the escape at the
-commit itself (`internal/walk/refusal.go: unclaimed, wedge, walkRefusal`). The
+commit itself (`internal/walk/refusal.go: unclaimed, wedge, walkRefusal`;
+under `[[packages]]` a tag on each line whose range holds it, and no refusal
+of a commit every line has released — §4.1). The
 refusal is the walk's, so every consumer of the walk answers it — `bump`,
 `release`, `preview` and `notes` alike (`notes` has no fold: before the walk
 judged its own commits it left such a commit out of every section, or rendered
@@ -2091,7 +2109,35 @@ asked:
    one that spells it, write `=` when that pattern's sigil group can capture
    it (or leave the sigil out, where that alone makes the message a `=`),
    declare the package its files belong to when it has files (below) — and,
-   in the walk, the wedge escape per line.
+   in the walk, the wedge escape per line. Every such refusal over a range
+   goes out at once, once the range is placed: the first refused commit's
+   sentence with the count of the rest, every one in `details`, and each
+   line's escape — the whole-range rule §3 states for a message no pattern
+   claims, and what `lint --range` over the same range answers. The walk
+   handed down the first alone, so the escape it named left the next to the
+   next run: three refused commits, three red runs (measured 2026-10-26 on
+   82aebc5 and v5.0.0 alike). A refusal already found outranks a later
+   failure to place the rest, as the walk's own does (§4). `--range` words it
+   as `bump.Fold` words its own refusal of the range, with no
+   published-branch clause and no tag to cut — the commit may still be
+   rewritten (§4), and an unpushed one was told it sat on a published branch
+   and to cut a tag on every line (measured the same day)
+   (`TestSinceTagPackagesHandsDownEveryAttributionRefusalAtOnce`,
+   `TestBumpRangePackagesAttributionRefusalIsTheAuthoringOne`,
+   `TestSinceTagPackagesAttributionRefusalOutranksALaterAPIFailure`; mutation
+   rows `packages-walk-hands-down-the-first-attribution-refusal`,
+   `packages-range-refusal-claims-a-published-branch`,
+   `packages-attribution-refusal-hides-behind-a-later-failure`). The two
+   refusals are separate stages, and which answers first depends on the
+   source: the `--since-tag` walk refuses a message no pattern claims first
+   and attribution runs over what the grammar accepted, while `bump --range`,
+   `notes --range` and `preview` ask attribution first, so there the
+   grammar's refusal is the second run; `lint --range` names both at once
+   (measured by review 2026-10-27 on 36b7c53, one direct push of each kind:
+   the walk refused the unclaimed message, `bump --range` and `preview` the
+   attribution refusal, `lint --range` both rows). A range holding both takes
+   one red run per stage everywhere but `lint --range`; a later change may
+   order or merge them.
 
 A commit that shows the tree **no file** — `git commit --allow-empty`, or a
 merge commit some pattern other than a skip claims, whose diff is never read
@@ -2487,7 +2533,40 @@ package p's line when it is placed on p **and** its governing on-branch
 commit (its landing site, else its pull's merge point) is unreleased on p's
 line. A commit the union holds that is released on every line — possible
 where the common ancestor sits before both bases — is walked, because the
-union had to contain it, and dropped with a notice. N walks over overlapping
+union had to contain it, and dropped with a notice. It is dropped before
+the walk judges its message — its refusal of a message no pattern claims
+included; a commit GitHub has not indexed is still read on §4's lag arm,
+whose drop is the API's shortfall and no judgment — on the released branch
+and inside a pull alike, by the governing identity of each sighting
+(`walk.judges`): at an identity every line has released, a refusal could
+only name an escape every line has taken. #274 moved that refusal ahead of
+the partition the drop runs in, and the shape regressed. Lines tagged on two
+merges of each other's branches — a criss-cross, so the bases have two best
+common ancestors and the union starts at the one `git merge-base --octopus`
+picks — walk the other, and a direct push there no pattern claims went from
+v5.0.0's notice and exit 0 to exit 3 on `bump`, `notes` and
+`release --dry-run`, plain and `--json`, and on `preview`; a squash-merged
+pull's inner commit at such a merge point was refused by both (measured
+2026-10-26 on 82aebc5 over a stand-in API, where the fix answers v5.0.0's
+output byte for byte;
+`TestSinceTagPackagesCommitReleasedOnEveryLineIsDroppedNotRefused` builds the
+history, mutation row `packages-walk-refuses-a-commit-every-line-released`).
+A commit two pulls list is judged under each sighting's governing identity —
+a squash-merged pull's inner commit under that pull's merge point, a landed
+commit under its landing site whichever pull lists it — and one judged
+sighting refuses it: the refusal names the escape of every judged sighting,
+never one at an identity every line released (measured by review 2026-10-27
+on 36b7c53: a commit the held pull and two pending pulls list is refused
+naming both pending pulls' merge points). The first cut
+judged it at its first sighting only: a stacked pull listing again an
+unclaimed commit the held pull listed first met the "already represented"
+arm, and the union walk answered 0 where v5.0.0, ba484da and the line's own
+walk answered 3 (t-wjbs design-1, measured 2026-10-27;
+`TestSinceTagPackagesStackedPullJudgesEachSighting` takes the two pulls in
+both orders, mutation rows
+`packages-walk-skips-a-later-sighting-it-never-judged` and
+`packages-walk-names-an-escape-every-line-passed`).
+N walks over overlapping
 ranges would resolve the same pulls N times for the same answers, and were
 rejected on cost alone. The whole-history cap applies to
 the union walk as it does today, and its remedy gains a package form the
@@ -2573,7 +2652,19 @@ release base) and each line stepping from its own highest tag.
 the commits that joined that package's line, so §3 is unchanged per line: max-fold,
 `%` promotes that line, the 0.x rule reads that line's current version, and a
 commit no pattern claims still refuses the whole walk (it is refused before
-attribution, so a wrong grammar cannot be hidden by a wrong tree). The
+attribution, so a wrong grammar cannot be hidden by a wrong tree). Its
+refusal names the escape per line, as rule 3's does: such a commit joins
+every line whose range holds it, so what clears it is a tag on each of those
+lines at or past its governing identity — `a haiku/ tag at or past X / a
+curry/ tag at or past X`, or `--since-tag=<prefix>vX.Y.Z` — where the single
+line's "cut a release tag there" cleared no line: a bare tag is no line's,
+and one line's tag left the other wedged (measured 2026-10-26 on 82aebc5 for
+a direct push and a squash-merged pull's inner commit, and on v5.0.0 for the
+inner commit — v5.0.0 refused the direct push with the fold's authoring
+wording, the escape having reached direct pushes with #274; t-wjbs design-2,
+measured 2026-10-27;
+`TestSinceTagPackagesUnclaimedNamesTheEscapePerLine` cuts each tag in turn,
+mutation row `packages-walk-refusal-names-one-tag-for-every-line`). The
 published floor is per prefix. Exit `1` (no release) is answered **only when
 every line folds to none**; one line moving is a release. No new integer:
 the exit-code contract is frozen (§5), and every mixed outcome is legible in
@@ -2795,7 +2886,15 @@ packages change is `breaking` (below). The pull's commits exist on its branch on
 come from `GET /commits/{sha}` — one request per commit placed by its files, the
 squash arm's price paid before the merge — and a commit attribution refuses
 is refused here at exit 3, the same lint-class answer the walk will give
-once it is merged, while the branch can still be fixed. Each commit is placed
+once it is merged, while the branch can still be fixed — every such commit of
+the pull in one refusal, as the walk and the pull's commit-lint name them,
+and one already found outranks a later failure to read the rest, which the
+warning beside it calls the rest of the pull's listing — the walk's
+`Outranks` rule in preview's own noun, where the walk says the rest of the
+range. The first cut stopped at the first, so an author fixed one commit per push
+(`TestPreviewPackagesRefusesEveryAttributionRefusalAtOnce`; mutation rows
+`preview-hands-down-the-first-attribution-refusal`,
+`preview-attribution-refusal-hides-behind-a-later-failure`). Each commit is placed
 by the walk's own placement (`walk.PlaceByFiles`): one reader of its listing, one
 withholding rule, and one sentence each for an unread listing and a withheld
 refusal (`TestWalkAndPreviewWarnAnUnreadListingInOneSentence`). Over a listing

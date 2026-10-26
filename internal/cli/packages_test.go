@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -707,15 +708,19 @@ func TestLintRangePackagesNoFileCommitUnderARootPackage(t *testing.T) {
 // never read — with the wedge per line, where the first cut said it "touches
 // no declared package" of a merge that touched haiku/. A haiku scope carries
 // it (rule 2). Mutation row walk-refuses-a-merge-commit-as-touching-no-file
-// hands the helper no commit.
+// hands the helper no commit. The walk is --since-tag, which words the
+// refusal with its wedge per line; --range words the same sentence for a
+// range that may still be rewritten (TestBumpRangePackagesAttributionRefusalIsTheAuthoringOne).
 func TestPackagesWalkRefusesAClaimedMergeInItsOwnWords(t *testing.T) {
-	dir, base := packagesRepo(t)
+	dir, _ := packagesRepo(t)
 	merge := claimedMerge(t, dir, ":twisted_rightwards_arrows:~ merge the side branch")
+	routes := map[string]string{commitPullsPath(merge): `[]`, commitPullsPath(testutil.Git(t, dir, "akira-toriyama", "rev-parse", "side")): `[]`}
+	usePR(t, walkServer(t, routes))
 	t.Chdir(dir)
 
-	code, _, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")
+	code, _, stderr := runGlyph(t, "bump", "--since-tag")
 	if code != 3 {
-		t.Fatalf("bump --range over a claimed ~ merge exited %d, want 3\nstderr: %s", code, stderr)
+		t.Fatalf("bump --since-tag over a claimed ~ merge exited %d, want 3\nstderr: %s", code, stderr)
 	}
 	for _, want := range []string{
 		"commit " + merge[:7] + ": this merge commit's own diff is never read, so no package's tree can carry its sigil ~: name the line it moves in the scope (one of haiku, curry), or write = so it moves no line",
@@ -727,7 +732,8 @@ func TestPackagesWalkRefusesAClaimedMergeInItsOwnWords(t *testing.T) {
 	}
 
 	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", ":twisted_rightwards_arrows:(haiku)~ merge the side branch")
-	if code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD"); code != 0 || stdout != "haiku/v0.1.1\n" {
+	routes[commitPullsPath(testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))] = `[]`
+	if code, stdout, stderr := runGlyph(t, "bump", "--since-tag"); code != 0 || stdout != "haiku/v0.1.1\n" {
 		t.Fatalf("the merge scoped (haiku) exited %d with %q, want 0 and haiku alone\nstderr: %s", code, stdout, stderr)
 	}
 }
@@ -1130,5 +1136,505 @@ func TestBumpPackagesScalarsDescribeNoLine(t *testing.T) {
 	}
 	if len(res.Packages) != 2 || res.Packages[0].Next != "v0.2.0" {
 		t.Fatalf("the answer must be in packages: %s", stdout)
+	}
+}
+
+// crissCross is the history t-wjbs's refutation built (criss.sh, measured
+// 2026-10-26): off the declaring commit, branch A lands a under haiku/ and
+// branch B lands b under curry/; A merges b and B merges a, a criss-cross,
+// and the lines are tagged on the two merges — haiku/v0.1.0 on A's,
+// curry/v0.1.0 on B's — so the lines' bases have two best common ancestors,
+// a and b. main merges both branches and lands one pending haiku fix. The
+// union starts at the ancestor `git merge-base --octopus` picks, so the
+// OTHER one is walked although both tags hold it: held. union is every sha
+// the walk visits, for the stand-in's routes.
+//
+// With side set, branch C lands one commit under that message (haiku/c.go)
+// off the declaring commit before A and B, and main merges it after them:
+// unreleased on both lines, yet older than a and b, so the walk — oldest
+// first by commit date — visits it before held. Every commit is stamped
+// from one clock (tick), a second apart, so that order is the fixture's and
+// not the machine's: commits made within one second leave git's order to
+// how it traversed the merges.
+type crissCross struct {
+	t                          *testing.T
+	dir, a, b, held, side, fix string
+	union                      []string
+	clock                      int
+}
+
+// tick stamps the next commit one second after the last.
+func (cc *crissCross) tick() {
+	cc.clock++
+	at := fmt.Sprintf("2030-01-01T00:%02d:%02d+0000", cc.clock/60, cc.clock%60)
+	cc.t.Setenv("GIT_AUTHOR_DATE", at)
+	cc.t.Setenv("GIT_COMMITTER_DATE", at)
+}
+
+// touch lands one more commit on main, after the fixture's last.
+func (cc *crissCross) touch(message, path string) string {
+	cc.t.Helper()
+	cc.tick()
+	return testutil.Touch(cc.t, cc.dir, "akira-toriyama", message, path)
+}
+
+func newCrissCross(t *testing.T, messageA, messageB, side string) crissCross {
+	t.Helper()
+	cc := crissCross{t: t, dir: testutil.NewTwoLineRepo(t)}
+	git := func(args ...string) string { cc.tick(); return testutil.Git(t, cc.dir, "akira-toriyama", args...) }
+	if side != "" {
+		git("checkout", "-q", "-b", "C")
+		cc.side = cc.touch(side, "haiku/c.go")
+		git("checkout", "-q", "main")
+	}
+	git("checkout", "-q", "-b", "A")
+	a := cc.touch(messageA, "haiku/a.go")
+	git("checkout", "-q", "main")
+	git("checkout", "-q", "-b", "B")
+	b := cc.touch(messageB, "curry/b.go")
+	git("checkout", "-q", "A")
+	git("merge", "-q", "--no-ff", "-m", "Merge branch 'B' into A", b)
+	git("tag", "haiku/v0.1.0")
+	git("checkout", "-q", "B")
+	git("merge", "-q", "--no-ff", "-m", "Merge branch 'A' into B", a)
+	git("tag", "curry/v0.1.0")
+	git("checkout", "-q", "main")
+	git("merge", "-q", "--no-ff", "-m", "Merge branch 'A'", "haiku/v0.1.0")
+	git("merge", "-q", "--no-ff", "-m", "Merge branch 'B'", "curry/v0.1.0")
+	if side != "" {
+		git("merge", "-q", "--no-ff", "-m", "Merge branch 'C'", "C")
+	}
+	fix := cc.touch(":bug:~ fix a haiku", "haiku/x.go")
+
+	// The positive control: the history is the shape under test — the union
+	// starts at one of the two best common ancestors and walks the other,
+	// which both tags hold.
+	base := git("merge-base", "--octopus", "haiku/v0.1.0", "curry/v0.1.0")
+	held := a
+	switch base {
+	case a:
+		held = b
+	case b:
+	default:
+		t.Fatalf("the union starts at %.7s, want one of the criss-cross's two common ancestors %.7s and %.7s", base, a, b)
+	}
+	union := strings.Fields(git("log", "--format=%H", base+"..HEAD"))
+	if !slices.Contains(union, held) {
+		t.Fatalf("the union %.7s..HEAD does not walk %.7s", base, held)
+	}
+	for _, tag := range []string{"haiku/v0.1.0", "curry/v0.1.0"} {
+		if !slices.Contains(strings.Fields(git("log", "--format=%H", tag)), held) {
+			t.Fatalf("%s does not hold %.7s, so it is not released on every line", tag, held)
+		}
+	}
+	if cc.side != "" && slices.Index(union, cc.side) < slices.Index(union, held) {
+		t.Fatalf("the walk visits %.7s before the side commit %.7s, want the side commit first", held, cc.side)
+	}
+	cc.a, cc.b, cc.held, cc.fix, cc.union = a, b, held, fix, union
+	return cc
+}
+
+// TestSinceTagPackagesCommitReleasedOnEveryLineIsDroppedNotRefused: a commit
+// the union walk holds that every line has already released is dropped with
+// the notice before the walk judges its message — never refused at 3
+// (DESIGN §4.1, "The walk is one walk"). Every line's tag already sits past
+// it, so the refusal named an escape already taken, over work both lines had
+// shipped. #274 moved the walk's refusal of a message no pattern claims
+// ahead of the partition, where the drop ran, so a direct push of that shape
+// went from v5.0.0's notice and exit 0 to exit 3 on every verdict command
+// (t-wjbs correct-a-1, measured 2026-10-26 on 82aebc5); a squash-merged
+// pull's inner commit at such a merge point was refused on both. The two
+// arms judge by one identity, the commit's governing one: its own sha on the
+// released branch, the pull's merge point for a listed commit that landed
+// under none.
+func TestSinceTagPackagesCommitReleasedOnEveryLineIsDroppedNotRefused(t *testing.T) {
+	for name, tc := range map[string]struct {
+		messageA, messageB string
+		routes             func(cc crissCross) map[string]string
+		dropped            func(cc crissCross) string
+	}{
+		"a direct push no pattern claims": {
+			messageA: "no gitmoji leads this subject", messageB: "nor this one",
+			routes:  func(crissCross) map[string]string { return map[string]string{} },
+			dropped: func(cc crissCross) string { return cc.held[:7] },
+		},
+		"a squash-merged pull's inner commit no pattern claims": {
+			messageA: "Add a season (#80)", messageB: "Swap an ingredient (#81)",
+			routes: func(cc crissCross) map[string]string {
+				return map[string]string{
+					commitPullsPath(cc.a): `[` + apiPullRef(80, "2026-07-13T00:00:00Z", cc.a) + `]`,
+					pullCommitsPath(80):   `[` + apiCommit("u80", "akira-toriyama", "no gitmoji leads this subject") + `]`,
+					commitPullsPath(cc.b): `[` + apiPullRef(81, "2026-07-13T00:00:00Z", cc.b) + `]`,
+					pullCommitsPath(81):   `[` + apiCommit("u81", "akira-toriyama", "nor this one") + `]`,
+				}
+			},
+			dropped: func(cc crissCross) string {
+				if cc.held == cc.a {
+					return "u80"
+				}
+				return "u81"
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cc := newCrissCross(t, tc.messageA, tc.messageB, "")
+			routes := tc.routes(cc)
+			for _, sha := range cc.union {
+				if _, ok := routes[commitPullsPath(sha)]; !ok {
+					routes[commitPullsPath(sha)] = `[]`
+				}
+			}
+			usePR(t, walkServer(t, routes))
+			t.Chdir(cc.dir)
+
+			code, stdout, stderr := runGlyph(t, "bump", "--since-tag", "--json")
+			if code != 0 {
+				t.Fatalf("bump --since-tag --json exited %d, want 0 — the commit is released on every line\nstderr: %s", code, stderr)
+			}
+			res := decodePackagesVerdict(t, stdout)
+			h, c := res.Packages[0], res.Packages[1]
+			if h.Path != "haiku" || h.Next != "v0.1.1" || len(h.Commits) != 1 || h.Commits[0].SHA != cc.fix {
+				t.Fatalf("haiku = %+v, want v0.1.0 → v0.1.1 over the pending fix alone", h)
+			}
+			if c.Path != "curry" || c.Level != "none" || len(c.Commits) != 0 {
+				t.Fatalf("curry = %+v, want none: nothing is pending on it", c)
+			}
+			if want := "::notice::glyph: commit " + tc.dropped(cc) + " is inside the union walk but already released on every line — not counted"; !strings.Contains(stderr, want) {
+				t.Errorf("the drop must be said:\n  %s\nstderr: %s", want, stderr)
+			}
+
+			if code, _, stderr := runGlyph(t, "notes", "--since-tag"); code != 0 {
+				t.Errorf("notes --since-tag shares the walk and exited %d, want 0\nstderr: %s", code, stderr)
+			}
+		})
+	}
+}
+
+// TestSinceTagPackagesStackedPullJudgesEachSighting: a squash-merged pull's
+// inner commit that a stacked pull #90 lists again is judged under each
+// pull's merge point — its governing identity there — and one judged
+// sighting refuses it, the refusal naming the escape of every judged sighting
+// and none at an identity every line released. Here the first pull's merge
+// point is the criss-cross's held
+// commit, released on every line, and #90's is pending on both, so the
+// refusal names #90's merge point per line and never the held one, which
+// every line already passed (DESIGN §4.1, "The walk is one walk").
+//
+// "#90 after" is t-wjbs design-1: the held pull listed the commit first, it
+// went in unjudged, and #90's sighting met the walk's "already represented"
+// arm, so the union walk answered 0 (haiku/v0.2.0) where v5.0.0, ba484da and
+// the haiku line's own walk answered 3 (measured 2026-10-27; mutation row
+// packages-walk-skips-a-later-sighting-it-never-judged). "#90 before" is the
+// same pulls the other way round — the order a refusal must not hang on, which
+// it did for the unclaimed message until the later sighting was judged too
+// (t-wjbs correct-5): #90 refuses the commit first, and the held pull's
+// re-sighting adds no escape at an identity every line released (mutation row
+// packages-walk-names-an-escape-every-line-passed). Which line a CLAIMED
+// commit two pulls list joins still follows the first sighting; that predates
+// this rule and is the main loop's follow-up. The same commit by an
+// exclude_authors author is judged at neither sighting, so nothing is refused
+// (t-wjbs correct-r1-1, measured by review 2026-10-27: exit 0 on v5.0.0,
+// ba484da, 80c849a and 36b7c53; mutation row
+// packages-walk-judges-a-later-sighting-of-an-excluded-author).
+func TestSinceTagPackagesStackedPullJudgesEachSighting(t *testing.T) {
+	for _, tc := range []struct {
+		name, author string
+		before       bool
+	}{
+		{name: "#90 after the held pull", author: "akira-toriyama"},
+		{name: "#90 before the held pull", author: "akira-toriyama", before: true},
+		{name: "an excluded author's commit, #90 after the held pull", author: "dependabot[bot]"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const stacked = "Stack a season (#90)"
+			side := ""
+			if tc.before {
+				side = stacked
+			}
+			cc := newCrissCross(t, "Add a season (#80)", "Swap an ingredient (#81)", side)
+			p90 := cc.side
+			if !tc.before {
+				p90 = cc.touch(stacked, "haiku/y.go")
+			}
+			inner := apiCommit("u1", tc.author, "no gitmoji leads this subject")
+			routes := map[string]string{
+				commitPullsPath(cc.a): `[` + apiPullRef(80, "2026-07-13T00:00:00Z", cc.a) + `]`,
+				pullCommitsPath(80):   `[` + inner + `]`,
+				commitPullsPath(cc.b): `[` + apiPullRef(81, "2026-07-13T00:00:00Z", cc.b) + `]`,
+				pullCommitsPath(81):   `[` + inner + `]`,
+				commitPullsPath(p90):  `[` + apiPullRef(90, "2026-07-14T00:00:00Z", p90) + `]`,
+				pullCommitsPath(90):   `[` + inner + `,` + apiCommit("h9", "akira-toriyama", ":sparkles:^ stack a season") + `]`,
+				commitFilesPath("u1"): apiFiles("haiku/a.go"),
+				commitFilesPath("h9"): apiFiles("haiku/y.go"),
+			}
+			for _, sha := range cc.union {
+				if _, ok := routes[commitPullsPath(sha)]; !ok {
+					routes[commitPullsPath(sha)] = `[]`
+				}
+			}
+			usePR(t, walkServer(t, routes))
+			t.Chdir(cc.dir)
+
+			if tc.author == "dependabot[bot]" {
+				// exclude_authors is never judged by its message, at any
+				// sighting: #90's stack of a season moves haiku, and nothing
+				// is refused, on the union walk and the line's own alike.
+				for _, args := range [][]string{{"bump", "--since-tag"}, {"bump", "--since-tag=haiku/v0.1.0"}} {
+					if code, stdout, stderr := runGlyph(t, args...); code != 0 || stdout != "haiku/v0.2.0\n" {
+						t.Errorf("%v exited %d with %q, want 0 and haiku/v0.2.0: an excluded author's message is not judged\nstderr: %s", args, code, stdout, stderr)
+					}
+				}
+				return
+			}
+			code, _, stderr := runGlyph(t, "bump", "--since-tag")
+			if code != 3 {
+				t.Fatalf("bump --since-tag exited %d, want 3: #90's merge point is pending on both lines\nstderr: %s", code, stderr)
+			}
+			env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+			assertWedgeDetails(t, env, "u1")
+			for _, want := range []string{"AT OR PAST " + p90[:7], "Cut a haiku/ tag at or past " + p90[:7] + " / a curry/ tag at or past " + p90[:7] + " by hand"} {
+				if !strings.Contains(env.Message, want) {
+					t.Errorf("the refusal must name #90's escape (%q):\n%s", want, env.Message)
+				}
+			}
+			if strings.Contains(env.Message, cc.held[:7]) {
+				t.Errorf("the refusal names %.7s, a merge point every line already passed:\n%s", cc.held, env.Message)
+			}
+
+			if code, _, stderr := runGlyph(t, "bump", "--since-tag=haiku/v0.1.0"); code != 3 {
+				t.Errorf("the haiku line's own walk exited %d, want 3, as the union walk answers\nstderr: %s", code, stderr)
+			}
+		})
+	}
+}
+
+// TestSinceTagPackagesUnclaimedNamesTheEscapePerLine: under [[packages]] a
+// walked commit no pattern claims joins every line whose range holds it, so
+// its wedge clears line by line — a tag on each such line at or past the
+// commit's governing identity — and the refusal names that tag per line, as
+// rule 3's attribution refusal does (DESIGN §4.1). The single line's "Cut a
+// release tag there by hand" cleared neither line: a bare tag is no line's,
+// and one line's tag left the other wedged (t-wjbs correct-a-2, measured
+// 2026-10-26 on 82aebc5 for both shapes and on v5.0.0 for the pull's inner
+// commit; v5.0.0 refused the direct push with the fold's authoring wording,
+// before #274 gave direct pushes the walk's refusal). The test takes the
+// escapes in turn — the bare tag first, which must change nothing — and
+// reads the sentence shrink to the line still wedged.
+func TestSinceTagPackagesUnclaimedNamesTheEscapePerLine(t *testing.T) {
+	for name, land := range map[string]func(t *testing.T, dir string) (at string, routes map[string]string){
+		"a direct push": func(t *testing.T, dir string) (string, map[string]string) {
+			sha := testutil.Touch(t, dir, "akira-toriyama", "no gitmoji leads this subject", "haiku/z.go")
+			return sha, map[string]string{commitPullsPath(sha): `[]`}
+		},
+		"a squash-merged pull's inner commit": func(t *testing.T, dir string) (string, map[string]string) {
+			sha := testutil.Touch(t, dir, "akira-toriyama", "Add a season (#70)", "haiku/season.go")
+			return sha, map[string]string{
+				commitPullsPath(sha): `[` + apiPullRef(70, "2026-07-13T00:00:00Z", sha) + `]`,
+				pullCommitsPath(70):  `[` + apiCommit("u1", "akira-toriyama", "no gitmoji leads this subject") + `]`,
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, _ := packagesRepo(t)
+			at, routes := land(t, dir)
+			usePR(t, walkServer(t, routes))
+			t.Chdir(dir)
+
+			refusal := func(step string) string {
+				t.Helper()
+				code, _, stderr := runGlyph(t, "bump", "--since-tag")
+				if code != 3 {
+					t.Fatalf("%s: bump --since-tag exited %d, want 3\nstderr: %s", step, code, stderr)
+				}
+				return decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):]).Message
+			}
+			both := "Cut a haiku/ tag at or past " + at[:7] + " / a curry/ tag at or past " + at[:7] + " by hand, or name such a tag with --since-tag=<prefix>vX.Y.Z (DESIGN §4.1)"
+			msg := refusal("no tag cut")
+			for _, want := range []string{"every release of a line whose range holds it wedges here until that line's walk starts past it", "AT OR PAST " + at[:7], both} {
+				if !strings.Contains(msg, want) {
+					t.Errorf("the refusal is missing %q:\n%s", want, msg)
+				}
+			}
+			if strings.Contains(msg, "Cut a release tag") {
+				t.Errorf("the single line's escape names a tag no line reads:\n%s", msg)
+			}
+
+			testutil.Git(t, dir, "akira-toriyama", "tag", "v0.0.1", at)
+			if msg := refusal("a bare tag cut"); !strings.Contains(msg, both) {
+				t.Errorf("a bare tag is no line's and must leave both lines wedged:\n%s", msg)
+			}
+
+			testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.1", at)
+			msg = refusal("haiku's tag cut")
+			if !strings.Contains(msg, "Cut a curry/ tag at or past "+at[:7]+" by hand") || strings.Contains(msg, "haiku/ tag") {
+				t.Errorf("with haiku's walk past the commit only curry's tag is left to cut:\n%s", msg)
+			}
+
+			testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.1", at)
+			if code, stdout, stderr := runGlyph(t, "bump", "--since-tag"); code != 1 {
+				t.Fatalf("the escapes named exited %d with %q, want 1: both walks start past the commit, and nothing is left\nstderr: %s", code, stdout, stderr)
+			}
+		})
+	}
+}
+
+// threeAttributionRefusals lands three direct pushes attribution refuses — a
+// shared-only ^, a scope contradicting the tree, another shared-only ^ — on
+// packagesRepo's tagged lines.
+func threeAttributionRefusals(t *testing.T, dir string) (shas []string, routes map[string]string) {
+	t.Helper()
+	routes = map[string]string{}
+	for _, c := range [][2]string{
+		{":sparkles:^ add a CI job", "ci.yml"},
+		{":bug:(curry)~ fix a haiku", "haiku/x.go"},
+		{":sparkles:^ add a docs page", "docs.md"},
+	} {
+		sha := testutil.Touch(t, dir, "akira-toriyama", c[0], c[1])
+		shas = append(shas, sha)
+		routes[commitPullsPath(sha)] = `[]`
+	}
+	return shas, routes
+}
+
+// TestSinceTagPackagesHandsDownEveryAttributionRefusalAtOnce: attribution's
+// refusals go out once the whole range is partitioned, every refused commit
+// in details and every line's escape in the sentence — the whole-range rule
+// §3 states for a message no pattern claims, and what lint --range over the
+// same range answers (DESIGN §4.1, rule 3). The walk handed down the first
+// alone, so the escape it named left the next refusal to the next run: three
+// red runs for three commits (t-wjbs correct-a-3, measured 2026-10-26 on
+// 82aebc5 and v5.0.0 alike). Tags cut where the one sentence says clear the
+// range in one step.
+func TestSinceTagPackagesHandsDownEveryAttributionRefusalAtOnce(t *testing.T) {
+	dir, base := packagesRepo(t)
+	shas, routes := threeAttributionRefusals(t, dir)
+	usePR(t, walkServer(t, routes))
+	t.Chdir(dir)
+
+	// The yardstick: lint --range names all three.
+	code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD")
+	if code != 3 {
+		t.Fatalf("lint --range exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	assertWedgeDetails(t, decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):]), shas...)
+
+	code, _, stderr = runGlyph(t, "bump", "--since-tag")
+	if code != 3 {
+		t.Fatalf("bump --since-tag exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+	assertWedgeDetails(t, env, shas...)
+	all := shas[0][:7] + ", " + shas[1][:7] + ", " + shas[2][:7]
+	for _, want := range []string{
+		"commit " + shas[0][:7] + ": its files (ci.yml) belong to no declared package",
+		"(+2 more refused commit(s), all in details)",
+		"cut a haiku/ tag at or past all of " + all + " / a curry/ tag at or past all of " + all + " by hand",
+	} {
+		if !strings.Contains(env.Message, want) {
+			t.Errorf("the refusal is missing %q:\n%s", want, env.Message)
+		}
+	}
+
+	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.1", shas[2])
+	testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.1", shas[2])
+	if code, _, stderr := runGlyph(t, "bump", "--since-tag"); code != 1 {
+		t.Fatalf("the tags the refusal named exited %d, want 1: one red run, and every refused commit is behind both walks\nstderr: %s", code, stderr)
+	}
+}
+
+// TestSinceTagPackagesAttributionEscapeNamesOnlyTheLinesHoldingEachCommit:
+// attribution's refusal names a tag on a line only for the refused commits
+// that line's range holds. curry is tagged on the declaring commit and haiku
+// on s1, so s1 wedges curry alone and s2 both: haiku's tag clears it at s2,
+// curry's at s1 and s2 both. Naming every line passed the whole suite, before
+// this branch and on it (t-wjbs correct-2, measured 2026-10-27 by review;
+// mutation row attribution-wedge-names-a-tag-on-every-line).
+func TestSinceTagPackagesAttributionEscapeNamesOnlyTheLinesHoldingEachCommit(t *testing.T) {
+	dir := testutil.NewTwoLineRepo(t)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
+	s1 := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a CI job", "ci.yml")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
+	s2 := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a docs page", "docs.md")
+	usePR(t, walkServer(t, map[string]string{commitPullsPath(s1): `[]`, commitPullsPath(s2): `[]`}))
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 3 {
+		t.Fatalf("bump --since-tag exited %d, want 3\nstderr: %s", code, stderr)
+	}
+	env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+	assertWedgeDetails(t, env, s1, s2)
+	if want := "cut a haiku/ tag at or past " + s2[:7] + " / a curry/ tag at or past all of " + s1[:7] + ", " + s2[:7] + " by hand"; !strings.Contains(env.Message, want) {
+		t.Errorf("each line's tag must name only the commits its range holds (%q):\n%s", want, env.Message)
+	}
+}
+
+// TestBumpRangePackagesAttributionRefusalIsTheAuthoringOne: --range reads a
+// local range whose commits may still be rewritten, so attribution's refusal
+// is the fold's — the escapes the commit can take and "refusing to version the
+// range" — never the walk's claim that the commit sits on a published branch
+// with a tag to cut past it (DESIGN §4: the fold's authoring remedy is kept
+// for --range). Measured 2026-10-26 on 82aebc5 and v5.0.0 alike (t-wjbs
+// correct-a-4): one unpushed commit in a checkout with no remote was told it
+// "is already on a published branch and cannot be rewritten" and to cut a tag
+// on each line. Every refusal of the range goes out at once, as the fold's.
+func TestBumpRangePackagesAttributionRefusalIsTheAuthoringOne(t *testing.T) {
+	dir, base := packagesRepo(t)
+	shas, _ := threeAttributionRefusals(t, dir)
+	t.Chdir(dir)
+
+	for _, cmd := range []string{"bump", "notes"} {
+		code, stdout, stderr := runGlyph(t, cmd, "--range", base+"..HEAD")
+		if code != 3 || stdout != "" {
+			t.Fatalf("%s --range exited %d with %q, want 3 and nothing on stdout\nstderr: %s", cmd, code, stdout, stderr)
+		}
+		env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+		assertWedgeDetails(t, env, shas...)
+		if want := "commit " + shas[0][:7] + ": its files (ci.yml) belong to no declared package"; !strings.HasPrefix(env.Message, want) {
+			t.Errorf("%s --range: the refusal must open on the first refused commit (%q):\n%s", cmd, want, env.Message)
+		}
+		if want := " (+2 more violation(s), all in details); refusing to version the range"; !strings.HasSuffix(env.Message, want) {
+			t.Errorf("%s --range: the refusal must close as the fold's does (%q):\n%s", cmd, want, env.Message)
+		}
+		for _, walks := range []string{"published branch", "tag at or past", "--since-tag"} {
+			if strings.Contains(env.Message, walks) {
+				t.Errorf("%s --range: %q is the walk's escape, for a commit nobody can rewrite:\n%s", cmd, walks, env.Message)
+			}
+		}
+	}
+}
+
+// TestSinceTagPackagesAttributionRefusalOutranksALaterAPIFailure: collecting
+// every attribution refusal means reading past the first, so a read that then
+// fails must not hide the refusal already found — the walk's own rule
+// (TestSinceTagRefusalOutranksALaterAPIFailure), and the answer the partition
+// gave when it stopped at the first refusal and read no further.
+func TestSinceTagPackagesAttributionRefusalOutranksALaterAPIFailure(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	shared := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a CI job", "ci.yml")
+	sha := testutil.Touch(t, dir, "akira-toriyama", "Add a season (#7)", "haiku/season.go")
+	srv := failingWalkServer(t, map[string]string{
+		commitPullsPath(shared): `[]`,
+		commitPullsPath(sha):    `[` + apiPullRef(7, "2026-07-13T00:00:00Z", sha) + `]`,
+		pullCommitsPath(7):      `[` + apiCommit("h1", "akira-toriyama", ":sparkles:^ add a season") + `]`,
+	}, func(r *http.Request) int {
+		if r.URL.Path == commitFilesPath("h1") {
+			return http.StatusInternalServerError
+		}
+		return 0
+	})
+	usePR(t, srv)
+	t.Chdir(dir)
+
+	code, _, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 3 {
+		t.Fatalf("an attribution refusal followed by a 500 exited %d, want 3 (the refusal is the verdict)\nstderr: %s", code, stderr)
+	}
+	env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+	if !strings.Contains(env.Message, "commit "+shared[:7]+": its files (ci.yml) belong to no declared package") || strings.Contains(env.Message, "boom") {
+		t.Errorf("the envelope must be the refusal, not the later failure:\n%s", env.Message)
+	}
+	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "boom") || !strings.Contains(stderr, "more refused commits") || !strings.Contains(stderr, "the rest of the range could not be read") {
+		t.Errorf("the later failure must be announced beside the refusal:\n%s", stderr)
 	}
 }

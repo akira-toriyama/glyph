@@ -1,0 +1,13 @@
+diff --git a/internal/walk/partition.go b/internal/walk/partition.go
+index ceca687..7ec533f 100644
+--- a/internal/walk/partition.go
++++ b/internal/walk/partition.go
+@@ -208,7 +208,7 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
+ 			}
+ 			if placed.Refused != nil {
+ 				refused = append(refused, placementRefusal{err: placed.Refused, c: c, reach: reach})
+-				continue
++				return nil, nil, refused, nil
+ 			}
+ 			for _, i := range reach {
+ 				if slices.ContainsFunc(placed.Moved, func(p config.Package) bool { return p.Path == lines[i].Package.Path }) {

@@ -1,0 +1,13 @@
+diff --git a/internal/walk/walk.go b/internal/walk/walk.go
+index 6367709..546294e 100644
+--- a/internal/walk/walk.go
++++ b/internal/walk/walk.go
+@@ -158,7 +158,7 @@ func (w Walker) Pending(ctx context.Context, cfg *config.Config, commits []Commi
+ 		return Result{}, err
+ 	}
+ 	if len(refused) > 0 {
+-		return Result{}, rangeRefusal(refused)
++		return Result{}, attributionWedge(refused, "", "", ranges.lines)
+ 	}
+ 	return Result{All: all, Facts: facts, Source: source, Lines: lws}, nil
+ }

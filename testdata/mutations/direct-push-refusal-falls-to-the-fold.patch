@@ -1,12 +1,12 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 871c523..f6657e1 100644
+index 569b5d2..85f21a1 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -321,10 +321,6 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
+@@ -345,10 +345,6 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
  		// authoring's, and this commit is on the released branch, where
  		// the only way out is a base at or past it — the wedge's refusal,
  		// with the escape at the commit itself (DESIGN §4).
--		if row, ok := unclaimed(w.cfg, raw); ok {
+-		if row, ok := unclaimed(w.cfg, raw); ok && w.judges(raw.SHA) {
 -			w.refuse(row, 0, "", raw.SHA)
 -			return
 -		}

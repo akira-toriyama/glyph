@@ -47,6 +47,41 @@ func TestReleasesLists(t *testing.T) {
 	}
 }
 
+// TestReleasesListsARepeatedReleaseOnce: the listing pages by position, so a
+// release created between two page reads shifts the next page and repeats an
+// entry the reader already has. A release is its id, and every consumer —
+// the managed drafts, the published floor, the create probe — asks about
+// releases, not about rows: the listing hands each id down once, the first
+// sighting kept (t-wjbs correct-a-5: a none verdict planned a repeated draft
+// twice and its second DELETE failed the run at 4).
+func TestReleasesListsARepeatedReleaseOnce(t *testing.T) {
+	var srvURL string
+	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("page") {
+		case "", "1":
+			w.Header().Set("Link", fmt.Sprintf(`<%s/repos/akira-toriyama/glyph/releases?page=2>; rel="next"`, srvURL))
+			fmt.Fprint(w, `[{"id":60,"tag_name":"v0.5.0","draft":true},{"id":52,"tag_name":"v0.4.0","draft":true}]`)
+		case "2":
+			fmt.Fprint(w, `[{"id":52,"tag_name":"v0.4.0","draft":true},{"id":7,"tag_name":"v0.3.0","draft":false}]`)
+		default:
+			t.Errorf("unexpected page %q", r.URL.Query().Get("page"))
+		}
+	})
+	srvURL = c.baseURL
+
+	rels, err := c.Releases(context.Background(), "akira-toriyama", "glyph")
+	if err != nil {
+		t.Fatalf("Releases: %v", err)
+	}
+	var ids []int64
+	for _, r := range rels {
+		ids = append(ids, r.ID)
+	}
+	if fmt.Sprint(ids) != "[60 52 7]" {
+		t.Fatalf("release ids = %v, want [60 52 7] — each release once, in the order first listed", ids)
+	}
+}
+
 // TestCreateReleasePostsTheDraft pins the write wire shape: POST to the
 // releases collection carrying tag_name, target_commitish, name, body and
 // draft — the draft flag must actually be encoded (a missing field would

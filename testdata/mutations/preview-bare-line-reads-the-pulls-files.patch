@@ -1,9 +1,9 @@
 diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
-index 4c7e193..7ad0e73 100644
+index 75ca3ae..f1fa16b 100644
 --- a/internal/cli/cmd_preview.go
 +++ b/internal/cli/cmd_preview.go
-@@ -258,9 +258,6 @@ type touchedLine struct {
- // the commit sits: on a branch that can still be fixed.
+@@ -254,9 +254,6 @@ type touchedLine struct {
+ // found outranks a later failure to read the rest (walk.Walker.Outranks).
  func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner, repo string, number int, commits []walk.Commit, name string) ([]touchedLine, string, error) {
  	lines := walk.PendingLines(cfg, name)
 -	if len(cfg.Packages) == 0 {
@@ -11,10 +11,10 @@ index 4c7e193..7ad0e73 100644
 -	}
  	perLine := make([][]walk.Commit, len(lines))
  	var facts walk.Facts
- 	for _, c := range commits {
-@@ -283,6 +280,9 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
- 			}
- 		}
+ 	var refused []bump.Refusal
+@@ -295,6 +292,9 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
+ 		return nil, "", core.Lintf("commit %.7s in pull request %s/%s#%d: %v%s — the release walk will refuse this commit the same way once it is merged, and a merged commit cannot be rewritten; fix it on the branch", refused[0].SHA, owner, repo, number, first, more).
+ 			WithDetails(refused)
  	}
 +	if len(cfg.Packages) == 0 {
 +		return []touchedLine{{Line: lines[0], commits: commits}}, "", nil

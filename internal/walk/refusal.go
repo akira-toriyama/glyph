@@ -91,27 +91,36 @@ func placeEscape(owner, repo string, number int, mergePoint, offending string) e
 // the sentence is the only place a reader learns it. With one escape the
 // sentence is the single-commit one; with several, each escape names the
 // commit and pull it clears.
-func walkRefusal(wedges []wedge) error {
-	first := wedges[0]
+//
+// Under [[packages]] a refused commit wedges every line whose range holds
+// it, so the base clears it only as a tag on each such line, and the
+// sentence names that tag per line (lineTags) where the single line names
+// one tag. "Cut a release tag there" cleared no line: a bare tag is no
+// line's, and one line's tag left the other wedged (t-wjbs, measured
+// 2026-10-26; DESIGN §4.1).
+func (w *walk) walkRefusal() error {
+	first := w.wedges[0]
 	more := ""
-	if n := len(wedges) - 1; n > 0 {
+	if n := len(w.wedges) - 1; n > 0 {
 		more = fmt.Sprintf(" (+%d more refused commit(s), all in details)", n)
 	}
-	rows := make([]bump.Refusal, 0, len(wedges))
+	rows := make([]bump.Refusal, 0, len(w.wedges))
 	var escapes []string
 	named := map[string]bool{}
-	for _, w := range wedges {
-		rows = append(rows, w.row)
-		for _, e := range w.escapes {
+	held := make(lineBases, len(w.ranges.lines))
+	for _, wd := range w.wedges {
+		rows = append(rows, wd.row)
+		for _, e := range wd.escapes {
 			if named[e.base] {
 				continue
 			}
 			named[e.base] = true
+			held.add(e.base, w.ranges.reach(e.base))
 			of := ""
 			if e.via != "" {
 				of = " of " + e.via
 			}
-			escapes = append(escapes, fmt.Sprintf("%.7s (commit %.7s%s) — %s", e.base, w.row.SHA, of, e.why))
+			escapes = append(escapes, fmt.Sprintf("%.7s (commit %.7s%s) — %s", e.base, wd.row.SHA, of, e.why))
 		}
 	}
 	there := "at or past all of them"
@@ -119,24 +128,34 @@ func walkRefusal(wedges []wedge) error {
 		escapes[0] = fmt.Sprintf("%.7s — %s", first.escapes[0].base, first.escapes[0].why)
 		there = "there"
 	}
+	wedges := "every release wedges here until the walk starts past it"
+	cut := fmt.Sprintf("Cut a release tag %s by hand, or name such a tag with an explicit --since-tag=TAG (DESIGN §4)", there)
+	if w.ranges.holds != nil {
+		wedges = "every release of a line whose range holds it wedges here until that line's walk starts past it"
+		cut = fmt.Sprintf("Cut %s by hand, or name such a tag with --since-tag=<prefix>vX.Y.Z (DESIGN §4.1)", lineTags(w.ranges.lines, held))
+	}
 	return core.Lintf(
-		"commit %.7s: %s%s — %s; the commit is already on a published branch and cannot be rewritten, so every release wedges here until the walk starts past it. The walk must start AT OR PAST %s. Cut a release tag %s by hand, or name such a tag with an explicit --since-tag=TAG (DESIGN §4)",
-		first.row.SHA, first.row.Detail, more, first.where, strings.Join(escapes, ", and AT OR PAST "), there).WithDetails(rows)
+		"commit %.7s: %s%s — %s; the commit is already on a published branch and cannot be rewritten, so %s. The walk must start AT OR PAST %s. %s",
+		first.row.SHA, first.row.Detail, more, first.where, wedges, strings.Join(escapes, ", and AT OR PAST "), cut).WithDetails(rows)
 }
 
-// refusedFirst is the error a walk that already refused a commit hands down
-// when it then fails to read the rest: the refusal, with the failure said on
-// stderr — the range holds a commit that wedges it whatever else it holds,
-// and the walk that stopped at the first refusal never read past it either,
-// so a 4 here would hide a verdict the operator must act on behind a failure
-// that clears on retry. What was not read may hold more refused commits
-// than the sentence counts. An interrupt carries out as itself.
-func (w Walker) refusedFirst(wedges []wedge, err error) error {
-	if len(wedges) == 0 || core.IsInterrupted(err) {
-		return err
+// Outranks reports whether the refusal already found (found says one was) is
+// the verdict over err, a failure to read what is left — rest names it, in
+// the caller's words — and says the failure on stderr when it is. What was
+// read holds a commit that wedges it whatever else it holds, and a reader
+// that stopped at the first refusal never read past it either, so a 4 here
+// would hide a verdict the operator must act on behind a failure that clears
+// on retry. What was not read may hold more refused commits than the sentence
+// counts. An interrupt carries out as itself. The walk asks it over its
+// wedges and the partition over attribution's refusals ("the rest of the
+// range"), and preview's pull side over the pull's ("the rest of the pull's
+// listing": a pull is not a range, t-wjbs correct-r1-6).
+func (w Walker) Outranks(rest string, found bool, err error) bool {
+	if !found || core.IsInterrupted(err) {
+		return false
 	}
-	w.Report.Warnf("the walk could not read the rest of the range (%v) — the refusal below is the verdict, and what was not read may hold more refused commits than it counts", err)
-	return walkRefusal(wedges)
+	w.Report.Warnf("%s could not be read (%v) — the refusal below is the verdict, and what was not read may hold more refused commits than it counts", rest, err)
+	return true
 }
 
 // onMain reports the sha a wedge escape can be cut at: the commit itself when

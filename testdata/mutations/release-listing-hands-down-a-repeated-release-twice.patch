@@ -1,0 +1,13 @@
+diff --git a/internal/github/release.go b/internal/github/release.go
+index b6d0d20..3396537 100644
+--- a/internal/github/release.go
++++ b/internal/github/release.go
+@@ -87,7 +87,7 @@ func (c *Client) Releases(ctx context.Context, owner, repo string) ([]Release, e
+ 	rels := make([]Release, 0, len(raw))
+ 	listed := make(map[int64]bool, len(raw))
+ 	for _, r := range raw {
+-		if listed[r.ID] {
++		if false && listed[r.ID] {
+ 			continue
+ 		}
+ 		listed[r.ID] = true

@@ -108,21 +108,30 @@ type Scope struct {
 }
 
 // Since is the release walk: the lines tag names and the ONE range over them
-// (resolveLinesScoped), the walk itself (walkSince) and the partition
-// (partitionLines). tag is a value CheckTag accepted; owner and repo name the
-// repository Pulls is asked about; a nil scope walks every declared line.
+// (resolveLinesScoped), each line's own range (readLineRanges), the walk
+// itself (walkSince) and the partition (partitionLines), whose refusals are
+// the walk's (attributionWedge). tag is a value CheckTag accepted; owner and
+// repo name the repository Pulls is asked about; a nil scope walks every
+// declared line.
 func (w Walker) Since(ctx context.Context, cfg *config.Config, tagFlag, owner, repo string, scope *Scope) (Result, error) {
 	lines, revRange, err := w.resolveLinesScoped(ctx, cfg, tagFlag, scope)
 	if err != nil {
 		return Result{}, err
 	}
-	commits, facts, err := w.walkSince(ctx, cfg, owner, repo, revRange)
+	ranges, err := w.readLineRanges(ctx, cfg, lines)
 	if err != nil {
 		return Result{}, err
 	}
-	lws, all, err := w.partitionLines(ctx, cfg, owner, repo, commits, &facts, lines)
+	commits, facts, err := w.walkSince(ctx, cfg, owner, repo, revRange, ranges)
 	if err != nil {
 		return Result{}, err
+	}
+	lws, all, refused, err := w.partitionLines(ctx, cfg, owner, repo, commits, &facts, ranges)
+	if err != nil {
+		return Result{}, err
+	}
+	if len(refused) > 0 {
+		return Result{}, attributionWedge(refused, owner, repo, lines)
 	}
 	var base *bump.Version
 	if len(cfg.Packages) == 0 {
@@ -136,12 +145,20 @@ func (w Walker) Since(ctx context.Context, cfg *config.Config, tagFlag, owner, r
 // over the API) and Pulls is never asked, which is why the commits must be
 // landed identities the checkout holds (walkedFiles), as a local range's
 // are, and why a pull's listing reaches it only on the bare line, where
-// partitionLines is the identity and no file is read.
+// partitionLines is the identity and no file is read. A refusal is worded
+// for a range the caller may still rewrite (rangeRefusal).
 func (w Walker) Pending(ctx context.Context, cfg *config.Config, commits []Commit, source string) (Result, error) {
 	facts := Facts{Pulls: []PullExpansion{}}
-	lws, all, err := w.partitionLines(ctx, cfg, "", "", commits, &facts, PendingLines(cfg, source))
+	ranges, err := w.readLineRanges(ctx, cfg, PendingLines(cfg, source))
 	if err != nil {
 		return Result{}, err
+	}
+	lws, all, refused, err := w.partitionLines(ctx, cfg, "", "", commits, &facts, ranges)
+	if err != nil {
+		return Result{}, err
+	}
+	if len(refused) > 0 {
+		return Result{}, rangeRefusal(refused)
 	}
 	return Result{All: all, Facts: facts, Source: source, Lines: lws}, nil
 }

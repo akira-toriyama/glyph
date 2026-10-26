@@ -1,13 +1,13 @@
 diff --git a/internal/walk/refusal.go b/internal/walk/refusal.go
-index 206f477..28da5e2 100644
+index e18c44b..60f016c 100644
 --- a/internal/walk/refusal.go
 +++ b/internal/walk/refusal.go
-@@ -121,7 +121,7 @@ func walkRefusal(wedges []wedge) error {
+@@ -136,7 +136,7 @@ func (w *walk) walkRefusal() error {
  	}
  	return core.Lintf(
- 		"commit %.7s: %s%s — %s; the commit is already on a published branch and cannot be rewritten, so every release wedges here until the walk starts past it. The walk must start AT OR PAST %s. Cut a release tag %s by hand, or name such a tag with an explicit --since-tag=TAG (DESIGN §4)",
--		first.row.SHA, first.row.Detail, more, first.where, strings.Join(escapes, ", and AT OR PAST "), there).WithDetails(rows)
-+		first.row.SHA, first.row.Detail, more, first.where, strings.Join(escapes, ", and AT OR PAST "), there)
+ 		"commit %.7s: %s%s — %s; the commit is already on a published branch and cannot be rewritten, so %s. The walk must start AT OR PAST %s. %s",
+-		first.row.SHA, first.row.Detail, more, first.where, wedges, strings.Join(escapes, ", and AT OR PAST "), cut).WithDetails(rows)
++		first.row.SHA, first.row.Detail, more, first.where, wedges, strings.Join(escapes, ", and AT OR PAST "), cut)
  }
  
- // refusedFirst is the error a walk that already refused a commit hands down
+ // Outranks reports whether the refusal already found (found says one was) is

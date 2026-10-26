@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index be99c34..3324145 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -329,7 +329,7 @@ func (w *walk) refuse(row bump.Refusal, number int, mergePoint, sha string) {
+ // identity every line released (expand's seen arm; t-wjbs design-1, a
+ // stacked pull's later sighting answered 0 where v5.0.0 answered 3).
+ func (w *walk) judges(gov string) bool {
+-	return !w.ranges.releasedEverywhere(gov)
++	return true
+ }
+ 
+ // fallback reads a commit no merged pull explains — a direct push, or the API
