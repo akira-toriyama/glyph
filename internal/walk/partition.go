@@ -7,12 +7,12 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v5/internal/attribution"
-	"github.com/akira-toriyama/glyph/v5/internal/bump"
-	"github.com/akira-toriyama/glyph/v5/internal/config"
-	"github.com/akira-toriyama/glyph/v5/internal/core"
-	"github.com/akira-toriyama/glyph/v5/internal/github"
-	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v6/internal/attribution"
+	"github.com/akira-toriyama/glyph/v6/internal/bump"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/github"
+	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
 )
 
 // Place is how partitionLines and preview's pull side place one commit on

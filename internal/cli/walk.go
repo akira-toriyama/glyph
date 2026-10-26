@@ -3,10 +3,10 @@ package cli
 import (
 	"context"
 
-	"github.com/akira-toriyama/glyph/v5/internal/config"
-	"github.com/akira-toriyama/glyph/v5/internal/github"
-	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
-	"github.com/akira-toriyama/glyph/v5/internal/walk"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/github"
+	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v6/internal/walk"
 )
 
 // This file is cli's side of internal/walk's ports: the checkout the walk

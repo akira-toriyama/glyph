@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/testutil"
+	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
 // This file pins the walk's fallback arm (DESIGN §4; internal/walk/expand.go:

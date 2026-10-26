@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/testutil"
-	"github.com/akira-toriyama/glyph/v5/internal/walk"
+	"github.com/akira-toriyama/glyph/v6/internal/testutil"
+	"github.com/akira-toriyama/glyph/v6/internal/walk"
 )
 
 // This file pins `glyph preview` for a packages repository (DESIGN §4.1,

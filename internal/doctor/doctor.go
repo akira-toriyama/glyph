@@ -19,10 +19,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v5/internal/config"
-	"github.com/akira-toriyama/glyph/v5/internal/github"
-	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
-	"github.com/akira-toriyama/glyph/v5/internal/hook"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/github"
+	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v6/internal/hook"
 )
 
 // Status is a check's verdict. Four values, and the distinction between fail

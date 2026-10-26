@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/hook"
-	"github.com/akira-toriyama/glyph/v5/internal/testutil"
+	"github.com/akira-toriyama/glyph/v6/internal/hook"
+	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
 // testClone builds a bare remote and a clone of it, and returns the clone's

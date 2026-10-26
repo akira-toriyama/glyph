@@ -10,9 +10,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/core"
-	"github.com/akira-toriyama/glyph/v5/internal/hook"
-	"github.com/akira-toriyama/glyph/v5/internal/testutil"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/hook"
+	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
 func TestHookInstallWritesIntoTheGitHooksDir(t *testing.T) {
@@ -372,7 +372,7 @@ func buildGlyph(t *testing.T) string {
 		}
 		glyphBinary.dir = dir
 		bin := filepath.Join(dir, "glyph")
-		cmd := exec.Command("go", "build", "-o", bin, "github.com/akira-toriyama/glyph/v5/cmd/glyph")
+		cmd := exec.Command("go", "build", "-o", bin, "github.com/akira-toriyama/glyph/v6/cmd/glyph")
 		if out, err := cmd.CombinedOutput(); err != nil {
 			glyphBinary.err = fmt.Errorf("%w\n%s", err, out)
 			return

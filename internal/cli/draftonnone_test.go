@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/draftplan"
+	"github.com/akira-toriyama/glyph/v6/internal/draftplan"
 )
 
 // enableDraftOnNone flips the fixture's glyph.toml to draft_on_none = true.

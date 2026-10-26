@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/akira-toriyama/glyph/v5/internal/core"
-	"github.com/akira-toriyama/glyph/v5/internal/testutil"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
 // The config a verdict command loads is the YARDSTICK, not the subject. On

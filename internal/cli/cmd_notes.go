@@ -6,11 +6,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/akira-toriyama/glyph/v5/internal/config"
-	"github.com/akira-toriyama/glyph/v5/internal/core"
-	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
-	"github.com/akira-toriyama/glyph/v5/internal/notes"
-	"github.com/akira-toriyama/glyph/v5/internal/walk"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v6/internal/notes"
+	"github.com/akira-toriyama/glyph/v6/internal/walk"
 	"github.com/spf13/cobra"
 )
 

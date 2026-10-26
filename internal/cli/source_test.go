@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/core"
-	"github.com/akira-toriyama/glyph/v5/internal/testutil"
-	"github.com/akira-toriyama/glyph/v5/internal/walk"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/testutil"
+	"github.com/akira-toriyama/glyph/v6/internal/walk"
 )
 
 // captureOut swaps the payload and diagnostic streams for the buffers it

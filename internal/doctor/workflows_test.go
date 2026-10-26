@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/gitsource"
+	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
 )
 
 // commentedStub is THE trap, reproduced in shape: a caller file that kept a

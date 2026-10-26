@@ -14,7 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
 )
 
 // withHTTPClient injects the HTTP client — an httptest.Server's Client(), one

@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
 )
 
 // NotesParams names the range generate-notes composes over. TagName may name

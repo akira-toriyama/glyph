@@ -3,8 +3,8 @@ package bump
 import (
 	"fmt"
 
-	"github.com/akira-toriyama/glyph/v5/internal/config"
-	"github.com/akira-toriyama/glyph/v5/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
 )
 
 // NextOn steps current by dec ON a line (DESIGN §4.1, "The tag line"). The

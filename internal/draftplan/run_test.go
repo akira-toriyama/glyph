@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v5/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
 )
 
 // writes spells a run as "<kind> <tag>" per write, the shape the order tests

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/akira-toriyama/glyph/v5/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
 )
 
 // minimalConfig is the smallest glyph.toml the loader accepts — one pattern
