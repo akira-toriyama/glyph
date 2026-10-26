@@ -264,9 +264,10 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
 		judgeMessage := judged && !slices.Contains(w.cfg.ExcludeAuthors, r.Author)
 		if r.SHA != "" && w.seen[r.SHA] {
 			// An earlier pull listed it at an identity every line had
-			// released, so it went in unjudged; this pull's merge point is
-			// pending on some line, so its message is judged now, with this
-			// pull's escape alone — every line already passed the other's.
+			// released, so it went in unjudged; this sighting's identity is
+			// pending on some line, so its message is judged now, and the
+			// refusal names this sighting's escape — never the other's,
+			// which every line already passed.
 			if judgeMessage && w.unjudged[r.SHA] {
 				if row, ok := unclaimed(w.cfg, r); ok {
 					w.refuse(row, number, canonical, r.SHA)
@@ -321,9 +322,12 @@ func (w *walk) refuse(row bump.Refusal, number int, mergePoint, sha string) {
 // taken; #274 moved this refusal ahead of the partition's drop, and a direct
 // push of the shape went from v5.0.0's notice and exit 0 to exit 3 (t-wjbs,
 // measured 2026-10-26; DESIGN §4.1). A commit two pulls list is judged under
-// each pull's merge point: one sighting judged is enough to refuse it, with
-// that pull's escape (expand's seen arm; t-wjbs design-1, a stacked pull's
-// later sighting answered 0 where v5.0.0 answered 3).
+// each sighting's governing identity — a squash-merged pull's inner commit
+// under that pull's merge point, a landed commit under its landing site
+// whichever pull lists it — and one sighting judged is enough to refuse it:
+// the refusal names the escape of every judged sighting, never one at an
+// identity every line released (expand's seen arm; t-wjbs design-1, a
+// stacked pull's later sighting answered 0 where v5.0.0 answered 3).
 func (w *walk) judges(gov string) bool {
 	return !w.ranges.releasedEverywhere(gov)
 }

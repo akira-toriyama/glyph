@@ -2128,10 +2128,16 @@ asked:
    rows `packages-walk-hands-down-the-first-attribution-refusal`,
    `packages-range-refusal-claims-a-published-branch`,
    `packages-attribution-refusal-hides-behind-a-later-failure`). The two
-   refusals are separate stages: the walk refuses a message no pattern
-   claims first, and attribution runs over what the grammar accepted, so a
-   range holding both takes one red run per stage, where `lint --range`
-   names both at once; a later change may merge them.
+   refusals are separate stages, and which answers first depends on the
+   source: the `--since-tag` walk refuses a message no pattern claims first
+   and attribution runs over what the grammar accepted, while `bump --range`,
+   `notes --range` and `preview` ask attribution first, so there the
+   grammar's refusal is the second run; `lint --range` names both at once
+   (measured by review 2026-10-27 on 36b7c53, one direct push of each kind:
+   the walk refused the unclaimed message, `bump --range` and `preview` the
+   attribution refusal, `lint --range` both rows). A range holding both takes
+   one red run per stage everywhere but `lint --range`; a later change may
+   order or merge them.
 
 A commit that shows the tree **no file** — `git commit --allow-empty`, or a
 merge commit some pattern other than a skip claims, whose diff is never read
@@ -2545,8 +2551,13 @@ pull's inner commit at such a merge point was refused by both (measured
 output byte for byte;
 `TestSinceTagPackagesCommitReleasedOnEveryLineIsDroppedNotRefused` builds the
 history, mutation row `packages-walk-refuses-a-commit-every-line-released`).
-A commit two pulls list is judged under each pull's merge point, and one
-judged sighting refuses it with that pull's escape alone. The first cut
+A commit two pulls list is judged under each sighting's governing identity —
+a squash-merged pull's inner commit under that pull's merge point, a landed
+commit under its landing site whichever pull lists it — and one judged
+sighting refuses it: the refusal names the escape of every judged sighting,
+never one at an identity every line released (measured by review 2026-10-27
+on 36b7c53: a commit the held pull and two pending pulls list is refused
+naming both pending pulls' merge points). The first cut
 judged it at its first sighting only: a stacked pull listing again an
 unclaimed commit the held pull listed first met the "already represented"
 arm, and the union walk answered 0 where v5.0.0, ba484da and the line's own

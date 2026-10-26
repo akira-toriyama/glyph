@@ -1312,8 +1312,10 @@ func TestSinceTagPackagesCommitReleasedOnEveryLineIsDroppedNotRefused(t *testing
 
 // TestSinceTagPackagesStackedPullJudgesEachSighting: a squash-merged pull's
 // inner commit that a stacked pull #90 lists again is judged under each
-// pull's merge point, and one judged sighting refuses it, naming that pull's
-// escape alone. Here the first pull's merge point is the criss-cross's held
+// pull's merge point — its governing identity there — and one judged
+// sighting refuses it, the refusal naming the escape of every judged sighting
+// and none at an identity every line released. Here the first pull's merge
+// point is the criss-cross's held
 // commit, released on every line, and #90's is pending on both, so the
 // refusal names #90's merge point per line and never the held one, which
 // every line already passed (DESIGN §4.1, "The walk is one walk").
