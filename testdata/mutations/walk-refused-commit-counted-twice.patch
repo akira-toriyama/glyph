@@ -1,10 +1,10 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 569b5d2..f970878 100644
+index 5c99062..ed0f8ba 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -259,7 +259,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
+@@ -278,7 +278,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
  		}
- 		if judged && !slices.Contains(w.cfg.ExcludeAuthors, r.Author) {
+ 		if judgeMessage {
  			if row, ok := unclaimed(w.cfg, r); ok {
 -				w.refuse(row, number, canonical, r.SHA)
 +				w.wedges = append(w.wedges, newWedge(row, w.owner, w.repo, number, canonical, onMain(r.SHA, w.inRange)))

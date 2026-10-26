@@ -2524,21 +2524,33 @@ commit (its landing site, else its pull's merge point) is unreleased on p's
 line. A commit the union holds that is released on every line — possible
 where the common ancestor sits before both bases — is walked, because the
 union had to contain it, and dropped with a notice. It is dropped before
-anything judges its message, the walk's refusal of a message no pattern
-claims included, on the released branch and inside a pull alike, read by the
-commit's governing identity (`walk.judges`): every line's tag already sits
-past it, so a refusal could only name an escape every line has taken. #274
-moved that refusal ahead of the partition the drop runs in, and the shape
-regressed. Lines tagged on two merges of each other's branches — a
-criss-cross, so the bases have two best common ancestors and the union starts
-at the one `git merge-base --octopus` picks — walk the other, and a direct
-push there no pattern claims went from v5.0.0's notice and exit 0 to exit 3 on
-`bump`, `notes` and `release --dry-run`, plain and `--json`, and on
-`preview`; a squash-merged pull's inner commit at such a merge point was
-refused by both (measured 2026-10-26 on 82aebc5 over a stand-in API, where
-the fix answers v5.0.0's output byte for byte;
+the walk judges its message — its refusal of a message no pattern claims
+included; a commit GitHub has not indexed is still read on §4's lag arm,
+whose drop is the API's shortfall and no judgment — on the released branch
+and inside a pull alike, by the governing identity of each sighting
+(`walk.judges`): at an identity every line has released, a refusal could
+only name an escape every line has taken. #274 moved that refusal ahead of
+the partition the drop runs in, and the shape regressed. Lines tagged on two
+merges of each other's branches — a criss-cross, so the bases have two best
+common ancestors and the union starts at the one `git merge-base --octopus`
+picks — walk the other, and a direct push there no pattern claims went from
+v5.0.0's notice and exit 0 to exit 3 on `bump`, `notes` and
+`release --dry-run`, plain and `--json`, and on `preview`; a squash-merged
+pull's inner commit at such a merge point was refused by both (measured
+2026-10-26 on 82aebc5 over a stand-in API, where the fix answers v5.0.0's
+output byte for byte;
 `TestSinceTagPackagesCommitReleasedOnEveryLineIsDroppedNotRefused` builds the
 history, mutation row `packages-walk-refuses-a-commit-every-line-released`).
+A commit two pulls list is judged under each pull's merge point, and one
+judged sighting refuses it with that pull's escape alone. The first cut
+judged it at its first sighting only: a stacked pull listing again an
+unclaimed commit the held pull listed first met the "already represented"
+arm, and the union walk answered 0 where v5.0.0, ba484da and the line's own
+walk answered 3 (t-wjbs design-1, measured 2026-10-27;
+`TestSinceTagPackagesStackedPullJudgesEachSighting` takes the two pulls in
+both orders, mutation rows
+`packages-walk-skips-a-later-sighting-it-never-judged` and
+`packages-walk-names-an-escape-every-line-passed`).
 N walks over overlapping
 ranges would resolve the same pulls N times for the same answers, and were
 rejected on cost alone. The whole-history cap applies to

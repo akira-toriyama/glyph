@@ -145,11 +145,12 @@ func (r lineRanges) reach(gov string) []int {
 	return out
 }
 
-// releasedEverywhere reports a commit the union walk holds that no line's
+// releasedEverywhere reports an identity the union walk holds that no line's
 // range does: every line has released it, which a union starting at the
 // bases' common ancestor walks wherever that ancestor sits behind them all
-// (a criss-cross; DESIGN §4.1, "The walk is one walk"). The walk judges
-// nothing of such a commit, and the partition drops it with a notice.
+// (a criss-cross; DESIGN §4.1, "The walk is one walk"). The walk judges no
+// sighting at such an identity (judges), and the partition drops a commit
+// it governs with a notice.
 func (r lineRanges) releasedEverywhere(gov string) bool {
 	return r.holds != nil && len(r.reach(gov)) == 0
 }

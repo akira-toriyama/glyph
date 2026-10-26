@@ -1,8 +1,8 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 569b5d2..c409c43 100644
+index 5c99062..ff51aad 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -96,6 +96,9 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
+@@ -103,6 +103,9 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
  			}
  			return nil, Facts{}, err
  		}
@@ -12,8 +12,8 @@ index 569b5d2..c409c43 100644
  	}
  	wk.reconcile()
  	if len(wk.wedges) > 0 {
-@@ -260,7 +263,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
- 		if judged && !slices.Contains(w.cfg.ExcludeAuthors, r.Author) {
+@@ -279,7 +282,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
+ 		if judgeMessage {
  			if row, ok := unclaimed(w.cfg, r); ok {
  				w.refuse(row, number, canonical, r.SHA)
 -				continue

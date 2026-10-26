@@ -1148,20 +1148,50 @@ func TestBumpPackagesScalarsDescribeNoLine(t *testing.T) {
 // union starts at the ancestor `git merge-base --octopus` picks, so the
 // OTHER one is walked although both tags hold it: held. union is every sha
 // the walk visits, for the stand-in's routes.
+//
+// With side set, branch C lands one commit under that message (haiku/c.go)
+// off the declaring commit before A and B, and main merges it after them:
+// unreleased on both lines, yet older than a and b, so the walk — oldest
+// first by commit date — visits it before held. Every commit is stamped
+// from one clock (tick), a second apart, so that order is the fixture's and
+// not the machine's: commits made within one second leave git's order to
+// how it traversed the merges.
 type crissCross struct {
-	dir, a, b, held, fix string
-	union                []string
+	t                          *testing.T
+	dir, a, b, held, side, fix string
+	union                      []string
+	clock                      int
 }
 
-func newCrissCross(t *testing.T, messageA, messageB string) crissCross {
+// tick stamps the next commit one second after the last.
+func (cc *crissCross) tick() {
+	cc.clock++
+	at := fmt.Sprintf("2030-01-01T00:%02d:%02d+0000", cc.clock/60, cc.clock%60)
+	cc.t.Setenv("GIT_AUTHOR_DATE", at)
+	cc.t.Setenv("GIT_COMMITTER_DATE", at)
+}
+
+// touch lands one more commit on main, after the fixture's last.
+func (cc *crissCross) touch(message, path string) string {
+	cc.t.Helper()
+	cc.tick()
+	return testutil.Touch(cc.t, cc.dir, "akira-toriyama", message, path)
+}
+
+func newCrissCross(t *testing.T, messageA, messageB, side string) crissCross {
 	t.Helper()
-	dir := testutil.NewTwoLineRepo(t)
-	git := func(args ...string) string { return testutil.Git(t, dir, "akira-toriyama", args...) }
+	cc := crissCross{t: t, dir: testutil.NewTwoLineRepo(t)}
+	git := func(args ...string) string { cc.tick(); return testutil.Git(t, cc.dir, "akira-toriyama", args...) }
+	if side != "" {
+		git("checkout", "-q", "-b", "C")
+		cc.side = cc.touch(side, "haiku/c.go")
+		git("checkout", "-q", "main")
+	}
 	git("checkout", "-q", "-b", "A")
-	a := testutil.Touch(t, dir, "akira-toriyama", messageA, "haiku/a.go")
+	a := cc.touch(messageA, "haiku/a.go")
 	git("checkout", "-q", "main")
 	git("checkout", "-q", "-b", "B")
-	b := testutil.Touch(t, dir, "akira-toriyama", messageB, "curry/b.go")
+	b := cc.touch(messageB, "curry/b.go")
 	git("checkout", "-q", "A")
 	git("merge", "-q", "--no-ff", "-m", "Merge branch 'B' into A", b)
 	git("tag", "haiku/v0.1.0")
@@ -1171,7 +1201,10 @@ func newCrissCross(t *testing.T, messageA, messageB string) crissCross {
 	git("checkout", "-q", "main")
 	git("merge", "-q", "--no-ff", "-m", "Merge branch 'A'", "haiku/v0.1.0")
 	git("merge", "-q", "--no-ff", "-m", "Merge branch 'B'", "curry/v0.1.0")
-	fix := testutil.Touch(t, dir, "akira-toriyama", ":bug:~ fix a haiku", "haiku/x.go")
+	if side != "" {
+		git("merge", "-q", "--no-ff", "-m", "Merge branch 'C'", "C")
+	}
+	fix := cc.touch(":bug:~ fix a haiku", "haiku/x.go")
 
 	// The positive control: the history is the shape under test — the union
 	// starts at one of the two best common ancestors and walks the other,
@@ -1194,12 +1227,16 @@ func newCrissCross(t *testing.T, messageA, messageB string) crissCross {
 			t.Fatalf("%s does not hold %.7s, so it is not released on every line", tag, held)
 		}
 	}
-	return crissCross{dir: dir, a: a, b: b, held: held, fix: fix, union: union}
+	if cc.side != "" && slices.Index(union, cc.side) < slices.Index(union, held) {
+		t.Fatalf("the walk visits %.7s before the side commit %.7s, want the side commit first", held, cc.side)
+	}
+	cc.a, cc.b, cc.held, cc.fix, cc.union = a, b, held, fix, union
+	return cc
 }
 
 // TestSinceTagPackagesCommitReleasedOnEveryLineIsDroppedNotRefused: a commit
 // the union walk holds that every line has already released is dropped with
-// the notice before anything judges its message — never refused at 3
+// the notice before the walk judges its message — never refused at 3
 // (DESIGN §4.1, "The walk is one walk"). Every line's tag already sits past
 // it, so the refusal named an escape already taken, over work both lines had
 // shipped. #274 moved the walk's refusal of a message no pattern claims
@@ -1240,7 +1277,7 @@ func TestSinceTagPackagesCommitReleasedOnEveryLineIsDroppedNotRefused(t *testing
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			cc := newCrissCross(t, tc.messageA, tc.messageB)
+			cc := newCrissCross(t, tc.messageA, tc.messageB, "")
 			routes := tc.routes(cc)
 			for _, sha := range cc.union {
 				if _, ok := routes[commitPullsPath(sha)]; !ok {
@@ -1268,6 +1305,84 @@ func TestSinceTagPackagesCommitReleasedOnEveryLineIsDroppedNotRefused(t *testing
 
 			if code, _, stderr := runGlyph(t, "notes", "--since-tag"); code != 0 {
 				t.Errorf("notes --since-tag shares the walk and exited %d, want 0\nstderr: %s", code, stderr)
+			}
+		})
+	}
+}
+
+// TestSinceTagPackagesStackedPullJudgesEachSighting: a squash-merged pull's
+// inner commit that a stacked pull #90 lists again is judged under each
+// pull's merge point, and one judged sighting refuses it, naming that pull's
+// escape alone. Here the first pull's merge point is the criss-cross's held
+// commit, released on every line, and #90's is pending on both, so the
+// refusal names #90's merge point per line and never the held one, which
+// every line already passed (DESIGN §4.1, "The walk is one walk").
+//
+// "#90 after" is t-wjbs design-1: the held pull listed the commit first, it
+// went in unjudged, and #90's sighting met the walk's "already represented"
+// arm, so the union walk answered 0 (haiku/v0.2.0) where v5.0.0, ba484da and
+// the haiku line's own walk answered 3 (measured 2026-10-27; mutation row
+// packages-walk-skips-a-later-sighting-it-never-judged). "#90 before" is the
+// same pulls the other way round — the order a refusal must not hang on, which
+// it did for the unclaimed message until the later sighting was judged too
+// (t-wjbs correct-5): #90 refuses the commit first, and the held pull's
+// re-sighting adds no escape at an identity every line released (mutation row
+// packages-walk-names-an-escape-every-line-passed). Which line a CLAIMED
+// commit two pulls list joins still follows the first sighting; that predates
+// this rule and is the main loop's follow-up.
+func TestSinceTagPackagesStackedPullJudgesEachSighting(t *testing.T) {
+	for _, before := range []bool{false, true} {
+		name := "#90 after the held pull"
+		if before {
+			name = "#90 before the held pull"
+		}
+		t.Run(name, func(t *testing.T) {
+			const stacked = "Stack a season (#90)"
+			side := ""
+			if before {
+				side = stacked
+			}
+			cc := newCrissCross(t, "Add a season (#80)", "Swap an ingredient (#81)", side)
+			p90 := cc.side
+			if !before {
+				p90 = cc.touch(stacked, "haiku/y.go")
+			}
+			inner := apiCommit("u1", "akira-toriyama", "no gitmoji leads this subject")
+			routes := map[string]string{
+				commitPullsPath(cc.a): `[` + apiPullRef(80, "2026-07-13T00:00:00Z", cc.a) + `]`,
+				pullCommitsPath(80):   `[` + inner + `]`,
+				commitPullsPath(cc.b): `[` + apiPullRef(81, "2026-07-13T00:00:00Z", cc.b) + `]`,
+				pullCommitsPath(81):   `[` + inner + `]`,
+				commitPullsPath(p90):  `[` + apiPullRef(90, "2026-07-14T00:00:00Z", p90) + `]`,
+				pullCommitsPath(90):   `[` + inner + `,` + apiCommit("h9", "akira-toriyama", ":sparkles:^ stack a season") + `]`,
+				commitFilesPath("u1"): apiFiles("haiku/a.go"),
+				commitFilesPath("h9"): apiFiles("haiku/y.go"),
+			}
+			for _, sha := range cc.union {
+				if _, ok := routes[commitPullsPath(sha)]; !ok {
+					routes[commitPullsPath(sha)] = `[]`
+				}
+			}
+			usePR(t, walkServer(t, routes))
+			t.Chdir(cc.dir)
+
+			code, _, stderr := runGlyph(t, "bump", "--since-tag")
+			if code != 3 {
+				t.Fatalf("bump --since-tag exited %d, want 3: #90's merge point is pending on both lines\nstderr: %s", code, stderr)
+			}
+			env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+			assertWedgeDetails(t, env, "u1")
+			for _, want := range []string{"AT OR PAST " + p90[:7], "Cut a haiku/ tag at or past " + p90[:7] + " / a curry/ tag at or past " + p90[:7] + " by hand"} {
+				if !strings.Contains(env.Message, want) {
+					t.Errorf("the refusal must name #90's escape (%q):\n%s", want, env.Message)
+				}
+			}
+			if strings.Contains(env.Message, cc.held[:7]) {
+				t.Errorf("the refusal names %.7s, a merge point every line already passed:\n%s", cc.held, env.Message)
+			}
+
+			if code, _, stderr := runGlyph(t, "bump", "--since-tag=haiku/v0.1.0"); code != 3 {
+				t.Errorf("the haiku line's own walk exited %d, want 3, as the union walk answers\nstderr: %s", code, stderr)
 			}
 		})
 	}
