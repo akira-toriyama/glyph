@@ -1751,7 +1751,9 @@ report it) — never a silent patch, and never exit 3 for the minutes GitHub
 lags. A **direct push** GitHub knows and resolves to nothing is on the released
 branch for good, so an unclaimed message there is refused at 3 by the walk's
 own refusal, the same producer as a pull's inner commit, with the escape at the
-commit itself (`internal/walk/refusal.go: unclaimed, wedge, walkRefusal`). The
+commit itself (`internal/walk/refusal.go: unclaimed, wedge, walkRefusal`;
+under `[[packages]]` a tag on each line whose range holds it, and no refusal
+of a commit every line has released — §4.1). The
 refusal is the walk's, so every consumer of the walk answers it — `bump`,
 `release`, `preview` and `notes` alike (`notes` has no fold: before the walk
 judged its own commits it left such a commit out of every section, or rendered
@@ -2091,7 +2093,25 @@ asked:
    one that spells it, write `=` when that pattern's sigil group can capture
    it (or leave the sigil out, where that alone makes the message a `=`),
    declare the package its files belong to when it has files (below) — and,
-   in the walk, the wedge escape per line.
+   in the walk, the wedge escape per line. Every such refusal over a range
+   goes out at once, once the range is placed: the first refused commit's
+   sentence with the count of the rest, every one in `details`, and each
+   line's escape — the whole-range rule §3 states for a message no pattern
+   claims, and what `lint --range` over the same range answers. The walk
+   handed down the first alone, so the escape it named left the next to the
+   next run: three refused commits, three red runs (measured 2026-10-26 on
+   82aebc5 and v5.0.0 alike). A refusal already found outranks a later
+   failure to place the rest, as the walk's own does (§4). `--range` words it
+   as `bump.Fold` words its own refusal of the range, with no
+   published-branch clause and no tag to cut — the commit may still be
+   rewritten (§4), and an unpushed one was told it sat on a published branch
+   and to cut a tag on every line (measured the same day)
+   (`TestSinceTagPackagesHandsDownEveryAttributionRefusalAtOnce`,
+   `TestBumpRangePackagesAttributionRefusalIsTheAuthoringOne`,
+   `TestSinceTagPackagesAttributionRefusalOutranksALaterAPIFailure`; mutation
+   rows `packages-walk-hands-down-the-first-attribution-refusal`,
+   `packages-range-refusal-claims-a-published-branch`,
+   `packages-attribution-refusal-hides-behind-a-later-failure`).
 
 A commit that shows the tree **no file** — `git commit --allow-empty`, or a
 merge commit some pattern other than a skip claims, whose diff is never read
@@ -2487,7 +2507,23 @@ package p's line when it is placed on p **and** its governing on-branch
 commit (its landing site, else its pull's merge point) is unreleased on p's
 line. A commit the union holds that is released on every line — possible
 where the common ancestor sits before both bases — is walked, because the
-union had to contain it, and dropped with a notice. N walks over overlapping
+union had to contain it, and dropped with a notice. It is dropped before
+anything judges its message, the walk's refusal of a message no pattern
+claims included, on the released branch and inside a pull alike, read by the
+commit's governing identity (`walk.judges`): every line's tag already sits
+past it, so a refusal could only name an escape every line has taken. #274
+moved that refusal ahead of the partition the drop runs in, and the shape
+regressed. Lines tagged on two merges of each other's branches — a
+criss-cross, so the bases have two best common ancestors and the union starts
+at the one `git merge-base --octopus` picks — walk the other, and a direct
+push there no pattern claims went from v5.0.0's notice and exit 0 to exit 3 on
+`bump`, `notes` and `release --dry-run`, plain and `--json`, and on
+`preview`; a squash-merged pull's inner commit at such a merge point was
+refused by both (measured 2026-10-26 on 82aebc5 over a stand-in API, where
+the fix answers v5.0.0's output byte for byte;
+`TestSinceTagPackagesCommitReleasedOnEveryLineIsDroppedNotRefused` builds the
+history, mutation row `packages-walk-refuses-a-commit-every-line-released`).
+N walks over overlapping
 ranges would resolve the same pulls N times for the same answers, and were
 rejected on cost alone. The whole-history cap applies to
 the union walk as it does today, and its remedy gains a package form the
@@ -2573,7 +2609,16 @@ release base) and each line stepping from its own highest tag.
 the commits that joined that package's line, so §3 is unchanged per line: max-fold,
 `%` promotes that line, the 0.x rule reads that line's current version, and a
 commit no pattern claims still refuses the whole walk (it is refused before
-attribution, so a wrong grammar cannot be hidden by a wrong tree). The
+attribution, so a wrong grammar cannot be hidden by a wrong tree). Its
+refusal names the escape per line, as rule 3's does: such a commit joins
+every line whose range holds it, so what clears it is a tag on each of those
+lines at or past its governing identity — `a haiku/ tag at or past X / a
+curry/ tag at or past X`, or `--since-tag=<prefix>vX.Y.Z` — where the single
+line's "cut a release tag there" cleared no line: a bare tag is no line's,
+and one line's tag left the other wedged (measured 2026-10-26 on 82aebc5 and
+v5.0.0 alike, for a direct push and a squash-merged pull's inner commit;
+`TestSinceTagPackagesUnclaimedNamesTheEscapePerLine` cuts each tag in turn,
+mutation row `packages-walk-refusal-names-one-tag-for-every-line`). The
 published floor is per prefix. Exit `1` (no release) is answered **only when
 every line folds to none**; one line moving is a release. No new integer:
 the exit-code contract is frozen (§5), and every mixed outcome is legible in

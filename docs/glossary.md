@@ -333,7 +333,9 @@ between it and the merge point is one a farther base would silently drop. A
 **squash-merged** pull has no such commit: its commits exist only over the API
 and its one commit on main *is* its merge point, so nothing short of a base at or
 past that merge point works. A commit pushed straight to the released branch
-is its own escape: a base at or past the commit itself. The error message names
+is its own escape: a base at or past the commit itself. Under `[[packages]]`
+the base is a tag on each line whose range holds the commit — one line's tag,
+or a bare one, leaves the others wedged. The error message names
 where the commit sits, the base and why that base is the one; with several
 refused commits it names the first, counts the rest, lists every one in
 `details` and names every wedge's escape (a pull's merge point is in no

@@ -1,0 +1,13 @@
+diff --git a/internal/walk/refusal.go b/internal/walk/refusal.go
+index 74dff4a..46ede7a 100644
+--- a/internal/walk/refusal.go
++++ b/internal/walk/refusal.go
+@@ -130,7 +130,7 @@ func (w *walk) walkRefusal() error {
+ 	}
+ 	wedges := "every release wedges here until the walk starts past it"
+ 	cut := fmt.Sprintf("Cut a release tag %s by hand, or name such a tag with an explicit --since-tag=TAG (DESIGN §4)", there)
+-	if w.ranges.holds != nil {
++	if false {
+ 		wedges = "every release of a line whose range holds it wedges here until that line's walk starts past it"
+ 		cut = fmt.Sprintf("Cut %s by hand, or name such a tag with --since-tag=<prefix>vX.Y.Z (DESIGN §4.1)", lineTags(w.ranges.lines, held))
+ 	}

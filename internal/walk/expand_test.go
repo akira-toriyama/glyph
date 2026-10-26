@@ -254,7 +254,7 @@ func TestFallbackLagStaysSoftWhereADirectPushWedges(t *testing.T) {
 	raw := gitsource.RawCommit{SHA: "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", Author: "akira-toriyama", Message: "wip"}
 	begin := func() (*walk, *recorder) {
 		rep := &recorder{}
-		return newWalk(Walker{Report: rep}, testutil.Config(t), "akira-toriyama", "glyph", "v0.1.0..HEAD", []gitsource.RawCommit{raw}, false), rep
+		return newWalk(Walker{Report: rep}, testutil.Config(t), "akira-toriyama", "glyph", "v0.1.0..HEAD", []gitsource.RawCommit{raw}, false, lineRanges{}), rep
 	}
 
 	lagged, rep := begin()
@@ -312,7 +312,7 @@ func TestReconcileNamesACoveredPullNothingExpanded(t *testing.T) {
 		inner8: {{Number: 8, MergedAt: "2026-10-01T00:00:00Z", MergeCommitSHA: elsewhere}},
 	}}
 	rep := &recorder{}
-	wk := newWalk(Walker{Pulls: pulls, Report: rep}, testutil.Config(t), "akira-toriyama", "glyph", "v0.1.0..HEAD", raws, false)
+	wk := newWalk(Walker{Pulls: pulls, Report: rep}, testutil.Config(t), "akira-toriyama", "glyph", "v0.1.0..HEAD", raws, false, lineRanges{})
 	for _, raw := range raws {
 		if err := wk.visit(t.Context(), raw); err != nil {
 			t.Fatalf("visit %.7s: %v", raw.SHA, err)

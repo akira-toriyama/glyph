@@ -1,13 +1,13 @@
-diff --git a/internal/walk/refusal.go b/internal/walk/refusal.go
-index 206f477..9f3f8cd 100644
---- a/internal/walk/refusal.go
-+++ b/internal/walk/refusal.go
-@@ -132,7 +132,7 @@ func walkRefusal(wedges []wedge) error {
- // that clears on retry. What was not read may hold more refused commits
- // than the sentence counts. An interrupt carries out as itself.
- func (w Walker) refusedFirst(wedges []wedge, err error) error {
--	if len(wedges) == 0 || core.IsInterrupted(err) {
-+	if true || len(wedges) == 0 || core.IsInterrupted(err) {
- 		return err
- 	}
- 	w.Report.Warnf("the walk could not read the rest of the range (%v) — the refusal below is the verdict, and what was not read may hold more refused commits than it counts", err)
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 569b5d2..97aea8d 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -91,7 +91,7 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo,
+ 	wk := newWalk(w, cfg, owner, repo, revRange, raws, shallow, ranges)
+ 	for _, raw := range raws {
+ 		if err := wk.visit(ctx, raw); err != nil {
+-			if w.outranks(len(wk.wedges) > 0, err) {
++			if w.outranks(false, err) {
+ 				return nil, Facts{}, wk.walkRefusal()
+ 			}
+ 			return nil, Facts{}, err

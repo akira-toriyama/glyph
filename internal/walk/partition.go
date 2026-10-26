@@ -95,56 +95,99 @@ func Attribute(cfg *config.Config, raw gitsource.RawCommit, said Reading, files 
 	return moved, err
 }
 
-// partitionLines splits the walk's commits over the lines. With no packages
-// declared it is the identity: one line holding every commit, nothing asked
-// of git or the API.
-//
-// With packages, a commit JOINS line p when it is UNRELEASED on p (its
-// governing commit is in p's range) AND its own diff PLACES it on p
-// (DESIGN §4.1, "The walk is one walk"). The first question is git's,
-// answered per line from the line's own range; the second is asked of every
-// commit's files (PlaceOf): with its scope and sigil when the fold reads the
-// message, by files alone for an exclude_authors commit — on no line when
-// its files touch none (t-sr1c; mutation row
-// packages-excluded-author-placed-on-every-line) — nowhere for a skip, and
-// on every line it is unreleased on for a message no pattern claims, so the
-// fold refuses it there (§3). A commit the union holds that is released on
-// every line is dropped with a notice: it was walked because the union had
-// to contain it. PlaceByFiles withholds a refusal over a diff the walk did
-// not read whole; one over a diff read whole wedges every line whose range
-// holds the commit (attributionWedge).
-func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, repo string, commits []Commit, facts *Facts, lines []Line) ([]LineWalk, []Commit, error) {
+// lineRanges is the lines a walk answers for and, under [[packages]], the
+// shas each line's own range holds — the commits unreleased on it — with a
+// nil set for a line every walked commit is unreleased on (no range: the
+// whole history, a --range fold, a pull's listing). With no packages
+// declared holds is nil: the one line's range is the walk's own, and no
+// commit is asked about per line.
+type lineRanges struct {
+	lines []Line
+	holds []map[string]bool
+}
+
+// readLineRanges reads each line's own range from local git, once, before
+// the walk: the walk asks it of every commit it would refuse, and the
+// partition of every commit it places.
+func (w Walker) readLineRanges(ctx context.Context, cfg *config.Config, lines []Line) (lineRanges, error) {
+	r := lineRanges{lines: lines}
 	if len(cfg.Packages) == 0 {
-		return []LineWalk{{Line: lines[0], Commits: commits}}, commits, nil
+		return r, nil
 	}
-	unreleased := make([]map[string]bool, len(lines))
+	r.holds = make([]map[string]bool, len(lines))
 	for i, l := range lines {
 		if l.Range == "" {
 			continue
 		}
 		raws, err := w.Git.Log(ctx, l.Range)
 		if err != nil {
-			return nil, nil, err
+			return lineRanges{}, err
 		}
 		set := make(map[string]bool, len(raws))
-		for _, r := range raws {
-			set[r.SHA] = true
+		for _, raw := range raws {
+			set[raw.SHA] = true
 		}
-		unreleased[i] = set
+		r.holds[i] = set
+	}
+	return r, nil
+}
+
+// reach is the lines whose range holds gov, a commit's governing identity —
+// the lines it is unreleased on, by index in declared order; on the single
+// line, that line.
+func (r lineRanges) reach(gov string) []int {
+	var out []int
+	for i := range r.lines {
+		if r.holds == nil || r.holds[i] == nil || r.holds[i][gov] {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// releasedEverywhere reports a commit the union walk holds that no line's
+// range does: every line has released it, which a union starting at the
+// bases' common ancestor walks wherever that ancestor sits behind them all
+// (a criss-cross; DESIGN §4.1, "The walk is one walk"). The walk judges
+// nothing of such a commit, and the partition drops it with a notice.
+func (r lineRanges) releasedEverywhere(gov string) bool {
+	return r.holds != nil && len(r.reach(gov)) == 0
+}
+
+// partitionLines splits the walk's commits over the lines. With no packages
+// declared it is the identity: one line holding every commit, nothing asked
+// of git or the API.
+//
+// With packages, a commit JOINS line p when it is UNRELEASED on p (its
+// governing commit is in p's range, lineRanges) AND its own diff PLACES it
+// on p (DESIGN §4.1, "The walk is one walk"). The second question is asked
+// of every commit's files (PlaceOf): with its scope and sigil when the fold
+// reads the message, by files alone for an exclude_authors commit — on no
+// line when its files touch none (t-sr1c; mutation row
+// packages-excluded-author-placed-on-every-line) — nowhere for a skip, and
+// on every line it is unreleased on for a message no pattern claims, so the
+// fold refuses it there (§3). A commit the union holds that is released on
+// every line is dropped with a notice: it was walked because the union had
+// to contain it. PlaceByFiles withholds a refusal over a diff the walk did
+// not read whole; every one over a diff read whole is collected with the
+// lines it wedges and handed down once the whole range is placed, for the
+// caller to word (attributionWedge, rangeRefusal) — one red run for every
+// refused commit, as lint --range over the same range answers (DESIGN §4.1,
+// rule 3). A refusal already collected outranks a later failure to place
+// the rest (outranks).
+func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, repo string, commits []Commit, facts *Facts, ranges lineRanges) ([]LineWalk, []Commit, []placementRefusal, error) {
+	lines := ranges.lines
+	if len(cfg.Packages) == 0 {
+		return []LineWalk{{Line: lines[0], Commits: commits}}, commits, nil, nil
 	}
 	lws := make([]LineWalk, len(lines))
 	for i := range lines {
 		lws[i] = LineWalk{Line: lines[i], Commits: []Commit{}}
 	}
 	var all []Commit
+	var refused []placementRefusal
 	for _, c := range commits {
-		gov := c.Governing()
-		var reach []int
-		for i := range lines {
-			if unreleased[i] == nil || unreleased[i][gov] {
-				reach = append(reach, i)
-			}
-		}
+		reach := ranges.reach(c.Governing())
 		if len(reach) == 0 {
 			w.Report.Noticef("commit %.7s is inside the union walk but already released on every line — not counted", c.Raw.SHA)
 			continue
@@ -156,13 +199,16 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
 			carriers = reach
 		case PlacedNowhere:
 		case PlacedByFiles:
-			reached := reachedLines(lines, reach)
-			placed, ferr := w.PlaceByFiles(ctx, cfg, owner, repo, c, said, facts, reached)
+			placed, ferr := w.PlaceByFiles(ctx, cfg, owner, repo, c, said, facts, reachedLines(lines, reach))
 			if ferr != nil {
-				return nil, nil, ferr
+				if w.outranks(len(refused) > 0, ferr) {
+					return nil, nil, refused, nil
+				}
+				return nil, nil, nil, ferr
 			}
 			if placed.Refused != nil {
-				return nil, nil, attributionWedge(placed.Refused, c, owner, repo, reached)
+				refused = append(refused, placementRefusal{err: placed.Refused, c: c, reach: reach})
+				continue
 			}
 			for _, i := range reach {
 				if slices.ContainsFunc(placed.Moved, func(p config.Package) bool { return p.Path == lines[i].Package.Path }) {
@@ -177,7 +223,19 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
 			lws[i].Commits = append(lws[i].Commits, c)
 		}
 	}
-	return lws, all, nil
+	return lws, all, refused, nil
+}
+
+// placementRefusal is one commit attribution refused over a diff read whole,
+// with the lines whose range holds it (by index) — the lines it wedges.
+type placementRefusal struct {
+	err   error
+	c     Commit
+	reach []int
+}
+
+func (r placementRefusal) row() bump.Refusal {
+	return bump.Refusal{SHA: r.c.Raw.SHA, Subject: bump.FirstLine(r.c.Raw.Message), Detail: r.err.Error()}
 }
 
 // FilePlacement is where a commit's own diff places it (PlaceByFiles): the
@@ -349,31 +407,103 @@ func reachedLines(lines []Line, idx []int) []Line {
 	return out
 }
 
+// lineTag is the one wording of a line's escape: a tag on the line at or past
+// the base a refused commit is governed by, or at or past all of several.
+// lineEscapes, attributionWedge and the walk's own refusal all word it here,
+// so the escape reads the same wherever the walk hands it down.
+func lineTag(l Line, bases []string) string {
+	short := make([]string, len(bases))
+	for i, b := range bases {
+		short[i] = fmt.Sprintf("%.7s", b)
+	}
+	if len(short) == 1 {
+		return fmt.Sprintf("a %s tag at or past %s", l.TagLine.Label(), short[0])
+	}
+	return fmt.Sprintf("a %s tag at or past all of %s", l.TagLine.Label(), strings.Join(short, ", "))
+}
+
+// lineBases is, per line by index, the bases a tag on that line must sit at
+// or past to clear every refused commit its range holds — each once, in walk
+// order.
+type lineBases [][]string
+
+func (b lineBases) add(base string, reach []int) {
+	for _, i := range reach {
+		if !slices.Contains(b[i], base) {
+			b[i] = append(b[i], base)
+		}
+	}
+}
+
+// lineTags names the escape of every line a refusal wedges, in declared
+// order: one tag per line, and only a tag on every one of them clears the
+// range — a bare tag is no line's (t-wjbs, measured 2026-10-26).
+func lineTags(lines []Line, held lineBases) string {
+	var tags []string
+	for i, bases := range held {
+		if len(bases) > 0 {
+			tags = append(tags, lineTag(lines[i], bases))
+		}
+	}
+	return strings.Join(tags, " / ")
+}
+
 // lineEscapes names, per line whose range holds c, the tag that takes c out
-// of that line's walk: a tag on the line at or past c's governing identity.
-// attributionWedge and the unread-listing shortfall share it, so the escape
-// reads the same wherever the walk hands it down.
+// of that line's walk: a tag on the line at or past c's governing identity —
+// the unread-listing shortfall's per-commit escapes.
 func lineEscapes(c Commit, reached []Line) []string {
 	escapes := make([]string, 0, len(reached))
 	for _, l := range reached {
-		escapes = append(escapes, fmt.Sprintf("a %s tag at or past %.7s", l.TagLine.Label(), c.Governing()))
+		escapes = append(escapes, lineTag(l, []string{c.Governing()}))
 	}
 	return escapes
 }
 
-// attributionWedge is walkRefusal's sibling for the two refusals attribution
-// hands down (DESIGN §4.1, rule 3 and the contradiction): lint class, like
-// every message the walk refuses, and decorated with where the commit sits
-// and the escape PER LINE — a refused commit wedges every line whose range
-// holds it, and each of those walks starts past it only when that line
-// gains a tag at or past the commit's governing identity.
-func attributionWedge(err error, c Commit, owner, repo string, reached []Line) error {
-	where := fmt.Sprintf("a commit on the released branch (%.7s)", c.Raw.SHA)
-	if c.Pull > 0 {
-		where = fmt.Sprintf("inside merged pull request %s/%s#%d, which the release walk resolved from its merge point %.7s", owner, repo, c.Pull, c.MergePoint)
+// attributionWedge is the walk's refusal for what attribution refused
+// (DESIGN §4.1, rule 3 and the contradiction): lint class, like every
+// message the walk refuses, worded as the walk's own refusal of a message no
+// pattern claims — the first refused commit's sentence and where it sits,
+// the count of the rest, every refused commit in details — and the escape
+// PER LINE: a refused commit wedges every line whose range holds it, and
+// each of those walks starts past it only when that line gains a tag at or
+// past the commit's governing identity.
+func attributionWedge(refused []placementRefusal, owner, repo string, lines []Line) error {
+	first := refused[0].c
+	where := fmt.Sprintf("a commit on the released branch (%.7s)", first.Raw.SHA)
+	if first.Pull > 0 {
+		where = fmt.Sprintf("inside merged pull request %s/%s#%d, which the release walk resolved from its merge point %.7s", owner, repo, first.Pull, first.MergePoint)
+	}
+	more := ""
+	if n := len(refused) - 1; n > 0 {
+		more = fmt.Sprintf(" (+%d more refused commit(s), all in details)", n)
+	}
+	held := make(lineBases, len(lines))
+	rows := make([]bump.Refusal, 0, len(refused))
+	for _, r := range refused {
+		held.add(r.c.Governing(), r.reach)
+		rows = append(rows, r.row())
 	}
 	return core.Lintf(
-		"commit %.7s: %v — %s; the commit is already on a published branch and cannot be rewritten, so every release of a line whose range holds it wedges here until that line's walk starts past it: cut %s by hand, or name such a tag with --since-tag=<prefix>vX.Y.Z (DESIGN §4.1)",
-		c.Raw.SHA, err, where, strings.Join(lineEscapes(c, reached), " / ")).
-		WithDetails([]bump.Refusal{{SHA: c.Raw.SHA, Subject: bump.FirstLine(c.Raw.Message), Detail: err.Error()}})
+		"commit %.7s: %v%s — %s; the commit is already on a published branch and cannot be rewritten, so every release of a line whose range holds it wedges here until that line's walk starts past it: cut %s by hand, or name such a tag with --since-tag=<prefix>vX.Y.Z (DESIGN §4.1)",
+		first.Raw.SHA, refused[0].err, more, where, lineTags(lines, held)).WithDetails(rows)
+}
+
+// rangeRefusal is attribution's refusal over a --range fold, whose commits
+// the caller may still rewrite: the sentence attribution wrote, which names
+// the escapes the commit can take, in the shape of bump.Fold's refusal of
+// the same range — never the walk's published branch or a tag to cut (DESIGN
+// §4: the authoring remedy is kept for --range; t-wjbs, measured 2026-10-26:
+// an unpushed commit was told to cut a tag on every line). Keep the two
+// shapes in step: a --range caller reads one refusal from either.
+func rangeRefusal(refused []placementRefusal) error {
+	first := refused[0]
+	rows := make([]bump.Refusal, 0, len(refused))
+	for _, r := range refused {
+		rows = append(rows, r.row())
+	}
+	msg := fmt.Sprintf("commit %.7s: %v; refusing to version the range", first.c.Raw.SHA, first.err)
+	if n := len(refused) - 1; n > 0 {
+		msg = fmt.Sprintf("commit %.7s: %v (+%d more violation(s), all in details); refusing to version the range", first.c.Raw.SHA, first.err, n)
+	}
+	return core.Lintf("%s", msg).WithDetails(rows)
 }

@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 569b5d2..c41ed57 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -299,7 +299,7 @@ func (w *walk) refuse(row bump.Refusal, number int, mergePoint, sha string) {
+ // ahead of that drop, and a direct push of the shape went from v5.0.0's
+ // notice and exit 0 to exit 3 (t-wjbs, measured 2026-10-26; DESIGN §4.1).
+ func (w *walk) judges(gov string) bool {
+-	return !w.ranges.releasedEverywhere(gov)
++	return true
+ }
+ 
+ // fallback reads a commit no merged pull explains — a direct push, or the API
