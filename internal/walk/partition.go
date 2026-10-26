@@ -202,7 +202,7 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
 		case PlacedByFiles:
 			placed, ferr := w.PlaceByFiles(ctx, cfg, owner, repo, c, said, facts, reachedLines(lines, reach))
 			if ferr != nil {
-				if w.Outranks(len(refused) > 0, ferr) {
+				if w.Outranks("the rest of the range", len(refused) > 0, ferr) {
 					return nil, nil, refused, nil
 				}
 				return nil, nil, nil, ferr

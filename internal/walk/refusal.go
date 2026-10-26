@@ -140,19 +140,21 @@ func (w *walk) walkRefusal() error {
 }
 
 // Outranks reports whether the refusal already found (found says one was) is
-// the verdict over err, a failure to read the rest of the range, and says the
-// failure on stderr when it is. The range holds a commit that wedges it
-// whatever else it holds, and a walk that stopped at the first refusal never
-// read past it either, so a 4 here would hide a verdict the operator must act
-// on behind a failure that clears on retry. What was not read may hold more
-// refused commits than the sentence counts. An interrupt carries out as
-// itself. The walk asks it over its wedges, and the partition and preview's
-// pull side over attribution's refusals, which each collects past the first.
-func (w Walker) Outranks(found bool, err error) bool {
+// the verdict over err, a failure to read what is left — rest names it, in
+// the caller's words — and says the failure on stderr when it is. What was
+// read holds a commit that wedges it whatever else it holds, and a reader
+// that stopped at the first refusal never read past it either, so a 4 here
+// would hide a verdict the operator must act on behind a failure that clears
+// on retry. What was not read may hold more refused commits than the sentence
+// counts. An interrupt carries out as itself. The walk asks it over its
+// wedges and the partition over attribution's refusals ("the rest of the
+// range"), and preview's pull side over the pull's ("the rest of the pull's
+// listing": a pull is not a range, t-wjbs correct-r1-6).
+func (w Walker) Outranks(rest string, found bool, err error) bool {
 	if !found || core.IsInterrupted(err) {
 		return false
 	}
-	w.Report.Warnf("the rest of the range could not be read (%v) — the refusal below is the verdict, and what was not read may hold more refused commits than it counts", err)
+	w.Report.Warnf("%s could not be read (%v) — the refusal below is the verdict, and what was not read may hold more refused commits than it counts", rest, err)
 	return true
 }
 

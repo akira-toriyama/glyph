@@ -269,7 +269,7 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
 		}
 		placed, err := w.PlaceByFiles(ctx, cfg, owner, repo, walk.Commit{Raw: r, Pull: number}, said, &facts, nil)
 		if err != nil {
-			if w.Outranks(len(refused) > 0, err) {
+			if w.Outranks("the rest of the pull's listing", len(refused) > 0, err) {
 				break
 			}
 			return nil, "", err

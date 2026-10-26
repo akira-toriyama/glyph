@@ -1634,7 +1634,7 @@ func TestSinceTagPackagesAttributionRefusalOutranksALaterAPIFailure(t *testing.T
 	if !strings.Contains(env.Message, "commit "+shared[:7]+": its files (ci.yml) belong to no declared package") || strings.Contains(env.Message, "boom") {
 		t.Errorf("the envelope must be the refusal, not the later failure:\n%s", env.Message)
 	}
-	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "boom") || !strings.Contains(stderr, "more refused commits") {
+	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "boom") || !strings.Contains(stderr, "more refused commits") || !strings.Contains(stderr, "the rest of the range could not be read") {
 		t.Errorf("the later failure must be announced beside the refusal:\n%s", stderr)
 	}
 }

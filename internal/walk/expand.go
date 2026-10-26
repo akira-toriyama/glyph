@@ -98,7 +98,7 @@ func (w Walker) walkSince(ctx context.Context, cfg *config.Config, owner, repo, 
 	wk := newWalk(w, cfg, owner, repo, revRange, raws, shallow, ranges)
 	for _, raw := range raws {
 		if err := wk.visit(ctx, raw); err != nil {
-			if w.Outranks(len(wk.wedges) > 0, err) {
+			if w.Outranks("the rest of the range", len(wk.wedges) > 0, err) {
 				return nil, Facts{}, wk.walkRefusal()
 			}
 			return nil, Facts{}, err

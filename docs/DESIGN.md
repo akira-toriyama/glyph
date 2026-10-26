@@ -2888,8 +2888,10 @@ squash arm's price paid before the merge — and a commit attribution refuses
 is refused here at exit 3, the same lint-class answer the walk will give
 once it is merged, while the branch can still be fixed — every such commit of
 the pull in one refusal, as the walk and the pull's commit-lint name them,
-and one already found outranks a later failure to read the rest. The first
-cut stopped at the first, so an author fixed one commit per push
+and one already found outranks a later failure to read the rest, which the
+warning beside it calls the rest of the pull's listing — the walk's
+`Outranks` rule in preview's own noun, where the walk says the rest of the
+range. The first cut stopped at the first, so an author fixed one commit per push
 (`TestPreviewPackagesRefusesEveryAttributionRefusalAtOnce`; mutation rows
 `preview-hands-down-the-first-attribution-refusal`,
 `preview-attribution-refusal-hides-behind-a-later-failure`). Each commit is placed

@@ -518,7 +518,9 @@ func TestPreviewPackagesRefusesAClaimedMergeInItsOwnWords(t *testing.T) {
 // and preview, the surface a reviewer reads on the pull, stopped at the first,
 // leaving one commit per push to find (t-wjbs round 1; mutation row
 // preview-hands-down-the-first-attribution-refusal). A refusal already found
-// outranks a later failure to read the rest, as the walk's does.
+// outranks a later failure to read the rest, as the walk's does, and the
+// warning says what was left unread in preview's terms — the rest of the
+// pull's listing, not "the rest of the range" (t-wjbs correct-r1-6).
 func TestPreviewPackagesRefusesEveryAttributionRefusalAtOnce(t *testing.T) {
 	routes := map[string]string{
 		pullCommitsPath(9): `[` +
@@ -563,7 +565,7 @@ func TestPreviewPackagesRefusesEveryAttributionRefusalAtOnce(t *testing.T) {
 		}
 		env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
 		assertWedgeDetails(t, env, "c1")
-		if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "boom") || !strings.Contains(stderr, "more refused commits") {
+		if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "boom") || !strings.Contains(stderr, "more refused commits") || !strings.Contains(stderr, "the rest of the pull's listing could not be read") {
 			t.Errorf("the later failure must be announced beside the refusal:\n%s", stderr)
 		}
 	})
