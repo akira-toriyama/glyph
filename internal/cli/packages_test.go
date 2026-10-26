@@ -1395,9 +1395,11 @@ func TestSinceTagPackagesStackedPullJudgesEachSighting(t *testing.T) {
 // rule 3's attribution refusal does (DESIGN §4.1). The single line's "Cut a
 // release tag there by hand" cleared neither line: a bare tag is no line's,
 // and one line's tag left the other wedged (t-wjbs correct-a-2, measured
-// 2026-10-26 on 82aebc5 and v5.0.0 alike). The test takes the escapes in
-// turn — the bare tag first, which must change nothing — and reads the
-// sentence shrink to the line still wedged.
+// 2026-10-26 on 82aebc5 for both shapes and on v5.0.0 for the pull's inner
+// commit; v5.0.0 refused the direct push with the fold's authoring wording,
+// before #274 gave direct pushes the walk's refusal). The test takes the
+// escapes in turn — the bare tag first, which must change nothing — and
+// reads the sentence shrink to the line still wedged.
 func TestSinceTagPackagesUnclaimedNamesTheEscapePerLine(t *testing.T) {
 	for name, land := range map[string]func(t *testing.T, dir string) (at string, routes map[string]string){
 		"a direct push": func(t *testing.T, dir string) (string, map[string]string) {

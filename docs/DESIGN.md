@@ -2127,7 +2127,11 @@ asked:
    `TestSinceTagPackagesAttributionRefusalOutranksALaterAPIFailure`; mutation
    rows `packages-walk-hands-down-the-first-attribution-refusal`,
    `packages-range-refusal-claims-a-published-branch`,
-   `packages-attribution-refusal-hides-behind-a-later-failure`).
+   `packages-attribution-refusal-hides-behind-a-later-failure`). The two
+   refusals are separate stages: the walk refuses a message no pattern
+   claims first, and attribution runs over what the grammar accepted, so a
+   range holding both takes one red run per stage, where `lint --range`
+   names both at once; a later change may merge them.
 
 A commit that shows the tree **no file** — `git commit --allow-empty`, or a
 merge commit some pattern other than a skip claims, whose diff is never read
@@ -2643,8 +2647,11 @@ every line whose range holds it, so what clears it is a tag on each of those
 lines at or past its governing identity — `a haiku/ tag at or past X / a
 curry/ tag at or past X`, or `--since-tag=<prefix>vX.Y.Z` — where the single
 line's "cut a release tag there" cleared no line: a bare tag is no line's,
-and one line's tag left the other wedged (measured 2026-10-26 on 82aebc5 and
-v5.0.0 alike, for a direct push and a squash-merged pull's inner commit;
+and one line's tag left the other wedged (measured 2026-10-26 on 82aebc5 for
+a direct push and a squash-merged pull's inner commit, and on v5.0.0 for the
+inner commit — v5.0.0 refused the direct push with the fold's authoring
+wording, the escape having reached direct pushes with #274; t-wjbs design-2,
+measured 2026-10-27;
 `TestSinceTagPackagesUnclaimedNamesTheEscapePerLine` cuts each tag in turn,
 mutation row `packages-walk-refusal-names-one-tag-for-every-line`). The
 published floor is per prefix. Exit `1` (no release) is answered **only when
