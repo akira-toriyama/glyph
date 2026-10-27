@@ -35,8 +35,8 @@ name: glyph-lint
 # release's checksums.txt AND provenance-verified with `gh attestation verify`
 # (fail-closed, bounded retry) — never `go install`ed. The install itself lives
 # in ONE place, the composite action .github/actions/install; this job reaches
-# it by checking out glyph's own source at the commit the caller pinned
-# (job.workflow_sha) and using `./…` against that checkout. The binary VERSION
+# it by GitHub's self-repository reference (`$/…`), which resolves to glyph's
+# own tree at the commit the caller pinned, no checkout. The binary VERSION
 # is derived from job.workflow_ref — the tag the caller pinned this reusable to
 # IS the binary it installs — so the workflow revision a caller pins and the
 # binary revision it runs cannot diverge, with no hand-bumped default to fall
@@ -74,7 +74,9 @@ on:
           No expression is spelled out here: GitHub evaluates one even inside
           a description, and refuses the whole workflow file. The runner must
           carry what this job and the install action call — `gh` and `jq`
-          among them; the GitHub-hosted image does.
+          among them — and be runner 2.336.0 or newer, the first that resolves
+          the `$/` reference the install step is written with; the
+          GitHub-hosted image does both.
         type: string
         default: ubuntu-latest
 
@@ -127,22 +129,12 @@ jobs:
             *) echo "::error::glyph-lint is pinned to a non-tag ref ($ref); pass glyph-version to pick a release binary."; exit 1 ;;
           esac
 
-      # Check out glyph's OWN source at the pinned commit so the install action
-      # is available locally. Relative `uses:` in a reusable workflow resolves
-      # against the CALLER's workspace, so the install action cannot be reached
-      # by a bare `./…` — it must come from glyph's tree, checked out here. This
-      # runs AFTER the caller checkout above: that one cleans the workspace root,
-      # which would otherwise wipe this untracked subdirectory.
-      - name: Check out glyph's install action at the pinned commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .glyph-action
-          persist-credentials: false
-
+      # `$/` is GitHub's self-repository reference: inside a reusable workflow
+      # it names this FILE's own repository — glyph, at the commit the caller
+      # pinned — with no checkout (runner 2.336.0+). A workspace-relative `./…`
+      # names the CALLER's checkout instead (DESIGN §5).
       - name: Install glyph (pinned release binary, checksum + provenance verified)
-        uses: ./.glyph-action/.github/actions/install
+        uses: $/.github/actions/install
         with:
           version: ${{ steps.glyph.outputs.version }}
           token: ${{ github.token }}

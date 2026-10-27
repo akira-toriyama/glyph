@@ -154,7 +154,7 @@ const (
 // (t-4fpn).
 func TestGoreleaserRendersItsNotesThroughTheAction(t *testing.T) {
 	raw := repoFile(t, filepath.Join(".github", "workflows", "goreleaser.yml"))
-	if got := readStepShape(t, raw, notesStep).keys["uses"]; got != "./.github/actions/release-notes" {
+	if got := readStepShape(t, raw, notesStep).keys["uses"]; got != "$/.github/actions/release-notes" {
 		t.Fatalf("goreleaser.yml's %q step uses %q, want the release-notes action next door", notesStep, got)
 	}
 	var block string

@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+index f261188..34bb55b 100644
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -134,7 +134,7 @@ jobs:
+       # pinned — with no checkout (runner 2.336.0+). A workspace-relative `./…`
+       # names the CALLER's checkout instead (DESIGN §5).
+       - name: Install glyph (pinned release binary, checksum + provenance verified)
+-        uses: $/.github/actions/install
++        uses: ./.glyph-action/.github/actions/install
+         with:
+           version: ${{ steps.glyph.outputs.version }}
+           token: ${{ github.token }}

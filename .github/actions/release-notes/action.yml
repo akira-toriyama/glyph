@@ -11,8 +11,8 @@ description: >-
 
 # This action is the ONE home of the tag-time notes rule (DESIGN §4 for the
 # rule, §6 for why it is an action: t-4fpn). glyph's own goreleaser.yml
-# reaches it by a relative `uses:` against its own checkout and hands it the
-# binary it built from the tagged tree; a repository that cuts tags by hand
+# reaches it by the self-repository reference (`uses: $/.github/actions/release-notes`)
+# and hands it the binary it built from the tagged tree; a repository that cuts tags by hand
 # references it the ordinary way, by full path at a release tag, over the
 # binary the install action verified. internal/workflows holds goreleaser.yml
 # to running this action rather than a walk of its own, and runs this step

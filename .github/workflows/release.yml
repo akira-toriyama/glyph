@@ -330,22 +330,12 @@ jobs:
             *) echo "::error::glyph-release is pinned to a non-tag ref ($ref); pass glyph-version to pick a release binary."; exit 1 ;;
           esac
 
-      # Check out glyph's OWN source at the pinned commit so the install action
-      # is available locally — a relative `uses:` in a reusable workflow resolves
-      # against the CALLER's workspace, not glyph's, so the action must be
-      # checked out here (the composite auto-detects this macOS runner and pulls
-      # the darwin tarball). AFTER the caller checkout above, whose workspace-root
-      # clean would otherwise wipe this untracked subdirectory.
-      - name: Check out glyph's install action at the pinned commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .glyph-action
-          persist-credentials: false
-
+      # `$/` is GitHub's self-repository reference: inside a reusable workflow
+      # it names this FILE's own repository — glyph, at the commit the caller
+      # pinned — with no checkout (runner 2.336.0+). A workspace-relative `./…`
+      # names the CALLER's checkout instead (DESIGN §5).
       - name: Install glyph (pinned release binary, checksum + provenance verified)
-        uses: ./.glyph-action/.github/actions/install
+        uses: $/.github/actions/install
         with:
           version: ${{ steps.glyph.outputs.version }}
           token: ${{ github.token }}

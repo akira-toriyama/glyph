@@ -925,10 +925,11 @@ security-critical install logic (download the pinned tarball, verify it against
 `checksums.txt` **and** its build provenance with `gh attestation verify`,
 fail-closed with bounded retry, confirm it reports the requested release tag,
 add it to `PATH`), auto-detecting the runner's
-OS/arch. The distinction that bites: a **relative** `uses: ./…` inside a
+OS/arch. The distinction that bites: a **workspace-relative** `uses: ./…` inside a
 *reusable workflow* resolves against the **caller's** workspace, never the
-reusable's own repo — so glyph's reusables check out glyph's source at
-`job.workflow_sha` first and then use a relative `uses:` against that checkout,
+reusable's own repo — so glyph's reusables use GitHub's **self-repository**
+reference, `uses: $/.github/actions/install`, which names the workflow file's
+own repository at the pinned commit with no checkout (t-fzhx),
 while a **consumer** references the action the ordinary way, by full
 `owner/repo/path@vX.Y.Z`. `.github/actions/release-notes`: the one home of the
 tag-time notes rule (DESIGN §4), which glyph's own `goreleaser.yml` runs over

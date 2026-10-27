@@ -130,7 +130,9 @@ on:
           No expression is spelled out here: GitHub evaluates one even inside
           a description, and refuses the whole workflow file. The runner must
           carry what this job and the install action call — `gh` and `jq`
-          among them; the GitHub-hosted image does.
+          among them — and be runner 2.336.0 or newer, the first that resolves
+          the `$/` reference the install step is written with; the
+          GitHub-hosted image does both.
         type: string
         default: ubuntu-latest
     outputs:
@@ -239,21 +241,12 @@ jobs:
             *) echo "::error::glyph-pr-verdict is pinned to a non-tag ref ($ref); pass glyph-version to pick a release binary."; exit 1 ;;
           esac
 
-      # Check out glyph's OWN source at the pinned commit so the install action
-      # is available locally — a relative `uses:` in a reusable workflow resolves
-      # against the CALLER's workspace, not glyph's, so the action must be
-      # checked out here. AFTER the caller checkout above, whose workspace-root
-      # clean would otherwise wipe this untracked subdirectory.
-      - name: Check out glyph's install action at the pinned commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .glyph-action
-          persist-credentials: false
-
+      # `$/` is GitHub's self-repository reference: inside a reusable workflow
+      # it names this FILE's own repository — glyph, at the commit the caller
+      # pinned — with no checkout (runner 2.336.0+). A workspace-relative `./…`
+      # names the CALLER's checkout instead (DESIGN §5).
       - name: Install glyph (pinned release binary, checksum + provenance verified)
-        uses: ./.glyph-action/.github/actions/install
+        uses: $/.github/actions/install
         with:
           version: ${{ steps.glyph.outputs.version }}
           token: ${{ github.token }}

@@ -165,6 +165,7 @@ func TestScanUsesShapes(t *testing.T) {
 		{"sibling repo", "    uses: akira-toriyama/glyph-test/.github/workflows/lint.yml@main", "", false},
 		{"other owner", "    uses: akira-toriyama/.github/.github/workflows/go-ci.yml@v2", "", false},
 		{"local action", "    uses: ./.glyph-action/.github/actions/install", "", false},
+		{"self-repository action", "    uses: $/.github/actions/install", "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
