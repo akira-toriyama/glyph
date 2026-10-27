@@ -158,11 +158,11 @@ ran commit-lint
 # The distribution-layer gate build.yml runs on every pull request: a change to
 # a reusable workflow, goreleaser.yml, the install action or .goreleaser.yaml
 # must carry an internal/workflows test change (or a Dist-gate-exempt trailer on
-# every commit). Same script, same base — origin/main is what a pull request
-# from here would be judged against, and the origin/main check above has already
-# run. Like `bite` below it reads COMMITTED history: an uncommitted test does
-# not satisfy it, and that is the same claim-about-a-commit stance as the dirty
-# check at the top.
+# every commit; a same-action SHA pin swap alone needs neither). Same script,
+# same base — origin/main is what a pull request from here would be judged
+# against, and the origin/main check above has already run. Like `bite` below
+# it reads COMMITTED history: an uncommitted test does not satisfy it, and that
+# is the same claim-about-a-commit stance as the dirty check at the top.
 echo "→ dist-gate (does a distribution-layer change carry evidence?)"
 sh scripts/dist-gate.sh origin/main
 ran dist-gate

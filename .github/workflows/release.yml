@@ -290,7 +290,7 @@ jobs:
       # exists on the ubuntu runner a verdict-only run lands on: setup-xcode
       # would fail outright there, and the SPM cache would key a path that is
       # never written. Gated on the same predicate as `runs-on` above.
-      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         if: inputs.app != '' || inputs.binary != ''
         with:
           xcode-version: latest-stable

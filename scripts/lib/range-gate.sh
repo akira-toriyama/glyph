@@ -10,13 +10,16 @@ RANGE_GATE="$(basename "$0" .sh)"
 # range_gate_changed <base> prints the paths of the three-dot diff — against
 # the merge-base, the diff a pull request is judged on. A base that does not
 # resolve exits 1: a stale or shallow checkout cannot form that diff, and an
-# empty answer would read as "nothing to prove".
+# empty answer would read as "nothing to prove". --no-renames: a gated file
+# renamed out of its pattern is listed under its old path as a deletion;
+# detected as a rename it is listed under the new path alone, and the gate
+# reads a vanished reusable as nothing to prove.
 range_gate_changed() {
   if ! git rev-parse --verify --quiet "$1^{commit}" >/dev/null; then
     echo "$RANGE_GATE: base '$1' does not resolve — fetch it first; a stale or shallow checkout cannot form the diff CI judges" >&2
     exit 1
   fi
-  git diff --name-only "$1"...HEAD
+  git diff --name-only --no-renames "$1"...HEAD
 }
 
 # require_trailer_on_every_commit <Key> <base> returns 0 only when base..HEAD

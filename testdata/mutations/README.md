@@ -75,7 +75,12 @@ file, and a pinned-SHA `uses:` line inside one re-breaks on every bump: the
 `distribution-layer-change-ships-with-no-evidence` row deleted a whole CI job,
 checkout SHA included, and went red on three
 consecutive dependabot PRs without any decision changing (t-7zy2). Mutate the
-smallest glyph-owned span that still kills the named test.
+smallest glyph-owned span that still kills the named test. Step 3's `git diff`
+quotes three lines of context on each side; when one of them is such a line,
+re-derive with `git diff -U1` or trim the context by hand — a hunk applies with
+context on one side only, as long as it keeps at least one line (`git apply`
+refuses a context-free hunk without `--unidiff-zero`, which the runner does not
+pass).
 
 Two properties the runner enforces so a row cannot rot green:
 
