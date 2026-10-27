@@ -9,14 +9,120 @@ package doctor
 // verified against glyph's own tags by TestCallerDeclarationBoundsMatchReleasedTags
 // — and a caller is judged only where this binary can speak for its release.
 // Everything else is could-not-run, never a pass and never a fail.
+//
+// The judging skeleton both checks run is here too (judgeCallers); each check
+// is a callerSpec of what differs.
 
 import (
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v6/internal/bump"
 )
+
+// callerRow is a row of either caller table: bound is its After.
+type callerRow interface{ bound() string }
+
+func (r permRow) bound() string  { return r.After }
+func (r inputRow) bound() string { return r.After }
+
+// callerSpec is what one caller check judges with; judgeCallers holds the
+// rest. The fail and pass Observed strings are formats: failObserved takes
+// the finding count and the caller-file count, passObserved the caller-file
+// count.
+type callerSpec[R callerRow] struct {
+	id, expected string
+	// consequence is the check's sentence about what an unlisted workflows
+	// directory leaves unverified (unlistableWorkflows).
+	consequence string
+	glyph       string // the running binary's version (judgeAt)
+	floor       string // the release the check first shipped in (judgeAt)
+	// rows is the check's table, keyed by the reusable's lower-cased file name.
+	rows map[string]R
+	// file prepares one caller file read whole and returns the judge of each
+	// call it makes, which answers that call's finding lines — or nil when the
+	// file is not judged at all. A nil comes before any pin is judged, so an
+	// exempt file is never could-not-run over its pins.
+	file         func(f workflowFile) func(call reusableCall, row R) []string
+	failObserved string
+	failMessage  string
+	failFix      string
+	death        string // what goes unverified when a caller is not judged (unverifiedCallers)
+	noCaller     string // the pass Observed when no workflow calls a glyph reusable
+	passObserved string
+	passMessage  string
+}
+
+// judgeCallers is the one skeleton of both caller checks: every workflow file
+// read whole, every call into a glyph reusable judged at its pin (judgeAt) or
+// named as not judged, and the verdict — a finding outranks a caller not
+// judged or a file not read, and either of those outranks a pass.
+func judgeCallers[R callerRow](root string, rootVerified bool, workflows []workflowFile, workflowsErr error, spec callerSpec[R]) Check {
+	c := Check{ID: spec.id, Expected: spec.expected}
+	if workflowsErr != nil {
+		unlistableWorkflows(&c, root, rootVerified, workflowsErr, spec.consequence, ". "+spec.consequence)
+		return c
+	}
+
+	callers := 0
+	var findings, skipped, remedies, unreadable []string
+	for _, f := range workflows {
+		if f.Err != nil {
+			// Not left to the pin check: its unknown answers whether a ref is
+			// concrete, not whether a caller starts, and skipping the file here
+			// turned chmod 000 on a failing caller into this check's "nothing
+			// to judge" pass (t-fdd8 (3)).
+			unreadable = append(unreadable, f.unreadableLine())
+			continue
+		}
+		calls := reusablesCalled(f.Name, f.Body)
+		if len(calls) == 0 {
+			continue
+		}
+		callers++
+		judge := spec.file(f)
+		if judge == nil {
+			continue
+		}
+		for _, call := range calls {
+			row, known := spec.rows[strings.ToLower(call.Reusable)]
+			nj := unknownReusable(call.Reusable)
+			if known {
+				nj = judgeAt(call.Ref, row.bound(), spec.glyph, spec.floor)
+			}
+			if nj != nil {
+				skipped = append(skipped, fmt.Sprintf(".github/workflows/%s calls %s@%s — not judged: %s", f.Name, call.Reusable, call.Ref, nj.Why))
+				remedies = remember(remedies, nj.Remedy)
+				continue
+			}
+			findings = append(findings, judge(call, row)...)
+		}
+	}
+	sort.Strings(findings)
+
+	if len(findings) > 0 {
+		c.Status = StatusFail
+		c.Observed = fmt.Sprintf(spec.failObserved, len(findings), callers)
+		c.Details = slices.Concat(findings, skipped, unreadable)
+		c.Message = spec.failMessage
+		c.Fix = spec.failFix
+		return c
+	}
+	if unverifiedCallers(&c, skipped, remedies, unreadable, spec.death) {
+		return c
+	}
+	c.Status = StatusPass
+	if callers == 0 {
+		c.Observed = spec.noCaller
+		c.Message = "nothing to judge, observed — not assumed"
+		return c
+	}
+	c.Observed = fmt.Sprintf(spec.passObserved, callers)
+	c.Message = spec.passMessage
+	return c
+}
 
 // notJudged is one caller this binary cannot speak for: why, and the remedy
 // for that reason.

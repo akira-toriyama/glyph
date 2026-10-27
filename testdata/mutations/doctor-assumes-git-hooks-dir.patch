@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
-index b39ef26..02d4df7 100644
+index 9bfc0c0..7f3a809 100644
 --- a/internal/cli/cmd_doctor.go
 +++ b/internal/cli/cmd_doctor.go
-@@ -286,7 +286,7 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
+@@ -273,7 +273,7 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
  	// the only place allowed to ask: internal/doctor runs no subprocess, exactly
  	// as it makes no request. A failure here is handed over verbatim and becomes
  	// that one check's could-not-run — never an aborted report.
 -	hooksDir, herr := gitsource.HooksDir(ctx, ".")
-+	hooksDir, herr := filepath.Join(".git", "hooks"), error(nil)
- 	probe := probeCommitMsgHook(ctx, hooksDir, herr)
- 	// git also names the top level glyph.toml sits at — the same file loadConfig
- 	// resolves for every verdict command, asked here for the same reason
++	hooksDir, herr := ".git/hooks", error(nil)
+ 	// Each hook is read ONCE, here, and the same answer decides what is fired,
+ 	// whether git is asked for remote heads, and doctor's verdicts on it.
+ 	var commitMsg, prePush hook.Installed

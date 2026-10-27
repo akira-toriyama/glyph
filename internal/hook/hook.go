@@ -7,8 +7,9 @@
 // moves, and the hook then refuses commits CI accepts; with the binary as the
 // only source of the rules, a hook installed once cannot drift.
 //
-// It decides file contents and the overwrite policy; the filesystem writes live
-// in Install, and the CLI wiring in internal/cli.
+// It decides file contents, what an installed hook is (Read: the one
+// classification every reader switches on) and the overwrite policy; the
+// filesystem writes live in Install, and the CLI wiring in internal/cli.
 package hook
 
 import (
@@ -175,18 +176,64 @@ func Kinds() []Kind {
 	}
 }
 
-// Stale reports whether an installed hook body is one GLYPH wrote that no
-// longer matches what this binary would write.
+// State is what Read found at a hook's path. Every reader switches on it — the
+// installer's overwrite policy, doctor's verdicts, the probe that fires only a
+// current hook, the drift notice the hook's own run prints — so none of them
+// re-derives it from the bytes.
 //
-// The three-way split matters and is why this is one function rather than a
-// comparison at each call site: identical is fine, a body glyph did not write is
-// somebody else's standing choice, and only the third state — glyph's marker on
-// bytes that have moved — is drift. Everything a hook decides was frozen by
-// whichever glyph was on PATH the day it was installed, including the exit code
-// it treats as a violation, and it fails in the quiet direction: a stale hook
-// still exits 0, which is what a clean message looks like.
-func (k Kind) Stale(installed string) bool {
-	return installed != k.Script && strings.Contains(installed, Marker)
+// The three-way split of a file that exists matters and is why this is one
+// classification rather than a comparison at each call site: identical is
+// fine, a body glyph did not write is somebody else's standing choice, and
+// only the third state — glyph's marker on bytes that have moved — is drift.
+// Everything a hook decides was frozen by whichever glyph was on PATH the day
+// it was installed, including the exit code it treats as a violation, and it
+// fails in the quiet direction: a stale hook still exits 0, which is what a
+// clean message looks like.
+type State int
+
+const (
+	// Absent — no file at the path.
+	Absent State = iota
+	// Current — byte-identical to the script this binary writes.
+	Current
+	// Stale — glyph's Marker on bytes that differ from that script.
+	Stale
+	// Foreign — a file without the Marker: a hook glyph did not write.
+	Foreign
+)
+
+// Installed is what Read found at one kind's path. Body is the file's bytes
+// (empty when Absent), kept for doctor's diff summary.
+type Installed struct {
+	Path  string
+	State State
+	Body  string
+}
+
+// Read classifies the hook of kind k in hooksDir. The error is a read failure
+// other than not-exist; the Installed beside it carries only Path, since a
+// file that exists and cannot be read could be in any of the three states a
+// file can be in.
+func (k Kind) Read(hooksDir string) (Installed, error) {
+	in := Installed{Path: filepath.Join(hooksDir, k.Name)}
+	body, err := os.ReadFile(in.Path) //nolint:gosec // path is derived from git's own hooks dir
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		in.State = Absent
+		return in, nil
+	case err != nil:
+		return in, err
+	}
+	in.Body = string(body)
+	switch {
+	case in.Body == k.Script:
+		in.State = Current
+	case strings.Contains(in.Body, Marker):
+		in.State = Stale
+	default:
+		in.State = Foreign
+	}
+	return in, nil
 }
 
 // KindByName resolves a hook name, or reports that glyph does not write one.
@@ -293,29 +340,25 @@ func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
 // plan decides what one kind needs, without touching the filesystem beyond the
 // read that answers the question.
 func plan(hooksDir string, k Kind, force bool) (Result, bool, error) {
-	path := filepath.Join(hooksDir, k.Name)
-	res := Result{Kind: k.Name, Path: path}
-
-	existing, err := os.ReadFile(path) //nolint:gosec // path is derived from git's own hooks dir
-	switch {
-	case err == nil:
-		res.Existed = true
-		switch {
-		case string(existing) == k.Script:
-			res.Action = "unchanged"
-			return res, false, nil
-		case strings.Contains(string(existing), Marker), force:
-			res.Action = "refreshed"
-		default:
-			return res, false, core.Usagef(
-				"%s already exists and was not written by glyph — refusing to overwrite it. "+
-					"Inspect it, then re-run with --force to replace it (its rules, if any, are "+
-					"superseded: the new hook calls glyph)", path)
-		}
-	case os.IsNotExist(err):
-		res.Action = "installed"
-	default:
+	in, err := k.Read(hooksDir)
+	res := Result{Kind: k.Name, Path: in.Path}
+	if err != nil {
 		return res, false, core.APIf("%v — what the %s hook holds could not be read, so nothing was written", err, k.Name)
+	}
+	res.Existed = in.State != Absent
+	switch {
+	case in.State == Absent:
+		res.Action = "installed"
+	case in.State == Current:
+		res.Action = "unchanged"
+		return res, false, nil
+	case in.State == Stale, force:
+		res.Action = "refreshed"
+	default:
+		return res, false, core.Usagef(
+			"%s already exists and was not written by glyph — refusing to overwrite it. "+
+				"Inspect it, then re-run with --force to replace it (its rules, if any, are "+
+				"superseded: the new hook calls glyph)", in.Path)
 	}
 	return res, true, nil
 }

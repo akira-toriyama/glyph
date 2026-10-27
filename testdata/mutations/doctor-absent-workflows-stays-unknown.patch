@@ -1,13 +1,13 @@
-diff --git a/internal/doctor/callerperms.go b/internal/doctor/callerperms.go
-index c46a23a..b8f80cc 100644
---- a/internal/doctor/callerperms.go
-+++ b/internal/doctor/callerperms.go
-@@ -182,7 +182,7 @@ func permsExpected(glyph string) string {
- func listWorkflows(root string, rootVerified bool, c *Check, consequence string) ([]os.DirEntry, bool) {
+diff --git a/internal/doctor/workflows.go b/internal/doctor/workflows.go
+index e8e589a..f05e6b8 100644
+--- a/internal/doctor/workflows.go
++++ b/internal/doctor/workflows.go
+@@ -74,7 +74,7 @@ func (f workflowFile) unreadableLine() string {
+ func readWorkflows(root string, rootVerified bool) (files []workflowFile, listErr error) {
  	dir := filepath.Join(root, ".github", "workflows")
  	entries, err := os.ReadDir(dir)
 -	if err != nil && (!rootVerified || !errors.Is(err, fs.ErrNotExist)) {
 +	if err != nil && (!rootVerified || !errors.Is(err, fs.ErrNotExist) || true) {
- 		c.Status = StatusUnknown
- 		c.Observed = fmt.Sprintf("the workflows directory could not be listed: %v", err)
- 		if !rootVerified {
+ 		return nil, err
+ 	}
+ 	for _, e := range entries {

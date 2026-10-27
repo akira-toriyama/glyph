@@ -112,6 +112,11 @@ func TestCallerPermissionsOutcomes(t *testing.T) {
 			want:  StatusFail, wantDetail: "pull-requests: read",
 		},
 		{
+			name:  "a permissions scalar spelled as a block scalar is not a block granting nothing",
+			files: map[string]string{".github/workflows/commit-lint.yml": caller("lint.yml", "permissions: >-\n  read-all")},
+			want:  StatusPass,
+		},
+		{
 			name:  "a checkout with no glyph reusable caller has nothing to judge",
 			files: map[string]string{".github/workflows/ci.yml": "name: ci\non:\n  pull_request:\npermissions:\n  contents: read\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - run: \"true\"\n"},
 			want:  StatusPass,
@@ -119,7 +124,7 @@ func TestCallerPermissionsOutcomes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := checkCallerPermissions(checkoutAt(t, tt.files), true, "dev")
+			c := permsAt(checkoutAt(t, tt.files), true, "dev")
 			if c.Status != tt.want {
 				t.Fatalf("status = %s, want %s\nobserved: %s\ndetails: %v", c.Status, tt.want, c.Observed, c.Details)
 			}
@@ -141,6 +146,22 @@ func TestCallerPermissionsOutcomes(t *testing.T) {
 	}
 }
 
+// TestCallerGrantsReadPastABlockScalarLevel: a scope whose level is written as
+// a block scalar (`actions: >-` over `read`) leaves the permissions mapping
+// open, as YAML reads it, so the grants after it count. A reader that ends
+// the mapping at that key reads this lint caller as granting neither
+// contents nor pull-requests and fails a caller GitHub starts. Not pinned
+// here: the folded level itself is read as no grant.
+func TestCallerGrantsReadPastABlockScalarLevel(t *testing.T) {
+	body := caller("lint.yml", "permissions:\n  actions: >-\n    read\n  contents: read\n  pull-requests: read")
+	if grants, seen := callerGrants(body); !seen || grants["contents"] != "read" || grants["pull-requests"] != "read" {
+		t.Errorf("callerGrants = %v (block seen %t), want contents and pull-requests read past the block scalar", grants, seen)
+	}
+	if c := permsAt(checkoutAt(t, map[string]string{".github/workflows/commit-lint.yml": body}), true, "dev"); c.Status != StatusPass {
+		t.Errorf("status = %s, want %s (observed %q, details %v)", c.Status, StatusPass, c.Observed, c.Details)
+	}
+}
+
 // TestCallerChecksNeverPassOverAnUnreadableFile pins t-fdd8 (3) for both caller
 // checks. A caller file the check could not read was skipped with `continue`,
 // so chmod 000 on the one caller turned a measured fail into "no workflow in
@@ -154,8 +175,8 @@ func TestCallerChecksNeverPassOverAnUnreadableFile(t *testing.T) {
 	const starved = "name: c\non:\n  push:\npermissions:\n  contents: read\njobs:\n  r:\n" +
 		"    uses: akira-toriyama/glyph/.github/workflows/release.yml@v4.2.0\n"
 	checks := map[string]func(string, bool) Check{
-		idCallerPerms:  func(r string, v bool) Check { return checkCallerPermissions(r, v, "dev") },
-		idCallerInputs: func(r string, v bool) Check { return checkCallerInputs(r, v, "dev") },
+		idCallerPerms:  func(r string, v bool) Check { return permsAt(r, v, "dev") },
+		idCallerInputs: func(r string, v bool) Check { return inputsAt(r, v, "dev") },
 	}
 	for id, check := range checks {
 		t.Run(id, func(t *testing.T) {
@@ -174,6 +195,9 @@ func TestCallerChecksNeverPassOverAnUnreadableFile(t *testing.T) {
 			}
 			if n := strings.Count(strings.Join(c.Details, "\n"), locked); n != 1 {
 				t.Errorf("details %v name the unread file %s %d times, want once — the read error already carries it", c.Details, locked, n)
+			}
+			if want := "a workflow file could not be read: "; !strings.HasPrefix(strings.Join(c.Details, "\n"), want) {
+				t.Errorf("details %v, want the one line every workflow check gives an unread file, %q — what failed is the read, not the file's role", c.Details, want)
 			}
 
 			root = checkoutAt(t, map[string]string{".github/workflows/release.yml": starved, ".github/workflows/other.yml": starved})
@@ -202,7 +226,7 @@ func lockFile(t *testing.T, path string) {
 // contract: an unlistable workflows directory observed nothing, and "we could
 // not check" is not "it is fine".
 func TestCallerPermissionsWithoutADirectoryIsUnknown(t *testing.T) {
-	c := checkCallerPermissions(t.TempDir(), false, "dev")
+	c := permsAt(t.TempDir(), false, "dev")
 	if c.Status != StatusUnknown {
 		t.Fatalf("status = %s, want %s", c.Status, StatusUnknown)
 	}

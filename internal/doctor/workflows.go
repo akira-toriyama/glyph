@@ -9,11 +9,16 @@ package doctor
 // It asks only whether the pin is CONCRETE, never whether it is the LATEST
 // release: glyph-pin-audit.yml in akira-toriyama/.github owns that question
 // (DESIGN §7).
+//
+// It also holds what the two caller checks share with it: the one read of
+// .github/workflows (readWorkflows, done once by Run) and the one YAML line
+// discipline every scanner walks (contentLines).
 
 import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"iter"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,6 +44,71 @@ type pinRef struct {
 	Problem string
 }
 
+// workflowFile is one .github/workflows file as readWorkflows read it. Err is
+// that file's read failure: the checks render it (unreadableLine) and never
+// drop the file, because a caller check that skipped one turned chmod 000 on a
+// failing caller into "nothing to judge" (t-fdd8 (3)).
+type workflowFile struct {
+	Name string // the directory entry, e.g. release.yml
+	Body string
+	Err  error
+}
+
+// unreadableLine is the one Details line every workflow check gives a file it
+// could not read. The read error already names the path.
+func (f workflowFile) unreadableLine() string {
+	return fmt.Sprintf("a workflow file could not be read: %v", f.Err)
+}
+
+// readWorkflows lists root/.github/workflows and reads every workflow file in
+// it, once for the three checks that scan them. listErr is non-nil exactly
+// when the listing observed nothing: any failure but an absent directory, and
+// an absence under an unverified bare "." too. An absent directory under a
+// git-named root is an observed absence, (nil, nil) — a repository with no
+// workflows has nothing pinned and nothing to call. Under a bare "." both
+// readings stay live — no workflows, or doctor run from the wrong directory —
+// and that stays UNKNOWN, not a vacuous pass (a fresh repository could never
+// get doctor to exit 0 before wiring CI, which is how this arm was found: the
+// t-wzsw zero-base drill, 2026-08-26).
+func readWorkflows(root string, rootVerified bool) (files []workflowFile, listErr error) {
+	dir := filepath.Join(root, ".github", "workflows")
+	entries, err := os.ReadDir(dir)
+	if err != nil && (!rootVerified || !errors.Is(err, fs.ErrNotExist)) {
+		return nil, err
+	}
+	for _, e := range entries {
+		name := e.Name()
+		// Both extensions: GitHub honours .yaml as readily as .yml, and a
+		// caller stub written with the other spelling would otherwise be
+		// scanned by nobody at all.
+		if e.IsDir() || (!strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml")) {
+			continue
+		}
+		body, rerr := os.ReadFile(filepath.Join(dir, name)) // #nosec G304 -- the caller's own checkout, listed above
+		files = append(files, workflowFile{Name: name, Body: string(body), Err: rerr})
+	}
+	return files, nil
+}
+
+// unlistableWorkflows fills c with the UNKNOWN verdict for a workflows
+// directory readWorkflows could not list (listErr). Each check gives its own
+// account of what an unverified read costs, once per arm: outside follows
+// "…git could not name one here. " (no git-named root), and unread follows
+// "the checkout's workflows were never read" with its own leading
+// punctuation (under one), since a check may continue that clause rather
+// than start a sentence.
+func unlistableWorkflows(c *Check, root string, rootVerified bool, listErr error, outside, unread string) {
+	c.Status = StatusUnknown
+	c.Observed = fmt.Sprintf("the workflows directory could not be listed: %v", listErr)
+	if !rootVerified {
+		c.Message = "doctor reads the LOCAL checkout for this check, and git could not name one here. " + outside
+		c.Fix = fixOutsideCheckout
+		return
+	}
+	c.Message = "the checkout's workflows were never read" + unread
+	c.Fix = unlistableFix(filepath.Join(root, ".github", "workflows"), listErr)
+}
+
 // unlistableFix is the remedy for a workflows directory under a git-named root
 // that the filesystem would not list. Only a permission error is a permissions
 // problem; anything else (a regular file at the path, a symbolic-link loop)
@@ -51,60 +121,36 @@ func unlistableFix(dir string, err error) string {
 	return "make " + dir + " a directory that can be listed, then re-run"
 }
 
-// checkWorkflowPins scans .github/workflows and every action.yml /
-// action.yaml git lists for the local checkout (gitsource.ActionFiles, paths
-// relative to root; actionErr its failure).
-//
-// A missing WORKFLOWS directory splits on rootVerified. Under a git-named root
-// the absence is an observed fact — a repository with no workflows has nothing
-// pinned and nothing to drift, and the action files below are still read, so a
-// composite is not blessed by the workflows directory being gone. Under a bare
-// "." both readings stay live — no workflows, or doctor run from the wrong
-// directory — and that stays UNKNOWN, not a vacuous pass (a fresh repository
-// could never get doctor to exit 0 before wiring CI, which is how this arm was
-// found: the t-wzsw zero-base drill, 2026-08-26).
-func checkWorkflowPins(root string, rootVerified bool, actionFiles []gitsource.ActionFile, actionErr error) Check {
+// checkWorkflowPins scans the workflow files (readWorkflows, workflowsErr its
+// listing's failure) and every action.yml / action.yaml git lists for the
+// local checkout (gitsource.ActionFiles, paths relative to root; actionErr its
+// failure). An absent workflows directory under a git-named root leaves the
+// action files still read, so a composite is not blessed by the workflows
+// directory being gone.
+func checkWorkflowPins(root string, rootVerified bool, workflows []workflowFile, workflowsErr error, actionFiles []gitsource.ActionFile, actionErr error) Check {
 	c := Check{
 		ID: idWorkflowPinned,
 		Expected: "every `uses: " + glyphRepo + "/…` in .github/workflows or in any action.yml / action.yaml in the checkout " +
 			"(submodules included) pins a concrete @vX.Y.Z release tag",
 	}
-	dir := filepath.Join(root, ".github", "workflows")
-	entries, err := os.ReadDir(dir)
-	if err != nil && (!rootVerified || !errors.Is(err, fs.ErrNotExist)) {
-		c.Status = StatusUnknown
-		c.Observed = fmt.Sprintf("the workflows directory could not be listed: %v", err)
-		if !rootVerified {
-			c.Message = "doctor reads the LOCAL checkout for this check, and git could not name one here. " +
-				"If this repository genuinely has no workflows there is nothing pinned and nothing to drift — but that is " +
-				"unverified, not verified"
-			c.Fix = fixOutsideCheckout
-			return c
-		}
-		c.Message = "the checkout's workflows were never read, so whatever they pin is unverified, not verified"
-		c.Fix = unlistableFix(dir, err)
+	if workflowsErr != nil {
+		unlistableWorkflows(&c, root, rootVerified, workflowsErr,
+			"If this repository genuinely has no workflows there is nothing pinned and nothing to drift — but that is "+
+				"unverified, not verified",
+			", so whatever they pin is unverified, not verified")
 		return c
 	}
 
 	var refs []pinRef
 	var unreadable []string
 	files := 0
-	for _, e := range entries {
-		name := e.Name()
-		// Both extensions: GitHub honours .yaml as readily as .yml, and a
-		// caller stub written with the other spelling would otherwise be
-		// scanned by nobody at all.
-		if e.IsDir() || (!strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml")) {
-			continue
-		}
+	for _, f := range workflows {
 		files++
-		path := filepath.Join(dir, name)
-		body, rerr := os.ReadFile(path) // #nosec G304 -- the caller's own checkout, listed above
-		if rerr != nil {
-			unreadable = append(unreadable, fmt.Sprintf("a workflow file could not be read: %v", rerr))
+		if f.Err != nil {
+			unreadable = append(unreadable, f.unreadableLine())
 			continue
 		}
-		refs = append(refs, scanUses(filepath.Join(".github", "workflows", name), string(body))...)
+		refs = append(refs, scanUses(filepath.Join(".github", "workflows", f.Name), f.Body)...)
 	}
 
 	// The workflows directory is not the only place a checkout EXECUTES a glyph
@@ -198,29 +244,14 @@ func checkWorkflowPins(root string, rootVerified bool, actionFiles []gitsource.A
 // A `uses:`-shaped line is not necessarily an executing step (DESIGN §7 has
 // the trap): every glyph reusable ships a COMMENTED caller stub in its header,
 // and a fleet-sync step WRITES caller stubs from a `run: |` heredoc — data it
-// emits into another repository, and the reason this loop carries state. So
-// block scalars are skipped whole, whole-line comments are dropped, and
-// `uses:` is only recognised as the YAML key at the start of the (optionally
-// list-dashed) line — never as text found anywhere in it, which also keeps a
-// trailing `# uses: …` inline comment from being read as a second reference.
+// emits into another repository. So only contentLines are read (block scalars
+// skipped whole, whole-line comments dropped), and `uses:` is only recognised
+// as the YAML key at the start of the (optionally list-dashed) line — never as
+// text found anywhere in it, which also keeps a trailing `# uses: …` inline
+// comment from being read as a second reference.
 func scanUses(file, body string) []pinRef {
 	var refs []pinRef
-	// block is the indent column of the key that opened a block scalar, or -1
-	// outside one. Everything indented deeper than that key is the scalar's
-	// content — text, whatever it looks like — until a line comes back to that
-	// column or further left.
-	block := -1
-	for i, line := range strings.Split(body, "\n") {
-		if block >= 0 {
-			if strings.TrimSpace(line) == "" || indentOf(line) > block {
-				continue
-			}
-			block = -1
-		}
-		if indent, opens := blockScalarKey(line); opens {
-			block = indent
-			continue
-		}
+	for i, line := range contentLines(strings.Split(body, "\n"), 0) {
 		value, ok := usesValue(line)
 		if !ok {
 			continue
@@ -240,15 +271,56 @@ func indentOf(line string) int {
 	return len(line) - len(strings.TrimLeft(line, " \t"))
 }
 
+// contentLines yields (index, line) for every line of lines from from on that
+// is YAML structure: not blank, not a whole-line comment, not block-scalar
+// content. It is the one line discipline of every workflow scanner here
+// (scanUses, callerGrants, jobWithKeys), so they cannot read one file two ways.
+//
+// The order is the point. Inside a block scalar a blank line or one indented
+// deeper than its key is content and is skipped; the first line at the key's
+// column or further left closes the scalar — a comment line included, since
+// YAML reads a comment that far left as the scalar's end, never as its text —
+// and is then judged like any other line, so it may itself be dropped as a
+// comment or open the next scalar. A key line that opens a scalar is yielded:
+// it is structure, and only what follows it is text. Blank means whitespace
+// only, inside a scalar and out of one alike, so a CRLF file's lone `\r` is
+// blank wherever it sits rather than a line at column 0 that ends a mapping.
+func contentLines(lines []string, from int) iter.Seq2[int, string] {
+	return func(yield func(int, string) bool) {
+		// block is the indent column of the key that opened a block scalar, or
+		// -1 outside one.
+		block := -1
+		for i := from; i < len(lines); i++ {
+			line := lines[i]
+			blank := strings.TrimSpace(line) == ""
+			if block >= 0 {
+				if blank || indentOf(line) > block {
+					continue
+				}
+				block = -1
+			}
+			if blank || strings.HasPrefix(strings.TrimLeft(line, " \t"), "#") {
+				continue
+			}
+			if indent, opens := blockScalarKey(line); opens {
+				block = indent
+			}
+			if !yield(i, line) {
+				return
+			}
+		}
+	}
+}
+
 // blockScalarKey reports whether a line opens a block scalar (`run: |`,
 // `script: >`, and the `|-` / `|+` / `>-` / `|2` chomping and indentation
 // variants), and at which column its key sits — the column everything deeper
 // belongs to the scalar rather than to the workflow.
 //
 // Only the header is recognised here, never the content: the content is skipped
-// by indentation in scanUses, which is how YAML itself delimits it. A trailing
-// comment after the indicator (`run: | # write the stub`) is legal and does not
-// change the answer, so only the first field is inspected.
+// by indentation in contentLines, which is how YAML itself delimits it. A
+// trailing comment after the indicator (`run: | # write the stub`) is legal and
+// does not change the answer, so only the first field is inspected.
 func blockScalarKey(line string) (int, bool) {
 	trimmed := strings.TrimLeft(line, " \t")
 	if trimmed == "" || strings.HasPrefix(trimmed, "#") {

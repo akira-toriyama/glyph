@@ -1,0 +1,14 @@
+diff --git a/internal/doctor/workflows.go b/internal/doctor/workflows.go
+index 5066c5f..797e88e 100644
+--- a/internal/doctor/workflows.go
++++ b/internal/doctor/workflows.go
+@@ -293,6 +293,9 @@ func contentLines(lines []string, from int) iter.Seq2[int, string] {
+ 		for i := from; i < len(lines); i++ {
+ 			line := lines[i]
+ 			blank := strings.TrimSpace(line) == ""
++			if strings.HasPrefix(strings.TrimLeft(line, " \t"), "#") {
++				continue
++			}
+ 			if block >= 0 {
+ 				if blank || indentOf(line) > block {
+ 					continue

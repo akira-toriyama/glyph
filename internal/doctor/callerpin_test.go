@@ -131,8 +131,8 @@ func TestCallerChecksJudgeTheCallerAtItsPin(t *testing.T) {
 				want  Status
 				fix   string
 			}{
-				{checkCallerPermissions(root, true, tt.glyph), tt.perms, tt.permsFix},
-				{checkCallerInputs(root, true, tt.glyph), tt.inputs, tt.inputFix},
+				{permsAt(root, true, tt.glyph), tt.perms, tt.permsFix},
+				{inputsAt(root, true, tt.glyph), tt.inputs, tt.inputFix},
 			} {
 				c := run.check
 				if c.Status != run.want {

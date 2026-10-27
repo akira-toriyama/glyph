@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
-index 9fd6b26..204993b 100644
+index 9bfc0c0..ad2a819 100644
 --- a/internal/cli/cmd_doctor.go
 +++ b/internal/cli/cmd_doctor.go
-@@ -128,7 +128,7 @@ func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.H
- 	k := hook.Kinds()[0]
- 	path := filepath.Join(dir, k.Name)
- 	body, err := os.ReadFile(path) // #nosec G304 -- the path git itself reported for this checkout
--	if err != nil || string(body) != k.Script {
-+	if err != nil || string(body) == k.Script {
+@@ -168,7 +168,7 @@ func probeClaimed(ctx context.Context, cfg *config.Config) bool {
+ // pre-push pass with it). Why the probe exists, and why pre-push is not fired
+ // as well: DESIGN §7.
+ func probeCommitMsgHook(ctx context.Context, installed hook.Installed) *doctor.HookProbe {
+-	if installed.State != hook.Current {
++	if installed.State == hook.Current {
  		return nil
  	}
  	msg, err := os.CreateTemp("", "glyph-doctor-probe-*.txt")

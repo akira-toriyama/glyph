@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/workflows.go b/internal/doctor/workflows.go
+index 5066c5f..cdb9655 100644
+--- a/internal/doctor/workflows.go
++++ b/internal/doctor/workflows.go
+@@ -299,7 +299,7 @@ func contentLines(lines []string, from int) iter.Seq2[int, string] {
+ 				}
+ 				block = -1
+ 			}
+-			if blank || strings.HasPrefix(strings.TrimLeft(line, " \t"), "#") {
++			if strings.TrimLeft(line, " \t") == "" || strings.HasPrefix(strings.TrimLeft(line, " \t"), "#") {
+ 				continue
+ 			}
+ 			if indent, opens := blockScalarKey(line); opens {

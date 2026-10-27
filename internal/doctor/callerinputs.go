@@ -2,9 +2,6 @@ package doctor
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 )
@@ -44,81 +41,38 @@ const inputsFloor = "v3.1.0"
 // glyph's reusable workflows and verifies that each caller's `with:` names
 // every input the reusable requires at the release the caller pins. glyph is
 // the running binary's version (judgeAt).
-func checkCallerInputs(root string, rootVerified bool, glyph string) Check {
-	c := Check{ID: idCallerInputs, Expected: inputsExpected(glyph)}
-	entries, unknown := listWorkflows(root, rootVerified, &c,
-		"A caller omitting a required input dies as startup_failure before any job — unverified here, not verified")
-	if unknown {
-		return c
-	}
-
-	callers := 0
-	var findings, skipped, remedies, unreadable []string
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || (!strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml")) {
-			continue
-		}
-		path := filepath.Join(root, ".github", "workflows", name)
-		body, rerr := os.ReadFile(path) // #nosec G304 -- the caller's own checkout, listed above
-		if rerr != nil {
-			// Unread is unknown, never "no caller" — see checkCallerPermissions.
-			unreadable = append(unreadable, fmt.Sprintf("a caller workflow could not be read: %v", rerr))
-			continue
-		}
-		calls := reusablesCalled(name, string(body))
-		if len(calls) == 0 {
-			continue
-		}
-		callers++
-		lines := strings.Split(string(body), "\n")
-		for _, call := range calls {
-			row, known := reusableRequiredInputs[strings.ToLower(call.Reusable)]
-			nj := unknownReusable(call.Reusable)
-			if known {
-				nj = judgeAt(call.Ref, row.After, glyph, inputsFloor)
-			}
-			if nj != nil {
-				skipped = append(skipped, fmt.Sprintf(".github/workflows/%s calls %s@%s — not judged: %s", name, call.Reusable, call.Ref, nj.Why))
-				remedies = remember(remedies, nj.Remedy)
-				continue
-			}
-			if len(row.Required) == 0 {
-				continue
-			}
-			keys := jobWithKeys(lines, call.Line)
-			for _, want := range row.Required {
-				if !keys[want] {
-					findings = append(findings, fmt.Sprintf(
-						".github/workflows/%s calls %s@%s but its with: never names %s", name, call.Reusable, call.Ref, want))
+func checkCallerInputs(root string, rootVerified bool, workflows []workflowFile, workflowsErr error, glyph string) Check {
+	return judgeCallers(root, rootVerified, workflows, workflowsErr, callerSpec[inputRow]{
+		id:          idCallerInputs,
+		expected:    inputsExpected(glyph),
+		consequence: "A caller omitting a required input dies as startup_failure before any job — unverified here, not verified",
+		glyph:       glyph,
+		floor:       inputsFloor,
+		rows:        reusableRequiredInputs,
+		file: func(f workflowFile) func(reusableCall, inputRow) []string {
+			lines := strings.Split(f.Body, "\n")
+			return func(call reusableCall, row inputRow) []string {
+				var missing []string
+				keys := jobWithKeys(lines, call.Line)
+				for _, want := range row.Required {
+					if !keys[want] {
+						missing = append(missing, fmt.Sprintf(
+							".github/workflows/%s calls %s@%s but its with: never names %s", f.Name, call.Reusable, call.Ref, want))
+					}
 				}
+				return missing
 			}
-		}
-	}
-	sort.Strings(findings)
-
-	if len(findings) > 0 {
-		c.Status = StatusFail
-		c.Observed = fmt.Sprintf("%d missing required input(s) across the %d workflow file(s) that call a glyph reusable", len(findings), callers)
-		c.Details = slices.Concat(findings, skipped, unreadable)
-		c.Message = "GitHub kills a reusable call that omits a required input as startup_failure before any job — and " +
+		},
+		failObserved: "%d missing required input(s) across the %d workflow file(s) that call a glyph reusable",
+		failMessage: "GitHub kills a reusable call that omits a required input as startup_failure before any job — and " +
 			"it surfaces no error anywhere: not in the run, not in the check suite, not in the API (measured, " +
-			"glyph-test3 2026-08-26). This static read is the only check that can see it coming"
-		c.Fix = "add the missing input to the caller's with: block — the commented stub in each reusable's header is the known-good copy"
-		return c
-	}
-	if unverifiedCallers(&c, skipped, remedies, unreadable, "whether every caller gets past GitHub's silent startup input gate") {
-		return c
-	}
-	c.Status = StatusPass
-	if callers == 0 {
-		c.Observed = "no workflow in this checkout calls a glyph reusable (binary-only consumers have no caller to starve)"
-		c.Message = "nothing to judge, observed — not assumed"
-		return c
-	}
-	c.Observed = fmt.Sprintf("%d workflow file(s) call glyph reusables; every judged caller passes what its pinned release requires", callers)
-	c.Message = "these runs get past GitHub's startup input gate"
-	return c
+			"glyph-test3 2026-08-26). This static read is the only check that can see it coming",
+		failFix:      "add the missing input to the caller's with: block — the commented stub in each reusable's header is the known-good copy",
+		death:        "whether every caller gets past GitHub's silent startup input gate",
+		noCaller:     "no workflow in this checkout calls a glyph reusable (binary-only consumers have no caller to starve)",
+		passObserved: "%d workflow file(s) call glyph reusables; every judged caller passes what its pinned release requires",
+		passMessage:  "these runs get past GitHub's startup input gate",
+	})
 }
 
 // inputsExpected renders the check's Expected from the table itself, so the
@@ -148,8 +102,8 @@ func inputsExpected(glyph string) string {
 // first shallower-indented content line), then forward until the block closes
 // — so a `with:` written above its `uses:` is still seen; YAML orders siblings
 // freely and a miss in either direction would cry wolf over a healthy caller.
-// Block scalars are skipped whole with the same discipline scanUses carries:
-// an install-notes heredoc's content must not read as keys.
+// The forward walk reads only contentLines: an install-notes heredoc's content
+// must not read as keys.
 func jobWithKeys(lines []string, usesLine int) map[string]bool {
 	keys := map[string]bool{}
 	if usesLine < 1 || usesLine > len(lines) {
@@ -158,9 +112,8 @@ func jobWithKeys(lines []string, usesLine int) map[string]bool {
 	jobIndent := indentOf(lines[usesLine-1])
 	start := usesLine - 1
 	for i := usesLine - 2; i >= 0; i-- {
-		trimmed := strings.TrimLeft(lines[i], " \t")
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
+		if strings.TrimSpace(lines[i]) == "" || strings.HasPrefix(strings.TrimLeft(lines[i], " \t"), "#") {
+			continue // blank as contentLines means it: a CRLF file's lone `\r` included
 		}
 		if indentOf(lines[i]) < jobIndent {
 			start = i + 1
@@ -170,19 +123,8 @@ func jobWithKeys(lines []string, usesLine int) map[string]bool {
 	}
 	inWith := false
 	withKeyIndent := -1 // indent of the keys directly inside with:, learned from the first one
-	block := -1         // indent of the key that opened a block scalar, or -1
-	for i := start; i < len(lines); i++ {
-		line := lines[i]
+	for _, line := range contentLines(lines, start) {
 		trimmed := strings.TrimLeft(line, " \t")
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		if block >= 0 {
-			if indentOf(line) > block {
-				continue
-			}
-			block = -1
-		}
 		ind := indentOf(line)
 		if ind < jobIndent {
 			break // the job block closed
@@ -212,13 +154,8 @@ func jobWithKeys(lines []string, usesLine int) map[string]bool {
 		if ind != withKeyIndent {
 			continue // deeper content: a nested value, never a with: key
 		}
-		k, rest, found := strings.Cut(trimmed, ":")
-		if !found {
-			continue
-		}
-		keys[strings.TrimSpace(k)] = true
-		if v := strings.TrimSpace(rest); strings.HasPrefix(v, "|") || strings.HasPrefix(v, ">") {
-			block = ind
+		if k, _, found := strings.Cut(trimmed, ":"); found {
+			keys[strings.TrimSpace(k)] = true
 		}
 	}
 	return keys

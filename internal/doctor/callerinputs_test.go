@@ -17,6 +17,12 @@ func callerWith(reusable, with string) string {
 	return b
 }
 
+// crlf rewrites a fixture with CRLF line endings, a workflow saved on
+// Windows: every line, a blank one too, carries a trailing `\r`.
+func crlf(s string) string {
+	return strings.ReplaceAll(s, "\n", "\r\n")
+}
+
 // TestReusableRequiredInputsMatchTheShippedWorkflows holds the requirements
 // table to the reusables it describes, exactly as the permissions table is
 // held: a reusable growing a `required: true` input without a row here would
@@ -113,6 +119,24 @@ func TestCallerInputsOutcomes(t *testing.T) {
 			want:  StatusPass,
 		},
 		{
+			name: "a with: whose value is a block scalar names no input — its text is not a mapping",
+			files: map[string]string{".github/workflows/release.yml": callerWith("release.yml",
+				"    with: |\n      install-notes: x")},
+			want: StatusFail, wantDetail: "never names install-notes",
+		},
+		{
+			name: "CRLF: a blank line inside an if: scalar is the scalar's, not the end of the job",
+			files: map[string]string{".github/workflows/release.yml": crlf(callerWith("release.yml",
+				"    if: >-\n      true\n\n    with:\n      install-notes: x"))},
+			want: StatusPass,
+		},
+		{
+			name: "CRLF: a blank line between uses: and with: is blank, as its LF twin's is",
+			files: map[string]string{".github/workflows/release.yml": crlf(callerWith("release.yml",
+				"\n    with:\n      install-notes: x"))},
+			want: StatusPass,
+		},
+		{
 			name: "with: written ABOVE its uses: — YAML orders siblings freely",
 			files: map[string]string{".github/workflows/release.yml": "name: caller\non:\n  push:\njobs:\n  j:\n" +
 				blockWith + "    uses: akira-toriyama/glyph/.github/workflows/release.yml@v4.2.0\n"},
@@ -137,7 +161,7 @@ func TestCallerInputsOutcomes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := checkCallerInputs(checkoutAt(t, tt.files), true, "dev")
+			c := inputsAt(checkoutAt(t, tt.files), true, "dev")
 			if c.Status != tt.want {
 				t.Fatalf("status = %s, want %s (observed %q, details %v)", c.Status, tt.want, c.Observed, c.Details)
 			}
@@ -158,9 +182,9 @@ func TestCallerInputsOutcomes(t *testing.T) {
 // unknown, because a wrong working directory reads exactly the same.
 func TestAbsentWorkflowsDirSplitsOnRootProvenance(t *testing.T) {
 	checks := map[string]func(string, bool) Check{
-		"workflow-glyph-pins":         func(r string, v bool) Check { return checkWorkflowPins(r, v, nil, nil) },
-		"workflow-caller-permissions": func(r string, v bool) Check { return checkCallerPermissions(r, v, "dev") },
-		"workflow-caller-inputs":      func(r string, v bool) Check { return checkCallerInputs(r, v, "dev") },
+		"workflow-glyph-pins":         func(r string, v bool) Check { return pinsAt(r, v, nil, nil) },
+		"workflow-caller-permissions": func(r string, v bool) Check { return permsAt(r, v, "dev") },
+		"workflow-caller-inputs":      func(r string, v bool) Check { return inputsAt(r, v, "dev") },
 	}
 	for name, fn := range checks {
 		t.Run(name, func(t *testing.T) {
@@ -182,36 +206,50 @@ func TestAbsentWorkflowsDirSplitsOnRootProvenance(t *testing.T) {
 // cause that is not there: a listing refused for permissions is the
 // directory's permissions, and anything else at the path (a regular file
 // here) must become a listable directory — the split checkConfig draws for
-// glyph.toml.
+// glyph.toml. Each arm's Message is each check's own account of what the
+// unread directory costs, held to the byte: the pin check continues the
+// git-named arm's clause where the caller checks start a sentence.
 func TestUnlistableWorkflowsDirRemedyNamesTheCause(t *testing.T) {
 	const outside = "re-run from inside a git checkout of the repository being diagnosed"
 	const refused = "fix the directory's permissions and re-run"
-	checks := map[string]func(string, bool) Check{
-		idWorkflowPinned: func(r string, v bool) Check { return checkWorkflowPins(r, v, nil, nil) },
-		idCallerPerms:    func(r string, v bool) Check { return checkCallerPermissions(r, v, "dev") },
-		idCallerInputs:   func(r string, v bool) Check { return checkCallerInputs(r, v, "dev") },
+	const noRoot = "doctor reads the LOCAL checkout for this check, and git could not name one here. "
+	const unread = "the checkout's workflows were never read"
+	perms := "A caller granting less than its reusable declares dies as startup_failure before any job — unverified here, not verified"
+	inputs := "A caller omitting a required input dies as startup_failure before any job — unverified here, not verified"
+	checks := map[string]struct {
+		run                     func(string, bool) Check
+		outsideMsg, verifiedMsg string
+	}{
+		idWorkflowPinned: {func(r string, v bool) Check { return pinsAt(r, v, nil, nil) },
+			noRoot + "If this repository genuinely has no workflows there is nothing pinned and nothing to drift — but that is unverified, not verified",
+			unread + ", so whatever they pin is unverified, not verified"},
+		idCallerPerms:  {func(r string, v bool) Check { return permsAt(r, v, "dev") }, noRoot + perms, unread + ". " + perms},
+		idCallerInputs: {func(r string, v bool) Check { return inputsAt(r, v, "dev") }, noRoot + inputs, unread + ". " + inputs},
 	}
-	for id, fn := range checks {
+	for id, tc := range checks {
 		t.Run(id, func(t *testing.T) {
-			check := func(arm string, c Check, fix string) {
+			check := func(arm string, c Check, fix, msg string) {
 				t.Helper()
 				if c.Status != StatusUnknown || c.Fix != fix {
 					t.Errorf("%s: status %s, fix %q — want %s and %q", arm, c.Status, c.Fix, StatusUnknown, fix)
+				}
+				if c.Message != msg {
+					t.Errorf("%s: message %q, want %q", arm, c.Message, msg)
 				}
 				if s := c.Message + " " + c.Fix; strings.Contains(s, "repository root") {
 					t.Errorf("%s: %q sends the user to the repository root, which doctor finds from any subdirectory", arm, s)
 				}
 			}
 
-			check("no git-named root", fn(t.TempDir(), false), outside)
+			check("no git-named root", tc.run(t.TempDir(), false), outside, tc.outsideMsg)
 
 			root := checkoutAt(t, map[string]string{".github/workflows": "not a directory\n"})
-			check("a regular file at the workflows path", fn(root, true),
-				"make "+filepath.Join(root, ".github", "workflows")+" a directory that can be listed, then re-run")
+			check("a regular file at the workflows path", tc.run(root, true),
+				"make "+filepath.Join(root, ".github", "workflows")+" a directory that can be listed, then re-run", tc.verifiedMsg)
 
 			root = checkoutAt(t, map[string]string{".github/workflows/": ""})
 			lockDir(t, filepath.Join(root, ".github", "workflows"))
-			check("an unlistable directory under a git-named root", fn(root, true), refused)
+			check("an unlistable directory under a git-named root", tc.run(root, true), refused, tc.verifiedMsg)
 		})
 	}
 }

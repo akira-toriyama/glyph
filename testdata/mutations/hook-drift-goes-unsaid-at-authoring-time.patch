@@ -1,13 +1,13 @@
 diff --git a/internal/cli/hookdrift.go b/internal/cli/hookdrift.go
-index 92c6ff5..ea212bf 100644
+index fb92ba2..7aa00d9 100644
 --- a/internal/cli/hookdrift.go
 +++ b/internal/cli/hookdrift.go
-@@ -34,7 +34,7 @@ func warnIfHookStale(ctx context.Context, k hook.Kind) {
- 	if err != nil {
+@@ -29,7 +29,7 @@ func warnIfHookStale(ctx context.Context, k hook.Kind) {
  		return
  	}
--	if !k.Stale(string(body)) {
-+	if false && !k.Stale(string(body)) {
+ 	installed, err := k.Read(dir)
+-	if err != nil || installed.State != hook.Stale {
++	if err != nil || installed.State == hook.Absent || false && installed.State != hook.Stale {
  		return
  	}
  	warnf("the installed %s hook was written by glyph and no longer matches this binary's — "+

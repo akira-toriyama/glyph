@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 
 	"github.com/akira-toriyama/glyph/v6/internal/cleanup"
 	"github.com/akira-toriyama/glyph/v6/internal/config"
@@ -160,7 +159,7 @@ func probeClaimed(ctx context.Context, cfg *config.Config) bool {
 // because internal/doctor runs no subprocess, exactly as it makes no request —
 // the same division that puts HooksDir here.
 //
-// It fires ONLY when the installed bytes are exactly this binary's hook — the
+// It fires ONLY a Current hook (installed, the run's one read of it) — the
 // arm the byte-compare check passes. Someone else's hook is theirs to run and
 // a stale glyph hook already fails the drift check, so executing either would
 // have a read-only diagnosis run code it does not vouch for. nil means nothing
@@ -168,14 +167,8 @@ func probeClaimed(ctx context.Context, cfg *config.Config) bool {
 // (checkHookFires judges the outcome, and checkPrePushHook qualifies the
 // pre-push pass with it). Why the probe exists, and why pre-push is not fired
 // as well: DESIGN §7.
-func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.HookProbe {
-	if dirErr != nil {
-		return nil
-	}
-	k := hook.Kinds()[0]
-	path := filepath.Join(dir, k.Name)
-	body, err := os.ReadFile(path) // #nosec G304 -- the path git itself reported for this checkout
-	if err != nil || string(body) != k.Script {
+func probeCommitMsgHook(ctx context.Context, installed hook.Installed) *doctor.HookProbe {
+	if installed.State != hook.Current {
 		return nil
 	}
 	msg, err := os.CreateTemp("", "glyph-doctor-probe-*.txt")
@@ -198,7 +191,7 @@ func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.H
 	// Exactly git's invocation: the hook file itself, argv[1] the message file.
 	// Output is discarded — the hook's stderr talks to a committing developer,
 	// and the check renders its own sentence from the exit code alone.
-	probe := exec.CommandContext(ctx, path, msg.Name()) // #nosec G204 -- firing the byte-verified hook glyph itself wrote
+	probe := exec.CommandContext(ctx, installed.Path, msg.Name()) // #nosec G204 -- firing the byte-verified hook glyph itself wrote
 	err = probe.Run()
 	if err == nil {
 		return &doctor.HookProbe{Fired: true, Exit: 0}
@@ -213,17 +206,12 @@ func probeCommitMsgHook(ctx context.Context, dir string, dirErr error) *doctor.H
 // clone records (gitsource.DefaultBranch — a local ref, never the network): the
 // pre-push hook refuses a violation only there, and with none recorded it can
 // block nothing (t-2etd (c)). Read only when the installed pre-push hook is
-// byte-identical — the one arm whose pass this qualifies — so a checkout with no
+// Current — the one arm whose pass this qualifies — so a checkout with no
 // hook, which is every CI runner, pays no subprocess. nil with a nil error
 // means not read. refless marks the unrecorded remotes whose name git cannot
 // place in a ref, for which set-head is no remedy (review u6-2).
-func readRemoteHeads(ctx context.Context, dir string, dirErr error) (heads map[string]string, refless map[string]bool, err error) {
-	if dirErr != nil {
-		return nil, nil, nil
-	}
-	k := hook.Kinds()[1]
-	body, rerr := os.ReadFile(filepath.Join(dir, k.Name)) // #nosec G304 -- the path git itself reported for this checkout
-	if rerr != nil || string(body) != k.Script {
+func readRemoteHeads(ctx context.Context, prePush hook.Installed) (heads map[string]string, refless map[string]bool, err error) {
+	if prePush.State != hook.Current {
 		return nil, nil, nil
 	}
 	urls, err := gitsource.RemoteURLs(ctx, ".")
@@ -286,7 +274,15 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
 	// as it makes no request. A failure here is handed over verbatim and becomes
 	// that one check's could-not-run — never an aborted report.
 	hooksDir, herr := gitsource.HooksDir(ctx, ".")
-	probe := probeCommitMsgHook(ctx, hooksDir, herr)
+	// Each hook is read ONCE, here, and the same answer decides what is fired,
+	// whether git is asked for remote heads, and doctor's verdicts on it.
+	var commitMsg, prePush hook.Installed
+	var commitMsgErr, prePushErr error
+	if herr == nil {
+		commitMsg, commitMsgErr = hook.Kinds()[0].Read(hooksDir)
+		prePush, prePushErr = hook.Kinds()[1].Read(hooksDir)
+	}
+	probe := probeCommitMsgHook(ctx, commitMsg)
 	// git also names the top level glyph.toml sits at — the same file loadConfig
 	// resolves for every verdict command, asked here for the same reason
 	// HooksDir is. A failure degrades the config check alone, and the checks
@@ -336,7 +332,7 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
 	if probe != nil {
 		probe.Claimed = probeClaimed(ctx, cfg)
 	}
-	remoteHeads, remoteRefless, headsErr := readRemoteHeads(ctx, hooksDir, herr)
+	remoteHeads, remoteRefless, headsErr := readRemoteHeads(ctx, prePush)
 	// An interrupt is the user's own abort and must never be laundered into a
 	// check result: reporting "the token cannot read the repository" — or "git
 	// could not report where hooks live" — because somebody pressed Ctrl-C
@@ -349,27 +345,31 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
 		return err
 	}
 	report := doctor.Run(doctor.Input{
-		Repo:            owner + "/" + name,
-		Root:            root,
-		RootErr:         terr,
-		Config:          cfg,
-		ConfigErr:       cfgErr,
-		RepoObject:      repoObject,
-		RepoErr:         rerr,
-		TokenConfigured: githubToken() != "",
-		HooksDir:        hooksDir,
-		HooksErr:        herr,
-		CommitMsgProbe:  probe,
-		Tags:            tags,
-		TagsErr:         tagsErr,
-		HeadTrees:       headTrees,
-		HeadTreesErr:    treesErr,
-		ActionFiles:     actionFiles,
-		ActionFilesErr:  actionErr,
-		GlyphVersion:    version.Resolve().Version,
-		RemoteHeads:     remoteHeads,
-		RemoteHeadsErr:  headsErr,
-		RemoteRefless:   remoteRefless,
+		Repo:             owner + "/" + name,
+		Root:             root,
+		RootErr:          terr,
+		Config:           cfg,
+		ConfigErr:        cfgErr,
+		RepoObject:       repoObject,
+		RepoErr:          rerr,
+		TokenConfigured:  githubToken() != "",
+		HooksDir:         hooksDir,
+		HooksErr:         herr,
+		CommitMsgHook:    commitMsg,
+		CommitMsgHookErr: commitMsgErr,
+		PrePushHook:      prePush,
+		PrePushHookErr:   prePushErr,
+		CommitMsgProbe:   probe,
+		Tags:             tags,
+		TagsErr:          tagsErr,
+		HeadTrees:        headTrees,
+		HeadTreesErr:     treesErr,
+		ActionFiles:      actionFiles,
+		ActionFilesErr:   actionErr,
+		GlyphVersion:     version.Resolve().Version,
+		RemoteHeads:      remoteHeads,
+		RemoteHeadsErr:   headsErr,
+		RemoteRefless:    remoteRefless,
 	})
 
 	// Annotations go out in BOTH modes, before the payload. On an Actions

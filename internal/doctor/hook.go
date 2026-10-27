@@ -11,8 +11,6 @@ package doctor
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -31,7 +29,10 @@ import (
 //     message.
 //   - a hook somebody else wrote -> advice: hook.Install refuses to overwrite
 //     it, so it is a standing choice rather than drift.
-func checkHook(k hook.Kind, id, dir string, dirErr error) Check {
+//
+// installed and readErr are k.Read's answer, read by internal/cli once per
+// run (Input); dirErr is the hooks directory's.
+func checkHook(k hook.Kind, id string, installed hook.Installed, readErr, dirErr error) Check {
 	c := Check{
 		ID: id,
 		Expected: "no stale glyph-written " + k.Name + " hook: either none is installed, or the installed one is " +
@@ -51,40 +52,36 @@ func checkHook(k hook.Kind, id, dir string, dirErr error) Check {
 		return c
 	}
 
-	path := filepath.Join(dir, k.Name)
-	body, err := os.ReadFile(path) // #nosec G304 -- the path git itself reported for this checkout
-	switch {
-	case os.IsNotExist(err):
-		c.Status = StatusPass
-		c.Observed = "no " + k.Name + " hook at " + path + ", so none can be stale"
-		c.Message = "the local gate is opt-in and CI is the authority, so its absence costs a round trip rather than a " +
-			"wrong verdict. `glyph hook install` adds it: it holds no copy of the rules (it shells back to " +
-			"`" + k.Asks + "`) and blocks for a real convention violation and nothing else"
-		return c
-	case err != nil:
+	if readErr != nil {
 		c.Status = StatusUnknown
-		c.Observed = fmt.Sprintf("the %s hook could not be read: %v", k.Name, err)
+		c.Observed = fmt.Sprintf("the %s hook could not be read: %v", k.Name, readErr)
 		c.Message = "a file doctor cannot read could hold anything, including a hook written by a glyph that is no longer current"
 		c.Fix = "fix the file permissions and re-run"
 		return c
 	}
 
-	installed := string(body)
-	switch {
-	case installed == k.Script:
+	path := installed.Path
+	switch installed.State {
+	case hook.Absent:
+		c.Status = StatusPass
+		c.Observed = "no " + k.Name + " hook at " + path + ", so none can be stale"
+		c.Message = "the local gate is opt-in and CI is the authority, so its absence costs a round trip rather than a " +
+			"wrong verdict. `glyph hook install` adds it: it holds no copy of the rules (it shells back to " +
+			"`" + k.Asks + "`) and blocks for a real convention violation and nothing else"
+	case hook.Current:
 		c.Status = StatusPass
 		c.Observed = fmt.Sprintf("%s matches this glyph's hook exactly", path)
 		c.Message = "the local gate and this binary agree on the exit code that stops a commit and on what is handed to lint"
-	case k.Stale(installed):
+	case hook.Stale:
 		c.Status = StatusFail
-		c.Observed = fmt.Sprintf("%s was written by glyph and no longer matches this binary's hook (%s)", path, diffSummary(installed, k.Script))
+		c.Observed = fmt.Sprintf("%s was written by glyph and no longer matches this binary's hook (%s)", path, diffSummary(installed.Body, k.Script))
 		c.Message = "a hook is written once and never refreshed by anything — hooks are untracked, so no pull, no fleet-sync " +
 			"and no CI job can update one. Everything it decides was therefore frozen at install time: the exit code it " +
 			"treats as a convention violation (glyph interpolates that from core.CodeLint precisely because a stale copy " +
 			"waves every violation through) and the arguments it hands `glyph lint`. A hook that judges a message by rules " +
 			"other than this binary's is the hook-green/CI-red split, and it fails in the quiet direction — exit 0"
 		c.Fix = "glyph hook install (re-installing over a glyph-written hook is a no-questions refresh)"
-	default:
+	case hook.Foreign:
 		c.Status = StatusAdvice
 		c.Observed = fmt.Sprintf("%s exists and glyph did not write it (no `%s` marker)", path, hook.Marker)
 		c.Message = "glyph never silently overwrites somebody else's hook, so this is a standing choice and not drift. What " +
@@ -189,7 +186,8 @@ func diffSummary(installed, want string) string {
 }
 
 // checkPrePushHook is checkHook for the pre-push kind, qualified where its
-// pass would vouch for more than it observed (t-2etd). probe is the commit-msg
+// pass would vouch for more than it observed (t-2etd) — only a Current hook's
+// pass, since an absent one vouches for nothing. probe is the commit-msg
 // probe's outcome, nil when nothing was fired; heads / headsErr are each
 // remote's recorded default branch and the failure to read them (Input).
 //
@@ -208,15 +206,10 @@ func diffSummary(installed, want string) string {
 //
 // The heads are an input like any other: unread is unknown, never the pass
 // that would say the hook can block.
-func checkPrePushHook(dir string, dirErr error, probe *HookProbe, heads map[string]string, refless map[string]bool, headsErr error) Check {
-	k := hook.Kinds()[1]
-	c := checkHook(k, idPrePushHook, dir, dirErr)
-	if c.Status != StatusPass {
+func checkPrePushHook(installed hook.Installed, readErr, dirErr error, probe *HookProbe, heads map[string]string, refless map[string]bool, headsErr error) Check {
+	c := checkHook(hook.Kinds()[1], idPrePushHook, installed, readErr, dirErr)
+	if c.Status != StatusPass || installed.State != hook.Current {
 		return c
-	}
-	body, err := os.ReadFile(filepath.Join(dir, k.Name)) // #nosec G304 -- the path git itself reported for this checkout
-	if err != nil || string(body) != k.Script {
-		return c // nothing installed: no gate to vouch for
 	}
 	if headsErr != nil {
 		c.Status = StatusUnknown

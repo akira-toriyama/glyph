@@ -1,12 +1,7 @@
 package doctor
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 )
@@ -67,89 +62,46 @@ const permsFloor = "v2.1.0"
 //     this check while the run still dies — accepted, because the opposite
 //     reading (workflow level only) reds every caller that grants on the job,
 //     which is legal and real.
-func checkCallerPermissions(root string, rootVerified bool, glyph string) Check {
-	c := Check{ID: idCallerPerms, Expected: permsExpected(glyph)}
-	entries, unknown := listWorkflows(root, rootVerified, &c,
-		"A caller granting less than its reusable declares dies as startup_failure before any job — "+
-			"unverified here, not verified")
-	if unknown {
-		return c
-	}
-
-	callers := 0
-	var findings, skipped, remedies, unreadable []string
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || (!strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml")) {
-			continue
-		}
-		path := filepath.Join(root, ".github", "workflows", name)
-		body, rerr := os.ReadFile(path) // #nosec G304 -- the caller's own checkout, listed above
-		if rerr != nil {
-			// Not left to the pin check: its unknown answers whether a ref is
-			// concrete, not whether a grant covers a reusable, and skipping the
-			// file here turned chmod 000 on a failing caller into this check's
-			// "nothing to judge" pass (t-fdd8 (3)).
-			unreadable = append(unreadable, fmt.Sprintf("a caller workflow could not be read: %v", rerr))
-			continue
-		}
-		calls := reusablesCalled(name, string(body))
-		if len(calls) == 0 {
-			continue
-		}
-		callers++
-		grants, declared := callerGrants(string(body))
-		if !declared {
-			// No explicit block: the repository's default token decides, and
-			// this file cannot see that setting. Not judged — see the header.
-			continue
-		}
-		for _, call := range calls {
-			row, known := reusableNeeds[strings.ToLower(call.Reusable)]
-			nj := unknownReusable(call.Reusable)
-			if known {
-				nj = judgeAt(call.Ref, row.After, glyph, permsFloor)
+func checkCallerPermissions(root string, rootVerified bool, workflows []workflowFile, workflowsErr error, glyph string) Check {
+	return judgeCallers(root, rootVerified, workflows, workflowsErr, callerSpec[permRow]{
+		id:       idCallerPerms,
+		expected: permsExpected(glyph),
+		consequence: "A caller granting less than its reusable declares dies as startup_failure before any job — " +
+			"unverified here, not verified",
+		glyph: glyph,
+		floor: permsFloor,
+		rows:  reusableNeeds,
+		file: func(f workflowFile) func(reusableCall, permRow) []string {
+			grants, declared := callerGrants(f.Body)
+			if !declared {
+				// No explicit block: the repository's default token decides, and
+				// this file cannot see that setting. Not judged — see the header.
+				return nil
 			}
-			if nj != nil {
-				skipped = append(skipped, fmt.Sprintf(".github/workflows/%s calls %s@%s — not judged: %s", name, call.Reusable, call.Ref, nj.Why))
-				remedies = remember(remedies, nj.Remedy)
-				continue
-			}
-			for _, n := range row.Needs {
-				if !satisfies(grants, n.Scope, n.Level) {
-					findings = append(findings, fmt.Sprintf(
-						".github/workflows/%s calls %s@%s but its permissions never grant %s: %s",
-						name, call.Reusable, call.Ref, n.Scope, n.Level))
+			return func(call reusableCall, row permRow) []string {
+				var missing []string
+				for _, n := range row.Needs {
+					if !satisfies(grants, n.Scope, n.Level) {
+						missing = append(missing, fmt.Sprintf(
+							".github/workflows/%s calls %s@%s but its permissions never grant %s: %s",
+							f.Name, call.Reusable, call.Ref, n.Scope, n.Level))
+					}
 				}
+				return missing
 			}
-		}
-	}
-	sort.Strings(findings)
-
-	if len(findings) > 0 {
-		c.Status = StatusFail
-		c.Observed = fmt.Sprintf("%d missing grant(s) across the %d workflow file(s) that call a glyph reusable", len(findings), callers)
-		c.Details = slices.Concat(findings, skipped, unreadable)
-		c.Message = "a reusable can only downgrade the caller's token, never raise it, so a caller granting less than " +
+		},
+		failObserved: "%d missing grant(s) across the %d workflow file(s) that call a glyph reusable",
+		failMessage: "a reusable can only downgrade the caller's token, never raise it, so a caller granting less than " +
 			"the reusable declares never starts: the run dies as startup_failure before any job (measured in " +
 			"akira-toriyama/.github#186) — no step runs, nothing prints, and no runtime diagnosis can see it. " +
-			"This static read is the only check that can"
-		c.Fix = "add the missing grant to the caller's permissions block — the commented stub in each reusable's " +
-			"header is the known-good copy"
-		return c
-	}
-	if unverifiedCallers(&c, skipped, remedies, unreadable, "whether every caller gets past GitHub's startup permission gate") {
-		return c
-	}
-	c.Status = StatusPass
-	if callers == 0 {
-		c.Observed = "no workflow in this checkout calls a glyph reusable (binary-only consumers have no caller to misgrant)"
-		c.Message = "nothing to judge, observed — not assumed"
-		return c
-	}
-	c.Observed = fmt.Sprintf("%d workflow file(s) call glyph reusables; every judged caller covers what its pinned release declares", callers)
-	c.Message = "these runs get past GitHub's startup permission gate"
-	return c
+			"This static read is the only check that can",
+		failFix: "add the missing grant to the caller's permissions block — the commented stub in each reusable's " +
+			"header is the known-good copy",
+		death:        "whether every caller gets past GitHub's startup permission gate",
+		noCaller:     "no workflow in this checkout calls a glyph reusable (binary-only consumers have no caller to misgrant)",
+		passObserved: "%d workflow file(s) call glyph reusables; every judged caller covers what its pinned release declares",
+		passMessage:  "these runs get past GitHub's startup permission gate",
+	})
 }
 
 // permsExpected renders the check's Expected from the table itself, so the
@@ -171,30 +123,6 @@ func permsExpected(glyph string) string {
 	}
 	return "every workflow calling a glyph reusable grants at least what that reusable declares at the release it pins, " +
 		"judged for " + judgedRange(glyph) + " (" + strings.Join(rows, "; ") + ") — any other pin is could-not-run"
-}
-
-// listWorkflows lists root/.github/workflows for the caller-side checks. An
-// absent directory under a git-named root is an observed absence — the caller
-// loops simply see zero entries — while any other failure, or an absence under
-// an unverified bare ".", fills c with the UNKNOWN verdict and returns
-// unknown=true. The consequence line is each check's own sentence about what
-// an unverified read costs.
-func listWorkflows(root string, rootVerified bool, c *Check, consequence string) ([]os.DirEntry, bool) {
-	dir := filepath.Join(root, ".github", "workflows")
-	entries, err := os.ReadDir(dir)
-	if err != nil && (!rootVerified || !errors.Is(err, fs.ErrNotExist)) {
-		c.Status = StatusUnknown
-		c.Observed = fmt.Sprintf("the workflows directory could not be listed: %v", err)
-		if !rootVerified {
-			c.Message = "doctor reads the LOCAL checkout for this check, and git could not name one here. " + consequence
-			c.Fix = fixOutsideCheckout
-			return nil, true
-		}
-		c.Message = "the checkout's workflows were never read. " + consequence
-		c.Fix = unlistableFix(dir, err)
-		return nil, true
-	}
-	return entries, false
 }
 
 // reusableCall is one call a workflow file makes into glyph's
@@ -233,30 +161,15 @@ func reusablesCalled(file, body string) []reusableCall {
 // the first hands the decision to the repository's default token, the second
 // is an explicit downgrade the startup gate will enforce.
 //
-// Comments and block scalars are skipped with the same state scanUses carries,
-// and for the same incident: a fleet-sync heredoc that WRITES a caller stub
-// contains a permissions block that is data, not a grant.
+// Only contentLines are read, for the scanUses incident: a fleet-sync heredoc
+// that WRITES a caller stub contains a permissions block that is data, not a
+// grant.
 func callerGrants(body string) (map[string]string, bool) {
 	grants := map[string]string{}
 	seen := false
-	block := -1      // indent of the key that opened a block scalar, or -1
 	permIndent := -1 // indent of an open permissions: mapping, or -1
-	for line := range strings.SplitSeq(body, "\n") {
-		if block >= 0 {
-			if strings.TrimSpace(line) == "" || indentOf(line) > block {
-				continue
-			}
-			block = -1
-		}
+	for _, line := range contentLines(strings.Split(body, "\n"), 0) {
 		trimmed := strings.TrimLeft(line, " \t")
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue // a blank or comment line closes nothing in YAML
-		}
-		if indent, opens := blockScalarKey(line); opens {
-			block = indent
-			permIndent = -1
-			continue
-		}
 		indent := indentOf(line)
 		if permIndent >= 0 {
 			if indent > permIndent {
@@ -264,6 +177,13 @@ func callerGrants(body string) (map[string]string, bool) {
 				continue
 			}
 			permIndent = -1
+		}
+		if _, opens := blockScalarKey(line); opens {
+			// contentLines yields the key line of a block scalar, and a
+			// `permissions: >-` over `read-all` is a scalar this reader does
+			// not parse: read as a declared block granting nothing, it would
+			// fail a lint caller GitHub starts.
+			continue
 		}
 		key, value, found := strings.Cut(trimmed, ":")
 		if !found || key != "permissions" {

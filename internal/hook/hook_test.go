@@ -447,3 +447,57 @@ func TestInstallNamesARefusedPathOnce(t *testing.T) {
 		}
 	})
 }
+
+// TestReadClassifiesEveryState is the one classification the installer,
+// doctor, the probe and the drift notice switch on, for every kind. Only
+// Stale is drift: Foreign read as Stale fails doctor over a hook somebody
+// else chose and drives the drift notice onto every commit, and Stale read as
+// Foreign hides drift that fails in the quiet direction. A read that fails
+// for any reason but not-exist is an error, never Absent.
+func TestReadClassifiesEveryState(t *testing.T) {
+	for _, k := range Kinds() {
+		t.Run(k.Name, func(t *testing.T) {
+			for _, tc := range []struct {
+				name string
+				body string // "" installs nothing
+				want State
+			}{
+				{"nothing installed", "", Absent},
+				{"this binary's script", k.Script, Current},
+				{"glyph's marker on moved bytes", "#!/bin/sh\n# " + Marker + "\nexit 0\n", Stale},
+				{"a hook glyph did not write", "#!/bin/sh\n# hand-written house rules\nexit 0\n", Foreign},
+			} {
+				dir := t.TempDir()
+				path := filepath.Join(dir, k.Name)
+				if tc.body != "" {
+					if err := os.WriteFile(path, []byte(tc.body), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				got, err := k.Read(dir)
+				if err != nil {
+					t.Fatalf("%s: Read = %v", tc.name, err)
+				}
+				if got != (Installed{Path: path, State: tc.want, Body: tc.body}) {
+					t.Errorf("%s: Read = %+v, want state %d with the path and the bytes", tc.name, got, tc.want)
+				}
+			}
+
+			if os.Geteuid() == 0 {
+				t.Skip("running as root, where mode 000 does not stop a read")
+			}
+			dir := t.TempDir()
+			path := filepath.Join(dir, k.Name)
+			if err := os.WriteFile(path, []byte(k.Script), 0o000); err != nil {
+				t.Fatal(err)
+			}
+			got, err := k.Read(dir)
+			if !errors.Is(err, os.ErrPermission) {
+				t.Fatalf("an unreadable hook: Read error = %v, want the refused read", err)
+			}
+			if got.Path != path {
+				t.Errorf("an unreadable hook: Path = %q, want %q", got.Path, path)
+			}
+		})
+	}
+}

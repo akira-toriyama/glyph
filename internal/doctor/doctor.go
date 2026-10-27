@@ -128,6 +128,14 @@ type Input struct {
 	// error with an empty directory cannot happen — git names one or fails.
 	HooksDir string
 	HooksErr error
+	// CommitMsgHook / PrePushHook are each kind's hook.Read in HooksDir, with
+	// the read's own failure beside it, read ONCE by the caller — which needs
+	// the same answers to decide what to fire and what to ask git — and zero
+	// when HooksErr is set. Nothing here opens a hook.
+	CommitMsgHook    hook.Installed
+	CommitMsgHookErr error
+	PrePushHook      hook.Installed
+	PrePushHookErr   error
 	// CommitMsgProbe is the outcome of the caller FIRING the installed
 	// commit-msg hook with a violating message — executed by internal/cli for
 	// the same reason HooksDir is resolved there, and only when the installed
@@ -231,6 +239,7 @@ func Run(in Input) *Report {
 	// an input to the live-fire check — see checkHookFires.
 	config := checkConfig(in.Root, in.RootErr, in.Config, in.ConfigErr)
 	rootVerified := in.RootErr == nil
+	workflows, workflowsErr := readWorkflows(in.Root, rootVerified)
 	r := &Report{Repo: in.Repo, Checks: []Check{
 		config,
 		checkPackagePaths(in.Root, in.Config, in.HeadTrees, in.HeadTreesErr),
@@ -242,12 +251,12 @@ func Run(in Input) *Report {
 		checkRebaseMerge(in),
 		checkSquashTitle(in),
 		checkSquashMessage(in),
-		checkWorkflowPins(in.Root, rootVerified, in.ActionFiles, in.ActionFilesErr),
-		checkCallerPermissions(in.Root, rootVerified, in.GlyphVersion),
-		checkCallerInputs(in.Root, rootVerified, in.GlyphVersion),
-		checkHook(hook.Kinds()[0], idCommitMsgHook, in.HooksDir, in.HooksErr),
+		checkWorkflowPins(in.Root, rootVerified, workflows, workflowsErr, in.ActionFiles, in.ActionFilesErr),
+		checkCallerPermissions(in.Root, rootVerified, workflows, workflowsErr, in.GlyphVersion),
+		checkCallerInputs(in.Root, rootVerified, workflows, workflowsErr, in.GlyphVersion),
+		checkHook(hook.Kinds()[0], idCommitMsgHook, in.CommitMsgHook, in.CommitMsgHookErr, in.HooksErr),
 		checkHookFires(in.CommitMsgProbe, in.HooksErr, config.Status == StatusPass),
-		checkPrePushHook(in.HooksDir, in.HooksErr, in.CommitMsgProbe, in.RemoteHeads, in.RemoteRefless, in.RemoteHeadsErr),
+		checkPrePushHook(in.PrePushHook, in.PrePushHookErr, in.HooksErr, in.CommitMsgProbe, in.RemoteHeads, in.RemoteRefless, in.RemoteHeadsErr),
 	}}
 	r.OK = true
 	for _, c := range r.Checks {
