@@ -7,7 +7,7 @@ the reasons and the incidents that ratified them follow.
 ## Blast radius
 
 - Do not treat a merge to `main` as a release: nobody runs it until a tag is cut **and** the
-  five pin sites move.
+  six pin sites move.
 - Before any change meant to reach the fleet, read
   [`glyph-rollout-runbook.md`](https://github.com/akira-toriyama/.github/blob/main/docs/glyph-rollout-runbook.md)
   for the sequence and
@@ -15,9 +15,10 @@ the reasons and the incidents that ratified them follow.
   for how far to verify first.
 
 Why: every fleet repo runs this binary as its commit-lint gate and merge-preview verdict, but
-only at **the tag it pins**. No single mechanism moves all five pin sites — `fleet-sync`
-byte-copies two, `glyph-pin-rewrite` opens a pull request for the other three (they live in
-files each repo owns), and `fleet-automerge` arms auto-merge on those pulls below a major — a
+only at **the tag it pins**. No single mechanism moves all six pin sites — `fleet-sync`
+byte-copies two, `glyph-pin-rewrite` opens a pull request for the other four (they live in
+files each repo owns: the release reusable, the install action and its `version:`, and the
+release-notes action), and `fleet-automerge` arms auto-merge on those pulls below a major — a
 major's pin pulls are a human merge. So a wrong answer is wrong in this repo until a tag is
 cut, then wrong fleet-wide until the pins move back.
 
