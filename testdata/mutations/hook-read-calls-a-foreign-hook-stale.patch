@@ -1,0 +1,13 @@
+diff --git a/internal/hook/hook.go b/internal/hook/hook.go
+index e1264b2..b93ece6 100644
+--- a/internal/hook/hook.go
++++ b/internal/hook/hook.go
+@@ -231,7 +231,7 @@ func (k Kind) Read(hooksDir string) (Installed, error) {
+ 	case strings.Contains(in.Body, Marker):
+ 		in.State = Stale
+ 	default:
+-		in.State = Foreign
++		in.State = Stale
+ 	}
+ 	return in, nil
+ }

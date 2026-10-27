@@ -131,6 +131,53 @@ func TestScanUsesSkipsBlockScalars(t *testing.T) {
 	}
 }
 
+// commentClosesHeredoc is a `run: |` heredoc closed by a comment at its
+// step's column, followed by a reusable call and its permissions block
+// indented deeper than the heredoc's key.
+const commentClosesHeredoc = `on: push
+jobs:
+  stub:
+    steps:
+      - run: |
+          cat
+      # a comment at the step's column closes the heredoc above
+            uses: akira-toriyama/glyph/.github/workflows/release.yml@v6.0.0
+            permissions:
+              contents: write
+`
+
+// commentClosesWith is a `with: |` scalar closed by a comment at the job's
+// column, followed by a with: key indented deeper than that column.
+const commentClosesWith = `jobs:
+  release:
+    uses: akira-toriyama/glyph/.github/workflows/release.yml@v6.0.0
+    with: |
+      text
+    # c
+      install-notes: x
+`
+
+// TestScannersAgreeACommentClosesABlockScalar is the positive control for
+// contentLines' order: a comment at or left of a block scalar's key closes
+// it, and what follows is structure to every scanner — the call and its
+// grant after a comment-closed heredoc (scanUses, callerGrants), and the
+// with: key after a comment-closed `with: |` (jobWithKeys). No YAML parser
+// accepts lines that deep past the comment; the fixtures hold the three
+// scanners to one reading of a comment there.
+func TestScannersAgreeACommentClosesABlockScalar(t *testing.T) {
+	refs := scanUses("w.yml", commentClosesHeredoc)
+	if len(refs) != 1 || refs[0].Line != 8 || refs[0].Ref != "v6.0.0" {
+		t.Errorf("scanUses = %+v, want the one reference on line 8 — the comment closed the heredoc", refs)
+	}
+	grants, seen := callerGrants(commentClosesHeredoc)
+	if !seen || grants["contents"] != "write" {
+		t.Errorf("callerGrants = %v (block seen %t), want contents: write — the permissions block after the comment is structure", grants, seen)
+	}
+	if keys := jobWithKeys(strings.Split(commentClosesWith, "\n"), 3); !keys["install-notes"] {
+		t.Errorf("jobWithKeys = %v, want install-notes — the key after the comment is structure", keys)
+	}
+}
+
 // TestScanUsesShapes is the grammar table: which lines are references at all,
 // and which refs count as pinned.
 func TestScanUsesShapes(t *testing.T) {
@@ -295,7 +342,7 @@ func TestCheckWorkflowPinsOutcomes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := checkWorkflowPins(checkoutAt(t, tt.files), true, nil, nil)
+			c := pinsAt(checkoutAt(t, tt.files), true, nil, nil)
 			if c.Status != tt.want {
 				t.Fatalf("status = %s, want %s (observed %q, details %v)", c.Status, tt.want, c.Observed, c.Details)
 			}
@@ -329,6 +376,23 @@ func checkoutAt(t *testing.T, files map[string]string) string {
 		}
 	}
 	return root
+}
+
+// pinsAt, permsAt and inputsAt run one workflow check over root's workflows,
+// read as Run reads them.
+func pinsAt(root string, verified bool, actionFiles []gitsource.ActionFile, actionErr error) Check {
+	workflows, err := readWorkflows(root, verified)
+	return checkWorkflowPins(root, verified, workflows, err, actionFiles, actionErr)
+}
+
+func permsAt(root string, verified bool, glyph string) Check {
+	workflows, err := readWorkflows(root, verified)
+	return checkCallerPermissions(root, verified, workflows, err, glyph)
+}
+
+func inputsAt(root string, verified bool, glyph string) Check {
+	workflows, err := readWorkflows(root, verified)
+	return checkCallerInputs(root, verified, workflows, err, glyph)
 }
 
 // gitListed stands in for gitsource.ActionFiles over a fixture checkout:
@@ -477,7 +541,7 @@ func TestCheckWorkflowPinsScansCompositeActions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := checkoutAt(t, tt.files)
-			c := checkWorkflowPins(root, true, append(gitListed(t, root), tt.extra...), tt.listErr)
+			c := pinsAt(root, true, append(gitListed(t, root), tt.extra...), tt.listErr)
 			if c.Status != tt.want {
 				t.Fatalf("status = %s, want %s (observed %q, details %v)", c.Status, tt.want, c.Observed, c.Details)
 			}
@@ -496,7 +560,7 @@ func TestCheckWorkflowPinsScansCompositeActions(t *testing.T) {
 // directory — so it must report could-not-run rather than a pass it did not
 // earn.
 func TestCheckWorkflowPinsWithoutADirectoryIsUnknown(t *testing.T) {
-	c := checkWorkflowPins(t.TempDir(), false, nil, nil)
+	c := pinsAt(t.TempDir(), false, nil, nil)
 	if c.Status != StatusUnknown {
 		t.Fatalf("status = %s, want %s", c.Status, StatusUnknown)
 	}

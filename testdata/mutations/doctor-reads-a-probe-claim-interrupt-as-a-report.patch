@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
+index d0d2236..25c3782 100644
+--- a/internal/cli/cmd_doctor.go
++++ b/internal/cli/cmd_doctor.go
+@@ -328,7 +328,7 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
+ 	var probeAbort error
+ 	if probe != nil {
+ 		probe.Claimed = probeClaimed(ctx, cfg)
+-		if errors.Is(ctx.Err(), context.Canceled) {
++		if errors.Is(ctx.Err(), context.Canceled) && false {
+ 			probeAbort = core.Interrupted()
+ 		}
+ 	}

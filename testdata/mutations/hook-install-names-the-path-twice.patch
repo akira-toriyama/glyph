@@ -1,8 +1,8 @@
 diff --git a/internal/hook/hook.go b/internal/hook/hook.go
-index 22382c7..3d9bdb1 100644
+index e1264b2..a0f2e6d 100644
 --- a/internal/hook/hook.go
 +++ b/internal/hook/hook.go
-@@ -279,12 +279,12 @@ func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
+@@ -326,12 +326,12 @@ func Install(hooksDir string, force bool, kinds ...Kind) (Report, error) {
  		if pe, ok := errors.AsType[*fs.PathError](mkErr); ok && pe.Path != hooksDir {
  			return Report{}, core.APIf("%v — so the hooks directory %s could not be created", mkErr, hooksDir)
  		}
@@ -17,12 +17,12 @@ index 22382c7..3d9bdb1 100644
  		}
  	}
  	return rep, chmodAll(hooksDir, kinds)
-@@ -315,7 +315,7 @@ func plan(hooksDir string, k Kind, force bool) (Result, bool, error) {
- 	case os.IsNotExist(err):
- 		res.Action = "installed"
- 	default:
+@@ -343,7 +343,7 @@ func plan(hooksDir string, k Kind, force bool) (Result, bool, error) {
+ 	in, err := k.Read(hooksDir)
+ 	res := Result{Kind: k.Name, Path: in.Path}
+ 	if err != nil {
 -		return res, false, core.APIf("%v — what the %s hook holds could not be read, so nothing was written", err, k.Name)
-+		return res, false, core.APIf("reading %s: %v", path, err)
++		return res, false, core.APIf("reading %s: %v", in.Path, err)
  	}
- 	return res, true, nil
- }
+ 	res.Existed = in.State != Absent
+ 	switch {

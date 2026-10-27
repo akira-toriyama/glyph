@@ -3120,7 +3120,7 @@ internal/walk            the release walk (§4, §4.1): the base past a tag, the
 internal/gitsource       every git subprocess the binary runs — log, tags, ancestry, diff-tree files, shallow probe, remotes, config, HEAD's trees (exec.CommandContext)
 internal/github          commits/{sha}/pulls, commits/{sha} files, pulls/{N} and its commits, release CRUD, repo object
 internal/doctor          repository-precondition checks; independent, read-only (§7)
-internal/hook            commit-msg and pre-push hook contents + overwrite policy (no rules of its own)
+internal/hook            commit-msg and pre-push hook contents, what an installed one is (Read: absent / current / stale / foreign) + overwrite policy (no rules of its own)
 internal/cli             cobra adapter; Execute() int owns the exit-code funnel; composes the walk's ports and carries out the release's write list by kind
 internal/testutil        the fixtures two or more packages' tests share — the hermetic git fixture, the loaded gemoji config (test-only, ships nothing)
 internal/workflows       no runtime code — tests pinning CI-YAML invariants
@@ -3150,9 +3150,13 @@ here is only why it is a package at all, and what depends on it:
   behaviour boundary, not a second copy of the shapes.
 - `internal/hook` — the generated hook is a consumer of the exit-code contract
   that glyph WRITES, so its gate code is interpolated from `core.CodeLint`
-  (below) instead of typed as a shell literal. `internal/cli` imports it to
-  install, and `internal/doctor` imports the same embedded bytes to
-  byte-compare what a repository actually has (#81).
+  (below) instead of typed as a shell literal. It also owns the read of an
+  installed hook and its four-state classification (`Kind.Read` →
+  `Installed{State}`: absent, current, stale, foreign), so no caller compares
+  bytes itself. Each command reads a hook once through it — `hook install`
+  in `Install`'s plan, the drift notice and doctor's `Input` in
+  `internal/cli` — and `internal/doctor` judges on `State`, importing the
+  embedded bytes only for its diff summary of a stale hook (#81).
 - `internal/workflows` — the one package whose subject is a directory rather
   than a type (`.github/`), hence no runtime code, no importers, and nothing in
   it that ships.

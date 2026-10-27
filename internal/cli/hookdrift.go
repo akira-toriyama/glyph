@@ -2,8 +2,6 @@ package cli
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 
 	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
 	"github.com/akira-toriyama/glyph/v6/internal/hook"
@@ -30,11 +28,8 @@ func warnIfHookStale(ctx context.Context, k hook.Kind) {
 	if err != nil {
 		return
 	}
-	body, err := os.ReadFile(filepath.Join(dir, k.Name)) // #nosec G304 -- the path git itself reported
-	if err != nil {
-		return
-	}
-	if !k.Stale(string(body)) {
+	installed, err := k.Read(dir)
+	if err != nil || installed.State != hook.Stale {
 		return
 	}
 	warnf("the installed %s hook was written by glyph and no longer matches this binary's — "+

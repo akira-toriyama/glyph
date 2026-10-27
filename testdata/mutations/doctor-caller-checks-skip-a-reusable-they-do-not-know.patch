@@ -1,26 +1,13 @@
-diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
-index 5dd61f7..7eec405 100644
---- a/internal/doctor/callerinputs.go
-+++ b/internal/doctor/callerinputs.go
-@@ -77,7 +77,7 @@ func checkCallerInputs(root string, rootVerified bool, glyph string) Check {
- 		lines := strings.Split(string(body), "\n")
- 		for _, call := range calls {
- 			row, known := reusableRequiredInputs[strings.ToLower(call.Reusable)]
--			nj := unknownReusable(call.Reusable)
-+			nj := (*notJudged)(nil)
- 			if known {
- 				nj = judgeAt(call.Ref, row.After, glyph, inputsFloor)
- 			}
-diff --git a/internal/doctor/callerperms.go b/internal/doctor/callerperms.go
-index d42a65e..fbc3346 100644
---- a/internal/doctor/callerperms.go
-+++ b/internal/doctor/callerperms.go
-@@ -115,7 +115,7 @@ func checkCallerPermissions(root string, rootVerified bool, glyph string) Check
+diff --git a/internal/doctor/callerpin.go b/internal/doctor/callerpin.go
+index 7c85f22..6f34a0b 100644
+--- a/internal/doctor/callerpin.go
++++ b/internal/doctor/callerpin.go
+@@ -88,7 +88,7 @@ func judgeCallers[R callerRow](root string, rootVerified bool, workflows []workf
  		}
  		for _, call := range calls {
- 			row, known := reusableNeeds[strings.ToLower(call.Reusable)]
+ 			row, known := spec.rows[strings.ToLower(call.Reusable)]
 -			nj := unknownReusable(call.Reusable)
 +			nj := (*notJudged)(nil)
  			if known {
- 				nj = judgeAt(call.Ref, row.After, glyph, permsFloor)
+ 				nj = judgeAt(call.Ref, row.bound(), spec.glyph, spec.floor)
  			}

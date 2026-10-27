@@ -1,26 +1,12 @@
-diff --git a/internal/doctor/callerinputs.go b/internal/doctor/callerinputs.go
-index f7f157d..1b392e2 100644
---- a/internal/doctor/callerinputs.go
-+++ b/internal/doctor/callerinputs.go
-@@ -63,7 +63,7 @@ func checkCallerInputs(root string, rootVerified bool, glyph string) Check {
- 		body, rerr := os.ReadFile(path) // #nosec G304 -- the caller's own checkout, listed above
- 		if rerr != nil {
- 			// Unread is unknown, never "no caller" — see checkCallerPermissions.
--			unreadable = append(unreadable, fmt.Sprintf("a caller workflow could not be read: %v", rerr))
-+			_ = rerr
+diff --git a/internal/doctor/callerpin.go b/internal/doctor/callerpin.go
+index 7c85f22..377c5ee 100644
+--- a/internal/doctor/callerpin.go
++++ b/internal/doctor/callerpin.go
+@@ -74,7 +74,6 @@ func judgeCallers[R callerRow](root string, rootVerified bool, workflows []workf
+ 			// concrete, not whether a caller starts, and skipping the file here
+ 			// turned chmod 000 on a failing caller into this check's "nothing
+ 			// to judge" pass (t-fdd8 (3)).
+-			unreadable = append(unreadable, f.unreadableLine())
  			continue
  		}
- 		calls := reusablesCalled(name, string(body))
-diff --git a/internal/doctor/callerperms.go b/internal/doctor/callerperms.go
-index 7b64785..dc106c9 100644
---- a/internal/doctor/callerperms.go
-+++ b/internal/doctor/callerperms.go
-@@ -90,7 +90,7 @@ func checkCallerPermissions(root string, rootVerified bool, glyph string) Check
- 			// concrete, not whether a grant covers a reusable, and skipping the
- 			// file here turned chmod 000 on a failing caller into this check's
- 			// "nothing to judge" pass (t-fdd8 (3)).
--			unreadable = append(unreadable, fmt.Sprintf("a caller workflow could not be read: %v", rerr))
-+			_ = rerr
- 			continue
- 		}
- 		calls := reusablesCalled(name, string(body))
+ 		calls := reusablesCalled(f.Name, f.Body)

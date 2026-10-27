@@ -26,12 +26,25 @@ func hooksDirWith(t *testing.T, name, body string) string {
 	return dir
 }
 
+// installedWith installs body as k's hook (hooksDirWith) and reads it back
+// with hook.Read, as internal/cli does once per run — so every verdict below
+// is held to the classification the real run hands over, never to a state
+// typed by hand.
+func installedWith(t *testing.T, k hook.Kind, body string) hook.Installed {
+	t.Helper()
+	installed, err := k.Read(hooksDirWith(t, k.Name, body))
+	if err != nil {
+		t.Fatalf("read hook: %v", err)
+	}
+	return installed
+}
+
 // TestCommitMsgHookCurrentPasses is the case the check exists to distinguish
 // everything else FROM, so it is asserted against hook.Kinds()[0].Script itself rather
 // than a copy: a literal here would be a second source of truth for the hook's
 // text and would go stale in exactly the way the check reports.
 func TestCommitMsgHookCurrentPasses(t *testing.T) {
-	c := checkHook(hook.Kinds()[0], idCommitMsgHook, hooksDirWith(t, "commit-msg", hook.Kinds()[0].Script), nil)
+	c := checkHook(hook.Kinds()[0], idCommitMsgHook, installedWith(t, hook.Kinds()[0], hook.Kinds()[0].Script), nil, nil)
 	if c.Status != StatusPass {
 		t.Errorf("an up-to-date hook is %s, want pass: %s", c.Status, c.Observed)
 	}
@@ -55,7 +68,7 @@ func TestCommitMsgHookDriftFails(t *testing.T) {
 		t.Fatal("the fixture lost the marker, so it exercises the foreign-hook branch instead of drift")
 	}
 
-	c := checkHook(hook.Kinds()[0], idCommitMsgHook, hooksDirWith(t, "commit-msg", stale), nil)
+	c := checkHook(hook.Kinds()[0], idCommitMsgHook, installedWith(t, hook.Kinds()[0], stale), nil, nil)
 	if c.Status != StatusFail {
 		t.Errorf("a glyph-written hook that no longer matches this binary is %s, want fail: %s", c.Status, c.Observed)
 	}
@@ -73,7 +86,7 @@ func TestCommitMsgHookDriftFails(t *testing.T) {
 // noise that teaches a fleet to stop reading the report. The check must stay
 // silent AND still name the command, which is why the message is asserted too.
 func TestCommitMsgHookAbsentPasses(t *testing.T) {
-	c := checkHook(hook.Kinds()[0], idCommitMsgHook, hooksDirWith(t, "commit-msg", ""), nil)
+	c := checkHook(hook.Kinds()[0], idCommitMsgHook, installedWith(t, hook.Kinds()[0], ""), nil, nil)
 	if c.Status != StatusPass {
 		t.Errorf("no installed hook is %s, want pass — absence is the default state of every clone: %s", c.Status, c.Observed)
 	}
@@ -90,7 +103,7 @@ func TestCommitMsgHookAbsentPasses(t *testing.T) {
 // Reporting it as a failure would fail a repository over a decision glyph itself
 // declines to override.
 func TestCommitMsgHookForeignIsAdvice(t *testing.T) {
-	c := checkHook(hook.Kinds()[0], idCommitMsgHook, hooksDirWith(t, "commit-msg", "#!/bin/sh\ngrep -q '^feat' \"$1\" || exit 1\n"), nil)
+	c := checkHook(hook.Kinds()[0], idCommitMsgHook, installedWith(t, hook.Kinds()[0], "#!/bin/sh\ngrep -q '^feat' \"$1\" || exit 1\n"), nil, nil)
 	if c.Status != StatusAdvice {
 		t.Errorf("somebody else's hook is %s, want advice: %s", c.Status, c.Observed)
 	}
@@ -105,7 +118,7 @@ func TestCommitMsgHookForeignIsAdvice(t *testing.T) {
 // pass — the two recommend opposite actions, and only one of them is a claim
 // this check is entitled to make.
 func TestCommitMsgHookUnaskableIsUnknown(t *testing.T) {
-	c := checkHook(hook.Kinds()[0], idCommitMsgHook, "", errors.New("not a git repository"))
+	c := checkHook(hook.Kinds()[0], idCommitMsgHook, hook.Installed{}, nil, errors.New("not a git repository"))
 	if c.Status != StatusUnknown {
 		t.Errorf("an unaskable hooks directory is %s, want unknown: %s", c.Status, c.Observed)
 	}
@@ -125,7 +138,8 @@ func TestCommitMsgHookUnreadableIsUnknown(t *testing.T) {
 		t.Skip("this filesystem (or a root-equivalent uid) ignores mode 000, so unreadable cannot be staged")
 	}
 
-	c := checkHook(hook.Kinds()[0], idCommitMsgHook, dir, nil)
+	installed, err := hook.Kinds()[0].Read(dir)
+	c := checkHook(hook.Kinds()[0], idCommitMsgHook, installed, err, nil)
 	if c.Status != StatusUnknown {
 		t.Errorf("an unreadable hook is %s, want unknown: %s", c.Status, c.Observed)
 	}
@@ -159,13 +173,12 @@ func TestEveryHookKindIsCheckedTheSameWay(t *testing.T) {
 	ids := map[string]string{"commit-msg": idCommitMsgHook, "pre-push": idPrePushHook}
 	for _, k := range hook.Kinds() {
 		t.Run(k.Name, func(t *testing.T) {
-			absent := t.TempDir()
-			if c := checkHook(k, ids[k.Name], absent, nil); c.Status != StatusPass {
+			if c := checkHook(k, ids[k.Name], installedWith(t, k, ""), nil, nil); c.Status != StatusPass {
 				t.Errorf("no %s hook installed reported %q, want pass — absence is opt-out, not drift", k.Name, c.Status)
 			}
 
-			stale := hooksDirWith(t, k.Name, "#!/bin/sh\n# "+hook.Marker+"\nexit 0\n")
-			c := checkHook(k, ids[k.Name], stale, nil)
+			stale := installedWith(t, k, "#!/bin/sh\n# "+hook.Marker+"\nexit 0\n")
+			c := checkHook(k, ids[k.Name], stale, nil, nil)
 			if c.Status != StatusFail {
 				t.Errorf("a glyph-written %s hook that no longer matches reported %q, want fail — "+
 					"it fails in the quiet direction, so nothing else notices", k.Name, c.Status)
@@ -231,17 +244,17 @@ func TestCheckHookFiresVerdicts(t *testing.T) {
 // a standing choice, rare, and never a reason to flip ok.
 func TestPrePushHookSaysWhenNothingWasFired(t *testing.T) {
 	prePush := hook.Kinds()[1]
-	dir := hooksDirWith(t, prePush.Name, prePush.Script)
+	current := installedWith(t, prePush, prePush.Script)
 
 	fired := &HookProbe{Fired: true, Exit: int(core.CodeLint)}
-	if c := checkPrePushHook(dir, nil, fired, nil, nil, nil); c.Status != StatusPass {
+	if c := checkPrePushHook(current, nil, nil, fired, nil, nil, nil); c.Status != StatusPass {
 		t.Fatalf("pre-push current, commit-msg fired: status = %s (%s), want %s — the probe answered the PATH question", c.Status, c.Observed, StatusPass)
 	}
-	if c := checkPrePushHook(t.TempDir(), nil, nil, nil, nil, nil); c.Status != StatusPass {
+	if c := checkPrePushHook(installedWith(t, prePush, ""), nil, nil, nil, nil, nil, nil); c.Status != StatusPass {
 		t.Fatalf("no pre-push hook, nothing fired: status = %s (%s), want %s — absence vouches for nothing", c.Status, c.Observed, StatusPass)
 	}
 
-	c := checkPrePushHook(dir, nil, nil, nil, nil, nil)
+	c := checkPrePushHook(current, nil, nil, nil, nil, nil, nil)
 	if c.Status != StatusAdvice {
 		t.Fatalf("pre-push current, nothing fired: status = %s (%s), want %s", c.Status, c.Observed, StatusAdvice)
 	}
@@ -254,7 +267,7 @@ func TestPrePushHookSaysWhenNothingWasFired(t *testing.T) {
 
 	// Advice never touches ok: the rest of the report is the healthy one.
 	in := healthyInput(t)
-	in.HooksDir = dir
+	in.PrePushHook = current
 	r := Run(in)
 	if got := find(t, r, idPrePushHook).Status; got != StatusAdvice {
 		t.Fatalf("through Run: %s = %s, want %s", idPrePushHook, got, StatusAdvice)
@@ -273,7 +286,7 @@ func TestPrePushHookSaysWhenNothingWasFired(t *testing.T) {
 // one advice line naming the remote and the command that restores the ref.
 func TestPrePushHookSaysWhenNoRemoteHeadIsRecorded(t *testing.T) {
 	prePush := hook.Kinds()[1]
-	dir := hooksDirWith(t, prePush.Name, prePush.Script)
+	current := installedWith(t, prePush, prePush.Script)
 	fired := &HookProbe{Fired: true, Exit: int(core.CodeLint)}
 
 	for name, heads := range map[string]map[string]string{
@@ -281,12 +294,12 @@ func TestPrePushHookSaysWhenNoRemoteHeadIsRecorded(t *testing.T) {
 		"not read (no current pre-push)": nil,
 		"no remote at all":               {},
 	} {
-		if c := checkPrePushHook(dir, nil, fired, heads, nil, nil); c.Status != StatusPass {
+		if c := checkPrePushHook(current, nil, nil, fired, heads, nil, nil); c.Status != StatusPass {
 			t.Errorf("%s: status = %s (%s), want %s", name, c.Status, c.Observed, StatusPass)
 		}
 	}
 
-	c := checkPrePushHook(dir, nil, fired, map[string]string{"origin": "", "upstream": "main"}, nil, nil)
+	c := checkPrePushHook(current, nil, nil, fired, map[string]string{"origin": "", "upstream": "main"}, nil, nil)
 	if c.Status != StatusAdvice {
 		t.Fatalf("origin's head unrecorded: status = %s (%s), want %s", c.Status, c.Observed, StatusAdvice)
 	}
@@ -300,7 +313,7 @@ func TestPrePushHookSaysWhenNoRemoteHeadIsRecorded(t *testing.T) {
 	// A name git cannot place in a ref can record no head: set-head is no
 	// remedy there (it exits 129 unquoted, 1 quoted), renaming the remote is.
 	// The plain name beside it keeps set-head.
-	refless := checkPrePushHook(dir, nil, fired, map[string]string{"my fork": "", "plain": ""}, map[string]bool{"my fork": true}, nil)
+	refless := checkPrePushHook(current, nil, nil, fired, map[string]string{"my fork": "", "plain": ""}, map[string]bool{"my fork": true}, nil)
 	if refless.Status != StatusAdvice || !strings.Contains(refless.Observed, "my fork") {
 		t.Fatalf("an unplaceable remote: want advice naming it, got %s: %s", refless.Status, refless.Observed)
 	}
@@ -311,14 +324,14 @@ func TestPrePushHookSaysWhenNoRemoteHeadIsRecorded(t *testing.T) {
 		t.Errorf("a plain name keeps set-head: %q", refless.Fix)
 	}
 
-	both := checkPrePushHook(dir, nil, nil, map[string]string{"origin": ""}, nil, nil)
+	both := checkPrePushHook(current, nil, nil, nil, map[string]string{"origin": ""}, nil, nil)
 	if both.Status != StatusAdvice || !strings.Contains(both.Observed, "nothing was fired") || !strings.Contains(both.Observed, "origin") {
 		t.Errorf("nothing fired and no head recorded: want one advice carrying both, got %s: %s", both.Status, both.Observed)
 	}
 
 	// The heads are an input like any other: unread is unknown, never the
 	// pass that would say the hook can block.
-	if c := checkPrePushHook(dir, nil, fired, nil, nil, errors.New("git config --get-regexp: fatal: bad config")); c.Status != StatusUnknown {
+	if c := checkPrePushHook(current, nil, nil, fired, nil, nil, errors.New("git config --get-regexp: fatal: bad config")); c.Status != StatusUnknown {
 		t.Errorf("remote heads unreadable: status = %s (%s), want %s", c.Status, c.Observed, StatusUnknown)
 	}
 }

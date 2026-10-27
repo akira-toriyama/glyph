@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -1193,6 +1195,102 @@ func TestDoctorInterruptDuringRemoteHeadsReadCarriesOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	interruptDoctor(t, "the remote-heads read", answersHooksPath, answersTopLevel, answersTags, answersHeadTrees, answersActionFiles)
+}
+
+// TestDoctorSIGINTDuringTheProbeClaimCarriesOut pins the guard over the one
+// set of reads that hands no error back. With glyph's own commit-msg hook
+// installed, doctor asks whether the repository's glyph.toml claims the probe
+// message (probeClaimed), and the config reads that asks through
+// (hookCleanupMode: commit.cleanup, commit.verbose, core.commentChar) read a
+// git that did not answer as unset — right for the hook, whose lint must not
+// refuse over it, and nothing the guard sees. Measured before the fix: a
+// SIGINT landing in the claim's commit.cleanup read let the report finish —
+// exit 3 against a 404ing API, 0 against this test's healthy one — while the
+// same signal with glyph's pre-push hook beside it, whose remote-heads read
+// comes next and hands its error back, exited 130.
+//
+// A real SIGINT to a real process, staged as the measurement was: the probe
+// fires the hook, whose own `glyph lint` asks commit.cleanup first, and the
+// fake git blocks on the second ask — the claim's — and only then is the
+// signal sent. No pre-push hook is installed, so no later read carries the
+// abort for the claim.
+func TestDoctorSIGINTDuringTheProbeClaimCarriesOut(t *testing.T) {
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatalf("git: %v", err)
+	}
+	glyphBin := buildGlyph(t)
+	srv := doctorServer(t, apiRepoObject(healthySettings))
+	useDoctorCheckout(t, pinnedCaller)
+	installCurrentHook(t)
+	checkout, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bin := t.TempDir()
+	asked := filepath.Join(bin, "asked")
+	count := filepath.Join(bin, "count")
+	script := "#!/bin/sh\n" +
+		"case \"$*\" in\n" +
+		"  *\"config --get --end-of-options commit.cleanup\"*)\n" +
+		"    n=$(cat " + count + " 2>/dev/null || echo 0); n=$((n+1)); echo $n > " + count + "\n" +
+		"    if [ \"$n\" -eq 2 ]; then touch " + asked + "; exec sleep 30 </dev/null >/dev/null 2>&1; fi;;\n" +
+		"esac\n" +
+		"exec " + realGit + " \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil { // #nosec G306 -- a PATH shim must be executable
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(glyphBin, "doctor", "--json")
+	cmd.Dir = checkout
+	cmd.Env = testutil.GitEnv("akira-toriyama",
+		"PATH="+bin+string(os.PathListSeparator)+filepath.Dir(glyphBin)+string(os.PathListSeparator)+"/usr/bin:/bin",
+		"GITHUB_API_URL="+srv.URL, "GITHUB_REPOSITORY=akira-toriyama/glyph", "GITHUB_TOKEN=", "GH_TOKEN=")
+	var stdout strings.Builder
+	cmd.Stdout = &stdout
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("starting glyph: %v", err)
+	}
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		if _, err := os.Stat(asked); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			n, _ := os.ReadFile(count) //nolint:gosec // the shim's own counter
+			t.Fatalf("the fake git never reached the claim's commit.cleanup read (asks seen: %q)", strings.TrimSpace(string(n)))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+		t.Fatalf("delivering SIGINT: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		_ = cmd.Process.Kill()
+		<-done
+		t.Fatal("doctor did not exit within 30s of a SIGINT")
+	}
+	ws, ok := cmd.ProcessState.Sys().(syscall.WaitStatus)
+	if !ok {
+		t.Fatal("no wait status")
+	}
+	if ws.Signaled() {
+		t.Fatalf("doctor was KILLED by %v instead of classifying the interrupt and exiting 130 itself", ws.Signal())
+	}
+	if code := cmd.ProcessState.ExitCode(); code != int(core.CodeInterrupted) {
+		t.Fatalf("doctor exited %d, want %d — an interrupt in the probe's claim is the user's own abort, not a report", code, core.CodeInterrupted)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("doctor wrote a report over an interrupted run:\n%s", stdout.String())
+	}
 }
 
 // TestDoctorPinScanReadsEveryActionFileGitLists is D2b end to end, on a real

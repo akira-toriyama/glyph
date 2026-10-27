@@ -1,0 +1,15 @@
+diff --git a/internal/doctor/callerperms.go b/internal/doctor/callerperms.go
+index 83d163f..18bcbef 100644
+--- a/internal/doctor/callerperms.go
++++ b/internal/doctor/callerperms.go
+@@ -172,6 +172,10 @@ func callerGrants(body string) (map[string]string, bool) {
+ 		trimmed := strings.TrimLeft(line, " \t")
+ 		indent := indentOf(line)
+ 		if permIndent >= 0 {
++			if _, opens := blockScalarKey(line); opens {
++				permIndent = -1
++				continue
++			}
+ 			if indent > permIndent {
+ 				recordGrant(grants, trimmed)
+ 				continue
