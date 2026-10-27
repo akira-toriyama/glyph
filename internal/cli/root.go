@@ -26,7 +26,6 @@ import (
 	"context"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"github.com/akira-toriyama/glyph/v6/internal/core"
@@ -67,14 +66,7 @@ func finish(err error) int {
 	}
 	ce := core.AsError(err)
 	if ce == nil {
-		msg := err.Error()
-		// cobra's own errors arrive bare (SilenceErrors drops its "Run 'glyph
-		// --help'" tail), and the unknown-command reply is the one place a
-		// lost user lands with no next step — restore one.
-		if strings.HasPrefix(msg, "unknown command ") {
-			msg += " — run 'glyph --help' for the command list"
-		}
-		ce = core.Usagef("%s", msg)
+		ce = core.Usagef("%s", err.Error())
 	}
 	if !ce.Silent {
 		renderError(ce)
@@ -96,12 +88,12 @@ func newRootCmd() *cobra.Command {
 			"sigils. One binary lints commits, computes the next version, and renders\n" +
 			"notes. `glyph init --gemoji` (or --conventional) writes a starting\n" +
 			"glyph.toml; everything else reads the one at the repository root.",
-		Args:          cobra.NoArgs,
+		Args:          noArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       version.Resolve().String(),
 		// With no subcommand, print help and exit 0. An UNKNOWN subcommand is
-		// rejected by cobra.NoArgs before RunE runs, so it maps to usage(2).
+		// rejected by noArgs before RunE runs, so it maps to usage(2).
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
@@ -110,7 +102,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newVersionCmd(), newLintCmd(), newBumpCmd(), newNotesCmd(), newPreviewCmd(), newReleaseCmd(), newHookCmd(), newDoctorCmd(), newInitCmd(), newEmojiCmd())
 
 	// `completion` is cobra's, not ours, and it arrives with a hole the root's
-	// own cobra.NoArgs cannot cover: cobra sets Args: NoArgs on it but gives it
+	// own noArgs cannot cover: cobra sets Args: NoArgs on it but gives it
 	// no Run, and Command.execute() returns flag.ErrHelp for an unrunnable
 	// command BEFORE it validates arguments. So the NoArgs never ran, and
 	// `glyph completion bogus` printed the parent's help to STDOUT and exited 0
@@ -123,14 +115,16 @@ func newRootCmd() *cobra.Command {
 	// error at every subsequent shell start, with nothing having failed.
 	//
 	// Making the parent RUNNABLE is the whole fix: execute() then reaches
-	// ValidateArgs and cobra's own NoArgs rejects the argument. `glyph hook`,
-	// this repo's own parent command, has carried both an Args and a help RunE
-	// since it was written (cmd_hook.go) — this only gives cobra's command the
-	// same pair. A bare `glyph completion` still prints help at 0, exactly as
-	// `glyph hook` and bare `glyph` do.
+	// ValidateArgs, and noArgs — swapped in for cobra's NoArgs, so the refusal
+	// points at `glyph completion --help` like every other parent's — rejects
+	// the argument. `glyph hook`, this repo's own parent command, has carried
+	// both an Args and a help RunE since it was written (cmd_hook.go) — this
+	// only gives cobra's command the same pair. A bare `glyph completion` still
+	// prints help at 0, exactly as `glyph hook` and bare `glyph` do.
 	root.InitDefaultCompletionCmd()
 	for _, c := range root.Commands() {
 		if c.Name() == "completion" {
+			c.Args = noArgs
 			c.RunE = func(cmd *cobra.Command, args []string) error { return cmd.Help() }
 		}
 	}

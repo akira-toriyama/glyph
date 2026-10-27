@@ -1,16 +1,16 @@
 diff --git a/internal/doctor/config.go b/internal/doctor/config.go
-index e18925d..29e9214 100644
+index edd14c5..28fa4aa 100644
 --- a/internal/doctor/config.go
 +++ b/internal/doctor/config.go
-@@ -48,7 +48,6 @@ func checkConfig(root string, rootErr error, cfg *config.Config, loadErr error)
- 		c.Fix = "re-run from inside a git checkout of the repository being diagnosed"
+@@ -52,7 +52,6 @@ func checkConfig(root string, rootErr error, cfg *config.Config, loadErr error)
+ 		c.Fix = fixOutsideCheckout
  		return c
  	}
 -	notAFile, isNotAFile := errors.AsType[*config.NotAFileError](loadErr)
  	_, isPathErr := errors.AsType[*fs.PathError](loadErr)
  	switch {
  	case loadErr == nil:
-@@ -65,14 +64,6 @@ func checkConfig(root string, rootErr error, cfg *config.Config, loadErr error)
+@@ -69,14 +68,6 @@ func checkConfig(root string, rootErr error, cfg *config.Config, loadErr error)
  			"gate down, which is exactly the state this check exists to name before the pin moves"
  		c.Fix = "glyph init --gemoji (or --conventional) — then edit the generated glyph.toml freely"
  		return c

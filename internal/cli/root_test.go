@@ -36,16 +36,53 @@ func TestFinishSilentInterrupt(t *testing.T) {
 // TestFinishBareErrorIsUsage: a non-*core.Error reaching finish can only be a
 // cobra parse/usage problem (app and core always classify), so it maps to
 // usage (2) with the envelope rendered — the ONE place the unclassified
-// default flips from API to usage.
+// default flips from API to usage. finish carries cobra's message verbatim and
+// appends nothing: a stray positional's remedy is named at the command, by
+// noArgs (TestStrayPositionalNamesItsRemedy), so a bare unknown-command
+// message passes through as cobra wrote it.
 func TestFinishBareErrorIsUsage(t *testing.T) {
-	stderr := captureErr(t)
-	code := finish(errors.New("unknown flag: --nope"))
-	if code != 2 {
-		t.Fatalf("finish(bare error) = %d, want 2 (usage)", code)
+	for _, msg := range []string{"unknown flag: --nope", `unknown command "nope" for "glyph"`} {
+		stderr := captureErr(t)
+		code := finish(errors.New(msg))
+		if code != 2 {
+			t.Fatalf("finish(%q) = %d, want 2 (usage)", msg, code)
+		}
+		env := decodeErrorEnvelope(t, stderr.String())
+		if env.Code != 2 || env.Message != msg {
+			t.Fatalf("envelope = %+v, want code 2 carrying the cobra message %q unchanged", env, msg)
+		}
 	}
-	env := decodeErrorEnvelope(t, stderr.String())
-	if env.Code != 2 || env.Message != "unknown flag: --nope" {
-		t.Fatalf("envelope = %+v, want code 2 carrying the cobra message", env)
+}
+
+// TestStrayPositionalNamesItsRemedy: a positional no command takes is usage
+// (2) everywhere, but the remedy depends on where it landed. On a command with
+// subcommands — the root, `hook`, cobra's `completion` — it is a mistyped
+// subcommand of THAT command, answered with its own command list. On a leaf
+// given a flag that takes a value it is almost always that value holding
+// spaces, left unquoted; with no flag, or only bool flags, nothing could have
+// been left unquoted, so the refusal names no such cause.
+func TestStrayPositionalNamesItsRemedy(t *testing.T) {
+	for name, tc := range map[string]struct {
+		args []string
+		want string
+	}{
+		"the root":               {[]string{"no-such-command"}, `unknown command "no-such-command" for "glyph" — run 'glyph --help' for the command list`},
+		"a group":                {[]string{"hook", "bogus"}, `unknown command "bogus" for "glyph hook" — run 'glyph hook --help' for the command list`},
+		"cobra's completion":     {[]string{"completion", "zshh"}, `unknown command "zshh" for "glyph completion" — run 'glyph completion --help' for the command list`},
+		"a leaf, a value flag":   {[]string{"lint", "--message", ":bug:~", "fix", "it"}, `glyph lint takes no arguments (got "fix") — quote a flag value that holds spaces`},
+		"a since-tag leaf":       {[]string{"bump", "--range", "a..b", "extra"}, `glyph bump takes no arguments (got "extra") — quote a flag value that holds spaces`},
+		"a leaf, no flag":        {[]string{"init", "gemoji"}, `glyph init takes no arguments (got "gemoji")`},
+		"a leaf, only bool flag": {[]string{"version", "--json", "foo"}, `glyph version takes no arguments (got "foo")`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			code, stdout, stderr := runGlyph(t, tc.args...)
+			if code != int(core.CodeUsage) || stdout != "" {
+				t.Fatalf("glyph %v = %d stdout %q, want exactly %d and nothing on stdout\nstderr: %s", tc.args, code, stdout, core.CodeUsage, stderr)
+			}
+			if env := decodeErrorEnvelope(t, stderr); env.Code != int(core.CodeUsage) || env.Message != tc.want {
+				t.Errorf("glyph %v envelope = %+v, want code %d and message\n%s", tc.args, env, core.CodeUsage, tc.want)
+			}
+		})
 	}
 }
 

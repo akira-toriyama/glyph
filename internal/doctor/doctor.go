@@ -474,9 +474,9 @@ func checkMergeCommit(in Input) Check {
 		return c
 	}
 	c.Status = StatusAdvice
-	c.Message = "merge commits are allowed. The unconditional data loss is gone — the release walk resolves and expands a " +
-		"merge commit like a squash commit, and even with the API fully dark the merged branch's commits are in the range and " +
-		"carry their own gitmoji, so the verdict comes out the same. What is left is a window and a convention. The window: a " +
+	c.Message = "merge commits are allowed. The release walk resolves and expands a merge commit like a squash commit, and " +
+		"even with the API fully dark the merged branch's commits are in the range and carry their own sigils, so the " +
+		"verdict comes out the same. What is left is a window and a convention. The window: a " +
 		"merge-merged pull's branch commits stand aside for its merge point, so if that merge point alone is unresolved — " +
 		"GitHub indexes it after the commits it merges, or an automation authored it and the author gate skipped it before " +
 		"the API — the whole pull counts none. The walk names the lost pull, and the release refuses the incomplete walk " +
@@ -510,11 +510,11 @@ func checkRebaseMerge(in Input) Check {
 		"commit resolves and expands the whole pull request through the API exactly as a squash commit does — a subject " +
 		"inside it that no pattern claims fails the release, it is NOT downgraded to a warning — and the earlier replayed commits resolve as " +
 		"covered by the same pull request and are skipped, so nothing is counted twice. What it costs is one API round-trip " +
-		"per replayed commit instead of one per pull request. The dedup key used to cost more: a rebase always writes new " +
-		"shas, which appear in no pull request's commit listing, so inside the API-lag window a replayed commit was folded " +
-		"in twice. The walk now aligns the listing against the run of commits ending at the canonical one and counts it once " +
-		"(t-8xsb); what remains is a rebase that cannot be aligned — one that dropped a commit it was asked to replay, " +
-		"already upstream or rebased empty — where the double fold survives"
+		"per replayed commit instead of one per pull request. A rebase always writes new shas, which appear in no pull " +
+		"request's commit listing; the walk aligns the listing against the run of commits ending at the canonical one and " +
+		"counts a replayed commit once. What remains is a rebase that cannot be aligned — one that dropped a commit it was " +
+		"asked to replay, already upstream or rebased empty — where, inside the API-lag window, a replayed commit can " +
+		"still be counted twice"
 	c.Fix = fmt.Sprintf("gh api -X PATCH repos/%s -F allow_rebase_merge=false (optional — this is a convention, not a defect)", in.Repo)
 	return c
 }

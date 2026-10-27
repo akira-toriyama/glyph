@@ -25,12 +25,11 @@ func newHookCmd() *cobra.Command {
 			"written, pre-push lints the commits a push would add — moving the convention\n" +
 			"check from CI to the moment the work happens.\n\n" +
 			"Neither hook holds a copy of the convention — both call glyph, so they cannot\n" +
-			"fall out of lockstep when the rules move, which is exactly what the\n" +
-			"hand-written per-repo regexes they replace did. Without glyph on PATH they warn\n" +
+			"fall out of lockstep when the rules move. Without glyph on PATH they warn\n" +
 			"and let you through, and they block for ONE reason only: lint's\n" +
 			"convention-violation exit. The commit-lint CI job stays the authority; this is\n" +
 			"early warning, and a tool that is unwell must never stop anyone committing.",
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newHookInstallCmd(), newHookPrePushCmd())
@@ -77,12 +76,12 @@ func newHookInstallCmd() *cobra.Command {
 		Use:       "install [kind...]",
 		Short:     "Install glyph's git hooks into this repository",
 		ValidArgs: hook.KindNames(),
-		Long: "install writes glyph's git hooks: a commit-msg hook that pipes the message\n" +
-			"being written through `glyph lint --stdin`, and a pre-push hook that lints the\n" +
-			"commits a push would add — so a convention violation surfaces at authoring time\n" +
-			"instead of in CI. The hooks carry no copy of the rules — that is what makes\n" +
-			"them drift-proof, and it is why the hand-written per-repo regexes they replace\n" +
-			"kept enforcing a retired form.\n\n" +
+		Long: "install writes glyph's git hooks: a commit-msg hook that hands git's message\n" +
+			"file to `glyph lint --stdin`, and a pre-push hook that lints the commits a push\n" +
+			"would add — so a convention violation surfaces at authoring time instead of in\n" +
+			"CI. The hooks carry no copy of the rules: each calls the installed glyph,\n" +
+			"which reads the repository's glyph.toml at run time, so the rules a hook\n" +
+			"enforces cannot fall out of lockstep when they move.\n\n" +
 			"The destination honours core.hooksPath, so a repo that tracks its hooks under\n" +
 			"scripts/hooks is written there (and the change shows up in git status, to be\n" +
 			"committed like any other file).\n\n" +
@@ -93,7 +92,7 @@ func newHookInstallCmd() *cobra.Command {
 			"Name kinds to install a subset — the escape when one of them is somebody\n" +
 			"else's file. Nothing is written unless every named kind can be: a run that\n" +
 			"refused halfway would report failure over a tree that had already changed.",
-		Args: cobra.OnlyValidArgs,
+		Args: hookKindArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kinds, err := resolveHookKinds(args)
 			if err != nil {
@@ -143,6 +142,16 @@ func newHookInstallCmd() *cobra.Command {
 		return checkExclusiveBool(cmd, "print", "json")
 	}
 	return cmd
+}
+
+// hookKindArgs is install's Args guard: every positional must name a hook kind
+// glyph writes, refused with resolveHookKinds' own sentence — the one refusal
+// for that mistake — in place of cobra.OnlyValidArgs, whose `invalid argument
+// "bogus" for "glyph hook install"` names neither the kinds nor where to find
+// them.
+func hookKindArgs(_ *cobra.Command, args []string) error {
+	_, err := resolveHookKinds(args)
+	return err
 }
 
 // resolveHookKinds maps the command's positional arguments to hook kinds. No

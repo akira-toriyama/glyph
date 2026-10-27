@@ -24,7 +24,7 @@ func newVersionCmd() *cobra.Command {
 			"The rules are NOT in the binary: the repository's glyph.toml decides the\n" +
 			"grammar, so this version identifies the engine alone, never the convention\n" +
 			"in force.",
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			info := version.Resolve()
 			if versionJSON {

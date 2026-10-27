@@ -1,5 +1,5 @@
 diff --git a/internal/doctor/callerperms.go b/internal/doctor/callerperms.go
-index 7b64785..0ffe623 100644
+index c46a23a..b8f80cc 100644
 --- a/internal/doctor/callerperms.go
 +++ b/internal/doctor/callerperms.go
 @@ -182,7 +182,7 @@ func permsExpected(glyph string) string {
@@ -10,4 +10,4 @@ index 7b64785..0ffe623 100644
 +	if err != nil && (!rootVerified || !errors.Is(err, fs.ErrNotExist) || true) {
  		c.Status = StatusUnknown
  		c.Observed = fmt.Sprintf("the workflows directory could not be listed: %v", err)
- 		c.Message = "doctor reads the LOCAL checkout for this check, so it must run from the repository root. " + consequence
+ 		if !rootVerified {

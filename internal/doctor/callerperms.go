@@ -185,8 +185,13 @@ func listWorkflows(root string, rootVerified bool, c *Check, consequence string)
 	if err != nil && (!rootVerified || !errors.Is(err, fs.ErrNotExist)) {
 		c.Status = StatusUnknown
 		c.Observed = fmt.Sprintf("the workflows directory could not be listed: %v", err)
-		c.Message = "doctor reads the LOCAL checkout for this check, so it must run from the repository root. " + consequence
-		c.Fix = "re-run from the repository root (cd into the checkout)"
+		if !rootVerified {
+			c.Message = "doctor reads the LOCAL checkout for this check, and git could not name one here. " + consequence
+			c.Fix = fixOutsideCheckout
+			return nil, true
+		}
+		c.Message = "the checkout's workflows were never read. " + consequence
+		c.Fix = unlistableFix(dir, err)
 		return nil, true
 	}
 	return entries, false

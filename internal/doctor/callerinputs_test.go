@@ -173,3 +173,58 @@ func TestAbsentWorkflowsDirSplitsOnRootProvenance(t *testing.T) {
 		})
 	}
 }
+
+// TestUnlistableWorkflowsDirRemedyNamesTheCause holds the could-not-run arms
+// of a workflows listing to the remedy of their cause. Without a git-named top
+// level the remedy is a checkout — and only that: outside one doctor does not
+// start without --repo, so the flag is no advice. Under one, doctor already
+// reads that root from any subdirectory, so "the repository root" names a
+// cause that is not there: a listing refused for permissions is the
+// directory's permissions, and anything else at the path (a regular file
+// here) must become a listable directory — the split checkConfig draws for
+// glyph.toml.
+func TestUnlistableWorkflowsDirRemedyNamesTheCause(t *testing.T) {
+	const outside = "re-run from inside a git checkout of the repository being diagnosed"
+	const refused = "fix the directory's permissions and re-run"
+	checks := map[string]func(string, bool) Check{
+		idWorkflowPinned: func(r string, v bool) Check { return checkWorkflowPins(r, v, nil, nil) },
+		idCallerPerms:    func(r string, v bool) Check { return checkCallerPermissions(r, v, "dev") },
+		idCallerInputs:   func(r string, v bool) Check { return checkCallerInputs(r, v, "dev") },
+	}
+	for id, fn := range checks {
+		t.Run(id, func(t *testing.T) {
+			check := func(arm string, c Check, fix string) {
+				t.Helper()
+				if c.Status != StatusUnknown || c.Fix != fix {
+					t.Errorf("%s: status %s, fix %q — want %s and %q", arm, c.Status, c.Fix, StatusUnknown, fix)
+				}
+				if s := c.Message + " " + c.Fix; strings.Contains(s, "repository root") {
+					t.Errorf("%s: %q sends the user to the repository root, which doctor finds from any subdirectory", arm, s)
+				}
+			}
+
+			check("no git-named root", fn(t.TempDir(), false), outside)
+
+			root := checkoutAt(t, map[string]string{".github/workflows": "not a directory\n"})
+			check("a regular file at the workflows path", fn(root, true),
+				"make "+filepath.Join(root, ".github", "workflows")+" a directory that can be listed, then re-run")
+
+			root = checkoutAt(t, map[string]string{".github/workflows/": ""})
+			lockDir(t, filepath.Join(root, ".github", "workflows"))
+			check("an unlistable directory under a git-named root", fn(root, true), refused)
+		})
+	}
+}
+
+// lockDir makes dir unlistable, skipping the test where mode 000 does not stop
+// a listing (root, or a filesystem that ignores modes).
+func lockDir(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.Chmod(dir, 0o000); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	if _, err := os.ReadDir(dir); err == nil {
+		t.Skip("this filesystem (or a root-equivalent uid) ignores mode 000, so an unlistable directory cannot be staged")
+	}
+}

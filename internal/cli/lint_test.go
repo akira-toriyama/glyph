@@ -406,6 +406,44 @@ func TestLintStdinViolation(t *testing.T) {
 	}
 }
 
+// TestAuthoringRefusalOffersNoAuthorExclusion: --stdin and --message judge a
+// message no commit carries yet, under the empty author — an author
+// exclude_authors cannot name — so their refusal must not offer to exclude it.
+// --range judges the commit's real author and keeps that remedy.
+func TestAuthoringRefusalOffersNoAuthorExclusion(t *testing.T) {
+	dir, base := testutil.NewTaggedRepo(t)
+	const unclaimed = "no gitmoji in this one"
+	testutil.Commit(t, dir, "akira-toriyama", unclaimed)
+	t.Chdir(dir)
+	detail := func(t *testing.T, args ...string) string {
+		t.Helper()
+		code, _, stderr := runGlyph(t, args...)
+		if code != 3 {
+			t.Fatalf("glyph %v exited %d, want 3\nstderr: %s", args, code, stderr)
+		}
+		var details []struct {
+			Detail string `json:"detail"`
+		}
+		// --range annotates each finding above the envelope; the sieve keeps the envelope alone.
+		env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "\n{")+1:])
+		if err := json.Unmarshal(env.Details, &details); err != nil || len(details) != 1 {
+			t.Fatalf("glyph %v: details %+v (decode: %v), want one finding", args, details, err)
+		}
+		return details[0].Detail
+	}
+
+	setStdin(t, unclaimed+"\n")
+	if got := detail(t, "lint", "--stdin"); strings.Contains(got, "exclude the author") {
+		t.Errorf("lint --stdin detail %q offers to exclude the author, which no glyph.toml can do for a message judged under none", got)
+	}
+	if got := detail(t, "lint", "--message", unclaimed); strings.Contains(got, "exclude the author") {
+		t.Errorf("lint --message detail %q offers to exclude the author, which no glyph.toml can do for a message judged under none", got)
+	}
+	if got := detail(t, "lint", "--range", base+"..HEAD"); !strings.Contains(got, ", or exclude the author") {
+		t.Errorf("lint --range detail %q dropped the author exclusion, a remedy a history gate can still apply", got)
+	}
+}
+
 // TestLintModeFlagsAreExclusiveAndRequired: exactly one of --range / --pr /
 // --message / --stdin — none or two is a usage error (exit 2).
 func TestLintModeFlagsAreExclusiveAndRequired(t *testing.T) {
