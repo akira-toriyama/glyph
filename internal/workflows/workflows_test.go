@@ -209,13 +209,18 @@ func TestReleaseNotesReachGoReleaser(t *testing.T) {
 	workflow := repoFile(t, filepath.Join(".github", "workflows", "goreleaser.yml"))
 	config := repoFile(t, ".goreleaser.yaml")
 
-	// Half one: the workflow generates the notes with glyph and hands them over.
+	// Half one: the workflow renders the notes with glyph — through the
+	// release-notes action since t-4fpn — and hands them over.
 	body := code(workflow)
-	for _, want := range []string{"glyph notes", "--release-notes"} {
+	for _, want := range []string{"./.github/actions/release-notes", "--release-notes"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("goreleaser.yml no longer contains %q; glyph's own releases must be "+
 				"described by `glyph notes`, not GoReleaser's raw commit subjects (t-8hqn)", want)
 		}
+	}
+	if !strings.Contains(code(repoFile(t, filepath.FromSlash(releaseNotesAction))), "notes --since-tag") {
+		t.Error("the release-notes action no longer runs `glyph notes`; goreleaser.yml hands GoReleaser " +
+			"a file nothing wrote")
 	}
 
 	// Half two: the changelog pipe stays enabled so that flag is actually read.
@@ -245,6 +250,11 @@ func TestReleaseNotesReachGoReleaser(t *testing.T) {
 // any shell re-derivation of a version order (`git tag --sort=v:refname`).
 var gitVersionSort = regexp.MustCompile(`--sort=-?v:refname`)
 
+// gitDescribe matches the other shell predecessor resolver: the one the
+// consumers' own notes steps carried when t-4fpn measured the fleet, which the
+// release-notes action is built to replace.
+var gitDescribe = regexp.MustCompile(`\bgit describe\b`)
+
 // TestReleaseNotesWalkBaseIsResolvedByGlyph guards where the notes step's walk
 // base comes from: the binary, never shell (t-s5n4).
 //
@@ -258,29 +268,50 @@ var gitVersionSort = regexp.MustCompile(`--sort=-?v:refname`)
 // commits re-folded into the notes), and an EMPTY predecessor for the
 // lowest-sorted tag (exit 1 — no binaries, no cask, no attestation, behind a
 // tag that already existed). `--since-tag=below:` is the binary answering the
-// same question with every tag parsed and compared as a version.
+// same question with every tag parsed and compared as a version. The
+// consumers' copies of the step resolved it with `git describe --tags
+// --abbrev=0 HEAD^` — an ancestry walk to the nearest tag, which takes a
+// release candidate as the base (v3.3.0-rc.2 for v3.3.0, where below: walks
+// from v3.2.0) — so the action built to replace them (t-4fpn) is held to the
+// same rule.
 func TestReleaseNotesWalkBaseIsResolvedByGlyph(t *testing.T) {
-	workflow := repoFile(t, filepath.Join(".github", "workflows", "goreleaser.yml"))
-	body := code(workflow)
+	workflow := code(repoFile(t, filepath.Join(".github", "workflows", "goreleaser.yml")))
+	action := code(repoFile(t, filepath.FromSlash(releaseNotesAction)))
 
-	// The affirmative half: the notes walk hands the predecessor question to
-	// the binary, bound to the tag being cut.
-	if !strings.Contains(body, `--since-tag="below:$GITHUB_REF_NAME"`) {
-		t.Error(`goreleaser.yml no longer walks --since-tag="below:$GITHUB_REF_NAME"; the walk base ` +
+	// The affirmative half: the action hands the predecessor question to the
+	// binary, bound to the tag being cut, and goreleaser.yml hands the action
+	// the tag it is cutting.
+	if !strings.Contains(action, `--since-tag="below:$tag"`) {
+		t.Error(`the release-notes action no longer walks --since-tag="below:$tag"; the walk base ` +
 			"must be resolved by glyph itself — a shell derivation re-inherits the tag-order defect " +
 			"012bfba removed from the binary (t-s5n4)")
 	}
+	if !strings.Contains(action, `tag="${TAG:-${GITHUB_REF_NAME:-}}"`) {
+		t.Error("the release-notes action no longer takes the tag from its input, else from the ref the " +
+			"job runs on — a tag-push job's GITHUB_REF_NAME is the tag being cut")
+	}
+	if !strings.Contains(workflow, "tag: ${{ github.ref_name }}") {
+		t.Error("goreleaser.yml no longer hands the action the tag it is cutting")
+	}
 
-	// Positive control for the absence below: the pattern must still recognise
-	// the retired derivation, or the guard is asserting nothing.
+	// Positive controls for the absences below: each pattern must still
+	// recognise the retired derivation it exists to keep out.
 	retired := `prev="$(git tag --list 'v*' --sort=v:refname | awk -v cur="$GITHUB_REF_NAME" '...')"`
 	if !gitVersionSort.MatchString(retired) {
 		t.Fatal("canary: gitVersionSort no longer matches the retired shell derivation it exists to keep out")
 	}
-	if loc := gitVersionSort.FindString(body); loc != "" {
-		t.Errorf("goreleaser.yml's executable body reads git's tag sort (%q): that is a refname "+
-			"sort, not a version order — with a prerelease tag present it hands back a wrong or "+
-			"empty walk base; resolve the base inside glyph (--since-tag=below:) instead", loc)
+	consumers := `base="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^ 2>/dev/null)"`
+	if !gitDescribe.MatchString(consumers) {
+		t.Fatal("canary: gitDescribe no longer matches the consumers' retired derivation it exists to keep out")
+	}
+	for name, body := range map[string]string{"goreleaser.yml": workflow, "the release-notes action": action} {
+		for _, re := range []*regexp.Regexp{gitVersionSort, gitDescribe} {
+			if loc := re.FindString(body); loc != "" {
+				t.Errorf("%s's executable body resolves the walk base in shell (%q): a refname sort or an "+
+					"ancestry walk, not a version order — with a prerelease tag present it hands back a wrong or "+
+					"empty walk base; resolve the base inside glyph (--since-tag=below:) instead", name, loc)
+			}
+		}
 	}
 }
 
@@ -317,11 +348,21 @@ func TestCompositeActionIsSingleSource(t *testing.T) {
 	// loads the manifest until a workflow actually calls the action. Checked
 	// against comment-stripped text: GitHub's YAML parser drops comments before
 	// the template evaluator runs, so a github expression in the header's usage
-	// example (a comment) is fine — only a live one breaks the load.
-	if strings.Contains(body, "${{ github.") || strings.Contains(body, "${{github.") {
-		t.Error("install action.yml references the github context in a `${{ github.* }}` " +
-			"expression outside a comment; that context is unavailable at manifest-load time " +
-			"and fails the action load. Pass what you need as an input from the calling workflow step instead.")
+	// example (a comment) is fine — only a live one breaks the load. Every
+	// composite action, not the install action alone: the second one shipped
+	// with the same manifest shape and the same way to break it.
+	actions, err := filepath.Glob(filepath.Join("..", "..", ".github", "actions", "*", "action.yml"))
+	if err != nil || len(actions) < 2 {
+		t.Fatalf("listing the composite actions: %v (%d found, want the install and release-notes actions at least)", err, len(actions))
+	}
+	for _, path := range actions {
+		rel := filepath.Join(".github", "actions", filepath.Base(filepath.Dir(path)), "action.yml")
+		manifest := code(repoFile(t, rel))
+		if strings.Contains(manifest, "${{ github.") || strings.Contains(manifest, "${{github.") {
+			t.Errorf("%s references the github context in a `${{ github.* }}` "+
+				"expression outside a comment; that context is unavailable at manifest-load time "+
+				"and fails the action load. Pass what you need as an input from the calling workflow step instead.", rel)
+		}
 	}
 
 	// It must serve BOTH runner families: the whole point of extracting it was

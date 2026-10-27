@@ -1,24 +1,23 @@
-diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
-index a14a4b2..85d3576 100644
---- a/.github/workflows/goreleaser.yml
-+++ b/.github/workflows/goreleaser.yml
-@@ -115,18 +115,7 @@ jobs:
-           # other exit is a real failure and keeps its code: 4 clears on a
-           # re-run, 2 is a broken invocation.
-           go build -o "$RUNNER_TEMP/glyph" ./cmd/glyph
--          status=0
--          "$RUNNER_TEMP/glyph" notes --since-tag="below:$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md" || status=$?
--          if [ "$status" -eq 1 ]; then
--            echo "::warning::no release-worthy commits below $GITHUB_REF_NAME — publishing with a placeholder body"
--            printf 'No release-worthy changes in %s.\n' "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
--          elif [ "$status" -eq 3 ]; then
--            echo "::warning::the walk below $GITHUB_REF_NAME reaches a commit glyph refuses, and the tag was cut where the refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear the wedge — publishing with a placeholder body; glyph's error above names the commit and that point"
--            printf "No release notes for %s: the walk below it reaches a commit glyph refuses, and this tag was cut where glyph's refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear the wedge. The release job's log carries glyph's error, which names the commit and that point.\n" "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
--          elif [ "$status" -ne 0 ]; then
--            echo "::error::glyph notes failed (exit $status)"
--            exit "$status"
--          fi
-+          "$RUNNER_TEMP/glyph" notes --since-tag="below:$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
-           cat "$RUNNER_TEMP/release-notes.md"
- 
-       - name: GoReleaser
+diff --git a/.github/actions/release-notes/action.yml b/.github/actions/release-notes/action.yml
+index f537182..7dd9401 100644
+--- a/.github/actions/release-notes/action.yml
++++ b/.github/actions/release-notes/action.yml
+@@ -114,17 +114,7 @@ runs:
+         # other exit is a real failure and keeps its code: 4 clears on a
+         # re-run, 2 is a broken invocation.
+         status=0
+-        "$GLYPH" notes --since-tag="below:$tag" > "$out" || status=$?
+-        if [ "$status" -eq 1 ]; then
+-          echo "::warning::no release-worthy commits below $tag — publishing with a placeholder body"
+-          printf 'No release-worthy changes in %s.\n' "$tag" > "$out"
+-        elif [ "$status" -eq 3 ]; then
+-          echo "::warning::the walk below $tag reaches a commit glyph refuses, and the tag was cut where the refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear the wedge — publishing with a placeholder body; glyph's error above names the commit and that point"
+-          printf "No release notes for %s: the walk below it reaches a commit glyph refuses, and this tag was cut where glyph's refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear the wedge. The release job's log carries glyph's error, which names the commit and that point.\n" "$tag" > "$out"
+-        elif [ "$status" -ne 0 ]; then
+-          echo "::error::glyph notes failed (exit $status)"
+-          exit "$status"
+-        fi
++        "$GLYPH" notes --since-tag="below:$tag" > "$out"
+         {
+           echo "file=$out"
+           echo "status=$status"

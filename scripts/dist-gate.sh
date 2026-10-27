@@ -14,7 +14,7 @@
 #   -> exit 1.
 #
 # What counts as the distribution layer is DIST_PATTERN below: the three
-# reusable workflows and goreleaser.yml, the composite install action, and
+# reusable workflows and goreleaser.yml, the composite actions, and
 # .goreleaser.yaml. Deliberately absent: build.yml / govulncheck.yml (this
 # repo's own CI, shipped to nobody) and the fleet-synced consumers
 # (commit-lint.yml, task-status.yml, ...) whose canonical copies live in

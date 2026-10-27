@@ -255,8 +255,22 @@ itself the highest, and the range would be empty. `--since-tag=below:vX.Y.Z`
 resolves the highest version tag HEAD contains strictly **below** the bound
 instead, so cutting a v0.8.3 hotfix while v0.9.0 exists walks from v0.8.2,
 and with nothing below the bound it walks the whole history, as a first
-release does. glyph's own `goreleaser.yml` renders its release notes with
-`glyph notes --since-tag="below:$GITHUB_REF_NAME"`.
+release does. The `release-notes` action is that step, packaged: it walks
+`below:` the tag, ships the two exits that are permanent at tag time — `1`,
+nothing release-worthy, and `3`, the wedge escape's own tag (DESIGN §4) — as a
+placeholder body that says why, and fails the job on any other. glyph's own
+`goreleaser.yml` runs it over the binary it just built; a repository that cuts
+tags by hand runs it over the installed one and hands GoReleaser the file:
+
+```yaml
+# after actions/checkout with fetch-depth: 0 — the walk reads the tags and their history
+- uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z
+  with: { version: vX.Y.Z, token: ${{ github.token }} }
+- uses: akira-toriyama/glyph/.github/actions/release-notes@vX.Y.Z
+  id: notes
+  with: { token: ${{ github.token }} }
+# then GoReleaser: release --clean --release-notes ${{ steps.notes.outputs.file }}
+```
 
 Two wired-in behaviours worth knowing before you read them out of the YAML:
 the lint caller's optional `push: branches: [main]` arm runs the same rules

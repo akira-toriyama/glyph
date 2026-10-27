@@ -247,7 +247,7 @@ func jqEq(c core.Code) string { return fmt.Sprintf(`.error.code == %d`, int(c)) 
 func TestOutOfGoConsumersBranchOnTheContractIntegers(t *testing.T) {
 	lint := filepath.Join(".github", "workflows", "lint.yml")
 	release := filepath.Join(".github", "workflows", "release.yml")
-	goreleaser := filepath.Join(".github", "workflows", "goreleaser.yml")
+	releaseNotes := filepath.FromSlash(releaseNotesAction)
 	prVerdict := filepath.Join(".github", "workflows", "pr-verdict.yml")
 	smoke := filepath.Join("scripts", "smoke.sh")
 	preflight := filepath.Join("scripts", "fleet-preflight.sh")
@@ -270,13 +270,14 @@ func TestOutOfGoConsumersBranchOnTheContractIntegers(t *testing.T) {
 		{lint, core.CodeLint, shEq},
 		{release, core.CodeNoRelease, shEq},
 		{release, core.CodeOK, shNe},
-		{goreleaser, core.CodeNoRelease, shEq},
-		// The tag-time notes step ships the gate code as it ships 1: the
+		{releaseNotes, core.CodeNoRelease, shEq},
+		// The tag-time notes action ships the gate code as it ships 1: the
 		// walk below the wedge escape's own tag reaches the commit it was cut
-		// to clear, on every re-run (t-bcdz). A stale integer here kills that tag's release job
-		// again, behind a tag that already exists.
-		{goreleaser, core.CodeLint, shEq},
-		{goreleaser, core.CodeOK, shNe},
+		// to clear, on every re-run (t-bcdz). A stale integer here kills that
+		// tag's release job again, behind a tag that already exists — in
+		// goreleaser.yml and in every fleet repository that runs the action.
+		{releaseNotes, core.CodeLint, shEq},
+		{releaseNotes, core.CodeOK, shNe},
 		{prVerdict, core.CodeOK, shNe},
 		{smoke, core.CodeUsage, shNe},
 		{smoke, core.CodeLint, shNe},
@@ -315,6 +316,13 @@ func TestOutOfGoConsumersBranchOnTheContractIntegers(t *testing.T) {
 	var files []string
 	for _, name := range workflowFiles(t) {
 		files = append(files, filepath.Join(".github", "workflows", name))
+	}
+	actions, err := filepath.Glob(filepath.Join("..", "..", ".github", "actions", "*", "action.yml"))
+	if err != nil || len(actions) == 0 {
+		t.Fatalf("listing the composite actions: %v (%d found)", err, len(actions))
+	}
+	for _, a := range actions {
+		files = append(files, filepath.Join(".github", "actions", filepath.Base(filepath.Dir(a)), "action.yml"))
 	}
 	scripts := filepath.Join("..", "..", "scripts")
 	entries, err := os.ReadDir(scripts)
@@ -398,16 +406,18 @@ func TestOutOfGoConsumersBranchOnTheContractIntegers(t *testing.T) {
 var goRunInvocation = regexp.MustCompile(`\bgo run\b`)
 
 // TestReleaseNotesRunTheBuiltBinaryNotGoRun keeps `go run` out of
-// goreleaser.yml's executable body. Measured with this tree's binary: `notes
-// --since-tag=below:notatag` exits 2 directly and 1 through `go run` (stderr
-// tail: "exit status 2"); a dead-credential API walk exits 4 directly and 1
-// through `go run`. The arm below the invocation reads 1 as "nothing
-// release-worthy" and publishes a placeholder body — so under `go run` a
-// wedged walk or a dark API ships a green release that claims there was
-// nothing to say. scripts/check.sh's `go run` sites are out of scope on
-// purpose: that script only pass/fails, it never branches an arm on 1.
+// goreleaser.yml's and the release-notes action's executable bodies. Measured
+// with this tree's binary: `notes --since-tag=below:notatag` exits 2 directly
+// and 1 through `go run` (stderr tail: "exit status 2"); a dead-credential API
+// walk exits 4 directly and 1 through `go run`. The action's arm below the
+// invocation reads 1 as "nothing release-worthy" and publishes a placeholder
+// body — so under `go run` a wedged walk or a dark API ships a green release
+// that claims there was nothing to say. scripts/check.sh's `go run` sites are
+// out of scope on purpose: that script only pass/fails, it never branches an
+// arm on 1.
 func TestReleaseNotesRunTheBuiltBinaryNotGoRun(t *testing.T) {
-	body := code(repoFile(t, filepath.Join(".github", "workflows", "goreleaser.yml")))
+	workflow := code(repoFile(t, filepath.Join(".github", "workflows", "goreleaser.yml")))
+	action := code(repoFile(t, filepath.FromSlash(releaseNotesAction)))
 
 	// Positive control: the matcher must still recognise the retired
 	// invocation, or the absence below is asserting nothing.
@@ -416,23 +426,28 @@ func TestReleaseNotesRunTheBuiltBinaryNotGoRun(t *testing.T) {
 		t.Fatal("canary: goRunInvocation no longer matches the retired invocation it exists to keep out")
 	}
 
-	if loc := goRunInvocation.FindString(body); loc != "" {
-		t.Errorf("goreleaser.yml's executable body invokes %q: the exit status of `go run` is "+
-			"cmd/go's, not glyph's — 2/3/4 all collapse into 1, the one value the no-release arm "+
-			"absorbs, so a broken walk publishes a placeholder release body behind a real tag. "+
-			"Build once and run the binary", loc)
+	for name, body := range map[string]string{"goreleaser.yml": workflow, "the release-notes action": action} {
+		if loc := goRunInvocation.FindString(body); loc != "" {
+			t.Errorf("%s's executable body invokes %q: the exit status of `go run` is "+
+				"cmd/go's, not glyph's — 2/3/4 all collapse into 1, the one value the no-release arm "+
+				"absorbs, so a broken walk publishes a placeholder release body behind a real tag. "+
+				"Build once and run the binary", name, loc)
+		}
 	}
 
-	// The affirmative half: the binary is built, and the invocation runs it
-	// from where it was built to.
+	// The affirmative half: goreleaser.yml builds the binary and hands the
+	// action its path, and the action runs what it was handed.
 	for _, want := range []string{
 		`go build -o "$RUNNER_TEMP/glyph" ./cmd/glyph`,
-		`"$RUNNER_TEMP/glyph" notes`,
+		"glyph: ${{ runner.temp }}/glyph",
 	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("goreleaser.yml's notes step lost %q; the step must build the tagged tree "+
-				"once and invoke that binary, so glyph's own exit codes reach the branch below it", want)
+		if !strings.Contains(workflow, want) {
+			t.Errorf("goreleaser.yml lost %q; the tagged tree must be built once and that binary "+
+				"handed to the notes action, so glyph's own exit codes reach the arms there", want)
 		}
+	}
+	if want := `"$GLYPH" notes --since-tag="below:$tag"`; !strings.Contains(action, want) {
+		t.Errorf("the release-notes action lost %q; it must run the binary it was handed", want)
 	}
 }
 

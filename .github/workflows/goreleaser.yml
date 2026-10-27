@@ -70,7 +70,7 @@ jobs:
       # exists — the tag is already pushed and cannot carry the fix; the next
       # patch under the moved path can (v6.0.1). Before setup-go: shell over
       # go.mod's text and the ref name only. GITHUB_REF_NAME is the pushed tag,
-      # as the notes step below reads it. The grammar is the binary's own for
+      # as the notes action below reads it. The grammar is the binary's own for
       # below: (bump.parseBaseVersion — a release candidate names its
       # release's major). internal/workflows runs this step over the tags that
       # were cut and the ones that must not be.
@@ -111,66 +111,26 @@ jobs:
           # t-yaxa
           cache: false
 
+      # glyph runs as a BUILT binary, never `go run`: `go help run` states that
+      # Run's exit status is not the compiled binary's — cmd/go collapses
+      # glyph's 2/3/4 into 1 (measured), and 1 is the one value the notes
+      # action reads as the soft no-release signal, so a dark API would publish
+      # a placeholder release body behind a real tag, green, and a wedged walk
+      # one that says nothing was release-worthy. Built from THIS tree rather
+      # than installed through the install action: the release being cut is
+      # the one the action would install.
+      - name: build glyph for its own release notes
+        run: go build -o "$RUNNER_TEMP/glyph" ./cmd/glyph
+
+      # The rule is the action's (its header); this file hands it the binary
+      # above, the tag being cut and the file GoReleaser reads below.
       - name: release notes via glyph itself
-        # The walk base is the tag BEFORE the one being cut: at tag-push time
-        # the new tag is already the highest v*, so a bare --since-tag would
-        # resolve the tag being cut and walk an empty range. below: resolves
-        # the predecessor INSIDE glyph, where every tag is parsed and compared
-        # as a version. This step used to re-derive that answer in shell over
-        # `git tag --sort=v:refname` — a refname sort, not a version order —
-        # and inherited the exact defect 012bfba removed from the binary: with
-        # a prerelease tag present the predecessor came back wrong, and for
-        # the lowest-sorted tag it came back empty and killed the job behind a
-        # tag that already existed (t-s5n4). GITHUB_REF_NAME is the pushed tag
-        # (on a workflow_dispatch re-run it is only correct when dispatched on
-        # the tag ref — dispatching on a branch fails GoReleaser's own tag
-        # check anyway). The file lands in runner.temp, not the checkout: an
-        # untracked file would trip GoReleaser's dirty-state guard.
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # An explicit `shell: bash` turns on `-e` and pipefail. glyph runs as a
-        # BUILT binary, never `go run`: `go help run` states that Run's exit
-        # status is not the compiled binary's — cmd/go collapses glyph's 2/3/4
-        # into 1 (measured), and 1 is the one value the arm below reads as the
-        # soft no-release signal, so a dark API would publish a placeholder
-        # release body behind a real tag, green, and a wedged walk one that
-        # says nothing was release-worthy. A compile failure aborts the step
-        # via -e, which is right. `glyph notes` writes straight to the file
-        # (never through a pipe), and its status is inspected explicitly below
-        # rather than left to -e, which cannot tell a soft no-release from a
-        # real failure.
-        shell: bash
-        run: |
-          # `glyph notes` exits 1 as a SOFT no-release signal ("nothing
-          # release-worthy in this range") — a distinct outcome from a hard
-          # failure, and one `set -e` cannot tell apart. Left to -e, a tag cut
-          # over an infra-only range (all :construction_worker: / :memo:) would
-          # abort the whole job: no binaries, no cask, no attestation, behind a
-          # tag that already exists. Honour the contract instead: 1 ships a
-          # release that says so.
-          #
-          # 3 ships the same way, because at tag time it is as permanent as 1.
-          # The wedge escape (DESIGN §4) is a tag cut where glyph's refusal
-          # sends it — at or past the refused commit, or a squash-merged pull's
-          # merge point — and the walk below that tag still reaches the commit:
-          # history is immutable, so every re-run refuses it again, and a failed
-          # job leaves the escape tag with no release assets (t-bcdz). Every
-          # other exit is a real failure and keeps its code: 4 clears on a
-          # re-run, 2 is a broken invocation.
-          go build -o "$RUNNER_TEMP/glyph" ./cmd/glyph
-          status=0
-          "$RUNNER_TEMP/glyph" notes --since-tag="below:$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md" || status=$?
-          if [ "$status" -eq 1 ]; then
-            echo "::warning::no release-worthy commits below $GITHUB_REF_NAME — publishing with a placeholder body"
-            printf 'No release-worthy changes in %s.\n' "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
-          elif [ "$status" -eq 3 ]; then
-            echo "::warning::the walk below $GITHUB_REF_NAME reaches a commit glyph refuses, and the tag was cut where the refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear the wedge — publishing with a placeholder body; glyph's error above names the commit and that point"
-            printf "No release notes for %s: the walk below it reaches a commit glyph refuses, and this tag was cut where glyph's refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear the wedge. The release job's log carries glyph's error, which names the commit and that point.\n" "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
-          elif [ "$status" -ne 0 ]; then
-            echo "::error::glyph notes failed (exit $status)"
-            exit "$status"
-          fi
-          cat "$RUNNER_TEMP/release-notes.md"
+        uses: ./.github/actions/release-notes
+        with:
+          glyph: ${{ runner.temp }}/glyph
+          tag: ${{ github.ref_name }}
+          output: ${{ runner.temp }}/release-notes.md
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: GoReleaser
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0

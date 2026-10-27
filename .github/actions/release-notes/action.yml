@@ -1,0 +1,134 @@
+name: Render release notes with glyph
+description: >-
+  Render the body of the release a tag-push job is cutting: `glyph notes
+  --since-tag=below:<tag>` into a file, with the two exits that are permanent
+  at tag time — 1 (nothing release-worthy below the tag) and 3 (the walk below
+  the tag reaches a commit glyph refuses: the wedge escape's own tag) — shipped
+  as a placeholder body that says why, and every other exit failing the step
+  with glyph's own code. glyph must already be on PATH (the install action
+  next door puts it there) or be named by `glyph:`, and the checkout must hold
+  the tags and the history behind them (`fetch-depth: 0`): the walk reads both.
+
+# This action is the ONE home of the tag-time notes rule (DESIGN §4 for the
+# rule, §6 for why it is an action: t-4fpn). glyph's own goreleaser.yml
+# reaches it by a relative `uses:` against its own checkout and hands it the
+# binary it built from the tagged tree; a repository that cuts tags by hand
+# references it the ordinary way, by full path at a release tag, over the
+# binary the install action verified. internal/workflows holds goreleaser.yml
+# to running this action rather than a walk of its own, and runs this step
+# over a stub glyph for every exit it can hand back.
+#
+# `below:` and never a shell resolver: at tag-push time the pushed tag is
+# itself the highest, so a bare --since-tag would walk an empty range, and
+# `git describe --tags --abbrev=0 HEAD^` walks the ancestry to the nearest tag,
+# which takes a release candidate as the base (v3.3.0-rc.2 for v3.3.0, where
+# below: walks from v3.2.0). below: resolves the predecessor inside glyph,
+# every tag HEAD holds parsed and compared as a version (DESIGN §4).
+
+inputs:
+  tag:
+    description: >-
+      The tag whose release this is. Defaults to the ref the job runs on
+      (GITHUB_REF_NAME): the pushed tag on a tag push. A workflow_dispatch
+      re-run is only right when dispatched on the tag ref.
+    required: false
+    default: ''
+  output:
+    description: >-
+      Where to write the body. Defaults to `<runner.temp>/release-notes.md`;
+      a path inside the checkout would be an untracked file, which trips
+      GoReleaser's dirty-state guard.
+    required: false
+    default: ''
+  glyph:
+    description: >-
+      The glyph to run: a path, or a name found on PATH. Defaults to `glyph`
+      on PATH, where the install action puts it; glyph's own release workflow
+      passes the binary it built from the tagged tree.
+    required: false
+    default: glyph
+  token:
+    description: >-
+      Token for the walk's GitHub API reads (the pulls a commit landed in).
+      Pass the caller's `github.token`. Required and has no default: a
+      composite action does not inherit the job's env, and the github context
+      is not available in this manifest — the expression must be written in
+      the workflow step that USES this action. Do NOT write a template
+      expression in this description: GitHub evaluates one even in a
+      description string, and github is not a valid context here.
+    required: true
+
+outputs:
+  file:
+    description: The path the body was written to.
+    value: ${{ steps.notes.outputs.file }}
+  status:
+    description: >-
+      glyph's exit: 0 (rendered), 1 (nothing release-worthy; placeholder body)
+      or 3 (the walk reaches a refused commit; placeholder body). Every other
+      exit failed the step with that code.
+    value: ${{ steps.notes.outputs.status }}
+
+runs:
+  using: composite
+  steps:
+    - name: Render release notes (glyph notes below the tag, placeholder on 1 and 3)
+      id: notes
+      shell: bash
+      env:
+        TAG: ${{ inputs.tag }}
+        OUTPUT: ${{ inputs.output }}
+        GLYPH: ${{ inputs.glyph }}
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        tag="${TAG:-${GITHUB_REF_NAME:-}}"
+        if [ -z "$tag" ]; then
+          echo "::error::glyph release-notes: no tag — pass tag:, or run on a tag ref"
+          exit 2
+        fi
+        out="${OUTPUT:-$RUNNER_TEMP/release-notes.md}"
+        # Opened before glyph runs: a redirect that fails returns 1 from the
+        # command it wraps, which the arm below would read as glyph's soft
+        # no-release exit.
+        if ! : > "$out" 2> /dev/null; then
+          printf '::error::glyph release-notes: cannot write %q\n' "$out"
+          exit 2
+        fi
+        if ! command -v "$GLYPH" > /dev/null 2>&1; then
+          printf '::error::glyph release-notes: %q is not on PATH and not an executable file — install glyph first (akira-toriyama/glyph/.github/actions/install), or pass glyph:\n' "$GLYPH"
+          exit 2
+        fi
+
+        # `glyph notes` exits 1 as a SOFT no-release signal ("nothing
+        # release-worthy in this range") — a distinct outcome from a hard
+        # failure, and one `set -e` cannot tell apart. Left to -e, a tag cut
+        # over an infra-only range (all :construction_worker: / :memo:) would
+        # abort the whole job: no binaries, no cask, no attestation, behind a
+        # tag that already exists. Honour the contract instead: 1 ships a
+        # release that says so.
+        #
+        # 3 ships the same way, because at tag time it is as permanent as 1.
+        # The wedge escape (DESIGN §4) is a tag cut where glyph's refusal
+        # sends it — at or past the refused commit, or a squash-merged pull's
+        # merge point — and the walk below that tag still reaches the commit:
+        # history is immutable, so every re-run refuses it again, and a failed
+        # job leaves the escape tag with no release assets (t-bcdz). Every
+        # other exit is a real failure and keeps its code: 4 clears on a
+        # re-run, 2 is a broken invocation.
+        status=0
+        "$GLYPH" notes --since-tag="below:$tag" > "$out" || status=$?
+        if [ "$status" -eq 1 ]; then
+          echo "::warning::no release-worthy commits below $tag — publishing with a placeholder body"
+          printf 'No release-worthy changes in %s.\n' "$tag" > "$out"
+        elif [ "$status" -eq 3 ]; then
+          echo "::warning::the walk below $tag reaches a commit glyph refuses, and the tag was cut where the refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear the wedge — publishing with a placeholder body; glyph's error above names the commit and that point"
+          printf "No release notes for %s: the walk below it reaches a commit glyph refuses, and this tag was cut where glyph's refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear the wedge. The release job's log carries glyph's error, which names the commit and that point.\n" "$tag" > "$out"
+        elif [ "$status" -ne 0 ]; then
+          echo "::error::glyph notes failed (exit $status)"
+          exit "$status"
+        fi
+        {
+          echo "file=$out"
+          echo "status=$status"
+        } >> "$GITHUB_OUTPUT"
+        cat "$out"

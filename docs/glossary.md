@@ -920,7 +920,7 @@ workflow revision (a hand-bumped default did drift once: `lint.yml` sat at v0.4.
 through the v0.5.0 tag). `.github/workflows/{lint,release,pr-verdict}.yml`,
 `internal/workflows` (the tests that guard this)
 
-**composite action** — `.github/actions/install`: the **single** source of glyph's
+**composite action** — glyph ships two. `.github/actions/install`: the **single** source of glyph's
 security-critical install logic (download the pinned tarball, verify it against
 `checksums.txt` **and** its build provenance with `gh attestation verify`,
 fail-closed with bounded retry, confirm it reports the requested release tag,
@@ -930,12 +930,16 @@ OS/arch. The distinction that bites: a **relative** `uses: ./…` inside a
 reusable's own repo — so glyph's reusables check out glyph's source at
 `job.workflow_sha` first and then use a relative `uses:` against that checkout,
 while a **consumer** references the action the ordinary way, by full
-`owner/repo/path@vX.Y.Z`. `.github/actions/install/action.yml`,
-`internal/workflows/doc.go`
+`owner/repo/path@vX.Y.Z`. `.github/actions/release-notes`: the one home of the
+tag-time notes rule (DESIGN §4), which glyph's own `goreleaser.yml` runs over
+the binary it built and a hand-tagged repository runs over the installed one —
+built to replace the six copies the 2026-10-26 census found, every one of which
+died on `3` (DESIGN §6, t-4fpn). `.github/actions/install/action.yml`,
+`.github/actions/release-notes/action.yml`, `internal/workflows/doc.go`
 
 **distribution layer** — the files by which glyph reaches the fleet *without
 going through the Go compiler*: the three reusable workflows plus
-`goreleaser.yml`, the composite install action, and `.goreleaser.yaml`. The term
+`goreleaser.yml`, the two composite actions, and `.goreleaser.yaml`. The term
 earns its entry by its boundary, which is easy to draw one file too wide in both
 directions: `build.yml` is **not** distribution layer (this repo's own CI, shipped
 to nobody), and neither are the fleet-synced consumers (`commit-lint.yml`,
