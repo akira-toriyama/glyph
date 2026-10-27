@@ -38,6 +38,18 @@ var installOnlyTokens = []string{
 // job.workflow_ref, so no reusable may carry a concrete version default.
 var hardcodedVersionDefault = regexp.MustCompile(`(?m)default:\s*["']?v[0-9]`)
 
+// selfCheckout matches the two lines of the runtime self-checkout the reusables
+// carried until t-fzhx — `actions/checkout` of job.workflow_repository at
+// job.workflow_sha into `.glyph-action`, the only way a workspace-relative
+// `uses: ./.glyph-action/…` could find the install action. `$/` resolves to
+// glyph's own tree at that commit without it (measured on glyph-test #135).
+var selfCheckout = regexp.MustCompile(`(?m)^\s*(repository|ref):\s*\$\{\{\s*job\.workflow_(repository|sha)\s*\}\}`)
+
+// workspaceRelativeUses matches an executable `uses: ./…` step — the form that
+// resolves against the CALLER's checkout inside a reusable workflow, and the
+// line zizmor 1.30+ reports as `self-repository` everywhere.
+var workspaceRelativeUses = regexp.MustCompile(`(?m)^\s*-?\s*uses:\s*["']?\./`)
+
 // fullLineComment matches a YAML line that is only a comment (optional indent,
 // then '#'). Trailing inline comments are left in place; none of the sentinels
 // below appear in one, and stripping them would risk cutting `#` inside a
@@ -84,28 +96,41 @@ func TestReusablesInstallThroughComposite(t *testing.T) {
 				}
 			}
 
-			// ...and replaced by a reference to the shared composite action.
-			// Presence is demanded of the executable BODY, not the raw text: a
-			// commented caller stub quoting the same string would otherwise
-			// satisfy the requirement while the real step is gone (t-szx1).
-			if !strings.Contains(body, "./.glyph-action/.github/actions/install") {
+			// ...and replaced by the self-repository reference to the shared
+			// composite action (`$/` names this file's own repository at the
+			// pinned commit; `./` would name the caller's checkout). Presence is
+			// demanded of the executable BODY, not the raw text: a commented
+			// caller stub quoting the same string would otherwise satisfy the
+			// requirement while the real step is gone (t-szx1).
+			if !strings.Contains(body, "uses: $/.github/actions/install") {
 				t.Errorf("%s does not use the shared install action "+
-					"(expected `uses: ./.glyph-action/.github/actions/install`)", name)
+					"(expected `uses: $/.github/actions/install`)", name)
 			}
 
-			// The self-checkout mechanism must be present: a relative `uses:` in
-			// a reusable workflow resolves against the CALLER's workspace, so the
-			// action is reachable only by checking out glyph's own source at the
-			// pinned commit.
-			for _, want := range []string{
-				"job.workflow_repository",
-				"job.workflow_sha",
-				"job.workflow_ref",
-			} {
-				if !strings.Contains(body, want) {
-					t.Errorf("%s is missing %s; without the self-checkout the install "+
-						"action cannot be reached and the version cannot be derived", name, want)
-				}
+			// No runtime self-checkout may return: it existed only so a
+			// workspace-relative `./.glyph-action/…` had something to resolve
+			// against; beside `$/` it is a fetch nothing reads, and actionlint
+			// 1.7.12 reports its job.workflow_repository / job.workflow_sha as
+			// undefined now that .github/actionlint.yaml waives workflow_ref
+			// alone. Positive control: the two lines the reusables carried until
+			// t-fzhx.
+			const checkoutCanary = "          repository: ${{ job.workflow_repository }}\n          ref: ${{ job.workflow_sha }}\n"
+			if !selfCheckout.MatchString(checkoutCanary) {
+				t.Fatalf("selfCheckout no longer matches the self-checkout it was written to ban (%q) — "+
+					"the absence asserted below is vacuous", checkoutCanary)
+			}
+			if loc := selfCheckout.FindString(body); loc != "" {
+				t.Errorf("%s checks glyph's own tree out at runtime again (%q); `$/` reaches the install action "+
+					"without it, and actionlint reports job.workflow_repository / job.workflow_sha as undefined", name, strings.TrimSpace(loc))
+			}
+			if strings.Contains(body, ".glyph-action") {
+				t.Errorf("%s still names the `.glyph-action` checkout path; nothing checks glyph out at runtime any more", name)
+			}
+
+			// The version derivation stays: job.workflow_ref is the tag the
+			// caller pinned, and the binary it installs.
+			if !strings.Contains(body, "job.workflow_ref") {
+				t.Errorf("%s is missing job.workflow_ref; the version cannot be derived", name)
 			}
 
 			// No hand-bumped version default may return.
@@ -212,7 +237,7 @@ func TestReleaseNotesReachGoReleaser(t *testing.T) {
 	// Half one: the workflow renders the notes with glyph — through the
 	// release-notes action since t-4fpn — and hands them over.
 	body := code(workflow)
-	for _, want := range []string{"./.github/actions/release-notes", "--release-notes"} {
+	for _, want := range []string{"uses: $/.github/actions/release-notes", "--release-notes"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("goreleaser.yml no longer contains %q; glyph's own releases must be "+
 				"described by `glyph notes`, not GoReleaser's raw commit subjects (t-8hqn)", want)
@@ -386,8 +411,8 @@ func TestCompositeActionIsSingleSource(t *testing.T) {
 // executable. Trailing INLINE comments survive code() by design (see
 // fullLineComment) — that residual acceptance is documented there, not here.
 func TestPresenceChecksCannotBeSatisfiedByAComment(t *testing.T) {
-	const doc = "# using: composite\n  #   uses: ./.glyph-action/.github/actions/install\nname: x\n"
-	for _, tok := range []string{"using: composite", "./.glyph-action/.github/actions/install"} {
+	const doc = "# using: composite\n  #   uses: $/.github/actions/install\nname: x\n"
+	for _, tok := range []string{"using: composite", "uses: $/.github/actions/install"} {
 		if strings.Contains(code(doc), tok) {
 			t.Errorf("code() kept %q from a whole-line comment; every presence check reading "+
 				"code() can be satisfied by documentation again", tok)
@@ -759,5 +784,86 @@ func TestJobIDsInFindsARealJobsBlock(t *testing.T) {
 	const decoy = "jobs:\n  real:\n    steps:\n      - run: true\n        name: not-a-job\n"
 	if got := jobIDsIn("\n" + decoy); len(got) != 1 || got[0] != "real" {
 		t.Fatalf("jobIDsIn returned %v for a jobs block with one job and a nested key, want [real]", got)
+	}
+}
+
+// TestNoWorkspaceRelativeUses holds every workflow in the tree to GitHub's
+// self-repository reference for an in-repo action: `$/…`, never
+// `./…`. Inside a reusable workflow `./…` resolves against the CALLER's checkout,
+// which is how the reusables came to check glyph's own tree out at runtime, and
+// zizmor 1.30+ reports every `./…` as `self-repository` — the hub's zizmor gate
+// reddens at its next pin bump for each one left (t-fzhx; goreleaser.yml grew a
+// new one the day after the audit named the three). The companion half pins
+// the actionlint waiver the `$/` form needs: actionlint 1.7.12, the hub's pin,
+// knows only `{owner}/{repo}[/{path}]@{ref}` and `./{path}`, so
+// .github/actionlint.yaml ignores exactly its message — a pattern that no
+// longer matches the message is a red actionlint gate on every pull request.
+func TestNoWorkspaceRelativeUses(t *testing.T) {
+	// Positive control: the step lint.yml carried until t-fzhx.
+	const canary = "        uses: ./.glyph-action/.github/actions/install\n"
+	if !workspaceRelativeUses.MatchString(canary) {
+		t.Fatalf("workspaceRelativeUses no longer matches the step it was written to ban (%q) — "+
+			"the absence asserted below is vacuous", canary)
+	}
+	// Workflows only: the two composite actions carry no `uses:` today, and
+	// what `$/` names inside a composite that a CONSUMER's workflow runs
+	// cross-repo is unmeasured — the measurement covers reusable workflows.
+	var files []string
+	for _, pattern := range []string{
+		filepath.Join(".github", "workflows", "*.yml"),
+		filepath.Join(".github", "workflows", "*.yaml"),
+	} {
+		matches, err := filepath.Glob(filepath.Join("..", "..", pattern))
+		if err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, matches...)
+	}
+	if len(files) < 4 {
+		t.Fatalf("found only %d workflow files under .github/workflows; the glob is not looking at the tree", len(files))
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loc := workspaceRelativeUses.FindString(code(string(b))); loc != "" {
+			t.Errorf("%s carries a workspace-relative `uses:` (%q); write it as `$/<path>` — inside a reusable "+
+				"workflow `./` resolves against the caller's checkout, and zizmor 1.30+ reports either as self-repository",
+				filepath.Base(f), strings.TrimSpace(loc))
+		}
+	}
+
+	// The waiver half. actionlint.yaml's executable text must be exactly this
+	// list under exactly this path — read as bytes, so no quoting style, flow
+	// sequence or extra key carries a third waiver past it: an actionlint message
+	// nobody will see again belongs here first, with its canary.
+	const want = "paths:\n" +
+		"  .github/workflows/**/*.yml:\n" +
+		"    ignore:\n" +
+		"      - 'property \"workflow_ref\" is not defined in object type'\n" +
+		"      - 'specifying action \"\\$/[^\"]*\" in invalid format because ref is missing'\n"
+	cfg := code(repoFile(t, filepath.Join(".github", "actionlint.yaml")))
+	if rest := strings.TrimSuffix(cfg, want); rest == cfg || strings.TrimSpace(rest) != "" {
+		t.Fatalf(".github/actionlint.yaml's executable text is not exactly the two waivers this test pins:\n%s", cfg)
+	}
+	// The `$/` entry, compiled as actionlint compiles it (Go regexp; YAML single
+	// quotes keep the backslash), matches the message actionlint 1.7.12 prints —
+	// verbatim from a run over lint.yml, 2026-10-27 — and not the same message
+	// about an action that really has no ref.
+	patterns := regexp.MustCompile(`- '([^']+)'`).FindAllStringSubmatch(want, -1)
+	if len(patterns) != 2 {
+		t.Fatalf("the pinned list holds %d entries, want 2", len(patterns))
+	}
+	selfRepo := regexp.MustCompile(patterns[1][1])
+	const message = `specifying action "$/.github/actions/install" in invalid format because ref is missing. ` +
+		`available formats are "{owner}/{repo}@{ref}" or "{owner}/{repo}/{path}@{ref}" [action]`
+	const unrelated = `specifying action "actions/checkout" in invalid format because ref is missing. ` +
+		`available formats are "{owner}/{repo}@{ref}" or "{owner}/{repo}/{path}@{ref}" [action]`
+	if !selfRepo.MatchString(message) {
+		t.Errorf("the `$/` waiver %q no longer matches actionlint 1.7.12's message:\n  %s", patterns[1][1], message)
+	}
+	if selfRepo.MatchString(unrelated) {
+		t.Errorf("the `$/` waiver %q also hides a ref-less third-party action; it must cover `$/` alone", patterns[1][1])
 	}
 }

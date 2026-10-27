@@ -1,15 +1,24 @@
 # actionlint configuration (read by the fleet actionlint gate,
 # akira-toriyama/.github t-ya55).
 #
-# job.workflow_ref / job.workflow_repository / job.workflow_sha are real at
-# runtime — the reusables here use them to resolve the tag the CALLER pinned
-# this workflow to (lint.yml "Resolve the pinned glyph version") and to check
-# out glyph's own tree at that commit. They have shipped in every release run
-# since the reusables existed. actionlint 1.7.12 (latest as of 2026-07) has not
-# yet added them to its `job` context schema, so it flags each use as an
-# undefined property. Scope-waive exactly that message; drop this file once
-# actionlint's schema catches up.
+# Two waivers, each for a construct GitHub runs and actionlint 1.7.12 (the
+# hub's pin, and upstream's latest as of 2026-10) does not know. Each is scoped
+# to the exact message, and each goes when actionlint catches up.
+#
+# job.workflow_ref is real at runtime — the reusables here read it to resolve
+# the tag the CALLER pinned this workflow to (lint.yml "Resolve the pinned
+# glyph version"); it has shipped in every release run since the reusables
+# existed. actionlint has not added it to its `job` context schema, so it
+# flags each use as an undefined property.
+#
+# `uses: $/<path>` is GitHub's self-repository reference (changelog
+# 2026-07-30): the action or workflow at that path in the repository the
+# workflow file lives in, at the running commit, no `@ref` by design. actionlint
+# knows only `{owner}/{repo}[/{path}]@{ref}` and `./{path}` and reports it as
+# "ref is missing" (t-fzhx). internal/workflows holds this list to exactly these
+# two entries and the second to the message actionlint prints.
 paths:
   .github/workflows/**/*.yml:
     ignore:
-      - 'property "workflow_(ref|repository|sha)" is not defined in object type'
+      - 'property "workflow_ref" is not defined in object type'
+      - 'specifying action "\$/[^"]*" in invalid format because ref is missing'

@@ -3528,13 +3528,24 @@ fail-closed, bounded retry), add it to `PATH` — lives in ONE composite action,
 `.github/actions/install`, auto-detecting the runner's OS/arch (it serves the
 Linux lint/preview jobs and the macOS release job from one file; the inline
 copies it replaced had already drifted — two `linux_amd64` + `sha256sum`, one
-`darwin_arm64` + `shasum`). glyph's own three reusables reach it by checking out
-glyph's source at the commit the caller pinned (`job.workflow_sha`) and using a
-relative `uses:` against that checkout — NOT the full `owner/repo/path@tag` form.
-A relative `uses:` inside a reusable workflow resolves against the CALLER's
-workspace, never the reusable's own repo, so a bare `./…` would look for the
-action in the consumer's tree; the self-checkout puts glyph's tree there. The
-binary version is derived from `job.workflow_ref` (the tag the caller pinned),
+`darwin_arm64` + `shasum`). glyph's own three reusables reach it by GitHub's
+self-repository reference, `uses: $/.github/actions/install` — NOT the full
+`owner/repo/path@tag` form, and NOT a workspace-relative `./…`. Inside a
+reusable workflow `$/` resolves to the repository the WORKFLOW FILE lives in,
+glyph, at the commit the caller pinned, with no checkout (GitHub changelog
+2026-07-30; runner 2.336.0+; measured on glyph-test #135, 2026-10-27: the verdict
+job downloaded `akira-toriyama/glyph@<the pinned sha>` and ran the action from
+it). A `./…` resolves against the CALLER's workspace instead, never the
+reusable's own repo, which is why the reusables once checked glyph's tree out at
+runtime (`actions/checkout` of `job.workflow_repository` at `job.workflow_sha`
+into `.glyph-action`) before a `./.glyph-action/…` could find the action — and
+zizmor 1.30+ reports every such `./…` as `self-repository`; the checkout goes
+with it. Two tools gate the
+form: zizmor below 1.29 cannot parse `$/` at all (the hub's pin moved to 1.29
+first, t-fzhx), and actionlint 1.7.12 reports it as a `uses:` with no ref, so
+`.github/actionlint.yaml` waives exactly that message
+(`TestNoWorkspaceRelativeUses` holds the waiver to the message and the tree to
+`$/`). The binary version is derived from `job.workflow_ref` (the tag the caller pinned),
 so it cannot drift from the workflow revision — replacing a hand-bumped
 `glyph-version` default that did drift once (lint.yml sat at v0.4.0 through the
 v0.5.0 tag while callers pinned @v0.5.0); `internal/workflows` tests guard both
@@ -3543,8 +3554,10 @@ the single-source install and the derived version.
 The tag-time notes rule (§4, the escape tag's own release) lives in a second
 composite action, `.github/actions/release-notes`, for the same reason
 (t-4fpn). `goreleaser.yml` runs it over the binary it just built
-(`uses: ./.github/actions/release-notes`, a relative path that resolves in
-glyph's own checkout); a repository that cuts tags by hand runs it over the
+(`uses: $/.github/actions/release-notes`, the same self-repository reference —
+which costs actionlint's check of the step's `with:` keys against the action's
+inputs, read for `./` only; `TestGoreleaserRendersItsNotesThroughTheAction`
+pins the keys on both sides instead); a repository that cuts tags by hand runs it over the
 binary the install action verified, by full path at a release tag. When t-4fpn
 measured the fleet (2026-10-26, against the v6.0.0 asset), six such repositories
 — cifail, furrow, mergeprobe, pare, prq, rundiff — each carried their own copy
@@ -3769,7 +3782,8 @@ The severities are the argued part:
   `uses: ./…` references instead was rejected: it never reaches a published
   action nothing in the repository calls (the hub's `actions/*`), and the
   references it would follow include runtime self-checkouts that are not in
-  the tree at all (`./.glyph-action/…`, `./.go-bite-hub/…`). The action files
+  the tree at all (`./.go-bite-hub/…`; glyph's own reusables did the same with
+  `./.glyph-action/…` until t-fzhx moved them to `$/`). The action files
   are listed by git — tracked, the tracked files of an initialized submodule
   included, plus untracked files no ignore rule excludes — resolved in
   `internal/cli` beside the hooks directory, never by walking the filesystem,

@@ -125,7 +125,7 @@ jobs:
       # The rule is the action's (its header); this file hands it the binary
       # above, the tag being cut and the file GoReleaser reads below.
       - name: release notes via glyph itself
-        uses: ./.github/actions/release-notes
+        uses: $/.github/actions/release-notes
         with:
           glyph: ${{ runner.temp }}/glyph
           tag: ${{ github.ref_name }}

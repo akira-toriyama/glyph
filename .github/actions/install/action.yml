@@ -14,12 +14,12 @@ description: >-
 # only; a Go test (internal/workflows) fails if the download or the attestation
 # gate reappears inline in a reusable.
 #
-# glyph's own reusables reach this action by checking out glyph's source at the
-# commit the caller pinned (job.workflow_sha) and using `./…` against that
-# checkout — NOT `uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z`.
-# A relative `uses:` inside a reusable workflow resolves against the CALLER's
-# workspace, never the reusable's repo, so a bare `./…` would look for this file
-# in the consumer's tree and fail. A CONSUMER that wants glyph on a laptop-in-CI
+# glyph's own reusables reach this action by GitHub's self-repository
+# reference, `uses: $/.github/actions/install` — NOT
+# `uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z`. Inside a
+# reusable workflow `$/` names the workflow file's own repository at the commit
+# the caller pinned, with no checkout; a workspace-relative `./…` would name the
+# CALLER's checkout and fail. A CONSUMER that wants glyph on a laptop-in-CI
 # (e.g. sill's api-guard) references it the other way, by full path + tag:
 #   - uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z
 #     with: { version: vX.Y.Z, token: ${{ github.token }} }
