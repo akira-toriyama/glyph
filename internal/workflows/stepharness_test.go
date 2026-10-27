@@ -66,9 +66,18 @@ func runStep(t *testing.T, script string, shell []string, dir string, env []stri
 	if err := os.WriteFile(path, []byte(script), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	return execute(t, append([]string{requireTool(t, "bash")}, append(slices.Clone(shell), path)...), dir, env)
+}
+
+// execute runs argv in dir under env, the whole environment: nothing is
+// inherited, so the CI runner's own variables cannot reach the process. A
+// process the harness could not start, or that ran past its deadline, is a
+// test failure.
+func execute(t *testing.T, argv []string, dir string, env []string) stepRun {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, requireTool(t, "bash"), append(slices.Clone(shell), path)...)
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = dir
 	cmd.Env = env
 	var stdout, stderr bytes.Buffer
@@ -81,7 +90,7 @@ func runStep(t *testing.T, script string, shell []string, dir string, env []stri
 	case exited && ctx.Err() == nil:
 		run.exit = ee.ExitCode()
 	default:
-		t.Fatalf("running the step: %v\n%s", err, run)
+		t.Fatalf("running %v: %v\n%s", argv, err, run)
 	}
 	return run
 }

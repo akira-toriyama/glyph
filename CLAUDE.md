@@ -162,12 +162,10 @@ design, so a tree that does not compile turns the local gate into a silent no-op
   nothing). Its verdict is "**at least one** bites", so it is weaker than it sounds — and
   weaker than `scripts/mutations.sh`, which requires every named test to fail.
   Rationale: [`docs/go-bite.md`](https://github.com/akira-toriyama/.github/blob/main/docs/go-bite.md).
-- **dist-gate** — touching a distribution-layer file (the three reusables, `goreleaser.yml`,
-  the install action, `.goreleaser.yaml`) with no `internal/workflows` `*_test.go` change
-  fails the PR; waive with a `Dist-gate-exempt: <reason>` trailer on every non-merge commit.
-  Why: bite acts on Go diffs only, and YAML `:bug:` fixes have shipped with zero tests
-  before. The file set lives twice on purpose — `scripts/dist-gate.sh` and
-  `internal/workflows/distgate_test.go` — and the test fails if the copies drift.
+- **dist-gate** — a distribution-layer change needs an `internal/workflows` `*_test.go`
+  change in the same PR, or a `Dist-gate-exempt: <reason>` trailer on every non-merge
+  commit; a same-action SHA pin swap (dependabot's bump) needs neither and stands the gate
+  down. The term, its file set and the incident behind it: glossary §7.
 - **`internal/workflows`** — tests the workflow YAML itself (the install action's single
   source, `fetch-depth: 0` on the walking reusables, the `sed -n '/^[{]/,$p'` envelope sieve
   a step needs before `jq`). Read its failure messages; they carry the incident. Keep the

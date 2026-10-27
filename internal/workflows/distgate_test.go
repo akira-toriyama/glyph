@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
 // distPattern is dist-gate.sh's OWN classification pattern, copied verbatim
@@ -150,5 +152,119 @@ func TestDistGatePatternCoversTheRealDistributionLayer(t *testing.T) {
 	if evidence.MatchString("internal/cli/release_test.go") {
 		t.Error("EVIDENCE_PATTERN matches a test outside internal/workflows — a Go unit test " +
 			"would satisfy a gate that demands a workflow assertion")
+	}
+}
+
+// pinnedGoreleaserAction is goreleaser.yml's real goreleaser-action step, the
+// positive control the stand-down below is proven against: the indent with
+// `uses: `, the SHA, and the `# vX.Y.Z` comment.
+var pinnedGoreleaserAction = regexp.MustCompile(`(?m)^(\s*uses: )goreleaser/goreleaser-action@([0-9a-f]{40})( # v\S+)$`)
+
+// firstStepName is a glyph-owned line of the same file, edited in place to
+// take the shape of a real :bug: fix.
+var firstStepName = regexp.MustCompile(`(?m)^\s*- name: .*$`)
+
+// TestDistGateStandsDownForAPinSwapAlone runs the gate over a fixture
+// repository, because what it holds is a judgement about a diff, which no text
+// assertion over the script can make; the rule and the incident behind it are
+// scripts/dist-gate.sh's header. The positive control is goreleaser.yml's real
+// goreleaser-action line bumped the way dependabot writes it; the in-place
+// edit is the shape a real :bug: fix takes (#306 touched goreleaser.yml's
+// body). The fixture's copy carries one extra line, a `run:` that installs a
+// tool at a SHA, so that a SHA swap on a line that is not a `uses:` has
+// something to swap.
+func TestDistGateStandsDownForAPinSwapAlone(t *testing.T) {
+	testutil.RequireGit(t)
+	sh := requireTool(t, "sh")
+
+	const gated = ".github/workflows/goreleaser.yml"
+	workflow := repoFile(t, gated)
+	m := pinnedGoreleaserAction.FindStringSubmatch(workflow)
+	if m == nil {
+		t.Fatalf("%s no longer carries a SHA-pinned goreleaser/goreleaser-action step; the "+
+			"positive control needs a real pinned `uses:` line — point this test at another", gated)
+	}
+	step, indent, sha, comment := m[0], m[1], m[2], m[3]
+	other := strings.Repeat("0123456789", 4)
+	nameLine := firstStepName.FindString(workflow)
+	if nameLine == "" {
+		t.Fatalf("%s has no `- name:` line to edit in place", gated)
+	}
+	install := "      - run: go install example.com/tool@" + sha + "\n"
+	original := workflow + install
+	swap := func(to string) string { return strings.Replace(original, step, to, 1) }
+	edit := func(in string) string { return strings.Replace(in, nameLine, nameLine+" (edited)", 1) }
+	bumped := swap(indent + "goreleaser/goreleaser-action@" + other + " # v9.9.9")
+
+	dir := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+		return testutil.Git(t, dir, "akira-toriyama", args...)
+	}
+	git("init", "-q", "-b", "main")
+	git("config", "core.fileMode", "true")
+	for _, rel := range []string{"scripts/dist-gate.sh", "scripts/lib/range-gate.sh"} {
+		testutil.WriteFile(t, dir, rel, repoFile(t, rel))
+	}
+	testutil.WriteFile(t, dir, gated, original)
+	git("add", "-A")
+	git("commit", "-q", "-m", "base")
+	base := git("rev-parse", "HEAD")
+	env := []string{
+		"PATH=" + os.Getenv("PATH"),
+		"HOME=" + dir,
+		"GIT_CONFIG_GLOBAL=" + os.DevNull,
+		"GIT_CONFIG_SYSTEM=" + os.DevNull,
+	}
+
+	for _, tc := range []struct {
+		name       string
+		after      string // the gated file as the pull request leaves it
+		executable bool   // a mode change: the diff has no changed line
+		renameTo   string // the gated file moved to this path instead
+		exit       int
+		carries    string // on stdout for a stand-down, on stderr for a refusal
+	}{
+		{name: "dependabot bumps the pin", after: bumped, carries: "goreleaser/goreleaser-action"},
+		{name: "the pin comment alone", after: swap(indent + "goreleaser/goreleaser-action@" + sha + " # v9.9.9"), carries: "goreleaser/goreleaser-action"},
+		{name: "a step name edited in place", after: edit(original), exit: 1, carries: "::error::dist-gate"},
+		{name: "a bump riding with an edit", after: edit(bumped), exit: 1, carries: "::error::dist-gate"},
+		{name: "the action swapped for another", after: swap(indent + "akira-toriyama/goreleaser-action@" + other + comment), exit: 1, carries: "::error::dist-gate"},
+		{name: "the pin moved to a tag", after: swap(indent + "goreleaser/goreleaser-action@v7"), exit: 1, carries: "::error::dist-gate"},
+		{name: "the step moved", after: strings.Replace(original, step+"\n", "", 1) + step + "\n", exit: 1, carries: "::error::dist-gate"},
+		{name: "the step re-indented", after: swap(" " + indent + "goreleaser/goreleaser-action@" + other + comment), exit: 1, carries: "::error::dist-gate"},
+		{name: "a pinned step added", after: original + "      - uses: actions/setup-node@" + other + "\n", exit: 1, carries: "::error::dist-gate"},
+		{name: "a run: line's SHA swapped", after: strings.Replace(original, install, "      - run: go install example.com/tool@"+other+"\n", 1), exit: 1, carries: "::error::dist-gate"},
+		{name: "no changed line", after: original, executable: true, exit: 1, carries: "::error::dist-gate"},
+		{name: "the file renamed out of the gate", renameTo: ".github/workflows/goreleaser-old.yml", exit: 1, carries: "::error::dist-gate"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			git("checkout", "-q", "--detach", base)
+			if tc.renameTo != "" {
+				git("mv", gated, tc.renameTo)
+			} else {
+				testutil.WriteFile(t, dir, gated, tc.after)
+			}
+			if tc.executable {
+				if err := os.Chmod(filepath.Join(dir, gated), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			git("commit", "-q", "-a", "-m", "change")
+			run := execute(t, []string{sh, filepath.Join(dir, "scripts", "dist-gate.sh"), base}, dir, env)
+			if run.exit != tc.exit {
+				t.Fatalf("dist-gate exited %d, want %d\n%s", run.exit, tc.exit, run)
+			}
+			stream := run.stdout
+			if tc.exit != 0 {
+				stream = run.stderr
+			}
+			if !strings.Contains(stream, tc.carries) {
+				t.Errorf("dist-gate's verdict does not carry %q\n%s", tc.carries, run)
+			}
+			if tc.exit == 0 && run.stderr != "" {
+				t.Errorf("a stand-down wrote to stderr — the shell or awk complained on the way to 0\n%s", run)
+			}
+		})
 	}
 }

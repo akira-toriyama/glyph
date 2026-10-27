@@ -948,9 +948,14 @@ change *mandatory*: such a file in the diff with no `internal/workflows`
 `*_test.go` change fails the PR. It closes a measured gap — `bite` acts on Go
 diffs only and the extras smoke reads no YAML, so a `:bug:` fix touching only
 `.goreleaser.yaml` or only the install action used to ship with zero tests.
-Waived by a `Dist-gate-exempt: <reason>` git trailer on every non-merge commit,
-go-bite's exact shape. `scripts/dist-gate.sh`, `.github/workflows/build.yml`
-(the `dist-gate` job), `internal/workflows/distgate_test.go`
+Stands down on its own when every changed line of the distribution-layer
+files is a SHA-pinned `uses:` step put back as the same line at another SHA —
+dependabot's bump, which no text assertion can express and no bot can waive
+(six bot pulls went red before the gate learned the shape). Waived by a
+`Dist-gate-exempt: <reason>` git trailer on every non-merge commit, go-bite's
+exact shape. `scripts/dist-gate.sh` (`pin_swaps` is the stand-down),
+`.github/workflows/build.yml` (the `dist-gate` job),
+`internal/workflows/distgate_test.go`
 
 **merge preview** — the answer to "what does merging this PR do to the version",
 rendered as a whole Markdown comment body: the PR's own individual commits folded

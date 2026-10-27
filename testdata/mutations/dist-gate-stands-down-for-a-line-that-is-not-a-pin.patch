@@ -1,0 +1,12 @@
+diff --git a/scripts/dist-gate.sh b/scripts/dist-gate.sh
+index d602a27..faa8db7 100644
+--- a/scripts/dist-gate.sh
++++ b/scripts/dist-gate.sh
+@@ -108,7 +108,6 @@ pin_swaps() {
+     !inhunk        { if ($0 !~ /^(index |--- |[+][+][+] )/) { bad = 1; exit }; next }
+     /^[-+]/ {
+       head = pin($0)
+-      if (head == "") { bad = 1; exit }
+       if (substr($0, 1, 1) == "-") minus[++nminus] = head; else plus[++nplus] = head
+       sub(/^[ \t]*(- )?uses: /, "", head)
+       seen[head] = 1

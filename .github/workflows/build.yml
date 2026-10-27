@@ -48,7 +48,8 @@ jobs:
   # a red here means something different from a red unit test.
   mutations:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 29 runs measured 2026-10-27: 623–1106 s; 20 left 8% headroom.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -66,8 +67,9 @@ jobs:
   # below reads no YAML, so a :bug: fix touching only .goreleaser.yaml or the
   # install action used to reach main with zero tests and no gate noticing
   # (t-5dbh). This job closes that: a distribution-layer file in the diff with
-  # no internal/workflows test change fails the pull request. File set, waiver
-  # (`Dist-gate-exempt:` trailer) and rationale: scripts/dist-gate.sh.
+  # no internal/workflows test change fails the pull request. File set, the
+  # pin-swap stand-down, waiver (`Dist-gate-exempt:` trailer) and rationale:
+  # scripts/dist-gate.sh.
   # PR-only because the gate judges a diff; a push to main carries none.
   dist-gate:
     if: github.event_name == 'pull_request'

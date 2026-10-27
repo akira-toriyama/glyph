@@ -25,6 +25,19 @@
 # pre-PR tree. The two gates compose — this one demands the test EXISTS, bite
 # demands it BITES.
 #
+# One change is judged before any evidence is asked for, and passes: a diff
+# whose every changed line in the gated files is a SHA-pinned `uses:` step put
+# back as the same line with another SHA, or another `# vX.Y.Z` comment —
+# dependabot's bump, and nothing else. No text assertion can express a SHA
+# swap and a bot cannot write the trailer below, so until the gate learned
+# that shape every such pull went red: six of them (#88, #89, #90, #158, #287,
+# #315), two re-authored by hand to carry the trailer, two merged red by
+# fleet-automerge, which reads required checks alone — which is also why the
+# gate could not be made required. The shape is read strictly, by pin_swaps
+# below: a changed `with:` line, a step moved, added or re-indented, an action
+# replaced by another, a pin that is a tag rather than 40 hex, a mode change, a
+# rename, a binary — each of those is judged like any other change.
+#
 # Escape hatch, go-bite's exact shape: a `Dist-gate-exempt: <reason>` git
 # trailer on EVERY non-merge commit in the range — a real trailer, parsed by
 # `git interpret-trailers`, so a line sitting inside a body paragraph waives
@@ -36,8 +49,9 @@
 # the same diff CI judges.
 #
 # internal/workflows/distgate_test.go holds this pattern's canary, proves every
-# arm still names a real file, and asserts byte-for-byte agreement with its own
-# copy — edit the pattern in BOTH places or that test fails.
+# arm still names a real file, asserts byte-for-byte agreement with its own
+# copy — edit the pattern in BOTH places or that test fails — and runs this
+# script over a fixture repository to hold the pin-swap stand-down to its shape.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -50,9 +64,74 @@ base="${1:?usage: sh scripts/dist-gate.sh <base-ref>}"
 . ./scripts/lib/range-gate.sh
 changed="$(range_gate_changed "$base")"
 
+# pin_swaps prints, one per line, the actions whose pins the diff of the files
+# in $dist swaps, and returns 0 only when every changed line is such a swap: a
+# `uses: <owner>/<repo>[/<path>]@<40 hex>` line, with or without one
+# `# <comment>` token after it, whose text before the `@` — indentation, list
+# marker, action — is the i-th removal of its hunk and comes back as the i-th
+# addition. Any other changed line, an unpaired removal or addition, a header
+# line that is not a plain text change (a mode, a rename, a binary), or no
+# changed line at all returns 1. The diff carries no context and no git
+# configuration: -U0 and --inter-hunk-context=0 keep each change its own hunk,
+# --text and --no-renames show a binary or a rename as the lines they are, and
+# the rest holds a developer's diff.* config out of a verdict CI would not
+# share.
+pin_swaps() {
+  old_ifs=$IFS
+  IFS='
+'
+  set -f
+  # shellcheck disable=SC2086 # one path per line: IFS is a newline alone and globbing is off
+  set -- $dist
+  set +f
+  IFS=$old_ifs
+  git diff -U0 --inter-hunk-context=0 --no-color --text --no-renames --no-ext-diff --no-textconv "$base"...HEAD -- "$@" | awk '
+    function pin(line,    s, at, head, sha) {
+      s = substr(line, 2)
+      at = index(s, "@")
+      if (at == 0) return ""
+      head = substr(s, 1, at - 1)
+      sha = substr(s, at + 1)
+      sub(/ # [^ \t]+$/, "", sha)
+      if (head !~ "^[ \t]*(- )?uses: [A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+$") return ""
+      if (length(sha) != 40 || sha !~ /^[0-9a-f]+$/) return ""
+      return head
+    }
+    function settle(    i) {
+      if (nminus != nplus) bad = 1
+      for (i = 1; i <= nminus; i++) if (minus[i] != plus[i]) bad = 1
+      nminus = 0
+      nplus = 0
+    }
+    /^diff --git / { settle(); inhunk = 0; next }
+    /^@@ /         { settle(); inhunk = 1; next }
+    !inhunk        { if ($0 !~ /^(index |--- |[+][+][+] )/) { bad = 1; exit }; next }
+    /^[-+]/ {
+      head = pin($0)
+      if (head == "") { bad = 1; exit }
+      if (substr($0, 1, 1) == "-") minus[++nminus] = head; else plus[++nplus] = head
+      sub(/^[ \t]*(- )?uses: /, "", head)
+      seen[head] = 1
+      any = 1
+    }
+    END {
+      settle()
+      if (bad || !any) exit 1
+      for (k in seen) print k
+    }
+  '
+}
+
 dist="$(printf '%s\n' "$changed" | grep -E "$DIST_PATTERN" || true)"
 if [ -z "$dist" ]; then
   echo "dist-gate: no distribution-layer file in the diff — nothing to prove"
+  exit 0
+fi
+
+if swapped="$(pin_swaps)"; then
+  swapped="$(printf '%s\n' "$swapped" | sort | paste -s -d ' ' -)"
+  echo "dist-gate: every changed line of the distribution layer swaps the SHA pin of the same action ($swapped) — dependabot's bump, which no workflow test can express; the gate stands down:"
+  printf '%s\n' "$dist" | sed 's/^/  /'
   exit 0
 fi
 
