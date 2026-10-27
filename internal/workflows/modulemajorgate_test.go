@@ -31,10 +31,10 @@ func TestReleaseRefusesATagWhoseMajorTheModulePathDoesNotCarry(t *testing.T) {
 	if p := shape.parents; len(p) < 2 || p[0] != "steps" || p[1] != "release" {
 		t.Fatalf("the step sits under %v, want the release job's steps", p)
 	}
-	// Before the notes step's `go build` and before GoReleaser: the refusal
-	// must leave nothing behind the tag.
+	// Before the build the notes action reads and before GoReleaser: the
+	// refusal must leave nothing behind the tag.
 	at := strings.Index(raw, "- name: "+moduleMajorStep+"\n")
-	for _, later := range []string{"- name: " + notesStep + "\n", "- name: GoReleaser\n"} {
+	for _, later := range []string{"- name: " + buildStep + "\n", "- name: " + notesStep + "\n", "- name: GoReleaser\n"} {
 		if j := strings.Index(raw, later); j < 0 || j < at {
 			t.Errorf("%q does not follow the module-major step (step at %d, it at %d); a refusal "+
 				"after it leaves release assets behind a tag Go cannot resolve", strings.TrimSpace(later), at, j)

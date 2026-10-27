@@ -108,6 +108,7 @@ func TestDistGatePatternCoversTheRealDistributionLayer(t *testing.T) {
 	for _, path := range []string{
 		".goreleaser.yaml",
 		".github/actions/install/action.yml",
+		".github/actions/release-notes/action.yml",
 		".github/workflows/lint.yml",
 		".github/workflows/pr-verdict.yml",
 		".github/workflows/release.yml",

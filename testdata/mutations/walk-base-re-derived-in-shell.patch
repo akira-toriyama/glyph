@@ -1,16 +1,16 @@
-diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
-index a14a4b2..2abc2b7 100644
---- a/.github/workflows/goreleaser.yml
-+++ b/.github/workflows/goreleaser.yml
-@@ -115,8 +115,10 @@ jobs:
-           # other exit is a real failure and keeps its code: 4 clears on a
-           # re-run, 2 is a broken invocation.
-           go build -o "$RUNNER_TEMP/glyph" ./cmd/glyph
-+          prev="$(git tag --list 'v*' --sort=v:refname |
-+            awk -v cur="$GITHUB_REF_NAME" '$0 == cur { exit } { last = $0 } END { print last }')"
-           status=0
--          "$RUNNER_TEMP/glyph" notes --since-tag="below:$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md" || status=$?
-+          "$RUNNER_TEMP/glyph" notes --since-tag="$prev" > "$RUNNER_TEMP/release-notes.md" || status=$?
-           if [ "$status" -eq 1 ]; then
-             echo "::warning::no release-worthy commits below $GITHUB_REF_NAME — publishing with a placeholder body"
-             printf 'No release-worthy changes in %s.\n' "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
+diff --git a/.github/actions/release-notes/action.yml b/.github/actions/release-notes/action.yml
+index af611ba..5be5432 100644
+--- a/.github/actions/release-notes/action.yml
++++ b/.github/actions/release-notes/action.yml
+@@ -115,8 +115,10 @@ runs:
+         # job leaves the escape tag with no release assets (t-bcdz). Every
+         # other exit is a real failure and keeps its code: 4 clears on a
+         # re-run, 2 is a broken invocation.
++        prev="$(git tag --list 'v*' --sort=v:refname |
++          awk -v cur="$tag" '$0 == cur { exit } { last = $0 } END { print last }')"
+         status=0
+-        "$GLYPH" notes --since-tag="below:$tag" > "$out" || status=$?
++        "$GLYPH" notes --since-tag="$prev" > "$out" || status=$?
+         if [ "$status" -eq 1 ]; then
+           echo "::warning::no release-worthy commits below $tag — publishing with a placeholder body"
+           printf 'No release-worthy changes in %s.\n' "$tag" > "$out"

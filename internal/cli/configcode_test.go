@@ -29,8 +29,8 @@ import (
 //   - the installed commit-msg and pre-push hooks block on exit 3 alone. A
 //     typo in glyph.toml classified as 3 blocked every commit in the clone —
 //     including the commit that would repair the typo.
-//   - goreleaser.yml's tag-time notes step publishes exit 3 as the wedge
-//     escape's placeholder. A glyph.toml classified as 3 there ships a release
+//   - the release-notes action's tag-time step (goreleaser.yml runs it)
+//     publishes exit 3 as the wedge escape's placeholder. A glyph.toml classified as 3 there ships a release
 //     whose body blames a commit nobody judged.
 
 // seedConfig overwrites the fixture repo's glyph.toml with body.

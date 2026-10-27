@@ -1829,14 +1829,14 @@ commit and a tag strictly past it both exited 3). Both now exit 0.
 
 **The escape tag's own release ships a placeholder body.** The escape clears
 every walk that starts at or past the tag, and the tag's own tag-time notes are
-not one: `goreleaser.yml` renders glyph's release body with
+not one: the release-notes action (§6) renders a tag-push job's body with
 `notes --since-tag=below:TAG`, which walks from the predecessor, so that walk
 reaches the refused commit again and refuses it at `3`. Measured 2026-10-20 at
 ec53ed3 on a throwaway repository — a direct push no pattern claims, the escape
 tag cut at it and, separately, strictly past it: `below:` exited 3 both times
 while the next release's bare `--since-tag` walk exited 0, and the step's own
 shell then exited 3 over an empty body, which fails the job before GoReleaser
-runs (t-s5n4's shape). So the step ships `3` as it ships the soft no-release
+runs (t-s5n4's shape). So the action ships `3` as it ships the soft no-release
 `1`, with a placeholder body and a `::warning::` saying why: the walk below the
 tag reaches a commit glyph refuses, the tag was cut where the refusal sends it
 (at or past that commit, or a squash-merged pull's merge point) to clear the
@@ -3185,9 +3185,9 @@ answered `3`: the installed commit-msg and pre-push hooks block on `3` alone, so
 a typo in `glyph.toml` rejected the very commit that would repair it, and
 `lint.yml`'s default-branch push arm swallows `3` alone, so an I/O failure
 returned a green gate having judged nothing. The third came later:
-`goreleaser.yml`'s tag-time notes step publishes on `3` as the wedge escape's
-placeholder (§4, t-bcdz), so a config the loader answered `3` would ship a
-release whose body blames a commit nobody judged.
+the release-notes action's tag-time step (§6) publishes on `3` as the wedge
+escape's placeholder (§4, t-bcdz), so a config the loader answered `3` would
+ship a release whose body blames a commit nobody judged.
 
 The `2`/`4` line is drawn on what was observed, as `doctor`'s severities are
 (§7): a `glyph.toml` path holding something other than a regular file — a
@@ -3262,8 +3262,8 @@ exits `0` there. `core.CodeNoRelease` is constructed in `cmd_bump.go`,
 `cmd_notes.go` and `cmd_release.go` (`releaseExit` — §4.1: `1` only when every
 line folds to none, the bare line being the one line), and nowhere else.
 Outside Go the integers are branched on in several places — `lint.yml` on `0` and on
-`jq -e '.error.code == 3'`, `release.yml` on `1`, `goreleaser.yml` on `1` and `3`
-(§4, the escape tag's own release) — but the
+`jq -e '.error.code == 3'`, `release.yml` on `1`, the release-notes action on `1`
+and `3` (§4, the escape tag's own release) — but the
 generated commit-msg hook is the one such consumer glyph WRITES, so its gate code
 is interpolated from `core.CodeLint` rather than typed as a shell literal; it
 forwards `3` and only `3` and exits `0` on every other failure (`internal/hook`,
@@ -3442,7 +3442,10 @@ v* tag) that install the pinned binary with checksum + attestation verify;
 family repos consume them at a concrete `@vX.Y.Z` (never a moving tag — binary
 and workflow ship from one repo at one tag). glyph's OWN tag-driven GoReleaser
 workflow is `goreleaser.yml` — also the attestation signer identity from v0.3.0
-on. Migration off git-cliff is canary-first (`chord`) and flips DIRECTLY —
+on. Beside the install action ships a second composite action,
+`.github/actions/release-notes` (below): the tag-time notes rule, which
+`goreleaser.yml` runs over the binary it built and a hand-tagged repository
+runs over the installed one. Migration off git-cliff is canary-first (`chord`) and flips DIRECTLY —
 ratified Q16 (v1 — the reasoning predates the table's removal, the stance
 stands): no shadow parallel-run (a policy-honest comparison against the
 type-driven git-cliff is impossible once glyph legitimately
@@ -3536,6 +3539,24 @@ so it cannot drift from the workflow revision — replacing a hand-bumped
 `glyph-version` default that did drift once (lint.yml sat at v0.4.0 through the
 v0.5.0 tag while callers pinned @v0.5.0); `internal/workflows` tests guard both
 the single-source install and the derived version.
+
+The tag-time notes rule (§4, the escape tag's own release) lives in a second
+composite action, `.github/actions/release-notes`, for the same reason
+(t-4fpn). `goreleaser.yml` runs it over the binary it just built
+(`uses: ./.github/actions/release-notes`, a relative path that resolves in
+glyph's own checkout); a repository that cuts tags by hand runs it over the
+binary the install action verified, by full path at a release tag. When t-4fpn
+measured the fleet (2026-10-26, against the v6.0.0 asset), six such repositories
+— cifail, furrow, mergeprobe, pare, prq, rundiff — each carried their own copy
+of the step: every copy resolved the predecessor with `git describe --tags
+--abbrev=0 HEAD^`, an ancestry walk to the nearest tag that takes a release
+candidate as the base (v3.3.0-rc.2 for v3.3.0, where `below:` walks from
+v3.2.0; furrow's `--exclude '*-*'` variant matches `below:`), and every copy
+failed the job on `3`, leaving an escape tag with no release assets, while #306
+had fixed glyph's own copy alone on the premise that it was the only one. The
+action is built to replace them; each adopts it by a request task.
+`internal/workflows` runs the action's step over a stub glyph for every exit,
+and holds `goreleaser.yml` to running the action rather than a walk of its own.
 
 Two checks bracket the download (t-vw55). Before it, the `version` input must
 be a release tag — `vX.Y.Z`, or `vX.Y.Z-<pre-release>`, since the reusables
@@ -3980,7 +4001,7 @@ the binary (t-0cqs).
 **Shipped.** Every engine deliverable is something you can run or read in this
 tree, and it is inventoried where it is already maintained rather than a third
 time here: the commands are §5's list, each with its own `--help`; the three
-reusable workflows and the one install action are §6; `git tag` is the release
+reusable workflows and the two composite actions are §6; `git tag` is the release
 history and the only answer to "which version". README's opening lede is the
 one-sentence state, and it is the only prose that should need touching when that
 changes.

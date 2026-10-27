@@ -110,15 +110,16 @@ func TestInstallActionRetriesSpanARealOutage(t *testing.T) {
 	}
 }
 
-// TestNotesSoftExitShipsAPlaceholder pins the goreleaser.yml arm that absorbs
-// `glyph notes`' soft no-release exit 1 (7d8d733): under `set -e` a bare
-// invocation kills the whole job when the range below the tag holds nothing
-// release-worthy — no binaries, no cask, no attestation, behind a tag that
-// already exists. The contract is honoured instead: 1 ships a placeholder
-// body, and a real failure keeps its code. Which exits ship and which fail
-// is TestNotesStepShipsEveryVerdictOnTheRange's, which runs the step.
+// TestNotesSoftExitShipsAPlaceholder pins the release-notes action's arm that
+// absorbs `glyph notes`' soft no-release exit 1 (7d8d733): under `set -e` a
+// bare invocation kills the whole job when the range below the tag holds
+// nothing release-worthy — no binaries, no cask, no attestation, behind a tag
+// that already exists. The contract is honoured instead: 1 ships a
+// placeholder body, and a real failure keeps its code. Which exits ship and
+// which fail is TestNotesStepShipsEveryVerdictOnTheRange's, which runs the
+// step.
 func TestNotesSoftExitShipsAPlaceholder(t *testing.T) {
-	body := code(repoFile(t, filepath.Join(".github", "workflows", "goreleaser.yml")))
+	body := code(repoFile(t, filepath.FromSlash(releaseNotesAction)))
 
 	for _, want := range []string{
 		"|| status=$?",                 // capture without dying under set -e
@@ -128,39 +129,141 @@ func TestNotesSoftExitShipsAPlaceholder(t *testing.T) {
 		`exit "$status"`,               // with their own code, not a laundered 1
 	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("goreleaser.yml's notes step lost %q; `glyph notes` exits 1 on an infra-only "+
+			t.Errorf("the release-notes action lost %q; `glyph notes` exits 1 on an infra-only "+
 				"range by contract, and without this arm `set -e` turns that verdict into a job "+
 				"abort behind a tag that already exists (7d8d733)", want)
 		}
 	}
 }
 
-// notesStep is goreleaser.yml's step that renders the release body.
-const notesStep = "release notes via glyph itself"
+// notesStep is goreleaser.yml's step that renders the release body by running
+// the release-notes action over the binary buildStep built; renderStep is the
+// action's one step, which the harness below runs.
+const (
+	buildStep          = "build glyph for its own release notes"
+	notesStep          = "release notes via glyph itself"
+	releaseNotesAction = ".github/actions/release-notes/action.yml"
+	renderStep         = "Render release notes (glyph notes below the tag, placeholder on 1 and 3)"
+)
 
-// TestNotesStepShipsEveryVerdictOnTheRange runs goreleaser.yml's notes step —
-// its own shell, a stub glyph standing where `go build` puts the real one —
-// over each exit `glyph notes` can hand it. At tag time the range is
-// immutable, so a verdict on it is permanent: a re-run answers the same, and a
-// failed job leaves a tag with no release assets. The step therefore ships on
-// 1 (its placeholder byte for byte, unchanged by t-bcdz) and on 3, which is
-// how the wedge escape's own tag answers: the escape is a tag cut where glyph's
-// refusal sends it (DESIGN §4) — at or past the refused commit, or a
-// squash-merged pull's merge point — and below: walks from the predecessor, so
-// that walk reaches the commit again (t-bcdz, measured 2026-10-20 at ec53ed3 on
-// a throwaway repository: the step exited 3 over an empty body). 4 clears on a
-// re-run and 2 is a broken invocation, so both keep failing with their own
-// code. The rendered case is the positive control: the body is the stub's
-// stdout, so the stub ran and the placeholders replace the file glyph wrote
-// (mutation row notes-wedge-exit-kills-the-escape-tag-release).
-func TestNotesStepShipsEveryVerdictOnTheRange(t *testing.T) {
+// TestGoreleaserRendersItsNotesThroughTheAction holds goreleaser.yml to the
+// one home of the tag-time notes rule: its notes step runs the action over the
+// binary the step before built, hands it the pushed tag and the file
+// GoReleaser reads, and keeps no walk of its own. A second copy of the rule is
+// how six consumers came to fail the job on 3 while glyph's own copy shipped
+// (t-4fpn).
+func TestGoreleaserRendersItsNotesThroughTheAction(t *testing.T) {
 	raw := repoFile(t, filepath.Join(".github", "workflows", "goreleaser.yml"))
-	script := extractRun(t, raw, notesStep)
-	shell := unspecifiedShell
-	if readStepShape(t, raw, notesStep).keys["shell"] == "bash" {
+	if got := readStepShape(t, raw, notesStep).keys["uses"]; got != "./.github/actions/release-notes" {
+		t.Fatalf("goreleaser.yml's %q step uses %q, want the release-notes action next door", notesStep, got)
+	}
+	var block string
+	for _, b := range stepBlocks(code(raw)) {
+		if strings.Contains(b, "name: "+notesStep+"\n") {
+			block = b
+		}
+	}
+	for _, want := range []string{
+		"glyph: ${{ runner.temp }}/glyph", // the binary buildStep built, never an installed release
+		"tag: ${{ github.ref_name }}",
+		"output: ${{ runner.temp }}/release-notes.md",
+		"token: ${{ secrets.GITHUB_TOKEN }}",
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("goreleaser.yml's notes step no longer passes %q to the action", want)
+		}
+	}
+	body := code(raw)
+	if strings.Contains(body, "notes --since-tag") {
+		t.Error("goreleaser.yml walks the range itself; the rule lives in the release-notes action " +
+			"alone, and a second copy is the one that drifts")
+	}
+	if !strings.Contains(body, "--release-notes=${{ runner.temp }}/release-notes.md") {
+		t.Error("GoReleaser no longer reads the file the action writes")
+	}
+}
+
+// notesFixture lays out one run of the action's step: a stub glyph in bin/
+// that records its argv, answers glyphExit and, on 0, prints rendered; an
+// empty runner.temp; and the files the step writes to.
+type notesFixture struct {
+	dir, bin, temp, stub, calls, outputs, envelope string
+}
+
+func newNotesFixture(t *testing.T, glyphExit int, rendered string) notesFixture {
+	t.Helper()
+	dir := t.TempDir()
+	f := notesFixture{
+		dir:      dir,
+		bin:      filepath.Join(dir, "bin"),
+		temp:     filepath.Join(dir, "runner-temp"),
+		calls:    filepath.Join(dir, "glyph-calls"),
+		outputs:  filepath.Join(dir, "github-output"),
+		envelope: fmt.Sprintf(`{"error":{"code":%d,"message":"stub refusal"}}`, glyphExit),
+	}
+	for _, d := range []string{f.bin, f.temp} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(f.calls, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	say := "printf '%s\\n' " + shq(f.envelope) + " >&2\n"
+	if glyphExit == 0 {
+		say = "printf '%s' " + shq(rendered) + "\n"
+	}
+	writeStub(t, f.bin, "glyph", recordArgv(f.calls)+say+fmt.Sprintf("exit %d\n", glyphExit))
+	f.stub = filepath.Join(f.bin, "glyph")
+	return f
+}
+
+// env is the step's environment: the runner's own variables, and the four the
+// action's env: block maps from its inputs (TestReleaseNotesActionWiresItsInputsAndOutputs
+// holds that mapping).
+func (f notesFixture) env(tag, refName, output, glyph string) []string {
+	return []string{
+		"PATH=" + f.bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"RUNNER_TEMP=" + f.temp,
+		"GITHUB_OUTPUT=" + f.outputs,
+		"GITHUB_REF_NAME=" + refName,
+		"TAG=" + tag,
+		"OUTPUT=" + output,
+		"GLYPH=" + glyph,
+		"GH_TOKEN=stub-token",
+	}
+}
+
+// notesScript is the action's step, with the shell the runner starts it under.
+func notesScript(t *testing.T) (script string, shell []string) {
+	t.Helper()
+	raw := repoFile(t, filepath.FromSlash(releaseNotesAction))
+	script = extractRun(t, raw, renderStep)
+	shell = unspecifiedShell
+	if readStepShape(t, raw, renderStep).keys["shell"] == "bash" {
 		shell = bashShell
 	}
+	return script, shell
+}
 
+// TestNotesStepShipsEveryVerdictOnTheRange runs the release-notes action's
+// step — its own shell, a stub glyph standing where the caller's build or the
+// install action put the real one — over each exit `glyph notes` can hand it.
+// At tag time the range is immutable, so a verdict on it is permanent: a
+// re-run answers the same, and a failed job leaves a tag with no release
+// assets. The step therefore ships on 1 (its placeholder byte for byte,
+// unchanged by t-bcdz) and on 3, which is how the wedge escape's own tag
+// answers: the escape is a tag cut where glyph's refusal sends it (DESIGN §4)
+// — at or past the refused commit, or a squash-merged pull's merge point —
+// and below: walks from the predecessor, so that walk reaches the commit
+// again (t-bcdz, measured 2026-10-20 at ec53ed3 on a throwaway repository:
+// the step exited 3 over an empty body). 4 clears on a re-run and 2 is a
+// broken invocation, so both keep failing with their own code. The rendered
+// case is the positive control: the body is the stub's stdout, so the stub
+// ran and the placeholders replace the file glyph wrote (mutation row
+// notes-wedge-exit-kills-the-escape-tag-release).
+func TestNotesStepShipsEveryVerdictOnTheRange(t *testing.T) {
+	script, shell := notesScript(t)
 	const (
 		tag      = "v9.8.7"
 		rendered = "## Fixes\n\n- the body glyph rendered\n"
@@ -188,52 +291,146 @@ func TestNotesStepShipsEveryVerdictOnTheRange(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			dir := t.TempDir()
-			bin := filepath.Join(dir, "bin")
-			temp := filepath.Join(dir, "runner-temp")
-			for _, d := range []string{bin, temp} {
-				if err := os.Mkdir(d, 0o755); err != nil {
-					t.Fatal(err)
-				}
-			}
-			calls := filepath.Join(dir, "glyph-calls")
-			envelope := fmt.Sprintf(`{"error":{"code":%d,"message":"stub refusal"}}`, c.glyphExit)
-			say := "printf '%s\\n' " + shq(envelope) + " >&2\n"
-			if c.glyphExit == 0 {
-				say = "printf '%s' " + shq(rendered) + "\n"
-			}
-			writeStub(t, dir, "glyph", recordArgv(calls)+say+fmt.Sprintf("exit %d\n", c.glyphExit))
-			// The build is not under test: `go` puts the stub where
-			// `go build -o` would.
-			writeStub(t, bin, "go", `[ "$1 $2 $4" = "build -o ./cmd/glyph" ] || { echo "go stub: unexpected argv: $*" >&2; exit 97; }`+
-				"\ncp "+shq(filepath.Join(dir, "glyph"))+` "$3"`+"\n")
-
-			run := runStep(t, script, shell, dir, []string{
-				"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
-				"RUNNER_TEMP=" + temp,
-				"GITHUB_REF_NAME=" + tag,
-			})
+			f := newNotesFixture(t, c.glyphExit, rendered)
+			run := runStep(t, script, shell, f.dir, f.env("", tag, "", f.stub))
 
 			if run.exit != c.stepExit {
 				t.Fatalf("glyph notes exited %d and the step %d, want %d\n%s", c.glyphExit, run.exit, c.stepExit, run)
 			}
 			want := []string{"notes", "--since-tag=below:" + tag}
-			if got := recordedCalls(t, calls); len(got) != 1 || !slices.Equal(got[0], want) {
+			if got := recordedCalls(t, f.calls); len(got) != 1 || !slices.Equal(got[0], want) {
 				t.Errorf("the step ran glyph as %q, want %q once\n%s", got, want, run)
 			}
 			if c.annotation != "" && !hasLine(run.stdout, c.annotation) {
 				t.Errorf("the step printed no line %q\n%s", c.annotation, run)
 			}
-			if c.glyphExit != 0 && !strings.Contains(run.stderr, envelope) {
+			if c.glyphExit != 0 && !strings.Contains(run.stderr, f.envelope) {
 				t.Errorf("glyph's stderr did not reach the job log — the exit-3 placeholder sends its reader "+
 					"there for the commit, and a failed job is diagnosed from it:\n%s", run)
 			}
-			if c.stepExit == 0 {
-				if got := readIfAny(t, filepath.Join(temp, "release-notes.md")); got != c.body {
-					t.Errorf("release-notes.md holds %q, want %q", got, c.body)
+			file := filepath.Join(f.temp, "release-notes.md")
+			if c.stepExit != 0 {
+				if got := readIfAny(t, f.outputs); got != "" {
+					t.Errorf("a failed step still wrote outputs %q; the step after would read a file that holds no verdict", got)
 				}
+				return
+			}
+			if got := readIfAny(t, file); got != c.body {
+				t.Errorf("release-notes.md holds %q, want %q", got, c.body)
+			}
+			if want, got := fmt.Sprintf("file=%s\nstatus=%d\n", file, c.glyphExit), readIfAny(t, f.outputs); got != want {
+				t.Errorf("GITHUB_OUTPUT holds %q, want %q", got, want)
 			}
 		})
+	}
+}
+
+// TestNotesStepResolvesItsInputs runs the step over the ways a caller can
+// name what it works on, and over the three calls it refuses before anything
+// is written: the tag is the `tag:` input, else the ref the job runs on; the
+// body goes where `output:` says, else into runner.temp; glyph is the
+// `glyph:` input, a path or a name on PATH. A refusal is exit 2 — a broken
+// invocation, in glyph's own vocabulary — and never the soft exit 1 a failed
+// redirect would otherwise hand the arm that reads glyph's status (measured
+// in review: an `output:` under a directory that does not exist printed the
+// nothing-release-worthy warning with glyph never run).
+func TestNotesStepResolvesItsInputs(t *testing.T) {
+	script, shell := notesScript(t)
+	const tag = "v9.8.7"
+	cases := []struct {
+		name                        string
+		tag, refName, output, glyph string // the step's inputs; <temp> stands for runner.temp, "" for unset (glyph: the stub by path)
+		exit                        int
+		file                        string // where the body lands, under runner.temp
+		annotation                  string
+	}{
+		{name: "the tag: input wins over the ref the job runs on", tag: tag, refName: "a-branch", file: "release-notes.md"},
+		{name: "output: names the file", refName: tag, output: "<temp>/CHANGELOG.md", file: "CHANGELOG.md"},
+		{name: "glyph: names a binary found on PATH", refName: tag, glyph: "glyph", file: "release-notes.md"},
+		{name: "no tag anywhere refuses before glyph runs", exit: 2,
+			annotation: "::error::glyph release-notes: no tag — pass tag:, or run on a tag ref"},
+		{name: "no glyph refuses before anything is written", refName: tag, glyph: "not-a-glyph", exit: 2,
+			annotation: "::error::glyph release-notes: not-a-glyph is not on PATH and not an executable file — " +
+				"install glyph first (akira-toriyama/glyph/.github/actions/install), or pass glyph:"},
+		{name: "an output nobody can write refuses before glyph runs", refName: tag, output: "<temp>/missing/notes.md", exit: 2,
+			annotation: "::error::glyph release-notes: cannot write <temp>/missing/notes.md"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := newNotesFixture(t, 0, "## Fixes\n")
+			at := func(s string) string { return strings.ReplaceAll(s, "<temp>", f.temp) }
+			glyph := f.stub
+			if c.glyph != "" {
+				glyph = c.glyph
+			}
+			run := runStep(t, script, shell, f.dir, f.env(c.tag, c.refName, at(c.output), glyph))
+
+			if run.exit != c.exit {
+				t.Fatalf("the step exited %d, want %d\n%s", run.exit, c.exit, run)
+			}
+			if c.annotation != "" && !hasLine(run.stdout, at(c.annotation)) {
+				t.Errorf("the step printed no line %q\n%s", at(c.annotation), run)
+			}
+			calls := recordedCalls(t, f.calls)
+			if c.exit != 0 {
+				if len(calls) != 0 {
+					t.Errorf("a refused call still ran glyph as %q\n%s", calls, run)
+				}
+				if got := readIfAny(t, f.outputs); got != "" {
+					t.Errorf("a refused call still wrote outputs %q", got)
+				}
+				if got := readIfAny(t, filepath.Join(f.temp, "release-notes.md")); got != "" {
+					t.Errorf("a refused call still wrote a body %q", got)
+				}
+				return
+			}
+			want := []string{"notes", "--since-tag=below:" + tag}
+			if len(calls) != 1 || !slices.Equal(calls[0], want) {
+				t.Errorf("the step ran glyph as %q, want %q once\n%s", calls, want, run)
+			}
+			file := filepath.Join(f.temp, c.file)
+			if got := readIfAny(t, file); got != "## Fixes\n" {
+				t.Errorf("%s holds %q, want the rendered body", file, got)
+			}
+			if want, got := "file="+file+"\nstatus=0\n", readIfAny(t, f.outputs); got != want {
+				t.Errorf("GITHUB_OUTPUT holds %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// TestReleaseNotesActionWiresItsInputsAndOutputs holds the manifest half the
+// harness cannot run: the step's env: maps each input to the variable the
+// script reads, the step carries the id the outputs name, and each output's
+// value reads that step. Broken, a consumer's `steps.<id>.outputs.file` is
+// empty and GoReleaser is handed no notes file at all (measured in review:
+// renaming the id left every executed test green).
+func TestReleaseNotesActionWiresItsInputsAndOutputs(t *testing.T) {
+	raw := repoFile(t, filepath.FromSlash(releaseNotesAction))
+	shape := readStepShape(t, raw, renderStep)
+	if got := shape.keys["id"]; got != "notes" {
+		t.Errorf("the action's step has id %q, want notes — the outputs below read steps.notes", got)
+	}
+	if got := shape.keys["shell"]; got != "bash" {
+		t.Errorf("the action's step runs under shell %q, want bash: the harness runs it as `bash -eo pipefail`", got)
+	}
+	body := code(raw)
+	for _, want := range []string{
+		"TAG: ${{ inputs.tag }}",
+		"OUTPUT: ${{ inputs.output }}",
+		"GLYPH: ${{ inputs.glyph }}",
+		"GH_TOKEN: ${{ inputs.token }}",
+		"value: ${{ steps.notes.outputs.file }}",
+		"value: ${{ steps.notes.outputs.status }}",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the action no longer wires %q; the script reads a variable nothing sets, or a caller reads an output nothing fills", want)
+		}
+	}
+	for _, input := range []string{"tag", "output", "glyph", "token"} {
+		if !strings.Contains(body, "\n  "+input+":\n") {
+			t.Errorf("the action declares no input %q, which its env: block maps", input)
+		}
 	}
 }
 

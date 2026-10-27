@@ -2,7 +2,9 @@
 // regressions the YAML itself cannot express — chiefly that the security-critical
 // install logic (download + checksum + `gh attestation verify`) stays in the one
 // composite action .github/actions/install and never drifts back inline into the
-// reusable workflows, and that those reusables install the binary version the
+// reusable workflows, that the tag-time notes rule stays in the one composite
+// action .github/actions/release-notes, which goreleaser.yml runs rather than
+// walking on its own, and that those reusables install the binary version the
 // caller pinned rather than a hand-bumped default that fell out of lockstep once,
 // and that the reusables' commented caller stubs carry the @vX.Y.Z PLACEHOLDER
 // instead of a concrete tag — a tag is cut on a tree that is already frozen, so a
@@ -11,7 +13,8 @@
 //
 // It also reconciles the exit-code contract's out-of-Go copies — the three
 // prose tables (README.md, docs/DESIGN.md §5, docs/glossary.md §6) and the
-// shell and jq branches under .github/workflows and scripts — against
+// shell and jq branches under .github/workflows, .github/actions and scripts —
+// against
 // internal/core. Those are the copies the compiler never sees: a Go test that
 // renumbered a code would go red everywhere at once, while a doc spelling the
 // old integer stays green forever.
