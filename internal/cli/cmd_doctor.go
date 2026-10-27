@@ -240,15 +240,6 @@ func readRemoteHeads(ctx context.Context, prePush hook.Installed) (heads map[str
 	return heads, refless, nil
 }
 
-// probeErr unwraps the probe's own failure for the interrupt guard below — a
-// Ctrl-C that lands mid-probe is the user's abort, never a check result.
-func probeErr(p *doctor.HookProbe) error {
-	if p == nil {
-		return nil
-	}
-	return p.Err
-}
-
 // firstInterrupt returns the first of errs carrying the user's interrupt, or
 // nil. Split out of doctorRun so the guard over its independent reads (the
 // API, then git's) is testable without arranging a live signal — cancelling the
@@ -329,19 +320,34 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
 	if terr == nil {
 		root = top
 	}
+	// The probe hands no interrupt back: a hook killed mid-fire is an exit
+	// status, and the claim's config reads (hookCleanupMode) read a git that did
+	// not answer as unset. So the context both ran under is asked once they are
+	// done, classified as every read classifies it: canceled is the abort, a
+	// deadline is not.
+	var probeAbort error
 	if probe != nil {
 		probe.Claimed = probeClaimed(ctx, cfg)
+		if errors.Is(ctx.Err(), context.Canceled) {
+			probeAbort = core.Interrupted()
+		}
 	}
 	remoteHeads, remoteRefless, headsErr := readRemoteHeads(ctx, prePush)
 	// An interrupt is the user's own abort and must never be laundered into a
 	// check result: reporting "the token cannot read the repository" — or "git
 	// could not report where hooks live" — because somebody pressed Ctrl-C
-	// would be a diagnosis of the wrong thing entirely. Every read runs before
-	// this guard, and the signal lands in whichever is in flight, so every one
-	// is asked: guarding rerr alone turned a mid-run SIGTERM into exit 4 with the
-	// abort rendered as the hook check's could-not-run — the one code the
-	// fleet's wrappers read as retryable infra, on a run the operator stopped.
-	if err := firstInterrupt(rerr, herr, terr, tagsErr, treesErr, actionErr, headsErr, probeErr(probe)); err != nil {
+	// would be a diagnosis of the wrong thing entirely. Every read that runs
+	// under ctx runs before this guard, and the signal lands in whichever is in
+	// flight, so each is asked: the API call and every git call by the error it
+	// returns, and the probe — whose fire and claim reads hand none back —
+	// through ctx itself (probeAbort). The plain file reads — glyph.toml (cfgErr), the
+	// two hooks, and doctor.Run's own workflow and action files — take no ctx
+	// and carry no signal, so they are not asked. Guarding rerr alone turned
+	// a mid-run SIGTERM into exit 4 with the abort rendered as the hook check's
+	// could-not-run, and a SIGINT in the claim's reads, asked by nothing, let
+	// the report finish at exit 3 — codes the fleet's wrappers read as
+	// retryable infra and as a violation, on a run the operator stopped.
+	if err := firstInterrupt(rerr, herr, terr, tagsErr, treesErr, actionErr, headsErr, probeAbort); err != nil {
 		return err
 	}
 	report := doctor.Run(doctor.Input{
