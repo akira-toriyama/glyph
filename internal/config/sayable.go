@@ -16,9 +16,10 @@ import (
 // claimed it (DESIGN §4.1, "The escapes are asked of this commit", has the
 // raw-revert case).
 //
-// Wording only. Nothing here places a commit, moves a verdict or loads a
-// file: it is computed when a refusal is worded, from the patterns Load
-// already accepted, and a reader that needs a verdict must not ask it.
+// Wording only, computed when a refusal is worded: from the patterns Load
+// accepted and the group facts capture.go read off them at load. Nothing in
+// this file places a commit, moves a verdict or loads a file, and a reader
+// that needs a verdict must not ask it.
 
 // Sayable is what one message can write of the two things that place a commit
 // its files do not (rules 2–3): a scope naming a declared line, and the none
@@ -80,11 +81,15 @@ type Sayable struct {
 
 	// RootNeedsName: declaring the root package takes a name — the loader
 	// would refuse `path = "."` alone (rootNeedsName). It is the loader's
-	// answer and is derived from none of the fields above: they leave a warn
-	// pattern out as no form to send a message to, while the loader reads its
-	// scope group like any other. Decided from them, a file whose only scope
-	// group sits in a warn pattern was told `path = "."` declares the root
-	// package, and the file so written exits 2 (measured 2026-10-05).
+	// answer over the spellers Load built for the declared packages
+	// (Config.spellers), so it is asked only of a file that declares
+	// packages: attribution refuses no commit of a file without them, and for
+	// such a file it is false and read by nothing. It is derived from none of
+	// the fields above: they leave a warn pattern out as no form to send a
+	// message to, while the loader reads its scope group like any other.
+	// Decided from them, a file whose only scope group sits in a warn pattern
+	// was told `path = "."` declares the root package, and the file so
+	// written exits 2 (measured 2026-10-05).
 	RootNeedsName bool
 }
 
@@ -105,13 +110,7 @@ func (c *Config) Sayable(i int, message string) (s Sayable, ok bool) {
 		if j != i && (!p.bindsGroups() || p.Warn != "") {
 			continue
 		}
-		// The flags regexp.Compile parses with: the tree compilePattern
-		// already accepted, so the error arm is unreachable for a loaded file.
-		tree, err := syntax.Parse(p.Pattern, syntax.Perl)
-		if err != nil {
-			continue
-		}
-		scope, sigil := captureOf(tree, ScopeGroup), captureOf(tree, sigilGroup)
+		scope, sigil := p.scope, p.sigil
 		var names []string
 		for _, pkg := range c.Packages {
 			if scope.spells(pkg.Name) {
@@ -141,17 +140,11 @@ func (c *Config) Sayable(i int, message string) (s Sayable, ok bool) {
 }
 
 // rootNeedsName asks the loader whether `[[packages]] path = "."` loads with
-// no name key: the root's default name put to checkScopeWord over the file's
-// own spellers. Asked, never restated — "which patterns count" kept in a
-// second place is what drifted from the loader.
+// no name key: the root's default name put to checkScopeWord over the
+// spellers Load derived for the file. Asked, never restated — "which patterns
+// count" kept in a second place is what drifted from the loader.
 func (c *Config) rootNeedsName() bool {
-	spellers, err := scopeSpellers(c.Patterns)
-	if err != nil {
-		// Unreachable for a file Load accepted with packages declared, the
-		// only kind a refusal is worded for.
-		return true
-	}
-	return checkScopeWord(Package{Path: ".", Name: defaultName(".")}, false, spellers) != nil
+	return checkScopeWord(Package{Path: ".", Name: defaultName(".")}, false, c.spellers) != nil
 }
 
 // removals proves the two escapes that take something OUT of the message:
@@ -300,34 +293,6 @@ func optionalAround(re, target *syntax.Regexp) *syntax.Regexp {
 	return around
 }
 
-// capture is one named group of one pattern as Match reads it: the last
-// capture of that name (lastGroup), its sub-expression anchored whole, and
-// whether a match can pass it by.
-type capture struct {
-	present   bool
-	skippable bool
-	word      *regexp.Regexp
-}
-
-func captureOf(tree *syntax.Regexp, name string) capture {
-	group := lastGroup(tree, name)
-	if group == nil {
-		return capture{}
-	}
-	c := capture{present: true}
-	_, c.skippable = passable(tree, group, false)
-	// A sub-expression that will not compile on its own spells nothing here:
-	// the refusal then names no escape it cannot vouch for.
-	if word, err := wholeGroup(group); err == nil {
-		c.word = word
-	}
-	return c
-}
-
-func (c capture) spells(word string) bool {
-	return c.word != nil && c.word.MatchString(word)
-}
-
 // optional: some message the pattern claims has the group empty — a match can
 // pass it by, or it can capture nothing. It is the tree's reading and it
 // over-answers what THIS message can do without (an alternation's other
@@ -335,24 +300,4 @@ func (c capture) spells(word string) bool {
 // Sayable.ScopeRequired, and its true licenses no sentence.
 func (c capture) optional() bool {
 	return c.present && (c.skippable || c.spells(""))
-}
-
-// passable finds target under re and reports whether a match of re can pass
-// it by: some ancestor is a ?, a *, a {0,n} or an alternation. An alternation
-// counts whole — whether the other branches hold the group too is not asked,
-// because Match reads only the last group of a name, and a branch that
-// captured under an earlier one hands on nothing.
-func passable(re, target *syntax.Regexp, under bool) (found, skippable bool) {
-	if re == target {
-		return true, under
-	}
-	if re.Op == syntax.OpQuest || re.Op == syntax.OpStar || re.Op == syntax.OpAlternate || (re.Op == syntax.OpRepeat && re.Min == 0) {
-		under = true
-	}
-	for _, sub := range re.Sub {
-		if found, skippable = passable(sub, target, under); found {
-			return true, skippable
-		}
-	}
-	return false, false
 }

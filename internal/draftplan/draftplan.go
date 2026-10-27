@@ -19,11 +19,11 @@ import (
 	"github.com/akira-toriyama/glyph/v6/internal/config"
 )
 
-// PlaceholderTag is the tag name of the draft a none verdict maintains when
+// placeholderTag is the tag name of the draft a none verdict maintains when
 // draft_on_none is on. It is deliberately NOT house-shaped (no leading v, no
 // version): a human cannot publish it into a tag that wedges the published
 // floor, and no version is claimed before one exists.
-const PlaceholderTag = "Unreleased"
+const placeholderTag = "Unreleased"
 
 // Draft is the slice of a release this package reads. ID is the identity
 // drafts are kept and deleted by (tag-name resolution can hit a published
@@ -52,7 +52,7 @@ const (
 type Plan struct {
 	Action Action
 	// Tag is what the kept (or created) draft converges to: the next version
-	// on a release verdict, PlaceholderTag on a maintained none. Empty when
+	// on a release verdict, placeholderTag on a maintained none. Empty when
 	// the plan is a pure delete or a no-op.
 	Tag   string
 	Keep  *Draft
@@ -66,7 +66,7 @@ type Plan struct {
 // free line beside it, and "pubsub/v2/Unreleased" is the one draft that is
 // unambiguously the v2 line's.
 func PlaceholderTagOn(l config.Line) string {
-	return l.Prefix + l.MajorDir() + PlaceholderTag
+	return l.Prefix + l.MajorDir() + placeholderTag
 }
 
 // managed says which drafts are glyph's to converge ON ONE LINE: unpublished

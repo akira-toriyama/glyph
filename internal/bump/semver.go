@@ -20,10 +20,10 @@ type Version struct {
 // dot-separated non-negative decimals without leading zeros (semver §2).
 var versionRE = regexp.MustCompile(`^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
-// maxField is the largest value a version field glyph reads may hold. Next
+// maxField is the largest value a version field glyph reads may hold. next
 // adds one to a field: with every parsed field at most maxField, a step lands
 // at most one past it — within int on every target glyph builds for (amd64,
-// arm64) — so Next stays total and no caller grows an error arm. The one
+// arm64) — so next stays total and no caller grows an error arm. The one
 // version glyph can then write and not read back, a field of exactly
 // maxField+1, is no candidate once tagged, so the line's next step answers
 // from below it: backwards after a stepped field, the same tag again on a
@@ -116,7 +116,7 @@ func (v Version) Compare(o Version) int {
 	return 0
 }
 
-// Next steps the version by one decision; none holds it still.
+// next steps the version by one decision; none holds it still.
 //
 // This is the ONLY place in glyph where arithmetic depends on the version it
 // starts from, and the split is deliberate: classification never does. A
@@ -140,7 +140,7 @@ func (v Version) Compare(o Version) int {
 // is meant to: the safety net is that glyph only ever writes a DRAFT, a human
 // presses Publish, and draftplan.CheckPublishedFloor refuses a version that is
 // not strictly above the highest published release.
-func (v Version) Next(d Decision) Version {
+func (v Version) next(d Decision) Version {
 	if d.Promote {
 		if v.Major == 0 {
 			return Version{Major: 1}
@@ -180,7 +180,7 @@ func (v Version) Next(d Decision) Version {
 // LinePrefix is the line prefix a tag spells — everything through the LAST
 // '/', "" for a bare tag. It names the line a tag is on; whether that line
 // is declared, and whether what follows is a version, are the caller's
-// questions (ParseVersionOn and ParseBaseVersionOn answer the second).
+// questions (ParseVersionOn and ParseBaseTag answer the second).
 func LinePrefix(tag string) string {
 	return tag[:strings.LastIndexByte(tag, '/')+1]
 }
@@ -229,18 +229,17 @@ func ParseVersionOn(prefix, tag string) (Version, error) {
 	return ParseVersion(rest)
 }
 
-// ParseBaseVersionOn is parseBaseVersion on a line: the prefix must match
-// exactly, and the remainder may carry a pre-release or build suffix. It is
-// what --since-tag=below:<prefix>vX.Y.Z-rc.1 parses its bound with, and what
+// ParseBaseTag is parseBaseVersion on the line tag spells: it returns that
+// line's prefix (LinePrefix) and the base version of what follows, which may
+// carry a pre-release or build suffix. It is what
+// --since-tag=below:<prefix>vX.Y.Z-rc.1 parses its bound with, and what
 // decides whether a plain --since-tag=TAG names a declared line at all — a
 // candidate on the line does, and selects it alone (mutation row
 // packages-candidate-tag-walks-every-line).
-func ParseBaseVersionOn(prefix, tag string) (Version, error) {
-	rest, ok := strings.CutPrefix(tag, prefix)
-	if !ok || strings.Contains(rest, "/") {
-		return Version{}, fmt.Errorf("%q is not on the %s line (want %svX.Y.Z)", tag, lineName(prefix), prefix)
-	}
-	return parseBaseVersion(rest)
+func ParseBaseTag(tag string) (prefix string, v Version, err error) {
+	prefix = LinePrefix(tag)
+	v, err = parseBaseVersion(tag[len(prefix):])
+	return prefix, v, err
 }
 
 // TagOn renders the version as a tag on a line: prefix + vX.Y.Z.

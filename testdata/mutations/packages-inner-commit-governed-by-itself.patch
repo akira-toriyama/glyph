@@ -1,11 +1,10 @@
 diff --git a/internal/walk/walk.go b/internal/walk/walk.go
-index 7244b99..0270dd6 100644
 --- a/internal/walk/walk.go
 +++ b/internal/walk/walk.go
-@@ -162,7 +162,7 @@ type Commit struct {
+@@ -181,7 +181,7 @@ type Commit struct {
  // the pull it was expanded from (DESIGN §4.1: a listed commit joins a line
  // only when its governing commit is unreleased there).
- func (c Commit) Governing() string {
+ func (c Commit) governing() string {
 -	if c.Landed || c.MergePoint == "" {
 +	if c.Landed || c.MergePoint == "" || true {
  		return c.Raw.SHA

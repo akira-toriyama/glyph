@@ -194,10 +194,10 @@ func probeCommitMsgHook(ctx context.Context, installed hook.Installed) *doctor.H
 	probe := exec.CommandContext(ctx, installed.Path, msg.Name()) // #nosec G204 -- firing the byte-verified hook glyph itself wrote
 	err = probe.Run()
 	if err == nil {
-		return &doctor.HookProbe{Fired: true, Exit: 0}
+		return &doctor.HookProbe{Exit: 0}
 	}
 	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
-		return &doctor.HookProbe{Fired: true, Exit: exit.ExitCode()}
+		return &doctor.HookProbe{Exit: exit.ExitCode()}
 	}
 	return &doctor.HookProbe{Err: err}
 }
@@ -293,7 +293,7 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
 	// The tag list feeds the root-line check (DESIGN §4.1): which line the
 	// repository's bare v* tags are on is a config question, but whether any
 	// exist is git's to answer. A failure degrades that one check.
-	tags, tagsErr := gitsource.Tags(ctx, ".")
+	tags, tagsErr := checkout().Tags(ctx)
 	// HEAD's trees feed the package-paths check: a declared path is judged as
 	// attribution reads it, git's path byte for byte, never by the filesystem
 	// (t-fdd8 (1)). Asked at the top level git named; without one there is

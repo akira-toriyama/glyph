@@ -68,14 +68,14 @@ func logCmd(args ...string) []string {
 	return append([]string{"log", "-z", "--no-show-signature", "--encoding=UTF-8"}, args...)
 }
 
-// Log returns the commits in revRange (e.g. "BASE..HEAD"), oldest first. An
+// log returns the commits in revRange (e.g. "BASE..HEAD"), oldest first. An
 // empty range is a successful empty result. --end-of-options pins revRange as
 // a revision, so an option-shaped argument is a git error, never a flag.
-func Log(ctx context.Context, dir, revRange string) ([]RawCommit, error) {
+func log(ctx context.Context, dir, revRange string) ([]RawCommit, error) {
 	return LogRevs(ctx, dir, []string{revRange})
 }
 
-// LogRevs is Log over several revisions at once — the union of what each
+// LogRevs is log over several revisions at once — the union of what each
 // includes, minus what each `^`-prefixed one excludes.
 //
 // Exclusions are spelled `^<object>` rather than passed as `--not`, and that is
@@ -140,22 +140,15 @@ func RemoteTips(ctx context.Context, dir, remote string) ([]string, error) {
 // a space, and a remote name may hold one (`[remote "my fork"]`), which the
 // line form cut to `my` (t-3jws, TestRemoteURLsKeepsASpacedRemoteName).
 func RemoteURLs(ctx context.Context, dir string) (map[string]string, error) {
-	// #nosec G204 -- the binary is the fixed literal "git" and every argument
-	// here is a constant of this package.
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "config", "-z", "--get-regexp", `^remote\..*\.url$`)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
-		if ierr := interrupted(ctx); ierr != nil {
-			return nil, ierr
-		}
-		if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 1 {
-			return map[string]string{}, nil
-		}
-		return nil, core.APIf("git config --get-regexp: %s", distill(stderr.Bytes(), err))
+	out, found, err := runAnswer(ctx, dir, "config --get-regexp", "config", "-z", "--get-regexp", `^remote\..*\.url$`)
+	if err != nil {
+		return nil, err
 	}
 	urls := map[string]string{}
-	for rec := range strings.SplitSeq(stdout.String(), "\x00") {
+	if !found {
+		return urls, nil
+	}
+	for rec := range strings.SplitSeq(string(out), "\x00") {
 		key, url, ok := strings.Cut(rec, "\n")
 		if !ok {
 			continue
@@ -183,18 +176,9 @@ func RemoteURLs(ctx context.Context, dir string) (map[string]string, error) {
 // --no-verify).
 func DefaultBranch(ctx context.Context, dir, remote string) (string, error) {
 	prefix := "refs/remotes/" + remote + "/"
-	// #nosec G204 -- the binary is the fixed literal "git"; remote is a
-	// configured remote name and --end-of-options pins the ref as a ref.
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "symbolic-ref", "--quiet", "--end-of-options", prefix+"HEAD")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
-		if ierr := interrupted(ctx); ierr != nil {
-			return "", ierr
-		}
-		if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 1 {
-			return "", nil
-		}
+	out, recorded, err := runAnswer(ctx, dir, "symbolic-ref", "symbolic-ref", "--quiet", "--end-of-options", prefix+"HEAD")
+	switch {
+	case err != nil:
 		// A remote name config accepts and refs refuse (`remote.mirror..x.url`,
 		// hand-edited: `git remote add` refuses it) can record nothing, and
 		// symbolic-ref answers that 128 "No such ref", not 1. Asked of git
@@ -202,9 +186,11 @@ func DefaultBranch(ctx context.Context, dir, remote string) (string, error) {
 		if refNameRefused(ctx, prefix+"HEAD") {
 			return "", nil
 		}
-		return "", core.APIf("git symbolic-ref: %s", distill(stderr.Bytes(), err))
+		return "", err
+	case !recorded:
+		return "", nil
 	}
-	return strings.TrimPrefix(strings.TrimSpace(stdout.String()), prefix), nil
+	return strings.TrimPrefix(strings.TrimSpace(string(out)), prefix), nil
 }
 
 // refNameRefused reports whether git refuses name as a ref name outright
@@ -218,7 +204,7 @@ func refNameRefused(ctx context.Context, name string) bool {
 	return ok && ee.ExitCode() == 1
 }
 
-// Tags lists all tags in git's `--sort=-v:refname` order, unfiltered — the
+// tags lists all tags in git's `--sort=-v:refname` order, unfiltered — the
 // policy of what counts as a version stays with internal/bump.
 //
 // That order is NOT a version ordering and no caller may read it as one. It is
@@ -230,7 +216,7 @@ func refNameRefused(ctx context.Context, name string) bool {
 // LatestVersionTag). What the order IS good for is being STABLE, which is what
 // lets that caller break a tie between two spellings of one version without
 // inventing a preference.
-func Tags(ctx context.Context, dir string) ([]string, error) {
+func tags(ctx context.Context, dir string) ([]string, error) {
 	out, err := run(ctx, dir, tagListCmd()...)
 	if err != nil {
 		return nil, err
@@ -238,7 +224,7 @@ func Tags(ctx context.Context, dir string) ([]string, error) {
 	return tagLines(out), nil
 }
 
-// mergedTags is Tags narrowed to the tags whose commit rev's history holds
+// mergedTags is tags narrowed to the tags whose commit rev's history holds
 // (`git tag --merged`): the releases rev's own history carries, in the same
 // order under the same contract. --merged peels an annotated tag to its commit
 // and leaves out a tag on a non-commit object (measured, git 2.54). The rev is
@@ -247,7 +233,7 @@ func Tags(ctx context.Context, dir string) ([]string, error) {
 //
 // A rev that names no commit holds no tags. The unborn HEAD of a repository
 // before its first commit is the case that reaches here: git answers it with
-// "malformed object name HEAD" at exit 128 (measured), Tags answers empty
+// "malformed object name HEAD" at exit 128 (measured), tags answers empty
 // there, and a verdict that only reads a step base — `bump --pr`, `preview
 // --pr` — moved from exit 0 to exit 4 on git's failure. So the failure is
 // asked about, and only when the listing fails: the ordinary path stays one
@@ -281,7 +267,7 @@ func tagListCmd(args ...string) []string {
 	return append(append([]string{"tag", "--list", "--no-column"}, args...), "--sort=-v:refname")
 }
 
-// tagLines splits git's one-name-per-line tag listing. Shared by Tags and
+// tagLines splits git's one-name-per-line tag listing. Shared by tags and
 // mergedTags so the two readers cannot come to disagree about what a listing
 // holds, as runIn is the single exec site behind run and runStdin.
 func tagLines(out []byte) []string {
@@ -300,21 +286,8 @@ func tagLines(out []byte) []string {
 // the git/IO error it always was. The interrupt is asked first, as everywhere
 // in this package (see isAncestor for why the order is the whole point).
 func namesCommit(ctx context.Context, dir, rev string) (bool, error) {
-	// #nosec G204 -- the binary is the fixed literal "git"; rev is the caller's
-	// revision, pinned as one by --end-of-options.
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--verify", "--quiet", "--end-of-options", rev+"^{commit}")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		if ierr := interrupted(ctx); ierr != nil {
-			return false, ierr
-		}
-		if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 1 {
-			return false, nil
-		}
-		return false, core.APIf("git rev-parse: %s", distill(stderr.Bytes(), err))
-	}
-	return true, nil
+	_, named, err := runAnswer(ctx, dir, "rev-parse", "rev-parse", "--verify", "--quiet", "--end-of-options", rev+"^{commit}")
+	return named, err
 }
 
 // isTag reports whether refs/tags/<name> exists — an exact ref, never a
@@ -323,21 +296,8 @@ func namesCommit(ctx context.Context, dir, rev string) (bool, error) {
 // answer; anything else is the git/IO error it always was, the interrupt
 // asked first (see isAncestor for why the order is the whole point).
 func isTag(ctx context.Context, dir, name string) (bool, error) {
-	// #nosec G204 -- the binary is the fixed literal "git"; the one argument
-	// is a full refname under refs/tags/, so it can never read as an option.
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "show-ref", "--verify", "--quiet", "refs/tags/"+name)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		if ierr := interrupted(ctx); ierr != nil {
-			return false, ierr
-		}
-		if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 1 {
-			return false, nil
-		}
-		return false, core.APIf("git show-ref: %s", distill(stderr.Bytes(), err))
-	}
-	return true, nil
+	_, exists, err := runAnswer(ctx, dir, "show-ref", "show-ref", "--verify", "--quiet", "refs/tags/"+name)
+	return exists, err
 }
 
 // Head returns the checkout's HEAD commit sha — the target_commitish a
@@ -374,21 +334,8 @@ func TopLevel(ctx context.Context, dir string) (string, error) {
 // "Not a valid ref"); the remedy is renaming the remote. Asked of
 // `git check-ref-format` rather than reimplemented: its rules are git's.
 func RemoteCanRecordHead(ctx context.Context, dir, remote string) (bool, error) {
-	// #nosec G204 -- the binary is the fixed literal "git"; the one argument
-	// opens with refs/remotes/, so it can never read as an option.
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "check-ref-format", "refs/remotes/"+remote+"/HEAD")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		if ierr := interrupted(ctx); ierr != nil {
-			return false, ierr
-		}
-		if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 1 {
-			return false, nil
-		}
-		return false, core.APIf("git check-ref-format: %s", distill(stderr.Bytes(), err))
-	}
-	return true, nil
+	_, valid, err := runAnswer(ctx, dir, "check-ref-format", "check-ref-format", "refs/remotes/"+remote+"/HEAD")
+	return valid, err
 }
 
 // ErrNoRepository is InsideGitDir's answer where git itself says dir is in no
@@ -604,22 +551,11 @@ func ConfigLastOf(ctx context.Context, dir string, keys ...string) (string, bool
 		names[i] = regexp.QuoteMeta(strings.ToLower(k))
 	}
 	pattern := "^(" + strings.Join(names, "|") + ")$"
-	// #nosec G204 -- the binary is the fixed literal "git"; pattern is built
-	// from this package's callers' key names, quoted, and pinned as a value by
-	// --end-of-options.
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "config", "-z", "--get-regexp", "--end-of-options", pattern)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
-		if ierr := interrupted(ctx); ierr != nil {
-			return "", false, ierr
-		}
-		if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 1 {
-			return "", false, nil
-		}
-		return "", false, core.APIf("git config: %s", distill(stderr.Bytes(), err))
+	out, set, err := runAnswer(ctx, dir, "config", "config", "-z", "--get-regexp", "--end-of-options", pattern)
+	if err != nil || !set {
+		return "", false, err
 	}
-	records := strings.Split(strings.TrimSuffix(stdout.String(), "\x00"), "\x00")
+	records := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
 	// Each record is key, newline, value; a bare key (no `=`) has no newline
 	// and reads as the empty value.
 	_, value, _ := strings.Cut(records[len(records)-1], "\n")
@@ -629,26 +565,15 @@ func ConfigLastOf(ctx context.Context, dir string, keys ...string) (string, bool
 // configGet is ConfigGet with git config's own type options (`--type=…`)
 // placed before `--get`.
 func configGet(ctx context.Context, dir, key string, typ ...string) (string, bool, error) {
-	args := append(append([]string{"-C", dir, "config"}, typ...), "--get", "--end-of-options", key)
-	// #nosec G204 -- the binary is the fixed literal "git"; key is a config name
-	// from this package's callers, pinned as a value by --end-of-options, and
-	// typ is this package's own constant.
-	cmd := exec.CommandContext(ctx, "git", args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
-		if ierr := interrupted(ctx); ierr != nil {
-			return "", false, ierr
-		}
-		if ee, ok := errors.AsType[*exec.ExitError](err); ok && ee.ExitCode() == 1 {
-			return "", false, nil
-		}
-		return "", false, core.APIf("git config: %s", distill(stderr.Bytes(), err))
+	args := append(append([]string{"config"}, typ...), "--get", "--end-of-options", key)
+	out, set, err := runAnswer(ctx, dir, "config", args...)
+	if err != nil || !set {
+		return "", false, err
 	}
-	return strings.TrimSpace(stdout.String()), true, nil
+	return strings.TrimSpace(string(out)), true, nil
 }
 
-// Have reports which of shas this repository actually holds, as a set. It is the
+// have reports which of shas this repository actually holds, as a set. It is the
 // cheap first half of the footprint question the release walk asks about a pull
 // request's commit listing (internal/walk: mainFootprint): most listed shas — a
 // squash's pre-squash commits, a rebase-merge's pre-rebase ones — exist in no
@@ -657,7 +582,7 @@ func configGet(ctx context.Context, dir, key string, typ ...string) (string, boo
 //
 // A malformed or unknown sha is simply absent from the result, never an error:
 // the listing is GitHub's, and this asks a question about the local repository.
-func Have(ctx context.Context, dir string, shas []string) (map[string]bool, error) {
+func have(ctx context.Context, dir string, shas []string) (map[string]bool, error) {
 	have := map[string]bool{}
 	if len(shas) == 0 {
 		return have, nil
@@ -731,7 +656,7 @@ func firstParentLog(ctx context.Context, dir, rev string, n int) ([]RawCommit, e
 	return commits, nil
 }
 
-// DiffTreeFiles returns the paths a commit's own diff touches — repository-
+// diffTreeFiles returns the paths a commit's own diff touches — repository-
 // relative, slash-separated, in git's order, directories never listed. Rename
 // detection is OFF on purpose: a move across two subtrees then names both the
 // old path and the new, which is what attribution needs to move both lines
@@ -757,7 +682,7 @@ func firstParentLog(ctx context.Context, dir, rev string, n int) ([]RawCommit, e
 // Asked only of a commit this checkout holds — the walk's landed identities
 // and every commit a --range fold reads. A squash-merged pull's inner commits
 // exist on no branch, and the walk asks the API about those instead.
-func DiffTreeFiles(ctx context.Context, dir, sha string) ([]string, error) {
+func diffTreeFiles(ctx context.Context, dir, sha string) ([]string, error) {
 	// --always prints the %P header even for an empty diff, so the header is
 	// the output up to the first NUL, and the name list — when there is one —
 	// follows it after one "\n" (measured on git 2.54). --encoding for logCmd's
@@ -807,7 +732,7 @@ func isGraftBoundary(ctx context.Context, dir, sha string) (bool, error) {
 	return false, nil
 }
 
-// shallowBoundary carries DiffTreeFiles' unreadable answer: an ordinary
+// shallowBoundary carries diffTreeFiles' unreadable answer: an ordinary
 // *core.Error of the API class to everything that does not ask, so a caller
 // that forgets the case fails loud instead of reading a wrong diff.
 type shallowBoundary struct{ err *core.Error }
@@ -842,13 +767,13 @@ func mergeBase(ctx context.Context, dir string, revs []string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// IsShallow reports whether this checkout is a shallow clone. The release walk
+// isShallow reports whether this checkout is a shallow clone. The release walk
 // asks because a truncated history makes every ancestry answer a maybe: a commit
 // git cannot see is indistinguishable from one that never landed, and the walk
 // would rather say so than quietly grade itself on a partial repository.
 // Every `--range` read asks for the same reason about the range (internal/cli's
 // logRange): git lists only the commits the clone holds.
-func IsShallow(ctx context.Context, dir string) (bool, error) {
+func isShallow(ctx context.Context, dir string) (bool, error) {
 	out, err := run(ctx, dir, "rev-parse", "--is-shallow-repository")
 	if err != nil {
 		return false, err
@@ -995,6 +920,32 @@ func runIn(ctx context.Context, dir string, stdin io.Reader, args ...string) ([]
 		return nil, core.APIf("git %s: %s", args[0], distill(stderr.Bytes(), err))
 	}
 	return stdout.Bytes(), nil
+}
+
+// runAnswer is runIn for a command whose exit 1 is an answer, not a failure: a
+// yes/no question, or a config read whose NO is "unset". yes is false exactly
+// when git exited 1, and stdout is what git printed either way. verb is the
+// command as its caller's refusal names it ("git <verb>: …"), and any failure
+// but exit 1 is that core.APIf. The interrupt is asked first, as runIn asks it.
+// A child the cancel killed exits -1, never 1: the order shows only in a race no test pins.
+//
+// #nosec G204 -- the binary is the fixed literal "git". As at runIn's call
+// sites, the caller-supplied values among args are pinned by --end-of-options
+// or open with a literal refs/ prefix, so none can be read as an option.
+func runAnswer(ctx context.Context, dir, verb string, args ...string) (stdout []byte, yes bool, err error) {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	var out, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &stderr
+	if rerr := cmd.Run(); rerr != nil {
+		if ierr := interrupted(ctx); ierr != nil {
+			return nil, false, ierr
+		}
+		if ee, ok := errors.AsType[*exec.ExitError](rerr); ok && ee.ExitCode() == 1 {
+			return out.Bytes(), false, nil
+		}
+		return nil, false, core.APIf("git %s: %s", verb, distill(stderr.Bytes(), rerr))
+	}
+	return out.Bytes(), true, nil
 }
 
 // distill exists because the error envelope carries ONE line and git's stderr

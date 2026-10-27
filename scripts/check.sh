@@ -106,13 +106,15 @@ cd "$(dirname "$0")/.."
 
 # Every file this run writes lives in WORK. bin/ is build.sh's, and the path
 # fleet-preflight.sh is handed its candidate at: a smoke build there replaced a
-# candidate mid-preflight with an unstamped binary (2026-09-10). A handler that
-# only cleans up lets the shell carry on after a signal, so INT and TERM
-# re-raise (fleet-preflight.sh's measurement).
+# candidate mid-preflight with an unstamped binary (2026-09-10). A signal
+# cleans up and re-raises (scripts/lib/trap.sh says why).
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
-trap 'rm -rf "$WORK"; trap - INT;  kill -INT  $$' INT
-trap 'rm -rf "$WORK"; trap - TERM; kill -TERM $$' TERM
+cleanup() {
+  rm -rf "$WORK"
+}
+# shellcheck source=scripts/lib/trap.sh
+. ./scripts/lib/trap.sh
+reraise_on_signals cleanup
 
 # MIRRORS is the reconciliation set: the run refuses its ✓ line unless every name
 # here was recorded by `ran`. Keeping it as data rather than as a comment is what

@@ -853,7 +853,7 @@ All-none ⇒ no release (exit 1).
 
 **Classification is version-blind; only the arithmetic is not.** This is the
 one split the 0.x rule rests on, and it is why the rule lives in
-`bump.Version.Next` and nowhere else:
+`bump.Version.next` and nowhere else:
 
 - While the current major is **0**, a major decision steps the **minor**
   (`v0.5.3` + `!` ⇒ `v0.6.0`; mutation row
@@ -2435,7 +2435,7 @@ author gate), so the routine dependabot squash — authored by `dependabot[bot]`
 as GitHub writes it — is placed by its landed net diff from local git, free;
 nothing else in the walk changes price, and a repository without
 `[[packages]]` pays nothing new because no file is ever asked for. The
-whole-history cap (`walk.Cap`) still counts commits, not requests: a
+whole-history cap (`walk.walkCap`) still counts commits, not requests: a
 capped first walk of a packages repository may cost up to twice the cap. The
 endpoint pages its file list at 300 per page (`Link: rel="next"`, followed)
 and stops at 3000 — **measured** 2026-09-10 on torvalds/linux's 17k-file root
@@ -3878,7 +3878,7 @@ The severities are the argued part:
   Go pseudo-version, or `build.sh`'s git-describe stamp (`v4.2.0-3-g…`) — has
   no upper end and trusts its own tree, which misjudges only a release cut
   after a declaration change the build predates. Those stamps are read with
-  `bump.ParseVersion`, never `ParseBaseVersionOn`, which would read the describe
+  `bump.ParseVersion`, never `ParseBaseTag`, which would read the describe
   stamp as its base triple v4.2.0 and cap the build there: every pin above
   v4.2.0 would be `unknown` to a tree built past it (the pseudo-version case of
   `TestCallerChecksJudgeTheCallerAtItsPin`; mutation row

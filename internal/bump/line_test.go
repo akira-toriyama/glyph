@@ -111,15 +111,15 @@ func TestParseVersionOnRefusesOtherLines(t *testing.T) {
 	}
 }
 
-func TestParseBaseVersionOn(t *testing.T) {
-	got, err := ParseBaseVersionOn("haiku/", "haiku/v3.0.0-rc.1")
-	if err != nil || got != (Version{3, 0, 0}) {
-		t.Errorf("ParseBaseVersionOn(haiku/, haiku/v3.0.0-rc.1) = %v, %v; want v3.0.0", got, err)
-	}
-	for _, c := range []struct{ prefix, tag string }{{"", "haiku/v3.0.0-rc.1"}, {"haiku/", "v3.0.0-rc.1"}, {"haiku/", "haiku/sub/v3.0.0-rc.1"}} {
-		if got, err := ParseBaseVersionOn(c.prefix, c.tag); err == nil {
-			t.Errorf("ParseBaseVersionOn(%q, %q) = %v, want an error", c.prefix, c.tag, got)
+func TestParseBaseTag(t *testing.T) {
+	for _, c := range []struct{ tag, prefix string }{{"haiku/v3.0.0-rc.1", "haiku/"}, {"haiku/sub/v3.0.0-rc.1", "haiku/sub/"}} {
+		prefix, got, err := ParseBaseTag(c.tag)
+		if err != nil || prefix != c.prefix || got != (Version{3, 0, 0}) {
+			t.Errorf("ParseBaseTag(%q) = %q, %v, %v; want %q, v3.0.0 — the tag is on the line through its last '/'", c.tag, prefix, got, err, c.prefix)
 		}
+	}
+	if prefix, got, err := ParseBaseTag("haiku/Unreleased"); err == nil {
+		t.Errorf("ParseBaseTag(haiku/Unreleased) = %q, %v; want an error", prefix, got)
 	}
 }
 

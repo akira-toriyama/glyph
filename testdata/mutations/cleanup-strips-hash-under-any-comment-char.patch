@@ -1,5 +1,4 @@
 diff --git a/internal/cleanup/cleanup.go b/internal/cleanup/cleanup.go
-index 6b72a7f..7b0605c 100644
 --- a/internal/cleanup/cleanup.go
 +++ b/internal/cleanup/cleanup.go
 @@ -206,7 +206,7 @@ func ResolveMode(configured string, edited bool, verbose Verbose) (mode Mode, kn
@@ -7,7 +6,7 @@ index 6b72a7f..7b0605c 100644
  // any body line a project chose to start with '#'.
  func Apply(message string, mode Mode) string {
 -	comment := mode.Comment
-+	comment := ""
- 	if comment == "" {
- 		comment = DefaultComment
++	comment := defaultComment
+ 	if mode.Truncate {
+ 		message = truncateAtCutLine(message, comment+cutTail)
  	}

@@ -453,7 +453,7 @@ func TestSinceTagBelowOnAnUndeclaredLineIsUsage(t *testing.T) {
 // history at one API round-trip per visited commit, and release.yml runs that
 // on every push of a repository that has not released yet — measured on the
 // v0.11.1 rollout, four untagged fleet repositories walked their entire
-// histories. Past walk.Cap glyph refuses BEFORE the first API call
+// histories. Past walk.walkCap glyph refuses BEFORE the first API call
 // (fail-loud 4, the draftplan.CheckPublishedFloor family: nothing broken, no
 // retry clears it, the escape is in the message). Under the cap the walk runs
 // exactly as before — a skip would fold zero commits and verdict the first

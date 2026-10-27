@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v6/internal/core"
-	"github.com/akira-toriyama/glyph/v6/internal/draftplan"
 	"github.com/akira-toriyama/glyph/v6/internal/github"
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 	"github.com/akira-toriyama/glyph/v6/internal/walk"
@@ -944,7 +943,7 @@ func TestReleaseNoneVerdictOnStdoutKeepsTheEnvelopeOff(t *testing.T) {
 	if code != int(core.CodeNoRelease) {
 		t.Fatalf("a maintained none's dry run exited %d, want exactly %d (no release is due)\nstderr: %s", code, core.CodeNoRelease, stderr)
 	}
-	if !strings.HasPrefix(stdout, draftplan.PlaceholderTag+"\n\n") {
+	if !strings.HasPrefix(stdout, "Unreleased\n\n") {
 		t.Fatalf("stdout = %q, want the placeholder's block — its tag, then the body the dry run would write", stdout)
 	}
 	if strings.Contains(stderr, `"error"`) {

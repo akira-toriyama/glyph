@@ -192,14 +192,11 @@ cleanup() {
   fi
   rm -rf "$WORK"
 }
-# A signal handler that only cleans up does not stop the script — the shell runs
-# the handler and CARRIES ON. Measured: SIGTERM mid-walk deleted the evidence
-# files and the run then printed a normal, fully-caveated `✓ preflight:` line with
-# the entire NOT MEASURED section missing, and exited 0. An interrupted run must
-# not be able to produce a verdict, so re-raise.
-trap cleanup EXIT
-trap 'cleanup; trap - INT;  kill -INT  $$' INT
-trap 'cleanup; trap - TERM; kill -TERM $$' TERM
+# An interrupted run must not be able to produce a verdict, so a signal cleans
+# up and re-raises (scripts/lib/trap.sh holds this script's measurement).
+# shellcheck source=scripts/lib/trap.sh
+. ./scripts/lib/trap.sh
+reraise_on_signals cleanup
 
 # The baseline. Building it from a tag rather than downloading the release asset
 # keeps this runnable with no release credentials and, more to the point, makes
@@ -659,7 +656,7 @@ while IFS= read -r name; do
   # pull, that pull's commits) plus the releases listing the body probe pages
   # through. An estimate, not a meter — anything it misses still names itself on
   # a skip line. An untagged history is walked whole up to the walk cap
-  # (walk.Cap in internal/walk, 200), which glyph counts without its
+  # (walk.walkCap in internal/walk, 200), which glyph counts without its
   # exclude_authors commits, so a longer history is estimated at the cap: an
   # upper bound, never the zero a refusal would cost.
   if [ -n "$tag" ]; then

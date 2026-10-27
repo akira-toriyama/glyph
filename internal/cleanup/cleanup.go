@@ -23,9 +23,9 @@ import (
 // THIS string.
 const cutTail = " ------------------------ >8 ------------------------\n"
 
-// DefaultComment is git's comment prefix when neither core.commentChar nor
+// defaultComment is git's comment prefix when neither core.commentChar nor
 // core.commentString is set.
-const DefaultComment = "#"
+const defaultComment = "#"
 
 // CommentPrefix answers the comment prefix git's cleanup uses, from the value
 // of the LAST definition of core.commentChar or core.commentString and whether
@@ -34,7 +34,7 @@ const DefaultComment = "#"
 // `-c`, and pinned by internal/cli's TestHookVerdictMatchesWhatGitRecords.
 //
 // `auto` (in any case — git compares it that way, measured) answers
-// DefaultComment, an accepted boundary rather than a port. Under it git picks the
+// defaultComment, an accepted boundary rather than a port. Under it git picks the
 // character per commit from what the message already holds, and no input a hook
 // has names the pick. Measured on git 2.54: a fresh editor commit, and an amend
 // whose body opens a line with '#', both got a '#' template and lost their '#'
@@ -45,7 +45,7 @@ const DefaultComment = "#"
 // commit.cleanup=strip, and `-F <file> -e` with no cleanup config (DESIGN §2.1).
 // git deprecates `auto` for Git 3.0 and warns on every commit.
 //
-// An empty value, or one holding a newline, also answers DefaultComment: git
+// An empty value, or one holding a newline, also answers defaultComment: git
 // refuses both before any hook runs (`must have at least one character`,
 // `cannot contain newline`, measured), so only a hand-run lint meets one. Any
 // other value is the prefix byte for byte — `git config` has already unquoted
@@ -53,7 +53,7 @@ const DefaultComment = "#"
 // core.commentString="// " git drops "// x" and keeps "//y").
 func CommentPrefix(configured string, set bool) string {
 	if !set || configured == "" || strings.EqualFold(configured, "auto") || strings.Contains(configured, "\n") {
-		return DefaultComment
+		return defaultComment
 	}
 	return configured
 }
@@ -83,9 +83,10 @@ type Mode struct {
 	// — whenever an editor ran for `git commit` (Verbose).
 	Truncate bool
 	// Comment is the repository's comment prefix (CommentPrefix): the lines
-	// Comments drops open with it, and so does git's scissors line. Empty means
-	// DefaultComment. ResolveMode leaves it empty; the caller that read git's
-	// config sets it.
+	// Comments drops open with it, and so does git's scissors line. Apply
+	// requires it set — empty, it strips no comment line and cuts at a
+	// scissors line with no prefix; ResolveMode leaves it empty on purpose,
+	// and hookCleanupMode fills it from CommentPrefix.
 	Comment string
 }
 
@@ -208,9 +209,6 @@ func ResolveMode(configured string, edited bool, verbose Verbose) (mode Mode, kn
 // any body line a project chose to start with '#'.
 func Apply(message string, mode Mode) string {
 	comment := mode.Comment
-	if comment == "" {
-		comment = DefaultComment
-	}
 	if mode.Truncate {
 		message = truncateAtCutLine(message, comment+cutTail)
 	}

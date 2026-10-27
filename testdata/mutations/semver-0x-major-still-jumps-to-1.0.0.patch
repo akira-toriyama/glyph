@@ -1,8 +1,7 @@
 diff --git a/internal/bump/semver.go b/internal/bump/semver.go
-index 40812c2..6296d55 100644
 --- a/internal/bump/semver.go
 +++ b/internal/bump/semver.go
-@@ -126,9 +126,6 @@ func (v Version) Next(d Decision) Version {
+@@ -149,9 +149,6 @@ func (v Version) next(d Decision) Version {
  	}
  	switch d.Level {
  	case LevelMajor:

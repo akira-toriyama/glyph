@@ -244,7 +244,7 @@ func TestRemainingChecksDescribeMeasuredBehaviour(t *testing.T) {
 // re-measured against this walk (t-nnb7): a squash-merged pull does NOT reach the
 // same verdict dark as live (a multi-commit squash carries the PR title
 // — minor live, patch dark), a merge-merged pull does NOT count none at full
-// darkness (gitsource.Log runs without --first-parent, so its branch commits are
+// darkness (gitsource.Checkout.Log runs without --first-parent, so its branch commits are
 // in the range and classify themselves — minor either way), and an outage does
 // NOT reach the fallback at all (only a 422 does; a 403/404/5xx exits 4). What
 // squash actually buys is that a pull request resolves all-or-nothing.

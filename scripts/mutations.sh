@@ -77,11 +77,10 @@ cleanup() {
 # An interrupted run must not be able to print a verdict. The trap used to
 # delete the snapshot and RETURN, so every remaining row failed for the script's
 # own reasons and the last line called a healthy branch ✗ (2026-10-04: a pkill
-# aimed at another run of this script). Same re-raise as scripts/fleet-preflight.sh.
-trap cleanup EXIT
-trap 'cleanup; trap - HUP;  kill -HUP  $$' HUP
-trap 'cleanup; trap - INT;  kill -INT  $$' INT
-trap 'cleanup; trap - TERM; kill -TERM $$' TERM
+# aimed at another run of this script). The re-raise is scripts/lib/trap.sh's.
+# shellcheck source=scripts/lib/trap.sh
+. ./scripts/lib/trap.sh
+reraise_on_signals cleanup
 
 # snapshot copies the WORKING TREE (not HEAD) so a test being written right now
 # is what gets measured. Untracked-but-not-ignored files are included for the

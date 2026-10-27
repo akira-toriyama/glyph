@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
 	"testing"
@@ -148,8 +149,8 @@ func TestLoadGemojiConfig(t *testing.T) {
 		t.Errorf("Patterns[3] should claim the fixup!/squash! autosquash artifacts as unlandable and nothing else: %+v", p)
 	}
 
-	if cfg.Note.Line != "- $subject$[ ($pr)] @$author$[ with $coauthors]" {
-		t.Errorf("Note.Line = %q", cfg.Note.Line)
+	if want, err := parseLine("- $subject$[ ($pr)] @$author$[ with $coauthors]"); err != nil || !reflect.DeepEqual(cfg.Note.Spans, want) {
+		t.Errorf("Note.Spans = %+v, want the preset's line template compiled (%+v, %v)", cfg.Note.Spans, want, err)
 	}
 	if cfg.Note.DraftOnNone {
 		t.Errorf("Note.DraftOnNone = true, want false (the default)")

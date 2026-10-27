@@ -13,7 +13,7 @@ func d(id int64, tag string) Draft { return Draft{ID: id, TagName: tag, Draft: t
 // verdict converges the draft state to "no release is due" — every managed
 // draft is stale (including a lingering placeholder), nothing is kept.
 func TestNoneWithoutFlagKeepsNoDraft(t *testing.T) {
-	p := PlanDraft(config.Line{}, bump.LevelNone, "v1.3.0", false, []Draft{d(1, "v1.2.3"), d(2, PlaceholderTag)})
+	p := PlanDraft(config.Line{}, bump.LevelNone, "v1.3.0", false, []Draft{d(1, "v1.2.3"), d(2, placeholderTag)})
 	if p.Action != ActionDelete || p.Keep != nil || len(p.Stale) != 2 {
 		t.Fatalf("plan = %+v, want delete of both managed drafts", p)
 	}
@@ -28,11 +28,11 @@ func TestNoneWithoutFlagKeepsNoDraft(t *testing.T) {
 // when absent, kept when present — instead of converging to nothing.
 func TestNoneWithFlagMaintainsPlaceholder(t *testing.T) {
 	fresh := PlanDraft(config.Line{}, bump.LevelNone, "v1.3.0", true, nil)
-	if fresh.Action != ActionCreate || fresh.Tag != PlaceholderTag {
-		t.Fatalf("plan = %+v, want create of %q", fresh, PlaceholderTag)
+	if fresh.Action != ActionCreate || fresh.Tag != placeholderTag {
+		t.Fatalf("plan = %+v, want create of %q", fresh, placeholderTag)
 	}
-	kept := PlanDraft(config.Line{}, bump.LevelNone, "v1.3.0", true, []Draft{d(2, PlaceholderTag)})
-	if kept.Action != ActionUpdate || kept.Keep == nil || kept.Keep.ID != 2 || kept.Tag != PlaceholderTag {
+	kept := PlanDraft(config.Line{}, bump.LevelNone, "v1.3.0", true, []Draft{d(2, placeholderTag)})
+	if kept.Action != ActionUpdate || kept.Keep == nil || kept.Keep.ID != 2 || kept.Tag != placeholderTag {
 		t.Fatalf("plan = %+v, want the existing placeholder kept", kept)
 	}
 	if len(kept.Stale) != 0 {
@@ -44,7 +44,7 @@ func TestNoneWithFlagMaintainsPlaceholder(t *testing.T) {
 // the bump becomes real, the SAME draft retags to the real version — an
 // update in place, never a delete-and-recreate.
 func TestRealVerdictRetagsThePlaceholder(t *testing.T) {
-	p := PlanDraft(config.Line{}, bump.LevelMinor, "v1.3.0", true, []Draft{d(7, PlaceholderTag)})
+	p := PlanDraft(config.Line{}, bump.LevelMinor, "v1.3.0", true, []Draft{d(7, placeholderTag)})
 	if p.Action != ActionUpdate || p.Keep == nil || p.Keep.ID != 7 {
 		t.Fatalf("plan = %+v, want the placeholder retagged in place", p)
 	}
@@ -54,7 +54,7 @@ func TestRealVerdictRetagsThePlaceholder(t *testing.T) {
 }
 
 func TestRealVerdictPrefersTheExactTag(t *testing.T) {
-	p := PlanDraft(config.Line{}, bump.LevelPatch, "v1.2.4", true, []Draft{d(1, PlaceholderTag), d(2, "v1.2.4")})
+	p := PlanDraft(config.Line{}, bump.LevelPatch, "v1.2.4", true, []Draft{d(1, placeholderTag), d(2, "v1.2.4")})
 	if p.Keep == nil || p.Keep.ID != 2 {
 		t.Fatalf("plan = %+v, want the draft already at v1.2.4 kept", p)
 	}
@@ -67,7 +67,7 @@ func TestRealVerdictPrefersTheExactTag(t *testing.T) {
 // claim: the name is glyph's own artifact, so turning draft_on_none off must
 // converge a lingering placeholder away, not orphan it.
 func TestPlaceholderClaimedWithFlagOff(t *testing.T) {
-	p := PlanDraft(config.Line{}, bump.LevelMinor, "v2.0.0", false, []Draft{d(9, PlaceholderTag)})
+	p := PlanDraft(config.Line{}, bump.LevelMinor, "v2.0.0", false, []Draft{d(9, placeholderTag)})
 	if p.Keep == nil || p.Keep.ID != 9 || p.Tag != "v2.0.0" {
 		t.Fatalf("plan = %+v, want the placeholder claimed and retagged even with the flag off", p)
 	}
@@ -96,7 +96,7 @@ func TestUnmanagedIsUntouchable(t *testing.T) {
 // TestNeverASecondDraft pins the founding invariant: whatever
 // exists, at most one draft is kept and everything else managed is stale.
 func TestNeverASecondDraft(t *testing.T) {
-	many := []Draft{d(1, "v1.0.0"), d(2, "v1.1.0"), d(3, PlaceholderTag), d(4, "v0.9.0")}
+	many := []Draft{d(1, "v1.0.0"), d(2, "v1.1.0"), d(3, placeholderTag), d(4, "v0.9.0")}
 	p := PlanDraft(config.Line{}, bump.LevelMinor, "v1.2.0", true, many)
 	if p.Keep == nil {
 		t.Fatalf("plan kept nothing: %+v", p)
@@ -114,7 +114,7 @@ func TestNeverASecondDraft(t *testing.T) {
 // other line's rolling draft as a stray.
 func TestManagedIsPerLine(t *testing.T) {
 	all := []Draft{
-		d(1, "v1.0.0"), d(2, PlaceholderTag),
+		d(1, "v1.0.0"), d(2, placeholderTag),
 		d(3, "haiku/v2.0.0"), d(4, "haiku/Unreleased"),
 		d(5, "haiku/sub/v9.0.0"),
 		d(6, "curry/v0.3.0"),

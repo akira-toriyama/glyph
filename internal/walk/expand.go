@@ -250,7 +250,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
 			r.SHA = on
 		}
 		c := Commit{Raw: r, Pull: number, Landed: landed[i] != "", MergePoint: canonical}
-		judged := w.judges(c.Governing())
+		judged := w.judges(c.governing())
 		if i, refused := w.wedged[r.SHA]; refused {
 			// A refused commit a second pull lists (a stacked pull carries
 			// its base pull's commits) is one row with one more escape:

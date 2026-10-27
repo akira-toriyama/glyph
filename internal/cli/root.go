@@ -11,7 +11,7 @@
 // here; which writes, in what order and of which kind is draftplan's.
 //
 // It holds no copy of: a message's meaning (internal/config's pattern match),
-// the lattice, the fold and the commit that decides it, Version.Next and the
+// the lattice, the fold and the commit that decides it, Version.next and the
 // step on a line (internal/bump), the release walk — the base past a tag, the
 // expansion of each merge point, which lines a commit joins and what the walk
 // could not read (internal/walk) — grouping and rendering the notes

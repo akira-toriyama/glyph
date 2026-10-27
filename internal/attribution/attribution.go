@@ -57,16 +57,14 @@ type Owned struct {
 // exit 3; this package, like config, does not decide exit codes). Its fields
 // are what an error message or a machine detail needs to name the escapes.
 //
-// Reason, Scope, Sigil, Touched and Names are the verdict's own terms. The
-// rest only words the sentence, in two halves: what Attribute saw of the
-// files (Owners, Unowned, Files, More), and what it cannot see and the caller
-// tells it (Merge, Unread, Sayable).
+// Reason, Scope and Sigil are the verdict's own terms. The rest only words
+// the sentence, in two halves: what Attribute saw of the files (Owners,
+// Unowned, Files, More), and what it cannot see and the caller tells it
+// (Merge, Unread, Sayable).
 type Refusal struct {
-	Reason  reason
-	Scope   string
-	Sigil   config.Sigil
-	Touched []config.Package // packages that own the commit's files, in config order (empty for noCarrier)
-	Names   []string         // every package name, in config order
+	Reason reason
+	Scope  string
+	Sigil  config.Sigil
 
 	// Owners is a contradiction's evidence: one owned file per touched
 	// package, in config order, so the file that decides is named wherever it
@@ -354,7 +352,7 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
 
 	if len(touched) > 0 {
 		if hasNamed && !touchedIdx[named] && sigil != config.SigilNone {
-			return nil, refuseContradiction(files, scope, sigil, touched, packages)
+			return nil, refuseContradiction(files, scope, sigil, packages)
 		}
 		return touched, nil
 	}
@@ -364,15 +362,15 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
 	if sigil == config.SigilNone {
 		return nil, nil
 	}
-	return nil, refuseNoCarrier(files, scope, sigil, packages)
+	return nil, refuseNoCarrier(files, scope, sigil)
 }
 
 // refuseContradiction builds the scope check's refusal with its evidence: the first
 // file each touched package owns, the other owned files counted, and the
 // files no package owns counted apart.
-func refuseContradiction(files []string, scope string, sigil config.Sigil, touched, packages []config.Package) *Refusal {
-	r := &Refusal{Reason: contradiction, Scope: scope, Sigil: sigil, Touched: touched, Names: names(packages)}
-	first := make(map[int]string, len(touched))
+func refuseContradiction(files []string, scope string, sigil config.Sigil, packages []config.Package) *Refusal {
+	r := &Refusal{Reason: contradiction, Scope: scope, Sigil: sigil}
+	first := make(map[int]string)
 	for _, f := range files {
 		f = path.Clean(f)
 		i, owned := owner(f, packages)
@@ -396,8 +394,8 @@ func refuseContradiction(files []string, scope string, sigil config.Sigil, touch
 
 // refuseNoCarrier builds rule 3's refusal with its evidence: no package owns any
 // of files, so the first few stand for all of them.
-func refuseNoCarrier(files []string, scope string, sigil config.Sigil, packages []config.Package) *Refusal {
-	r := &Refusal{Reason: noCarrier, Scope: scope, Sigil: sigil, Names: names(packages)}
+func refuseNoCarrier(files []string, scope string, sigil config.Sigil) *Refusal {
+	r := &Refusal{Reason: noCarrier, Scope: scope, Sigil: sigil}
 	for i, f := range files {
 		if i == quoted {
 			r.More = len(files) - quoted
@@ -429,12 +427,4 @@ func owner(file string, packages []config.Package) (int, bool) {
 		}
 	}
 	return best, found
-}
-
-func names(packages []config.Package) []string {
-	out := make([]string, 0, len(packages))
-	for _, p := range packages {
-		out = append(out, p.Name)
-	}
-	return out
 }

@@ -1,5 +1,4 @@
 diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
-index 5866fb4..7831f67 100644
 --- a/internal/gitsource/gitsource.go
 +++ b/internal/gitsource/gitsource.go
 @@ -65,7 +65,7 @@ const logFields = 5
@@ -10,4 +9,4 @@ index 5866fb4..7831f67 100644
 +	return append([]string{"log", "-z", "--encoding=UTF-8"}, args...)
  }
  
- // Log returns the commits in revRange (e.g. "BASE..HEAD"), oldest first. An
+ // log returns the commits in revRange (e.g. "BASE..HEAD"), oldest first. An

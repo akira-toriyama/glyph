@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"regexp"
-	"regexp/syntax"
 	"strings"
 )
 
@@ -37,52 +36,15 @@ func scopeSpellers(patterns []Pattern) ([]scopeSpeller, error) {
 	var out []scopeSpeller
 	for i := range patterns {
 		p := &patterns[i]
-		if !p.bindsGroups() {
+		if !p.bindsGroups() || !p.scope.present {
 			continue
 		}
-		// The flags regexp.Compile parses with, so this is the tree
-		// compilePattern already accepted.
-		tree, err := syntax.Parse(p.Pattern, syntax.Perl)
-		if err != nil {
-			return nil, fmt.Errorf("patterns[%d]: parse %q: %w", i, p.Pattern, err)
+		if p.scope.wordErr != nil {
+			return nil, fmt.Errorf("patterns[%d]: the %s group of %q does not compile on its own: %w", i, ScopeGroup, p.Pattern, p.scope.wordErr)
 		}
-		group := lastGroup(tree, ScopeGroup)
-		if group == nil {
-			continue
-		}
-		word, err := wholeGroup(group)
-		if err != nil {
-			return nil, fmt.Errorf("patterns[%d]: the %s group of %q does not compile on its own: %w", i, ScopeGroup, p.Pattern, err)
-		}
-		out = append(out, scopeSpeller{index: i, source: p.Pattern, word: word})
+		out = append(out, scopeSpeller{index: i, source: p.Pattern, word: p.scope.word})
 	}
 	return out, nil
-}
-
-// lastGroup is the capture called name with the highest index — the one
-// whose value Match keeps, for the scope and the sigil alike: it fills both
-// in index order — or nil when the pattern names none.
-func lastGroup(re *syntax.Regexp, name string) *syntax.Regexp {
-	var last *syntax.Regexp
-	var walk func(*syntax.Regexp)
-	walk = func(r *syntax.Regexp) {
-		if r.Op == syntax.OpCapture && r.Name == name && (last == nil || r.Cap > last.Cap) {
-			last = r
-		}
-		for _, sub := range r.Sub {
-			walk(sub)
-		}
-	}
-	walk(re)
-	return last
-}
-
-// wholeGroup compiles a capture's own sub-expression anchored whole: every
-// value that group can hand on. String round-trips to an equivalent
-// expression, flags included (regexp/syntax's TestToStringEquivalentParse);
-// it is compiled, never shown — a refusal quotes the source instead.
-func wholeGroup(group *syntax.Regexp) (*regexp.Regexp, error) {
-	return regexp.Compile(`\A(?:` + group.Sub[0].String() + `)\z`)
 }
 
 // checkScopeWord refuses a package whose name none of the spellers captures.

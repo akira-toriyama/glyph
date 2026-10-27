@@ -67,7 +67,7 @@ func TestPlanRunWritesEveryUpsertBeforeAnyDelete(t *testing.T) {
 // run can say what it deleted once the DELETE went.
 func TestPlanRunResidueTakesTheRunsKind(t *testing.T) {
 	haiku := config.Line{Prefix: "haiku/"}
-	residue := []Draft{d(61, "v0.9.0"), d(62, PlaceholderTag)}
+	residue := []Draft{d(61, "v0.9.0"), d(62, placeholderTag)}
 	moving := PlanDraft(haiku, "minor", "haiku/v0.2.0", false, []Draft{d(1, "haiku/v0.1.5"), d(2, "haiku/v0.1.6")})
 	beside := PlanRun([]LinePlan{{Plan: moving, Body: "notes"}}, residue)
 	if got, want := writes(beside), []string{"upsert haiku/v0.2.0", "stale haiku/v0.1.6", "stale v0.9.0", "stale Unreleased"}; !slices.Equal(got, want) {
@@ -100,7 +100,7 @@ func TestPlanRunResidueTakesTheRunsKind(t *testing.T) {
 // line plans its own. A published bare release is never residue: it is not
 // glyph's draft.
 func TestResidueIsClaimedOnlyWithoutARootPackage(t *testing.T) {
-	releases := []Draft{d(61, "v0.9.0"), d(53, "haiku/v0.2.0"), d(62, PlaceholderTag), {ID: 70, TagName: "v0.5.0"}, d(63, "nightly"), d(64, "v2.3.0")}
+	releases := []Draft{d(61, "v0.9.0"), d(53, "haiku/v0.2.0"), d(62, placeholderTag), {ID: 70, TagName: "v0.5.0"}, d(63, "nightly"), d(64, "v2.3.0")}
 	two := &config.Config{Packages: []config.Package{{Path: "haiku"}, {Path: "curry"}}}
 	if got := Residue(two, releases); len(got) != 3 || got[0].ID != 61 || got[1].ID != 62 || got[2].ID != 64 {
 		t.Errorf("residue = %+v, want the bare v0.9.0 and v2.3.0 drafts and the bare placeholder, in listing order", got)

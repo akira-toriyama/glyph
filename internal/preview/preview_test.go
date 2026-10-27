@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v6/internal/bump"
+	"github.com/akira-toriyama/glyph/v6/internal/config"
 )
 
 func feat() Commit {
@@ -129,14 +130,22 @@ func TestHeadlineNeverNamesADraft(t *testing.T) {
 
 // TestHeadlineNeverEscalatesToTheSameVersion pins the sentence against the
 // arithmetic it describes: every (current, PR level, pending level) the
-// lattice allows is stepped with bump.Version.Next — the one place the 0.x
-// rule lives — and no headline may draw an arrow from a version to itself.
+// lattice allows is stepped with bump.NextOn on the bare line — through the
+// one place the 0.x rule lives — and no headline may draw an arrow from a
+// version to itself.
 // On 0.x a major over a pending minor lands where the minor already does,
 // and the escalates arm rendered that as "v0.4.0 → v0.4.0" (t-d0d9,
 // measured 2026-09-26 on glyph-monorepo-test #31). The other rows are the
 // positive control: there every higher level steps to a different version
 // and the escalates arm must still fire, as must the 0.x pairs over a patch.
 func TestHeadlineNeverEscalatesToTheSameVersion(t *testing.T) {
+	step := func(cur bump.Version, l bump.Level) string {
+		next, err := bump.NextOn(config.Line{}, cur, bump.Decision{Level: l})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return next.String()
+	}
 	levels := []bump.Level{bump.LevelPatch, bump.LevelMinor, bump.LevelMajor}
 	escalated := 0
 	for _, current := range []string{"v0.3.0", "v1.2.3"} {
@@ -146,8 +155,7 @@ func TestHeadlineNeverEscalatesToTheSameVersion(t *testing.T) {
 		}
 		for _, pl := range levels {
 			for _, ql := range levels {
-				prNext := cur.Next(bump.Decision{Level: pl}).String()
-				pendingNext := cur.Next(bump.Decision{Level: ql}).String()
+				prNext, pendingNext := step(cur, pl), step(cur, ql)
 				got := headline(Input{Current: current,
 					PR:      Verdict{Level: pl, Next: prNext},
 					Pending: Verdict{Level: ql, Next: pendingNext}})

@@ -27,7 +27,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// TestLogRange: Log walks BASE..HEAD oldest→newest carrying SHA, author name,
+// TestLogRange: log walks BASE..HEAD oldest→newest carrying SHA, author name,
 // parent count, and the verbatim message (subject + body, CJK intact).
 func TestLogRange(t *testing.T) {
 	dir := testutil.NewRepo(t)
@@ -36,7 +36,7 @@ func TestLogRange(t *testing.T) {
 	testutil.Commit(t, dir, "dependabot[bot]", ":arrow_up: bump a dep")
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui) add a menu\n\nBody line.\n\n---（和訳）\nメニュー追加。")
 
-	got, err := Log(context.Background(), dir, base+"..HEAD")
+	got, err := log(context.Background(), dir, base+"..HEAD")
 	if err != nil {
 		t.Fatalf("Log: unexpected error: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestLogStripsOnlyTheRecordNewline(t *testing.T) {
 	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--cleanup=verbatim", "-m", ":memo:= kept as written\n\n")
-	got, err := Log(context.Background(), dir, base+"..HEAD")
+	got, err := log(context.Background(), dir, base+"..HEAD")
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestLogReadsAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
 			dir := testutil.NewRepo(t)
 			base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 			testutil.CommitFrom(t, dir, name, email, "garbage message\x1fwith a separator of its own")
-			got, err := Log(context.Background(), dir, base+"..HEAD")
+			got, err := log(context.Background(), dir, base+"..HEAD")
 			if err != nil {
 				t.Fatalf("Log: %v", err)
 			}
@@ -174,7 +174,7 @@ func TestLogReadsSHA256Repositories(t *testing.T) {
 	testutil.Git(t, dir, "akira-toriyama", "init", "-q", "-b", "main", "--object-format=sha256")
 	testutil.Commit(t, dir, "akira-toriyama", ":tada:= begin")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
-	got, err := Log(context.Background(), dir, "HEAD")
+	got, err := log(context.Background(), dir, "HEAD")
 	if err != nil {
 		t.Fatalf("Log on a SHA-256 repository: %v", err)
 	}
@@ -222,7 +222,7 @@ func TestLogReadsSignedCommitsUnderShowSignature(t *testing.T) {
 		}
 		return out
 	}
-	got, err := Log(context.Background(), dir, root+"..HEAD")
+	got, err := log(context.Background(), dir, root+"..HEAD")
 	if err != nil {
 		t.Fatalf("Log under log.showSignature: %v", err)
 	}
@@ -256,7 +256,7 @@ func TestLogReadsUTF8UnderLogOutputEncoding(t *testing.T) {
 				t.Fatalf("git printed the author in UTF-8 under i18n.logOutputEncoding=%s — git no longer re-encodes there, and this test guards nothing", enc)
 			}
 
-			got, err := Log(context.Background(), dir, root+"..HEAD")
+			got, err := log(context.Background(), dir, root+"..HEAD")
 			if err != nil {
 				t.Fatalf("Log: %v", err)
 			}
@@ -284,7 +284,7 @@ func TestLogMergeParents(t *testing.T) {
 	testutil.Commit(t, dir, "akira-toriyama", ":memo: docs on main")
 	testutil.Git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", "Merge branch 'feat'", "feat")
 
-	got, err := Log(context.Background(), dir, base+"..HEAD")
+	got, err := log(context.Background(), dir, base+"..HEAD")
 	if err != nil {
 		t.Fatalf("Log: unexpected error: %v", err)
 	}
@@ -302,12 +302,12 @@ func TestLogMergeParents(t *testing.T) {
 // TestLogEmptyRange: an empty range is a successful empty result, not an error.
 func TestLogEmptyRange(t *testing.T) {
 	dir := testutil.NewRepo(t)
-	got, err := Log(context.Background(), dir, "HEAD..HEAD")
+	got, err := log(context.Background(), dir, "HEAD..HEAD")
 	if err != nil {
-		t.Fatalf("Log(HEAD..HEAD): unexpected error: %v", err)
+		t.Fatalf("log(HEAD..HEAD): unexpected error: %v", err)
 	}
 	if len(got) != 0 {
-		t.Fatalf("Log(HEAD..HEAD) = %+v, want empty", got)
+		t.Fatalf("log(HEAD..HEAD) = %+v, want empty", got)
 	}
 }
 
@@ -321,13 +321,13 @@ func TestLogErrorsAreAPI(t *testing.T) {
 		"option-shaped range stays a revision": {dir, "--all"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := Log(context.Background(), tc.dir, tc.rng)
+			_, err := log(context.Background(), tc.dir, tc.rng)
 			if err == nil {
-				t.Fatalf("Log(%q, %q) should fail", tc.dir, tc.rng)
+				t.Fatalf("log(%q, %q) should fail", tc.dir, tc.rng)
 			}
 			ce := core.AsError(err)
 			if ce == nil || ce.Code != core.CodeAPI {
-				t.Fatalf("Log(%q, %q) error = %v, want a *core.Error with the API code", tc.dir, tc.rng, err)
+				t.Fatalf("log(%q, %q) error = %v, want a *core.Error with the API code", tc.dir, tc.rng, err)
 			}
 		})
 	}
@@ -340,7 +340,7 @@ func TestLogCancelIsInterrupted(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := Log(ctx, dir, "HEAD~0..HEAD")
+	_, err := log(ctx, dir, "HEAD~0..HEAD")
 	ce := core.AsError(err)
 	if ce == nil || ce.Code != core.CodeInterrupted {
 		t.Fatalf("Log with a canceled context = %v, want CodeInterrupted (%d)", err, core.CodeInterrupted)
@@ -356,7 +356,7 @@ func TestLogDeadlineIsAPI(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancel()
 
-	_, err := Log(ctx, dir, "HEAD~0..HEAD")
+	_, err := log(ctx, dir, "HEAD~0..HEAD")
 	ce := core.AsError(err)
 	if ce == nil {
 		t.Fatalf("Log past its deadline = %v, want a *core.Error", err)
@@ -374,13 +374,13 @@ func TestLogDeadlineIsAPI(t *testing.T) {
 // ordering and this test must not be read as promising one: it is a REFNAME
 // sort, so it orders on the leading byte first and puts every `v…` above every
 // `1…`. The fixture here happens to agree because every tag in it starts with v.
-// See Tags' own doc, and walk.LatestVersionTag, which read an earlier version of
+// See tags' own doc, and walk.LatestVersionTag, which read an earlier version of
 // this comment as a promise and took git's first parseable entry.
 // A repo without tags yields an empty list.
 func TestTags(t *testing.T) {
 	dir := testutil.NewRepo(t)
 
-	got, err := Tags(context.Background(), dir)
+	got, err := tags(context.Background(), dir)
 	if err != nil {
 		t.Fatalf("Tags on an untagged repo: %v", err)
 	}
@@ -391,7 +391,7 @@ func TestTags(t *testing.T) {
 	for _, tag := range []string{"v0.1.0", "v0.2.0", "v0.1.1", "not-a-version"} {
 		testutil.Git(t, dir, "akira-toriyama", "tag", tag)
 	}
-	got, err = Tags(context.Background(), dir)
+	got, err = tags(context.Background(), dir)
 	if err != nil {
 		t.Fatalf("Tags: unexpected error: %v", err)
 	}
@@ -418,7 +418,7 @@ func TestMergedTagsListsOnlyTagsRevContains(t *testing.T) {
 	blob := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD:glyph.toml")
 	testutil.Git(t, dir, "akira-toriyama", "tag", "v8.0.0", blob)
 
-	all, err := Tags(context.Background(), dir)
+	all, err := tags(context.Background(), dir)
 	if err != nil || len(all) != 4 {
 		t.Fatalf("Tags = %v, %v; want all four (the control)", all, err)
 	}
@@ -435,7 +435,7 @@ func TestMergedTagsListsOnlyTagsRevContains(t *testing.T) {
 // TestMergedTagsOnAnUnbornHEADIsEmpty: before a repository's first commit HEAD
 // names no commit, and git answers `tag --merged=HEAD` with "malformed object
 // name HEAD" at exit 128 (measured, git 2.54). An unborn history holds no
-// tags — Tags answers empty there too — so mergedTags does as well; passing
+// tags — tags answers empty there too — so mergedTags does as well; passing
 // git's failure through turned `bump --pr` and `preview --pr` in such a
 // checkout from exit 0 into exit 4. Outside a repository the listing still
 // fails as git/IO: the empty answer is for a rev naming no commit, not for a
@@ -445,7 +445,7 @@ func TestMergedTagsOnAnUnbornHEADIsEmpty(t *testing.T) {
 	dir := t.TempDir()
 	testutil.Git(t, dir, "akira-toriyama", "init", "-q", "-b", "main")
 
-	all, err := Tags(context.Background(), dir)
+	all, err := tags(context.Background(), dir)
 	if err != nil || len(all) != 0 {
 		t.Fatalf("Tags on an unborn history = %v, %v; want empty, nil (the control)", all, err)
 	}
@@ -694,7 +694,7 @@ func TestTagListingsStayOnePerLineUnderColumnConfig(t *testing.T) {
 			}
 
 			want := []string{"v0.2.0", "v0.1.1", "v0.1.0"}
-			got, err := Tags(context.Background(), dir)
+			got, err := tags(context.Background(), dir)
 			if err != nil || !slices.Equal(got, want) {
 				t.Fatalf("Tags = %q, %v; want %q", got, err, want)
 			}
@@ -739,7 +739,7 @@ func TestHeadErrorsAreAPI(t *testing.T) {
 
 // TestHave: the repository's own commits come back, and everything else — a
 // well-formed sha nobody has, a tree that is not a commit, outright garbage —
-// is simply absent rather than an error. The listing Have is asked about is
+// is simply absent rather than an error. The listing have is asked about is
 // GitHub's, so it routinely names commits that exist in no clone.
 func TestHave(t *testing.T) {
 	dir := testutil.NewRepo(t)
@@ -749,7 +749,7 @@ func TestHave(t *testing.T) {
 	tree := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD^{tree}")
 	absent := "0123456789abcdef0123456789abcdef01234567"
 
-	got, err := Have(context.Background(), dir, []string{root, head, tree, absent, "not-a-sha"})
+	got, err := have(context.Background(), dir, []string{root, head, tree, absent, "not-a-sha"})
 	if err != nil {
 		t.Fatalf("Have: %v", err)
 	}
@@ -769,12 +769,12 @@ func TestHave(t *testing.T) {
 // the release walk calls this per pull request, and a squash-merged one whose
 // listing the API truncated to nothing would otherwise pay for a git process.
 func TestHaveEmpty(t *testing.T) {
-	got, err := Have(context.Background(), t.TempDir(), nil)
+	got, err := have(context.Background(), t.TempDir(), nil)
 	if err != nil {
-		t.Fatalf("Have(nil): %v", err)
+		t.Fatalf("have(nil): %v", err)
 	}
 	if len(got) != 0 {
-		t.Fatalf("Have(nil) = %v, want empty", got)
+		t.Fatalf("have(nil) = %v, want empty", got)
 	}
 }
 
@@ -924,9 +924,9 @@ func TestIsShallow(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug: fix a crash")
 
-	full, err := IsShallow(context.Background(), dir)
+	full, err := isShallow(context.Background(), dir)
 	if err != nil {
-		t.Fatalf("IsShallow(full): %v", err)
+		t.Fatalf("isShallow(full): %v", err)
 	}
 	if full {
 		t.Fatal("IsShallow reports a full checkout as shallow")
@@ -934,9 +934,9 @@ func TestIsShallow(t *testing.T) {
 
 	clone := filepath.Join(t.TempDir(), "shallow")
 	testutil.Git(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", "1", "file://"+dir, clone)
-	shallow, err := IsShallow(context.Background(), clone)
+	shallow, err := isShallow(context.Background(), clone)
 	if err != nil {
-		t.Fatalf("IsShallow(shallow): %v", err)
+		t.Fatalf("isShallow(shallow): %v", err)
 	}
 	if !shallow {
 		t.Fatal("IsShallow reports a --depth 1 clone as full — the walk would grade itself on a partial repository")
@@ -1145,7 +1145,7 @@ func TestDiffTreeFiles(t *testing.T) {
 		"a rename names both":   {moved, []string{"curry/h.go", "haiku/h.go"}},
 		"a merge commit is nil": {merge, nil},
 	} {
-		got, err := DiffTreeFiles(context.Background(), dir, tc.sha)
+		got, err := diffTreeFiles(context.Background(), dir, tc.sha)
 		if err != nil {
 			t.Fatalf("%s: DiffTreeFiles: %v", name, err)
 		}
@@ -1183,7 +1183,7 @@ func TestDiffTreeFilesReadsItsHeaderUnderLogOutputEncoding(t *testing.T) {
 		"the root commit":    {root, []string{"glyph.toml"}},
 		"an ordinary commit": {head, []string{"a.txt"}},
 	} {
-		got, err := DiffTreeFiles(context.Background(), dir, tc.sha)
+		got, err := diffTreeFiles(context.Background(), dir, tc.sha)
 		if err != nil {
 			t.Fatalf("%s: DiffTreeFiles: %v", name, err)
 		}
@@ -1236,7 +1236,7 @@ func TestDiffTreeFilesAtAShallowBoundaryIsUnreadable(t *testing.T) {
 	clone := filepath.Join(t.TempDir(), "shallow")
 	testutil.Git(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", "3", "file://"+dir, clone)
 
-	files, err := DiffTreeFiles(context.Background(), clone, boundary)
+	files, err := diffTreeFiles(context.Background(), clone, boundary)
 	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || files != nil {
 		t.Fatalf("DiffTreeFiles at the shallow boundary = %q, %v; want no files and an API-class unreadable answer — its own diff is [curry/b], and the clone cannot compute it", files, err)
 	}
@@ -1250,7 +1250,7 @@ func TestDiffTreeFilesAtAShallowBoundaryIsUnreadable(t *testing.T) {
 		"the commit above the boundary": {above, []string{"haiku/a"}},
 		"a true root inside the clone":  {root, []string{"side/s"}},
 	} {
-		got, err := DiffTreeFiles(context.Background(), clone, tc.sha)
+		got, err := diffTreeFiles(context.Background(), clone, tc.sha)
 		if err != nil || !slices.Equal(got, tc.want) {
 			t.Errorf("%s: DiffTreeFiles = %q, %v; want %q", name, got, err, tc.want)
 		}
@@ -1262,7 +1262,7 @@ func TestDiffTreeFilesAtAShallowBoundaryIsUnreadable(t *testing.T) {
 // would attribute the commit to nothing and quietly drop it from every line.
 func TestDiffTreeFilesUnknownShaIsAPI(t *testing.T) {
 	dir := testutil.NewRepo(t)
-	_, err := DiffTreeFiles(context.Background(), dir, "0123456789abcdef0123456789abcdef01234567")
+	_, err := diffTreeFiles(context.Background(), dir, "0123456789abcdef0123456789abcdef01234567")
 	if err == nil {
 		t.Fatalf("DiffTreeFiles on an absent sha returned no error")
 	}

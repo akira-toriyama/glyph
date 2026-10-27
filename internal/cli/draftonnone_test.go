@@ -6,8 +6,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/akira-toriyama/glyph/v6/internal/draftplan"
 )
 
 // enableDraftOnNone flips the fixture's glyph.toml to draft_on_none = true.
@@ -36,7 +34,7 @@ func enableDraftOnNone(t *testing.T) {
 
 // TestReleaseDraftOnNoneCreatesThePlaceholder: with the flag on and nothing
 // drafted, a none verdict CREATES the placeholder — one POST carrying
-// draftplan.PlaceholderTag, drafted like every other glyph write. The verdict
+// the placeholder tag "Unreleased", drafted like every other glyph write. The verdict
 // is still "no release is due" (exit 1, silent), and the draft's URL is the
 // payload: draft_on_none keeps a door open, it does not release.
 func TestReleaseDraftOnNoneCreatesThePlaceholder(t *testing.T) {
@@ -54,8 +52,8 @@ func TestReleaseDraftOnNoneCreatesThePlaceholder(t *testing.T) {
 		t.Fatalf("writes = %+v, want exactly one POST", writes)
 	}
 	body := writes[0].body
-	if body["tag_name"] != draftplan.PlaceholderTag || body["name"] != draftplan.PlaceholderTag {
-		t.Errorf("POST body = %+v, want tag_name and name %q", body, draftplan.PlaceholderTag)
+	if body["tag_name"] != "Unreleased" || body["name"] != "Unreleased" {
+		t.Errorf("POST body = %+v, want tag_name and name %q", body, "Unreleased")
 	}
 	if body["draft"] != true {
 		t.Errorf("the placeholder must be a DRAFT: %+v", body)
@@ -76,7 +74,7 @@ func TestReleaseDraftOnNoneKeepsThePlaceholderByID(t *testing.T) {
 	var writes []apiWrite
 	walk := noneWalk(t)
 	enableDraftOnNone(t)
-	srv := releaseServer(t, walk, `[`+draftJSON(11, draftplan.PlaceholderTag)+`]`, &writes)
+	srv := releaseServer(t, walk, `[`+draftJSON(11, "Unreleased")+`]`, &writes)
 	usePR(t, srv)
 
 	code, stdout, stderr := runGlyph(t, "release", "--json")
@@ -86,15 +84,15 @@ func TestReleaseDraftOnNoneKeepsThePlaceholderByID(t *testing.T) {
 	if len(writes) != 1 || writes[0].method != "PATCH" || writes[0].path != releasesPath+"/11" {
 		t.Fatalf("writes = %+v, want exactly one PATCH of release 11", writes)
 	}
-	if writes[0].body["tag_name"] != draftplan.PlaceholderTag {
+	if writes[0].body["tag_name"] != "Unreleased" {
 		t.Errorf("PATCH body = %+v, want the placeholder tag", writes[0].body)
 	}
 	var v releaseVerdict
 	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
 		t.Fatalf("not one JSON object: %v\n%s", err, stdout)
 	}
-	if v.Action != "update" || v.Tag != draftplan.PlaceholderTag || v.Level != "none" {
-		t.Errorf("verdict = %+v, want action update, tag %q, level none", v, draftplan.PlaceholderTag)
+	if v.Action != "update" || v.Tag != "Unreleased" || v.Level != "none" {
+		t.Errorf("verdict = %+v, want action update, tag %q, level none", v, "Unreleased")
 	}
 	if v.Next != "" {
 		t.Errorf("next = %q on a none verdict, want it absent — only a release verdict names a next version, and the placeholder's tag is not one", v.Next)
@@ -109,7 +107,7 @@ func TestReleaseDraftOnNoneRetagsThePlaceholder(t *testing.T) {
 	var writes []apiWrite
 	walk := oneFixWalk(t)
 	enableDraftOnNone(t)
-	srv := releaseServer(t, walk, `[`+draftJSON(11, draftplan.PlaceholderTag)+`]`, &writes)
+	srv := releaseServer(t, walk, `[`+draftJSON(11, "Unreleased")+`]`, &writes)
 	usePR(t, srv)
 
 	code, stdout, stderr := runGlyph(t, "release")
@@ -135,7 +133,7 @@ func TestReleaseDraftOnNoneRetagsThePlaceholder(t *testing.T) {
 func TestReleaseDraftOnNoneOffConvergesThePlaceholderAway(t *testing.T) {
 	var writes []apiWrite
 	walk := noneWalk(t)
-	srv := releaseServer(t, walk, `[`+draftJSON(11, draftplan.PlaceholderTag)+`]`, &writes)
+	srv := releaseServer(t, walk, `[`+draftJSON(11, "Unreleased")+`]`, &writes)
 	usePR(t, srv)
 
 	code, stdout, stderr := runGlyph(t, "release", "--json")
@@ -177,7 +175,7 @@ func TestReleaseDraftOnNoneReasonIsTheNoneReason(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
 		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout)
 	}
-	if v.Tag != draftplan.PlaceholderTag || !strings.HasPrefix(v.Reason, "no release: 1 commit(s) participate in ") || !strings.HasSuffix(v.Reason, " and every level is none") {
+	if v.Tag != "Unreleased" || !strings.HasPrefix(v.Reason, "no release: 1 commit(s) participate in ") || !strings.HasSuffix(v.Reason, " and every level is none") {
 		t.Fatalf("tag %q, reason %q — a maintained none reports the none reason, not its oldest = commit", v.Tag, v.Reason)
 	}
 }
