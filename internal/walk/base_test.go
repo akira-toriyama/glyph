@@ -180,7 +180,7 @@ func TestSinceTagBaseIsAReleaseHEADContains(t *testing.T) {
 
 // TestWholeHistoryAtTheCapStillWalks is the untagged arm's half of the cap
 // decision that cli's TestSinceTagUnboundedWalkRefused cannot pin: a history
-// of exactly Cap walk-visible commits still walks (a skip would fold zero
+// of exactly walkCap walk-visible commits still walks (a skip would fold zero
 // commits and verdict the first release out of existence), and the count
 // excludes the bot authors the walk itself never asks about. The refusal one
 // commit past the cap, and its exit 4 and escape, are that cli test's.

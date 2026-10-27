@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
-	"github.com/akira-toriyama/glyph/v6/internal/walk"
 )
 
 // This file pins `glyph preview` for a packages repository (DESIGN §4.1,
@@ -714,7 +713,7 @@ func TestPreviewPackagesWalkIgnoresAnUntouchedUntaggedLine(t *testing.T) {
 func TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy(t *testing.T) {
 	dir := testutil.NewTwoLineRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0") // curry never released
-	for i := range walk.Cap + 1 {
+	for i := range 201 {
 		testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= note %d", i))
 	}
 	usePR(t, walkServer(t, crossLinePull(9)))
@@ -786,11 +785,20 @@ func TestPreviewPackagesUntaggedTouchedLineAgreesWithItsVerdict(t *testing.T) {
 // the escape hatch its CALLER has. `preview` reads a pull request and has no
 // --since-tag, so sending an operator there is a dead end — measured
 // 2026-09-15, `preview --pr` exited 4 telling one to "name the walk base
-// yourself with --since-tag=TAG". Positive control: the default escape does
-// name the flag, so this is a real difference and not an empty string.
+// yourself with --since-tag=TAG". Positive control: bump's refusal of the
+// same whole-history walk does name the flag, so this is a real difference
+// and not an empty string.
 func TestPreviewRefusalNamesNoFlagPreviewLacks(t *testing.T) {
-	if !strings.Contains(walk.FlagEscape, "--since-tag=TAG") {
-		t.Fatal("the default escape no longer names --since-tag — this guard's premise is gone and the case below would pass vacuously")
+	dir, _ := testutil.NewTaggedRepo(t)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
+	for i := range 200 {
+		testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= note %d", i))
+	}
+	usePR(t, walkServer(t, map[string]string{}))
+	t.Chdir(dir)
+	code, _, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 4 || !strings.Contains(stderr, "name the walk base yourself with --since-tag=TAG") {
+		t.Fatalf("bump over 201 untagged commits exited %d without saying \"name the walk base yourself with --since-tag=TAG\" (want 4 and that escape) — this guard's premise is gone and the case below would pass vacuously\nstderr: %s", code, stderr)
 	}
 	if f := newPreviewCmd().Flags().Lookup("since-tag"); f != nil {
 		t.Fatal("preview now registers --since-tag; previewWalkEscape tells operators it does not, and the two must move together")

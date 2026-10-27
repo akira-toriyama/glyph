@@ -232,22 +232,13 @@ func Render(in Input) string {
 	// sentence headline can produce about the pending side is a claim this walk
 	// did not fully earn. Below the table would read as a footnote to the
 	// evidence rather than a caveat on the conclusion.
-	if in.PendingShort != "" {
-		fmt.Fprintf(&b, "\n> [!WARNING]\n> The pending side of this fold is INCOMPLETE: %s. Anything already merged but unreleased may be missing from the figure above, so treat it as a floor rather than the answer.\n", in.PendingShort)
-	}
+	b.WriteString(pendingShortBlock(in.PendingShort, false))
 
 	if len(in.PR.Commits) > 0 {
-		b.WriteString("\n| commit | sigil | bump |\n|---|---|---|\n")
-		for _, c := range in.PR.Commits {
-			fmt.Fprintf(&b, "| %s | `%s` | %s |\n", escapeCell(c.Subject), c.Sigil, c.Level)
-		}
+		b.WriteString("\n" + commitTable(in.PR.Commits))
 	}
 
-	if in.Notes != "" {
-		b.WriteString("\n<details>\n<summary>Release notes preview</summary>\n\n")
-		b.WriteString(strings.TrimRight(in.Notes, "\n"))
-		b.WriteString("\n\n</details>\n")
-	}
+	b.WriteString(notesDetails(in.Notes))
 
 	b.WriteString("\n" + footer(in) + "\n")
 	return b.String()
@@ -259,9 +250,11 @@ func Render(in Input) string {
 // that touches two lines sits in both, as it participates in both), the
 // notes preview once (its per-line headings are the notes' own), and a
 // footer that counts the participating commits, says how many of them no
-// table holds, and names every line's base. The marker and the warning block are
-// the single line's, byte for byte: the sticky-comment contract and the
-// incomplete-walk caveat do not change shape because there are two lines.
+// table holds, and names every line's base. The marker, the pending-side
+// warning, the commit table and the notes block keep the single line's shape
+// and producer: the sticky-comment contract and the incomplete-walk caveat do
+// not change shape because there are two lines. The warning's words differ in
+// grammatical number only — it qualifies one figure there and one per line here.
 func renderPackages(in Input) string {
 	var b strings.Builder
 	b.WriteString(Marker + "\n")
@@ -271,24 +264,16 @@ func renderPackages(in Input) string {
 		// renders like any other: its floor is the null version.
 		fmt.Fprintf(&b, "**%s** — %s\n", p.Path, headline(Input{Current: p.Current, Untagged: p.Untagged && !p.PendingWalked, PR: p.PR, Pending: p.Pending}))
 	}
-	if in.PendingShort != "" {
-		fmt.Fprintf(&b, "\n> [!WARNING]\n> The pending side of this fold is INCOMPLETE: %s. Anything already merged but unreleased may be missing from the figures above, so treat each as a floor rather than the answer.\n", in.PendingShort)
-	}
+	b.WriteString(pendingShortBlock(in.PendingShort, true))
 	b.WriteString(prShortBlock(in.PRShort, true))
 	for _, p := range in.Packages {
 		if len(p.PR.Commits) == 0 {
 			continue
 		}
-		fmt.Fprintf(&b, "\n### %s\n\n| commit | sigil | bump |\n|---|---|---|\n", p.Path)
-		for _, c := range p.PR.Commits {
-			fmt.Fprintf(&b, "| %s | `%s` | %s |\n", escapeCell(c.Subject), c.Sigil, c.Level)
-		}
+		fmt.Fprintf(&b, "\n### %s\n\n", p.Path)
+		b.WriteString(commitTable(p.PR.Commits))
 	}
-	if in.Notes != "" {
-		b.WriteString("\n<details>\n<summary>Release notes preview</summary>\n\n")
-		b.WriteString(strings.TrimRight(in.Notes, "\n"))
-		b.WriteString("\n\n</details>\n")
-	}
+	b.WriteString(notesDetails(in.Notes))
 	b.WriteString("\n" + packagesFooter(in) + "\n")
 	return b.String()
 }
@@ -312,6 +297,40 @@ func RenderNoLine(in Input) string {
 		nothing = "⏸️ Merging this PR moves nothing in the files GitHub listed — no commit participating in it touches a declared package there."
 	}
 	return Marker + "\n" + nothing + "\n" + prShortBlock(in.PRShort, false) + "\n" + packagesFooter(in) + "\n"
+}
+
+// pendingShortBlock is the caveat Render and renderPackages place directly
+// under their headlines when the pending side's walk came up short, and ""
+// when it did not. plural says the body carries one figure per line rather
+// than one headline figure; that is all that changes the words.
+func pendingShortBlock(short string, plural bool) string {
+	if short == "" {
+		return ""
+	}
+	floor := "the figure above, so treat it"
+	if plural {
+		floor = "the figures above, so treat each"
+	}
+	return fmt.Sprintf("\n> [!WARNING]\n> The pending side of this fold is INCOMPLETE: %s. Anything already merged but unreleased may be missing from %s as a floor rather than the answer.\n", short, floor)
+}
+
+// commitTable is the evidence table under a headline: the header, then one
+// row per commit with its subject made safe for a cell by escapeCell.
+func commitTable(commits []Commit) string {
+	var b strings.Builder
+	b.WriteString("| commit | sigil | bump |\n|---|---|---|\n")
+	for _, c := range commits {
+		fmt.Fprintf(&b, "| %s | `%s` | %s |\n", escapeCell(c.Subject), c.Sigil, c.Level)
+	}
+	return b.String()
+}
+
+// notesDetails is the collapsed release-notes preview, and "" for no notes.
+func notesDetails(notes string) string {
+	if notes == "" {
+		return ""
+	}
+	return "\n<details>\n<summary>Release notes preview</summary>\n\n" + strings.TrimRight(notes, "\n") + "\n\n</details>\n"
 }
 
 // prShortBlock is the caveat both packages bodies place under their headline

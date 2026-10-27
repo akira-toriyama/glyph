@@ -62,7 +62,7 @@ const ScopeGroup = "scope"
 // repository already is. SigilPromote is the one absolute signal: it names
 // the version v1.0.0 rather than a distance, and it exists because the 0.x
 // arithmetic has no other exit. While the major is 0 a '!' folds to a minor
-// step (see bump.Version.Next), so a repository still finding its shape can
+// step (see bump.Version.next), so a repository still finding its shape can
 // break things without claiming a stable 1.0 — which leaves reaching 1.0.0
 // as something its author has to say, and '%' is how they say it.
 type Sigil rune
@@ -113,6 +113,11 @@ type Config struct {
 	// synthesised entry would answer yes for every repository in the fleet
 	// (DESIGN §4.1; mutation row packages-absent-changes-the-single-line).
 	Packages []Package
+
+	// spellers is scopeSpellers' answer, derived once by Load when the file
+	// declares packages and nil when it declares none: the one reading of
+	// which scope groups spell a name, the loader's and rootNeedsName's alike.
+	spellers []scopeSpeller
 }
 
 // Commit carries the human-facing template block. glyph never parses it —
@@ -187,6 +192,11 @@ type Pattern struct {
 	Unlandable string
 
 	re *regexp.Regexp
+	// scope and sigil are the group facts capture.go reads off the pattern,
+	// once, and only for a file that declares packages (readCaptures): their
+	// readers, the scope spellers and Sayable, are asked of no other file, so
+	// for a file without packages they stay zero and nothing reads them.
+	scope, sigil capture
 }
 
 // bindsGroups says whether a commit this pattern claims binds its named
@@ -200,12 +210,10 @@ type Pattern struct {
 func (p *Pattern) bindsGroups() bool { return !p.Skip && p.Unlandable == "" }
 
 // Note carries the release-notes block: the per-commit line template and the
-// ordered sections. Line is the template as written, kept for display; Spans
-// is the same template compiled, and is what the notes renderer walks —
-// resolving a placeholder to a commit's value stays the renderer's job, so
-// this package never sees a commit.
+// ordered sections. Spans is the template compiled, and is what the notes
+// renderer walks — resolving a placeholder to a commit's value stays the
+// renderer's job, so this package never sees a commit.
 type Note struct {
-	Line        string
 	Spans       []LineSpan
 	DraftOnNone bool
 	Sections    []Section
@@ -430,7 +438,7 @@ func Load(data []byte) (*Config, error) {
 		return nil, fmt.Errorf("note.line: %w", err)
 	}
 
-	packages, err := buildPackages(r.Packages, patterns)
+	packages, spellers, err := buildPackages(r.Packages, patterns)
 	if err != nil {
 		return nil, err
 	}
@@ -450,13 +458,13 @@ func Load(data []byte) (*Config, error) {
 		Commit:         Commit(r.Commit),
 		Patterns:       patterns,
 		Note: Note{
-			Line:        r.Note.Line,
 			Spans:       spans,
 			DraftOnNone: r.Note.DraftOnNone,
 			Sections:    sections,
 			Trailers:    trailers,
 		},
 		Packages: packages,
+		spellers: spellers,
 	}, nil
 }
 
@@ -467,14 +475,20 @@ func Load(data []byte) (*Config, error) {
 // line must be readable from the file as written; and a name no scope group
 // a commit binds can spell is refused with the groups it asked, because the
 // name exists only to be written in a scope. A nil result for an absent or
-// empty array is the one-line shape Config.Packages documents.
-func buildPackages(raws []rawPackage, patterns []Pattern) ([]Package, error) {
+// empty array is the one-line shape Config.Packages documents. It fills the
+// patterns' group facts first (readCaptures), which the spellers it asks are
+// built from, and returns those spellers beside the packages for
+// Config.spellers.
+func buildPackages(raws []rawPackage, patterns []Pattern) ([]Package, []scopeSpeller, error) {
 	if len(raws) == 0 {
-		return nil, nil
+		return nil, nil, nil
+	}
+	if err := readCaptures(patterns); err != nil {
+		return nil, nil, err
 	}
 	spellers, err := scopeSpellers(patterns)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	packages := make([]Package, 0, len(raws))
 	byPath := make(map[string]int, len(raws))
@@ -482,22 +496,22 @@ func buildPackages(raws []rawPackage, patterns []Pattern) ([]Package, error) {
 	for i, rp := range raws {
 		p, err := buildPackage(rp)
 		if err != nil {
-			return nil, fmt.Errorf("packages[%d]: %w", i, err)
+			return nil, nil, fmt.Errorf("packages[%d]: %w", i, err)
 		}
 		if err := checkScopeWord(p, rp.Name != nil, spellers); err != nil {
-			return nil, fmt.Errorf("packages[%d] (%q): %w", i, p.Path, err)
+			return nil, nil, fmt.Errorf("packages[%d] (%q): %w", i, p.Path, err)
 		}
 		if j, dup := byPath[p.Path]; dup {
-			return nil, fmt.Errorf("packages[%d] and packages[%d] declare the same path %q: one subtree is one version line", j, i, p.Path)
+			return nil, nil, fmt.Errorf("packages[%d] and packages[%d] declare the same path %q: one subtree is one version line", j, i, p.Path)
 		}
 		if j, dup := byName[p.Name]; dup {
-			return nil, fmt.Errorf("packages[%d] (%q) and packages[%d] (%q) share the name %q: a scope naming it could mean either line — set name on one of them", j, packages[j].Path, i, p.Path, p.Name)
+			return nil, nil, fmt.Errorf("packages[%d] (%q) and packages[%d] (%q) share the name %q: a scope naming it could mean either line — set name on one of them", j, packages[j].Path, i, p.Path, p.Name)
 		}
 		byPath[p.Path] = i
 		byName[p.Name] = i
 		packages = append(packages, p)
 	}
-	return packages, nil
+	return packages, spellers, nil
 }
 
 func buildPackage(rp rawPackage) (Package, error) {

@@ -1,13 +1,12 @@
 diff --git a/internal/attribution/attribution.go b/internal/attribution/attribution.go
-index f62e197..8e467d5 100644
 --- a/internal/attribution/attribution.go
 +++ b/internal/attribution/attribution.go
-@@ -353,7 +353,7 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
+@@ -351,7 +351,7 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
  	}
  
  	if len(touched) > 0 {
 -		if hasNamed && !touchedIdx[named] && sigil != config.SigilNone {
 +		if hasNamed && !touchedIdx[named] {
- 			return nil, refuseContradiction(files, scope, sigil, touched, packages)
+ 			return nil, refuseContradiction(files, scope, sigil, packages)
  		}
  		return touched, nil

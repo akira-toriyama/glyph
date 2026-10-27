@@ -1,13 +1,12 @@
 diff --git a/internal/cleanup/cleanup.go b/internal/cleanup/cleanup.go
-index 6b72a7f..161ca60 100644
 --- a/internal/cleanup/cleanup.go
 +++ b/internal/cleanup/cleanup.go
-@@ -49,7 +49,7 @@ const DefaultComment = "#"
+@@ -52,7 +52,7 @@ const defaultComment = "#"
  // it, and a quoted trailing space belongs to it (measured: under
  // core.commentString="// " git drops "// x" and keeps "//y").
  func CommentPrefix(configured string, set bool) string {
 -	if !set || configured == "" || strings.EqualFold(configured, "auto") || strings.Contains(configured, "\n") {
 +	if !set || configured == "" || strings.Contains(configured, "\n") {
- 		return DefaultComment
+ 		return defaultComment
  	}
  	return configured

@@ -208,14 +208,14 @@ func TestCheckHookFiresVerdicts(t *testing.T) {
 		{"hooks dir unknown", nil, os.ErrNotExist, StatusUnknown},
 		{"nothing to fire", nil, nil, StatusPass},
 		{"probe could not run", &HookProbe{Err: os.ErrPermission}, nil, StatusUnknown},
-		{"blocked at the gate code", &HookProbe{Fired: true, Exit: gate}, nil, StatusPass},
-		{"silent no-op", &HookProbe{Fired: true, Exit: 0}, nil, StatusFail},
+		{"blocked at the gate code", &HookProbe{Exit: gate}, nil, StatusPass},
+		{"silent no-op", &HookProbe{Exit: 0}, nil, StatusFail},
 		// Exit 0 with the config claiming the probe is the chain WORKING: a
 		// catch-all pattern is legal (lint has no taste), and failing this
 		// machine over its repository's own grammar taught the fleet the
 		// check cries wolf.
-		{"config claims the probe", &HookProbe{Fired: true, Exit: 0, Claimed: true}, nil, StatusPass},
-		{"exit outside the script's vocabulary", &HookProbe{Fired: true, Exit: 127}, nil, StatusUnknown},
+		{"config claims the probe", &HookProbe{Exit: 0, Claimed: true}, nil, StatusPass},
+		{"exit outside the script's vocabulary", &HookProbe{Exit: 127}, nil, StatusUnknown},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -246,7 +246,7 @@ func TestPrePushHookSaysWhenNothingWasFired(t *testing.T) {
 	prePush := hook.Kinds()[1]
 	current := installedWith(t, prePush, prePush.Script)
 
-	fired := &HookProbe{Fired: true, Exit: int(core.CodeLint)}
+	fired := &HookProbe{Exit: int(core.CodeLint)}
 	if c := checkPrePushHook(current, nil, nil, fired, nil, nil, nil); c.Status != StatusPass {
 		t.Fatalf("pre-push current, commit-msg fired: status = %s (%s), want %s — the probe answered the PATH question", c.Status, c.Observed, StatusPass)
 	}
@@ -287,7 +287,7 @@ func TestPrePushHookSaysWhenNothingWasFired(t *testing.T) {
 func TestPrePushHookSaysWhenNoRemoteHeadIsRecorded(t *testing.T) {
 	prePush := hook.Kinds()[1]
 	current := installedWith(t, prePush, prePush.Script)
-	fired := &HookProbe{Fired: true, Exit: int(core.CodeLint)}
+	fired := &HookProbe{Exit: int(core.CodeLint)}
 
 	for name, heads := range map[string]map[string]string{
 		"every remote records its head":  {"origin": "main", "upstream": "master"},
@@ -346,7 +346,7 @@ func TestPrePushHookSaysWhenNoRemoteHeadIsRecorded(t *testing.T) {
 // positive control: the same probe on a loaded config is still the silent
 // no-op FAIL.
 func TestHookFiresDefersAPassThroughToAnUnloadedConfig(t *testing.T) {
-	passedThrough := &HookProbe{Fired: true, Exit: 0}
+	passedThrough := &HookProbe{Exit: 0}
 	if c := checkHookFires(passedThrough, nil, true); c.Status != StatusFail {
 		t.Fatalf("loaded config, probe through at 0: status = %s, want %s — the silent no-op is still the finding", c.Status, StatusFail)
 	}
@@ -364,7 +364,7 @@ func TestHookFiresDefersAPassThroughToAnUnloadedConfig(t *testing.T) {
 	}
 	// A block at the gate code is an answer whatever the config says, and the
 	// probe's own failures stay its own.
-	if c := checkHookFires(&HookProbe{Fired: true, Exit: int(core.CodeLint)}, nil, false); c.Status != StatusPass {
+	if c := checkHookFires(&HookProbe{Exit: int(core.CodeLint)}, nil, false); c.Status != StatusPass {
 		t.Errorf("unloaded config, probe blocked: status = %s, want %s", c.Status, StatusPass)
 	}
 }

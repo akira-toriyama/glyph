@@ -21,7 +21,7 @@ func TestEmojiPrintsTheShippedBytes(t *testing.T) {
 	if stderr != "" {
 		t.Errorf("emoji wrote to stderr; the command has no diagnostics: %q", stderr)
 	}
-	var entries []emoji.Entry
+	var entries []json.RawMessage
 	if err := json.Unmarshal([]byte(stdout), &entries); err != nil {
 		t.Fatalf("stdout is not a JSON array of entries: %v", err)
 	}

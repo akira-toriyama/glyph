@@ -66,7 +66,7 @@ type LineWalk struct {
 // tag that is not version-shaped on any line names no line: every line
 // walks from it and steps from its own highest tag, as the single line does.
 //
-// Version-SHAPED is bump.ParseBaseVersionOn's question, the one below: has
+// Version-SHAPED is bump.ParseBaseTag's question, the one below: has
 // always asked of its bound: a release candidate or a build-metadata tag on
 // a declared line names that line, and the line steps from its highest PLAIN
 // tag — a candidate is a question, never an answer (t-gt9n; mutation row
@@ -105,7 +105,7 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
 		}
 		p, ok := packageOnLine(cfg, prefix, bound.Major)
 		if !ok {
-			return nil, "", core.Usagef("--since-tag=below:%s names the %s line, which no [[packages]] entry declares (declared lines: %s)", rest, config.Line{Prefix: prefix}.Label(), declaredLines(cfg))
+			return nil, "", undeclaredLine(below+rest, prefix, cfg)
 		}
 		l, err := w.lineFromLatest(ctx, cfg, p, &bound)
 		if err != nil {
@@ -118,11 +118,10 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
 		if terr != nil {
 			return nil, "", terr
 		}
-		prefix := bump.LinePrefix(tag)
-		if shape, perr := bump.ParseBaseVersionOn(prefix, tag); perr == nil {
+		if prefix, shape, perr := bump.ParseBaseTag(tag); perr == nil {
 			p, ok := packageOnLine(cfg, prefix, shape.Major)
 			if !ok {
-				return nil, "", core.Usagef("--since-tag=%s names the %s line, which no [[packages]] entry declares (declared lines: %s)", tag, config.Line{Prefix: prefix}.Label(), declaredLines(cfg))
+				return nil, "", undeclaredLine(tag, prefix, cfg)
 			}
 			l := Line{Package: p, TagLine: cfg.LineOf(p), BaseTag: baseTag, Source: tag + "..HEAD", Range: tag + "..HEAD"}
 			if v, verr := bump.ParseVersionOn(prefix, tag); verr == nil {
@@ -143,6 +142,13 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
 		return nil, "", err
 	}
 	return lines, union, nil
+}
+
+// undeclaredLine is the usage refusal for a --since-tag value whose line no
+// [[packages]] entry declares: flagValue is the value as given (below:<bound>
+// or the tag), prefix the line it names.
+func undeclaredLine(flagValue, prefix string, cfg *config.Config) error {
+	return core.Usagef("--since-tag=%s names the %s line, which no [[packages]] entry declares (declared lines: %s)", flagValue, config.Line{Prefix: prefix}.Label(), declaredLines(cfg))
 }
 
 // scopedLines keeps the lines the scope asked about, in the resolved order. A

@@ -518,11 +518,11 @@ func TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark(t *testing.T) {
 // one: doctor and DESIGN §7 used to say a merge-merged PR counts none when the
 // walk falls back, because the fallback skips the merge commit on its parent
 // count. It does skip it — and it costs the pull request nothing, because
-// gitsource.Log runs WITHOUT --first-parent: the merged branch's commits are in
+// gitsource.Checkout.Log runs WITHOUT --first-parent: the merged branch's commits are in
 // the range beside their merge point, gitmoji intact, and each classifies itself.
 //
 // So this test fails the moment someone re-asserts that sentence, and it fails
-// just as loudly if anyone adds --first-parent to gitsource.Log to make the
+// just as loudly if anyone adds --first-parent to gitsource.Checkout.Log to make the
 // sentence true — which was the tempting "fix" and would have undone t-7zt7.
 func TestSinceTagMergeCommitReproducesVerdictWhenFullyDark(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)

@@ -188,7 +188,7 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
 	var all []Commit
 	var refused []placementRefusal
 	for _, c := range commits {
-		reach := ranges.reach(c.Governing())
+		reach := ranges.reach(c.governing())
 		if len(reach) == 0 {
 			w.Report.Noticef("commit %.7s is inside the union walk but already released on every line — not counted", c.Raw.SHA)
 			continue
@@ -455,7 +455,7 @@ func lineTags(lines []Line, held lineBases) string {
 func lineEscapes(c Commit, reached []Line) []string {
 	escapes := make([]string, 0, len(reached))
 	for _, l := range reached {
-		escapes = append(escapes, lineTag(l, []string{c.Governing()}))
+		escapes = append(escapes, lineTag(l, []string{c.governing()}))
 	}
 	return escapes
 }
@@ -472,7 +472,7 @@ func attributionWedge(refused []placementRefusal, owner, repo string, lines []Li
 	first := refused[0].c
 	where := fmt.Sprintf("a commit on the released branch (%.7s)", first.Raw.SHA)
 	if first.Pull > 0 {
-		where = fmt.Sprintf("inside merged pull request %s/%s#%d, which the release walk resolved from its merge point %.7s", owner, repo, first.Pull, first.MergePoint)
+		where = pullWhere(owner, repo, first.Pull, first.MergePoint)
 	}
 	more := ""
 	if n := len(refused) - 1; n > 0 {
@@ -481,7 +481,7 @@ func attributionWedge(refused []placementRefusal, owner, repo string, lines []Li
 	held := make(lineBases, len(lines))
 	rows := make([]bump.Refusal, 0, len(refused))
 	for _, r := range refused {
-		held.add(r.c.Governing(), r.reach)
+		held.add(r.c.governing(), r.reach)
 		rows = append(rows, r.row())
 	}
 	return core.Lintf(

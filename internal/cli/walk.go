@@ -29,11 +29,17 @@ type reporter struct{}
 func (reporter) Warnf(format string, a ...any)   { warnf(format, a...) }
 func (reporter) Noticef(format string, a ...any) { noticef(format, a...) }
 
+// checkout is the working directory as the Git port: what localWalker walks,
+// and the one way cli makes the five reads the port has a method for (Log,
+// IsShallow, Tags, Have, DiffTreeFiles), whose package functions gitsource
+// keeps to itself. cli's other reads of the checkout pass "." to gitsource.
+func checkout() gitsource.Checkout { return gitsource.Checkout{Dir: "."} }
+
 // localWalker is the walk over the checkout alone — the sources that resolve
 // nothing over the API (a --range fold, a pull's listing on the bare line)
 // and the step base a command reads out of the tags.
 func localWalker() walk.Walker {
-	return walk.Walker{Git: gitsource.Checkout{Dir: "."}, Report: reporter{}}
+	return walk.Walker{Git: checkout(), Report: reporter{}}
 }
 
 // apiWalker is the walk with GitHub behind it: the release walk and the

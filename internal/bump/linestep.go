@@ -9,7 +9,7 @@ import (
 
 // NextOn steps current by dec ON a line (DESIGN §4.1, "The tag line"). The
 // bare single line and a free line with no locked sibling step exactly as
-// Version.Next does. The two shapes a major version subdirectory adds:
+// Version.next does. The two shapes a major version subdirectory adds:
 //
 //   - A LOCKED line's first release is its own major's floor, vN.0.0,
 //     whatever the level: the line holds no version below its major, and
@@ -29,7 +29,7 @@ func NextOn(l config.Line, current Version, dec Decision) (Version, error) {
 	if l.Locked() && current.Major < l.Major {
 		return Version{Major: l.Major}, nil
 	}
-	next := current.Next(dec)
+	next := current.next(dec)
 	if l.Holds(next.Major) {
 		return next, nil
 	}

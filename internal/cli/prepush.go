@@ -203,7 +203,7 @@ func prePushRun(ctx context.Context, args []string) error {
 			remoteOIDs = append(remoteOIDs, p.RemoteOID)
 		}
 	}
-	have, err := gitsource.Have(ctx, ".", remoteOIDs)
+	have, err := checkout().Have(ctx, remoteOIDs)
 	if err != nil {
 		return err
 	}

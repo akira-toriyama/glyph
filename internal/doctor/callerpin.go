@@ -139,7 +139,7 @@ type notJudged struct {
 // stamped build, it is not above that build's own release. A plain vX.Y.Z (or
 // GoReleaser's X.Y.Z) is the only stamp that names an upper end — `dev`, a Go
 // pseudo-version and build.sh's git-describe output (v4.2.0-3-g…) fail
-// bump.ParseVersion and trust their own tree. bump.ParseBaseVersionOn must not
+// bump.ParseVersion and trust their own tree. bump.ParseBaseTag must not
 // be used here: it reads the describe output as its base triple v4.2.0, an
 // upper end the build does not have, and every pin above v4.2.0 would be
 // unknown to a tree built past it.

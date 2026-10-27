@@ -1,13 +1,12 @@
 diff --git a/internal/config/config.go b/internal/config/config.go
-index 4f87eff..b2379fb 100644
 --- a/internal/config/config.go
 +++ b/internal/config/config.go
-@@ -383,7 +383,7 @@ func buildPackages(raws []rawPackage, patterns []Pattern) ([]Package, error) {
+@@ -492,7 +492,7 @@ func buildPackages(raws []rawPackage, patterns []Pattern) ([]Package, []scopeSpe
  		if err != nil {
- 			return nil, fmt.Errorf("packages[%d]: %w", i, err)
+ 			return nil, nil, fmt.Errorf("packages[%d]: %w", i, err)
  		}
 -		if err := checkScopeWord(p, rp.Name != nil, spellers); err != nil {
 +		if err := checkScopeWord(p, rp.Name != nil, spellers); err != nil && p.Path != "." {
- 			return nil, fmt.Errorf("packages[%d] (%q): %w", i, p.Path, err)
+ 			return nil, nil, fmt.Errorf("packages[%d] (%q): %w", i, p.Path, err)
  		}
  		if j, dup := byPath[p.Path]; dup {

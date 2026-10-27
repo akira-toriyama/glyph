@@ -48,11 +48,11 @@ func participating(cfg *config.Config, commits []notes.Commit) int {
 // would be a new semantics for lint, and a shallow walk is a warning to every
 // reporting command and exit 4 to release alone (DESIGN §4.1, "Lint").
 func logRange(ctx context.Context, revRange string) ([]gitsource.RawCommit, error) {
-	raws, err := gitsource.Log(ctx, ".", revRange)
+	raws, err := checkout().Log(ctx, revRange)
 	if err != nil {
 		return nil, err
 	}
-	shallow, err := gitsource.IsShallow(ctx, ".")
+	shallow, err := checkout().IsShallow(ctx)
 	if err != nil {
 		return nil, err
 	}

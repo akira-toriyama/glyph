@@ -82,15 +82,13 @@ type Walker struct {
 // their commits in — from Since for the walk, from Pending for the sources
 // that are no walk: every walked commit unreleased on at least one line (All,
 // walk order — the union fold's input, and the single line's), whatever line
-// it joins or none; the walk's Facts; the revision range walked (Source); the
-// single line's step base (nil when packages are declared: each line carries
-// its own); and the per-line partition — exactly one entry, holding All, when
-// no packages are declared.
+// it joins or none; the walk's Facts; the revision range walked (Source); and
+// the per-line partition, each line carrying its own step base — exactly one
+// entry, holding All, when no packages are declared.
 type Result struct {
 	All    []Commit
 	Facts  Facts
 	Source string
-	Base   *bump.Version
 	Lines  []LineWalk
 }
 
@@ -133,11 +131,7 @@ func (w Walker) Since(ctx context.Context, cfg *config.Config, tagFlag, owner, r
 	if len(refused) > 0 {
 		return Result{}, attributionWedge(refused, owner, repo, lines)
 	}
-	var base *bump.Version
-	if len(cfg.Packages) == 0 {
-		base = lines[0].Base
-	}
-	return Result{All: all, Facts: facts, Source: revRange, Base: base, Lines: lws}, nil
+	return Result{All: all, Facts: facts, Source: revRange, Lines: lws}, nil
 }
 
 // Pending partitions commits read outside the walk — a --range fold, a
@@ -177,16 +171,16 @@ type Commit struct {
 	// MergePoint is the on-branch commit the pull was resolved from — GitHub's
 	// merge_commit_sha — "" on the fallback path. With packages declared it
 	// is the identity the lines' ranges judge a footprint-less commit by
-	// (Governing): a squash-merged pull's inner commit is unreleased on a
+	// (governing): a squash-merged pull's inner commit is unreleased on a
 	// line exactly when its merge point is.
 	MergePoint string
 }
 
-// Governing is the on-branch commit the walk range judges a walked commit by:
+// governing is the on-branch commit the walk range judges a walked commit by:
 // its own sha when it landed on the released branch, else the merge point of
 // the pull it was expanded from (DESIGN §4.1: a listed commit joins a line
 // only when its governing commit is unreleased there).
-func (c Commit) Governing() string {
+func (c Commit) governing() string {
 	if c.Landed || c.MergePoint == "" {
 		return c.Raw.SHA
 	}

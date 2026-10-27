@@ -10,6 +10,23 @@ import (
 	"testing"
 )
 
+// Entry is one kind of change. Code is the shortcode as it is written at the
+// head of a subject (`:bug:`); Emoji is the code points GitHub renders it as,
+// exactly as https://api.github.com/emojis reports them (no variation
+// selector appended — the API is the oracle, not a font); Name is the kind,
+// one word, unique across the table (that uniqueness IS the one-meaning-
+// one-emoji rule, and a test enforces it); Description says when this code
+// is the right one, borders with its neighbours included; Absorbs lists the
+// gitmoji codes whose meaning this entry took over, so a reader arriving
+// with gitmoji habits can look their old code up.
+type Entry struct {
+	Code        string   `json:"code"`
+	Emoji       string   `json:"emoji"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Absorbs     []string `json:"absorbs,omitempty"`
+}
+
 // table decodes the dictionary; the binary never does (JSON hands the file
 // out byte for byte), so a decode failure is a defect of the file, named here.
 func table(t *testing.T) []Entry {

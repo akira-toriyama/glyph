@@ -1,11 +1,10 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 569b5d2..0986670 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -243,7 +243,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
+@@ -251,7 +251,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
  		}
  		c := Commit{Raw: r, Pull: number, Landed: landed[i] != "", MergePoint: canonical}
- 		judged := w.judges(c.Governing())
+ 		judged := w.judges(c.governing())
 -		if i, refused := w.wedged[r.SHA]; refused {
 +		if i, refused := w.wedged[r.SHA]; false && refused {
  			// A refused commit a second pull lists (a stacked pull carries

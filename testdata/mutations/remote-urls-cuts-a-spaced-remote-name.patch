@@ -1,13 +1,12 @@
 diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
-index c6804a5..00a1d46 100644
 --- a/internal/gitsource/gitsource.go
 +++ b/internal/gitsource/gitsource.go
-@@ -142,7 +142,7 @@ func RemoteTips(ctx context.Context, dir, remote string) ([]string, error) {
+@@ -140,7 +140,7 @@ func RemoteTips(ctx context.Context, dir, remote string) ([]string, error) {
+ // a space, and a remote name may hold one (`[remote "my fork"]`), which the
+ // line form cut to `my` (t-3jws, TestRemoteURLsKeepsASpacedRemoteName).
  func RemoteURLs(ctx context.Context, dir string) (map[string]string, error) {
- 	// #nosec G204 -- the binary is the fixed literal "git" and every argument
- 	// here is a constant of this package.
--	cmd := exec.CommandContext(ctx, "git", "-C", dir, "config", "-z", "--get-regexp", `^remote\..*\.url$`)
-+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "config", "--get-regexp", `^remote\..*\.url$`)
- 	var stdout, stderr bytes.Buffer
- 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
- 	if err := cmd.Run(); err != nil {
+-	out, found, err := runAnswer(ctx, dir, "config --get-regexp", "config", "-z", "--get-regexp", `^remote\..*\.url$`)
++	out, found, err := runAnswer(ctx, dir, "config --get-regexp", "config", "--get-regexp", `^remote\..*\.url$`)
+ 	if err != nil {
+ 		return nil, err
+ 	}

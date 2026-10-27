@@ -13,14 +13,14 @@ import (
 // The four modes as a commit-msg hook resolves them, named once so the tables
 // below read as the situations they are rather than as three booleans.
 var (
-	editedDefault  = Mode{Space: true, Comments: true, Truncate: true} // git commit (an editor runs)
-	noEditorGiven  = Mode{Space: true}                                 // git commit -m / -F
-	editedScissors = Mode{Space: true, Truncate: true}                 // commit.cleanup=scissors + an editor
-	verbatimGiven  = Mode{}                                            // commit.cleanup=verbatim, no editor
+	editedDefault  = Mode{Space: true, Comments: true, Truncate: true, Comment: defaultComment} // git commit (an editor runs)
+	noEditorGiven  = Mode{Space: true, Comment: defaultComment}                                 // git commit -m / -F
+	editedScissors = Mode{Space: true, Truncate: true, Comment: defaultComment}                 // commit.cleanup=scissors + an editor
+	verbatimGiven  = Mode{Comment: defaultComment}                                              // commit.cleanup=verbatim, no editor
 )
 
 // cutLine is git's scissors line with no comment prefix configured.
-const cutLine = DefaultComment + cutTail
+const cutLine = defaultComment + cutTail
 
 func TestCleanup(t *testing.T) {
 	tests := []struct {

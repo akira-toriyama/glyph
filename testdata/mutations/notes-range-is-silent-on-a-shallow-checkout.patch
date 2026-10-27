@@ -1,5 +1,4 @@
 diff --git a/internal/cli/source.go b/internal/cli/source.go
-index 8070617..2094e20 100644
 --- a/internal/cli/source.go
 +++ b/internal/cli/source.go
 @@ -96,7 +96,7 @@ func readSource(ctx context.Context, cfg *config.Config, src source) (walk.Resul
@@ -7,7 +6,7 @@ index 8070617..2094e20 100644
  // local git.
  func rangeLines(ctx context.Context, cfg *config.Config, revRange string) (walk.Result, error) {
 -	raws, err := logRange(ctx, revRange)
-+	raws, err := gitsource.Log(ctx, ".", revRange)
++	raws, err := checkout().Log(ctx, revRange)
  	if err != nil {
  		return walk.Result{}, err
  	}

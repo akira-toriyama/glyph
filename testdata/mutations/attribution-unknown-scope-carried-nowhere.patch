@@ -1,14 +1,13 @@
 diff --git a/internal/attribution/attribution.go b/internal/attribution/attribution.go
-index f62e197..c405dd1 100644
 --- a/internal/attribution/attribution.go
 +++ b/internal/attribution/attribution.go
-@@ -364,6 +364,9 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
+@@ -362,6 +362,9 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
  	if sigil == config.SigilNone {
  		return nil, nil
  	}
 +	if scope != "" {
 +		return nil, nil
 +	}
- 	return nil, refuseNoCarrier(files, scope, sigil, packages)
+ 	return nil, refuseNoCarrier(files, scope, sigil)
  }
  

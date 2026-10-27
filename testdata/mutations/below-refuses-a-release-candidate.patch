@@ -1,12 +1,12 @@
 diff --git a/internal/walk/base.go b/internal/walk/base.go
-index 6c113a8..abec051 100644
 --- a/internal/walk/base.go
 +++ b/internal/walk/base.go
-@@ -131,7 +131,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
+@@ -131,7 +131,8 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
+ // sentence and the two resolvers carry none of their own.
  func belowBound(rest string) (bound, prefix string, v bump.Version, err error) {
  	bound = strings.TrimSpace(rest)
- 	prefix = bump.LinePrefix(bound)
--	v, perr := bump.ParseBaseVersionOn(prefix, bound)
+-	prefix, v, perr := bump.ParseBaseTag(bound)
++	prefix = bump.LinePrefix(bound)
 +	v, perr := bump.ParseVersionOn(prefix, bound)
  	if perr != nil {
  		return "", "", bump.Version{}, core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)

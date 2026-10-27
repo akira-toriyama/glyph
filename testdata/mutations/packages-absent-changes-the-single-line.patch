@@ -1,13 +1,12 @@
 diff --git a/internal/config/config.go b/internal/config/config.go
-index 4f87eff..db76115 100644
 --- a/internal/config/config.go
 +++ b/internal/config/config.go
-@@ -369,7 +369,7 @@ func Load(data []byte) (*Config, error) {
- // empty array is the one-line shape Config.Packages documents.
- func buildPackages(raws []rawPackage, patterns []Pattern) ([]Package, error) {
+@@ -481,7 +481,7 @@ func Load(data []byte) (*Config, error) {
+ // Config.spellers.
+ func buildPackages(raws []rawPackage, patterns []Pattern) ([]Package, []scopeSpeller, error) {
  	if len(raws) == 0 {
--		return nil, nil
-+		return []Package{{Path: ".", Name: "."}}, nil
+-		return nil, nil, nil
++		return []Package{{Path: ".", Name: "."}}, nil, nil
  	}
- 	spellers, err := scopeSpellers(patterns)
- 	if err != nil {
+ 	if err := readCaptures(patterns); err != nil {
+ 		return nil, nil, err

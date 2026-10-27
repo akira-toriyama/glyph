@@ -38,7 +38,7 @@ func CheckTag(tag string) error {
 	if rest, ok := strings.CutPrefix(strings.TrimSpace(tag), below); ok {
 		// The bound must NAME a version — a predecessor is found by comparing
 		// under it — and a release candidate names the release it is a
-		// candidate for (bump.ParseBaseVersionOn, not ParseVersion: goreleaser
+		// candidate for (bump.ParseBaseTag, not ParseVersion: goreleaser
 		// hands this flag $GITHUB_REF_NAME on a `tags: ['v*']` trigger, and
 		// v3.0.0-rc.1 once died here at exit 2 behind a tag that already existed
 		// — TestSinceTagBelowAcceptsAReleaseCandidate). Candidates stay out of
@@ -125,21 +125,20 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
 
 // belowBound parses what follows --since-tag=below: — the one place the
 // bound is read. bound is the tag as written (trimmed), prefix the line it
-// names, v its base version (a candidate's triple, ParseBaseVersionOn).
+// names, v its base version (a candidate's triple, ParseBaseTag).
 // CheckTag calls it to refuse the flag before anything runs; sinceTagRange
 // and resolveLinesScoped call it for the values, so the refusal has one
 // sentence and the two resolvers carry none of their own.
 func belowBound(rest string) (bound, prefix string, v bump.Version, err error) {
 	bound = strings.TrimSpace(rest)
-	prefix = bump.LinePrefix(bound)
-	v, perr := bump.ParseBaseVersionOn(prefix, bound)
+	prefix, v, perr := bump.ParseBaseTag(bound)
 	if perr != nil {
 		return "", "", bump.Version{}, core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)
 	}
 	return bound, prefix, v, nil
 }
 
-// Cap bounds the whole-history walk: the most commits an untagged
+// walkCap bounds the whole-history walk: the most commits an untagged
 // repository may hold before a resolved --since-tag refuses to walk it. The
 // walk pays at least one API round-trip per commit it visits, and in CI the
 // job runs under the Actions GITHUB_TOKEN's 1,000-request hourly budget — 200
@@ -150,14 +149,14 @@ func belowBound(rest string) (bound, prefix string, v bump.Version, err error) {
 // union's — is the unreleased work a release must read, and its base moves only
 // by releasing it, so a cap there would refuse a release with no remedy (DESIGN
 // §4.1, "Only the untagged arm is capped").
-const Cap = 200
+const walkCap = 200
 
-// FlagEscape is the remedy for a caller that HAS --since-tag. It is a
+// flagEscape is the remedy for a caller that HAS --since-tag. It is a
 // parameter rather than a constant in the message because `preview` does not:
 // its flags are --pr/--repo/--notes/--json, and a refusal that sends an
 // operator to a flag the command rejects is a dead end (t-60dc, measured
 // 2026-09-15: `preview --pr` exited 4 naming --since-tag=TAG).
-const FlagEscape = "; name the walk base yourself with --since-tag=TAG (cutting a tag at the intended base first if none exists)"
+const flagEscape = "; name the walk base yourself with --since-tag=TAG (cutting a tag at the intended base first if none exists)"
 
 // wholeHistory is the untagged arm of a RESOLVED --since-tag (auto with no
 // version tag in HEAD's history, below: with none under its bound): the whole
@@ -168,7 +167,7 @@ const FlagEscape = "; name the walk base yourself with --since-tag=TAG (cutting 
 // history, never of the repository: "no version tag found" beside a
 // `git tag -l` that lists one is the sentence t-gt9n forbids. The commits the
 // walk would visit are counted FIRST, under the author exclusion the walk
-// itself applies, and past Cap the refusal is CodeAPI — nothing is broken
+// itself applies, and past walkCap the refusal is CodeAPI — nothing is broken
 // underneath, no retry clears it — with the escape in the message; the count
 // is exact, so the refusal names the real cost, and the second `git log` this
 // arm spends is local and cheap.
@@ -183,13 +182,13 @@ func (w Walker) wholeHistory(ctx context.Context, cfg *config.Config, whyNone, e
 			walked++
 		}
 	}
-	if walked > Cap {
+	if walked > walkCap {
 		if escape == "" {
-			escape = FlagEscape
+			escape = flagEscape
 		}
 		return "", nil, core.APIf(
 			"%s, and walking this repository's whole history would ask GitHub about %d commits, one round-trip each (the cap is %d) — refusing the unbounded walk%s",
-			whyNone, walked, Cap, escape)
+			whyNone, walked, walkCap, escape)
 	}
 	// One API round-trip per commit over everything — a cost the caller
 	// should see named (house rule: no silent unbounded work).
@@ -210,7 +209,7 @@ func (w Walker) wholeHistory(ctx context.Context, cfg *config.Config, whyNone, e
 // a version, so both spellings of the bound's own tag fall out together.
 //
 // EVERY tag is parsed and compared as a VERSION: git's --sort=-v:refname is a
-// refname order, not a version order (gitsource.Tags; glossary, "version
+// refname order, not a version order (gitsource.Checkout.Tags; glossary, "version
 // sort"), and a wrong base is the silent-wrong-verdict class. A tie between
 // two spellings of one version keeps the FIRST in git's order, so the answer
 // stays deterministic without a preference git does not have. The candidates

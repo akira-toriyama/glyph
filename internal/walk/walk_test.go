@@ -112,8 +112,11 @@ func TestSinceReadsThroughItsPorts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Since: %v", err)
 	}
-	if res.Source != "HEAD" || res.Base == nil || *res.Base != (bump.Version{}) {
-		t.Fatalf("source/base = %q/%v, want the whole history from v0.0.0 (no tag in HEAD's history)", res.Source, res.Base)
+	if len(res.Lines) != 1 {
+		t.Fatalf("Since walked %d line(s), want the single line", len(res.Lines))
+	}
+	if base := res.Lines[0].Base; res.Source != "HEAD" || base == nil || *base != (bump.Version{}) {
+		t.Fatalf("source/base = %q/%v, want the whole history from v0.0.0 (no tag in HEAD's history)", res.Source, base)
 	}
 	var subjects []string
 	for _, c := range res.All {

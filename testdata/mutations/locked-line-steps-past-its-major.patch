@@ -1,11 +1,10 @@
 diff --git a/internal/bump/linestep.go b/internal/bump/linestep.go
-index f2b6580..8a72b34 100644
 --- a/internal/bump/linestep.go
 +++ b/internal/bump/linestep.go
 @@ -30,9 +30,7 @@ func NextOn(l config.Line, current Version, dec Decision) (Version, error) {
  		return Version{Major: l.Major}, nil
  	}
- 	next := current.Next(dec)
+ 	next := current.next(dec)
 -	if l.Holds(next.Major) {
 -		return next, nil
 -	}

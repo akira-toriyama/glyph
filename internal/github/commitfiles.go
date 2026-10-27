@@ -36,7 +36,7 @@ type apiCommitFiles struct {
 // has what counting names cost). It answers for a sha no branch holds — a
 // squash-merged pull's inner commits (measured 2026-09-10 on glyph-test #83) —
 // which is what the release walk needs it for; a commit the checkout holds is
-// asked of local git instead (gitsource.DiffTreeFiles), free.
+// asked of local git instead (gitsource.Checkout.DiffTreeFiles), free.
 //
 // The status is not flattened: a 422 here means what it means on
 // commits/{sha}/pulls — GitHub does not know the sha — and IsCommitUnknown

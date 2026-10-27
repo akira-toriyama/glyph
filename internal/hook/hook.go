@@ -274,7 +274,7 @@ type Report struct {
 func (r Report) Summary() string {
 	lines := make([]string, 0, len(r.Hooks))
 	for _, h := range r.Hooks {
-		lines = append(lines, h.Summary())
+		lines = append(lines, h.summary())
 	}
 	return strings.Join(lines, "\n")
 }
@@ -377,8 +377,8 @@ func chmodAll(hooksDir string, kinds []Kind) error {
 	return nil
 }
 
-// Summary renders the one human line the CLI prints for a Result.
-func (r Result) Summary() string {
+// summary renders the one human line the CLI prints for a Result.
+func (r Result) summary() string {
 	switch r.Action {
 	case "unchanged":
 		return fmt.Sprintf("%s hook already current at %s", r.Kind, r.Path)

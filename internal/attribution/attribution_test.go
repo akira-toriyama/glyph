@@ -177,7 +177,11 @@ func refusalOf(t *testing.T, files []string, scope string, sigil config.Sigil, p
 	if !ok {
 		t.Fatalf("Attribute(%v, %q, %s) = %v, want a refusal", files, scope, sigil, err)
 	}
-	r.Sayable = sayAll(r.Names...)
+	names := make([]string, 0, len(pkgs))
+	for _, p := range pkgs {
+		names = append(names, p.Name)
+	}
+	r.Sayable = sayAll(names...)
 	if tell != nil {
 		tell(r)
 	}

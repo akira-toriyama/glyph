@@ -62,9 +62,15 @@ func newWedge(row bump.Refusal, owner, repo string, number int, mergePoint, offe
 	e := placeEscape(owner, repo, number, mergePoint, offending)
 	where := "pushed straight to the released branch (no merged pull request resolves it)"
 	if number > 0 {
-		where = fmt.Sprintf("inside merged pull request %s/%s#%d, which the release walk resolved from its merge point %.7s", owner, repo, number, mergePoint)
+		where = pullWhere(owner, repo, number, mergePoint)
 	}
 	return wedge{row: row, where: where, escapes: []escape{e}}
+}
+
+// pullWhere is where a refused commit sits when the walk resolved it from a
+// merged pull: the clause newWedge and attributionWedge both place it with.
+func pullWhere(owner, repo string, number int, mergePoint string) string {
+	return fmt.Sprintf("inside merged pull request %s/%s#%d, which the release walk resolved from its merge point %.7s", owner, repo, number, mergePoint)
 }
 
 // placeEscape is the base that clears one refusal, by the shape newWedge

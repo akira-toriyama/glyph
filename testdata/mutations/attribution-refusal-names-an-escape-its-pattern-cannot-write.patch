@@ -1,22 +1,52 @@
 diff --git a/internal/attribution/attribution.go b/internal/attribution/attribution.go
-index f62e197..963057e 100644
 --- a/internal/attribution/attribution.go
 +++ b/internal/attribution/attribution.go
-@@ -133,7 +133,7 @@ func (r *Refusal) Error() string {
+@@ -65,6 +65,7 @@ type Refusal struct {
+ 	Reason reason
+ 	Scope  string
+ 	Sigil  config.Sigil
++	names  []string
+ 
+ 	// Owners is a contradiction's evidence: one owned file per touched
+ 	// package, in config order, so the file that decides is named wherever it
+@@ -131,7 +132,7 @@ func (r *Refusal) Error() string {
  // as lying "under ." — a filesystem reading of a rule that is about the
  // longest prefix (t-mfny (C), t-n5tw 5).
  func (r *Refusal) contradictionSentence() string {
 -	say := r.Sayable
-+	say := config.Sayable{ScopeGroup: true, ScopeDroppable: true, Scopes: r.Names, SigilGroup: true, None: true, RootNeedsName: true}
++	say := config.Sayable{ScopeGroup: true, ScopeDroppable: true, Scopes: r.names, SigilGroup: true, None: true, RootNeedsName: true}
  	evidence := make([]string, 0, len(r.Owners)+2)
  	var moved, spellable []string
  	for _, o := range r.Owners {
-@@ -209,7 +209,7 @@ func countFiles(n int, more string) string {
+@@ -207,7 +208,7 @@ func countFiles(n int, more string) string {
  // named the scope and = to every commit, the raw revert included, whose
  // pattern fixes its sigil and captures no scope (t-mfny (A)).
  func (r *Refusal) noCarrierSentence() string {
 -	say := r.Sayable
-+	say := config.Sayable{ScopeGroup: true, ScopeDroppable: true, Scopes: r.Names, SigilGroup: true, None: true, RootNeedsName: true}
++	say := config.Sayable{ScopeGroup: true, ScopeDroppable: true, Scopes: r.names, SigilGroup: true, None: true, RootNeedsName: true}
  	var opening string
  	switch {
  	case len(r.Files) > 0:
+@@ -362,7 +363,11 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
+ 	if sigil == config.SigilNone {
+ 		return nil, nil
+ 	}
+-	return nil, refuseNoCarrier(files, scope, sigil)
++	r := refuseNoCarrier(files, scope, sigil)
++	for _, p := range packages {
++		r.names = append(r.names, p.Name)
++	}
++	return nil, r
+ }
+ 
+ // refuseContradiction builds the scope check's refusal with its evidence: the first
+@@ -370,6 +375,9 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
+ // files no package owns counted apart.
+ func refuseContradiction(files []string, scope string, sigil config.Sigil, packages []config.Package) *Refusal {
+ 	r := &Refusal{Reason: contradiction, Scope: scope, Sigil: sigil}
++	for _, p := range packages {
++		r.names = append(r.names, p.Name)
++	}
+ 	first := make(map[int]string)
+ 	for _, f := range files {
+ 		f = path.Clean(f)

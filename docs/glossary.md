@@ -98,7 +98,7 @@ highest v\* tag, so auto would walk an empty range. Strictly below the bound, no
 "the highest other tag" — cutting a v0.8.3 hotfix while v0.9.0 exists resolves
 v0.8.2. With no version tag below the bound (the first release), the walk covers
 the whole history, same as auto before the first tag — bounded in both forms by the
-release-floor cap: past `walk.Cap` walk-visible commits the walk is
+release-floor cap: past `walk.walkCap` walk-visible commits the walk is
 refused (fail-loud 4) with the escape in the message, because it pays one API
 round-trip per visited commit and nothing else bounds it. The bound must itself be
 version-shaped (usage error otherwise), and the sentinel cannot collide with a
@@ -405,7 +405,7 @@ by its files.
 commit by: the commit's own sha when it landed on the released branch, else the
 merge point of the pull it was expanded from. A squash-merged pull's inner
 commits exist on no branch, so without this a line could never hold them.
-`internal/walk/walk.go: Commit.Governing`
+`internal/walk/walk.go: Commit.governing`
 
 ## 2. Verdicts and the rolling draft
 
@@ -574,7 +574,7 @@ until autosquash folds them into their target (DESIGN §2).
 kind of change, the first description that fits wins, and each entry names the
 gitmoji codes it absorbed. Advice for the writer of a subject, read by nothing
 in the engine — lint accepts whatever the pattern accepts, and the sigil alone
-decides the version. `internal/emoji/table.json`, `internal/emoji/emoji.go: Entry`
+decides the version. `internal/emoji/table.json`, `internal/emoji/emoji_test.go: Entry`
 
 **sigil** — the version signal a commit carries: `=` none / `~` patch /
 `^` minor / `!` major / `%` promote, read from the `semver_sigil` capture (or
@@ -592,7 +592,7 @@ it degrades to a plain major step. `internal/bump/level.go: Decision`
 MINOR (`v0.5.3` + `!` ⇒ `v0.6.0`). The one piece of arithmetic in glyph that
 depends on the version it starts from; classification never does, so the
 commit still reads *major* in every verdict, section and output.
-`internal/bump/semver.go: Version.Next`
+`internal/bump/semver.go: Version.next`
 
 **bump lattice** — `none(0) < patch(1) < minor(2) < major(3)`, the fold's
 order. `internal/bump/level.go: Level, reduce`

@@ -1,13 +1,13 @@
 diff --git a/internal/walk/lines.go b/internal/walk/lines.go
-index 9538c4b..5d5b79d 100644
 --- a/internal/walk/lines.go
 +++ b/internal/walk/lines.go
-@@ -119,7 +119,7 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
+@@ -118,7 +118,8 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
+ 		if terr != nil {
  			return nil, "", terr
  		}
- 		prefix := bump.LinePrefix(tag)
--		if shape, perr := bump.ParseBaseVersionOn(prefix, tag); perr == nil {
+-		if prefix, shape, perr := bump.ParseBaseTag(tag); perr == nil {
++		prefix := bump.LinePrefix(tag)
 +		if shape, perr := bump.ParseVersionOn(prefix, tag); perr == nil {
  			p, ok := packageOnLine(cfg, prefix, shape.Major)
  			if !ok {
- 				return nil, "", core.Usagef("--since-tag=%s names the %s line, which no [[packages]] entry declares (declared lines: %s)", tag, config.Line{Prefix: prefix}.Label(), declaredLines(cfg))
+ 				return nil, "", undeclaredLine(tag, prefix, cfg)

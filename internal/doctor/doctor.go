@@ -178,14 +178,13 @@ type Input struct {
 	RemoteRefless map[string]bool
 }
 
-// HookProbe is what came back from firing a hook. Fired with Exit is a real
-// answer; Err is the probe itself failing to run — which is unknown, never a
-// verdict about the hook. Claimed reports whether the repository's own
+// HookProbe is what came back from firing a hook. Exit is a real answer when
+// Err is nil; Err is the probe itself failing to run — which is unknown, never
+// a verdict about the hook. Claimed reports whether the repository's own
 // glyph.toml classifies the probe message: lint has no taste, so a config is
 // free to claim anything — and against one that does, exit 0 is the chain
 // working, not the gate failing.
 type HookProbe struct {
-	Fired   bool
 	Exit    int
 	Claimed bool
 	Err     error
