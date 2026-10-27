@@ -118,6 +118,32 @@ func TestLintViolationQuotesTheForm(t *testing.T) {
 	}
 }
 
+// TestAuthoringRefusalOffersNoAuthorExclusion: LintAuthoring judges under the
+// empty author, which exclude_authors cannot name, so its refusal stops at the
+// form; Lint judges a real author and keeps the exclusion. Beyond that clause
+// the two sentences are one, so the hook and CI still read alike.
+func TestAuthoringRefusalOffersNoAuthorExclusion(t *testing.T) {
+	const exclude = ", or exclude the author"
+	for name, cfg := range map[string]*Config{
+		"with a template": loadGemoji(t),
+		"no template":     mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?P<semver_sigil>[=~^!%]) '\n"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			authoring := cfg.LintAuthoring("fix: wrong grammar")
+			if authoring.OK || strings.Contains(authoring.Reason, "exclude the author") {
+				t.Errorf("LintAuthoring = %+v, want a refusal that does not offer to exclude the author", authoring)
+			}
+			history := cfg.Lint("fix: wrong grammar", "akira")
+			if history.OK || !strings.HasSuffix(history.Reason, exclude) {
+				t.Errorf("Lint = %+v, want a refusal ending %q", history, exclude)
+			}
+			if strings.TrimSuffix(history.Reason, exclude) != authoring.Reason {
+				t.Errorf("the refusals differ beyond the exclusion:\n history   %q\n authoring %q", history.Reason, authoring.Reason)
+			}
+		})
+	}
+}
+
 func TestSubjectForm(t *testing.T) {
 	cases := []struct{ template, want string }{
 		{"\n<:code:>[(scope)]<semver_sigil> <subject>\n\n[<body>]\n", "<:code:>[(scope)]<semver_sigil> <subject>"},

@@ -6,6 +6,7 @@ import (
 	"github.com/akira-toriyama/glyph/v6/internal/core"
 	"github.com/akira-toriyama/glyph/v6/internal/walk"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // This file holds the flag-grammar guards every command runs before it acts —
@@ -133,7 +134,35 @@ func sinceTagArgs(cmd *cobra.Command, args []string) error {
 			return core.Usagef("--since-tag takes its tag attached with '=': --since-tag=%s", args[0])
 		}
 	}
-	return cobra.NoArgs(cmd, args)
+	return noArgs(cmd, args)
+}
+
+// noArgs is the Args guard for every command that takes no positionals — the
+// root and cobra's `completion` included — replacing cobra.NoArgs for the
+// reason sinceTagArgs does: the refusal names the remedy at the command, and
+// finish appends nothing. A command with subcommands reads a stray word as a
+// mistyped subcommand and points at its own command list. On a leaf the stray
+// positional users actually produce is a flag value holding spaces, left
+// unquoted (`--message :bug:~ fix it` leaves "fix" and "it" behind), so the
+// refusal names that cause — but only when a flag that takes a value was
+// given: with none, or only bool flags, nothing could have been left unquoted.
+func noArgs(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	if cmd.HasSubCommands() {
+		return core.Usagef("unknown command %q for %q — run '%s --help' for the command list", args[0], cmd.CommandPath(), cmd.CommandPath())
+	}
+	valued := false
+	cmd.Flags().Visit(func(f *pflag.Flag) {
+		if f.Value.Type() != "bool" {
+			valued = true
+		}
+	})
+	if valued {
+		return core.Usagef("%s takes no arguments (got %q) — quote a flag value that holds spaces", cmd.CommandPath(), args[0])
+	}
+	return core.Usagef("%s takes no arguments (got %q)", cmd.CommandPath(), args[0])
 }
 
 // checkLineSelection refuses --current unless exactly one line is selected:

@@ -129,6 +129,34 @@ func TestHookInstallPrintTakesExactlyOneKind(t *testing.T) {
 	}
 }
 
+// TestHookInstallRefusalNamesTheKinds: a kind glyph does not write is usage
+// (2), alone or beside a kind it does, and the refusal is resolveHookKinds'
+// one sentence listing the kinds it does write — read from hook.KindNames, so
+// a kind added later is named without anyone retyping the list — instead of
+// cobra's `invalid argument`, which names neither. Nothing is installed.
+func TestHookInstallRefusalNamesTheKinds(t *testing.T) {
+	want := `glyph writes no "bogus" hook; the kinds are ` + strings.Join(hook.KindNames(), ", ")
+	for _, args := range [][]string{{"hook", "install", "bogus"}, {"hook", "install", "commit-msg", "bogus"}} {
+		dir, _ := testutil.NewTaggedRepo(t)
+		t.Chdir(dir)
+		code, stdout, stderr := runGlyph(t, args...)
+		if code != int(core.CodeUsage) || stdout != "" {
+			t.Fatalf("%v = %d stdout %q, want exactly %d and nothing on stdout\nstderr: %s", args, code, stdout, core.CodeUsage, stderr)
+		}
+		if env := decodeErrorEnvelope(t, stderr); env.Code != int(core.CodeUsage) || env.Message != want {
+			t.Errorf("%v envelope = %+v, want code %d and message\n%s", args, env, core.CodeUsage, want)
+		}
+		for _, k := range hook.KindNames() {
+			if !strings.Contains(stderr, k) {
+				t.Errorf("%v: the refusal does not name the %s kind:\n%s", args, k, stderr)
+			}
+			if _, err := os.Stat(filepath.Join(dir, ".git", "hooks", k)); err == nil {
+				t.Errorf("%v: a refused install wrote the %s hook", args, k)
+			}
+		}
+	}
+}
+
 // The end-to-end proof: git itself runs the installed hook, a violating message
 // is rejected, and a conforming one commits. Everything above this test asserts
 // file contents — only this one shows the hook actually gates a commit.
@@ -497,6 +525,9 @@ func TestStaleHookIsReportedWhenTheHookItselfRuns(t *testing.T) {
 		}
 	}
 	const stale = "#!/bin/sh\n# " + hook.Marker + "\nexit 0\n"
+	// The drift warning's wording (warnIfHookStale); the drifted case is what
+	// keeps a rewording from leaving the silent cases matching words nothing prints.
+	const staleHookNotice = "hook was written by glyph and no longer matches this binary's"
 
 	for name, tc := range map[string]struct {
 		body     string
@@ -516,7 +547,7 @@ func TestStaleHookIsReportedWhenTheHookItselfRuns(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("a clean message exited %d, want 0 — the drift notice must never change the verdict\nstderr: %s", code, stderr)
 			}
-			warned := strings.Contains(stderr, "written by an older glyph")
+			warned := strings.Contains(stderr, staleHookNotice)
 			if warned != tc.wantWarn {
 				t.Fatalf("warned = %v, want %v\nstderr: %s", warned, tc.wantWarn, stderr)
 			}
@@ -524,23 +555,16 @@ func TestStaleHookIsReportedWhenTheHookItselfRuns(t *testing.T) {
 	}
 }
 
-// TestStaleHookNoticeIsSilentWhereItCannotLook: this is advice riding inside a
-// gate whose founding contract is that it never returns non-zero on its own
-// account, so a repository git cannot answer about must commit exactly as
-// before. Outside a checkout there is no hooks directory to read at all.
-func TestStaleHookNoticeIsSilentWhereItCannotLook(t *testing.T) {
+// TestLintStdinOutsideACheckoutIsNeverAViolation: the commit-msg hook's mode
+// rides inside a gate whose founding contract is that it never blocks on its
+// own account. glyph reads glyph.toml from the checkout, so outside a
+// repository the run fails — but with git's own failure (4), never the
+// violation code (3), which is the ONLY code the installed hook blocks on; the
+// script passes every other code through.
+func TestLintStdinOutsideACheckoutIsNeverAViolation(t *testing.T) {
 	t.Chdir(t.TempDir())
 	setStdin(t, ":bug:(x)~ fix a crash\n")
-	code, _, stderr := runGlyph(t, "lint", "--stdin")
-	// glyph reads glyph.toml from the checkout, so outside a repository the run
-	// fails — but with git's own failure (4), never the violation code (3),
-	// which is the ONLY code the installed hook blocks on. The founding
-	// contract (a tool that is unwell must never stop anyone committing)
-	// holds in the script, and nothing may claim staleness it could not read.
-	if code != 4 {
+	if code, _, stderr := runGlyph(t, "lint", "--stdin"); code != 4 {
 		t.Fatalf("linting a message outside a repository exited %d, want 4 (git cannot answer; the hook script passes every non-3 through)\nstderr: %s", code, stderr)
-	}
-	if strings.Contains(stderr, "written by an older glyph") {
-		t.Fatalf("nothing could be read, so nothing may be claimed:\n%s", stderr)
 	}
 }

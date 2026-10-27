@@ -54,9 +54,9 @@ func newLintCmd() *cobra.Command {
 			"pattern carrying a warn annotates every commit it claims, an unlandable\n" +
 			"message at authoring time says the later gates will refuse it, and\n" +
 			"--stdin — the commit-msg hook's mode — says so when commit.cleanup names\n" +
-			"a mode git does not know or the installed hook was written by an older\n" +
-			"glyph.",
-		Args: cobra.NoArgs,
+			"a mode git does not know or the installed hook was written by glyph and no\n" +
+			"longer matches this binary's.",
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{
 				{"repo", "repository", repoHint},

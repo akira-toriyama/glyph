@@ -28,7 +28,7 @@ func newEmojiCmd() *cobra.Command {
 			"none.",
 		Example: "  glyph emoji | jq -r '.[] | \"\\(.code)\\t\\(.emoji)  \\(.name) — \\(.description)\"' | fzf\n" +
 			"  glyph emoji | jq -r '.[] | select(.absorbs[]? == \":green_heart:\") | .code'   # what replaced a gitmoji code",
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Fprint(out, string(emoji.JSON()))
 			return nil

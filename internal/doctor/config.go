@@ -15,6 +15,10 @@ import (
 	"github.com/akira-toriyama/glyph/v6/internal/config"
 )
 
+// fixOutsideCheckout is the one remedy every local check gives when git could
+// not name the checkout's top level.
+const fixOutsideCheckout = "re-run from inside a git checkout of the repository being diagnosed"
+
 // checkConfig reports whether the glyph.toml every verdict command reads
 // exists and loads. root is the checkout's top level; rootErr is git's
 // failure to name one, which degrades the check to could-not-run exactly like
@@ -45,7 +49,7 @@ func checkConfig(root string, rootErr error, cfg *config.Config, loadErr error) 
 		c.Observed = fmt.Sprintf("git could not name this checkout's top level: %v", rootErr)
 		c.Message = "glyph.toml lives at the top level of the working tree and git is the authority on where that is, so " +
 			"outside a repository the file's location does not exist to check. Unverified, not a verdict"
-		c.Fix = "re-run from inside a git checkout of the repository being diagnosed"
+		c.Fix = fixOutsideCheckout
 		return c
 	}
 	notAFile, isNotAFile := errors.AsType[*config.NotAFileError](loadErr)

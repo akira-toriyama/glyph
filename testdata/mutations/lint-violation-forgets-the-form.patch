@@ -1,13 +1,13 @@
 diff --git a/internal/config/lint.go b/internal/config/lint.go
-index 8c8a10e..9e46184 100644
+index 3e484f4..6f312a0 100644
 --- a/internal/config/lint.go
 +++ b/internal/config/lint.go
-@@ -87,7 +87,7 @@ func (c *Config) unclaimedReason(m Match) string {
- 	if m.Unlandable != "" {
- 		return reason
+@@ -98,7 +98,7 @@ func (c *Config) unclaimedReason(m Match, authoring bool) string {
+ 	if authoring {
+ 		exclude = ""
  	}
 -	form := c.subjectForm()
 +	form := ""
  	if form == "" {
- 		return "message " + reason + " — write it to match one (see glyph.toml), or exclude the author"
+ 		return "message " + reason + " — write it to match one (see glyph.toml)" + exclude
  	}

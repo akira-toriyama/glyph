@@ -64,8 +64,8 @@ func newNotesCmd() *cobra.Command {
 			"stdout is the Markdown body\n" +
 			"(pipe it into a release step); a --since-tag body closes with the range's\n" +
 			"compare link (compare/<base tag>...<HEAD sha>; none when the walk has no\n" +
-			"tag base, and none from --range or --pr). --json emits {sections,reason},\n" +
-			"unchanged — no link. Nothing release-worthy prints no body and exits 1\n" +
+			"tag base, and none from --range or --pr). --json emits {sections,reason} —\n" +
+			"no link. Nothing release-worthy prints no body and exits 1\n" +
 			"(soft no-release).\n\n" +
 			"On a repository declaring [[packages]] the body is per line: stdout is one\n" +
 			"body per line under a `# <path>` heading (bare when a tag selects one\n" +

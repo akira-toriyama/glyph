@@ -35,8 +35,7 @@ func newDoctorCmd() *cobra.Command {
 		Long: "doctor answers the question every other glyph command silently assumes: does\n" +
 			"this repository still match the model glyph computes against. The settings it\n" +
 			"reads are invisible from inside a release run, so when one drifts the workflows\n" +
-			"stay green and the verdict is simply wrong — glyph-test ran for weeks with the\n" +
-			"squash subject switched to the PR title and nothing said a word.\n\n" +
+			"stay green and the verdict is simply wrong, and nothing says a word.\n\n" +
 			"It is READ-ONLY: nothing about the repository, the checkout or the workflows is\n" +
 			"ever modified. Each failing check prints the command that fixes it and leaves\n" +
 			"running it to you.\n\n" +
@@ -121,7 +120,7 @@ func newDoctorCmd() *cobra.Command {
 		Example: "  glyph doctor                          # diagnose this checkout ($GITHUB_REPOSITORY, else origin)\n" +
 			"  glyph doctor --repo akira-toriyama/sill\n" +
 			"  glyph doctor --json | jq -e .ok       # CI pre-flight",
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkNamingFlags(cmd, [][3]string{{"repo", "repository", repoHint}}); err != nil {
 				return err

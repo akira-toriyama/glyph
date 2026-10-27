@@ -1,9 +1,9 @@
 diff --git a/internal/cli/cmd_version.go b/internal/cli/cmd_version.go
-index 0a48945..cce8add 100644
+index 3f2e01c..68ce884 100644
 --- a/internal/cli/cmd_version.go
 +++ b/internal/cli/cmd_version.go
-@@ -30,7 +30,7 @@ func newVersionCmd() *cobra.Command {
- 		Args: cobra.NoArgs,
+@@ -27,7 +27,7 @@ func newVersionCmd() *cobra.Command {
+ 		Args: noArgs,
  		RunE: func(cmd *cobra.Command, args []string) error {
  			info := version.Resolve()
 -			if versionJSON {

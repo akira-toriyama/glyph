@@ -49,7 +49,7 @@ func newInitCmd() *cobra.Command {
 			"glyph.toml is never touched without --force, and --force replaces only a\n" +
 			"regular file: a directory, a named pipe or a broken symbolic link at the\n" +
 			"path is refused either way (exit 2) — remove it, then re-run init.",
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := checkExclusiveBool(cmd, names...); err != nil {
 				return err

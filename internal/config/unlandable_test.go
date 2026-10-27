@@ -145,7 +145,9 @@ func TestLintRefusesUnlandable(t *testing.T) {
 // refusal leaves --no-verify as the only way forward. The pass is loud — the
 // warning carries the reason and says the later gates refuse it, which is
 // what keeps the hook from blessing silently what CI rejects (DESIGN §2.1).
-// Everything that is not an unlandable claim judges exactly as Lint does.
+// Everything that is not an unlandable claim judges exactly as Lint does; the
+// one other difference is the refusal's author exclusion, which an authoring
+// verdict cannot offer (TestAuthoringRefusalOffersNoAuthorExclusion).
 func TestLintAuthoringLetsUnlandableThrough(t *testing.T) {
 	cfg := mustLoad(t, unlandableToml)
 	v := cfg.LintAuthoring(amendMessage)
@@ -159,7 +161,9 @@ func TestLintAuthoringLetsUnlandableThrough(t *testing.T) {
 	}
 
 	for _, msg := range []string{":bug:~ fix b", "fixup! :bug:~ fix b", "no gitmoji at all"} {
-		if a, h := cfg.LintAuthoring(msg), cfg.Lint(msg, ""); a != h {
+		a, h := cfg.LintAuthoring(msg), cfg.Lint(msg, "")
+		h.Reason = strings.TrimSuffix(h.Reason, ", or exclude the author")
+		if a != h {
 			t.Errorf("LintAuthoring(%q) = %+v, Lint = %+v: only an unlandable claim may differ", msg, a, h)
 		}
 	}

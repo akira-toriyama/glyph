@@ -1,10 +1,10 @@
 diff --git a/internal/config/presets/conventional.toml b/internal/config/presets/conventional.toml
-index 0b4446b..580ce99 100644
+index 8b9193d..140cde0 100644
 --- a/internal/config/presets/conventional.toml
 +++ b/internal/config/presets/conventional.toml
-@@ -51,6 +51,7 @@ template = '''
- # the unmatched-commit fallback — both bind `subject` alone — rendering
- # unchanged.
+@@ -50,6 +50,7 @@ template = '''
+ # render this pattern, the revert pattern and the unmatched-commit fallback
+ # alike.
  pattern = '^(?P<subject>(?P<type>[a-z]+)(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!%]): .+)'
 +warn = 'this grammar is under review'
  

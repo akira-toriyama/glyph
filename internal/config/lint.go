@@ -45,18 +45,21 @@ func (c *Config) Lint(message, author string) LintVerdict {
 		return LintVerdict{Reason: err.Error()}
 	}
 	if !m.Matched {
-		return LintVerdict{Reason: c.unclaimedReason(m)}
+		return LintVerdict{Reason: c.unclaimedReason(m, false)}
 	}
 	return LintVerdict{OK: true, Warn: m.Warn}
 }
 
 // LintAuthoring judges a message at authoring time — the commit-msg hook's
 // question (`lint --stdin` / `--message`), asked before any commit exists, so
-// under the empty author. It is Lint with one difference: a message an
+// under the empty author. It is Lint with two differences. A message an
 // unlandable pattern claims is OK, carrying its reason as the warning plus
 // what every later gate will do with it. The hook cannot make git write
 // another subject (git spells `amend!` itself), and refusing one there forces
 // --no-verify, which turns the gate off for everything else in that commit.
+// And the refusal of a message no pattern claims offers no author exclusion:
+// the empty author is one exclude_authors cannot name (an empty entry is
+// refused at load), so that remedy could never unblock this verdict.
 //
 // This is an argued disagreement between the hook and CI on one message
 // (DESIGN §2.1), and it runs in the direction §2.1 calls the cheaper one: blessing costs a round trip, refusing costs the commit. The
@@ -65,8 +68,11 @@ func (c *Config) Lint(message, author string) LintVerdict {
 // probe) calls this, never Lint.
 func (c *Config) LintAuthoring(message string) LintVerdict {
 	m, err := c.Match(message)
-	if err == nil && !m.Matched && m.Unlandable != "" {
-		return LintVerdict{OK: true, Warn: m.Unlandable + " — the commit-msg hook lets it through, but every gate that judges an existing commit refuses it (lint --range, a push to the default branch, --pr, the release walk)"}
+	if err == nil && !m.Matched {
+		if m.Unlandable != "" {
+			return LintVerdict{OK: true, Warn: m.Unlandable + " — the commit-msg hook lets it through, but every gate that judges an existing commit refuses it (lint --range, a push to the default branch, --pr, the release walk)"}
+		}
+		return LintVerdict{Reason: c.unclaimedReason(m, true)}
 	}
 	return c.Lint(message, "")
 }
@@ -81,17 +87,22 @@ func (c *Config) LintAuthoring(message string) LintVerdict {
 // beside the since-retired v1-acceptance window, whose warning spelled the
 // same line this refusal now does), and a config with no template gets the
 // bare pointer instead. An unlandable message carries no remedy here: its
-// sentence already says what must happen before it lands.
-func (c *Config) unclaimedReason(m Match) string {
+// sentence already says what must happen before it lands. authoring drops the
+// author exclusion from the remedy (LintAuthoring says why).
+func (c *Config) unclaimedReason(m Match, authoring bool) string {
 	reason := c.UnclaimedDetail(m)
 	if m.Unlandable != "" {
 		return reason
 	}
+	exclude := ", or exclude the author"
+	if authoring {
+		exclude = ""
+	}
 	form := c.subjectForm()
 	if form == "" {
-		return "message " + reason + " — write it to match one (see glyph.toml), or exclude the author"
+		return "message " + reason + " — write it to match one (see glyph.toml)" + exclude
 	}
-	return fmt.Sprintf("message %s — write it as %s with a semver_sigil of = ~ ^ ! or %% (commit.template in glyph.toml), or exclude the author", reason, form)
+	return fmt.Sprintf("message %s — write it as %s with a semver_sigil of = ~ ^ ! or %% (commit.template in glyph.toml)%s", reason, form, exclude)
 }
 
 // subjectForm is the first non-blank line of commit.template — the shape of

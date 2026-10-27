@@ -39,6 +39,18 @@ type pinRef struct {
 	Problem string
 }
 
+// unlistableFix is the remedy for a workflows directory under a git-named root
+// that the filesystem would not list. Only a permission error is a permissions
+// problem; anything else (a regular file at the path, a symbolic-link loop)
+// needs the path made a listable directory — the split checkConfig draws for
+// glyph.toml.
+func unlistableFix(dir string, err error) string {
+	if errors.Is(err, fs.ErrPermission) {
+		return "fix the directory's permissions and re-run"
+	}
+	return "make " + dir + " a directory that can be listed, then re-run"
+}
+
 // checkWorkflowPins scans .github/workflows and every action.yml /
 // action.yaml git lists for the local checkout (gitsource.ActionFiles, paths
 // relative to root; actionErr its failure).
@@ -62,10 +74,15 @@ func checkWorkflowPins(root string, rootVerified bool, actionFiles []gitsource.A
 	if err != nil && (!rootVerified || !errors.Is(err, fs.ErrNotExist)) {
 		c.Status = StatusUnknown
 		c.Observed = fmt.Sprintf("the workflows directory could not be listed: %v", err)
-		c.Message = "doctor reads the LOCAL checkout for this check, so it must run from the repository root. " +
-			"If this repository genuinely has no workflows there is nothing pinned and nothing to drift — but that is " +
-			"unverified, not verified"
-		c.Fix = "re-run from the repository root (cd into the checkout), or pass --repo and accept that this check cannot run there"
+		if !rootVerified {
+			c.Message = "doctor reads the LOCAL checkout for this check, and git could not name one here. " +
+				"If this repository genuinely has no workflows there is nothing pinned and nothing to drift — but that is " +
+				"unverified, not verified"
+			c.Fix = fixOutsideCheckout
+			return c
+		}
+		c.Message = "the checkout's workflows were never read, so whatever they pin is unverified, not verified"
+		c.Fix = unlistableFix(dir, err)
 		return c
 	}
 
