@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v6/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
@@ -462,6 +464,33 @@ func TestLintModeFlagsAreExclusiveAndRequired(t *testing.T) {
 	// no request may go out for input no retry can fix.
 	if code, _, _ := runGlyph(t, "lint", "--pr", "0"); code != 2 {
 		t.Fatalf("lint --pr 0 exited %d, want 2", code)
+	}
+}
+
+// TestLintRunsFromOptionsWithoutCobra: lintRun is a function of its options —
+// no command built, no flag parsed — so the range and message modes reach
+// their arms as fields, not as package state a cobra run has to set first,
+// and the zero mode, none given, is usage.
+func TestLintRunsFromOptionsWithoutCobra(t *testing.T) {
+	dir, base := testutil.NewTaggedRepo(t)
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
+	t.Chdir(dir)
+	stdout, stderr, restore := captureOut()
+	defer restore()
+	ctx := context.Background()
+
+	if err := lintRun(ctx, lintOptions{mode: lintByRange, rng: base + "..HEAD"}); err != nil || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("lintRun --range from options: %v, stdout %q, stderr %q — want a silent pass", err, stdout.String(), stderr.String())
+	}
+	if err := lintRun(ctx, lintOptions{mode: lintByMessage, message: ":bug:~ fix a crash"}); err != nil || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("lintRun --message from options on a conforming message: %v, stdout %q, stderr %q — want a silent pass", err, stdout.String(), stderr.String())
+	}
+	err := lintRun(ctx, lintOptions{mode: lintByMessage, message: "no gitmoji here"})
+	if got := core.ExitCode(err); got != int(core.CodeLint) {
+		t.Fatalf("lintRun --message from options on a violating message: exit %d (%v), want %d", got, err, core.CodeLint)
+	}
+	if err := lintRun(ctx, lintOptions{}); core.ExitCode(err) != int(core.CodeUsage) {
+		t.Fatalf("lintRun with no mode: exit %d (%v), want %d (usage)", core.ExitCode(err), err, core.CodeUsage)
 	}
 }
 

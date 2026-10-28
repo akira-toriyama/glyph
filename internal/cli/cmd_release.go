@@ -314,17 +314,13 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 // body: the notes closed by the compare link, the footer, composed over the
 // kept draft's hand region and sized. drafted is the releases listing.
 func planLine(ctx context.Context, cfg *config.Config, currentFlag string, lw walk.LineWalk, owner, repoName, target, footer string, drafted []draftplan.Draft) (packageRelease, draftplan.LinePlan, bool, error) {
-	lineRows, dec, ferr := bump.Fold(walk.BumpCommits(lw.Commits), cfg)
+	fl, ferr := foldLine(ctx, cfg, currentFlag, lw)
 	if ferr != nil {
 		return packageRelease{}, draftplan.LinePlan{}, false, ferr
 	}
-	current, verr := currentVersion(ctx, currentFlag, lw.Base, lw.TagLine)
-	if verr != nil {
-		return packageRelease{}, draftplan.LinePlan{}, false, verr
-	}
-	pv := packageRelease{Path: lw.Package.Path, Current: current.String(), Level: string(dec.Level), Commits: lineRows, Reason: noneReason(len(lineRows), lw.Source)}
-	if dec.Level == bump.LevelNone && !cfg.Note.DraftOnNone {
-		plan := draftplan.PlanDraft(lw.TagLine, dec.Level, "", false, drafted)
+	pv := packageRelease{Path: lw.Package.Path, Current: fl.current.String(), Level: string(fl.dec.Level), Commits: fl.rows, Reason: fl.reason}
+	if fl.dec.Level == bump.LevelNone && !cfg.Note.DraftOnNone {
+		plan := draftplan.PlanDraft(lw.TagLine, fl.dec.Level, "", false, drafted)
 		pv.Action = string(plan.Action)
 		return pv, draftplan.LinePlan{Plan: plan}, false, nil
 	}
@@ -334,17 +330,12 @@ func planLine(ctx context.Context, cfg *config.Config, currentFlag string, lw wa
 	// quiet merge keeps the door open instead of deleting the draft).
 	tagName := draftplan.PlaceholderTagOn(lw.TagLine)
 	moves := false
-	if dec.Level != bump.LevelNone {
-		tag, nerr := bump.NextOn(lw.TagLine, current, dec)
-		if nerr != nil {
-			return packageRelease{}, draftplan.LinePlan{}, false, nerr
-		}
-		if gerr := draftplan.CheckPublishedFloor(lw.TagLine, tag, drafted); gerr != nil {
+	if fl.next != nil {
+		if gerr := draftplan.CheckPublishedFloor(lw.TagLine, *fl.next, drafted); gerr != nil {
 			return packageRelease{}, draftplan.LinePlan{}, false, gerr
 		}
-		tagName = tag.TagOn(lw.TagLine.Prefix)
-		pv.Next = tag.String()
-		pv.Reason = bump.DecidingReason(lineRows, dec)
+		tagName = fl.next.TagOn(lw.TagLine.Prefix)
+		pv.Next = fl.next.String()
 		moves = true
 	}
 	sections, gerr := notes.Group(walk.NoteCommits(lw.Commits), cfg)
@@ -368,7 +359,7 @@ func planLine(ctx context.Context, cfg *config.Config, currentFlag string, lw wa
 	// rolling draft is the one place a human can write release prose, and
 	// rewriting it blind is how that prose was silently destroyed on the
 	// next push (t-qgps).
-	plan := draftplan.PlanDraft(lw.TagLine, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
+	plan := draftplan.PlanDraft(lw.TagLine, fl.dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
 	body = draftplan.ComposeBody(plan.Keep, body)
 	// Sized BEFORE the dry-run fork: a dry run previews the real run, and
 	// a body the real run refuses must fail the preview identically. Sized
@@ -520,15 +511,8 @@ func newReleaseResult(cfg *config.Config, w walk.Result, rows []bump.Row, verdic
 		res.Current, res.Level, res.Next, res.Tag, res.Body, res.Action, res.URL, res.Reason = one.Current, one.Level, one.Next, one.Tag, one.Body, one.Action, one.URL, one.Reason
 		return res
 	}
-	reasons := make([]string, 0, len(verdicts))
-	for _, v := range verdicts {
-		reasons = append(reasons, v.Path+": "+v.Reason)
-	}
 	res.Packages = verdicts
-	res.Reason = strings.Join(reasons, "; ")
-	if moving == 0 {
-		res.Reason = everyLineNone(res.Reason)
-	}
+	res.Reason = packagesReason(verdicts, moving)
 	return res
 }
 

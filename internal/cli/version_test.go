@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v6/internal/version"
 )
 
 // TestVersionHuman keeps the default (no --json) as a human-readable
@@ -42,6 +44,28 @@ func TestVersionJSON(t *testing.T) {
 	}
 }
 
+// TestVersionRunsFromOptionsWithoutCobra: versionRun is a function of its
+// options — no command built, no flag parsed — and each output is
+// version.Resolve() itself: the human line, or its compact JSON.
+func TestVersionRunsFromOptionsWithoutCobra(t *testing.T) {
+	stdout, stderr, restore := captureOut()
+	defer restore()
+	info := version.Resolve()
+
+	if err := versionRun(versionOptions{}); err != nil || stdout.String() != "glyph "+info.String()+"\n" {
+		t.Fatalf("versionRun from options: %v, stdout %q, want %q\nstderr: %s", err, stdout.String(), "glyph "+info.String()+"\n", stderr.String())
+	}
+	stdout.Reset()
+	if err := versionRun(versionOptions{json: true}); err != nil {
+		t.Fatalf("versionRun --json from options: %v\nstderr: %s", err, stderr.String())
+	}
+	line, rest, _ := strings.Cut(stdout.String(), "\n")
+	var got version.Info
+	if uerr := json.Unmarshal([]byte(line), &got); uerr != nil || rest != "" || got != info {
+		t.Fatalf("versionRun --json from options wrote %q (decode: %v), want one compact line of %+v", stdout.String(), uerr, info)
+	}
+}
+
 // TestUnknownCommandIsUsage: a bare cobra parse error (unknown subcommand) must
 // map to the usage code through finish(), never to an unclassified code.
 func TestUnknownCommandIsUsage(t *testing.T) {
@@ -56,7 +80,7 @@ func TestUnknownCommandIsUsage(t *testing.T) {
 // pflag's Changed is true for `--json=false`, so a future reader who "fixes"
 // the flag read by switching from the value to cmd.Flags().Changed("json")
 // hands JSON to the caller who just said not-JSON — and it compiles, because
-// an unread package-level var is legal Go. That is t-y2hr's defect one flag
+// a bound field nothing reads is legal Go. That is t-y2hr's defect one flag
 // over, and this is its only defender. The machine flag is deliberately NOT
 // default-bearing: declining it selects a real output, so it gets no
 // default-mode guard (v1's `rules --md` was the counterexample: declining it

@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_hook.go b/internal/cli/cmd_hook.go
+index c4e1bb4..b96fe4e 100644
+--- a/internal/cli/cmd_hook.go
++++ b/internal/cli/cmd_hook.go
+@@ -147,7 +147,7 @@ func hookInstallRun(ctx context.Context, o hookInstallOptions) error {
+ 	if herr != nil {
+ 		return herr
+ 	}
+-	rep, ierr := hook.Install(hooksDir, o.force, o.kinds...)
++	rep, ierr := hook.Install(hooksDir, o.force, hook.Kinds()...)
+ 	if ierr != nil {
+ 		return ierr
+ 	}

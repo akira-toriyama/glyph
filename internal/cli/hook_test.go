@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -92,6 +93,47 @@ func TestHookInstallPrintDoesNotWrite(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".git", "hooks", "commit-msg")); err == nil {
 		t.Error("--print installed the hook; it must only print")
+	}
+}
+
+// TestHookInstallRunsFromOptionsWithoutCobra: hookInstallRun is a function of
+// its options — no command built, no flag parsed — so print and the kinds
+// reach it as fields, not as package state a cobra run has to set first. The
+// kind is pre-push, not the first kind: a run that ignored o.kinds would print
+// commit-msg's script and install both hooks, so this pins the named-kinds
+// escape (`hook install <kind>`, for when the other hook is somebody else's
+// file).
+func TestHookInstallRunsFromOptionsWithoutCobra(t *testing.T) {
+	dir, _ := testutil.NewTaggedRepo(t)
+	t.Chdir(dir)
+	stdout, stderr, restore := captureOut()
+	defer restore()
+	ctx := context.Background()
+
+	kind := hook.Kinds()[1]
+	if err := hookInstallRun(ctx, hookInstallOptions{print: true, kinds: []hook.Kind{kind}}); err != nil || stdout.String() != kind.Script {
+		t.Fatalf("hookInstallRun print from options: %v, stdout %q, want exactly the %s script\nstderr: %s", err, stdout.String(), kind.Name, stderr.String())
+	}
+	stdout.Reset()
+
+	if err := hookInstallRun(ctx, hookInstallOptions{kinds: []hook.Kind{kind}}); err != nil {
+		t.Fatalf("hookInstallRun install from options: %v\nstderr: %s", err, stderr.String())
+	}
+	path := filepath.Join(".git", "hooks", kind.Name)
+	if got, err := os.ReadFile(path); err != nil || string(got) != kind.Script {
+		t.Fatalf("the %s hook at %s: %v — want its script installed", kind.Name, path, err)
+	}
+	for _, k := range hook.Kinds() {
+		if k.Name == kind.Name {
+			continue
+		}
+		if _, err := os.Lstat(filepath.Join(".git", "hooks", k.Name)); !os.IsNotExist(err) {
+			t.Fatalf("the %s hook was installed (lstat: %v), but the options named only %s", k.Name, err, kind.Name)
+		}
+	}
+	want := hook.Report{Hooks: []hook.Result{{Kind: kind.Name, Path: path, Action: "installed"}}}
+	if stdout.String() != want.Summary()+"\n" {
+		t.Fatalf("hookInstallRun install from options wrote %q, want the report's summary %q", stdout.String(), want.Summary()+"\n")
 	}
 }
 

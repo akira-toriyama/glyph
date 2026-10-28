@@ -1,0 +1,12 @@
+diff --git a/internal/cli/cmd_bump.go b/internal/cli/cmd_bump.go
+--- a/internal/cli/cmd_bump.go
++++ b/internal/cli/cmd_bump.go
+@@ -209,7 +209,7 @@
+ 	}
+ 	fl := foldedLine{rows: rows, dec: dec, current: current}
+ 	if dec.Level == bump.LevelNone {
+-		fl.reason = noneReason(len(rows), lw.Source)
++		fl.reason = bump.DecidingReason(rows, dec)
+ 		return fl, nil
+ 	}
+ 	next, err := bump.NextOn(lw.TagLine, current, dec)

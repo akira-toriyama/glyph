@@ -15,17 +15,35 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// The four lint input modes; exactly one is required (cobra-enforced).
-// lintRepo rides alongside --pr the way --repo rides alongside bump's.
-var (
-	lintRange   string
-	lintMessage string
-	lintStdin   bool
-	lintPR      int
-	lintRepo    string
+// lintMode is which of lint's input modes was given. The zero value is none
+// given, which lintRun refuses.
+type lintMode int
+
+const (
+	lintByRange lintMode = iota + 1
+	lintByPull
+	lintByStdin
+	lintByMessage
 )
 
+// lintOptions is what one lint run was asked, snapshotted at RunE: which of
+// the four input modes was given — exactly one is required (cobra-enforced) —
+// and the values the modes read; repo rides alongside --pr the way --repo
+// rides alongside bump's. Nothing below RunE reads a flag — lintRun is a
+// function of these alone (TestLintRunsFromOptionsWithoutCobra).
+type lintOptions struct {
+	mode    lintMode
+	rng     string
+	pull    int
+	repo    string
+	message string
+}
+
 func newLintCmd() *cobra.Command {
+	var o lintOptions
+	// --stdin's value is judged at RunE alone (--stdin=false is refused
+	// there); below it the mode carries all there is to know.
+	var stdin bool
 	cmd := &cobra.Command{
 		Use:   "lint",
 		Short: "Lint commit messages against the repository's glyph.toml patterns",
@@ -79,32 +97,14 @@ func newLintCmd() *cobra.Command {
 			// answered as the usage error it is, never as "not initialized".
 			switch {
 			case cmd.Flags().Changed("range"):
-				return lintRangeRun(cmd.Context(), lintRange)
+				o.mode = lintByRange
 			case cmd.Flags().Changed("pr"):
-				return lintPRRun(cmd.Context(), lintPR, lintRepo)
+				o.mode = lintByPull
 			case cmd.Flags().Changed("stdin"):
-				if !lintStdin {
+				if !stdin {
 					return core.Usagef("--stdin=false selects no input mode — --stdin IS the mode, so drop it and give --range, --pr or --message instead")
 				}
-				cfg, err := loadConfig(cmd.Context())
-				if err != nil {
-					return err
-				}
-				b, rerr := io.ReadAll(in)
-				if rerr != nil {
-					return core.APIf("reading stdin: %v", rerr)
-				}
-				// --stdin is the commit-msg hook, which git invokes BEFORE its
-				// own cleanup: the file still carries the editor template, the
-				// status block and (under -v or commit.verbose, with an editor)
-				// the diff. Reduce it to the message git will record before
-				// judging it; `in` is the file the hook redirected, whose
-				// identity tells a git merge from a git commit.
-				//
-				// The hook that called this is also the one artefact nothing
-				// refreshes, so its own run is where a drifted copy is reported.
-				warnIfHookStale(cmd.Context(), hook.Kinds()[0])
-				return lintOne(cleanup.Apply(string(b), hookCleanupMode(cmd.Context(), in)), cfg)
+				o.mode = lintByStdin
 			case cmd.Flags().Changed("message"):
 				// An empty --message is the caller naming no message, which is
 				// usage — not a message that violates the convention. The old
@@ -113,24 +113,16 @@ func newLintCmd() *cobra.Command {
 					"name the message to lint (--message='<subject>'), or read one from the commit-msg hook with --stdin"); err != nil {
 					return err
 				}
-				cfg, err := loadConfig(cmd.Context())
-				if err != nil {
-					return err
-				}
-				return lintOne(lintMessage, cfg)
-			default:
-				// Unreachable while MarkFlagsOneRequired holds. Kept as usage
-				// rather than a panic so a fourth mode added without its arm is
-				// diagnosed as a bad invocation instead of crashing a CI gate.
-				return core.Usagef("lint needs one of --range, --pr, --message or --stdin")
+				o.mode = lintByMessage
 			}
+			return lintRun(cmd.Context(), o)
 		},
 	}
-	cmd.Flags().StringVar(&lintRange, "range", "", "lint every commit in a git revision range (BASE..HEAD)")
-	cmd.Flags().IntVar(&lintPR, "pr", 0, "lint a pull request's title — the subject a squash merge lands — read over the API")
-	cmd.Flags().StringVar(&lintRepo, "repo", "", "owner/name to query for --pr (default: $GITHUB_REPOSITORY, else the origin remote)")
-	cmd.Flags().StringVar(&lintMessage, "message", "", "lint one message given inline")
-	cmd.Flags().BoolVar(&lintStdin, "stdin", false, "lint one message read from stdin (commit-msg hook)")
+	cmd.Flags().StringVar(&o.rng, "range", "", "lint every commit in a git revision range (BASE..HEAD)")
+	cmd.Flags().IntVar(&o.pull, "pr", 0, "lint a pull request's title — the subject a squash merge lands — read over the API")
+	cmd.Flags().StringVar(&o.repo, "repo", "", "owner/name to query for --pr (default: $GITHUB_REPOSITORY, else the origin remote)")
+	cmd.Flags().StringVar(&o.message, "message", "", "lint one message given inline")
+	cmd.Flags().BoolVar(&stdin, "stdin", false, "lint one message read from stdin (commit-msg hook)")
 	cmd.MarkFlagsMutuallyExclusive("range", "pr", "message", "stdin")
 	cmd.MarkFlagsOneRequired("range", "pr", "message", "stdin")
 	// --repo feeds the one API-backed mode. Combined with any local mode it
@@ -140,6 +132,57 @@ func newLintCmd() *cobra.Command {
 	cmd.MarkFlagsMutuallyExclusive("repo", "message")
 	cmd.MarkFlagsMutuallyExclusive("repo", "stdin")
 	return cmd
+}
+
+// lintRun is lint below its flags: the arm of the one input mode given.
+func lintRun(ctx context.Context, o lintOptions) error {
+	switch o.mode {
+	case lintByRange:
+		return lintRangeRun(ctx, o.rng)
+	case lintByPull:
+		return lintPRRun(ctx, o.pull, o.repo)
+	case lintByStdin:
+		return lintStdinRun(ctx)
+	case lintByMessage:
+		return lintMessageRun(ctx, o.message)
+	default:
+		// Unreachable while MarkFlagsOneRequired holds. Kept as usage
+		// rather than a panic so a mode added without its arm is
+		// diagnosed as a bad invocation instead of crashing a CI gate.
+		return core.Usagef("lint needs one of --range, --pr, --message or --stdin")
+	}
+}
+
+// lintStdinRun lints the one message on stdin at authoring time — the
+// commit-msg hook's mode.
+func lintStdinRun(ctx context.Context) error {
+	cfg, err := loadConfig(ctx)
+	if err != nil {
+		return err
+	}
+	b, rerr := io.ReadAll(in)
+	if rerr != nil {
+		return core.APIf("reading stdin: %v", rerr)
+	}
+	// --stdin is the commit-msg hook, which git invokes BEFORE its own
+	// cleanup: the file still carries the editor template, the status block
+	// and (under -v or commit.verbose, with an editor) the diff. Reduce it to
+	// the message git will record before judging it; `in` is the file the
+	// hook redirected, whose identity tells a git merge from a git commit.
+	//
+	// The hook that called this is also the one artefact nothing refreshes,
+	// so its own run is where a drifted copy is reported.
+	warnIfHookStale(ctx, hook.Kinds()[0])
+	return lintOne(cleanup.Apply(string(b), hookCleanupMode(ctx, in)), cfg)
+}
+
+// lintMessageRun lints the one message --message names, at authoring time.
+func lintMessageRun(ctx context.Context, message string) error {
+	cfg, err := loadConfig(ctx)
+	if err != nil {
+		return err
+	}
+	return lintOne(message, cfg)
 }
 
 // hookCleanupMode reads the five signals a commit-msg hook has about what git

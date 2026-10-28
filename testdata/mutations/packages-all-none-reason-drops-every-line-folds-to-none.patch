@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_bump.go b/internal/cli/cmd_bump.go
+--- a/internal/cli/cmd_bump.go
++++ b/internal/cli/cmd_bump.go
+@@ -300,9 +300,6 @@
+ 		reasons = append(reasons, path+": "+reason)
+ 	}
+ 	joined := strings.Join(reasons, "; ")
+-	if moving == 0 {
+-		return everyLineNone(joined)
+-	}
+ 	return joined
+ }
+ 

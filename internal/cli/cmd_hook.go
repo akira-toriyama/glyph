@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -11,11 +12,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	hookForce bool
-	hookPrint bool
-	hookJSON  bool
-)
+// hookInstallOptions is what one hook install run was asked, snapshotted at
+// RunE: --force, --print, --json and the kinds resolved from the positionals —
+// every kind when none is named. Nothing below RunE reads a flag —
+// hookInstallRun is a function of these alone
+// (TestHookInstallRunsFromOptionsWithoutCobra).
+type hookInstallOptions struct {
+	force, print, json bool
+	kinds              []hook.Kind
+}
 
 func newHookCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -72,6 +77,7 @@ func newHookPrePushCmd() *cobra.Command {
 }
 
 func newHookInstallCmd() *cobra.Command {
+	var o hookInstallOptions
 	cmd := &cobra.Command{
 		Use:       "install [kind...]",
 		Short:     "Install glyph's git hooks into this repository",
@@ -98,35 +104,19 @@ func newHookInstallCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if hookPrint {
-				// One script or none: two concatenated shell scripts are not a
-				// script, and writing them out as if they were is worse than
-				// refusing.
-				if len(args) != 1 {
-					return core.Usagef("--print writes ONE hook script; name the kind (one of %s)", strings.Join(hook.KindNames(), ", "))
-				}
-				fmt.Fprint(out, kinds[0].Script)
-				return nil
+			// One script or none: two concatenated shell scripts are not a
+			// script, and writing them out as if they were is worse than
+			// refusing.
+			if o.print && len(args) != 1 {
+				return core.Usagef("--print writes ONE hook script; name the kind (one of %s)", strings.Join(hook.KindNames(), ", "))
 			}
-			hooksDir, herr := gitsource.HooksDir(cmd.Context(), ".")
-			if herr != nil {
-				return herr
-			}
-			rep, ierr := hook.Install(hooksDir, hookForce, kinds...)
-			if ierr != nil {
-				return ierr
-			}
-			if hookJSON {
-				printCompact(rep)
-				return nil
-			}
-			fmt.Fprintln(out, rep.Summary())
-			return nil
+			o.kinds = kinds
+			return hookInstallRun(cmd.Context(), o)
 		},
 	}
-	cmd.Flags().BoolVar(&hookForce, "force", false, "replace an existing hook glyph did not write")
-	cmd.Flags().BoolVar(&hookPrint, "print", false, "write one named hook's script to stdout instead of installing it")
-	cmd.Flags().BoolVar(&hookJSON, "json", false, "emit the machine result {hooks:[{kind,path,action,existed}]} as one JSON line")
+	cmd.Flags().BoolVar(&o.force, "force", false, "replace an existing hook glyph did not write")
+	cmd.Flags().BoolVar(&o.print, "print", false, "write one named hook's script to stdout instead of installing it")
+	cmd.Flags().BoolVar(&o.json, "json", false, "emit the machine result {hooks:[{kind,path,action,existed}]} as one JSON line")
 	// Value-aware, not Changed-aware: `--print=false --force` asks to install
 	// rather than print, and force the install — a coherent invocation cobra's
 	// grouping refused while reporting that both flags "were all set".
@@ -142,6 +132,31 @@ func newHookInstallCmd() *cobra.Command {
 		return checkExclusiveBool(cmd, "print", "json")
 	}
 	return cmd
+}
+
+// hookInstallRun is hook install below its flags: under print the one named
+// kind's script on stdout, otherwise every resolved kind installed into the
+// hooks directory git runs and the report — compact JSON, or one human line
+// per hook.
+func hookInstallRun(ctx context.Context, o hookInstallOptions) error {
+	if o.print {
+		fmt.Fprint(out, o.kinds[0].Script)
+		return nil
+	}
+	hooksDir, herr := gitsource.HooksDir(ctx, ".")
+	if herr != nil {
+		return herr
+	}
+	rep, ierr := hook.Install(hooksDir, o.force, o.kinds...)
+	if ierr != nil {
+		return ierr
+	}
+	if o.json {
+		printCompact(rep)
+		return nil
+	}
+	fmt.Fprintln(out, rep.Summary())
+	return nil
 }
 
 // hookKindArgs is install's Args guard: every positional must name a hook kind
