@@ -469,7 +469,8 @@ func commitWith(dir, path, message string) (string, error) {
 }
 
 // TestHookInstallPrintFalseIsNotAConflict: the same Changed-versus-value split
-// as rules, on a group with no default-bearing member.
+// as version's --json=false (TestVersionJSONFalseIsTheHumanLine), on a group
+// with no default-bearing member.
 //
 // `--print=false --force` asks to INSTALL rather than print, and to force the
 // install — coherent, and refused by cobra's grouping with a message saying both

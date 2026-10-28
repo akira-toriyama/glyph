@@ -20,7 +20,6 @@ import (
 // fails the completeness check below until someone says how to invoke it.
 var namingFlagBase = map[string][]string{
 	"lint":    {"--pr", "1"},
-	"fmt":     nil,
 	"bump":    {"--pr", "1"},
 	"notes":   {"--pr", "1"},
 	"release": {"--dry-run"},
@@ -52,6 +51,7 @@ func TestEveryStringFlagRejectsItsEmptyForm(t *testing.T) {
 	// before glyph touches the network, and this is also what keeps the table
 	// hermetic when it is run against a tree whose guards are missing.
 	usePR(t, walkServer(t, nil))
+	t.Chdir(testutil.NewRepo(t))
 
 	root := newRootCmd()
 	covered := 0
@@ -183,8 +183,8 @@ func TestMachineOutputFlagHasOneSpelling(t *testing.T) {
 
 	// NON-VACUITY. A tree walk that reached nothing would report no --ndjson
 	// anywhere and pass, which is the failure mode this whole file is written
-	// against. The floor is the six commands that always had --json plus the
-	// two renamed into it.
+	// against. The floor is the seven commands that register --json: bump,
+	// notes, preview, release, doctor, version and hook install.
 	const floor = 7
 	if len(machine) < floor {
 		t.Fatalf("the walk found --json on only %d commands (%v); at least %d have it, so the "+
@@ -226,13 +226,17 @@ func TestSinceTagNeedsARepo(t *testing.T) {
 func TestSinceTagIsExclusiveWithTheOtherSources(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
-	for _, extra := range [][]string{
-		{"--range", base + "..HEAD"},
-		{"--pr", "7"},
+	for _, tc := range []struct {
+		extra []string
+		set   string // cobra's refusal names the flags given together, sorted
+	}{
+		{[]string{"--range", base + "..HEAD"}, "[range since-tag]"},
+		{[]string{"--pr", "7"}, "[pr since-tag]"},
 	} {
-		args := append([]string{"bump", "--since-tag"}, extra...)
-		if code, _, _ := runGlyph(t, args...); code != 2 {
-			t.Fatalf("bump --since-tag with %v should exit 2 (usage)", extra)
+		args := append([]string{"bump", "--since-tag"}, tc.extra...)
+		code, _, stderr := runGlyph(t, args...)
+		if code != 2 || !strings.Contains(stderr, tc.set+" were all set") {
+			t.Fatalf("bump --since-tag with %v exited %d, want 2 refusing the two sources together\nstderr: %s", tc.extra, code, stderr)
 		}
 	}
 }

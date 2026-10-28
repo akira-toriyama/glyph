@@ -118,8 +118,8 @@ func TestNotesEmptyJSON(t *testing.T) {
 	}
 }
 
-// TestNotesJSONShape: the machine schema is {sections:[{title,entries:[{sha,
-// code,emoji,scope,subject,breaking}]}]} on one line.
+// TestNotesJSONShape: the machine schema is {sections:[{title, lines}]} on one
+// line.
 func TestNotesJSONShape(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a command palette")
@@ -156,17 +156,21 @@ func TestNotesJSONShape(t *testing.T) {
 	}
 }
 
-// TestNotesUnmatchedIsRendered: notes never refuse a range — an unmatched
-// commit has no semver level, so it can only surface through an author-axis
-// section; whether it appears at all is note.sections' decision (the fold is
-// where an unmatched commit refuses, and bump/release run the fold).
-func TestNotesUnmatchedIsRendered(t *testing.T) {
+// TestNotesUnknownShortcodeRendersBySigil: a shortcode the dictionary lacks
+// still folds by its sigil and renders in its semver section. The unmatched
+// case is TestNotesUnmatchedLandsNowhereByDefault's.
+func TestNotesUnknownShortcodeRendersBySigil(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
-	testutil.Commit(t, dir, "akira-toriyama", ":not_a_real_code:^ mystery change")
+	const subject = ":not_a_real_code:^ mystery change"
+	testutil.Commit(t, dir, "akira-toriyama", subject)
 	t.Chdir(dir)
 
-	if code, _, _ := runGlyph(t, "notes", "--range", base+"..HEAD"); code != 0 {
-		t.Fatalf("notes over a matched unknown-prefix commit should exit 0 — the prefix is the author's call")
+	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
+	if code != 0 {
+		t.Fatalf("notes over a shortcode the dictionary lacks exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "## Features") || !strings.Contains(stdout, subject) {
+		t.Fatalf("the ^ commit must render in Features:\n%s", stdout)
 	}
 }
 
@@ -341,16 +345,16 @@ func TestNotesPackagesNoReleaseCountsParticipatingCommits(t *testing.T) {
 // squash-safe inputs ship too (--pr, --since-tag) and cobra requires exactly one
 // of the three, so this pins the empty invocation, not an unimplemented feature.
 func TestNotesRequiresRange(t *testing.T) {
-	if code, _, _ := runGlyph(t, "notes"); code != 2 {
-		t.Fatalf("notes without --range should exit 2")
+	if code, _, stderr := runGlyph(t, "notes"); code != 2 {
+		t.Fatalf("notes without --range exited %d, want 2\nstderr: %s", code, stderr)
 	}
 }
 
 // TestNotesOutsideRepoIsAPI: git failures classify as API (exit 4).
 func TestNotesOutsideRepoIsAPI(t *testing.T) {
 	t.Chdir(t.TempDir())
-	if code, _, _ := runGlyph(t, "notes", "--range", "main..HEAD"); code != 4 {
-		t.Fatalf("notes outside a repo should exit 4")
+	if code, _, stderr := runGlyph(t, "notes", "--range", "main..HEAD"); code != 4 {
+		t.Fatalf("notes outside a repo exited %d, want 4\nstderr: %s", code, stderr)
 	}
 }
 

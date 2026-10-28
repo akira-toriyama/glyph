@@ -214,9 +214,9 @@ func TestHookVerdictMatchesWhatGitRecords(t *testing.T) {
 			t.Chdir(dir)
 			// Hand glyph the environment git handed the hook, whichever way git
 			// spelled it — that signal is half of what the mode is derived from.
-			if string(env) == "UNSET" {
-				unsetEnv(t, "GIT_EDITOR")
-			} else {
+			// UNSET needs no arm: TestMain leaves GIT_EDITOR unset and t.Setenv
+			// restores to unset.
+			if string(env) != "UNSET" {
 				t.Setenv("GIT_EDITOR", string(env))
 			}
 
@@ -309,24 +309,6 @@ func writeExecutable(t *testing.T, path, body string) {
 	}
 }
 
-// unsetEnv removes a variable for one test and restores it afterwards —
-// t.Setenv's missing half, and the state that matters here: git leaves
-// GIT_EDITOR UNSET when core.editor supplied the editor.
-func unsetEnv(t *testing.T, key string) {
-	t.Helper()
-	old, had := os.LookupEnv(key)
-	t.Cleanup(func() {
-		if had {
-			_ = os.Setenv(key, old)
-			return
-		}
-		_ = os.Unsetenv(key)
-	})
-	if err := os.Unsetenv(key); err != nil {
-		t.Fatalf("unset %s: %v", key, err)
-	}
-}
-
 // TestLintMessageClean: a convention-clean message is a silent success — no
 // payload, exit 0 (Rule of Silence).
 func TestLintMessageClean(t *testing.T) {
@@ -385,13 +367,14 @@ func TestLintMessageViolations(t *testing.T) {
 }
 
 // TestLintStdin: --stdin reads the message from the input stream (the
-// commit-msg hook path) and stays authoring-mode — :construction:= is legal.
+// commit-msg hook path), and a message a pattern claims exits 0. Authoring
+// mode is TestLintAuthoringPassesUnlandableWithAWarning's.
 func TestLintStdin(t *testing.T) {
 	t.Chdir(testutil.NewRepo(t))
 	setStdin(t, ":construction:= try things\n")
 	code, _, stderr := runGlyph(t, "lint", "--stdin")
 	if code != 0 {
-		t.Fatalf("lint --stdin exited %d, want 0 (WIP is legal at authoring time)\nstderr: %s", code, stderr)
+		t.Fatalf("lint --stdin exited %d, want 0 (the message on the stream is claimed)\nstderr: %s", code, stderr)
 	}
 }
 
@@ -462,8 +445,8 @@ func TestLintModeFlagsAreExclusiveAndRequired(t *testing.T) {
 	// same way: a non-positive number (what a workflow yields from a null PR
 	// number) is usage — the gate code 3 belongs to convention violations, and
 	// no request may go out for input no retry can fix.
-	if code, _, _ := runGlyph(t, "lint", "--pr", "0"); code != 2 {
-		t.Fatalf("lint --pr 0 exited %d, want 2", code)
+	if code, _, stderr := runGlyph(t, "lint", "--pr", "0"); code != 2 || !strings.Contains(stderr, "--pr 0 is not a pull-request number") {
+		t.Fatalf("lint --pr 0 exited %d, want 2 refusing the number itself\nstderr: %s", code, stderr)
 	}
 }
 
@@ -513,6 +496,7 @@ func apiOnePullBody(title, login string) string {
 // measured before this existed, 158 landed subjects had failed the grammar
 // this way, each read by the release walk's fallback as a silent none.
 func TestLintPRTitle(t *testing.T) {
+	t.Chdir(testutil.NewRepo(t))
 	t.Run("clean title", func(t *testing.T) {
 		srv := walkServer(t, map[string]string{pullPath(7): apiOnePullBody(":bug:(lint)~ fix a crash", "akira-toriyama")})
 		usePR(t, srv)
@@ -553,6 +537,7 @@ func TestLintPRTitle(t *testing.T) {
 func TestLintPRTitleExcludesBots(t *testing.T) {
 	srv := walkServer(t, map[string]string{pullPath(9): apiOnePullBody("build(deps): bump the actions group", "dependabot[bot]")})
 	usePR(t, srv)
+	t.Chdir(testutil.NewRepo(t))
 	code, stdout, stderr := runGlyph(t, "lint", "--pr", "9")
 	if code != 0 {
 		t.Fatalf("lint --pr on a bot's pull exited %d, want 0\nstderr: %s", code, stderr)
