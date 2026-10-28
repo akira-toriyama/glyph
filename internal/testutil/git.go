@@ -159,14 +159,20 @@ func Touch(t *testing.T, dir, author, message string, paths ...string) string {
 		WriteFile(t, dir, p, fmt.Sprintf("%s\n%d\n", p, n))
 	}
 	Git(t, dir, author, "add", "-A", ".")
-	Git(t, dir, author, "commit", "-q", "--allow-empty", "-m", message)
+	Git(t, dir, author, "commit", "-q", "--allow-empty", "--no-verify", "-m", message)
 	return Git(t, dir, author, "rev-parse", "HEAD")
 }
 
-// Commit adds one empty commit authored by author with the given message.
+// Commit adds one empty commit authored by author with the given message. A
+// fixture commit runs neither the pre-commit nor the commit-msg hook
+// (--no-verify; git still runs prepare-commit-msg and post-commit) — here, in
+// CommitFrom and in Touch — so glyph's commit-msg hook, once a test installs
+// it, never judges a fixture; a test that wants it to run commits through the
+// cli tests' runGit with the built binary on PATH (commitWith /
+// commitFlagsWith / commitFileWith).
 func Commit(t *testing.T, dir, author, message string) {
 	t.Helper()
-	Git(t, dir, author, "commit", "-q", "--allow-empty", "-m", message)
+	Git(t, dir, author, "commit", "-q", "--allow-empty", "--no-verify", "-m", message)
 }
 
 // CommitFrom is Commit under an explicit author address instead of GitEnv's
@@ -176,7 +182,7 @@ func Commit(t *testing.T, dir, author, message string) {
 // from the calling test's own source.
 func CommitFrom(t *testing.T, dir, author, email, message string) {
 	t.Helper()
-	cmd := exec.Command("git", "-C", dir, "commit", "-q", "--allow-empty", "-m", message)
+	cmd := exec.Command("git", "-C", dir, "commit", "-q", "--allow-empty", "--no-verify", "-m", message)
 	cmd.Env = GitEnv(author, "GIT_AUTHOR_EMAIL="+email)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git commit as %s <%s>: %v\n%s", author, email, err, out)

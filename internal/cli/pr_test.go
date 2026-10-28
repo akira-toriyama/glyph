@@ -1,17 +1,13 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
@@ -59,24 +55,15 @@ func apiMergeCommit(sha, author, message string) string {
 }
 
 // usePR points the CLI at the stand-in API and names the repository, exactly as
-// GitHub Actions would.
+// GitHub Actions would, and does nothing else: every API test chdirs into its
+// own fixture, because the package directory is inside glyph's own checkout,
+// whose working-tree glyph.toml would answer for a test that did not.
 func usePR(t *testing.T, srv *httptest.Server) {
 	t.Helper()
 	t.Setenv("GITHUB_API_URL", srv.URL)
 	t.Setenv("GITHUB_REPOSITORY", "akira-toriyama/glyph")
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
-	// glyph reads glyph.toml from the checkout's top level before any
-	// request goes out, so an API-backed test must run inside an initialized
-	// repository. Tests that build their own fixture chdir before or after
-	// this call; only when the current directory is NOT an initialized repo
-	// (the package directory itself) does usePR supply a fresh one.
-	if top, err := gitsource.TopLevel(context.Background(), "."); err == nil {
-		if _, serr := os.Stat(filepath.Join(top, "glyph.toml")); serr == nil {
-			return
-		}
-	}
-	t.Chdir(testutil.NewRepo(t))
 }
 
 // TestBumpPR is the whole point of the squash-safe design: the version comes from
@@ -176,8 +163,9 @@ func TestPRWithoutARepoIsUsage(t *testing.T) {
 func TestPRAndRangeAreMutuallyExclusive(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
-	if code, _, _ := runGlyph(t, "bump", "--pr", "7", "--range", base+"..HEAD"); code != 2 {
-		t.Fatalf("bump --pr with --range should exit 2 (usage)")
+	code, _, stderr := runGlyph(t, "bump", "--pr", "7", "--range", base+"..HEAD")
+	if code != 2 || !strings.Contains(stderr, "[pr range] were all set") {
+		t.Fatalf("bump --pr with --range exited %d, want 2 refusing the two sources together\nstderr: %s", code, stderr)
 	}
 }
 
@@ -245,10 +233,10 @@ func TestPRAllBotIsNoRelease(t *testing.T) {
 	}
 }
 
-// TestPRMalformedCommitIsLint: a commit the fold must read that does not parse is a
-// hard lint error (exit 3), whether it is read from git or from the API — a
-// release job must not silently bump past a malformed commit.
-func TestPRMalformedCommitIsLint(t *testing.T) {
+// TestPRUnmatchedCommitIsLint: a commit the fold must read that no pattern
+// claims is a hard lint error (exit 3), whether it is read from git or from the
+// API — a release job must not silently bump past it.
+func TestPRUnmatchedCommitIsLint(t *testing.T) {
 	srv := prServer(t, 6, `[`+
 		apiCommit("a1", "akira-toriyama", "no gitmoji leads this subject")+`]`)
 	usePR(t, srv)
@@ -257,10 +245,10 @@ func TestPRMalformedCommitIsLint(t *testing.T) {
 
 	code, _, stderr := runGlyph(t, "bump", "--pr", "6")
 	if code != 3 {
-		t.Fatalf("a malformed PR commit exited %d, want 3 (lint)", code)
+		t.Fatalf("an unmatched PR commit exited %d, want 3 (lint)\nstderr: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "a1") {
-		t.Fatalf("the lint error should name the offending commit:\n%s", stderr)
+	if want := "commit a1:"; !strings.Contains(decodeErrorEnvelope(t, stderr).Message, want) {
+		t.Fatalf("the refusal should name the offending commit as %q:\n%s", want, stderr)
 	}
 }
 
@@ -283,8 +271,12 @@ func TestPRMalformedRepoIsUsage(t *testing.T) {
 		"notaslash", "a/b/c", "/leading", "trailing/",
 		"a b/c", "a/b c", "a\tb/c", "a/b\nc",
 	} {
-		if code, _, _ := runGlyph(t, "bump", "--pr", "7", "--repo", spec); code != 2 {
-			t.Fatalf("bump --pr --repo %q exited %d, want 2 (usage)", spec, code)
+		code, _, stderr := runGlyph(t, "bump", "--pr", "7", "--repo", spec)
+		if code != 2 {
+			t.Fatalf("bump --pr --repo %q exited %d, want 2 (usage)\nstderr: %s", spec, code, stderr)
+		}
+		if want := fmt.Sprintf("--repo %q is not owner/name", spec); !strings.Contains(decodeErrorEnvelope(t, stderr).Message, want) {
+			t.Fatalf("bump --pr --repo %q must be refused as %s:\n%s", spec, want, stderr)
 		}
 	}
 }

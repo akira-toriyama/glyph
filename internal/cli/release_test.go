@@ -1017,9 +1017,9 @@ func TestReleaseSpaceFormSinceTag(t *testing.T) {
 // exist on it and land as usage errors, not as silently ignored input.
 func TestReleaseHasNoRangeOrPRSource(t *testing.T) {
 	for _, flag := range []string{"--range", "--pr"} {
-		code, _, _ := runGlyph(t, "release", flag, "x")
-		if code != 2 {
-			t.Errorf("release %s exited %d, want 2 (unknown flag)", flag, code)
+		code, _, stderr := runGlyph(t, "release", flag, "x")
+		if code != 2 || !strings.Contains(stderr, "unknown flag: "+flag) {
+			t.Errorf("release %s exited %d, want 2 refusing the flag as unknown\nstderr: %s", flag, code, stderr)
 		}
 	}
 }

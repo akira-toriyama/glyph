@@ -488,9 +488,10 @@ func TestSinceTagSquashMultiCommitDivergesWhenAPIDark(t *testing.T) {
 // TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark is the same divergence at its
 // floor. A PR title carrying no gitmoji at all can still reach main — lint.yml's
 // squash-title step excludes bot pulls, and a repository need not call lint.yml —
-// so under COMMIT_OR_PR_TITLE a multi-commit squash can put an unparseable
-// subject on main. Live the pull's commits still decide; dark the subject is
-// dropped from the fold with a warning and the whole release counts none.
+// so under COMMIT_OR_PR_TITLE a multi-commit squash can put a subject no
+// pattern claims on main. Live the pull's commits still decide; dark the
+// subject is dropped from the fold with a warning and the whole release counts
+// none.
 func TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	sha := squashCommit(t, dir, "Add a refresh endpoint", 6)
@@ -582,7 +583,7 @@ func TestSinceTagFallbackOnlyOnUnknownCommit(t *testing.T) {
 			if code != 4 || stdout != "" {
 				t.Fatalf("a %d exited %d with stdout %q, want 4 / empty — only 422 is an API-dark walk\nstderr: %s", status, code, stdout, stderr)
 			}
-			if strings.Contains(stderr, "classifying its own message") {
+			if strings.Contains(stderr, "reading its own message") {
 				t.Fatalf("a %d must never reach the fallback — the walk observed nothing about the commit:\n%s", status, stderr)
 			}
 			if env := decodeErrorEnvelope(t, stderr); env.Code != 4 {

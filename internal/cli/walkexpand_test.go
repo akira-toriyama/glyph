@@ -450,7 +450,7 @@ func TestSinceTagSubPullSquashCommitIsNotRelinted(t *testing.T) {
 
 	code, shas, stderr := verdictSHAs(t, "bump", "--since-tag=v0.1.0")
 	if code != 0 {
-		t.Fatalf("a sub-PR's squash commit inside a merge-merged PR exited %d, want 0 — it is already represented in the fold, not a malformed message to lint\nstderr: %s", code, stderr)
+		t.Fatalf("a sub-PR's squash commit inside a merge-merged PR exited %d, want 0 — it is already represented in the fold, not an unmatched message to lint\nstderr: %s", code, stderr)
 	}
 	if len(shas) != 2 || shas[0] != "i1" || shas[1] != rest {
 		t.Fatalf("verdict counts %v, want [i1 %.7s] — #6 expanded once, its squash commit never counted as itself", shas, rest)

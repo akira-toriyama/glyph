@@ -1,0 +1,15 @@
+diff --git a/internal/cli/root.go b/internal/cli/root.go
+index ab08f73..84dab25 100644
+--- a/internal/cli/root.go
++++ b/internal/cli/root.go
+@@ -42,10 +42,6 @@ import (
+ func Execute() int {
+ 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+ 	defer stop()
+-	go func() {
+-		<-ctx.Done()
+-		stop()
+-	}()
+ 	return finish(newRootCmd().ExecuteContext(ctx))
+ }
+ 

@@ -8,12 +8,22 @@ import (
 	"testing"
 )
 
-// TestMain blanks the GitHub environment before any test runs: on an Actions
-// runner GITHUB_REPOSITORY / GITHUB_TOKEN / GITHUB_API_URL are ambient, and a
-// future API-touching test that forgot usePR would silently read them and
-// call the real api.github.com. Blanking here makes that leak structurally
-// impossible instead of merely avoided by convention; tests that need the
-// variables set them per-test with t.Setenv.
+// TestMain keeps every test off the real API. GITHUB_REPOSITORY and
+// GITHUB_API_URL are ambient on an Actions runner, GITHUB_TOKEN and GH_TOKEN
+// wherever a workflow or a shell exports them: the repository and both tokens
+// are blanked, and GITHUB_API_URL points at a closed loopback port rather than
+// going blank — blank means api.github.com, and a blank GITHUB_REPOSITORY
+// falls back to the clone's origin, which in glyph's own checkout is on
+// github.com. So a test that forgot usePR is refused at usage before any
+// request (the origin is on github.com, the API host 127.0.0.1 — originRepo's
+// host gate), and one that names the repository but forgets the server fails
+// at a refused connection, after the client's retries (about 21s) — never at
+// api.github.com (both measured). That host gate, and "--repo owner/name is
+// required" in a fixture with no origin, answer 2 as well, so a usage test
+// whose run would go on to resolve a repository were its refusal to regress
+// asserts the refusal's text, never the code alone. Tests that need the
+// variables set them per-test with t.Setenv, `""` included for the
+// public-host default.
 // GIT_EDITOR joins them for the same reason from the other side: `lint --stdin`
 // reads it to tell an edited message from a `-m` one, and a developer whose
 // shell exports GIT_EDITOR would otherwise run a different code path than CI.
@@ -29,9 +39,10 @@ import (
 // differently in CI than on a laptop. Sharing the slice means a third
 // run-context variable joins this list by construction.
 func TestMain(m *testing.M) {
-	for _, k := range append([]string{"GITHUB_API_URL", "GITHUB_REPOSITORY", "GITHUB_TOKEN", "GH_TOKEN", "GIT_EDITOR"}, actionsEnv...) {
+	for _, k := range append([]string{"GITHUB_REPOSITORY", "GITHUB_TOKEN", "GH_TOKEN", "GIT_EDITOR"}, actionsEnv...) {
 		os.Unsetenv(k)
 	}
+	os.Setenv("GITHUB_API_URL", "http://127.0.0.1:1")
 	for _, k := range []string{"GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"} {
 		os.Setenv(k, os.DevNull)
 	}

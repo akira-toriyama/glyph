@@ -134,8 +134,8 @@ func TestBumpNoneJSON(t *testing.T) {
 	}
 }
 
-// TestBumpJSONShape: the machine schema is {current, level, next, commits[],
-// reason} with per-commit sha/gitmoji/level/breaking/subject.
+// TestBumpJSONShape: the machine schema is {current, level, next,
+// commits:[{sha, subject, sigil, level}], reason}.
 func TestBumpJSONShape(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
@@ -212,8 +212,8 @@ func TestBumpCurrentOverride(t *testing.T) {
 func TestBumpCurrentInvalidIsUsage(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
-	if code, _, _ := runGlyph(t, "bump", "--range", base+"..HEAD", "--current", "garbage"); code != 2 {
-		t.Fatalf("bump --current garbage should exit 2")
+	if code, _, stderr := runGlyph(t, "bump", "--range", base+"..HEAD", "--current", "garbage"); code != 2 {
+		t.Fatalf("bump --current garbage exited %d, want 2\nstderr: %s", code, stderr)
 	}
 }
 
@@ -256,39 +256,28 @@ func TestBumpNoTagsStartsAtZero(t *testing.T) {
 	}
 }
 
-// TestBumpUnknownCodeIsLint: an unknown gitmoji anywhere in the range is a
-// hard lint failure (exit 3) — never silently classified.
-func TestBumpUnknownCodeIsLint(t *testing.T) {
-	dir, base := testutil.NewTaggedRepo(t)
-	testutil.Commit(t, dir, "akira-toriyama", ":not-a-real-code: mystery change")
-	t.Chdir(dir)
-
-	if code, _, _ := runGlyph(t, "bump", "--range", base+"..HEAD"); code != 3 {
-		t.Fatalf("bump with an unknown code should exit 3")
-	}
-}
-
-// TestBumpMalformedCommitIsLint: a non-parsing human commit in the range is a
-// lint failure carrying the offending SHA.
-func TestBumpMalformedCommitIsLint(t *testing.T) {
+// TestBumpUnmatchedCommitIsLint: a human commit no pattern claims in the range
+// is a lint failure carrying the offending SHA.
+func TestBumpUnmatchedCommitIsLint(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji in this one")
 	t.Chdir(dir)
 
 	// The SHA is what makes the failure actionable: published history is
 	// immutable, so the operator's next move is to go look at that commit.
-	// Asserting the word "commit " instead proved only that range.go's format
-	// string still had a literal in it — the message is "commit %.7s: %v", so
-	// dropping the SHA left this green. The API path already asserts the sha
-	// (pr_test.go's TestPRMalformedCommitIsLint); the local path now does too.
+	// bump.Fold's refusal carries it ("commit %.7s: …"), so the assertion
+	// reads the envelope's message in that shape: the details carry the SHA
+	// too, and a search of the whole stream stays green with it dropped from
+	// the message, as the word "commit " alone would. The API path asserts the
+	// same (pr_test.go's TestPRUnmatchedCommitIsLint).
 	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	code, _, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")
 	if code != 3 {
-		t.Fatalf("bump with a malformed commit exited %d, want 3", code)
+		t.Fatalf("bump with an unmatched commit exited %d, want 3\nstderr: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, sha[:7]) {
-		t.Fatalf("the lint error should name the offending commit %.7s:\n%s", sha, stderr)
+	if want := "commit " + sha[:7] + ":"; !strings.Contains(decodeErrorEnvelope(t, stderr).Message, want) {
+		t.Fatalf("the refusal should name the offending commit as %q:\n%s", want, stderr)
 	}
 }
 
@@ -296,16 +285,16 @@ func TestBumpMalformedCommitIsLint(t *testing.T) {
 // squash-safe inputs ship too (--pr, --since-tag) and cobra requires exactly one
 // of the three, so this pins the empty invocation, not an unimplemented feature.
 func TestBumpRequiresRange(t *testing.T) {
-	if code, _, _ := runGlyph(t, "bump"); code != 2 {
-		t.Fatalf("bump without --range should exit 2")
+	if code, _, stderr := runGlyph(t, "bump"); code != 2 {
+		t.Fatalf("bump without --range exited %d, want 2\nstderr: %s", code, stderr)
 	}
 }
 
 // TestBumpOutsideRepoIsAPI: git failures classify as API (exit 4).
 func TestBumpOutsideRepoIsAPI(t *testing.T) {
 	t.Chdir(t.TempDir())
-	if code, _, _ := runGlyph(t, "bump", "--range", "main..HEAD"); code != 4 {
-		t.Fatalf("bump outside a repo should exit 4")
+	if code, _, stderr := runGlyph(t, "bump", "--range", "main..HEAD"); code != 4 {
+		t.Fatalf("bump outside a repo exited %d, want 4\nstderr: %s", code, stderr)
 	}
 }
 

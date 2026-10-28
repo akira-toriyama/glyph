@@ -80,7 +80,7 @@ func TestReleasePackagesCappedRefusalIsNotTheGateCode(t *testing.T) {
 					t.Errorf("the refusal must name the escape a re-run cannot replace (missing %q):\n%s", want, stderr)
 				}
 			}
-			if strings.Contains(stderr, "cannot be rewritten") || strings.Contains(stderr, `"code":3`) {
+			if strings.Contains(stderr, "cannot be rewritten") {
 				t.Errorf("the wedge remedy was handed down over a truncated listing:\n%s", stderr)
 			}
 			if !strings.Contains(stderr, "over the files GitHub listed, "+tc.withheld) || !strings.Contains(stderr, "not a verdict") {

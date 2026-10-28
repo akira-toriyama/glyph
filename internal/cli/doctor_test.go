@@ -398,8 +398,11 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		installCurrentHook(t)
 		stubGlyphOnPATH(t, 0)
 
-		_, stdout, stderr := runGlyph(t, "doctor", "--json")
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
 		rep := decodeDoctorJSON(t, stdout)
+		if code != 0 {
+			t.Fatalf("doctor exited %d, want 0\nstderr: %s", code, stderr)
+		}
 		c := checkByID(t, rep, "commit-msg-hook-fires")
 		if c.Status != "pass" || !strings.Contains(c.Observed, "claims that message") {
 			t.Errorf("a hook passing a message the config claims as unlandable is the verdict a working chain gives, got %s: %s\nstderr: %s",
@@ -569,8 +572,11 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		// not report "nothing to fire".
 		stubGlyphOnPATH(t, 3)
 
-		_, stdout, _ := runGlyph(t, "doctor", "--json")
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
 		rep := decodeDoctorJSON(t, stdout)
+		if code != 0 {
+			t.Fatalf("doctor exited %d, want 0\nstderr: %s", code, stderr)
+		}
 		c := checkByID(t, rep, "commit-msg-hook-fires")
 		if c.Status != "pass" || !strings.Contains(c.Observed, "nothing to fire") {
 			t.Errorf("someone else's hook is theirs to run — the probe must not fire it, got %s: %s",
@@ -1009,7 +1015,9 @@ func TestDoctorUnansweredAPIIsCouldNotRunNotAViolation(t *testing.T) {
 // interrupt rows survived, a different three each run, and a fake API
 // answering after 5s turned the top-level row's test green over the mutated
 // tree with the fake git never reached). The net is 25s, under the fakes' 30s
-// sleep, so it bounds only a run that never reaches the read.
+// sleep, so it bounds only a run that never reaches the read. A red "never
+// reached" on an unmutated tree is that net firing under heavy load: re-run
+// the test alone — the stall itself is unexplained, and no mechanism tracks it.
 func cancelOnceAsked(t *testing.T, asked string) (context.Context, func(read string)) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1545,8 +1553,12 @@ func TestDoctorWithoutARepositoryIsUsage(t *testing.T) {
 // than not, and silently diagnosing $GITHUB_REPOSITORY anyway would hide it.
 func TestDoctorTakesNoPositionalArgs(t *testing.T) {
 	useDoctorCheckout(t, pinnedCaller)
-	if code, _, _ := runGlyph(t, "doctor", "akira-toriyama/glyph"); code != 2 {
-		t.Fatalf("a positional argument exited %d, want 2 (usage)", code)
+	code, _, stderr := runGlyph(t, "doctor", "akira-toriyama/glyph")
+	if code != 2 {
+		t.Fatalf("a positional argument exited %d, want 2 (usage)\nstderr: %s", code, stderr)
+	}
+	if env := decodeErrorEnvelope(t, stderr); !strings.Contains(env.Message, `takes no arguments (got "akira-toriyama/glyph")`) {
+		t.Fatalf("the refusal should name the stray argument, got %q", env.Message)
 	}
 }
 

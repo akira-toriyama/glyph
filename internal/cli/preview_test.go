@@ -259,6 +259,9 @@ func TestPreviewRequiresPR(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("missing --pr exited %d, want 2 (usage): %s", code, stderr)
 	}
+	if env := decodeErrorEnvelope(t, stderr); !strings.Contains(env.Message, `required flag(s) "pr" not set`) {
+		t.Fatalf("the refusal should be the missing --pr, got %q", env.Message)
+	}
 }
 
 // TestPreviewZeroVersionTagIsTagged: a repository tagged v0.0.0 HAS released,

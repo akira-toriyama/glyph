@@ -1,0 +1,23 @@
+diff --git a/internal/cli/root.go b/internal/cli/root.go
+index ab08f73..ebe2bd4 100644
+--- a/internal/cli/root.go
++++ b/internal/cli/root.go
+@@ -24,9 +24,6 @@ package cli
+ 
+ import (
+ 	"context"
+-	"os"
+-	"os/signal"
+-	"syscall"
+ 
+ 	"github.com/akira-toriyama/glyph/v6/internal/core"
+ 	"github.com/akira-toriyama/glyph/v6/internal/version"
+@@ -40,7 +37,7 @@ import (
+ // work (subprocesses and HTTP requests) rather than orphaning it; once cancelled
+ // we restore the default signal disposition so a second Ctrl-C hard-kills.
+ func Execute() int {
+-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
++	ctx, stop := context.Background(), func() {}
+ 	defer stop()
+ 	go func() {
+ 		<-ctx.Done()

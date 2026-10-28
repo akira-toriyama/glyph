@@ -94,9 +94,9 @@ func TestHookCutMatchesGit(t *testing.T) {
 					if err != nil {
 						t.Fatalf("read the hook's GIT_EDITOR: %v", err)
 					}
-					if string(env) == "UNSET" {
-						unsetEnv(t, "GIT_EDITOR")
-					} else {
+					// UNSET needs no arm: TestMain leaves GIT_EDITOR unset and
+					// t.Setenv restores to unset.
+					if string(env) != "UNSET" {
 						t.Setenv("GIT_EDITOR", string(env))
 					}
 					// No message file to ask about: git commit hands the hook

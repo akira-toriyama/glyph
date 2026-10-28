@@ -1,0 +1,13 @@
+diff --git a/internal/testutil/git.go b/internal/testutil/git.go
+index 9d618a9..d592316 100644
+--- a/internal/testutil/git.go
++++ b/internal/testutil/git.go
+@@ -172,7 +172,7 @@ func Touch(t *testing.T, dir, author, message string, paths ...string) string {
+ // commitFlagsWith / commitFileWith).
+ func Commit(t *testing.T, dir, author, message string) {
+ 	t.Helper()
+-	Git(t, dir, author, "commit", "-q", "--allow-empty", "--no-verify", "-m", message)
++	Git(t, dir, author, "commit", "-q", "--allow-empty", "-m", message)
+ }
+ 
+ // CommitFrom is Commit under an explicit author address instead of GitEnv's
