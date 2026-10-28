@@ -148,38 +148,23 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
 	}
 	warnBumpRows(rows)
 	var pkgs []packageVerdict
-	var reasons, tags []string
+	var tags []string
 	for _, lw := range w.Lines {
-		lineRows, dec, ferr := bump.Fold(walk.BumpCommits(lw.Commits), cfg)
+		fl, ferr := foldLine(ctx, cfg, o.current, lw)
 		if ferr != nil {
 			return ferr
 		}
-		current, verr := currentVersion(ctx, o.current, lw.Base, lw.TagLine)
-		if verr != nil {
-			return verr
+		pv := packageVerdict{Path: lw.Package.Path, Current: fl.current.String(), Level: string(fl.dec.Level), Commits: fl.rows, Reason: fl.reason}
+		if fl.next != nil {
+			pv.Next = fl.next.String()
+			tags = append(tags, fl.next.TagOn(lw.TagLine.Prefix))
 		}
-		pv := packageVerdict{Path: lw.Package.Path, Current: current.String(), Level: string(dec.Level), Commits: lineRows}
-		if dec.Level == bump.LevelNone {
-			pv.Reason = noneReason(len(lineRows), lw.Source)
-		} else {
-			next, nerr := bump.NextOn(lw.TagLine, current, dec)
-			if nerr != nil {
-				return nerr
-			}
-			pv.Next = next.String()
-			pv.Reason = bump.DecidingReason(lineRows, dec)
-			tags = append(tags, next.TagOn(lw.TagLine.Prefix))
-		}
-		reasons = append(reasons, lw.Package.Path+": "+pv.Reason)
 		pkgs = append(pkgs, pv)
 	}
-	res := bumpResult{Commits: rows, Packages: pkgs, Reason: strings.Join(reasons, "; ")}
-	switch {
-	case len(cfg.Packages) == 0:
+	res := bumpResult{Commits: rows, Packages: pkgs, Reason: packagesReason(pkgs, len(tags))}
+	if len(cfg.Packages) == 0 {
 		one := pkgs[0]
 		res = bumpResult{Current: one.Current, Level: one.Level, Next: one.Next, Commits: rows, Reason: one.Reason}
-	case len(tags) == 0:
-		res.Reason = everyLineNone(res.Reason)
 	}
 	if len(tags) == 0 {
 		if o.json {
@@ -195,6 +180,45 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
 		fmt.Fprintln(out, tag)
 	}
 	return nil
+}
+
+// foldedLine is one line folded: its rows, the decision, the version
+// stepped from, the version stepped to (nil on none) and the reason
+// sentence — noneReason on none, bump.DecidingReason otherwise.
+type foldedLine struct {
+	rows    []bump.Row
+	dec     bump.Decision
+	current bump.Version
+	next    *bump.Version
+	reason  string
+}
+
+// foldLine is the one per-line step bump and release share: the line's
+// commits folded, the version the line steps from (currentVersion), and — on
+// any level but none — the version it steps to (bump.NextOn). What a command
+// does with a moving line beyond that (release's published floor) is the
+// command's own.
+func foldLine(ctx context.Context, cfg *config.Config, currentFlag string, lw walk.LineWalk) (foldedLine, error) {
+	rows, dec, err := bump.Fold(walk.BumpCommits(lw.Commits), cfg)
+	if err != nil {
+		return foldedLine{}, err
+	}
+	current, err := currentVersion(ctx, currentFlag, lw.Base, lw.TagLine)
+	if err != nil {
+		return foldedLine{}, err
+	}
+	fl := foldedLine{rows: rows, dec: dec, current: current}
+	if dec.Level == bump.LevelNone {
+		fl.reason = noneReason(len(rows), lw.Source)
+		return fl, nil
+	}
+	next, err := bump.NextOn(lw.TagLine, current, dec)
+	if err != nil {
+		return foldedLine{}, err
+	}
+	fl.next = &next
+	fl.reason = bump.DecidingReason(rows, dec)
+	return fl, nil
 }
 
 // currentVersion resolves the version to step from ON ONE LINE: an explicit
@@ -257,6 +281,29 @@ func warnBumpRows(commits []bump.Row) {
 // DESIGN §4.1 makes "participate" one set, so the sentence is a contract.
 func noneReason(participating int, source string) string {
 	return fmt.Sprintf("no release: %d commit(s) participate in %s and every level is none", participating, source)
+}
+
+// pathReasoner is one line's verdict as the packages reason reads it.
+type pathReasoner interface{ pathReason() (path, reason string) }
+
+func (v packageVerdict) pathReason() (path, reason string) { return v.Path, v.Reason }
+
+func (v packageRelease) pathReason() (path, reason string) { return v.Path, v.Reason }
+
+// packagesReason is the one producer of the reason a packages verdict
+// carries — bump's and release's, the sentence release.yml reads: each line's
+// `path: reason`, joined by "; ", wrapped by everyLineNone when no line moves.
+func packagesReason[V pathReasoner](verdicts []V, moving int) string {
+	reasons := make([]string, 0, len(verdicts))
+	for _, v := range verdicts {
+		path, reason := v.pathReason()
+		reasons = append(reasons, path+": "+reason)
+	}
+	joined := strings.Join(reasons, "; ")
+	if moving == 0 {
+		return everyLineNone(joined)
+	}
+	return joined
 }
 
 func everyLineNone(reasons string) string {

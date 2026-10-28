@@ -7,12 +7,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// versionJSON: the version subcommand owns its own --json flag. A root-level
-// one would be a LOCAL (not persistent) flag and would not reach a subcommand,
-// so `glyph version --json` would otherwise error.
-var versionJSON bool
+// versionOptions is what one version run was asked, snapshotted at RunE.
+// Nothing below RunE reads a flag — versionRun is a function of these alone
+// (TestVersionRunsFromOptionsWithoutCobra).
+type versionOptions struct {
+	// json: the version subcommand owns its own --json flag. A root-level
+	// one would be a LOCAL (not persistent) flag and would not reach a
+	// subcommand, so `glyph version --json` would otherwise error.
+	json bool
+}
 
 func newVersionCmd() *cobra.Command {
+	var o versionOptions
 	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print the glyph version",
@@ -26,15 +32,21 @@ func newVersionCmd() *cobra.Command {
 			"in force.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			info := version.Resolve()
-			if versionJSON {
-				printCompact(info)
-				return nil
-			}
-			fmt.Fprintf(out, "glyph %s\n", info.String())
-			return nil
+			return versionRun(o)
 		},
 	}
-	cmd.Flags().BoolVar(&versionJSON, "json", false, "emit the machine identity {version,commit,date} as one JSON line")
+	cmd.Flags().BoolVar(&o.json, "json", false, "emit the machine identity {version,commit,date} as one JSON line")
 	return cmd
+}
+
+// versionRun is version below its flag. It takes no context: the command
+// reaches nothing.
+func versionRun(o versionOptions) error {
+	info := version.Resolve()
+	if o.json {
+		printCompact(info)
+		return nil
+	}
+	fmt.Fprintf(out, "glyph %s\n", info.String())
+	return nil
 }

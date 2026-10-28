@@ -1,20 +1,18 @@
 diff --git a/internal/cli/cmd_bump.go b/internal/cli/cmd_bump.go
-index cf5e398..26b704a 100644
 --- a/internal/cli/cmd_bump.go
 +++ b/internal/cli/cmd_bump.go
-@@ -147,7 +147,6 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
+@@ -146,7 +146,6 @@
  	if cerr != nil {
  		return cerr
  	}
 -	warnBumpRows(rows)
  	var pkgs []packageVerdict
- 	var reasons, tags []string
+ 	var tags []string
  	for _, lw := range w.Lines {
 diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
-index 9f07db2..1af87d4 100644
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -376,9 +376,7 @@ func lintRangeRun(ctx context.Context, revRange string) error {
+@@ -418,9 +418,7 @@
  	// Warnings go out even when the run fails: the warned commits are real
  	// whichever way the verdict lands, and a developer fixing the violation
  	// should not discover the warning only on the green re-run.

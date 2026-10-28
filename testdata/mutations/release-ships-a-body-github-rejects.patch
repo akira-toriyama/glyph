@@ -1,10 +1,9 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index dec9482..2eb2614 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -365,14 +365,6 @@ func planLine(ctx context.Context, cfg *config.Config, currentFlag string, lw wa
+@@ -361,14 +361,6 @@
  	// next push (t-qgps).
- 	plan := draftplan.PlanDraft(lw.TagLine, dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
+ 	plan := draftplan.PlanDraft(lw.TagLine, fl.dec.Level, tagName, cfg.Note.DraftOnNone, drafted)
  	body = draftplan.ComposeBody(plan.Keep, body)
 -	// Sized BEFORE the dry-run fork: a dry run previews the real run, and
 -	// a body the real run refuses must fail the preview identically. Sized

@@ -1,13 +1,12 @@
 diff --git a/internal/cli/cmd_version.go b/internal/cli/cmd_version.go
-index 3f2e01c..68ce884 100644
 --- a/internal/cli/cmd_version.go
 +++ b/internal/cli/cmd_version.go
-@@ -27,7 +27,7 @@ func newVersionCmd() *cobra.Command {
+@@ -32,7 +32,7 @@
+ 			"in force.",
  		Args: noArgs,
  		RunE: func(cmd *cobra.Command, args []string) error {
- 			info := version.Resolve()
--			if versionJSON {
-+			if cmd.Flags().Changed("json") {
- 				printCompact(info)
- 				return nil
- 			}
+-			return versionRun(o)
++			return versionRun(versionOptions{json: cmd.Flags().Changed("json")})
+ 		},
+ 	}
+ 	cmd.Flags().BoolVar(&o.json, "json", false, "emit the machine identity {version,commit,date} as one JSON line")

@@ -1,13 +1,12 @@
 diff --git a/internal/cli/cmd_hook.go b/internal/cli/cmd_hook.go
-index 0d1d830..440fbc1 100644
 --- a/internal/cli/cmd_hook.go
 +++ b/internal/cli/cmd_hook.go
-@@ -103,7 +103,7 @@ func newHookInstallCmd() *cobra.Command {
- 				// One script or none: two concatenated shell scripts are not a
- 				// script, and writing them out as if they were is worse than
- 				// refusing.
--				if len(args) != 1 {
-+				if false {
- 					return core.Usagef("--print writes ONE hook script; name the kind (one of %s)", strings.Join(hook.KindNames(), ", "))
- 				}
- 				fmt.Fprint(out, kinds[0].Script)
+@@ -107,7 +107,7 @@
+ 			// One script or none: two concatenated shell scripts are not a
+ 			// script, and writing them out as if they were is worse than
+ 			// refusing.
+-			if o.print && len(args) != 1 {
++			if false {
+ 				return core.Usagef("--print writes ONE hook script; name the kind (one of %s)", strings.Join(hook.KindNames(), ", "))
+ 			}
+ 			o.kinds = kinds
