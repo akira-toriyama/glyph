@@ -1,10 +1,11 @@
 // Package testutil is the one home of the fixtures two or more packages'
-// tests share: the hermetic git fixture glyph's tests run git under, and the
-// loaded gemoji config (Config). The environment pin below lives here once
-// and callers import it, never copy it: a copy of an incident-bearing block is
-// how one side quietly loses the incident (DESIGN §5). Test-only, imported by
-// any package's tests, importing nothing above internal/config; nothing
-// shipping depends on it.
+// tests share: the hermetic git fixture glyph's tests run git under, the
+// loaded gemoji config (Config), and the shapes other than a regular file the
+// tests stage at a glyph.toml path (NotAFileShapes). The environment pin below
+// lives here once and callers import it, never copy it: a copy of an
+// incident-bearing block is how one side quietly loses the incident (DESIGN
+// §5). Test-only, imported by any package's tests, importing nothing above
+// internal/config; nothing shipping depends on it.
 package testutil
 
 import (
@@ -104,6 +105,22 @@ func NewTaggedRepo(t *testing.T) (dir, base string) {
 	dir = NewRepo(t)
 	Git(t, dir, "akira-toriyama", "tag", "v0.1.0")
 	return dir, Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+}
+
+// NewUntaggedHistory is NewRepo — its root commit, no tag — plus humans
+// commits by akira-toriyama and then bots commits by dependabot[bot], and
+// returns the path: the untagged history the walk-cap tests count, where a
+// bot's commit is not walk-visible and the root is.
+func NewUntaggedHistory(t *testing.T, humans, bots int) string {
+	t.Helper()
+	dir := NewRepo(t)
+	for i := range humans {
+		Commit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= human commit %d", i))
+	}
+	for i := range bots {
+		Commit(t, dir, "dependabot[bot]", fmt.Sprintf(":robot:= chore(fleet): sync %d", i))
+	}
+	return dir
 }
 
 // NewPackagesRepo is NewRepo with lines declared: snippet — the [[packages]]

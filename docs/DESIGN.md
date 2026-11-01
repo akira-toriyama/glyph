@@ -3122,7 +3122,7 @@ internal/github          commits/{sha}/pulls, commits/{sha} files, pulls/{N} and
 internal/doctor          repository-precondition checks; independent, read-only (§7)
 internal/hook            commit-msg and pre-push hook contents, what an installed one is (Read: absent / current / stale / foreign) + overwrite policy (no rules of its own)
 internal/cli             cobra adapter; Execute() int owns the exit-code funnel; composes the walk's ports and carries out the release's write list by kind
-internal/testutil        the fixtures two or more packages' tests share — the hermetic git fixture, the loaded gemoji config (test-only, ships nothing)
+internal/testutil        the fixtures two or more packages' tests share — the hermetic git fixture, the loaded gemoji config, the not-a-regular-file shapes a glyph.toml path is staged as (test-only, ships nothing)
 internal/workflows       no runtime code — tests pinning CI-YAML invariants
 ```
 
@@ -3165,9 +3165,11 @@ here is only why it is a package at all, and what depends on it:
   lose incidents (a partial copy in the hook tests had already lost the
   maintenance pin). The rule: test-only, importable by any package's tests,
   importing nothing above `internal/config`, and holding a fixture exactly
-  when two packages' tests share it — the git fixture, and since t-gr7f the
+  when two packages' tests share it — the git fixture, since t-gr7f the
   loaded gemoji config (`Config`) that `internal/cli`'s and `internal/walk`'s
-  tests both start from. Nothing shipping depends on it.
+  tests both start from, and the shapes other than a regular file
+  (`NotAFileShapes`) that `internal/cli`'s and `internal/doctor`'s tests both
+  stage at a glyph.toml path. Nothing shipping depends on it.
 
 **Exit-code contract** (`internal/core`): `0` ok · `1` no release · `2` usage ·
 `3` convention violation · `4` no trustworthy answer — API/git/IO, a refusal
