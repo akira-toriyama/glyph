@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"maps"
 	"os"
 	"path/filepath"
@@ -91,7 +90,7 @@ func TestPreviewJSONFoldsTheLevels(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("preview --json exited %d: %s", code, stderr)
 	}
-	var got struct {
+	type previewVerdict struct {
 		Current  string `json:"current"`
 		Untagged bool   `json:"untagged"`
 		Level    string `json:"level"`
@@ -100,9 +99,7 @@ func TestPreviewJSONFoldsTheLevels(t *testing.T) {
 		Pending  string `json:"pending"`
 		Body     string `json:"body"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
-		t.Fatalf("not JSON: %v\n%s", err, stdout)
-	}
+	got := decodeJSON[previewVerdict](t, stdout)
 	if got.Level != "patch" || got.Next != "v0.0.1" {
 		t.Errorf("folded verdict = %s/%s, want patch/v0.0.1", got.Level, got.Next)
 	}
@@ -169,7 +166,7 @@ func TestPreviewFoldsPendingOverPR(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t) // tagged v0.1.0
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
 	t.Chdir(dir)
-	head := strings.TrimSpace(testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
+	head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	srv := walkServer(t, map[string]string{
 		// The PR under preview: a lone bug fix.
@@ -185,7 +182,7 @@ func TestPreviewFoldsPendingOverPR(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("preview exited %d: %s", code, stderr)
 	}
-	var got struct {
+	type previewVerdict struct {
 		Untagged bool   `json:"untagged"`
 		Level    string `json:"level"`
 		Next     string `json:"next"`
@@ -193,9 +190,7 @@ func TestPreviewFoldsPendingOverPR(t *testing.T) {
 		Pending  string `json:"pending"`
 		Body     string `json:"body"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
-		t.Fatalf("not JSON: %v\n%s", err, stdout)
-	}
+	got := decodeJSON[previewVerdict](t, stdout)
 	if got.Untagged {
 		t.Error("a tagged repo must not report untagged")
 	}
@@ -234,14 +229,12 @@ func TestPreviewPRMultiCommitListing(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("preview exited %d: %s", code, stderr)
 	}
-	var got struct {
+	type previewVerdict struct {
 		Level string `json:"level"`
 		Next  string `json:"next"`
 		PR    string `json:"pr"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
-		t.Fatalf("not JSON: %v\n%s", err, stdout)
-	}
+	got := decodeJSON[previewVerdict](t, stdout)
 	if got.PR != "minor" {
 		t.Errorf("pr side = %s, want minor (the fold must read the whole listing, not its first entry)", got.PR)
 	}
@@ -392,7 +385,7 @@ func TestPreviewBareLineAsksForNoFile(t *testing.T) {
 	t.Run("tagged: the listing, then one walk", func(t *testing.T) {
 		dir, _ := testutil.NewTaggedRepo(t)
 		testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
-		head := strings.TrimSpace(testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
+		head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 		t.Chdir(dir)
 		routes := map[string]string{
 			commitPullsPath(head):      `[` + apiPullRef(3, "2026-07-17T00:00:00Z", head) + `]`,
@@ -455,7 +448,7 @@ func TestPreviewBareLineRendersTheScalarBody(t *testing.T) {
 	t.Run("tagged, with a pending side", func(t *testing.T) {
 		dir, _ := testutil.NewTaggedRepo(t)
 		testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
-		head := strings.TrimSpace(testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
+		head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 		t.Chdir(dir)
 		usePR(t, walkServer(t, map[string]string{
 			pullCommitsPath(7):    `[` + apiCommit("bbb2222", "akira-toriyama", ":bug:~ fix a crash") + `]`,
@@ -536,7 +529,7 @@ func TestPreviewReadsTheRepoItIsGiven(t *testing.T) {
 		{"bare line: the listing and the walk", func(t *testing.T) (string, map[string]string, []string) {
 			dir, _ := testutil.NewTaggedRepo(t)
 			testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ land a feature (#3)")
-			head := strings.TrimSpace(testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
+			head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 			routes := map[string]string{
 				pullCommitsPath(9):    `[` + apiCommit("h1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
 				commitPullsPath(head): `[` + apiPullRef(3, "2026-07-17T00:00:00Z", head) + `]`,

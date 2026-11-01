@@ -476,15 +476,7 @@ func TestMergedTagsOnAnUnbornHEADIsEmpty(t *testing.T) {
 func TestHeadTreesListsWhatHEADRecordsAsADirectory(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	gitlink := "160000," + testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD") + ",sub"
-	for _, rel := range []string{"haiku/a", "travel/onsen/b"} {
-		p := filepath.Join(dir, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(p, []byte(rel+"\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
+	writeFiles(t, dir, "haiku/a", "travel/onsen/b")
 	if err := os.Symlink("haiku", filepath.Join(dir, "currylink")); err != nil {
 		t.Fatal(err)
 	}
@@ -1111,17 +1103,8 @@ func TestGitPath(t *testing.T) {
 func TestDiffTreeFiles(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-	write := func(rel, content string) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, rel), []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("haiku/h.go", "package haiku\n")
-	write("curry/c.go", "package curry\n")
+	testutil.WriteFile(t, dir, "haiku/h.go", "package haiku\n")
+	testutil.WriteFile(t, dir, "curry/c.go", "package curry\n")
 	testutil.Git(t, dir, "akira-toriyama", "add", ".")
 	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= two subtrees")
 	two := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
@@ -1129,7 +1112,7 @@ func TestDiffTreeFiles(t *testing.T) {
 	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":truck:~ move a file across subtrees")
 	moved := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side", root)
-	write("side.txt", "side\n")
+	testutil.WriteFile(t, dir, "side.txt", "side\n")
 	testutil.Git(t, dir, "akira-toriyama", "add", ".")
 	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":memo:= on the side")
 	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "main")
@@ -1205,31 +1188,22 @@ func TestDiffTreeFilesReadsItsHeaderUnderLogOutputEncoding(t *testing.T) {
 // own diff (measured).
 func TestDiffTreeFilesAtAShallowBoundaryIsUnreadable(t *testing.T) {
 	dir := testutil.NewRepo(t)
-	write := func(rel, content string) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, rel), []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("haiku/a", "a\n")
+	testutil.WriteFile(t, dir, "haiku/a", "a\n")
 	testutil.Git(t, dir, "akira-toriyama", "add", ".")
 	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:(haiku)^ start haiku")
-	write("curry/b", "b\n")
+	testutil.WriteFile(t, dir, "curry/b", "b\n")
 	testutil.Git(t, dir, "akira-toriyama", "add", ".")
 	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:(curry)^ start curry")
 	boundary := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	// An unrelated history merged in: its root is inside the depth-2 clone.
 	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "--orphan", "side")
-	write("side/s", "s\n")
+	testutil.WriteFile(t, dir, "side/s", "s\n")
 	testutil.Git(t, dir, "akira-toriyama", "add", "side/s")
 	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":tada:= another root")
 	root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "-f", "main")
 	testutil.Git(t, dir, "akira-toriyama", "merge", "-q", "--allow-unrelated-histories", "--no-ff", "-m", "Merge branch 'side'", "side")
-	write("haiku/a", "a2\n")
+	testutil.WriteFile(t, dir, "haiku/a", "a2\n")
 	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-am", ":bug:(haiku)~ fix haiku")
 	above := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 

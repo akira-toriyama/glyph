@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -37,20 +35,17 @@ func TestReleaseBodyCapBoundary(t *testing.T) {
 }
 
 // truncationNotice is the mark a cut preview comment ends in. It names no
-// command, by ruling (t-pcfj, option C): it used to say `glyph preview --pr <N>
-// --notes` prints the whole document, but that command's stdout IS the body
-// the workflow posts, cut at the same place under the same notice
-// (TestPreviewCutInsideTheNotesStillClosesTheFold).
+// command: the command that would print the whole document prints the same
+// cut body (TestPreviewCutInsideTheNotesStillClosesTheFold). The ruling is
+// DESIGN §4's paragraph on the preview sticky comment's cap.
 const truncationNotice = "… truncated: the full preview exceeds GitHub's comment cap."
 
 // TestCommentTruncationBoundary: under and at the cap the body passes through
 // byte-identical and silent; over it, the result fits the cap, ends in the
 // notice, cuts at a line boundary, and says so on the diagnostic stream.
 func TestCommentTruncationBoundary(t *testing.T) {
-	var errBuf bytes.Buffer
-	oldErr := errOut
-	errOut = &errBuf
-	defer func() { errOut = oldErr }()
+	_, errBuf, restore := captureOut()
+	defer restore()
 
 	small := strings.Repeat("line\n", 10)
 	if got := truncateComment(small); got != small {
@@ -111,10 +106,8 @@ func foldLines(body string) (opened, closed int) {
 // look like one; TestCommentTruncationBoundary's fixture is flat and cannot
 // see this. Mutation row preview-truncation-leaves-the-notes-fold-open.
 func TestCommentTruncationClosesTheFoldItCutsInside(t *testing.T) {
-	var errBuf bytes.Buffer
-	oldErr := errOut
-	errOut = &errBuf
-	defer func() { errOut = oldErr }()
+	_, _, restore := captureOut()
+	defer restore()
 
 	const notice = "\n\n---\n\n… truncated: "
 	var notes strings.Builder
@@ -249,12 +242,10 @@ func TestPreviewCutInsideTheNotesStillClosesTheFold(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("preview --json exited %d\n%s", code, stderr)
 	}
-	var res struct {
+	type previewBody struct {
 		Body string `json:"body"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("preview --json stdout is not JSON: %v", err)
-	}
+	res := decodeJSON[previewBody](t, stdout)
 	if opened, closed := foldLines(res.Body); opened != 1 || closed != 1 || utf8.RuneCountInString(res.Body) > commentBodyMaxChars {
 		t.Fatalf("the --json body opens %d <details> block(s) and closes %d, at %d chars", opened, closed, utf8.RuneCountInString(res.Body))
 	}
@@ -338,7 +329,7 @@ func TestReleaseBodyCapCountsTheCompareLink(t *testing.T) {
 				t.Fatalf("release --dry-run %v exited %d, want 0\nstderr: %s", args, code, stderr)
 			}
 			n := 0
-			for _, p := range decodeReleaseLines(t, stdout).Packages {
+			for _, p := range decodeJSON[releaseVerdictLines](t, stdout).Packages {
 				n = max(n, utf8.RuneCountInString(p.Body))
 			}
 			return n

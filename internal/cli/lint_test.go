@@ -298,13 +298,14 @@ func endAnchoredPreset(t *testing.T) []byte {
 }
 
 // writeExecutable writes body at path (creating its directory) with the mode a
-// hook or an editor needs.
+// hook, an editor or a PATH stub needs; every executable the cli tests write
+// goes through it.
 func writeExecutable(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
 	}
-	if err := os.WriteFile(path, []byte(body), 0o700); err != nil { //nolint:gosec // git must be able to run it
+	if err := os.WriteFile(path, []byte(body), 0o700); err != nil { // #nosec G306 -- git, glyph and the hooks must be able to run it
 		t.Fatalf("write %s: %v", path, err)
 	}
 }

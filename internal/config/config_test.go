@@ -281,7 +281,9 @@ func TestLoadFileMissing(t *testing.T) {
 // refused. The call runs under a deadline so that regression fails here
 // instead of hanging the package until go test's -timeout; on the deadline the
 // blocked goroutine is left on a FIFO inside t.TempDir that nothing will ever
-// open for writing.
+// open for writing. The rows are testutil.NotAFileShapes' plus each one's
+// mode, copied: config's internal tests cannot import testutil, which imports
+// config.
 func TestLoadFileRefusesWhatIsNotARegularFile(t *testing.T) {
 	for _, c := range []struct {
 		shape, kind string

@@ -191,7 +191,7 @@ func TestPackagesWalkPlacesAShallowBoundaryByScopeAndSigil(t *testing.T) {
 	read := func(t *testing.T, stdout string) verdict {
 		t.Helper()
 		var v verdict
-		for _, p := range decodePackagesVerdict(t, stdout).Packages {
+		for _, p := range decodeJSON[packagesVerdict](t, stdout).Packages {
 			switch p.Path {
 			case "haiku":
 				v.haiku, v.next = p.Level, p.Next
@@ -327,7 +327,7 @@ func TestSinceTagPackagesPlacesABoundaryAndAnUnlistedCommitAlike(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("%s: bump --since-tag exited %d, want 0\nstdout: %s\nstderr: %s", where.name, code, stdout, stderr)
 		}
-		res := decodePackagesVerdict(t, stdout)
+		res := decodeJSON[packagesVerdict](t, stdout)
 		h, c := res.Packages[0], res.Packages[1]
 		if h.Level != "none" || c.Level != "patch" || len(c.Commits) != 2 {
 			t.Fatalf("%s: haiku = %s, curry = %s over %d commit(s); want none, and patch over both\nstderr: %s", where.name, h.Level, c.Level, len(c.Commits), stderr)

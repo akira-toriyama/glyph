@@ -32,7 +32,7 @@ func testClone(t *testing.T) (work, remote string) {
 // rev resolves a revision in dir to its full object name.
 func rev(t *testing.T, dir, r string) string {
 	t.Helper()
-	return strings.TrimSpace(testutil.Git(t, dir, "akira-toriyama", "rev-parse", r))
+	return testutil.Git(t, dir, "akira-toriyama", "rev-parse", r)
 }
 
 // zeros is git's null object name at this repository's object width.

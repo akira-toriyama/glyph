@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -75,6 +76,17 @@ func decodeErrorEnvelope(t *testing.T, stderr string) errEnvelope {
 	return *env.Error
 }
 
+// decodeJSON decodes a command's JSON stdout into T, failing the test when it
+// is not JSON.
+func decodeJSON[T any](t *testing.T, stdout string) T {
+	t.Helper()
+	var v T
+	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout)
+	}
+	return v
+}
+
 // setStdin points the lint --stdin input stream at s for one test.
 func setStdin(t *testing.T, s string) {
 	t.Helper()
@@ -105,4 +117,14 @@ func runGlyphCtx(t *testing.T, ctx context.Context, args ...string) (code int, s
 	root.SetErr(errBuf)
 	code = finish(root.ExecuteContext(ctx))
 	return code, outBuf.String(), errBuf.String()
+}
+
+// captureOut swaps the payload and diagnostic streams for the buffers it
+// returns, until restore is called — around a command (runGlyph) or a direct
+// call below RunE.
+func captureOut() (stdout, stderr *bytes.Buffer, restore func()) {
+	stdout, stderr = &bytes.Buffer{}, &bytes.Buffer{}
+	oldOut, oldErr := out, errOut
+	out, errOut = stdout, stderr
+	return stdout, stderr, func() { out, errOut = oldOut, oldErr }
 }

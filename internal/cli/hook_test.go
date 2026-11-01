@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -59,10 +58,7 @@ func TestHookInstallHonoursCoreHooksPath(t *testing.T) {
 
 func TestHookInstallRefusesAForeignHookWithUsageCode(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
-	hookPath := filepath.Join(dir, ".git", "hooks", "commit-msg")
-	if err := os.WriteFile(hookPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil { //nolint:gosec
-		t.Fatalf("seeding a foreign hook: %v", err)
-	}
+	writeExecutable(t, filepath.Join(dir, ".git", "hooks", "commit-msg"), "#!/bin/sh\nexit 0\n")
 	t.Chdir(dir)
 
 	code, _, stderr := runGlyph(t, "hook", "install")
@@ -269,7 +265,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 		}
 
 		t.Run("fixup", func(t *testing.T) {
-			appendFile(t, dir, "fixup.txt")
+			testutil.WriteFile(t, dir, "fixup.txt", "x\n")
 			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 			out, err := commitFlagsWith(dir, pathWithGlyph, "--fixup="+head)
 			if err != nil {
@@ -279,7 +275,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 		})
 
 		t.Run("squash", func(t *testing.T) {
-			appendFile(t, dir, "squash.txt")
+			testutil.WriteFile(t, dir, "squash.txt", "x\n")
 			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 			out, err := commitFlagsWith(dir, pathWithGlyph, "--squash="+head)
 			if err != nil {
@@ -289,7 +285,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 		})
 
 		t.Run("amend", func(t *testing.T) {
-			appendFile(t, dir, "amend.txt")
+			testutil.WriteFile(t, dir, "amend.txt", "x\n")
 			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 			out, err := commitFlagsWith(dir, pathWithGlyph, "--fixup=amend:"+head)
 			if err != nil {
@@ -333,7 +329,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 		// on MERGE_MSG, so the repository cannot be brought out of the merge.
 		t.Run("merge", func(t *testing.T) {
 			testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic")
-			appendFile(t, dir, "topic.txt")
+			testutil.WriteFile(t, dir, "topic.txt", "x\n")
 			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 			testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ land the topic")
 			testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "main")
@@ -358,7 +354,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 				"\n" +
 				"# Please enter the commit message for your changes. Lines starting\n" +
 				"# with '#' will be ignored, and an empty message aborts the commit.\n"
-			appendFile(t, dir, "template.txt")
+			testutil.WriteFile(t, dir, "template.txt", "x\n")
 			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 			if out, err := commitFileWith(t, dir, pathWithGlyph, msg); err != nil {
 				t.Fatalf("a valid message under git's template was rejected: %v\n%s", err, out)
@@ -367,7 +363,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 
 		t.Run("a violation under the template is still caught", func(t *testing.T) {
 			msg := "\nno gitmoji at all\n\n# Please enter the commit message for your changes.\n"
-			appendFile(t, dir, "bad.txt")
+			testutil.WriteFile(t, dir, "bad.txt", "x\n")
 			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 			if _, err := commitFileWith(t, dir, pathWithGlyph, msg); err == nil {
 				t.Fatal("cleanup swallowed a real violation — the template path must still lint")
@@ -375,13 +371,6 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 			testutil.Git(t, dir, "akira-toriyama", "reset", "-q")
 		})
 	})
-}
-
-func appendFile(t *testing.T, dir, name string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte("x\n"), 0o600); err != nil {
-		t.Fatalf("writing %s: %v", name, err)
-	}
 }
 
 // commitFlagsWith runs `git commit <flag>` (no -m) so git composes the subject.
@@ -531,10 +520,7 @@ func TestHookInstallJSONFalseIsTheHumanSummary(t *testing.T) {
 	if strings.Contains(line, "\n") {
 		t.Fatalf("--json output must be a single line, got:\n%s", line)
 	}
-	var res map[string]any
-	if err := json.Unmarshal([]byte(line), &res); err != nil {
-		t.Fatalf("hook install --json output is not valid JSON: %v\n%s", err, line)
-	}
+	res := decodeJSON[map[string]any](t, stdout)
 	hooks, ok := res["hooks"].([]any)
 	if !ok || len(hooks) == 0 {
 		t.Fatalf("compact hook-install JSON must carry a \"hooks\" array — one install writes N hooks: %s", line)
@@ -561,12 +547,6 @@ func TestHookInstallJSONFalseIsTheHumanSummary(t *testing.T) {
 // about it on every commit is the noise that trains people to stop reading
 // warnings; a current hook must stay silent for the same reason.
 func TestStaleHookIsReportedWhenTheHookItselfRuns(t *testing.T) {
-	write := func(t *testing.T, dir, body string) {
-		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, ".git", "hooks", "commit-msg"), []byte(body), 0o755); err != nil { //nolint:gosec
-			t.Fatalf("writing the hook: %v", err)
-		}
-	}
 	const stale = "#!/bin/sh\n# " + hook.Marker + "\nexit 0\n"
 	// The drift warning's wording (warnIfHookStale); the drifted case is what
 	// keeps a rewording from leaving the silent cases matching words nothing prints.
@@ -583,7 +563,7 @@ func TestStaleHookIsReportedWhenTheHookItselfRuns(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir, _ := testutil.NewTaggedRepo(t)
 			t.Chdir(dir)
-			write(t, dir, tc.body)
+			writeExecutable(t, filepath.Join(dir, ".git", "hooks", "commit-msg"), tc.body)
 			setStdin(t, ":bug:(x)~ fix a crash\n")
 
 			code, _, stderr := runGlyph(t, "lint", "--stdin")

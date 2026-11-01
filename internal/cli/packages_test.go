@@ -82,15 +82,6 @@ type packagesVerdict struct {
 	Reason string `json:"reason"`
 }
 
-func decodePackagesVerdict(t *testing.T, stdout string) packagesVerdict {
-	t.Helper()
-	var res packagesVerdict
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("bump --json stdout is not JSON: %v\n%s", err, stdout)
-	}
-	return res
-}
-
 // squashAcrossLines lands the defining probe on main: one squash commit
 // whose pull carried a ^ under haiku/ and a ~ under curry/. The squash's own
 // net diff touches both (as a real squash would); its inner commits exist
@@ -125,7 +116,7 @@ func TestBumpSinceTagPackagesMoveIndependently(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump --since-tag --json exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	res := decodePackagesVerdict(t, stdout)
+	res := decodeJSON[packagesVerdict](t, stdout)
 	if res.Current != "" || res.Level != "" || res.Next != "" {
 		t.Fatalf("scalars must be empty when packages are declared, got current=%q level=%q next=%q", res.Current, res.Level, res.Next)
 	}
@@ -215,7 +206,7 @@ func TestSinceTagPackagesSharedOnlyNoneParticipatesInNoLine(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("shared-only = exited %d, want 1\nstderr: %s", code, stderr)
 	}
-	res := decodePackagesVerdict(t, stdout)
+	res := decodeJSON[packagesVerdict](t, stdout)
 	for _, p := range res.Packages {
 		if p.Level != "none" || len(p.Commits) != 0 {
 			t.Fatalf("%s = %+v, want none over 0 commits", p.Path, p)
@@ -317,7 +308,7 @@ func TestSinceTagPackagesExcludedAuthorIsPlacedByItsFiles(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump --since-tag --json exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	res := decodePackagesVerdict(t, stdout)
+	res := decodeJSON[packagesVerdict](t, stdout)
 	h, c := res.Packages[0], res.Packages[1]
 	if h.Level != "none" || len(h.Commits) != 0 {
 		t.Fatalf("haiku = %+v, want none over 0 commits — placement moves no version", h)
@@ -385,7 +376,7 @@ func TestSinceTagPackagesReleasedOnOneLineStaysReleased(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump --since-tag exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	res := decodePackagesVerdict(t, stdout)
+	res := decodeJSON[packagesVerdict](t, stdout)
 	h, c := res.Packages[0], res.Packages[1]
 	if h.Current != "v0.2.0" || h.Level != "none" || len(h.Commits) != 0 {
 		t.Fatalf("haiku = %+v, want v0.2.0 with nothing pending (its ^ shipped under haiku/v0.2.0)", h)
@@ -413,7 +404,7 @@ func TestSinceTagPackagesSquashInnerCommitIsGovernedByItsMergePoint(t *testing.T
 	if code != 0 {
 		t.Fatalf("bump --since-tag exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	res := decodePackagesVerdict(t, stdout)
+	res := decodeJSON[packagesVerdict](t, stdout)
 	h, c := res.Packages[0], res.Packages[1]
 	if h.Level != "none" || len(h.Commits) != 0 {
 		t.Fatalf("haiku = %+v, want nothing pending (pull #7's merge point %.7s is under haiku/v0.2.0)", h, sha)
@@ -443,7 +434,7 @@ func TestSinceTagPackagesNoFilesAskedWithoutPackages(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump --since-tag exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	res := decodePackagesVerdict(t, stdout)
+	res := decodeJSON[packagesVerdict](t, stdout)
 	if res.Packages != nil || res.Next != "v0.2.0" {
 		t.Fatalf("the single line must answer as before, with no packages key: %s", stdout)
 	}
@@ -464,7 +455,7 @@ func TestNotesSinceTagPackages(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("notes --since-tag --json exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	var res struct {
+	type notesPerLine struct {
 		Sections []json.RawMessage `json:"sections"`
 		Packages []struct {
 			Path     string `json:"path"`
@@ -474,9 +465,7 @@ func TestNotesSinceTagPackages(t *testing.T) {
 			} `json:"sections"`
 		} `json:"packages"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("notes --json stdout is not JSON: %v\n%s", err, stdout)
-	}
+	res := decodeJSON[notesPerLine](t, stdout)
 	if res.Sections == nil || len(res.Sections) != 0 {
 		t.Fatalf("top-level sections must be [] in packages mode: %s", stdout)
 	}
@@ -576,7 +565,7 @@ func TestLintRangePackagesJudgesTheDiff(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("bump over the (haiku)= on a curry file exited %d, want 1 (every line none)\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	res := decodePackagesVerdict(t, stdout)
+	res := decodeJSON[packagesVerdict](t, stdout)
 	if h, c := res.Packages[0], res.Packages[1]; len(h.Commits) != 0 || len(c.Commits) != 1 || c.Level != "none" {
 		t.Fatalf("haiku = %+v, curry = %+v; want the = on curry's line alone, at none", h, c)
 	}
@@ -1130,7 +1119,7 @@ func TestBumpPackagesScalarsDescribeNoLine(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump --range --json exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	res := decodePackagesVerdict(t, stdout)
+	res := decodeJSON[packagesVerdict](t, stdout)
 	if res.Current != "" || res.Level != "" || res.Next != "" {
 		t.Fatalf("scalars describe no line under packages, got current=%q level=%q next=%q", res.Current, res.Level, res.Next)
 	}
@@ -1291,7 +1280,7 @@ func TestSinceTagPackagesCommitReleasedOnEveryLineIsDroppedNotRefused(t *testing
 			if code != 0 {
 				t.Fatalf("bump --since-tag --json exited %d, want 0 — the commit is released on every line\nstderr: %s", code, stderr)
 			}
-			res := decodePackagesVerdict(t, stdout)
+			res := decodeJSON[packagesVerdict](t, stdout)
 			h, c := res.Packages[0], res.Packages[1]
 			if h.Path != "haiku" || h.Next != "v0.1.1" || len(h.Commits) != 1 || h.Commits[0].SHA != cc.fix {
 				t.Fatalf("haiku = %+v, want v0.1.0 → v0.1.1 over the pending fix alone", h)

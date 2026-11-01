@@ -21,7 +21,10 @@ import (
 // very one it says is missing or named — and the walk's own incompleteness
 // answers, at 4 for a writing command, never at 3, the code the fleet's
 // gates and the installed hooks read as "the author wrote a bad message".
-// The exact integers are asserted, never truthiness (CLAUDE.md).
+// The cap is GitHub's count of listed entries, and a rename is one entry the
+// adapter returns under two names, so a whole listing of renames is whole and
+// the walk that read it is complete. The exact integers are asserted, never
+// truthiness (CLAUDE.md).
 
 // listing renders GET commits/{sha}'s files array: n modified files, each
 // path from pathf(i).
@@ -35,6 +38,29 @@ func listing(n int, pathf func(i int) string) string {
 
 func underNoPackage(i int) string { return fmt.Sprintf("docs/f%05d.md", i) }
 func underHaiku(i int) string     { return fmt.Sprintf("haiku/gen/f%d.go", i) }
+
+// renameListing renders n rename entries, each moving one file within
+// haiku/ — one entry, two names.
+func renameListing(n int) string {
+	entries := make([]string, 0, n)
+	for i := range n {
+		entries = append(entries, fmt.Sprintf(`{"filename":"haiku/gen/f%d.go","previous_filename":"haiku/old/f%d.go","status":"renamed"}`, i, i))
+	}
+	return `{"files":[` + strings.Join(entries, ",") + `]}`
+}
+
+// cappedPull lands pull #7 on main as one squash whose single inner commit
+// carries message and whose file listing is files — the shape the walk
+// asks the API for, since the inner commit exists on no branch.
+func cappedPull(t *testing.T, dir, message, files string) map[string]string {
+	t.Helper()
+	sha := testutil.Touch(t, dir, "akira-toriyama", "Add a season (#7)", "haiku/season.go")
+	return map[string]string{
+		commitPullsPath(sha):  `[` + apiPullRef(7, "2026-09-10T00:00:00Z", sha) + `]`,
+		pullCommitsPath(7):    `[` + apiCommit("h1", "akira-toriyama", message) + `]`,
+		commitFilesPath("h1"): files,
+	}
+}
 
 // TestReleasePackagesCappedRefusalIsNotTheGateCode: a capped inner commit
 // whose visible files attribution would refuse — under no package with a ^,
@@ -135,7 +161,7 @@ func TestPreviewPackagesCappedRefusalIsNotTheGateCode(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
 		}
-		res := decodePreviewLines(t, stdout)
+		res := decodeJSON[previewVerdictLines](t, stdout)
 		if len(res.Packages) != 0 {
 			t.Fatalf("packages = %+v, want none: a commit refused over a truncated listing is attributed to no line", res.Packages)
 		}
@@ -159,7 +185,7 @@ func TestPreviewPackagesCappedRefusalIsNotTheGateCode(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
 		}
-		res := decodePreviewLines(t, stdout)
+		res := decodeJSON[previewVerdictLines](t, stdout)
 		if len(res.Packages) != 1 || res.Packages[0].Path != "haiku" || res.Packages[0].PR != "minor" {
 			t.Fatalf("packages = %+v, want haiku minor from the files the listing did hold", res.Packages)
 		}
@@ -247,11 +273,7 @@ func TestWalkAndPreviewWarnAnUnreadListingInOneSentence(t *testing.T) {
 func TestSinceTagPackagesFilesCapIsAnIncompleteWalk(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	_, routes := squashAcrossLines(t, dir, 7)
-	capped := make([]string, 0, 3000)
-	for i := range 3000 {
-		capped = append(capped, fmt.Sprintf("haiku/gen/f%d.go", i))
-	}
-	routes[commitFilesPath("h1")] = apiFiles(capped...)
+	routes[commitFilesPath("h1")] = listing(github.CommitFilesCap, underHaiku)
 	usePR(t, walkServer(t, routes))
 	t.Chdir(dir)
 
@@ -262,6 +284,42 @@ func TestSinceTagPackagesFilesCapIsAnIncompleteWalk(t *testing.T) {
 	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "GitHub lists no more than that") {
 		t.Fatalf("the cap must be warned about:\n%s", stderr)
 	}
+}
+
+// TestReleasePackagesRenamesDoNotFalselyCapTheWalk (t-ft7p): a whole listing
+// of CommitFilesCap/2 renames is CommitFilesCap names and not one entry past
+// what GitHub lists, so the walk is complete and release answers the line
+// the renames moved. The control is the cap in rename entries, which is a
+// truncated listing however it is counted (mutation row
+// rename-second-name-counts-toward-the-files-cap).
+func TestReleasePackagesRenamesDoNotFalselyCapTheWalk(t *testing.T) {
+	dir, _ := packagesRepo(t)
+	routes := cappedPull(t, dir, ":sparkles:(haiku)^ move the generated files", renameListing(github.CommitFilesCap/2))
+	usePR(t, dryServer(t, routes))
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run")
+	if code != 0 {
+		t.Fatalf("release exited %d, want 0: %d renames are a whole listing\nstdout: %s\nstderr: %s", code, github.CommitFilesCap/2, stdout, stderr)
+	}
+	if strings.Contains(stderr, "GitHub lists no more than that") {
+		t.Fatalf("a whole listing of renames was reported capped:\n%s", stderr)
+	}
+	if !strings.Contains(stdout, "haiku/v0.2.0") {
+		t.Fatalf("the renames under haiku/ must move haiku:\n%s", stdout)
+	}
+
+	t.Run("control: the cap in rename entries is truncated", func(t *testing.T) {
+		dir, _ := packagesRepo(t)
+		routes := cappedPull(t, dir, ":sparkles:(haiku)^ move the generated files", renameListing(github.CommitFilesCap))
+		usePR(t, dryServer(t, routes))
+		t.Chdir(dir)
+
+		code, _, stderr := runGlyph(t, "release", "--dry-run")
+		if code != 4 || !strings.Contains(stderr, "maximum 3000 files") {
+			t.Fatalf("release exited %d, want 4 on a listing at the cap\nstderr: %s", code, stderr)
+		}
+	})
 }
 
 // TestSinceTagPackagesUnlistedFilesAreAnIncompleteWalk: GitHub answering 422
@@ -299,7 +357,7 @@ func TestSinceTagPackagesUnlistedFilesAreAnIncompleteWalk(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("bump --since-tag exited %d, want 0 (bump reports an incomplete walk, it does not act)\nstdout: %s\nstderr: %s", code, stdout, stderr)
 			}
-			res := decodePackagesVerdict(t, stdout)
+			res := decodeJSON[packagesVerdict](t, stdout)
 			h, c := res.Packages[0], res.Packages[1]
 			if h.Level != "minor" || len(h.Commits) != 1 {
 				t.Fatalf("haiku = %+v, want minor over h1 — its listing was whole", h)
@@ -369,8 +427,7 @@ func laterPage422Server(t *testing.T, routes map[string]string, sha, page1 strin
 			return
 		}
 		if r.URL.Query().Get("page") == "2" {
-			w.WriteHeader(http.StatusUnprocessableEntity)
-			fmt.Fprint(w, `{"message":"No commit found for SHA"}`)
+			answerUnknownSHA(w)
 			return
 		}
 		w.Header().Set("Link", fmt.Sprintf(`<http://%s%s?page=2>; rel="next"`, r.Host, r.URL.Path))
@@ -402,7 +459,7 @@ func TestSinceTagPackagesLaterPage422KeepsTheListedFiles(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump --since-tag exited %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	res := decodePackagesVerdict(t, stdout)
+	res := decodeJSON[packagesVerdict](t, stdout)
 	h, c := res.Packages[0], res.Packages[1]
 	if h.Level != "minor" || len(h.Commits) != 1 {
 		t.Fatalf("haiku = %+v, want minor over h1", h)

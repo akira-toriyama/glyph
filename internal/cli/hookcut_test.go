@@ -181,11 +181,11 @@ func TestInstalledHookJudgesAGitMergeByMergesCleanup(t *testing.T) {
 				t.Fatalf("hook install exit = %d\nstderr: %s", code, stderr)
 			}
 			testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "topic")
-			appendFile(t, dir, "topic.txt")
+			testutil.WriteFile(t, dir, "topic.txt", "x\n")
 			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 			testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--no-verify", "-m", ":sparkles:^ land the topic")
 			testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "main")
-			appendFile(t, dir, "main.txt")
+			testutil.WriteFile(t, dir, "main.txt", "x\n")
 			testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 			testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--no-verify", "-m", ":sparkles:^ move main")
 			for _, kv := range tc.config {

@@ -35,10 +35,7 @@ func TestVersionJSON(t *testing.T) {
 	if strings.Contains(line, "\n") {
 		t.Fatalf("--json output must be a single line, got:\n%s", line)
 	}
-	var info map[string]any
-	if uerr := json.Unmarshal([]byte(line), &info); uerr != nil {
-		t.Fatalf("version --json output is not valid JSON: %v\n%s", uerr, line)
-	}
+	info := decodeJSON[map[string]any](t, stdout)
 	if _, ok := info["version"]; !ok {
 		t.Fatalf("compact version JSON is missing the \"version\" field: %s", line)
 	}
@@ -63,14 +60,6 @@ func TestVersionRunsFromOptionsWithoutCobra(t *testing.T) {
 	var got version.Info
 	if uerr := json.Unmarshal([]byte(line), &got); uerr != nil || rest != "" || got != info {
 		t.Fatalf("versionRun --json from options wrote %q (decode: %v), want one compact line of %+v", stdout.String(), uerr, info)
-	}
-}
-
-// TestUnknownCommandIsUsage: a bare cobra parse error (unknown subcommand) must
-// map to the usage code through finish(), never to an unclassified code.
-func TestUnknownCommandIsUsage(t *testing.T) {
-	if code, _, _ := runGlyph(t, "no-such-command"); code != 2 {
-		t.Fatalf("unknown command should exit 2 (usage), got %d", code)
 	}
 }
 

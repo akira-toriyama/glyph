@@ -60,7 +60,8 @@ func TestStderrCarriesAnnotationsThenOneSievableEnvelope(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			stderr := captureErr(t)
+			_, stderr, restore := captureOut()
+			t.Cleanup(restore)
 			tc.emit()
 
 			lines := strings.Split(strings.TrimRight(stderr.String(), "\n"), "\n")

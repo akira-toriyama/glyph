@@ -44,7 +44,7 @@ func TestBumpMajorSubdirectoryLinesShareThePrefix(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump --since-tag exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	res := decodePackagesVerdict(t, stdout)
+	res := decodeJSON[packagesVerdict](t, stdout)
 	if len(res.Packages) != 2 {
 		t.Fatalf("packages = %+v, want two lines", res.Packages)
 	}
@@ -199,7 +199,7 @@ func TestSinceTagSelectsTheLineByMajor(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("--since-tag=%s exited %d\nstderr: %s", tag, code, stderr)
 		}
-		res := decodePackagesVerdict(t, stdout)
+		res := decodeJSON[packagesVerdict](t, stdout)
 		if len(res.Packages) != 1 || res.Packages[0].Path != want {
 			t.Errorf("--since-tag=%s selected %+v, want the %s line alone", tag, res.Packages, want)
 		}

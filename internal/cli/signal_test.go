@@ -144,10 +144,7 @@ func TestSecondSIGINTHardKills(t *testing.T) {
 	}
 	shim := t.TempDir()
 	marker := filepath.Join(shim, "pid")
-	script := "#!/bin/sh\necho $$ >" + marker + "\nPATH=" + filepath.Dir(realGit) + "\nexec git \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(shim, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeExecutable(t, filepath.Join(shim, "git"), "#!/bin/sh\necho $$ >"+marker+"\nPATH="+filepath.Dir(realGit)+"\nexec git \"$@\"\n")
 
 	stdinR, stdinW, err := os.Pipe()
 	if err != nil {
