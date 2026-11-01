@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"regexp"
 	"strconv"
 	"strings"
@@ -104,12 +103,10 @@ func TestNotesEmptyJSON(t *testing.T) {
 	if !strings.Contains(stdout, `"sections":[]`) {
 		t.Fatalf("sections must normalize to [], got:\n%s", stdout)
 	}
-	var res struct {
+	type notesReason struct {
 		Reason string `json:"reason"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("notes --json stdout is not JSON: %v\n%s", err, stdout)
-	}
+	res := decodeJSON[notesReason](t, stdout)
 	if res.Reason == "" {
 		t.Fatalf("reason must explain the empty verdict: %s", stdout)
 	}
@@ -133,15 +130,13 @@ func TestNotesJSONShape(t *testing.T) {
 	if strings.Count(strings.TrimRight(stdout, "\n"), "\n") != 0 {
 		t.Fatalf("notes --json must be a single line, got:\n%s", stdout)
 	}
-	var res struct {
+	type notesSections struct {
 		Sections []struct {
 			Title string   `json:"title"`
 			Lines []string `json:"lines"`
 		} `json:"sections"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("notes --json stdout is not JSON: %v\n%s", err, stdout)
-	}
+	res := decodeJSON[notesSections](t, stdout)
 	if len(res.Sections) != 2 {
 		t.Fatalf("want the Breaking Changes and Features sections, got %s", stdout)
 	}
@@ -217,12 +212,10 @@ func notesNoReleaseReason(t *testing.T, args ...string) string {
 	if code != 1 {
 		t.Fatalf("notes %v exited %d, want 1 — the case must land nothing in a section\nstdout: %s\nstderr: %s", args, code, stdout, stderr)
 	}
-	var res struct {
+	type notesReason struct {
 		Reason string `json:"reason"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("notes --json stdout is not JSON: %v\n%s", err, stdout)
-	}
+	res := decodeJSON[notesReason](t, stdout)
 	return res.Reason
 }
 
@@ -235,7 +228,7 @@ func bumpNoReleaseVerdict(t *testing.T, args ...string) packagesVerdict {
 	if code != 1 {
 		t.Fatalf("bump %v exited %d, want 1\nstdout: %s\nstderr: %s", args, code, stdout, stderr)
 	}
-	return decodePackagesVerdict(t, stdout)
+	return decodeJSON[packagesVerdict](t, stdout)
 }
 
 // wantBareLineReason requires the single line's spelling of the empty

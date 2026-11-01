@@ -5,11 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/akira-toriyama/glyph/v6/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
 // minimalConfig is the smallest glyph.toml the loader accepts — one pattern
@@ -111,26 +111,11 @@ func TestConfigUnloadableIsAFailure(t *testing.T) {
 // unknown with the permissions fix. The load runs under a deadline so that
 // regression fails here instead of hanging the package.
 func TestConfigNotARegularFileIsAFailure(t *testing.T) {
-	for _, c := range []struct {
-		shape, kind string
-		stage       func(path string) error
-	}{
-		{"a directory", "a directory", func(p string) error { return os.Mkdir(p, 0o700) }},
-		{"a named pipe", "a named pipe", func(p string) error { return syscall.Mkfifo(p, 0o600) }},
-		{"a link to nothing", "a broken symbolic link", func(p string) error { return os.Symlink("nowhere.toml", p) }},
-		{"a link to itself", "a broken symbolic link", func(p string) error { return os.Symlink(filepath.Base(p), p) }},
-		{"a link through a file", "a broken symbolic link", func(p string) error {
-			if err := os.WriteFile(filepath.Join(filepath.Dir(p), "shared.toml"), nil, 0o600); err != nil {
-				return err
-			}
-			return os.Symlink("shared.toml/glyph.toml", p)
-		}},
-		{"a link to an over-long name", "a broken symbolic link", func(p string) error { return os.Symlink(strings.Repeat("a", 300), p) }},
-	} {
-		t.Run(c.shape, func(t *testing.T) {
+	for _, c := range testutil.NotAFileShapes {
+		t.Run(c.Shape, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "glyph.toml")
-			if err := c.stage(path); err != nil {
-				t.Fatalf("staging %s at %s: %v", c.kind, path, err)
+			if err := c.Stage(path); err != nil {
+				t.Fatalf("staging %s at %s: %v", c.Kind, path, err)
 			}
 			type answer struct {
 				root string
@@ -146,13 +131,13 @@ func TestConfigNotARegularFileIsAFailure(t *testing.T) {
 			select {
 			case a = <-done:
 			case <-time.After(10 * time.Second):
-				t.Fatalf("loading %s as glyph.toml has not returned after 10s — doctor hangs there", c.kind)
+				t.Fatalf("loading %s as glyph.toml has not returned after 10s — doctor hangs there", c.Kind)
 			}
 			ch := checkConfig(a.root, nil, a.cfg, a.err)
 			if ch.Status != StatusFail {
-				t.Fatalf("%s on %s = %s (%s), want %s — what is at the path was observed", idConfigLoads, c.kind, ch.Status, ch.Observed, StatusFail)
+				t.Fatalf("%s on %s = %s (%s), want %s — what is at the path was observed", idConfigLoads, c.Kind, ch.Status, ch.Observed, StatusFail)
 			}
-			if want := "glyph.toml at " + a.root + " is " + c.kind; !strings.Contains(ch.Observed, want) {
+			if want := "glyph.toml at " + a.root + " is " + c.Kind; !strings.Contains(ch.Observed, want) {
 				t.Errorf("the observation must name what is there (%q), got %q", want, ch.Observed)
 			}
 			if !strings.Contains(ch.Fix, "remove it") || !strings.Contains(ch.Fix, "glyph init") {

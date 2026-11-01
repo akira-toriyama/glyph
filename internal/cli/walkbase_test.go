@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -50,10 +48,8 @@ func TestSinceTagMaintenanceBranchStepsItsOwnLine(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump --since-tag on release/v1 exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	var res struct{ Current, Next string }
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("not JSON: %v\n%s", err, stdout)
-	}
+	type bumpVerdict struct{ Current, Next string }
+	res := decodeJSON[bumpVerdict](t, stdout)
 	if res.Current != "v1.9.1" || res.Next != "v1.9.2" {
 		t.Errorf("current/next = %s/%s, want v1.9.1/v1.9.2 — the maintenance line steps from its own release, never from the next major's tag", res.Current, res.Next)
 	}
@@ -132,7 +128,7 @@ func TestPackagesFrozenCoordinateSeesItsOwnTags(t *testing.T) {
 		t.Fatalf("bump --since-tag at the frozen coordinate exited %d, want 0\nstderr: %s", code, stderr)
 	}
 	got := map[string]string{}
-	for _, p := range decodePackagesVerdict(t, stdout).Packages {
+	for _, p := range decodeJSON[packagesVerdict](t, stdout).Packages {
 		got[p.Path] = p.Current + ":" + p.Level
 	}
 	if got["haiku"] != "v0.1.0:minor" || got["curry"] != "v0.1.0:none" {
@@ -460,17 +456,10 @@ func TestSinceTagBelowOnAnUndeclaredLineIsUsage(t *testing.T) {
 // release out of existence — and the count excludes the bot authors the walk
 // itself never asks about.
 func TestSinceTagUnboundedWalkRefused(t *testing.T) {
-	dir, _ := testutil.NewTaggedRepo(t)
-	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
 	// 199 human commits (plus the fixture's root) and 10 bot commits: 200
 	// walk-visible, exactly AT the cap. The bot commits prove the guard counts
 	// what the walk VISITS, not raw history length.
-	for i := range 199 {
-		testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= human commit %d", i))
-	}
-	for i := range 10 {
-		testutil.Commit(t, dir, "dependabot[bot]", fmt.Sprintf(":robot:= chore(fleet): sync %d", i))
-	}
+	dir := testutil.NewUntaggedHistory(t, 199, 10)
 	t.Chdir(dir)
 
 	// One more visible commit crosses the cap: both resolved forms must refuse
@@ -538,7 +527,7 @@ func TestSinceTagPackagesATagNamesALine(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump --since-tag=haiku/v0.1.0 --json exited %d\nstderr: %s", code, stderr)
 	}
-	if res := decodePackagesVerdict(t, stdout); len(res.Packages) != 1 || res.Packages[0].Path != "haiku" {
+	if res := decodeJSON[packagesVerdict](t, stdout); len(res.Packages) != 1 || res.Packages[0].Path != "haiku" {
 		t.Fatalf("a selected line must be the ONLY verdict, got %s", stdout)
 	}
 }
@@ -597,7 +586,7 @@ func TestSinceTagPackagesACandidateTagNamesALine(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump --since-tag=haiku/v0.2.0-rc.1 --json exited %d\nstderr: %s", code, stderr)
 	}
-	res := decodePackagesVerdict(t, stdout)
+	res := decodeJSON[packagesVerdict](t, stdout)
 	if len(res.Packages) != 1 || res.Packages[0].Path != "haiku" {
 		t.Fatalf("a candidate names its line, and that line is the ONLY verdict — a sibling walking from haiku's candidate re-folds what it released; got %s", stdout)
 	}
@@ -609,7 +598,7 @@ func TestSinceTagPackagesACandidateTagNamesALine(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump --since-tag=haiku/nightly --json exited %d\nstderr: %s", code, stderr)
 	}
-	if res := decodePackagesVerdict(t, stdout); len(res.Packages) != 2 {
+	if res := decodeJSON[packagesVerdict](t, stdout); len(res.Packages) != 2 {
 		t.Fatalf("a tag that is not version-shaped on any line names no line — every line walks from it; got %s", stdout)
 	}
 }
@@ -642,7 +631,7 @@ func TestSinceTagPackagesBelowNothingUnderTheBoundNamesTheBound(t *testing.T) {
 	if strings.Contains(stderr, "no version tag on the") {
 		t.Fatalf("the line HAS a tag — the diagnosis must not claim otherwise:\n%s", stderr)
 	}
-	res := decodePackagesVerdict(t, stdout)
+	res := decodeJSON[packagesVerdict](t, stdout)
 	if len(res.Packages) != 1 || res.Packages[0].Path != "haiku" || res.Packages[0].Current != "v0.0.0" {
 		t.Fatalf("below: selects haiku alone, stepping from v0.0.0 before its first release, got %s", stdout)
 	}
@@ -677,7 +666,7 @@ func TestSinceTagPackagesUntaggedLineWalksTheWholeHistory(t *testing.T) {
 	if !strings.Contains(stderr, "no version tag on the curry/ line(s) in HEAD's history") || !strings.Contains(stderr, "cut curry/v0.0.0") {
 		t.Fatalf("the whole-history warning must name the untagged line and its remedy:\n%s", stderr)
 	}
-	res := decodePackagesVerdict(t, stdout)
+	res := decodeJSON[packagesVerdict](t, stdout)
 	h, c := res.Packages[0], res.Packages[1]
 	if h.Level != "none" {
 		t.Fatalf("haiku = %+v, want none (its only change is under haiku/v0.1.0)", h)

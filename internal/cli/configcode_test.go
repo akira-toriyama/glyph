@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -13,25 +12,12 @@ import (
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
-// The config a verdict command loads is the YARDSTICK, not the subject. On
-// lint / bump / notes / preview / release the thing being judged is a commit,
-// so a glyph.toml that will not load means no commit was judged at all —
-// reporting the gate code 3 there tells a CI gate a commit was rejected when
-// none was read (t-c6r5). DESIGN §5 already scopes 3 that way ("a commit
-// message under `lint`, a repository's own configuration under `doctor`");
-// these tests are what makes the code obey it.
-//
-// Three live consequences ride on this, which is why the exact integers are
-// asserted and not merely "non-zero":
-//
-//   - lint.yml's default-branch push arm swallows exit 3 alone. An unreadable
-//     glyph.toml classified as 3 returned a GREEN gate having judged nothing.
-//   - the installed commit-msg and pre-push hooks block on exit 3 alone. A
-//     typo in glyph.toml classified as 3 blocked every commit in the clone —
-//     including the commit that would repair the typo.
-//   - the release-notes action's tag-time step (goreleaser.yml runs it)
-//     publishes exit 3 as the wedge escape's placeholder. A glyph.toml classified as 3 there ships a release
-//     whose body blames a commit nobody judged.
+// On a verdict command (lint / bump / notes / preview / release) no config
+// failure is the gate code 3: an unreadable glyph.toml is 4, and a missing
+// one, an unparseable one or one that is not a regular file is 2. The exact
+// integers are asserted, never "non-zero", because mechanisms branch on them;
+// DESIGN §5 (the exit-code contract's yardstick paragraph) names which, and
+// why.
 
 // seedConfig overwrites the fixture repo's glyph.toml with body.
 func seedConfig(t *testing.T, dir, body string) string {
@@ -131,27 +117,6 @@ func TestValidConfigStillPasses(t *testing.T) {
 	}
 }
 
-// notAFile stages the shapes other than a regular file that t-zvax measured at
-// a glyph.toml path: a directory, a named pipe, and a link that resolves to no
-// file — to nothing, to itself, through a regular file, to a name past
-// NAME_MAX (255). kind is the phrase config.NotAFileError names it by.
-var notAFile = []struct {
-	shape, kind string
-	stage       func(path string) error
-}{
-	{"a directory", "a directory", func(p string) error { return os.Mkdir(p, 0o700) }},
-	{"a named pipe", "a named pipe", func(p string) error { return syscall.Mkfifo(p, 0o600) }},
-	{"a link to nothing", "a broken symbolic link", func(p string) error { return os.Symlink("nowhere.toml", p) }},
-	{"a link to itself", "a broken symbolic link", func(p string) error { return os.Symlink(filepath.Base(p), p) }},
-	{"a link through a file", "a broken symbolic link", func(p string) error {
-		if err := os.WriteFile(filepath.Join(filepath.Dir(p), "shared.toml"), nil, 0o600); err != nil {
-			return err
-		}
-		return os.Symlink("shared.toml/glyph.toml", p)
-	}},
-	{"a link to an over-long name", "a broken symbolic link", func(p string) error { return os.Symlink(strings.Repeat("a", 300), p) }},
-}
-
 // runGlyphWithin is runGlyph under a deadline, for a run a regression can
 // block for good: open(2) on a named pipe waits for a writer, and a FIFO named
 // glyph.toml hung every command that loaded it (t-zvax). On the deadline the
@@ -190,9 +155,9 @@ func runGlyphWithin(t *testing.T, d time.Duration, args ...string) (code int, st
 // nothing the missing file's remedy, which init refuses. The message is asserted beside the code because
 // 2 is also what a bad flag answers.
 func TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile(t *testing.T) {
-	for _, k := range notAFile {
+	for _, k := range testutil.NotAFileShapes {
 		for _, args := range [][]string{{"lint", "--stdin"}, {"bump", "--range", "v0.1.0..HEAD"}} {
-			t.Run(k.shape+"/"+args[0], func(t *testing.T) {
+			t.Run(k.Shape+"/"+args[0], func(t *testing.T) {
 				dir, _ := testutil.NewTaggedRepo(t)
 				top, err := filepath.EvalSymlinks(dir) // git names the real path
 				if err != nil {
@@ -202,8 +167,8 @@ func TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile(t *testing.T) {
 				if err := os.Remove(path); err != nil {
 					t.Fatalf("removing glyph.toml: %v", err)
 				}
-				if err := k.stage(path); err != nil {
-					t.Fatalf("staging %s at %s: %v", k.kind, path, err)
+				if err := k.Stage(path); err != nil {
+					t.Fatalf("staging %s at %s: %v", k.Kind, path, err)
 				}
 				t.Chdir(dir)
 
@@ -217,7 +182,7 @@ func TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile(t *testing.T) {
 				// Both halves of the remedy: glyph init refuses a path that
 				// is not a regular file, so without "remove it" the
 				// refusal sends the user into a second one.
-				if !strings.Contains(env.Message, path+" is "+k.kind) || !strings.Contains(env.Message, "remove it") ||
+				if !strings.Contains(env.Message, path+" is "+k.Kind) || !strings.Contains(env.Message, "remove it") ||
 					!strings.Contains(env.Message, "glyph init") {
 					t.Errorf("the refusal must name what is at the path and hand over the remedy, got %q", env.Message)
 				}

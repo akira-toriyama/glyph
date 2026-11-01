@@ -321,6 +321,26 @@ unlandable = 'rebase with --autosquash before it lands'
 	}
 }
 
+// TestFirstLine pins FirstLine's contract (fold.go): the one subject
+// definition fold refusals, lint findings and the notes fallback share is the
+// first line with its CR trimmed, so a CRLF message — the GitHub API hands one
+// back verbatim — never presents `subject\r`.
+func TestFirstLine(t *testing.T) {
+	for name, tc := range map[string]struct{ in, want string }{
+		"LF subject and body":   {":bug:~ fix a crash\n\nBody.", ":bug:~ fix a crash"},
+		"CRLF subject and body": {"fixup! :bug:~ fix a crash\r\nBody.", "fixup! :bug:~ fix a crash"},
+		"lone trailing CR":      {":bug:~ fix a crash\r", ":bug:~ fix a crash"},
+		"single line":           {":bug:~ fix a crash", ":bug:~ fix a crash"},
+		"empty message":         {"", ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := FirstLine(tc.in); got != tc.want {
+				t.Errorf("FirstLine(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestDecidingReasonNamesTheCommitThatDecided: the reason is the oldest row
 // at the folded level, and on a promoted range the oldest '%' row even when a
 // '!' before it reaches the same level — the '%' is what chose the version.

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -283,20 +282,12 @@ func TestSinceTagFallbackSharesShaWithAnExpandedPR(t *testing.T) {
 	usePR(t, srv)
 	t.Chdir(dir)
 
-	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.0", "--json")
+	code, shas, stderr := verdictSHAs(t, "bump", "--since-tag=v0.1.0")
 	if code != 0 {
 		t.Fatalf("bump exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	var res struct {
-		Commits []struct {
-			SHA string `json:"sha"`
-		} `json:"commits"`
-	}
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("not JSON: %v\n%s", err, stdout)
-	}
-	if len(res.Commits) != 1 {
-		t.Fatalf("verdict counts %d commits, want 1 (the fallback must dedup against the expanded PR): %+v", len(res.Commits), res.Commits)
+	if len(shas) != 1 {
+		t.Fatalf("verdict counts %d commits, want 1 (the fallback must dedup against the expanded PR): %v", len(shas), shas)
 	}
 }
 
@@ -394,7 +385,7 @@ func TestSinceTagFreePrefixBangFallbackIsMajor(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("a bang fallback exited %d, want 0 (it must MAJOR, not vanish)\nstderr: %s", code, stderr)
 	}
-	var res struct {
+	type bumpVerdict struct {
 		Level   string `json:"level"`
 		Next    string `json:"next"`
 		Commits []struct {
@@ -403,9 +394,7 @@ func TestSinceTagFreePrefixBangFallbackIsMajor(t *testing.T) {
 			Subject string `json:"subject"`
 		} `json:"commits"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("not JSON: %v\n%s", err, stdout)
-	}
+	res := decodeJSON[bumpVerdict](t, stdout)
 	// major CLASSIFICATION, 0.x STEP: the repository is at v0.1.0, so the
 	// breaking commit steps the minor while still reading as major everywhere
 	// a level is published.

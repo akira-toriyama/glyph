@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -50,12 +49,18 @@ func walkHandler(t *testing.T, routes map[string]string) http.HandlerFunc {
 			return
 		}
 		if body == apiUnknownSHA {
-			w.WriteHeader(http.StatusUnprocessableEntity)
-			fmt.Fprint(w, `{"message":"No commit found for SHA"}`)
+			answerUnknownSHA(w)
 			return
 		}
 		fmt.Fprint(w, body)
 	}
+}
+
+// answerUnknownSHA writes GitHub's answer for a commit it does not know: 422,
+// "No commit found for SHA".
+func answerUnknownSHA(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusUnprocessableEntity)
+	fmt.Fprint(w, `{"message":"No commit found for SHA"}`)
 }
 
 // recordingWalkServer is walkServer plus the request paths it answered, in
@@ -177,23 +182,22 @@ func mergeInto(t *testing.T, dir, author, merger, branch, subject string, messag
 	return mp
 }
 
-// verdictSHAs runs bump --json over revRange's walk and returns the
-// participating commits' SHAs — the shape every "counted exactly once" test
-// asserts on.
+// verdictSHAs runs glyph with args — a bump invocation — with --json appended,
+// and returns the verdict's participating commits' SHAs: the shape every
+// "counted exactly once" test asserts on. A non-zero exit returns the code and
+// stderr with no SHAs, for the caller to assert.
 func verdictSHAs(t *testing.T, args ...string) (code int, shas []string, stderr string) {
 	t.Helper()
 	code, stdout, stderr := runGlyph(t, append(args, "--json")...)
 	if code != 0 {
 		return code, nil, stderr
 	}
-	var res struct {
+	type bumpSHAs struct {
 		Commits []struct {
 			SHA string `json:"sha"`
 		} `json:"commits"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("not JSON: %v\n%s", err, stdout)
-	}
+	res := decodeJSON[bumpSHAs](t, stdout)
 	for _, c := range res.Commits {
 		shas = append(shas, c.SHA)
 	}
@@ -345,20 +349,12 @@ func TestSinceTagRebaseMergedPRDoesNotDoubleCount(t *testing.T) {
 	usePR(t, srv)
 	t.Chdir(dir)
 
-	code, stdout, stderr := runGlyph(t, "bump", "--since-tag", "--json")
+	code, shas, stderr := verdictSHAs(t, "bump", "--since-tag")
 	if code != 0 {
 		t.Fatalf("bump over a rebase-merged PR exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	var res struct {
-		Commits []struct {
-			SHA string `json:"sha"`
-		} `json:"commits"`
-	}
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("not JSON: %v\n%s", err, stdout)
-	}
-	if len(res.Commits) != 2 {
-		t.Fatalf("verdict counts %d commits, want exactly the PR's 2 (no double count): %+v", len(res.Commits), res.Commits)
+	if len(shas) != 2 {
+		t.Fatalf("verdict counts %d commits, want exactly the PR's 2 (no double count): %v", len(shas), shas)
 	}
 	if strings.Contains(stderr, "::warning::") {
 		t.Fatalf("a rebase-merged PR is normal, not a direct push — no warnings:\n%s", stderr)
@@ -588,20 +584,12 @@ func TestSinceTagSharedPreSquashCommitCountsOnce(t *testing.T) {
 	usePR(t, srv)
 	t.Chdir(dir)
 
-	code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.1.0", "--json")
+	code, shas, stderr := verdictSHAs(t, "bump", "--since-tag=v0.1.0")
 	if code != 0 {
 		t.Fatalf("bump over a stacked pair exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	var res struct {
-		Commits []struct {
-			SHA string `json:"sha"`
-		} `json:"commits"`
-	}
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("not JSON: %v\n%s", err, stdout)
-	}
-	if len(res.Commits) != 2 {
-		t.Fatalf("verdict counts %d commits, want 2 (a1 once + b1): %+v", len(res.Commits), res.Commits)
+	if len(shas) != 2 {
+		t.Fatalf("verdict counts %d commits, want 2 (a1 once + b1): %v", len(shas), shas)
 	}
 	if !strings.Contains(stderr, "::notice::") || !strings.Contains(stderr, "a1") {
 		t.Fatalf("the dedup must announce the shared commit with a ::notice:: naming it:\n%s", stderr)
@@ -849,7 +837,7 @@ func TestSinceTagStackedRebaseMergePlacesTheRewrittenHalf(t *testing.T) {
 	usePR(t, srv)
 	t.Chdir(dir)
 
-	code, shas, stderr := verdictSHAs(t, "bump", "--since-tag=v0.2.0", "--json")
+	code, shas, stderr := verdictSHAs(t, "bump", "--since-tag=v0.2.0")
 	if code != 0 {
 		t.Fatalf("the pending :bug:~ is in range and must release: exit %d\nstderr: %s", code, stderr)
 	}
@@ -902,7 +890,7 @@ func TestSinceTagRebaseOverABaseMergeCommitStillAligns(t *testing.T) {
 	usePR(t, srv)
 	t.Chdir(dir)
 
-	code, shas, stderr := verdictSHAs(t, "bump", "--since-tag=v0.2.0", "--json")
+	code, shas, stderr := verdictSHAs(t, "bump", "--since-tag=v0.2.0")
 	if code != 0 {
 		t.Fatalf("the pending :bug:~ is in range and must release: exit %d\nstderr: %s", code, stderr)
 	}

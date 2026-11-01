@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -87,10 +86,7 @@ func TestReleaseDraftOnNoneKeepsThePlaceholderByID(t *testing.T) {
 	if writes[0].body["tag_name"] != "Unreleased" {
 		t.Errorf("PATCH body = %+v, want the placeholder tag", writes[0].body)
 	}
-	var v releaseVerdict
-	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
-		t.Fatalf("not one JSON object: %v\n%s", err, stdout)
-	}
+	v := decodeJSON[releaseVerdict](t, stdout)
 	if v.Action != "update" || v.Tag != "Unreleased" || v.Level != "none" {
 		t.Errorf("verdict = %+v, want action update, tag %q, level none", v, "Unreleased")
 	}
@@ -143,10 +139,7 @@ func TestReleaseDraftOnNoneOffConvergesThePlaceholderAway(t *testing.T) {
 	if len(writes) != 1 || writes[0].method != "DELETE" || writes[0].path != releasesPath+"/11" {
 		t.Fatalf("writes = %+v, want exactly one DELETE of release 11", writes)
 	}
-	var raw map[string]any
-	if err := json.Unmarshal([]byte(stdout), &raw); err != nil {
-		t.Fatalf("not one JSON object: %v\n%s", err, stdout)
-	}
+	raw := decodeJSON[map[string]any](t, stdout)
 	if raw["action"] != "delete" {
 		t.Errorf("action = %v, want delete", raw["action"])
 	}
@@ -168,13 +161,11 @@ func TestReleaseDraftOnNoneReasonIsTheNoneReason(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("release exited %d, want 1 (no release is due)\nstderr: %s", code, stderr)
 	}
-	var v struct {
+	type noneVerdict struct {
 		Tag    string `json:"tag"`
 		Reason string `json:"reason"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
-		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout)
-	}
+	v := decodeJSON[noneVerdict](t, stdout)
 	if v.Tag != "Unreleased" || !strings.HasPrefix(v.Reason, "no release: 1 commit(s) participate in ") || !strings.HasSuffix(v.Reason, " and every level is none") {
 		t.Fatalf("tag %q, reason %q — a maintained none reports the none reason, not its oldest = commit", v.Tag, v.Reason)
 	}

@@ -1,7 +1,6 @@
 package walk
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -185,17 +184,10 @@ func TestSinceTagBaseIsAReleaseHEADContains(t *testing.T) {
 // excludes the bot authors the walk itself never asks about. The refusal one
 // commit past the cap, and its exit 4 and escape, are that cli test's.
 func TestWholeHistoryAtTheCapStillWalks(t *testing.T) {
-	dir, _ := testutil.NewTaggedRepo(t)
-	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "v0.1.0")
 	// 199 human commits (plus the fixture's root) and 10 bot commits: 200
 	// walk-visible, exactly AT the cap. The bot commits prove the guard counts
 	// what the walk VISITS, not raw history length.
-	for i := range 199 {
-		testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= human commit %d", i))
-	}
-	for i := range 10 {
-		testutil.Commit(t, dir, "dependabot[bot]", fmt.Sprintf(":robot:= chore(fleet): sync %d", i))
-	}
+	dir := testutil.NewUntaggedHistory(t, 199, 10)
 
 	revRange, _, base, err := at(dir).sinceTagRange(t.Context(), testutil.Config(t), Auto)
 	if err != nil {

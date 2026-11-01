@@ -320,7 +320,7 @@ func TestBumpPRJSONVerdict(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump --pr --json exited %d, want 0", code)
 	}
-	var res struct {
+	type bumpVerdict struct {
 		Level   string `json:"level"`
 		Next    string `json:"next"`
 		Commits []struct {
@@ -329,9 +329,7 @@ func TestBumpPRJSONVerdict(t *testing.T) {
 		} `json:"commits"`
 		Reason string `json:"reason"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("not JSON: %v\n%s", err, stdout)
-	}
+	res := decodeJSON[bumpVerdict](t, stdout)
 	if res.Level != "minor" || res.Next != "v0.2.0" {
 		t.Fatalf("verdict = %+v, want minor → v0.2.0", res)
 	}

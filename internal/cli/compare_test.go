@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,21 +33,6 @@ func writeFooter(t *testing.T, content string) string {
 		t.Fatal(err)
 	}
 	return path
-}
-
-// releaseDryRunJSON runs `release --dry-run --json` with args and decodes the
-// verdict; wantCode is the exact exit code the run must give.
-func releaseDryRunJSON(t *testing.T, wantCode int, args ...string) releaseVerdict {
-	t.Helper()
-	code, stdout, stderr := runGlyph(t, append([]string{"release", "--dry-run", "--json"}, args...)...)
-	if code != wantCode {
-		t.Fatalf("release --dry-run --json %v exited %d, want %d\nstderr: %s", args, code, wantCode, stderr)
-	}
-	var v releaseVerdict
-	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
-		t.Fatalf("not one JSON object: %v\n%s", err, stdout)
-	}
-	return v
 }
 
 // TestNotesSinceTagEndsWithTheCompareLink: `notes --since-tag` is a body
@@ -304,7 +288,7 @@ func TestCompareLinkNeedsAFullShaEnd(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("release --target %s exited %d, want 0\nstderr: %s", target, code, stderr)
 			}
-			res := decodeReleaseLines(t, stdout)
+			res := decodeJSON[releaseVerdictLines](t, stdout)
 			if len(res.Packages) != 2 {
 				t.Fatalf("packages = %+v, want both lines", res.Packages)
 			}
@@ -363,7 +347,7 @@ func TestCompareLinkNeedsNotes(t *testing.T) {
 		if code != 1 {
 			t.Fatalf("release exited %d, want 1\nstderr: %s", code, stderr)
 		}
-		res := decodeReleaseLines(t, stdout)
+		res := decodeJSON[releaseVerdictLines](t, stdout)
 		if len(res.Packages) != 2 {
 			t.Fatalf("packages = %+v, want both lines", res.Packages)
 		}
@@ -382,7 +366,7 @@ func TestCompareLinkNeedsNotes(t *testing.T) {
 		if code != 1 {
 			t.Fatalf("release exited %d, want 1\nstderr: %s", code, stderr)
 		}
-		res = decodeReleaseLines(t, stdout)
+		res = decodeJSON[releaseVerdictLines](t, stdout)
 		if len(res.Packages) != 2 {
 			t.Fatalf("packages = %+v, want both lines", res.Packages)
 		}
@@ -438,7 +422,7 @@ func TestReleasePackagesCompareLinkPerLine(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("release exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	res := decodeReleaseLines(t, stdout)
+	res := decodeJSON[releaseVerdictLines](t, stdout)
 	if len(res.Packages) != 2 {
 		t.Fatalf("packages = %+v, want both lines", res.Packages)
 	}
@@ -506,7 +490,7 @@ func TestPackagesCompareLinkNeedsATagBase(t *testing.T) {
 		usePR(t, dryServer(t, routes))
 		t.Chdir(dir)
 
-		res := decodeReleaseLines(t, func() string {
+		res := decodeJSON[releaseVerdictLines](t, func() string {
 			code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--json", "--target", goldenTarget)
 			if code != 0 {
 				t.Fatalf("release exited %d, want 0\nstderr: %s", code, stderr)

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"strings"
 	"testing"
@@ -10,16 +9,6 @@ import (
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 	"github.com/akira-toriyama/glyph/v6/internal/walk"
 )
-
-// captureOut swaps the payload and diagnostic streams for the buffers it
-// returns, until restore is called — around a command (runGlyph) or a direct
-// call below RunE.
-func captureOut() (stdout, stderr *bytes.Buffer, restore func()) {
-	stdout, stderr = &bytes.Buffer{}, &bytes.Buffer{}
-	oldOut, oldErr := out, errOut
-	out, errOut = stdout, stderr
-	return stdout, stderr, func() { out, errOut = oldOut, oldErr }
-}
 
 func rangeSource(revRange string) source {
 	return source{kind: sourceRange, sourceFlags: sourceFlags{rng: revRange}}

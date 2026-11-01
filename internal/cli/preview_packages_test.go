@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"maps"
 	"net/http"
@@ -38,15 +37,6 @@ type previewVerdictLines struct {
 		PR       string `json:"pr"`
 		Pending  string `json:"pending"`
 	} `json:"packages"`
-}
-
-func decodePreviewLines(t *testing.T, stdout string) previewVerdictLines {
-	t.Helper()
-	var res previewVerdictLines
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("preview --json stdout is not JSON: %v\n%s", err, stdout)
-	}
-	return res
 }
 
 // crossLinePull is the open-pull twin of squashAcrossLines: pull #9's
@@ -94,7 +84,7 @@ func TestPreviewPackagesOneVerdictPerTouchedLine(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	res := decodePreviewLines(t, stdout)
+	res := decodeJSON[previewVerdictLines](t, stdout)
 	if res.Current != "" || res.Level != "" || res.Next != "" {
 		t.Fatalf("scalars must describe no line under packages: %s", stdout)
 	}
@@ -144,7 +134,7 @@ func TestPreviewPackagesFoldsEachLinesPendingSide(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	res := decodePreviewLines(t, stdout)
+	res := decodeJSON[previewVerdictLines](t, stdout)
 	h, c := res.Packages[0], res.Packages[1]
 	if h.Pending != "none" || h.Level != "minor" {
 		t.Fatalf("haiku = %+v, want nothing pending and the PR's minor", h)
@@ -171,7 +161,7 @@ func TestPreviewPackagesUntaggedLinesSkipTheWalk(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	res := decodePreviewLines(t, stdout)
+	res := decodeJSON[previewVerdictLines](t, stdout)
 	if !res.Packages[0].Untagged || res.Packages[0].Next != "v0.1.0" {
 		t.Fatalf("haiku = %+v, want untagged with a first release of v0.1.0", res.Packages[0])
 	}
@@ -195,7 +185,7 @@ func TestPreviewPackagesNothingTouchedSaysSo(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	res := decodePreviewLines(t, stdout)
+	res := decodeJSON[previewVerdictLines](t, stdout)
 	if len(res.Packages) != 0 {
 		t.Fatalf("packages = %+v, want none", res.Packages)
 	}
@@ -637,7 +627,7 @@ func TestPreviewPackagesExcludedAuthorIsPlacedByItsFiles(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	res := decodePreviewLines(t, stdout)
+	res := decodeJSON[previewVerdictLines](t, stdout)
 	if len(res.Packages) != 2 || res.Packages[0].Path != "haiku" || res.Packages[0].PR != "none" || res.Packages[1].Path != "curry" || res.Packages[1].PR != "patch" {
 		t.Fatalf("a bot commit places its line in the preview (verdict none) beside the human's: %s", stdout)
 	}
@@ -694,7 +684,7 @@ func TestPreviewPackagesWalkIgnoresAnUntouchedUntaggedLine(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("preview exited %d, want 0 — a declared line the pull does not touch must not refuse it\nstderr: %s", code, stderr)
 	}
-	res := decodePreviewLines(t, stdout)
+	res := decodeJSON[previewVerdictLines](t, stdout)
 	if len(res.Packages) != 1 || res.Packages[0].Path != "haiku" {
 		t.Fatalf("packages = %+v, want haiku alone — the untouched lines are not mentioned", res.Packages)
 	}
@@ -760,7 +750,7 @@ func TestPreviewPackagesUntaggedTouchedLineAgreesWithItsVerdict(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	res := decodePreviewLines(t, stdout)
+	res := decodeJSON[previewVerdictLines](t, stdout)
 	var curry struct{ next, pending string }
 	for _, p := range res.Packages {
 		if p.Path == "curry" {
@@ -846,7 +836,7 @@ func TestPreviewPackagesUnlistedFilesAreCaveated(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("preview exited %d, want 0 — an unread listing is caveated, not a failure\nstdout: %s\nstderr: %s", code, stdout, stderr)
 			}
-			res := decodePreviewLines(t, stdout)
+			res := decodeJSON[previewVerdictLines](t, stdout)
 			var lines []string
 			for _, p := range res.Packages {
 				lines = append(lines, p.Path+":"+p.PR)
@@ -886,7 +876,7 @@ func TestPreviewPackagesUnlistedFilesAreCaveated(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("preview exited %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
 		}
-		res := decodePreviewLines(t, stdout)
+		res := decodeJSON[previewVerdictLines](t, stdout)
 		headline := "<!-- glyph-pr-verdict -->\n⏸️ Merging this PR moves nothing in the files GitHub listed — no commit participating in it touches a declared package there.\n"
 		caveat := "(c1). A line one of those commits touches in files GitHub did not list may move all the same, so treat \"moves nothing\" as a floor rather than the answer."
 		if !strings.HasPrefix(res.Body, headline) || !strings.Contains(res.Body, caveat) {
@@ -910,7 +900,7 @@ func TestPreviewPackagesUnlistedFilesAreCaveated(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("preview exited %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
 		}
-		res := decodePreviewLines(t, stdout)
+		res := decodeJSON[previewVerdictLines](t, stdout)
 		pending := "> The pending side of this fold is INCOMPLETE: GitHub answered 422 for the file listing of 1 commit(s), so a line they touch in files it did not list could not be read (c1 in pull request #7"
 		if !strings.Contains(res.Body, pending) {
 			t.Fatalf("the pending caveat must name the merged pull's unlisted commit:\n%s", res.Body)

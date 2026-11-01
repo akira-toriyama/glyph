@@ -110,16 +110,14 @@ func TestBumpNoneJSON(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("docs-only bump --json exited %d, want 1", code)
 	}
-	var res struct {
+	type noneVerdict struct {
 		Current string          `json:"current"`
 		Level   string          `json:"level"`
 		Next    *string         `json:"next"`
 		Commits json.RawMessage `json:"commits"`
 		Reason  string          `json:"reason"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("bump --json stdout is not JSON: %v\n%s", err, stdout)
-	}
+	res := decodeJSON[noneVerdict](t, stdout)
 	if res.Level != "none" || res.Next != nil {
 		t.Fatalf("bump --json none verdict = %+v, want level none and no next", res)
 	}
@@ -149,7 +147,7 @@ func TestBumpJSONShape(t *testing.T) {
 	if strings.Count(strings.TrimRight(stdout, "\n"), "\n") != 0 {
 		t.Fatalf("bump --json must be a single line, got:\n%s", stdout)
 	}
-	var res struct {
+	type bumpVerdict struct {
 		Current string `json:"current"`
 		Level   string `json:"level"`
 		Next    string `json:"next"`
@@ -161,9 +159,7 @@ func TestBumpJSONShape(t *testing.T) {
 		} `json:"commits"`
 		Reason string `json:"reason"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("bump --json stdout is not JSON: %v\n%s", err, stdout)
-	}
+	res := decodeJSON[bumpVerdict](t, stdout)
 	if res.Current != "v0.1.0" || res.Level != "minor" || res.Next != "v0.2.0" {
 		t.Fatalf("bump --json = %+v, want v0.1.0 → minor → v0.2.0", res)
 	}
@@ -313,14 +309,12 @@ func TestBump0xBangStaysIn0x(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	var res struct {
+	type bumpVerdict struct {
 		Current string `json:"current"`
 		Level   string `json:"level"`
 		Next    string `json:"next"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("not JSON: %v\n%s", err, stdout)
-	}
+	res := decodeJSON[bumpVerdict](t, stdout)
 	if res.Current != "v0.1.0" || res.Next != "v0.2.0" {
 		t.Fatalf("verdict = %s → %s, want v0.1.0 → v0.2.0", res.Current, res.Next)
 	}
@@ -342,14 +336,12 @@ func TestBumpPromoteReachesV1(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("bump exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	var res struct {
+	type bumpVerdict struct {
 		Level  string `json:"level"`
 		Next   string `json:"next"`
 		Reason string `json:"reason"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("not JSON: %v\n%s", err, stdout)
-	}
+	res := decodeJSON[bumpVerdict](t, stdout)
 	if res.Next != "v1.0.0" {
 		t.Fatalf("next = %q, want v1.0.0", res.Next)
 	}
@@ -398,15 +390,13 @@ func TestBumpWarnsEachWarnedCommit(t *testing.T) {
 	if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "work in progress") {
 		t.Fatalf("the warned commit must annotate:\n%s", stderr)
 	}
-	var res struct {
+	type bumpRows struct {
 		Commits []struct {
 			Sigil string `json:"sigil"`
 			Warn  string `json:"warn"`
 		} `json:"commits"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("bump --json: %v\n%s", err, stdout)
-	}
+	res := decodeJSON[bumpRows](t, stdout)
 	var warned int
 	for _, c := range res.Commits {
 		if c.Warn != "" {

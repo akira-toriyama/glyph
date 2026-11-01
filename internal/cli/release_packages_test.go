@@ -39,15 +39,6 @@ type releaseVerdictLines struct {
 	Reason string `json:"reason"`
 }
 
-func decodeReleaseLines(t *testing.T, stdout string) releaseVerdictLines {
-	t.Helper()
-	var res releaseVerdictLines
-	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
-		t.Fatalf("release --json stdout is not JSON: %v\n%s", err, stdout)
-	}
-	return res
-}
-
 // TestReleasePackagesWritesOneDraftPerLine: the defining probe's release —
 // two POSTs in config order, haiku/v0.2.0 and curry/v0.1.1, each a DRAFT
 // carrying its own line's notes and the hand marker, no delete; stdout is
@@ -91,14 +82,11 @@ func TestReleasePackagesWritesOneDraftPerLine(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("release --json exited %d\nstderr: %s", code, stderr)
 	}
-	res := decodeReleaseLines(t, stdout)
+	res := decodeJSON[releaseVerdictLines](t, stdout)
 	if res.Current != "" || res.Level != "" || res.Tag != "" || res.Action != "" || res.URL != "" {
 		t.Fatalf("scalars must be empty under packages: %s", stdout)
 	}
-	var top map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(stdout), &top); err != nil {
-		t.Fatalf("release --json stdout is not JSON: %v\n%s", err, stdout)
-	}
+	top := decodeJSON[map[string]json.RawMessage](t, stdout)
 	if _, ok := top["next"]; ok {
 		t.Fatalf("next names one line's version, so it is absent under packages: %s", stdout)
 	}
@@ -224,7 +212,7 @@ func TestReleasePackagesNoneLineConvergesOnlyItsOwnDraft(t *testing.T) {
 	if len(writes) != 2 || writes[0].method != "POST" || writes[1].method != "DELETE" || !strings.HasSuffix(writes[1].path, "/51") {
 		t.Fatalf("writes = %+v, want haiku's POST then the DELETE of curry's residual draft 51, and fish's untouched", writes)
 	}
-	res := decodeReleaseLines(t, stdout)
+	res := decodeJSON[releaseVerdictLines](t, stdout)
 	if res.Packages[1].Path != "curry" || res.Packages[1].Action != "delete" || res.Packages[1].Level != "none" {
 		t.Fatalf("curry = %+v, want a none verdict whose action is delete", res.Packages[1])
 	}
@@ -417,7 +405,7 @@ func TestReleasePackagesAllNoneExitsOne(t *testing.T) {
 	if len(writes) != 1 || writes[0].method != "DELETE" {
 		t.Fatalf("writes = %+v, want only the DELETE of haiku's residual draft", writes)
 	}
-	res := decodeReleaseLines(t, stdout)
+	res := decodeJSON[releaseVerdictLines](t, stdout)
 	if !strings.Contains(res.Reason, "every line folds to none") || res.Packages[0].Action != "delete" || res.Packages[1].Action != "none" {
 		t.Fatalf("verdict = %+v", res)
 	}
@@ -430,7 +418,7 @@ func TestReleasePackagesAllNoneExitsOne(t *testing.T) {
 	if code != 1 || len(writes) != 0 {
 		t.Fatalf("release --dry-run exited %d with writes %+v, want 1 and none\nstderr: %s", code, writes, stderr)
 	}
-	if res := decodeReleaseLines(t, stdout); res.Target != "" {
+	if res := decodeJSON[releaseVerdictLines](t, stdout); res.Target != "" {
 		t.Fatalf("a dry run that would write no draft has no target to report: %s", stdout)
 	}
 }
@@ -744,7 +732,7 @@ func TestReleasePackagesATagConvergesOneLineAlone(t *testing.T) {
 	if len(writes) != 2 || writes[0].method != "POST" || writes[0].body["tag_name"] != "haiku/v0.2.0" || writes[1].method != "DELETE" || writes[1].path != releasesPath+"/61" {
 		t.Fatalf("writes = %+v, want haiku's POST and then the bare residue's DELETE; curry's draft 91 is not this run's", writes)
 	}
-	if res := decodeReleaseLines(t, stdout); len(res.Packages) != 1 || res.Packages[0].Path != "haiku" {
+	if res := decodeJSON[releaseVerdictLines](t, stdout); len(res.Packages) != 1 || res.Packages[0].Path != "haiku" {
 		t.Fatalf("a selected line is the only verdict: %s", stdout)
 	}
 }
@@ -769,7 +757,7 @@ func TestReleasePackagesACandidateTagConvergesOneLineAlone(t *testing.T) {
 	if len(writes) != 1 || writes[0].method != "POST" || writes[0].body["tag_name"] != "haiku/v0.2.0" {
 		t.Fatalf("writes = %+v, want haiku's POST alone; curry's draft 91 is not this run's", writes)
 	}
-	if res := decodeReleaseLines(t, stdout); len(res.Packages) != 1 || res.Packages[0].Path != "haiku" {
+	if res := decodeJSON[releaseVerdictLines](t, stdout); len(res.Packages) != 1 || res.Packages[0].Path != "haiku" {
 		t.Fatalf("a selected line is the only verdict: %s", stdout)
 	}
 }
@@ -871,7 +859,7 @@ func TestReleasePackagesDraftOnNoneMaintainsAPlaceholderPerLine(t *testing.T) {
 		t.Fatalf("release --json exited %d, want 1\nstderr: %s", code, stderr)
 	}
 	head := testutil.Git(t, ".", "akira-toriyama", "rev-parse", "HEAD")
-	if res := decodeReleaseLines(t, stdout); res.Target != head {
+	if res := decodeJSON[releaseVerdictLines](t, stdout); res.Target != head {
 		t.Fatalf("target = %q, want %s — the placeholders point at it: %s", res.Target, head, stdout)
 	}
 }
@@ -894,7 +882,7 @@ func TestReleasePackagesURLLandsOnItsLine(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("release --json exited %d, want 0 (curry moves)\nstderr: %s", code, stderr)
 	}
-	res := decodeReleaseLines(t, stdout)
+	res := decodeJSON[releaseVerdictLines](t, stdout)
 	if len(res.Packages) != 2 || res.Packages[0].Path != "haiku" || res.Packages[1].Path != "curry" {
 		t.Fatalf("packages = %+v, want haiku then curry, as declared", res.Packages)
 	}

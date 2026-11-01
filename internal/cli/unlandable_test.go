@@ -163,13 +163,13 @@ func TestUnlandableAmendEndToEnd(t *testing.T) {
 	}
 	pathWithGlyph := filepath.Dir(glyphBin) + string(os.PathListSeparator) + os.Getenv("PATH")
 
-	appendFile(t, dir, "b.txt")
+	testutil.WriteFile(t, dir, "b.txt", "x\n")
 	testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix b")
 	target := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	t.Run("the hook lets --fixup=amend: through, loudly", func(t *testing.T) {
-		appendFile(t, dir, "b2.txt")
+		testutil.WriteFile(t, dir, "b2.txt", "x\n")
 		testutil.Git(t, dir, "akira-toriyama", "add", "-A")
 		out, err := commitFlagsWith(dir, pathWithGlyph, "--fixup=amend:"+target)
 		if err != nil {
@@ -184,10 +184,7 @@ func TestUnlandableAmendEndToEnd(t *testing.T) {
 	// corrected. git refuses -m and -F with --fixup=reword:, so an editor is
 	// the only way to hand it one; the subject line stays git's.
 	editor := filepath.Join(t.TempDir(), "reword-editor")
-	script := "#!/bin/sh\n{ head -n1 \"$1\"; printf '\\n:boom:! fix b\\n'; } > \"$1.new\" && mv \"$1.new\" \"$1\"\n"
-	if err := os.WriteFile(editor, []byte(script), 0o700); err != nil { // #nosec G306 -- an editor must be executable
-		t.Fatalf("write editor: %v", err)
-	}
+	writeExecutable(t, editor, "#!/bin/sh\n{ head -n1 \"$1\"; printf '\\n:boom:! fix b\\n'; } > \"$1.new\" && mv \"$1.new\" \"$1\"\n")
 	t.Run("the hook lets --fixup=reword: through, loudly", func(t *testing.T) {
 		cmd := exec.Command("git", "-C", dir, "commit", "-q", "--fixup=reword:"+target)
 		cmd.Env = testutil.GitEnv("akira-toriyama", "PATH="+pathWithGlyph, "GIT_EDITOR="+editor)
@@ -246,10 +243,7 @@ func TestShippedPresetRefusesAnUnsquashedAmend(t *testing.T) {
 	target := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	editor := filepath.Join(t.TempDir(), "reword-editor")
-	script := "#!/bin/sh\n{ head -n1 \"$1\"; printf '\\n:boom:! fix b\\n'; } > \"$1.new\" && mv \"$1.new\" \"$1\"\n"
-	if err := os.WriteFile(editor, []byte(script), 0o700); err != nil { // #nosec G306 -- an editor must be executable
-		t.Fatalf("write editor: %v", err)
-	}
+	writeExecutable(t, editor, "#!/bin/sh\n{ head -n1 \"$1\"; printf '\\n:boom:! fix b\\n'; } > \"$1.new\" && mv \"$1.new\" \"$1\"\n")
 	cmd := exec.Command("git", "-C", dir, "commit", "-q", "--fixup=reword:"+target)
 	cmd.Env = testutil.GitEnv("akira-toriyama", "GIT_EDITOR="+editor)
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -372,7 +366,7 @@ func TestPackagesFixupIsUnlandableEndToEnd(t *testing.T) {
 		if code != int(core.CodeOK) {
 			t.Fatalf("bump --range = %d, want 0\nstderr: %s", code, stderr)
 		}
-		res := decodePackagesVerdict(t, stdout)
+		res := decodeJSON[packagesVerdict](t, stdout)
 		if len(res.Packages) != 2 {
 			t.Fatalf("packages = %+v, want haiku and curry", res.Packages)
 		}

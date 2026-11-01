@@ -112,16 +112,16 @@ func TestInitRunsFromOptionsWithoutCobra(t *testing.T) {
 // under a deadline, so that regression fails here instead of hanging the
 // package.
 func TestInitRefusesWhatIsNotARegularFile(t *testing.T) {
-	for _, k := range notAFile {
+	for _, k := range testutil.NotAFileShapes {
 		for _, force := range []bool{false, true} {
-			name, args := k.shape, []string{"init", "--gemoji"}
+			name, args := k.Shape, []string{"init", "--gemoji"}
 			if force {
 				name, args = name+"/force", append(args, "--force")
 			}
 			t.Run(name, func(t *testing.T) {
 				t.Chdir(t.TempDir())
-				if err := k.stage("glyph.toml"); err != nil {
-					t.Fatalf("staging %s as glyph.toml: %v", k.shape, err)
+				if err := k.Stage("glyph.toml"); err != nil {
+					t.Fatalf("staging %s as glyph.toml: %v", k.Shape, err)
 				}
 				before, err := os.Lstat("glyph.toml")
 				if err != nil {
@@ -130,10 +130,10 @@ func TestInitRefusesWhatIsNotARegularFile(t *testing.T) {
 				code, stdout, stderr := runGlyphWithin(t, 30*time.Second, args...)
 				if code != int(core.CodeUsage) {
 					t.Fatalf("glyph %s over %s exited %d, want exactly %d\nstdout: %s\nstderr: %s",
-						strings.Join(args, " "), k.shape, code, core.CodeUsage, stdout, stderr)
+						strings.Join(args, " "), k.Shape, code, core.CodeUsage, stdout, stderr)
 				}
 				env := decodeErrorEnvelope(t, stderr)
-				if !strings.Contains(env.Message, "glyph.toml is "+k.kind) || !strings.Contains(env.Message, "remove it, then re-run glyph init") {
+				if !strings.Contains(env.Message, "glyph.toml is "+k.Kind) || !strings.Contains(env.Message, "remove it, then re-run glyph init") {
 					t.Errorf("the refusal must name what is at the path and send the user to remove it, got %q", env.Message)
 				}
 				if after, err := os.Lstat("glyph.toml"); err != nil || after.Mode().Type() != before.Mode().Type() {

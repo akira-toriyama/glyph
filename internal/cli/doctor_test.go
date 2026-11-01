@@ -141,16 +141,8 @@ func useDoctorCheckout(t *testing.T, workflow string) {
 // doctorReport is the decoded --json surface. Declaring it here pins the keys:
 // a renamed field breaks the decode, where a substring assertion would not.
 type doctorReport struct {
-	Repo   string `json:"repo"`
-	Checks []struct {
-		ID       string   `json:"id"`
-		Status   string   `json:"status"`
-		Observed string   `json:"observed"`
-		Expected string   `json:"expected"`
-		Message  string   `json:"message"`
-		Fix      string   `json:"fix"`
-		Details  []string `json:"details"`
-	} `json:"checks"`
+	Repo   string        `json:"repo"`
+	Checks []doctorCheck `json:"checks"`
 	Counts struct {
 		Pass    int `json:"pass"`
 		Fail    int `json:"fail"`
@@ -160,39 +152,23 @@ type doctorReport struct {
 	OK bool `json:"ok"`
 }
 
+type doctorCheck struct {
+	ID       string   `json:"id"`
+	Status   string   `json:"status"`
+	Observed string   `json:"observed"`
+	Expected string   `json:"expected"`
+	Message  string   `json:"message"`
+	Fix      string   `json:"fix"`
+	Details  []string `json:"details"`
+}
+
 // runDoctorJSON runs doctor against a repository object and decodes the report.
 func runDoctorJSON(t *testing.T, settings, workflow string) (int, doctorReport, string) {
 	t.Helper()
 	usePR(t, doctorServer(t, apiRepoObject(settings)))
 	useDoctorCheckout(t, workflow)
 	code, stdout, stderr := runGlyph(t, "doctor", "--json")
-	return code, decodeDoctorJSON(t, stdout), stderr
-}
-
-// decodeDoctorJSON decodes a doctor --json payload whose fixture the caller has
-// already arranged — the firing tests need to install a hook and stub PATH
-// between the checkout and the run, which runDoctorJSON's one-call shape
-// cannot express.
-func decodeDoctorJSON(t *testing.T, stdout string) doctorReport {
-	t.Helper()
-	var rep doctorReport
-	if err := json.Unmarshal([]byte(stdout), &rep); err != nil {
-		t.Fatalf("doctor --json is not JSON: %v\n%s", err, stdout)
-	}
-	return rep
-}
-
-// status returns one check's status by id, failing the test when the id is
-// absent — the ids are the report's API, so a missing one is a contract break.
-func status(t *testing.T, rep doctorReport, id string) string {
-	t.Helper()
-	for _, c := range rep.Checks {
-		if c.ID == id {
-			return c.Status
-		}
-	}
-	t.Fatalf("no check %q in the report (ids are the stable machine surface)", id)
-	return ""
+	return code, decodeJSON[doctorReport](t, stdout), stderr
 }
 
 // TestDoctorHealthyRepositoryPasses: the configuration the fleet is supposed to
@@ -287,7 +263,7 @@ func TestDoctorRunsFromOptionsWithoutCobra(t *testing.T) {
 	if err := doctorRun(context.Background(), doctorOptions{repo: "akira-toriyama/glyph", json: true}); err != nil {
 		t.Fatalf("doctorRun from options: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}
-	if rep := decodeDoctorJSON(t, stdout.String()); !rep.OK || rep.Repo != "akira-toriyama/glyph" {
+	if rep := decodeJSON[doctorReport](t, stdout.String()); !rep.OK || rep.Repo != "akira-toriyama/glyph" {
 		t.Fatalf("doctorRun from options: ok=%t repo=%q, want ok on akira-toriyama/glyph\nstderr: %s", rep.OK, rep.Repo, stderr.String())
 	}
 	stdout.Reset()
@@ -299,17 +275,24 @@ func TestDoctorRunsFromOptionsWithoutCobra(t *testing.T) {
 	}
 }
 
-// installCurrentHook writes THIS binary's commit-msg hook into the checkout's
-// hooks directory, exactly as `glyph hook install` would — the byte-identical
-// arm, the only one the probe fires.
-func installCurrentHook(t *testing.T) {
+// installCurrentHook writes THIS binary's script for each of kinds at
+// .git/hooks/<Name>, the bytes `glyph hook install` writes (the mode is
+// writeExecutable's; nothing reads it). For commit-msg that is the
+// byte-identical arm, the only one doctor's probe fires.
+func installCurrentHook(t *testing.T, kinds ...hook.Kind) {
 	t.Helper()
-	if err := os.MkdirAll(".git/hooks", 0o750); err != nil {
-		t.Fatalf("mkdir hooks: %v", err)
+	for _, k := range kinds {
+		writeExecutable(t, filepath.Join(".git", "hooks", k.Name), k.Script)
 	}
-	if err := os.WriteFile(".git/hooks/commit-msg", []byte(hook.Kinds()[0].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
-		t.Fatalf("install hook: %v", err)
-	}
+}
+
+// writeInertHook writes body at path, relative to the checkout, without the
+// exec bit: a hook doctor must only read. A regression that classifies it
+// Current and fires it then dies at exec instead of running whatever glyph
+// PATH holds.
+func writeInertHook(t *testing.T, path, body string) {
+	t.Helper()
+	testutil.WriteFile(t, ".", path, body)
 }
 
 // stubGlyphOnPATH prepends a directory holding a fake `glyph` that exits with
@@ -319,10 +302,7 @@ func installCurrentHook(t *testing.T) {
 func stubGlyphOnPATH(t *testing.T, code int) {
 	t.Helper()
 	dir := t.TempDir()
-	script := fmt.Sprintf("#!/bin/sh\nexit %d\n", code)
-	if err := os.WriteFile(filepath.Join(dir, "glyph"), []byte(script), 0o700); err != nil { // #nosec G306 -- PATH stubs must be executable
-		t.Fatalf("write stub: %v", err)
-	}
+	writeExecutable(t, filepath.Join(dir, "glyph"), fmt.Sprintf("#!/bin/sh\nexit %d\n", code))
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
@@ -338,11 +318,11 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 	t.Run("a working glyph blocks the probe", func(t *testing.T) {
 		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 		useDoctorCheckout(t, pinnedCaller)
-		installCurrentHook(t)
+		installCurrentHook(t, hook.Kinds()[0])
 		stubGlyphOnPATH(t, 3)
 
 		code, stdout, stderr := runGlyph(t, "doctor", "--json")
-		rep := decodeDoctorJSON(t, stdout)
+		rep := decodeJSON[doctorReport](t, stdout)
 		if code != 0 {
 			t.Fatalf("doctor exited %d, want 0\nstderr: %s", code, stderr)
 		}
@@ -356,14 +336,14 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 	t.Run("a broken glyph is a silent no-op, and that is a FAIL", func(t *testing.T) {
 		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 		useDoctorCheckout(t, pinnedCaller)
-		installCurrentHook(t)
+		installCurrentHook(t, hook.Kinds()[0])
 		// 127: what the wrapper yields when its source clone is gone or the
 		// build fails. The hook forwards only the gate code and exits 0 — the
 		// quiet direction.
 		stubGlyphOnPATH(t, 127)
 
 		code, stdout, stderr := runGlyph(t, "doctor", "--json")
-		rep := decodeDoctorJSON(t, stdout)
+		rep := decodeJSON[doctorReport](t, stdout)
 		if code != 3 {
 			t.Fatalf("a silently dead local gate must fail doctor (exit 3), got %d\nstderr: %s", code, stderr)
 		}
@@ -395,11 +375,11 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		if err := os.WriteFile("glyph.toml", cfg, 0o600); err != nil {
 			t.Fatalf("write glyph.toml: %v", err)
 		}
-		installCurrentHook(t)
+		installCurrentHook(t, hook.Kinds()[0])
 		stubGlyphOnPATH(t, 0)
 
 		code, stdout, stderr := runGlyph(t, "doctor", "--json")
-		rep := decodeDoctorJSON(t, stdout)
+		rep := decodeJSON[doctorReport](t, stdout)
 		if code != 0 {
 			t.Fatalf("doctor exited %d, want 0\nstderr: %s", code, stderr)
 		}
@@ -420,15 +400,15 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		if err := os.Remove("glyph.toml"); err != nil {
 			t.Fatalf("remove glyph.toml: %v", err)
 		}
-		installCurrentHook(t)
+		installCurrentHook(t, hook.Kinds()[0])
 		stubGlyphOnPATH(t, 2)
 
 		code, stdout, stderr := runGlyph(t, "doctor", "--json")
-		rep := decodeDoctorJSON(t, stdout)
+		rep := decodeJSON[doctorReport](t, stdout)
 		if code != 3 {
 			t.Fatalf("doctor exited %d, want 3 — glyph-toml-loads fails\nstderr: %s", code, stderr)
 		}
-		if got := status(t, rep, "glyph-toml-loads"); got != "fail" {
+		if got := checkByID(t, rep, "glyph-toml-loads").Status; got != "fail" {
 			t.Errorf("glyph-toml-loads = %s, want fail", got)
 		}
 		c := checkByID(t, rep, "commit-msg-hook-fires")
@@ -444,16 +424,11 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 	t.Run("a current pre-push hook with nothing fired beside it is advice", func(t *testing.T) {
 		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 		useDoctorCheckout(t, pinnedCaller)
-		if err := os.MkdirAll(".git/hooks", 0o750); err != nil {
-			t.Fatalf("mkdir hooks: %v", err)
-		}
-		if err := os.WriteFile(".git/hooks/pre-push", []byte(hook.Kinds()[1].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
-			t.Fatalf("install pre-push: %v", err)
-		}
+		installCurrentHook(t, hook.Kinds()[1])
 		stubGlyphOnPATH(t, 127)
 
 		code, stdout, stderr := runGlyph(t, "doctor", "--json")
-		rep := decodeDoctorJSON(t, stdout)
+		rep := decodeJSON[doctorReport](t, stdout)
 		if code != 0 {
 			t.Fatalf("doctor exited %d, want 0 — advice never moves the exit\nstderr: %s", code, stderr)
 		}
@@ -473,15 +448,12 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 	t.Run("a remote with no recorded default branch is advice on the pre-push hook", func(t *testing.T) {
 		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 		useDoctorCheckout(t, pinnedCaller)
-		installCurrentHook(t)
-		if err := os.WriteFile(".git/hooks/pre-push", []byte(hook.Kinds()[1].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
-			t.Fatalf("install pre-push: %v", err)
-		}
+		installCurrentHook(t, hook.Kinds()[0], hook.Kinds()[1])
 		stubGlyphOnPATH(t, 3)
 		testutil.Git(t, ".", "akira-toriyama", "remote", "add", "origin", "https://example.invalid/o/r.git")
 
 		code, stdout, stderr := runGlyph(t, "doctor", "--json")
-		rep := decodeDoctorJSON(t, stdout)
+		rep := decodeJSON[doctorReport](t, stdout)
 		if code != 0 {
 			t.Fatalf("doctor exited %d, want 0 — advice never moves the exit\nstderr: %s", code, stderr)
 		}
@@ -493,7 +465,7 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 
 		testutil.Git(t, ".", "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
 		_, stdout, _ = runGlyph(t, "doctor", "--json")
-		if c := checkByID(t, decodeDoctorJSON(t, stdout), "pre-push-hook"); c.Status != "pass" {
+		if c := checkByID(t, decodeJSON[doctorReport](t, stdout), "pre-push-hook"); c.Status != "pass" {
 			t.Errorf("with origin/HEAD recorded and the commit-msg probe fired, pre-push-hook = %s (%s), want pass", c.Status, c.Observed)
 		}
 	})
@@ -508,10 +480,7 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 	t.Run("a remote whose name can hold no ref is the same advice, not could-not-run", func(t *testing.T) {
 		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 		useDoctorCheckout(t, pinnedCaller)
-		installCurrentHook(t)
-		if err := os.WriteFile(".git/hooks/pre-push", []byte(hook.Kinds()[1].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
-			t.Fatalf("install pre-push: %v", err)
-		}
+		installCurrentHook(t, hook.Kinds()[0], hook.Kinds()[1])
 		stubGlyphOnPATH(t, 3)
 		testutil.Git(t, ".", "akira-toriyama", "remote", "add", "origin", "https://example.invalid/o/r.git")
 		testutil.Git(t, ".", "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
@@ -521,7 +490,7 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("doctor exited %d, want 0 — advice never moves the exit\nstderr: %s", code, stderr)
 		}
-		c := checkByID(t, decodeDoctorJSON(t, stdout), "pre-push-hook")
+		c := checkByID(t, decodeJSON[doctorReport](t, stdout), "pre-push-hook")
 		if c.Status != "advice" || !strings.Contains(c.Observed, "no default branch for mirror..x") {
 			t.Errorf("a remote that can record no head must be advice naming it, got %s: %s", c.Status, c.Observed)
 		}
@@ -536,10 +505,7 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 	t.Run("a remote whose name holds a space is named whole", func(t *testing.T) {
 		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 		useDoctorCheckout(t, pinnedCaller)
-		installCurrentHook(t)
-		if err := os.WriteFile(".git/hooks/pre-push", []byte(hook.Kinds()[1].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
-			t.Fatalf("install pre-push: %v", err)
-		}
+		installCurrentHook(t, hook.Kinds()[0], hook.Kinds()[1])
 		stubGlyphOnPATH(t, 3)
 		testutil.Git(t, ".", "akira-toriyama", "config", "remote.my fork.url", "https://example.invalid/me/r.git")
 
@@ -547,7 +513,7 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("doctor exited %d, want 0 — advice never moves the exit\nstderr: %s", code, stderr)
 		}
-		c := checkByID(t, decodeDoctorJSON(t, stdout), "pre-push-hook")
+		c := checkByID(t, decodeJSON[doctorReport](t, stdout), "pre-push-hook")
 		if c.Status != "advice" || !strings.Contains(c.Observed, "no default branch for my fork,") {
 			t.Errorf("the advice must name the remote `my fork`, got %s: %s", c.Status, c.Observed)
 		}
@@ -561,19 +527,14 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 	t.Run("a foreign hook is not fired", func(t *testing.T) {
 		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 		useDoctorCheckout(t, pinnedCaller)
-		if err := os.MkdirAll(".git/hooks", 0o750); err != nil {
-			t.Fatalf("mkdir hooks: %v", err)
-		}
-		if err := os.WriteFile(".git/hooks/commit-msg", []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil { // #nosec G306
-			t.Fatalf("install foreign hook: %v", err)
-		}
+		writeExecutable(t, filepath.Join(".git", "hooks", "commit-msg"), "#!/bin/sh\nexit 1\n")
 		// A PATH stub that would make any firing VISIBLE as a wrong verdict:
 		// were the foreign hook executed, it would exit 1 and the check could
 		// not report "nothing to fire".
 		stubGlyphOnPATH(t, 3)
 
 		code, stdout, stderr := runGlyph(t, "doctor", "--json")
-		rep := decodeDoctorJSON(t, stdout)
+		rep := decodeJSON[doctorReport](t, stdout)
 		if code != 0 {
 			t.Fatalf("doctor exited %d, want 0\nstderr: %s", code, stderr)
 		}
@@ -585,24 +546,17 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 	})
 }
 
-// checkByID returns the one check with the given id, failing the test if the
-// report does not carry it.
-func checkByID(t *testing.T, rep doctorReport, id string) struct {
-	ID       string   `json:"id"`
-	Status   string   `json:"status"`
-	Observed string   `json:"observed"`
-	Expected string   `json:"expected"`
-	Message  string   `json:"message"`
-	Fix      string   `json:"fix"`
-	Details  []string `json:"details"`
-} {
+// checkByID returns the one check with the given id, failing the test when
+// the report does not carry it — the ids are the report's API, so a missing
+// one is a contract break.
+func checkByID(t *testing.T, rep doctorReport, id string) doctorCheck {
 	t.Helper()
 	for _, c := range rep.Checks {
 		if c.ID == id {
 			return c
 		}
 	}
-	t.Fatalf("report carries no %q check", id)
+	t.Fatalf("report carries no %q check (ids are the stable machine surface)", id)
 	panic("unreachable")
 }
 
@@ -686,10 +640,10 @@ func TestDoctorSquashDisabledFails(t *testing.T) {
 	if code != 3 {
 		t.Fatalf("squash merging off exited %d, want 3", code)
 	}
-	if got := status(t, rep, "squash-merge-enabled"); got != "fail" {
+	if got := checkByID(t, rep, "squash-merge-enabled").Status; got != "fail" {
 		t.Errorf("squash-merge-enabled = %s, want fail", got)
 	}
-	if got := status(t, rep, "merge-commit-enabled"); got != "advice" {
+	if got := checkByID(t, rep, "merge-commit-enabled").Status; got != "advice" {
 		t.Errorf("merge-commit-enabled = %s, want advice even here — the severities are independent", got)
 	}
 	if rep.OK {
@@ -711,14 +665,14 @@ func TestDoctorMissingConfigFailsAtTheLintCode(t *testing.T) {
 		t.Fatalf("remove glyph.toml: %v", err)
 	}
 	code, stdout, _ := runGlyph(t, "doctor", "--json")
-	rep := decodeDoctorJSON(t, stdout)
+	rep := decodeJSON[doctorReport](t, stdout)
 	if code != 3 {
 		t.Fatalf("doctor on an uninitialized repository exited %d, want 3", code)
 	}
-	if got := status(t, rep, "glyph-toml-loads"); got != "fail" {
+	if got := checkByID(t, rep, "glyph-toml-loads").Status; got != "fail" {
 		t.Errorf("glyph-toml-loads = %s, want fail", got)
 	}
-	if got := status(t, rep, "squash-merge-enabled"); got != "pass" {
+	if got := checkByID(t, rep, "squash-merge-enabled").Status; got != "pass" {
 		t.Errorf("squash-merge-enabled = %s, want pass — independence holds in this direction too", got)
 	}
 	// The file is loaded once, by doctorRun, and the checks that read it are
@@ -740,7 +694,7 @@ func TestDoctorUnloadableConfigLeavesTheDependentsUnread(t *testing.T) {
 		t.Fatalf("write glyph.toml: %v", err)
 	}
 	code, stdout, _ := runGlyph(t, "doctor", "--json")
-	rep := decodeDoctorJSON(t, stdout)
+	rep := decodeJSON[doctorReport](t, stdout)
 	if code != 3 {
 		t.Fatalf("doctor on a glyph.toml that does not load exited %d, want 3", code)
 	}
@@ -762,7 +716,7 @@ func TestDoctorFailsAConfigStillCarryingCommitStyle(t *testing.T) {
 		t.Fatalf("write glyph.toml: %v", err)
 	}
 	code, stdout, stderr := runGlyph(t, "doctor", "--json")
-	rep := decodeDoctorJSON(t, stdout)
+	rep := decodeJSON[doctorReport](t, stdout)
 	if code != 3 {
 		t.Fatalf("doctor on a glyph.toml still carrying [commit] style exited %d, want 3\nstderr: %s", code, stderr)
 	}
@@ -787,7 +741,7 @@ func TestDoctorUnreadableConfigLeavesTheDependentsUnread(t *testing.T) {
 		t.Fatalf("chmod glyph.toml: %v", err)
 	}
 	code, stdout, _ := runGlyph(t, "doctor", "--json")
-	rep := decodeDoctorJSON(t, stdout)
+	rep := decodeJSON[doctorReport](t, stdout)
 	if code != 4 {
 		t.Fatalf("doctor on a glyph.toml it cannot read exited %d, want 4 (unverified)", code)
 	}
@@ -808,22 +762,22 @@ func TestDoctorUnreadableConfigLeavesTheDependentsUnread(t *testing.T) {
 // restores), a link to itself, through a file or to an over-long name is
 // unknown at exit 4.
 func TestDoctorConfigThatIsNotAFileFailsAtTheMissingCode(t *testing.T) {
-	for _, k := range notAFile {
-		t.Run(k.shape, func(t *testing.T) {
+	for _, k := range testutil.NotAFileShapes {
+		t.Run(k.Shape, func(t *testing.T) {
 			usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 			useDoctorCheckout(t, pinnedCaller)
 			if err := os.Remove("glyph.toml"); err != nil {
 				t.Fatalf("remove glyph.toml: %v", err)
 			}
-			if err := k.stage("glyph.toml"); err != nil {
-				t.Fatalf("staging %s as glyph.toml: %v", k.kind, err)
+			if err := k.Stage("glyph.toml"); err != nil {
+				t.Fatalf("staging %s as glyph.toml: %v", k.Kind, err)
 			}
 			code, stdout, stderr := runGlyphWithin(t, 30*time.Second, "doctor", "--json")
 			if code != 3 {
-				t.Fatalf("doctor on a glyph.toml that is %s exited %d, want 3 — the code a missing one answers\nstderr: %s", k.kind, code, stderr)
+				t.Fatalf("doctor on a glyph.toml that is %s exited %d, want 3 — the code a missing one answers\nstderr: %s", k.Kind, code, stderr)
 			}
-			rep := decodeDoctorJSON(t, stdout)
-			if c := checkByID(t, rep, "glyph-toml-loads"); c.Status != "fail" || !strings.Contains(c.Observed, "is "+k.kind) {
+			rep := decodeJSON[doctorReport](t, stdout)
+			if c := checkByID(t, rep, "glyph-toml-loads"); c.Status != "fail" || !strings.Contains(c.Observed, "is "+k.Kind) {
 				t.Errorf("glyph-toml-loads = %s (%s), want fail naming what is at the path", c.Status, c.Observed)
 			}
 			assertDependentsUnread(t, rep)
@@ -863,7 +817,7 @@ func TestDoctorOutsideACheckoutHandsNoConfigToTheReport(t *testing.T) {
 		t.Fatalf("write glyph.toml: %v", err)
 	}
 	code, stdout, stderr := runGlyph(t, "doctor", "--repo", "akira-toriyama/glyph", "--json")
-	rep := decodeDoctorJSON(t, stdout)
+	rep := decodeJSON[doctorReport](t, stdout)
 	if code != 4 {
 		t.Fatalf("doctor outside a checkout exited %d, want 4 (unverified)\nstderr: %s", code, stderr)
 	}
@@ -887,15 +841,15 @@ func TestDoctorUnreportedSettingsAreUnknownNotFalse(t *testing.T) {
 	}
 	for _, id := range []string{"squash-merge-enabled", "merge-commit-enabled", "rebase-merge-enabled",
 		"squash-commit-title", "squash-commit-message"} {
-		if got := status(t, rep, id); got != "unknown" {
+		if got := checkByID(t, rep, id).Status; got != "unknown" {
 			t.Errorf("%s = %s, want unknown", id, got)
 		}
 	}
 	// The two checks that did not need the settings still ran — independence.
-	if got := status(t, rep, "token-repo-read"); got != "pass" {
+	if got := checkByID(t, rep, "token-repo-read").Status; got != "pass" {
 		t.Errorf("token-repo-read = %s, want pass (the read itself worked)", got)
 	}
-	if got := status(t, rep, "workflow-glyph-pins"); got != "pass" {
+	if got := checkByID(t, rep, "workflow-glyph-pins").Status; got != "pass" {
 		t.Errorf("workflow-glyph-pins = %s, want pass (it needs no API at all)", got)
 	}
 	if rep.OK {
@@ -914,26 +868,21 @@ func TestDoctorTokenFailureDoesNotAbortTheReport(t *testing.T) {
 	failingAPI(t, http.StatusNotFound, `{"message":"Not Found"}`)
 
 	code, stdout, _ := runGlyph(t, "doctor", "--json")
-	var rep doctorReport
-	if err := json.Unmarshal([]byte(stdout), &rep); err != nil {
-		t.Fatalf("the report must still be emitted when the API read fails: %v\n%s", err, stdout)
-	}
+	rep := decodeJSON[doctorReport](t, stdout)
 	if code != 3 {
 		t.Fatalf("exit %d, want 3 — a failed check outranks the ones it made unrunnable", code)
 	}
-	if got := status(t, rep, "token-repo-read"); got != "fail" {
+	if got := checkByID(t, rep, "token-repo-read").Status; got != "fail" {
 		t.Errorf("token-repo-read = %s, want fail (a failed read answers this check's question)", got)
 	}
-	if got := status(t, rep, "squash-commit-title"); got != "unknown" {
+	if got := checkByID(t, rep, "squash-commit-title").Status; got != "unknown" {
 		t.Errorf("squash-commit-title = %s, want unknown (it never observed anything)", got)
 	}
-	if got := status(t, rep, "workflow-glyph-pins"); got != "pass" {
+	if got := checkByID(t, rep, "workflow-glyph-pins").Status; got != "pass" {
 		t.Errorf("workflow-glyph-pins = %s, want pass — the local check needs no credential", got)
 	}
-	for _, c := range rep.Checks {
-		if c.ID == "token-repo-read" && !strings.Contains(c.Message, "404") {
-			t.Errorf("the token failure must explain GitHub's 404-for-private answer: %q", c.Message)
-		}
+	if c := checkByID(t, rep, "token-repo-read"); !strings.Contains(c.Message, "404") {
+		t.Errorf("the token failure must explain GitHub's 404-for-private answer: %q", c.Message)
 	}
 }
 
@@ -971,14 +920,11 @@ func TestDoctorUnansweredAPIIsCouldNotRunNotAViolation(t *testing.T) {
 	failingAPI(t, http.StatusForbidden, `{"message":"API rate limit exceeded for 203.0.113.7"}`)
 
 	code, stdout, _ := runGlyph(t, "doctor", "--json")
-	var rep doctorReport
-	if err := json.Unmarshal([]byte(stdout), &rep); err != nil {
-		t.Fatalf("the report must still be emitted: %v\n%s", err, stdout)
-	}
+	rep := decodeJSON[doctorReport](t, stdout)
 	if code != 4 {
 		t.Fatalf("a rate-limited read exited %d, want 4 — nothing about the repository was observed", code)
 	}
-	if got := status(t, rep, "token-repo-read"); got != "unknown" {
+	if got := checkByID(t, rep, "token-repo-read").Status; got != "unknown" {
 		t.Errorf("token-repo-read = %s, want unknown: an answer glyph never got is not a finding", got)
 	}
 	if rep.Counts.Fail != 0 {
@@ -987,7 +933,7 @@ func TestDoctorUnansweredAPIIsCouldNotRunNotAViolation(t *testing.T) {
 	if rep.Counts.Unknown != 7 {
 		t.Errorf("counts = %+v, want the 7 API-backed checks unknown (the local pin check still ran)", rep.Counts)
 	}
-	if got := status(t, rep, "workflow-glyph-pins"); got != "pass" {
+	if got := checkByID(t, rep, "workflow-glyph-pins").Status; got != "pass" {
 		t.Errorf("workflow-glyph-pins = %s, want pass — it needs no API at all", got)
 	}
 
@@ -1053,10 +999,7 @@ func blockingGit(t *testing.T, prelude string) (asked string) {
 	t.Helper()
 	bin := t.TempDir()
 	asked = filepath.Join(bin, "asked")
-	script := "#!/bin/sh\nPATH=/usr/bin:/bin\n" + prelude + "touch " + asked + "\nexec sleep 30 </dev/null >/dev/null 2>&1\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeExecutable(t, filepath.Join(bin, "git"), "#!/bin/sh\nPATH=/usr/bin:/bin\n"+prelude+"touch "+asked+"\nexec sleep 30 </dev/null >/dev/null 2>&1\n")
 	t.Setenv("PATH", bin)
 	return asked
 }
@@ -1196,12 +1139,7 @@ func TestDoctorInterruptDuringActionFilesReadCarriesOut(t *testing.T) {
 // every earlier read and blocks on `config --get-regexp`.
 func TestDoctorInterruptDuringRemoteHeadsReadCarriesOut(t *testing.T) {
 	useDoctorCheckout(t, pinnedCaller)
-	if err := os.MkdirAll(".git/hooks", 0o750); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(".git/hooks/pre-push", []byte(hook.Kinds()[1].Script), 0o700); err != nil { // #nosec G306 -- a hook must be executable
-		t.Fatal(err)
-	}
+	installCurrentHook(t, hook.Kinds()[1])
 	interruptDoctor(t, "the remote-heads read", answersHooksPath, answersTopLevel, answersTags, answersHeadTrees, answersActionFiles)
 }
 
@@ -1230,7 +1168,7 @@ func TestDoctorSIGINTDuringTheProbeClaimCarriesOut(t *testing.T) {
 	glyphBin := buildGlyph(t)
 	srv := doctorServer(t, apiRepoObject(healthySettings))
 	useDoctorCheckout(t, pinnedCaller)
-	installCurrentHook(t)
+	installCurrentHook(t, hook.Kinds()[0])
 	checkout, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -1246,9 +1184,7 @@ func TestDoctorSIGINTDuringTheProbeClaimCarriesOut(t *testing.T) {
 		"    if [ \"$n\" -eq 2 ]; then touch " + asked + "; exec sleep 30 </dev/null >/dev/null 2>&1; fi;;\n" +
 		"esac\n" +
 		"exec " + realGit + " \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil { // #nosec G306 -- a PATH shim must be executable
-		t.Fatal(err)
-	}
+	writeExecutable(t, filepath.Join(bin, "git"), script)
 
 	cmd := exec.Command(glyphBin, "doctor", "--json")
 	cmd.Dir = checkout
@@ -1324,7 +1260,7 @@ func TestDoctorPinScanReadsEveryActionFileGitLists(t *testing.T) {
 	testutil.Git(t, ".", "akira-toriyama", "-c", "protocol.file.allow=always", "submodule", "--quiet", "add", sub, ".github/actions/shared")
 
 	code, stdout, stderr := runGlyph(t, "doctor", "--json")
-	rep := decodeDoctorJSON(t, stdout)
+	rep := decodeJSON[doctorReport](t, stdout)
 	if code != 3 {
 		t.Fatalf("doctor exited %d, want 3 — two composites the checkout runs pin @main\nstderr: %s", code, stderr)
 	}
@@ -1368,7 +1304,7 @@ func TestDoctorPackagePathsAgreeWithAttribution(t *testing.T) {
 
 	usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 	code, stdout, stderr := runGlyph(t, "doctor", "--json")
-	rep := decodeDoctorJSON(t, stdout)
+	rep := decodeJSON[doctorReport](t, stdout)
 	c := checkByID(t, rep, "package-paths-exist")
 	if c.Status != "fail" {
 		t.Fatalf("package-paths-exist = %s (%s) where lint --range refuses the history at 3 — doctor answered a different question than attribution\nstderr: %s",
@@ -1421,7 +1357,7 @@ func TestDoctorHumanReportIsOneLinePerCheck(t *testing.T) {
 	if code != 3 {
 		t.Fatalf("--json exit %d, want 3", code)
 	}
-	checks := len(decodeDoctorJSON(t, stdout).Checks)
+	checks := len(decodeJSON[doctorReport](t, stdout).Checks)
 
 	code, stdout, _ = runGlyph(t, "doctor")
 	if code != 3 {
@@ -1490,7 +1426,7 @@ func TestDoctorReadsTheRealUsesNotTheCommentedStub(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("exit %d, want 0 — the permanently stale caller stub in a comment is documentation, not a pin", code)
 		}
-		if got := status(t, rep, "workflow-glyph-pins"); got != "pass" {
+		if got := checkByID(t, rep, "workflow-glyph-pins").Status; got != "pass" {
 			t.Errorf("workflow-glyph-pins = %s, want pass", got)
 		}
 	})
@@ -1499,13 +1435,7 @@ func TestDoctorReadsTheRealUsesNotTheCommentedStub(t *testing.T) {
 		if code != 3 {
 			t.Fatalf("exit %d, want 3 — the executable line is on @main", code)
 		}
-		var details []string
-		for _, c := range rep.Checks {
-			if c.ID == "workflow-glyph-pins" {
-				details = c.Details
-			}
-		}
-		joined := strings.Join(details, "\n")
+		joined := strings.Join(checkByID(t, rep, "workflow-glyph-pins").Details, "\n")
 		if !strings.Contains(joined, ".github/workflows/commit-lint.yml:5") {
 			t.Errorf("the finding must point at the executable line (5), got:\n%s", joined)
 		}
@@ -1578,16 +1508,18 @@ func TestDoctorFindsAStaleInstalledHook(t *testing.T) {
 	if stale == hook.Kinds()[0].Script {
 		t.Fatal("the stale-hook fixture no longer differs from the current commit-msg script — re-derive it")
 	}
-	writeHook(t, filepath.Join(".git", "hooks"), stale)
+	writeInertHook(t, filepath.Join(".git", "hooks", "commit-msg"), stale)
 
 	code, stdout, stderr := runGlyph(t, "doctor")
 	if code != 3 {
 		t.Fatalf("a stale glyph-written hook exited %d, want 3 (the convention-violation code)\n%s\n%s", code, stdout, stderr)
 	}
-	if !strings.Contains(stdout, "fail     commit-msg-hook") {
+	// The id ends at its delimiter — the padding space in the human line, the
+	// colon in the annotation — so commit-msg-hook-fires cannot satisfy them.
+	if !strings.Contains(stdout, "fail     commit-msg-hook ") {
 		t.Errorf("the stale hook must be the failing check:\n%s", stdout)
 	}
-	if !strings.Contains(stderr, "::warning::glyph: doctor commit-msg-hook") {
+	if !strings.Contains(stderr, "::warning::glyph: doctor commit-msg-hook:") {
 		t.Errorf("a failing check must annotate as a warning:\n%s", stderr)
 	}
 }
@@ -1603,8 +1535,8 @@ func TestDoctorHonoursCoreHooksPath(t *testing.T) {
 	testutil.Git(t, ".", "akira-toriyama", "config", "core.hooksPath", "scripts/hooks")
 	// The decoy sits where the naive implementation would look. It is CURRENT,
 	// so a doctor reading it reports a pass — the exact wrong answer.
-	writeHook(t, filepath.Join(".git", "hooks"), hook.Kinds()[0].Script)
-	writeHook(t, filepath.Join("scripts", "hooks"), strings.Replace(hook.Kinds()[0].Script, `-eq 3 `, `-eq 9 `, 1))
+	writeInertHook(t, filepath.Join(".git", "hooks", "commit-msg"), hook.Kinds()[0].Script)
+	writeInertHook(t, filepath.Join("scripts", "hooks", "commit-msg"), strings.Replace(hook.Kinds()[0].Script, `-eq 3 `, `-eq 9 `, 1))
 
 	code, stdout, _ := runGlyph(t, "doctor")
 	if code != 3 {
@@ -1612,16 +1544,5 @@ func TestDoctorHonoursCoreHooksPath(t *testing.T) {
 	}
 	if !strings.Contains(stdout, filepath.Join("scripts", "hooks", "commit-msg")) {
 		t.Errorf("the report must name the directory git reported, not .git/hooks:\n%s", stdout)
-	}
-}
-
-// writeHook installs body as the commit-msg hook under dir, creating it.
-func writeHook(t *testing.T, dir, body string) {
-	t.Helper()
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		t.Fatalf("mkdir %s: %v", dir, err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "commit-msg"), []byte(body), 0o600); err != nil {
-		t.Fatalf("write hook: %v", err)
 	}
 }

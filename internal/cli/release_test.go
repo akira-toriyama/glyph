@@ -499,10 +499,7 @@ func TestReleaseUpsertJSON(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("release --json exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	var v releaseVerdict
-	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
-		t.Fatalf("release --json stdout is not one JSON object: %v\n%s", err, stdout)
-	}
+	v := decodeJSON[releaseVerdict](t, stdout)
 	if v.Action != "create" || v.URL != "https://github.example/releases/900" {
 		t.Errorf("verdict action/url = %q/%q, want create + the draft URL", v.Action, v.URL)
 	}
@@ -593,14 +590,7 @@ func TestReleaseDryRunAction(t *testing.T) {
 			srv := releaseServer(t, walk, tc.releases, &writes)
 			usePR(t, srv)
 
-			code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--json")
-			if code != tc.wantCode {
-				t.Fatalf("exited %d, want %d\nstderr: %s", code, tc.wantCode, stderr)
-			}
-			var v releaseVerdict
-			if err := json.Unmarshal([]byte(stdout), &v); err != nil {
-				t.Fatalf("not one JSON object: %v\n%s", err, stdout)
-			}
+			v := releaseDryRunJSON(t, tc.wantCode)
 			if v.Action != tc.want {
 				t.Errorf("action = %q, want %q", v.Action, tc.want)
 			}
@@ -624,23 +614,8 @@ func TestReleaseDryRunAction(t *testing.T) {
 func TestReleaseDryRunResolvesTheTarget(t *testing.T) {
 	dryRunVerdict := func(t *testing.T, args ...string) releaseVerdict {
 		t.Helper()
-		var writes []apiWrite
-		walk := oneFixWalk(t)
-		srv := releaseServer(t, walk, `[]`, &writes)
-		usePR(t, srv)
-
-		code, stdout, stderr := runGlyph(t, append([]string{"release", "--dry-run", "--json"}, args...)...)
-		if code != 0 {
-			t.Fatalf("exited %d, want 0\nstderr: %s", code, stderr)
-		}
-		var v releaseVerdict
-		if err := json.Unmarshal([]byte(stdout), &v); err != nil {
-			t.Fatalf("not one JSON object: %v\n%s", err, stdout)
-		}
-		if len(writes) != 0 {
-			t.Fatalf("a dry run wrote to the API: %+v", writes)
-		}
-		return v
+		usePR(t, dryServer(t, oneFixWalk(t)))
+		return releaseDryRunJSON(t, 0, args...)
 	}
 
 	t.Run("an explicit --target reaches the verdict", func(t *testing.T) {
@@ -763,6 +738,17 @@ type releaseVerdict struct {
 	Reason string `json:"reason"`
 }
 
+// releaseDryRunJSON runs `release --dry-run --json` with args and decodes the
+// verdict; wantCode is the exact exit code the run must give.
+func releaseDryRunJSON(t *testing.T, wantCode int, args ...string) releaseVerdict {
+	t.Helper()
+	code, stdout, stderr := runGlyph(t, append([]string{"release", "--dry-run", "--json"}, args...)...)
+	if code != wantCode {
+		t.Fatalf("release --dry-run --json %v exited %d, want %d\nstderr: %s", args, code, wantCode, stderr)
+	}
+	return decodeJSON[releaseVerdict](t, stdout)
+}
+
 // TestReleaseJSONReportsPullExpansion: the verdict names every merged pull the
 // walk resolved and how many of each one's listed commits it took in — the
 // provenance that makes a verdict auditable afterwards, without
@@ -786,14 +772,7 @@ func TestReleaseJSONReportsPullExpansion(t *testing.T) {
 	usePR(t, srv)
 	t.Chdir(dir)
 
-	code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--json")
-	if code != 0 {
-		t.Fatalf("release --json exited %d, want 0\nstderr: %s", code, stderr)
-	}
-	var v releaseVerdict
-	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
-		t.Fatalf("release --json stdout is not one JSON object: %v\n%s", err, stdout)
-	}
+	v := releaseDryRunJSON(t, 0)
 	if len(v.Pulls) != 2 ||
 		v.Pulls[0].Number != 7 || v.Pulls[0].Commits != 2 ||
 		v.Pulls[1].Number != 8 || v.Pulls[1].Commits != 1 {
@@ -837,14 +816,7 @@ func TestReleaseJSON(t *testing.T) {
 	usePR(t, srv)
 	t.Chdir(dir)
 
-	code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--json")
-	if code != 0 {
-		t.Fatalf("release --json exited %d, want 0\nstderr: %s", code, stderr)
-	}
-	var v releaseVerdict
-	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
-		t.Fatalf("release --json stdout is not one JSON object: %v\n%s", err, stdout)
-	}
+	v := releaseDryRunJSON(t, 0)
 	if v.Current != "v0.1.0" || v.Level != "minor" || v.Next != "v0.2.0" || v.Tag != "v0.2.0" {
 		t.Errorf("verdict = current %q level %q next %q tag %q, want v0.1.0/minor/v0.2.0/v0.2.0", v.Current, v.Level, v.Next, v.Tag)
 	}
@@ -908,10 +880,7 @@ func TestReleaseNoReleaseJSON(t *testing.T) {
 			if code != int(core.CodeNoRelease) {
 				t.Fatalf("all-none %v exited %d, want exactly %d\nstderr: %s", args, code, core.CodeNoRelease, stderr)
 			}
-			var v releaseVerdict
-			if err := json.Unmarshal([]byte(stdout), &v); err != nil {
-				t.Fatalf("release --json stdout is not one JSON object: %v\n%s", err, stdout)
-			}
+			v := decodeJSON[releaseVerdict](t, stdout)
 			if v.Level != "none" || v.Tag != "" || v.Body != "" {
 				t.Errorf("verdict = level %q tag %q body %q, want none and no tag/body", v.Level, v.Tag, v.Body)
 			}
@@ -1068,10 +1037,7 @@ func TestReleaseUpsertUpdateJSONCarriesTheURL(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("release --json exited %d, want 0\nstderr: %s", code, stderr)
 	}
-	var v releaseVerdict
-	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
-		t.Fatalf("release --json stdout is not one JSON object: %v\n%s", err, stdout)
-	}
+	v := decodeJSON[releaseVerdict](t, stdout)
 	if v.Action != "update" || v.URL != "https://github.example/releases/11" {
 		t.Errorf("verdict action/url = %q/%q, want update + the PATCHed draft's URL", v.Action, v.URL)
 	}

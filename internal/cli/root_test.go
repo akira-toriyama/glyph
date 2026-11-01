@@ -1,29 +1,19 @@
 package cli
 
 import (
-	"bytes"
 	"errors"
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v6/internal/core"
 )
 
-// captureErr swaps the diagnostic stream for one test and returns the buffer.
-func captureErr(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	old := errOut
-	errOut = &buf
-	t.Cleanup(func() { errOut = old })
-	return &buf
-}
-
 // TestFinishSilentInterrupt: both adapters classify a canceled context as a
 // Silent CodeInterrupted — the user's own Ctrl-C. finish must return 130 and
 // write NO stderr envelope: the abort is the user's own doing, and a release
 // job grepping stderr for {"error":...} must not see one.
 func TestFinishSilentInterrupt(t *testing.T) {
-	stderr := captureErr(t)
+	_, stderr, restore := captureOut()
+	t.Cleanup(restore)
 	code := finish(core.Interrupted())
 	if code != 130 {
 		t.Fatalf("finish(interrupted) = %d, want 130", code)
@@ -42,7 +32,8 @@ func TestFinishSilentInterrupt(t *testing.T) {
 // message passes through as cobra wrote it.
 func TestFinishBareErrorIsUsage(t *testing.T) {
 	for _, msg := range []string{"unknown flag: --nope", `unknown command "nope" for "glyph"`} {
-		stderr := captureErr(t)
+		_, stderr, restore := captureOut()
+		t.Cleanup(restore)
 		code := finish(errors.New(msg))
 		if code != 2 {
 			t.Fatalf("finish(%q) = %d, want 2 (usage)", msg, code)
@@ -51,6 +42,16 @@ func TestFinishBareErrorIsUsage(t *testing.T) {
 		if env.Code != 2 || env.Message != msg {
 			t.Fatalf("envelope = %+v, want code 2 carrying the cobra message %q unchanged", env, msg)
 		}
+	}
+}
+
+// TestUnknownCommandIsUsage: an unknown subcommand of the root exits 2. Root's
+// Args: noArgs refuses it as usage; were that wiring dropped, cobra's own
+// unknown-command error would reach finish's bare arm, which maps to usage
+// too.
+func TestUnknownCommandIsUsage(t *testing.T) {
+	if code, _, _ := runGlyph(t, "no-such-command"); code != 2 {
+		t.Fatalf("unknown command should exit 2 (usage), got %d", code)
 	}
 }
 
@@ -142,7 +143,8 @@ func TestCompletionBareIsHelpAtZero(t *testing.T) {
 
 // TestFinishNil: a nil error is the silent success — exit 0, nothing written.
 func TestFinishNil(t *testing.T) {
-	stderr := captureErr(t)
+	_, stderr, restore := captureOut()
+	t.Cleanup(restore)
 	if code := finish(nil); code != 0 {
 		t.Fatalf("finish(nil) = %d, want 0", code)
 	}
