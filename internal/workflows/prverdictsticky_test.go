@@ -84,7 +84,6 @@ func TestPRVerdictCommentNeverOutlivesARedPush(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
 			dir := t.TempDir()
 			stubs := filepath.Join(dir, "stubs")
 			if err := os.Mkdir(stubs, 0o755); err != nil {

@@ -165,7 +165,6 @@ func TestLintNoRefusalPassesSilently(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
 			run, calls := runLintRange(t, repo, c.ev, 0, "")
 			if c.refusal == "" {
 				var base, head string
@@ -225,7 +224,6 @@ func TestLintPushArmAnnotatesButNeverGates(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
 			stderr := fmt.Sprintf(`{"error":{"code":%d,"message":"stub verdict"}}`+"\n", c.glyphExit)
 			if c.glyphExit == 3 {
 				stderr = "::error::stub finding\n" + stderr

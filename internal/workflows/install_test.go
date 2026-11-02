@@ -325,7 +325,6 @@ func TestInstallActionInstallsOnlyWhatItVerified(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
 			version := installVersion
 			if c.version != "" {
 				version = c.version

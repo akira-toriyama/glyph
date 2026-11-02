@@ -171,3 +171,39 @@ func TestPresetsShareOneGrammar(t *testing.T) {
 		})
 	}
 }
+
+// TestPresetsRefuseAMarkupScope: the shipped scope class is an alphabet,
+// `[a-z0-9-]+`. A class that admitted markup would let a sigil'd subject
+// whose scope is `(<i title="x">)` be claimed and lint clean, where the
+// convention refuses it at 3 (DESIGN §2, "A captured group is the author's
+// text"). Under every preset that sigil'd subject, and an amend! whose body
+// opens with it, is claimed by no pattern. The same subject without the scope
+// must be claimed, or the refusal is not the scope's (mutation row
+// presets-scope-group-admits-markup).
+func TestPresetsRefuseAMarkupScope(t *testing.T) {
+	const scope = `(<i title="x">)`
+	markup := map[string]string{
+		"gemoji":       ":bug:" + scope + "~ fix it",
+		"conventional": "fix" + scope + "~: fix it",
+	}
+	for _, name := range PresetNames() {
+		t.Run(name, func(t *testing.T) {
+			subject, ok := markup[name]
+			if !ok {
+				t.Fatalf("preset %q has no markup-scope subject here: say how its grammar spells one", name)
+			}
+			data, _ := Preset(name)
+			cfg := mustLoad(t, string(data))
+
+			target := strings.Replace(subject, scope, "", 1)
+			if m, err := cfg.Match(target); err != nil || !m.Matched || m.PatternIndex != 0 {
+				t.Fatalf("%q = %+v (err %v), want the grammar at patterns[0]: without its scope the subject is well-formed, so the refusals below are the scope's", target, m, err)
+			}
+			for _, msg := range []string{subject, "amend! " + target + "\n\n" + subject} {
+				if m, err := cfg.Match(msg); err != nil || m.Matched || m.Unlandable != "" {
+					t.Errorf("%q = %+v (err %v), want no pattern claiming it: the presets' scope class is [a-z0-9-]+, so a markup scope is refused at 3", msg, m, err)
+				}
+			}
+		})
+	}
+}

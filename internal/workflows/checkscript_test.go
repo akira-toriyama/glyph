@@ -107,10 +107,13 @@ func TestCheckScriptRunsBiteUnderGoModsToolchain(t *testing.T) {
 	script := repoFile(t, filepath.Join("scripts", "check.sh"))
 
 	var invocation string
+	derived := false
 	for _, stmt := range executableStatements(script) {
-		if strings.Contains(stmt, `sh "$BITE"`) {
+		if strings.TrimSpace(stmt) == `BITE_GOROOT="$(go env GOROOT)"` {
+			derived = true
+		}
+		if invocation == "" && strings.Contains(stmt, `sh "$BITE"`) {
 			invocation = stmt
-			break
 		}
 	}
 	if invocation == "" {
@@ -119,20 +122,22 @@ func TestCheckScriptRunsBiteUnderGoModsToolchain(t *testing.T) {
 			"other way and this test is now checking nothing")
 	}
 
-	if !strings.Contains(script, "go env GOROOT") {
+	if !derived {
 		t.Error("scripts/check.sh no longer derives a GOROOT from `go env GOROOT`. That call is how the " +
 			"script learns which toolchain go.mod's `toolchain` line resolved to under GOTOOLCHAIN=auto — " +
 			"the same one setup-go installs in CI. Without it the bite gate has no way to run under CI's Go.")
 	}
-	for _, key := range []string{"GOROOT=", "PATH="} {
-		if !strings.Contains(invocation, key) {
-			t.Errorf("the bite invocation in scripts/check.sh does not set %s: %q\n\n"+
+	for _, handOver := range []string{`GOROOT="$BITE_GOROOT"`, `PATH="$BITE_GOROOT/bin:$PATH"`} {
+		if !strings.Contains(invocation, handOver) {
+			t.Errorf("the bite invocation in scripts/check.sh does not hand over %s: %q\n\n"+
 				"go-bite exports GOTOOLCHAIN=local, so it runs whatever `go` it finds against whatever "+
-				"GOROOT it inherits. Locally those are two different Go versions and it cannot build at "+
-				"all (t-wmwb). Clearing GOROOT instead would let it build under nixpkgs' go while CI uses "+
-				"go.mod's — this script's header claims a green run here means a green CI, and that trade "+
-				"makes the claim quietly false. Pass GOROOT=\"$(go env GOROOT)\" and prepend its bin to PATH.",
-				strings.TrimSuffix(key, "="), invocation)
+				"GOROOT it inherits. Without the derived root handed over, bite judges the diff under the "+
+				"devshell's go instead of go.mod's, or cannot build at all where a leaked GOROOT names "+
+				"another version (t-wmwb). Clearing GOROOT (`unset GOROOT`, `GOROOT=`) is the wrong fix: it "+
+				"builds, and this script's header claims a green run here means a green CI, which that makes "+
+				"quietly false. Hand bite GOROOT=\"$BITE_GOROOT\" and PATH=\"$BITE_GOROOT/bin:$PATH\", what "+
+				"setup-go hands it in CI.",
+				handOver, invocation)
 		}
 	}
 }

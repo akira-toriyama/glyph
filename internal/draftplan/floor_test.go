@@ -94,12 +94,24 @@ func TestHighestPublishedIsPerLine(t *testing.T) {
 // underneath, no retry clears it — and it names both tags as the line spells
 // them.
 func TestCheckPublishedFloorRefusesAtFour(t *testing.T) {
-	err := CheckPublishedFloor(config.Line{Prefix: "haiku/"}, bump.Version{Major: 1, Minor: 4}, []Draft{{ID: 2, TagName: "haiku/v1.5.0"}})
-	ce, ok := errors.AsType[*core.Error](err)
-	if !ok || ce.Code != core.CodeAPI {
-		t.Fatalf("err = %v, want *core.Error with CodeAPI (exit 4)", err)
+	cases := []struct {
+		name string
+		next bump.Version
+		want string
+	}{
+		{"below", bump.Version{Major: 1, Minor: 4}, "computed version haiku/v1.4.0 is not greater than the latest published release haiku/v1.5.0"},
+		{"equal", bump.Version{Major: 1, Minor: 5}, "computed version haiku/v1.5.0 is not greater than the latest published release haiku/v1.5.0"},
 	}
-	if want := "computed version haiku/v1.4.0 is not greater than the latest published release haiku/v1.5.0"; !strings.Contains(err.Error(), want) {
-		t.Errorf("refusal %q is missing %q", err, want)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := CheckPublishedFloor(config.Line{Prefix: "haiku/"}, c.next, []Draft{{ID: 2, TagName: "haiku/v1.5.0"}})
+			ce, ok := errors.AsType[*core.Error](err)
+			if !ok || ce.Code != core.CodeAPI {
+				t.Fatalf("err = %v, want *core.Error with CodeAPI (exit 4)", err)
+			}
+			if !strings.Contains(err.Error(), c.want) {
+				t.Errorf("refusal %q is missing %q", err, c.want)
+			}
+		})
 	}
 }
