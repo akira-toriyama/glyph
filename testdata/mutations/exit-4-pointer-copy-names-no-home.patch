@@ -1,0 +1,9 @@
+diff --git a/docs/DESIGN.md b/docs/DESIGN.md
+index 53e4221..1bacb86 100644
+--- a/docs/DESIGN.md
++++ b/docs/DESIGN.md
+@@ -3180,3 +3180,3 @@ here is only why it is a package at all, and what depends on it:
+ the API or the filesystem, or a refusal to hand down a verdict glyph will not
+-stand behind (`core.CodeAPI`'s doc lists the refusals) · `130` interrupted.
++stand behind · `130` interrupted.
+ 
