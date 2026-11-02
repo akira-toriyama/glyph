@@ -209,8 +209,8 @@ func (w Walker) wholeHistory(ctx context.Context, cfg *config.Config, whyNone, e
 // a version, so both spellings of the bound's own tag fall out together.
 //
 // EVERY tag is parsed and compared as a VERSION: git's --sort=-v:refname is a
-// refname order, not a version order (gitsource.Checkout.Tags; glossary, "version
-// sort"), and a wrong base is the silent-wrong-verdict class. A tie between
+// refname order, not a version order (gitsource.Checkout.Tags; glossary,
+// "auto"), and a wrong base is the silent-wrong-verdict class. A tie between
 // two spellings of one version keeps the FIRST in git's order, so the answer
 // stays deterministic without a preference git does not have. The candidates
 // are the tags HEAD's history holds (releasesHEADHolds; DESIGN §4, "The walk

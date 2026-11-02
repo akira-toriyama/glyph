@@ -105,11 +105,11 @@ type Scope struct {
 	Escape string           // "": the --since-tag sentence
 }
 
-// Since is the release walk: the lines tag names and the ONE range over them
-// (resolveLinesScoped), each line's own range (readLineRanges), the walk
+// Since is the release walk: the lines tagFlag names and the ONE range over
+// them (resolveLinesScoped), each line's own range (readLineRanges), the walk
 // itself (walkSince) and the partition (partitionLines), whose refusals are
-// the walk's (attributionWedge). tag is a value CheckTag accepted; owner and
-// repo name the repository Pulls is asked about; a nil scope walks every
+// the walk's (attributionWedge). tagFlag is a value CheckTag accepted; owner
+// and repo name the repository Pulls is asked about; a nil scope walks every
 // declared line.
 func (w Walker) Since(ctx context.Context, cfg *config.Config, tagFlag, owner, repo string, scope *Scope) (Result, error) {
 	lines, revRange, err := w.resolveLinesScoped(ctx, cfg, tagFlag, scope)

@@ -250,9 +250,8 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	drafted := planInput(releases)
 
 	// Resolved BEFORE the dry-run fork and above the loop: every line's
-	// compare link ends at it and checkReleaseBody sizes the final body, and a
-	// dry run must preview the real run's --target — below the fork the flag
-	// was the one the preview silently ignored (t-nfz3).
+	// compare link ends at it, checkReleaseBody sizes the final body, and a
+	// dry run previews the real run's --target.
 	target := o.target
 	if target == "" {
 		var herr error

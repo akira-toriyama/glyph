@@ -4,11 +4,10 @@ package doctor
 // "Doctor"): a declared [[packages]] path that is no subtree of the repository
 // claims no file, so every commit under the directory the author meant is
 // attributed elsewhere — a typo here is a silently moved verdict, the class
-// this report exists to name. It reads the glyph.toml internal/cli loaded
-// once at the top level git named, and judges each path against the trees
-// HEAD records — git's answer, handed in by internal/cli like the hooks
-// directory — never against the filesystem: the question is the one
-// attribution asks, and attribution reads git's paths.
+// this report exists to name. It reads the glyph.toml loaded once at the top
+// level git named, and judges each path against the trees HEAD records (git's
+// answer, Input.HeadTrees) — never against the filesystem: the question is
+// the one attribution asks, and attribution reads git's paths.
 
 import (
 	"fmt"

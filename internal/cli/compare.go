@@ -56,7 +56,7 @@ func fullSha(end string) bool {
 // escapeRef path-escapes each `/`-separated segment of a ref: git accepts `#`,
 // `%`, `(` and `)` in a tag name, and pasted verbatim `#` starts a fragment
 // and `%41` decodes to another ref, while a line's prefix (`curry/v1.1.0`)
-// must keep its slash for GitHub to read it as the tag. t-9np1's markdown
+// must keep its slash for GitHub to read it as the tag. internal/markdown's
 // escaper never sees this line; this is its only escape.
 func escapeRef(ref string) string {
 	segs := strings.Split(ref, "/")

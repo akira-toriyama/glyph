@@ -72,8 +72,8 @@ func judgeCallers[R callerRow](root string, rootVerified bool, workflows []workf
 		if f.Err != nil {
 			// Not left to the pin check: its unknown answers whether a ref is
 			// concrete, not whether a caller starts, and skipping the file here
-			// turned chmod 000 on a failing caller into this check's "nothing
-			// to judge" pass (t-fdd8 (3)).
+			// would turn chmod 000 on a failing caller into this check's
+			// "nothing to judge" pass (t-fdd8 (3)).
 			unreadable = append(unreadable, f.unreadableLine())
 			continue
 		}
@@ -136,8 +136,8 @@ type notJudged struct {
 // version and floor the release the asking check first shipped in.
 //
 // Judged means all of: ref is a release tag; it is above after; and, for a
-// stamped build, it is not above that build's own release. A plain vX.Y.Z (or
-// GoReleaser's X.Y.Z) is the only stamp that names an upper end — `dev`, a Go
+// stamped build, it is not above that build's own release. A plain vX.Y.Z (a
+// release build's stamp) is the only stamp that names an upper end — `dev`, a Go
 // pseudo-version and build.sh's git-describe output (v4.2.0-3-g…) fail
 // bump.ParseVersion and trust their own tree. bump.ParseBaseTag must not
 // be used here: it reads the describe output as its base triple v4.2.0, an

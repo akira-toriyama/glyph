@@ -42,11 +42,9 @@ const (
 // and its URL must point at the host the API client will query — github.com,
 // or GITHUB_API_URL's host (DESIGN §5, "Repository resolution").
 //
-// Interior whitespace is judged here too (ratified 2026-07-22): TrimSpace alone
-// let `a b/c` sail to the wire and come back as a 404 wearing the API code, so
-// the caller was told to retry an input no retry can fix. Same rule as the
-// empty-flag guard (#64): the entrance names what is wrong with caller input,
-// at exit 2, before any request goes out.
+// Interior whitespace is caller input too: `a b/c` would reach the wire and
+// come back a 404, an API answer to an input no retry fixes — so the entrance
+// names it at exit 2, as checkGivenEmpty does for an empty flag.
 func resolveRepo(ctx context.Context, flag string) (owner, repo string, err error) {
 	spec := strings.TrimSpace(flag)
 	if spec == "" {
@@ -190,9 +188,9 @@ func newGitHub() *github.Client {
 // pullInput resolves the repository, reads a pull request's individual
 // commits — the ones that exist BEFORE the squash rewrites them into a single
 // subject, which is the whole reason glyph exists — and names the source for
-// the reason line (owner/name#N). bump and notes share it, so both read a
-// pull request the same way; what the commits MEAN is the pattern file's
-// question, asked downstream.
+// the reason line (owner/name#N). bump, notes and preview share it, so all
+// three read a pull request the same way; what the commits MEAN is the
+// pattern file's question, asked downstream.
 func pullInput(ctx context.Context, number int, repoFlag string) ([]gitsource.RawCommit, string, error) {
 	if err := checkPRFlag(number); err != nil {
 		return nil, "", err

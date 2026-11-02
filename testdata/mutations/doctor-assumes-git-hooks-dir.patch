@@ -1,11 +1,11 @@
 diff --git a/internal/cli/cmd_doctor.go b/internal/cli/cmd_doctor.go
-index 9bfc0c0..7f3a809 100644
+index 1fb308b..deb47c6 100644
 --- a/internal/cli/cmd_doctor.go
 +++ b/internal/cli/cmd_doctor.go
-@@ -273,7 +273,7 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
- 	// the only place allowed to ask: internal/doctor runs no subprocess, exactly
- 	// as it makes no request. A failure here is handed over verbatim and becomes
- 	// that one check's could-not-run — never an aborted report.
+@@ -262,7 +262,7 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
+ 	// here is handed over verbatim and becomes the three hook checks'
+ 	// could-not-run (commit-msg-hook, commit-msg-hook-fires, pre-push-hook) —
+ 	// never an aborted report.
 -	hooksDir, herr := gitsource.HooksDir(ctx, ".")
 +	hooksDir, herr := ".git/hooks", error(nil)
  	// Each hook is read ONCE, here, and the same answer decides what is fired,
