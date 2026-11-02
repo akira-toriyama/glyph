@@ -159,7 +159,8 @@ const coAuthoredBy = "Co-authored-by"
 //
 // Names are returned verbatim for the renderer to fence. A display name is
 // never a login — a co-author address establishes no identity glyph can
-// verify — so nothing here may ever become an @mention (DESIGN §2, t-39fy).
+// verify — so nothing here may ever become an @mention (DESIGN §3, "The
+// trailer block", t-39fy).
 func coAuthorNames(message string) []string {
 	var out []string
 	for _, t := range trailers(message) {

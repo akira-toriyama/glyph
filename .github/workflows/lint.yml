@@ -40,7 +40,7 @@ name: glyph-lint
 # is derived from job.workflow_ref — the tag the caller pinned this reusable to
 # IS the binary it installs — so the workflow revision a caller pins and the
 # binary revision it runs cannot diverge, with no hand-bumped default to fall
-# out of lockstep (one did: this file sat at v0.4.0 through the v0.5.0 tag).
+# out of lockstep.
 #
 # What the lint enforces (exit 3 on violation): the repository's own
 # glyph.toml — a commit means what the first matching [[patterns]] entry says

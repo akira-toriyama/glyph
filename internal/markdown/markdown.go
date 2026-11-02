@@ -8,17 +8,13 @@
 // escapeProseLine), this file fences the would-be @mentions
 // (escapeMentionsSkipping), and compose.go's Line — the package's only
 // exported surface — runs them in the one safe order. No caller gets to choose
-// another (t-3f4s); Line's doc holds the order and the measured leaks that
-// forced it.
+// another; Line's doc holds the order and the measured leaks that forced it.
 //
 // Everything here is a MODEL of a renderer no unit test can call. Every rule
 // below was measured against GitHub's own renderer (`gh api -X POST /markdown`,
 // mode=gfm) on 2026-07-21; the probes, their observed output and the date sit
-// in markdown_test.go. Re-run them before changing a rule — the one time a rule
-// was changed from reasoning alone, the reasoning was wrong (an at-sign written
-// as the entity &#64; renders back to "@" and GitHub linked it anyway, because
-// mentions are added by a POST-PROCESSOR over the rendered document, long after
-// CommonMark has decoded the entity).
+// in markdown_test.go. Re-run them before changing a rule (DESIGN §5,
+// "`internal/markdown`'s rules were measured", has why).
 //
 // One editing rule for the comments in this file: an example holding two
 // backticks in a row goes in an INDENTED block, like the ones below. gofmt
@@ -37,7 +33,8 @@ import (
 // hyphens, never ENDING on a hyphen. The tail rule is not cosmetic — the match
 // consumes the character in FRONT of the at-sign, so a name that swallowed its
 // trailing hyphen also swallowed the delimiter the NEXT mention needed and left
-// that one unescaped. The fuzz target caught it on "@0-@0".
+// that one unescaped. The fuzz corpus entry hyphen-tail-eats-the-next-delimiter
+// ("@0-@0") holds the case.
 const username = `[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?`
 
 // mention matches a token GitHub would link as a user mention.
@@ -242,8 +239,8 @@ func isBacktick(s string, i int) bool {
 // GitHub still declines the mention there (the backtick survives as literal
 // text glued to the at-sign), but glyph's next pass reads the wreckage as prose
 // and fences it AGAIN, so the transformation stops being a fixed point. The
-// fuzz target found it on "\@0 @0". An even run is a run of escaped
-// backslashes, literal text that escapes nothing.
+// fuzz corpus entry backslash-eats-the-fence ("\@0 @0") holds the case. An even
+// run is a run of escaped backslashes, literal text that escapes nothing.
 //
 // A backslash cannot escape the at-sign out of being a mention, incidentally:
 // GitHub renders "\@octocat" as a live mention, the backslash having vanished
@@ -408,8 +405,8 @@ func paragraphSpans(p string, offset int) [][2]int {
 // unmatched run has exhausted the search, only the FIRST of two equal-length
 // spans is formed. In the first line below GitHub renders a code span "a" and
 // then the LITERAL text `b`; in the second it renders the mention as prose and
-// links it, while glyph — modelling the spec instead — read the second span as
-// already-inert and left the mention alone:
+// links it, while a spec-only model reads the second span as already-inert and
+// leaves the mention alone:
 //
 //	`` `a` `b`
 //	`` `a` `x @octocat y`

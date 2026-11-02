@@ -72,11 +72,10 @@ var baseVersionRE = regexp.MustCompile(
 // The split matters because the two questions differ. ParseVersion decides
 // which tags may BE an answer — a resolved walk base, a version to step from — and house
 // releases are exactly vX.Y.Z, so a candidate set that admitted v1.0.0-rc1
-// would hand a release the predecessor of a candidate (measured, and the reason
-// the shell derivation this replaced was retired: t-s5n4). parseBaseVersion
-// decides only what may be ASKED about, and a release candidate is a perfectly
-// good question: it is a tag being cut, which is the whole situation below:
-// exists for.
+// would hand a release the predecessor of a candidate (measured, t-s5n4).
+// parseBaseVersion decides only what may be ASKED about, and a release
+// candidate is a perfectly good question: it is a tag being cut, which is the
+// whole situation below: exists for.
 //
 // Substituting the base is exact rather than approximate, because the candidate
 // set holds plain versions only. For any plain p and any pre-release of B:

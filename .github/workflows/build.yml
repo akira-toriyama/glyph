@@ -18,7 +18,7 @@ jobs:
   # SHA-pinned once in the hub. go.mod carries a `toolchain` line, so gotoolchain is
   # left unset — setup-go honors and pins it (see the reusable's header footgun note).
   # `coverage` prints the total off the race run's own profile: a REPORT, never a
-  # gate (t-37mg; scripts/check.sh's coverage step carries the reason).
+  # gate (scripts/check.sh's coverage step carries the reason).
   ci:
     uses: akira-toriyama/.github/.github/workflows/go-ci.yml@v2
     with:
@@ -27,10 +27,10 @@ jobs:
 
   # Do the tests this pull request adds actually bite? The gate runs them against
   # the source BEFORE the pull request and fails the ones that all still pass — a
-  # test that would have been green without its own fix is not evidence of that fix,
-  # and nothing but habit was checking. Stands down on its own when there is nothing
-  # to prove (no shipping change, no new test, an annotated behaviour pin), so it
-  # costs a pull request nothing to carry.
+  # test that would have been green without its own fix is not evidence of that fix.
+  # Stands down on its own when there is nothing to prove (no shipping change, no
+  # new test, an annotated behaviour pin), so it costs a pull request nothing to
+  # carry.
   # Rationale + the two opt-outs: akira-toriyama/.github/blob/main/docs/go-bite.md
   bite:
     uses: akira-toriyama/.github/.github/workflows/go-bite.yml@v2
@@ -65,7 +65,7 @@ jobs:
   # A change to what glyph SHIPS must carry evidence, exactly as a change to
   # what it computes must. `bite` above acts on Go diffs only and the smoke
   # below reads no YAML, so a :bug: fix touching only .goreleaser.yaml or the
-  # install action used to reach main with zero tests and no gate noticing
+  # install action would reach main with zero tests and no gate noticing
   # (t-5dbh). This job closes that: a distribution-layer file in the diff with
   # no internal/workflows test change fails the pull request. File set, the
   # pin-swap stand-down, waiver (`Dist-gate-exempt:` trailer) and rationale:
@@ -127,7 +127,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Build/test-only, never pushes — drop the persisted checkout token
-          # (zizmor artipacked). t-yaxa
+          # (zizmor artipacked).
           persist-credentials: false
           # glyph's own release tags: the release-history step below reads
           # every one. go-ci's depth-1 checkout holds none, so the test

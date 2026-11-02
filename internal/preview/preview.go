@@ -204,9 +204,9 @@ func headline(in Input) string {
 // its own inline context (measured: a stray backtick in one cell forms no span
 // with a backtick in the next), so each pass must see the cell EXACTLY as it
 // will render at the moment it runs. Flatten-then-markup-then-fence is
-// markdown.Line's to enforce now (t-3f4s), and the measured leaks that forced
-// each half of that order are written down on the builder; this function keeps
-// the one pass that is the TABLE's and not the line's:
+// markdown.Line's to enforce, and the measured leaks that forced each half of
+// that order are written down on the builder; this function keeps the one pass
+// that is the TABLE's and not the line's:
 //
 //   - pipe escaping comes last, after the fence. It adds backslashes, and an
 //     escaping backslash in front of a fence swallows it — the fence goes out
@@ -339,10 +339,10 @@ func notesDetails(notes string) string {
 // figures says whether the body carries figures for the caveat to
 // make floors of: the headlines do, the "moves nothing" sentence does not,
 // and a caveat pointing at "the figures above" there points at nothing. The
-// sentence names no cause — PRShort already does, and "only past the cap"
-// was false for a listing GitHub answered 422 for (t-esm5) — and says a line
-// MAY be missing, the walk's own word: a scope can carry a commit onto the
-// very line its unlisted files touch.
+// sentence names no cause — PRShort already names the cause, and GitHub's 422
+// cuts a listing short below the cap too (t-esm5) — and says a line MAY be
+// missing, the walk's own word: a scope can carry a commit onto the very line
+// its unlisted files touch.
 func prShortBlock(short string, figures bool) string {
 	if short == "" {
 		return ""

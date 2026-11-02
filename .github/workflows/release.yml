@@ -14,8 +14,7 @@ name: glyph-release
 # the verdict and the draft upsert and nothing else — ubuntu runner, no Xcode,
 # no build, no assets. It exists so the live-fire range (glyph-test) can call
 # THIS file instead of a hand copy of it. A range that fires a different gun
-# proves nothing about this one, and the hand copy had already drifted three
-# glyph releases behind the workflows around it once.
+# proves nothing about this one.
 #
 # A repository that declares [[packages]] (glyph docs/DESIGN.md §4.1) is the
 # fourth shape: glyph keeps one rolling draft PER LINE, the four scalar
@@ -47,11 +46,11 @@ name: glyph-release
 #
 # The build stays the repo's uniform script — package.sh for an app bundle,
 # build.sh for a bare binary (each runs `swift build -c release` itself) —
-# with an optional post-build smoke, exactly as in the @v1 reusable; only
-# the verdict engine changed. The upsert runs BEFORE the build: the verdict
-# comes from one walk (tag and body can never split), and a build failure at
-# worst leaves the draft's asset one merge stale — the next green run
-# re-uploads with --clobber, and nothing is published without a human anyway.
+# with an optional post-build smoke. The upsert runs BEFORE the build: the
+# verdict comes from one walk (tag and body can never split), and a build
+# failure at worst leaves the draft's asset one merge stale — the next green
+# run re-uploads with --clobber, and nothing is published without a human
+# anyway.
 #
 # Caller skeleton (.github/workflows/release.yml in each consuming repo):
 #   on:
@@ -231,19 +230,16 @@ jobs:
       # A release run WRITES — it upserts the one glyph-managed rolling draft
       # and re-points its target — so the ref it runs from decides what the
       # repository is about to ship. Off the default branch every one of those
-      # writes is wrong, and NOTHING downstream says so: the walk's range is
-      # <tag>..HEAD over this ref, so the branch's unmerged commits enter the
-      # notes; each resolves to no merged pull request and falls to the
-      # direct-push arm, classified from its own subject; and the exit-4
-      # refusal for a walk that could not read its range never fires, because
-      # only an API lag is recorded as dropped. The run is green, the draft
-      # holds unmerged work, and Publish puts the tag on the branch tip.
+      # writes is wrong. glyph release refuses the same ref itself (exit 4,
+      # checkReleaseRef); this step is the cheaper half (DESIGN §4,
+      # "`release.yml`'s own step stays as the cheaper half"): it refuses before
+      # the checkout and the Xcode setup, so a mis-triggered run spends no
+      # runner minutes.
       #
       # Refuse, do not warn — lint.yml's push arm draws this same boundary for
       # the same reason (a gate that answers without judging is the defect
       # class these guards exist to close), and the argument is stronger here
-      # because that arm only READS while this path writes. Refusing first also
-      # means a mis-triggered run spends no runner minutes.
+      # because that arm only READS while this path writes.
       #
       # dry-run is the way through: previewing the notes from a topic branch
       # writes nothing, which is what a caller's workflow_dispatch is for.
@@ -379,7 +375,7 @@ jobs:
           if [ "$status" -eq 1 ]; then
             # Soft no-release: nothing version-worthy since the last tag.
             # glyph already converged the draft state (residual glyph-managed
-            # drafts deleted — ratified Q3), so this run is complete.
+            # drafts deleted), so this run is complete.
             reason="$(jq -r '.reason // empty' "$RUNNER_TEMP/verdict.json" 2>/dev/null || true)"
             echo "::notice::${reason:-no release-worthy changes since the last tag} — nothing to do."
             echo "release=false" >> "$GITHUB_OUTPUT"
@@ -504,10 +500,10 @@ jobs:
           cp "bin/${BINARY}" artifacts/
           (cd artifacts && openssl dgst -r -sha256 "$BINARY" > "${BINARY}.sha256")
 
-      # gh resolves an unpublished draft by its INTENDED tag for upload/view
-      # (the @v1 reusable relied on the same), and --clobber replaces the
-      # previous merge's asset on an updated draft. Whichever build step ran
-      # left its artifact set in artifacts/ — upload it wholesale.
+      # gh resolves an unpublished draft by its INTENDED tag for upload/view,
+      # and --clobber replaces the previous merge's asset on an updated draft.
+      # Whichever build step ran left its artifact set in artifacts/ — upload
+      # it wholesale.
       #
       # The artifact-mode arm of the condition is load-bearing, not tidiness:
       # with no build step there is no artifacts/, the glob stays literal, and
@@ -524,9 +520,9 @@ jobs:
 
       # Separate from the upload, and NOT gated on the artifact mode: the URL
       # of the draft a human has to go and publish is the one thing every
-      # caller needs out of this run, verdict-only included. It rode inside
-      # the upload step until verdict-only mode existed, which would have made
-      # the mode that ships nothing also the mode that says nothing.
+      # caller needs out of this run, verdict-only included. Inside the upload
+      # step, the mode that ships nothing would also be the mode that says
+      # nothing.
       - name: Say where the draft is
         if: steps.verdict.outputs.release == 'true' && !inputs.dry-run
         env:

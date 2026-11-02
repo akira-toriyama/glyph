@@ -45,8 +45,8 @@ func resolve(info Info, bi *debug.BuildInfo) Info {
 	// A module-mode `go install pkg@version` builds from the module zip: no
 	// VCS stamps exist, but the toolchain records the module version itself.
 	// Surface it, so the binary a user just installed can say which release
-	// it is — it answered only "dev" before, indistinguishable from a source
-	// build. "(devel)" is a directory build and keeps the "dev" sentinel.
+	// it is instead of "dev", indistinguishable from a source build.
+	// "(devel)" is a directory build and keeps the "dev" sentinel.
 	if info.Version == "dev" && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
 		info.Version = bi.Main.Version
 	}

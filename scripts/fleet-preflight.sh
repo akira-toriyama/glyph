@@ -3,10 +3,10 @@
 #
 # glyph is pinned by every repo in the fleet, so a change here reaches nobody
 # until a tag is cut and the pins move. That gap is the whole opportunity: the
-# blast count is knowable BEFORE the tag, and until this script existed it was
-# not — the rollout runbook's "verify" step audits pins and fires one live PR at
-# glyph-test, neither of which answers "how many repos does this change the
-# verdict for". The answer arrived at step 5, in production, one repo at a time.
+# blast count is knowable BEFORE the tag. The rollout runbook's "verify" step
+# audits pins and fires one live PR at glyph-test, neither of which answers
+# "how many repos does this change the verdict for"; without this script the
+# answer arrives at step 5, in production, one repo at a time.
 #
 # ─── What it measures ────────────────────────────────────────────────────────
 # A DIFFERENTIAL, never an absolute. "Is repo X red?" is the wrong question: a
@@ -35,8 +35,7 @@
 #                 that did nothing. A moved `bump` line is strictly graver than
 #                 a moved `lint` line, and the report says so.
 #
-#                 `--since-tag` and not `--range`, which is what this script
-#                 asked first and was wrong to. The release job walks merge
+#                 `--since-tag` and not `--range`: the release job walks merge
 #                 points and expands each back into the pull it merged; a plain
 #                 range walks the commits on the branch. They are not the same
 #                 set and they do not give the same answer — measured on canon,
@@ -44,9 +43,8 @@
 #                 over one `:robot:` subject fleet-sync wrote (an unmatched
 #                 commit — measured 2026-08-04, under v1, whose embedded
 #                 table had no `:robot:`) while `--since-tag` returns v2.0.1
-#                 without hesitating. Nine repos were being reported as "bump gate
-#                 unanswered" on the strength of that, and the one thing a
-#                 preflight may not do is describe a gate it is not running.
+#                 without hesitating. A preflight may not describe a gate it
+#                 is not running.
 #
 #   release       the SHIPPED body (release.yml). Everything a body is made of
 #   --dry-run     — section titles and order, the entry line, the citation, the
@@ -56,23 +54,21 @@
 #                 verdict probes read 0 moved. Probed with the release job's
 #                 own command (`release --dry-run --json`, the invocation at
 #                 release.yml's verdict step) and never with `notes` — the
-#                 same correction this script already made once, for
-#                 `--since-tag` vs `--range`: a preflight may not describe a
-#                 gate it is not running. Its moves are RETROACTIVE the way
-#                 bump's are — the repo's next release publishes a different
-#                 body, having changed nothing itself — and they are counted
-#                 BESIDE the verdict count, never inside it: a re-rendered
-#                 body is not a changed verdict. Bodies are compared only when
-#                 BOTH binaries reach a release verdict (exit 0): every other
-#                 combination is the verdict itself moving, which is the bump
-#                 row's finding, not this one's.
+#                 same rule as `--since-tag` over `--range`: a preflight may
+#                 not describe a gate it is not running. Its moves are
+#                 RETROACTIVE the way bump's are — the repo's next release
+#                 publishes a different body, having changed nothing itself —
+#                 and they are counted BESIDE the verdict count, never inside
+#                 it: a re-rendered body is not a changed verdict. Bodies are
+#                 compared only when BOTH binaries reach a release verdict
+#                 (exit 0): every other combination is the verdict itself
+#                 moving, which is the bump row's finding, not this one's.
 #
 # The probes are classified INDEPENDENTLY. They fail for unrelated reasons — a
 # repo carrying one unparseable subject makes `bump` refuse the whole range
-# (exit 3) while `lint` still answers about every other commit in it — and the
-# first cut of this script discarded such a repo entirely, throwing away a good
-# lint answer because the bump probe beside it had broken. Measured: that lost
-# three consumers, one of them glyph-test, the repo the rollout fires live at.
+# (exit 3) while `lint` still answers about every other commit in it — so
+# discarding such a repo entirely would throw away a good lint answer because
+# the bump probe beside it broke.
 #
 # ─── What it refuses to do ───────────────────────────────────────────────────
 # Report a number it cannot stand behind. Three ways that is enforced:
@@ -90,8 +86,9 @@
 #     the environment broke, which is NOT one. Measured while writing this: a
 #     run of `glyph lint --range` with the wrong working directory exits 4 for
 #     every repo, and a script reading `if ! glyph …` would have called that
-#     thirty-five findings and been believed. Same rule as scripts/check.sh's
-#     smoke block, and the same incident behind it.
+#     thirty-five findings and been believed. Same rule as scripts/smoke.sh's
+#     exit-code block (CLAUDE.md's "Exit codes are a machine API" section
+#     holds the incident).
 #
 # ─── Usage ───────────────────────────────────────────────────────────────────
 #     sh scripts/fleet-preflight.sh [--fetch] <candidate-binary> [baseline-binary]
@@ -131,10 +128,10 @@ for arg in "$@"; do
   case "$arg" in
     --fetch) FETCH=1 ;;
     -h|--help)
-      # The whole header, not a hand-counted slice of it. `sed -n '2,60p'` cut
-      # off mid-sentence and never reached the Usage block — the one thing
-      # --help exists to print — and it was silently re-truncated every time the
-      # header grew. Stop at the first non-comment line instead.
+      # The whole header, not a hand-counted slice of it: a fixed line range
+      # cuts off mid-sentence, can miss the Usage block — the one thing --help
+      # exists to print — and re-truncates silently every time the header
+      # grows. Stop at the first non-comment line.
       sed -n '2,${/^[^#]/q;p;}' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
@@ -276,8 +273,8 @@ fi
 #
 # Every probe keeps its stderr in <errfile>, never /dev/null: a probe that did
 # not answer is reported with glyph's own sentence for why (see why() below).
-# Discarding it made a spent API budget and a real GitHub refusal print the same
-# "unanswered (exit 4)" row (t-gjxq).
+# Discarding it makes a spent API budget and a real GitHub refusal print the
+# same "unanswered (exit 4)" row.
 probe() { # probe <bin> <dir> <errfile> <subcommand-and-args...>
   _bin="$1"; _dir="$2"; _errf="$3"; shift 3
   _st=0
@@ -302,12 +299,11 @@ whys() { # whys <baseline-errfile> <candidate-errfile>
   fi
 }
 
-# probe_lint exists because the exit code is NOT the whole verdict, and treating
-# it as one was this script's worst bug. lint has exactly two answer codes, so a
-# repo already at 3 could never register a move however much worse the candidate
-# made it — and nine of thirty-five were already at 3, eight of which gain
-# violations under the v1.0.0 candidate while being counted as agreeing. The
-# headline "10 would change" was wrong by eight.
+# probe_lint exists because the exit code is NOT the whole verdict. lint has
+# exactly two answer codes, so a repo already at 3 can never register a move
+# however much worse the candidate makes it (measured against the v1.0.0
+# candidate: eight of the nine repos already at 3 gain violations, and an
+# exit-code comparison counts all eight as agreeing).
 #
 # So the comparable thing is the FINDING SET: the commits the run reported. A
 # finding is one per commit and carries no rule id — its `detail` is the config's
@@ -363,12 +359,12 @@ probe_body() { # probe_body <bin> <dir> <owner/name> <bodyfile> <errfile>
 # body shares bump's answer set: release exits 0 (a draft would be written),
 # 1 (none — nothing release-worthy) or 3 (a refusal), all reached by judging.
 #
-# Spelled `[ "$status" -eq N ]` rather than as a `case` on "$gate:$code", which
-# is how it was first written. The shape is not cosmetic: internal/workflows'
-# exit-code inventory walks every .sh under scripts/ looking for exactly this
-# pattern, and the `case` form was invisible to it — so glyph's own guard against
-# "a shell consumer branches on a stale integer" did not cover its newest shell
-# consumer. Keep the form, and keep the rows in exitcodes_test.go beside it.
+# Spelled `[ "$status" -eq N ]` rather than as a `case` on "$gate:$code". The
+# shape is not cosmetic: internal/workflows' exit-code inventory walks every .sh
+# under scripts/ looking for exactly this pattern, and the `case` form is
+# invisible to it — so glyph's own guard against "a shell consumer branches on a
+# stale integer" would not cover this consumer. Keep the form, and keep the rows
+# in exitcodes_test.go beside it.
 answered() { # answered <gate> <status>  → 0 when the status is an ANSWER, 1 when the probe broke
   status="$2"
   case "$1" in
@@ -405,7 +401,7 @@ lintword() { # lintword <code> <signature>
 
 # All report cells are ASCII. printf's %-Ns pads by BYTES, so a multibyte arrow
 # or em-dash in a cell silently narrows that row against the header — measured
-# at 2 columns per row before this.
+# at 2 columns per row.
 
 # ─── API budget ──────────────────────────────────────────────────────────────
 # bump and body each run the release-path walk, which asks GitHub for every
@@ -532,10 +528,9 @@ while IFS= read -r name; do
 
   # Refresh FIRST: everything below — consumership, the pin, the walk — is read
   # from the remote ref, and an unfetched remote ref answers as of the clone's
-  # last visit. A discarded fetch failure is worse than no fetch: passing
-  # --fetch removed the "clones NOT refreshed" caveat from the ✓ line whether or
-  # not a single fetch had actually succeeded, so an offline run read as the
-  # freshest possible one.
+  # last visit. A discarded fetch failure is worse than no fetch: --fetch
+  # removes the "clones NOT refreshed" caveat from the ✓ line, so an uncounted
+  # failure makes an offline run read as the freshest possible one.
   refreshed=''
   if [ -n "$FETCH" ]; then
     if git -C "$dir" fetch --quiet --tags origin >/dev/null 2>&1; then
@@ -577,9 +572,9 @@ while IFS= read -r name; do
   # pinned further back sees a LARGER change than any row here — the baseline it
   # would move from is older than the one being compared against. Read from the
   # remote ref, never the working tree: `git fetch` moves origin/* and leaves
-  # the tree behind, and the tree-read version of this block reported 29 repos
-  # "pinned BELOW the baseline" out of checkouts the fleet had long moved past,
-  # while every fetched origin/HEAD carried the true pin (the hub's
+  # the tree behind, so a tree read reports repos "pinned BELOW the baseline"
+  # out of checkouts the fleet has long moved past (measured: 29 such repos,
+  # while every fetched origin/HEAD carried the true pin and the hub's
   # glyph-pin-audit.yml, which reads the API, agreed). `sort -V`, because
   # v0.12.0 sorts lexically below v0.8.0 and `tail -1` would report the LOWER
   # pin of such a pair. Comments are filtered because every glyph reusable ships
@@ -614,8 +609,8 @@ while IFS= read -r name; do
     # history makes N overshoot the chain, and even without merges `~<count>`
     # names the root's parent. Both produce `fatal: bad revision`, which glyph
     # correctly reports as exit 4 — "no trustworthy answer" — and this script
-    # then filed as an unanswered gate. Measured before the fix: nine repos
-    # blamed on glyph for a bug that was here.
+    # would then file as an unanswered gate, blaming glyph for this script's
+    # bug.
     floor="$(git -C "$dir" rev-list --abbrev-commit --max-count=$((RECENT_CAP + 1)) "$wh" 2>/dev/null | tail -1)"
     if [ -z "$floor" ] || [ "$floor" = "$(git -C "$dir" rev-parse --short "$wh" 2>/dev/null)" ]; then
       printf '%s\tno tag and no history to walk from\n' "$name" >> "$WORK/skips"
@@ -813,10 +808,10 @@ fi
 # The ✓ line carries every weakening of the claim, because the ✓ line is what
 # gets read — the same stance scripts/check.sh takes with ALLOW_DIRTY and the
 # golangci-lint skew.
-# A run that probed nothing is not a run that found nothing. UNPROBED used to be
-# incremented at every skip and then never read, so with no clones on disk the
-# script printed a ✓, a flat "0 would change" and exit 0 over a fleet it had
-# measured none of — the exact vacuous green everything else here refuses.
+# A run that probed nothing is not a run that found nothing: without this check,
+# a run with no clones on disk prints a ✓, a flat "0 would change" and exit 0
+# over a fleet it measured none of — the exact vacuous green everything else
+# here refuses.
 if [ "$CONSUMERS" -eq 0 ]; then
   echo "✗ none of the $FLEET_TOTAL fleet repos could be probed ($UNPROBED skipped, each listed above)." >&2
   echo "  \"0 would change\" over a fleet nothing was measured of is not a result." >&2

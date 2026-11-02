@@ -74,10 +74,10 @@ cleanup() {
   [ -z "$PIDS" ] || kill $PIDS 2>/dev/null || true
   rm -rf "$TMP"
 }
-# An interrupted run must not be able to print a verdict. The trap used to
-# delete the snapshot and RETURN, so every remaining row failed for the script's
-# own reasons and the last line called a healthy branch ✗ (2026-10-04: a pkill
-# aimed at another run of this script). The re-raise is scripts/lib/trap.sh's.
+# An interrupted run must not be able to print a verdict: a trap that deletes
+# the snapshot and RETURNS fails every remaining row for the script's own
+# reasons, and the last line calls a healthy branch ✗. The re-raise is
+# scripts/lib/trap.sh's.
 # shellcheck source=scripts/lib/trap.sh
 . ./scripts/lib/trap.sh
 reraise_on_signals cleanup

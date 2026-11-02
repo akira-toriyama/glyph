@@ -1,9 +1,9 @@
 {
   # glyph — `nix run github:akira-toriyama/glyph` or `nix profile install`.
   #
-  # vendorHash pins the vendored go modules; when go.mod/go.sum change, set it
-  # back to pkgs.lib.fakeHash, run `nix build`, and paste the hash nix prints
-  # ("got: sha256-...").
+  # vendorHash pins the vendored go modules; when go.mod/go.sum change, run
+  # `sh scripts/repin-vendorhash.sh` (the hub's fleet-repin runs it on
+  # dependabot branches).
   description = "sigil-driven commit-lint, semver, and release notes for squash-merge repos";
 
   inputs = {

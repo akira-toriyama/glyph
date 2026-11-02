@@ -117,9 +117,8 @@ func NoReleasef(format string, a ...any) *Error {
 // Silent — the operator caused the stop, so the exit code (130) is the whole
 // verdict and the stderr envelope stays quiet. Deliberately not a format
 // builder like the others: the writing sides (internal/gitsource,
-// internal/github) had hand-written byte-identical literals, and IsInterrupted
-// already argues that the reading sides must stay one question — a format
-// parameter here is how the writing sides would drift apart again.
+// internal/github, internal/cli's doctor probe) must emit one message, as
+// IsInterrupted keeps the readers one question.
 func Interrupted() *Error {
 	return &Error{Code: CodeInterrupted, Msg: "interrupted", Silent: true}
 }
@@ -157,11 +156,11 @@ func AsError(err error) *Error {
 }
 
 // IsInterrupted reports whether err carries CodeInterrupted — the user's own
-// SIGINT/SIGTERM, classified at the source (internal/gitsource, internal/github's
-// backoff wait). The question is asked at three call sites that each spelled it
-// differently; one predicate keeps them the same question. An interrupt must
-// carry out as the abort it is — laundering it into a check result or an API
-// failure tells a CI wrapper to retry a run its operator stopped.
+// SIGINT/SIGTERM, classified at the source (internal/gitsource,
+// internal/github, internal/cli's doctor probe). One predicate keeps every call
+// site the same question. An interrupt must carry out as the abort it is —
+// laundering it into a check result or an API failure tells a CI wrapper to
+// retry a run its operator stopped.
 func IsInterrupted(err error) bool {
 	ce := AsError(err)
 	return ce != nil && ce.Code == CodeInterrupted

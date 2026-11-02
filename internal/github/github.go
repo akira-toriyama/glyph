@@ -314,10 +314,9 @@ func getAll[T any](ctx context.Context, c *Client, u string) ([]T, error) {
 //
 // Every Link line is read, joined the way RFC 9110 §5.3 combines a
 // list-valued field. Header.Get returns the first line only, so a server that
-// put rel="next" on a second line ended the walk at page 1 with no error —
-// PullCommits returned 1 of 2 commits (t-esm5,
-// TestPullCommitsFollowsALinkHeaderSplitAcrossLines). api.github.com sends
-// one line (measured 2026-09-29); the join costs nothing when it does.
+// puts rel="next" on a second line would end the walk at page 1 with no error
+// (t-esm5, TestPullCommitsFollowsALinkHeaderSplitAcrossLines). api.github.com
+// sends one line (measured 2026-09-29); the join costs nothing when it does.
 func (c *Client) get(ctx context.Context, u string, into any) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -547,7 +546,7 @@ func failed(ctx context.Context, what string, err error) error {
 // retryable reports whether one attempt's failure is worth another try: a 5xx
 // (an outage or a gateway hiccup), a 429, or ANY 403. With Retry-After the 403
 // is GitHub's secondary-rate-limit signature. Without one it is EITHER a true
-// permission failure OR the collision t-z7c1 measured: several repos' release
+// permission failure OR a measured collision: several repos' release
 // runs PATCH their rolling drafts in the same second (fleet-sync's fan-out
 // window) and GitHub answers a bare 403 `Resource not accessible by
 // integration` that the very same request survives moments later. The two
@@ -580,9 +579,9 @@ func retryable(err error) bool {
 //
 // The cap is applied to the seconds, before they become a Duration. A
 // server-sent value past 9223372036 overflows int64 in the multiplication,
-// and a cap applied to the product let it through wrapped: 9223372037 came
-// back negative, so waitRetry skipped the sleep, and 18446744074 came back
-// as 290ms — either way the backoff schedule collapsed (t-esm5,
+// and a cap on the product would let it through wrapped (9223372037 would come
+// back negative, so waitRetry would skip the sleep; 18446744074 would come back
+// as 290ms) — either way the backoff schedule would collapse (t-esm5,
 // TestRetryWaitHonorsRetryAfter).
 func retryWait(err error, fallback time.Duration) time.Duration {
 	if se, ok := errors.AsType[*statusError](err); ok && se.retryAfter != "" {

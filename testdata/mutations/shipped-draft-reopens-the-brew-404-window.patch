@@ -1,10 +1,10 @@
 diff --git a/.goreleaser.yaml b/.goreleaser.yaml
-index de9b430..09c0228 100644
+index 8d93d5f..ff87401 100644
 --- a/.goreleaser.yaml
 +++ b/.goreleaser.yaml
-@@ -86,7 +86,7 @@ release:
+@@ -94,7 +94,7 @@ release:
    # never had the window; this matches them, and the notes no longer need a
-   # human pass since glyph generates and escapes them (t-8hqn) and
+   # human pass since glyph generates and escapes them and
    # pr-verdict previews them at PR time.
 -  draft: false
 +  draft: true

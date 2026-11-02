@@ -36,7 +36,7 @@ fi
 
 # `completion` is cobra's command, and its output is redirected into a file the
 # shell SOURCES — so an unknown shell reporting success is not a cosmetic exit
-# code. `glyph completion zshh > _glyph` used to exit 0 and write the parent's
+# code: a `glyph completion zshh > _glyph` that exits 0 writes the parent's
 # English help where a completion script belongs. Both halves are asserted here
 # rather than in a Go test because cobra binds the completion writer once, when
 # the command tree is built, so an in-process test cannot observe which stream
@@ -58,12 +58,12 @@ if [ -n "$out" ]; then
 fi
 
 echo "→ smoke: lint / bump exit-code contract"
-# The CODE is the assertion, not merely non-zero: `--stdin=false` used to exit 3,
-# telling a CI gate that a commit violated the convention when none was
+# The CODE is the assertion, not merely non-zero: a `--stdin=false` that exits 3
+# tells a CI gate that a commit violated the convention when none was
 # submitted, and a plain `if "$BIN" …; then` cannot tell 3 from 2. That rule
-# governs EVERY assertion in this block. Three of them used to state an integer
-# in the failure message and assert only non-zero — a smoke that would have
-# stayed green through the very renumbering it was written to catch.
+# governs EVERY assertion in this block: one that states an integer in its
+# failure message and asserts only non-zero stays green through the very
+# renumbering it exists to catch.
 "$BIN" lint --message ':bug:~ fix a crash'   # clean → 0
 status=0
 "$BIN" lint --message 'no gitmoji' >/dev/null 2>&1 || status=$?

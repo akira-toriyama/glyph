@@ -2,19 +2,11 @@
 # check.sh — the full local verification, runnable by you or by Claude Code with
 # no TTY. A green run here means a green CI.
 #
-# That sentence used to be a claim and is now a CHECK. It was false in both
-# directions: this script never mirrored build.yml's `bite` job, and it ran
-# govulncheck, which build.yml does not contain (that gate is its own caller,
-# .github/workflows/govulncheck.yml). Worse, the two linters were guarded by
-# `command -v` and a run that skipped them both still ended `✓ all checks
-# passed` — measured on a machine where govulncheck is not installed, so the
-# skip was not hypothetical but the normal case (t-7tj3). A verification script
-# that overstates its coverage is worse than one that admits a gap, because the
-# gap is what you were relying on it for.
-#
-# So the gates are now DECLARED below and RECONCILED at the end: every mirrored
-# gate must actually have run, or the final line is not printed and the exit is
-# non-zero. A missing tool is a failure, not a skip.
+# That sentence is a CHECK, not a claim: every mirrored gate is DECLARED below
+# and RECONCILED at the end — each must actually have run, or the final line is
+# not printed and the exit is non-zero. A missing tool is a failure, not a skip.
+# A verification script that overstates its coverage is worse than one that
+# admits a gap, because the gap is what you were relying on it for.
 #
 # ─── MIRRORED ────────────────────────────────────────────────────────────────
 #   commit-lint     commit-lint.yml → lint.yml   `glyph lint --range`
@@ -204,7 +196,7 @@ COVER="$WORK/cover.out"
 go test -race -covermode=atomic -coverprofile="$COVER" ./...
 ran race-test
 # The total line off the profile the race run just wrote — a REPORT, never a
-# gate (t-37mg): coverage is read for risk (an unexecuted branch is a cheap
+# gate: coverage is read for risk (an unexecuted branch is a cheap
 # candidate finder for the mutation ledger), and a threshold would turn the
 # number into a target, which buys the tests that assert nothing. The ledger
 # below stays the authority on whether tests bite — 93% coverage has been
@@ -237,10 +229,10 @@ sh scripts/mutations.sh
 ran mutations
 
 # Do the tests this branch ADDS bite? The ledger above asks it of a standing list
-# of decisions; this asks it of the diff, which is the half CI gates on and the
-# half no local run used to reproduce (t-7tj3). The script is the hub's, not a
-# reimplementation — a second copy of a fleet gate would drift against the
-# canonical one, which is exactly the mistake the NOT-MIRRORED list refuses.
+# of decisions; this asks it of the diff, which is the half CI gates on. The
+# script is the hub's, not a reimplementation — a second copy of a fleet gate
+# would drift against the canonical one, which is exactly the mistake the
+# NOT-MIRRORED list refuses.
 #
 # --git-common-dir resolves to the PRIMARY checkout even from a worktree, so the
 # sibling lookup works in both; GLYPH_FLEET_HUB overrides it. BASE_SHA is the
@@ -288,9 +280,9 @@ BASE_SHA="$(git rev-parse origin/main)" HEAD_SHA="$(git rev-parse HEAD)" \
   GOROOT="$BITE_GOROOT" PATH="$BITE_GOROOT/bin:$PATH" sh "$BITE"
 ran bite
 
-# A CI gate whose tool is missing is a FAILURE and not a skip. The old
-# `command -v` guard printed "skipped" and let the run finish with its success
-# line, which on this machine meant govulncheck never ran and nothing said so.
+# A CI gate whose tool is missing is a FAILURE and not a skip: a `command -v`
+# guard that prints "skipped" and lets the run finish with its success line
+# reports a gate that never ran, and nothing says so.
 if command -v golangci-lint >/dev/null 2>&1; then
   echo "→ golangci-lint"
   # Running the gate is not the same as running CI'S gate. go-ci.yml pins the
@@ -345,8 +337,8 @@ sh scripts/smoke.sh "$WORK/glyph"
 ran smoke
 
 # Reconciliation. Every gate that got this far exited 0 under `set -e`, so what is
-# left to establish is that each one RAN — the failure mode that made the old
-# header a lie was a gate quietly not running, which no exit code reports.
+# left to establish is that each one RAN — a gate quietly not running is the
+# failure no exit code reports.
 missing=''
 total=0
 for g in $MIRRORS; do

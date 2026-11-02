@@ -1,9 +1,10 @@
 diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 4e9b553..72c5d13 100644
 --- a/internal/gitsource/gitsource.go
 +++ b/internal/gitsource/gitsource.go
-@@ -140,7 +140,7 @@ func RemoteTips(ctx context.Context, dir, remote string) ([]string, error) {
+@@ -139,7 +139,7 @@ func RemoteTips(ctx context.Context, dir, remote string) ([]string, error) {
  // a space, and a remote name may hold one (`[remote "my fork"]`), which the
- // line form cut to `my` (t-3jws, TestRemoteURLsKeepsASpacedRemoteName).
+ // line form would cut to `my` (TestRemoteURLsKeepsASpacedRemoteName).
  func RemoteURLs(ctx context.Context, dir string) (map[string]string, error) {
 -	out, found, err := runAnswer(ctx, dir, "config --get-regexp", "config", "-z", "--get-regexp", `^remote\..*\.url$`)
 +	out, found, err := runAnswer(ctx, dir, "config --get-regexp", "config", "--get-regexp", `^remote\..*\.url$`)

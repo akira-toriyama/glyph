@@ -21,12 +21,13 @@ const (
 // Promote is a field rather than a fifth rung, and that is the load-bearing
 // choice here. Level is a closed four-word vocabulary three consumers already
 // read as data — a note section's semver filter, preview's icon and rank, and
-// pr-verdict.yml's `[ "$level" = "major" ]` — and every one of them answers an
-// unknown word by silently doing nothing rather than by failing. A fifth rung
-// would therefore publish a version while telling the pull request it moved
-// nothing, and drop the promoting commit out of the release notes. So a '%'
-// commit classifies as major like any other breaking change, and carries its
-// absoluteness beside the lattice instead of inside it.
+// pr-verdict.yml's `case "$level"` (major → breaking=true, any other word →
+// false) — and every one of them answers an unknown word by silently doing
+// nothing rather than by failing. A fifth rung would therefore publish a
+// version while telling the pull request it moved nothing, and drop the
+// promoting commit out of the release notes. So a '%' commit classifies as
+// major like any other breaking change, and carries its absoluteness beside
+// the lattice instead of inside it.
 type Decision struct {
 	Level   Level
 	Promote bool

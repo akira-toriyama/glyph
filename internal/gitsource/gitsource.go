@@ -137,7 +137,7 @@ func RemoteTips(ctx context.Context, dir, remote string) ([]string, error) {
 //
 // Read NUL-framed (`key\nvalue\0`): the line form separates key and value with
 // a space, and a remote name may hold one (`[remote "my fork"]`), which the
-// line form cut to `my` (t-3jws, TestRemoteURLsKeepsASpacedRemoteName).
+// line form would cut to `my` (TestRemoteURLsKeepsASpacedRemoteName).
 func RemoteURLs(ctx context.Context, dir string) (map[string]string, error) {
 	out, found, err := runAnswer(ctx, dir, "config --get-regexp", "config", "-z", "--get-regexp", `^remote\..*\.url$`)
 	if err != nil {
@@ -789,8 +789,8 @@ func isShallow(ctx context.Context, dir string) (bool, error) {
 // or the read fails like any other git read (API). Those are the two fields git
 // alone writes, so a record whose fields did not land where logFormat put them
 // fails there instead of reaching the gates as a commit by the wrong author.
-// Full object names, not SHA-1's 40 digits: glyph read SHA-256 repositories
-// before the check existed (TestLogReadsSHA256Repositories).
+// Full object names, not SHA-1's 40 digits: glyph reads SHA-256 repositories
+// (TestLogReadsSHA256Repositories).
 func parseLog(out []byte) ([]RawCommit, error) {
 	if len(out) == 0 {
 		return nil, nil
@@ -901,7 +901,7 @@ func runStdin(ctx context.Context, dir, stdin string, args ...string) ([]byte, e
 // keep os/exec's own behaviour (the child gets /dev/null). Collapsing run into
 // runStdin("") instead would have swapped that for a pipe this package then has
 // to write to and close, which is a behaviour change smuggled inside a
-// deduplication — and one nobody had measured.
+// deduplication.
 //
 // #nosec G204 -- the binary is the fixed literal "git". Every argument is
 // structured by this package's own funcs; the caller-supplied values
