@@ -4,15 +4,21 @@
 // argument behind each check's severity, are DESIGN §7's (§4.1's for the two
 // package checks).
 //
-// Two properties are load-bearing and hold for every check here:
+// Three properties are load-bearing and hold for every check here:
 //
 //   - READ-ONLY. doctor never writes a repository, a checkout or a workflow
 //     file. It reports and hands over the command to run; a diagnostic that
 //     mutates cannot be run casually, and this one is meant to be run casually.
-//   - INDEPENDENT. One unreadable input (a repository object a token cannot
-//     fetch, a workflow file the filesystem refuses) degrades THAT check to
-//     StatusUnknown and no other. A report that aborts halfway is a report that
-//     hides the finding you needed.
+//   - INDEPENDENT. An input's failure (a repository object a token cannot
+//     fetch, a workflow file the filesystem refuses) degrades exactly the
+//     checks that read that input to StatusUnknown — unless the failure is
+//     that check's finding, as a glyph.toml that does not load is the config
+//     check's — and never a check that does not read it, nor the report. A
+//     report that aborts halfway is a report that hides the finding you
+//     needed.
+//   - NO SUBPROCESS, NO REQUEST. doctor runs no git, fires no hook and calls no
+//     API: internal/cli asks git, fires the commit-msg probe and fetches the
+//     repository object, and hands each answer over with its error (Input).
 package doctor
 
 import (
@@ -82,20 +88,20 @@ type Report struct {
 	OK     bool    `json:"ok"`
 }
 
-// Input is everything the checks read. The repository object is fetched by the
-// caller (internal/cli makes every request on doctor's behalf — doctor itself
-// speaks to no network) and handed over WITH its error: RepoErr non-nil is not a fatal
-// condition here, it is the input to the token check and the reason the
-// settings checks report could-not-run.
+// Input is what internal/cli reads and asks for the checks — every git answer,
+// both hook reads and the probe's result, the loaded glyph.toml, the API
+// answer — each with its error. The files the checks read themselves under
+// Root (the workflows, the action files git listed, a package path's wording)
+// are not in it. RepoErr non-nil is not a fatal condition here: it is the
+// input to the token check and the reason the settings checks report
+// could-not-run.
 type Input struct {
 	// Repo is owner/name, for the report header.
 	Repo string
 	// Root is the local checkout whose .github/workflows are scanned and
 	// whose glyph.toml Config was loaded from: git's own top level (rev-parse
 	// --show-toplevel), or a bare "." — with nothing loaded — when git could
-	// not name one. RootErr is that failure, verbatim — resolved by the
-	// caller for the same reason HooksDir is: naming the top level takes a
-	// subprocess, and internal/doctor runs none. It decides how the local
+	// not name one. RootErr is that failure, verbatim. It decides how the local
 	// scans read an absent .github/workflows: under a git-named root that
 	// absence is an observed fact about the repository (pass — nothing to
 	// scan), while under a bare "." it could equally be a wrong working
@@ -123,9 +129,8 @@ type Input struct {
 	TokenConfigured bool
 	// HooksDir / HooksErr are git's answer to where this checkout's hooks live
 	// (core.hooksPath relocates them, so it must be ASKED, not assumed) and the
-	// failure to get one. Resolved by the caller for the same reason RepoObject
-	// is: the caller runs doctor's subprocesses, as it makes its requests. A nil
-	// error with an empty directory cannot happen — git names one or fails.
+	// failure to get one. A nil error with an empty directory cannot happen —
+	// git names one or fails.
 	HooksDir string
 	HooksErr error
 	// CommitMsgHook / PrePushHook are each kind's hook.Read in HooksDir, with
@@ -137,26 +142,24 @@ type Input struct {
 	PrePushHook      hook.Installed
 	PrePushHookErr   error
 	// CommitMsgProbe is the outcome of the caller FIRING the installed
-	// commit-msg hook with a violating message — executed by internal/cli for
-	// the same reason HooksDir is resolved there, and only when the installed
-	// bytes are exactly this binary's hook (see probeCommitMsgHook). nil means
-	// nothing was fired.
+	// commit-msg hook with a violating message, which it does only when the
+	// installed bytes are exactly this binary's hook (see probeCommitMsgHook).
+	// nil means nothing was fired.
 	CommitMsgProbe *HookProbe
 	// Tags / TagsErr are git's tag list for the checkout and the failure to
-	// get one — resolved by the caller like HooksDir, read by the root-line
-	// check alone.
+	// get one, read by the root-line check alone.
 	Tags    []string
 	TagsErr error
 	// HeadTrees / HeadTreesErr are every directory HEAD records
-	// (gitsource.HeadTrees) and the failure to list them — resolved by the
-	// caller like HooksDir, read by the package-paths check alone, which
-	// judges a declared path the way attribution reads it: as git's path.
+	// (gitsource.HeadTrees) and the failure to list them, read by the
+	// package-paths check alone, which judges a declared path the way
+	// attribution reads it: as git's path.
 	HeadTrees    []string
 	HeadTreesErr error
 	// ActionFiles / ActionFilesErr are every action.yml / action.yaml git
 	// counts as part of the checkout (gitsource.ActionFiles, relative to Root)
-	// and the failure to list them — resolved by the caller like HooksDir,
-	// read by the pin check, which never walks the filesystem for them.
+	// and the failure to list them, read by the pin check, which never walks
+	// the filesystem for them.
 	ActionFiles    []gitsource.ActionFile
 	ActionFilesErr error
 	// GlyphVersion is the running binary's version as version.Resolve reports
@@ -457,18 +460,9 @@ func checkSquashEnabled(in Input) Check {
 // plus the partial window, where an unresolved merge point loses its whole
 // pull out loud (DESIGN §7).
 //
-// The coupling runs the other way too: this severity is downstream of that fix.
-// If the merge-commit walk is ever reverted or regresses, this check must move
-// back to StatusFail with it — they are one decision, not two.
-//
-// There is a SECOND coupling, and it is the quieter one: advice is only defensible
-// because the partial window is announced. The reconciliation warning at the end
-// of the walk (internal/walk, walk.reconcile) is what turns "this release is
-// short by a whole pull request" into something a human sees, and it fires on EVERY release
-// of a repository whose merge button an automation presses — exactly the kind of
-// recurring noise somebody eventually silences. Quiet that warning and this
-// setting becomes a silent total loss; the severity must move to StatusFail with
-// it, for the same reason as the coupling above.
+// This severity is coupled to the merge-commit walk and to walk.reconcile's
+// lost-pull warning: if either goes, it moves to StatusFail (DESIGN §7, "The
+// merge-commit severity is downstream of that fix").
 func checkMergeCommit(in Input) Check {
 	c := Check{ID: idMergeCommit, Expected: "allow_merge_commit=false (house convention: squash-only)"}
 	if u, ok := available(in, c, "allow_merge_commit", in.RepoObject.AllowMergeCommit); !ok {

@@ -6,9 +6,8 @@ package doctor
 // carries baseline nothing from now on. That is not a defect (the tags are
 // history, and the walk never reads them), but it is the one migration
 // surprise a monorepo author meets first, and the fix is one declaration.
-// Tags are read by the caller (internal/cli runs every subprocess doctor needs) and handed
-// over with their error, as the hooks directory is; the declared lines come
-// from the glyph.toml the caller loaded once.
+// It reads the tag list (Input.Tags) and the declared lines of the glyph.toml
+// the caller loaded once.
 
 import (
 	"fmt"

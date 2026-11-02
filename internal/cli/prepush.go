@@ -263,8 +263,7 @@ func prePushRun(ctx context.Context, args []string) error {
 		warnf("commit %.7s: %s", w.SHA, w.Detail)
 	}
 	if checked == 0 {
-		// The two causes need different sentences, and reporting the first as the
-		// second is what the live-fire run caught: an empty walk means the remote
+		// The two causes need different sentences: an empty walk means the remote
 		// already holds everything this push carries, while a non-empty one means
 		// the convention has no opinion about any of it.
 		if len(raws) == 0 {

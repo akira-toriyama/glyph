@@ -28,16 +28,9 @@ const (
 	commentBodyMaxChars = 65536
 )
 
-// checkReleaseBody refuses a composed release body GitHub would reject, before
-// anything is written. A refusal and never a truncation, on purpose: the walk
-// READ the whole range, so a body missing part of it is a wrong document
-// published as the release — §4's fails-loud family, the incomplete walk's
-// exit, reached from the other side (the walk read everything and the OUTPUT
-// cannot carry it). Without this guard the run computes a correct verdict and
-// dies on the write at exit 4 anyway, having spent the run's one chance to
-// land the notes on a body GitHub was always going to 422. The remedy mirrors
-// the wedge escape: cut an intermediate tag, so the next walk — and its body —
-// is smaller.
+// checkReleaseBody refuses, never truncates, a composed release body GitHub
+// would reject, before anything is written (DESIGN §4, "fails loud (4) before
+// anything is written").
 func checkReleaseBody(body string) error {
 	if n := utf8.RuneCountInString(body); n > releaseBodyMaxChars {
 		return core.APIf("the composed release body is %d characters and GitHub rejects a release body over %d — refusing to ship a truncated range: cut an intermediate tag so the walk (and its body) is smaller, or shorten the --footer-file", n, releaseBodyMaxChars)
@@ -46,14 +39,12 @@ func checkReleaseBody(body string) error {
 }
 
 // truncateComment keeps the preview comment postable: over the cap it cuts at
-// a line boundary and says so, in the comment AND on stderr. Truncation and
-// not refusal — the inverse of checkReleaseBody's policy, on purpose: the
-// sticky comment is advisory and refreshed on every push, so a shortened one
-// costs a scroll, while a refusal would take the whole verdict surface down
-// with it. The notice is part of the comment because a truncated preview
-// otherwise reads as a complete document that simply lists fewer commits. It
-// names no command to read the rest (t-pcfj, DESIGN §4): the one that would
-// be named, `preview --notes`, prints this same cut body.
+// a line, never refuses, and closes open <details>; the cut says so in the
+// comment AND on stderr (DESIGN §4, "The preview's sticky comment takes the
+// OPPOSITE degradation"). The notice is part of the comment because a
+// truncated preview otherwise reads as a complete document that simply lists
+// fewer commits. It names no command to read the rest: the one that would be
+// named, `preview --notes`, prints this same cut body.
 //
 // And the notice has to be READ, so the cut closes every <details> block it
 // leaves open before the notice goes on. The notes preview is the body's last

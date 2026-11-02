@@ -2,8 +2,10 @@
 // dispatch to an input source (a message, --range, --pr, --since-tag), the
 // composition of the walk's ports (walk.go: the checkout, the API client and
 // the diagnostic stream it reads and reports through), the rendering of every
-// verdict under DESIGN §5's stream contract, and the exit funnel — Execute()
-// int maps every error onto glyph's exit-code contract (internal/core).
+// verdict under DESIGN §5's stream contract, the pre-push verdict (prepush.go),
+// doctor's inputs (cmd_doctor.go: every subprocess and request doctor needs,
+// DESIGN §7), and the exit funnel — Execute() int maps every error onto
+// glyph's exit-code contract (internal/core).
 //
 // It also carries out the release's write list (cmd_release.go: the upserts
 // and deletes draftplan.PlanRun ordered, against GitHub) — the API client
@@ -101,26 +103,14 @@ func newRootCmd() *cobra.Command {
 	root.SetVersionTemplate("glyph {{.Version}}\n")
 	root.AddCommand(newVersionCmd(), newLintCmd(), newBumpCmd(), newNotesCmd(), newPreviewCmd(), newReleaseCmd(), newHookCmd(), newDoctorCmd(), newInitCmd(), newEmojiCmd())
 
-	// `completion` is cobra's, not ours, and it arrives with a hole the root's
-	// own noArgs cannot cover: cobra sets Args: NoArgs on it but gives it
-	// no Run, and Command.execute() returns flag.ErrHelp for an unrunnable
-	// command BEFORE it validates arguments. So the NoArgs never ran, and
-	// `glyph completion bogus` printed the parent's help to STDOUT and exited 0
-	// — the one invalid-argument path in this CLI that was not usage(2).
-	//
-	// That is not a cosmetic exit code. The output of this command is redirected
-	// into a file the shell then sources, so `glyph completion zsh > _glyph` and
-	// `glyph completion zshh > _glyph` both reported success and the second wrote
-	// 563 bytes of English prose where a completion script belongs — a syntax
-	// error at every subsequent shell start, with nothing having failed.
-	//
-	// Making the parent RUNNABLE is the whole fix: execute() then reaches
-	// ValidateArgs, and noArgs — swapped in for cobra's NoArgs, so the refusal
-	// points at `glyph completion --help` like every other parent's — rejects
-	// the argument. `glyph hook`, this repo's own parent command, has carried
-	// both an Args and a help RunE since it was written (cmd_hook.go) — this
-	// only gives cobra's command the same pair. A bare `glyph completion` still
-	// prints help at 0, exactly as `glyph hook` and bare `glyph` do.
+	// `completion` is cobra's, and the root's noArgs cannot reach it: cobra
+	// gives it Args: NoArgs but no Run, and Command.execute returns
+	// flag.ErrHelp for an unrunnable command BEFORE ValidateArgs — so
+	// `glyph completion zshh > _glyph` would exit 0 and write help into a file
+	// the shell sources. A help RunE makes it runnable; noArgs, swapped in for
+	// cobra's NoArgs so the refusal points at `glyph completion --help` like
+	// every other parent's, then rejects the argument at 2, and bare
+	// `glyph completion` still prints help at 0, as `glyph hook` does.
 	root.InitDefaultCompletionCmd()
 	for _, c := range root.Commands() {
 		if c.Name() == "completion" {

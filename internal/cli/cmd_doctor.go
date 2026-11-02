@@ -155,9 +155,7 @@ func probeClaimed(ctx context.Context, cfg *config.Config) bool {
 }
 
 // probeCommitMsgHook FIRES the installed commit-msg hook against a message
-// that violates the convention, and reports what came back. It lives here
-// because internal/doctor runs no subprocess, exactly as it makes no request —
-// the same division that puts HooksDir here.
+// that violates the convention, and reports what came back.
 //
 // It fires ONLY a Current hook (installed, the run's one read of it) — the
 // arm the byte-compare check passes. Someone else's hook is theirs to run and
@@ -260,10 +258,10 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
 		return err
 	}
 	repoObject, rerr := newGitHub().Repository(ctx, owner, name)
-	// git names the hooks directory (core.hooksPath relocates it), and this is
-	// the only place allowed to ask: internal/doctor runs no subprocess, exactly
-	// as it makes no request. A failure here is handed over verbatim and becomes
-	// that one check's could-not-run — never an aborted report.
+	// git names the hooks directory (core.hooksPath relocates it). A failure
+	// here is handed over verbatim and becomes the three hook checks'
+	// could-not-run (commit-msg-hook, commit-msg-hook-fires, pre-push-hook) —
+	// never an aborted report.
 	hooksDir, herr := gitsource.HooksDir(ctx, ".")
 	// Each hook is read ONCE, here, and the same answer decides what is fired,
 	// whether git is asked for remote heads, and doctor's verdicts on it.
@@ -275,15 +273,18 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
 	}
 	probe := probeCommitMsgHook(ctx, commitMsg)
 	// git also names the top level glyph.toml sits at — the same file loadConfig
-	// resolves for every verdict command, asked here for the same reason
-	// HooksDir is. A failure degrades the config check alone, and the checks
-	// that read the loaded file with it. The file is loaded ONCE, here, and
-	// handed over loaded with the loader's error verbatim: the config check
-	// classifies the error; the package checks and the hook probe's claim
-	// read the loaded file, and no check opens it again (the fired hook's
-	// lint is its own process and reads it for itself). Outside a checkout
-	// nothing is loaded — the glyph.toml in the current directory is not the
-	// checkout's, and no verdict command reads it.
+	// resolves for every verdict command. A failure is handed over verbatim as
+	// RootErr and again as the tree and action-file listings' error (below):
+	// glyph-toml-loads, the two package checks (nothing loaded) and
+	// workflow-glyph-pins report could-not-run, commit-msg-hook-fires does too
+	// when a fired hook exits 0 on the probe, and the workflow scans fall back
+	// to an unverified cwd (below) — never an aborted report. The file is
+	// loaded ONCE, here, and handed over loaded with the loader's error
+	// verbatim: the config check classifies the error; the package checks and
+	// the hook probe's claim read the loaded file, and no check opens it again
+	// (the fired hook's lint is its own process and reads it for itself).
+	// Outside a checkout nothing is loaded — the glyph.toml in the current
+	// directory is not the checkout's, and no verdict command reads it.
 	top, terr := gitsource.TopLevel(ctx, ".")
 	var cfg *config.Config
 	var cfgErr error
@@ -340,13 +341,13 @@ func doctorRun(ctx context.Context, o doctorOptions) error {
 	// under ctx runs before this guard, and the signal lands in whichever is in
 	// flight, so each is asked: the API call and every git call by the error it
 	// returns, and the probe — whose fire and claim reads hand none back —
-	// through ctx itself (probeAbort). The plain file reads — glyph.toml (cfgErr), the
-	// two hooks, and doctor.Run's own workflow and action files — take no ctx
-	// and carry no signal, so they are not asked. Guarding rerr alone turned
-	// a mid-run SIGTERM into exit 4 with the abort rendered as the hook check's
-	// could-not-run, and a SIGINT in the claim's reads, asked by nothing, let
-	// the report finish at exit 3 — codes the fleet's wrappers read as
-	// retryable infra and as a violation, on a run the operator stopped.
+	// through ctx itself (probeAbort). The plain file reads — glyph.toml
+	// (cfgErr), the two hooks, and doctor.Run's own workflow and action files —
+	// take no ctx and carry no signal, so they are not asked. Left unasked, an
+	// interrupted ctx read renders the abort as its check's could-not-run
+	// (exit 4), and an interrupted claim read lets the report finish (exit 0
+	// or 3) — codes the fleet's wrappers read as retryable infra, success or a
+	// violation, on a run the operator stopped.
 	if err := firstInterrupt(rerr, herr, terr, tagsErr, treesErr, actionErr, headsErr, probeAbort); err != nil {
 		return err
 	}

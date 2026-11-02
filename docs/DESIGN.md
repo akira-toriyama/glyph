@@ -3121,7 +3121,7 @@ internal/gitsource       every git subprocess the binary runs — log, tags, anc
 internal/github          commits/{sha}/pulls, commits/{sha} files, pulls/{N} and its commits, release CRUD, repo object
 internal/doctor          repository-precondition checks; independent, read-only (§7)
 internal/hook            commit-msg and pre-push hook contents, what an installed one is (Read: absent / current / stale / foreign) + overwrite policy (no rules of its own)
-internal/cli             cobra adapter; Execute() int owns the exit-code funnel; composes the walk's ports and carries out the release's write list by kind
+internal/cli             cobra adapter; Execute() int owns the exit-code funnel; composes the walk's ports and carries out the release's write list by kind; the pre-push verdict (prepush.go); doctor's inputs — every subprocess and request doctor needs (§7)
 internal/testutil        the fixtures two or more packages' tests share — the hermetic git fixture, the loaded gemoji config, the not-a-regular-file shapes a glyph.toml path is staged as (test-only, ships nothing)
 internal/workflows       no runtime code — tests pinning CI-YAML invariants
 ```

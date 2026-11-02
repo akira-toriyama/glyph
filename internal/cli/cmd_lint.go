@@ -81,16 +81,10 @@ func newLintCmd() *cobra.Command {
 			}); err != nil {
 				return err
 			}
-			// EVERY arm asks whether the flag was GIVEN, never what its value
-			// is — the same question MarkFlagsOneRequired answers, so the group
-			// check and the dispatch cannot disagree about which mode was
-			// selected. Dispatching --stdin on its VALUE meant an explicit
-			// --stdin=false satisfied the group (cobra asks pflag's Changed) and
-			// then matched no arm, so the run fell through to an empty --message
-			// and answered a bad INVOCATION with 3 — the gate code the fleet's
-			// commit-lint job hard-fails on, for a commit nobody submitted. It
-			// swallowed a good message too: a valid subject on stdin was reported
-			// as "empty commit message".
+			// EVERY arm asks whether the flag was GIVEN, never its value — the
+			// question MarkFlagsOneRequired answers — so the group check and the
+			// dispatch cannot disagree: on value, --stdin=false would satisfy the
+			// group and match no arm.
 			// The invocation is judged before the environment: every arm
 			// validates its own input shape FIRST and loads glyph.toml after,
 			// so `--stdin=false` in a directory with no config is still
@@ -107,8 +101,7 @@ func newLintCmd() *cobra.Command {
 				o.mode = lintByStdin
 			case cmd.Flags().Changed("message"):
 				// An empty --message is the caller naming no message, which is
-				// usage — not a message that violates the convention. The old
-				// fall-through could not tell the two apart and called both 3.
+				// usage — not a message that violates the convention.
 				if err := checkGivenEmpty(cmd, "message", "message",
 					"name the message to lint (--message='<subject>'), or read one from the commit-msg hook with --stdin"); err != nil {
 					return err

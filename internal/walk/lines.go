@@ -20,11 +20,12 @@ import (
 // currentVersion) — for a typed tag that names no plain version, for a
 // --range fold and for a pull's listing. Source names the line's own range in
 // messages; Range is the revision range whose commits are unreleased on this
-// line, "" when every walked commit is (the whole history, a --range fold, a
-// pull's listing). Bound is the below: bound as typed when that form resolved
-// the line, "" for the other forms: with Range "" it tells the two
-// whole-history causes apart, and a line's diagnosis must not be a sentence
-// `git tag -l` refutes (t-gt9n).
+// line, "" when every walked commit is — under [[packages]] the whole history,
+// and on every line a --range fold or a pull's listing (the single line's
+// whole-history Range is "HEAD", below). Bound is the below: bound as typed
+// when that form resolved the line, "" for the other forms: with Range "" it
+// tells the two whole-history causes apart, and a line's diagnosis must not be
+// a sentence `git tag -l` refutes (t-gt9n).
 //
 // BaseTag is the tag the line's range starts from, in its own spelling — the
 // compare link's left side — and "" when the walk has no tag base: the whole
@@ -66,11 +67,10 @@ type LineWalk struct {
 // tag that is not version-shaped on any line names no line: every line
 // walks from it and steps from its own highest tag, as the single line does.
 //
-// Version-SHAPED is bump.ParseBaseTag's question, the one below: has
-// always asked of its bound: a release candidate or a build-metadata tag on
-// a declared line names that line, and the line steps from its highest PLAIN
-// tag — a candidate is a question, never an answer (t-gt9n; mutation row
-// packages-candidate-tag-walks-every-line).
+// Version-shaped is bump.ParseBaseTag's question (DESIGN §4.1,
+// "Version-shaped"; t-gt9n; mutation row
+// packages-candidate-tag-walks-every-line): a candidate names its line and the
+// line steps from its highest plain tag.
 //
 // The union is the range from the bases' common ancestor to HEAD, which
 // contains every line's range; a line with no tag of its own makes it the

@@ -314,11 +314,7 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
 // only the version it parses to: whether a line has released is a question
 // about the existence of a tag, and the version answers only what to step
 // FROM — v0.0.0 for a line with no tag, which is also a perfectly ordinary
-// tag to have cut. Comparing the version against the zero value called a
-// repository tagged v0.0.0 untagged, skipped its pending walk and printed
-// "this repository has no v* release tag yet" — while `bump
-// --since-tag=auto` on the SAME checkout walked v0.0.0..HEAD and answered
-// minor.
+// tag to have cut.
 func foldTouched(ctx context.Context, cfg *config.Config, touched []touchedLine) error {
 	for i := range touched {
 		tl := &touched[i]

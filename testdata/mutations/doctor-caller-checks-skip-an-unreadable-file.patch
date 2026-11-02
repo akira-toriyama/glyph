@@ -1,11 +1,11 @@
 diff --git a/internal/doctor/callerpin.go b/internal/doctor/callerpin.go
-index 7c85f22..377c5ee 100644
+index f60018a..5335f4e 100644
 --- a/internal/doctor/callerpin.go
 +++ b/internal/doctor/callerpin.go
 @@ -74,7 +74,6 @@ func judgeCallers[R callerRow](root string, rootVerified bool, workflows []workf
  			// concrete, not whether a caller starts, and skipping the file here
- 			// turned chmod 000 on a failing caller into this check's "nothing
- 			// to judge" pass (t-fdd8 (3)).
+ 			// would turn chmod 000 on a failing caller into this check's
+ 			// "nothing to judge" pass (t-fdd8 (3)).
 -			unreadable = append(unreadable, f.unreadableLine())
  			continue
  		}

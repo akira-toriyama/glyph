@@ -3,8 +3,8 @@ package doctor
 // This file is the workflow-pin check: every akira-toriyama/glyph reference in
 // the checkout's own workflows and action metadata files must pin a concrete
 // vX.Y.Z release tag. It reads files and the action-file list git produced
-// (handed in by internal/cli, which runs every subprocess doctor needs) — no network — so
-// it still answers when the API side of the report is entirely dark.
+// (Input.ActionFiles) — no network — so it still answers when the API side of
+// the report is entirely dark.
 //
 // It asks only whether the pin is CONCRETE, never whether it is the LATEST
 // release: glyph-pin-audit.yml in akira-toriyama/.github owns that question
@@ -46,8 +46,8 @@ type pinRef struct {
 
 // workflowFile is one .github/workflows file as readWorkflows read it. Err is
 // that file's read failure: the checks render it (unreadableLine) and never
-// drop the file, because a caller check that skipped one turned chmod 000 on a
-// failing caller into "nothing to judge" (t-fdd8 (3)).
+// drop the file, because a caller check that skipped one would turn chmod 000
+// on a failing caller into "nothing to judge" (t-fdd8 (3)).
 type workflowFile struct {
 	Name string // the directory entry, e.g. release.yml
 	Body string
@@ -65,11 +65,10 @@ func (f workflowFile) unreadableLine() string {
 // when the listing observed nothing: any failure but an absent directory, and
 // an absence under an unverified bare "." too. An absent directory under a
 // git-named root is an observed absence, (nil, nil) — a repository with no
-// workflows has nothing pinned and nothing to call. Under a bare "." both
-// readings stay live — no workflows, or doctor run from the wrong directory —
-// and that stays UNKNOWN, not a vacuous pass (a fresh repository could never
-// get doctor to exit 0 before wiring CI, which is how this arm was found: the
-// t-wzsw zero-base drill, 2026-08-26).
+// workflows has nothing pinned and nothing to call, and a fresh repository
+// could otherwise never get doctor to exit 0 before wiring CI. Under a bare "."
+// both readings stay live — no workflows, or doctor run from the wrong
+// directory — and that stays UNKNOWN, not a vacuous pass.
 func readWorkflows(root string, rootVerified bool) (files []workflowFile, listErr error) {
 	dir := filepath.Join(root, ".github", "workflows")
 	entries, err := os.ReadDir(dir)
@@ -411,8 +410,8 @@ func pinProblem(ref string, hasRef bool) string {
 }
 
 // isReleaseTag reports whether ref is a house release tag on glyph's own bare
-// line: GoReleaser cuts glyph's tags as vX.Y.Z, so a v-less tag simply does
-// not exist to pin.
+// line: glyph's release tags are the house vX.Y.Z (bump.HouseTagOn on the bare
+// line), so a v-less tag does not exist to pin.
 func isReleaseTag(ref string) bool {
 	_, ok := bump.HouseTagOn(config.Line{}, ref)
 	return ok

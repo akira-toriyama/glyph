@@ -24,9 +24,9 @@ type PullExpansion struct {
 // folded: the expansion provenance the verdict reports, and whether the walk
 // came back knowing it had NOT read the whole range. Downstream a range that
 // holds nothing and a range the walk could not read arrive as the same empty
-// fold, and glyph acted on both alike (DESIGN §4, "fails loud (4)"); the walk
-// warns about every cause, and this is the warning's fact in a form a
-// decision gates on.
+// fold, and only these facts tell them apart (DESIGN §4, "fails loud (4)");
+// the walk warns about every cause, and this is the warning's fact in a form
+// a decision gates on.
 type Facts struct {
 	// Pulls is the per-pull expansion provenance (see PullExpansion).
 	Pulls []PullExpansion
