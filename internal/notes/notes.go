@@ -102,14 +102,9 @@ func Group(commits []Commit, cfg *config.Config) ([]Section, error) {
 // are commit-derived text and are escaped as prose, with the mention fence
 // running over the assembled line (markdown.Line's pipeline — a subject
 // must not be able to page someone from a release body). The one
-// exemption is the built-in $author (ratified 2026-08-17, re-ratified by
-// identity with t-39fy): crediting the contributor is the intended behaviour
-// and every peer tool pages them, so the template's "@$author" renders as a
-// live mention — of the LOGIN, and only when one was established (the API's
-// author.login, or a noreply address); a commit with no login is credited by
-// its display name, plain, the template's at-sign dropped with the mention
-// it cannot make (markdown.Line.Mention holds the gate, DESIGN §3 the ruling
-// and its measurements): shape cannot tell a name from a login.
+// exemption is the built-in $author: markdown.Line.Mention renders the
+// established, handle-shaped login live and the name otherwise (DESIGN §3,
+// "`note.line` and the optional span.").
 // Group-derived values and the other built-ins keep the fence: whether a
 // SUBJECT can page someone is not the author's intent to declare.
 // The built-ins (config.BuiltinPR and its siblings) are reserved: they win over a pattern

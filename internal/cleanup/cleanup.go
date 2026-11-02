@@ -243,9 +243,7 @@ func truncateAtCutLine(message, cutLine string) string {
 //
 // The trim set is " \t\r" and not " \t". git trims what ITS isspace says is
 // space, and git's sane_ctype gives that answer for space, tab, CR and LF only —
-// a \v or \f is content. A differential run of 882 generated messages against
-// `git stripspace` disagreed on 82 of them before the CR went in, every one of
-// them a line ending in CR followed by spaces.
+// a \v or \f is content.
 //
 // comment is the prefix of the lines to drop, empty to drop none — git's NULL
 // comment_prefix. git's output ends with a newline whenever it is non-empty;

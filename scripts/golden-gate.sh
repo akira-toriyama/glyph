@@ -6,8 +6,8 @@
 # A golden is a format SPEC stored as bytes — the dry-run release body's
 # golden and markdown's TestExportedSurfaceGolden both compare
 # output against one — and `go test -update` rewrites it from whatever the code
-# currently produces. That last part is the hazard this gate closes (ratified
-# with t-3f4s's surface golden): -update makes a rendering BUG look intentional.
+# currently produces. That last part is the hazard this gate closes: -update
+# makes a rendering BUG look intentional.
 # The diff sits right there in the pull request, but nothing forces the author
 # to have READ it as the spec change it is. The trailer is that force: range-
 # wide, parsed by `git interpret-trailers` exactly as go-bite's `Bite-exempt:`

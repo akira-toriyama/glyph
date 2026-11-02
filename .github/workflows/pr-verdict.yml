@@ -16,14 +16,14 @@ name: glyph-pr-verdict
 # distribution safe); and it renders the body, marker included.
 #
 # This workflow is therefore two steps: run it, post it. That is deliberate —
-# the fold is a VERSION decision internal/bump owns, and the ~60 lines of jq
-# that used to make it here were a second opinion about which level wins,
-# living where nobody could unit-test it or run it on a laptop. The same is
-# true of the prose: "the next release", never "the rolling draft", because
-# only a repo wired to release.yml keeps one and naming it elsewhere would be
-# false, not merely noisy — a claim that load-bearing belongs in a package
-# with tests (internal/preview), not in a heredoc. `glyph preview --pr N`
-# prints these exact bytes locally.
+# the fold is a VERSION decision internal/bump owns, and a jq fold here would
+# be a second opinion about which level wins, living where nobody can
+# unit-test it or run it on a laptop. The same is true of the prose: "the
+# next release", never "the rolling draft", because only a repo wired to
+# release.yml keeps one and naming it elsewhere would be false, not merely
+# noisy — a claim that load-bearing belongs in a package with tests
+# (internal/preview), not in a heredoc. `glyph preview --pr N` prints these
+# exact bytes locally.
 #
 # The comment is advisory, refreshed on every push — a red one included — and
 # this workflow is NOT meant to be a required check: DESIGN §6 holds its
@@ -137,10 +137,10 @@ on:
         default: ubuntu-latest
     outputs:
       # The verdict, machine-readable, so a caller can GATE on what this job
-      # already computes. Without these the level was rendered into a comment
-      # and discarded, and a caller wanting to act on it had three bad choices:
-      # install glyph itself, re-implement the convention in grep, or parse the
-      # comment prose. All three fork the rules; this forks nothing.
+      # already computes. Without these a caller wanting to act on the level
+      # has three bad choices: install glyph itself, re-implement the
+      # convention in grep, or parse the comment prose. All three fork the
+      # rules; this forks nothing.
       #
       # SKIPPED JOB => EVERY OUTPUT IS THE EMPTY STRING. The fork guard below
       # skips this job on a fork PR, and GitHub gives a skipped job's outputs as

@@ -9,12 +9,12 @@ import (
 // author-supplied fields, applying this package's escaping pipeline in the only
 // order that is safe: flatten each field as it arrives, then — over the
 // assembled whole, in String — the prose escape and the mention fence, one pass
-// each. It is the package's ONLY exported surface, and that is the
-// point (ratified 2026-07-22, t-3f4s): a caller handing raw author text to the
-// mention fence would resurrect the phantom-span hole SILENTLY — codeSpans is a
-// backtick-only model, exact only after escapeProseLine has removed the
-// competing constructs (escape.go's header holds the theorem, and codeSpans'
-// doc in markdown.go the measured live mentions that killed the alternatives).
+// each. It is the package's ONLY exported surface, and that is the point: a
+// caller handing raw author text to the mention fence would resurrect the
+// phantom-span hole SILENTLY — codeSpans is a backtick-only model, exact only
+// after escapeProseLine has removed the competing constructs (escape.go's
+// header holds the theorem, and codeSpans' doc in markdown.go the measured live
+// mentions that killed the alternatives).
 // A doc comment on the call sites cannot stop that caller; an unexported
 // function can — the surface golden in testdata/exported-surface.golden.txt is
 // what keeps it that way.
@@ -152,8 +152,7 @@ func (l *Line) String() string {
 		pre.WriteString(p.s)
 		// By BYTE, not by rune: `for range p.s` walks runes, and one multi-byte
 		// glue (an em dash in a note.line) then shifts every ownership answer
-		// after it — the fuzzer caught exactly that, and a prose '<' read as
-		// Raw is a live '<'.
+		// after it, and a prose '<' read as Raw is a live '<'.
 		for i := 0; i < len(p.s); i++ {
 			owner = append(owner, p.kind)
 		}

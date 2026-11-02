@@ -19,7 +19,7 @@ import (
 // The consequence is the property worth keeping: a config-named trailer can
 // never become an @mention, so whether glyph pages a stranger is not a key a
 // repository sets. CLAUDE.md's "treat glyph.toml as the grammar" puts the
-// vocabulary here; DESIGN §2 keeps identity in code.
+// vocabulary here; DESIGN §3, "The trailer block", keeps identity in code.
 
 // trailerTokenRE is git's own token shape: no whitespace, and no colon (the
 // separator). Measured — `Why not: a reason` does not parse as a trailer at

@@ -27,13 +27,13 @@ checksum:
   name_template: checksums.txt
 
 # Release notes are glyph's own: the goreleaser.yml workflow runs `glyph notes`
-# from the tagged commit and passes the file via --release-notes (t-8hqn).
+# from the tagged commit and passes the file via --release-notes.
 #
 # This pipe must stay ENABLED. GoReleaser loads --release-notes INSIDE the
 # changelog pipe (changelog.Run reads ctx.ReleaseNotesFile, then returns early
 # before generating anything), while `disable: true` short-circuits that pipe in
 # changelog.Skip. So disabling it silently drops the notes file and ships an
-# EMPTY body — which is exactly what v0.8.2 shipped (t-bb72).
+# EMPTY body — which is exactly what v0.8.2 shipped.
 #
 # Instead the built-in generator is neutered with an exclude-everything filter,
 # which keeps the property the disable was reaching for: with the flag, the file
@@ -92,7 +92,7 @@ release:
   # `brew install` is broken, bounded only by how soon a human remembers to
   # publish. cifail sat unpublished for 17 days that way. pare and rundiff
   # never had the window; this matches them, and the notes no longer need a
-  # human pass since glyph generates and escapes them (t-8hqn) and
+  # human pass since glyph generates and escapes them and
   # pr-verdict previews them at PR time.
   draft: false
   # `auto` marks a hyphenated tag (v3.0.0-rc.1) as a prerelease, which is the
@@ -101,7 +101,7 @@ release:
   # off a candidate. GoReleaser's default is `false`, i.e. every tag publishes
   # as a full release, so before this key an rc was indistinguishable from a
   # shipped version at exactly the moment the distinction matters: proving a
-  # breaking grammar on a real binary the reusables install (t-x3ed) without
+  # breaking grammar on a real binary the reusables install without
   # yet claiming the fleet should move to it. Deleting rc assets afterwards
   # cannot un-move `latest` for whoever looked in between.
   prerelease: auto

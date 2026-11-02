@@ -1,5 +1,5 @@
 # actionlint configuration (read by the fleet actionlint gate,
-# akira-toriyama/.github t-ya55).
+# akira-toriyama/.github).
 #
 # Two waivers, each for a construct GitHub runs and actionlint 1.7.12 (the
 # hub's pin, and upstream's latest as of 2026-10) does not know. Each is scoped

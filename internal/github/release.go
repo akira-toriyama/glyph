@@ -185,8 +185,8 @@ func (c *Client) writeRelease(ctx context.Context, method, u string, p ReleasePa
 // backoff of its own: the calling loop already owns the pacing, and a probe
 // walking its own backoff schedule would multiply an outage's wall clock by
 // the schedule's length.
-// Any failure to look is a miss — the caller re-sends, which is exactly the
-// pre-probe behaviour.
+// Any failure to look is a miss — the caller re-sends, as it would with no
+// probe.
 //
 // The match is deliberately just (tag, draft) and not the body: the upsert
 // only creates when no such release existed, and a replay is byte-identical

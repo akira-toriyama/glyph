@@ -14,10 +14,9 @@ import (
 // renderer that consumes it.
 var varRE = regexp.MustCompile(`\$[a-z_][a-z0-9_]*`)
 
-// spanOpen marks an optional span. `$[` was literal under varRE before this
-// existed (`[` is outside the name alphabet), so every template already in
-// the fleet parses unchanged; a bare `[` stays literal too, which is what
-// leaves the `- [$scope] $subject` idiom and Markdown links alone.
+// spanOpen marks an optional span. `[` is outside varRE's name alphabet, so
+// `$[` never collides with a placeholder; a bare `[` stays literal too, which
+// is what leaves the `- [$scope] $subject` idiom and Markdown links alone.
 const spanOpen = "$["
 
 // Built-in placeholder names. glyph binds these whatever the patterns capture,

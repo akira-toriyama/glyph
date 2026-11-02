@@ -260,7 +260,7 @@ func escapeProseLine(s string, inSpan []bool, prose func(lo, hi int) bool) (stri
 		pos[i] = b.Len()
 		// Inside a code span nothing is escaped: the bytes are inert, and this
 		// is the one exemption the package grants. It is exact only because
-		// codeSpans now models cmark's MAXBACKTICKS bound (markdown.go).
+		// codeSpans models cmark's MAXBACKTICKS bound (markdown.go).
 		if inSpan[i] {
 			b.WriteByte(s[i])
 			i++
