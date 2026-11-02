@@ -1,0 +1,13 @@
+diff --git a/internal/draftplan/draftplan.go b/internal/draftplan/draftplan.go
+index 44f0801..96a7ef9 100644
+--- a/internal/draftplan/draftplan.go
++++ b/internal/draftplan/draftplan.go
+@@ -136,7 +136,7 @@ func PlanDraft(l config.Line, level bump.Level, nextTag string, draftOnNone bool
+ 			keep = &drafts[i]
+ 		}
+ 	}
+-	if keep == nil && len(drafts) > 0 {
++	if keep == nil && len(drafts) > 0 && false {
+ 		keep = &drafts[0]
+ 	}
+ 	var stale []Draft

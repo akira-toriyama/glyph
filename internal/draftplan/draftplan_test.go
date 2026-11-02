@@ -1,6 +1,7 @@
 package draftplan
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v6/internal/bump"
@@ -94,16 +95,46 @@ func TestUnmanagedIsUntouchable(t *testing.T) {
 }
 
 // TestNeverASecondDraft pins the founding invariant: whatever
-// exists, at most one draft is kept and everything else managed is stale.
+// exists, at most one draft is kept and everything else managed is stale —
+// with no draft at the intended tag (the first listed is kept), and with two
+// drafts carrying it, the shape replayed creates leave (the first is kept by
+// its tag, and the second is stale like any other).
 func TestNeverASecondDraft(t *testing.T) {
-	many := []Draft{d(1, "v1.0.0"), d(2, "v1.1.0"), d(3, placeholderTag), d(4, "v0.9.0")}
-	p := PlanDraft(config.Line{}, bump.LevelMinor, "v1.2.0", true, many)
-	if p.Keep == nil {
-		t.Fatalf("plan kept nothing: %+v", p)
+	cases := []struct {
+		name   string
+		drafts []Draft
+		keepID int64 // 0: the test asserts only that one draft is kept
+	}{
+		{"no draft at the intended tag", []Draft{d(1, "v1.0.0"), d(2, "v1.1.0"), d(3, placeholderTag), d(4, "v0.9.0")}, 0},
+		{"two drafts at the intended tag", []Draft{d(1, "v1.0.0"), d(2, "v1.1.0"), d(3, placeholderTag), d(4, "v0.9.0"), d(5, "v1.2.0"), d(6, "v1.2.0")}, 5},
 	}
-	if len(p.Stale) != len(many)-1 {
-		t.Fatalf("keep + stale must cover every managed draft exactly once: %+v", p)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			p := PlanDraft(config.Line{}, bump.LevelMinor, "v1.2.0", true, c.drafts)
+			if p.Keep == nil {
+				t.Fatalf("plan kept nothing: %s", planString(p))
+			}
+			if c.keepID != 0 && p.Keep.ID != c.keepID {
+				t.Fatalf("plan = %s, want the first draft already at v1.2.0 (id %d) kept", planString(p), c.keepID)
+			}
+			if len(p.Stale) != len(c.drafts)-1 {
+				t.Fatalf("keep + stale must cover every managed draft exactly once: %s", planString(p))
+			}
+		})
 	}
+}
+
+// planString names the kept draft by ID, where %+v prints Keep as a pointer.
+func planString(p Plan) string {
+	kept := "nothing"
+	if p.Keep != nil {
+		kept = fmt.Sprintf("id %d (%s)", p.Keep.ID, p.Keep.TagName)
+	}
+	stale := make([]int64, 0, len(p.Stale))
+	for _, r := range p.Stale {
+		stale = append(stale, r.ID)
+	}
+	return fmt.Sprintf("action %s, tag %s, kept %s, stale ids %v", p.Action, p.Tag, kept, stale)
 }
 
 // TestManagedIsPerLine pins the line boundary of convergence: a draft is

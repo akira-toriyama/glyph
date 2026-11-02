@@ -1,0 +1,13 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+index eec60f5..7ce9cf3 100755
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -285,7 +285,7 @@ fi
+ # nothing outside the devshell.
+ BITE_GOROOT="$(go env GOROOT)"
+ BASE_SHA="$(git rev-parse origin/main)" HEAD_SHA="$(git rev-parse HEAD)" \
+-  GOROOT="$BITE_GOROOT" PATH="$BITE_GOROOT/bin:$PATH" sh "$BITE"
++  GOROOT= PATH="$PATH" sh "$BITE"
+ ran bite
+ 
+ # A CI gate whose tool is missing is a FAILURE and not a skip. The old

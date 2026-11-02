@@ -1,0 +1,44 @@
+diff --git a/internal/config/presets/conventional.toml b/internal/config/presets/conventional.toml
+index 316a7e9..2dc4554 100644
+--- a/internal/config/presets/conventional.toml
++++ b/internal/config/presets/conventional.toml
+@@ -51,7 +51,7 @@ template = '''
+ # adding a `$raw` group to the template) lets one `$subject` in note.line
+ # render this pattern, the revert pattern and the unmatched-commit fallback
+ # alike.
+-pattern = '^(?P<subject>(?P<type>[a-z]+)(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!%]): .+)'
++pattern = '^(?P<subject>(?P<type>[a-z]+)(\((?P<scope>[a-z0-9-]+|<[^)]*)\))?(?P<semver_sigil>[=~^!%]): .+)'
+ 
+ [[patterns]]
+ # raw `git revert`. The subject group takes the WHOLE line, quotes and all,
+@@ -101,7 +101,7 @@ unlandable = 'the files of this commit carry no sigil until autosquash folds it
+ # after a squash! of the same target, git APPENDS the body instead, and the
+ # target's old first line lands unless the rebase's combined message is
+ # edited — so the reason says it at the hook.
+-pattern = '^amend! .*\n\n[a-z]+(\([a-z0-9-]+\))?[=~^!%]: .'
++pattern = '^amend! .*\n\n[a-z]+(\(([a-z0-9-]+|<[^)]*)\))?[=~^!%]: .'
+ unlandable = 'autosquash lands this body as its target message (after a squash! of the same commit git appends it instead: edit the combined message so its first line carries the sigil); run git rebase --autosquash before this history is pushed or merged'
+ 
+ [note]
+diff --git a/internal/config/presets/gemoji.toml b/internal/config/presets/gemoji.toml
+index eae7e9e..11546a4 100644
+--- a/internal/config/presets/gemoji.toml
++++ b/internal/config/presets/gemoji.toml
+@@ -46,7 +46,7 @@ template = '''
+ # name `subject` (rather than adding a `$raw` group to the template) lets one
+ # `$subject` in note.line render this pattern, the revert pattern and the
+ # unmatched-commit fallback alike.
+-pattern = '^(?P<subject>:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+)\))?(?P<semver_sigil>[=~^!%]) .+)'
++pattern = '^(?P<subject>:[a-z0-9_]+:(\((?P<scope>[a-z0-9-]+|<[^)]*)\))?(?P<semver_sigil>[=~^!%]) .+)'
+ 
+ [[patterns]]
+ # raw `git revert`. The subject group takes the WHOLE line, quotes and all,
+@@ -96,7 +96,7 @@ unlandable = 'the files of this commit carry no sigil until autosquash folds it
+ # after a squash! of the same target, git APPENDS the body instead, and the
+ # target's old first line lands unless the rebase's combined message is
+ # edited — so the reason says it at the hook.
+-pattern = '^amend! .*\n\n:[a-z0-9_]+:(\([a-z0-9-]+\))?[=~^!%] .'
++pattern = '^amend! .*\n\n:[a-z0-9_]+:(\(([a-z0-9-]+|<[^)]*)\))?[=~^!%] .'
+ unlandable = 'autosquash lands this body as its target message (after a squash! of the same commit git appends it instead: edit the combined message so its first line carries the sigil); run git rebase --autosquash before this history is pushed or merged'
+ 
+ [note]

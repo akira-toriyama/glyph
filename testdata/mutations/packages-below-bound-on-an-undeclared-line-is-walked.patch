@@ -1,0 +1,13 @@
+diff --git a/internal/walk/lines.go b/internal/walk/lines.go
+index 5db92c4..b5e9662 100644
+--- a/internal/walk/lines.go
++++ b/internal/walk/lines.go
+@@ -104,7 +104,7 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
+ 			return nil, "", perr
+ 		}
+ 		p, ok := packageOnLine(cfg, prefix, bound.Major)
+-		if !ok {
++		if !ok && tag == "" {
+ 			return nil, "", undeclaredLine(below+rest, prefix, cfg)
+ 		}
+ 		l, err := w.lineFromLatest(ctx, cfg, p, &bound)

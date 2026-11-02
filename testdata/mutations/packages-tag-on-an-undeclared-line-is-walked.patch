@@ -1,0 +1,13 @@
+diff --git a/internal/walk/lines.go b/internal/walk/lines.go
+index 5db92c4..a4a51d0 100644
+--- a/internal/walk/lines.go
++++ b/internal/walk/lines.go
+@@ -120,7 +120,7 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
+ 		}
+ 		if prefix, shape, perr := bump.ParseBaseTag(tag); perr == nil {
+ 			p, ok := packageOnLine(cfg, prefix, shape.Major)
+-			if !ok {
++			if !ok && tag == "" {
+ 				return nil, "", undeclaredLine(tag, prefix, cfg)
+ 			}
+ 			l := Line{Package: p, TagLine: cfg.LineOf(p), BaseTag: baseTag, Source: tag + "..HEAD", Range: tag + "..HEAD"}
