@@ -12,8 +12,9 @@
 //
 // Everything here is a MODEL of a renderer no unit test can call. Every rule
 // below was measured against GitHub's own renderer (`gh api -X POST /markdown`,
-// mode=gfm) on 2026-07-21; the probes, their observed output and the date sit
-// in markdown_test.go. Re-run them before changing a rule (DESIGN §5,
+// mode=gfm), and each probe carries the measurement that made it — a date, a
+// task id or a commit — beside the code it pins, in this package's .go files
+// and their tests. Re-run them before changing a rule (DESIGN §5,
 // "`internal/markdown`'s rules were measured", has why).
 //
 // One editing rule for the comments in this file: an example holding two

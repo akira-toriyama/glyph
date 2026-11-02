@@ -52,10 +52,12 @@ cut, then wrong fleet-wide until the pins move back.
 - **Assert the exact code, never truthiness** — `if glyph …; then` cannot tell `3` from `2`.
 - Do not add another prose copy: implemented once in `internal/core/errors.go`, spelled out in
   README.md's Exit codes section, DESIGN §5 and glossary §6, which
-  `internal/workflows/exitcodes_test.go` holds lockstep.
+  `internal/workflows/exitcodes_test.go` holds lockstep. `glyph doctor --help`'s Exit
+  paragraph is doctor's own subset (its `4` is a check that could not run), and no test holds
+  it — renumbering a code means editing it by hand.
 
-Why: every fleet repo's lint gate, glyph's three reusable workflows, the installed commit-msg
-hook and `scripts/smoke.sh` all branch on the exact value. `lint --stdin=false` once exited
+Why: every fleet repo's lint gate, glyph's three reusable workflows, the installed hooks and
+`scripts/smoke.sh` all branch on the exact value. `lint --stdin=false` once exited
 `3`, telling a CI gate that a commit violated the convention when none had been submitted.
 
 ## `glyph` on PATH is not your working tree
@@ -83,6 +85,9 @@ design, so a tree that does not compile turns the local gate into a silent no-op
   - A missing tool is a failure, not a skip — `nix develop` supplies `golangci-lint`.
     govulncheck is not a local tool: the run fetches `@latest` as CI does, so it needs the
     network.
+  - Concurrent runs each need their own `TMPDIR` as well as their own `GOLANGCI_LINT_CACHE`:
+    golangci-lint's run lock lives in `TMPDIR`, so two runs sharing it fail one with
+    `parallel golangci-lint is running`.
   - Its `bite` step needs the `akira-toriyama/.github` clone beside this repo (or
     `GLYPH_FLEET_HUB`) and reads **committed** history only — an uncommitted test is
     invisible to it.
@@ -99,14 +104,7 @@ design, so a tree that does not compile turns the local gate into a silent no-op
   pushing (`sh build.sh` first; needs `gh`, `jq`, a token and the fleet cloned as siblings —
   which is why it is not a `check.sh` gate: check.sh mirrors CI, and no CI job asks this).
   It answers what the runbook cannot: of the repos that pin glyph, how many does this release
-  change the verdict for? It is a **differential** — every probe runs twice, once with the
-  pinned tag and once with the candidate — so a repo that is already red for its own reasons
-  is not a finding.
-  - Read `lint` moves as a **prediction** (CI lints a pull request's own commits; nothing
-    already merged is re-judged) and `bump` moves as **retroactive** (that repo's next
-    release cuts a different version, having changed nothing).
-  - Read the `✓` line: it carries every weakening of the claim, and any weakening stamps the
-    headline count as a **FLOOR**.
+  change the verdict for? Read its output as the runbook's step 0 says.
   - Two corrections not to re-make: the lint differential compares the **finding set**, not
     the exit code (lint has only two answer codes, so a repo already at `3` could never
     register a move — that hid eight repos), and the bump probe runs `--since-tag`, the walk
@@ -122,6 +120,10 @@ design, so a tree that does not compile turns the local gate into a silent no-op
   `e2e.yml` (`glyph-ref=<ref>`) fires the §4.1 rules on a fixture and at a frozen coordinate,
   and its `artifact-probe.yml` is **expected to fail** at the reusable's refusal. Its README
   lists the pulls and the merge commit that are frozen; do not rewrite them.
+- Patch both harnesses first when a change narrows the `glyph.toml` schema — a frozen
+  coordinate carries the `glyph.toml` of its day, so the change reds both walk tiers until
+  each harness edits its frozen copy (glyph-test#130, glyph-monorepo-test#43) — and dispatch
+  e2e from main, because the drafts tiers write.
 
 ## Generated and pinned data — regenerate, never hand-edit
 
@@ -195,6 +197,6 @@ design, so a tree that does not compile turns the local gate into a silent no-op
 
 ## One edit nothing guards
 
-- After bumping `go.mod` / `go.sum`: reset `flake.nix`'s `vendorHash` to
-  `pkgs.lib.fakeHash`, run `nix build`, paste the hash it reports. No CI job catches a stale
-  one.
+- After changing `go.mod` / `go.sum` by hand, run `sh scripts/repin-vendorhash.sh` (needs
+  nix) before pushing — dependabot's gomod pulls are re-pinned by the hub's fleet-repin. No
+  CI job here catches a stale `vendorHash`.
