@@ -18,7 +18,9 @@
 //     needed.
 //   - NO SUBPROCESS, NO REQUEST. doctor runs no git, fires no hook and calls no
 //     API: internal/cli asks git, fires the commit-msg probe and fetches the
-//     repository object, and hands each answer over with its error (Input).
+//     repository object, and hands the answers over (Input). Which answers
+//     carry their error, and which failures end the run before doctor, is
+//     DESIGN §7's.
 package doctor
 
 import (

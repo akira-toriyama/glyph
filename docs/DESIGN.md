@@ -71,8 +71,8 @@ the embedded table.
 A note on the name before anything else: "v2" throughout this document is the
 **engine generation** (epic e-qzpz's sigil redesign), not a tag. The generation
 ships as tag **v3.0.0** — the existing `v2.0.0` / `v2.1.0` tags are v1-grammar
-releases, and they are what the fleet is pinned at until the rollout moves the
-pins. "Upgrade to glyph v2" must never be read as "pin a v2.x tag": a real
+releases, and the fleet pinned `v2.0.0` until v3.0.0's rollout moved the pins.
+"Upgrade to glyph v2" must never be read as "pin a v2.x tag": a real
 `pin glyph v2.0.0` commit exists in glyph-test, and it pinned the OLD grammar.
 
 v2 (epic e-qzpz, ratified 2026-08-16) removed glyph's own grammars. The
@@ -1540,9 +1540,10 @@ itself complete and the refusal above never fires. Green run, a draft
 describing work the default branch never held, and Publish cutting the tag
 there. A caller cannot close this itself — GitHub offers no way to restrict
 which ref a `workflow_dispatch` runs from — and it is not hypothetical
-plumbing: four repositories (`canon`, `dotfiles`, `sill`, `swift-toml-edit`)
-hand-copy the release step instead of calling glyph's reusable, so the binary
-is the only layer that reaches them. The escapes are `--dry-run` and re-running
+plumbing: repositories hand-copy the release step instead of calling glyph's
+reusable — six on 2026-10-26: `canon`, `dotfiles`, `sill`,
+`swift-toml-edit`, `zmk-beacon`, `zmk-hid-host` — so the binary is the only
+layer that reaches them. The escapes are `--dry-run` and re-running
 from the default branch, and both are named in the refusal. The caller's own
 input is judged before the guard: a malformed `--since-tag` is usage (2) on
 every run, as on `bump` and `notes`. Checked inside the walk's entrance, below
@@ -1820,12 +1821,13 @@ Since a merge commit resolves (t-7zt7), that hard gate reaches **merge-merged
 PRs for the first time**: a non-conforming commit inside one now wedges the
 release where the pre-fix walk released quietly. That is the contract
 squash-merged PRs have always had, and the quiet release was the silent-drop
-bug wearing a friendly face — but it is a real change for the fleet
-repositories that allow the button (31 of 34 on 2026-07-21, §7), and it lands
-as an exit 3 on their next release. Between t-7zt7 and t-8xsb the escape had to be stated against the merge
-point for *every* shape, because expanding re-fetched the pull's whole listing
-whenever its merge point was in range (verified then: a tag at the offending
-commit and a tag strictly past it both exited 3). Both now exit 0.
+bug wearing a friendly face — but it was a real change for the fleet
+repositories that allow the button (31 of 34 on 2026-07-21, §7), and it reached
+them with t-7zt7's rollout. Between t-7zt7 and t-8xsb
+the escape had to be stated against the merge point for *every* shape,
+because expanding re-fetched the pull's whole listing whenever its merge point
+was in range (verified then: a tag at the offending commit and a tag strictly
+past it both exited 3). Both now exit 0.
 
 **The escape tag's own release ships a placeholder body.** The escape clears
 every walk that starts at or past the tag, and the tag's own tag-time notes are
@@ -3057,10 +3059,9 @@ defining probe is a pull that touches both modules with a
 `^` in one and a `~` in the other and must move the two lines differently.
 
 **Architecture.** The attribution rule is pure — files, scope, config in;
-package set or refusal out — and gets a package of its own beside `draftplan`
-and `preview` (§5's tree is updated by the task that creates it, because
-`TestDesignTreeNamesEveryInternalPackage` reconciles the tree with the
-filesystem and a row for a package that does not exist yet fails it). The
+package set or refusal out — and has a package of its own,
+`internal/attribution`, beside `draftplan` and `preview`
+(`TestDesignTreeNamesEveryInternalPackage` holds §5's tree to the filesystem). The
 fold's input, `bump.Commit`, gains nothing: attribution consumes files the
 walk fetches beside the listing, and the fold reads the commit as today.
 
@@ -3097,11 +3098,9 @@ check (t-nag8, 2026-09-15 — glyph reads no manifest, §4.1, and no workflow in
 the fleet runs `doctor`). Subcommands: `lint`,
 `init`, `bump`, `notes`, `preview`, `release`, `doctor`, `hook`, `version`, `emoji` —
 everything `glyph --help` prints except cobra's own `completion` and `help`.
-This line and the tree below are the two places in this document a new command
-or package has to be added, and both had gone quietly out of date: before t-0cqs
-the list was two commands behind (`preview`, `hook`) and the tree four packages
-behind (`markdown`, `preview`, `hook`, `workflows`). Read them against
-`glyph --help` and `ls internal/` rather than trusting them.
+This line is the one place in this document a new command has to be added, and
+nothing holds it to `glyph --help`; the tree below is held to `internal/` by
+`TestDesignTreeNamesEveryInternalPackage`.
 
 ```
 cmd/glyph/main.go        os.Exit(cli.Execute()) — thin process boundary only
@@ -3134,9 +3133,13 @@ here is only why it is a package at all, and what depends on it:
   then escape and fence over the assembled line), because both renderers,
   `notes` and `preview`, have to run it the same way round and a copy in each is
   a copy that drifts.
-- `internal/preview` — the merge fold is version arithmetic, so it sits above
-  `internal/bump` rather than in `pr-verdict.yml`'s jq, where it was a second
-  rank table living on the fleet's side of the pin.
+- `internal/preview` — the merge comment is computed in the binary rather than
+  in `pr-verdict.yml`'s jq, where the fold was a second rank table living on
+  the fleet's side of the pin. The fold the reusable reads (`.level` /
+  `.next`) is `bump.Decision.Merge`, called from `internal/cli`'s preview
+  (`foldDecision`); `internal/preview` holds the comment's arithmetic — the
+  headline's rank comparisons — and its prose, over the two verdicts
+  `internal/cli` hands it.
 - `internal/walk` — the walk is the §4 policy, and from its first week
   (2026-07-16) until 2026-10-18 it sat
   in `internal/cli` under a package doc that disowned it, so its rules could
@@ -3148,10 +3151,11 @@ here is only why it is a package at all, and what depends on it:
   stream. The data types stay where they are read from
   (`gitsource.RawCommit`, github's `PullRef` and `Commit`); the ports are the
   behaviour boundary, not a second copy of the shapes.
-- `internal/hook` — the generated hook is a consumer of the exit-code contract
-  that glyph WRITES, so its gate code is interpolated from `core.CodeLint`
-  (below) instead of typed as a shell literal. It also owns the read of an
-  installed hook and its four-state classification (`Kind.Read` →
+- `internal/hook` — the generated hooks, commit-msg and pre-push, are
+  consumers of the exit-code contract that glyph WRITES, so their gate code is
+  interpolated from `core.CodeLint` (below) instead of typed as a shell
+  literal. It also owns the read of an installed hook and its four-state
+  classification (`Kind.Read` →
   `Installed{State}`: absent, current, stale, foreign), so no caller compares
   bytes itself. Each command reads a hook once through it — `hook install`
   in `Install`'s plan, the drift notice and doctor's `Input` in
@@ -3172,11 +3176,12 @@ here is only why it is a package at all, and what depends on it:
   stage at a glyph.toml path. Nothing shipping depends on it.
 
 **Exit-code contract** (`internal/core`): `0` ok · `1` no release · `2` usage ·
-`3` convention violation · `4` no trustworthy answer — API/git/IO, a refusal
-to judge what it could not read, or a refusal to write from a ref it has no
-authority over (a release run off the default branch, §4) · `130` interrupted. Errors are
-classified at the source into `*core.Error`; `ExitCode` funnels everything
-(unclassified ⇒ API, never usage). `3` is the *gate* code — what glyph was asked
+`3` convention violation · `4` no trustworthy answer — a failure to reach git,
+the API or the filesystem, or a refusal to hand down a verdict glyph will not
+stand behind (`core.CodeAPI`'s doc lists the refusals) · `130` interrupted.
+
+Errors are classified at the source into `*core.Error`; `ExitCode` funnels
+everything (unclassified ⇒ API, never usage). `3` is the *gate* code — what glyph was asked
 to judge does not conform: a commit message under `lint`, a repository's own
 configuration under `doctor`. Same class, different subject; no new integer.
 
@@ -3269,9 +3274,9 @@ exits `0` there. `core.CodeNoRelease` is constructed in `cmd_bump.go`,
 line folds to none, the bare line being the one line), and nowhere else.
 Outside Go the integers are branched on in several places — `lint.yml` on `0` and on
 `jq -e '.error.code == 3'`, `release.yml` on `1`, the release-notes action on `1`
-and `3` (§4, the escape tag's own release) — but the
-generated commit-msg hook is the one such consumer glyph WRITES, so its gate code
-is interpolated from `core.CodeLint` rather than typed as a shell literal; it
+and `3` (§4, the escape tag's own release) — but the generated commit-msg and
+pre-push hooks are the two such consumers glyph WRITES, so their gate code is
+interpolated from `core.CodeLint` rather than typed as a shell literal; each
 forwards `3` and only `3` and exits `0` on every other failure (`internal/hook`,
 above).
 
@@ -3400,14 +3405,11 @@ drift apart silently (`TestEveryPresetLoads`).
 release body, single-line and per line
 (`internal/cli/testdata/release_dry_run*.golden.md`);
 `internal/workflows` pins what the CI YAML cannot state about itself; fuzz
-over the pattern match (never panics; every outcome one of the three legal
-shapes), the fold (order-independence), version parse/step, the `Link:`
-header parser (it extracts, never fabricates) and both Markdown escapers. One fuzz target is not a parse
-test at all: `FuzzNextPageOrigin` machine-checks a SECURITY invariant — no
-`Link:` header a server sends can move a token-bearing request off the configured
-origin — and spells the expected origin out literally rather than calling
-`sameOrigin`, so a bug inside the comparison cannot make the property agree with
-itself. `rg '^func Fuzz'` is the current list, not this sentence. Always `-race`.
+targets, of which `rg '^func Fuzz'` is the list. `FuzzNextPageOrigin`
+machine-checks a SECURITY invariant — no `Link:` header a server sends can move
+a token-bearing request off the configured origin — and spells the expected
+origin out literally rather than calling `sameOrigin`, so a bug inside the
+comparison cannot make the property agree with itself. Always `-race`.
 
 **Anything that models an external system carries one test that asks the real
 system**, because a closed loop of glyph-against-glyph proves nothing about the
@@ -3429,9 +3431,9 @@ in-process git calls included (`internal/cli`'s and `internal/gitsource`'s
 `commit.cleanup=strip` failed the verdict oracle and `TestConfigGet`
 (measured). `internal/markdown`'s rules were
 measured against GitHub's own renderer (`gh api -X POST /markdown`, mode=gfm),
-with the probes, their observed output and the date of the run recorded in
-`markdown_test.go`; re-run them before changing a rule, because the one rule
-changed from reasoning alone was wrong (an at-sign written as `&#64;` renders
+each probe carrying the measurement that made it — a date, a task id or a
+commit — beside the code it pins; re-run them before changing a rule, because
+the one rule changed from reasoning alone was wrong (an at-sign written as `&#64;` renders
 back to `@` and GitHub's mention post-processor linked it anyway, long after
 CommonMark had decoded the entity).
 
@@ -3451,15 +3453,15 @@ workflow is `goreleaser.yml` — also the attestation signer identity from v0.3.
 on. Beside the install action ships a second composite action,
 `.github/actions/release-notes` (below): the tag-time notes rule, which
 `goreleaser.yml` runs over the binary it built and a hand-tagged repository
-runs over the installed one. Migration off git-cliff is canary-first (`chord`) and flips DIRECTLY —
-ratified Q16 (v1 — the reasoning predates the table's removal, the stance
-stands): no shadow parallel-run (a policy-honest comparison against the
-type-driven git-cliff is impossible once glyph legitimately
-reclassifies single commits, and migration scaffolding is debt). The safety net
-is structural: writes are draft-only, a human publishes, the published floor
-guards the tag space, and `--dry-run` previews any verdict. Full rollout — and
-everything else still open — is tracked in the `projects` furrow board, which is
-the single home for it (§8 keeps no copy).
+runs over the installed one. The fleet left git-cliff canary-first (`chord`)
+and flipped DIRECTLY — ratified Q16 (v1 — the reasoning predates the table's
+removal, the stance stands): no shadow parallel-run (a policy-honest
+comparison against the type-driven git-cliff is impossible once glyph
+legitimately reclassifies single commits, and migration scaffolding is debt).
+The safety net is structural: writes are draft-only, a human publishes, the
+published floor guards the tag space, and `--dry-run` previews any verdict.
+Everything still open is tracked in the `projects` furrow board, which is the
+single home for it (§8 keeps no copy).
 
 `pr-verdict.yml` is advisory and not meant to be a required check:
 convention enforcement is `lint.yml`'s. A pull carrying a commit the lint
@@ -3937,9 +3939,17 @@ The severities are the argued part:
   advice: `hook.Install` refuses to overwrite one, so it is a standing choice
   rather than drift, and rare enough to say so once. The hooks directory is
   git's answer (`core.hooksPath` relocates it; the family's older repos point it
-  at a tracked `scripts/hooks`), which makes this the one check that needs a
-  subprocess — resolved in `internal/cli` beside every other one, since
-  `internal/doctor` runs no git exactly as it makes no request.
+  at a tracked `scripts/hooks`), and doctor takes it the way it takes every
+  input a subprocess or a request answers: `internal/doctor` runs no git, fires
+  no hook and calls no API — `internal/cli` asks git, fires the commit-msg probe
+  and fetches the repository object, and hands each answer over in
+  `doctor.Input` with its error, so a failed read degrades only the checks that
+  read it. One answer carries no error: the probe's claim (`probeClaimed`)
+  reads git's config the way the fired hook does, and a question git does not
+  answer reads as unset. Two failures end the run before doctor judges
+  anything: a repository it cannot name (no `--repo`, `$GITHUB_REPOSITORY` or
+  GitHub `origin`, or a malformed one — usage, 2), and an interrupt in any
+  read.
 - **The byte-identical hook is also FIRED (`commit-msg-hook-fires`).** Current
   bytes prove the script; they prove nothing about the glyph the script resolves
   on PATH at run time, and the script blocks only on the gate code and waves
@@ -4046,8 +4056,7 @@ placeholder, the checkout stays `fetch-depth: 0`) plus the fake-API tests behind
 
 **Next.** Everything still open lives in the `projects` furrow board — the
 pointer §6 already carries, not a second copy of it here: a doc-side task list
-is a second source of truth, and the two go stale against each other. (The
-fleet migration this paragraph used to name completed: every consumer pins
-v1.0.0 or later, audited daily.) One design decision this document names in place, so that
-dropping the phase list does not lose it: narrowing the reconciliation refusal
-to the merge-button shape, which is placeable without a canonical commit (§4).
+is a second source of truth, and the two go stale against each other. One
+design decision this document names in place, so that dropping the phase list
+does not lose it: narrowing the reconciliation refusal to the merge-button
+shape, which is placeable without a canonical commit (§4).

@@ -5,9 +5,11 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,17 +20,21 @@ import (
 
 // The exit-code contract is a machine API with ONE implementation
 // (internal/core/errors.go) and many hand-typed copies the compiler never
-// sees: three full tables in prose, a subset table, and eighteen shell/jq
-// branches across .github/workflows and scripts. A Go test that renumbered a
-// code would go red everywhere at once; a doc that spells the old integer, or
-// a `jq -e '.error.code == 3'` left pointing at a code glyph stopped emitting,
-// goes green forever. These three tests are what stands between the two.
+// sees: full copies in prose (two lists and a table), a subset table, and the
+// shell and jq branches across .github/workflows, .github/actions and scripts.
+// A Go test that renumbered a code would go red everywhere at once; a doc that
+// spells the old integer, or a `jq -e '.error.code == 3'` left pointing at a
+// code glyph stopped emitting, goes green forever. The tests below are what
+// stands between the two.
 //
-// They are deliberately not one test. The first asks "is every code written
-// down", the second "does every machine consumer branch on an integer the
-// binary really emits", the third "does the prose still say what 4 MEANS" —
-// three different ways for the same contract to rot, three different failure
-// messages.
+// They are deliberately not one test, because each asks a different way for
+// the same contract to rot and fails with its own message:
+// TestExitCodeContractIsSpelledInEveryDoc "does every prose copy write every
+// code, and no other", TestOutOfGoConsumersBranchOnTheContractIntegers "does
+// every machine consumer branch on an integer the binary really emits",
+// TestExitCodeFourIsNotOnlyAnIOFailure "does the prose still say what 4
+// MEANS", and TestExitCodeFourPointerCopiesNameCodeAPIsDoc "does each copy
+// that states 4 in one sentence lead to the one list of its refusals".
 
 // contractConstants is the compile-time half of the reconciliation: every code
 // the SOURCE declares must appear here and vice versa. The AST walk below can
@@ -147,49 +153,122 @@ func TestExitCodeContractIsSpelledInEveryDoc(t *testing.T) {
 		}
 	}
 
-	type home struct {
-		file        string
-		start, stop string
-		// render turns a code into the token that region spells it with.
-		render func(int) string
-		// canary is a string the region really contains, produced by render:
-		// proof the renderer still matches this file's notation before the
-		// loop below can pass by matching nothing.
-		canary int
-	}
-	backtick := func(n int) string { return "`" + strconv.Itoa(n) + "`" }
-	cell := func(n int) string { return "| " + strconv.Itoa(n) + " |" }
+	for _, d := range exitCodeDocs {
+		t.Run(d.file, func(t *testing.T) {
+			entries := d.entries(t, d.file, docRegion(t, repoFile(t, d.file), d.start, d.stop))
 
-	homes := []home{
-		{file: "README.md", start: "## Exit codes", stop: "\n## ", render: backtick, canary: 0},
-		{file: filepath.Join("docs", "DESIGN.md"), start: "**Exit-code contract**", stop: "\n\n**Stream contract:**", render: backtick, canary: 0},
-		{file: filepath.Join("docs", "glossary.md"), start: "## 6. Exit codes and streams", stop: "\n## ", render: cell, canary: 0},
-	}
-
-	for _, h := range homes {
-		t.Run(h.file, func(t *testing.T) {
-			region := docRegion(t, repoFile(t, h.file), h.start, h.stop)
-
-			// POSITIVE CONTROL, the distgate_test.go shape: prove the renderer
-			// produces something this region genuinely contains before trusting
-			// its verdict on the rest. A render that stopped matching this
-			// file's notation would otherwise report every code as missing —
-			// or, if the notation loosened, report every code as present.
-			if want := h.render(h.canary); !strings.Contains(region, want) {
-				t.Fatalf("the renderer for %s produced %q, which the region does not contain: "+
-					"this file has changed how it spells an exit code, so the assertions below "+
-					"are about a notation nothing uses", h.file, want)
+			// POSITIVE CONTROL, the distgate_test.go shape: prove the parser
+			// finds entries in this region before trusting its verdict on the
+			// rest. A parser that stopped matching this file's notation would
+			// otherwise report every code as missing for the wrong reason.
+			if len(entries) == 0 {
+				t.Fatalf("%s: the region holds no entry this file's notation opens with a code — "+
+					"the file has changed how it writes the contract, so the assertions below "+
+					"are about a notation nothing uses", d.file)
 			}
 
+			declared := map[int]bool{}
 			for _, c := range codes {
-				if want := h.render(c.Val); !strings.Contains(region, want) {
-					t.Errorf("%s does not spell %s (%d) as %q. The contract has %d codes and this "+
-						"copy documents fewer; a caller reading this file learns an exit it will "+
-						"never handle correctly", h.file, c.Name, c.Val, want, len(codes))
+				declared[c.Val] = true
+				if _, ok := entries[c.Val]; !ok {
+					t.Errorf("%s has no entry of its own for %s (%d), reading the copy as %s. The "+
+						"contract has %d codes and this copy documents fewer; a caller reading this file "+
+						"learns an exit it will never handle correctly", d.file, c.Name, c.Val, d.notation, len(codes))
+				}
+			}
+			for _, n := range slices.Sorted(maps.Keys(entries)) {
+				if !declared[n] {
+					t.Errorf("%s has an entry for exit %d, which internal/core/errors.go does not "+
+						"declare; a caller reading this file branches on an exit glyph never emits", d.file, n)
 				}
 			}
 		})
 	}
+}
+
+// exitCodeDoc is one full prose copy of the contract: the anchors of its
+// region, how that file writes one code's entry (and that notation in words,
+// for the failure message), and whether its `4` entry is a pointer copy
+// (TestExitCodeFourPointerCopiesNameCodeAPIsDoc).
+type exitCodeDoc struct {
+	file        string
+	start, stop string
+	entries     func(t *testing.T, file, region string) map[int]string
+	notation    string
+	pointer     bool
+}
+
+const (
+	listNotation = "the region's first paragraph, one list of \" · \"-separated items each opening with a backticked code"
+	rowNotation  = "the rows of the region's first table, one \"| N | … |\" row per code, up to the first blank line"
+)
+
+// exitCodeDocs are the three full prose copies. Each assertion reads one
+// code's own entry, never the whole region: DESIGN §5's region runs on for a
+// hundred lines past the list, where `4` and the refusal words recur, so a
+// region-wide match stays green with DESIGN's own `4` entry stripped of its
+// refusal or deleted.
+var exitCodeDocs = []exitCodeDoc{
+	{file: "README.md", start: "## Exit codes", stop: "\n## ", entries: listEntries, notation: listNotation},
+	{file: filepath.Join("docs", "DESIGN.md"), start: "**Exit-code contract** (`internal/core`):", stop: "\n\n**Stream contract:**", entries: listEntries, notation: listNotation, pointer: true},
+	{file: filepath.Join("docs", "glossary.md"), start: "## 6. Exit codes and streams", stop: "\n## ", entries: rowEntries, notation: rowNotation, pointer: true},
+}
+
+var (
+	listItemCode = regexp.MustCompile("^`([0-9]+)`")
+	tableRowCode = regexp.MustCompile(`^\| ([0-9]+) \|`)
+)
+
+// listEntries reads the contract as README.md and DESIGN §5 write it: the
+// region's first paragraph is one list of "`N` meaning" items separated by
+// " · ". An item that does not open with a backticked code means the
+// notation changed, and the test stops rather than guess.
+func listEntries(t *testing.T, file, region string) map[int]string {
+	t.Helper()
+	para, _, _ := strings.Cut(strings.TrimSpace(region), "\n\n")
+	out := map[int]string{}
+	for item := range strings.SplitSeq(oneLine(para), " · ") {
+		m := listItemCode.FindStringSubmatch(item)
+		if m == nil {
+			t.Fatalf("%s: the exit-code list holds an item that opens with no backticked code: %q", file, item)
+		}
+		addEntry(t, file, out, m[1], item)
+	}
+	return out
+}
+
+// rowEntries reads the contract as glossary §6 writes it: the region's first
+// table, one "| N | … |" row per code, up to the first blank line. A later
+// table in the section that happens to hold a code is not the contract.
+func rowEntries(t *testing.T, file, region string) map[int]string {
+	t.Helper()
+	out := map[int]string{}
+	lines := strings.Split(region, "\n")
+	first := slices.IndexFunc(lines, func(l string) bool { return strings.HasPrefix(l, "|") })
+	if first < 0 {
+		return out
+	}
+	for _, line := range lines[first:] {
+		if strings.TrimSpace(line) == "" {
+			break
+		}
+		if m := tableRowCode.FindStringSubmatch(line); m != nil {
+			addEntry(t, file, out, m[1], line)
+		}
+	}
+	return out
+}
+
+func addEntry(t *testing.T, file string, entries map[int]string, code, entry string) {
+	t.Helper()
+	n, err := strconv.Atoi(code)
+	if err != nil {
+		t.Fatalf("%s: exit code %q is not an integer: %v", file, code, err)
+	}
+	if _, dup := entries[n]; dup {
+		t.Errorf("%s writes exit code %d in two entries; a reader cannot tell which one is the contract", file, n)
+	}
+	entries[n] = entry
 }
 
 // docRegion slices [start, stop) out of text by literal anchor. A moved anchor
@@ -226,8 +305,8 @@ var (
 
 // consumer is one machine branch, with the integer FORMATTED from the constant
 // rather than typed. This is the shape internal/hook/hook.go already uses for
-// the commit-msg hook it generates (`fmt.Sprintf(..., int(core.CodeLint))`),
-// which is why that consumer is the one copy in the tree that cannot drift.
+// the hooks it generates (`fmt.Sprintf(..., int(core.CodeLint))`), which is
+// why those consumers are the copies in the tree that cannot drift.
 // Everything below is the same idea applied to the copies glyph does not write.
 type consumer struct {
 	file string
@@ -455,18 +534,21 @@ func TestReleaseNotesRunTheBuiltBinaryNotGoRun(t *testing.T) {
 // declines to answer". Both exit 4, and a copy that mentions only the first
 // teaches the next author that the second needs a new integer — in a frozen
 // machine API, that is a breaking change every fleet repo would have to learn.
-var refusalClause = regexp.MustCompile(`(?i)refus|could not read|could not reach`)
+// It wants the refusal as a clause — "refusal to", "refuses" — because the
+// pointer the copies carry, "CodeAPI's doc lists the refusals", holds the bare
+// word, and a copy that kept the pointer and lost the clause would pass a
+// match on it.
+var refusalClause = regexp.MustCompile(`(?i)refusal to|refuses|could not read|could not reach`)
 
-// TestExitCodeFourIsNotOnlyAnIOFailure guards the MEANING of 4 in the four
-// places it is written down. It is a wording lock, not a semantics check, and
-// says so: nothing mechanical stops a future core.APIf call site from carrying
-// a fifth meaning. What it does stop is the documented meaning falling behind
-// the code again — which is how it started, with README.md corrected and the
-// source file itself still claiming 4 was only I/O.
+// TestExitCodeFourIsNotOnlyAnIOFailure guards the MEANING of 4 in the five
+// homes it is written down in, across four files. It is a wording lock, not a
+// semantics check, and says so: nothing mechanical stops a future core.APIf
+// call site from carrying a new meaning. What it does stop is the documented
+// meaning falling behind the code again.
 func TestExitCodeFourIsNotOnlyAnIOFailure(t *testing.T) {
-	// TWO-SIDED CONTROL. The matcher must bite on a real corrected sentence,
-	// and must NOT bite on the bare I/O sentence it exists to reject —
-	// otherwise it is a matcher that accepts everything.
+	// THREE-SIDED CONTROL. The matcher must bite on a real corrected sentence,
+	// and must NOT bite on the bare I/O sentence it exists to reject, nor on
+	// the pointer alone — otherwise it accepts a copy that says only I/O.
 	if !refusalClause.MatchString("a `release` walk that could not read its range") {
 		t.Fatal("refusalClause no longer matches a sentence that correctly states the refusal; " +
 			"every assertion below would demand wording this regex cannot recognise")
@@ -474,6 +556,10 @@ func TestExitCodeFourIsNotOnlyAnIOFailure(t *testing.T) {
 	if refusalClause.MatchString("GitHub API / git / network / IO failure") {
 		t.Fatal("refusalClause matches the I/O-only sentence, so it would accept exactly the " +
 			"copy it exists to reject")
+	}
+	if refusalClause.MatchString("a failure to reach git, the API or the filesystem (CodeAPI's doc lists the refusals)") {
+		t.Fatal("refusalClause matches the pointer alone, so a copy that keeps the pointer and " +
+			"drops its refusal clause would pass")
 	}
 
 	const why = "exit 4 stopped meaning only I/O the day cmd_release.go began returning it for " +
@@ -489,7 +575,7 @@ func TestExitCodeFourIsNotOnlyAnIOFailure(t *testing.T) {
 			continue
 		}
 		found = true
-		if !refusalClause.MatchString(c.Doc) {
+		if !refusalClause.MatchString(oneLine(c.Doc)) {
 			t.Errorf("internal/core/errors.go: CodeAPI's own documentation does not mention the "+
 				"refusal. %s.\nIt currently says: %q", why, strings.TrimSpace(c.Doc))
 		}
@@ -506,19 +592,75 @@ func TestExitCodeFourIsNotOnlyAnIOFailure(t *testing.T) {
 
 	// Homes three to five: the prose copies. Each must say it in the sentence
 	// that defines 4, not merely somewhere in the file.
-	for _, h := range []struct{ file, start, stop string }{
-		{"README.md", "## Exit codes", "\n## "},
-		{filepath.Join("docs", "DESIGN.md"), "**Exit-code contract**", "\n\n**Stream contract:**"},
-		{filepath.Join("docs", "glossary.md"), "## 6. Exit codes and streams", "\n## "},
-	} {
-		region := docRegion(t, repoFile(t, h.file), h.start, h.stop)
-		if !refusalClause.MatchString(region) {
-			t.Errorf("%s documents exit 4 without the refusal. %s", h.file, why)
+	for _, d := range exitCodeDocs {
+		entry, ok := d.entries(t, d.file, docRegion(t, repoFile(t, d.file), d.start, d.stop))[int(core.CodeAPI)]
+		if !ok {
+			t.Errorf("%s has no entry of its own for exit 4. %s", d.file, why)
+			continue
+		}
+		if !refusalClause.MatchString(entry) {
+			t.Errorf("%s documents exit 4 without the refusal. %s", d.file, why)
 		}
 	}
 }
 
-// constructorDoc returns the comment block immediately above `func APIf`.
+// homePointer is how a pointer copy names the home of exit 4's refusals:
+// CodeAPI's doc, with or without the backtick a Markdown copy closes the
+// identifier with. Naming the constant is not enough — "builds a CodeAPI
+// error" names it and points nowhere.
+var homePointer = regexp.MustCompile("CodeAPI`?'s doc")
+
+// TestExitCodeFourPointerCopiesNameCodeAPIsDoc holds the one-list rule for
+// exit 4: CodeAPI's doc is the one list of the refusals, and APIf's doc,
+// DESIGN §5's `4` entry and glossary §6's `4` row state the meaning in one
+// sentence that names it. README's list is the user's and CodeAPI's doc is the home,
+// so neither is asked to point anywhere. A sibling of
+// TestExitCodeFourIsNotOnlyAnIOFailure rather than part of it: that test asks
+// whether a copy states the refusal, this one whether a pointer copy leads to
+// the list.
+func TestExitCodeFourPointerCopiesNameCodeAPIsDoc(t *testing.T) {
+	// TWO-SIDED CONTROL: the matcher accepts each pointer's real spelling and
+	// rejects a mention of the constant that points nowhere.
+	for _, spelling := range []string{"(CodeAPI's doc lists the refusals)", "(`core.CodeAPI`'s doc lists the refusals)", "(`CodeAPI`'s doc lists the refusals)"} {
+		if !homePointer.MatchString(spelling) {
+			t.Fatalf("homePointer does not match %q, a pointer this tree writes", spelling)
+		}
+	}
+	if homePointer.MatchString("APIf builds a CodeAPI error") {
+		t.Fatal("homePointer matches a mention of CodeAPI that names no doc, so it would accept a copy that points nowhere")
+	}
+
+	const rule = "CodeAPI's doc in internal/core/errors.go is the one list of the refusals that exit " +
+		"with 4; this copy states the meaning in one sentence and must name CodeAPI's doc, so a reader " +
+		"lands on the list and the copy has no reason to grow a list of its own (DESIGN §5's grew one " +
+		"that named neither the published floor nor the walk cap)"
+
+	if doc := constructorDoc(t, repoFile(t, filepath.Join("internal", "core", "errors.go"))); !homePointer.MatchString(doc) {
+		t.Errorf("internal/core/errors.go: APIf's doc comment does not name CodeAPI's doc. %s", rule)
+	}
+	pointers := 0
+	for _, d := range exitCodeDocs {
+		if !d.pointer {
+			continue
+		}
+		pointers++
+		entry, ok := d.entries(t, d.file, docRegion(t, repoFile(t, d.file), d.start, d.stop))[int(core.CodeAPI)]
+		if !ok {
+			t.Errorf("%s has no entry of its own for exit 4. %s", d.file, rule)
+			continue
+		}
+		if !homePointer.MatchString(entry) {
+			t.Errorf("%s: exit 4's entry does not name CodeAPI's doc. %s", d.file, rule)
+		}
+	}
+	if pointers == 0 {
+		t.Fatal("exitCodeDocs marks no prose copy as a pointer, so the loop above checked nothing")
+	}
+}
+
+// constructorDoc returns the comment block immediately above `func APIf`, its
+// `//` markers stripped and its lines joined (oneLine), so a phrase the
+// assertions look for matches however gofmt or an author wraps it.
 func constructorDoc(t *testing.T, body string) string {
 	t.Helper()
 	before, _, found := strings.Cut(body, "func APIf(")
@@ -529,16 +671,22 @@ func constructorDoc(t *testing.T, body string) string {
 	// The cut lands mid-line at `func`, so the split's last element is the
 	// empty fragment before it; the comment block starts one line above.
 	lines := strings.Split(before, "\n")
-	var doc []string
-	for j := len(lines) - 2; j >= 0; j-- {
-		line := strings.TrimSpace(lines[j])
-		if !strings.HasPrefix(line, "//") {
-			break
-		}
-		doc = append(doc, line)
+	first := len(lines) - 1
+	for first > 0 && strings.HasPrefix(strings.TrimSpace(lines[first-1]), "//") {
+		first--
 	}
-	if len(doc) == 0 {
+	if first == len(lines)-1 {
 		t.Fatal("APIf has no doc comment at all — the meaning of exit 4 now has one fewer home")
 	}
-	return strings.Join(doc, "\n")
+	doc := make([]string, 0, len(lines)-1-first)
+	for _, line := range lines[first : len(lines)-1] {
+		doc = append(doc, strings.TrimPrefix(strings.TrimSpace(line), "//"))
+	}
+	return oneLine(strings.Join(doc, " "))
+}
+
+// oneLine collapses every run of whitespace, line breaks included, to one
+// space: prose is matched as a reader reads it, not as it happens to wrap.
+func oneLine(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }

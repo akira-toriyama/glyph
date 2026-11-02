@@ -22,26 +22,30 @@ const (
 	// convention. That is a commit message under `lint` (the CI commit-lint
 	// gate), and a repository's own configuration under `doctor` — the subject
 	// differs, the verdict is the same class. Deliberately distinct from usage
-	// (2: the invocation itself was fine) and from API (4: glyph could not
-	// reach an answer at all).
+	// (2: the invocation itself was fine) and from API (4: glyph has no answer
+	// it will stand behind).
 	CodeLint Code = 3
 
 	// CodeAPI is the no-trustworthy-answer code. It covers the failures its
 	// name suggests — GitHub API, git, network, IO — and equally a deliberate
-	// REFUSAL to hand down a verdict with nothing broken underneath: an
-	// incomplete walk (`cmd_release.go`, ratified t-pysg),
-	// `draftplan.CheckPublishedFloor`, and the unbounded first-release walk
-	// (`internal/walk: wholeHistory`, past its cap) all return it, because a
-	// verdict computed over a range glyph could not read — or could only read
-	// at a cost nobody named — is worse than no verdict at all. A release run
-	// started from a ref that is not the repository's default branch
-	// (`releaseref.go: checkReleaseRef`) joins them from the other side: glyph
-	// read everything it asked for, and refuses on AUTHORITY rather than on
-	// evidence — the same class, since neither clears by retrying. Read as
-	// "glyph has no answer it will stand behind", not as "retry later" — these
-	// refusals never clear on a retry, they clear when a human moves the tag,
-	// fixes the checkout, names the walk base, or re-runs the release from the
-	// default branch.
+	// REFUSAL to hand down a verdict with nothing broken underneath; this doc
+	// is the one list of those refusals. An incomplete walk (`cmd_release.go`,
+	// ratified t-pysg) and the unbounded first-release walk (`internal/walk:
+	// wholeHistory`, past its cap) return it because a verdict computed over a
+	// range glyph could not read — or could only read at a cost nobody named —
+	// is worse than no verdict at all. `draftplan.CheckPublishedFloor` returns
+	// it for a draft that could never be published (its version is not above
+	// the latest published release), and `bodylimit.go: checkReleaseBody` for
+	// a release body over GitHub's cap, refused before anything is written
+	// rather than shipped truncated. A release run started from a ref that is
+	// not the repository's default branch (`releaseref.go: checkReleaseRef`)
+	// joins them from the other side: glyph read everything it asked for, and
+	// refuses on AUTHORITY rather than on evidence — the same class, since
+	// none of them clears by retrying. Read as "glyph has no answer it will
+	// stand behind", not as "retry later" — these refusals never clear on a
+	// retry, they clear when a human moves the tag, fixes the checkout, names
+	// the walk base, shrinks the body, or re-runs the release from the default
+	// branch.
 	CodeAPI Code = 4
 
 	// CodeInterrupted is returned when the user interrupts a run with SIGINT
@@ -101,9 +105,9 @@ func Lintf(format string, a ...any) *Error {
 	return &Error{Code: CodeLint, Msg: fmt.Sprintf(format, a...)}
 }
 
-// APIf builds a CodeAPI error: glyph could not reach an answer it will stand
-// behind — a GitHub API / git / network / IO failure, or a refusal to judge
-// what it could not read.
+// APIf builds a CodeAPI error: no trustworthy answer — a failure to reach git,
+// the API or the filesystem, or a refusal to hand down a verdict glyph will not
+// stand behind (CodeAPI's doc lists the refusals).
 func APIf(format string, a ...any) *Error {
 	return &Error{Code: CodeAPI, Msg: fmt.Sprintf(format, a...)}
 }

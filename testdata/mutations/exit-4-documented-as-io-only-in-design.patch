@@ -1,0 +1,10 @@
+diff --git a/docs/DESIGN.md b/docs/DESIGN.md
+index 53e4221..adb247a 100644
+--- a/docs/DESIGN.md
++++ b/docs/DESIGN.md
+@@ -3179,4 +3179,3 @@ here is only why it is a package at all, and what depends on it:
+ `3` convention violation · `4` no trustworthy answer — a failure to reach git,
+-the API or the filesystem, or a refusal to hand down a verdict glyph will not
+-stand behind (`core.CodeAPI`'s doc lists the refusals) · `130` interrupted.
++the API or the filesystem (`core.CodeAPI`'s doc lists the refusals) · `130` interrupted.
+ 

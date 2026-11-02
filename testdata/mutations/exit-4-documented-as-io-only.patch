@@ -1,14 +1,15 @@
 diff --git a/README.md b/README.md
-index 6d7fa92..f6c8edc 100644
+index 4fa884a..5477ac2 100644
 --- a/README.md
 +++ b/README.md
-@@ -537,9 +537,8 @@ byte.
+@@ -554,10 +554,8 @@ byte.
  
  `0` ok · `1` no release-worthy change · `2` usage · `3` convention violation
  (a commit under `lint`, the repository's own configuration under `doctor`) ·
--`4` no trustworthy answer — API/git/IO, a `release` walk that could not read
--its range, or a `release` write refused off the default branch · `130`
--interrupted.
+-`4` no trustworthy answer — API/git/IO, or a refusal to hand down a verdict
+-glyph will not stand behind (an incomplete walk, the published floor, the
+-whole-history walk cap, a `release` body over GitHub's cap, a `release` write
+-off the default branch) · `130` interrupted.
 +`4` no trustworthy answer — API/git/IO ·
 +`130` interrupted.
  

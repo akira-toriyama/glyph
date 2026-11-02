@@ -14,11 +14,8 @@ import (
 var treeRow = regexp.MustCompile(`(?m)^internal/([a-z]+)\s`)
 
 // TestDesignTreeNamesEveryInternalPackage reconciles DESIGN §5's package tree
-// against internal/ itself, in both directions. The section's own prose admits
-// the tree had rotted once already (four packages behind before t-0cqs) and
-// then it rotted the same way again — internal/testutil arrived in #105 and no
-// gate read this file. "Read them against `ls internal/`" is an instruction a
-// test can follow, so a reader no longer has to.
+// against internal/ itself, in both directions: the tree names every directory
+// under internal/ that holds a .go file, and nothing else.
 func TestDesignTreeNamesEveryInternalPackage(t *testing.T) {
 	doc := repoFile(t, filepath.Join("docs", "DESIGN.md"))
 

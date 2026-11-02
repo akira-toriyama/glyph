@@ -20,9 +20,10 @@ repository root; the two documents it links, [`DESIGN.md`](DESIGN.md) and
 [`commit-convention.md`](commit-convention.md), are its neighbours in `docs/`.
 Where an entry quotes a figure or an observed render
 ("14 of them are deleted", "GitHub links that"), it is the measurement **recorded
-in the tree** at that symbol, with the date the doc comment gives — not one re-run
-while writing this glossary. The renderer probes in particular are dated
-2026-07-21 and are worth re-running before changing a rule.
+in the tree** at that symbol, as the doc comment marks it — not one re-run
+while writing this glossary. The renderer probes carry the measurement that
+made them — a date, a task id or a commit — beside the code they pin, and are
+worth re-running before changing a rule.
 
 Maintaining it: a term is added or renamed in the **same PR** as the code change
 that introduces or renames it, and when a cited symbol disappears its entry goes
@@ -31,8 +32,8 @@ missing entry, because it is the one place a reader trusts not to be stale.
 
 **Contents**
 
-1. [The release walk](#1-the-release-walk) — walk, walk base, step base, auto, below:, range, fold, participate, merge point, merge commit, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, Facts, Dropped, shortfall, wedge, wedge escape, package, root package, line, attribution, carrier, shared-only, governing commit
-2. [Verdicts and the rolling draft](#2-verdicts-and-the-rolling-draft) — verdict, level, source, reason, target, action, rolling draft, glyph-managed draft, residual draft, stale draft, published floor, pending, incomplete banner
+1. [The release walk](#1-the-release-walk) — walk, walk base, step base, auto, below:, range, fold, participate, merge point, merge commit, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, Facts, Dropped, shortfall, wedge, wedge escape, package, root package, line, bare line, locked line, free line, attribution, carrier, shared-only, withheld refusal, governing commit
+2. [Verdicts and the rolling draft](#2-verdicts-and-the-rolling-draft) — verdict, level, source, reason, target, action, rolling draft, glyph-managed draft, hand region, compare link, residual draft, stale draft, residue, published floor, pending, incomplete banner
 3. [Convention and lint](#3-convention-and-lint) — pattern, unlandable, dictionary, sigil, promote, 0.x clamp, bump lattice, section, excluded author, cleanup, cleanup mode, edited, cut line
 4. [The render boundary](#4-the-render-boundary) — inline context, phantom span, neutralize, fence, flatten, line builder, pipe escape, over-escaping is the safe direction
 5. [Repository preconditions (`doctor`)](#5-repository-preconditions-doctor) — check, check id, pass/fail/advice/unknown, release-tag pin
@@ -165,10 +166,10 @@ first-parent commits ending there align positionally — an alignment **verified
 message by message and abandoned whole** if any differs; a squash left no
 footprint at all, and the pull alone governs. This is what lets the walk's
 *range* (a git fact) govern a listing that knows nothing about it; without it a
-tag cut inside a landed pull's footprint folded already-shipped commits into the
-next release (t-8xsb — exit 0, empty stderr, a minor invented out of released
-work). `internal/walk/expand.go: mainFootprint`, `internal/gitsource/gitsource.go:
-Have, isAncestor, firstParentLog`
+tag cut inside a landed pull's footprint folds already-shipped commits into the
+next release (DESIGN §4 has the incident). `internal/walk/expand.go:
+mainFootprint`, `internal/gitsource/gitsource.go: Have, isAncestor,
+firstParentLog`
 
 **landed** — a listed commit's on-branch identity, or empty when it landed under
 no identity of its own. A landed commit is folded only if its landing site is in
@@ -205,11 +206,10 @@ commit never resolved (GitHub had not indexed the merge commit yet, or an
 automation authored it and the author gate skipped it before the API). The walk
 **warns and deliberately does not expand it**: a listing carries nothing about
 the range, so recovering it would be guessing, and the guess was measured wrong
-two ways (a rebase-merged pull renders twice; a pull whose earlier commits
-shipped under the previous tag manufactures a minor out of released work). The
-release is genuinely short by whatever that pull changed. Note what the warning
-does *not* promise: API lag clears itself and warns once, but a repository whose
-merge button an **automation** presses warns on every release, structurally.
+(DESIGN §4 has both ways). The release is genuinely short by whatever that
+pull changed. Note what the warning does *not* promise: API lag clears itself
+and warns once, but a repository whose merge button an **automation** presses
+warns on every release, structurally.
 `internal/walk/expand.go: walk.reconcile` (the `coveredOrder` ledger),
 `Facts.LostPulls`
 
@@ -280,11 +280,9 @@ not absent*, and any of them could carry the deciding sigil.
 **incomplete walk** — a walk that came back knowing it had **not** read the whole
 range. The distinction it exists to make: downstream, a range that genuinely
 holds nothing and a range the walk could not read arrive as the *same* empty
-fold, and glyph acted on both alike — it deleted the rolling draft on a reading
-it had just told the operator to re-run (t-441z), and retagged an existing v1.0.0
-draft down to v0.1.1 out of a fold missing the `:boom:` pull. So `release`
-**fails loud (4)** on one, before the releases listing is even fetched: no
-delete, no retag, no draft, no verdict — the same refusal to judge an unread
+fold, and glyph once acted on both alike (DESIGN §4 has the incident). So
+`release` **fails loud (4)** on one, before the releases listing is even
+fetched: no delete, no retag, no draft, no verdict — the same refusal to judge an unread
 range as the wedge and the covered pull (ratified t-pysg, replacing #66's
 warn-and-refuse-to-destroy). The commands that only *report* — `bump`, `notes`
 — warn per cause instead, and `preview` carries the shortfall in its comment
@@ -367,6 +365,27 @@ packages add to the walk; the answer is *attribution*.
 `internal/config/tagline.go: Line, Package.tagPrefix, Config.LineOf`,
 `internal/walk/lines.go: Line`
 
+**bare line** — the line whose tags carry no prefix (`vX.Y.Z`), labelled
+`bare v*` in messages. It exists whether or not anything declares it, which is
+what separates it from the *root package*: without `[[packages]]` it is the
+single line, every `vX.Y.Z` tag its (`config.Line`'s zero value); with a root
+package declared it is that package's; with packages but no root package it is
+no package's — no line's walk or floor reads its tags, and its drafts are
+*residue*. A root-level `vN` package takes major N off it as the locked
+`bare vN.*` line. `internal/config/tagline.go: Line, Line.Label, Config.LineOf`
+
+**locked line** vs **free line** — the two kinds of line DESIGN §4.1's
+major-subdirectory rule makes. A package whose path ends in a Go major version
+subdirectory `vN` (N ≥ 2) is on a **locked** line: its prefix drops the `/vN`,
+it holds major N alone, and its first release is `vN.0.0` whatever the level.
+Every other line is **free**: it holds every major no locked line on its prefix
+claims. Lines that share a prefix are told apart by the major alone, and a step
+off the majors a line holds — a `!` past a locked line's N, or a free line's
+onto a locked sibling's — is refused at 3, the wedge's class; a free line with
+no locked sibling steps as the single line does.
+`internal/config/tagline.go: Line.Locked, Line.Holds, Config.LineOf`,
+`internal/bump/linestep.go: NextOn`
+
 **attribution** — which lines a commit moves, read from the
 commit's **own** diff and never a pull's net diff: files under a package move
 it (longest path prefix wins; a rename counts under both names), a commit under
@@ -401,6 +420,16 @@ nested package's files are not its parent's nor the root package's — is
 refused the same way when the sigil claims a version impact; a `=` is placed
 by its files.
 
+**withheld refusal** — an attribution refusal over a commit's diff the walk did
+not read whole: a file listing GitHub capped or cut short with a 422, or a
+shallow clone's boundary commit. It is not a verdict and never wedges — "no
+carrier" would be a claim about files nobody read — so the commit is carried on
+no line and the walk's shortfall answers, never the gate code. Distinguish from
+a refusal over a diff read whole, which the walk and the preview hand down at
+exit 3. A non-refusal answer stands over the same partial diff: a scope still
+carries the commit, and so do the files the listing did hold.
+`internal/walk/partition.go: PlaceByFiles, FilePlacement`
+
 **governing commit** — the on-branch identity a line's range judges a walked
 commit by: the commit's own sha when it landed on the released branch, else the
 merge point of the pull it was expanded from. A squash-merged pull's inner
@@ -429,11 +458,8 @@ name suggests. It is spliced into the reason line of a *none* verdict ("N
 commit(s) participate in *source* and every level is none"), and into the
 sentences a run writes when the walk could not read the range; an ordinary release
 verdict's reason names the deciding commit instead, and the string does not appear
-at all. It is also not a key on any `--json` surface — none of `{current, level,
-next, commits, reason}`, `{sections, reason}`, `{current, level, next, tag,
-target, body, action, url, commits, pulls, reason}` or `{current, untagged, level, next,
-pr, pending, body}` carries it, so a consumer that wants to know what was walked
-reads the flags it passed, not the verdict. `internal/walk/walk.go: Result.Source`
+at all. It is also not a key on any `--json` verdict, so a consumer that wants
+to know what was walked reads the flags it passed. `internal/walk/walk.go: Result.Source`
 (the range walked, or the range or pull read in its place — what notes' reason,
 release's refusal of an unread walk and release's bare-line none reason name),
 `Line.Source` (each line's own range, or on the bare line the walk's, the range's
@@ -473,6 +499,29 @@ releases, a human's hand-named drafts and another line's drafts are never its
 to touch. `internal/draftplan/draftplan.go: PlanDraft`; the house shape itself,
 and why it is stricter than the walk base's reading, is
 `internal/bump/semver.go: HouseTagOn`
+
+**hand region** — the part of a rolling draft's body above the hand marker, an
+HTML comment a published release renders as nothing: everything there survives
+every upsert byte for byte (CRLF from a web edit included), and everything
+below it — the machine region — is glyph's and rewritten every time. A body
+with no marker has no hand region, because glyph cannot tell its hand-written
+lines from its own stale output. Distinguish from the `--footer-file` block,
+which is the caller's and sits inside the machine region.
+`internal/draftplan/body.go: ComposeBody, handMarker`
+
+**compare link** — the line that closes a non-empty notes body rendered from a
+walk with a tag base,
+`**Full Changelog**: https://<host>/<owner>/<repo>/compare/<base>...<end>`:
+the range's one address, where shas and `#N` give each bullet one. `<base>` is
+the tag the walk resolved, in its own spelling; `<end>` is a full sha — the
+draft's target, or HEAD for `notes` — never a tag, because a draft's tag does
+not exist until a human publishes. With no tag base, an empty body or an end
+that is no full sha, no link is rendered rather than one that lies. Under
+`[[packages]]` each line's body carries its own. `release` and `notes
+--since-tag` render it through one helper, so a draft's machine region is
+`notes`' output for the same walk (at the default target) followed by the
+caller's footer.
+`internal/cli/compare.go: compareLink, fullSha`
 
 **residual draft** vs **stale draft** — both are glyph-managed drafts glyph
 removes, in two different situations, and the words are not interchangeable in
@@ -653,17 +702,17 @@ neither a cut nor even a comment to git, so cutting there hides text git records
 *"Render boundary" is this file's umbrella name for `internal/markdown`'s
 vocabulary, not a phrase the code uses.* Everything in the package is a **model
 of a renderer no unit test can call**; every rule was measured against GitHub's
-own renderer (`gh api -X POST /markdown`, mode=gfm) on 2026-07-21, with the probes
-and their observed output kept in the test files beside the code they pin — the
-mention table at the top of `markdown_test.go`, the escaped-form and raw-HTML
-tables at the top of `escape_test.go`. The one time a rule was changed from
-reasoning alone, the reasoning was wrong. Most of this vocabulary is the #61
+own renderer (`gh api -X POST /markdown`, mode=gfm), each probe carrying the
+measurement that made it — a date, a task id or a commit — and its observed
+output beside the code it pins: the mention table at the top of
+`markdown_test.go`, the escaped-form and raw-HTML tables at the top of
+`escape_test.go`. The one time a rule was changed from reasoning alone, the
+reasoning was wrong. Most of this vocabulary is the #61
 hardening (t-j0c6), which is the whole of `escape.go` — flatten and
 neutralize. The fence half is older: the mention fence (today `escapeMentionsSkipping`) and
 `mention` arrived in #38,
 which wrapped a would-be mention in a single backtick pair, and #54 made the fence
-as long as the input demands (`longestBacktickRun`). Until now all of it existed
-only inside those doc comments.
+as long as the input demands (`longestBacktickRun`).
 
 **inline context** — the rendered stretch a construct is parsed in: one
 paragraph, or one table cell (measured: a stray backtick in one cell forms no
@@ -736,12 +785,11 @@ commit could fabricate a release-notes section (t-bz0r).
 **line builder** (`markdown.Line`) — the package's **only exported surface**:
 `Raw` appends glyph's own markup, `Prose` an author-supplied field (every one,
 a scope too), `Mention` the author credit, and `String` runs the prose escape
-and the fence over the assembled line. Since #104 the escape order is no
-longer a contract a caller could break —
-it is applied by construction inside the type, and the surface golden
-(`internal/markdown/testdata/exported-surface.golden.txt`, five declarations,
-all `Line`) is what keeps the passes unreachable from outside. Why that order is
-the only safe one is argued once, at the type's doc comment.
+and the fence over the assembled line. The escape order is not a contract a
+caller can break — it is applied by construction inside the type, and the
+surface golden (`internal/markdown/testdata/exported-surface.golden.txt`, five
+declarations, all `Line`) is what keeps the passes unreachable from outside.
+Why that order is the only safe one is argued once, at the type's doc comment.
 `internal/markdown/compose.go: Line`
 
 **pipe escape** — the fourth pass a preview cell goes through, after flatten,
@@ -862,7 +910,7 @@ checkWorkflowPins, scanUses, pinProblem, isGlyphRef`,
 | 1 | no release (soft) |
 | 2 | usage — bad invocation or input; fix the args, do not retry |
 | 3 | the gate code — what glyph was asked to judge does not conform |
-| 4 | no trustworthy answer — GitHub API / git / network / IO failure, or a refusal to judge a range or repository state glyph could not read (the incomplete walk, the published floor, the unbounded first-release walk), or a refusal to write from a ref glyph has no authority over (a release run off the default branch) |
+| 4 | no trustworthy answer — a failure to reach git, the API or the filesystem, or a refusal to hand down a verdict glyph will not stand behind (`CodeAPI`'s doc lists the refusals) |
 | 130 | interrupted (SIGINT/SIGTERM), emitted silently |
 
 `internal/core/errors.go: Code, ExitCode`
@@ -870,8 +918,8 @@ checkWorkflowPins, scanUses, pinProblem, isGlyphRef`,
 **gate code** — exit **3**: the *subject glyph was asked to judge* violates the
 convention. Same class, two subjects: a commit message under `lint`, and a
 repository's own configuration under `doctor`. No new integer for the second. It
-is emphatically **not** 2 (the invocation itself was fine) and not 4 (glyph could
-not reach an answer at all). `internal/core/errors.go: CodeLint`,
+is emphatically **not** 2 (the invocation itself was fine) and not 4 (glyph has
+no answer it will stand behind). `internal/core/errors.go: CodeLint`,
 `internal/cli/cmd_doctor.go: doctorVerdict`
 
 **soft no-release** — exit **1**: every participating commit classified `none`. A
@@ -916,8 +964,8 @@ another repository's workflow by `uses:` at a pinned tag. glyph ships **three**:
 `pr-verdict.yml` (the merge preview). The binary and the workflow ship from one
 repo at one tag, and the reusable derives the binary version from
 `job.workflow_ref` — the tag the caller pinned — so it cannot drift from the
-workflow revision (a hand-bumped default did drift once: `lint.yml` sat at v0.4.0
-through the v0.5.0 tag). `.github/workflows/{lint,release,pr-verdict}.yml`,
+workflow revision, as a hand-bumped default once did (DESIGN §6 has the
+incident). `.github/workflows/{lint,release,pr-verdict}.yml`,
 `internal/workflows` (the tests that guard this)
 
 **composite action** — glyph ships two. `.github/actions/install`: the **single** source of glyph's

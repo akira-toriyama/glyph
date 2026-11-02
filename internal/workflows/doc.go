@@ -11,11 +11,10 @@
 // version written into a comment is stale on arrival, and its presence is what
 // makes the fleet's grep for glyph pins wrong in both directions.
 //
-// It also reconciles the exit-code contract's out-of-Go copies — the three
-// prose tables (README.md, docs/DESIGN.md §5, docs/glossary.md §6) and the
-// shell and jq branches under .github/workflows, .github/actions and scripts —
-// against
-// internal/core. Those are the copies the compiler never sees: a Go test that
+// It also reconciles the exit-code contract's out-of-Go copies — the prose
+// lists in README.md and docs/DESIGN.md §5, the table in docs/glossary.md §6,
+// and the shell and jq branches under .github/workflows, .github/actions and
+// scripts — against internal/core. Those are the copies the compiler never sees: a Go test that
 // renumbered a code would go red everywhere at once, while a doc spelling the
 // old integer stays green forever.
 //

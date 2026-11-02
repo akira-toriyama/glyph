@@ -1,0 +1,8 @@
+diff --git a/docs/glossary.md b/docs/glossary.md
+index aae269f..6222696 100644
+--- a/docs/glossary.md
++++ b/docs/glossary.md
+@@ -913,2 +913,3 @@ checkWorkflowPins, scanUses, pinProblem, isGlyphRef`,
+ | 4 | no trustworthy answer — a failure to reach git, the API or the filesystem, or a refusal to hand down a verdict glyph will not stand behind (`CodeAPI`'s doc lists the refusals) |
++| 5 | rate-limited — retry after the reset |
+ | 130 | interrupted (SIGINT/SIGTERM), emitted silently |

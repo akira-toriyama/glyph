@@ -122,9 +122,8 @@ sh install.sh          # → ~/.local/bin/glyph
 `git describe`, so `glyph version` names the commit it was built from
 (`-dirty` included) — and copies `bin/glyph` to `~/.local/bin/glyph`, printing
 the line to add to your shell rc when that directory is not on `PATH`. The
-build uses the Go already installed (`GOTOOLCHAIN=local`: it never downloads a
-toolchain, so that Go must be at least `go.mod`'s `go` line). `sh build.sh`
-alone stops at `bin/glyph`.
+build honours `go.mod`'s `toolchain` line: with an older Go installed, the `go`
+command fetches that toolchain once. `sh build.sh` alone stops at `bin/glyph`.
 
 **Nix**
 
@@ -555,9 +554,10 @@ byte.
 
 `0` ok · `1` no release-worthy change · `2` usage · `3` convention violation
 (a commit under `lint`, the repository's own configuration under `doctor`) ·
-`4` no trustworthy answer — API/git/IO, a `release` walk that could not read
-its range, or a `release` write refused off the default branch · `130`
-interrupted.
+`4` no trustworthy answer — API/git/IO, or a refusal to hand down a verdict
+glyph will not stand behind (an incomplete walk, the published floor, the
+whole-history walk cap, a `release` body over GitHub's cap, a `release` write
+off the default branch) · `130` interrupted.
 
 The integers are a frozen machine API — CI gates branch on the exact value, so
 assert the code, never truthiness (`if glyph …` cannot tell `3` from `2`).
@@ -570,16 +570,7 @@ handing stderr whole to `jq`.
 
 ## Working on glyph
 
-```sh
-sh scripts/check.sh     # everything CI gates on, before pushing
-```
-
-It declares which CI gates it mirrors and which it does not, and reconciles the
-two at the end — a gate that did not run means no success line, and a missing
-tool is a failure rather than a skip. `nix develop` supplies the tools;
-[`CLAUDE.md`](CLAUDE.md) has the rest of the working assumptions, and
-[`docs/DESIGN.md`](docs/DESIGN.md) / [`docs/glossary.md`](docs/glossary.md)
-hold the ratified decisions and the vocabulary.
+Maintaining glyph: see [`CLAUDE.md`](CLAUDE.md).
 
 ## License
 
