@@ -16,7 +16,7 @@ import (
 var update = flag.Bool("update", false, "rewrite the exported-surface golden from the current source")
 
 // TestExportedSurfaceGolden freezes this package's exported identifiers as a
-// golden file. The surface IS the seal (t-3f4s): the ratified design keeps the
+// golden file. The surface IS the seal: the ratified design keeps the
 // escape order unforgeable by exporting the Line builder and NOTHING else, so
 // re-exporting an escape pass — or adding any new exported name — is not a
 // convenience, it is a new sink the order-seal no longer covers. This test is

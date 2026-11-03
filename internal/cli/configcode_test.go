@@ -146,9 +146,9 @@ func runGlyphWithin(t *testing.T, d time.Duration, args ...string) (code int, st
 // TestVerdictCommandsRefuseAGlyphTomlThatIsNotAFile pins exit 2 for a
 // glyph.toml path holding a directory, a named pipe or a link that resolves to
 // no file: what is there was observed, so it takes the missing config's code
-// and remedy, not the unreadable arm's 4. Before the loader stat'ed the path,
-// a directory answered 4 on both commands and a named pipe answered nothing at
-// all — lint --stdin and bump hung in the read (t-zvax, measured at ec53ed3).
+// and remedy, not the unreadable arm's 4. Opened without a stat first, a
+// directory answers 4 on both commands and a named pipe answers nothing at all
+// — lint --stdin and bump hang in the read (t-zvax).
 // Read through os.Stat alone (the loader mutation row
 // config-stat-reads-a-broken-link-as-missing-or-unreadable restores), a link to
 // itself, through a file or to an over-long name answers 4, and a link to

@@ -7,7 +7,6 @@ import (
 	"testing"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
 // WHAT GITHUB ACTUALLY DOES — measured, not reasoned. Re-run this before you
 // change a rule in markdown.go. No test in this file can check it: the package
 // encodes a model of a renderer that lives on the other side of the network.
@@ -130,7 +129,6 @@ import (
 // satisfy both: the mention filter skips <code> subtrees, AND it refuses an
 // at-sign with a literal backtick glued to it. The second is what covers the
 // shapes where GitHub declines to form the span glyph asked for.
-// ─────────────────────────────────────────────────────────────────────────────
 
 // TestEscapeMentions pins the mention-neutralizing contract: a would-be
 // @mention comes out inside a backtick fence, everything else — emails, pinned
@@ -256,9 +254,10 @@ func TestEscapeMentions(t *testing.T) {
 		{"intraword underscore is fenced anyway", "credit x_@octocat_y for the repro", "credit x_`@octocat`_y for the repro"},
 		{"intraword double underscore is fenced anyway", "credit x__@octocat__y now", "credit x__`@octocat`__y now"},
 		{"an email with a trailing underscore is fenced anyway", "mail foo_@example.com now", "mail foo_`@example`.com now"},
-		// The leaks the exemption used to cause: the run CLOSES emphasis opened
-		// earlier, GFM deletes it, and the at-sign starts a text node. Measured
-		// live 2026-07-21 — both raw forms render a user-mention link.
+		// What exempting a run with an alphanumeric glued to its left would
+		// leak: the run CLOSES emphasis opened earlier, GFM deletes it, and the
+		// at-sign starts a text node. Measured live 2026-07-21 — both raw forms
+		// render a user-mention link.
 		{"an underscore run that closes emphasis is fenced", "credit _b_@octocat for the repro", "credit _b_`@octocat` for the repro"},
 		{"a longer closing emphasis run is fenced", "fix _the_@octocat bug", "fix _the_`@octocat` bug"},
 		{"the fence must not manufacture an opener", "cc @v1_x_@octocat now", "cc `@v1`_x_`@octocat` now"},
@@ -296,8 +295,8 @@ func TestEscapeMentions(t *testing.T) {
 // gets wrong on raw input, so that a change to it fails here loudly instead of
 // slipping past unnoticed, and so nobody re-derives them as new discoveries.
 //
-// BOTH ARE NOW CLOSED AT THE CALLER, and neither reaches a release body or a PR
-// comment any more: Line.String runs escapeProseLine over the assembled line
+// BOTH ARE CLOSED AT THE CALLER, and neither reaches a release body or a PR
+// comment: Line.String runs escapeProseLine over the assembled line
 // before the fence, which kills the construct in case 1 and escapes the
 // ampersand in case 2 (see internal/markdown/escape.go, and its measured
 // before/after table).
@@ -316,13 +315,12 @@ func TestEscapeMentions(t *testing.T) {
 //
 //  2. An at-sign the AUTHOR wrote as a character reference is invisible here:
 //     the source has no "@" for the pattern to find, and GitHub decodes it to
-//     one before the mention filter runs. Rewriting it is what this branch's
-//     first attempt did in the opposite direction and it is a trap either way —
-//     so the caller escapes the ampersand, which neither rewrites nor drops a
-//     byte.
+//     one before the mention filter runs. Rewriting it in either direction is
+//     a trap — so the caller escapes the ampersand, which neither rewrites nor
+//     drops a byte.
 //
 // bite-exempt: pins the limitations of this function on raw input, which the
-// change closes at the caller rather than here
+// callers close rather than this function
 func TestEscapeMentionsKnownLimitations(t *testing.T) {
 	cases := []struct {
 		name string

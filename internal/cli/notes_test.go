@@ -20,7 +20,7 @@ import (
 // Every commit here reached main without a merged pull — which is EVERY
 // commit under --range, since the range walk resolves no pulls at all — so
 // this is the empty arm of the preset's optional span, byte-exact: no `()`,
-// and no double space where the span used to sit. The populated arm is
+// and no double space where the span would sit. The populated arm is
 // TestReleaseDryRunGolden, whose two lines both carry `(#N)`; break the span
 // in either direction and one of the two fails.
 func TestNotesMarkdown(t *testing.T) {
@@ -248,12 +248,12 @@ func wantBareLineReason(t *testing.T, reason string) {
 // skip pattern (DESIGN §4.1). Each case asks bump over the same input, and
 // bump's own answer is what notes must agree with.
 //
-// notes counted the listing it was handed. Measured on the source before this
-// test (b42ca92): over one single-line range of two =, a bot and a merge
-// commit, bump said 2 and notes 4; with a message no pattern claims beside one
-// =, notes said 2 over a range the fold refuses; over a --since-tag walk of
-// one = and a bot, 2 against bump's 1; and under [[packages]], 4 where bump's
-// top-level commits lists 1. Mutation row notes-reason-counts-the-raw-listing;
+// Counting the listing it is handed, notes disagrees with bump: over one
+// single-line range of two =, a bot and a merge commit, bump says 2 and notes
+// 4; with a message no pattern claims beside one =, notes says 2 over a range
+// the fold refuses; over a --since-tag walk of one = and a bot, 2 against
+// bump's 1; and under [[packages]], 4 where bump's top-level commits lists 1.
+// Mutation row notes-reason-counts-the-raw-listing;
 // the packages case is TestNotesPackagesNoReleaseCountsParticipatingCommits.
 func TestNotesNoReleaseCountsParticipatingCommits(t *testing.T) {
 	t.Run("a range holding a bot and a merge commit", func(t *testing.T) {

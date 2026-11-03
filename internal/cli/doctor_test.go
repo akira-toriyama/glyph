@@ -499,9 +499,9 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		}
 	})
 
-	// A remote name holding a space is read whole. The remote list used to be
-	// cut at the first space of `git config --get-regexp`'s `key value` line,
-	// so this advice named a remote `my` that does not exist (t-3jws).
+	// A remote name holding a space is read whole: cut at the first space of
+	// `git config --get-regexp`'s `key value` line, this advice names a remote
+	// `my` that does not exist.
 	t.Run("a remote whose name holds a space is named whole", func(t *testing.T) {
 		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 		useDoctorCheckout(t, pinnedCaller)
@@ -602,10 +602,9 @@ func TestDoctorSquashPolicyDriftFails(t *testing.T) {
 }
 
 // TestDoctorMergeMethodsAreAdviceNotFailure pins the deliberate severity call.
-// A merge commit used to vanish from the release walk entirely (t-7zt7); with
-// that fixed, the setting costs no bump and reporting it as a failure would be
-// crying wolf — so it is advice, it annotates as a ::notice::, and it must NOT
-// move the exit code.
+// The walk resolves a merge commit to its pull (t-7zt7), so the setting costs
+// no bump and reporting it as a failure would be crying wolf — so it is
+// advice, it annotates as a ::notice::, and it must NOT move the exit code.
 func TestDoctorMergeMethodsAreAdviceNotFailure(t *testing.T) {
 	permissive := `"allow_squash_merge":true,"allow_merge_commit":true,"allow_rebase_merge":true,` +
 		`"squash_merge_commit_title":"COMMIT_OR_PR_TITLE","squash_merge_commit_message":"COMMIT_MESSAGES"`
@@ -755,9 +754,9 @@ func TestDoctorUnreadableConfigLeavesTheDependentsUnread(t *testing.T) {
 // failure: a glyph.toml path holding a directory, a named pipe or a link that
 // resolves to no file. doctor exits what it exits for a missing file (3,
 // glyph-toml-loads failed), since what is there was observed, and the checks
-// that read the loaded file are handed nothing. Before the loader stat'ed the
-// path a directory was unknown at exit 4 and a named pipe hung doctor in the
-// read (t-zvax, measured at ec53ed3); read through os.Stat alone (the loader
+// that read the loaded file are handed nothing. Opened without a stat first, a
+// directory is unknown at exit 4 and a named pipe hangs doctor in the read
+// (t-zvax); read through os.Stat alone (the loader
 // mutation row config-stat-reads-a-broken-link-as-missing-or-unreadable
 // restores), a link to itself, through a file or to an over-long name is
 // unknown at exit 4.
@@ -1066,13 +1065,12 @@ func interruptDoctor(t *testing.T, read string, answers ...string) {
 
 // TestDoctorInterruptDuringHooksReadCarriesOut pins the guard over doctor's
 // hooks read. Every read runs before the guard, and the signal lands in
-// whichever is in flight; measured before the fix, a SIGTERM landing in the
-// hooks read exited 4 — stdout carried a report with commit-msg-hook rendered
-// as "could not run: … interrupted" — and 4 is the one code the fleet's
-// wrappers read as retryable infra, so CI would retry a run its operator
-// stopped. The same signal landing in the API read already exited 130 with
-// nothing written: same command, same signal, different answer by landing
-// site.
+// whichever is in flight. Carried out as a plain read failure, a SIGTERM
+// landing in the hooks read would exit 4 — stdout carrying a report with
+// commit-msg-hook rendered as "could not run: … interrupted" — and 4 is the
+// one code the fleet's wrappers read as retryable infra, so CI would retry a
+// run its operator stopped; the guard makes it exit 130 with nothing written,
+// as the same signal landing in the API read does.
 //
 // The choreography exists because the trivial arrangement proves nothing:
 // cancelling the context BEFORE the run makes the API read interrupted and the
@@ -1149,15 +1147,16 @@ func TestDoctorInterruptDuringRemoteHeadsReadCarriesOut(t *testing.T) {
 // message (probeClaimed), and the config reads that asks through
 // (hookCleanupMode: commit.cleanup, commit.verbose, core.commentChar) read a
 // git that did not answer as unset — right for the hook, whose lint must not
-// refuse over it, and nothing the guard sees. Measured before the fix: a
-// SIGINT landing in the claim's commit.cleanup read let the report finish —
-// exit 3 against a 404ing API, 0 against this test's healthy one — while the
-// same signal with glyph's pre-push hook beside it, whose remote-heads read
-// comes next and hands its error back, exited 130.
+// refuse over it, and nothing the guard sees. With ctx left unasked after the
+// claim, a SIGINT landing in the claim's commit.cleanup read lets the report
+// finish — exit 3 against a 404ing API, 0 against this test's healthy one —
+// while the same signal with glyph's pre-push hook beside it, whose
+// remote-heads read comes next and hands its error back, exits 130; so ctx is
+// asked once the claim is done (probeAbort), and both exit 130.
 //
-// A real SIGINT to a real process, staged as the measurement was: the probe
-// fires the hook, whose own `glyph lint` asks commit.cleanup first, and the
-// fake git blocks on the second ask — the claim's — and only then is the
+// A real SIGINT to a real process, staged to land in the claim's read: the
+// probe fires the hook, whose own `glyph lint` asks commit.cleanup first, and
+// the fake git blocks on the second ask — the claim's — and only then is the
 // signal sent. No pre-push hook is installed, so no later read carries the
 // abort for the claim.
 func TestDoctorSIGINTDuringTheProbeClaimCarriesOut(t *testing.T) {
@@ -1280,9 +1279,9 @@ func TestDoctorPinScanReadsEveryActionFileGitLists(t *testing.T) {
 // config, one history, and doctor must give the answer lint --range gives.
 // `Haiku` (HEAD records haiku) and `currylink` (a symlink to haiku, a 120000
 // blob to git) both open as directories on this machine's filesystem — the
-// symlink on every OS, the case on APFS — and both passed package-paths-exist
-// while lint --range refused a commit under haiku/ at 3, its files belonging
-// "to no declared package". The check now asks HEAD's trees, as attribution
+// symlink on every OS, the case on APFS — and both pass a filesystem stat
+// while lint --range refuses a commit under haiku/ at 3, its files belonging
+// "to no declared package"; so the check asks HEAD's trees, as attribution
 // does.
 func TestDoctorPackagePathsAgreeWithAttribution(t *testing.T) {
 	dir := testutil.NewRepo(t)
@@ -1386,9 +1385,9 @@ func TestDoctorHumanReportIsOneLinePerCheck(t *testing.T) {
 
 // TestDoctorAdviceNoticeSaysHouseConventionOnce: the merge-method checks carry
 // "(house convention: squash-only)" in Expected, which is that phrase's one
-// home. The notice used to wrap Expected in a second "(house convention: …)",
-// printing it twice in nested parentheses on every Actions run of a repository
-// that is not squash-only — and calling every other advice check's expectation
+// home. A notice wrapping Expected in a second "(house convention: …)" prints
+// it twice in nested parentheses on every Actions run of a repository that is
+// not squash-only, and calls every other advice check's expectation
 // (token-write, the hooks, root-line tags) a house convention it is not.
 func TestDoctorAdviceNoticeSaysHouseConventionOnce(t *testing.T) {
 	permissive := `"allow_squash_merge":true,"allow_merge_commit":true,"allow_rebase_merge":true,` +

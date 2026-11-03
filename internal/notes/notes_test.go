@@ -156,14 +156,13 @@ func TestRenderLineOptionalSpan(t *testing.T) {
 	}
 }
 
-// TestGroupMultiCommitPullRepeatsTheCitation pins, for the first time,
-// what a multi-commit pull looks like in the notes: one line PER COMMIT, each
-// citing the SAME (#N). This is the mechanical consequence of renderLine
-// binding $pr per commit, and until t-njmw nothing asserted it — the shape
-// could have changed to dedup-by-pull (or drop the citation) without a test
-// noticing. Whether the repetition is the *right* rendering is a separate,
-// unratified question; this test freezes the current answer so a change to it
-// has to be a decision.
+// TestGroupMultiCommitPullRepeatsTheCitation pins what a multi-commit pull
+// looks like in the notes: one line PER COMMIT, each citing the SAME (#N).
+// This is the mechanical consequence of renderLine binding $pr per commit,
+// and no other Group test asserts it — the shape could change to
+// dedup-by-pull (or drop the citation) without one noticing. Whether the
+// repetition is the *right* rendering is a separate, unratified question; this
+// test freezes the current answer so a change to it has to be a decision.
 func TestGroupMultiCommitPullRepeatsTheCitation(t *testing.T) {
 	cfg := testutil.Config(t)
 	sections, err := Group([]Commit{

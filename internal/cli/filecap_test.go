@@ -217,8 +217,8 @@ func TestPreviewPackagesCappedRefusalIsNotTheGateCode(t *testing.T) {
 // so one event — a listing GitHub answered 422 for or capped, and the refusal
 // attribution would make over it, withheld — is warned of in one sentence by
 // both: bump --since-tag over a squash-merged pull's inner commit, preview
-// over the open pull that lists the same commit. Two copies said it in two
-// wordings ("… missing from this preview" against "… from this verdict",
+// over the open pull that lists the same commit. A second copy drifts into a
+// second wording ("… missing from this preview" against "… from this verdict",
 // "attributed to no line" against "carried nowhere, and the walk is
 // incomplete").
 func TestWalkAndPreviewWarnAnUnreadListingInOneSentence(t *testing.T) {
@@ -326,8 +326,8 @@ func TestReleasePackagesRenamesDoNotFalselyCapTheWalk(t *testing.T) {
 // for a squash-arm inner commit's file listing is a capped listing with
 // nothing listed (DESIGN §4.1, t-esm5) — neither API lag nor a raw API
 // failure. bump and notes report and warn naming the commit; release refuses
-// the walk at 4 with the shortfall and its own remedy. Before the fix all
-// three died at 4 on the raw `github: GET …/commits/c1: 422`. A refusal
+// the walk at 4 with the shortfall and its own remedy. Unclassified, the 422
+// kills all three at 4 on the raw `github: GET …/commits/c1: 422`. A refusal
 // attribution would hand down over the empty listing is withheld, so the
 // unscoped ~ is carried nowhere; a scope naming a package still carries it
 // there (rule 2), the answer a truncated listing already lets stand (mutation

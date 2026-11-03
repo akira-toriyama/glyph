@@ -13,14 +13,12 @@ import (
 // readable alias of `level`: "true" for major, "false" for any other level,
 // and EMPTY whenever level is. A repository declaring [[packages]] always
 // gets an empty level, because no one line has a level for a scalar to
-// describe (DESIGN §4.1), whatever its lines do. The first cut derived
-// breaking as `[ "$level" = "major" ]` and published "false" there — a
-// definite "no" for a pull that breaks a line (t-xbk0, measured 2026-09-26
-// with this step and a real binary on glyph-monorepo-test #30: haiku folds
-// major, the step wrote level= and breaking=false). Positive control: the
-// single-line major envelope must come out "true", which proves the stub ran
-// and its envelope was read (mutation row
-// pr-verdict-breaking-reads-not-computed-as-false).
+// describe (DESIGN §4.1), whatever its lines do. Derived as
+// `[ "$level" = "major" ]`, breaking publishes "false" there — a definite "no"
+// for a pull that breaks a line (t-xbk0: haiku folds major, the step would
+// write level= and breaking=false). Positive control: the single-line major
+// envelope must come out "true", which proves the stub ran and its envelope
+// was read (mutation row pr-verdict-breaking-reads-not-computed-as-false).
 func TestPRVerdictBreakingFollowsLevelIntoNotComputed(t *testing.T) {
 	requireTool(t, "jq")
 	script := extractRun(t, repoFile(t, filepath.Join(".github", "workflows", "pr-verdict.yml")), "Compose the verdict comment")

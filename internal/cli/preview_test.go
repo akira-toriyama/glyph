@@ -208,12 +208,10 @@ func TestPreviewFoldsPendingOverPR(t *testing.T) {
 }
 
 // TestPreviewPRMultiCommitListing: the PR side of the preview folds over the
-// pull's WHOLE commit listing, max-fold like everywhere else. Every other
-// preview test feeds a one-commit listing (t-njmw found the gap: 9 tests,
-// none with two commits in one pull), so a preview that read only the first
-// listing entry would have stayed green everywhere while under-reporting any
-// multi-commit PR whose stronger sigil came second — which is exactly the
-// order this test uses.
+// pull's WHOLE commit listing, max-fold like everywhere else. A preview that
+// read only the first listing entry would under-report any multi-commit PR
+// whose stronger sigil came second — which is exactly the order this test
+// uses.
 func TestPreviewPRMultiCommitListing(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t) // tagged v0.1.0, HEAD on the tag: the pending side is empty
 	t.Chdir(dir)
@@ -260,16 +258,15 @@ func TestPreviewRequiresPR(t *testing.T) {
 // TestPreviewZeroVersionTagIsTagged: a repository tagged v0.0.0 HAS released,
 // and the pending walk must run.
 //
-// untagged used to be decided by comparing the parsed version against the zero
-// value, which is the same answer for "no tag anywhere" and "the tag is
-// v0.0.0". The second is an ordinary thing to have cut — it is what a repo that
-// wants a floor before its first real release does — and glyph then skipped its
-// pending walk and told the reviewer, in a durable PR comment, that the
-// repository had no release tag. Measured on the same checkout before this
-// change: `preview --pr 7 --json` reported {"untagged":true,"pending":"none"}
-// while `bump --since-tag=auto --json` walked v0.0.0..HEAD and answered
-// {"level":"minor"}. The existence question is about the TAG, so it is now
-// asked of the tag name.
+// Decided by comparing the parsed version against the zero value, untagged is
+// the same answer for "no tag anywhere" and "the tag is v0.0.0". The second is
+// an ordinary thing to have cut — it is what a repo that wants a floor before
+// its first real release does — and glyph then skips its pending walk and
+// tells the reviewer, in a durable PR comment, that the repository has no
+// release tag: `preview --pr 7 --json` {"untagged":true,"pending":"none"}
+// beside `bump --since-tag=auto --json` walking v0.0.0..HEAD to
+// {"level":"minor"}. The existence question is about the TAG, so it is asked
+// of the tag name.
 func TestPreviewZeroVersionTagIsTagged(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.0.0")
@@ -473,9 +470,9 @@ func TestPreviewBareLineRendersTheScalarBody(t *testing.T) {
 // on stderr by one producer whatever the shape — on the bare line in a
 // sentence that says nothing of lines, for a pull whose touched lines have no
 // tag with "on any line this PR touches" and "per line" — and not at all when
-// the pull touches no line, where there was nothing to walk for. The bare line used to say it in words of
-// its own ("no v* release tag in HEAD's history — previewing this PR's own
-// verdict only"), and the packages half was asserted nowhere.
+// the pull touches no line, where there was nothing to walk for. A bare line
+// saying it in words of its own ("no v* release tag in HEAD's history —
+// previewing this PR's own verdict only") is a second producer.
 func TestPreviewReleaseFloorWarningIsOneSentence(t *testing.T) {
 	bare := testutil.NewRepo(t)
 	lines, _ := packagesRepo(t)
@@ -513,11 +510,11 @@ func TestPreviewReleaseFloorWarningIsOneSentence(t *testing.T) {
 
 // TestPreviewReadsTheRepoItIsGiven: --repo names the repository every read
 // asks — the pull's listing, its commits' file listings and the pending walk
-// — over $GITHUB_REPOSITORY, which usePR sets to another. No test ran preview
-// with --repo, so a read that dropped the flag for the environment's
-// repository survived the whole suite at each of the three. The stand-in
-// serves both repositories and records what it answered, so a read of the
-// wrong one is counted here rather than failed as an unknown route.
+// — over $GITHUB_REPOSITORY, which usePR sets to another. No other test runs
+// preview with --repo, so this is the one place a read that drops the flag for
+// the environment's repository fails. The stand-in serves both repositories
+// and records what it answered, so a read of the wrong one is counted here
+// rather than failed as an unknown route.
 func TestPreviewReadsTheRepoItIsGiven(t *testing.T) {
 	other := func(path string) string {
 		return strings.Replace(path, "/repos/akira-toriyama/glyph/", "/repos/other/name/", 1)
@@ -572,9 +569,8 @@ func TestPreviewReadsTheRepoItIsGiven(t *testing.T) {
 // TestPreviewNotesCiteThePullUnderReview: the notes preview cites each commit
 // by the pull under review and by its own sha, which that pull's head branch
 // holds — on the bare line and per line alike. The presets' note line names
-// no $hash, so the citation is read through one that names both: neither half
-// was asserted on either shape, and a preview citing no pull, or no sha,
-// survived the whole suite.
+// no $hash, so the citation is read through one that names both, and a
+// preview citing no pull, or no sha, fails here on both shapes.
 func TestPreviewNotesCiteThePullUnderReview(t *testing.T) {
 	const presetLine = "line = '- $subject$[ ($pr)] @$author$[ with $coauthors]'"
 	citing := func(t *testing.T, dir string) {

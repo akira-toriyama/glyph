@@ -1,12 +1,11 @@
 package workflows
 
-// Shipping invariants (t-ewre): four :bug: fixes to the distribution layer
-// each shipped as a one-file YAML/shell diff with zero tests, and each can be
-// reverted by a one-line change that no compiler, no Go test and no smoke can
-// see. The dist-gate makes evidence mandatory for FUTURE distribution diffs;
-// these tests are the evidence those four never carried, written after the
-// fact. Each has a mutation-ledger row re-breaking it, which is where "a fix
-// is shown by re-breaking it" is enforced for lines no Go code compiles.
+// Shipping invariants: distribution-layer behaviour lives in one-file
+// YAML/shell diffs that a one-line change reverts where no compiler, no Go
+// test and no smoke can see it. The dist-gate makes evidence mandatory for a
+// distribution diff; these tests are that evidence, and a mutation-ledger row
+// re-breaking a fix is where "a fix is shown by re-breaking it" is enforced for
+// lines no Go code compiles.
 
 import (
 	"fmt"
@@ -43,9 +42,9 @@ func TestReleasePublishesAtTagTime(t *testing.T) {
 }
 
 // TestPrereleaseTagsStayOffLatestAndOffTheTap pins the pair of `auto`s that
-// make a release candidate cheap. v2's grammar change cannot be proven by a
-// dry run — only by a real release binary that the reusables install and a
-// fleet gate executes (t-x3ed) — so v3 ships rc tags first. GoReleaser
+// make a release candidate cheap. A grammar change cannot be proven by a dry
+// run — only by a real release binary that the reusables install and a fleet
+// gate executes — so it ships rc tags first. GoReleaser
 // defaults both keys the other way: without `prerelease: auto` every `v*` tag
 // publishes as a full release and takes GitHub's `latest` pointer, and without
 // `skip_upload: auto` the same tag regenerates Casks/glyph.rb, so an rc of a
@@ -403,8 +402,8 @@ func TestNotesStepResolvesItsInputs(t *testing.T) {
 // harness cannot run: the step's env: maps each input to the variable the
 // script reads, the step carries the id the outputs name, and each output's
 // value reads that step. Broken, a consumer's `steps.<id>.outputs.file` is
-// empty and GoReleaser is handed no notes file at all (measured in review:
-// renaming the id left every executed test green).
+// empty and GoReleaser is handed no notes file at all, and a renamed id leaves
+// every executed test green: this is the one place it fails.
 func TestReleaseNotesActionWiresItsInputsAndOutputs(t *testing.T) {
 	raw := repoFile(t, filepath.FromSlash(releaseNotesAction))
 	shape := readStepShape(t, raw, renderStep)

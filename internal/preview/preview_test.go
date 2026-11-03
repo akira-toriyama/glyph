@@ -356,13 +356,13 @@ func TestRenderNoNotesBlockWhenEmpty(t *testing.T) {
 // subject that breaks out of its container does it in a comment authored by a
 // bot, over the reviewer's signature.
 //
-// Measured against GitHub 2026-07-21, before the fix — the injected <h1> left
-// the collapsed block entirely and landed at the top level of the comment:
+// Measured against GitHub 2026-07-21 — left raw, the injected <h1> leaves the
+// collapsed block entirely and lands at the top level of the comment:
 //
 //	<details><summary>Release notes preview</summary>
 //	<ul><li>⚡️ speed up </li></ul></details><h1>OWNED</h1> the loop (abc1234)
 //
-// and after it, contained and inert:
+// and escaped, contained and inert:
 //
 //	<details><summary>Release notes preview</summary><ul><li>⚡️ speed up
 //	&lt;/details&gt;&lt;h1&gt;OWNED&lt;/h1&gt; the loop (abc1234)</li></ul></details>

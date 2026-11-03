@@ -11,11 +11,11 @@ import (
 
 // TestBumpRangeReturnsEveryViolation pins the accumulating walk: a range with
 // two unmatched commits is ONE red run carrying both, each with its sha and
-// detail, not two runs each revealing the next (measured: `bump --range
-// --json` once answered for the first commit alone, with no details, and the
-// caller re-ran lint in a loop to find the rest). The Msg keeps the
-// exact `commit <sha>:` head the first failure always had — the walk's own
-// refusal (walk.walkRefusal) opens the same way, one shape at both gates.
+// detail, not two runs each revealing the next (a walk that stops at the first
+// commit answers with no details, and the caller re-runs lint in a loop to
+// find the rest). The Msg keeps the first failure's exact `commit <sha>:`
+// head — the walk's own refusal (walk.walkRefusal) opens the same way, one
+// shape at both gates.
 func TestBumpRangeReturnsEveryViolation(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji one")

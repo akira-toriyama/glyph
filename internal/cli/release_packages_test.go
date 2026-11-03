@@ -299,10 +299,10 @@ func claimsResidueGone(claims []string) bool {
 // TestReleasePackagesBareResidueNoticeWaitsForTheDelete (t-xz1z): the residue
 // notice is the one warning that exists so a human can move a hand region's
 // prose before it is destroyed, and --dry-run is how they get to read it in
-// time. It used to be printed at plan time, above the dry-run fork and the
-// writes, so a dry run (which writes nothing) and a run that died at an
-// upsert (the residue untouched) both said "it is deleted". Now the dry run
-// says it would be, and the real run speaks only once the DELETE went.
+// time. Printed at plan time, above the dry-run fork and the writes, it says
+// "it is deleted" on a dry run (which writes nothing) and on a run that died
+// at an upsert (the residue untouched); so the dry run says it would be, and
+// the real run speaks only once the DELETE went.
 func TestReleasePackagesBareResidueNoticeWaitsForTheDelete(t *testing.T) {
 	residue := `[` + draftJSON(61, "v0.9.0") + `]`
 	serve := func(t *testing.T, fail func(*http.Request) int) (seq *[]string) {
@@ -389,8 +389,8 @@ func packagesRepoWithRoot(t *testing.T) (dir, declared string) {
 // exit 1 with the per-line reasons, the residual drafts of every line
 // deleted loudly (the deletes are the whole action), nothing created, and no
 // target: target is the sha a draft's eventual tag points at, and the single
-// line's none verdict carries none either (t-xz1z; the first cut reported
-// HEAD here, on the real run and the dry run alike).
+// line's none verdict carries none either (t-xz1z; HEAD here, on the real run
+// and the dry run alike, names a target no draft gets).
 func TestReleasePackagesAllNoneExitsOne(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	sha := testutil.Touch(t, dir, "akira-toriyama", ":memo:= document the lines", "README.md")
@@ -508,12 +508,11 @@ func linesQuiet(t *testing.T, dir string) map[string]string {
 // TestReleaseNoneDeleteFailureStillFailsLoud (t-xz1z): for a line that folds
 // to none with draft_on_none off, deleting its residual draft is the line's
 // whole action, so a delete that will not go fails the run (4) — whatever the
-// line's siblings did. Measured before the split: the same line, the same none
-// verdict and the same failing DELETE exited 4 when every line was none and 0
-// when a sibling line had written a draft, because the residual then rode
-// convergeStray's leniency; the verdict reported curry's action as delete with
-// the draft still standing. The bare residue follows the run: with no draft
-// written, its delete is the whole action too.
+// line's siblings did. Routed through convergeStray's leniency the same failing
+// DELETE exits 4 when every line is none and 0 when a sibling line has written
+// a draft, the verdict reporting curry's action as delete with the draft still
+// standing. The bare residue follows the run: with no draft written, its
+// delete is the whole action too.
 func TestReleasePackagesNoneDeleteFailureStillFailsLoud(t *testing.T) {
 	for name, tc := range map[string]struct {
 		walk     func(*testing.T, string) map[string]string
@@ -641,11 +640,11 @@ func TestReleasePackagesDryRunCountsResidualAndStaleApart(t *testing.T) {
 // delete passes meet (t-xz1z): a none line's residual that will not go fails
 // the run (4), but only once every other delete was tried — another line's
 // residual, a moving line's stray, the bare residue — and the residuals go
-// before the strays. The first cut returned at the failed residual: the
-// stray and the residue beside it were neither deleted nor warned about,
-// where the run before the split had deleted both (measured 2026-10-04:
-// PATCH 53, DELETE 51:422 and exit 4, against PATCH 53, DELETE 52,
-// DELETE 51:422, DELETE 61 and exit 0).
+// before the strays. Returning at the failed residual leaves the stray and the
+// residue beside it neither deleted nor warned about (PATCH 53, DELETE 51:422,
+// exit 4 and nothing else); here every delete is issued — PATCH 53, then
+// DELETE 51 (422), 52 and 61 — each outcome is reported, and the run still
+// exits 4.
 func TestReleasePackagesFailedResidualStrandsNoOtherDelete(t *testing.T) {
 	t.Run("a moving line's stray and the bare residue still go", func(t *testing.T) {
 		dir, _ := packagesRepo(t)
@@ -763,9 +762,8 @@ func TestReleasePackagesACandidateTagConvergesOneLineAlone(t *testing.T) {
 }
 
 // TestReleasePackagesExcludedAuthorBumpStaysOnItsLine: the draft is where the
-// leak was user-visible — the first cut wrote a haiku-only dependabot bump
-// into every line's rolling draft (measured 2026-09-11 on
-// glyph-monorepo-test: curry/v0.1.1's body carried it under Fixes and
+// leak is user-visible: a haiku-only dependabot bump placed on every line
+// lands in every line's rolling draft (in curry's under Fixes and
 // Dependencies). Placed by its files, the bump is in haiku's draft alone.
 func TestReleasePackagesExcludedAuthorBumpStaysOnItsLine(t *testing.T) {
 	dir, _ := packagesRepo(t)

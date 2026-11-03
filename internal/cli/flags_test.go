@@ -108,10 +108,10 @@ func TestEveryStringFlagRejectsItsEmptyForm(t *testing.T) {
 
 // TestLintStdinFalseIsUsageNotAVerdict: `--stdin=false` satisfies cobra's
 // one-required group (it asks pflag's Changed), then matches no VALUE arm — so
-// the run used to fall through to an empty --message and answer with 3, the
-// gate code the fleet's commit-lint job hard-fails on, about a commit nobody
-// submitted. It also swallowed a perfectly good message: the table covers both,
-// because "no input mode was selected" must not depend on what is on stdin.
+// a run that falls through to an empty --message answers 3, the gate code the
+// fleet's commit-lint job hard-fails on, about a commit nobody submitted, and
+// swallows a perfectly good message: the table covers both, because "no input
+// mode was selected" must not depend on what is on stdin.
 func TestLintStdinFalseIsUsageNotAVerdict(t *testing.T) {
 	for _, tc := range []struct{ name, stdin string }{
 		{"empty stdin", ""},
@@ -156,12 +156,11 @@ func TestLintRepoRefusesLocalModes(t *testing.T) {
 // rather than from a list, so a new command that invents a third spelling fails
 // here instead of in a caller's shell.
 //
-// glyph shipped two names for one thing until v1.0.0: `--json` on six commands
-// and `--ndjson` on `version` and `hook install`. `--ndjson` was a misnomer as
-// well as a split — printCompact writes ONE object, never a stream — and the
-// cost landed on callers, who had to remember which subcommand took which:
-// measured before the rename, `version --json` and `bump --ndjson` BOTH exited
-// 2 with `unknown flag`.
+// Two names for one thing — `--json` on some commands, `--ndjson` on others —
+// put the cost on callers, who must remember which subcommand takes which
+// (under the split, `version --json` and `bump --ndjson` both exit 2 with
+// `unknown flag`), and `--ndjson` misnames what printCompact writes: ONE
+// object, never a stream.
 func TestMachineOutputFlagHasOneSpelling(t *testing.T) {
 	var walk func(cmd *cobra.Command, path string)
 	var machine []string
@@ -294,8 +293,8 @@ func TestSinceTagSpaceFormIsGuided(t *testing.T) {
 }
 
 // TestRepoWithRangeIsUsage: --repo configures the API-backed sources (--pr,
-// --since-tag); combined with the purely local --range it used to be silently
-// ignored. No silent ignores — it is a usage error.
+// --since-tag); combined with the purely local --range it configures nothing,
+// and no silent ignores: it is a usage error.
 func TestRepoWithRangeIsUsage(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)

@@ -17,13 +17,13 @@ const goldenTarget = "cafe1234cafe1234cafe1234cafe1234cafe1234"
 
 // TestReleaseDryRunGolden pins the composed dry-run output — tag line, blank
 // line, section order, the one-line --- separator, the verbatim footer — as
-// bytes, the way the notes goldens pin Render. The compose tests around it
-// assert fragments; this is the one place the WHOLE published surface is the
-// assertion, so a stray blank line or a reordered section fails even when
-// every fragment still matches. Deterministic because every SHA in the output
-// is the fake API's fixed one or goldenTarget, the tag is computed from the
-// fixture, and the compare link ends at the explicit --target: its default,
-// HEAD, is a different sha every run (testutil.GitEnv pins no commit date).
+// bytes. The compose tests around it assert fragments; this is the one place
+// the WHOLE published surface is the assertion, so a stray blank line or a
+// reordered section fails even when every fragment still matches.
+// Deterministic because every SHA in the output is the fake API's fixed one or
+// goldenTarget, the tag is computed from the fixture, and the compare link
+// ends at the explicit --target: its default, HEAD, is a different sha every
+// run (testutil.GitEnv pins no commit date).
 //
 // Regenerate with `go test ./internal/cli -run Golden -update` — and read the
 // diff as the format spec it is before committing it (-update makes a

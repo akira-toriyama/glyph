@@ -61,10 +61,10 @@ func TestBumpMajorSubdirectoryLinesShareThePrefix(t *testing.T) {
 	}
 }
 
-// TestBumpMajorSubdirectoryAloneReadsItsMajor is the measured defect: with
-// only pubsub/v2 declared, its current is pubsub/v2.7.0 — not v0.0.0 on a
-// pubsub/v2/ prefix nothing tags (the first cut), and not the v1 tag beside
-// it — and a fix steps to pubsub/v2.7.1.
+// TestBumpMajorSubdirectoryAloneReadsItsMajor pins the current: with only
+// pubsub/v2 declared it is pubsub/v2.7.0 — not v0.0.0 on a pubsub/v2/ prefix
+// nothing tags, and not the v1 tag beside it — and a fix steps to
+// pubsub/v2.7.1.
 func TestBumpMajorSubdirectoryAloneReadsItsMajor(t *testing.T) {
 	dir := testutil.NewPackagesRepo(t, "\n[[packages]]\npath = \"pubsub/v2\"\nname = \"pubsub-v2\"\n", map[string]string{"pubsub/pubsub.go": "package pubsub\n", "pubsub/v2/pubsub.go": "package pubsub\n"})
 	testutil.Git(t, dir, "akira-toriyama", "tag", "pubsub/v1.9.1")

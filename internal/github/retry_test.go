@@ -128,13 +128,14 @@ func TestSecondaryRateLimit403IsRetried(t *testing.T) {
 	}
 }
 
-// TestBare403IsRetried: a 403 WITHOUT Retry-After used to be returned on the
-// first answer as a permission failure. t-z7c1 measured GitHub answering
+// TestBare403IsRetried: a 403 WITHOUT Retry-After, returned on the first
+// answer as a permission failure, fails a run that would heal. GitHub answers
 // exactly that shape — bare 403, `Resource not accessible by integration`, no
-// Retry-After — when several repos' release runs PATCH their rolling drafts
-// in the same second, and the very same request succeeding moments later. The
-// collision and the true permission failure share one status and one message,
-// so the loop now retries both: the collision heals inside the schedule.
+// Retry-After — when several repos' release runs PATCH their rolling drafts in
+// the same second, and the very same request succeeds moments later
+// (measured). The collision and the true permission failure share one status
+// and one message, so the loop retries both: the collision heals inside the
+// schedule.
 func TestBare403IsRetried(t *testing.T) {
 	var hits atomic.Int32
 	c := retryClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -262,12 +263,12 @@ func TestCancelDuringBackoffIsInterrupted(t *testing.T) {
 }
 
 // TestCreateRecoversItsOwnLostAnswer: the t-ph6p incident. A POST /releases
-// that GitHub applies but answers 503 used to be replayed blind, and a draft
-// has no tag to collide on — so every replay minted another identical draft
-// (measured: two from one lost answer, four from a spent schedule). The create
-// must instead probe for the release its earlier copy made — same intended
-// tag, same draft state — and adopt it: one POST total, no sibling, and the
-// caller receives the landed release as if the answer had never been lost.
+// that GitHub applies but answers 503, replayed blind, mints another identical
+// draft on every replay, because a draft has no tag to collide on (two from
+// one lost answer, four from a spent schedule). The create must instead probe
+// for the release its earlier copy made — same intended tag, same draft
+// state — and adopt it: one POST total, no sibling, and the caller receives
+// the landed release as if the answer had never been lost.
 func TestCreateRecoversItsOwnLostAnswer(t *testing.T) {
 	var posts, gets atomic.Int32
 	c := retryClient(t, func(w http.ResponseWriter, r *http.Request) {

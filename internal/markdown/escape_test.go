@@ -5,7 +5,6 @@ import (
 	"testing"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
 // WHAT GITHUB ACTUALLY DOES WITH THE NEUTRALIZED FORMS — measured, not reasoned.
 // Same probe as the table at the top of markdown_test.go. Observed 2026-07-21.
 //
@@ -21,7 +20,7 @@ import (
 //	                                     paragraph and past </details>
 //
 // The three fates of a raw tag. The third is why this is a REPAIR and not only a
-// guard — the author's own words are destroyed today:
+// guard — left raw, the author's own words are destroyed:
 //
 //	BEGIN <i> END / <kbd> / <img src=x>    LIVE (attributes filtered, tag kept)
 //	BEGIN <script> END / <title> / <style> escaped by GFM's tagfilter (8 names)
@@ -30,17 +29,17 @@ import (
 //	BEGIN <!-- c --> END                   -> "BEGIN  END"   DELETED
 //	BEGIN <!DOCTYPE html> END              -> "BEGIN  END"   DELETED
 //
-// Real subjects already shipped by this fleet, before and after:
+// Real subjects from this fleet, raw and escaped:
 //
 //	ThemedChip — MUI <Chip> + <kbd> compact token
-//	  before  "MUI  + " and a <kbd> leaking past the </li>
-//	  after   "MUI &lt;Chip&gt; + &lt;kbd&gt;"
+//	  raw      "MUI  + " and a <kbd> leaking past the </li>
+//	  escaped  "MUI &lt;Chip&gt; + &lt;kbd&gt;"
 //	unwrap Optional<Any> before NSNull check
-//	  before  "unwrap Optional before NSNull check"
-//	  after   "unwrap Optional&lt;Any&gt; before NSNull check"
+//	  raw      "unwrap Optional before NSNull check"
+//	  escaped  "unwrap Optional&lt;Any&gt; before NSNull check"
 //	user-defined themes via [overlay.theme.<name>]
-//	  before  "[overlay.theme.]"
-//	  after   "[overlay.theme.&lt;name&gt;]"
+//	  raw      "[overlay.theme.]"
+//	  escaped  "[overlay.theme.&lt;name&gt;]"
 //
 // ESCAPING '<' IS NOT ENOUGH, and this is what forces the scheme rule. GFM's
 // extended autolink needs no angle bracket at all:
@@ -52,7 +51,7 @@ import (
 //	go to \http://a/x now        -> STILL A LINK  ← the backslash must go before
 //	                                the ':', never in front of the token
 //
-// THE FOUR LIVE MENTIONS THIS CLOSES, each measured before and after the whole
+// THE FOUR LIVE MENTIONS THIS CLOSES, each measured raw and through the whole
 // pipeline (flatten -> escapeMarkup -> escapeMentions) inside a real notes line:
 //
 //	fix <http://a/`x> so @octocat can `see` it        LIVE -> inert
@@ -61,9 +60,9 @@ import (
 //	callers to &#64;v1                                LIVE -> inert
 //
 // The first three are one bug: a construct that outranks a backtick consumes it,
-// so glyph believed a PHANTOM code span and left the mention inside it raw. Kill
-// the construct and the phantom becomes a REAL span — measured, the at-sign now
-// lands inside <code> and GitHub links nobody:
+// so a backtick-only scan believes a PHANTOM code span and leaves the mention
+// inside it raw. Kill the construct and the phantom becomes a REAL span —
+// measured, the at-sign then lands inside <code> and GitHub links nobody:
 //
 //	fix \<http\://a/`x> so @octocat can `see` it
 //	  -> fix &lt;http://a/<code>x&gt; so @octocat can </code>see` it
@@ -74,11 +73,10 @@ import (
 // the only thing that works.
 //
 // AND WHAT MUST NOT CHANGE — the approved policy is that a subject stays
-// readable. Measured byte-identical before and after:
+// readable. Measured byte-identical raw and escaped:
 //
 //	keep `code spans` and *emphasis* working
 //	  -> keep <code>code spans</code> and <em>emphasis</em> working
-// ─────────────────────────────────────────────────────────────────────────────
 
 // TestFlatten pins the t-bz0r fix: every CommonMark line terminator becomes ONE
 // space. A bare CR is the one that surprises — GitHub ends the line there, so an

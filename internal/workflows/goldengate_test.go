@@ -16,7 +16,7 @@ import (
 const goldenPattern = `^.*/testdata/.*\.golden\..*$`
 
 // TestGoldenGateGuardsTheGoldenFiles pins the gate that makes a golden rewrite
-// state its reason (t-3f4s): `go test -update` regenerates a golden from
+// state its reason: `go test -update` regenerates a golden from
 // whatever the code currently produces, so a rendering bug can arrive looking
 // intentional — the gate demands a `Golden-change: <reason>` trailer on every
 // non-merge commit of any pull request whose diff touches one. The gate is one

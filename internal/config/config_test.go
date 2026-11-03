@@ -86,11 +86,9 @@ func TestConventionalPresetGrammar(t *testing.T) {
 }
 
 // TestGemojiPresetRefusesTheSigillessSubject pins the gemoji half of the same
-// rule, and the retirement behind it: the v1-acceptance window that accepted
-// a sigil-less gitmoji subject as a warned none was a migration pattern,
-// retired at v4.0.0 (t-j4c5) once the fleet's histories were all-sigil behind
-// their walk bases. The shipped grammar carries no such pattern, so the
-// subject that once warned now violates — no pattern claims it, and nothing
+// rule: the v1-acceptance window (DESIGN §2, t-j4c5) is retired, the shipped
+// grammar carries no pattern accepting a sigil-less gitmoji subject as a
+// warned none, so the subject violates — no pattern claims it, and nothing
 // warns in its place.
 func TestGemojiPresetRefusesTheSigillessSubject(t *testing.T) {
 	cfg := loadGemoji(t)

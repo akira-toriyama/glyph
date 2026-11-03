@@ -147,7 +147,7 @@ func TestTokenWriteDegradesWithTheUnreadRepo(t *testing.T) {
 }
 
 // TestRemainingChecksDescribeMeasuredBehaviour extends the prose guard below
-// to the four checks its merge-method table does not reach (t-rmng):
+// to the four checks its merge-method table does not reach:
 // token-repo-read, the two squash policy checks, and workflow-glyph-pins.
 // Mention-only, deliberately: a forbid entry is a phrase that SHIPPED and was
 // false, and none of these four has shipped one yet — what is pinned here is
@@ -235,22 +235,22 @@ func TestRemainingChecksDescribeMeasuredBehaviour(t *testing.T) {
 }
 
 // TestMergeMethodChecksDescribeTheWalkThatExists is a regression test on the
-// PROSE, and it has now earned its place twice. The first draft told the fleet
-// that a rebase-merged PR's non-final commits are classified on "the walk's
-// fallback path", where an unknown :code: degrades to a warning counting none;
-// the walk does the opposite, and that arm is pinned below still.
+// PROSE. A rebase-merged PR's non-final commits are NOT classified on "the
+// walk's fallback path", where an unknown :code: degrades to a warning
+// counting none; the walk expands the whole pull request, and that arm is
+// pinned below.
 //
-// The second round was the same defect in the squash argument, every clause of it
-// re-measured against this walk (t-nnb7): a squash-merged pull does NOT reach the
-// same verdict dark as live (a multi-commit squash carries the PR title
-// — minor live, patch dark), a merge-merged pull does NOT count none at full
-// darkness (gitsource.Checkout.Log runs without --first-parent, so its branch commits are
-// in the range and classify themselves — minor either way), and an outage does
-// NOT reach the fallback at all (only a 422 does; a 403/404/5xx exits 4). What
-// squash actually buys is that a pull request resolves all-or-nothing.
+// The squash argument, every clause of it measured against this walk: a
+// squash-merged pull does NOT reach the same verdict dark as live
+// (a multi-commit squash carries the PR title — minor live, patch dark), a
+// merge-merged pull does NOT count none at full darkness
+// (gitsource.Checkout.Log runs without --first-parent, so its branch commits
+// are in the range and classify themselves — minor either way), and an outage
+// does NOT reach the fallback at all (only a 422 does; a 403/404/5xx exits 4).
+// What squash actually buys is that a pull request resolves all-or-nothing.
 //
-// So the forbid lists are the load-bearing half: every entry is a phrase that
-// SHIPPED and was false, and the walk behind each correction is pinned by a test
+// So the forbid lists are the load-bearing half: every entry is a false phrase
+// the check must not say, and the walk behind each correction is pinned by a test
 // in internal/cli's walkexpand_test.go, walkfallback_test.go or
 // walkrefusal_test.go. The mention lists stay short on purpose —
 // this is a guard against resurrecting a lie, not a golden file, so a rewording
@@ -294,8 +294,8 @@ func TestMergeMethodChecksDescribeTheWalkThatExists(t *testing.T) {
 				"dropped from the fold with a warning",
 			},
 			forbid: []string{
-				// The sentence this whole round existed to delete: measured
-				// minor -> patch, and minor -> none for an unlinted PR title.
+				// The sentence that must stay out (measured: minor -> patch,
+				// and minor -> none for an unlinted PR title).
 				"whether or not the",
 				"refuses the fold", // the lag path never refuses an unclaimed title
 			},

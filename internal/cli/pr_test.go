@@ -256,8 +256,8 @@ func TestPRUnmatchedCommitIsLint(t *testing.T) {
 // caught before any request — usage (2), not an API failure. The server proves
 // the "before any request" half: it fails the test on ANY request, so a spec
 // that leaks past the entrance is caught as the wire call it would have made.
-// The whitespace rows are the ratified 2026-07-22 shape: `a b/c` used to sail
-// through TrimSpace-only checking and come back as a 404 wearing the API code.
+// The whitespace rows pin the shape: checked by TrimSpace alone,
+// `a b/c` sails through and comes back as a 404 wearing the API code.
 func TestPRMalformedRepoIsUsage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("a malformed --repo reached the wire: %s %s", r.Method, r.URL.Path)

@@ -608,9 +608,9 @@ func TestReleaseDryRunAction(t *testing.T) {
 // the dry run computes (TestReleaseDryRunAction) — it resolves it (the
 // checkout's HEAD when the flag is absent) and reports it in the verdict,
 // instead of silently ignoring the one flag that names which commit the
-// eventual tag points at. Measured before the fix: dry-run output was
-// byte-identical with and without --target, on stdout and stderr alike, so a
-// typo'd sha surfaced only on the real run.
+// eventual tag points at. Dry-run output byte-identical with and without
+// --target, on stdout and stderr alike, surfaces a typo'd sha only on the real
+// run.
 func TestReleaseDryRunResolvesTheTarget(t *testing.T) {
 	dryRunVerdict := func(t *testing.T, args ...string) releaseVerdict {
 		t.Helper()
@@ -632,11 +632,10 @@ func TestReleaseDryRunResolvesTheTarget(t *testing.T) {
 }
 
 // TestReleaseRealRunNoticeNamesTheTarget is the real run's sibling of the
-// test above: the dry run's notice named the commit the eventual tag
-// points at, and the notice of the run that actually wrote the draft did not —
-// the one arm with a draft to review was the one that left the sha out. The
-// shipped presets' note.line renders no $hash, so outside --json this notice
-// is the one place a real run names the commit.
+// test above: the real run's notice names the commit the eventual tag points
+// at, as the dry run's does — the one arm with a draft to review is the one a
+// missing sha costs most. The shipped presets' note.line renders no $hash, so
+// outside --json this notice is the one place a real run names the commit.
 func TestReleaseRealRunNoticeNamesTheTarget(t *testing.T) {
 	realRunStderr := func(t *testing.T, args ...string) string {
 		t.Helper()
@@ -1079,15 +1078,15 @@ func TestReleaseWritesTheDraftBeforeConvergingStrays(t *testing.T) {
 // TestReleaseStrayDeleteFailureKeepsTheNotes is t-rncn itself: a PERMANENT 5xx
 // on the stale draft's DELETE.
 //
-// Measured on the pre-reorder tree with this exact scenario: exit 4, stdout
-// empty, PATCH count 0 — the run burned the shipped 1s/4s/16s schedule on a
-// delete and never wrote the release notes it had just computed. t-yq7m
-// absorbed only the lost-answer 404; the harm it named is general.
+// With the stray's DELETE ordered before the upsert, this scenario exits 4
+// with stdout empty and PATCH count 0: the run burns the shipped 1s/4s/16s
+// schedule on a delete and never writes the release notes it has just
+// computed.
 //
-// Now the verdict lands and the stray is a warning. That is a severity change
-// on a documented path (4 -> 0) and it is bounded: no tag exists, nothing is
-// published, and no new draft is created while one exists, so the stray set is
-// self-limiting and the failure repeats identically next run.
+// The verdict lands and the stray is a warning: 0 where that order answers 4,
+// on a documented path, and bounded — no tag exists, nothing is published, and
+// no new draft is created while one exists, so the stray set is self-limiting
+// and the failure repeats identically next run.
 func TestReleaseStrayDeleteFailureKeepsTheNotes(t *testing.T) {
 	var seq []string
 	usePR(t, deleteFailureServer(t, oneFixWalk(t), strayDrafts, &seq))
@@ -1387,10 +1386,10 @@ func shallowCheckout(t *testing.T) map[string]string {
 // TestReleaseNoneTriesEveryResidual: on the bare line, as under [[packages]]
 // (TestReleasePackagesFailedResidualStrandsNoOtherDelete), a none verdict's
 // residual that will not go fails the run (4) only once every other residual
-// was tried, and each that would not go is named. The single line's own path
-// returned at the first failure — measured before the two paths were one:
-// DELETE 11 answered 422, exit 4, draft 12 left standing — and one failed
-// delete is no reason to leave another undone (DESIGN §4.1).
+// was tried, and each that would not go is named. A path that returns at the
+// first failure leaves the rest standing (DELETE 11 answering 422: exit 4,
+// draft 12 untouched), and one failed delete is no reason to leave another
+// undone (DESIGN §4.1).
 func TestReleaseNoneTriesEveryResidual(t *testing.T) {
 	walk := noneWalk(t)
 	releases := `[` + draftJSON(11, "v0.1.1") + `,` + draftJSON(12, "v0.1.2") + `]`

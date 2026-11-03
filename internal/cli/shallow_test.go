@@ -19,9 +19,9 @@ func shallowClone(t *testing.T, src string, depth int) string {
 }
 
 // TestLintRangeOnAShallowCheckoutSaysSo: git lists only the commits a shallow
-// clone holds, so `lint --range` there judges part of the range and — measured
-// before this, on a --depth 2 clone — answered 0 with nothing on stderr where
-// the full clone refuses the same range at 3 (t-esm5 (1b)). It WARNS and keeps
+// clone holds, so `lint --range` there judges part of the range: unwarned, on
+// a --depth 2 clone it answers 0 with nothing on stderr where the full clone
+// refuses the same range at 3 (t-esm5 (1b)). It WARNS and keeps
 // its verdict about the commits it did judge: a refusal would be a new lint
 // semantics, and a shallow walk is a warning to every reporting command
 // (DESIGN §4.1, "Lint"). The full clone is the control twice over: it refuses,
@@ -58,18 +58,17 @@ func TestLintRangeOnAShallowCheckoutSaysSo(t *testing.T) {
 
 // shallowRangeSaysSo is the body of the four shallow --range tests: a range
 // read is a range read. bump --range and notes --range list their commits
-// with the same git log as
-// lint --range, so on a shallow clone they too read only what the clone holds
-// — measured on a --depth 2 clone before this: bump printed a version and
-// notes rendered 2 of 5 commits, both at 0 with no shallow warning, where the
-// full clone's bump refuses the range at 3; under [[packages]] only the
-// boundary commit was warned about, never the range. They warn through lint's
-// read and keep answering: they report, and release alone refuses a shallow
-// checkout. The full clone is the control: bump refuses, and nothing is said
-// about shallowness.
+// with the same git log as lint --range, so on a shallow clone they too read
+// only what the clone holds — unwarned, on a --depth 2 clone bump prints a
+// version and notes renders 2 of 5 commits, both at 0, where the full clone's
+// bump refuses the range at 3; under [[packages]] a warning on the boundary
+// commit alone says nothing of the range. They warn through lint's read and
+// keep answering: they report, and release alone refuses a shallow checkout.
+// The full clone is the control: bump refuses, and nothing is said about
+// shallowness.
 //
 // One test per reader and shape, because the three ledger rows that defend
-// this decision now mutate the one read every reader shares (rangeLines):
+// this decision mutate the one read every reader shares (rangeLines):
 // a row names the test that holds only its own assertion, so that
 // assertion going missing is what turns the row red, not a sibling's.
 func shallowRangeSaysSo(t *testing.T, dir, cmd string, full int) {
@@ -139,12 +138,12 @@ func TestNotesPackagesRangeOnAShallowCheckoutSaysSo(t *testing.T) {
 }
 
 // TestLintRangePackagesAtAShallowBoundaryIsNotReadAsTheWholeTree: the
-// boundary commit of a --depth 1 clone is read by git as a root, and its diff
-// used to be its whole tree — so a shared-only `^`, refused at 3 in the full
-// clone, found a carrier under haiku/ and passed at 0 in silence (measured,
-// t-esm5 (1)). The boundary's diff is unreadable now: its message is still
-// judged, its attribution is not asked, and both gates say which commit went
-// unchecked.
+// boundary commit of a --depth 1 clone is read by git as a root, so its diff
+// is its whole tree — attributed through that diff, a shared-only `^`, refused
+// at 3 in the full clone, finds a carrier under haiku/ and passes at 0 in
+// silence (t-esm5 (1)). The boundary's diff is unreadable: its message is
+// still judged, its attribution is not asked, and both gates say which commit
+// went unchecked.
 func TestLintRangePackagesAtAShallowBoundaryIsNotReadAsTheWholeTree(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	shared := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:^ add a workspace file", "go.work")
@@ -170,14 +169,14 @@ func TestLintRangePackagesAtAShallowBoundaryIsNotReadAsTheWholeTree(t *testing.T
 }
 
 // TestPackagesWalkPlacesAShallowBoundaryByScopeAndSigil: the walk's side of
-// the same read. A --depth 1 clone's HEAD touched haiku/ alone, and its
-// whole-tree diff moved curry too (measured: both lines patch). The boundary's
-// diff is unread, so rules 2–3 place it over no file, exactly as they place a
-// commit whose file listing GitHub answered with a 422 (DESIGN §4.1): a scope
-// naming a package carries it there, a refusal is withheld — the gate code
-// over files nobody read would be a verdict about nothing — and one warning
-// says where it went and that no file was read. The first cut carried it on no
-// line whatever its scope, so one walk placed a 422 by its scope and the
+// the same read. A --depth 1 clone's HEAD touches haiku/ alone, and read
+// through its whole-tree diff it moves curry too (both lines patch). The
+// boundary's diff is unread, so rules 2–3 place it over no file, exactly as
+// they place a commit whose file listing GitHub answered with a 422 (DESIGN
+// §4.1): a scope naming a package carries it there, a refusal is withheld —
+// the gate code over files nobody read would be a verdict about nothing — and
+// one warning says where it went and that no file was read. Carried on no
+// line whatever its scope, one walk would place a 422 by its scope and the
 // boundary nowhere. The price is pinned by the last two cases: a scope the
 // files contradict — another package's file, or one the root package owns —
 // moves the line it names, where the full clone refuses at 3. So is where the
@@ -302,10 +301,9 @@ func TestReleasePackagesShallowBoundaryIsTheCheckoutsShortfall(t *testing.T) {
 // commits whose files nobody read — a landed `:bug:(curry)~` that is a --depth
 // 2 clone's boundary, and a squash-merged pull's inner `:bug:(curry)~` whose
 // file listing GitHub answers with a 422. Both name curry and the full clone
-// carries both there; the shallow walk carried the 422 on curry and the
-// boundary on no line (measured on the source before this rule: curry patch
-// over 1 commit). One rule places both. The shallow checkout is an incomplete
-// walk either way, so release still refuses at 4.
+// carries both there; two rules would carry the 422 on curry and the boundary
+// on no line (curry patch over 1 commit); one rule places both. The shallow
+// checkout is an incomplete walk either way, so release still refuses at 4.
 func TestSinceTagPackagesPlacesABoundaryAndAnUnlistedCommitAlike(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	landed := testutil.Touch(t, dir, "akira-toriyama", ":bug:(curry)~ thicken the roux", "curry/curry.go")

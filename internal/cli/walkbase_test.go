@@ -263,14 +263,12 @@ func TestBumpSinceTagNonVersionTag(t *testing.T) {
 
 // TestSinceTagBelowResolvesThePredecessorAsAVersion: --since-tag=below:TAG is
 // the tag-push question — the new tag is already the highest v* tag, so the
-// walk base is the highest version STRICTLY below it. goreleaser.yml used to
-// re-derive that answer in shell over `git tag --sort=v:refname`, which is a
-// refname sort, not a version order: with a prerelease tag present it handed
-// back the prerelease as the predecessor (measured: prev for v1.0.1 =>
-// v1.0.0-rc1), and the release notes re-folded commits v1.0.0 had already
-// shipped. glyph's own resolver rejects the unparseable prerelease and answers
-// v1.0.0 — only the one commit after it may reach the API, and the answer must
-// equal the tag being cut.
+// walk base is the highest version STRICTLY below it. A derivation in shell
+// over `git tag --sort=v:refname` — a refname sort, not a version order —
+// hands back a prerelease as the predecessor (v1.0.0-rc1 for v1.0.1), and the
+// release notes re-fold commits v1.0.0 already shipped. glyph's own resolver
+// rejects the unparseable prerelease and answers v1.0.0 — only the one commit
+// after it may reach the API, and the answer must equal the tag being cut.
 func TestSinceTagBelowResolvesThePredecessorAsAVersion(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t) // tags v0.1.0
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ an rc-era fix")
@@ -281,9 +279,9 @@ func TestSinceTagBelowResolvesThePredecessorAsAVersion(t *testing.T) {
 	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.1")
 
 	// The premise: git's version sort really does slot the prerelease between
-	// the two releases, so the retired shell derivation (awk over this exact
-	// listing) picked v1.0.0-rc1 as v1.0.1's predecessor. Without this, the
-	// assertions below could pass on a git whose sort changed, proving nothing.
+	// the two releases, so a shell derivation (awk over this exact listing)
+	// picks v1.0.0-rc1 as v1.0.1's predecessor. Without this, the assertions
+	// below could pass on a git whose sort changed, proving nothing.
 	if listing := testutil.Git(t, dir, "akira-toriyama", "tag", "--list", "v*", "--sort=v:refname"); !strings.Contains(listing, "v1.0.0\nv1.0.0-rc1\nv1.0.1") {
 		t.Fatalf("premise gone: git --sort=v:refname no longer orders the prerelease above its release:\n%s", listing)
 	}
@@ -543,11 +541,10 @@ func TestSinceTagPackagesATagNamesALine(t *testing.T) {
 // a tag that is not version-shaped on any line (haiku/nightly) still names
 // no line: every line walks from it.
 //
-// Measured before the fix (t-gt9n, 2026-09-11): the plain arm parsed only
-// vX.Y.Z, so a candidate on a declared line fell through to "not a version
-// on any line" and every declared line walked haiku/v3.0.0-rc.1..HEAD —
-// each sibling re-folding commits it had released and stepping past its own
-// highest tag, exit 0, nothing on stderr.
+// A plain arm parsing only vX.Y.Z lets a candidate on a declared line fall
+// through to "not a version on any line", and every declared line walks
+// haiku/v3.0.0-rc.1..HEAD — each sibling re-folding commits it has released
+// and stepping past its own highest tag, exit 0, nothing on stderr (t-gt9n).
 func TestSinceTagPackagesACandidateTagNamesALine(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	for _, tag := range []string{"haiku/v0.2.0-rc.1", "curry/v0.1.1+build.1", "haiku/nightly"} {
@@ -608,10 +605,9 @@ func TestSinceTagPackagesACandidateTagNamesALine(t *testing.T) {
 // that line's first release, as the single line does — and the warning says
 // WHY: no version tag BELOW THE BOUND on that line. The remedy is the same
 // tag as for a line with no tag at all (cut <prefix>v0.0.0 before the line's
-// first change), the diagnosis is not: the first cut reported "no version
-// tag on the haiku/ line", a sentence `git tag -l 'haiku/v*'` refutes, and
-// past the walk cap that sentence is the exit-4 refusal body the operator
-// is stopped by (t-gt9n).
+// first change), the diagnosis is not: "no version tag on the haiku/ line" is
+// a sentence `git tag -l 'haiku/v*'` refutes, and past the walk cap it would
+// be the exit-4 refusal body the operator is stopped by (t-gt9n).
 func TestSinceTagPackagesBelowNothingUnderTheBoundNamesTheBound(t *testing.T) {
 	dir, base := packagesRepo(t)
 	root := testutil.Git(t, dir, "akira-toriyama", "rev-list", "--max-parents=0", "HEAD")

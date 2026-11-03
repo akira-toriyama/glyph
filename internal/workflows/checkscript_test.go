@@ -16,12 +16,11 @@ var prTrigger = regexp.MustCompile(`(?m)^  pull_request:?\s*$`)
 // TestCheckScriptAccountsForEveryPRGate is the mechanical half of scripts/check.sh's
 // header claim, which is that a green run there means a green CI.
 //
-// The claim was false in both directions, and the reason it stayed false is that
-// nothing could tell: check.sh never mirrored build.yml's `bite` job, and it ran
-// govulncheck, which build.yml does not contain (t-7tj3). A prose header cannot
-// notice a workflow appearing next to it, so this test asks the one question that
-// keeps the header honest without freezing the script's shape — is every gate that
-// runs on a pull request at least ACCOUNTED FOR, either mirrored or listed as not
+// The claim goes false with nothing to tell when a pull-request gate check.sh
+// does not mirror passes locally unseen. A prose header cannot notice a workflow
+// appearing next to it, so this test asks the one question that keeps the
+// header honest without freezing the script's shape — is every gate that runs
+// on a pull request at least ACCOUNTED FOR, either mirrored or listed as not
 // mirrored with a reason?
 //
 // It deliberately does not check HOW a gate is handled. Deciding that is a
@@ -29,7 +28,7 @@ var prTrigger = regexp.MustCompile(`(?m)^  pull_request:?\s*$`)
 // truth for a fleet rule, and glyph has no .toml for taplo to read), and a test
 // that encoded the judgement would have to be edited every time the judgement was
 // revisited. What it refuses is the SILENT case: a new PR gate that check.sh has
-// never heard of, which is how the header went stale in the first place.
+// never heard of, which is how the header goes stale.
 func TestCheckScriptAccountsForEveryPRGate(t *testing.T) {
 	// Positive control: a trigger matcher that matched nothing would let every
 	// workflow skip the loop below and pass this test vacuously for ever.

@@ -165,9 +165,8 @@ func TestParseLogRefusesAMisframedRecord(t *testing.T) {
 }
 
 // TestLogReadsSHA256Repositories: an object name is 64 hex digits there, and
-// glyph read such a repository before the record check existed (measured:
-// lint --range 3 on a violation, bump v0.0.1) — a check hard-wired to SHA-1's
-// 40 would have refused every one of its commits.
+// glyph reads such a repository (lint --range 3 on a violation, bump v0.0.1),
+// and a check hard-wired to SHA-1's 40 would refuse every one of its commits.
 func TestLogReadsSHA256Repositories(t *testing.T) {
 	testutil.RequireGit(t)
 	dir := t.TempDir()
@@ -536,10 +535,10 @@ func TestDefaultBranchReadsARemoteNoRefCanNameAsUnrecorded(t *testing.T) {
 // TestRemoteURLsKeepsASpacedRemoteName: a remote name may hold a space —
 // `[remote "my fork"]` in a hand-edited config, which git reads — and
 // `--get-regexp`'s line form separates key and value with a space too, so
-// cutting at the first one named the remote `my` and gave it the URL
-// `fork.url https://…`. Doctor's pre-push advice then told the user to run
-// `git remote set-head my -a` on a remote that does not exist (measured on
-// 4a90a1d, t-3jws). The NUL-framed form is unambiguous: `key\nvalue\0`.
+// cutting at the first one names the remote `my` and gives it the URL
+// `fork.url https://…`, and doctor's pre-push advice then tells the user to
+// run `git remote set-head my -a` on a remote that does not exist. The
+// NUL-framed form is unambiguous: `key\nvalue\0`.
 func TestRemoteURLsKeepsASpacedRemoteName(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "config", "remote.origin.url", "https://example.invalid/o/r.git")
@@ -575,12 +574,12 @@ func TestRemoteCanRecordHeadAsksGit(t *testing.T) {
 // D2b): every action.yml / action.yaml git counts as part of the checkout, at
 // any path — tracked (an initialized submodule's tracked files included) plus
 // untracked files no ignore rule excludes — and nothing the filesystem merely
-// holds. A submodule's composite was caught by the old filesystem walk and is
-// in scope by the same principle; `--recurse-submodules` cannot be combined
-// with --others (git: "unsupported mode"), hence two listings. A tracked file
-// deleted in the working tree is still listed (the caller reads its absence as
-// observed); a sparse-checkout entry is listed and flagged, because its bytes
-// were never put on disk to read.
+// holds. A submodule's composite is in scope by the same principle;
+// `--recurse-submodules` cannot be combined with --others (git: "unsupported
+// mode"), hence two listings. A tracked file deleted in the working tree is
+// still listed (the caller reads its absence as observed); a sparse-checkout
+// entry is listed and flagged, because its bytes were never put on disk to
+// read.
 func TestActionFilesListsWhatGitCounts(t *testing.T) {
 	sub := testutil.NewRepo(t)
 	writeFiles(t, sub, "inst/action.yml")

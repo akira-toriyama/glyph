@@ -121,11 +121,10 @@ func TestPackagesUnderAScopelessGrammarAreNotNamed(t *testing.T) {
 // from it — the stepped tag <prefix>vX.Y.Z and the placeholder
 // <path>/Unreleased — as refnames (git check-ref-format) AND as tag names
 // (git tag, what a human cuts a line's tag with, the wedge refusals' remedy
-// included), which also refuses a name beginning with "-". Measured before
-// the rule (2026-09-29): `bump` printed `a b/v0.1.0` at exit 0 for a tag
-// `git tag` refuses; and before the git tag half (2026-10-04), `-dash`
-// loaded and printed `-dash/v0.0.1`, which check-ref-format accepts and git
-// tag refuses.
+// included), which also refuses a name beginning with "-". Without the rule,
+// `bump` prints `a b/v0.1.0` at exit 0 for a tag `git tag` refuses; and with
+// the check-ref-format half alone, `-dash` loads and prints `-dash/v0.0.1`,
+// which check-ref-format accepts and git tag refuses.
 func TestLoadRefusesAPathGitCannotTag(t *testing.T) {
 	// testutil.RequireGit, which this package cannot import (see tagRepo).
 	if _, err := exec.LookPath("git"); err != nil {

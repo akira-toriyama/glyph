@@ -63,9 +63,9 @@ func crossLinePull(number int) map[string]string {
 // preview-packages-untouched-line-is-mentioned,
 // preview-packages-scalar-verdict-describes-one-line and
 // preview-packages-scalar-claims-the-pull-moves-nothing). pr and pending are
-// scalars like the rest: the first cut set them to none — "this pull moves
-// nothing" beside a packages[] whose lines move (t-xbk0, measured 2026-09-26
-// on glyph-monorepo-test #30, haiku folding major under pr=none).
+// scalars like the rest: set to none they say "this pull moves nothing"
+// beside a packages[] whose lines move (t-xbk0: haiku folding major under
+// pr=none).
 func TestPreviewPackagesOneVerdictPerTouchedLine(t *testing.T) {
 	dir, base := packagesRepo(t)
 	appendTo(t, dir, "glyph.toml", "\n[[packages]]\npath = \"fish\"\n")
@@ -220,17 +220,16 @@ func participatingCount(t *testing.T, body string) int {
 // one set on both packages arms and on the single line — the commits the fold
 // reads, each once (DESIGN §4.1; t-rrw0 (1), (2)+(3)). Every listing is
 // previewed twice, under [[packages]] and on a single line, and the two
-// footers must state one number: the single line's footer has always counted
-// the fold's rows, so it is the oracle here, not a figure typed into the
-// table.
+// footers must state one number: the single line's footer counts the fold's
+// rows, so it is the oracle here, not a figure typed into the table.
 //
-// Measured on the source before this test (b42ca92): the no-line arm counted
-// the raw listing — 3 for a shared =, a bot and a merge commit, where the
-// single line says 1 — and said "its 3 commit(s) touch no declared package"
-// of a listing that holds a merge commit, whose diff nothing reads; the
-// per-line arm counted each table's distinct sigil-and-subject pairs — 2 for
-// the pull the single line counts 4, under a haiku table of 3 rows (two
-// commits sharing a subject collapsed, and the shared = in no table).
+// Counting the raw listing, the no-line arm says 3 for a shared =, a bot and a
+// merge commit, where the single line says 1 — and says "its 3 commit(s) touch
+// no declared package" of a listing that holds a merge commit, whose diff
+// nothing reads; counting each table's distinct sigil-and-subject pairs, the
+// per-line arm says 2 for the pull the single line counts 4, under a haiku
+// table of 3 rows (two commits sharing a subject collapse, and the shared = is
+// in no table).
 //
 // Mutation rows preview-packages-counts-the-raw-listing,
 // preview-footer-counts-the-tables-distinct-subjects and
@@ -603,13 +602,12 @@ func TestPreviewPackagesNotesPerLine(t *testing.T) {
 }
 
 // TestPreviewPackagesExcludedAuthorIsPlacedByItsFiles: preview renders the
-// set the walk will render (DESIGN §4.1: preview says what CI will say). The
-// first cut dropped an exclude_authors commit from every line while the walk
-// placed it on every line — two answers in one run (t-sr1c, measured
-// 2026-09-11 on glyph-monorepo-test #4 and #22). A bot commit is placed by
-// its files: the line it touches is mentioned, with the bump in its notes
-// and a verdict of none, and a bot commit under no package touches nothing
-// (mutation row preview-packages-excluded-author-dropped).
+// set the walk will render (DESIGN §4.1: preview says what CI will say). A
+// preview that drops an exclude_authors commit from every line while the walk
+// places it on every line is two answers in one run (t-sr1c). A bot commit is
+// placed by its files: the line it touches is mentioned, with the bump in its
+// notes and a verdict of none, and a bot commit under no package touches
+// nothing (mutation row preview-packages-excluded-author-dropped).
 func TestPreviewPackagesExcludedAuthorIsPlacedByItsFiles(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	usePR(t, walkServer(t, map[string]string{
@@ -728,11 +726,11 @@ func TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy(t *testing.T) {
 // TestPreviewPackagesUntaggedTouchedLineAgreesWithItsVerdict: one run, one
 // answer. A touched line with no tag still has its pending side walked
 // whenever a tagged sibling in the same pull takes the walk to the whole
-// history — and the body used to deny it while the machine verdict beside it
-// reported it, because both were rendered from the same `untagged` flag.
-// Measured 2026-09-15: body "the first release here would be curry/v0.0.1"
-// against JSON next=v0.1.0, and `bump` on the same checkout answers
-// curry/v0.1.0 — the human-readable half was the wrong one.
+// history — and a body rendered from the same `untagged` flag as the scalar
+// denies it while the machine verdict beside it reports it: body "the first
+// release here would be curry/v0.0.1" against JSON next=v0.1.0, where `bump`
+// on the same checkout answers curry/v0.1.0 — the human-readable half is the
+// wrong one.
 func TestPreviewPackagesUntaggedTouchedLineAgreesWithItsVerdict(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "-d", "curry/v0.1.0")
@@ -801,8 +799,8 @@ func TestPreviewRefusalNamesNoFlagPreviewLacks(t *testing.T) {
 // TestPreviewPackagesUnlistedFilesAreCaveated: a 422 for one of the pull's
 // own commits' file listing is the walk's unread listing on the PR side
 // (DESIGN §4.1, t-esm5): preview exits 0 and the body carries the PR-side
-// INCOMPLETE caveat naming the commit, in the cause-neutral sentence — the
-// capped one said "only past the cap" for a listing GitHub never gave. A
+// INCOMPLETE caveat naming the commit, in the cause-neutral sentence — "only
+// past the cap" is false of a listing GitHub never gave. A
 // refusal over the empty listing is withheld, so the unscoped ~ is attributed
 // to no line and curry goes unmentioned; a scope naming curry still carries
 // it there (rule 2). Every sentence is true in both: the warning says a line
@@ -810,9 +808,9 @@ func TestPreviewRefusalNamesNoFlagPreviewLacks(t *testing.T) {
 // in the preview. When c1 is the pull's only commit, the "moves nothing"
 // body claims nothing about files GitHub did not list and points at no
 // figures it does not carry. When the pending walk meets the same 422 on a
-// merged pull, the pending caveat names it. Before the fix every case died
-// at 4 on the raw `github: GET …/commits/c1: 422`, taking the whole comment
-// down (mutation row unlisted-commit-files-die-as-a-raw-api-error).
+// merged pull, the pending caveat names it. Unclassified, the 422 kills every
+// case at 4 on the raw `github: GET …/commits/c1: 422`, taking the whole
+// comment down (mutation row unlisted-commit-files-die-as-a-raw-api-error).
 func TestPreviewPackagesUnlistedFilesAreCaveated(t *testing.T) {
 	for _, tc := range []struct {
 		name    string

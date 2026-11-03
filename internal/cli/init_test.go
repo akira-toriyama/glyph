@@ -103,14 +103,13 @@ func TestInitRunsFromOptionsWithoutCobra(t *testing.T) {
 // TestInitRefusesWhatIsNotARegularFile: init replaces a regular file and
 // nothing else. A directory, a named pipe or a link that resolves to no file
 // at the path is refused at exit 2, with --force or without, naming what is
-// there, and is never opened. When init asked os.Lstat only whether something
-// existed, it answered each "already exists — edit it in place, or pass
-// --force", and --force then exited 4 over a directory, a looping link, one
-// through a file or one to an over-long name, hung over a named pipe in
-// os.WriteFile's open, and wrote through a link to nothing, creating its target
-// (measured 2026-10-21 at 9ff9cca). Each run sits
-// under a deadline, so that regression fails here instead of hanging the
-// package.
+// there, and is never opened. An init that asks os.Lstat only whether
+// something exists answers each "already exists — edit it in place, or pass
+// --force", and --force then exits 4 over a directory, a looping link, one
+// through a file or one to an over-long name, hangs over a named pipe in
+// os.WriteFile's open, and writes through a link to nothing, creating its
+// target. Each run sits under a deadline, so that regression fails here
+// instead of hanging the package.
 func TestInitRefusesWhatIsNotARegularFile(t *testing.T) {
 	for _, k := range testutil.NotAFileShapes {
 		for _, force := range []bool{false, true} {
@@ -151,10 +150,9 @@ func TestInitRefusesWhatIsNotARegularFile(t *testing.T) {
 // refused says nothing about what is at the path — here a link into a mode-000
 // directory, staged as TestLoadFileKeepsALinkItMayNotFollowUnreadable stages
 // it — so init writes nothing and exits 4, --force or not, naming the path
-// once, as the loader's commands do. When init asked os.Lstat only whether
-// something existed, it answered "already exists — edit it in place, or pass
-// --force" at 2, and --force then failed at the write with 4 (measured
-// 2026-10-21 at ec53ed3 and 9ff9cca).
+// once, as the loader's commands do. An init that asks os.Lstat only whether
+// something exists answers "already exists — edit it in place, or pass
+// --force" at 2, and --force then fails at the write with 4.
 func TestInitOverALinkItMayNotFollowIsTheNoAnswerCode(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("running as root, where a mode-000 directory does not stop the stat")
@@ -241,10 +239,9 @@ func TestInitFlagGrammar(t *testing.T) {
 // glyph.toml at the checkout's top level (loadConfig), so init writes it
 // there from wherever in the checkout it runs, and the remedy a missing file
 // prints, followed from the same subdirectory, produces the file the next
-// command reads. Measured before (2026-09-29, 2026-10-04): from sub/ init
-// wrote sub/glyph.toml at exit 0, nothing read it, and lint repeated the
-// remedy — and with glyph.toml already at the top level, an init from a
-// subdirectory wrote a second one there at exit 0.
+// command reads. Written where it runs, from sub/ init leaves sub/glyph.toml
+// at exit 0 that nothing reads while lint repeats the remedy — and, with
+// glyph.toml already at the top level, a second one at exit 0.
 func TestInitWritesTheTopLevelFromASubdirectory(t *testing.T) {
 	testutil.RequireGit(t)
 	dir := t.TempDir()
@@ -294,12 +291,12 @@ func TestInitWritesTheTopLevelFromASubdirectory(t *testing.T) {
 }
 
 // TestInitRefusesInsideTheGitDirectory: inside a git directory — a checkout's
-// .git, or a bare repository — git names no top level, and init read that as
-// "outside a checkout" and wrote glyph.toml where it stood: .git/glyph.toml at
-// exit 0, a file no command reads, while lint at the top level still said
-// "no glyph.toml" (measured on c89ea08). Only where git reports no repository
-// at all is the current directory the answer; here init refuses at the code
-// it refuses an existing file with, and names the work tree.
+// .git, or a bare repository — git names no top level; an init that reads
+// that as "outside a checkout" writes glyph.toml where it stands:
+// .git/glyph.toml at exit 0, a file no command reads, while lint at the top
+// level still says "no glyph.toml". Only where git reports no repository at
+// all is the current directory the answer; here init refuses at the code it
+// refuses an existing file with, and names the work tree.
 func TestInitRefusesInsideTheGitDirectory(t *testing.T) {
 	testutil.RequireGit(t)
 	checkout := t.TempDir()
@@ -333,11 +330,11 @@ func TestInitRefusesInsideTheGitDirectory(t *testing.T) {
 
 // TestInitCannotRunWhereGitWillNotReadTheRepository: a repository git refuses
 // to read — dubious ownership (safe.directory, common in containers and CI) or
-// a broken .git/config — fails both of init's reads with 128, and init read
-// that as "no repository" and wrote sub/glyph.toml at exit 0, the inert file
-// t-f2cb stopped (measured on ca118a8 for both). Only git's own "not a git
-// repository" is the current directory's case; anything else is no
-// trustworthy answer, exit 4, with git's message, and nothing written.
+// a broken .git/config — fails both of init's reads with 128; an init that
+// reads that as "no repository" writes sub/glyph.toml at exit 0 — the inert
+// file (t-f2cb). Only git's own "not a git repository" is the current
+// directory's case; anything else is no trustworthy answer, exit 4, with git's
+// message, and nothing written.
 func TestInitCannotRunWhereGitWillNotReadTheRepository(t *testing.T) {
 	testutil.RequireGit(t)
 	for name, arrange := range map[string]func(t *testing.T, top string){
@@ -377,8 +374,8 @@ func TestInitCannotRunWhereGitWillNotReadTheRepository(t *testing.T) {
 // TestInitOutsideARepositoryReadsGitsAnswerPastItsTrace: "not a git repository"
 // is recognised on the first fatal: line, not at the start of stderr. Under
 // GIT_TRACE=1 git writes trace lines before it, and matching the stream's start
-// turned an ordinary outside-a-checkout init into exit 4 with nothing written
-// (review u6b-3, measured on 20576c8; base wrote ./glyph.toml).
+// turns an ordinary outside-a-checkout init into exit 4 with nothing written,
+// where ./glyph.toml is the answer.
 func TestInitOutsideARepositoryReadsGitsAnswerPastItsTrace(t *testing.T) {
 	testutil.RequireGit(t)
 	cwd := t.TempDir()
