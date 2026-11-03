@@ -1,12 +1,12 @@
 diff --git a/internal/bump/fold.go b/internal/bump/fold.go
-index bfdbd50..29a9ccb 100644
+index f467043..57c9e82 100644
 --- a/internal/bump/fold.go
 +++ b/internal/bump/fold.go
-@@ -114,7 +114,6 @@ func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
+@@ -110,7 +110,6 @@ func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
  			if len(refusals) == 0 {
- 				firstUnlandable = m.Unlandable != ""
+ 				remedy = u.Remedy
  			}
--			refusals = append(refusals, Refusal{SHA: c.SHA, Subject: FirstLine(c.Message), Detail: cfg.UnclaimedDetail(m)})
+-			refusals = append(refusals, u.Row)
  			continue
  		}
  		if m.Skip {

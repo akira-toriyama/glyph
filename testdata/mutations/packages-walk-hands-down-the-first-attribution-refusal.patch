@@ -1,11 +1,11 @@
 diff --git a/internal/walk/partition.go b/internal/walk/partition.go
-index ceca687..7ec533f 100644
+index a55a8ad..dfc8452 100644
 --- a/internal/walk/partition.go
 +++ b/internal/walk/partition.go
-@@ -208,7 +208,7 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
+@@ -229,7 +229,7 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
  			}
  			if placed.Refused != nil {
- 				refused = append(refused, placementRefusal{err: placed.Refused, c: c, reach: reach})
+ 				refused = append(refused, placementRefusal{row: bump.Refusal{SHA: c.Raw.SHA, Subject: bump.FirstLine(c.Raw.Message), Detail: placed.Refused.Error()}, c: c, reach: reach})
 -				continue
 +				return nil, nil, refused, nil
  			}

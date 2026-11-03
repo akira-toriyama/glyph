@@ -90,31 +90,27 @@ type Refusal struct {
 //
 // A non-excluded commit that no pattern claims — or that an unlandable
 // pattern claims, which Match reports the same way — refuses the WHOLE range
-// (ratified Q2): the alternative — quietly folding it as none — is a commit
-// that stops existing for versioning the moment someone's regex misses it.
-// The refusal is the lint class (exit 3): the range holds a message the
-// repository's own convention cannot read, which is the same verdict lint
-// would hand that message.
+// (ratified Q2; Judge): the alternative — quietly folding it as none — is a
+// commit that stops existing for versioning the moment someone's regex misses
+// it. The refusal is the lint class (exit 3), worded by RangeRefusal: the
+// range holds a message the repository's own convention cannot read, which is
+// the same verdict lint would hand that message.
 func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
 	rows := []Row{}
 	var promote bool
 	levels := make([]Level, 0, len(commits))
 	var refusals []Refusal
-	firstUnlandable := false
+	remedy := ""
 	for _, c := range commits {
 		if slices.Contains(cfg.ExcludeAuthors, c.Author) {
 			continue
 		}
-		m, err := cfg.Match(c.Message)
-		if err != nil {
-			refusals = append(refusals, Refusal{SHA: c.SHA, Subject: FirstLine(c.Message), Detail: err.Error()})
-			continue
-		}
-		if !m.Matched {
+		m, u := Judge(cfg, c.SHA, c.Message)
+		if u != nil {
 			if len(refusals) == 0 {
-				firstUnlandable = m.Unlandable != ""
+				remedy = u.Remedy
 			}
-			refusals = append(refusals, Refusal{SHA: c.SHA, Subject: FirstLine(c.Message), Detail: cfg.UnclaimedDetail(m)})
+			refusals = append(refusals, u.Row)
 			continue
 		}
 		if m.Skip {
@@ -132,24 +128,68 @@ func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
 		})
 	}
 	if len(refusals) > 0 {
-		// The unmatched remedy list is wrong for an unlandable message: a
-		// pattern DID claim it, and adding one or excluding the author is how
-		// the refusal would be defeated. Its reason says what must happen
-		// before the commit lands, and --range over a published branch can
-		// hold one already landed, where only a range starting past it gets
-		// out. (The release walk refuses its own commits before the fold, with
-		// the wedge's escape — internal/walk's unclaimed and walkRefusal.)
-		remedy := " (an unmatched commit folded as none would be a silent hole — fix the message, add a pattern, or exclude the author)"
-		if firstUnlandable {
-			remedy = " (rewrite it as its reason says before it lands; a commit already on a published branch cannot be rewritten, so the range must start past it)"
-		}
-		msg := fmt.Sprintf("commit %.7s: %s; refusing to version the range%s", refusals[0].SHA, refusals[0].Detail, remedy)
-		if extra := len(refusals) - 1; extra > 0 {
-			msg = fmt.Sprintf("commit %.7s: %s (+%d more violation(s), all in details); refusing to version the range", refusals[0].SHA, refusals[0].Detail, extra)
-		}
-		return nil, Decision{}, core.Lintf("%s", msg).WithDetails(refusals)
+		return nil, Decision{}, RangeRefusal(refusals, remedy)
 	}
 	return rows, Decision{Level: reduce(levels), promote: promote}, nil
+}
+
+// Unclaimed is a message the pattern file refuses, as Judge reads it: the
+// refusal's details row, and the clause RangeRefusal closes the sentence on
+// when this row is the range's only one.
+type Unclaimed struct {
+	Row    Refusal
+	Remedy string
+}
+
+// The two remedies a range's refusal of a message closes on. The unmatched
+// list is wrong for an unlandable message: a pattern DID claim it, and adding
+// one or excluding the author is how the refusal would be defeated, so its
+// remedy says what must happen before the commit lands — and a --range over a
+// published branch can hold one already landed, where only a range starting
+// past it gets out. The release walk words its own refusal with the wedge's
+// escape instead (internal/walk's walkRefusal).
+const (
+	unmatchedRemedy  = " (an unmatched commit folded as none would be a silent hole — fix the message, add a pattern, or exclude the author)"
+	unlandableRemedy = " (rewrite it as its reason says before it lands; a commit already on a published branch cannot be rewritten, so the range must start past it)"
+)
+
+// Judge is the one step from a commit's message to its refusal row: m is
+// cfg.Match's answer, and u is non-nil when the message yields no sigil, or
+// no pattern claims it — an unlandable claim included, which Match reports
+// the same way. A skip pattern is a claim. Every reader that refuses such a
+// message with a details row asks it (Fold, the walk's unclaimed,
+// walk.PlaceOf); lint's finding is Config.Lint's own. Whether a commit is
+// judged at all is the caller's gate, never Judge's: an exclude_authors
+// author is not handed here (DESIGN §3).
+func Judge(cfg *config.Config, sha, message string) (config.Match, *Unclaimed) {
+	m, err := cfg.Match(message)
+	switch {
+	case err != nil:
+		return m, &Unclaimed{Row: Refusal{SHA: sha, Subject: FirstLine(message), Detail: err.Error()}, Remedy: unmatchedRemedy}
+	case !m.Matched:
+		remedy := unmatchedRemedy
+		if m.Unlandable != "" {
+			remedy = unlandableRemedy
+		}
+		return m, &Unclaimed{Row: Refusal{SHA: sha, Subject: FirstLine(message), Detail: cfg.UnclaimedDetail(m)}, Remedy: remedy}
+	}
+	return m, nil
+}
+
+// RangeRefusal is the one wording of a refusal to version a range whose
+// commits the caller may still rewrite — Fold's, and walk.Pending's, which
+// loads the grammar's rows (Judge) and attribution's into it in the order the
+// commits come: the first row's sentence, every row in details, and the count
+// of the rest when there is more than one. remedy closes a lone row's
+// sentence — Unclaimed.Remedy for the grammar's; attribution's sentence names
+// its own escapes, so it passes "" — and with several rows each one's detail
+// says its own.
+func RangeRefusal(rows []Refusal, remedy string) error {
+	msg := fmt.Sprintf("commit %.7s: %s; refusing to version the range%s", rows[0].SHA, rows[0].Detail, remedy)
+	if extra := len(rows) - 1; extra > 0 {
+		msg = fmt.Sprintf("commit %.7s: %s (+%d more violation(s), all in details); refusing to version the range", rows[0].SHA, rows[0].Detail, extra)
+	}
+	return core.Lintf("%s", msg).WithDetails(rows)
 }
 
 // FirstLine returns a raw message's subject line (CR trimmed) — the one

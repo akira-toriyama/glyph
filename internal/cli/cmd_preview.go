@@ -146,12 +146,12 @@ func previewRun(ctx context.Context, o previewOptions) error {
 	if err != nil {
 		return err
 	}
-	// The whole listing is folded once, before any line: a message no pattern
-	// claims refuses the preview here on either shape, which is why
-	// attributePull places no such commit. Its rows are the pull's
-	// participating commits (DESIGN §4.1, "Participating"), the one count every
-	// body states, and each row's pattern warning is said here, once (DESIGN
-	// §2, `warn`).
+	// The whole listing is folded once: its rows are the pull's participating
+	// commits (DESIGN §4.1, "Participating"), the one count every body
+	// states, and each row's pattern warning is said here, once (DESIGN §2,
+	// `warn`). A message no pattern claims never reaches the fold — attributePull
+	// refused it on either shape — so its error return is the fold's contract,
+	// not a path the listing takes.
 	rows, _, err := bump.Fold(walk.BumpCommits(commits), cfg)
 	if err != nil {
 		return err
@@ -231,40 +231,45 @@ type touchedLine struct {
 	current bump.Version
 }
 
-// attributePull places the pull's commits on the lines and returns the lines
-// they touch, in config order, with the PR side's shortfall — the listings
-// GitHub did not give whole, for the body's PR-side caveat
-// (preview.Input.PRShort). Without [[packages]] the bare line holds the whole
-// pull and no file is asked for: partitionLines' identity arm. With packages
-// each commit is placed as the walk places a squash-merged pull's inner
-// commit (walk.PlaceByFiles), its files read over the API, one request per commit
-// — a pull's commits exist on its branch only, and this checkout may not hold
-// them — by its files, with its scope and sigil when the fold reads the
-// message and by files alone for an exclude_authors commit (DESIGN §4.1,
-// "Attribution"); or not at all: a skip appears nowhere, and a message no
-// pattern claims refuses the whole-listing fold (previewRun), so it is not
-// attributed first. A line no commit was placed on is not touched, and a pull
-// whose commits carry nothing touches none.
+// attributePull judges the pull's commits and places them on the lines, and
+// returns the lines they touch, in config order, with the PR side's shortfall
+// — the listings GitHub did not give whole, for the body's PR-side caveat
+// (preview.Input.PRShort). On both shapes every message is judged first
+// (walk.PlaceOf; an exclude_authors author's never is): a message the pattern
+// file refuses is not placed and no file of it is read. Without [[packages]]
+// the bare line holds the whole pull and no file is asked for: partitionLines'
+// identity arm. With packages each commit is placed as the walk places a
+// squash-merged pull's inner commit (walk.PlaceByFiles), its files read over
+// the API, one request per commit — a pull's commits exist on its branch only,
+// and this checkout may not hold them — by its files, with its scope and sigil
+// when the fold reads the message and by files alone for an exclude_authors
+// commit (DESIGN §4.1, "Attribution"); a skip appears nowhere. A line no
+// commit was placed on is not touched, and a pull whose commits carry nothing
+// touches none.
 //
-// A refusal over a diff read whole is the lint-class refusal the walk and
-// lint --range hand down — preview says what CI will say — worded for where
-// the commit sits: on a branch that can still be fixed. Every one of the
-// pull's goes out at once, as they name them; stopping at the first left the
-// author one commit per push to find (t-wjbs round 1), and a refusal already
-// found outranks a later failure to read the rest (walk.Walker.Outranks).
+// Both stages' refusals — the grammar's, and attribution's over a diff read
+// whole — are the lint-class refusal the walk and lint --range hand down, and
+// preview says what CI will say, worded for where the commit sits: on a
+// branch that can still be fixed. They go out at once, in listing order, the
+// first the headline, as lint --range names them; stopping at the first left
+// the author one commit per push to find (t-wjbs round 1), and attribution
+// asked first hid the grammar's refusal until the next run (DESIGN §4.1, rule
+// 3). A refusal already found, of either stage, outranks a later failure to
+// read the rest (walk.Walker.Outranks).
 func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner, repo string, number int, commits []walk.Commit, name string) ([]touchedLine, string, error) {
 	lines := walk.PendingLines(cfg, name)
-	if len(cfg.Packages) == 0 {
-		return []touchedLine{{Line: lines[0], commits: commits}}, "", nil
-	}
+	bare := len(cfg.Packages) == 0
 	perLine := make([][]walk.Commit, len(lines))
 	var facts walk.Facts
 	var refused []bump.Refusal
-	var first error
 	for _, c := range commits {
 		r := c.Raw
-		place, said := walk.PlaceOf(cfg, r)
-		if place != walk.PlacedByFiles {
+		place, said, u := walk.PlaceOf(cfg, r)
+		switch {
+		case place == walk.Refused:
+			refused = append(refused, u.Row)
+			continue
+		case bare, place == walk.PlacedNowhere:
 			continue
 		}
 		placed, err := w.PlaceByFiles(ctx, cfg, owner, repo, walk.Commit{Raw: r, Pull: number}, said, &facts, nil)
@@ -275,9 +280,6 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
 			return nil, "", err
 		}
 		if placed.Refused != nil {
-			if first == nil {
-				first = placed.Refused
-			}
 			refused = append(refused, bump.Refusal{SHA: r.SHA, Subject: bump.FirstLine(r.Message), Detail: placed.Refused.Error()})
 			continue
 		}
@@ -292,8 +294,11 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
 		if n := len(refused) - 1; n > 0 {
 			more = fmt.Sprintf(" (+%d more refused commit(s), all in details)", n)
 		}
-		return nil, "", core.Lintf("commit %.7s in pull request %s/%s#%d: %v%s — the release walk will refuse this commit the same way once it is merged, and a merged commit cannot be rewritten; fix it on the branch", refused[0].SHA, owner, repo, number, first, more).
+		return nil, "", core.Lintf("commit %.7s in pull request %s/%s#%d: %s%s — the release walk will refuse this commit the same way once it is merged, and a merged commit cannot be rewritten; fix it on the branch", refused[0].SHA, owner, repo, number, refused[0].Detail, more).
 			WithDetails(refused)
+	}
+	if bare {
+		return []touchedLine{{Line: lines[0], commits: commits}}, "", nil
 	}
 	var touched []touchedLine
 	for i, l := range lines {

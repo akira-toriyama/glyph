@@ -1,0 +1,28 @@
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 443b6d1..824f2bc 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -262,6 +262,7 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
+ 	perLine := make([][]walk.Commit, len(lines))
+ 	var facts walk.Facts
+ 	var refused []bump.Refusal
++	attributed := 0
+ 	for _, c := range commits {
+ 		r := c.Raw
+ 		place, said, u := walk.PlaceOf(cfg, r)
+@@ -274,13 +275,14 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
+ 		}
+ 		placed, err := w.PlaceByFiles(ctx, cfg, owner, repo, walk.Commit{Raw: r, Pull: number}, said, &facts, nil)
+ 		if err != nil {
+-			if w.Outranks("the rest of the pull's listing", len(refused) > 0, err) {
++			if w.Outranks("the rest of the pull's listing", attributed > 0, err) {
+ 				break
+ 			}
+ 			return nil, "", err
+ 		}
+ 		if placed.Refused != nil {
+ 			refused = append(refused, bump.Refusal{SHA: r.SHA, Subject: bump.FirstLine(r.Message), Detail: placed.Refused.Error()})
++			attributed++
+ 			continue
+ 		}
+ 		for i, l := range lines {

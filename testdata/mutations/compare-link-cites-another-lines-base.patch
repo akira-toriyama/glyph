@@ -1,8 +1,8 @@
 diff --git a/internal/cli/cmd_notes.go b/internal/cli/cmd_notes.go
-index fec0dcc..cd897c7 100644
+index 3278b2c..52ff79c 100644
 --- a/internal/cli/cmd_notes.go
 +++ b/internal/cli/cmd_notes.go
-@@ -142,7 +142,7 @@ func notesRun(ctx context.Context, o notesOptions) error {
+@@ -143,7 +143,7 @@ func notesRun(ctx context.Context, o notesOptions) error {
  		if len(sections) == 0 {
  			continue
  		}
@@ -10,12 +10,12 @@ index fec0dcc..cd897c7 100644
 +		said = append(said, lineBody{path: lw.Package.Path, base: strings.TrimSuffix(w.Source, "..HEAD"), notes: notes.Render(sections)})
  	}
  	if len(said) == 0 {
- 		reason := noNotesReason(cfg, participating(cfg, walk.NoteCommits(w.All)), w.Source)
+ 		n, perr := participating(cfg, walk.BumpCommits(w.All))
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index dec9482..7a090df 100644
+index e936019..32f0257 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
-@@ -262,6 +262,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+@@ -267,6 +267,7 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
  	lines := make([]draftplan.LinePlan, 0, len(w.Lines))
  	moving := 0
  	for _, lw := range w.Lines {

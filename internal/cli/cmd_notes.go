@@ -50,9 +50,10 @@ func newNotesCmd() *cobra.Command {
 			"(semver or author), a commit lands in EVERY section whose filter matches\n" +
 			"it, and each line renders through the note.line template ($xxx reads the\n" +
 			"winning pattern's named groups; $pr / $author / $hash / $coauthors are\n" +
-			"built in, and a [[note.trailers]] entry adds its own name; a\n" +
-			"commit no pattern matches, or an unlandable one claims, renders its raw\n" +
-			"first line as $subject).\n" +
+			"built in, and a [[note.trailers]] entry adds its own name).\n" +
+			"A commit no pattern matches, or an unlandable one claims, refuses the\n" +
+			"range (exit 3) as bump does; an exclude_authors author's is never judged\n" +
+			"and renders its raw first line as $subject.\n" +
 			"skip-pattern commits appear nowhere; exclude_authors appear wherever\n" +
 			"note.sections says they do — whether a commit is in the notes is the\n" +
 			"sections' decision alone (under [[packages]], on the lines its files touch).\n" +
@@ -145,7 +146,11 @@ func notesRun(ctx context.Context, o notesOptions) error {
 		said = append(said, lineBody{path: lw.Package.Path, base: lw.BaseTag, notes: notes.Render(sections)})
 	}
 	if len(said) == 0 {
-		reason := noNotesReason(cfg, participating(cfg, walk.NoteCommits(w.All)), w.Source)
+		n, perr := participating(cfg, walk.BumpCommits(w.All))
+		if perr != nil {
+			return perr
+		}
+		reason := noNotesReason(cfg, n, w.Source)
 		if o.json {
 			printCompact(notesVerdict(cfg, pkgs, reason))
 		}

@@ -1,0 +1,16 @@
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 26964f4..54c6d40 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -264,10 +264,9 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
+ 	var refused []bump.Refusal
+ 	for _, c := range commits {
+ 		r := c.Raw
+-		place, said, u := walk.PlaceOf(cfg, r)
++		place, said, _ := walk.PlaceOf(cfg, r)
+ 		switch {
+ 		case place == walk.Refused:
+-			refused = append(refused, u.Row)
+ 			continue
+ 		case bare, place == walk.PlacedNowhere:
+ 			continue

@@ -1,13 +1,12 @@
-diff --git a/internal/bump/fold.go b/internal/bump/fold.go
-index bfdbd50..039c149 100644
---- a/internal/bump/fold.go
-+++ b/internal/bump/fold.go
-@@ -115,7 +115,7 @@ func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
- 				firstUnlandable = m.Unlandable != ""
+diff --git a/internal/walk/partition.go b/internal/walk/partition.go
+index a55a8ad..f160b44 100644
+--- a/internal/walk/partition.go
++++ b/internal/walk/partition.go
+@@ -196,6 +196,7 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
+ 		for _, c := range commits {
+ 			if _, _, u := PlaceOf(cfg, c.Raw); u != nil {
+ 				refused = append(refused, placementRefusal{row: u.Row, remedy: u.Remedy, c: c, reach: []int{0}})
++				break
  			}
- 			refusals = append(refusals, Refusal{SHA: c.SHA, Subject: FirstLine(c.Message), Detail: cfg.UnclaimedDetail(m)})
--			continue
-+			break
  		}
- 		if m.Skip {
- 			continue
+ 		return []LineWalk{{Line: lines[0], Commits: commits}}, commits, refused, nil

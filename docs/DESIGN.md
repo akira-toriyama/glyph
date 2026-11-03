@@ -239,8 +239,10 @@ pattern says it means:
   which already exists reads it exactly as a message no pattern claims, with
   the reason in place of the no-match sentence: `lint --range` and the
   pre-push hook report a violation, `lint --pr` refuses the title, the fold
-  refuses the range (Q2, §3), the notes render the raw first line in author
-  sections only, and `exclude_authors` still comes first. Only the
+  refuses the range (Q2, §3) — and `notes` with it, on every source (§4.1,
+  rule 3) — and `exclude_authors` still comes first: an excluded author's
+  is never judged, and the notes render its raw first line in author
+  sections only. Only the
   commit-msg hook's modes (`--stdin`, `--message`) let it through, at 0,
   printing the reason and that the later gates refuse it — an argued gap
   between the hook and CI (§2.1). `Match` reports it in the UNMATCHED
@@ -2082,8 +2084,8 @@ autosquash artifacts as unlandable instead (§2; skipped, a `--fixup` whose
 files lie on another line than its target's left that line at none, where the
 autosquashed history moves it — t-mfny, measured 2026-09-29, mutation row
 `presets-skip-autosquash-artifacts`); and a message no pattern claims (one an
-`unlandable` pattern claims included) joins every line it is unreleased on,
-so the fold refuses it there (§3). The first
+`unlandable` pattern claims included) wedges every line it is unreleased on
+and is refused before attribution would read its files (§3, rule 3). The first
 cut placed everything the fold would not read on every line (measured
 2026-09-11 on the live-fire harness: a dependabot commit touching only
 `haiku/poem.go` rendered under all five line headings, lines with no commit of
@@ -2129,17 +2131,38 @@ asked:
    `TestSinceTagPackagesAttributionRefusalOutranksALaterAPIFailure`; mutation
    rows `packages-walk-hands-down-the-first-attribution-refusal`,
    `packages-range-refusal-claims-a-published-branch`,
-   `packages-attribution-refusal-hides-behind-a-later-failure`). The two
-   refusals are separate stages, and which answers first depends on the
-   source: the `--since-tag` walk refuses a message no pattern claims first
-   and attribution runs over what the grammar accepted, while `bump --range`,
-   `notes --range` and `preview` ask attribution first, so there the
-   grammar's refusal is the second run; `lint --range` names both at once
+   `packages-attribution-refusal-hides-behind-a-later-failure`). On every
+   source a wrong grammar cannot be hidden by a wrong tree. The `--since-tag`
+   walk refuses a message no pattern claims at its sighting, before
+   attribution runs (§4), so attribution reads only what the grammar
+   accepted; `bump --range`, `notes --range`, `--pr` and `preview` load both
+   stages' rows — every message the pattern file refuses (`bump.Judge`, the
+   one grammar judge) and every commit attribution refuses — into one
+   refusal in range order (listing order for a pull), the first row the
+   headline, as `lint --range` names both at once. A message the grammar
+   refuses is never attributed, so no file of it is read, and its row, once
+   found, outranks a later failure to place the rest as an attribution
+   row's does. `--range` and `--pr` word the refusal as `bump.Fold` words a
+   range's (`bump.RangeRefusal`, the one wording home: a lone grammar row
+   keeps the fold's remedy), `preview` in its own words on both shapes.
+   Attribution asked first made the grammar's refusal the second red run
    (measured by review 2026-10-27 on 36b7c53, one direct push of each kind:
    the walk refused the unclaimed message, `bump --range` and `preview` the
-   attribution refusal, `lint --range` both rows). A range holding both takes
-   one red run per stage everywhere but `lint --range`; a later change may
-   order or merge them.
+   attribution refusal alone, `lint --range` both rows; on 73c15c6
+   `notes --range` the attribution row alone too). The one refusal reads the
+   grammar on the bare line as well, so `notes --range` and `notes --pr`
+   refuse a message no pattern claims as `bump` does, where they rendered it
+   and answered the soft no-release (measured 2026-11-03 on 73c15c6: exit 1,
+   "0 commit(s) participate", for one unclaimed and for one unlandable
+   commit) — §3's refusal has two exemptions, `exclude_authors` and the
+   walk's lag arm, and `notes` over a range was an unwritten third
+   (`TestBumpRangePackagesRefusesGrammarAndTreeAtOnce`,
+   `TestPreviewPackagesRefusesGrammarAndTreeAtOnce`,
+   `TestNotesRangeRefusesAMessageNoPatternClaims`; mutation rows
+   `range-attribution-refusal-hides-the-grammar-refusal`,
+   `preview-attribution-refusal-hides-the-grammar-refusal`,
+   `preview-grammar-refusal-hides-behind-a-later-failure`,
+   `range-bare-line-grammar-refusal-left-to-the-fold`).
 
 A commit that shows the tree **no file** — `git commit --allow-empty`, or a
 merge commit some pattern other than a skip claims, whose diff is never read
@@ -2568,6 +2591,27 @@ walk answered 3 (t-wjbs design-1, measured 2026-10-27;
 both orders, mutation rows
 `packages-walk-skips-a-later-sighting-it-never-judged` and
 `packages-walk-names-an-escape-every-line-passed`).
+The line a CLAIMED commit two pulls list joins, and the identity it is
+counted under, is its first sighting in walk order; every later listing is
+the stacked duplicate, counted once (the walk's "already represented"
+notice). For squash-merged pulls that order is landing order — a squash
+commit is dated at its merge — so the first sighting is where the content
+first reached the released branch, and a first sighting at an identity every
+line released means the content shipped under an earlier tag: a later pull
+listing it again adds nothing to any line, and the partition drops it with
+its notice. Ratified 2026-11-03 (t-ge91) over two alternatives. Counting it
+at every judged sighting counts shipped content again: a stacked pull steps a
+line for a change the held pull's tag already carries (measured the same day
+with that mutation on the reviewer's pk-dev3b fixture, the held pull walked
+first: haiku/v0.1.1 for an inner fix released as haiku/v0.1.0, where the rule
+answers no release). Ordering the two identities by ancestry
+(`merge-base --is-ancestor`) puts a second order inside a walk that is
+otherwise commit-date order, and falls back to that order wherever the
+identities are not ancestors of each other — the criss-cross's held commit
+and a side branch's merge point are not
+(`TestSinceTagPackagesStackedPullCountsAClaimedCommitOnce` takes both
+orders, mutation row
+`packages-walk-counts-a-claimed-commit-at-every-sighting`).
 N walks over overlapping
 ranges would resolve the same pulls N times for the same answers, and were
 rejected on cost alone. The whole-history cap applies to
@@ -2654,8 +2698,9 @@ release base) and each line stepping from its own highest tag.
 the commits that joined that package's line, so §3 is unchanged per line: max-fold,
 `%` promotes that line, the 0.x rule reads that line's current version, and a
 commit no pattern claims still refuses the whole walk (it is refused before
-attribution, so a wrong grammar cannot be hidden by a wrong tree). Its
-refusal names the escape per line, as rule 3's does: such a commit joins
+attribution, so a wrong grammar cannot be hidden by a wrong tree; over
+`--range` its row joins attribution's in one refusal — rule 3). Its
+refusal names the escape per line, as rule 3's does: such a commit wedges
 every line whose range holds it, so what clears it is a tag on each of those
 lines at or past its governing identity — `a haiku/ tag at or past X / a
 curry/ tag at or past X`, or `--since-tag=<prefix>vX.Y.Z` — where the single
@@ -2732,15 +2777,15 @@ the rows of the one fold of the whole listing), and say what follows from it
 `TestNotesPackagesNoReleaseCountsParticipatingCommits`, which ask `bump` over
 the same input and hold `notes` to its answer): over one single-line range of
 two `=`, a bot and a merge commit, `bump` said 2 and `notes` 4; beside a
-message no pattern claims, `notes` said 2 of a range the fold refuses at 3;
-over a `--since-tag` walk of one `=` and a bot, 2 where `bump` says 1; and
-under packages 4 where `bump`'s top-level `commits` lists 1. `notes` renders
-excluded authors and unmatched messages, so it has no fold of its own to
-count. It asks the fold, one commit at a time (`participating`,
-`internal/cli/range.go`): the three conditions restated there would be a
-second copy free to drift from the rows `bump` publishes, and over the whole
-listing the fold refuses at the first unmatched message, where `notes` still
-owes a count of the rest. The reason is prose: `goreleaser.yml` branches on
+message no pattern claims, `notes` said 2 of a range the fold refuses at 3 —
+that case is now the range's refusal, `notes` refusing it at 3 beside `bump`
+(rule 3), so the test no longer holds it; over a `--since-tag` walk of one
+`=` and a bot, 2 where `bump` says 1; and under packages 4 where `bump`'s
+top-level `commits` lists 1. `notes` renders excluded authors, so it has no
+fold of its own to count. It asks the fold over the listing, one computation
+(`participating`, `internal/cli/range.go`), the three conditions never
+restated: a second copy would be free to drift from the rows `bump`
+publishes. The reason is prose: `goreleaser.yml` branches on
 `notes`' exit code and reads no reason.
 Mutation rows `notes-reason-counts-the-raw-listing`,
 `notes-packages-reason-counts-the-raw-walk`.
@@ -3107,7 +3152,7 @@ cmd/glyph/main.go        os.Exit(cli.Execute()) — thin process boundary only
 internal/core            exit-code contract + structured Error (no I/O, no logic)
 internal/version         ldflags build identity + ReadBuildInfo fallback
 internal/cleanup         git's message cleanup, modelled exactly (comment strip, scissors cut) — what --stdin judges is what git records
-internal/bump            Level lattice; LevelOf + Fold (classification and the fold); reduce(max); DecidingReason; Next and NextOn (the step on a line); version parse on a tag prefix; stdlib semver
+internal/bump            Level lattice; LevelOf + Fold (classification and the fold); Judge (the one grammar judge: a message → its refusal row and remedy); RangeRefusal (the one wording of a range's refusal); reduce(max); DecidingReason; Next and NextOn (the step on a line); version parse on a tag prefix; stdlib semver
 internal/config          glyph.toml loader — user RE2 patterns, first match wins, semver_sigil extraction, the [[packages]] schema; embeds the init presets
 internal/attribution     which declared package(s) a commit moves — pure; files + scope + sigil + packages in, package set or lint-class refusal out (§4.1)
 internal/emoji           the gemoji dictionary `glyph emoji` prints — embedded table.json, advisory data nothing else reads (§2)

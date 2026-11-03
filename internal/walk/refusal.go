@@ -10,24 +10,18 @@ import (
 	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
 )
 
-// unclaimed judges a walked commit against the pattern file — a message that
-// yields no sigil, or one no pattern (or an unlandable one) claims — and
-// returns it as the refusal's details row ({sha, subject, detail}, the shape
-// every refusal of the gate code carries). ok is false when the commit is
-// claimed. Both arms of the walk ask it, the pull's listing and the released
-// branch's own commit, so the two can never word the same commit differently.
+// unclaimed is the walk's adapter over bump.Judge for a walked commit: the
+// refusal's details row when the pattern file refuses its message, ok false
+// when the message is claimed. Both arms of the walk ask it, the pull's
+// listing and the released branch's own commit, so the two can never word
+// the same commit differently; the walk words the refusal itself, with the
+// wedge's escape, so Judge's remedy is not read here.
 func unclaimed(cfg *config.Config, c gitsource.RawCommit) (row bump.Refusal, ok bool) {
-	m, merr := cfg.Match(c.Message)
-	detail := ""
-	switch {
-	case merr != nil:
-		detail = merr.Error()
-	case !m.Matched:
-		detail = cfg.UnclaimedDetail(m)
-	default:
+	_, u := bump.Judge(cfg, c.SHA, c.Message)
+	if u == nil {
 		return bump.Refusal{}, false
 	}
-	return bump.Refusal{SHA: c.SHA, Subject: bump.FirstLine(c.Message), Detail: detail}, true
+	return u.Row, true
 }
 
 // wedge is one commit the release walk refused — inside a merged pull the
@@ -153,9 +147,10 @@ func (w *walk) walkRefusal() error {
 // would hide a verdict the operator must act on behind a failure that clears
 // on retry. What was not read may hold more refused commits than the sentence
 // counts. An interrupt carries out as itself. The walk asks it over its
-// wedges and the partition over attribution's refusals ("the rest of the
-// range"), and preview's pull side over the pull's ("the rest of the pull's
-// listing": a pull is not a range, t-wjbs correct-r1-6).
+// wedges and the partition over the refusals of both stages, grammar rows
+// counted as found ("the rest of the range"), and preview's pull side over
+// the pull's ("the rest of the pull's listing": a pull is not a range,
+// t-wjbs correct-r1-6).
 func (w Walker) Outranks(rest string, found bool, err error) bool {
 	if !found || core.IsInterrupted(err) {
 		return false

@@ -137,11 +137,13 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
 	if err := checkLineSelection(o.current, w.Lines); err != nil {
 		return err
 	}
-	// The union rows first: every walked commit is matched here, so a
-	// message no pattern claims refuses the walk BEFORE any line is folded
-	// (a wrong grammar cannot hide behind a wrong tree), and a shared-only =
+	// The union rows: every commit the source read, so a shared-only =
 	// commit — on no line — still appears in what the walk read. On the bare
-	// line the union is the line, and these rows are its rows.
+	// line the union is the line, and these rows are its rows. A message no
+	// pattern claims never reaches the fold: the walk refused it at its
+	// sighting, and Pending, for --range and --pr, in one refusal with
+	// attribution's (readSource) — so the error return is the fold's
+	// contract, not a path any source takes.
 	rows, _, cerr := bump.Fold(walk.BumpCommits(w.All), cfg)
 	if cerr != nil {
 		return cerr

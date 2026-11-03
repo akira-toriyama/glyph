@@ -1,13 +1,12 @@
 diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
-index 4c7e193..49fda07 100644
+index 26964f4..c576690 100644
 --- a/internal/cli/cmd_preview.go
 +++ b/internal/cli/cmd_preview.go
-@@ -266,7 +266,7 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
- 	for _, c := range commits {
- 		r := c.Raw
- 		place, said := walk.PlaceOf(cfg, r)
--		if place != walk.PlacedByFiles {
-+		if place == walk.PlacedNowhere {
+@@ -268,7 +268,6 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
+ 		switch {
+ 		case place == walk.Refused:
+ 			refused = append(refused, u.Row)
+-			continue
+ 		case bare, place == walk.PlacedNowhere:
  			continue
  		}
- 		placed, err := w.PlaceByFiles(ctx, cfg, owner, repo, walk.Commit{Raw: r, Pull: number}, said, &facts, nil)

@@ -1,13 +1,18 @@
-diff --git a/internal/cli/cmd_notes.go b/internal/cli/cmd_notes.go
-index fec0dcc..10c73b5 100644
---- a/internal/cli/cmd_notes.go
-+++ b/internal/cli/cmd_notes.go
-@@ -145,7 +145,7 @@ func notesRun(ctx context.Context, o notesOptions) error {
- 		said = append(said, lineBody{path: lw.Package.Path, base: lw.BaseTag, notes: notes.Render(sections)})
+diff --git a/internal/cli/range.go b/internal/cli/range.go
+index 0e4a16c..1e3387f 100644
+--- a/internal/cli/range.go
++++ b/internal/cli/range.go
+@@ -29,11 +29,11 @@ import (
+ // fold's contract, not a path a source takes: every source refused a message
+ // no pattern claims before notes was handed the listing (readSource).
+ func participating(cfg *config.Config, all []bump.Commit) (int, error) {
+-	rows, _, err := bump.Fold(all, cfg)
++	_, _, err := bump.Fold(all, cfg)
+ 	if err != nil {
+ 		return 0, err
  	}
- 	if len(said) == 0 {
--		reason := noNotesReason(cfg, participating(cfg, walk.NoteCommits(w.All)), w.Source)
-+		reason := noNotesReason(cfg, len(w.All), w.Source)
- 		if o.json {
- 			printCompact(notesVerdict(cfg, pkgs, reason))
- 		}
+-	return len(rows), nil
++	return len(all), nil
+ }
+ 
+ // logRange is every --range read — lint's, bump's and notes', single line and
