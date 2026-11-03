@@ -2,12 +2,12 @@ diff --git a/internal/attribution/attribution.go b/internal/attribution/attribut
 --- a/internal/attribution/attribution.go
 +++ b/internal/attribution/attribution.go
 @@ -65,6 +65,7 @@ type Refusal struct {
- 	Reason reason
- 	Scope  string
- 	Sigil  config.Sigil
+ 	reason reason
+ 	scope  string
+ 	sigil  config.Sigil
 +	names  []string
  
- 	// Owners is a contradiction's evidence: one owned file per touched
+ 	// owners is a contradiction's evidence: one owned file per touched
  	// package, in config order, so the file that decides is named wherever it
 @@ -131,7 +132,7 @@ func (r *Refusal) Error() string {
  // as lying "under ." — a filesystem reading of a rule that is about the
@@ -15,9 +15,9 @@ diff --git a/internal/attribution/attribution.go b/internal/attribution/attribut
  func (r *Refusal) contradictionSentence() string {
 -	say := r.Sayable
 +	say := config.Sayable{ScopeGroup: true, ScopeDroppable: true, Scopes: r.names, SigilGroup: true, None: true, RootNeedsName: true}
- 	evidence := make([]string, 0, len(r.Owners)+2)
+ 	evidence := make([]string, 0, len(r.owners)+2)
  	var moved, spellable []string
- 	for _, o := range r.Owners {
+ 	for _, o := range r.owners {
 @@ -207,7 +208,7 @@ func countFiles(n int, more string) string {
  // named the scope and = to every commit, the raw revert included, whose
  // pattern fixes its sigil and captures no scope (t-mfny (A)).
@@ -26,7 +26,7 @@ diff --git a/internal/attribution/attribution.go b/internal/attribution/attribut
 +	say := config.Sayable{ScopeGroup: true, ScopeDroppable: true, Scopes: r.names, SigilGroup: true, None: true, RootNeedsName: true}
  	var opening string
  	switch {
- 	case len(r.Files) > 0:
+ 	case len(r.files) > 0:
 @@ -362,7 +363,11 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
  	if sigil == config.SigilNone {
  		return nil, nil
@@ -43,7 +43,7 @@ diff --git a/internal/attribution/attribution.go b/internal/attribution/attribut
 @@ -370,6 +375,9 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
  // files no package owns counted apart.
  func refuseContradiction(files []string, scope string, sigil config.Sigil, packages []config.Package) *Refusal {
- 	r := &Refusal{Reason: contradiction, Scope: scope, Sigil: sigil}
+ 	r := &Refusal{reason: contradiction, scope: scope, sigil: sigil}
 +	for _, p := range packages {
 +		r.names = append(r.names, p.Name)
 +	}

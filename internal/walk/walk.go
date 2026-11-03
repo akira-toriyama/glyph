@@ -168,12 +168,12 @@ type Commit struct {
 	Raw    gitsource.RawCommit
 	Pull   int
 	Landed bool
-	// MergePoint is the on-branch commit the pull was resolved from — GitHub's
+	// mergePoint is the on-branch commit the pull was resolved from — GitHub's
 	// merge_commit_sha — "" on the fallback path. With packages declared it
 	// is the identity the lines' ranges judge a footprint-less commit by
 	// (governing): a squash-merged pull's inner commit is unreleased on a
 	// line exactly when its merge point is.
-	MergePoint string
+	mergePoint string
 }
 
 // governing is the on-branch commit the walk range judges a walked commit by:
@@ -181,10 +181,10 @@ type Commit struct {
 // the pull it was expanded from (DESIGN §4.1: a listed commit joins a line
 // only when its governing commit is unreleased there).
 func (c Commit) governing() string {
-	if c.Landed || c.MergePoint == "" {
+	if c.Landed || c.mergePoint == "" {
 		return c.Raw.SHA
 	}
-	return c.MergePoint
+	return c.mergePoint
 }
 
 // BumpCommits strips the provenance for the fold: bump.Fold reads commits,

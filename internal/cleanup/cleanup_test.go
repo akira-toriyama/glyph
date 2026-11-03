@@ -13,9 +13,9 @@ import (
 // The four modes as a commit-msg hook resolves them, named once so the tables
 // below read as the situations they are rather than as three booleans.
 var (
-	editedDefault  = Mode{Space: true, Comments: true, Truncate: true, Comment: defaultComment} // git commit (an editor runs)
-	noEditorGiven  = Mode{Space: true, Comment: defaultComment}                                 // git commit -m / -F
-	editedScissors = Mode{Space: true, Truncate: true, Comment: defaultComment}                 // commit.cleanup=scissors + an editor
+	editedDefault  = Mode{space: true, comments: true, truncate: true, Comment: defaultComment} // git commit (an editor runs)
+	noEditorGiven  = Mode{space: true, Comment: defaultComment}                                 // git commit -m / -F
+	editedScissors = Mode{space: true, truncate: true, Comment: defaultComment}                 // commit.cleanup=scissors + an editor
 	verbatimGiven  = Mode{Comment: defaultComment}                                              // commit.cleanup=verbatim, no editor
 )
 
@@ -182,41 +182,41 @@ func TestResolveCleanupMode(t *testing.T) {
 		wantKnown  bool
 	}{
 		{"unset + an editor is git's strip, cut because -v may have appended a diff",
-			"", true, VerboseUnseen, Mode{Space: true, Comments: true, Truncate: true}, true},
+			"", true, VerboseUnseen, Mode{space: true, comments: true, truncate: true}, true},
 		{"unset + no editor (-m / -F) is whitespace: comments are content, nothing is cut",
-			"", false, VerboseUnseen, Mode{Space: true}, true},
+			"", false, VerboseUnseen, Mode{space: true}, true},
 		{"unset + no editor under commit.verbose is whitespace, cut at the scissors line",
-			"", false, VerboseOn, Mode{Space: true, Truncate: true}, true},
+			"", false, VerboseOn, Mode{space: true, truncate: true}, true},
 		{"an explicit 'default' reads exactly as unset",
-			"default", false, VerboseUnseen, Mode{Space: true}, true},
+			"default", false, VerboseUnseen, Mode{space: true}, true},
 		{"whitespace keeps comments even under an editor",
-			"whitespace", true, VerboseUnseen, Mode{Space: true, Truncate: true}, true},
+			"whitespace", true, VerboseUnseen, Mode{space: true, truncate: true}, true},
 		{"strip drops comments even without an editor",
-			"strip", false, VerboseUnseen, Mode{Space: true, Comments: true}, true},
+			"strip", false, VerboseUnseen, Mode{space: true, comments: true}, true},
 		{"strip without an editor under commit.verbose drops comments and cuts",
-			"strip", false, VerboseOn, Mode{Space: true, Comments: true, Truncate: true}, true},
+			"strip", false, VerboseOn, Mode{space: true, comments: true, truncate: true}, true},
 		{"scissors cuts when a message is edited",
-			"scissors", true, VerboseUnseen, Mode{Space: true, Truncate: true}, true},
+			"scissors", true, VerboseUnseen, Mode{space: true, truncate: true}, true},
 		{"scissors without an editor does not cut",
-			"scissors", false, VerboseUnseen, Mode{Space: true}, true},
+			"scissors", false, VerboseUnseen, Mode{space: true}, true},
 		{"scissors without an editor cuts under commit.verbose",
-			"scissors", false, VerboseOn, Mode{Space: true, Truncate: true}, true},
+			"scissors", false, VerboseOn, Mode{space: true, truncate: true}, true},
 		{"verbatim cleans nothing, and an editor cuts: -v may be on and no hook sees it",
-			"verbatim", true, VerboseUnseen, Mode{Truncate: true}, true},
+			"verbatim", true, VerboseUnseen, Mode{truncate: true}, true},
 		{"verbatim without an editor is the identity",
 			"verbatim", false, VerboseUnseen, Mode{}, true},
 		{"verbatim without an editor under commit.verbose cleans nothing and cuts",
-			"verbatim", false, VerboseOn, Mode{Truncate: true}, true},
+			"verbatim", false, VerboseOn, Mode{truncate: true}, true},
 		{"an unknown mode falls back to default and says so",
-			"stirp", true, VerboseUnseen, Mode{Space: true, Comments: true, Truncate: true}, false},
+			"stirp", true, VerboseUnseen, Mode{space: true, comments: true, truncate: true}, false},
 		{"an unknown mode keeps commit.verbose's cut on its fallback",
-			"stirp", false, VerboseOn, Mode{Space: true, Truncate: true}, false},
+			"stirp", false, VerboseOn, Mode{space: true, truncate: true}, false},
 		{"git merge with an editor strips and does not cut: merge cleans with verbose 0",
-			"", true, VerboseNever, Mode{Space: true, Comments: true}, true},
+			"", true, VerboseNever, Mode{space: true, comments: true}, true},
 		{"git merge in scissors mode with an editor cuts",
-			"scissors", true, VerboseNever, Mode{Space: true, Truncate: true}, true},
+			"scissors", true, VerboseNever, Mode{space: true, truncate: true}, true},
 		{"git merge without an editor does not cut, whatever commit.verbose says",
-			"strip", false, VerboseNever, Mode{Space: true, Comments: true}, true},
+			"strip", false, VerboseNever, Mode{space: true, comments: true}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -362,7 +362,7 @@ func TestApplyMatchesGitStripspace(t *testing.T) {
 					args = append(args, "--strip-comments")
 				}
 				want := strings.TrimSuffix(pinnedGit(t, dir, msg, nil, args...), "\n")
-				got := Apply(msg, Mode{Space: true, Comments: strip, Comment: prefix})
+				got := Apply(msg, Mode{space: true, comments: strip, Comment: prefix})
 				if got != want {
 					t.Errorf("prefix %q, message %d, strip=%v:\n  in:   %q\n  glyph %q\n  git   %q", prefix, i, strip, msg, got, want)
 				}
@@ -396,7 +396,7 @@ func TestScissorsUnderACommentPrefixMatchesGit(t *testing.T) {
 			_, recorded, _ := strings.Cut(object, "\n\n")
 			recorded = strings.TrimSuffix(recorded, "\n")
 
-			got := Apply(message, Mode{Space: true, Truncate: true, Comment: prefix})
+			got := Apply(message, Mode{space: true, truncate: true, Comment: prefix})
 			if got != recorded {
 				t.Fatalf("prefix %q:\n  glyph    %q\n  recorded %q", prefix, got, recorded)
 			}

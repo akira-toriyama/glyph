@@ -242,7 +242,7 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 // TestFallbackLagStaysSoftWhereADirectPushWedges pins the asymmetry DESIGN §4
 // argues between walk.fallback's two arms over one unmatched message. A commit
 // GitHub does not know yet is DROPPED — warned about and carried in
-// Facts.Dropped, never refused and never folded — because its true content
+// Facts.dropped, never refused and never folded — because its true content
 // is a pull the API has not indexed; the same message on a commit GitHub
 // knows is a direct push to the released branch, refused with the escape at
 // the commit itself, said nothing about until the whole range is walked, and
@@ -261,8 +261,8 @@ func TestFallbackLagStaysSoftWhereADirectPushWedges(t *testing.T) {
 	if len(lagged.commits) != 0 || len(lagged.wedges) != 0 || lagged.seen[raw.SHA] {
 		t.Errorf("lag arm: %d commit(s), %d wedge(s), seen=%v; want the commit neither folded nor refused — its message is not its content", len(lagged.commits), len(lagged.wedges), lagged.seen[raw.SHA])
 	}
-	if strings.Join(lagged.facts.Dropped, ",") != "a1a1a1a" {
-		t.Errorf("lag arm: Dropped = %v, want the short sha alone", lagged.facts.Dropped)
+	if strings.Join(lagged.facts.dropped, ",") != "a1a1a1a" {
+		t.Errorf("lag arm: dropped = %v, want the short sha alone", lagged.facts.dropped)
 	}
 	if len(rep.lines) != 1 || !strings.Contains(rep.lines[0], "its own message cannot be folded") || !strings.HasPrefix(rep.lines[0], "warning: commit a1a1a1a ") {
 		t.Errorf("lag arm: reporter heard %q, want one warning that the commit's own message cannot be folded", rep.lines)
@@ -270,8 +270,8 @@ func TestFallbackLagStaysSoftWhereADirectPushWedges(t *testing.T) {
 
 	pushed, rep := begin()
 	pushed.fallback(raw, false)
-	if len(pushed.commits) != 0 || len(pushed.facts.Dropped) != 0 {
-		t.Errorf("direct push: %d commit(s), Dropped %v; want neither — the commit is refused, not read and not dropped", len(pushed.commits), pushed.facts.Dropped)
+	if len(pushed.commits) != 0 || len(pushed.facts.dropped) != 0 {
+		t.Errorf("direct push: %d commit(s), dropped %v; want neither — the commit is refused, not read and not dropped", len(pushed.commits), pushed.facts.dropped)
 	}
 	if len(pushed.wedges) != 1 || pushed.wedges[0].row.SHA != raw.SHA || len(pushed.wedges[0].escapes) != 1 || pushed.wedges[0].escapes[0].base != raw.SHA || pushed.wedges[0].escapes[0].via != "" {
 		t.Errorf("direct push: wedges = %+v, want one row for the commit with the escape at the commit itself and no pull", pushed.wedges)
@@ -326,7 +326,7 @@ func TestReconcileNamesACoveredPullNothingExpanded(t *testing.T) {
 	if want := []string{inner8, point7}; strings.Join(shas, " ") != strings.Join(want, " ") {
 		t.Errorf("walked = %v, want #8's commit and #7's merge point read from their own messages, and #7's inner commit standing aside", shas)
 	}
-	if len(wk.facts.LostPulls) != 1 || wk.facts.LostPulls[0] != 7 || wk.facts.AllUnknown {
+	if len(wk.facts.lostPulls) != 1 || wk.facts.lostPulls[0] != 7 || wk.facts.allUnknown {
 		t.Errorf("facts = %+v, want #7 lost and nothing else", wk.facts)
 	}
 	if want := []string{"pulls:" + inner7, "pulls:" + inner8, "pulls:" + point7}; strings.Join(pulls.asked, " ") != strings.Join(want, " ") {

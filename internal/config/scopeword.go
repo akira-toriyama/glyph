@@ -18,7 +18,7 @@ import (
 // attribution as a scope.
 type scopeSpeller struct {
 	index  int    // the pattern's position in the file
-	source string // Pattern.Pattern as written, the form every refusal quotes
+	source string // Pattern.pattern as written, the form every refusal quotes
 	word   *regexp.Regexp
 }
 
@@ -40,9 +40,9 @@ func scopeSpellers(patterns []Pattern) ([]scopeSpeller, error) {
 			continue
 		}
 		if p.scope.wordErr != nil {
-			return nil, fmt.Errorf("patterns[%d]: the %s group of %q does not compile on its own: %w", i, ScopeGroup, p.Pattern, p.scope.wordErr)
+			return nil, fmt.Errorf("patterns[%d]: the %s group of %q does not compile on its own: %w", i, ScopeGroup, p.pattern, p.scope.wordErr)
 		}
-		out = append(out, scopeSpeller{index: i, source: p.Pattern, word: p.scope.word})
+		out = append(out, scopeSpeller{index: i, source: p.pattern, word: p.scope.word})
 	}
 	return out, nil
 }

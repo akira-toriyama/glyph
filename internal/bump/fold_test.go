@@ -44,7 +44,7 @@ func TestLevelOf(t *testing.T) {
 		{config.SigilMinor, LevelMinor},
 		{config.SigilMajor, LevelMajor},
 		// '%' is a breaking change like any other to every reader of Level;
-		// what makes it more lives in Decision.Promote, not on the lattice.
+		// what makes it more lives in Decision.promote, not on the lattice.
 		{config.SigilPromote, LevelMajor},
 	}
 	for _, c := range cases {
@@ -96,7 +96,7 @@ func TestFold(t *testing.T) {
 			if got.Level != c.want {
 				t.Errorf("Fold = %v, want %v", got.Level, c.want)
 			}
-			if got.Promote {
+			if got.promote {
 				t.Errorf("Fold promoted a range holding no '%%' commit")
 			}
 		})
@@ -173,7 +173,7 @@ func TestFoldPromoteIsOrderIndependent(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Fold: %v", err)
 			}
-			if !got.Promote {
+			if !got.promote {
 				t.Fatalf("Fold dropped the promote with '%%' %s: %+v", name, got)
 			}
 			if got.Level != LevelMajor {
@@ -196,7 +196,7 @@ func TestFoldPromoteClassifiesAsMajor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fold: %v", err)
 	}
-	if !got.Promote || got.Level != LevelMajor {
+	if !got.promote || got.Level != LevelMajor {
 		t.Fatalf("fold = %+v, want {major true}", got)
 	}
 	if len(rows) != 1 {
@@ -357,7 +357,7 @@ func TestDecidingReasonNamesTheCommitThatDecided(t *testing.T) {
 		want string
 	}{
 		{"oldest row at the level", Decision{Level: LevelMajor}, `2222222 ! "drop the old API" → major`},
-		{"promoted range", Decision{Level: LevelMajor, Promote: true}, `3333333 % "call it 1.0" → promote`},
+		{"promoted range", Decision{Level: LevelMajor, promote: true}, `3333333 % "call it 1.0" → promote`},
 		{"no row at the level", Decision{Level: LevelMinor}, "level minor"},
 	}
 	for _, c := range cases {

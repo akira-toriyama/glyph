@@ -19,29 +19,29 @@ import (
 // whole-history arm, and nil — the line's highest tag is then read (cli's
 // currentVersion) — for a typed tag that names no plain version, for a
 // --range fold and for a pull's listing. Source names the line's own range in
-// messages; Range is the revision range whose commits are unreleased on this
+// messages; revRange is the revision range whose commits are unreleased on this
 // line, "" when every walked commit is — under [[packages]] the whole history,
 // and on every line a --range fold or a pull's listing (the single line's
-// whole-history Range is "HEAD", below). Bound is the below: bound as typed
-// when that form resolved the line, "" for the other forms: with Range "" it
+// whole-history revRange is "HEAD", below). bound is the below: bound as typed
+// when that form resolved the line, "" for the other forms: with revRange "" it
 // tells the two whole-history causes apart, and a line's diagnosis must not be
 // a sentence `git tag -l` refutes (t-gt9n).
 //
 // BaseTag is the tag the line's range starts from, in its own spelling — the
 // compare link's left side — and "" when the walk has no tag base: the whole
 // history, a --range fold, a pull's listing, or a typed value that is no tag
-// (tagBase). A field rather than cut out of Range, because Range cannot say
-// it: the single line's whole-history Range is "HEAD", a packages line's is
+// (tagBase). A field rather than cut out of revRange, because revRange cannot say
+// it: the single line's whole-history revRange is "HEAD", a packages line's is
 // "", a typed branch looks like any tag, and Base is the parsed version,
 // whose String() re-adds the v a bare `1.0.0` tag does not have.
 type Line struct {
-	Package config.Package
-	TagLine config.Line
-	Base    *bump.Version
-	BaseTag string
-	Source  string
-	Range   string
-	Bound   string
+	Package  config.Package
+	TagLine  config.Line
+	Base     *bump.Version
+	BaseTag  string
+	Source   string
+	revRange string
+	bound    string
 }
 
 // LineWalk is one line's slice of the walk: the commits that JOIN it — placed
@@ -85,7 +85,7 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
 		if err != nil {
 			return nil, "", err
 		}
-		return []Line{{Base: base, BaseTag: baseTag, Source: revRange, Range: revRange}}, revRange, nil
+		return []Line{{Base: base, BaseTag: baseTag, Source: revRange, revRange: revRange}}, revRange, nil
 	}
 	tag := strings.TrimSpace(tagFlag)
 	var lines []Line
@@ -111,7 +111,7 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
 		if err != nil {
 			return nil, "", err
 		}
-		l.Bound = rest
+		l.bound = rest
 		lines = []Line{l}
 	default:
 		baseTag, terr := w.tagBase(ctx, tag)
@@ -123,7 +123,7 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
 			if !ok {
 				return nil, "", undeclaredLine(tag, prefix, cfg)
 			}
-			l := Line{Package: p, TagLine: cfg.LineOf(p), BaseTag: baseTag, Source: tag + "..HEAD", Range: tag + "..HEAD"}
+			l := Line{Package: p, TagLine: cfg.LineOf(p), BaseTag: baseTag, Source: tag + "..HEAD", revRange: tag + "..HEAD"}
 			if v, verr := bump.ParseVersionOn(prefix, tag); verr == nil {
 				// A plain version is the step base too — the walk base and the
 				// step base are ONE tag (sinceTagRange). A candidate is not, and
@@ -134,7 +134,7 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
 			break
 		}
 		for _, p := range cfg.Packages {
-			lines = append(lines, Line{Package: p, TagLine: cfg.LineOf(p), BaseTag: baseTag, Source: tag + "..HEAD", Range: tag + "..HEAD"})
+			lines = append(lines, Line{Package: p, TagLine: cfg.LineOf(p), BaseTag: baseTag, Source: tag + "..HEAD", revRange: tag + "..HEAD"})
 		}
 	}
 	union, err := w.unionRange(ctx, cfg, scopedLines(lines, scope), scopeEscape(scope))
@@ -194,7 +194,7 @@ func (w Walker) lineFromLatest(ctx context.Context, cfg *config.Config, p config
 	if latest == "" {
 		return Line{Package: p, TagLine: tl, Base: &bump.Version{}, Source: "HEAD"}, nil
 	}
-	return Line{Package: p, TagLine: tl, Base: &v, BaseTag: latest, Source: latest + "..HEAD", Range: latest + "..HEAD"}, nil
+	return Line{Package: p, TagLine: tl, Base: &v, BaseTag: latest, Source: latest + "..HEAD", revRange: latest + "..HEAD"}, nil
 }
 
 // unionRange is the one range the walk runs over: a single line's own range;
@@ -207,16 +207,16 @@ func (w Walker) lineFromLatest(ctx context.Context, cfg *config.Config, p config
 func (w Walker) unionRange(ctx context.Context, cfg *config.Config, lines []Line, escape string) (string, error) {
 	var bases, untagged, unbounded, bounded []string
 	for _, l := range lines {
-		if l.Range == "" {
+		if l.revRange == "" {
 			untagged = append(untagged, firstTagOn(l.TagLine))
-			if l.Bound != "" {
-				bounded = append(bounded, fmt.Sprintf("no version tag below %s on the %s line in HEAD's history", l.Bound, l.TagLine.Label()))
+			if l.bound != "" {
+				bounded = append(bounded, fmt.Sprintf("no version tag below %s on the %s line in HEAD's history", l.bound, l.TagLine.Label()))
 			} else {
 				unbounded = append(unbounded, l.TagLine.Label())
 			}
 			continue
 		}
-		base := strings.TrimSuffix(l.Range, "..HEAD")
+		base := strings.TrimSuffix(l.revRange, "..HEAD")
 		if !slices.Contains(bases, base) {
 			bases = append(bases, base)
 		}
@@ -271,7 +271,7 @@ func declaredLines(cfg *config.Config) string {
 // for — every declared line, or the bare line of a repository that declares
 // none — with every commit pending on each: a --range fold names no base
 // (the caller chose the range) and a pull's listing is unreleased by
-// definition. Source names the input in messages; Range is "" (every commit
+// definition. Source names the input in messages; revRange is "" (every commit
 // is unreleased), Base nil (the line's highest tag answers) and BaseTag ""
 // (no compare link: a local range names no repository and a pull no release
 // base — DESIGN §4, the citation each source can attest).

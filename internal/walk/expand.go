@@ -128,7 +128,7 @@ func newWalk(w Walker, cfg *config.Config, owner, repo, revRange string, raws []
 		repo:         repo,
 		revRange:     revRange,
 		ranges:       ranges,
-		facts:        Facts{Pulls: []PullExpansion{}, Shallow: shallow},
+		facts:        Facts{Pulls: []PullExpansion{}, shallow: shallow},
 		seen:         map[string]bool{},
 		wedged:       map[string]int{},
 		unjudged:     map[string]bool{},
@@ -224,7 +224,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
 	// Recorded HERE, not in PullRawCommits, which --pr shares and which
 	// carries no facts: only a walk acts on its verdict irreversibly.
 	if len(listing) >= github.PullCommitsCap {
-		w.facts.Truncated = append(w.facts.Truncated, number)
+		w.facts.truncated = append(w.facts.truncated, number)
 	}
 	// Where did each listed commit LAND on the released branch? That is the
 	// only question that lets the walk RANGE — a git fact — govern a listing
@@ -249,7 +249,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
 			// below compare like with like.
 			r.SHA = on
 		}
-		c := Commit{Raw: r, Pull: number, Landed: landed[i] != "", MergePoint: canonical}
+		c := Commit{Raw: r, Pull: number, Landed: landed[i] != "", mergePoint: canonical}
 		judged := w.judges(c.governing())
 		if i, refused := w.wedged[r.SHA]; refused {
 			// A refused commit a second pull lists (a stacked pull carries
@@ -336,11 +336,11 @@ func (w *walk) judges(gov string) bool {
 // lagging — from its own message, the evidence that is left. A merge commit
 // GitHub has not indexed yet is a merge POINT the walk could not resolve, and
 // its message never says what it merged — a fact a release decision needs
-// (Facts.Dropped), not only a warning.
+// (Facts.dropped), not only a warning.
 func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
 	if lag && raw.Parents >= 2 {
 		w.Report.Warnf("merge commit %.7s is not known to GitHub yet (API lag), so the pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA)
-		w.facts.Dropped = append(w.facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
+		w.facts.dropped = append(w.facts.dropped, fmt.Sprintf("%.7s", raw.SHA))
 		return
 	}
 	if i, refused := w.wedged[raw.SHA]; refused {
@@ -362,11 +362,11 @@ func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
 		// The lag arm stays SOFT on an unmatched message, unlike the fold:
 		// this commit's true content is a pull the API has not indexed, so
 		// it is dropped from the fold, warned about and carried in
-		// Facts.Dropped — release refuses to ACT on it, bump and notes
+		// Facts.dropped — release refuses to ACT on it, bump and notes
 		// report it (DESIGN §4).
 		if row, ok := unclaimed(w.cfg, raw); ok {
 			w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) and its own message cannot be folded (%s) — nothing was counted from it; re-run once GitHub has indexed the commit", raw.SHA, row.Detail)
-			w.facts.Dropped = append(w.facts.Dropped, fmt.Sprintf("%.7s", raw.SHA))
+			w.facts.dropped = append(w.facts.dropped, fmt.Sprintf("%.7s", raw.SHA))
 			return
 		}
 		w.Report.Warnf("commit %.7s is not known to GitHub yet (API lag) — reading its own message", raw.SHA)
@@ -409,11 +409,11 @@ func (w *walk) reconcile() {
 		if w.expanded[number] {
 			continue
 		}
-		w.facts.LostPulls = append(w.facts.LostPulls, number)
+		w.facts.lostPulls = append(w.facts.lostPulls, number)
 		w.Report.Warnf("pull request #%d has commits in %s but nothing in the range resolved to it — GitHub does not associate its merge commit with the pull yet, or an exclude_authors author merged it with a real merge commit (which the walk skips before resolution); those commits stood aside for that merge point and are NOT counted, so this release is short by whatever #%d changed. The pull's own commit listing is its whole history and cannot say which commits belong to %s, so the walk will not guess — re-run the release once GitHub has caught up with the merge point", number, w.revRange, number, w.revRange)
 	}
 	if w.visited > 0 && w.unknown == w.visited {
-		w.facts.AllUnknown = true
+		w.facts.allUnknown = true
 		// One unknown SHA is lag; EVERY SHA unknown is what a wrong --repo (or
 		// an inherited GITHUB_REPOSITORY in a fork / reusable-workflow
 		// context) looks like. Still a soft fallback — but named, so the

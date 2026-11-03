@@ -17,7 +17,7 @@ import (
 // not reach 1.0.0 over a change it considers compatible, and every reader of
 // Level — note sections, preview's icon, pr-verdict's `breaking` — would
 // answer a fifth word by quietly doing nothing. What makes '%' more than a
-// major is carried in Decision.Promote, beside the lattice, not in it.
+// major is carried in Decision.promote, beside the lattice, not in it.
 func LevelOf(s config.Sigil) Level {
 	switch s {
 	case config.SigilPatch:
@@ -45,7 +45,7 @@ type Commit struct {
 // Row is one folded commit in the machine verdict: the sigil
 // the message carried (or the pattern supplied) and the level it folds to.
 // Excluded authors and skip-pattern commits have no row — they are not in
-// the fold. Warn is the winning pattern's warn message (config.Pattern.Warn),
+// the fold. Warn is the winning pattern's warn message (config.Pattern.warn),
 // on the row so the machine surface names the warned commits and the CLI can
 // surface each one — a warned pattern must be loud wherever it wins a
 // verdict.
@@ -78,7 +78,7 @@ type Refusal struct {
 // An empty range folds to none — no release; rows is non-nil so the JSON
 // surface serializes [].
 //
-// A '%' anywhere in the range also sets Decision.Promote, OR-folded, so that
+// A '%' anywhere in the range also sets Decision.promote, OR-folded, so that
 // half is order-independent too: one commit asking for 1.0.0 is enough, and
 // asking twice is the same as asking once.
 //
@@ -149,7 +149,7 @@ func Fold(commits []Commit, cfg *config.Config) ([]Row, Decision, error) {
 		}
 		return nil, Decision{}, core.Lintf("%s", msg).WithDetails(refusals)
 	}
-	return rows, Decision{Level: reduce(levels), Promote: promote}, nil
+	return rows, Decision{Level: reduce(levels), promote: promote}, nil
 }
 
 // FirstLine returns a raw message's subject line (CR trimmed) — the one
@@ -170,7 +170,7 @@ func FirstLine(message string) string {
 // point at whichever breaking commit came first, and the one commit that
 // actually chose the version would not appear in the answer at all.
 func DecidingReason(commits []Row, dec Decision) string {
-	if dec.Promote {
+	if dec.promote {
 		for _, c := range commits {
 			if c.Sigil == config.SigilPromote.String() {
 				return fmt.Sprintf("%.7s %s %q → promote", c.SHA, c.Sigil, c.Subject)

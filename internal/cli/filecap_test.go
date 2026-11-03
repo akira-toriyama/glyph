@@ -269,7 +269,7 @@ func TestWalkAndPreviewWarnAnUnreadListingInOneSentence(t *testing.T) {
 // TestSinceTagPackagesFilesCapIsAnIncompleteWalk: an inner commit whose file
 // listing came back at GitHub's cap is recorded as a walk that could not
 // read its range — bump warns and answers, and the facts say incomplete so
-// that a writing command refuses (the same gate Truncated sits behind).
+// that a writing command refuses (the same gate truncated sits behind).
 func TestSinceTagPackagesFilesCapIsAnIncompleteWalk(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	_, routes := squashAcrossLines(t, dir, 7)

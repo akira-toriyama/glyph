@@ -124,26 +124,26 @@ func TestLoadGemojiConfig(t *testing.T) {
 			t.Errorf("ExcludeAuthors[%d] = %q, want %q", i, cfg.ExcludeAuthors[i], w)
 		}
 	}
-	if !strings.Contains(cfg.Commit.Template, "<semver_sigil>") {
-		t.Errorf("Commit.Template lost the literal placeholder: %q", cfg.Commit.Template)
+	if !strings.Contains(cfg.commit.template, "<semver_sigil>") {
+		t.Errorf("Commit.template lost the literal placeholder: %q", cfg.commit.template)
 	}
 
 	if len(cfg.Patterns) != 5 {
 		t.Fatalf("len(Patterns) = %d, want 5", len(cfg.Patterns))
 	}
-	if p := cfg.Patterns[4]; p.Unlandable == "" || p.Skip || p.Fixed != nil {
+	if p := cfg.Patterns[4]; p.unlandable == "" || p.skip || p.fixed != nil {
 		t.Errorf("Patterns[4] should claim amend! as unlandable and nothing else: %+v", p)
 	}
-	if cfg.Patterns[0].Fixed != nil || cfg.Patterns[0].Skip {
+	if cfg.Patterns[0].fixed != nil || cfg.Patterns[0].skip {
 		t.Errorf("Patterns[0] should rely on its capture group alone: %+v", cfg.Patterns[0])
 	}
-	if cfg.Patterns[1].Fixed == nil || *cfg.Patterns[1].Fixed != SigilPatch {
-		t.Errorf("Patterns[1].Fixed = %v, want ~ (patch)", cfg.Patterns[1].Fixed)
+	if cfg.Patterns[1].fixed == nil || *cfg.Patterns[1].fixed != SigilPatch {
+		t.Errorf("Patterns[1].fixed = %v, want ~ (patch)", cfg.Patterns[1].fixed)
 	}
-	if !cfg.Patterns[2].Skip {
-		t.Errorf("Patterns[2].Skip = false, want true (merge commits leave processing)")
+	if !cfg.Patterns[2].skip {
+		t.Errorf("Patterns[2].skip = false, want true (merge commits leave processing)")
 	}
-	if p := cfg.Patterns[3]; p.Unlandable == "" || p.Skip || p.Fixed != nil {
+	if p := cfg.Patterns[3]; p.unlandable == "" || p.skip || p.fixed != nil {
 		t.Errorf("Patterns[3] should claim the fixup!/squash! autosquash artifacts as unlandable and nothing else: %+v", p)
 	}
 
@@ -328,8 +328,8 @@ func TestLoadFileRefusesWhatIsNotARegularFile(t *testing.T) {
 			if !ok {
 				t.Fatalf("LoadFile on %s = %v (%T), want a *NotAFileError — the callers branch on the type", c.kind, err, err)
 			}
-			if nf.Path != path || nf.Mode != c.mode {
-				t.Errorf("NotAFileError = {%q, %v}, want {%q, %v}", nf.Path, nf.Mode, path, c.mode)
+			if nf.path != path || nf.mode != c.mode {
+				t.Errorf("NotAFileError = {%q, %v}, want {%q, %v}", nf.path, nf.mode, path, c.mode)
 			}
 			if want := path + " is " + c.kind + ", not a regular file"; err.Error() != want {
 				t.Errorf("error = %q, want %q — the path named once, then what is there", err, want)
@@ -351,7 +351,7 @@ func TestNotAFileErrorNamesEachKind(t *testing.T) {
 		fs.ModeSymlink:                    "a broken symbolic link",
 		fs.ModeIrregular:                  "a file of unknown type",
 	} {
-		if got := (&NotAFileError{Mode: mode}).Kind(); got != want {
+		if got := (&NotAFileError{mode: mode}).Kind(); got != want {
 			t.Errorf("Kind() for %v = %q, want %q", mode, got, want)
 		}
 	}

@@ -63,12 +63,12 @@ func PlanRun(lines []LinePlan, residue []Draft) []Write {
 	for i, l := range lines {
 		switch l.Plan.Action {
 		case ActionCreate, ActionUpdate:
-			upserts = append(upserts, Write{Line: i, Kind: Upsert, Action: l.Plan.Action, Draft: l.Plan.Keep, Tag: l.Plan.Tag, Body: l.Body})
-			for _, s := range l.Plan.Stale {
+			upserts = append(upserts, Write{Line: i, Kind: Upsert, Action: l.Plan.Action, Draft: l.Plan.Keep, Tag: l.Plan.tag, Body: l.Body})
+			for _, s := range l.Plan.stale {
 				stales = append(stales, Write{Line: i, Kind: Stale, Action: ActionDelete, Draft: &s})
 			}
 		case ActionDelete:
-			for _, s := range l.Plan.Stale {
+			for _, s := range l.Plan.stale {
 				residuals = append(residuals, Write{Line: i, Kind: Residual, Action: ActionDelete, Draft: &s})
 			}
 		case ActionNone:

@@ -499,7 +499,7 @@ func goneOnRetry(err error) bool {
 // walk's API-lag case (the walk runs moments after a push), so the walk falls
 // back to the commit's own message instead of hard-failing the release; on
 // the files listing there is no weaker source to fall back on, so the caller
-// records the listing as unread (internal/walk's Facts.FilesUnknown) —
+// records the listing as unread (internal/walk's Facts.filesUnknown) —
 // an incomplete walk, never a lag fallback. Deliberately NOT true for a 404:
 // that is how a bad credential against a private repository answers for
 // every commit, and degrading a whole walk to fallbacks on an auth failure

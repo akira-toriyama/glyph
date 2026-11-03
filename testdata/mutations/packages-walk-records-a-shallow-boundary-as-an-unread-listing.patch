@@ -1,12 +1,12 @@
 diff --git a/internal/walk/partition.go b/internal/walk/partition.go
-index 6d457c4..ae89d7b 100644
+index 41629ca..bced6a5 100644
 --- a/internal/walk/partition.go
 +++ b/internal/walk/partition.go
-@@ -246,6 +246,7 @@ func (w Walker) walkedFiles(ctx context.Context, owner, repo string, c Commit, f
+@@ -305,6 +305,7 @@ func (w Walker) walkedFiles(ctx context.Context, owner, repo string, c Commit, f
  	if c.Landed {
  		files, err = w.Git.DiffTreeFiles(ctx, c.Raw.SHA)
  		if gitsource.IsShallowBoundary(err) {
-+			facts.FilesUnknown = append(facts.FilesUnknown, UnreadListing{SHA: fmt.Sprintf("%.7s", c.Raw.SHA), Escapes: lineEscapes(c, reached)})
++			facts.filesUnknown = append(facts.filesUnknown, unreadListing{sha: fmt.Sprintf("%.7s", c.Raw.SHA), escapes: lineEscapes(c, reached)})
  			return nil, diffBoundary, nil
  		}
  		return files, diffWhole, err

@@ -15,11 +15,11 @@ func d(id int64, tag string) Draft { return Draft{ID: id, TagName: tag, Draft: t
 // draft is stale (including a lingering placeholder), nothing is kept.
 func TestNoneWithoutFlagKeepsNoDraft(t *testing.T) {
 	p := PlanDraft(config.Line{}, bump.LevelNone, "v1.3.0", false, []Draft{d(1, "v1.2.3"), d(2, placeholderTag)})
-	if p.Action != ActionDelete || p.Keep != nil || len(p.Stale) != 2 {
+	if p.Action != ActionDelete || p.Keep != nil || len(p.stale) != 2 {
 		t.Fatalf("plan = %+v, want delete of both managed drafts", p)
 	}
 	empty := PlanDraft(config.Line{}, bump.LevelNone, "v1.3.0", false, nil)
-	if empty.Action != ActionNone || len(empty.Stale) != 0 {
+	if empty.Action != ActionNone || len(empty.stale) != 0 {
 		t.Fatalf("plan = %+v, want a no-op when nothing exists", empty)
 	}
 }
@@ -29,15 +29,15 @@ func TestNoneWithoutFlagKeepsNoDraft(t *testing.T) {
 // when absent, kept when present — instead of converging to nothing.
 func TestNoneWithFlagMaintainsPlaceholder(t *testing.T) {
 	fresh := PlanDraft(config.Line{}, bump.LevelNone, "v1.3.0", true, nil)
-	if fresh.Action != ActionCreate || fresh.Tag != placeholderTag {
+	if fresh.Action != ActionCreate || fresh.tag != placeholderTag {
 		t.Fatalf("plan = %+v, want create of %q", fresh, placeholderTag)
 	}
 	kept := PlanDraft(config.Line{}, bump.LevelNone, "v1.3.0", true, []Draft{d(2, placeholderTag)})
-	if kept.Action != ActionUpdate || kept.Keep == nil || kept.Keep.ID != 2 || kept.Tag != placeholderTag {
+	if kept.Action != ActionUpdate || kept.Keep == nil || kept.Keep.ID != 2 || kept.tag != placeholderTag {
 		t.Fatalf("plan = %+v, want the existing placeholder kept", kept)
 	}
-	if len(kept.Stale) != 0 {
-		t.Fatalf("plan staled %+v, want none", kept.Stale)
+	if len(kept.stale) != 0 {
+		t.Fatalf("plan staled %+v, want none", kept.stale)
 	}
 }
 
@@ -49,8 +49,8 @@ func TestRealVerdictRetagsThePlaceholder(t *testing.T) {
 	if p.Action != ActionUpdate || p.Keep == nil || p.Keep.ID != 7 {
 		t.Fatalf("plan = %+v, want the placeholder retagged in place", p)
 	}
-	if p.Tag != "v1.3.0" {
-		t.Errorf("Tag = %q, want v1.3.0", p.Tag)
+	if p.tag != "v1.3.0" {
+		t.Errorf("tag = %q, want v1.3.0", p.tag)
 	}
 }
 
@@ -59,8 +59,8 @@ func TestRealVerdictPrefersTheExactTag(t *testing.T) {
 	if p.Keep == nil || p.Keep.ID != 2 {
 		t.Fatalf("plan = %+v, want the draft already at v1.2.4 kept", p)
 	}
-	if len(p.Stale) != 1 || p.Stale[0].ID != 1 {
-		t.Errorf("the placeholder should be stale, got %+v", p.Stale)
+	if len(p.stale) != 1 || p.stale[0].ID != 1 {
+		t.Errorf("the placeholder should be stale, got %+v", p.stale)
 	}
 }
 
@@ -69,7 +69,7 @@ func TestRealVerdictPrefersTheExactTag(t *testing.T) {
 // converge a lingering placeholder away, not orphan it.
 func TestPlaceholderClaimedWithFlagOff(t *testing.T) {
 	p := PlanDraft(config.Line{}, bump.LevelMinor, "v2.0.0", false, []Draft{d(9, placeholderTag)})
-	if p.Keep == nil || p.Keep.ID != 9 || p.Tag != "v2.0.0" {
+	if p.Keep == nil || p.Keep.ID != 9 || p.tag != "v2.0.0" {
 		t.Fatalf("plan = %+v, want the placeholder claimed and retagged even with the flag off", p)
 	}
 }
@@ -84,11 +84,11 @@ func TestUnmanagedIsUntouchable(t *testing.T) {
 	}
 	for _, flag := range []bool{true, false} {
 		p := PlanDraft(config.Line{}, bump.LevelNone, "v1.0.1", flag, human)
-		if p.Keep != nil || len(p.Stale) != 0 {
+		if p.Keep != nil || len(p.stale) != 0 {
 			t.Fatalf("flag=%v: plan touched unmanaged releases: %+v", flag, p)
 		}
 		q := PlanDraft(config.Line{}, bump.LevelMajor, "v10.0.0", flag, human)
-		if q.Action != ActionCreate || q.Keep != nil || len(q.Stale) != 0 {
+		if q.Action != ActionCreate || q.Keep != nil || len(q.stale) != 0 {
 			t.Fatalf("flag=%v: plan = %+v, want a fresh create touching nothing", flag, q)
 		}
 	}
@@ -117,7 +117,7 @@ func TestNeverASecondDraft(t *testing.T) {
 			if c.keepID != 0 && p.Keep.ID != c.keepID {
 				t.Fatalf("plan = %s, want the first draft already at v1.2.0 (id %d) kept", planString(p), c.keepID)
 			}
-			if len(p.Stale) != len(c.drafts)-1 {
+			if len(p.stale) != len(c.drafts)-1 {
 				t.Fatalf("keep + stale must cover every managed draft exactly once: %s", planString(p))
 			}
 		})
@@ -130,11 +130,11 @@ func planString(p Plan) string {
 	if p.Keep != nil {
 		kept = fmt.Sprintf("id %d (%s)", p.Keep.ID, p.Keep.TagName)
 	}
-	stale := make([]int64, 0, len(p.Stale))
-	for _, r := range p.Stale {
+	stale := make([]int64, 0, len(p.stale))
+	for _, r := range p.stale {
 		stale = append(stale, r.ID)
 	}
-	return fmt.Sprintf("action %s, tag %s, kept %s, stale ids %v", p.Action, p.Tag, kept, stale)
+	return fmt.Sprintf("action %s, tag %s, kept %s, stale ids %v", p.Action, p.tag, kept, stale)
 }
 
 // TestManagedIsPerLine pins the line boundary of convergence: a draft is
@@ -178,14 +178,14 @@ func TestManagedIsPerLine(t *testing.T) {
 	// A none verdict on a package's line maintains THAT line's placeholder
 	// and leaves the other lines' drafts alone.
 	p := PlanDraft(config.Line{Prefix: "haiku/"}, bump.LevelNone, "", true, all)
-	if p.Action != ActionUpdate || p.Tag != "haiku/Unreleased" || p.Keep == nil || p.Keep.ID != 4 {
+	if p.Action != ActionUpdate || p.tag != "haiku/Unreleased" || p.Keep == nil || p.Keep.ID != 4 {
 		t.Errorf("none on haiku/ = %+v, want update keeping haiku/Unreleased (id 4)", p)
 	}
-	if len(p.Stale) != 1 || p.Stale[0].ID != 3 {
-		t.Errorf("stale on haiku/ = %+v, want only the haiku/v2.0.0 draft", p.Stale)
+	if len(p.stale) != 1 || p.stale[0].ID != 3 {
+		t.Errorf("stale on haiku/ = %+v, want only the haiku/v2.0.0 draft", p.stale)
 	}
 	q := PlanDraft(config.Line{Prefix: "haiku/"}, bump.LevelMinor, "haiku/v2.1.0", false, all)
-	if q.Action != ActionUpdate || q.Keep == nil || q.Keep.ID != 3 || len(q.Stale) != 1 || q.Stale[0].ID != 4 {
+	if q.Action != ActionUpdate || q.Keep == nil || q.Keep.ID != 3 || len(q.stale) != 1 || q.stale[0].ID != 4 {
 		t.Errorf("minor on haiku/ = %+v, want update retagging haiku/v2.0.0 (id 3) with only the placeholder stale", q)
 	}
 }
