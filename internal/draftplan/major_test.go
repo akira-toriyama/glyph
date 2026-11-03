@@ -46,7 +46,7 @@ func TestManagedIsPerMajor(t *testing.T) {
 		t.Errorf("PlaceholderTagOn(v2) = %q", got)
 	}
 	p := PlanDraft(free, bump.LevelPatch, "pubsub/v1.9.2", false, all)
-	if p.Action != ActionUpdate || p.Keep == nil || p.Keep.ID != 1 || len(p.Stale) != 2 || p.Stale[0].ID != 2 || p.Stale[1].ID != 5 {
+	if p.Action != ActionUpdate || p.Keep == nil || p.Keep.ID != 1 || len(p.stale) != 2 || p.stale[0].ID != 2 || p.stale[1].ID != 5 {
 		t.Errorf("patch on the free line = %+v, want update keeping id 1 with ids 2 and 5 stale and the v2 drafts untouched", p)
 	}
 }

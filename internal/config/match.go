@@ -40,7 +40,7 @@ type Match struct {
 	// The verdict is unchanged — a warned match is still a match — but every
 	// verdict computation that reads this Match must surface the message
 	// (that invariant is what makes a warned pattern's hole visible for as
-	// long as the pattern lives; see Pattern.Warn).
+	// long as the pattern lives; see Pattern.warn).
 	Warn string
 	// PatternIndex is the winning pattern's position in Config.Patterns, -1
 	// when Matched is false.
@@ -65,11 +65,11 @@ func (c *Config) Match(message string) (Match, error) {
 		if sub == nil {
 			continue
 		}
-		if p.Skip {
+		if p.skip {
 			return Match{Matched: true, Skip: true, PatternIndex: i}, nil
 		}
-		if p.Unlandable != "" {
-			return Match{PatternIndex: -1, Unlandable: fmt.Sprintf("patterns[%d] marks this message unlandable: %s", i, p.Unlandable)}, nil
+		if p.unlandable != "" {
+			return Match{PatternIndex: -1, Unlandable: fmt.Sprintf("patterns[%d] marks this message unlandable: %s", i, p.unlandable)}, nil
 		}
 
 		groups := make(map[string]string)
@@ -92,13 +92,13 @@ func (c *Config) Match(message string) (Match, error) {
 				return Match{}, fmt.Errorf("patterns[%d] matched but %w", i, err)
 			}
 			sigil = s
-		case p.Fixed != nil:
-			sigil = *p.Fixed
+		case p.fixed != nil:
+			sigil = *p.fixed
 		default:
 			return Match{}, fmt.Errorf("patterns[%d] matched but its %s group captured nothing and no fixed semver_sigil is set", i, sigilGroup)
 		}
 
-		return Match{Matched: true, Sigil: sigil, Groups: groups, Warn: p.Warn, PatternIndex: i}, nil
+		return Match{Matched: true, Sigil: sigil, Groups: groups, Warn: p.warn, PatternIndex: i}, nil
 	}
 	return Match{PatternIndex: -1}, nil
 }

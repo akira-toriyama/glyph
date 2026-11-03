@@ -140,7 +140,7 @@ func (v Version) Compare(o Version) int {
 // presses Publish, and draftplan.CheckPublishedFloor refuses a version that is
 // not strictly above the highest published release.
 func (v Version) next(d Decision) Version {
-	if d.Promote {
+	if d.promote {
 		if v.Major == 0 {
 			return Version{Major: 1}
 		}

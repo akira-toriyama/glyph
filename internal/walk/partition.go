@@ -116,10 +116,10 @@ func (w Walker) readLineRanges(ctx context.Context, cfg *config.Config, lines []
 	}
 	r.holds = make([]map[string]bool, len(lines))
 	for i, l := range lines {
-		if l.Range == "" {
+		if l.revRange == "" {
 			continue
 		}
-		raws, err := w.Git.Log(ctx, l.Range)
+		raws, err := w.Git.Log(ctx, l.revRange)
 		if err != nil {
 			return lineRanges{}, err
 		}
@@ -267,7 +267,7 @@ type FilePlacement struct {
 // and so do the files a listing did hold (t-esm5). One arm withholds for all
 // three so they cannot come to place a commit two ways again (DESIGN §4.1,
 // "Where the files come from"); each shortfall stays its own — a boundary is
-// no UnreadListing — and so does its warning (warnBoundary).
+// no unreadListing — and so does its warning (warnBoundary).
 func (w Walker) PlaceByFiles(ctx context.Context, cfg *config.Config, owner, repo string, c Commit, said Reading, facts *Facts, reached []Line) (FilePlacement, error) {
 	files, gap, err := w.walkedFiles(ctx, owner, repo, c, facts, reached)
 	if err != nil {
@@ -296,7 +296,7 @@ func (w Walker) PlaceByFiles(ctx context.Context, cfg *config.Config, owner, rep
 // reached and returned as diffUnlisted: the files it did not list are
 // unreachable, not absent. A shallow clone's boundary comes back with no
 // file and diffBoundary — git reads it as a root, and its whole tree is not
-// its diff (t-esm5) — recorded on no fact here, since Facts.Shallow already
+// its diff (t-esm5) — recorded on no fact here, since Facts.shallow already
 // carries the checkout's remedy, and warned about by the caller once placed.
 func (w Walker) walkedFiles(ctx context.Context, owner, repo string, c Commit, facts *Facts, reached []Line) (files []string, gap diffGap, err error) {
 	if c.Raw.Parents >= 2 {
@@ -313,13 +313,13 @@ func (w Walker) walkedFiles(ctx context.Context, owner, repo string, c Commit, f
 	if err != nil {
 		return nil, diffWhole, err
 	}
-	unread := UnreadListing{SHA: fmt.Sprintf("%.7s", c.Raw.SHA), Pull: c.Pull, Escapes: lineEscapes(c, reached)}
+	unread := unreadListing{sha: fmt.Sprintf("%.7s", c.Raw.SHA), pull: c.Pull, escapes: lineEscapes(c, reached)}
 	switch {
 	case l.Unknown:
-		facts.FilesUnknown = append(facts.FilesUnknown, unread)
+		facts.filesUnknown = append(facts.filesUnknown, unread)
 		w.Report.Warnf("commit %.7s in pull request #%d: GitHub answered 422 for its file listing, so a line it touches in files GitHub did not list may be missing from this verdict", c.Raw.SHA, c.Pull)
 	case l.Capped:
-		facts.FilesCapped = append(facts.FilesCapped, unread)
+		facts.filesCapped = append(facts.filesCapped, unread)
 		w.Report.Warnf("commit %.7s in pull request #%d touches at least %d files, and GitHub lists no more than that — the files past the cap could not be read, so a package they touch is missing from this verdict", c.Raw.SHA, c.Pull, github.CommitFilesCap)
 	}
 	if l.incomplete() {
@@ -472,7 +472,7 @@ func attributionWedge(refused []placementRefusal, owner, repo string, lines []Li
 	first := refused[0].c
 	where := fmt.Sprintf("a commit on the released branch (%.7s)", first.Raw.SHA)
 	if first.Pull > 0 {
-		where = pullWhere(owner, repo, first.Pull, first.MergePoint)
+		where = pullWhere(owner, repo, first.Pull, first.mergePoint)
 	}
 	more := ""
 	if n := len(refused) - 1; n > 0 {

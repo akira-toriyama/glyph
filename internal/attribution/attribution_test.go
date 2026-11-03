@@ -100,7 +100,7 @@ func TestSharedOnlyBumpIsRefused(t *testing.T) {
 	for _, sigil := range []config.Sigil{config.SigilPatch, config.SigilMinor, config.SigilMajor, config.SigilPromote} {
 		got, err := Attribute([]string{"README.md"}, "", sigil, []config.Package{haiku, curry})
 		r, ok := errors.AsType[*Refusal](err)
-		if !ok || r.Reason != noCarrier {
+		if !ok || r.reason != noCarrier {
 			t.Fatalf("sigil %s on a shared-only commit → [%s], %v; want a noCarrier refusal", sigil, paths(got), err)
 		}
 		r.Sayable = sayAll("haiku", "curry")
@@ -117,7 +117,7 @@ func TestSharedOnlyBumpIsRefused(t *testing.T) {
 	} {
 		got, err := Attribute([]string{c.file}, c.scope, config.SigilMinor, []config.Package{storage})
 		r, ok := errors.AsType[*Refusal](err)
-		if !ok || r.Reason != noCarrier {
+		if !ok || r.reason != noCarrier {
 			t.Fatalf("(%s)^ on %s → [%s], %v; want a noCarrier refusal — a scope naming no package carries nothing and excuses nothing", c.scope, c.file, paths(got), err)
 		}
 		r.Sayable = sayAll("storage")
@@ -146,7 +146,7 @@ func TestNoFilesHaveNoCarrierUnderARootPackage(t *testing.T) {
 	pkgs := []config.Package{haiku, root}
 	got, err := Attribute(nil, "", config.SigilPatch, pkgs)
 	r, ok := errors.AsType[*Refusal](err)
-	if !ok || r.Reason != noCarrier {
+	if !ok || r.reason != noCarrier {
 		t.Fatalf("an empty ~ under a root package → [%s], %v; want a noCarrier refusal", paths(got), err)
 	}
 	r.Sayable = sayAll("haiku", "core")
@@ -344,7 +344,7 @@ func TestScopeContradictingTheTreeIsRefused(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, err := Attribute(c.files, c.scope, config.SigilPatch, c.pkgs)
-			if r, ok := errors.AsType[*Refusal](err); !ok || r.Reason != contradiction {
+			if r, ok := errors.AsType[*Refusal](err); !ok || r.reason != contradiction {
 				t.Fatalf("(%s)~ over %v → [%s], %v; want a contradiction refusal", c.scope, c.files, paths(got), err)
 			}
 			if !strings.Contains(err.Error(), c.owned) {

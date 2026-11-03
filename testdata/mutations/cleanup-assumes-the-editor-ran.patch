@@ -1,12 +1,14 @@
 diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
 --- a/internal/cli/cmd_lint.go
 +++ b/internal/cli/cmd_lint.go
-@@ -173,7 +173,7 @@
+@@ -166,7 +166,9 @@ func lintStdinRun(ctx context.Context) error {
  	// The hook that called this is also the one artefact nothing refreshes,
  	// so its own run is where a drifted copy is reported.
  	warnIfHookStale(ctx, hook.Kinds()[0])
 -	return lintOne(cleanup.Apply(string(b), hookCleanupMode(ctx, in)), cfg)
-+	return lintOne(cleanup.Apply(string(b), cleanup.Mode{Space: true, Comments: true, Truncate: true}), cfg)
++	editorRan, _ := cleanup.ResolveMode("strip", true, cleanup.VerboseUnseen)
++	editorRan.Comment = hookCleanupMode(ctx, in).Comment
++	return lintOne(cleanup.Apply(string(b), editorRan), cfg)
  }
  
  // lintMessageRun lints the one message --message names, at authoring time.

@@ -3,7 +3,7 @@ diff --git a/internal/walk/expand.go b/internal/walk/expand.go
 +++ b/internal/walk/expand.go
 @@ -251,7 +251,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
  		}
- 		c := Commit{Raw: r, Pull: number, Landed: landed[i] != "", MergePoint: canonical}
+ 		c := Commit{Raw: r, Pull: number, Landed: landed[i] != "", mergePoint: canonical}
  		judged := w.judges(c.governing())
 -		if i, refused := w.wedged[r.SHA]; refused {
 +		if i, refused := w.wedged[r.SHA]; false && refused {

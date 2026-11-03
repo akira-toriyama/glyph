@@ -102,7 +102,7 @@ func (s Sigil) String() string { return string(rune(s)) }
 type Config struct {
 	Schema         int
 	ExcludeAuthors []string
-	Commit         Commit
+	commit         Commit
 	Patterns       []Pattern
 	Note           Note
 	// Packages is the [[packages]] array in file order, empty when the file
@@ -130,7 +130,7 @@ type Config struct {
 // named a grammar the patterns alone decide, and nothing read it (DESIGN §2).
 // The strict decoder refuses it as unknown, which is the whole enforcement.
 type Commit struct {
-	Template string
+	template string
 }
 
 // Package is one validated [[packages]] entry: a declared subtree of the
@@ -163,23 +163,23 @@ type Package struct {
 // pattern in file order whose regex matches the message wins, and nothing
 // after it is consulted.
 type Pattern struct {
-	// Pattern is the RE2 source text, kept for error messages and display.
-	Pattern string
-	// Fixed is the pattern-level semver_sigil key: the sigil a match yields
+	// pattern is the RE2 source text, kept for error messages and display.
+	pattern string
+	// fixed is the pattern-level semver_sigil key: the sigil a match yields
 	// when the message itself captures none. Nil when the key is absent.
-	Fixed *Sigil
-	// Skip drops a matching commit from lint, bump and notes entirely — a
+	fixed *Sigil
+	// skip drops a matching commit from lint, bump and notes entirely — a
 	// skipped commit is not a violation (git-cliff's commit_parsers shape).
-	Skip bool
-	// Warn is the pattern-level warn key: a message the author of the FILE
+	skip bool
+	// warn is the pattern-level warn key: a message the author of the FILE
 	// wrote for the author of a COMMIT, emitted wherever this pattern wins a
 	// verdict (lint, and the version fold). It exists for patterns that are
 	// legal but undesirable: a match that folds none with nothing said is a
 	// hole that stays silent for exactly as long as the pattern lives (the
 	// fleet's retired v1-acceptance window was the first such pattern). Empty
 	// means no warning.
-	Warn string
-	// Unlandable is the pattern-level unlandable key: why a message this
+	warn string
+	// unlandable is the pattern-level unlandable key: why a message this
 	// pattern claims may be WRITTEN but must never LAND. Match reports such a
 	// message as claimed by no pattern, with this reason beside it, so every
 	// gate that judges a commit which already exists refuses it exactly as it
@@ -189,7 +189,7 @@ type Pattern struct {
 	// message with the amend! body, so a skip drops the only commit carrying
 	// the new sigil, and a refusal at the hook forces --no-verify. Empty
 	// means the key is absent.
-	Unlandable string
+	unlandable string
 
 	re *regexp.Regexp
 	// scope and sigil are the group facts capture.go reads off the pattern,
@@ -207,7 +207,7 @@ type Pattern struct {
 // every reader of the file's group names asks this predicate, not the flags:
 // boundGroupNames (note.line's placeholders and the trailers' names) and
 // scopeSpellers (the package names).
-func (p *Pattern) bindsGroups() bool { return !p.Skip && p.Unlandable == "" }
+func (p *Pattern) bindsGroups() bool { return !p.skip && p.unlandable == "" }
 
 // Note carries the release-notes block: the per-commit line template and the
 // ordered sections. Spans is the template compiled, and is what the notes
@@ -292,15 +292,15 @@ type rawSection struct {
 // that failed; glyph init, which writes over a missing path, refuses it
 // (DESIGN §5, §7).
 type NotAFileError struct {
-	Path string
-	// Mode is the path's type bits (fs.FileMode.Type) as os.Stat reported
+	path string
+	// mode is the path's type bits (fs.FileMode.Type) as os.Stat reported
 	// them, symlinks followed, or fs.ModeSymlink, os.Lstat's, for a link that
 	// resolves to no file; never 0, which is a regular file.
-	Mode fs.FileMode
+	mode fs.FileMode
 }
 
 func (e *NotAFileError) Error() string {
-	return e.Path + " is " + e.Kind() + ", not a regular file"
+	return e.path + " is " + e.Kind() + ", not a regular file"
 }
 
 // Kind names what is at the path, article included, for the sentence a
@@ -311,15 +311,15 @@ func (e *NotAFileError) Error() string {
 // os/stat_darwin.go: a whiteout reads as a device).
 func (e *NotAFileError) Kind() string {
 	switch {
-	case e.Mode.IsDir():
+	case e.mode.IsDir():
 		return "a directory"
-	case e.Mode&fs.ModeSymlink != 0:
+	case e.mode&fs.ModeSymlink != 0:
 		return "a broken symbolic link"
-	case e.Mode&fs.ModeNamedPipe != 0:
+	case e.mode&fs.ModeNamedPipe != 0:
 		return "a named pipe"
-	case e.Mode&fs.ModeSocket != 0:
+	case e.mode&fs.ModeSocket != 0:
 		return "a socket"
-	case e.Mode&fs.ModeDevice != 0:
+	case e.mode&fs.ModeDevice != 0:
 		return "a device"
 	}
 	return "a file of unknown type"
@@ -343,7 +343,7 @@ func StatFile(path string) error {
 	info, err := os.Stat(path)
 	if err == nil {
 		if !info.Mode().IsRegular() {
-			return &NotAFileError{Path: path, Mode: info.Mode().Type()}
+			return &NotAFileError{path: path, mode: info.Mode().Type()}
 		}
 		return nil
 	}
@@ -353,7 +353,7 @@ func StatFile(path string) error {
 	// link os.Stat could not follow for a permission or an I/O fault keeps
 	// that fault: where it leads was never observed.
 	if link, lerr := os.Lstat(path); lerr == nil && link.Mode()&fs.ModeSymlink != 0 && linksOwnFault(err) {
-		return &NotAFileError{Path: path, Mode: fs.ModeSymlink}
+		return &NotAFileError{path: path, mode: fs.ModeSymlink}
 	}
 	return err
 }
@@ -455,7 +455,7 @@ func Load(data []byte) (*Config, error) {
 	return &Config{
 		Schema:         *r.Schema,
 		ExcludeAuthors: r.ExcludeAuthors,
-		Commit:         Commit(r.Commit),
+		commit:         Commit{template: r.Commit.Template},
 		Patterns:       patterns,
 		Note: Note{
 			Spans:       spans,
@@ -630,11 +630,11 @@ func compilePattern(rp rawPattern) (Pattern, error) {
 	}
 
 	return Pattern{
-		Pattern:    *rp.Pattern,
-		Fixed:      fixed,
-		Skip:       rp.Skip,
-		Warn:       warn,
-		Unlandable: unlandable,
+		pattern:    *rp.Pattern,
+		fixed:      fixed,
+		skip:       rp.Skip,
+		warn:       warn,
+		unlandable: unlandable,
 		re:         re,
 	}, nil
 }

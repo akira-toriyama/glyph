@@ -239,7 +239,7 @@ func (w Walker) LatestVersionTag(ctx context.Context, l config.Line, below *bump
 // releasesHEADHolds is LatestVersionTag's candidate set: the tags HEAD's
 // history holds. A shallow checkout cannot say — --merged stops at the depth
 // — so it reads every tag, and the walk records the checkout as unread
-// (Facts.Shallow), which release refuses (DESIGN §4; mutation row
+// (Facts.shallow), which release refuses (DESIGN §4; mutation row
 // shallow-checkout-resolves-from-a-truncated-history).
 func (w Walker) releasesHEADHolds(ctx context.Context) ([]string, error) {
 	shallow, err := w.Git.IsShallow(ctx)

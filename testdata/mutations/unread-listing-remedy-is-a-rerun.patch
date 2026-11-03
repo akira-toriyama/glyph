@@ -1,13 +1,13 @@
 diff --git a/internal/walk/partition.go b/internal/walk/partition.go
-index 6d457c4..0b436ed 100644
+index 41629ca..e55c968 100644
 --- a/internal/walk/partition.go
 +++ b/internal/walk/partition.go
-@@ -254,7 +254,7 @@ func (w Walker) walkedFiles(ctx context.Context, owner, repo string, c Commit, f
+@@ -313,7 +313,7 @@ func (w Walker) walkedFiles(ctx context.Context, owner, repo string, c Commit, f
  	if err != nil {
  		return nil, diffWhole, err
  	}
--	unread := UnreadListing{SHA: fmt.Sprintf("%.7s", c.Raw.SHA), Pull: c.Pull, Escapes: lineEscapes(c, reached)}
-+	unread := UnreadListing{SHA: fmt.Sprintf("%.7s", c.Raw.SHA), Pull: c.Pull}
+-	unread := unreadListing{sha: fmt.Sprintf("%.7s", c.Raw.SHA), pull: c.Pull, escapes: lineEscapes(c, reached)}
++	unread := unreadListing{sha: fmt.Sprintf("%.7s", c.Raw.SHA), pull: c.Pull}
  	switch {
  	case l.Unknown:
- 		facts.FilesUnknown = append(facts.FilesUnknown, unread)
+ 		facts.filesUnknown = append(facts.filesUnknown, unread)

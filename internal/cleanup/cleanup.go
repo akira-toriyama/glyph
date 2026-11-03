@@ -68,22 +68,22 @@ func CommentPrefix(configured string, set bool) string {
 // enum of git's mode names cannot express `--cleanup=strip` under `-v` (truncate)
 // versus the same mode under `-m` (do not).
 type Mode struct {
-	// Space runs git's whitespace cleanup: trailing " \t\r" off every line,
+	// space runs git's whitespace cleanup: trailing " \t\r" off every line,
 	// an interior run of blank lines collapsed to one, leading and trailing
 	// blank lines dropped. False only for `verbatim`.
-	Space bool
-	// Comments drops whole-line comments — git's `strip`. A comment is a line
+	space bool
+	// comments drops whole-line comments — git's `strip`. A comment is a line
 	// that opens with Comment at column 0; git does not look past leading
 	// whitespace.
-	Comments bool
-	// Truncate cuts the message at git's scissors line: always under
+	comments bool
+	// truncate cuts the message at git's scissors line: always under
 	// commit.verbose (git cuts under verbose in every mode, editor or not), in
 	// scissors mode whenever an editor ran, and — because `-v` reaches no hook
 	// and git writes its cut line and the diff into every verbose editor buffer
 	// — whenever an editor ran for `git commit` (Verbose).
-	Truncate bool
+	truncate bool
 	// Comment is the repository's comment prefix (CommentPrefix): the lines
-	// Comments drops open with it, and so does git's scissors line. Apply
+	// comments drops open with it, and so does git's scissors line. Apply
 	// requires it set — empty, it strips no comment line and cuts at a
 	// scissors line with no prefix; ResolveMode leaves it empty on purpose,
 	// and hookCleanupMode fills it from CommentPrefix.
@@ -144,22 +144,22 @@ func ResolveMode(configured string, edited bool, verbose Verbose) (mode Mode, kn
 	cut := verbose == VerboseOn || (verbose == VerboseUnseen && edited) || (configured == "scissors" && edited)
 	switch configured {
 	case "verbatim":
-		return Mode{Truncate: cut}, true
+		return Mode{truncate: cut}, true
 	case "whitespace":
-		return Mode{Space: true, Truncate: cut}, true
+		return Mode{space: true, truncate: cut}, true
 	case "strip":
-		return Mode{Space: true, Comments: true, Truncate: cut}, true
+		return Mode{space: true, comments: true, truncate: cut}, true
 	case "scissors":
 		// Without an editor this is whitespace: measured, `commit.cleanup=
 		// scissors` with `-F` records the cut line AND everything below it, so
 		// only verbose cuts here then. Cutting anyway would hide that text from
 		// the patterns, and the hook's verdict would part from CI's wherever a
 		// pattern reads it.
-		return Mode{Space: true, Truncate: cut}, true
+		return Mode{space: true, truncate: cut}, true
 	case "default", "":
 		// git's default IS the editor question: strip when a message is edited,
 		// whitespace when it is not.
-		return Mode{Space: true, Comments: edited, Truncate: cut}, true
+		return Mode{space: true, comments: edited, truncate: cut}, true
 	default:
 		mode, _ = ResolveMode("default", edited, verbose)
 		return mode, false
@@ -209,16 +209,16 @@ func ResolveMode(configured string, edited bool, verbose Verbose) (mode Mode, kn
 // any body line a project chose to start with '#'.
 func Apply(message string, mode Mode) string {
 	comment := mode.Comment
-	if mode.Truncate {
+	if mode.truncate {
 		message = truncateAtCutLine(message, comment+cutTail)
 	}
-	if !mode.Space {
+	if !mode.space {
 		// verbatim: git records the bytes as they are, so glyph judges them as
 		// they are. The trailing newline is dropped only to keep this function's
 		// output shape constant for its caller.
 		return strings.TrimSuffix(message, "\n")
 	}
-	if !mode.Comments {
+	if !mode.comments {
 		comment = ""
 	}
 	return stripspace(message, comment)

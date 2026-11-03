@@ -1,13 +1,13 @@
 diff --git a/internal/config/line.go b/internal/config/line.go
-index c8716ac..3afd91e 100644
+index 28470a2..d2aa744 100644
 --- a/internal/config/line.go
 +++ b/internal/config/line.go
-@@ -242,7 +242,7 @@ func boundGroupNames(patterns []Pattern) map[string]bool {
+@@ -235,7 +235,7 @@ func boundGroupNames(patterns []Pattern) map[string]bool {
  	names := make(map[string]bool)
  	for i := range patterns {
  		p := &patterns[i]
 -		if !p.bindsGroups() {
-+		if p.Unlandable != "" {
++		if p.unlandable != "" {
  			continue
  		}
  		for _, name := range p.re.SubexpNames() {

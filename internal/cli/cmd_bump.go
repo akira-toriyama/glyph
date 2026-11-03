@@ -264,7 +264,7 @@ func parseCurrent(flag string) (*bump.Version, error) {
 }
 
 // warnBumpRows surfaces each folded commit's pattern warning
-// (config.Pattern.Warn). Every command that folds a range calls this right
+// (config.Pattern.warn). Every command that folds a range calls this right
 // after bump.Fold — bump, release, and both of preview's folds — because a
 // warned pattern loud in one command and silent in another teaches the reader
 // that the loud one is noise, which is how a warning dies.

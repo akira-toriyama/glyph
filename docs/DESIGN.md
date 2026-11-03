@@ -903,7 +903,7 @@ one split the 0.x rule rests on, and it is why the rule lives in
   is tagged). Rejected: detecting the overflow in `Next`, which gives every
   step site an error arm for a state no stepping reaches.
 
-**Promote is not a fifth rung.** `bump.Decision` carries `{Level, Promote}`,
+**Promote is not a fifth rung.** `bump.Decision` carries `{Level, promote}`,
 and a `%` commit classifies as **major** like any other breaking change; the
 promotion rides beside the lattice, OR-folded so it stays order-independent
 (mutation row `fold-promote-is-dropped.patch`). A fifth `Level` word was
@@ -2444,7 +2444,7 @@ and stops at 3000 — **measured** 2026-09-10 on torvalds/linux's 17k-file root
 commit: `rel="last"` at page 10, page 11 empty; a commit whose listing reaches
 that cap is an **incomplete walk** in the sense §4 already defines (a package
 it touched past the cap is unreachable, not absent), recorded in the walk's
-`Facts` as `FilesCapped` beside `Truncated`, so `Complete()` is false and a writing
+`Facts` as `filesCapped` beside `truncated`, so `Complete()` is false and a writing
 command refuses (exit 4). Two corollaries, both ratified with t-c6r5 and
 t-ft7p after the first cut got them wrong. A refusal attribution would hand
 down over a truncated listing — no carrier, or a scope naming a package that
@@ -2464,7 +2464,7 @@ for SHA: <sha>` — the same status and message `commits/{sha}/pulls` gives, the
 bodies differing only in `documentation_url` (both measured 2026-09-29) — so
 `IsCommitUnknown` reads both, and `listFiles`, the one reader the walk and
 `preview` share, takes the answer as a capped listing with nothing listed:
-the walk's `Facts` record it as `FilesUnknown` beside `FilesCapped`, and a refusal
+the walk's `Facts` record it as `filesUnknown` beside `filesCapped`, and a refusal
 attribution would hand down over the empty listing is withheld as over a
 truncated one. An unscoped commit claiming a version impact is therefore
 carried nowhere, while a scope naming a package still carries the commit

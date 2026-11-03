@@ -32,9 +32,9 @@ func readCaptures(patterns []Pattern) error {
 		p := &patterns[i]
 		// The flags regexp.Compile parses with, so this is the tree
 		// compilePattern already accepted.
-		tree, err := syntax.Parse(p.Pattern, syntax.Perl)
+		tree, err := syntax.Parse(p.pattern, syntax.Perl)
 		if err != nil {
-			return fmt.Errorf("patterns[%d]: parse %q: %w", i, p.Pattern, err)
+			return fmt.Errorf("patterns[%d]: parse %q: %w", i, p.pattern, err)
 		}
 		p.scope, p.sigil = captureOf(tree, ScopeGroup), captureOf(tree, sigilGroup)
 	}

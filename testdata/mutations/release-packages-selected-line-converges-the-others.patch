@@ -1,12 +1,12 @@
 diff --git a/internal/walk/lines.go b/internal/walk/lines.go
-index 9538c4b..8950676 100644
+index 1732070..82025e8 100644
 --- a/internal/walk/lines.go
 +++ b/internal/walk/lines.go
-@@ -132,7 +132,6 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
+@@ -131,7 +131,6 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
  				l.Base = &v
  			}
  			lines = []Line{l}
 -			break
  		}
  		for _, p := range cfg.Packages {
- 			lines = append(lines, Line{Package: p, TagLine: cfg.LineOf(p), BaseTag: baseTag, Source: tag + "..HEAD", Range: tag + "..HEAD"})
+ 			lines = append(lines, Line{Package: p, TagLine: cfg.LineOf(p), BaseTag: baseTag, Source: tag + "..HEAD", revRange: tag + "..HEAD"})

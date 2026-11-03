@@ -1,8 +1,8 @@
 diff --git a/internal/walk/base.go b/internal/walk/base.go
-index 6c113a8..4744eee 100644
+index 92ecd50..1318ddc 100644
 --- a/internal/walk/base.go
 +++ b/internal/walk/base.go
-@@ -84,7 +84,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
+@@ -85,7 +85,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
  		}
  		if latest == "" {
  			revRange, base, err = w.wholeHistory(ctx, cfg, "no version tag in HEAD's history", "")
@@ -11,7 +11,7 @@ index 6c113a8..4744eee 100644
  		}
  		return latest + "..HEAD", latest, &v, nil
  	}
-@@ -108,7 +108,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
+@@ -109,7 +109,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
  			// here would fail a job standing behind a tag that already exists.
  			// Same walk, same guard, as auto before the first tag.
  			revRange, base, err = w.wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s in HEAD's history", bound), "")
@@ -21,15 +21,15 @@ index 6c113a8..4744eee 100644
  		return prev + "..HEAD", prev, &v, nil
  	}
 diff --git a/internal/walk/lines.go b/internal/walk/lines.go
-index 9538c4b..9dde61d 100644
+index 1732070..4bfee49 100644
 --- a/internal/walk/lines.go
 +++ b/internal/walk/lines.go
-@@ -186,7 +186,7 @@ func (w Walker) lineFromLatest(ctx context.Context, cfg *config.Config, p config
+@@ -192,7 +192,7 @@ func (w Walker) lineFromLatest(ctx context.Context, cfg *config.Config, p config
  		return Line{}, err
  	}
  	if latest == "" {
 -		return Line{Package: p, TagLine: tl, Base: &bump.Version{}, Source: "HEAD"}, nil
 +		return Line{Package: p, TagLine: tl, Base: &bump.Version{}, BaseTag: "HEAD", Source: "HEAD"}, nil
  	}
- 	return Line{Package: p, TagLine: tl, Base: &v, BaseTag: latest, Source: latest + "..HEAD", Range: latest + "..HEAD"}, nil
+ 	return Line{Package: p, TagLine: tl, Base: &v, BaseTag: latest, Source: latest + "..HEAD", revRange: latest + "..HEAD"}, nil
  }

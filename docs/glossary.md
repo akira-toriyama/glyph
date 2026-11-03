@@ -32,7 +32,7 @@ missing entry, because it is the one place a reader trusts not to be stale.
 
 **Contents**
 
-1. [The release walk](#1-the-release-walk) — walk, walk base, step base, auto, below:, range, fold, participate, merge point, merge commit, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, Facts, Dropped, shortfall, wedge, wedge escape, package, root package, line, bare line, locked line, free line, attribution, carrier, shared-only, withheld refusal, governing commit
+1. [The release walk](#1-the-release-walk) — walk, walk base, step base, auto, below:, range, fold, participate, merge point, merge commit, canonical commit, footprint, landed, stand aside, covered pull, lost pull, expansion, provenance, fallback path, API lag, shallow checkout, truncated listing, incomplete walk, Facts, dropped, shortfall, wedge, wedge escape, package, root package, line, bare line, locked line, free line, attribution, carrier, shared-only, withheld refusal, governing commit
 2. [Verdicts and the rolling draft](#2-verdicts-and-the-rolling-draft) — verdict, level, source, reason, target, action, rolling draft, glyph-managed draft, hand region, compare link, residual draft, stale draft, residue, published floor, pending, incomplete banner
 3. [Convention and lint](#3-convention-and-lint) — pattern, unlandable, dictionary, sigil, promote, 0.x clamp, bump lattice, section, excluded author, cleanup, cleanup mode, edited, cut line
 4. [The render boundary](#4-the-render-boundary) — inline context, phantom span, neutralize, fence, flatten, line builder, pipe escape, over-escaping is the safe direction
@@ -211,7 +211,7 @@ pull changed. Note what the warning does *not* promise: API lag clears itself
 and warns once, but a repository whose merge button an **automation** presses
 warns on every release, structurally.
 `internal/walk/expand.go: walk.reconcile` (the `coveredOrder` ledger),
-`Facts.LostPulls`
+`Facts.lostPulls`
 
 **expansion** — turning one resolved pull request into its individual commits and
 folding them in, after two filters applied *before anything is parsed*: the
@@ -256,7 +256,7 @@ not true of a 404, which is how a bad credential answers for *every* commit of a
 private repository. The same 422 on a commit's file listing
 (`GET /commits/{sha}`, asked only under `[[packages]]`) is **not** lag:
 attribution has no weaker source for a commit's files, so the listing is
-recorded as unread (`Facts.FilesUnknown`), never the fallback.
+recorded as unread (`Facts.filesUnknown`), never the fallback.
 `internal/github/github.go: IsCommitUnknown`, `internal/walk/partition.go: listFiles`
 
 **shallow checkout** — a `--depth` clone, in which git cannot answer the
@@ -269,13 +269,13 @@ truncated history, and once per `--range` read (`lint`, `bump`, `notes`), which
 warns. Its **boundary** commit — the one whose parents were cut off — has no
 diff the clone can compute: git reads it as a root, and its whole tree is not
 its diff (DESIGN §4.1). `internal/gitsource/gitsource.go: IsShallow, IsShallowBoundary`,
-`Facts.Shallow`, `internal/cli/range.go: logRange`
+`Facts.shallow`, `internal/cli/range.go: logRange`
 
 **truncated listing** — a pull whose commit listing came back at GitHub's hard
 cap of **250**, however far pagination follows. A listing of exactly the cap is
 one glyph cannot claim to have read whole: the commits past it are *unreachable,
 not absent*, and any of them could carry the deciding sigil.
-`internal/github/github.go: PullCommitsCap`, `Facts.Truncated`
+`internal/github/github.go: PullCommitsCap`, `Facts.truncated`
 
 **incomplete walk** — a walk that came back knowing it had **not** read the whole
 range. The distinction it exists to make: downstream, a range that genuinely
@@ -290,15 +290,15 @@ body. `internal/walk/facts.go: Facts.Complete`,
 `internal/cli/cmd_release.go: releaseRun`
 
 **Facts** — the struct carrying the above (`internal/walk/facts.go`): `Pulls` (provenance) plus the
-**seven** ways a walk can come back short — `AllUnknown` (every commit unknown to
+**seven** ways a walk can come back short — `allUnknown` (every commit unknown to
 the queried repository, which is what a wrong `--repo` or an inherited
-`$GITHUB_REPOSITORY` looks like from inside), `Shallow`, `LostPulls`, `Dropped`,
-`Truncated`, and the two only a packages walk meets: `FilesCapped` (a commit's
-file listing at GitHub's 3000 cap) and `FilesUnknown` (a file listing GitHub
+`$GITHUB_REPOSITORY` looks like from inside), `shallow`, `lostPulls`, `dropped`,
+`truncated`, and the two only a packages walk meets: `filesCapped` (a commit's
+file listing at GitHub's 3000 cap) and `filesUnknown` (a file listing GitHub
 answered 422 for). `Complete()` is exactly "none of the seven".
 `internal/walk/facts.go: Facts`
 
-**Dropped** — of the seven, the one whose name over-promises.
+**dropped** — of the seven, the one whose name over-promises.
 Nothing is recorded unless the commit reached the fallback path through *API lag*
 — the 422 arm, where GitHub did not know the sha. Under that condition two
 outcomes record: a merge commit excluded on its parent count (a merge point that
@@ -306,9 +306,9 @@ may have carried a whole pull), and a message no pattern claims. Every other
 fallback
 records nothing, including the same shapes reached because the commit simply
 has no pull request — a direct push or a local `git merge` is a message glyph
-**read** and judged, not evidence it could not obtain. So `Dropped` is not "the
+**read** and judged, not evidence it could not obtain. So `dropped` is not "the
 fold used second-best evidence"; it is "something is missing from the fold, and
-only GitHub can supply it". `internal/walk/facts.go: Facts.Dropped` (both
+only GitHub can supply it". `internal/walk/facts.go: Facts.dropped` (both
 arms sit in `walk.fallback`'s lag arm)
 
 **shortfall** — the one-clause sentence naming what the walk could not read, so

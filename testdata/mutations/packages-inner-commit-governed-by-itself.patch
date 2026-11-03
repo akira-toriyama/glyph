@@ -5,8 +5,8 @@ diff --git a/internal/walk/walk.go b/internal/walk/walk.go
  // the pull it was expanded from (DESIGN §4.1: a listed commit joins a line
  // only when its governing commit is unreleased there).
  func (c Commit) governing() string {
--	if c.Landed || c.MergePoint == "" {
-+	if c.Landed || c.MergePoint == "" || true {
+-	if c.Landed || c.mergePoint == "" {
++	if c.Landed || c.mergePoint == "" || true {
  		return c.Raw.SHA
  	}
- 	return c.MergePoint
+ 	return c.mergePoint

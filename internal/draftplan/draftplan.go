@@ -47,16 +47,16 @@ const (
 	ActionNone   Action = "none"
 )
 
-// Plan is the convergence: at most one draft kept (retagged to Tag), the
+// Plan is the convergence: at most one draft kept (retagged to tag), the
 // rest of the MANAGED drafts stale. Unmanaged releases never appear.
 type Plan struct {
 	Action Action
-	// Tag is what the kept (or created) draft converges to: the next version
+	// tag is what the kept (or created) draft converges to: the next version
 	// on a release verdict, placeholderTag on a maintained none. Empty when
 	// the plan is a pure delete or a no-op.
-	Tag   string
+	tag   string
 	Keep  *Draft
-	Stale []Draft
+	stale []Draft
 }
 
 // PlaceholderTagOn is the placeholder's tag on a line: bare "Unreleased" for
@@ -122,7 +122,7 @@ func PlanDraft(l config.Line, level bump.Level, nextTag string, draftOnNone bool
 		if len(drafts) == 0 {
 			return Plan{Action: ActionNone}
 		}
-		return Plan{Action: ActionDelete, Stale: drafts}
+		return Plan{Action: ActionDelete, stale: drafts}
 	}
 
 	tag := nextTag
@@ -150,5 +150,5 @@ func PlanDraft(l config.Line, level bump.Level, nextTag string, draftOnNone bool
 	if keep != nil {
 		action = ActionUpdate
 	}
-	return Plan{Action: action, Tag: tag, Keep: keep, Stale: stale}
+	return Plan{Action: action, tag: tag, Keep: keep, stale: stale}
 }

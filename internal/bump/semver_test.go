@@ -245,7 +245,7 @@ func TestNextPromoteLandsOnV1(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ParseVersion(%q): %v", c.in, err)
 		}
-		if got := v.next(Decision{Level: LevelMajor, Promote: true}).String(); got != c.want {
+		if got := v.next(Decision{Level: LevelMajor, promote: true}).String(); got != c.want {
 			t.Fatalf("%s.next(promote) = %s, want %s", c.in, got, c.want)
 		}
 	}
@@ -338,7 +338,7 @@ func FuzzVersionNext(f *testing.F) {
 			t.Skip("unreachable: promote always folds as major")
 		}
 		v := Version{Major: major, Minor: minor, Patch: patch}
-		dec := Decision{Level: b, Promote: promote}
+		dec := Decision{Level: b, promote: promote}
 		next := v.next(dec)
 		if promote && next.Compare(Version{Major: 1}) < 0 {
 			t.Fatalf("Next(promote) landed below v1.0.0: %v -> %v", v, next)

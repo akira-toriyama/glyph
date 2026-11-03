@@ -107,7 +107,7 @@ func (c *Config) Sayable(i int, message string) (s Sayable, ok bool) {
 	elsewhere := make(map[string]bool)
 	for j := range c.Patterns {
 		p := &c.Patterns[j]
-		if j != i && (!p.bindsGroups() || p.Warn != "") {
+		if j != i && (!p.bindsGroups() || p.warn != "") {
 			continue
 		}
 		scope, sigil := p.scope, p.sigil
@@ -125,7 +125,7 @@ func (c *Config) Sayable(i int, message string) (s Sayable, ok bool) {
 		for _, n := range names {
 			elsewhere[n] = true
 		}
-		if sigil.spells(SigilNone.String()) || (p.Fixed != nil && *p.Fixed == SigilNone) {
+		if sigil.spells(SigilNone.String()) || (p.fixed != nil && *p.fixed == SigilNone) {
 			s.ElsewhereNone = true
 		}
 	}
@@ -165,7 +165,7 @@ func (c *Config) removals(i int, message string) (scope, sigil bool) {
 		return false, false
 	}
 	p := &c.Patterns[i]
-	if dropped, ok := withoutScope(p.Pattern, message); ok {
+	if dropped, ok := withoutScope(p.pattern, message); ok {
 		after, ok := c.claimedBy(i, dropped)
 		scope = ok && after.Groups[ScopeGroup] == "" && after.Sigil == before.Sigil
 	}

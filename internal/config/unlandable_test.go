@@ -259,8 +259,8 @@ func TestPresetsNeverSkipAutosquashArtifacts(t *testing.T) {
 				t.Fatalf("a merge commit = %+v (err %v), want the skip", merge, err)
 			}
 			for i, p := range cfg.Patterns {
-				if p.Skip && i != merge.PatternIndex {
-					t.Errorf("patterns[%d] (%s) is a skip: the presets skip merge commits alone, whose diff is never read", i, p.Pattern)
+				if p.skip && i != merge.PatternIndex {
+					t.Errorf("patterns[%d] (%s) is a skip: the presets skip merge commits alone, whose diff is never read", i, p.pattern)
 				}
 			}
 

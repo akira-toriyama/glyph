@@ -46,40 +46,40 @@ const (
 	contradiction
 )
 
-// Owned is one file with the package that owns it (the longest declared
+// owned is one file with the package that owns it (the longest declared
 // prefix): a contradiction's evidence for a line the commit does move.
-type Owned struct {
-	File    string
-	Package config.Package
+type owned struct {
+	file string
+	pkg  config.Package
 }
 
 // Refusal is the lint-class error Attribute returns (the caller maps it to
 // exit 3; this package, like config, does not decide exit codes). Its fields
 // are what an error message or a machine detail needs to name the escapes.
 //
-// Reason, Scope and Sigil are the verdict's own terms. The rest only words
-// the sentence, in two halves: what Attribute saw of the files (Owners,
-// Unowned, Files, More), and what it cannot see and the caller tells it
+// reason, scope and sigil are the verdict's own terms. The rest only words
+// the sentence, in two halves: what Attribute saw of the files (owners,
+// unowned, files, more), and what it cannot see and the caller tells it
 // (Merge, Unread, Sayable).
 type Refusal struct {
-	Reason reason
-	Scope  string
-	Sigil  config.Sigil
+	reason reason
+	scope  string
+	sigil  config.Sigil
 
-	// Owners is a contradiction's evidence: one owned file per touched
+	// owners is a contradiction's evidence: one owned file per touched
 	// package, in config order, so the file that decides is named wherever it
 	// sits in the diff — the first three files of `.github/a.yml, Makefile,
 	// curry/b.go` are two no package owns before the one that matters.
-	// Unowned counts the files no package owns, which are never said to
+	// unowned counts the files no package owns, which are never said to
 	// belong to anything.
-	Owners  []Owned
-	Unowned int
-	// Files is a noCarrier's evidence: the first of the commit's files, none
+	owners  []owned
+	unowned int
+	// files is a noCarrier's evidence: the first of the commit's files, none
 	// of which a package owns — nil when the commit arrived with no file.
-	Files []string
-	// More counts what the evidence leaves out: the owned files past Owners,
-	// or the files past Files.
-	More int
+	files []string
+	// more counts what the evidence leaves out: the owned files past owners,
+	// or the files past files.
+	more int
 
 	// Merge: the commit is a merge commit, whose diff no caller reads.
 	Merge bool
@@ -118,7 +118,7 @@ func declaration(say config.Sayable) string {
 }
 
 func (r *Refusal) Error() string {
-	if r.Reason == contradiction {
+	if r.reason == contradiction {
 		return r.contradictionSentence()
 	}
 	return r.noCarrierSentence()
@@ -132,30 +132,30 @@ func (r *Refusal) Error() string {
 // longest prefix (t-mfny (C), t-n5tw 5).
 func (r *Refusal) contradictionSentence() string {
 	say := r.Sayable
-	evidence := make([]string, 0, len(r.Owners)+2)
+	evidence := make([]string, 0, len(r.owners)+2)
 	var moved, spellable []string
-	for _, o := range r.Owners {
+	for _, o := range r.owners {
 		// The root package has no path worth printing ("."), and its name is
 		// shown only where a scope can write it.
-		label := fmt.Sprintf("%s (%s)", o.Package.Name, o.Package.Path)
-		writable := slices.Contains(say.Scopes, o.Package.Name)
-		if o.Package.Path == "." {
+		label := fmt.Sprintf("%s (%s)", o.pkg.Name, o.pkg.Path)
+		writable := slices.Contains(say.Scopes, o.pkg.Name)
+		if o.pkg.Path == "." {
 			label = "the root package"
 			if writable {
-				label = o.Package.Name + " (the root package)"
+				label = o.pkg.Name + " (the root package)"
 			}
 		}
-		evidence = append(evidence, fmt.Sprintf("%s belongs to %s", o.File, label))
-		moved = append(moved, o.Package.Name)
+		evidence = append(evidence, fmt.Sprintf("%s belongs to %s", o.file, label))
+		moved = append(moved, o.pkg.Name)
 		if writable {
-			spellable = append(spellable, o.Package.Name)
+			spellable = append(spellable, o.pkg.Name)
 		}
 	}
-	if r.More > 0 {
-		evidence = append(evidence, countFiles(r.More, "more ")+" likewise")
+	if r.more > 0 {
+		evidence = append(evidence, countFiles(r.more, "more ")+" likewise")
 	}
-	if r.Unowned > 0 {
-		evidence = append(evidence, countFiles(r.Unowned, "")+" under no package")
+	if r.unowned > 0 {
+		evidence = append(evidence, countFiles(r.unowned, "")+" under no package")
 	}
 	if n := len(evidence); n > 1 {
 		evidence[n-1] = "and " + evidence[n-1]
@@ -190,7 +190,7 @@ func (r *Refusal) contradictionSentence() string {
 		whose = "the files read of this commit do"
 	}
 	return fmt.Sprintf("scope (%s) names a line %s not move: %s — the longest declared path owns a file: %s",
-		r.Scope, whose, strings.Join(evidence, ", "), remedy)
+		r.scope, whose, strings.Join(evidence, ", "), remedy)
 }
 
 func countFiles(n int, more string) string {
@@ -210,22 +210,22 @@ func (r *Refusal) noCarrierSentence() string {
 	say := r.Sayable
 	var opening string
 	switch {
-	case len(r.Files) > 0:
+	case len(r.files) > 0:
 		whose := "its files"
 		if r.Unread {
 			whose = "the files read of it"
 		}
-		files := strings.Join(r.Files, ", ")
-		if r.More > 0 {
-			files += fmt.Sprintf(" and %d more", r.More)
+		files := strings.Join(r.files, ", ")
+		if r.more > 0 {
+			files += fmt.Sprintf(" and %d more", r.more)
 		}
-		opening = fmt.Sprintf("%s (%s) belong to no declared package, and its sigil %s claims a version impact nothing can carry", whose, files, r.Sigil)
+		opening = fmt.Sprintf("%s (%s) belong to no declared package, and its sigil %s claims a version impact nothing can carry", whose, files, r.sigil)
 	case r.Merge:
-		opening = fmt.Sprintf("this merge commit's own diff is never read, so no package's tree can carry its sigil %s", r.Sigil)
+		opening = fmt.Sprintf("this merge commit's own diff is never read, so no package's tree can carry its sigil %s", r.sigil)
 	case r.Unread:
-		opening = fmt.Sprintf("no file of this commit was read, so no package's tree can carry its sigil %s", r.Sigil)
+		opening = fmt.Sprintf("no file of this commit was read, so no package's tree can carry its sigil %s", r.sigil)
 	default:
-		opening = fmt.Sprintf("this commit touches no file, so no package's tree can carry its sigil %s", r.Sigil)
+		opening = fmt.Sprintf("this commit touches no file, so no package's tree can carry its sigil %s", r.sigil)
 	}
 
 	var escapes []string
@@ -244,7 +244,7 @@ func (r *Refusal) noCarrierSentence() string {
 	if len(escapes) == 0 {
 		// Nothing this message can write under its pattern carries it: say
 		// which pattern and why, then where a reworded message could go.
-		sigil := fmt.Sprintf("fixes the sigil at %s", r.Sigil)
+		sigil := fmt.Sprintf("fixes the sigil at %s", r.sigil)
 		if say.SigilGroup {
 			sigil = "captures no = as the sigil"
 		}
@@ -262,7 +262,7 @@ func (r *Refusal) noCarrierSentence() string {
 			escapes = append(escapes, "reword it so another pattern claims it as =, so it moves no line")
 		}
 	}
-	if len(r.Files) > 0 {
+	if len(r.files) > 0 {
 		escapes = append(escapes, declaration(say))
 	}
 
@@ -369,7 +369,7 @@ func Attribute(files []string, scope string, sigil config.Sigil, packages []conf
 // file each touched package owns, the other owned files counted, and the
 // files no package owns counted apart.
 func refuseContradiction(files []string, scope string, sigil config.Sigil, packages []config.Package) *Refusal {
-	r := &Refusal{Reason: contradiction, Scope: scope, Sigil: sigil}
+	r := &Refusal{reason: contradiction, scope: scope, sigil: sigil}
 	first := make(map[int]string)
 	for _, f := range files {
 		f = path.Clean(f)
@@ -377,16 +377,16 @@ func refuseContradiction(files []string, scope string, sigil config.Sigil, packa
 		_, seen := first[i]
 		switch {
 		case !owned:
-			r.Unowned++
+			r.unowned++
 		case seen:
-			r.More++
+			r.more++
 		default:
 			first[i] = f
 		}
 	}
 	for i, p := range packages {
 		if f, ok := first[i]; ok {
-			r.Owners = append(r.Owners, Owned{File: f, Package: p})
+			r.owners = append(r.owners, owned{file: f, pkg: p})
 		}
 	}
 	return r
@@ -395,13 +395,13 @@ func refuseContradiction(files []string, scope string, sigil config.Sigil, packa
 // refuseNoCarrier builds rule 3's refusal with its evidence: no package owns any
 // of files, so the first few stand for all of them.
 func refuseNoCarrier(files []string, scope string, sigil config.Sigil) *Refusal {
-	r := &Refusal{Reason: noCarrier, Scope: scope, Sigil: sigil}
+	r := &Refusal{reason: noCarrier, scope: scope, sigil: sigil}
 	for i, f := range files {
 		if i == quoted {
-			r.More = len(files) - quoted
+			r.more = len(files) - quoted
 			break
 		}
-		r.Files = append(r.Files, path.Clean(f))
+		r.files = append(r.files, path.Clean(f))
 	}
 	return r
 }

@@ -19,7 +19,7 @@ type LintVerdict struct {
 	Reason string
 	// Warn carries the winning pattern's warn message on an OK verdict — a
 	// legal-but-undesirable message the caller must surface without failing
-	// (see Pattern.Warn). Empty otherwise.
+	// (see Pattern.warn). Empty otherwise.
 	Warn string
 }
 
@@ -110,7 +110,7 @@ func (c *Config) unclaimedReason(m Match, authoring bool) string {
 // never parsed: no placeholder is interpreted, and an absent [commit] block
 // yields "".
 func (c *Config) subjectForm() string {
-	for line := range strings.SplitSeq(c.Commit.Template, "\n") {
+	for line := range strings.SplitSeq(c.commit.template, "\n") {
 		if line = strings.TrimSpace(line); line != "" {
 			return line
 		}

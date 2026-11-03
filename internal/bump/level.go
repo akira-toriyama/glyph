@@ -18,7 +18,7 @@ const (
 // Decision is the whole answer a fold produces: the rung the range reached,
 // plus whether any commit asked to promote (the '%' sigil).
 //
-// Promote is a field rather than a fifth rung, and that is the load-bearing
+// promote is a field rather than a fifth rung, and that is the load-bearing
 // choice here. Level is a closed four-word vocabulary three consumers already
 // read as data — a note section's semver filter, preview's icon and rank, and
 // pr-verdict.yml's `case "$level"` (major → breaking=true, any other word →
@@ -30,14 +30,14 @@ const (
 // the lattice instead of inside it.
 type Decision struct {
 	Level   Level
-	Promote bool
+	promote bool
 }
 
 // Merge folds two decisions: max on the lattice, OR on promote. Both halves
 // are commutative and idempotent, so the whole fold stays order-independent —
 // squash order cannot move the version, promotion included.
 func (d Decision) Merge(o Decision) Decision {
-	return Decision{Level: reduce([]Level{d.Level, o.Level}), Promote: d.Promote || o.Promote}
+	return Decision{Level: reduce([]Level{d.Level, o.Level}), promote: d.promote || o.promote}
 }
 
 // reduce folds levels with max over the lattice. The fold is
