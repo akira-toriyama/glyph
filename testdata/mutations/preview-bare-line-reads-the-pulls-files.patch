@@ -1,24 +1,13 @@
 diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
-index 75ca3ae..f1fa16b 100644
+index 26964f4..33cbb60 100644
 --- a/internal/cli/cmd_preview.go
 +++ b/internal/cli/cmd_preview.go
-@@ -254,9 +254,6 @@ type touchedLine struct {
- // found outranks a later failure to read the rest (walk.Walker.Outranks).
- func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner, repo string, number int, commits []walk.Commit, name string) ([]touchedLine, string, error) {
- 	lines := walk.PendingLines(cfg, name)
--	if len(cfg.Packages) == 0 {
--		return []touchedLine{{Line: lines[0], commits: commits}}, "", nil
--	}
- 	perLine := make([][]walk.Commit, len(lines))
- 	var facts walk.Facts
- 	var refused []bump.Refusal
-@@ -295,6 +292,9 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
- 		return nil, "", core.Lintf("commit %.7s in pull request %s/%s#%d: %v%s — the release walk will refuse this commit the same way once it is merged, and a merged commit cannot be rewritten; fix it on the branch", refused[0].SHA, owner, repo, number, first, more).
- 			WithDetails(refused)
- 	}
-+	if len(cfg.Packages) == 0 {
-+		return []touchedLine{{Line: lines[0], commits: commits}}, "", nil
-+	}
- 	var touched []touchedLine
- 	for i, l := range lines {
- 		if len(perLine[i]) == 0 {
+@@ -269,7 +269,7 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
+ 		case place == walk.Refused:
+ 			refused = append(refused, u.Row)
+ 			continue
+-		case bare, place == walk.PlacedNowhere:
++		case place == walk.PlacedNowhere:
+ 			continue
+ 		}
+ 		placed, err := w.PlaceByFiles(ctx, cfg, owner, repo, walk.Commit{Raw: r, Pull: number}, said, &facts, nil)

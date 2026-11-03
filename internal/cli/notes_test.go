@@ -153,7 +153,7 @@ func TestNotesJSONShape(t *testing.T) {
 
 // TestNotesUnknownShortcodeRendersBySigil: a shortcode the dictionary lacks
 // still folds by its sigil and renders in its semver section. The unmatched
-// case is TestNotesUnmatchedLandsNowhereByDefault's.
+// case is TestNotesRangeRefusesAMessageNoPatternClaims'.
 func TestNotesUnknownShortcodeRendersBySigil(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
 	const subject = ":not_a_real_code:^ mystery change"
@@ -169,24 +169,37 @@ func TestNotesUnknownShortcodeRendersBySigil(t *testing.T) {
 	}
 }
 
-// TestNotesUnmatchedLandsNowhereByDefault: notes never refuse a range — an
-// unmatched commit renders through the bot fallback (raw first line) but has
-// no semver level, so under the preset (whose only author section names
-// dependabot) an unmatched human commit lands in no section at all, and a
-// range holding only it is the soft no-release. The STRICT arm lives in the
-// fold: bump and release refuse this same range (Q2), so nothing publishes a
-// version around the commit notes quietly passed over.
-func TestNotesUnmatchedLandsNowhereByDefault(t *testing.T) {
-	dir, base := testutil.NewTaggedRepo(t)
-	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji in this one")
-	t.Chdir(dir)
+// TestNotesRangeRefusesAMessageNoPatternClaims: notes over a --range refuses
+// a message no pattern claims — an unlandable claim included — as bump does,
+// byte for byte: both read the range through walk.Pending, the one place a
+// --range refuses (DESIGN §4.1, rule 3), as the release walk refuses it for
+// both. Rendered instead, the commit landed in no section under the preset
+// and notes published the range's other notes (0) where bump refuses it (3).
+// The range holds a commit that lands in a section because notes' own fold
+// runs only to count an empty body's participants (participating), so a
+// range with nothing to render would be refused there too. An exclude_authors
+// author's message is never judged and still renders through the bot
+// fallback (TestNotesSectionsAloneDecide).
+func TestNotesRangeRefusesAMessageNoPatternClaims(t *testing.T) {
+	for name, message := range map[string]string{
+		"no pattern claims it": "no gitmoji in this one",
+		"an unlandable claim":  "fixup! :bug:~ fix a crash",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, base := testutil.NewTaggedRepo(t)
+			testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a command palette")
+			testutil.Commit(t, dir, "akira-toriyama", message)
+			t.Chdir(dir)
 
-	code, stdout, _ := runGlyph(t, "notes", "--range", base+"..HEAD")
-	if code != 1 {
-		t.Fatalf("notes over an unmatched-only range exited %d, want 1 (nothing lands in a section)", code)
-	}
-	if stdout != "" {
-		t.Fatalf("stdout should be empty, got %q", stdout)
+			code, _, want := runGlyph(t, "bump", "--range", base+"..HEAD")
+			if code != 3 {
+				t.Fatalf("positive control: bump refuses this range at 3, got %d\nstderr: %s", code, want)
+			}
+			code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
+			if code != 3 || stdout != "" || stderr != want {
+				t.Fatalf("notes --range exited %d with %q, want 3, nothing on stdout and bump's refusal\n--- notes ---\n%s\n--- bump ---\n%s", code, stdout, stderr, want)
+			}
+		})
 	}
 }
 
@@ -250,9 +263,8 @@ func wantBareLineReason(t *testing.T, reason string) {
 //
 // Counting the listing it is handed, notes disagrees with bump: over one
 // single-line range of two =, a bot and a merge commit, bump says 2 and notes
-// 4; with a message no pattern claims beside one =, notes says 2 over a range
-// the fold refuses; over a --since-tag walk of one = and a bot, 2 against
-// bump's 1; and under [[packages]], 4 where bump's top-level commits lists 1.
+// 4; over a --since-tag walk of one = and a bot, 2 against bump's 1; and
+// under [[packages]], 4 where bump's top-level commits lists 1.
 // Mutation row notes-reason-counts-the-raw-listing;
 // the packages case is TestNotesPackagesNoReleaseCountsParticipatingCommits.
 func TestNotesNoReleaseCountsParticipatingCommits(t *testing.T) {
@@ -270,22 +282,6 @@ func TestNotesNoReleaseCountsParticipatingCommits(t *testing.T) {
 		reason := notesNoReleaseReason(t, "--range", base+"..HEAD")
 		if reasonCount(t, reason) != 2 {
 			t.Errorf("notes counts the bot and the merge commit as participating — bump says 2 of this range:\n%s", reason)
-		}
-		wantBareLineReason(t, reason)
-	})
-
-	t.Run("a message no pattern claims", func(t *testing.T) {
-		dir, base := testutil.NewTaggedRepo(t)
-		testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the notes model")
-		testutil.Commit(t, dir, "akira-toriyama", "no sigil at all")
-		t.Chdir(dir)
-
-		if code, _, stderr := runGlyph(t, "bump", "--range", base+"..HEAD"); code != 3 {
-			t.Fatalf("positive control: the fold refuses this range at 3, got %d\nstderr: %s", code, stderr)
-		}
-		reason := notesNoReleaseReason(t, "--range", base+"..HEAD")
-		if reasonCount(t, reason) != 1 {
-			t.Errorf("a message the fold refuses is not one it reads, so it does not participate:\n%s", reason)
 		}
 		wantBareLineReason(t, reason)
 	})

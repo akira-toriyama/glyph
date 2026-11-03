@@ -1,0 +1,19 @@
+diff --git a/internal/walk/partition.go b/internal/walk/partition.go
+index a55a8ad..d782356 100644
+--- a/internal/walk/partition.go
++++ b/internal/walk/partition.go
+@@ -192,13 +192,7 @@ func (r lineRanges) releasedEverywhere(gov string) bool {
+ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, repo string, commits []Commit, facts *Facts, ranges lineRanges) ([]LineWalk, []Commit, []placementRefusal, error) {
+ 	lines := ranges.lines
+ 	if len(cfg.Packages) == 0 {
+-		var refused []placementRefusal
+-		for _, c := range commits {
+-			if _, _, u := PlaceOf(cfg, c.Raw); u != nil {
+-				refused = append(refused, placementRefusal{row: u.Row, remedy: u.Remedy, c: c, reach: []int{0}})
+-			}
+-		}
+-		return []LineWalk{{Line: lines[0], Commits: commits}}, commits, refused, nil
++		return []LineWalk{{Line: lines[0], Commits: commits}}, commits, nil, nil
+ 	}
+ 	lws := make([]LineWalk, len(lines))
+ 	for i := range lines {

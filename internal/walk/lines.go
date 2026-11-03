@@ -48,8 +48,8 @@ type Line struct {
 // on it and unreleased on it (DESIGN §4.1) — in walk order. That is the
 // line's fold input and its notes' input, not its participating commits: an
 // exclude_authors commit joins the lines its files touch and the fold drops
-// it, and a message no pattern claims joins every line it is unreleased on so
-// the fold refuses it there.
+// it. A judged message no pattern claims joins no line: the walk refused it
+// at its sighting, and partitionLines for the sources that are no walk.
 type LineWalk struct {
 	Line
 	Commits []Commit

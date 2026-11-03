@@ -14,8 +14,11 @@ import "fmt"
 // an unclaimed message wherever a commit exists (the fold, lint, the release
 // walk's wedge, packages placement) and already puts exclude_authors ahead
 // of it, so a consumer that never reads the field still fails closed, and the
-// notes render it through the raw-line fallback like any message no pattern
-// claims. Only LintAuthoring reads the field to let the message through.
+// notes refuse it on every source as they refuse any message no pattern
+// claims (bump.RangeRefusal over --range and --pr, the walk's wedge over
+// --since-tag); only an exclude_authors author's message, never judged,
+// renders through the raw-line fallback. Only LintAuthoring reads the field
+// to let the message through.
 type Match struct {
 	// Matched is false when no pattern's regex matched the message, or when
 	// the first one that did is unlandable. Sigil, Skip, Groups and

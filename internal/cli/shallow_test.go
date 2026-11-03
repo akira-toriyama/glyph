@@ -64,20 +64,20 @@ func TestLintRangeOnAShallowCheckoutSaysSo(t *testing.T) {
 // bump refuses the range at 3; under [[packages]] a warning on the boundary
 // commit alone says nothing of the range. They warn through lint's read and
 // keep answering: they report, and release alone refuses a shallow checkout.
-// The full clone is the control: bump refuses, and nothing is said about
-// shallowness.
+// The full clone is the control: bump and notes refuse the range at 3, and
+// nothing is said about shallowness.
 //
 // One test per reader and shape, because the three ledger rows that defend
 // this decision mutate the one read every reader shares (rangeLines):
 // a row names the test that holds only its own assertion, so that
 // assertion going missing is what turns the row red, not a sibling's.
-func shallowRangeSaysSo(t *testing.T, dir, cmd string, full int) {
+func shallowRangeSaysSo(t *testing.T, dir, cmd string) {
 	t.Helper()
 	clone := shallowClone(t, dir, 2)
 	t.Chdir(dir)
 	code, _, stderr := runGlyph(t, cmd, "--range", "HEAD")
-	if code != full || strings.Contains(stderr, "SHALLOW") {
-		t.Fatalf("%s --range on the full clone exited %d, want %d with nothing said about shallowness\nstderr: %s", cmd, code, full, stderr)
+	if code != 3 || strings.Contains(stderr, "SHALLOW") {
+		t.Fatalf("%s --range on the full clone exited %d, want 3 with nothing said about shallowness\nstderr: %s", cmd, code, stderr)
 	}
 	t.Chdir(clone)
 	code, _, stderr = runGlyph(t, cmd, "--range", "HEAD")
@@ -117,24 +117,24 @@ func shallowPackagesRepo(t *testing.T) string {
 // TestBumpRangeOnAShallowCheckoutSaysSo: bump --range on the bare line
 // (ledger row bump-range-is-silent-on-a-shallow-checkout).
 func TestBumpRangeOnAShallowCheckoutSaysSo(t *testing.T) {
-	shallowRangeSaysSo(t, shallowSingleRepo(t), "bump", 3)
+	shallowRangeSaysSo(t, shallowSingleRepo(t), "bump")
 }
 
 // TestNotesRangeOnAShallowCheckoutSaysSo: notes --range on the bare line
 // (ledger row notes-range-is-silent-on-a-shallow-checkout).
 func TestNotesRangeOnAShallowCheckoutSaysSo(t *testing.T) {
-	shallowRangeSaysSo(t, shallowSingleRepo(t), "notes", 0)
+	shallowRangeSaysSo(t, shallowSingleRepo(t), "notes")
 }
 
 // TestBumpPackagesRangeOnAShallowCheckoutSaysSo and its notes sibling: the
 // same read under [[packages]] (ledger row
 // packages-range-is-silent-on-a-shallow-checkout names both).
 func TestBumpPackagesRangeOnAShallowCheckoutSaysSo(t *testing.T) {
-	shallowRangeSaysSo(t, shallowPackagesRepo(t), "bump", 3)
+	shallowRangeSaysSo(t, shallowPackagesRepo(t), "bump")
 }
 
 func TestNotesPackagesRangeOnAShallowCheckoutSaysSo(t *testing.T) {
-	shallowRangeSaysSo(t, shallowPackagesRepo(t), "notes", 0)
+	shallowRangeSaysSo(t, shallowPackagesRepo(t), "notes")
 }
 
 // TestLintRangePackagesAtAShallowBoundaryIsNotReadAsTheWholeTree: the

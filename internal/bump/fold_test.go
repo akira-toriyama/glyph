@@ -2,6 +2,7 @@ package bump
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -120,6 +121,37 @@ func TestFoldRefusesUnmatched(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "bbb2") {
 		t.Errorf("refusal must name the offending commit: %v", err)
+	}
+}
+
+// TestFoldNamesEveryRefusal: the fold reads the whole range before it
+// refuses (Refusal), so every refused commit is a details row, in range
+// order, and the message counts the rest. Stopping at the first answered a
+// three-commit cleanup with three separate red runs.
+func TestFoldNamesEveryRefusal(t *testing.T) {
+	cfg := testCfg(t)
+	_, _, err := Fold([]Commit{
+		{SHA: "aaa1", Author: "akira", Message: "fix: the first wrong grammar"},
+		{SHA: "bbb2", Author: "akira", Message: "fix: the second wrong grammar"},
+		{SHA: "ccc3", Author: "akira", Message: "fix: the third wrong grammar"},
+	}, cfg)
+	ce, ok := errors.AsType[*core.Error](err)
+	if !ok || ce.Code != core.CodeLint {
+		t.Fatalf("err = %v, want *core.Error with CodeLint (exit 3)", err)
+	}
+	rows, ok := ce.Details.([]Refusal)
+	if !ok {
+		t.Fatalf("details = %#v, want []Refusal", ce.Details)
+	}
+	var shas []string
+	for _, r := range rows {
+		shas = append(shas, r.SHA)
+	}
+	if want := []string{"aaa1", "bbb2", "ccc3"}; !slices.Equal(shas, want) {
+		t.Errorf("details name %q, want every refused commit in range order %q", shas, want)
+	}
+	if want := "(+2 more violation(s), all in details)"; !strings.Contains(ce.Msg, want) {
+		t.Errorf("refusal %q does not count the rest as %q", ce.Msg, want)
 	}
 }
 

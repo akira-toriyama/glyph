@@ -261,11 +261,12 @@ func TestBumpUnmatchedCommitIsLint(t *testing.T) {
 
 	// The SHA is what makes the failure actionable: published history is
 	// immutable, so the operator's next move is to go look at that commit.
-	// bump.Fold's refusal carries it ("commit %.7s: …"), so the assertion
-	// reads the envelope's message in that shape: the details carry the SHA
-	// too, and a search of the whole stream stays green with it dropped from
-	// the message, as the word "commit " alone would. The API path asserts the
-	// same (pr_test.go's TestPRUnmatchedCommitIsLint).
+	// The range's refusal (walk.Pending → bump.RangeRefusal) carries it
+	// ("commit %.7s: …"), so the assertion reads the envelope's message in
+	// that shape: the details carry the SHA too, and a search of the whole
+	// stream stays green with it dropped from the message, as the word
+	// "commit " alone would. The API path asserts the same (pr_test.go's
+	// TestPRUnmatchedCommitIsLint).
 	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
 	code, _, stderr := runGlyph(t, "bump", "--range", base+"..HEAD")

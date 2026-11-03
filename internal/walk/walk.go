@@ -139,8 +139,12 @@ func (w Walker) Since(ctx context.Context, cfg *config.Config, tagFlag, owner, r
 // over the API) and Pulls is never asked, which is why the commits must be
 // landed identities the checkout holds (walkedFiles), as a local range's
 // are, and why a pull's listing reaches it only on the bare line, where
-// partitionLines is the identity and no file is read. A refusal is worded
-// for a range the caller may still rewrite (rangeRefusal).
+// partitionLines is the identity and no file is read. It is the one place
+// such a source refuses, on both shapes: every message the pattern file
+// refuses and, under packages, every commit attribution refuses, in the
+// order the commits come, in one refusal worded for a range the caller may
+// still rewrite (rangeRefusal) — where the walk refuses the grammar at each
+// sighting, before attribution runs (DESIGN §4.1, rule 3).
 func (w Walker) Pending(ctx context.Context, cfg *config.Config, commits []Commit, source string) (Result, error) {
 	facts := Facts{Pulls: []PullExpansion{}}
 	ranges, err := w.readLineRanges(ctx, cfg, PendingLines(cfg, source))

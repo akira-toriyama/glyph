@@ -222,9 +222,10 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	if err := checkLineSelection(o.current, w.Lines); err != nil {
 		return err
 	}
-	// The union rows first: a message no pattern claims refuses the walk
-	// before any line is folded, and the rows are what the verdict reports as
-	// the commits it read. On the bare line the union is the line.
+	// The union rows are what the verdict reports as the commits it read. On
+	// the bare line the union is the line. A message no pattern claims never
+	// reaches the fold: the walk refused it at its sighting, before any line
+	// was placed.
 	rows, _, cerr := bump.Fold(walk.BumpCommits(w.All), cfg)
 	if cerr != nil {
 		return cerr

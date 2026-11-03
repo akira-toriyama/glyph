@@ -398,8 +398,8 @@ its diff is never read and only its scope can carry it: with scope and
 sigil for a commit the fold reads, by files alone for one it does not — an
 `exclude_authors` commit moves no version and appears in the notes of the lines
 its files touch (nowhere under no package), a skip is placed nowhere, and a
-message no pattern claims (an *unlandable* one included) joins every line so
-the fold refuses it. The files
+message no pattern claims (an *unlandable* one included) is refused before it
+is attributed, no file of it read (DESIGN §4.1, rule 3). The files
 come from local git for a landed identity and from `GET /commits/{sha}` for a
 squash-merged pull's inner commit. `internal/attribution/attribution.go:
 Attribute`, `internal/walk/partition.go: PlaceOf, Attribute, partitionLines`
@@ -433,7 +433,9 @@ carries the commit, and so do the files the listing did hold.
 **governing commit** — the on-branch identity a line's range judges a walked
 commit by: the commit's own sha when it landed on the released branch, else the
 merge point of the pull it was expanded from. A squash-merged pull's inner
-commits exist on no branch, so without this a line could never hold them.
+commits exist on no branch, so without this a line could never hold them; a
+claimed one two pulls list is counted under its first sighting's (DESIGN §4.1,
+"The walk is one walk").
 `internal/walk/walk.go: Commit.governing`
 
 ## 2. Verdicts and the rolling draft
@@ -611,7 +613,9 @@ and glyph no longer owns one. `internal/config/config.go: Pattern`,
 to write, never to land. The commit-msg hook's modes pass it at 0 with the
 reason as a warning (`Config.LintAuthoring`); every gate that judges an
 existing commit reads it as a message no pattern claims, with the reason as
-the finding (`Config.Lint`, the fold's refusal, the notes' raw-line fallback).
+the finding: `Config.Lint`, the range's refusal (`bump.RangeRefusal`, bump and
+notes alike), the walk's wedge; the raw-line fallback renders only an excluded
+author's.
 Distinguish from *skip*, under which the commit lands and is never judged.
 Made for git's `amend!` subject, which the presets claim when its body — what
 lands — opens the way their first pattern's subject does; the presets claim

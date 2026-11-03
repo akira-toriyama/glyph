@@ -1,14 +1,14 @@
 diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
-index 75ca3ae..529edce 100644
+index 26964f4..b94b00f 100644
 --- a/internal/cli/cmd_preview.go
 +++ b/internal/cli/cmd_preview.go
-@@ -263,6 +263,9 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
- 	var first error
+@@ -264,6 +264,9 @@ func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner
+ 	var refused []bump.Refusal
  	for _, c := range commits {
  		r := c.Raw
 +		if slices.Contains(cfg.ExcludeAuthors, r.Author) {
 +			continue
 +		}
- 		place, said := walk.PlaceOf(cfg, r)
- 		if place != walk.PlacedByFiles {
- 			continue
+ 		place, said, u := walk.PlaceOf(cfg, r)
+ 		switch {
+ 		case place == walk.Refused:

@@ -8,7 +8,6 @@ import (
 	"github.com/akira-toriyama/glyph/v6/internal/config"
 	"github.com/akira-toriyama/glyph/v6/internal/core"
 	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
-	"github.com/akira-toriyama/glyph/v6/internal/notes"
 )
 
 // This file is the --range read lint, bump and notes share, and the count
@@ -21,23 +20,20 @@ import (
 // author, matched, not claimed by a skip pattern (DESIGN §4.1) — for notes'
 // no-release reason, which says "N commit(s) participate" in bump's words and
 // so must mean bump's set. notes has no fold of its own to count: notes.Group
-// renders excluded authors and messages no pattern claims, and the listing it
-// is handed holds skips too (TestNotesNoReleaseCountsParticipatingCommits).
+// renders excluded authors, and the listing it is handed holds skips too
+// (TestNotesNoReleaseCountsParticipatingCommits).
 //
-// The fold itself is asked, one commit at a time, rather than its three
-// conditions restated here: a second copy could drift from the rows bump
-// publishes, and over the whole listing the fold refuses at the first message
-// no pattern claims, where notes renders such a range and still owes a count
-// of the rest.
-func participating(cfg *config.Config, commits []notes.Commit) int {
-	n := 0
-	for _, c := range commits {
-		rows, _, err := bump.Fold([]bump.Commit{{SHA: c.SHA, Author: c.Author, Message: c.Message}}, cfg)
-		if err == nil {
-			n += len(rows)
-		}
+// The count is the fold's rows over the listing — one computation, bump's set
+// by construction, its three conditions never restated here, where a second
+// copy could drift from the rows bump publishes. The error return is the
+// fold's contract, not a path a source takes: every source refused a message
+// no pattern claims before notes was handed the listing (readSource).
+func participating(cfg *config.Config, all []bump.Commit) (int, error) {
+	rows, _, err := bump.Fold(all, cfg)
+	if err != nil {
+		return 0, err
 	}
-	return n
+	return len(rows), nil
 }
 
 // logRange is every --range read — lint's, bump's and notes', single line and

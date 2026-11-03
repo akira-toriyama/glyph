@@ -23,9 +23,10 @@ const (
 	// PlacedByFiles: the commit's own diff decides — with its scope and sigil
 	// when the fold reads the message, by files alone when it does not.
 	PlacedByFiles Place = iota
-	// PlacedEverywhere: a message no pattern claims joins every line it is
-	// unreleased on, so the fold refuses it there (§3); it is not attributed.
-	PlacedEverywhere
+	// Refused: the pattern file refuses the message (bump.Judge) — on no
+	// line, no file read, its row the grammar's half of the one refusal
+	// (partitionLines, preview's pull side).
+	Refused
 	// PlacedNowhere: a skip-pattern commit is in no fold and no section, so
 	// no line holds it and its files are never asked for.
 	PlacedNowhere
@@ -51,23 +52,25 @@ func ReadingOf(m config.Match) Reading {
 
 // PlaceOf reads what attribution may read of a commit's message: its scope
 // and sigil when the fold reads the message, nothing when it does not. An
-// exclude_authors commit is placed by its files alone — the message is
-// exactly what glyph declared it would not judge, so neither its scope nor
-// its sigil may carry it or refuse it (attribution.Attribute with no scope
-// and the none sigil: files decide, and under no package it is placed
-// nowhere, the shape rule 3 gives a shared-only `=`).
-func PlaceOf(cfg *config.Config, raw gitsource.RawCommit) (Place, Reading) {
+// exclude_authors commit is placed by its files alone and never judged — the
+// message is exactly what glyph declared it would not judge, so neither its
+// scope nor its sigil may carry it or refuse it (attribution.Attribute with no
+// scope and the none sigil: files decide, and under no package it is placed
+// nowhere, the shape rule 3 gives a shared-only `=`). Every other message is
+// judged (bump.Judge), and u is its refusal exactly when the place is
+// Refused.
+func PlaceOf(cfg *config.Config, raw gitsource.RawCommit) (Place, Reading, *bump.Unclaimed) {
 	if slices.Contains(cfg.ExcludeAuthors, raw.Author) {
-		return PlacedByFiles, unjudged
+		return PlacedByFiles, unjudged, nil
 	}
-	m, err := cfg.Match(raw.Message)
-	if err != nil || !m.Matched {
-		return PlacedEverywhere, unjudged
+	m, u := bump.Judge(cfg, raw.SHA, raw.Message)
+	if u != nil {
+		return Refused, unjudged, u
 	}
 	if m.Skip {
-		return PlacedNowhere, unjudged
+		return PlacedNowhere, unjudged, nil
 	}
-	return PlacedByFiles, ReadingOf(m)
+	return PlacedByFiles, ReadingOf(m), nil
 }
 
 // Attribute is the one door the walk, lint --range and preview ask
@@ -155,9 +158,12 @@ func (r lineRanges) releasedEverywhere(gov string) bool {
 	return r.holds != nil && len(r.reach(gov)) == 0
 }
 
-// partitionLines splits the walk's commits over the lines. With no packages
-// declared it is the identity: one line holding every commit, nothing asked
-// of git or the API.
+// partitionLines splits the walk's commits over the lines, and collects the
+// refusals of both stages in the order the commits come: the grammar's — a
+// message the pattern file refuses (PlaceOf, bump.Judge; never an
+// exclude_authors author's) — and attribution's. With no packages declared
+// the split is the identity: one line holding every commit, nothing asked of
+// git or the API, and the grammar the one stage.
 //
 // With packages, a commit JOINS line p when it is UNRELEASED on p (its
 // governing commit is in p's range, lineRanges) AND its own diff PLACES it
@@ -165,21 +171,33 @@ func (r lineRanges) releasedEverywhere(gov string) bool {
 // of every commit's files (PlaceOf): with its scope and sigil when the fold
 // reads the message, by files alone for an exclude_authors commit — on no
 // line when its files touch none (t-sr1c; mutation row
-// packages-excluded-author-placed-on-every-line) — nowhere for a skip, and
-// on every line it is unreleased on for a message no pattern claims, so the
-// fold refuses it there (§3). A commit the union holds that is released on
-// every line is dropped with a notice: it was walked because the union had
-// to contain it. PlaceByFiles withholds a refusal over a diff the walk did
-// not read whole; every one over a diff read whole is collected with the
-// lines it wedges and handed down once the whole range is placed, for the
+// packages-excluded-author-placed-on-every-line) — and nowhere for a skip. A
+// message the grammar refuses is not attributed and no file of it is read,
+// so it has no attribution row. A commit the union holds that is released on
+// every line is dropped with a notice before it is judged: it was walked
+// because the union had to contain it. PlaceByFiles withholds a refusal over
+// a diff the walk did not read whole; every one over a diff read whole is
+// collected with the lines it wedges.
+//
+// The refusals are handed down once the whole range is placed, for the
 // caller to word (attributionWedge, rangeRefusal) — one red run for every
-// refused commit, as lint --range over the same range answers (DESIGN §4.1,
-// rule 3). A refusal already collected outranks a later failure to place
-// the rest (Outranks).
+// refused commit of either stage, as lint --range over the same range
+// answers, so a wrong grammar cannot hide behind a wrong tree (DESIGN §4.1,
+// rule 3). A refusal already collected, of either stage, outranks a later
+// failure to place the rest (Outranks). On the release walk the grammar
+// refuses nothing here: the walk refused such a commit at its sighting
+// (expand, fallback) or did not judge it, at an identity every line released
+// (dropped above) or on the API's lag arm (never walked).
 func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, repo string, commits []Commit, facts *Facts, ranges lineRanges) ([]LineWalk, []Commit, []placementRefusal, error) {
 	lines := ranges.lines
 	if len(cfg.Packages) == 0 {
-		return []LineWalk{{Line: lines[0], Commits: commits}}, commits, nil, nil
+		var refused []placementRefusal
+		for _, c := range commits {
+			if _, _, u := PlaceOf(cfg, c.Raw); u != nil {
+				refused = append(refused, placementRefusal{row: u.Row, remedy: u.Remedy, c: c, reach: []int{0}})
+			}
+		}
+		return []LineWalk{{Line: lines[0], Commits: commits}}, commits, refused, nil
 	}
 	lws := make([]LineWalk, len(lines))
 	for i := range lines {
@@ -195,9 +213,10 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
 		}
 		all = append(all, c)
 		var carriers []int
-		switch place, said := PlaceOf(cfg, c.Raw); place {
-		case PlacedEverywhere:
-			carriers = reach
+		switch place, said, u := PlaceOf(cfg, c.Raw); place {
+		case Refused:
+			refused = append(refused, placementRefusal{row: u.Row, remedy: u.Remedy, c: c, reach: reach})
+			continue
 		case PlacedNowhere:
 		case PlacedByFiles:
 			placed, ferr := w.PlaceByFiles(ctx, cfg, owner, repo, c, said, facts, reachedLines(lines, reach))
@@ -208,7 +227,7 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
 				return nil, nil, nil, ferr
 			}
 			if placed.Refused != nil {
-				refused = append(refused, placementRefusal{err: placed.Refused, c: c, reach: reach})
+				refused = append(refused, placementRefusal{row: bump.Refusal{SHA: c.Raw.SHA, Subject: bump.FirstLine(c.Raw.Message), Detail: placed.Refused.Error()}, c: c, reach: reach})
 				continue
 			}
 			for _, i := range reach {
@@ -227,16 +246,16 @@ func (w Walker) partitionLines(ctx context.Context, cfg *config.Config, owner, r
 	return lws, all, refused, nil
 }
 
-// placementRefusal is one commit attribution refused over a diff read whole,
-// with the lines whose range holds it (by index) — the lines it wedges.
+// placementRefusal is one commit the partition refused — its message, by the
+// grammar, or its tree, by attribution over a diff read whole — as its
+// details row, with the lines whose range holds it (by index): the lines it
+// wedges. remedy is the grammar's (bump.Unclaimed.Remedy), "" for
+// attribution's, whose sentence names its own escapes.
 type placementRefusal struct {
-	err   error
-	c     Commit
-	reach []int
-}
-
-func (r placementRefusal) row() bump.Refusal {
-	return bump.Refusal{SHA: r.c.Raw.SHA, Subject: bump.FirstLine(r.c.Raw.Message), Detail: r.err.Error()}
+	row    bump.Refusal
+	remedy string
+	c      Commit
+	reach  []int
 }
 
 // FilePlacement is where a commit's own diff places it (PlaceByFiles): the
@@ -482,29 +501,26 @@ func attributionWedge(refused []placementRefusal, owner, repo string, lines []Li
 	rows := make([]bump.Refusal, 0, len(refused))
 	for _, r := range refused {
 		held.add(r.c.governing(), r.reach)
-		rows = append(rows, r.row())
+		rows = append(rows, r.row)
 	}
 	return core.Lintf(
-		"commit %.7s: %v%s — %s; the commit is already on a published branch and cannot be rewritten, so every release of a line whose range holds it wedges here until that line's walk starts past it: cut %s by hand, or name such a tag with --since-tag=<prefix>vX.Y.Z (DESIGN §4.1)",
-		first.Raw.SHA, refused[0].err, more, where, lineTags(lines, held)).WithDetails(rows)
+		"commit %.7s: %s%s — %s; the commit is already on a published branch and cannot be rewritten, so every release of a line whose range holds it wedges here until that line's walk starts past it: cut %s by hand, or name such a tag with --since-tag=<prefix>vX.Y.Z (DESIGN §4.1)",
+		first.Raw.SHA, refused[0].row.Detail, more, where, lineTags(lines, held)).WithDetails(rows)
 }
 
-// rangeRefusal is attribution's refusal over a --range fold, whose commits
-// the caller may still rewrite: the sentence attribution wrote, which names
-// the escapes the commit can take, in the shape of bump.Fold's refusal of
-// the same range — never the walk's published branch or a tag to cut (DESIGN
-// §4: the authoring remedy is kept for --range; t-wjbs, measured 2026-10-26:
-// an unpushed commit was told to cut a tag on every line). Keep the two
-// shapes in step: a --range caller reads one refusal from either.
+// rangeRefusal is the partition's refusal of commits read outside the walk —
+// a --range fold, a pull's listing — which the caller may still rewrite: both
+// stages' rows in the order the commits come, the first the headline, worded
+// as bump.Fold words its refusal of a range (bump.RangeRefusal) — a lone
+// grammar row with the grammar's remedy, a lone attribution row with the
+// escapes its own sentence names — never the walk's published branch or a
+// tag to cut (DESIGN §4: the authoring remedy is kept for --range; t-wjbs,
+// measured 2026-10-26: an unpushed commit was told to cut a tag on every
+// line).
 func rangeRefusal(refused []placementRefusal) error {
-	first := refused[0]
 	rows := make([]bump.Refusal, 0, len(refused))
 	for _, r := range refused {
-		rows = append(rows, r.row())
+		rows = append(rows, r.row)
 	}
-	msg := fmt.Sprintf("commit %.7s: %v; refusing to version the range", first.c.Raw.SHA, first.err)
-	if n := len(refused) - 1; n > 0 {
-		msg = fmt.Sprintf("commit %.7s: %v (+%d more violation(s), all in details); refusing to version the range", first.c.Raw.SHA, first.err, n)
-	}
-	return core.Lintf("%s", msg).WithDetails(rows)
+	return bump.RangeRefusal(rows, refused[0].remedy)
 }

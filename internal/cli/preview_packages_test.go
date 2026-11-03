@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/akira-toriyama/glyph/v6/internal/bump"
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
@@ -560,10 +562,10 @@ func TestPreviewPackagesRefusesEveryAttributionRefusalAtOnce(t *testing.T) {
 }
 
 // TestPreviewPackagesAsksNoFileOfAnUnclaimedMessage: a message no pattern
-// claims refuses the whole listing's fold, so it is never attributed first —
-// its files are not asked for, and the refusal is the fold's (3), as on the
-// bare line. The stand-in serves the unclaimed commit's listing too and
-// records what it answered, so a placement that asked for it is counted here.
+// claims is refused by the grammar before attribution would read it, so its
+// files are not asked for, and the refusal is preview's (3), as on the bare
+// line. The stand-in serves the unclaimed commit's listing too and records
+// what it answered, so a placement that asked for it is counted here.
 func TestPreviewPackagesAsksNoFileOfAnUnclaimedMessage(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	srv, seen := recordingWalkServer(t, map[string]string{
@@ -580,9 +582,116 @@ func TestPreviewPackagesAsksNoFileOfAnUnclaimedMessage(t *testing.T) {
 	if want := []string{pullCommitsPath(9), commitFilesPath("h1")}; !slices.Equal(*seen, want) {
 		t.Errorf("requests = %q, want %q", *seen, want)
 	}
-	if code != 3 || !strings.Contains(stderr, "commit u1: ") || !strings.Contains(stderr, "refusing to version the range") {
-		t.Fatalf("preview exited %d, want 3 with the fold's refusal of u1\nstderr: %s", code, stderr)
+	if code != 3 || !strings.Contains(stderr, "commit u1 in pull request akira-toriyama/glyph#9: ") || !strings.Contains(stderr, "fix it on the branch") {
+		t.Fatalf("preview exited %d, want 3 with preview's refusal of u1\nstderr: %s", code, stderr)
 	}
+}
+
+// TestPreviewPackagesRefusesGrammarAndTreeAtOnce: a pull holding a message no
+// pattern claims and a commit attribution refuses is one refusal, in
+// preview's words — both stages' rows in listing order, the first the
+// headline — whichever the pull lists first, and a grammar row is a refusal
+// already found when a later read fails. The bare line refuses an unclaimed
+// message in the same words: the walk refuses it the same way once the pull
+// is merged. Attribution asked first hid the grammar's refusal behind its
+// own, and the bare line's came worded as the fold's refusal of a range
+// (measured by review 2026-10-27 on 36b7c53; DESIGN §4.1, rule 3; mutation
+// rows preview-attribution-refusal-hides-the-grammar-refusal,
+// preview-grammar-refusal-hides-behind-a-later-failure).
+func TestPreviewPackagesRefusesGrammarAndTreeAtOnce(t *testing.T) {
+	commits := map[string]string{
+		"c1": apiCommit("c1", "akira-toriyama", ":sparkles:^ add a CI job"),
+		"u1": apiCommit("u1", "akira-toriyama", "Add stuff"),
+		"h1": apiCommit("h1", "akira-toriyama", ":sparkles:(haiku)^ add a season"),
+	}
+	routes := func(order ...string) map[string]string {
+		listing := make([]string, 0, len(order))
+		for _, sha := range order {
+			listing = append(listing, commits[sha])
+		}
+		return map[string]string{
+			pullCommitsPath(9):    `[` + strings.Join(listing, ",") + `]`,
+			commitFilesPath("c1"): apiFiles("ci.yml"),
+			commitFilesPath("u1"): apiFiles("haiku/stuff.go"),
+			commitFilesPath("h1"): apiFiles("haiku/season.go"),
+		}
+	}
+	const tail = " (+1 more refused commit(s), all in details) — the release walk will refuse this commit the same way once it is merged"
+	t.Run("attribution's refusal first", func(t *testing.T) {
+		dir, _ := packagesRepo(t)
+		srv, seen := recordingWalkServer(t, routes("c1", "u1", "h1"))
+		usePR(t, srv)
+		t.Chdir(dir)
+
+		code, stdout, stderr := runGlyph(t, "preview", "--pr", "9")
+		if code != 3 || stdout != "" {
+			t.Fatalf("preview exited %d with %q, want 3 and no comment\nstderr: %s", code, stdout, stderr)
+		}
+		if slices.Contains(*seen, commitFilesPath("u1")) {
+			t.Errorf("requests = %q: the unclaimed commit's files were asked for", *seen)
+		}
+		env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+		assertWedgeDetails(t, env, "c1", "u1")
+		if want := "commit c1 in pull request akira-toriyama/glyph#9: its files (ci.yml) belong to no declared package"; !strings.HasPrefix(env.Message, want) {
+			t.Errorf("the refusal must open on the first refused commit (%q):\n%s", want, env.Message)
+		}
+		if !strings.Contains(env.Message, tail) {
+			t.Errorf("the refusal must count the rest in preview's own words (%q):\n%s", tail, env.Message)
+		}
+	})
+	t.Run("the grammar's refusal first", func(t *testing.T) {
+		dir, _ := packagesRepo(t)
+		usePR(t, walkServer(t, routes("u1", "c1", "h1")))
+		t.Chdir(dir)
+
+		code, _, stderr := runGlyph(t, "preview", "--pr", "9")
+		if code != 3 {
+			t.Fatalf("preview exited %d, want 3\nstderr: %s", code, stderr)
+		}
+		env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+		assertWedgeDetails(t, env, "u1", "c1")
+		var details []bump.Refusal
+		if err := json.Unmarshal(env.Details, &details); err != nil {
+			t.Fatal(err)
+		}
+		if want := "commit u1 in pull request akira-toriyama/glyph#9: " + details[0].Detail + tail; !strings.HasPrefix(env.Message, want) {
+			t.Errorf("the refusal must open on the unclaimed commit (%q):\n%s", want, env.Message)
+		}
+	})
+	t.Run("a later read failure", func(t *testing.T) {
+		dir, _ := packagesRepo(t)
+		usePR(t, failingWalkServer(t, routes("u1", "c1", "h1"), func(r *http.Request) int {
+			if r.URL.Path == commitFilesPath("c1") {
+				return http.StatusInternalServerError
+			}
+			return 0
+		}))
+		t.Chdir(dir)
+
+		code, _, stderr := runGlyph(t, "preview", "--pr", "9")
+		if code != 3 {
+			t.Fatalf("a grammar refusal followed by a 500 exited %d, want 3 (the refusal is the verdict)\nstderr: %s", code, stderr)
+		}
+		assertWedgeDetails(t, decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):]), "u1")
+		if !strings.Contains(stderr, "::warning::") || !strings.Contains(stderr, "boom") || !strings.Contains(stderr, "the rest of the pull's listing could not be read") {
+			t.Errorf("the later failure must be announced beside the refusal:\n%s", stderr)
+		}
+	})
+	t.Run("the bare line", func(t *testing.T) {
+		dir := testutil.NewRepo(t)
+		usePR(t, walkServer(t, map[string]string{pullCommitsPath(9): `[` + commits["u1"] + `]`}))
+		t.Chdir(dir)
+
+		code, _, stderr := runGlyph(t, "preview", "--pr", "9")
+		if code != 3 {
+			t.Fatalf("preview exited %d, want 3\nstderr: %s", code, stderr)
+		}
+		env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+		assertWedgeDetails(t, env, "u1")
+		if !strings.HasPrefix(env.Message, "commit u1 in pull request akira-toriyama/glyph#9: ") || !strings.HasSuffix(env.Message, "fix it on the branch") || strings.Contains(env.Message, "refusing to version the range") {
+			t.Errorf("the bare line refuses in preview's words, never the fold's:\n%s", env.Message)
+		}
+	})
 }
 
 // TestPreviewPackagesNotesPerLine: --notes folds one notes preview per

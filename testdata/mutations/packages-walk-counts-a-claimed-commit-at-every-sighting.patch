@@ -1,0 +1,14 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index a6b343a..d484361 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -273,6 +273,9 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
+ 					w.refuse(row, number, canonical, r.SHA)
+ 					continue
+ 				}
++				w.commits = append(w.commits, c)
++				contributed++
++				continue
+ 			}
+ 			w.Report.Noticef("commit %.7s in pull request #%d is already represented in this walk (a stacked branch carries its base PR's pre-squash commits; a merge-merged PR's commits sit on main under these same SHAs; a sub-PR's squash commit rides inside the PR that landed its branch) — counted once", r.SHA, number)
+ 			continue
