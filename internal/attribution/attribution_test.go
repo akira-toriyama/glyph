@@ -196,9 +196,8 @@ func refusalOf(t *testing.T, files []string, scope string, sigil config.Sigil, p
 // commit's message can write under the pattern that claimed it (scope, =,
 // then the declaration, which needs files). The shipped raw-revert pattern
 // fixes ~ and captures no scope: its refusal says so and names the reword
-// that works, where it used to name two escapes the message cannot write
-// (t-mfny (A); measured 2026-10-05 at 135eead: `Revert ":memo:(haiku)= …"`
-// exits 3, `:rewind:= Revert "…"` exits 0).
+// that works, not two escapes the message cannot write (t-mfny (A):
+// `Revert ":memo:(haiku)= …"` exits 3, `:rewind:= Revert "…"` exits 0).
 func TestNoCarrierNamesOnlyTheEscapesTheCommitCanTake(t *testing.T) {
 	// Where the loader would refuse the root's default name the declaration
 	// says the root takes a name: under the presets `path = "."` alone does

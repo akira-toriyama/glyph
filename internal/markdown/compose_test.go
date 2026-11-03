@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestLineSealsTheEscapeOrder pins the property Line exists for (t-3f4s):
+// TestLineSealsTheEscapeOrder pins the property Line exists for:
 // flattening runs inside Prose as each field arrives, and the prose escape and
 // then the mention fence run LAST, inside String, over the whole assembled
 // line — including Raw stretches and sized against backticks that other

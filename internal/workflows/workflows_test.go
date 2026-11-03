@@ -32,17 +32,17 @@ var installOnlyTokens = []string{
 	"curl",
 }
 
-// A hand-bumped version default — `default: v0.4.0` — is the lockstep-drift
-// source this PR removed: lint.yml sat at v0.4.0 through the v0.5.0 tag while
-// callers pinned @v0.5.0. The reusables now derive the version from
+// A hand-bumped version default — `default: v0.4.0` — is a lockstep-drift
+// source: a reusable sitting at v0.4.0 through the v0.5.0 tag installs one
+// binary while its callers pin @v0.5.0. The reusables derive the version from
 // job.workflow_ref, so no reusable may carry a concrete version default.
 var hardcodedVersionDefault = regexp.MustCompile(`(?m)default:\s*["']?v[0-9]`)
 
-// selfCheckout matches the two lines of the runtime self-checkout the reusables
-// carried until t-fzhx — `actions/checkout` of job.workflow_repository at
-// job.workflow_sha into `.glyph-action`, the only way a workspace-relative
-// `uses: ./.glyph-action/…` could find the install action. `$/` resolves to
-// glyph's own tree at that commit without it (measured on glyph-test #135).
+// selfCheckout matches the two lines of a runtime self-checkout —
+// `actions/checkout` of job.workflow_repository at job.workflow_sha into
+// `.glyph-action`, the only way a workspace-relative `uses: ./.glyph-action/…`
+// can find the install action; `$/` resolves to glyph's own tree at that commit
+// without it (measured on glyph-test #135).
 var selfCheckout = regexp.MustCompile(`(?m)^\s*(repository|ref):\s*\$\{\{\s*job\.workflow_(repository|sha)\s*\}\}`)
 
 // workspaceRelativeUses matches an executable `uses: ./…` step — the form that
@@ -101,19 +101,18 @@ func TestReusablesInstallThroughComposite(t *testing.T) {
 			// pinned commit; `./` would name the caller's checkout). Presence is
 			// demanded of the executable BODY, not the raw text: a commented
 			// caller stub quoting the same string would otherwise satisfy the
-			// requirement while the real step is gone (t-szx1).
+			// requirement while the real step is gone.
 			if !strings.Contains(body, "uses: $/.github/actions/install") {
 				t.Errorf("%s does not use the shared install action "+
 					"(expected `uses: $/.github/actions/install`)", name)
 			}
 
-			// No runtime self-checkout may return: it existed only so a
-			// workspace-relative `./.glyph-action/…` had something to resolve
+			// No runtime self-checkout may return: it exists only so that a
+			// workspace-relative `./.glyph-action/…` has something to resolve
 			// against; beside `$/` it is a fetch nothing reads, and actionlint
 			// 1.7.12 reports its job.workflow_repository / job.workflow_sha as
-			// undefined now that .github/actionlint.yaml waives workflow_ref
-			// alone. Positive control: the two lines the reusables carried until
-			// t-fzhx.
+			// undefined, because .github/actionlint.yaml waives workflow_ref
+			// alone. Positive control: the two lines of that checkout.
 			const checkoutCanary = "          repository: ${{ job.workflow_repository }}\n          ref: ${{ job.workflow_sha }}\n"
 			if !selfCheckout.MatchString(checkoutCanary) {
 				t.Fatalf("selfCheckout no longer matches the self-checkout it was written to ban (%q) — "+
@@ -150,7 +149,7 @@ func TestReusablesInstallThroughComposite(t *testing.T) {
 var verdictOutputs = []string{"level", "next", "current", "breaking"}
 
 // TestPRVerdictExposesTheVerdictToCallers guards the wiring sill's api-guard
-// gate depends on (t-eb6h): without these outputs the level is computed, posted
+// gate depends on: without these outputs the level is computed, posted
 // as prose, and discarded, leaving a caller to install glyph itself, re-grep the
 // convention, or parse the comment — each of which forks the rules.
 func TestPRVerdictExposesTheVerdictToCallers(t *testing.T) {
@@ -191,8 +190,7 @@ func TestPRVerdictExposesTheVerdictToCallers(t *testing.T) {
 
 	// `[ x = y ] && flag=true` leaves the flag unset whenever the test is false,
 	// and the step's `set -u` then aborts at the echo that writes it: every
-	// non-major PR would fail the job. A near-miss while writing t-eb6h; pin the
-	// shape that replaced it.
+	// non-major PR would fail the job, so the shape is banned here.
 	breakingByAnd := regexp.MustCompile(`\[\s*"\$level"\s*=\s*"major"\s*\]\s*&&`)
 	const canary = `[ "$level" = "major" ] && breaking=true`
 	if !breakingByAnd.MatchString(canary) {
@@ -208,7 +206,7 @@ func TestPRVerdictExposesTheVerdictToCallers(t *testing.T) {
 	// gets "" and the one way a naive gate silently passes an uninspected PR.
 	// Deliberately RAW where every other presence check reads code(): this one
 	// demands documentation, and documentation living in a comment is the
-	// requirement being met, not the loophole (t-szx1).
+	// requirement being met, not the loophole.
 	if !strings.Contains(raw, "NOT COMPUTED") {
 		t.Error("pr-verdict.yml no longer documents that a skipped (fork) job yields empty " +
 			"outputs meaning NOT COMPUTED; a caller reading empty as `none` fails open")
@@ -221,7 +219,7 @@ func TestPRVerdictExposesTheVerdictToCallers(t *testing.T) {
 var changelogDisable = regexp.MustCompile(`(?m)^\s*disable:\s*["']?true`)
 
 // TestReleaseNotesReachGoReleaser guards the pairing that shipped v0.8.2 with an
-// empty release body (t-bb72).
+// empty release body.
 //
 // GoReleaser loads --release-notes INSIDE the changelog pipe: changelog.Run
 // reads ctx.ReleaseNotesFile and returns early before generating anything, while
@@ -275,30 +273,30 @@ func TestReleaseNotesReachGoReleaser(t *testing.T) {
 // any shell re-derivation of a version order (`git tag --sort=v:refname`).
 var gitVersionSort = regexp.MustCompile(`--sort=-?v:refname`)
 
-// gitDescribe matches the other shell predecessor resolver: the one the
-// consumers' own notes steps carried when t-4fpn measured the fleet, which the
-// release-notes action is built to replace.
+// gitDescribe matches the other shell predecessor resolver: the one a
+// consumer's own notes step reaches for, which the release-notes action is
+// built to replace (t-4fpn).
 var gitDescribe = regexp.MustCompile(`\bgit describe\b`)
 
 // TestReleaseNotesWalkBaseIsResolvedByGlyph guards where the notes step's walk
 // base comes from: the binary, never shell (t-s5n4).
 //
 // At tag-push time the new tag is already the highest v*, so the base is the
-// highest version tag STRICTLY below it — a version comparison. goreleaser.yml
-// used to re-derive that answer with awk over `git tag --sort=v:refname`, which
-// is a refname sort and not a version order: the exact defect 012bfba removed
-// from the binary's own resolver, hand-copied back in shell, where the Go
-// regression tests could not see it. Measured on tags {v1.0.0-rc1, v1.0.0,
-// v1.0.1}: the shell answered v1.0.0-rc1 as v1.0.1's predecessor (released
-// commits re-folded into the notes), and an EMPTY predecessor for the
-// lowest-sorted tag (exit 1 — no binaries, no cask, no attestation, behind a
-// tag that already existed). `--since-tag=below:` is the binary answering the
-// same question with every tag parsed and compared as a version. The
-// consumers' copies of the step resolved it with `git describe --tags
-// --abbrev=0 HEAD^` — an ancestry walk to the nearest tag, which takes a
-// release candidate as the base (v3.3.0-rc.2 for v3.3.0, where below: walks
-// from v3.2.0) — so the action built to replace them (t-4fpn) is held to the
-// same rule.
+// highest version tag STRICTLY below it — a version comparison. A
+// goreleaser.yml step re-deriving that answer with awk over
+// `git tag --sort=v:refname` — a refname sort, not a version order — hand-copies
+// back into shell the exact defect 012bfba removed from the binary's own
+// resolver, where the Go regression tests cannot see it. On tags
+// {v1.0.0-rc1, v1.0.0, v1.0.1} such a shell derivation answers v1.0.0-rc1 as
+// v1.0.1's predecessor (released commits re-folded into the notes), and an
+// EMPTY predecessor for the lowest-sorted tag (exit 1 — no binaries, no cask,
+// no attestation, behind a tag that already exists). `--since-tag=below:` is
+// the binary answering the same question with every tag parsed and compared
+// as a version. A consumer's own copy of the step resolving it with
+// `git describe --tags --abbrev=0 HEAD^` — an ancestry walk to the nearest
+// tag — takes a release candidate as the base (v3.3.0-rc.2 for v3.3.0, where
+// below: walks from v3.2.0), so the action built to replace those copies
+// (t-4fpn) is held to the same rule.
 func TestReleaseNotesWalkBaseIsResolvedByGlyph(t *testing.T) {
 	workflow := code(repoFile(t, filepath.Join(".github", "workflows", "goreleaser.yml")))
 	action := code(repoFile(t, filepath.FromSlash(releaseNotesAction)))
@@ -319,8 +317,8 @@ func TestReleaseNotesWalkBaseIsResolvedByGlyph(t *testing.T) {
 		t.Error("goreleaser.yml no longer hands the action the tag it is cutting")
 	}
 
-	// Positive controls for the absences below: each pattern must still
-	// recognise the retired derivation it exists to keep out.
+	// Positive controls for the absences below: each pattern must recognise
+	// the derivation it exists to keep out.
 	retired := `prev="$(git tag --list 'v*' --sort=v:refname | awk -v cur="$GITHUB_REF_NAME" '...')"`
 	if !gitVersionSort.MatchString(retired) {
 		t.Fatal("canary: gitVersionSort no longer matches the retired shell derivation it exists to keep out")
@@ -344,7 +342,7 @@ func TestCompositeActionIsSingleSource(t *testing.T) {
 	raw := repoFile(t, filepath.Join(".github", "actions", "install", "action.yml"))
 	// Every presence check below reads the comment-stripped body: the header's
 	// usage example is a comment quoting much of the same text, so a raw match
-	// would keep passing after the executable half was deleted (t-szx1).
+	// would keep passing after the executable half was deleted.
 	body := code(raw)
 
 	if !strings.Contains(body, "using: composite") {
@@ -515,42 +513,42 @@ func TestCallerStubsCarryNoConcreteVersion(t *testing.T) {
 	}
 }
 
-// fleetPinScrape is the fleet pin-audit's OWN scrape pattern, copied verbatim
-// from akira-toriyama/.github .github/workflows/glyph-pin-audit.yml — the first
-// `grep -oE` of the pipeline inside the audit step's
-// `done < <(printf '%s\n' "$body" | grep -vE '^[[:space:]]*#' | grep -oE …)`
-// line (the second -oE there only trims the match down to "@vX.Y.Z"). Go's RE2
-// accepts the POSIX classes unchanged, so this is the same matcher byte for byte.
+// fleetPinScrape is a version-shaped grep for a glyph reference (`@v` and
+// digits): the matcher TestNaiveGrepSeesNoPinInTheReusables closes the trap
+// for. It is NOT the fleet pin-audit's matcher — akira-toriyama/.github's
+// audit step (.github/workflows/glyph-pin-audit.yml:243) runs
+// scripts/glyph-pin-scan.sh, which strips comments and quotes, matches ANY
+// `@ref` (scripts/glyph-pin-scan.sh:99) and classifies it, so there the
+// comment filter is load-bearing: the literal `@vX.Y.Z` placeholder on an
+// uncommented line reads as drift (scripts/glyph-pin-scan.sh:30-33).
 var fleetPinScrape = regexp.MustCompile(`uses:[[:space:]]*akira-toriyama/glyph/[^@[:space:]]*@v[0-9][0-9.]*`)
 
 // TestNaiveGrepSeesNoPinInTheReusables encodes WHY the concrete version is
 // absent, so a well-meant "refresh the stubs to the current tag" cannot undo it
-// by accident.
-//
-// The audit's real pipeline drops comment lines FIRST (`grep -vE
-// '^[[:space:]]*#'`) precisely because stale stubs used to be reported as fleet
-// drift. This test applies the scrape to the RAW text, comment filter removed:
-// with the placeholder in place the reusables hold no version for a naive grep
-// to find, so the audit is correct whether or not the filter is there — and the
-// grep trap (wrong in BOTH directions: false drift from the stubs, and a real
-// pin masked by them) is closed at the source rather than worked around
-// downstream.
+// by accident: applied to the RAW text, comments included, a version grep
+// finds no glyph version in the reusables, because the placeholder is not
+// version-shaped. That closes the grep trap at the source (wrong in BOTH
+// directions: false drift from a stale stub, a real pin masked by one) for any
+// consumer that greps for a version; the audit's own scan
+// (akira-toriyama/.github .github/workflows/glyph-pin-audit.yml:243 running
+// scripts/glyph-pin-scan.sh, whose matcher is :99) is a different matcher and
+// relies on its comment filter (fleetPinScrape's doc).
 func TestNaiveGrepSeesNoPinInTheReusables(t *testing.T) {
 	// Positive control: a matcher that matches nothing would pass this test
 	// vacuously for ever. Prove it still bites on the shape it is meant to find.
 	const canary = "    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v0.10.2"
 	if !fleetPinScrape.MatchString(canary) {
-		t.Fatalf("the audit scrape pattern no longer matches a real pin (%q); the rest of this "+
-			"test would pass vacuously — re-copy the pattern from glyph-pin-audit.yml", canary)
+		t.Fatalf("the version-shaped pattern no longer matches a real pin (%q); the rest of this "+
+			"test would pass vacuously — fix the version-shaped pattern", canary)
 	}
 
 	for _, name := range reusables {
 		raw := repoFile(t, filepath.Join(".github", "workflows", name))
 		if found := fleetPinScrape.FindAllString(raw, -1); len(found) > 0 {
-			t.Errorf("%s exposes %d glyph pin(s) to the fleet pin-audit's scrape pattern (%q). "+
-				"A reusable DEFINES the pin; it must never CARRY one, not even in a comment: the "+
-				"audit reads every repo's YAML, and a version here is either false drift (the stub "+
-				"is stale by construction) or masks a real pin. Use @%s.",
+			t.Errorf("%s exposes %d version-shaped glyph reference(s) (%q) to a naive grep. "+
+				"A reusable DEFINES the pin; it must never CARRY one, not even in a comment: a "+
+				"version here is either false drift (the stub is stale by construction) or masks "+
+				"a real pin for any consumer that greps for one. Use @%s.",
 				name, len(found), strings.Join(found, ", "), versionPlaceholder)
 		}
 	}
@@ -597,14 +595,14 @@ func TestWalkingReusablesCheckOutFullHistory(t *testing.T) {
 	}
 }
 
-// TestCaskPushUsesDeployKey guards the tap-credential pairing (t-6bhz).
+// TestCaskPushUsesDeployKey guards the tap-credential pairing.
 //
 // The cask push works only when BOTH halves agree: goreleaser.yml exports
 // HOMEBREW_TAP_DEPLOY_KEY into GoReleaser's env, and .goreleaser.yaml's
 // repository block resolves that env into an SSH git push
 // (repository.git.private_key). Either half alone fails at release time —
-// a missing env is a template error, a token-style repository block would
-// silently go back to the account-scoped API path the deploy key replaced.
+// a missing env is a template error, a token-style repository block silently
+// takes the account-scoped API path instead of the deploy key.
 // Nothing in either file can express the pairing on its own, same class as
 // TestReleaseNotesReachGoReleaser.
 func TestCaskPushUsesDeployKey(t *testing.T) {
@@ -628,8 +626,9 @@ func TestCaskPushUsesDeployKey(t *testing.T) {
 		}
 	}
 
-	// And the retired PAT must not creep back into either executable body —
-	// its account-scoped blast radius is what the deploy key removed.
+	// And HOMEBREW_TAP_TOKEN, the tap's PAT, may not appear in either
+	// executable body — an account-scoped token's blast radius is what the
+	// deploy key avoids.
 	for name, body := range map[string]string{"goreleaser.yml": workflow, ".goreleaser.yaml": config} {
 		if strings.Contains(body, "HOMEBREW_TAP_TOKEN") {
 			t.Errorf("%s references the retired HOMEBREW_TAP_TOKEN; the tap credential is "+
@@ -790,16 +789,15 @@ func TestJobIDsInFindsARealJobsBlock(t *testing.T) {
 // TestNoWorkspaceRelativeUses holds every workflow in the tree to GitHub's
 // self-repository reference for an in-repo action: `$/…`, never
 // `./…`. Inside a reusable workflow `./…` resolves against the CALLER's checkout,
-// which is how the reusables came to check glyph's own tree out at runtime, and
+// so a reusable that wants its own tree has to check it out at runtime, and
 // zizmor 1.30+ reports every `./…` as `self-repository` — the hub's zizmor gate
-// reddens at its next pin bump for each one left (t-fzhx; goreleaser.yml grew a
-// new one the day after the audit named the three). The companion half pins
+// reddens at its next pin bump for each one left (t-fzhx). The companion half pins
 // the actionlint waiver the `$/` form needs: actionlint 1.7.12, the hub's pin,
 // knows only `{owner}/{repo}[/{path}]@{ref}` and `./{path}`, so
 // .github/actionlint.yaml ignores exactly its message — a pattern that no
 // longer matches the message is a red actionlint gate on every pull request.
 func TestNoWorkspaceRelativeUses(t *testing.T) {
-	// Positive control: the step lint.yml carried until t-fzhx.
+	// Positive control: the workspace-relative step.
 	const canary = "        uses: ./.glyph-action/.github/actions/install\n"
 	if !workspaceRelativeUses.MatchString(canary) {
 		t.Fatalf("workspaceRelativeUses no longer matches the step it was written to ban (%q) — "+

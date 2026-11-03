@@ -33,10 +33,10 @@ func TestResolveDefaultsToDev(t *testing.T) {
 
 // resolve is exercised through its seam: ReadBuildInfo answers for the TEST
 // binary, so the go-install shape — a module version recorded, no VCS stamps —
-// cannot be arranged for Resolve itself. Measured before the fix: a
-// `go install …/cmd/glyph@latest` binary answered `glyph dev`, indistinguishable
-// from a source build, so the one thing a fresh install would ask ("did I get
-// the release I meant?") had no answer.
+// cannot be arranged for Resolve itself. With the module version unread, a
+// `go install …/cmd/glyph@latest` binary answers `glyph dev`, indistinguishable
+// from a source build, so the one thing a fresh install asks ("did I get the
+// release I meant?") has no answer.
 func TestResolveSurfacesTheModuleVersion(t *testing.T) {
 	cases := []struct {
 		name string

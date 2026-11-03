@@ -214,8 +214,8 @@ func TestPrePushResolvesTheRemoteFromItsURL(t *testing.T) {
 // TestPrePushResolvesASpacedRemoteNameFromItsURL: the URL-to-name recovery
 // reads the same remote map doctor does, so a remote named `my fork` (a
 // hand-edited `[remote "my fork"]`) must come back whole. Cut at the first
-// space the map held `my` → `fork.url <url>`, no URL matched, and the warning
-// fell back to `<remote>` (t-3jws). Such a name can carry no ref, so the
+// space the map holds `my` → `fork.url <url>`, no URL matches, and the warning
+// falls back to `<remote>`. Such a name can carry no ref, so the
 // default branch is unrecorded, and the warning that says so — printed beside
 // a finding — is the observable.
 func TestPrePushResolvesASpacedRemoteNameFromItsURL(t *testing.T) {
@@ -255,16 +255,16 @@ func TestPrePushMalformedProtocolIsNotALintFailure(t *testing.T) {
 	}
 }
 
-// TestPrePushJudgesACommitTheRemoteHasElsewhereWhenItReachesTheDefaultBranch is
-// a live-fire regression: the first working version of this hook let a
-// unmatched commit onto main in silence.
+// TestPrePushJudgesACommitTheRemoteHasElsewhereWhenItReachesTheDefaultBranch
+// pins the shape that lets an unmatched commit onto main in silence.
 //
-// The commit had been pushed to a topic branch first, so the remote held it and
-// the tips exclusion — which exists to stop a branch re-judging everything it
-// merged in from main — removed it from the range. The gate that exists to
-// block it answered "nothing to lint". On the default branch the ref's own
-// remote oid IS main's tip, so excluding that alone is both exact and enough,
-// and the tips must not be consulted there.
+// The commit was pushed to a topic branch first, so the remote holds it, and
+// a tips exclusion consulted on the default branch — the exclusion exists to
+// stop a branch re-judging everything it merged in from main — would remove it
+// from the range: the gate that exists to block it would answer "nothing to
+// lint". On the default branch the ref's own remote oid IS main's tip, so
+// excluding that alone is both exact and enough, and the tips must not be
+// consulted there.
 func TestPrePushJudgesACommitTheRemoteHasElsewhereWhenItReachesTheDefaultBranch(t *testing.T) {
 	work, _ := testClone(t)
 	t.Chdir(work)

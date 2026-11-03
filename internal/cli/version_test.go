@@ -63,17 +63,16 @@ func TestVersionRunsFromOptionsWithoutCobra(t *testing.T) {
 	}
 }
 
-// TestVersionJSONFalseIsTheHumanLine defends the answer t-y2hr measured and
-// nothing pinned: an EXPLICIT --json=false selects the human line, at exit 0.
+// TestVersionJSONFalseIsTheHumanLine pins: an EXPLICIT --json=false selects
+// the human line, at exit 0.
 //
 // pflag's Changed is true for `--json=false`, so a future reader who "fixes"
 // the flag read by switching from the value to cmd.Flags().Changed("json")
 // hands JSON to the caller who just said not-JSON — and it compiles, because
-// a bound field nothing reads is legal Go. That is t-y2hr's defect one flag
-// over, and this is its only defender. The machine flag is deliberately NOT
-// default-bearing: declining it selects a real output, so it gets no
-// default-mode guard (v1's `rules --md` was the counterexample: declining it
-// selected nothing).
+// a bound field nothing reads is legal Go. This test is that answer's only
+// defender. The machine flag is deliberately NOT default-bearing: declining
+// it selects a real output, so it gets no default-mode guard (the
+// counterexample is a flag whose declining selects nothing).
 func TestVersionJSONFalseIsTheHumanLine(t *testing.T) {
 	code, stdout, stderr := runGlyph(t, "version", "--json=false")
 	if code != 0 {

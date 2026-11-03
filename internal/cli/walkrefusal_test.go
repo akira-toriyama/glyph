@@ -97,11 +97,11 @@ func assertWedgeDetails(t *testing.T, env errEnvelope, shas ...string) {
 // the released branch whose message no pattern claims is refused by the walk
 // through the SAME producer as a pull's inner commit — the wedge error, which
 // names where the commit sits and the base that clears it (a tag at or past
-// the commit itself, since it is on the branch). Before this it fell through
-// to the fold's refusal, whose remedy ("fix the message, add a pattern, or
-// exclude the author") is written for a commit that has not landed. And as
-// the fold did, the walk names EVERY refused commit at once (details), not
-// the first: two offenders are one red run, not two.
+// the commit itself, since it is on the branch). Falling through to the fold's
+// refusal would hand it a remedy ("fix the message, add a pattern, or exclude
+// the author") written for a commit that has not landed. And as the fold
+// does, the walk names EVERY refused commit at once (details), not the first:
+// two offenders are one red run, not two.
 func TestSinceTagDirectPushUnmatchedNamesTheWedge(t *testing.T) {
 	for name, message := range map[string]string{
 		"no shortcode":              "no gitmoji leads this subject",
@@ -279,12 +279,12 @@ func TestSinceTagRefusalOutranksALaterAPIFailure(t *testing.T) {
 }
 
 // TestNotesSinceTagDirectPushUnclaimedIsTheWedge: notes shares the walk, so
-// the walk's refusal is notes' too — as it already was for a pull's inner
-// commit. notes has no fold: it used to leave an unclaimed direct push out of
-// every section (exit 0 beside other notes, 1 alone), or render its raw
-// subject under a [[note.sections]] entry claiming its author; the walk now
-// judges its own commits before any consumer reads them (DESIGN §4). The lag
-// arm stays soft (TestSinceTagAllCommitsUnknownWarnsAboutTheRepo).
+// the walk's refusal is notes' too — as it is for a pull's inner commit. notes
+// has no fold, so without the walk's judgement an unclaimed direct push is left
+// out of every section (exit 0 beside other notes, 1 alone) or rendered raw
+// under a [[note.sections]] entry claiming its author; the walk judges its own
+// commits before any consumer reads them (DESIGN §4). The lag arm stays soft
+// (TestSinceTagAllCommitsUnknownWarnsAboutTheRepo).
 func TestNotesSinceTagDirectPushUnclaimedIsTheWedge(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", "no gitmoji leads this subject")

@@ -226,7 +226,7 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 	})
 
 	// A developer without glyph installed must still be able to commit; CI is
-	// the authority, the hook is early warning (t-7m35's ratified policy).
+	// the authority, the hook is early warning.
 	t.Run("passes when glyph is absent from PATH", func(t *testing.T) {
 		out, err := commitWith(dir, "/nonexistent", ":wrench:= adjust something")
 		if err != nil {
@@ -239,9 +239,8 @@ func TestInstalledHookGatesRealCommits(t *testing.T) {
 
 	// Subjects git writes ITSELF must pass. An author cannot rewrite them, so
 	// rejecting one leaves --no-verify as the only way forward — which turns the
-	// gate off entirely. The retired shell hook exempted these four prefixes;
-	// the first cut of this hook did not, and blocked `git commit --fixup` and
-	// `git merge` fleet-wide.
+	// gate off entirely — and blocks `git commit --fixup` and `git merge`
+	// fleet-wide.
 	t.Run("does not block git-generated subjects", func(t *testing.T) {
 		head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 
@@ -409,8 +408,8 @@ func runGit(dir, path string, args ...string) (string, error) {
 // a directory of its own: a t.TempDir would go with the first test that
 // asked, so removeGlyphBinary runs from TestMain instead. A test that panics
 // never returns to TestMain, so that run's directory (13 MB under TMPDIR)
-// outlives it — the per-test TempDir was removed even then — and nothing in
-// the process can remove it (measured in review).
+// outlives it — a per-test TempDir is removed even then — and nothing in the
+// process can remove it.
 var glyphBinary struct {
 	once sync.Once
 	dir  string

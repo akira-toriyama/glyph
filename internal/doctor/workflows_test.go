@@ -195,8 +195,8 @@ func TestScanUsesShapes(t *testing.T) {
 		{"major alias", "    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v1", "v1", true},
 		{"minor alias", "    uses: akira-toriyama/glyph/.github/workflows/lint.yml@v0.10", "v0.10", true},
 		{"sha pin", "    uses: akira-toriyama/glyph/.github/actions/install@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0", "9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0", true},
-		// A v-less tag is not a pin because it does not exist: GoReleaser cuts
-		// glyph's tag space as vX.Y.Z only.
+		// A v-less tag is not a pin because it does not exist: glyph's release
+		// tags are the house vX.Y.Z (bump.HouseTagOn on the bare line).
 		{"v-less tag", "    uses: akira-toriyama/glyph/.github/workflows/lint.yml@0.10.1", "0.10.1", true},
 		{"no ref", "    uses: akira-toriyama/glyph/.github/workflows/lint.yml", "", true},
 		// GitHub resolves owner/repo case-insensitively, so this line EXECUTES

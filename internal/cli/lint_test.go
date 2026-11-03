@@ -493,9 +493,9 @@ func apiOnePullBody(title, login string) string {
 // TestLintPRTitle is the squash-title gate working end to end: a title in the
 // grammar passes silently; a title outside it exits 3, is annotated by the
 // binary itself (the producer contract of t-sws7), and still ends in one
-// sievable envelope. CONTRIBUTING ratifies the title as a commit subject —
-// measured before this existed, 158 landed subjects had failed the grammar
-// this way, each read by the release walk's fallback as a silent none.
+// sievable envelope. CONTRIBUTING ratifies the title as a commit subject: a
+// title outside the grammar lands as the squash subject, which the release
+// walk's fallback reads as a silent none.
 func TestLintPRTitle(t *testing.T) {
 	t.Chdir(testutil.NewRepo(t))
 	t.Run("clean title", func(t *testing.T) {
@@ -596,8 +596,9 @@ func TestLintRange(t *testing.T) {
 // TestLintRangeJudgesAnAuthorNameHoldingTheUnitSeparator is the gate half of
 // gitsource's record framing: an author a pull request's contributor names
 // `dependabot[bot]<US>x` is NOT dependabot[bot], so the commit is judged — exit
-// 3 for a message no pattern claims. Measured before the fix, every email below
-// excluded it at exit 0, and a check of the parents field alone still passed the
+// 3 for a message no pattern claims. Framed by the unit separator, the record
+// reads that author as dependabot[bot] under every email below and excludes the
+// commit at exit 0, and a check of the parents field alone still passes the
 // empty and the 40-hex one. The real bot stays excluded: the control that the
 // exclusion itself still works.
 func TestLintRangeJudgesAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
@@ -627,12 +628,11 @@ func TestLintRangeJudgesAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
 
 // TestHistoryGatesJudgeSignedCommitsUnderShowSignature is the gates half of
 // gitsource's read under log.showSignature: git prints each signature's verdict
-// ahead of the commit's record, and with that text in the read the record check
-// failed every history gate at 4 for a developer who signs — measured: lint
-// --range 3 → 4, bump --range v0.0.1 → 4, notes --range 0 → 4, and the pre-push
-// hook 3 → 4, which the installed hook waves through, so the push gate stopped
-// judging. Each gate must answer exactly as it does for the same commits
-// unsigned.
+// ahead of the commit's record, and read with that text in it the record check
+// fails every history gate at 4 for a developer who signs (lint --range 3 → 4,
+// bump --range v0.0.1 → 4, notes --range 0 → 4, the pre-push hook 3 → 4 —
+// which the installed hook waves through, so the push gate stops judging).
+// Each gate must answer exactly as it does for the same commits unsigned.
 func TestHistoryGatesJudgeSignedCommitsUnderShowSignature(t *testing.T) {
 	work, _ := testClone(t)
 	testutil.SignCommits(t, work)
@@ -671,11 +671,11 @@ func TestHistoryGatesJudgeSignedCommitsUnderShowSignature(t *testing.T) {
 
 // TestHistoryGatesReadThroughLogOutputEncoding is the gates half of gitsource's
 // read under i18n.logOutputEncoding, which re-encodes what `git log` prints.
-// Measured before the read named its encoding: under UTF-16 every gate here
-// answered 4 — the pre-push hook too, which the installed hook waves through,
-// so the push gate stopped judging — and under ISO-8859-1 notes wrote the
-// subject's Latin-1 bytes into the release body. Each gate must answer as it
-// does with the setting absent.
+// Read without naming its encoding, under UTF-16 every gate here answers 4 —
+// the pre-push hook too, which the installed hook waves through, so the push
+// gate stops judging — and under ISO-8859-1 notes writes the subject's Latin-1
+// bytes into the release body. Each gate must answer as it does with the
+// setting absent.
 func TestHistoryGatesReadThroughLogOutputEncoding(t *testing.T) {
 	const subject = ":bug:~ fix the café crash"
 	for _, enc := range []string{"UTF-16", "ISO-8859-1"} {
@@ -923,10 +923,9 @@ func useWarnedPatternConfig(t *testing.T, dir string) {
 // TestLintRangeWarnsOnAWarnedPatternAndStaysGreen pins a warned pattern's
 // lint verdict end to end: the commit it claims is CLEAN (exit 0 — a warn
 // changes no verdict) and LOUD (one ::warning:: naming the commit and the
-// message the file's author wrote). Green-and-silent is the measured state
-// this exists to keep from coming back: under the fleet's v1-acceptance
-// window, before the key existed, a forgotten sigil passed every gate with
-// nothing said.
+// message the file's author wrote). Green-and-silent is the state this exists
+// to keep from coming back: a forgotten sigil passing every gate with nothing
+// said (the v1-acceptance window, DESIGN §2).
 func TestLintRangeWarnsOnAWarnedPatternAndStaysGreen(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
 	useWarnedPatternConfig(t, dir)

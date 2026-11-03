@@ -68,14 +68,12 @@ func TestNotesSinceTagEndsWithTheCompareLink(t *testing.T) {
 // walk queried — --repo when given, $GITHUB_REPOSITORY otherwise — because
 // the link is an address on that repository's page. notesLinkEnds asks
 // resolveRepo the same question the walk asked; read from the environment
-// instead, a body rendered for other/name pointed at the caller's own
-// compare page while every cli test stayed green (measured in review;
-// mutation row notes-compare-link-ignores-the-repo-flag). Each case's
+// instead, a body rendered for other/name points at the caller's own compare
+// page (mutation row notes-compare-link-ignores-the-repo-flag). Each case's
 // stand-in serves only its own repository's route, and walkServer fails
 // the test on any other, so the walk's --repo is pinned here too: with the
-// flag dropped from the walk, pulls were expanded from $GITHUB_REPOSITORY
-// under a link that said other/name (review, the same green suite;
-// mutation row walk-ignores-the-repo-flag).
+// flag dropped from the walk, pulls are expanded from $GITHUB_REPOSITORY
+// under a link that says other/name (mutation row walk-ignores-the-repo-flag).
 func TestNotesCompareLinkCitesTheRepoFlag(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")

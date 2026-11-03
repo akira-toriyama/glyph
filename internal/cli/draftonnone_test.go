@@ -12,10 +12,9 @@ import (
 // the engine reads the checkout's config, and a commit for it would join the
 // walk the test is measuring.
 //
-// The flag's only tests were draftplan's, which are pure — they cannot see
-// the wiring here (which tag the placeholder takes, which write it becomes,
-// the silent exit-1 with a URL on stdout), and that wiring had no test at any
-// level.
+// draftplan's tests are pure — they cannot see the wiring here (which tag the
+// placeholder takes, which write it becomes, the silent exit-1 with a URL on
+// stdout) — so the wiring is pinned here.
 func enableDraftOnNone(t *testing.T) {
 	t.Helper()
 	const off, on = "draft_on_none = false", "draft_on_none = true"

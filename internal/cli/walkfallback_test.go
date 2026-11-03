@@ -235,18 +235,17 @@ func TestSinceTagHealthyRepositoryIsNeverWarnedAt(t *testing.T) {
 }
 
 // TestSinceTagPlainMergeCommitIsSkipped: a local `git merge` of a topic branch
-// (or a merge from a fork) pushed to main resolves to NO pull request. It must
-// keep being skipped silently, exactly as before — the fallback path still
-// applies the message rules, where two parents (and git's own `Merge ` subject)
-// exclude it. Only the resolution question stopped asking about the shape; the
-// classification question never did.
+// (or a merge from a fork) pushed to main resolves to NO pull request. It is
+// skipped silently: the fallback path applies the message rules, where two
+// parents (and git's own `Merge ` subject) exclude it. The resolution question
+// does not ask about the shape; the classification question does.
 func TestSinceTagPlainMergeCommitIsSkipped(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	mp := mergeInto(t, dir, "akira-toriyama", "akira-toriyama", "topic", "Merge branch 'topic'", ":memo:= note the topic")
 	srv := walkServer(t, map[string]string{
 		commitPullsPath(mp.Branch[0]): `[]`,
-		// The merge commit is asked about now (it costs the one round-trip that
-		// buys the answer) and nothing merged it — the local-merge shape.
+		// The merge commit is asked about (it costs the one round-trip that buys
+		// the answer) and nothing merged it — the local-merge shape.
 		commitPullsPath(mp.Merge): `[]`,
 	})
 	usePR(t, srv)
@@ -430,12 +429,13 @@ func TestNotesSinceTagUnknownBreakingFallbackHoists(t *testing.T) {
 }
 
 // TestSinceTagSquashMultiCommitDivergesWhenAPIDark pins what squash actually
-// buys, against the claim doctor used to make. Squash guarantees a pull request
-// resolves ALL-OR-NOTHING — one commit on main, and it IS the merge point — but
-// it does NOT guarantee the same verdict with the API dark as with it answering.
-// A multi-commit squash's subject is the PR title, and the fallback classifies
-// that one subject instead of the pull's commits: a :sparkles:+:bug:~ pull titled
-// :bug:~ reads minor live and patch dark.
+// buys, against the claim that it makes the dark verdict equal the lit one.
+// Squash guarantees a pull request resolves ALL-OR-NOTHING — one commit on
+// main, and it IS the merge point — but it does NOT guarantee the same verdict
+// with the API dark as with it answering. A multi-commit squash's subject is
+// the PR title, and the fallback classifies that one subject instead of the
+// pull's commits: a :sparkles:+:bug:~ pull titled :bug:~ reads minor live and
+// patch dark.
 //
 // Do NOT golden doctor's prose to pin what squash buys — pin the walk it
 // describes.
@@ -505,15 +505,15 @@ func TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark(t *testing.T) {
 }
 
 // TestSinceTagMergeCommitReproducesVerdictWhenFullyDark pins a claim by DELETING
-// one: doctor and DESIGN §7 used to say a merge-merged PR counts none when the
-// walk falls back, because the fallback skips the merge commit on its parent
-// count. It does skip it — and it costs the pull request nothing, because
-// gitsource.Checkout.Log runs WITHOUT --first-parent: the merged branch's commits are in
-// the range beside their merge point, gitmoji intact, and each classifies itself.
+// one: a merge-merged PR does NOT count none when the walk falls back, although
+// the fallback skips the merge commit on its parent count — it costs the pull
+// request nothing, because gitsource.Checkout.Log runs WITHOUT --first-parent:
+// the merged branch's commits are in the range beside their merge point,
+// gitmoji intact, and each classifies itself.
 //
-// So this test fails the moment someone re-asserts that sentence, and it fails
-// just as loudly if anyone adds --first-parent to gitsource.Checkout.Log to make the
-// sentence true — which was the tempting "fix" and would have undone t-7zt7.
+// So this test fails the moment someone re-asserts the deleted claim, and it
+// fails just as loudly if anyone adds --first-parent to gitsource.Checkout.Log
+// to make the claim true — the tempting "fix", and one that would undo t-7zt7.
 func TestSinceTagMergeCommitReproducesVerdictWhenFullyDark(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	mp := mergePR(t, dir, "akira-toriyama", 3, ":sparkles:(ui)^ add a menu", ":memo:= document the menu")
@@ -587,13 +587,13 @@ func TestSinceTagFallbackOnlyOnUnknownCommit(t *testing.T) {
 //
 // A rebase writes NEW shas, and the pull's listing still reports the pre-rebase
 // ones, so the walk-wide dedup has nothing to match on: a replayed commit
-// classified during the lag used to be folded in a SECOND time when the last
-// replayed commit expanded the pull, rendering the same change twice with
-// nothing that said so. t-8xsb closed that by aligning the listing against the
-// first-parent run ending at the canonical commit — but the alignment is
-// verified message by message and abandoned whole if any differs, so a rebase
-// the walk cannot align still double-folds. Both halves are measured here,
-// because the doctor advice text and DESIGN §7 make a claim about each.
+// classified during the lag would fold a SECOND time when the last replayed
+// commit expands the pull, rendering the same change twice with nothing that
+// says so; the alignment against the first-parent run ending at the canonical
+// commit (t-8xsb) prevents it — but the alignment is verified message by
+// message and abandoned whole if any differs, so a rebase the walk cannot
+// align still double-folds. Both halves are measured here, because the doctor
+// advice text and DESIGN §7 make a claim about each.
 func TestSinceTagRebaseLagCountsAReplayedCommitOnce(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")

@@ -1003,17 +1003,16 @@ func FuzzNextLink(f *testing.F) {
 }
 
 // TestDistillClampsTheJSONMessageToo: the arm that fires on a WELL-FORMED
-// answer was the unclamped one.
+// answer is clamped as the non-JSON snippet arm is.
 //
-// Only the non-JSON snippet branch was bounded, on the assumption that a JSON
-// "message" is a sentence. It is remote text glyph does not author: a
-// validation error listing every offending field, or a proxy behind an
-// enterprise GITHUB_API_URL that wraps its page in a JSON envelope, arrives
-// arbitrarily long. Nothing downstream clamps either — internal/cli folds the
-// newlines out and passes the text through — so the whole of it lands on one
-// physical line of a CI log, or inside one ::error:: annotation. Measured
-// before the fix: 5000 characters in, 5000 characters out, while a 5000-BYTE
-// non-JSON body came back at 200.
+// Bounding the snippet arm alone assumes a JSON "message" is a sentence. It is
+// remote text glyph does not author: a validation error listing every
+// offending field, or a proxy behind an enterprise GITHUB_API_URL that wraps
+// its page in a JSON envelope, arrives arbitrarily long. Nothing downstream
+// clamps either — internal/cli folds the newlines out and passes the text
+// through — so the whole of it lands on one physical line of a CI log, or
+// inside one ::error:: annotation. Unclamped, 5000 characters in are 5000
+// characters out, while a 5000-BYTE non-JSON body comes back at 200.
 func TestDistillClampsTheJSONMessageToo(t *testing.T) {
 	long := strings.Repeat("x", 5000)
 	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {

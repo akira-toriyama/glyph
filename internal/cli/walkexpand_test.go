@@ -408,17 +408,17 @@ func TestSinceTagMergeCommitPRIsExpanded(t *testing.T) {
 	}
 }
 
-// TestSinceTagSubPullSquashCommitIsNotRelinted is the wedge round 2 of t-7zt7
-// found: pull request #6 is squash-merged INTO a topic branch, so its squash
+// TestSinceTagSubPullSquashCommitIsNotRelinted is the wedge on t-7zt7's shape:
+// pull request #6 is squash-merged INTO a topic branch, so its squash
 // commit — subject `Add a menu (#6)`, deliberately not gitmoji-formed, which is
 // exactly what a squash subject looks like — sits on that branch; the merge
 // button then lands the branch on main as pull request #7, carrying #6's squash
 // commit onto main verbatim. GET pulls/7/commits therefore hands the walk a
 // commit it resolved and expanded one step earlier.
 //
-// The walk-wide SHA set remembered #6's INNER commits but not the canonical
-// commit that REPRESENTED #6, so #7's expansion re-read that subject as an
-// ordinary message and hard-failed the release (exit 3). Squash history is
+// A walk-wide SHA set that remembers #6's INNER commits but not the canonical
+// commit that REPRESENTED #6 has #7's expansion re-read that subject as an
+// ordinary message and hard-fail the release (exit 3). Squash history is
 // immutable, so that is a PERMANENT wedge — every future release fails at the
 // same commit. A resolved commit is already represented in the fold; the set
 // must record that about the commit ITSELF, not only about its expansion.
@@ -662,22 +662,21 @@ func TestSinceTagAPIFailureMidWalkPassesThrough(t *testing.T) {
 	}
 }
 
-// --- t-8xsb: a pull's listing is governed by the walk range ------------------
+// A pull's listing is governed by the walk range (t-8xsb). A merged pull
+// request's API commit listing is the pull's ENTIRE history and carries nothing
+// about the walk's range. DESIGN §4 says exactly that, and says it as the
+// reason the walk refuses to expand an UNRESOLVED pull — and a resolved arm
+// that expands the listing whole folds, for a version tag cut INSIDE a landed
+// pull's footprint, already-released commits back into the next release: exit
+// 0, empty stderr, a minor invented out of shipped work.
 //
-// A merged pull request's API commit listing is the pull's ENTIRE history and
-// carries nothing about the walk's range. DESIGN §4 says exactly that, and says
-// it as the reason the walk refuses to expand an UNRESOLVED pull — but the
-// resolved arm expanded the listing whole regardless, so a version tag cut
-// INSIDE a landed pull's footprint folded already-released commits back into the
-// next release. Exit 0, empty stderr, a minor invented out of shipped work.
-//
-// The tests below pin the fix (mainFootprint) on both shapes that have a
-// footprint, plus the controls that must not move.
+// The tests below pin mainFootprint on both shapes that have a footprint, plus
+// the controls that must not move.
 
-// TestSinceTagDoesNotRefoldReleasedMergeMergedCommits is the reported bug: pull
-// #7 lands through the merge button, and the release tag is cut at its FIRST
+// TestSinceTagDoesNotRefoldReleasedMergeMergedCommits is the shape: pull #7
+// lands through the merge button, and the release tag is cut at its FIRST
 // branch commit — so that commit shipped, and only the second belongs to the
-// next release. Before the fix this answered v0.2.0 with no diagnostic at all.
+// next release. A regression here answers v0.2.0 with no diagnostic at all.
 func TestSinceTagDoesNotRefoldReleasedMergeMergedCommits(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	mp := mergePR(t, dir, "akira-toriyama", 7, ":sparkles:(ui)^ add a menu", ":memo:= document the menu")
@@ -808,12 +807,12 @@ func TestSinceTagRebaseMergeUsesOnMainSHAs(t *testing.T) {
 // ed1bd9e after #27 merged it verbatim). Rebase-merge the stacked pull and the
 // listing is half placeable by ancestry, half only by alignment.
 //
-// Before the fix the first half short-circuited the second: every REWRITTEN entry
-// kept an empty landing site, which the walk's expand reads as "the pull alone governs" and
-// folds whatever the range says. Measured here: minor out of a :sparkles:^ released
-// one tag ago, exit 0, no warning, and the notes citing pre-rebase shas main does
-// not contain. It is t-8xsb through the front door, on the shape t-8xsb's own fix
-// introduced.
+// If the first half short-circuits the second, every REWRITTEN entry keeps an
+// empty landing site, which the walk's expand reads as "the pull alone governs"
+// and folds whatever the range says: minor out of a :sparkles:^ released one tag
+// ago, exit 0, no warning, and the notes citing pre-rebase shas main does not
+// contain — t-8xsb through the front door, on the shape its own alignment
+// introduces.
 func TestSinceTagStackedRebaseMergePlacesTheRewrittenHalf(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	// The base pull's commit, landed verbatim by the merge button.

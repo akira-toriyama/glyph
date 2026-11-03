@@ -245,9 +245,9 @@ func TestNoteLineRefusesTheFallbackSubjectAlone(t *testing.T) {
 
 // TestNoteLineCannotCiteASkipGroup: skip is total — a skipped commit is in no
 // section — so a group only a skip pattern captures binds for no rendered
-// line, exactly as one only an unlandable pattern captures. Measured before
-// (2026-09-29): `$[ (from $branch)] $branch` from a skip pattern loaded and
-// rendered `- :bug:~ fix it ` at exit 0, span dropped and the bare one empty.
+// line, exactly as one only an unlandable pattern captures. Were it to load,
+// `$[ (from $branch)] $branch` from a skip pattern would render
+// `- :bug:~ fix it ` at exit 0, span dropped and the bare one empty.
 func TestNoteLineCannotCiteASkipGroup(t *testing.T) {
 	_, err := Load([]byte("schema = 1\n[[patterns]]\npattern = '^(?P<subject>:[a-z0-9_]+:(?P<semver_sigil>[=~^!%]) .+)'\n" +
 		"[[patterns]]\npattern = '^Merge (?P<branch>.+)'\nskip = true\n[note]\nline = '- $subject$[ (from $branch)]'\n"))

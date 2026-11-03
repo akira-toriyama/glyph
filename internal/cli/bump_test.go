@@ -216,8 +216,8 @@ func TestBumpCurrentInvalidIsUsage(t *testing.T) {
 // TestBumpVersionPastTheCapIsNoVersion: a field past 2^31−1 is no version
 // glyph reads. As --current it is the caller's bad input (exit 2); as a tag it
 // is no version on its line, so the walk base is the highest tag glyph can
-// step from. Measured before the cap (2026-09-29): both printed
-// v-9223372036854775808.0.0 at exit 0 over a `!`.
+// step from. Without the cap both print v-9223372036854775808.0.0 at exit 0
+// over a `!`.
 func TestBumpVersionPastTheCapIsNoVersion(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t) // tags v0.1.0
 	testutil.Commit(t, dir, "akira-toriyama", ":boom:! drop the flag")
@@ -372,10 +372,10 @@ func TestBumpPromoteFrom1xIsAPlainMajor(t *testing.T) {
 // TestBumpWarnsEachWarnedCommit pins the fold-side emission: every commit a
 // warned pattern claimed annotates on the diagnostic stream, and the JSON
 // row carries the same message — the verdict itself is untouched. This is
-// the release-time half of the loudness: the dotfiles measurement under the
-// fleet's since-retired v1-acceptance window (v1 verdict v1.0.0, v2 verdict
-// none, release silently stopped) is exactly what a warning here would have
-// named.
+// the release-time half of the loudness: a warned commit folding to none with
+// nothing said stops a release silently (v1 verdict v1.0.0, v2 verdict none —
+// the v1-acceptance window, DESIGN §2), which is exactly what a warning here
+// names.
 func TestBumpWarnsEachWarnedCommit(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
 	useWarnedPatternConfig(t, dir)

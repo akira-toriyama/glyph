@@ -12,11 +12,11 @@ import (
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
-// The two tests below go straight at mainFootprint rather than through a walk,
-// because both defences they cover are invisible from the outside: each one is
-// the reason a walk does NOT blow up, and a walk that does not blow up looks
-// exactly like a walk that never needed the guard. Measured before they existed:
-// deleting either guard left `go test ./...` green in all 14 packages.
+// TestMainFootprintSurvivesAListingLongerThanMain and
+// TestMainFootprintEmptyListingAsksGitNothing go straight at mainFootprint
+// rather than through a walk, because both defences they cover are invisible
+// from the outside: each one is the reason a walk does NOT blow up, and a walk
+// that does not blow up looks exactly like a walk that never needed the guard.
 
 // TestMainFootprintSurvivesAListingLongerThanMain covers the length guard on the
 // rebase-alignment arm. FirstParentLog's own contract is that it returns FEWER
@@ -35,9 +35,8 @@ import (
 // That is not decoration, it is what makes the test bite: the comparison loop
 // returns on the first mismatch, so a listing whose first entry already differs
 // never reaches an out-of-range index and the guard can be deleted under it with
-// the test still green. (Measured — the first version of this test was exactly
-// that vacuous.) A rebase preserves messages and order, so matching them is also
-// the honest fixture for the shape.
+// the test still green. A rebase preserves messages and order, so matching them
+// is also the honest fixture for the shape.
 func TestMainFootprintSurvivesAListingLongerThanMain(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t) // root commit ":tada:= begin the project"
 	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:(ui)^ add a menu")

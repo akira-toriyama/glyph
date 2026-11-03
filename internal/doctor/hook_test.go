@@ -339,9 +339,9 @@ func TestPrePushHookSaysWhenNoRemoteHeadIsRecorded(t *testing.T) {
 // TestHookFiresDefersAPassThroughToAnUnloadedConfig pins t-fdd8 (5). With no
 // glyph.toml (or one that does not load) the fired hook's `glyph lint` exits 2
 // before judging anything and the hook waves 2 through as 0 by design — so the
-// probe's 0 says nothing about the glyph on PATH. The check used to fail it
-// with a fix sending the reader to repair the PATH wrapper's source checkout,
-// a diagnosis of the wrong thing: the cause is the config glyph-toml-loads
+// probe's 0 says nothing about the glyph on PATH. Failing it would send the
+// reader, through its fix, to repair the PATH wrapper's source checkout — a
+// diagnosis of the wrong thing: the cause is the config glyph-toml-loads
 // already fails. Unknown, pointing there. The loaded-config row is the
 // positive control: the same probe on a loaded config is still the silent
 // no-op FAIL.

@@ -8,9 +8,9 @@ import (
 	"testing"
 )
 
-// release.yml's caller-facing outputs (t-c0c5). pr-verdict.yml grew outputs so
-// callers stop re-deriving a verdict the job already computed; release.yml is
-// the other reusable with a verdict, and the same argument lands the same four
+// release.yml's caller-facing outputs. pr-verdict.yml has outputs so callers
+// do not re-derive a verdict the job already computed; release.yml is the
+// other reusable with a verdict, and the same argument lands the same four
 // names — level, next, current, action. The guards here hold the three layers
 // of workflow_call plumbing together (declaration → job → step), because each
 // layer defaults to "" in silence: a renamed step id or a dropped job mapping

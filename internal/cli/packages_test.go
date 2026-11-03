@@ -274,9 +274,9 @@ func lineSection(stdout, path string) string {
 // pulls route: the walk's author gate never resolves them, so the placement
 // costs local git alone.
 //
-// Measured before the fix (t-sr1c, 2026-09-11 on glyph-monorepo-test): the
-// haiku-only bump rendered under all five line headings, and lines with no
-// commit of their own grew a section for it.
+// Placed on every line, the haiku-only bump renders under all five line
+// headings, and lines with no commit of their own grow a section for it
+// (t-sr1c).
 func TestSinceTagPackagesExcludedAuthorIsPlacedByItsFiles(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	testutil.Touch(t, dir, "dependabot[bot]", ":arrow_up:(haiku)~ bump a haiku-only dependency", "haiku/poem.go")
@@ -323,9 +323,9 @@ func TestSinceTagPackagesExcludedAuthorIsPlacedByItsFiles(t *testing.T) {
 // expanded (the pull's author is not excluded), and the bot's inner commit
 // exists on no branch, so its files come from the API like any other inner
 // commit's — the one request DESIGN §4.1's price names, recorded here as the
-// positive control (the first cut never asked, and placed the commit on every
-// line). Measured in this fixture: a pull of one human and one dependabot
-// commit costs 4 requests, 2 + k over k = 2, where the first cut paid 3.
+// positive control (a walk that never asks places the commit on every line).
+// In this fixture a pull of one human and one dependabot commit costs 4
+// requests, 2 + k over k = 2.
 func TestSinceTagPackagesExcludedAuthorInnerCommitIsPlacedByItsFiles(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	sha := testutil.Touch(t, dir, "akira-toriyama", "Bump a haiku dependency and fix curry (#8)", "haiku/go.mod", "curry/curry.go")
@@ -694,8 +694,8 @@ func TestLintRangePackagesNoFileCommitUnderARootPackage(t *testing.T) {
 // TestPackagesWalkRefusesAClaimedMergeInItsOwnWords is the walk's arm of the
 // refusal's wording: partitionLines reaches attribution through
 // walk.Attribute, so a claimed merge commit is refused as a merge commit — its diff
-// never read — with the wedge per line, where the first cut said it "touches
-// no declared package" of a merge that touched haiku/. A haiku scope carries
+// never read — with the wedge per line, not "touches no declared package" of
+// a merge that touched haiku/. A haiku scope carries
 // it (rule 2). Mutation row walk-refuses-a-merge-commit-as-touching-no-file
 // hands the helper no commit. The walk is --since-tag, which words the
 // refusal with its wedge per line; --range words the same sentence for a
@@ -730,11 +730,11 @@ func TestPackagesWalkRefusesAClaimedMergeInItsOwnWords(t *testing.T) {
 // TestLintRangePackagesRawRevertNamesTheEscapesThatWork: `git revert` writes
 // `Revert "…"`, which the presets claim with a pattern that fixes the sigil at
 // ~ and captures no scope. Reverting a shared-only commit in a repository with
-// no root package is therefore refused, and the refusal used to name two
-// escapes that message cannot take — "name the package in the scope … or
-// write =" (t-mfny (A)). It names the ones that work, and the test takes each
-// in turn rather than trusting the sentence: the reword as =, the reword with
-// a scope, the declaration; and it shows the two old ones still fail.
+// no root package is therefore refused, and the refusal names the escapes that
+// work and not two that message cannot take — "name the package in the scope
+// … or write =" (t-mfny (A)); the test takes each working one in turn rather
+// than trusting the sentence: the reword as =, the reword with a scope, the
+// declaration; and it shows the two unwritable ones still fail.
 func TestLintRangePackagesRawRevertNamesTheEscapesThatWork(t *testing.T) {
 	dir, _ := packagesRepo(t)
 	testutil.Touch(t, dir, "akira-toriyama", ":memo:= add a README", "README.md")
@@ -905,15 +905,15 @@ func TestLintRangePackagesRootDeclarationTakesANameWhereTheLoaderAsksOne(t *test
 // TestLintRangePackagesDropTheScopeIsProvenAgainstTheMessage: "drop the scope"
 // is offered only when the message with its scope taken out was run through
 // the patterns and came back the same pattern's, with no scope and the same
-// sigil (config.Sayable). It was read off the pattern's tree — a scope under
-// a ?, a *, a {0,n} or ONE BRANCH OF AN ALTERNATION, or a group that can
-// capture nothing, counted as droppable — and under
-// `(?:type\((?P<scope>…)\)|release)` the finding said "or drop the scope" of a
-// message that, scope dropped, matches no pattern (measured 2026-10-05 before
-// this rule: exit 3 at lint --range, bump and preview). The tree cannot say
-// what is left once the scope is gone, nor which pattern takes it: every case here
-// takes each escape its finding names and asserts the exit code, then writes
-// the dropped message a finding does not offer and shows why it must not.
+// sigil (config.Sayable). Read off the pattern's tree — a scope under a ?, a
+// *, a {0,n} or ONE BRANCH OF AN ALTERNATION, or a group that can capture
+// nothing, counted as droppable — droppability under
+// `(?:type\((?P<scope>…)\)|release)` says "or drop the scope" of a message
+// that, scope dropped, matches no pattern (exit 3 at lint --range, bump and
+// preview). The tree cannot say what is left once the scope is gone, nor which
+// pattern takes it: every case here takes each escape its finding names and
+// asserts the exit code, then writes the dropped message a finding does not
+// offer and shows why it must not.
 func TestLintRangePackagesDropTheScopeIsProvenAgainstTheMessage(t *testing.T) {
 	const optional = "[[patterns]]\npattern = '^(?P<subject>[a-z]+(\\((?P<scope>[a-z]+)\\))?(?P<semver_sigil>[=~^!%]): .+)'\n"
 	type rewrite struct {
@@ -1006,14 +1006,14 @@ func TestLintRangePackagesDropTheScopeIsProvenAgainstTheMessage(t *testing.T) {
 // TestLintRangePackagesFixedNoneIsReachedByLeavingTheSigilOut: a pattern whose
 // sigil group cannot capture = can still read a message as = — by its fixed
 // semver_sigil, when the message leaves the sigil out. That is an escape, and
-// the refusal used to deny it existed: under `[a-z]+(?P<semver_sigil>[~^!])?: `
-// over a fixed = an empty `fix~: …` was told "nothing a message it claims can
-// write carries this commit", while `fix: …` passes (measured 2026-10-05
-// before this rule: lint 0, bump 1). It is named now, and proven the way the dropped
-// scope is: the message with its sigil taken out goes through the patterns.
-// The second grammar holds the sigil in one branch of an alternation, where
+// a refusal reading the sigil group alone denies it exists: under
+// `[a-z]+(?P<semver_sigil>[~^!])?: ` over a fixed = an empty `fix~: …` is told
+// "nothing a message it claims can write carries this commit", while `fix: …`
+// passes (lint 0, bump 1). It is named, and proven the way the dropped scope
+// is: the message with its sigil taken out goes through the patterns. The
+// second grammar holds the sigil in one branch of an alternation, where
 // leaving it out matches nothing — so the escape is not named, and neither is
-// the old clause, which `chore: …` under the same pattern shows was false.
+// the clause `chore: …` under the same pattern refutes.
 func TestLintRangePackagesFixedNoneIsReachedByLeavingTheSigilOut(t *testing.T) {
 	const noEscape = ": patterns[0], which claimed this message, captures no = as the sigil and captures no scope"
 	lint := func(t *testing.T) (int, string) {
@@ -1081,9 +1081,9 @@ func TestLintRangePackagesFixedNoneIsReachedByLeavingTheSigilOut(t *testing.T) {
 // TestPackagesNameNoScopeCanSpellIsUsage: a package name the shipped grammar
 // cannot spell is a config that does not load — exit 2 on every verdict
 // command, the commit-msg hook's --message included — never the 3 whose one
-// scope escape cannot be written. Measured before the rule (2026-09-29):
-// lint --range refused the shared-only ~ offering "(one of my_lib, other)",
-// and `:memo:(my_lib)~` then matched none of the patterns at every gate.
+// scope escape cannot be written. Loaded, such a name has lint --range refuse
+// the shared-only ~ offering "(one of my_lib, other)", and `:memo:(my_lib)~`
+// then matches none of the patterns at every gate.
 func TestPackagesNameNoScopeCanSpellIsUsage(t *testing.T) {
 	dir := testutil.NewPackagesRepo(t, "\n[[packages]]\npath = \"my_lib\"\n\n[[packages]]\npath = \"other\"\n", map[string]string{"my_lib/a.go": "package a\n", "other/b.go": "package b\n"})
 	testutil.Touch(t, dir, "akira-toriyama", ":memo:~ fix the readme", "README.md")
