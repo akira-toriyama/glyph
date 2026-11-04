@@ -1,16 +1,24 @@
 package workflows
 
-// The YAML a reader copies by hand: README.md's fenced blocks, and the usage
-// examples standing in the comments of the workflow and action files (doctor's
-// remedy calls a reusable's stub the known-good copy). actionlint reads a
+// The YAML a reader copies by hand: the fenced blocks of README.md and docs/*.md,
+// and the usage examples standing in the comments of the workflow and action files
+// (doctor's remedy calls a reusable's stub the known-good copy). actionlint reads a
 // workflow's executable text and nothing else, so a snippet here that is no YAML
 // stays green and fails only whoever pastes it.
 //
-// This is not a YAML parser, and it does not grow into one: go.mod carries no
-// YAML library, and this package and doctor both read YAML by line. It reads flow
-// collections, the one construct that has gone wrong here, by the rule of YAML
-// 1.2.2 §7.3.3: a plain scalar in flow context cannot hold a flow indicator, so
-// an unquoted ${{ }} ends the scalar at `$` and the `{` after it is a syntax error.
+// This is not a YAML parser, and it does not grow into one: go.mod carries no YAML
+// library, and this package and doctor both read YAML by line. It judges two
+// constructs by the rules of YAML 1.2.2, and TestDocumentedYAMLParses's doc lists
+// what it leaves unjudged:
+//
+//   - flow collections (§7.4), in a document and in a comment: brackets close and
+//     match, a plain scalar holds no flow indicator — so an unquoted ${{ }} ends the
+//     scalar at `$` and the `{` after it is a syntax error — and `:` right after a
+//     quoted scalar or a closed collection is the value indicator JSON writes;
+//   - block structure (§8.2), in a document only: a key's column is its mapping's
+//     and a dash's column is its sequence's, a nested collection opens under a line
+//     that carries no value, a sequence may stand at its parent key's column, and a
+//     plain scalar alone continues onto deeper lines.
 
 import (
 	"fmt"
@@ -66,54 +74,249 @@ func commentYAML(raw string) yamlText {
 }
 
 var (
-	// yamlKeyColumn is a block-context line up to its key: indentation and any
-	// sequence dashes.
-	yamlKeyColumn = regexp.MustCompile(`^ *(?:- +)*`)
-	// yamlKey is a plain `key: ` at that column. A quoted key is not read: a value
-	// behind one goes unjudged, and none of these files writes one.
-	yamlKey = regexp.MustCompile(`^[^\s:#"'{\[][^:#]*: +`)
+	// yamlKey is a plain `key:` opening a line's node, with its value after one or
+	// more spaces or nothing at all. The key ends at the first `:` a space or the
+	// line's end follows, so `a:b: 1` keys `a:b`. A quoted key is not read, and a
+	// `:` followed by a tab is not a value indicator here: PyYAML refuses that tab
+	// and libyaml takes it (measured 2026-11-04), so the reader judges neither.
+	yamlKey = regexp.MustCompile("^([^\\s\\-?,\\[\\]{}#&*!|>'\"%@`:][^#]*?):(?: +(.*))?$")
 	// yamlBlockScalar is a value that opens a block scalar.
 	yamlBlockScalar = regexp.MustCompile(`^[|>][-+0-9]*(?: +#.*)?$`)
 )
 
-// flowFaults returns one message per flow collection in y that YAML refuses, each
-// naming its host line. A block scalar's lines are its content whatever they look
+// yamlLevel is an open block collection: the column of its entries and its kind,
+// 'm' for a mapping and 's' for a sequence. shared marks a sequence standing at its
+// parent key's own column (`a:\n- b`), which that mapping's next key closes.
+type yamlLevel struct {
+	column int
+	kind   byte
+	shared bool
+}
+
+// yamlFaults returns one message per construct in y that YAML refuses, each naming
+// its host line. A document is judged for block structure and flow collections; a
+// fragment — the comments of a file, whose lines stand in no structure — for flow
+// collections alone. A block scalar's lines are its content whatever they look
 // like, shell's `{ …; }` and `[ … ]` above all, so they are skipped: the scalar
-// ends at the first line no deeper than its key.
-func flowFaults(y yamlText) []string {
+// ends at the first line no deeper than the node that owns it.
+func yamlFaults(y yamlText, document bool) []string {
 	var faults []string
 	lines := strings.Split(y.text, "\n")
+	fault := func(i int, format string, args ...any) {
+		faults = append(faults, fmt.Sprintf("line %d (%s): %s", y.line+i, strings.TrimSpace(lines[i]), fmt.Sprintf(format, args...)))
+	}
+
+	var levels []yamlLevel
+	top := func() *yamlLevel {
+		if len(levels) == 0 {
+			return nil
+		}
+		return &levels[len(levels)-1]
+	}
+	pending := -1  // column of a key or dash whose node is still to come; -1 after a value
+	plain := false // the last value was a plain scalar, which deeper lines continue
+	floor := -1    // column of the collection holding that scalar; a continuation sits deeper
+
 	for i := 0; i < len(lines); i++ {
-		column := len(yamlKeyColumn.FindString(lines[i]))
-		value := lines[i][column:]
-		value = value[len(yamlKey.FindString(value)):]
+		text := strings.TrimLeft(lines[i], " ")
+		if text == "" || text[0] == '#' {
+			continue
+		}
+		indent := len(lines[i]) - len(text)
+		if document && indent == 0 && (text == "---" || text == "...") {
+			levels, pending, plain = nil, -1, false
+			continue
+		}
+
+		// The line's nodes: each `- ` opens a sequence entry; after them a key with
+		// its value, a value alone, or nothing. text stays a suffix of the line, so a
+		// node's column is what it leaves of the line's length.
+		var dashes []int
+		for text == "-" || strings.HasPrefix(text, "- ") {
+			dashes = append(dashes, len(lines[i])-len(text))
+			text = strings.TrimLeft(text[1:], " ")
+		}
+		if text != "" && text[0] == '#' {
+			text = ""
+		}
+		col := len(lines[i]) - len(text)
+		key, value, isKey := cutYAMLKey(text)
+		if !isKey {
+			value = text
+		}
+		owner := col // the node a block scalar's indentation is measured from
+		if !isKey && len(dashes) > 0 {
+			owner = dashes[len(dashes)-1]
+		}
+
+		if document {
+			for top() != nil && top().column > indent {
+				levels = levels[:len(levels)-1]
+			}
+			t := top()
+			placed := t == nil || t.column == indent || (pending >= 0 && indent > pending)
+			if !placed {
+				switch {
+				case plain && indent > floor && !holdsValueIndicator(text):
+					// A plain scalar's continuation line (`a: 1\n  - b` reads "1 - b").
+					pending = -1
+					continue
+				case plain && indent > floor:
+					fault(i, "this line continues the plain scalar above it and holds `: `, which YAML reads as a "+
+						"mapping value where none is allowed — a key one column off its mapping, or a scalar that "+
+						"wants quoting")
+				case isKey:
+					fault(i, "the key `%s` sits at column %d, where no mapping is open — a block mapping's keys "+
+						"share one column, and a nested one begins under a key with no value on its line", key, col)
+				case len(dashes) > 0:
+					fault(i, "a sequence entry at column %d, where no sequence is open — a nested sequence begins "+
+						"under a key or dash with no value on its line", dashes[0])
+				default:
+					fault(i, "a line deeper than the value above it, which closed on its own line — only a plain "+
+						"scalar continues onto deeper lines")
+				}
+				continue
+			}
+			misplaced := false
+			for _, c := range dashes {
+				switch t := top(); {
+				case t != nil && t.column == c && t.kind == 's':
+				case t != nil && t.column == c && pending != c:
+					fault(i, "a sequence entry at column %d, the column of a mapping's keys — a sequence stands "+
+						"at its parent key's column only right under a key with no value on its line", c)
+					misplaced = true
+				case t != nil && t.column == c:
+					levels = append(levels, yamlLevel{c, 's', true})
+				default:
+					levels = append(levels, yamlLevel{c, 's', false})
+				}
+				if misplaced {
+					break
+				}
+			}
+			if misplaced {
+				continue
+			}
+			if isKey {
+				if t := top(); t != nil && t.column == col && t.kind == 's' && t.shared {
+					levels = levels[:len(levels)-1]
+				}
+				switch t := top(); {
+				case t != nil && t.column == col && t.kind == 's':
+					fault(i, "the key `%s` sits at column %d, the column of a sequence's entries — a mapping "+
+						"inside an entry begins after `- `", key, col)
+					continue
+				case t != nil && t.column == col:
+				default:
+					levels = append(levels, yamlLevel{col, 'm', false})
+				}
+			}
+		}
+
+		pending, plain = -1, false
 		switch {
+		case value == "":
+			pending = owner
 		case yamlBlockScalar.MatchString(value):
+			// The body is every line at least as deep as its first non-blank one, which
+			// must itself be deeper than the owner; a shallower line ends the scalar.
+			content := -1
 			for i+1 < len(lines) {
 				next := lines[i+1]
-				if strings.TrimSpace(next) != "" && len(next)-len(strings.TrimLeft(next, " ")) <= column {
-					break
+				if strings.TrimSpace(next) != "" {
+					n := len(next) - len(strings.TrimLeft(next, " "))
+					if n <= owner || (content >= 0 && n < content) {
+						break
+					}
+					if content < 0 {
+						content = n
+					}
 				}
 				i++
 			}
-		case strings.HasPrefix(value, "{") || strings.HasPrefix(value, "["):
+		case value[0] == '{' || value[0] == '[':
 			rest := value + "\n" + strings.Join(lines[i+1:], "\n")
-			end, fault := readFlowCollection(rest)
-			if fault != "" {
-				faults = append(faults, fmt.Sprintf("line %d (%s): %s", y.line+i, strings.TrimSpace(lines[i]), fault))
+			end, f := readFlowCollection(rest)
+			if f != "" {
+				fault(i, "%s", f)
+				continue
+			}
+			tail, _, _ := strings.Cut(rest[end:], "\n")
+			if tail = strings.TrimSpace(tail); document && tail != "" && tail[0] != '#' {
+				fault(i, "`%s` follows the flow collection on its closing line — YAML takes nothing after the close "+
+					"but a comment", tail)
+			}
+			i += strings.Count(rest[:end], "\n")
+		case document && (value[0] == '"' || value[0] == '\''):
+			rest := value + "\n" + strings.Join(lines[i+1:], "\n")
+			end := readQuotedScalar(rest)
+			if end < 0 {
+				fault(i, "a quoted scalar never closes")
 				continue
 			}
 			i += strings.Count(rest[:end], "\n")
+		default:
+			plain, floor = true, -1
+			if t := top(); t != nil {
+				floor = t.column
+			}
 		}
 	}
 	return faults
 }
 
+// cutYAMLKey splits a node's text into a plain key and its value, which is empty
+// for a key with nothing or a comment after the colon.
+func cutYAMLKey(text string) (key, value string, ok bool) {
+	m := yamlKey.FindStringSubmatch(text)
+	if m == nil {
+		return "", "", false
+	}
+	value = strings.TrimRight(m[2], " ")
+	if value != "" && value[0] == '#' {
+		value = ""
+	}
+	return m[1], value, true
+}
+
+// holdsValueIndicator reports whether a line's text, less a trailing comment,
+// holds a `:` a space or the line's end follows — what makes a plain scalar's
+// continuation line a syntax error.
+func holdsValueIndicator(text string) bool {
+	if i := strings.Index(text, " #"); i >= 0 {
+		text = text[:i]
+	}
+	text = strings.TrimRight(text, " ")
+	return strings.Contains(text, ": ") || strings.HasSuffix(text, ":")
+}
+
+// readQuotedScalar returns the offset just past the close of the quoted scalar s
+// opens, across lines, or -1 when it never closes. `\"` is an escape inside double
+// quotes, and a doubled quote inside single.
+func readQuotedScalar(s string) int {
+	for j := 1; j < len(s); j++ {
+		switch {
+		case s[0] == '"' && s[j] == '\\':
+			j++
+		case s[j] == s[0]:
+			if s[0] == '\'' && j+1 < len(s) && s[j+1] == '\'' {
+				j++
+				continue
+			}
+			return j + 1
+		}
+	}
+	return -1
+}
+
 // readFlowCollection walks the flow collection s opens and returns the offset just
-// past its close, or what YAML refuses in it.
+// past its close, or what YAML refuses in it. json marks the position after a
+// quoted scalar or a closed collection, where `:` is the value indicator with
+// nothing between (§7.4.2: `{"a":{"b":1}}`); anywhere else a `:` followed by a
+// plain character continues the plain scalar (`a:1`).
 func readFlowCollection(s string) (end int, fault string) {
 	var closers []byte
-	plain := false
+	plain, json := false, false
 	for i := 0; i < len(s); i++ {
 		switch c := s[i]; c {
 		case ' ', '\t', '\n':
@@ -128,62 +331,79 @@ func readFlowCollection(s string) (end int, fault string) {
 			if plain {
 				continue
 			}
-			j := i + 1
-			for j < len(s) && s[j] != c {
-				if c == '"' && s[j] == '\\' {
-					j++
-				}
-				j++
-			}
-			if j >= len(s) {
+			n := readQuotedScalar(s[i:])
+			if n < 0 {
 				return len(s), "a quoted scalar never closes"
 			}
-			i = j
+			i += n - 1
+			json = true
 		case '{':
 			if plain {
 				return i, "a plain scalar in a flow collection cannot hold `{` — quote the value, or write the mapping in block style"
 			}
 			closers = append(closers, '}')
+			json = false
 		case '[':
 			if plain {
 				return i, "a plain scalar in a flow collection cannot hold `[` — quote the value, or write the sequence in block style"
 			}
 			closers = append(closers, ']')
+			json = false
 		case '}', ']':
 			if closers[len(closers)-1] != c {
 				return i, fmt.Sprintf("`%c` closes a collection `%c` should", c, closers[len(closers)-1])
 			}
 			closers = closers[:len(closers)-1]
-			plain = false
+			plain, json = false, true
 			if len(closers) == 0 {
 				return i + 1, ""
 			}
 		case ',':
-			plain = false
+			plain, json = false, false
 		case ':':
-			plain = i+1 < len(s) && !strings.ContainsRune(" \t\n", rune(s[i+1]))
+			plain = !json && i+1 < len(s) && strings.IndexByte(" \t\n,[]{}", s[i+1]) < 0
+			json = false
 		default:
-			plain = true
+			plain, json = true, false
 		}
 	}
 	return len(s), "the flow collection never closes"
 }
 
-// TestDocumentedYAMLFlowCollectionsParse holds every fenced yaml block in README
-// and every commented usage example to the flow-collection rule. README's install
-// snippets and the install action's header wrote `with: { …, token: ${{ github.token }} }`:
-// pushed as written, GitHub refuses the whole workflow file ("You have an error in
-// your yaml syntax", glyph-test-2 run 41809060151, no job started).
+// TestDocumentedYAMLParses holds every fenced yaml block in README.md and docs/*.md,
+// and every commented usage example in the workflow and action files, to the two
+// rules the reader knows. README's install snippets and the install action's header
+// wrote `with: { …, token: ${{ github.token }} }`: pushed as written, GitHub refuses
+// the whole workflow file ("You have an error in your yaml syntax", glyph-test-2
+// run 41809060151, no job started).
+//
+// What is judged: flow collections, everywhere — closing, matching, no flow
+// indicator inside a plain scalar, `:` adjacent after a quoted scalar or a closed
+// collection, nothing but a comment after the close in a document; block structure,
+// in a document — a key at a column where no mapping is open, a dash at a column
+// where no sequence is, a key at a sequence's column or a dash at a mapping's, a
+// continuation line of a plain scalar holding `: `, any line deeper than a value
+// that closed on its own line, a quoted scalar that never closes.
+//
+// What is not judged, and stays green here: a quoted key and the value behind it;
+// a `:` followed by a tab, and a line indented with one; the content of scalars,
+// so a plain scalar's continuation lines, text after a quoted scalar, anchors, tags
+// and aliases; a scalar line standing at a collection's column; a `?` explicit key;
+// a document whose later lines sit left of its first; duplicate keys; and what the
+// text means to GitHub. None of these files writes one of those shapes.
 //
 // The table is the oracle, and its verdicts are the real parsers', not this
-// reader's: measured 2026-11-04 with PyYAML 6.0.3 and libyaml 0.2.1 on every row,
-// and on GitHub for the unquoted row above and the quoted row (run 41809639082
-// ran it). A reader that drifts from them fails here before it judges a file.
-func TestDocumentedYAMLFlowCollectionsParse(t *testing.T) {
+// reader's: measured 2026-11-04 with PyYAML 6.0.3 (its pure parser and its libyaml
+// binding) and Psych 3.1.0 on libyaml 0.2.1, the three agreeing on every row, and on
+// GitHub for the unquoted install row and the quoted one (run 41809639082 ran it).
+// A shape the three parsers split on — `with:\t{ a: 1 }`, `{a:[b]}`, `{[a]:1}` — has
+// no row. A reader that drifts from the table fails here before it judges a file.
+func TestDocumentedYAMLParses(t *testing.T) {
 	for _, c := range []struct {
 		doc     string
 		refused bool
 	}{
+		// flow collections
 		{"- uses: o/r/a@v1\n  with: { version: vX.Y.Z, token: ${{ github.token }} }\n", true},
 		{"- uses: o/r/a@v1\n  with: { token: ${{ github.token }} }\n", true},
 		{"matrix: [ ${{ github.token }} ]\n", true},
@@ -195,36 +415,174 @@ func TestDocumentedYAMLFlowCollectionsParse(t *testing.T) {
 		{"- - [ ${{ b }} ]\n", true},
 		{"a: { b: 1\n", true},
 		{"a: [ b, c }\n", true},
+		{"{\"a\":{\"b\":${{ c }}}}\n", true},
+		{"{\"a\":[${{ b }}]}\n", true},
+		{"a: [1] b\n", true},
 		{"- uses: o/r/a@v1\n  with: { version: vX.Y.Z, token: \"${{ github.token }}\" }\n", false},
 		{"- uses: o/r/a@v1\n  with: { version: vX.Y.Z, token: '${{ github.token }}' }\n", false},
-		{"- uses: o/r/a@v1\n  with:\n    version: vX.Y.Z\n    token: ${{ github.token }}\n", false},
 		{"on:\n  pull_request:\n    types: [opened, synchronize, reopened, edited]\n  push:\n    branches: [main]  # optional\n", false},
 		{"a: [ { b: 1 }, { c: 2 } ]\n", false},
 		{"a: {b: [1, 2], c: {d: e}}\n", false},
 		{"a: { b: c#d, e: f }  # g\n", false},
 		{"a: {\n  b: 1,  # comment\n  c: \"${{ d }}\"\n}\n", false},
 		{"a: { b: 'it''s', c: \"x\\\"{y\" }\n", false},
+		{"{\"a\":{\"b\":1}}\n", false},
+		{"{\"a\":[\"b\"]}\n", false},
+		{"a: {\"b\":{\"c\":1}}\n", false},
+		{"a: {\"b\":[\"c\"]}\n", false},
+		{"- {\"a\":[\"b\"]}\n", false},
+		{"{\"error\":{\"code\":3,\"message\":\"m\"}}\n", false},
+		{"matrix: {\"a\":[\"b\"],\"c\":[\"d\"]}\n", false},
+		{"{ \"a\" : 1 }\n", false},
+		{"{\"a\": {\"b\": 1}}\n", false},
+		{"{'a':{'b':1}}\n", false},
+		{"[\"a\":1]\n", false},
+		{"a: {\n  b: 1\n}\nc: 2\n", false},
+		{"- a: [\n    1,\n    2\n  ]\n  b: 3\n", false},
+		{"a:\n  [1, 2]\nb: 3\n", false},
+		{"a: [1]\n  # c\nb: 2\n", false},
+		{"- [1]\n- b\n", false},
+		{"a:{\"b\":1}\n", false},
+		// block scalars and quoted scalars
 		{"run: |\n  { echo a; echo b; } > f\n  [ -f f ]\n", false},
 		{"run: >-\n  { echo ${{ a }}; }\n", false},
+		{"- run: |\n    { echo; }\n  if: x\n", false},
+		{"a: >\n  x\n   y\n", false},
+		{"a: |\n  x\nb: 1\n", false},
+		{"a: |\n  x\n b: 1\n", true},
+		{"a: \"x\n  y\"\n", false},
+		{"a: \"x\n  b: y\"\n", false},
+		{"a: 'x\n  b: y'\n", false},
+		{"a: \"x\n  y\"\nb: 1\n", false},
+		{"a: \"x\"\nb: 1\n", false},
+		{"a: \"x\n", true},
+		{"a: 'x\n", true},
+		// block structure: the README and DESIGN shapes
+		{"- uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z\n  with:\n    version: vX.Y.Z\n    token: ${{ github.token }}\n", false},
+		{"- uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z\n  with:\n    version: vX.Y.Z\n   token: ${{ github.token }}\n", true},
+		{"- uses: o/r/a@v1\n  with:\n    version: vX.Y.Z\n     token: ${{ github.token }}\n", true},
+		{"- uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z\n  with:\n    version: vX.Y.Z              # the tag you pinned above\n    token: ${{ github.token }}   # for `gh attestation verify`\n- run: glyph bump --range \"$BASE..HEAD\" --json   # exit 1 on a none verdict — handle it\n", false},
+		{"# .github/workflows/commit-lint.yml\non:\n  pull_request:\n    # a retitle re-fires the squash-title lint only with `edited`, not a default type\n    types: [opened, synchronize, reopened, edited]\n  push:\n    branches: [main]  # optional — annotates direct pushes, never fails them\npermissions:\n  contents: read\n  pull-requests: read  # the squash-title lint reads GET /pulls/{n}\njobs:\n  lint:\n    uses: akira-toriyama/glyph/.github/workflows/lint.yml@vX.Y.Z  # pin a release tag\n", false},
+		{"- uses: x\n  with:\n    a: 1\n- uses: y\n  id: z\n", false},
 		{"token: ${{ github.token }}\n", false},
+		// block structure: keys and dashes off their collection's column
+		{"a: 1\n  b: 2\n", true},
+		{"a:\n  b: 1\n c: 2\n", true},
+		{"a:\n  b: 1\n   c: 2\n", true},
+		{"a: 1\n b: 2\n", true},
+		{"a:\n    - b\n  c: 1\n", true},
+		{"a: {\n  b: 1\n}\n c: 2\n", true},
+		{"- a: 1\n    b: 2\n", true},
+		{"a: 1\n- b\n", true},
+		{"a:\n  b: 1\n  - c\n", true},
+		{"- a\nb: c\n", true},
+		{"a:\n  - b\n  c: 1\n", true},
+		{"- a\n  b: 1\n", true},
+		{"- \"a\"\n  b: 1\n", true},
+		{"a:\n  - b\n   c: 1\n", true},
+		{"a:\n  text\n  b: 1\n", true},
+		{"a: long\n  b: c\n", true},
+		{"a: 1\n  b\n  c: 2\n", true},
+		{"a: 1\n  \"b: c\"\n", true},
+		{"a: [1]\n  text\n", true},
+		{"a: [1]\n  b: 2\n", true},
+		{"a: {b: 1}\n  c: 2\n", true},
+		{"a:\n  [1, 2]\n  b: 3\n", true},
+		{"a: \"x\"\n  text\n", true},
+		{"a: \"x\"\n  - b\n", true},
+		{"a: 'x'\n  - b\n", true},
+		{"- [1]\n  - b\n", true},
+		// block structure: what YAML takes
+		{"steps:\n- uses: x\n- run: y\n", false},
+		{"a:\n- b\n- c\nd: 1\n", false},
+		{"a:\n- b\nc: 1\n", false},
+		{"a:\n  b:\n  - c\n  d: 1\n", false},
+		{"- a:\n  - b\n  c: 2\n", false},
+		{"- a:\n    b: 1\n  c: 2\n", false},
+		{"a:\n  b:\n    c: 1\n  d: 2\ne: 3\n", false},
+		{"a:\n  b:\nc: 1\n", false},
+		{"a:\nb: 1\n", false},
+		{"a:\nb:\n", false},
+		{"a:\n    b: 1\n    c: 2\n", false},
+		{"a:\n    - b\n    - c\nd: 1\n", false},
+		{"a:\n  - b: 1\n    c: 2\n  - d\n", false},
+		{"- - a\n  - b\n- c\n", false},
+		{"- - a: 1\n    b: 2\n  - c\n", false},
+		{"- a: 1\n  b: 2\n- c: 3\n", false},
+		{"-\n  a: 1\n", false},
+		{"-\n  - b\n", false},
+		{"-\n- b\n", false},
+		{"- a\n-\n- b\n", false},
+		{"a:  # c\n  b: 1\n", false},
+		{"a: # c\n  - b\n", false},
+		{"-  # c\n  a: 1\n", false},
+		{"a:   \n  b: 1\n", false},
+		{"a:\n  # comment\n  b: 1\n", false},
+		{"key: value\n\n\nother: 1\n", false},
+		{"---\na: 1\n", false},
+		{"a: long\n  continued\n", false},
+		{"a: 1\n  - b\n", false},
+		{"a: 1\n  \"b\"\n", false},
+		{"a: 1\n  [b]\n", false},
+		{"- a\n  \"b\"\n", false},
+		{"- a\n  - b\n", false},
+		{"- a\n - b\n", false},
+		{"- - a\n   - b\n", false},
+		{"- a\n  b\n- c\n", false},
+		{"a:\n  text\n", false},
+		{"a:\n  text\nb: 1\n", false},
+		{"a: b:c\n", false},
+		{"a:b: 1\n", false},
+		{"a: https://x/y\n", false},
+		{"a:   b\n", false},
+		{"pull-requests: read\nfoo bar: 1\n", false},
+		{"a: &x 1\nb: *x\n", false},
+		{"? a\n: b\n", false},
+		{"\"a\": 1\nb: 2\n", false},
 	} {
-		faults := flowFaults(yamlText{1, c.doc})
+		faults := yamlFaults(yamlText{1, c.doc}, true)
 		if c.refused != (len(faults) > 0) {
 			t.Fatalf("the reader says %v over a document the real parsers %s — every verdict below would be "+
 				"this reader's opinion:\n%s", faults, map[bool]string{true: "refuse", false: "accept"}[c.refused], c.doc)
 		}
 	}
-
-	blocks := fencedYAML(repoFile(t, "README.md"))
-	if len(blocks) < 3 {
-		t.Fatalf("read %d fenced yaml blocks in README.md, want the lint caller and the two install snippets at "+
-			"least — the check below is over nothing", len(blocks))
-	}
-	for _, block := range blocks {
-		for _, fault := range flowFaults(block) {
-			t.Errorf("README.md %s\nGitHub refuses a workflow file holding this as a syntax error, so the snippet fails "+
-				"whoever pastes it", fault)
+	// A comment is a fragment: its flow collections are judged, its lines' columns
+	// are not, and prose after a `{…}` is prose.
+	for _, c := range []struct {
+		doc     string
+		refused bool
+	}{
+		{"  - uses: o/r/a@v1\n    with: { version: vX.Y.Z, token: ${{ github.token }} }\n", true},
+		{"  - uses: o/r/a@v1\n    with:\n      version: vX.Y.Z\n     token: ${{ github.token }}\n", false},
+		{"{owner}/{repo} is the slug\n", false},
+		{"{\"error\":{\"code\":3,\"message\":\"m\"}} is the shape of the envelope\n", false},
+	} {
+		faults := yamlFaults(yamlText{1, c.doc}, false)
+		if c.refused != (len(faults) > 0) {
+			t.Fatalf("the reader says %v over a fragment it should %s:\n%s",
+				faults, map[bool]string{true: "refuse", false: "accept"}[c.refused], c.doc)
 		}
+	}
+
+	docs, err := filepath.Glob(filepath.Join("..", "..", "docs", "*.md"))
+	if err != nil || len(docs) == 0 {
+		t.Fatalf("listing docs/*.md: %v (%d found)", err, len(docs))
+	}
+	fenced := map[string]int{}
+	for _, md := range append([]string{"README.md"}, docs...) {
+		rel := strings.TrimPrefix(md, filepath.Join("..", "..")+string(filepath.Separator))
+		for _, block := range fencedYAML(repoFile(t, rel)) {
+			fenced[rel]++
+			for _, fault := range yamlFaults(block, true) {
+				t.Errorf("%s %s\nYAML refuses this, and GitHub refuses a workflow file that is not YAML with no job "+
+					"started (glyph-test-2 run 41809060151), so the snippet fails whoever pastes it", rel, fault)
+			}
+		}
+	}
+	if fenced["README.md"] < 3 || fenced[filepath.Join("docs", "DESIGN.md")] < 1 {
+		t.Fatalf("read %d fenced yaml blocks in README.md and %d in docs/DESIGN.md, want the lint caller and the two "+
+			"install snippets, and §6's consumer snippet, at least — the check above was over too little",
+			fenced["README.md"], fenced[filepath.Join("docs", "DESIGN.md")])
 	}
 
 	var hosts []string
@@ -239,9 +597,9 @@ func TestDocumentedYAMLFlowCollectionsParse(t *testing.T) {
 		hosts = append(hosts, filepath.Join(".github", "actions", filepath.Base(filepath.Dir(path)), "action.yml"))
 	}
 	for _, host := range hosts {
-		for _, fault := range flowFaults(commentYAML(repoFile(t, host))) {
-			t.Errorf("%s %s\nGitHub refuses a workflow file holding this as a syntax error, so the usage example "+
-				"fails whoever pastes it", host, fault)
+		for _, fault := range yamlFaults(commentYAML(repoFile(t, host)), false) {
+			t.Errorf("%s %s\nYAML refuses this, and GitHub refuses a workflow file that is not YAML with no job "+
+				"started (glyph-test-2 run 41809060151), so the usage example fails whoever pastes it", host, fault)
 		}
 	}
 }

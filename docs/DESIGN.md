@@ -3544,17 +3544,22 @@ two pages answer two lines, and gh refuses the PATCH URL they make; `--paginate`
 asks for 100 a page, so that is a pull past 100 comments (glyph-test-2 #11 at 104,
 one push: the v6.1.0 step died on run 41817273095, this one edited its sticky on
 run 41817272657 and left three person-typed markers alone). gh refuses `--slurp`
-beside `--jq`, hence the pipe into `jq`, and the step's `pipefail` is what keeps a
-refused connection from reading as "no comment yet": gh prints `[]` and exits 1,
-and jq answers empty and exits 0. The job's own `if:` is the only guard on the
-event: a push-triggered caller reports the job skipped with no step run
-(glyph-test-2 run 41809789871), so nothing inside the job can refuse one.
-Executed by `TestPRVerdictStickyLookupAnswersOneBotComment`, the condition pinned
-by `TestPRVerdictJobRunsOnlyOnASameRepoPull`; mutation rows
+beside `--jq`, hence the pipe into `jq`, and refuses it without `--paginate`; the
+step's `pipefail` is what keeps a refused connection from reading as "no comment
+yet": gh prints `[]` and exits 1, and jq answers empty and exits 0. The listing is
+the pull's issue comments, `issues/{n}/comments` — `pulls/{n}/comments` is its
+review comments, none of which is the sticky. The job's own `if:` is the only
+guard on the event: a push-triggered caller reports the job skipped with no step
+run (glyph-test-2 run 41809789871), so nothing inside the job can refuse one.
+Executed by `TestPRVerdictStickyLookupAnswersOneBotComment` against a double of
+gh keyed on the endpoint and flags the step hands it, the condition pinned by
+`TestPRVerdictJobRunsOnlyOnASameRepoPull`; mutation rows
 `pr-verdict-sticky-overwrites-a-persons-comment`,
 `pr-verdict-sticky-lookup-answers-once-per-page`,
 `pr-verdict-sticky-lookup-answers-every-marker`,
-`pr-verdict-failed-lookup-posts-a-second-sticky` and
+`pr-verdict-failed-lookup-posts-a-second-sticky`,
+`pr-verdict-sticky-lookup-drops-paginate`,
+`pr-verdict-sticky-lookup-reads-review-comments` and
 `pr-verdict-job-runs-outside-a-same-repo-pull`.
 
 `lint.yml`'s two steps judge one pull together. The title step runs behind a red

@@ -53,41 +53,83 @@ func commentPages(t *testing.T, pages ...[]ghComment) string {
 	return string(listing)
 }
 
-// writeUpsertGH stubs gh for the upsert. The lookup prints listing and exits
-// lookupExit, and a write copies the body it is handed to sent. Each behaviour is
-// the real one's, measured with gh 2.96.0 on glyph-test-2 #5 and #11 (2026-11-04):
-// --paginate --slurp prints one array of the pages, --paginate --jq runs the filter
-// on each page alone, --slurp beside --jq is refused, and an argument holding a
-// newline never reaches the wire.
-func writeUpsertGH(t *testing.T, stubs, log, sent, listing string, lookupExit int) {
+// writeUpsertGH stubs gh as the upsert's double for pull `pull` of `slug`: it
+// answers the calls the step makes, keyed on method, endpoint and flags, and
+// refuses every other. The pull's issue comments are listing, the pages
+// `gh api --paginate --slurp` prints; a read of them exits lookupExit; a write
+// copies the body it is handed to sent. Each answer is gh 2.96.0's, measured on
+// glyph-test-2 (2026-11-04): --slurp prints one array of the pages and is refused
+// without --paginate or beside --jq; --paginate --jq runs the filter on each page
+// alone; --paginate alone prints the pages' arrays as one; a read that fails exits
+// 1 and prints its pages raw whatever the flags — `[]` under --slurp and nothing
+// otherwise on a refused connection, the error body on a 404; pulls/{n}/comments
+// is the pull's review comments, none on these pulls (0 beside #11's 104 issue
+// comments); and an argument holding a newline never reaches the wire.
+func writeUpsertGH(t *testing.T, stubs, log, sent, slug, pull, listing string, lookupExit int) {
 	t.Helper()
-	listingFile := filepath.Join(filepath.Dir(stubs), "comment-listing.json")
-	if err := os.WriteFile(listingFile, []byte(listing), 0o600); err != nil {
+	comments := filepath.Join(filepath.Dir(stubs), "issue-comments.json")
+	if err := os.WriteFile(comments, []byte(listing), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	reviews := filepath.Join(filepath.Dir(stubs), "review-comments.json")
+	if err := os.WriteFile(reviews, []byte("[[]]"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	issueComments := "repos/" + slug + "/issues/" + pull + "/comments"
 	writeStub(t, stubs, "gh", `newline='
 '
 case "$*" in
   *"$newline"*) echo 'net/url: invalid control character in URL' >&2; exit 1 ;;
 esac
-`+recordArgv(log)+`case "$*" in
-  *--method*)
-    for a do
-      case $a in body=@*) cat "${a#body=@}" > `+shq(sent)+` || exit 1 ;; esac
-    done ;;
-  *--slurp*--jq* | *--jq*--slurp*)
-    echo 'the --slurp option is not supported with --jq or --template' >&2
+`+recordArgv(log)+`[ "$1" = api ] || { echo "gh stub: only gh api is stubbed: $*" >&2; exit 1; }
+shift
+method=GET endpoint= paginate= slurp= jq= filter= body=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --method) method=$2; shift ;;
+    --paginate) paginate=1 ;;
+    --slurp) slurp=1 ;;
+    --jq) jq=1; filter=$2; shift ;;
+    --silent) ;;
+    -F) case $2 in
+          body=@*) body=${2#body=@} ;;
+          *) echo "gh stub: a field the upsert never sends: $2" >&2; exit 1 ;;
+        esac; shift ;;
+    -*) echo "unknown flag: $1" >&2; exit 1 ;;
+    *) endpoint=$1 ;;
+  esac
+  shift
+done
+if [ -n "$slurp" ] && [ -n "$jq" ]; then
+  echo 'the `+"`--slurp`"+` option is not supported with `+"`--jq`"+` or `+"`--template`"+`' >&2; exit 1
+fi
+if [ -n "$slurp" ] && [ -z "$paginate" ]; then
+  echo '`+"`--paginate`"+` required when passing `+"`--slurp`"+`' >&2; exit 1
+fi
+case "$method $endpoint" in
+  "GET `+issueComments+`") pages=`+shq(comments)+` ;;
+  "GET repos/`+slug+`/pulls/`+pull+`/comments") pages=`+shq(reviews)+` ;;
+  "POST `+issueComments+`" | "PATCH repos/`+slug+`/issues/comments/"[0-9]*)
+    [ -n "$body" ] || { echo "gh stub: a write with no -F body=@file" >&2; exit 1; }
+    cat "$body" > `+shq(sent)+` || exit 1
+    exit 0 ;;
+  *)
+    echo "gh stub: not a call the upsert makes — its lookup is GET `+issueComments+` and its write POST there or PATCH repos/`+slug+`/issues/comments/{id}: $method $endpoint" >&2
     exit 1 ;;
-  *--slurp*)
-    cat `+shq(listingFile)+`
-    exit `+strconv.Itoa(lookupExit)+` ;;
-  *--jq*)
-    while [ "$1" != --jq ]; do shift; done
-    jq -c '.[]' `+shq(listingFile)+` | while IFS= read -r page; do
-      printf '%s' "$page" | jq -r "$2"
-    done ;;
-  *) echo "gh stub: the lookup asks for neither --slurp nor --jq: $*" >&2; exit 1 ;;
 esac
+if [ -n "$slurp" ]; then
+  cat "$pages"; exit `+strconv.Itoa(lookupExit)+`
+fi
+if [ `+strconv.Itoa(lookupExit)+` -ne 0 ]; then
+  jq -c '.[]' "$pages"; exit `+strconv.Itoa(lookupExit)+`
+fi
+if [ -n "$jq" ]; then
+  jq -c '.[]' "$pages" | while IFS= read -r page; do
+    printf '%s' "$page" | jq -r "$filter"
+  done
+  exit 0
+fi
+jq -c 'add' "$pages"
 `)
 }
 
@@ -170,7 +212,7 @@ func TestPRVerdictCommentNeverOutlivesARedPush(t *testing.T) {
 			if c.existing != 0 {
 				page = append(page, ghComment{c.existing, actionsBot, preview.Marker + "\nan earlier verdict"})
 			}
-			writeUpsertGH(t, stubs, ghLog, sent, commentPages(t, page), 0)
+			writeUpsertGH(t, stubs, ghLog, sent, slug, "7", commentPages(t, page), 0)
 
 			run := runStep(t, script, unspecifiedShell, dir, []string{
 				"PATH=" + stubs + string(os.PathListSeparator) + os.Getenv("PATH"),
@@ -312,7 +354,7 @@ func TestPRVerdictStickyLookupAnswersOneBotComment(t *testing.T) {
 			t.Fatal(err)
 		}
 		ghLog := filepath.Join(dir, "gh-calls")
-		writeUpsertGH(t, stubs, ghLog, filepath.Join(dir, "sent-body"), listing, lookupExit)
+		writeUpsertGH(t, stubs, ghLog, filepath.Join(dir, "sent-body"), slug, pull, listing, lookupExit)
 		r := runStep(t, script, unspecifiedShell, dir, []string{
 			"PATH=" + stubs + string(os.PathListSeparator) + os.Getenv("PATH"),
 			"HOME=" + dir,
