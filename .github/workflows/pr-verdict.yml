@@ -189,7 +189,10 @@ jobs:
     # Fork guard: a fork PR's GITHUB_TOKEN is read-only no matter what
     # `permissions:` asks for, so the comment POST would 403 — skip instead
     # of failing. Fork contributors still get the lint gate; the preview is
-    # a same-repo convenience.
+    # a same-repo convenience. An event with no pull request in its payload
+    # fails the same comparison, so a push-triggered caller reports this job
+    # skipped with no step run (glyph-test-2 run 41809789871), and nothing
+    # inside the job can guard against that event.
     if: github.event.pull_request.head.repo.full_name == github.repository
     # The fallback is for a PASSED empty string — a caller forwarding an unset
     # repository variable — which would otherwise leave the job with no runner.
@@ -270,13 +273,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          # PR-context guard: outside a pull_request event there is no PR to
-          # preview — fail loudly instead of previewing nothing (mirrors
-          # lint.yml's guard).
-          if [ -z "${PR_NUMBER:-}" ] || [ "$PR_NUMBER" = "0" ]; then
-            echo "::error::glyph-pr-verdict requires a pull_request context (empty PR number)."
-            exit 1
-          fi
           status=0
           # --json carries the rendered body AND the machine verdict in ONE
           # payload, so exposing outputs costs no extra API walk: the comment
@@ -337,6 +333,13 @@ jobs:
       # as github-actions[bot]. The body reaches the API as a FILE: it carries
       # author-supplied commit subjects and must never be expanded by a shell.
       #
+      # The lookup answers one id at most, and a bot's. Anyone who can comment
+      # can type the marker, and this job's token overwrites what they wrote
+      # (glyph-test-2 run 41816989920). --paginate --jq runs its filter once per
+      # page, so markers on two pages answer two lines, and gh refuses the PATCH
+      # URL they make (run 41817273095). gh refuses --slurp beside --jq, hence the
+      # pipe, whose pipefail keeps a failed lookup from reading as "no comment yet".
+      #
       # It runs after a failed compose too (DESIGN §6): skipped with it, the
       # comment an earlier push posted kept that push's verdict beside a red
       # head (glyph-test run 37306205001). With no computed verdict the body
@@ -361,8 +364,8 @@ jobs:
               echo "A commit the convention rejects is the usual cause, and the **commit-lint** check names it; otherwise [this run's log]($GITHUB_SERVER_URL/$GH_REPO_SLUG/actions/runs/$GITHUB_RUN_ID) carries glyph's error. The next push whose verdict computes replaces this comment."
             } > "$RUNNER_TEMP/body.md"
           fi
-          cid="$(gh api "repos/$GH_REPO_SLUG/issues/$PR_NUMBER/comments" --paginate \
-            --jq '[.[] | select(.body | startswith("<!-- glyph-pr-verdict -->"))][0].id // empty')"
+          cid="$(gh api "repos/$GH_REPO_SLUG/issues/$PR_NUMBER/comments" --paginate --slurp \
+            | jq -r 'first(.[][] | select(.user.type == "Bot" and (.body | startswith("<!-- glyph-pr-verdict -->")))) | .id')"
           if [ -n "$cid" ]; then
             gh api --method PATCH "repos/$GH_REPO_SLUG/issues/comments/$cid" \
               -F "body=@$RUNNER_TEMP/body.md" --silent

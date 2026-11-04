@@ -65,7 +65,7 @@ func TestLintKeepsGlyphsStreamInRunnerTemp(t *testing.T) {
 	raw := repoFile(t, filepath.FromSlash(lintWorkflow))
 	for _, step := range []struct{ name, prefix string }{
 		{lintRangeStep, `"$RUNNER_TEMP/glyph-lint.`},
-		{"Lint the squash title", `"$RUNNER_TEMP/glyph-title.`},
+		{lintTitleStep, `"$RUNNER_TEMP/glyph-title.`},
 	} {
 		script := extractRun(t, raw, step.name)
 		if !strings.Contains(script, step.prefix) {

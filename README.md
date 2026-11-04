@@ -143,6 +143,8 @@ tag:
 # .github/workflows/commit-lint.yml
 on:
   pull_request:
+    # a retitle re-fires the squash-title lint only with `edited`, not a default type
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]  # optional — annotates direct pushes, never fails them
 permissions:
@@ -161,7 +163,9 @@ runner needs them installed:
 
 ```yaml
 - uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z
-  with: { version: vX.Y.Z, token: ${{ github.token }} }
+  with:
+    version: vX.Y.Z
+    token: ${{ github.token }}
 ```
 
 Never pin `@main`: a moving ref changes the workflow *and* the binary under
@@ -264,10 +268,13 @@ tags by hand runs it over the installed one and hands GoReleaser the file:
 ```yaml
 # after actions/checkout with fetch-depth: 0 — the walk reads the tags and their history
 - uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z
-  with: { version: vX.Y.Z, token: ${{ github.token }} }
+  with:
+    version: vX.Y.Z
+    token: ${{ github.token }}
 - uses: akira-toriyama/glyph/.github/actions/release-notes@vX.Y.Z
   id: notes
-  with: { token: ${{ github.token }} }
+  with:
+    token: ${{ github.token }}
 # then GoReleaser: release --clean --release-notes ${{ steps.notes.outputs.file }}
 ```
 

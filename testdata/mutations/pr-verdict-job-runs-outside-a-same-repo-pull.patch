@@ -1,0 +1,12 @@
+diff --git a/.github/workflows/pr-verdict.yml b/.github/workflows/pr-verdict.yml
+index 4833896..7b17aeb 100644
+--- a/.github/workflows/pr-verdict.yml
++++ b/.github/workflows/pr-verdict.yml
+@@ -193,7 +193,6 @@ jobs:
+     # fails the same comparison, so a push-triggered caller reports this job
+     # skipped with no step run (glyph-test-2 run 41809789871), and nothing
+     # inside the job can guard against that event.
+-    if: github.event.pull_request.head.repo.full_name == github.repository
+     # The fallback is for a PASSED empty string — a caller forwarding an unset
+     # repository variable — which would otherwise leave the job with no runner.
+     runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
