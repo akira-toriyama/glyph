@@ -108,8 +108,10 @@ design, so a tree that does not compile turns the local gate into a silent no-op
   - Two corrections not to re-make: the lint differential compares the **finding set**, not
     the exit code (lint has only two answer codes, so a repo already at `3` could never
     register a move — that hid eight repos), and the bump probe runs `--since-tag`, the walk
-    `release.yml` actually performs, not `--range` (they disagree: on canon, `--range`
-    refuses the whole range over one `:robot:` subject while `--since-tag` returns v2.0.1).
+    `release.yml` actually performs, not `--range` (they disagree wherever a squash subject
+    is itself unclaimed: `--range` judges the subject and refuses the range at `3`, while
+    `--since-tag` resolves the merge point to its pull and folds the inner commits — DESIGN
+    §4; measured 2026-11-04, a `:robot: sync … (#2)` squash over a `:robot:=` commit).
 - Fire live ammunition in **`glyph-test`** — it is this repo's permanent live-fire harness
   (user-ratified 2026-08-27), so real PRs, releases and force-pushed branches there are fair
   game. Do not wipe its history or tags: `e2e-v2.yml` and `livefire.yml` reference old tags
