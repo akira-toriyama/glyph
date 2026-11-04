@@ -59,6 +59,15 @@ type walk struct {
 	// never be judged (t-7zt7) — and a later pull pending on some line judges
 	// exactly these (t-wjbs).
 	unjudged map[string]bool
+	// landings is where each listed sha landed, as far as this walk has read:
+	// a footprint's answer, and every sha a pull behind the base lists, at that
+	// pull's merge point (readBack). seen cannot answer for these: a pre-rebase
+	// sha is folded under its landing site, and a pull behind the base is never
+	// folded at all (placeStacked).
+	landings map[string]string
+	// readBackDone is every commit readBack has asked GitHub about: pulls that
+	// forked behind the base read overlapping windows, and each costs a request.
+	readBackDone map[string]bool
 	// inRange is every SHA this walk will visit — what makes "covered"
 	// checkable: a commit stands aside only for a pull whose canonical commit
 	// is IN HERE, never for one merged into another base branch (DESIGN §4,
@@ -132,6 +141,8 @@ func newWalk(w Walker, cfg *config.Config, owner, repo, revRange string, raws []
 		seen:         map[string]bool{},
 		wedged:       map[string]int{},
 		unjudged:     map[string]bool{},
+		landings:     map[string]string{},
+		readBackDone: map[string]bool{},
 		inRange:      inRange,
 		coveredPulls: map[int]bool{},
 		expanded:     map[int]bool{},
@@ -212,10 +223,11 @@ func (w *walk) visit(ctx context.Context, raw gitsource.RawCommit) error {
 // which of its commits belong to this walk (DESIGN §4, "warns and does not
 // expand"). The listing is filtered BEFORE anything judges it — by where
 // each commit landed (mainFootprint: the range governs whatever git can
-// place) and by seen (an already-represented commit must never fail the
-// release; its message may be a squash subject) — and what remains is
-// pre-flighted against the pattern file HERE, where the pull association
-// still exists to word the refusal (wedge).
+// place; placeStacked: and whatever another pull landed) and by seen (an
+// already-represented commit must never fail the release; its message may be
+// a squash subject) — and what remains is pre-flighted against the pattern
+// file HERE, where the pull association still exists to word the refusal
+// (wedge).
 func (w *walk) expand(ctx context.Context, number int, canonical string) error {
 	listing, err := w.PullRawCommits(ctx, w.owner, w.repo, number)
 	if err != nil {
@@ -235,9 +247,13 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
 	if err != nil {
 		return err
 	}
+	if err := w.placeStacked(ctx, canonical, listing, landed); err != nil {
+		return err
+	}
 	contributed := 0
 	for i, r := range listing {
 		if on := landed[i]; on != "" {
+			w.landings[r.SHA] = on
 			if !w.inRange[on] {
 				w.Report.Noticef("commit %.7s in pull request #%d landed on the released branch as %.7s, which is outside %s — it shipped under an earlier tag and is not counted again", r.SHA, number, on, w.revRange)
 				continue
@@ -255,7 +271,8 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
 			// A refused commit a second pull lists (a stacked pull carries
 			// its base pull's commits) is one row with one more escape:
 			// this pull's merge point wedges too, and a base that clears
-			// the first pull's alone leaves the next run red on this one.
+			// the first pull's alone leaves the next run red on this one
+			// unless readBack finds the first pull from this one's fork.
 			if judged {
 				w.wedges[i].escapes = append(w.wedges[i].escapes, placeEscape(w.owner, w.repo, number, canonical, onMain(r.SHA, w.inRange)))
 			}
@@ -337,7 +354,7 @@ func (w *walk) judges(gov string) bool {
 // its message never says what it merged — a fact a release decision needs
 // (Facts.dropped), not only a warning.
 func (w *walk) fallback(raw gitsource.RawCommit, lag bool) {
-	if lag && raw.Parents >= 2 {
+	if lag && len(raw.Parents) >= 2 {
 		w.Report.Warnf("merge commit %.7s is not known to GitHub yet (API lag), so the pull request it may have merged could not be resolved — nothing was counted from it; if the release looks short, re-run it once GitHub has indexed the commit", raw.SHA)
 		w.facts.dropped = append(w.facts.dropped, fmt.Sprintf("%.7s", raw.SHA))
 		return
@@ -445,7 +462,7 @@ func (w *walk) reconcile() {
 // real API (DESIGN §4, "The order of those two questions matters"; t-7h15). A
 // squash fails to align and the pull alone governs it, quietly: without the
 // merge method a squash and an unaligned rebase are one shape, and squash is
-// the fleet's norm.
+// the fleet's norm — unless another pull landed the commit (placeStacked).
 func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []gitsource.RawCommit) ([]string, error) {
 	landed := make([]string, len(listing))
 	shas := make([]string, 0, len(listing))
@@ -461,12 +478,6 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
 	if err != nil {
 		return nil, err
 	}
-	// window is the listing positions a rebase could still account for, in listing
-	// order: everything step 1 did not place, minus the entries a rebase never
-	// replays. Its LENGTH is what makes the alignment checkable, so an entry that
-	// cannot have a landing site has to leave — one that stays shifts every
-	// position after it and the whole mapping is thrown away.
-	window := make([]int, 0, len(listing))
 	for i, r := range listing {
 		if r.SHA != "" && have[r.SHA] {
 			on, aerr := w.Git.IsAncestor(ctx, r.SHA, "HEAD")
@@ -475,15 +486,30 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
 			}
 			if on {
 				landed[i] = r.SHA
-				continue
 			}
 		}
-		// A merge commit is never replayed by a rebase (measured — see above), so
-		// it has no landing site to find and no position to hold.
-		if r.Parents >= 2 {
-			continue
+	}
+	if err := w.alignRewritten(ctx, canonical, listing, landed); err != nil {
+		return nil, err
+	}
+	return landed, nil
+}
+
+// alignRewritten is mainFootprint's second question, asked of whatever landed
+// does not place yet, and it fills landed in only when every entry aligns.
+func (w Walker) alignRewritten(ctx context.Context, canonical string, listing []gitsource.RawCommit, landed []string) error {
+	// window is the listing positions a rebase could still account for, in listing
+	// order: everything not placed, minus the entries a rebase never replays. Its
+	// LENGTH is what makes the alignment checkable, so an entry that cannot have a
+	// landing site has to leave — one that stays shifts every position after it and
+	// the whole mapping is thrown away. A merge commit is never replayed by a rebase
+	// (measured — see above), so it has no landing site to find and no position to
+	// hold.
+	window := make([]int, 0, len(listing))
+	for i, r := range listing {
+		if landed[i] == "" && len(r.Parents) < 2 {
+			window = append(window, i)
 		}
-		window = append(window, i)
 	}
 	// Nothing left to place — the whole merge-button shape, or an empty listing
 	// — is one question, so one guard. The walk's canonical comes from its own
@@ -491,24 +517,147 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
 	// TestMainFootprintEmptyListingAsksGitNothing hands in a canonical the
 	// checkout lacks, where it is an exit-4 git error.
 	if len(window) == 0 {
-		return landed, nil
+		return nil
 	}
 	mains, err := w.Git.FirstParentLog(ctx, canonical, len(window))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if len(mains) != len(window) {
-		return landed, nil
+		return nil
 	}
 	for k, i := range window {
 		if strings.TrimSpace(mains[k].Message) != strings.TrimSpace(listing[i].Message) {
-			return landed, nil
+			return nil
 		}
 	}
 	for k, i := range window {
 		landed[i] = mains[k].SHA
 	}
-	return landed, nil
+	return nil
+}
+
+// placeStacked places what the footprint left, when another pull landed it: a
+// stacked pull lists its base pull's commits, and GitHub goes on listing them
+// after the base is squash- or rebase-merged and the stacked pull retargeted,
+// so without this a commit the base released folds again as the pull's own
+// (t-ypxb; DESIGN §4, "A stacked pull lists what its base landed"). Nothing
+// here runs for a listing the footprint placed whole: an alignment is a whole
+// answer, and a merge commit left over is no question.
+//
+// The identity is the listed sha, the one seen already judges a stacked
+// duplicate by. A message would be a second rule, and it cannot hold: a
+// multi-commit squash's subject is the pull's title, its body the text GitHub
+// drops unless squash_merge_commit_message says otherwise (DESIGN §1), and a
+// new commit repeating a released message would be dropped with it. What is
+// left aligns once what another pull landed is out of the way: a stacked rebase
+// replays only its own commits, so they are the run ending at the merge point
+// even when another pull landed under them.
+func (w *walk) placeStacked(ctx context.Context, canonical string, listing []gitsource.RawCommit, landed []string) error {
+	unplaced := false
+	for i, r := range listing {
+		unplaced = unplaced || (landed[i] == "" && len(r.Parents) < 2)
+	}
+	if !unplaced {
+		return nil
+	}
+	if err := w.readBack(ctx, listing); err != nil {
+		return err
+	}
+	placed := false
+	for i, r := range listing {
+		if on := w.landings[r.SHA]; landed[i] == "" && on != "" {
+			landed[i], placed = on, true
+		}
+	}
+	if !placed {
+		return nil
+	}
+	return w.alignRewritten(ctx, canonical, listing, landed)
+}
+
+// readBack records in landings what the pulls between this listing's fork and
+// the walk's base list: the only pulls that can have released a commit the
+// listing holds, because a commit descending the base cannot be in it. So a fork
+// in range costs nothing, a fork at the base two git calls and no request, and
+// the whole-history arm has no base to read behind.
+//
+// Asked of the two questions every walk rests on, a merge point's merged pull
+// and that pull's listing. Never of GET commits/{listed sha}/pulls, the one
+// request that names the pull directly: for a sha no default branch holds it
+// answers an open pull that carries the sha INSTEAD of the merged one that
+// landed it (measured 2026-11-04, glyph-test-2#6 merged, #7 open).
+func (w *walk) readBack(ctx context.Context, listing []gitsource.RawCommit) error {
+	base, tagged := strings.CutSuffix(w.revRange, "..HEAD")
+	if !tagged {
+		return nil
+	}
+	forks := forkPoints(listing, w.inRange)
+	have, err := w.Git.Have(ctx, forks)
+	if err != nil {
+		return err
+	}
+	for _, fork := range forks {
+		if !have[fork] {
+			continue
+		}
+		missed, err := w.Git.Log(ctx, fork+".."+base)
+		if err != nil {
+			return err
+		}
+		for _, raw := range missed {
+			if err := w.readBackPull(ctx, raw); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// readBackPull records the listing of the pull raw is the merge point of, under
+// visit's author gate. A sha GitHub does not know names no pull, and is no
+// shortfall: what it could have released is at worst counted again, the answer
+// a listing with no landing site always gets.
+func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error {
+	if w.readBackDone[raw.SHA] || slices.Contains(w.cfg.ExcludeAuthors, raw.Author) {
+		return nil
+	}
+	w.readBackDone[raw.SHA] = true
+	number, found, _, err := w.mergedPullFor(ctx, w.owner, w.repo, raw.SHA, nil)
+	switch {
+	case github.IsCommitUnknown(err):
+		return nil
+	case err != nil:
+		return err
+	case !found:
+		return nil
+	}
+	released, err := w.PullRawCommits(ctx, w.owner, w.repo, number)
+	if err != nil {
+		return err
+	}
+	for _, r := range released {
+		w.landings[r.SHA] = raw.SHA
+	}
+	return nil
+}
+
+// forkPoints is where a listing left the branch it forked from: the parents no
+// listed commit accounts for, less those in range.
+func forkPoints(listing []gitsource.RawCommit, inRange map[string]bool) []string {
+	listed := make(map[string]bool, len(listing))
+	for _, r := range listing {
+		listed[r.SHA] = true
+	}
+	var forks []string
+	for _, r := range listing {
+		for _, p := range r.Parents {
+			if !listed[p] && !inRange[p] && !slices.Contains(forks, p) {
+				forks = append(forks, p)
+			}
+		}
+	}
+	return forks
 }
 
 // mergedPullFor resolves a merge point to the pull that merged it: a commit

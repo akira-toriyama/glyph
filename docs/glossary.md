@@ -163,7 +163,9 @@ an ancestor of HEAD landed as itself); a rebase rewrote them all but preserved
 their messages and order and named the last as `merge_commit_sha`, so the N
 first-parent commits ending there align positionally — an alignment **verified
 message by message and abandoned whole** if any differs; a squash left no
-footprint at all, and the pull alone governs. This is what lets the walk's
+footprint at all, and the pull alone governs, unless the listed sha is one another
+pull landed, which the walk asks next over the API (`walk.placeStacked`, DESIGN
+§4, "A stacked pull lists what its base landed"). This is what lets the walk's
 *range* (a git fact) govern a listing that knows nothing about it; without it a
 tag cut inside a landed pull's footprint folds already-shipped commits into the
 next release (DESIGN §4 has the incident). `internal/walk/expand.go:

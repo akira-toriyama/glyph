@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 65e8606..04f47aa 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -637,7 +637,7 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error
+ 		return err
+ 	}
+ 	for _, r := range released {
+-		w.landings[r.SHA] = raw.SHA
++		_ = r
+ 	}
+ 	return nil
+ }

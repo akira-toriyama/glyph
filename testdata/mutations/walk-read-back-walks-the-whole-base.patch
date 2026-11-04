@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 65e8606..ce607ca 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -601,7 +601,7 @@ func (w *walk) readBack(ctx context.Context, listing []gitsource.RawCommit) erro
+ 		if !have[fork] {
+ 			continue
+ 		}
+-		missed, err := w.Git.Log(ctx, fork+".."+base)
++		missed, err := w.Git.Log(ctx, base)
+ 		if err != nil {
+ 			return err
+ 		}

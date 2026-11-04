@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 65e8606..5a3613d 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -619,7 +619,7 @@ func (w *walk) readBack(ctx context.Context, listing []gitsource.RawCommit) erro
+ // shortfall: what it could have released is at worst counted again, the answer
+ // a listing with no landing site always gets.
+ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error {
+-	if w.readBackDone[raw.SHA] || slices.Contains(w.cfg.ExcludeAuthors, raw.Author) {
++	if w.readBackDone[raw.SHA] {
+ 		return nil
+ 	}
+ 	w.readBackDone[raw.SHA] = true
