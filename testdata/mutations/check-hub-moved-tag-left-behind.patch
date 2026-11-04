@@ -1,0 +1,13 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+index 377cdbc..c8bfe4a 100755
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -152,7 +152,7 @@ hub_at() {
+   fi
+   HUB_AT="$WORK/hub-$hub_pin"
+   [ ! -d "$HUB_AT" ] || return 0
+-  if ! git -C "$HUB" fetch --quiet --no-tags --no-write-fetch-head --force origin "refs/tags/$hub_pin:refs/tags/$hub_pin"; then
++  if ! git -C "$HUB" fetch --quiet --no-tags --no-write-fetch-head origin "refs/tags/$hub_pin:refs/tags/$hub_pin"; then
+     HUB_SKEW="${HUB_SKEW:+$HUB_SKEW; }hub $hub_pin read at the clone's copy of the tag, which could not be refreshed from origin and CI may have moved past"
+   fi
+   if ! git -C "$HUB" archive -o "$WORK/hub-$hub_pin.tar" "refs/tags/$hub_pin"; then

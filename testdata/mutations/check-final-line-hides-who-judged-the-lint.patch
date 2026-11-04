@@ -1,0 +1,13 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+index 377cdbc..69b9920 100755
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -444,7 +444,7 @@ fi
+ SKEW=""
+ [ -n "$HUB_SKEW" ] && SKEW=" — SKEWED FROM CI: $HUB_SKEW"
+ [ -n "${LINT_SKEW:-}" ] && SKEW="$SKEW — SKEWED FROM CI: $LINT_SKEW"
+-CLAIMS="NOT mirrored: $NOT_MIRRORED — $LINT_JUDGE — $COVERAGE$SKEW"
++CLAIMS="NOT mirrored: $NOT_MIRRORED — $COVERAGE$SKEW"
+ if [ -n "$DIRTY" ]; then
+   echo "✓ passed (DIRTY TREE — not a claim about HEAD): $total/$total mirrored gates — $CLAIMS"
+ else

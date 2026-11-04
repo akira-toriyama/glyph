@@ -67,8 +67,8 @@ jobs:
   # below reads no YAML, so a :bug: fix touching only .goreleaser.yaml or the
   # install action would reach main with zero tests and no gate noticing
   # (t-5dbh). This job closes that: a distribution-layer file in the diff with
-  # no internal/workflows test change fails the pull request. File set, the
-  # pin-swap stand-down, waiver (`Dist-gate-exempt:` trailer) and rationale:
+  # no internal/workflows test added or modified fails the pull request. File set,
+  # the pin-swap stand-down, waiver (`Dist-gate-exempt:` trailer) and rationale:
   # scripts/dist-gate.sh.
   # PR-only because the gate judges a diff; a push to main carries none.
   dist-gate:

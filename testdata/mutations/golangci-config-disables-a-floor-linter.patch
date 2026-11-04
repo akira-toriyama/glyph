@@ -1,0 +1,13 @@
+diff --git a/.golangci.yml b/.golangci.yml
+index ebe2e99..8bec4ef 100644
+--- a/.golangci.yml
++++ b/.golangci.yml
+@@ -4,6 +4,8 @@ run:
+   timeout: 3m
+ 
+ linters:
++  disable:
++    - misspell
+   enable:
+     - errcheck
+     - govet

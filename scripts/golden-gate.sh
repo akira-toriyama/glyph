@@ -20,7 +20,8 @@
 # in the history of every commit that rewrote the spec.
 #
 # What counts as a golden is GOLDEN_PATTERN below: the -update-rewritable
-# goldens (testdata/*.golden.*). Deliberately absent: the fuzz corpus, which is
+# goldens (testdata/*.golden.*), under a testdata/ at any depth, the repo root's
+# included. Deliberately absent: the fuzz corpus, which is
 # regression INPUTS rather than a format spec — a trailer demanded there would
 # read as "a hand edit of a crash input is acceptable with a reason", and the
 # only legitimate writes are the engine's own.
@@ -36,7 +37,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-GOLDEN_PATTERN='^.*/testdata/.*\.golden\..*$'
+GOLDEN_PATTERN='(^|/)testdata/.*\.golden\..*$'
 
 base="${1:?usage: sh scripts/golden-gate.sh <base-ref>}"
 

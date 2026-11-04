@@ -156,6 +156,114 @@ func TestDistGatePatternCoversTheRealDistributionLayer(t *testing.T) {
 	}
 }
 
+// newDistGateRepo commits dist-gate.sh's real text and files to a fixture
+// repository, and returns its path, a git runner, the base commit and the whole
+// environment to run the gate under.
+func newDistGateRepo(t *testing.T, files map[string]string) (dir string, git func(...string) string, base string, env []string) {
+	t.Helper()
+	testutil.RequireGit(t)
+	dir = t.TempDir()
+	git = func(args ...string) string {
+		t.Helper()
+		return testutil.Git(t, dir, "akira-toriyama", args...)
+	}
+	git("init", "-q", "-b", "main")
+	git("config", "core.fileMode", "true")
+	for _, rel := range []string{"scripts/dist-gate.sh", "scripts/lib/range-gate.sh"} {
+		testutil.WriteFile(t, dir, rel, repoFile(t, rel))
+	}
+	for rel, content := range files {
+		testutil.WriteFile(t, dir, rel, content)
+	}
+	git("add", "-A")
+	git("commit", "-q", "-m", "base")
+	return dir, git, git("rev-parse", "HEAD"), []string{
+		"PATH=" + os.Getenv("PATH"),
+		"HOME=" + dir,
+		"GIT_CONFIG_GLOBAL=" + os.DevNull,
+		"GIT_CONFIG_SYSTEM=" + os.DevNull,
+	}
+}
+
+// TestDistGateEvidenceIsATestThatStillExists: the gate demands a test EXISTS and
+// bite demands it BITES, so a deleted test satisfies neither, and credited as a
+// change it stands both down (measured 2026-11-04: a release.yml line plus `git rm`
+// of a workflow test, dist-gate "accompanied by" at exit 0 and bite "no Go test file
+// ... added or changed" at exit 0; t-5w2x). A renamed test is the same test still
+// there: under --no-renames its new path lists as added.
+func TestDistGateEvidenceIsATestThatStillExists(t *testing.T) {
+	sh := requireTool(t, "sh")
+
+	const (
+		gated    = ".github/workflows/release.yml"
+		existing = "internal/workflows/existing_test.go"
+		other    = "internal/workflows/other_test.go"
+	)
+	dir, git, base, env := newDistGateRepo(t, map[string]string{
+		gated:    "name: release\n",
+		existing: "package workflows\n",
+		other:    "package workflows\n",
+	})
+
+	for _, tc := range []struct {
+		name     string
+		evidence func(t *testing.T)
+		exit     int
+		carries  string // on stdout for a pass, on stderr for a refusal
+	}{
+		{
+			name:     "a test modified",
+			evidence: func(t *testing.T) { testutil.WriteFile(t, dir, existing, "package workflows\n\n// edited\n") },
+			carries:  "accompanied by",
+		},
+		{
+			name: "a test added",
+			evidence: func(t *testing.T) {
+				testutil.WriteFile(t, dir, "internal/workflows/new_test.go", "package workflows\n")
+			},
+			carries: "accompanied by",
+		},
+		{
+			name:     "a test renamed",
+			evidence: func(t *testing.T) { git("mv", existing, "internal/workflows/renamed_test.go") },
+			carries:  "accompanied by",
+		},
+		{
+			name:     "a test deleted",
+			evidence: func(t *testing.T) { git("rm", "-q", existing) },
+			exit:     1,
+			carries:  "::error::dist-gate",
+		},
+		{
+			name: "one test deleted beside another modified",
+			evidence: func(t *testing.T) {
+				git("rm", "-q", existing)
+				testutil.WriteFile(t, dir, other, "package workflows\n\n// edited\n")
+			},
+			carries: "accompanied by",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			git("checkout", "-q", "--detach", base)
+			testutil.WriteFile(t, dir, gated, "name: release\n# edited\n")
+			tc.evidence(t)
+			git("add", "-A")
+			git("commit", "-q", "-m", "change")
+			run := execute(t, []string{sh, filepath.Join(dir, "scripts", "dist-gate.sh"), base}, dir, env)
+			if run.exit != tc.exit {
+				t.Fatalf("dist-gate exited %d, want %d\n%s", run.exit, tc.exit, run)
+			}
+			stream := run.stdout
+			if tc.exit != 0 {
+				stream = run.stderr
+			}
+			if !strings.Contains(stream, tc.carries) {
+				t.Errorf("dist-gate's verdict does not carry %q\n%s", tc.carries, run)
+			}
+		})
+	}
+}
+
 // pinnedGoreleaserAction is goreleaser.yml's real goreleaser-action step, the
 // positive control the stand-down below is proven against: the indent with
 // `uses: `, the SHA, and the `# vX.Y.Z` comment.
@@ -175,7 +283,6 @@ var firstStepName = regexp.MustCompile(`(?m)^\s*- name: .*$`)
 // tool at a SHA, so that a SHA swap on a line that is not a `uses:` has
 // something to swap.
 func TestDistGateStandsDownForAPinSwapAlone(t *testing.T) {
-	testutil.RequireGit(t)
 	sh := requireTool(t, "sh")
 
 	const gated = ".github/workflows/goreleaser.yml"
@@ -197,26 +304,7 @@ func TestDistGateStandsDownForAPinSwapAlone(t *testing.T) {
 	edit := func(in string) string { return strings.Replace(in, nameLine, nameLine+" (edited)", 1) }
 	bumped := swap(indent + "goreleaser/goreleaser-action@" + other + " # v9.9.9")
 
-	dir := t.TempDir()
-	git := func(args ...string) string {
-		t.Helper()
-		return testutil.Git(t, dir, "akira-toriyama", args...)
-	}
-	git("init", "-q", "-b", "main")
-	git("config", "core.fileMode", "true")
-	for _, rel := range []string{"scripts/dist-gate.sh", "scripts/lib/range-gate.sh"} {
-		testutil.WriteFile(t, dir, rel, repoFile(t, rel))
-	}
-	testutil.WriteFile(t, dir, gated, original)
-	git("add", "-A")
-	git("commit", "-q", "-m", "base")
-	base := git("rev-parse", "HEAD")
-	env := []string{
-		"PATH=" + os.Getenv("PATH"),
-		"HOME=" + dir,
-		"GIT_CONFIG_GLOBAL=" + os.DevNull,
-		"GIT_CONFIG_SYSTEM=" + os.DevNull,
-	}
+	dir, git, base, env := newDistGateRepo(t, map[string]string{gated: original})
 
 	for _, tc := range []struct {
 		name       string
