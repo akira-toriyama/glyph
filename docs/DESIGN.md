@@ -1145,8 +1145,11 @@ One cut later on a descendant — a checkout at an older commit — contains
 everything HEAD holds, so the walk folds none. glyph-monorepo-test's
 frozen-coordinate tier collapsed to `none` on every line at v3.3.0 (measured
 there 2026-09-11, line tags planted on a descendant of the coordinate), and that
-harness has pruned `git tag --no-merged "$FROZEN"` by hand ever since (#15
-there) — this rule, written in shell because the binary lacked it. A release
+harness pruned `git tag --no-merged "$FROZEN"` by hand from #15 there until
+glyph-monorepo-test#48 (2026-11-04) — this rule, written in shell because the
+binary lacked it, and dropped once the arms could exercise the rule itself:
+measured at the coordinate with every later tag left in the clone, arm (a)'s
+literal is unchanged. A release
 run at an older commit (a re-run, which GitHub documents as running at the
 original event's sha) whose own range folds above none folded none instead and
 **deleted the rolling draft**, hand region included (measured 2026-09-29 at
