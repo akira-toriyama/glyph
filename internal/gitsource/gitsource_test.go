@@ -28,7 +28,7 @@ func TestMain(m *testing.M) {
 }
 
 // TestLogRange: log walks BASE..HEAD oldest→newest carrying SHA, author name,
-// parent count, and the verbatim message (subject + body, CJK intact).
+// parents, and the verbatim message (subject + body, CJK intact).
 func TestLogRange(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
@@ -50,8 +50,8 @@ func TestLogRange(t *testing.T) {
 		if len(c.SHA) != 40 {
 			t.Fatalf("commit %d has a malformed SHA %q", i, c.SHA)
 		}
-		if c.Parents != 1 {
-			t.Fatalf("commit %d has %d parents, want 1", i, c.Parents)
+		if len(c.Parents) != 1 {
+			t.Fatalf("commit %d has parents %v, want 1", i, c.Parents)
 		}
 	}
 	if got[1].Author != "dependabot[bot]" {
@@ -120,7 +120,7 @@ func TestLogReadsAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
 				t.Fatalf("Log returned %d commits, want 1: %+v", len(got), got)
 			}
 			c := got[0]
-			if c.Author != name || c.Email != email || c.Parents != 1 || c.SHA != testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD") ||
+			if c.Author != name || c.Email != email || len(c.Parents) != 1 || c.SHA != testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD") ||
 				!strings.HasPrefix(c.Message, "garbage message\x1fwith a separator of its own") {
 				t.Fatalf("the record was read shifted: %+v\nwant author %q, email %q, 1 parent, the message verbatim", c, name, email)
 			}
@@ -142,7 +142,7 @@ func TestParseLogRefusesAMisframedRecord(t *testing.T) {
 
 	got, err := parseLog([]byte(record(sha, "a", "a@example.invalid", parent, ":bug:~ one\n") +
 		record(parent, "b", "b@example.invalid", "", ":memo:= two\n")))
-	if err != nil || len(got) != 2 || got[0].SHA != sha || got[0].Parents != 1 || got[1].Author != "b" || got[1].Parents != 0 {
+	if err != nil || len(got) != 2 || got[0].SHA != sha || !slices.Equal(got[0].Parents, []string{parent}) || got[1].Author != "b" || len(got[1].Parents) != 0 {
 		t.Fatalf("well-framed output = %+v, %v; want both records read whole", got, err)
 	}
 
@@ -177,7 +177,7 @@ func TestLogReadsSHA256Repositories(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Log on a SHA-256 repository: %v", err)
 	}
-	if len(got) != 2 || len(got[1].SHA) != 64 || got[1].Parents != 1 {
+	if len(got) != 2 || len(got[1].SHA) != 64 || !slices.Equal(got[1].Parents, []string{got[0].SHA}) {
 		t.Fatalf("Log on a SHA-256 repository = %+v, want 2 commits with 64-hex names", got)
 	}
 }
@@ -217,7 +217,7 @@ func TestLogReadsSignedCommitsUnderShowSignature(t *testing.T) {
 			if !isObjectName(c.SHA) || c.Author != "akira-toriyama" {
 				t.Errorf("a record read shifted: %+v", c)
 			}
-			out = append(out, record{c.Message, c.Parents})
+			out = append(out, record{c.Message, len(c.Parents)})
 		}
 		return out
 	}
@@ -273,7 +273,8 @@ func TestLogReadsUTF8UnderLogOutputEncoding(t *testing.T) {
 	}
 }
 
-// TestLogMergeParents: a merge commit reports its true parent count.
+// TestLogMergeParents: a merge commit reports its parents, the first-parent
+// chain's first.
 func TestLogMergeParents(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
@@ -287,14 +288,15 @@ func TestLogMergeParents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Log: unexpected error: %v", err)
 	}
-	var mergeParents int
+	var mergeParents []string
 	for _, c := range got {
 		if strings.HasPrefix(c.Message, "Merge ") {
 			mergeParents = c.Parents
 		}
 	}
-	if mergeParents != 2 {
-		t.Fatalf("merge commit parent count = %d, want 2", mergeParents)
+	want := []string{testutil.Git(t, dir, "akira-toriyama", "rev-parse", "main^1"), testutil.Git(t, dir, "akira-toriyama", "rev-parse", "feat")}
+	if !slices.Equal(mergeParents, want) {
+		t.Fatalf("merge commit parents = %v, want %v", mergeParents, want)
 	}
 }
 

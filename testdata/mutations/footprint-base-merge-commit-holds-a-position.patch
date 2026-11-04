@@ -1,14 +1,13 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index c42cc14..61dee04 100644
+index 65e8606..5669682 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -362,9 +362,6 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
+@@ -507,7 +507,7 @@ func (w Walker) alignRewritten(ctx context.Context, canonical string, listing []
+ 	// hold.
+ 	window := make([]int, 0, len(listing))
+ 	for i, r := range listing {
+-		if landed[i] == "" && len(r.Parents) < 2 {
++		if landed[i] == "" && len(r.Parents) < 99 {
+ 			window = append(window, i)
  		}
- 		// A merge commit is never replayed by a rebase (measured — see above), so
- 		// it has no landing site to find and no position to hold.
--		if r.Parents >= 2 {
--			continue
--		}
- 		window = append(window, i)
  	}
- 	// Nothing left to place — the whole merge-button shape, or an empty listing

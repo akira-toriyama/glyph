@@ -193,8 +193,10 @@ func TestSinceTagRefusedCommitIsCountedOnce(t *testing.T) {
 		t.Errorf("one refused commit listed by two pulls was counted twice:\n%s", env.Message)
 	}
 	assertWedgeDetails(t, env, "x1")
-	// One row, two escapes: each pull's merge point wedges on its own, so a
-	// base at #7's alone would leave the next run red on #8's.
+	// One row, two escapes: each pull's merge point wedges on its own. A base
+	// at #7's alone clears #8's only from a fork the checkout can read back
+	// (TestSinceTagEscapeAtTheBasePullClearsItsStack), and this listing names
+	// none.
 	for _, want := range []string{"AT OR PAST " + sha1[:7], "AT OR PAST " + sha2[:7], "#7", "#8", "at or past all of them"} {
 		if !strings.Contains(env.Message, want) {
 			t.Errorf("the sentence must name both pulls' escapes (%q):\n%s", want, env.Message)

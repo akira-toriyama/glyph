@@ -1315,7 +1315,8 @@ GitHub names the last of the run as `merge_commit_sha`, so the first-parent
 commits ending there align positionally with the unplaced entries — an alignment
 **verified message by message and abandoned whole** unless every one matches. A
 squash left no footprint at all, reaches that alignment with the whole listing and
-fails it, and the pull alone governs it exactly as before. A commit that landed outside
+fails it, and the pull alone governs it exactly as before, unless another pull landed
+it (below, "A stacked pull lists what its base landed"). A commit that landed outside
 the range is dropped with a `::notice::` naming it, and one that landed inside
 is folded **under its on-branch SHA** — which also retires a defect of its own,
 since a rebase-merged pull used to put its pre-rebase SHAs, which exist on no
@@ -1356,7 +1357,7 @@ pre-rebase SHAs. And a rebase does **not** replay everything it is handed: it dr
 the merge commit that "merge `main` into the branch" leaves behind, GitHub permits
 rebase-merge over one, and that entry — listed, landing nowhere — made the count
 wrong and abandoned a mapping that was otherwise exact. It is kept out of the
-alignment on its **parent count** (`Parents >= 2`), so nothing downstream needs
+alignment on its **parent count** (two or more `Parents`), so nothing downstream needs
 it placed. What can still fail to align
 is a rebase that dropped a commit it was asked to replay — one already upstream, or
 one that rebased empty — which stays indistinguishable from a squash and stays quiet
@@ -1391,6 +1392,89 @@ threw away every good commit in between. Now a base at or past the **offending
 commit** clears it, and the error says so; only a squash-merged pull, whose
 commits exist nowhere but the API, still sends the operator to its merge point
 (which is its one commit on `main` anyway).
+
+**A stacked pull lists what its base landed** (t-ypxb). The two questions answer
+for a landing the listing can show, and a stacked pull's base left none it can.
+GitHub goes on listing a base pull's commits in the pull stacked on it once the
+base is squash- or rebase-merged and the stacked pull retargeted: `glyph-test-2`#7,
+stacked on #6, listed its own commit alone until #6 squash-merged, and #6's two
+as well once retargeted to `main` (measured 2026-11-04), and a merged pull keeps
+listing them (`.github`#115 and #74, the same day). GitHub's docs warn of the same
+listing for a head branch reused after its squash merge. Those shas exist on no
+branch, so the walk read them as the stacked pull's own whenever a tag sat between
+the two merges: a major out of a commit the last release shipped, exit 0, empty
+stderr.
+Measured the same day against the live API on `.github`'s real pairs, with a tag
+cut locally between them and a local `glyph.toml` giving the two pulls' commits a
+`^` and a `~`: 2f9428a answers `v99.1.0` over #114 then #115 and over #73 then #74,
+where the rule below answers `v99.0.1` and says what it dropped. A rebase-merged
+base had one escape, the alignment reaching its replay directly under the stacked
+pull's, and any pull landed between the two closed it
+(`TestSinceTagStackedRebaseWithALandingBetween`).
+
+So what the two questions leave is asked a third: did another pull land this sha?
+The walk knows for every pull it has expanded (its `landings`, which is also what
+keeps a pre-rebase sha two pulls list from folding twice in one walk, the
+tag-inside-the-run shape of `TestSinceTagStackedRebaseUnderATagInsideItsBase`), and
+for the pulls behind its base it reads them back: the commits between the listing's
+fork and the base, each asked the two questions every walk rests on — the merged
+pull whose `merge_commit_sha` it is, and that pull's listing. A listed sha one of
+them lists landed at that merge point, which is outside the range, so the range
+drops it with the footprint's own notice, before anything judges it. What is left
+aligns again: a rebase drops what its base already put upstream (above), so the run
+ending at the merge point is the stacked pull's own. Neither the order of the merges
+(`.github`#171 landed before the #170 it was stacked on, and over that pair 2f9428a's
+`v99.0.1` becomes exit 1; `TestSinceTagStackedPullLandedFirstReleasedItsBase`) nor a
+refused commit changes
+the answer: a tag at the base pull's merge point is a base that holds the commit,
+so the stack re-listing it wedges nothing
+(`TestSinceTagEscapeAtTheBasePullClearsItsStack`). Under `[[packages]]` the base is
+the union's, so what this finds is released on every line, the answer §4.1 gives a
+first sighting there.
+
+The identity is the listed sha, the one the walk-wide set already judges a stacked
+duplicate by, so a new commit that repeats a released message is new work
+(`TestSinceTagRepeatedMessageOfAReleasedCommitStillCounts`). Three others were
+rejected. **The messages behind the base** cannot hold on a squash: a multi-commit
+pull's subject is its title, and the inner subjects sit only in a body GitHub
+writes under one `squash_merge_commit_message` (`glyph-test-2`#6 landed as `:bug:~
+stacked probe base pull titled apart from its inner commits (#6)`, its commits as
+bullets below it), which is §1's reason to read the API at all; matching the
+listing's message drops the repeated message above with it. **Message plus author
+date**, which a rebase preserves, answers only the rebase arm the sha already
+answers, as a second matching rule beside the alignment. **`GET commits/{listed
+sha}/pulls`**, one request that names the landing pull: with an open pull carrying
+the sha GitHub answers that pull *instead of* the merged one that landed it, against
+its docs' "merged and open" (with #6 merged and #7 open, 54e316e answers #7 alone,
+over REST and GraphQL's `associatedPullRequests`, still 22 minutes after the merge),
+and the first-merged pull only once nothing open carries it (`.github`'s four pairs,
+the same day). A third pull stacked above would flip the verdict with no change in
+the range.
+
+The price is a pull that forked behind the base: one lookup per commit between its
+fork and the base, an excluded author's aside, and one listing per pull that
+resolves, once per walk however many pulls share the window. A fork in range or at
+the base asks nothing — a commit descending the base cannot be in it — and that is
+nearly every pull: of 1,792 merged pulls with a tag base across glyph, furrow, sill,
+canon, `.github` and dotfiles, 16 forked behind it, the widest by 10 commits
+(measured 2026-11-04, GraphQL). Past a token's budget the rate limit answers, as for
+any tagged range (§4.1, "Only the untagged arm is capped"); no fleet window is near
+it. Two holes are named rather than closed. A base commit rewritten after the stack
+forked, an amend the stacked branch never picked up, has another sha and counts as
+the stacked pull's own; no two merged pulls of 2,079 across eight fleet repositories
+list one message and author date under two shas (GraphQL, the same day). And a
+reland that reuses a reverted commit's own sha counts nothing, where any rebase of
+it counts again. (Mutation rows
+`walk-recounts-what-a-stacked-pulls-base-released`,
+`walk-stacked-rebase-leaves-the-rest-unaligned`,
+`walk-forgets-where-a-pre-rebase-sha-landed`,
+`walk-read-back-matches-a-released-message`,
+`walk-read-back-walks-the-whole-base`,
+`walk-read-back-resolves-an-excluded-author`,
+`walk-read-back-asks-about-a-window-twice`,
+`walk-read-back-dies-on-an-unknown-commit`,
+`walk-read-back-fails-on-a-fork-no-checkout-holds`,
+`walk-read-back-takes-the-range-for-released-work`.)
 
 Standing aside is only safe if something stands in, so the walk keeps a ledger:
 a pull that some commit reported itself *covered* by, whose canonical commit is
@@ -1820,7 +1904,9 @@ nearest one, which matters because every commit between it and the merge point
 is a commit a farther base would silently drop from the release. A
 **squash-merged** PR has no such commit: its individual commits exist only over
 the API, its one commit on `main` *is* its merge point, and nothing short of a
-base at or past that merge point stops the walk re-fetching the listing.
+base at or past that merge point stops the walk re-fetching the listing. A pull
+stacked on it re-lists the commit and clears with the same base, once its fork is
+one the checkout can read back from (above).
 
 Since a merge commit resolves (t-7zt7), that hard gate reaches **merge-merged
 PRs for the first time**: a non-conforming commit inside one now wedges the
@@ -2602,7 +2688,9 @@ commit is dated at its merge — so the first sighting is where the content
 first reached the released branch, and a first sighting at an identity every
 line released means the content shipped under an earlier tag: a later pull
 listing it again adds nothing to any line, and the partition drops it with
-its notice. Ratified 2026-11-03 (t-ge91) over two alternatives. Counting it
+its notice. A base pull behind the union itself is no sighting, and §4's
+read-back reaches the same answer ("A stacked pull lists what its base landed").
+Ratified 2026-11-03 (t-ge91) over two alternatives. Counting it
 at every judged sighting counts shipped content again: a stacked pull steps a
 line for a change the held pull's tag already carries (measured the same day
 with that mutation on the reviewer's pk-dev3b fixture, the held pull walked

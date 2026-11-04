@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 65e8606..ec6f9e8 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -573,7 +573,7 @@ func (w *walk) placeStacked(ctx context.Context, canonical string, listing []git
+ 	if !placed {
+ 		return nil
+ 	}
+-	return w.alignRewritten(ctx, canonical, listing, landed)
++	return nil
+ }
+ 
+ // readBack records in landings what the pulls between this listing's fork and
