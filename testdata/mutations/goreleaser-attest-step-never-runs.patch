@@ -1,0 +1,8 @@
+diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
+index 9e18c30..00454a4 100644
+--- a/.github/workflows/goreleaser.yml
++++ b/.github/workflows/goreleaser.yml
+@@ -223,2 +223,3 @@ jobs:
+           subject-path: 'dist/*.tar.gz, dist/checksums.txt'
++        if: false
+ 

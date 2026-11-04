@@ -1,10 +1,8 @@
 diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
-index 3331abc..1a5667c 100644
+index 9e18c30..e9e2f2a 100644
 --- a/.github/workflows/goreleaser.yml
 +++ b/.github/workflows/goreleaser.yml
-@@ -191,5 +191,4 @@ jobs:
-           # rc.2 release (422 already_exists), leaving v3.3.0 with no release
+@@ -215,3 +215,2 @@ jobs:
            # while every pin site was about to move to it.
 -          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
  
-       - name: attest build provenance

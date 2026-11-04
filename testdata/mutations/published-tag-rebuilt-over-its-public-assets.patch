@@ -1,0 +1,8 @@
+diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
+index 9e18c30..710c8e5 100644
+--- a/.github/workflows/goreleaser.yml
++++ b/.github/workflows/goreleaser.yml
+@@ -160,3 +160,2 @@ jobs:
+               echo "::error::$TAG already has a published release. Its assets are public and attested, and rebuilding here would replace them with differently stamped bytes nothing attests. If the cask push failed, re-run the failed cask job of the run that published $TAG; nothing else is re-doable."
+-              exit 1
+             fi
