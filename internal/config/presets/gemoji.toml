@@ -108,7 +108,7 @@ unlandable = 'autosquash lands this body as its target message (after a squash! 
 # resolves to something, and takes its own punctuation with it when one does
 # not. $pr is empty for every commit that reached main without a merged pull,
 # which is every commit under --range — so the parens below sit inside a span.
-# Written outside one they shipped as a bare `()` in the release body.
+# Outside a span they render as a bare `()` for such a commit.
 #
 # $coauthors is the commit's `Co-authored-by` names — address stripped,
 # comma-joined, parsed by git's trailer rules (glyph's parser is held to

@@ -684,15 +684,14 @@ while IFS= read -r name; do
   # Three cases per gate, not two. The third — the BASELINE answered and the
   # CANDIDATE cannot — is the gravest verdict this instrument can reach: the
   # release makes glyph stop computing an answer for a repo that has one today.
-  # It was being filed as a skip, next to "no local clone", while CHANGED stayed
-  # where it was. A regression cannot be routed into the list of things that
-  # were never measured.
+  # Filed as a skip, next to "no local clone", it would be routed into the list
+  # of things that were never measured while CHANGED stays where it is.
   lint_cell='-'
   if [ "$ol_sig" = '?unreadable-envelope' ] && [ "$nl_sig" = '?unreadable-envelope' ]; then
     # Ahead of the three: both sides answered 3 and neither answer can be
-    # read. The two placeholders are equal as strings, and filing them as
-    # agreement reported no move over a finding set that had moved. Kept out
-    # of LINT_OK, so the ✓ line says its counts are floors.
+    # read. The two placeholders are equal as strings, so filed as agreement
+    # they would report no move over a finding set that may have moved. Kept
+    # out of LINT_OK, so the ✓ line says its counts are floors.
     moved_lint=''
     printf '%s\tlint findings unreadable on both sides over %s — nothing was compared: %s\n' \
       "$name" "$rng" "$(whys "$WORK/lint.old.err" "$WORK/lint.new.err")" >> "$WORK/skips"

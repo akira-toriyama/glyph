@@ -176,11 +176,11 @@ func (v Version) next(d Decision) Version {
 // v1 line beside it (mutation rows
 // packages-tag-of-one-line-baselines-another, line-reads-tags-of-every-major).
 
-// LinePrefix is the line prefix a tag spells — everything through the LAST
+// linePrefix is the line prefix a tag spells — everything through the LAST
 // '/', "" for a bare tag. It names the line a tag is on; whether that line
 // is declared, and whether what follows is a version, are the caller's
 // questions (ParseVersionOn and ParseBaseTag answer the second).
-func LinePrefix(tag string) string {
+func linePrefix(tag string) string {
 	return tag[:strings.LastIndexByte(tag, '/')+1]
 }
 
@@ -229,14 +229,14 @@ func ParseVersionOn(prefix, tag string) (Version, error) {
 }
 
 // ParseBaseTag is parseBaseVersion on the line tag spells: it returns that
-// line's prefix (LinePrefix) and the base version of what follows, which may
+// line's prefix (linePrefix) and the base version of what follows, which may
 // carry a pre-release or build suffix. It is what
 // --since-tag=below:<prefix>vX.Y.Z-rc.1 parses its bound with, and what
 // decides whether a plain --since-tag=TAG names a declared line at all — a
 // candidate on the line does, and selects it alone (mutation row
 // packages-candidate-tag-walks-every-line).
 func ParseBaseTag(tag string) (prefix string, v Version, err error) {
-	prefix = LinePrefix(tag)
+	prefix = linePrefix(tag)
 	v, err = parseBaseVersion(tag[len(prefix):])
 	return prefix, v, err
 }

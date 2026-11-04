@@ -251,11 +251,11 @@ type touchedLine struct {
 // whole — are the lint-class refusal the walk and lint --range hand down, and
 // preview says what CI will say, worded for where the commit sits: on a
 // branch that can still be fixed. They go out at once, in listing order, the
-// first the headline, as lint --range names them; stopping at the first left
-// the author one commit per push to find (t-wjbs round 1), and attribution
-// asked first hid the grammar's refusal until the next run (DESIGN §4.1, rule
-// 3). A refusal already found, of either stage, outranks a later failure to
-// read the rest (walk.Walker.Outranks).
+// first the headline, as lint --range names them; stopping at the first
+// would leave the author one commit per push to find (t-wjbs), and
+// attribution asked first would hide the grammar's refusal until the next
+// run (t-ge91; DESIGN §4.1, rule 3). A refusal already found, of either
+// stage, outranks a later failure to read the rest (walk.Walker.Outranks).
 func attributePull(ctx context.Context, w walk.Walker, cfg *config.Config, owner, repo string, number int, commits []walk.Commit, name string) ([]touchedLine, string, error) {
 	lines := walk.PendingLines(cfg, name)
 	bare := len(cfg.Packages) == 0

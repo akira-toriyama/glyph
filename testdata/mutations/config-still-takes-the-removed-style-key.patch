@@ -1,11 +1,11 @@
 diff --git a/internal/config/config.go b/internal/config/config.go
-index cd52ab4..ef7951b 100644
+index f586d0b..aca17ba 100644
 --- a/internal/config/config.go
 +++ b/internal/config/config.go
 @@ -130,6 +130,7 @@ type Config struct {
  // named a grammar the patterns alone decide, and nothing read it (DESIGN §2).
  // The strict decoder refuses it as unknown, which is the whole enforcement.
- type Commit struct {
+ type commit struct {
 +	Style    string
  	template string
  }

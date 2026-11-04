@@ -52,8 +52,8 @@ func TestReleasesLists(t *testing.T) {
 // entry the reader already has. A release is its id, and every consumer —
 // the managed drafts, the published floor, the create probe — asks about
 // releases, not about rows: the listing hands each id down once, the first
-// sighting kept (t-wjbs correct-a-5: a none verdict planned a repeated draft
-// twice and its second DELETE failed the run at 4).
+// sighting kept (t-wjbs: a none verdict that plans a repeated draft twice
+// fails the run at 4 on its second DELETE).
 func TestReleasesListsARepeatedReleaseOnce(t *testing.T) {
 	var srvURL string
 	c := newClient(t, "", func(w http.ResponseWriter, r *http.Request) {

@@ -177,9 +177,9 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	// before the environment is judged: --since-tag's shape is checked and
 	// the footer file read up front, and the repository must resolve for the
 	// releases listing (sinceTagInput re-resolves it for the walk — same
-	// answer, one source of truth in resolveRepo). The tag was checked only
-	// inside sinceTagInput, below the ref guard, so a malformed one off the
-	// default branch answered the guard's 4 (t-wjbs, measured 2026-10-26).
+	// answer, one source of truth in resolveRepo). Checked only inside
+	// sinceTagInput, below the ref guard, a malformed tag off the default
+	// branch would answer the guard's 4 (t-wjbs).
 	if err := walk.CheckTag(o.tag); err != nil {
 		return err
 	}

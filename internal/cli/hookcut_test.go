@@ -23,9 +23,10 @@ const hookCutLine = "# ------------------------ >8 ------------------------"
 //
 // It compares TEXT because a verdict cannot see the cut: under the presets'
 // subject-anchored grammar a message and its cut-short form get the same
-// answer, so the hook cut in the wrong cells while every row of
-// TestHookVerdictMatchesWhatGitRecords stayed green (t-3p3k (2): it cut only
-// when an editor ran, and git cuts under commit.verbose with no editor too).
+// answer, so a hook cutting in the wrong cells keeps every row of
+// TestHookVerdictMatchesWhatGitRecords green (t-3p3k: a hook that cuts only
+// when an editor ran misses the cut git makes under commit.verbose with no
+// editor).
 //
 // Two families of cells cannot agree, and they are pinned in the direction
 // DESIGN §2.1's residual paragraph states rather than skipped — if git ever

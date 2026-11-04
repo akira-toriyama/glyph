@@ -16,8 +16,8 @@ func TestLinePrefix(t *testing.T) {
 		{"Unreleased", ""},
 	}
 	for _, c := range cases {
-		if prefix := LinePrefix(c.in); prefix != c.prefix {
-			t.Errorf("LinePrefix(%q) = %q; want %q", c.in, prefix, c.prefix)
+		if prefix := linePrefix(c.in); prefix != c.prefix {
+			t.Errorf("linePrefix(%q) = %q; want %q", c.in, prefix, c.prefix)
 		}
 	}
 }
@@ -141,16 +141,16 @@ func FuzzLinePrefix(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, tag string) {
-		prefix := LinePrefix(tag)
+		prefix := linePrefix(tag)
 		rest, ok := strings.CutPrefix(tag, prefix)
 		if !ok {
-			t.Fatalf("LinePrefix(%q) = %q, not a prefix of the tag", tag, prefix)
+			t.Fatalf("linePrefix(%q) = %q, not a prefix of the tag", tag, prefix)
 		}
 		if prefix != "" && !strings.HasSuffix(prefix, "/") {
-			t.Fatalf("LinePrefix(%q) = %q does not end in '/'", tag, prefix)
+			t.Fatalf("linePrefix(%q) = %q does not end in '/'", tag, prefix)
 		}
 		if strings.Contains(rest, "/") {
-			t.Fatalf("LinePrefix(%q) leaves %q, which holds a '/'", tag, rest)
+			t.Fatalf("linePrefix(%q) leaves %q, which holds a '/'", tag, rest)
 		}
 		if v, err := ParseVersionOn(prefix, tag); err == nil {
 			if v.TagOn(prefix) != prefix+v.String() {

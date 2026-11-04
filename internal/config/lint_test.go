@@ -152,7 +152,7 @@ func TestSubjectForm(t *testing.T) {
 		{"", ""},
 	}
 	for _, c := range cases {
-		cfg := &Config{commit: Commit{template: c.template}}
+		cfg := &Config{commit: commit{template: c.template}}
 		if got := cfg.subjectForm(); got != c.want {
 			t.Errorf("subjectForm(%q) = %q, want %q", c.template, got, c.want)
 		}

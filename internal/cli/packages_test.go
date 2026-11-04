@@ -1228,12 +1228,12 @@ func newCrissCross(t *testing.T, messageA, messageB, side string) crissCross {
 // the union walk holds that every line has already released is dropped with
 // the notice before the walk judges its message — never refused at 3
 // (DESIGN §4.1, "The walk is one walk"). Every line's tag already sits past
-// it, so the refusal named an escape already taken, over work both lines had
-// shipped. #274 moved the walk's refusal of a message no pattern claims
-// ahead of the partition, where the drop ran, so a direct push of that shape
-// went from v5.0.0's notice and exit 0 to exit 3 on every verdict command
-// (t-wjbs correct-a-1, measured 2026-10-26 on 82aebc5); a squash-merged
-// pull's inner commit at such a merge point was refused on both. The two
+// it, so a refusal there names an escape already taken, over work both lines
+// have shipped — and because the walk's refusal of a message no pattern
+// claims runs ahead of the partition, where the drop runs, the walk declines
+// such a sighting itself (walk.judges), so a direct push of that shape and a
+// squash-merged pull's inner commit at such a merge point are both dropped,
+// never refused (t-wjbs). The two
 // arms judge by one identity, the commit's governing one: its own sha on the
 // released branch, the pull's merge point for a listed commit that landed
 // under none.
@@ -1305,27 +1305,24 @@ func TestSinceTagPackagesCommitReleasedOnEveryLineIsDroppedNotRefused(t *testing
 // pull's merge point — its governing identity there — and one judged
 // sighting refuses it, the refusal naming the escape of every judged sighting
 // and none at an identity every line released. Here the first pull's merge
-// point is the criss-cross's held
-// commit, released on every line, and #90's is pending on both, so the
-// refusal names #90's merge point per line and never the held one, which
-// every line already passed (DESIGN §4.1, "The walk is one walk").
+// point is the criss-cross's held commit, released on every line, and #90's
+// is pending on both, so the refusal names #90's merge point per line and
+// never the held one, which every line already passed (DESIGN §4.1, "The
+// walk is one walk").
 //
-// "#90 after" is t-wjbs design-1: the held pull listed the commit first, it
-// went in unjudged, and #90's sighting met the walk's "already represented"
-// arm, so the union walk answered 0 (haiku/v0.2.0) where v5.0.0, ba484da and
-// the haiku line's own walk answered 3 (measured 2026-10-27; mutation row
+// "#90 after": the held pull lists the commit first and it goes in unjudged,
+// so #90's sighting must be judged rather than met by the walk's "already
+// represented" arm — a union walk that skips it answers 0 (haiku/v0.2.0)
+// where the haiku line's own walk answers 3 (mutation row
 // packages-walk-skips-a-later-sighting-it-never-judged). "#90 before" is the
-// same pulls the other way round — the order a refusal must not hang on, which
-// it did for the unclaimed message until the later sighting was judged too
-// (t-wjbs correct-5): #90 refuses the commit first, and the held pull's
-// re-sighting adds no escape at an identity every line released (mutation row
+// same pulls the other way round — the order a refusal must not hang on: #90
+// refuses the commit first, and the held pull's re-sighting adds no escape at
+// an identity every line released (mutation row
 // packages-walk-names-an-escape-every-line-passed). Which line a CLAIMED
 // commit two pulls list joins, and the identity it is counted under, is its
 // first sighting's (TestSinceTagPackagesStackedPullCountsAClaimedCommitOnce).
-// The same commit by an
-// exclude_authors author is judged at neither sighting, so nothing is refused
-// (t-wjbs correct-r1-1, measured by review 2026-10-27: exit 0 on v5.0.0,
-// ba484da, 80c849a and 36b7c53; mutation row
+// The same commit by an exclude_authors author is judged at neither sighting,
+// so nothing is refused (mutation row
 // packages-walk-judges-a-later-sighting-of-an-excluded-author).
 func TestSinceTagPackagesStackedPullJudgesEachSighting(t *testing.T) {
 	for _, tc := range []struct {
@@ -1497,11 +1494,8 @@ func TestSinceTagPackagesStackedPullCountsAClaimedCommitOnce(t *testing.T) {
 // its wedge clears line by line — a tag on each such line at or past the
 // commit's governing identity — and the refusal names that tag per line, as
 // rule 3's attribution refusal does (DESIGN §4.1). The single line's "Cut a
-// release tag there by hand" cleared neither line: a bare tag is no line's,
-// and one line's tag left the other wedged (t-wjbs correct-a-2, measured
-// 2026-10-26 on 82aebc5 for both shapes and on v5.0.0 for the pull's inner
-// commit; v5.0.0 refused the direct push with the fold's authoring wording,
-// before #274 gave direct pushes the walk's refusal). The test takes the
+// release tag there by hand" clears neither line: a bare tag is no line's,
+// and one line's tag leaves the other wedged (t-wjbs). The test takes the
 // escapes in turn — the bare tag first, which must change nothing — and
 // reads the sentence shrink to the line still wedged.
 func TestSinceTagPackagesUnclaimedNamesTheEscapePerLine(t *testing.T) {
@@ -1584,11 +1578,10 @@ func threeAttributionRefusals(t *testing.T, dir string) (shas []string, routes m
 // refusals go out once the whole range is partitioned, every refused commit
 // in details and every line's escape in the sentence — the whole-range rule
 // §3 states for a message no pattern claims, and what lint --range over the
-// same range answers (DESIGN §4.1, rule 3). The walk handed down the first
-// alone, so the escape it named left the next refusal to the next run: three
-// red runs for three commits (t-wjbs correct-a-3, measured 2026-10-26 on
-// 82aebc5 and v5.0.0 alike). Tags cut where the one sentence says clear the
-// range in one step.
+// same range answers (DESIGN §4.1, rule 3). A walk that hands down the first
+// alone leaves the next refusal to the next run: three red runs for three
+// commits (t-wjbs). Tags cut where the one sentence says clear the range in
+// one step.
 func TestSinceTagPackagesHandsDownEveryAttributionRefusalAtOnce(t *testing.T) {
 	dir, base := packagesRepo(t)
 	shas, routes := threeAttributionRefusals(t, dir)
@@ -1630,9 +1623,9 @@ func TestSinceTagPackagesHandsDownEveryAttributionRefusalAtOnce(t *testing.T) {
 // attribution's refusal names a tag on a line only for the refused commits
 // that line's range holds. curry is tagged on the declaring commit and haiku
 // on s1, so s1 wedges curry alone and s2 both: haiku's tag clears it at s2,
-// curry's at s1 and s2 both. Naming every line passed the whole suite, before
-// this branch and on it (t-wjbs correct-2, measured 2026-10-27 by review;
-// mutation row attribution-wedge-names-a-tag-on-every-line).
+// curry's at s1 and s2 both. Naming every line would send the operator to
+// cut a tag on a line whose walk already starts past the commit (mutation
+// row attribution-wedge-names-a-tag-on-every-line).
 func TestSinceTagPackagesAttributionEscapeNamesOnlyTheLinesHoldingEachCommit(t *testing.T) {
 	dir := testutil.NewTwoLineRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.0")
@@ -1658,10 +1651,10 @@ func TestSinceTagPackagesAttributionEscapeNamesOnlyTheLinesHoldingEachCommit(t *
 // is the fold's — the escapes the commit can take and "refusing to version the
 // range" — never the walk's claim that the commit sits on a published branch
 // with a tag to cut past it (DESIGN §4: the fold's authoring remedy is kept
-// for --range). Measured 2026-10-26 on 82aebc5 and v5.0.0 alike (t-wjbs
-// correct-a-4): one unpushed commit in a checkout with no remote was told it
-// "is already on a published branch and cannot be rewritten" and to cut a tag
-// on each line. Every refusal of the range goes out at once, as the fold's.
+// for --range; t-wjbs). Worded as the walk's, one unpushed commit in a
+// checkout with no remote is told it "is already on a published branch and
+// cannot be rewritten" and to cut a tag on each line. Every refusal of the
+// range goes out at once, as the fold's.
 func TestBumpRangePackagesAttributionRefusalIsTheAuthoringOne(t *testing.T) {
 	dir, base := packagesRepo(t)
 	shas, _ := threeAttributionRefusals(t, dir)
@@ -1693,9 +1686,9 @@ func TestBumpRangePackagesAttributionRefusalIsTheAuthoringOne(t *testing.T) {
 // both stages' rows in range order, the first the headline, worded as the
 // fold words a range's — whichever stage the first refused commit fails, and
 // what lint --range over the same range names. Asked first, attribution
-// handed down its own rows alone and the grammar's refusal was the next red
-// run (measured by review 2026-10-27 on 36b7c53; DESIGN §4.1, rule 3;
-// mutation row range-attribution-refusal-hides-the-grammar-refusal).
+// would hand down its own rows alone and leave the grammar's refusal to the
+// next red run (DESIGN §4.1, rule 3; mutation row
+// range-attribution-refusal-hides-the-grammar-refusal).
 func TestBumpRangePackagesRefusesGrammarAndTreeAtOnce(t *testing.T) {
 	const unclaimed = "no gitmoji leads this subject"
 	for _, tc := range []struct {

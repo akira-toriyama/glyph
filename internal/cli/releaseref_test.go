@@ -425,10 +425,10 @@ func TestReleaseRefGuardIsInertWithoutARunContext(t *testing.T) {
 // TestReleaseRefusesAMalformedSinceTagBeforeTheRefGuard: a malformed
 // --since-tag is the caller's input, so release refuses it at 2 before the
 // repository, the config or the ref is read — the order releaseRun's own
-// comment promises. The check sat at the walk's entrance, below the ref
-// guard, so a real run off the default branch answered the guard's 4 for a
-// flag no re-run fixes (t-wjbs comments-a-1, measured 2026-10-26 on 82aebc5:
-// --since-tag=, =-x and =a..b each exit 4 from refs/heads/topic). The last
+// comment promises. Were it checked at the walk's entrance, below the ref
+// guard, a real run off the default branch would answer the guard's 4 for a flag no
+// re-run fixes — --since-tag=, =-x and =a..b from refs/heads/topic are the
+// three shapes (t-wjbs). The last
 // run is the positive control: a well-formed tag on the same ref reaches the
 // guard and answers its 4.
 func TestReleaseRefusesAMalformedSinceTagBeforeTheRefGuard(t *testing.T) {

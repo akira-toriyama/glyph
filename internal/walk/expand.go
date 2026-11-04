@@ -57,7 +57,7 @@ type walk struct {
 	// (judges). seen alone cannot tell it from a commit judged and accepted,
 	// or from a resolved pull's canonical commit, whose squash subject must
 	// never be judged (t-7zt7) — and a later pull pending on some line judges
-	// exactly these (t-wjbs design-1).
+	// exactly these (t-wjbs).
 	unjudged map[string]bool
 	// inRange is every SHA this walk will visit — what makes "covered"
 	// checkable: a commit stands aside only for a pull whose canonical commit
@@ -318,16 +318,15 @@ func (w *walk) refuse(row bump.Refusal, number int, mergePoint, sha string) {
 // sighting's governing identity: always on the single line, and under
 // [[packages]] unless every line has already released that identity. A
 // sighting at such an identity is walked only because the union had to
-// contain it, and refused there it named an escape every line had already
-// taken; #274 moved this refusal ahead of the partition's drop, and a direct
-// push of the shape went from v5.0.0's notice and exit 0 to exit 3 (t-wjbs,
-// measured 2026-10-26; DESIGN §4.1). A commit two pulls list is judged under
-// each sighting's governing identity — a squash-merged pull's inner commit
-// under that pull's merge point, a landed commit under its landing site
-// whichever pull lists it — and one sighting judged is enough to refuse it:
-// the refusal names the escape of every judged sighting, never one at an
-// identity every line released (expand's seen arm; t-wjbs design-1, a
-// stacked pull's later sighting answered 0 where v5.0.0 answered 3).
+// contain it, and refused there it would name an escape every line has
+// already taken; this refusal runs ahead of the partition's drop, so the
+// drop is decided here (t-wjbs; DESIGN §4.1). A commit two pulls list is
+// judged under each sighting's governing identity — a squash-merged pull's
+// inner commit under that pull's merge point, a landed commit under its
+// landing site whichever pull lists it — and one sighting judged is enough to
+// refuse it: the refusal names the escape of every judged sighting, never one
+// at an identity every line released (expand's seen arm: a stacked pull's
+// later sighting skipped answers 0 where the line's own walk answers 3).
 func (w *walk) judges(gov string) bool {
 	return !w.ranges.releasedEverywhere(gov)
 }

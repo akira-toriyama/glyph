@@ -6,7 +6,7 @@ diff --git a/internal/walk/lines.go b/internal/walk/lines.go
  			return nil, "", terr
  		}
 -		if prefix, shape, perr := bump.ParseBaseTag(tag); perr == nil {
-+		prefix := bump.LinePrefix(tag)
++		prefix := tag[:strings.LastIndexByte(tag, '/')+1]
 +		if shape, perr := bump.ParseVersionOn(prefix, tag); perr == nil {
  			p, ok := packageOnLine(cfg, prefix, shape.Major)
  			if !ok {

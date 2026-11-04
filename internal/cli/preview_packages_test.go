@@ -353,11 +353,10 @@ func TestPreviewPackagesCountsWhatTheFoldReads(t *testing.T) {
 
 // TestPreviewPackagesWarnsEveryParticipatingCommitOnce: a pattern's warning
 // follows its commit into every command that folds it (warnBumpRows: loud
-// in one and silent in another is how a warning dies). The packages preview
-// warned per touched line, so a warned commit on NO line was silent here while
-// the single line's preview said it — measured on 4a8183b: no warning against
-// one — and a commit on two lines was said twice. The whole listing's rows are
-// the pull's participating commits, and each is warned once.
+// in one and silent in another is how a warning dies). Warned per touched
+// line, a warned commit on NO line is silent here while the single line's
+// preview says it, and a commit on two lines is said twice. The whole
+// listing's rows are the pull's participating commits, and each is warned once.
 func TestPreviewPackagesWarnsEveryParticipatingCommitOnce(t *testing.T) {
 	const warning = "::warning::glyph: commit w1: a construction commit is legal here and unwelcome"
 	const warned = "[[patterns]]\npattern = '^(?P<subject>:construction:(?P<semver_sigil>[=~^!%]) .+)'\nwarn = 'a construction commit is legal here and unwelcome'\n\n"
@@ -410,10 +409,10 @@ func TestPreviewPackagesWarnsEveryParticipatingCommitOnce(t *testing.T) {
 	}
 
 	// The pending half: an already-merged warned commit, read by the walk the
-	// pull's haiku commit sets off. Warned per walked line it was said 0 / 1 /
+	// pull's haiku commit sets off. Warned per walked line it is said 0 / 1 /
 	// 2 times on no line / one / two, where the single line's preview and
-	// packages bump say it once (review residue of #262, measured 0/1/2 on
-	// c89ea08). The walk's union is folded once and its rows warned once.
+	// packages bump say it once. The walk's union is folded once and its rows
+	// warned once.
 	for name, files := range map[string][]string{
 		"merged, on no line":   {"README.md"},
 		"merged, on one line":  {"haiku/haiku.go"},
@@ -505,12 +504,12 @@ func TestPreviewPackagesRefusesAClaimedMergeInItsOwnWords(t *testing.T) {
 // TestPreviewPackagesRefusesEveryAttributionRefusalAtOnce: every commit of the
 // pull that attribution refuses goes out in one refusal, every one in details,
 // in preview's own words — the walk and the pull's commit-lint name them all,
-// and preview, the surface a reviewer reads on the pull, stopped at the first,
-// leaving one commit per push to find (t-wjbs round 1; mutation row
+// and preview, the surface a reviewer reads on the pull, names them too:
+// stopping at the first would leave one commit per push to find (mutation row
 // preview-hands-down-the-first-attribution-refusal). A refusal already found
 // outranks a later failure to read the rest, as the walk's does, and the
 // warning says what was left unread in preview's terms — the rest of the
-// pull's listing, not "the rest of the range" (t-wjbs correct-r1-6).
+// pull's listing, not "the rest of the range": a pull is not a range.
 func TestPreviewPackagesRefusesEveryAttributionRefusalAtOnce(t *testing.T) {
 	routes := map[string]string{
 		pullCommitsPath(9): `[` +
@@ -593,9 +592,9 @@ func TestPreviewPackagesAsksNoFileOfAnUnclaimedMessage(t *testing.T) {
 // headline — whichever the pull lists first, and a grammar row is a refusal
 // already found when a later read fails. The bare line refuses an unclaimed
 // message in the same words: the walk refuses it the same way once the pull
-// is merged. Attribution asked first hid the grammar's refusal behind its
-// own, and the bare line's came worded as the fold's refusal of a range
-// (measured by review 2026-10-27 on 36b7c53; DESIGN §4.1, rule 3; mutation
+// is merged. Attribution asked first would hide the grammar's refusal behind
+// its own, and the bare line's would come worded as the fold's refusal of a
+// range (DESIGN §4.1, rule 3; mutation
 // rows preview-attribution-refusal-hides-the-grammar-refusal,
 // preview-grammar-refusal-hides-behind-a-later-failure).
 func TestPreviewPackagesRefusesGrammarAndTreeAtOnce(t *testing.T) {

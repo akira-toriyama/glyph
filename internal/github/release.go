@@ -73,10 +73,9 @@ type wireParams struct {
 // pages by position, so a release created between two page reads shifts the
 // next page and repeats an entry already read (reasoned in #280, not
 // measured on GitHub). A release is its id to every consumer: planned twice,
-// a none verdict deleted one draft twice, and the second DELETE's first
-// attempt answered 404 and failed the run at 4 with the draft gone, while
-// the dry run counted two residuals (t-wjbs, measured 2026-10-26 on a
-// stand-in API).
+// a none verdict would delete one draft twice, and the second DELETE's 404
+// would fail the run at 4 with the draft gone while the dry run counts two
+// residuals (t-wjbs).
 func (c *Client) Releases(ctx context.Context, owner, repo string) ([]Release, error) {
 	first := fmt.Sprintf("%s/repos/%s/%s/releases?per_page=%s",
 		c.baseURL, url.PathEscape(owner), url.PathEscape(repo), perPage)
