@@ -17,7 +17,7 @@ type Commit struct {
 	SHA     string
 	Pull    int
 	Author  string
-	Login   string // the GitHub login to credit, "" when nothing established one (walk's identity)
+	Login   string // the author.login GitHub attached to the commit when the API described it, "" otherwise — the one source of a live credit
 	Message string
 }
 
@@ -103,14 +103,15 @@ func Group(commits []Commit, cfg *config.Config) ([]Section, error) {
 // running over the assembled line (markdown.Line's pipeline — a subject
 // must not be able to page someone from a release body). The one
 // exemption is the built-in $author: markdown.Line.Mention renders the
-// established, handle-shaped login live and the name otherwise (DESIGN §3,
+// API-attached, handle-shaped login live and the name otherwise (DESIGN §3,
 // "`note.line` and the optional span.").
 // Group-derived values and the other built-ins keep the fence: whether a
 // SUBJECT can page someone is not the author's intent to declare.
-// The built-ins (config.BuiltinPR and its siblings) are reserved: they win over a pattern
-// group of the same name. A placeholder that is neither built-in nor a group
-// of the winning pattern renders empty. A scope is prose like any other
-// value: DESIGN §2 argues why no group gets a plain-text route.
+// The built-ins (config.BuiltinPR and its siblings) and the declared
+// trailers share one map, consulted before the winning pattern's groups, so
+// both win over a group of the same name. A placeholder that is neither
+// renders empty. A scope is prose like any other value: DESIGN §2 argues why
+// no group gets a plain-text route.
 //
 // An optional span drops WITH its literal text when any placeholder inside it
 // resolves empty. That is the whole point of the span: $pr is empty for every
@@ -128,10 +129,10 @@ func renderLine(spans []config.LineSpan, declared []config.NoteTrailer, c Commit
 		builtins[config.BuiltinPR] = "#" + strconv.Itoa(c.Pull)
 	}
 	// A declared trailer resolves like a pattern group: absent means empty,
-	// which drops the optional span that carries it. Bound AFTER the built-ins
-	// map is seeded and BEFORE groups are consulted, so the precedence a
-	// template can rely on reads built-in > trailer > group — and buildTrailers
-	// has already refused a name that would make that ordering observable.
+	// which drops the optional span that carries it. Written into the
+	// built-ins map, where a trailer named like a built-in would replace it;
+	// config.buildTrailers refuses such a name, so the collision never
+	// reaches here and the order a template sees is trailer > group.
 	for _, t := range declared {
 		builtins[t.Name] = trailerValue(c.Message, t.Token)
 	}

@@ -26,8 +26,8 @@ import (
 type RawCommit struct {
 	SHA     string
 	Author  string // author name (%an) — what bot/automation matching runs on
-	Email   string // author email (%ae) — the one identity git holds; a GitHub noreply address names a login
-	Login   string // GitHub login; always "" from git (github.Commit fills it from the API) — mirrored so the two convert
+	Email   string // author email (%ae), as git holds it — self-asserted text that names no login, a GitHub noreply address included (DESIGN §3)
+	Login   string // GitHub login; always "" from git (github.Commit fills it from the API's author.login) — mirrored so the two convert
 	Parents int    // parent count; >= 2 marks a merge commit
 	// Message is the message as git recorded it (%B) minus the one closing
 	// newline git records a cleaned message with — the shape cleanup.Apply hands

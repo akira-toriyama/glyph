@@ -191,3 +191,28 @@ func TestSinceReadsThroughItsPortsUnderPackages(t *testing.T) {
 		t.Errorf("a typed tag names its line alone with the tag as its base: got %+v", one.Lines)
 	}
 }
+
+// TestNoteCommitsCreditOnlyTheLoginGitHubAttached pins the one source of a
+// live credit (t-ayhq): the login the API attached to a listed commit passes
+// through, and a commit the API did not describe — or described with
+// author: null — hands the notes no login at all, whatever its author
+// address says. The addresses are the shape GitHub's own noreply writes, with
+// an id that is not the login's: measured on glyph-test-2 (2026-11-04),
+// `92862731+refute-a3-nonexistent-zz@users.noreply.github.com` is attributed
+// by GitHub to the account the id names and `9999999999+akira-toriyama@…` to
+// nobody, so the login in the address is text anyone can type (mutation row
+// noreply-address-trusted-as-identity).
+func TestNoteCommitsCreditOnlyTheLoginGitHubAttached(t *testing.T) {
+	got := NoteCommits([]Commit{
+		{Raw: gitsource.RawCommit{SHA: "a", Author: "Saleh", Email: "root@lr0.org", Login: "larrasket"}, Pull: 7},
+		{Raw: gitsource.RawCommit{SHA: "b", Author: "akira-toriyama", Email: "92862731+refute-a3-nonexistent-zz@users.noreply.github.com"}, Landed: true},
+		{Raw: gitsource.RawCommit{SHA: "c", Author: "akira-toriyama", Email: "9999999999+akira-toriyama@users.noreply.github.com"}, Pull: 8},
+		{Raw: gitsource.RawCommit{SHA: "d", Author: "akira-toriyama", Email: "akira-toriyama@users.noreply.github.com"}, Landed: true},
+	})
+	want := []string{"larrasket", "", "", ""}
+	for i, c := range got {
+		if c.Login != want[i] {
+			t.Errorf("commit %s by %s: Login = %q, want %q — a live credit comes from the API's author.login alone", c.SHA, c.Author, c.Login, want[i])
+		}
+	}
+}

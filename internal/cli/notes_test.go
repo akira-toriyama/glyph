@@ -12,10 +12,12 @@ import (
 // TestNotesMarkdown: the full Markdown body under the gemoji preset — the
 // section order the config declares, a major landing in Breaking Changes, a
 // none commit landing nowhere (no none-section is configured), and the
-// note.line template rendered with the mention fence over the author. Each
-// line carries the whole commit subject — gitmoji, scope and sigil included —
-// which is the preset's ratified subject group (DESIGN §3), not a rendering
-// that forgot to apply the template.
+// note.line template rendered with the author credited by name: under
+// --range the API attaches no login, so the template's at-sign goes with the
+// mention it cannot make (t-ayhq). Each line carries the whole commit subject
+// — gitmoji, scope and sigil included — which is the preset's ratified
+// subject group (DESIGN §3), not a rendering that forgot to apply the
+// template.
 //
 // Every commit here reached main without a merged pull — which is EVERY
 // commit under --range, since the range walk resolves no pulls at all — so
@@ -36,11 +38,11 @@ func TestNotesMarkdown(t *testing.T) {
 		t.Fatalf("notes exited %d, want 0\nstderr: %s", code, stderr)
 	}
 	want := "## Breaking Changes\n\n" +
-		"- :recycle:! rework the store @akira-toriyama\n\n" +
+		"- :recycle:! rework the store akira-toriyama\n\n" +
 		"## Features\n\n" +
-		"- :sparkles:(ui)^ add a command palette @akira-toriyama\n\n" +
+		"- :sparkles:(ui)^ add a command palette akira-toriyama\n\n" +
 		"## Fixes\n\n" +
-		"- :bug:~ fix a crash @akira-toriyama\n"
+		"- :bug:~ fix a crash akira-toriyama\n"
 	if stdout != want {
 		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
 	}
@@ -347,19 +349,24 @@ func TestNotesOutsideRepoIsAPI(t *testing.T) {
 	}
 }
 
-// TestNotesCreditsByIdentityNotShape (t-39fy): the author credit is a live
-// mention of the LOGIN GitHub established, never of git's free-text name.
-// Under --range the only identity git holds is a noreply address, and the
-// fixture's commits carry one (as the fleet's do), so those credits stay
-// live; a commit from a personal address is credited by name, plain, the
-// at-sign gone with the mention it cannot make — "Saleh" is handle-shaped and
-// is github.com/larrasket, so rendered by shape it paged a stranger (mutation
-// rows noreply-address-carries-no-identity, author-credit-goes-live-by-shape).
+// TestNotesCreditsByIdentityNotShape (t-39fy, t-ayhq): the author credit is a
+// live mention of the LOGIN GitHub attached to the commit, never of anything
+// the commit itself carries. Under --range the API describes nothing, so no
+// line pages anyone: the fleet-shaped noreply address (GitEnv's) renders its
+// author by name, plain, exactly as a personal address does — the login the
+// address spells is typed by whoever configured git, and GitHub attributes
+// the commit by the id beside it (glyph-test-2, 2026-11-04: an address
+// spelling a nonexistent login was attributed to the account the id named).
+// "Saleh" is handle-shaped and is github.com/larrasket, so rendered by shape
+// it paged a stranger; the at-sign goes with the mention a name cannot make
+// (mutation rows noreply-address-trusted-as-identity,
+// author-credit-goes-live-by-shape).
 func TestNotesCreditsByIdentityNotShape(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)
 	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
 	testutil.CommitFrom(t, dir, "Saleh", "root@lr0.org", ":bug:~ fix the parser")
 	testutil.CommitFrom(t, dir, "Robert Pająk", "robert@example.com", ":bug:~ fix the exporter")
+	testutil.CommitFrom(t, dir, "akira-toriyama", "92862731+refute-a3-nonexistent-zz@users.noreply.github.com", ":bug:~ fix the address")
 	t.Chdir(dir)
 
 	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
@@ -367,9 +374,10 @@ func TestNotesCreditsByIdentityNotShape(t *testing.T) {
 		t.Fatalf("notes exited %d, want 0\nstderr: %s", code, stderr)
 	}
 	want := "## Fixes\n\n" +
-		"- :bug:~ fix a crash @akira-toriyama\n" +
+		"- :bug:~ fix a crash akira-toriyama\n" +
 		"- :bug:~ fix the parser Saleh\n" +
-		"- :bug:~ fix the exporter Robert Pająk\n"
+		"- :bug:~ fix the exporter Robert Pająk\n" +
+		"- :bug:~ fix the address akira-toriyama\n"
 	if stdout != want {
 		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
 	}
@@ -378,15 +386,19 @@ func TestNotesCreditsByIdentityNotShape(t *testing.T) {
 // TestNotesSinceTagCreditsTheListedLogin: on the walk the API describes a
 // squash-merged pull's inner commits, and its author.login — not the name —
 // is what the credit pages; a commit GitHub mapped to no account (author:
-// null) is credited by name.
+// null) is credited by name, and so is a direct push on the fallback arm,
+// whose noreply address the API never described (t-ayhq).
 func TestNotesSinceTagCreditsTheListedLogin(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 	sha := squashCommit(t, dir, "Fix two things", 7)
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix it by direct push")
+	direct := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	usePR(t, walkServer(t, map[string]string{
 		commitPullsPath(sha): `[` + apiPullRef(7, "2026-09-13T00:00:00Z", sha) + `]`,
 		pullCommitsPath(7): `[` +
 			apiCommitBy("s1", "larrasket", "Saleh", ":bug:~ fix the parser") + `,` +
 			apiCommitBy("s2", "", "Saleh", ":bug:~ fix it from an unmapped address") + `]`,
+		commitPullsPath(direct): `[]`,
 	}))
 	t.Chdir(dir)
 
@@ -397,7 +409,8 @@ func TestNotesSinceTagCreditsTheListedLogin(t *testing.T) {
 	want := "## Fixes\n\n" +
 		"- :bug:~ fix the parser (#7) @larrasket\n" +
 		"- :bug:~ fix it from an unmapped address (#7) Saleh\n" +
-		"\n" + compareLine("v0.1.0", sha)
+		"- :bug:~ fix it by direct push akira-toriyama\n" +
+		"\n" + compareLine("v0.1.0", direct)
 	if stdout != want {
 		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
 	}
