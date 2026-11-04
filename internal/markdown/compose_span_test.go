@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -94,7 +95,8 @@ func TestStringIsAFixedPointAcrossFields(t *testing.T) {
 // the code spans OF THE OUTPUT — exact by construction once the competitors are
 // dead (escape.go's theorem) — and require every trigger lying outside them to
 // be escaped. Inside a span nothing is escaped, by design, and that is now
-// stated as a position rather than assumed away.
+// stated as a position rather than assumed away. It reads the line's head too:
+// behind the template's "- " the assembled line opens no block.
 func FuzzLineProseNeverLeavesATriggerLive(f *testing.F) {
 	for _, seed := range [][2]string{
 		{"fix the ` thing", "x`[CLICK ME](https://evil.example)`y"},
@@ -105,6 +107,15 @@ func FuzzLineProseNeverLeavesATriggerLive(f *testing.F) {
 		{`\`, "<"},
 		{"http://a", "www.b.com"},
 		{"a `` b ` c", "d ` e `` f"},
+		{"## x", ""},
+		{"> x", ""},
+		{"1. x", ""},
+		{"- x", ""},
+		{"---", ""},
+		{"", "## x"},
+		{"\t", "    - x"},
+		{"```", " x"},
+		{"~~~", ""},
 	} {
 		f.Add(seed[0], seed[1])
 	}
@@ -117,12 +128,14 @@ func FuzzLineProseNeverLeavesATriggerLive(f *testing.F) {
 		switch {
 		case a == "":
 			glue = " @"
-		case a[0]%4 == 0:
+		case a[0]%5 == 0:
 			glue = " @"
-		case a[0]%4 == 1:
+		case a[0]%5 == 1:
 			glue = "" // adjacent prose fields: no glue at all
-		case a[0]%4 == 2:
+		case a[0]%5 == 2:
 			glue = " — "
+		case a[0]%5 == 3:
+			glue = "\n  " // a TOML basic string carries a line ending into the template
 		default:
 			glue = "` ("
 		}
@@ -150,7 +163,7 @@ func FuzzLineProseNeverLeavesATriggerLive(f *testing.F) {
 					t.Fatalf("Line.Prose(%q) + Raw(glue) + Line.Prose(%q) = %q leaves a live %q at %d, outside every code span of the OUTPUT",
 						a, b, out, out[i], i)
 				}
-			case out[i] == '&' && entityAt(out, i):
+			case out[i] == '&' && entityShape.MatchString(out[i:]):
 				if !oddBackslashRunBefore(out, i) {
 					t.Fatalf("Line.Prose(%q) + Raw(glue) + Line.Prose(%q) = %q leaves an entity live at %d, outside every code span of the OUTPUT", a, b, out, i)
 				}
@@ -162,8 +175,29 @@ func FuzzLineProseNeverLeavesATriggerLive(f *testing.F) {
 				t.Fatalf("Line.Prose(%q) + Raw(glue) + Line.Prose(%q) = %q left %q unbroken at %d, outside every code span of the OUTPUT", a, b, out, trigger, idx)
 			}
 		}
+		for line := range strings.SplitSeq(strings.TrimPrefix(out, "- "), "\n") {
+			if opensABlock.MatchString(line) {
+				t.Fatalf("Line.Prose(%q) + Raw(glue) + Line.Prose(%q) = %q opens a block on the line %q", a, b, out, line)
+			}
+		}
 	})
 }
+
+// opensABlock is the block openers of blockOpenerAt's measured table, re-derived
+// here at GitHub's own limits so that the oracle borrows nothing from the code it
+// judges. Anchored at the head of a list item's content, and read one line at a
+// time, so the end of the text is the end of the line.
+var opensABlock = regexp.MustCompile("^(?:" +
+	"[ ]{4}|[ ]{0,3}\t|" + // an indent of four columns, a tab counted as its stop
+	"[ ]{0,3}(?:" +
+	"#{1,6}(?:[ \t]|$)|" +
+	">|" +
+	"[-*+](?:[ \t]|$)|" +
+	"[0-9]{1,9}[.)](?:[ \t]|$)|" +
+	"~{3}|" +
+	"`{3,}[^`]*$|" +
+	"(?:-[ \t]*){3,}$|(?:\\*[ \t]*){3,}$|(?:_[ \t]*){3,}$" +
+	"))")
 
 // TestRunsLongerThanCmarkOpensAreNotBelieved pins the MAXBACKTICKS boundary.
 // A code span is the ONLY reason this package copies author bytes raw, so a

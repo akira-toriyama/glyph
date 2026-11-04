@@ -23,7 +23,7 @@ import "strings"
 // violate it: every inexactness falls on the OVER-escaping side. A backslash in
 // front of a byte that was inert anyway is INVISIBLE (measured below); a
 // construct glyph failed to recognize is live. So none of the rules here tests a
-// grammar. They test a byte.
+// grammar. They test a byte, or a shape blunter than the grammar it stands for.
 //
 // ONE POLICY for every author field: a commit scope is prose like the subject
 // beside it. DESIGN §2 holds that ruling, the <i title="x"> incident behind it,
@@ -95,7 +95,7 @@ func flatten(s string) string {
 // an inert one — in a paragraph, a table cell and inside a <details> block (nine
 // probes, one result). So escaping repairs those 14 and regresses none.
 //
-// FOUR RULES. Each is the bluntest form that works, and none of them parses:
+// FIVE RULES. Each is the bluntest form that works, and none of them parses:
 //
 //  1. '<' — escaped unconditionally, with no grammar test at all. The
 //     raw-HTML/autolink grammar has at least eleven traps (a 32-character scheme
@@ -143,20 +143,32 @@ func flatten(s string) string {
 //     documented mention hole instead. Zero subjects in the fleet's 9,548 carry
 //     an entity-shaped ampersand, so the rendering cost is measured at zero.
 //
+//  5. A BLOCK OPENER at a block start — escaped. Block structure is decided
+//     before any inline rule above runs, and the start of a list item is a
+//     block start as much as the start of a line is, so a template's opening
+//     "- " protects nothing: "- ## Breaking Changes" renders a heading inside
+//     the item. It reads more of the line than the other rules do, because four
+//     of the bytes it fires on are inline syntax the approved policy keeps
+//     working (a leading emphasis run stays emphasis, a leading code span stays
+//     code). blockOpenerAt holds the shapes and their measurements; blockOpening
+//     says where a block starts. An indent is the one opener a backslash cannot
+//     reach: Line.Prose drops it.
+//
 // Author code spans are skipped whole: a backslash is LITERAL inside a code
 // span, so escaping there would print as visible noise, and nothing inside one
 // can escape it anyway (measured: in "a `<i title=\"x\">` b" the code span wins
 // and the tag is inert inside it).
 //
-// WHY ONE PASS IS ENOUGH, although the span map is computed on the ORIGINAL
-// string and may hold a phantom span. Two facts:
+// WHY ONE PASS IS ENOUGH, although the span map is computed before rules 1–4 have
+// run and may hold a phantom span. Two facts:
 //
-//   - codeSpans(escapeProseLine(s, …)) == codeSpans(s), modulo offsets. Every inserted
-//     byte is a backslash placed in front of a '<', '[', ':', '.' or '&' —
-//     never in front of a backtick — so backtick runs keep their lengths and
-//     their order, paragraphSpans' backslash case skips exactly the bytes its
-//     default case would have copied, and no inserted byte is space, tab or CR,
-//     so a blank line stays blank.
+//   - The map holds for the finished line. It is read with rule 5's backslashes
+//     already in place (spansBehindOpeners), and every other inserted byte is a
+//     backslash placed in front of a '<', '[', ':', '.' or '&' — never in front
+//     of a backtick — so backtick runs keep their lengths and their order,
+//     paragraphSpans' backslash case skips exactly the bytes its default case
+//     would have copied, and no inserted byte is space, tab or CR, so a blank
+//     line stays blank.
 //   - After the pass, codeSpans agrees with GitHub. Enumerate the GFM inline
 //     constructs that could consume a backtick and diverge from a backtick-only
 //     model: raw HTML, both angle autolinks, the extended autolinks, links,
@@ -180,31 +192,33 @@ func foldSuffix(p string, i int, w string) bool {
 }
 
 // entityAt reports whether a character reference starts at p[i] (which the
-// caller has already checked is an ampersand): "&#" + up to 7 decimal digits,
-// "&#x" + up to 6 hex digits, or "&" + a name of up to 32 alphanumerics, each
-// closed by a semicolon.
+// caller has already checked is an ampersand): "&#" + decimal digits, "&#x" +
+// hex digits, or "&" + a letter and alphanumerics, each closed by a semicolon.
 //
-// The shape is tested rather than the NAME, so an unknown name is escaped too.
-// That is the over-escaping direction and it is invisible: GitHub renders an
-// unrecognized reference as its own literal text either way.
+// The shape is tested rather than the NAME or the WIDTH, so an unknown name and
+// a reference too wide for GitHub to decode are escaped too. That is the
+// over-escaping direction and it is invisible: GitHub renders an unrecognized
+// reference as its own literal text either way. A cap here would owe this
+// boundary's correctness to GitHub's limit (TestEscapeMarkup has the widths
+// measured).
 func entityAt(p string, i int) bool {
 	rest := p[i+1:]
 	switch {
 	case strings.HasPrefix(rest, "#x"), strings.HasPrefix(rest, "#X"):
-		return closedBy(rest[2:], 6, isHexDigit)
+		return closedBy(rest[2:], isHexDigit)
 	case strings.HasPrefix(rest, "#"):
-		return closedBy(rest[1:], 7, isDigit)
+		return closedBy(rest[1:], isDigit)
 	case rest != "" && isASCIILetter(rest[0]):
-		return closedBy(rest[1:], 31, isAlphanumeric)
+		return closedBy(rest[1:], isAlphanumeric)
 	}
 	return false
 }
 
-// closedBy reports whether s opens with one or more bytes satisfying ok — at
-// most maxRun of them — and then a semicolon.
-func closedBy(s string, maxRun int, ok func(byte) bool) bool {
+// closedBy reports whether s opens with one or more bytes satisfying ok and then
+// a semicolon.
+func closedBy(s string, ok func(byte) bool) bool {
 	n := 0
-	for n < len(s) && n <= maxRun && ok(s[n]) {
+	for n < len(s) && ok(s[n]) {
 		n++
 	}
 	return n > 0 && n < len(s) && s[n] == ';'
@@ -222,7 +236,171 @@ func isASCIILetter(c byte) bool {
 
 func isAlphanumeric(c byte) bool { return isASCIILetter(c) || isDigit(c) }
 
-// escapeProseLine applies the four rules above to the ASSEMBLED line s, which
+// blockOpener is a block construct a line opens at some byte.
+type blockOpener struct {
+	end       int  // just past the bytes that make it one
+	at        int  // the byte rule 5's backslash goes in front of
+	container bool // another block can start right behind it: a list item, a block quote
+}
+
+// blockOpenerAt reports the block construct a line opens at s[i], with s ending
+// where the line ends. The shapes are GitHub's, measured 2026-11-04 by POST
+// /markdown (mode gfm) on the bytes `glyph notes --range` writes, a value behind
+// the shipped template's "- ":
+//
+//	line                   renders           shape
+//	- ## x                 <li><h2>          "#" to "######", then a space, a tab or the end
+//	- > x    - >x          <li><blockquote>  any ">"
+//	- 1. x   - 1) x        <li><ol>          up to nine digits, "." or ")", then the same
+//	- - x    - * x   - + x <li><ul>          "-", "*" or "+", then the same
+//	- ``` x                <li><pre>         three backticks and none behind them on the line
+//	- ~~~ x  - ~~~x~~~     <li><pre>         three tildes, whatever follows
+//	- ***    - _ _ _       <li><hr>          only "-", "*" or "_" and blanks to the end
+//	- ---    - --          <hr>              the same, and it takes the bullet with it
+//
+// The last two need the end of the line, so a credit behind the value disarms
+// them. A setext underline ("=" or "-" alone to the end of the line) needs a
+// paragraph on the line above, which a list item's first line does not have: it
+// is live only where a template opens with no bullet ("a\n===" renders
+// <h1>a</h1>).
+//
+// What the same measurement leaves alone, and so must not fire: emphasis and
+// strikethrough at the head of a value (the inline syntax rule 5 owes its shape
+// tests to), a code span there, a backtick run with a backtick behind it on the
+// line, and "#64 fix", "#x", "-x", "--flag", "+1 x", "1.2.3 x", "=x". A form feed
+// or a vertical tab behind a marker opens nothing either.
+//
+// Blunter than the grammar wherever the cost is invisible, each escaped form
+// measured to render as its own text in a list item, in a table cell and inside a
+// <details> block: "#" and the digits have no cap, and a thematic break or an
+// underline needs no count ("**", "__", "-" and "=" fire alone). Nothing here
+// decides what a block would hold; it decides only that one never starts.
+func blockOpenerAt(s string, i int) (blockOpener, bool) {
+	c := s[i]
+	end := i
+	for end < len(s) && s[end] == c {
+		end++
+	}
+	switch {
+	case c == '>':
+		return blockOpener{end: i + 1, at: i, container: true}, true
+	case c == '#' && blankAt(s, end):
+		return blockOpener{end: end, at: i}, true
+	case c == '~' && end-i >= 3:
+		return blockOpener{end: end, at: i}, true
+	case c == '`' && end-i >= 3 && !strings.Contains(s[end:], "`"):
+		return blockOpener{end: end, at: i}, true
+	case (c == '-' || c == '+' || c == '*') && blankAt(s, i+1):
+		return blockOpener{end: i + 1, at: i, container: true}, true
+	case (c == '-' || c == '*' || c == '_' || c == '=') && strings.Trim(s[i:], string(c)+" \t") == "":
+		return blockOpener{end: len(s), at: i}, true
+	case isDigit(c):
+		end = i
+		for end < len(s) && isDigit(s[end]) {
+			end++
+		}
+		if end < len(s) && (s[end] == '.' || s[end] == ')') && blankAt(s, end+1) {
+			return blockOpener{end: end + 1, at: end, container: true}, true
+		}
+	}
+	return blockOpener{}, false
+}
+
+// blankAt reports whether a marker ending just before i is one: a space, a tab or
+// the end of the line follows it.
+func blankAt(s string, i int) bool {
+	return i >= len(s) || s[i] == ' ' || s[i] == '\t'
+}
+
+// blockOpening walks the line s[from:], with s ending where the line ends, past
+// the indent and past every container a template wrote in full: a block starts
+// behind each one, so "- > " leaves the value at a block start as "- " does.
+//
+// It returns the byte rule 5 escapes on this line, -1 for none, and whether the
+// line holds nothing yet but those containers, which is what Line.Prose reads.
+// An opener that touches prose is escaped whichever byte the rule fires on, and
+// the line is then a paragraph with no further block start. One wholly the
+// template's is left alone (its "## " before a value is the template's heading).
+func blockOpening(s string, from int, prose func(lo, hi int) bool) (at int, waiting bool) {
+	for i := from; ; {
+		for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+			i++
+		}
+		if i == len(s) {
+			return -1, true
+		}
+		op, ok := blockOpenerAt(s, i)
+		switch {
+		case !ok:
+			return -1, false
+		case prose(i, op.end):
+			return op.at, false
+		case !op.container:
+			return -1, false
+		}
+		i = op.end
+	}
+}
+
+// blockOpeners holds rule 5's bytes for every line of s. A template may carry a
+// line terminator of its own, and each line starts blocks of its own.
+func blockOpeners(s string, prose func(lo, hi int) bool) map[int]bool {
+	opens := map[int]bool{}
+	for from := 0; from <= len(s); {
+		to := len(s)
+		if n := strings.IndexAny(s[from:], "\r\n"); n >= 0 {
+			to = from + n
+		}
+		if at, _ := blockOpening(s[:to], from, prose); at >= 0 {
+			opens[at] = true
+		}
+		from = to + 1
+	}
+	return opens
+}
+
+// awaitsBlock reports whether whatever is written next on s lands at a block
+// start: its last line holds nothing yet but a template's containers.
+func awaitsBlock(s string, prose func(lo, hi int) bool) bool {
+	_, waiting := blockOpening(s, strings.LastIndexAny(s, "\r\n")+1, prose)
+	return waiting
+}
+
+// spansBehindOpeners marks the bytes of s inside a code span, reading the line as
+// it reads with rule 5's backslashes in place: block structure comes first, so
+// that is the text GitHub pairs backticks in.
+//
+// On one line this changes nothing. The only opener that is a backtick is a fence's
+// run with none behind it on the line, and that run pairs with nothing either way.
+// Across a template's own line ending it does change: these two runs are one span
+// in the bare string, and with their backslashes they are literal text, with the
+// tag between them prose that rule 1 must reach (a fuzz corpus entry,
+// fence-backslash-dissolves-a-span-across-a-line-ending, holds the case):
+//
+//	``` <i>
+//	```
+func spansBehindOpeners(s string, prose func(lo, hi int) bool) []bool {
+	opens := blockOpeners(s, prose)
+	var b strings.Builder
+	from := make([]int, 0, len(s)+len(opens))
+	for i := 0; i < len(s); i++ {
+		if opens[i] {
+			b.WriteByte('\\')
+			from = append(from, i)
+		}
+		b.WriteByte(s[i])
+		from = append(from, i)
+	}
+	inSpan := make([]bool, len(s))
+	for _, sp := range codeSpans(b.String()) {
+		for _, i := range from[sp[0]:sp[1]] {
+			inSpan[i] = true
+		}
+	}
+	return inSpan
+}
+
+// escapeProseLine applies the five rules above to the ASSEMBLED line s, which
 // is the only context in which they are decidable. Detection reads the whole
 // string; a backslash is inserted only where the construct it would disarm
 // touches author prose, which prose reports for a byte range.
@@ -243,13 +421,15 @@ func isAlphanumeric(c byte) bool { return isASCIILetter(c) || isDigit(c) }
 // Raw contributed, which is the over-escaping side the design rule prefers and
 // is invisible in the render; a construct lying wholly inside Raw is glyph's
 // own and is left alone.
-// It returns the escaped line and pos, where pos[i] is the offset in the result
-// of input byte i (and pos[len(s)] the end) — the fence pass needs it to find
-// Mention's exempt ranges again after escaping has shifted everything right.
+// inSpan comes from spansBehindOpeners. It returns the escaped line and pos, where
+// pos[i] is the offset in the result of input byte i (and pos[len(s)] the end) —
+// the fence pass needs it to find Mention's exempt ranges again after escaping has
+// shifted everything right.
 func escapeProseLine(s string, inSpan []bool, prose func(lo, hi int) bool) (string, []int) {
 	var b strings.Builder
 	b.Grow(len(s))
 	pos := make([]int, len(s)+1)
+	opens := blockOpeners(s, prose)
 	esc := func(lo, hi, at int) {
 		if prose(lo, hi) {
 			b.WriteByte('\\')
@@ -258,6 +438,16 @@ func escapeProseLine(s string, inSpan []bool, prose func(lo, hi int) bool) (stri
 	}
 	for i := 0; i < len(s); {
 		pos[i] = b.Len()
+		// Ahead of the span test: block structure outranks inline structure, so a
+		// line that would open a block is disarmed even where a span crosses a
+		// template's own line ending into it. The cost is a backslash printed in
+		// that span, the over-escaping side.
+		if opens[i] {
+			b.WriteByte('\\')
+			b.WriteByte(s[i])
+			i++
+			continue
+		}
 		// Inside a code span nothing is escaped: the bytes are inert, and this
 		// is the one exemption the package grants. It is exact only because
 		// codeSpans models cmark's MAXBACKTICKS bound (markdown.go).

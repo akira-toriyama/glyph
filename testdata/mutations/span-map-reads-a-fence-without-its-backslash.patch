@@ -1,0 +1,13 @@
+diff --git a/internal/markdown/escape.go b/internal/markdown/escape.go
+index ab1f949..de67fc0 100644
+--- a/internal/markdown/escape.go
++++ b/internal/markdown/escape.go
+@@ -383,7 +383,7 @@ func spansBehindOpeners(s string, prose func(lo, hi int) bool) []bool {
+ 	var b strings.Builder
+ 	from := make([]int, 0, len(s)+len(opens))
+ 	for i := 0; i < len(s); i++ {
+-		if opens[i] {
++		if opens[i] && s[i] != '`' {
+ 			b.WriteByte('\\')
+ 			from = append(from, i)
+ 		}

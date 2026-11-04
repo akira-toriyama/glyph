@@ -1,0 +1,13 @@
+diff --git a/internal/markdown/escape.go b/internal/markdown/escape.go
+index ab1f949..2fe18bf 100644
+--- a/internal/markdown/escape.go
++++ b/internal/markdown/escape.go
+@@ -218,7 +218,7 @@ func entityAt(p string, i int) bool {
+ // a semicolon.
+ func closedBy(s string, ok func(byte) bool) bool {
+ 	n := 0
+-	for n < len(s) && ok(s[n]) {
++	for n < len(s) && n < 7 && ok(s[n]) {
+ 		n++
+ 	}
+ 	return n > 0 && n < len(s) && s[n] == ';'

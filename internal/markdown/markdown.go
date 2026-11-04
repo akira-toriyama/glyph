@@ -490,21 +490,42 @@ func backtickRun(s string, i int) int {
 	return n
 }
 
-// paragraphBreak returns the index of the newline that opens the first blank
+// paragraphBreak returns the index of the line ending that opens the first blank
 // line at or after from, or -1 when the text runs to its end unbroken. A line
-// holding nothing but spaces, tabs and a carriage return counts as blank.
+// holding nothing but spaces and tabs counts as blank.
+//
+// A line ends at "\n", at "\r\n" and at a bare "\r", at GitHub as in flatten. Line
+// flattens every field but not its Raw stretches, and a note.line literal can
+// carry a CR (a TOML basic string, `\r`). Measured 2026-11-04 on the bytes
+// `glyph notes` writes for line = "- `ping\r\r$subject` x": GitHub ends the
+// paragraph at the two CRs, the backticks pair with nothing, and a mention in the
+// subject is live unless this scan ends it there too. TestCodeSpans holds the
+// terminators, each measured the same way.
 func paragraphBreak(s string, from int) int {
 	for i := from; i < len(s); i++ {
-		if s[i] != '\n' {
+		n := lineEnding(s, i)
+		if n == 0 {
 			continue
 		}
-		j := i + 1
-		for j < len(s) && (s[j] == ' ' || s[j] == '\t' || s[j] == '\r') {
+		j := i + n
+		for j < len(s) && (s[j] == ' ' || s[j] == '\t') {
 			j++
 		}
-		if j == len(s) || s[j] == '\n' {
+		if j == len(s) || lineEnding(s, j) > 0 {
 			return i
 		}
+		i += n - 1
 	}
 	return -1
+}
+
+// lineEnding returns the width of the line ending at s[i], 0 for none.
+func lineEnding(s string, i int) int {
+	switch {
+	case strings.HasPrefix(s[i:], "\r\n"):
+		return 2
+	case s[i] == '\n', s[i] == '\r':
+		return 1
+	}
+	return 0
 }

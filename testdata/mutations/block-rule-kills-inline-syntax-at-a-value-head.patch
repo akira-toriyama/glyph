@@ -1,0 +1,13 @@
+diff --git a/internal/markdown/escape.go b/internal/markdown/escape.go
+index ab1f949..2879107 100644
+--- a/internal/markdown/escape.go
++++ b/internal/markdown/escape.go
+@@ -289,7 +289,7 @@ func blockOpenerAt(s string, i int) (blockOpener, bool) {
+ 		return blockOpener{end: end, at: i}, true
+ 	case c == '`' && end-i >= 3 && !strings.Contains(s[end:], "`"):
+ 		return blockOpener{end: end, at: i}, true
+-	case (c == '-' || c == '+' || c == '*') && blankAt(s, i+1):
++	case c == '-' || c == '+' || c == '*':
+ 		return blockOpener{end: i + 1, at: i, container: true}, true
+ 	case (c == '-' || c == '*' || c == '_' || c == '=') && strings.Trim(s[i:], string(c)+" \t") == "":
+ 		return blockOpener{end: len(s), at: i}, true

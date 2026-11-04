@@ -479,16 +479,42 @@ pattern says it means:
   `</li>`. (Test `TestRenderLineEscapesTheScopeAsProse`; mutation row
   `notes-placeholder-values-render-raw.patch` — with every value passed raw,
   nothing else in `go test ./...` fails.)
-  - **`-` and `@` stay unescaped, deliberately**, and the prose rules test
-    neither. `-` is a list, setext or thematic-break marker only at the start
-    of a line, where no shipped template puts a value (each opens with a
-    literal `- `), so escaping it would put a backslash into the raw source of
-    every kebab-case scope for nothing (`grid\-1f\-4` renders as
-    `grid-1f-4`). `@` is the fence's: a backslash does not disarm a mention
-    (`credit \@octocat` renders a live one), and one in front of the at-sign
-    makes the fence write a separating space so the backslash cannot eat its
-    opening backtick — the reader sees `\ ` before a code-font handle
-    (measured on a `(\@x)` scope, the bytes escaping `@` would write).
+  - **A value at a block start opens no block** (t-t10s, 2026-11-04). The head
+    of a list item is a block start as much as the head of a line is, so a
+    template's opening `- ` protects nothing, and every shipped template puts
+    `$subject` right behind one. A matched subject opens with its gitmoji under
+    the presets, but the raw-line fallback (§3) binds the whole first line of a
+    commit an `exclude_authors` author names, and that name is git's free-text
+    `%an`. Measured at 2f9428a through `glyph notes --range`, then `POST
+    /markdown` on each line and on the body inside the preview's `<details>`:
+    `## Breaking Changes` under the name `dependabot[bot]` passes `lint --range`
+    at 0 and renders `<ul><li><h2>`, and a fence swallows the credit into `<pre
+    lang="dependabot[bot]">`. So the prose escape takes a fifth rule, at
+    `markdown.Line` for every caller: past the containers the template wrote in
+    full, the opener a value would write there takes a backslash
+    (`blockOpenerAt` holds the shapes and the measurements), and it reads a shape
+    rather than a byte because a leading `*x*`, `_x_`, `~~x~~` or code span must
+    keep rendering. An indent no backslash reaches is dropped by `Line.Prose`,
+    which costs nothing: a paragraph's leading blanks do not render. A template's
+    own opener stays the template's (`## $subject` is its heading), and a
+    template with no bullet gets the same rule, setext underlines included. Tests
+    `TestProseAtABlockStartOpensNoBlock`, `TestBlockOpenerOwnership`,
+    `TestGroupFallbackOpensNoBlockBehindTheBullet`,
+    `TestNotesFallbackOpensNoBlockBehindTheBullet`,
+    `TestPreviewNotesFallbackOpensNoBlockBehindTheBullet`; mutation rows
+    `prose-at-a-block-start-opens-a-block.patch`,
+    `prose-keeps-its-indent-at-a-block-start.patch`,
+    `block-rule-kills-inline-syntax-at-a-value-head.patch`.
+  - **`-` behind a line's head and `@` stay unescaped, deliberately**, and the
+    prose rules test neither. `-` is a list, setext or thematic-break marker
+    only at a block start, which the rule above answers, so escaping it anywhere
+    else would put a backslash into the raw source of every kebab-case scope for
+    nothing (`grid\-1f\-4` renders as `grid-1f-4`). `@` is the fence's: a
+    backslash does not disarm a mention (`credit \@octocat` renders a live one),
+    and one in front of the at-sign makes the fence write a separating space so
+    the backslash cannot eat its opening backtick — the reader sees `\ ` before a
+    code-font handle (measured on a `(\@x)` scope, the bytes escaping `@` would
+    write).
   - **The plain-text route is deleted, not revived** (`Line.Text` and
     `escapeText`, t-0j9r). v1 rendered the scope through a flat escaper that
     backslashed every ASCII punctuation byte but those two, on the argument

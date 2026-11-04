@@ -1,0 +1,13 @@
+diff --git a/internal/markdown/escape.go b/internal/markdown/escape.go
+index ab1f949..285838c 100644
+--- a/internal/markdown/escape.go
++++ b/internal/markdown/escape.go
+@@ -441,7 +441,7 @@ func escapeProseLine(s string, inSpan []bool, prose func(lo, hi int) bool) (stri
+ 		// line that would open a block is disarmed even where a span crosses a
+ 		// template's own line ending into it. The cost is a backslash printed in
+ 		// that span, the over-escaping side.
+-		if opens[i] {
++		if opens[i] && !inSpan[i] {
+ 			b.WriteByte('\\')
+ 			b.WriteByte(s[i])
+ 			i++

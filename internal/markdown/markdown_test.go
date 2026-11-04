@@ -228,6 +228,7 @@ func TestEscapeMentions(t *testing.T) {
 		// never pair and the mention between them is live prose. No caller
 		// passes multi-line text today; the pass must not depend on that.
 		{"backticks across a blank line shield nothing", "`ping\n\n@octocat`", "`ping\n\n``@octocat`` `"},
+		{"backticks across two CRs shield nothing", "`ping\r\r@octocat`", "`ping\r\r``@octocat`` `"},
 
 		// A trailing hyphen is not part of a GitHub username, and letting the
 		// match eat it also ate the delimiter the next mention needs — the
@@ -367,6 +368,19 @@ func TestCodeSpans(t *testing.T) {
 		{"a span cannot cross a blank line", "`a\n\nb`", nil},
 		{"a blank line of spaces still breaks it", "`a\n \t\n b`", nil},
 		{"the break bounds the search, not the scan", "`a\n\nb `c` d", []string{"`c`"}},
+
+		// A bare CR and a CRLF end a line as an LF does, one ending to a pair.
+		// Measured 2026-11-04, each with an @octocat behind the terminators: a code
+		// span across one line ending, two paragraphs across a blank line however
+		// it is spelled.
+		{"a span may cross a bare CR", "`a\rb`", []string{"`a\rb`"}},
+		{"a span may cross a CRLF", "`a\r\nb`", []string{"`a\r\nb`"}},
+		{"a span cannot cross two CRs", "`a\r\rb`", nil},
+		{"a span cannot cross LF then CR", "`a\n\rb`", nil},
+		{"a span cannot cross two CRLFs", "`a\r\n\r\nb`", nil},
+		{"a span cannot cross CR then LF apart", "`a\r \nb`", nil},
+		{"a blank line of blanks between CRs still breaks it", "`a\r \t\rb`", nil},
+		{"the CR break bounds the search, not the scan", "`a\r\rb `c` d", []string{"`c`"}},
 
 		// cmark's closer search is memoized: a search that runs off the end of
 		// the block records, per run length, where the last run of that length

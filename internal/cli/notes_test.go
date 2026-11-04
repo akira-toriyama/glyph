@@ -69,6 +69,33 @@ func TestNotesSectionsAloneDecide(t *testing.T) {
 	}
 }
 
+// TestNotesFallbackOpensNoBlockBehindTheBullet is the measured shape end to end:
+// an exclude_authors commit is never judged, so lint and notes both exit 0 and its
+// first line lands right behind the preset's "- ", where GitHub would open the
+// block. The indent comes through git as written.
+func TestNotesFallbackOpensNoBlockBehindTheBullet(t *testing.T) {
+	dir, base := testutil.NewTaggedRepo(t)
+	testutil.Commit(t, dir, "dependabot[bot]", "## Breaking Changes")
+	testutil.Commit(t, dir, "dependabot[bot]", "> [!WARNING] x")
+	testutil.Commit(t, dir, "dependabot[bot]", "    indented")
+	t.Chdir(dir)
+
+	if code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD"); code != 0 {
+		t.Fatalf("lint --range exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
+	if code != 0 {
+		t.Fatalf("notes exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	want := "## Dependencies\n\n" +
+		`- \## Breaking Changes dependabot\[bot]` + "\n" +
+		`- \> \[!WARNING] x dependabot\[bot]` + "\n" +
+		`- indented dependabot\[bot]` + "\n"
+	if stdout != want {
+		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
+	}
+}
+
 // TestNotesEmptyIsNoRelease: a docs-only range is the soft no-release exit —
 // nothing on stdout, exit 1, the reason in the stderr envelope.
 func TestNotesEmptyIsNoRelease(t *testing.T) {
