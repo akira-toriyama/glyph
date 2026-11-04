@@ -65,13 +65,15 @@ func sameSayable(a, b Sayable) bool {
 }
 
 // TestSayableReadsTheClaimingPatternsOwnGroups: what a message can WRITE is
-// asked of the groups Match reads — the scope group's own sub-expression per
-// declared name, the sigil group's for =, each the LAST group of its name —
-// and so is whether the pattern requires a scope, which the tree answers
-// exactly only as a yes: the five shapes below that are not required are not
-// thereby droppable (TestSayableProvesARemovalAgainstTheMessage). No message
-// is handed in, so nothing is proven of one. One pattern per case, a
-// two-package file.
+// asked of the groups Match reads — the scope groups' own sub-expressions per
+// declared name, the sigil groups' for =, every group of the name since Match
+// hands on whichever took part — and so is whether the pattern requires a
+// scope, which the tree answers exactly only as a yes: the shapes below that
+// are not required are not thereby droppable
+// (TestSayableProvesARemovalAgainstTheMessage), and a scope group in every
+// alternative reads as not required too, the alternation counted whole
+// (capture.passable). No message is handed in, so nothing is proven of one.
+// One pattern per case, a two-package file.
 func TestSayableReadsTheClaimingPatternsOwnGroups(t *testing.T) {
 	const packages = "\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \"curry\"\n"
 	// wide keeps the file loadable when the pattern under test spells no name.
@@ -108,9 +110,13 @@ func TestSayableReadsTheClaimingPatternsOwnGroups(t *testing.T) {
 			"pattern = '^x\\((?P<scope>deps|ci)\\)(?P<semver_sigil>[=~^!%]): '",
 			Sayable{ScopeGroup: true, ScopeRequired: true, SigilGroup: true, None: true},
 		},
-		"only the last of two scope groups is read": {
+		"either of two scope groups is read": {
 			"pattern = '^x\\((?:(?P<scope>[a-z]+)|(?P<scope>[A-Z]+))\\)(?P<semver_sigil>[=~^!%]): '",
-			Sayable{ScopeGroup: true, SigilGroup: true, None: true},
+			Sayable{ScopeGroup: true, Scopes: []string{"haiku", "curry"}, SigilGroup: true, None: true},
+		},
+		"a scope group in every alternative": {
+			"pattern = '^(?:x\\((?P<scope>[a-z]+)\\)|y\\((?P<scope>[a-z]+)\\))(?P<semver_sigil>[=~^!%]): '",
+			Sayable{ScopeGroup: true, Scopes: []string{"haiku", "curry"}, SigilGroup: true, None: true},
 		},
 		"a sigil group that cannot be =": {
 			"pattern = '^x(\\((?P<scope>[a-z]+)\\))?(?P<semver_sigil>[~^!]): '",
@@ -182,6 +188,9 @@ func TestSayableProvesARemovalAgainstTheMessage(t *testing.T) {
 		"a ticket inside the scope's group": {"[[patterns]]\npattern = '^x(?:\\((?P<scope>[a-z]+)#(?P<ticket>[0-9]+)\\))?(?P<semver_sigil>[=~^!%]): '\n", 0, "x(haiku#12)~: swap", false, false},
 		// "x[a]~: swap" still carries a scope.
 		"the second of two scopes under a *": {"[[patterns]]\npattern = '^x(?:\\[(?P<scope>[a-z]+)\\])*(?P<semver_sigil>[=~^!%]): '\n", 0, "x[a][haiku]~: swap", false, false},
+		// The scope proposed is the alternative's that took part: "Y~: swap" by the second group's ?.
+		"a scope group per alternative, the second taken": {"[[patterns]]\npattern = '^(?:x(?:\\((?P<scope>[a-z]+)\\))?|Y(?:\\[(?P<scope>[a-z]+)\\])?)(?P<semver_sigil>[=~^!%]): '\n", 0, "Y[haiku]~: swap", true, false},
+		"a scope group per alternative, the first taken":  {"[[patterns]]\npattern = '^(?:x(?:\\((?P<scope>[a-z]+)\\))?|Y(?:\\[(?P<scope>[a-z]+)\\])?)(?P<semver_sigil>[=~^!%]): '\n", 0, "x(haiku)~: swap", true, false},
 		// The last turn of the repeat is `!`; the scope is kept from the turn before.
 		"a scope kept from an earlier turn of a repeat": {"[[patterns]]\npattern = '^x(?:\\((?P<scope>[a-z]+)\\)|!)*(?P<semver_sigil>[=~^!%]): '\n", 0, "x(haiku)!~: swap", false, false},
 		// First match wins: "wip~: swap" is patterns[0]'s, and unlandable.

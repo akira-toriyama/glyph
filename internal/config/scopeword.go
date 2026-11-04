@@ -25,13 +25,13 @@ type scopeSpeller struct {
 // scopeSpellers returns the scope group of each pattern whose groups a
 // commit binds (Pattern.bindsGroups): a skip pattern's commit is placed
 // nowhere and an unlandable one is reported unclaimed with no groups, so
-// neither scope is ever read. Of two groups named scope in one pattern only
-// the last counts — Match fills Groups in index order, so its capture
-// overwrites an earlier one even when its own alternative did not take part
-// (measured 2026-09-29 under `(?:(?P<scope>[a-z_]+)|(?P<scope>[A-Z]+))`:
-// `(my_lib)` reached attribution as no scope at all). Empty when no such
-// pattern captures a scope: the file has decided commits carry none, and its
-// packages are placed by their paths alone.
+// neither scope is ever read. Of two groups named scope in one pattern both
+// count — Match hands on the capture of the one that took part (participant),
+// so under `(?:(?P<scope>[a-z_]+)|(?P<scope>[A-Z]+))` a `(my_lib)` and a
+// `(MYLIB)` each reach attribution, and the speller is the alternation of
+// every such group's sub-expression (wholeGroups). Empty when no such pattern
+// captures a scope: the file has decided commits carry none, and its packages
+// are placed by their paths alone.
 func scopeSpellers(patterns []Pattern) ([]scopeSpeller, error) {
 	var out []scopeSpeller
 	for i := range patterns {

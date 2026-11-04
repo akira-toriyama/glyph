@@ -1,0 +1,14 @@
+diff --git a/internal/config/config.go b/internal/config/config.go
+index aad5c9f..5903f64 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -402,9 +402,6 @@ func Load(data []byte) (*Config, error) {
+ 	if err := strictUnmarshal(data, &r); err != nil {
+ 		return nil, err
+ 	}
+-	if err := checkKeyCase(data); err != nil {
+-		return nil, err
+-	}
+ 
+ 	if r.Schema == nil {
+ 		return nil, fmt.Errorf("schema is required (this glyph understands schema = %d)", schema)

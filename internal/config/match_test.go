@@ -184,6 +184,53 @@ func TestMatchSigilErrors(t *testing.T) {
 	})
 }
 
+// TestMatchReadsTheGroupThatTookPart: a name a pattern gives to one group per
+// alternative binds the capture of the alternative the match took. Go's
+// FindStringSubmatch fills a repeated name in index order, so read that way
+// the later group's -1,-1 stood in for the earlier one's capture: under the
+// pattern below `! :sparkles: first alt` exited 3 as a sigil group that
+// captured nothing, and beside `semver_sigil = '='` it folded to none — a
+// major shipped as no release, with no warning (measured 2026-11-04 at
+// 2f9428a, t-wmk2). Both alternatives, for the sigil and the scope alike, and
+// the two shapes a participant can take — a repeat's last turn, and an empty
+// capture that did take part, which stands and is not a group that took none.
+func TestMatchReadsTheGroupThatTookPart(t *testing.T) {
+	cfg := mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?P<semver_sigil>[=~^!%]) :[a-z]+:(?:\\((?P<scope>[a-z]+)\\))? .+|^:[a-z]+:(?:\\((?P<scope>[A-Z]+)\\))?(?P<semver_sigil>[=~^!%]) .+'\n")
+	for _, c := range []struct {
+		message string
+		sigil   Sigil
+		scope   string
+	}{
+		{"! :sparkles: first alt", SigilMajor, ""},
+		{"~ :bug:(cli) first alt with a scope", SigilPatch, "cli"},
+		{":sparkles:! second alt", SigilMajor, ""},
+		{":bug:(CLI)~ second alt with a scope", SigilPatch, "CLI"},
+	} {
+		m, err := cfg.Match(c.message)
+		if err != nil {
+			t.Fatalf("Match(%q): %v", c.message, err)
+		}
+		if !m.Matched || m.Skip || m.Sigil != c.sigil || m.Groups["scope"] != c.scope {
+			t.Errorf("Match(%q) = sigil %v scope %q (matched %v), want sigil %v scope %q", c.message, m.Sigil, m.Groups["scope"], m.Matched, c.sigil, c.scope)
+		}
+	}
+
+	fixed := mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?P<semver_sigil>[=~^!%]) :[a-z]+: .+|^:[a-z]+:(?P<semver_sigil>[=~^!%]) .+'\nsemver_sigil = '='\n")
+	if m, err := fixed.Match("! :boom: break via first alt"); err != nil || m.Sigil != SigilMajor {
+		t.Errorf("Match under a fixed = read the first alternative's ! as %v, %v; want ! — the fixed value stands in only for a capture no alternative made", m.Sigil, err)
+	}
+
+	repeat := mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?:\\[(?P<scope>[a-z]+)\\])*(?P<semver_sigil>[=~^!%]) .+'\n")
+	if m, err := repeat.Match("[a][haiku]~ swap"); err != nil || m.Groups["scope"] != "haiku" {
+		t.Errorf("Match under a repeat = scope %q, %v; want the last turn's haiku", m.Groups["scope"], err)
+	}
+
+	empty := mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?P<scope>[a-z]*)(?P<semver_sigil>[=~^!%]) .+|^x(?P<scope>[a-z]+)(?P<semver_sigil>[=~^!%]) .+'\n")
+	if m, err := empty.Match("~ swap"); err != nil || m.Groups["scope"] != "" {
+		t.Errorf("Match = scope %q, %v; want \"\" — an empty capture that took part is the alternative's answer", m.Groups["scope"], err)
+	}
+}
+
 // FuzzMatch holds the pure-core invariants: Match never panics, and every
 // outcome is one of the three legal shapes.
 func FuzzMatch(f *testing.F) {
