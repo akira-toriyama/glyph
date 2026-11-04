@@ -1,0 +1,13 @@
+diff --git a/internal/github/github.go b/internal/github/github.go
+index edc7adc..0fb8d4a 100644
+--- a/internal/github/github.go
++++ b/internal/github/github.go
+@@ -542,7 +542,7 @@ func IsRepoRefused(err error) bool {
+ // count at 0, or neither header and only its message
+ // (docs.github.com/rest/using-the-rest-api/rate-limits-for-the-rest-api).
+ func rateLimited(h http.Header, message string) bool {
+-	return h.Get("Retry-After") != "" || h.Get("X-RateLimit-Remaining") == "0" ||
++	return h.Get("X-RateLimit-Remaining") == "0" ||
+ 		strings.Contains(strings.ToLower(message), "rate limit")
+ }
+ 

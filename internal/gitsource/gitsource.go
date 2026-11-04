@@ -173,6 +173,14 @@ func RemoteURLs(ctx context.Context, dir string) (map[string]string, error) {
 // rather than guesses (`main` is wrong on a `master` or `develop` repository,
 // and guessing it there blocks a legal commit whose only escape is
 // --no-verify).
+//
+// A recorded name whose ref is gone records nothing either. A default branch
+// renamed on the remote leaves this ref dangling after `git fetch --prune`: git
+// warns once and leaves it, and symbolic-ref still answers exit 0 with the old
+// name. Believed, that name makes the new default branch read as off the
+// default branch, so a violating push lands on it with no remedy named while
+// doctor passes (measured on git 2.54;
+// TestPrePushReadsADanglingDefaultBranchAsUnrecorded).
 func DefaultBranch(ctx context.Context, dir, remote string) (string, error) {
 	prefix := "refs/remotes/" + remote + "/"
 	out, recorded, err := runAnswer(ctx, dir, "symbolic-ref", "symbolic-ref", "--quiet", "--end-of-options", prefix+"HEAD")
@@ -197,7 +205,12 @@ func DefaultBranch(ctx context.Context, dir, remote string) (string, error) {
 	case !recorded:
 		return "", nil
 	}
-	return strings.TrimPrefix(strings.TrimSpace(string(out)), prefix), nil
+	target := strings.TrimSpace(string(out))
+	exists, err := namesCommit(ctx, dir, target)
+	if err != nil || !exists {
+		return "", err
+	}
+	return strings.TrimPrefix(target, prefix), nil
 }
 
 // tags lists all tags in git's `--sort=-v:refname` order, unfiltered — the
@@ -600,37 +613,45 @@ func have(ctx context.Context, dir string, shas []string) (map[string]bool, erro
 
 // isAncestor reports whether sha is an ancestor of rev, or is rev itself.
 //
-// A NO is reported as (false, nil) however git spells it: exit 1 (the honest
-// no), and exit 128 (no such object) for a sha this repository does not hold or
-// a history rev cannot reach. Both are ordinary answers to the question the walk
+// A NO is (false, nil) in the two spellings that answer the question the walk
 // asks — "did this listed commit land on the released branch under its own
-// identity?" — and the callers must not have to tell the two apart to read them.
+// identity?": exit 1, the honest no, and exit 128 for a name that holds no
+// commit here. Every other failure is an error, exit 4 at the top: a corrupt
+// object, a commit gone from the middle of the history and a directory that is no
+// repository say nothing about landing, and read as NO each is "this commit never
+// landed" returned with a nil error (measured on git 2.54;
+// TestIsAncestorFailsWhereGitCouldNotAnswer).
 //
-// That deliberate breadth is why the interrupt is classified FIRST and not after
-// the exit status, which is the order the two look natural in. A cancelled
-// context does not stop git politely: exec.CommandContext KILLS the child, and a
-// killed child is an *exec.ExitError like any other (measured on this toolchain:
-// err "signal: killed", errors.As true, ctx.Err() context.Canceled). Read in the
-// other order, a Ctrl-C during the footprint walk is swallowed into "this commit
-// never landed" — a wrong answer to a question that governs which commits a
-// release counts, returned with a nil error so nothing downstream can tell.
+// git exits 128 for all of those alike, so the failure is asked about, as
+// mergedTags asks about its own, rather than matched in a message whose text is
+// not an interface: namesCommit answers 1 for a name that holds no commit and 128
+// for a corrupt one.
+//
+// The interrupt is classified FIRST (runAnswer), and of each probe after it. A
+// cancelled context does not stop git politely: exec.CommandContext KILLS the
+// child, and a killed child is an *exec.ExitError like any other (measured on
+// this toolchain: err "signal: killed", errors.As true, ctx.Err()
+// context.Canceled). Read as an answer, a Ctrl-C during the footprint walk is
+// swallowed into "this commit never landed", which governs which commits a
+// release counts.
+//
+// sha and rev are object names the caller took from git or from a GitHub sha
+// field, and --end-of-options pins both as revisions rather than options.
 func isAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
-	// #nosec G204 -- the binary is the fixed literal "git"; sha and rev are
-	// object names the caller took from git or from a GitHub sha field, and
-	// --end-of-options pins both as revisions rather than options.
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "merge-base", "--is-ancestor", "--end-of-options", sha, rev)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		if ierr := interrupted(ctx); ierr != nil {
-			return false, ierr
-		}
-		if _, ok := errors.AsType[*exec.ExitError](err); ok {
+	_, yes, err := runAnswer(ctx, dir, "merge-base", "merge-base", "--is-ancestor", "--end-of-options", sha, rev)
+	if err == nil || core.IsInterrupted(err) {
+		return yes, err
+	}
+	for _, name := range []string{sha, rev} {
+		named, nerr := namesCommit(ctx, dir, name)
+		switch {
+		case nerr != nil && core.IsInterrupted(nerr):
+			return false, nerr
+		case nerr == nil && !named:
 			return false, nil
 		}
-		return false, core.APIf("git merge-base: %s", distill(stderr.Bytes(), err))
 	}
-	return true, nil
+	return false, err
 }
 
 // firstParentLog returns the n commits ending at rev along the FIRST-PARENT

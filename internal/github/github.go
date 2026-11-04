@@ -442,8 +442,9 @@ func originOf(u *url.URL) string { return u.Scheme + "://" + u.Host }
 // CodeAPI failure to everything else — core.AsError and core.ExitCode see the
 // wrapped *core.Error through the chain.
 type statusError struct {
-	status     int
-	retryAfter string // the Retry-After header, "" when absent
+	status      int
+	retryAfter  string // the Retry-After header, "" when absent
+	rateLimited bool   // the answer spells a rate limit: see rateLimited
 	// retried marks an answer to an attempt that was NOT the first: an earlier
 	// copy of this exact request already went out, so it may have been applied
 	// even though its answer never came back. Only the retry loop can know that
@@ -465,7 +466,7 @@ func (e *statusError) Unwrap() error { return e.err }
 // another endpoint (a pulls/{n}/commits validation failure) must never read as
 // "commit unknown" and silently become a release fallback. CommitPulls and
 // CommitFiles share IsCommitUnknown — both endpoints answer an unknown sha with
-// the same 422 — and Repository exports IsRepoUnknown; nothing else OUTSIDE
+// the same 422 — and Repository exports IsRepoRefused; nothing else OUTSIDE
 // this package may read a status. DeleteRelease consults its own 404 through
 // goneOnRetry before flattening — inside the package, on the one call whose
 // contract gives that status a meaning — so no status escapes.
@@ -509,17 +510,40 @@ func IsCommitUnknown(err error) bool {
 	return ok && se.status == http.StatusUnprocessableEntity
 }
 
-// IsRepoUnknown reports whether err is Repository answering 404 — GitHub saying
-// there is no such repository FOR THIS CREDENTIAL (it answers 404 rather than
-// 403 for a private repository a credential cannot see, so the existence of the
-// repository is never disclosed). It is the one failure of that read which is an
-// answer ABOUT the repository rather than a failure to obtain one — the line
+// IsRepoRefused reports whether err is Repository answering about this
+// credential: 401 rejects it, a 403 that is no rate limit refuses it the
+// repository, and 404 is GitHub's "no such repository FOR THIS CREDENTIAL" (it
+// answers 404 rather than 403 for a private repository a credential cannot see,
+// so the existence of the repository is never disclosed). Those are the failures
+// of that read which are an ANSWER rather than a failure to obtain one — the line
 // `glyph doctor` draws between exit 3 and exit 4 (DESIGN §7, with the outage
-// that once exited 3). It names the single answering status, so anything
+// that once exited 3). It names the answering statuses, so anything
 // unclassifiable stays on the "we learned nothing" side.
-func IsRepoUnknown(err error) bool {
+func IsRepoRefused(err error) bool {
 	se, ok := errors.AsType[*statusError](err)
-	return ok && se.status == http.StatusNotFound
+	if !ok {
+		return false
+	}
+	switch se.status {
+	case http.StatusUnauthorized, http.StatusNotFound:
+		return true
+	case http.StatusForbidden:
+		return !se.rateLimited
+	}
+	return false
+}
+
+// rateLimited reports whether a response spells one of GitHub's rate limits,
+// which answer 403 or 429 and say nothing about the credential. Three signals,
+// because GitHub's documented shapes leave none of them alone sufficient: a
+// primary limit carries X-RateLimit-Remaining: 0 and no Retry-After, while a
+// permission 403 carries a nonzero count and none either (both measured against
+// api.github.com, 2026-11-04); a secondary limit carries Retry-After, or the
+// count at 0, or neither header and only its message
+// (docs.github.com/rest/using-the-rest-api/rate-limits-for-the-rest-api).
+func rateLimited(h http.Header, message string) bool {
+	return h.Get("Retry-After") != "" || h.Get("X-RateLimit-Remaining") == "0" ||
+		strings.Contains(strings.ToLower(message), "rate limit")
 }
 
 // failed classifies a request that never produced a usable response. Only a
@@ -544,8 +568,8 @@ func failed(ctx context.Context, what string, err error) error {
 }
 
 // retryable reports whether one attempt's failure is worth another try: a 5xx
-// (an outage or a gateway hiccup), a 429, or ANY 403. With Retry-After the 403
-// is GitHub's secondary-rate-limit signature. Without one it is EITHER a true
+// (an outage or a gateway hiccup), a 429, or ANY 403. A 403 that spells a rate
+// limit (statusError.rateLimited) is transient. Any other is EITHER a true
 // permission failure OR a measured collision: several repos' release
 // runs PATCH their rolling drafts in the same second (fleet-sync's fan-out
 // window) and GitHub answers a bare 403 `Resource not accessible by

@@ -4,6 +4,7 @@ import (
 	"context"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -517,6 +518,7 @@ func TestHeadTreesListsWhatHEADRecordsAsADirectory(t *testing.T) {
 // a repository, is still an error.
 func TestDefaultBranchReadsARemoteNoRefCanNameAsUnrecorded(t *testing.T) {
 	dir := testutil.NewRepo(t)
+	testutil.Git(t, dir, "akira-toriyama", "update-ref", "refs/remotes/origin/main", "HEAD")
 	testutil.Git(t, dir, "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
 
 	for remote, want := range map[string]string{"origin": "main", "upstream": "", "mirror..x": ""} {
@@ -529,6 +531,59 @@ func TestDefaultBranchReadsARemoteNoRefCanNameAsUnrecorded(t *testing.T) {
 	_, err := DefaultBranch(context.Background(), t.TempDir(), "origin")
 	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
 		t.Fatalf("DefaultBranch outside a repository = %v, want CodeAPI", err)
+	}
+}
+
+// TestDefaultBranchReadsADanglingRefAsUnrecorded: a default branch renamed on
+// the remote leaves refs/remotes/origin/HEAD naming a ref `git fetch --prune`
+// just deleted, and symbolic-ref still answers exit 0 with the old name, so the
+// name is verified before it is believed. Written by real git on a real rename:
+// forged by hand this would test glyph against glyph. set-head is the positive
+// control, the remedy the callers name. A verify that really fails is an error,
+// never "unrecorded".
+func TestDefaultBranchReadsADanglingRefAsUnrecorded(t *testing.T) {
+	remote := testutil.NewRepo(t)
+	work := filepath.Join(t.TempDir(), "work")
+	testutil.Git(t, remote, "akira-toriyama", "clone", "-q", remote, work)
+	ctx := context.Background()
+	if got, err := DefaultBranch(ctx, work, "origin"); err != nil || got != "main" {
+		t.Fatalf("DefaultBranch on a fresh clone = %q, %v; want main", got, err)
+	}
+
+	testutil.Git(t, remote, "akira-toriyama", "branch", "-m", "main", "trunk")
+	testutil.Git(t, work, "akira-toriyama", "fetch", "-q", "--prune", "origin")
+	if got := testutil.Git(t, work, "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD"); got != "refs/remotes/origin/main" {
+		t.Fatalf("the fixture no longer dangles: origin/HEAD names %q after the prune", got)
+	}
+	if got, err := DefaultBranch(ctx, work, "origin"); err != nil || got != "" {
+		t.Errorf("DefaultBranch over a dangling origin/HEAD = %q, %v; want \"\", nil — the name is a ref that no longer exists", got, err)
+	}
+
+	testutil.Git(t, work, "akira-toriyama", "remote", "set-head", "origin", "-a")
+	if got, err := DefaultBranch(ctx, work, "origin"); err != nil || got != "trunk" {
+		t.Errorf("DefaultBranch after set-head = %q, %v; want trunk", got, err)
+	}
+
+	corrupt := testutil.NewRepo(t)
+	testutil.Git(t, corrupt, "akira-toriyama", "update-ref", "refs/remotes/origin/main", "HEAD")
+	testutil.Git(t, corrupt, "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	breakObject(t, corrupt, testutil.Git(t, corrupt, "akira-toriyama", "rev-parse", "HEAD"))
+	_, err := DefaultBranch(ctx, corrupt, "origin")
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
+		t.Errorf("DefaultBranch over a corrupt target = %v, want CodeAPI", err)
+	}
+}
+
+// breakObject overwrites one loose object with bytes that are no zlib stream.
+// Fixture commits stay loose: GitEnv pins gc.auto off.
+func breakObject(t *testing.T, dir, sha string) {
+	t.Helper()
+	path := filepath.Join(dir, ".git", "objects", sha[:2], sha[2:])
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatalf("chmod the loose object: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("this is no zlib stream"), 0o600); err != nil {
+		t.Fatalf("break the loose object: %v", err)
 	}
 }
 
@@ -782,16 +837,18 @@ func TestIsAncestor(t *testing.T) {
 	testutil.Commit(t, dir, "akira-toriyama", ":memo: a commit off the released branch")
 	offBranch := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "main")
+	blob := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD:glyph.toml")
 
 	for name, tc := range map[string]struct {
 		sha  string
 		want bool
 	}{
-		"an ancestor":               {root, true},
-		"the rev itself":            {head, true},
-		"another line of history":   {offBranch, false},
-		"an object we do not hold":  {"0123456789abcdef0123456789abcdef01234567", false},
-		"a name that is not an sha": {"not-a-sha", false},
+		"an ancestor":                 {root, true},
+		"the rev itself":              {head, true},
+		"another line of history":     {offBranch, false},
+		"an object we do not hold":    {"0123456789abcdef0123456789abcdef01234567", false},
+		"a name that is not an sha":   {"not-a-sha", false},
+		"an object that is no commit": {blob, false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, err := isAncestor(context.Background(), dir, tc.sha, "HEAD")
@@ -800,6 +857,96 @@ func TestIsAncestor(t *testing.T) {
 			}
 			if got != tc.want {
 				t.Fatalf("isAncestor(%q) = %v, want %v", tc.sha, got, tc.want)
+			}
+		})
+	}
+	if got, err := isAncestor(context.Background(), dir, root, "no-such-rev"); err != nil || got {
+		t.Fatalf("isAncestor over a rev that names nothing = %v, %v; want false, nil", got, err)
+	}
+}
+
+// TestIsAncestorFailsWhereGitCouldNotAnswer: a NO is a claim about the repository
+// ("this commit never landed"), so only git's two spellings of one read as NO
+// (TestIsAncestor). Every failure here exits non-zero as well, most with the same
+// 128, and read as NO each is a wrong answer about which commits a release counts,
+// returned with a nil error. The stub that fails only the ancestry question leaves
+// the probes answering, so that row reaches the last arm rather than failing in a
+// probe.
+func TestIsAncestorFailsWhereGitCouldNotAnswer(t *testing.T) {
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatalf("git: %v", err)
+	}
+	history := func(t *testing.T) (dir, root, mid, head string) {
+		t.Helper()
+		dir = testutil.NewRepo(t)
+		root = testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		testutil.Commit(t, dir, "akira-toriyama", ":bug: second")
+		mid = testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		testutil.Commit(t, dir, "akira-toriyama", ":bug: third")
+		return dir, root, mid, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	}
+	stubGit := func(t *testing.T, script string) {
+		t.Helper()
+		bin := t.TempDir()
+		if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\n"+script), 0o700); err != nil { //nolint:gosec // a stub git must be executable
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	}
+
+	for name, arrange := range map[string]func(t *testing.T) (dir, sha, rev, wantMsg string){
+		"the commit asked about is corrupt": func(t *testing.T) (string, string, string, string) {
+			dir, root, _, _ := history(t)
+			breakObject(t, dir, root)
+			return dir, root, "HEAD", "git merge-base"
+		},
+		"a commit on the walk is corrupt, both names answering": func(t *testing.T) (string, string, string, string) {
+			dir, root, mid, head := history(t)
+			breakObject(t, dir, root)
+			return dir, head, mid, "git merge-base"
+		},
+		"a commit on the walk is gone, both names answering": func(t *testing.T) (string, string, string, string) {
+			dir, root, mid, head := history(t)
+			testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side", root)
+			testutil.Commit(t, dir, "akira-toriyama", ":memo: a commit off the released branch")
+			side := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			if err := os.Remove(filepath.Join(dir, ".git", "objects", mid[:2], mid[2:])); err != nil {
+				t.Fatal(err)
+			}
+			return dir, side, head, "git merge-base"
+		},
+		"a directory that is no repository": func(t *testing.T) (string, string, string, string) {
+			return t.TempDir(), "0123456789abcdef0123456789abcdef01234567", "HEAD", "not a git repository"
+		},
+		"a git that never started": func(t *testing.T) (string, string, string, string) {
+			dir, root, _, _ := history(t)
+			t.Setenv("PATH", t.TempDir())
+			return dir, root, "HEAD", "executable file not found"
+		},
+		"a git a signal killed": func(t *testing.T) (string, string, string, string) {
+			dir, root, _, _ := history(t)
+			stubGit(t, "kill -9 $$\n")
+			return dir, root, "HEAD", "signal: killed"
+		},
+		"a status that is neither answer, both names answering": func(t *testing.T) (string, string, string, string) {
+			dir, root, _, _ := history(t)
+			stubGit(t, "case \"$*\" in *merge-base*) echo 'fatal: a status git has no spelling for' >&2; exit 2;; esac\nexec "+realGit+" \"$@\"\n")
+			return dir, root, "HEAD", "a status git has no spelling for"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, sha, rev, wantMsg := arrange(t)
+			got, err := isAncestor(context.Background(), dir, sha, rev)
+			ce := core.AsError(err)
+			if ce == nil || ce.Code != core.CodeAPI {
+				t.Fatalf("isAncestor = %v, %v; want CodeAPI — read as NO this is \"this commit never landed\" on evidence nobody collected", got, err)
+			}
+			if got {
+				t.Errorf("isAncestor = true beside the error %v", err)
+			}
+			if !strings.Contains(err.Error(), wantMsg) {
+				t.Errorf("the error must carry git's own diagnosis: got %q, want it to mention %q", err, wantMsg)
 			}
 		})
 	}

@@ -1,0 +1,13 @@
+diff --git a/internal/doctor/hook.go b/internal/doctor/hook.go
+index 97b17a9..fae1f44 100644
+--- a/internal/doctor/hook.go
++++ b/internal/doctor/hook.go
+@@ -136,7 +136,7 @@ func checkHookFires(probe *HookProbe, dirErr error, configLoaded bool) Check {
+ 		c.Observed = fmt.Sprintf("the probe itself could not run: %v", probe.Err)
+ 		c.Message = "an unrunnable probe is not a verdict about the hook — whether the local gate works is unverified"
+ 		c.Fix = "check that the hook file is executable and /bin/sh is available, then re-run"
+-	case probe.Exit == gate:
++	case probe.Exit == gate || probe.Exit < 0:
+ 		c.Status = StatusPass
+ 		c.Observed = fmt.Sprintf("the hook blocked the probe message at exit %d", gate)
+ 		c.Message = "the whole chain answered: the script, the glyph it resolves on PATH, and the verdict that " +

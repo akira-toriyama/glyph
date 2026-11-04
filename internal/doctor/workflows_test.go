@@ -555,6 +555,41 @@ func TestCheckWorkflowPinsScansCompositeActions(t *testing.T) {
 	}
 }
 
+// TestCheckWorkflowPinsReadsTheActionFilesPastAnUnlistableDirectory: a regular
+// file at .github/workflows leaves the action files read, so the composite the same
+// checkout fails over with no such path fails here too. A defect observed outranks
+// a blind spot beside it, as it does across the report, and the blind spot still
+// shows.
+func TestCheckWorkflowPinsReadsTheActionFilesPastAnUnlistableDirectory(t *testing.T) {
+	const notADirectory = "this is a file\n"
+	root := checkoutAt(t, map[string]string{
+		".github/workflows":          notADirectory,
+		"tools/installer/action.yml": "runs:\n  using: composite\n  steps:\n    - uses: akira-toriyama/glyph/.github/actions/install@main\n",
+	})
+	c := pinsAt(root, true, gitListed(t, root), nil)
+	if c.Status != StatusFail {
+		t.Fatalf("a moving ref read past an unlistable directory: status = %s (observed %q), want %s", c.Status, c.Observed, StatusFail)
+	}
+	details := strings.Join(c.Details, "\n")
+	for _, want := range []string{"tools/installer/action.yml:4", "the workflows directory could not be listed"} {
+		if !strings.Contains(details, want) {
+			t.Errorf("details %v do not name %q", c.Details, want)
+		}
+	}
+
+	clean := checkoutAt(t, map[string]string{
+		".github/workflows":          notADirectory,
+		"tools/installer/action.yml": "runs:\n  using: composite\n  steps:\n    - uses: akira-toriyama/glyph/.github/actions/install@v1.0.0\n",
+	})
+	c = pinsAt(clean, true, gitListed(t, clean), nil)
+	if c.Status != StatusUnknown {
+		t.Fatalf("clean action files past an unlistable directory: status = %s (observed %q), want %s — the workflows were never read", c.Status, c.Observed, StatusUnknown)
+	}
+	if !strings.Contains(c.Observed, "could not be listed") || !strings.Contains(c.Fix, "a directory that can be listed") {
+		t.Errorf("the unknown must keep the listing's own account and remedy: observed %q, fix %q", c.Observed, c.Fix)
+	}
+}
+
 // TestCheckWorkflowPinsWithoutADirectoryIsUnknown: "no .github/workflows here"
 // is ambiguous — a repository with no workflows, or doctor run from the wrong
 // directory — so it must report could-not-run rather than a pass it did not

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -463,10 +464,41 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 			t.Errorf("an unrecorded origin/HEAD must be advice naming origin and the fix, got %s: %s (fix %q)", c.Status, c.Observed, c.Fix)
 		}
 
-		testutil.Git(t, ".", "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+		recordOriginHead(t)
 		_, stdout, _ = runGlyph(t, "doctor", "--json")
 		if c := checkByID(t, decodeJSON[doctorReport](t, stdout), "pre-push-hook"); c.Status != "pass" {
 			t.Errorf("with origin/HEAD recorded and the commit-msg probe fired, pre-push-hook = %s (%s), want pass", c.Status, c.Observed)
+		}
+	})
+
+	// A default branch renamed on the remote leaves origin/HEAD naming a ref
+	// `fetch --prune` deleted: git only warns, and symbolic-ref still answers
+	// with the old name. A pass there vouches for a hook that lets a violating
+	// push land on the new default branch. It records nothing, so it is the
+	// advice above, and stops once set-head has run.
+	t.Run("a default branch the remote renamed away is the same advice", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		work, remote := testClone(t)
+		testutil.Git(t, remote, "akira-toriyama", "branch", "-m", "main", "trunk")
+		testutil.Git(t, work, "akira-toriyama", "fetch", "-q", "--prune", "origin")
+		t.Chdir(work)
+		installCurrentHook(t, hook.Kinds()[0], hook.Kinds()[1])
+		stubGlyphOnPATH(t, 3)
+
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
+		if code != 0 {
+			t.Fatalf("doctor exited %d, want 0 — advice never moves the exit\nstderr: %s", code, stderr)
+		}
+		c := checkByID(t, decodeJSON[doctorReport](t, stdout), "pre-push-hook")
+		if c.Status != "advice" || !strings.Contains(c.Observed, "no default branch for origin") ||
+			!strings.Contains(c.Fix, "git remote set-head 'origin' -a") {
+			t.Errorf("a dangling origin/HEAD must be advice naming origin and the fix, got %s: %s (fix %q)", c.Status, c.Observed, c.Fix)
+		}
+
+		testutil.Git(t, work, "akira-toriyama", "remote", "set-head", "origin", "-a")
+		_, stdout, _ = runGlyph(t, "doctor", "--json")
+		if c := checkByID(t, decodeJSON[doctorReport](t, stdout), "pre-push-hook"); c.Status != "pass" {
+			t.Errorf("with origin/HEAD naming a ref that exists, pre-push-hook = %s (%s), want pass", c.Status, c.Observed)
 		}
 	})
 
@@ -483,7 +515,7 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		installCurrentHook(t, hook.Kinds()[0], hook.Kinds()[1])
 		stubGlyphOnPATH(t, 3)
 		testutil.Git(t, ".", "akira-toriyama", "remote", "add", "origin", "https://example.invalid/o/r.git")
-		testutil.Git(t, ".", "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+		recordOriginHead(t)
 		testutil.Git(t, ".", "akira-toriyama", "config", "remote.mirror..x.url", "https://example.invalid/o/mirror.git")
 
 		code, stdout, stderr := runGlyph(t, "doctor", "--json")
@@ -524,6 +556,55 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		}
 	})
 
+	// The fired hook warns and passes every commit when `command -v glyph` finds
+	// nothing, and the generic pass-through's fix sends the reader to check what
+	// that command resolves to, which is nothing.
+	t.Run("glyph absent from PATH is its own diagnosis", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		installCurrentHook(t, hook.Kinds()[0])
+		pathWithOnlyGit(t)
+
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
+		rep := decodeJSON[doctorReport](t, stdout)
+		if code != 3 {
+			t.Fatalf("a dead local gate must fail doctor (exit 3), got %d\nstderr: %s", code, stderr)
+		}
+		c := checkByID(t, rep, "commit-msg-hook-fires")
+		if c.Status != "fail" || !strings.Contains(c.Observed, "glyph is not on PATH") {
+			t.Errorf("the check must fail naming the absence, got %s: %s", c.Status, c.Observed)
+		}
+		if !strings.Contains(c.Message, "passes every commit") {
+			t.Errorf("the message must say what the hook does without glyph: %q", c.Message)
+		}
+		if strings.Contains(c.Fix, "wrapper") {
+			t.Errorf("no wrapper was observed, and the fix repairs one: %q", c.Fix)
+		}
+		if s := checkByID(t, rep, "commit-msg-hook"); s.Status != "pass" {
+			t.Errorf("the byte-compare must still pass (the bytes ARE current), got %s", s.Status)
+		}
+	})
+
+	// A hook a signal killed reached no verdict: read as the block, the report
+	// says the gate works.
+	t.Run("a hook killed by a signal is could-not-run", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		installCurrentHook(t, hook.Kinds()[0])
+		bin := t.TempDir()
+		writeExecutable(t, filepath.Join(bin, "glyph"), "#!/bin/sh\nkill -9 $PPID\n")
+		t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
+		if code != 4 {
+			t.Fatalf("doctor exited %d, want 4 — the probe reached no verdict\nstderr: %s", code, stderr)
+		}
+		c := checkByID(t, decodeJSON[doctorReport](t, stdout), "commit-msg-hook-fires")
+		if c.Status != "unknown" || !strings.Contains(c.Observed, "exited -1") {
+			t.Errorf("a killed hook must be unknown, got %s: %s", c.Status, c.Observed)
+		}
+	})
+
 	t.Run("a foreign hook is not fired", func(t *testing.T) {
 		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 		useDoctorCheckout(t, pinnedCaller)
@@ -544,6 +625,31 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 				c.Status, c.Observed)
 		}
 	})
+}
+
+// recordOriginHead points refs/remotes/origin/HEAD at a refs/remotes/origin/main
+// that exists, as a clone records it, without moving HEAD or firing a hook:
+// doctor's checkouts here have no commit, and a name with no ref records nothing.
+func recordOriginHead(t *testing.T) {
+	t.Helper()
+	tree := testutil.Git(t, ".", "akira-toriyama", "hash-object", "-t", "tree", "-w", os.DevNull)
+	commit := testutil.Git(t, ".", "akira-toriyama", "commit-tree", "-m", ":tada:= the remote's tip", tree)
+	testutil.Git(t, ".", "akira-toriyama", "update-ref", "refs/remotes/origin/main", commit)
+	testutil.Git(t, ".", "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+}
+
+// pathWithOnlyGit leaves git as the one thing PATH resolves, so the fired hook's
+// `command -v glyph` finds nothing — on a machine whose own PATH holds a glyph
+// beside its git, a directory off the real PATH is what makes that true.
+func pathWithOnlyGit(t *testing.T) {
+	t.Helper()
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatalf("git: %v", err)
+	}
+	bin := t.TempDir()
+	writeExecutable(t, filepath.Join(bin, "git"), "#!/bin/sh\nexec "+realGit+" \"$@\"\n")
+	t.Setenv("PATH", bin)
 }
 
 // checkByID returns the one check with the given id, failing the test when
@@ -864,7 +970,7 @@ func TestDoctorUnreportedSettingsAreUnknownNotFalse(t *testing.T) {
 // question), the settings checks report could-not-run pointing at it, and the
 // purely local pin check still answers.
 func TestDoctorTokenFailureDoesNotAbortTheReport(t *testing.T) {
-	failingAPI(t, http.StatusNotFound, `{"message":"Not Found"}`)
+	failingAPI(t, http.StatusNotFound, `{"message":"Not Found"}`, nil)
 
 	code, stdout, _ := runGlyph(t, "doctor", "--json")
 	rep := decodeJSON[doctorReport](t, stdout)
@@ -886,24 +992,96 @@ func TestDoctorTokenFailureDoesNotAbortTheReport(t *testing.T) {
 }
 
 // failingAPI points doctor at a server that answers every request with one
-// status and body — the shapes where GitHub gives glyph no usable answer.
-func failingAPI(t *testing.T, status int, body string) {
+// status, body and set of headers — the shapes where the read fails.
+func failingAPI(t *testing.T, status int, body string, headers map[string]string) {
 	t.Helper()
+	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		// Retry-After: 0 is a timing knob, not a claim about GitHub's wire
-		// shape: a real primary-rate-limit 403 (this body) carries no such
-		// header, and github.go reserves a header-bearing 403 for the
-		// secondary-limit path. Without it a retryable status here walks the
-		// 1s/4s/16s default schedule — four requests and 21s of sleep per
-		// doctor run (measured 2026-10-21). Header honouring is itself pinned
-		// by internal/github/retry_test.go.
-		w.Header().Set("Retry-After", "0")
+		// Retry-After: 0 on the first three of each four answers is a timing
+		// knob, not a claim about GitHub's wire shape: without it a retryable
+		// status here walks the 1s/4s/16s default schedule — four requests and
+		// 21s of sleep per doctor run (measured 2026-10-21). The fourth answer
+		// is the one a retried run classifies, so it carries exactly what the
+		// row says: on it the header would read as a rate limit
+		// (github.rateLimited). A status the loop does not retry is classified
+		// on its first answer, and no such status reads the header. Header
+		// honouring is itself pinned by internal/github/retry_test.go.
+		if hits.Add(1)%4 != 0 {
+			w.Header().Set("Retry-After", "0")
+		}
+		for k, v := range headers {
+			w.Header().Set(k, v)
+		}
 		w.WriteHeader(status)
 		fmt.Fprint(w, body)
 	}))
 	t.Cleanup(srv.Close)
 	usePR(t, srv)
 	useDoctorCheckout(t, pinnedCaller)
+}
+
+// TestDoctorSplitsTheRepoReadOnWhatTheAPISaid is the line DESIGN §7 draws,
+// through the whole report. A 401, a 403 that is no rate limit and a 404 are
+// answers about the credential: token-repo-read fails at 3, and the fix is the
+// credential. On the no-answer side a 401 reads "GitHub did not answer this read
+// at all", and 4 tells a CI wrapper to retry it. A rate limit and a 5xx observed
+// nothing: unknown at 4, and the fix is to re-run. The five settings checks read
+// the same split for their remedy, or they tell a 502 to fix the credential beside
+// a token check telling it to wait.
+func TestDoctorSplitsTheRepoReadOnWhatTheAPISaid(t *testing.T) {
+	const (
+		refusedFix = "fix the credential and re-run"
+		waitFix    = "re-run once the API answers again"
+	)
+	for _, tt := range []struct {
+		name        string
+		status      int
+		body        string
+		headers     map[string]string
+		wantCode    int
+		wantStatus  string
+		wantTokenIn string
+		wantFix     string
+	}{
+		{"a rejected token", http.StatusUnauthorized, `{"message":"Bad credentials"}`, nil,
+			3, "fail", "GITHUB_TOKEN", refusedFix},
+		{"a missing grant", http.StatusForbidden, `{"message":"Must have admin rights to Repository."}`, map[string]string{"X-RateLimit-Remaining": "4953"},
+			3, "fail", "GITHUB_TOKEN", refusedFix},
+		{"an SSO refusal", http.StatusForbidden, `{"message":"Resource protected by organization SAML enforcement. You must grant your OAuth token access to this organization."}`, nil,
+			3, "fail", "GITHUB_TOKEN", refusedFix},
+		{"no such repository for this credential", http.StatusNotFound, `{"message":"Not Found"}`, nil,
+			3, "fail", "GITHUB_TOKEN", refusedFix},
+		{"a primary rate limit", http.StatusForbidden, `{"message":"API rate limit exceeded for 203.0.113.7."}`, map[string]string{"X-RateLimit-Remaining": "0"},
+			4, "unknown", waitFix, waitFix},
+		{"a secondary rate limit", http.StatusForbidden, `{"message":"You have exceeded a secondary rate limit."}`, map[string]string{"Retry-After": "0"},
+			4, "unknown", waitFix, waitFix},
+		{"a rate limit at 429", http.StatusTooManyRequests, `{"message":"API rate limit exceeded for 203.0.113.7."}`, map[string]string{"X-RateLimit-Remaining": "0"},
+			4, "unknown", waitFix, waitFix},
+		{"a bad gateway", http.StatusBadGateway, `{"message":"Server Error"}`, nil,
+			4, "unknown", waitFix, waitFix},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			failingAPI(t, tt.status, tt.body, tt.headers)
+
+			code, stdout, stderr := runGlyph(t, "doctor", "--json")
+			if code != tt.wantCode {
+				t.Fatalf("exit %d, want %d\nstderr: %s", code, tt.wantCode, stderr)
+			}
+			rep := decodeJSON[doctorReport](t, stdout)
+			token := checkByID(t, rep, "token-repo-read")
+			if token.Status != tt.wantStatus || !strings.Contains(token.Fix, tt.wantTokenIn) {
+				t.Errorf("token-repo-read = %s (fix %q), want %s with a fix naming %q", token.Status, token.Fix, tt.wantStatus, tt.wantTokenIn)
+			}
+			for _, id := range []string{"squash-merge-enabled", "merge-commit-enabled", "rebase-merge-enabled", "squash-commit-title", "squash-commit-message"} {
+				if c := checkByID(t, rep, id); c.Status != "unknown" || c.Fix != tt.wantFix {
+					t.Errorf("%s = %s (fix %q), want unknown with %q", id, c.Status, c.Fix, tt.wantFix)
+				}
+			}
+			if rep.OK {
+				t.Error("ok must be false: nothing below the read was observed")
+			}
+		})
+	}
 }
 
 // TestDoctorUnansweredAPIIsCouldNotRunNotAViolation is the exit-code contract
@@ -916,7 +1094,7 @@ func failingAPI(t *testing.T, status int, body string) {
 // hard-fail a healthy repository, un-retryably, while every other glyph command
 // classifies the same answer as 4.
 func TestDoctorUnansweredAPIIsCouldNotRunNotAViolation(t *testing.T) {
-	failingAPI(t, http.StatusForbidden, `{"message":"API rate limit exceeded for 203.0.113.7"}`)
+	failingAPI(t, http.StatusForbidden, `{"message":"API rate limit exceeded for 203.0.113.7"}`, map[string]string{"X-RateLimit-Remaining": "0"})
 
 	code, stdout, _ := runGlyph(t, "doctor", "--json")
 	rep := decodeJSON[doctorReport](t, stdout)
@@ -1294,6 +1472,46 @@ func TestDoctorPinScanReadsEveryActionFileGitLists(t *testing.T) {
 	}
 }
 
+// TestDoctorPinScanReadsTheActionFilesPastAnUnlistableDirectory: a regular file
+// at .github/workflows hides nothing from the action files. A composite pinning
+// @main exits 3, as the same checkout with no such path does, because a defect
+// observed outranks a blind spot beside it, and the listing failure rides in the
+// details. Clean composites leave only the blind spot: 4.
+func TestDoctorPinScanReadsTheActionFilesPastAnUnlistableDirectory(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		ref        string
+		wantCode   int
+		wantStatus string
+	}{
+		{"a moving ref fails past it", "main", 3, "fail"},
+		{"a pinned ref leaves it unknown", "v1.0.0", 4, "unknown"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+			useDoctorCheckout(t, "")
+			if err := os.Remove(filepath.Join(".github", "workflows")); err != nil {
+				t.Fatal(err)
+			}
+			testutil.WriteFile(t, ".", ".github/workflows", "this is a file\n")
+			testutil.WriteFile(t, ".", "tools/installer/action.yml",
+				"runs:\n  using: composite\n  steps:\n    - uses: akira-toriyama/glyph/.github/actions/install@"+tt.ref+"\n")
+
+			code, stdout, stderr := runGlyph(t, "doctor", "--json")
+			if code != tt.wantCode {
+				t.Fatalf("doctor exited %d, want %d\nstderr: %s", code, tt.wantCode, stderr)
+			}
+			c := checkByID(t, decodeJSON[doctorReport](t, stdout), "workflow-glyph-pins")
+			if c.Status != tt.wantStatus {
+				t.Errorf("workflow-glyph-pins = %s (%s), want %s", c.Status, c.Observed, tt.wantStatus)
+			}
+			if !strings.Contains(c.Observed+strings.Join(c.Details, "\n"), "the workflows directory could not be listed") {
+				t.Errorf("the listing failure must still show: observed %q, details %v", c.Observed, c.Details)
+			}
+		})
+	}
+}
+
 // TestDoctorPackagePathsAgreeWithAttribution is t-fdd8 (1) end to end: one
 // config, one history, and doctor must give the answer lint --range gives.
 // `Haiku` (HEAD records haiku) and `currylink` (a symlink to haiku, a 120000
@@ -1346,7 +1564,7 @@ func TestDoctorPackagePathsAgreeWithAttribution(t *testing.T) {
 // the expected/fix text the annotation exists to deliver onto lines the job
 // summary never shows.
 func TestDoctorAnnotationsStayOnOneLine(t *testing.T) {
-	failingAPI(t, http.StatusNotFound, "<html>\r\n<head><title>404 Not Found</title></head>\n<body>\n<center>nginx</center>\n</body>\n</html>")
+	failingAPI(t, http.StatusNotFound, "<html>\r\n<head><title>404 Not Found</title></head>\n<body>\n<center>nginx</center>\n</body>\n</html>", nil)
 
 	code, _, stderr := runGlyph(t, "doctor", "--json")
 	if code != 3 {
@@ -1369,7 +1587,7 @@ func TestDoctorAnnotationsStayOnOneLine(t *testing.T) {
 // `^fail`) lost the check boundaries. The JSON run is the oracle for how many
 // checks there are; --json itself never had the defect.
 func TestDoctorHumanReportIsOneLinePerCheck(t *testing.T) {
-	failingAPI(t, http.StatusNotFound, "<html>\r\n<head><title>404 Not Found</title></head>\n<body>\n<center>nginx</center>\n</body>\n</html>")
+	failingAPI(t, http.StatusNotFound, "<html>\r\n<head><title>404 Not Found</title></head>\n<body>\n<center>nginx</center>\n</body>\n</html>", nil)
 
 	code, stdout, _ := runGlyph(t, "doctor", "--json")
 	if code != 3 {
