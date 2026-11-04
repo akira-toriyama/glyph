@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 2a5ce7d..65f1f82 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -188,7 +188,7 @@ func DefaultBranch(ctx context.Context, dir, remote string) (string, error) {
+ 		// the interrupt's place.
+ 		can, perr := RemoteCanRecordHead(ctx, dir, remote)
+ 		switch {
+-		case perr != nil && core.IsInterrupted(perr):
++		case perr != nil && core.IsInterrupted(perr) && false:
+ 			return "", perr
+ 		case perr == nil && !can:
+ 			return "", nil

@@ -1141,6 +1141,25 @@ func TestDoctorInterruptDuringRemoteHeadsReadCarriesOut(t *testing.T) {
 	interruptDoctor(t, "the remote-heads read", answersHooksPath, answersTopLevel, answersTags, answersHeadTrees, answersActionFiles)
 }
 
+// TestDoctorInterruptDuringRefNameProbeCarriesOut is the same guard one read
+// deeper, inside the remote-heads read: for a remote whose name git's config
+// accepts and its refs refuse (`remote.mirror..x.url`), `git symbolic-ref`
+// fails 128 and DefaultBranch then asks `git check-ref-format` whether the
+// name can hold a ref at all. A signal landing in that probe kills the child,
+// and a probe that reads the kill as "git could not say" hands back the
+// symbolic-ref failure in the interrupt's place — headsErr carries no
+// interrupt, the guard sees none, and doctor renders pre-push-hook
+// could-not-run at exit 4 on a run the operator stopped (measured by t-8rxf's
+// review, 2026-10-28). The fake git answers every read before it through the
+// real git — config and symbolic-ref included — and blocks on check-ref-format.
+func TestDoctorInterruptDuringRefNameProbeCarriesOut(t *testing.T) {
+	useDoctorCheckout(t, pinnedCaller)
+	installCurrentHook(t, hook.Kinds()[1])
+	testutil.Git(t, ".", "akira-toriyama", "config", "remote.mirror..x.url", "https://example.invalid/o/mirror.git")
+	interruptDoctor(t, "the ref-name probe", answersHooksPath, answersTopLevel, answersTags, answersHeadTrees, answersActionFiles,
+		"*\" config \"*|*\" symbolic-ref \"*) exec git \"$@\";;\n")
+}
+
 // TestDoctorSIGINTDuringTheProbeClaimCarriesOut pins the guard over the one
 // set of reads that hands no error back. With glyph's own commit-msg hook
 // installed, doctor asks whether the repository's glyph.toml claims the probe

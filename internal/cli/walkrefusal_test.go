@@ -57,7 +57,7 @@ func TestSinceTagResolvedPRLintNamesTheWedge(t *testing.T) {
 			// merge point, so naming the merge point still names the commit the
 			// operator would reach for — the two only diverge on a merge-merged
 			// pull (TestSinceTagWedgeEscapeIsTheOffendingCommit).
-			for _, want := range []string{"akira-toriyama/glyph#7", "--since-tag", "by hand", sha[:7]} {
+			for _, want := range []string{"inside merged pull request akira-toriyama/glyph#7, which the release walk resolved from its merge point " + sha[:7], "--since-tag", "by hand"} {
 				if !strings.Contains(stderr, want) {
 					t.Errorf("the wedge error must carry %q (the PR, its merge point and the escape):\n%s", want, stderr)
 				}
