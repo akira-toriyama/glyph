@@ -1,6 +1,9 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"regexp"
+)
 
 // Match is the outcome of running one commit message through the patterns.
 // Exactly one of three shapes comes back: Matched=false (no pattern claimed
@@ -36,8 +39,11 @@ type Match struct {
 	// capture when it produced one, else the pattern's fixed value.
 	Sigil Sigil
 	// Groups holds every named group the winning pattern defines, mapped to
-	// what it captured (possibly ""). The notes line template's $xxx
-	// placeholders read from here.
+	// what it captured (possibly ""). A name the pattern gives to more than
+	// one group — one per alternative, `(?P<scope>…)|…(?P<scope>…)` — maps to
+	// the capture of the group that took part in the match (participant): a
+	// group whose alternative was not taken never overwrites one that was.
+	// The notes line template's $xxx placeholders read from here.
 	Groups map[string]string
 	// Warn is the winning pattern's warn message, "" when it declares none.
 	// The verdict is unchanged — a warned match is still a match — but every
@@ -64,8 +70,8 @@ type Match struct {
 func (c *Config) Match(message string) (Match, error) {
 	for i := range c.Patterns {
 		p := &c.Patterns[i]
-		sub := p.re.FindStringSubmatch(message)
-		if sub == nil {
+		loc := p.re.FindStringSubmatchIndex(message)
+		if loc == nil {
 			continue
 		}
 		if p.skip {
@@ -76,19 +82,18 @@ func (c *Config) Match(message string) (Match, error) {
 		}
 
 		groups := make(map[string]string)
-		captured := ""
 		for gi, name := range p.re.SubexpNames() {
 			if name == "" {
 				continue
 			}
-			groups[name] = sub[gi]
-			if name == sigilGroup {
-				captured = sub[gi]
+			if _, seen := groups[name]; seen && loc[2*gi] < 0 {
+				continue
 			}
+			groups[name] = submatch(message, loc, gi)
 		}
 
 		var sigil Sigil
-		switch {
+		switch captured := groups[sigilGroup]; {
 		case captured != "":
 			s, err := parseSigil(captured)
 			if err != nil {
@@ -104,6 +109,41 @@ func (c *Config) Match(message string) (Match, error) {
 		return Match{Matched: true, Sigil: sigil, Groups: groups, Warn: p.warn, PatternIndex: i}, nil
 	}
 	return Match{PatternIndex: -1}, nil
+}
+
+// submatch is what group gi captured in loc, FindStringSubmatchIndex's
+// answer: "" for a group that took no part (-1, -1) as for one that captured
+// nothing. participant is what tells the two apart.
+func submatch(message string, loc []int, gi int) string {
+	if loc[2*gi] < 0 {
+		return ""
+	}
+	return message[loc[2*gi]:loc[2*gi+1]]
+}
+
+// participant is the group called name that took part in the match loc
+// describes — the last such when more than one did, which is also the one
+// whose capture a repeat leaves standing — as a submatch index, or -1 when
+// the pattern names no such group or every one of them sat in an alternative
+// the match did not take. It is the one reading of a repeated name: Match
+// fills Groups by it, and span reads a capture's place in the message by it.
+//
+// SubexpIndex is not this reading. It answers the leftmost group of the name,
+// and FindStringSubmatch fills a repeated name in index order, so the later
+// group's empty capture stood in for the earlier one's value even when its
+// alternative was not taken: under
+// `^(?P<semver_sigil>[=~^!%]) :[a-z]+: .+|^:[a-z]+:(?P<semver_sigil>[=~^!%]) .+`
+// the first alternative's `!` read as a sigil group that captured nothing
+// (exit 3), and beside `semver_sigil = '='` it folded to none (measured
+// 2026-11-04 at 2f9428a; TestMatchReadsTheGroupThatTookPart).
+func participant(re *regexp.Regexp, loc []int, name string) int {
+	at := -1
+	for gi, n := range re.SubexpNames() {
+		if n == name && loc[2*gi] >= 0 {
+			at = gi
+		}
+	}
+	return at
 }
 
 // UnclaimedDetail is the one sentence a history gate gives a message Match

@@ -366,7 +366,10 @@ skipping them. `glyph notes --help` explains how `exclude_authors` and
 
 `note.line` is the same idea for the release body: `$name` placeholders
 (`glyph notes --help` lists them) and a `$[ … ]` span that renders only when
-every placeholder inside it resolves. That is what lets the shipped line cite a
+every placeholder inside it resolves. The template opens with a list marker
+(`- `, `* ` or `+ `) — each rendered line is fenced against @mentions on its
+own, which holds only when each line is its own list item (DESIGN §3) — and
+the loader refuses one that does not. That is what lets the shipped line cite a
 pull when there is one and drop the parens with it when there is not. `@$author` pages the
 contributor only when GitHub knows who that is — the login the API reports for
 a listed commit, or the one a `@users.noreply.github.com` author address

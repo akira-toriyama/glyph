@@ -385,12 +385,22 @@ pattern says it means:
 - **A refusal quotes the form** (mutation row
   `lint-violation-forgets-the-form.patch`, t-s1q0): the no-pattern-matches
   violation carries the first line of `commit.template` verbatim — `write it
-  as <:code:>[(scope)]<semver_sigil> <subject> with a semver_sigil of = ~ ^ !
-  or %` — so the refused author is told the shape instead of re-deriving it
-  from the winning regex on every failure (measured: the envelope said only
-  "see glyph.toml", while the window warning then sitting next to it already
-  spelled the line). The template stays unparsed: glyph quotes it, it does not interpret a
-  placeholder, and a file with no `[commit]` block gets the bare pointer.
+  as <:code:>[(scope: a-z 0-9 -)]<semver_sigil> <subject> with a semver_sigil
+  of = ~ ^ ! or %` — so the refused author is told the shape instead of
+  re-deriving it from the winning regex on every failure (measured: the
+  envelope said only "see glyph.toml", while the window warning then sitting
+  next to it already spelled the line). The template stays unparsed: glyph
+  quotes it, it does not interpret a placeholder, and a file with no `[commit]`
+  block gets the bare pointer. The presets' form line names the scope's
+  alphabet in the scope's place (t-rpqp): the alphabet lived in the regex
+  alone, so a `(Foo_Bar)` scope, a space before the sigil and none after it
+  all drew `write it as <:code:>[(scope)]<semver_sigil> <subject>`, a form the
+  refused message already fits to the eye (measured 2026-11-04 at 2f9428a and
+  v6.1.0: one detail for all four inputs). The spacing the line already shows
+  answers the other two, so no part of the refusal is computed from the regex
+  — a longest-matching-prefix diagnosis and a per-part schema key were both
+  more mechanism than the problem (`TestPresetFormNamesTheScopeAlphabet`,
+  mutation row `presets-form-forgets-the-scope-alphabet`).
 - **`[commit]` carries only `template`** (t-85y9; ruled 2026-10-06 in epic
   e-13fj, a major). The `style` label every preset wrote beside it through
   v5.1.0 (`"gemoji"`, `"conventional"`) left the schema and both presets
@@ -538,10 +548,24 @@ pattern says it means:
     delimiter (escape.go's theorem), so the price is rendering, paid only by a
     repository whose own pattern captures such bytes — accepted.
 - Unknown keys, an unknown `schema`, an uncompilable pattern, a malformed
-  `note.line` and a section that does not state exactly one axis are LOAD
-  errors, never repairs (mutation row `config-unknown-schema-accepted.patch`):
-  this file decides CI verdicts, and a silently-misread key is a
-  silently-changed verdict.
+  `note.line`, a `note.line` that opens with no list-item marker (§3) and a
+  section that does not state exactly one axis are LOAD errors, never repairs
+  (mutation row `config-unknown-schema-accepted.patch`): this file decides CI
+  verdicts, and a silently-misread key is a silently-changed verdict. **A key
+  is the schema's spelling byte for byte** (t-xppw): go-toml binds a key to a
+  field without case once no tag matches it exactly, and its strict mode
+  reports only a key no field claims, so at 2f9428a `Skip = true` skipped the
+  commit, `[[Patterns]] PATTERN` was the grammar, `[Note] Line` rendered the
+  body, `[[Packages]] PATH` declared a line, and `skip = false` followed by
+  `Skip = true` read as skip while the reverse did not (measured 2026-11-04,
+  go-toml v2.4.3) — a key read by a spelling the author never wrote, the exact
+  misread above. The loader walks the generic map the same bytes decode to,
+  where every key keeps its bytes, against the schema structs' tags, and
+  refuses every key whose bytes are not a tag — naming it as written and the
+  spelling to write, a miscased table's keys with it
+  (`TestLoadRefusesAMiscasedKey`, `TestLintCannotLoadAMiscasedKey`; mutation
+  row `config-folds-a-miscased-key-onto-the-schema`). Exit 2 like every load
+  failure, so the commit that fixes the file gets through the hooks.
 
 Config resolution is one file per checkout: the `glyph.toml` at the top level
 of the working tree the command runs in (ratified Q1 — a config change
@@ -758,6 +782,22 @@ per-commit override under the repository's settings:
 - an exported `GIT_EDITOR=:` (`GIT_EDITOR=: git commit --amend`) is git's
   no-editor marker to the hook while git runs its editor cleanup, so the hook
   judges the template git strips (measured).
+
+And one setting the hook could read and does not act on: **`i18n.commitEncoding`
+set to anything but UTF-8** (t-gh5t). The hook judges the message file's bytes
+as written, while `--range` reads `git log`, which re-encodes every message
+into UTF-8 (`i18n.logOutputEncoding`, §5's stream contract), so a pattern that
+reads past ASCII moves between them. Measured 2026-11-04 (git 2.54.0) under
+`pattern = '^(?P<semver_sigil>[=~^!%]) [\p{L} ]+$'` and
+`git config i18n.commitEncoding ISO-8859-1`: `~ café crème` written as Latin-1
+bytes is refused at `lint --stdin` (exit 3 — `\351` is no letter to RE2) and
+accepted by `lint --range` after `--no-verify` (exit 0); the same message as
+UTF-8 bytes is accepted at the hook and refused in the range, where git has
+re-encoded `é` as `Ã©` (3). Neither shipped preset moves — their alphabets are
+ASCII classes and `.+`, which no re-encoding takes a message in or out of — and
+glyph does not transcode the hook's message: `golang.org/x/text/encoding` would
+be a dependency bought for a setting no preset can observe, and a hook judging
+bytes git never records has no range to agree with. Stated, not fixed.
 
 Three ways to close the editor and `--no-verbose` cells were measured and not
 taken. Judging the uncut text whenever the cut leaves nothing closes every cell
@@ -988,7 +1028,22 @@ pattern's named groups, the built-ins (which outrank a group of the same
 name) and any name `[[note.trailers]]` declares — and literal
 text passes through as the author's own Markdown while every substituted value
 renders as prose, the scope included (§2), with the mention fence run
-over the assembled line. The fence has exactly one ratified exemption
+over the assembled line. **The template opens with a list-item marker** (`- `,
+`* ` or `+ `; the loader refuses any other opening at exit 2, t-ngw8): the
+fence is sized against the assembled line (§4 of the glossary, *inline
+context*), which holds only while each rendered line is its own inline
+context — a list item is, and lines no marker separates are one paragraph (or,
+with a `|` in them, a table), where a backtick run on one line pairs with the
+fence on the next. Measured against GitHub's `/markdown` (gfm) 2026-11-04 with
+`line = '$subject$[ ($pr)]'`: the three subjects `:bug:~ x ````, `:bug:~ a ``
+b @octocat` and `:bug:~ y ```` rendered as `<code>:bug:~ a `` b</code><a
+class="user-mention">@octocat</a>`, the handle live, and as
+`<code>@octocat</code>` with `- ` before each; the file loaded at 2f9428a.
+Nothing in the renderer changes: a line-at-a-time fence is correct for a list,
+so the loader holds the template to a list (`TestLoadRefusesANoteLineWithoutAListMarker`,
+mutation row `config-note-line-opens-outside-a-list`). An ordered-list marker
+is not offered — `1. ` on every line renumbers in GitHub, not in the file.
+The fence has exactly one ratified exemption
 (2026-08-17): the built-in `$author`, so the preset's `@$author` renders as a
 live mention — crediting the contributor is intended behaviour, and every
 peer tool (git-cliff, GitHub's own generated notes, release-drafter,
@@ -2035,9 +2090,23 @@ declaration, and `glyph init` writes it as a commented paragraph.
   `scope` group's own sub-expression, anchored whole, in the patterns whose
   groups a commit binds — not `skip` (placed nowhere, its message never read)
   and not `unlandable` (reported unmatched, with no groups) — and, in a
-  pattern that names two groups `scope`, only the last: the one `Match`
-  keeps, since a later capture overwrites an earlier one even when its
-  alternative did not take part. One such group accepting the name is
+  pattern that names two groups `scope`, either of them: `Match` hands on the
+  capture of the group that took part in the match (t-wmk2, 2026-11-04;
+  `config.participant`), reading `FindStringSubmatchIndex`, which tells a
+  group whose alternative was not taken (`-1 -1`) from one that captured
+  nothing (`0 0`), so a group under either alternative reaches attribution
+  and the speller is the alternation of every group of the name. Read with
+  `FindStringSubmatch`, which fills a repeated name in index order, the later
+  group's empty stood in for the earlier one's capture: under
+  `^(?P<semver_sigil>[=~^!%]) :[a-z]+: .+|^:[a-z]+:(?P<semver_sigil>[=~^!%]) .+`,
+  `! :sparkles: first alt` exited 3 as a sigil group that captured nothing,
+  and beside `semver_sigil = '='` `! :boom: break via first alt` folded to
+  none with no warning — a major shipped as no release (measured at 2f9428a;
+  `TestMatchReadsTheGroupThatTookPart`, mutation rows
+  `match-reads-a-repeated-name-in-index-order` and
+  `scope-speller-reads-only-the-last-group`). Refusing a repeated name at
+  load was not taken: it narrows the author's regex for a reading the engine
+  already offers. One such group accepting the name is
   enough: which pattern wins is a property of each commit, the union
   `config.validateLineNames` already takes for `note.line`'s names. The
   refusal names the package, the rule that produced the name, each pattern it
@@ -2083,7 +2152,10 @@ declaration, and `glyph init` writes it as a commented paragraph.
   `packages-name-no-scope-can-spell-accepted`,
   `packages-name-union-becomes-intersection`,
   `packages-name-counts-an-unread-scope`,
-  `packages-name-counts-a-shadowed-scope-group`, `packages-root-name-exempt`,
+  `scope-speller-reads-only-the-first-group`,
+  `scope-speller-reads-only-the-last-group` (the pair that replaced
+  `packages-name-counts-a-shadowed-scope-group` when t-wmk2 overturned the
+  last-group reading — above), `packages-root-name-exempt`,
   `packages-scopeless-grammar-refuses-names`. It names nothing else: the
   draft is named by its tag, the notes by their section titles.
 - **One `glyph.toml`, at the top level, as today.** A per-package file was
