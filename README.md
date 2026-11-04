@@ -361,11 +361,15 @@ skipping them. `glyph notes --help` explains how `exclude_authors` and
 (`glyph notes --help` lists them) and a `$[ … ]` span that renders only when
 every placeholder inside it resolves. That is what lets the shipped line cite a
 pull when there is one and drop the parens with it when there is not. `@$author` pages the
-contributor only when GitHub knows who that is — the login the API reports for
-a listed commit, or the one a `@users.noreply.github.com` author address
-carries; a commit from any other address is credited by its git author name,
-plain, so a display name that happens to look like a handle never pages the
-stranger who owns it.
+contributor only when GitHub knows who that is — the `author.login` the API
+reports for a listed commit; a commit the API did not describe (every commit
+under `--range`, every direct push under `--since-tag`) or mapped to no
+account is credited by its git author name, plain, so a display name that
+happens to look like a handle never pages the stranger who owns it. The
+author address is never read for a login, GitHub's own
+`<id>+<login>@users.noreply.github.com` form included: the login it spells
+is typed by whoever configured git, and GitHub attributes the commit by the
+id beside it.
 
 The commit author's own text — the subject, the scope, any group a pattern
 captures — renders as prose that cannot reach past its line: outside the
@@ -407,10 +411,15 @@ name  = "why"   # the $placeholder note.line writes
 
 A declared trailer renders as fenced prose, like any other text a commit
 author typed, and an absent one resolves empty so the `$[ … ]` span carrying
-it drops. What a trailer block IS follows git exactly: the last paragraph of
-the message, above any `---`, every line of it trailer-shaped — **one prose
-line in it and the whole block is not a trailer block**, credits included, so
-write the trailers together at the very bottom and indent any wrapped line.
+it drops. What a trailer block IS follows git exactly (git's defaults — a
+repository's `trailer.*` config is not read): the last paragraph of the
+message, above any `---` line (`---` alone or followed by a space or a tab;
+`---x` is text), every line of it trailer-shaped — **one prose line in it and
+the whole block is not a trailer block**, credits included — unless git
+itself wrote into the block: beside a `Signed-off-by:` or a `(cherry picked
+from commit …)` line, prose stands as long as at least a quarter of the lines
+are trailers, and the trailers around it are read. Write the trailers
+together at the very bottom and indent any wrapped line.
 
 ## Packages — several version lines in one repository
 

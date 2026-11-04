@@ -1,0 +1,13 @@
+diff --git a/internal/notes/trailers.go b/internal/notes/trailers.go
+index d476f9f..dfa6d70 100644
+--- a/internal/notes/trailers.go
++++ b/internal/notes/trailers.go
+@@ -162,7 +162,7 @@ func trailerBlock(lines []string) []string {
+ // title`, `---\tx` and a CRLF `---\r` all start the patch, and everything
+ // below one is not message.
+ func isDivider(l string) bool {
+-	return strings.HasPrefix(l, "---") && (len(l) == 3 || isGitSpace(l[3]))
++	return strings.TrimRight(l, " \t") == "---"
+ }
+ 
+ func isGitSpace(b byte) bool { return strings.IndexByte(gitSpace, b) >= 0 }

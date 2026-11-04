@@ -207,6 +207,15 @@ func BumpCommits(ws []Commit) []bump.Commit {
 // shas no branch holds. Blanked HERE, where DESIGN §4's arms are a known
 // fact, because internal/notes renders what it is given and holds no arm
 // knowledge.
+//
+// Login is carried through as the API reported it and from nowhere else: the
+// `author.login` GitHub attached to a listed commit, "" for a commit git
+// alone described (the fallback arm, --range) or one GitHub mapped to no
+// account. Nothing in the commit itself is read for a login — the author
+// name is free text, and so is the author address, a GitHub noreply one
+// included: `<id>+<login>@users.noreply.github.com` is typed by whoever
+// configured git, and GitHub attributes the commit by the id, not the login
+// it carries (DESIGN §3, t-39fy, t-ayhq).
 func NoteCommits(ws []Commit) []notes.Commit {
 	out := make([]notes.Commit, 0, len(ws))
 	for _, w := range ws {
@@ -214,19 +223,7 @@ func NoteCommits(ws []Commit) []notes.Commit {
 		if w.Pull > 0 && !w.Landed {
 			sha = ""
 		}
-		out = append(out, notes.Commit{SHA: sha, Pull: w.Pull, Author: w.Raw.Author, Login: identity(w.Raw), Message: w.Raw.Message})
+		out = append(out, notes.Commit{SHA: sha, Pull: w.Pull, Author: w.Raw.Author, Login: w.Raw.Login, Message: w.Raw.Message})
 	}
 	return out
-}
-
-// identity is the GitHub login the notes may credit a commit's author BY:
-// the login GitHub itself mapped the commit to when the API described it,
-// else the login a noreply author address carries, else "" — and "" is an
-// answer, never the author name: a name is free text and @<name> pages
-// whoever happens to own it (t-39fy).
-func identity(r gitsource.RawCommit) string {
-	if r.Login != "" {
-		return r.Login
-	}
-	return github.LoginFromNoreply(r.Email)
 }
