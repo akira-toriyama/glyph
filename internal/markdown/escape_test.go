@@ -191,6 +191,21 @@ func TestEscapeMarkup(t *testing.T) {
 		{"each line of the string starts blocks of its own", "a\r\r# b\n> c", "a\r\r\\# b\n\\> c"},
 		{"an opener is not one mid-line", "a ## b - c > d 1. e", "a ## b - c > d 1. e"},
 		{"an authored escape already disarms it", `\## x`, `\## x`},
+		// A table delimiter row makes the line above a header; its shape is read
+		// bluntly, a dash among dashes, colons, pipes and blanks (a VT or FF too).
+		{"a delimiter row under a line", "a\n---:", "a\n\\---:"},
+		{"a delimiter row opening on a colon", "a\n:-", "a\n\\:-"},
+		{"a delimiter row opening on a pipe", "a\n|---", "a\n\\|---"},
+		{"a delimiter row ending in a form feed", "a\n---\f", "a\n\\---\f"},
+		{"a delimiter row opening on a form feed", "a\n\f:-", "a\n\f\\:-"},
+		{"a delimiter row needs a dash", "a\n:|", "a\n:|"},
+		{"a credit behind a delimiter row disarms it", "a\n---: x", "a\n---: x"},
+		// Rule 5 owns these two shapes too, for the span crossing a line ending that
+		// rules 1 and 3 do not reach (TestBlockOpenerOwnership); on one string the
+		// bytes are the same.
+		{"an HTML block opener", "<div> x", `\<div> x`},
+		{"a footnote definition", "[^1]: x", `\[^1]: x`},
+		{"a task-list marker needs an item, and one string has none", "[ ] x", `\[ ] x`},
 
 		// What must survive. This is the approved policy.
 		{"a code span passes through byte-for-byte", "handle `nil` table", "handle `nil` table"},
@@ -253,6 +268,9 @@ func TestEscapeMarkupLeavesTheCodeSpanMapAlone(t *testing.T) {
 		"## a `b`",
 		"1. a `b`",
 		"> a `b`",
+		"<div> a `b`",
+		"[^1]: a `b`",
+		"a\n---:\n`b`",
 	} {
 		t.Run(in, func(t *testing.T) {
 			before, after := codeSpans(in), codeSpans(escapeMarkup(in))
@@ -306,6 +324,9 @@ func FuzzEscapeMarkupNeutralizes(f *testing.F) {
 		"    x",
 		"---",
 		"a\r\r# b",
+		"a\n---:",
+		"</details> x",
+		"[^1]: x",
 	} {
 		f.Add(s)
 	}

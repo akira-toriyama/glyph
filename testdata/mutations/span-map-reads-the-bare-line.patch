@@ -1,0 +1,13 @@
+diff --git a/internal/markdown/escape.go b/internal/markdown/escape.go
+index d989098..9b53a49 100644
+--- a/internal/markdown/escape.go
++++ b/internal/markdown/escape.go
+@@ -525,7 +525,7 @@ func awaitsBlock(s string, prose func(lo, hi int) bool) bool {
+ // paragraph at the second fence either way, and the map is still read here for
+ // the openers it does not.
+ func spansBehindOpeners(s string, prose func(lo, hi int) bool) []bool {
+-	opens := blockOpeners(s, prose)
++	opens := map[int]bool{}
+ 	var b strings.Builder
+ 	from := make([]int, 0, len(s)+len(opens))
+ 	for i := 0; i < len(s); i++ {

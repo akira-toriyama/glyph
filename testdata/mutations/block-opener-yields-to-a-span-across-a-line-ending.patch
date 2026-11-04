@@ -1,11 +1,11 @@
 diff --git a/internal/markdown/escape.go b/internal/markdown/escape.go
-index ab1f949..285838c 100644
+index 3ab6cce..0f83dc9 100644
 --- a/internal/markdown/escape.go
 +++ b/internal/markdown/escape.go
-@@ -441,7 +441,7 @@ func escapeProseLine(s string, inSpan []bool, prose func(lo, hi int) bool) (stri
- 		// line that would open a block is disarmed even where a span crosses a
- 		// template's own line ending into it. The cost is a backslash printed in
- 		// that span, the over-escaping side.
+@@ -578,7 +578,7 @@ func escapeProseLine(s string, inSpan []bool, prose func(lo, hi int) bool) (stri
+ 		// test, and a value they do not reach there is raw HTML or a footnote
+ 		// definition at GitHub, which decided blocks before any span (measured in
+ 		// blockOpenerAt's table).
 -		if opens[i] {
 +		if opens[i] && !inSpan[i] {
  			b.WriteByte('\\')

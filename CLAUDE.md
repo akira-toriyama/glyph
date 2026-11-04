@@ -137,7 +137,7 @@ design, so a tree that does not compile turns the local gate into a silent no-op
   `-update` makes a rendering bug look intentional.
 - Treat `testdata/fuzz` as a regression corpus, not scratch: a **new** file there is the
   engine reporting an input the code fails. Rename it after the defect (Go replays any
-  filename in the target directory) and commit it; never delete one to go green. Eight entries
+  filename in the target directory) and commit it; never delete one to go green. Nine entries
   are committed, all under `internal/markdown/`, and plain `go test` replays each as a named
   subtest. A new `Fuzz` target needs no CI or check.sh edit — `scripts/fuzz-smoke.sh`, which
   both run, discovers targets.

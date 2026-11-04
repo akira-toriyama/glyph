@@ -482,13 +482,14 @@ pattern says it means:
   - **A value at a block start opens no block** (t-t10s, 2026-11-04). The head
     of a list item is a block start as much as the head of a line is, so a
     template's opening `- ` protects nothing, and every shipped template puts
-    `$subject` right behind one. A matched subject opens with its gitmoji under
-    the presets, but the raw-line fallback (§3) binds the whole first line of a
-    commit an `exclude_authors` author names, and that name is git's free-text
-    `%an`. Measured at 2f9428a through `glyph notes --range`, then `POST
-    /markdown` on each line and on the body inside the preview's `<details>`:
-    `## Breaking Changes` under the name `dependabot[bot]` passes `lint --range`
-    at 0 and renders `<ul><li><h2>`, and a fence swallows the credit into `<pre
+    `$subject` right behind one. A matched subject opens with its gitmoji, its
+    type word or `Revert` under the presets, none of them an opener, but the
+    raw-line fallback (§3) binds the whole first line of a commit an
+    `exclude_authors` author names, and that name is git's free-text `%an`.
+    Measured at 2f9428a through `glyph notes --range`, then `POST /markdown` on
+    each line and on the body inside the preview's `<details>`: `## Breaking
+    Changes` under the name `dependabot[bot]` passes `lint --range` at 0 and
+    renders `<ul><li><h2>`, and a fence swallows the credit into `<pre
     lang="dependabot[bot]">`. So the prose escape takes a fifth rule, at
     `markdown.Line` for every caller: past the containers the template wrote in
     full, the opener a value would write there takes a backslash
@@ -497,14 +498,41 @@ pattern says it means:
     keep rendering. An indent no backslash reaches is dropped by `Line.Prose`,
     which costs nothing: a paragraph's leading blanks do not render. A template's
     own opener stays the template's (`## $subject` is its heading), and a
-    template with no bullet gets the same rule, setext underlines included. Tests
+    template with no bullet gets the same rule, setext underlines and table
+    delimiter rows included, both live on a template's later line (`- a\n  ===`
+    renders `<li><h1>`, `- release\n  ---:` a table with `release` as its
+    header). The rule runs ahead of the span test, because GitHub decides blocks
+    before any span, so the openers rules 1 and 3 would also disarm are its
+    shapes too (`<` and a tag name, `<!--`, `<?`, `<!`, `[^`): a template's line
+    ending can put a value inside a span the scan believes across it, where those
+    rules do not run, and `- `ping\n</details> cc @octocat now` x` rendered no
+    span, a raw `</details>` that closes the preview's block, and a live mention
+    (measured at 487e4ac). The same ending is why the span scan ends a paragraph
+    at a template line that opens a block, as GitHub does, from the same
+    `blockOpenerAt`: `line = "- `ping\n- $subject` x"` rendered two items and a
+    live mention with the fence believing one span. One blunt reading, where the
+    blunt side is the over-escaping one: an indented `2.` or a `<i>` continues a
+    paragraph at GitHub and ends one here, so the fence lands inside a real span
+    as visible noise. GitHub's task-list filter is the one opener-shaped thing
+    that reads rendered text rather than source: `- \[ ] ship it` renders a
+    checkbox, `- \- \[ ] y` one with the bullet deleted, `\[ \]` and `\[&nbsp;]`
+    a checkbox still, and `\[\ ]` the text `[\ ]`. So at a list item's own head,
+    and nowhere else (not behind a quote, not in a cell, not on a continuation
+    line, each measured as text), the backslash goes between the brackets
+    (`taskItemAt`), the one escape that prints. Tests
     `TestProseAtABlockStartOpensNoBlock`, `TestBlockOpenerOwnership`,
+    `TestRawLineEndingsEndTheParagraphTheFenceReads`, `TestCodeSpans`,
     `TestGroupFallbackOpensNoBlockBehindTheBullet`,
     `TestNotesFallbackOpensNoBlockBehindTheBullet`,
     `TestPreviewNotesFallbackOpensNoBlockBehindTheBullet`; mutation rows
     `prose-at-a-block-start-opens-a-block.patch`,
     `prose-keeps-its-indent-at-a-block-start.patch`,
-    `block-rule-kills-inline-syntax-at-a-value-head.patch`.
+    `block-rule-kills-inline-syntax-at-a-value-head.patch`,
+    `task-list-marker-renders-a-checkbox.patch`,
+    `span-scan-crosses-a-line-that-opens-a-block.patch`,
+    `html-block-opener-yields-to-a-crossing-span.patch`,
+    `footnote-definition-yields-to-a-crossing-span.patch`,
+    `table-delimiter-row-opens-a-table.patch`.
   - **`-` behind a line's head and `@` stay unescaped, deliberately**, and the
     prose rules test neither. `-` is a list, setext or thematic-break marker
     only at a block start, which the rule above answers, so escaping it anywhere

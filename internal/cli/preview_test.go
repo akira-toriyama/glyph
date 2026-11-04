@@ -147,7 +147,7 @@ func TestPreviewNotes(t *testing.T) {
 func TestPreviewNotesFallbackOpensNoBlockBehindTheBullet(t *testing.T) {
 	dir := testutil.NewRepo(t)
 	t.Chdir(dir)
-	body := `[` + apiCommit("aaa1111", "dependabot[bot]", "## Breaking Changes") + `]`
+	body := `[` + apiCommit("aaa1111", "dependabot[bot]", "## Breaking Changes") + `,` + apiCommit("bbb2222", "dependabot[bot]", "[ ] ship it") + `]`
 	usePR(t, prServer(t, 7, body))
 
 	code, stdout, stderr := runGlyph(t, "preview", "--pr", "7", "--notes")
@@ -156,6 +156,9 @@ func TestPreviewNotesFallbackOpensNoBlockBehindTheBullet(t *testing.T) {
 	}
 	if !strings.Contains(stdout, `- \## Breaking Changes`) {
 		t.Errorf("the value's opener reached the folded list live:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `- \[\ ] ship it`) {
+		t.Errorf("the value's task-list marker reached the folded list as a checkbox:\n%s", stdout)
 	}
 }
 

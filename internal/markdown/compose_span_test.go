@@ -116,6 +116,13 @@ func FuzzLineProseNeverLeavesATriggerLive(f *testing.F) {
 		{"\t", "    - x"},
 		{"```", " x"},
 		{"~~~", ""},
+		{"[ ] x", ""},
+		{"- [ ] x", ""},
+		{"1. [x] x", ""},
+		{"b `ping", "</details> cc @octocat now"},
+		{"b `ping", "[^1]: cc @octocat now"},
+		{"b release", "---:"},
+		{"b `ping", "- cc @octocat now"},
 	} {
 		f.Add(seed[0], seed[1])
 	}
@@ -175,10 +182,14 @@ func FuzzLineProseNeverLeavesATriggerLive(f *testing.F) {
 				t.Fatalf("Line.Prose(%q) + Raw(glue) + Line.Prose(%q) = %q left %q unbroken at %d, outside every code span of the OUTPUT", a, b, out, trigger, idx)
 			}
 		}
-		for line := range strings.SplitSeq(strings.TrimPrefix(out, "- "), "\n") {
+		item := strings.TrimPrefix(out, "- ")
+		for line := range strings.SplitSeq(item, "\n") {
 			if opensABlock.MatchString(line) {
 				t.Fatalf("Line.Prose(%q) + Raw(glue) + Line.Prose(%q) = %q opens a block on the line %q", a, b, out, line)
 			}
+		}
+		if head, _, _ := strings.Cut(item, "\n"); taskItem.MatchString(rendered(head)) {
+			t.Fatalf("Line.Prose(%q) + Raw(glue) + Line.Prose(%q) = %q renders a checkbox at the item's head %q", a, b, out, head)
 		}
 	})
 }
@@ -196,8 +207,40 @@ var opensABlock = regexp.MustCompile("^(?:" +
 	"[0-9]{1,9}[.)](?:[ \t]|$)|" +
 	"~{3}|" +
 	"`{3,}[^`]*$|" +
-	"(?:-[ \t]*){3,}$|(?:\\*[ \t]*){3,}$|(?:_[ \t]*){3,}$" +
+	"(?:-[ \t]*){3,}$|(?:\\*[ \t]*){3,}$|(?:_[ \t]*){3,}$|" +
+	// HTML blocks, CommonMark's start conditions 1 to 6 (7 cannot interrupt a
+	// paragraph, and at an item's head its tag is rule 1's). The names are the
+	// spec's and cmark-gfm's together.
+	"<(?i:script|pre|style|textarea)(?:[ \t>]|$)|<!--|<\\?|<![A-Za-z]|<!\\[CDATA\\[|" +
+	"</?(?i:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|" +
+	"fieldset|figcaption|figure|footer|form|frame|frameset|h1|h2|h3|h4|h5|h6|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|meta|" +
+	"nav|noframes|ol|optgroup|option|p|param|search|section|source|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:[ \t]|$|>|/>)|" +
+	// a footnote definition (cmark-gfm's scan_footnote_definition)
+	"\\[\\^[^\\] \t]+\\]:|" +
+	// a table delimiter row, read without the header's cell count, which one line
+	// cannot know; cmark's spacechar takes a VT or FF
+	"\\|?[ \t\v\f]*:?-+:?[ \t\v\f]*(?:\\|[ \t\v\f]*:?-+:?[ \t\v\f]*)*\\|?[ \t\v\f]*$" +
 	"))")
+
+// taskItem is GitHub's task-list filter as measured (taskItemAt's table), read over
+// the rendered text of an item's first line: one optional bullet or number, blanks,
+// the brackets, and a space, a tab or a form feed behind them.
+var taskItem = regexp.MustCompile(`^(?:[ \t]*[-+*]|[0-9]+\.)?[ \t]*\[[ xX]\][ \t\f]`)
+
+// rendered approximates the text GitHub renders a line as, for a filter that
+// reads text rather than source: a backslash before an ASCII punctuation byte is
+// dropped and the byte kept. Written out rather than calling literal, so the
+// oracle borrows nothing from the code it judges.
+func rendered(line string) string {
+	var b strings.Builder
+	for i := 0; i < len(line); i++ {
+		if line[i] == '\\' && i+1 < len(line) && strings.IndexByte("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", line[i+1]) >= 0 {
+			i++
+		}
+		b.WriteByte(line[i])
+	}
+	return b.String()
+}
 
 // TestRunsLongerThanCmarkOpensAreNotBelieved pins the MAXBACKTICKS boundary.
 // A code span is the ONLY reason this package copies author bytes raw, so a

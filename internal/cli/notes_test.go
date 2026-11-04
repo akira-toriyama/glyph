@@ -78,6 +78,7 @@ func TestNotesFallbackOpensNoBlockBehindTheBullet(t *testing.T) {
 	testutil.Commit(t, dir, "dependabot[bot]", "## Breaking Changes")
 	testutil.Commit(t, dir, "dependabot[bot]", "> [!WARNING] x")
 	testutil.Commit(t, dir, "dependabot[bot]", "    indented")
+	testutil.Commit(t, dir, "dependabot[bot]", "[ ] ship it")
 	t.Chdir(dir)
 
 	if code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD"); code != 0 {
@@ -90,7 +91,8 @@ func TestNotesFallbackOpensNoBlockBehindTheBullet(t *testing.T) {
 	want := "## Dependencies\n\n" +
 		`- \## Breaking Changes dependabot\[bot]` + "\n" +
 		`- \> \[!WARNING] x dependabot\[bot]` + "\n" +
-		`- indented dependabot\[bot]` + "\n"
+		`- indented dependabot\[bot]` + "\n" +
+		`- \[\ ] ship it dependabot\[bot]` + "\n"
 	if stdout != want {
 		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
 	}

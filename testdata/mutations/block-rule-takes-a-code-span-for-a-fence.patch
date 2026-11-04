@@ -1,8 +1,8 @@
 diff --git a/internal/markdown/escape.go b/internal/markdown/escape.go
-index ab1f949..1ad1011 100644
+index d989098..c9ba5e6 100644
 --- a/internal/markdown/escape.go
 +++ b/internal/markdown/escape.go
-@@ -287,7 +287,7 @@ func blockOpenerAt(s string, i int) (blockOpener, bool) {
+@@ -325,7 +325,7 @@ func blockOpenerAt(s string, i int) (blockOpener, bool) {
  		return blockOpener{end: end, at: i}, true
  	case c == '~' && end-i >= 3:
  		return blockOpener{end: end, at: i}, true
@@ -10,4 +10,4 @@ index ab1f949..1ad1011 100644
 +	case c == '`' && end-i >= 3:
  		return blockOpener{end: end, at: i}, true
  	case (c == '-' || c == '+' || c == '*') && blankAt(s, i+1):
- 		return blockOpener{end: i + 1, at: i, container: true}, true
+ 		return blockOpener{end: i + 1, at: i, container: true, item: true}, true

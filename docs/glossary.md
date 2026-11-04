@@ -736,7 +736,11 @@ span reads as already-inert, is left raw, and renders as a live mention. The fix
 is not a smarter scanner — teaching it those grammars would be a renderer inside
 an escaper, and would still have been wrong — but removing the competing
 constructs beforehand, which makes the backtick-only model exact **by
-construction**. `internal/markdown/markdown.go: codeSpans, paragraphSpans`,
+construction**. The one phantom that is block structure rather than an inline
+competitor — a span the bare bytes suggest across a template line that opens a
+block, which GitHub never forms because blocks are decided first — is ended by
+the scan itself, at the same openers rule 5 reads (t-z7ah).
+`internal/markdown/markdown.go: codeSpans, paragraphBreak, paragraphSpans`,
 `internal/markdown/escape.go` (file header)
 
 The next two are **two different operations**, applied at different times to
@@ -750,7 +754,9 @@ author never wrote, or *delete the author's own words*. Five rules, each blunter
 than the grammar it disarms — `<`, the extended-autolink triggers (`://` after
 http/https/ftp, and the `.` of `www.`), `[`, an entity-shaped `&` of any width, and
 a **block opener at a block start**: the head of a line or of a list item, which
-is where a template's `- ` puts a value, so the bullet protects nothing. Emphasis,
+is where a template's `- ` puts a value, so the bullet protects nothing (a
+task-list marker there takes its backslash *between* the brackets, the one place
+GitHub's checkbox filter, which reads rendered text, cannot read past). Emphasis,
 strikethrough and the author's own code spans are left working, at a block start
 too: a subject is prose the author meant to be read. It only **adds** bytes, so the
 author's text survives as a subsequence and the pass is a fixed point; the one

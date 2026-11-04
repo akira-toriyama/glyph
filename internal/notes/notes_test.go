@@ -323,6 +323,13 @@ func TestGroupFallbackOpensNoBlockBehindTheBullet(t *testing.T) {
 		{"    x", `- x` + credit},
 		{"1. x", `- 1\. x` + credit},
 		{"- - x", `- \- - x` + credit},
+		// GitHub's task-list filter reads the item's rendered head, so rule 3's
+		// backslash before the "[" still renders a checkbox; the one between the
+		// brackets does not (measured 2026-11-04, the bullet variant deleted its
+		// bullet with the brackets).
+		{"[ ] ship it", `- \[\ ] ship it` + credit},
+		{"[x] done", `- \[\x] done` + credit},
+		{"- [ ] x", `- \- \[\ ] x` + credit},
 		{"Bump x from 1 to 2", `- Bump x from 1 to 2` + credit},
 	} {
 		sections, err := Group([]Commit{{SHA: "aaaaaaaaaaaa", Author: "dependabot[bot]", Message: c.message}}, cfg)

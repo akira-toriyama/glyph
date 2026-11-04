@@ -382,6 +382,26 @@ func TestCodeSpans(t *testing.T) {
 		{"a blank line of blanks between CRs still breaks it", "`a\r \t\rb`", nil},
 		{"the CR break bounds the search, not the scan", "`a\r\rb `c` d", []string{"`c`"}},
 
+		// A line that opens a block ends the paragraph as a blank line does, and
+		// blockOpenerAt decides which (rule 5's shapes, one definition). Measured
+		// 2026-11-04 with an @octocat behind each opener: a heading, an item, a
+		// quote, an HTML block and a footnote definition each end the span at
+		// GitHub; an indented "2." does not, and is ended here anyway, the
+		// over-escaping side. An escaped opener and an indented plain line continue
+		// the paragraph.
+		{"a span cannot cross a heading line", "`a\n# b`", nil},
+		{"a span cannot cross an item line", "`a\n- b`", nil},
+		{"a span cannot cross a quote line after a CR", "`a\r> b`", nil},
+		{"a span cannot cross an HTML block line", "`a\n</details> b`", nil},
+		{"a span cannot cross a footnote definition", "`a\n[^1]: b`", nil},
+		{"a span cannot cross a delimiter row", "`a\n---:\nb`", nil},
+		{"a span cannot cross a fence line", "`a\n```\nb`", nil},
+		{"an escaped opener continues the paragraph", "`a\n\\# b`", []string{"`a\n\\# b`"}},
+		{"an ordered marker escaped on its dot continues it", "`a\n1\\. b`", []string{"`a\n1\\. b`"}},
+		{"an indented plain line continues it", "`a\n  b`", []string{"`a\n  b`"}},
+		{"an indented 2. ends it here, not at GitHub", "`a\n  2. b`", nil},
+		{"the opener bounds the search, not the scan", "`a\n- b `c` d", []string{"`c`"}},
+
 		// cmark's closer search is memoized: a search that runs off the end of
 		// the block records, per run length, where the last run of that length
 		// sat, and refuses any later opener whose recorded partner is behind

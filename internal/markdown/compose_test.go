@@ -290,10 +290,12 @@ func TestProseAtABlockStartOpensNoBlock(t *testing.T) {
 			"```a```", "```a``` b", "``` a ` b",
 			// Bytes a marker would need a blank behind.
 			"#64 fix", "#x", "-x", "--flag", "+1 x", "1.2.3 released", "1.x", "=x",
-			"|a|b|", "plain text",
-			// A matched subject under the presets opens with its gitmoji.
+			"|a|b|", "plain text", ":", "|", ":|",
+			// A matched subject under the presets opens with its gitmoji, its type
+			// word or `Revert`, none of which is an opener.
 			":bug:~ ## x", ":bug:~ > x", ":bug:~ 1. x", ":bug:~ - x", ":bug:~     x",
 			":bug:~ ``` x", ":bug:~ ~~~ x", ":bug:~ ---", ":bug:(a-b)~ *x* _y_ `z`",
+			"fix(parser)~: ## x", `Revert "## x"`,
 		} {
 			for _, p := range prefixes {
 				if got, want := line(p, value, false), p+value; got != want {
@@ -303,6 +305,72 @@ func TestProseAtABlockStartOpensNoBlock(t *testing.T) {
 					t.Errorf("Raw(%q) + Prose(%q) + credit:\n got %q\nwant %q", p, value, got, want)
 				}
 			}
+		}
+	})
+
+	t.Run("a task-list marker takes its backslash between the brackets", func(t *testing.T) {
+		// GitHub's task-list filter reads the RENDERED head of a list item, so
+		// rule 3's backslash before the "[" leaves a checkbox, and so does an
+		// authored one; the filter's optional bullet or number is deleted with
+		// the brackets (taskItemAt holds the measurements). Only an item's own
+		// head: behind a quote, with no bullet, or on a continuation line the same
+		// bytes render as text, and they stay as rule 3 alone writes them.
+		items := []string{"- ", "* ", "+ ", "1. ", "1) ", "> - ", "- 1. ", "   - ", "-   ", "-\t"}
+		others := []string{"> ", "- > ", ""}
+		for _, c := range []struct{ value, item, other string }{
+			{"[ ] ship it", `\[\ ] ship it`, `\[ ] ship it`},
+			{"[x] done", `\[\x] done`, `\[x] done`},
+			{"[X] done", `\[\X] done`, `\[X] done`},
+			{"[ ]\tx", "\\[\\ ]\tx", "\\[ ]\tx"},
+			{"[ ]\fx", "\\[\\ ]\fx", "\\[ ]\fx"},
+			{"- [ ] x", `\- \[\ ] x`, `\- \[ ] x`},
+			{"-[ ] x", `-\[\ ] x`, `-\[ ] x`},
+			{"*[ ] x", `*\[\ ] x`, `*\[ ] x`},
+			{"+ [ ] x", `\+ \[\ ] x`, `\+ \[ ] x`},
+			{"1. [ ] x", `1\. \[\ ] x`, `1\. \[ ] x`},
+			{"12.[ ] x", `12.\[\ ] x`, `12.\[ ] x`},
+			{`[ \] x`, `\[\ \] x`, `\[ \] x`},       // an authored escape on the "]" is read through,
+			{`\[ ] x`, `\[\ ] x`, `\[ ] x`},         // and one on the "[",
+			{`\- [ ] x`, `\- \[\ ] x`, `\- \[ ] x`}, // and one on the bullet
+		} {
+			for _, p := range items {
+				if got, want := line(p, c.value, false), p+c.item; got != want {
+					t.Errorf("Raw(%q) + Prose(%q):\n got %q\nwant %q", p, c.value, got, want)
+				}
+				if got, want := line(p, c.value, true), p+c.item+credit; got != want {
+					t.Errorf("Raw(%q) + Prose(%q) + credit:\n got %q\nwant %q", p, c.value, got, want)
+				}
+			}
+			for _, p := range others {
+				if got, want := line(p, c.value, false), p+c.other; got != want {
+					t.Errorf("Raw(%q) + Prose(%q):\n got %q\nwant %q", p, c.value, got, want)
+				}
+			}
+		}
+		// What the filter leaves alone, measured, keeps rule 3's bytes in an item.
+		for _, c := range []struct{ value, want string }{
+			{"[ ]", `\[ ]`},
+			{"[ ]x", `\[ ]x`},
+			{"[ ]\vx", "\\[ ]\vx"},
+			{"[y] x", `\[y] x`},
+			{"[  ] x", `\[  ] x`},
+			{"1) [ ] x", `1\) \[ ] x`},
+			{"12 [ ] x", `12 \[ ] x`},
+			{"> [ ] x", `\> \[ ] x`},
+			{"## [ ] x", `\## \[ ] x`},
+			{"- - [ ] x", `\- - \[ ] x`},
+			{`\\[ ] x`, `\\\[ ] x`}, // an even run renders a backslash, which is no bullet
+			{"a [ ] x", `a \[ ] x`},
+		} {
+			for _, p := range items {
+				if got, want := line(p, c.value, false), p+c.want; got != want {
+					t.Errorf("Raw(%q) + Prose(%q):\n got %q\nwant %q", p, c.value, got, want)
+				}
+			}
+		}
+		// The blank the filter needs can be the template's: a bare "[ ]" credited.
+		if got, want := line("- ", "[ ]", true), `- \[\ ]`+credit; got != want {
+			t.Errorf("Raw(\"- \") + Prose(\"[ ]\") + credit:\n got %q\nwant %q", got, want)
 		}
 	})
 
@@ -364,10 +432,48 @@ func TestBlockOpenerOwnership(t *testing.T) {
 		{"a bare CR does too", []field{raw("- a\r- "), prose("> x")}, "- a\r- \\> x"},
 		{"and the indent goes there as well", []field{raw("- a\n"), prose("    x")}, "- a\nx"},
 		{"block structure outranks a span the scan sees across a line ending", []field{raw("- `ping\n"), prose("## x"), raw("` y")}, "- `ping\n\\## x` y"},
+		// The span map reads the line with rule 5's backslashes in place: the
+		// bare "## <x>" would end the scan's paragraph where GitHub, reading
+		// "\## <x>", continues it and forms the span, so the "<" inside it is code
+		// and a backslash before it would print there (measured 2026-11-04 on both
+		// forms; spansBehindOpeners). A fence's run is the same case with a
+		// backtick: the two-runs pair across the escaped three, which the closer
+		// search reads through its backslash.
+		{"the span map is read behind rule 5's backslashes", []field{raw("- `ping\n"), prose("## <x>"), raw("` y")}, "- `ping\n\\## <x>` y"},
+		{"a fence's escaped run is paired across as GitHub pairs it", []field{raw("- ``a\n"), prose("``` <b>"), raw("\n``")}, "- ``a\n\\``` <b>\n``"},
 		// Two fences a template's line ending separates pair as one span in the
 		// bare bytes. Each takes its backslash, the span is gone, and the tag
 		// between them is prose: left out of rule 1 it is live raw HTML at GitHub.
 		{"a fence's backslash dissolves the span it would pair into", []field{raw("- "), prose("``` <i>"), raw("\n  "), prose("```")}, "- \\``` \\<i>\n  \\```"},
+		// The openers rules 1 and 3 would have disarmed are rule 5's where those
+		// rules do not run: inside a span the scan believes across a template's
+		// line ending. Measured raw, the paragraph ends at the tag or the footnote
+		// definition, no span forms, "</details>" closes the preview's block and
+		// the mention behind it is live; escaped, the span is real and the mention
+		// inert (blockOpenerAt's table).
+		{"an HTML block opener inside a span crossing a line ending", []field{raw("- `ping\n"), prose("</details> cc @octocat now"), raw("` x")}, "- `ping\n\\</details> cc @octocat now` x"},
+		{"a tag that opens a block the same way", []field{raw("- `ping\n"), prose("<div> cc @octocat now"), raw("` x")}, "- `ping\n\\<div> cc @octocat now` x"},
+		{"a footnote definition there", []field{raw("- `ping\n"), prose("[^1]: cc @octocat now"), raw("` x")}, "- `ping\n\\[^1]: cc @octocat now` x"},
+		// The template's own opener on that line ends the paragraph, so the span
+		// the bare bytes suggest is a phantom and the mention behind it is prose.
+		{"the template's own HTML block ends the span the scan would believe", []field{raw("- `ping\n<div>"), prose("cc @octocat now"), raw("` x")}, "- `ping\n<div>cc ``@octocat`` now` x"},
+		// A delimiter row on a template's later line turns the line above into a
+		// table's header; a credit behind it is no row.
+		{"a delimiter row on a template's later line", []field{raw("- release\n  "), prose("---:")}, "- release\n  \\---:"},
+		{"a delimiter row opening on a colon", []field{raw("- release\n  "), prose(":-")}, "- release\n  \\:-"},
+		{"a delimiter row opening on a pipe", []field{raw("- release\n  "), prose("|---")}, "- release\n  \\|---"},
+		{"a delimiter row ending in a form feed", []field{raw("- release\n  "), prose("---\f")}, "- release\n  \\---\f"},
+		{"a delimiter row opening on a vertical tab", []field{raw("- release\n  "), prose("\v-")}, "- release\n  \v\\-"},
+		{"a credit behind a delimiter row disarms it", []field{raw("- release\n  "), prose("---:"), raw(" x")}, "- release\n  ---: x"},
+		{"the template's own delimiter row", []field{raw("- a\n  ---:")}, "- a\n  ---:"},
+		// A task-list marker is read at an item's head alone, whoever wrote the
+		// item marker, and only where a value touches the brackets.
+		{"the template's own checkbox stays", []field{raw("- [x] "), prose("y")}, "- [x] y"},
+		{"a checkbox a value completes", []field{raw("- ["), prose(" ] y")}, "- [\\ ] y"},
+		{"a checkbox behind the template's nested item", []field{raw("- - "), prose("[ ] y")}, "- - \\[\\ ] y"},
+		{"a checkbox behind the template's quote inside an item is text", []field{raw("- > "), prose("[ ] y")}, "- > \\[ ] y"},
+		{"an item's head on a template's second line", []field{raw("- a\n- "), prose("[ ] y")}, "- a\n- \\[\\ ] y"},
+		{"a continuation line is no item's head", []field{raw("- a\n  "), prose("[ ] y")}, "- a\n  \\[ ] y"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			var l Line
@@ -402,17 +508,25 @@ func TestBlockOpenerOwnership(t *testing.T) {
 
 // TestRawLineEndingsEndTheParagraphTheFenceReads pins paragraphBreak at Line,
 // where a note.line literal reaches it. A blank line spelled in CRs ends the
-// paragraph at GitHub, the backticks either side pair with nothing, and an unfenced
-// mention behind them is live: measured at 2f9428a through `glyph notes` on the
-// first two (`lint` and `notes` both exit 0). The last two must keep their span: one
-// line ending is no paragraph break, and GitHub renders the handle as code there.
+// paragraph at GitHub, and so does a template line that opens a block: a heading,
+// a second item, a quote, an HTML block. The backticks either side pair with
+// nothing, and an unfenced mention behind them is live: measured at 2f9428a
+// through `glyph notes` on the first two and at 487e4ac on the next four (`lint`
+// and `notes` both exit 0 on each). The last three must keep their span: one line
+// ending is no paragraph break, nor is an indented plain line, and GitHub renders
+// the handle as code there.
 func TestRawLineEndingsEndTheParagraphTheFenceReads(t *testing.T) {
 	for _, c := range []struct{ glue, want string }{
 		{"\r\r", "- `ping\r\r:bug:~ cc ``@octocat`` now` x"},
 		{"\n\r", "- `ping\n\r:bug:~ cc ``@octocat`` now` x"},
+		{"\r# ", "- `ping\r# :bug:~ cc ``@octocat`` now` x"},
+		{"\n- ", "- `ping\n- :bug:~ cc ``@octocat`` now` x"},
+		{"\n> ", "- `ping\n> :bug:~ cc ``@octocat`` now` x"},
+		{"\n<div>", "- `ping\n<div>:bug:~ cc ``@octocat`` now` x"},
 		{"\r\n\r\n", "- `ping\r\n\r\n:bug:~ cc ``@octocat`` now` x"},
 		{"\r", "- `ping\r:bug:~ cc @octocat now` x"},
 		{"\r\n", "- `ping\r\n:bug:~ cc @octocat now` x"},
+		{"\n  ", "- `ping\n  :bug:~ cc @octocat now` x"},
 	} {
 		var l Line
 		l.Raw("- `ping" + c.glue)
