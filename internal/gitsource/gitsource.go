@@ -180,7 +180,10 @@ func RemoteURLs(ctx context.Context, dir string) (map[string]string, error) {
 // name. Believed, that name makes the new default branch read as off the
 // default branch, so a violating push lands on it with no remedy named while
 // doctor passes (measured on git 2.54;
-// TestPrePushReadsADanglingDefaultBranchAsUnrecorded).
+// TestPrePushReadsADanglingDefaultBranchAsUnrecorded). A recorded name whose
+// commit this clone holds and cannot read is the failure it is, not
+// unrecorded: set-head repairs no object store
+// (TestDefaultBranchFailsOnATargetGitCannotRead).
 func DefaultBranch(ctx context.Context, dir, remote string) (string, error) {
 	prefix := "refs/remotes/" + remote + "/"
 	out, recorded, err := runAnswer(ctx, dir, "symbolic-ref", "symbolic-ref", "--quiet", "--end-of-options", prefix+"HEAD")
@@ -289,14 +292,48 @@ func tagLines(out []byte) []string {
 	return tags
 }
 
-// namesCommit reports whether rev resolves to a commit. A NO is git's exit 1
-// under --verify --quiet — an unborn HEAD, a name nothing carries, a tag on a
-// blob — and is an answer, not a failure; anything else (not a repository) is
-// the git/IO error it always was. The interrupt is asked first, as everywhere
-// in this package (see isAncestor for why the order is the whole point).
+// namesCommit reports whether rev names a commit this repository can read. A
+// NO is an answer about the name — git knows no such name (an unborn HEAD, a
+// dangling ref, a word that is no revision), holds no object under it, or
+// holds an object that is no commit (a blob, a tree, a tag on either) — and
+// never a failure to read one: an empty or unopenable loose object and a
+// commit whose body does not parse are the git/IO error they always were, as
+// is anything else (not a repository, no git). The interrupt is asked first at
+// each step, as everywhere in this package (see isAncestor for why the order
+// is the whole point).
+//
+// Asked of `cat-file -t rev^{}`: the peel parses the object, so exit 0 names a
+// readable object of the printed type — a tag peeled to its target — and one
+// call answers the ordinary path. Its failure is deferred, not read: git exits
+// 128 alike for a name it does not know, an object it does not hold and a held
+// object it cannot read. Not `rev-parse --verify --quiet rev^{commit}`, whose
+// exit 1 is the same conflation — measured on git 2.54, a dangling ref, a sha
+// not in the store, a blob, an empty object file, one chmod 000 and a
+// `hash-object --literally` commit all answer 1, only non-zlib bytes 128 — so
+// a corrupt store read as "holds no commit" with a nil error: "this commit
+// never landed" to the release walk, "unrecorded" to DefaultBranch. The 128 is
+// taken apart by two questions whose exit 1 each means one thing: `rev-parse
+// --verify --quiet rev` (1: git knows no such name) and `cat-file -e rev` (1:
+// nothing in the store under it). Past both, the object is held and git could
+// not read it, and the cat-file failure carries git's own diagnosis
+// (TestIsAncestorFailsWhereGitCouldNotAnswer, TestDefaultBranchFailsOnATargetGitCannotRead).
 func namesCommit(ctx context.Context, dir, rev string) (bool, error) {
-	_, named, err := runAnswer(ctx, dir, "rev-parse", "rev-parse", "--verify", "--quiet", "--end-of-options", rev+"^{commit}")
-	return named, err
+	typ, terr := run(ctx, dir, "cat-file", "-t", "--end-of-options", rev+"^{}")
+	if terr == nil {
+		return strings.TrimSpace(string(typ)) == "commit", nil
+	}
+	if core.IsInterrupted(terr) {
+		return false, terr
+	}
+	_, known, err := runAnswer(ctx, dir, "rev-parse", "rev-parse", "--verify", "--quiet", "--end-of-options", rev)
+	if err != nil || !known {
+		return false, err
+	}
+	_, held, err := runAnswer(ctx, dir, "cat-file -e", "cat-file", "-e", "--end-of-options", rev)
+	if err != nil || !held {
+		return false, err
+	}
+	return false, terr
 }
 
 // isTag reports whether refs/tags/<name> exists — an exact ref, never a
@@ -616,24 +653,26 @@ func have(ctx context.Context, dir string, shas []string) (map[string]bool, erro
 // A NO is (false, nil) in the two spellings that answer the question the walk
 // asks — "did this listed commit land on the released branch under its own
 // identity?": exit 1, the honest no, and exit 128 for a name that holds no
-// commit here. Every other failure is an error, exit 4 at the top: a corrupt
-// object, a commit gone from the middle of the history and a directory that is no
-// repository say nothing about landing, and read as NO each is "this commit never
-// landed" returned with a nil error (measured on git 2.54;
-// TestIsAncestorFailsWhereGitCouldNotAnswer).
+// commit here. Every other failure is an error, exit 4 at the top: a held
+// object git cannot read, a commit gone from the middle of the history and a
+// directory that is no repository say nothing about landing, and read as NO
+// each is "this commit never landed" returned with a nil error (measured on
+// git 2.54; TestIsAncestorFailsWhereGitCouldNotAnswer).
 //
 // git exits 128 for all of those alike, so the failure is asked about, as
 // mergedTags asks about its own, rather than matched in a message whose text is
-// not an interface: namesCommit answers 1 for a name that holds no commit and 128
-// for a corrupt one.
+// not an interface: namesCommit answers NO for a name that holds no commit and
+// git's failure for an object this repository holds and cannot read.
 //
-// The interrupt is classified FIRST (runAnswer), and of each probe after it. A
-// cancelled context does not stop git politely: exec.CommandContext KILLS the
-// child, and a killed child is an *exec.ExitError like any other (measured on
-// this toolchain: err "signal: killed", errors.As true, ctx.Err()
-// context.Canceled). Read as an answer, a Ctrl-C during the footprint walk is
-// swallowed into "this commit never landed", which governs which commits a
-// release counts.
+// The interrupt is classified FIRST (runAnswer), and of each probe after it
+// (TestIsAncestorInterruptDuringTheProbeCarriesOut: the probe's interrupt is
+// neither nil nor a NO, so a loop that does not return it moves on and hands
+// back merge-base's own failure in the abort's place). A cancelled context does
+// not stop git politely: exec.CommandContext KILLS the child, and a killed child
+// is an *exec.ExitError like any other (measured on this toolchain: err
+// "signal: killed", errors.As true, ctx.Err() context.Canceled). Read as an
+// answer, a Ctrl-C during the footprint walk is swallowed into "this commit
+// never landed", which governs which commits a release counts.
 //
 // sha and rev are object names the caller took from git or from a GitHub sha
 // field, and --end-of-options pins both as revisions rather than options.

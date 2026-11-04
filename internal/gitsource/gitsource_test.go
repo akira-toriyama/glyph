@@ -461,6 +461,22 @@ func TestMergedTagsOnAnUnbornHEADIsEmpty(t *testing.T) {
 	}
 }
 
+// TestMergedTagsFailsOnARevGitCannotRead: the empty answer is for a rev naming
+// no commit, and a rev whose commit this repository holds and cannot read
+// names one. Read as empty, a corrupt HEAD said the history holds no release
+// and the walk stepped from v0.0.0 with a nil error.
+func TestMergedTagsFailsOnARevGitCannotRead(t *testing.T) {
+	dir := testutil.NewRepo(t)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.0")
+	emptyObject(t, dir, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
+
+	got, err := mergedTags(context.Background(), dir, "HEAD")
+	ce := core.AsError(err)
+	if ce == nil || ce.Code != core.CodeAPI || !strings.Contains(err.Error(), "is empty") {
+		t.Fatalf("mergedTags over an empty HEAD object = %v, %v; want CodeAPI carrying git's \"is empty\"", got, err)
+	}
+}
+
 // TestHeadTreesListsWhatHEADRecordsAsADirectory: the package-paths check asks
 // git, not the filesystem, whether a declared path is a subtree, because
 // attribution reads git's path strings (t-fdd8 (1)). So the listing must be
@@ -574,6 +590,60 @@ func TestDefaultBranchReadsADanglingRefAsUnrecorded(t *testing.T) {
 	}
 }
 
+// TestDefaultBranchFailsOnATargetGitCannotRead: the recorded name's commit is
+// in the store and git cannot read it — the shapes a crash, a full disk, a
+// permission slip and a bad write leave — and that is git failing, not a name
+// that holds nothing. Read as unrecorded, the hook named set-head over an
+// object store set-head cannot repair, and doctor rendered advice at exit 0
+// where the read must exit 4. The error carries git's own diagnosis. Each row
+// starts from a target that reads (the control).
+func TestDefaultBranchFailsOnATargetGitCannotRead(t *testing.T) {
+	for name, tc := range map[string]struct {
+		corrupt func(t *testing.T, dir, sha string) (target string)
+		wantMsg string
+	}{
+		"an empty object file": {func(t *testing.T, dir, sha string) string {
+			emptyObject(t, dir, sha)
+			return sha
+		}, "is empty"},
+		"an object file git cannot open": {func(t *testing.T, dir, sha string) string {
+			unreadableObject(t, dir, sha)
+			return sha
+		}, "Permission denied"},
+		"a commit git cannot parse": {func(t *testing.T, dir, _ string) string {
+			return unparseableCommit(t, dir)
+		}, "bogus commit object"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := testutil.NewRepo(t)
+			head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			testutil.Git(t, dir, "akira-toriyama", "update-ref", "refs/remotes/origin/main", head)
+			testutil.Git(t, dir, "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+			if got, err := DefaultBranch(context.Background(), dir, "origin"); err != nil || got != "main" {
+				t.Fatalf("DefaultBranch over a readable target = %q, %v; want main (the control)", got, err)
+			}
+
+			// update-ref parses the object it is pointed at and refuses the
+			// unparseable commit (exit 128, measured on git 2.54), so a target
+			// other than head is written into the loose ref by hand — the bytes a
+			// fetch would have left before the object went bad.
+			if target := tc.corrupt(t, dir, head); target != head {
+				if err := os.WriteFile(filepath.Join(dir, ".git", "refs", "remotes", "origin", "main"), []byte(target+"\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := DefaultBranch(context.Background(), dir, "origin")
+			ce := core.AsError(err)
+			if ce == nil || ce.Code != core.CodeAPI {
+				t.Fatalf("DefaultBranch over %s = %q, %v; want CodeAPI — unrecorded names set-head as the remedy, and set-head repairs no object store", name, got, err)
+			}
+			if !strings.Contains(err.Error(), tc.wantMsg) {
+				t.Errorf("the error must carry git's own diagnosis: got %q, want it to mention %q", err, tc.wantMsg)
+			}
+		})
+	}
+}
+
 // breakObject overwrites one loose object with bytes that are no zlib stream.
 // Fixture commits stay loose: GitEnv pins gc.auto off.
 func breakObject(t *testing.T, dir, sha string) {
@@ -585,6 +655,44 @@ func breakObject(t *testing.T, dir, sha string) {
 	if err := os.WriteFile(path, []byte("this is no zlib stream"), 0o600); err != nil {
 		t.Fatalf("break the loose object: %v", err)
 	}
+}
+
+// emptyObject truncates one loose object to no bytes — what a crash or a full
+// disk leaves ("object file … is empty").
+func emptyObject(t *testing.T, dir, sha string) {
+	t.Helper()
+	path := filepath.Join(dir, ".git", "objects", sha[:2], sha[2:])
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatalf("chmod the loose object: %v", err)
+	}
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatalf("empty the loose object: %v", err)
+	}
+}
+
+// unreadableObject takes every permission off one loose object: git can stat
+// it, so the object is held, and cannot open it. Root opens it anyway.
+func unreadableObject(t *testing.T, dir, sha string) {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a mode 000 file")
+	}
+	if err := os.Chmod(filepath.Join(dir, ".git", "objects", sha[:2], sha[2:]), 0); err != nil {
+		t.Fatalf("chmod the loose object: %v", err)
+	}
+}
+
+// unparseableCommit writes an object whose header names a commit and whose
+// body is none (`hash-object -t commit --literally`), and returns its sha.
+// `cat-file --batch-check` lists it as a commit; parsing it is "bogus commit
+// object".
+func unparseableCommit(t *testing.T, dir string) string {
+	t.Helper()
+	body := filepath.Join(t.TempDir(), "body")
+	if err := os.WriteFile(body, []byte("not a commit\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return testutil.Git(t, dir, "akira-toriyama", "hash-object", "-t", "commit", "--literally", "-w", body)
 }
 
 // TestRemoteURLsKeepsASpacedRemoteName: a remote name may hold a space —
@@ -869,9 +977,12 @@ func TestIsAncestor(t *testing.T) {
 // ("this commit never landed"), so only git's two spellings of one read as NO
 // (TestIsAncestor). Every failure here exits non-zero as well, most with the same
 // 128, and read as NO each is a wrong answer about which commits a release counts,
-// returned with a nil error. The stub that fails only the ancestry question leaves
-// the probes answering, so that row reaches the last arm rather than failing in a
-// probe.
+// returned with a nil error. The held objects git cannot read — empty, unopenable,
+// a commit whose body does not parse, non-zlib bytes — are the rows the probe must
+// tell from a name that holds nothing: `rev-parse --verify --quiet ^{commit}`
+// answers 1 for all but the last of them, as it does for the absent sha. The stub
+// that fails only the ancestry question leaves the probes answering, so that row
+// reaches the last arm rather than failing in a probe.
 func TestIsAncestorFailsWhereGitCouldNotAnswer(t *testing.T) {
 	realGit, err := exec.LookPath("git")
 	if err != nil {
@@ -900,6 +1011,25 @@ func TestIsAncestorFailsWhereGitCouldNotAnswer(t *testing.T) {
 			dir, root, _, _ := history(t)
 			breakObject(t, dir, root)
 			return dir, root, "HEAD", "git merge-base"
+		},
+		"the commit asked about is an empty object file": func(t *testing.T) (string, string, string, string) {
+			dir, root, _, _ := history(t)
+			emptyObject(t, dir, root)
+			return dir, root, "HEAD", "is empty"
+		},
+		"the commit asked about is an object file git cannot open": func(t *testing.T) (string, string, string, string) {
+			dir, root, _, _ := history(t)
+			unreadableObject(t, dir, root)
+			return dir, root, "HEAD", "Permission denied"
+		},
+		"the commit asked about is a commit git cannot parse": func(t *testing.T) (string, string, string, string) {
+			dir, _, _, _ := history(t)
+			return dir, unparseableCommit(t, dir), "HEAD", "bogus commit object"
+		},
+		"the rev asked about is an empty object file": func(t *testing.T) (string, string, string, string) {
+			dir, root, mid, _ := history(t)
+			emptyObject(t, dir, mid)
+			return dir, root, mid, "is empty"
 		},
 		"a commit on the walk is corrupt, both names answering": func(t *testing.T) (string, string, string, string) {
 			dir, root, mid, head := history(t)
@@ -1003,6 +1133,55 @@ func TestIsAncestorCancelIsInterrupted(t *testing.T) {
 	ce := core.AsError(err)
 	if ce == nil || ce.Code != core.CodeInterrupted {
 		t.Fatalf("isAncestor cancelled mid-run = %v, want CodeInterrupted (%d) — a killed child arrives as an *exec.ExitError, so reading the exit status before the context turns the abort into a silent \"did not land\"", err, core.CodeInterrupted)
+	}
+}
+
+// TestIsAncestorInterruptDuringTheProbeCarriesOut is the same abort one read
+// deeper: merge-base has failed for its own reason and the cancel lands in the
+// probe asking whether the name holds a commit. The probe's interrupt is
+// neither nil nor a NO, so a loop that does not return it moves on, the sticky
+// cancel fails the next probe the same way, and isAncestor hands back
+// merge-base's own failure in the abort's place — exit 4, the code the fleet's
+// wrappers retry, on a run the operator stopped, with no layer above asking the
+// context again. The fake git fails the ancestry question, announces the probe
+// and blocks; the cancel lands only once it has, and the test fails unless it
+// did (a cancel landing elsewhere proves nothing about this arm).
+func TestIsAncestorInterruptDuringTheProbeCarriesOut(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stub git is a shell script")
+	}
+	dir := t.TempDir()
+	bin := t.TempDir()
+	asked := filepath.Join(dir, "asked")
+	stub := "#!/bin/sh\ncase \"$*\" in *merge-base*) echo 'fatal: the ancestry question failed for its own reason' >&2; exit 2;; esac\ntouch " + asked + "\nexec sleep 60\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(stub), 0o700); err != nil { //nolint:gosec // a stub git must be executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for {
+			if _, err := os.Stat(asked); err == nil {
+				cancel()
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Millisecond):
+			}
+		}
+	}()
+
+	_, err := isAncestor(ctx, dir, "any-sha", "HEAD")
+	if _, serr := os.Stat(asked); serr != nil {
+		t.Fatalf("the fake git never reached the probe, so the cancel landed elsewhere and the run proves nothing: %v", serr)
+	}
+	ce := core.AsError(err)
+	if ce == nil || ce.Code != core.CodeInterrupted {
+		t.Fatalf("isAncestor with the cancel landing in the probe = %v, want CodeInterrupted (%d), not merge-base's failure in the abort's place", err, core.CodeInterrupted)
 	}
 }
 

@@ -4018,12 +4018,17 @@ The severities are the argued part:
   no hook and calls no API — `internal/cli` asks git, fires the commit-msg probe
   and fetches the repository object, and hands each answer over in
   `doctor.Input` with its error, so a failed read degrades only the checks that
-  read it. One answer carries no error: the probe's claim (`probeClaimed`)
-  reads git's config the way the fired hook does, and a question git does not
-  answer reads as unset. Two failures end the run before doctor judges
-  anything: a repository it cannot name (no `--repo`, `$GITHUB_REPOSITORY` or
-  GitHub `origin`, or a malformed one — usage, 2), and an interrupt in any
-  read.
+  read it. Two answers carry no error, both read only of a fired hook that
+  exited `0`, in this order: whether `glyph` resolves (`glyphResolves` asks the
+  hook's own `command -v glyph` in the hook's shell, and a shell that did not
+  answer reads as absent), then the probe's claim (`probeClaimed` reads git's
+  config the way the fired hook does, and a question git does not answer reads
+  as unset). Because neither hands an error back, `internal/cli` asks the
+  context once after both, and `internal/doctor` reads the absence before the
+  claim (`commit-msg-hook-fires`, below). Two failures end the run before
+  doctor judges anything: a repository it cannot name (no `--repo`,
+  `$GITHUB_REPOSITORY` or GitHub `origin`, or a malformed one — usage, 2), and
+  an interrupt in any read.
 - **The byte-identical hook is also FIRED (`commit-msg-hook-fires`).** Current
   bytes prove the script; they prove nothing about the glyph the script resolves
   on PATH at run time, and the script blocks only on the gate code and waves
