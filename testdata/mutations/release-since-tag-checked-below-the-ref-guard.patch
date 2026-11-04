@@ -1,11 +1,11 @@
 diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
-index e8ca71b..91a3802 100644
+index d55d361..e314536 100644
 --- a/internal/cli/cmd_release.go
 +++ b/internal/cli/cmd_release.go
 @@ -180,9 +180,6 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
- 	// answer, one source of truth in resolveRepo). The tag was checked only
- 	// inside sinceTagInput, below the ref guard, so a malformed one off the
- 	// default branch answered the guard's 4 (t-wjbs, measured 2026-10-26).
+ 	// answer, one source of truth in resolveRepo). Checked only inside
+ 	// sinceTagInput, below the ref guard, a malformed tag off the default
+ 	// branch would answer the guard's 4 (t-wjbs).
 -	if err := walk.CheckTag(o.tag); err != nil {
 -		return err
 -	}

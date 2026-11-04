@@ -149,8 +149,7 @@ func (w *walk) walkRefusal() error {
 // counts. An interrupt carries out as itself. The walk asks it over its
 // wedges and the partition over the refusals of both stages, grammar rows
 // counted as found ("the rest of the range"), and preview's pull side over
-// the pull's ("the rest of the pull's listing": a pull is not a range,
-// t-wjbs correct-r1-6).
+// the pull's ("the rest of the pull's listing": a pull is not a range).
 func (w Walker) Outranks(rest string, found bool, err error) bool {
 	if !found || core.IsInterrupted(err) {
 		return false

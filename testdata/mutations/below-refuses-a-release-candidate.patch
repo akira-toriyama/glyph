@@ -6,7 +6,7 @@ diff --git a/internal/walk/base.go b/internal/walk/base.go
  func belowBound(rest string) (bound, prefix string, v bump.Version, err error) {
  	bound = strings.TrimSpace(rest)
 -	prefix, v, perr := bump.ParseBaseTag(bound)
-+	prefix = bump.LinePrefix(bound)
++	prefix = bound[:strings.LastIndexByte(bound, '/')+1]
 +	v, perr := bump.ParseVersionOn(prefix, bound)
  	if perr != nil {
  		return "", "", bump.Version{}, core.Usagef("--since-tag=below: needs a version-shaped tag to resolve the predecessor of, got %q (%v)", rest, perr)

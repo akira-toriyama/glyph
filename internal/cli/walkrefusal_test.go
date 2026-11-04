@@ -306,13 +306,13 @@ func TestNotesSinceTagDirectPushUnclaimedIsTheWedge(t *testing.T) {
 // hands the operator and checks that the door actually opens.
 //
 // For a MERGE-merged pull the escape is the intuitive one — a base at or past
-// the offending commit — and it is only intuitive again because of t-8xsb.
-// Before mainFootprint, expanding a pull re-fetched its ENTIRE listing whenever
-// its merge point was in range, so the offending commit came back over the API
-// however far past it the tag sat; the hint had to send everyone to the merge
-// COMMIT, throwing away every good commit in between. Now a listed commit that
-// landed outside the range is dropped before it is parsed, so the first two rows
-// below open (they exited 3 until this fix) and the hint names the commit.
+// the offending commit — because a listed commit that landed outside the range
+// is dropped before it is parsed (mainFootprint, t-8xsb). Were the pull's
+// ENTIRE listing re-fetched whenever its merge point is in range, the
+// offending commit would come back over the API however far past it the tag
+// sat, and the hint would have to send everyone to the merge COMMIT, throwing
+// away every good commit in between; the second and third rows below are that
+// door, and the hint names the commit.
 //
 // The four tags are the whole table, on one repository: pull #7 landed through
 // the merge button with a non-conforming commit B1 inside it, and #8

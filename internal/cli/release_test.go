@@ -1186,10 +1186,10 @@ func TestReleaseNoneReportsAnUnwitnessedDeleteHonestly(t *testing.T) {
 
 // TestReleaseNoneDeletesARepeatedDraftOnce: a releases listing that names one
 // draft twice — what a release created between two page reads leaves behind —
-// is one draft, by its id. Planned twice, a none verdict deleted it twice:
-// the first DELETE went, the second's first attempt answered 404, and the run
-// failed at 4 with the draft gone, while the dry run counted two residuals
-// (t-wjbs correct-a-5, measured 2026-10-26 on 82aebc5 and v5.0.0 alike). The
+// is one draft, by its id. Planned twice, a none verdict would delete it
+// twice: the first DELETE goes, the second's first attempt answers 404, and
+// the run fails at 4 with the draft gone, while the dry run counts two
+// residuals (t-wjbs). The
 // stand-in answers a DELETE of a release it has already deleted 404, as
 // GitHub does.
 func TestReleaseNoneDeletesARepeatedDraftOnce(t *testing.T) {

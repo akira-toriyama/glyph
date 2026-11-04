@@ -102,7 +102,7 @@ func (s Sigil) String() string { return string(rune(s)) }
 type Config struct {
 	Schema         int
 	ExcludeAuthors []string
-	commit         Commit
+	commit         commit
 	Patterns       []Pattern
 	Note           Note
 	// Packages is the [[packages]] array in file order, empty when the file
@@ -120,7 +120,7 @@ type Config struct {
 	spellers []scopeSpeller
 }
 
-// Commit carries the human-facing template block. glyph never parses it —
+// commit carries the human-facing template block. glyph never parses it —
 // the preset bytes init writes are its one home, and no validation applies
 // beyond TOML well-formedness. Its one reader is Config.subjectForm, which
 // quotes the template's first line back inside the no-pattern-matches lint
@@ -129,7 +129,7 @@ type Config struct {
 // There is deliberately no style key: the label the presets once wrote here
 // named a grammar the patterns alone decide, and nothing read it (DESIGN §2).
 // The strict decoder refuses it as unknown, which is the whole enforcement.
-type Commit struct {
+type commit struct {
 	template string
 }
 
@@ -455,7 +455,7 @@ func Load(data []byte) (*Config, error) {
 	return &Config{
 		Schema:         *r.Schema,
 		ExcludeAuthors: r.ExcludeAuthors,
-		commit:         Commit{template: r.Commit.Template},
+		commit:         commit{template: r.Commit.Template},
 		Patterns:       patterns,
 		Note: Note{
 			Spans:       spans,

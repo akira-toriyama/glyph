@@ -169,7 +169,7 @@ func TestCleanup(t *testing.T) {
 // will DO. Every row is a real invocation; the ones that carry the incidents are
 // the -m/-F rows, where assuming the editor's cleanup is what made the hook and
 // CI disagree about the same commit, the commit.verbose rows without an editor,
-// where git cuts and the hook used not to (t-3p3k (2)), and the git merge rows,
+// where git cuts and a hook that waits for an editor does not (t-3p3k), and the git merge rows,
 // where commit.verbose means nothing to git. The real-git oracle for the grid is
 // internal/cli's TestHookCutMatchesGit.
 func TestResolveCleanupMode(t *testing.T) {

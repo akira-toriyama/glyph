@@ -29,11 +29,10 @@
 # whose every changed line in the gated files is a SHA-pinned `uses:` step put
 # back as the same line with another SHA, or another `# vX.Y.Z` comment —
 # dependabot's bump, and nothing else. No text assertion can express a SHA
-# swap and a bot cannot write the trailer below, so until the gate learned
-# that shape every such pull went red: six of them (#88, #89, #90, #158, #287,
-# #315), two re-authored by hand to carry the trailer, two merged red by
-# fleet-automerge, which reads required checks alone — which is also why the
-# gate could not be made required. The shape is read strictly, by pin_swaps
+# swap and a bot cannot write the trailer below, so without this stand-down
+# every such pull is red and a required gate would hold dependabot's bumps
+# for good (the incident: glossary §7, dist-gate). The shape is read
+# strictly, by pin_swaps
 # below: a changed `with:` line, a step moved, added or re-indented, an action
 # replaced by another, a pin that is a tag rather than 40 hex, a mode change, a
 # rename, a binary — each of those is judged like any other change.

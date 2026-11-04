@@ -514,8 +514,8 @@ func attributionWedge(refused []placementRefusal, owner, repo string, lines []Li
 // as bump.Fold words its refusal of a range (bump.RangeRefusal) — a lone
 // grammar row with the grammar's remedy, a lone attribution row with the
 // escapes its own sentence names — never the walk's published branch or a
-// tag to cut (DESIGN §4: the authoring remedy is kept for --range; t-wjbs,
-// measured 2026-10-26: an unpushed commit was told to cut a tag on every
+// tag to cut (DESIGN §4: the authoring remedy is kept for --range; t-wjbs —
+// worded as the walk's, an unpushed commit is told to cut a tag on every
 // line).
 func rangeRefusal(refused []placementRefusal) error {
 	rows := make([]bump.Refusal, 0, len(refused))
