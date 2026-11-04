@@ -182,7 +182,15 @@ func DefaultBranch(ctx context.Context, dir, remote string) (string, error) {
 		// hand-edited: `git remote add` refuses it) can record nothing, and
 		// symbolic-ref answers that 128 "No such ref", not 1. Asked of git
 		// rather than matched in that message: its text is not an interface.
-		if refNameRefused(ctx, prefix+"HEAD") {
+		// The interrupt is asked first, as mergedTags asks it of its second
+		// read: a cancel landing in this probe kills the child, and read as
+		// "git could not say" it would hand back the symbolic-ref failure in
+		// the interrupt's place.
+		can, perr := RemoteCanRecordHead(ctx, dir, remote)
+		switch {
+		case perr != nil && core.IsInterrupted(perr):
+			return "", perr
+		case perr == nil && !can:
 			return "", nil
 		}
 		return "", err
@@ -190,17 +198,6 @@ func DefaultBranch(ctx context.Context, dir, remote string) (string, error) {
 		return "", nil
 	}
 	return strings.TrimPrefix(strings.TrimSpace(string(out)), prefix), nil
-}
-
-// refNameRefused reports whether git refuses name as a ref name outright
-// (`git check-ref-format`, exit 1). Any other outcome — a name git accepts, or
-// git unable to say — is false, so the caller's own failure stands.
-func refNameRefused(ctx context.Context, name string) bool {
-	// #nosec G204 -- the binary is the fixed literal "git" and name begins
-	// with the caller's literal "refs/", so it cannot be read as an option.
-	err := exec.CommandContext(ctx, "git", "check-ref-format", name).Run()
-	ee, ok := errors.AsType[*exec.ExitError](err)
-	return ok && ee.ExitCode() == 1
 }
 
 // tags lists all tags in git's `--sort=-v:refname` order, unfiltered — the
