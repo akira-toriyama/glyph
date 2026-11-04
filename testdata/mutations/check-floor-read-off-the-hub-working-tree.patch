@@ -1,0 +1,13 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+index 377cdbc..576cb5e 100755
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -190,7 +190,7 @@ echo "→ the hub at the tags build.yml pins"
+ hub_at go-bite.yml
+ BITE="$HUB_AT/actions/go-bite/go-bite.sh"
+ hub_at go-ci.yml
+-GO_CI="$HUB_AT/.github/workflows/go-ci.yml"
++GO_CI="$HUB/.github/workflows/go-ci.yml"
+ 
+ # The convention gate the fleet runs on every pull request (commit-lint.yml calls
+ # glyph's own lint.yml). Mirrored here because the alternative — push, wait, read

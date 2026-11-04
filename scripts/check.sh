@@ -9,38 +9,46 @@
 # admits a gap, because the gap is what you were relying on it for.
 #
 # ─── MIRRORED ────────────────────────────────────────────────────────────────
-#   commit-lint     commit-lint.yml → lint.yml   `glyph lint --range`
+#   commit-lint     commit-lint.yml `lint`       `glyph lint --range`, judged by
+#                                                this tree; the final line names
+#                                                the tag CI judges at
 #   dist-gate       build.yml `dist-gate`        `scripts/dist-gate.sh origin/main`
 #   golden-gate     build.yml `golden-gate`      `scripts/golden-gate.sh origin/main`
-#   module-hygiene  go-ci.yml (via build.yml's `ci`) `go mod tidy -diff`, verify
-#   build           go-ci.yml                    `go build ./...`
-#   vet             go-ci.yml                    `go vet ./...`
-#   race-test       go-ci.yml                    `go test -race ./...`
-#   coverage        go-ci.yml (`coverage: true`) total line off the race run's
-#                                                profile — a REPORT, never a gate
-#   golangci-lint   go-ci.yml                    `golangci-lint run ./...`
-#   govulncheck     govulncheck.yml → go-vuln.yml source + `-mode binary`
-#   bite            build.yml `bite`             the hub's go-bite.sh
+#   module-hygiene  build.yml `ci` → go-ci.yml   `go mod tidy -diff`, verify
+#   build           build.yml `ci` → go-ci.yml   `go build ./...`
+#   vet             build.yml `ci` → go-ci.yml   `go vet ./...`
+#   race-test       build.yml `ci` → go-ci.yml   `go test -race ./...`
+#   golangci-lint   build.yml `ci` → go-ci.yml   `golangci-lint run --enable=$LINT_FLOOR
+#                                                ./...`; the floor-check step after it
+#                                                is TestGolangciConfigDisablesNoFloorLinter
+#                                                here, in the race-test run
+#   govulncheck     govulncheck.yml `scan` → go-vuln.yml source + `-mode binary`
+#   bite            build.yml `bite`             the hub's go-bite.sh, on the
+#                                                merge commit CI tests
 #   mutations       build.yml `mutations`        `scripts/mutations.sh`
 #   fuzz-smoke      build.yml `extras`           `scripts/fuzz-smoke.sh`
 #   release-history build.yml `extras`           the caller-check bounds against
 #                                                glyph's release tags
 #   smoke           build.yml `extras`           `scripts/smoke.sh <binary>`
 #
+# Reported beside them in the final line, a REPORT and never a gate, so outside
+# the count: coverage, go-ci.yml's `coverage: true`, the total line off the race
+# run's profile.
+#
 # ─── NOT MIRRORED, each with its reason ──────────────────────────────────────
 # Naming these is the honest half. Reproducing every CI job would cost more to
 # maintain than the code it guards, and a hand-written second implementation of
 # a fleet policy is a second source of truth — the thing this repo refuses
 # everywhere else.
-#   commit-lint title (lint.yml 'Lint the squash title') `glyph lint --pr N`:
+#   commit-lint title (commit-lint.yml `lint`, the 'Lint the squash title' step) `glyph lint --pr N`:
 #                                       the squash title is a pull request's, and
 #                                       exists nowhere locally. Check a planned
 #                                       one by hand with
 #                                       `glyph lint --message "<title>"`.
-#   zizmor        (zizmor.yml)          Actions-security lint over .github/. The
+#   zizmor        (zizmor.yml `zizmor`) Actions-security lint over .github/. The
 #                                       policy is the fleet's; a shell copy of it
 #                                       would drift against the canonical one.
-#   actionlint    (actionlint.yml)      Workflow syntax, expression types, and
+#   actionlint    (actionlint.yml `actionlint`) Workflow syntax, expression types, and
 #                                       `run:` blocks through shellcheck. The tool's
 #                                       VERSION and its SHA256 are pinned once in
 #                                       the hub's reusable and are deliberately
@@ -51,13 +59,13 @@
 #                                       "green here != green CI" defect the
 #                                       golangci-lint skew line below reports
 #                                       rather than hides.
-#   taplo         (taplo.yml)           TOML formatting over glyph.toml and the
+#   taplo         (taplo.yml `taplo`)   TOML formatting over glyph.toml and the
 #                                       presets. Same argument as actionlint:
 #                                       the tool version is pinned in the hub's
 #                                       reusable, so a local taplo is whatever
 #                                       nixpkgs ships — a green here would be a
 #                                       claim about a different formatter.
-#   repo-policy   (repo-policy.yml)     house policy over the tree — the *.ja.*
+#   repo-policy   (repo-policy.yml `repo-policy`) house policy over the tree — the *.ja.*
 #                                       translation ban (the available(macOS)
 #                                       half auto-skips a repo with no root
 #                                       Package.swift, i.e. this one). The
@@ -65,15 +73,16 @@
 #                                       resolved commit (job.workflow_sha), so
 #                                       the caller's @v2 pin freezes WHICH
 #                                       repo-policy-check.sh judges; a local run
-#                                       from the sibling hub clone would judge
-#                                       with whatever revision that clone has —
-#                                       the actionlint/taplo argument again, a
-#                                       claim about a different checker.
-#   version-preview (version-preview.yml) posts the merge-preview COMMENT on a
+#                                       off the sibling clone's working tree
+#                                       would judge with whatever branch that
+#                                       clone has out — the actionlint/taplo
+#                                       argument again, a claim about a different
+#                                       checker.
+#   version-preview (version-preview.yml `verdict`) posts the merge-preview COMMENT on a
 #                                       pull request. There is no pull request
 #                                       locally; `glyph preview --pr N` is the
 #                                       command, and it needs the API.
-#   task-status   (task-status.yml)     acts on the furrow board, not on this
+#   task-status   (task-status.yml `sync`) acts on the furrow board, not on this
 #                                       tree — nothing here can make it fail.
 #   goreleaser    (goreleaser.yml)      tag-triggered release build and signing.
 #                                       Never runs on a pull request.
@@ -111,10 +120,52 @@ reraise_on_signals cleanup
 # MIRRORS is the reconciliation set: the run refuses its ✓ line unless every name
 # here was recorded by `ran`. Keeping it as data rather than as a comment is what
 # makes "a gate silently stopped running" a failure instead of a nicer-looking log.
-MIRRORS='commit-lint dist-gate golden-gate module-hygiene build vet race-test coverage golangci-lint govulncheck bite mutations fuzz-smoke release-history smoke'
+MIRRORS='commit-lint dist-gate golden-gate module-hygiene build vet race-test golangci-lint govulncheck bite mutations fuzz-smoke release-history smoke'
 NOT_MIRRORED='commit-lint title, zizmor, actionlint, taplo, repo-policy, version-preview, task-status, goreleaser, codeql'
 RAN=''
 ran() { RAN="$RAN $1 "; }
+
+# The fleet's gates live in the hub (akira-toriyama/.github), beside this repo in
+# the house layout. --git-common-dir resolves to the PRIMARY checkout even from a
+# worktree, so the sibling lookup works in both; GLYPH_FLEET_HUB overrides it.
+HUB="${GLYPH_FLEET_HUB:-}"
+if [ -z "$HUB" ]; then
+  HUB="$(dirname "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")")/.github"
+fi
+
+# hub_at <reusable> leaves HUB_AT naming a private copy of the hub at the tag
+# build.yml pins <reusable> at, the revision CI's run resolves on the remote and
+# checks out (the self-checkout at job.workflow_sha in the hub's repo-policy.yml).
+# Never the clone's working tree: that holds whichever branch someone has out.
+# Never the clone's copy of the tag on its own word either: these tags move, and a
+# plain `git fetch` or `git pull` exits 0 and leaves a moved tag where it was
+# (measured 2026-11-04, git 2.54), hence the forced fetch by name. A fetch that
+# fails weakens the claim and does not end the run, on the golangci-lint skew's
+# principle below: a GitHub outage must not make this script unusable, and the ✓
+# line is where a weakened claim has to appear.
+HUB_SKEW=""
+hub_at() {
+  hub_pin="$(sed -n "s|^[[:space:]]*uses: akira-toriyama/\.github/\.github/workflows/$1@\([^[:space:]]*\).*|\1|p" .github/workflows/build.yml | head -1)"
+  if [ -z "$hub_pin" ]; then
+    echo "  ✗ build.yml calls no $1 at a tag, so nothing says which revision of it CI runs." >&2
+    exit 1
+  fi
+  HUB_AT="$WORK/hub-$hub_pin"
+  [ ! -d "$HUB_AT" ] || return 0
+  if ! git -C "$HUB" fetch --quiet --no-tags --no-write-fetch-head --force origin "refs/tags/$hub_pin:refs/tags/$hub_pin"; then
+    HUB_SKEW="${HUB_SKEW:+$HUB_SKEW; }hub $hub_pin read at the clone's copy of the tag, which could not be refreshed from origin and CI may have moved past"
+  fi
+  if ! git -C "$HUB" archive -o "$WORK/hub-$hub_pin.tar" "refs/tags/$hub_pin"; then
+    echo "  ✗ cannot read the hub at $hub_pin, the tag build.yml pins $1 at, from $HUB" >&2
+    echo "    It lives in akira-toriyama/.github, which the house layout keeps beside this repo:" >&2
+    echo "      git clone git@github.com:akira-toriyama/.github.git \"$HUB\"" >&2
+    echo "    or point GLYPH_FLEET_HUB at an existing clone. Skipping the gates it holds would" >&2
+    echo "    put this script back to overstating its coverage." >&2
+    exit 1
+  fi
+  mkdir "$HUB_AT"
+  tar -xf "$WORK/hub-$hub_pin.tar" -C "$HUB_AT"
+}
 
 # A claim about a dirty tree is a claim about nothing reproducible, so the default
 # is to refuse. The escape hatch exists because the edit/verify loop needs it, and
@@ -132,6 +183,15 @@ if [ -n "$(git status --porcelain)" ]; then
   fi
 fi
 
+# What the hub's gates are, read up front: a run that cannot read them will not
+# reach its ✓ line, and that takes a second to find out here and twenty minutes
+# at the gate.
+echo "→ the hub at the tags build.yml pins"
+hub_at go-bite.yml
+BITE="$HUB_AT/actions/go-bite/go-bite.sh"
+hub_at go-ci.yml
+GO_CI="$HUB_AT/.github/workflows/go-ci.yml"
+
 # The convention gate the fleet runs on every pull request (commit-lint.yml calls
 # glyph's own lint.yml). Mirrored here because the alternative — push, wait, read
 # a red CI — is a round trip for a mistake that is one character wide, and it has
@@ -148,11 +208,17 @@ else
   echo "  (no commits ahead of origin/main — nothing to lint)"
 fi
 ran commit-lint
+# Judged by this tree's lint, where CI judges with the binary of the tag
+# commit-lint.yml pins: the two can split on a rule this tree changed. The final
+# line says so on every run; running the pinned binary as well is a second build
+# for a split the pull request shows anyway.
+lint_pin="$(sed -n 's|^[[:space:]]*uses: akira-toriyama/glyph/\.github/workflows/lint\.yml@\([^[:space:]]*\).*|\1|p' .github/workflows/commit-lint.yml | head -1)"
+LINT_JUDGE="commit-lint judged by this tree, CI judges at ${lint_pin:-a tag commit-lint.yml no longer names}"
 
 # The distribution-layer gate build.yml runs on every pull request: a change to
 # a reusable workflow, goreleaser.yml, the install action or .goreleaser.yaml
-# must carry an internal/workflows test change (or a Dist-gate-exempt trailer on
-# every commit; a same-action SHA pin swap alone needs neither). Same script,
+# must carry an internal/workflows test added or modified (or a Dist-gate-exempt
+# trailer on every commit; a same-action SHA pin swap alone needs neither). Same script,
 # same base — origin/main is what a pull request from here would be judged
 # against, and the origin/main check above has already run. Like `bite` below
 # it reads COMMITTED history: an uncommitted test does not satisfy it, and that
@@ -200,9 +266,16 @@ ran race-test
 # candidate finder for the mutation ledger), and a threshold would turn the
 # number into a target, which buys the tests that assert nothing. The ledger
 # below stays the authority on whether tests bite — 93% coverage has been
-# measured beside three surviving mutations.
-go tool cover -func="$COVER" | tail -n 1
-ran coverage
+# measured beside three surviving mutations. So the pipeline's status decides
+# nothing, and the final line says what came of it.
+cover_total="$(go tool cover -func="$COVER" | tail -n 1)"
+case "$cover_total" in
+  total:*)
+    echo "$cover_total"
+    COVERAGE="coverage reported: $(printf '%s\n' "$cover_total" | awk '{ print $NF }')"
+    ;;
+  *) COVERAGE="coverage NOT reported: go tool cover could not read the race run's profile" ;;
+esac
 
 echo "→ fuzz smoke (bounded)"
 sh scripts/fuzz-smoke.sh
@@ -234,10 +307,14 @@ ran mutations
 # would drift against the canonical one, which is exactly the mistake the
 # NOT-MIRRORED list refuses.
 #
-# --git-common-dir resolves to the PRIMARY checkout even from a worktree, so the
-# sibling lookup works in both; GLYPH_FLEET_HUB overrides it. BASE_SHA is the
-# commit CI would merge into (go-bite takes the merge-base itself), so a stale
-# origin/main gives a stale verdict — hence the fetch check at the top.
+# BASE_SHA is the commit CI merges into and HEAD_SHA the merge commit CI tests
+# (go-bite.yml: base.sha, github.sha), so the pre-change tree is origin/main as it
+# is now and not the fork point: handed the branch head, go-bite credits a test
+# pinning what origin/main has shipped since the fork as a bite CI then refuses.
+# A stale origin/main gives a stale verdict — hence the fetch check at the top.
+# With nothing ahead of origin/main there is no pull request and no merge, and
+# go-bite stands down on the empty range. A conflict is no merge either, and
+# GitHub runs no CI on one, so it ends the run here.
 #
 # This gate reads COMMITTED history and nothing else. A test sitting uncommitted
 # in the working tree is invisible to it, and it stands down quietly rather than
@@ -245,18 +322,14 @@ ran mutations
 # Commit first, then re-run. (ALLOW_DIRTY's final line makes the same point about
 # the run as a whole.)
 echo "→ bite (do this branch's new tests fail without it?)"
-HUB="${GLYPH_FLEET_HUB:-}"
-if [ -z "$HUB" ]; then
-  HUB="$(dirname "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")")/.github"
-fi
-BITE="$HUB/actions/go-bite/go-bite.sh"
-if [ ! -f "$BITE" ]; then
-  echo "  ✗ cannot mirror CI's \`bite\` job: no go-bite.sh at $BITE" >&2
-  echo "    It lives in akira-toriyama/.github, which the house layout keeps beside this repo:" >&2
-  echo "      git clone git@github.com:akira-toriyama/.github.git \"$HUB\"" >&2
-  echo "    or point GLYPH_FLEET_HUB at an existing clone. Skipping it would put this" >&2
-  echo "    script back to overstating its coverage, which is the defect being fixed." >&2
-  exit 1
+BITE_HEAD="$(git rev-parse HEAD)"
+if [ -n "$(git rev-list origin/main..HEAD)" ]; then
+  if ! bite_tree="$(git merge-tree --write-tree origin/main HEAD)"; then
+    echo "  ✗ HEAD does not merge cleanly into origin/main, so CI has no merge commit to run on:" >&2
+    printf '%s\n' "$bite_tree" | sed 's/^/    /' >&2
+    exit 1
+  fi
+  BITE_HEAD="$(git -c user.name=check.sh -c user.email=check.sh@localhost commit-tree -p origin/main -p HEAD -m 'the merge commit CI would test' "$bite_tree")"
 fi
 # go-bite exports GOTOOLCHAIN=local on the premise that setup-go has already
 # installed the toolchain go.mod names. In CI that premise holds. Locally it fails
@@ -276,8 +349,10 @@ fi
 # machine whose go IS go.mod's toolchain this resolves to that same go, so it costs
 # nothing outside the devshell.
 BITE_GOROOT="$(go env GOROOT)"
-BASE_SHA="$(git rev-parse origin/main)" HEAD_SHA="$(git rev-parse HEAD)" \
-  GOROOT="$BITE_GOROOT" PATH="$BITE_GOROOT/bin:$PATH" sh "$BITE"
+# bash, as the action's `shell: bash` runs it: the script is bash (pipefail,
+# process substitution), and `sh` is bash only on some machines.
+BASE_SHA="$(git rev-parse origin/main)" HEAD_SHA="$BITE_HEAD" \
+  GOROOT="$BITE_GOROOT" PATH="$BITE_GOROOT/bin:$PATH" bash "$BITE"
 ran bite
 
 # A CI gate whose tool is missing is a FAILURE and not a skip: a `command -v`
@@ -299,7 +374,7 @@ if command -v golangci-lint >/dev/null 2>&1; then
   # the ✓ line is what gets read, so the ✓ line is where a weakened claim has to
   # appear.
   LINT_SKEW=""
-  want_lint="$(sed -n "/golangci-lint-version:/,/default:/s/.*default:[[:space:]]*'v\{0,1\}\([0-9][0-9.]*\)'.*/\1/p" "$HUB/.github/workflows/go-ci.yml" 2>/dev/null | head -1)"
+  want_lint="$(sed -n "/golangci-lint-version:/,/default:/s/.*default:[[:space:]]*'v\{0,1\}\([0-9][0-9.]*\)'.*/\1/p" "$GO_CI" 2>/dev/null | head -1)"
   got_lint="$(golangci-lint --version 2>/dev/null | sed -n 's/.*version[[:space:]]*v\{0,1\}\([0-9][0-9.]*\).*/\1/p' | head -1)"
   if [ -z "$want_lint" ]; then
     LINT_SKEW="golangci-lint: could not read the version go-ci.yml pins, so this run cannot say it matched CI"
@@ -308,7 +383,21 @@ if command -v golangci-lint >/dev/null 2>&1; then
   elif [ "$want_lint" != "$got_lint" ]; then
     LINT_SKEW="golangci-lint v$got_lint here vs v$want_lint in CI — findings only the newer one has are invisible to this run"
   fi
-  golangci-lint run ./...
+  # The fleet's floor, as go-ci.yml at the pin hands it to the action: defined once
+  # as the job's LINT_FLOOR, passed as `args: --enable=${{ env.LINT_FLOOR }}`.
+  # `--enable` adds its linters to whatever .golangci.yml lists, so a bare `run`
+  # judges with the repo's list alone and a linter the config leaves out is a
+  # finding only CI sees (measured with misspell, 2026-11-04). Args of any other
+  # shape end the run: this mirrors one command, and a guess at another is the
+  # green-here-red-there this script exists to refuse.
+  lint_floor="$(sed -n 's/^[[:space:]]*LINT_FLOOR:[[:space:]]*//p' "$GO_CI" | head -1)"
+  lint_args="$(sed -n '/golangci-lint-action@/,/args:/s/^[[:space:]]*args:[[:space:]]*//p' "$GO_CI")"
+  # shellcheck disable=SC2016 # the expression is go-ci.yml's text, not this shell's
+  if [ -z "$lint_floor" ] || [ "$lint_args" != '--enable=${{ env.LINT_FLOOR }}' ]; then
+    echo "  ✗ go-ci.yml at the hub's pin no longer lints with --enable=\$LINT_FLOOR (args: ${lint_args:-none}; LINT_FLOOR: ${lint_floor:-none}), the one command this gate mirrors — re-derive it from go-ci.yml's golangci-lint step." >&2
+    exit 1
+  fi
+  golangci-lint run --enable="$lint_floor" ./...
   ran golangci-lint
   [ -n "$LINT_SKEW" ] && echo "  ! $LINT_SKEW"
 else
@@ -353,9 +442,11 @@ if [ -n "$missing" ]; then
 fi
 
 SKEW=""
-[ -n "${LINT_SKEW:-}" ] && SKEW=" — SKEWED FROM CI: $LINT_SKEW"
+[ -n "$HUB_SKEW" ] && SKEW=" — SKEWED FROM CI: $HUB_SKEW"
+[ -n "${LINT_SKEW:-}" ] && SKEW="$SKEW — SKEWED FROM CI: $LINT_SKEW"
+CLAIMS="NOT mirrored: $NOT_MIRRORED — $LINT_JUDGE — $COVERAGE$SKEW"
 if [ -n "$DIRTY" ]; then
-  echo "✓ passed (DIRTY TREE — not a claim about HEAD): $total/$total mirrored gates — NOT mirrored: $NOT_MIRRORED$SKEW"
+  echo "✓ passed (DIRTY TREE — not a claim about HEAD): $total/$total mirrored gates — $CLAIMS"
 else
-  echo "✓ $total/$total mirrored gates passed — NOT mirrored: $NOT_MIRRORED$SKEW"
+  echo "✓ $total/$total mirrored gates passed — $CLAIMS"
 fi

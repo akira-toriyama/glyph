@@ -20,10 +20,11 @@
 # (commit-lint.yml, task-status.yml, ...) whose canonical copies live in
 # akira-toriyama/.github and arrive here by sync, not by pull request.
 #
-# The demanded evidence is a *_test.go change under internal/workflows, which
-# also arms `bite`: a changed test there is exactly what bite runs against the
-# pre-PR tree. The two gates compose — this one demands the test EXISTS, bite
-# demands it BITES.
+# The demanded evidence is a *_test.go added or modified under internal/workflows
+# (--diff-filter=AM: a deleted one is the evidence leaving, and bite stands down
+# when no test was added or changed), which also arms `bite`: a changed test there
+# is exactly what bite runs against the pre-PR tree. The two gates compose — this
+# one demands the test EXISTS, bite demands it BITES.
 #
 # One change is judged before any evidence is asked for, and passes: a diff
 # whose every changed line in the gated files is a SHA-pinned `uses:` step put
@@ -134,7 +135,8 @@ if swapped="$(pin_swaps)"; then
   exit 0
 fi
 
-if printf '%s\n' "$changed" | grep -qE "$EVIDENCE_PATTERN"; then
+evidence="$(git diff --name-only --no-renames --diff-filter=AM "$base"...HEAD)"
+if printf '%s\n' "$evidence" | grep -qE "$EVIDENCE_PATTERN"; then
   echo "dist-gate: distribution-layer change is accompanied by an internal/workflows test change:"
   printf '%s\n' "$dist" | sed 's/^/  /'
   exit 0
@@ -146,5 +148,5 @@ if require_trailer_on_every_commit Dist-gate-exempt "$base"; then
 fi
 
 printf '%s\n' "$dist" | sed 's/^/  /' >&2
-printf '::error::dist-gate: this change touches the distribution layer (the files above) with no internal/workflows test change. YAML, action and goreleaser fixes have shipped with zero tests before — add or extend a text assertion in internal/workflows (bite will then prove it bites), or waive with a `Dist-gate-exempt: <reason>` trailer on every commit.\n' >&2
+printf '::error::dist-gate: this change touches the distribution layer (the files above) with no internal/workflows test added or modified. YAML, action and goreleaser fixes have shipped with zero tests before — add or extend a text assertion in internal/workflows (bite will then prove it bites), or waive with a `Dist-gate-exempt: <reason>` trailer on every commit.\n' >&2
 exit 1

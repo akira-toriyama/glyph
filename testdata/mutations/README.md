@@ -82,17 +82,20 @@ context on one side only, as long as it keeps at least one line (`git apply`
 refuses a context-free hunk without `--unidiff-zero`, which the runner does not
 pass).
 
-Two properties the runner enforces so a row cannot rot green:
+Three properties the runner enforces so a row cannot rot green:
 
 - the named tests must **pass** on the unmutated tree (a misspelled or missing
   test name would otherwise "kill" every mutation — `go test -run` matching
   nothing exits 0);
-- the patch must **apply**, and the mutated tree must **compile**. A patch that
-  no longer applies pins nothing, and a mutation that does not build fails the
-  tests for the compiler's reasons rather than the suite's. That second one is
-  not hypothetical: Go rejects an unused variable, so deleting a guard's only use
-  of one does not compile, and an earlier by-hand measurement of this repo read
-  that build error as a kill.
+- the patch must **apply**, and the mutated tree must **compile**, the row's
+  test binary included. A patch that no longer applies pins nothing, and a
+  mutation that does not build fails the tests for the compiler's reasons rather
+  than the suite's. That second one is not hypothetical: Go rejects an unused
+  variable, so deleting a guard's only use of one does not compile, and an earlier
+  by-hand measurement of this repo read that build error as a kill;
+- every `*.patch` here must have a **row**. A patch that loses its row runs
+  nowhere and says nothing, so the final line reconciles the two sets and fails
+  on a difference.
 
 ## When a patch stops applying
 
