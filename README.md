@@ -410,9 +410,16 @@ captures — renders as prose that cannot reach past its line: outside the
 author's own code spans, glyph puts a backslash before every `<`, every `[`,
 the `:` of an `http://` / `https://` / `ftp://`, the `.` of a `www.` and an
 entity-shaped `&`, and fences every `@handle` as code, while emphasis keeps
-working. A code span the author wrote passes through byte for byte —
-``unwrap `Optional<Any>` and [x]`` lands as ``unwrap `Optional<Any>` and \[x]``.
-A subject written as
+working. The head of a list item opens blocks as the head of a line does, so
+the literal `- ` of a template protects nothing: a value that lands there loses
+its indent, and a heading, a block quote, a list marker, a code fence, a
+thematic break, an HTML block opener, a footnote definition or a table
+delimiter row at its head takes a backslash too (`## x` lands as `\## x`, the
+text `## x` inside the item), and a task-list marker takes one between its
+brackets, the one place GitHub's checkbox filter reads (`[ ] ship it` lands as
+`\[\ ] ship it`, the text `[\ ] ship it`). A code span the author wrote passes
+through byte for byte — ``unwrap `Optional<Any>` and [x]`` lands as
+``unwrap `Optional<Any>` and \[x]``. A subject written as
 
 ```
 :sparkles:^ [click here](https://evil.example) and @octocat and <img src=x onerror=1> and **bold**
