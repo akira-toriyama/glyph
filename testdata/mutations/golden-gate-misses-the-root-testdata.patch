@@ -1,0 +1,13 @@
+diff --git a/scripts/golden-gate.sh b/scripts/golden-gate.sh
+index a623c60..6599b75 100644
+--- a/scripts/golden-gate.sh
++++ b/scripts/golden-gate.sh
+@@ -37,7 +37,7 @@
+ set -eu
+ cd "$(dirname "$0")/.."
+ 
+-GOLDEN_PATTERN='(^|/)testdata/.*\.golden\..*$'
++GOLDEN_PATTERN='^.*/testdata/.*\.golden\..*$'
+ 
+ base="${1:?usage: sh scripts/golden-gate.sh <base-ref>}"
+ 

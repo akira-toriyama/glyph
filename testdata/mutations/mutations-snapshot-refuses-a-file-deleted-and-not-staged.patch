@@ -1,0 +1,13 @@
+diff --git a/scripts/mutations.sh b/scripts/mutations.sh
+index 9a867c3..7c33ec9 100755
+--- a/scripts/mutations.sh
++++ b/scripts/mutations.sh
+@@ -100,7 +100,7 @@ snapshot() {
+   mkdir -p "$1"
+   # shellcheck disable=SC2016 # the inner sh expands $f
+   if ! git ls-files -z --cached --others --exclude-standard >"$TMP/tree.all" ||
+-    ! xargs -0 sh -c 'for f do [ ! -e "$f" ] && [ ! -L "$f" ] || printf "%s\0" "$f"; done' sh <"$TMP/tree.all" >"$TMP/tree.list" ||
++    ! cp "$TMP/tree.all" "$TMP/tree.list" ||
+     ! tar --null -T "$TMP/tree.list" -cf "$TMP/tree.tar" ||
+     ! tar -xf "$TMP/tree.tar" -C "$1"; then
+     echo "mutations: cannot snapshot the working tree, so no row can be measured (the errors above say why)" >&2
