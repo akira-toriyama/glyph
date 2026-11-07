@@ -1,20 +1,16 @@
 diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
-index 9de8828..d614f8b 100644
+index 9914fe8..4d5da1a 100644
 --- a/internal/gitsource/gitsource.go
 +++ b/internal/gitsource/gitsource.go
-@@ -601,12 +601,12 @@ func isAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
- 	var stderr bytes.Buffer
- 	cmd.Stderr = &stderr
- 	if err := cmd.Run(); err != nil {
--		if ierr := interrupted(ctx); ierr != nil {
--			return false, ierr
--		}
- 		if _, ok := errors.AsType[*exec.ExitError](err); ok {
- 			return false, nil
- 		}
-+		if ierr := interrupted(ctx); ierr != nil {
-+			return false, ierr
-+		}
- 		return false, core.APIf("git merge-base: %s", distill(stderr.Bytes(), err))
+@@ -638,7 +638,10 @@ func have(ctx context.Context, dir string, shas []string) (map[string]bool, erro
+ // field, and --end-of-options pins both as revisions rather than options.
+ func isAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
+ 	_, yes, err := runAnswer(ctx, dir, "merge-base", "merge-base", "--is-ancestor", "--end-of-options", sha, rev)
+-	if err == nil || core.IsInterrupted(err) {
++	if core.IsInterrupted(err) {
++		return false, nil
++	}
++	if err == nil {
+ 		return yes, err
  	}
- 	return true, nil
+ 	for _, name := range []string{sha, rev} {

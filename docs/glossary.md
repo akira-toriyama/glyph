@@ -858,14 +858,14 @@ and unknown is the point.
   survive.
 
 The fail/unknown line is drawn on **what the API said**, not on whether the call
-returned an error: a 404 from the repository read *is* an answer (there is no such
-repository for this credential) and fails at 3, while a 403 rate limit, a 5xx that
-outlived the retry schedule, a dead socket or an unparseable body is no answer at
-all —
+returned an error: a 401, a 403 that is no rate limit and a 404 from the repository
+read *are* answers about the credential and fail at 3, while a rate limit, a 5xx
+that outlived the retry schedule, a dead socket or an unparseable body is no answer
+at all —
 [DESIGN §7](DESIGN.md#7-repository-preconditions-glyph-doctor) has the incident
 that drew the line there.
 `internal/doctor/doctor.go: Status, checkTokenAccess`, `internal/github/github.go:
-IsRepoUnknown`
+IsRepoRefused`
 
 Two severities are argued rather than obvious, and both are **coupled to the
 walk**: `allow_squash_merge=false` is a *fail*, and `allow_merge_commit` /

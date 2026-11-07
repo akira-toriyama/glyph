@@ -216,6 +216,9 @@ func TestCheckHookFiresVerdicts(t *testing.T) {
 		// check cries wolf.
 		{"config claims the probe", &HookProbe{Exit: 0, Claimed: true}, nil, StatusPass},
 		{"exit outside the script's vocabulary", &HookProbe{Exit: 127}, nil, StatusUnknown},
+		// A hook a signal killed reached no verdict: os/exec reports it as -1,
+		// which is neither the block nor the pass-through.
+		{"a hook killed by a signal", &HookProbe{Exit: -1}, nil, StatusUnknown},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -232,6 +235,43 @@ func TestCheckHookFiresVerdicts(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestHookFiresNamesAGlyphAbsentFromPATH pins the one exit 0 that needs no
+// wrapper repaired: the hook's `command -v glyph` found nothing, it warned and
+// passed. Nothing linted, so neither reading the other exit 0s get can stand, and
+// the two rows that would take them are why this arm is asked first: a config
+// claiming the probe text would read "the whole chain answered" (pass, ok true), an
+// unloaded config "the config's absence answering" (unknown, and a fix that repairs
+// the config while every commit goes unlinted).
+func TestHookFiresNamesAGlyphAbsentFromPATH(t *testing.T) {
+	for name, tc := range map[string]struct {
+		probe        *HookProbe
+		configLoaded bool
+	}{
+		"plain":                        {&HookProbe{Exit: 0, GlyphAbsent: true}, true},
+		"over a config claiming probe": {&HookProbe{Exit: 0, GlyphAbsent: true, Claimed: true}, true},
+		"over an unloaded config":      {&HookProbe{Exit: 0, GlyphAbsent: true}, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := checkHookFires(tc.probe, nil, tc.configLoaded)
+			if c.Status != StatusFail {
+				t.Fatalf("status = %s (%s), want %s — the local gate is dead on this machine", c.Status, c.Observed, StatusFail)
+			}
+			if !strings.Contains(c.Observed, "glyph is not on PATH") {
+				t.Errorf("the observation must name the absence: %q", c.Observed)
+			}
+			if !strings.Contains(c.Message, "passes every commit") {
+				t.Errorf("the message must say what the hook does without glyph: %q", c.Message)
+			}
+			if !strings.Contains(c.Fix, "PATH") || strings.Contains(c.Fix, "wrapper") {
+				t.Errorf("the fix must put glyph on PATH and repair no wrapper nobody observed: %q", c.Fix)
+			}
+		})
+	}
+	if c := checkHookFires(&HookProbe{Exit: 0}, nil, true); strings.Contains(c.Observed, "not on PATH") {
+		t.Errorf("a pass-through with glyph resolved must not claim it is absent: %q", c.Observed)
 	}
 }
 
