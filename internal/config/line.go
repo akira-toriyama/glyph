@@ -61,11 +61,44 @@ type LineSpan struct {
 	Optional bool
 }
 
+// listMarkers are the openings a note.line template must have: CommonMark's
+// bullet-list markers with the space that makes them one. The renderer fences
+// each rendered line's would-be mentions against that line alone
+// (markdown.Line), which holds only while every line is its own inline
+// context — a list item is; lines no marker separates are one paragraph (or,
+// with a `|` in them, a table), where a backtick run from the line above pairs
+// with the fence's and a `@name` goes live. Measured against GitHub's
+// /markdown (gfm) 2026-11-04 on three rendered lines — a subject ending in a
+// three-backtick run, one holding a double backtick and @octocat inside the
+// fence's three, and another ending in three — which rendered
+// `<a class="user-mention">@octocat</a>` without the marker and
+// `<code>@octocat</code>` with it (TestLoadRefusesANoteLineWithoutAListMarker;
+// DESIGN §3 quotes the lines). An ordered-list
+// marker is not offered: `1. ` on every line renumbers in GitHub, not in the
+// file, and the shipped templates open with `- `.
+var listMarkers = []string{"- ", "* ", "+ "}
+
+// checkLineOpensAList refuses a non-empty template that opens with anything
+// but a listMarkers entry. Whitespace before the marker is refused too: an
+// indented marker is a list item only under a block that already opened one.
+func checkLineOpensAList(template string) error {
+	if template == "" {
+		return nil
+	}
+	for _, m := range listMarkers {
+		if strings.HasPrefix(template, m) {
+			return nil
+		}
+	}
+	return fmt.Errorf("%q does not open with a list-item marker (\"- \", \"* \" or \"+ \"): each rendered line is fenced against @mentions on its own, and GitHub joins lines no marker separates into one paragraph, where a backtick run from a neighbouring line pairs with the fence and a @name inside it goes live — open the template with \"- \"", template)
+}
+
 // parseLine compiles a note.line template into spans, rejecting rather than
 // repairing three malformed shapes: an unterminated `$[`, a nested one, and a
 // span holding no placeholder. Callers parse at LOAD time so a bad template
 // fails the config — the same exit every other config error takes — rather
-// than the release that would have rendered it.
+// than the release that would have rendered it. Whether the template opens
+// with a list marker is checkLineOpensAList's, asked beside it.
 //
 // An empty template is not an error: [note] is optional, and a config with no
 // line renders no lines.

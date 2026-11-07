@@ -1,0 +1,13 @@
+diff --git a/internal/config/capture.go b/internal/config/capture.go
+index 31480fb..01070c7 100644
+--- a/internal/config/capture.go
++++ b/internal/config/capture.go
+@@ -61,7 +61,7 @@ func captureOf(tree *syntax.Regexp, name string) capture {
+ 	// A sub-expression that will not compile on its own spells nothing here:
+ 	// a refusal then names no escape it cannot vouch for. wordErr keeps why,
+ 	// for the loader's refusal of such a scope group (scopeSpellers).
+-	c.word, c.wordErr = wholeGroups(groups)
++	c.word, c.wordErr = wholeGroups(groups[:1])
+ 	return c
+ }
+ 

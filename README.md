@@ -395,7 +395,10 @@ bot commit touches decide which line's notes.
 `note.line` is the same idea for the release body: `$name` reads the winning
 pattern's named groups, `$pr` / `$author` / `$hash` / `$coauthors` are built
 in, and a
-`$[ … ]` span renders only when every placeholder inside it resolves. That is
+`$[ … ]` span renders only when every placeholder inside it resolves. The
+template opens with a list marker (`- `, `* ` or `+ `) — each rendered line is
+fenced against @mentions on its own, which holds only when each line is its
+own list item (DESIGN §3) — and the loader refuses one that does not. That is
 what lets the shipped `- $subject$[ ($pr)] @$author$[ with $coauthors]` cite a
 pull when there is one and drop the parens with it when there is not, instead
 of writing `()` for every commit that reached main without a merged pull. `@$author` pages the
