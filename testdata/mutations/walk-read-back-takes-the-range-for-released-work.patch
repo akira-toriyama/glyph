@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 65e8606..fc99a19 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -589,7 +589,7 @@ func (w *walk) placeStacked(ctx context.Context, canonical string, listing []git
+ // landed it (measured 2026-11-04, glyph-test-2#6 merged, #7 open).
+ func (w *walk) readBack(ctx context.Context, listing []gitsource.RawCommit) error {
+ 	base, tagged := strings.CutSuffix(w.revRange, "..HEAD")
+-	if !tagged {
++	if false && !tagged {
+ 		return nil
+ 	}
+ 	forks := forkPoints(listing, w.inRange)

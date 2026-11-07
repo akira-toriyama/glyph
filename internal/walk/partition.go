@@ -91,7 +91,7 @@ func PlaceOf(cfg *config.Config, raw gitsource.RawCommit) (Place, Reading, *bump
 func Attribute(cfg *config.Config, raw gitsource.RawCommit, said Reading, files []string, whole bool) ([]config.Package, error) {
 	moved, err := attribution.Attribute(files, said.scope, said.sigil, cfg.Packages)
 	if r, ok := errors.AsType[*attribution.Refusal](err); ok {
-		r.Merge = raw.Parents >= 2
+		r.Merge = len(raw.Parents) >= 2
 		r.Unread = !whole
 		r.Sayable, _ = cfg.Sayable(said.pattern, raw.Message)
 	}
@@ -318,7 +318,7 @@ func (w Walker) PlaceByFiles(ctx context.Context, cfg *config.Config, owner, rep
 // its diff (t-esm5) — recorded on no fact here, since Facts.shallow already
 // carries the checkout's remedy, and warned about by the caller once placed.
 func (w Walker) walkedFiles(ctx context.Context, owner, repo string, c Commit, facts *Facts, reached []Line) (files []string, gap diffGap, err error) {
-	if c.Raw.Parents >= 2 {
+	if len(c.Raw.Parents) >= 2 {
 		return nil, diffWhole, nil
 	}
 	if c.Landed {

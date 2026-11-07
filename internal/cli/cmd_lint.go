@@ -376,7 +376,7 @@ func lintAttribution(ctx context.Context, raw gitsource.RawCommit, cfg *config.C
 		return "", nil
 	}
 	var files []string
-	if raw.Parents < 2 {
+	if len(raw.Parents) < 2 {
 		var err error
 		if files, err = checkout().DiffTreeFiles(ctx, raw.SHA); err != nil {
 			return "", err

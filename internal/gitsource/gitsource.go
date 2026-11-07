@@ -22,13 +22,13 @@ import (
 
 // RawCommit is one commit as git reports it, before any parsing: what its
 // readers judge participation by (the author, the message) and what tells
-// them a merge commit, whose diff is never read (the parent count).
+// them a merge commit, whose diff is never read (two or more parents).
 type RawCommit struct {
 	SHA     string
-	Author  string // author name (%an) — what bot/automation matching runs on
-	Email   string // author email (%ae) — the one identity git holds; a GitHub noreply address names a login
-	Login   string // GitHub login; always "" from git (github.Commit fills it from the API) — mirrored so the two convert
-	Parents int    // parent count; >= 2 marks a merge commit
+	Author  string   // author name (%an) — what bot/automation matching runs on
+	Email   string   // author email (%ae) — the one identity git holds; a GitHub noreply address names a login
+	Login   string   // GitHub login; always "" from git (github.Commit fills it from the API) — mirrored so the two convert
+	Parents []string // parent shas; two or more mark a merge commit
 	// Message is the message as git recorded it (%B) minus the one closing
 	// newline git records a cleaned message with — the shape cleanup.Apply hands
 	// the authoring path, so the hook and every history reader judge one text
@@ -831,20 +831,20 @@ func isObjectName(s string) bool {
 	return true
 }
 
-// objectNames counts the space-separated object names in a %P field, each the
+// objectNames splits the space-separated object names in a %P field, each the
 // length of the commit's own name, and reports false for anything else. Empty
 // is a root commit's answer.
-func objectNames(field string, length int) (int, bool) {
+func objectNames(field string, length int) ([]string, bool) {
 	if field == "" {
-		return 0, true
+		return nil, true
 	}
 	names := strings.Split(field, " ")
 	for _, n := range names {
 		if len(n) != length || !isObjectName(n) {
-			return 0, false
+			return nil, false
 		}
 	}
-	return len(names), true
+	return names, true
 }
 
 // tail is the end of a malformed output, for the error: enough to see where

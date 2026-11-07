@@ -1,0 +1,12 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 65e8606..7ceb127 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -253,7 +253,6 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
+ 	contributed := 0
+ 	for i, r := range listing {
+ 		if on := landed[i]; on != "" {
+-			w.landings[r.SHA] = on
+ 			if !w.inRange[on] {
+ 				w.Report.Noticef("commit %.7s in pull request #%d landed on the released branch as %.7s, which is outside %s — it shipped under an earlier tag and is not counted again", r.SHA, number, on, w.revRange)
+ 				continue
