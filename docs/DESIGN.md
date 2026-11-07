@@ -969,17 +969,32 @@ live mention — crediting the contributor is intended behaviour, and every
 peer tool (git-cliff, GitHub's own generated notes, release-drafter,
 changesets) pages the author the same way. The exemption is gated by
 **identity**, and by shape second (t-39fy, 2026-09-14, replacing the
-shape-only gate): what goes live is the contributor's **login** — the
-`author.login` GitHub itself attaches to a commit the API described (the
-squash arm, `--pr`), else the login a GitHub noreply author address carries
-(`<id>+<login>@users.noreply.github.com`, which every fleet commit carries
-and the fallback arm and `--range` can read from git alone), else nothing —
-and only when that login is one GitHub-handle-shaped token. The name is
+shape-only gate; t-ayhq, 2026-11-04, narrowing identity to one source): what
+goes live is the contributor's **login** — the `author.login` GitHub itself
+attaches to a commit the API described (the squash arm, `--pr`), else
+nothing — and only when that login is one GitHub-handle-shaped token.
+Nothing read out of the commit itself is a login. Not the name: it is
 never promoted to stand in for a missing login, because a name is not a
-login and **no shape tells them apart**: measured 2026-09-13 on golang/tools,
+login and **no shape tells them apart** — measured 2026-09-13 on golang/tools,
 `%an` is `Saleh` for github.com/larrasket, and the shape gate rendered
 `@Saleh` — one handle-shaped token, and a stranger paged the moment the
-release is published. A credit with no login renders the name as plain
+release is published. Not the author address either, GitHub's own noreply
+form included: `<id>+<login>@users.noreply.github.com` is typed by whoever
+configured git, and GitHub attributes the commit by the id, never by the
+login beside it — measured 2026-11-04 on glyph-test-2 with
+`GET /commits/{sha}` as the oracle, a commit from
+`92862731+refute-a3-nonexistent-zz@…` is attributed to the account id
+92862731 names while glyph paged `@refute-a3-nonexistent-zz`, one from
+`9999999999+akira-toriyama@…` to nobody while glyph paged `@akira-toriyama`,
+and `1+octocat@…` would page @octocat for a commit GitHub shows as mojombo.
+The address is self-asserted text, exactly as a co-author address is (below),
+so the one rule covers both and the identity has one source. Where the API
+described nothing — every commit under `--range`, every direct push on the
+fallback arm, the fleet's own included — the credit is the name with no
+at-sign, as any credit with no login is. Rejected: keeping the address as a
+second source when its id resolves to its login (`GET /user/{id}`: one more
+request per commit, and a second identity to keep correct, for a mention on
+direct pushes). A credit with no login renders the name as plain
 prose with the template's at-sign dropped (`Robert Pająk`, not
 `` `@Robert `` `Pająk`, which fencing the would-be mention produced on
 opentelemetry-go): a credit that pages nobody is not written as a mention.
@@ -1007,13 +1022,34 @@ to a live mention even if the exemption were extended.
 The parser is held to `git interpret-trailers --parse` by a differential
 asserting a **subset**: glyph may report fewer trailers than git, never more,
 because over-reporting is what names a person on a public page as an author
-of code the commit never claimed. Four shapes answer nothing, each silently
-(measured, git 2.54.0): a trailer in its own paragraph above the footer, a
-line below a `---`, a block holding one prose line, and a block that is the
-message's only paragraph. The third is the sharp one — an unindented wrapped
-line, or the fleet's own `Generated with …` footer placed inside the block,
-voids the whole block and takes the co-author credit with it. (Mutation row
-`notes-coauthor-is-grepped-not-parsed.patch`.) Rejected alternative: carrying
+of code the commit never claimed; a second differential asserts **equality**
+on the blocks git itself writes into (below), where under-reporting was the
+defect. The rules are git's own, transcribed from `trailer.c`
+(`find_end_of_log_message`, `find_trailer_block_start`, `find_separator`)
+and measured against git 2.54.0 rather than modelled, with git's defaults
+and none of its `trailer.*` config. The divider is `---` followed by a
+space, a tab, a CR or the end of the line — `---x` and `----` are message
+text — so a `--- title` line hides everything below it (t-pspd, 2026-11-04:
+glyph took only a bare `---`, and a credit below `--- text` was reported
+where git reported none, outside the subset). The token is one run of ASCII
+letters, digits and hyphens, optional blanks, then the colon: `Fix#1:` and
+`Révisé:` are prose, `Why :` is the token `Why`. A block is the trailers
+when every line of it is a trailer, a continuation or a comment — one prose
+line voids it — **or** when it holds a line git generated (`Signed-off-by: `,
+`(cherry picked from commit `) and its trailer lines are at least a quarter
+of it, in which case the prose lines are dropped and the trailers around
+them kept (t-hd7d, 2026-11-04: glyph voided such a block, so a `git commit
+-s` author lost every credit beside one prose line — under-reporting, inside
+the subset, and still a person uncredited). Four shapes still answer
+nothing, each silently: a trailer in its own paragraph above the footer, a
+line below the divider, a block with no git-generated line holding one prose
+line, and a block that is the message's only paragraph. The third is the
+sharp one — an unindented wrapped line, or the fleet's own `Generated with …`
+footer placed inside the block, voids the whole block and takes the
+co-author credit with it. (Mutation rows
+`notes-coauthor-is-grepped-not-parsed.patch`,
+`divider-with-text-after-it-hides-nothing.patch`,
+`signed-off-block-voided-by-one-prose-line.patch`.) Rejected alternative: carrying
 the same two values in a `(?s)` `[[patterns]]` group. It truncates a wrapped
 value, lets trailer order decide silently whether the value binds at all,
 credits a trailer-shaped line sitting in a body paragraph, and would have to
@@ -1022,14 +1058,14 @@ shape — a regex over the raw message is not a trailer parser. Rejected
 alternatives: rendering the raw first line (machine notation in prose, and
 Breaking Changes already says what `!` says); dropping the fence entirely
 (subjects carry arbitrary text); asking `GET /commits/{sha}` for every landed
-commit's login (one request per commit on the free arm, for an identity the
-noreply address already carries on every commit GitHub's own UI or a
-privacy-on account writes — a personal address is then credited by name,
-which is honest); fencing the name with its at-sign (`` `@Saleh` `` reads as a
-broken mention and still shows a stranger's handle). (Mutation rows
-`line-returns-its-bytes-unfenced.patch`, `author-credit-goes-live-by-shape`,
-`noreply-address-carries-no-identity`, `unpaged-credit-keeps-its-at-sign`;
-the gate lives in `markdown.Line.Mention`, the identity in `walk.identity`.) A **`$[ … ]` span renders only when EVERY placeholder
+commit's login (one request per commit on the free arm, to turn a name into
+a mention — a direct push credited by name is honest); fencing the name with
+its at-sign (`` `@Saleh` `` reads as a broken mention and still shows a
+stranger's handle). (Mutation rows `line-returns-its-bytes-unfenced.patch`,
+`author-credit-goes-live-by-shape`, `noreply-address-trusted-as-identity`,
+`unpaged-credit-keeps-its-at-sign`; the gate lives in
+`markdown.Line.Mention`, and `walk.NoteCommits` carries the API's
+`author.login` through as the only login.) A **`$[ … ]` span renders only when EVERY placeholder
 inside it resolves non-empty** (mutation row
 `notes-optional-span-always-renders.patch`), taking its own punctuation with
 it when one does not. Without it, punctuation written around a placeholder
