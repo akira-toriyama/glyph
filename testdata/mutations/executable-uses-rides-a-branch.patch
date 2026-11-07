@@ -1,0 +1,9 @@
+diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
+index d7dbf4a..69eccbf 100644
+--- a/.github/workflows/build.yml
++++ b/.github/workflows/build.yml
+@@ -22,3 +22,3 @@ jobs:
+   ci:
+-    uses: akira-toriyama/.github/.github/workflows/go-ci.yml@v2
++    uses: akira-toriyama/.github/.github/workflows/go-ci.yml@main
+     with:

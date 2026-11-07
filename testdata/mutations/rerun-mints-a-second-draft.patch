@@ -1,0 +1,8 @@
+diff --git a/.goreleaser.yaml b/.goreleaser.yaml
+index a1cc480..ae4870c 100644
+--- a/.goreleaser.yaml
++++ b/.goreleaser.yaml
+@@ -91,3 +91,2 @@ release:
+   # draft — goreleaser.yml refuses to run over a tag whose release is public.
+-  use_existing_draft: true
+   replace_existing_artifacts: true

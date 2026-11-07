@@ -554,19 +554,27 @@ func TestNaiveGrepSeesNoPinInTheReusables(t *testing.T) {
 	}
 }
 
-// TestWalkingReusablesCheckOutFullHistory pins `fetch-depth: 0` on every
-// reusable whose job runs a glyph command that WALKS.
+// walkingWorkflows are the workflows whose checkout feeds a glyph command that
+// WALKS: the three reusables, and goreleaser.yml, whose notes step walks
+// below: the tag being cut.
+var walkingWorkflows = []string{"lint.yml", "pr-verdict.yml", "release.yml", "goreleaser.yml"}
+
+// TestWalkingReusablesCheckOutFullHistory pins `fetch-depth: 0` on EVERY
+// checkout step of every walking workflow.
 //
 // actions/checkout defaults to fetch-depth: 1 — a shallow clone. glyph now
 // reports that as an incomplete walk and refuses the irreversible half of a
 // release on it, so losing this line no longer produces a silently wrong
 // version. What it produces instead is a repository that can never publish:
 // every release run declines to touch the draft and says why, for ever, because
-// nothing about a workflow heals itself the way API lag does.
+// nothing about a workflow heals itself the way API lag does. At tag time
+// (goreleaser.yml) the walk ships a placeholder body on the tag's own release.
 //
 // The line is one token in a YAML file that no test compiles and no reviewer
-// misses the absence of, and it is only ever noticed by its consequence. That
-// is the shape this package exists for.
+// misses the absence of, and it is only ever noticed by its consequence. It
+// is held per checkout step, not per file: the same token under another
+// step's `with:` (setup-xcode's, say) is an input that step ignores, and a
+// whole-file match read it as the checkout's (t-j0es, measured at 2f9428a).
 func TestWalkingReusablesCheckOutFullHistory(t *testing.T) {
 	// Positive control: prove the matcher still finds the real thing, so a
 	// pattern that has stopped matching cannot pass as four clean files.
@@ -574,62 +582,91 @@ func TestWalkingReusablesCheckOutFullHistory(t *testing.T) {
 	if !fetchDepthFull.MatchString(canary) {
 		t.Fatalf("fetchDepthFull no longer matches a real setting (%q) — every case below would pass vacuously", canary)
 	}
+	// And that the step splitter isolates a checkout from its neighbour: the
+	// misplaced token below must NOT satisfy the checkout's block.
+	const misplaced = "jobs:\n  j:\n    steps:\n      - uses: actions/checkout@sha\n        with:\n          persist-credentials: false\n" +
+		"      - uses: maxim-lobanov/setup-xcode@sha\n        with:\n          fetch-depth: 0\n"
+	if blocks := checkoutsWithoutFullHistory(misplaced); len(blocks) != 1 {
+		t.Fatalf("a fetch-depth under the NEXT step satisfied the checkout (%d shallow checkouts found, want 1) — "+
+			"the per-step reading is broken and every case below is vacuous", len(blocks))
+	}
 
 	// Asserted against the comment-stripped body: the reusables carry commented
 	// caller stubs, and a `fetch-depth: 0` sitting in one of those is
 	// documentation, not a checkout option any runner obeys.
-	for _, name := range []string{"lint.yml", "pr-verdict.yml", "release.yml"} {
+	for _, name := range walkingWorkflows {
 		t.Run(name, func(t *testing.T) {
 			body := code(repoFile(t, filepath.Join(".github", "workflows", name)))
-			if !strings.Contains(body, "actions/checkout") {
-				t.Skip("no checkout step to constrain")
+			if !strings.Contains(body, "uses: actions/checkout@") {
+				t.Fatalf("%s has no checkout step; a walking workflow with nothing checked out walks nothing", name)
 			}
-			if !fetchDepthFull.MatchString(body) {
-				t.Errorf("%s checks out without `fetch-depth: 0`, so the runner gets actions/checkout's "+
-					"default depth of 1 — a shallow clone. glyph cannot tell a commit that never landed "+
-					"on the released branch from one git does not have, so it reports the walk as "+
-					"incomplete and declines to delete or lower the rolling draft. Unlike API lag that "+
-					"state never clears on its own: the repository simply stops being able to release.", name)
+			for _, block := range checkoutsWithoutFullHistory(body) {
+				t.Errorf("%s has a checkout without `fetch-depth: 0` under its own `with:`, so the runner gets "+
+					"actions/checkout's default depth of 1 — a shallow clone. glyph cannot tell a commit that never "+
+					"landed on the released branch from one git does not have, so it reports the walk as incomplete "+
+					"and declines to delete or lower the rolling draft. Unlike API lag that state never clears on its "+
+					"own: the repository simply stops being able to release.\n      - %s", name, block)
 			}
 		})
 	}
 }
 
-// TestCaskPushUsesDeployKey guards the tap-credential pairing.
-//
-// The cask push works only when BOTH halves agree: goreleaser.yml exports
-// HOMEBREW_TAP_DEPLOY_KEY into GoReleaser's env, and .goreleaser.yaml's
-// repository block resolves that env into an SSH git push
-// (repository.git.private_key). Either half alone fails at release time —
-// a missing env is a template error, a token-style repository block silently
-// takes the account-scoped API path instead of the deploy key.
-// Nothing in either file can express the pairing on its own, same class as
-// TestReleaseNotesReachGoReleaser.
+// checkoutsWithoutFullHistory returns every `uses: actions/checkout@` step
+// block in body whose own text carries no `fetch-depth: 0`.
+func checkoutsWithoutFullHistory(body string) []string {
+	var shallow []string
+	for _, block := range stepBlocks(body) {
+		if strings.HasPrefix(block, "uses: actions/checkout@") && !fetchDepthFull.MatchString(block) {
+			shallow = append(shallow, block)
+		}
+	}
+	return shallow
+}
+
+// TestCaskPushUsesDeployKey guards the tap credential: the cask reaches the
+// tap over SSH with homebrew-tap's write deploy key, never an account-scoped
+// token. Since the push left GoReleaser (t-p15y) both halves are
+// goreleaser.yml's cask job: its push step is handed the secret and the tap's
+// SSH URL through env, and spends them on a git push whose ssh carries the
+// key file. .goreleaser.yaml keeps no push of its own — a `git:` block there
+// would push again, inside GoReleaser's run, before the attest step. That the
+// step pushes what it is handed is TestCaskGoesOutOnlyAfterThePublish's, which
+// runs it.
 func TestCaskPushUsesDeployKey(t *testing.T) {
-	workflow := code(repoFile(t, filepath.Join(".github", "workflows", "goreleaser.yml")))
+	raw := goreleaserWorkflow(t)
 	config := code(repoFile(t, ".goreleaser.yaml"))
 
-	// Half one: the workflow hands the key to GoReleaser.
-	if !strings.Contains(workflow, "HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}") {
-		t.Error("goreleaser.yml no longer exports HOMEBREW_TAP_DEPLOY_KEY; the cask push " +
-			"template in .goreleaser.yaml resolves that env and fails without it (t-6bhz)")
+	push := stepBlockOf(t, raw, caskPushStep)
+	for _, want := range []string{
+		"HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}",
+		"TAP_URL: git@github.com:akira-toriyama/homebrew-tap.git",
+		`export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes`,
+		`git clone --quiet --depth 1 "$TAP_URL"`,
+	} {
+		if !strings.Contains(push, want) {
+			t.Errorf("goreleaser.yml's cask push step lost %q; the cask must be pushed over SSH with the tap's "+
+				"write deploy key, not a token (t-6bhz)", want)
+		}
+	}
+	if p := readStepShape(t, raw, caskPushStep).parents; len(p) < 2 || p[1] != "cask" {
+		t.Errorf("the push step sits under %v, want the cask job", p)
 	}
 
-	// Half two: the config spends it on an SSH push to the tap.
-	for _, want := range []string{
-		`url: "git@github.com:akira-toriyama/homebrew-tap.git"`,
-		`private_key: "{{ .Env.HOMEBREW_TAP_DEPLOY_KEY }}"`,
-	} {
-		if !strings.Contains(config, want) {
-			t.Errorf(".goreleaser.yaml no longer contains %q; the cask must be pushed over "+
-				"SSH with the tap's write deploy key, not a token (t-6bhz)", want)
+	// GoReleaser writes the cask and pushes nothing.
+	if !regexp.MustCompile(`(?m)^    skip_upload:\s*true\s*$`).MatchString(config) {
+		t.Error(".goreleaser.yaml's cask no longer sets `skip_upload: true`, so GoReleaser pushes the tap inside " +
+			"its own run — before the attest step, and before the release is public")
+	}
+	for _, banned := range []string{"private_key:", "\n      git:\n", "commit_msg_template:"} {
+		if strings.Contains(config, banned) {
+			t.Errorf(".goreleaser.yaml carries %q; the push is goreleaser.yml's cask job alone", strings.TrimSpace(banned))
 		}
 	}
 
 	// And HOMEBREW_TAP_TOKEN, the tap's PAT, may not appear in either
 	// executable body — an account-scoped token's blast radius is what the
 	// deploy key avoids.
-	for name, body := range map[string]string{"goreleaser.yml": workflow, ".goreleaser.yaml": config} {
+	for name, body := range map[string]string{"goreleaser.yml": code(raw), ".goreleaser.yaml": config} {
 		if strings.Contains(body, "HOMEBREW_TAP_TOKEN") {
 			t.Errorf("%s references the retired HOMEBREW_TAP_TOKEN; the tap credential is "+
 				"the deploy key now (t-6bhz)", name)
