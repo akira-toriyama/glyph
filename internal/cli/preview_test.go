@@ -140,6 +140,28 @@ func TestPreviewNotes(t *testing.T) {
 	}
 }
 
+// TestPreviewNotesFallbackOpensNoBlockBehindTheBullet: the list folded into the
+// <details> block is the same notes line, so raw, the same exclude_authors commit
+// opens a heading inside a PR comment (measured at 2f9428a: <details> holding
+// <li><h2>). The marker takes its backslash there too.
+func TestPreviewNotesFallbackOpensNoBlockBehindTheBullet(t *testing.T) {
+	dir := testutil.NewRepo(t)
+	t.Chdir(dir)
+	body := `[` + apiCommit("aaa1111", "dependabot[bot]", "## Breaking Changes") + `,` + apiCommit("bbb2222", "dependabot[bot]", "[ ] ship it") + `]`
+	usePR(t, prServer(t, 7, body))
+
+	code, stdout, stderr := runGlyph(t, "preview", "--pr", "7", "--notes")
+	if code != 0 {
+		t.Fatalf("preview --notes exited %d: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, `- \## Breaking Changes`) {
+		t.Errorf("the value's opener reached the folded list live:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `- \[\ ] ship it`) {
+		t.Errorf("the value's task-list marker reached the folded list as a checkbox:\n%s", stdout)
+	}
+}
+
 // TestPreviewNotesOffByDefault guards the default: the same input without
 // --notes must carry no disclosure block.
 func TestPreviewNotesOffByDefault(t *testing.T) {

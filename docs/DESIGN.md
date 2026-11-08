@@ -448,16 +448,74 @@ pattern says it means:
   `</li>`. (Test `TestRenderLineEscapesTheScopeAsProse`; mutation row
   `notes-placeholder-values-render-raw.patch` — with every value passed raw,
   nothing else in `go test ./...` fails.)
-  - **`-` and `@` stay unescaped, deliberately**, and the prose rules test
-    neither. `-` is a list, setext or thematic-break marker only at the start
-    of a line, where no shipped template puts a value (each opens with a
-    literal `- `), so escaping it would put a backslash into the raw source of
-    every kebab-case scope for nothing (`grid\-1f\-4` renders as
-    `grid-1f-4`). `@` is the fence's: a backslash does not disarm a mention
-    (`credit \@octocat` renders a live one), and one in front of the at-sign
-    makes the fence write a separating space so the backslash cannot eat its
-    opening backtick — the reader sees `\ ` before a code-font handle
-    (measured on a `(\@x)` scope, the bytes escaping `@` would write).
+  - **A value at a block start opens no block** (t-t10s, 2026-11-04). The head
+    of a list item is a block start as much as the head of a line is, so a
+    template's opening `- ` protects nothing, and every shipped template puts
+    `$subject` right behind one. A matched subject opens with its gitmoji, its
+    type word or `Revert` under the presets, none of them an opener, but the
+    raw-line fallback (§3) binds the whole first line of a commit an
+    `exclude_authors` author names, and that name is git's free-text `%an`.
+    Measured at 2f9428a through `glyph notes --range`, then `POST /markdown` on
+    each line and on the body inside the preview's `<details>`: `## Breaking
+    Changes` under the name `dependabot[bot]` passes `lint --range` at 0 and
+    renders `<ul><li><h2>`, and a fence swallows the credit into `<pre
+    lang="dependabot[bot]">`. So the prose escape takes a fifth rule, at
+    `markdown.Line` for every caller: past the containers the template wrote in
+    full, the opener a value would write there takes a backslash
+    (`blockOpenerAt` holds the shapes and the measurements), and it reads a shape
+    rather than a byte because a leading `*x*`, `_x_`, `~~x~~` or code span must
+    keep rendering. An indent no backslash reaches is dropped by `Line.Prose`,
+    which costs nothing: a paragraph's leading blanks do not render. A template's
+    own opener stays the template's (`## $subject` is its heading), and a
+    template with no bullet gets the same rule, setext underlines and table
+    delimiter rows included, both live on a template's later line (`- a\n  ===`
+    renders `<li><h1>`, `- release\n  ---:` a table with `release` as its
+    header). The rule runs ahead of the span test, because GitHub decides blocks
+    before any span, so the openers rules 1 and 3 would also disarm are its
+    shapes too (`<` and a tag name, `<!--`, `<?`, `<!`, `[^`): a template's line
+    ending can put a value inside a span the scan believes across it, where those
+    rules do not run, and `- `ping\n</details> cc @octocat now` x` rendered no
+    span, a raw `</details>` that closes the preview's block, and a live mention
+    (measured on this change's first draft, 2026-11-04). The same ending is why
+    the span scan ends a paragraph at a template line that opens a block, as
+    GitHub does, from the same
+    `blockOpenerAt`: `line = "- `ping\n- $subject` x"` rendered two items and a
+    live mention with the fence believing one span. One blunt reading, where the
+    blunt side is the over-escaping one: an indented `2.` or a `<i>` continues a
+    paragraph at GitHub and ends one here, so the fence lands inside a real span
+    as visible noise. GitHub's task-list filter is the one opener-shaped thing
+    that reads rendered text rather than source: `- \[ ] ship it` renders a
+    checkbox, `- \- \[ ] y` one with the bullet deleted, `\[ \]` and `\[&nbsp;]`
+    a checkbox still, and `\[\ ]` the text `[\ ]`. So at a list item's own head,
+    and nowhere else (not behind a quote, not in a cell, not on a continuation
+    line, each measured as text), the backslash goes between the brackets
+    (`taskItemAt`), the one escape that prints. The filter's blanks are
+    Unicode's: a tab, a form feed, U+00A0 or U+3000 between the brackets or
+    behind them renders a checkbox as a space does, and `taskItemAt` reads that
+    measured class at each of its positions (its second table). Tests
+    `TestProseAtABlockStartOpensNoBlock`, `TestBlockOpenerOwnership`,
+    `TestRawLineEndingsEndTheParagraphTheFenceReads`, `TestCodeSpans`,
+    `TestGroupFallbackOpensNoBlockBehindTheBullet`,
+    `TestNotesFallbackOpensNoBlockBehindTheBullet`,
+    `TestPreviewNotesFallbackOpensNoBlockBehindTheBullet`; mutation rows
+    `prose-at-a-block-start-opens-a-block.patch`,
+    `prose-keeps-its-indent-at-a-block-start.patch`,
+    `block-rule-kills-inline-syntax-at-a-value-head.patch`,
+    `task-list-marker-renders-a-checkbox.patch`,
+    `span-scan-crosses-a-line-that-opens-a-block.patch`,
+    `html-block-opener-yields-to-a-crossing-span.patch`,
+    `footnote-definition-yields-to-a-crossing-span.patch`,
+    `table-delimiter-row-opens-a-table.patch`.
+  - **`-` behind a line's head and `@` stay unescaped, deliberately**, and the
+    prose rules test neither. `-` is a list, setext or thematic-break marker
+    only at a block start, which the rule above answers, so escaping it anywhere
+    else would put a backslash into the raw source of every kebab-case scope for
+    nothing (`grid\-1f\-4` renders as `grid-1f-4`). `@` is the fence's: a
+    backslash does not disarm a mention (`credit \@octocat` renders a live one),
+    and one in front of the at-sign makes the fence write a separating space so
+    the backslash cannot eat its opening backtick — the reader sees `\ ` before a
+    code-font handle (measured on a `(\@x)` scope, the bytes escaping `@` would
+    write).
   - **The plain-text route is deleted, not revived** (`Line.Text` and
     `escapeText`, t-0j9r). v1 rendered the scope through a flat escaper that
     backslashed every ASCII punctuation byte but those two, on the argument
@@ -3503,6 +3561,47 @@ not write over that push's comment. Executed by
 `pr-verdict-red-push-keeps-the-previous-verdict` and
 `pr-verdict-fallback-keyed-on-a-leftover-body`.
 
+The upsert finds its comment by the marker on a comment a bot wrote, the first
+across every page, and hands that one id to one write. Anyone who can comment can
+type the marker, and the job's token edits what they wrote: the v6.1.0 reusable
+replaced a person's marker comment with its verdict (glyph-test-2 #12, run
+41816989920). `gh api --paginate --jq` runs its filter once per page, so markers on
+two pages answer two lines, and gh refuses the PATCH URL they make; `--paginate`
+asks for 100 a page, so that is a pull past 100 comments (glyph-test-2 #11 at 104,
+one push: the v6.1.0 step died on run 41817273095, this one edited its sticky on
+run 41817272657 and left three person-typed markers alone). gh refuses `--slurp`
+beside `--jq`, hence the pipe into `jq`, and refuses it without `--paginate`; the
+step's `pipefail` is what keeps a refused connection from reading as "no comment
+yet": gh prints `[]` and exits 1, and jq answers empty and exits 0. The listing is
+the pull's issue comments, `issues/{n}/comments` — `pulls/{n}/comments` is its
+review comments, none of which is the sticky. The job's own `if:` is the only
+guard on the event: a push-triggered caller reports the job skipped with no step
+run (glyph-test-2 run 41809789871), so nothing inside the job can refuse one.
+Executed by `TestPRVerdictStickyLookupAnswersOneBotComment` against a double of
+gh keyed on the endpoint and flags the step hands it, the condition pinned by
+`TestPRVerdictJobRunsOnlyOnASameRepoPull`; mutation rows
+`pr-verdict-sticky-overwrites-a-persons-comment`,
+`pr-verdict-sticky-lookup-answers-once-per-page`,
+`pr-verdict-sticky-lookup-answers-every-marker`,
+`pr-verdict-failed-lookup-posts-a-second-sticky`,
+`pr-verdict-sticky-lookup-drops-paginate`,
+`pr-verdict-sticky-lookup-reads-review-comments` and
+`pr-verdict-job-runs-outside-a-same-repo-pull`.
+
+`lint.yml`'s two steps judge one pull together. The title step runs behind a red
+range step (`if: ${{ !cancelled() && github.event_name == 'pull_request' }}`), so a
+pull failing both carries both findings in one red run, §3's rule for a range, and
+the job is red when either step is: on glyph-test-2 both red, range red beside a
+green title and range green beside a red title all conclude `failure`, both green
+`success` (#8 through #11, 2026-11-04). A push has no title to judge, and the step
+reports skipped (run 41816914586). Skipped behind a red range, the title's finding
+waited for the commits to go green (run 41809643056). Pinned by
+`TestLintGateAlsoJudgesTheSquashTitle`, the step's exit executed by
+`TestLintTitleStepExitsGlyphsVerdict`; mutation rows
+`squash-title-step-skipped-behind-a-red-range`,
+`squash-title-step-refuses-every-direct-push`,
+`squash-title-step-allowed-to-fail` and `squash-title-step-swallows-the-verdict`.
+
 Two behaviours of the shipped workflows are contract, not implementation
 detail. `lint.yml` carries a second, annotate-only arm (#140): a caller may add
 `push: branches: [main]` and the same rules run over each direct push to the
@@ -3724,10 +3823,11 @@ The severities are the argued part:
   --pr` is that subject's own gate — CONTRIBUTING ratifies the title as a
   commit subject and lint.yml runs it beside the range — so the
   fallback now reads a *linted* subject, though only as reliably as the gate's
-  trigger re-fires on a retitle
-  (measured `minor` → `patch`, and `minor` → `none` for a title
+  trigger re-fires on a retitle, which takes `edited` in the caller's `types:`:
+  GitHub's default list leaves it out (`TestLintCallersRefireOnARetitle`). Measured
+  `minor` → `patch`, and `minor` → `none` for a title
   with no gitmoji — `TestSinceTagSquashMultiCommitDivergesWhenAPIDark`,
-  `TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark`). One wrong level on one pull, versus a whole pull lost.
+  `TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark`. One wrong level on one pull, versus a whole pull lost.
 - **`allow_merge_commit` / `allow_rebase_merge` true ⇒ advice, not failure.** A
   merge commit *used* to be data loss (the walk dropped every commit with 2+
   parents before resolving it, so the PR vanished — t-7zt7); with the walk expanding merge commits correctly it costs

@@ -283,7 +283,8 @@ title = "Fixes"
 		// emphasis keeps working — the price DESIGN §2 accepts.
 		{`:bug:(ThemeKit,prism.a)~ fix it`, `- **ThemeKit,prism.a:** fix it`},
 		{`:bug:(_x_)~ fix it`, `- **_x_:** fix it`},
-		// '-' is never escaped, so a kebab scope is byte-identical.
+		// '-' behind the line's head is never escaped, so a kebab scope is
+		// byte-identical.
 		{`:bug:(grid-1f-4)~ fix it`, `- **grid-1f-4:** fix it`},
 	}
 	commits := make([]Commit, 0, len(cases))
@@ -300,6 +301,59 @@ title = "Fixes"
 	for i, c := range cases {
 		if got := sections[0].Lines[i]; got != c.want {
 			t.Errorf("%s:\n got %q\nwant %q", c.message, got, c.want)
+		}
+	}
+}
+
+// TestGroupFallbackOpensNoBlockBehindTheBullet: the raw-line fallback binds a
+// commit's whole first line to $subject, right behind the preset's "- ", and an
+// exclude_authors match reads git's free-text %an, so anyone can name themselves
+// into it. Measured at 2f9428a on the gemoji preset: `lint --range` exits 0, and
+// GitHub renders the notes line of the first case as <ul><li><h2>. A matched
+// subject carries the same bytes behind its gitmoji, which is inline text, and
+// stays as it was.
+func TestGroupFallbackOpensNoBlockBehindTheBullet(t *testing.T) {
+	cfg := testutil.Config(t)
+	const credit = ` dependabot\[bot]`
+	for _, c := range []struct{ message, want string }{
+		{"## Breaking Changes", `- \## Breaking Changes` + credit},
+		{"> [!WARNING] x", `- \> \[!WARNING] x` + credit},
+		{"``` x", "- \\``` x" + credit},
+		{"~~~ x", `- \~~~ x` + credit},
+		{"    x", `- x` + credit},
+		{"1. x", `- 1\. x` + credit},
+		{"- - x", `- \- - x` + credit},
+		// GitHub's task-list filter reads the item's rendered head, so rule 3's
+		// backslash before the "[" still renders a checkbox; the one between the
+		// brackets does not (measured 2026-11-04, the bullet variant deleted its
+		// bullet with the brackets).
+		{"[ ] ship it", `- \[\ ] ship it` + credit},
+		{"[x] done", `- \[\x] done` + credit},
+		{"- [ ] x", `- \- \[\ ] x` + credit},
+		// The filter's blank is Unicode's: an ideographic space between the
+		// brackets, ordinary Japanese input, renders a checkbox too (measured
+		// 2026-11-08; taskItemAt's second table).
+		{"[　] ship it", "- \\[\\　] ship it" + credit},
+		{"Bump x from 1 to 2", `- Bump x from 1 to 2` + credit},
+	} {
+		sections, err := Group([]Commit{{SHA: "aaaaaaaaaaaa", Author: "dependabot[bot]", Message: c.message}}, cfg)
+		if err != nil {
+			t.Fatalf("Group(%q): %v", c.message, err)
+		}
+		if len(sections) != 1 || sections[0].Title != "Dependencies" || len(sections[0].Lines) != 1 {
+			t.Fatalf("Group(%q) = %+v, want one line in Dependencies", c.message, sections)
+		}
+		if got := sections[0].Lines[0]; got != c.want {
+			t.Errorf("Group(%q):\n got %q\nwant %q", c.message, got, c.want)
+		}
+	}
+	for _, subject := range []string{":bug:~ ## x", ":bug:~ > x", ":bug:~ 1. x", ":bug:~ - x", ":bug:~ ``` x", ":bug:~ ---"} {
+		sections, err := Group([]Commit{{SHA: "aaaaaaaaaaaa", Author: "akira", Login: "akira", Message: subject}}, cfg)
+		if err != nil {
+			t.Fatalf("Group(%q): %v", subject, err)
+		}
+		if got, want := sections[0].Lines[0], "- "+subject+" @akira"; got != want {
+			t.Errorf("Group(%q):\n got %q\nwant %q", subject, got, want)
 		}
 	}
 }

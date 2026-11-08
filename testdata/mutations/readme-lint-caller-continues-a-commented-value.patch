@@ -1,0 +1,14 @@
+diff --git a/README.md b/README.md
+index a0c953c..21c999a 100644
+--- a/README.md
++++ b/README.md
+@@ -147,7 +147,8 @@ on:
+     # a retitle re-fires the squash-title lint only with `edited`, not a default type
+     types: [opened, synchronize, reopened, edited]
+   push:
+-    branches: [main]  # optional — annotates direct pushes, never fails them
++    branches: main  # optional — annotates direct pushes, never fails them
++      - release
+ permissions:
+   contents: read
+   pull-requests: read  # the squash-title lint reads GET /pulls/{n}
