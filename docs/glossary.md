@@ -1005,8 +1005,8 @@ headline`, `internal/cli/cmd_preview.go`
 
 **sticky comment** — one PR comment edited in place on every push rather than a
 new comment each time. The caller finds its previous comment by the leading
-marker `<!-- glyph-pr-verdict -->`, so the marker is part of the contract, not
-decoration. `internal/preview/preview.go: Marker`
+marker `<!-- glyph-pr-verdict -->` on a comment a bot wrote, so the marker is part
+of the contract, not decoration. `internal/preview/preview.go: Marker`
 
 ---
 
