@@ -43,8 +43,8 @@ cut, then wrong fleet-wide until the pins move back.
   footprints, the wedge), **§3** classification and the fold, **§2** message grammar and lint
   rules, **§5** architecture and the stream contract, **§7** `doctor`.
 - Treat `glyph.toml` as the grammar: a commit means what its first matching `[[patterns]]`
-  entry says (since v2 there is no embedded table and no `glyph rules`). Never retype a
-  pattern into prose.
+  entry says (since v3.0.0 — the v2 engine generation, DESIGN §2 — there is no embedded
+  table and no `glyph rules`). Never retype a pattern into prose.
 
 ## Exit codes are a machine API
 
@@ -56,22 +56,24 @@ cut, then wrong fleet-wide until the pins move back.
   paragraph is doctor's own subset (its `4` is a check that could not run), and no test holds
   it — renumbering a code means editing it by hand.
 
-Why: every fleet repo's lint gate, glyph's three reusable workflows, the installed hooks and
-`scripts/smoke.sh` all branch on the exact value. `lint --stdin=false` once exited
+Why: every out-of-Go consumer `TestOutOfGoConsumersBranchOnTheContractIntegers` inventories
+(the reusables, the release-notes action, the installed hooks, `scripts/smoke.sh`,
+`scripts/fleet-preflight.sh`) branches on the exact value. `lint --stdin=false` once exited
 `3`, telling a CI gate that a commit violated the convention when none had been submitted.
 
 ## `glyph` on PATH is not your working tree
 
 - To exercise your own tree, use `sh build.sh` (stamps the version from git) or
-  `go run ./cmd/glyph` — never `glyph` on PATH from inside a worktree.
+  `go run ./cmd/glyph` — never `glyph` on PATH, in the primary checkout or in a worktree.
 - Run `glyph lint --range origin/main..HEAD` before committing: CI lints this repo's own
   commits.
 
-Why: the wrapper builds a **hardcoded** clone path
-(`/Volumes/workspace/github.com/akira-toriyama/glyph`), so inside a git worktree it builds and
-runs the *primary* checkout — code you did not write — and reports success. The installed hooks
-call the same wrapper and block **only** on exit 3, passing every other failure through by
-design, so a tree that does not compile turns the local gate into a silent no-op.
+Why: the wrapper `git archive`s the **hardcoded** clone's `origin/main`
+(`/Volumes/workspace/github.com/akira-toriyama/glyph`; its header has the mechanism) and
+builds that, never any working tree — so in every checkout, your unpushed work is not what
+runs, and it reports success. The installed hooks call the same wrapper and block **only** on
+exit 3: any other failure, a wrapper that could not build included, is one stderr line and an
+exit-0 pass-through by design, so a broken local gate never looks like a verdict.
 
 ## Verification
 
@@ -117,9 +119,9 @@ design, so a tree that does not compile turns the local gate into a silent no-op
   game. Do not wipe its history or tags: `e2e-v2.yml` and `livefire.yml` reference old tags
   as frozen coordinates, and the rollout runbook names it as the canary.
 - Fire **packages** ammunition in **`glyph-monorepo-test`** (created 2026-09-10, the same
-  standing as glyph-test): five declared lines, `travel/onsen` nested in `travel`, one rolling
-  draft per line. Its `release.yml` is the reusable's per-line read-back on every push, its
-  `e2e.yml` (`glyph-ref=<ref>`) fires the §4.1 rules on a fixture and at a frozen coordinate,
+  standing as glyph-test): several declared lines (its README lists them), `travel/onsen`
+  nested in `travel`, one rolling draft per line. Its `release.yml` is the reusable's per-line
+  read-back on every push, its `e2e.yml` (`glyph-ref=<ref>`) fires the §4.1 rules on a fixture and at a frozen coordinate,
   and its `artifact-probe.yml` is **expected to fail** at the reusable's refusal. Its README
   lists the pulls and the merge commit that are frozen; do not rewrite them.
 - Patch both harnesses first when a change narrows the `glyph.toml` schema — a frozen
@@ -139,10 +141,10 @@ design, so a tree that does not compile turns the local gate into a silent no-op
   `-update` makes a rendering bug look intentional.
 - Treat `testdata/fuzz` as a regression corpus, not scratch: a **new** file there is the
   engine reporting an input the code fails. Rename it after the defect (Go replays any
-  filename in the target directory) and commit it; never delete one to go green. Six entries
-  are committed, all under `internal/markdown/`, and plain `go test` replays each as a named
-  subtest. A new `Fuzz` target needs no CI or check.sh edit — `scripts/fuzz-smoke.sh`, which
-  both run, discovers targets.
+  filename in the target directory) and commit it; never delete one to go green.
+  `git ls-files '*testdata/fuzz/*'` lists the committed entries, and plain `go test` replays
+  each as a named subtest. A new `Fuzz` target needs no CI or check.sh edit —
+  `scripts/fuzz-smoke.sh`, which both run, discovers targets.
 
 ## `internal/emoji/table.json` is hand-edited, in order
 

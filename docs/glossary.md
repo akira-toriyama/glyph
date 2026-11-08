@@ -89,23 +89,22 @@ walk base and the version base together to a tag two releases behind, silently.
 A tag must be attached with `=` (`--since-tag=v1.2.3`); the space form is caught
 as a usage error rather than walking the wrong range.
 `internal/walk/base.go: Auto, LatestVersionTag, releasesHEADHolds`,
-`internal/cli/flags.go: sinceTagArgs`, `internal/gitsource/gitsource.go: Tags, mergedTags`
+`internal/cli/flags.go: sinceTagArgs`, `internal/gitsource/checkout.go: Checkout.Tags`,
+`internal/gitsource/gitsource.go: mergedTags`
 
 **below:** — the other *resolved* `--since-tag` form
 (`--since-tag=below:TAG`): the highest parseable version tag HEAD contains
-**strictly below** TAG's version — the predecessor of a tag already cut. It
-answers the tag-push question auto cannot: at tag-push time the new tag *is* the
-highest v\* tag, so auto would walk an empty range. Strictly below the bound, not
-"the highest other tag" — cutting a v0.8.3 hotfix while v0.9.0 exists resolves
-v0.8.2. With no version tag below the bound (the first release), the walk covers
-the whole history, same as auto before the first tag — bounded in both forms by the
-release-floor cap: past `walk.walkCap` walk-visible commits the walk is
-refused (fail-loud 4) with the escape in the message, because it pays one API
-round-trip per visited commit and nothing else bounds it. The bound must itself be
-version-shaped (usage error otherwise), and the sentinel cannot collide with a
-real tag: git forbids `:` in refnames. This resolution used to be re-derived in
-shell inside `goreleaser.yml` and inherited the refname-sort defect above
-(t-s5n4). `internal/walk/base.go: below, sinceTagRange`
+**strictly below** TAG's version — the predecessor of a tag already cut, not
+"the highest other tag". README "Getting started" has its use (the tag-push
+job, where the new tag is itself the highest) and the first-release fallback;
+both forms are bounded by the release-floor cap: past `walk.walkCap`
+walk-visible commits the walk is refused (fail-loud 4) with the escape in the
+message, because it pays one API round-trip per visited commit and nothing
+else bounds it. The bound must itself be version-shaped (usage error
+otherwise), and the sentinel cannot collide with a real tag: git forbids `:`
+in refnames. This resolution used to be re-derived in shell inside
+`goreleaser.yml` and inherited the refname-sort defect above (t-s5n4).
+`internal/walk/base.go: below, sinceTagRange`
 
 **range** — the `TAG..HEAD` revision range string (the code calls it `revRange`,
 and reports it as `source`). `--since-tag` names the **tag alone**; the walk
@@ -180,10 +179,9 @@ the landed sha reaches `note.line`'s `$hash` and the pull reaches `$pr`, and a
 commit that landed under no identity of its own binds the pull alone, because
 its listed sha is exactly such a pre-squash sha and the pull is the one address
 that outlives the squash (t-xxhj). Which of them a release body prints is the
-template's decision — both shipped presets place `$pr` alone, inside an optional
-span, so a line reads `- subject (#123)` and loses the parens entirely when no
-pull resolved; the `(#123, abc1234)` shape v1 hardcoded is expressible as
-`$[ ($pr, $hash)]` and is deliberately not what ships (DESIGN §3).
+template's decision — the shipped presets place `$pr` alone inside an
+optional span, and DESIGN §4 (t-xxhj) says why the v1 `(#123, abc1234)` shape
+is not what ships.
 `internal/walk/expand.go: mainFootprint, walk.expand`, `internal/walk/walk.go: NoteCommits`
 
 **stand aside** — what a walked commit does when it reports itself carried by a
@@ -206,10 +204,11 @@ commit never resolved (GitHub had not indexed the merge commit yet, or an
 automation authored it and the author gate skipped it before the API). The walk
 **warns and deliberately does not expand it**: a listing carries nothing about
 the range, so recovering it would be guessing, and the guess was measured wrong
-(DESIGN §4 has both ways). The release is genuinely short by whatever that
-pull changed. Note what the warning does *not* promise: API lag clears itself
-and warns once, but a repository whose merge button an **automation** presses
-warns on every release, structurally.
+(DESIGN §4 has both ways). The walk is then *incomplete*: `bump` and `notes`
+warn, `release` refuses at exit 4 before it reads the releases listing (DESIGN
+§4, the incomplete-walk refusal). API lag clears itself on a re-run; a
+repository whose merge button an **automation** presses meets the refusal on
+every release until a tag is cut past that merge point.
 `internal/walk/expand.go: walk.reconcile` (the `coveredOrder` ledger),
 `Facts.lostPulls`
 
@@ -222,7 +221,7 @@ walk.expand`
 resolved pull, its number and how many of its listed commits the walk took in
 (after the footprint and seen-sha filters; an excluded author's and a skipped
 merge commit among them, so it is not a count of commits that *participate*),
-published as `.pulls` on the `--json` verdict so a human or a CI step can audit
+published as `.pulls` on `release --json` so a human or a CI step can audit
 how a verdict was assembled without re-deriving the exclusion rules in shell. It
 records what the walk **did** and never why a number is what it is: a count of
 **0** has only innocent causes (a stacked pull whose commits rode in with its
@@ -249,11 +248,8 @@ alone (a `BREAKING CHANGE:` footer is prose; DESIGN §4).
 
 **API lag** — GitHub answering **422** for a sha it does not know yet, which is
 what a walk running seconds after a push meets. It is the **only** status that
-reaches the fallback path: a 403 rate limit, a 5xx that outlived the retry
-schedule (t-bjrv) and a dead socket leave the walk as an error and exit 4 — the
-outage window is an exit-code question, not a classification one. Deliberately
-not true of a 404, which is how a bad credential answers for *every* commit of a
-private repository. The same 422 on a commit's file listing
+reaches the fallback path (DESIGN §4 has the rule and why a 404 is not it).
+The same 422 on a commit's file listing
 (`GET /commits/{sha}`, asked only under `[[packages]]`) is **not** lag:
 attribution has no weaker source for a commit's files, so the listing is
 recorded as unread (`Facts.filesUnknown`), never the fallback.
@@ -268,7 +264,8 @@ any expansion, because a walk where nothing resolves is still a walk over a
 truncated history, and once per `--range` read (`lint`, `bump`, `notes`), which
 warns. Its **boundary** commit — the one whose parents were cut off — has no
 diff the clone can compute: git reads it as a root, and its whole tree is not
-its diff (DESIGN §4.1). `internal/gitsource/gitsource.go: IsShallow, IsShallowBoundary`,
+its diff (DESIGN §4.1). `internal/gitsource/checkout.go: Checkout.IsShallow`,
+`internal/gitsource/gitsource.go: IsShallowBoundary`,
 `Facts.shallow`, `internal/cli/range.go: logRange`
 
 **truncated listing** — a pull whose commit listing came back at GitHub's hard
@@ -311,9 +308,9 @@ fold used second-best evidence"; it is "something is missing from the fold, and
 only GitHub can supply it". `internal/walk/facts.go: Facts.dropped` (both
 arms sit in `walk.fallback`'s lag arm)
 
-**shortfall** — the one-clause sentence naming what the walk could not read, so
-the same fact can be spliced into a `::warning::`, into the draft body a human
-reads days later, and into the PR comment's caveat. `internal/walk/facts.go:
+**shortfall** — the one-clause sentence naming what the walk could not read,
+spliced into `release`'s exit-4 refusal and into the preview comment's
+INCOMPLETE caveat (no draft is composed from a short walk). `internal/walk/facts.go:
 Facts.Shortfall`
 
 **wedge** — the state a repository is in when a commit that bypassed the lint
@@ -323,15 +320,11 @@ a silent patch), and published history is immutable, so the **same** failure
 recurs on every future release until the walk starts past it.
 `internal/walk/refusal.go: unclaimed, wedge, walkRefusal`
 
-**wedge escape** — the base that clears a wedge, and which one depends on whether
-the offending commit is somewhere a tag can be cut. A merge- or rebase-merged
-pull put its commits on the released branch, so a base **at or past the offending
-commit** clears it — the nearest escape, which matters because every commit
-between it and the merge point is one a farther base would silently drop. A
-**squash-merged** pull has no such commit: its commits exist only over the API
-and its one commit on main *is* its merge point, so nothing short of a base at or
-past that merge point works. A commit pushed straight to the released branch
-is its own escape: a base at or past the commit itself. Under `[[packages]]`
+**wedge escape** — the base that clears a wedge: for a merge- or rebase-merged
+pull a base **at or past the offending commit**, for a **squash-merged** pull a
+base at or past its merge point, for a commit pushed straight to the released
+branch a base at or past the commit itself (DESIGN §4, "Which base clears it",
+has why each is the nearest). Under `[[packages]]`
 the base is a tag on each line whose range holds the commit — one line's tag,
 or a bare one, leaves the others wedged. The error message names
 where the commit sits, the base and why that base is the one; with several
@@ -387,12 +380,10 @@ no locked sibling steps as the single line does.
 `internal/bump/linestep.go: NextOn`
 
 **attribution** — which lines a commit moves, read from the
-commit's **own** diff and never a pull's net diff: files under a package move
-it (longest path prefix wins; a rename counts under both names), a commit under
-no package moves the package its scope names, and a commit under no package
-with no such scope moves nothing when its sigil is `=` and is refused when the
-sigil claims a version impact — as is, with such a sigil, a scope naming a
-package that owns none of the diff's files (a `=` is placed by its files).
+commit's **own** diff and never a pull's net diff: files place it (longest path
+prefix wins), a scope places a commit no file places, and a version claim
+nothing can carry is refused. DESIGN §4.1 rules 1–3 are the home the code
+cites.
 Asked of every walked commit — of a merge commit over no file, since
 its diff is never read and only its scope can carry it: with scope and
 sigil for a commit the fold reads, by files alone for one it does not — an
@@ -405,20 +396,10 @@ squash-merged pull's inner commit. `internal/attribution/attribution.go:
 Attribute`, `internal/walk/partition.go: PlaceOf, Attribute, partitionLines`
 
 **carrier** — the package a commit's sigil lands on. A **shared-only** commit
-(its diff lies under no package: root CI, the workspace file, a README in a
-repository with no root package) has a carrier only if its scope names a
-package, and so does a commit with no files at all — an empty commit, or a
-merge commit a pattern other than a skip claims, whose diff is never read —
-root package or not: the root package claims files, not commits. With none, a
-`=` commit participates in no line and any other sigil is a lint-class refusal,
-because a version claim nothing can carry is the silent-none shape with the
-polarity reversed; the refusal names the escapes that commit can take — a
-scope naming a line or `=`, where the pattern that claimed it allows them,
-and declaring the package its files belong to. A scope that names a package
-owning none of the diff's files — owning by the longest declared path, so a
-nested package's files are not its parent's nor the root package's — is
-refused the same way when the sigil claims a version impact; a `=` is placed
-by its files.
+(its diff lies under no package) or a commit with no files at all has a
+carrier only if its scope names a package; with none, a `=` commit
+participates in no line and any other sigil is a lint-class refusal (DESIGN
+§4.1 rule 3, with the escapes the refusal names).
 
 **withheld refusal** — an attribution refusal over a commit's diff the walk did
 not read whole: a file listing GitHub capped or cut short with a 422, or a
@@ -469,7 +450,8 @@ or the pull's name — what bump's and release's per-line reasons name),
 `internal/cli/pr.go: pullInput`
 
 **reason** — the one-line answer to "why this bump": the **oldest** commit that
-reaches the folded level. `internal/bump/fold.go: DecidingReason`
+reaches the folded level, except on a promoted range, where it is the oldest
+`%` commit. `internal/bump/fold.go: DecidingReason`
 
 **target** — `target_commitish`: the sha the draft's eventual tag will point at,
 defaulting to the checkout's HEAD. No tag exists until a human publishes. The
@@ -569,10 +551,9 @@ deleted. Fails loud (4) rather than creating an unpublishable draft.
 **pending** — what is already merged on the base branch but **not yet released**:
 the walk's own verdict since the latest tag, and one of the two sides the merge
 preview folds. Distinguish from a draft that is "pending publication", which this
-codebase does not call pending. A base branch whose history holds no v* tag has
-an *uncomputed* rather than empty pending side — walking it would cost an API
-round-trip per commit of the whole history for an answer that cannot matter —
-and the comment says so. `internal/preview/preview.go: Input.Pending,
+codebase does not call pending. A base branch whose history holds no version
+tag has an *uncomputed* rather than empty pending side, and the comment says so
+(`glyph preview --help` says why it is not walked). `internal/preview/preview.go: Input.Pending,
 Input.Untagged`, `internal/cli/cmd_preview.go: previewPending`
 
 **incomplete banner** — retired with t-pysg: the `> [!WARNING]` block an
@@ -604,10 +585,15 @@ pattern may capture the named group `semver_sigil`, supply a fixed
 (the commit leaves lint, bump and notes entirely); `warn = '…'` keeps its
 match legal and says so at every gate, and `unlandable = '…'` makes it an
 *unlandable* message. Retired v1 vocabulary this
-replaces: *profile*, *rules table*, *rule id*, *legacy token*, *merge
-candidate*, *generated subject* — all were properties of glyph's own grammars,
-and glyph no longer owns one. `internal/config/config.go: Pattern`,
+replaces: *profile*, *rules table*, *rule id*, *legacy token*, *generated
+subject* — all were properties of glyph's own grammars, and glyph no longer
+owns one. `internal/config/config.go: Pattern`,
 `internal/config/match.go: Match`
+
+**merge candidate** — the subject a squash merge would land on the released
+branch: the pull's title under `COMMIT_OR_PR_TITLE` on a multi-commit pull,
+which `lint --pr` and `lint.yml`'s title step judge for that reason.
+`internal/cli/cmd_lint.go`
 
 **unlandable** — a message an `unlandable = '<reason>'` pattern claims: legal
 to write, never to land. The commit-msg hook's modes pass it at 0 with the
@@ -875,20 +861,11 @@ correctly and the lost-pull warning stays loud — DESIGN §7 argues both.
 
 **release-tag pin** — a `uses: akira-toriyama/glyph/…@vX.Y.Z` reference naming a
 concrete release tag, scanned in the **local** checkout (a pin is a fact about the
-tree in front of you, so `--repo` does not move this check) — in
-`.github/workflows` and in every `action.yml` / `action.yaml` git lists for the
-checkout, at any path and inside submodules, because GitHub runs a composite
-from wherever it sits. A moving ref, a
-missing ref and a **commit-sha** pin all fail, for different stated reasons — a
-sha is immutable but a reusable derives its binary version from the *tag* the
-caller pinned. Whether the pin is the **latest** release is deliberately not
-checked: `glyph-pin-audit.yml` in `akira-toriyama/.github` already owns that
-question fleet-wide, and two answers to it would be one too many. The scan's trap:
-a `uses:`-shaped line **need not be an executing step** — every reusable ships a
-commented caller stub, and a fleet-sync step *writes* stubs from a `run: |`
-heredoc, so comments are dropped, block scalars are skipped by indentation,
-`uses:` is recognised only as the line's own YAML key, and the owner/repo match is
-case-**insensitive** because GitHub's resolution is.
+tree in front of you, so `--repo` does not move this check). A moving ref, a
+missing ref and a **commit-sha** pin all fail; whether the pin is the
+**latest** release is deliberately not this check's question. DESIGN §7 has
+the scan's scope, its trap (a `uses:`-shaped line need not be an executing
+step) and why latest belongs to the hub's `glyph-pin-audit.yml`.
 
 There are **two** pin surfaces per glyph release and this check sees one of them.
 A consumer that uses the install action pins the action with `uses: …@vX.Y.Z` and
@@ -931,11 +908,11 @@ normal answer, not an error — which is why `preview` deliberately exits **0** 
 the same fold ("this PR moves nothing" is exactly what a reviewer asked), while
 `bump`, `notes` and `release` exit 1. `internal/core/errors.go: CodeNoRelease`
 
-**annotation** — a `::warning::` or `::notice::` line on **stderr**. Folded onto
-one physical line, because a workflow command *is* one line: the runner parses up
-to the first newline and drops the rest, so a multi-line interpolation loses
-exactly the part the annotation existed to deliver. `internal/cli/output.go:
-warnf, noticef, oneLine`
+**annotation** — a `::warning::`, `::error::` or `::notice::` workflow command
+on **stderr**. Folded onto one physical line, because a workflow command *is*
+one line: the runner parses up to the first newline and drops the rest, so a
+multi-line interpolation loses exactly the part the annotation existed to
+deliver. `internal/cli/output.go: warnf, errorf, noticef, oneLine`
 
 **error envelope** — the single `{"error":{"code","message"[,"details"]}}` object
 written to stderr **last**, after the command returned. This is the other half of
@@ -963,16 +940,16 @@ is sized against, and stated where that sizing is argued rather than here
 38 non-archived repositories carried a `glyph.toml` (DESIGN §2).
 
 **reusable workflow** — a workflow with a `workflow_call` trigger, invoked from
-another repository's workflow by `uses:` at a pinned tag. glyph ships **three**:
-`lint.yml` (commit lint), `release.yml` (the rolling-draft release) and
-`pr-verdict.yml` (the merge preview). The binary and the workflow ship from one
+another repository's workflow by `uses:` at a pinned tag. DESIGN §6 inventories
+glyph's (commit lint, the rolling-draft release, the merge preview). The binary
+and the workflow ship from one
 repo at one tag, and the reusable derives the binary version from
 `job.workflow_ref` — the tag the caller pinned — so it cannot drift from the
 workflow revision, as a hand-bumped default once did (DESIGN §6 has the
 incident). `.github/workflows/{lint,release,pr-verdict}.yml`,
 `internal/workflows` (the tests that guard this)
 
-**composite action** — glyph ships two. `.github/actions/install`: the **single** source of glyph's
+**composite action** — DESIGN §6 inventories glyph's. `.github/actions/install`: the **single** source of glyph's
 security-critical install logic (download the pinned tarball, verify it against
 `checksums.txt` **and** its build provenance with `gh attestation verify`,
 fail-closed with bounded retry, confirm it reports the requested release tag,
@@ -991,8 +968,8 @@ died on `3` (DESIGN §6, t-4fpn). `.github/actions/install/action.yml`,
 `.github/actions/release-notes/action.yml`, `internal/workflows/doc.go`
 
 **distribution layer** — the files by which glyph reaches the fleet *without
-going through the Go compiler*: the three reusable workflows plus
-`goreleaser.yml`, the two composite actions, and `.goreleaser.yaml`. The term
+going through the Go compiler*: the reusable workflows plus `goreleaser.yml`,
+the composite actions, and `.goreleaser.yaml` (DESIGN §6 inventories them). The term
 earns its entry by its boundary, which is easy to draw one file too wide in both
 directions: `build.yml` is **not** distribution layer (this repo's own CI, shipped
 to nobody), and neither are the fleet-synced consumers (`commit-lint.yml`,
