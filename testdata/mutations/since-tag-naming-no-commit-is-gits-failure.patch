@@ -1,13 +1,13 @@
 diff --git a/internal/walk/base.go b/internal/walk/base.go
-index 076ed87..37d2846 100644
+index af3ebf0..b762b56 100644
 --- a/internal/walk/base.go
 +++ b/internal/walk/base.go
-@@ -272,7 +272,7 @@ func (w Walker) explicitBase(ctx context.Context, value string) (string, error)
+@@ -348,7 +348,7 @@ func (w Walker) explicitBase(ctx context.Context, value string) (string, error)
  	if err != nil {
  		return "", err
  	}
--	if !named {
-+	if false && !named {
- 		return "", core.Usagef("--since-tag %q names no commit this checkout holds — `git tag` lists the tags here; in CI a shallow or tag-less checkout needs actions/checkout with fetch-depth: 0, which fetches the tags and their history", value)
+-	if !named.IsCommit() {
++	if false && !named.IsCommit() {
+ 		return "", refuseNoCommit("--since-tag", value, named)
  	}
  	ok, err := w.Git.IsTag(ctx, value)

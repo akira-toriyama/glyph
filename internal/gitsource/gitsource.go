@@ -240,11 +240,11 @@ func mergedTags(ctx context.Context, dir, rev string) ([]string, error) {
 		if core.IsInterrupted(err) {
 			return nil, err
 		}
-		named, nerr := namesCommit(ctx, dir, rev)
+		named, nerr := resolveCommit(ctx, dir, rev)
 		switch {
 		case nerr != nil && core.IsInterrupted(nerr):
 			return nil, nerr
-		case nerr == nil && !named:
+		case nerr == nil && !named.IsCommit():
 			return nil, nil
 		}
 		return nil, err
@@ -276,14 +276,62 @@ func tagLines(out []byte) []string {
 	return tags
 }
 
-// namesCommit reports whether rev resolves to a commit. A NO is git's exit 1
-// under --verify --quiet — an unborn HEAD, a name nothing carries, a tag on a
-// blob — and is an answer, not a failure; anything else (not a repository) is
-// the git/IO error it always was. The interrupt is asked first, as everywhere
-// in this package (see isAncestor for why the order is the whole point).
-func namesCommit(ctx context.Context, dir, rev string) (bool, error) {
-	_, named, err := runAnswer(ctx, dir, "rev-parse", "rev-parse", "--verify", "--quiet", "--end-of-options", rev+"^{commit}")
-	return named, err
+// Named is what one revision names in a checkout, as rev-parse resolves it.
+// Commit is the sha of the commit the revision peels to, "" when it peels to
+// none; Kind is then the type of the object it does name ("blob", "tree"),
+// and "" when it names nothing at all — a name nothing carries, an unborn
+// HEAD, a full sha the object store does not hold, a value that is not one
+// revision.
+type Named struct {
+	Commit string
+	Kind   string
+}
+
+// IsCommit reports whether the revision peeled to a commit.
+func (n Named) IsCommit() bool { return n.Commit != "" }
+
+// objectID is rev-parse's spelling of one object: a SHA-1 or a SHA-256 hex
+// id. Anything else it prints under --verify — `^<sha>` for a negated
+// revision — is not one object.
+var objectID = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
+
+// resolveCommit resolves rev as git does and THEN peels the result to a
+// commit, in two steps: rev-parse's `<rev>^{commit}` is one spelling, and
+// the `:/<text>` search swallows the suffix into its text (`:/fix^{commit}`
+// names nothing while `:/fix` names the commit — measured, git 2.54), so the
+// peel is asked of the resolved sha, never of the value. A tag on a tree or
+// a blob resolves and does not peel; its object's type is read so the caller
+// can name what was found. Every NO is git's exit 1 under --verify --quiet
+// and is an answer, not a failure; anything else (not a repository) is the
+// git/IO error it always was. The interrupt is asked first, as everywhere in
+// this package (see isAncestor for why the order is the whole point).
+func resolveCommit(ctx context.Context, dir, rev string) (Named, error) {
+	out, found, err := runAnswer(ctx, dir, "rev-parse", "rev-parse", "--verify", "--quiet", "--end-of-options", rev)
+	if err != nil || !found {
+		return Named{}, err
+	}
+	sha := strings.TrimSpace(string(out))
+	if !objectID.MatchString(sha) {
+		return Named{}, nil
+	}
+	out, isCommit, err := runAnswer(ctx, dir, "rev-parse", "rev-parse", "--verify", "--quiet", sha+"^{commit}")
+	if err != nil {
+		return Named{}, err
+	}
+	if isCommit {
+		return Named{Commit: strings.TrimSpace(string(out))}, nil
+	}
+	// ^{} peels a tag to the object it points at; a sha the store does not
+	// hold peels to nothing, and is nothing.
+	out, exists, err := runAnswer(ctx, dir, "rev-parse", "rev-parse", "--verify", "--quiet", sha+"^{}")
+	if err != nil || !exists {
+		return Named{}, err
+	}
+	kind, err := run(ctx, dir, "cat-file", "-t", strings.TrimSpace(string(out)))
+	if err != nil {
+		return Named{}, err
+	}
+	return Named{Kind: strings.TrimSpace(string(kind))}, nil
 }
 
 // isTag reports whether refs/tags/<name> exists — an exact ref, never a

@@ -37,10 +37,12 @@ func unreadableConfig(t *testing.T, dir string) {
 
 // TestVerdictCommandsJudgeTheirFlagsBeforeTheConfig (t-h9m7): bump, notes
 // and preview check the shape of the source they were given — an empty or
-// option-shaped --range, a --pr below 1, a malformed --since-tag — before
-// glyph.toml is loaded, as lint's arms always did. Measured at 2f9428a over a
-// mode-000 glyph.toml: every bump / notes / preview case below answered the
-// config's 4 ("permission denied") while `lint --range=` answered 2.
+// option-shaped --range, a --pr below 1, a malformed --since-tag — and of
+// the --repo beside it, before glyph.toml is loaded, as lint's arms always
+// did. Measured at 2f9428a over a mode-000 glyph.toml: every bump / notes /
+// preview case below answered the config's 4 ("permission denied") while
+// `lint --range=` answered 2; the --repo cases still answered 4 at 0c177a3,
+// where `lint --pr 1 --repo bad` and `release --repo bad` answered 2.
 func TestVerdictCommandsJudgeTheirFlagsBeforeTheConfig(t *testing.T) {
 	usePR(t, walkServer(t, nil))
 	dir, _ := testutil.NewTaggedRepo(t)
@@ -62,6 +64,12 @@ func TestVerdictCommandsJudgeTheirFlagsBeforeTheConfig(t *testing.T) {
 		{[]string{"notes", "--since-tag="}, "--since-tag= names an empty tag"},
 		{[]string{"preview", "--pr", "0"}, "--pr 0 is not a pull-request number"},
 		{[]string{"lint", "--range="}, "--range needs a git revision range"},
+		{[]string{"bump", "--pr", "1", "--repo", "bad"}, `--repo \"bad\" is not owner/name`},
+		{[]string{"bump", "--pr", "1", "--repo", "a b/c"}, `--repo \"a b/c\" is not owner/name`},
+		{[]string{"bump", "--since-tag", "--repo", "bad"}, `--repo \"bad\" is not owner/name`},
+		{[]string{"notes", "--since-tag", "--repo", "bad"}, `--repo \"bad\" is not owner/name`},
+		{[]string{"notes", "--pr", "1", "--repo", "bad"}, `--repo \"bad\" is not owner/name`},
+		{[]string{"preview", "--pr", "1", "--repo", "bad"}, `--repo \"bad\" is not owner/name`},
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			code, stdout, stderr := runGlyph(t, tc.args...)
@@ -117,10 +125,17 @@ func TestCurrentIsJudgedBeforeTheWalk(t *testing.T) {
 // that tells a CI wrapper a retry can help. The whitespace cases are the
 // trimmed-value half: `--since-tag=' -x'` reached git as `-x..HEAD` at 4
 // while `-x` was refused at 2, because CheckTag judged the untrimmed value.
-// The API is never reached: the stand-in fails the test on any request.
+// The value is resolved as git resolves it and THEN peeled, so a tag on a
+// tree is refused by what it names — a sentence `git tag`, which lists it,
+// does not refute — and a negated revision, which rev-parse accepts and
+// `git log` dies on, is refused at the shape check (measured at 0c177a3:
+// `--since-tag=^v0.1.0` passed the existence question and died at 4). The
+// API is never reached: the stand-in fails the test on any request.
 func TestSinceTagNamingNoCommitIsUsage(t *testing.T) {
 	usePR(t, walkServer(t, nil))
 	dir, _ := testutil.NewTaggedRepo(t) // tags v0.1.0
+	tree := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD^{tree}")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "on-a-tree", tree)
 	t.Chdir(dir)
 
 	for _, tc := range []struct {
@@ -131,6 +146,8 @@ func TestSinceTagNamingNoCommitIsUsage(t *testing.T) {
 		{[]string{"notes", "--since-tag=v0.0.0"}, []string{`"v0.0.0" names no commit`}},
 		{[]string{"release", "--since-tag=v0.0.0", "--dry-run"}, []string{`"v0.0.0" names no commit`}},
 		{[]string{"bump", "--since-tag=nosuch-branch"}, []string{`"nosuch-branch" names no commit`}},
+		{[]string{"bump", "--since-tag=on-a-tree"}, []string{`"on-a-tree" names a tree, not a commit`}},
+		{[]string{"bump", "--since-tag=^v0.1.0"}, []string{"is not a single revision"}},
 		{[]string{"bump", "--since-tag= -x"}, []string{"looks like an option, not a tag"}},
 		{[]string{"bump", "--since-tag=\t-x"}, []string{"looks like an option, not a tag"}},
 		{[]string{"notes", "--since-tag= a..b"}, []string{"looks like a revision range"}},
@@ -154,14 +171,136 @@ func TestSinceTagNamingNoCommitIsUsage(t *testing.T) {
 	}
 
 	// The positive control: the value is judged for existence, not for being
-	// a tag — a branch and a sha still walk (TestCompareLinkNeedsATagBase
-	// holds the compare-link half), and a leading space on a real tag is
-	// trimmed and accepted.
+	// a tag — a branch, a sha and the `:/<text>` search still walk
+	// (TestCompareLinkNeedsATagBase holds the compare-link half), and a
+	// leading space on a real tag is trimmed and accepted. `:/begin` names
+	// the root commit by its message, which the one-step `<value>^{commit}`
+	// spelling refused as naming no commit (measured at 0c177a3).
 	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "v0.1.0")
 	testutil.Git(t, dir, "akira-toriyama", "branch", "old-main", base)
-	for _, from := range []string{"old-main", base, " v0.1.0"} {
+	for _, from := range []string{"old-main", base, " v0.1.0", ":/begin"} {
 		if code, _, stderr := runGlyph(t, "bump", "--since-tag="+from); code != 1 {
 			t.Errorf("bump --since-tag=%q exited %d, want 1 (an empty range folds none) — the value names a commit\nstderr: %s", from, code, stderr)
+		}
+	}
+}
+
+// TestSinceTagPackagesNamingNoCommitIsUsage: the packages half of t-tat8. On
+// a repository declaring [[packages]] a version-shaped --since-tag names a
+// line first (the config's question), and then must name a commit (git's):
+// a declared line's tag that was never cut is the caller's input at 2 with
+// the same sentence the bare line gives, where the walk from it died in
+// `git log` at 4 ("bad revision 'haiku/v9.9.9..HEAD'"). The one resolver
+// serves both arms (walk.explicitBase), and this pins the packages call
+// site, which the bare line's test cannot reach.
+func TestSinceTagPackagesNamingNoCommitIsUsage(t *testing.T) {
+	usePR(t, walkServer(t, nil))
+	dir := testutil.NewTwoLineRepo(t)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0")
+	t.Chdir(dir)
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"bump", "--since-tag=haiku/v9.9.9"}, `"haiku/v9.9.9" names no commit`},
+		{[]string{"notes", "--since-tag=curry/v0.1.0"}, `"curry/v0.1.0" names no commit`},
+		{[]string{"release", "--since-tag=haiku/v9.9.9", "--dry-run"}, `"haiku/v9.9.9" names no commit`},
+		{[]string{"bump", "--since-tag=nosuch-branch"}, `"nosuch-branch" names no commit`},
+	} {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			code, stdout, stderr := runGlyph(t, tc.args...)
+			if code != 2 || stdout != "" {
+				t.Fatalf("%v exited %d with %q on stdout, want 2 and nothing\nstderr: %s", tc.args, code, stdout, stderr)
+			}
+			env := decodeErrorEnvelope(t, stderr)
+			if !strings.Contains(env.Message, tc.want) || !strings.Contains(env.Message, "fetch-depth: 0") {
+				t.Errorf("%v: the refusal must name the value (%q) and the remedy: %q", tc.args, tc.want, env.Message)
+			}
+			if strings.Contains(env.Message, "bad revision") {
+				t.Errorf("%v surfaced git's failure instead of the flag's refusal: %q", tc.args, env.Message)
+			}
+		})
+	}
+	// The positive control on the same fixture: the declared line's tag that
+	// exists walks (an empty range folds none).
+	if code, _, stderr := runGlyph(t, "bump", "--since-tag=haiku/v0.1.0"); code != 1 {
+		t.Errorf("bump --since-tag=haiku/v0.1.0 exited %d, want 1 — the tag names a commit\nstderr: %s", code, stderr)
+	}
+}
+
+// TestRangeEndpointNamingNoCommitIsUsage: the --range twins of t-tat8 and
+// t-3dfg, on lint, bump and notes. An endpoint that names no commit this
+// checkout holds is the caller's input, refused at 2 where `git log` died at
+// 4 ("bad revision 'nosuch..HEAD'" — measured at 0c177a3), naming the
+// endpoint and the remedy --since-tag's refusal names; the value is trimmed
+// once, so ` -x` is the option shape `-x` is (`--range ' -x'` answered 4 at
+// 0c177a3) and ` v0.1.0..HEAD` is the range. git's set operators — a
+// leading ^, the ^!, ^@ and ^- suffixes — are part of the range, not of the
+// name, so the one-commit idiom `HEAD^!` keeps linting.
+func TestRangeEndpointNamingNoCommitIsUsage(t *testing.T) {
+	dir, base := testutil.NewTaggedRepo(t) // tags v0.1.0 on the root
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+	t.Chdir(dir)
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"bump", "--range", "nosuch..HEAD"}, `--range "nosuch" names no commit this checkout holds`},
+		{[]string{"notes", "--range", "v0.0.0..HEAD"}, `--range "v0.0.0" names no commit`},
+		{[]string{"lint", "--range", "HEAD..nosuch"}, `--range "nosuch" names no commit`},
+		{[]string{"lint", "--range", "v0.1.0...nosuch"}, `--range "nosuch" names no commit`},
+		{[]string{"lint", "--range", "HEAD~9..HEAD"}, `--range "HEAD~9" names no commit`},
+		{[]string{"bump", "--range", "nosuch"}, `--range "nosuch" names no commit`},
+		{[]string{"bump", "--range", "v0.1.0 HEAD"}, `--range "v0.1.0 HEAD" names no commit`},
+		{[]string{"bump", "--range", " -x"}, "looks like an option, not a revision range"},
+		{[]string{"lint", "--range", "\t-x"}, "looks like an option, not a revision range"},
+		{[]string{"notes", "--range", " -x..HEAD"}, "looks like an option, not a revision range"},
+	} {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			code, stdout, stderr := runGlyph(t, tc.args...)
+			if code != 2 || stdout != "" {
+				t.Fatalf("%v exited %d with %q on stdout, want 2 and nothing\nstderr: %s", tc.args, code, stdout, stderr)
+			}
+			env := decodeErrorEnvelope(t, stderr)
+			if !strings.Contains(env.Message, tc.want) {
+				t.Errorf("%v: the refusal is missing %q: %q", tc.args, tc.want, env.Message)
+			}
+			if strings.Contains(env.Message, "names no commit") && !strings.Contains(env.Message, "fetch-depth: 0") {
+				t.Errorf("%v: the refusal must carry --since-tag's remedy: %q", tc.args, env.Message)
+			}
+			if strings.Contains(env.Message, "bad revision") {
+				t.Errorf("%v surfaced git's failure instead of the flag's refusal: %q", tc.args, env.Message)
+			}
+		})
+	}
+
+	// The positive controls: every range git reads, read — trimmed, both
+	// range spellings, the set operators, and a bare revision.
+	for _, rng := range []string{" v0.1.0..HEAD", "v0.1.0..HEAD\t", base + "...HEAD", "HEAD^!", "^v0.1.0 ", "HEAD^-1", "HEAD"} {
+		if code, _, stderr := runGlyph(t, "lint", "--range", rng); code != 0 {
+			t.Errorf("lint --range %q exited %d, want 0 — every endpoint names a commit\nstderr: %s", rng, code, stderr)
+		}
+	}
+	if code, stdout, stderr := runGlyph(t, "bump", "--range", " "+base+"..HEAD"); code != 0 || stdout != "v0.1.1\n" {
+		t.Errorf("bump over the trimmed range exited %d with %q, want 0 and v0.1.1\nstderr: %s", code, stdout, stderr)
+	}
+}
+
+// TestCurrentIsJudgedTrimmed: --current is trimmed as --since-tag and --range
+// are — ` v1.4.0` is the version the caller typed, and was refused as "not a
+// plain semver" (measured at 0c177a3) where ` v0.1.0` as a --since-tag was
+// accepted.
+func TestCurrentIsJudgedTrimmed(t *testing.T) {
+	dir, base := testutil.NewTaggedRepo(t)
+	testutil.Commit(t, dir, "akira-toriyama", ":sparkles:^ add a menu")
+	t.Chdir(dir)
+
+	for _, current := range []string{" v1.4.0", "v1.4.0\t", " v1.4.0 "} {
+		code, stdout, stderr := runGlyph(t, "bump", "--range", base+"..HEAD", "--current="+current)
+		if code != 0 || stdout != "v1.5.0\n" {
+			t.Errorf("bump --current=%q exited %d with %q, want 0 and v1.5.0\nstderr: %s", current, code, stdout, stderr)
 		}
 	}
 }
@@ -209,15 +348,19 @@ func TestLintInputModeConflictsAreJudgedByValue(t *testing.T) {
 // TestOutsideARepositoryIsUsage (t-ckvh, ruled 2026-11-08): the caller ran
 // glyph where no work tree is — outside any repository, or inside a
 // checkout's .git — and that is the caller's input (2) on every verdict
-// command and on hook install, the answer `init` already gave both places;
-// git was reached and said so, so this is not the no-answer code. Measured
-// at 2f9428a: every verdict command and `hook install` answered git's 4
-// ("not a git repository" / "must be run in a work tree"). The two
-// exemptions stand: `hook install --print` writes a script and needs no
-// repository, and inside .git the hooks directory is git's own answer, so
-// the install proceeds. The commit-msg hook's contract rides on this too:
-// the installed script blocks on 3 alone, and 2 passes the commit through as
-// 4 did (TestLintStdinOutsideACheckoutIsNeverAViolation).
+// command and on hook install, as `init` refuses the git directory (outside
+// a repository `init` writes the current directory at 0: it creates the
+// file the others read); git was reached and said so, so this is not the
+// no-answer code. Measured at 2f9428a: every verdict command and `hook
+// install` answered git's 4 ("not a git repository" / "must be run in a
+// work tree"). The two exemptions stand: `hook install --print` writes a
+// script and needs no repository, and inside .git the hooks directory is
+// git's own answer, so the install proceeds. The boundary holds on the other
+// side too: a repository git will not read (dubious ownership) is not the
+// absence of one, and stays git's 4 with git's message, on every verdict
+// command and on hook install. The commit-msg hook's contract rides on this
+// too: the installed script blocks on 3 alone, and 2 passes the commit
+// through as 4 did (TestLintStdinOutsideACheckoutIsNeverAViolation).
 func TestOutsideARepositoryIsUsage(t *testing.T) {
 	testutil.RequireGit(t)
 	usePR(t, walkServer(t, nil))
@@ -272,17 +415,34 @@ func TestOutsideARepositoryIsUsage(t *testing.T) {
 			t.Errorf("the hook was not written where git runs it: %v", err)
 		}
 	})
+	t.Run("a repository git will not read stays the no-answer code", func(t *testing.T) {
+		t.Setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
+		t.Chdir(checkout)
+		for _, args := range append(verdicts, []string{"hook", "install"}) {
+			setStdin(t, ":bug:~ fix a crash\n")
+			code, stdout, stderr := runGlyph(t, args...)
+			if code != int(core.CodeAPI) || stdout != "" {
+				t.Errorf("%v under dubious ownership exited %d with %q on stdout, want exactly %d and nothing — git read a repository and refused it, which is not the caller's place\nstderr: %s", args, code, stdout, core.CodeAPI, stderr)
+				continue
+			}
+			if !strings.Contains(stderr, "dubious ownership") {
+				t.Errorf("%v must carry git's own message:\n%s", args, stderr)
+			}
+		}
+	})
 }
 
-// TestReleaseFooterFileUnreadableIsTheNoAnswerCode (t-f5x9): --footer-file
-// is classified as glyph.toml is (DESIGN §5, the 2/4 line): a path holding
-// nothing, or something other than a regular file, was observed and is the
+// TestReleaseFooterFileIsClassifiedByWhatWasObserved (t-f5x9): --footer-file
+// is classified as glyph.toml is (DESIGN §5, the 2/4 line), for a path the
+// caller typed to be read: what was observed at the path — nothing there, a
+// path through a regular file or too long to exist, a directory — is the
 // caller's input (2); a read the filesystem refused observed nothing and is
 // 4, the code the same event carries for glyph.toml, a hook and init's
 // write. Measured at 86eab14: a mode-000 footer answered 2 where a mode-000
-// glyph.toml answered 4. The path is named once — the *fs.PathError already
-// carries it.
-func TestReleaseFooterFileUnreadableIsTheNoAnswerCode(t *testing.T) {
+// glyph.toml answered 4; at 0c177a3 a path through a regular file and an
+// over-long name answered 4, the code that tells a CI wrapper to retry a
+// typo. The path is named once — the *fs.PathError already carries it.
+func TestReleaseFooterFileIsClassifiedByWhatWasObserved(t *testing.T) {
 	usePR(t, walkServer(t, nil))
 	dir, _ := testutil.NewTaggedRepo(t)
 	t.Chdir(dir)
@@ -290,6 +450,27 @@ func TestReleaseFooterFileUnreadableIsTheNoAnswerCode(t *testing.T) {
 	footer := filepath.Join(t.TempDir(), "install.md")
 	if err := os.WriteFile(footer, []byte("## Install\n"), 0o600); err != nil {
 		t.Fatal(err)
+	}
+	for name, path := range map[string]string{
+		"a path through a regular file": footer + "/x",
+		"a trailing slash on a file":    footer + "/",
+		"a name too long to exist":      filepath.Join(filepath.Dir(footer), strings.Repeat("a", 300)),
+		"a link to itself":              filepath.Join(filepath.Dir(footer), "loop"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if filepath.Base(path) == "loop" {
+				if err := os.Symlink("loop", path); err != nil {
+					t.Fatal(err)
+				}
+			}
+			code, _, stderr := runGlyph(t, "release", "--dry-run", "--footer-file", path)
+			if code != int(core.CodeUsage) {
+				t.Fatalf("--footer-file %s exited %d, want exactly %d (the path names nothing, which is the caller's input)\nstderr: %s", name, code, core.CodeUsage, stderr)
+			}
+			if env := decodeErrorEnvelope(t, stderr); !strings.Contains(env.Message, "--footer-file") || strings.Contains(env.Message, "could not read the footer") {
+				t.Errorf("the refusal must be the flag's, not a read failure: %q", env.Message)
+			}
+		})
 	}
 	t.Run("a read the filesystem refused", func(t *testing.T) {
 		if os.Geteuid() == 0 {

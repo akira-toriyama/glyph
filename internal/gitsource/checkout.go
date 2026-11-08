@@ -27,8 +27,8 @@ func (c Checkout) IsTag(ctx context.Context, name string) (bool, error) {
 	return isTag(ctx, c.Dir, name)
 }
 
-func (c Checkout) NamesCommit(ctx context.Context, rev string) (bool, error) {
-	return namesCommit(ctx, c.Dir, rev)
+func (c Checkout) Resolve(ctx context.Context, rev string) (Named, error) {
+	return resolveCommit(ctx, c.Dir, rev)
 }
 
 func (c Checkout) Have(ctx context.Context, shas []string) (map[string]bool, error) {

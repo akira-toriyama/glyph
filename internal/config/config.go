@@ -5,8 +5,8 @@
 // % promote to 1.0.0); everything else — where the sigil sits, what a subject
 // looks like, which commits are skipped — belongs to the file, not to glyph.
 //
-// The package is pure: no I/O beyond StatFile and LoadFile looking at the one
-// path they are given, no globals. It is deliberately strict where the house
+// The package is pure: no I/O beyond StatFile, StatReadable and LoadFile
+// looking at the one path they are given, no globals. It is deliberately strict where the house
 // config style is lenient: unknown schema, unknown keys and half-specified
 // patterns are errors, never clamped or ignored, because this file decides CI
 // verdicts and a silently-misread key is a silently-changed verdict — the
@@ -340,9 +340,32 @@ func (e *NotAFileError) Kind() string {
 //   - any other *fs.PathError: a stat the filesystem refused (permission
 //     denied, an I/O fault), so nothing was observed.
 func StatFile(path string) error {
+	return statAs(path, fs.FileMode.IsRegular)
+}
+
+// StatReadable is StatFile's classification for a path the caller typed to
+// be READ — `release --footer-file` — where a named pipe or a character
+// device is read as a regular file is: `<(…)` and a piped /dev/stdin name
+// one, and open(2) blocking on a pipe with no writer is the caller's own
+// doing there, not a state a repository reaches (the FIFO at a glyph.toml
+// path that StatFile exists to refuse). Everything else is StatFile's
+// answer: a *NotAFileError for a directory, a socket, a block device or a
+// link that resolves to no file; a *fs.PathError the path's own
+// (PathsOwnFault) for a path to nothing — missing, through a regular file,
+// too long to exist, a loop; any other *fs.PathError for a stat the
+// filesystem refused.
+func StatReadable(path string) error {
+	return statAs(path, func(m fs.FileMode) bool {
+		return m.IsRegular() || m&(fs.ModeNamedPipe|fs.ModeCharDevice) != 0
+	})
+}
+
+// statAs is the one stat behind StatFile and StatReadable: reads says which
+// modes the caller opens.
+func statAs(path string, reads func(fs.FileMode) bool) error {
 	info, err := os.Stat(path)
 	if err == nil {
-		if !info.Mode().IsRegular() {
+		if !reads(info.Mode()) {
 			return &NotAFileError{path: path, mode: info.Mode().Type()}
 		}
 		return nil
@@ -352,18 +375,21 @@ func StatFile(path string) error {
 	// sees the link itself — observed, so not a regular file (DESIGN §5). A
 	// link os.Stat could not follow for a permission or an I/O fault keeps
 	// that fault: where it leads was never observed.
-	if link, lerr := os.Lstat(path); lerr == nil && link.Mode()&fs.ModeSymlink != 0 && linksOwnFault(err) {
+	if link, lerr := os.Lstat(path); lerr == nil && link.Mode()&fs.ModeSymlink != 0 && PathsOwnFault(err) {
 		return &NotAFileError{path: path, mode: fs.ModeSymlink}
 	}
 	return err
 }
 
-// linksOwnFault reports whether os.Stat's failure on a path that is a link is
-// the link's own — a target that does not exist, a loop, a target path
-// through a regular file, a target name too long to exist. os.Lstat resolved
-// the path itself, so ENAMETOOLONG can only come from the target: a component
-// past NAME_MAX, or a path past PATH_MAX once the link is expanded.
-func linksOwnFault(err error) bool {
+// PathsOwnFault reports whether os.Stat's failure is the path's own — nothing
+// there, a loop, a path through a regular file, a name too long to exist —
+// as opposed to the filesystem refusing the stat (permission denied, an I/O
+// fault), which observed nothing. statAs asks it of a link's target, where
+// os.Lstat resolved the path itself, so ENAMETOOLONG can only come from the
+// target: a component past NAME_MAX, or a path past PATH_MAX once the link is
+// expanded. A caller that typed the path asks it of the path itself
+// (`release --footer-file`): the same four faults are then the caller's typo.
+func PathsOwnFault(err error) bool {
 	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ELOOP) || errors.Is(err, syscall.ENOTDIR) ||
 		errors.Is(err, syscall.ENAMETOOLONG)
 }

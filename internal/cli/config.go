@@ -54,13 +54,14 @@ func checkoutTop(ctx context.Context) (string, error) {
 
 // noRepositoryUsage reclassifies a failed git read where git itself says the
 // directory is in no repository: the caller ran glyph outside a checkout,
-// which is the caller's input (usage, 2), the answer `init` has always given
-// that place and the verdict commands give it through checkoutTop (t-ckvh,
-// ruled 2026-11-08; measured at 2f9428a: `lint --message=x`, `bump --range
-// a..b`, `release --dry-run --repo o/r` and `hook install` outside a
-// repository answered git's 4, `init --gemoji` 0). An interrupt is the user's
-// abort and every other failure is handed back as it came: git was reached
-// and answered, so the 2/4 line is drawn on what it said (DESIGN §5).
+// which is the caller's input (usage, 2), the answer the verdict commands
+// give it through checkoutTop (t-ckvh, ruled 2026-11-08; measured at
+// 2f9428a: `lint --message=x`, `bump --range a..b`, `release --dry-run
+// --repo o/r` and `hook install` outside a repository answered git's 4;
+// `init --gemoji` writes ./glyph.toml there at 0, because it creates what
+// the others read). An interrupt is the user's abort and every other failure
+// is handed back as it came: git was reached and answered, so the 2/4 line
+// is drawn on what it said (DESIGN §5).
 func noRepositoryUsage(ctx context.Context, err error) error {
 	if core.IsInterrupted(err) {
 		return err
@@ -112,9 +113,13 @@ func noRepository() *core.Error {
 //
 // Before the file, the checkout (checkoutTop): outside a repository, or
 // inside a git directory, there is no glyph.toml to read because the caller
-// is standing in no work tree — the caller's input (2), as `init` answers
-// both places, never git's 4 (t-ckvh). The hooks block on 3 alone, so either
-// answer passes a commit through, as it must.
+// is standing in no work tree — the caller's input (2), never git's 4
+// (t-ckvh); `init` refuses the git directory the same way and writes the
+// current directory outside a repository, the one command for which that
+// place has a use. A repository git will not read (dubious ownership, a
+// broken .git/config) stays git's 4: git was reached and did not say "no
+// repository" (TestOutsideARepositoryIsUsage). The hooks block on 3 alone,
+// so either answer passes a commit through, as it must.
 func loadConfig(ctx context.Context) (*config.Config, error) {
 	top, err := checkoutTop(ctx)
 	switch {

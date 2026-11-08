@@ -30,7 +30,7 @@ import (
 // BaseTag is the tag the line's range starts from, in its own spelling — the
 // compare link's left side — and "" when the walk has no tag base: the whole
 // history, a --range fold, a pull's listing, or a typed value that is no tag
-// (tagBase). A field rather than cut out of revRange, because revRange cannot say
+// (explicitBase). A field rather than cut out of revRange, because revRange cannot say
 // it: the single line's whole-history revRange is "HEAD", a packages line's is
 // "", a typed branch looks like any tag, and Base is the parsed version,
 // whose String() re-adds the v a bare `1.0.0` tag does not have.

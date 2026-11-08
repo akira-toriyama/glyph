@@ -1,5 +1,5 @@
 diff --git a/internal/cli/cmd_bump.go b/internal/cli/cmd_bump.go
-index bc82086..7e354b2 100644
+index 7eebe15..8d886ef 100644
 --- a/internal/cli/cmd_bump.go
 +++ b/internal/cli/cmd_bump.go
 @@ -132,9 +132,6 @@ func newBumpCmd() *cobra.Command {
@@ -27,16 +27,16 @@ index 0dad28a..0402345 100644
  	if err != nil {
  		return err
 diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
-index 7aaa34b..dac052d 100644
+index 9fb6912..31b1b83 100644
 --- a/internal/cli/cmd_preview.go
 +++ b/internal/cli/cmd_preview.go
 @@ -131,9 +131,6 @@ func newPreviewCmd() *cobra.Command {
- // is judged before glyph.toml is loaded, as bump judges its flags
- // (TestVerdictCommandsJudgeTheirFlagsBeforeTheConfig).
+ // --repo's shapes are judged before glyph.toml is loaded, as bump judges its
+ // flags (TestVerdictCommandsJudgeTheirFlagsBeforeTheConfig).
  func previewRun(ctx context.Context, o previewOptions) error {
 -	if err := checkPRFlag(o.pr); err != nil {
 -		return err
 -	}
- 	cfg, err := loadConfig(ctx)
- 	if err != nil {
+ 	if err := checkRepoFlag(o.repo); err != nil {
  		return err
+ 	}

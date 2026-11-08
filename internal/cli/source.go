@@ -63,22 +63,27 @@ func sourceOf(cmd *cobra.Command, f sourceFlags) source {
 }
 
 // check is the grammar of the source the caller named — an empty or
-// option-shaped --range, a --pr below 1, a malformed --since-tag — refused
-// as the caller's input (usage, 2). bump and notes ask it FIRST, before
-// glyph.toml is loaded, as lint's arms do: judged after the load, a bad flag
-// beside an unreadable config answered the config's 4 (t-h9m7, measured at
-// 2f9428a with a mode-000 glyph.toml: `bump --range=`, `--pr 0`,
-// `--since-tag=` all 4 where lint's `--range=` was 2). readSource takes the
-// source as accepted.
+// option-shaped --range, a --pr below 1, a malformed --since-tag — and of
+// the --repo given beside it, refused as the caller's input (usage, 2). bump
+// and notes ask it FIRST, before glyph.toml is loaded, as lint's arms do:
+// judged after the load, a bad flag beside an unreadable config answered the
+// config's 4 (t-h9m7, measured at 2f9428a with a mode-000 glyph.toml: `bump
+// --range=`, `--pr 0`, `--since-tag=` all 4 where lint's `--range=` was 2;
+// `--repo bad` still 4 at 0c177a3). readSource takes the source as accepted.
 func (s source) check() error {
+	var err error
 	switch s.kind {
 	case sourcePull:
-		return checkPRFlag(s.pull)
+		err = checkPRFlag(s.pull)
 	case sourceWalk:
-		return walk.CheckTag(s.tag)
+		err = walk.CheckTag(s.tag)
 	default:
-		return checkRangeFlag(s.rng)
+		err = checkRangeFlag(s.rng)
 	}
+	if err != nil {
+		return err
+	}
+	return checkRepoFlag(s.repo)
 }
 
 // readSource reads the commits a verdict is computed over from the source

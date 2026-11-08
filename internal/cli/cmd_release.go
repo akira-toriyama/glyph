@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"strings"
 
@@ -159,7 +158,7 @@ func newReleaseCmd() *cobra.Command {
 	cmd.Flags().StringVar(&o.repo, "repo", "", "owner/name to query (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().StringVar(&o.current, "current", "", currentFlagUsage)
 	cmd.Flags().StringVar(&o.target, "target", "", "the commit sha the draft's eventual tag points at (default: the checkout's HEAD)")
-	cmd.Flags().StringVar(&o.footerFile, "footer-file", "", "a Markdown file appended verbatim after the notes, separated by one --- line (the per-repo install block)")
+	cmd.Flags().StringVar(&o.footerFile, "footer-file", "", "a Markdown file — or a pipe such as <(…) — appended verbatim after the notes, separated by one --- line (the per-repo install block)")
 	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "compute the full verdict and the draft action but write nothing to GitHub")
 	cmd.Flags().BoolVar(&o.json, "json", false, "emit the machine verdict {current,level,next,tag,target,body,action,url,commits,pulls,reason}; with [[packages]] declared current/level/action are empty, next/tag/body/url absent (target too when no line has a draft to write), and packages[] carries one verdict per line")
 	return cmd
@@ -576,19 +575,21 @@ func discardedOrGone(alreadyGone bool) string {
 
 // readFooter reads the --footer-file when one is named, before any request
 // goes out, and classifies a failure as loadConfig classifies glyph.toml's
-// (DESIGN §5, "The 2/4 line is drawn on what was observed"): what
-// config.StatFile observed at the path — nothing there, or something other
-// than a regular file — is the caller's input (2); a stat or a read the
-// filesystem refused (permission denied, an I/O fault) observed nothing, so
-// it is the no-answer code (4), as the same event is for glyph.toml, a hook
-// and init's write. Every *fs.PathError goes out as it is: it names the
-// operation and the path once.
+// (DESIGN §5, "The 2/4 line is drawn on what was observed"), through
+// config.StatReadable — the path is one the caller typed to be read, so a
+// pipe (`<(…)`, a piped /dev/stdin) or a character device is read as a file
+// is. What was observed at the path — nothing there, a path through a file
+// or too long to exist, a directory — is the caller's input (2); a stat or
+// a read the filesystem refused (permission denied, an I/O fault) observed
+// nothing, so it is the no-answer code (4), as the same event is for
+// glyph.toml, a hook and init's write. Every *fs.PathError goes out as it
+// is: it names the operation and the path once.
 func readFooter(path string) (string, error) {
 	if path == "" {
 		return "", nil
 	}
-	if err := config.StatFile(path); err != nil {
-		if _, notAFile := errors.AsType[*config.NotAFileError](err); notAFile || errors.Is(err, fs.ErrNotExist) {
+	if err := config.StatReadable(path); err != nil {
+		if _, notAFile := errors.AsType[*config.NotAFileError](err); notAFile || config.PathsOwnFault(err) {
 			return "", core.Usagef("--footer-file: %v — name a Markdown file to append after the notes, or omit the flag", err)
 		}
 		return "", core.APIf("--footer-file: %v — glyph could not read the footer, so no draft was computed", err)

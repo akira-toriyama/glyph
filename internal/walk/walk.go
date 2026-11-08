@@ -40,7 +40,7 @@ type Git interface {
 	Tags(ctx context.Context) ([]string, error)
 	MergedTags(ctx context.Context, rev string) ([]string, error)
 	IsTag(ctx context.Context, name string) (bool, error)
-	NamesCommit(ctx context.Context, rev string) (bool, error)
+	Resolve(ctx context.Context, rev string) (gitsource.Named, error)
 	Have(ctx context.Context, shas []string) (map[string]bool, error)
 	IsAncestor(ctx context.Context, sha, rev string) (bool, error)
 	FirstParentLog(ctx context.Context, rev string, n int) ([]gitsource.RawCommit, error)

@@ -268,8 +268,11 @@ func currentVersion(ctx context.Context, flag string, base *bump.Version, l conf
 // flag is answered 2 even when the config, the range, the API or the ref
 // guard would fail at 4 (t-s9ap, measured at 2f9428a: `bump
 // --current=garbage --range nosuch..HEAD` answered git's 4); currentVersion
-// asks again for the value, once the line it steps is known.
+// asks again for the value, once the line it steps is known. Judged
+// TRIMMED, as --since-tag and --range are: ` v1.2.3` is the version the
+// caller typed, and was refused as "not a plain semver".
 func parseCurrent(flag string) (*bump.Version, error) {
+	flag = strings.TrimSpace(flag)
 	if flag == "" {
 		return nil, nil
 	}

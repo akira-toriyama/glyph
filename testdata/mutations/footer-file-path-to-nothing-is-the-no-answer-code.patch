@@ -1,0 +1,13 @@
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 6a23aab..d39b36f 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -589,7 +589,7 @@ func readFooter(path string) (string, error) {
+ 		return "", nil
+ 	}
+ 	if err := config.StatReadable(path); err != nil {
+-		if _, notAFile := errors.AsType[*config.NotAFileError](err); notAFile || config.PathsOwnFault(err) {
++		if _, notAFile := errors.AsType[*config.NotAFileError](err); notAFile {
+ 			return "", core.Usagef("--footer-file: %v — name a Markdown file to append after the notes, or omit the flag", err)
+ 		}
+ 		return "", core.APIf("--footer-file: %v — glyph could not read the footer, so no draft was computed", err)

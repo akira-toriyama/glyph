@@ -1,0 +1,14 @@
+diff --git a/internal/cli/range.go b/internal/cli/range.go
+index 68cbfd5..456f78c 100644
+--- a/internal/cli/range.go
++++ b/internal/cli/range.go
+@@ -48,9 +48,6 @@ func logRange(ctx context.Context, revRange string) ([]gitsource.RawCommit, erro
+ 	// judged the trimmed value, and ` v0.1.0..HEAD` is the range the caller
+ 	// typed, not a name git should be asked about.
+ 	revRange = strings.TrimSpace(revRange)
+-	if err := localWalker().CheckRange(ctx, revRange); err != nil {
+-		return nil, err
+-	}
+ 	raws, err := checkout().Log(ctx, revRange)
+ 	if err != nil {
+ 		return nil, err

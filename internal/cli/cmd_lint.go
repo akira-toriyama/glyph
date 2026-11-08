@@ -27,10 +27,11 @@ const (
 )
 
 // lintOptions is what one lint run was asked, snapshotted at RunE: which of
-// the four input modes was given — exactly one is required (cobra-enforced) —
-// and the values the modes read; repo rides alongside --pr the way --repo
-// rides alongside bump's. Nothing below RunE reads a flag — lintRun is a
-// function of these alone (TestLintRunsFromOptionsWithoutCobra).
+// the four input modes was given — at least one (cobra-enforced) and at most
+// one selecting (checkExclusive) — and the values the modes read; repo rides
+// alongside --pr the way --repo rides alongside bump's. Nothing below RunE
+// reads a flag — lintRun is a function of these alone
+// (TestLintRunsFromOptionsWithoutCobra).
 type lintOptions struct {
 	mode    lintMode
 	rng     string
@@ -41,8 +42,9 @@ type lintOptions struct {
 
 func newLintCmd() *cobra.Command {
 	var o lintOptions
-	// --stdin's value is judged at RunE alone (--stdin=false is refused
-	// there); below it the mode carries all there is to know.
+	// --stdin's value is judged at RunE alone (--stdin=false selects no
+	// mode, and is refused there when it is the only mode flag given); below
+	// it the mode carries all there is to know.
 	var stdin bool
 	cmd := &cobra.Command{
 		Use:   "lint",

@@ -1,0 +1,22 @@
+diff --git a/internal/cli/range.go b/internal/cli/range.go
+index 68cbfd5..76a9f6c 100644
+--- a/internal/cli/range.go
++++ b/internal/cli/range.go
+@@ -47,7 +47,6 @@ func logRange(ctx context.Context, revRange string) ([]gitsource.RawCommit, erro
+ 	// Trimmed once, here, where every --range reaches git: checkRangeFlag
+ 	// judged the trimmed value, and ` v0.1.0..HEAD` is the range the caller
+ 	// typed, not a name git should be asked about.
+-	revRange = strings.TrimSpace(revRange)
+ 	if err := localWalker().CheckRange(ctx, revRange); err != nil {
+ 		return nil, err
+ 	}
+@@ -72,8 +71,7 @@ func logRange(ctx context.Context, revRange string) ([]gitsource.RawCommit, erro
+ // endpoints name a commit is git's question, asked at the read
+ // (walk.Walker.CheckRange).
+ func checkRangeFlag(revRange string) error {
+-	revRange = strings.TrimSpace(revRange)
+-	if revRange == "" {
++	if strings.TrimSpace(revRange) == "" {
+ 		return core.Usagef("--range needs a git revision range like BASE..HEAD")
+ 	}
+ 	if strings.HasPrefix(revRange, "-") {

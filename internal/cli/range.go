@@ -44,6 +44,13 @@ func participating(cfg *config.Config, all []bump.Commit) (int, error) {
 // would be a new semantics for lint, and a shallow walk is a warning to every
 // reporting command and exit 4 to release alone (DESIGN §4.1, "Lint").
 func logRange(ctx context.Context, revRange string) ([]gitsource.RawCommit, error) {
+	// Trimmed once, here, where every --range reaches git: checkRangeFlag
+	// judged the trimmed value, and ` v0.1.0..HEAD` is the range the caller
+	// typed, not a name git should be asked about.
+	revRange = strings.TrimSpace(revRange)
+	if err := localWalker().CheckRange(ctx, revRange); err != nil {
+		return nil, err
+	}
 	raws, err := checkout().Log(ctx, revRange)
 	if err != nil {
 		return nil, err
@@ -59,9 +66,14 @@ func logRange(ctx context.Context, revRange string) ([]gitsource.RawCommit, erro
 }
 
 // checkRangeFlag rejects an empty or option-shaped --range before git runs —
-// caller input, so usage, not an API failure.
+// caller input, so usage, not an API failure. Judged TRIMMED, as logRange
+// reads it: ` -x` reached git as a revision and answered "bad revision" at 4
+// while `-x` was refused here (the --range twin of t-3dfg). Whether its
+// endpoints name a commit is git's question, asked at the read
+// (walk.Walker.CheckRange).
 func checkRangeFlag(revRange string) error {
-	if strings.TrimSpace(revRange) == "" {
+	revRange = strings.TrimSpace(revRange)
+	if revRange == "" {
 		return core.Usagef("--range needs a git revision range like BASE..HEAD")
 	}
 	if strings.HasPrefix(revRange, "-") {

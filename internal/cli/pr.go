@@ -59,12 +59,36 @@ func resolveRepo(ctx context.Context, flag string) (owner, repo string, err erro
 	if spec == "" {
 		return "", "", core.Usagef("--repo owner/name is required (or set %s, which GitHub Actions sets for you, or run inside a clone whose origin remote points at GitHub)", envRepo)
 	}
+	return splitRepoSpec(spec)
+}
+
+// splitRepoSpec is the one shape a repository coordinate has, owner/name,
+// whichever of resolveRepo's three sources spelled it; the refusal is the
+// flag's, because the flag is the remedy.
+func splitRepoSpec(spec string) (owner, repo string, err error) {
 	owner, repo, found := strings.Cut(spec, "/")
 	if !found || owner == "" || repo == "" || strings.Contains(repo, "/") ||
 		strings.ContainsFunc(spec, unicode.IsSpace) {
 		return "", "", core.Usagef("--repo %q is not owner/name", spec)
 	}
 	return owner, repo, nil
+}
+
+// checkRepoFlag judges the shape of a --repo the caller GAVE, before
+// glyph.toml is loaded, as the source's shape is judged (source.check,
+// previewRun): resolveRepo asks the same question, but it runs after the
+// config on bump, notes and preview, so `--repo bad` beside an unreadable
+// config answered the config's 4 (t-h9m7's class, measured at 0c177a3) where
+// `lint --pr` and `release` — which resolve the repository first — answered
+// 2. An absent flag is resolved later, from the environment or the origin
+// remote; its emptiness is checkGivenEmpty's question.
+func checkRepoFlag(flag string) error {
+	spec := strings.TrimSpace(flag)
+	if spec == "" {
+		return nil
+	}
+	_, _, err := splitRepoSpec(spec)
+	return err
 }
 
 // originRepo reads owner/name off the origin remote of the clone the command

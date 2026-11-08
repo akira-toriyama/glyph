@@ -1,16 +1,16 @@
 diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
-index 02770f0..bdd50e8 100644
+index cb2fb4f..a16b31e 100644
 --- a/internal/gitsource/gitsource.go
 +++ b/internal/gitsource/gitsource.go
-@@ -203,13 +203,6 @@ func mergedTags(ctx context.Context, dir, rev string) ([]string, error) {
+@@ -240,13 +240,6 @@ func mergedTags(ctx context.Context, dir, rev string) ([]string, error) {
  		if core.IsInterrupted(err) {
  			return nil, err
  		}
--		named, nerr := namesCommit(ctx, dir, rev)
+-		named, nerr := resolveCommit(ctx, dir, rev)
 -		switch {
 -		case nerr != nil && core.IsInterrupted(nerr):
 -			return nil, nerr
--		case nerr == nil && !named:
+-		case nerr == nil && !named.IsCommit():
 -			return nil, nil
 -		}
  		return nil, err
