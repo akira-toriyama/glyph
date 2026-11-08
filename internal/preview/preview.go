@@ -207,13 +207,19 @@ func headline(in Input) string {
 // leaks that forced each half of that order are written down on the builder.
 //
 // The pipe escape is the one pass that is the TABLE's and not the line's, and its
-// order against Line is immaterial: its backslash lands directly in front of a
-// pipe, never in front of an at-sign or a fence, and a pipe escaped inside a code
-// span still renders as a pipe. Measured 2026-11-04: escaping the pipes first and
-// handing the result to Line changes no byte over every cell of up to seven tokens
-// from | \ ` @ a space < _ : & (11,111,111 cells), every cell of up to six from
-// | \ ` @ a space - # > 1 . ~ * = (8,108,731), and 2,000,000 random cells of those
-// plus line endings, URLs, references and fences.
+// order against Line is immaterial to the rendering: its backslash lands directly
+// in front of a pipe, never in front of an at-sign or a fence, and a pipe escaped
+// inside a code span still renders as a pipe. The two orders differ in bytes only
+// on a cell shaped like a table delimiter row, which rule 5 escapes on its first
+// marker byte: "|---" is "\\|---" this way and "\|---" pipes first, "-|-" is
+// "\-\|-" against "-\|-". Measured 2026-11-08 in this table through POST
+// /markdown, mode gfm, on eight such pairs ("|---", "-|-", "|:-:|", "-|", ":-|",
+// "---|---", "| --- |", "|-"): each pair renders the same HTML, the cell intact
+// and the text as the author wrote it. On every other cell the bytes are equal,
+// measured the same day on this tree: every cell of up to seven tokens from
+// | \ ` @ a space < _ : & (11,111,111 cells) differs in none, and every cell of up
+// to six from | \ ` @ a space - # > 1 . ~ * = (8,108,731) differs in 724, each one
+// a delimiter-row shape.
 func escapeCell(s string) string {
 	var l markdown.Line
 	l.Prose(s)

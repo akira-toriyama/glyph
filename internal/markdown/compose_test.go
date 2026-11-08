@@ -332,6 +332,33 @@ func TestProseAtABlockStartOpensNoBlock(t *testing.T) {
 			{`[ \] x`, `\[\ \] x`, `\[ \] x`},       // an authored escape on the "]" is read through,
 			{`\[ ] x`, `\[\ ] x`, `\[ ] x`},         // and one on the "[",
 			{`\- [ ] x`, `\- \[\ ] x`, `\- \[ ] x`}, // and one on the bullet
+			// The filter's blanks are Unicode's (taskItemAt's second table,
+			// measured 2026-11-08): a tab, a form feed, U+00A0 or U+3000 between the
+			// brackets, behind them, before them, or between a bullet or a number
+			// and them each render a checkbox, and "[\<R>]" renders none.
+			{"[\t] x", "\\[\\\t] x", "\\[\t] x"},
+			{"[\f] x", "\\[\\\f] x", "\\[\f] x"},
+			{"[\u00a0] x", "\\[\\\u00a0] x", "\\[\u00a0] x"},
+			{"[\u3000] x", "\\[\\\u3000] x", "\\[\u3000] x"},
+			{"[\u2003] x", "\\[\\\u2003] x", "\\[\u2003] x"},
+			{"[\u2028] x", "\\[\\\u2028] x", "\\[\u2028] x"},
+			{"[ ]\u00a0x", "\\[\\ ]\u00a0x", "\\[ ]\u00a0x"},
+			{"[x]\u3000y", "\\[\\x]\u3000y", "\\[x]\u3000y"},
+			{"[\t]\ty", "\\[\\\t]\ty", "\\[\t]\ty"},
+			{"\u00a0[ ] y", "\u00a0\\[\\ ] y", "\u00a0\\[ ] y"},
+			{"\f[ ] y", "\f\\[\\ ] y", "\f\\[ ] y"},
+			{"-\u00a0[ ] y", "-\u00a0\\[\\ ] y", "-\u00a0\\[ ] y"},
+			{"-\f[ ] y", "-\f\\[\\ ] y", "-\f\\[ ] y"},
+			{"1.\u3000[ ] y", "1.\u3000\\[\\ ] y", "1.\u3000\\[ ] y"},
+			// Before the bullet or the number the filter reads only a space, a tab
+			// or a form feed; the first two are the indent Prose drops, and the
+			// form feed is read here. A Unicode blank there is read too, one class
+			// for every position, so the second pair is over-escaped (measured
+			// rendering as text with the bullet in it, no checkbox either way).
+			{"\f- [ ] y", "\f- \\[\\ ] y", "\f- \\[ ] y"},
+			{"\f1. [ ] y", "\f1. \\[\\ ] y", "\f1. \\[ ] y"},
+			{"\u00a0- [ ] y", "\u00a0- \\[\\ ] y", "\u00a0- \\[ ] y"},
+			{"\u30001. [ ] y", "\u30001. \\[\\ ] y", "\u30001. \\[ ] y"},
 		} {
 			for _, p := range items {
 				if got, want := line(p, c.value, false), p+c.item; got != want {
@@ -352,8 +379,16 @@ func TestProseAtABlockStartOpensNoBlock(t *testing.T) {
 			{"[ ]", `\[ ]`},
 			{"[ ]x", `\[ ]x`},
 			{"[ ]\vx", "\\[ ]\vx"},
+			{"[\v] x", "\\[\v] x"},
+			{"[\u0085] x", "\\[\u0085] x"},
+			{"[\u200b] x", "\\[\u200b] x"},
+			{"[\ufeff] x", "\\[\ufeff] x"},
+			{"[ ]\u0085x", "\\[ ]\u0085x"},
+			{"[ ]\u200bx", "\\[ ]\u200bx"},
+			{"\u200b[ ] x", "\u200b\\[ ] x"},
 			{"[y] x", `\[y] x`},
 			{"[  ] x", `\[  ] x`},
+			{"[\u00a0\u00a0] x", "\\[\u00a0\u00a0] x"},
 			{"1) [ ] x", `1\) \[ ] x`},
 			{"12 [ ] x", `12 \[ ] x`},
 			{"> [ ] x", `\> \[ ] x`},
@@ -453,7 +488,21 @@ func TestBlockOpenerOwnership(t *testing.T) {
 		// inert (blockOpenerAt's table).
 		{"an HTML block opener inside a span crossing a line ending", []field{raw("- `ping\n"), prose("</details> cc @octocat now"), raw("` x")}, "- `ping\n\\</details> cc @octocat now` x"},
 		{"a tag that opens a block the same way", []field{raw("- `ping\n"), prose("<div> cc @octocat now"), raw("` x")}, "- `ping\n\\<div> cc @octocat now` x"},
+		// CommonMark's HTML block starts 2 to 5: a comment, a processing
+		// instruction, a declaration and CDATA. Measured 2026-11-08 raw, each
+		// ends the paragraph, forms no span and leaves the mention live; escaped,
+		// one code span with the mention inert.
+		{"an HTML comment there", []field{raw("- `ping\n"), prose("<!-- --> cc @octocat now"), raw("` x")}, "- `ping\n\\<!-- --> cc @octocat now` x"},
+		{"a processing instruction there", []field{raw("- `ping\n"), prose("<? ?> cc @octocat now"), raw("` x")}, "- `ping\n\\<? ?> cc @octocat now` x"},
+		{"a declaration there", []field{raw("- `ping\n"), prose("<!X> cc @octocat now"), raw("` x")}, "- `ping\n\\<!X> cc @octocat now` x"},
+		{"a CDATA section there", []field{raw("- `ping\n"), prose("<![CDATA[x]]> cc @octocat now"), raw("` x")}, "- `ping\n\\<![CDATA[x]]> cc @octocat now` x"},
 		{"a footnote definition there", []field{raw("- `ping\n"), prose("[^1]: cc @octocat now"), raw("` x")}, "- `ping\n\\[^1]: cc @octocat now` x"},
+		// What keeps the span at GitHub and is left as it came: a tag start 7
+		// cannot interrupt a paragraph (it is over-escaped, blockOpenerAt), a
+		// link reference definition is no opener, and these two are no tags.
+		{"a link reference definition keeps the span and takes no backslash", []field{raw("- `ping\n"), prose("[a]: /u cc @octocat now"), raw("` x")}, "- `ping\n[a]: /u cc @octocat now` x"},
+		{"a blank behind the angle bracket is no tag", []field{raw("- `ping\n"), prose("< i cc @octocat now"), raw("` x")}, "- `ping\n< i cc @octocat now` x"},
+		{"a digit behind the angle bracket is no tag", []field{raw("- `ping\n"), prose("<1 cc @octocat now"), raw("` x")}, "- `ping\n<1 cc @octocat now` x"},
 		// The template's own opener on that line ends the paragraph, so the span
 		// the bare bytes suggest is a phantom and the mention behind it is prose.
 		{"the template's own HTML block ends the span the scan would believe", []field{raw("- `ping\n<div>"), prose("cc @octocat now"), raw("` x")}, "- `ping\n<div>cc ``@octocat`` now` x"},
@@ -512,10 +561,13 @@ func TestBlockOpenerOwnership(t *testing.T) {
 // a second item, a quote, an HTML block. The backticks either side pair with
 // nothing, and an unfenced mention behind them is live: measured at 2f9428a
 // through `glyph notes` on the first two and on this change's first draft
-// (2026-11-04) on the next four (`lint` and `notes` both exit 0 on each). The
-// last three must keep their span: one line
-// ending is no paragraph break, nor is an indented plain line, and GitHub renders
-// the handle as code there.
+// (2026-11-04) on the next four (`lint` and `notes` both exit 0 on each). An
+// opener that needs the end of its line (a thematic break, a delimiter row) must
+// find that end at a bare CR as at an LF: the two CR-bounded lines render an
+// <hr> and a <table> with the mention live when the line is read to the next LF
+// (measured 2026-11-08 on a build that did). The last three must keep their
+// span: one line ending is no paragraph break, nor is an indented plain line,
+// and GitHub renders the handle as code there.
 func TestRawLineEndingsEndTheParagraphTheFenceReads(t *testing.T) {
 	for _, c := range []struct{ glue, want string }{
 		{"\r\r", "- `ping\r\r:bug:~ cc ``@octocat`` now` x"},
@@ -524,6 +576,8 @@ func TestRawLineEndingsEndTheParagraphTheFenceReads(t *testing.T) {
 		{"\n- ", "- `ping\n- :bug:~ cc ``@octocat`` now` x"},
 		{"\n> ", "- `ping\n> :bug:~ cc ``@octocat`` now` x"},
 		{"\n<div>", "- `ping\n<div>:bug:~ cc ``@octocat`` now` x"},
+		{"\r***\r", "- `ping\r***\r:bug:~ cc ``@octocat`` now` x"},
+		{"\r  ---:\r", "- `ping\r  ---:\r:bug:~ cc ``@octocat`` now` x"},
 		{"\r\n\r\n", "- `ping\r\n\r\n:bug:~ cc ``@octocat`` now` x"},
 		{"\r", "- `ping\r:bug:~ cc @octocat now` x"},
 		{"\r\n", "- `ping\r\n:bug:~ cc @octocat now` x"},

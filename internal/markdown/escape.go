@@ -1,6 +1,10 @@
 package markdown
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
 
 // This file neutralizes author text; markdown.go then fences the mentions in
 // the assembled line. The split is the whole design, and it rests on one
@@ -291,8 +295,9 @@ type blockOpener struct {
 // Escaped, "\</details>", "\<div>" and "\[^1]:" keep the span and render as
 // code with the mention inert, and "\---:", "\:-" and "\|---" render as their own
 // text under the line above. "<i>", "< i", "<1" and "[a]: /u" keep the span at
-// GitHub, so the first and the last are over-escaped here (a backslash printed
-// inside a span, the over-escaping side); the middle two never fire.
+// GitHub; only the first fires here and is over-escaped (a backslash printed
+// inside a span, the over-escaping side), the other three are written as they
+// came.
 //
 // What the same measurement leaves alone, and so must not fire: emphasis and
 // strikethrough at the head of a value (the inline syntax rule 5 owes its shape
@@ -362,13 +367,13 @@ func delimiterRow(s string) bool {
 	return strings.Trim(s, "-:| \t\v\f") == "" && strings.Contains(s, "-")
 }
 
-// taskItemAt reports the byte rule 5 escapes where GitHub's task-list filter
-// would read a checkbox at the head of a list item's text starting at s[i], -1
-// for none: the byte between the brackets. The filter reads the RENDERED text of
-// the item's first line, so an escaping backslash in the source is read through
-// here, and rule 3's own backslash before the "[" disarms nothing. Measured
-// 2026-11-04 by POST /markdown (mode gfm) on the bytes `glyph notes --range`
-// writes:
+// taskItemAt reports the bytes rule 5 escapes where GitHub's task-list filter
+// would read a checkbox at the head of a list item's text starting at s[i]: at
+// is the first byte of the rune between the brackets, closer the "]" it renders
+// as, and at is -1 for none. The filter reads the RENDERED text of the item's
+// first line, so an escaping backslash in the source is read through here, and
+// rule 3's own backslash before the "[" disarms nothing. Measured 2026-11-04 by
+// POST /markdown (mode gfm) on the bytes `glyph notes --range` writes:
 //
 //	written                              renders
 //	- \[ ] x   - \[x] x   - \[X] x       a checkbox
@@ -376,7 +381,7 @@ func delimiterRow(s string) bool {
 //	- 1\. \[ ] x   - 12.\[ ] x           a checkbox, the number deleted
 //	- \[ \] x   - \[&nbsp;] x            a checkbox
 //	- \[\ ] x   - \[\x] x                the text "[\ ] x", "[\x] x"
-//	- \[ ]   - \[ ]x   - \[ ]<VT>x       no checkbox: a space, a tab or a form feed must follow
+//	- \[ ]   - \[ ]x   - \[ ]<VT>x       no checkbox: a blank must follow
 //	- \[ ] x\n  \[ ] y                   one checkbox: the filter reads the item's first line only
 //	- \> \[ ] x   - 1\) \[ ] x   \[ ] x  no checkbox: the head is a quote's, a paren is no dot, no item
 //	| \[ ] x |                           no checkbox: a cell is no item
@@ -387,8 +392,30 @@ func delimiterRow(s string) bool {
 // filter's one optional prefix (a bullet, or digits and a dot) is read the same
 // way, since rule 5's backslash on a bullet renders it as text and the filter
 // then deletes it with the brackets.
-func taskItemAt(s string, i int) int {
-	j := i
+//
+// The filter's blanks are Unicode's, not ASCII's, and the same filter the
+// package's one design rule applies to: a rune it reads that this test does not
+// is a checkbox. Measured 2026-11-08 by POST /markdown (mode gfm), every rune of
+// Unicode White_Space and the controls U+0085, U+00AD, U+180E, U+200B to U+200D,
+// U+2060 and U+FEFF, each written in turn between the brackets ("- [<R>] y"),
+// behind them ("- [ ]<R>y"), before them ("- <R>[ ] y"), between a bullet or a
+// number and them ("- -<R>[ ] y", "- 1.<R>[ ] y"), and before the bullet or the
+// number ("- <R>- [ ] y", "- <R>1. [ ] y"):
+//
+//	a space, a tab, a form feed, U+00A0, U+1680, U+2000 to U+200A, U+2028, U+2029,
+//	U+202F, U+205F, U+3000                a checkbox at the first five positions
+//	the same, before the bullet or number a checkbox for the space, the tab and the form feed only
+//	a vertical tab, U+0085, and the controls  no checkbox anywhere
+//	- [\<R>] y, at every position above   no checkbox: the rendered "[\<R>]" is no filter's
+//
+// taskBlank is that class, one class for every position: before the bullet it
+// over-escapes the Unicode blanks (a backslash printed between the brackets of a
+// value that opened with one of them, a bullet and a checkbox), the side the
+// package's rule asks for where the shape is read bluntly. A vertical tab and
+// U+0085 are left out, measured at every position, which is why "- \[ ]<VT>x"
+// above stays as rule 3 writes it.
+func taskItemAt(s string, i int) (at, closer int) {
+	j := skipTaskBlanks(s, i)
 	switch k := literal(s, j); {
 	case k < len(s) && (s[k] == '-' || s[k] == '+' || s[k] == '*'):
 		j = k + 1
@@ -400,25 +427,53 @@ func taskItemAt(s string, i int) int {
 			j = k + 1
 		}
 	}
-	for j < len(s) && (s[j] == ' ' || s[j] == '\t') {
-		j++
-	}
+	j = skipTaskBlanks(s, j)
 	open := literal(s, j)
 	if open >= len(s) || s[open] != '[' {
-		return -1
+		return -1, -1
 	}
-	at := open + 1
-	if at >= len(s) || (s[at] != ' ' && s[at] != 'x' && s[at] != 'X') {
-		return -1
+	at = open + 1
+	inner := taskBlankLen(s, at)
+	if inner == 0 && at < len(s) && (s[at] == 'x' || s[at] == 'X') {
+		inner = 1
 	}
-	closer := literal(s, at+1)
-	if closer >= len(s) || s[closer] != ']' {
-		return -1
+	if inner == 0 {
+		return -1, -1
 	}
-	if next := closer + 1; next >= len(s) || (s[next] != ' ' && s[next] != '\t' && s[next] != '\f') {
-		return -1
+	closer = literal(s, at+inner)
+	if closer >= len(s) || s[closer] != ']' || taskBlankLen(s, closer+1) == 0 {
+		return -1, -1
 	}
-	return at
+	return at, closer
+}
+
+// taskBlank reports whether r is a blank to GitHub's task-list filter
+// (taskItemAt's measured class): Unicode White_Space less the vertical tab and
+// U+0085, which the filter does not read, and less the line endings, which never
+// reach it inside a line.
+func taskBlank(r rune) bool {
+	return unicode.IsSpace(r) && r != '\v' && r != '\n' && r != '\r' && r != 0x85
+}
+
+// taskBlankLen returns the width in bytes of the task-list blank at s[i], 0 for
+// none.
+func taskBlankLen(s string, i int) int {
+	if i >= len(s) {
+		return 0
+	}
+	if r, n := utf8.DecodeRuneInString(s[i:]); taskBlank(r) {
+		return n
+	}
+	return 0
+}
+
+// skipTaskBlanks returns the index of the first byte at or after s[i] that is no
+// task-list blank.
+func skipTaskBlanks(s string, i int) int {
+	for n := taskBlankLen(s, i); n > 0; n = taskBlankLen(s, i) {
+		i += n
+	}
+	return i
 }
 
 // literal returns the index of the byte s[j] renders as: j+1 when s[j] is a
@@ -467,7 +522,7 @@ func blockOpening(s string, from int, prose func(lo, hi int) bool) (ats []int, w
 			i = op.end
 			continue
 		}
-		if at := taskItemAt(s, i); item && at >= 0 && prose(at-1, literal(s, at+1)+1) {
+		if at, closer := taskItemAt(s, i); item && at >= 0 && prose(at-1, closer+1) {
 			ats = append(ats, at)
 		}
 		return ats, false

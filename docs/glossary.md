@@ -796,9 +796,11 @@ Why that order is the only safe one is argued once, at the type's doc comment.
 neutralize and fence, and the only one that does not live in `internal/markdown`:
 every `|` gets a backslash, so a subject cannot break the table the headline's
 evidence rests on. Its order against `Line`, which runs the other three, is
-immaterial, measured: the backslash lands directly in front of a `|`, never in
-front of an at-sign or a fence, and a pipe escaped inside a code span still renders
-as a pipe. `internal/preview/preview.go: escapeCell`
+immaterial to the rendering, measured: the backslash lands directly in front of a
+`|`, never in front of an at-sign or a fence, and a pipe escaped inside a code
+span still renders as a pipe. The two orders write different bytes only on a cell
+shaped like a table delimiter row (`|---`, which rule 5 escapes too), and GitHub
+renders both the same. `internal/preview/preview.go: escapeCell`
 
 **"over-escaping is the safe direction"** — the package's one design rule, which
 a later "let me make this more precise" pass must not violate: **every

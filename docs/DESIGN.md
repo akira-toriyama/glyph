@@ -489,7 +489,10 @@ pattern says it means:
     a checkbox still, and `\[\ ]` the text `[\ ]`. So at a list item's own head,
     and nowhere else (not behind a quote, not in a cell, not on a continuation
     line, each measured as text), the backslash goes between the brackets
-    (`taskItemAt`), the one escape that prints. Tests
+    (`taskItemAt`), the one escape that prints. The filter's blanks are
+    Unicode's: a tab, a form feed, U+00A0 or U+3000 between the brackets or
+    behind them renders a checkbox as a space does, and `taskItemAt` reads that
+    measured class at each of its positions (its second table). Tests
     `TestProseAtABlockStartOpensNoBlock`, `TestBlockOpenerOwnership`,
     `TestRawLineEndingsEndTheParagraphTheFenceReads`, `TestCodeSpans`,
     `TestGroupFallbackOpensNoBlockBehindTheBullet`,

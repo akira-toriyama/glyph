@@ -330,6 +330,10 @@ func TestGroupFallbackOpensNoBlockBehindTheBullet(t *testing.T) {
 		{"[ ] ship it", `- \[\ ] ship it` + credit},
 		{"[x] done", `- \[\x] done` + credit},
 		{"- [ ] x", `- \- \[\ ] x` + credit},
+		// The filter's blank is Unicode's: an ideographic space between the
+		// brackets, ordinary Japanese input, renders a checkbox too (measured
+		// 2026-11-08; taskItemAt's second table).
+		{"[　] ship it", "- \\[\\　] ship it" + credit},
 		{"Bump x from 1 to 2", `- Bump x from 1 to 2` + credit},
 	} {
 		sections, err := Group([]Commit{{SHA: "aaaaaaaaaaaa", Author: "dependabot[bot]", Message: c.message}}, cfg)

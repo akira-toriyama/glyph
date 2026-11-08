@@ -119,6 +119,12 @@ func FuzzLineProseNeverLeavesATriggerLive(f *testing.F) {
 		{"[ ] x", ""},
 		{"- [ ] x", ""},
 		{"1. [x] x", ""},
+		{"[ ] x", ""},
+		{"[\t] x", ""},
+		{"[ ]　x", ""},
+		{"- [ ] x", ""},
+		{"\f- [ ] x", ""},
+		{"b `ping", "<!-- --> cc @octocat now"},
 		{"b `ping", "</details> cc @octocat now"},
 		{"b `ping", "[^1]: cc @octocat now"},
 		{"b release", "---:"},
@@ -222,10 +228,17 @@ var opensABlock = regexp.MustCompile("^(?:" +
 	"\\|?[ \t\v\f]*:?-+:?[ \t\v\f]*(?:\\|[ \t\v\f]*:?-+:?[ \t\v\f]*)*\\|?[ \t\v\f]*$" +
 	"))")
 
-// taskItem is GitHub's task-list filter as measured (taskItemAt's table), read over
-// the rendered text of an item's first line: one optional bullet or number, blanks,
-// the brackets, and a space, a tab or a form feed behind them.
-var taskItem = regexp.MustCompile(`^(?:[ \t]*[-+*]|[0-9]+\.)?[ \t]*\[[ xX]\][ \t\f]`)
+// taskItem is GitHub's task-list filter as measured (taskItemAt's tables,
+// 2026-11-08), read over the rendered text of an item's first line: one optional
+// bullet or number behind ASCII blanks, Unicode blanks, the brackets holding one
+// Unicode blank or an x, and a Unicode blank behind them. The classes are
+// written out from the measurement, so the oracle borrows nothing from
+// taskBlank; the code's one class is blunter before the bullet, the
+// over-escaping side, which this oracle cannot see and need not.
+var taskItem = regexp.MustCompile(`^(?:[ \t\f]*[-+*]|[0-9]+\.)?` + taskBlanks + `*\[(?:` + taskBlanks + `|[xX])\]` + taskBlanks)
+
+// taskBlanks is the measured class, written as its code points.
+const taskBlanks = "[ \t\f   -     　]"
 
 // rendered approximates the text GitHub renders a line as, for a filter that
 // reads text rather than source: a backslash before an ASCII punctuation byte is
