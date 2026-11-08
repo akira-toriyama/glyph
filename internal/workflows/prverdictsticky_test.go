@@ -53,18 +53,23 @@ func commentPages(t *testing.T, pages ...[]ghComment) string {
 	return string(listing)
 }
 
-// writeUpsertGH stubs gh as the upsert's double for pull `pull` of `slug`: it
-// answers the calls the step makes, keyed on method, endpoint and flags, and
-// refuses every other. The pull's issue comments are listing, the pages
+// writeUpsertGH stubs gh as the upsert's double for pull `pull` of `slug`. Keyed
+// on method, endpoint and flags, it answers the step's one read, GET
+// issues/{n}/comments, and its two writes, POST there and PATCH
+// issues/comments/{id}; it answers GET pulls/{n}/comments too, the pull's review
+// comments, which the step never reads and the mutation pointing the lookup there
+// does, so that break runs through to its write; and it refuses every other call,
+// naming the call it was handed. The pull's issue comments are listing, the pages
 // `gh api --paginate --slurp` prints; a read of them exits lookupExit; a write
 // copies the body it is handed to sent. Each answer is gh 2.96.0's, measured on
-// glyph-test-2 (2026-11-04): --slurp prints one array of the pages and is refused
-// without --paginate or beside --jq; --paginate --jq runs the filter on each page
-// alone; --paginate alone prints the pages' arrays as one; a read that fails exits
-// 1 and prints its pages raw whatever the flags — `[]` under --slurp and nothing
-// otherwise on a refused connection, the error body on a 404; pulls/{n}/comments
-// is the pull's review comments, none on these pulls (0 beside #11's 104 issue
-// comments); and an argument holding a newline never reaches the wire.
+// glyph-test-2 (2026-11-04 and 2026-11-08): --slurp prints one array of the pages
+// and is refused without --paginate or beside --jq; --paginate --jq runs the filter
+// on each page alone; --paginate alone prints the pages' arrays as one; a read
+// without --paginate answers the first page alone, with or without --jq (30 of
+// #11's 104 comments); a read that fails exits 1 and prints its pages raw whatever
+// the flags — `[]` under --slurp and nothing otherwise on a refused connection, the
+// error body on a 404; pulls/{n}/comments holds none on these pulls (0 beside #11's
+// 104 issue comments); and an argument holding a newline never reaches the wire.
 func writeUpsertGH(t *testing.T, stubs, log, sent, slug, pull, listing string, lookupExit int) {
 	t.Helper()
 	comments := filepath.Join(filepath.Dir(stubs), "issue-comments.json")
@@ -123,13 +128,15 @@ fi
 if [ `+strconv.Itoa(lookupExit)+` -ne 0 ]; then
   jq -c '.[]' "$pages"; exit `+strconv.Itoa(lookupExit)+`
 fi
+if [ -n "$paginate" ]; then pick='.[]'; else pick='.[0]'; fi
 if [ -n "$jq" ]; then
-  jq -c '.[]' "$pages" | while IFS= read -r page; do
+  jq -c "$pick" "$pages" | while IFS= read -r page; do
     printf '%s' "$page" | jq -r "$filter"
   done
   exit 0
 fi
-jq -c 'add' "$pages"
+if [ -n "$paginate" ]; then pick=add; fi
+jq -c "$pick" "$pages"
 `)
 }
 
@@ -326,7 +333,9 @@ func TestPRVerdictUpsertRunsAfterAFailedCompose(t *testing.T) {
 // that fails stops the step: read as "no comment yet", it posts a second sticky
 // comment. gh's two ways of failing print on stdout too, measured 2026-11-04: `[]`
 // on a refused connection, which jq answers empty and exit 0 so only pipefail holds
-// it, and the error body on a 404, which jq itself refuses.
+// it, and the error body on a 404, which jq itself refuses. The decision is that the
+// step fails and writes nothing; the exit's value is gh's or jq's, not the step's,
+// so it is not pinned.
 func TestPRVerdictStickyLookupAnswersOneBotComment(t *testing.T) {
 	requireTool(t, "jq")
 	script := extractRun(t, repoFile(t, filepath.FromSlash(prVerdictWorkflow)), upsertStep)
@@ -447,15 +456,14 @@ func TestPRVerdictStickyLookupAnswersOneBotComment(t *testing.T) {
 
 	for _, c := range []struct {
 		name, listing string
-		exit          int
 	}{
-		{"a refused connection writes nothing", "[]", 1},
-		{"an HTTP error writes nothing", `[{"message":"Not Found","status":"404"}]`, 5},
+		{"a refused connection writes nothing", "[]"},
+		{"an HTTP error writes nothing", `[{"message":"Not Found","status":"404"}]`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r, calls := run(t, c.listing, 1)
-			if r.exit != c.exit {
-				t.Errorf("the upsert exited %d after a failed lookup, want %d\n%s", r.exit, c.exit, r)
+			if r.exit == 0 {
+				t.Errorf("the upsert exited 0 after a failed lookup, want the step red\n%s", r)
 			}
 			if len(calls) != 1 {
 				t.Errorf("the upsert went on past a failed lookup (%v) — read as \"no comment yet\", the POST opens a "+
