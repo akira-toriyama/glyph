@@ -408,14 +408,15 @@ func delimiterRow(s string) bool {
 //	a vertical tab, U+0085, and the controls  no checkbox anywhere
 //	- [\<R>] y, at every position above   no checkbox: the rendered "[\<R>]" is no filter's
 //
-// taskBlank is that class, one class for every position: before the bullet it
-// over-escapes the Unicode blanks (a backslash printed between the brackets of a
-// value that opened with one of them, a bullet and a checkbox), the side the
-// package's rule asks for where the shape is read bluntly. A vertical tab and
-// U+0085 are left out, measured at every position, which is why "- \[ ]<VT>x"
-// above stays as rule 3 writes it.
+// The classes are read per position as measured: before the bullet or the number
+// the ASCII run alone (skipItemBlanks), everywhere else taskBlank. A Unicode
+// blank before the bullet is no filter's, so "<U+3000>- [ ] y" renders no
+// checkbox and stays as rule 3 writes it, "<U+3000>- \[ ] y"; the escape between
+// the brackets prints, so it is spent only where a checkbox would render. A
+// vertical tab and U+0085 are left out, measured at every position, which is why
+// "- \[ ]<VT>x" above stays as rule 3 writes it.
 func taskItemAt(s string, i int) (at, closer int) {
-	j := skipTaskBlanks(s, i)
+	j := skipItemBlanks(s, i)
 	switch k := literal(s, j); {
 	case k < len(s) && (s[k] == '-' || s[k] == '+' || s[k] == '*'):
 		j = k + 1
@@ -472,6 +473,16 @@ func taskBlankLen(s string, i int) int {
 func skipTaskBlanks(s string, i int) int {
 	for n := taskBlankLen(s, i); n > 0; n = taskBlankLen(s, i) {
 		i += n
+	}
+	return i
+}
+
+// skipItemBlanks returns the index of the first byte at or after s[i] that is
+// none of the blanks the task-list filter reads before its bullet or number: a
+// space, a tab or a form feed, and no Unicode blank (taskItemAt's second table).
+func skipItemBlanks(s string, i int) int {
+	for i < len(s) && (s[i] == ' ' || s[i] == '\t' || s[i] == '\f') {
+		i++
 	}
 	return i
 }

@@ -352,13 +352,17 @@ func TestProseAtABlockStartOpensNoBlock(t *testing.T) {
 			{"1.\u3000[ ] y", "1.\u3000\\[\\ ] y", "1.\u3000\\[ ] y"},
 			// Before the bullet or the number the filter reads only a space, a tab
 			// or a form feed; the first two are the indent Prose drops, and the
-			// form feed is read here. A Unicode blank there is read too, one class
-			// for every position, so the second pair is over-escaped (measured
-			// rendering as text with the bullet in it, no checkbox either way).
+			// form feed is read here, alone or in a run with a space. Behind the
+			// bullet, and before the brackets where no bullet comes, the Unicode
+			// class holds again, a form feed among the runes or not.
 			{"\f- [ ] y", "\f- \\[\\ ] y", "\f- \\[ ] y"},
 			{"\f1. [ ] y", "\f1. \\[\\ ] y", "\f1. \\[ ] y"},
-			{"\u00a0- [ ] y", "\u00a0- \\[\\ ] y", "\u00a0- \\[ ] y"},
-			{"\u30001. [ ] y", "\u30001. \\[\\ ] y", "\u30001. \\[ ] y"},
+			{"\f12.[ ] y", "\f12.\\[\\ ] y", "\f12.\\[ ] y"},
+			{"\f\f- [ ] y", "\f\f- \\[\\ ] y", "\f\f- \\[ ] y"},
+			{"\f \f1. [ ] y", "\f \f1. \\[\\ ] y", "\f \f1. \\[ ] y"},
+			{"\f-\u3000[ ] y", "\f-\u3000\\[\\ ] y", "\f-\u3000\\[ ] y"},
+			{"\f\u3000[ ] y", "\f\u3000\\[\\ ] y", "\f\u3000\\[ ] y"},
+			{"\u3000\f[ ] y", "\u3000\f\\[\\ ] y", "\u3000\f\\[ ] y"},
 		} {
 			for _, p := range items {
 				if got, want := line(p, c.value, false), p+c.item; got != want {
@@ -386,6 +390,17 @@ func TestProseAtABlockStartOpensNoBlock(t *testing.T) {
 			{"[ ]\u0085x", "\\[ ]\u0085x"},
 			{"[ ]\u200bx", "\\[ ]\u200bx"},
 			{"\u200b[ ] x", "\u200b\\[ ] x"},
+			// A Unicode blank before the bullet or the number is no filter's, with
+			// or without a form feed beside it (measured 2026-11-08: 0 checkboxes
+			// raw and as written here), so the printing escape is not spent.
+			{"\u00a0- [ ] y", "\u00a0- \\[ ] y"},
+			{"\u30001. [ ] y", "\u30001. \\[ ] y"},
+			{"\u3000* [x] y", "\u3000* \\[x] y"},
+			{"\u2003+ [ ] y", "\u2003+ \\[ ] y"},
+			{"\f\u3000- [ ] y", "\f\u3000- \\[ ] y"},
+			{"\u3000\f- [ ] y", "\u3000\f- \\[ ] y"},
+			{"\f\u00a01. [ ] y", "\f\u00a01. \\[ ] y"},
+			{"\u3000-\u3000[ ] y", "\u3000-\u3000\\[ ] y"},
 			{"[y] x", `\[y] x`},
 			{"[  ] x", `\[  ] x`},
 			{"[\u00a0\u00a0] x", "\\[\u00a0\u00a0] x"},

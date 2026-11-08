@@ -124,6 +124,8 @@ func FuzzLineProseNeverLeavesATriggerLive(f *testing.F) {
 		{"[ ]　x", ""},
 		{"- [ ] x", ""},
 		{"\f- [ ] x", ""},
+		{"\f1. [ ] x", ""},
+		{"　- [ ] x", ""},
 		{"b `ping", "<!-- --> cc @octocat now"},
 		{"b `ping", "</details> cc @octocat now"},
 		{"b `ping", "[^1]: cc @octocat now"},
@@ -230,12 +232,11 @@ var opensABlock = regexp.MustCompile("^(?:" +
 
 // taskItem is GitHub's task-list filter as measured (taskItemAt's tables,
 // 2026-11-08), read over the rendered text of an item's first line: one optional
-// bullet or number behind ASCII blanks, Unicode blanks, the brackets holding one
-// Unicode blank or an x, and a Unicode blank behind them. The classes are
-// written out from the measurement, so the oracle borrows nothing from
-// taskBlank; the code's one class is blunter before the bullet, the
-// over-escaping side, which this oracle cannot see and need not.
-var taskItem = regexp.MustCompile(`^(?:[ \t\f]*[-+*]|[0-9]+\.)?` + taskBlanks + `*\[(?:` + taskBlanks + `|[xX])\]` + taskBlanks)
+// bullet or number, either behind ASCII blanks alone, then Unicode blanks, the
+// brackets holding one Unicode blank or an x, and a Unicode blank behind them.
+// The classes are written out from the measurement, so the oracle borrows
+// nothing from taskBlank or skipItemBlanks.
+var taskItem = regexp.MustCompile(`^(?:[ \t\f]*(?:[-+*]|[0-9]+\.))?` + taskBlanks + `*\[(?:` + taskBlanks + `|[xX])\]` + taskBlanks)
 
 // taskBlanks is the measured class, written as its code points.
 const taskBlanks = "[ \t\f   -     　]"
