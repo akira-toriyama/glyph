@@ -1,0 +1,13 @@
+diff --git a/internal/markdown/markdown.go b/internal/markdown/markdown.go
+index 4b85d45..1beaa40 100644
+--- a/internal/markdown/markdown.go
++++ b/internal/markdown/markdown.go
+@@ -539,7 +539,7 @@ func endsParagraph(s string, i int) bool {
+ 		to++
+ 	}
+ 	_, ok := blockOpenerAt(s[:to], i)
+-	return ok
++	return ok && false
+ }
+ 
+ // lineEnding returns the width of the line ending at s[i], 0 for none.

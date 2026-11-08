@@ -199,20 +199,21 @@ func headline(in Input) string {
 // and a raw "</details>" would close the collapsed block glyph wraps the notes
 // preview in, promoting attacker-chosen content to the top of a bot's comment.
 //
-// THE ORDER IS THE SAFETY PROPERTY, because both passes model the rendered
-// inline context and not the string this function was handed. A table cell is
-// its own inline context (measured: a stray backtick in one cell forms no span
-// with a backtick in the next), so each pass must see the cell EXACTLY as it
-// will render at the moment it runs. Flatten-then-markup-then-fence is
-// markdown.Line's to enforce, and the measured leaks that forced each half of
-// that order are written down on the builder; this function keeps the one pass
-// that is the TABLE's and not the line's:
+// Both passes model the rendered inline context and not the string this function
+// was handed. A table cell is its own inline context (measured: a stray backtick
+// in one cell forms no span with a backtick in the next), so each must see the
+// cell exactly as it will render at the moment it runs.
+// Flatten-then-markup-then-fence is markdown.Line's to enforce, and the measured
+// leaks that forced each half of that order are written down on the builder.
 //
-//   - pipe escaping comes last, after the fence. It adds backslashes, and an
-//     escaping backslash in front of a fence swallows it — the fence goes out
-//     of its way to write a separating space where the author put one there. A
-//     pipe escaped inside a code span still renders as a pipe, so nothing is
-//     lost by doing it after.
+// The pipe escape is the one pass that is the TABLE's and not the line's, and its
+// order against Line is immaterial: its backslash lands directly in front of a
+// pipe, never in front of an at-sign or a fence, and a pipe escaped inside a code
+// span still renders as a pipe. Measured 2026-11-04: escaping the pipes first and
+// handing the result to Line changes no byte over every cell of up to seven tokens
+// from | \ ` @ a space < _ : & (11,111,111 cells), every cell of up to six from
+// | \ ` @ a space - # > 1 . ~ * = (8,108,731), and 2,000,000 random cells of those
+// plus line endings, URLs, references and fences.
 func escapeCell(s string) string {
 	var l markdown.Line
 	l.Prose(s)

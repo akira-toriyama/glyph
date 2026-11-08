@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -94,7 +95,8 @@ func TestStringIsAFixedPointAcrossFields(t *testing.T) {
 // the code spans OF THE OUTPUT — exact by construction once the competitors are
 // dead (escape.go's theorem) — and require every trigger lying outside them to
 // be escaped. Inside a span nothing is escaped, by design, and that is now
-// stated as a position rather than assumed away.
+// stated as a position rather than assumed away. It reads the line's head too:
+// behind the template's "- " the assembled line opens no block.
 func FuzzLineProseNeverLeavesATriggerLive(f *testing.F) {
 	for _, seed := range [][2]string{
 		{"fix the ` thing", "x`[CLICK ME](https://evil.example)`y"},
@@ -105,6 +107,22 @@ func FuzzLineProseNeverLeavesATriggerLive(f *testing.F) {
 		{`\`, "<"},
 		{"http://a", "www.b.com"},
 		{"a `` b ` c", "d ` e `` f"},
+		{"## x", ""},
+		{"> x", ""},
+		{"1. x", ""},
+		{"- x", ""},
+		{"---", ""},
+		{"", "## x"},
+		{"\t", "    - x"},
+		{"```", " x"},
+		{"~~~", ""},
+		{"[ ] x", ""},
+		{"- [ ] x", ""},
+		{"1. [x] x", ""},
+		{"b `ping", "</details> cc @octocat now"},
+		{"b `ping", "[^1]: cc @octocat now"},
+		{"b release", "---:"},
+		{"b `ping", "- cc @octocat now"},
 	} {
 		f.Add(seed[0], seed[1])
 	}
@@ -117,12 +135,14 @@ func FuzzLineProseNeverLeavesATriggerLive(f *testing.F) {
 		switch {
 		case a == "":
 			glue = " @"
-		case a[0]%4 == 0:
+		case a[0]%5 == 0:
 			glue = " @"
-		case a[0]%4 == 1:
+		case a[0]%5 == 1:
 			glue = "" // adjacent prose fields: no glue at all
-		case a[0]%4 == 2:
+		case a[0]%5 == 2:
 			glue = " — "
+		case a[0]%5 == 3:
+			glue = "\n  " // a TOML basic string carries a line ending into the template
 		default:
 			glue = "` ("
 		}
@@ -150,7 +170,7 @@ func FuzzLineProseNeverLeavesATriggerLive(f *testing.F) {
 					t.Fatalf("Line.Prose(%q) + Raw(glue) + Line.Prose(%q) = %q leaves a live %q at %d, outside every code span of the OUTPUT",
 						a, b, out, out[i], i)
 				}
-			case out[i] == '&' && entityAt(out, i):
+			case out[i] == '&' && entityShape.MatchString(out[i:]):
 				if !oddBackslashRunBefore(out, i) {
 					t.Fatalf("Line.Prose(%q) + Raw(glue) + Line.Prose(%q) = %q leaves an entity live at %d, outside every code span of the OUTPUT", a, b, out, i)
 				}
@@ -162,7 +182,64 @@ func FuzzLineProseNeverLeavesATriggerLive(f *testing.F) {
 				t.Fatalf("Line.Prose(%q) + Raw(glue) + Line.Prose(%q) = %q left %q unbroken at %d, outside every code span of the OUTPUT", a, b, out, trigger, idx)
 			}
 		}
+		item := strings.TrimPrefix(out, "- ")
+		for line := range strings.SplitSeq(item, "\n") {
+			if opensABlock.MatchString(line) {
+				t.Fatalf("Line.Prose(%q) + Raw(glue) + Line.Prose(%q) = %q opens a block on the line %q", a, b, out, line)
+			}
+		}
+		if head, _, _ := strings.Cut(item, "\n"); taskItem.MatchString(rendered(head)) {
+			t.Fatalf("Line.Prose(%q) + Raw(glue) + Line.Prose(%q) = %q renders a checkbox at the item's head %q", a, b, out, head)
+		}
 	})
+}
+
+// opensABlock is the block openers of blockOpenerAt's measured table, re-derived
+// here at GitHub's own limits so that the oracle borrows nothing from the code it
+// judges. Anchored at the head of a list item's content, and read one line at a
+// time, so the end of the text is the end of the line.
+var opensABlock = regexp.MustCompile("^(?:" +
+	"[ ]{4}|[ ]{0,3}\t|" + // an indent of four columns, a tab counted as its stop
+	"[ ]{0,3}(?:" +
+	"#{1,6}(?:[ \t]|$)|" +
+	">|" +
+	"[-*+](?:[ \t]|$)|" +
+	"[0-9]{1,9}[.)](?:[ \t]|$)|" +
+	"~{3}|" +
+	"`{3,}[^`]*$|" +
+	"(?:-[ \t]*){3,}$|(?:\\*[ \t]*){3,}$|(?:_[ \t]*){3,}$|" +
+	// HTML blocks, CommonMark's start conditions 1 to 6 (7 cannot interrupt a
+	// paragraph, and at an item's head its tag is rule 1's). The names are the
+	// spec's and cmark-gfm's together.
+	"<(?i:script|pre|style|textarea)(?:[ \t>]|$)|<!--|<\\?|<![A-Za-z]|<!\\[CDATA\\[|" +
+	"</?(?i:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|" +
+	"fieldset|figcaption|figure|footer|form|frame|frameset|h1|h2|h3|h4|h5|h6|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|meta|" +
+	"nav|noframes|ol|optgroup|option|p|param|search|section|source|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:[ \t]|$|>|/>)|" +
+	// a footnote definition (cmark-gfm's scan_footnote_definition)
+	"\\[\\^[^\\] \t]+\\]:|" +
+	// a table delimiter row, read without the header's cell count, which one line
+	// cannot know; cmark's spacechar takes a VT or FF
+	"\\|?[ \t\v\f]*:?-+:?[ \t\v\f]*(?:\\|[ \t\v\f]*:?-+:?[ \t\v\f]*)*\\|?[ \t\v\f]*$" +
+	"))")
+
+// taskItem is GitHub's task-list filter as measured (taskItemAt's table), read over
+// the rendered text of an item's first line: one optional bullet or number, blanks,
+// the brackets, and a space, a tab or a form feed behind them.
+var taskItem = regexp.MustCompile(`^(?:[ \t]*[-+*]|[0-9]+\.)?[ \t]*\[[ xX]\][ \t\f]`)
+
+// rendered approximates the text GitHub renders a line as, for a filter that
+// reads text rather than source: a backslash before an ASCII punctuation byte is
+// dropped and the byte kept. Written out rather than calling literal, so the
+// oracle borrows nothing from the code it judges.
+func rendered(line string) string {
+	var b strings.Builder
+	for i := 0; i < len(line); i++ {
+		if line[i] == '\\' && i+1 < len(line) && strings.IndexByte("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", line[i+1]) >= 0 {
+			i++
+		}
+		b.WriteByte(line[i])
+	}
+	return b.String()
 }
 
 // TestRunsLongerThanCmarkOpensAreNotBelieved pins the MAXBACKTICKS boundary.
