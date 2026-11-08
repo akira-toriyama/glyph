@@ -49,15 +49,28 @@ type Verdict struct {
 // verdict; Pending is what is already merged but unreleased. Untagged marks a
 // base branch whose history holds no v* release tag — the fact the caller
 // resolved, stated of the branch because a tag on another branch is no
-// release of this one (DESIGN §4): its Pending is not merely empty but
-// UNCOMPUTED — walking it would cost an API round-trip per commit of the whole
-// history for an answer that cannot matter (nothing is unreleased when nothing
-// was ever released), so the caller skips it and says so here.
+// release of this one (DESIGN §4). On the single line its Pending is then not
+// merely empty but UNCOMPUTED — walking it would cost an API round-trip per
+// commit of the whole history for an answer that cannot matter (nothing is
+// unreleased when nothing was ever released), so the caller skips it and says
+// so here; a packages line hands the two facts over separately
+// (Package.PendingWalked). Either way Current is the null version, and the
+// body never spells it as a tag (untaggedHeadline).
 type Input struct {
 	Current  string
 	Untagged bool
-	PR       Verdict
-	Pending  Verdict
+	// Shallow marks a pending walk the floor guard skipped on a shallow
+	// checkout: Untagged then says only that no release tag is within the
+	// clone's reach, never that the base branch holds none, and PendingShort
+	// carries the walk's own shallow clause (walk.ShallowShortfall). Every
+	// version the body names is still what the PR side computed from the
+	// null floor — the machine verdict beside it says the same — and the
+	// body says the condition under which that is the answer (t-txed).
+	// False when the walk ran, shallow or not: PendingShort alone then says
+	// what it could not read.
+	Shallow bool
+	PR      Verdict
+	Pending Verdict
 	// Notes is the release-notes preview, folded into a <details> block. Empty
 	// renders no block — the commits produced no notes sections (nothing
 	// release-worthy and no removals to surface).
@@ -161,11 +174,10 @@ func icon(b bump.Level) string {
 func headline(in Input) string {
 	pl, ql := in.PR.Level, in.Pending.Level
 	pr, qr := rank(pl), rank(ql)
+	if in.Untagged {
+		return untaggedHeadline(in, pl, ql, pr, qr)
+	}
 	switch {
-	case in.Untagged && pr == 0:
-		return "⏸️ Merging this PR moves nothing — and the base branch holds no release tag yet, so there is no version to move."
-	case in.Untagged:
-		return fmt.Sprintf("%s Merging this PR raises **%s** — the first release here would be **%s**.", icon(pl), pl, in.PR.Next)
 	case pr == 0 && qr == 0:
 		return fmt.Sprintf("⏸️ Merging this PR moves nothing — and nothing release-worthy is pending since **%s**.", in.Current)
 	case pr == 0:
@@ -186,6 +198,40 @@ func headline(in Input) string {
 	default:
 		// qr >= pr >= 1 here, so both levels are real and named.
 		return fmt.Sprintf("%s Merging this PR adds **%s**-level changes — the next release stays **%s** (a **%s** bump is already pending).", icon(pl), pl, in.Pending.Next, ql)
+	}
+}
+
+// untaggedHeadline is headline over a null floor. The line has released
+// nothing, so there is no current version to name and no "X → Y": every
+// version it names is the line's FIRST release, in one shape, whether the
+// pending side was skipped (the single line's floor guard; Pending then
+// ranks none) or walked (a packages line a tagged sibling took the walk to
+// the whole history for). Drawn through the tagged arms, a walked line with
+// no tag read "travel/v0.0.0 → travel/v0.1.0" — a tag that does not exist
+// (t-1n1s, measured 2026-11-04 on glyph-monorepo-test-2). The level clauses
+// are the tagged arms' own, so the two shapes differ only in how the version
+// is named. On a shallow checkout (Input.Shallow) the floor was never
+// reached, and the sentence says under what condition the version holds.
+func untaggedHeadline(in Input, pl, ql bump.Level, pr, qr int) string {
+	if in.Shallow {
+		if pr == 0 {
+			return "⏸️ Merging this PR moves nothing — and no release tag is within this shallow checkout's reach, so there is no version to move."
+		}
+		return fmt.Sprintf("%s Merging this PR raises **%s** — the first release here would be **%s**, if no release tag lies past this shallow checkout's reach.", icon(pl), pl, in.PR.Next)
+	}
+	switch {
+	case pr == 0 && qr == 0:
+		return "⏸️ Merging this PR moves nothing — and the base branch holds no release tag yet, so there is no version to move."
+	case pr == 0:
+		return fmt.Sprintf("⏸️ This PR does not move the version — the first release here would be **%s** (a **%s** bump is already pending).", in.Pending.Next, ql)
+	case qr == 0:
+		return fmt.Sprintf("%s Merging this PR raises **%s** — the first release here would be **%s**.", icon(pl), pl, in.PR.Next)
+	case pr > qr && in.PR.Next == in.Pending.Next:
+		return fmt.Sprintf("%s Merging this PR raises **%s** — the first release here would still be **%s** (on 0.x a %s steps the minor, and a **%s** bump is already pending).", icon(pl), pl, in.Pending.Next, pl, ql)
+	case pr > qr:
+		return fmt.Sprintf("%s Merging this PR raises **%s** — the first release here would be **%s** (a **%s** bump is already pending).", icon(pl), pl, in.PR.Next, ql)
+	default:
+		return fmt.Sprintf("%s Merging this PR adds **%s**-level changes — the first release here would be **%s** (a **%s** bump is already pending).", icon(pl), pl, in.Pending.Next, ql)
 	}
 }
 
@@ -232,7 +278,7 @@ func Render(in Input) string {
 	// sentence headline can produce about the pending side is a claim this walk
 	// did not fully earn. Below the table would read as a footnote to the
 	// evidence rather than a caveat on the conclusion.
-	b.WriteString(pendingShortBlock(in.PendingShort, false))
+	b.WriteString(pendingShortBlock(in.PendingShort, false, in.Shallow))
 
 	if len(in.PR.Commits) > 0 {
 		b.WriteString("\n" + commitTable(in.PR.Commits))
@@ -259,12 +305,12 @@ func renderPackages(in Input) string {
 	var b strings.Builder
 	b.WriteString(Marker + "\n")
 	for _, p := range in.Packages {
-		// Untagged reaches headline only when the pending side really is
-		// uncomputed — its documented meaning. A walked line with no tag
-		// renders like any other: its floor is the null version.
-		fmt.Fprintf(&b, "**%s** — %s\n", p.Path, headline(Input{Current: p.Current, Untagged: p.Untagged && !p.PendingWalked, PR: p.PR, Pending: p.Pending}))
+		// A line with no tag renders its first release whether or not its
+		// pending side was walked (untaggedHeadline); PendingWalked decides
+		// the footer's sentence about what was folded in, not the headline.
+		fmt.Fprintf(&b, "**%s** — %s\n", p.Path, headline(Input{Current: p.Current, Untagged: p.Untagged, Shallow: in.Shallow, PR: p.PR, Pending: p.Pending}))
 	}
-	b.WriteString(pendingShortBlock(in.PendingShort, true))
+	b.WriteString(pendingShortBlock(in.PendingShort, true, in.Shallow))
 	b.WriteString(prShortBlock(in.PRShort, true))
 	for _, p := range in.Packages {
 		if len(p.PR.Commits) == 0 {
@@ -302,14 +348,22 @@ func RenderNoLine(in Input) string {
 // pendingShortBlock is the caveat Render and renderPackages place directly
 // under their headlines when the pending side's walk came up short, and ""
 // when it did not. plural says the body carries one figure per line rather
-// than one headline figure; that is all that changes the words.
-func pendingShortBlock(short string, plural bool) string {
+// than one headline figure; skipped (Input.Shallow) says the walk never ran,
+// so what may lie past the clone's reach is not only merged work but the tag
+// the figures step from.
+func pendingShortBlock(short string, plural, skipped bool) string {
 	if short == "" {
 		return ""
 	}
 	floor := "the figure above, so treat it"
 	if plural {
 		floor = "the figures above, so treat each"
+	}
+	if skipped {
+		floor = "the figures above, and so may the release tag they step from, so treat each"
+		if !plural {
+			floor = "the figure above, and so may the release tag it steps from, so treat it"
+		}
 	}
 	return fmt.Sprintf("\n> [!WARNING]\n> The pending side of this fold is INCOMPLETE: %s. Anything already merged but unreleased may be missing from %s as a floor rather than the answer.\n", short, floor)
 }
@@ -398,12 +452,33 @@ func packagesFooter(in Input) string {
 		s += fmt.Sprintf(" %d of them %s on no line.", in.OffLine, sit)
 	}
 	if len(untaggedWalked) > 0 {
-		s += fmt.Sprintf(" %s has no release tag on the base branch yet, so everything merged so far is folded in for it.", strings.Join(untaggedWalked, " and "))
+		subject, have, them := lines(untaggedWalked)
+		s += fmt.Sprintf(" %s %s no release tag on the base branch yet, so everything merged so far is folded in for %s.", subject, have, them)
 	}
 	if len(untagged) > 0 {
-		s += fmt.Sprintf(" %s has no release tag on the base branch yet, so nothing merged earlier is folded in for it.", strings.Join(untagged, " and "))
+		subject, have, them := lines(untagged)
+		where := "on the base branch yet"
+		if in.Shallow {
+			where = "within this shallow checkout's reach"
+		}
+		s += fmt.Sprintf(" %s %s no release tag %s, so nothing merged earlier is folded in for %s.", subject, have, where, them)
 	}
 	return s + " Pushing more commits updates this comment."
+}
+
+// lines is the subject of a footer sentence about several lines, with the
+// verb and the pronoun that agree with it: "haiku has … for it", "haiku and
+// curry have … for them", "a, b and c" past two. Joined with " and " alone,
+// two lines read "haiku and curry has … for it" (t-c2a9).
+func lines(paths []string) (subject, have, them string) {
+	switch len(paths) {
+	case 1:
+		return paths[0], "has", "it"
+	case 2:
+		return paths[0] + " and " + paths[1], "have", "them"
+	default:
+		return strings.Join(paths[:len(paths)-1], ", ") + " and " + paths[len(paths)-1], "have", "them"
+	}
 }
 
 func footer(in Input) string {
@@ -413,6 +488,9 @@ func footer(in Input) string {
 	// zero here and the wording must not read as a miscount. PR.Commits is the
 	// fold's rows, the participating set (DESIGN §4.1) — a raw revert among
 	// them: the presets' revert pattern claims it, at ~.
+	if in.Untagged && in.Shallow {
+		return fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. No v* release tag is within this shallow checkout's reach, so nothing merged earlier is folded in. Pushing more commits updates this comment.", n)
+	}
 	if in.Untagged {
 		return fmt.Sprintf("Computed from the %d commit(s) participating in this PR — squash-safe, a squash-merge cannot erase them. The base branch holds no v* release tag yet, so nothing merged earlier is folded in. Pushing more commits updates this comment.", n)
 	}

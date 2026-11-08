@@ -75,6 +75,7 @@ type packagesVerdict struct {
 		Current string `json:"current"`
 		Level   string `json:"level"`
 		Next    string `json:"next"`
+		Tag     string `json:"tag"`
 		Commits []struct {
 			SHA string `json:"sha"`
 		} `json:"commits"`

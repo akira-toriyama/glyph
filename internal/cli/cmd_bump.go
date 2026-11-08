@@ -34,12 +34,19 @@ type bumpResult struct {
 
 // packageVerdict is one line's verdict inside bumpResult.packages: the
 // package's path (the line's name), what the line steps from, how far, to
-// what, the commits that participate in the line, and why.
+// what, the commits that participate in the line, and why. Current and Next
+// are bare versions; Tag is Next spelled as the line's tag — what stdout
+// prints and release's packages row carries under the same key — present
+// exactly when Next is, so a line at none carries neither. Composing it from
+// path and next is wrong on a locked line (pubsub/v2 + v2.0.0 is
+// pubsub/v2.0.0, not pubsub/v2/v2.0.0) and on the root package (bare), which
+// is why the verdict names it (t-c84j).
 type packageVerdict struct {
 	Path    string     `json:"path"`
 	Current string     `json:"current"`
 	Level   string     `json:"level"`
 	Next    string     `json:"next,omitempty"`
+	Tag     string     `json:"tag,omitempty"`
 	Commits []bump.Row `json:"commits"`
 	Reason  string     `json:"reason"`
 }
@@ -84,9 +91,14 @@ func newBumpCmd() *cobra.Command {
 			"On a repository declaring [[packages]] the verdict is per line: stdout is\n" +
 			"the next TAG of every line that moves, one per line (haiku/v0.2.0), and\n" +
 			"exit 1 means every line folded to none; --json carries packages:\n" +
-			"[{path,current,level,next,commits,reason}] with the scalar current/level\n" +
+			"[{path,current,level,next,tag,commits,reason}] with the scalar current/level\n" +
 			"EMPTY and next absent — there is no one line for them to describe, so read\n" +
-			"the array. --pr is refused there (exit 2: a pull's listing carries\n" +
+			"the array. In a row current and next are bare versions (v0.1.1) and tag is\n" +
+			"next as the line's tag — the path as its prefix, nested path and all\n" +
+			"(haiku/v0.1.1, travel/onsen/v0.0.1), the major folded on a /vN path\n" +
+			"(pubsub/v2 → pubsub/v2.1.0), bare for the root package — present exactly\n" +
+			"when next is, so a line at none carries neither and an all-none walk is a\n" +
+			"full array with no tag in it. --pr is refused there (exit 2: a pull's listing carries\n" +
 			"messages and no files, so nothing can be attributed to a line), and\n" +
 			"--current is refused (exit 2) unless the walk selects one line\n" +
 			"(--since-tag=<prefix>vX.Y.Z or below:, <prefix> being the line's tag\n" +
@@ -107,7 +119,7 @@ func newBumpCmd() *cobra.Command {
 	addSinceTagFlag(cmd, &f.tag, "fold")
 	cmd.Flags().StringVar(&f.repo, "repo", "", "owner/name to query for --pr and --since-tag (default: $GITHUB_REPOSITORY, else the origin remote)")
 	cmd.Flags().StringVar(&current, "current", "", currentFlagUsage)
-	cmd.Flags().BoolVar(&asJSON, "json", false, "emit the machine verdict {current,level,next,commits,reason}; with [[packages]] declared current/level are empty, next is absent, and packages[] carries one verdict per line")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit the machine verdict {current,level,next,commits,reason}; with [[packages]] declared current/level are empty, next is absent, and packages[] carries one verdict per line, its tag beside its bare next")
 	markInputSourceFlags(cmd)
 	return cmd
 }
@@ -158,8 +170,8 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
 		}
 		pv := packageVerdict{Path: lw.Package.Path, Current: fl.current.String(), Level: string(fl.dec.Level), Commits: fl.rows, Reason: fl.reason}
 		if fl.next != nil {
-			pv.Next = fl.next.String()
-			tags = append(tags, fl.next.TagOn(lw.TagLine.Prefix))
+			pv.Next, pv.Tag = fl.next.String(), fl.next.TagOn(lw.TagLine.Prefix)
+			tags = append(tags, pv.Tag)
 		}
 		pkgs = append(pkgs, pv)
 	}

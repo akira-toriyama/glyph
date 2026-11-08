@@ -167,8 +167,8 @@ func TestPreviewPackagesUntaggedLinesSkipTheWalk(t *testing.T) {
 	if !res.Packages[0].Untagged || res.Packages[0].Next != "v0.1.0" {
 		t.Fatalf("haiku = %+v, want untagged with a first release of v0.1.0", res.Packages[0])
 	}
-	if !strings.Contains(res.Body, "the first release here would be **haiku/v0.1.0**") || !strings.Contains(res.Body, "haiku and curry has no release tag on the base branch yet") {
-		t.Fatalf("body must say the lines have not released:\n%s", res.Body)
+	if !strings.Contains(res.Body, "the first release here would be **haiku/v0.1.0**") || !strings.Contains(res.Body, "haiku and curry have no release tag on the base branch yet, so nothing merged earlier is folded in for them") {
+		t.Fatalf("body must say the lines have not released, in the plural (t-c2a9):\n%s", res.Body)
 	}
 }
 
@@ -868,6 +868,12 @@ func TestPreviewPackagesUntaggedTouchedLineAgreesWithItsVerdict(t *testing.T) {
 	}
 	if !strings.Contains(res.Body, "**curry/"+curry.next+"**") {
 		t.Errorf("the body names a different version than the machine verdict (%s):\n%s", curry.next, res.Body)
+	}
+	// The walked line has no tag, so its headline names its first release
+	// and never the null floor as a tag: "curry/v0.0.0 → curry/v0.1.0" named
+	// a tag nobody cut (t-1n1s, measured 2026-11-04 on glyph-monorepo-test-2).
+	if !strings.Contains(res.Body, "**curry** — 🔧 Merging this PR adds **patch**-level changes — the first release here would be **curry/v0.1.0** (a **minor** bump is already pending).") || strings.Contains(res.Body, "curry/v0.0.0") {
+		t.Errorf("the untagged line must name its first release, not a null floor spelled as a tag:\n%s", res.Body)
 	}
 	if strings.Contains(res.Body, "curry has no release tag on the base branch yet, so nothing merged earlier is folded in for it") {
 		t.Errorf("the body denies a pending side this same run walked and reported:\n%s", res.Body)

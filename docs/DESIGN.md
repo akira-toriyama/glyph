@@ -2590,7 +2590,32 @@ error names: a package with no tag of its own — the common case of a package
 added to an old repository — is baselined by cutting the tag the refusal
 names **at the commit before its first change** (README "Packages":
 `<prefix>v0.0.0` on a free line, `<prefix>vN.0.0` on a locked one), a tag that
-says "nothing of this line was released before here".
+says "nothing of this line was released before here". The warning under the
+cap says first that the walk proceeds without a tag, then the remedy, and
+the remedy **names its price**: a baseline is a release like any other and
+takes its number, so the line's first release steps from it — `pubsub/v2.1.0`
+after a `pubsub/v2.0.0` baseline and a `^`, where the unbaselined line's
+first release is `pubsub/v2.0.0` itself (t-ngac, measured 2026-11-04 on
+2f9428a: `git tag pubsub/v2.0.0 $DECL` as the warning said, then
+`pubsub/v2.1.0`). Kept, and priced, over two alternatives: a baseline-only
+tag shape (`pubsub/v2.0.0-baseline`, or a `below:`-like marker) is machinery
+for a skipped number, and a candidate tag is a question, never an answer
+(above) — it could not be a floor; and a per-line cap exception on an
+untagged line walks what the cap exists to refuse. The remedy is named
+**only for a line that has a commit to cut it at**: the walk asks git for
+the line's first change over its own files (its path with every nested
+package excluded, rule 1's ownership; `walk.baselineOn`,
+`gitsource.Checkout.FirstChange`), and a line whose first change is a root
+commit — glyph-monorepo-test-2's two lines, both added by root `8da42f0` —
+gets the single line's sentence, since "the commit before that line's first
+change" named a commit that does not exist (t-vc5w, measured 2026-11-04;
+`TestSinceTagPackagesRootFirstChangeNamesNoBaseline`,
+`TestSinceTagPackagesUntaggedLineWalksTheWholeHistory`; mutation rows
+`packages-baseline-named-at-a-root-first-change`,
+`packages-baseline-remedy-hides-its-cost`). Saying "at the root commit
+itself" was rejected: a baseline there releases the root commit's own
+changes to the line as the baseline, which is not "nothing of this line was
+released before here".
 
 **Only the untagged arm is capped**, and the tagged arm's missing cap is a
 decision (t-n5tw R3). A tagged range is the unreleased work a release exists
@@ -2955,7 +2980,37 @@ alone, and that was wrong in the one case it mattered: the same run answered
 `curry/v0.0.1` in prose and `v0.1.0` in `packages[]`, and `bump` on the same
 checkout answers `curry/v0.1.0` — preview predicts the walk, so the prose is
 the half that has to move. "No tag" and "pending uncomputed" are therefore two
-states, not one flag. The body is the single line's sentences per line: the
+states, not one flag — and the headline reads the first, the footer the
+second. A line with no tag names every version as its **first release**
+(`the first release here would be **travel/v0.1.0**`), walked or not, with
+the tagged arms' level clauses (`… (a **minor** bump is already pending)`);
+its null floor is never spelled as a tag. Routed through the tagged arms
+because its pending side was walked, such a line drew "the next release
+becomes **travel/v0.0.0 → travel/v0.1.0**", a tag nobody cut (t-1n1s,
+measured 2026-11-04 on glyph-monorepo-test-2 `preview --pr 2`, camp tagged
+and travel not; `preview.untaggedHeadline`,
+`TestHeadlineUntaggedLineNamesItsFirstRelease`, mutation row
+`preview-untagged-line-spells-its-null-floor-as-a-tag`). The footer's
+untagged sentence agrees in number — `haiku and curry have no release tag …
+for them` — where one sentence joined with " and " read "haiku and curry has
+… for it" (t-c2a9, same measurement; mutation row
+`preview-footer-disagrees-in-number`). And the floor guard reads whether the
+checkout is **shallow** before it concludes no tag exists: a `--depth 1`
+clone holds the tags its depth reached and no other, so on a shallow
+checkout with no tag within reach the walk is still skipped — the verdict
+stays the PR side's, the exit code 0 — but stderr says the walk's own
+shallow sentence (`walk.ShallowWarning`, one home) and the body carries the
+walk's shallow clause where a walked shallow checkout puts it, its headline
+naming the first release "if no release tag lies past this shallow
+checkout's reach" and its footer the clone's reach rather than the base
+branch. Before that read the guard said "The base branch holds no v* release
+tag yet" of a repository that has v0.1.0 (t-txed, measured 2026-11-04 at
+2f9428a; `TestPreviewOnAShallowCheckoutDoesNotAssertNoTag`, mutation row
+`preview-floor-guard-asserts-no-tag-on-a-shallow-checkout`). The machine
+verdict is unchanged there: `untagged` reports what the checkout holds, and
+`next` what the PR side stepped from the null floor — the body names the same
+figure with its condition, so the two never disagree. The body is the single
+line's sentences per line: the
 marker, one headline per touched line led by the line's name with versions
 spelled as tags (`haiku/v0.1.0 → haiku/v0.2.0`, so two lines can never be
 confused), one commit table per line (a commit moving two lines sits in

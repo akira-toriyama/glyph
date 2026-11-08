@@ -261,12 +261,14 @@ one that never landed. The only member of `Facts` that is a property of the
 **checkout** rather than of an API answer, and the likeliest to appear
 (`actions/checkout` defaults to `fetch-depth: 1`). Probed once per walk, before
 any expansion, because a walk where nothing resolves is still a walk over a
-truncated history, and once per `--range` read (`lint`, `bump`, `notes`), which
-warns. Its **boundary** commit — the one whose parents were cut off — has no
+truncated history, once per `--range` read (`lint`, `bump`, `notes`), which
+warns, and by `preview`'s floor guard before it concludes that no tag exists,
+since a shallow clone holds only the tags its depth reached (`walk.ShallowWarning`
+is the one sentence all of them say). Its **boundary** commit — the one whose parents were cut off — has no
 diff the clone can compute: git reads it as a root, and its whole tree is not
 its diff (DESIGN §4.1). `internal/gitsource/checkout.go: Checkout.IsShallow`,
 `internal/gitsource/gitsource.go: IsShallowBoundary`,
-`Facts.shallow`, `internal/cli/range.go: logRange`
+`Facts.shallow`, `internal/cli/range.go: logRange`, `internal/cli/cmd_preview.go: previewPending`
 
 **truncated listing** — a pull whose commit listing came back at GitHub's hard
 cap of **250**, however far pagination follows. A listing of exactly the cap is
@@ -370,7 +372,9 @@ no package's — no line's walk or floor reads its tags, and its drafts are
 **locked line** vs **free line** — the two kinds of line DESIGN §4.1's
 major-subdirectory rule makes. A package whose path ends in a Go major version
 subdirectory `vN` (N ≥ 2) is on a **locked** line: its prefix drops the `/vN`,
-it holds major N alone, and its first release is `vN.0.0` whatever the level.
+it holds major N alone, and its first release is `vN.0.0` whatever the level —
+unless `vN.0.0` was cut as its baseline, which takes that number: the first
+release then steps from it (DESIGN §4.1, the priced remedy).
 Every other line is **free**: it holds every major no locked line on its prefix
 claims. Lines that share a prefix are told apart by the major alone, and a step
 off the majors a line holds — a `!` past a locked line's N, or a free line's

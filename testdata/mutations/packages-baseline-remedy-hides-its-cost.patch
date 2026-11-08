@@ -1,0 +1,8 @@
+diff --git a/internal/walk/lines.go b/internal/walk/lines.go
+--- a/internal/walk/lines.go
++++ b/internal/walk/lines.go
+@@ -245,3 +245,3 @@ func (w Walker) unionRange(ctx context.Context, cfg *config.Config, lines []Line
+ 		if len(baselines) > 0 {
+-			remedy = fmt.Sprintf("; to start from a tag instead, cut %s at the commit before that line's first change — a baseline says nothing of the line was released before there, and it takes its number: the line's first release then steps from it", strings.Join(baselines, " / "))
++			remedy = fmt.Sprintf("; to start from a tag instead, cut %s at the commit before that line's first change — a baseline says nothing of the line was released before there", strings.Join(baselines, " / "))
+ 		}

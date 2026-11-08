@@ -203,16 +203,29 @@ func (w Walker) lineFromLatest(ctx context.Context, cfg *config.Config, p config
 // no tag to start from. The diagnosis tells a line with no tag at all from
 // one with none under its below: bound: the remedy is the same tag, the
 // sentence is not, and past the cap it is the refusal body an operator reads
-// beside `git tag -l` (t-gt9n).
+// beside `git tag -l` (t-gt9n). The remedy — a baseline tag — is named only
+// for a line that can take one (baselineOn), after the walk has said it
+// proceeds without it: a line whose first change is the root commit gets
+// the single line's sentence, since "the commit before" does not exist
+// (t-vc5w, measured 2026-11-04 on glyph-monorepo-test-2, both lines added by
+// the root commit).
 func (w Walker) unionRange(ctx context.Context, cfg *config.Config, lines []Line, escape string) (string, error) {
-	var bases, untagged, unbounded, bounded []string
+	var bases, baselines, unbounded, bounded []string
+	untagged := false
 	for _, l := range lines {
 		if l.revRange == "" {
-			untagged = append(untagged, firstTagOn(l.TagLine))
+			untagged = true
 			if l.bound != "" {
 				bounded = append(bounded, fmt.Sprintf("no version tag below %s on the %s line in HEAD's history", l.bound, l.TagLine.Label()))
 			} else {
 				unbounded = append(unbounded, l.TagLine.Label())
+			}
+			tag, ok, err := w.baselineOn(ctx, cfg, l)
+			if err != nil {
+				return "", err
+			}
+			if ok {
+				baselines = append(baselines, tag)
 			}
 			continue
 		}
@@ -221,13 +234,17 @@ func (w Walker) unionRange(ctx context.Context, cfg *config.Config, lines []Line
 			bases = append(bases, base)
 		}
 	}
-	if len(untagged) > 0 {
+	if untagged {
 		var causes []string
 		if len(unbounded) > 0 {
 			causes = append(causes, fmt.Sprintf("no version tag on the %s line(s) in HEAD's history", strings.Join(unbounded, ", ")))
 		}
 		causes = append(causes, bounded...)
-		revRange, _, err := w.wholeHistory(ctx, cfg, fmt.Sprintf("%s — cut %s at the commit before that line's first change to say nothing of it was released before there", strings.Join(causes, "; "), strings.Join(untagged, " / ")), escape)
+		remedy := ""
+		if len(baselines) > 0 {
+			remedy = fmt.Sprintf("; to start from a tag instead, cut %s at the commit before that line's first change — a baseline says nothing of the line was released before there, and it takes its number: the line's first release then steps from it", strings.Join(baselines, " / "))
+		}
+		revRange, _, err := w.wholeHistory(ctx, cfg, strings.Join(causes, "; "), remedy, escape)
 		return revRange, err
 	}
 	mb, err := w.Git.MergeBase(ctx, bases)
@@ -237,9 +254,49 @@ func (w Walker) unionRange(ctx context.Context, cfg *config.Config, lines []Line
 	return mb + "..HEAD", nil
 }
 
+// baselineOn is the baseline tag an untagged line can take (firstTagOn) and
+// whether it can take one: a baseline is cut at the commit BEFORE the line's
+// first change, so a line whose first change is a root commit — or whose
+// subtree no commit of HEAD's history touches — has nowhere to put it. The
+// first change is asked of git over the line's own files: its path, minus
+// the nested packages attribution takes out of it (DESIGN §4.1, rule 1), so
+// a parent's first change is never its child's.
+func (w Walker) baselineOn(ctx context.Context, cfg *config.Config, l Line) (string, bool, error) {
+	sha, parents, err := w.Git.FirstChange(ctx, "HEAD", linePathspec(cfg, l.Package))
+	if err != nil {
+		return "", false, err
+	}
+	if sha == "" || parents == 0 {
+		return "", false, nil
+	}
+	return firstTagOn(l.TagLine), true, nil
+}
+
+// linePathspec spells a package's own files as a git pathspec: its path from
+// the top level (`:(top)`, so the working directory does not move it) and
+// every package nested under it excluded. The root package is the whole tree
+// minus every other package.
+func linePathspec(cfg *config.Config, p config.Package) []string {
+	own, under := ":(top)", ""
+	if p.Path != "." {
+		own, under = ":(top)"+p.Path, p.Path+"/"
+	}
+	spec := []string{own}
+	for _, q := range cfg.Packages {
+		if q.Path != p.Path && (under == "" || strings.HasPrefix(q.Path, under)) {
+			spec = append(spec, ":(top,exclude)"+q.Path)
+		}
+	}
+	return spec
+}
+
 // firstTagOn is the tag that says "nothing of this line was released before
 // here": the null version on a free line, and on a locked line — which has
-// no version below its major — the major's own floor.
+// no version below its major — the major's own floor. Cut as a baseline it
+// is a release like any other and takes its number: the line's first release
+// steps FROM it (pubsub/v2.1.0 after a pubsub/v2.0.0 baseline and a ^), the
+// price DESIGN §4.1 names for a tag that is an answer rather than a question
+// (t-ngac).
 func firstTagOn(l config.Line) string {
 	return bump.Version{Major: l.Major}.TagOn(l.Prefix)
 }

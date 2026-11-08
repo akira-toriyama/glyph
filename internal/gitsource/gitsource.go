@@ -652,6 +652,37 @@ func firstParentLog(ctx context.Context, dir, rev string, n int) ([]RawCommit, e
 	return commits, nil
 }
 
+// firstChange returns the oldest commit in rev's history whose own diff
+// touches pathspec, with its parent count — "" when no commit does. The
+// pathspec is passed through as given: callers spell it with git's own magic
+// (`:(top)path` is read from the top level whatever the working directory,
+// `:(top,exclude)path` takes a nested subtree out), so a package's first
+// change is asked with its nested packages excluded, as attribution's
+// longest-prefix rule owns the files (DESIGN §4.1). The parent count is the
+// object's own (%P), not a rewritten one: `--parents` would rewrite the
+// parents to the history simplification's and report the oldest touching
+// commit as parentless whatever it is
+// (TestFirstChangeReadsTheOldestCommitTouchingThePathspec measures both).
+// Nothing but the one record is read, so the message bodies the whole log
+// would carry are not fetched.
+func firstChange(ctx context.Context, dir, rev string, pathspec []string) (sha string, parents int, err error) {
+	args := append([]string{"log", "--no-show-signature", "--reverse", "--format=%H %P", "--end-of-options", rev, "--"}, pathspec...)
+	out, err := run(ctx, dir, args...)
+	if err != nil {
+		return "", 0, err
+	}
+	first, _, _ := strings.Cut(strings.TrimLeft(string(out), "\n"), "\n")
+	if first == "" {
+		return "", 0, nil
+	}
+	fields := strings.Fields(first)
+	n, ok := objectNames(strings.Join(fields[1:], " "), len(fields[0]))
+	if !isObjectName(fields[0]) || !ok {
+		return "", 0, core.APIf("git log: %q is not a commit record", first)
+	}
+	return fields[0], n, nil
+}
+
 // diffTreeFiles returns the paths a commit's own diff touches — repository-
 // relative, slash-separated, in git's order, directories never listed. Rename
 // detection is OFF on purpose: a move across two subtrees then names both the

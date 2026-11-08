@@ -1,0 +1,8 @@
+diff --git a/internal/preview/preview.go b/internal/preview/preview.go
+--- a/internal/preview/preview.go
++++ b/internal/preview/preview.go
+@@ -176,3 +176,3 @@ func headline(in Input) string {
+ 	pr, qr := rank(pl), rank(ql)
+-	if in.Untagged {
++	if in.Untagged && qr == 0 {
+ 		return untaggedHeadline(in, pl, ql, pr, qr)

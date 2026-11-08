@@ -85,7 +85,10 @@ func newPreviewCmd() *cobra.Command {
 			"A base branch whose history holds no v* tag skips the pending walk: it\n" +
 			"would resolve the whole history at one API round-trip per commit to\n" +
 			"answer a question that cannot matter (nothing is unreleased when nothing\n" +
-			"was released), so the PR's own verdict stands alone and the body says so.\n\n" +
+			"was released), so the PR's own verdict stands alone and the body says so.\n" +
+			"On a shallow checkout that holds no tag the walk is skipped the same way,\n" +
+			"and the body says the tag is out of the clone's reach rather than that the\n" +
+			"base branch has none (check out with fetch-depth: 0 for the pending side).\n\n" +
 			"The body never names a rolling draft — the arithmetic is the same whether\n" +
 			"the next release is a draft or a tag cut by hand, and most repos have no\n" +
 			"draft to name. stdout is the Markdown body (post it with `gh pr comment\n" +
@@ -94,8 +97,9 @@ func newPreviewCmd() *cobra.Command {
 			"'this PR moves nothing' is exactly what a reviewer asked.\n\n" +
 			"On a repository declaring [[packages]] the body carries one headline per\n" +
 			"line the pull touches (versions spelled as tags: haiku/v0.1.0 →\n" +
-			"haiku/v0.2.0) and one commit table per line; a line the pull does not\n" +
-			"touch is not mentioned. --json carries packages:\n" +
+			"haiku/v0.2.0; a line with no tag names its first release, never a\n" +
+			"<prefix>v0.0.0 that does not exist) and one commit table per line; a line\n" +
+			"the pull does not touch is not mentioned. --json carries packages:\n" +
 			"[{path,current,untagged,level,next,pr,pending}] with the scalars\n" +
 			"current/level/pr/pending EMPTY, untagged false and next absent. A commit\n" +
 			"no line can carry (a version sigil on shared files with no package scope)\n" +
@@ -160,7 +164,7 @@ func previewRun(ctx context.Context, o previewOptions) error {
 	if err := foldTouched(ctx, cfg, touched); err != nil {
 		return err
 	}
-	pending, pendingShort, pendingWalked, err := previewPending(ctx, cfg, o.repo, owner, repo, touched)
+	pending, pendingShort, pendingWalked, shallow, err := previewPending(ctx, cfg, o.repo, owner, repo, touched)
 	if err != nil {
 		return err
 	}
@@ -186,7 +190,7 @@ func previewRun(ctx context.Context, o previewOptions) error {
 		lines, verdicts, lineNotes = append(lines, p), append(verdicts, pv), append(lineNotes, n)
 	}
 
-	in := preview.Input{PendingShort: pendingShort, PRShort: prShort}
+	in := preview.Input{PendingShort: pendingShort, PRShort: prShort, Shallow: shallow}
 	res := previewResult{Packages: verdicts}
 	render := preview.Render
 	if len(cfg.Packages) == 0 {
@@ -354,12 +358,30 @@ func foldTouched(ctx context.Context, cfg *config.Config, touched []touchedLine)
 // nothing to refuse here, so the shortfall is returned for the body instead
 // — see preview.Input.PendingShort for why the walk's own ::warning:: is not
 // enough on this path.
-func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, repo string, touched []touchedLine) (map[string]bump.Decision, string, bool, error) {
+func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, repo string, touched []touchedLine) (pending map[string]bump.Decision, short string, walked, shallow bool, err error) {
 	if !slices.ContainsFunc(touched, func(tl touchedLine) bool { return tl.tag != "" }) {
-		if len(touched) > 0 {
-			warnf("%s", skippedWalkWarning(cfg))
+		if len(touched) == 0 {
+			return nil, "", false, false, nil
 		}
-		return nil, "", false, nil
+		// Asked BEFORE "no tag" is concluded: a shallow checkout holds the
+		// tags its depth reached and no other (actions/checkout fetches none
+		// at a non-zero depth, DESIGN §4), so "no release tag in HEAD's
+		// history" there is a claim about a history the clone does not
+		// have. The walk is still skipped — the verdict stays the PR side's
+		// — and the body carries the walk's own shallow clause in the place
+		// a walked shallow checkout puts it (t-txed, measured 2026-11-04:
+		// `preview --pr` on a --depth 1 clone of a tagged repository
+		// answered "The base branch holds no v* release tag yet").
+		shallow, err = checkout().IsShallow(ctx)
+		if err != nil {
+			return nil, "", false, false, err
+		}
+		if shallow {
+			warnf("%s", walk.ShallowWarning)
+			short = walk.ShallowShortfall
+		}
+		warnf("%s", skippedWalkWarning(cfg, shallow))
+		return nil, short, false, shallow, nil
 	}
 	only := make([]config.Package, 0, len(touched))
 	for _, tl := range touched {
@@ -367,9 +389,8 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
 	}
 	w, err := sinceTagInputScoped(ctx, cfg, walk.Auto, repoFlag, &walk.Scope{Only: only, Escape: previewWalkEscape})
 	if err != nil {
-		return nil, "", false, err
+		return nil, "", false, false, err
 	}
-	short := ""
 	if !w.Facts.Complete() {
 		short = w.Facts.Shortfall(owner, repo)
 	}
@@ -377,30 +398,36 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
 	// once, for the pull's reason (previewRun).
 	rows, _, err := bump.Fold(walk.BumpCommits(w.All), cfg)
 	if err != nil {
-		return nil, "", false, err
+		return nil, "", false, false, err
 	}
 	warnBumpRows(rows)
-	pending := make(map[string]bump.Decision, len(w.Lines))
+	pending = make(map[string]bump.Decision, len(w.Lines))
 	for _, lw := range w.Lines {
 		_, dec, err := bump.Fold(walk.BumpCommits(lw.Commits), cfg)
 		if err != nil {
-			return nil, "", false, err
+			return nil, "", false, false, err
 		}
 		pending[lw.Package.Path] = dec
 	}
-	return pending, short, true, nil
+	return pending, short, true, false, nil
 }
 
 // skippedWalkWarning names the pending walk the release-floor guard skipped,
 // one sentence for both shapes: "on any line this PR touches" and "per line"
 // are said exactly when there are lines to say them of (noNotesReason's rule;
-// mutation row preview-bare-line-floor-warning-says-on-any-line).
-func skippedWalkWarning(cfg *config.Config) string {
+// mutation row preview-bare-line-floor-warning-says-on-any-line). On a
+// shallow checkout the absence is said of the clone's reach, not of HEAD's
+// history, which the clone does not hold whole.
+func skippedWalkWarning(cfg *config.Config, shallow bool) string {
 	where, per := "", ""
 	if len(cfg.Packages) > 0 {
 		where, per = " on any line this PR touches", " per line"
 	}
-	return "no release tag in HEAD's history" + where + " — previewing the PR's own verdict" + per + " (the pending walk needs a release floor)"
+	none := "no release tag in HEAD's history"
+	if shallow {
+		none = "no release tag within this shallow checkout's reach"
+	}
+	return none + where + " — previewing the PR's own verdict" + per + " (the pending walk needs a release floor)"
 }
 
 // lineVerdict is one touched line's verdict in the two shapes the render

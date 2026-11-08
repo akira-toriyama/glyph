@@ -1,0 +1,8 @@
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -374,3 +374,3 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
+ 		// answered "The base branch holds no v* release tag yet").
+-		shallow, err = checkout().IsShallow(ctx)
++		shallow, err = false, nil
+ 		if err != nil {

@@ -26,7 +26,7 @@ import (
 	"github.com/akira-toriyama/glyph/v6/internal/notes"
 )
 
-// Git is the checkout the walk reads: the ten questions it asks local git,
+// Git is the checkout the walk reads: the eleven questions it asks local git,
 // each a gitsource.Checkout method bound to one directory. Every verdict
 // command runs inside a checkout of the repository being released (DESIGN
 // §4), and this is that checkout. The one error the walk classifies rather
@@ -37,6 +37,7 @@ import (
 type Git interface {
 	Log(ctx context.Context, revRange string) ([]gitsource.RawCommit, error)
 	IsShallow(ctx context.Context) (bool, error)
+	FirstChange(ctx context.Context, rev string, pathspec []string) (sha string, parents int, err error)
 	Tags(ctx context.Context) ([]string, error)
 	MergedTags(ctx context.Context, rev string) ([]string, error)
 	IsTag(ctx context.Context, name string) (bool, error)
