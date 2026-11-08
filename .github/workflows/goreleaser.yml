@@ -174,11 +174,18 @@ jobs:
       # returns a draft by its pending tag as well as a published release,
       # where the REST tag endpoint sees no draft (cli/cli release/shared
       # fetchDraftRelease uses this query for that reason). `gh release view`
-      # is not used: it races the REST and GraphQL lookups and reports "release
-      # not found" when either says so (FetchRelease, v2.103.3), so a REST
-      # failure over a published tag would read as no release. Here any
-      # failure of the lookup — gh, the API, an answer without the repository —
-      # fails the step before anything is built, and a re-run asks again.
+      # is not used: FetchRelease (v2.103.3) runs the REST tag lookup and that
+      # draft lookup side by side, answers with whichever succeeds, and reports
+      # "release not found" only when both fail — and over a published tag the
+      # draft lookup always fails that way (fetchDraftRelease answers not-found
+      # for every non-draft), so a REST failure there would read as no release.
+      # Here any failure of the lookup — gh, the API, an answer without the
+      # repository, an empty answer — fails the step before anything is built,
+      # and a re-run asks again. Two shapes need the shell's help: gh prints
+      # the body of an errors[] answer and exits 1, and that body can still
+      # map to a word (`release: null` beside a FORBIDDEN error), so the
+      # pipeline's status must be gh's (`pipefail`); and an empty body maps to
+      # no word at all, which the `*)` arm refuses.
       - name: the release the tag already has
         id: existing
         env:

@@ -101,10 +101,9 @@ func ghStub(t *testing.T, stdout string, code int) (bin, calls string) {
 // run before any step outside it), and goreleaser.yml publishes with gh only
 // after the attest step, as the release job's last step. The publish step is
 // executed over a stub gh: the un-draft is one gh call naming the tag, and a
-// gh that fails fails the step and the job — no `continue-on-error`, or a
-// release left a draft reads as published and the cask job pushes a cask
-// whose URLs 404. Reverting `draft: true` is one word CI stays green over
-// (mutation row release-public-before-its-attestation).
+// gh that fails fails the step (and the job: TestGoreleaserStepFailuresFailTheirJob).
+// Reverting `draft: true` is one word CI stays green over (mutation row
+// release-public-before-its-attestation).
 func TestReleaseGoesPublicOnlyAfterItsAttestation(t *testing.T) {
 	config := code(repoFile(t, ".goreleaser.yaml"))
 	for _, want := range []string{"draft: true", "use_existing_draft: true", "replace_existing_artifacts: true"} {
@@ -156,12 +155,6 @@ func TestReleaseGoesPublicOnlyAfterItsAttestation(t *testing.T) {
 	}
 	if !strings.Contains(stepBlockOf(t, raw, publishStep), "TAG: ${{ github.ref_name }}") {
 		t.Errorf("the publish step is not told the tag through env TAG")
-	}
-	for _, name := range []string{publishStep, attestStep} {
-		if v, ok := readStepShape(t, raw, name).keys["continue-on-error"]; ok {
-			t.Errorf("%q carries `continue-on-error: %s`: a failed un-draft or signing would leave the job green, "+
-				"and the cask job would push a cask naming a draft's assets, or an unattested release", name, v)
-		}
 	}
 	script := extractRun(t, raw, publishStep)
 	for _, c := range []struct {
@@ -236,11 +229,15 @@ func releaseSteps(t *testing.T, raw string) []releaseStep {
 // refusal to rebuild exists because of `replace_existing_artifacts` — there
 // for the draft a failed run leaves — which over a PUBLISHED release would
 // swap the public assets for a rebuild's differently stamped bytes. A lookup
-// that fails, or answers without the repository, fails the step before
-// anything is built: `gh release view` would have reported "release not
-// found" over a REST failure (cli/cli FetchRelease races two lookups and
-// prefers that error), and the job would have minted a second release on a
-// published tag.
+// that fails, or answers without the repository or with nothing, fails the
+// step before anything is built: `gh release view` would have reported
+// "release not found" over a REST failure on a published tag (cli/cli
+// FetchRelease v2.103.3 answers with whichever of its two lookups succeeds
+// and reports not-found only when both fail, and the draft lookup fails that
+// way for every non-draft), and the job would have minted a second release
+// on a published tag. Two of the fail-closed legs are shell, not jq, and are
+// held by their own cases: `pipefail`, for a gh that exits 1 over a body jq
+// can still map, and the `*)` arm, for an empty body that maps to no word.
 func TestPublishedTagIsNotRebuiltOver(t *testing.T) {
 	requireTool(t, "jq")
 	raw := goreleaserWorkflow(t)
@@ -251,12 +248,6 @@ func TestPublishedTagIsNotRebuiltOver(t *testing.T) {
 	guard := readStepShape(t, raw, publishedTagGuard)
 	if guard.keys["id"] != "existing" {
 		t.Errorf("the release-state step has id %q, want existing — every later step reads steps.existing", guard.keys["id"])
-	}
-	for _, key := range []string{"if", "continue-on-error"} {
-		if v, ok := guard.keys[key]; ok {
-			t.Errorf("the release-state step carries `%s: %s`; whether the tag is already published is asked on every "+
-				"run and a lookup that failed must fail the job, or GoReleaser rebuilds over a published release", key, v)
-		}
 	}
 
 	// The split: the steps before and including the state step run on every
@@ -311,6 +302,15 @@ func TestPublishedTagIsNotRebuiltOver(t *testing.T) {
 		// A GraphQL error: gh prints the body and exits 1, and jq's error over
 		// the null repository is the pipeline's last non-zero status.
 		{"a GraphQL error fails the step", `{"data":{"repository":null},"errors":[{"type":"NOT_FOUND"}]}`, 1, 5, "", ""},
+		// A GraphQL error beside a body jq maps to a word (the release field
+		// forbidden, the repository named): jq exits 0 with "none", so only
+		// `pipefail` carries gh's 1 — without it the step builds a second
+		// release onto whatever the tag has.
+		{"a gh that fails over a partial answer fails the step", `{"data":{"repository":{"release":null}},"errors":[{"type":"FORBIDDEN","path":["repository","release"]}]}`, 1, 1, "", ""},
+		// gh exits 0 with no body: jq maps nothing, the word is "", and only
+		// the `*)` arm refuses it — without it the step writes `release=` and
+		// every later step reads "" != 'published'.
+		{"an empty answer from a gh that succeeds fails the step", "", 0, 1, "", "::error::the lookup of v9.8.7's release answered"},
 		{"an answer without the repository fails the step", `{"data":{"repository":null}}`, 0, 5, "", ""},
 		{"an empty answer fails the step", `{}`, 0, 5, "", ""},
 	}
@@ -352,16 +352,52 @@ func TestPublishedTagIsNotRebuiltOver(t *testing.T) {
 	}
 }
 
+// TestGoreleaserStepFailuresFailTheirJob: no step of goreleaser.yml, in
+// either job, carries `continue-on-error`. One rule, because every step is
+// one the next cannot run after: a step failed and made green keeps its
+// job's `success()` for the steps behind it, so a lookup that failed builds
+// over a published tag, a GoReleaser that failed after creating the draft
+// (a draft with 0 assets, measured at v2.20.0 on glyph-test-2) is attested
+// and published as it stands — every fleet install then 404s and every
+// later run takes the published path, red for ever — a failed signing or
+// un-draft hands the cask job a draft or an unattested release, and a
+// failed fetch or push is a cask job "re-run failed jobs" never offers. The
+// job must fail at the step so a re-run lands on the draft.
+func TestGoreleaserStepFailuresFailTheirJob(t *testing.T) {
+	body := code(goreleaserWorkflow(t))
+	jobs := jobIDsIn(body)
+	if len(jobs) != 2 {
+		t.Fatalf("goreleaser.yml declares jobs %q, want the release and cask jobs", jobs)
+	}
+	steps := 0
+	for _, id := range jobs {
+		for _, s := range stepBlocks(jobBlock(t, body, id)) {
+			steps++
+			keys, _ := stepKeys(s)
+			label := keys["name"]
+			if label == "" {
+				label = keys["uses"]
+			}
+			if v, ok := keys["continue-on-error"]; ok {
+				t.Errorf("the %s job's step %q carries `continue-on-error: %s`: its failure would leave the job green and "+
+					"the steps behind it running over what it left half-done", id, label, v)
+			}
+		}
+	}
+	if steps < 11 {
+		t.Fatalf("goreleaser.yml has %d steps across its jobs, want at least 11 — the step splitter read past them", steps)
+	}
+}
+
 // TestGoreleaserAttestsWhatItUploads pins the attest step and the grants it
 // runs under. Deleting the step, or the `id-token: write` the keyless signing
 // needs, reds nothing here while the install action keeps verifying
 // fail-closed — so the next tag is a release the whole fleet cannot install
 // (t-j0es: both measured surviving the suite at 2f9428a). The step runs on
 // exactly the runs GoReleaser ran on: its `if:` is the build condition and
-// nothing else, and no `continue-on-error` makes a failed signing a green
-// job. The grants are read from the release job's own `permissions:` block,
-// the one place they are declared (TestGoreleaserGrantsStayInTheJobThatUsesThem
-// holds the layout).
+// nothing else. The grants are read from the release job's own `permissions:`
+// block, the one place they are declared
+// (TestGoreleaserGrantsStayInTheJobThatUsesThem holds the layout).
 func TestGoreleaserAttestsWhatItUploads(t *testing.T) {
 	body := code(goreleaserWorkflow(t))
 	attest := readStepShape(t, goreleaserWorkflow(t), attestStep)
@@ -372,9 +408,6 @@ func TestGoreleaserAttestsWhatItUploads(t *testing.T) {
 	if got := attest.keys["if"]; got != buildCondition {
 		t.Errorf("the attest step carries `if: %s`, want exactly `%s`: it signs on every run that uploaded, and "+
 			"any other condition is a run that uploads and does not sign", got, buildCondition)
-	}
-	if v, ok := attest.keys["continue-on-error"]; ok {
-		t.Errorf("the attest step carries `continue-on-error: %s`; a failed signing must fail the job before the publish", v)
 	}
 	if !strings.Contains(body, attestSubjects) {
 		t.Errorf("the attest step no longer names %q", attestSubjects)
@@ -497,11 +530,9 @@ func TestCaskGoesOutOnlyAfterThePublish(t *testing.T) {
 	}
 	for _, s := range stepBlocks(cask) {
 		keys, _ := stepKeys(s)
-		for _, key := range []string{"if", "continue-on-error"} {
-			if v, ok := keys[key]; ok {
-				t.Errorf("the cask job's step %q carries `%s: %s`; the job runs whole or not at all, and a failed "+
-					"fetch or push must fail it so \"re-run failed jobs\" re-runs it", keys["name"], key, v)
-			}
+		if v, ok := keys["if"]; ok {
+			t.Errorf("the cask job's step %q carries `if: %s`; the job runs whole or not at all — the job-level `if:` "+
+				"is the one condition, and a step that stays home leaves the tap behind the release", keys["name"], v)
 		}
 	}
 	config := code(repoFile(t, ".goreleaser.yaml"))

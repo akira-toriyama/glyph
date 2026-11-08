@@ -1,8 +1,8 @@
 diff --git a/.goreleaser.yaml b/.goreleaser.yaml
-index a1cc480..ae4870c 100644
+index 53bdb03..c39530d 100644
 --- a/.goreleaser.yaml
 +++ b/.goreleaser.yaml
-@@ -91,3 +91,2 @@ release:
-   # draft — goreleaser.yml refuses to run over a tag whose release is public.
+@@ -96,3 +96,2 @@ release:
+   # nothing, so the cask job can finish.
 -  use_existing_draft: true
    replace_existing_artifacts: true

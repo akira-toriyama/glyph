@@ -91,7 +91,9 @@ release:
   # GitHub's tag lookup does not see drafts; use_existing_draft lists the
   # drafts by name instead. An asset the earlier run uploaded is a 422 on
   # re-upload unless replaced. Both are safe only while the release is a
-  # draft — goreleaser.yml refuses to run over a tag whose release is public.
+  # draft: over a tag whose release is public, goreleaser.yml skips every
+  # build step, GoReleaser included, and the job succeeds having touched
+  # nothing, so the cask job can finish.
   use_existing_draft: true
   replace_existing_artifacts: true
   # The cask file rides on the release: the cask job reads it from the
