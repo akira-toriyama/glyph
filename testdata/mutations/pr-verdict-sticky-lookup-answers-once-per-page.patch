@@ -1,0 +1,15 @@
+diff --git a/.github/workflows/pr-verdict.yml b/.github/workflows/pr-verdict.yml
+index 4833896..29916c0 100644
+--- a/.github/workflows/pr-verdict.yml
++++ b/.github/workflows/pr-verdict.yml
+@@ -364,8 +364,8 @@ jobs:
+               echo "A commit the convention rejects is the usual cause, and the **commit-lint** check names it; otherwise [this run's log]($GITHUB_SERVER_URL/$GH_REPO_SLUG/actions/runs/$GITHUB_RUN_ID) carries glyph's error. The next push whose verdict computes replaces this comment."
+             } > "$RUNNER_TEMP/body.md"
+           fi
+-          cid="$(gh api "repos/$GH_REPO_SLUG/issues/$PR_NUMBER/comments" --paginate --slurp \
+-            | jq -r 'first(.[][] | select(.user.type == "Bot" and (.body | startswith("<!-- glyph-pr-verdict -->")))) | .id')"
++          cid="$(gh api "repos/$GH_REPO_SLUG/issues/$PR_NUMBER/comments" --paginate \
++            --jq '[.[] | select(.user.type == "Bot" and (.body | startswith("<!-- glyph-pr-verdict -->")))][0].id // empty')"
+           if [ -n "$cid" ]; then
+             gh api --method PATCH "repos/$GH_REPO_SLUG/issues/comments/$cid" \
+               -F "body=@$RUNNER_TEMP/body.md" --silent
