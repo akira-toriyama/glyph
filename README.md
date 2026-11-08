@@ -59,19 +59,20 @@ a baseline**.
 | command | answer |
 |---|---|
 | `glyph init` | writes a starting `glyph.toml` (`--gemoji` or `--conventional`) at the checkout's top level, from any subdirectory — the file everything else reads; an existing file refuses without `--force` |
-| `glyph lint` | commit-convention gate over `--range`, one `--message`, `--stdin`, or a PR title via `--pr` (the subject a squash merge lands): does one of the repository's patterns claim the message, and does it yield a sigil? |
+| `glyph lint` | commit-convention gate over `--range`, one `--message`, `--stdin`, or a PR title via `--pr` (the subject a multi-commit squash lands): does one of the repository's patterns claim the message, and does it yield a sigil? |
 | `glyph bump` | the next version — or **"no release"** — from `--range`, `--pr`, or the release-time walk `--since-tag`; a commit no pattern claims refuses the whole range |
 | `glyph notes` | the release-notes body: `[[note.sections]]` order, one line per commit through the `note.line` template — over `--since-tag`, closed by the range's compare link |
 | `glyph release` | upserts one rolling **draft** release (tag, target, body closed by the range's compare link — `--footer-file` appends a per-repo Markdown footer); publishing — and therefore the tag — stays a human act |
 | `glyph preview` | the whole merge-preview comment for a PR: what merging it does to the version, with the evidence; `--notes` folds the release-notes preview in |
-| `glyph doctor` | read-only checks that the repository still matches what glyph assumes; each failing check prints the command that fixes it |
+| `glyph doctor` | read-only checks that the repository still matches what glyph assumes; each failing check prints the command or edit that fixes it |
 | `glyph hook install` | local `commit-msg` and `pre-push` hooks that run the same lint the CI gate runs |
 | `glyph version` | the build identity — release tag, commit, build date; like `emoji` it reaches nothing (no git, no API), so it answers anywhere |
 | `glyph emoji` | the gemoji dictionary as JSON: for each kind of change the one shortcode to write, when to pick it, and the gitmoji codes it absorbed; advice only — lint never reads it, and like `version` it reaches nothing |
 
-`lint --range/--message/--stdin` and `init` work offline against local git
-alone. The PR and release-walk inputs (`--pr` — on `lint` as much as on
-`bump` — `--since-tag`, `release`, `preview`, `doctor`) read the GitHub API;
+Every `--range` input (`lint`, `bump`, `notes`), `--message` / `--stdin`,
+`init`, `hook`, `emoji` and `version` work offline against local git alone.
+The PR and release-walk inputs (`--pr` — on `lint` as much as on `bump` —
+`--since-tag`, `release`, `preview`, `doctor`) read the GitHub API;
 in GitHub Actions no flags are needed —
 `--repo` defaults to `$GITHUB_REPOSITORY`, the API host to `$GITHUB_API_URL`
 (so a GitHub Enterprise runner just works), and the credential to
@@ -189,22 +190,17 @@ glyph doctor            # read-only; --json for CI
 
 The release verdict rides on configuration glyph cannot see from inside a run:
 the `glyph.toml` every verdict command reads (present and loadable — without
-it every command refuses to run), squash merging enabled,
-`squash_merge_commit_title = COMMIT_OR_PR_TITLE` (a single-commit pull keeps
-its own classifiable subject on `main`) and
-`squash_merge_commit_message = COMMIT_MESSAGES` (the squash body keeps the
-per-commit list, the only offline record of the pre-squash types),
-a credential that can read the repository (and, for `release`, write it),
-workflow pins on release tags, caller workflows granting what the pinned
-reusables declare and passing the inputs they require, and the installed hooks
-(if any) written by *this* binary. When one of those drifts
-nothing goes red — the verdict is just computed over a repository that no
-longer matches the model, which is exactly what `doctor` exists to catch.
-Nothing is ever modified: each failing check prints the command that fixes it.
-A failing check exits as a convention violation and a check that could not run
-as no trustworthy answer ([Exit codes](#exit-codes)) — unverified, which is not
-the same as fine — and an API that never answered is always the second, never
-the first.
+it every verdict command refuses at exit 2), the squash-merge settings the
+walk assumes, a credential that can read the repository (and, for `release`,
+write it), workflow pins on release tags, caller workflows granting and
+passing what the pinned reusables declare, and the installed hooks (if any)
+written by *this* binary. `glyph doctor --help` lists every check and what
+each one guards. When one of those drifts nothing goes red — the verdict is
+just computed over a repository that no longer matches the model, which is
+exactly what `doctor` exists to catch. Nothing is ever modified. Its exit
+codes are its own subset of the contract, stated in `glyph doctor --help`: a
+failing check is a convention violation, a check that could not run is no
+trustworthy answer — unverified, which is not the same as fine.
 
 **2. Move the lint to the moment you write the message:**
 
@@ -215,15 +211,12 @@ glyph hook install commit-msg      # or name the ones you want
 
 Two hooks, one gate. `commit-msg` runs `glyph lint --stdin` on the message being
 written. `pre-push` hands git's ref list to `glyph hook pre-push`, which lints the
-commits the push would add that the remote does not already have. It blocks **only** when the ref being
-written is the remote's default branch; anywhere else it warns and lets the push
-through, because refusing a legal mid-branch commit makes the branch unpushable
-and the only escape is `--no-verify`, which turns the gate off entirely.
-
-Neither hook holds a copy of the convention, and neither computes a range — both
-call glyph, so they cannot fall out of lockstep when the rules move. Without glyph
-on `PATH` they warn and let you through; the commit-lint CI job stays the
-authority. The verdict `commit-msg` gives is the verdict CI will give: glyph
+commits the push would add that the remote does not already have, and blocks
+**only** when the ref being written is the remote's default branch — anywhere
+else it warns and lets the push through (`glyph hook pre-push --help` says why).
+Neither hook holds a copy of the convention: `glyph hook --help` states what they
+call and what happens without glyph on `PATH`. The verdict `commit-msg` gives is
+the verdict CI will give: glyph
 reduces the message as git's cleanup will before linting it — from the
 repository's `commit.cleanup`, `commit.verbose` and comment prefix
 (`core.commentChar`; `auto` is read as `#`), whether an editor runs, and whether
@@ -273,18 +266,14 @@ tags by hand runs it over the installed one and hands GoReleaser the file:
 
 Two wired-in behaviours worth knowing before you read them out of the YAML:
 the lint caller's optional `push: branches: [main]` arm runs the same rules
-over each direct push to the default branch but only **annotates** — that
-history is immutable, so a red verdict there could never be made green again,
-and exit 3 is swallowed on that arm alone. And `release.yml` hands its verdict
-back as `workflow_call` outputs (`level`, `next`, `current`, `action`) so a
-caller can gate follow-up steps without re-deriving it; empty means **not
-computed**, never "none", so gate fail-safe on `""`. The draft's URL is
-deliberately not among them (DESIGN §6).
-A repository that declares `[[packages]]` answers through `packages`
-instead — one JSON array of per-line verdicts, `[{path, current, level,
-next, tag, action, commits, reason}]`, each line's body and url stripped —
-and the four scalars are `""` there, so a caller written for one line
-fails safe.
+over each direct push to the default branch but only **annotates** (exit 3 is
+swallowed on that arm alone; DESIGN §6 says why). And `release.yml` hands its
+verdict back as `workflow_call` outputs — `level`, `next`, `current`, `action`,
+and `packages` once `[[packages]]` is declared — so a caller can gate
+follow-up steps without re-deriving it; gate fail-safe on `""`, which means
+**not computed**, never "none". The outputs' own `description:` lines in
+`release.yml` are the contract (what each carries, what `packages` strips);
+the draft's URL is deliberately not among them (DESIGN §6).
 
 The build step the reusable does run — `./package.sh` in `app` mode,
 `./build.sh` in `binary` mode — is told the tag it builds for as
@@ -300,10 +289,9 @@ An artefact the reusable did not build — a firmware image from a Docker job,
 say — is attached by a follow-up job in the caller, not by a new input: gate
 it on `needs.release.outputs.next != ''` and on the dry-run input, then
 `gh release upload "$next" <files> --clobber`. gh resolves an unpublished
-draft by its intended tag (the REST `releases/tags/<tag>` lookup alone does
-not — gh falls back to the listing), the same call the reusable's own upload
-step makes. It is a follow-up job rather than a `needs:`-fed input because the
-reusable upserts before it builds — DESIGN §6 argues why. A monorepo
+draft by its intended tag (DESIGN §6 measured it), the same call the
+reusable's own upload step makes. It is a follow-up job rather than a
+`needs:`-fed input because the reusable upserts before it builds — DESIGN §6 argues why. A monorepo
 attaches the same way, per line: iterate the `packages` output
 (`jq -r '.[] | select(.tag != null) | .tag'`) and upload to each `tag`;
 `app` / `binary` name one artifact for one draft and are refused once the
@@ -339,66 +327,40 @@ owns what it folds. Examples under the gemoji preset:
 :rocket:% call it 1.0                                    → v1.0.0
 ```
 
-Which code to write is `glyph emoji`'s answer: an ordered dictionary — read top
-to bottom, stop at the first description that fits — with one code per kind of
-change and the gitmoji codes each one absorbed. It is advice, not grammar: a
-code it does not list is still legal wherever the pattern accepts it, and it
-carries no semver field because the sigil is the version signal. The bytes are
-also at `internal/emoji/table.json`.
-
+Which code to write is `glyph emoji`'s answer: an ordered dictionary, read
+top to bottom, stop at the first description that fits. It is advice, not
+grammar — `glyph emoji --help` states what it prints and what lint does not
+read.
 
 **Below 1.0, `!` does not reach 1.0.0.** While the version is `v0.y.z` a
-breaking change steps the minor (`v0.5.3` + `!` → `v0.6.0`), so a repository
-still finding its shape can break things without claiming a stable major.
-`%` is the only way across: it lands exactly on `v1.0.0`, and from 1.x on it
-is an ordinary major step (`v1.4.2` + `%` → `v2.0.0`). A `%` commit is still
-classified as breaking everywhere a level is published — the release notes'
-Breaking Changes section, the PR verdict, the JSON — because the rule shortens
-the *step*, not the meaning of the commit. One consequence worth expecting: in
-0.x, `!` and `^` land on the same version.
+breaking change steps the minor, and `%` is the only way across: it lands
+exactly on `v1.0.0`, and from 1.x on it is an ordinary major step. A `%`
+commit is still classified as breaking everywhere a level is published,
+because the rule shortens the *step*, not the meaning of the commit (DESIGN §3
+has the arithmetic and what it collapses).
 
 Under the conventional preset the sigil sits before the colon, so
 Conventional Commits' own `feat!:` reads as the major sigil unchanged
 (`feat^:` minors, `fix~:` patches, `chore=:` moves nothing, `feat%:` promotes)
 — a sigil-less `feat:` is a violation, and a `BREAKING CHANGE:` footer moves
-nothing under either preset (`fix~:` with one is still a patch), because the
-sigil is the only signal: writing it down, in the subject, is the point. Plain
-Conventional Commits — the type and the footer deciding the version — ships as
-no preset; DESIGN §2 records why.
+nothing under either preset, because the sigil is the only signal: writing it
+down, in the subject, is the point. DESIGN §2 records why plain Conventional
+Commits ships as no preset.
 
 Everything is the pattern file's to change: `[[patterns]]` are ordered RE2
-regexes (first match wins) over the whole message, the named group
-`semver_sigil` carries the signal, a pattern-level `semver_sigil` key
-supplies one for messages that carry none (the presets make a raw
-`git revert` a patch), `skip = true` drops a matching commit from every
-check (the presets skip merge commits), `warn = '…'` keeps a match
-legal but says so at every gate — for a pattern you accept and would rather
-not see — and `unlandable = '…'` marks a message that may be written but must
-not land: the commit-msg hook lets it through with that reason as a warning,
-and every gate that judges an existing commit (`lint --range`, a push to the
-default branch, `lint --pr`, the release walk) refuses it. It exists for
-git's own autosquash subjects. `rebase --autosquash` turns an `amend!` into a
-replacement of its target's message, so skipping it would fold the version
-the history had before the rewrite; the presets claim an `amend!` whose body
-opens the way their first pattern's subject does and refuse any other at the
-hook as well — the body is what lands. A `fixup!` or `squash!` has no sigil
-of its own until autosquash folds it into its target, so a skip never reads
-its files — under `[[packages]]` a line only it touches stays at none — and
-drops for good one autosquash leaves as it is, its target outside the
-commits being rebased; the presets claim both, and their reason names the
-two ways out: autosquash, or a reword when autosquash leaves the commit as it
-is. `exclude_authors` keeps bots
-out of lint and the fold; whether they appear in the notes is
-`[[note.sections]]`'s decision alone, and under `[[packages]]` the files a
-bot commit touches decide which line's notes.
+regexes (first match wins) over the whole message, and the named group
+`semver_sigil` carries the signal. The other pattern keys — a fixed
+`semver_sigil`, `skip`, `warn`, `unlandable` — and `exclude_authors` are
+explained where `glyph init` writes them, in the comments of the preset
+itself; DESIGN §2 argues each, including why the presets claim git's
+autosquash subjects (`amend!`, `fixup!`, `squash!`) as unlandable rather than
+skipping them. `glyph notes --help` explains how `exclude_authors` and
+`[[note.sections]]` meet in the release body.
 
-`note.line` is the same idea for the release body: `$name` reads the winning
-pattern's named groups, `$pr` / `$author` / `$hash` / `$coauthors` are built
-in, and a
-`$[ … ]` span renders only when every placeholder inside it resolves. That is
-what lets the shipped `- $subject$[ ($pr)] @$author$[ with $coauthors]` cite a
-pull when there is one and drop the parens with it when there is not, instead
-of writing `()` for every commit that reached main without a merged pull. `@$author` pages the
+`note.line` is the same idea for the release body: `$name` placeholders
+(`glyph notes --help` lists them) and a `$[ … ]` span that renders only when
+every placeholder inside it resolves. That is what lets the shipped line cite a
+pull when there is one and drop the parens with it when there is not. `@$author` pages the
 contributor only when GitHub knows who that is — the login the API reports for
 a listed commit, or the one a `@users.noreply.github.com` author address
 carries; a commit from any other address is credited by its git author name,
@@ -478,24 +440,15 @@ refuses (`a b`, `x.lock`, `.hidden`, `c~d`, …), or a leading `-`, which
 Which line a commit moves is read from its **own diff**, per commit — never
 from a pull's net diff, which cannot tell a `^` under one module from a `~`
 under another: files under a package move that package (the longest path
-wins, so a nested package takes its files out of its parent; a rename across
-two packages moves both); a commit under no package moves the package its
-scope names (`:sparkles:(haiku)^ …` on a shared README); and a commit under
-no package with no such scope moves nothing when its sigil is `=`, and is
-refused (exit 3, at `lint --range`, the pre-push hook and the release walk
-alike) when its sigil claims a version impact — nothing can carry it, and the
-message names the escapes that commit can take: a scope naming the line or
-`=`, where the pattern that claimed it allows them (a raw `git revert`'s
-allows neither, and is told to reword), and declaring the package its files
-belong to. A commit with no files — an empty commit, or a merge commit a
-pattern other than a skip claims, whose diff glyph never reads — is carried
-only by its scope, root package or not. A scope naming a package that owns
-none of the diff's files — the longest declared path owns a file, so a nested
-package's files are not its parent's, and a declared package's are not the root
-package's — is refused the same way when the sigil claims a version impact; a
-`=` is placed by its files. Files come from local git for every commit the
-branch holds and from the API for a squash-merged pull's inner commits, one
-request each.
+wins), a commit under no package moves the package its scope names
+(`:sparkles:(haiku)^ …` on a shared README), and a version claim nothing can
+carry — a shared-only `~`, `^`, `!` or `%` with no such scope, or a scope
+naming a package that owns none of the diff's files — is a lint-class refusal
+(exit 3) wherever a diff is read: `lint --range`, `bump` / `notes --range`,
+the release walk, and the pre-push hook on the default branch. DESIGN §4.1
+rules 1–3 are the full rule, with the escapes the refusal names. Files come
+from local git for every commit the branch holds and from the API for a
+squash-merged pull's inner commits, one request each.
 
 `bump` and `notes` then answer per line. **A tag names a line**:
 `--since-tag=haiku/v0.1.0` or `--since-tag=below:haiku/v0.2.0` selects haiku
@@ -506,8 +459,9 @@ released branch holds, and `--range` attributes from local git with every
 commit pending on every line.
 A package with no tag yet is baselined
 by cutting `<prefix>v0.0.0` (`haiku/v0.0.0`) at the commit before its first
-change. On stdout
-`bump` prints the next **tag** of every line that moves, one per line
+change — `<prefix>vN.0.0` on a line whose path ends in a major-version
+subdirectory (`pubsub/v2` → `pubsub/v2.0.0`); the refusal names the tag. On
+stdout `bump` prints the next **tag** of every line that moves, one per line
 (`haiku/v0.2.0`), and exits `1` only when every line folds to none; `--json`
 carries `packages: [{path, current, level, next, commits, reason}]` with the
 scalar `current` / `level` **empty** and `next` absent, as on a none verdict —
@@ -521,7 +475,8 @@ refused on both — a pull's listing carries messages and no files.
 `release` keeps **one rolling draft per line** — `haiku/v0.2.0` and
 `curry/v0.1.1` side by side, each converged on its own tag prefix (never a
 second draft on a line, retagged in place, a line that folds to none loses
-its residual draft), every line's upsert written before any stray is deleted
+its residual draft — or keeps a `<path>/Unreleased` placeholder with
+`draft_on_none` on), every line's upsert written before any stray is deleted
 (a write that fails on the second line leaves the first standing and exits
 `4`), each line's draft — and each line's `notes --since-tag` body — closing
 its notes with a compare link from that line's own base tag (none for a line

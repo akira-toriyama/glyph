@@ -7,16 +7,17 @@ owned by the repository. This document is the *why* and the *shape*.
 
 ## 1. Problem
 
-The fleet squash-merges everywhere. GitHub's
-`squash_merge_commit_title = COMMIT_OR_PR_TITLE` rewrites the squash subject to
-the **PR title** on any multi-commit PR, erasing per-commit types from `main`.
-Every tool that types a release from **commit text** (git-cliff today,
-semantic-release, release-please, cocogitto) is therefore fooled. glyph instead
-derives the bump and notes from the **individual commits inside the PR**, and
-made gitmoji the type driver. (That last half is the v1 statement: since v2
-the driver is the repository's own pattern file and its `semver_sigil` (§2),
-and the gitmoji prefix is visual convention the patterns may or may not
-require. The problem, and the PR-resolution hop below, are unchanged.)
+The problem statement — a multi-commit squash under `COMMIT_OR_PR_TITLE` lands
+the PR title and erases the per-commit types every commit-text release tool
+reads — and the field comparison that places glyph against release-drafter,
+release-please, semantic-release and the rest (which tools are fooled, which
+hop is prior art, the two differentiators) live in README "Why it exists";
+the cited detail is the t-q5e1 task body (a 2026-07-17 survey). glyph derives
+the bump and the notes from the **individual commits inside the pull**. In v1
+gitmoji was the type driver; since v2 the driver is the repository's own
+pattern file and its `semver_sigil` (§2), and the gitmoji prefix is visual
+convention the patterns may or may not require. The problem, and the
+PR-resolution hop, are unchanged.
 
 Two inversions from the prior house convention:
 
@@ -25,41 +26,8 @@ Two inversions from the prior house convention:
   decided the bump and the gitmoji was stripped before parsing. In v1 the
   leading `:code:` *was* the type; in v2 the sigil beside it is.
 - **The bump is computed from the PR's individual commits at merge time**, not
-  from `main`'s post-squash history — the one thing git-cliff structurally
-  cannot do, and the reason a self-built tool is justified.
-
-A 2026-07-17 survey of the field (release-drafter, release-please, changesets,
-knope, tagpr, semantic-release, python-semantic-release, git-cliff, and the
-gitmoji plugins) placed those two claims precisely — see the t-q5e1 task body
-for the cited detail. What it changed:
-
-- **The scope of "fooled" is commit-text readers, not all history readers.**
-  release-drafter reads `main` and is NOT fooled, because it types from PR labels
-  and changed paths and never looks at commit text at all.
-- **Only the second hop is novel.** The squash-commit → PR resolution glyph does
-  in `--since-tag` is prior art: release-drafter runs the identical
-  `associatedPullRequests` hop, and release-please resolves a squash commit to
-  its PR to read a human override out of the PR *body*. Neither re-expands the
-  PR into its own commits — release-drafter's PR fragment has no `commits`
-  connection, and its version resolver structurally cannot see commit text.
-  python-semantic-release does recover per-commit types under squash, but by
-  parsing the squash **body** for a bullet list — the text GitHub drops unless
-  `squash_merge_commit_message = COMMIT_MESSAGES`. That fragility is the reason
-  to read the API instead of the message.
-- **gitmoji-as-type is NOT novel** and must not be sold as such:
-  `semantic-release-gitmoji` and python-semantic-release's `EmojiCommitParser`
-  both map textual shortcodes to semver with nearly glyph's v1 defaults, and the
-  latter uses the same subject grammar. glyph's v1 table was bigger (75 codes) and
-  compiled in rather than configured — a packaging choice, not an invention, and
-  one v2 then dissolved entirely into the repository's own pattern file.
-- **Deferring the tag to publish is NOT a differentiator** — inherent to any
-  draft-based tool (release-drafter carries `tag_name` on the unpublished draft
-  exactly as glyph does).
-- **Two real differentiators worth defending**: glyph can resolve to *no release*
-  (release-drafter falls back to `patch` whenever no category matches, so it can
-  never say "nothing shipped"), and glyph's walk is self-baselining
-  (release-drafter requires a previously PUBLISHED release or it warns and returns
-  nothing).
+  from `main`'s post-squash history — the one thing a post-squash history
+  reader structurally cannot do, and the reason a self-built tool is justified.
 
 Only permitted external dependencies: cobra (the CLI frame, per house pattern;
 its flag package pflag rides along as a direct require) and go-toml (the
@@ -81,9 +49,10 @@ repository's `glyph.toml` — written by `glyph init --gemoji` or
 RE2 `[[patterns]]`, and a commit message means whatever the first matching
 pattern says it means:
 
-- The named group **`semver_sigil`** must capture one of the five sigils —
-  `=` none / `~` patch / `^` minor / `!` major / `%` promote to 1.0.0 — the
-  only input to version calculation (§3). The alphabet is fixed in the binary;
+- The named group **`semver_sigil`** must capture one of the five sigils
+  (README "Commit format" spells the alphabet and what each means; the binary
+  holds it as `config.Sigil`), the only input to version calculation (§3). The
+  alphabet is fixed in the binary;
   everything else (where the sigil sits, what a prefix looks like, whether a
   scope exists) is the pattern file's decision. RE2 means no lookahead and no
   backreferences, stated in the presets' comments and here because it is the
@@ -424,7 +393,7 @@ pattern says it means:
   placeholder, and a file with no `[commit]` block gets the bare pointer.
 - **`[commit]` carries only `template`** (t-85y9; ruled 2026-10-06 in epic
   e-13fj, a major). The `style` label every preset wrote beside it through
-  v5.0.0 (`"gemoji"`, `"conventional"`) left the schema and both presets
+  v5.1.0 (`"gemoji"`, `"conventional"`) left the schema and both presets
   because nothing ever read it: at every tag from v3.0.0 to v5.0.0 its only
   mentions in non-test Go code are the two struct fields it decoded into, and
   v5.0.0 built from its tag lints alike with the line deleted from the gemoji
@@ -795,15 +764,12 @@ tail is the symptom — `:green_heart:` beside `:construction_worker:`,
 and `:recycle:` and `:broom:` and `:bulb:` for the same tidy. Ratified
 (user, 2026-09-08):
 
-- **A dictionary, not a grammar.** `glyph emoji` prints an ordered JSON array
-  — `code`, `emoji`, `name`, `description`, `absorbs` — and nothing in the
-  engine reads it: lint accepts whatever the repository's pattern accepts,
-  listed or not, and the sigil alone decides the version. The dictionary
-  carries **no semver field** for that reason; putting one back is the v1
-  mistake in a new file. The binary is the one home (each repository defines
-  nothing), and the shipped bytes are served byte for byte, so
-  `internal/emoji/table.json` on GitHub and the command's stdout are the same
-  bytes for a session with no binary at hand.
+- **A dictionary, not a grammar.** `glyph emoji --help` says what the command
+  prints; nothing in the engine reads it: lint accepts whatever the
+  repository's pattern accepts, listed or not, and the sigil alone decides the
+  version. The dictionary carries **no semver field** for that reason; putting
+  one back is the v1 mistake in a new file. The binary is the one home (each
+  repository defines nothing).
 - **One meaning, one emoji.** Every entry's `name` is the kind of change, one
   word, unique across the table (`TestOneMeaningOneEmoji`). Where gitmoji
   offers neighbours — `:art:` / `:recycle:` / `:lipstick:`, `:fire:` /
@@ -832,12 +798,12 @@ and `:recycle:` and `:broom:` and `:bulb:` for the same tidy. Ratified
 - **Renderability has an oracle**, because the one failure that matters —
   a listed code GitHub draws as literal text — is invisible to every local
   check. `internal/emoji/testdata/gemoji.tsv` is `GET /emojis` as GitHub
-  answered it on the date in its header (1936 shortcodes), and
+  answered it on the date in its header, and
   `TestEveryCodeRendersOnGitHub` holds every entry and every absorbed code
   to it, emoji field included: the `emoji` value is exactly the code points
   the API maps the key to, with no variation selector added, because the API
-  is the oracle and a font is not. Refresh the snapshot with the command in
-  its header; never hand-edit it. `doctor` was considered for this and
+  is the oracle and a font is not (CLAUDE.md has the refresh procedure).
+  `doctor` was considered for this and
   rejected — doctor diagnoses a repository, and the dictionary is a property
   of the binary.
 
@@ -913,9 +879,9 @@ rejected because `Level` is a closed four-word vocabulary that three consumers
 read as data and all three answer an unknown word by silently doing nothing:
 a `[[note.sections]]` `semver` filter (the promoting commit vanishes from the
 release body), `internal/preview`'s `rank`/`icon` (the pull request is told it
-"moves nothing" while the version moves), and `pr-verdict.yml`'s
-`[ "$level" = "major" ]` (`breaking` goes false fleet-wide). None of those is
-a failure anyone would see.
+"moves nothing" while the version moves), and `pr-verdict.yml`'s `breaking`
+(any word but `major` reads as false, fleet-wide). None of those is a failure
+anyone would see.
 
 **A non-excluded commit no pattern claims refuses the WHOLE range** (ratified
 Q2; mutation row `bump-unmatched-commit-folds-as-silent-none.patch`): folded
@@ -930,9 +896,9 @@ exactly twice: `exclude_authors` (checked BEFORE matching — mutation row
 API-lag fallback (§4 — a squash subject during lag is not a message anyone
 wrote, so it is dropped and recorded in the walk facts, never a refusal).
 
-**Notes follow `[[note.sections]]` alone**: config order is render order, each
-section filters on one axis (`semver` or `author`), and a commit lands in
-EVERY section whose filter matches it (mutation row
+**Notes follow `[[note.sections]]` alone** — `glyph notes --help` states the
+rule (config order is render order, one axis per section, a commit lands in
+every section whose filter matches it; mutation row
 `notes-first-section-wins.patch` — dedupe on first placement and section
 order silently decides which section owns a commit). An unmatched commit —
 one an `unlandable` pattern claims included — has no level, so it can only
@@ -945,8 +911,9 @@ separates it from `exclude_authors`.
 fleet-wide the same day): `:sparkles:(cli)^ add the thing` renders as exactly
 that in the release body — GitHub draws the gemoji — rather than as the bare
 `add the thing` the group used to stop at. The two shipped presets and every
-fleet `glyph.toml` moved together, so a `glyph init` of today writes what the
-fleet already carries. The group's NAME is what makes the change one line:
+fleet `glyph.toml` moved together, so every fleet file carries the same
+`subject` group `glyph init` writes today. The group's NAME is what makes the
+change one line:
 `note.line` cites `$subject`, the `Revert "…"` pattern and the unmatched-commit
 fallback bind `subject` alone, and nothing else reads the group — bump reads
 `semver_sigil`, lint reads the match, and the verdict's `subject` field is git's
@@ -958,9 +925,9 @@ rewrote their draft to the whole-subject form, and `POST /markdown` renders the
 shortcode as the emoji. (Mutation row `presets-subject-stops-at-the-sigil.patch`.)
 
 **`note.line` and the optional span.** The template substitutes `$name`
-placeholders — the winning pattern's named groups, plus the built-ins `$pr` /
-`$author` / `$hash` / `$coauthors`, which outrank a group of the same name,
-plus any name `[[note.trailers]]` declares — and literal
+placeholders — the vocabulary `glyph notes --help` lists: the winning
+pattern's named groups, the built-ins (which outrank a group of the same
+name) and any name `[[note.trailers]]` declares — and literal
 text passes through as the author's own Markdown while every substituted value
 renders as prose, the scope included (§2), with the mention fence run
 over the assembled line. The fence has exactly one ratified exemption
@@ -1395,15 +1362,16 @@ commits exist nowhere but the API, still sends the operator to its merge point
 Standing aside is only safe if something stands in, so the walk keeps a ledger:
 a pull that some commit reported itself *covered* by, whose canonical commit is
 inside the range and was nevertheless never expanded, gets a loud `::warning::`
-naming it at the end of the walk. That is a merged PR the walk could only ever
+naming it at the end of the walk (and, on `release`, the exit-4 refusal below:
+the walk is incomplete). That is a merged PR the walk could only ever
 see from the inside — GitHub had not indexed the merge commit yet (a release
 job runs seconds after the merge), or an automation authored it and the author
 gate skipped it. Without the ledger every one of its commits skips itself and
 the release reports `no release: 0 commit(s) participate` with no diagnostic at
 all: the original t-7zt7 silence, surviving on the new path.
 
-The walk **warns and does not expand** such a pull. Its commits are genuinely
-lost from that release, and the reason the walk will not recover them from the
+The walk **warns and does not expand** such a pull. Its commits are missing
+from that walk, and the reason the walk will not recover them from the
 API is the same one that governs the resolved arm above — a listing carries
 nothing about the range — but here the walk cannot repair it. The footprint
 mapping needs the pull's **canonical commit** as its anchor, and this arm is
@@ -1421,13 +1389,13 @@ and it is tracked rather than smuggled in.) The warning cannot fire on a reposit
 whose merge points the walk can **resolve** — one that cries on every release
 would be worse than none: standing aside requires the pull's canonical commit to
 be **in range**, and a canonical commit in range that resolves is expanded on the
-spot. Two causes reach the warning and they behave differently. API lag clears
-itself, so it warns once. But a repository whose merge button is pressed by an
-**automation** is perfectly healthy and warns on *every* release: the author gate
-skips a bot-authored merge commit before the API, so nothing is left to resolve
-the pull. Before t-7zt7 that pull was lost silently, so this is not a regression
-— but such a repository should let a human press merge, or expect a standing
-warning.
+spot. Two causes reach it and they behave differently. API lag clears itself
+on the re-run. A repository whose merge button is pressed by an **automation**
+meets it on *every* release: the author gate skips a bot-authored merge commit
+before the API, so nothing is left to resolve the pull. Either way the walk is
+incomplete (below): `bump` and `notes` warn, `release` refuses at exit 4.
+Before t-7zt7 that pull was lost silently, so this is not a regression — but
+such a repository lets a human press merge, or cuts a tag past the merge point.
 
 *Covered* is deliberately gated on the canonical commit being **in the walked
 range** — a pull merged into another base branch is associated with commits
@@ -1457,9 +1425,10 @@ Convergence is on the verdict, and a verdict is a claim about the range only
 when the walk **read** the range. A walk that came back short — every commit
 unknown to the queried repository, a merged pull whose merge point nothing
 resolved, a commit GitHub had not indexed, a pull whose commit listing GitHub
-**truncated** at its 250 cap, or a **shallow** checkout in which git cannot place
-a listed commit at all — hands down the same empty fold as a range that genuinely
-holds nothing, and glyph acted on both alike: it deleted
+**truncated** at its 250 cap, a **shallow** checkout in which git cannot place
+a listed commit at all, or under `[[packages]]` a commit's file listing GitHub
+capped or would not give (§4.1) — hands down the same empty fold as a range
+that genuinely holds nothing, and glyph acted on both alike: it deleted
 the rolling draft on the very reading it had just told the operator to re-run
 (t-441z), and, where one commit *did* classify, it retagged an existing v1.0.0
 draft down to v0.1.1 out of a fold missing the `:boom:` pull — exit 0, green,
@@ -1745,7 +1714,7 @@ mutation rows
 `compare-link-ends-at-the-draft-tag`, `compare-link-ends-at-a-moving-ref`,
 `release-body-sized-before-the-compare-link`.)
 
-The `--json` verdict also carries the walk's expansion
+`release --json` also carries the walk's expansion
 provenance (`pulls`: each resolved pull and how many of its listed commits the
 walk took in — a bot's and a skipped merge commit among them, so it is no
 count of *participating* commits, §4.1), so
@@ -1800,6 +1769,13 @@ alone: their one pattern that reads past the first line, the `amend!` claim,
 yields no sigil, and a `BREAKING CHANGE:` footer moves nothing (t-h9y7, §2).
 The body is not unread — the notes parse its trailer block for `$coauthors`
 and `[[note.trailers]]` (§3) — but that renders prose, never a level.
+
+Only a **422** — GitHub answering for a sha it does not know yet
+(`github.IsCommitUnknown`) — reaches this fallback. A 403 rate limit, a 5xx
+that outlived the retry schedule (t-bjrv) and a dead socket leave the walk as
+an error and exit 4: the outage window is an exit-code question, not a
+classification one. A 404 is not lag either — it is how a bad credential
+answers for *every* commit of a private repository.
 
 The leniency is for the lag arm only. A lint failure **inside a resolved
 merged PR** — or in a commit pushed straight to the released branch — stays a
@@ -1912,17 +1888,8 @@ verdict it gets today is unchanged byte for byte (golden-pinned; mutation row
 **independent** versioning only: *fixed* versioning — every package moving
 together under one number — is what the single line already is, and a second
 spelling of it would make one repository mean two things (rejected: lerna's
-`fixed`, changesets' `fixed` groups).
-
-```toml
-[[packages]]
-path = "haiku"              # the subtree; the tag line is haiku/vX.Y.Z
-# name = "haiku"            # what a commit scope may call it; default: the last path segment
-
-[[packages]]
-path = "."                  # the root package: the bare vX.Y.Z line, and every file no other package claims
-name = "core"               # its default "." is no preset scope's word: under the presets name is required
-```
+`fixed`, changesets' `fixed` groups). README "Packages" shows the
+declaration, and `glyph init` writes it as a commented paragraph.
 
 - **The tag line is `<prefix>vX.Y.Z`, the prefix derived from the path, not
   configurable — `<path>/` with the path's major version subdirectory folded
@@ -2620,9 +2587,10 @@ ranges would resolve the same pulls N times for the same answers, and were
 rejected on cost alone. The whole-history cap applies to
 the union walk as it does today, and its remedy gains a package form the
 error names: a package with no tag of its own — the common case of a package
-added to an old repository — is baselined by cutting **`<prefix>v0.0.0` at the
-commit before its first change**, a tag that says "nothing of this line was
-released before here" and steps to `<prefix>v0.1.0` on the first `^`.
+added to an old repository — is baselined by cutting the tag the refusal
+names **at the commit before its first change** (README "Packages":
+`<prefix>v0.0.0` on a free line, `<prefix>vN.0.0` on a locked one), a tag that
+says "nothing of this line was released before here".
 
 **Only the untagged arm is capped**, and the tagged arm's missing cap is a
 decision (t-n5tw R3). A tagged range is the unreleased work a release exists
@@ -2719,7 +2687,7 @@ published floor is per prefix. Exit `1` (no release) is answered **only when
 every line folds to none**; one line moving is a release. No new integer:
 the exit-code contract is frozen (§5), and every mixed outcome is legible in
 the machine verdict, which gains a per-line `packages` array (each command's
-row is README's, "Packages") while the scalar `current` / `level` / `next` /
+`--help` states its row) while the scalar `current` / `level` / `next` /
 `action` stay what they are for the single line — every verdict that names
 the next version spells it `next`, release's beside `tag`, the tag its draft
 carries, and a none verdict names none (mutation rows
@@ -2737,8 +2705,8 @@ no line but read — and `notes`' verdict mirrors the shape:
 stdout, `bump` prints the next **tag** of every line that moves, one per
 line in config order (`haiku/v0.2.0` — the prefix is what a tag step needs,
 and the single line's bare `vX.Y.Z` is the root package's spelling of the
-same thing); `notes` prints one line's body bare when a tag selects it and,
-over several lines, each body under a `# <path>` heading, the sections nested below it.
+same thing); `notes` prints one line's body bare when the walk covers one line
+and, over several, each body under a `# <path>` heading, the sections nested below it.
 
 **Participating** means one set, wherever the word stands (t-rrw0, t-mfny;
 ratified 2026-09-29). A commit *participates* when the fold reads it: not an
@@ -3003,8 +2971,9 @@ sentence follows the one that names the bases: spliced in ahead of
 said of the commits on no line alone (`TestRenderPackagesSaysHowManySitOnNoLine`,
 `TestRenderPackagesCountsTwoCommitsWithOneSubjectAsTwo`; mutation row
 `preview-footer-hides-the-commits-on-no-line`). The machine verdict gains `packages: [{path, current, untagged,
-level, next, pr, pending}]` with **every scalar at its zero value** — the
-strings empty, `untagged` false, whatever the pull touches — so
+level, next, pr, pending}]` with **every single-line scalar at its zero value**
+— the strings empty, `untagged` false, whatever the pull touches; `body` is
+the comment as ever — so
 `pr-verdict.yml`'s `level` output is `""` — not computed — exactly as its
 callers already read it, and `breaking`, `level`'s readable alias, follows it
 into `""`. Both halves were first cut wrong in the same direction (t-xbk0,
@@ -3102,8 +3071,8 @@ red until the input is dropped. `lint.yml` is unchanged, and
 `fleet-preflight` must report zero verdict moves and zero body re-renders on
 every repository without `[[packages]]`, and the live fire is
 `glyph-monorepo-test` (created 2026-09-10 with two Go modules, `haiku/` and
-`curry/`; five declared lines today, `travel/onsen` nested in `travel`), whose
-defining probe is a pull that touches both modules with a
+`curry/`; its README lists the declared lines, `travel/onsen` nested in
+`travel`), whose defining probe is a pull that touches both modules with a
 `^` in one and a `~` in the other and must move the two lines differently.
 
 **Architecture.** The attribution rule is pure — files, scope, config in;
@@ -3129,9 +3098,9 @@ refusing a `=` whose scope names another package (above).
 
 ## 5. Architecture (Go, house pattern)
 
-Binary `glyph`, module `github.com/akira-toriyama/glyph/v6` — the major suffix is
-part of the path from v2 on, and a tag alone does not supply it: without it the
-proxy answers `go install …@latest` with the last unsuffixed version (v1.0.0)
+Binary `glyph`, module `github.com/akira-toriyama/glyph/vN` (go.mod spells the
+major) — the major suffix is part of the path from v2 on, and a tag alone does
+not supply it: without it the proxy answers `go install …@latest` with the last unsuffixed version (v1.0.0)
 forever. Cutting v7 means editing this path, and `goreleaser.yml`'s first step
 holds the edit to the tag: a tag whose major the path does not carry is refused
 before any asset is built
@@ -3143,11 +3112,9 @@ rejects `/v6@v6.0.0` and serves v5.1.0 for `/v5/@latest`) — since
 `TestModulePathCarriesTheMajorAndReadmeSpellsIt` reads no tag, and the tag job
 is the one place that holds both the tag and the tree. Rejected: a `doctor`
 check (t-nag8, 2026-09-15 — glyph reads no manifest, §4.1, and no workflow in
-the fleet runs `doctor`). Subcommands: `lint`,
-`init`, `bump`, `notes`, `preview`, `release`, `doctor`, `hook`, `version`, `emoji` —
-everything `glyph --help` prints except cobra's own `completion` and `help`.
-This line is the one place in this document a new command has to be added, and
-nothing holds it to `glyph --help`; the tree below is held to `internal/` by
+the fleet runs `doctor`). Subcommands: everything `glyph --help` prints except
+cobra's own `completion` and `help` — not retyped here, because the retyped
+list rotted once (t-0cqs, §8); the tree below is held to `internal/` by
 `TestDesignTreeNamesEveryInternalPackage`.
 
 ```
@@ -3320,9 +3287,10 @@ answer to the question asked — *what would merging this do?* — so a none ver
 exits `0` there. `core.CodeNoRelease` is constructed in `cmd_bump.go`,
 `cmd_notes.go` and `cmd_release.go` (`releaseExit` — §4.1: `1` only when every
 line folds to none, the bare line being the one line), and nowhere else.
-Outside Go the integers are branched on in several places — `lint.yml` on `0` and on
-`jq -e '.error.code == 3'`, `release.yml` on `1`, the release-notes action on `1`
-and `3` (§4, the escape tag's own release) — but the generated commit-msg and
+Outside Go the integers are branched on in several places —
+`TestOutOfGoConsumersBranchOnTheContractIntegers` inventories every such
+consumer, the release-notes action's `3` (§4, the escape tag's own release)
+among them — but the generated commit-msg and
 pre-push hooks are the two such consumers glyph WRITES, so their gate code is
 interpolated from `core.CodeLint` rather than typed as a shell literal; each
 forwards `3` and only `3` and exits `0` on every other failure (`internal/hook`,
@@ -3517,7 +3485,7 @@ rejects fails the verdict job too — the walk refuses an unclassifiable commit
 (§3) — and the job goes red without repeating commit-lint's per-commit
 annotations, which stay the one authoritative signal. Its comment is
 refreshed on every push, a red one included: when the compose step does not
-succeed (preview exit 3 or 4, or a step before it failed), the upsert still
+succeed (preview exiting non-zero, or a step before it failed), the upsert still
 runs (`if: ${{ !cancelled() }}`) and replaces the comment with the workflow's
 own short body — no verdict at this head, the head's sha, a pointer at
 commit-lint and at the run's log. Before, the upsert was skipped with the
@@ -3550,9 +3518,8 @@ rests on — stays structurally out of a caller's reach.
 
 An `assets` input — files a caller built elsewhere in the run, attached by the
 reusable — was requested (zmk-hid-host, 2026-09-10: a Zephyr firmware build
-that fits neither `app` nor `binary`) and declined; the shape for it is a
-follow-up job in the caller over the `next` output, `gh release upload
-"$next" … --clobber`, gated on `next != ""` and on the dry-run input. Three
+that fits neither `app` nor `binary`) and declined; the shape for it is the
+follow-up job README "Getting started" shows, over the `next` output. Three
 reasons. The reusable upserts BEFORE it builds, on purpose: a red build leaves
 the draft's asset one merge stale and its notes current, and nothing ships
 without a human anyway; an input fed by a `needs:` build job inverts that — a
@@ -3683,14 +3650,15 @@ merges, and `glyph-test` sitting on `squash_merge_commit_title = PR_TITLE` /
 ran `gh api` by hand. `doctor` is the machine-checkable half of that, and the
 prevention side of t-7zt7 (a merge-commit PR vanishing from the release walk).
 
-The checks follow no vocabulary, and they guard two layers. One check guards
-the CONFIG: `glyph.toml` exists at the checkout's top level and loads — v2's
-config-first invariant, which until this check had no machine verification
-anywhere (the fleet reality it exists for: a repository whose pin moves before
-its config exists fails every gate at exit 2, with nothing having said so in
-advance). The rest guard the WALK (squash policy, pins, hooks), which is
-grammar-free since v2: every walk precondition holds whatever the repository's
-`glyph.toml` says.
+The checks follow no vocabulary, and they guard two layers. Three checks read
+the CONFIG: `glyph-toml-loads` — `glyph.toml` exists at the checkout's top
+level and loads, v2's config-first invariant, which until this check had no
+machine verification anywhere (the fleet reality it exists for: a repository
+whose pin moves before its config exists fails every gate at exit 2, with
+nothing having said so in advance) — and the two package checks §4.1 argues,
+`package-paths-exist` and `root-line-tags`. The rest guard the WALK (squash
+policy, pins, hooks), which is grammar-free since v2: every walk precondition
+holds whatever the repository's `glyph.toml` says.
 
 Shape: independent checks → one report object → an exit on the aggregate.
 **Read-only, always** — a diagnostic that mutates cannot be run casually, and
@@ -3739,35 +3707,22 @@ The severities are the argued part:
   never *observed* — a read the filesystem refused (permission denied, an I/O
   fault), no top level to resolve the path against — is `unknown` at `4`.
 - **`allow_squash_merge` false ⇒ fail.** *Not* because only a squash commit
-  resolves — every style does. GitHub points `merge_commit_sha` at whichever
-  commit represents the merge (the squash commit, a rebase's **last** replayed
-  commit, or the merge commit itself), and §4's walk expands the PR from there in
-  all three cases. What squash-off removes is not a fallback — it is the guarantee
-  that a pull request is resolved all-or-nothing. A squash-merged pull has exactly
-  one commit on `main` and that commit is its `merge_commit_sha`, so the walk
-  either expands it or falls back on it. Every multi-commit landing splits those
-  two states. §4's walk runs `git log` without `--first-parent`, so a merge-merged
-  pull's branch commits are in the range beside its merge point; each of them
-  stands aside for that merge point (`mergedPullFor`'s `covering`), and when the
-  merge point alone is unresolved — GitHub indexes a merge commit *after* the
-  commits it merges, or an automation authored it and the walk's
-  `exclude_authors` gate skipped it before the API — nothing expands the pull
-  and the whole of it counts
-  `none`. That is measured (`TestSinceTagMergeCommitReproducesVerdictWhenFullyDark`):
-  fully dark, a merge-merged pull reproduces its live verdict (`minor` either way); with only the merge point at 422, the same
-  repository is a lost pull — an incomplete walk, which `release` refuses at
-  exit `4` (§4) and `bump`/`notes` report at two warnings. A rebase splits them
-  the other way: it
-  writes new shas that appear in no pull's listing, so a replayed commit classified
-  during the lag is folded in again when the last one expands the pull. Note also
-  which failures actually reach the fallback: only a 422 (`IsCommitUnknown`). A 403
-  rate limit, a 5xx outliving the retry schedule (t-bjrv) and a dead socket all
-  leave `walkSince` as an error and exit `4` — the outage window is an exit-code
-  question, not a classification one. Squash is therefore the landing style with no
-  partial state at all; the cost of a dark API under squash is that a MULTI-commit
-  squash carries the PR title, so the fallback reads one subject the range walk
-  never saw. `lint --pr` is that subject's own gate — CONTRIBUTING ratifies the
-  title as a commit subject and lint.yml runs it beside the range — so the
+  resolves — every style does (`glyph doctor --help` states the mechanism, §4
+  the walk). What squash-off removes is not a fallback — it is the guarantee
+  that a pull request is resolved all-or-nothing: a squash-merged pull is
+  either expanded or fallen back on, while every multi-commit landing has a
+  partial state. Measured (`TestSinceTagMergeCommitReproducesVerdictWhenFullyDark`):
+  fully dark, a merge-merged pull reproduces its live verdict (`minor` either
+  way); with only the merge point at 422, the same repository is a lost pull —
+  an incomplete walk, which `release` refuses at exit `4` (§4) and
+  `bump`/`notes` report at two warnings. A rebase splits them the other way: it
+  writes new shas that appear in no pull's listing, so a replayed commit
+  classified during the lag is folded in again when the last one expands the
+  pull. Which failures reach the fallback at all is §4's rule (a 422 only). The
+  cost of a dark API under squash is that a MULTI-commit squash carries the PR
+  title, so the fallback reads one subject the range walk never saw. `lint
+  --pr` is that subject's own gate — CONTRIBUTING ratifies the title as a
+  commit subject and lint.yml runs it beside the range — so the
   fallback now reads a *linted* subject, though only as reliably as the gate's
   trigger re-fires on a retitle
   (measured `minor` → `patch`, and `minor` → `none` for a title
@@ -3794,11 +3749,9 @@ The severities are the argued part:
   to ignore the report, which is the one failure mode a voluntary check cannot
   survive. The merge-commit severity is downstream of that fix: revert the fix and
   it must move back to `fail`. It is downstream of the *loudness* too — advice only
-  holds while §4's reconciliation warning keeps naming the pull that was lost, and
-  that warning fires on every release of an automation-merged repository, which is
-  exactly the noise somebody eventually silences. Quiet it and this severity moves
-  to `fail` with it. *Allowing* a second method leaves squash there for
-  the traffic that matters — which is why this is advice while turning squash
+  holds while a lost pull stops `release` at exit 4 and `bump`/`notes` name it
+  (§4); silence either and this severity moves to `fail` with it. *Allowing* a
+  second method leaves squash there for the traffic that matters — which is why this is advice while turning squash
   **off** is a failure.
 - **The squash title/message policy ⇒ fail.** `PR_TITLE` hands the PR title to
   *every* squash, single-commit PRs included, so `main` fills with subjects the
@@ -4078,8 +4031,8 @@ the binary (t-0cqs).
 
 **Shipped.** Every engine deliverable is something you can run or read in this
 tree, and it is inventoried where it is already maintained rather than a third
-time here: the commands are §5's list, each with its own `--help`; the three
-reusable workflows and the two composite actions are §6; `git tag` is the release
+time here: the commands are `glyph --help`'s list, each with its own `--help`;
+the reusable workflows and the composite actions are §6; `git tag` is the release
 history and the only answer to "which version". README's opening lede is the
 one-sentence state, and it is the only prose that should need touching when that
 changes.
@@ -4087,12 +4040,10 @@ changes.
 **Self-adopted, partly — know which half.** glyph consumes its own reusables at
 a pinned tag: `.github/workflows/commit-lint.yml` calls `lint.yml`,
 `version-preview.yml` calls `pr-verdict.yml`. It does NOT consume its own
-`release.yml`. glyph's tags are cut by `goreleaser.yml`, which renders the
-release body with `glyph notes --since-tag=below:TAG` run from the tagged
-commit (the predecessor resolved by the binary — the workflow once re-derived
-it in shell over git's refname sort and inherited the defect that sort has,
-t-s5n4) — so the
-notes renderer is dogfooded — the compare link included, since `notes
+`release.yml`. glyph's releases are built by `goreleaser.yml` on a hand-pushed
+tag, and that workflow renders the release body through the `release-notes`
+composite action (§6) over the binary it just built — so the notes renderer
+and that action are dogfooded, the compare link included, since `notes
 --since-tag` renders the line `release` composes (§4) — while the
 rolling-draft path (the upsert, the hand region, the footer) is not exercised
 end to end by anything in this repository. What holds `release.yml` here is
@@ -4102,9 +4053,9 @@ placeholder, the checkout stays `fetch-depth: 0`) plus the fake-API tests behind
 `glyph release`. Worth knowing before trusting "we dogfood it" about a
 `release.yml` change.
 
-**Next.** Everything still open lives in the `projects` furrow board — the
-pointer §6 already carries, not a second copy of it here: a doc-side task list
-is a second source of truth, and the two go stale against each other. One
-design decision this document names in place, so that dropping the phase list
-does not lose it: narrowing the reconciliation refusal to the merge-button
-shape, which is placeable without a canonical commit (§4).
+**Next.** Everything still open lives in the `projects` furrow board (§6
+carries the pointer): a doc-side task list is a second source of truth, and
+the two go stale against each other. The one design decision this document
+names in place — narrowing the reconciliation refusal to the merge-button
+shape, placeable without a canonical commit — sits in §4, where it is tracked
+rather than smuggled in.
