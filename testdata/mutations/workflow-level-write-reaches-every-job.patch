@@ -1,0 +1,10 @@
+diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
+index 31a0b19..1e1795c 100644
+--- a/.github/workflows/goreleaser.yml
++++ b/.github/workflows/goreleaser.yml
+@@ -72,3 +72,4 @@ on:
+ # the cask job's empty block is held by internal/workflows, not by zizmor.
+-permissions: {}
++permissions:
++  contents: write
+ 

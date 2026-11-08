@@ -1,9 +1,10 @@
 name: goreleaser
 
-# Tag-driven release: pushing a vX.Y.Z tag runs GoReleaser (binaries, checksums,
-# Homebrew cask) and attaches build-provenance attestations. Deliberately NOT on
-# every main push — that would run GoReleaser with no tag. Use workflow_dispatch
-# for a manual run.
+# Tag-driven release: pushing a vX.Y.Z tag runs GoReleaser (binaries,
+# checksums, the Homebrew cask file), attaches build-provenance attestations,
+# publishes the release and pushes the cask to the tap, in that order.
+# Deliberately NOT on every main push — that would run GoReleaser with no
+# tag. Use workflow_dispatch for a manual run.
 #
 # Renamed from release.yml at v0.3.0: release.yml is now the reusable
 # rolling-draft release the FAMILY consumes (DESIGN §6), while this file cuts
@@ -31,23 +32,57 @@ name: goreleaser
 # generator from ever writing raw subjects; don't swap it back for a disable.
 # internal/workflows guards the pairing.
 #
+# Nothing is public before its attestation exists (t-p15y). GoReleaser
+# uploads onto a DRAFT (.goreleaser.yaml `draft: true`), the attest step
+# signs the uploaded files, the publish step un-drafts, and only then the
+# cask job points the tap at the assets. v6.1.0 ran the other way round —
+# release published 05:49:38, cask pushed 05:49:39, attestation created
+# 05:49:47 (run 40457384503) — and the install action verifies provenance
+# fail-closed, so an attest step that failed would have left a public
+# release no fleet repository could install, with the tap already naming it.
+# GoReleaser cannot order its own cask push after a step outside it, so the
+# push left GoReleaser: it writes the cask file, the cask job pushes it.
+#
+# Re-running a failed run. A failure anywhere before the publish step leaves
+# at most a draft, and re-running lands on that draft: GoReleaser reuses it
+# and replaces its assets (`use_existing_draft`, `replace_existing_artifacts`
+# in .goreleaser.yaml). A failure in the cask job leaves a published, attested
+# release with no cask: re-run the FAILED JOBS — the cask job downloads the
+# cask file the release job produced, and nothing is rebuilt. Re-running ALL
+# jobs over a published tag is refused by the release job's gh step: a
+# rebuild stamps a new build date into the binaries, so it would replace
+# public assets with bytes the shipped attestation and the tap do not name.
+#
 # Requires the HOMEBREW_TAP_DEPLOY_KEY secret (private half of homebrew-tap's write
 # deploy key) for the cask push — fleet-sync fans it out, gated on this file
-# referencing it (t-6bhz). Without it the build + attestation still run and only the cask step fails.
+# referencing it (t-6bhz). Without it the release job completes — build, draft,
+# attestation, publish — and only the cask job fails.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
 
-permissions:
-  contents: write      # create the GitHub release
-  id-token: write      # keyless signing for provenance attestation
-  attestations: write  # write the attestation
+# Each job declares the grants its own steps use; the workflow level grants
+# nothing. The release job holds the three writes, the cask job none:
+# download-artifact reaches a same-run artifact over the runner's
+# ACTIONS_RUNTIME_TOKEN (its github-token input is for another run or
+# repository), and the push authenticates with the tap's deploy key. zizmor
+# (excessive-permissions, the hub's required gate) reds a write at the
+# workflow level of a multi-job workflow; a job-level write it accepts, so
+# the cask job's empty block is held by internal/workflows, not by zizmor.
+permissions: {}
 
 jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: write      # create and publish the GitHub release
+      id-token: write      # keyless signing for provenance attestation
+      attestations: write  # write the attestation
+    outputs:
+      # The cask job reads this: a release candidate stays off the tap.
+      prerelease: ${{ steps.tag.outputs.prerelease }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -74,7 +109,15 @@ jobs:
       # below: (bump.parseBaseVersion — a release candidate names its
       # release's major). internal/workflows runs this step over the tags that
       # were cut and the ones that must not be.
+      #
+      # The same parse answers whether the tag is a release candidate, for
+      # the cask job: an rc exists to be installed by the reusables and fired
+      # as a fleet gate before the pins move, not to be what `brew install
+      # akira-toriyama/tap/glyph` hands a human — least of all across a
+      # breaking grammar change. Pushed to the tap, the first rc of v3 would
+      # have made `brew upgrade` serve v2's replacement to everyone.
       - name: the tag's major is the module path's
+        id: tag
         shell: bash
         run: |
           tag="$GITHUB_REF_NAME"
@@ -84,6 +127,11 @@ jobs:
             exit 1
           fi
           major="${BASH_REMATCH[1]}"
+          prerelease=false
+          if [ -n "${BASH_REMATCH[4]}" ]; then
+            prerelease=true
+          fi
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
           path="$(sed -En 's/^module[[:space:]]+([^[:space:]]+)[[:space:]]*$/\1/p' go.mod | head -n 1)"
           if [ -z "$path" ]; then
             echo "::error::go.mod declares no module path, so nothing says which major $tag belongs to"
@@ -99,6 +147,32 @@ jobs:
             exit 1
           fi
           echo "go.mod's module path $path carries ${have:-no major suffix}, which is what $tag needs"
+
+      # A published release is this job's finished work and must not be
+      # rebuilt over: GoReleaser replaces an asset that already exists
+      # (.goreleaser.yaml `replace_existing_artifacts`, there for the draft a
+      # failed run leaves), and a rebuild stamps a new build date into every
+      # binary, so the public assets would be swapped for bytes the shipped
+      # attestation and the tap's cask do not name. A draft is unfinished work
+      # and is reused. gh finds a draft by its pending tag where the REST tag
+      # lookup does not (cli/cli release/shared FetchRelease); a lookup that
+      # fails for any other reason falls through to GoReleaser, whose own
+      # create of a tag that is already released is a 422.
+      - name: the tag has no published release yet
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [ "$draft" != "true" ]; then
+              echo "::error::$TAG already has a published release. Its assets are public and attested, and rebuilding here would replace them with differently stamped bytes nothing attests. If the cask push failed, re-run the failed cask job of the run that published $TAG; nothing else is re-doable."
+              exit 1
+            fi
+            echo "a draft release for $TAG exists (an earlier run stopped before publishing it); GoReleaser reuses it and replaces its assets"
+          else
+            echo "no release for $TAG yet"
+          fi
 
       # No job-level `env: GOTOOLCHAIN: local` — see build.yml. It would make
       # setup-go skip go.mod's `toolchain` line and ship release binaries built
@@ -131,6 +205,8 @@ jobs:
           output: ${{ runner.temp }}/release-notes.md
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Builds, archives, checksums, the cask file, and the DRAFT release with
+      # the assets on it. Nothing it does is public.
       - name: GoReleaser
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
@@ -139,9 +215,6 @@ jobs:
           args: release --clean --release-notes=${{ runner.temp }}/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Private half of homebrew-tap's write deploy key (fleet-sync fans it
-          # out); GoReleaser pushes the cask over SSH with it. t-6bhz
-          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
           # The tag this run is FOR, stated — never inferred. GoReleaser picks
           # its current tag with `git describe` when this is unset, and a
           # commit carrying two tags (a release cut on the same tree as its
@@ -151,7 +224,93 @@ jobs:
           # while every pin site was about to move to it.
           GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
 
+      # Signs the files GoReleaser uploaded, by digest, so the attestation
+      # names the draft's assets byte for byte.
       - name: attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: 'dist/*.tar.gz, dist/checksums.txt'
+
+      # The first public act. gh sends the release's own tag_name with the
+      # PATCH (cli/cli release/edit), so the draft keeps its tag; GitHub makes
+      # a non-prerelease the repository's `latest` on publish, a prerelease
+      # never.
+      - name: publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" --draft=false
+          echo "published $TAG"
+
+      # The cask file GoReleaser wrote, handed to the cask job as an artifact
+      # rather than regenerated there: a rebuild stamps a new build date into
+      # the binaries, so the sha256 a regenerated cask carried would not be
+      # the published archives'.
+      - name: hand the cask file to the cask job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: homebrew-cask
+          path: dist/homebrew/Casks/glyph.rb
+          if-no-files-found: error
+
+  # The tap names the release's assets, so it moves only once they are public
+  # (needs: the release job, whose last steps publish) and only for a release
+  # (if: an rc stays off the tap — the tag step's parse). Its own job so that
+  # a failed push is re-run alone: "re-run failed jobs" re-runs this job over
+  # the artifact the release job uploaded, with nothing rebuilt and nothing
+  # public touched.
+  cask:
+    needs: release
+    if: needs.release.outputs.prerelease != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: homebrew-cask
+          path: ${{ runner.temp }}/cask
+
+      # Pushed over SSH with the tap's write deploy key (fleet-sync fans the
+      # secret out; t-6bhz) — not the GitHub API, so no account-scoped token.
+      # The subject is judged by the tap's own commit-lint under the gemoji
+      # preset: GoReleaser's default ("Brew cask update for glyph version
+      # vX.Y.Z") matched no pattern — all 31 glyph cask commits in the tap
+      # through v4.1.0 exit 3 under the tap's glyph.toml (measured
+      # 2026-09-27). `=`: a cask bump moves no version of the tap. The same
+      # subject the hub's update-tap.yml writes for every other formula there,
+      # under the same author. A tap already carrying this cask is a re-run
+      # whose push landed; it exits 0 with nothing to commit.
+      - name: push the cask to the tap
+        env:
+          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          TAG: ${{ github.ref_name }}
+          CASK: ${{ runner.temp }}/cask/glyph.rb
+          TAP_URL: git@github.com:akira-toriyama/homebrew-tap.git
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMEBREW_TAP_DEPLOY_KEY:-}" ]; then
+            echo "::error::HOMEBREW_TAP_DEPLOY_KEY is empty: the tap push needs homebrew-tap's write deploy key (fleet-sync fans it out, t-6bhz). $TAG is published and attested; only the cask is missing — add the secret and re-run this job."
+            exit 1
+          fi
+          umask 077
+          key="$RUNNER_TEMP/tap-deploy-key"
+          printf '%s\n' "$HOMEBREW_TAP_DEPLOY_KEY" > "$key"
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -F /dev/null"
+          tap="$RUNNER_TEMP/tap"
+          git clone --quiet --depth 1 "$TAP_URL" "$tap"
+          mkdir -p "$tap/Casks"
+          cp "$CASK" "$tap/Casks/glyph.rb"
+          git -C "$tap" add Casks/glyph.rb
+          if git -C "$tap" diff --cached --quiet; then
+            echo "the tap already carries this cask for $TAG; nothing to push"
+            exit 0
+          fi
+          git -C "$tap" \
+            -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m ":package:(tap)= bump glyph to $TAG"
+          git -C "$tap" push --quiet origin HEAD
+          echo "pushed Casks/glyph.rb for $TAG to the tap"

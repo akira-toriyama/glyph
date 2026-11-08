@@ -32,13 +32,22 @@ var releaseOutputs = []string{"level", "next", "current", "action", "packages"}
 // verdict step, and the step body WRITES the name on both answer arms — the
 // none verdict included, because a caller gating "did nothing ship" needs the
 // none answer as much as the release one, and an arm that forgets to write
-// leaves "" claiming the verdict was never computed when it was.
+// leaves "" claiming the verdict was never computed when it was. The
+// declaration is held by its KEY, not its `value:` line alone: a caller reads
+// `needs.<job>.outputs.level`, so a key renamed over an unchanged value hands
+// every caller "" for ever (t-j0es: `bump-level:` passed a value-only reading).
 func TestReleaseOutputsAreWiredThroughAllThreeLayers(t *testing.T) {
 	body := repoFile(t, filepath.Join(".github", "workflows", "release.yml"))
 	for _, name := range releaseOutputs {
 		if want := fmt.Sprintf("value: ${{ jobs.release.outputs.%s }}", name); !strings.Contains(body, want) {
 			t.Errorf("release.yml's workflow_call outputs do not declare %q (want %q) — callers cannot "+
 				"see a verdict the run computes", name, want)
+		}
+		// The declaration key, six spaces deep under workflow_call.outputs; the
+		// job's mapping of the same name carries a value on its line.
+		if !regexp.MustCompile(`(?m)^      ` + name + `:\s*$`).MatchString(body) {
+			t.Errorf("release.yml's workflow_call outputs carry no key %q — a caller reading outputs.%s gets \"\" "+
+				"whatever the value line under another key says", name, name)
 		}
 		if want := fmt.Sprintf("%s: ${{ steps.verdict.outputs.%s }}", name, name); !strings.Contains(body, want) {
 			t.Errorf("release.yml's job does not map output %q from the verdict step (want %q) — the "+
