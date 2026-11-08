@@ -1,0 +1,17 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index f7644f4..1807c35 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -380,10 +380,8 @@ jobs:
+           # markdown ever concatenated in shell (ratified Q11). An empty input
+           # passes no flag: the draft is the notes alone, with no --- line
+           # over nothing.
+-          if [ -n "$INSTALL_NOTES" ]; then
+-            printf '%s' "$INSTALL_NOTES" > "$RUNNER_TEMP/install-notes.md"
+-            args+=(--footer-file "$RUNNER_TEMP/install-notes.md")
+-          fi
++          printf '%s' "$INSTALL_NOTES" > "$RUNNER_TEMP/install-notes.md"
++          args+=(--footer-file "$RUNNER_TEMP/install-notes.md")
+           status=0
+           glyph "${args[@]}" > "$RUNNER_TEMP/verdict.json" 2> "$RUNNER_TEMP/verdict.err" || status=$?
+           cat "$RUNNER_TEMP/verdict.err" >&2

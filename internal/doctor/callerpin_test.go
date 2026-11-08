@@ -21,8 +21,10 @@ import (
 // unknown, never a pass and never a fail. The first two rows are the two
 // wrong verdicts measured at adfc5e1: lint.yml@v1.0.0 granting exactly what
 // v1.0.0 declares FAILED, and release.yml@v0.4.0 omitting the `app` v0.4.0
-// required PASSED.
+// required PASSED. The inputs side runs under the fixture table
+// (requiringInstallNotes), the one with a bound a release pin can sit below.
 func TestCallerChecksJudgeTheCallerAtItsPin(t *testing.T) {
+	requiringInstallNotes(t)
 	const granted = "permissions:\n  contents: read\n  pull-requests: read"
 	lintAt := func(ref, perms string) string {
 		b := "name: c\non:\n  pull_request:\n"

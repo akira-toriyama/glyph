@@ -147,7 +147,7 @@ on:
     # a retitle re-fires the squash-title lint only with `edited`, not a default type
     types: [opened, synchronize, reopened, edited]
   push:
-    branches: [main]  # optional — annotates direct pushes, never fails them
+    branches: [main]  # optional — annotates a direct push (exit 3 swallowed there alone; a push it cannot judge still fails)
 permissions:
   contents: read
   pull-requests: read  # the squash-title lint reads GET /pulls/{n}
@@ -170,7 +170,9 @@ runner needs them installed:
 ```
 
 Never pin `@main`: a moving ref changes the workflow *and* the binary under
-you. `glyph doctor` flags any unpinned reference it finds in your workflows and actions.
+you. `glyph doctor` flags every `uses: akira-toriyama/glyph/…` in your
+workflows and action files that is not pinned to a release tag; what other
+actions are pinned to is not its question.
 
 ## Getting started in your repository
 
@@ -183,7 +185,7 @@ glyph init --gemoji     # or --conventional; edit the file freely afterwards
 glyph ships no migration window: a subject no pattern claims is a violation at
 the gate and refuses the release walk, so a repository whose history predates
 the sigil does not teach its grammar to accept the old subjects — it baselines
-the walk with a tag at the commit where the convention starts ("Adopting on a
+the walk with a tag on the last commit before the convention ("Adopting on a
 repository with deep history", below), and the walk never reads past that tag.
 
 **1. Check the repository matches the model:**
@@ -233,10 +235,58 @@ what git cleans by never reaches a hook — a `--cleanup=`, `-v` or
 commits under the repository's settings, and DESIGN §2.1 lists the cases where
 its verdict and CI's part.
 
-**3. Wire CI** — the `lint.yml` caller above for the gate, `pr-verdict.yml`
-for a merge-preview comment on every PR, and `release.yml` to keep a rolling
-draft release maintained on every push to `main`. Publishing the draft is the
-release: the tag is created by that human act, never by CI.
+**3. Wire CI** — three callers, each a few lines around one `uses:` pinned
+to a release tag; `glyph doctor` checks that each grants and passes what its
+pinned reusable declares. The `lint.yml` caller above is the gate.
+`pr-verdict.yml` posts a merge-preview comment on every pull request — its
+caller is named `version-preview.yml`, never `pr-verdict.yml`, so a caller
+synced into glyph's own fleet can never overwrite the reusable it calls:
+
+```yaml
+# .github/workflows/version-preview.yml
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]  # the commits are the input; every push recomputes
+concurrency:
+  group: version-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+  pull-requests: write  # the one sticky comment
+jobs:
+  verdict:
+    uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@vX.Y.Z  # pin a release tag
+```
+
+`release.yml` keeps a rolling draft release maintained on every push to
+`main`. Publishing the draft is the release: the tag is created by that human
+act, never by CI.
+
+```yaml
+# .github/workflows/release.yml
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run: { description: "Preview only", type: boolean, default: false }
+concurrency:
+  group: release
+  cancel-in-progress: false
+permissions:
+  contents: write  # the draft
+jobs:
+  release:
+    uses: akira-toriyama/glyph/.github/workflows/release.yml@vX.Y.Z  # pin a release tag
+    with:
+      dry-run: ${{ github.event.inputs.dry_run == 'true' }}
+```
+
+Every input is optional, and that caller is complete for a repository whose
+release is the notes: the draft is the generated body alone. `install-notes`
+appends a per-repo Markdown block (an `## Install` section) after it;
+`app` / `binary` name an artefact the reusable builds and attaches, on a
+macOS runner. Each input's `description:` in `release.yml` is its contract.
 
 The draft is always one a human can publish. Every published release sets a
 **floor** (per line under `[[packages]]`), wherever its commit sits: a
@@ -268,13 +318,27 @@ tags by hand runs it over the installed one and hands GoReleaser the file:
   id: notes
   with:
     token: ${{ github.token }}
-# then GoReleaser: release --clean --release-notes ${{ steps.notes.outputs.file }}
+# then the GoReleaser step, told its tag rather than left to infer it:
+#   with: { args: "release --clean --release-notes ${{ steps.notes.outputs.file }}" }
+#   env: { GORELEASER_CURRENT_TAG: "${{ github.ref_name }}" }
 ```
+
+Two facts of that last step are easy to lose. Unset, `GORELEASER_CURRENT_TAG`
+leaves GoReleaser to pick its tag with `git describe`, and a commit carrying
+two tags — a release cut on the same tree as its last candidate — makes that a
+coin toss (glyph's own v3.3.0 push built `3.3.0-rc.2` artifacts and tried to
+upload them onto the rc release; `goreleaser.yml` states the tag). And
+`--release-notes` is read inside GoReleaser's changelog pipe, so
+`changelog.disable: true` drops the file and ships an empty body — GoReleaser's
+own documentation says so, and glyph's v0.8.2 shipped that way; keep the pipe
+enabled and silence the built-in generator with an exclude-everything filter,
+as `.goreleaser.yaml` does.
 
 Two wired-in behaviours worth knowing before you read them out of the YAML:
 the lint caller's optional `push: branches: [main]` arm runs the same rules
 over each direct push to the default branch but only **annotates** (exit 3 is
-swallowed on that arm alone; DESIGN §6 says why). And `release.yml` hands its
+swallowed on that arm alone; DESIGN §6 says why) — a push it cannot judge, a
+force push or a ref creation, still fails. And `release.yml` hands its
 verdict back as `workflow_call` outputs — `level`, `next`, `current`, `action`,
 and `packages` once `[[packages]]` is declared — so a caller can gate
 follow-up steps without re-deriving it; gate fail-safe on `""`, which means
@@ -289,8 +353,8 @@ publishes, so a `git describe` inside that script names the *previous*
 release (measured 2026-09-25 on facet's v7.0.2 draft: the app inside printed
 7.0.1-48-g729d4a7); a script that stamps a version reads
 `${RELEASE_TAG:-$(git describe --tags --dirty)}` and keeps the fallback for a
-local build. On a packages repository the variable is empty, and the artefact
-inputs are refused there before either build step runs.
+local build. On a packages repository the artefact inputs are refused right
+after glyph is installed, before the verdict touches a draft.
 
 An artefact the reusable did not build — a firmware image from a Docker job,
 say — is attached by a follow-up job in the caller, not by a new input: gate
@@ -301,15 +365,24 @@ reusable's own upload step makes. It is a follow-up job rather than a
 `needs:`-fed input because the reusable upserts before it builds — DESIGN §6 argues why. A monorepo
 attaches the same way, per line: iterate the `packages` output
 (`jq -r '.[] | select(.tag != null) | .tag'`) and upload to each `tag`;
-`app` / `binary` name one artifact for one draft and are refused once the
-verdict says packages.
+`app` / `binary` name one artifact for one draft and are refused on a
+packages repository before the verdict runs (`glyph doctor` names the pair
+before the push).
 
-Adopting on a repository with deep history? Cut a version tag at the commit
-where the convention starts — the walk baselines at the highest `v*` tag the
-released branch holds, and with no tag at all a long history is refused past a
-walk cap (fail-loud, one API round-trip per commit is the cost it refuses; the
-error names this exact remedy) rather than walked unbounded. A young repository
-needs no tag: the first release walks the whole history.
+Adopting on a repository with deep history? Tag the **last commit before the
+convention** — the parent of the first commit written with a sigil. The walk
+reads `tag..HEAD`, which leaves the tagged commit out, so a tag on the first
+convention commit drops that commit from every release (measured 2026-11-08
+on a scratch repository: a `^` under the tag answered `v0.0.1`; the same tag
+on its parent answers `v0.1.0`). The walk baselines at the highest `v*` tag
+the released branch holds, so the number must be the highest one: `v0.0.0` on
+a repository with no version tags, and above the highest existing tag where
+there are some (`v2.3.1` behind a `v2.3.0`; a lower tag is never the base).
+Push the tag — the walk runs in CI from the checkout's tags, and the draft's
+compare link needs both ends on GitHub. With no tag at all a long history is
+refused past a walk cap (fail-loud, one API round-trip per commit is the cost
+it refuses; the error names this exact remedy) rather than walked unbounded. A
+young repository needs no tag: the first release walks the whole history.
 
 ## Commit format
 

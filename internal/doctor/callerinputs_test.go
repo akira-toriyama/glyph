@@ -23,6 +23,23 @@ func crlf(s string) string {
 	return strings.ReplaceAll(s, "\n", "\r\n")
 }
 
+// requiringInstallNotes swaps the shipped table for the one of the era the
+// measured incident happened in — release.yml requiring install-notes from
+// v0.8.0 through v6.1.0 — for the rest of the test. No reusable requires an
+// input today, so the judging has no live row to exercise it; the fixture
+// table keeps it exercised. The doctor tests run sequentially (none calls
+// t.Parallel), so the swap is safe.
+func requiringInstallNotes(t *testing.T) {
+	t.Helper()
+	shipped := reusableRequiredInputs
+	reusableRequiredInputs = map[string]inputRow{
+		"lint.yml":       {After: "v0.1.0"},
+		"release.yml":    {After: "v0.7.0", Required: []string{"install-notes"}},
+		"pr-verdict.yml": {After: "v0.3.0"},
+	}
+	t.Cleanup(func() { reusableRequiredInputs = shipped })
+}
+
 // TestReusableRequiredInputsMatchTheShippedWorkflows holds the requirements
 // table to the reusables it describes, exactly as the permissions table is
 // held: a reusable growing a `required: true` input without a row here would
@@ -90,11 +107,13 @@ func shippedRequiredInputs(t *testing.T, body string) map[string]bool {
 	return required
 }
 
-// TestCallerInputsOutcomes walks the verdicts over real files: the measured
-// silent startup_failure (a release caller omitting install-notes,
-// glyph-test3 2026-08-26), the healthy shapes in both YAML orders and both
-// with: forms, and the not-a-caller cases.
+// TestCallerInputsOutcomes walks the verdicts over real files, under the
+// fixture table (requiringInstallNotes): the measured silent startup_failure
+// (a release caller omitting install-notes, glyph-test3 2026-08-26), the
+// healthy shapes in both YAML orders and both with: forms, and the
+// not-a-caller cases.
 func TestCallerInputsOutcomes(t *testing.T) {
+	requiringInstallNotes(t)
 	blockWith := "    with:\n      install-notes: |\n        ## Install\n        nothing: to install\n"
 	tests := []struct {
 		name       string

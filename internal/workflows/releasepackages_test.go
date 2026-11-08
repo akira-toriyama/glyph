@@ -1,8 +1,11 @@
 package workflows
 
 import (
+	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -45,38 +48,83 @@ func TestReleasePackagesOutputStripsBodyAndURL(t *testing.T) {
 // TestReleaseRefusesArtifactInputsOnAPackagesRepository: `app` / `binary`
 // name one artifact for one draft, and a packages repository has one draft
 // per line and no line the artifact would belong to. The refusal sits AFTER
-// the verdict step — the declaration is read from the envelope, because
-// glyph is glyph.toml's only reader and a grep here would fork the grammar —
-// and BEFORE the first build step, gated on both the packages output and an
-// artifact input so a single-line caller never meets it.
+// the install — glyph is glyph.toml's only reader, so the declaration is read
+// through its own envelope over an empty range, never a grep that would fork
+// the grammar — and BEFORE the verdict step, so no draft is touched: asked of
+// the verdict envelope, as it first was, the drafts had already been
+// rewritten with the misconfigured caller's footer when the run went red
+// (glyph-monorepo-test-2 run 41805408808, `binary: probe`, 2026-11-04). It
+// is gated on an artifact input alone, so a verdict-only caller never runs
+// it; the step runs here against a glyph stub answering each shape the real
+// binary does (measured 2026-11-08 with the tree's binary: three lines on a
+// packages checkout, no `packages` key on a single line, both at exit 1; exit
+// 2 and an error envelope on stderr with no glyph.toml).
 func TestReleaseRefusesArtifactInputsOnAPackagesRepository(t *testing.T) {
 	raw := repoFile(t, filepath.Join(".github", "workflows", "release.yml"))
 	body := code(raw)
 	const (
 		refuse  = "name: Refuse an artifact input on a packages repository"
+		install = "uses: $/.github/actions/install"
 		verdict = "name: Compose the verdict and upsert the rolling DRAFT"
-		build   = "name: Build app + zip"
 	)
-	ri, vi, bi := strings.Index(body, refuse), strings.Index(body, verdict), strings.Index(body, build)
-	if ri < 0 || vi < 0 || bi < 0 {
-		t.Fatalf("could not find all three steps in release.yml (refuse=%d, verdict=%d, build=%d) — a rename "+
-			"moved one and this guard is asserting nothing", ri, vi, bi)
+	ri, ii, vi := strings.Index(body, refuse), strings.Index(body, install), strings.Index(body, verdict)
+	if ri < 0 || ii < 0 || vi < 0 {
+		t.Fatalf("could not find all three steps in release.yml (refuse=%d, install=%d, verdict=%d) — a rename "+
+			"moved one and this guard is asserting nothing", ri, ii, vi)
 	}
-	if vi >= ri || ri >= bi {
-		t.Errorf("the packages refusal is out of place (verdict=%d, refuse=%d, build=%d): it must follow the "+
-			"verdict (the envelope is where the declaration is read) and precede the build (an artifact "+
-			"nothing can attach must not be built)", vi, ri, bi)
+	if ii >= ri || ri >= vi {
+		t.Errorf("the packages refusal is out of place (install=%d, refuse=%d, verdict=%d): it must follow the "+
+			"install (glyph reads the declaration) and precede the verdict (a refusal after the upsert has "+
+			"already rewritten every line's draft)", ii, ri, vi)
 	}
-	step := body[ri:bi]
-	const gate = "if: steps.verdict.outputs.packages != '' && (inputs.app != '' || inputs.binary != '')"
+	step := body[ri:vi]
+	const gate = "if: inputs.app != '' || inputs.binary != ''"
 	if !strings.Contains(step, gate) {
-		t.Errorf("the packages refusal is not gated as %q — gated wider it refuses the single line's "+
-			"callers, gated narrower a monorepo builds an artifact no draft can take", gate)
+		t.Errorf("the packages refusal is not gated as %q — gated on the verdict's outputs it never fires "+
+			"before the verdict, gated wider it costs every verdict-only caller a probe", gate)
 	}
+	if strings.Contains(step, "steps.verdict") {
+		t.Errorf("the packages refusal reads steps.verdict, which has not run yet where the refusal stands:\n%s", step)
+	}
+
 	script := extractRun(t, raw, "Refuse an artifact input on a packages repository")
-	if !strings.Contains(script, "::error::") || !strings.Contains(script, "exit 1") {
-		t.Errorf("the packages refusal does not fail the run with an ::error:: annotation — a refusal "+
-			"that does not stop the run is a warning nobody reads:\n%s", script)
+	requireTool(t, "jq")
+	cases := []struct {
+		name     string
+		stdout   string
+		stderr   string
+		exit     int
+		wantExit int
+		wantOut  string
+	}{
+		{"three lines declared", `{"current":"","level":"","commits":[],"packages":[{"path":"camp","level":"none"},{"path":"travel","level":"none"},{"path":"travel/onsen","level":"none"}]}`, "", 1, 1, "::error::this repository declares [[packages]] (3 line(s)"},
+		{"the single line", `{"current":"v0.0.0","level":"none","commits":[]}`, "", 1, 0, ""},
+		{"no glyph.toml", "", `{"error":{"code":2,"message":"no glyph.toml at /work"}}`, 2, 2, "no glyph.toml at /work"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			bin, temp := t.TempDir(), t.TempDir()
+			log := filepath.Join(temp, "argv.log")
+			writeStub(t, bin, "glyph", recordArgv(log)+
+				"printf '%s' "+shq(c.stdout)+"\nprintf '%s' "+shq(c.stderr)+" >&2\nexit "+strconv.Itoa(c.exit)+"\n")
+			run := runStep(t, script, unspecifiedShell, t.TempDir(), []string{
+				"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+				"RUNNER_TEMP=" + temp,
+				"APP=",
+				"BINARY=probe",
+			})
+			if run.exit != c.wantExit {
+				t.Errorf("exited %d, want %d\n%s", run.exit, c.wantExit, run)
+			}
+			if c.wantOut != "" && !strings.Contains(run.stdout+run.stderr, c.wantOut) {
+				t.Errorf("printed no %q:\n%s", c.wantOut, run)
+			}
+			calls := recordedCalls(t, log)
+			if len(calls) != 1 || !slices.Equal(calls[0], []string{"bump", "--range", "HEAD..HEAD", "--json"}) {
+				t.Errorf("glyph was called %v, want one `bump --range HEAD..HEAD --json` — the empty range is "+
+					"what makes the probe local and free", calls)
+			}
+		})
 	}
 }
 

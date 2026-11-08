@@ -95,8 +95,8 @@ func checkCallerPermissions(root string, rootVerified bool, workflows []workflow
 			"the reusable declares never starts: the run dies as startup_failure before any job (measured in " +
 			"akira-toriyama/.github#186) — no step runs, nothing prints, and no runtime diagnosis can see it. " +
 			"This static read is the only check that can",
-		failFix: "add the missing grant to the caller's permissions block — the commented stub in each reusable's " +
-			"header is the known-good copy",
+		failFix: "add the missing grant to the caller's permissions block — the callers in glyph's README (Getting " +
+			"started, step 3) are the known-good copies",
 		death:        "whether every caller gets past GitHub's startup permission gate",
 		noCaller:     "no workflow in this checkout calls a glyph reusable (binary-only consumers have no caller to misgrant)",
 		passObserved: "%d workflow file(s) call glyph reusables; every judged caller covers what its pinned release declares",
