@@ -1,11 +1,11 @@
 diff --git a/internal/doctor/hook.go b/internal/doctor/hook.go
-index 2b527a6..29b34ce 100644
+index 97b17a9..9f15d19 100644
 --- a/internal/doctor/hook.go
 +++ b/internal/doctor/hook.go
-@@ -170,12 +170,6 @@ func checkHookFires(probe *HookProbe, dirErr error, configLoaded bool) Check {
- 		c.Observed = fmt.Sprintf("the hook blocked the probe message at exit %d", gate)
- 		c.Message = "the whole chain answered: the script, the glyph it resolves on PATH, and the verdict that " +
- 			"stops a commit are in working order on this machine"
+@@ -148,12 +148,6 @@ func checkHookFires(probe *HookProbe, dirErr error, configLoaded bool) Check {
+ 			"passes every commit — by design, a missing tool never blocks one. Every commit on this machine is going " +
+ 			"unlinted while CI still enforces the convention"
+ 		c.Fix = "put the glyph binary on PATH, so that `command -v glyph` resolves it, and re-run"
 -	case probe.Exit == 0 && probe.Claimed:
 -		c.Status = StatusPass
 -		c.Observed = "the hook let the probe message through at exit 0 — and this repository's glyph.toml claims that message, so 0 is the verdict a working chain gives"

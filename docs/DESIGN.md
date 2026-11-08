@@ -3671,15 +3671,34 @@ distinguishable from `fail` — "we could not check" is not "it is fine", so
 neither exits 0.
 
 The line between the two is drawn on what the API **said**, not on whether the
-call returned an error (`github.IsRepoUnknown`). A 404 from the repository read is
-an answer — there is no such repository *for this credential* — and fails at `3`.
-A 403 rate limit, a 5xx that outlived the retry schedule, a dead socket or a body
-that would not parse is no answer at all: nothing about the repository was
-observed, so it is `unknown` at `4`, the same code every other glyph command gives
-that failure. Collapsing the two the other way made a transient GitHub outage tell
-the fleet's CI wrappers — which branch on `jq -e '.error.code == 3'` to hard-fail
-and treat everything else as retryable infra — that the repository was
-misconfigured, and never retry.
+call returned an error (`github.IsRepoRefused`). A 401, a 403 that is no rate limit
+and a 404 from the repository read are answers about the credential — it is
+rejected, it is refused this repository, or there is no such repository *for this
+credential* — and fail at `3`, with a credential to configure as the fix. A rate
+limit, a 5xx that outlived the retry schedule, a dead socket or a body that would
+not parse is no answer at all: nothing about the repository was observed, so it is
+`unknown` at `4`, the same code every other glyph command gives that failure, and
+the fix is to re-run. Collapsing the two the other way made a transient GitHub
+outage tell the fleet's CI wrappers — which branch on `jq -e '.error.code == 3'`
+to hard-fail and treat everything else as retryable infra — that the repository was
+misconfigured, and never retry. Drawing the line at the 404 alone told them a
+rejected token was retryable infra, and reported it as "GitHub did not answer"
+(measured at 2f9428a). A verdict command still exits `4` on a 401 (`bump --pr`,
+measured 2026-11-04): for it a read failed, while doctor was asked whether this
+credential can read the repository.
+A rate limit is told from a refusal on the answer itself: a primary limit carried
+`X-RateLimit-Remaining: 0` and no `Retry-After`, a permission 403 a nonzero count
+(both measured against api.github.com on 2026-11-04: the anonymous search budget
+run dry, and a repository's Actions permissions read without the grant), and GitHub
+documents a secondary limit as carrying `Retry-After`, the count at 0, or neither
+and only its message, so any of the three keeps it on the no-answer side
+(`TestRepositoryClassifiesAnAnswerApartFromNoAnswer`). The settings checks that
+never ran take their remedy from the same split: they told a 502 to fix the
+credential beside a token check telling it to wait
+(`TestDoctorSplitsTheRepoReadOnWhatTheAPISaid`, mutation rows
+`doctor-reads-a-credential-answer-as-no-answer`,
+`doctor-reads-any-403-as-a-credential-answer` and
+`doctor-settings-tell-an-outage-to-fix-the-credential`).
 
 The severities are the argued part:
 
@@ -3809,6 +3828,13 @@ The severities are the argued part:
   like any unread input; a sparse-checkout entry, tracked but never put on
   disk, is unread too, while a tracked file the working tree deleted is an
   observed absence, as the workflows directory's is under a git-named root.
+  A workflows path the filesystem will not list leaves the action files read
+  all the same: a moving ref in one fails at `3` with the listing failure in
+  its details, since a defect observed outranks a blind spot beside it, and only
+  clean action files leave the check `unknown` (a regular file at the path exited
+  `4` with them unread, measured at 2f9428a;
+  `TestCheckWorkflowPinsReadsTheActionFilesPastAnUnlistableDirectory`, mutation
+  row `doctor-pin-scan-lets-an-unlistable-directory-outrank-a-defect`).
   The price of "any path": an action file kept as a test fixture is judged
   like a published one — which it is, since GitHub runs it for anyone who
   names its path. `TestCheckWorkflowPinsScansCompositeActions`,
@@ -3945,12 +3971,17 @@ The severities are the argued part:
   no hook and calls no API — `internal/cli` asks git, fires the commit-msg probe
   and fetches the repository object, and hands each answer over in
   `doctor.Input` with its error, so a failed read degrades only the checks that
-  read it. One answer carries no error: the probe's claim (`probeClaimed`)
-  reads git's config the way the fired hook does, and a question git does not
-  answer reads as unset. Two failures end the run before doctor judges
-  anything: a repository it cannot name (no `--repo`, `$GITHUB_REPOSITORY` or
-  GitHub `origin`, or a malformed one — usage, 2), and an interrupt in any
-  read.
+  read it. Two answers carry no error, both read only of a fired hook that
+  exited `0`, in this order: whether `glyph` resolves (`glyphResolves` asks the
+  hook's own `command -v glyph` in the hook's shell, and a shell that did not
+  answer reads as absent), then the probe's claim (`probeClaimed` reads git's
+  config the way the fired hook does, and a question git does not answer reads
+  as unset). Because neither hands an error back, `internal/cli` asks the
+  context once after both, and `internal/doctor` reads the absence before the
+  claim (`commit-msg-hook-fires`, below). Two failures end the run before
+  doctor judges anything: a repository it cannot name (no `--repo`,
+  `$GITHUB_REPOSITORY` or GitHub `origin`, or a malformed one — usage, 2), and
+  an interrupt in any read.
 - **The byte-identical hook is also FIRED (`commit-msg-hook-fires`).** Current
   bytes prove the script; they prove nothing about the glyph the script resolves
   on PATH at run time, and the script blocks only on the gate code and waves
@@ -3973,7 +4004,21 @@ The severities are the argued part:
   config's absence answering and `glyph-toml-loads` owns the finding. Failing
   it sent the reader to repair a PATH wrapper nothing had observed broken
   (`TestHookFiresDefersAPassThroughToAnUnloadedConfig`, mutation row
-  `doctor-hook-fires-blames-the-path-for-an-unloaded-config`).
+  `doctor-hook-fires-blames-the-path-for-an-unloaded-config`). A hook a signal
+  killed is the same unknown (`os/exec` reports `-1`; mutation row
+  `doctor-hook-fires-reads-a-killed-probe-as-blocked`). A `glyph` absent from
+  `PATH` is its own diagnosis in this check, and still a failure: the hook's
+  `command -v glyph` finds nothing, so it warns and passes every commit, by the
+  design that never lets a missing tool block one, and the local gate is dead all
+  the same. The generic pass-through told the reader to check what that command
+  resolves to, when it resolves to nothing (measured at 2f9428a), so an exit `0`
+  is followed by the hook's own question, asked in the shell the hook runs under
+  rather than modelled with a `PATH` walk. The absence is read before the two
+  readings above: a config claiming the probe text would call it the whole chain
+  answering, and an unloaded one the config's absence answering, and nothing ran
+  to make either true (`TestHookFiresNamesAGlyphAbsentFromPATH`, mutation rows
+  `doctor-hook-fires-reads-an-absent-glyph-as-a-pass-through` and
+  `doctor-never-asks-whether-glyph-resolves`).
 - **A byte-identical pre-push hook nobody fired ⇒ advice (`pre-push-hook`).**
   Only commit-msg is fired, and its answer covers pre-push because both hooks
   resolve one `PATH` — which holds while a byte-identical commit-msg hook sits
@@ -3997,7 +4042,16 @@ The severities are the argued part:
   is byte-identical, so a checkout with no hook — every CI runner — pays
   nothing; a read that fails is `unknown`, like any unread input
   (`TestPrePushHookSaysWhenNoRemoteHeadIsRecorded`, mutation row
-  `doctor-pre-push-ignores-an-unrecorded-remote-head`). The remedy is
+  `doctor-pre-push-ignores-an-unrecorded-remote-head`). A recorded name whose
+  ref no longer exists records nothing either: a default branch renamed on the
+  remote leaves that ref dangling after `git fetch --prune`, git warns once, and
+  `symbolic-ref` still answers exit `0` with the old name. Believed, the new
+  default branch read as off the default branch, so a violating push landed at
+  exit `0` with no remedy named while this check passed (measured at 2f9428a, git
+  2.54). So `gitsource.DefaultBranch` verifies the name first, and the hook and
+  this check give what they give an unrecorded remote
+  (`TestPrePushReadsADanglingDefaultBranchAsUnrecorded`, mutation row
+  `default-branch-believes-a-dangling-ref`). The remedy is
   `git remote set-head <remote> -a` only where git can record a head at all:
   a name config accepts and refs refuse (`my fork`, `mirror..x`) makes
   set-head exit 129 unquoted and 1 quoted (review u6-2, git 2.54). `git remote

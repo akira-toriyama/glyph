@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 9914fe8..28b7c89 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -646,7 +646,7 @@ func isAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
+ 		switch {
+ 		case nerr != nil && core.IsInterrupted(nerr):
+ 			return false, nerr
+-		case nerr == nil && !named:
++		case !named:
+ 			return false, nil
+ 		}
+ 	}

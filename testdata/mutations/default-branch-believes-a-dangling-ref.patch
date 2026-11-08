@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 9914fe8..4ad71c1 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -207,7 +207,7 @@ func DefaultBranch(ctx context.Context, dir, remote string) (string, error) {
+ 	}
+ 	target := strings.TrimSpace(string(out))
+ 	exists, err := namesCommit(ctx, dir, target)
+-	if err != nil || !exists {
++	if err != nil || (false && !exists) {
+ 		return "", err
+ 	}
+ 	return strings.TrimPrefix(target, prefix), nil
