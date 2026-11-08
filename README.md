@@ -411,15 +411,19 @@ name  = "why"   # the $placeholder note.line writes
 
 A declared trailer renders as fenced prose, like any other text a commit
 author typed, and an absent one resolves empty so the `$[ … ]` span carrying
-it drops. What a trailer block IS follows git exactly (git's defaults — a
-repository's `trailer.*` config is not read): the last paragraph of the
-message, above any `---` line (`---` alone or followed by a space or a tab;
-`---x` is text), every line of it trailer-shaped — **one prose line in it and
+it drops. What a trailer block IS is what git's own commit reader reads
+(`git log --format=%(trailers)`, with git's defaults — a repository's
+`trailer.*` config is not read): the last paragraph of the message, above
+whatever git ignores at its end (trailing comment lines, an old-style
+`Conflicts:` list, a `# ------------------------ >8 ------------------------`
+scissors line), every line of it trailer-shaped — **one prose line in it and
 the whole block is not a trailer block**, credits included — unless git
 itself wrote into the block: beside a `Signed-off-by:` or a `(cherry picked
 from commit …)` line, prose stands as long as at least a quarter of the lines
-are trailers, and the trailers around it are read. Write the trailers
-together at the very bottom and indent any wrapped line.
+are trailers, and the trailers around it are read. A `---` line is message
+text, not a divider: that divider belongs to `git interpret-trailers` reading
+a patch, and a landed commit carries none. Write the trailers together at the
+very bottom and indent any wrapped line.
 
 ## Packages — several version lines in one repository
 

@@ -1,8 +1,8 @@
 diff --git a/internal/notes/trailers.go b/internal/notes/trailers.go
-index d476f9f..38e217c 100644
+index 69da191..0cbb328 100644
 --- a/internal/notes/trailers.go
 +++ b/internal/notes/trailers.go
-@@ -73,7 +73,7 @@ func trailers(message string) []trailer {
+@@ -84,7 +84,7 @@ func trailers(message string) []trailer {
  
  	var out []trailer
  	last := -1 // index into out of the trailer a continuation folds onto; -1 under a line that is not one

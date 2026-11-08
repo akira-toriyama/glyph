@@ -143,10 +143,11 @@ pattern says it means:
     listing the types, v1's table moved into the file. Its footer read is
     the regex over the raw message §3 rejects as a trailer parser: a
     `BREAKING CHANGE:` line inside a body paragraph releases a major, and
-    the spec's own token is no git trailer (the space — `git
-    interpret-trailers --parse` answers nothing for it, git 2.54), so
-    written in the trailer block it voids the block and the release line
-    drops its `$coauthors` credit. It has no `%`, so a 0.x repository could
+    the spec's own token is no git trailer (the space — git's trailer reader
+    takes the line for prose, git 2.54), so written in a trailer block git
+    did not write into it voids the block and the release line drops its
+    `$coauthors` credit; beside a `Signed-off-by:` the block stands by the
+    25% rule (§3) and the footer alone is dropped. It has no `%`, so a 0.x repository could
     never say 1.0 (`feat%:` refused, `feat!:` at v0.4.2 reads v0.5.0), and
     adding one sets a sigil beside the implied levels — two spellings of
     one version. Nor does it read the spec as written, the case for putting
@@ -986,37 +987,76 @@ the fleet either sits off GitHub's noreply host (`noreply@anthropic.com`) or
 carries a `[bot]` login the handle gate rejects, so no credit could resolve
 to a live mention even if the exemption were extended.
 
-The parser is held to `git interpret-trailers --parse` by a differential
-asserting a **subset**: glyph may report fewer trailers than git, never more,
-because over-reporting is what names a person on a public page as an author
-of code the commit never claimed; a second differential asserts **equality**
-on the blocks git itself writes into (below), where under-reporting was the
-defect. The rules are git's own, transcribed from `trailer.c`
-(`find_end_of_log_message`, `find_trailer_block_start`, `find_separator`)
-and measured against git 2.54.0 rather than modelled, with git's defaults
-and none of its `trailer.*` config. The divider is `---` followed by a
-space, a tab, a CR or the end of the line — `---x` and `----` are message
-text — so a `--- title` line hides everything below it (t-pspd, 2026-11-04:
-glyph took only a bare `---`, and a credit below `--- text` was reported
-where git reported none, outside the subset). The token is one run of ASCII
-letters, digits and hyphens, optional blanks, then the colon: `Fix#1:` and
-`Révisé:` are prose, `Why :` is the token `Why`. A block is the trailers
-when every line of it is a trailer, a continuation or a comment — one prose
-line voids it — **or** when it holds a line git generated (`Signed-off-by: `,
-`(cherry picked from commit `) and its trailer lines are at least a quarter
-of it, in which case the prose lines are dropped and the trailers around
-them kept (t-hd7d, 2026-11-04: glyph voided such a block, so a `git commit
--s` author lost every credit beside one prose line — under-reporting, inside
-the subset, and still a person uncredited). Four shapes still answer
-nothing, each silently: a trailer in its own paragraph above the footer, a
-line below the divider, a block with no git-generated line holding one prose
-line, and a block that is the message's only paragraph. The third is the
-sharp one — an unindented wrapped line, or the fleet's own `Generated with …`
-footer placed inside the block, voids the whole block and takes the
-co-author credit with it. (Mutation rows
+The parser is held to git's own commit reader — `git log
+--format='%(trailers:only,unfold)'` — by a differential asserting
+**equality** on every shape it crosses: the trailers glyph reads off a landed
+commit are the ones git reads off it, no more (a trailer git does not report
+names a person on a public page as an author of code the commit never
+claimed) and no fewer (a credit git reports and glyph drops is a person
+uncredited). `TestTrailersEqualGit` crosses heads, blocks and tails, every
+byte after `---` and in four other positions, the 25% boundary from both
+sides under every git-generated prefix spelling, and a seeded random mix:
+12,961 shapes by default and 41,461 with 30,000 random ones, 0 over-reports
+and 0 under-reports (2026-11-08); the table of named shapes is re-read off
+git on every run, so a row cannot pin an answer git does not give. The rules
+are git's own, transcribed from `trailer.c` (`find_end_of_log_message` with
+`no_divider`, `find_trailer_block_start`, `find_separator`,
+`trailer_block_get`), `commit.c` (`ignored_log_message_bytes`) and `pretty.c`
+(`skip_blank_lines`), measured against git 2.54.0 rather than modelled, with
+git's defaults and none of its `trailer.*` config. **The oracle is the commit
+reader, not `git interpret-trailers --parse`.** The two share every rule but
+one: interpret-trailers reads a message being written or a patch mail, where
+a `---` line starts the diff, so it discards everything from the first `---`
+down; `%(trailers)` sets `no_divider` (pretty.c), as every reader inside git
+does, because a landed commit carries no patch. glyph reads landed commits,
+so a `---` line is message text and the block below it is read. t-pspd
+(2026-11-04) was ruled from the wrong oracle — it widened the divider to
+`--- text` — and the widened divider dropped credits that git's reader and
+GitHub's `Commit.authors` both show: glyph e2b2bec (a `--- line` wrapped
+inside a body paragraph), furrow e29a824, ec3342e and 05e9ba7 (the old
+`--- (和訳)` separator) and AzooKeyKanaKanjiConverter 55ffe3c (a CRLF
+dependabot squash whose YAML `---\r` sits above GitHub's `---------`), the
+only five co-author differences across 127,696 real commits in 17
+repositories (measured in review, 2026-11-08; each credited again by
+`TestTrailers` and by the fix's end-to-end run). The message starts where
+the reader starts it — leading blank lines skipped — and ends where the
+reader ends it: above the scissors line
+`# ------------------------ >8 ------------------------`, and above a
+trailing run of comment lines, empty lines and an old-style `Conflicts:` list
+with its tab-indented paths (`ignored_log_message_bytes`; a Conflicts tail
+glued under a Signed-off-by block had counted as a trailer line and lifted a
+2-of-9 block over the 25% line, review of t-hd7d). The token is one run of
+ASCII letters, digits and hyphens, optional blanks, then the colon: `Fix#1:`
+and `Révisé:` are prose, `Why :` is the token `Why`, and `https://x: y` is
+the token `https` — git has no URL rule, and a guard that added one hid a
+credit below a bare URL line that git and GitHub both give (683 of 10,001
+generated shapes, 94 of them a lost credit; review of t-hd7d). A block is
+the trailers when every line of it is a trailer, a continuation or a comment
+— one prose line voids it — **or** when it holds a line git generated
+(`Signed-off-by: `, `(cherry picked from commit `, byte-exact, the trailing
+space included) and its trailer lines are at least a quarter of it, a
+continuation under prose counting as prose, in which case the prose lines
+are dropped and the trailers around them kept (t-hd7d, 2026-11-04: glyph
+voided such a block, so a `git commit -s` author lost every credit beside one
+prose line). Three shapes answer nothing, each silently: a trailer in its own
+paragraph above the footer, a block with no git-generated line holding one
+prose line, and a block that is the message's only paragraph. The second is
+the sharp one — an unindented wrapped line, or the fleet's own `Generated
+with …` footer placed inside the block, voids the whole block and takes the
+co-author credit with it. GitHub's own co-author rule is unpublished and
+wider than git's: on glyph-test-2 it credited every shape git's reader
+credits and three more — below a scissors line, under a Conflicts tail that
+tips the 25% line, and a prose-plus-trailer block with no sign-off (11 shapes
+probed in review, 2026-11-08). glyph follows git, so where the two differ
+glyph credits fewer, never a person GitHub does not. (Mutation rows
 `notes-coauthor-is-grepped-not-parsed.patch`,
-`divider-with-text-after-it-hides-nothing.patch`,
-`signed-off-block-voided-by-one-prose-line.patch`.) Rejected alternative: carrying
+`divider-hides-the-block-below-it.patch`,
+`signed-off-block-voided-by-one-prose-line.patch`,
+`message-end-ignores-nothing.patch`,
+`trailer-token-rule-guards-a-url.patch`,
+`continuation-under-prose-is-not-prose.patch`,
+`git-generated-prefix-without-its-space.patch`,
+`leading-blank-lines-stand-as-the-title.patch`.) Rejected alternative: carrying
 the same two values in a `(?s)` `[[patterns]]` group. It truncates a wrapped
 value, lets trailer order decide silently whether the value binds at all,
 credits a trailer-shaped line sitting in a body paragraph, and would have to
