@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -734,6 +737,97 @@ func TestSinceTagRefoldControlWholePullInRange(t *testing.T) {
 	}
 	if len(shas) != 2 {
 		t.Errorf("both commits must participate, got %v\nstderr: %s", shas, stderr)
+	}
+}
+
+// TestSinceTagFailsOnAReleasedCommitGitCannotRead: pull #1 landed X under its
+// own sha through the merge button, v0.1.0 was cut at its merge, and pull #2's
+// listing carries X again beside its own Y (GitHub lists against a stored base;
+// DESIGN §4). Healthy, X lands outside the range and is noticed, not counted:
+// v0.1.1. With X's loose object broken in this clone — empty, or under a
+// fan-out directory git cannot open — `cat-file --batch-check` answers
+// `missing` for it as for a sha the store does not hold, and read as absent X
+// has no landing site, the in-range merge point governs it and the released ^
+// is counted again: v0.2.0 at exit 0 with nothing said (measured at bc11b2b).
+// The read fails at 4 instead, carrying git's own line. A fresh CI clone is
+// packed and does not reach this; a long-lived local clone after a crash does.
+func TestSinceTagFailsOnAReleasedCommitGitCannotRead(t *testing.T) {
+	for name, tc := range map[string]struct {
+		corrupt func(t *testing.T, path string)
+		wantMsg string
+	}{
+		"an empty object file": {func(t *testing.T, path string) {
+			if err := os.Chmod(path, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, "is empty"},
+		"a fan-out directory git cannot open": {func(t *testing.T, path string) {
+			if os.Geteuid() == 0 {
+				t.Skip("root opens a mode 000 directory")
+			}
+			if err := os.Chmod(filepath.Dir(path), 0); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(filepath.Dir(path), 0o755) })
+		}, "Permission denied"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := testutil.NewRepo(t)
+			// Commit dates a minute apart, as real ones are. With every date
+			// equal, git's date-ordered walks pop the tagged merge before Y and
+			// parse its parents, X among them, so `merge-base` fails on Y's own
+			// ancestry question before the footprint's first question is ever
+			// read as absent — and the test would pass for the wrong reason.
+			at := func(seq int, args ...string) string {
+				t.Helper()
+				date := fmt.Sprintf("@%d +0000", 1700000000+60*seq)
+				cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+				cmd.Env = testutil.GitEnv("akira-toriyama", "GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
+				out, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("git %v: %v\n%s", args, err, out)
+				}
+				return strings.TrimSpace(string(out))
+			}
+			at(1, "checkout", "-q", "-b", prTopic(1))
+			at(1, "commit", "-q", "--allow-empty", "--no-verify", "-m", ":sparkles:(ui)^ add a menu")
+			x := at(1, "rev-parse", "HEAD")
+			at(2, "checkout", "-q", "main")
+			at(2, "merge", "-q", "--no-ff", "--no-verify", "-m", prMergeSubject(1), prTopic(1))
+			at(2, "tag", "v0.1.0")
+			at(3, "checkout", "-q", "-b", prTopic(2))
+			at(3, "commit", "-q", "--allow-empty", "--no-verify", "-m", ":bug:(ui)~ fix the menu")
+			y := at(3, "rev-parse", "HEAD")
+			at(4, "checkout", "-q", "main")
+			at(4, "merge", "-q", "--no-ff", "--no-verify", "-m", prMergeSubject(2), prTopic(2))
+			m2 := at(4, "rev-parse", "HEAD")
+			pr2 := `[` + apiPullRef(2, "2026-10-02T00:00:00Z", m2) + `]`
+			usePR(t, walkServer(t, map[string]string{
+				commitPullsPath(y):  pr2,
+				commitPullsPath(m2): pr2,
+				pullCommitsPath(2): `[` +
+					apiCommit(x, "akira-toriyama", ":sparkles:(ui)^ add a menu") + `,` +
+					apiCommit(y, "akira-toriyama", ":bug:(ui)~ fix the menu") + `]`,
+			}))
+			t.Chdir(dir)
+
+			code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+			if code != 0 || strings.TrimSpace(stdout) != "v0.1.1" || !strings.Contains(stderr, "shipped under an earlier tag") {
+				t.Fatalf("control: bump --since-tag = exit %d, %q; want 0, v0.1.1 with X noticed as shipped under v0.1.0\nstderr: %s", code, stdout, stderr)
+			}
+
+			tc.corrupt(t, filepath.Join(dir, ".git", "objects", x[:2], x[2:]))
+			code, stdout, stderr = runGlyph(t, "bump", "--since-tag")
+			if code != 4 {
+				t.Fatalf("bump --since-tag over %s = exit %d, %q; want 4 — X is a held object git cannot read, and read as absent the released ^ is counted again\nstderr: %s", name, code, stdout, stderr)
+			}
+			if !strings.Contains(stderr, tc.wantMsg) {
+				t.Errorf("the refusal must carry git's own line (%q):\n%s", tc.wantMsg, stderr)
+			}
+		})
 	}
 }
 

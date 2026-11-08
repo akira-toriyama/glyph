@@ -466,14 +466,24 @@ func TestMergedTagsOnAnUnbornHEADIsEmpty(t *testing.T) {
 // names one. Read as empty, a corrupt HEAD said the history holds no release
 // and the walk stepped from v0.0.0 with a nil error.
 func TestMergedTagsFailsOnARevGitCannotRead(t *testing.T) {
-	dir := testutil.NewRepo(t)
-	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.0")
-	emptyObject(t, dir, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
+	for name, tc := range map[string]struct {
+		corrupt func(t *testing.T, dir, sha string)
+		wantMsg string
+	}{
+		"an empty object file":                                {emptyObject, "is empty"},
+		"an object under a fan-out directory git cannot open": {unreadableFanout, "Permission denied"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := testutil.NewRepo(t)
+			testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.0")
+			tc.corrupt(t, dir, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
 
-	got, err := mergedTags(context.Background(), dir, "HEAD")
-	ce := core.AsError(err)
-	if ce == nil || ce.Code != core.CodeAPI || !strings.Contains(err.Error(), "is empty") {
-		t.Fatalf("mergedTags over an empty HEAD object = %v, %v; want CodeAPI carrying git's \"is empty\"", got, err)
+			got, err := mergedTags(context.Background(), dir, "HEAD")
+			ce := core.AsError(err)
+			if ce == nil || ce.Code != core.CodeAPI || !strings.Contains(err.Error(), tc.wantMsg) {
+				t.Fatalf("mergedTags over %s at HEAD = %v, %v; want CodeAPI carrying git's %q", name, got, err, tc.wantMsg)
+			}
+		})
 	}
 }
 
@@ -610,6 +620,10 @@ func TestDefaultBranchFailsOnATargetGitCannotRead(t *testing.T) {
 			unreadableObject(t, dir, sha)
 			return sha
 		}, "Permission denied"},
+		"an object under a fan-out directory git cannot open": {func(t *testing.T, dir, sha string) string {
+			unreadableFanout(t, dir, sha)
+			return sha
+		}, "Permission denied"},
 		"a commit git cannot parse": {func(t *testing.T, dir, _ string) string {
 			return unparseableCommit(t, dir)
 		}, "bogus commit object"},
@@ -679,6 +693,55 @@ func unreadableObject(t *testing.T, dir, sha string) {
 	}
 	if err := os.Chmod(filepath.Join(dir, ".git", "objects", sha[:2], sha[2:]), 0); err != nil {
 		t.Fatalf("chmod the loose object: %v", err)
+	}
+}
+
+// unreadableFanout takes every permission off the fan-out directory holding
+// one loose object — the shape git running as another user under umask 077
+// leaves (a sudo fetch, a root container writing into a bind-mounted
+// checkout). git cannot stat the object, so `cat-file -e` reads it as absent,
+// and cannot open it, so every read says "Permission denied". Restored on
+// cleanup: a mode 000 directory cannot be removed with the TempDir.
+func unreadableFanout(t *testing.T, dir, sha string) {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("root opens a mode 000 directory")
+	}
+	fanout := filepath.Join(dir, ".git", "objects", sha[:2])
+	if err := os.Chmod(fanout, 0); err != nil {
+		t.Fatalf("chmod the fan-out directory: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(fanout, 0o755) })
+}
+
+// truncatedObject cuts one loose object to its first twelve bytes — a write
+// that stopped partway, leaving a zlib stream whose header never completes.
+func truncatedObject(t *testing.T, dir, sha string) {
+	t.Helper()
+	path := filepath.Join(dir, ".git", "objects", sha[:2], sha[2:])
+	whole, err := os.ReadFile(path) //nolint:gosec // a fixture path the test built
+	if err != nil {
+		t.Fatalf("read the loose object: %v", err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatalf("chmod the loose object: %v", err)
+	}
+	if err := os.WriteFile(path, whole[:12], 0o600); err != nil {
+		t.Fatalf("truncate the loose object: %v", err)
+	}
+}
+
+// goneAlternates points the store at an object directory that does not exist
+// — a clone made with --reference to a mirror since deleted. git writes an
+// error: line on every object read and still answers.
+func goneAlternates(t *testing.T, dir string) {
+	t.Helper()
+	info := filepath.Join(dir, ".git", "objects", "info")
+	if err := os.MkdirAll(info, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(info, "alternates"), []byte(filepath.Join(t.TempDir(), "gone")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -932,6 +995,77 @@ func TestHaveEmpty(t *testing.T) {
 	}
 }
 
+// TestHaveFailsOnAHeldObjectGitCannotRead: `cat-file --batch-check` answers
+// `missing` at exit 0 for a held object it cannot read exactly as for a sha the
+// store does not hold, and writes an error: line only for the first. Read as
+// absent, a released commit the clone holds broken has no landing site and the
+// walk counts it again (TestSinceTagFailsOnAReleasedCommitGitCannotRead, the
+// shape end to end). Every shape here is a loose object the store holds, plus
+// a store whose alternates directory is gone — git can vouch for nothing it
+// does not find there. Each row starts from a store that reads (the control).
+func TestHaveFailsOnAHeldObjectGitCannotRead(t *testing.T) {
+	absent := "0123456789abcdef0123456789abcdef01234567"
+	for name, tc := range map[string]struct {
+		corrupt func(t *testing.T, dir, sha string)
+		wantMsg string
+	}{
+		"an empty object file":                                {emptyObject, "is empty"},
+		"an object file that is no zlib stream":               {breakObject, "git cat-file"},
+		"a truncated object file":                             {truncatedObject, "git cat-file"},
+		"an object file git cannot open":                      {unreadableObject, "Permission denied"},
+		"an object under a fan-out directory git cannot open": {unreadableFanout, "Permission denied"},
+		"an alternates directory that is gone": {func(t *testing.T, dir, _ string) {
+			goneAlternates(t, dir)
+		}, "alternates"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := testutil.NewRepo(t)
+			root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			testutil.Commit(t, dir, "akira-toriyama", ":bug: second")
+			head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			if got, err := have(context.Background(), dir, []string{root, head, absent}); err != nil || !got[root] || !got[head] || got[absent] {
+				t.Fatalf("have over a readable store = %v, %v; want both commits and not the absent sha (the control)", got, err)
+			}
+
+			tc.corrupt(t, dir, root)
+			got, err := have(context.Background(), dir, []string{root, head, absent})
+			ce := core.AsError(err)
+			if ce == nil || ce.Code != core.CodeAPI {
+				t.Fatalf("have over %s = %v, %v; want CodeAPI — read as absent, the walk counts a released commit again", name, got, err)
+			}
+			if !strings.Contains(err.Error(), tc.wantMsg) {
+				t.Errorf("the error must carry git's own diagnosis: got %q, want it to mention %q", err, tc.wantMsg)
+			}
+		})
+	}
+}
+
+// TestHeldObjectSignalIgnoresStderrNoise: the signal for a held object git
+// cannot read is the error: severity, not stderr being non-empty. Trace output
+// and git's warning: about a ref named as a full sha (with its advice
+// paragraph) are stderr on a store that reads every object, and an absent sha
+// stays absent under both — for have, which reads the batch's stderr, and for
+// isAncestor through namesCommit, which reads the probe's.
+func TestHeldObjectSignalIgnoresStderrNoise(t *testing.T) {
+	absent := "0123456789abcdef0123456789abcdef01234567"
+	dir := testutil.NewRepo(t)
+	root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "branch", absent)
+	testutil.Git(t, dir, "akira-toriyama", "branch", root)
+	t.Setenv("GIT_TRACE", "1")
+
+	got, err := have(context.Background(), dir, []string{root, absent})
+	if err != nil || !got[root] || got[absent] {
+		t.Fatalf("have under trace output and an ambiguous refname = %v, %v; want the held commit alone, nil", got, err)
+	}
+	for name, sha := range map[string]string{"an absent sha": absent, "an ancestor": root} {
+		on, err := isAncestor(context.Background(), dir, sha, "HEAD")
+		if err != nil || on != (sha == root) {
+			t.Errorf("isAncestor(%s) under trace output and an ambiguous refname = %v, %v; want %v, nil", name, on, err, sha == root)
+		}
+	}
+}
+
 // TestIsAncestor: a YES is a real ancestor or the rev itself; a NO covers both
 // spellings git gives it — an honest exit 1 for a commit on another line of
 // history, and exit 128 for an object this repository does not hold. The walk
@@ -1021,6 +1155,16 @@ func TestIsAncestorFailsWhereGitCouldNotAnswer(t *testing.T) {
 			dir, root, _, _ := history(t)
 			unreadableObject(t, dir, root)
 			return dir, root, "HEAD", "Permission denied"
+		},
+		"the commit asked about is under a fan-out directory git cannot open": func(t *testing.T) (string, string, string, string) {
+			dir, root, _, _ := history(t)
+			unreadableFanout(t, dir, root)
+			return dir, root, "HEAD", "Permission denied"
+		},
+		"the commit asked about is a truncated object file": func(t *testing.T) (string, string, string, string) {
+			dir, root, _, _ := history(t)
+			truncatedObject(t, dir, root)
+			return dir, root, "HEAD", "git merge-base"
 		},
 		"the commit asked about is a commit git cannot parse": func(t *testing.T) (string, string, string, string) {
 			dir, _, _, _ := history(t)

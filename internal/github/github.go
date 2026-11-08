@@ -541,6 +541,10 @@ func IsRepoRefused(err error) bool {
 // api.github.com, 2026-11-04); a secondary limit carries Retry-After, or the
 // count at 0, or neither header and only its message
 // (docs.github.com/rest/using-the-rest-api/rate-limits-for-the-rest-api).
+// The count alone cannot tell a permission 403 that spent the window's last
+// request from a primary limit, so that 403 reads as a rate limit and
+// token-repo-read is could-not-run (4, re-run) rather than failed (3): the
+// lesser wrong, since the window refills and the next run answers.
 func rateLimited(h http.Header, message string) bool {
 	return h.Get("Retry-After") != "" || h.Get("X-RateLimit-Remaining") == "0" ||
 		strings.Contains(strings.ToLower(message), "rate limit")

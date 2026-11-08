@@ -371,8 +371,16 @@ func TestPrePushHookSaysWhenNoRemoteHeadIsRecorded(t *testing.T) {
 
 	// The heads are an input like any other: unread is unknown, never the
 	// pass that would say the hook can block.
-	if c := checkPrePushHook(current, nil, nil, fired, nil, nil, errors.New("git config --get-regexp: fatal: bad config")); c.Status != StatusUnknown {
-		t.Errorf("remote heads unreadable: status = %s (%s), want %s", c.Status, c.Observed, StatusUnknown)
+	// The fix names the condition that must change first (glossary §5):
+	// doctor read a hook, so it is inside the checkout already, and a
+	// re-run from there changes nothing. What git could not read is the
+	// recorded head or the commit it names, and `git fsck` names the object.
+	unread := checkPrePushHook(current, nil, nil, fired, nil, nil, errors.New("git cat-file: error: object file .git/objects/ab/cdef is empty"))
+	if unread.Status != StatusUnknown {
+		t.Errorf("remote heads unreadable: status = %s (%s), want %s", unread.Status, unread.Observed, StatusUnknown)
+	}
+	if !strings.Contains(unread.Fix, "git fsck") || !strings.Contains(unread.Fix, "re-run") || strings.Contains(unread.Fix, "from inside the git checkout") {
+		t.Errorf("the fix must name the object store as the condition, then the re-run: %q", unread.Fix)
 	}
 }
 

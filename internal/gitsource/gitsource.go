@@ -281,7 +281,7 @@ func tagListCmd(args ...string) []string {
 
 // tagLines splits git's one-name-per-line tag listing. Shared by tags and
 // mergedTags so the two readers cannot come to disagree about what a listing
-// holds, as runIn is the single exec site behind run and runStdin.
+// holds, as runIn is the one exec site behind run.
 func tagLines(out []byte) []string {
 	var tags []string
 	for l := range strings.SplitSeq(string(out), "\n") {
@@ -304,36 +304,39 @@ func tagLines(out []byte) []string {
 //
 // Asked of `cat-file -t rev^{}`: the peel parses the object, so exit 0 names a
 // readable object of the printed type — a tag peeled to its target — and one
-// call answers the ordinary path. Its failure is deferred, not read: git exits
-// 128 alike for a name it does not know, an object it does not hold and a held
-// object it cannot read. Not `rev-parse --verify --quiet rev^{commit}`, whose
-// exit 1 is the same conflation — measured on git 2.54, a dangling ref, a sha
-// not in the store, a blob, an empty object file, one chmod 000 and a
-// `hash-object --literally` commit all answer 1, only non-zlib bytes 128 — so
-// a corrupt store read as "holds no commit" with a nil error: "this commit
-// never landed" to the release walk, "unrecorded" to DefaultBranch. The 128 is
-// taken apart by two questions whose exit 1 each means one thing: `rev-parse
-// --verify --quiet rev` (1: git knows no such name) and `cat-file -e rev` (1:
-// nothing in the store under it). Past both, the object is held and git could
-// not read it, and the cat-file failure carries git's own diagnosis
-// (TestIsAncestorFailsWhereGitCouldNotAnswer, TestDefaultBranchFailsOnATargetGitCannotRead).
+// call answers the ordinary path. Its 128 is the same for a name git does not
+// know, an object it does not hold, a held object it cannot read and a git that
+// cannot run here at all, and is taken apart in two steps. `rev-parse --verify
+// --quiet rev` answers 0 or 1 wherever git can resolve names, so its failure is
+// git unable to run here (not a repository, a config it cannot parse), returned
+// as such: a fatal with no error: line is then not about the name. Past that,
+// errorLine reads the first call's stderr: git dies silently for a name it does
+// not know and for a sha it does not hold — neither consults the store, so not
+// even a gone alternates directory adds a line (measured) — and writes an
+// error: line for every object it holds and cannot read. Not `rev-parse --verify --quiet rev^{commit}`,
+// whose exit 1 conflates all three — measured on git 2.54, a dangling ref, a
+// sha not in the store, a blob, an empty object file, one chmod 000 and a
+// `hash-object --literally` commit all answer 1, only non-zlib bytes 128 — and
+// not `cat-file -e rev`, whose existence check is a stat: it answers 1 for an
+// object under a fan-out directory git cannot open, the shape git running as
+// another user under umask 077 leaves, so that object read as "nothing in the
+// store" (TestIsAncestorFailsWhereGitCouldNotAnswer,
+// TestDefaultBranchFailsOnATargetGitCannotRead, TestMergedTagsFailsOnARevGitCannotRead).
 func namesCommit(ctx context.Context, dir, rev string) (bool, error) {
-	typ, terr := run(ctx, dir, "cat-file", "-t", "--end-of-options", rev+"^{}")
+	typ, stderr, terr := runRead(ctx, dir, nil, "cat-file", "-t", "--end-of-options", rev+"^{}")
 	if terr == nil {
 		return strings.TrimSpace(string(typ)) == "commit", nil
 	}
 	if core.IsInterrupted(terr) {
 		return false, terr
 	}
-	_, known, err := runAnswer(ctx, dir, "rev-parse", "rev-parse", "--verify", "--quiet", "--end-of-options", rev)
-	if err != nil || !known {
+	if _, _, err := runAnswer(ctx, dir, "rev-parse", "rev-parse", "--verify", "--quiet", "--end-of-options", rev); err != nil {
 		return false, err
 	}
-	_, held, err := runAnswer(ctx, dir, "cat-file -e", "cat-file", "-e", "--end-of-options", rev)
-	if err != nil || !held {
-		return false, err
+	if _, unreadable := errorLine(stderr); unreadable {
+		return false, terr
 	}
-	return false, terr
+	return false, nil
 }
 
 // isTag reports whether refs/tags/<name> exists — an exact ref, never a
@@ -628,6 +631,18 @@ func configGet(ctx context.Context, dir, key string, typ ...string) (string, boo
 //
 // A malformed or unknown sha is simply absent from the result, never an error:
 // the listing is GitHub's, and this asks a question about the local repository.
+//
+// A held object git cannot read is not absent. --batch-check answers `missing`
+// at exit 0 for a loose object that is empty, not zlib, truncated, or under a
+// file or fan-out directory it cannot open, exactly as for a sha the store does
+// not hold, and tells the two apart only by the error: line it writes for the
+// first (measured on git 2.54). Read as absent, a released commit the clone
+// holds broken has no landing site, the in-range pull's merge point governs
+// it, and it is counted again under a later tag at exit 0 — the shape
+// isAncestor refuses, reached one step earlier. So where any sha came back
+// `missing` and git wrote an error: line, the read fails with that line, and
+// the healthy path stays one call with nothing more read than before
+// (TestHaveFailsOnAHeldObjectGitCannotRead, TestSinceTagFailsOnAReleasedCommitGitCannotRead).
 func have(ctx context.Context, dir string, shas []string) (map[string]bool, error) {
 	have := map[string]bool{}
 	if len(shas) == 0 {
@@ -635,15 +650,22 @@ func have(ctx context.Context, dir string, shas []string) (map[string]bool, erro
 	}
 	// --batch-check reads the shas on stdin and answers one line each; a missing
 	// object answers "<sha> missing" rather than failing the command.
-	out, err := runStdin(ctx, dir, strings.Join(shas, "\n")+"\n", "cat-file", "--batch-check=%(objectname) %(objecttype)")
+	out, stderr, err := runRead(ctx, dir, strings.NewReader(strings.Join(shas, "\n")+"\n"), "cat-file", "--batch-check=%(objectname) %(objecttype)")
 	if err != nil {
 		return nil, err
 	}
+	missing := false
 	for line := range strings.SplitSeq(string(out), "\n") {
 		name, typ, ok := strings.Cut(strings.TrimSpace(line), " ")
-		if ok && typ == "commit" {
+		switch {
+		case ok && typ == "commit":
 			have[name] = true
+		case ok && typ == "missing":
+			missing = true
 		}
+	}
+	if line, unreadable := errorLine(stderr); missing && unreadable {
+		return nil, core.APIf("git cat-file: %s", line)
 	}
 	return have, nil
 }
@@ -946,19 +968,13 @@ func run(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	return runIn(ctx, dir, nil, args...)
 }
 
-// runStdin is run with bytes fed to the child's stdin — what --batch-check needs.
-func runStdin(ctx context.Context, dir, stdin string, args ...string) ([]byte, error) {
-	return runIn(ctx, dir, strings.NewReader(stdin), args...)
-}
-
-// runIn is the single exec site behind run and runStdin, so a fix to either
-// lands once.
+// runIn is the exec site behind run, so a fix to it lands once for every
+// reader that carries stderr only as the envelope's one distilled line.
 //
 // stdin is an io.Reader rather than a string precisely so run can pass NIL and
-// keep os/exec's own behaviour (the child gets /dev/null). Collapsing run into
-// runStdin("") instead would have swapped that for a pipe this package then has
-// to write to and close, which is a behaviour change smuggled inside a
-// deduplication.
+// keep os/exec's own behaviour (the child gets /dev/null); a string parameter
+// would swap that for a pipe this package then has to write to and close,
+// which is a behaviour change smuggled inside a deduplication.
 //
 // #nosec G204 -- the binary is the fixed literal "git". Every argument is
 // structured by this package's own funcs; the caller-supplied values
@@ -976,6 +992,59 @@ func runIn(ctx context.Context, dir string, stdin io.Reader, args ...string) ([]
 		return nil, core.APIf("git %s: %s", args[0], distill(stderr.Bytes(), err))
 	}
 	return stdout.Bytes(), nil
+}
+
+// runRead is runIn for the two readers that READ the child's stderr (namesCommit,
+// have) rather than carry its one distilled line: stderr comes back whatever the
+// exit, for errorLine. The child runs under LC_ALL=C because what errorLine
+// reads is the severity prefix, and git translates the prefix with the message
+// — `Fehler:` under de_DE, `erreur :` under fr_FR, measured on git 2.54 — as
+// InsideGitDir pins the locale for the one line it reads. Not a property of
+// runIn: no other reader looks at stderr, and the envelope's line keeps the
+// user's language there.
+//
+// #nosec G204 -- as runIn: the fixed literal "git", and every caller-supplied
+// value pinned by --end-of-options at its call site.
+func runRead(ctx context.Context, dir string, stdin io.Reader, args ...string) (stdout, stderr []byte, err error) {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	cmd.Stdin = stdin
+	var out, serr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &serr
+	if rerr := cmd.Run(); rerr != nil {
+		if ierr := interrupted(ctx); ierr != nil {
+			return nil, nil, ierr
+		}
+		return nil, serr.Bytes(), core.APIf("git %s: %s", args[0], distill(serr.Bytes(), rerr))
+	}
+	return out.Bytes(), serr.Bytes(), nil
+}
+
+// errorLine returns git's first error:-severity line, and whether stderr
+// carries one. It is the one signal git gives that it hit an object it holds
+// and could not read, whether it then answered (--batch-check: `missing` at
+// exit 0) or died for the generic reason (`cat-file -t`, `merge-base`: 128,
+// "Not a valid object name"): for a loose object that is empty, not zlib,
+// truncated, under a file or a fan-out directory it cannot open, and for a
+// commit whose body does not parse, exit and stdout are those of a sha the
+// store does not hold, and this line is the whole difference (measured on git
+// 2.54; TestHaveFailsOnAHeldObjectGitCannotRead). It is read as severity, not
+// as message: the text after the prefix is not an interface and is never
+// matched. Not warning: (an ambiguous refname, a broken loose ref), not hint:,
+// not trace output, not the fatal: line every 128 carries
+// (TestHaveStaysAnAnswerUnderStderrNoise). An unreadable global config,
+// attributes or excludes file and a relative safe.directory write nothing to
+// stderr on these commands (measured). The one error: a store with every
+// object readable writes is an alternates entry naming a directory that does
+// not exist, and a store that has lost an object directory cannot vouch for
+// what it does not hold either.
+func errorLine(stderr []byte) (string, bool) {
+	for line := range strings.SplitSeq(string(stderr), "\n") {
+		if line = strings.TrimSpace(line); strings.HasPrefix(line, "error:") {
+			return line, true
+		}
+	}
+	return "", false
 }
 
 // runAnswer is runIn for a command whose exit 1 is an answer, not a failure: a

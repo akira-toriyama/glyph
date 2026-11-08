@@ -227,7 +227,13 @@ func checkPrePushHook(installed hook.Installed, readErr, dirErr error, probe *Ho
 		c.Observed += fmt.Sprintf(", but whether git records each remote's default branch could not be read: %v", headsErr)
 		c.Message = "the hook blocks a violation only on the default branch it reads from refs/remotes/<remote>/HEAD, so " +
 			"with that unread, whether this hook can block a push at all is unverified, not verified"
-		c.Fix = "re-run from inside the git checkout"
+		// Doctor is inside the checkout already (a hook was read), so the
+		// condition that must change is what git could not read: the ref or
+		// the commit it names. A re-fetch does not replace a held object git
+		// cannot read (the ref is up to date, so nothing is sent; measured on
+		// git 2.54), a copy from another clone does.
+		c.Fix = "re-run once git can read refs/remotes/<remote>/HEAD and the commit it names: `git fsck` names a held " +
+			"object git cannot read, and a copy of it from another clone (or a fresh clone) restores it"
 		return c
 	}
 	var unrecorded []string

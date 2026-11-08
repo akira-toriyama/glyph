@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index e4e2c38..d67ab6e 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -336,7 +336,7 @@ func namesCommit(ctx context.Context, dir, rev string) (bool, error) {
+ 	if _, unreadable := errorLine(stderr); unreadable {
+ 		return false, terr
+ 	}
+-	return false, nil
++	return false, terr
+ }
+ 
+ // isTag reports whether refs/tags/<name> exists — an exact ref, never a

@@ -1298,7 +1298,23 @@ by shas no branch holds. What actually reaches a body is `note.line`'s decision,
 not glyph's — the fold binds `$pr` and `$hash`, and both shipped presets place
 `$pr` alone inside an optional span, so a line reads `- subject (#123)` and
 drops the parens with the pull (§3). v1's hardcoded `(#123, abc1234)` is
-`$[ ($pr, $hash)]` today. A **shallow** checkout cannot answer the question at all
+`$[ ($pr, $hash)]` today. Both git questions can also fail to answer, and a
+failure never reads as "never landed": a listed sha whose object this clone
+holds and **cannot read** — empty, truncated, not zlib, under a file or fan-out
+directory git cannot open, a body that does not parse — answers `missing` to
+`cat-file --batch-check` and `128` to `merge-base` exactly as a sha the store
+does not hold, and read as absent it had no landing site, the in-range merge
+point governed it, and a released commit was counted again at exit `0`
+(measured at bc11b2b, t-9bqf). The one thing git gives that tells the two apart
+is the `error:` severity it writes for the first and not the second, so that
+line is the signal — read as severity under `LC_ALL=C`, never as text, since
+`warning:` and trace output are stderr too — and the walk fails at `4` carrying
+it, with nothing extra asked of a store that reads
+(`TestHaveFailsOnAHeldObjectGitCannotRead`,
+`TestSinceTagFailsOnAReleasedCommitGitCannotRead`, mutation rows
+`gitsource-have-reads-a-held-object-it-cannot-read-as-absent`,
+`gitsource-held-object-signal-is-any-stderr`; the mechanism and what it was
+measured against are at `gitsource.errorLine`). A **shallow** checkout cannot answer the question at all
 (a commit git does not have is indistinguishable from one that never landed), so
 the walk says so once and falls back to expanding whole listings — and, since it
 knows the answer it gave was a guess, records the checkout as one it could not
@@ -4051,7 +4067,15 @@ The severities are the argued part:
   2.54). So `gitsource.DefaultBranch` verifies the name first, and the hook and
   this check give what they give an unrecorded remote
   (`TestPrePushReadsADanglingDefaultBranchAsUnrecorded`, mutation row
-  `default-branch-believes-a-dangling-ref`). The remedy is
+  `default-branch-believes-a-dangling-ref`). A recorded name whose commit this
+  clone holds and cannot read — an empty object file, one git cannot open, a
+  body that does not parse — is the read failing, not a name that records
+  nothing: set-head repairs no object store, so it is `unknown` at `4` and the
+  fix names what must change first, the object `git fsck` names (a re-fetch
+  does not replace it: the ref is up to date, so nothing is sent; measured on
+  git 2.54), then the re-run (`TestDefaultBranchFailsOnATargetGitCannotRead`,
+  mutation rows `gitsource-names-commit-reads-a-held-object-it-cannot-read-as-no-commit`,
+  `doctor-pre-push-unread-head-fix-names-no-condition`). The remedy is
   `git remote set-head <remote> -a` only where git can record a head at all:
   a name config accepts and refs refuse (`my fork`, `mirror..x`) makes
   set-head exit 129 unquoted and 1 quoted (review u6-2, git 2.54). `git remote

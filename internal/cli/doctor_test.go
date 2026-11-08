@@ -502,6 +502,41 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 		}
 	})
 
+	// A recorded default branch whose commit this clone holds and cannot
+	// read is git failing, not a name that holds nothing: set-head repairs no
+	// object store. The heads are an input like any other, so the check is
+	// could-not-run at 4, and its fix names what must change first — the
+	// object git could not read, which `git fsck` names — not a re-run from a
+	// checkout doctor is already inside.
+	t.Run("a recorded default branch whose commit git cannot read is could-not-run naming the object store", func(t *testing.T) {
+		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
+		useDoctorCheckout(t, pinnedCaller)
+		installCurrentHook(t, hook.Kinds()[0], hook.Kinds()[1])
+		stubGlyphOnPATH(t, 3)
+		testutil.Git(t, ".", "akira-toriyama", "remote", "add", "origin", "https://example.invalid/o/r.git")
+		recordOriginHead(t)
+		target := testutil.Git(t, ".", "akira-toriyama", "rev-parse", "refs/remotes/origin/main")
+		object := filepath.Join(".git", "objects", target[:2], target[2:])
+		if err := os.Chmod(object, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(object, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		code, stdout, stderr := runGlyph(t, "doctor", "--json")
+		if code != 4 {
+			t.Fatalf("doctor exited %d, want 4 — the recorded head's commit could not be read\nstderr: %s", code, stderr)
+		}
+		c := checkByID(t, decodeJSON[doctorReport](t, stdout), "pre-push-hook")
+		if c.Status != "unknown" || !strings.Contains(c.Observed, "is empty") {
+			t.Errorf("a target git cannot read must be unknown carrying git's line, got %s: %s", c.Status, c.Observed)
+		}
+		if !strings.Contains(c.Fix, "git fsck") || !strings.Contains(c.Fix, "re-run") || strings.Contains(c.Fix, "set-head") {
+			t.Errorf("the fix must name the object store as the condition, then the re-run, never set-head: %q", c.Fix)
+		}
+	})
+
 	// A remote name git's config accepts and its refs refuse can record no
 	// default branch at all. `git symbolic-ref` answers that 128, not the 1 of
 	// an absent ref, and read as a failure it made pre-push-hook could-not-run
