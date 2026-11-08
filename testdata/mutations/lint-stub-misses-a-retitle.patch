@@ -1,5 +1,5 @@
 diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
-index b02b4c3..23637aa 100644
+index 1975baa..99866e5 100644
 --- a/.github/workflows/lint.yml
 +++ b/.github/workflows/lint.yml
 @@ -14,7 +14,7 @@ name: glyph-lint
@@ -9,5 +9,5 @@ index b02b4c3..23637aa 100644
 -#       types: [opened, synchronize, reopened, edited]
 +#       types: [opened, synchronize, reopened]
  #     push:
- #       branches: [main]  # optional — annotates direct pushes, never fails them
+ #       branches: [main]  # optional — annotates a direct push (exit 3 swallowed there alone; a push it cannot judge still fails)
  #   permissions:

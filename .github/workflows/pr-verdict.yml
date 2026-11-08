@@ -46,23 +46,15 @@ name: glyph-pr-verdict
 # caller). Same rule for any future reusable: the DEFINITION and the CALLER
 # never share a filename.
 #
-# Caller skeleton (.github/workflows/version-preview.yml in a code repo):
-#   name: version-preview
-#   on:
-#     pull_request:
-#       # synchronize is the point — the commits ARE the input, so every push
-#       # recomputes the verdict (title edits are irrelevant, unlike a
-#       # title-driven preview).
-#       types: [opened, synchronize, reopened]
-#   concurrency:
-#     group: version-preview-${{ github.event.pull_request.number }}
-#     cancel-in-progress: true
-#   permissions:
-#     contents: read
-#     pull-requests: write
-#   jobs:
-#     verdict:
-#       uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@vX.Y.Z  # pin a release tag
+# The caller is README's (Getting started, step 3), named
+# .github/workflows/version-preview.yml: a few lines around
+#
+#   uses: akira-toriyama/glyph/.github/workflows/pr-verdict.yml@vX.Y.Z  # pin a release tag
+#
+# granting `contents: read` and `pull-requests: write`, on pull_request
+# opened / synchronize / reopened — synchronize is the point, since the
+# commits ARE the input and every push recomputes the verdict (a title edit
+# changes nothing, unlike a title-driven preview).
 #
 # @vX.Y.Z is a PLACEHOLDER, not a ref — substitute a concrete tag from
 # https://github.com/akira-toriyama/glyph/releases. No live version is written
@@ -89,8 +81,8 @@ name: glyph-pr-verdict
 #   * the empty check — a skipped verdict yields "" for every output, which means
 #     NOT COMPUTED. Reading it as `none` is the same fail-open by another route.
 #
-# @vX.Y.Z below is the same PLACEHOLDER as in the skeleton above — pin the one
-# concrete tag both jobs share.
+# @vX.Y.Z below is the same PLACEHOLDER as above — pin the one concrete tag
+# both jobs share.
 #
 #   jobs:
 #     verdict:

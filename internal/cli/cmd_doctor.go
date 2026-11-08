@@ -86,9 +86,13 @@ func newDoctorCmd() *cobra.Command {
 			"    startup_failure before any job runs, which no runtime diagnosis — glyph's\n" +
 			"    included — can see (a pin this glyph cannot judge is could-not-run)\n" +
 			"  - every caller passes the inputs its reusable marks required at the\n" +
-			"    release the caller pins (release: install-notes): the same startup death,\n" +
-			"    and GitHub surfaces no error anywhere for this one (a pin this glyph\n" +
-			"    cannot judge is could-not-run)\n" +
+			"    release the caller pins: the same startup death, and GitHub surfaces no\n" +
+			"    error anywhere for this one (a pin this glyph cannot judge is\n" +
+			"    could-not-run)\n" +
+			"  - no caller of release.yml names `app` or `binary` while glyph.toml declares\n" +
+			"    [[packages]]: each line keeps its own rolling draft and one artifact has no\n" +
+			"    line to attach to, so the reusable refuses the run before its verdict — this\n" +
+			"    names the pair before the push (it answers once glyph.toml loads)\n" +
 			"  - no STALE glyph-written hook is installed (one check per kind: commit-msg,\n" +
 			"    pre-push). Hooks are untracked, so\n" +
 			"    nothing refreshes one: whatever glyph was on PATH the day it was installed\n" +

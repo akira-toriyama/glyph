@@ -426,9 +426,9 @@ func TestPresenceChecksCannotBeSatisfiedByAComment(t *testing.T) {
 
 // glyphRef matches ANY reference to one of glyph's own reusable workflows or to
 // its install action, capturing the ref it is pinned to. Anchored on the "@",
-// never on a trailing "# pin a release tag": of the four commented caller stubs
-// in the reusables, one (pr-verdict.yml's gating example) carries no trailing
-// comment at all, and a matcher that needed one would silently skip it.
+// never on a trailing "# pin a release tag": a commented reference may carry
+// no trailing comment at all (pr-verdict.yml's gating example), and a matcher
+// that needed one would silently skip it.
 var glyphRef = regexp.MustCompile(`akira-toriyama/glyph/\.github/[^@\s]+@(\S+)`)
 
 // versionPlaceholder is the literal the caller stubs must use instead of a
@@ -460,15 +460,18 @@ func workflowFiles(t *testing.T) []string {
 	return names
 }
 
-// TestCallerStubsCarryNoConcreteVersion pins the split that makes the stubs
-// maintainable: a COMMENTED caller stub shows @vX.Y.Z, an EXECUTABLE `uses:`
-// shows a real tag.
+// TestCallerStubsCarryNoConcreteVersion pins the split that makes the
+// reusables' headers maintainable: a COMMENTED reference to a glyph reusable
+// — lint.yml's caller stub, the one `uses:` line release.yml and pr-verdict.yml
+// name as the caller README holds — shows @vX.Y.Z, an EXECUTABLE `uses:` shows
+// a real tag.
 //
-// A concrete version in a stub cannot be kept current by any schedule of edits.
-// A release tag is cut on a tree that was frozen BEFORE it (35–62s earlier on
-// v0.10.0/v0.10.1/v0.10.2), so a version written into a reusable names the
-// PREVIOUS release the moment it ships — the stubs read @v0.10.0 while the tag
-// was v0.10.2. The placeholder is not laziness; it is the only honest value.
+// A concrete version in a comment cannot be kept current by any schedule of
+// edits. A release tag is cut on a tree that was frozen BEFORE it (35–62s
+// earlier on v0.10.0/v0.10.1/v0.10.2), so a version written into a reusable
+// names the PREVIOUS release the moment it ships — the stubs read @v0.10.0
+// while the tag was v0.10.2. The placeholder is not laziness; it is the only
+// honest value.
 func TestCallerStubsCarryNoConcreteVersion(t *testing.T) {
 	stubs := map[string]int{}
 
@@ -503,12 +506,14 @@ func TestCallerStubsCarryNoConcreteVersion(t *testing.T) {
 		}
 	}
 
-	// Non-vacuity: every reusable documents its caller, so a stub that quietly
-	// disappeared (taking the invariant with it) fails here rather than passing.
+	// Non-vacuity: every reusable names its caller in its header — the `uses:`
+	// line README's caller is written around, at the placeholder — so a header
+	// that quietly lost it (taking the invariant with it) fails here rather
+	// than passing.
 	for _, name := range reusables {
 		if stubs[name] == 0 {
-			t.Errorf("%s carries no commented caller stub any more; the stub is how a consuming "+
-				"repo learns the shape of the caller — this test has nothing left to guard", name)
+			t.Errorf("%s carries no commented reference to itself any more; its header names the caller "+
+				"README holds, at @%s — this test has nothing left to guard", name, versionPlaceholder)
 		}
 	}
 }

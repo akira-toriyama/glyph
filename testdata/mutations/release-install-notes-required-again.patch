@@ -1,0 +1,15 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index f7644f4..537976d 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -83,9 +83,8 @@ on:
+         default: ""
+       install-notes:
+         description: "Markdown appended verbatim after the generated notes, separated by one --- line (a per-repo `## Install` block). Empty, the default, appends nothing: the draft is the notes alone."
+-        required: false
++        required: true
+         type: string
+-        default: ""
+       smoke:
+         description: "Run the built artifact with `--validate` after the build (`./<App>.app/Contents/MacOS/<app-lowercased>` in app mode, `./bin/<binary>` in binary mode)."
+         required: false

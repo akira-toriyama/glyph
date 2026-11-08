@@ -20,9 +20,12 @@ import (
 // lockstep, so a reusable growing a required input without a row here fails a
 // test instead of shipping a check that blesses callers GitHub will kill, and
 // TestCallerDeclarationBoundsMatchReleasedTags holds After to glyph's tags.
+// No reusable requires an input today — release.yml required install-notes
+// through v6.1.0 — so the judging below is exercised by a fixture table in
+// its tests, never by a live row.
 var reusableRequiredInputs = map[string]inputRow{
 	"lint.yml":       {After: "v0.1.0"},
-	"release.yml":    {After: "v0.7.0", Required: []string{"install-notes"}},
+	"release.yml":    {After: "v6.1.0"},
 	"pr-verdict.yml": {After: "v0.3.0"},
 }
 
@@ -67,7 +70,7 @@ func checkCallerInputs(root string, rootVerified bool, workflows []workflowFile,
 		failMessage: "GitHub kills a reusable call that omits a required input as startup_failure before any job — and " +
 			"it surfaces no error anywhere: not in the run, not in the check suite, not in the API (measured, " +
 			"glyph-test3 2026-08-26). This static read is the only check that can see it coming",
-		failFix:      "add the missing input to the caller's with: block — the commented stub in each reusable's header is the known-good copy",
+		failFix:      "add the missing input to the caller's with: block — the callers in glyph's README (Getting started, step 3) are the known-good copies",
 		death:        "whether every caller gets past GitHub's silent startup input gate",
 		noCaller:     "no workflow in this checkout calls a glyph reusable (binary-only consumers have no caller to starve)",
 		passObserved: "%d workflow file(s) call glyph reusables; every judged caller passes what its pinned release requires",

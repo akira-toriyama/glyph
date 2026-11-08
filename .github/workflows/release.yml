@@ -1,29 +1,28 @@
 name: glyph-release
 
-# Reusable rolling-DRAFT release for the Swift family — glyph's OFFICIAL
-# release integration and the successor of akira-toriyama/.github's
-# release.yml@v1 (git-cliff). It ships either artifact shape the family
-# builds: an `<App>.app` bundle (`app:` — package.sh → <App>.zip) or a bare
-# binary (`binary:` — build.sh → bin/<binary> + a sha256). The workflow and
-# the binary it runs ship from the same repo and the same release, so a
-# caller pins ONE concrete tag (@vX.Y.Z, never a moving ref) and can never
-# mix workflow and binary revisions. GoReleaser owns glyph's OWN tag-driven
-# releases (goreleaser.yml) — this file is the reusable the family consumes.
+# Reusable rolling-DRAFT release — glyph's OFFICIAL release integration. The
+# workflow and the binary it runs ship from the same repo and the same
+# release, so a caller pins ONE concrete tag (@vX.Y.Z, never a moving ref)
+# and can never mix workflow and binary revisions. GoReleaser owns glyph's
+# OWN tag-driven releases (goreleaser.yml) — this file is the reusable.
 #
-# Passing NEITHER is the third shape: a repo whose release IS the notes gets
-# the verdict and the draft upsert and nothing else — ubuntu runner, no Xcode,
-# no build, no assets. It exists so the live-fire range (glyph-test) can call
-# THIS file instead of a hand copy of it. A range that fires a different gun
-# proves nothing about this one.
+# Three shapes, decided by the artifact inputs. NEITHER `app` nor `binary`:
+# a repo whose release IS the notes gets the verdict and the draft upsert and
+# nothing else — ubuntu runner, no Xcode, no build, no assets; the live-fire
+# range (glyph-test-2) fires this shape at THIS file rather than at a hand
+# copy, since a range that fires a different gun proves nothing about this
+# one. `app:` builds an `<App>.app` bundle through the repo's package.sh and
+# attaches <App>.zip; `binary:` builds a bare binary through build.sh and
+# attaches bin/<binary> + its sha256 — each on a macOS runner, each one
+# artifact for one draft.
 #
-# A repository that declares [[packages]] (glyph docs/DESIGN.md §4.1) is the
-# fourth shape: glyph keeps one rolling draft PER LINE, the four scalar
-# outputs are "" (there is no one line for them to describe — a single-line
-# caller fails safe on that, as its contract already says) and `packages`
-# hands every line's verdict through as one JSON array. Such a repository is
-# verdict-only by construction: `app` / `binary` name one artifact for one
-# draft and are refused once the verdict says packages; a monorepo attaches
-# per line in a follow-up job over `packages` (README says how).
+# A repository that declares [[packages]] (glyph docs/DESIGN.md §4.1) keeps
+# one rolling draft PER LINE: the four scalar outputs are "" (there is no one
+# line for them to describe — a single-line caller fails safe on that, as its
+# contract already says) and `packages` hands every line's verdict through as
+# one JSON array. `app` / `binary` are refused there, right after glyph is
+# installed and before any draft is touched; a monorepo attaches per line in
+# a follow-up job over `packages` (README says how).
 #
 # A push to the caller's main makes `glyph release` walk main's squash
 # commits since the last v* tag, resolve each to its merged pull request over
@@ -44,37 +43,22 @@ name: glyph-release
 # error names what the walk could not read. No new branch here — every
 # non-0/1 status already falls through as a failure, deliberately.
 #
-# The build stays the repo's uniform script — package.sh for an app bundle,
-# build.sh for a bare binary (each runs `swift build -c release` itself) —
-# with an optional post-build smoke. The upsert runs BEFORE the build: the
+# The build stays the repo's own script — package.sh for an app bundle,
+# build.sh for a bare binary, each run on a macOS runner with Xcode and the
+# SwiftPM cache set up for it — with an optional post-build smoke. The upsert
+# runs BEFORE the build: the
 # verdict comes from one walk (tag and body can never split), and a build
 # failure at worst leaves the draft's asset one merge stale — the next green
 # run re-uploads with --clobber, and nothing is published without a human
 # anyway.
 #
-# Caller skeleton (.github/workflows/release.yml in each consuming repo):
-#   on:
-#     push: { branches: [main] }
-#     workflow_dispatch:
-#       inputs:
-#         dry_run: { description: "Preview only", type: boolean, default: false }
-#   concurrency: { group: release, cancel-in-progress: false }
-#   permissions: { contents: write }
-#   jobs:
-#     release:
-#       uses: akira-toriyama/glyph/.github/workflows/release.yml@vX.Y.Z  # pin a release tag
-#       with:
-#         app: Facet              # → Facet.app / Facet.zip, binary `facet`
-#         # …or, for a bare-binary tool (at most one of app/binary):
-#         # binary: glance        # → ./build.sh must produce bin/glance; attaches glance + glance.sha256
-#         # …or NEITHER, for a repo that ships no artefact: the verdict and
-#         # the rolling draft, on ubuntu, and nothing built.
-#         smoke: false            # true → run `<artifact> --validate`
-#         dry-run: ${{ github.event.inputs.dry_run == 'true' }}
-#         install-notes: |          # REQUIRED — omitting it kills the run as
-#           ## Install               # startup_failure before any job, and
-#           …app-specific markdown…  # GitHub surfaces no error anywhere
-#                                    # (measured: glyph-test3, 2026-08-26)
+# The caller is README's (Getting started, step 3): a few lines around
+#
+#   uses: akira-toriyama/glyph/.github/workflows/release.yml@vX.Y.Z  # pin a release tag
+#
+# granting `contents: write`, under a `release` concurrency group, with the
+# `with:` the inputs block below documents — every input is optional, so a
+# caller may pass nothing.
 #
 # @vX.Y.Z is a PLACEHOLDER, not a ref — substitute a concrete tag from
 # https://github.com/akira-toriyama/glyph/releases. No live version is written
@@ -89,19 +73,20 @@ on:
   workflow_call:
     inputs:
       app:
-        description: "App display name, e.g. 'Facet' → package.sh builds Facet.app, attaches Facet.zip, binary `facet`. At most one of `app` / `binary`; neither is verdict-only."
+        description: "App display name, e.g. 'MyApp' → package.sh builds MyApp.app, attaches MyApp.zip, binary `myapp`. At most one of `app` / `binary`; neither is verdict-only. Refused on a repository that declares [[packages]]."
         required: false
         type: string
         default: ""
       binary:
-        description: "Bare-binary name, e.g. 'glance' → ./build.sh must produce bin/<binary>; attaches <binary> + <binary>.sha256. At most one of `app` / `binary`; neither is verdict-only."
+        description: "Bare-binary name, e.g. 'mytool' → ./build.sh must produce bin/<binary>; attaches <binary> + <binary>.sha256. At most one of `app` / `binary`; neither is verdict-only. Refused on a repository that declares [[packages]]."
         required: false
         type: string
         default: ""
       install-notes:
-        description: "Markdown appended verbatim after the generated notes, separated by one --- line (the per-repo `## Install` block)."
-        required: true
+        description: "Markdown appended verbatim after the generated notes, separated by one --- line (a per-repo `## Install` block). Empty, the default, appends nothing: the draft is the notes alone."
+        required: false
         type: string
+        default: ""
       smoke:
         description: "Run the built artifact with `--validate` after the build (`./<App>.app/Contents/MacOS/<app-lowercased>` in app mode, `./bin/<binary>` in binary mode)."
         required: false
@@ -212,7 +197,7 @@ jobs:
       # third refusal — either input on a repository that declares packages —
       # cannot be asked here: the declaration is in the caller's glyph.toml,
       # which is not checked out yet and which glyph alone reads; it is asked
-      # of the verdict envelope below.
+      # of glyph itself once it is installed, below.
       - name: Validate the artifact inputs
         env:
           APP: ${{ inputs.app }}
@@ -282,29 +267,6 @@ jobs:
           # (zizmor artipacked).
           persist-credentials: false
 
-      # Both of these serve the Swift build and nothing else, and neither
-      # exists on the ubuntu runner a verdict-only run lands on: setup-xcode
-      # would fail outright there, and the SPM cache would key a path that is
-      # never written. Gated on the same predicate as `runs-on` above.
-      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
-        if: inputs.app != '' || inputs.binary != ''
-        with:
-          xcode-version: latest-stable
-
-      # Same SPM cache as the swift-build action — package.sh runs `swift
-      # build` underneath, so the warm artefacts help here too. The repo name
-      # guards against stale PCH module-cache paths after a rename, and
-      # Package.resolved is hashed so a dependency bump invalidates the cache
-      # (hashFiles tolerates it missing for deps-free repos).
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: inputs.app != '' || inputs.binary != ''
-        with:
-          path: |
-            .build
-            ~/Library/Caches/org.swift.swiftpm
-          key: ${{ runner.os }}-spm-${{ github.event.repository.name }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
-          restore-keys: ${{ runner.os }}-spm-${{ github.event.repository.name }}-
-
       # Resolve the binary version from the tag the caller pinned this reusable
       # to (job.workflow_ref = …@refs/tags/vX.Y.Z), so the tag IS the version —
       # no hand-bumped default to drift. The override input covers a branch/SHA
@@ -336,6 +298,68 @@ jobs:
           version: ${{ steps.glyph.outputs.version }}
           token: ${{ github.token }}
 
+      # `app` / `binary` name one artifact for one draft. A repository that
+      # declares [[packages]] keeps one rolling draft per line and has no line
+      # the one artifact would belong to, so the inputs are refused — here,
+      # before the verdict, so no draft is touched. Asked of the verdict
+      # envelope after the upsert, as this refusal first was, the drafts had
+      # already been rewritten with the misconfigured caller's footer by the
+      # time the run went red (glyph-monorepo-test-2 run 41805408808,
+      # `binary: probe`, 2026-11-04). The declaration lives in the caller's
+      # glyph.toml and glyph is its only reader (a grep for `[[packages]]`
+      # here would fork the grammar — the defect class the outputs exist to
+      # avoid), so glyph is asked over an empty range — local git, no request
+      # — and its envelope carries one `packages` entry per declared line. Red
+      # on every push until the caller drops the input: a misconfiguration,
+      # never a transient.
+      - name: Refuse an artifact input on a packages repository
+        if: inputs.app != '' || inputs.binary != ''
+        env:
+          APP: ${{ inputs.app }}
+          BINARY: ${{ inputs.binary }}
+        run: |
+          set -euo pipefail
+          status=0
+          glyph bump --range HEAD..HEAD --json > "$RUNNER_TEMP/packages-probe.json" 2> "$RUNNER_TEMP/packages-probe.err" || status=$?
+          cat "$RUNNER_TEMP/packages-probe.err" >&2
+          # 1 is the empty range's own answer (nothing to release). Any other
+          # non-zero is glyph refusing to read this repository — no glyph.toml,
+          # an invalid one — and the verdict step would refuse the same way,
+          # so its stderr above is the error and its code the exit.
+          if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then
+            exit "$status"
+          fi
+          lines="$(jq -r '(.packages // []) | length' "$RUNNER_TEMP/packages-probe.json")"
+          if [ "$lines" -gt 0 ]; then
+            echo "::error::this repository declares [[packages]] ($lines line(s), one rolling draft each), and 'app'/'binary' (${APP}${BINARY}) name one artifact for one draft. Drop the input and attach per line in a follow-up job over the 'packages' output."
+            exit 1
+          fi
+
+      # Both of these serve the Swift build and nothing else, and neither
+      # exists on the ubuntu runner a verdict-only run lands on: setup-xcode
+      # would fail outright there, and the SPM cache would key a path that is
+      # never written. Gated on the same predicate as `runs-on` above, and
+      # placed after the refusal above so a misconfigured packages caller
+      # spends no Xcode minutes on a run that cannot ship.
+      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        if: inputs.app != '' || inputs.binary != ''
+        with:
+          xcode-version: latest-stable
+
+      # Same SPM cache as the swift-build action — package.sh runs `swift
+      # build` underneath, so the warm artefacts help here too. The repo name
+      # guards against stale PCH module-cache paths after a rename, and
+      # Package.resolved is hashed so a dependency bump invalidates the cache
+      # (hashFiles tolerates it missing for deps-free repos).
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: inputs.app != '' || inputs.binary != ''
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-spm-${{ github.event.repository.name }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: ${{ runner.os }}-spm-${{ github.event.repository.name }}-
+
       # ONE walk composes the whole verdict (tag + body) and, unless this is
       # a dry run, upserts the rolling draft in the same call — recomputed
       # from git every run, so it is idempotent and self-healing. Exit 1 is
@@ -348,13 +372,18 @@ jobs:
           DRY_RUN: ${{ inputs.dry-run }}
         run: |
           set -euo pipefail
+          args=(release --json)
+          if [ "$DRY_RUN" = "true" ]; then
+            args=(release --dry-run --json)
+          fi
           # The caller's install block reaches glyph as a FILE (--footer-file)
           # — printf %s, no shell expansion of its backticks / $(…), and no
-          # markdown ever concatenated in shell (ratified Q11).
-          printf '%s' "$INSTALL_NOTES" > "$RUNNER_TEMP/install-notes.md"
-          args=(release --json --footer-file "$RUNNER_TEMP/install-notes.md")
-          if [ "$DRY_RUN" = "true" ]; then
-            args=(release --dry-run --json --footer-file "$RUNNER_TEMP/install-notes.md")
+          # markdown ever concatenated in shell (ratified Q11). An empty input
+          # passes no flag: the draft is the notes alone, with no --- line
+          # over nothing.
+          if [ -n "$INSTALL_NOTES" ]; then
+            printf '%s' "$INSTALL_NOTES" > "$RUNNER_TEMP/install-notes.md"
+            args+=(--footer-file "$RUNNER_TEMP/install-notes.md")
           fi
           status=0
           glyph "${args[@]}" > "$RUNNER_TEMP/verdict.json" 2> "$RUNNER_TEMP/verdict.err" || status=$?
@@ -411,27 +440,6 @@ jobs:
             jq -r '.packages[] | "verdict: \(.path): \(.level) -> \(.tag // "-") (draft \(.action))"' "$RUNNER_TEMP/verdict.json"
           fi
 
-      # `app` / `binary` describe ONE artifact for ONE draft. A repository
-      # that declares [[packages]] keeps one draft per line, and there is no
-      # line the one artifact would belong to — a monorepo attaches per line
-      # in a follow-up job of its own, reading `packages` (README says how).
-      # The refusal reads the verdict envelope, not the inputs alone, because
-      # the declaration lives in the caller's glyph.toml and glyph is its only
-      # reader (a grep for `[[packages]]` here would fork the grammar — the
-      # defect class the outputs exist to avoid). So the drafts are already
-      # upserted, correctly, and only the build and the attach are refused:
-      # red on every push until the caller drops the input — a
-      # misconfiguration, never a transient.
-      - name: Refuse an artifact input on a packages repository
-        if: steps.verdict.outputs.packages != '' && (inputs.app != '' || inputs.binary != '')
-        env:
-          APP: ${{ inputs.app }}
-          BINARY: ${{ inputs.binary }}
-        run: |
-          set -euo pipefail
-          echo "::error::this repository declares [[packages]] (one rolling draft per line), and 'app'/'binary' (${APP}${BINARY}) name one artifact for one draft. Drop the input and attach per line in a follow-up job over the 'packages' output."
-          exit 1
-
       # Build <App>.app via package.sh (ad-hoc signed for CI — the script
       # picks $CODESIGN_ID > .signing-id > "-"). Optional smoke for apps that
       # have one.
@@ -448,9 +456,10 @@ jobs:
           # release: measured 2026-09-11, facet's draft for v7.0.2 carried an
           # app printing 7.0.1-40-g9d6e6c4, and the published v7.0.1 ships one
           # printing 7.0.0-42-g198ef4a. Every family release so far has shipped
-          # an artefact naming its predecessor. "" in packages mode, where the
-          # step before this one has already refused the artefact inputs.
-          # Opt-in on the caller's side, fallback kept for the local build:
+          # an artefact naming its predecessor. A packages repository never
+          # reaches this step: its artefact inputs were refused before the
+          # verdict. Opt-in on the caller's side, fallback kept for the local
+          # build:
           # VERSION="${RELEASE_TAG:-$(git describe --tags --dirty)}"; VERSION="${VERSION#v}"
           RELEASE_TAG: ${{ steps.verdict.outputs.tag }}
         run: |

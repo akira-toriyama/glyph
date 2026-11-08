@@ -2,7 +2,7 @@ package workflows
 
 // The YAML a reader copies by hand: the fenced blocks of README.md and docs/*.md,
 // and the usage examples standing in the comments of the workflow and action files
-// (doctor's remedy calls a reusable's stub the known-good copy). actionlint reads a
+// (doctor's remedy calls README's callers the known-good copies). actionlint reads a
 // workflow's executable text and nothing else, so a snippet here that is no YAML
 // stays green and fails only whoever pastes it.
 //
@@ -673,8 +673,8 @@ func TestDocumentedYAMLParses(t *testing.T) {
 			}
 		}
 	}
-	if fenced["README.md"] < 3 || fenced[filepath.Join("docs", "DESIGN.md")] < 1 {
-		t.Fatalf("read %d fenced yaml blocks in README.md and %d in docs/DESIGN.md, want the lint caller and the two "+
+	if fenced["README.md"] < 5 || fenced[filepath.Join("docs", "DESIGN.md")] < 1 {
+		t.Fatalf("read %d fenced yaml blocks in README.md and %d in docs/DESIGN.md, want the three callers and the two "+
 			"install snippets, and §6's consumer snippet, at least — the check above was over too little",
 			fenced["README.md"], fenced[filepath.Join("docs", "DESIGN.md")])
 	}

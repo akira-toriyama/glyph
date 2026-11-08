@@ -170,8 +170,10 @@ func TestCallerGrantsReadPastABlockScalarLevel(t *testing.T) {
 // report's API) took that as the startup-death question answered. Unread
 // bytes are unknown; a defect observed in a file that WAS read still fails.
 func TestCallerChecksNeverPassOverAnUnreadableFile(t *testing.T) {
-	// Fails both checks when readable: release needs contents: write and the
-	// install-notes input, and this caller gives neither.
+	// Fails both checks when readable: release needs contents: write and,
+	// under the fixture table, the install-notes input, and this caller
+	// gives neither.
+	requiringInstallNotes(t)
 	const starved = "name: c\non:\n  push:\npermissions:\n  contents: read\njobs:\n  r:\n" +
 		"    uses: akira-toriyama/glyph/.github/workflows/release.yml@v4.2.0\n"
 	checks := map[string]func(string, bool) Check{
