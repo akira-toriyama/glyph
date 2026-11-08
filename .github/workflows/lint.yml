@@ -13,6 +13,8 @@ name: glyph-lint
 #   name: commit-lint
 #   on:
 #     pull_request:
+#       # a retitle re-fires the squash-title lint only with `edited`, not a default type
+#       types: [opened, synchronize, reopened, edited]
 #     push:
 #       branches: [main]  # optional — annotates direct pushes, never fails them
 #   permissions:
@@ -271,8 +273,14 @@ jobs:
       # verbatim and frames only the summary. Bot pulls are excluded inside the
       # binary (a squash attributes the landed commit to the pull's author), so
       # dependabot's daily titles cannot red the gate.
+      #
+      # It runs behind a red range step too, so a pull failing both carries both
+      # findings in one red run, DESIGN §3's rule for a range; the job fails on
+      # either step's exit. A push has no title to judge. Skipped with the range,
+      # the title's finding stayed unseen until the commits went green
+      # (glyph-test-2 run 41809643056).
       - name: Lint the squash title
-        if: github.event_name == 'pull_request'
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}

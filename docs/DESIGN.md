@@ -3655,6 +3655,47 @@ not write over that push's comment. Executed by
 `pr-verdict-red-push-keeps-the-previous-verdict` and
 `pr-verdict-fallback-keyed-on-a-leftover-body`.
 
+The upsert finds its comment by the marker on a comment a bot wrote, the first
+across every page, and hands that one id to one write. Anyone who can comment can
+type the marker, and the job's token edits what they wrote: the v6.1.0 reusable
+replaced a person's marker comment with its verdict (glyph-test-2 #12, run
+41816989920). `gh api --paginate --jq` runs its filter once per page, so markers on
+two pages answer two lines, and gh refuses the PATCH URL they make; `--paginate`
+asks for 100 a page, so that is a pull past 100 comments (glyph-test-2 #11 at 104,
+one push: the v6.1.0 step died on run 41817273095, this one edited its sticky on
+run 41817272657 and left three person-typed markers alone). gh refuses `--slurp`
+beside `--jq`, hence the pipe into `jq`, and refuses it without `--paginate`; the
+step's `pipefail` is what keeps a refused connection from reading as "no comment
+yet": gh prints `[]` and exits 1, and jq answers empty and exits 0. The listing is
+the pull's issue comments, `issues/{n}/comments` — `pulls/{n}/comments` is its
+review comments, none of which is the sticky. The job's own `if:` is the only
+guard on the event: a push-triggered caller reports the job skipped with no step
+run (glyph-test-2 run 41809789871), so nothing inside the job can refuse one.
+Executed by `TestPRVerdictStickyLookupAnswersOneBotComment` against a double of
+gh keyed on the endpoint and flags the step hands it, the condition pinned by
+`TestPRVerdictJobRunsOnlyOnASameRepoPull`; mutation rows
+`pr-verdict-sticky-overwrites-a-persons-comment`,
+`pr-verdict-sticky-lookup-answers-once-per-page`,
+`pr-verdict-sticky-lookup-answers-every-marker`,
+`pr-verdict-failed-lookup-posts-a-second-sticky`,
+`pr-verdict-sticky-lookup-drops-paginate`,
+`pr-verdict-sticky-lookup-reads-review-comments` and
+`pr-verdict-job-runs-outside-a-same-repo-pull`.
+
+`lint.yml`'s two steps judge one pull together. The title step runs behind a red
+range step (`if: ${{ !cancelled() && github.event_name == 'pull_request' }}`), so a
+pull failing both carries both findings in one red run, §3's rule for a range, and
+the job is red when either step is: on glyph-test-2 both red, range red beside a
+green title and range green beside a red title all conclude `failure`, both green
+`success` (#8 through #11, 2026-11-04). A push has no title to judge, and the step
+reports skipped (run 41816914586). Skipped behind a red range, the title's finding
+waited for the commits to go green (run 41809643056). Pinned by
+`TestLintGateAlsoJudgesTheSquashTitle`, the step's exit executed by
+`TestLintTitleStepExitsGlyphsVerdict`; mutation rows
+`squash-title-step-skipped-behind-a-red-range`,
+`squash-title-step-refuses-every-direct-push`,
+`squash-title-step-allowed-to-fail` and `squash-title-step-swallows-the-verdict`.
+
 Two behaviours of the shipped workflows are contract, not implementation
 detail. `lint.yml` carries a second, annotate-only arm (#140): a caller may add
 `push: branches: [main]` and the same rules run over each direct push to the
@@ -3876,10 +3917,11 @@ The severities are the argued part:
   --pr` is that subject's own gate — CONTRIBUTING ratifies the title as a
   commit subject and lint.yml runs it beside the range — so the
   fallback now reads a *linted* subject, though only as reliably as the gate's
-  trigger re-fires on a retitle
-  (measured `minor` → `patch`, and `minor` → `none` for a title
+  trigger re-fires on a retitle, which takes `edited` in the caller's `types:`:
+  GitHub's default list leaves it out (`TestLintCallersRefireOnARetitle`). Measured
+  `minor` → `patch`, and `minor` → `none` for a title
   with no gitmoji — `TestSinceTagSquashMultiCommitDivergesWhenAPIDark`,
-  `TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark`). One wrong level on one pull, versus a whole pull lost.
+  `TestSinceTagNonGitmojiPRTitleCountsNoneWhenDark`. One wrong level on one pull, versus a whole pull lost.
 - **`allow_merge_commit` / `allow_rebase_merge` true ⇒ advice, not failure.** A
   merge commit *used* to be data loss (the walk dropped every commit with 2+
   parents before resolving it, so the PR vanished — t-7zt7); with the walk expanding merge commits correctly it costs

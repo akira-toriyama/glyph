@@ -1,0 +1,14 @@
+diff --git a/internal/workflows/docyaml_test.go b/internal/workflows/docyaml_test.go
+index 138df55..b4a8ead 100644
+--- a/internal/workflows/docyaml_test.go
++++ b/internal/workflows/docyaml_test.go
+@@ -74,9 +74,6 @@ func commentYAML(raw string) yamlText {
+ 			out[i] = after
+ 			continue
+ 		}
+-		if n := readYAMLNode(lines[i]); yamlBlockScalar.MatchString(n.value) {
+-			i = blockScalarEnd(lines, i, n.owner())
+-		}
+ 	}
+ 	return yamlText{1, strings.Join(out, "\n")}
+ }

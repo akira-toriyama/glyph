@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/pr-verdict.yml b/.github/workflows/pr-verdict.yml
+index 4833896..9429601 100644
+--- a/.github/workflows/pr-verdict.yml
++++ b/.github/workflows/pr-verdict.yml
+@@ -365,7 +365,7 @@ jobs:
+             } > "$RUNNER_TEMP/body.md"
+           fi
+           cid="$(gh api "repos/$GH_REPO_SLUG/issues/$PR_NUMBER/comments" --paginate --slurp \
+-            | jq -r 'first(.[][] | select(.user.type == "Bot" and (.body | startswith("<!-- glyph-pr-verdict -->")))) | .id')"
++            | jq -r 'first(.[][] | select(.body | startswith("<!-- glyph-pr-verdict -->"))) | .id')"
+           if [ -n "$cid" ]; then
+             gh api --method PATCH "repos/$GH_REPO_SLUG/issues/comments/$cid" \
+               -F "body=@$RUNNER_TEMP/body.md" --silent

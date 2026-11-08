@@ -1,0 +1,15 @@
+diff --git a/.github/actions/install/action.yml b/.github/actions/install/action.yml
+index 5094674..7139cdf 100644
+--- a/.github/actions/install/action.yml
++++ b/.github/actions/install/action.yml
+@@ -21,9 +21,7 @@ description: >-
+ # CALLER's checkout and fail. A CONSUMER that wants glyph on a laptop-in-CI
+ # (e.g. sill's api-guard) references it the other way, by full path + tag:
+ #   - uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z
+-#     with:
+-#       version: vX.Y.Z
+-#       token: ${{ github.token }}
++#     with: { version: vX.Y.Z, token: ${{ github.token }} }
+ #
+ # The step runs curl, tar, gh, jq and sha256sum (Linux) or shasum (macOS). jq
+ # reads the binary's `version --json`; a runner without it fails the compare
