@@ -10,8 +10,8 @@
 # assertions, and adding one was left to each pull request's discretion. This
 # script removes the discretion:
 #
-#   distribution-layer file in the diff AND no internal/workflows test change
-#   -> exit 1.
+#   distribution-layer file in the diff AND no internal/workflows test added
+#   or modified -> exit 1.
 #
 # What counts as the distribution layer is DIST_PATTERN below: the three
 # reusable workflows and goreleaser.yml, the composite actions, and
@@ -44,9 +44,14 @@
 # nothing. Use it for the change no text assertion can express (a pure comment
 # reword, say), and state that as the reason.
 #
-# Usage: sh scripts/dist-gate.sh <base>   (CI passes the PR base sha; check.sh
-# passes origin/main). The diff is three-dot, i.e. against the merge-base —
-# the same diff CI judges.
+# Usage: sh scripts/dist-gate.sh <base> [<head>]   (CI passes the PR base sha
+# with HEAD at the merge commit it checked out; check.sh passes origin/main and
+# the merge commit it built the way CI does). The diff is three-dot, base...head,
+# i.e. against the merge-base — the same diff CI judges, as long as head is the
+# merge: from a branch head the diff runs from the fork point, and on a branch
+# stacked on a pull request main has since squashed it carries the parent's
+# files, so the parent's test counted as this branch's evidence (measured
+# 2026-11-08: exit 0 from the head, exit 1 from the merge).
 #
 # internal/workflows/distgate_test.go holds this pattern's canary, proves every
 # arm still names a real file, asserts byte-for-byte agreement with its own
@@ -58,11 +63,12 @@ cd "$(dirname "$0")/.."
 DIST_PATTERN='^(\.goreleaser\.yaml$|\.github/actions/|\.github/workflows/(lint|pr-verdict|release|goreleaser)\.yml$)'
 EVIDENCE_PATTERN='^internal/workflows/.*_test\.go$'
 
-base="${1:?usage: sh scripts/dist-gate.sh <base-ref>}"
+base="${1:?usage: sh scripts/dist-gate.sh <base-ref> [<head-ref>]}"
+head="${2:-HEAD}"
 
 # shellcheck source=scripts/lib/range-gate.sh
 . ./scripts/lib/range-gate.sh
-changed="$(range_gate_changed "$base")"
+changed="$(range_gate_changed "$base" "$head")"
 
 # pin_swaps prints, one per line, the actions whose pins the diff of the files
 # in $dist swaps, and returns 0 only when every changed line is such a swap: a
@@ -85,7 +91,7 @@ pin_swaps() {
   set -- $dist
   set +f
   IFS=$old_ifs
-  git diff -U0 --inter-hunk-context=0 --no-color --text --no-renames --no-ext-diff --no-textconv "$base"...HEAD -- "$@" | awk '
+  git diff -U0 --inter-hunk-context=0 --no-color --text --no-renames --no-ext-diff --no-textconv "$base"..."$head" -- "$@" | awk '
     function pin(line,    s, at, head, sha) {
       s = substr(line, 2)
       at = index(s, "@")
@@ -135,14 +141,14 @@ if swapped="$(pin_swaps)"; then
   exit 0
 fi
 
-evidence="$(git diff --name-only --no-renames --diff-filter=AM "$base"...HEAD)"
+evidence="$(git diff --name-only --no-renames --diff-filter=AM "$base"..."$head")"
 if printf '%s\n' "$evidence" | grep -qE "$EVIDENCE_PATTERN"; then
-  echo "dist-gate: distribution-layer change is accompanied by an internal/workflows test change:"
+  echo "dist-gate: distribution-layer change is accompanied by an internal/workflows test added or modified:"
   printf '%s\n' "$dist" | sed 's/^/  /'
   exit 0
 fi
 
-if require_trailer_on_every_commit Dist-gate-exempt "$base"; then
+if require_trailer_on_every_commit Dist-gate-exempt "$base" "$head"; then
   echo "dist-gate: waived by a Dist-gate-exempt trailer on every commit — $RANGE_GATE_REASON"
   exit 0
 fi

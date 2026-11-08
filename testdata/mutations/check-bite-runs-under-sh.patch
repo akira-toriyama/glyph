@@ -1,11 +1,10 @@
 diff --git a/scripts/check.sh b/scripts/check.sh
-index 377cdbc..74fd28c 100755
 --- a/scripts/check.sh
 +++ b/scripts/check.sh
-@@ -352,7 +352,7 @@ BITE_GOROOT="$(go env GOROOT)"
+@@ -379,7 +379,7 @@
  # bash, as the action's `shell: bash` runs it: the script is bash (pipefail,
  # process substitution), and `sh` is bash only on some machines.
- BASE_SHA="$(git rev-parse origin/main)" HEAD_SHA="$BITE_HEAD" \
+ BASE_SHA="$(git rev-parse origin/main)" HEAD_SHA="$CI_HEAD" \
 -  GOROOT="$BITE_GOROOT" PATH="$BITE_GOROOT/bin:$PATH" bash "$BITE"
 +  GOROOT="$BITE_GOROOT" PATH="$BITE_GOROOT/bin:$PATH" sh "$BITE"
  ran bite

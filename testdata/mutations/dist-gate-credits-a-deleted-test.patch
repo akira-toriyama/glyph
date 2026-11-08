@@ -1,13 +1,12 @@
 diff --git a/scripts/dist-gate.sh b/scripts/dist-gate.sh
-index aaf65f1..d9c09c7 100644
 --- a/scripts/dist-gate.sh
 +++ b/scripts/dist-gate.sh
-@@ -135,7 +135,7 @@ if swapped="$(pin_swaps)"; then
+@@ -141,7 +141,7 @@
    exit 0
  fi
  
--evidence="$(git diff --name-only --no-renames --diff-filter=AM "$base"...HEAD)"
-+evidence="$(git diff --name-only --no-renames "$base"...HEAD)"
+-evidence="$(git diff --name-only --no-renames --diff-filter=AM "$base"..."$head")"
++evidence="$(git diff --name-only --no-renames "$base"..."$head")"
  if printf '%s\n' "$evidence" | grep -qE "$EVIDENCE_PATTERN"; then
-   echo "dist-gate: distribution-layer change is accompanied by an internal/workflows test change:"
+   echo "dist-gate: distribution-layer change is accompanied by an internal/workflows test added or modified:"
    printf '%s\n' "$dist" | sed 's/^/  /'

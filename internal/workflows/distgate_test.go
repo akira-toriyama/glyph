@@ -357,3 +357,85 @@ func TestDistGateStandsDownForAPinSwapAlone(t *testing.T) {
 		})
 	}
 }
+
+// newStackedRepo builds the shape on which a branch head's diff and the merge's
+// part: pull request A, squash-merged into main, and B stacked on A's branch
+// with a change of its own. A rewrote the gated release.yml, a workflow test and
+// a golden, with its Golden-change reason; B rewrites release.yml alone, with no
+// test and no trailer. It returns the squash (CI's base for B), B's head, and
+// the merge of B into the squash, built as check.sh builds it.
+func newStackedRepo(t *testing.T) (dir string, git func(...string) string, squash, head, merge string, env []string) {
+	t.Helper()
+	const (
+		gated  = ".github/workflows/release.yml"
+		test   = "internal/workflows/release_test.go"
+		golden = "internal/cli/testdata/out.golden.md"
+	)
+	dir, git, _, env = newDistGateRepo(t, map[string]string{
+		"scripts/golden-gate.sh": repoFile(t, "scripts/golden-gate.sh"),
+		gated:                    "name: release\n# a v1\nx\ny\nz\nw\n# b v1\n",
+		test:                     "package workflows\n// v1\n",
+		golden:                   "golden v1\n",
+	})
+
+	git("checkout", "-q", "-b", "a")
+	testutil.WriteFile(t, dir, gated, "name: release\n# a v2\nx\ny\nz\nw\n# b v1\n")
+	testutil.WriteFile(t, dir, test, "package workflows\n// v2\n")
+	testutil.WriteFile(t, dir, golden, "golden v2\n")
+	git("commit", "-q", "-am", ":bug:~ A", "-m", "Golden-change: A rewrites the release golden")
+	git("checkout", "-q", "main")
+	git("merge", "-q", "--squash", "a")
+	git("commit", "-q", "-m", ":bug:~ A (#1)", "-m", "Golden-change: A rewrites the release golden")
+	squash = git("rev-parse", "HEAD")
+
+	git("checkout", "-q", "-b", "b", "a")
+	testutil.WriteFile(t, dir, gated, "name: release\n# a v2\nx\ny\nz\nw\n# b v2 from B\n")
+	git("commit", "-q", "-am", ":bug:~ B: release.yml alone")
+	head = git("rev-parse", "HEAD")
+
+	tree := git("merge-tree", "--write-tree", squash, head)
+	merge = git("commit-tree", "-p", squash, "-p", head, "-m", "the merge commit CI tests", tree)
+	return dir, git, squash, head, merge, env
+}
+
+// gateVerdicts runs a range gate three ways over newStackedRepo's shape and
+// returns the runs: as CI runs it (the checkout at the merge, no head named), as
+// check.sh runs it (the checkout at the branch head, the merge named), and the
+// control — the checkout at the branch head with no head named, the fork-point
+// diff both used to judge.
+func gateVerdicts(t *testing.T, script string) (ci, local, forkPoint stepRun) {
+	t.Helper()
+	sh := requireTool(t, "sh")
+	dir, git, squash, head, merge, env := newStackedRepo(t)
+	run := func(args ...string) stepRun {
+		t.Helper()
+		return execute(t, append([]string{sh, filepath.Join(dir, "scripts", script)}, args...), dir, env)
+	}
+	git("checkout", "-q", "--detach", merge)
+	ci = run(squash)
+	git("checkout", "-q", "--detach", head)
+	local = run(squash, merge)
+	forkPoint = run(squash)
+	return ci, local, forkPoint
+}
+
+// TestDistGateJudgesTheMergeItIsHanded: build.yml's dist-gate job checks out
+// refs/pull/N/merge and diffs BASE...HEAD from there — the merge's diff, which on
+// a branch stacked on a squashed pull request holds this branch's files alone.
+// check.sh's checkout is the branch head, whose diff runs from the fork point and
+// carries the parent's test as evidence: exit 0 there, exit 1 in CI (measured
+// 2026-11-08). So the gate takes the commit to judge as its second argument and
+// check.sh hands it the merge it built; the fork-point run stays as the control
+// that the shape discriminates.
+func TestDistGateJudgesTheMergeItIsHanded(t *testing.T) {
+	ci, local, forkPoint := gateVerdicts(t, "dist-gate.sh")
+	for name, run := range map[string]stepRun{"CI's checkout at the merge": ci, "check.sh handing the merge": local} {
+		if run.exit != 1 || !strings.Contains(run.stderr, "::error::dist-gate") {
+			t.Errorf("%s: dist-gate exited %d, want 1 with ::error::dist-gate — B touches release.yml with no test of its own\n%s", name, run.exit, run)
+		}
+	}
+	if forkPoint.exit != 0 || !strings.Contains(forkPoint.stdout, "accompanied by") {
+		t.Errorf("control: from the branch head with no head named, dist-gate exited %d, want 0 crediting A's test — "+
+			"the fixture no longer discriminates the fork-point diff from the merge's\n%s", forkPoint.exit, forkPoint)
+	}
+}

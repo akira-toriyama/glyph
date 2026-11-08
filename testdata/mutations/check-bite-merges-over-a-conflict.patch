@@ -1,13 +1,12 @@
 diff --git a/scripts/check.sh b/scripts/check.sh
-index 377cdbc..28bc36d 100755
 --- a/scripts/check.sh
 +++ b/scripts/check.sh
-@@ -324,7 +324,7 @@ ran mutations
- echo "→ bite (do this branch's new tests fail without it?)"
- BITE_HEAD="$(git rev-parse HEAD)"
+@@ -233,7 +233,7 @@
+ # merge either, and GitHub runs no CI on one, so it ends the run here.
+ CI_HEAD="$(git rev-parse HEAD)"
  if [ -n "$(git rev-list origin/main..HEAD)" ]; then
--  if ! bite_tree="$(git merge-tree --write-tree origin/main HEAD)"; then
-+  if ! bite_tree="$(git merge-tree --write-tree origin/main HEAD | head -1)"; then
+-  if ! ci_tree="$(git merge-tree --write-tree origin/main HEAD)"; then
++  if ! ci_tree="$(git merge-tree --write-tree origin/main HEAD | head -1)"; then
      echo "  ✗ HEAD does not merge cleanly into origin/main, so CI has no merge commit to run on:" >&2
-     printf '%s\n' "$bite_tree" | sed 's/^/    /' >&2
+     printf '%s\n' "$ci_tree" | sed 's/^/    /' >&2
      exit 1

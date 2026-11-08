@@ -1,0 +1,12 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -454,7 +454,7 @@
+     echo "  ✗ go-ci.yml's 'lint floor' step carries a \${{ }} expression, which the runner substitutes before the shell starts and this script does not — it reads the job's LINT_FLOOR from the environment, so move the value there." >&2
+     exit 1 ;;
+   esac
+-  printf '%s\n' "$lint_floor_step" >"$WORK/lint-floor.sh"
++  printf '%s\n' 'echo "lint floor intact: $LINT_FLOOR"' >"$WORK/lint-floor.sh"
+   golangci-lint run --enable="$lint_floor" ./...
+   ran golangci-lint
+   echo "→ lint floor (every floor linter was in the set)"

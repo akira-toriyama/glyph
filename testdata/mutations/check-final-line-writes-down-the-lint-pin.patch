@@ -1,8 +1,7 @@
 diff --git a/scripts/check.sh b/scripts/check.sh
-index 377cdbc..5da34c9 100755
 --- a/scripts/check.sh
 +++ b/scripts/check.sh
-@@ -212,7 +212,7 @@ ran commit-lint
+@@ -216,7 +216,7 @@
  # commit-lint.yml pins: the two can split on a rule this tree changed. The final
  # line says so on every run; running the pinned binary as well is a second build
  # for a split the pull request shows anyway.
@@ -10,4 +9,4 @@ index 377cdbc..5da34c9 100755
 +lint_pin=v6.1.0
  LINT_JUDGE="commit-lint judged by this tree, CI judges at ${lint_pin:-a tag commit-lint.yml no longer names}"
  
- # The distribution-layer gate build.yml runs on every pull request: a change to
+ # The commit CI tests. A pull request's jobs check out refs/pull/N/merge, the

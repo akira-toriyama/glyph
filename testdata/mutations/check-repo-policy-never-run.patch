@@ -1,0 +1,12 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -272,7 +272,7 @@
+ # same set unless origin/main has gained a translation since the fork. bash, as
+ # the reusable's `run:` has it.
+ echo "→ repo-policy (the hub's house policy over this tree)"
+-bash "$REPO_POLICY"
++:
+ ran repo-policy
+ 
+ # Module hygiene: fail if go.mod/go.sum are not tidy, and verify the downloaded

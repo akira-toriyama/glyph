@@ -187,11 +187,12 @@ func executableStatements(script string) []string {
 // branch are git's behaviour, not a stub's. Under CI's `sh` (dash on Linux) this
 // also proves the script parses and runs there.
 type checkFixture struct {
-	t                   *testing.T
-	repo, hub, origin   string
-	biteRecord, lintLog string
-	stubs               string
-	env                 []string
+	t                                     *testing.T
+	repo, hub, origin                     string
+	biteRecord, floorRecord, policyRecord string
+	lintLog, distLog, goldenLog           string
+	stubs                                 string
+	env                                   []string
 }
 
 const (
@@ -199,7 +200,44 @@ const (
 	floorArgs    = "--enable=${{ env.LINT_FLOOR }}"
 	coverReports = `printf 'example.com/x/x.go:1:\tF\t100.0%%\ntotal:\t(statements)\t87.3%%\n'`
 	coverRefuses = `echo 'cover: bad mode line: garbage' >&2; exit 1`
+
+	// floorStepRecords is a 'lint floor' step's run: block reduced to what the
+	// gate is handed — the job's LINT_FLOOR, and the shell and options the runner
+	// gives `shell: bash` — so a run of it is told apart from a copy of the real
+	// step's text: check.sh reads the step out of go-ci.yml at the pin, and a
+	// retyped copy would never write this record.
+	floorStepRecords = `shell=not-bash
+if [ -n "${BASH_VERSION:-}" ]; then shell=bash; fi
+opts=""
+case $- in *e*) opts=errexit ;; esac
+if [ "$shell" = bash ] && shopt -oq pipefail; then opts="$opts pipefail"; fi
+{
+  echo "floor=$LINT_FLOOR"
+  echo "shell=$shell"
+  echo "opts=$opts"
+} >"$FLOOR_RECORD"
+`
+	floorStepRefuses = `echo "::error::golangci-lint ran without the fleet lint floor: misspell"
+exit 1
+`
 )
+
+// hubRepoPolicy is repo-policy-check.sh reduced to what the gate is handed: the
+// revision of the hub it came from and the directory it judges.
+func hubRepoPolicy(revision string) string {
+	return `#!/usr/bin/env bash
+{
+  echo "revision=` + revision + `"
+  echo "dir=$PWD"
+  echo "self=$0"
+} >"$POLICY_RECORD"
+`
+}
+
+const hubRepoPolicyRefuses = `#!/usr/bin/env bash
+echo "README.ja.md: translation file — the fleet stores no translations"
+exit 1
+`
 
 // hubGoBite is go-bite.sh reduced to what the gate is handed: the revision of
 // the hub it came from, and whether it runs under bash proper. `sh` is dash on
@@ -221,9 +259,16 @@ fi
 }
 
 // hubGoCI carries what check.sh reads out of the hub's go-ci.yml, in that file's
-// shape at v2 (6a4ae14): the pinned linter version, the job's LINT_FLOOR and the
-// lint step's args. An empty floor or args leaves that line out.
+// shape at v2 (6a4ae14 and 97506e9): the pinned linter version, the job's
+// LINT_FLOOR, the lint step's args and the 'lint floor' step after it, whose run:
+// block here is floorStepRecords. An empty floor or args leaves that line out.
 func hubGoCI(floor, args string) string {
+	return hubGoCIWithFloorStep(floor, args, floorStepRecords)
+}
+
+// hubGoCIWithFloorStep is hubGoCI with the 'lint floor' step's run: block given;
+// empty leaves the step out altogether.
+func hubGoCIWithFloorStep(floor, args, floorStep string) string {
 	raw := "on:\n  workflow_call:\n    inputs:\n      golangci-lint-version:\n        type: string\n" +
 		"        default: 'v2.12.2'\n\njobs:\n  test:\n"
 	if floor != "" {
@@ -235,19 +280,46 @@ func hubGoCI(floor, args string) string {
 	if args != "" {
 		raw += "          args: " + args + "\n"
 	}
-	return raw
+	if floorStep == "" {
+		return raw
+	}
+	var b strings.Builder
+	b.WriteString(raw)
+	b.WriteString("\n      - name: lint floor (every floor linter was in the set)\n" +
+		"        if: runner.os == 'Linux'\n        shell: bash\n        run: |\n")
+	for line := range strings.Lines(floorStep) {
+		if strings.TrimSpace(line) == "" {
+			b.WriteString("\n")
+			continue
+		}
+		b.WriteString("          " + line)
+	}
+	return b.String()
 }
 
-// tagHub commits revision's go-bite.sh and goCI to the hub's origin and puts tag
-// on that commit, annotated as the real v2 is. On a tag the clone has already
-// fetched, that is the hub moving it under the clone.
+// tagHub commits revision's go-bite.sh, repo-policy-check.sh and goCI to the
+// hub's origin and puts tag on that commit, annotated as the real v2 is. On a
+// tag the clone has already fetched, that is the hub moving it under the clone.
 func (f *checkFixture) tagHub(tag, revision, goCI string) {
 	f.t.Helper()
+	f.tagHubWithRepoPolicy(tag, revision, goCI, hubRepoPolicy(revision))
+}
+
+func (f *checkFixture) tagHubWithRepoPolicy(tag, revision, goCI, repoPolicy string) {
+	f.t.Helper()
 	testutil.WriteFile(f.t, f.origin, "actions/go-bite/go-bite.sh", hubGoBite(revision))
+	testutil.WriteFile(f.t, f.origin, "scripts/repo-policy-check.sh", repoPolicy)
 	testutil.WriteFile(f.t, f.origin, ".github/workflows/go-ci.yml", goCI)
 	testutil.Git(f.t, f.origin, "akira-toriyama", "add", "-A")
 	testutil.Git(f.t, f.origin, "akira-toriyama", "commit", "-q", "--allow-empty", "-m", revision)
 	testutil.Git(f.t, f.origin, "akira-toriyama", "tag", "-f", "-a", "-m", tag, tag)
+}
+
+// hubRefs is every ref of the hub's clone with what it points at, the state a
+// run must leave as it found it.
+func (f *checkFixture) hubRefs() string {
+	f.t.Helper()
+	return testutil.Git(f.t, f.hub, "akira-toriyama", "for-each-ref", "--format=%(refname) %(objectname)")
 }
 
 // newCheckFixture leaves HEAD on main with origin/main at it, and the hub's
@@ -257,13 +329,17 @@ func newCheckFixture(t *testing.T) *checkFixture {
 	testutil.RequireGit(t)
 	root := t.TempDir()
 	f := &checkFixture{
-		t:          t,
-		repo:       filepath.Join(root, "repo"),
-		hub:        filepath.Join(root, "hub"),
-		origin:     filepath.Join(root, "hub-origin"),
-		biteRecord: filepath.Join(root, "bite.record"),
-		lintLog:    filepath.Join(root, "golangci-lint.log"),
-		stubs:      filepath.Join(root, "bin"),
+		t:            t,
+		repo:         filepath.Join(root, "repo"),
+		hub:          filepath.Join(root, "hub"),
+		origin:       filepath.Join(root, "hub-origin"),
+		biteRecord:   filepath.Join(root, "bite.record"),
+		floorRecord:  filepath.Join(root, "floor.record"),
+		policyRecord: filepath.Join(root, "policy.record"),
+		lintLog:      filepath.Join(root, "golangci-lint.log"),
+		distLog:      filepath.Join(root, "dist-gate.log"),
+		goldenLog:    filepath.Join(root, "golden-gate.log"),
+		stubs:        filepath.Join(root, "bin"),
 	}
 	for _, d := range []string{f.repo, f.origin, f.stubs} {
 		if err := os.Mkdir(d, 0o755); err != nil {
@@ -275,14 +351,17 @@ func newCheckFixture(t *testing.T) *checkFixture {
 	f.tagHub("v2", "v2", hubGoCI("errcheck,misspell", floorArgs))
 	testutil.Git(t, root, "akira-toriyama", "clone", "-q", f.origin, f.hub)
 	testutil.WriteFile(t, f.hub, "actions/go-bite/go-bite.sh", hubGoBite("the clone's working tree"))
+	testutil.WriteFile(t, f.hub, "scripts/repo-policy-check.sh", hubRepoPolicy("the clone's working tree"))
 	testutil.WriteFile(t, f.hub, ".github/workflows/go-ci.yml", hubGoCI("only-in-the-working-tree", floorArgs))
 
-	for _, rel := range []string{"scripts/check.sh", "scripts/lib/trap.sh", ".github/workflows/build.yml", ".github/workflows/commit-lint.yml"} {
+	for _, rel := range []string{"scripts/check.sh", "scripts/lib/trap.sh", ".github/workflows/build.yml", ".github/workflows/commit-lint.yml", ".github/workflows/repo-policy.yml"} {
 		testutil.WriteFile(t, f.repo, rel, repoFile(t, rel))
 	}
-	for _, gate := range []string{"dist-gate", "golden-gate", "mutations", "fuzz-smoke", "smoke"} {
+	for _, gate := range []string{"mutations", "fuzz-smoke", "smoke"} {
 		testutil.WriteFile(t, f.repo, "scripts/"+gate+".sh", "exit 0\n")
 	}
+	testutil.WriteFile(t, f.repo, "scripts/dist-gate.sh", recordArgv(f.distLog))
+	testutil.WriteFile(t, f.repo, "scripts/golden-gate.sh", recordArgv(f.goldenLog))
 	f.git("init", "-q", "-b", "main")
 	f.git("add", "-A")
 	f.git("commit", "-q", "-m", "base")
@@ -303,6 +382,8 @@ fi
 		"GIT_CONFIG_SYSTEM=" + os.DevNull,
 		"GLYPH_FLEET_HUB=" + f.hub,
 		"BITE_RECORD=" + f.biteRecord,
+		"FLOOR_RECORD=" + f.floorRecord,
+		"POLICY_RECORD=" + f.policyRecord,
 	}
 	return f
 }
@@ -362,14 +443,34 @@ func (f *checkFixture) refused(run stepRun, carries string) {
 }
 
 // biteSaw reads back what the hub's go-bite.sh recorded; empty when it never ran.
-func (f *checkFixture) biteSaw() map[string]string {
+func (f *checkFixture) biteSaw() map[string]string { return f.recorded(f.biteRecord) }
+
+// floorSaw reads back what the 'lint floor' step recorded; empty when it never ran.
+func (f *checkFixture) floorSaw() map[string]string { return f.recorded(f.floorRecord) }
+
+// policySaw reads back what the hub's repo-policy-check.sh recorded; empty when
+// it never ran.
+func (f *checkFixture) policySaw() map[string]string { return f.recorded(f.policyRecord) }
+
+func (f *checkFixture) recorded(path string) map[string]string {
 	f.t.Helper()
 	saw := map[string]string{}
-	for line := range strings.Lines(readIfAny(f.t, f.biteRecord)) {
+	for line := range strings.Lines(readIfAny(f.t, path)) {
 		k, v, _ := strings.Cut(strings.TrimSuffix(line, "\n"), "=")
 		saw[k] = v
 	}
 	return saw
+}
+
+// gateArgv returns the one call a recorded gate stub saw, failing the test on
+// any other count.
+func (f *checkFixture) gateArgv(log string) []string {
+	f.t.Helper()
+	calls := recordedCalls(f.t, log)
+	if len(calls) != 1 {
+		f.t.Fatalf("%s ran %d times, want once: %v", filepath.Base(log), len(calls), calls)
+	}
+	return calls[0]
 }
 
 // lintArgv returns golangci-lint's one `run`, failing the test on any other count.
@@ -423,6 +524,11 @@ func TestCheckScriptHandsBiteTheMergeCommit(t *testing.T) {
 		if got := f.biteSaw()["head"]; got != head {
 			t.Errorf("bite's HEAD_SHA is %q, want HEAD %s: nothing is ahead, so there is no merge to make and go-bite stands down on the empty range", got, head)
 		}
+		for _, log := range []string{f.distLog, f.goldenLog} {
+			if argv, want := f.gateArgv(log), []string{"origin/main", head}; !slices.Equal(argv, want) {
+				t.Errorf("%s was handed %v, want %v: nothing is ahead, so HEAD is what CI would check out", filepath.Base(log), argv, want)
+			}
+		}
 	})
 
 	t.Run("a conflict with origin/main", func(t *testing.T) {
@@ -442,7 +548,44 @@ func TestCheckScriptHandsBiteTheMergeCommit(t *testing.T) {
 		if saw := f.biteSaw(); len(saw) != 0 {
 			t.Errorf("bite ran with no merge to run on: %v", saw)
 		}
+		for _, log := range []string{f.distLog, f.goldenLog} {
+			if calls := recordedCalls(t, log); calls != nil {
+				t.Errorf("%s ran with no merge to judge: %v", filepath.Base(log), calls)
+			}
+		}
 	})
+}
+
+// TestCheckScriptHandsTheDiffGatesTheMergeCommit: build.yml's dist-gate and
+// golden-gate jobs check out refs/pull/N/merge and diff BASE...HEAD from there,
+// so their diff is the merge's. From the branch head the diff runs from the fork
+// point, and on a branch stacked on a pull request main has since squashed it
+// carries the parent's files: dist-gate counted the parent's test as evidence
+// (exit 0 here, exit 1 in CI) and golden-gate demanded a trailer for the parent's
+// golden (exit 1 here, exit 0 in CI) — measured 2026-11-08 on the real scripts
+// (TestDistGateJudgesTheMergeItIsHanded, TestGoldenGateJudgesTheMergeItIsHanded).
+// check.sh builds that merge once and hands the same commit to both gates and to
+// bite.
+func TestCheckScriptHandsTheDiffGatesTheMergeCommit(t *testing.T) {
+	f := newCheckFixture(t)
+	fork := f.git("rev-parse", "HEAD")
+	onMain := f.commitToRepo("main.txt", "main\n", "main moves")
+	f.git("update-ref", "refs/remotes/origin/main", onMain)
+	f.git("checkout", "-q", "-b", "work", fork)
+	head := f.commitToRepo("work.txt", "work\n", "the branch")
+
+	f.runGreen()
+
+	merge := f.biteSaw()["head"]
+	if merge == "" || merge == head {
+		t.Fatalf("bite's HEAD_SHA is %q, want the merge commit (TestCheckScriptHandsBiteTheMergeCommit holds its shape)", merge)
+	}
+	for _, log := range []string{f.distLog, f.goldenLog} {
+		if argv, want := f.gateArgv(log), []string{"origin/main", merge}; !slices.Equal(argv, want) {
+			t.Errorf("%s was handed %v, want %v — origin/main and the one merge commit bite judges, "+
+				"so the gate diffs what CI's checkout diffs instead of the fork point's", filepath.Base(log), argv, want)
+		}
+	}
 }
 
 // TestCheckScriptRunsBiteUnderBash: the hub's action runs go-bite.sh with `shell:
@@ -483,6 +626,7 @@ func TestCheckScriptReadsTheHubAtThePin(t *testing.T) {
 	t.Run("the tag moved on origin", func(t *testing.T) {
 		f := newCheckFixture(t)
 		f.tagHub("v2", "moved", floorMoved)
+		before := f.hubRefs()
 
 		final := f.runGreen()
 
@@ -494,6 +638,29 @@ func TestCheckScriptReadsTheHubAtThePin(t *testing.T) {
 		}
 		if strings.Contains(final, "SKEWED") {
 			t.Errorf("the final line claims a skew over a tag it refreshed: %s", final)
+		}
+		if after := f.hubRefs(); after != before {
+			t.Errorf("the run wrote the hub's clone, a repository it does not own — refs before:\n%s\nafter:\n%s", before, after)
+		}
+	})
+
+	// A tag moved in the clone and not yet pushed is the clone owner's: the house
+	// leaves a hub tag's force-push to the user, so this is exactly the state the
+	// clone sits in while that waits. A forced fetch into the clone reset it to
+	// origin's without a trace, tags keeping no reflog (measured 2026-11-08).
+	t.Run("the clone's own moved tag is left where it is", func(t *testing.T) {
+		f := newCheckFixture(t)
+		testutil.Git(t, f.hub, "akira-toriyama", "commit", "-q", "--allow-empty", "-m", "the next release, push pending")
+		testutil.Git(t, f.hub, "akira-toriyama", "tag", "-f", "-a", "-m", "v2 moved here", "v2")
+		before := f.hubRefs()
+
+		f.runGreen()
+
+		if got := f.biteSaw()["revision"]; got != "v2" {
+			t.Errorf("go-bite.sh came from %q, want origin's v2, the revision CI resolves", got)
+		}
+		if after := f.hubRefs(); after != before {
+			t.Errorf("the run rewrote the clone's refs — before:\n%s\nafter:\n%s", before, after)
 		}
 	})
 
@@ -532,6 +699,100 @@ func TestCheckScriptReadsTheHubAtThePin(t *testing.T) {
 		}
 		if argv := f.lintArgv(); !slices.Contains(argv, "--enable=errcheck,misspell") {
 			t.Errorf("golangci-lint's floor is not v2's, the tag build.yml pins go-ci.yml at: %v", argv)
+		}
+	})
+}
+
+// TestCheckScriptRunsTheLintFloorStep: `--enable` cannot hold a linter the config
+// drops — a `linters.disable` entry beats the flag (golangci-lint v2.12.2,
+// measured 2026-11-04), so the lint run exits 0 with that linter never run — and
+// go-ci.yml's 'lint floor' step after it asks the tool what came out enabled
+// (measured 2026-11-08 at v2: misspell disabled in .golangci.yml, the lint run 0
+// issues, the step `::error::` exit 1). check.sh runs that step as its own gate,
+// off the step's run: block read out of go-ci.yml at the pin — never a copy, which
+// would be a second home for the fleet's floor check — under the shell the runner
+// gives `shell: bash`, with the job's LINT_FLOOR (t-fmy1).
+func TestCheckScriptRunsTheLintFloorStep(t *testing.T) {
+	t.Run("the step from go-ci.yml at the pin runs as the runner runs it", func(t *testing.T) {
+		f := newCheckFixture(t)
+		f.runGreen()
+		saw := f.floorSaw()
+		if saw["floor"] != "errcheck,misspell" {
+			t.Errorf("the step saw LINT_FLOOR=%q, want the tag's errcheck,misspell — or it never ran at all (%v)", saw["floor"], saw)
+		}
+		if saw["shell"] != "bash" {
+			t.Errorf("the step ran under %q, want bash, as `shell: bash` runs it", saw["shell"])
+		}
+		if saw["opts"] != "errexit pipefail" {
+			t.Errorf("the step ran with %q, want `errexit pipefail`, the -eo pipefail the runner gives `shell: bash`", saw["opts"])
+		}
+	})
+
+	t.Run("a floor the tool dropped ends the run", func(t *testing.T) {
+		f := newCheckFixture(t)
+		f.tagHub("v2", "v2", hubGoCIWithFloorStep("errcheck,misspell", floorArgs, floorStepRefuses))
+
+		run := f.run()
+
+		if run.exit != 1 || strings.Contains(run.stdout, "✓") {
+			t.Fatalf("check.sh exited %d, want 1 and no ✓ line: CI's job fails at this step\n%s", run.exit, run)
+		}
+		if !strings.Contains(run.stdout, "::error::golangci-lint ran without the fleet lint floor") {
+			t.Errorf("the run does not carry the step's own verdict\n%s", run)
+		}
+		if argv := f.lintArgv(); argv[0] != "run" {
+			t.Errorf("golangci-lint ran as %v, want the lint run ahead of the floor check, CI's order", argv)
+		}
+	})
+
+	for _, tc := range []struct{ name, goCI string }{
+		{name: "a go-ci.yml with no lint floor step", goCI: hubGoCIWithFloorStep("errcheck,misspell", floorArgs, "")},
+		{name: "a step the runner would substitute into", goCI: hubGoCIWithFloorStep("errcheck,misspell", floorArgs, "echo \"${{ env.LINT_FLOOR }}\"\n")},
+	} {
+		t.Run(tc.name+" ends the run before the lint", func(t *testing.T) {
+			f := newCheckFixture(t)
+			f.tagHub("v2", "v2", tc.goCI)
+			f.refused(f.run(), "'lint floor' step")
+			if calls := recordedCalls(t, f.lintLog); calls != nil {
+				t.Errorf("golangci-lint ran under a floor check this script cannot mirror: %v", calls)
+			}
+		})
+	}
+}
+
+// TestCheckScriptRunsRepoPolicyAtThePin: repo-policy.yml's job checks the hub out
+// at job.workflow_sha — the commit the caller's @v2 resolved to — and runs its
+// repo-policy-check.sh over the caller's tree with bash. Read at the pin the same
+// way bite and the lint floor are, that is the checker CI runs at the revision CI
+// runs it (measured 2026-11-08: `repo-policy: clean`, exit 0, over this tree at v2),
+// so the gate is mirrored and leaves the NOT MIRRORED list (t-2rj5).
+func TestCheckScriptRunsRepoPolicyAtThePin(t *testing.T) {
+	t.Run("the hub's script at the tag, over this tree", func(t *testing.T) {
+		f := newCheckFixture(t)
+		f.runGreen()
+		saw := f.policySaw()
+		if saw["revision"] != "v2" {
+			t.Errorf("repo-policy-check.sh came from %q, want the tag v2 — or it never ran (%v)", saw["revision"], saw)
+		}
+		if strings.HasPrefix(saw["self"], f.hub) {
+			t.Errorf("repo-policy-check.sh ran out of the clone's working tree, at %s", saw["self"])
+		}
+		if got, want := saw["dir"], f.git("rev-parse", "--show-toplevel"); got != want {
+			t.Errorf("repo-policy-check.sh judged %q, want this checkout %s", got, want)
+		}
+	})
+
+	t.Run("a violation ends the run", func(t *testing.T) {
+		f := newCheckFixture(t)
+		f.tagHubWithRepoPolicy("v2", "v2", hubGoCI("errcheck,misspell", floorArgs), hubRepoPolicyRefuses)
+
+		run := f.run()
+
+		if run.exit != 1 || strings.Contains(run.stdout, "✓") {
+			t.Fatalf("check.sh exited %d, want 1 and no ✓ line: CI's repo-policy job fails here\n%s", run.exit, run)
+		}
+		if !strings.Contains(run.stdout, "translation file") {
+			t.Errorf("the run does not carry the checker's own finding\n%s", run)
 		}
 	})
 }
@@ -628,78 +889,4 @@ func TestCheckScriptRecordsCoverageAsAReport(t *testing.T) {
 			t.Errorf("the final line claims a report nobody made: %s", final)
 		}
 	})
-}
-
-// lintFloor is go-ci.yml's LINT_FLOOR at the tag build.yml pins, the list its lint
-// step passes as `--enable`. It is a copy because a test runs offline and the tag
-// is not in this repo: scripts/check.sh reads the real list at the pin, this list
-// can only go stale beside it. When the hub changes the floor, change it here.
-var lintFloor = []string{"errcheck", "govet", "ineffassign", "misspell", "revive", "staticcheck", "unconvert", "unused", "gosec"}
-
-// disabledLinters reads linters.disable out of a .golangci.yml by indentation, in
-// both shapes YAML lets it take — no YAML library, like the rest of this package.
-func disabledLinters(raw string) []string {
-	_, rest, ok := strings.Cut("\n"+raw, "\nlinters:\n")
-	if !ok {
-		return nil
-	}
-	var names []string
-	inDisable := false
-	for line := range strings.SplitSeq(rest, "\n") {
-		s := strings.TrimSpace(line)
-		if s == "" || strings.HasPrefix(s, "#") {
-			continue
-		}
-		switch indent := len(line) - len(strings.TrimLeft(line, " ")); {
-		case indent == 0:
-			return names
-		case indent == 2:
-			key, value, _ := strings.Cut(s, ":")
-			inDisable = key == "disable"
-			if inDisable {
-				names = append(names, strings.FieldsFunc(value, func(r rune) bool {
-					return strings.ContainsRune("[], \t", r)
-				})...)
-			}
-		case inDisable && strings.HasPrefix(s, "- "):
-			names = append(names, strings.Fields(s)[1])
-		}
-	}
-	return names
-}
-
-// TestGolangciConfigDisablesNoFloorLinter holds what `--enable` cannot: in
-// golangci-lint v2.12.2 a config's `linters.disable:` beats the flag (measured
-// 2026-11-04: `disable: [misspell]` gave 0 issues with the floor passed, with a
-// misspelling planted), so a disable here drops a fleet floor linter. In CI,
-// go-ci.yml's floor-check step catches it by asking the tool; check.sh runs no
-// copy of that step, so this is the local half, read off the YAML — a key the tool
-// renames gets past it, and the CI step stays the authority.
-//
-// bite-exempt: pins a state .golangci.yml already holds, so it passes on any tree
-// that has not disabled a floor linter. testdata/mutations holds its red.
-func TestGolangciConfigDisablesNoFloorLinter(t *testing.T) {
-	// Positive control: a reader that found nothing would pass this test for ever.
-	for canary, want := range map[string][]string{
-		"linters:\n  disable:\n    - misspell # why\n    - unused\n  enable:\n    - errcheck\n": {"misspell", "unused"},
-		"version: \"2\"\nlinters:\n  disable: [misspell, unused]\n":                             {"misspell", "unused"},
-		"linters:\n  settings:\n    disable:\n      - misspell\n":                               nil,
-		"linters:\n  enable:\n    - misspell\nformatters:\n  disable:\n    - misspell\n":        nil,
-	} {
-		if got := disabledLinters(canary); !slices.Equal(got, want) {
-			t.Fatalf("disabledLinters(%q) = %v, want %v — the absence asserted below is vacuous", canary, got, want)
-		}
-	}
-
-	raw := repoFile(t, ".golangci.yml")
-	if !strings.Contains("\n"+raw, "\nlinters:\n") {
-		t.Fatal(".golangci.yml has no linters: block for disabledLinters to read, and this test is checking nothing")
-	}
-	for _, name := range disabledLinters(raw) {
-		if slices.Contains(lintFloor, name) {
-			t.Errorf(".golangci.yml disables %s, a fleet floor linter: `linters.disable:` beats go-ci.yml's "+
-				"--enable, so the floor no longer runs here or in CI, and nothing reports it. Scope the "+
-				"linter with `linters.settings` or `exclusions` instead.", name)
-		}
-	}
 }

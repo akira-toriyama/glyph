@@ -1,13 +1,12 @@
 diff --git a/scripts/check.sh b/scripts/check.sh
-index 377cdbc..07830e7 100755
 --- a/scripts/check.sh
 +++ b/scripts/check.sh
-@@ -397,7 +397,7 @@ if command -v golangci-lint >/dev/null 2>&1; then
-     echo "  ✗ go-ci.yml at the hub's pin no longer lints with --enable=\$LINT_FLOOR (args: ${lint_args:-none}; LINT_FLOOR: ${lint_floor:-none}), the one command this gate mirrors — re-derive it from go-ci.yml's golangci-lint step." >&2
-     exit 1
-   fi
+@@ -455,7 +455,7 @@
+     exit 1 ;;
+   esac
+   printf '%s\n' "$lint_floor_step" >"$WORK/lint-floor.sh"
 -  golangci-lint run --enable="$lint_floor" ./...
 +  golangci-lint run ./...
    ran golangci-lint
-   [ -n "$LINT_SKEW" ] && echo "  ! $LINT_SKEW"
- else
+   echo "→ lint floor (every floor linter was in the set)"
+   LINT_FLOOR="$lint_floor" bash --noprofile --norc -eo pipefail "$WORK/lint-floor.sh"

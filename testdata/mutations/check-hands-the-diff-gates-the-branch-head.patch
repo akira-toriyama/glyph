@@ -1,0 +1,21 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -251,7 +251,7 @@
+ # uncommitted test does not satisfy it, and that is the same claim-about-a-commit
+ # stance as the dirty check at the top.
+ echo "→ dist-gate (does a distribution-layer change carry evidence?)"
+-sh scripts/dist-gate.sh origin/main "$CI_HEAD"
++sh scripts/dist-gate.sh origin/main
+ ran dist-gate
+ 
+ # The golden gate build.yml runs on every pull request: a diff that rewrites a
+@@ -261,7 +261,7 @@
+ # what forces the diff to be read as the spec change it is. Same script, same
+ # base, same head, same committed-history stance as dist-gate above.
+ echo "→ golden-gate (does a golden rewrite state its reason?)"
+-sh scripts/golden-gate.sh origin/main "$CI_HEAD"
++sh scripts/golden-gate.sh origin/main
+ ran golden-gate
+ 
+ # The house-policy gate repo-policy.yml runs on every pull request: the hub's

@@ -1,13 +1,12 @@
 diff --git a/scripts/check.sh b/scripts/check.sh
-index 377cdbc..ad57894 100755
 --- a/scripts/check.sh
 +++ b/scripts/check.sh
-@@ -145,7 +145,7 @@ fi
- # line is where a weakened claim has to appear.
+@@ -144,7 +144,7 @@
+ # weakened claim has to appear.
  HUB_SKEW=""
  hub_at() {
--  hub_pin="$(sed -n "s|^[[:space:]]*uses: akira-toriyama/\.github/\.github/workflows/$1@\([^[:space:]]*\).*|\1|p" .github/workflows/build.yml | head -1)"
+-  hub_pin="$(sed -n "s|^[[:space:]]*uses: akira-toriyama/\.github/\.github/workflows/$1@\([^[:space:]]*\).*|\1|p" ".github/workflows/$2" | head -1)"
 +  hub_pin=v2
    if [ -z "$hub_pin" ]; then
-     echo "  ✗ build.yml calls no $1 at a tag, so nothing says which revision of it CI runs." >&2
+     echo "  ✗ $2 calls no $1 at a tag, so nothing says which revision of it CI runs." >&2
      exit 1

@@ -1,13 +1,11 @@
-diff --git a/.golangci.yml b/.golangci.yml
-index ebe2e99..8bec4ef 100644
---- a/.golangci.yml
-+++ b/.golangci.yml
-@@ -4,6 +4,8 @@ run:
-   timeout: 3m
- 
- linters:
-+  disable:
-+    - misspell
-   enable:
-     - errcheck
-     - govet
+diff --git a/scripts/check.sh b/scripts/check.sh
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -458,7 +458,6 @@
+   golangci-lint run --enable="$lint_floor" ./...
+   ran golangci-lint
+   echo "→ lint floor (every floor linter was in the set)"
+-  LINT_FLOOR="$lint_floor" bash --noprofile --norc -eo pipefail "$WORK/lint-floor.sh"
+   ran lint-floor
+   [ -n "$LINT_SKEW" ] && echo "  ! $LINT_SKEW"
+ else

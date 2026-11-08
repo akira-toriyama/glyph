@@ -1,0 +1,12 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -194,7 +194,7 @@
+ hub_at go-ci.yml build.yml
+ GO_CI="$HUB_AT/.github/workflows/go-ci.yml"
+ hub_at repo-policy.yml repo-policy.yml
+-REPO_POLICY="$HUB_AT/scripts/repo-policy-check.sh"
++REPO_POLICY="$HUB/scripts/repo-policy-check.sh"
+ 
+ # The convention gate the fleet runs on every pull request (commit-lint.yml calls
+ # glyph's own lint.yml). Mirrored here because the alternative — push, wait, read

@@ -171,3 +171,21 @@ func TestGoldenGateJudgesAGoldenAtAnyDepth(t *testing.T) {
 		})
 	}
 }
+
+// TestGoldenGateJudgesTheMergeItIsHanded is dist-gate's mirror image on the same
+// stacked shape (newStackedRepo): from the branch head the fork-point diff carries
+// the parent's golden, and this gate demanded a trailer for it that CI, diffing the
+// merge, never asked for — exit 1 here, exit 0 in CI (measured 2026-11-08). Handed
+// the merge, the gate reads B's diff as CI does.
+func TestGoldenGateJudgesTheMergeItIsHanded(t *testing.T) {
+	ci, local, forkPoint := gateVerdicts(t, "golden-gate.sh")
+	for name, run := range map[string]stepRun{"CI's checkout at the merge": ci, "check.sh handing the merge": local} {
+		if run.exit != 0 || !strings.Contains(run.stdout, "no golden file") {
+			t.Errorf("%s: golden-gate exited %d, want 0 with no golden in B's diff\n%s", name, run.exit, run)
+		}
+	}
+	if forkPoint.exit != 1 || !strings.Contains(forkPoint.stderr, "::error::golden-gate") {
+		t.Errorf("control: from the branch head with no head named, golden-gate exited %d, want 1 over A's golden — "+
+			"the fixture no longer discriminates the fork-point diff from the merge's\n%s", forkPoint.exit, forkPoint)
+	}
+}
