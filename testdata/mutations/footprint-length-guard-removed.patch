@@ -1,14 +1,14 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index c42cc14..8378421 100644
+index 65e8606..6b83a1b 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -379,9 +379,6 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
+@@ -523,9 +523,6 @@ func (w Walker) alignRewritten(ctx context.Context, canonical string, listing []
  	if err != nil {
- 		return nil, err
+ 		return err
  	}
 -	if len(mains) != len(window) {
--		return landed, nil
+-		return nil
 -	}
  	for k, i := range window {
  		if strings.TrimSpace(mains[k].Message) != strings.TrimSpace(listing[i].Message) {
- 			return landed, nil
+ 			return nil

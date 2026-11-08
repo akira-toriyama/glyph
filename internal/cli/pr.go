@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/akira-toriyama/glyph/v6/internal/config"
 	"github.com/akira-toriyama/glyph/v6/internal/core"
 	"github.com/akira-toriyama/glyph/v6/internal/github"
 	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
@@ -187,11 +188,13 @@ func newGitHub() *github.Client {
 
 // pullInput resolves the repository, reads a pull request's individual
 // commits — the ones that exist BEFORE the squash rewrites them into a single
-// subject, which is the whole reason glyph exists — and names the source for
-// the reason line (owner/name#N). bump, notes and preview share it, so all
-// three read a pull request the same way; what the commits MEAN is the
-// pattern file's question, asked downstream.
-func pullInput(ctx context.Context, number int, repoFlag string) ([]gitsource.RawCommit, string, error) {
+// subject, which is the whole reason glyph exists — less what another pull
+// already landed on the released branch (walk.Walker.OpenPull: a stacked
+// pull's listing carries its base pull's commits after the base merges), and
+// names the source for the reason line (owner/name#N). bump, notes and
+// preview share it, so all three read a pull request the same way; what the
+// commits MEAN is the pattern file's question, asked downstream.
+func pullInput(ctx context.Context, cfg *config.Config, number int, repoFlag string) ([]gitsource.RawCommit, string, error) {
 	if err := checkPRFlag(number); err != nil {
 		return nil, "", err
 	}
@@ -199,6 +202,6 @@ func pullInput(ctx context.Context, number int, repoFlag string) ([]gitsource.Ra
 	if err != nil {
 		return nil, "", err
 	}
-	raws, err := apiWalker(newGitHub()).PullRawCommits(ctx, owner, repo, number)
+	raws, err := apiWalker(newGitHub()).OpenPull(ctx, cfg, owner, repo, number)
 	return raws, fmt.Sprintf("%s/%s#%d", owner, repo, number), err
 }

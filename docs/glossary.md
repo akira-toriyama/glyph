@@ -55,7 +55,9 @@ pull into its individual (pre-squash) commits. Nothing is persisted, so a releas
 is idempotent and self-healing. Distinguish from the other two input sources,
 which are not walks in this sense: `--range` classifies commit *messages* out of
 git and never calls the API, and `--pr` reads one pull request's commits over the
-API and knows nothing of any range. "Exactly one of the three" is `bump` and
+API, then reads back out of local git the pulls merged between the listing's
+fork and `HEAD` to drop what another pull landed (DESIGN §4, "A stacked pull
+lists what its base landed") — it has no range of its own. "Exactly one of the three" is `bump` and
 `notes` only — they are the two commands that carry all three flags and mark them
 mutually exclusive. `release` has just the walk (bare `release` walks from the
 highest v* tag HEAD contains, so no flag is required at all), and `preview` takes
@@ -163,7 +165,11 @@ an ancestor of HEAD landed as itself); a rebase rewrote them all but preserved
 their messages and order and named the last as `merge_commit_sha`, so the N
 first-parent commits ending there align positionally — an alignment **verified
 message by message and abandoned whole** if any differs; a squash left no
-footprint at all, and the pull alone governs. This is what lets the walk's
+footprint at all, and the pull alone governs, unless the listed sha is one another
+pull landed, which the walk asks next over the API — for what the footprint left,
+and for a sha in the range under its own sha, which a merge commit's second parent
+brings in whatever an earlier squash or rebase of it released (`walk.placeStacked`,
+DESIGN §4, "A stacked pull lists what its base landed"). This is what lets the walk's
 *range* (a git fact) govern a listing that knows nothing about it; without it a
 tag cut inside a landed pull's footprint folds already-shipped commits into the
 next release (DESIGN §4 has the incident). `internal/walk/expand.go:
@@ -330,7 +336,12 @@ or a bare one, leaves the others wedged. The error message names
 where the commit sits, the base and why that base is the one; with several
 refused commits it names the first, counts the rest, lists every one in
 `details` and names every wedge's escape (a pull's merge point is in no
-details row). `internal/walk/refusal.go: wedge, walkRefusal, onMain`
+details row). A commit two pulls list has an escape per pull the walk cannot
+read back from: a stacked pull whose listing forks at a held commit below an
+escape named already clears with that one, and the sentence names it alone
+(DESIGN §4, "A stacked pull lists what its base landed").
+`internal/walk/refusal.go: wedge, walkRefusal, onMain`; `internal/walk/expand.go:
+readsBackTo`
 
 **package** — a declared subtree of the repository with a version line of its
 own: its own tags (`<prefix>vX.Y.Z`), its own walk base, its own rolling draft.

@@ -133,7 +133,7 @@ func previewRun(ctx context.Context, o previewOptions) error {
 	if err != nil {
 		return err
 	}
-	raws, name, err := pullInput(ctx, o.pr, o.repo)
+	raws, name, err := pullInput(ctx, cfg, o.pr, o.repo)
 	if err != nil {
 		return err
 	}

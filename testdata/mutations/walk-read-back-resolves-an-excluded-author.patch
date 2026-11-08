@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 3495905..ceb0455 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -762,7 +762,7 @@ func (w *walk) readBack(ctx context.Context, number int, listing []gitsource.Raw
+ 			return err
+ 		}
+ 		for _, raw := range window {
+-			if skip[raw.SHA] || slices.Contains(w.cfg.ExcludeAuthors, raw.Author) {
++			if skip[raw.SHA] {
+ 				continue
+ 			}
+ 			skip[raw.SHA] = true
