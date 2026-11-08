@@ -1,0 +1,13 @@
+diff --git a/internal/markdown/escape.go b/internal/markdown/escape.go
+index 3ab6cce..e9a819b 100644
+--- a/internal/markdown/escape.go
++++ b/internal/markdown/escape.go
+@@ -462,7 +462,7 @@ func blockOpening(s string, from int, prose func(lo, hi int) bool) (ats []int, w
+ 		case ok && !op.container:
+ 			return nil, false
+ 		case ok:
+-			item = op.item
++			item = false
+ 			i = op.end
+ 			continue
+ 		}
