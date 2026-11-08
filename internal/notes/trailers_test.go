@@ -16,11 +16,13 @@ import (
 )
 
 // The table is the measurement. Every `want` below was read off git's commit
-// reader — `git log --format='%(trailers:only,unfold)'`, git 2.54.0 — before
+// reader — `git log --format='%(trailers:only,unfold)'`, git 2.56.0 — before
 // the parser answered it, and the test re-reads each row off git on every run
 // (gitTrailersBatch): a row that pins an answer git does not give fails by
-// name, which is how the URL row that pinned a guard git has none of was
-// found (review of t-hd7d, 2026-11-08). The silent-total-loss cases (one
+// name. The one exception is version-bound: a row holding a `token://` line
+// is re-read only under git 2.56.0 or later, because older git reads such a
+// line as the trailer `https` (oracleGitVersion); under older git the row
+// stands on the table alone and says so. The silent-total-loss cases (one
 // prose line inside a block git did not write into, an unindented wrap) are
 // the reason this is a parser and not a grep; the `---` rows are the shapes
 // `git interpret-trailers --parse` answers differently, because it reads a
@@ -123,9 +125,19 @@ func TestTrailers(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "Conflicts: with no newline after it is an ordinary empty trailer",
+			name: "Conflicts: closing the INPUT is an empty trailer — the shape a commit recorded with the newline takes when read over the API, which drops it (DESIGN §3)",
 			msg:  "subject\n\nbody\n\nWhy: a reason\nConflicts:",
 			want: []trailer{{"Why", "a reason"}, {"Conflicts", ""}},
+		},
+		{
+			name: "a bare Conflicts: line closing the recorded message is the ignored list, so the paragraph above it is the block",
+			msg:  "subject\n\nbody\n\nCo-authored-by: Peggy <p@x.y>\n\nConflicts:\n",
+			want: []trailer{{"Co-authored-by", "Peggy <p@x.y>"}},
+		},
+		{
+			name: "a bare Conflicts: line closing the recorded message does not lift a 2-of-9 sign-off block over the 25% line",
+			msg:  "subject\n\nbody\n\nSigned-off-by: S <s@x.y>\np1\np2\np3\np4\np5\np6\np7\nCo-authored-by: Trent <t@x.y>\nConflicts:\n",
+			want: nil,
 		},
 		{
 			name: "a CRLF Conflicts: line is not the list, but a trailer with its paths folded in",
@@ -173,14 +185,34 @@ func TestTrailers(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "a URL's first colon is the separator, as git reads it — there is no URL rule",
+			name: "a colon opening :// straight after the token is no separator (git 2.56.0's URL rule), so the line is prose and voids the block",
 			msg:  "subject\n\nbody\n\nhttps://example.com: a reason\nCo-authored-by: A B <a@b.c>",
-			want: []trailer{{"https", "//example.com: a reason"}, {"Co-authored-by", "A B <a@b.c>"}},
+			want: nil,
 		},
 		{
-			name: "a bare URL line is the trailer `https`, and the credit beside it stands",
+			name: "a bare URL line is prose under the URL rule, and the credit beside it is not read — git 2.54 and 2.55 read the trailer `https` and credit it",
 			msg:  "subject\n\nbody\n\nhttps://github.com/o/r/issues/1\nCo-authored-by: Alice <alice@example.com>\n",
-			want: []trailer{{"https", "//github.com/o/r/issues/1"}, {"Co-authored-by", "Alice <alice@example.com>"}},
+			want: nil,
+		},
+		{
+			name: "a blank before the colon disarms the URL rule: `Why ://x` is the token Why",
+			msg:  "subject\n\nbody\n\nWhy ://x\nCo-authored-by: A B <a@b.c>",
+			want: []trailer{{"Why", "//x"}, {"Co-authored-by", "A B <a@b.c>"}},
+		},
+		{
+			name: "a URL after the separator is a value, under every git",
+			msg:  "subject\n\nbody\n\nRef: https://github.com/o/r/issues/1\nCo-authored-by: A B <a@b.c>",
+			want: []trailer{{"Ref", "https://github.com/o/r/issues/1"}, {"Co-authored-by", "A B <a@b.c>"}},
+		},
+		{
+			name: "a lowercase conflicts: header is no Conflicts list (starts_with is case-sensitive), but the block's trailer with its paths folded in",
+			msg:  "subject\n\nbody\n\nCo-authored-by: A <a@x.y>\n\nconflicts:\n\tf1\n",
+			want: []trailer{{"conflicts", "f1"}},
+		},
+		{
+			name: "the scissors spelling inside a trailer's value is text — the cut is a line of its own",
+			msg:  "subject\n\nbody\n\nWhy: see # ------------------------ >8 ------------------------\nCo-authored-by: A B <a@b.c>\n",
+			want: []trailer{{"Why", "see # ------------------------ >8 ------------------------"}, {"Co-authored-by", "A B <a@b.c>"}},
 		},
 		{
 			name: "an equals separator voids the block",
@@ -299,10 +331,16 @@ func TestTrailers(t *testing.T) {
 		msgs[i] = tc.msg
 	}
 	oracle := gitTrailersBatch(t, msgs)
+	version, oracleReadsURLs := gitReadsURLRule(t)
 
+	urlRows := 0
 	for i, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if !sameTrailers(tc.want, oracle[i]) {
+			switch {
+			case urlRuleLine(tc.msg) && !oracleReadsURLs:
+				urlRows++
+				t.Logf("pinned by the table alone: git %s reads %+v, and the row carries git %s's answer (d122e37976, the URL rule)", version, oracle[i], oracleGitVersion)
+			case !sameTrailers(tc.want, oracle[i]):
 				t.Fatalf("the row pins %+v, and git's commit reader reads %+v — the table is the measurement, so the row is wrong, not git", tc.want, oracle[i])
 			}
 			got := trailers(tc.msg)
@@ -311,6 +349,81 @@ func TestTrailers(t *testing.T) {
 			}
 		})
 	}
+	if !oracleReadsURLs && urlRows == 0 {
+		t.Fatalf("git %s predates the URL rule and no row holds a token:// line — the rule has no positive control under this git", version)
+	}
+}
+
+// oracleGitVersion is the git whose commit reader the parser transcribes. The
+// one rule a git version has moved: d122e37976 ("trailers: stop recognizing
+// URLs as trailers", v2.56.0) made a colon opening `://` straight after the
+// token no separator, so a `token://` line is prose under 2.56.0 and the
+// trailer `https` under 2.54.0 and 2.55.0 (their trailer.c diffed against
+// 2.56.0's; the end-of-message and blank-line rules are byte-identical across
+// the three). The differential compares every shape under any git it runs
+// on, except the shapes holding such a line, which it compares only under a
+// git at or past this version and otherwise counts and names — never drops
+// silently. Floating with the runner's git instead is what turned the gate
+// red: the machine's git is 2.54.0 and the runners' 2.56.0 (2026-11-08).
+const oracleGitVersion = "2.56.0"
+
+// gitReadsURLRule reports the version of the git on PATH and whether its
+// commit reader has the URL rule (oracleGitVersion or later).
+func gitReadsURLRule(t *testing.T) (version string, hasRule bool) {
+	t.Helper()
+	testutil.RequireGit(t)
+	out, err := exec.Command("git", "version").Output()
+	if err != nil {
+		t.Fatalf("git version: %v", err)
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) < 3 || fields[0] != "git" || fields[1] != "version" {
+		t.Fatalf("git version printed %q, not `git version X.Y.Z`", strings.TrimSpace(string(out)))
+	}
+	version = fields[2]
+	major, minor, ok := majorMinor(version)
+	if !ok {
+		t.Fatalf("git version %q does not open with major.minor", version)
+	}
+	floorMajor, floorMinor, _ := majorMinor(oracleGitVersion)
+	hasRule = major > floorMajor || (major == floorMajor && minor >= floorMinor)
+	return version, hasRule
+}
+
+// majorMinor reads the leading `X.Y` of a git version string — `2.56.0`,
+// `2.57.0-rc1`, `2.56.0.windows.1` — and reports false for anything else.
+func majorMinor(v string) (major, minor int, ok bool) {
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) < 2 {
+		return 0, 0, false
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, false
+	}
+	minorDigits := strings.TrimRightFunc(parts[1], func(r rune) bool { return r < '0' || r > '9' })
+	minor, err = strconv.Atoi(minorDigits)
+	if err != nil {
+		return 0, 0, false
+	}
+	return major, minor, true
+}
+
+// urlRuleLine reports whether any line of msg is one the URL rule decides: a
+// token run followed straight by `://`. Those are exactly the lines whose
+// classification d122e37976 changed; a message holding none reads the same
+// under every git the oracle floor names.
+func urlRuleLine(msg string) bool {
+	for l := range strings.SplitSeq(msg, "\n") {
+		i := 0
+		for i < len(l) && isTokenByte(l[i]) {
+			i++
+		}
+		if i > 0 && strings.HasPrefix(l[i:], "://") {
+			return true
+		}
+	}
+	return false
 }
 
 func TestCoAuthorNames(t *testing.T) {
@@ -456,6 +569,9 @@ var differentialBlocks = []string{
 	"Signed-off-by:A B <a@b.c>\nprose\nCo-authored-by: Eve <e@x.y>",
 	"Signed-off-by: A B <a@b.c>\nWhy not: a reason\nCo-authored-by: Eve <e@x.y>",
 	"BREAKING CHANGE: the old flag is gone\nSigned-off-by: A B <a@b.c>\nCo-authored-by: Eve <e@x.y>",
+	"Why ://x\nCo-authored-by: A B <a@b.c>",
+	"Ref: https://github.com/o/r/issues/1\nCo-authored-by: A B <a@b.c>",
+	"Why: see # ------------------------ >8 ------------------------\nCo-authored-by: A B <a@b.c>",
 }
 
 var differentialTails = []string{
@@ -471,6 +587,9 @@ var differentialTails = []string{
 	"\n\nConflicts:\n\tf1\n",
 	"\nConflicts:\r\n\tf1\n",
 	"\nConflicts:",
+	"\nConflicts:\n",
+	"\n\nConflicts:\n",
+	"\n\nconflicts:\n\tf1\n",
 	"\n# ------------------------ >8 ------------------------\nbelow\nCo-authored-by: Mallory <m@x.y>\n",
 	"\n\n# ------------------------ >8 ------------------------\nCo-authored-by: Mallory <m@x.y>\n",
 	"\n# ------------------------ >8 ------------------------",
@@ -510,11 +629,20 @@ func TestTrailersEqualGit(t *testing.T) {
 	msgs = append(msgs, randomShapes(randomN)...)
 
 	oracle := gitTrailersBatch(t, msgs)
+	version, oracleReadsURLs := gitReadsURLRule(t)
 
 	distinct := map[string]bool{}
 	spoke, credited, over, under := 0, 0, 0, 0
+	urlShapes, heldBack := 0, 0
 	for i, msg := range msgs {
 		distinct[msg] = true
+		if urlRuleLine(msg) {
+			urlShapes++
+			if !oracleReadsURLs {
+				heldBack++
+				continue
+			}
+		}
 		mine := trailers(msg)
 		if len(oracle[i]) > 0 {
 			spoke++
@@ -540,10 +668,13 @@ func TestTrailersEqualGit(t *testing.T) {
 		}
 		t.Errorf("for %q:\n  glyph: %+v\n  git:   %+v", msg, mine, oracle[i])
 	}
-	if spoke == 0 || credited == 0 {
-		t.Fatalf("the differential ran %d shapes of which git answered %d and credited a co-author on %d — a positive control is required", len(msgs), spoke, credited)
+	if spoke == 0 || credited == 0 || urlShapes == 0 {
+		t.Fatalf("the differential ran %d shapes of which git answered %d, credited a co-author on %d and %d hold a token:// line — a positive control is required for each", len(msgs), spoke, credited, urlShapes)
 	}
-	t.Logf("%d shapes (%d distinct), git answered %d and credited a co-author on %d; glyph over-reported %d trailers and under-reported %d", len(msgs), len(distinct), spoke, credited, over, under)
+	t.Logf("git %s: %d shapes (%d distinct), %d compared, git answered %d and credited a co-author on %d; glyph over-reported %d trailers and under-reported %d", version, len(msgs), len(distinct), len(msgs)-heldBack, spoke, credited, over, under)
+	if heldBack > 0 {
+		t.Logf("held back %d shapes holding a token:// line: git %s predates the URL rule of git %s (d122e37976) that the parser follows, so those shapes are pinned by TestTrailers' URL rows under this git and compared here under git %s or later", heldBack, version, oracleGitVersion, oracleGitVersion)
+	}
 }
 
 // byteShapes puts every byte but NUL and LF after `---` above the block and
@@ -698,8 +829,11 @@ func randomShapes(n int) []string {
 		"---\r",
 		"---x",
 		"Conflicts:",
+		"conflicts:",
 		"\tpath",
 		"# ------------------------ >8 ------------------------",
+		"Why: see # ------------------------ >8 ------------------------",
+		"Why ://x",
 	}
 	tails := append([]string{"\n\n\n", "\n# c\n\tpath\n", "\nConflicts:\n\tf1\n\n\tf2\n", "\nConflicts:\n\tf1\nprose\n\tf2\n", "\nConflicts:\n\tf1\n# c\n\tf2\n"}, differentialTails...)
 

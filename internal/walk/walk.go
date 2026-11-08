@@ -223,7 +223,7 @@ func NoteCommits(ws []Commit) []notes.Commit {
 		if w.Pull > 0 && !w.Landed {
 			sha = ""
 		}
-		out = append(out, notes.Commit{SHA: sha, Pull: w.Pull, Author: w.Raw.Author, Login: w.Raw.Login, Message: w.Raw.Message})
+		out = append(out, notes.Commit{SHA: sha, Pull: w.Pull, Author: w.Raw.Author, Login: w.Raw.Login, Message: w.Raw.Message, Recorded: w.Raw.Recorded})
 	}
 	return out
 }

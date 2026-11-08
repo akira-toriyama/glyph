@@ -35,6 +35,14 @@ type RawCommit struct {
 	// (DESIGN §2.1). Nothing else is trimmed: a verbatim message keeps its own
 	// trailing blank lines.
 	Message string
+	// Recorded is the message as git recorded it (%B), closing newline and
+	// all: the bytes git's own commit reader reads the trailer block off, and
+	// the one text notes read it off (DESIGN §3). The newline decides one
+	// shape — `Conflicts:\n` closing the object is git's ignored list, while
+	// `Conflicts:` closing the input is an empty trailer — and the parser
+	// cannot tell from Message which it was handed. Every other reader judges
+	// Message.
+	Recorded string
 }
 
 // logFormat renders one record per commit: SHA, author name, author email,
@@ -807,11 +815,12 @@ func parseLog(out []byte) ([]RawCommit, error) {
 			return nil, core.APIf("git log: malformed record %q", strings.Join(f, "\x00"))
 		}
 		commits = append(commits, RawCommit{
-			SHA:     f[0],
-			Author:  f[1],
-			Email:   f[2],
-			Parents: parents,
-			Message: strings.TrimSuffix(f[4], "\n"),
+			SHA:      f[0],
+			Author:   f[1],
+			Email:    f[2],
+			Parents:  parents,
+			Message:  strings.TrimSuffix(f[4], "\n"),
+			Recorded: f[4],
 		})
 	}
 	return commits, nil

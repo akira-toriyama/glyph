@@ -18,7 +18,13 @@ type Commit struct {
 	Pull    int
 	Author  string
 	Login   string // the author.login GitHub attached to the commit when the API described it, "" otherwise — the one source of a live credit
-	Message string
+	Message string // the text every verdict judges (gitsource.RawCommit.Message): what the grammar matches and the fallback's first line
+	// Recorded is the message as git recorded it, closing newline included
+	// (gitsource.RawCommit.Recorded), and the ONLY text the trailer block is
+	// read off: git's reader reads the object's bytes, and the newline decides
+	// whether a final `Conflicts:` line is its ignored list or an empty
+	// trailer (DESIGN §3). A Commit built with Message alone has no trailers.
+	Recorded string
 }
 
 // Section is one rendered group: the section's own title (the user's
@@ -123,7 +129,7 @@ func renderLine(spans []config.LineSpan, declared []config.NoteTrailer, c Commit
 		config.BuiltinPR:        "",
 		config.BuiltinAuthor:    c.Author,
 		config.BuiltinHash:      shortSHA(c.SHA),
-		config.BuiltinCoauthors: strings.Join(coAuthorNames(c.Message), ", "),
+		config.BuiltinCoauthors: strings.Join(coAuthorNames(c.Recorded), ", "),
 	}
 	if c.Pull > 0 {
 		builtins[config.BuiltinPR] = "#" + strconv.Itoa(c.Pull)
@@ -134,7 +140,7 @@ func renderLine(spans []config.LineSpan, declared []config.NoteTrailer, c Commit
 	// config.buildTrailers refuses such a name, so the collision never
 	// reaches here and the order a template sees is trailer > group.
 	for _, t := range declared {
-		builtins[t.Name] = trailerValue(c.Message, t.Token)
+		builtins[t.Name] = trailerValue(c.Recorded, t.Token)
 	}
 	resolve := func(name string) string {
 		if v, ok := builtins[name]; ok {

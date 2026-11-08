@@ -7,6 +7,11 @@ import "strings"
 // EQUALITY (trailers_test.go): the trailers glyph reads off a landed commit
 // are the ones git reads off it, no more and no fewer. Layer contract: this
 // file reads a commit message and nothing else — no git, no GitHub, no config.
+// The message it reads is the one git recorded, closing newline included
+// (notes.Commit.Recorded): the end-of-message rules below are byte rules, and
+// `Conflicts:\n` closing the object is git's ignored list where `Conflicts:`
+// closing the input is an empty trailer — a caller that drops the newline
+// changes the answer, and nothing here can tell that it did.
 //
 // The oracle is the commit reader, not `git interpret-trailers --parse`. The
 // two share every rule but one: interpret-trailers reads a message being
@@ -17,14 +22,17 @@ import "strings"
 // glyph reads landed commits, so a `---` line is message text here, whatever
 // follows it (DESIGN §3 names the fleet commits whose credit a divider hid).
 //
-// The rules are git 2.54.0's, transcribed from trailer.c
+// The rules are git 2.56.0's, transcribed from trailer.c
 // (find_end_of_log_message with no_divider, find_trailer_block_start,
-// find_separator, trailer_block_get) and commit.c (ignored_log_message_bytes),
-// then measured against that git; the shapes and their answers are the test's
-// table, and the table is itself re-read off git on every run. Git's
-// configuration — trailer.separators, trailer.<token>.*, core.commentChar —
-// is never read: the oracle is git with its defaults, and a repository whose
-// config changes git's answer gets the default one.
+// find_separator, trailer_block_get), commit.c (ignored_log_message_bytes)
+// and pretty.c (skip_blank_lines), then measured against that git; the shapes
+// and their answers are the test's table, and the table is itself re-read off
+// git on every run. Git 2.54.0 and 2.55.0 differ from it in one rule, the URL
+// rule of splitTrailer (their trailer.c, commit.c, wt-status.c and pretty.c
+// diffed against 2.56.0's; older gits were not read). Git's configuration —
+// trailer.separators, trailer.<token>.*, core.commentChar — is never read: the
+// oracle is git with its defaults, and a repository whose config changes git's
+// answer gets the default one.
 //
 // WHY A PARSER AND NOT A GREP. A `^Co-Authored-By:` grep over the raw message
 // answers on three shapes where git answers nothing, and each wrong answer is
@@ -266,12 +274,21 @@ func isTrailerLine(l string) bool {
 // colon, untrimmed (the caller trims once continuations are folded). So
 // `Why not: a reason` is prose — the run ends at the space and `n` follows,
 // not the colon — as are `Fix#1: x`, `Révisé: x`, and a line opening with the
-// colon or with whitespace (no token). `Why : x` is the token `Why`, and
-// `https://x: y` is the token `https` with the value `//x: y`: git has no URL
-// rule, and a guard added here hid a credit below such a line that git and
-// GitHub both give (review of t-hd7d, 2026-11-08). An EMPTY rest parses: git
-// reports `Why:` as a trailer with no value, and dropping it is the reader's
-// job, not the parser's.
+// colon or with whitespace (no token). `Why : x` is the token `Why`. An EMPTY
+// rest parses: git reports `Why:` as a trailer with no value, and dropping it
+// is the reader's job, not the parser's.
+//
+// The URL rule is git 2.56.0's (d122e37976, "trailers: stop recognizing URLs
+// as trailers"): a colon that opens `://` straight after the token is no
+// separator, so `https://x: y` and a bare `https://github.com/o/r/issues/1`
+// are prose — one of them in a block voids it, credits included — while
+// `Why ://x`, with a blank before the colon, is still the token `Why`. Git
+// 2.54 and 2.55 have no such rule and read those lines as the trailer `https`,
+// so under them a Co-authored-by beside a bare URL line is credited; glyph
+// follows 2.56, which credits no more than git's current reader and never a
+// person GitHub does not (DESIGN §3). This rule is the one place the two gits
+// answer differently, so the differential names the version it judges against
+// rather than floating with whichever git is on PATH.
 func splitTrailer(l string) (token, rest string, ok bool) {
 	i := 0
 	for i < len(l) && isTokenByte(l[i]) {
@@ -285,6 +302,9 @@ func splitTrailer(l string) (token, rest string, ok bool) {
 		j++
 	}
 	if j >= len(l) || l[j] != ':' {
+		return "", "", false
+	}
+	if j == i && strings.HasPrefix(l[j:], "://") {
 		return "", "", false
 	}
 	return l[:i], l[j+1:], true

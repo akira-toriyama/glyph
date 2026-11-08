@@ -383,6 +383,38 @@ func TestNotesCreditsByIdentityNotShape(t *testing.T) {
 	}
 }
 
+// TestNotesRangeReadsAFinalConflictsLineAsGitDoes: the --range reader hands
+// the trailer parser the message as git recorded it, closing newline
+// included, so a bare `Conflicts:` line closing a commit is git's ignored
+// list here as it is for `%(trailers)` — not a trailer line that lifts a
+// 2-of-9 Signed-off-by block over the 25% line (Trent credited, git credits
+// nobody) or a one-line block that hides the paragraph above it (Peggy
+// dropped, git credits her). `git commit -m` records every message with that
+// newline, which is why the fixture needs no verbatim commit. git's own
+// answer is read beside glyph's, so the row cannot pin what git does not
+// give (notes verification V2, 2026-11-08; mutation row
+// trailer-block-read-off-the-trimmed-message).
+func TestNotesRangeReadsAFinalConflictsLineAsGitDoes(t *testing.T) {
+	dir, base := testutil.NewTaggedRepo(t)
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ a bare Conflicts line under a 2-of-9 sign-off block\n\nbody\n\nSigned-off-by: S <s@x.y>\np1\np2\np3\np4\np5\np6\np7\nCo-authored-by: Trent <t@x.y>\nConflicts:")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ a bare Conflicts paragraph closing the message\n\nbody\n\nCo-authored-by: Peggy <p@x.y>\n\nConflicts:")
+	if got := testutil.Git(t, dir, "akira-toriyama", "log", "--reverse", "--format=%(trailers:key=Co-authored-by,valueonly,unfold)", base+"..HEAD"); strings.TrimSpace(got) != "Peggy <p@x.y>" {
+		t.Fatalf("git's commit reader credits %q on the fixture, and the test expects Peggy alone — the fixture is wrong, not git", got)
+	}
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
+	if code != 0 {
+		t.Fatalf("notes exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	want := "## Fixes\n\n" +
+		"- :bug:~ a bare Conflicts line under a 2-of-9 sign-off block akira-toriyama\n" +
+		"- :bug:~ a bare Conflicts paragraph closing the message akira-toriyama with Peggy\n"
+	if stdout != want {
+		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
+	}
+}
+
 // TestNotesSinceTagCreditsTheListedLogin: on the walk the API describes a
 // squash-merged pull's inner commits, and its author.login — not the name —
 // is what the credit pages; a commit GitHub mapped to no account (author:

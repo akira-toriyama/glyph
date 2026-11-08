@@ -537,7 +537,10 @@ the newline (measured 2026-09-29 on glyph#246: af7ee18's local `%B` ends in
 one, its entry in the pull's commit listing does not). `gitsource` strips
 exactly that one newline where it parses a record, so every reader of local
 history — `lint --range`, the pre-push hook, `bump`, `notes`, `release` and
-`preview`'s walk — judges the text the hook judged, and a verbatim message
+`preview`'s walk — judges the text the hook judged (the one reader of the
+other text is the trailer parser, which reads `RawCommit.Recorded`, the
+record with its newline, because git's end-of-message rules are byte rules —
+§3), and a verbatim message
 keeps trailing blank lines of its own
 (`TestEndAnchoredPatternGetsOneVerdictAtTheHookAndInTheRange` asserts a
 matching and a non-matching message at both gates; mutation row
@@ -996,15 +999,37 @@ claimed) and no fewer (a credit git reports and glyph drops is a person
 uncredited). `TestTrailersEqualGit` crosses heads, blocks and tails, every
 byte after `---` and in four other positions, the 25% boundary from both
 sides under every git-generated prefix spelling, and a seeded random mix:
-12,961 shapes by default and 41,461 with 30,000 random ones, 0 over-reports
-and 0 under-reports (2026-11-08); the table of named shapes is re-read off
-git on every run, so a row cannot pin an answer git does not give. The rules
-are git's own, transcribed from `trailer.c` (`find_end_of_log_message` with
-`no_divider`, `find_trailer_block_start`, `find_separator`,
-`trailer_block_get`), `commit.c` (`ignored_log_message_bytes`) and `pretty.c`
-(`skip_blank_lines`), measured against git 2.54.0 rather than modelled, with
-git's defaults and none of its `trailer.*` config. **The oracle is the commit
-reader, not `git interpret-trailers --parse`.** The two share every rule but
+15,601 shapes by default and 44,101 with 30,000 random ones, 0 over-reports
+and 0 under-reports under git 2.56.0 (2026-11-08; under git 2.54.0 the same
+counts with 854 and 6,041 shapes held back, below); the table of named shapes
+is re-read off git on every run, so a row cannot pin an answer git does not
+give. The rules are git's own, transcribed from `trailer.c`
+(`find_end_of_log_message` with `no_divider`, `find_trailer_block_start`,
+`find_separator`, `trailer_block_get`), `commit.c`
+(`ignored_log_message_bytes`) and `pretty.c` (`skip_blank_lines`), measured
+against git rather than modelled, with git's defaults and none of its
+`trailer.*` config. **The oracle's git is 2.56.0**, the one version the
+parser names (`oracleGitVersion`), because git moved the commit reader's
+answer once in the range read: d122e37976 ("trailers: stop recognizing URLs
+as trailers", v2.56.0) made a colon opening `://` straight after the token no
+separator, so a `token://` line is prose under 2.56.0 and the trailer `https`
+under 2.54.0 and 2.55.0 (their `trailer.c`, `commit.c`, `wt-status.c` and
+`pretty.c` diffed against 2.56.0's: that rule is the only behavioural change;
+older gits were not read). Under older git a Co-authored-by beside a bare URL
+line is credited; glyph follows 2.56.0, the side that credits no more than
+git's current reader and never a person GitHub does not, and the side CI
+judges on (the runners' git is 2.56.0, the machine's 2.54.0 — a parser that
+followed the older rule turned PR #360's required checks red, 995
+over-reports in 12,961 shapes). So the differential reads `git version` and
+compares every shape under any git it runs on except those holding a
+`token://` line, which it compares only under 2.56.0 or later and otherwise
+counts and names in its output (never dropped silently; `TestTrailers`' URL
+rows pin them under older git, standing on the table alone and saying so).
+Across the local fleet clones the two gits' `%(trailers:key=Co-authored-by)`
+answers are identical on all 33,640 commits (measured in verification,
+2026-11-08), so the version decides the gate and the oracle, not a credit the
+fleet has seen. **The oracle is the commit reader, not `git
+interpret-trailers --parse`.** The two share every rule but
 one: interpret-trailers reads a message being written or a patch mail, where
 a `---` line starts the diff, so it discards everything from the first `---`
 down; `%(trailers)` sets `no_divider` (pretty.c), as every reader inside git
@@ -1021,16 +1046,36 @@ repositories (measured in review, 2026-11-08; each credited again by
 `TestTrailers` and by the fix's end-to-end run). The message starts where
 the reader starts it — leading blank lines skipped — and ends where the
 reader ends it: above the scissors line
-`# ------------------------ >8 ------------------------`, and above a
-trailing run of comment lines, empty lines and an old-style `Conflicts:` list
-with its tab-indented paths (`ignored_log_message_bytes`; a Conflicts tail
-glued under a Signed-off-by block had counted as a trailer line and lifted a
-2-of-9 block over the 25% line, review of t-hd7d). The token is one run of
-ASCII letters, digits and hyphens, optional blanks, then the colon: `Fix#1:`
-and `Révisé:` are prose, `Why :` is the token `Why`, and `https://x: y` is
-the token `https` — git has no URL rule, and a guard that added one hid a
-credit below a bare URL line that git and GitHub both give (683 of 10,001
-generated shapes, 94 of them a lost credit; review of t-hd7d). A block is
+`# ------------------------ >8 ------------------------` (a line of its own,
+at the message's start or after a newline — the spelling inside a trailer's
+value is text), and above a trailing run of comment lines, empty lines and
+an old-style `Conflicts:` list — the header byte-exact, `conflicts:` is a
+trailer — with its tab-indented paths (`ignored_log_message_bytes`; a
+Conflicts tail glued under a Signed-off-by block had counted as a trailer
+line and lifted a 2-of-9 block over the 25% line, review of t-hd7d). Those
+are byte rules, so **the parser reads the message as git recorded it,
+closing newline included** (`RawCommit.Recorded`, carried beside the
+`Message` every other reader judges — §2.1): `Conflicts:\n` closing the
+object is the ignored list and `Conflicts:` closing the input an empty
+trailer, and the newline-stripped text cannot say which the commit carries.
+Read off the stripped text, a bare final `Conflicts:` line lifted a 2-of-9
+Signed-off-by block over the 25% line (Trent credited, `%(trailers)` credits
+nobody) and closed the message as a one-line block (Peggy dropped,
+`%(trailers)` credits her) — notes verification V2, 2026-11-08. The API arm
+cannot carry the newline: GitHub's `commit.message` never has it (§2.1) and
+no field says whether the object does, so a commit git recorded with a final
+bare `Conflicts:` line reads as the ignored list from `--range` and as the
+empty trailer `Conflicts` from `--pr` / `--since-tag` — the one shape where
+the arm decides, stated here rather than plumbed as a bit the API does not
+have. Its reach: 0 of 33,928 fleet commits carry a `Conflicts:` line at all
+(measured in verification, 2026-11-08; 14,082 of them, GitHub's squash and
+merge commits, are recorded without a closing newline and 19,846 with one).
+The token is one run of ASCII letters, digits and hyphens, optional blanks,
+then the colon: `Fix#1:` and `Révisé:` are prose, `Why :` is the token `Why`,
+`Why ://x` too (a blank before the colon disarms the URL rule), and
+`https://x: y` or a bare `https://…` line is prose under the URL rule above —
+one in a block git did not write into voids it, credits included, where git
+2.54 and 2.55 read the trailer `https` and credit the block. A block is
 the trailers when every line of it is a trailer, a continuation or a comment
 — one prose line voids it — **or** when it holds a line git generated
 (`Signed-off-by: `, `(cherry picked from commit `, byte-exact, the trailing
@@ -1044,16 +1089,21 @@ prose line, and a block that is the message's only paragraph. The second is
 the sharp one — an unindented wrapped line, or the fleet's own `Generated
 with …` footer placed inside the block, voids the whole block and takes the
 co-author credit with it. GitHub's own co-author rule is unpublished and
-wider than git's: on glyph-test-2 it credited every shape git's reader
-credits and three more — below a scissors line, under a Conflicts tail that
-tips the 25% line, and a prose-plus-trailer block with no sign-off (11 shapes
-probed in review, 2026-11-08). glyph follows git, so where the two differ
-glyph credits fewer, never a person GitHub does not. (Mutation rows
+wider than git's: on glyph-test-2 it credited every shape git 2.56.0's
+reader credits and four more — below a scissors line, under a Conflicts tail
+that tips the 25% line, a prose-plus-trailer block with no sign-off, and
+beside a bare URL line (11 shapes probed in review, 2026-11-08). glyph
+follows git, so where the two differ glyph credits fewer, never a person
+GitHub does not. (Mutation rows
 `notes-coauthor-is-grepped-not-parsed.patch`,
 `divider-hides-the-block-below-it.patch`,
 `signed-off-block-voided-by-one-prose-line.patch`,
 `message-end-ignores-nothing.patch`,
-`trailer-token-rule-guards-a-url.patch`,
+`trailer-token-rule-reads-a-url-as-a-trailer.patch`,
+`conflicts-list-opened-by-a-lowercase-header.patch`,
+`scissors-spelling-inside-a-line-cuts-the-message.patch`,
+`trailer-block-read-off-the-trimmed-message.patch`,
+`gitsource-log-trims-the-recorded-message.patch`,
 `continuation-under-prose-is-not-prose.patch`,
 `git-generated-prefix-without-its-space.patch`,
 `leading-blank-lines-stand-as-the-title.patch`.) Rejected alternative: carrying
