@@ -286,6 +286,17 @@ func TestLoadRefusesAMiscasedKey(t *testing.T) {
 		"packages table":     {"schema = 1\n" + grammar + "[[Packages]]\npath = 'lib'\n", "miscased key Packages (write packages)"},
 		"packages.path":      {"schema = 1\n" + grammar + "[[packages]]\nPATH = 'lib'\n", "miscased key packages[0].PATH (write path)"},
 		"a miscased table's keys are named with it": {"schema = 1\n" + grammar + "[Note]\nLine = '- $subject'\n[[Note.Sections]]\nTITLE = 'Fixes'\nsemver = 'patch'\n", "miscased keys Note (write note), Note.Line (write line), Note.Sections (write sections), Note.Sections[0].TITLE (write title)"},
+		// go-toml folds a non-ASCII key with strings.ToLower, which maps
+		// U+0130 to `i` where strings.EqualFold does not match the two; a walker
+		// that found fields through EqualFold let the dotted-I key bind and
+		// walked on (measured 2026-11-08 at 8135199). U+212A KELVIN SIGN both
+		// folds reach; it is the control that a non-ASCII fold is refused at all.
+		"U+0130 at the top level":    {"schema = 1\n[\"commİt\"]\ntemplate = 'T'\n" + grammar, "miscased key commİt (write commit)"},
+		"U+0130 in a table":          {"schema = 1\n" + grammar + "[[patterns]]\npattern = '^WIP'\n\"skİp\" = true\n", "miscased key patterns[1].skİp (write skip)"},
+		"U+0130 beside the spelling": {"schema = 1\n" + grammar + "[[patterns]]\npattern = '^WIP'\nskip = false\n\"skİp\" = true\n", "miscased key patterns[1].skİp (write skip)"},
+		"U+0130 as a fixed sigil":    {"schema = 1\n[[patterns]]\npattern = '^x .+'\n\"semver_sİgil\" = '!'\n", "miscased key patterns[0].semver_sİgil (write semver_sigil)"},
+		"U+212A at the top level":    {"schema = 1\n" + grammar + "[[\"pacKages\"]]\npath = 'lib'\n", "miscased key pacKages (write packages)"},
+		"U+212A in a table":          {"schema = 1\n" + grammar + "[[patterns]]\npattern = '^WIP'\n\"sKip\" = true\n", "miscased key patterns[1].sKip (write skip)"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Load([]byte(c.toml))

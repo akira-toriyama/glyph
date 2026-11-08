@@ -191,9 +191,14 @@ func TestMatchSigilErrors(t *testing.T) {
 // pattern below `! :sparkles: first alt` exited 3 as a sigil group that
 // captured nothing, and beside `semver_sigil = '='` it folded to none — a
 // major shipped as no release, with no warning (measured 2026-11-04 at
-// 2f9428a, t-wmk2). Both alternatives, for the sigil and the scope alike, and
-// the two shapes a participant can take — a repeat's last turn, and an empty
-// capture that did take part, which stands and is not a group that took none.
+// 2f9428a, t-wmk2). Both alternatives, for the sigil and the scope alike; then
+// the one reading under a repeat, where two groups of the name can both take
+// part: the highest-indexed participant answers whichever turn came last (the
+// engine keeps each group's capture from its own last turn — reading the first
+// participant, or the last turn, gives the other group), and taking part is
+// the index pair, not the capture, so an empty capture whose group was
+// entered stands over an earlier non-empty one (reading participation from
+// the value gives the earlier one). Measured on go1.26, 2026-11-08.
 func TestMatchReadsTheGroupThatTookPart(t *testing.T) {
 	cfg := mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?P<semver_sigil>[=~^!%]) :[a-z]+:(?:\\((?P<scope>[a-z]+)\\))? .+|^:[a-z]+:(?:\\((?P<scope>[A-Z]+)\\))?(?P<semver_sigil>[=~^!%]) .+'\n")
 	for _, c := range []struct {
@@ -220,14 +225,32 @@ func TestMatchReadsTheGroupThatTookPart(t *testing.T) {
 		t.Errorf("Match under a fixed = read the first alternative's ! as %v, %v; want ! — the fixed value stands in only for a capture no alternative made", m.Sigil, err)
 	}
 
-	repeat := mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?:\\[(?P<scope>[a-z]+)\\])*(?P<semver_sigil>[=~^!%]) .+'\n")
-	if m, err := repeat.Match("[a][haiku]~ swap"); err != nil || m.Groups["scope"] != "haiku" {
-		t.Errorf("Match under a repeat = scope %q, %v; want the last turn's haiku", m.Groups["scope"], err)
+	repeat := mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?:\\[(?P<scope>[a-z]+)\\]|\\((?P<scope>[a-z]*)\\))+(?P<semver_sigil>[=~^!%]) .+'\n")
+	for _, c := range []struct {
+		message, scope, why string
+	}{
+		{"[a][haiku]~ one group, two turns", "haiku", "a group's own last turn"},
+		{"(a)[b]~ paren then bracket", "a", "the second group, from the first turn"},
+		{"[b](a)~ bracket then paren", "a", "the second group, from the last turn"},
+		{"[cli]()~ an empty paren", "", "the second group's empty capture stands over the first's cli"},
+	} {
+		m, err := repeat.Match(c.message)
+		if err != nil || m.Groups["scope"] != c.scope {
+			t.Errorf("Match(%q) under a repeat = scope %q, %v; want %q — %s", c.message, m.Groups["scope"], err, c.scope, c.why)
+		}
 	}
 
-	empty := mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?P<scope>[a-z]*)(?P<semver_sigil>[=~^!%]) .+|^x(?P<scope>[a-z]+)(?P<semver_sigil>[=~^!%]) .+'\n")
-	if m, err := empty.Match("~ swap"); err != nil || m.Groups["scope"] != "" {
-		t.Errorf("Match = scope %q, %v; want \"\" — an empty capture that took part is the alternative's answer", m.Groups["scope"], err)
+	sigils := mustLoad(t, "schema = 1\n[[patterns]]\npattern = '^(?:\\[(?P<semver_sigil>[=~^!%])\\]|\\((?P<semver_sigil>[=~^!%])\\))+ .+'\n")
+	for _, c := range []struct {
+		message string
+		sigil   Sigil
+	}{
+		{"(~)[!] paren then bracket", SigilPatch},
+		{"[!](~) bracket then paren", SigilPatch},
+	} {
+		if m, err := sigils.Match(c.message); err != nil || m.Sigil != c.sigil {
+			t.Errorf("Match(%q) under a repeat = sigil %v, %v; want %v, the second group's whichever turn came last", c.message, m.Sigil, err, c.sigil)
+		}
 	}
 }
 

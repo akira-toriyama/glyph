@@ -82,14 +82,11 @@ func (c *Config) Match(message string) (Match, error) {
 		}
 
 		groups := make(map[string]string)
-		for gi, name := range p.re.SubexpNames() {
+		for _, name := range p.re.SubexpNames() {
 			if name == "" {
 				continue
 			}
-			if _, seen := groups[name]; seen && loc[2*gi] < 0 {
-				continue
-			}
-			groups[name] = submatch(message, loc, gi)
+			groups[name] = submatch(message, loc, participant(p.re, loc, name))
 		}
 
 		var sigil Sigil
@@ -112,21 +109,32 @@ func (c *Config) Match(message string) (Match, error) {
 }
 
 // submatch is what group gi captured in loc, FindStringSubmatchIndex's
-// answer: "" for a group that took no part (-1, -1) as for one that captured
-// nothing. participant is what tells the two apart.
+// answer: "" for no group (gi < 0, participant's answer when none took part)
+// as for one that captured nothing.
 func submatch(message string, loc []int, gi int) string {
-	if loc[2*gi] < 0 {
+	if gi < 0 || loc[2*gi] < 0 {
 		return ""
 	}
 	return message[loc[2*gi]:loc[2*gi+1]]
 }
 
 // participant is the group called name that took part in the match loc
-// describes — the last such when more than one did, which is also the one
-// whose capture a repeat leaves standing — as a submatch index, or -1 when
-// the pattern names no such group or every one of them sat in an alternative
-// the match did not take. It is the one reading of a repeated name: Match
-// fills Groups by it, and span reads a capture's place in the message by it.
+// describes, as a submatch index, or -1 when the pattern names no such group
+// or every one of them sat in an alternative the match did not take. It is
+// the one reading of a repeated name — Match fills Groups by it and nowhere
+// else, and span reads a capture's place in the message by it — so a group
+// whose alternative was not taken never stands in for one whose was.
+//
+// Under an alternation one group of the name takes part. Under a repeat more
+// than one can, and the answer is then the highest-indexed of them, not the
+// last turn's: Go's engine keeps each group's capture from that group's own
+// last participating turn, so under
+// `(?:\[(?P<semver_sigil>…)\]|\((?P<semver_sigil>…)\))+` the second group
+// answers for `(~)[!] x` and for `[!](~) x` alike, `~` both times (measured
+// go1.26; TestMatchReadsTheGroupThatTookPart). Taking part is read from the
+// index pair, not the capture: an empty capture whose group was entered
+// (`0 0`, a `[a-z]*` that matched nothing) is a participant and stands over
+// an earlier non-empty one.
 //
 // SubexpIndex is not this reading. It answers the leftmost group of the name,
 // and FindStringSubmatch fills a repeated name in index order, so the later

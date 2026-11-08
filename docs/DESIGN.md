@@ -564,8 +564,15 @@ pattern says it means:
   refuses every key whose bytes are not a tag — naming it as written and the
   spelling to write, a miscased table's keys with it
   (`TestLoadRefusesAMiscasedKey`, `TestLintCannotLoadAMiscasedKey`; mutation
-  row `config-folds-a-miscased-key-onto-the-schema`). Exit 2 like every load
-  failure, so the commit that fixes the file gets through the hooks.
+  row `config-folds-a-miscased-key-onto-the-schema`). No fold decides whether
+  a key passes; one names the spelling to write, and it is go-toml's own
+  (`strings.ToLower`), not `strings.EqualFold` — the two part at U+0130 `İ`,
+  which go-toml lowers to `i` and EqualFold does not match to it, so a walker
+  that looked fields up through EqualFold and walked past a key it could not
+  bind let `"skİp" = true` bind skip unrefused (measured 2026-11-08 at
+  8135199; U+212A KELVIN SIGN both reach; mutation row
+  `config-key-walker-skips-a-key-its-own-fold-cannot-bind`). Exit 2 like every
+  load failure, so the commit that fixes the file gets through the hooks.
 
 Config resolution is one file per checkout: the `glyph.toml` at the top level
 of the working tree the command runs in (ratified Q1 — a config change
@@ -783,21 +790,33 @@ per-commit override under the repository's settings:
   no-editor marker to the hook while git runs its editor cleanup, so the hook
   judges the template git strips (measured).
 
-And one setting the hook could read and does not act on: **`i18n.commitEncoding`
-set to anything but UTF-8** (t-gh5t). The hook judges the message file's bytes
-as written, while `--range` reads `git log`, which re-encodes every message
-into UTF-8 (`i18n.logOutputEncoding`, §5's stream contract), so a pattern that
-reads past ASCII moves between them. Measured 2026-11-04 (git 2.54.0) under
-`pattern = '^(?P<semver_sigil>[=~^!%]) [\p{L} ]+$'` and
-`git config i18n.commitEncoding ISO-8859-1`: `~ café crème` written as Latin-1
-bytes is refused at `lint --stdin` (exit 3 — `\351` is no letter to RE2) and
-accepted by `lint --range` after `--no-verify` (exit 0); the same message as
-UTF-8 bytes is accepted at the hook and refused in the range, where git has
-re-encoded `é` as `Ã©` (3). Neither shipped preset moves — their alphabets are
-ASCII classes and `.+`, which no re-encoding takes a message in or out of — and
-glyph does not transcode the hook's message: `golang.org/x/text/encoding` would
-be a dependency bought for a setting no preset can observe, and a hook judging
-bytes git never records has no range to agree with. Stated, not fixed.
+And the message's **encoding** (t-gh5t): the hook judges the message file's
+bytes as written, while `--range` reads `git log --encoding=UTF-8`, which hands
+over what git recorded, re-encoded into UTF-8 (§5's stream contract), so a
+pattern that reads past ASCII moves between them in two shapes, both measured
+2026-11-08 under git 2.54.0 and 2.56.0 with
+`pattern = '^(?P<semver_sigil>[=~^!%]) [\p{L} ]+$'` and `~ café crème`:
+
+- under the default encoding, a message that is not UTF-8 is rewritten at
+  commit time — git reads the invalid bytes as Latin-1 and records their UTF-8
+  (`\351` becomes `c3 a9`, with "commit message did not conform to UTF-8" on
+  stderr), so the hook judges bytes git never records: Latin-1 bytes are
+  refused at `lint --stdin` (exit 3 — `\351` is no letter to RE2) and the
+  commit `--no-verify` records is accepted by `lint --range` (0). The same
+  message as UTF-8 bytes is 0 and 0, so the hook and the range agree only for a
+  message that is already UTF-8;
+- under `i18n.commitEncoding ISO-8859-1`, git records the bytes as written with
+  an `encoding` header and `git log` re-encodes them from that: Latin-1 bytes
+  are refused at the hook and accepted in the range (3 / 0, the range reading
+  `c3 a9`), and UTF-8 bytes are accepted at the hook and refused in the range,
+  where `é` has become `Ã©` (0 / 3).
+
+Neither shipped preset moves — their alphabets are ASCII classes and `.+`,
+which no re-encoding takes a message in or out of — and glyph does not
+transcode the hook's message: an exact answer is a transcription of git's own
+handling, its Latin-1 fix-up under the default and iconv's whole table under
+any other setting (`golang.org/x/text/encoding`), a dependency and a second
+copy of git's rules bought for patterns no preset ships. Stated, not fixed.
 
 Three ways to close the editor and `--no-verbose` cells were measured and not
 taken. Judging the uncut text whenever the cut leaves nothing closes every cell
@@ -1126,7 +1145,7 @@ over `${ … }` and `[? … ]` after measuring that all three parse as literal
 text under the existing placeholder grammar (so every template already in the
 fleet loads unchanged): only `$[` carries both of the file's own signals — `$`
 marks what glyph interprets, and the bracket already means optional in the
-same file's `[commit]` template block (`[(scope)]`, `[<body>]`). A bare `[`
+same file's `[commit]` template block (`[(scope: a-z 0-9 -)]`, `[<body>]`). A bare `[`
 stays literal, which is what leaves the `- [$scope] $subject` idiom and
 Markdown links untouched, and brackets *inside* a span nest — the closing `]`
 is the first at depth zero, so `$[ [$scope]]` renders `[cli]` or leaves whole,
@@ -2095,7 +2114,10 @@ declaration, and `glyph init` writes it as a commented paragraph.
   `config.participant`), reading `FindStringSubmatchIndex`, which tells a
   group whose alternative was not taken (`-1 -1`) from one that captured
   nothing (`0 0`), so a group under either alternative reaches attribution
-  and the speller is the alternation of every group of the name. Read with
+  and the speller is the alternation of every group of the name (under a
+  repeat, where both groups can take part, the higher-indexed one answers
+  whichever turn came last — `participant`'s comment has the measurement).
+  Read with
   `FindStringSubmatch`, which fills a repeated name in index order, the later
   group's empty stood in for the earlier one's capture: under
   `^(?P<semver_sigil>[=~^!%]) :[a-z]+: .+|^:[a-z]+:(?P<semver_sigil>[=~^!%]) .+`,

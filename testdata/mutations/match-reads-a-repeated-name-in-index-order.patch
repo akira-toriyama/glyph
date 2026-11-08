@@ -1,14 +1,11 @@
 diff --git a/internal/config/match.go b/internal/config/match.go
-index 6ffa041..c9d6951 100644
 --- a/internal/config/match.go
 +++ b/internal/config/match.go
-@@ -86,9 +86,6 @@ func (c *Config) Match(message string) (Match, error) {
- 			if name == "" {
- 				continue
- 			}
--			if _, seen := groups[name]; seen && loc[2*gi] < 0 {
--				continue
--			}
- 			groups[name] = submatch(message, loc, gi)
+@@ -148,6 +148,6 @@ func participant(re *regexp.Regexp, loc []int, name string) int {
+ 	at := -1
+ 	for gi, n := range re.SubexpNames() {
+-		if n == name && loc[2*gi] >= 0 {
++		if n == name {
+ 			at = gi
  		}
- 
+ 	}
