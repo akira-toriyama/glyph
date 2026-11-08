@@ -777,7 +777,16 @@ func TestCheckScriptRunsRepoPolicyAtThePin(t *testing.T) {
 		if strings.HasPrefix(saw["self"], f.hub) {
 			t.Errorf("repo-policy-check.sh ran out of the clone's working tree, at %s", saw["self"])
 		}
-		if got, want := saw["dir"], f.git("rev-parse", "--show-toplevel"); got != want {
+		// git answers the toplevel with symlinks resolved (macOS: /var is
+		// /private/var), the stub records the path it was handed: compare both resolved.
+		got, want := saw["dir"], f.git("rev-parse", "--show-toplevel")
+		if r, err := filepath.EvalSymlinks(got); err == nil {
+			got = r
+		}
+		if r, err := filepath.EvalSymlinks(want); err == nil {
+			want = r
+		}
+		if got != want {
 			t.Errorf("repo-policy-check.sh judged %q, want this checkout %s", got, want)
 		}
 	})
