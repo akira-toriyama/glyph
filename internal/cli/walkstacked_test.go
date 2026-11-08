@@ -713,3 +713,86 @@ func TestSinceTagReadBackOfACappedPullWarnsOfARecount(t *testing.T) {
 		t.Errorf("#1 is in no verdict, yet the walk's own cap warning was said:\n%s", stderr)
 	}
 }
+
+// TestSinceTagReadBackDropsAMergeCommitTheBaseListed: #1 (a1, a merge commit
+// M, a2) squash-merged under v1.0.0, #2 (a1, M, a2, b1) stacked on it. The
+// squash landed M's content as it landed a1's, so the read-back's answer is
+// taken for M too — a merge commit has no position in a rebase's alignment,
+// which is no reason to fold it as #2's own. Claimed, M's ^ re-counted; left
+// unclaimed, it was refused as #2's. With M unclaimed and #1 in range, the
+// refusal names #1's merge point alone, and a tag there clears the stack.
+func TestSinceTagReadBackDropsAMergeCommitTheBaseListed(t *testing.T) {
+	const mSHA = "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5"
+	for name, msg := range map[string]string{"claimed": ":sparkles:^ bring the upstream api in", "unclaimed": "bring the upstream api in"} {
+		t.Run(name, func(t *testing.T) {
+			dir, root := testutil.NewTaggedRepo(t)
+			s1 := squashCommit(t, dir, "Reshape the api", 1)
+			testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
+			s2 := squashCommit(t, dir, "Follow up", 2)
+			a1 := apiCommitOn(stackedA1, ":memo:= start the api", root)
+			m := apiCommitOn(mSHA, msg, stackedA1, root)
+			a2 := apiCommitOn(stackedA2, ":memo:= document the api", mSHA)
+			b1 := apiCommitOn(stackedB1, ":bug:~ fix the follow-up", stackedA2)
+			usePR(t, walkServer(t, map[string]string{
+				commitPullsPath(s1): apiMerged(1, s1), pullCommitsPath(1): apiListing(a1, m, a2),
+				commitPullsPath(s2): apiMerged(2, s2), pullCommitsPath(2): apiListing(a1, m, a2, b1),
+			}))
+			t.Chdir(dir)
+			code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+			if code != 0 || stdout != "v1.0.1\n" {
+				t.Fatalf("bump --since-tag = exit %d stdout %q, want 0 / v1.0.1 — #1 released M under v1.0.0\nstderr: %s", code, stdout, stderr)
+			}
+			if want := fmt.Sprintf("commit %.7s in pull request #2 landed on the released branch as %.7s, which is outside v1.0.0..HEAD", mSHA, s1); !strings.Contains(stderr, want) {
+				t.Errorf("the drop must name where #1 landed M:\n  %s\nstderr: %s", want, stderr)
+			}
+		})
+	}
+	t.Run("the stacked refusal's one escape clears it", func(t *testing.T) {
+		dir, root := testutil.NewTaggedRepo(t)
+		s1 := squashCommit(t, dir, "Reshape the api", 1)
+		s2 := squashCommit(t, dir, "Follow up", 2)
+		a1 := apiCommitOn(stackedA1, ":memo:= start the api", root)
+		m := apiCommitOn(mSHA, "bring the upstream api in", stackedA1, root)
+		usePR(t, walkServer(t, map[string]string{
+			commitPullsPath(s1): apiMerged(1, s1), pullCommitsPath(1): apiListing(a1, m),
+			commitPullsPath(s2): apiMerged(2, s2), pullCommitsPath(2): apiListing(a1, m, apiCommitOn(stackedB1, ":bug:~ fix the follow-up", mSHA)),
+		}))
+		t.Chdir(dir)
+		code, _, stderr := runGlyph(t, "bump", "--since-tag")
+		if code != 3 || !strings.Contains(stderr, fmt.Sprintf("AT OR PAST %.7s", s1)) || strings.Contains(stderr, fmt.Sprintf("%.7s", s2)) {
+			t.Fatalf("bump --since-tag = exit %d, want 3 naming #1's merge point alone (s1 %.7s, s2 %.7s)\nstderr: %s", code, s1, s2, stderr)
+		}
+		testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0", s1)
+		code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+		if code != 0 || stdout != "v1.0.1\n" {
+			t.Fatalf("bump --since-tag = exit %d stdout %q after a tag at #1's merge point, want 0 / v1.0.1 — the escape the refusal named must clear it\nstderr: %s", code, stdout, stderr)
+		}
+	})
+}
+
+// TestSinceTagLandingOutsideTheRangeAsksNothing: #2 lists a commit #1 landed
+// under its own sha behind the base (a merge-merged #1, the sha on main) and
+// its own, which aligns to its rebase's replay. Both are the footprint's whole
+// answer, so the read-back is not asked: no request about #1's merge point
+// (walkServer fails on any other route). Asked, every merge-merged pull's
+// listing would price the walk by the history behind the base.
+//
+// bite-exempt: the pre-PR source reads nothing back, so it asks nothing too;
+// mutation row walk-read-back-asked-of-a-landing-outside-the-range is what
+// proves it bites.
+func TestSinceTagLandingOutsideTheRangeAsksNothing(t *testing.T) {
+	dir, root := testutil.NewTaggedRepo(t)
+	mp := mergePR(t, dir, "akira-toriyama", 1, ":boom:! break the api")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix the follow-up")
+	b1Landed := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	usePR(t, walkServer(t, map[string]string{
+		commitPullsPath(b1Landed): apiMerged(2, b1Landed),
+		pullCommitsPath(2):        apiListing(apiCommitOn(mp.Branch[0], ":boom:! break the api", root), apiCommitOn(stackedB1, ":bug:~ fix the follow-up", mp.Branch[0])),
+	}))
+	t.Chdir(dir)
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 0 || stdout != "v1.0.1\n" {
+		t.Fatalf("bump --since-tag = exit %d stdout %q, want 0 / v1.0.1 and no request about %.7s\nstderr: %s", code, stdout, mp.Merge, stderr)
+	}
+}

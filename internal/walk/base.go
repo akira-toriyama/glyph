@@ -144,11 +144,15 @@ func belowBound(rest string) (bound, prefix string, v bump.Version, err error) {
 // job runs under the Actions GITHUB_TOKEN's 1,000-request hourly budget — 200
 // keeps one speculative first-release walk at a fifth of that budget. A first
 // release large enough to cross it is one the operator should bound by hand.
+// The same bound is the PR side's read-back window (OpenPull: the commits
+// between a pull's fork and HEAD), which grows with the pull's staleness and
+// serves no release either; past it the listing is read whole with a warning.
 //
-// Only this arm is capped: a tagged range — the single line's or the packages
-// union's — is the unreleased work a release must read, and its base moves only
-// by releasing it, so a cap there would refuse a release with no remedy (DESIGN
-// §4.1, "Only the untagged arm is capped").
+// Only these arms are capped: a tagged range — the single line's or the
+// packages union's — is the unreleased work a release must read, and its base
+// moves only by releasing it, so a cap there would refuse a release with no
+// remedy (DESIGN §4.1, "Only the untagged arm is capped"); the walk's own
+// read-back, behind that base, is priced and uncapped with it.
 const walkCap = 200
 
 // flagEscape is the remedy for a caller that HAS --since-tag. It is a

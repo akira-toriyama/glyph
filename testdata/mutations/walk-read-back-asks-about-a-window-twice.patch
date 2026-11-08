@@ -1,13 +1,13 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 368b196..1d72d53 100644
+index 3495905..28bafc0 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -719,7 +719,7 @@ func (w *walk) readBack(ctx context.Context, listing []gitsource.RawCommit) erro
- // matched by nothing and may count again, where the walk's own cap warning
- // speaks of a verdict this pull is not in.
+@@ -792,7 +792,7 @@ func (w *walk) readBack(ctx context.Context, number int, listing []gitsource.Raw
+ // nothing and may count again, where the walk's own cap warning speaks of a
+ // verdict this pull is not in.
  func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error {
--	if w.readBackDone[raw.SHA] || slices.Contains(w.cfg.ExcludeAuthors, raw.Author) {
-+	if slices.Contains(w.cfg.ExcludeAuthors, raw.Author) {
+-	if w.readBackDone[raw.SHA] {
++	if false && w.readBackDone[raw.SHA] {
  		return nil
  	}
  	w.readBackDone[raw.SHA] = true

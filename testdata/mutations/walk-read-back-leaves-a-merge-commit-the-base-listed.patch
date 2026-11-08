@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 3495905..630369a 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -676,7 +676,7 @@ func (w *walk) open(r gitsource.RawCommit, on string) bool {
+ // about what a rebase replays, not about what a squash landed
+ // (TestSinceTagReadBackDropsAMergeCommitTheBaseListed).
+ func (w *walk) yields(r gitsource.RawCommit, on string) bool {
+-	return on == "" || w.ownInRange(r, on)
++	return replayable(r, on) || w.ownInRange(r, on)
+ }
+ 
+ // ownInRange reports whether the footprint placed a listing entry in the

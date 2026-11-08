@@ -1,8 +1,8 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 368b196..9b59d93 100644
+index 3495905..9d1f312 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -640,7 +640,7 @@ func (w *walk) placeStacked(ctx context.Context, canonical string, listing []git
+@@ -657,7 +657,7 @@ func (w *walk) placeStacked(ctx context.Context, number int, canonical string, l
  	if !placed {
  		return nil
  	}
@@ -10,4 +10,4 @@ index 368b196..9b59d93 100644
 +	return nil
  }
  
- // open reports whether another pull's landing can still account for a listing
+ // open reports whether a listing entry the footprint placed at on is a

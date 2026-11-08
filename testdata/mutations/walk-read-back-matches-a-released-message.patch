@@ -1,22 +1,22 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 368b196..d3aeb2b 100644
+index 3495905..823f56f 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -633,7 +633,7 @@ func (w *walk) placeStacked(ctx context.Context, canonical string, listing []git
+@@ -650,7 +650,7 @@ func (w *walk) placeStacked(ctx context.Context, number int, canonical string, l
  	}
  	placed := false
  	for i, r := range listing {
--		if on := w.landings[r.SHA]; w.open(r, landed[i]) && on != "" && on != landed[i] {
-+		if on := w.landings[strings.TrimSpace(r.Message)]; w.open(r, landed[i]) && on != "" && on != landed[i] {
+-		if on := w.landedElsewhere(r.SHA, number); w.yields(r, landed[i]) && on != "" && on != landed[i] {
++		if on := w.landedElsewhere(strings.TrimSpace(r.Message), number); w.yields(r, landed[i]) && on != "" && on != landed[i] {
  			landed[i], placed = on, true
  		}
  	}
-@@ -747,7 +747,7 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error
+@@ -820,7 +820,7 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error
  		if landed[i] == "" {
  			landed[i] = raw.SHA
  		}
--		w.land(r.SHA, landed[i])
-+		w.land(strings.TrimSpace(r.Message), landed[i])
+-		w.land(r.SHA, landed[i], number)
++		w.land(strings.TrimSpace(r.Message), landed[i], number)
  	}
  	return nil
  }

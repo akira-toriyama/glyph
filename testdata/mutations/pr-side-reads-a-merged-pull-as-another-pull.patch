@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 3495905..5a8f3cb 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -715,7 +715,7 @@ func (w *walk) land(sha, on string, pull int) {
+ // the same shas, which the oldest-first read-back has already recorded under
+ // this pull (TestPullSideReadsAMergedPullAsItsOwn).
+ func (w *walk) landedElsewhere(sha string, number int) string {
+-	if l, ok := w.landings[sha]; ok && l.pull != number {
++	if l, ok := w.landings[sha]; ok {
+ 		return l.on
+ 	}
+ 	return ""

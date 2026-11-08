@@ -1,12 +1,12 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 368b196..f9ae774 100644
+index 3495905..52bb3d5 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -747,7 +747,7 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error
+@@ -820,7 +820,7 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error
  		if landed[i] == "" {
  			landed[i] = raw.SHA
  		}
--		w.land(r.SHA, landed[i])
+-		w.land(r.SHA, landed[i], number)
 +		_ = r
  	}
  	return nil

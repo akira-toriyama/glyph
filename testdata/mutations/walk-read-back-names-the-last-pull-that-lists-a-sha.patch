@@ -1,13 +1,13 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 368b196..11682d9 100644
+index 3495905..4b31cb8 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -656,7 +656,7 @@ func (w *walk) open(r gitsource.RawCommit, on string) bool {
+@@ -702,7 +702,7 @@ type landing struct {
  // so the first answer is the pull that put the content on the released branch,
  // and a later pull listing the same sha changes nothing.
- func (w *walk) land(sha, on string) {
+ func (w *walk) land(sha, on string, pull int) {
 -	if _, landed := w.landings[sha]; !landed && sha != "" {
 +	if sha != "" {
- 		w.landings[sha] = on
+ 		w.landings[sha] = landing{on: on, pull: pull}
  	}
  }

@@ -55,7 +55,9 @@ pull into its individual (pre-squash) commits. Nothing is persisted, so a releas
 is idempotent and self-healing. Distinguish from the other two input sources,
 which are not walks in this sense: `--range` classifies commit *messages* out of
 git and never calls the API, and `--pr` reads one pull request's commits over the
-API and knows nothing of any range. "Exactly one of the three" is `bump` and
+API, then reads back out of local git the pulls merged between the listing's
+fork and `HEAD` to drop what another pull landed (DESIGN §4, "A stacked pull
+lists what its base landed") — it has no range of its own. "Exactly one of the three" is `bump` and
 `notes` only — they are the two commands that carry all three flags and mark them
 mutually exclusive. `release` has just the walk (bare `release` walks from the
 highest v* tag HEAD contains, so no flag is required at all), and `preview` takes
