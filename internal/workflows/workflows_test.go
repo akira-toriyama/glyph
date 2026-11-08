@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -575,6 +576,12 @@ var walkingWorkflows = []string{"lint.yml", "pr-verdict.yml", "release.yml", "go
 // is held per checkout step, not per file: the same token under another
 // step's `with:` (setup-xcode's, say) is an input that step ignores, and a
 // whole-file match read it as the checkout's (t-j0es, measured at 2f9428a).
+// A checkout is any step whose `uses:` is actions/checkout, whatever key the
+// step opens with — most steps in goreleaser.yml open with `name:`, and a
+// reader keyed on the first line turned off for a checkout named like its
+// neighbours (dist3 review, measured at df0c1b4) — and only a `fetch-depth:
+// 0` under that step's own `with:` counts: under its `env:` it is a variable
+// actions/checkout never reads.
 func TestWalkingReusablesCheckOutFullHistory(t *testing.T) {
 	// Positive control: prove the matcher still finds the real thing, so a
 	// pattern that has stopped matching cannot pass as four clean files.
@@ -582,13 +589,29 @@ func TestWalkingReusablesCheckOutFullHistory(t *testing.T) {
 	if !fetchDepthFull.MatchString(canary) {
 		t.Fatalf("fetchDepthFull no longer matches a real setting (%q) — every case below would pass vacuously", canary)
 	}
-	// And that the step splitter isolates a checkout from its neighbour: the
-	// misplaced token below must NOT satisfy the checkout's block.
-	const misplaced = "jobs:\n  j:\n    steps:\n      - uses: actions/checkout@sha\n        with:\n          persist-credentials: false\n" +
-		"      - uses: maxim-lobanov/setup-xcode@sha\n        with:\n          fetch-depth: 0\n"
-	if blocks := checkoutsWithoutFullHistory(misplaced); len(blocks) != 1 {
-		t.Fatalf("a fetch-depth under the NEXT step satisfied the checkout (%d shallow checkouts found, want 1) — "+
-			"the per-step reading is broken and every case below is vacuous", len(blocks))
+	// And that the per-step reading tells the shapes apart: each shallow
+	// shape below must be found, each full one must not.
+	const steps = "jobs:\n  j:\n    steps:\n"
+	for name, c := range map[string]struct {
+		yaml    string
+		shallow int
+	}{
+		"a fetch-depth under the NEXT step does not satisfy the checkout": {steps +
+			"      - uses: actions/checkout@sha\n        with:\n          persist-credentials: false\n" +
+			"      - uses: maxim-lobanov/setup-xcode@sha\n        with:\n          fetch-depth: 0\n", 1},
+		"a checkout that opens with name: is a checkout": {steps +
+			"      - name: check out the tagged tree\n        uses: actions/checkout@sha\n        with:\n          persist-credentials: false\n", 1},
+		"a fetch-depth under the checkout's env: is not under its with:": {steps +
+			"      - uses: actions/checkout@sha\n        with:\n          persist-credentials: false\n        env:\n          fetch-depth: 0\n", 1},
+		"a checkout opening with uses: and a full with: is full": {steps +
+			"      - uses: actions/checkout@sha\n        with:\n          fetch-depth: 0\n          persist-credentials: false\n", 0},
+		"a checkout opening with name: and a full with: is full": {steps +
+			"      - name: check out the tagged tree\n        uses: actions/checkout@sha\n        with:\n          fetch-depth: 0\n", 0},
+	} {
+		if blocks := checkoutsWithoutFullHistory(c.yaml); len(blocks) != c.shallow {
+			t.Fatalf("%s: %d shallow checkout(s) found, want %d — the per-step reading is broken and every case "+
+				"below is vacuous\n%s", name, len(blocks), c.shallow, c.yaml)
+		}
 	}
 
 	// Asserted against the comment-stripped body: the reusables carry commented
@@ -611,16 +634,50 @@ func TestWalkingReusablesCheckOutFullHistory(t *testing.T) {
 	}
 }
 
-// checkoutsWithoutFullHistory returns every `uses: actions/checkout@` step
-// block in body whose own text carries no `fetch-depth: 0`.
+// checkoutsWithoutFullHistory returns every step block in body whose `uses:`
+// is actions/checkout and whose own `with:` carries no `fetch-depth: 0`.
 func checkoutsWithoutFullHistory(body string) []string {
 	var shallow []string
 	for _, block := range stepBlocks(body) {
-		if strings.HasPrefix(block, "uses: actions/checkout@") && !fetchDepthFull.MatchString(block) {
+		keys, nested := stepKeys(block)
+		if !strings.HasPrefix(keys["uses"], "actions/checkout@") {
+			continue
+		}
+		if !slices.ContainsFunc(nested["with"], fetchDepthFull.MatchString) {
 			shallow = append(shallow, block)
 		}
 	}
 	return shallow
+}
+
+// stepKeyIndent is where a step's own keys sit in the reusables and
+// goreleaser.yml: two deeper than the six-space dash stepBlocks splits on.
+const stepKeyIndent = 8
+
+// stepKeys reads one stepBlocks item as the runner does: the step's own keys
+// with their inline values (the first line is the first key, its dash
+// consumed by the split), and under each key the trimmed lines nested below
+// it — a `with:` mapping's entries, an `env:` block's, a `run: |` script.
+// Lines shallower than the step's keys (the next job's, when the body was
+// not cut to one job) belong to no step and are skipped.
+func stepKeys(block string) (keys map[string]string, nested map[string][]string) {
+	keys, nested = map[string]string{}, map[string][]string{}
+	current := ""
+	for i, line := range strings.Split(block, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		switch {
+		case i == 0 || indent == stepKeyIndent:
+			k, v, _ := strings.Cut(strings.TrimSpace(line), ":")
+			keys[k] = strings.TrimSpace(v)
+			current = k
+		case indent > stepKeyIndent && current != "":
+			nested[current] = append(nested[current], strings.TrimSpace(line))
+		}
+	}
+	return keys, nested
 }
 
 // TestCaskPushUsesDeployKey guards the tap credential: the cask reaches the

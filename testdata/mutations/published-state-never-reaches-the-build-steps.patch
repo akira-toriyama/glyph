@@ -1,0 +1,8 @@
+diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
+index 9e841f0..519e3c5 100644
+--- a/.github/workflows/goreleaser.yml
++++ b/.github/workflows/goreleaser.yml
+@@ -197,3 +197,2 @@ jobs:
+           esac
+-          echo "release=$state" >> "$GITHUB_OUTPUT"
+ 

@@ -48,8 +48,9 @@ changelog:
 # Homebrew cask for the family tap. GoReleaser v2 ships prebuilt binaries as
 # CASKS (the old `brews:` formula path is deprecated). GoReleaser WRITES the
 # cask — dist/homebrew/Casks/glyph.rb — and pushes nothing (skip_upload): the
-# push is goreleaser.yml's cask job, which runs after the release is attested
-# and public. Pushed from here it would go out inside GoReleaser's run, before
+# file goes onto the release as an asset (release.extra_files below) and
+# goreleaser.yml's cask job takes it from the published release and pushes it
+# to the tap. Pushed from here it would go out inside GoReleaser's run, before
 # the attest step can, naming a draft's assets — 404 to every `brew install`
 # until the publish, and public before anything proved who built it (t-p15y).
 # Install: brew install akira-toriyama/tap/glyph.
@@ -64,12 +65,14 @@ homebrew_casks:
     homepage: https://github.com/akira-toriyama/glyph
     description: "sigil-driven commit-lint, semver, and release notes for squash-merge repos"
     # The binary is unsigned; strip the quarantine xattr on macOS so Gatekeeper
-    # allows launch (same pattern as the family's other casks).
+    # allows launch. Homebrew's declarative steps DSL (`postflight_steps`,
+    # brew 6f0b2e2 2026-05-24): GoReleaser 2.19 deprecated the Ruby `install:`
+    # block and `goreleaser check` exits 2 over it at 2.20.0.
     hooks:
       post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/glyph"]
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/glyph"]
           end
 
 release:
@@ -91,6 +94,13 @@ release:
   # draft — goreleaser.yml refuses to run over a tag whose release is public.
   use_existing_draft: true
   replace_existing_artifacts: true
+  # The cask file rides on the release: the cask job reads it from the
+  # published release, so a run that finds the tag already published can
+  # still push the tap without rebuilding anything. The cask pipe writes the
+  # file before the release pipe uploads (internal/pipeline/pipeline.go,
+  # v2.20.0), and the upload replaces an existing asset like any other.
+  extra_files:
+    - glob: dist/homebrew/Casks/glyph.rb
   # `auto` marks a hyphenated tag (v3.0.0-rc.1) as a prerelease, which is the
   # only thing that keeps GitHub's `latest` pointer — what `gh release view
   # --latest`, the releases page and every "what should I pin?" glance read —

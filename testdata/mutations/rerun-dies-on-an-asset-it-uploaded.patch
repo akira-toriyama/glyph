@@ -1,8 +1,8 @@
 diff --git a/.goreleaser.yaml b/.goreleaser.yaml
-index a1cc480..c3f3061 100644
+index 1da817d..0fe4f37 100644
 --- a/.goreleaser.yaml
 +++ b/.goreleaser.yaml
-@@ -92,3 +92,2 @@ release:
+@@ -95,3 +95,2 @@ release:
    use_existing_draft: true
 -  replace_existing_artifacts: true
-   # `auto` marks a hyphenated tag (v3.0.0-rc.1) as a prerelease, which is the
+   # The cask file rides on the release: the cask job reads it from the

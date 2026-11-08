@@ -41,35 +41,43 @@ name: goreleaser
 # fail-closed, so an attest step that failed would have left a public
 # release no fleet repository could install, with the tap already naming it.
 # GoReleaser cannot order its own cask push after a step outside it, so the
-# push left GoReleaser: it writes the cask file, the cask job pushes it.
+# push left GoReleaser: it writes the cask file and uploads it onto the
+# release with the archives (.goreleaser.yaml `extra_files`); the cask job
+# takes it from the published release and pushes it.
 #
-# Re-running a failed run. A failure anywhere before the publish step leaves
-# at most a draft, and re-running lands on that draft: GoReleaser reuses it
-# and replaces its assets (`use_existing_draft`, `replace_existing_artifacts`
-# in .goreleaser.yaml). A failure in the cask job leaves a published, attested
-# release with no cask: re-run the FAILED JOBS — the cask job downloads the
-# cask file the release job produced, and nothing is rebuilt. Re-running ALL
-# jobs over a published tag is refused by the release job's gh step: a
-# rebuild stamps a new build date into the binaries, so it would replace
-# public assets with bytes the shipped attestation and the tap do not name.
+# Every run converges, whatever it finds. The release job's first gh step
+# reads the state of the tag's release and the build steps run only while it
+# is not published:
+#   none or a draft — a failure before the publish step left at most a draft,
+#     and this run lands on it: GoReleaser reuses the draft and replaces its
+#     assets (`use_existing_draft`, `replace_existing_artifacts`).
+#   published — this run builds, uploads, attests and publishes nothing; the
+#     release job succeeds and the cask job runs over the published release's
+#     cask, pushing it or finding the tap already carries it.
+# So "re-run failed jobs", "re-run all jobs" and a fresh run on the tag all
+# finish a release the cask job never completed, and nothing ever rebuilds
+# over a published release: a rebuild stamps a new build date into the
+# binaries and would replace public assets with bytes the shipped attestation
+# does not name. The cask job reads the release, not an artifact of its own
+# run, so the path is the same in a re-run attempt and in a new run.
 #
 # Requires the HOMEBREW_TAP_DEPLOY_KEY secret (private half of homebrew-tap's write
 # deploy key) for the cask push — fleet-sync fans it out, gated on this file
 # referencing it (t-6bhz). Without it the release job completes — build, draft,
-# attestation, publish — and only the cask job fails.
+# attestation, publish — and only the cask job fails; add the secret and
+# re-run the failed jobs.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
 
 # Each job declares the grants its own steps use; the workflow level grants
-# nothing. The release job holds the three writes, the cask job none:
-# download-artifact reaches a same-run artifact over the runner's
-# ACTIONS_RUNTIME_TOKEN (its github-token input is for another run or
-# repository), and the push authenticates with the tap's deploy key. zizmor
+# nothing. The release job holds the three writes; the cask job reads the
+# published release's assets (`contents: read`) and writes nothing through
+# GITHUB_TOKEN — the push authenticates with the tap's deploy key. zizmor
 # (excessive-permissions, the hub's required gate) reds a write at the
 # workflow level of a multi-job workflow; a job-level write it accepts, so
-# the cask job's empty block is held by internal/workflows, not by zizmor.
+# the cask job's read-only block is held by internal/workflows, not by zizmor.
 permissions: {}
 
 jobs:
@@ -148,31 +156,48 @@ jobs:
           fi
           echo "go.mod's module path $path carries ${have:-no major suffix}, which is what $tag needs"
 
-      # A published release is this job's finished work and must not be
-      # rebuilt over: GoReleaser replaces an asset that already exists
+      # The one question every later step of this job hangs on: none, a draft,
+      # or published. A published release is this job's finished work and must
+      # not be rebuilt over: GoReleaser replaces an asset that already exists
       # (.goreleaser.yaml `replace_existing_artifacts`, there for the draft a
       # failed run leaves), and a rebuild stamps a new build date into every
       # binary, so the public assets would be swapped for bytes the shipped
-      # attestation and the tap's cask do not name. A draft is unfinished work
-      # and is reused. gh finds a draft by its pending tag where the REST tag
-      # lookup does not (cli/cli release/shared FetchRelease); a lookup that
-      # fails for any other reason falls through to GoReleaser, whose own
-      # create of a tag that is already released is a 422.
-      - name: the tag has no published release yet
+      # attestation and the tap's cask do not name. So every step from setup-go
+      # to the publish carries `if: steps.existing.outputs.release !=
+      # 'published'` as its LAST key — one rule, and the key never neighbours
+      # a dependabot-owned `uses:` pin, so the ledger's patches over these
+      # lines keep applying across pin bumps (t-7zy2) — and over a published
+      # tag the job succeeds having done nothing, which is what lets the cask
+      # job run (header). A draft is unfinished work and is reused.
+      #
+      # One GraphQL lookup answers all three: `repository.release(tagName:)`
+      # returns a draft by its pending tag as well as a published release,
+      # where the REST tag endpoint sees no draft (cli/cli release/shared
+      # fetchDraftRelease uses this query for that reason). `gh release view`
+      # is not used: it races the REST and GraphQL lookups and reports "release
+      # not found" when either says so (FetchRelease, v2.103.3), so a REST
+      # failure over a published tag would read as no release. Here any
+      # failure of the lookup — gh, the API, an answer without the repository —
+      # fails the step before anything is built, and a re-run asks again.
+      - name: the release the tag already has
+        id: existing
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          if draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
-            if [ "$draft" != "true" ]; then
-              echo "::error::$TAG already has a published release. Its assets are public and attested, and rebuilding here would replace them with differently stamped bytes nothing attests. If the cask push failed, re-run the failed cask job of the run that published $TAG; nothing else is re-doable."
-              exit 1
-            fi
-            echo "a draft release for $TAG exists (an earlier run stopped before publishing it); GoReleaser reuses it and replaces its assets"
-          else
-            echo "no release for $TAG yet"
-          fi
+          # shellcheck disable=SC2016 # GraphQL variables, bound with -F below
+          query='query($owner: String!, $name: String!, $tag: String!) { repository(owner: $owner, name: $name) { release(tagName: $tag) { isDraft } } }'
+          state="$(gh api graphql -F owner="${REPO%/*}" -F name="${REPO#*/}" -F tag="$TAG" -f query="$query" \
+            | jq -r '.data.repository | if . == null then error("the answer names no repository") elif .release == null then "none" elif .release.isDraft == true then "draft" elif .release.isDraft == false then "published" else error("the answer names no isDraft") end')"
+          case "$state" in
+            none) echo "no release for $TAG yet; GoReleaser creates the draft" ;;
+            draft) echo "a draft release for $TAG exists (an earlier run stopped before publishing it); GoReleaser reuses it and replaces its assets" ;;
+            published) echo "::notice::$TAG is already published and attested. Nothing is built, uploaded or published here; the cask job takes glyph.rb from the published release and pushes it to the tap unless the tap already carries it." ;;
+            *) echo "::error::the lookup of $TAG's release answered $state"; exit 1 ;;
+          esac
+          echo "release=$state" >> "$GITHUB_OUTPUT"
 
       # No job-level `env: GOTOOLCHAIN: local` — see build.yml. It would make
       # setup-go skip go.mod's `toolchain` line and ship release binaries built
@@ -183,6 +208,7 @@ jobs:
           # Release binaries must not be built from a shared, poisonable module
           # cache (zizmor cache-poisoning); PR-time caching stays in build.yml.
           cache: false
+        if: steps.existing.outputs.release != 'published'
 
       # glyph runs as a BUILT binary, never `go run`: `go help run` states that
       # Run's exit status is not the compiled binary's — cmd/go collapses
@@ -194,6 +220,7 @@ jobs:
       # the one the action would install.
       - name: build glyph for its own release notes
         run: go build -o "$RUNNER_TEMP/glyph" ./cmd/glyph
+        if: steps.existing.outputs.release != 'published'
 
       # The rule is the action's (its header); this file hands it the binary
       # above, the tag being cut and the file GoReleaser reads below.
@@ -204,9 +231,11 @@ jobs:
           tag: ${{ github.ref_name }}
           output: ${{ runner.temp }}/release-notes.md
           token: ${{ secrets.GITHUB_TOKEN }}
+        if: steps.existing.outputs.release != 'published'
 
       # Builds, archives, checksums, the cask file, and the DRAFT release with
-      # the assets on it. Nothing it does is public.
+      # the assets — the cask file among them — on it. Nothing it does is
+      # public.
       - name: GoReleaser
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
@@ -223,13 +252,16 @@ jobs:
           # rc.2 release (422 already_exists), leaving v3.3.0 with no release
           # while every pin site was about to move to it.
           GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+        if: steps.existing.outputs.release != 'published'
 
       # Signs the files GoReleaser uploaded, by digest, so the attestation
-      # names the draft's assets byte for byte.
+      # names the draft's assets byte for byte — the cask file included, so
+      # every asset the release carries is attested.
       - name: attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: 'dist/*.tar.gz, dist/checksums.txt'
+          subject-path: 'dist/*.tar.gz, dist/checksums.txt, dist/homebrew/Casks/glyph.rb'
+        if: steps.existing.outputs.release != 'published'
 
       # The first public act. gh sends the release's own tag_name with the
       # PATCH (cli/cli release/edit), so the draft keeps its tag; GitHub makes
@@ -243,35 +275,38 @@ jobs:
           set -euo pipefail
           gh release edit "$TAG" --draft=false
           echo "published $TAG"
-
-      # The cask file GoReleaser wrote, handed to the cask job as an artifact
-      # rather than regenerated there: a rebuild stamps a new build date into
-      # the binaries, so the sha256 a regenerated cask carried would not be
-      # the published archives'.
-      - name: hand the cask file to the cask job
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: homebrew-cask
-          path: dist/homebrew/Casks/glyph.rb
-          if-no-files-found: error
+        if: steps.existing.outputs.release != 'published'
 
   # The tap names the release's assets, so it moves only once they are public
-  # (needs: the release job, whose last steps publish) and only for a release
-  # (if: an rc stays off the tap — the tag step's parse). Its own job so that
-  # a failed push is re-run alone: "re-run failed jobs" re-runs this job over
-  # the artifact the release job uploaded, with nothing rebuilt and nothing
-  # public touched.
+  # (needs: the release job, which ends published whichever path it took) and
+  # only for a release (if: an rc stays off the tap — the tag step's parse).
+  # Its own job so that a failed push is re-run alone: "re-run failed jobs"
+  # re-runs this job over the published release, with nothing rebuilt and
+  # nothing public touched.
   cask:
     needs: release
     if: needs.release.outputs.prerelease != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions: {}
+    permissions:
+      contents: read  # the published release's cask asset
     steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: homebrew-cask
-          path: ${{ runner.temp }}/cask
+      # The cask GoReleaser wrote and uploaded, read back from the release
+      # rather than regenerated or carried over as a run artifact: a rebuild
+      # would stamp a new build date into the binaries, so a regenerated
+      # cask's sha256 would not be the published archives'; and an artifact
+      # belongs to one run, where the release is reachable from a re-run
+      # attempt and from a fresh run alike. --repo: this job checks nothing
+      # out, so gh has no remote to infer the repository from.
+      - name: fetch the cask from the published release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --repo "$REPO" --pattern glyph.rb --dir "$RUNNER_TEMP/cask"
+          echo "fetched glyph.rb from the $TAG release"
 
       # Pushed over SSH with the tap's write deploy key (fleet-sync fans the
       # secret out; t-6bhz) — not the GitHub API, so no account-scoped token.
@@ -282,7 +317,11 @@ jobs:
       # 2026-09-27). `=`: a cask bump moves no version of the tap. The same
       # subject the hub's update-tap.yml writes for every other formula there,
       # under the same author. A tap already carrying this cask is a re-run
-      # whose push landed; it exits 0 with nothing to commit.
+      # whose push landed; it exits 0 with nothing to commit. A tap carrying a
+      # NEWER glyph is refused, as the hub's update-tap refuses a backward
+      # move: this job can be re-run for 30 days, and after a later release
+      # has reached the tap, such a re-run would hand `brew upgrade` the older
+      # binary. Rolling the tap back is a hand edit of homebrew-tap.
       - name: push the cask to the tap
         env:
           HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
@@ -301,6 +340,14 @@ jobs:
           export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -F /dev/null"
           tap="$RUNNER_TEMP/tap"
           git clone --quiet --depth 1 "$TAP_URL" "$tap"
+          if [ -f "$tap/Casks/glyph.rb" ]; then
+            have="$(sed -nE 's/^[[:space:]]*version "([^"]+)".*/\1/p' "$tap/Casks/glyph.rb" | head -n 1)"
+            want="${TAG#v}"
+            if [ -n "$have" ] && [ "$have" != "$want" ] && [ "$(printf '%s\n%s\n' "$have" "$want" | sort -V | tail -n 1)" != "$want" ]; then
+              echo "::error::the tap carries glyph $have, newer than $TAG; pushing this cask would move \`brew upgrade\` backward for everyone. The tap is untouched. Rolling it back is a hand edit of akira-toriyama/homebrew-tap."
+              exit 1
+            fi
+          fi
           mkdir -p "$tap/Casks"
           cp "$CASK" "$tap/Casks/glyph.rb"
           git -C "$tap" add Casks/glyph.rb

@@ -2,13 +2,14 @@ package workflows
 
 // goreleaser.yml's publish order (t-p15y): nothing is public before its
 // attestation exists. The release job uploads onto a draft, attests, then
-// publishes; the cask job moves the tap afterwards. v6.1.0 ran the other way
-// — release published 05:49:38, cask pushed 05:49:39, attestation created
-// 05:49:47 (run 40457384503) — and the install action verifies provenance
-// fail-closed, so an attest step that failed would have left a public
-// release no fleet repository could install. Every decision below is one
-// line of YAML or shell CI stays green over, so each is held here and
-// re-broken by the mutation ledger.
+// publishes; the cask job moves the tap afterwards, over the cask the
+// published release carries. v6.1.0 ran the other way — release published
+// 05:49:38, cask pushed 05:49:39, attestation created 05:49:47 (run
+// 40457384503) — and the install action verifies provenance fail-closed, so
+// an attest step that failed would have left a public release no fleet
+// repository could install. Every decision below is one line of YAML or
+// shell CI stays green over, so each is held here and re-broken by the
+// mutation ledger.
 
 import (
 	"os"
@@ -21,19 +22,20 @@ import (
 	"testing"
 )
 
-// The release job's steps in the order the contract needs them, the guard
-// that keeps a published tag from being rebuilt over, and the cask job's
-// pieces.
+// The release job's steps in the order the contract needs them, the gh step
+// that reads the tag's release and splits the job, the condition every step
+// after it carries, and the cask job's pieces.
 const (
 	goreleaserStep      = "GoReleaser"
 	attestStep          = "attest build provenance"
 	publishStep         = "publish the release"
-	caskHandoffStep     = "hand the cask file to the cask job"
-	publishedTagGuard   = "the tag has no published release yet"
+	publishedTagGuard   = "the release the tag already has"
+	buildCondition      = "steps.existing.outputs.release != 'published'"
+	fetchCaskStep       = "fetch the cask from the published release"
 	caskPushStep        = "push the cask to the tap"
-	caskArtifact        = "homebrew-cask"
+	caskAsset           = "glyph.rb"
 	caskFile            = "dist/homebrew/Casks/glyph.rb"
-	attestSubjects      = "subject-path: 'dist/*.tar.gz, dist/checksums.txt'"
+	attestSubjects      = "subject-path: 'dist/*.tar.gz, dist/checksums.txt, " + caskFile + "'"
 	caskJobCondition    = "if: needs.release.outputs.prerelease != 'true'"
 	prereleaseJobOutput = "prerelease: ${{ steps.tag.outputs.prerelease }}"
 )
@@ -97,12 +99,12 @@ func ghStub(t *testing.T, stdout string, code int) (bin, calls string) {
 // contract that neither file can state alone: .goreleaser.yaml keeps the
 // release a draft (`draft: true` — GoReleaser's own publish would otherwise
 // run before any step outside it), and goreleaser.yml publishes with gh only
-// after the attest step, and hands the cask on only after that. The publish
-// step is executed over a stub gh: the un-draft is one gh call naming the tag,
-// and a gh that fails fails the step (a release left a draft is re-runnable;
-// one reported published that is not would strand the cask job). Reverting
-// `draft: true` is one word CI stays green over (mutation row
-// release-public-before-its-attestation).
+// after the attest step, as the release job's last step. The publish step is
+// executed over a stub gh: the un-draft is one gh call naming the tag, and a
+// gh that fails fails the step and the job — no `continue-on-error`, or a
+// release left a draft reads as published and the cask job pushes a cask
+// whose URLs 404. Reverting `draft: true` is one word CI stays green over
+// (mutation row release-public-before-its-attestation).
 func TestReleaseGoesPublicOnlyAfterItsAttestation(t *testing.T) {
 	config := code(repoFile(t, ".goreleaser.yaml"))
 	for _, want := range []string{"draft: true", "use_existing_draft: true", "replace_existing_artifacts: true"} {
@@ -122,10 +124,10 @@ func TestReleaseGoesPublicOnlyAfterItsAttestation(t *testing.T) {
 	}
 
 	raw := goreleaserWorkflow(t)
-	order := []string{goreleaserStep, attestStep, publishStep, caskHandoffStep}
+	order := []string{goreleaserStep, attestStep, publishStep}
 	for i := 1; i < len(order); i++ {
 		if stepAt(t, raw, order[i-1]) >= stepAt(t, raw, order[i]) {
-			t.Errorf("goreleaser.yml runs %q before %q; the order is upload → attest → publish → cask, "+
+			t.Errorf("goreleaser.yml runs %q before %q; the order is upload → attest → publish, "+
 				"so nothing is public before its attestation exists", order[i], order[i-1])
 		}
 	}
@@ -134,13 +136,17 @@ func TestReleaseGoesPublicOnlyAfterItsAttestation(t *testing.T) {
 			t.Errorf("%q sits under %v, want the release job's steps — the order above is only an order inside one job", name, p)
 		}
 	}
+	if steps := releaseSteps(t, raw); steps[len(steps)-1].keys["name"] != publishStep {
+		t.Errorf("the release job's last step is %q, want %q: a step after the publish fails the job after its "+
+			"point of no return, and the cask job then never runs", steps[len(steps)-1].keys["name"], publishStep)
+	}
 	attest := readStepShape(t, raw, attestStep)
 	if got := attest.keys["uses"]; !strings.HasPrefix(got, "actions/attest-build-provenance@") {
 		t.Errorf("the attest step uses %q, want actions/attest-build-provenance", got)
 	}
 	if !strings.Contains(code(raw), attestSubjects) {
 		t.Errorf("the attest step no longer names %q — the install action verifies the tarball it downloads, "+
-			"and an attestation over any other set leaves it unverifiable", attestSubjects)
+			"and an attestation over any other set leaves it unverifiable; the cask file is an asset too", attestSubjects)
 	}
 
 	// The publish step, executed.
@@ -150,6 +156,12 @@ func TestReleaseGoesPublicOnlyAfterItsAttestation(t *testing.T) {
 	}
 	if !strings.Contains(stepBlockOf(t, raw, publishStep), "TAG: ${{ github.ref_name }}") {
 		t.Errorf("the publish step is not told the tag through env TAG")
+	}
+	for _, name := range []string{publishStep, attestStep} {
+		if v, ok := readStepShape(t, raw, name).keys["continue-on-error"]; ok {
+			t.Errorf("%q carries `continue-on-error: %s`: a failed un-draft or signing would leave the job green, "+
+				"and the cask job would push a cask naming a draft's assets, or an unattested release", name, v)
+		}
 	}
 	script := extractRun(t, raw, publishStep)
 	for _, c := range []struct {
@@ -189,20 +201,98 @@ func stepBlockOf(t *testing.T, raw, name string) string {
 	return block
 }
 
-// TestPublishedTagIsNotRebuiltOver runs the gh step that opens the release
-// job: a tag whose release is already public is refused before anything is
-// built, a draft is announced and reused, and no release at all passes. The
-// refusal exists because of `replace_existing_artifacts` — there for the
-// draft a failed run leaves — which over a PUBLISHED release would swap the
-// public assets for a rebuild's differently stamped bytes, which the shipped
-// attestation and the tap's cask do not name. The message names the one
-// re-run that is still meaningful (the failed cask job). The step sits
-// between the tag check and GoReleaser.
+// releaseStep is one step of the release job as the runner reads it: its own
+// keys and the lines nested under each.
+type releaseStep struct {
+	keys   map[string]string
+	nested map[string][]string
+}
+
+// releaseSteps reads the release job's steps in order from the
+// comment-stripped workflow.
+func releaseSteps(t *testing.T, raw string) []releaseStep {
+	t.Helper()
+	var steps []releaseStep
+	for _, block := range stepBlocks(jobBlock(t, code(raw), "release")) {
+		keys, nested := stepKeys(block)
+		steps = append(steps, releaseStep{keys: keys, nested: nested})
+	}
+	if len(steps) < 3 {
+		t.Fatalf("the release job has %d steps — the step splitter's indent assumption broke", len(steps))
+	}
+	return steps
+}
+
+// TestPublishedTagIsNotRebuiltOver holds the step that splits the release
+// job and the split itself. The step asks one GraphQL question —
+// `repository.release(tagName:)`, which returns a draft by its pending tag
+// as well as a published release — and writes its answer, none / draft /
+// published, to GITHUB_OUTPUT; every step after it, setup-go through the
+// publish, runs only while the answer is not `published`, and nothing before
+// it is conditional. Over a published tag the job therefore succeeds having
+// built, uploaded, attested and published nothing, and the cask job runs —
+// the one path that finishes a release whose cask job failed after the
+// publish, where a refusal left the cask unpushable by any re-run. The
+// refusal to rebuild exists because of `replace_existing_artifacts` — there
+// for the draft a failed run leaves — which over a PUBLISHED release would
+// swap the public assets for a rebuild's differently stamped bytes. A lookup
+// that fails, or answers without the repository, fails the step before
+// anything is built: `gh release view` would have reported "release not
+// found" over a REST failure (cli/cli FetchRelease races two lookups and
+// prefers that error), and the job would have minted a second release on a
+// published tag.
 func TestPublishedTagIsNotRebuiltOver(t *testing.T) {
+	requireTool(t, "jq")
 	raw := goreleaserWorkflow(t)
 	at := stepAt(t, raw, publishedTagGuard)
 	if at <= stepAt(t, raw, moduleMajorStep) || at >= stepAt(t, raw, goreleaserStep) {
-		t.Errorf("the published-tag guard does not sit between the tag check and GoReleaser")
+		t.Errorf("the release-state step does not sit between the tag check and GoReleaser")
+	}
+	guard := readStepShape(t, raw, publishedTagGuard)
+	if guard.keys["id"] != "existing" {
+		t.Errorf("the release-state step has id %q, want existing — every later step reads steps.existing", guard.keys["id"])
+	}
+	for _, key := range []string{"if", "continue-on-error"} {
+		if v, ok := guard.keys[key]; ok {
+			t.Errorf("the release-state step carries `%s: %s`; whether the tag is already published is asked on every "+
+				"run and a lookup that failed must fail the job, or GoReleaser rebuilds over a published release", key, v)
+		}
+	}
+
+	// The split: the steps before and including the state step run on every
+	// attempt; every step after it carries the condition, verbatim.
+	steps := releaseSteps(t, raw)
+	split := slices.IndexFunc(steps, func(s releaseStep) bool { return s.keys["name"] == publishedTagGuard })
+	if split < 0 {
+		t.Fatalf("the release job's steps do not include %q", publishedTagGuard)
+	}
+	for i, s := range steps {
+		label := s.keys["name"]
+		if label == "" {
+			label = s.keys["uses"]
+		}
+		cond, has := s.keys["if"]
+		switch {
+		case i <= split && has:
+			t.Errorf("step %q (before the state step) carries `if: %s`; the checkout, the tag check and the state "+
+				"step run on every attempt", label, cond)
+		case i > split && cond != buildCondition:
+			t.Errorf("step %q carries `if: %s`, want exactly `%s`: over a published tag it would run — a rebuild "+
+				"over public assets, an attest over an empty dist, a publish of nothing — or never run", label, cond, buildCondition)
+		}
+	}
+	if n := len(steps) - split - 1; n != 6 {
+		t.Errorf("%d steps follow the state step, want 6 (setup-go, build, notes, GoReleaser, attest, publish) — "+
+			"a step added here needs the condition and this count", n)
+	}
+
+	// The state step, executed over a stub gh answering as the API does and
+	// the real jq that reads it.
+	shape := stepBlockOf(t, raw, publishedTagGuard)
+	for _, want := range []string{"GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}", "REPO: ${{ github.repository }}", "TAG: ${{ github.ref_name }}"} {
+		if !strings.Contains(shape, want) {
+			t.Errorf("the state step's env lacks %q", want)
+		}
 	}
 	script := extractRun(t, raw, publishedTagGuard)
 	cases := []struct {
@@ -210,31 +300,53 @@ func TestPublishedTagIsNotRebuiltOver(t *testing.T) {
 		ghStdout string
 		ghExit   int
 		exit     int
+		output   string // GITHUB_OUTPUT after the step
 		line     string // a substring of one stdout line
 	}{
-		{"no release yet passes", "", 1, 0, "no release for v9.8.7 yet"},
-		{"a draft is reused", "true", 0, 0, "a draft release for v9.8.7 exists"},
-		{"a published release refuses the rebuild", "false", 0, 1, "::error::v9.8.7 already has a published release"},
+		{"no release yet builds", `{"data":{"repository":{"release":null}}}`, 0, 0, "release=none\n", "no release for v9.8.7 yet"},
+		{"a draft is reused", `{"data":{"repository":{"release":{"isDraft":true}}}}`, 0, 0, "release=draft\n", "a draft release for v9.8.7 exists"},
+		{"a published release skips the build", `{"data":{"repository":{"release":{"isDraft":false}}}}`, 0, 0, "release=published\n", "::notice::v9.8.7 is already published"},
+		// gh dead or offline: no answer, exit 1 — the pipeline fails at gh.
+		{"a gh that fails with no answer fails the step", "", 1, 1, "", ""},
+		// A GraphQL error: gh prints the body and exits 1, and jq's error over
+		// the null repository is the pipeline's last non-zero status.
+		{"a GraphQL error fails the step", `{"data":{"repository":null},"errors":[{"type":"NOT_FOUND"}]}`, 1, 5, "", ""},
+		{"an answer without the repository fails the step", `{"data":{"repository":null}}`, 0, 5, "", ""},
+		{"an empty answer fails the step", `{}`, 0, 5, "", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			bin, calls := ghStub(t, c.ghStdout, c.ghExit)
+			outputs := filepath.Join(t.TempDir(), "github-output")
 			run := runStep(t, script, unspecifiedShell, t.TempDir(), []string{
 				"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
-				"GH_TOKEN=stub", "TAG=v9.8.7",
+				"GH_TOKEN=stub", "REPO=akira-toriyama/glyph", "TAG=v9.8.7", "GITHUB_OUTPUT=" + outputs,
 			})
 			if run.exit != c.exit {
 				t.Fatalf("step exited %d, want %d\n%s", run.exit, c.exit, run)
 			}
-			if !strings.Contains(run.stdout, c.line) {
+			if got := readIfAny(t, outputs); got != c.output {
+				t.Errorf("GITHUB_OUTPUT holds %q, want %q — the six later steps read this word", got, c.output)
+			}
+			if c.line != "" && !strings.Contains(run.stdout, c.line) {
 				t.Errorf("stdout carries no %q\n%s", c.line, run)
 			}
-			want := [][]string{{"release", "view", "v9.8.7", "--json", "isDraft", "--jq", ".isDraft"}}
-			if got := recordedCalls(t, calls); !slices.EqualFunc(got, want, slices.Equal) {
-				t.Errorf("the step asked gh %q, want %q", got, want)
+			got := recordedCalls(t, calls)
+			if len(got) != 1 {
+				t.Fatalf("the step called gh %d times, want once: %q", len(got), got)
 			}
-			if c.exit != 0 && !strings.Contains(run.stdout, "re-run the failed cask job") {
-				t.Errorf("the refusal does not name the re-run that is still meaningful\n%s", run)
+			argv := got[0]
+			if len(argv) < 2 || argv[0] != "api" || argv[1] != "graphql" {
+				t.Errorf("the step ran gh %q, want `gh api graphql …`", argv)
+			}
+			for _, bound := range []string{"owner=akira-toriyama", "name=glyph", "tag=v9.8.7"} {
+				if i := slices.Index(argv, bound); i < 1 || argv[i-1] != "-F" {
+					t.Errorf("gh argv %q does not bind %q with -F", argv, bound)
+				}
+			}
+			q := slices.IndexFunc(argv, func(a string) bool { return strings.HasPrefix(a, "query=") })
+			if q < 0 || !strings.Contains(argv[q], "release(tagName: $tag)") || !strings.Contains(argv[q], "isDraft") {
+				t.Errorf("gh argv %q carries no query asking repository.release(tagName:) for isDraft", argv)
 			}
 		})
 	}
@@ -244,9 +356,12 @@ func TestPublishedTagIsNotRebuiltOver(t *testing.T) {
 // runs under. Deleting the step, or the `id-token: write` the keyless signing
 // needs, reds nothing here while the install action keeps verifying
 // fail-closed — so the next tag is a release the whole fleet cannot install
-// (t-j0es: both measured surviving the suite at 2f9428a). The grants are read
-// from the release job's own `permissions:` block, the one place they are
-// declared (TestGoreleaserGrantsStayInTheJobThatUsesThem holds the layout).
+// (t-j0es: both measured surviving the suite at 2f9428a). The step runs on
+// exactly the runs GoReleaser ran on: its `if:` is the build condition and
+// nothing else, and no `continue-on-error` makes a failed signing a green
+// job. The grants are read from the release job's own `permissions:` block,
+// the one place they are declared (TestGoreleaserGrantsStayInTheJobThatUsesThem
+// holds the layout).
 func TestGoreleaserAttestsWhatItUploads(t *testing.T) {
 	body := code(goreleaserWorkflow(t))
 	attest := readStepShape(t, goreleaserWorkflow(t), attestStep)
@@ -254,12 +369,12 @@ func TestGoreleaserAttestsWhatItUploads(t *testing.T) {
 		t.Fatalf("goreleaser.yml's attest step uses %q, want actions/attest-build-provenance — without it every "+
 			"later install fails `gh attestation verify`", got)
 	}
-	// The step runs on every run that reaches it: no `if:` deciding whether,
-	// no `continue-on-error:` making a failed signing a green job.
-	for _, key := range []string{"if", "continue-on-error"} {
-		if v, ok := attest.keys[key]; ok {
-			t.Errorf("the attest step carries `%s: %s`; whether the release is attested is not conditional", key, v)
-		}
+	if got := attest.keys["if"]; got != buildCondition {
+		t.Errorf("the attest step carries `if: %s`, want exactly `%s`: it signs on every run that uploaded, and "+
+			"any other condition is a run that uploads and does not sign", got, buildCondition)
+	}
+	if v, ok := attest.keys["continue-on-error"]; ok {
+		t.Errorf("the attest step carries `continue-on-error: %s`; a failed signing must fail the job before the publish", v)
 	}
 	if !strings.Contains(body, attestSubjects) {
 		t.Errorf("the attest step no longer names %q", attestSubjects)
@@ -309,15 +424,15 @@ var writeGrant = regexp.MustCompile(`(?m)^\s*[a-z-]+:\s*write\b`)
 
 // TestGoreleaserGrantsStayInTheJobThatUsesThem: goreleaser.yml's workflow
 // level grants nothing, the release job declares the three writes its steps
-// use and nothing else, and the cask job declares an empty block. With two
+// use and nothing else, and the cask job declares `contents: read` alone —
+// it reads the published release's cask asset and writes nothing through
+// GITHUB_TOKEN (the push authenticates with the tap's deploy key). With two
 // jobs, a write at the workflow level reaches the cask job as well — a job
-// that holds the tap's deploy key and runs nothing that uses GITHUB_TOKEN
-// (download-artifact reaches a same-run artifact over ACTIONS_RUNTIME_TOKEN;
-// its github-token input is for another run or repository) — and zizmor's
-// excessive-permissions, the hub's required gate, refuses it (1.31.1 on
-// #347, run 41830717292, exit 14, after the single-job file had passed for
-// a year). zizmor accepts any grant declared at the job level, so the cask
-// job's empty block and the release job's exact set are held here only.
+// that holds the tap's deploy key — and zizmor's excessive-permissions, the
+// hub's required gate, refuses it (1.31.1 on #347, run 41830717292, exit 14,
+// after the single-job file had passed for a year). zizmor accepts any grant
+// declared at the job level, so the cask job's read-only block and the
+// release job's exact set are held here only.
 func TestGoreleaserGrantsStayInTheJobThatUsesThem(t *testing.T) {
 	body := code(goreleaserWorkflow(t))
 	top, _, ok := strings.Cut(body, "\njobs:\n")
@@ -345,9 +460,9 @@ func TestGoreleaserGrantsStayInTheJobThatUsesThem(t *testing.T) {
 		t.Errorf("the release job's grants are %q, want exactly %q: the draft and its publish (contents), "+
 			"keyless signing (id-token) and the attestation itself (attestations)", got, want)
 	}
-	if got := jobGrants(t, body, "cask"); len(got) != 0 {
-		t.Errorf("the cask job's grants are %q, want `permissions: {}`: it downloads over the runner's "+
-			"ACTIONS_RUNTIME_TOKEN and pushes with the tap's deploy key, so a GITHUB_TOKEN grant there is a "+
+	if got := jobGrants(t, body, "cask"); !slices.Equal(got, []string{"contents: read"}) {
+		t.Errorf("the cask job's grants are %q, want exactly [\"contents: read\"]: it downloads the published "+
+			"release's cask with GITHUB_TOKEN and pushes with the tap's deploy key, so any write there is a "+
 			"credential nothing in the job uses", got)
 	}
 	for _, id := range jobIDsIn(body) {
@@ -357,14 +472,21 @@ func TestGoreleaserGrantsStayInTheJobThatUsesThem(t *testing.T) {
 
 // TestCaskGoesOutOnlyAfterThePublish: the tap names the release's assets, so
 // the push is its own job, after the release job (`needs:`), over the cask
-// file that job wrote (an artifact — a rebuild would stamp a new build date
-// and a regenerated cask would carry the wrong sha256). Dropping `needs:`
+// file that job uploaded onto the release (.goreleaser.yaml `extra_files` —
+// a rebuild would stamp a new build date and a regenerated cask would carry
+// the wrong sha256; a run artifact belongs to one run, where the release is
+// reachable from a re-run attempt and a fresh run alike). Dropping `needs:`
 // runs the two jobs side by side and reopens the brew-404 window a draft once
-// held open for 17 days (cifail v0.1.1). The push step is executed over a
-// real git and a local bare tap: it commits the cask under the hub's
-// update-tap identity and subject, pushes once, is a no-op over a tap that
-// already carries the cask (a re-run whose push landed), and refuses an empty
-// deploy key before cloning anything.
+// held open for 17 days (cifail v0.1.1). The fetch step is executed over a
+// stub gh: one `gh release download` naming the tag, the repository (the job
+// checks nothing out), the asset and the directory the push step reads. The
+// push step is executed over a real git and a local bare tap: it commits the
+// cask under the hub's update-tap identity and subject, pushes once, is a
+// no-op over a tap that already carries the cask (a re-run whose push
+// landed), moves a tap that carries an older glyph, refuses to move one that
+// carries a newer glyph (a re-run of an older release's cask job after a
+// later release reached the tap; the hub's update-tap refuses the same
+// backward move), and refuses an empty deploy key before cloning anything.
 func TestCaskGoesOutOnlyAfterThePublish(t *testing.T) {
 	raw := goreleaserWorkflow(t)
 	body := code(raw)
@@ -373,18 +495,58 @@ func TestCaskGoesOutOnlyAfterThePublish(t *testing.T) {
 		t.Error("the cask job does not `needs: release`; it would push the tap while the release job is still " +
 			"uploading onto a draft — `brew install` fetching 404s until the publish, or for ever if it fails")
 	}
-	if !strings.Contains(cask, "uses: actions/download-artifact@") || !strings.Contains(cask, "name: "+caskArtifact) {
-		t.Errorf("the cask job does not download the %q artifact", caskArtifact)
-	}
-	handoff := stepBlockOf(t, raw, caskHandoffStep)
-	for _, want := range []string{"uses: actions/upload-artifact@", "name: " + caskArtifact, "path: " + caskFile, "if-no-files-found: error"} {
-		if !strings.Contains(handoff, want) {
-			t.Errorf("the handoff step lost %q", want)
+	for _, s := range stepBlocks(cask) {
+		keys, _ := stepKeys(s)
+		for _, key := range []string{"if", "continue-on-error"} {
+			if v, ok := keys[key]; ok {
+				t.Errorf("the cask job's step %q carries `%s: %s`; the job runs whole or not at all, and a failed "+
+					"fetch or push must fail it so \"re-run failed jobs\" re-runs it", keys["name"], key, v)
+			}
 		}
 	}
+	config := code(repoFile(t, ".goreleaser.yaml"))
+	if !regexp.MustCompile(`(?m)^  extra_files:\n    - glob: ` + regexp.QuoteMeta(caskFile) + `\s*$`).MatchString(config) {
+		t.Errorf(".goreleaser.yaml's release block does not upload %s as `extra_files`; the cask job then has "+
+			"nothing to fetch and a release whose cask job failed can never reach the tap", caskFile)
+	}
+	if filepath.Base(caskFile) != caskAsset {
+		t.Fatalf("the asset GoReleaser names (%s) is not the pattern the fetch step downloads (%s)", filepath.Base(caskFile), caskAsset)
+	}
 	push := stepBlockOf(t, raw, caskPushStep)
-	if !strings.Contains(push, "CASK: ${{ runner.temp }}/cask/glyph.rb") || !strings.Contains(cask, "path: ${{ runner.temp }}/cask") {
-		t.Error("the push step's CASK does not point into the directory the download step fills")
+	if !strings.Contains(push, "CASK: ${{ runner.temp }}/cask/"+caskAsset) {
+		t.Error("the push step's CASK does not point into the directory the fetch step fills")
+	}
+
+	// The fetch step, executed.
+	fetch := extractRun(t, raw, fetchCaskStep)
+	for _, want := range []string{"GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}", "REPO: ${{ github.repository }}", "TAG: ${{ github.ref_name }}"} {
+		if !strings.Contains(stepBlockOf(t, raw, fetchCaskStep), want) {
+			t.Errorf("the fetch step's env lacks %q", want)
+		}
+	}
+	for _, c := range []struct {
+		name   string
+		ghExit int
+		exit   int
+	}{
+		{"the fetch is one gh release download", 0, 0},
+		{"a gh that fails fails the fetch", 1, 1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			bin, calls := ghStub(t, "", c.ghExit)
+			temp := t.TempDir()
+			run := runStep(t, fetch, unspecifiedShell, temp, []string{
+				"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+				"GH_TOKEN=stub", "REPO=akira-toriyama/glyph", "TAG=v9.8.7", "RUNNER_TEMP=" + temp,
+			})
+			if run.exit != c.exit {
+				t.Fatalf("step exited %d, want %d\n%s", run.exit, c.exit, run)
+			}
+			want := [][]string{{"release", "download", "v9.8.7", "--repo", "akira-toriyama/glyph", "--pattern", caskAsset, "--dir", filepath.Join(temp, "cask")}}
+			if got := recordedCalls(t, calls); !slices.EqualFunc(got, want, slices.Equal) {
+				t.Errorf("the step ran gh as %q, want %q", got, want)
+			}
+		})
 	}
 
 	// The push step, executed.
@@ -401,7 +563,10 @@ func TestCaskGoesOutOnlyAfterThePublish(t *testing.T) {
 		}
 		return strings.TrimSpace(string(out))
 	}
-	newTap := func(t *testing.T) (bare string) {
+	caskAt := func(version string) string { return "cask \"glyph\" do\n  version \"" + version + "\"\nend\n" }
+	// newTap seeds a bare tap with another cask and, when glyphVersion is not
+	// empty, a glyph cask at that version.
+	newTap := func(t *testing.T, glyphVersion string) (bare string) {
 		t.Helper()
 		dir := t.TempDir()
 		bare = filepath.Join(dir, "homebrew-tap.git")
@@ -414,12 +579,17 @@ func TestCaskGoesOutOnlyAfterThePublish(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(seed, "Casks", "other.rb"), []byte("cask \"other\" do\nend\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
+		if glyphVersion != "" {
+			if err := os.WriteFile(filepath.Join(seed, "Casks", "glyph.rb"), []byte(caskAt(glyphVersion)), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
 		git(t, seed, "add", "Casks")
 		git(t, seed, "commit", "--quiet", "-m", ":package:(tap)= bump other to v1.0.0")
 		git(t, seed, "push", "--quiet", bare, "HEAD:main")
 		return bare
 	}
-	const rendered = "cask \"glyph\" do\n  version \"9.8.7\"\nend\n"
+	rendered := caskAt("9.8.7")
 	run := func(t *testing.T, bare, key string) (stepRun, string) {
 		t.Helper()
 		temp := t.TempDir()
@@ -432,10 +602,11 @@ func TestCaskGoesOutOnlyAfterThePublish(t *testing.T) {
 			"RUNNER_TEMP=" + temp, "HOMEBREW_TAP_DEPLOY_KEY=" + key, "TAG=v9.8.7", "CASK=" + caskPath, "TAP_URL=" + bare,
 		}), temp
 	}
+	const stubKey = "-----BEGIN OPENSSH PRIVATE KEY-----\nstub\n-----END OPENSSH PRIVATE KEY-----"
 
 	t.Run("the cask lands in the tap as one lint-clean commit", func(t *testing.T) {
-		bare := newTap(t)
-		r, temp := run(t, bare, "-----BEGIN OPENSSH PRIVATE KEY-----\nstub\n-----END OPENSSH PRIVATE KEY-----")
+		bare := newTap(t, "")
+		r, temp := run(t, bare, stubKey)
 		if r.exit != 0 {
 			t.Fatalf("step exited %d\n%s", r.exit, r)
 		}
@@ -468,8 +639,36 @@ func TestCaskGoesOutOnlyAfterThePublish(t *testing.T) {
 		}
 	})
 
+	t.Run("a tap carrying an older glyph is moved forward", func(t *testing.T) {
+		bare := newTap(t, "9.8.6")
+		r, _ := run(t, bare, stubKey)
+		if r.exit != 0 {
+			t.Fatalf("step exited %d\n%s", r.exit, r)
+		}
+		if got := git(t, bare, "show", "main:Casks/glyph.rb"); got != strings.TrimSpace(rendered) {
+			t.Errorf("the tap's Casks/glyph.rb is %q, want the 9.8.7 cask", got)
+		}
+	})
+
+	t.Run("a tap carrying a newer glyph is not moved back", func(t *testing.T) {
+		bare := newTap(t, "9.8.10")
+		r, _ := run(t, bare, stubKey)
+		if r.exit != 1 {
+			t.Fatalf("step exited %d, want 1\n%s", r.exit, r)
+		}
+		if !strings.Contains(r.stdout, "::error::the tap carries glyph 9.8.10, newer than v9.8.7") {
+			t.Errorf("no ::error:: names the newer version the tap carries\n%s", r)
+		}
+		if got := git(t, bare, "show", "main:Casks/glyph.rb"); got != strings.TrimSpace(caskAt("9.8.10")) {
+			t.Errorf("the tap's Casks/glyph.rb is %q, want the 9.8.10 cask untouched", got)
+		}
+		if got := git(t, bare, "rev-list", "--count", "main"); got != "1" {
+			t.Errorf("the refusal added a commit (%s on the tap, want 1)", got)
+		}
+	})
+
 	t.Run("an empty deploy key is refused before anything is cloned", func(t *testing.T) {
-		bare := newTap(t)
+		bare := newTap(t, "")
 		r, temp := run(t, bare, "")
 		if r.exit != 1 {
 			t.Fatalf("step exited %d, want 1\n%s", r.exit, r)
