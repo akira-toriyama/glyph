@@ -213,10 +213,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The BASE branch, not the PR ref: `--since-tag` walks main's
-          # squash commits out of LOCAL git (the PR side is read purely over
-          # the API by `--pr`), and both walks resolve their step base from
-          # the highest v* tag the checked-out history holds — so the full
-          # base history and its tags must be here.
+          # squash commits out of LOCAL git, `--pr` reads the pull's listing
+          # over the API and then reads back, out of the same local history,
+          # the pulls merged between the listing's fork and HEAD, and both
+          # walks resolve their step base from the highest v* tag the
+          # checked-out history holds — so the full base history and its
+          # tags must be here.
           ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 0
           # This job never pushes; don't leave the checkout token in

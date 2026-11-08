@@ -1,16 +1,16 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index c42cc14..683473a 100644
+index 65e8606..8cc160d 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -372,6 +372,11 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
+@@ -516,6 +516,11 @@ func (w Walker) alignRewritten(ctx context.Context, canonical string, listing []
  	// log, where falling through would only spend a `git log -n 0`;
  	// TestMainFootprintEmptyListingAsksGitNothing hands in a canonical the
  	// checkout lacks, where it is an exit-4 git error.
 +	for _, on := range landed {
 +		if on != "" {
-+			return landed, nil
++			return nil
 +		}
 +	}
  	if len(window) == 0 {
- 		return landed, nil
+ 		return nil
  	}

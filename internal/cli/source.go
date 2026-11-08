@@ -117,7 +117,7 @@ func pullLines(ctx context.Context, cfg *config.Config, number int, repoFlag str
 	if err := refusePullSource(cfg); err != nil {
 		return walk.Result{}, err
 	}
-	raws, name, err := pullInput(ctx, number, repoFlag)
+	raws, name, err := pullInput(ctx, cfg, number, repoFlag)
 	if err != nil {
 		return walk.Result{}, err
 	}

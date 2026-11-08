@@ -1,0 +1,14 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 3495905..e5e1c1a 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -749,9 +749,6 @@ func (w *walk) readBack(ctx context.Context, number int, listing []gitsource.Raw
+ 		return err
+ 	}
+ 	skip := make(map[string]bool, len(listing))
+-	for _, r := range listing {
+-		skip[r.SHA] = true
+-	}
+ 	var missed []gitsource.RawCommit
+ 	for _, fork := range forks {
+ 		if !have[fork] {

@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 3495905..0706777 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -687,7 +687,7 @@ func (w *walk) yields(r gitsource.RawCommit, on string) bool {
+ // pull's listing by the history behind the base
+ // (TestSinceTagLandingOutsideTheRangeAsksNothing).
+ func (w *walk) ownInRange(r gitsource.RawCommit, on string) bool {
+-	return on == r.SHA && w.inRange[on]
++	return on == r.SHA
+ }
+ 
+ // landing is one entry of landings: the commit a listed sha landed as, and the

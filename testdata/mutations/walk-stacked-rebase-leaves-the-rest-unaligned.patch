@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 3495905..9d1f312 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -657,7 +657,7 @@ func (w *walk) placeStacked(ctx context.Context, number int, canonical string, l
+ 	if !placed {
+ 		return nil
+ 	}
+-	return w.alignRewritten(ctx, canonical, listing, landed)
++	return nil
+ }
+ 
+ // open reports whether a listing entry the footprint placed at on is a

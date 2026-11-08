@@ -1,0 +1,14 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 368b196..a6e2e5e 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -732,7 +732,8 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error
+ 	case !found:
+ 		return nil
+ 	}
+-	released, capped, err := w.pullListing(ctx, w.owner, w.repo, number)
++	released, err := w.PullRawCommits(ctx, w.owner, w.repo, number)
++	capped := false
+ 	if err != nil {
+ 		return err
+ 	}

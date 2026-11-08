@@ -1,14 +1,13 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index c42cc14..61dee04 100644
+index 368b196..cd3d00e 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -362,9 +362,6 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
- 		}
- 		// A merge commit is never replayed by a rebase (measured — see above), so
- 		// it has no landing site to find and no position to hold.
--		if r.Parents >= 2 {
--			continue
--		}
- 		window = append(window, i)
- 	}
- 	// Nothing left to place — the whole merge-button shape, or an empty listing
+@@ -555,7 +555,7 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
+ // exactly these, and so is what the read-back can be asked for on a squash's
+ // behalf (placeStacked); one predicate, so the two cannot drift apart.
+ func replayable(r gitsource.RawCommit, on string) bool {
+-	return on == "" && len(r.Parents) < 2
++	return on == "" && len(r.Parents) < 99
+ }
+ 
+ // alignRewritten is mainFootprint's second question, asked of whatever landed
