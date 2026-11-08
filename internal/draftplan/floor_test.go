@@ -99,8 +99,8 @@ func TestCheckPublishedFloorRefusesAtFour(t *testing.T) {
 		next bump.Version
 		want string
 	}{
-		{"below", bump.Version{Major: 1, Minor: 4}, "computed version haiku/v1.4.0 is not greater than the latest published release haiku/v1.5.0"},
-		{"equal", bump.Version{Major: 1, Minor: 5}, "computed version haiku/v1.5.0 is not greater than the latest published release haiku/v1.5.0"},
+		{"below", bump.Version{Major: 1, Minor: 4}, "computed version haiku/v1.4.0 is not greater than the highest published release haiku/v1.5.0"},
+		{"equal", bump.Version{Major: 1, Minor: 5}, "computed version haiku/v1.5.0 is not greater than the highest published release haiku/v1.5.0"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

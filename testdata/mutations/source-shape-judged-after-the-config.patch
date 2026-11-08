@@ -1,0 +1,42 @@
+diff --git a/internal/cli/cmd_bump.go b/internal/cli/cmd_bump.go
+index bc82086..7e354b2 100644
+--- a/internal/cli/cmd_bump.go
++++ b/internal/cli/cmd_bump.go
+@@ -132,9 +132,6 @@ func newBumpCmd() *cobra.Command {
+ // (TestVerdictCommandsJudgeTheirFlagsBeforeTheConfig,
+ // TestCurrentIsJudgedBeforeTheWalk).
+ func bumpRun(ctx context.Context, o bumpOptions) error {
+-	if err := o.check(); err != nil {
+-		return err
+-	}
+ 	if _, err := parseCurrent(o.current); err != nil {
+ 		return err
+ 	}
+diff --git a/internal/cli/cmd_notes.go b/internal/cli/cmd_notes.go
+index 0dad28a..0402345 100644
+--- a/internal/cli/cmd_notes.go
++++ b/internal/cli/cmd_notes.go
+@@ -120,9 +120,6 @@ func notesLinkEnds(ctx context.Context, repoFlag string) (owner, repo, head stri
+ // is judged before glyph.toml is loaded, as bump judges its flags
+ // (TestVerdictCommandsJudgeTheirFlagsBeforeTheConfig).
+ func notesRun(ctx context.Context, o notesOptions) error {
+-	if err := o.check(); err != nil {
+-		return err
+-	}
+ 	cfg, err := loadConfig(ctx)
+ 	if err != nil {
+ 		return err
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 7aaa34b..dac052d 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -131,9 +131,6 @@ func newPreviewCmd() *cobra.Command {
+ // is judged before glyph.toml is loaded, as bump judges its flags
+ // (TestVerdictCommandsJudgeTheirFlagsBeforeTheConfig).
+ func previewRun(ctx context.Context, o previewOptions) error {
+-	if err := checkPRFlag(o.pr); err != nil {
+-		return err
+-	}
+ 	cfg, err := loadConfig(ctx)
+ 	if err != nil {
+ 		return err

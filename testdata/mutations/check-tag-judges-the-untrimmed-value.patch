@@ -1,0 +1,12 @@
+diff --git a/internal/walk/base.go b/internal/walk/base.go
+index 076ed87..5055fd9 100644
+--- a/internal/walk/base.go
++++ b/internal/walk/base.go
+@@ -34,7 +34,6 @@ const below = "below:"
+ // Judged TRIMMED, as the resolvers read it: ` -x` reached git as `-x..HEAD`
+ // at 4 while `-x` was refused here (t-3dfg).
+ func CheckTag(tag string) error {
+-	tag = strings.TrimSpace(tag)
+ 	if tag == Auto {
+ 		return nil
+ 	}

@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 
@@ -174,8 +176,10 @@ func newReleaseCmd() *cobra.Command {
 // apart at the render.
 func releaseRun(ctx context.Context, o releaseOptions) error {
 	// Caller-input problems surface before any network or git work — and
-	// before the environment is judged: --since-tag's shape is checked and
-	// the footer file read up front, and the repository must resolve for the
+	// before the environment is judged: --since-tag's shape is checked, the
+	// footer file read and --current parsed up front (t-s9ap: parsed after
+	// the walk, a malformed --current answered the walk's or the ref guard's
+	// 4), and the repository must resolve for the
 	// releases listing (sinceTagInput re-resolves it for the walk — same
 	// answer, one source of truth in resolveRepo). Checked only inside
 	// sinceTagInput, below the ref guard, a malformed tag off the default
@@ -186,6 +190,9 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 	footer, ferr := readFooter(o.footerFile)
 	if ferr != nil {
 		return ferr
+	}
+	if _, err := parseCurrent(o.current); err != nil {
+		return err
 	}
 	owner, repoName, oerr := resolveRepo(ctx, o.repo)
 	if oerr != nil {
@@ -231,13 +238,6 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
 		return cerr
 	}
 	warnBumpRows(rows)
-	// --current is the caller's input, so its shape is refused here, after
-	// the fold's warnings and before the releases listing is paid for: a
-	// malformed flag beside a listing that will not answer is usage (2), not
-	// the listing's 4.
-	if _, err := parseCurrent(o.current); err != nil {
-		return err
-	}
 
 	// The releases listing feeds both halves of the convergence decision: the
 	// glyph-managed drafts to upsert or clear, and the published floor the
@@ -574,16 +574,28 @@ func discardedOrGone(alreadyGone bool) string {
 	return "discarded"
 }
 
-// readFooter reads the --footer-file when one is named. The path is the
-// caller's input, so an unreadable file is usage (2), caught before any
-// request goes out.
+// readFooter reads the --footer-file when one is named, before any request
+// goes out, and classifies a failure as loadConfig classifies glyph.toml's
+// (DESIGN §5, "The 2/4 line is drawn on what was observed"): what
+// config.StatFile observed at the path — nothing there, or something other
+// than a regular file — is the caller's input (2); a stat or a read the
+// filesystem refused (permission denied, an I/O fault) observed nothing, so
+// it is the no-answer code (4), as the same event is for glyph.toml, a hook
+// and init's write. Every *fs.PathError goes out as it is: it names the
+// operation and the path once.
 func readFooter(path string) (string, error) {
 	if path == "" {
 		return "", nil
 	}
+	if err := config.StatFile(path); err != nil {
+		if _, notAFile := errors.AsType[*config.NotAFileError](err); notAFile || errors.Is(err, fs.ErrNotExist) {
+			return "", core.Usagef("--footer-file: %v — name a Markdown file to append after the notes, or omit the flag", err)
+		}
+		return "", core.APIf("--footer-file: %v — glyph could not read the footer, so no draft was computed", err)
+	}
 	content, err := os.ReadFile(path) // #nosec G304 -- the caller names their own footer file
 	if err != nil {
-		return "", core.Usagef("--footer-file cannot be read: %v", err)
+		return "", core.APIf("--footer-file: %v — glyph could not read the footer, so no draft was computed", err)
 	}
 	return string(content), nil
 }

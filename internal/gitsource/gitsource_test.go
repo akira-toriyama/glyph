@@ -1280,3 +1280,42 @@ func TestMergeBase(t *testing.T) {
 		}
 	}
 }
+
+// TestNamesCommitResolvesRevisionsNotRefs: namesCommit is the walk's
+// existence question for a typed --since-tag (walk.explicitBase): any
+// revision git resolves to a commit — a lightweight tag, an annotated one
+// (peeled through ^{commit}), a branch, a full or an abbreviated sha, a
+// relative spelling — is a YES; a name nothing carries, an option-shaped or
+// range-shaped value and the empty string are a NO, as answers. Outside a
+// repository it fails as git/IO.
+func TestNamesCommitResolvesRevisionsNotRefs(t *testing.T) {
+	dir := testutil.NewRepo(t)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "-a", "-m", "annotated", "curry/v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "branch", "old-main")
+	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+
+	for name, want := range map[string]bool{
+		"v0.1.0":       true,
+		"curry/v0.1.0": true,
+		"old-main":     true,
+		sha:            true,
+		sha[:7]:        true,
+		"HEAD~0":       true,
+		"v0.0.0":       false,
+		"nosuch":       false,
+		"-x":           false,
+		"a..b":         false,
+		"":             false,
+	} {
+		got, err := namesCommit(context.Background(), dir, name)
+		if err != nil || got != want {
+			t.Errorf("namesCommit(%q) = %v, %v; want %v, nil", name, got, err, want)
+		}
+	}
+
+	_, err := namesCommit(context.Background(), t.TempDir(), "v0.1.0")
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
+		t.Fatalf("namesCommit outside a repository = %v, want CodeAPI", err)
+	}
+}

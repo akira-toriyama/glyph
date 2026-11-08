@@ -19,6 +19,64 @@ func configPathAt(top string) string {
 	return filepath.Join(top, "glyph.toml")
 }
 
+// errInsideGitDir is checkoutTop's answer inside a git directory — a
+// checkout's .git or a bare repository: a repository is there, and it has no
+// work tree to stand in.
+var errInsideGitDir = errors.New("inside a git directory, which has no work tree")
+
+// checkoutTop is git's top level for the working directory, or why there is
+// none, told apart for the callers that answer each differently (loadConfig,
+// initPath): gitsource.ErrNoRepository where git itself says the directory is
+// in no repository, errInsideGitDir where it is inside a git directory, an
+// interrupt as the user's own abort, and any other failure — a repository git
+// will not read (dubious ownership, a broken config), no git at all — as
+// git's own error (4), because a repository git will not read is not the
+// absence of one (TestInitCannotRunWhereGitWillNotReadTheRepository). The
+// interrupt is asked first: read as "no repository", a Ctrl-C during the
+// top-level read sent init's write to the current directory
+// (TestInitInterruptDuringTopLevelReadWritesNothing).
+func checkoutTop(ctx context.Context) (string, error) {
+	top, err := gitsource.TopLevel(ctx, ".")
+	if err == nil || core.IsInterrupted(err) {
+		return top, err
+	}
+	inGitDir, gerr := gitsource.InsideGitDir(ctx, ".")
+	switch {
+	case gerr != nil:
+		return "", gerr
+	case inGitDir:
+		return "", errInsideGitDir
+	}
+	// git reads a repository here and calls this its work tree, yet named no
+	// top level: its own failure is the answer.
+	return "", err
+}
+
+// noRepositoryUsage reclassifies a failed git read where git itself says the
+// directory is in no repository: the caller ran glyph outside a checkout,
+// which is the caller's input (usage, 2), the answer `init` has always given
+// that place and the verdict commands give it through checkoutTop (t-ckvh,
+// ruled 2026-11-08; measured at 2f9428a: `lint --message=x`, `bump --range
+// a..b`, `release --dry-run --repo o/r` and `hook install` outside a
+// repository answered git's 4, `init --gemoji` 0). An interrupt is the user's
+// abort and every other failure is handed back as it came: git was reached
+// and answered, so the 2/4 line is drawn on what it said (DESIGN §5).
+func noRepositoryUsage(ctx context.Context, err error) error {
+	if core.IsInterrupted(err) {
+		return err
+	}
+	if _, gerr := gitsource.InsideGitDir(ctx, "."); errors.Is(gerr, gitsource.ErrNoRepository) {
+		return noRepository()
+	}
+	return err
+}
+
+// noRepository is the one wording of the refusal every command gives outside
+// a repository.
+func noRepository() *core.Error {
+	return core.Usagef("not a git repository — glyph reads the checkout it runs in (its commits, its glyph.toml, its hooks directory), so run it from inside one")
+}
+
 // loadConfig reads the ONE glyph.toml every verdict is judged under: the one
 // at the root of the checkout glyph runs in (ratified Q1 — the currently
 // checked-out tree decides, accepting that a config change reinterprets past
@@ -51,9 +109,20 @@ func configPathAt(top string) string {
 // Keeping these off 3 is also what lets a broken glyph.toml be FIXED: the
 // installed commit-msg and pre-push hooks block on 3 alone, so classifying a
 // typo as 3 blocks the very commit that would repair it.
+//
+// Before the file, the checkout (checkoutTop): outside a repository, or
+// inside a git directory, there is no glyph.toml to read because the caller
+// is standing in no work tree — the caller's input (2), as `init` answers
+// both places, never git's 4 (t-ckvh). The hooks block on 3 alone, so either
+// answer passes a commit through, as it must.
 func loadConfig(ctx context.Context) (*config.Config, error) {
-	top, err := gitsource.TopLevel(ctx, ".")
-	if err != nil {
+	top, err := checkoutTop(ctx)
+	switch {
+	case errors.Is(err, gitsource.ErrNoRepository):
+		return nil, noRepository()
+	case errors.Is(err, errInsideGitDir):
+		return nil, core.Usagef("this directory is inside a git directory, which has no work tree — run glyph from the checkout's work tree, where its glyph.toml and its commits are")
+	case err != nil:
 		return nil, err
 	}
 	cfg, lerr := config.LoadFile(configPathAt(top))

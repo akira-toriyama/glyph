@@ -516,6 +516,17 @@ subdirectory wrote a second one there at exit 0
 `TestInitInterruptDuringTopLevelReadWritesNothing`; mutation rows
 `init-writes-the-current-directory`,
 `init-reads-a-toplevel-interrupt-as-outside-a-checkout`).
+The verdict commands ask the same probe (`internal/cli: checkoutTop`), and
+answer the two places `init` names the way `init` does: outside a repository
+and inside a git directory there is no work tree to read, which is where the
+caller ran glyph — usage (2) — and `hook install` refuses outside a
+repository the same way (inside `.git` the hooks directory is git's own
+answer, and `--print` needs no repository). Git was reached and said so, so
+these are not the no-answer code; a repository git will not read stays 4
+(ruled t-ckvh, 2026-11-08; measured at 2f9428a: `lint --message=x`, `bump
+--range a..b`, `release --dry-run --repo o/r` and `hook install` outside a
+repository all answered git's 4, `init` 0; `TestOutsideARepositoryIsUsage`,
+mutation row `outside-a-repository-is-gits-failure`).
 
 ### 2.1 The text the rules judge — git's cleanup
 
@@ -1498,9 +1509,9 @@ either way: a truncated comment carries none. Moving the notes block behind
 the footer would keep it, at the price of a new layout for every comment that
 carries notes, and the cut would still fall inside the block with the notice
 folded away — so the block is closed, and the layout stays.) A next version
-not strictly above the latest published
-release fails loud (an unpublishable draft; a deleted published release's tag
-is burned forever).
+not strictly above the highest published release on the line — the maximum
+version, not the one published last — fails loud (an unpublishable draft; a
+deleted published release's tag is burned forever).
 
 The refusals above are about evidence — a range glyph could not read. One is
 about **authority**, and it is the only release-time refusal a dry run does not
@@ -1519,13 +1530,24 @@ reusable — six on 2026-10-26: `canon`, `dotfiles`, `sill`,
 `swift-toml-edit`, `zmk-beacon`, `zmk-hid-host` — so the binary is the only
 layer that reaches them. The escapes are `--dry-run` and re-running
 from the default branch, and both are named in the refusal. The caller's own
-input is judged before the guard: a malformed `--since-tag` is usage (2) on
-every run, as on `bump` and `notes`. Checked inside the walk's entrance, below
-the guard, it answered the guard's 4 off the default branch, the code that
-says a re-run can help, for a flag no re-run fixes (measured 2026-10-26 on
-82aebc5: `--since-tag=`, `=-x` and `=a..b` from `refs/heads/topic`;
-`TestReleaseRefusesAMalformedSinceTagBeforeTheRefGuard`, mutation row
-`release-since-tag-checked-below-the-ref-guard`).
+input is judged before the guard: a malformed `--since-tag`, an unreadable
+`--footer-file` and a malformed `--current` are usage (2) on every run, as on
+`bump` and `notes`. Checked inside the walk's entrance, below
+the guard, `--since-tag` answered the guard's 4 off the default branch, the
+code that says a re-run can help, for a flag no re-run fixes (measured
+2026-10-26 on 82aebc5: `--since-tag=`, `=-x` and `=a..b` from
+`refs/heads/topic`; `TestReleaseRefusesAMalformedSinceTagBeforeTheRefGuard`,
+mutation row `release-since-tag-checked-below-the-ref-guard`), and
+`--current`, parsed after the walk, answered the walk's 4 and the guard's
+(t-s9ap, measured at 2f9428a and 86eab14: `release --current=garbage` over a
+dead API, and from `refs/heads/topic`; `TestCurrentIsJudgedBeforeTheWalk`,
+mutation row `current-parsed-after-the-walk`). Whether the tag exists is the
+walk's question and sits below the guard (§4, "The compare link"). The same
+rule holds on `bump`, `notes` and `preview` against the config: the source's
+shape and `--current` are judged before `glyph.toml` is loaded, where a
+mode-000 config answered 4 ahead of every flag check (t-h9m7;
+`TestVerdictCommandsJudgeTheirFlagsBeforeTheConfig`, mutation row
+`source-shape-judged-after-the-config`).
 
 That the ref is exempt from the dry-run rule stated for the body cap and
 `--target` (a dry run previews the real run) is the argued exception, not an
@@ -1653,7 +1675,19 @@ A typed `--since-tag` that is no tag — a branch, a remote-tracking name, a sha
 is resolved by GitHub against its own refs, not the checkout's (`main...<sha>`
 200 and identical, `origin/main...<sha>` 404, measured on glyph the same day), so
 the explicit arm takes the value only when `refs/tags/<value>` exists
-(`gitsource.isTag`). Each `/`-separated segment is path-escaped: git accepts
+(`gitsource.isTag`). Before that, the value must name a commit the checkout
+holds at all (`gitsource.namesCommit`, through `walk.explicitBase` — the one
+read of a typed value, shared by the single line and the packages arm): one
+that does not is the caller's input, usage (2) naming the value and where to
+look (`git tag`; `fetch-depth: 0` for a checkout that fetched no tags), where
+the walk from it died in `git log` at 4 — "bad revision", the code that tells
+a CI wrapper a retry can help, for a flag no retry fixes (t-tat8, measured at
+2f9428a and v6.1.0: `bump --since-tag=v0.0.0` with no such tag;
+`TestSinceTagNamingNoCommitIsUsage`, mutation row
+`since-tag-naming-no-commit-is-gits-failure`). On a packages walk the line
+question comes first: a version-shaped tag on a line no `[[packages]]` entry
+declares is refused as that line whether or not the tag exists. Each
+`/`-separated segment is path-escaped: git accepts
 `#`, `%` and `)` in a tag name, where pasted verbatim `#` starts a fragment and
 `%41` decodes to another ref, and GitHub decodes an escaped segment once, back to
 the tag (measured 2026-10-05 on glyph-test, the REST endpoint and the page alike,

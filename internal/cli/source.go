@@ -62,13 +62,32 @@ func sourceOf(cmd *cobra.Command, f sourceFlags) source {
 	return src
 }
 
+// check is the grammar of the source the caller named — an empty or
+// option-shaped --range, a --pr below 1, a malformed --since-tag — refused
+// as the caller's input (usage, 2). bump and notes ask it FIRST, before
+// glyph.toml is loaded, as lint's arms do: judged after the load, a bad flag
+// beside an unreadable config answered the config's 4 (t-h9m7, measured at
+// 2f9428a with a mode-000 glyph.toml: `bump --range=`, `--pr 0`,
+// `--since-tag=` all 4 where lint's `--range=` was 2). readSource takes the
+// source as accepted.
+func (s source) check() error {
+	switch s.kind {
+	case sourcePull:
+		return checkPRFlag(s.pull)
+	case sourceWalk:
+		return walk.CheckTag(s.tag)
+	default:
+		return checkRangeFlag(s.rng)
+	}
+}
+
 // readSource reads the commits a verdict is computed over from the source
 // the caller named, as one walk result: the release walk itself
 // (sinceTagInput); a local range, every commit a landed identity pending on
 // every line (rangeLines); or a pull request's individual commits, cited by
 // the pull and accepted only where no [[packages]] are declared (pullLines).
-// Each source's grammar is checked here or in the read, before git or the
-// API runs, as the caller's input (usage, 2).
+// The source's grammar is check's, asked before the config was loaded; what
+// is refused here is the config's own question (refusePullSource).
 //
 // The walk's facts come back with the commits and bump and notes discard
 // them, for the same reason: both REPORT, they do not act. An incomplete
@@ -85,9 +104,6 @@ func readSource(ctx context.Context, cfg *config.Config, src source) (walk.Resul
 	case sourceWalk:
 		return sinceTagInput(ctx, cfg, src.tag, src.repo)
 	default:
-		if err := checkRangeFlag(src.rng); err != nil {
-			return walk.Result{}, err
-		}
 		return rangeLines(ctx, cfg, src.rng)
 	}
 }
@@ -110,8 +126,8 @@ func rangeLines(ctx context.Context, cfg *config.Config, revRange string) (walk.
 // pullLines is the --pr twin: a pull request's individual (pre-squash)
 // commits over the API, each cited by the pull under its own sha
 // (pullCommits), on the bare line alone — where partitionLines is the
-// identity and no diff is asked for. Refused under [[packages]] before the
-// number is examined (refusePullSource): the listing carries no files, so
+// identity and no diff is asked for. Refused under [[packages]] before any
+// request goes out (refusePullSource): the listing carries no files, so
 // nothing could place a commit on a declared line.
 func pullLines(ctx context.Context, cfg *config.Config, number int, repoFlag string) (walk.Result, error) {
 	if err := refusePullSource(cfg); err != nil {

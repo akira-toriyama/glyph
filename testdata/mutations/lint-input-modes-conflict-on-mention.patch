@@ -1,0 +1,22 @@
+diff --git a/internal/cli/cmd_lint.go b/internal/cli/cmd_lint.go
+index 1f28d59..6fde57c 100644
+--- a/internal/cli/cmd_lint.go
++++ b/internal/cli/cmd_lint.go
+@@ -87,9 +87,6 @@ func newLintCmd() *cobra.Command {
+ 			// which both "were all set" — a false statement in the envelope
+ 			// other repositories parse (t-0b93); here --stdin=false selects
+ 			// nothing, as hook install's --print=false does.
+-			if err := checkExclusive(cmd, "range", "pr", "message", "stdin"); err != nil {
+-				return err
+-			}
+ 			// Every valued arm asks whether its flag was GIVEN — the question
+ 			// MarkFlagsOneRequired answers — and --stdin, asked LAST, is the
+ 			// one arm that reads a value: a --stdin=false that satisfied the
+@@ -135,6 +132,7 @@ func newLintCmd() *cobra.Command {
+ 	cmd.Flags().StringVar(&o.message, "message", "", "lint one message given inline")
+ 	cmd.Flags().BoolVar(&stdin, "stdin", false, "lint one message read from stdin (commit-msg hook)")
+ 	cmd.MarkFlagsOneRequired("range", "pr", "message", "stdin")
++	cmd.MarkFlagsMutuallyExclusive("range", "pr", "message", "stdin")
+ 	return cmd
+ }
+ 

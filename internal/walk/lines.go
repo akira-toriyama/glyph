@@ -114,16 +114,12 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
 		l.bound = rest
 		lines = []Line{l}
 	default:
-		baseTag, terr := w.tagBase(ctx, tag)
-		if terr != nil {
-			return nil, "", terr
-		}
 		if prefix, shape, perr := bump.ParseBaseTag(tag); perr == nil {
 			p, ok := packageOnLine(cfg, prefix, shape.Major)
 			if !ok {
 				return nil, "", undeclaredLine(tag, prefix, cfg)
 			}
-			l := Line{Package: p, TagLine: cfg.LineOf(p), BaseTag: baseTag, Source: tag + "..HEAD", revRange: tag + "..HEAD"}
+			l := Line{Package: p, TagLine: cfg.LineOf(p), Source: tag + "..HEAD", revRange: tag + "..HEAD"}
 			if v, verr := bump.ParseVersionOn(prefix, tag); verr == nil {
 				// A plain version is the step base too — the walk base and the
 				// step base are ONE tag (sinceTagRange). A candidate is not, and
@@ -131,10 +127,20 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
 				l.Base = &v
 			}
 			lines = []Line{l}
-			break
+		} else {
+			for _, p := range cfg.Packages {
+				lines = append(lines, Line{Package: p, TagLine: cfg.LineOf(p), Source: tag + "..HEAD", revRange: tag + "..HEAD"})
+			}
 		}
-		for _, p := range cfg.Packages {
-			lines = append(lines, Line{Package: p, TagLine: cfg.LineOf(p), BaseTag: baseTag, Source: tag + "..HEAD", revRange: tag + "..HEAD"})
+		// The line question is the config's and comes first; whether the tag
+		// names a commit is git's (explicitBase), asked once for every line
+		// the value walks.
+		baseTag, terr := w.explicitBase(ctx, tag)
+		if terr != nil {
+			return nil, "", terr
+		}
+		for i := range lines {
+			lines[i].BaseTag = baseTag
 		}
 	}
 	union, err := w.unionRange(ctx, cfg, scopedLines(lines, scope), scopeEscape(scope))

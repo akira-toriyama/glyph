@@ -126,18 +126,22 @@ func newHookInstallCmd() *cobra.Command {
 	// rejects an all-false invocation: --print=false and --json=false both
 	// leave the command with something to do.
 	cmd.PreRunE = func(cmd *cobra.Command, _ []string) error {
-		if err := checkExclusiveBool(cmd, "print", "force"); err != nil {
+		if err := checkExclusive(cmd, "print", "force"); err != nil {
 			return err
 		}
-		return checkExclusiveBool(cmd, "print", "json")
+		return checkExclusive(cmd, "print", "json")
 	}
 	return cmd
 }
 
 // hookInstallRun is hook install below its flags: under print the one named
-// kind's script on stdout, otherwise every resolved kind installed into the
-// hooks directory git runs and the report — compact JSON, or one human line
-// per hook.
+// kind's script on stdout — needing no repository — otherwise every resolved
+// kind installed into the hooks directory git runs and the report — compact
+// JSON, or one human line per hook. Outside a repository there is no hooks
+// directory to write, and that is the caller's input (usage, 2;
+// noRepositoryUsage), as it is for init and every verdict command; inside a
+// checkout's .git the hooks directory is git's own answer and the install
+// proceeds.
 func hookInstallRun(ctx context.Context, o hookInstallOptions) error {
 	if o.print {
 		fmt.Fprint(out, o.kinds[0].Script)
@@ -145,7 +149,7 @@ func hookInstallRun(ctx context.Context, o hookInstallOptions) error {
 	}
 	hooksDir, herr := gitsource.HooksDir(ctx, ".")
 	if herr != nil {
-		return herr
+		return noRepositoryUsage(ctx, herr)
 	}
 	rep, ierr := hook.Install(hooksDir, o.force, o.kinds...)
 	if ierr != nil {

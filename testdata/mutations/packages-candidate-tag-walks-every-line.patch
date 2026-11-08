@@ -1,10 +1,11 @@
 diff --git a/internal/walk/lines.go b/internal/walk/lines.go
+index 7f899a2..c88fabd 100644
 --- a/internal/walk/lines.go
 +++ b/internal/walk/lines.go
-@@ -118,7 +118,8 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
- 		if terr != nil {
- 			return nil, "", terr
- 		}
+@@ -114,7 +114,8 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
+ 		l.bound = rest
+ 		lines = []Line{l}
+ 	default:
 -		if prefix, shape, perr := bump.ParseBaseTag(tag); perr == nil {
 +		prefix := tag[:strings.LastIndexByte(tag, '/')+1]
 +		if shape, perr := bump.ParseVersionOn(prefix, tag); perr == nil {

@@ -190,11 +190,10 @@ func newGitHub() *github.Client {
 // subject, which is the whole reason glyph exists — and names the source for
 // the reason line (owner/name#N). bump, notes and preview share it, so all
 // three read a pull request the same way; what the commits MEAN is the
-// pattern file's question, asked downstream.
+// pattern file's question, asked downstream. The number arrives accepted:
+// each command asks checkPRFlag at its entrance, before glyph.toml is
+// loaded (source.check, previewRun).
 func pullInput(ctx context.Context, number int, repoFlag string) ([]gitsource.RawCommit, string, error) {
-	if err := checkPRFlag(number); err != nil {
-		return nil, "", err
-	}
 	owner, repo, err := resolveRepo(ctx, repoFlag)
 	if err != nil {
 		return nil, "", err

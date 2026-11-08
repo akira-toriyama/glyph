@@ -1,13 +1,13 @@
-diff --git a/internal/cli/cmd_init.go b/internal/cli/cmd_init.go
-index cac2b6c..3a354f3 100644
---- a/internal/cli/cmd_init.go
-+++ b/internal/cli/cmd_init.go
-@@ -114,7 +114,7 @@ func initPath(ctx context.Context) (string, error) {
+diff --git a/internal/cli/config.go b/internal/cli/config.go
+index cf1822b..4f88311 100644
+--- a/internal/cli/config.go
++++ b/internal/cli/config.go
+@@ -42,6 +42,8 @@ func checkoutTop(ctx context.Context) (string, error) {
  	}
  	inGitDir, gerr := gitsource.InsideGitDir(ctx, ".")
  	switch {
--	case errors.Is(gerr, gitsource.ErrNoRepository):
-+	case errors.Is(gerr, gitsource.ErrNoRepository) || core.IsInterrupted(gerr):
- 		return configPathAt("."), nil
++	case core.IsInterrupted(gerr):
++		return "", gitsource.ErrNoRepository
  	case gerr != nil:
  		return "", gerr
+ 	case inGitDir:

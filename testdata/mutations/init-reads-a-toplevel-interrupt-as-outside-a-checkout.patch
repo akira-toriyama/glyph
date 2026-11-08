@@ -1,13 +1,18 @@
-diff --git a/internal/cli/cmd_init.go b/internal/cli/cmd_init.go
-index cac2b6c..8d8f954 100644
---- a/internal/cli/cmd_init.go
-+++ b/internal/cli/cmd_init.go
-@@ -108,7 +108,7 @@ func initPath(ctx context.Context) (string, error) {
+diff --git a/internal/cli/config.go b/internal/cli/config.go
+index cf1822b..b469f94 100644
+--- a/internal/cli/config.go
++++ b/internal/cli/config.go
+@@ -37,8 +37,11 @@ var errInsideGitDir = errors.New("inside a git directory, which has no work tree
+ // (TestInitInterruptDuringTopLevelReadWritesNothing).
+ func checkoutTop(ctx context.Context) (string, error) {
  	top, err := gitsource.TopLevel(ctx, ".")
- 	switch {
- 	case core.IsInterrupted(err):
--		return "", err
-+		return configPathAt("."), nil
- 	case err == nil:
- 		return configPathAt(top), nil
+-	if err == nil || core.IsInterrupted(err) {
+-		return top, err
++	if err == nil {
++		return top, nil
++	}
++	if core.IsInterrupted(err) {
++		return "", gitsource.ErrNoRepository
  	}
+ 	inGitDir, gerr := gitsource.InsideGitDir(ctx, ".")
+ 	switch {

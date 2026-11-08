@@ -103,7 +103,7 @@ func TestReleaseAtAnOlderCommitRefusesAtTheFloor(t *testing.T) {
 	if len(writes) != 0 {
 		t.Fatalf("a release at an older commit wrote %v — it must write nothing", writes)
 	}
-	if code != 4 || !strings.Contains(stderr, "v0.2.0 is not greater than the latest published release v0.2.0") {
+	if code != 4 || !strings.Contains(stderr, "v0.2.0 is not greater than the highest published release v0.2.0") {
 		t.Fatalf("exit %d, want 4 at the published floor\nstderr: %s", code, stderr)
 	}
 }

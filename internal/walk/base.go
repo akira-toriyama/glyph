@@ -28,14 +28,17 @@ const below = "below:"
 // CheckTag rejects a malformed --since-tag value before the walk runs —
 // caller input, so usage (2), as cli's checkRangeFlag answers --range: the
 // same mistake must not surface as a retryable-looking git failure (4). cli
-// calls it at the entrance, before the repository is resolved, and release
-// before its ref guard too; Since takes the value as accepted. The auto
-// sentinel is not a name and skips the checks.
+// calls it at each command's entrance, before glyph.toml is loaded and the
+// repository resolved, and release before its ref guard too; Since takes the
+// value as accepted. The auto sentinel is not a name and skips the checks.
+// Judged TRIMMED, as the resolvers read it: ` -x` reached git as `-x..HEAD`
+// at 4 while `-x` was refused here (t-3dfg).
 func CheckTag(tag string) error {
+	tag = strings.TrimSpace(tag)
 	if tag == Auto {
 		return nil
 	}
-	if rest, ok := strings.CutPrefix(strings.TrimSpace(tag), below); ok {
+	if rest, ok := strings.CutPrefix(tag, below); ok {
 		// The bound must NAME a version — a predecessor is found by comparing
 		// under it — and a release candidate names the release it is a
 		// candidate for (bump.ParseBaseTag, not ParseVersion: goreleaser
@@ -50,7 +53,7 @@ func CheckTag(tag string) error {
 		_, _, _, err := belowBound(rest)
 		return err
 	}
-	if strings.TrimSpace(tag) == "" {
+	if tag == "" {
 		// A workflow templating an unset variable produces exactly this; auto
 		// is spelled by OMITTING the value, never by an empty one.
 		return core.Usagef("--since-tag= names an empty tag — use a bare --since-tag for the highest v* tag HEAD contains, or name one with --since-tag=TAG")
@@ -113,7 +116,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
 		}
 		return prev + "..HEAD", prev, &v, nil
 	}
-	baseTag, err = w.tagBase(ctx, tag)
+	baseTag, err = w.explicitBase(ctx, tag)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -252,12 +255,26 @@ func (w Walker) releasesHEADHolds(ctx context.Context) ([]string, error) {
 	return w.Git.MergedTags(ctx, "HEAD")
 }
 
-// tagBase is the compare link's base for a --since-tag value typed by the
-// caller: the value when refs/tags/<value> exists, else "" — a branch, a
-// remote-tracking name or a sha is resolved by GitHub against ITS refs, not
-// the checkout's (DESIGN §4, "The compare link"). The resolved forms read
-// their answer out of the tag listing and need no asking.
-func (w Walker) tagBase(ctx context.Context, value string) (string, error) {
+// explicitBase is the one read of a --since-tag value typed by the caller,
+// shared by the single line and the packages arm. It refuses a value that
+// names no commit this checkout holds as the caller's input (usage, 2): a
+// walk from it would die in `git log` at 4 — "bad revision", the code that
+// says a retry can help, for a flag no retry fixes (t-tat8, measured at
+// 2f9428a: `bump --since-tag=v0.0.0` with no such tag). The remedy names
+// where to look, because the usual cause in CI is not a typo but a checkout
+// that fetched no tags. Then the compare link's base: the value when
+// refs/tags/<value> exists, else "" — a branch, a remote-tracking name or a
+// sha is resolved by GitHub against ITS refs, not the checkout's (DESIGN §4,
+// "The compare link"). The resolved forms read their answer out of the tag
+// listing and need no asking.
+func (w Walker) explicitBase(ctx context.Context, value string) (string, error) {
+	named, err := w.Git.NamesCommit(ctx, value)
+	if err != nil {
+		return "", err
+	}
+	if !named {
+		return "", core.Usagef("--since-tag %q names no commit this checkout holds — `git tag` lists the tags here; in CI a shallow or tag-less checkout needs actions/checkout with fetch-depth: 0, which fetches the tags and their history", value)
+	}
 	ok, err := w.Git.IsTag(ctx, value)
 	if err != nil || !ok {
 		return "", err

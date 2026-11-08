@@ -125,7 +125,19 @@ func newBumpCmd() *cobra.Command {
 // only when one line is selected, and stdout is the next TAG of every line
 // that moves, one per line (haiku/v0.2.0 — the prefix is what a tag step
 // needs); exit 1 only when every line folds to none.
+//
+// The caller's input — the source's shape and --current — is judged before
+// glyph.toml is loaded and before any git or API work, so a bad flag is
+// usage (2) whatever the config or the walk would have answered
+// (TestVerdictCommandsJudgeTheirFlagsBeforeTheConfig,
+// TestCurrentIsJudgedBeforeTheWalk).
 func bumpRun(ctx context.Context, o bumpOptions) error {
+	if err := o.check(); err != nil {
+		return err
+	}
+	if _, err := parseCurrent(o.current); err != nil {
+		return err
+	}
 	cfg, err := loadConfig(ctx)
 	if err != nil {
 		return err
@@ -251,9 +263,12 @@ func currentVersion(ctx context.Context, flag string, base *bump.Version, l conf
 }
 
 // parseCurrent reads --current: nil when the flag is absent, the version it
-// names, or usage (2) — the caller's input. release asks before the releases
-// listing is fetched, so a malformed flag is answered 2 even when that
-// listing would fail at 4.
+// names, or usage (2) — the caller's input. bump and release ask it at their
+// entrance, before glyph.toml is loaded and the walk runs, so a malformed
+// flag is answered 2 even when the config, the range, the API or the ref
+// guard would fail at 4 (t-s9ap, measured at 2f9428a: `bump
+// --current=garbage --range nosuch..HEAD` answered git's 4); currentVersion
+// asks again for the value, once the line it steps is known.
 func parseCurrent(flag string) (*bump.Version, error) {
 	if flag == "" {
 		return nil, nil
