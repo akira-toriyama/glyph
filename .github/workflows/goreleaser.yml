@@ -62,15 +62,24 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
-permissions:
-  contents: write      # create and publish the GitHub release
-  id-token: write      # keyless signing for provenance attestation
-  attestations: write  # write the attestation
+# Each job declares the grants its own steps use; the workflow level grants
+# nothing. The release job holds the three writes, the cask job none:
+# download-artifact reaches a same-run artifact over the runner's
+# ACTIONS_RUNTIME_TOKEN (its github-token input is for another run or
+# repository), and the push authenticates with the tap's deploy key. zizmor
+# (excessive-permissions, the hub's required gate) reds a write at the
+# workflow level of a multi-job workflow; a job-level write it accepts, so
+# the cask job's empty block is held by internal/workflows, not by zizmor.
+permissions: {}
 
 jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: write      # create and publish the GitHub release
+      id-token: write      # keyless signing for provenance attestation
+      attestations: write  # write the attestation
     outputs:
       # The cask job reads this: a release candidate stays off the tap.
       prerelease: ${{ steps.tag.outputs.prerelease }}
@@ -257,6 +266,7 @@ jobs:
     if: needs.release.outputs.prerelease != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions: {}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:

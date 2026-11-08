@@ -1,8 +1,8 @@
 diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
-index 9e18c30..24d6a1b 100644
+index 31a0b19..646b515 100644
 --- a/.github/workflows/goreleaser.yml
 +++ b/.github/workflows/goreleaser.yml
-@@ -66,3 +66,2 @@ permissions:
-   contents: write      # create and publish the GitHub release
--  id-token: write      # keyless signing for provenance attestation
-   attestations: write  # write the attestation
+@@ -80,3 +80,2 @@ jobs:
+       contents: write      # create and publish the GitHub release
+-      id-token: write      # keyless signing for provenance attestation
+       attestations: write  # write the attestation

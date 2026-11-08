@@ -245,8 +245,8 @@ func TestPublishedTagIsNotRebuiltOver(t *testing.T) {
 // needs, reds nothing here while the install action keeps verifying
 // fail-closed — so the next tag is a release the whole fleet cannot install
 // (t-j0es: both measured surviving the suite at 2f9428a). The grants are read
-// where the release job gets them: the workflow level, unless the job
-// declares its own block, which then has to carry them.
+// from the release job's own `permissions:` block, the one place they are
+// declared (TestGoreleaserGrantsStayInTheJobThatUsesThem holds the layout).
 func TestGoreleaserAttestsWhatItUploads(t *testing.T) {
 	body := code(goreleaserWorkflow(t))
 	attest := readStepShape(t, goreleaserWorkflow(t), attestStep)
@@ -264,20 +264,94 @@ func TestGoreleaserAttestsWhatItUploads(t *testing.T) {
 	if !strings.Contains(body, attestSubjects) {
 		t.Errorf("the attest step no longer names %q", attestSubjects)
 	}
-	grants := body
-	if top, _, ok := strings.Cut(body, "\njobs:\n"); ok {
-		grants = top
-	}
-	release := jobBlock(t, body, "release")
-	if regexp.MustCompile(`(?m)^    permissions:`).MatchString(release) {
-		grants = release
-	}
+	grants := jobGrants(t, body, "release")
 	for _, scope := range []string{"id-token", "attestations"} {
-		re := regexp.MustCompile(`(?m)^\s*` + scope + `:\s*write\b`)
-		if !re.MatchString(grants) {
-			t.Errorf("the release job does not run under `%s: write`; the attest step then fails with every "+
-				"asset already uploaded, or never signs — and the install action verifies fail-closed", scope)
+		if !slices.Contains(grants, scope+": write") {
+			t.Errorf("the release job's permissions block %q lacks `%s: write`; the attest step then fails with every "+
+				"asset already uploaded, or never signs — and the install action verifies fail-closed", grants, scope)
 		}
+	}
+}
+
+// jobGrants is the sorted `scope: level` list of the job's own `permissions:`
+// block in the comment-stripped body — `{}` is an empty list, and a job with
+// no block fails the test: it would inherit the workflow level, and
+// goreleaser.yml's grants nothing.
+func jobGrants(t *testing.T, body, id string) []string {
+	t.Helper()
+	job := jobBlock(t, body, id)
+	if regexp.MustCompile(`(?m)^    permissions:\s*\{\s*\}\s*$`).MatchString(job) {
+		return []string{}
+	}
+	_, rest, ok := strings.Cut(job, "\n    permissions:\n")
+	if !ok {
+		t.Fatalf("the %s job declares no `permissions:` block of its own, so it runs under the workflow level's — "+
+			"`permissions: {}`, which grants nothing", id)
+	}
+	var grants []string
+	for line := range strings.SplitSeq(rest, "\n") {
+		m := jobGrant.FindStringSubmatch(line)
+		if m == nil {
+			break
+		}
+		grants = append(grants, m[1]+": "+m[2])
+	}
+	slices.Sort(grants)
+	return grants
+}
+
+// jobGrant is one scope line of a job-level permissions block: six-space
+// indented, a trailing comment allowed.
+var jobGrant = regexp.MustCompile(`^      ([a-z-]+):\s*(read|write|none)\b`)
+
+// writeGrant is any `<scope>: write` line at any depth.
+var writeGrant = regexp.MustCompile(`(?m)^\s*[a-z-]+:\s*write\b`)
+
+// TestGoreleaserGrantsStayInTheJobThatUsesThem: goreleaser.yml's workflow
+// level grants nothing, the release job declares the three writes its steps
+// use and nothing else, and the cask job declares an empty block. With two
+// jobs, a write at the workflow level reaches the cask job as well — a job
+// that holds the tap's deploy key and runs nothing that uses GITHUB_TOKEN
+// (download-artifact reaches a same-run artifact over ACTIONS_RUNTIME_TOKEN;
+// its github-token input is for another run or repository) — and zizmor's
+// excessive-permissions, the hub's required gate, refuses it (1.31.1 on
+// #347, run 41830717292, exit 14, after the single-job file had passed for
+// a year). zizmor accepts any grant declared at the job level, so the cask
+// job's empty block and the release job's exact set are held here only.
+func TestGoreleaserGrantsStayInTheJobThatUsesThem(t *testing.T) {
+	body := code(goreleaserWorkflow(t))
+	top, _, ok := strings.Cut(body, "\njobs:\n")
+	if !ok {
+		t.Fatal("goreleaser.yml has no `jobs:` mapping")
+	}
+	// Positive control: the matcher the absences below rest on finds the
+	// file's three real write grants, wherever they are declared.
+	if found := writeGrant.FindAllString(body, -1); len(found) != 3 {
+		t.Fatalf("writeGrant finds %d write grant(s) in goreleaser.yml (%q), want 3 — the absences asserted "+
+			"below would be vacuous", len(found), found)
+	}
+
+	if !regexp.MustCompile(`(?m)^permissions:\s*\{\s*\}\s*$`).MatchString(top) {
+		t.Error("goreleaser.yml's workflow level is not `permissions: {}`; whatever it grants reaches every job, " +
+			"the cask job included")
+	}
+	if found := writeGrant.FindAllString(top, -1); len(found) > 0 {
+		t.Errorf("goreleaser.yml grants %q at the workflow level — zizmor's excessive-permissions reds the "+
+			"required gate over a write there, and the cask job runs under it", found)
+	}
+
+	want := []string{"attestations: write", "contents: write", "id-token: write"}
+	if got := jobGrants(t, body, "release"); !slices.Equal(got, want) {
+		t.Errorf("the release job's grants are %q, want exactly %q: the draft and its publish (contents), "+
+			"keyless signing (id-token) and the attestation itself (attestations)", got, want)
+	}
+	if got := jobGrants(t, body, "cask"); len(got) != 0 {
+		t.Errorf("the cask job's grants are %q, want `permissions: {}`: it downloads over the runner's "+
+			"ACTIONS_RUNTIME_TOKEN and pushes with the tap's deploy key, so a GITHUB_TOKEN grant there is a "+
+			"credential nothing in the job uses", got)
+	}
+	for _, id := range jobIDsIn(body) {
+		jobGrants(t, body, id)
 	}
 }
 
