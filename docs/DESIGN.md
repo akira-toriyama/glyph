@@ -1299,22 +1299,70 @@ not glyph's — the fold binds `$pr` and `$hash`, and both shipped presets place
 `$pr` alone inside an optional span, so a line reads `- subject (#123)` and
 drops the parens with the pull (§3). v1's hardcoded `(#123, abc1234)` is
 `$[ ($pr, $hash)]` today. Both git questions can also fail to answer, and a
-failure never reads as "never landed": a listed sha whose object this clone
-holds and **cannot read** — empty, truncated, not zlib, under a file or fan-out
-directory git cannot open, a body that does not parse — answers `missing` to
-`cat-file --batch-check` and `128` to `merge-base` exactly as a sha the store
-does not hold, and read as absent it had no landing site, the in-range merge
-point governed it, and a released commit was counted again at exit `0`
-(measured at bc11b2b, t-9bqf). The one thing git gives that tells the two apart
-is the `error:` severity it writes for the first and not the second, so that
-line is the signal — read as severity under `LC_ALL=C`, never as text, since
-`warning:` and trace output are stderr too — and the walk fails at `4` carrying
-it, with nothing extra asked of a store that reads
-(`TestHaveFailsOnAHeldObjectGitCannotRead`,
-`TestSinceTagFailsOnAReleasedCommitGitCannotRead`, mutation rows
+failure never reads as "never landed" where git signals it: a listed sha whose
+object this clone holds and **cannot read** — empty, truncated, not zlib, under
+a file or fan-out directory git cannot open — answers `missing` to `cat-file
+--batch-check` and `128` to `merge-base` exactly as a sha the store does not
+hold (a body that does not parse answers `commit` to the batch and dies at
+`merge-base`'s probe one step later), and read as absent it had no landing
+site, the in-range merge point governed it, and a released commit was counted
+again at exit `0` (measured on the tree before fix round 2 of this change,
+2026-11-08; t-9bqf). What git gives that tells the two apart is on stderr: the
+`error:` severity line it writes for the first and not the second, so that line
+is the signal — read as severity under `LC_ALL=C`, never as text, since
+`warning:` and trace output are stderr too, and found anywhere in stderr, since
+trace lines come first — and the walk fails at `4` carrying it, with nothing
+extra asked of a store that reads (`TestHaveFailsOnAHeldObjectGitCannotRead`,
+`TestSinceTagFailsOnAReleasedCommitGitCannotRead`,
+`TestHeldObjectSignalIsFoundBehindStderrNoise`,
+`TestHeldObjectSignalIsReadUnderThePinnedLocale`, mutation rows
 `gitsource-have-reads-a-held-object-it-cannot-read-as-absent`,
-`gitsource-held-object-signal-is-any-stderr`; the mechanism and what it was
-measured against are at `gitsource.errorLine`). A **shallow** checkout cannot answer the question at all
+`gitsource-held-object-signal-is-any-stderr`,
+`gitsource-held-object-signal-is-the-first-line-only`,
+`gitsource-stderr-readers-run-in-the-users-locale`; the mechanism and what it
+was measured against are at `gitsource.errorLine`). The same line is read off
+`merge-base`'s honest no: for a commit gone from the middle of the history, git
+≤ 2.40 exits `1` beside `error: Could not read …` where 2.54 and later exit
+`128`, so an exit `1` that carries an `error:` line is git failing, quoted, not
+a NO (`TestIsAncestorFailsWhereGitCouldNotAnswer`, mutation row
+`gitsource-is-ancestor-reads-an-exit-1-with-an-error-line-as-the-no`). The
+`128` of `cat-file -t rev^{}` is taken apart the same way in
+`gitsource.namesCommit`, paired there with `cat-file -e`: its exit `0` against
+the peel's `128` is an object the store holds and git could not read without
+saying so, and it runs only on that failure path, so a healthy repository pays
+nothing (`TestNamesCommitSeesAnUnopenableObjectGitIsSilentAbout`, mutation row
+`gitsource-names-commit-reads-a-held-object-git-is-silent-about-as-no-commit`).
+
+**Where git writes nothing, glyph cannot see**, and these are stated limits,
+not guarantees. git 2.39 and earlier write no `error:` line for a loose object
+the user cannot open — a mode 000 file or fan-out directory, the shape a fetch
+run as another user under umask 077 leaves — because object-file.c gained its
+`error_errno` on an open failure in 2.40.0 (measured on 2.39.5 against 2.40.1,
+2.54.0 and 2.56.0; Debian 12 ships 2.39.5). Under such a git `cat-file -e`
+still catches the file for `namesCommit`'s callers, the fan-out directory
+reads as nothing in the store, and `have` — which has no second signal, since
+`%(objectsize:disk)` is a stat too and would cost a process per walk step that
+has a missing sha, which is every squash — reads both as absent. An object in
+a pack whose `.idx` or `.pack` cannot be opened reads as absent to every probe
+on every version measured: `cat-file -t` dies `128` silently, the batch answers
+`missing`, `cat-file -e` exits `1`. The claim that holds is the narrow one: a
+held object never reads as absent where git signals it could not read it.
+
+A store git reports as not all there fails the same way: an alternates entry
+— `objects/info/alternates` or `GIT_ALTERNATE_OBJECT_DIRECTORIES` — naming a
+directory that is gone makes git write `error: object directory … does not
+exist` on every object read, at exit `0` with the answer intact (and git 2.56
+writes it on an unknown name as well, so there a dangling `origin/HEAD` over
+such a store reads as this failure rather than as the set-head advice §7
+names). glyph cannot vouch for an absence there, so `have` fails where a
+listed sha came back `missing`, `isAncestor` on its no and `namesCommit` on
+any `error:` line, each quoting git's line so the reader knows what to fix —
+and each answers where nothing was absent
+(`TestHaveUnderGoneAlternatesAnswersWhereNothingIsMissing`, mutation row
+`gitsource-have-fails-a-full-listing-under-gone-alternates`). In the installed
+pre-push hook that `4` is the pass-through the hooks give every non-gate
+failure by contract (only `3` blocks; README's hook section), so CI's lint
+stays the gate. A **shallow** checkout cannot answer the question at all
 (a commit git does not have is indistinguishable from one that never landed), so
 the walk says so once and falls back to expanding whole listings — and, since it
 knows the answer it gave was a guess, records the checkout as one it could not
@@ -4117,7 +4165,12 @@ The severities are the argued part:
   does not replace it: the ref is up to date, so nothing is sent; measured on
   git 2.54), then the re-run (`TestDefaultBranchFailsOnATargetGitCannotRead`,
   mutation rows `gitsource-names-commit-reads-a-held-object-it-cannot-read-as-no-commit`,
-  `doctor-pre-push-unread-head-fix-names-no-condition`). The remedy is
+  `gitsource-names-commit-reads-a-held-object-git-is-silent-about-as-no-commit`,
+  `doctor-pre-push-unread-head-fix-names-no-condition`). The signal is git's
+  `error:` line paired with `cat-file -e`, and §4 states where neither sees:
+  under git ≤ 2.39 a fan-out directory git cannot open reads as unrecorded
+  here and names set-head, and a store whose alternates directory is gone is
+  this failure for any recorded name (on 2.56 for a dangling one too). The remedy is
   `git remote set-head <remote> -a` only where git can record a head at all:
   a name config accepts and refs refuse (`my fork`, `mirror..x`) makes
   set-head exit 129 unquoted and 1 quoted (review u6-2, git 2.54). `git remote

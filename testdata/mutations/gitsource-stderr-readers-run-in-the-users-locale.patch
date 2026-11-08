@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 871d661..6f44b07 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -1061,7 +1061,7 @@ func runIn(ctx context.Context, dir string, stdin io.Reader, args ...string) ([]
+ // value pinned by --end-of-options at its call site.
+ func runRead(ctx context.Context, dir string, stdin io.Reader, args ...string) (stdout, stderr []byte, status int, err error) {
+ 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+-	cmd.Env = append(os.Environ(), "LC_ALL=C")
++	cmd.Env = os.Environ()
+ 	cmd.Stdin = stdin
+ 	var out, serr bytes.Buffer
+ 	cmd.Stdout, cmd.Stderr = &out, &serr

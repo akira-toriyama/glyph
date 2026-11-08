@@ -1,6 +1,7 @@
 package gitsource
 
 import (
+	"bytes"
 	"context"
 	"maps"
 	"os"
@@ -464,16 +465,22 @@ func TestMergedTagsOnAnUnbornHEADIsEmpty(t *testing.T) {
 // TestMergedTagsFailsOnARevGitCannotRead: the empty answer is for a rev naming
 // no commit, and a rev whose commit this repository holds and cannot read
 // names one. Read as empty, a corrupt HEAD said the history holds no release
-// and the walk stepped from v0.0.0 with a nil error.
+// and the walk stepped from v0.0.0 with a nil error. The failure carried is
+// the listing's own (`git tag`), as isAncestor carries merge-base's.
 func TestMergedTagsFailsOnARevGitCannotRead(t *testing.T) {
 	for name, tc := range map[string]struct {
-		corrupt func(t *testing.T, dir, sha string)
-		wantMsg string
+		corrupt     func(t *testing.T, dir, sha string)
+		wantMsg     string
+		needsSignal bool
 	}{
-		"an empty object file":                                {emptyObject, "is empty"},
-		"an object under a fan-out directory git cannot open": {unreadableFanout, "Permission denied"},
+		"an empty object file":                                {emptyObject, "is empty", false},
+		"an object file git cannot open":                      {unreadableObject, "git tag", false},
+		"an object under a fan-out directory git cannot open": {unreadableFanout, "Permission denied", true},
 	} {
 		t.Run(name, func(t *testing.T) {
+			if tc.needsSignal {
+				requireUnopenableSignal(t)
+			}
 			dir := testutil.NewRepo(t)
 			testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.0")
 			tc.corrupt(t, dir, testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD"))
@@ -605,30 +612,37 @@ func TestDefaultBranchReadsADanglingRefAsUnrecorded(t *testing.T) {
 // permission slip and a bad write leave — and that is git failing, not a name
 // that holds nothing. Read as unrecorded, the hook named set-head over an
 // object store set-head cannot repair, and doctor rendered advice at exit 0
-// where the read must exit 4. The error carries git's own diagnosis. Each row
-// starts from a target that reads (the control).
+// where the read must exit 4. The error carries git's own diagnosis where git
+// wrote one, and names the ref where it did not (the object file git cannot
+// open, under a git that writes no error: line for it: `cat-file -e` is the
+// signal there). Each row starts from a target that reads (the control).
 func TestDefaultBranchFailsOnATargetGitCannotRead(t *testing.T) {
 	for name, tc := range map[string]struct {
-		corrupt func(t *testing.T, dir, sha string) (target string)
-		wantMsg string
+		corrupt     func(t *testing.T, dir, sha string) (target string)
+		wantMsg     func(t *testing.T) string
+		needsSignal bool
 	}{
 		"an empty object file": {func(t *testing.T, dir, sha string) string {
 			emptyObject(t, dir, sha)
 			return sha
-		}, "is empty"},
+		}, literally("is empty"), false},
 		"an object file git cannot open": {func(t *testing.T, dir, sha string) string {
 			unreadableObject(t, dir, sha)
 			return sha
-		}, "Permission denied"},
+		}, unopenableFileMsg, false},
 		"an object under a fan-out directory git cannot open": {func(t *testing.T, dir, sha string) string {
 			unreadableFanout(t, dir, sha)
 			return sha
-		}, "Permission denied"},
+		}, literally("Permission denied"), true},
 		"a commit git cannot parse": {func(t *testing.T, dir, _ string) string {
 			return unparseableCommit(t, dir)
-		}, "bogus commit object"},
+		}, literally("bogus commit object"), false},
 	} {
 		t.Run(name, func(t *testing.T) {
+			if tc.needsSignal {
+				requireUnopenableSignal(t)
+			}
+			wantMsg := tc.wantMsg(t)
 			dir := testutil.NewRepo(t)
 			head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 			testutil.Git(t, dir, "akira-toriyama", "update-ref", "refs/remotes/origin/main", head)
@@ -651,10 +665,95 @@ func TestDefaultBranchFailsOnATargetGitCannotRead(t *testing.T) {
 			if ce == nil || ce.Code != core.CodeAPI {
 				t.Fatalf("DefaultBranch over %s = %q, %v; want CodeAPI — unrecorded names set-head as the remedy, and set-head repairs no object store", name, got, err)
 			}
-			if !strings.Contains(err.Error(), tc.wantMsg) {
-				t.Errorf("the error must carry git's own diagnosis: got %q, want it to mention %q", err, tc.wantMsg)
+			if !strings.Contains(err.Error(), wantMsg) {
+				t.Errorf("the error must carry git's own diagnosis: got %q, want it to mention %q", err, wantMsg)
 			}
 		})
+	}
+}
+
+// literally is a wantMsg that is the same under every git.
+func literally(msg string) func(*testing.T) string {
+	return func(*testing.T) string { return msg }
+}
+
+// requireUnopenableSignal skips a row whose shape gives glyph no signal under
+// the git on PATH: git ≤ 2.39 writes no error: line for a loose object it
+// cannot open, and the only other probe, `cat-file -e`, is a stat that cannot
+// see through a fan-out directory it cannot open — so that shape reads as
+// absent there, a known limit DESIGN §4 states rather than a decision a test
+// can hold (testutil.GitSignalsUnopenableObject).
+func requireUnopenableSignal(t *testing.T) {
+	t.Helper()
+	if !testutil.GitSignalsUnopenableObject(t) {
+		t.Skip("this git writes no error: line for a loose object it cannot open (git ≤ 2.39), so the shape reads as absent: a known limit, DESIGN §4")
+	}
+}
+
+// unopenableFileMsg is what a namesCommit caller's error says about a loose
+// object file git cannot open: git's own "Permission denied" where git writes
+// the error: line (≥ 2.40), and glyph's sentence naming the ref where git
+// writes nothing and `cat-file -e` is the signal (≤ 2.39).
+func unopenableFileMsg(t *testing.T) string {
+	t.Helper()
+	if testutil.GitSignalsUnopenableObject(t) {
+		return "Permission denied"
+	}
+	return "holds and cannot read"
+}
+
+// TestNamesCommitSeesAnUnopenableObjectGitIsSilentAbout: git ≤ 2.39 dies 128
+// on a loose object it cannot open with no error: line — the same stderr as
+// for a sha the store does not hold (measured on 2.39.5: `fatal: Not a valid
+// object name` alone, where 2.40.1 and later put `error: unable to open loose
+// object …: Permission denied` above it). `cat-file -e`, a stat, answers 0
+// for that file and 1 for the absent sha, and is namesCommit's second signal.
+// Held on every host through a git that is the real one with its error: lines
+// taken off cat-file's stderr — the only difference between 2.39's stderr and
+// 2.56's for this shape — so the row bites under a git that writes the line;
+// the rows of TestDefaultBranchFailsOnATargetGitCannotRead and its siblings
+// cover the same arm under a real 2.39.
+func TestNamesCommitSeesAnUnopenableObjectGitIsSilentAbout(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the wrapper git is a shell script")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a mode 000 file")
+	}
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatalf("git: %v", err)
+	}
+	dir := testutil.NewRepo(t)
+	head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "update-ref", "refs/remotes/origin/main", head)
+	testutil.Git(t, dir, "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	absent := "0123456789abcdef0123456789abcdef01234567"
+
+	bin := t.TempDir()
+	// Run the real git, drop the error: lines from cat-file's stderr, exit as
+	// it did.
+	wrapper := "#!/bin/sh\ncase \"$*\" in *cat-file*) err=$(mktemp); " + realGit + " \"$@\" 2>\"$err\"; rc=$?; grep -v '^error:' \"$err\" >&2; rm -f \"$err\"; exit $rc;; esac\nexec " + realGit + " \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(wrapper), 0o700); err != nil { //nolint:gosec // a wrapper git must be executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if on, err := isAncestor(context.Background(), dir, head, "HEAD"); err != nil || !on {
+		t.Fatalf("isAncestor through the wrapper over a readable store = %v, %v; want true, nil (the control)", on, err)
+	}
+	if on, err := isAncestor(context.Background(), dir, absent, "HEAD"); err != nil || on {
+		t.Fatalf("isAncestor through the wrapper for an absent sha = %v, %v; want false, nil (the control: cat-file -e answers 1 there)", on, err)
+	}
+
+	unreadableObject(t, dir, head)
+	got, err := DefaultBranch(context.Background(), dir, "origin")
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || !strings.Contains(err.Error(), "holds and cannot read") {
+		t.Errorf("DefaultBranch over an unopenable target through a git that says nothing = %q, %v; want CodeAPI naming the held object — read as unrecorded, the hook names set-head over a broken object store", got, err)
+	}
+	on, err := isAncestor(context.Background(), dir, head, "HEAD")
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || on {
+		t.Errorf("isAncestor over an unopenable commit through a git that says nothing = %v, %v; want false, CodeAPI", on, err)
 	}
 }
 
@@ -1003,22 +1102,28 @@ func TestHaveEmpty(t *testing.T) {
 // shape end to end). Every shape here is a loose object the store holds, plus
 // a store whose alternates directory is gone — git can vouch for nothing it
 // does not find there. Each row starts from a store that reads (the control).
+// The two permission shapes are the ones git ≤ 2.39 writes nothing for, and
+// have has no second signal, so they skip there (DESIGN §4, the known limit).
 func TestHaveFailsOnAHeldObjectGitCannotRead(t *testing.T) {
 	absent := "0123456789abcdef0123456789abcdef01234567"
 	for name, tc := range map[string]struct {
-		corrupt func(t *testing.T, dir, sha string)
-		wantMsg string
+		corrupt     func(t *testing.T, dir, sha string)
+		wantMsg     string
+		needsSignal bool
 	}{
-		"an empty object file":                                {emptyObject, "is empty"},
-		"an object file that is no zlib stream":               {breakObject, "git cat-file"},
-		"a truncated object file":                             {truncatedObject, "git cat-file"},
-		"an object file git cannot open":                      {unreadableObject, "Permission denied"},
-		"an object under a fan-out directory git cannot open": {unreadableFanout, "Permission denied"},
+		"an empty object file":                                {emptyObject, "is empty", false},
+		"an object file that is no zlib stream":               {breakObject, "git cat-file", false},
+		"a truncated object file":                             {truncatedObject, "git cat-file", false},
+		"an object file git cannot open":                      {unreadableObject, "Permission denied", true},
+		"an object under a fan-out directory git cannot open": {unreadableFanout, "Permission denied", true},
 		"an alternates directory that is gone": {func(t *testing.T, dir, _ string) {
 			goneAlternates(t, dir)
-		}, "alternates"},
+		}, "alternates", false},
 	} {
 		t.Run(name, func(t *testing.T) {
+			if tc.needsSignal {
+				requireUnopenableSignal(t)
+			}
 			dir := testutil.NewRepo(t)
 			root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
 			testutil.Commit(t, dir, "akira-toriyama", ":bug: second")
@@ -1045,11 +1150,16 @@ func TestHaveFailsOnAHeldObjectGitCannotRead(t *testing.T) {
 // and git's warning: about a ref named as a full sha (with its advice
 // paragraph) are stderr on a store that reads every object, and an absent sha
 // stays absent under both — for have, which reads the batch's stderr, and for
-// isAncestor through namesCommit, which reads the probe's.
+// isAncestor, which reads merge-base's on its honest no and the probe's
+// through namesCommit on its 128.
 func TestHeldObjectSignalIgnoresStderrNoise(t *testing.T) {
 	absent := "0123456789abcdef0123456789abcdef01234567"
 	dir := testutil.NewRepo(t)
 	root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo: a commit off the released branch")
+	offBranch := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "main")
 	testutil.Git(t, dir, "akira-toriyama", "branch", absent)
 	testutil.Git(t, dir, "akira-toriyama", "branch", root)
 	t.Setenv("GIT_TRACE", "1")
@@ -1058,12 +1168,187 @@ func TestHeldObjectSignalIgnoresStderrNoise(t *testing.T) {
 	if err != nil || !got[root] || got[absent] {
 		t.Fatalf("have under trace output and an ambiguous refname = %v, %v; want the held commit alone, nil", got, err)
 	}
-	for name, sha := range map[string]string{"an absent sha": absent, "an ancestor": root} {
+	for name, sha := range map[string]string{"an absent sha": absent, "an ancestor": root, "another line of history": offBranch} {
 		on, err := isAncestor(context.Background(), dir, sha, "HEAD")
 		if err != nil || on != (sha == root) {
 			t.Errorf("isAncestor(%s) under trace output and an ambiguous refname = %v, %v; want %v, nil", name, on, err, sha == root)
 		}
 	}
+}
+
+// TestHeldObjectSignalIsFoundBehindStderrNoise is the other direction: under
+// GIT_TRACE the trace lines come first on stderr, and the error: line git
+// writes for a held object it cannot read sits below them. A reader that
+// looked at the first line alone would read the object as absent and the walk
+// would count it again, with the trace on.
+func TestHeldObjectSignalIsFoundBehindStderrNoise(t *testing.T) {
+	dir := testutil.NewRepo(t)
+	root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug: second")
+	t.Setenv("GIT_TRACE", "1")
+	emptyObject(t, dir, root)
+
+	_, err := have(context.Background(), dir, []string{root})
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || !strings.Contains(err.Error(), "is empty") {
+		t.Errorf("have over an empty object under trace output = %v; want CodeAPI carrying git's \"is empty\" — the error: line is below the trace lines", err)
+	}
+	on, err := isAncestor(context.Background(), dir, root, "HEAD")
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || on {
+		t.Errorf("isAncestor over an empty object under trace output = %v, %v; want false, CodeAPI", on, err)
+	}
+}
+
+// TestHaveUnderGoneAlternatesAnswersWhereNothingIsMissing: a store whose
+// alternates directory is gone writes git's error: line on every object read,
+// and have fails on it only beside a `missing` — an absence is what such a
+// store cannot vouch for; a listing it holds in full it answers. The second
+// read is the control that the store does write the line.
+func TestHaveUnderGoneAlternatesAnswersWhereNothingIsMissing(t *testing.T) {
+	absent := "0123456789abcdef0123456789abcdef01234567"
+	dir := testutil.NewRepo(t)
+	root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug: second")
+	head := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	goneAlternates(t, dir)
+
+	got, err := have(context.Background(), dir, []string{root, head})
+	if err != nil || !got[root] || !got[head] {
+		t.Errorf("have over a listing the store holds in full, under gone alternates = %v, %v; want both commits, nil — nothing is missing, so there is no absence to vouch for", got, err)
+	}
+	_, err = have(context.Background(), dir, []string{root, head, absent})
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || !strings.Contains(err.Error(), "alternates") {
+		t.Fatalf("have with a sha the store does not hold, under gone alternates = %v; want CodeAPI naming the alternates (the control)", err)
+	}
+}
+
+// TestHaveCancelIsInterrupted is TestIsAncestorCancelIsInterrupted's shape for
+// the batch read: the fake git announces itself and blocks, the cancel lands
+// while it runs, and the killed child comes back as an *exec.ExitError. Read
+// status first, that is "git cat-file: signal: killed" at exit 4 — the code
+// the fleet's wrappers retry — on a run the operator stopped.
+func TestHaveCancelIsInterrupted(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stub git is a shell script")
+	}
+	dir := t.TempDir()
+	bin := t.TempDir()
+	started := filepath.Join(dir, "started")
+	stub := "#!/bin/sh\ntouch " + started + "\nexec sleep 60\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(stub), 0o700); err != nil { //nolint:gosec // a stub git must be executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for {
+			if _, err := os.Stat(started); err == nil {
+				cancel()
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Millisecond):
+			}
+		}
+	}()
+
+	_, err := have(ctx, dir, []string{"0123456789abcdef0123456789abcdef01234567"})
+	if _, serr := os.Stat(started); serr != nil {
+		t.Fatalf("the fake git never started, so the cancel landed before the child and the run proves nothing: %v", serr)
+	}
+	ce := core.AsError(err)
+	if ce == nil || ce.Code != core.CodeInterrupted {
+		t.Fatalf("have cancelled mid-run = %v, want CodeInterrupted (%d) — a killed child arrives as an *exec.ExitError, so reading the exit status before the context turns the abort into git failing at 4", err, core.CodeInterrupted)
+	}
+}
+
+// TestHeldObjectSignalIsReadUnderThePinnedLocale: errorLine reads git's
+// severity prefix, and git translates the prefix with the message — `Fehler:`
+// under de_DE (measured on git 2.54, which ships translations). The readers
+// run their child under LC_ALL=C, appended after the parent's environment so
+// it wins over whatever LC_ALL the parent carries; without the pin every
+// non-English developer machine reads every unreadable object as absent and
+// every corrupt target as unrecorded. Two legs: real git, where the git on
+// PATH translates under some locale this host has (a git built NO_GETTEXT, or
+// a host without the locale, has no German to show, and that leg says so); and
+// a fake git modelled on the measured one, which writes the German prefix
+// unless its LC_ALL is C, so the decision is held on every host.
+func TestHeldObjectSignalIsReadUnderThePinnedLocale(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stub git is a shell script")
+	}
+	absent := "0123456789abcdef0123456789abcdef01234567"
+	t.Run("a git that translates", func(t *testing.T) {
+		dir := testutil.NewRepo(t)
+		root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		testutil.Commit(t, dir, "akira-toriyama", ":bug: second")
+		translates := func(env ...string) bool {
+			cmd := exec.Command("git", "-C", dir, "cat-file", "-t", absent+"^{}")
+			cmd.Env = append(os.Environ(), env...)
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+			_ = cmd.Run()
+			return stderr.Len() > 0 && !strings.Contains(stderr.String(), "fatal:")
+		}
+		var locale []string
+		for _, candidate := range [][]string{
+			{"LC_ALL=de_DE.UTF-8", "LANG=de_DE.UTF-8", "LANGUAGE=de"},
+			{"LC_ALL=en_US.UTF-8", "LANG=en_US.UTF-8", "LANGUAGE=de"},
+			{"LC_ALL=C.UTF-8", "LANG=C.UTF-8", "LANGUAGE=de"},
+		} {
+			if translates(candidate...) {
+				locale = candidate
+				break
+			}
+		}
+		if locale == nil {
+			t.Skip("the git on PATH shows no German under any locale this host has (built NO_GETTEXT, or no de locale installed); the fake-git leg holds the decision here")
+		}
+		for _, kv := range locale {
+			k, v, _ := strings.Cut(kv, "=")
+			t.Setenv(k, v)
+		}
+		testutil.Git(t, dir, "akira-toriyama", "update-ref", "refs/remotes/origin/main", root)
+		testutil.Git(t, dir, "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+		emptyObject(t, dir, root)
+
+		_, err := have(context.Background(), dir, []string{root, absent})
+		if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || !strings.Contains(err.Error(), "error:") {
+			t.Errorf("have over an empty object under %v = %v; want CodeAPI quoting git's English error: line", locale, err)
+		}
+		on, err := isAncestor(context.Background(), dir, root, "HEAD")
+		if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || on {
+			t.Errorf("isAncestor over an empty object under %v = %v, %v; want false, CodeAPI", locale, on, err)
+		}
+		got, err := DefaultBranch(context.Background(), dir, "origin")
+		if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
+			t.Errorf("DefaultBranch over an empty target under %v = %q, %v; want CodeAPI — read as unrecorded, the hook names set-head over a broken object store", locale, got, err)
+		}
+	})
+
+	t.Run("a fake git modelled on the measured one", func(t *testing.T) {
+		bin := t.TempDir()
+		// What nix git 2.54 writes under de_DE for an empty loose object listed
+		// to --batch-check, with the prefix English only under LC_ALL=C.
+		stub := "#!/bin/sh\n" +
+			"case \"$LC_ALL\" in C|POSIX) p='error:';; *) p='Fehler:';; esac\n" +
+			"case \"$*\" in *--batch-check*) while read -r s; do echo \"$s missing\"; done; echo \"$p Objektdatei .git/objects/01/23 ist leer.\" >&2; exit 0;; esac\n" +
+			"exit 128\n"
+		if err := os.WriteFile(filepath.Join(bin, "git"), []byte(stub), 0o700); err != nil { //nolint:gosec // a stub git must be executable
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+		t.Setenv("LANG", "de_DE.UTF-8")
+		t.Setenv("LC_ALL", "")
+
+		_, err := have(context.Background(), t.TempDir(), []string{absent})
+		if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || !strings.Contains(err.Error(), "error:") {
+			t.Fatalf("have against a git that translates the prefix unless LC_ALL is C = %v; want CodeAPI quoting the English line — the child must run under LC_ALL=C whatever the parent's locale", err)
+		}
+	})
 }
 
 // TestIsAncestor: a YES is a real ancestor or the rev itself; a NO covers both
@@ -1114,9 +1399,13 @@ func TestIsAncestor(t *testing.T) {
 // returned with a nil error. The held objects git cannot read — empty, unopenable,
 // a commit whose body does not parse, non-zlib bytes — are the rows the probe must
 // tell from a name that holds nothing: `rev-parse --verify --quiet ^{commit}`
-// answers 1 for all but the last of them, as it does for the absent sha. The stub
-// that fails only the ancestry question leaves the probes answering, so that row
-// reaches the last arm rather than failing in a probe.
+// answers 1 for the absent sha and for some of them, 128 for others, and which
+// is which moves with the git version. The gone commit and the honest no under
+// gone alternates are the rows merge-base answers with exit 1 beside an error:
+// line (the first on git ≤ 2.40 only; 2.54 and later exit 128 there), where a
+// status-only reading is a NO. The stub that fails only the ancestry question
+// leaves the probes answering, so that row reaches the last arm rather than
+// failing in a probe.
 func TestIsAncestorFailsWhereGitCouldNotAnswer(t *testing.T) {
 	realGit, err := exec.LookPath("git")
 	if err != nil {
@@ -1154,12 +1443,22 @@ func TestIsAncestorFailsWhereGitCouldNotAnswer(t *testing.T) {
 		"the commit asked about is an object file git cannot open": func(t *testing.T) (string, string, string, string) {
 			dir, root, _, _ := history(t)
 			unreadableObject(t, dir, root)
-			return dir, root, "HEAD", "Permission denied"
+			return dir, root, "HEAD", "git merge-base"
 		},
 		"the commit asked about is under a fan-out directory git cannot open": func(t *testing.T) (string, string, string, string) {
+			requireUnopenableSignal(t)
 			dir, root, _, _ := history(t)
 			unreadableFanout(t, dir, root)
 			return dir, root, "HEAD", "Permission denied"
+		},
+		"the honest no over a store whose alternates directory is gone": func(t *testing.T) (string, string, string, string) {
+			dir, root, _, _ := history(t)
+			testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "-c", "side", root)
+			testutil.Commit(t, dir, "akira-toriyama", ":memo: a commit off the released branch")
+			side := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			testutil.Git(t, dir, "akira-toriyama", "switch", "-q", "main")
+			goneAlternates(t, dir)
+			return dir, side, "HEAD", "alternates"
 		},
 		"the commit asked about is a truncated object file": func(t *testing.T) (string, string, string, string) {
 			dir, root, _, _ := history(t)

@@ -1,9 +1,9 @@
 diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
-index e0675ee..fc29301 100644
+index 871d661..82d94a1 100644
 --- a/internal/gitsource/gitsource.go
 +++ b/internal/gitsource/gitsource.go
-@@ -1039,7 +1039,7 @@ func runRead(ctx context.Context, dir string, stdin io.Reader, args ...string) (
- // what it does not hold either.
+@@ -1114,7 +1114,7 @@ func runRead(ctx context.Context, dir string, stdin io.Reader, args ...string) (
+ // be vouched for, and the line names what to fix.
  func errorLine(stderr []byte) (string, bool) {
  	for line := range strings.SplitSeq(string(stderr), "\n") {
 -		if line = strings.TrimSpace(line); strings.HasPrefix(line, "error:") {

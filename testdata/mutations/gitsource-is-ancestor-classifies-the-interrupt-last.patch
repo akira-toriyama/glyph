@@ -1,16 +1,13 @@
 diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
-index 9914fe8..4d5da1a 100644
+index 871d661..80a464d 100644
 --- a/internal/gitsource/gitsource.go
 +++ b/internal/gitsource/gitsource.go
-@@ -638,7 +638,10 @@ func have(ctx context.Context, dir string, shas []string) (map[string]bool, erro
- // field, and --end-of-options pins both as revisions rather than options.
- func isAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
- 	_, yes, err := runAnswer(ctx, dir, "merge-base", "merge-base", "--is-ancestor", "--end-of-options", sha, rev)
--	if err == nil || core.IsInterrupted(err) {
-+	if core.IsInterrupted(err) {
+@@ -742,7 +742,7 @@ func isAncestor(ctx context.Context, dir, sha, rev string) (bool, error) {
+ 	case err == nil:
+ 		return true, nil
+ 	case core.IsInterrupted(err):
+-		return false, err
 +		return false, nil
-+	}
-+	if err == nil {
- 		return yes, err
- 	}
- 	for _, name := range []string{sha, rev} {
+ 	case status == 1:
+ 		if line, unreadable := errorLine(stderr); unreadable {
+ 			return false, core.APIf("git merge-base: %s", line)

@@ -1,0 +1,12 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 871d661..7ad5688 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -1117,6 +1117,7 @@ func errorLine(stderr []byte) (string, bool) {
+ 		if line = strings.TrimSpace(line); strings.HasPrefix(line, "error:") {
+ 			return line, true
+ 		}
++		break
+ 	}
+ 	return "", false
+ }

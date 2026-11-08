@@ -740,17 +740,31 @@ func TestSinceTagRefoldControlWholePullInRange(t *testing.T) {
 	}
 }
 
-// TestSinceTagFailsOnAReleasedCommitGitCannotRead: pull #1 landed X under its
-// own sha through the merge button, v0.1.0 was cut at its merge, and pull #2's
-// listing carries X again beside its own Y (GitHub lists against a stored base;
-// DESIGN §4). Healthy, X lands outside the range and is noticed, not counted:
-// v0.1.1. With X's loose object broken in this clone — empty, or under a
-// fan-out directory git cannot open — `cat-file --batch-check` answers
-// `missing` for it as for a sha the store does not hold, and read as absent X
-// has no landing site, the in-range merge point governs it and the released ^
-// is counted again: v0.2.0 at exit 0 with nothing said (measured at bc11b2b).
-// The read fails at 4 instead, carrying git's own line. A fresh CI clone is
-// packed and does not reach this; a long-lived local clone after a crash does.
+// TestSinceTagFailsOnAReleasedCommitGitCannotRead: pull #1 landed X and eight
+// commits after it under their own shas through the merge button, v0.1.0 was
+// cut at its merge, and pull #2's listing carries X again beside its own Y
+// (GitHub lists against a stored base; DESIGN §4). Healthy, X lands outside
+// the range and is noticed, not counted: v0.1.1. With X's loose object broken
+// in this clone — empty, or under a fan-out directory git cannot open —
+// `cat-file --batch-check` answers `missing` for it as for a sha the store
+// does not hold, and read as absent X has no landing site, the in-range merge
+// point governs it and the released ^ is counted again: v0.2.0 at exit 0 with
+// nothing said (measured on the tree before fix round 2 of this change,
+// 2026-11-08). The read fails at 4 instead, carrying git's own line from
+// `git cat-file`. A fresh CI clone is packed and does not reach this; a
+// long-lived local clone after a crash does.
+//
+// The eight commits are the fixture's whole point: the walk's own `git log
+// v0.1.0..HEAD` parses the parents of the commits it marks uninteresting, up
+// to git's slop of five past the last interesting one, and with X within
+// reach of the tag it is `git log` that dies on X — exit 4 with "is empty"
+// from `git log`, before have is ever asked, on git 2.39.5 and 2.56.0 (2.54.0
+// writes the line and exits 0). That exit 4 satisfied this test's assertions
+// with the decision broken, so the ledger row survived on CI. Measured per pad
+// on all three: `git log` reads X at five or fewer commits between X and the
+// tag and not at six or more; eight is the margin, and the refusal must name
+// `git cat-file` so a future git that reads deeper fails the baseline loudly
+// instead of passing it.
 func TestSinceTagFailsOnAReleasedCommitGitCannotRead(t *testing.T) {
 	for name, tc := range map[string]struct {
 		corrupt func(t *testing.T, path string)
@@ -768,6 +782,9 @@ func TestSinceTagFailsOnAReleasedCommitGitCannotRead(t *testing.T) {
 			if os.Geteuid() == 0 {
 				t.Skip("root opens a mode 000 directory")
 			}
+			if !testutil.GitSignalsUnopenableObject(t) {
+				t.Skip("this git writes no error: line for a loose object it cannot open (git ≤ 2.39), so have reads the shape as absent: a known limit, DESIGN §4")
+			}
 			if err := os.Chmod(filepath.Dir(path), 0); err != nil {
 				t.Fatal(err)
 			}
@@ -781,8 +798,10 @@ func TestSinceTagFailsOnAReleasedCommitGitCannotRead(t *testing.T) {
 			// parse its parents, X among them, so `merge-base` fails on Y's own
 			// ancestry question before the footprint's first question is ever
 			// read as absent — and the test would pass for the wrong reason.
-			at := func(seq int, args ...string) string {
+			seq := 0
+			at := func(args ...string) string {
 				t.Helper()
+				seq++
 				date := fmt.Sprintf("@%d +0000", 1700000000+60*seq)
 				cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 				cmd.Env = testutil.GitEnv("akira-toriyama", "GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
@@ -792,18 +811,21 @@ func TestSinceTagFailsOnAReleasedCommitGitCannotRead(t *testing.T) {
 				}
 				return strings.TrimSpace(string(out))
 			}
-			at(1, "checkout", "-q", "-b", prTopic(1))
-			at(1, "commit", "-q", "--allow-empty", "--no-verify", "-m", ":sparkles:(ui)^ add a menu")
-			x := at(1, "rev-parse", "HEAD")
-			at(2, "checkout", "-q", "main")
-			at(2, "merge", "-q", "--no-ff", "--no-verify", "-m", prMergeSubject(1), prTopic(1))
-			at(2, "tag", "v0.1.0")
-			at(3, "checkout", "-q", "-b", prTopic(2))
-			at(3, "commit", "-q", "--allow-empty", "--no-verify", "-m", ":bug:(ui)~ fix the menu")
-			y := at(3, "rev-parse", "HEAD")
-			at(4, "checkout", "-q", "main")
-			at(4, "merge", "-q", "--no-ff", "--no-verify", "-m", prMergeSubject(2), prTopic(2))
-			m2 := at(4, "rev-parse", "HEAD")
+			at("checkout", "-q", "-b", prTopic(1))
+			at("commit", "-q", "--allow-empty", "--no-verify", "-m", ":sparkles:(ui)^ add a menu")
+			x := at("rev-parse", "HEAD")
+			for i := 1; i <= 8; i++ {
+				at("commit", "-q", "--allow-empty", "--no-verify", "-m", fmt.Sprintf(":memo:= document the menu, part %d", i))
+			}
+			at("checkout", "-q", "main")
+			at("merge", "-q", "--no-ff", "--no-verify", "-m", prMergeSubject(1), prTopic(1))
+			at("tag", "v0.1.0")
+			at("checkout", "-q", "-b", prTopic(2))
+			at("commit", "-q", "--allow-empty", "--no-verify", "-m", ":bug:(ui)~ fix the menu")
+			y := at("rev-parse", "HEAD")
+			at("checkout", "-q", "main")
+			at("merge", "-q", "--no-ff", "--no-verify", "-m", prMergeSubject(2), prTopic(2))
+			m2 := at("rev-parse", "HEAD")
 			pr2 := `[` + apiPullRef(2, "2026-10-02T00:00:00Z", m2) + `]`
 			usePR(t, walkServer(t, map[string]string{
 				commitPullsPath(y):  pr2,
@@ -823,6 +845,9 @@ func TestSinceTagFailsOnAReleasedCommitGitCannotRead(t *testing.T) {
 			code, stdout, stderr = runGlyph(t, "bump", "--since-tag")
 			if code != 4 {
 				t.Fatalf("bump --since-tag over %s = exit %d, %q; want 4 — X is a held object git cannot read, and read as absent the released ^ is counted again\nstderr: %s", name, code, stdout, stderr)
+			}
+			if !strings.Contains(stderr, "git cat-file: ") {
+				t.Errorf("the refusal must come from have's `git cat-file` read — a `git log` that reads X first proves nothing about the footprint:\n%s", stderr)
 			}
 			if !strings.Contains(stderr, tc.wantMsg) {
 				t.Errorf("the refusal must carry git's own line (%q):\n%s", tc.wantMsg, stderr)

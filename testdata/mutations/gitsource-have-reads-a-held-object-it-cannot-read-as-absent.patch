@@ -1,8 +1,8 @@
 diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
-index e0675ee..118b915 100644
+index 871d661..5c120a1 100644
 --- a/internal/gitsource/gitsource.go
 +++ b/internal/gitsource/gitsource.go
-@@ -663,7 +663,7 @@ func have(ctx context.Context, dir string, shas []string) (map[string]bool, erro
+@@ -693,7 +693,7 @@ func have(ctx context.Context, dir string, shas []string) (map[string]bool, erro
  			missing = true
  		}
  	}

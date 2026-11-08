@@ -206,6 +206,39 @@ func CommitFrom(t *testing.T, dir, author, email, message string) {
 	}
 }
 
+// GitSignalsUnopenableObject reports whether the git on PATH writes an error:
+// line for a loose object it cannot open — the one signal glyph reads for a
+// held object git could not read (gitsource.errorLine). git 2.40.0's
+// object-file.c added `error_errno` on an open failure; 2.39 and earlier say
+// nothing, so under them the shapes a permission slip leaves read as absent
+// wherever no second signal exists (DESIGN §4 states the limit), and the tests
+// of that signal skip there rather than assert a line git never wrote
+// (measured: nothing on 2.39.5, the line on 2.40.1, 2.54.0 and 2.56.0). Asked
+// of the git itself, never of its version string. Root opens a mode 000 file,
+// so under root the answer is false as well.
+//
+// #nosec G204 -- the binary is the fixed literal "git"; the sha is git's own
+// answer for the fixture this function just built.
+func GitSignalsUnopenableObject(t *testing.T) bool {
+	t.Helper()
+	dir := NewRepo(t)
+	sha := Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	if err := os.Chmod(filepath.Join(dir, ".git", "objects", sha[:2], sha[2:]), 0); err != nil {
+		t.Fatalf("chmod the loose object: %v", err)
+	}
+	cmd := exec.Command("git", "-C", dir, "cat-file", "-t", sha)
+	cmd.Env = GitEnv("akira-toriyama", "LC_ALL=C")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	_ = cmd.Run()
+	for line := range strings.SplitSeq(stderr.String(), "\n") {
+		if strings.HasPrefix(line, "error:") {
+			return true
+		}
+	}
+	return false
+}
+
 // SignCommits makes dir sign every later commit for real, and `git tag -s` with
 // the same key: ssh signing with a key generated in the test's own temp dir,
 // which needs no agent and no user config, and an allowed-signers file so git
