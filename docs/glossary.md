@@ -263,10 +263,16 @@ one that never landed. The only member of `Facts` that is a property of the
 any expansion, because a walk where nothing resolves is still a walk over a
 truncated history, once per `--range` read (`lint`, `bump`, `notes`), which
 warns, and by `preview`'s floor guard before it concludes that no tag exists,
-since a shallow clone holds only the tags its depth reached (`walk.ShallowWarning`
-is the one sentence all of them say). Its **boundary** commit — the one whose parents were cut off — has no
-diff the clone can compute: git reads it as a root, and its whole tree is not
-its diff (DESIGN §4.1). `internal/gitsource/checkout.go: Checkout.IsShallow`,
+since a shallow clone holds only the tags its depth reached. Two sentences,
+two facts: the walk and `preview`'s floor guard say `walk.ShallowWarning` — the
+footprint question, a merged pull's commits counted again — and the `--range`
+reads say their own, that git lists the range only as far as the clone goes
+(`cli.logRange`); a reader prints the one about what it does. Its **boundary**
+commit — the one whose parents were cut off — has no diff the clone can
+compute: git reads it as a root, and its whole tree is not its diff (DESIGN
+§4.1), so neither a file listing nor a line's first change is read off it
+(`FirstChange` answers it as `DiffTreeFiles` does, and the walk names no
+baseline behind it). `internal/gitsource/checkout.go: Checkout.IsShallow`,
 `internal/gitsource/gitsource.go: IsShallowBoundary`,
 `Facts.shallow`, `internal/cli/range.go: logRange`, `internal/cli/cmd_preview.go: previewPending`
 

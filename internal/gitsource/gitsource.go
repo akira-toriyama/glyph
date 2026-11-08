@@ -665,6 +665,14 @@ func firstParentLog(ctx context.Context, dir, rev string, n int) ([]RawCommit, e
 // (TestFirstChangeReadsTheOldestCommitTouchingThePathspec measures both).
 // Nothing but the one record is read, so the message bodies the whole log
 // would carry are not fetched.
+//
+// A shallow clone's boundary is answered as diffTreeFiles answers it: an
+// error IsShallowBoundary recognises, never a first change. git prints no %P
+// for the boundary and reads its whole tree as its diff, so every path the
+// tree holds there "first changed" at the boundary with no parent — a true
+// root's shape, for a commit whose real first change lies at or past it
+// (TestFirstChangeAtAShallowBoundaryIsUnreadable). The object's own header
+// tells the two apart, read only when git printed no parent.
 func firstChange(ctx context.Context, dir, rev string, pathspec []string) (sha string, parents int, err error) {
 	args := append([]string{"log", "--no-show-signature", "--reverse", "--format=%H %P", "--end-of-options", rev, "--"}, pathspec...)
 	out, err := run(ctx, dir, args...)
@@ -679,6 +687,15 @@ func firstChange(ctx context.Context, dir, rev string, pathspec []string) (sha s
 	n, ok := objectNames(strings.Join(fields[1:], " "), len(fields[0]))
 	if !isObjectName(fields[0]) || !ok {
 		return "", 0, core.APIf("git log: %q is not a commit record", first)
+	}
+	if n == 0 {
+		boundary, berr := isGraftBoundary(ctx, dir, fields[0])
+		if berr != nil {
+			return "", 0, berr
+		}
+		if boundary {
+			return "", 0, shallowBoundaryAt(fields[0])
+		}
 	}
 	return fields[0], n, nil
 }
@@ -730,7 +747,7 @@ func diffTreeFiles(ctx context.Context, dir, sha string) ([]string, error) {
 			return nil, berr
 		}
 		if boundary {
-			return nil, &shallowBoundary{err: core.APIf("commit %.7s is a shallow clone's boundary: its parents are not in this checkout, so its own diff cannot be read (fetch the full history, e.g. actions/checkout with fetch-depth: 0)", sha)}
+			return nil, shallowBoundaryAt(sha)
 		}
 	}
 	var files []string
@@ -759,19 +776,26 @@ func isGraftBoundary(ctx context.Context, dir, sha string) (bool, error) {
 	return false, nil
 }
 
-// shallowBoundary carries diffTreeFiles' unreadable answer: an ordinary
-// *core.Error of the API class to everything that does not ask, so a caller
-// that forgets the case fails loud instead of reading a wrong diff.
+// shallowBoundary carries the unreadable answer diffTreeFiles and firstChange
+// give at a shallow clone's boundary: an ordinary *core.Error of the API
+// class to everything that does not ask, so a caller that forgets the case
+// fails loud instead of reading a wrong diff.
 type shallowBoundary struct{ err *core.Error }
 
 func (e *shallowBoundary) Error() string { return e.err.Error() }
 func (e *shallowBoundary) Unwrap() error { return e.err }
 
-// IsShallowBoundary reports whether err is DiffTreeFiles saying the commit is a
-// shallow clone's boundary, whose own diff this checkout cannot compute. The
-// callers that can do better than exit 4 — lint judges the message and warns
-// that it could not ask attribution, the walk places the commit by its scope
-// and sigil alone — branch here.
+// shallowBoundaryAt is the one sentence both readers say of the boundary.
+func shallowBoundaryAt(sha string) error {
+	return &shallowBoundary{err: core.APIf("commit %.7s is a shallow clone's boundary: its parents are not in this checkout, so its own diff cannot be read (fetch the full history, e.g. actions/checkout with fetch-depth: 0)", sha)}
+}
+
+// IsShallowBoundary reports whether err is DiffTreeFiles or FirstChange saying
+// the commit is a shallow clone's boundary, whose own diff this checkout
+// cannot compute. The callers that can do better than exit 4 — lint judges
+// the message and warns that it could not ask attribution, the walk places
+// the commit by its scope and sigil alone and names no baseline behind it —
+// branch here.
 func IsShallowBoundary(err error) bool {
 	_, ok := errors.AsType[*shallowBoundary](err)
 	return ok

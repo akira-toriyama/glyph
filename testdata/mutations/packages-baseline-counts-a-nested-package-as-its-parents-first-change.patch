@@ -1,0 +1,9 @@
+diff --git a/internal/walk/lines.go b/internal/walk/lines.go
+index 1108fb8..6a26c02 100644
+--- a/internal/walk/lines.go
++++ b/internal/walk/lines.go
+@@ -322,3 +322,3 @@ func linePathspec(cfg *config.Config, p config.Package) []string {
+ 	for _, q := range cfg.Packages {
+-		if q.Path != p.Path && (under == "" || strings.HasPrefix(q.Path, under)) {
++		if q.Path != p.Path && under == "" {
+ 			spec = append(spec, ":(top,exclude)"+q.Path)

@@ -133,10 +133,10 @@ func newReleaseCmd() *cobra.Command {
 			"(omitted, as on the single line, when no line has a draft to write). In a\n" +
 			"row current and next are bare versions and tag is the draft's tag — the\n" +
 			"path as its prefix, nested path and all (travel/onsen/v0.0.1), bare for the\n" +
-			"root package. Every line's draft points at the one target, this\n" +
-			"checkout's HEAD: a line the push did not touch is retargeted too, so the\n" +
-			"tag GitHub cuts when a human publishes it lands on that HEAD, not on the\n" +
-			"line's last change.\n" +
+			"root package. Every line's draft points at the one target — this\n" +
+			"checkout's HEAD unless --target names another commit: a line the push did\n" +
+			"not touch is retargeted too, so the tag GitHub cuts when a human publishes\n" +
+			"it lands on that target, not on the line's last change.\n" +
 			"--current is refused (exit 2) unless the walk selects one line\n" +
 			"(--since-tag=<prefix>vX.Y.Z or below:, <prefix> being the line's tag\n" +
 			"prefix: haiku/, or nothing for the root package).",

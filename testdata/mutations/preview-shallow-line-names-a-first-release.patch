@@ -1,0 +1,9 @@
+diff --git a/internal/preview/preview.go b/internal/preview/preview.go
+index 33a9c16..1b09bd4 100644
+--- a/internal/preview/preview.go
++++ b/internal/preview/preview.go
+@@ -228,3 +228,3 @@ func headlineOf(in Input, line bool) string {
+ func untaggedHeadline(in Input, line bool, pl, ql bump.Level, pr, qr int) string {
+-	if in.Shallow {
++	if in.Shallow && false {
+ 		return shallowHeadline(line, pl, ql, pr, qr)

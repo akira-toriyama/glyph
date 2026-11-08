@@ -1,11 +1,12 @@
 diff --git a/internal/walk/lines.go b/internal/walk/lines.go
+index 1108fb8..e60f0e1 100644
 --- a/internal/walk/lines.go
 +++ b/internal/walk/lines.go
-@@ -268,5 +268,6 @@ func (w Walker) baselineOn(ctx context.Context, cfg *config.Config, l Line) (str
+@@ -294,5 +294,6 @@ func (w Walker) baselineOn(ctx context.Context, cfg *config.Config, l Line) (tag
  	}
 -	if sha == "" || parents == 0 {
 +	if sha == "" {
  		return "", false, nil
  	}
 +	_ = parents
- 	return firstTagOn(l.TagLine), true, nil
+ 	return firstTagOn(l.TagLine), false, nil

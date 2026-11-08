@@ -502,9 +502,10 @@ with no tag), `--footer-file` appended to every draft, and `--json` carrying
 reason}]` with the scalar `current` / `level` / `action` empty, `next` /
 `tag` / `body` / `url` absent, and `target` shared — omitted, as the single
 line omits it, when no line has a draft to write. Every line's draft points
-at that one `target`, the checkout's HEAD: a line the push did not touch is
-retargeted too, so the tag GitHub cuts when a human publishes its draft
-lands on that HEAD, not on the line's last change. A bare `vX.Y.Z` draft in a
+at that one `target` — the checkout's HEAD unless `--target` names another
+commit: a line the push did not touch is retargeted too, so the tag GitHub
+cuts when a human publishes its draft lands on that target, not on the
+line's last change. A bare `vX.Y.Z` draft in a
 repository that declares packages but no root package is the single
 line's residue and is deleted with a notice on the first packages run —
 `release --dry-run` names it without deleting it, so move any hand-written

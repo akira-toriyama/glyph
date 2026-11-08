@@ -2615,7 +2615,43 @@ change" named a commit that does not exist (t-vc5w, measured 2026-11-04;
 `packages-baseline-remedy-hides-its-cost`). Saying "at the root commit
 itself" was rejected: a baseline there releases the root commit's own
 changes to the line as the baseline, which is not "nothing of this line was
-released before here".
+released before here". A line whose first change the clone cannot read gets
+neither sentence: within a shallow clone the oldest commit touching a path
+the boundary's tree holds is the boundary itself, whose whole tree git reads
+as its diff ("Where the files come from"), so `FirstChange` answers it as
+`DiffTreeFiles` does — unreadable, `IsShallowBoundary` — and the warning
+says no baseline can be named for the line because its first change lies at
+or past the boundary, where the first cut read the boundary as a parentless
+root and said the single line's sentence (measured 2026-11-08;
+`TestFirstChangeAtAShallowBoundaryIsUnreadable`,
+`TestSinceTagPackagesBaselinePastAShallowBoundaryIsNotNamed`; mutation rows
+`gitsource-first-change-reads-a-shallow-boundary-as-a-root`,
+`packages-baseline-fails-at-a-shallow-boundary`). The line's own files are
+pinned as glyph's construction, not only as git's reading of a pathspec: a
+nested package is not its parent's first change, the path is read from the
+top level whatever the working directory, the root package is the tree minus
+every other package, and a line no commit touches has no baseline — four
+decisions a mutation left green until the review of #361
+(`TestLinePathspec`,
+`TestSinceTagPackagesNestedPackageIsNotItsParentsFirstChange`,
+`TestSinceTagPackagesBaselineReadsThePathFromTheTopLevel`,
+`TestSinceTagPackagesRootPackageExcludesTheOtherLines`,
+`TestSinceTagPackagesLineNoCommitTouchesHasNoBaseline`; mutation rows
+`packages-baseline-counts-a-nested-package-as-its-parents-first-change`,
+`packages-baseline-reads-the-path-from-the-working-directory`,
+`packages-baseline-root-package-owns-every-line`,
+`packages-baseline-named-for-a-line-no-commit-touches`). Past the cap the
+refusal's escape is built from the same answer (`walk.Escape`): `preview`,
+which has no `--since-tag`, says "cut the tag named above" where a baseline
+was named, and for a line no baseline can precede names the line's own first
+release cut by hand — the one floor left for it, a release like any other.
+"Cut the tag named above" alone dangled over a root-declared line, and on a
+pull touching a baselined line beside one, cutting the baseline as told
+cleared nothing: the re-run refused again, for the root line, naming nothing
+(measured 2026-11-08;
+`TestPreviewPackagesCapRefusalNamesAnEscapeForEveryUntaggedLine`, which
+follows the advice and re-runs; mutation row
+`preview-cap-escape-names-a-tag-nobody-named`).
 
 **Only the untagged arm is capped**, and the tagged arm's missing cap is a
 decision (t-n5tw R3). A tagged range is the unreleased work a release exists
@@ -3001,15 +3037,38 @@ checkout with no tag within reach the walk is still skipped — the verdict
 stays the PR side's, the exit code 0 — but stderr says the walk's own
 shallow sentence (`walk.ShallowWarning`, one home) and the body carries the
 walk's shallow clause where a walked shallow checkout puts it, its headline
-naming the first release "if no release tag lies past this shallow
-checkout's reach" and its footer the clone's reach rather than the base
-branch. Before that read the guard said "The base branch holds no v* release
-tag yet" of a repository that has v0.1.0 (t-txed, measured 2026-11-04 at
-2f9428a; `TestPreviewOnAShallowCheckoutDoesNotAssertNoTag`, mutation row
-`preview-floor-guard-asserts-no-tag-on-a-shallow-checkout`). The machine
+and footer saying the clone's reach rather than the base branch. Before that
+read the guard said "The base branch holds no v* release tag yet" of a
+repository that has v0.1.0 (t-txed, measured 2026-11-04 at 2f9428a;
+`TestPreviewOnAShallowCheckoutDoesNotAssertNoTag`, mutation row
+`preview-floor-guard-asserts-no-tag-on-a-shallow-checkout`). On a shallow
+checkout an untagged headline names **no version**, walk skipped or run: a
+line with no release tag within the reach may have one past it, and every
+version an untagged headline could name steps from the null floor that tag
+refutes — "the first release here would be **curry/v0.0.1**" where
+`curry/v0.1.0` lay past a `--depth 3` clone's reach that held haiku's tag,
+so the walk ran (measured 2026-11-08; the first cut named the figure "if no
+release tag lies past this shallow checkout's reach", a condition the clone
+cannot check). The sentence keeps the levels — "raises **patch**", "(a
+**minor** bump is already pending)" — and says why the release it lands in
+cannot be named (`preview.shallowHeadline`); the caveat under it qualifies
+"what the headline says" rather than a figure it does not carry, which it
+pointed at under "moves nothing"; and the footer says the clone's reach of a
+walked untagged line too (`TestPreviewOnAShallowCheckoutSpeaksPerLine`,
+`TestPreviewOnAShallowCheckoutNamesNoFigure`, `TestRenderShallowFloorGuard`,
+`TestRenderShallowWalkedLine`; mutation rows
+`preview-shallow-line-names-a-first-release`,
+`preview-walked-shallow-line-is-called-untagged`,
+`preview-shallow-caveat-qualifies-a-figure-nobody-named`). The machine
 verdict is unchanged there: `untagged` reports what the checkout holds, and
-`next` what the PR side stepped from the null floor — the body names the same
-figure with its condition, so the two never disagree. The body is the single
+`next` what the PR side stepped from the null floor — the prose claims less
+than it, never something else. A packages line's absence is said of the
+**line**: "this line has no release tag yet", never "the base branch holds
+no release tag yet", which the same comment's footer refuted two paragraphs
+below by naming a sibling's tag on that branch (measured 2026-11-08;
+`TestPreviewPackagesUntaggedLineSpeaksOfTheLine`, mutation row
+`preview-untagged-line-denies-the-base-branch-a-tag`); the bare line keeps
+the base-branch sentence, which is the fact there. The body is the single
 line's sentences per line: the
 marker, one headline per touched line led by the line's name with versions
 spelled as tags (`haiku/v0.1.0 → haiku/v0.2.0`, so two lines can never be

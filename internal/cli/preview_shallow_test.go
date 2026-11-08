@@ -48,16 +48,20 @@ func TestPreviewOnAShallowCheckoutDoesNotAssertNoTag(t *testing.T) {
 		t.Errorf("stderr asserts of HEAD's history what a shallow clone cannot know:\n%s", stderr)
 	}
 	for _, want := range []string{
-		"the first release here would be **v0.1.0**, if no release tag lies past this shallow checkout's reach.",
-		"> The pending side of this fold is INCOMPLETE: " + shallowClause + ".",
+		"\n🔼 Merging this PR raises **minor** — no release tag is within this shallow checkout's reach, so the release it lands in cannot be named here.\n",
+		"> The pending side of this fold is INCOMPLETE: " + shallowClause + ". Anything already merged but unreleased may be missing from what the headline says, and so may the release tag it would step from, so treat it as a floor rather than the answer.\n",
 		"No v* release tag is within this shallow checkout's reach, so nothing merged earlier is folded in.",
 	} {
 		if !strings.Contains(res.Body, want) {
 			t.Errorf("the body must carry\n  %q\ngot:\n%s", want, res.Body)
 		}
 	}
-	if strings.Contains(res.Body, "holds no v* release tag") {
-		t.Errorf("the body asserts the base branch holds no tag, which the repository refutes:\n%s", res.Body)
+	// The null floor the PR side stepped from is what the clone could not
+	// confirm, so the body names no version off it — v0.1.0 is the machine
+	// verdict's alone (the repository's v0.1.0 exists past the reach, and a
+	// first release named here would be wrong by exactly that tag).
+	if strings.Contains(res.Body, "holds no v* release tag") || strings.Contains(res.Body, "first release here would be") || strings.Contains(res.Body, "v0.1.0") {
+		t.Errorf("the body asserts what the base branch holds, or names a version off a floor the clone never reached:\n%s", res.Body)
 	}
 
 	// Control: a full clone with no tag keeps the no-tag sentences and says

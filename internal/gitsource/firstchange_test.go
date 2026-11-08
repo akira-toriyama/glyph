@@ -2,6 +2,7 @@ package gitsource
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -53,5 +54,60 @@ func TestFirstChangeReadsTheOldestCommitTouchingThePathspec(t *testing.T) {
 	out := testutil.Git(t, dir, "akira-toriyama", "rev-list", "--reverse", "--parents", "HEAD", "--", ":(top)travel", ":(top,exclude)travel/onsen")
 	if first, _, _ := strings.Cut(out, "\n"); strings.TrimSpace(first) != t1 {
 		t.Fatalf("control: rev-list --parents over the same pathspec reports t1 as %q — the rewritten parent list is what firstChange must not read", first)
+	}
+}
+
+// TestFirstChangeAtAShallowBoundaryIsUnreadable: a shallow clone's boundary
+// is no root, and its whole tree is not its diff (DESIGN §4.1, "Where the
+// files come from"; diffTreeFiles answers it unreadable). git prints no %P
+// for it and reads every path its tree holds as changed there, so the
+// oldest commit touching haiku within a --depth 3 clone IS the boundary —
+// read as a parentless first change, it offered the single line's sentence
+// for a line whose real first change lies past the clone (review of #361,
+// measured 2026-11-08). firstChange answers the same error diffTreeFiles
+// does; a true root inside the depth still answers as a root (the control:
+// a --depth clone deep enough to hold the root). Mutation row
+// gitsource-first-change-reads-a-shallow-boundary-as-a-root.
+func TestFirstChangeAtAShallowBoundaryIsUnreadable(t *testing.T) {
+	dir := testutil.NewRepo(t)
+	root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	added := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:(haiku)^ add haiku", "haiku/h.go")
+	for i := range 4 {
+		testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= note %d", i))
+	}
+	clone := func(depth int) string {
+		dst := filepath.Join(t.TempDir(), "shallow")
+		testutil.Git(t, t.TempDir(), "akira-toriyama", "clone", "-q", "--depth", fmt.Sprint(depth), "file://"+dir, dst)
+		return dst
+	}
+	ctx := context.Background()
+
+	shallow := clone(3)
+	boundary := testutil.Git(t, shallow, "akira-toriyama", "rev-list", "--max-parents=0", "HEAD")
+	if boundary == added || boundary == root {
+		t.Fatalf("control: the depth-3 clone's boundary %.7s must be a commit after haiku's first change %.7s", boundary, added)
+	}
+	sha, parents, err := firstChange(ctx, shallow, "HEAD", []string{":(top)haiku"})
+	if !IsShallowBoundary(err) {
+		t.Fatalf("haiku's first change within the clone = %.7s (%d parent(s)), %v; want the shallow-boundary error — haiku was added by %.7s, outside the clone, and the boundary's own diff is unreadable", sha, parents, err, added)
+	}
+	if !strings.Contains(err.Error(), "commit "+boundary[:7]+" is a shallow clone's boundary") {
+		t.Errorf("the error must name the boundary as DiffTreeFiles does:\n%s", err)
+	}
+
+	// A path the boundary's tree does not hold has its first change inside
+	// the clone, with a parent: the boundary is not in its way.
+	later := testutil.Touch(t, dir, "akira-toriyama", ":sparkles:(curry)^ add curry", "curry/c.go")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= note 4")
+	shallow = clone(3)
+	if sha, parents, err = firstChange(ctx, shallow, "HEAD", []string{":(top)curry"}); err != nil || sha != later || parents != 1 {
+		t.Errorf("curry, added inside the clone = %.7s, %d, %v; want %.7s with 1 parent", sha, parents, err, later)
+	}
+
+	// Control: a true root inside the depth is a root. The whole history is
+	// 8 commits; depth 20 holds it all and .git/shallow lists the root.
+	deep := clone(20)
+	if sha, parents, err = firstChange(ctx, deep, "HEAD", []string{":(top)", ":(top,exclude)haiku", ":(top,exclude)curry"}); err != nil || sha != root || parents != 0 {
+		t.Errorf("the whole tree minus the lines in a clone holding the root = %.7s, %d, %v; want the root %.7s with no parent and no error", sha, parents, err, root)
 	}
 }

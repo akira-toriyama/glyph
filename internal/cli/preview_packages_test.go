@@ -905,8 +905,10 @@ func TestPreviewRefusalNamesNoFlagPreviewLacks(t *testing.T) {
 	if f := newPreviewCmd().Flags().Lookup("since-tag"); f != nil {
 		t.Fatal("preview now registers --since-tag; previewWalkEscape tells operators it does not, and the two must move together")
 	}
-	if strings.Contains(previewWalkEscape, "--since-tag=TAG") {
-		t.Errorf("preview's refusal sends the operator to a flag preview rejects: %q", previewWalkEscape)
+	for _, esc := range []string{previewWalkEscape([]string{"curry/v0.0.0"}, nil), previewWalkEscape(nil, []string{"curry/vX.Y.Z"}), previewWalkEscape([]string{"fish/v0.0.0"}, []string{"curry/vX.Y.Z"})} {
+		if strings.Contains(esc, "--since-tag=TAG") {
+			t.Errorf("preview's refusal sends the operator to a flag preview rejects: %q", esc)
+		}
 	}
 }
 

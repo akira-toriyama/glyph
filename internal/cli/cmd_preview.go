@@ -66,10 +66,30 @@ type previewOptions struct {
 	json  bool
 }
 
-// previewWalkEscape is the remedy preview can actually offer: it has no
-// --since-tag flag, so the refusal names only the tag the message already
-// told the operator to cut.
-const previewWalkEscape = "; cut the tag named above and re-run — preview reads the pull request, and has no --since-tag flag to name a base with"
+// previewWalkEscape is the remedy preview can actually offer past the walk
+// cap: it has no --since-tag flag, so the way out is a release tag on each
+// untagged line the pull touches — the baseline the refusal named where one
+// can be cut, and where none can (the line's first change is the root
+// commit, or lies at or past a shallow boundary, or no commit touches it)
+// the line's own first release, cut by hand at the commit it covers: a
+// release is the one floor left for such a line (DESIGN §4.1, the baseline
+// "at the root commit itself" rejected). Said only of the lines in the case
+// at hand: "cut the tag named above" over a refusal that named none dangled,
+// and following it on a mixed pull cleared nothing — the re-run refused
+// again, for the root-declared line, naming nothing (measured 2026-11-08 on
+// a camp/travel/fish fixture past the cap).
+func previewWalkEscape(baselines, unbaselined []string) string {
+	const tail = "re-run — preview reads the pull request, and has no --since-tag flag to name a base with"
+	byHand := fmt.Sprintf("release the line(s) by hand (cut %s at the commit that release covers — the one floor a line with no baseline can take)", strings.Join(unbaselined, " / "))
+	switch {
+	case len(unbaselined) == 0:
+		return "; cut the tag named above and " + tail
+	case len(baselines) == 0:
+		return "; " + byHand + " and " + tail
+	default:
+		return "; cut the tag named above, and " + byHand + ", then " + tail
+	}
+}
 
 func newPreviewCmd() *cobra.Command {
 	var o previewOptions
@@ -88,7 +108,8 @@ func newPreviewCmd() *cobra.Command {
 			"was released), so the PR's own verdict stands alone and the body says so.\n" +
 			"On a shallow checkout that holds no tag the walk is skipped the same way,\n" +
 			"and the body says the tag is out of the clone's reach rather than that the\n" +
-			"base branch has none (check out with fetch-depth: 0 for the pending side).\n\n" +
+			"base branch has none, and names no version a tag past that reach could\n" +
+			"refute (check out with fetch-depth: 0 for the pending side).\n\n" +
 			"The body never names a rolling draft — the arithmetic is the same whether\n" +
 			"the next release is a draft or a tag cut by hand, and most repos have no\n" +
 			"draft to name. stdout is the Markdown body (post it with `gh pr comment\n" +
@@ -358,24 +379,29 @@ func foldTouched(ctx context.Context, cfg *config.Config, touched []touchedLine)
 // nothing to refuse here, so the shortfall is returned for the body instead
 // — see preview.Input.PendingShort for why the walk's own ::warning:: is not
 // enough on this path.
+//
+// shallow is the checkout's, read before either arm: a shallow checkout
+// holds the tags its depth reached and no other (actions/checkout fetches
+// none at a non-zero depth, DESIGN §4), so "no release tag" there — of HEAD's
+// history, or of one touched line while a sibling's tag took the walk — is a
+// claim about a history the clone does not have. The floor guard then still
+// skips the walk — the verdict stays the PR side's — says the walk's own
+// shallow sentence and hands the body the walk's shallow clause (t-txed,
+// measured 2026-11-04: `preview --pr` on a --depth 1 clone of a tagged
+// repository answered "The base branch holds no v* release tag yet"); the
+// walked arm's untagged lines get the same treatment from the render, where
+// the walk's own warning and shortfall already say the rest (measured
+// 2026-11-08: a --depth 3 clone reaching haiku's tag and not curry's drew
+// curry's first release and "no release tag on the base branch").
 func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, repo string, touched []touchedLine) (pending map[string]bump.Decision, short string, walked, shallow bool, err error) {
+	if len(touched) == 0 {
+		return nil, "", false, false, nil
+	}
+	shallow, err = checkout().IsShallow(ctx)
+	if err != nil {
+		return nil, "", false, false, err
+	}
 	if !slices.ContainsFunc(touched, func(tl touchedLine) bool { return tl.tag != "" }) {
-		if len(touched) == 0 {
-			return nil, "", false, false, nil
-		}
-		// Asked BEFORE "no tag" is concluded: a shallow checkout holds the
-		// tags its depth reached and no other (actions/checkout fetches none
-		// at a non-zero depth, DESIGN §4), so "no release tag in HEAD's
-		// history" there is a claim about a history the clone does not
-		// have. The walk is still skipped — the verdict stays the PR side's
-		// — and the body carries the walk's own shallow clause in the place
-		// a walked shallow checkout puts it (t-txed, measured 2026-11-04:
-		// `preview --pr` on a --depth 1 clone of a tagged repository
-		// answered "The base branch holds no v* release tag yet").
-		shallow, err = checkout().IsShallow(ctx)
-		if err != nil {
-			return nil, "", false, false, err
-		}
 		if shallow {
 			warnf("%s", walk.ShallowWarning)
 			short = walk.ShallowShortfall
@@ -409,7 +435,7 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
 		}
 		pending[lw.Package.Path] = dec
 	}
-	return pending, short, true, false, nil
+	return pending, short, true, shallow, nil
 }
 
 // skippedWalkWarning names the pending walk the release-floor guard skipped,
