@@ -1,10 +1,10 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 65e8606..b7de97e 100644
+index 368b196..1d72d53 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -619,7 +619,7 @@ func (w *walk) readBack(ctx context.Context, listing []gitsource.RawCommit) erro
- // shortfall: what it could have released is at worst counted again, the answer
- // a listing with no landing site always gets.
+@@ -719,7 +719,7 @@ func (w *walk) readBack(ctx context.Context, listing []gitsource.RawCommit) erro
+ // matched by nothing and may count again, where the walk's own cap warning
+ // speaks of a verdict this pull is not in.
  func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error {
 -	if w.readBackDone[raw.SHA] || slices.Contains(w.cfg.ExcludeAuthors, raw.Author) {
 +	if slices.Contains(w.cfg.ExcludeAuthors, raw.Author) {

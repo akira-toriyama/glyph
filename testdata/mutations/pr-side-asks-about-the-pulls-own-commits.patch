@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 368b196..fb6fa33 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -697,7 +697,7 @@ func (w *walk) readBack(ctx context.Context, listing []gitsource.RawCommit) erro
+ 			return err
+ 		}
+ 		for _, raw := range missed {
+-			if listed[raw.SHA] {
++			if false && listed[raw.SHA] {
+ 				continue
+ 			}
+ 			if err := w.readBackPull(ctx, raw); err != nil {

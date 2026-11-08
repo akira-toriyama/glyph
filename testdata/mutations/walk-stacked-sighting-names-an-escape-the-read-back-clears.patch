@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 368b196..865772d 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -776,7 +776,7 @@ func (w *walk) readsBackTo(ctx context.Context, listing []gitsource.RawCommit, w
+ 			if err != nil {
+ 				return false, err
+ 			}
+-			if below {
++			if below && false {
+ 				return true, nil
+ 			}
+ 		}

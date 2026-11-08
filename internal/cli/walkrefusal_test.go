@@ -166,49 +166,94 @@ func TestSinceTagDirectPushUnmatchedNamesTheWedge(t *testing.T) {
 
 // TestSinceTagRefusedCommitIsCountedOnce: a refused commit stays REPRESENTED
 // in the walk like any other, so a stacked pull that lists it again does not
-// refuse it twice — one commit, one details row, no "+1 more".
+// refuse it twice — one commit, one details row, no "+1 more". The escapes the
+// sentence names depend on what the walk can read back: a listing whose fork
+// no checkout holds wedges at each pull's merge point, so a tag at #7's alone
+// leaves the next run red on #8; a listing forked at a held commit below #7's
+// merge point — GitHub's listings into the default branch fork on it — clears
+// with #7's escape alone, because the walk that starts there reads #7 back
+// from that fork, and the sentence names that one base, not #8's, where #8's
+// own fix would be lost (t-ztx2; DESIGN §4, "Which base clears it").
 func TestSinceTagRefusedCommitIsCountedOnce(t *testing.T) {
-	dir, _ := testutil.NewTaggedRepo(t)
-	sha1 := squashCommit(t, dir, "Add a menu", 7)
-	sha2 := squashCommit(t, dir, "Fix a crash", 8)
-	base := apiPullRef(7, "2026-07-12T00:00:00Z", sha1)
-	stacked := apiPullRef(8, "2026-07-13T00:00:00Z", sha2)
-	srv := walkServer(t, map[string]string{
-		commitPullsPath(sha1): `[` + base + `,` + stacked + `]`,
-		commitPullsPath(sha2): `[` + stacked + `]`,
-		pullCommitsPath(7):    `[` + apiCommit("x1", "akira-toriyama", "no gitmoji leads this subject") + `]`,
-		pullCommitsPath(8): `[` +
-			apiCommit("x1", "akira-toriyama", "no gitmoji leads this subject") + `,` +
-			apiCommit("b1", "akira-toriyama", ":bug:~ fix a crash") + `]`,
-	})
-	usePR(t, srv)
-	t.Chdir(dir)
-
-	code, _, stderr := runGlyph(t, "bump", "--since-tag")
-	if code != 3 {
-		t.Fatalf("exit %d, want 3\nstderr: %s", code, stderr)
+	stack := func(t *testing.T, listing func(root string) (x1, b1 string)) (dir, sha1, sha2 string) {
+		t.Helper()
+		var root string
+		dir, root = testutil.NewTaggedRepo(t)
+		x1, b1 := listing(root)
+		sha1 = squashCommit(t, dir, "Add a menu", 7)
+		sha2 = squashCommit(t, dir, "Fix a crash", 8)
+		base := apiPullRef(7, "2026-07-12T00:00:00Z", sha1)
+		stacked := apiPullRef(8, "2026-07-13T00:00:00Z", sha2)
+		usePR(t, walkServer(t, map[string]string{
+			commitPullsPath(sha1): `[` + base + `,` + stacked + `]`,
+			commitPullsPath(sha2): `[` + stacked + `]`,
+			pullCommitsPath(7):    apiListing(x1),
+			pullCommitsPath(8):    apiListing(x1, b1),
+		}))
+		t.Chdir(dir)
+		return dir, sha1, sha2
 	}
-	env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
-	if strings.Contains(env.Message, "more refused") {
-		t.Errorf("one refused commit listed by two pulls was counted twice:\n%s", env.Message)
-	}
-	assertWedgeDetails(t, env, "x1")
-	// One row, two escapes: each pull's merge point wedges on its own. A base
-	// at #7's alone clears #8's only from a fork the checkout can read back
-	// (TestSinceTagEscapeAtTheBasePullClearsItsStack), and this listing names
-	// none.
-	for _, want := range []string{"AT OR PAST " + sha1[:7], "AT OR PAST " + sha2[:7], "#7", "#8", "at or past all of them"} {
-		if !strings.Contains(env.Message, want) {
-			t.Errorf("the sentence must name both pulls' escapes (%q):\n%s", want, env.Message)
+	refused := func(t *testing.T, stderr string) errEnvelope {
+		t.Helper()
+		env := decodeErrorEnvelope(t, stderr[strings.Index(stderr, "{"):])
+		if strings.Contains(env.Message, "more refused") {
+			t.Errorf("one refused commit listed by two pulls was counted twice:\n%s", env.Message)
 		}
+		assertWedgeDetails(t, env, "x1")
+		if strings.Contains(stderr, "counted once") {
+			t.Errorf("a refused commit was announced as counted:\n%s", stderr)
+		}
+		return env
 	}
-	if strings.Contains(stderr, "counted once") {
-		t.Errorf("a refused commit was announced as counted:\n%s", stderr)
-	}
-	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0", sha2)
-	if code, _, stderr := runGlyph(t, "bump", "--since-tag=v0.2.0"); code != 1 {
-		t.Fatalf("a base at the last escape still exited %d, want 1 (nothing left to walk)\nstderr: %s", code, stderr)
-	}
+
+	t.Run("a listing no checkout can read back from", func(t *testing.T) {
+		dir, sha1, sha2 := stack(t, func(string) (string, string) {
+			return apiCommit("x1", "akira-toriyama", "no gitmoji leads this subject"),
+				apiCommit("b1", "akira-toriyama", ":bug:~ fix a crash")
+		})
+		code, _, stderr := runGlyph(t, "bump", "--since-tag")
+		if code != 3 {
+			t.Fatalf("exit %d, want 3\nstderr: %s", code, stderr)
+		}
+		env := refused(t, stderr)
+		for _, want := range []string{"AT OR PAST " + sha1[:7], "AT OR PAST " + sha2[:7], "#7", "#8", "at or past all of them"} {
+			if !strings.Contains(env.Message, want) {
+				t.Errorf("the sentence must name both pulls' escapes (%q):\n%s", want, env.Message)
+			}
+		}
+		testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0", sha1)
+		if code, _, stderr := runGlyph(t, "bump", "--since-tag=v0.2.0"); code != 3 {
+			t.Fatalf("a base at #7's escape exited %d, want 3: nothing reads #7 back from a fork no checkout holds\nstderr: %s", code, stderr)
+		}
+		testutil.Git(t, dir, "akira-toriyama", "tag", "v0.3.0", sha2)
+		if code, _, stderr := runGlyph(t, "bump", "--since-tag=v0.3.0"); code != 1 {
+			t.Fatalf("a base at the last escape still exited %d, want 1 (nothing left to walk)\nstderr: %s", code, stderr)
+		}
+	})
+	t.Run("a listing forked at a held commit", func(t *testing.T) {
+		dir, sha1, sha2 := stack(t, func(root string) (string, string) {
+			return apiCommitOn("x1", "no gitmoji leads this subject", root),
+				apiCommitOn("b1", ":bug:~ fix a crash", "x1")
+		})
+		code, _, stderr := runGlyph(t, "bump", "--since-tag")
+		if code != 3 {
+			t.Fatalf("exit %d, want 3\nstderr: %s", code, stderr)
+		}
+		env := refused(t, stderr)
+		for _, want := range []string{"AT OR PAST " + sha1[:7], "#7", "Cut a release tag there"} {
+			if !strings.Contains(env.Message, want) {
+				t.Errorf("the sentence must name #7's escape alone (%q):\n%s", want, env.Message)
+			}
+		}
+		if strings.Contains(env.Message, sha2[:7]) || strings.Contains(env.Message, "at or past all of them") {
+			t.Errorf("the sentence demands #8's merge point, where a tag drops #8's own fix, though a tag at #7's clears the stack:\n%s", env.Message)
+		}
+		testutil.Git(t, dir, "akira-toriyama", "tag", "v0.2.0", sha1)
+		code, stdout, stderr := runGlyph(t, "bump", "--since-tag=v0.2.0")
+		if code != 0 || stdout != "v0.2.1\n" {
+			t.Fatalf("bump --since-tag=v0.2.0 = exit %d stdout %q, want 0 / v0.2.1 — the escape the sentence named must open\nstderr: %s", code, stdout, stderr)
+		}
+	})
 }
 
 // TestSinceTagRefusedPullCommitMetAgainOnTheBranch: the other order of the

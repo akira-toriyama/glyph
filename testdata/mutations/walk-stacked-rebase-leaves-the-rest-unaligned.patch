@@ -1,8 +1,8 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 65e8606..ec6f9e8 100644
+index 368b196..9b59d93 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -573,7 +573,7 @@ func (w *walk) placeStacked(ctx context.Context, canonical string, listing []git
+@@ -640,7 +640,7 @@ func (w *walk) placeStacked(ctx context.Context, canonical string, listing []git
  	if !placed {
  		return nil
  	}
@@ -10,4 +10,4 @@ index 65e8606..ec6f9e8 100644
 +	return nil
  }
  
- // readBack records in landings what the pulls between this listing's fork and
+ // open reports whether another pull's landing can still account for a listing

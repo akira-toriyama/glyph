@@ -60,14 +60,21 @@ type walk struct {
 	// exactly these (t-wjbs).
 	unjudged map[string]bool
 	// landings is where each listed sha landed, as far as this walk has read:
-	// a footprint's answer, and every sha a pull behind the base lists, at that
-	// pull's merge point (readBack). seen cannot answer for these: a pre-rebase
-	// sha is folded under its landing site, and a pull behind the base is never
-	// folded at all (placeStacked).
+	// the commit it landed as, under the first pull that landed it (land) — a
+	// footprint's answer for a pull this walk expanded, and for a pull behind
+	// the base the footprint's answer against that pull's merge point, else the
+	// merge point itself (readBackPull). seen cannot answer for these: a
+	// pre-rebase sha is folded under its landing site, and a pull behind the
+	// base is never folded at all (placeStacked).
 	landings map[string]string
 	// readBackDone is every commit readBack has asked GitHub about: pulls that
 	// forked behind the base read overlapping windows, and each costs a request.
 	readBackDone map[string]bool
+	// readBackTop is where the read-back's window ends: the base of a tagged
+	// range (what the range holds, the walk expands itself), HEAD for an open
+	// pull's listing (OpenPull), "" for the whole-history arm, which has no
+	// released branch to read behind.
+	readBackTop string
 	// inRange is every SHA this walk will visit — what makes "covered"
 	// checkable: a commit stands aside only for a pull whose canonical commit
 	// is IN HERE, never for one merged into another base branch (DESIGN §4,
@@ -130,6 +137,10 @@ func newWalk(w Walker, cfg *config.Config, owner, repo, revRange string, raws []
 			inRange[raw.SHA] = true
 		}
 	}
+	top, tagged := strings.CutSuffix(revRange, "..HEAD")
+	if !tagged {
+		top = ""
+	}
 	return &walk{
 		Walker:       w,
 		cfg:          cfg,
@@ -143,10 +154,42 @@ func newWalk(w Walker, cfg *config.Config, owner, repo, revRange string, raws []
 		unjudged:     map[string]bool{},
 		landings:     map[string]string{},
 		readBackDone: map[string]bool{},
+		readBackTop:  top,
 		inRange:      inRange,
 		coveredPulls: map[int]bool{},
 		expanded:     map[int]bool{},
 	}
+}
+
+// OpenPull is a pull's listing as --pr reads it: what GitHub lists, less every
+// commit another pull already landed on the released branch, which is not
+// this pull's own work. GitHub goes on listing a base pull's commits in the
+// pull stacked on it after the base merges (DESIGN §4, "A stacked pull lists
+// what its base landed"), and read whole the listing promised a level the
+// release walk then refused to give (t-vc8c). The question is the walk's
+// third, asked with the walk's read-back over the one window an open pull
+// has: from its fork to HEAD, which holds what the base tag released and what
+// merged since. Nothing is judged here; a dropped commit is said with a
+// notice, as the walk says its own drops.
+func (w Walker) OpenPull(ctx context.Context, cfg *config.Config, owner, repo string, number int) ([]gitsource.RawCommit, error) {
+	listing, err := w.PullRawCommits(ctx, owner, repo, number)
+	if err != nil {
+		return nil, err
+	}
+	wk := newWalk(w, cfg, owner, repo, "", nil, false, lineRanges{})
+	wk.readBackTop = "HEAD"
+	if err := wk.readBack(ctx, listing); err != nil {
+		return nil, err
+	}
+	own := make([]gitsource.RawCommit, 0, len(listing))
+	for _, r := range listing {
+		if on := wk.landings[r.SHA]; on != "" {
+			w.Report.Noticef("commit %.7s in pull request #%d already landed on the released branch as %.7s through another pull request — it is not this pull's own work and is not counted", r.SHA, number, on)
+			continue
+		}
+		own = append(own, r)
+	}
+	return own, nil
 }
 
 // visit folds one commit of the range in by what resolves it: an excluded
@@ -243,7 +286,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
 	// that knows nothing about it. A commit with no landing site is governed
 	// by the pull alone and folds exactly as it always did; one that landed
 	// is folded only if its landing site is in range.
-	landed, err := w.mainFootprint(ctx, canonical, listing)
+	landed, err := w.mainFootprint(ctx, canonical, listing, "HEAD")
 	if err != nil {
 		return err
 	}
@@ -253,7 +296,7 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
 	contributed := 0
 	for i, r := range listing {
 		if on := landed[i]; on != "" {
-			w.landings[r.SHA] = on
+			w.land(r.SHA, on)
 			if !w.inRange[on] {
 				w.Report.Noticef("commit %.7s in pull request #%d landed on the released branch as %.7s, which is outside %s — it shipped under an earlier tag and is not counted again", r.SHA, number, on, w.revRange)
 				continue
@@ -269,12 +312,20 @@ func (w *walk) expand(ctx context.Context, number int, canonical string) error {
 		judged := w.judges(c.governing())
 		if i, refused := w.wedged[r.SHA]; refused {
 			// A refused commit a second pull lists (a stacked pull carries
-			// its base pull's commits) is one row with one more escape:
-			// this pull's merge point wedges too, and a base that clears
-			// the first pull's alone leaves the next run red on this one
-			// unless readBack finds the first pull from this one's fork.
+			// its base pull's commits) is one row, and one more escape only
+			// when the escapes named so far do not clear this sighting: a
+			// base at an escape the read-back reaches from this listing's
+			// fork drops the commit here before anything judges it, and
+			// naming this pull's merge point too would send the operator
+			// past this pull's own work (DESIGN §4, "Which base clears it").
 			if judged {
-				w.wedges[i].escapes = append(w.wedges[i].escapes, placeEscape(w.owner, w.repo, number, canonical, onMain(r.SHA, w.inRange)))
+				clears, err := w.readsBackTo(ctx, listing, w.wedges[i])
+				if err != nil {
+					return err
+				}
+				if !clears {
+					w.wedges[i].escapes = append(w.wedges[i].escapes, placeEscape(w.owner, w.repo, number, canonical, onMain(r.SHA, w.inRange)))
+				}
 			}
 			continue
 		}
@@ -447,9 +498,12 @@ func (w *walk) reconcile() {
 // first narrows:
 //
 //  1. Did the listed commit land under its OWN sha — held by this repository
-//     and an ancestor of HEAD? Asked of HEAD, not of the merge commit: a
-//     commit that reached the branch by another route is just as released,
+//     and an ancestor of tip? The walk asks of HEAD, not of the merge commit:
+//     a commit that reached the branch by another route is just as released,
 //     and a change that landed twice keeps the landing git states (t-nsww).
+//     The read-back asks of the released pull's own merge point: what that
+//     pull landed is what sits at or under it, and a sha the range holds
+//     through a later merge is not its landing (readBackPull).
 //  2. Does whatever is LEFT align against the first-parent run ending at the
 //     merge point, the run a rebase would have written? Verified message by
 //     message and abandoned WHOLE unless every entry matches — half a mapping
@@ -463,7 +517,7 @@ func (w *walk) reconcile() {
 // squash fails to align and the pull alone governs it, quietly: without the
 // merge method a squash and an unaligned rebase are one shape, and squash is
 // the fleet's norm — unless another pull landed the commit (placeStacked).
-func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []gitsource.RawCommit) ([]string, error) {
+func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []gitsource.RawCommit, tip string) ([]string, error) {
 	landed := make([]string, len(listing))
 	shas := make([]string, 0, len(listing))
 	for _, r := range listing {
@@ -480,7 +534,7 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
 	}
 	for i, r := range listing {
 		if r.SHA != "" && have[r.SHA] {
-			on, aerr := w.Git.IsAncestor(ctx, r.SHA, "HEAD")
+			on, aerr := w.Git.IsAncestor(ctx, r.SHA, tip)
 			if aerr != nil {
 				return nil, aerr
 			}
@@ -495,6 +549,15 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
 	return landed, nil
 }
 
+// replayable reports whether a listing entry placed at on is a position a
+// rebase could still account for: not placed, and not a merge commit, which a
+// rebase never replays (measured — alignRewritten). The alignment's window is
+// exactly these, and so is what the read-back can be asked for on a squash's
+// behalf (placeStacked); one predicate, so the two cannot drift apart.
+func replayable(r gitsource.RawCommit, on string) bool {
+	return on == "" && len(r.Parents) < 2
+}
+
 // alignRewritten is mainFootprint's second question, asked of whatever landed
 // does not place yet, and it fills landed in only when every entry aligns.
 func (w Walker) alignRewritten(ctx context.Context, canonical string, listing []gitsource.RawCommit, landed []string) error {
@@ -507,7 +570,7 @@ func (w Walker) alignRewritten(ctx context.Context, canonical string, listing []
 	// hold.
 	window := make([]int, 0, len(listing))
 	for i, r := range listing {
-		if landed[i] == "" && len(r.Parents) < 2 {
+		if replayable(r, landed[i]) {
 			window = append(window, i)
 		}
 	}
@@ -537,13 +600,17 @@ func (w Walker) alignRewritten(ctx context.Context, canonical string, listing []
 	return nil
 }
 
-// placeStacked places what the footprint left, when another pull landed it: a
-// stacked pull lists its base pull's commits, and GitHub goes on listing them
-// after the base is squash- or rebase-merged and the stacked pull retargeted,
-// so without this a commit the base released folds again as the pull's own
-// (t-ypxb; DESIGN §4, "A stacked pull lists what its base landed"). Nothing
-// here runs for a listing the footprint placed whole: an alignment is a whole
-// answer, and a merge commit left over is no question.
+// placeStacked places what another pull landed: a stacked pull lists its base
+// pull's commits, and GitHub goes on listing them after the base merges and
+// the stacked pull is retargeted, so without this a commit the base released
+// folds again as the pull's own (t-ypxb; DESIGN §4, "A stacked pull lists
+// what its base landed"). It is asked for the entries another pull's landing
+// can still account for (open): what the footprint left — a squash put it on
+// no branch — and what sits in the range under its own sha, which a merge
+// commit's second parent brings in whatever an earlier squash or rebase of
+// the same commit released. A commit a rebase replayed is the stacked pull's
+// own, a rebase drops what its base put upstream, and a merge commit left
+// over is no question; a listing with no open entry asks nothing.
 //
 // The identity is the listed sha, the one seen already judges a stacked
 // duplicate by. A message would be a second rule, and it cannot hold: a
@@ -554,11 +621,11 @@ func (w Walker) alignRewritten(ctx context.Context, canonical string, listing []
 // replays only its own commits, so they are the run ending at the merge point
 // even when another pull landed under them.
 func (w *walk) placeStacked(ctx context.Context, canonical string, listing []gitsource.RawCommit, landed []string) error {
-	unplaced := false
+	open := false
 	for i, r := range listing {
-		unplaced = unplaced || (landed[i] == "" && len(r.Parents) < 2)
+		open = open || w.open(r, landed[i])
 	}
-	if !unplaced {
+	if !open {
 		return nil
 	}
 	if err := w.readBack(ctx, listing); err != nil {
@@ -566,7 +633,7 @@ func (w *walk) placeStacked(ctx context.Context, canonical string, listing []git
 	}
 	placed := false
 	for i, r := range listing {
-		if on := w.landings[r.SHA]; landed[i] == "" && on != "" {
+		if on := w.landings[r.SHA]; w.open(r, landed[i]) && on != "" && on != landed[i] {
 			landed[i], placed = on, true
 		}
 	}
@@ -576,11 +643,32 @@ func (w *walk) placeStacked(ctx context.Context, canonical string, listing []git
 	return w.alignRewritten(ctx, canonical, listing, landed)
 }
 
+// open reports whether another pull's landing can still account for a listing
+// entry the footprint placed at on: the entry is replayable, or it sits in the
+// range under its own sha. A rebase's replay and a landing outside the range
+// are the footprint's whole answer.
+func (w *walk) open(r gitsource.RawCommit, on string) bool {
+	return replayable(r, on) || (on == r.SHA && w.inRange[on])
+}
+
+// land records where a listed sha landed, under the first pull that landed it:
+// the walk runs oldest first and the read-back reads its window oldest first,
+// so the first answer is the pull that put the content on the released branch,
+// and a later pull listing the same sha changes nothing.
+func (w *walk) land(sha, on string) {
+	if _, landed := w.landings[sha]; !landed && sha != "" {
+		w.landings[sha] = on
+	}
+}
+
 // readBack records in landings what the pulls between this listing's fork and
-// the walk's base list: the only pulls that can have released a commit the
-// listing holds, because a commit descending the base cannot be in it. So a fork
-// in range costs nothing, a fork at the base two git calls and no request, and
-// the whole-history arm has no base to read behind.
+// readBackTop list: for the walk the base, because the pulls the range holds
+// are expanded by the walk itself and a commit descending the base cannot be in
+// the listing, so a fork in range costs nothing, a fork at the base two git
+// calls and no request, and the whole-history arm has no base to read behind;
+// for an open pull HEAD, the one window it has. The listing's own shas are
+// never asked about: a checkout standing on the pull's branch holds them in the
+// window, and an open pull's commit names no merged pull.
 //
 // Asked of the two questions every walk rests on, a merge point's merged pull
 // and that pull's listing. Never of GET commits/{listed sha}/pulls, the one
@@ -588,8 +676,7 @@ func (w *walk) placeStacked(ctx context.Context, canonical string, listing []git
 // answers an open pull that carries the sha INSTEAD of the merged one that
 // landed it (measured 2026-11-04, glyph-test-2#6 merged, #7 open).
 func (w *walk) readBack(ctx context.Context, listing []gitsource.RawCommit) error {
-	base, tagged := strings.CutSuffix(w.revRange, "..HEAD")
-	if !tagged {
+	if w.readBackTop == "" {
 		return nil
 	}
 	forks := forkPoints(listing, w.inRange)
@@ -597,15 +684,22 @@ func (w *walk) readBack(ctx context.Context, listing []gitsource.RawCommit) erro
 	if err != nil {
 		return err
 	}
+	listed := make(map[string]bool, len(listing))
+	for _, r := range listing {
+		listed[r.SHA] = true
+	}
 	for _, fork := range forks {
 		if !have[fork] {
 			continue
 		}
-		missed, err := w.Git.Log(ctx, fork+".."+base)
+		missed, err := w.Git.Log(ctx, fork+".."+w.readBackTop)
 		if err != nil {
 			return err
 		}
 		for _, raw := range missed {
+			if listed[raw.SHA] {
+				continue
+			}
 			if err := w.readBackPull(ctx, raw); err != nil {
 				return err
 			}
@@ -614,10 +708,16 @@ func (w *walk) readBack(ctx context.Context, listing []gitsource.RawCommit) erro
 	return nil
 }
 
-// readBackPull records the listing of the pull raw is the merge point of, under
-// visit's author gate. A sha GitHub does not know names no pull, and is no
-// shortfall: what it could have released is at worst counted again, the answer
-// a listing with no landing site always gets.
+// readBackPull records what the pull raw is the merge point of landed, under
+// visit's author gate: each listed sha as the commit the footprint places it
+// at against that merge point — its own sha, or a rebase's replay — and, for
+// what the footprint leaves, the merge point itself, a squash's one commit on
+// the branch. A sha GitHub does not know names no pull, and is no shortfall:
+// what it could have released is at worst counted again, the answer a listing
+// with no landing site always gets. A listing GitHub capped is read as far as
+// the cap, and the warning names what the cap risks here: a sha past it is
+// matched by nothing and may count again, where the walk's own cap warning
+// speaks of a verdict this pull is not in.
 func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error {
 	if w.readBackDone[raw.SHA] || slices.Contains(w.cfg.ExcludeAuthors, raw.Author) {
 		return nil
@@ -632,18 +732,60 @@ func (w *walk) readBackPull(ctx context.Context, raw gitsource.RawCommit) error 
 	case !found:
 		return nil
 	}
-	released, err := w.PullRawCommits(ctx, w.owner, w.repo, number)
+	released, capped, err := w.pullListing(ctx, w.owner, w.repo, number)
 	if err != nil {
 		return err
 	}
-	for _, r := range released {
-		w.landings[r.SHA] = raw.SHA
+	if capped {
+		w.Report.Warnf("pull request #%d, read back for what it landed on the released branch, returned %d commits — GitHub truncates this listing at %d, so a commit past the cap cannot be matched and a later pull listing it may count it again", number, len(released), github.PullCommitsCap)
+	}
+	landed, err := w.mainFootprint(ctx, raw.SHA, released, raw.SHA)
+	if err != nil {
+		return err
+	}
+	for i, r := range released {
+		if landed[i] == "" {
+			landed[i] = raw.SHA
+		}
+		w.land(r.SHA, landed[i])
 	}
 	return nil
 }
 
+// readsBackTo reports whether a base at one of wd's escapes clears this
+// listing's sighting of the refused commit on its own: the read-back of the
+// walk that starts there reaches that escape from one of the listing's forks,
+// so the pull behind the base lands the commit and nothing judges it here.
+// Every parent no listed commit accounts for is a fork, in range or not: a
+// tag at the escape puts it behind the base.
+func (w *walk) readsBackTo(ctx context.Context, listing []gitsource.RawCommit, wd wedge) (bool, error) {
+	forks := forkPoints(listing, nil)
+	have, err := w.Git.Have(ctx, forks)
+	if err != nil {
+		return false, err
+	}
+	for _, fork := range forks {
+		if !have[fork] {
+			continue
+		}
+		for _, e := range wd.escapes {
+			if e.base == fork {
+				continue
+			}
+			below, err := w.Git.IsAncestor(ctx, fork, e.base)
+			if err != nil {
+				return false, err
+			}
+			if below {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 // forkPoints is where a listing left the branch it forked from: the parents no
-// listed commit accounts for, less those in range.
+// listed commit accounts for, less those in range (every one, over nil).
 func forkPoints(listing []gitsource.RawCommit, inRange map[string]bool) []string {
 	listed := make(map[string]bool, len(listing))
 	for _, r := range listing {
@@ -702,18 +844,29 @@ func (w Walker) mergedPullFor(ctx context.Context, owner, repo, sha string, inRa
 // the release — t-7zt7). bump, notes and preview read a pull through it too
 // (cli's pullInput).
 func (w Walker) PullRawCommits(ctx context.Context, owner, repo string, number int) ([]gitsource.RawCommit, error) {
-	raws, err := w.Pulls.PullCommits(ctx, owner, repo, number)
+	local, capped, err := w.pullListing(ctx, owner, repo, number)
 	if err != nil {
 		return nil, err
 	}
-	if len(raws) >= github.PullCommitsCap {
+	if capped {
 		// No silent caps: the verdict may be computed from a truncated PR, and
 		// a missing commit could carry the deciding sigil.
-		w.Report.Warnf("pull request #%d returned %d commits — GitHub truncates this listing at %d, so some commits (and their sigils) may be missing from the verdict", number, len(raws), github.PullCommitsCap)
+		w.Report.Warnf("pull request #%d returned %d commits — GitHub truncates this listing at %d, so some commits (and their sigils) may be missing from the verdict", number, len(local), github.PullCommitsCap)
+	}
+	return local, nil
+}
+
+// pullListing is PullRawCommits without the warning, and whether the listing
+// sits at GitHub's cap: the read-back reads a pull that is in no verdict, so
+// it words the cap's risk itself (readBackPull).
+func (w Walker) pullListing(ctx context.Context, owner, repo string, number int) ([]gitsource.RawCommit, bool, error) {
+	raws, err := w.Pulls.PullCommits(ctx, owner, repo, number)
+	if err != nil {
+		return nil, false, err
 	}
 	local := make([]gitsource.RawCommit, len(raws))
 	for i, r := range raws {
 		local[i] = gitsource.RawCommit(r)
 	}
-	return local, nil
+	return local, len(raws) >= github.PullCommitsCap, nil
 }

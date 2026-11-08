@@ -491,3 +491,225 @@ func TestSinceTagPackagesStackedPullLeavesWhatEveryLineReleased(t *testing.T) {
 		t.Fatalf("bump --since-tag = exit %d stdout %q, want 0 / haiku/v0.2.1 — a1 shipped under haiku/v0.2.0\nstderr: %s", code, stdout, stderr)
 	}
 }
+
+// stackedMergeOverBase lands #1 (a1) on main by squash, or by rebase with a
+// commit under it so a1' is a new sha, cuts v1.0.0, then lands #2 (a1, b1)
+// with a MERGE COMMIT: the merge's second parent brings the original a1 into
+// the range under its own sha, where the footprint's first question places
+// it, though its content shipped with #1 under the tag and the three-way
+// merge adds nothing of it. a1 is the only major, so the level alone tells a
+// re-counted a1 from what #2 added.
+func stackedMergeOverBase(t *testing.T, rebased bool) (dir string, routes map[string]string, a1Landed string) {
+	t.Helper()
+	dir, root := testutil.NewTaggedRepo(t)
+	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "feat-a")
+	testutil.Commit(t, dir, "akira-toriyama", ":boom:! break the api")
+	a1 := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "-b", "feat-b")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix the follow-up")
+	b1 := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "checkout", "-q", "main")
+	routes = map[string]string{}
+	if rebased {
+		testutil.Commit(t, dir, "akira-toriyama", ":memo:= land something under the replay")
+		x0 := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		routes[commitPullsPath(x0)] = `[]`
+		testutil.Commit(t, dir, "akira-toriyama", ":boom:! break the api")
+	} else {
+		squashCommit(t, dir, "Reshape the api", 1)
+	}
+	a1Landed = testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	testutil.Git(t, dir, "akira-toriyama", "merge", "-q", "--no-ff", "-m", prMergeSubject(2), "feat-b")
+	m := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "branch", "-q", "-D", "feat-a", "feat-b")
+	// GitHub names the merged pull that introduced a commit to the default
+	// branch, and the pulls it carried it in.
+	routes[commitPullsPath(a1)] = `[` + apiPullRef(1, "2026-07-20T00:00:00Z", a1Landed) + `,` + apiPullRef(2, "2026-07-21T00:00:00Z", m) + `]`
+	routes[commitPullsPath(b1)] = apiMerged(2, m)
+	routes[commitPullsPath(m)] = apiMerged(2, m)
+	routes[commitPullsPath(a1Landed)] = apiMerged(1, a1Landed)
+	routes[pullCommitsPath(1)] = apiListing(apiCommitOn(a1, ":boom:! break the api", root))
+	routes[pullCommitsPath(2)] = apiListing(apiCommitOn(a1, ":boom:! break the api", root), apiCommitOn(b1, ":bug:~ fix the follow-up", a1))
+	return dir, routes, a1Landed
+}
+
+// TestSinceTagStackedMergeCommitDoesNotRecountWhatItsBaseReleased: a listed
+// sha a pull behind the base landed does not count, whether or not the range
+// also holds it — the read-back's answer wins over the footprint's first
+// question, which is what makes the squash, rebase and merge-commit stacks one
+// rule. A commit new in the range that no released listing holds is untouched
+// by it: nothing behind the base lists it (b1).
+func TestSinceTagStackedMergeCommitDoesNotRecountWhatItsBaseReleased(t *testing.T) {
+	for name, rebased := range map[string]bool{"over a squash-merged base": false, "over a rebase-merged base": true} {
+		t.Run(name, func(t *testing.T) {
+			dir, routes, a1Landed := stackedMergeOverBase(t, rebased)
+			usePR(t, walkServer(t, routes))
+			t.Chdir(dir)
+			code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+			if code != 0 || stdout != "v1.0.1\n" {
+				t.Fatalf("bump --since-tag = exit %d stdout %q, want 0 / v1.0.1 — a1's major shipped with #1 under v1.0.0, and the merge adds nothing of it\nstderr: %s", code, stdout, stderr)
+			}
+			if want := fmt.Sprintf("in pull request #2 landed on the released branch as %.7s, which is outside v1.0.0..HEAD", a1Landed); !strings.Contains(stderr, want) {
+				t.Errorf("the drop must name where #1 landed it:\n  %s\nstderr: %s", want, stderr)
+			}
+		})
+	}
+	t.Run("release --dry-run", func(t *testing.T) {
+		dir, routes, _ := stackedMergeOverBase(t, false)
+		usePR(t, dryServer(t, routes))
+		t.Chdir(dir)
+		code, stdout, stderr := runGlyph(t, "release", "--dry-run")
+		if code != 0 || !strings.HasPrefix(stdout, "v1.0.1\n\n") {
+			t.Fatalf("release --dry-run = exit %d stdout:\n%s\nwant 0 and v1.0.1\nstderr: %s", code, stdout, stderr)
+		}
+		if strings.Contains(stdout, "break the api") || strings.Contains(stdout, "Breaking") {
+			t.Errorf("the draft's body re-announces what v1.0.0 shipped:\n%s", stdout)
+		}
+	})
+}
+
+// TestSinceTagReadBackNamesTheFirstLanding: three pulls stacked by squash, #1
+// (a1), #2 (a1 b1), v1.0.0, #3 (a1 b1 c1). The notice names the commit the work
+// landed as: a1 landed with #1's squash and b1 with #2's, whichever pull lists
+// them later.
+func TestSinceTagReadBackNamesTheFirstLanding(t *testing.T) {
+	dir, root := testutil.NewTaggedRepo(t)
+	s1 := squashCommit(t, dir, "Reshape the api", 1)
+	s2 := squashCommit(t, dir, "Follow up", 2)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	s3 := squashCommit(t, dir, "Document", 3)
+	a1 := apiCommitOn(stackedA1, ":boom:! break the api", root)
+	b1 := apiCommitOn(stackedB1, ":sparkles:^ add the follow-up", stackedA1)
+	c1 := apiCommitOn(stackedX1, ":bug:~ fix it", stackedB1)
+	usePR(t, walkServer(t, map[string]string{
+		commitPullsPath(s1): apiMerged(1, s1),
+		pullCommitsPath(1):  apiListing(a1),
+		commitPullsPath(s2): apiMerged(2, s2),
+		pullCommitsPath(2):  apiListing(a1, b1),
+		commitPullsPath(s3): apiMerged(3, s3),
+		pullCommitsPath(3):  apiListing(a1, b1, c1),
+	}))
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 0 || stdout != "v1.0.1\n" {
+		t.Fatalf("bump --since-tag = exit %d stdout %q, want 0 / v1.0.1\nstderr: %s", code, stdout, stderr)
+	}
+	for sha, landed := range map[string]string{stackedA1: s1, stackedB1: s2} {
+		want := fmt.Sprintf("commit %.7s in pull request #3 landed on the released branch as %.7s,", sha, landed)
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the notice must name the pull that first landed the sha:\n  %s\nstderr: %s", want, stderr)
+		}
+	}
+}
+
+// TestSinceTagReadBackNamesTheRebasedCommit: a two-commit rebase-merged base
+// #1 (a1 to a1', a2 to a2' = its merge_commit_sha), v1.0.0, #3 landed between,
+// then the stacked #2. The read-back places the released pull's listing with
+// the footprint, against that pull's merge point, so a1 landed as a1' and a2 as
+// a2' — not both at the merge point.
+func TestSinceTagReadBackNamesTheRebasedCommit(t *testing.T) {
+	dir, root := testutil.NewTaggedRepo(t)
+	testutil.Commit(t, dir, "akira-toriyama", ":boom:! break the api")
+	a1Landed := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the break")
+	a2Landed := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	x := squashCommit(t, dir, "Note the break", 3)
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix the follow-up")
+	b1Landed := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	a1 := apiCommitOn(stackedA1, ":boom:! break the api", root)
+	a2 := apiCommitOn(stackedA2, ":memo:= document the break", stackedA1)
+	usePR(t, walkServer(t, map[string]string{
+		commitPullsPath(a1Landed): apiMerged(1, a2Landed),
+		commitPullsPath(a2Landed): apiMerged(1, a2Landed),
+		pullCommitsPath(1):        apiListing(a1, a2),
+		commitPullsPath(x):        apiMerged(3, x),
+		pullCommitsPath(3):        apiListing(apiCommitOn(stackedX1, ":memo:= note the break", a2Landed)),
+		commitPullsPath(b1Landed): apiMerged(2, b1Landed),
+		pullCommitsPath(2):        apiListing(a1, a2, apiCommitOn(stackedB1, ":bug:~ fix the follow-up", stackedA2)),
+	}))
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 0 || stdout != "v1.0.1\n" {
+		t.Fatalf("bump --since-tag = exit %d stdout %q, want 0 / v1.0.1\nstderr: %s", code, stdout, stderr)
+	}
+	for sha, landed := range map[string]string{stackedA1: a1Landed, stackedA2: a2Landed} {
+		want := fmt.Sprintf("commit %.7s in pull request #2 landed on the released branch as %.7s,", sha, landed)
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the notice must name the replay, not the merge point %.7s:\n  %s\nstderr: %s", a2Landed, want, stderr)
+		}
+	}
+}
+
+// TestSinceTagLeftoverMergeCommitReadsNothingBack: a rebase-merged pull that
+// forked behind the base and merged main in once. The alignment places its two
+// commits, and what is left is the merge commit, which a rebase never replays —
+// no question for the read-back, so nothing behind the base is asked about
+// (walkServer fails on any other route, and this listing's forks lead to s1).
+func TestSinceTagLeftoverMergeCommitReadsNothingBack(t *testing.T) {
+	dir, root := testutil.NewTaggedRepo(t)
+	s1 := squashCommit(t, dir, "Add a thing", 1)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a thing")
+	q1Landed := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":memo:= document the fix")
+	q2Landed := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	const q1, m, q2 = "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1", "e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2", "e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3"
+	usePR(t, walkServer(t, map[string]string{
+		commitPullsPath(q1Landed): apiMerged(2, q2Landed),
+		commitPullsPath(q2Landed): apiMerged(2, q2Landed),
+		pullCommitsPath(2): apiListing(
+			apiCommitOn(q1, ":bug:~ fix a thing", root),
+			apiCommitOn(m, "Merge branch 'main' into feat-q", q1, s1),
+			apiCommitOn(q2, ":memo:= document the fix", m)),
+	}))
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 0 || stdout != "v1.0.1\n" {
+		t.Fatalf("bump --since-tag = exit %d stdout %q, want 0 / v1.0.1 and no request about %.7s\nstderr: %s", code, stdout, s1, stderr)
+	}
+}
+
+// TestSinceTagReadBackOfACappedPullWarnsOfARecount: a released pull GitHub
+// lists at its cap is read as far as the cap, and the warning names what the
+// cap risks here — a sha past it is matched by nothing and may count again —
+// not the walk's own warning, which speaks of a verdict #1 is not in.
+//
+// bite-exempt: the pre-PR source has no read-back to warn from; mutation row
+// walk-read-back-cap-warns-of-the-walks-risk is what proves it bites.
+func TestSinceTagReadBackOfACappedPullWarnsOfARecount(t *testing.T) {
+	dir, root := testutil.NewTaggedRepo(t)
+	s1 := squashCommit(t, dir, "A large base pull", 1)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v1.0.0")
+	s2 := squashCommit(t, dir, "Follow up", 2)
+	big := make([]string, 0, 250)
+	prev := root
+	for i := range 250 {
+		sha := fmt.Sprintf("%040x", 0xa000+i)
+		big = append(big, apiCommitOn(sha, fmt.Sprintf(":memo:= base commit %d", i), prev))
+		prev = sha
+	}
+	usePR(t, walkServer(t, map[string]string{
+		commitPullsPath(s1): apiMerged(1, s1),
+		pullCommitsPath(1):  apiListing(big...),
+		commitPullsPath(s2): apiMerged(2, s2),
+		pullCommitsPath(2):  apiListing(big[0], apiCommitOn(stackedB1, ":bug:~ fix the follow-up", fmt.Sprintf("%040x", 0xa000))),
+	}))
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "bump", "--since-tag")
+	if code != 0 || stdout != "v1.0.1\n" {
+		t.Fatalf("bump --since-tag = exit %d stdout %q, want 0 / v1.0.1\nstderr: %s", code, stdout, stderr)
+	}
+	want := "::warning::glyph: pull request #1, read back for what it landed on the released branch, returned 250 commits — GitHub truncates this listing at 250, so a commit past the cap cannot be matched and a later pull listing it may count it again"
+	if !strings.Contains(stderr, want) {
+		t.Errorf("the read-back's cap must be said as its own risk:\n  %s\nstderr: %s", want, stderr)
+	}
+	if strings.Contains(stderr, "missing from the verdict") {
+		t.Errorf("#1 is in no verdict, yet the walk's own cap warning was said:\n%s", stderr)
+	}
+}

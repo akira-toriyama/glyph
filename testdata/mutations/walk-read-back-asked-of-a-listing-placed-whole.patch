@@ -1,0 +1,14 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 368b196..6964b9e 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -625,9 +625,6 @@ func (w *walk) placeStacked(ctx context.Context, canonical string, listing []git
+ 	for i, r := range listing {
+ 		open = open || w.open(r, landed[i])
+ 	}
+-	if !open {
+-		return nil
+-	}
+ 	if err := w.readBack(ctx, listing); err != nil {
+ 		return err
+ 	}

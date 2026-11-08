@@ -1,0 +1,13 @@
+diff --git a/internal/walk/expand.go b/internal/walk/expand.go
+index 368b196..cf24d6d 100644
+--- a/internal/walk/expand.go
++++ b/internal/walk/expand.go
+@@ -648,7 +648,7 @@ func (w *walk) placeStacked(ctx context.Context, canonical string, listing []git
+ // range under its own sha. A rebase's replay and a landing outside the range
+ // are the footprint's whole answer.
+ func (w *walk) open(r gitsource.RawCommit, on string) bool {
+-	return replayable(r, on) || (on == r.SHA && w.inRange[on])
++	return replayable(r, on)
+ }
+ 
+ // land records where a listed sha landed, under the first pull that landed it:

@@ -52,7 +52,7 @@ func TestMainFootprintSurvivesAListingLongerThanMain(t *testing.T) {
 		{SHA: "3333333333333333333333333333333333333333", Message: ":bug:(ui)~ fix the menu"},
 	}
 
-	landed, err := at(dir).mainFootprint(t.Context(), canonical, listing)
+	landed, err := at(dir).mainFootprint(t.Context(), canonical, listing, "HEAD")
 	if err != nil {
 		t.Fatalf("mainFootprint: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestMainFootprintSurvivesAListingLongerThanMain(t *testing.T) {
 func TestMainFootprintEmptyListingAsksGitNothing(t *testing.T) {
 	dir, _ := testutil.NewTaggedRepo(t)
 
-	landed, err := at(dir).mainFootprint(t.Context(), "4444444444444444444444444444444444444444", nil)
+	landed, err := at(dir).mainFootprint(t.Context(), "4444444444444444444444444444444444444444", nil, "HEAD")
 	if err != nil {
 		t.Fatalf("an empty listing must not consult git about the canonical commit, got: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 		landed, err := at(dir).mainFootprint(t.Context(), canonical, []gitsource.RawCommit{
 			{SHA: b1, Parents: one, Message: ":bug:(ui)~ fix the menu"},
 			{SHA: b2, Parents: one, Message: ":zap:(ui)~ speed up the menu"},
-		})
+		}, "HEAD")
 		if err != nil {
 			t.Fatalf("mainFootprint: %v", err)
 		}
@@ -194,7 +194,7 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 		landed, err := at(dir).mainFootprint(t.Context(), canonical, []gitsource.RawCommit{
 			{SHA: b1, Parents: one, Message: ":bug:(ui)~ fix the menu"},
 			{SHA: b2, Parents: one, Message: ":zap:(ui)~ speed up the menu"},
-		})
+		}, "HEAD")
 		if err != nil {
 			t.Fatalf("mainFootprint: %v", err)
 		}
@@ -224,7 +224,7 @@ func TestMainFootprintDoubleLandingKeepsGitsAnswer(t *testing.T) {
 		landed, err := at(dir).mainFootprint(t.Context(), canonical, []gitsource.RawCommit{
 			{SHA: c, Parents: one, Message: ":bug:(core)~ fix the hotfix"},
 			{SHA: d, Parents: one, Message: ":sparkles:(core)^ add a thing"},
-		})
+		}, "HEAD")
 		if err != nil {
 			t.Fatalf("mainFootprint: %v", err)
 		}

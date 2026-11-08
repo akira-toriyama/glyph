@@ -1,13 +1,13 @@
 diff --git a/internal/walk/expand.go b/internal/walk/expand.go
-index 65e8606..5669682 100644
+index 368b196..cd3d00e 100644
 --- a/internal/walk/expand.go
 +++ b/internal/walk/expand.go
-@@ -507,7 +507,7 @@ func (w Walker) alignRewritten(ctx context.Context, canonical string, listing []
- 	// hold.
- 	window := make([]int, 0, len(listing))
- 	for i, r := range listing {
--		if landed[i] == "" && len(r.Parents) < 2 {
-+		if landed[i] == "" && len(r.Parents) < 99 {
- 			window = append(window, i)
- 		}
- 	}
+@@ -555,7 +555,7 @@ func (w Walker) mainFootprint(ctx context.Context, canonical string, listing []g
+ // exactly these, and so is what the read-back can be asked for on a squash's
+ // behalf (placeStacked); one predicate, so the two cannot drift apart.
+ func replayable(r gitsource.RawCommit, on string) bool {
+-	return on == "" && len(r.Parents) < 2
++	return on == "" && len(r.Parents) < 99
+ }
+ 
+ // alignRewritten is mainFootprint's second question, asked of whatever landed
