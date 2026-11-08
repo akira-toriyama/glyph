@@ -1,0 +1,13 @@
+diff --git a/README.md b/README.md
+index 24ae298..6ecd112 100644
+--- a/README.md
++++ b/README.md
+@@ -165,7 +165,7 @@ runner needs them installed:
+ - uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z
+   with:
+     version: vX.Y.Z
+-    token: ${{ github.token }}
++   token: ${{ github.token }}
+ ```
+ 
+ Never pin `@main`: a moving ref changes the workflow *and* the binary under

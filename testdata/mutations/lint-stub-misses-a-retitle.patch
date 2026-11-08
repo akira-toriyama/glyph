@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+index b02b4c3..23637aa 100644
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -14,7 +14,7 @@ name: glyph-lint
+ #   on:
+ #     pull_request:
+ #       # a retitle re-fires the squash-title lint only with `edited`, not a default type
+-#       types: [opened, synchronize, reopened, edited]
++#       types: [opened, synchronize, reopened]
+ #     push:
+ #       branches: [main]  # optional — annotates direct pushes, never fails them
+ #   permissions:

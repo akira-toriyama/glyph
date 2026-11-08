@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/lint.yml b/.github/workflows/lint.yml
+index b02b4c3..ad5f455 100644
+--- a/.github/workflows/lint.yml
++++ b/.github/workflows/lint.yml
+@@ -280,7 +280,7 @@ jobs:
+       # the title's finding stayed unseen until the commits went green
+       # (glyph-test-2 run 41809643056).
+       - name: Lint the squash title
+-        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
++        if: github.event_name == 'pull_request'
+         env:
+           GITHUB_TOKEN: ${{ github.token }}
+           PR_NUMBER: ${{ github.event.pull_request.number }}

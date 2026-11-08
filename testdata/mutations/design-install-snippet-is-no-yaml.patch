@@ -1,0 +1,15 @@
+diff --git a/docs/DESIGN.md b/docs/DESIGN.md
+index 2a0fc55..aa17bfb 100644
+--- a/docs/DESIGN.md
++++ b/docs/DESIGN.md
+@@ -3702,9 +3702,7 @@ by full path pinned to a release tag:
+ 
+ ```yaml
+ - uses: akira-toriyama/glyph/.github/actions/install@vX.Y.Z
+-  with:
+-    version: vX.Y.Z              # the tag you pinned above
+-    token: ${{ github.token }}   # for `gh attestation verify`
++  with: { version: vX.Y.Z, token: ${{ github.token }} }
+ - run: glyph bump --range "$BASE..HEAD" --json   # exit 1 on a none verdict — handle it
+ ```
+ 
