@@ -1,11 +1,11 @@
 diff --git a/.github/actions/release-notes/action.yml b/.github/actions/release-notes/action.yml
-index f537182..cf30f13 100644
+index 56f0deb..8b9c4cc 100644
 --- a/.github/actions/release-notes/action.yml
 +++ b/.github/actions/release-notes/action.yml
-@@ -118,9 +118,6 @@ runs:
+@@ -121,9 +121,6 @@ runs:
          if [ "$status" -eq 1 ]; then
-           echo "::warning::no release-worthy commits below $tag — publishing with a placeholder body"
-           printf 'No release-worthy changes in %s.\n' "$tag" > "$out"
+           echo "::warning::no commit below $tag lands in a release-notes section — publishing with a placeholder body"
+           printf 'No release notes for %s: no commit below it lands in a release-notes section.\n' "$tag" > "$out"
 -        elif [ "$status" -eq 3 ]; then
 -          echo "::warning::the walk below $tag reaches a commit glyph refuses, and the tag was cut where the refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear the wedge — publishing with a placeholder body; glyph's error above names the commit and that point"
 -          printf "No release notes for %s: the walk below it reaches a commit glyph refuses, and this tag was cut where glyph's refusal sends it (at or past that commit, or a squash-merged pull's merge point) to clear the wedge. The release job's log carries glyph's error, which names the commit and that point.\n" "$tag" > "$out"

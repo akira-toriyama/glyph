@@ -350,8 +350,10 @@ pattern says it means:
   contributor named `dependabot[bot]<US>x` shifted every field by one, read
   as `dependabot[bot]` and was excluded at exit 0 — measured, and a check of
   the parents field alone still passed the same name with an empty email or
-  a 40-hex one. The fields are framed by NUL, the byte no field can hold and
-  the one the record framing already rested on, and a record whose SHA and
+  a 40-hex one (the record then carried the author's address after the name;
+  it carries none since t-v784, because nothing may read one — §3). The
+  fields are framed by NUL, the byte no field can hold and the one the
+  record framing already rested on, and a record whose SHA and
   parents are not full object names fails the read at 4 rather than reach a
   gate shifted (mutation rows
   `gitsource-log-fields-framed-by-a-byte-a-name-holds.patch`,
@@ -1264,7 +1266,14 @@ then the colon: `Fix#1:` and `Révisé:` are prose, `Why :` is the token `Why`,
 `Why ://x` too (a blank before the colon disarms the URL rule), and
 `https://x: y` or a bare `https://…` line is prose under the URL rule above —
 one in a block git did not write into voids it, credits included, where git
-2.54 and 2.55 read the trailer `https` and credit the block. A block is
+2.54 and 2.55 read the trailer `https` and credit the block. The loader holds
+a `[[note.trailers]]` token to the same alphabet, from its one home
+(`config.IsTrailerTokenByte`, which the block scan reads too): a token holding
+any other byte — `Fix#1`, `Révisé`, `Why_not`, `Ref.` — names no trailer git
+reads (it loaded and rendered its placeholder empty on every line at exit 0),
+so it is refused at load, exit 2 (t-dzxw, measured 2026-11-09 under git
+2.54.0 and 2.56.0; mutation row
+`trailer-token-loader-admits-a-name-git-never-reads.patch`). A block is
 the trailers when every line of it is a trailer, a continuation or a comment
 — one prose line voids it — **or** when it holds a line git generated
 (`Signed-off-by: `, `(cherry picked from commit `, byte-exact, the trailing

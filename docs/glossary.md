@@ -916,10 +916,15 @@ is emphatically **not** 2 (the invocation itself was fine) and not 4 (glyph has
 no answer it will stand behind). `internal/core/errors.go: CodeLint`,
 `internal/cli/cmd_doctor.go: doctorVerdict`
 
-**soft no-release** — exit **1**: every participating commit classified `none`. A
-normal answer, not an error — which is why `preview` deliberately exits **0** on
-the same fold ("this PR moves nothing" is exactly what a reviewer asked), while
-`bump`, `notes` and `release` exit 1. `internal/core/errors.go: CodeNoRelease`
+**soft no-release** — exit **1**, a normal answer and not an error, on each
+command's own condition. `bump` and `release`: every participating commit folds
+to `none`, so no version moves. `notes`: no commit lands in a
+`[[note.sections]]` entry, so there is nothing to write — the sections decide
+what the notes hold, so the two part ways: a fix no section takes is a version
+with no notes, and a `dependabot[bot]` commit an author section holds is notes
+with no version (`TestNotesNoReleaseIsTheSectionsCondition`). `preview`
+deliberately exits **0** on a `none` fold ("this PR moves nothing" is exactly
+what a reviewer asked). `internal/core/errors.go: CodeNoRelease`
 
 **annotation** — a `::warning::`, `::error::` or `::notice::` workflow command
 on **stderr**. Folded onto one physical line, because a workflow command *is*
@@ -999,8 +1004,17 @@ Stands down on its own when every changed line of the distribution-layer
 files is a SHA-pinned `uses:` step put back as the same line at another SHA —
 dependabot's bump, which no text assertion can express and no bot can waive
 (six bot pulls went red before the gate learned the shape). Waived by a
-`Dist-gate-exempt: <reason>` git trailer on every non-merge commit, go-bite's
-exact shape. `scripts/dist-gate.sh` (`pin_swaps` is the stand-down),
+`Dist-gate-exempt: <reason>` git trailer on every non-merge commit, stating a
+real reason (an empty one or the `<reason>` placeholder is refused) — go-bite's
+`Bite-exempt:` shape, but not its reader. dist-gate takes the trailer block
+git's commit reader reports, the one closing the message (`%(trailers)`, DESIGN
+§3); go-bite reads `git interpret-trailers --parse`, which stops at the first
+`---` line and takes the block closing the text above it. So a body holding a
+`---` line can waive one gate and not the other: a trailer below the line
+waives dist-gate and not bite, one just above it bite and not dist-gate
+(measured 2026-11-09 with go-bite's line at the hub's v2, the tag
+`build.yml` pins, under git 2.54.0 and 2.56.0). `scripts/dist-gate.sh`
+(`pin_swaps` is the stand-down),
 `.github/workflows/build.yml` (the `dist-gate` job),
 `internal/workflows/distgate_test.go`
 

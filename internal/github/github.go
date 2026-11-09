@@ -91,7 +91,6 @@ type PullRef struct {
 type Commit struct {
 	SHA     string
 	Author  string
-	Email   string // commit.author.email, git's own
 	Login   string // author.login: the GitHub account GitHub itself mapped the commit to; "" when it mapped none
 	Parents int
 	Message string
@@ -233,8 +232,7 @@ type apiCommit struct {
 	Commit struct {
 		Message string `json:"message"`
 		Author  struct {
-			Name  string `json:"name"`
-			Email string `json:"email"`
+			Name string `json:"name"`
 		} `json:"author"`
 	} `json:"commit"`
 	// Author is the GitHub user the commit's email resolved to — null when
@@ -286,7 +284,6 @@ func (c *Client) PullCommits(ctx context.Context, owner, repo string, number int
 		commits[i] = Commit{
 			SHA:      ac.SHA,
 			Author:   ac.Commit.Author.Name,
-			Email:    ac.Commit.Author.Email,
 			Parents:  len(ac.Parents),
 			Message:  ac.Commit.Message,
 			Recorded: ac.Commit.Message,

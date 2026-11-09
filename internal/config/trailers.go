@@ -21,11 +21,33 @@ import (
 // repository sets. CLAUDE.md's "treat glyph.toml as the grammar" puts the
 // vocabulary here; DESIGN §3, "The trailer block", keeps identity in code.
 
-// trailerTokenRE is git's own token shape: no whitespace, and no colon (the
-// separator). Measured — `Why not: a reason` does not parse as a trailer at
-// all, it voids the whole block, so accepting such a token here would declare
-// a name that can never bind.
-var trailerTokenRE = regexp.MustCompile(`^[^\s:]+$`)
+// IsTrailerTokenByte is git's trailer-token alphabet, and its one home:
+// find_separator (trailer.c) reads a token as one run of isalnum bytes and
+// hyphens — ASCII only, nothing at or above 0x80 — then optional blanks and
+// the colon. buildTrailers checks a declared token against it and
+// internal/notes' block scan reads a line's token with it, so a token the
+// loader admits is one the scan can read. Measured with git's commit reader
+// (`git log --format=%(trailers)`, git 2.54.0 and 2.56.0; TestTrailers'
+// token rows re-read each answer off git on every run): `Fix-1:` and `123:`
+// open trailers, while `Fix#1:`, `Révisé:`, `Why_not:`, `Ref.:` and
+// `Why not:` open prose.
+func IsTrailerTokenByte(b byte) bool {
+	return b == '-' || ('0' <= b && b <= '9') || ('A' <= b && b <= 'Z') || ('a' <= b && b <= 'z')
+}
+
+// isTrailerToken reports whether s is a whole trailer token: one or more
+// IsTrailerTokenByte bytes and nothing else.
+func isTrailerToken(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := range len(s) {
+		if !IsTrailerTokenByte(s[i]) {
+			return false
+		}
+	}
+	return true
+}
 
 // rawTrailer is the decode shape of one [[note.trailers]] entry.
 type rawTrailer struct {
@@ -62,8 +84,8 @@ func buildTrailers(raws []rawTrailer, patterns []Pattern) ([]NoteTrailer, error)
 		if token == "" {
 			return nil, fmt.Errorf("note.trailers[%d]: token is required — it is the git trailer this entry reads", i)
 		}
-		if !trailerTokenRE.MatchString(token) {
-			return nil, fmt.Errorf("note.trailers[%d]: token %q holds whitespace or a colon, which git does not parse as a trailer token — a line shaped like that voids its whole trailer block, so this entry could never bind", i, token)
+		if !isTrailerToken(token) {
+			return nil, fmt.Errorf("note.trailers[%d]: token %q holds a byte outside ASCII letters, digits and hyphens — the only bytes git reads in a trailer token, so no trailer git reads is named that and this entry could never bind", i, token)
 		}
 		if rt.Name == "" {
 			return nil, fmt.Errorf("note.trailers[%d]: name is required — it is the $placeholder note.line writes", i)

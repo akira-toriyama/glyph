@@ -1,17 +1,25 @@
 package notes
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/akira-toriyama/glyph/v6/internal/config"
+)
 
 // Git trailer-block parsing, held to git's own commit reader —
 // `git log --format='%(trailers:only,unfold)'` — by a differential asserting
 // EQUALITY (trailers_test.go): the trailers glyph reads off a landed commit
 // are the ones git reads off it, no more and no fewer. Layer contract: this
-// file reads a commit message and nothing else — no git, no GitHub, no config.
-// The message it reads is the one git recorded, closing newline included
-// (notes.Commit.Recorded): the end-of-message rules below are byte rules, and
-// `Conflicts:\n` closing the object is git's ignored list where `Conflicts:`
-// closing the input is an empty trailer — a caller that drops the newline
-// changes the answer, and nothing here can tell that it did.
+// file reads a commit message and nothing else — no git, no GitHub, no
+// configuration value. The one thing it takes from internal/config is git's
+// token alphabet (config.IsTrailerTokenByte), the home the loader checks a
+// declared [[note.trailers]] token against, so the two cannot drift into a
+// declaration that can never bind. The message it reads is the one git
+// recorded, closing newline included (notes.Commit.Recorded): the
+// end-of-message rules below are byte rules, and `Conflicts:\n` closing the
+// object is git's ignored list where `Conflicts:` closing the input is an
+// empty trailer — a caller that drops the newline changes the answer, and
+// nothing here can tell that it did.
 //
 // The oracle is the commit reader, not `git interpret-trailers --parse`. The
 // two share every rule but one: interpret-trailers reads a message being
@@ -269,14 +277,14 @@ func isTrailerLine(l string) bool {
 }
 
 // splitTrailer is find_separator with git's default separator: the token is
-// one run of ASCII letters, digits and hyphens opening the line, then
-// optional spaces or tabs, then the colon; rest is everything after the
-// colon, untrimmed (the caller trims once continuations are folded). So
-// `Why not: a reason` is prose — the run ends at the space and `n` follows,
-// not the colon — as are `Fix#1: x`, `Révisé: x`, and a line opening with the
-// colon or with whitespace (no token). `Why : x` is the token `Why`. An EMPTY
-// rest parses: git reports `Why:` as a trailer with no value, and dropping it
-// is the reader's job, not the parser's.
+// one run of ASCII letters, digits and hyphens (config.IsTrailerTokenByte)
+// opening the line, then optional spaces or tabs, then the colon; rest is
+// everything after the colon, untrimmed (the caller trims once continuations
+// are folded). So `Why not: a reason` is prose — the run ends at the space
+// and `n` follows, not the colon — as are `Fix#1: x`, `Révisé: x`, and a line
+// opening with the colon or with whitespace (no token). `Why : x` is the
+// token `Why`. An EMPTY rest parses: git reports `Why:` as a trailer with no
+// value, and dropping it is the reader's job, not the parser's.
 //
 // The URL rule is git 2.56.0's (d122e37976, "trailers: stop recognizing URLs
 // as trailers"): a colon that opens `://` straight after the token is no
@@ -291,7 +299,7 @@ func isTrailerLine(l string) bool {
 // rather than floating with whichever git is on PATH.
 func splitTrailer(l string) (token, rest string, ok bool) {
 	i := 0
-	for i < len(l) && isTokenByte(l[i]) {
+	for i < len(l) && config.IsTrailerTokenByte(l[i]) {
 		i++
 	}
 	if i == 0 {
@@ -308,12 +316,6 @@ func splitTrailer(l string) (token, rest string, ok bool) {
 		return "", "", false
 	}
 	return l[:i], l[j+1:], true
-}
-
-// isTokenByte is git's isalnum — ASCII only, nothing at or above 0x80 — plus
-// the hyphen.
-func isTokenByte(b byte) bool {
-	return b == '-' || ('0' <= b && b <= '9') || ('A' <= b && b <= 'Z') || ('a' <= b && b <= 'z')
 }
 
 // trailerValue returns the value of the LAST trailer whose token matches,

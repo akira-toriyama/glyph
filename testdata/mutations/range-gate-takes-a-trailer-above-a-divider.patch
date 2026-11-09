@@ -1,0 +1,13 @@
+diff --git a/scripts/lib/range-gate.sh b/scripts/lib/range-gate.sh
+index 7ab0f32..c6694e1 100644
+--- a/scripts/lib/range-gate.sh
++++ b/scripts/lib/range-gate.sh
+@@ -47,7 +47,7 @@ require_trailer_on_every_commit() {
+   examined=0
+   for commit in $(git rev-list --no-merges "$2".."${3:-HEAD}"); do
+     examined=$((examined + 1))
+-    line="$(git show -s --format='%(trailers:only,unfold)' "$commit" | grep "^$1:" | sed -n '1p')"
++    line="$( { git show -s --format='%(trailers:only,unfold)' "$commit"; git show -s --format=%B "$commit" | git interpret-trailers --parse; } | grep "^$1:" | sed -n '1p')"
+     if [ -z "$line" ]; then
+       RANGE_GATE_MISSING="$commit"
+       return 1
