@@ -1,0 +1,12 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -192,7 +192,7 @@
+ hub_at go-bite.yml build.yml
+ BITE="$HUB_AT/actions/go-bite/go-bite.sh"
+ hub_at go-ci.yml build.yml
+-GO_CI="$HUB_AT/.github/workflows/go-ci.yml"
++GO_CI="$HUB/.github/workflows/go-ci.yml"
+ hub_at repo-policy.yml repo-policy.yml
+ REPO_POLICY="$HUB_AT/scripts/repo-policy-check.sh"
+ 

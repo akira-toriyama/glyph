@@ -991,7 +991,7 @@ to nobody), and neither are the fleet-synced consumers (`commit-lint.yml`,
 
 **dist-gate** — the pull-request gate that makes evidence for a distribution-layer
 change *mandatory*: such a file in the diff with no `internal/workflows`
-`*_test.go` change fails the PR. It closes a measured gap — `bite` acts on Go
+`*_test.go` added or modified fails the PR. It closes a measured gap — `bite` acts on Go
 diffs only and the extras smoke reads no YAML, so a `:bug:` fix touching only
 `.goreleaser.yaml` or only the install action used to ship with zero tests.
 Stands down on its own when every changed line of the distribution-layer
