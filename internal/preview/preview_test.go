@@ -620,3 +620,48 @@ func TestRenderPackagesPRShort(t *testing.T) {
 		t.Errorf("under a headline that names no figure the caveat must qualify what each headline says:\n%s", shallow)
 	}
 }
+
+// TestRenderPackagesPRShortNamesNoFigureNoHeadlineCarries: on a full
+// checkout too, the PR-side caveat points at "the figures above" only when
+// a headline carries figures and every headline names a version. Under
+// headlines that all move nothing it makes a floor of "moves nothing", as
+// RenderNoLine's does, and beside a headline that names no version — an
+// untagged line that moves nothing, "there is no version to move" — it
+// qualifies what each headline says. Both read "may be missing from the
+// figures above" (measured 2026-11-09, a pull commit whose listing GitHub
+// answered 422 for). A tagged line that moves nothing names its current
+// version, so beside a moving line the figures stay the caveat's object.
+// Mutation rows preview-pr-caveat-points-at-figures-no-line-moves and
+// preview-pr-caveat-points-at-a-version-an-untagged-line-lacks.
+func TestRenderPackagesPRShortNamesNoFigureNoHeadlineCarries(t *testing.T) {
+	const short = "GitHub answered 422 for the file listing of 1 commit(s), so a line they touch in files it did not list could not be read (u1)"
+	const lead = "\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: " + short + ". A line one of those commits touches in files GitHub did not list "
+	tidy := []Commit{{Sigil: "=", Level: bump.LevelNone, Subject: "tidy"}}
+	still := func(path string, untagged bool) Package {
+		current := path + "/v0.1.0"
+		if untagged {
+			current = path + "/v0.0.0"
+		}
+		return Package{Path: path, Current: current, Untagged: untagged, PR: Verdict{Level: bump.LevelNone, Commits: tidy}, Pending: Verdict{Level: bump.LevelNone}}
+	}
+	raises := Package{Path: "haiku", Current: "haiku/v0.1.0",
+		PR: Verdict{Level: bump.LevelMinor, Next: "haiku/v0.2.0", Commits: []Commit{feat()}}, Pending: Verdict{Level: bump.LevelNone}}
+	for _, tc := range []struct {
+		name  string
+		lines []Package
+		want  string
+	}{
+		{"an untagged line alone moves nothing", []Package{still("curry", true)}, `may move all the same, so treat "moves nothing" as a floor rather than the answer.`},
+		{"a tagged and an untagged line move nothing", []Package{still("haiku", false), still("curry", true)}, `may move all the same, so treat "moves nothing" as a floor rather than the answer.`},
+		{"a tagged line alone moves nothing", []Package{still("haiku", false)}, `may move all the same, so treat "moves nothing" as a floor rather than the answer.`},
+		{"a line moves beside an untagged one that moves nothing", []Package{raises, still("curry", true)}, "may be missing from what each headline says, so treat each as a floor rather than the answer."},
+		{"a line moves beside a tagged one that moves nothing", []Package{raises, still("curry", false)}, "may be missing from the figures above, so treat each as a floor rather than the answer."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Render(Input{Participating: len(tc.lines) + 1, OffLine: 1, PRShort: short, Packages: tc.lines})
+			if !strings.Contains(got, lead+tc.want+"\n") {
+				t.Errorf("the PR-side caveat must end\n  %q\ngot:\n%s", tc.want, got)
+			}
+		})
+	}
+}

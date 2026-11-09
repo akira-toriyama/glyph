@@ -44,10 +44,12 @@ func pullsRoutes(t *testing.T, dir string, routes map[string]string) map[string]
 // re-run refused again, for the root line, naming nothing (review of #361,
 // measured 2026-11-08). A locked line's own first release is its major's
 // floor: named pubsub/vX.Y.Z, the operator's pubsub/v1.5.0 lands on the free
-// pubsub line and the re-run refuses again (measured 2026-11-09). Every
-// shape is run end to end: the refusal, the advice followed, the re-run
-// answering. Mutation rows preview-cap-escape-names-a-tag-nobody-named and
-// preview-cap-escape-sends-a-locked-line-to-the-free-line.
+// pubsub line and the re-run refuses again (measured 2026-11-09). Two
+// baselines and two hand releases are each said in the plural. Every shape
+// is run end to end: the refusal, the advice followed, the re-run
+// answering. Mutation rows preview-cap-escape-names-a-tag-nobody-named,
+// preview-cap-escape-sends-a-locked-line-to-the-free-line and
+// preview-cap-escape-disagrees-in-number.
 func TestPreviewPackagesCapRefusalNamesAnEscapeForEveryUntaggedLine(t *testing.T) {
 	const noFlag = "re-run — preview reads the pull request, and has no --since-tag flag to name a base with"
 	t.Run("a baselined line beside a root-declared one", func(t *testing.T) {
@@ -165,6 +167,97 @@ func TestPreviewPackagesCapRefusalNamesAnEscapeForEveryUntaggedLine(t *testing.T
 			t.Fatalf("after cutting pubsub/v2.0.0 preview exited %d, want 0 with the v2 line previewed\nstdout: %s\nstderr: %s", code, stdout, stderr)
 		}
 	})
+
+	t.Run("two baselined lines beside two root-declared ones", func(t *testing.T) {
+		dir := testutil.NewPackagesRepo(t, "\n[[packages]]\npath = \"haiku\"\n\n[[packages]]\npath = \"curry\"\n\n[[packages]]\npath = \"fish\"\n",
+			map[string]string{"haiku/haiku.go": "package haiku\n", "curry/curry.go": "package curry\n", "fish/fish.go": "package fish\n"})
+		first := testutil.Git(t, dir, "akira-toriyama", "rev-list", "--max-parents=0", "HEAD")
+		testutil.Git(t, dir, "akira-toriyama", "reset", "-q", "--soft", first)
+		testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", ":tada:= begin with three lines")
+		root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0") // curry and fish never released
+		before := map[string]string{}
+		for _, l := range []string{"eel", "gar"} {
+			before[l] = testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+			appendTo(t, dir, "glyph.toml", "\n[[packages]]\npath = \""+l+"\"\n")
+			testutil.WriteFile(t, dir, l+"/"+l+".go", "package "+l+"\n")
+			testutil.Git(t, dir, "akira-toriyama", "add", ".")
+			testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "-m", ":sparkles:("+l+")^ declare "+l)
+		}
+		for i := range 200 {
+			testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= note %d", i))
+		}
+		routes := map[string]string{
+			pullCommitsPath(9): `[` +
+				apiCommit("h1", "akira-toriyama", ":sparkles:(haiku)^ add a season") + `,` +
+				apiCommit("c1", "akira-toriyama", ":bug:~ swap an ingredient") + `,` +
+				apiCommit("f1", "akira-toriyama", ":bug:~ feed the fish") + `,` +
+				apiCommit("e1", "akira-toriyama", ":bug:~ feed the eel") + `,` +
+				apiCommit("g1", "akira-toriyama", ":bug:~ feed the gar") + `]`,
+			commitFilesPath("h1"): apiFiles("haiku/season.go"),
+			commitFilesPath("c1"): apiFiles("curry/curry.go"),
+			commitFilesPath("f1"): apiFiles("fish/fish.go"),
+			commitFilesPath("e1"): apiFiles("eel/eel.go"),
+			commitFilesPath("g1"): apiFiles("gar/gar.go"),
+		}
+		usePR(t, walkServer(t, pullsRoutes(t, dir, routes)))
+		t.Chdir(dir)
+
+		code, stdout, stderr := runGlyph(t, "preview", "--pr", "9", "--json")
+		if code != 4 {
+			t.Fatalf("preview exited %d, want 4 — 203 commits are past the cap\nstdout: %s\nstderr: %s", code, stdout, stderr)
+		}
+		out := stdout + stderr
+		for _, want := range []string{
+			"; to start from a tag instead, cut eel/v0.0.0 / gar/v0.0.0, each at the commit before its line's first change",
+			"; cut the tags named above, and release the line(s) by hand (cut curry/vX.Y.Z / fish/vX.Y.Z, each at the commit its release covers — the one floor a line with no baseline can take), then " + noFlag,
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("the refusal must carry\n  %q\ngot:\n%s", want, out)
+			}
+		}
+
+		testutil.Git(t, dir, "akira-toriyama", "tag", "eel/v0.0.0", before["eel"])
+		testutil.Git(t, dir, "akira-toriyama", "tag", "gar/v0.0.0", before["gar"])
+		testutil.Git(t, dir, "akira-toriyama", "tag", "curry/v0.1.0", root)
+		testutil.Git(t, dir, "akira-toriyama", "tag", "fish/v0.1.0", root)
+		code, stdout, stderr = runGlyph(t, "preview", "--pr", "9")
+		if code != 0 {
+			t.Fatalf("after following the refusal's advice preview exited %d, want 0\nstderr: %s", code, stderr)
+		}
+		for _, want := range []string{"**haiku/v0.1.0 → haiku/v0.2.0**", "**curry/v0.1.0 → curry/v0.1.1**", "**fish/v0.1.0 → fish/v0.1.1**", "the next release stays **eel/v0.1.0** (a **minor** bump is already pending)", "the next release stays **gar/v0.1.0** (a **minor** bump is already pending)"} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("the re-run must preview every line, with\n  %q\ngot:\n%s", want, stdout)
+			}
+		}
+	})
+}
+
+// TestPreviewWalkEscapeAgreesInNumber: each half of preview's escape agrees
+// in number with the lines it names, as the walk's remedy before it does.
+// The singular said of two read "cut the tag named above" right after "cut
+// curry/v0.0.0 / fish/v0.0.0, each at the commit before its line's first
+// change", and "cut curry/vX.Y.Z / fish/vX.Y.Z at the commit that release
+// covers", one commit for two releases (measured 2026-11-09). Mutation row
+// preview-cap-escape-disagrees-in-number.
+func TestPreviewWalkEscapeAgreesInNumber(t *testing.T) {
+	const tail = "re-run — preview reads the pull request, and has no --since-tag flag to name a base with"
+	const floor = " — the one floor a line with no baseline can take)"
+	for _, tc := range []struct {
+		baselines, unbaselined []string
+		want                   string
+	}{
+		{[]string{"eel/v0.0.0"}, nil, "; cut the tag named above and " + tail},
+		{[]string{"eel/v0.0.0", "gar/v0.0.0"}, nil, "; cut the tags named above and " + tail},
+		{nil, []string{"curry/vX.Y.Z"}, "; release the line(s) by hand (cut curry/vX.Y.Z at the commit that release covers" + floor + " and " + tail},
+		{nil, []string{"curry/vX.Y.Z", "fish/vX.Y.Z"}, "; release the line(s) by hand (cut curry/vX.Y.Z / fish/vX.Y.Z, each at the commit its release covers" + floor + " and " + tail},
+		{[]string{"eel/v0.0.0"}, []string{"curry/vX.Y.Z"}, "; cut the tag named above, and release the line(s) by hand (cut curry/vX.Y.Z at the commit that release covers" + floor + ", then " + tail},
+		{[]string{"eel/v0.0.0", "gar/v0.0.0"}, []string{"curry/vX.Y.Z", "fish/vX.Y.Z"}, "; cut the tags named above, and release the line(s) by hand (cut curry/vX.Y.Z / fish/vX.Y.Z, each at the commit its release covers" + floor + ", then " + tail},
+	} {
+		if got := previewWalkEscape(tc.baselines, tc.unbaselined); got != tc.want {
+			t.Errorf("previewWalkEscape(%q, %q)\n got: %s\nwant: %s", tc.baselines, tc.unbaselined, got, tc.want)
+		}
+	}
 }
 
 // TestPreviewPackagesUntaggedLineSpeaksOfTheLine: a walked line with no tag
@@ -365,5 +458,62 @@ func TestPreviewOnAShallowCheckoutPRCaveatNamesNoFigure(t *testing.T) {
 	}
 	if strings.Contains(stdout, "figure") {
 		t.Errorf("a caveat qualifies a figure no headline carries:\n%s", stdout)
+	}
+}
+
+// TestPreviewPRCaveatOnAFullCheckoutNamesNoFigure is the command half of
+// TestRenderPackagesPRShortNamesNoFigureNoHeadlineCarries. On a full
+// checkout a pull with a commit whose file listing GitHub answered 422 for
+// posted "may be missing from the figures above" under headlines that carry
+// none. That held in every shape measured (2026-11-09): the walk skipped or
+// run, untagged curry moving nothing alone or beside haiku, and a tagged
+// haiku alone. The caveat makes a floor of "moves nothing" when no
+// line moves, and qualifies what each headline says beside curry's headline,
+// which names no version. Mutation rows
+// preview-pr-caveat-points-at-figures-no-line-moves and
+// preview-pr-caveat-points-at-a-version-an-untagged-line-lacks.
+func TestPreviewPRCaveatOnAFullCheckoutNamesNoFigure(t *testing.T) {
+	const curry = "\n**curry** — ⏸️ Merging this PR moves nothing — and this line has no release tag yet, so there is no version to move.\n"
+	const haiku = "\n**haiku** — ⏸️ Merging this PR moves nothing — and nothing release-worthy is pending since **haiku/v0.1.0**.\n"
+	const floor = "(u1). A line one of those commits touches in files GitHub did not list may move all the same, so treat \"moves nothing\" as a floor rather than the answer.\n"
+	const each = "(u1). A line one of those commits touches in files GitHub did not list may be missing from what each headline says, so treat each as a floor rather than the answer.\n"
+	tidyCurry := apiCommit("c1", "akira-toriyama", ":memo:= document the curry")
+	tidyHaiku := apiCommit("h1", "akira-toriyama", ":memo:= tidy the season")
+	for _, tc := range []struct {
+		name string
+		tags []string
+		pull []string
+		want []string
+	}{
+		{"the walk skipped: an untagged line alone moves nothing", []string{"haiku/v0.1.0"}, []string{tidyCurry}, []string{curry, floor}},
+		{"the walk run: a tagged and an untagged line move nothing", []string{"haiku/v0.1.0"}, []string{tidyHaiku, tidyCurry}, []string{haiku, curry, floor}},
+		{"a tagged line alone moves nothing", []string{"haiku/v0.1.0", "curry/v0.1.0"}, []string{tidyHaiku}, []string{haiku, floor}},
+		{"a line moves beside an untagged one that moves nothing", []string{"haiku/v0.1.0"}, []string{apiCommit("h1", "akira-toriyama", ":sparkles:(haiku)^ add a season"), tidyCurry}, []string{"**haiku/v0.1.0 → haiku/v0.2.0**", curry, each}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := testutil.NewTwoLineRepo(t)
+			for _, tag := range tc.tags {
+				testutil.Git(t, dir, "akira-toriyama", "tag", tag)
+			}
+			usePR(t, walkServer(t, pullsRoutes(t, dir, map[string]string{
+				pullCommitsPath(9):    "[" + strings.Join(tc.pull, ",") + "," + apiCommit("u1", "akira-toriyama", ":bug:~ fix what GitHub would not list") + "]",
+				commitFilesPath("h1"): apiFiles("haiku/season.go"),
+				commitFilesPath("c1"): apiFiles("curry/curry.go"),
+				commitFilesPath("u1"): apiUnknownSHA,
+			})))
+			t.Chdir(dir)
+			code, stdout, stderr := runGlyph(t, "preview", "--pr", "9")
+			if code != 0 {
+				t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(stdout, want) {
+					t.Errorf("the body must carry\n  %q\ngot:\n%s", want, stdout)
+				}
+			}
+			if strings.Contains(stdout, "figure") {
+				t.Errorf("a caveat qualifies a figure no headline carries:\n%s", stdout)
+			}
+		})
 	}
 }

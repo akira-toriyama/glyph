@@ -77,17 +77,28 @@ type previewOptions struct {
 // at hand: "cut the tag named above" over a refusal that named none dangled,
 // and following it on a mixed pull cleared nothing — the re-run refused
 // again, for the root-declared line, naming nothing (measured 2026-11-08 on
-// a camp/travel/fish fixture past the cap).
+// a camp/travel/fish fixture past the cap). Each half agrees in number with
+// the lines it names, as the remedy before it does ("cut a / b, each at the
+// commit before its line's first change"): the singular said of two read
+// "cut the tag named above" under that remedy, and "cut a / b at the commit
+// that release covers", one commit for two releases (measured 2026-11-09).
 func previewWalkEscape(baselines, unbaselined []string) string {
 	const tail = "re-run — preview reads the pull request, and has no --since-tag flag to name a base with"
-	byHand := fmt.Sprintf("release the line(s) by hand (cut %s at the commit that release covers — the one floor a line with no baseline can take)", strings.Join(unbaselined, " / "))
+	named, covers := "the tag named above", " at the commit that release covers"
+	if len(baselines) > 1 {
+		named = "the tags named above"
+	}
+	if len(unbaselined) > 1 {
+		covers = ", each at the commit its release covers"
+	}
+	byHand := fmt.Sprintf("release the line(s) by hand (cut %s%s — the one floor a line with no baseline can take)", strings.Join(unbaselined, " / "), covers)
 	switch {
 	case len(unbaselined) == 0:
-		return "; cut the tag named above and " + tail
+		return "; cut " + named + " and " + tail
 	case len(baselines) == 0:
 		return "; " + byHand + " and " + tail
 	default:
-		return "; cut the tag named above, and " + byHand + ", then " + tail
+		return "; cut " + named + ", and " + byHand + ", then " + tail
 	}
 }
 

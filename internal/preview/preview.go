@@ -357,16 +357,24 @@ func Render(in Input) string {
 func renderPackages(in Input) string {
 	var b strings.Builder
 	b.WriteString(Marker + "\n")
-	unreached := false
+	// Each caveat reads every headline, never the last one alone: unreached
+	// for pendingShortBlock, figures and versionless for prShortBlock.
+	unreached, figures, versionless := false, false, false
 	for _, p := range in.Packages {
-		// A line with no tag renders its first release whether or not its
-		// pending side was walked (untaggedHeadline); PendingWalked decides
-		// the footer's sentence about what was folded in, not the headline.
+		// A line with no tag names its first release whether or not its
+		// pending side was walked (untaggedHeadline), and no version on a
+		// shallow checkout (shallowHeadline) or when it moves nothing;
+		// PendingWalked decides the footer's sentence about what was folded
+		// in, not the headline.
 		fmt.Fprintf(&b, "**%s** — %s\n", p.Path, headlineOf(Input{Current: p.Current, Untagged: p.Untagged, Shallow: in.Shallow, PR: p.PR, Pending: p.Pending}, true))
+		// headlineOf's "moves nothing" arm, tagged or not: both sides rank none.
+		still := rank(p.PR.Level) == 0 && rank(p.Pending.Level) == 0
 		unreached = unreached || (in.Shallow && p.Untagged)
+		figures = figures || !still
+		versionless = versionless || (p.Untagged && (in.Shallow || still))
 	}
 	b.WriteString(pendingShortBlock(in.PendingShort, true, unreached))
-	b.WriteString(prShortBlock(in.PRShort, true, unreached))
+	b.WriteString(prShortBlock(in.PRShort, figures, versionless))
 	for _, p := range in.Packages {
 		if len(p.PR.Commits) == 0 {
 			continue
@@ -450,19 +458,22 @@ func notesDetails(notes string) string {
 // prShortBlock is the caveat both packages bodies place under their headline
 // when PRShort is set, and "" when it is not: a pull whose one unlisted
 // commit was attributed to no line is exactly the body that must carry it.
-// figures says whether the body carries figures for the caveat to
-// make floors of: the headlines do, the "moves nothing" sentence does not,
-// and a caveat pointing at "the figures above" there points at nothing.
-// unreached is pendingShortBlock's: a headline above names no figure, its
-// line having no release tag within a shallow checkout's reach, so the
-// caveat qualifies what each headline says — "the figures above" there
-// pointed at figures no headline carried (measured 2026-11-09, a --depth 3
-// clone and a pull commit whose listing GitHub answered 422 for). The
-// sentence names no cause — PRShort already names the cause, and GitHub's 422
-// cuts a listing short below the cap too (t-esm5) — and says a line MAY be
-// missing, the walk's own word: a scope can carry a commit onto the very line
-// its unlisted files touch.
-func prShortBlock(short string, figures, unreached bool) string {
+// figures says a line above moves, so the body can carry figures for the
+// caveat to make floors of. Where nothing moves — RenderNoLine's sentence,
+// or a packages body whose every headline moves nothing — the caveat makes
+// a floor of "moves nothing" instead, since "the figures above" would point
+// at nothing. versionless says a headline above names no version — its line
+// has no release tag within a shallow checkout's reach (shallowHeadline),
+// or has none at all and moves nothing ("there is no version to move") — so
+// the caveat qualifies what each headline says. Under either, "the figures
+// above" pointed at figures no headline carried (measured 2026-11-09, a
+// pull commit whose listing GitHub answered 422 for, on a --depth 3 clone
+// and on a full checkout beside a `=` on an untagged line).
+// The sentence names no cause — PRShort already names the cause, and
+// GitHub's 422 cuts a listing short below the cap too (t-esm5) — and says a
+// line MAY be missing, the walk's own word: a scope can carry a commit onto
+// the very line its unlisted files touch.
+func prShortBlock(short string, figures, versionless bool) string {
 	if short == "" {
 		return ""
 	}
@@ -470,7 +481,7 @@ func prShortBlock(short string, figures, unreached bool) string {
 	switch {
 	case !figures:
 		floor = `may move all the same, so treat "moves nothing" as a floor rather than the answer`
-	case unreached:
+	case versionless:
 		floor = "may be missing from what each headline says, so treat each as a floor rather than the answer"
 	}
 	return fmt.Sprintf("\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: %s. A line one of those commits touches in files GitHub did not list %s.\n", short, floor)

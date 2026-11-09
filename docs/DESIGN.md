@@ -3281,7 +3281,18 @@ commit(s)" in a pull of three and "its 0 commit(s)" in a pull of two, a count
 that reads as a miscount of the pull. The count is the footer's alone
 (`preview.RenderNoLine`, the body moved beside the others so its prose is
 unit-tested with theirs; `TestRenderNoLine`, mutation row
-`preview-moves-nothing-counts-the-pulls-commits`). The pending
+`preview-moves-nothing-counts-the-pulls-commits`). Under touched lines the
+PR-side caveat makes the same floor of "moves nothing" when every headline
+moves nothing, on a full checkout or a shallow one, and qualifies what each
+headline says when one names no version: a line with no release tag that
+moves nothing ("there is no version to move"), or one with none within a
+shallow checkout's reach (below). It said "may be missing from the figures
+above" under those headlines (measured 2026-11-09, a pull commit whose
+listing GitHub answered 422 for;
+`TestRenderPackagesPRShortNamesNoFigureNoHeadlineCarries`,
+`TestPreviewPRCaveatOnAFullCheckoutNamesNoFigure`; mutation rows
+`preview-pr-caveat-points-at-figures-no-line-moves`,
+`preview-pr-caveat-points-at-a-version-an-untagged-line-lacks`). The pending
 side is the one walk, run when any touched line has a release tag (the
 release-floor guard per line), and its RANGE is resolved over the TOUCHED
 lines alone —

@@ -268,3 +268,37 @@ func TestRenderShallowWalkedLine(t *testing.T) {
 		t.Errorf("the walked untagged line names a version off an unconfirmed floor, or is called untagged on the base branch:\n%s", got)
 	}
 }
+
+// TestRenderShallowCaveatsReadEveryHeadline: each caveat reads every
+// headline above it, never the last one alone. curry, untagged within the
+// reach and moving, is declared BEFORE haiku, tagged and moving nothing.
+// Read off the last headline, both caveats said "the figures above" under
+// curry's headline, which names none, and the PR side's also made a floor
+// of "moves nothing" beside curry's patch (measured 2026-11-09 with the
+// accumulation reading the last line, which every other test survived by
+// declaring the untagged line last). Mutation row
+// preview-caveats-read-the-last-headline-alone.
+func TestRenderShallowCaveatsReadEveryHeadline(t *testing.T) {
+	const short = "this is a shallow checkout, so git cannot tell a commit that never landed on the released branch from one it does not have (check out with fetch-depth: 0)"
+	got := Render(Input{Participating: 3, OffLine: 1, Shallow: true, PendingShort: short,
+		PRShort: "GitHub answered 422 for the file listing of 1 commit(s), so a line they touch in files it did not list could not be read (u1)",
+		Packages: []Package{
+			{Path: "curry", Current: "curry/v0.0.0", Untagged: true, PendingWalked: true,
+				PR: Verdict{Level: bump.LevelPatch, Next: "curry/v0.0.1", Commits: []Commit{{Sigil: "~", Level: bump.LevelPatch, Subject: "swap an ingredient"}}}, Pending: Verdict{Level: bump.LevelNone}},
+			{Path: "haiku", Current: "haiku/v0.1.0", PendingWalked: true,
+				PR: Verdict{Level: bump.LevelNone, Commits: []Commit{{Sigil: "=", Level: bump.LevelNone, Subject: "tidy the season"}}}, Pending: Verdict{Level: bump.LevelNone}},
+		}})
+	for _, want := range []string{
+		"**curry** — 🔧 Merging this PR raises **patch** — no release tag on this line is within this shallow checkout's reach, so the release it lands in cannot be named here.\n",
+		"**haiku** — ⏸️ Merging this PR moves nothing — and nothing release-worthy is pending since **haiku/v0.1.0**.\n",
+		"Anything already merged but unreleased may be missing from what each headline says, and so may the release tag a line with none within reach would step from, so treat each as a floor rather than the answer.\n",
+		"(u1). A line one of those commits touches in files GitHub did not list may be missing from what each headline says, so treat each as a floor rather than the answer.\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the body must carry\n  %q\ngot:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "figure") || strings.Contains(got, `"moves nothing" as a floor`) {
+		t.Errorf("a caveat was read off the last headline alone:\n%s", got)
+	}
+}

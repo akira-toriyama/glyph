@@ -1,13 +1,13 @@
 diff --git a/internal/preview/preview.go b/internal/preview/preview.go
-index 7a67357..4136483 100644
+index 7a4e6c1..009c506 100644
 --- a/internal/preview/preview.go
 +++ b/internal/preview/preview.go
-@@ -470,7 +470,7 @@ func prShortBlock(short string, figures, unreached bool) string {
+@@ -481,7 +481,7 @@ func prShortBlock(short string, figures, versionless bool) string {
  	switch {
  	case !figures:
  		floor = `may move all the same, so treat "moves nothing" as a floor rather than the answer`
--	case unreached:
-+	case unreached && false:
+-	case versionless:
++	case versionless && false:
  		floor = "may be missing from what each headline says, so treat each as a floor rather than the answer"
  	}
  	return fmt.Sprintf("\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: %s. A line one of those commits touches in files GitHub did not list %s.\n", short, floor)

@@ -1,13 +1,13 @@
 diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
-index 9118484..3e5ba9f 100644
+index 51d2cc8..b7b1d3b 100644
 --- a/internal/cli/cmd_preview.go
 +++ b/internal/cli/cmd_preview.go
-@@ -82,7 +82,7 @@ func previewWalkEscape(baselines, unbaselined []string) string {
- 	const tail = "re-run — preview reads the pull request, and has no --since-tag flag to name a base with"
- 	byHand := fmt.Sprintf("release the line(s) by hand (cut %s at the commit that release covers — the one floor a line with no baseline can take)", strings.Join(unbaselined, " / "))
+@@ -93,7 +93,7 @@ func previewWalkEscape(baselines, unbaselined []string) string {
+ 	}
+ 	byHand := fmt.Sprintf("release the line(s) by hand (cut %s%s — the one floor a line with no baseline can take)", strings.Join(unbaselined, " / "), covers)
  	switch {
 -	case len(unbaselined) == 0:
 +	case false:
- 		return "; cut the tag named above and " + tail
+ 		return "; cut " + named + " and " + tail
  	case len(baselines) == 0:
  		return "; " + byHand + " and " + tail
