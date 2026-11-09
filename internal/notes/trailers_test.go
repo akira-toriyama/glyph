@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/akira-toriyama/glyph/v6/internal/config"
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
@@ -183,6 +184,26 @@ func TestTrailers(t *testing.T) {
 			name: "a token holding a non-ASCII letter voids the block",
 			msg:  "subject\n\nbody\n\nRévisé: a reason\nCo-authored-by: A B <a@b.c>",
 			want: nil,
+		},
+		{
+			name: "a token holding an underscore voids the block",
+			msg:  "subject\n\nbody\n\nWhy_not: a reason\nCo-authored-by: A B <a@b.c>",
+			want: nil,
+		},
+		{
+			name: "a token holding a dot voids the block",
+			msg:  "subject\n\nbody\n\nRef.: a reason\nCo-authored-by: A B <a@b.c>",
+			want: nil,
+		},
+		{
+			name: "a hyphen and a digit are token bytes",
+			msg:  "subject\n\nbody\n\nFix-1: a reason\nCo-authored-by: A B <a@b.c>",
+			want: []trailer{{"Fix-1", "a reason"}, {"Co-authored-by", "A B <a@b.c>"}},
+		},
+		{
+			name: "a token of digits alone is a token",
+			msg:  "subject\n\nbody\n\n123: a reason\nCo-authored-by: A B <a@b.c>",
+			want: []trailer{{"123", "a reason"}, {"Co-authored-by", "A B <a@b.c>"}},
 		},
 		{
 			name: "a colon opening :// straight after the token is no separator (git 2.56.0's URL rule), so the line is prose and voids the block",
@@ -430,7 +451,7 @@ func majorMinor(v string) (major, minor int, ok bool) {
 func urlRuleLine(msg string) bool {
 	for l := range strings.SplitSeq(msg, "\n") {
 		i := 0
-		for i < len(l) && isTokenByte(l[i]) {
+		for i < len(l) && config.IsTrailerTokenByte(l[i]) {
 			i++
 		}
 		if i > 0 && strings.HasPrefix(l[i:], "://") {
