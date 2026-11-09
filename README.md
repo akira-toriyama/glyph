@@ -98,6 +98,9 @@ variable set (a laptop) nothing is judged and the run says so.
 brew install akira-toriyama/tap/glyph
 ```
 
+The cask needs Homebrew 7.0.11 or later (GoReleaser 2.20 writes `zap :not_required`,
+which an older brew refuses to load — 6.0.13 measured 2026-11-08); `brew update` gets there.
+
 **Prebuilt binaries** — every [release](https://github.com/akira-toriyama/glyph/releases)
 ships `linux`/`darwin` × `amd64`/`arm64` tarballs with `checksums.txt` and a
 build-provenance attestation you can verify:
