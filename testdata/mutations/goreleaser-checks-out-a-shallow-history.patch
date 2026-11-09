@@ -1,0 +1,8 @@
+diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
+index 9e18c30..95a15e1 100644
+--- a/.github/workflows/goreleaser.yml
++++ b/.github/workflows/goreleaser.yml
+@@ -79,3 +79,2 @@ jobs:
+         with:
+-          fetch-depth: 0
+           # GoReleaser only READs local git; every write (release, cask push)

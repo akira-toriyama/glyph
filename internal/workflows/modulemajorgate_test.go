@@ -46,23 +46,27 @@ func TestReleaseRefusesATagWhoseMajorTheModulePathDoesNotCarry(t *testing.T) {
 	if shape.keys["shell"] == "bash" {
 		shell = bashShell
 	}
-	env := func(tag string) []string {
-		return []string{"PATH=" + os.Getenv("PATH"), "GITHUB_REF_NAME=" + tag}
+	env := func(tag, outputs string) []string {
+		return []string{"PATH=" + os.Getenv("PATH"), "GITHUB_REF_NAME=" + tag, "GITHUB_OUTPUT=" + outputs}
 	}
 
+	// prerelease is what the step writes to GITHUB_OUTPUT for the cask job on
+	// a tag it parsed; "" on a refusal before the parse.
 	cases := []struct {
-		name   string
-		tag    string
-		module string // go.mod's module path; "" writes a go.mod with no module line
-		exit   int
+		name       string
+		tag        string
+		module     string // go.mod's module path; "" writes a go.mod with no module line
+		exit       int
+		prerelease string
 	}{
-		{"v6.0.1 over /v6 passes", "v6.0.1", "github.com/akira-toriyama/glyph/v6", 0},
-		{"a release candidate names its release's major", "v6.0.1-rc.1", "github.com/akira-toriyama/glyph/v6", 0},
-		{"v1.2.3 over no suffix passes", "v1.2.3", "github.com/akira-toriyama/glyph", 0},
-		{"v6.0.0 over /v5 is refused, the shipped miss", "v6.0.0", "github.com/akira-toriyama/glyph/v5", 1},
-		{"v2.0.0 over no suffix is refused, #222's miss", "v2.0.0", "github.com/akira-toriyama/glyph", 1},
-		{"a ref that is not a version tag is refused", "main", "github.com/akira-toriyama/glyph/v6", 1},
-		{"a go.mod with no module line is refused", "v6.0.1", "", 1},
+		{"v6.0.1 over /v6 passes", "v6.0.1", "github.com/akira-toriyama/glyph/v6", 0, "prerelease=false\n"},
+		{"a release candidate names its release's major", "v6.0.1-rc.1", "github.com/akira-toriyama/glyph/v6", 0, "prerelease=true\n"},
+		{"v1.2.3 over no suffix passes", "v1.2.3", "github.com/akira-toriyama/glyph", 0, "prerelease=false\n"},
+		{"build metadata alone is no release candidate", "v1.2.3+build-7", "github.com/akira-toriyama/glyph", 0, "prerelease=false\n"},
+		{"v6.0.0 over /v5 is refused, the shipped miss", "v6.0.0", "github.com/akira-toriyama/glyph/v5", 1, "prerelease=false\n"},
+		{"v2.0.0 over no suffix is refused, #222's miss", "v2.0.0", "github.com/akira-toriyama/glyph", 1, "prerelease=false\n"},
+		{"a ref that is not a version tag is refused", "main", "github.com/akira-toriyama/glyph/v6", 1, ""},
+		{"a go.mod with no module line is refused", "v6.0.1", "", 1, "prerelease=false\n"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -76,7 +80,8 @@ func TestReleaseRefusesATagWhoseMajorTheModulePathDoesNotCarry(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(gomod), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			run := runStep(t, script, shell, dir, env(c.tag))
+			outputs := filepath.Join(dir, "github-output")
+			run := runStep(t, script, shell, dir, env(c.tag, outputs))
 			if run.exit != c.exit {
 				t.Fatalf("exit %d, want %d\n%s", run.exit, c.exit, run)
 			}
@@ -84,6 +89,11 @@ func TestReleaseRefusesATagWhoseMajorTheModulePathDoesNotCarry(t *testing.T) {
 			// summary says which coordinate is wrong without opening the step.
 			if c.exit != 0 && (!strings.Contains(run.stdout, "::error::") || !strings.Contains(run.stdout, c.tag)) {
 				t.Errorf("no ::error:: line names %s\n%s", c.tag, run)
+			}
+			// The cask job stays off the tap on a release candidate by this one
+			// word; the tag grammar is stated once, here.
+			if got := readIfAny(t, outputs); got != c.prerelease {
+				t.Errorf("GITHUB_OUTPUT holds %q, want %q", got, c.prerelease)
 			}
 		})
 	}
@@ -96,7 +106,7 @@ func TestReleaseRefusesATagWhoseMajorTheModulePathDoesNotCarry(t *testing.T) {
 	if major == nil {
 		t.Fatalf("go.mod's module path %q carries no /vN; TestModulePathCarriesTheMajorAndReadmeSpellsIt holds that", path)
 	}
-	run := runStep(t, script, shell, filepath.Join("..", ".."), env("v"+major[1]+".0.0"))
+	run := runStep(t, script, shell, filepath.Join("..", ".."), env("v"+major[1]+".0.0", filepath.Join(t.TempDir(), "github-output")))
 	if run.exit != 0 {
 		t.Errorf("over this tree's go.mod (%s) a v%s.0.0 tag is refused (exit %d); the step no longer reads "+
 			"the module line as the file writes it\n%s", path, major[1], run.exit, run)
