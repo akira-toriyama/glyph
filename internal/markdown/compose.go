@@ -116,17 +116,17 @@ func (l *Line) Prose(s string) {
 }
 
 // Mention appends the author credit the caller MEANS to page (DESIGN §3 holds
-// the ruling and its measurements, t-39fy): login is the GitHub account that
-// authored the commit as GitHub established it — the API's author.login or
-// a noreply address — and name is git's free-text %an. The template's
-// literal at-sign plus the LOGIN renders as a live @mention instead of being
-// fenced: the one deliberate hole in the fence, gated twice. By identity: an
-// empty login is the statement that nobody established one, and the name is
-// never promoted to stand in for it, because a name is not a login and no
-// shape tells them apart. And by shape, still: a login goes live only when it
-// is exactly one GitHub-handle-shaped token (alphanumerics and interior
-// hyphens), so "dependabot[bot]" and an empty resolve cannot open the hole
-// either.
+// the ruling and its measurements, t-39fy, t-ayhq): login is the GitHub
+// account that authored the commit as GitHub established it — the API's
+// author.login, and nothing read out of the commit itself — and name is
+// git's free-text %an. The template's literal at-sign plus the LOGIN renders
+// as a live @mention instead of being fenced: the one deliberate hole in the
+// fence, gated twice. By identity: an empty login is the statement that
+// GitHub attached none, and the name is never promoted to stand in for it,
+// because a name is not a login and no shape tells them apart. And by shape,
+// still: a login goes live only when it is exactly one GitHub-handle-shaped
+// token (alphanumerics and interior hyphens), so "dependabot[bot]" and an
+// empty resolve cannot open the hole either.
 //
 // A credit that cannot go live is written as prose, by NAME, and the
 // at-sign the caller wrote directly before it is dropped: "@Robert Pająk"

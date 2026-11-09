@@ -1,0 +1,13 @@
+diff --git a/internal/cleanup/cleanup.go b/internal/cleanup/cleanup.go
+index bc1526b..5fac43b 100644
+--- a/internal/cleanup/cleanup.go
++++ b/internal/cleanup/cleanup.go
+@@ -261,7 +261,7 @@ func stripspace(message, comment string) string {
+ 		if comment != "" && strings.HasPrefix(line, comment) {
+ 			continue
+ 		}
+-		trimmed := strings.TrimRight(line, " \t\r")
++		trimmed := strings.TrimRight(line, " \t\r\v\f")
+ 		if trimmed == "" {
+ 			blank = true
+ 			continue

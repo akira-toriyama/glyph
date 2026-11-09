@@ -663,8 +663,9 @@ commit-msg hook, still holding the editor template, the status block and, under
 `commit.verbose`, a scissors line with the whole diff) to the message git will
 actually record. Only the authoring path (`--stdin`, and doctor's replay of
 it) calls it: a `--range` walk reads messages git has already cleaned (all but
-the closing newline git records them with, which `gitsource` strips — DESIGN
-§2.1), and running it there would swallow a genuinely empty message and any
+the closing newline git records them with, which `gitsource` strips from
+`Message` and keeps in `Recorded` for the trailer parser alone — DESIGN §2.1
+and §3), and running it there would swallow a genuinely empty message and any
 body line starting with `#`.
 `internal/cleanup/cleanup.go: Apply`
 
@@ -1008,8 +1009,17 @@ Stands down on its own when every changed line of the distribution-layer
 files is a SHA-pinned `uses:` step put back as the same line at another SHA —
 dependabot's bump, which no text assertion can express and no bot can waive
 (six bot pulls went red before the gate learned the shape). Waived by a
-`Dist-gate-exempt: <reason>` git trailer on every non-merge commit, go-bite's
-exact shape. `scripts/dist-gate.sh` (`pin_swaps` is the stand-down),
+`Dist-gate-exempt: <reason>` git trailer on every non-merge commit, stating a
+real reason (an empty one or the `<reason>` placeholder is refused) — go-bite's
+`Bite-exempt:` shape, but not its reader. dist-gate takes the trailer block
+git's commit reader reports, the one closing the message (`%(trailers)`, DESIGN
+§3); go-bite reads `git interpret-trailers --parse`, which stops at the first
+`---` line and takes the block closing the text above it. So a body holding a
+`---` line can waive one gate and not the other: a trailer below the line
+waives dist-gate and not bite, one just above it bite and not dist-gate
+(measured 2026-11-09 with go-bite's line at the hub's v2, the tag
+`build.yml` pins, under git 2.54.0 and 2.56.0). `scripts/dist-gate.sh`
+(`pin_swaps` is the stand-down),
 `.github/workflows/build.yml` (the `dist-gate` job),
 `internal/workflows/distgate_test.go`
 

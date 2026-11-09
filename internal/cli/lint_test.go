@@ -945,6 +945,30 @@ func TestLintRangeWarnsOnAWarnedPatternAndStaysGreen(t *testing.T) {
 	}
 }
 
+// TestLintStdinWarnsOnAnUnknownCommitCleanup: lint --help promises that
+// --stdin says so when commit.cleanup names a mode git does not know, and
+// lints the message under default. The warning is the only trace of a hook
+// judging under a mode the author did not configure — git refuses the value
+// for a plain commit, but a `--cleanup=` override on the command line gets
+// past it and the hook runs (cmd_lint.go) — so its absence is a verdict with
+// no explanation. The verdict stays 0: the hook forwards the gate code alone,
+// and refusing here would leave exactly those commits unlinted.
+func TestLintStdinWarnsOnAnUnknownCommitCleanup(t *testing.T) {
+	dir := testutil.NewRepo(t)
+	testutil.Git(t, dir, "akira-toriyama", "config", "commit.cleanup", "bogus")
+	t.Chdir(dir)
+	setStdin(t, ":bug:~ fix the thing\n")
+
+	code, stdout, stderr := runGlyph(t, "lint", "--stdin")
+	if code != int(core.CodeOK) || stdout != "" {
+		t.Fatalf("lint --stdin exited %d with stdout %q, want 0 and nothing: an unknown mode is a warning, never a refusal\nstderr: %s", code, stdout, stderr)
+	}
+	const want = `::warning::glyph: commit.cleanup="bogus" is not a mode git knows; linting this message as if it were 'default'`
+	if !strings.Contains(stderr, want) {
+		t.Fatalf("stderr lacks the warning lint --help promises:\n want %q\n got  %q", want, stderr)
+	}
+}
+
 // TestLintStdinWarnsOnAWarnedPattern is the authoring half of the same pin:
 // the hook path surfaces the warning at commit time, where acting on it
 // costs one edit instead of a rebase.

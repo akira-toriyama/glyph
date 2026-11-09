@@ -3,6 +3,7 @@ package hook
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -243,6 +244,39 @@ func TestInstallRefusesAForeignHook(t *testing.T) {
 	}
 	if got := readHook(t, dir); got != foreign {
 		t.Error("foreign hook was modified despite the refusal")
+	}
+}
+
+// TestInstallWritesNothingWhenALaterKindRefuses: every kind is planned before
+// any is written, so a refusal on the second kind leaves the first off the
+// disk too — "exit 2, nothing happened" is what the caller reads the refusal
+// as, and a commit-msg hook left behind would be a file the developer never
+// asked for, in a tree that may track its hooks. The foreign hook is the
+// SECOND kind: a first-kind refusal never reaches a write, so only this order
+// tells planning from writing as it goes.
+func TestInstallWritesNothingWhenALaterKindRefuses(t *testing.T) {
+	dir := t.TempDir()
+	kinds := Kinds()
+	if len(kinds) < 2 || kinds[1].Name != "pre-push" {
+		t.Fatalf("Kinds() = %v, want commit-msg then pre-push", KindNames())
+	}
+	foreign := "#!/bin/sh\n# hand-written house rules\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(dir, kinds[1].Name), []byte(foreign), 0o755); err != nil { //nolint:gosec
+		t.Fatalf("seeding the foreign pre-push hook: %v", err)
+	}
+
+	_, err := Install(dir, false, kinds...)
+	if err == nil {
+		t.Fatal("Install overwrote a foreign pre-push hook without --force")
+	}
+	if code := core.ExitCode(err); code != int(core.CodeUsage) {
+		t.Errorf("exit code = %d, want %d", code, core.CodeUsage)
+	}
+	if _, serr := os.Stat(filepath.Join(dir, kinds[0].Name)); !errors.Is(serr, fs.ErrNotExist) {
+		t.Errorf("the commit-msg hook is on disk after a refusal (stat: %v) — the refused run wrote a file the developer did not ask for", serr)
+	}
+	if got, rerr := os.ReadFile(filepath.Join(dir, kinds[1].Name)); rerr != nil || string(got) != foreign {
+		t.Errorf("the foreign pre-push hook was modified despite the refusal: %v", rerr)
 	}
 }
 

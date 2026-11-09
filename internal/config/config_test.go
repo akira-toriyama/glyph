@@ -256,6 +256,68 @@ func TestLoadRefusesTheRemovedCommitStyle(t *testing.T) {
 	}
 }
 
+// TestLoadRefusesAMiscasedKey: a key is the schema's spelling byte for byte.
+// go-toml binds a key to a field without case once no tag matches it exactly
+// and DisallowUnknownFields reports only a key no field claims, so at 2f9428a
+// (go-toml v2.4.3, measured 2026-11-04) `Skip = true` skipped the commit,
+// `[[Patterns]] PATTERN` was the grammar, `[Note] Line` rendered the body and
+// `[[Packages]] PATH` declared a line — and `skip = false` followed by
+// `Skip = true` read as skip (the reverse as not), the silently-misread key
+// DESIGN §2 refuses. Every table the schema has, the refusal naming the key as
+// written and the spelling to write, a miscased table's keys named with it,
+// and the lower-case file as the control.
+func TestLoadRefusesAMiscasedKey(t *testing.T) {
+	const grammar = "[[patterns]]\npattern = '^(?P<subject>:[a-z]+:(\\((?P<scope>[a-z]+)\\))?(?P<semver_sigil>[=~^!%]) .+)'\n"
+	for name, c := range map[string]struct{ toml, want string }{
+		"schema":             {"Schema = 1\n" + grammar, "miscased key Schema (write schema)"},
+		"exclude_authors":    {"schema = 1\nExclude_Authors = ['x']\n" + grammar, "miscased key Exclude_Authors (write exclude_authors)"},
+		"commit table":       {"schema = 1\n[Commit]\ntemplate = 'T'\n" + grammar, "miscased key Commit (write commit)"},
+		"commit.template":    {"schema = 1\n[commit]\nTemplate = 'T'\n" + grammar, "miscased key commit.Template (write template)"},
+		"patterns table":     {"schema = 1\n[[Patterns]]\npattern = '^x'\nsemver_sigil = '='\n", "miscased key Patterns (write patterns)"},
+		"patterns.pattern":   {"schema = 1\n[[patterns]]\nPATTERN = '^x'\nsemver_sigil = '='\n", "miscased key patterns[0].PATTERN (write pattern)"},
+		"patterns.skip":      {"schema = 1\n" + grammar + "[[patterns]]\npattern = '^WIP'\nSkip = true\n", "miscased key patterns[1].Skip (write skip)"},
+		"both spellings":     {"schema = 1\n" + grammar + "[[patterns]]\npattern = '^WIP'\nskip = false\nSkip = true\n", "miscased key patterns[1].Skip (write skip)"},
+		"note table":         {"schema = 1\n" + grammar + "[Note]\nline = '- $subject'\n", "miscased key Note (write note)"},
+		"note.line":          {"schema = 1\n" + grammar + "[note]\nLine = '- $subject'\n", "miscased key note.Line (write line)"},
+		"note.draft_on_none": {"schema = 1\n" + grammar + "[note]\nDraft_On_None = true\n", "miscased key note.Draft_On_None (write draft_on_none)"},
+		"note.sections":      {"schema = 1\n" + grammar + "[[note.Sections]]\nsemver = 'patch'\ntitle = 'Fixes'\n", "miscased key note.Sections (write sections)"},
+		"section keys":       {"schema = 1\n" + grammar + "[[note.sections]]\nSEMVER = 'patch'\nTITLE = 'Fixes'\n", "miscased keys note.sections[0].SEMVER (write semver), note.sections[0].TITLE (write title)"},
+		"note.trailers":      {"schema = 1\n" + grammar + "[[note.trailers]]\nToken = 'Why'\nname = 'why'\n", "miscased key note.trailers[0].Token (write token)"},
+		"packages table":     {"schema = 1\n" + grammar + "[[Packages]]\npath = 'lib'\n", "miscased key Packages (write packages)"},
+		"packages.path":      {"schema = 1\n" + grammar + "[[packages]]\nPATH = 'lib'\n", "miscased key packages[0].PATH (write path)"},
+		"a miscased table's keys are named with it": {"schema = 1\n" + grammar + "[Note]\nLine = '- $subject'\n[[Note.Sections]]\nTITLE = 'Fixes'\nsemver = 'patch'\n", "miscased keys Note (write note), Note.Line (write line), Note.Sections (write sections), Note.Sections[0].TITLE (write title)"},
+		// go-toml folds a non-ASCII key with strings.ToLower, which maps
+		// U+0130 to `i` where strings.EqualFold does not match the two; a walker
+		// that found fields through EqualFold let the dotted-I key bind and
+		// walked on (measured 2026-11-08; mutation row
+		// config-key-walker-skips-a-key-its-own-fold-cannot-bind). U+212A KELVIN
+		// SIGN both folds reach; it is the control that a non-ASCII fold is
+		// refused at all.
+		"U+0130 at the top level":    {"schema = 1\n[\"commİt\"]\ntemplate = 'T'\n" + grammar, "miscased key commİt (write commit)"},
+		"U+0130 in a table":          {"schema = 1\n" + grammar + "[[patterns]]\npattern = '^WIP'\n\"skİp\" = true\n", "miscased key patterns[1].skİp (write skip)"},
+		"U+0130 beside the spelling": {"schema = 1\n" + grammar + "[[patterns]]\npattern = '^WIP'\nskip = false\n\"skİp\" = true\n", "miscased key patterns[1].skİp (write skip)"},
+		"U+0130 as a fixed sigil":    {"schema = 1\n[[patterns]]\npattern = '^x .+'\n\"semver_sİgil\" = '!'\n", "miscased key patterns[0].semver_sİgil (write semver_sigil)"},
+		"U+212A at the top level":    {"schema = 1\n" + grammar + "[[\"pacKages\"]]\npath = 'lib'\n", "miscased key pacKages (write packages)"},
+		"U+212A in a table":          {"schema = 1\n" + grammar + "[[patterns]]\npattern = '^WIP'\n\"sKip\" = true\n", "miscased key patterns[1].sKip (write skip)"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Load([]byte(c.toml))
+			if err == nil {
+				t.Fatalf("Load accepted a miscased key:\n%s", c.toml)
+			}
+			if !strings.Contains(err.Error(), c.want) {
+				t.Errorf("error = %q, want substring %q", err, c.want)
+			}
+		})
+	}
+	control := "schema = 1\nexclude_authors = ['x']\n[commit]\ntemplate = 'T'\n" + grammar +
+		"[[patterns]]\npattern = '^WIP'\nskip = true\n[note]\nline = '- $subject'\ndraft_on_none = true\n" +
+		"[[note.sections]]\nsemver = 'patch'\ntitle = 'Fixes'\n[[note.trailers]]\ntoken = 'Why'\nname = 'why'\n[[packages]]\npath = 'lib'\n"
+	if _, err := Load([]byte(control)); err != nil {
+		t.Fatalf("the file in the schema's own spelling does not load: %v", err)
+	}
+}
+
 func TestLoadFileMissing(t *testing.T) {
 	_, err := LoadFile(filepath.Join(t.TempDir(), "glyph.toml"))
 	if err == nil {

@@ -38,11 +38,11 @@
 # replaced by another, a pin that is a tag rather than 40 hex, a mode change, a
 # rename, a binary — each of those is judged like any other change.
 #
-# Escape hatch, go-bite's exact shape: a `Dist-gate-exempt: <reason>` git
-# trailer on EVERY non-merge commit in the range — a real trailer, parsed by
-# `git interpret-trailers`, so a line sitting inside a body paragraph waives
-# nothing. Use it for the change no text assertion can express (a pure comment
-# reword, say), and state that as the reason.
+# Escape hatch, go-bite's shape but not its reader (glossary §7, dist-gate): a
+# `Dist-gate-exempt: <reason>` git trailer on EVERY non-merge commit in the
+# range — a real trailer, read by git's commit reader, so a line sitting inside
+# a body paragraph waives nothing. Use it for the change no text assertion can
+# express (a pure comment reword, say), and state that as the reason.
 #
 # Usage: sh scripts/dist-gate.sh <base> [<head>]   (CI passes the PR base sha
 # with HEAD at the merge commit it checked out; check.sh passes origin/main and

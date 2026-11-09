@@ -450,9 +450,9 @@ title = "Fixes"
 	}
 
 	sections, err := Group([]Commit{
-		{SHA: "0123456789abcdef", Author: "akira", Message: "~ round the pack up\n\nbody.\n\nWhy: not ^ — the surface golden did not move\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>"},
-		{SHA: "fedcba9876543210", Author: "akira", Message: "~ a commit that argues nothing"},
-		{SHA: "aaaabbbbccccdddd", Author: "akira", Message: "~ two hands\n\nbody.\n\nCo-authored-by: A B <a@b.c>\nCo-authored-by: C D <c@d.e>"},
+		recorded("0123456789abcdef", "~ round the pack up\n\nbody.\n\nWhy: not ^ — the surface golden did not move\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>"),
+		recorded("fedcba9876543210", "~ a commit that argues nothing"),
+		recorded("aaaabbbbccccdddd", "~ two hands\n\nbody.\n\nCo-authored-by: A B <a@b.c>\nCo-authored-by: C D <c@d.e>"),
 	}, cfg)
 	if err != nil {
 		t.Fatalf("Group: %v", err)
@@ -495,14 +495,67 @@ title = "Fixes"
 		t.Fatalf("Load: %v", err)
 	}
 	sections, err := Group([]Commit{
-		{SHA: "0123456789abcdef", Author: "akira", Message: "~ a fix\n\nbody.\n\nCo-authored-by: @octocat <p@q.r>"},
+		recorded("0123456789abcdef", "~ a fix\n\nbody.\n\nCo-authored-by: @octocat <p@q.r>"),
 	}, cfg)
 	if err != nil {
 		t.Fatalf("Group: %v", err)
 	}
 	got := sections[0].Lines[0]
-	if strings.Contains(got, "@octocat") && !strings.Contains(got, "`@octocat`") {
-		t.Errorf("a co-author display name reached the page as a live mention: %q", got)
+	if !strings.Contains(got, "`@octocat`") {
+		t.Errorf("a co-author display name must reach the page fenced, as text: %q", got)
+	}
+}
+
+// recorded is a Commit as gitsource hands one over: Message the cleaned text
+// and Recorded the same text with the closing newline git records it with.
+func recorded(sha, message string) Commit {
+	return Commit{SHA: sha, Author: "akira", Message: message, Recorded: message + "\n"}
+}
+
+// TestRenderLineReadsTheTrailerBlockOffTheRecordedMessage: the trailer block
+// is read off Recorded, the bytes git's commit reader reads, because the
+// closing newline decides one shape — `Conflicts:\n` closing the object is
+// git's ignored list, `Conflicts:` closing the input an empty trailer — and
+// Message, the newline stripped, cannot say which the commit carries. Read
+// off Message, a bare final `Conflicts:` line is a trailer line: it lifts a
+// 2-of-9 Signed-off-by block over the 25% line and credits Trent where
+// `%(trailers)` credits nobody, and closes the message as a one-line block so
+// Peggy, whom `%(trailers)` credits, is dropped — and a declared trailer in
+// Peggy's place is dropped the same way, so both readers are pinned, the
+// built-in and `[[note.trailers]]` (measured 2026-11-08 against
+// `%(trailers)`, git 2.54.0 and 2.56.0; the end-to-end shape is
+// cli.TestNotesRangeReadsAFinalConflictsLineAsGitDoes).
+func TestRenderLineReadsTheTrailerBlockOffTheRecordedMessage(t *testing.T) {
+	cfg, err := config.Load([]byte(`schema = 1
+[[patterns]]
+pattern = '^(?P<semver_sigil>[=~^!]) (?P<subject>.+)'
+[note]
+line = '- $subject$[ with $coauthors]$[ — why: $why]'
+[[note.trailers]]
+token = "Why"
+name = "why"
+[[note.sections]]
+semver = "patch"
+title = "Fixes"
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	sections, err := Group([]Commit{
+		recorded("0123456789abcdef", "~ a bare Conflicts line under a 2-of-9 sign-off block\n\nbody\n\nSigned-off-by: S <s@x.y>\np1\np2\np3\np4\np5\np6\np7\nCo-authored-by: Trent <t@x.y>\nConflicts:"),
+		recorded("fedcba9876543210", "~ a bare Conflicts paragraph closing the message\n\nbody\n\nCo-authored-by: Peggy <p@x.y>\n\nConflicts:"),
+		recorded("00112233445566ff", "~ a declared trailer above a bare Conflicts paragraph\n\nbody\n\nWhy: a reason\n\nConflicts:"),
+	}, cfg)
+	if err != nil {
+		t.Fatalf("Group: %v", err)
+	}
+	want := []string{
+		"- a bare Conflicts line under a 2-of-9 sign-off block",
+		"- a bare Conflicts paragraph closing the message with Peggy",
+		"- a declared trailer above a bare Conflicts paragraph — why: a reason",
+	}
+	if len(sections) != 1 || strings.Join(sections[0].Lines, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("lines =\n%s\nwant\n%s", strings.Join(sections[0].Lines, "\n"), strings.Join(want, "\n"))
 	}
 }
 
