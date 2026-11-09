@@ -47,7 +47,7 @@ func TestLoadRefusesABadTrailerDeclaration(t *testing.T) {
 		{
 			name:  "a name that is a built-in",
 			block: "[[note.trailers]]\ntoken = \"Why\"\nname = \"author\"\n",
-			want:  "is a built-in, which outranks it",
+			want:  "is a built-in; a trailer of that name would replace it",
 		},
 		{
 			name:  "a name a pattern already captures",

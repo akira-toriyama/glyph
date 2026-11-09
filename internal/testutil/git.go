@@ -31,9 +31,9 @@ func RequireGit(t *testing.T) {
 
 // GitEnv pins a hermetic git environment: fixed identity, the user's real
 // global/system config held out (a global commit.gpgsign would otherwise break
-// the test commits, under GitHub's noreply address so a local commit carries
-// the login the notes credit — the fleet's commits do), and background
-// maintenance off. Extra entries are
+// the test commits), the author under GitHub's noreply address — the shape
+// the fleet's commits carry, which the notes must credit by name and never
+// page (DESIGN §3, t-ayhq) — and background maintenance off. Extra entries are
 // appended after the pin — the hook tests use that to put a controlled PATH in
 // front of the shell the hook runs under.
 //

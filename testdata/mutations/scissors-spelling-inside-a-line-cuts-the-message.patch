@@ -1,0 +1,15 @@
+diff --git a/internal/notes/trailers.go b/internal/notes/trailers.go
+index 3b17eb5..1dbbbf9 100644
+--- a/internal/notes/trailers.go
++++ b/internal/notes/trailers.go
+@@ -153,8 +153,8 @@ func logMessageEnd(msg string) int {
+ 	cutoff := len(msg)
+ 	if strings.HasPrefix(msg, scissorsLine) {
+ 		cutoff = 0
+-	} else if i := strings.Index(msg, "\n"+scissorsLine); i >= 0 && i+1 < cutoff {
+-		cutoff = i + 1
++	} else if i := strings.Index(msg, scissorsLine); i >= 0 { // MUTATION: the scissors spelling cuts wherever it sits in a line
++		cutoff = i
+ 	}
+ 
+ 	runStart := 0

@@ -116,8 +116,8 @@ unlandable = 'autosquash lands this body as its target message (after a squash! 
 # Outside a span they render as a bare `()` for such a commit.
 #
 # $coauthors is the commit's `Co-authored-by` names — address stripped,
-# comma-joined, parsed by git's trailer rules (glyph's parser is held to
-# `git interpret-trailers --parse`) rather than grepped. Most commits carry
+# comma-joined, parsed by git's trailer rules (glyph's parser is held to git
+# 2.56.0's commit reader, `git log --format=%(trailers)`) rather than grepped. Most commits carry
 # none, so it takes a span of its own. It renders as prose and never as a
 # mention: a co-author address asserts a login glyph cannot verify.
 line = '- $subject$[ ($pr)] @$author$[ with $coauthors]'

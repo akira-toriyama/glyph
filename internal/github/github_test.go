@@ -129,7 +129,10 @@ func TestPullCommitsSinglePage(t *testing.T) {
 	// The login is GitHub's own mapping and is carried apart from the name:
 	// the two differ (golang/tools, measured 2026-09-13), and the notes
 	// credit the login (t-39fy).
-	want0 := Commit{SHA: "aaa", Author: "Saleh", Email: "root@lr0.org", Login: "larrasket", Parents: 1, Message: ":sparkles: add a thing"}
+	// Recorded is the API's text too: GitHub hands commit.message over without
+	// the closing newline git recorded, and no field says whether the object
+	// has one (DESIGN §3, the one API-arm shape).
+	want0 := Commit{SHA: "aaa", Author: "Saleh", Email: "root@lr0.org", Login: "larrasket", Parents: 1, Message: ":sparkles: add a thing", Recorded: ":sparkles: add a thing"}
 	if commits[0] != want0 {
 		t.Fatalf("commit 0 = %+v, want %+v", commits[0], want0)
 	}
@@ -137,7 +140,7 @@ func TestPullCommitsSinglePage(t *testing.T) {
 	// matches downstream, and the two-parent shape is what the walk reads as
 	// a merge (Parents >= 2).
 	// author: null — GitHub mapped no account — is an empty login, not an error.
-	want1 := Commit{SHA: "bbb", Author: "fleet-sync[bot]", Email: "fleet-sync[bot]@users.noreply.github.com", Parents: 2, Message: ":robot: chore(fleet): sync"}
+	want1 := Commit{SHA: "bbb", Author: "fleet-sync[bot]", Email: "fleet-sync[bot]@users.noreply.github.com", Parents: 2, Message: ":robot: chore(fleet): sync", Recorded: ":robot: chore(fleet): sync"}
 	if commits[1] != want1 {
 		t.Fatalf("commit 1 = %+v, want %+v", commits[1], want1)
 	}

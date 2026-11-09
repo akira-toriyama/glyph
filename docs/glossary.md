@@ -653,8 +653,9 @@ commit-msg hook, still holding the editor template, the status block and, under
 `commit.verbose`, a scissors line with the whole diff) to the message git will
 actually record. Only the authoring path (`--stdin`, and doctor's replay of
 it) calls it: a `--range` walk reads messages git has already cleaned (all but
-the closing newline git records them with, which `gitsource` strips — DESIGN
-§2.1), and running it there would swallow a genuinely empty message and any
+the closing newline git records them with, which `gitsource` strips from
+`Message` and keeps in `Recorded` for the trailer parser alone — DESIGN §2.1
+and §3), and running it there would swallow a genuinely empty message and any
 body line starting with `#`.
 `internal/cleanup/cleanup.go: Apply`
 

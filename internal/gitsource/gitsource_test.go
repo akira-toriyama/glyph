@@ -92,6 +92,37 @@ func TestLogStripsOnlyTheRecordNewline(t *testing.T) {
 	}
 }
 
+// TestLogKeepsTheRecordedMessageForTheTrailerBlock: Recorded is %B untouched,
+// the closing newline git records with — the bytes git's own commit reader
+// reads the trailer block off, which notes read it off too (DESIGN §3). The
+// newline is load-bearing there: `Conflicts:\n` closing the object is git's
+// ignored list and `Conflicts:` closing the input an empty trailer, so a
+// Recorded trimmed like Message hands the parser a shape git never sees.
+func TestLogKeepsTheRecordedMessageForTheTrailerBlock(t *testing.T) {
+	dir := testutil.NewRepo(t)
+	base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash\n\nCo-authored-by: Peggy <p@x.y>\n\nConflicts:")
+	testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--allow-empty", "--cleanup=verbatim", "-m", ":memo:= kept as written\n\n")
+	got, err := log(context.Background(), dir, base+"..HEAD")
+	if err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("Log returned %d commits, want 2", len(got))
+	}
+	if got[0].Recorded != ":bug:~ fix a crash\n\nCo-authored-by: Peggy <p@x.y>\n\nConflicts:\n" {
+		t.Errorf("Recorded = %q, want %%B with the newline git records a cleaned message with", got[0].Recorded)
+	}
+	if got[1].Recorded != ":memo:= kept as written\n\n" {
+		t.Errorf("verbatim Recorded = %q, want both of the author's trailing newlines", got[1].Recorded)
+	}
+	for _, c := range got {
+		if c.Recorded != c.Message+"\n" {
+			t.Errorf("Recorded %q and Message %q differ by more than the one closing newline", c.Recorded, c.Message)
+		}
+	}
+}
+
 // TestLogReadsAnAuthorNameHoldingTheUnitSeparator: git keeps a U+001F inside
 // an author name (it strips crud only at the ends — measured on 2.54), so a
 // field separator that byte can spell let the author choose where the next
