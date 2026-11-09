@@ -42,9 +42,12 @@ func pullsRoutes(t *testing.T, dir string, routes map[string]string) map[string]
 // tag dangled, and on a pull touching a baselined line beside a
 // root-declared one, cutting the baseline as told cleared nothing: the
 // re-run refused again, for the root line, naming nothing (review of #361,
-// measured 2026-11-08). Both shapes are run end to end: the refusal, the
-// advice followed, the re-run answering. Mutation row
-// preview-cap-escape-names-a-tag-nobody-named.
+// measured 2026-11-08). A locked line's own first release is its major's
+// floor: named pubsub/vX.Y.Z, the operator's pubsub/v1.5.0 lands on the free
+// pubsub line and the re-run refuses again (measured 2026-11-09). Every
+// shape is run end to end: the refusal, the advice followed, the re-run
+// answering. Mutation rows preview-cap-escape-names-a-tag-nobody-named and
+// preview-cap-escape-sends-a-locked-line-to-the-free-line.
 func TestPreviewPackagesCapRefusalNamesAnEscapeForEveryUntaggedLine(t *testing.T) {
 	const noFlag = "re-run — preview reads the pull request, and has no --since-tag flag to name a base with"
 	t.Run("a baselined line beside a root-declared one", func(t *testing.T) {
@@ -125,6 +128,41 @@ func TestPreviewPackagesCapRefusalNamesAnEscapeForEveryUntaggedLine(t *testing.T
 		code, stdout, stderr = runGlyph(t, "preview", "--pr", "9")
 		if code != 0 || !strings.Contains(stdout, "**curry/v0.1.0 → curry/v0.1.1**") {
 			t.Fatalf("after cutting curry's first release preview exited %d, want 0 with curry previewed\nstdout: %s\nstderr: %s", code, stdout, stderr)
+		}
+	})
+
+	t.Run("a root-declared locked line", func(t *testing.T) {
+		dir := testutil.NewPackagesRepo(t, "\n[[packages]]\npath = \"pubsub\"\n\n[[packages]]\npath = \"pubsub/v2\"\nname = \"pubsub-v2\"\n",
+			map[string]string{"pubsub/p.go": "package pubsub\n", "pubsub/v2/p.go": "package pubsub\n"})
+		first := testutil.Git(t, dir, "akira-toriyama", "rev-list", "--max-parents=0", "HEAD")
+		testutil.Git(t, dir, "akira-toriyama", "reset", "-q", "--soft", first)
+		testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--amend", "-m", ":tada:= begin with both majors")
+		root := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		testutil.Git(t, dir, "akira-toriyama", "tag", "pubsub/v1.4.0") // the v2 line never released
+		for i := range 201 {
+			testutil.Commit(t, dir, "akira-toriyama", fmt.Sprintf(":memo:= note %d", i))
+		}
+		usePR(t, walkServer(t, pullsRoutes(t, dir, map[string]string{
+			pullCommitsPath(5): `[` + apiCommit("p1", "akira-toriyama", ":bug:~ fix the queue") + `,` +
+				apiCommit("v1", "akira-toriyama", ":sparkles:(pubsub-v2)^ grow v2") + `]`,
+			commitFilesPath("p1"): apiFiles("pubsub/p.go"),
+			commitFilesPath("v1"): apiFiles("pubsub/v2/p.go"),
+		})))
+		t.Chdir(dir)
+
+		code, stdout, stderr := runGlyph(t, "preview", "--pr", "5", "--json")
+		if code != 4 {
+			t.Fatalf("preview exited %d, want 4\nstdout: %s\nstderr: %s", code, stdout, stderr)
+		}
+		out := stdout + stderr
+		if !strings.Contains(out, "refusing the unbounded walk; release the line(s) by hand (cut pubsub/v2.0.0 at the commit that release covers — the one floor a line with no baseline can take) and "+noFlag) {
+			t.Errorf("a locked line's first release is its major's floor, never a pubsub/vX.Y.Z the free pubsub line takes:\n%s", out)
+		}
+
+		testutil.Git(t, dir, "akira-toriyama", "tag", "pubsub/v2.0.0", root)
+		code, stdout, stderr = runGlyph(t, "preview", "--pr", "5")
+		if code != 0 || !strings.Contains(stdout, "**pubsub/v2.0.0 → pubsub/v2.1.0**") {
+			t.Fatalf("after cutting pubsub/v2.0.0 preview exited %d, want 0 with the v2 line previewed\nstdout: %s\nstderr: %s", code, stdout, stderr)
 		}
 	})
 }
@@ -294,5 +332,38 @@ func TestPreviewOnAShallowCheckoutNamesNoFigure(t *testing.T) {
 	}
 	if strings.Contains(stdout, "figure") || strings.Contains(stdout, "no version to move") {
 		t.Errorf("the caveat qualifies a figure the headline does not carry:\n%s", stdout)
+	}
+}
+
+// TestPreviewOnAShallowCheckoutPRCaveatNamesNoFigure: the PR side's caveat
+// under a headline that names no figure — curry has no release tag within
+// the --depth 3 clone's reach — qualifies what each headline says, as the
+// pending caveat beside it does. It said "may be missing from the figures
+// above" there, figures no headline carried (measured 2026-11-09: a pull
+// whose second commit's file listing GitHub answered 422 for). Mutation row
+// preview-pr-caveat-qualifies-a-figure-nobody-named.
+func TestPreviewOnAShallowCheckoutPRCaveatNamesNoFigure(t *testing.T) {
+	_, clone := shallowTwoLineClone(t)
+	usePR(t, walkServer(t, map[string]string{
+		pullCommitsPath(9): `[` + apiCommit("c1", "akira-toriyama", ":bug:~ swap an ingredient") + `,` +
+			apiCommit("u1", "akira-toriyama", ":bug:~ fix what GitHub would not list") + `]`,
+		commitFilesPath("c1"): apiFiles("curry/curry.go"),
+		commitFilesPath("u1"): apiUnknownSHA,
+	}))
+	t.Chdir(clone)
+	code, stdout, stderr := runGlyph(t, "preview", "--pr", "9")
+	if code != 0 {
+		t.Fatalf("preview exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	for _, want := range []string{
+		"\n**curry** — 🔧 Merging this PR raises **patch** — no release tag on this line is within this shallow checkout's reach, so the release it lands in cannot be named here.\n",
+		"(u1). A line one of those commits touches in files GitHub did not list may be missing from what each headline says, so treat each as a floor rather than the answer.\n",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("the body must carry\n  %q\ngot:\n%s", want, stdout)
+		}
+	}
+	if strings.Contains(stdout, "figure") {
+		t.Errorf("a caveat qualifies a figure no headline carries:\n%s", stdout)
 	}
 }

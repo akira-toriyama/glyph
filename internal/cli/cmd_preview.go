@@ -108,8 +108,11 @@ func newPreviewCmd() *cobra.Command {
 			"was released), so the PR's own verdict stands alone and the body says so.\n" +
 			"On a shallow checkout that holds no tag the walk is skipped the same way,\n" +
 			"and the body says the tag is out of the clone's reach rather than that the\n" +
-			"base branch has none, and names no version a tag past that reach could\n" +
-			"refute (check out with fetch-depth: 0 for the pending side).\n\n" +
+			"base branch has none. Whether the walk is skipped or runs (a touched\n" +
+			"line's tag within reach runs it), a line with no tag within a shallow\n" +
+			"checkout's reach names no version, since a tag past that reach could\n" +
+			"refute any version it named (check out with fetch-depth: 0 for the\n" +
+			"pending side).\n\n" +
 			"The body never names a rolling draft — the arithmetic is the same whether\n" +
 			"the next release is a draft or a tag cut by hand, and most repos have no\n" +
 			"draft to name. stdout is the Markdown body (post it with `gh pr comment\n" +
@@ -119,8 +122,9 @@ func newPreviewCmd() *cobra.Command {
 			"On a repository declaring [[packages]] the body carries one headline per\n" +
 			"line the pull touches (versions spelled as tags: haiku/v0.1.0 →\n" +
 			"haiku/v0.2.0; a line with no tag names its first release, never a\n" +
-			"<prefix>v0.0.0 that does not exist) and one commit table per line; a line\n" +
-			"the pull does not touch is not mentioned. --json carries packages:\n" +
+			"<prefix>v0.0.0 that does not exist, and on a shallow checkout no version,\n" +
+			"as said above) and one commit table per line; a line the pull does not\n" +
+			"touch is not mentioned. --json carries packages:\n" +
 			"[{path,current,untagged,level,next,pr,pending}] with the scalars\n" +
 			"current/level/pr/pending EMPTY, untagged false and next absent. A commit\n" +
 			"no line can carry (a version sigil on shared files with no package scope)\n" +

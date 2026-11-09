@@ -202,9 +202,13 @@ func TestSinceTagPackagesLineNoCommitTouchesHasNoBaseline(t *testing.T) {
 // control: the declaring commit has a parent, and both lines are offered
 // their baseline. The walk itself still proceeds and warns (exit 1, a
 // history of = commits), never 4: a shallow checkout is a warning to the
-// reporting commands (§4). Mutation rows
+// reporting commands (§4). Both clauses name two lines here and agree in
+// number with them, where the singular said "the oldest commit touching it"
+// and "cut haiku/v0.0.0 / curry/v0.0.0 at the commit before that line's
+// first change" (measured 2026-11-09; t-c2a9's class). Mutation rows
 // gitsource-first-change-reads-a-shallow-boundary-as-a-root (the clause
-// vanishes) and packages-baseline-fails-at-a-shallow-boundary (exit 4).
+// vanishes), packages-baseline-fails-at-a-shallow-boundary (exit 4) and
+// packages-baseline-remedy-disagrees-in-number.
 func TestSinceTagPackagesBaselinePastAShallowBoundaryIsNotNamed(t *testing.T) {
 	dir := testutil.NewTwoLineRepo(t)
 	for i := range 4 {
@@ -226,7 +230,7 @@ func TestSinceTagPackagesBaselinePastAShallowBoundaryIsNotNamed(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("bump on the shallow clone exited %d, want 1 — the walk proceeds and warns\n%s", code, stderr)
 	}
-	if !strings.Contains(stderr, "; no baseline can be named for the haiku/, curry/ line(s): within this shallow clone the oldest commit touching it is the boundary, whose own diff cannot be read, so the line's first change lies at or past it (check out with fetch-depth: 0)") {
+	if !strings.Contains(stderr, "; no baseline can be named for the haiku/, curry/ line(s): within this shallow clone the oldest commit touching each is the boundary, whose own diff cannot be read, so each line's first change lies at or past it (check out with fetch-depth: 0)") {
 		t.Errorf("the warning must say why no baseline is named on a shallow clone:\n%s", stderr)
 	}
 	if strings.Contains(stderr, "cut ") {
@@ -238,7 +242,7 @@ func TestSinceTagPackagesBaselinePastAShallowBoundaryIsNotNamed(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("bump on the full clone exited %d, want 1\n%s", code, stderr)
 	}
-	if !strings.Contains(stderr, "; to start from a tag instead, cut haiku/v0.0.0 / curry/v0.0.0 at the commit before that line's first change") || strings.Contains(stderr, "boundary") {
+	if !strings.Contains(stderr, "; to start from a tag instead, cut haiku/v0.0.0 / curry/v0.0.0, each at the commit before its line's first change — a baseline says nothing of its line was released before there, and it takes its number: each line's first release then steps from its baseline") || strings.Contains(stderr, "boundary") {
 		t.Errorf("the full clone reads the declaring commit's parent and offers both baselines, and says nothing of a boundary:\n%s", stderr)
 	}
 }

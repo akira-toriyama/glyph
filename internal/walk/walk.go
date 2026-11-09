@@ -115,7 +115,10 @@ type Scope struct {
 // --since-tag has one way out per line and must name it in the case it fires
 // in: "cut the tag named above" over an empty baselines dangled (preview,
 // measured 2026-11-08 on a root-declared line past the cap). The sentence
-// is appended after the refusal's own remedy; "" appends nothing.
+// is appended after the refusal's own remedy. "" is read as no escape at
+// all and gets the --since-tag sentence, as a nil Escape does
+// (wholeHistory), so a caller without that flag returns a way out in every
+// case it is called with.
 type Escape func(baselines, unbaselined []string) string
 
 // Since is the release walk: the lines tagFlag names and the ONE range over

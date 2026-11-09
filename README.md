@@ -526,8 +526,9 @@ sets `make_latest`. A tag that selects one line converges that line alone.
 `preview --pr` posts one headline per line the pull touches — `**haiku** —
 🔼 Merging this PR raises **minor** — the next release becomes
 **haiku/v0.1.0 → haiku/v0.2.0**.`, a line with no tag naming its first
-release instead (`the first release here would be **travel/v0.1.0**`) — with
-one commit table per line and the
+release instead (`the first release here would be **travel/v0.1.0**`) except
+on a shallow checkout, which names no version for a line with no tag within
+its reach — with one commit table per line and the
 notes preview per line; a line the pull does not touch is not mentioned, and
 a shared-only `^` is refused at exit 3 here first, while the branch can
 still be fixed. The reusables (`pr-verdict.yml`, `release.yml`) render what

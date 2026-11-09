@@ -2708,8 +2708,11 @@ pull touching a baselined line beside one, cutting the baseline as told
 cleared nothing: the re-run refused again, for the root line, naming nothing
 (measured 2026-11-08;
 `TestPreviewPackagesCapRefusalNamesAnEscapeForEveryUntaggedLine`, which
-follows the advice and re-runs; mutation row
-`preview-cap-escape-names-a-tag-nobody-named`).
+follows the advice and re-runs, and
+`TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy`; mutation rows
+`preview-cap-escape-names-a-tag-nobody-named`,
+`preview-cap-escape-names-an-empty-hand-release`,
+`preview-cap-escape-sends-a-locked-line-to-the-free-line`).
 
 **Only the untagged arm is capped**, and the tagged arm's missing cap is a
 decision (t-n5tw R3). A tagged range is the unreleased work a release exists
@@ -3111,13 +3114,18 @@ cannot check). The sentence keeps the levels — "raises **patch**", "(a
 **minor** bump is already pending)" — and says why the release it lands in
 cannot be named (`preview.shallowHeadline`); the caveat under it qualifies
 "what the headline says" rather than a figure it does not carry, which it
-pointed at under "moves nothing"; and the footer says the clone's reach of a
+pointed at under "moves nothing", and so does the PR side's caveat when a
+pull commit's file listing came back short, which said "the figures above"
+there (measured 2026-11-09); and the footer says the clone's reach of a
 walked untagged line too (`TestPreviewOnAShallowCheckoutSpeaksPerLine`,
-`TestPreviewOnAShallowCheckoutNamesNoFigure`, `TestRenderShallowFloorGuard`,
-`TestRenderShallowWalkedLine`; mutation rows
+`TestPreviewOnAShallowCheckoutNamesNoFigure`,
+`TestPreviewOnAShallowCheckoutPRCaveatNamesNoFigure`,
+`TestRenderShallowFloorGuard`, `TestRenderShallowWalkedLine`,
+`TestRenderPackagesPRShort`; mutation rows
 `preview-shallow-line-names-a-first-release`,
 `preview-walked-shallow-line-is-called-untagged`,
-`preview-shallow-caveat-qualifies-a-figure-nobody-named`). The machine
+`preview-shallow-caveat-qualifies-a-figure-nobody-named`,
+`preview-pr-caveat-qualifies-a-figure-nobody-named`). The machine
 verdict is unchanged there: `untagged` reports what the checkout holds, and
 `next` what the PR side stepped from the null floor — the prose claims less
 than it, never something else. A packages line's absence is said of the

@@ -366,7 +366,7 @@ func renderPackages(in Input) string {
 		unreached = unreached || (in.Shallow && p.Untagged)
 	}
 	b.WriteString(pendingShortBlock(in.PendingShort, true, unreached))
-	b.WriteString(prShortBlock(in.PRShort, true))
+	b.WriteString(prShortBlock(in.PRShort, true, unreached))
 	for _, p := range in.Packages {
 		if len(p.PR.Commits) == 0 {
 			continue
@@ -397,7 +397,7 @@ func RenderNoLine(in Input) string {
 	if in.PRShort != "" {
 		nothing = "⏸️ Merging this PR moves nothing in the files GitHub listed — no commit participating in it touches a declared package there."
 	}
-	return Marker + "\n" + nothing + "\n" + prShortBlock(in.PRShort, false) + "\n" + packagesFooter(in) + "\n"
+	return Marker + "\n" + nothing + "\n" + prShortBlock(in.PRShort, false, false) + "\n" + packagesFooter(in) + "\n"
 }
 
 // pendingShortBlock is the caveat Render and renderPackages place directly
@@ -452,18 +452,26 @@ func notesDetails(notes string) string {
 // commit was attributed to no line is exactly the body that must carry it.
 // figures says whether the body carries figures for the caveat to
 // make floors of: the headlines do, the "moves nothing" sentence does not,
-// and a caveat pointing at "the figures above" there points at nothing. The
+// and a caveat pointing at "the figures above" there points at nothing.
+// unreached is pendingShortBlock's: a headline above names no figure, its
+// line having no release tag within a shallow checkout's reach, so the
+// caveat qualifies what each headline says — "the figures above" there
+// pointed at figures no headline carried (measured 2026-11-09, a --depth 3
+// clone and a pull commit whose listing GitHub answered 422 for). The
 // sentence names no cause — PRShort already names the cause, and GitHub's 422
 // cuts a listing short below the cap too (t-esm5) — and says a line MAY be
 // missing, the walk's own word: a scope can carry a commit onto the very line
 // its unlisted files touch.
-func prShortBlock(short string, figures bool) string {
+func prShortBlock(short string, figures, unreached bool) string {
 	if short == "" {
 		return ""
 	}
 	floor := "may be missing from the figures above, so treat each as a floor rather than the answer"
-	if !figures {
+	switch {
+	case !figures:
 		floor = `may move all the same, so treat "moves nothing" as a floor rather than the answer`
+	case unreached:
+		floor = "may be missing from what each headline says, so treat each as a floor rather than the answer"
 	}
 	return fmt.Sprintf("\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: %s. A line one of those commits touches in files GitHub did not list %s.\n", short, floor)
 }

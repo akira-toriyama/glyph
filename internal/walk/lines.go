@@ -250,12 +250,22 @@ func (w Walker) unionRange(ctx context.Context, cfg *config.Config, lines []Line
 			causes = append(causes, fmt.Sprintf("no version tag on the %s line(s) in HEAD's history", strings.Join(unbounded, ", ")))
 		}
 		causes = append(causes, bounded...)
+		// One sentence for one line and another for several: the singular
+		// said of two lines reads "cut haiku/v0.0.0 / curry/v0.0.0 at the
+		// commit before that line's first change" and "the oldest commit
+		// touching it" (t-c2a9's class).
 		remedy := ""
-		if len(baselines) > 0 {
-			remedy = fmt.Sprintf("; to start from a tag instead, cut %s at the commit before that line's first change — a baseline says nothing of the line was released before there, and it takes its number: the line's first release then steps from it", strings.Join(baselines, " / "))
+		switch {
+		case len(baselines) == 1:
+			remedy = fmt.Sprintf("; to start from a tag instead, cut %s at the commit before that line's first change — a baseline says nothing of the line was released before there, and it takes its number: the line's first release then steps from it", baselines[0])
+		case len(baselines) > 1:
+			remedy = fmt.Sprintf("; to start from a tag instead, cut %s, each at the commit before its line's first change — a baseline says nothing of its line was released before there, and it takes its number: each line's first release then steps from its baseline", strings.Join(baselines, " / "))
 		}
-		if len(pastBoundary) > 0 {
-			remedy += fmt.Sprintf("; no baseline can be named for the %s line(s): within this shallow clone the oldest commit touching it is the boundary, whose own diff cannot be read, so the line's first change lies at or past it (check out with fetch-depth: 0)", strings.Join(pastBoundary, ", "))
+		switch {
+		case len(pastBoundary) == 1:
+			remedy += fmt.Sprintf("; no baseline can be named for the %s line(s): within this shallow clone the oldest commit touching it is the boundary, whose own diff cannot be read, so the line's first change lies at or past it (check out with fetch-depth: 0)", pastBoundary[0])
+		case len(pastBoundary) > 1:
+			remedy += fmt.Sprintf("; no baseline can be named for the %s line(s): within this shallow clone the oldest commit touching each is the boundary, whose own diff cannot be read, so each line's first change lies at or past it (check out with fetch-depth: 0)", strings.Join(pastBoundary, ", "))
 		}
 		out := ""
 		if escape != nil {

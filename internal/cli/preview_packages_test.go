@@ -806,6 +806,11 @@ func TestPreviewPackagesWalkIgnoresAnUntouchedUntaggedLine(t *testing.T) {
 // (measured 2026-09-15: `preview --pr` exited 4 sending an operator to a flag
 // the command rejects). Positive control: the default sentence is what the
 // other callers still get, asserted in TestPreviewRefusalNamesNoFlagPreviewLacks.
+// curry's first change has a parent, so only a baseline is named and the way
+// out is that tag alone: past it, the hand release a line no baseline can
+// precede takes names no line — "cut  at the commit that release covers"
+// (measured 2026-11-09 with that arm dropped; mutation row
+// preview-cap-escape-names-an-empty-hand-release).
 func TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy(t *testing.T) {
 	dir := testutil.NewTwoLineRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0") // curry never released
@@ -826,8 +831,8 @@ func TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy(t *testing.T) {
 	if strings.Contains(out, "name the walk base yourself with --since-tag=TAG") {
 		t.Errorf("the refusal sends the operator to a flag preview rejects:\n%s", out)
 	}
-	if !strings.Contains(out, "has no --since-tag flag") {
-		t.Errorf("the refusal does not say why --since-tag is not the way out here:\n%s", out)
+	if !strings.Contains(out, "; cut the tag named above and re-run — preview reads the pull request, and has no --since-tag flag to name a base with") || strings.Contains(out, "by hand") {
+		t.Errorf("the refusal must name the baseline alone as the way out and say why --since-tag is not one here:\n%s", out)
 	}
 }
 

@@ -1,0 +1,13 @@
+diff --git a/internal/walk/lines.go b/internal/walk/lines.go
+index 9a489c5..41cde4d 100644
+--- a/internal/walk/lines.go
++++ b/internal/walk/lines.go
+@@ -313,7 +313,7 @@ func (w Walker) baselineOn(ctx context.Context, cfg *config.Config, l Line) (tag
+ // line's is its major's floor whatever the level (firstTagOn), a free line's
+ // takes whatever number the operator gives it.
+ func firstReleaseOn(l config.Line) string {
+-	if l.Locked() {
++	if l.Locked() && false {
+ 		return firstTagOn(l)
+ 	}
+ 	return l.Prefix + "vX.Y.Z"
