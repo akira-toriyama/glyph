@@ -1,0 +1,13 @@
+diff --git a/internal/markdown/markdown.go b/internal/markdown/markdown.go
+index 4b85d45..277b650 100644
+--- a/internal/markdown/markdown.go
++++ b/internal/markdown/markdown.go
+@@ -535,7 +535,7 @@ func endsParagraph(s string, i int) bool {
+ 		return true
+ 	}
+ 	to := i
+-	for to < len(s) && lineEnding(s, to) == 0 {
++	for to < len(s) && s[to] != '\n' {
+ 		to++
+ 	}
+ 	_, ok := blockOpenerAt(s[:to], i)

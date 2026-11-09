@@ -1,0 +1,12 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+index 377cdbc..b78e0fe 100755
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -442,7 +442,6 @@ if [ -n "$missing" ]; then
+ fi
+ 
+ SKEW=""
+-[ -n "$HUB_SKEW" ] && SKEW=" — SKEWED FROM CI: $HUB_SKEW"
+ [ -n "${LINT_SKEW:-}" ] && SKEW="$SKEW — SKEWED FROM CI: $LINT_SKEW"
+ CLAIMS="NOT mirrored: $NOT_MIRRORED — $LINT_JUDGE — $COVERAGE$SKEW"
+ if [ -n "$DIRTY" ]; then

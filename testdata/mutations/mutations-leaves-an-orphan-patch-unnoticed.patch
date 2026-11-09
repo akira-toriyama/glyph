@@ -1,0 +1,13 @@
+diff --git a/scripts/mutations.sh b/scripts/mutations.sh
+index 9a867c3..bbb27a9 100755
+--- a/scripts/mutations.sh
++++ b/scripts/mutations.sh
+@@ -330,7 +330,7 @@ sed 's/^/  ✗ no ledger row names /' "$TMP/orphans" >&2
+ 
+ echo
+ tally="$kills/$rows ledger rows bite, $((patches - orphans))/$patches patches on a row"
+-if [ "$bad" -ne 0 ] || [ "$orphans" -ne 0 ]; then
++if [ "$bad" -ne 0 ]; then
+   echo "✗ $tally — $bad row(s) and $orphans patch(es) above need a look" >&2
+   exit 1
+ fi

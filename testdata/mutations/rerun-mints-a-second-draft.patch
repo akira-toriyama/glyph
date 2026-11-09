@@ -1,0 +1,8 @@
+diff --git a/.goreleaser.yaml b/.goreleaser.yaml
+index 53bdb03..c39530d 100644
+--- a/.goreleaser.yaml
++++ b/.goreleaser.yaml
+@@ -96,3 +96,2 @@ release:
+   # nothing, so the cask job can finish.
+-  use_existing_draft: true
+   replace_existing_artifacts: true

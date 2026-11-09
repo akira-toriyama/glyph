@@ -1,0 +1,13 @@
+diff --git a/internal/markdown/escape.go b/internal/markdown/escape.go
+index 552725f..3ebd7cc 100644
+--- a/internal/markdown/escape.go
++++ b/internal/markdown/escape.go
+@@ -416,7 +416,7 @@ func delimiterRow(s string) bool {
+ // vertical tab and U+0085 are left out, measured at every position, which is why
+ // "- \[ ]<VT>x" above stays as rule 3 writes it.
+ func taskItemAt(s string, i int) (at, closer int) {
+-	j := skipItemBlanks(s, i)
++	j := skipTaskBlanks(s, i)
+ 	switch k := literal(s, j); {
+ 	case k < len(s) && (s[k] == '-' || s[k] == '+' || s[k] == '*'):
+ 		j = k + 1

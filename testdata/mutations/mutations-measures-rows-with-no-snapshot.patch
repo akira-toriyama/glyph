@@ -1,0 +1,12 @@
+diff --git a/scripts/mutations.sh b/scripts/mutations.sh
+index 9a867c3..9f81b4a 100755
+--- a/scripts/mutations.sh
++++ b/scripts/mutations.sh
+@@ -104,7 +104,6 @@ snapshot() {
+     ! tar --null -T "$TMP/tree.list" -cf "$TMP/tree.tar" ||
+     ! tar -xf "$TMP/tree.tar" -C "$1"; then
+     echo "mutations: cannot snapshot the working tree, so no row can be measured (the errors above say why)" >&2
+-    exit 1
+   fi
+   rm -f "$TMP/tree.tar"
+ }

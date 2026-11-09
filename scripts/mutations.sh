@@ -23,12 +23,17 @@
 #     misspelled, or does not exist would otherwise "kill" every mutation and
 #     the whole ledger would be vacuous — the failure mode a hand-picked
 #     non-vacuity canary only samples, done here for every row);
-#   - the patch must APPLY and the mutated tree must COMPILE. A patch that no
+#   - the patch must APPLY and the mutated tree must COMPILE, the row's test
+#     binary included (`go build ./...` reads no _test.go). A patch that no
 #     longer applies means the code moved and the row now pins nothing; a
 #     mutation that does not build "fails" the tests for the compiler's reasons,
 #     not the suite's, which is the exact trap that made an earlier by-hand
 #     measurement of this repo read as a kill (Go rejects an unused variable, so
 #     deleting a guard's only use of one does not compile).
+#
+# The final line reconciles the other direction too: every *.patch on disk must
+# have a row. A row that loses its patch fails on its own; a patch that loses its
+# row runs nowhere, and without this nothing would say so.
 #
 # Nothing runs in the working tree: each row is applied to a private snapshot of
 # it (tracked + untracked-not-ignored, so a test you have not committed yet is
@@ -85,11 +90,23 @@ reraise_on_signals cleanup
 # snapshot copies the WORKING TREE (not HEAD) so a test being written right now
 # is what gets measured. Untracked-but-not-ignored files are included for the
 # same reason; ignored ones (bin/, caches) are not, so the copy stays small.
+#
+# Each stage writes a file for the next: this is sh, so a pipeline answers with its
+# last stage alone, and a `git ls-files` failure would leave an empty snapshot whose
+# every row blames the ledger for a missing test. --cached still lists a tracked
+# file deleted and not staged, which is not in the working tree and which tar cannot
+# stat, so the listing is cut down to what is there.
 snapshot() {
   mkdir -p "$1"
-  git ls-files -z --cached --others --exclude-standard |
-    tar --null -T - -cf - |
-    tar -xf - -C "$1"
+  # shellcheck disable=SC2016 # the inner sh expands $f
+  if ! git ls-files -z --cached --others --exclude-standard >"$TMP/tree.all" ||
+    ! xargs -0 sh -c 'for f do [ ! -e "$f" ] && [ ! -L "$f" ] || printf "%s\0" "$f"; done' sh <"$TMP/tree.all" >"$TMP/tree.list" ||
+    ! tar --null -T "$TMP/tree.list" -cf "$TMP/tree.tar" ||
+    ! tar -xf "$TMP/tree.tar" -C "$1"; then
+    echo "mutations: cannot snapshot the working tree, so no row can be measured (the errors above say why)" >&2
+    exit 1
+  fi
+  rm -f "$TMP/tree.tar"
 }
 
 echo "→ snapshotting the working tree"
@@ -151,9 +168,17 @@ throttle() { # throttle <pid> — call after each `&`
   fi
 }
 
+# list_tests leaves <pkg>'s test names in its listfile, or go's refusal in a .err
+# beside it: a listing that failed names no test, and reading it as an empty one
+# blames the ledger for a package that does not build.
+list_tests() { # list_tests <pkg>
+  list=$(listfile "$1")
+  (cd "$TMP/clean" && go test -list '.*' "$1" >"$list" 2>&1) || mv "$list" "$list.err"
+}
+
 cut -f2 "$KEYS" | sort -u >"$TMP/pkgs"
 while IFS= read -r pkg; do
-  (cd "$TMP/clean" && go test -list '.*' "$pkg" >"$(listfile "$pkg")" 2>/dev/null || true) </dev/null &
+  list_tests "$pkg" </dev/null &
   throttle $!
 done <"$TMP/pkgs"
 reap
@@ -161,7 +186,15 @@ reap
 # baseline leaves $TMP/b/<key>.err holding the refusal a row naming this test
 # prints, and no such file when the test exists and passes on the unmutated tree.
 baseline() { # baseline <key> <pkg> <test>
-  if ! grep -qxF "$3" "$(listfile "$2")"; then
+  list=$(listfile "$2")
+  if [ -f "$list.err" ]; then
+    {
+      echo "  ✗ go test -list cannot read $2 on the unmutated tree, so this row cannot be judged:"
+      sed 's/^/    /' "$list.err"
+    } >"$TMP/b/$1.err"
+    return 0
+  fi
+  if ! grep -qxF "$3" "$list"; then
     {
       echo "  ✗ $2 has no test named $3 — the ledger names a test that does not exist"
       echo "    (a -run pattern matching nothing EXITS 0, so this row would pin nothing)"
@@ -221,7 +254,7 @@ row() { # row <n> <patch> <pkg> <tests> <why>
     echo "0 1" >"$res"
     return 0
   fi
-  if ! (cd "$mdir" && go build ./... >"$mdir.log" 2>&1); then
+  if ! (cd "$mdir" && go build ./... >"$mdir.log" 2>&1 && go test -run '^$' "$3" >>"$mdir.log" 2>&1); then
     echo "  ✗ the mutated tree does not COMPILE, so a failing test would prove nothing about the suite." >&2
     echo "    Rewrite the mutation so it builds (Go rejects an unused variable — a deleted" >&2
     echo "    guard often needs a \`_ = x\` to keep its inputs used)." >&2
@@ -286,9 +319,19 @@ while IFS='	' read -r n patch pkg tests why; do
 done <"$ROWS"
 replay
 
+for p in testdata/mutations/*.patch; do
+  [ ! -e "$p" ] || basename "$p"
+done | LC_ALL=C sort -u >"$TMP/on-disk"
+awk -F'\t' '$1 != "" && $1 !~ /^#/ { print $1 }' "$LEDGER" | LC_ALL=C sort -u >"$TMP/in-ledger"
+LC_ALL=C comm -23 "$TMP/on-disk" "$TMP/in-ledger" >"$TMP/orphans"
+patches=$(wc -l <"$TMP/on-disk" | tr -d ' ')
+orphans=$(wc -l <"$TMP/orphans" | tr -d ' ')
+sed 's/^/  ✗ no ledger row names /' "$TMP/orphans" >&2
+
 echo
-if [ "$bad" -ne 0 ]; then
-  echo "✗ $kills/$rows ledger rows bite — $bad row(s) above need a look" >&2
+tally="$kills/$rows ledger rows bite, $((patches - orphans))/$patches patches on a row"
+if [ "$bad" -ne 0 ] || [ "$orphans" -ne 0 ]; then
+  echo "✗ $tally — $bad row(s) and $orphans patch(es) above need a look" >&2
   exit 1
 fi
-echo "✓ $kills/$rows ledger rows bite"
+echo "✓ $tally"
