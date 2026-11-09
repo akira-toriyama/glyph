@@ -339,7 +339,12 @@ func TestCommentPrefix(t *testing.T) {
 // this holds the port line for line; the prefixes include a multi-character one
 // and regex metacharacters, which git matches literally. The scissors line
 // under a set prefix is a comment like any other here — the cut itself is
-// TestScissorsUnderACommentPrefixMatchesGit's.
+// TestScissorsUnderACommentPrefixMatchesGit's. Two rows carry a \v and a \f at
+// a line's end and alone on a line: git's isspace keeps both as content
+// (sane_ctype), so a trim set that reads them as space records a subject git
+// does not — `:x:= abc\v` is 0 at a hook trimming them and 3 under
+// `lint --range` (measured 2026-11-04 at 2f9428a with the trim set widened to
+// " \t\r\v\f"; mutation row cleanup-trims-vertical-tab-and-form-feed).
 func TestApplyMatchesGitStripspace(t *testing.T) {
 	dir := t.TempDir()
 	prefixes := []string{"#", ";", "//", ".*", "$"}
@@ -354,6 +359,8 @@ func TestApplyMatchesGitStripspace(t *testing.T) {
 			"/ half of a two-byte prefix\n. half again\n*\n",
 			"subject\n\nbody\n" + prefix + cutTail + "below the scissors\n",
 			"\n" + prefix + " template first\n\n:sparkles:(x)^ add the thing\n",
+			":x:= abc\v\n\nbody \f\n",
+			"\v\n\f\nsubject\f \v\n",
 		}
 		for i, msg := range messages {
 			for _, strip := range []bool{false, true} {

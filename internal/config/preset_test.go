@@ -49,6 +49,41 @@ func TestPresetsShareOnePackagesBlock(t *testing.T) {
 	}
 }
 
+// TestPresetFormNamesTheScopeAlphabet: the template's first line is the one
+// sentence a refused author reads (DESIGN §2, "A refusal quotes the form"),
+// and the presets' scope alphabet `[a-z0-9-]` lived in the regex alone — so a
+// `(Foo_Bar)` scope, a space before the sigil and none after it all drew the
+// same `write it as <:code:>[(scope)]<semver_sigil> <subject>`, a form the
+// refused message already fits to the eye (measured 2026-11-04 at 2f9428a and
+// v6.1.0, t-rpqp: one detail for all four inputs). The form names the
+// alphabet in the scope's place; the spacing it already shows answers the
+// other two. The template stays unparsed: this reads the quoted line, not a
+// schema key.
+func TestPresetFormNamesTheScopeAlphabet(t *testing.T) {
+	for preset, scoped := range map[string]string{
+		"gemoji":       ":bug:(Foo_Bar)~ fix the thing",
+		"conventional": "fix(Foo_Bar)~: fix the thing",
+	} {
+		t.Run(preset, func(t *testing.T) {
+			data, ok := Preset(preset)
+			if !ok {
+				t.Fatalf("Preset(%s) missing", preset)
+			}
+			cfg, err := Load(data)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			v := cfg.Lint(scoped, "akira")
+			if v.OK || v.Excluded {
+				t.Fatalf("Lint(%q) = %+v, want a violation: Foo_Bar is outside the scope alphabet", scoped, v)
+			}
+			if !strings.Contains(v.Reason, "write it as ") || !strings.Contains(v.Reason, "[(scope: a-z 0-9 -)]") {
+				t.Errorf("Reason = %q, want the quoted form to name the scope alphabet as [(scope: a-z 0-9 -)]", v.Reason)
+			}
+		})
+	}
+}
+
 // TestGlyphOwnConfigIsTheGemojiPreset holds glyph's own committed glyph.toml
 // byte-identical to `glyph init --gemoji` output: the file is a generated
 // artifact and the preset is its only source. The discipline dates from the

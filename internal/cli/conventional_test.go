@@ -48,7 +48,7 @@ func TestConventionalPresetTakesTheVersionOnlyFromTheSigil(t *testing.T) {
 		if err := json.Unmarshal(decodeErrorEnvelope(t, stderr).Details, &details); err != nil {
 			t.Fatalf("details: %v", err)
 		}
-		const form = "write it as <type>[(scope)]<semver_sigil>: <subject>"
+		const form = "write it as <type>[(scope: a-z 0-9 -)]<semver_sigil>: <subject>"
 		if len(details) != 1 || !strings.Contains(details[0].Detail, form) {
 			t.Errorf("details = %+v, want one finding quoting %q", details, form)
 		}

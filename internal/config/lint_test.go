@@ -104,7 +104,7 @@ func TestLintViolationQuotesTheForm(t *testing.T) {
 	if got.OK || got.Excluded {
 		t.Fatalf("Lint = %+v, want violation", got)
 	}
-	const form = "<:code:>[(scope)]<semver_sigil> <subject>"
+	const form = "<:code:>[(scope: a-z 0-9 -)]<semver_sigil> <subject>"
 	if !strings.Contains(got.Reason, form) {
 		t.Errorf("Reason = %q, want it to quote the template's first line %q", got.Reason, form)
 	}
