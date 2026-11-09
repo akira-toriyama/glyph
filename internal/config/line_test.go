@@ -122,6 +122,43 @@ func TestParseLineRefusals(t *testing.T) {
 	}
 }
 
+// TestLoadRefusesANoteLineWithoutAListMarker: the renderer fences each
+// line's would-be mentions against that line alone (markdown.Line), which
+// holds only while every rendered line is its own inline context. A template
+// opening with no list marker renders a section's lines as one paragraph, and
+// there a backtick run on one line pairs with the fence on the next: with
+// `line = '$subject$[ ($pr)]'`, three subjects — one ending in a run of three
+// backticks, one holding a double backtick and @octocat (fenced in three), one
+// ending in three again — rendered through GitHub's /markdown (gfm) with the
+// middle line's text in a code span and `<a class="user-mention">@octocat</a>`
+// live beside it; with `- ` in front of each, as `<code>@octocat</code>`
+// (measured 2026-11-04, t-ngw8; DESIGN §3 quotes the lines). An empty
+// template renders no line and loads;
+// the three CommonMark bullet markers load; an indented marker does not.
+func TestLoadRefusesANoteLineWithoutAListMarker(t *testing.T) {
+	const grammar = "schema = 1\n[[patterns]]\npattern = '^(?P<subject>:[a-z]+:(?P<semver_sigil>[=~^!%]) .+)'\n"
+	for _, line := range []string{"$subject$[ ($pr)]", "$subject", " - $subject", "-$subject", "1. $subject", "## $subject", "@$author $subject"} {
+		t.Run(line, func(t *testing.T) {
+			_, err := Load([]byte(grammar + "[note]\nline = '" + line + "'\n"))
+			if err == nil {
+				t.Fatalf("Load accepted note.line %q, which renders a section's lines as one paragraph", line)
+			}
+			for _, want := range []string{"note.line: ", "does not open with a list-item marker", `open the template with "- "`} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error = %q, want substring %q", err, want)
+				}
+			}
+		})
+	}
+	for _, line := range []string{"", "- $subject$[ ($pr)]", "* $subject", "+ $subject"} {
+		t.Run("loads: "+line, func(t *testing.T) {
+			if _, err := Load([]byte(grammar + "[note]\nline = '" + line + "'\n")); err != nil {
+				t.Errorf("Load refused note.line %q: %v", line, err)
+			}
+		})
+	}
+}
+
 // TestLoadFileMalformedLineNamesTheFile: a malformed template is a CONFIG
 // failure, and the message has to say which file and which key — the reader
 // is a developer whose commit-lint job just went red, holding only stderr.

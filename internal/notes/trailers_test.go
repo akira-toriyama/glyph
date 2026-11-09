@@ -1,19 +1,33 @@
 package notes
 
 import (
+	"errors"
+	"fmt"
+	"math/rand/v2"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
-// The table is the measurement. Every `want` below was read off
-// `git interpret-trailers --parse` (git 2.54.0) before the parser existed,
-// not derived from it afterwards — which is why the shapes that answer
-// NOTHING outnumber the ones that answer something. The silent-total-loss
-// cases (a `---` above the block, one prose line inside it, an unindented
-// wrap) are the reason this is a parser and not a grep.
+// The table is the measurement. Every `want` below was read off git's commit
+// reader — `git log --format='%(trailers:only,unfold)'`, git 2.56.0 — before
+// the parser answered it, and the test re-reads each row off git on every run
+// (gitTrailersBatch): a row that pins an answer git does not give fails by
+// name. The one exception is version-bound: a row holding a `token://` line
+// is re-read only under git 2.56.0 or later, because older git reads such a
+// line as the trailer `https` (oracleGitVersion); under older git the row
+// stands on the table alone and says so. The silent-total-loss cases (one
+// prose line inside a block git did not write into, an unindented wrap) are
+// the reason this is a parser and not a grep; the `---` rows are the shapes
+// `git interpret-trailers --parse` answers differently, because it reads a
+// patch mail where `---` starts the diff — the commit reader, and glyph,
+// apply no divider (t-pspd, re-ruled 2026-11-08).
 func TestTrailers(t *testing.T) {
 	tests := []struct {
 		name string
@@ -46,13 +60,93 @@ func TestTrailers(t *testing.T) {
 			want: []trailer{{"Why", "a b"}, {"Co-authored-by", "A B <a@b.c>"}},
 		},
 		{
-			name: "a --- above the block hides all of it",
+			name: "a wrap keeps the first line's trailing space inside the fold, as git does",
+			msg:  "subject\n\nbody.\n\nWhy: a reason  \n  runs on",
+			want: []trailer{{"Why", "a reason   runs on"}},
+		},
+		{
+			name: "a --- line above the block is message text, and the block below it is read",
 			msg:  "subject\n\nbody\n\n---\n\nWhy: a reason\nCo-authored-by: A B <a@b.c>",
+			want: []trailer{{"Why", "a reason"}, {"Co-authored-by", "A B <a@b.c>"}},
+		},
+		{
+			name: "a --- line inside the block is a prose line, and voids it",
+			msg:  "subject\n\nWhy: a reason\n---\nCo-authored-by: A B <a@b.c>",
 			want: nil,
 		},
 		{
-			name: "a --- inside the block cuts what follows",
-			msg:  "subject\n\nWhy: a reason\n---\nCo-authored-by: A B <a@b.c>",
+			name: "a --- followed by text hides nothing (interpret-trailers' patch divider, not the commit reader's)",
+			msg:  "subject\n\nbody\n\n--- text\n\nCo-authored-by: A B <a@b.c>",
+			want: []trailer{{"Co-authored-by", "A B <a@b.c>"}},
+		},
+		{
+			name: "a --- followed by a tab hides nothing",
+			msg:  "subject\n\nbody\n\n---\tx\n\nCo-authored-by: A B <a@b.c>",
+			want: []trailer{{"Co-authored-by", "A B <a@b.c>"}},
+		},
+		{
+			name: "a CRLF --- hides nothing",
+			msg:  "subject\n\nbody\n\n---\r\n\nCo-authored-by: A B <a@b.c>",
+			want: []trailer{{"Co-authored-by", "A B <a@b.c>"}},
+		},
+		{
+			name: "a wrapped body line opening with --- hides nothing (glyph e2b2bec's shape)",
+			msg:  "subject\n\nbody that wraps onto a\n--- line like e2b2bec\n\nCo-authored-by: Probe <p@x.y>\n",
+			want: []trailer{{"Co-authored-by", "Probe <p@x.y>"}},
+		},
+		{
+			name: "a CRLF squash with a YAML --- and GitHub's --------- separator keeps its sign-off and credit (AzooKey 55ffe3c's shape)",
+			msg:  "subject\r\n\r\n---\r\nkey: value\r\n\r\n* a bullet\r\n\r\n---------\r\n\r\nSigned-off-by: dependabot[bot] <support@github.com>\r\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+			want: []trailer{{"Signed-off-by", "dependabot[bot] <support@github.com>"}, {"Co-authored-by", "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>"}},
+		},
+		{
+			name: "a scissors line ends the message, and the block above it is read",
+			msg:  "subject\n\nbody\n\nWhy: a reason\n\n# ------------------------ >8 ------------------------\n\nCo-authored-by: Mallory <m@x.y>\n",
+			want: []trailer{{"Why", "a reason"}},
+		},
+		{
+			name: "a scissors line opening the message leaves no message",
+			msg:  "# ------------------------ >8 ------------------------\n\nCo-authored-by: Mallory <m@x.y>\n",
+			want: nil,
+		},
+		{
+			name: "a scissors line needs git's exact spelling: one dash short is a comment line in the block",
+			msg:  "subject\n\nbody\n\nWhy: a reason\n# ----------------------- >8 ------------------------\nCo-authored-by: A B <a@b.c>\n",
+			want: []trailer{{"Why", "a reason"}, {"Co-authored-by", "A B <a@b.c>"}},
+		},
+		{
+			name: "a trailing Conflicts list is not message, so the block above it is read",
+			msg:  "subject\n\nbody\n\nCo-authored-by: Peggy <p@x.y>\n\nConflicts:\n\tf1\n",
+			want: []trailer{{"Co-authored-by", "Peggy <p@x.y>"}},
+		},
+		{
+			name: "a Conflicts list glued under a 25% block does not count toward its trailers",
+			msg:  "subject\n\nbody\n\nSigned-off-by: S <s@x.y>\np1\np2\np3\np4\np5\np6\np7\nCo-authored-by: Trent <t@x.y>\nConflicts:\n\tf1\n",
+			want: nil,
+		},
+		{
+			name: "Conflicts: closing the INPUT is an empty trailer — the shape a commit recorded with the newline takes when read over the API, which drops it (DESIGN §3)",
+			msg:  "subject\n\nbody\n\nWhy: a reason\nConflicts:",
+			want: []trailer{{"Why", "a reason"}, {"Conflicts", ""}},
+		},
+		{
+			name: "a bare Conflicts: line closing the recorded message is the ignored list, so the paragraph above it is the block",
+			msg:  "subject\n\nbody\n\nCo-authored-by: Peggy <p@x.y>\n\nConflicts:\n",
+			want: []trailer{{"Co-authored-by", "Peggy <p@x.y>"}},
+		},
+		{
+			name: "a bare Conflicts: line closing the recorded message does not lift a 2-of-9 sign-off block over the 25% line",
+			msg:  "subject\n\nbody\n\nSigned-off-by: S <s@x.y>\np1\np2\np3\np4\np5\np6\np7\nCo-authored-by: Trent <t@x.y>\nConflicts:\n",
+			want: nil,
+		},
+		{
+			name: "a CRLF Conflicts: line is not the list, but a trailer with its paths folded in",
+			msg:  "subject\n\nbody\n\nCo-authored-by: P <p@x.y>\n\nConflicts:\r\n\tf1\n",
+			want: []trailer{{"Conflicts", "f1"}},
+		},
+		{
+			name: "trailing comment lines and empty lines are not message",
+			msg:  "subject\n\nbody\n\nWhy: a reason\n\n# a trailing comment\n\n\n",
 			want: []trailer{{"Why", "a reason"}},
 		},
 		{
@@ -66,9 +160,64 @@ func TestTrailers(t *testing.T) {
 			want: []trailer{{"Why", "a reason"}, {"Co-authored-by", "A B <a@b.c>"}},
 		},
 		{
+			name: "a continuation under a comment continues nothing",
+			msg:  "subject\n\nbody\n\nWhy: a reason\n# a comment\n  stray\nCo-authored-by: A B <a@b.c>",
+			want: nil,
+		},
+		{
 			name: "a token holding a space voids the block",
 			msg:  "subject\n\nbody\n\nWhy not: a reason\nCo-authored-by: A B <a@b.c>",
 			want: nil,
+		},
+		{
+			name: "a space before the colon is still the token",
+			msg:  "subject\n\nbody\n\nWhy : a reason\nCo-authored-by: A B <a@b.c>",
+			want: []trailer{{"Why", "a reason"}, {"Co-authored-by", "A B <a@b.c>"}},
+		},
+		{
+			name: "a token holding a byte outside letters, digits and hyphens voids the block",
+			msg:  "subject\n\nbody\n\nFix#1: a reason\nCo-authored-by: A B <a@b.c>",
+			want: nil,
+		},
+		{
+			name: "a token holding a non-ASCII letter voids the block",
+			msg:  "subject\n\nbody\n\nRévisé: a reason\nCo-authored-by: A B <a@b.c>",
+			want: nil,
+		},
+		{
+			name: "a colon opening :// straight after the token is no separator (git 2.56.0's URL rule), so the line is prose and voids the block",
+			msg:  "subject\n\nbody\n\nhttps://example.com: a reason\nCo-authored-by: A B <a@b.c>",
+			want: nil,
+		},
+		{
+			name: "a bare URL line is prose under the URL rule, and the credit beside it is not read — git 2.54 and 2.55 read the trailer `https` and credit it",
+			msg:  "subject\n\nbody\n\nhttps://github.com/o/r/issues/1\nCo-authored-by: Alice <alice@example.com>\n",
+			want: nil,
+		},
+		{
+			name: "a blank before the colon disarms the URL rule: `Why ://x` is the token Why",
+			msg:  "subject\n\nbody\n\nWhy ://x\nCo-authored-by: A B <a@b.c>",
+			want: []trailer{{"Why", "//x"}, {"Co-authored-by", "A B <a@b.c>"}},
+		},
+		{
+			name: "the URL rule wants two slashes: `Path:/usr/local/bin` is the token Path, under every git",
+			msg:  "subject\n\nbody\n\nPath:/usr/local/bin\nCo-authored-by: A B <a@b.c>",
+			want: []trailer{{"Path", "/usr/local/bin"}, {"Co-authored-by", "A B <a@b.c>"}},
+		},
+		{
+			name: "a URL after the separator is a value, under every git",
+			msg:  "subject\n\nbody\n\nRef: https://github.com/o/r/issues/1\nCo-authored-by: A B <a@b.c>",
+			want: []trailer{{"Ref", "https://github.com/o/r/issues/1"}, {"Co-authored-by", "A B <a@b.c>"}},
+		},
+		{
+			name: "a lowercase conflicts: header is no Conflicts list (starts_with is case-sensitive), but the block's trailer with its paths folded in",
+			msg:  "subject\n\nbody\n\nCo-authored-by: A <a@x.y>\n\nconflicts:\n\tf1\n",
+			want: []trailer{{"conflicts", "f1"}},
+		},
+		{
+			name: "the scissors spelling inside a trailer's value is text — the cut is a line of its own",
+			msg:  "subject\n\nbody\n\nWhy: see # ------------------------ >8 ------------------------\nCo-authored-by: A B <a@b.c>\n",
+			want: []trailer{{"Why", "see # ------------------------ >8 ------------------------"}, {"Co-authored-by", "A B <a@b.c>"}},
 		},
 		{
 			name: "an equals separator voids the block",
@@ -110,21 +259,185 @@ func TestTrailers(t *testing.T) {
 			msg:  "subject\n\nbody\n\n  orphaned\nCo-authored-by: A B <a@b.c>",
 			want: nil,
 		},
+		{
+			name: "a CRLF message reads as its LF twin",
+			msg:  "subject\r\n\r\nbody\r\n\r\nWhy: a reason\r\nCo-authored-by: A B <a@b.c>\r\n",
+			want: []trailer{{"Why", "a reason"}, {"Co-authored-by", "A B <a@b.c>"}},
+		},
+		{
+			name: "a Signed-off-by lets one prose line stand in the block",
+			msg:  "subj\n\nbody\n\nSigned-off-by: A <a@b.c>\nthis is a prose line\nCo-authored-by: Eve <e@x.y>",
+			want: []trailer{{"Signed-off-by", "A <a@b.c>"}, {"Co-authored-by", "Eve <e@x.y>"}},
+		},
+		{
+			name: "a cherry-pick line does the same, and is itself no trailer",
+			msg:  "subj\n\nbody\n\n(cherry picked from commit 1234567890abcdef1234567890abcdef12345678)\nthis is a prose line\nCo-authored-by: Eve <e@x.y>",
+			want: []trailer{{"Co-authored-by", "Eve <e@x.y>"}},
+		},
+		{
+			name: "prose above the Signed-off-by is inside the block too",
+			msg:  "subj\n\nbody\n\nthis is prose\nSigned-off-by: A <a@b.c>\nCo-authored-by: Eve <e@x.y>",
+			want: []trailer{{"Signed-off-by", "A <a@b.c>"}, {"Co-authored-by", "Eve <e@x.y>"}},
+		},
+		{
+			name: "two trailers carry six prose lines (25%)",
+			msg:  "subj\n\nbody\n\nSigned-off-by: A <a@b.c>\np1\np2\np3\np4\np5\np6\nCo-authored-by: Eve <e@x.y>",
+			want: []trailer{{"Signed-off-by", "A <a@b.c>"}, {"Co-authored-by", "Eve <e@x.y>"}},
+		},
+		{
+			name: "two trailers do not carry seven (under 25%)",
+			msg:  "subj\n\nbody\n\nSigned-off-by: A <a@b.c>\np1\np2\np3\np4\np5\np6\np7\nCo-authored-by: Eve <e@x.y>",
+			want: nil,
+		},
+		{
+			name: "a continuation under prose counts as prose and folds onto nothing",
+			msg:  "subj\n\nbody\n\nSigned-off-by: A <a@b.c>\nprose line\n  continued\nCo-authored-by: Eve <e@x.y>",
+			want: []trailer{{"Signed-off-by", "A <a@b.c>"}, {"Co-authored-by", "Eve <e@x.y>"}},
+		},
+		{
+			name: "a continuation under prose counts toward the 25% line: four prose lines each wrapped once are eight",
+			msg:  "subj\n\nbody\n\nSigned-off-by: S <s@x.y>\np1\n cont\np2\n cont\np3\n cont\np4\n cont\nCo-authored-by: A <a@b.c>\n",
+			want: nil,
+		},
+		{
+			name: "a prose line holding a colon is a trailer inside a Signed-off-by block",
+			msg:  "subj\n\nbody\n\nSigned-off-by: A <a@b.c>\nsee: https://x\nCo-authored-by: Eve <e@x.y>",
+			want: []trailer{{"Signed-off-by", "A <a@b.c>"}, {"see", "https://x"}, {"Co-authored-by", "Eve <e@x.y>"}},
+		},
+		{
+			name: "a URL line is prose inside a Signed-off-by block too: the parse drops it and keeps the trailers around it — git 2.54 and 2.55 read the trailer `https`",
+			msg:  "subj\n\nbody\n\nSigned-off-by: A <a@b.c>\nhttps://x\nCo-authored-by: Eve <e@x.y>",
+			want: []trailer{{"Signed-off-by", "A <a@b.c>"}, {"Co-authored-by", "Eve <e@x.y>"}},
+		},
+		{
+			name: "a BREAKING CHANGE footer is prose, and a Signed-off-by beside it keeps the block",
+			msg:  "subj\n\nbody\n\nBREAKING CHANGE: the old flag is gone\nSigned-off-by: P <p@x.y>\nCo-authored-by: Victor <v@x.y>\n",
+			want: []trailer{{"Signed-off-by", "P <p@x.y>"}, {"Co-authored-by", "Victor <v@x.y>"}},
+		},
+		{
+			name: "a BREAKING CHANGE footer in a block git did not write into voids it",
+			msg:  "subj\n\nbody\n\nBREAKING CHANGE: the old flag is gone\nCo-authored-by: Victor <v@x.y>\n",
+			want: nil,
+		},
+		{
+			name: "the git-generated prefix is byte-exact in case",
+			msg:  "subj\n\nbody\n\nsigned-off-by: A <a@b.c>\nprose\nCo-authored-by: Eve <e@x.y>",
+			want: nil,
+		},
+		{
+			name: "the git-generated prefix is byte-exact in its trailing space: Signed-off-by:S is an ordinary trailer",
+			msg:  "subj\n\nbody\n\nSigned-off-by:S <s@x.y>\nprose\nCo-authored-by: A <a@b.c>\n",
+			want: nil,
+		},
+		{
+			name: "a Signed-off-by block is still never the title paragraph",
+			msg:  "Signed-off-by: A <a@b.c>\nprose\nCo-authored-by: Eve <e@x.y>",
+			want: nil,
+		},
 	}
 
+	msgs := make([]string, len(tests))
+	for i, tc := range tests {
+		msgs[i] = tc.msg
+	}
+	oracle := gitTrailersBatch(t, msgs)
+	version, oracleReadsURLs := gitReadsURLRule(t)
+
+	urlRows := 0
 	for _, tc := range tests {
+		if urlRuleLine(tc.msg) {
+			urlRows++
+		}
+	}
+	if !oracleReadsURLs && urlRows == 0 {
+		t.Fatalf("git %s predates the URL rule and no row holds a token:// line — the rule has no positive control under this git", version)
+	}
+	for i, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := trailers(tc.msg)
-			if len(got) != len(tc.want) {
-				t.Fatalf("trailers() = %v, want %v", got, tc.want)
+			switch {
+			case urlRuleLine(tc.msg) && !oracleReadsURLs:
+				t.Logf("pinned by the table alone: git %s reads %+v, and the row carries git %s's answer (d122e37976, the URL rule)", version, oracle[i], oracleGitVersion)
+			case !sameTrailers(tc.want, oracle[i]):
+				t.Fatalf("the row pins %+v, and git's commit reader reads %+v — the table is the measurement, so the row is wrong, not git", tc.want, oracle[i])
 			}
-			for i := range got {
-				if got[i] != tc.want[i] {
-					t.Errorf("trailer %d = %+v, want %+v", i, got[i], tc.want[i])
-				}
+			got := trailers(tc.msg)
+			if !sameTrailers(got, tc.want) {
+				t.Fatalf("trailers() = %+v, want %+v", got, tc.want)
 			}
 		})
 	}
+}
+
+// oracleGitVersion is the git whose commit reader the parser transcribes. The
+// one rule a git version has moved: d122e37976 ("trailers: stop recognizing
+// URLs as trailers", v2.56.0) made a colon opening `://` straight after the
+// token no separator, so a `token://` line is prose under 2.56.0 and the
+// trailer `https` under 2.54.0 and 2.55.0 (their trailer.c diffed against
+// 2.56.0's; the end-of-message and blank-line rules are byte-identical across
+// the three). The differential compares every shape under any git it runs
+// on, except the shapes holding such a line, which it compares only under a
+// git at or past this version and otherwise counts and names — never drops
+// silently. Floating with the runner's git instead is what turned the gate
+// red: the machine's git is 2.54.0 and the runners' 2.56.0 (2026-11-08).
+const oracleGitVersion = "2.56.0"
+
+// gitReadsURLRule reports the version of the git on PATH and whether its
+// commit reader has the URL rule (oracleGitVersion or later).
+func gitReadsURLRule(t *testing.T) (version string, hasRule bool) {
+	t.Helper()
+	testutil.RequireGit(t)
+	out, err := exec.Command("git", "version").Output()
+	if err != nil {
+		t.Fatalf("git version: %v", err)
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) < 3 || fields[0] != "git" || fields[1] != "version" {
+		t.Fatalf("git version printed %q, not `git version X.Y.Z`", strings.TrimSpace(string(out)))
+	}
+	version = fields[2]
+	major, minor, ok := majorMinor(version)
+	if !ok {
+		t.Fatalf("git version %q does not open with major.minor", version)
+	}
+	floorMajor, floorMinor, _ := majorMinor(oracleGitVersion)
+	hasRule = major > floorMajor || (major == floorMajor && minor >= floorMinor)
+	return version, hasRule
+}
+
+// majorMinor reads the leading `X.Y` of a git version string — `2.56.0`,
+// `2.57.0-rc1`, `2.56.0.windows.1` — and reports false for anything else.
+func majorMinor(v string) (major, minor int, ok bool) {
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) < 2 {
+		return 0, 0, false
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, false
+	}
+	minorDigits := strings.TrimRightFunc(parts[1], func(r rune) bool { return r < '0' || r > '9' })
+	minor, err = strconv.Atoi(minorDigits)
+	if err != nil {
+		return 0, 0, false
+	}
+	return major, minor, true
+}
+
+// urlRuleLine reports whether any line of msg is one the URL rule decides: a
+// token run followed straight by `://`. Those are exactly the lines whose
+// classification d122e37976 changed; a message holding none reads the same
+// under every git the oracle floor names.
+func urlRuleLine(msg string) bool {
+	for l := range strings.SplitSeq(msg, "\n") {
+		i := 0
+		for i < len(l) && isTokenByte(l[i]) {
+			i++
+		}
+		if i > 0 && strings.HasPrefix(l[i:], "://") {
+			return true
+		}
+	}
+	return false
 }
 
 func TestCoAuthorNames(t *testing.T) {
@@ -168,6 +481,21 @@ func TestCoAuthorNames(t *testing.T) {
 			msg:  "subject\n\nCo-authored-by: A B <a@b.c>\n\nplain prose closes the message",
 			want: nil,
 		},
+		{
+			name: "a co-author beside a Signed-off-by and a prose line is credited",
+			msg:  "subject\n\nbody\n\nSigned-off-by: A B <a@b.c>\nprose\nCo-authored-by: Eve <e@x.y>",
+			want: []string{"Eve"},
+		},
+		{
+			name: "a co-author below a --- line is credited, as git's commit reader and GitHub credit it",
+			msg:  "subject\n\nbody\n\n--- (和訳)\nprose\n\nCo-authored-by: Claude Fable 5 <noreply@anthropic.com>",
+			want: []string{"Claude Fable 5"},
+		},
+		{
+			name: "a co-author below a scissors line credits nobody",
+			msg:  "subject\n\nbody\n\n# ------------------------ >8 ------------------------\n\nCo-authored-by: Mallory <m@x.y>\n",
+			want: nil,
+		},
 	}
 
 	for _, tc := range tests {
@@ -190,105 +518,458 @@ func TestTrailerValueTakesTheLastMatch(t *testing.T) {
 	}
 }
 
-// TestTrailersAreASubsetOfGit is the oracle. Modelling git's rule and then
-// testing the model against itself proves nothing, so the real parser is
-// asked the same messages git is, and the invariant asserted is the one that
-// matters: glyph may report FEWER trailers than git, NEVER a trailer git does
-// not report. Over-reporting is how a person ends up named on a public
-// release page as an author of code the commit never claimed.
-//
-// The cases are generated by crossing the shapes the table pins one at a
-// time, so combinations nobody thought to write down are covered too.
-func TestTrailersAreASubsetOfGit(t *testing.T) {
-	testutil.RequireGit(t)
+// differentialHeads, differentialBlocks and differentialTails are the shapes
+// the differential crosses: every head above every block, closed by every
+// tail, so combinations nobody thought to write down are covered too. The
+// heads carry the `---` spellings interpret-trailers reads as a divider and
+// the commit reader does not, a scissors line, a CRLF paragraph and a
+// comment title; the blocks carry the strict shapes and the git-generated
+// ones; the tails carry what the commit reader ignores at the end of a
+// message — empty lines, comment lines, a Conflicts list, a scissors line —
+// and the near-misses it does not.
+var differentialHeads = []string{
+	"subject\n\nbody.\n\n",
+	"subject\n\nbody.\n\nmore body.\n\n",
+	"subject\n\n",
+	"subject\n\nbody\n\n---\n\n",
+	"subject\n\nbody\n\n--- text\n\n",
+	"subject\n\nbody\n\n---\tx\n\n",
+	"subject\n\nbody\n\n---\r\n\n",
+	"subject\n\nbody\n\n---x\n\n",
+	"subject\n\nbody\n\n----\n\n",
+	"subject\n\nbody that wraps onto a\n--- line\n\n",
+	"subject\r\n\r\nbody\r\n\r\n",
+	"# a comment title\n\n",
+	"\n",
+	"subject\n\nbody\n\n# ------------------------ >8 ------------------------\nbelow the cut\n\n",
+	"subject\n\nConflicts:\n\tf1\n\n",
+	"", // no paragraph before: the block would be the subject
+}
 
-	heads := []string{
-		"subject\n\nbody.\n\n",
-		"subject\n\nbody.\n\nmore body.\n\n",
-		"subject\n\n",
-		"subject\n\nbody\n\n---\n\n",
-		"", // no paragraph before: the block would be the subject
+var differentialBlocks = []string{
+	"Why: a reason",
+	"Why: a reason\nCo-authored-by: A B <a@b.c>",
+	"Co-authored-by: A B <a@b.c>\nCo-authored-by: C D <c@d.e>",
+	"Why: a reason that\n  wraps politely",
+	"Why: a reason that\nwraps rudely",
+	"Why: a reason  \n  wraps after trailing space",
+	"Why: a reason\n# a comment\nCo-authored-by: A B <a@b.c>",
+	"Why: a reason\n# a comment\n  stray\nCo-authored-by: A B <a@b.c>",
+	"Why not: a reason",
+	"Why : a reason\nCo-authored-by: A B <a@b.c>",
+	"Why = a reason",
+	"Fix#1: a reason\nCo-authored-by: A B <a@b.c>",
+	"Révisé: a reason\nCo-authored-by: A B <a@b.c>",
+	"https://example.com: a reason\nCo-authored-by: A B <a@b.c>",
+	"https://github.com/o/r/issues/1\nCo-authored-by: A B <a@b.c>",
+	"see https://example.com/x\nCo-authored-by: A B <a@b.c>",
+	"Why:\nCo-authored-by: <a@b.c>",
+	"  orphaned continuation",
+	"Why: first\nWhy: second",
+	"---\nCo-authored-by: A B <a@b.c>",
+	"Co-authored-by: A B <a@b.c>\n--- text",
+	"Signed-off-by: A B <a@b.c>\nWhy: a reason",
+	"Signed-off-by: A B <a@b.c>\nthis is a prose line\nCo-authored-by: Eve <e@x.y>",
+	"(cherry picked from commit 1234567890abcdef1234567890abcdef12345678)\nthis is a prose line\nCo-authored-by: Eve <e@x.y>",
+	"this is prose\nSigned-off-by: A B <a@b.c>\nCo-authored-by: Eve <e@x.y>",
+	"Signed-off-by: A B <a@b.c>\np1\np2\np3\np4\np5\np6\nCo-authored-by: Eve <e@x.y>",
+	"Signed-off-by: A B <a@b.c>\np1\np2\np3\np4\np5\np6\np7\nCo-authored-by: Eve <e@x.y>",
+	"Signed-off-by: A B <a@b.c>\nprose line\n  continued\nCo-authored-by: Eve <e@x.y>",
+	"Signed-off-by: A B <a@b.c>\nsee: https://x\nCo-authored-by: Eve <e@x.y>",
+	"Signed-off-by: A B <a@b.c>\n# a comment\n  stray\nCo-authored-by: Eve <e@x.y>",
+	"Signed-off-by: A B <a@b.c>\n---\nCo-authored-by: Eve <e@x.y>",
+	"  orphaned\nSigned-off-by: A B <a@b.c>\nCo-authored-by: Eve <e@x.y>",
+	"signed-off-by: A B <a@b.c>\nprose\nCo-authored-by: Eve <e@x.y>",
+	"Signed-off-by:A B <a@b.c>\nprose\nCo-authored-by: Eve <e@x.y>",
+	"Signed-off-by: A B <a@b.c>\nWhy not: a reason\nCo-authored-by: Eve <e@x.y>",
+	"BREAKING CHANGE: the old flag is gone\nSigned-off-by: A B <a@b.c>\nCo-authored-by: Eve <e@x.y>",
+	"Why ://x\nCo-authored-by: A B <a@b.c>",
+	"Ref: https://github.com/o/r/issues/1\nCo-authored-by: A B <a@b.c>",
+	"Why: see # ------------------------ >8 ------------------------\nCo-authored-by: A B <a@b.c>",
+}
+
+var differentialTails = []string{
+	"",
+	"\n",
+	"\n\n",
+	"\n   \n",
+	"\n\r\n",
+	"\n# a trailing comment\n",
+	"\n\n# c1\n# c2\n\n",
+	"\nConflicts:\n\tf1\n",
+	"\nConflicts:\n\tf1\n\tf2\n",
+	"\n\nConflicts:\n\tf1\n",
+	"\nConflicts:\r\n\tf1\n",
+	"\nConflicts:",
+	"\nConflicts:\n",
+	"\n\nConflicts:\n",
+	"\n\nconflicts:\n\tf1\n",
+	"\n# ------------------------ >8 ------------------------\nbelow\nCo-authored-by: Mallory <m@x.y>\n",
+	"\n\n# ------------------------ >8 ------------------------\nCo-authored-by: Mallory <m@x.y>\n",
+	"\n# ------------------------ >8 ------------------------",
+	"\n#------------------------ >8 ------------------------\n",
+}
+
+// TestTrailersEqualGit is the oracle. Modelling git's rule and then testing
+// the model against itself proves nothing, so the real parser is asked the
+// same messages git's commit reader is, and the answers must be EQUAL on
+// every shape — a parser that reports a trailer git does not names a person
+// on a public release page as an author of code the commit never claimed,
+// and one that reports fewer drops a credit GitHub shows (the five fleet
+// commits in DESIGN §3). The shapes: the head × block × tail crossing above,
+// every byte after `---` and in four other positions, the 25% boundary from
+// both sides under every git-generated prefix spelling, and a seeded random
+// mix of all of it (GLYPH_TRAILER_SHAPES scales the random part; the seed
+// never moves, so a failure reproduces by name).
+func TestTrailersEqualGit(t *testing.T) {
+	var msgs []string
+	for _, h := range differentialHeads {
+		for _, b := range differentialBlocks {
+			for _, tl := range differentialTails {
+				msgs = append(msgs, h+b+tl)
+			}
+		}
 	}
-	blocks := []string{
-		"Why: a reason",
-		"Why: a reason\nCo-authored-by: A B <a@b.c>",
-		"Co-authored-by: A B <a@b.c>\nCo-authored-by: C D <c@d.e>",
-		"Why: a reason that\n  wraps politely",
-		"Why: a reason that\nwraps rudely",
-		"Why: a reason\n# a comment\nCo-authored-by: A B <a@b.c>",
-		"Why not: a reason",
-		"Why = a reason",
-		"see https://example.com/x\nCo-authored-by: A B <a@b.c>",
-		"Why:\nCo-authored-by: <a@b.c>",
-		"  orphaned continuation",
-		"Why: first\nWhy: second",
-		"Signed-off-by: A B <a@b.c>\nWhy: a reason",
+	msgs = append(msgs, byteShapes()...)
+	msgs = append(msgs, boundaryShapes()...)
+	randomN := 1500
+	if s := os.Getenv("GLYPH_TRAILER_SHAPES"); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			t.Fatalf("GLYPH_TRAILER_SHAPES=%q is not an integer", s)
+		}
+		randomN = n
 	}
-	tails := []string{"", "\n", "\n\n"}
+	msgs = append(msgs, randomShapes(randomN)...)
 
-	// Outside any repository, so no repository config answers either.
-	dir := t.TempDir()
-	checked := 0
-	for _, h := range heads {
-		for _, b := range blocks {
-			for _, tl := range tails {
-				msg := h + b + tl
-				oracle := gitTrailers(t, dir, msg)
-				mine := trailers(msg)
-				checked++
+	oracle := gitTrailersBatch(t, msgs)
+	version, oracleReadsURLs := gitReadsURLRule(t)
 
-				// The subset invariant, asserted per entry so a failure names
-				// the exact line glyph invented.
-				for _, got := range mine {
-					if !containsTrailer(oracle, got) {
-						t.Errorf("glyph reported a trailer git does not, for %q:\n  glyph: %+v\n  git:   %+v", msg, got, oracle)
+	distinct := map[string]bool{}
+	spoke, credited, over, under := 0, 0, 0, 0
+	urlShapes, heldBack := 0, 0
+	for i, msg := range msgs {
+		distinct[msg] = true
+		if urlRuleLine(msg) {
+			urlShapes++
+			if !oracleReadsURLs {
+				heldBack++
+				continue
+			}
+		}
+		mine := trailers(msg)
+		if len(oracle[i]) > 0 {
+			spoke++
+		}
+		for _, tr := range oracle[i] {
+			if strings.EqualFold(tr.Token, coAuthoredBy) {
+				credited++
+				break
+			}
+		}
+		if sameTrailers(mine, oracle[i]) {
+			continue
+		}
+		for _, got := range mine {
+			if !slices.Contains(oracle[i], got) {
+				over++
+			}
+		}
+		for _, want := range oracle[i] {
+			if !slices.Contains(mine, want) {
+				under++
+			}
+		}
+		t.Errorf("for %q:\n  glyph: %+v\n  git:   %+v", msg, mine, oracle[i])
+	}
+	if spoke == 0 || credited == 0 || urlShapes == 0 {
+		t.Fatalf("the differential ran %d shapes of which git answered %d, credited a co-author on %d and %d hold a token:// line — a positive control is required for each", len(msgs), spoke, credited, urlShapes)
+	}
+	t.Logf("git %s: %d shapes (%d distinct), %d compared, git answered %d and credited a co-author on %d; glyph over-reported %d trailers and under-reported %d", version, len(msgs), len(distinct), len(msgs)-heldBack, spoke, credited, over, under)
+	if heldBack > 0 {
+		t.Logf("held back %d shapes holding a token:// line: git %s predates the URL rule of git %s (d122e37976) that the parser follows, so those shapes are pinned by TestTrailers' URL rows under this git and compared here under git %s or later", heldBack, version, oracleGitVersion, oracleGitVersion)
+	}
+}
+
+// byteShapes puts every byte but NUL and LF after `---` above the block and
+// inside it, where a blank line would be, where a continuation would open,
+// and inside a token — the positions where git's ASCII tables decide, so a
+// Go-wide notion of space or letter would show.
+func byteShapes() []string {
+	var out []string
+	for b := 1; b < 256; b++ {
+		if b == '\n' {
+			continue
+		}
+		s := string(rune(b))
+		if b >= 0x80 {
+			s = string([]byte{byte(b)})
+		}
+		out = append(out,
+			"subject\n\nbody\n\n---"+s+"x\n\nCo-authored-by: A B <a@b.c>\n",
+			"subject\n\nWhy: a\n---"+s+"\nCo-authored-by: A B <a@b.c>\n",
+			"subject\n\nbody\n"+s+"\nCo-authored-by: A B <a@b.c>\n",
+			"subject\n\nbody\n\nWhy: a\n"+s+"cont\nCo-authored-by: A B <a@b.c>\n",
+			"subject\n\nbody\n\nWh"+s+"y: a\nCo-authored-by: A B <a@b.c>\n",
+		)
+	}
+	return out
+}
+
+// boundaryShapes walks the 25% line from both sides: each git-generated
+// prefix spelling (and its lowercase and no-space near-misses, and none),
+// zero to two extra trailers, zero to twelve prose lines, in five layouts —
+// prose below the prefix, above it, interleaved with the trailers, each prose
+// line wrapped with a continuation, and a comment with a stray continuation
+// under it.
+func boundaryShapes() []string {
+	prefixes := []string{
+		"Signed-off-by: S <s@x.y>",
+		"(cherry picked from commit 1234567890abcdef1234567890abcdef12345678)",
+		"signed-off-by: S <s@x.y>",
+		"Signed-off-by:S <s@x.y>",
+		"",
+	}
+	extras := [][]string{{}, {"Why: a"}, {"Why: a", "Ref: b"}}
+	const credit = "Co-authored-by: Eve <e@x.y>"
+	var out []string
+	for _, p := range prefixes {
+		for _, ex := range extras {
+			for n := 0; n <= 12; n++ {
+				prose := make([]string, n)
+				for i := range prose {
+					prose[i] = "p" + strconv.Itoa(i+1)
+				}
+				var layouts [][]string
+				below := appendNonEmpty(nil, p)
+				below = append(below, prose...)
+				below = append(below, ex...)
+				layouts = append(layouts, append(below, credit))
+
+				above := append([]string{}, prose...)
+				above = appendNonEmpty(above, p)
+				above = append(above, ex...)
+				layouts = append(layouts, append(above, credit))
+
+				var inter []string
+				inter = appendNonEmpty(inter, p)
+				for i, l := range prose {
+					inter = append(inter, l)
+					if i < len(ex) {
+						inter = append(inter, ex[i])
 					}
+				}
+				if len(prose) < len(ex) {
+					inter = append(inter, ex[len(prose):]...)
+				}
+				layouts = append(layouts, append(inter, credit))
+
+				wrapped := appendNonEmpty(nil, p)
+				for _, l := range prose {
+					wrapped = append(wrapped, l, " cont")
+				}
+				wrapped = append(wrapped, ex...)
+				layouts = append(layouts, append(wrapped, credit))
+
+				commented := appendNonEmpty(nil, p)
+				commented = append(commented, prose...)
+				commented = append(commented, "# a comment", "  stray")
+				commented = append(commented, ex...)
+				layouts = append(layouts, append(commented, credit))
+
+				for _, l := range layouts {
+					out = append(out, "subj\n\nbody\n\n"+strings.Join(l, "\n")+"\n")
 				}
 			}
 		}
 	}
-	if checked == 0 {
-		t.Fatal("the differential ran no cases")
-	}
+	return out
 }
 
-// gitTrailers asks git what the message's trailers are. `--only-trailers`
-// keeps the answer to the block itself, and `--unfold` folds continuations
-// the way this package does, so the two answers are comparable.
+func appendNonEmpty(to []string, s string) []string {
+	if s == "" {
+		return to
+	}
+	return append(to, s)
+}
+
+// randomShapes mixes the pools under a fixed seed: a head, one to eight block
+// lines, a tail, and in one shape of six a CRLF rewrite of the whole message,
+// in one of five the final newline dropped.
+func randomShapes(n int) []string {
+	heads := append([]string{
+		"subject\nsecond title line\n\n",
+		"subject\n\nbody\n\n  indented body\n\n",
+		"subject\n\n# a comment in the body\n\n",
+	}, differentialHeads...)
+	lines := []string{
+		"Co-authored-by: A B <a@b.c>",
+		"Co-authored-by: A B <a@b.c>",
+		"Co-authored-by: A B <a@b.c>",
+		"Co-Authored-By: C D <c@d.e>",
+		"Why: a reason",
+		"Ref: #12",
+		"Signed-off-by: S <s@x.y>",
+		"Signed-off-by: S <s@x.y>",
+		"(cherry picked from commit 1234567890abcdef1234567890abcdef12345678)",
+		"signed-off-by: S <s@x.y>",
+		"Signed-off-by:S <s@x.y>",
+		"Fix#1: x",
+		"Révisé: x",
+		"https://x: y",
+		"https://github.com/o/r/issues/1",
+		"Why not: x",
+		"Why : x",
+		"Why\t:x",
+		"-: x",
+		":x",
+		"Why:",
+		"Why:\t x  ",
+		"BREAKING CHANGE: x",
+		"p1",
+		"p2",
+		"see https://x",
+		"a line: with a colon inside",
+		"  cont",
+		"\tcont",
+		" ",
+		"\r",
+		"\fnot blank",
+		"\vnot a continuation",
+		"# c",
+		"#c: d",
+		"---",
+		"--- x",
+		"---\r",
+		"---x",
+		"Conflicts:",
+		"conflicts:",
+		"\tpath",
+		"# ------------------------ >8 ------------------------",
+		"Why: see # ------------------------ >8 ------------------------",
+		"Why ://x",
+	}
+	tails := append([]string{"\n\n\n", "\n# c\n\tpath\n", "\nConflicts:\n\tf1\n\n\tf2\n", "\nConflicts:\n\tf1\nprose\n\tf2\n", "\nConflicts:\n\tf1\n# c\n\tf2\n"}, differentialTails...)
+
+	r := rand.New(rand.NewPCG(0x676c797068, 0x74726c7273))
+	out := make([]string, 0, n)
+	for len(out) < n {
+		var b strings.Builder
+		b.WriteString(heads[r.IntN(len(heads))])
+		for range 1 + r.IntN(8) {
+			b.WriteString(lines[r.IntN(len(lines))])
+			b.WriteByte('\n')
+		}
+		b.WriteString(tails[r.IntN(len(tails))])
+		m := b.String()
+		if r.IntN(6) == 0 {
+			m = strings.ReplaceAll(m, "\n", "\r\n")
+		}
+		if r.IntN(5) == 0 {
+			m = strings.TrimSuffix(strings.TrimSuffix(m, "\n"), "\r")
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// gitTrailersBatch asks git's commit reader what each message's trailers
+// are: the messages become commits of a throwaway repository through one
+// `git fast-import` (which stores a message byte for byte — no cleanup, no
+// added newline, measured 2026-11-08), and one `git log` reads
+// `%(trailers:only,unfold)` off each. `only` keeps the answer to trailer
+// lines, `unfold` folds continuations the way this package does, so the two
+// answers are comparable. `git interpret-trailers --parse` is deliberately
+// not the oracle: it applies the `---` patch divider the commit reader does
+// not (DESIGN §3).
 //
 // The oracle is git with no config but its defaults: trailer.separators and
-// trailer.<token>.* change what interpret-trailers answers, and a personal
+// trailer.<token>.* change what git answers, and a personal
 // `trailer.separators = "#"` failed this test with glyph's parser untouched.
 // glyph's notes never read that config, so the defaults are the comparison.
-func gitTrailers(t *testing.T, dir, msg string) []trailer {
+func gitTrailersBatch(t *testing.T, msgs []string) [][]trailer {
 	t.Helper()
-	cmd := exec.Command("git", "interpret-trailers", "--parse", "--only-trailers", "--unfold")
-	cmd.Dir = dir
-	cmd.Env = testutil.GitEnv("akira-toriyama")
-	cmd.Stdin = strings.NewReader(msg + "\n")
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git interpret-trailers: %v", err)
+	testutil.RequireGit(t)
+	dir := t.TempDir()
+	run := func(stdin string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = testutil.GitEnv("akira-toriyama")
+		cmd.Stdin = strings.NewReader(stdin)
+		out, err := cmd.Output()
+		if err != nil {
+			var exit *exec.ExitError
+			stderr := ""
+			if errors.As(err, &exit) {
+				stderr = string(exit.Stderr)
+			}
+			t.Fatalf("git %v: %v\n%s", args, err, stderr)
+		}
+		return string(out)
 	}
-	var got []trailer
-	for l := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
-		if l == "" {
-			continue
-		}
-		token, value, ok := splitTrailer(l)
+	run("", "init", "-q")
+
+	var stream strings.Builder
+	for i, m := range msgs {
+		fmt.Fprintf(&stream, "commit refs/heads/shapes\nmark :%d\ncommitter c <c@example.invalid> 0 +0000\ndata %d\n%s\n", i+1, len(m), m)
+	}
+	marks := filepath.Join(dir, "marks")
+	run(stream.String(), "fast-import", "--quiet", "--export-marks="+marks)
+	raw, err := os.ReadFile(marks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shas := make([]string, len(msgs))
+	index := map[string]int{}
+	for line := range strings.SplitSeq(strings.TrimSpace(string(raw)), "\n") {
+		mark, sha, ok := strings.Cut(line, " ")
 		if !ok {
+			t.Fatalf("marks line %q", line)
+		}
+		n, err := strconv.Atoi(strings.TrimPrefix(mark, ":"))
+		if err != nil || n < 1 || n > len(msgs) {
+			t.Fatalf("marks line %q", line)
+		}
+		shas[n-1] = sha
+		index[sha] = n - 1
+	}
+	for i, s := range shas {
+		if s == "" {
+			t.Fatalf("message %d got no commit", i)
+		}
+	}
+
+	out := run(strings.Join(shas, "\n")+"\n", "log", "--no-walk=unsorted", "--stdin", "--format=%H%x00%(trailers:only,unfold)%x00")
+	got := make([][]trailer, len(msgs))
+	seen := 0
+	for rec := range strings.SplitSeq(out, "\x00\n") {
+		if rec == "" {
 			continue
 		}
-		got = append(got, trailer{Token: token, Value: value})
+		sha, text, ok := strings.Cut(rec, "\x00")
+		if !ok {
+			t.Fatalf("log record %q", rec)
+		}
+		i, known := index[sha]
+		if !known {
+			t.Fatalf("log answered for %s, which no message produced", sha)
+		}
+		seen++
+		for l := range strings.SplitSeq(text, "\n") {
+			if l == "" {
+				continue
+			}
+			token, rest, ok := splitTrailer(l)
+			if !ok {
+				t.Fatalf("%%(trailers:only) printed a line splitTrailer cannot read: %q", l)
+			}
+			got[i] = append(got[i], trailer{Token: token, Value: strings.Trim(rest, gitSpace)})
+		}
+	}
+	if seen != len(msgs) {
+		t.Fatalf("git log answered for %d of %d commits", seen, len(msgs))
 	}
 	return got
 }
 
-func containsTrailer(in []trailer, want trailer) bool {
-	for _, t := range in {
-		if strings.EqualFold(t.Token, want.Token) && t.Value == want.Value {
-			return true
-		}
-	}
-	return false
-}
+func sameTrailers(a, b []trailer) bool { return slices.Equal(a, b) }

@@ -10,8 +10,8 @@
 # makes a rendering BUG look intentional.
 # The diff sits right there in the pull request, but nothing forces the author
 # to have READ it as the spec change it is. The trailer is that force: range-
-# wide, parsed by `git interpret-trailers` exactly as go-bite's `Bite-exempt:`
-# is, so a line inside a body paragraph asserts nothing.
+# wide, and read by git's commit reader, so a line inside a body paragraph
+# asserts nothing.
 #
 # Unlike dist-gate.sh (whose trailer rule this shares through
 # scripts/lib/range-gate.sh), the trailer here is not a waiver of some stronger
@@ -64,6 +64,6 @@ if require_trailer_on_every_commit Golden-change "$base" "$head"; then
 fi
 
 printf '%s\n' "$goldens" | sed 's/^/  /' >&2
-printf '::error::golden-gate: this change rewrites the golden files above and %s carries no Golden-change trailer. A golden is the format spec — `-update` regenerates it from whatever the code now produces, so the diff IS the spec change: read it as one, then put `Golden-change: <reason>` on every commit in the range (a real trailer; `git interpret-trailers` must parse it).\n' \
+printf '::error::golden-gate: this change rewrites the golden files above and %s carries no Golden-change trailer. A golden is the format spec — `-update` regenerates it from whatever the code now produces, so the diff IS the spec change: read it as one, then put `Golden-change: <reason>` on every commit in the range (a real trailer; `git log --format=%%(trailers)` must print it).\n' \
   "$([ -n "$RANGE_GATE_MISSING" ] && git rev-parse --short "$RANGE_GATE_MISSING" || echo 'an empty commit range')" >&2
 exit 1

@@ -1,9 +1,9 @@
 diff --git a/internal/config/match.go b/internal/config/match.go
-index 30481e1..3084cd7 100644
+index 6ffa041..7497799 100644
 --- a/internal/config/match.go
 +++ b/internal/config/match.go
-@@ -65,9 +65,6 @@ func (c *Config) Match(message string) (Match, error) {
- 		if sub == nil {
+@@ -74,9 +74,6 @@ func (c *Config) Match(message string) (Match, error) {
+ 		if loc == nil {
  			continue
  		}
 -		if p.skip {

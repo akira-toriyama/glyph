@@ -99,7 +99,9 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-# Every file this run writes lives in WORK. bin/ is build.sh's, and the path
+# Every file this run writes lives in WORK, apart from the objects of the merge
+# it synthesizes below for CI's view, which git writes into this repository's
+# store as it writes any object. bin/ is build.sh's, and the path
 # fleet-preflight.sh is handed its candidate at: a smoke build there replaced a
 # candidate mid-preflight with an unstamped binary (2026-09-10). A signal
 # cleans up and re-raises (scripts/lib/trap.sh says why).
