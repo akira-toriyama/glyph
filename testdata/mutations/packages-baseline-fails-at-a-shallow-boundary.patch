@@ -1,0 +1,9 @@
+diff --git a/internal/walk/lines.go b/internal/walk/lines.go
+index 1108fb8..c0e9a03 100644
+--- a/internal/walk/lines.go
++++ b/internal/walk/lines.go
+@@ -289,3 +289,3 @@ func (w Walker) baselineOn(ctx context.Context, cfg *config.Config, l Line) (tag
+ 	if gitsource.IsShallowBoundary(err) {
+-		return "", true, nil
++		return "", false, err
+ 	}

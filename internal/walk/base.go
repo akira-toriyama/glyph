@@ -84,7 +84,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
 			return "", "", nil, lerr
 		}
 		if latest == "" {
-			revRange, base, err = w.wholeHistory(ctx, cfg, "no version tag in HEAD's history", "")
+			revRange, base, err = w.wholeHistory(ctx, cfg, "no version tag in HEAD's history", "", "")
 			return revRange, "", base, err
 		}
 		return latest + "..HEAD", latest, &v, nil
@@ -108,7 +108,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
 			// The repository's first release: nothing sits below it, and dying
 			// here would fail a job standing behind a tag that already exists.
 			// Same walk, same guard, as auto before the first tag.
-			revRange, base, err = w.wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s in HEAD's history", bound), "")
+			revRange, base, err = w.wholeHistory(ctx, cfg, fmt.Sprintf("no version tag below %s in HEAD's history", bound), "", "")
 			return revRange, "", base, err
 		}
 		return prev + "..HEAD", prev, &v, nil
@@ -170,8 +170,16 @@ const flagEscape = "; name the walk base yourself with --since-tag=TAG (cutting 
 // itself applies, and past walkCap the refusal is CodeAPI — nothing is broken
 // underneath, no retry clears it — with the escape in the message; the count
 // is exact, so the refusal names the real cost, and the second `git log` this
-// arm spends is local and cheap.
-func (w Walker) wholeHistory(ctx context.Context, cfg *config.Config, whyNone, escape string) (string, *bump.Version, error) {
+// arm spends is local and cheap. remedy is what a packages walk can say of
+// its untagged lines' baselines — the baseline where one can be named, and
+// where the line's first change lies at or past a shallow clone's boundary
+// why none can ("" when no line has either: the single line, or lines whose
+// first change is a root commit or that no commit touches) — appended after
+// the walk is said to proceed and before escape in the refusal: the walk's
+// own answer comes first, the way out of its cost second (t-vc5w). escape
+// is the caller's way out (Escape); "" — no Escape, or one that returned
+// nothing — is flagEscape.
+func (w Walker) wholeHistory(ctx context.Context, cfg *config.Config, whyNone, remedy, escape string) (string, *bump.Version, error) {
 	raws, err := w.Git.Log(ctx, "HEAD")
 	if err != nil {
 		return "", nil, err
@@ -187,12 +195,12 @@ func (w Walker) wholeHistory(ctx context.Context, cfg *config.Config, whyNone, e
 			escape = flagEscape
 		}
 		return "", nil, core.APIf(
-			"%s, and walking this repository's whole history would ask GitHub about %d commits, one round-trip each (the cap is %d) — refusing the unbounded walk%s",
-			whyNone, walked, walkCap, escape)
+			"%s, and walking this repository's whole history would ask GitHub about %d commits, one round-trip each (the cap is %d) — refusing the unbounded walk%s%s",
+			whyNone, walked, walkCap, remedy, escape)
 	}
 	// One API round-trip per commit over everything — a cost the caller
 	// should see named (house rule: no silent unbounded work).
-	w.Report.Warnf("%s — walking the repository's whole history (%d commit(s) the walk will ask GitHub about)", whyNone, walked)
+	w.Report.Warnf("%s — walking the repository's whole history (%d commit(s) the walk will ask GitHub about)%s", whyNone, walked, remedy)
 	return "HEAD", &bump.Version{}, nil
 }
 

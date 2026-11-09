@@ -1,9 +1,8 @@
 diff --git a/internal/walk/base.go b/internal/walk/base.go
-index 2e9efb9..2dd670e 100644
 --- a/internal/walk/base.go
 +++ b/internal/walk/base.go
 @@ -86,7 +86,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
- 			revRange, base, err = w.wholeHistory(ctx, cfg, "no version tag in HEAD's history", "")
+ 			revRange, base, err = w.wholeHistory(ctx, cfg, "no version tag in HEAD's history", "", "")
  			return revRange, "", base, err
  		}
 -		return latest + "..HEAD", latest, &v, nil

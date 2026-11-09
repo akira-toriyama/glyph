@@ -1,18 +1,14 @@
 diff --git a/internal/walk/base.go b/internal/walk/base.go
 --- a/internal/walk/base.go
 +++ b/internal/walk/base.go
-@@ -182,14 +182,6 @@ func (w Walker) wholeHistory(ctx context.Context, cfg *config.Config, whyNone, e
- 			walked++
- 		}
+@@ -188,10 +188,2 @@ func (w Walker) wholeHistory(ctx context.Context, cfg *config.Config, whyNone, r
  	}
 -	if walked > walkCap {
 -		if escape == "" {
 -			escape = flagEscape
 -		}
 -		return "", nil, core.APIf(
--			"%s, and walking this repository's whole history would ask GitHub about %d commits, one round-trip each (the cap is %d) — refusing the unbounded walk%s",
--			whyNone, walked, walkCap, escape)
+-			"%s, and walking this repository's whole history would ask GitHub about %d commits, one round-trip each (the cap is %d) — refusing the unbounded walk%s%s",
+-			whyNone, walked, walkCap, remedy, escape)
 -	}
  	// One API round-trip per commit over everything — a cost the caller
- 	// should see named (house rule: no silent unbounded work).
- 	w.Report.Warnf("%s — walking the repository's whole history (%d commit(s) the walk will ask GitHub about)", whyNone, walked)

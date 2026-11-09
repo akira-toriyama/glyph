@@ -1,0 +1,9 @@
+diff --git a/internal/preview/preview.go b/internal/preview/preview.go
+index 33a9c16..85c64de 100644
+--- a/internal/preview/preview.go
++++ b/internal/preview/preview.go
+@@ -414,3 +414,3 @@ func pendingShortBlock(short string, plural, unreached bool) string {
+ 	}
+-	if unreached {
++	if unreached && false {
+ 		floor = "what each headline says, and so may the release tag a line with none within reach would step from, so treat each"

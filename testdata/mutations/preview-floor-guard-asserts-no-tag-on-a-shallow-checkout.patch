@@ -1,0 +1,9 @@
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index fbdfbb3..d6f7daa 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -399,3 +399,3 @@ func previewPending(ctx context.Context, cfg *config.Config, repoFlag, owner, re
+ 	}
+-	shallow, err = checkout().IsShallow(ctx)
++	shallow, err = false, nil
+ 	if err != nil {

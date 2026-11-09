@@ -2934,7 +2934,71 @@ error names: a package with no tag of its own — the common case of a package
 added to an old repository — is baselined by cutting the tag the refusal
 names **at the commit before its first change** (README "Packages":
 `<prefix>v0.0.0` on a free line, `<prefix>vN.0.0` on a locked one), a tag that
-says "nothing of this line was released before here".
+says "nothing of this line was released before here". The warning under the
+cap says first that the walk proceeds without a tag, then the remedy, and
+the remedy **names its price**: a baseline is a release like any other and
+takes its number, so the line's first release steps from it — `pubsub/v2.1.0`
+after a `pubsub/v2.0.0` baseline and a `^`, where the unbaselined line's
+first release is `pubsub/v2.0.0` itself (t-ngac, measured 2026-11-04 on
+2f9428a: `git tag pubsub/v2.0.0 $DECL` as the warning said, then
+`pubsub/v2.1.0`). Kept, and priced, over two alternatives: a baseline-only
+tag shape (`pubsub/v2.0.0-baseline`, or a `below:`-like marker) is machinery
+for a skipped number, and a candidate tag is a question, never an answer
+(above) — it could not be a floor; and a per-line cap exception on an
+untagged line walks what the cap exists to refuse. The remedy is named
+**only for a line that has a commit to cut it at**: the walk asks git for
+the line's first change over its own files (its path with every nested
+package excluded, rule 1's ownership; `walk.baselineOn`,
+`gitsource.Checkout.FirstChange`), and a line whose first change is a root
+commit — glyph-monorepo-test-2's two lines, both added by root `8da42f0` —
+gets the single line's sentence, since "the commit before that line's first
+change" named a commit that does not exist (t-vc5w, measured 2026-11-04;
+`TestSinceTagPackagesRootFirstChangeNamesNoBaseline`,
+`TestSinceTagPackagesUntaggedLineWalksTheWholeHistory`; mutation rows
+`packages-baseline-named-at-a-root-first-change`,
+`packages-baseline-remedy-hides-its-cost`). Saying "at the root commit
+itself" was rejected: a baseline there releases the root commit's own
+changes to the line as the baseline, which is not "nothing of this line was
+released before here". A line whose first change the clone cannot read gets
+neither sentence: within a shallow clone the oldest commit touching a path
+the boundary's tree holds is the boundary itself, whose whole tree git reads
+as its diff ("Where the files come from"), so `FirstChange` answers it as
+`DiffTreeFiles` does — unreadable, `IsShallowBoundary` — and the warning
+says no baseline can be named for the line because its first change lies at
+or past the boundary, where the first cut read the boundary as a parentless
+root and said the single line's sentence (measured 2026-11-08;
+`TestFirstChangeAtAShallowBoundaryIsUnreadable`,
+`TestSinceTagPackagesBaselinePastAShallowBoundaryIsNotNamed`; mutation rows
+`gitsource-first-change-reads-a-shallow-boundary-as-a-root`,
+`packages-baseline-fails-at-a-shallow-boundary`). The line's own files are
+pinned as glyph's construction, not only as git's reading of a pathspec: a
+nested package is not its parent's first change, the path is read from the
+top level whatever the working directory, the root package is the tree minus
+every other package, and a line no commit touches has no baseline — four
+decisions a mutation left green until the review of #361
+(`TestLinePathspec`,
+`TestSinceTagPackagesNestedPackageIsNotItsParentsFirstChange`,
+`TestSinceTagPackagesBaselineReadsThePathFromTheTopLevel`,
+`TestSinceTagPackagesRootPackageExcludesTheOtherLines`,
+`TestSinceTagPackagesLineNoCommitTouchesHasNoBaseline`; mutation rows
+`packages-baseline-counts-a-nested-package-as-its-parents-first-change`,
+`packages-baseline-reads-the-path-from-the-working-directory`,
+`packages-baseline-root-package-owns-every-line`,
+`packages-baseline-named-for-a-line-no-commit-touches`). Past the cap the
+refusal's escape is built from the same answer (`walk.Escape`): `preview`,
+which has no `--since-tag`, says "cut the tag named above" where a baseline
+was named, and for a line no baseline can precede names the line's own first
+release cut by hand — the one floor left for it, a release like any other.
+"Cut the tag named above" alone dangled over a root-declared line, and on a
+pull touching a baselined line beside one, cutting the baseline as told
+cleared nothing: the re-run refused again, for the root line, naming nothing
+(measured 2026-11-08;
+`TestPreviewPackagesCapRefusalNamesAnEscapeForEveryUntaggedLine`, which
+follows the advice and re-runs, and
+`TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy`; mutation rows
+`preview-cap-escape-names-a-tag-nobody-named`,
+`preview-cap-escape-names-an-empty-hand-release`,
+`preview-cap-escape-sends-a-locked-line-to-the-free-line`).
 
 **Only the untagged arm is capped**, and the tagged arm's missing cap is a
 decision (t-n5tw R3). A tagged range is the unreleased work a release exists
@@ -3278,7 +3342,18 @@ commit(s)" in a pull of three and "its 0 commit(s)" in a pull of two, a count
 that reads as a miscount of the pull. The count is the footer's alone
 (`preview.RenderNoLine`, the body moved beside the others so its prose is
 unit-tested with theirs; `TestRenderNoLine`, mutation row
-`preview-moves-nothing-counts-the-pulls-commits`). The pending
+`preview-moves-nothing-counts-the-pulls-commits`). Under touched lines the
+PR-side caveat makes the same floor of "moves nothing" when every headline
+moves nothing, on a full checkout or a shallow one, and qualifies what each
+headline says when one names no version: a line with no release tag that
+moves nothing ("there is no version to move"), or one with none within a
+shallow checkout's reach (below). It said "may be missing from the figures
+above" under those headlines (measured 2026-11-09, a pull commit whose
+listing GitHub answered 422 for;
+`TestRenderPackagesPRShortNamesNoFigureNoHeadlineCarries`,
+`TestPreviewPRCaveatOnAFullCheckoutNamesNoFigure`; mutation rows
+`preview-pr-caveat-points-at-figures-no-line-moves`,
+`preview-pr-caveat-points-at-a-version-an-untagged-line-lacks`). The pending
 side is the one walk, run when any touched line has a release tag (the
 release-floor guard per line), and its RANGE is resolved over the TOUCHED
 lines alone —
@@ -3299,7 +3374,65 @@ alone, and that was wrong in the one case it mattered: the same run answered
 `curry/v0.0.1` in prose and `v0.1.0` in `packages[]`, and `bump` on the same
 checkout answers `curry/v0.1.0` — preview predicts the walk, so the prose is
 the half that has to move. "No tag" and "pending uncomputed" are therefore two
-states, not one flag. The body is the single line's sentences per line: the
+states, not one flag — and the headline reads the first, the footer the
+second. A line with no tag names every version as its **first release**
+(`the first release here would be **travel/v0.1.0**`), walked or not, with
+the tagged arms' level clauses (`… (a **minor** bump is already pending)`);
+its null floor is never spelled as a tag. Routed through the tagged arms
+because its pending side was walked, such a line drew "the next release
+becomes **travel/v0.0.0 → travel/v0.1.0**", a tag nobody cut (t-1n1s,
+measured 2026-11-04 on glyph-monorepo-test-2 `preview --pr 2`, camp tagged
+and travel not; `preview.untaggedHeadline`,
+`TestHeadlineUntaggedLineNamesItsFirstRelease`, mutation row
+`preview-untagged-line-spells-its-null-floor-as-a-tag`). The footer's
+untagged sentence agrees in number — `haiku and curry have no release tag …
+for them` — where one sentence joined with " and " read "haiku and curry has
+… for it" (t-c2a9, same measurement; mutation row
+`preview-footer-disagrees-in-number`). And the floor guard reads whether the
+checkout is **shallow** before it concludes no tag exists: a `--depth 1`
+clone holds the tags its depth reached and no other, so on a shallow
+checkout with no tag within reach the walk is still skipped — the verdict
+stays the PR side's, the exit code 0 — but stderr says the walk's own
+shallow sentence (`walk.ShallowWarning`, one home) and the body carries the
+walk's shallow clause where a walked shallow checkout puts it, its headline
+and footer saying the clone's reach rather than the base branch. Before that
+read the guard said "The base branch holds no v* release tag yet" of a
+repository that has v0.1.0 (t-txed, measured 2026-11-04 at 2f9428a;
+`TestPreviewOnAShallowCheckoutDoesNotAssertNoTag`, mutation row
+`preview-floor-guard-asserts-no-tag-on-a-shallow-checkout`). On a shallow
+checkout an untagged headline names **no version**, walk skipped or run: a
+line with no release tag within the reach may have one past it, and every
+version an untagged headline could name steps from the null floor that tag
+refutes — "the first release here would be **curry/v0.0.1**" where
+`curry/v0.1.0` lay past a `--depth 3` clone's reach that held haiku's tag,
+so the walk ran (measured 2026-11-08; the first cut named the figure "if no
+release tag lies past this shallow checkout's reach", a condition the clone
+cannot check). The sentence keeps the levels — "raises **patch**", "(a
+**minor** bump is already pending)" — and says why the release it lands in
+cannot be named (`preview.shallowHeadline`); the caveat under it qualifies
+"what the headline says" rather than a figure it does not carry, which it
+pointed at under "moves nothing", and so does the PR side's caveat when a
+pull commit's file listing came back short, which said "the figures above"
+there (measured 2026-11-09); and the footer says the clone's reach of a
+walked untagged line too (`TestPreviewOnAShallowCheckoutSpeaksPerLine`,
+`TestPreviewOnAShallowCheckoutNamesNoFigure`,
+`TestPreviewOnAShallowCheckoutPRCaveatNamesNoFigure`,
+`TestRenderShallowFloorGuard`, `TestRenderShallowWalkedLine`,
+`TestRenderPackagesPRShort`; mutation rows
+`preview-shallow-line-names-a-first-release`,
+`preview-walked-shallow-line-is-called-untagged`,
+`preview-shallow-caveat-qualifies-a-figure-nobody-named`,
+`preview-pr-caveat-qualifies-a-figure-nobody-named`). The machine
+verdict is unchanged there: `untagged` reports what the checkout holds, and
+`next` what the PR side stepped from the null floor — the prose claims less
+than it, never something else. A packages line's absence is said of the
+**line**: "this line has no release tag yet", never "the base branch holds
+no release tag yet", which the same comment's footer refuted two paragraphs
+below by naming a sibling's tag on that branch (measured 2026-11-08;
+`TestPreviewPackagesUntaggedLineSpeaksOfTheLine`, mutation row
+`preview-untagged-line-denies-the-base-branch-a-tag`); the bare line keeps
+the base-branch sentence, which is the fact there. The body is the single
+line's sentences per line: the
 marker, one headline per touched line led by the line's name with versions
 spelled as tags (`haiku/v0.1.0 → haiku/v0.2.0`, so two lines can never be
 confused), one commit table per line (a commit moving two lines sits in

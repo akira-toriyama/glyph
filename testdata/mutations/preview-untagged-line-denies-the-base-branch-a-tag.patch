@@ -1,0 +1,9 @@
+diff --git a/internal/preview/preview.go b/internal/preview/preview.go
+index 33a9c16..0ef2c70 100644
+--- a/internal/preview/preview.go
++++ b/internal/preview/preview.go
+@@ -233,3 +233,3 @@ func untaggedHeadline(in Input, line bool, pl, ql bump.Level, pr, qr int) string
+ 	case pr == 0 && qr == 0:
+-		if line {
++		if line && false {
+ 			return "⏸️ Merging this PR moves nothing — and this line has no release tag yet, so there is no version to move."

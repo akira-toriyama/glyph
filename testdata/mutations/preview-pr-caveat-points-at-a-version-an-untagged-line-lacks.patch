@@ -1,0 +1,9 @@
+diff --git a/internal/preview/preview.go b/internal/preview/preview.go
+index 7a4e6c1..1640c81 100644
+--- a/internal/preview/preview.go
++++ b/internal/preview/preview.go
+@@ -372,3 +372,3 @@ func renderPackages(in Input) string {
+ 		figures = figures || !still
+-		versionless = versionless || (p.Untagged && (in.Shallow || still))
++		versionless = versionless || (p.Untagged && in.Shallow)
+ 	}
