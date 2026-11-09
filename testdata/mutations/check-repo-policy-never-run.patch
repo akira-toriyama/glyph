@@ -1,9 +1,10 @@
 diff --git a/scripts/check.sh b/scripts/check.sh
+index 215464f..8d7ffdf 100755
 --- a/scripts/check.sh
 +++ b/scripts/check.sh
-@@ -272,7 +272,7 @@
- # same set unless origin/main has gained a translation since the fork. bash, as
- # the reusable's `run:` has it.
+@@ -274,7 +274,7 @@ ran golden-gate
+ # checker at v2 over a branch checkout and over its merge). bash, as the reusable's
+ # `run:` has it.
  echo "→ repo-policy (the hub's house policy over this tree)"
 -bash "$REPO_POLICY"
 +:

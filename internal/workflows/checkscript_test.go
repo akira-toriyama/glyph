@@ -223,12 +223,14 @@ exit 1
 )
 
 // hubRepoPolicy is repo-policy-check.sh reduced to what the gate is handed: the
-// revision of the hub it came from and the directory it judges.
+// revision of the hub it came from and the directory it judges, which the real
+// checker reads as `${1:-.}`: the working directory unless an argument names
+// another (v2's scripts/repo-policy-check.sh).
 func hubRepoPolicy(revision string) string {
 	return `#!/usr/bin/env bash
 {
   echo "revision=` + revision + `"
-  echo "dir=$PWD"
+  echo "dir=$(cd "${1:-.}" && pwd)"
   echo "self=$0"
 } >"$POLICY_RECORD"
 `
@@ -262,6 +264,10 @@ fi
 // shape at v2 (6a4ae14 and 97506e9): the pinned linter version, the job's
 // LINT_FLOOR, the lint step's args and the 'lint floor' step after it, whose run:
 // block here is floorStepRecords. An empty floor or args leaves that line out.
+// v2's module hygiene step leads the job as it does there: the real file carries
+// two run: blocks ahead of the floor step's, and an extraction keyed on any step
+// name instead of 'lint floor' takes the first (on v2's go-ci.yml, `go mod tidy
+// -diff` and `go mod verify`).
 func hubGoCI(floor, args string) string {
 	return hubGoCIWithFloorStep(floor, args, floorStepRecords)
 }
@@ -274,7 +280,9 @@ func hubGoCIWithFloorStep(floor, args, floorStep string) string {
 	if floor != "" {
 		raw += "    env:\n      LINT_FLOOR: " + floor + "\n"
 	}
-	raw += "    steps:\n      - name: golangci-lint\n" +
+	raw += "    steps:\n      - name: module hygiene (go mod tidy -diff + verify)\n" +
+		"        if: runner.os == 'Linux'\n        run: |\n          go mod tidy -diff\n          go mod verify\n\n" +
+		"      - name: golangci-lint\n" +
 		"        uses: golangci/golangci-lint-action@" + strings.Repeat("0", 40) + " # v9.3.0\n" +
 		"        with:\n          version: ${{ inputs.golangci-lint-version }}\n"
 	if args != "" {
@@ -802,6 +810,21 @@ func TestCheckScriptRunsRepoPolicyAtThePin(t *testing.T) {
 		}
 		if !strings.Contains(run.stdout, "translation file") {
 			t.Errorf("the run does not carry the checker's own finding\n%s", run)
+		}
+	})
+
+	// repo-policy.yml arrives by fleet-sync and build.yml is glyph's own, so the
+	// two pins can stand at different tags.
+	t.Run("the tag repo-policy.yml pins, not build.yml's", func(t *testing.T) {
+		f := newCheckFixture(t)
+		f.tagHub("v3", "v3", hubGoCI("errcheck,misspell", floorArgs))
+		caller := filepath.Join(".github", "workflows", "repo-policy.yml")
+		f.commitToRepo(caller, strings.Replace(repoFile(t, caller), "repo-policy.yml@v2", "repo-policy.yml@v3", 1), "pin repo-policy at v3")
+
+		f.runGreen()
+
+		if got := f.policySaw()["revision"]; got != "v3" {
+			t.Errorf("repo-policy-check.sh came from %q, want v3, the tag repo-policy.yml pins it at — build.yml pins go-bite and go-ci at v2", got)
 		}
 	})
 }

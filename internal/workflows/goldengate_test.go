@@ -178,7 +178,7 @@ func TestGoldenGateJudgesAGoldenAtAnyDepth(t *testing.T) {
 // merge, never asked for — exit 1 here, exit 0 in CI (measured 2026-11-08). Handed
 // the merge, the gate reads B's diff as CI does.
 func TestGoldenGateJudgesTheMergeItIsHanded(t *testing.T) {
-	ci, local, forkPoint := gateVerdicts(t, "golden-gate.sh")
+	ci, local, forkPoint := gateVerdicts(t, "golden-gate.sh", "# b v1", "# b v2 from B")
 	for name, run := range map[string]stepRun{"CI's checkout at the merge": ci, "check.sh handing the merge": local} {
 		if run.exit != 0 || !strings.Contains(run.stdout, "no golden file") {
 			t.Errorf("%s: golden-gate exited %d, want 0 with no golden in B's diff\n%s", name, run.exit, run)

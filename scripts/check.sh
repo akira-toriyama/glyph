@@ -267,10 +267,12 @@ ran golden-gate
 # The house-policy gate repo-policy.yml runs on every pull request: the hub's
 # repo-policy-check.sh — the *.ja.* translation ban, and the available(macOS) half
 # that stands down with no root Package.swift, i.e. here — at the tag the caller
-# pins, as the reusable checks it out at job.workflow_sha. It judges tracked paths
-# through `git ls-files`, so it reads this checkout where CI reads the merge: the
-# same set unless origin/main has gained a translation since the fork. bash, as
-# the reusable's `run:` has it.
+# pins, as the reusable checks it out at job.workflow_sha. It judges this checkout
+# where CI judges the merge, so the two verdicts can part on what origin/main has
+# changed since the fork: a translation main gained is red in CI and green here,
+# one main deleted is red here and green in CI (both measured 2026-11-09, the
+# checker at v2 over a branch checkout and over its merge). bash, as the reusable's
+# `run:` has it.
 echo "→ repo-policy (the hub's house policy over this tree)"
 bash "$REPO_POLICY"
 ran repo-policy
