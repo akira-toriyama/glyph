@@ -1,0 +1,13 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+index 215464f..8d7ffdf 100755
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -274,7 +274,7 @@ ran golden-gate
+ # checker at v2 over a branch checkout and over its merge). bash, as the reusable's
+ # `run:` has it.
+ echo "→ repo-policy (the hub's house policy over this tree)"
+-bash "$REPO_POLICY"
++:
+ ran repo-policy
+ 
+ # Module hygiene: fail if go.mod/go.sum are not tidy, and verify the downloaded

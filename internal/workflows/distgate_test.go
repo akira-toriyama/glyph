@@ -156,6 +156,114 @@ func TestDistGatePatternCoversTheRealDistributionLayer(t *testing.T) {
 	}
 }
 
+// newDistGateRepo commits dist-gate.sh's real text and files to a fixture
+// repository, and returns its path, a git runner, the base commit and the whole
+// environment to run the gate under.
+func newDistGateRepo(t *testing.T, files map[string]string) (dir string, git func(...string) string, base string, env []string) {
+	t.Helper()
+	testutil.RequireGit(t)
+	dir = t.TempDir()
+	git = func(args ...string) string {
+		t.Helper()
+		return testutil.Git(t, dir, "akira-toriyama", args...)
+	}
+	git("init", "-q", "-b", "main")
+	git("config", "core.fileMode", "true")
+	for _, rel := range []string{"scripts/dist-gate.sh", "scripts/lib/range-gate.sh"} {
+		testutil.WriteFile(t, dir, rel, repoFile(t, rel))
+	}
+	for rel, content := range files {
+		testutil.WriteFile(t, dir, rel, content)
+	}
+	git("add", "-A")
+	git("commit", "-q", "-m", "base")
+	return dir, git, git("rev-parse", "HEAD"), []string{
+		"PATH=" + os.Getenv("PATH"),
+		"HOME=" + dir,
+		"GIT_CONFIG_GLOBAL=" + os.DevNull,
+		"GIT_CONFIG_SYSTEM=" + os.DevNull,
+	}
+}
+
+// TestDistGateEvidenceIsATestThatStillExists: the gate demands a test EXISTS and
+// bite demands it BITES, so a deleted test satisfies neither, and credited as a
+// change it stands both down (measured 2026-11-04: a release.yml line plus `git rm`
+// of a workflow test, dist-gate "accompanied by" at exit 0 and bite "no Go test file
+// ... added or changed" at exit 0; t-5w2x). A renamed test is the same test still
+// there: under --no-renames its new path lists as added.
+func TestDistGateEvidenceIsATestThatStillExists(t *testing.T) {
+	sh := requireTool(t, "sh")
+
+	const (
+		gated    = ".github/workflows/release.yml"
+		existing = "internal/workflows/existing_test.go"
+		other    = "internal/workflows/other_test.go"
+	)
+	dir, git, base, env := newDistGateRepo(t, map[string]string{
+		gated:    "name: release\n",
+		existing: "package workflows\n",
+		other:    "package workflows\n",
+	})
+
+	for _, tc := range []struct {
+		name     string
+		evidence func(t *testing.T)
+		exit     int
+		carries  string // on stdout for a pass, on stderr for a refusal
+	}{
+		{
+			name:     "a test modified",
+			evidence: func(t *testing.T) { testutil.WriteFile(t, dir, existing, "package workflows\n\n// edited\n") },
+			carries:  "accompanied by",
+		},
+		{
+			name: "a test added",
+			evidence: func(t *testing.T) {
+				testutil.WriteFile(t, dir, "internal/workflows/new_test.go", "package workflows\n")
+			},
+			carries: "accompanied by",
+		},
+		{
+			name:     "a test renamed",
+			evidence: func(t *testing.T) { git("mv", existing, "internal/workflows/renamed_test.go") },
+			carries:  "accompanied by",
+		},
+		{
+			name:     "a test deleted",
+			evidence: func(t *testing.T) { git("rm", "-q", existing) },
+			exit:     1,
+			carries:  "::error::dist-gate",
+		},
+		{
+			name: "one test deleted beside another modified",
+			evidence: func(t *testing.T) {
+				git("rm", "-q", existing)
+				testutil.WriteFile(t, dir, other, "package workflows\n\n// edited\n")
+			},
+			carries: "accompanied by",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			git("checkout", "-q", "--detach", base)
+			testutil.WriteFile(t, dir, gated, "name: release\n# edited\n")
+			tc.evidence(t)
+			git("add", "-A")
+			git("commit", "-q", "-m", "change")
+			run := execute(t, []string{sh, filepath.Join(dir, "scripts", "dist-gate.sh"), base}, dir, env)
+			if run.exit != tc.exit {
+				t.Fatalf("dist-gate exited %d, want %d\n%s", run.exit, tc.exit, run)
+			}
+			stream := run.stdout
+			if tc.exit != 0 {
+				stream = run.stderr
+			}
+			if !strings.Contains(stream, tc.carries) {
+				t.Errorf("dist-gate's verdict does not carry %q\n%s", tc.carries, run)
+			}
+		})
+	}
+}
+
 // pinnedGoreleaserAction is goreleaser.yml's real goreleaser-action step, the
 // positive control the stand-down below is proven against: the indent with
 // `uses: `, the SHA, and the `# vX.Y.Z` comment.
@@ -175,7 +283,6 @@ var firstStepName = regexp.MustCompile(`(?m)^\s*- name: .*$`)
 // tool at a SHA, so that a SHA swap on a line that is not a `uses:` has
 // something to swap.
 func TestDistGateStandsDownForAPinSwapAlone(t *testing.T) {
-	testutil.RequireGit(t)
 	sh := requireTool(t, "sh")
 
 	const gated = ".github/workflows/goreleaser.yml"
@@ -197,26 +304,7 @@ func TestDistGateStandsDownForAPinSwapAlone(t *testing.T) {
 	edit := func(in string) string { return strings.Replace(in, nameLine, nameLine+" (edited)", 1) }
 	bumped := swap(indent + "goreleaser/goreleaser-action@" + other + " # v9.9.9")
 
-	dir := t.TempDir()
-	git := func(args ...string) string {
-		t.Helper()
-		return testutil.Git(t, dir, "akira-toriyama", args...)
-	}
-	git("init", "-q", "-b", "main")
-	git("config", "core.fileMode", "true")
-	for _, rel := range []string{"scripts/dist-gate.sh", "scripts/lib/range-gate.sh"} {
-		testutil.WriteFile(t, dir, rel, repoFile(t, rel))
-	}
-	testutil.WriteFile(t, dir, gated, original)
-	git("add", "-A")
-	git("commit", "-q", "-m", "base")
-	base := git("rev-parse", "HEAD")
-	env := []string{
-		"PATH=" + os.Getenv("PATH"),
-		"HOME=" + dir,
-		"GIT_CONFIG_GLOBAL=" + os.DevNull,
-		"GIT_CONFIG_SYSTEM=" + os.DevNull,
-	}
+	dir, git, base, env := newDistGateRepo(t, map[string]string{gated: original})
 
 	for _, tc := range []struct {
 		name       string
@@ -267,5 +355,110 @@ func TestDistGateStandsDownForAPinSwapAlone(t *testing.T) {
 				t.Errorf("a stand-down wrote to stderr — the shell or awk complained on the way to 0\n%s", run)
 			}
 		})
+	}
+}
+
+// newStackedRepo builds the shape on which a branch head's diff and the merge's
+// part: pull request A, squash-merged into main, and B stacked on A's branch
+// with a change of its own. A rewrote the gated release.yml, a workflow test and
+// a golden, with its Golden-change reason; B rewrites release.yml's last line
+// alone, bFrom to bTo, with no test and no trailer. It returns the squash (CI's
+// base for B), B's head, and the merge of B into the squash, built as check.sh
+// builds it.
+func newStackedRepo(t *testing.T, bFrom, bTo string) (dir string, git func(...string) string, squash, head, merge string, env []string) {
+	t.Helper()
+	const (
+		gated  = ".github/workflows/release.yml"
+		test   = "internal/workflows/release_test.go"
+		golden = "internal/cli/testdata/out.golden.md"
+	)
+	dir, git, _, env = newDistGateRepo(t, map[string]string{
+		"scripts/golden-gate.sh": repoFile(t, "scripts/golden-gate.sh"),
+		gated:                    "name: release\n# a v1\nx\ny\nz\nw\n" + bFrom + "\n",
+		test:                     "package workflows\n// v1\n",
+		golden:                   "golden v1\n",
+	})
+
+	git("checkout", "-q", "-b", "a")
+	testutil.WriteFile(t, dir, gated, "name: release\n# a v2\nx\ny\nz\nw\n"+bFrom+"\n")
+	testutil.WriteFile(t, dir, test, "package workflows\n// v2\n")
+	testutil.WriteFile(t, dir, golden, "golden v2\n")
+	git("commit", "-q", "-am", ":bug:~ A", "-m", "Golden-change: A rewrites the release golden")
+	git("checkout", "-q", "main")
+	git("merge", "-q", "--squash", "a")
+	git("commit", "-q", "-m", ":bug:~ A (#1)", "-m", "Golden-change: A rewrites the release golden")
+	squash = git("rev-parse", "HEAD")
+
+	git("checkout", "-q", "-b", "b", "a")
+	testutil.WriteFile(t, dir, gated, "name: release\n# a v2\nx\ny\nz\nw\n"+bTo+"\n")
+	git("commit", "-q", "-am", ":bug:~ B: release.yml alone")
+	head = git("rev-parse", "HEAD")
+
+	tree := git("merge-tree", "--write-tree", squash, head)
+	merge = git("commit-tree", "-p", squash, "-p", head, "-m", "the merge commit CI tests", tree)
+	return dir, git, squash, head, merge, env
+}
+
+// gateVerdicts runs a range gate three ways over newStackedRepo's shape, B
+// rewriting bFrom to bTo, and returns the runs: as CI runs it (the checkout at the
+// merge, no head named), as check.sh runs it (the checkout at the branch head, the
+// merge named), and the control — the checkout at the branch head with no head
+// named, the fork-point diff both used to judge.
+func gateVerdicts(t *testing.T, script, bFrom, bTo string) (ci, local, forkPoint stepRun) {
+	t.Helper()
+	sh := requireTool(t, "sh")
+	dir, git, squash, head, merge, env := newStackedRepo(t, bFrom, bTo)
+	run := func(args ...string) stepRun {
+		t.Helper()
+		return execute(t, append([]string{sh, filepath.Join(dir, "scripts", script)}, args...), dir, env)
+	}
+	git("checkout", "-q", "--detach", merge)
+	ci = run(squash)
+	git("checkout", "-q", "--detach", head)
+	local = run(squash, merge)
+	forkPoint = run(squash)
+	return ci, local, forkPoint
+}
+
+// TestDistGateJudgesTheMergeItIsHanded: build.yml's dist-gate job checks out
+// refs/pull/N/merge and diffs BASE...HEAD from there — the merge's diff, which on
+// a branch stacked on a squashed pull request holds this branch's files alone.
+// check.sh's checkout is the branch head, whose diff runs from the fork point and
+// carries the parent's test as evidence: exit 0 there, exit 1 in CI (measured
+// 2026-11-08). So the gate takes the commit to judge as its second argument and
+// check.sh hands it the merge it built; the fork-point run stays as the control
+// that the shape discriminates.
+func TestDistGateJudgesTheMergeItIsHanded(t *testing.T) {
+	ci, local, forkPoint := gateVerdicts(t, "dist-gate.sh", "# b v1", "# b v2 from B")
+	for name, run := range map[string]stepRun{"CI's checkout at the merge": ci, "check.sh handing the merge": local} {
+		if run.exit != 1 || !strings.Contains(run.stderr, "::error::dist-gate") {
+			t.Errorf("%s: dist-gate exited %d, want 1 with ::error::dist-gate — B touches release.yml with no test of its own\n%s", name, run.exit, run)
+		}
+	}
+	if forkPoint.exit != 0 || !strings.Contains(forkPoint.stdout, "accompanied by") {
+		t.Errorf("control: from the branch head with no head named, dist-gate exited %d, want 0 crediting A's test — "+
+			"the fixture no longer discriminates the fork-point diff from the merge's\n%s", forkPoint.exit, forkPoint)
+	}
+}
+
+// TestDistGateStandsDownForAPinSwapInTheMergeItIsHanded: the pin-swap stand-down
+// reads the commit the gate is handed, as the evidence does. On the stacked shape
+// with B's change a pin swap alone, the merge's diff is that swap and CI stands
+// down, while the fork-point diff also holds A's edit five lines above it, which no
+// swap explains. Read off the checkout while the evidence is read off the merge,
+// the gate sees no swap and no test: exit 1 from check.sh where CI exits 0.
+func TestDistGateStandsDownForAPinSwapInTheMergeItIsHanded(t *testing.T) {
+	const pin = "      - uses: actions/checkout@"
+	ci, local, forkPoint := gateVerdicts(t, "dist-gate.sh",
+		pin+strings.Repeat("1", 40)+" # v4.1.0", pin+strings.Repeat("2", 40)+" # v4.2.0")
+	for name, run := range map[string]stepRun{"CI's checkout at the merge": ci, "check.sh handing the merge": local} {
+		if run.exit != 0 || !strings.Contains(run.stdout, "swaps the SHA pin of the same action (actions/checkout)") {
+			t.Errorf("%s: dist-gate exited %d, want 0 standing down — B's diff swaps one pin and nothing else\n%s", name, run.exit, run)
+		}
+	}
+	if forkPoint.exit != 0 || !strings.Contains(forkPoint.stdout, "accompanied by") {
+		t.Errorf("control: from the branch head with no head named, dist-gate exited %d, want 0 crediting A's test "+
+			"past A's edit, which is no pin swap — the fixture no longer discriminates the fork-point diff from the merge's\n%s",
+			forkPoint.exit, forkPoint)
 	}
 }

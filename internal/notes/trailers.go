@@ -2,28 +2,64 @@ package notes
 
 import "strings"
 
-// Git trailer-block parsing, held to `git interpret-trailers --parse` by a
-// differential (trailers_test.go). Layer contract: this file reads a commit
-// message and nothing else — no git, no GitHub, no config. The one invariant
-// the differential asserts is a SUBSET, not equality: glyph may report FEWER
-// trailers than git, never more. Over-reporting is the direction that credits
-// a person the commit never claimed, so an edge this parser is unsure of is
-// resolved by reporting nothing.
+// Git trailer-block parsing, held to git's own commit reader —
+// `git log --format='%(trailers:only,unfold)'` — by a differential asserting
+// EQUALITY (trailers_test.go): the trailers glyph reads off a landed commit
+// are the ones git reads off it, no more and no fewer. Layer contract: this
+// file reads a commit message and nothing else — no git, no GitHub, no config.
+// The message it reads is the one git recorded, closing newline included
+// (notes.Commit.Recorded): the end-of-message rules below are byte rules, and
+// `Conflicts:\n` closing the object is git's ignored list where `Conflicts:`
+// closing the input is an empty trailer — a caller that drops the newline
+// changes the answer, and nothing here can tell that it did.
 //
-// Every rule below was measured against git 2.54.0 rather than read from the
-// documentation; the shapes and their answers are the test's table.
+// The oracle is the commit reader, not `git interpret-trailers --parse`. The
+// two share every rule but one: interpret-trailers reads a message being
+// written or a patch mail, where a `---` line starts the diff, so it discards
+// everything from the first `---` down; the commit reader applies no divider
+// (pretty.c sets no_divider for `%(trailers)`, as trailer_iterator_init does
+// for every reader inside git), because a landed commit carries no patch.
+// glyph reads landed commits, so a `---` line is message text here, whatever
+// follows it (DESIGN §3 names the fleet commits whose credit a divider hid).
+//
+// The rules are git 2.56.0's, transcribed from trailer.c
+// (find_end_of_log_message with no_divider, find_trailer_block_start,
+// find_separator, trailer_block_get), commit.c (ignored_log_message_bytes)
+// and pretty.c (skip_blank_lines), then measured against that git; the shapes
+// and their answers are the test's table, and the table is itself re-read off
+// git on every run. Git 2.54.0 and 2.55.0 differ from it in one rule, the URL
+// rule of splitTrailer (their trailer.c, commit.c, wt-status.c and pretty.c
+// diffed against 2.56.0's; older gits were not read). Git's configuration —
+// trailer.separators, trailer.<token>.*, core.commentChar — is never read: the
+// oracle is git with its defaults, and a repository whose config changes git's
+// answer gets the default one.
 //
 // WHY A PARSER AND NOT A GREP. A `^Co-Authored-By:` grep over the raw message
-// answers on four shapes where git answers nothing, and each wrong answer is
-// silent: a trailer-shaped line sitting inside a body paragraph, a line below
-// a `---` divider, a block holding one prose line, and a block that is the
-// message's only paragraph. The first of those puts a named person on a
-// public release page as an author of code the commit does not claim.
+// answers on three shapes where git answers nothing, and each wrong answer is
+// silent: a trailer-shaped line sitting inside a body paragraph, a block with
+// no git-generated line holding one prose line, and a block that is the
+// message's only paragraph. The first of those puts a named person on a public
+// release page as an author of code the commit does not claim.
 
-// divider is the line git treats as the start of a patch: everything from it
-// down is not message. A `---` ABOVE the trailer block therefore hides the
-// whole block (measured: 0 trailers), which is why truncation comes first.
-const divider = "---"
+// gitSpace is git's own isspace set — its ASCII table marks space, tab, CR
+// and LF and nothing else (ctype.c), so a line of form feeds is not blank and
+// a line opening with `\v` is prose, not a continuation. Go's unicode.IsSpace
+// is wider on both counts, and a line glyph read as blank where git reads
+// prose would open a paragraph git does not see.
+const gitSpace = " \t\r\n"
+
+// gitGeneratedPrefixes are the lines git itself writes into a message,
+// byte-exact (trailer.c, git_generated_prefixes): the trailing space is part
+// of the prefix, so `Signed-off-by:S` is an ordinary trailer line and lets no
+// prose stand. One of them in a block is what lets the block keep prose
+// lines: `git commit -s` and `git cherry-pick -x` land their line beside a
+// human's paragraph, and git still reads the trailers around it.
+var gitGeneratedPrefixes = [...]string{"Signed-off-by: ", "(cherry picked from commit "}
+
+// scissorsLine is git's cut line under its default comment char (wt-status.c,
+// cut_line): everything from it down is the diff `git commit -v` showed the
+// author, never message.
+const scissorsLine = "# ------------------------ >8 ------------------------\n"
 
 // trailer is one parsed entry. Token is as written — case is preserved,
 // matching is the caller's business — and Value has its continuations folded
@@ -35,95 +71,249 @@ type trailer struct {
 
 // trailers returns the message's trailer block, in message order, or nil.
 //
-// The rule, measured:
-//   - everything from a bare `---` line down is discarded;
-//   - the block is the LAST paragraph, and never the only one — a message of
-//     one paragraph has no trailers however trailer-shaped its lines are;
-//   - every line in it must be trailer-shaped, a continuation (leading space
-//     or tab), or a `#` comment. ONE prose line disqualifies the whole block,
-//     comment lines included in neither direction;
-//   - a continuation folds onto the trailer above it with a single space, and
-//     a continuation with nothing above it disqualifies the block.
+// The rule, git's:
+//   - the message starts at its first non-blank line (skipBlankLines) and
+//     ends where its commit reader says it does (logMessageEnd): above the
+//     scissors line and above a trailing run of comments, empty lines and an
+//     old-style `Conflicts:` list; a `---` line ends nothing;
+//   - the block is the last paragraph, and never the title paragraph — a
+//     message of one paragraph has no trailers however trailer-shaped its
+//     lines are;
+//   - that paragraph is the block when every line in it is a trailer line, a
+//     continuation of one, or a `#` comment — ONE prose line voids it —
+//     or when it holds a git-generated line (gitGeneratedPrefixes) and its
+//     trailer lines are at least a quarter of its lines (trailerBlock);
+//   - inside the block, a continuation folds onto the trailer above it with a
+//     single space; a prose line, a comment, and a continuation under either
+//     are dropped, so a 25% block answers its trailers alone.
 func trailers(message string) []trailer {
-	lines := strings.Split(message, "\n")
-	for i, l := range lines {
-		if strings.TrimRight(l, " \t") == divider {
-			lines = lines[:i]
-			break
-		}
-	}
-
-	block, ok := lastParagraph(lines)
-	if !ok {
-		return nil
-	}
+	message = skipBlankLines(message)
+	lines := strings.Split(message[:logMessageEnd(message)], "\n")
 
 	var out []trailer
-	for _, l := range block {
+	last := -1 // index into out of the trailer a continuation folds onto; -1 under a line that is not one
+	for _, l := range trailerBlock(lines) {
 		switch {
-		case strings.HasPrefix(l, "#"):
-			continue
-		case isContinuation(l):
-			if len(out) == 0 {
-				return nil // nothing to continue: not a trailer block
+		case isBlank(l):
+			continue // only the block's trailing blank lines reach here
+		case isGitSpace(l[0]):
+			if last >= 0 {
+				out[last].Value += " " + strings.TrimLeft(l, gitSpace)
 			}
-			out[len(out)-1].Value = strings.TrimSpace(out[len(out)-1].Value + " " + strings.TrimSpace(l))
 		default:
-			token, value, ok := splitTrailer(l)
+			token, rest, ok := splitTrailer(l)
 			if !ok {
-				return nil // one prose line voids the block
+				last = -1 // a comment, or prose inside a 25% block
+				continue
 			}
-			out = append(out, trailer{Token: token, Value: value})
+			out = append(out, trailer{Token: token, Value: rest})
+			last = len(out) - 1
 		}
+	}
+	for i := range out {
+		out[i].Value = strings.Trim(out[i].Value, gitSpace)
 	}
 	return out
 }
 
-// lastParagraph returns the final run of non-blank lines, and whether the
-// message had a paragraph BEFORE it. The second answer is the subject rule:
-// git reads no trailers out of a message that is all subject (measured — both
-// `Why: a reason` alone and a subject with a trailer glued under it answer 0).
-func lastParagraph(lines []string) ([]string, bool) {
-	end := len(lines)
-	for end > 0 && strings.TrimSpace(lines[end-1]) == "" {
-		end--
+// skipBlankLines is the commit reader's own first step (pretty.c,
+// parse_commit_message → skip_blank_lines): the message starts at its first
+// line holding a non-space byte, so leading blank lines — which `git commit`
+// strips but fast-import, commit-tree and `--cleanup=verbatim` keep — never
+// stand as the title paragraph. Without it a message opening with an empty
+// line and a trailer-shaped line read that line as a block where git reads
+// the title (measured 2026-11-08 by TestTrailersEqualGit).
+func skipBlankLines(msg string) string {
+	for msg != "" {
+		line := msg
+		if nl := strings.IndexByte(msg, '\n'); nl >= 0 {
+			line = msg[:nl+1]
+		}
+		if !isBlank(line) {
+			break
+		}
+		msg = msg[len(line):]
 	}
-	if end == 0 {
-		return nil, false
-	}
-	start := end
-	for start > 0 && strings.TrimSpace(lines[start-1]) != "" {
-		start--
-	}
-	if start == 0 {
-		return nil, false // the block would be the message's first paragraph
-	}
-	return lines[start:end], true
+	return msg
 }
 
-// isContinuation reports whether the line continues the trailer above it.
-// Leading space or tab is the whole rule (measured: both fold, with a single
-// space). A blank line never reaches here — it ends the paragraph.
-func isContinuation(l string) bool {
-	return strings.HasPrefix(l, " ") || strings.HasPrefix(l, "\t")
+// logMessageEnd is find_end_of_log_message with no_divider set, which leaves
+// ignored_log_message_bytes (commit.c) alone: the byte offset where the
+// commit reader stops reading message. The scissors line cuts first — when it
+// opens the message nothing is message, otherwise the first one following a
+// newline. Above that cut, a trailing run of lines is not message either: `#`
+// comment lines, EMPTY lines (a line of spaces or a lone CR is not one here —
+// the block scan's own blank test absorbs those), the exact line
+// `Conflicts:\n` and the tab-indented paths under it. Transcribed quirks, kept
+// because the oracle has them: git marks "no run" with offset 0, so a run that
+// begins on the message's first line is kept whole; a `Conflicts:` list stays
+// open until a line that ends a run closes it, so a path line under a later
+// comment still belongs to the run.
+func logMessageEnd(msg string) int {
+	cutoff := len(msg)
+	if strings.HasPrefix(msg, scissorsLine) {
+		cutoff = 0
+	} else if i := strings.Index(msg, "\n"+scissorsLine); i >= 0 && i+1 < cutoff {
+		cutoff = i + 1
+	}
+
+	runStart := 0
+	inConflicts := false
+	for bol := 0; bol < cutoff; {
+		next := len(msg)
+		if nl := strings.IndexByte(msg[bol:], '\n'); nl >= 0 {
+			next = bol + nl + 1
+		}
+		switch {
+		case msg[bol] == '#' || msg[bol] == '\n':
+			if runStart == 0 {
+				runStart = bol
+			}
+		case strings.HasPrefix(msg[bol:], "Conflicts:\n"):
+			inConflicts = true
+			if runStart == 0 {
+				runStart = bol
+			}
+		case inConflicts && msg[bol] == '\t':
+		case runStart != 0:
+			runStart = 0
+			inConflicts = false
+		}
+		bol = next
+	}
+	if runStart != 0 {
+		return runStart
+	}
+	return cutoff
 }
 
-// splitTrailer parses `token: value`. The token must be non-empty and hold no
-// whitespace — measured, `Why not: a reason` voids the block rather than
-// parsing as a token — and `:` is the only separator git accepts without
-// configuration (`Why = a reason` voids it too). An EMPTY value parses: git
-// reports `Why:` as a trailer with no value, and dropping it is the reader's
-// job, not the parser's.
-func splitTrailer(l string) (token, value string, ok bool) {
-	i := strings.IndexByte(l, ':')
-	if i <= 0 {
+// trailerBlock returns the lines git reads as the trailer block — the block's
+// own lines plus whatever blank lines close the message — or nil. Transcribed
+// from find_trailer_block_start: the scan runs from the last line up to the
+// blank line that ends the title paragraph, counting trailer lines, prose
+// lines (a continuation under prose counts as prose) and whether a
+// git-generated line was seen; comment lines count as nothing. At the first
+// blank line past the message's closing blanks the block is accepted when
+// a git-generated line was seen and trailers are at least 25% of the counted
+// lines, or when every counted line was a trailer; otherwise the message has
+// no trailers at all. The title paragraph itself is never reached: with no
+// blank line below it the scan has nothing to walk, and the blank that
+// closes it is where the scan stops.
+func trailerBlock(lines []string) []string {
+	endOfTitle := len(lines)
+	for i, l := range lines {
+		if isBlank(l) {
+			endOfTitle = i
+			break
+		}
+	}
+
+	onlySpaces := true
+	recognized := false
+	trailerLines, nonTrailerLines, possibleContinuation := 0, 0, 0
+	for i := len(lines) - 1; i >= endOfTitle; i-- {
+		l := lines[i]
+		switch {
+		case isComment(l):
+			nonTrailerLines += possibleContinuation
+			possibleContinuation = 0
+		case isBlank(l):
+			if onlySpaces {
+				continue
+			}
+			nonTrailerLines += possibleContinuation
+			if (recognized && trailerLines*3 >= nonTrailerLines) || (trailerLines > 0 && nonTrailerLines == 0) {
+				return lines[i+1:]
+			}
+			return nil
+		default:
+			onlySpaces = false
+			switch {
+			case hasGitGeneratedPrefix(l):
+				trailerLines++
+				possibleContinuation = 0
+				recognized = true
+			case isTrailerLine(l):
+				trailerLines++
+				possibleContinuation = 0
+			case isGitSpace(l[0]):
+				possibleContinuation++
+			default:
+				nonTrailerLines += 1 + possibleContinuation
+				possibleContinuation = 0
+			}
+		}
+	}
+	return nil
+}
+
+func isGitSpace(b byte) bool { return strings.IndexByte(gitSpace, b) >= 0 }
+
+func isBlank(l string) bool { return strings.Trim(l, gitSpace) == "" }
+
+// isComment is git's default comment line (core.commentChar is never read).
+func isComment(l string) bool { return strings.HasPrefix(l, "#") }
+
+func hasGitGeneratedPrefix(l string) bool {
+	for _, p := range gitGeneratedPrefixes {
+		if strings.HasPrefix(l, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func isTrailerLine(l string) bool {
+	_, _, ok := splitTrailer(l)
+	return ok
+}
+
+// splitTrailer is find_separator with git's default separator: the token is
+// one run of ASCII letters, digits and hyphens opening the line, then
+// optional spaces or tabs, then the colon; rest is everything after the
+// colon, untrimmed (the caller trims once continuations are folded). So
+// `Why not: a reason` is prose — the run ends at the space and `n` follows,
+// not the colon — as are `Fix#1: x`, `Révisé: x`, and a line opening with the
+// colon or with whitespace (no token). `Why : x` is the token `Why`. An EMPTY
+// rest parses: git reports `Why:` as a trailer with no value, and dropping it
+// is the reader's job, not the parser's.
+//
+// The URL rule is git 2.56.0's (d122e37976, "trailers: stop recognizing URLs
+// as trailers"): a colon that opens `://` straight after the token is no
+// separator, so `https://x: y` and a bare `https://github.com/o/r/issues/1`
+// are prose — one of them in a block voids it, credits included — while
+// `Why ://x`, with a blank before the colon, is still the token `Why`. Git
+// 2.54 and 2.55 have no such rule and read those lines as the trailer `https`,
+// so under them a Co-authored-by beside a bare URL line is credited; glyph
+// follows 2.56, which credits no more than git's current reader and never a
+// person GitHub does not (DESIGN §3). This rule is the one place the two gits
+// answer differently, so the differential names the version it judges against
+// rather than floating with whichever git is on PATH.
+func splitTrailer(l string) (token, rest string, ok bool) {
+	i := 0
+	for i < len(l) && isTokenByte(l[i]) {
+		i++
+	}
+	if i == 0 {
 		return "", "", false
 	}
-	token = l[:i]
-	if strings.ContainsAny(token, " \t") {
+	j := i
+	for j < len(l) && (l[j] == ' ' || l[j] == '\t') {
+		j++
+	}
+	if j >= len(l) || l[j] != ':' {
 		return "", "", false
 	}
-	return token, strings.TrimSpace(l[i+1:]), true
+	if j == i && strings.HasPrefix(l[j:], "://") {
+		return "", "", false
+	}
+	return l[:i], l[j+1:], true
+}
+
+// isTokenByte is git's isalnum — ASCII only, nothing at or above 0x80 — plus
+// the hyphen.
+func isTokenByte(b byte) bool {
+	return b == '-' || ('0' <= b && b <= '9') || ('A' <= b && b <= 'Z') || ('a' <= b && b <= 'z')
 }
 
 // trailerValue returns the value of the LAST trailer whose token matches,

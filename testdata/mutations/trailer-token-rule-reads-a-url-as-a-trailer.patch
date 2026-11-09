@@ -1,0 +1,16 @@
+diff --git a/internal/notes/trailers.go b/internal/notes/trailers.go
+index 3b17eb5..17d9e0a 100644
+--- a/internal/notes/trailers.go
++++ b/internal/notes/trailers.go
+@@ -304,10 +304,7 @@ func splitTrailer(l string) (token, rest string, ok bool) {
+ 	if j >= len(l) || l[j] != ':' {
+ 		return "", "", false
+ 	}
+-	if j == i && strings.HasPrefix(l[j:], "://") {
+-		return "", "", false
+-	}
+-	return l[:i], l[j+1:], true
++	return l[:i], l[j+1:], true // MUTATION: a `token://` line is the trailer `token`, as git 2.54 reads it
+ }
+ 
+ // isTokenByte is git's isalnum — ASCII only, nothing at or above 0x80 — plus

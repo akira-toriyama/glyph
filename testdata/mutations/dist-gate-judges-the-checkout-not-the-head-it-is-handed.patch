@@ -1,0 +1,12 @@
+diff --git a/scripts/dist-gate.sh b/scripts/dist-gate.sh
+--- a/scripts/dist-gate.sh
++++ b/scripts/dist-gate.sh
+@@ -64,7 +64,7 @@
+ EVIDENCE_PATTERN='^internal/workflows/.*_test\.go$'
+ 
+ base="${1:?usage: sh scripts/dist-gate.sh <base-ref> [<head-ref>]}"
+-head="${2:-HEAD}"
++head=HEAD
+ 
+ # shellcheck source=scripts/lib/range-gate.sh
+ . ./scripts/lib/range-gate.sh

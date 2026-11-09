@@ -95,6 +95,14 @@ type Commit struct {
 	Login   string // author.login: the GitHub account GitHub itself mapped the commit to; "" when it mapped none
 	Parents int
 	Message string
+	// Recorded mirrors gitsource.RawCommit.Recorded and holds the same text as
+	// Message here: GitHub's commit.message never carries the closing newline
+	// git recorded (measured, DESIGN §2.1), and the API offers no field that
+	// says whether the object has one. So a commit git recorded with a final
+	// `Conflicts:\n` line reads as the ignored list from git and as the empty
+	// trailer `Conflicts` from the API — the one shape where the arm decides
+	// (DESIGN §3 states it with its reach).
+	Recorded string
 }
 
 // Option configures a Client.
@@ -276,11 +284,12 @@ func (c *Client) PullCommits(ctx context.Context, owner, repo string, number int
 	commits := make([]Commit, len(raw))
 	for i, ac := range raw {
 		commits[i] = Commit{
-			SHA:     ac.SHA,
-			Author:  ac.Commit.Author.Name,
-			Email:   ac.Commit.Author.Email,
-			Parents: len(ac.Parents),
-			Message: ac.Commit.Message,
+			SHA:      ac.SHA,
+			Author:   ac.Commit.Author.Name,
+			Email:    ac.Commit.Author.Email,
+			Parents:  len(ac.Parents),
+			Message:  ac.Commit.Message,
+			Recorded: ac.Commit.Message,
 		}
 		if ac.Author != nil {
 			commits[i].Login = ac.Author.Login

@@ -653,8 +653,9 @@ commit-msg hook, still holding the editor template, the status block and, under
 `commit.verbose`, a scissors line with the whole diff) to the message git will
 actually record. Only the authoring path (`--stdin`, and doctor's replay of
 it) calls it: a `--range` walk reads messages git has already cleaned (all but
-the closing newline git records them with, which `gitsource` strips — DESIGN
-§2.1), and running it there would swallow a genuinely empty message and any
+the closing newline git records them with, which `gitsource` strips from
+`Message` and keeps in `Recorded` for the trailer parser alone — DESIGN §2.1
+and §3), and running it there would swallow a genuinely empty message and any
 body line starting with `#`.
 `internal/cleanup/cleanup.go: Apply`
 
@@ -991,7 +992,7 @@ to nobody), and neither are the fleet-synced consumers (`commit-lint.yml`,
 
 **dist-gate** — the pull-request gate that makes evidence for a distribution-layer
 change *mandatory*: such a file in the diff with no `internal/workflows`
-`*_test.go` change fails the PR. It closes a measured gap — `bite` acts on Go
+`*_test.go` added or modified fails the PR. It closes a measured gap — `bite` acts on Go
 diffs only and the extras smoke reads no YAML, so a `:bug:` fix touching only
 `.goreleaser.yaml` or only the install action used to ship with zero tests.
 Stands down on its own when every changed line of the distribution-layer

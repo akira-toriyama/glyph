@@ -1,0 +1,12 @@
+diff --git a/internal/notes/trailers.go b/internal/notes/trailers.go
+index 69da191..f0b470c 100644
+--- a/internal/notes/trailers.go
++++ b/internal/notes/trailers.go
+@@ -79,7 +79,6 @@ type trailer struct {
+ //     single space; a prose line, a comment, and a continuation under either
+ //     are dropped, so a 25% block answers its trailers alone.
+ func trailers(message string) []trailer {
+-	message = skipBlankLines(message)
+ 	lines := strings.Split(message[:logMessageEnd(message)], "\n")
+ 
+ 	var out []trailer

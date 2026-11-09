@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
 // goldenPattern is golden-gate.sh's OWN classification pattern, copied verbatim
@@ -13,7 +15,7 @@ import (
 // accepts the ERE unchanged, so this is the same matcher byte for byte —
 // TestGoldenGateGuardsTheGoldenFiles asserts the byte-for-byte part, so the two
 // copies cannot drift apart silently.
-const goldenPattern = `^.*/testdata/.*\.golden\..*$`
+const goldenPattern = `(^|/)testdata/.*\.golden\..*$`
 
 // TestGoldenGateGuardsTheGoldenFiles pins the gate that makes a golden rewrite
 // state its reason: `go test -update` regenerates a golden from
@@ -103,10 +105,87 @@ func TestGoldenGatePatternCoversTheRealGoldens(t *testing.T) {
 		"internal/config/presets/gemoji.toml",
 		"internal/markdown/testdata/fuzz/FuzzEscapeMentionsNeverLeaksAMention/backslash-eats-the-fence",
 		"internal/cli/release_test.go",
+		"testdata/mutations/ledger.tsv",
+		"mytestdata/x.golden.md",
 	} {
 		if golden.MatchString(path) {
 			t.Errorf("GOLDEN_PATTERN matches %s, which is not a golden; the gate would demand "+
 				"a Golden-change trailer for a change that rewrites no format spec", path)
 		}
+	}
+}
+
+// TestGoldenGateJudgesAGoldenAtAnyDepth runs the gate over a fixture repository:
+// the pattern's copy in this package says nothing about what grep -E and git hand
+// the script. A `/` required ahead of testdata/ leaves the repo root's testdata out,
+// so a golden there reads as "nothing to prove" at exit 0 (measured 2026-11-04; t-mxhe).
+func TestGoldenGateJudgesAGoldenAtAnyDepth(t *testing.T) {
+	testutil.RequireGit(t)
+	sh := requireTool(t, "sh")
+
+	dir := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+		return testutil.Git(t, dir, "akira-toriyama", args...)
+	}
+	git("init", "-q", "-b", "main")
+	for _, rel := range []string{"scripts/golden-gate.sh", "scripts/lib/range-gate.sh"} {
+		testutil.WriteFile(t, dir, rel, repoFile(t, rel))
+	}
+	git("add", "-A")
+	git("commit", "-q", "-m", "base")
+	base := git("rev-parse", "HEAD")
+	env := []string{
+		"PATH=" + os.Getenv("PATH"),
+		"HOME=" + dir,
+		"GIT_CONFIG_GLOBAL=" + os.DevNull,
+		"GIT_CONFIG_SYSTEM=" + os.DevNull,
+	}
+
+	for _, tc := range []struct {
+		name, path, message string
+		exit                int
+		carries             string // on stdout for a pass, on stderr for a refusal
+	}{
+		{name: "a package's testdata", path: "internal/foo/testdata/x.golden.md", message: "change", exit: 1, carries: "::error::golden-gate"},
+		{name: "the repo root's testdata", path: "testdata/root.golden.md", message: "change", exit: 1, carries: "::error::golden-gate"},
+		{name: "the root's, with its reason", path: "testdata/root.golden.md", message: "change\n\nGolden-change: the format moved", carries: "states its Golden-change reason"},
+		{name: "a file under testdata that is no golden", path: "testdata/mutations/ledger.tsv", message: "change", carries: "no golden file"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			git("checkout", "-q", "--detach", base)
+			testutil.WriteFile(t, dir, tc.path, "golden\n")
+			git("add", "-A")
+			git("commit", "-q", "-m", tc.message)
+			run := execute(t, []string{sh, filepath.Join(dir, "scripts", "golden-gate.sh"), base}, dir, env)
+			if run.exit != tc.exit {
+				t.Fatalf("golden-gate exited %d, want %d\n%s", run.exit, tc.exit, run)
+			}
+			stream := run.stdout
+			if tc.exit != 0 {
+				stream = run.stderr
+			}
+			if !strings.Contains(stream, tc.carries) {
+				t.Errorf("golden-gate's verdict does not carry %q\n%s", tc.carries, run)
+			}
+		})
+	}
+}
+
+// TestGoldenGateJudgesTheMergeItIsHanded is dist-gate's mirror image on the same
+// stacked shape (newStackedRepo): from the branch head the fork-point diff carries
+// the parent's golden, and this gate demanded a trailer for it that CI, diffing the
+// merge, never asked for — exit 1 here, exit 0 in CI (measured 2026-11-08). Handed
+// the merge, the gate reads B's diff as CI does.
+func TestGoldenGateJudgesTheMergeItIsHanded(t *testing.T) {
+	ci, local, forkPoint := gateVerdicts(t, "golden-gate.sh", "# b v1", "# b v2 from B")
+	for name, run := range map[string]stepRun{"CI's checkout at the merge": ci, "check.sh handing the merge": local} {
+		if run.exit != 0 || !strings.Contains(run.stdout, "no golden file") {
+			t.Errorf("%s: golden-gate exited %d, want 0 with no golden in B's diff\n%s", name, run.exit, run)
+		}
+	}
+	if forkPoint.exit != 1 || !strings.Contains(forkPoint.stderr, "::error::golden-gate") {
+		t.Errorf("control: from the branch head with no head named, golden-gate exited %d, want 1 over A's golden — "+
+			"the fixture no longer discriminates the fork-point diff from the merge's\n%s", forkPoint.exit, forkPoint)
 	}
 }

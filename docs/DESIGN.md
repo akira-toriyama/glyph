@@ -143,10 +143,11 @@ pattern says it means:
     listing the types, v1's table moved into the file. Its footer read is
     the regex over the raw message §3 rejects as a trailer parser: a
     `BREAKING CHANGE:` line inside a body paragraph releases a major, and
-    the spec's own token is no git trailer (the space — `git
-    interpret-trailers --parse` answers nothing for it, git 2.54), so
-    written in the trailer block it voids the block and the release line
-    drops its `$coauthors` credit. It has no `%`, so a 0.x repository could
+    the spec's own token is no git trailer (the space — git's trailer reader
+    takes the line for prose, git 2.54), so written in a trailer block git
+    did not write into it voids the block and the release line drops its
+    `$coauthors` credit; beside a `Signed-off-by:` the block stands by the
+    25% rule (§3) and the footer alone is dropped. It has no `%`, so a 0.x repository could
     never say 1.0 (`feat%:` refused, `feat!:` at v0.4.2 reads v0.5.0), and
     adding one sets a sigil beside the implied levels — two spellings of
     one version. Nor does it read the spec as written, the case for putting
@@ -625,7 +626,10 @@ the newline (measured 2026-09-29 on glyph#246: af7ee18's local `%B` ends in
 one, its entry in the pull's commit listing does not). `gitsource` strips
 exactly that one newline where it parses a record, so every reader of local
 history — `lint --range`, the pre-push hook, `bump`, `notes`, `release` and
-`preview`'s walk — judges the text the hook judged, and a verbatim message
+`preview`'s walk — judges the text the hook judged (the one reader of the
+other text is the trailer parser, which reads `RawCommit.Recorded`, the
+record with its newline, because git's end-of-message rules are byte rules —
+§3), and a verbatim message
 keeps trailing blank lines of its own
 (`TestEndAnchoredPatternGetsOneVerdictAtTheHookAndInTheRange` asserts a
 matching and a non-matching message at both gates; mutation row
@@ -1068,17 +1072,32 @@ live mention — crediting the contributor is intended behaviour, and every
 peer tool (git-cliff, GitHub's own generated notes, release-drafter,
 changesets) pages the author the same way. The exemption is gated by
 **identity**, and by shape second (t-39fy, 2026-09-14, replacing the
-shape-only gate): what goes live is the contributor's **login** — the
-`author.login` GitHub itself attaches to a commit the API described (the
-squash arm, `--pr`), else the login a GitHub noreply author address carries
-(`<id>+<login>@users.noreply.github.com`, which every fleet commit carries
-and the fallback arm and `--range` can read from git alone), else nothing —
-and only when that login is one GitHub-handle-shaped token. The name is
+shape-only gate; t-ayhq, 2026-11-04, narrowing identity to one source): what
+goes live is the contributor's **login** — the `author.login` GitHub itself
+attaches to a commit the API described (the squash arm, `--pr`), else
+nothing — and only when that login is one GitHub-handle-shaped token.
+Nothing read out of the commit itself is a login. Not the name: it is
 never promoted to stand in for a missing login, because a name is not a
-login and **no shape tells them apart**: measured 2026-09-13 on golang/tools,
+login and **no shape tells them apart** — measured 2026-09-13 on golang/tools,
 `%an` is `Saleh` for github.com/larrasket, and the shape gate rendered
 `@Saleh` — one handle-shaped token, and a stranger paged the moment the
-release is published. A credit with no login renders the name as plain
+release is published. Not the author address either, GitHub's own noreply
+form included: `<id>+<login>@users.noreply.github.com` is typed by whoever
+configured git, and GitHub attributes the commit by the id, never by the
+login beside it — measured 2026-11-04 on glyph-test-2 with
+`GET /commits/{sha}` as the oracle, a commit from
+`92862731+refute-a3-nonexistent-zz@…` is attributed to the account id
+92862731 names while glyph paged `@refute-a3-nonexistent-zz`, one from
+`9999999999+akira-toriyama@…` to nobody while glyph paged `@akira-toriyama`,
+and `1+octocat@…` would page @octocat for a commit GitHub shows as mojombo.
+The address is self-asserted text, exactly as a co-author address is (below),
+so the one rule covers both and the identity has one source. Where the API
+described nothing — every commit under `--range`, every direct push on the
+fallback arm, the fleet's own included — the credit is the name with no
+at-sign, as any credit with no login is. Rejected: keeping the address as a
+second source when its id resolves to its login (`GET /user/{id}`: one more
+request per commit, and a second identity to keep correct, for a mention on
+direct pushes). A credit with no login renders the name as plain
 prose with the template's at-sign dropped (`Robert Pająk`, not
 `` `@Robert `` `Pająk`, which fencing the would-be mention produced on
 opentelemetry-go): a credit that pages nobody is not written as a mention.
@@ -1103,16 +1122,128 @@ the fleet either sits off GitHub's noreply host (`noreply@anthropic.com`) or
 carries a `[bot]` login the handle gate rejects, so no credit could resolve
 to a live mention even if the exemption were extended.
 
-The parser is held to `git interpret-trailers --parse` by a differential
-asserting a **subset**: glyph may report fewer trailers than git, never more,
-because over-reporting is what names a person on a public page as an author
-of code the commit never claimed. Four shapes answer nothing, each silently
-(measured, git 2.54.0): a trailer in its own paragraph above the footer, a
-line below a `---`, a block holding one prose line, and a block that is the
-message's only paragraph. The third is the sharp one — an unindented wrapped
-line, or the fleet's own `Generated with …` footer placed inside the block,
-voids the whole block and takes the co-author credit with it. (Mutation row
-`notes-coauthor-is-grepped-not-parsed.patch`.) Rejected alternative: carrying
+The parser is held to git's own commit reader — `git log
+--format='%(trailers:only,unfold)'` — by a differential asserting
+**equality** on every shape it crosses: the trailers glyph reads off a landed
+commit are the ones git reads off it, no more (a trailer git does not report
+names a person on a public page as an author of code the commit never
+claimed) and no fewer (a credit git reports and glyph drops is a person
+uncredited). `TestTrailersEqualGit` crosses heads, blocks and tails, every
+byte after `---` and in four other positions, the 25% boundary from both
+sides under every git-generated prefix spelling, and a seeded random mix:
+15,601 shapes by default and 44,101 with 30,000 random ones, 0 over-reports
+and 0 under-reports under git 2.56.0 (2026-11-08; under git 2.54.0 the same
+counts with 854 and 6,041 shapes held back, below); the table of named shapes
+is re-read off git on every run, so a row cannot pin an answer git does not
+give. The rules are git's own, transcribed from `trailer.c`
+(`find_end_of_log_message` with `no_divider`, `find_trailer_block_start`,
+`find_separator`, `trailer_block_get`), `commit.c`
+(`ignored_log_message_bytes`) and `pretty.c` (`skip_blank_lines`), measured
+against git rather than modelled, with git's defaults and none of its
+`trailer.*` config. **The oracle's git is 2.56.0**, the one version the
+parser names (`oracleGitVersion`), because git moved the commit reader's
+answer once in the range read: d122e37976 ("trailers: stop recognizing URLs
+as trailers", v2.56.0) made a colon opening `://` straight after the token no
+separator, so a `token://` line is prose under 2.56.0 and the trailer `https`
+under 2.54.0 and 2.55.0 (their `trailer.c`, `commit.c`, `wt-status.c` and
+`pretty.c` diffed against 2.56.0's: that rule is the only behavioural change;
+older gits were not read). Under older git a Co-authored-by beside a bare URL
+line is credited; glyph follows 2.56.0, the side that credits no more than
+git's current reader and never a person GitHub does not, and the side CI
+judges on (the runners' git is 2.56.0, the machine's 2.54.0 — a parser that
+followed the older rule turned PR #360's required checks red, 995
+over-reports in 12,961 shapes). So the differential reads `git version` and
+compares every shape under any git it runs on except those holding a
+`token://` line, which it compares only under 2.56.0 or later and otherwise
+counts and names in its output (never dropped silently; `TestTrailers`' URL
+rows pin them under older git, standing on the table alone and saying so).
+Across the local fleet clones the two gits' `%(trailers:key=Co-authored-by)`
+answers are identical on all 33,640 commits (measured 2026-11-08), so the
+version decides the gate and the oracle, not a credit the fleet has seen. **The oracle is the commit reader, not `git
+interpret-trailers --parse`.** The two share every rule but
+one: interpret-trailers reads a message being written or a patch mail, where
+a `---` line starts the diff, so it discards everything from the first `---`
+down; `%(trailers)` sets `no_divider` (pretty.c), as every reader inside git
+does, because a landed commit carries no patch. glyph reads landed commits,
+so a `---` line is message text and the block below it is read. t-pspd
+(2026-11-04) was ruled from the wrong oracle — it widened the divider to
+`--- text` — and the widened divider dropped credits that git's reader and
+GitHub's `Commit.authors` both show: glyph e2b2bec (a `--- line` wrapped
+inside a body paragraph), furrow e29a824, ec3342e and 05e9ba7 (the old
+`--- (和訳)` separator) and AzooKeyKanaKanjiConverter 55ffe3c (a CRLF
+dependabot squash whose YAML `---\r` sits above GitHub's `---------`), the
+only five co-author differences across 127,696 real commits in 17
+repositories (measured 2026-11-08; each credited again by
+`TestTrailers` and by the fix's end-to-end run). The message starts where
+the reader starts it — leading blank lines skipped — and ends where the
+reader ends it: above the scissors line
+`# ------------------------ >8 ------------------------` (a line of its own,
+at the message's start or after a newline — the spelling inside a trailer's
+value is text), and above a trailing run of comment lines, empty lines and
+an old-style `Conflicts:` list — the header byte-exact, `conflicts:` is a
+trailer — with its tab-indented paths (`ignored_log_message_bytes`; a
+Conflicts tail glued under a Signed-off-by block had counted as a trailer
+line and lifted a 2-of-9 block over the 25% line, review of t-hd7d). Those
+are byte rules, so **the parser reads the message as git recorded it,
+closing newline included** (`RawCommit.Recorded`, carried beside the
+`Message` every other reader judges — §2.1): `Conflicts:\n` closing the
+object is the ignored list and `Conflicts:` closing the input an empty
+trailer, and the newline-stripped text cannot say which the commit carries.
+Read off the stripped text, a bare final `Conflicts:` line lifted a 2-of-9
+Signed-off-by block over the 25% line (Trent credited, `%(trailers)` credits
+nobody) and closed the message as a one-line block (Peggy dropped,
+`%(trailers)` credits her; measured 2026-11-08, git 2.54.0 and 2.56.0). The
+API arm cannot carry the newline: GitHub's `commit.message` never has it
+(§2.1) and no field says whether the object does. So a commit git recorded
+with a final bare `Conflicts:` line reads as the ignored list wherever glyph
+reads the commit off git — every commit under `--range`, and every commit the
+`--since-tag` walk takes off the released branch rather than out of a pull's
+listing: a direct push and a commit GitHub has not indexed yet (the fallback
+arm) and an `exclude_authors` author's commit — and as the empty trailer
+`Conflicts` wherever it reads the commit off the API: every commit of
+`--pr`, and every commit of a pull the `--since-tag` walk expands (measured
+2026-11-08, git 2.54.0 and 2.56.0). That is the one shape where the arm
+decides, stated here rather than plumbed as a bit the API does not have. Its
+reach: 0 of 33,928 fleet commits carry a `Conflicts:` line at all (measured
+2026-11-08; 14,082 of them, GitHub's squash and merge commits, are recorded
+without a closing newline and 19,846 with one).
+The token is one run of ASCII letters, digits and hyphens, optional blanks,
+then the colon: `Fix#1:` and `Révisé:` are prose, `Why :` is the token `Why`,
+`Why ://x` too (a blank before the colon disarms the URL rule), and
+`https://x: y` or a bare `https://…` line is prose under the URL rule above —
+one in a block git did not write into voids it, credits included, where git
+2.54 and 2.55 read the trailer `https` and credit the block. A block is
+the trailers when every line of it is a trailer, a continuation or a comment
+— one prose line voids it — **or** when it holds a line git generated
+(`Signed-off-by: `, `(cherry picked from commit `, byte-exact, the trailing
+space included) and its trailer lines are at least a quarter of it, a
+continuation under prose counting as prose, in which case the prose lines
+are dropped and the trailers around them kept (t-hd7d, 2026-11-04: glyph
+voided such a block, so a `git commit -s` author lost every credit beside one
+prose line). Three shapes answer nothing, each silently: a trailer in its own
+paragraph above the footer, a block with no git-generated line holding one
+prose line, and a block that is the message's only paragraph. The second is
+the sharp one — an unindented wrapped line, or the fleet's own `Generated
+with …` footer placed inside the block, voids the whole block and takes the
+co-author credit with it. GitHub's own co-author rule is unpublished and
+wider than git's: on glyph-test-2 it credited every shape git 2.56.0's
+reader credits and four more — below a scissors line, under a Conflicts tail
+that tips the 25% line, a prose-plus-trailer block with no sign-off, and
+beside a bare URL line (11 shapes probed 2026-11-08). glyph
+follows git, so where the two differ glyph credits fewer, never a person
+GitHub does not. (Mutation rows
+`notes-coauthor-is-grepped-not-parsed.patch`,
+`divider-hides-the-block-below-it.patch`,
+`signed-off-block-voided-by-one-prose-line.patch`,
+`message-end-ignores-nothing.patch`,
+`trailer-token-rule-reads-a-url-as-a-trailer.patch`,
+`conflicts-list-opened-by-a-lowercase-header.patch`,
+`scissors-spelling-inside-a-line-cuts-the-message.patch`,
+`trailer-block-read-off-the-trimmed-message.patch`,
+`gitsource-log-trims-the-recorded-message.patch`,
+`continuation-under-prose-is-not-prose.patch`,
+`git-generated-prefix-without-its-space.patch`,
+`leading-blank-lines-stand-as-the-title.patch`.) Rejected alternative: carrying
 the same two values in a `(?s)` `[[patterns]]` group. It truncates a wrapped
 value, lets trailer order decide silently whether the value binds at all,
 credits a trailer-shaped line sitting in a body paragraph, and would have to
@@ -1121,14 +1252,14 @@ shape — a regex over the raw message is not a trailer parser. Rejected
 alternatives: rendering the raw first line (machine notation in prose, and
 Breaking Changes already says what `!` says); dropping the fence entirely
 (subjects carry arbitrary text); asking `GET /commits/{sha}` for every landed
-commit's login (one request per commit on the free arm, for an identity the
-noreply address already carries on every commit GitHub's own UI or a
-privacy-on account writes — a personal address is then credited by name,
-which is honest); fencing the name with its at-sign (`` `@Saleh` `` reads as a
-broken mention and still shows a stranger's handle). (Mutation rows
-`line-returns-its-bytes-unfenced.patch`, `author-credit-goes-live-by-shape`,
-`noreply-address-carries-no-identity`, `unpaged-credit-keeps-its-at-sign`;
-the gate lives in `markdown.Line.Mention`, the identity in `walk.identity`.) A **`$[ … ]` span renders only when EVERY placeholder
+commit's login (one request per commit on the free arm, to turn a name into
+a mention — a direct push credited by name is honest); fencing the name with
+its at-sign (`` `@Saleh` `` reads as a broken mention and still shows a
+stranger's handle). (Mutation rows `line-returns-its-bytes-unfenced.patch`,
+`author-credit-goes-live-by-shape`, `noreply-address-trusted-as-identity`,
+`unpaged-credit-keeps-its-at-sign`; the gate lives in
+`markdown.Line.Mention`, and `walk.NoteCommits` carries the API's
+`author.login` through as the only login.) A **`$[ … ]` span renders only when EVERY placeholder
 inside it resolves non-empty** (mutation row
 `notes-optional-span-always-renders.patch`), taking its own punctuation with
 it when one does not. Without it, punctuation written around a placeholder
