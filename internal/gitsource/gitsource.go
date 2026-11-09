@@ -1096,9 +1096,12 @@ func runRead(ctx context.Context, dir string, stdin io.Reader, args ...string) (
 // the history on git ≤ 2.40) or died for the generic reason (`cat-file -t`,
 // `merge-base`: 128, "Not a valid object name"): for a loose object that is
 // empty, not zlib, truncated, or under a file or fan-out directory it cannot
-// open, and for a commit whose body does not parse, exit and stdout are those
-// of a sha the store does not hold, and this line is the difference
-// (TestHaveFailsOnAHeldObjectGitCannotRead). Where git writes no such line it
+// open, exit and stdout are those of a sha the store does not hold, and this
+// line is the difference (TestHaveFailsOnAHeldObjectGitCannotRead). A commit
+// whose body does not parse reads that way to `cat-file -t <rev>^{}` and
+// `merge-base --is-ancestor` only (128, no stdout, one error: line where an
+// absent sha has none); --batch-check answers `commit` for it with no error:
+// line (DESIGN §4). Where git writes no such line it
 // gives no signal at all, and this package then cannot see: git 2.39 and
 // earlier write nothing for the two permission shapes (object-file.c gained
 // its `error_errno` on an open failure in 2.40.0; measured on 2.39.5 against
