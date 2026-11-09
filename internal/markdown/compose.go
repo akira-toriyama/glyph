@@ -99,8 +99,20 @@ func (l *Line) Raw(s string) {
 // author's code spans, emphasis and strikethrough keep rendering; the
 // constructs that can inject structure, point somewhere the author never wrote
 // or steal a code-span delimiter are disarmed.
+//
+// A field that lands at a block start (escape.go, rule 5) also loses its
+// indent here, because four columns of it open a code block and no additive
+// escape reaches one: a backslash in front of a space prints, and an entity is
+// not a fixed point under rule 4. It is dropped rather than escaped, here beside
+// flatten because the prose escape only adds bytes, and dropping costs nothing:
+// a paragraph's leading blanks do not render ("-    x" and "- x" both render
+// <li>x</li>, "-     x" a <pre>; measured 2026-11-04).
 func (l *Line) Prose(s string) {
-	l.parts = append(l.parts, part{partProse, flatten(s)})
+	s = flatten(s)
+	if awaitsBlock(l.assemble()) {
+		s = strings.TrimLeft(s, " \t")
+	}
+	l.parts = append(l.parts, part{partProse, s})
 }
 
 // Mention appends the author credit the caller MEANS to page (DESIGN §3 holds
@@ -142,38 +154,12 @@ func (l *Line) Mention(login, name string) {
 // returns the same bytes: both passes are fixed points and the parts are not
 // consumed.
 func (l *Line) String() string {
-	// The span scan must see the bytes GitHub will see. Prose is flattened but
-	// raw here, and that is enough: escaping inserts no backtick, so the spans
-	// of this string are the spans of the escaped line (escape.go, WHY ONE PASS
-	// IS ENOUGH).
-	var pre strings.Builder
-	var owner []partKind
-	for _, p := range l.parts {
-		pre.WriteString(p.s)
-		// By BYTE, not by rune: `for range p.s` walks runes, and one multi-byte
-		// glue (an em dash in a note.line) then shifts every ownership answer
-		// after it, and a prose '<' read as Raw is a live '<'.
-		for i := 0; i < len(p.s); i++ {
-			owner = append(owner, p.kind)
-		}
-	}
-	assembled := pre.String()
+	assembled, prose := l.assemble()
 
-	// One scan, over the whole line.
-	inSpan := make([]bool, len(assembled))
-	for _, sp := range codeSpans(assembled) {
-		for i := sp[0]; i < sp[1] && i < len(assembled); i++ {
-			inSpan[i] = true
-		}
-	}
-	prose := func(lo, hi int) bool {
-		for i := max(lo, 0); i < min(hi, len(owner)); i++ {
-			if owner[i] == partProse {
-				return true
-			}
-		}
-		return false
-	}
+	// One span scan, over the whole line. It must see the bytes GitHub will see.
+	// Prose is flattened but raw here, and that is enough: the spans of this string
+	// are the spans of the escaped line (escape.go, WHY ONE PASS IS ENOUGH).
+	inSpan := spansBehindOpeners(assembled, prose)
 
 	escaped, pos := escapeProseLine(assembled, inSpan, prose)
 
@@ -190,4 +176,28 @@ func (l *Line) String() string {
 	}
 
 	return escapeMentionsSkipping(escaped, live)
+}
+
+// assemble is the line so far and the ownership question over it: whether any
+// byte of a range is author prose.
+func (l *Line) assemble() (string, func(lo, hi int) bool) {
+	var b strings.Builder
+	var owner []partKind
+	for _, p := range l.parts {
+		b.WriteString(p.s)
+		// By BYTE, not by rune: `for range p.s` walks runes, and one multi-byte
+		// glue (an em dash in a note.line) then shifts every ownership answer
+		// after it, and a prose '<' read as Raw is a live '<'.
+		for i := 0; i < len(p.s); i++ {
+			owner = append(owner, p.kind)
+		}
+	}
+	return b.String(), func(lo, hi int) bool {
+		for i := max(lo, 0); i < min(hi, len(owner)); i++ {
+			if owner[i] == partProse {
+				return true
+			}
+		}
+		return false
+	}
 }

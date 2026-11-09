@@ -277,6 +277,25 @@ func TestRenderEscapesTheCellTheRendererWillSee(t *testing.T) {
 	}
 }
 
+// TestRenderEscapesAReferenceOfAnyWidth: a cell is a PR comment, so a reference
+// GitHub decodes to an at-sign notifies a stranger, and no fence reaches it. Eight
+// hex digits are live in a table cell (POST /markdown, 2026-11-04); the escaped
+// cell renders the literal text.
+func TestRenderEscapesAReferenceOfAnyWidth(t *testing.T) {
+	got := Render(Input{
+		Current: "v1.0.0",
+		PR: Verdict{Level: bump.LevelPatch, Next: "v1.0.1", Commits: []Commit{
+			{Sigil: "~", Level: bump.LevelPatch, Subject: ":bug:~ hex8 cc &#x00000040;octocat now"},
+			{Sigil: "~", Level: bump.LevelPatch, Subject: ":bug:~ HEX8 cc &#X00000040;octocat now"},
+		}},
+	})
+	for _, want := range []string{`| :bug:~ hex8 cc \&#x00000040;octocat now |`, `| :bug:~ HEX8 cc \&#X00000040;octocat now |`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in the comment body:\n%s", want, got)
+		}
+	}
+}
+
 // TestRenderNeutralizesMentions: a bare @token in a subject must come out
 // inside a backtick fence — this body is posted as a PR comment, so a raw "@v1"
 // would not just render as a link to the GitHub user v1, it would notify them.

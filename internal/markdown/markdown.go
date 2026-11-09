@@ -325,7 +325,7 @@ func codeSpans(s string) [][2]int {
 			return append(spans, paragraphSpans(s[from:], from)...)
 		}
 		spans = append(spans, paragraphSpans(s[from:to], from)...)
-		from = to + 1
+		from = to + lineEnding(s, to)
 	}
 }
 
@@ -490,21 +490,65 @@ func backtickRun(s string, i int) int {
 	return n
 }
 
-// paragraphBreak returns the index of the newline that opens the first blank
-// line at or after from, or -1 when the text runs to its end unbroken. A line
-// holding nothing but spaces, tabs and a carriage return counts as blank.
+// paragraphBreak returns the index of the line ending at which the paragraph
+// holding s[from] ends, or -1 when the text runs to its end unbroken. It ends
+// where GitHub ends it inside the assembled string: before a blank line (spaces
+// and tabs only), and before a line that opens a block, which blockOpenerAt
+// decides here as it does for rule 5, so there is one definition of such a line.
+//
+// A line ends at "\n", at "\r\n" and at a bare "\r", at GitHub as in flatten. Line
+// flattens every field but not its Raw stretches, and a note.line literal can
+// carry a line ending (a TOML basic string, `\r` or `\n`). Measured 2026-11-04 on
+// the bytes `glyph notes` writes, each with "cc @octocat now" in the subject:
+// for line = "- `ping\r\r$subject` x" GitHub ends the paragraph at the two CRs;
+// for "- `ping\r# $subject` x" at the template's heading, and for
+// "- `ping\n- $subject` x" at its second item. In each the backticks pair with
+// nothing and the mention is live unless this scan ends the paragraph there too.
+// One CR, one CRLF, or an indented plain line is no break: the span is real.
+//
+// Blunter than GitHub where that is the safe side: an indented "2." or a "<i>"
+// on the next line continues a paragraph at GitHub and ends one here, so a fence
+// lands inside a real span as visible noise rather than a mention outside a
+// phantom one. TestCodeSpans holds the terminators and the openers, each
+// measured the same way.
 func paragraphBreak(s string, from int) int {
 	for i := from; i < len(s); i++ {
-		if s[i] != '\n' {
+		n := lineEnding(s, i)
+		if n == 0 {
 			continue
 		}
-		j := i + 1
-		for j < len(s) && (s[j] == ' ' || s[j] == '\t' || s[j] == '\r') {
-			j++
-		}
-		if j == len(s) || s[j] == '\n' {
+		if endsParagraph(s, i+n) {
 			return i
 		}
+		i += n - 1
 	}
 	return -1
+}
+
+// endsParagraph reports whether the line starting at s[i] ends the paragraph
+// above it: it is blank, or its first byte past the indent opens a block.
+func endsParagraph(s string, i int) bool {
+	for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+		i++
+	}
+	if i == len(s) || lineEnding(s, i) > 0 {
+		return true
+	}
+	to := i
+	for to < len(s) && lineEnding(s, to) == 0 {
+		to++
+	}
+	_, ok := blockOpenerAt(s[:to], i)
+	return ok
+}
+
+// lineEnding returns the width of the line ending at s[i], 0 for none.
+func lineEnding(s string, i int) int {
+	switch {
+	case strings.HasPrefix(s[i:], "\r\n"):
+		return 2
+	case s[i] == '\n', s[i] == '\r':
+		return 1
+	}
+	return 0
 }
