@@ -228,6 +228,7 @@ func TestEscapeMentions(t *testing.T) {
 		// never pair and the mention between them is live prose. No caller
 		// passes multi-line text today; the pass must not depend on that.
 		{"backticks across a blank line shield nothing", "`ping\n\n@octocat`", "`ping\n\n``@octocat`` `"},
+		{"backticks across two CRs shield nothing", "`ping\r\r@octocat`", "`ping\r\r``@octocat`` `"},
 
 		// A trailing hyphen is not part of a GitHub username, and letting the
 		// match eat it also ate the delimiter the next mention needs — the
@@ -367,6 +368,46 @@ func TestCodeSpans(t *testing.T) {
 		{"a span cannot cross a blank line", "`a\n\nb`", nil},
 		{"a blank line of spaces still breaks it", "`a\n \t\n b`", nil},
 		{"the break bounds the search, not the scan", "`a\n\nb `c` d", []string{"`c`"}},
+
+		// A bare CR and a CRLF end a line as an LF does, one ending to a pair.
+		// Measured 2026-11-04, each with an @octocat behind the terminators: a code
+		// span across one line ending, two paragraphs across a blank line however
+		// it is spelled.
+		{"a span may cross a bare CR", "`a\rb`", []string{"`a\rb`"}},
+		{"a span may cross a CRLF", "`a\r\nb`", []string{"`a\r\nb`"}},
+		{"a span cannot cross two CRs", "`a\r\rb`", nil},
+		{"a span cannot cross LF then CR", "`a\n\rb`", nil},
+		{"a span cannot cross two CRLFs", "`a\r\n\r\nb`", nil},
+		{"a span cannot cross CR then LF apart", "`a\r \nb`", nil},
+		{"a blank line of blanks between CRs still breaks it", "`a\r \t\rb`", nil},
+		{"the CR break bounds the search, not the scan", "`a\r\rb `c` d", []string{"`c`"}},
+
+		// A line that opens a block ends the paragraph as a blank line does, and
+		// blockOpenerAt decides which (rule 5's shapes, one definition). Measured
+		// 2026-11-04 with an @octocat behind each opener: a heading, an item, a
+		// quote, an HTML block and a footnote definition each end the span at
+		// GitHub; an indented "2." does not, and is ended here anyway, the
+		// over-escaping side. An escaped opener and an indented plain line continue
+		// the paragraph.
+		{"a span cannot cross a heading line", "`a\n# b`", nil},
+		{"a span cannot cross an item line", "`a\n- b`", nil},
+		{"a span cannot cross a quote line after a CR", "`a\r> b`", nil},
+		{"a span cannot cross an HTML block line", "`a\n</details> b`", nil},
+		{"a span cannot cross an HTML comment line", "`a\n<!-- b`", nil},
+		{"a span cannot cross a processing instruction line", "`a\n<? b`", nil},
+		{"a span cannot cross a declaration line", "`a\n<!X b`", nil},
+		{"a span cannot cross a footnote definition", "`a\n[^1]: b`", nil},
+		{"a span cannot cross a delimiter row", "`a\n---:\nb`", nil},
+		{"a span cannot cross a fence line", "`a\n```\nb`", nil},
+		// An opener that needs the end of its line finds it at a bare CR too.
+		{"a span cannot cross a thematic break between CRs", "`a\r***\rb`", nil},
+		{"a span cannot cross a delimiter row between CRs", "`a\r  ---:\rb`", nil},
+		{"a span cannot cross a setext underline between CRs", "`a\r===\rb`", nil},
+		{"an escaped opener continues the paragraph", "`a\n\\# b`", []string{"`a\n\\# b`"}},
+		{"an ordered marker escaped on its dot continues it", "`a\n1\\. b`", []string{"`a\n1\\. b`"}},
+		{"an indented plain line continues it", "`a\n  b`", []string{"`a\n  b`"}},
+		{"an indented 2. ends it here, not at GitHub", "`a\n  2. b`", nil},
+		{"the opener bounds the search, not the scan", "`a\n- b `c` d", []string{"`c`"}},
 
 		// cmark's closer search is memoized: a search that runs off the end of
 		// the block records, per run length, where the last run of that length

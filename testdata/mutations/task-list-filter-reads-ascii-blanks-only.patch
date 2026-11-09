@@ -1,0 +1,13 @@
+diff --git a/internal/markdown/escape.go b/internal/markdown/escape.go
+index fbbfb2e..7c3e483 100644
+--- a/internal/markdown/escape.go
++++ b/internal/markdown/escape.go
+@@ -452,7 +452,7 @@ func taskItemAt(s string, i int) (at, closer int) {
+ // U+0085, which the filter does not read, and less the line endings, which never
+ // reach it inside a line.
+ func taskBlank(r rune) bool {
+-	return unicode.IsSpace(r) && r != '\v' && r != '\n' && r != '\r' && r != 0x85
++	return unicode.IsSpace(r) && r < 0x80 && r != '\v' && r != '\n' && r != '\r'
+ }
+ 
+ // taskBlankLen returns the width in bytes of the task-list blank at s[i], 0 for

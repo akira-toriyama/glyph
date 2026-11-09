@@ -1,0 +1,9 @@
+diff --git a/scripts/fuzz-smoke.sh b/scripts/fuzz-smoke.sh
+index 7d2bedb..6111f33 100644
+--- a/scripts/fuzz-smoke.sh
++++ b/scripts/fuzz-smoke.sh
+@@ -36,4 +36,3 @@ if [ "$found" -eq 0 ]; then
+   echo "✗ fuzz-smoke: no Fuzz target in any package, so nothing was fuzzed and a green here would claim otherwise" >&2
+   exit 1
+ fi
+-echo "✓ fuzz-smoke: $found Fuzz target(s) ran"

@@ -1,0 +1,13 @@
+diff --git a/internal/markdown/markdown.go b/internal/markdown/markdown.go
+index 971dbc5..37cbd1e 100644
+--- a/internal/markdown/markdown.go
++++ b/internal/markdown/markdown.go
+@@ -524,7 +524,7 @@ func lineEnding(s string, i int) int {
+ 	switch {
+ 	case strings.HasPrefix(s[i:], "\r\n"):
+ 		return 2
+-	case s[i] == '\n', s[i] == '\r':
++	case s[i] == '\n':
+ 		return 1
+ 	}
+ 	return 0

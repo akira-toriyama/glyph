@@ -17,64 +17,52 @@ import (
 	"testing"
 )
 
-// TestReleasePublishesAtTagTime pins `draft: false` in .goreleaser.yaml
-// (1015774). The same run's homebrew_casks step has ALREADY pushed the new
-// version to the tap, so every draft is a window where `brew install` fetches
-// a 404 asset, bounded only by how soon a human remembers to publish — cifail
-// v0.1.1 sat unpublished for 17 days. Reverting is a one-word change that CI
-// stays green over; the failure surfaces after the next tag, in a consumer.
-func TestReleasePublishesAtTagTime(t *testing.T) {
-	config := code(repoFile(t, ".goreleaser.yaml"))
-	if !regexp.MustCompile(`(?m)^\s*draft:\s*false\s*$`).MatchString(config) {
-		t.Error(".goreleaser.yaml no longer sets `draft: false`; a draft's assets are 404 to " +
-			"anonymous clients while the tap already names the new version — every draft is a " +
-			"broken-brew window bounded only by a human remembering to publish (1015774)")
-	}
-	truthyDraft := regexp.MustCompile(`(?m)^\s*draft:\s*["']?true`)
-	// Positive control: the line 1015774 replaced (6cad6ae).
-	const canary = "  draft: true"
-	if !truthyDraft.MatchString(canary) {
-		t.Fatalf("the pattern no longer matches the draft line it bans (%q) — the absence asserted below is vacuous", canary)
-	}
-	if truthyDraft.MatchString(config) {
-		t.Error(".goreleaser.yaml sets a truthy `draft:`; publish at tag time — see the release block's rationale")
-	}
-}
-
-// TestPrereleaseTagsStayOffLatestAndOffTheTap pins the pair of `auto`s that
-// make a release candidate cheap. A grammar change cannot be proven by a dry
-// run — only by a real release binary that the reusables install and a fleet
-// gate executes — so it ships rc tags first. GoReleaser
-// defaults both keys the other way: without `prerelease: auto` every `v*` tag
-// publishes as a full release and takes GitHub's `latest` pointer, and without
-// `skip_upload: auto` the same tag regenerates Casks/glyph.rb, so an rc of a
-// breaking version reaches anyone who types `brew upgrade`. Both are absences,
+// TestPrereleaseTagsStayOffLatestAndOffTheTap pins what makes a release
+// candidate cheap. A grammar change cannot be proven by a dry run — only by a
+// real release binary that the reusables install and a fleet gate executes —
+// so it ships rc tags first. GoReleaser defaults `prerelease` the other way:
+// without `prerelease: auto` every `v*` tag publishes as a full release and
+// takes GitHub's `latest` pointer. The tap half lives in goreleaser.yml since
+// the push left GoReleaser (t-p15y): the cask job runs only when the tag
+// step's parse says the tag is no release candidate, or an rc of a breaking
+// version reaches anyone who types `brew upgrade`. Both are absences,
 // invisible to CI, and neither shows up until the tag is already pushed and
-// `latest` has already moved for whoever looked in between.
+// `latest` has already moved for whoever looked in between. That the tag
+// step writes `prerelease=` as the tag says is
+// TestReleaseRefusesATagWhoseMajorTheModulePathDoesNotCarry's, which runs it.
 func TestPrereleaseTagsStayOffLatestAndOffTheTap(t *testing.T) {
 	config := code(repoFile(t, ".goreleaser.yaml"))
-
-	for _, g := range []struct{ key, why string }{
-		{"prerelease", "an rc tag publishes as a full release and takes GitHub's `latest` pointer, " +
-			"which is what every \"what should I pin?\" glance reads"},
-		{"skip_upload", "an rc tag regenerates the Homebrew cask, so `brew install " +
-			"akira-toriyama/tap/glyph` hands out a candidate of a breaking version"},
-	} {
-		if !regexp.MustCompile(`(?m)^\s*` + g.key + `:\s*auto\s*$`).MatchString(config) {
-			t.Errorf(".goreleaser.yaml no longer sets `%s: auto`; GoReleaser's default is the "+
-				"other way, so %s", g.key, g.why)
-		}
+	keyIs := func(key, value string) bool {
+		return regexp.MustCompile(`(?m)^\s*` + key + `:\s*` + value + `\s*$`).MatchString(config)
 	}
-
+	if !keyIs("prerelease", "auto") {
+		t.Error(".goreleaser.yaml no longer sets `prerelease: auto`; GoReleaser's default is the other way, so " +
+			"an rc tag publishes as a full release and takes GitHub's `latest` pointer, which is what every " +
+			"\"what should I pin?\" glance reads")
+	}
 	// Positive control: the guard above asserts a presence, but the regex it
 	// asserts with is the part that can rot. Prove the same pattern still finds
-	// a key this file demonstrably carries — `draft: false` — spelled the way
-	// the guards spell it, so a regex that has stopped matching anything at all
-	// fails here instead of passing two absences off as satisfied.
-	if !regexp.MustCompile(`(?m)^\s*draft:\s*false\s*$`).MatchString(config) {
-		t.Error("the key regex matches nothing in .goreleaser.yaml, not even `draft: false`; " +
-			"the two `auto` guards above are asserting against a pattern that can no longer " +
-			"match this file's syntax, so they would pass on a stripped config")
+	// a key this file demonstrably carries — `draft: true` — spelled the way
+	// the guard spells it, so a regex that has stopped matching anything at all
+	// fails here instead of passing an absence off as satisfied.
+	if !keyIs("draft", "true") {
+		t.Error("the key regex matches nothing in .goreleaser.yaml, not even `draft: true`; the " +
+			"`auto` guard above is asserting against a pattern that can no longer match this " +
+			"file's syntax, so it would pass on a stripped config")
+	}
+
+	raw := goreleaserWorkflow(t)
+	body := code(raw)
+	if !regexp.MustCompile(`(?m)^    ` + regexp.QuoteMeta(caskJobCondition) + `\s*$`).MatchString(jobBlock(t, body, "cask")) {
+		t.Errorf("the cask job does not carry `%s`; a release candidate's cask reaches the tap, and the first rc "+
+			"of a breaking major is what `brew upgrade` hands everyone", caskJobCondition)
+	}
+	if !strings.Contains(jobBlock(t, body, "release"), "\n      "+prereleaseJobOutput+"\n") {
+		t.Errorf("the release job does not publish `%s`; the cask job's condition reads an output nothing "+
+			"sets, which GitHub resolves to \"\" — so every tag, rc included, passes `!= 'true'`", prereleaseJobOutput)
+	}
+	if got := readStepShape(t, raw, moduleMajorStep).keys["id"]; got != "tag" {
+		t.Errorf("the tag step has id %q, want tag — the release job's prerelease output reads steps.tag", got)
 	}
 }
 

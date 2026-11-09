@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
+index 877b8f8..9ebffa3 100644
+--- a/.github/workflows/build.yml
++++ b/.github/workflows/build.yml
+@@ -163,3 +163,8 @@ jobs:
+       - name: fuzz smoke (bounded)
+         if: runner.os == 'Linux'
+         run: sh scripts/fuzz-smoke.sh
++
++  newgate:
++    runs-on: ubuntu-latest
++    steps:
++      - run: echo a gate check.sh never heard of

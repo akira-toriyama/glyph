@@ -732,7 +732,11 @@ span reads as already-inert, is left raw, and renders as a live mention. The fix
 is not a smarter scanner — teaching it those grammars would be a renderer inside
 an escaper, and would still have been wrong — but removing the competing
 constructs beforehand, which makes the backtick-only model exact **by
-construction**. `internal/markdown/markdown.go: codeSpans, paragraphSpans`,
+construction**. The one phantom that is block structure rather than an inline
+competitor — a span the bare bytes suggest across a template line that opens a
+block, which GitHub never forms because blocks are decided first — is ended by
+the scan itself, at the same openers rule 5 reads (t-z7ah).
+`internal/markdown/markdown.go: codeSpans, paragraphBreak, paragraphSpans`,
 `internal/markdown/escape.go` (file header)
 
 The next two are **two different operations**, applied at different times to
@@ -741,13 +745,19 @@ different things. Do not use them interchangeably.
 **neutralize** (`escapeProseLine`, reached through `Line.Prose` and run by
 `Line.String` over the assembled line) — over **prose**, which is every
 author-supplied value a line carries, a commit scope included: add backslashes
-to disarm the inline constructs that can inject structure, point somewhere the
-author never wrote, or *delete the author's own words*. Four rules, each testing a **byte and
-never a grammar** — `<`, the extended-autolink triggers (`://` after
-http/https/ftp, and the `.` of `www.`), `[`, and an entity-shaped `&`. Emphasis,
-strikethrough and the author's own code spans are left working: a subject is
-prose the author meant to be read. It only **adds** bytes, so the author's text
-survives as a subsequence and the pass is a fixed point. Not theoretical: of the
+to disarm the constructs that can inject structure, point somewhere the
+author never wrote, or *delete the author's own words*. Five rules, each blunter
+than the grammar it disarms — `<`, the extended-autolink triggers (`://` after
+http/https/ftp, and the `.` of `www.`), `[`, an entity-shaped `&` of any width, and
+a **block opener at a block start**: the head of a line or of a list item, which
+is where a template's `- ` puts a value, so the bullet protects nothing (a
+task-list marker there takes its backslash *between* the brackets, the one place
+GitHub's checkbox filter, which reads rendered text, cannot read past). Emphasis,
+strikethrough and the author's own code spans are left working, at a block start
+too: a subject is prose the author meant to be read. It only **adds** bytes, so the
+author's text survives as a subsequence and the pass is a fixed point; the one
+opener no backslash reaches, an indent, is dropped where flatten sits, in
+`Line.Prose`. Not theoretical: of the
 16 fleet subjects carrying a `<`, 14 were being **deleted** by GitHub's
 sanitizer (`<Chip>`, `Optional<Any>`, `[overlay.theme.<name>]`), and escaping
 repairs those and regresses none. There is no second policy: the plain-text
@@ -795,10 +805,12 @@ Why that order is the only safe one is argued once, at the type's doc comment.
 **pipe escape** — the fourth pass a preview cell goes through, after flatten,
 neutralize and fence, and the only one that does not live in `internal/markdown`:
 every `|` gets a backslash, so a subject cannot break the table the headline's
-evidence rests on. It runs **last**, and the order is not cosmetic — it adds
-backslashes, and an escaping backslash in front of a fence swallows the fence.
-Deferring it costs nothing, because a pipe escaped inside a code span still renders
-as a pipe. `internal/preview/preview.go: escapeCell`
+evidence rests on. Its order against `Line`, which runs the other three, is
+immaterial to the rendering, measured: the backslash lands directly in front of a
+`|`, never in front of an at-sign or a fence, and a pipe escaped inside a code
+span still renders as a pipe. The two orders write different bytes only on a cell
+shaped like a table delimiter row (`|---`, which rule 5 escapes too), and GitHub
+renders both the same. `internal/preview/preview.go: escapeCell`
 
 **"over-escaping is the safe direction"** — the package's one design rule, which
 a later "let me make this more precise" pass must not violate: **every
@@ -989,7 +1001,7 @@ to nobody), and neither are the fleet-synced consumers (`commit-lint.yml`,
 
 **dist-gate** — the pull-request gate that makes evidence for a distribution-layer
 change *mandatory*: such a file in the diff with no `internal/workflows`
-`*_test.go` change fails the PR. It closes a measured gap — `bite` acts on Go
+`*_test.go` added or modified fails the PR. It closes a measured gap — `bite` acts on Go
 diffs only and the extras smoke reads no YAML, so a `:bug:` fix touching only
 `.goreleaser.yaml` or only the install action used to ship with zero tests.
 Stands down on its own when every changed line of the distribution-layer
