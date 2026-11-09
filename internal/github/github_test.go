@@ -388,10 +388,10 @@ func TestPullCommits422IsNotCommitUnknown(t *testing.T) {
 
 // TestOnlyDocumentedMethodsCarryAStatusOut is flatten's contract probed
 // method by method: every exported method is called against a server
-// answering 422 — the status IsCommitUnknown reads — and 404 — the one
-// IsRepoUnknown reads — and only the three whose contract documents a status
+// answering 422 — the status IsCommitUnknown reads — and 404 — one of those
+// IsRepoRefused reads — and only the three whose contract documents a status
 // hand the carrier out: CommitPulls and CommitFiles to IsCommitUnknown on a
-// 422, Repository to IsRepoUnknown on a 404. PullRequest and GenerateNotes
+// 422, Repository to IsRepoRefused on a 404. PullRequest and GenerateNotes
 // handed it out until t-esm5 (a 422 from either read as IsCommitUnknown). The
 // table must name every exported method, so a new endpoint cannot join
 // without saying which side it is on.
@@ -420,7 +420,7 @@ func TestOnlyDocumentedMethodsCarryAStatusOut(t *testing.T) {
 	}{
 		"CommitFiles": {http.StatusUnprocessableEntity, IsCommitUnknown},
 		"CommitPulls": {http.StatusUnprocessableEntity, IsCommitUnknown},
-		"Repository":  {http.StatusNotFound, IsRepoUnknown},
+		"Repository":  {http.StatusNotFound, IsRepoRefused},
 	}
 
 	client := reflect.TypeFor[*Client]()
@@ -456,7 +456,7 @@ func TestOnlyDocumentedMethodsCarryAStatusOut(t *testing.T) {
 						t.Fatalf("%s's predicate over a %d = %t, want %t", name, status, got, want)
 					}
 				}
-				if !sanctioned && (IsCommitUnknown(err) || IsRepoUnknown(err)) {
+				if !sanctioned && (IsCommitUnknown(err) || IsRepoRefused(err)) {
 					t.Fatalf("a %d from %s is readable by a predicate its contract never names", status, name)
 				}
 			})

@@ -98,7 +98,7 @@ func readWorkflows(root string, rootVerified bool) (files []workflowFile, listEr
 // than start a sentence.
 func unlistableWorkflows(c *Check, root string, rootVerified bool, listErr error, outside, unread string) {
 	c.Status = StatusUnknown
-	c.Observed = fmt.Sprintf("the workflows directory could not be listed: %v", listErr)
+	c.Observed = unlistableLine(listErr)
 	if !rootVerified {
 		c.Message = "doctor reads the LOCAL checkout for this check, and git could not name one here. " + outside
 		c.Fix = fixOutsideCheckout
@@ -106,6 +106,12 @@ func unlistableWorkflows(c *Check, root string, rootVerified bool, listErr error
 	}
 	c.Message = "the checkout's workflows were never read" + unread
 	c.Fix = unlistableFix(filepath.Join(root, ".github", "workflows"), listErr)
+}
+
+// unlistableLine is the one sentence every workflow check gives a directory
+// readWorkflows could not list.
+func unlistableLine(listErr error) string {
+	return fmt.Sprintf("the workflows directory could not be listed: %v", listErr)
 }
 
 // unlistableFix is the remedy for a workflows directory under a git-named root
@@ -123,21 +129,17 @@ func unlistableFix(dir string, err error) string {
 // checkWorkflowPins scans the workflow files (readWorkflows, workflowsErr its
 // listing's failure) and every action.yml / action.yaml git lists for the
 // local checkout (gitsource.ActionFiles, paths relative to root; actionErr its
-// failure). An absent workflows directory under a git-named root leaves the
-// action files still read, so a composite is not blessed by the workflows
-// directory being gone.
+// failure). A workflows directory that is absent under a git-named root, or that
+// could not be listed, leaves the action files still read: a composite is not
+// blessed by the workflows directory being gone, and a moving ref in one fails
+// the check whatever else was unread, the rule doctorVerdict applies to the whole
+// report (a defect observed outranks a blind spot beside it; the listing failure
+// rides in the details).
 func checkWorkflowPins(root string, rootVerified bool, workflows []workflowFile, workflowsErr error, actionFiles []gitsource.ActionFile, actionErr error) Check {
 	c := Check{
 		ID: idWorkflowPinned,
 		Expected: "every `uses: " + glyphRepo + "/…` in .github/workflows or in any action.yml / action.yaml in the checkout " +
 			"(submodules included) pins a concrete @vX.Y.Z release tag",
-	}
-	if workflowsErr != nil {
-		unlistableWorkflows(&c, root, rootVerified, workflowsErr,
-			"If this repository genuinely has no workflows there is nothing pinned and nothing to drift — but that is "+
-				"unverified, not verified",
-			", so whatever they pin is unverified, not verified")
-		return c
 	}
 
 	var refs []pinRef
@@ -211,6 +213,14 @@ func checkWorkflowPins(root string, rootVerified bool, workflows []workflowFile,
 			"change under the caller between runs; a non-tag ref has no release binary to derive from at all, so the job " +
 			"hard-errors unless glyph-version is passed"
 		c.Fix = "pin each reference to a released tag: uses: " + glyphRepo + "/.github/workflows/<file>@vX.Y.Z"
+		if workflowsErr != nil {
+			c.Details = append(c.Details, unlistableLine(workflowsErr))
+		}
+	case workflowsErr != nil:
+		unlistableWorkflows(&c, root, rootVerified, workflowsErr,
+			"If this repository genuinely has no workflows there is nothing pinned and nothing to drift — but that is "+
+				"unverified, not verified",
+			", so whatever they pin is unverified, not verified")
 	case len(unreadable) > 0 || listErr != "":
 		c.Status = StatusUnknown
 		var gaps []string

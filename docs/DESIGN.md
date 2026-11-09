@@ -1622,7 +1622,71 @@ by shas no branch holds. What actually reaches a body is `note.line`'s decision,
 not glyph's — the fold binds `$pr` and `$hash`, and both shipped presets place
 `$pr` alone inside an optional span, so a line reads `- subject (#123)` and
 drops the parens with the pull (§3). v1's hardcoded `(#123, abc1234)` is
-`$[ ($pr, $hash)]` today. A **shallow** checkout cannot answer the question at all
+`$[ ($pr, $hash)]` today. Both git questions can also fail to answer, and a
+failure never reads as "never landed" where git signals it: a listed sha whose
+object this clone holds and **cannot read** — empty, truncated, not zlib, under
+a file or fan-out directory git cannot open — answers `missing` to `cat-file
+--batch-check` and `128` to `merge-base` exactly as a sha the store does not
+hold (a body that does not parse answers `commit` to the batch and dies at
+`merge-base`'s probe one step later), and read as absent it had no landing
+site, the in-range merge point governed it, and a released commit was counted
+again at exit `0` (measured on the tree before fix round 2 of this change,
+2026-11-08; t-9bqf). What git gives that tells the two apart is on stderr: the
+`error:` severity line it writes for the first and not the second, so that line
+is the signal — read as severity under `LC_ALL=C`, never as text, since
+`warning:` and trace output are stderr too, and found anywhere in stderr, since
+trace lines come first — and the walk fails at `4` carrying it, with nothing
+extra asked of a store that reads (`TestHaveFailsOnAHeldObjectGitCannotRead`,
+`TestSinceTagFailsOnAReleasedCommitGitCannotRead`,
+`TestHeldObjectSignalIsFoundBehindStderrNoise`,
+`TestHeldObjectSignalIsReadUnderThePinnedLocale`, mutation rows
+`gitsource-have-reads-a-held-object-it-cannot-read-as-absent`,
+`gitsource-held-object-signal-is-any-stderr`,
+`gitsource-held-object-signal-is-the-first-line-only`,
+`gitsource-stderr-readers-run-in-the-users-locale`; the mechanism and what it
+was measured against are at `gitsource.errorLine`). The same line is read off
+`merge-base`'s honest no: for a commit gone from the middle of the history, git
+≤ 2.40 exits `1` beside `error: Could not read …` where 2.54 and later exit
+`128`, so an exit `1` that carries an `error:` line is git failing, quoted, not
+a NO (`TestIsAncestorFailsWhereGitCouldNotAnswer`, mutation row
+`gitsource-is-ancestor-reads-an-exit-1-with-an-error-line-as-the-no`). The
+`128` of `cat-file -t rev^{}` is taken apart the same way in
+`gitsource.namesCommit`, paired there with `cat-file -e`: its exit `0` against
+the peel's `128` is an object the store holds and git could not read without
+saying so, and it runs only on that failure path, so a healthy repository pays
+nothing (`TestNamesCommitSeesAnUnopenableObjectGitIsSilentAbout`, mutation row
+`gitsource-names-commit-reads-a-held-object-git-is-silent-about-as-no-commit`).
+
+**Where git writes nothing, glyph cannot see**, and these are stated limits,
+not guarantees. git 2.39 and earlier write no `error:` line for a loose object
+the user cannot open — a mode 000 file or fan-out directory, the shape a fetch
+run as another user under umask 077 leaves — because object-file.c gained its
+`error_errno` on an open failure in 2.40.0 (measured on 2.39.5 against 2.40.1,
+2.54.0 and 2.56.0; Debian 12 ships 2.39.5). Under such a git `cat-file -e`
+still catches the file for `namesCommit`'s callers, the fan-out directory
+reads as nothing in the store, and `have` — which has no second signal, since
+`%(objectsize:disk)` is a stat too and would cost a process per walk step that
+has a missing sha, which is every squash — reads both as absent. An object in
+a pack whose `.idx` or `.pack` cannot be opened reads as absent to every probe
+on every version measured: `cat-file -t` dies `128` silently, the batch answers
+`missing`, `cat-file -e` exits `1`. The claim that holds is the narrow one: a
+held object never reads as absent where git signals it could not read it.
+
+A store git reports as not all there fails the same way: an alternates entry
+— `objects/info/alternates` or `GIT_ALTERNATE_OBJECT_DIRECTORIES` — naming a
+directory that is gone makes git write `error: object directory … does not
+exist` on every object read, at exit `0` with the answer intact (and git 2.56
+writes it on an unknown name as well, so there a dangling `origin/HEAD` over
+such a store reads as this failure rather than as the set-head advice §7
+names). glyph cannot vouch for an absence there, so `have` fails where a
+listed sha came back `missing`, `isAncestor` on its no and `namesCommit` on
+any `error:` line, each quoting git's line so the reader knows what to fix —
+and each answers where nothing was absent
+(`TestHaveUnderGoneAlternatesAnswersWhereNothingIsMissing`, mutation row
+`gitsource-have-fails-a-full-listing-under-gone-alternates`). In the installed
+pre-push hook that `4` is the pass-through the hooks give every non-gate
+failure by contract (only `3` blocks; README's hook section), so CI's lint
+stays the gate. A **shallow** checkout cannot answer the question at all
 (a commit git does not have is indistinguishable from one that never landed), so
 the walk says so once and falls back to expanding whole listings — and, since it
 knows the answer it gave was a guess, records the checkout as one it could not
@@ -4189,15 +4253,34 @@ distinguishable from `fail` — "we could not check" is not "it is fine", so
 neither exits 0.
 
 The line between the two is drawn on what the API **said**, not on whether the
-call returned an error (`github.IsRepoUnknown`). A 404 from the repository read is
-an answer — there is no such repository *for this credential* — and fails at `3`.
-A 403 rate limit, a 5xx that outlived the retry schedule, a dead socket or a body
-that would not parse is no answer at all: nothing about the repository was
-observed, so it is `unknown` at `4`, the same code every other glyph command gives
-that failure. Collapsing the two the other way made a transient GitHub outage tell
-the fleet's CI wrappers — which branch on `jq -e '.error.code == 3'` to hard-fail
-and treat everything else as retryable infra — that the repository was
-misconfigured, and never retry.
+call returned an error (`github.IsRepoRefused`). A 401, a 403 that is no rate limit
+and a 404 from the repository read are answers about the credential — it is
+rejected, it is refused this repository, or there is no such repository *for this
+credential* — and fail at `3`, with a credential to configure as the fix. A rate
+limit, a 5xx that outlived the retry schedule, a dead socket or a body that would
+not parse is no answer at all: nothing about the repository was observed, so it is
+`unknown` at `4`, the same code every other glyph command gives that failure, and
+the fix is to re-run. Collapsing the two the other way made a transient GitHub
+outage tell the fleet's CI wrappers — which branch on `jq -e '.error.code == 3'`
+to hard-fail and treat everything else as retryable infra — that the repository was
+misconfigured, and never retry. Drawing the line at the 404 alone told them a
+rejected token was retryable infra, and reported it as "GitHub did not answer"
+(measured at 2f9428a). A verdict command still exits `4` on a 401 (`bump --pr`,
+measured 2026-11-04): for it a read failed, while doctor was asked whether this
+credential can read the repository.
+A rate limit is told from a refusal on the answer itself: a primary limit carried
+`X-RateLimit-Remaining: 0` and no `Retry-After`, a permission 403 a nonzero count
+(both measured against api.github.com on 2026-11-04: the anonymous search budget
+run dry, and a repository's Actions permissions read without the grant), and GitHub
+documents a secondary limit as carrying `Retry-After`, the count at 0, or neither
+and only its message, so any of the three keeps it on the no-answer side
+(`TestRepositoryClassifiesAnAnswerApartFromNoAnswer`). The settings checks that
+never ran take their remedy from the same split: they told a 502 to fix the
+credential beside a token check telling it to wait
+(`TestDoctorSplitsTheRepoReadOnWhatTheAPISaid`, mutation rows
+`doctor-reads-a-credential-answer-as-no-answer`,
+`doctor-reads-any-403-as-a-credential-answer` and
+`doctor-settings-tell-an-outage-to-fix-the-credential`).
 
 The severities are the argued part:
 
@@ -4328,6 +4411,13 @@ The severities are the argued part:
   like any unread input; a sparse-checkout entry, tracked but never put on
   disk, is unread too, while a tracked file the working tree deleted is an
   observed absence, as the workflows directory's is under a git-named root.
+  A workflows path the filesystem will not list leaves the action files read
+  all the same: a moving ref in one fails at `3` with the listing failure in
+  its details, since a defect observed outranks a blind spot beside it, and only
+  clean action files leave the check `unknown` (a regular file at the path exited
+  `4` with them unread, measured at 2f9428a;
+  `TestCheckWorkflowPinsReadsTheActionFilesPastAnUnlistableDirectory`, mutation
+  row `doctor-pin-scan-lets-an-unlistable-directory-outrank-a-defect`).
   The price of "any path": an action file kept as a test fixture is judged
   like a published one — which it is, since GitHub runs it for anyone who
   names its path. `TestCheckWorkflowPinsScansCompositeActions`,
@@ -4464,12 +4554,17 @@ The severities are the argued part:
   no hook and calls no API — `internal/cli` asks git, fires the commit-msg probe
   and fetches the repository object, and hands each answer over in
   `doctor.Input` with its error, so a failed read degrades only the checks that
-  read it. One answer carries no error: the probe's claim (`probeClaimed`)
-  reads git's config the way the fired hook does, and a question git does not
-  answer reads as unset. Two failures end the run before doctor judges
-  anything: a repository it cannot name (no `--repo`, `$GITHUB_REPOSITORY` or
-  GitHub `origin`, or a malformed one — usage, 2), and an interrupt in any
-  read.
+  read it. Two answers carry no error, both read only of a fired hook that
+  exited `0`, in this order: whether `glyph` resolves (`glyphResolves` asks the
+  hook's own `command -v glyph` in the hook's shell, and a shell that did not
+  answer reads as absent), then the probe's claim (`probeClaimed` reads git's
+  config the way the fired hook does, and a question git does not answer reads
+  as unset). Because neither hands an error back, `internal/cli` asks the
+  context once after both, and `internal/doctor` reads the absence before the
+  claim (`commit-msg-hook-fires`, below). Two failures end the run before
+  doctor judges anything: a repository it cannot name (no `--repo`,
+  `$GITHUB_REPOSITORY` or GitHub `origin`, or a malformed one — usage, 2), and
+  an interrupt in any read.
 - **The byte-identical hook is also FIRED (`commit-msg-hook-fires`).** Current
   bytes prove the script; they prove nothing about the glyph the script resolves
   on PATH at run time, and the script blocks only on the gate code and waves
@@ -4492,7 +4587,21 @@ The severities are the argued part:
   config's absence answering and `glyph-toml-loads` owns the finding. Failing
   it sent the reader to repair a PATH wrapper nothing had observed broken
   (`TestHookFiresDefersAPassThroughToAnUnloadedConfig`, mutation row
-  `doctor-hook-fires-blames-the-path-for-an-unloaded-config`).
+  `doctor-hook-fires-blames-the-path-for-an-unloaded-config`). A hook a signal
+  killed is the same unknown (`os/exec` reports `-1`; mutation row
+  `doctor-hook-fires-reads-a-killed-probe-as-blocked`). A `glyph` absent from
+  `PATH` is its own diagnosis in this check, and still a failure: the hook's
+  `command -v glyph` finds nothing, so it warns and passes every commit, by the
+  design that never lets a missing tool block one, and the local gate is dead all
+  the same. The generic pass-through told the reader to check what that command
+  resolves to, when it resolves to nothing (measured at 2f9428a), so an exit `0`
+  is followed by the hook's own question, asked in the shell the hook runs under
+  rather than modelled with a `PATH` walk. The absence is read before the two
+  readings above: a config claiming the probe text would call it the whole chain
+  answering, and an unloaded one the config's absence answering, and nothing ran
+  to make either true (`TestHookFiresNamesAGlyphAbsentFromPATH`, mutation rows
+  `doctor-hook-fires-reads-an-absent-glyph-as-a-pass-through` and
+  `doctor-never-asks-whether-glyph-resolves`).
 - **A byte-identical pre-push hook nobody fired ⇒ advice (`pre-push-hook`).**
   Only commit-msg is fired, and its answer covers pre-push because both hooks
   resolve one `PATH` — which holds while a byte-identical commit-msg hook sits
@@ -4516,7 +4625,35 @@ The severities are the argued part:
   is byte-identical, so a checkout with no hook — every CI runner — pays
   nothing; a read that fails is `unknown`, like any unread input
   (`TestPrePushHookSaysWhenNoRemoteHeadIsRecorded`, mutation row
-  `doctor-pre-push-ignores-an-unrecorded-remote-head`). The remedy is
+  `doctor-pre-push-ignores-an-unrecorded-remote-head`). A recorded name whose
+  ref no longer exists records nothing either: a default branch renamed on the
+  remote leaves that ref dangling after `git fetch --prune`, git warns once, and
+  `symbolic-ref` still answers exit `0` with the old name. Believed, the new
+  default branch read as off the default branch, so a violating push landed at
+  exit `0` with no remedy named while this check passed (measured at 2f9428a, git
+  2.54). So `gitsource.DefaultBranch` verifies the name first, and the hook and
+  this check give what they give an unrecorded remote
+  (`TestPrePushReadsADanglingDefaultBranchAsUnrecorded`, mutation row
+  `default-branch-believes-a-dangling-ref`). A recorded name whose commit this
+  clone holds and cannot read — an empty object file, one git cannot open, a
+  body that does not parse — is the read failing, not a name that records
+  nothing: set-head repairs no object store, so it is `unknown` at `4` and the
+  fix names what must change first, the object `git fsck` names (a re-fetch
+  does not replace it: the ref is up to date, so nothing is sent; measured on
+  git 2.54), then the re-run (`TestDefaultBranchFailsOnATargetGitCannotRead`,
+  mutation rows `gitsource-names-commit-reads-a-held-object-it-cannot-read-as-no-commit`,
+  `gitsource-names-commit-reads-a-held-object-git-is-silent-about-as-no-commit`,
+  `doctor-pre-push-unread-head-fix-names-no-condition`). The signal is git's
+  `error:` line paired with `cat-file -e`, and §4 states where neither sees:
+  under git ≤ 2.39 a fan-out directory git cannot open reads as unrecorded
+  here and names set-head. A store whose alternates directory is gone writes
+  the line too, and is this failure for a recorded name whose commit it does
+  not hold — on 2.56 for a dangling one too, where 2.54.0 and 2.39.5 name
+  set-head (`TestDefaultBranchFailsOnADanglingRefOverAGoneAlternatesStore`,
+  mutation row
+  `gitsource-names-commit-reads-an-unknown-name-over-an-incomplete-store-as-no-commit`)
+  — while a name whose commit it holds reads as recorded (measured on 2.39.5,
+  2.54.0 and 2.56.0). The remedy is
   `git remote set-head <remote> -a` only where git can record a head at all:
   a name config accepts and refs refuse (`my fork`, `mirror..x`) makes
   set-head exit 129 unquoted and 1 quoted (review u6-2, git 2.54). `git remote
