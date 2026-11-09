@@ -20,10 +20,7 @@ const (
 	// command's own condition: `bump` and `release` return it when every
 	// participating commit folds to none (no version moves), `notes` when no
 	// commit lands in a [[note.sections]] entry (nothing to write). The two
-	// differ on purpose, because the sections decide what the notes hold: a
-	// fix no section takes is a version with no notes, and a bot commit an
-	// author section holds is notes with no version
-	// (TestNotesNoReleaseIsTheSectionsCondition).
+	// part ways on purpose (glossary, "soft no-release").
 	CodeNoRelease Code = 1
 	CodeUsage     Code = 2 // bad usage or invalid input — fix the args, do not retry
 	// CodeLint is the gate code: what glyph was asked to judge violates the

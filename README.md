@@ -541,10 +541,10 @@ byte.
 
 ## Exit codes
 
-`0` ok · `1` no release (every commit folds to none under `bump` and
-`release`, no commit lands in a section under `notes`) · `2` usage · `3`
-convention violation (a commit under `lint`, the repository's own
-configuration under `doctor`) ·
+`0` ok · `1` no release (soft), on the condition the *soft no-release* entry
+in [`docs/glossary.md`](docs/glossary.md#6-exit-codes-and-streams) gives each
+command · `2` usage · `3` convention violation (a commit under `lint`, the
+repository's own configuration under `doctor`) ·
 `4` no trustworthy answer — API/git/IO, or a refusal to hand down a verdict
 glyph will not stand behind (an incomplete walk, the published floor, the
 whole-history walk cap, a `release` body over GitHub's cap, a `release` write
