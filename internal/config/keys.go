@@ -31,9 +31,10 @@ import (
 // own, not strings.EqualFold — the two part at U+0130 `İ`, which
 // strings.ToLower maps to `i` and EqualFold does not match to it, so a walker
 // that found fields through EqualFold let `"skİp" = true` bind skip and
-// walked on (measured 2026-11-08 at 8135199, go1.26.10: of every rune at or
-// above U+0080 whose lower case is ASCII, U+0130 is the one EqualFold misses;
-// U+212A KELVIN SIGN it matches).
+// walked on (measured 2026-11-08, mutation row
+// config-key-walker-skips-a-key-its-own-fold-cannot-bind; go1.26.10: of every
+// rune at or above U+0080 whose lower case is ASCII, U+0130 is the one
+// EqualFold misses; U+212A KELVIN SIGN it matches).
 
 // checkKeyCase refuses every key whose bytes are not the tag of a field at
 // its table, naming the key as written and the spelling the schema gives it.

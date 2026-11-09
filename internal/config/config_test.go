@@ -289,8 +289,10 @@ func TestLoadRefusesAMiscasedKey(t *testing.T) {
 		// go-toml folds a non-ASCII key with strings.ToLower, which maps
 		// U+0130 to `i` where strings.EqualFold does not match the two; a walker
 		// that found fields through EqualFold let the dotted-I key bind and
-		// walked on (measured 2026-11-08 at 8135199). U+212A KELVIN SIGN both
-		// folds reach; it is the control that a non-ASCII fold is refused at all.
+		// walked on (measured 2026-11-08; mutation row
+		// config-key-walker-skips-a-key-its-own-fold-cannot-bind). U+212A KELVIN
+		// SIGN both folds reach; it is the control that a non-ASCII fold is
+		// refused at all.
 		"U+0130 at the top level":    {"schema = 1\n[\"commİt\"]\ntemplate = 'T'\n" + grammar, "miscased key commİt (write commit)"},
 		"U+0130 in a table":          {"schema = 1\n" + grammar + "[[patterns]]\npattern = '^WIP'\n\"skİp\" = true\n", "miscased key patterns[1].skİp (write skip)"},
 		"U+0130 beside the spelling": {"schema = 1\n" + grammar + "[[patterns]]\npattern = '^WIP'\nskip = false\n\"skİp\" = true\n", "miscased key patterns[1].skİp (write skip)"},

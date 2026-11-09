@@ -569,8 +569,8 @@ pattern says it means:
   (`strings.ToLower`), not `strings.EqualFold` — the two part at U+0130 `İ`,
   which go-toml lowers to `i` and EqualFold does not match to it, so a walker
   that looked fields up through EqualFold and walked past a key it could not
-  bind let `"skİp" = true` bind skip unrefused (measured 2026-11-08 at
-  8135199; U+212A KELVIN SIGN both reach; mutation row
+  bind let `"skİp" = true` bind skip unrefused (measured 2026-11-08; U+212A
+  KELVIN SIGN both reach; mutation row
   `config-key-walker-skips-a-key-its-own-fold-cannot-bind`). Exit 2 like every
   load failure, so the commit that fixes the file gets through the hooks.
 
@@ -792,9 +792,9 @@ per-commit override under the repository's settings:
 
 And the message's **encoding** (t-gh5t): the hook judges the message file's
 bytes as written, while `--range` reads `git log --encoding=UTF-8`, which hands
-over what git recorded, re-encoded into UTF-8 (§5's stream contract), so a
-pattern that reads past ASCII moves between them in two shapes, both measured
-2026-11-08 under git 2.54.0 and 2.56.0 with
+over what git recorded, re-encoded into UTF-8 (§2's `exclude_authors` bullet,
+t-esm5), so a pattern that reads past ASCII moves between them in two shapes,
+both measured 2026-11-08 under git 2.54.0 and 2.56.0 with
 `pattern = '^(?P<semver_sigil>[=~^!%]) [\p{L} ]+$'` and `~ café crème`:
 
 - under the default encoding, a message that is not UTF-8 is rewritten at
@@ -803,8 +803,8 @@ pattern that reads past ASCII moves between them in two shapes, both measured
   stderr), so the hook judges bytes git never records: Latin-1 bytes are
   refused at `lint --stdin` (exit 3 — `\351` is no letter to RE2) and the
   commit `--no-verify` records is accepted by `lint --range` (0). The same
-  message as UTF-8 bytes is 0 and 0, so the hook and the range agree only for a
-  message that is already UTF-8;
+  message as UTF-8 bytes is 0 and 0: git records a UTF-8 message as written,
+  so the hook and the range can disagree only on a message that is not UTF-8;
 - under `i18n.commitEncoding ISO-8859-1`, git records the bytes as written with
   an `encoding` header and `git log` re-encodes them from that: Latin-1 bytes
   are refused at the hook and accepted in the range (3 / 0, the range reading
