@@ -137,7 +137,7 @@ func checkLineOpensNoHTMLBlock(template string, spans []LineSpan) error {
 			for i := 0; i < len(p.Text); i++ {
 				if p.Text[i] == '<' && states&blockStart != 0 {
 					line, col := linePosition(template, at)
-					return fmt.Errorf("%q puts \"<\" at a block start, line %d column %d: GitHub opens an HTML block where a line, a list item or a block quote starts, and no backslash escape works inside one, so a value there renders raw — its \"<i>\" a live tag, its \"&#64;\" a live @mention — write text of the template's own before the \"<\" on its line (a marker, a placeholder or an at-sign does not count: each can leave the block start where it was)", template, line, col)
+					return fmt.Errorf("%q puts \"<\" at a block start, line %d column %d: GitHub opens an HTML block where a line, a list item or a block quote starts, and no backslash escape works inside one, so a value there renders raw — its \"<i>\" a live tag, its \"&#64;\" a live @mention — write text of the template's own before the \"<\" on its line (blanks, list-item or quote markers, at-signs, placeholders and text inside an optional $[ … ] span do not count: each can leave the block start where it was)", template, line, col)
 				}
 				states = stepBlockState(states, p.Text[i])
 				at++

@@ -521,9 +521,10 @@ pattern says it means:
     2026-11-09). The entity rule escapes the `&` when any byte of the
     reference through its `;` is prose, as the scheme rule reads the whole
     `http://`. Read at the `&` alone it left a template's `&` to the value
-    behind it: under `line = '- &$subject'` (and `'- &#$subject'`) a subject
-    `#x40;octocat now` reached the notes as `&#x40;octocat now` and GitHub
-    linked @octocat (measured through `glyph notes --range` and `POST
+    behind it: under `line = '- &$subject'` a subject `#x40;octocat now`
+    reached the notes as `&#x40;octocat now`, under `line = '- &#$subject'` a
+    subject `64;octocat split` as `&#64;octocat split`, and GitHub linked
+    @octocat under both (measured through `glyph notes --range` and `POST
     /markdown`). Rejected: the loader refusing a literal that ends in `&`
     before a placeholder — it misses `&#` before `64;` unless it learns the
     reference grammar, and it adds a refusal for a construct the escaper's
@@ -1081,11 +1082,15 @@ Nothing in the renderer changes: a line-at-a-time fence is correct for a list,
 so the loader holds the template to a list (`TestLoadRefusesANoteLineWithoutAListMarker`,
 mutation row `config-note-line-opens-outside-a-list`). An ordered-list marker
 is not offered — `1. ` on every line renumbers in GitHub, not in the file.
-**No `<` stands at a block start of the template** (t-3bwg, 2026-11-09; the
-loader refuses one at exit 2 and names its line and column): at the head of a
-line, a list item or a block quote GitHub opens an HTML block of any kind — a
-tag, `<!--`, `<?`, `<!X`, a lone tag on a line of its own — and no backslash
-escape works inside one, so a value the block takes in renders raw. Measured
+**No `<` stands where a rendered line can start a block** (t-3bwg,
+2026-11-09; the loader refuses one at exit 2 and names its line and column):
+at the head of a template line or behind the list-item and quote markers it
+opens with, under every rendering a commit can give the line, since the loader
+sees no commit — a placeholder read as any value, an empty one included, an
+optional span as rendered or dropped, an at-sign as absent. There GitHub opens
+an HTML block of any kind — a tag, `<!--`, `<?`, `<!X`, a lone tag on a line
+of its own — and no backslash escape works inside one, so a value the block
+takes in renders raw. Measured
 through `glyph notes --range` and `POST /markdown` (gfm) with the subject
 `:bug:~ callers to &#64;octocat now`: under `- <div>$subject</div>`, and under
 `- $[($pr) ]<div>$subject</div>` for a commit with no pull, the prose escape's
@@ -1093,17 +1098,26 @@ through `glyph notes --range` and `POST /markdown` (gfm) with the subject
 `- x <span>$subject</span>` it rendered as its text. The home is the loader,
 not the escaper: escaping a value some other way inside an HTML block would
 need a block grammar to know it is inside one, and the template is structure
-the repository writes. The test is blunt on the over-refusing side — every `<`
-at a block start, `- <span>$subject</span>` (inline at GitHub) included, at no
-cost to the shipped templates — and reads what a commit decides as anything it
-can be: a placeholder as any value, an optional span as rendered or dropped,
-an at-sign as absent (`config.checkLineOpensNoHTMLBlock` has the measurements;
+the repository writes. The test is the byte `<`, not an HTML block's seven
+start conditions, which puts it on the over-refusing side at no cost to the
+shipped templates: it refuses an inline tag too — `- <span>$subject</span>`,
+and `- $subject <sub>x</sub>`, whose `<sub>` stands behind a placeholder that
+may render empty, both inline at GitHub — and text of the template's own
+before the tag, as in `- x <span>$subject</span>`, is what lets one load
+(`config.checkLineOpensNoHTMLBlock` has the measurements;
 `TestLoadRefusesAnHTMLBlockAtABlockStart`,
 `TestNotesRefusesATemplateThatOpensAnHTMLBlock`; mutation rows
 `config-note-line-opens-an-html-block`,
 `config-note-line-html-block-behind-a-dropped-span`,
 `config-note-line-html-block-behind-a-login-marker`,
-`config-note-line-html-block-behind-a-dropped-at-sign`).
+`config-note-line-html-block-behind-a-dropped-at-sign`, and one each for the
+`* ` and `+ ` bullets, a tab as a blank, a `)` ordinal, a multi-digit ordinal
+and a lone CR line ending,
+`config-note-line-html-block-behind-a-star-or-plus-bullet`,
+`config-note-line-html-block-behind-a-tab`,
+`config-note-line-html-block-behind-a-paren-ordinal`,
+`config-note-line-html-block-behind-a-multi-digit-ordinal`,
+`config-note-line-html-block-behind-a-carriage-return`).
 The fence has exactly one ratified exemption
 (2026-08-17): the built-in `$author`, so the preset's `@$author` renders as a
 live mention — crediting the contributor is intended behaviour, and every

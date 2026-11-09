@@ -165,22 +165,28 @@ func TestLoadRefusesANoteLineWithoutAListMarker(t *testing.T) {
 // template that puts one there renders the value it wraps raw (t-3bwg).
 // Measured 2026-11-09 through `glyph notes --range` on the gemoji preset and
 // POST /markdown (gfm): the subject `:bug:~ callers to &#64;octocat now`
-// rendered a live @octocat behind each of the first eleven templates, the
-// ninth to the eleventh for a commit with no pull, and behind the last two
-// through markdown.Line, under the login "1234" (a real account) and under an
-// empty author name. `- x <span>$subject</span>` rendered the same subject as
+// rendered a live @octocat behind each of the first seventeen templates, the
+// fifteenth to the seventeenth for a commit with no pull, and behind the last
+// two through markdown.Line, under the login "1234" (a real account) and under
+// an empty author name. `- x <span>$subject</span>` rendered the same subject as
 // its own text, and `- 1.<div>` rendered the tag inline; both load, as does a
 // "<" the template escaped.
 func TestLoadRefusesAnHTMLBlockAtABlockStart(t *testing.T) {
 	const grammar = "schema = 1\n[[patterns]]\npattern = '^(?P<subject>:[a-z]+:(?P<semver_sigil>[=~^!%]) .+)'\n"
 	for _, c := range []struct{ line, at string }{
 		{"- <div>$subject</div>", "line 1 column 3"},
+		{"* <div>$subject</div>", "line 1 column 3"},
+		{"+ <div>$subject</div>", "line 1 column 3"},
 		{"- x\n<span>\n$subject", "line 2 column 1"},
+		{"- x\r<div>\r$subject", "line 2 column 1"},
 		{"- <!-- -->$subject", "line 1 column 3"},
 		{"- <?x ?>$subject", "line 1 column 3"},
 		{"- <!X>$subject", "line 1 column 3"},
 		{"- > <div>$subject</div>", "line 1 column 5"},
+		{"- >\t<div>$subject</div>", "line 1 column 5"},
 		{"- 1. <div>$subject</div>", "line 1 column 6"},
+		{"- 1) <div>$subject</div>", "line 1 column 6"},
+		{"- 10. <div>$subject</div>", "line 1 column 7"},
 		{"- x\n  <div>\n  $subject", "line 2 column 3"},
 		{"- $[($pr) ]<div>$subject</div>", "line 1 column 12"},
 		{"- $pr<div>$subject</div>", "line 1 column 6"},
