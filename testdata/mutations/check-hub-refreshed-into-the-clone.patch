@@ -1,0 +1,11 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -153,6 +153,7 @@
+   [ ! -d "$HUB_AT" ] || return 0
+   hub_pin_repo="$WORK/hub-$hub_pin.git"
+   git init -q --bare "$hub_pin_repo"
++  git -C "$HUB" fetch --quiet --no-tags --force origin "refs/tags/$hub_pin:refs/tags/$hub_pin" || true
+   hub_url="$(git -C "$HUB" remote get-url origin 2>/dev/null || true)"
+   if [ -z "$hub_url" ] || ! git -C "$hub_pin_repo" fetch --quiet --no-tags --depth 1 "$hub_url" "refs/tags/$hub_pin:refs/tags/$hub_pin"; then
+     HUB_SKEW="${HUB_SKEW:+$HUB_SKEW; }hub $hub_pin read at the clone's copy of the tag, which could not be refreshed from origin and CI may have moved past"

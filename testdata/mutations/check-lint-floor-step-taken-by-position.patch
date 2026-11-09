@@ -1,0 +1,13 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+index 215464f..16fac85 100755
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -437,7 +437,7 @@ if command -v golangci-lint >/dev/null 2>&1; then
+   # no such step, or a step the runner would substitute into, is one this script
+   # cannot mirror and ends the run before the lint, as the args check does.
+   lint_floor_step="$(awk '
+-    /^[[:space:]]*- name: lint floor/ { instep = 1; next }
++    /^[[:space:]]*- name:/ { instep = 1; next }
+     instep && /^[[:space:]]*- name:/ { exit }
+     instep && /^[[:space:]]*run: \|[[:space:]]*$/ { inrun = 1; next }
+     inrun {
