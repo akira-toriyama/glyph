@@ -48,8 +48,9 @@ jobs:
   # a red here means something different from a red unit test.
   mutations:
     runs-on: ubuntu-latest
-    # 29 runs measured 2026-10-27: 623–1106 s; 20 left 8% headroom.
-    timeout-minutes: 30
+    # Pull-request runs measured 2026-11-09, the ledger at 650–691 rows: 1159–1772 s,
+    # and one at 1818 s that 30 cancelled (#354); 45 leaves a third of headroom.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

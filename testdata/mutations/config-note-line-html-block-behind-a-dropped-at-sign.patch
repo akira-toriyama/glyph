@@ -1,0 +1,13 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 66b3de3..d32177e 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -169,8 +169,6 @@ func stepBlockState(states int, c byte) int {
+ 	switch c {
+ 	case '\n', '\r':
+ 		return blockStart
+-	case '@':
+-		return states
+ 	}
+ 	blank, digit := c == ' ' || c == '\t', c >= '0' && c <= '9'
+ 	next := 0

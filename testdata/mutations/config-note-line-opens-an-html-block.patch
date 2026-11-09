@@ -1,0 +1,14 @@
+diff --git a/internal/config/config.go b/internal/config/config.go
+index c66349e..70b7d2e 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -443,9 +443,6 @@ func Load(data []byte) (*Config, error) {
+ 	if err != nil {
+ 		return nil, fmt.Errorf("note.line: %w", err)
+ 	}
+-	if err := checkLineOpensNoHTMLBlock(r.Note.Line, spans); err != nil {
+-		return nil, fmt.Errorf("note.line: %w", err)
+-	}
+ 	if err := validateLineNames(spans, patterns, trailers); err != nil {
+ 		return nil, fmt.Errorf("note.line: %w", err)
+ 	}

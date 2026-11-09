@@ -26,17 +26,18 @@ import (
 	"github.com/akira-toriyama/glyph/v6/internal/notes"
 )
 
-// Git is the checkout the walk reads: the ten questions it asks local git,
+// Git is the checkout the walk reads: the eleven questions it asks local git,
 // each a gitsource.Checkout method bound to one directory. Every verdict
 // command runs inside a checkout of the repository being released (DESIGN
 // §4), and this is that checkout. The one error the walk classifies rather
-// than hands down is DiffTreeFiles' shallow boundary, read through
-// gitsource.IsShallowBoundary — an answer only gitsource's own error type
-// gives, so another implementation cannot signal a boundary; every other
-// error is the API class as the walk received it.
+// than hands down is the shallow boundary DiffTreeFiles and FirstChange
+// answer, read through gitsource.IsShallowBoundary — an answer only
+// gitsource's own error type gives, so another implementation cannot signal
+// a boundary; every other error is the API class as the walk received it.
 type Git interface {
 	Log(ctx context.Context, revRange string) ([]gitsource.RawCommit, error)
 	IsShallow(ctx context.Context) (bool, error)
+	FirstChange(ctx context.Context, rev string, pathspec []string) (sha string, parents int, err error)
 	Tags(ctx context.Context) ([]string, error)
 	MergedTags(ctx context.Context, rev string) ([]string, error)
 	IsTag(ctx context.Context, name string) (bool, error)
@@ -102,8 +103,23 @@ type Result struct {
 // range).
 type Scope struct {
 	Only   []config.Package // nil: every declared line
-	Escape string           // "": the --since-tag sentence
+	Escape Escape           // nil: the --since-tag sentence
 }
+
+// Escape composes a caller's way out of the whole-history refusal past the
+// cap, from what the refusal offered each untagged line: baselines are the
+// baseline tags it told the operator to cut, unbaselined the first-release
+// shapes (<prefix>vX.Y.Z, <prefix>vN.0.0 on a locked line) of the lines no
+// baseline can be named for — a first change that is the root commit, or
+// lies at or past a shallow boundary, or no commit at all. A caller with no
+// --since-tag has one way out per line and must name it in the case it fires
+// in: "cut the tag named above" over an empty baselines dangled (preview,
+// measured 2026-11-08 on a root-declared line past the cap). The sentence
+// is appended after the refusal's own remedy. "" is read as no escape at
+// all and gets the --since-tag sentence, as a nil Escape does
+// (wholeHistory), so a caller without that flag returns a way out in every
+// case it is called with.
+type Escape func(baselines, unbaselined []string) string
 
 // Since is the release walk: the lines tagFlag names and the ONE range over
 // them (resolveLinesScoped), each line's own range (readLineRanges), the walk

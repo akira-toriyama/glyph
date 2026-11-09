@@ -582,7 +582,12 @@ Computed from the 1 commit(s) participating in this PR — squash-safe, a squash
 // (TestRenderNoLine), which carries no figures: there the caveat
 // makes a floor of "moves nothing" instead of pointing at figures above.
 // Its own sentence names no cause, because PRShort does: a listing GitHub
-// answered 422 for is not one it cut at the cap (t-esm5).
+// answered 422 for is not one it cut at the cap (t-esm5). Under a headline
+// that names no figure — a line with no release tag within a shallow
+// checkout's reach (shallowHeadline) — it qualifies what each headline says,
+// as the pending caveat does: "the figures above" there pointed at figures
+// no headline carried (measured 2026-11-09; mutation row
+// preview-pr-caveat-qualifies-a-figure-nobody-named).
 func TestRenderPackagesPRShort(t *testing.T) {
 	in := Input{Packages: []Package{{
 		Path: "haiku", Current: "haiku/v0.1.0",
@@ -599,11 +604,64 @@ func TestRenderPackagesPRShort(t *testing.T) {
 	if headline < 0 || warning < 0 || table < 0 || headline >= warning || warning >= table {
 		t.Fatalf("the PR-side caveat must sit under the headlines and above the tables:\n%s", out)
 	}
-	if prShortBlock(in.PRShort, true) != caveat || prShortBlock("", true) != "" || prShortBlock("", false) != "" {
-		t.Fatalf("prShortBlock must be the rendered caveat and nothing when there is none: %q", prShortBlock(in.PRShort, true))
+	if prShortBlock(in.PRShort, true, false) != caveat || prShortBlock("", true, false) != "" || prShortBlock("", false, false) != "" {
+		t.Fatalf("prShortBlock must be the rendered caveat and nothing when there is none: %q", prShortBlock(in.PRShort, true, false))
 	}
 	nothing := "\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: GitHub answered 422 for the file listing of 1 commit(s), so a line they touch in files it did not list could not be read (c1). A line one of those commits touches in files GitHub did not list may move all the same, so treat \"moves nothing\" as a floor rather than the answer.\n"
-	if got := prShortBlock(in.PRShort, false); got != nothing {
+	if got := prShortBlock(in.PRShort, false, false); got != nothing {
 		t.Fatalf("prShortBlock with no figures = %q, want %q", got, nothing)
+	}
+	shallow := Render(Input{Participating: 2, OffLine: 1, Shallow: true, PRShort: in.PRShort, Packages: []Package{{
+		Path: "curry", Current: "curry/v0.0.0", Untagged: true,
+		PR: Verdict{Level: bump.LevelPatch, Next: "curry/v0.0.1", Commits: []Commit{{Sigil: "~", Level: bump.LevelPatch, Subject: "swap an ingredient"}}},
+	}}})
+	unreached := "\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: GitHub answered 422 for the file listing of 1 commit(s), so a line they touch in files it did not list could not be read (c1). A line one of those commits touches in files GitHub did not list may be missing from what each headline says, so treat each as a floor rather than the answer.\n"
+	if !strings.Contains(shallow, unreached) || strings.Contains(shallow, "figure") {
+		t.Errorf("under a headline that names no figure the caveat must qualify what each headline says:\n%s", shallow)
+	}
+}
+
+// TestRenderPackagesPRShortNamesNoFigureNoHeadlineCarries: on a full
+// checkout too, the PR-side caveat points at "the figures above" only when
+// a headline carries figures and every headline names a version. Under
+// headlines that all move nothing it makes a floor of "moves nothing", as
+// RenderNoLine's does, and beside a headline that names no version — an
+// untagged line that moves nothing, "there is no version to move" — it
+// qualifies what each headline says. Both read "may be missing from the
+// figures above" (measured 2026-11-09, a pull commit whose listing GitHub
+// answered 422 for). A tagged line that moves nothing names its current
+// version, so beside a moving line the figures stay the caveat's object.
+// Mutation rows preview-pr-caveat-points-at-figures-no-line-moves and
+// preview-pr-caveat-points-at-a-version-an-untagged-line-lacks.
+func TestRenderPackagesPRShortNamesNoFigureNoHeadlineCarries(t *testing.T) {
+	const short = "GitHub answered 422 for the file listing of 1 commit(s), so a line they touch in files it did not list could not be read (u1)"
+	const lead = "\n> [!WARNING]\n> This PR's own side of this fold is INCOMPLETE: " + short + ". A line one of those commits touches in files GitHub did not list "
+	tidy := []Commit{{Sigil: "=", Level: bump.LevelNone, Subject: "tidy"}}
+	still := func(path string, untagged bool) Package {
+		current := path + "/v0.1.0"
+		if untagged {
+			current = path + "/v0.0.0"
+		}
+		return Package{Path: path, Current: current, Untagged: untagged, PR: Verdict{Level: bump.LevelNone, Commits: tidy}, Pending: Verdict{Level: bump.LevelNone}}
+	}
+	raises := Package{Path: "haiku", Current: "haiku/v0.1.0",
+		PR: Verdict{Level: bump.LevelMinor, Next: "haiku/v0.2.0", Commits: []Commit{feat()}}, Pending: Verdict{Level: bump.LevelNone}}
+	for _, tc := range []struct {
+		name  string
+		lines []Package
+		want  string
+	}{
+		{"an untagged line alone moves nothing", []Package{still("curry", true)}, `may move all the same, so treat "moves nothing" as a floor rather than the answer.`},
+		{"a tagged and an untagged line move nothing", []Package{still("haiku", false), still("curry", true)}, `may move all the same, so treat "moves nothing" as a floor rather than the answer.`},
+		{"a tagged line alone moves nothing", []Package{still("haiku", false)}, `may move all the same, so treat "moves nothing" as a floor rather than the answer.`},
+		{"a line moves beside an untagged one that moves nothing", []Package{raises, still("curry", true)}, "may be missing from what each headline says, so treat each as a floor rather than the answer."},
+		{"a line moves beside a tagged one that moves nothing", []Package{raises, still("curry", false)}, "may be missing from the figures above, so treat each as a floor rather than the answer."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Render(Input{Participating: len(tc.lines) + 1, OffLine: 1, PRShort: short, Packages: tc.lines})
+			if !strings.Contains(got, lead+tc.want+"\n") {
+				t.Errorf("the PR-side caveat must end\n  %q\ngot:\n%s", tc.want, got)
+			}
+		})
 	}
 }

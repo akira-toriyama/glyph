@@ -120,6 +120,12 @@ func (f Facts) Complete() bool {
 		len(f.filesCapped) == 0 && len(f.filesUnknown) == 0
 }
 
+// ShallowShortfall is Shortfall's clause for a shallow checkout, exported for
+// preview's floor guard: on a shallow checkout with no tag within reach the
+// walk is skipped, so no Facts carry it, and the comment must still quote the
+// one clause a walked shallow checkout gets (t-txed).
+const ShallowShortfall = "this is a shallow checkout, so git cannot tell a commit that never landed on the released branch from one it does not have (check out with fetch-depth: 0)"
+
 // Shortfall says, in one clause, what the walk could not read — for release's
 // exit-4 refusal and for the preview comment's PendingShort / PRShort lines.
 func (f Facts) Shortfall(owner, repo string) string {
@@ -128,7 +134,7 @@ func (f Facts) Shortfall(owner, repo string) string {
 		parts = append(parts, fmt.Sprintf("every commit in it was unknown to %s/%s (check that --repo/$GITHUB_REPOSITORY names the repository this checkout belongs to)", owner, repo))
 	}
 	if f.shallow {
-		parts = append(parts, "this is a shallow checkout, so git cannot tell a commit that never landed on the released branch from one it does not have (check out with fetch-depth: 0)")
+		parts = append(parts, ShallowShortfall)
 	}
 	for _, n := range f.lostPulls {
 		parts = append(parts, fmt.Sprintf("merged pull request #%d has commits here that stood aside for a merge point nothing resolved", n))

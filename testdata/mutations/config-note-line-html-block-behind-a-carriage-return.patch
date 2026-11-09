@@ -1,0 +1,13 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 17d2c41..558bb5f 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -167,7 +167,7 @@ const (
+ // an at-sign is read as absent (checkLineOpensNoHTMLBlock says why).
+ func stepBlockState(states int, c byte) int {
+ 	switch c {
+-	case '\n', '\r':
++	case '\n':
+ 		return blockStart
+ 	case '@':
+ 		return states

@@ -167,8 +167,8 @@ func TestPreviewPackagesUntaggedLinesSkipTheWalk(t *testing.T) {
 	if !res.Packages[0].Untagged || res.Packages[0].Next != "v0.1.0" {
 		t.Fatalf("haiku = %+v, want untagged with a first release of v0.1.0", res.Packages[0])
 	}
-	if !strings.Contains(res.Body, "the first release here would be **haiku/v0.1.0**") || !strings.Contains(res.Body, "haiku and curry has no release tag on the base branch yet") {
-		t.Fatalf("body must say the lines have not released:\n%s", res.Body)
+	if !strings.Contains(res.Body, "the first release here would be **haiku/v0.1.0**") || !strings.Contains(res.Body, "haiku and curry have no release tag on the base branch yet, so nothing merged earlier is folded in for them") {
+		t.Fatalf("body must say the lines have not released, in the plural (t-c2a9):\n%s", res.Body)
 	}
 }
 
@@ -806,6 +806,11 @@ func TestPreviewPackagesWalkIgnoresAnUntouchedUntaggedLine(t *testing.T) {
 // (measured 2026-09-15: `preview --pr` exited 4 sending an operator to a flag
 // the command rejects). Positive control: the default sentence is what the
 // other callers still get, asserted in TestPreviewRefusalNamesNoFlagPreviewLacks.
+// curry's first change has a parent, so only a baseline is named and the way
+// out is that tag alone: past it, the hand release a line no baseline can
+// precede takes names no line — "cut  at the commit that release covers"
+// (measured 2026-11-09 with that arm dropped; mutation row
+// preview-cap-escape-names-an-empty-hand-release).
 func TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy(t *testing.T) {
 	dir := testutil.NewTwoLineRepo(t)
 	testutil.Git(t, dir, "akira-toriyama", "tag", "haiku/v0.1.0") // curry never released
@@ -826,8 +831,8 @@ func TestPreviewPackagesCapRefusalNamesPreviewsOwnRemedy(t *testing.T) {
 	if strings.Contains(out, "name the walk base yourself with --since-tag=TAG") {
 		t.Errorf("the refusal sends the operator to a flag preview rejects:\n%s", out)
 	}
-	if !strings.Contains(out, "has no --since-tag flag") {
-		t.Errorf("the refusal does not say why --since-tag is not the way out here:\n%s", out)
+	if !strings.Contains(out, "; cut the tag named above and re-run — preview reads the pull request, and has no --since-tag flag to name a base with") || strings.Contains(out, "by hand") {
+		t.Errorf("the refusal must name the baseline alone as the way out and say why --since-tag is not one here:\n%s", out)
 	}
 }
 
@@ -869,6 +874,12 @@ func TestPreviewPackagesUntaggedTouchedLineAgreesWithItsVerdict(t *testing.T) {
 	if !strings.Contains(res.Body, "**curry/"+curry.next+"**") {
 		t.Errorf("the body names a different version than the machine verdict (%s):\n%s", curry.next, res.Body)
 	}
+	// The walked line has no tag, so its headline names its first release
+	// and never the null floor as a tag: "curry/v0.0.0 → curry/v0.1.0" named
+	// a tag nobody cut (t-1n1s, measured 2026-11-04 on glyph-monorepo-test-2).
+	if !strings.Contains(res.Body, "**curry** — 🔧 Merging this PR adds **patch**-level changes — the first release here would be **curry/v0.1.0** (a **minor** bump is already pending).") || strings.Contains(res.Body, "curry/v0.0.0") {
+		t.Errorf("the untagged line must name its first release, not a null floor spelled as a tag:\n%s", res.Body)
+	}
 	if strings.Contains(res.Body, "curry has no release tag on the base branch yet, so nothing merged earlier is folded in for it") {
 		t.Errorf("the body denies a pending side this same run walked and reported:\n%s", res.Body)
 	}
@@ -899,8 +910,10 @@ func TestPreviewRefusalNamesNoFlagPreviewLacks(t *testing.T) {
 	if f := newPreviewCmd().Flags().Lookup("since-tag"); f != nil {
 		t.Fatal("preview now registers --since-tag; previewWalkEscape tells operators it does not, and the two must move together")
 	}
-	if strings.Contains(previewWalkEscape, "--since-tag=TAG") {
-		t.Errorf("preview's refusal sends the operator to a flag preview rejects: %q", previewWalkEscape)
+	for _, esc := range []string{previewWalkEscape([]string{"curry/v0.0.0"}, nil), previewWalkEscape(nil, []string{"curry/vX.Y.Z"}), previewWalkEscape([]string{"fish/v0.0.0"}, []string{"curry/vX.Y.Z"})} {
+		if strings.Contains(esc, "--since-tag=TAG") {
+			t.Errorf("preview's refusal sends the operator to a flag preview rejects: %q", esc)
+		}
 	}
 }
 

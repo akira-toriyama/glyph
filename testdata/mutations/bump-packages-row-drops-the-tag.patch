@@ -1,0 +1,10 @@
+diff --git a/internal/cli/cmd_bump.go b/internal/cli/cmd_bump.go
+--- a/internal/cli/cmd_bump.go
++++ b/internal/cli/cmd_bump.go
+@@ -172,4 +172,4 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
+ 		if fl.next != nil {
+-			pv.Next, pv.Tag = fl.next.String(), fl.next.TagOn(lw.TagLine.Prefix)
+-			tags = append(tags, pv.Tag)
++			pv.Next = fl.next.String()
++			tags = append(tags, fl.next.TagOn(lw.TagLine.Prefix))
+ 		}

@@ -1,0 +1,13 @@
+diff --git a/internal/preview/preview.go b/internal/preview/preview.go
+index 7a4e6c1..9fb16c5 100644
+--- a/internal/preview/preview.go
++++ b/internal/preview/preview.go
+@@ -370,5 +370,5 @@ func renderPackages(in Input) string {
+ 		still := rank(p.PR.Level) == 0 && rank(p.Pending.Level) == 0
+-		unreached = unreached || (in.Shallow && p.Untagged)
+-		figures = figures || !still
+-		versionless = versionless || (p.Untagged && (in.Shallow || still))
++		unreached = in.Shallow && p.Untagged
++		figures = !still
++		versionless = p.Untagged && (in.Shallow || still)
+ 	}

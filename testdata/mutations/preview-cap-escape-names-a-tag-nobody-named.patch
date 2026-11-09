@@ -1,0 +1,9 @@
+diff --git a/internal/cli/cmd_preview.go b/internal/cli/cmd_preview.go
+index 51d2cc8..f319b36 100644
+--- a/internal/cli/cmd_preview.go
++++ b/internal/cli/cmd_preview.go
+@@ -95,3 +95,3 @@ func previewWalkEscape(baselines, unbaselined []string) string {
+ 	switch {
+-	case len(unbaselined) == 0:
++	case len(unbaselined) >= 0:
+ 		return "; cut " + named + " and " + tail
