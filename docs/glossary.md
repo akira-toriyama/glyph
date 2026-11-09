@@ -916,10 +916,15 @@ is emphatically **not** 2 (the invocation itself was fine) and not 4 (glyph has
 no answer it will stand behind). `internal/core/errors.go: CodeLint`,
 `internal/cli/cmd_doctor.go: doctorVerdict`
 
-**soft no-release** — exit **1**: every participating commit classified `none`. A
-normal answer, not an error — which is why `preview` deliberately exits **0** on
-the same fold ("this PR moves nothing" is exactly what a reviewer asked), while
-`bump`, `notes` and `release` exit 1. `internal/core/errors.go: CodeNoRelease`
+**soft no-release** — exit **1**, a normal answer and not an error, on each
+command's own condition. `bump` and `release`: every participating commit folds
+to `none`, so no version moves. `notes`: no commit lands in a
+`[[note.sections]]` entry, so there is nothing to write — the sections decide
+what the notes hold, so the two part ways: a fix no section takes is a version
+with no notes, and a `dependabot[bot]` commit an author section holds is notes
+with no version (`TestNotesNoReleaseIsTheSectionsCondition`). `preview`
+deliberately exits **0** on a `none` fold ("this PR moves nothing" is exactly
+what a reviewer asked). `internal/core/errors.go: CodeNoRelease`
 
 **annotation** — a `::warning::`, `::error::` or `::notice::` workflow command
 on **stderr**. Folded onto one physical line, because a workflow command *is*

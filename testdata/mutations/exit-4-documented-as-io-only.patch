@@ -1,11 +1,11 @@
 diff --git a/README.md b/README.md
-index 4fa884a..5477ac2 100644
+index 2e34c65..dbbb5d3 100644
 --- a/README.md
 +++ b/README.md
-@@ -554,10 +554,8 @@ byte.
- 
- `0` ok · `1` no release-worthy change · `2` usage · `3` convention violation
- (a commit under `lint`, the repository's own configuration under `doctor`) ·
+@@ -542,10 +542,8 @@ byte.
+ `release`, no commit lands in a section under `notes`) · `2` usage · `3`
+ convention violation (a commit under `lint`, the repository's own
+ configuration under `doctor`) ·
 -`4` no trustworthy answer — API/git/IO, or a refusal to hand down a verdict
 -glyph will not stand behind (an incomplete walk, the published floor, the
 -whole-history walk cap, a `release` body over GitHub's cap, a `release` write

@@ -1,13 +1,13 @@
 diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
-index 70364d2..5b07a5e 100644
+index 90ff0d8..9848ff9 100644
 --- a/internal/gitsource/gitsource.go
 +++ b/internal/gitsource/gitsource.go
-@@ -819,7 +819,7 @@ func parseLog(out []byte) ([]RawCommit, error) {
+@@ -823,7 +823,7 @@ func parseLog(out []byte) ([]RawCommit, error) {
+ 			SHA:      f[0],
  			Author:   f[1],
- 			Email:    f[2],
  			Parents:  parents,
--			Message:  strings.TrimSuffix(f[4], "\n"),
-+			Message:  strings.TrimRight(f[4], "\n"),
- 			Recorded: f[4],
+-			Message:  strings.TrimSuffix(f[3], "\n"),
++			Message:  strings.TrimRight(f[3], "\n"),
+ 			Recorded: f[3],
  		})
  	}

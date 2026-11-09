@@ -15,8 +15,16 @@ import (
 type Code int
 
 const (
-	CodeOK        Code = 0 // success
-	CodeNoRelease Code = 1 // no release-worthy change (all commits classify none) — a soft miss, not an error
+	CodeOK Code = 0 // success
+	// CodeNoRelease is the soft miss — a normal answer, not an error — on each
+	// command's own condition: `bump` and `release` return it when every
+	// participating commit folds to none (no version moves), `notes` when no
+	// commit lands in a [[note.sections]] entry (nothing to write). The two
+	// differ on purpose, because the sections decide what the notes hold: a
+	// fix no section takes is a version with no notes, and a bot commit an
+	// author section holds is notes with no version
+	// (TestNotesNoReleaseIsTheSectionsCondition).
+	CodeNoRelease Code = 1
 	CodeUsage     Code = 2 // bad usage or invalid input — fix the args, do not retry
 	// CodeLint is the gate code: what glyph was asked to judge violates the
 	// convention. That is a commit message under `lint` (the CI commit-lint
@@ -112,7 +120,8 @@ func APIf(format string, a ...any) *Error {
 	return &Error{Code: CodeAPI, Msg: fmt.Sprintf(format, a...)}
 }
 
-// NoReleasef builds a CodeNoRelease error (nothing release-worthy — a soft miss).
+// NoReleasef builds a CodeNoRelease error — the soft miss, on the calling
+// command's own condition (CodeNoRelease's doc).
 func NoReleasef(format string, a ...any) *Error {
 	return &Error{Code: CodeNoRelease, Msg: fmt.Sprintf(format, a...)}
 }

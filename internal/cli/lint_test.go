@@ -596,23 +596,24 @@ func TestLintRange(t *testing.T) {
 // TestLintRangeJudgesAnAuthorNameHoldingTheUnitSeparator is the gate half of
 // gitsource's record framing: an author a pull request's contributor names
 // `dependabot[bot]<US>x` is NOT dependabot[bot], so the commit is judged — exit
-// 3 for a message no pattern claims. Framed by the unit separator, the record
-// reads that author as dependabot[bot] under every email below and excludes the
-// commit at exit 0, and a check of the parents field alone still passes the
-// empty and the 40-hex one. The real bot stays excluded: the control that the
-// exclusion itself still works.
+// 3 for a message no pattern claims. The rows are gitsource's: the tail after
+// the separator is what a framing by that byte reads as the parents. Framed by
+// it (the mutation row's patch), every row fails the read at 4 instead
+// (measured 2026-11-09), so the gate stops judging the commit — and the
+// installed pre-push hook lets 4 through. The real bot stays excluded: the
+// control that the exclusion itself still works.
 func TestLintRangeJudgesAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
-	for label, email := range map[string]string{
-		"an ordinary email":      "t@example.invalid",
-		"an empty email":         "",
-		"a parents-shaped email": "0123456789abcdef0123456789abcdef01234567",
+	for label, name := range map[string]string{
+		"an ordinary tail":      "dependabot[bot]\x1fx",
+		"an empty field":        "dependabot[bot]\x1f\x1fx",
+		"a parents-shaped tail": "dependabot[bot]\x1f0123456789abcdef0123456789abcdef01234567",
 	} {
 		t.Run(label, func(t *testing.T) {
 			dir, base := testutil.NewTaggedRepo(t)
-			testutil.CommitFrom(t, dir, "dependabot[bot]\x1fx", email, "garbage message")
+			testutil.CommitFrom(t, dir, name, "t@example.invalid", "garbage message")
 			t.Chdir(dir)
 			if code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD"); code != 3 {
-				t.Fatalf("lint --range exited %d, want 3 — the commit was excluded as dependabot[bot]\nstderr: %s", code, stderr)
+				t.Fatalf("lint --range exited %d, want 3 — the commit was not judged under the author git holds\nstderr: %s", code, stderr)
 			}
 		})
 	}
