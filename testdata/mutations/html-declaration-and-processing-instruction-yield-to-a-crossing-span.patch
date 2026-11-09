@@ -1,0 +1,13 @@
+diff --git a/internal/markdown/escape.go b/internal/markdown/escape.go
+index fbbfb2e..9585036 100644
+--- a/internal/markdown/escape.go
++++ b/internal/markdown/escape.go
+@@ -338,7 +338,7 @@ func blockOpenerAt(s string, i int) (blockOpener, bool) {
+ 		return blockOpener{end: len(s), at: i}, true
+ 	case (c == '-' || c == ':' || c == '|' || c == '\v' || c == '\f') && delimiterRow(s[i:]):
+ 		return blockOpener{end: len(s), at: i + strings.IndexAny(s[i:], "-:|")}, true
+-	case c == '<' && i+1 < len(s) && (isASCIILetter(s[i+1]) || s[i+1] == '/' || s[i+1] == '!' || s[i+1] == '?'):
++	case c == '<' && i+1 < len(s) && (isASCIILetter(s[i+1]) || s[i+1] == '/'):
+ 		return blockOpener{end: i + 2, at: i}, true
+ 	case c == '[' && i+1 < len(s) && s[i+1] == '^':
+ 		return blockOpener{end: i + 2, at: i}, true

@@ -1,0 +1,12 @@
+diff --git a/scripts/check.sh b/scripts/check.sh
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -458,7 +458,7 @@
+   golangci-lint run --enable="$lint_floor" ./...
+   ran golangci-lint
+   echo "→ lint floor (every floor linter was in the set)"
+-  LINT_FLOOR="$lint_floor" bash --noprofile --norc -eo pipefail "$WORK/lint-floor.sh"
++  LINT_FLOOR="$lint_floor" bash --noprofile --norc -eo pipefail "$WORK/lint-floor.sh" || true
+   ran lint-floor
+   [ -n "$LINT_SKEW" ] && echo "  ! $LINT_SKEW"
+ else

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/akira-toriyama/glyph/v6/internal/config"
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
@@ -66,6 +67,76 @@ func TestNotesSectionsAloneDecide(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "## Fixes") {
 		t.Fatalf("the human fix must reach the notes:\n%s", stdout)
+	}
+}
+
+// TestNotesFallbackOpensNoBlockBehindTheBullet is the measured shape end to end:
+// an exclude_authors commit is never judged, so lint and notes both exit 0 and its
+// first line lands right behind the preset's "- ", where GitHub would open the
+// block. The indent comes through git as written.
+func TestNotesFallbackOpensNoBlockBehindTheBullet(t *testing.T) {
+	dir, base := testutil.NewTaggedRepo(t)
+	testutil.Commit(t, dir, "dependabot[bot]", "## Breaking Changes")
+	testutil.Commit(t, dir, "dependabot[bot]", "> [!WARNING] x")
+	testutil.Commit(t, dir, "dependabot[bot]", "    indented")
+	testutil.Commit(t, dir, "dependabot[bot]", "[ ] ship it")
+	testutil.Commit(t, dir, "dependabot[bot]", "[　] ship it") // an ideographic space: the filter's blank is Unicode's
+	t.Chdir(dir)
+
+	if code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD"); code != 0 {
+		t.Fatalf("lint --range exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
+	if code != 0 {
+		t.Fatalf("notes exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	want := "## Dependencies\n\n" +
+		`- \## Breaking Changes dependabot\[bot]` + "\n" +
+		`- \> \[!WARNING] x dependabot\[bot]` + "\n" +
+		`- indented dependabot\[bot]` + "\n" +
+		`- \[\ ] ship it dependabot\[bot]` + "\n" +
+		"- \\[\\　] ship it dependabot\\[bot]\n"
+	if stdout != want {
+		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
+	}
+}
+
+// TestNotesHTMLBlockBehindATemplateLineEndingIsDisarmed: a note.line literal
+// can carry a line ending inside a backtick span, and a value on its second line
+// is at a block start where rules 1 and 3 do not run (the scan believes the
+// span). GitHub decides blocks first: raw, an HTML comment, a processing
+// instruction or a declaration there ends the paragraph, no span forms and the
+// mention behind it is live (measured 2026-11-08 through POST /markdown on the
+// bytes notes wrote); rule 5's backslash keeps the span and the mention inert.
+func TestNotesHTMLBlockBehindATemplateLineEndingIsDisarmed(t *testing.T) {
+	dir, base := testutil.NewTaggedRepo(t)
+	preset, ok := config.Preset("gemoji")
+	if !ok {
+		t.Fatalf("gemoji preset missing")
+	}
+	const shipped = "line = '- $subject$[ ($pr)] @$author$[ with $coauthors]'"
+	if !strings.Contains(string(preset), shipped) {
+		t.Fatalf("the gemoji preset no longer carries %q; move this test's edit with it", shipped)
+	}
+	seedConfig(t, dir, strings.Replace(string(preset), shipped, "line = \"- `ping\\n$subject` x\"", 1))
+	testutil.Commit(t, dir, "dependabot[bot]", "<!-- --> cc @octocat now")
+	testutil.Commit(t, dir, "dependabot[bot]", "<? ?> cc @octocat now")
+	testutil.Commit(t, dir, "dependabot[bot]", "<!X> cc @octocat now")
+	t.Chdir(dir)
+
+	if code, _, stderr := runGlyph(t, "lint", "--range", base+"..HEAD"); code != 0 {
+		t.Fatalf("lint --range exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
+	if code != 0 {
+		t.Fatalf("notes exited %d, want 0\nstderr: %s", code, stderr)
+	}
+	want := "## Dependencies\n\n" +
+		"- `ping\n\\<!-- --> cc @octocat now` x\n" +
+		"- `ping\n\\<? ?> cc @octocat now` x\n" +
+		"- `ping\n\\<!X> cc @octocat now` x\n"
+	if stdout != want {
+		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
 	}
 }
 
