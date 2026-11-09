@@ -146,6 +146,11 @@ func flatten(s string) string {
 //     rule aimed at a construct that cannot steal a backtick; it closes a
 //     documented mention hole instead. Zero subjects in the fleet's 9,548 carry
 //     an entity-shaped ampersand, so the rendering cost is measured at zero.
+//     The construct is the whole reference, so the '&' takes the backslash when
+//     any byte through the ';' is prose. Read at the '&' alone, the rule leaves
+//     a template's "&" to a value's "#x40;octocat": under `line = '- &$subject'`
+//     that renders a live mention (measured 2026-11-09, t-39hk;
+//     TestAReferenceAValueCompletesIsEscaped).
 //
 //  5. A BLOCK OPENER at a block start — escaped. Block structure is decided
 //     before any inline rule above runs, and the start of a list item is a
@@ -695,7 +700,9 @@ func escapeProseLine(s string, inSpan []bool, prose func(lo, hi int) bool) (stri
 			esc(i-len("www"), i+1, i)
 			i++
 		case s[i] == '&' && entityAt(s, i):
-			esc(i, i+1, i)
+			// The construct is the whole reference, to the first ';', which its
+			// shape admits nowhere before its closer.
+			esc(i, i+strings.IndexByte(s[i:], ';')+1, i)
 			i++
 		default:
 			b.WriteByte(s[i])

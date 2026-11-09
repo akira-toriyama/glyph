@@ -517,6 +517,20 @@ pattern says it means:
     `html-block-opener-yields-to-a-crossing-span.patch`,
     `footnote-definition-yields-to-a-crossing-span.patch`,
     `table-delimiter-row-opens-a-table.patch`.
+  - **A character reference a value completes is the value's** (t-39hk,
+    2026-11-09). The entity rule escapes the `&` when any byte of the
+    reference through its `;` is prose, as the scheme rule reads the whole
+    `http://`. Read at the `&` alone it left a template's `&` to the value
+    behind it: under `line = '- &$subject'` (and `'- &#$subject'`) a subject
+    `#x40;octocat now` reached the notes as `&#x40;octocat now` and GitHub
+    linked @octocat (measured through `glyph notes --range` and `POST
+    /markdown`). Rejected: the loader refusing a literal that ends in `&`
+    before a placeholder — it misses `&#` before `64;` unless it learns the
+    reference grammar, and it adds a refusal for a construct the escaper's
+    standing rule already covers (a construct straddling prose and the
+    template's markup is escaped at whichever byte the rule fires on). Test
+    `TestAReferenceAValueCompletesIsEscaped`; mutation row
+    `entity-a-value-completes-stays-live.patch`.
   - **`-` behind a line's head and `@` stay unescaped, deliberately**, and the
     prose rules test neither. `-` is a list, setext or thematic-break marker
     only at a block start, which the rule above answers, so escaping it anywhere
@@ -549,9 +563,10 @@ pattern says it means:
     delimiter (escape.go's theorem), so the price is rendering, paid only by a
     repository whose own pattern captures such bytes — accepted.
 - Unknown keys, an unknown `schema`, an uncompilable pattern, a malformed
-  `note.line`, a `note.line` that opens with no list-item marker (§3) and a
-  section that does not state exactly one axis are LOAD errors, never repairs
-  (mutation row `config-unknown-schema-accepted.patch`): this file decides CI
+  `note.line`, a `note.line` that opens with no list-item marker or puts `<`
+  at a block start (§3) and a section that does not state exactly one axis
+  are LOAD errors, never repairs (mutation row
+  `config-unknown-schema-accepted.patch`): this file decides CI
   verdicts, and a silently-misread key is a silently-changed verdict. **A key
   is the schema's spelling byte for byte** (t-xppw): go-toml binds a key to a
   field without case once no tag matches it exactly, and its strict mode
@@ -1066,6 +1081,29 @@ Nothing in the renderer changes: a line-at-a-time fence is correct for a list,
 so the loader holds the template to a list (`TestLoadRefusesANoteLineWithoutAListMarker`,
 mutation row `config-note-line-opens-outside-a-list`). An ordered-list marker
 is not offered — `1. ` on every line renumbers in GitHub, not in the file.
+**No `<` stands at a block start of the template** (t-3bwg, 2026-11-09; the
+loader refuses one at exit 2 and names its line and column): at the head of a
+line, a list item or a block quote GitHub opens an HTML block of any kind — a
+tag, `<!--`, `<?`, `<!X`, a lone tag on a line of its own — and no backslash
+escape works inside one, so a value the block takes in renders raw. Measured
+through `glyph notes --range` and `POST /markdown` (gfm) with the subject
+`:bug:~ callers to &#64;octocat now`: under `- <div>$subject</div>`, and under
+`- $[($pr) ]<div>$subject</div>` for a commit with no pull, the prose escape's
+`\&#64;octocat` rendered a printed backslash and a live @octocat; under
+`- x <span>$subject</span>` it rendered as its text. The home is the loader,
+not the escaper: escaping a value some other way inside an HTML block would
+need a block grammar to know it is inside one, and the template is structure
+the repository writes. The test is blunt on the over-refusing side — every `<`
+at a block start, `- <span>$subject</span>` (inline at GitHub) included, at no
+cost to the shipped templates — and reads what a commit decides as anything it
+can be: a placeholder as any value, an optional span as rendered or dropped,
+an at-sign as absent (`config.checkLineOpensNoHTMLBlock` has the measurements;
+`TestLoadRefusesAnHTMLBlockAtABlockStart`,
+`TestNotesRefusesATemplateThatOpensAnHTMLBlock`; mutation rows
+`config-note-line-opens-an-html-block`,
+`config-note-line-html-block-behind-a-dropped-span`,
+`config-note-line-html-block-behind-a-login-marker`,
+`config-note-line-html-block-behind-a-dropped-at-sign`).
 The fence has exactly one ratified exemption
 (2026-08-17): the built-in `$author`, so the preset's `@$author` renders as a
 live mention — crediting the contributor is intended behaviour, and every

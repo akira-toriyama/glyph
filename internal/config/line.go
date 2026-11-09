@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 // varRE is the $xxx placeholder grammar of note.line. RE2 group names share
@@ -93,12 +94,130 @@ func checkLineOpensAList(template string) error {
 	return fmt.Errorf("%q does not open with a list-item marker (\"- \", \"* \" or \"+ \"): each rendered line is fenced against @mentions on its own, and GitHub joins lines no marker separates into one paragraph, where a backtick run from a neighbouring line pairs with the fence and a @name inside it goes live — open the template with \"- \"", template)
 }
 
+// checkLineOpensNoHTMLBlock refuses a template whose literal text puts "<" where
+// a rendered line can start a block: the head of each of its lines, and behind
+// the list-item and quote markers a line opens with — rule 5's block start
+// (markdown.blockOpening). GitHub opens an HTML block there, of every kind (a
+// tag, "<!--", "<?", "<!X", a lone tag on a line of its own), and no backslash
+// escape works inside one, so a value the block takes in renders raw: behind
+// `- <div>$subject</div>` the prose escape's `\&#64;octocat` rendered a printed
+// backslash and a live @octocat, and its `\<i>` a printed backslash and a live
+// tag (measured 2026-11-09 through `glyph notes --range` and POST /markdown;
+// TestLoadRefusesAnHTMLBlockAtABlockStart lists the shapes).
+//
+// The test is a byte, not the seven start conditions of an HTML block: every
+// "<" at a block start is refused, `- <span>$subject</span>`, which GitHub
+// renders inline, included. That is the over-refusing side, and it costs the
+// shipped templates nothing. What renders before the "<" is read bluntly too,
+// because a commit decides it and the loader sees none: a placeholder as any
+// value at all, an optional span as rendered or dropped, and an at-sign as
+// absent. A rendered line reaches each: an empty value or a dropped span leaves
+// the "<" where it stood (`- $[($pr) ]<div>` with no pull renders `- <div>`); a
+// live login is no prose, so rule 5 leaves the "1234" (a real account) that
+// `- $author. <div>` writes standing as an ordered-list marker; and Line.Mention
+// drops the at-sign before a credit that cannot page, so `- @$author <div>`
+// under an empty author name writes "-  <div>".
+func checkLineOpensNoHTMLBlock(template string, spans []LineSpan) error {
+	// at walks template in step with the spans, which hold every byte parseLine
+	// read: a span's "$[" and "]", a placeholder's "$" and its name, the literals.
+	states, at := blockStart, 0
+	for _, span := range spans {
+		dropped := states
+		if span.Optional {
+			at += len(spanOpen)
+		}
+		for _, p := range span.Parts {
+			if p.Placeholder {
+				if states != 0 {
+					states = anyBlockState
+				}
+				at += len("$") + len(p.Text)
+				continue
+			}
+			for i := 0; i < len(p.Text); i++ {
+				if p.Text[i] == '<' && states&blockStart != 0 {
+					line, col := linePosition(template, at)
+					return fmt.Errorf("%q puts \"<\" at a block start, line %d column %d: GitHub opens an HTML block where a line, a list item or a block quote starts, and no backslash escape works inside one, so a value there renders raw — its \"<i>\" a live tag, its \"&#64;\" a live @mention — write text of the template's own before the \"<\" on its line (a marker, a placeholder or an at-sign does not count: each can leave the block start where it was)", template, line, col)
+				}
+				states = stepBlockState(states, p.Text[i])
+				at++
+			}
+		}
+		if span.Optional {
+			states |= dropped
+			at += len("]")
+		}
+	}
+	return nil
+}
+
+// The states of a rendered line read up to some byte, in rule 5's walk past the
+// containers the line opens with: a set of them is what the line can be in, which
+// is how a value no commit has supplied yet is carried.
+const (
+	blockStart    = 1 << iota // nothing yet but blanks and whole markers: a block starts here
+	bulletMark                // behind "-", "+" or "*": a blank makes it a list item
+	ordinalDigits             // inside an ordered-list marker's digits
+	ordinalMark               // behind their "." or ")": a blank makes it a list item
+	anyBlockState = blockStart | bulletMark | ordinalDigits | ordinalMark
+)
+
+// stepBlockState is the states a line can be in after c, from any of states. A
+// line ending starts the next line at a block start, whatever came before it, and
+// an at-sign is read as absent (checkLineOpensNoHTMLBlock says why).
+func stepBlockState(states int, c byte) int {
+	switch c {
+	case '\n', '\r':
+		return blockStart
+	case '@':
+		return states
+	}
+	blank, digit := c == ' ' || c == '\t', c >= '0' && c <= '9'
+	next := 0
+	if states&blockStart != 0 {
+		switch {
+		case blank, c == '>':
+			next |= blockStart
+		case c == '-', c == '+', c == '*':
+			next |= bulletMark
+		case digit:
+			next |= ordinalDigits
+		}
+	}
+	if states&(bulletMark|ordinalMark) != 0 && blank {
+		next |= blockStart
+	}
+	if states&ordinalDigits != 0 {
+		switch {
+		case digit:
+			next |= ordinalDigits
+		case c == '.', c == ')':
+			next |= ordinalMark
+		}
+	}
+	return next
+}
+
+// linePosition is the 1-based line and column of byte at in s. A line ends
+// where CommonMark's does — "\n", "\r\n" or a lone "\r" — and a column counts
+// runes.
+func linePosition(s string, at int) (line, col int) {
+	line, start := 1, 0
+	for i := range at {
+		if s[i] == '\n' || (s[i] == '\r' && (i+1 == len(s) || s[i+1] != '\n')) {
+			line, start = line+1, i+1
+		}
+	}
+	return line, utf8.RuneCountInString(s[start:at]) + 1
+}
+
 // parseLine compiles a note.line template into spans, rejecting rather than
 // repairing three malformed shapes: an unterminated `$[`, a nested one, and a
 // span holding no placeholder. Callers parse at LOAD time so a bad template
 // fails the config — the same exit every other config error takes — rather
 // than the release that would have rendered it. Whether the template opens
-// with a list marker is checkLineOpensAList's, asked beside it.
+// with a list marker is checkLineOpensAList's, asked beside it, and whether it
+// puts "<" at a block start checkLineOpensNoHTMLBlock's, asked of the spans.
 //
 // An empty template is not an error: [note] is optional, and a config with no
 // line renders no lines.

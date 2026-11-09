@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v6/internal/config"
+	"github.com/akira-toriyama/glyph/v6/internal/core"
 	"github.com/akira-toriyama/glyph/v6/internal/testutil"
 )
 
@@ -139,6 +140,38 @@ func TestNotesHTMLBlockBehindATemplateLineEndingIsDisarmed(t *testing.T) {
 		"- `ping\n\\<!X> cc @octocat now` x\n"
 	if stdout != want {
 		t.Fatalf("notes stdout:\n--- got ---\n%s\n--- want ---\n%s", stdout, want)
+	}
+}
+
+// TestNotesRefusesATemplateThatOpensAnHTMLBlock: a note.line that puts "<" at a
+// block start is a config the loader refuses, so notes answers 2 — no verdict was
+// reached — and names the key, the template and where the "<" stands. Before the
+// refusal this template loaded and rendered `\&#64;octocat` inside `<div>` as a
+// live @octocat (t-3bwg, TestLoadRefusesAnHTMLBlockAtABlockStart).
+func TestNotesRefusesATemplateThatOpensAnHTMLBlock(t *testing.T) {
+	dir, base := testutil.NewTaggedRepo(t)
+	preset, ok := config.Preset("gemoji")
+	if !ok {
+		t.Fatalf("gemoji preset missing")
+	}
+	const shipped = "line = '- $subject$[ ($pr)] @$author$[ with $coauthors]'"
+	if !strings.Contains(string(preset), shipped) {
+		t.Fatalf("the gemoji preset no longer carries %q; move this test's edit with it", shipped)
+	}
+	seedConfig(t, dir, strings.Replace(string(preset), shipped, "line = '- <div>$subject</div>'", 1))
+	testutil.Commit(t, dir, "akira-toriyama", ":bug:~ callers to &#64;octocat now")
+	t.Chdir(dir)
+
+	code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
+	if code != int(core.CodeUsage) {
+		t.Fatalf("notes exited %d, want %d\nstdout: %s\nstderr: %s", code, core.CodeUsage, stdout, stderr)
+	}
+	if stdout != "" {
+		t.Errorf("a refused config printed a body:\n%s", stdout)
+	}
+	env := decodeErrorEnvelope(t, stderr)
+	if want := `note.line: "- <div>$subject</div>" puts "<" at a block start, line 1 column 3: `; env.Code != int(core.CodeUsage) || !strings.Contains(env.Message, want) {
+		t.Errorf("envelope = %+v, want code %d and a message holding %q", env, core.CodeUsage, want)
 	}
 }
 

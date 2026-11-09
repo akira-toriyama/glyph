@@ -607,3 +607,30 @@ func TestRawLineEndingsEndTheParagraphTheFenceReads(t *testing.T) {
 		}
 	}
 }
+
+// TestAReferenceAValueCompletesIsEscaped pins rule 4 across the seam between a
+// template and a value (t-39hk): the construct is the whole character reference,
+// so one a template's "&" opens and a value completes is escaped at that "&", as
+// one wholly the value's is. Measured 2026-11-09 through `glyph notes --range`
+// and then POST /markdown (gfm): under `line = '- &$subject'` the subjects
+// "#x40;octocat now" and "#64;octocat dec", and under `line = '- &#$subject'`
+// "64;octocat split", each rendered a live @octocat; escaped, each renders as its
+// own text. A reference wholly the template's is the template's and stays.
+func TestAReferenceAValueCompletesIsEscaped(t *testing.T) {
+	for _, c := range []struct{ raw, prose, want string }{
+		{"- &", "#x40;octocat now", `- \&#x40;octocat now`},
+		{"- &", "#64;octocat dec", `- \&#64;octocat dec`},
+		{"- &#", "64;octocat split", `- \&#64;octocat split`},
+		{"- &#6", "4;octocat", `- \&#64;octocat`},
+		{"- &#64", ";octocat", `- \&#64;octocat`},
+		{"- &am", "p; x", `- \&amp; x`},
+		{"- &amp; ", "x", "- &amp; x"},
+	} {
+		var l Line
+		l.Raw(c.raw)
+		l.Prose(c.prose)
+		if got := l.String(); got != c.want {
+			t.Errorf("Raw(%q) + Prose(%q):\n got %q\nwant %q", c.raw, c.prose, got, c.want)
+		}
+	}
+}
