@@ -1,0 +1,13 @@
+diff --git a/internal/markdown/escape.go b/internal/markdown/escape.go
+index f92b6b9..e7169b9 100644
+--- a/internal/markdown/escape.go
++++ b/internal/markdown/escape.go
+@@ -702,7 +702,7 @@ func escapeProseLine(s string, inSpan []bool, prose func(lo, hi int) bool) (stri
+ 		case s[i] == '&' && entityAt(s, i):
+ 			// The construct is the whole reference, to the first ';', which its
+ 			// shape admits nowhere before its closer.
+-			esc(i, i+strings.IndexByte(s[i:], ';')+1, i)
++			esc(i, i+1, i)
+ 			i++
+ 		default:
+ 			b.WriteByte(s[i])

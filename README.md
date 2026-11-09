@@ -374,7 +374,12 @@ every placeholder inside it resolves. That is what lets the shipped line cite a
 pull when there is one and drop the parens with it when there is not. The
 template opens with a list marker (`- `, `* ` or `+ `) — each rendered line is
 fenced against @mentions on its own, which holds only when each line is its own
-list item (DESIGN §3) — and the loader refuses one that does not. `@$author` pages the
+list item (DESIGN §3) — and the loader refuses one that does not. It refuses a
+`<` where a rendered line can start a block, too, because GitHub opens an HTML
+block there, and no escape works inside one: a value in it would render raw —
+write text of the template's own before the `<` on its line (blanks, list-item
+or quote markers, at-signs, placeholders and text inside an optional `$[ … ]`
+span do not count: each can leave the block start where it was). `@$author` pages the
 contributor only when GitHub knows who that is — the `author.login` the API
 reports for a listed commit; a commit the API did not describe (every commit
 under `--range`, every direct push under `--since-tag`) or mapped to no

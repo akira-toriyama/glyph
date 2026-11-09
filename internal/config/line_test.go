@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -151,6 +152,74 @@ func TestLoadRefusesANoteLineWithoutAListMarker(t *testing.T) {
 		})
 	}
 	for _, line := range []string{"", "- $subject$[ ($pr)]", "* $subject", "+ $subject"} {
+		t.Run("loads: "+line, func(t *testing.T) {
+			if _, err := Load([]byte(grammar + "[note]\nline = '" + line + "'\n")); err != nil {
+				t.Errorf("Load refused note.line %q: %v", line, err)
+			}
+		})
+	}
+}
+
+// TestLoadRefusesAnHTMLBlockAtABlockStart: GitHub opens an HTML block where a
+// "<" stands at a block start, and no backslash escape works inside one, so a
+// template that puts one there renders the value it wraps raw (t-3bwg).
+// Measured 2026-11-09 through `glyph notes --range` on the gemoji preset and
+// POST /markdown (gfm): the subject `:bug:~ callers to &#64;octocat now`
+// rendered a live @octocat behind each of the first seventeen templates, the
+// fifteenth to the seventeenth for a commit with no pull, and behind the last
+// two through markdown.Line, under the login "1234" (a real account) and under
+// an empty author name. `- x <span>$subject</span>` rendered the same subject as
+// its own text, and `- 1.<div>` rendered the tag inline; both load, as does a
+// "<" the template escaped.
+func TestLoadRefusesAnHTMLBlockAtABlockStart(t *testing.T) {
+	const grammar = "schema = 1\n[[patterns]]\npattern = '^(?P<subject>:[a-z]+:(?P<semver_sigil>[=~^!%]) .+)'\n"
+	for _, c := range []struct{ line, at string }{
+		{"- <div>$subject</div>", "line 1 column 3"},
+		{"* <div>$subject</div>", "line 1 column 3"},
+		{"+ <div>$subject</div>", "line 1 column 3"},
+		{"- x\n<span>\n$subject", "line 2 column 1"},
+		{"- x\r<div>\r$subject", "line 2 column 1"},
+		{"- <!-- -->$subject", "line 1 column 3"},
+		{"- <?x ?>$subject", "line 1 column 3"},
+		{"- <!X>$subject", "line 1 column 3"},
+		{"- > <div>$subject</div>", "line 1 column 5"},
+		{"- >\t<div>$subject</div>", "line 1 column 5"},
+		{"- 1. <div>$subject</div>", "line 1 column 6"},
+		{"- 1) <div>$subject</div>", "line 1 column 6"},
+		{"- 10. <div>$subject</div>", "line 1 column 7"},
+		{"- x\n  <div>\n  $subject", "line 2 column 3"},
+		{"- $[($pr) ]<div>$subject</div>", "line 1 column 12"},
+		{"- $pr<div>$subject</div>", "line 1 column 6"},
+		{"- $[— $pr ]<div>$subject</div>", "line 1 column 12"},
+		{"- $author. <div>$subject</div>", "line 1 column 12"},
+		{"- @$author <div>$subject</div>", "line 1 column 12"},
+	} {
+		t.Run(c.line, func(t *testing.T) {
+			_, err := Load([]byte(grammar + "[note]\nline = " + strconv.Quote(c.line) + "\n"))
+			if err == nil {
+				t.Fatalf("Load accepted note.line %q, which opens an HTML block a value renders raw in", c.line)
+			}
+			for _, want := range []string{"note.line: " + strconv.Quote(c.line), `puts "<" at a block start, ` + c.at + ": ", "GitHub opens an HTML block"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error = %q, want substring %q", err, want)
+				}
+			}
+		})
+	}
+	t.Run("the head of the template itself", func(t *testing.T) {
+		const line = "<div>$subject</div>"
+		spans, err := parseLine(line)
+		if err != nil {
+			t.Fatalf("parseLine: %v", err)
+		}
+		if err := checkLineOpensNoHTMLBlock(line, spans); err == nil || !strings.Contains(err.Error(), "line 1 column 1") {
+			t.Errorf("checkLineOpensNoHTMLBlock(%q) = %v, want the refusal at line 1 column 1", line, err)
+		}
+		if _, err := Load([]byte(grammar + "[note]\nline = '" + line + "'\n")); err == nil {
+			t.Errorf("Load accepted note.line %q", line)
+		}
+	})
+	for _, line := range []string{"- x <span>$subject</span>", "- 1.<div>$subject</div>", `- \<div>$subject</div>`, "- $subject$[ ($pr)] @$author$[ with $coauthors]"} {
 		t.Run("loads: "+line, func(t *testing.T) {
 			if _, err := Load([]byte(grammar + "[note]\nline = '" + line + "'\n")); err != nil {
 				t.Errorf("Load refused note.line %q: %v", line, err)
