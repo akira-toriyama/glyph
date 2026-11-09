@@ -4227,8 +4227,14 @@ The severities are the argued part:
   `doctor-pre-push-unread-head-fix-names-no-condition`). The signal is git's
   `error:` line paired with `cat-file -e`, and §4 states where neither sees:
   under git ≤ 2.39 a fan-out directory git cannot open reads as unrecorded
-  here and names set-head, and a store whose alternates directory is gone is
-  this failure for any recorded name (on 2.56 for a dangling one too). The remedy is
+  here and names set-head. A store whose alternates directory is gone writes
+  the line too, and is this failure for a recorded name whose commit it does
+  not hold — on 2.56 for a dangling one too, where 2.54.0 and 2.39.5 name
+  set-head (`TestDefaultBranchFailsOnADanglingRefOverAGoneAlternatesStore`,
+  mutation row
+  `gitsource-names-commit-reads-an-unknown-name-over-an-incomplete-store-as-no-commit`)
+  — while a name whose commit it holds reads as recorded (measured on 2.39.5,
+  2.54.0 and 2.56.0). The remedy is
   `git remote set-head <remote> -a` only where git can record a head at all:
   a name config accepts and refs refuse (`my fork`, `mirror..x`) makes
   set-head exit 129 unquoted and 1 quoted (review u6-2, git 2.54). `git remote

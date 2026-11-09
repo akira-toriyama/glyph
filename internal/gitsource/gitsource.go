@@ -1107,9 +1107,11 @@ func runRead(ctx context.Context, dir string, stdin io.Reader, args ...string) (
 // the answer intact: an alternates entry — objects/info/alternates or
 // GIT_ALTERNATE_OBJECT_DIRECTORIES — naming a directory that is gone, on every
 // object read (and on git 2.56 on an unknown name too); a broken info/grafts
-// and a truncated commit-graph, on the commands that parse commits
-// (merge-base, tag --merged) and not on cat-file. The readers fail on each
-// where the answer was an absence or a NO, and quote the line: git has said
+// and a truncated commit-graph, where a commit is parsed — merge-base, tag
+// --merged and namesCommit's own peel, `cat-file -t rev^{}` — and not on
+// --batch-check or `cat-file -e`; the failed peel of a sha the store does not
+// hold writes none (measured on 2.39.5, 2.54.0 and 2.56.0). The readers fail on
+// each where the answer was an absence or a NO, and quote the line: git has said
 // the store it was told to read is not all there, so an absence there cannot
 // be vouched for, and the line names what to fix.
 func errorLine(stderr []byte) (string, bool) {

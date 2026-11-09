@@ -239,6 +239,28 @@ func GitSignalsUnopenableObject(t *testing.T) bool {
 	return false
 }
 
+// DangleOriginHead renames remote's main to trunk and fetches work with
+// --prune — a default branch renamed on the remote, as a clone meets it — so
+// work's refs/remotes/origin/HEAD names the refs/remotes/origin/main the prune
+// deleted: a dangling ref git itself wrote. Apple Git-155 (git 2.50.1)
+// re-points it at origin/trunk on that fetch, remote.origin.followRemoteHEAD
+// unset, where 2.39.5, 2.53.0, 2.54.0, 2.56.0 and Apple Git-157 leave it
+// dangling (measured 2026-11-09). No dangling ref arises there, so the test
+// skips, asked of the git's answer and never of its version string; any other
+// name fails the test.
+func DangleOriginHead(t *testing.T, remote, work string) {
+	t.Helper()
+	Git(t, remote, "akira-toriyama", "branch", "-m", "main", "trunk")
+	Git(t, work, "akira-toriyama", "fetch", "-q", "--prune", "origin")
+	switch got := Git(t, work, "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD"); got {
+	case "refs/remotes/origin/main":
+	case "refs/remotes/origin/trunk":
+		t.Skip("this git re-points origin/HEAD at the remote's new default branch on fetch --prune (Apple Git-155, git 2.50.1): no dangling ref arises to read")
+	default:
+		t.Fatalf("the fixture no longer dangles: origin/HEAD names %q after the prune", got)
+	}
+}
+
 // SignCommits makes dir sign every later commit for real, and `git tag -s` with
 // the same key: ssh signing with a key generated in the test's own temp dir,
 // which needs no agent and no user config, and an allowed-signers file so git

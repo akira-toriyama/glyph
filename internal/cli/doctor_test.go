@@ -479,8 +479,7 @@ func TestDoctorFiresTheCurrentHook(t *testing.T) {
 	t.Run("a default branch the remote renamed away is the same advice", func(t *testing.T) {
 		usePR(t, doctorServer(t, apiRepoObject(healthySettings)))
 		work, remote := testClone(t)
-		testutil.Git(t, remote, "akira-toriyama", "branch", "-m", "main", "trunk")
-		testutil.Git(t, work, "akira-toriyama", "fetch", "-q", "--prune", "origin")
+		testutil.DangleOriginHead(t, remote, work)
 		t.Chdir(work)
 		installCurrentHook(t, hook.Kinds()[0], hook.Kinds()[1])
 		stubGlyphOnPATH(t, 3)

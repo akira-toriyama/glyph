@@ -583,11 +583,7 @@ func TestDefaultBranchReadsADanglingRefAsUnrecorded(t *testing.T) {
 		t.Fatalf("DefaultBranch on a fresh clone = %q, %v; want main", got, err)
 	}
 
-	testutil.Git(t, remote, "akira-toriyama", "branch", "-m", "main", "trunk")
-	testutil.Git(t, work, "akira-toriyama", "fetch", "-q", "--prune", "origin")
-	if got := testutil.Git(t, work, "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD"); got != "refs/remotes/origin/main" {
-		t.Fatalf("the fixture no longer dangles: origin/HEAD names %q after the prune", got)
-	}
+	testutil.DangleOriginHead(t, remote, work)
 	if got, err := DefaultBranch(ctx, work, "origin"); err != nil || got != "" {
 		t.Errorf("DefaultBranch over a dangling origin/HEAD = %q, %v; want \"\", nil — the name is a ref that no longer exists", got, err)
 	}
@@ -757,6 +753,52 @@ func TestNamesCommitSeesAnUnopenableObjectGitIsSilentAbout(t *testing.T) {
 	}
 }
 
+// TestDefaultBranchFailsOnADanglingRefOverAGoneAlternatesStore: over a store
+// whose alternates directory is gone, git 2.56 writes its error: line on a
+// dangling name's failed peel too, where 2.54.0 and 2.39.5 write it only where
+// an object is looked up (measured). namesCommit reads that line before
+// rev-parse's NO: a store git says is not all there cannot vouch that a name
+// holds nothing, so a dangling origin/HEAD there is git's failure at 4, not
+// the set-head advice — set-head records a name and repairs no store. A
+// recorded name whose commit the store holds still reads, the peel answering
+// beside the line. Held on every host through a git that is the real one with
+// 2.56's line written ahead of cat-file's stderr; the dangling ref over the
+// whole store is the control.
+func TestDefaultBranchFailsOnADanglingRefOverAGoneAlternatesStore(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the wrapper git is a shell script")
+	}
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatalf("git: %v", err)
+	}
+	ctx := context.Background()
+	dir := testutil.NewRepo(t)
+	testutil.Git(t, dir, "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	if got, err := DefaultBranch(ctx, dir, "origin"); err != nil || got != "" {
+		t.Fatalf("DefaultBranch over a dangling origin/HEAD = %q, %v; want \"\", nil (the control)", got, err)
+	}
+
+	gone := goneAlternates(t, dir)
+	bin := t.TempDir()
+	// Write 2.56's line for the gone directory ahead of cat-file's stderr, then
+	// run the real git.
+	wrapper := "#!/bin/sh\ncase \"$*\" in *cat-file*) echo 'error: object directory " + gone + " does not exist; check .git/objects/info/alternates' >&2;; esac\nexec " + realGit + " \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(wrapper), 0o700); err != nil { //nolint:gosec // a wrapper git must be executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	got, err := DefaultBranch(ctx, dir, "origin")
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI || !strings.Contains(err.Error(), gone+" does not exist") {
+		t.Errorf("DefaultBranch over a dangling origin/HEAD, alternates gone = %q, %v; want CodeAPI quoting git's line — read as unrecorded, the hook and doctor name set-head over a store git says is not all there", got, err)
+	}
+	testutil.Git(t, dir, "akira-toriyama", "update-ref", "refs/remotes/origin/main", "HEAD")
+	if got, err := DefaultBranch(ctx, dir, "origin"); err != nil || got != "main" {
+		t.Errorf("DefaultBranch over a recorded name whose commit the store holds, alternates gone = %q, %v; want main, nil — nothing was absent", got, err)
+	}
+}
+
 // breakObject overwrites one loose object with bytes that are no zlib stream.
 // Fixture commits stay loose: GitEnv pins gc.auto off.
 func breakObject(t *testing.T, dir, sha string) {
@@ -831,17 +873,19 @@ func truncatedObject(t *testing.T, dir, sha string) {
 }
 
 // goneAlternates points the store at an object directory that does not exist
-// — a clone made with --reference to a mirror since deleted. git writes an
-// error: line on every object read and still answers.
-func goneAlternates(t *testing.T, dir string) {
+// — a clone made with --reference to a mirror since deleted — and returns that
+// directory. git writes an error: line on every object read and still answers.
+func goneAlternates(t *testing.T, dir string) (gone string) {
 	t.Helper()
 	info := filepath.Join(dir, ".git", "objects", "info")
 	if err := os.MkdirAll(info, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(info, "alternates"), []byte(filepath.Join(t.TempDir(), "gone")+"\n"), 0o600); err != nil {
+	gone = filepath.Join(t.TempDir(), "gone")
+	if err := os.WriteFile(filepath.Join(info, "alternates"), []byte(gone+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	return gone
 }
 
 // unparseableCommit writes an object whose header names a commit and whose

@@ -178,11 +178,7 @@ func TestPrePushDefaultBranchUnresolvedWarnsOnly(t *testing.T) {
 func TestPrePushReadsADanglingDefaultBranchAsUnrecorded(t *testing.T) {
 	glyphBin := buildGlyph(t)
 	work, remote := testClone(t)
-	testutil.Git(t, remote, "akira-toriyama", "branch", "-m", "main", "trunk")
-	testutil.Git(t, work, "akira-toriyama", "fetch", "-q", "--prune", "origin")
-	if got := testutil.Git(t, work, "akira-toriyama", "symbolic-ref", "refs/remotes/origin/HEAD"); got != "refs/remotes/origin/main" {
-		t.Fatalf("the fixture no longer dangles: origin/HEAD names %q after the prune", got)
-	}
+	testutil.DangleOriginHead(t, remote, work)
 	testutil.Git(t, work, "akira-toriyama", "checkout", "-q", "-b", "trunk", "origin/trunk")
 	t.Chdir(work)
 	if code, _, stderr := runGlyph(t, "hook", "install"); code != 0 {
