@@ -2399,7 +2399,7 @@ asked:
    range's (`bump.RangeRefusal`, the one wording home: a lone grammar row
    keeps the fold's remedy), `preview` in its own words on both shapes.
    Attribution asked first made the grammar's refusal the second red run
-   (measured by review 2026-10-27 on 36b7c53, one direct push of each kind:
+   (measured 2026-10-27 on 36b7c53, one direct push of each kind:
    the walk refused the unclaimed message, `bump --range` and `preview` the
    attribution refusal alone, `lint --range` both rows; on 73c15c6
    `notes --range` the attribution row alone too). The one refusal reads the
@@ -2525,7 +2525,7 @@ which says a package it touched is missing (mutation row
 `withheld-refusal-says-of-the-commit-what-is-known-of-the-files-read`).
 
 An escape that **takes something out** of the message is proven against the
-message, never read off the pattern (found in review, 2026-10-05). There are
+message, never read off the pattern (found 2026-10-05). There are
 two: "drop the scope", which the contradiction offers (below), and "leave the
 sigil out", for a pattern whose sigil group cannot capture `=` but whose fixed
 `semver_sigil` is `=` — `[a-z]+(?P<semver_sigil>[~^!])?: ` reads `fix: …` as a
@@ -2833,7 +2833,7 @@ A commit two pulls list is judged under each sighting's governing identity —
 a squash-merged pull's inner commit under that pull's merge point, a landed
 commit under its landing site whichever pull lists it — and one judged
 sighting refuses it: the refusal names the escape of every judged sighting,
-never one at an identity every line released (measured by review 2026-10-27
+never one at an identity every line released (measured 2026-10-27
 on 36b7c53: a commit the held pull and two pending pulls list is refused
 naming both pending pulls' merge points). The first cut
 judged it at its first sighting only: a stacked pull listing again an
