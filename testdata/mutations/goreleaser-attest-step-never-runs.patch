@@ -1,0 +1,9 @@
+diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
+index a91b47d..9001f0c 100644
+--- a/.github/workflows/goreleaser.yml
++++ b/.github/workflows/goreleaser.yml
+@@ -263,3 +263,3 @@ jobs:
+           subject-path: 'dist/*.tar.gz, dist/checksums.txt, dist/homebrew/Casks/glyph.rb'
+-        if: steps.existing.outputs.release != 'published'
++        if: false
+ 
