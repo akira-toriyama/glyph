@@ -26,7 +26,6 @@ import (
 type RawCommit struct {
 	SHA     string
 	Author  string // author name (%an) — what bot/automation matching runs on
-	Email   string // author email (%ae), as git holds it — self-asserted text that names no login, a GitHub noreply address included (DESIGN §3)
 	Login   string // GitHub login; always "" from git (github.Commit fills it from the API's author.login) — mirrored so the two convert
 	Parents int    // parent count; >= 2 marks a merge commit
 	// Message is the message as git recorded it (%B) minus the one closing
@@ -45,18 +44,24 @@ type RawCommit struct {
 	Recorded string
 }
 
-// logFormat renders one record per commit: SHA, author name, author email,
-// parent SHAs and the raw message (%B last), each field closed by NUL and the
-// record by the NUL -z writes after it. NUL frames the fields too because it is
-// the one byte none of them can hold — git refuses it in a message ("a NUL byte
-// in commit log message not allowed", measured) and an ident is a C string —
-// and the record framing already rested on it. Not the unit separator: git
-// keeps one inside an author name (DESIGN §2, `exclude_authors`;
+// logFormat renders one record per commit: SHA, author name, parent SHAs and
+// the raw message (%B last), each field closed by NUL and the record by the
+// NUL -z writes after it. NUL frames the fields too because it is the one byte
+// none of them can hold — git refuses it in a message ("a NUL byte in commit
+// log message not allowed", measured) and an ident is a C string — and the
+// record framing already rested on it. Not the unit separator: git keeps one
+// inside an author name (DESIGN §2, `exclude_authors`;
 // TestLogReadsAnAuthorNameHoldingTheUnitSeparator).
-const logFormat = "%H%x00%an%x00%ae%x00%P%x00%B"
+//
+// No author address (%ae): nothing may read one. An address is text whoever
+// configured git typed — a GitHub noreply one included, which GitHub
+// attributes by the id it carries and never by the login beside it (DESIGN
+// §3, t-ayhq) — so the record carries none for a later reader to trust, and
+// github.Commit, its mirror, decodes none off the API.
+const logFormat = "%H%x00%an%x00%P%x00%B"
 
 // logFields is how many NUL-closed fields logFormat writes per record.
-const logFields = 5
+const logFields = 4
 
 // logCmd is the head of every `git log` whose output parseLog reads. A display
 // setting in the user's config must never reach that parser, and one does:
@@ -810,17 +815,16 @@ func parseLog(out []byte) ([]RawCommit, error) {
 	commits := make([]RawCommit, 0, len(fields)/logFields)
 	for i := 0; i < len(fields); i += logFields {
 		f := fields[i : i+logFields]
-		parents, ok := objectNames(f[3], len(f[0]))
+		parents, ok := objectNames(f[2], len(f[0]))
 		if !isObjectName(f[0]) || !ok {
 			return nil, core.APIf("git log: malformed record %q", strings.Join(f, "\x00"))
 		}
 		commits = append(commits, RawCommit{
 			SHA:      f[0],
 			Author:   f[1],
-			Email:    f[2],
 			Parents:  parents,
-			Message:  strings.TrimSuffix(f[4], "\n"),
-			Recorded: f[4],
+			Message:  strings.TrimSuffix(f[3], "\n"),
+			Recorded: f[3],
 		})
 	}
 	return commits, nil

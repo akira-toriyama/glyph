@@ -66,8 +66,8 @@ func newNotesCmd() *cobra.Command {
 			"(pipe it into a release step); a --since-tag body closes with the range's\n" +
 			"compare link (compare/<base tag>...<HEAD sha>; none when the walk has no\n" +
 			"tag base, and none from --range or --pr). --json emits {sections,reason} —\n" +
-			"no link. Nothing release-worthy prints no body and exits 1\n" +
-			"(soft no-release).\n\n" +
+			"no link. When no commit lands in any [[note.sections]] entry there is\n" +
+			"nothing to write: no body, exit 1 (soft no-release).\n\n" +
 			"On a repository declaring [[packages]] the body is per line: stdout is one\n" +
 			"body per line under a `# <path>` heading (bare when a tag selects one\n" +
 			"line), each --since-tag body closed by its own line's compare link (none\n" +

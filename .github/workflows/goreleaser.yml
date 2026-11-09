@@ -222,7 +222,7 @@ jobs:
       # glyph's 2/3/4 into 1 (measured), and 1 is the one value the notes
       # action reads as the soft no-release signal, so a dark API would publish
       # a placeholder release body behind a real tag, green, and a wedged walk
-      # one that says nothing was release-worthy. Built from THIS tree rather
+      # one that says there were no notes to write. Built from THIS tree rather
       # than installed through the install action: the release being cut is
       # the one the action would install.
       - name: build glyph for its own release notes

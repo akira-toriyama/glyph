@@ -1,13 +1,13 @@
 diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
-index 70364d2..689b2b4 100644
+index 90ff0d8..abe58a0 100644
 --- a/internal/gitsource/gitsource.go
 +++ b/internal/gitsource/gitsource.go
-@@ -820,7 +820,7 @@ func parseLog(out []byte) ([]RawCommit, error) {
- 			Email:    f[2],
+@@ -824,7 +824,7 @@ func parseLog(out []byte) ([]RawCommit, error) {
+ 			Author:   f[1],
  			Parents:  parents,
- 			Message:  strings.TrimSuffix(f[4], "\n"),
--			Recorded: f[4],
-+			Recorded: strings.TrimSuffix(f[4], "\n"), // MUTATION: the recorded message loses its closing newline too
+ 			Message:  strings.TrimSuffix(f[3], "\n"),
+-			Recorded: f[3],
++			Recorded: strings.TrimSuffix(f[3], "\n"), // MUTATION: the recorded message loses its closing newline too
  		})
  	}
  	return commits, nil

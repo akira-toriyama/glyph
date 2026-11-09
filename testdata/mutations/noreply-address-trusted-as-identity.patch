@@ -1,3 +1,48 @@
+diff --git a/internal/github/github.go b/internal/github/github.go
+index 4e84d5f..ae38a61 100644
+--- a/internal/github/github.go
++++ b/internal/github/github.go
+@@ -91,6 +91,7 @@ type PullRef struct {
+ type Commit struct {
+ 	SHA     string
+ 	Author  string
++	Email   string // MUTATION: mirrored so the two still convert
+ 	Login   string // author.login: the GitHub account GitHub itself mapped the commit to; "" when it mapped none
+ 	Parents int
+ 	Message string
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index 90ff0d8..91989e8 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -26,6 +26,7 @@ import (
+ type RawCommit struct {
+ 	SHA     string
+ 	Author  string // author name (%an) — what bot/automation matching runs on
++	Email   string // MUTATION: the author address is read again
+ 	Login   string // GitHub login; always "" from git (github.Commit fills it from the API's author.login) — mirrored so the two convert
+ 	Parents int    // parent count; >= 2 marks a merge commit
+ 	// Message is the message as git recorded it (%B) minus the one closing
+@@ -58,10 +59,10 @@ type RawCommit struct {
+ // attributes by the id it carries and never by the login beside it (DESIGN
+ // §3, t-ayhq) — so the record carries none for a later reader to trust, and
+ // github.Commit, its mirror, decodes none off the API.
+-const logFormat = "%H%x00%an%x00%P%x00%B"
++const logFormat = "%H%x00%an%x00%P%x00%B%x00%ae"
+ 
+ // logFields is how many NUL-closed fields logFormat writes per record.
+-const logFields = 4
++const logFields = 5
+ 
+ // logCmd is the head of every `git log` whose output parseLog reads. A display
+ // setting in the user's config must never reach that parser, and one does:
+@@ -822,6 +823,7 @@ func parseLog(out []byte) ([]RawCommit, error) {
+ 		commits = append(commits, RawCommit{
+ 			SHA:      f[0],
+ 			Author:   f[1],
++			Email:    f[4],
+ 			Parents:  parents,
+ 			Message:  strings.TrimSuffix(f[3], "\n"),
+ 			Recorded: f[3],
 diff --git a/internal/walk/walk.go b/internal/walk/walk.go
 index a4e3392..653089b 100644
 --- a/internal/walk/walk.go

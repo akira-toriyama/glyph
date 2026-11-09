@@ -161,6 +161,52 @@ func TestNotesEmptyIsNoRelease(t *testing.T) {
 	}
 }
 
+// TestNotesNoReleaseIsTheSectionsCondition: notes' exit 1 means notes has
+// nothing to write — no commit lands in a [[note.sections]] entry — and that
+// is not bump's none: the sections decide what the notes hold (t-h90a). A
+// dependabot[bot] commit the preset's Dependencies section holds renders at 0
+// where bump answers none at 1, and a fix under a file with no patch section
+// leaves notes at 1 where bump moves the version at 0 (measured 2026-11-09).
+// bump runs beside notes on each fixture: one that stopped dividing the two
+// fails as a fixture, not as a verdict.
+func TestNotesNoReleaseIsTheSectionsCondition(t *testing.T) {
+	t.Run("a bot commit an author section holds", func(t *testing.T) {
+		dir, base := testutil.NewTaggedRepo(t)
+		testutil.Commit(t, dir, "dependabot[bot]", ":arrow_up:(deps)= bump x")
+		t.Chdir(dir)
+		if code, _, stderr := runGlyph(t, "bump", "--range", base+"..HEAD"); code != 1 {
+			t.Fatalf("bump --range exited %d, want 1 — the fixture no longer folds to none\nstderr: %s", code, stderr)
+		}
+		code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
+		if code != 0 || !strings.HasPrefix(stdout, "## Dependencies\n") {
+			t.Fatalf("notes --range exited %d with %q, want 0 and the Dependencies section — bump's none is not notes' condition\nstderr: %s", code, stdout, stderr)
+		}
+	})
+	t.Run("a fix no section takes", func(t *testing.T) {
+		dir, _ := testutil.NewTaggedRepo(t)
+		preset, ok := config.Preset("gemoji")
+		if !ok {
+			t.Fatal("gemoji preset missing")
+		}
+		file := strings.Replace(string(preset), "[[note.sections]]\nsemver = \"patch\"\ntitle = \"Fixes\"\n", "", 1)
+		if file == string(preset) {
+			t.Fatal("the gemoji preset's patch section is not where this test removes it from")
+		}
+		testutil.WriteFile(t, dir, "glyph.toml", file)
+		testutil.Git(t, dir, "akira-toriyama", "commit", "-q", "--no-verify", "-am", ":wrench:= declare no patch section")
+		base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+		testutil.Commit(t, dir, "akira-toriyama", ":bug:~ fix a crash")
+		t.Chdir(dir)
+		if code, _, stderr := runGlyph(t, "bump", "--range", base+"..HEAD"); code != 0 {
+			t.Fatalf("bump --range exited %d, want 0 — the fixture no longer moves the version\nstderr: %s", code, stderr)
+		}
+		code, stdout, stderr := runGlyph(t, "notes", "--range", base+"..HEAD")
+		if code != 1 || stdout != "" || !strings.Contains(stderr, "none lands in a section") {
+			t.Fatalf("notes --range exited %d with %q, want 1, no body and the section reason — a fix no section takes leaves nothing to write\nstderr: %s", code, stdout, stderr)
+		}
+	})
+}
+
 // TestNotesEmptyJSON: --json still emits the machine verdict (sections
 // normalized to [], a reason) on stdout and exits 1 without a second stderr
 // envelope.

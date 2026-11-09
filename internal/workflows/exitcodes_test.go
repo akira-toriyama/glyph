@@ -489,7 +489,7 @@ var goRunInvocation = regexp.MustCompile(`\bgo run\b`)
 // with this tree's binary: `notes --since-tag=below:notatag` exits 2 directly
 // and 1 through `go run` (stderr tail: "exit status 2"); a dead-credential API
 // walk exits 4 directly and 1 through `go run`. The action's arm below the
-// invocation reads 1 as "nothing release-worthy" and publishes a placeholder
+// invocation reads 1 as "no notes to write" and publishes a placeholder
 // body — so under `go run` a wedged walk or a dark API ships a green release
 // that claims there was nothing to say. scripts/check.sh's `go run` sites are
 // out of scope on purpose: that script only pass/fails, it never branches an
