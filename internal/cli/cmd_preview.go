@@ -127,8 +127,16 @@ func newPreviewCmd() *cobra.Command {
 // byte for byte (TestPreviewBareLineRendersTheScalarBody). Under packages
 // every scalar keeps its zero value (previewResult); packages[] carries one
 // verdict per touched line, and the body one headline per line, or
-// preview.RenderNoLine's sentence when the pull touches none.
+// preview.RenderNoLine's sentence when the pull touches none. --pr's and
+// --repo's shapes are judged before glyph.toml is loaded, as bump judges its
+// flags (TestVerdictCommandsJudgeTheirFlagsBeforeTheConfig).
 func previewRun(ctx context.Context, o previewOptions) error {
+	if err := checkPRFlag(o.pr); err != nil {
+		return err
+	}
+	if err := checkRepoFlag(o.repo); err != nil {
+		return err
+	}
 	cfg, err := loadConfig(ctx)
 	if err != nil {
 		return err

@@ -1,0 +1,18 @@
+diff --git a/internal/walk/lines.go b/internal/walk/lines.go
+index e3e81ba..97a0d27 100644
+--- a/internal/walk/lines.go
++++ b/internal/walk/lines.go
+@@ -135,9 +135,11 @@ func (w Walker) resolveLinesScoped(ctx context.Context, cfg *config.Config, tagF
+ 		// The line question is the config's and comes first; whether the tag
+ 		// names a commit is git's (explicitBase), asked once for every line
+ 		// the value walks.
+-		baseTag, terr := w.explicitBase(ctx, tag)
+-		if terr != nil {
++		baseTag := ""
++		if ok, terr := w.Git.IsTag(ctx, tag); terr != nil {
+ 			return nil, "", terr
++		} else if ok {
++			baseTag = tag
+ 		}
+ 		for i := range lines {
+ 			lines[i].BaseTag = baseTag

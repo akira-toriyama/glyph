@@ -574,6 +574,22 @@ subdirectory wrote a second one there at exit 0
 `TestInitInterruptDuringTopLevelReadWritesNothing`; mutation rows
 `init-writes-the-current-directory`,
 `init-reads-a-toplevel-interrupt-as-outside-a-checkout`).
+The verdict commands ask the same probe (`internal/cli: checkoutTop`), and
+answer the two places `init` tells apart as the caller's: outside a repository
+and inside a git directory there is no work tree to read, which is where the
+caller ran glyph — usage (2) — and `hook install` refuses outside a
+repository the same way (inside `.git` the hooks directory is git's own
+answer, and `--print` needs no repository). `init` itself refuses only the
+git directory: outside a repository it writes `./glyph.toml` at 0, being the
+one command for which that place has a use — it creates the file the others
+read. Git was reached and said so, so these are not the no-answer code; a
+repository git will not read (dubious ownership, a broken `.git/config`)
+stays 4 with git's message on every verdict command and on `hook install`
+(ruled t-ckvh, 2026-11-08; measured at 2f9428a: `lint --message=x`, `bump
+--range a..b`, `release --dry-run --repo o/r` and `hook install` outside a
+repository all answered git's 4, `init` 0; `TestOutsideARepositoryIsUsage`,
+mutation rows `outside-a-repository-is-gits-failure` and
+`git-will-not-read-is-the-callers-place`).
 
 ### 2.1 The text the rules judge — git's cleanup
 
@@ -1556,9 +1572,9 @@ either way: a truncated comment carries none. Moving the notes block behind
 the footer would keep it, at the price of a new layout for every comment that
 carries notes, and the cut would still fall inside the block with the notice
 folded away — so the block is closed, and the layout stays.) A next version
-not strictly above the latest published
-release fails loud (an unpublishable draft; a deleted published release's tag
-is burned forever).
+not strictly above the highest published release on the line — the maximum
+version, not the one published last — fails loud (an unpublishable draft; a
+deleted published release's tag is burned forever).
 
 The refusals above are about evidence — a range glyph could not read. One is
 about **authority**, and it is the only release-time refusal a dry run does not
@@ -1577,13 +1593,26 @@ reusable — six on 2026-10-26: `canon`, `dotfiles`, `sill`,
 `swift-toml-edit`, `zmk-beacon`, `zmk-hid-host` — so the binary is the only
 layer that reaches them. The escapes are `--dry-run` and re-running
 from the default branch, and both are named in the refusal. The caller's own
-input is judged before the guard: a malformed `--since-tag` is usage (2) on
-every run, as on `bump` and `notes`. Checked inside the walk's entrance, below
-the guard, it answered the guard's 4 off the default branch, the code that
-says a re-run can help, for a flag no re-run fixes (measured 2026-10-26 on
-82aebc5: `--since-tag=`, `=-x` and `=a..b` from `refs/heads/topic`;
-`TestReleaseRefusesAMalformedSinceTagBeforeTheRefGuard`, mutation row
-`release-since-tag-checked-below-the-ref-guard`).
+input is judged before the guard: a malformed `--since-tag`, a `--footer-file`
+naming nothing glyph reads (§5: missing, a directory, a path through a file; a
+footer the filesystem refused to read is 4) and a malformed `--current` are
+usage (2) on every run, as on `bump` and `notes`. Checked inside the walk's
+entrance, below
+the guard, `--since-tag` answered the guard's 4 off the default branch, the
+code that says a re-run can help, for a flag no re-run fixes (measured
+2026-10-26 on 82aebc5: `--since-tag=`, `=-x` and `=a..b` from
+`refs/heads/topic`; `TestReleaseRefusesAMalformedSinceTagBeforeTheRefGuard`,
+mutation row `release-since-tag-checked-below-the-ref-guard`), and
+`--current`, parsed after the walk, answered the walk's 4 and the guard's
+(t-s9ap, measured at 2f9428a and 86eab14: `release --current=garbage` over a
+dead API, and from `refs/heads/topic`; `TestCurrentIsJudgedBeforeTheWalk`,
+mutation row `current-parsed-after-the-walk`). Whether the tag exists is the
+walk's question and sits below the guard (§4, "The compare link"). The same
+rule holds on `bump`, `notes` and `preview` against the config: the source's
+shape and `--current` are judged before `glyph.toml` is loaded, where a
+mode-000 config answered 4 ahead of every flag check (t-h9m7;
+`TestVerdictCommandsJudgeTheirFlagsBeforeTheConfig`, mutation row
+`source-shape-judged-after-the-config`).
 
 That the ref is exempt from the dry-run rule stated for the body cap and
 `--target` (a dry run previews the real run) is the argued exception, not an
@@ -1711,7 +1740,42 @@ A typed `--since-tag` that is no tag — a branch, a remote-tracking name, a sha
 is resolved by GitHub against its own refs, not the checkout's (`main...<sha>`
 200 and identical, `origin/main...<sha>` 404, measured on glyph the same day), so
 the explicit arm takes the value only when `refs/tags/<value>` exists
-(`gitsource.isTag`). Each `/`-separated segment is path-escaped: git accepts
+(`gitsource.isTag`). Before that, the value must name a commit the checkout
+holds at all (`gitsource.resolveCommit`, through `walk.explicitBase` — the one
+read of a typed value, shared by the single line and the packages arm): one
+that does not is the caller's input, usage (2) naming the value and where to
+look (`git tag`; `fetch-depth: 0` for a checkout that fetched no tags), where
+the walk from it died in `git log` at 4 — "bad revision", the code that tells
+a CI wrapper a retry can help, for a flag no retry fixes (t-tat8, measured at
+2f9428a and v6.1.0: `bump --since-tag=v0.0.0` with no such tag;
+`TestSinceTagNamingNoCommitIsUsage`, mutation rows
+`since-tag-naming-no-commit-is-gits-failure` and
+`packages-since-tag-naming-no-commit-is-gits-failure`). The value is resolved
+as git resolves it and THEN peeled to a commit, two `rev-parse --verify`
+calls: the one-step `<value>^{commit}` spelling refused `:/fix`, whose search
+swallows the suffix, as naming no commit, while `git log` had always started
+from it (measured 2026-11-08 at 0c177a3, git 2.54;
+`TestResolveCommitResolvesThenPeels`, mutation row
+`since-tag-resolved-with-the-peel-attached`). A tag on a tree or a blob
+resolves and does not peel, and is refused by what it names — `git tag` lists
+it, so "`git tag` lists the tags here" would be a sentence `git tag` refutes
+— and a negated revision (`^v0.1.0`), which `rev-parse --verify` accepts and
+`git log` dies on, is refused with the range shape at the entrance
+(`walk.CheckTag`; mutation row `since-tag-exclusion-reaches-git`). `--range`
+holds the same line at its one read (`internal/cli: logRange`, through
+`walk.Walker.CheckRange`): each endpoint — both sides of its `..` or `...`,
+an omitted side being HEAD, or the one revision, git's `^`, `^!`, `^@` and
+`^-` set operators aside — must name a commit, where `nosuch..HEAD` died at 4
+the same way on `lint`, `bump` and `notes`; the value is trimmed once there,
+as `--since-tag`'s and `--current`'s are, so `' -x'` is the option shape
+`-x` is and `' v0.1.0..HEAD'` the range (`TestRangeEndpointNamingNoCommitIsUsage`,
+`TestCurrentIsJudgedTrimmed`; mutation rows
+`range-endpoint-naming-no-commit-is-gits-failure`,
+`check-range-judges-the-untrimmed-value`, `current-judged-untrimmed`). On a
+packages walk the line question comes first: a version-shaped tag on a line
+no `[[packages]]` entry declares is refused as that line whether or not the
+tag exists. Each
+`/`-separated segment is path-escaped: git accepts
 `#`, `%` and `)` in a tag name, where pasted verbatim `#` starts a fragment and
 `%41` decodes to another ref, and GitHub decodes an escaped segment once, back to
 the tag (measured 2026-10-05 on glyph-test, the REST endpoint and the page alike,
@@ -3298,7 +3362,20 @@ the hook installer's read, write, directory creation and chmod, doctor's reads
 of a hook, the workflows directory and the workflow and action files, and
 `release --footer-file`: each `*fs.PathError` goes out as it is, with what did
 not happen beside it, and the hooks directory is named as well only when its
-creation failed on an ancestor (`TestInitNamesAnUnwritablePathOnce`,
+creation failed on an ancestor. `--footer-file` is a path the caller typed to
+be READ, and is classified by `config.StatReadable`, `StatFile`'s twin over the
+same stat: a regular file, a named pipe or a character device is read — `<(…)`
+and a piped `/dev/stdin` name a pipe, and a pipe with no writer is the caller's
+own doing, not a state a repository reaches — while a directory, a socket, a
+broken link, and a path to nothing (missing, through a regular file, too long
+to exist, a loop: `config.PathsOwnFault`) are what was observed, the caller's
+input at 2; a stat or a read the filesystem refused is 4 (t-f5x9; measured at
+86eab14, a mode-000 footer answered 2; at 0c177a3, `ok.md/` and a 300-byte name
+answered 4 and `<(…)` was refused at 2 as a named pipe;
+`TestReleaseFooterFileIsClassifiedByWhatWasObserved`,
+`TestReleaseFooterFileReadsAPipe`, mutation rows
+`footer-file-read-refusal-is-usage`, `footer-file-path-to-nothing-is-the-no-answer-code`,
+`footer-file-pipe-refused`) (`TestInitNamesAnUnwritablePathOnce`,
 `TestInstallNamesARefusedPathOnce`, mutation rows
 `init-write-names-the-path-twice` and `hook-install-names-the-path-twice`; no
 test stages a refused chmod — on Linux, where the ledger runs, it takes a file

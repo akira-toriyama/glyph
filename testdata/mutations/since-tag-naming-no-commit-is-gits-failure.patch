@@ -1,0 +1,13 @@
+diff --git a/internal/walk/base.go b/internal/walk/base.go
+index af3ebf0..b762b56 100644
+--- a/internal/walk/base.go
++++ b/internal/walk/base.go
+@@ -348,7 +348,7 @@ func (w Walker) explicitBase(ctx context.Context, value string) (string, error)
+ 	if err != nil {
+ 		return "", err
+ 	}
+-	if !named.IsCommit() {
++	if false && !named.IsCommit() {
+ 		return "", refuseNoCommit("--since-tag", value, named)
+ 	}
+ 	ok, err := w.Git.IsTag(ctx, value)

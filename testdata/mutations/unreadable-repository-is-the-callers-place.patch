@@ -1,0 +1,25 @@
+diff --git a/internal/cli/config.go b/internal/cli/config.go
+index a637868..6efb96c 100644
+--- a/internal/cli/config.go
++++ b/internal/cli/config.go
+@@ -66,10 +66,7 @@ func noRepositoryUsage(ctx context.Context, err error) error {
+ 	if core.IsInterrupted(err) {
+ 		return err
+ 	}
+-	if _, gerr := gitsource.InsideGitDir(ctx, "."); errors.Is(gerr, gitsource.ErrNoRepository) {
+-		return noRepository()
+-	}
+-	return err
++	return noRepository()
+ }
+ 
+ // noRepository is the one wording of the refusal every command gives outside
+@@ -127,6 +124,8 @@ func loadConfig(ctx context.Context) (*config.Config, error) {
+ 		return nil, noRepository()
+ 	case errors.Is(err, errInsideGitDir):
+ 		return nil, core.Usagef("this directory is inside a git directory, which has no work tree — run glyph from the checkout's work tree, where its glyph.toml and its commits are")
++	case err != nil && !core.IsInterrupted(err):
++		return nil, noRepository()
+ 	case err != nil:
+ 		return nil, err
+ 	}

@@ -1280,3 +1280,59 @@ func TestMergeBase(t *testing.T) {
 		}
 	}
 }
+
+// TestResolveCommitResolvesThenPeels: resolveCommit is the walk's existence
+// question for a typed --since-tag and a --range endpoint (walk.explicitBase,
+// walk.Walker.CheckRange): any revision git resolves to a commit — a
+// lightweight tag, an annotated one, a branch, a full or an abbreviated sha,
+// a relative spelling, the `:/<text>` search — peels to that commit; a name
+// nothing carries, an option-shaped or range-shaped value, a negated
+// revision, a full sha the store does not hold and the empty string name
+// nothing, as answers; a tag on a tree or a blob names that object's kind.
+// The resolution and the peel are two steps: `:/fix^{commit}` resolves
+// nothing because the search swallows the suffix (measured, git 2.54), so
+// the one-step spelling refused `:/fix` as naming no commit where the walk
+// had always started from it. Outside a repository it fails as git/IO.
+func TestResolveCommitResolvesThenPeels(t *testing.T) {
+	dir := testutil.NewRepo(t)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "-a", "-m", "annotated", "curry/v0.1.0")
+	testutil.Git(t, dir, "akira-toriyama", "branch", "old-main")
+	sha := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
+	tree := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD^{tree}")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "on-a-tree", tree)
+	testutil.Git(t, dir, "akira-toriyama", "tag", "-a", "-m", "annotated", "annotated-on-a-tree", tree)
+	blob := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD:glyph.toml")
+	testutil.Git(t, dir, "akira-toriyama", "tag", "on-a-blob", blob)
+
+	for rev, want := range map[string]Named{
+		"v0.1.0":                      {Commit: sha},
+		"curry/v0.1.0":                {Commit: sha},
+		"old-main":                    {Commit: sha},
+		sha:                           {Commit: sha},
+		sha[:7]:                       {Commit: sha},
+		"HEAD~0":                      {Commit: sha},
+		":/begin":                     {Commit: sha},
+		"on-a-tree":                   {Kind: "tree"},
+		"annotated-on-a-tree":         {Kind: "tree"},
+		"on-a-blob":                   {Kind: "blob"},
+		"v0.0.0":                      {},
+		"nosuch":                      {},
+		"^v0.1.0":                     {},
+		"-x":                          {},
+		"a..b":                        {},
+		"v0.1.0 old-main":             {},
+		strings.Repeat("0", 39) + "1": {},
+		"":                            {},
+	} {
+		got, err := resolveCommit(context.Background(), dir, rev)
+		if err != nil || got != want {
+			t.Errorf("resolveCommit(%q) = %+v, %v; want %+v, nil", rev, got, err, want)
+		}
+	}
+
+	_, err := resolveCommit(context.Background(), t.TempDir(), "v0.1.0")
+	if ce := core.AsError(err); ce == nil || ce.Code != core.CodeAPI {
+		t.Fatalf("resolveCommit outside a repository = %v, want CodeAPI", err)
+	}
+}

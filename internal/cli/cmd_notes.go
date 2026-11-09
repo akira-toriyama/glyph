@@ -116,8 +116,13 @@ func notesLinkEnds(ctx context.Context, repoFlag string) (owner, repo, head stri
 // goreleaser.yml performs, where a heading would be noise), and with several
 // lines each body sits under a `# <path>` heading, the sections keeping
 // their `##` below it, in config order, lines with nothing to say omitted.
-// Exit 1 only when no line lands anything in a section.
+// Exit 1 only when no line lands anything in a section. The source's shape
+// is judged before glyph.toml is loaded, as bump judges its flags
+// (TestVerdictCommandsJudgeTheirFlagsBeforeTheConfig).
 func notesRun(ctx context.Context, o notesOptions) error {
+	if err := o.check(); err != nil {
+		return err
+	}
 	cfg, err := loadConfig(ctx)
 	if err != nil {
 		return err

@@ -1,9 +1,9 @@
 diff --git a/internal/draftplan/floor.go b/internal/draftplan/floor.go
-index b55774c..570a918 100644
+index 27d59d3..2f303fb 100644
 --- a/internal/draftplan/floor.go
 +++ b/internal/draftplan/floor.go
-@@ -13,7 +13,7 @@ import (
- // fails loud (4) instead of creating an unpublishable draft.
+@@ -15,7 +15,7 @@ import (
+ // draft.
  func CheckPublishedFloor(l config.Line, next bump.Version, releases []Draft) error {
  	floor, ok := highestPublished(l, releases)
 -	if !ok || next.Compare(floor) > 0 {

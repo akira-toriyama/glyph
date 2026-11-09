@@ -1,0 +1,18 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index cb2fb4f..de2d5c2 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -306,7 +306,12 @@ var objectID = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
+ // git/IO error it always was. The interrupt is asked first, as everywhere in
+ // this package (see isAncestor for why the order is the whole point).
+ func resolveCommit(ctx context.Context, dir, rev string) (Named, error) {
+-	out, found, err := runAnswer(ctx, dir, "rev-parse", "rev-parse", "--verify", "--quiet", "--end-of-options", rev)
++	out, found, err := runAnswer(ctx, dir, "rev-parse", "rev-parse", "--verify", "--quiet", "--end-of-options", rev+"^{commit}")
++	if err != nil || !found {
++		return Named{}, err
++	}
++	return Named{Commit: strings.TrimSpace(string(out))}, nil
++	out, found, err = runAnswer(ctx, dir, "rev-parse", "rev-parse", "--verify", "--quiet", "--end-of-options", rev)
+ 	if err != nil || !found {
+ 		return Named{}, err
+ 	}

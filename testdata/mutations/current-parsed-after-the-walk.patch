@@ -1,0 +1,28 @@
+diff --git a/internal/cli/cmd_bump.go b/internal/cli/cmd_bump.go
+index 7eebe15..2d14944 100644
+--- a/internal/cli/cmd_bump.go
++++ b/internal/cli/cmd_bump.go
+@@ -135,9 +135,6 @@ func bumpRun(ctx context.Context, o bumpOptions) error {
+ 	if err := o.check(); err != nil {
+ 		return err
+ 	}
+-	if _, err := parseCurrent(o.current); err != nil {
+-		return err
+-	}
+ 	cfg, err := loadConfig(ctx)
+ 	if err != nil {
+ 		return err
+diff --git a/internal/cli/cmd_release.go b/internal/cli/cmd_release.go
+index 6a23aab..8a7d636 100644
+--- a/internal/cli/cmd_release.go
++++ b/internal/cli/cmd_release.go
+@@ -190,9 +190,6 @@ func releaseRun(ctx context.Context, o releaseOptions) error {
+ 	if ferr != nil {
+ 		return ferr
+ 	}
+-	if _, err := parseCurrent(o.current); err != nil {
+-		return err
+-	}
+ 	owner, repoName, oerr := resolveRepo(ctx, o.repo)
+ 	if oerr != nil {
+ 		return oerr

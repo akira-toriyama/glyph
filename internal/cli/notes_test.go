@@ -410,14 +410,6 @@ func TestNotesRequiresRange(t *testing.T) {
 	}
 }
 
-// TestNotesOutsideRepoIsAPI: git failures classify as API (exit 4).
-func TestNotesOutsideRepoIsAPI(t *testing.T) {
-	t.Chdir(t.TempDir())
-	if code, _, stderr := runGlyph(t, "notes", "--range", "main..HEAD"); code != 4 {
-		t.Fatalf("notes outside a repo exited %d, want 4\nstderr: %s", code, stderr)
-	}
-}
-
 // TestNotesCreditsByIdentityNotShape (t-39fy): the author credit is a live
 // mention of the LOGIN GitHub established, never of git's free-text name.
 // Under --range the only identity git holds is a noreply address, and the

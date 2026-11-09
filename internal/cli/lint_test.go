@@ -866,15 +866,6 @@ func TestLintRangeJudgingNothingSaysSo(t *testing.T) {
 	})
 }
 
-// TestLintRangeOutsideRepo: git failures classify as API (exit 4), never as
-// lint or usage.
-func TestLintRangeOutsideRepo(t *testing.T) {
-	t.Chdir(t.TempDir())
-	if code, _, _ := runGlyph(t, "lint", "--range", "main..HEAD"); code != 4 {
-		t.Fatalf("lint --range outside a repo exited %d, want 4", code)
-	}
-}
-
 // TestLintRangeUsageGuards: an empty or option-shaped --range is caught as
 // usage (exit 2) before git ever runs.
 func TestLintRangeUsageGuards(t *testing.T) {

@@ -3,12 +3,14 @@ package walk
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/akira-toriyama/glyph/v6/internal/bump"
 	"github.com/akira-toriyama/glyph/v6/internal/config"
 	"github.com/akira-toriyama/glyph/v6/internal/core"
+	"github.com/akira-toriyama/glyph/v6/internal/gitsource"
 )
 
 // Auto is what a bare --since-tag parses to (the flag's NoOptDefVal):
@@ -28,14 +30,17 @@ const below = "below:"
 // CheckTag rejects a malformed --since-tag value before the walk runs —
 // caller input, so usage (2), as cli's checkRangeFlag answers --range: the
 // same mistake must not surface as a retryable-looking git failure (4). cli
-// calls it at the entrance, before the repository is resolved, and release
-// before its ref guard too; Since takes the value as accepted. The auto
-// sentinel is not a name and skips the checks.
+// calls it at each command's entrance, before glyph.toml is loaded and the
+// repository resolved, and release before its ref guard too; Since takes the
+// value as accepted. The auto sentinel is not a name and skips the checks.
+// Judged TRIMMED, as the resolvers read it: ` -x` reached git as `-x..HEAD`
+// at 4 while `-x` was refused here (t-3dfg).
 func CheckTag(tag string) error {
+	tag = strings.TrimSpace(tag)
 	if tag == Auto {
 		return nil
 	}
-	if rest, ok := strings.CutPrefix(strings.TrimSpace(tag), below); ok {
+	if rest, ok := strings.CutPrefix(tag, below); ok {
 		// The bound must NAME a version — a predecessor is found by comparing
 		// under it — and a release candidate names the release it is a
 		// candidate for (bump.ParseBaseTag, not ParseVersion: goreleaser
@@ -50,7 +55,7 @@ func CheckTag(tag string) error {
 		_, _, _, err := belowBound(rest)
 		return err
 	}
-	if strings.TrimSpace(tag) == "" {
+	if tag == "" {
 		// A workflow templating an unset variable produces exactly this; auto
 		// is spelled by OMITTING the value, never by an empty one.
 		return core.Usagef("--since-tag= names an empty tag — use a bare --since-tag for the highest v* tag HEAD contains, or name one with --since-tag=TAG")
@@ -60,6 +65,77 @@ func CheckTag(tag string) error {
 	}
 	if strings.Contains(tag, "..") {
 		return core.Usagef("--since-tag %q looks like a revision range — name the tag alone; the walk appends ..HEAD itself", tag)
+	}
+	if strings.HasPrefix(tag, "^") {
+		// rev-parse --verify accepts a negation and prints `^<sha>`, so a
+		// leading ^ passed the existence question and died in `git log` at 4
+		// as `^TAG..HEAD`.
+		return core.Usagef("--since-tag %q is not a single revision — a leading ^ excludes a commit; name the tag alone, the walk appends ..HEAD itself", tag)
+	}
+	return nil
+}
+
+// FetchDepthRemedy is the remedy for a revision this checkout does not hold:
+// the usual cause in CI is not a typo but a checkout that fetched no tags or
+// a truncated history, so every refusal that names a missing revision —
+// --since-tag's and --range's — ends with the same sentence.
+const FetchDepthRemedy = "in CI a shallow or tag-less checkout needs actions/checkout with fetch-depth: 0, which fetches the tags and their history"
+
+// refuseNoCommit is the one refusal for a typed revision that names no
+// commit this checkout holds, worded for the flag that carried it: what was
+// found when the value names an object of another kind (a tag on a tree or a
+// blob — `git tag` lists it, so a sentence sending the caller there would be
+// one `git tag` refutes), else where to look.
+func refuseNoCommit(flag, value string, named gitsource.Named) error {
+	if named.Kind != "" {
+		return core.Usagef("%s %q names a %s, not a commit — the walk starts at a commit, so name a tag that points at one (`git cat-file -t %s^{}` shows what a tag points at)", flag, value, named.Kind, value)
+	}
+	return core.Usagef("%s %q names no commit this checkout holds — `git tag` lists the tags and `git branch -a` the branches here; %s", flag, value, FetchDepthRemedy)
+}
+
+// rangeOperator is the git set-operator syntax a --range endpoint may carry
+// beside its name — a leading ^ (exclude), and the ^!, ^@, ^-<n> suffixes
+// (gitrevisions(7)) — which rev-parse --verify refuses as more than one
+// revision, while `git log` reads them.
+var rangeOperator = regexp.MustCompile(`\^(!|@|-[0-9]*)$`)
+
+// rangeEndpoints are the revisions a --range names, as the caller typed them:
+// both sides of its first `...` or `..` (an omitted side is HEAD, as git
+// reads it), or the whole value as one revision, the set operators aside. A
+// value holding anything else — two names with a space between — is one
+// endpoint that names nothing, which is what `git log` would have said of it.
+func rangeEndpoints(revRange string) []string {
+	ends := []string{revRange}
+	if left, right, ok := strings.Cut(revRange, "..."); ok {
+		ends = []string{left, right}
+	} else if left, right, ok := strings.Cut(revRange, ".."); ok {
+		ends = []string{left, right}
+	}
+	for i, end := range ends {
+		end = rangeOperator.ReplaceAllString(strings.TrimPrefix(end, "^"), "")
+		if end == "" {
+			end = "HEAD"
+		}
+		ends[i] = end
+	}
+	return ends
+}
+
+// CheckRange refuses a --range whose endpoint names no commit this checkout
+// holds as the caller's input (usage, 2), before `git log` reads it: handed
+// to git, `nosuch..HEAD` died at 4 — "bad revision", the code that says a
+// retry can help, for a flag no retry fixes — the --range twin of
+// explicitBase's refusal, with the same remedy. The value arrives trimmed:
+// cli trims it once at its one --range read (logRange).
+func (w Walker) CheckRange(ctx context.Context, revRange string) error {
+	for _, end := range rangeEndpoints(revRange) {
+		named, err := w.Git.Resolve(ctx, end)
+		if err != nil {
+			return err
+		}
+		if !named.IsCommit() {
+			return refuseNoCommit("--range", end, named)
+		}
 	}
 	return nil
 }
@@ -75,7 +151,7 @@ func CheckTag(tag string) error {
 // when it is not a version (nil: the bump falls back to the highest v* tag
 // HEAD contains). baseTag is the range's left side when it is a tag, in its
 // own spelling (Line.BaseTag): the resolved forms' answer, a typed value only
-// when it is a tag (tagBase), "" on the whole-history arm.
+// when it is a tag (explicitBase), "" on the whole-history arm.
 func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag string) (revRange, baseTag string, base *bump.Version, err error) {
 	tag := strings.TrimSpace(tagFlag)
 	if tag == Auto {
@@ -113,7 +189,7 @@ func (w Walker) sinceTagRange(ctx context.Context, cfg *config.Config, tagFlag s
 		}
 		return prev + "..HEAD", prev, &v, nil
 	}
-	baseTag, err = w.tagBase(ctx, tag)
+	baseTag, err = w.explicitBase(ctx, tag)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -252,12 +328,27 @@ func (w Walker) releasesHEADHolds(ctx context.Context) ([]string, error) {
 	return w.Git.MergedTags(ctx, "HEAD")
 }
 
-// tagBase is the compare link's base for a --since-tag value typed by the
-// caller: the value when refs/tags/<value> exists, else "" — a branch, a
-// remote-tracking name or a sha is resolved by GitHub against ITS refs, not
-// the checkout's (DESIGN §4, "The compare link"). The resolved forms read
-// their answer out of the tag listing and need no asking.
-func (w Walker) tagBase(ctx context.Context, value string) (string, error) {
+// explicitBase is the one read of a --since-tag value typed by the caller,
+// shared by the single line and the packages arm. It refuses a value that
+// names no commit this checkout holds as the caller's input (usage, 2;
+// refuseNoCommit): a walk from it would die in `git log` at 4 — "bad
+// revision", the code that says a retry can help, for a flag no retry fixes
+// (t-tat8, measured at 2f9428a: `bump --since-tag=v0.0.0` with no such tag).
+// The value is resolved as git resolves it and then peeled (gitsource's
+// Resolve), so every spelling `git log` starts from — `:/<text>` included —
+// starts the walk, and a tag on a tree or a blob is refused by what it names.
+// Then the compare link's base: the value when refs/tags/<value> exists, else
+// "" — a branch, a remote-tracking name or a sha is resolved by GitHub
+// against ITS refs, not the checkout's (DESIGN §4, "The compare link"). The
+// resolved forms read their answer out of the tag listing and need no asking.
+func (w Walker) explicitBase(ctx context.Context, value string) (string, error) {
+	named, err := w.Git.Resolve(ctx, value)
+	if err != nil {
+		return "", err
+	}
+	if !named.IsCommit() {
+		return "", refuseNoCommit("--since-tag", value, named)
+	}
 	ok, err := w.Git.IsTag(ctx, value)
 	if err != nil || !ok {
 		return "", err

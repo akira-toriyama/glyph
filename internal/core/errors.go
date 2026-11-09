@@ -35,7 +35,7 @@ const (
 	// range glyph could not read — or could only read at a cost nobody named —
 	// is worse than no verdict at all. `draftplan.CheckPublishedFloor` returns
 	// it for a draft that could never be published (its version is not above
-	// the latest published release), and `bodylimit.go: checkReleaseBody` for
+	// the highest published release), and `bodylimit.go: checkReleaseBody` for
 	// a release body over GitHub's cap, refused before anything is written
 	// rather than shipped truncated. A release run started from a ref that is
 	// not the repository's default branch (`releaseref.go: checkReleaseRef`)

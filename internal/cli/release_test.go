@@ -9,8 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/akira-toriyama/glyph/v6/internal/core"
@@ -693,6 +695,45 @@ func TestReleaseFooterFile(t *testing.T) {
 	}
 	if !strings.Contains(stdout[:i], "fix a crash") {
 		t.Errorf("the notes must precede the separator:\n%s", stdout)
+	}
+}
+
+// TestReleaseFooterFileReadsAPipe: --footer-file is a path the caller typed
+// to be READ, so a named pipe with a writer behind it — what `<(…)` and a
+// piped /dev/stdin name — is read as a regular file is (config.StatReadable).
+// Both idioms worked before the stat was asked and were refused at 2 as "a
+// named pipe, not a regular file" at 0c177a3, where glyph.toml's classifier
+// was reused unchanged; a pipe named glyph.toml is sabotage, a pipe named as
+// a footer is a shell feature.
+func TestReleaseFooterFileReadsAPipe(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no mkfifo on Windows")
+	}
+	fifo := filepath.Join(t.TempDir(), "install.md")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatalf("staging the pipe: %v", err)
+	}
+	// open(2) for writing blocks until glyph opens the pipe to read it; a
+	// run that never opens it fails on the exit code below, and the writer is
+	// abandoned with the test process.
+	go func() {
+		w, err := os.OpenFile(fifo, os.O_WRONLY, 0)
+		if err != nil {
+			return
+		}
+		_, _ = w.WriteString("## Install\n\n`brew install x`\n")
+		_ = w.Close()
+	}()
+	walk := oneFixWalk(t)
+	usePR(t, dryServer(t, walk))
+
+	code, stdout, stderr := runGlyph(t, "release", "--dry-run", "--footer-file", fifo)
+	if code != 0 {
+		t.Fatalf("release --footer-file <pipe> exited %d, want 0 — a pipe with a writer is readable\nstderr: %s", code, stderr)
+	}
+	i := strings.Index(stdout, "\n---\n")
+	if i < 0 || !strings.Contains(stdout[i:], "`brew install x`") {
+		t.Errorf("the pipe's content is not appended after the separator:\n%s", stdout)
 	}
 }
 

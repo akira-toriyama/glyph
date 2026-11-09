@@ -1,0 +1,17 @@
+diff --git a/internal/walk/base.go b/internal/walk/base.go
+index af3ebf0..6a8ab6b 100644
+--- a/internal/walk/base.go
++++ b/internal/walk/base.go
+@@ -66,12 +66,6 @@ func CheckTag(tag string) error {
+ 	if strings.Contains(tag, "..") {
+ 		return core.Usagef("--since-tag %q looks like a revision range — name the tag alone; the walk appends ..HEAD itself", tag)
+ 	}
+-	if strings.HasPrefix(tag, "^") {
+-		// rev-parse --verify accepts a negation and prints `^<sha>`, so a
+-		// leading ^ passed the existence question and died in `git log` at 4
+-		// as `^TAG..HEAD`.
+-		return core.Usagef("--since-tag %q is not a single revision — a leading ^ excludes a commit; name the tag alone, the walk appends ..HEAD itself", tag)
+-	}
+ 	return nil
+ }
+ 

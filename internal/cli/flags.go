@@ -68,36 +68,47 @@ func checkNamingFlags(cmd *cobra.Command, flags [][3]string) error {
 	return nil
 }
 
-// The same Changed-versus-VALUE split, one flag kind over: a BOOLEAN group.
+// The same Changed-versus-VALUE split, one flag kind over: a group with a
+// BOOLEAN member.
 //
 // cobra's MarkFlagsMutuallyExclusive groups on Changed, so it reads
 // `hook install --print=false --force` as both flags being set and refuses the
 // invocation, saying they "were all set" — a false statement, in the
 // machine-readable envelope other repositories parse, about an invocation that
-// asks to install rather than print and to force the install.
+// asks to install rather than print and to force the install. `lint
+// --stdin=false --message=…` was refused the same way (t-0b93).
 //
 // Both guards therefore ask what the flags ARE, not whether they were mentioned.
 
-// turnedOn returns the members of a boolean group the caller actually set to
-// true. A flag given =false is not selecting anything and is not a conflict.
-func turnedOn(cmd *cobra.Command, names ...string) []string {
+// selecting returns the members of a group that actually select something:
+// a boolean member the caller set to true, and a valued member the caller
+// gave at all (a value names what it selects; its emptiness is
+// checkGivenEmpty's question). A boolean given =false is not selecting
+// anything and is not a conflict.
+func selecting(cmd *cobra.Command, names ...string) []string {
 	var on []string
 	for _, n := range names {
 		f := cmd.Flags().Lookup(n)
 		if f == nil {
-			panic("turnedOn: " + cmd.Name() + " has no --" + n + " flag")
+			panic("selecting: " + cmd.Name() + " has no --" + n + " flag")
 		}
-		if f.Value.String() == "true" {
+		if f.Value.Type() == "bool" {
+			if f.Value.String() == "true" {
+				on = append(on, "--"+n)
+			}
+			continue
+		}
+		if f.Changed {
 			on = append(on, "--"+n)
 		}
 	}
 	return on
 }
 
-// checkExclusiveBool rejects a boolean group with more than one member turned
-// ON, and names the ones that are rather than the ones that were mentioned.
-func checkExclusiveBool(cmd *cobra.Command, names ...string) error {
-	if on := turnedOn(cmd, names...); len(on) > 1 {
+// checkExclusive rejects a group with more than one member selecting, and
+// names the ones that do rather than the ones that were mentioned.
+func checkExclusive(cmd *cobra.Command, names ...string) error {
+	if on := selecting(cmd, names...); len(on) > 1 {
 		return core.Usagef("%s cannot be combined — they select different behaviour", strings.Join(on, " and "))
 	}
 	return nil
