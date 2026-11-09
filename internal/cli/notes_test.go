@@ -392,7 +392,7 @@ func TestNotesCreditsByIdentityNotShape(t *testing.T) {
 // dropped, git credits her). `git commit -m` records every message with that
 // newline, which is why the fixture needs no verbatim commit. git's own
 // answer is read beside glyph's, so the row cannot pin what git does not
-// give (notes verification V2, 2026-11-08; mutation row
+// give (measured 2026-11-08, git 2.54.0 and 2.56.0; mutation row
 // trailer-block-read-off-the-trimmed-message).
 func TestNotesRangeReadsAFinalConflictsLineAsGitDoes(t *testing.T) {
 	dir, base := testutil.NewTaggedRepo(t)

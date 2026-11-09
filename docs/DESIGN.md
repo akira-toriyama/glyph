@@ -1026,9 +1026,8 @@ compares every shape under any git it runs on except those holding a
 counts and names in its output (never dropped silently; `TestTrailers`' URL
 rows pin them under older git, standing on the table alone and saying so).
 Across the local fleet clones the two gits' `%(trailers:key=Co-authored-by)`
-answers are identical on all 33,640 commits (measured in verification,
-2026-11-08), so the version decides the gate and the oracle, not a credit the
-fleet has seen. **The oracle is the commit reader, not `git
+answers are identical on all 33,640 commits (measured 2026-11-08), so the
+version decides the gate and the oracle, not a credit the fleet has seen. **The oracle is the commit reader, not `git
 interpret-trailers --parse`.** The two share every rule but
 one: interpret-trailers reads a message being written or a patch mail, where
 a `---` line starts the diff, so it discards everything from the first `---`
@@ -1042,7 +1041,7 @@ inside a body paragraph), furrow e29a824, ec3342e and 05e9ba7 (the old
 `--- (和訳)` separator) and AzooKeyKanaKanjiConverter 55ffe3c (a CRLF
 dependabot squash whose YAML `---\r` sits above GitHub's `---------`), the
 only five co-author differences across 127,696 real commits in 17
-repositories (measured in review, 2026-11-08; each credited again by
+repositories (measured 2026-11-08; each credited again by
 `TestTrailers` and by the fix's end-to-end run). The message starts where
 the reader starts it — leading blank lines skipped — and ends where the
 reader ends it: above the scissors line
@@ -1061,15 +1060,21 @@ trailer, and the newline-stripped text cannot say which the commit carries.
 Read off the stripped text, a bare final `Conflicts:` line lifted a 2-of-9
 Signed-off-by block over the 25% line (Trent credited, `%(trailers)` credits
 nobody) and closed the message as a one-line block (Peggy dropped,
-`%(trailers)` credits her) — notes verification V2, 2026-11-08. The API arm
-cannot carry the newline: GitHub's `commit.message` never has it (§2.1) and
-no field says whether the object does, so a commit git recorded with a final
-bare `Conflicts:` line reads as the ignored list from `--range` and as the
-empty trailer `Conflicts` from `--pr` / `--since-tag` — the one shape where
-the arm decides, stated here rather than plumbed as a bit the API does not
-have. Its reach: 0 of 33,928 fleet commits carry a `Conflicts:` line at all
-(measured in verification, 2026-11-08; 14,082 of them, GitHub's squash and
-merge commits, are recorded without a closing newline and 19,846 with one).
+`%(trailers)` credits her; measured 2026-11-08, git 2.54.0 and 2.56.0). The
+API arm cannot carry the newline: GitHub's `commit.message` never has it
+(§2.1) and no field says whether the object does. So a commit git recorded
+with a final bare `Conflicts:` line reads as the ignored list wherever glyph
+reads the commit off git — every commit under `--range`, and every commit the
+`--since-tag` walk takes off the released branch rather than out of a pull's
+listing: a direct push and a commit GitHub has not indexed yet (the fallback
+arm) and an `exclude_authors` author's commit — and as the empty trailer
+`Conflicts` wherever it reads the commit off the API: every commit of
+`--pr`, and every commit of a pull the `--since-tag` walk expands (measured
+2026-11-08, git 2.54.0 and 2.56.0). That is the one shape where the arm
+decides, stated here rather than plumbed as a bit the API does not have. Its
+reach: 0 of 33,928 fleet commits carry a `Conflicts:` line at all (measured
+2026-11-08; 14,082 of them, GitHub's squash and merge commits, are recorded
+without a closing newline and 19,846 with one).
 The token is one run of ASCII letters, digits and hyphens, optional blanks,
 then the colon: `Fix#1:` and `Révisé:` are prose, `Why :` is the token `Why`,
 `Why ://x` too (a blank before the colon disarms the URL rule), and
@@ -1092,7 +1097,7 @@ co-author credit with it. GitHub's own co-author rule is unpublished and
 wider than git's: on glyph-test-2 it credited every shape git 2.56.0's
 reader credits and four more — below a scissors line, under a Conflicts tail
 that tips the 25% line, a prose-plus-trailer block with no sign-off, and
-beside a bare URL line (11 shapes probed in review, 2026-11-08). glyph
+beside a bare URL line (11 shapes probed 2026-11-08). glyph
 follows git, so where the two differ glyph credits fewer, never a person
 GitHub does not. (Mutation rows
 `notes-coauthor-is-grepped-not-parsed.patch`,

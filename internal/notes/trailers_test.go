@@ -200,6 +200,11 @@ func TestTrailers(t *testing.T) {
 			want: []trailer{{"Why", "//x"}, {"Co-authored-by", "A B <a@b.c>"}},
 		},
 		{
+			name: "the URL rule wants two slashes: `Path:/usr/local/bin` is the token Path, under every git",
+			msg:  "subject\n\nbody\n\nPath:/usr/local/bin\nCo-authored-by: A B <a@b.c>",
+			want: []trailer{{"Path", "/usr/local/bin"}, {"Co-authored-by", "A B <a@b.c>"}},
+		},
+		{
 			name: "a URL after the separator is a value, under every git",
 			msg:  "subject\n\nbody\n\nRef: https://github.com/o/r/issues/1\nCo-authored-by: A B <a@b.c>",
 			want: []trailer{{"Ref", "https://github.com/o/r/issues/1"}, {"Co-authored-by", "A B <a@b.c>"}},
@@ -300,6 +305,11 @@ func TestTrailers(t *testing.T) {
 			want: []trailer{{"Signed-off-by", "A <a@b.c>"}, {"see", "https://x"}, {"Co-authored-by", "Eve <e@x.y>"}},
 		},
 		{
+			name: "a URL line is prose inside a Signed-off-by block too: the parse drops it and keeps the trailers around it — git 2.54 and 2.55 read the trailer `https`",
+			msg:  "subj\n\nbody\n\nSigned-off-by: A <a@b.c>\nhttps://x\nCo-authored-by: Eve <e@x.y>",
+			want: []trailer{{"Signed-off-by", "A <a@b.c>"}, {"Co-authored-by", "Eve <e@x.y>"}},
+		},
+		{
 			name: "a BREAKING CHANGE footer is prose, and a Signed-off-by beside it keeps the block",
 			msg:  "subj\n\nbody\n\nBREAKING CHANGE: the old flag is gone\nSigned-off-by: P <p@x.y>\nCo-authored-by: Victor <v@x.y>\n",
 			want: []trailer{{"Signed-off-by", "P <p@x.y>"}, {"Co-authored-by", "Victor <v@x.y>"}},
@@ -334,11 +344,18 @@ func TestTrailers(t *testing.T) {
 	version, oracleReadsURLs := gitReadsURLRule(t)
 
 	urlRows := 0
+	for _, tc := range tests {
+		if urlRuleLine(tc.msg) {
+			urlRows++
+		}
+	}
+	if !oracleReadsURLs && urlRows == 0 {
+		t.Fatalf("git %s predates the URL rule and no row holds a token:// line — the rule has no positive control under this git", version)
+	}
 	for i, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			switch {
 			case urlRuleLine(tc.msg) && !oracleReadsURLs:
-				urlRows++
 				t.Logf("pinned by the table alone: git %s reads %+v, and the row carries git %s's answer (d122e37976, the URL rule)", version, oracle[i], oracleGitVersion)
 			case !sameTrailers(tc.want, oracle[i]):
 				t.Fatalf("the row pins %+v, and git's commit reader reads %+v — the table is the measurement, so the row is wrong, not git", tc.want, oracle[i])
@@ -348,9 +365,6 @@ func TestTrailers(t *testing.T) {
 				t.Fatalf("trailers() = %+v, want %+v", got, tc.want)
 			}
 		})
-	}
-	if !oracleReadsURLs && urlRows == 0 {
-		t.Fatalf("git %s predates the URL rule and no row holds a token:// line — the rule has no positive control under this git", version)
 	}
 }
 

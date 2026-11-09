@@ -418,7 +418,7 @@ name  = "why"   # the $placeholder note.line writes
 
 A declared trailer renders as fenced prose, like any other text a commit
 author typed, and an absent one resolves empty so the `$[ … ]` span carrying
-it drops. What a trailer block IS is what git's own commit reader reads
+it drops. What a trailer block IS is what git 2.56.0's commit reader reads
 (`git log --format=%(trailers)`, with git's defaults — a repository's
 `trailer.*` config is not read): the last paragraph of the message, above
 whatever git ignores at its end (trailing comment lines, an old-style
