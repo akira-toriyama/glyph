@@ -102,8 +102,12 @@ func assertParsedTrailerDemand(t *testing.T, name, script, key string) {
 // rule. The gates read a landed commit's trailers as git's commit reader does
 // (DESIGN §3); read through `git interpret-trailers`, which stops at that line,
 // the reason was refused as missing at exit 1 (measured 2026-11-09 under git
-// 2.54.0 and 2.56.0; t-41wn). The body-paragraph rows are the control that the
-// reader is still a trailer reader: a `<Key>:` line with prose around it states
+// 2.54.0 and 2.56.0; t-41wn). The rows with the reason in a paragraph a `---`
+// line follows are the mirror: git's reader takes the block closing the
+// message, which holds no trailer there, so both gates refuse the reason at
+// exit 1 where interpret-trailers took it at exit 0 — a gate that reads both
+// blocks passes them. The body-paragraph rows are the control that the reader
+// is still a trailer reader: a `<Key>:` line with prose around it states
 // nothing.
 func TestRangeGatesReadATrailerBelowADivider(t *testing.T) {
 	sh := requireTool(t, "sh")
@@ -132,6 +136,16 @@ func TestRangeGatesReadATrailerBelowADivider(t *testing.T) {
 			{
 				name:    "below a --- line",
 				message: ":white_check_mark:= pin a decision\n\nwhy\n\n---\n\nmore prose\n\n" + g.key + ": message-only pin\n",
+			},
+			{
+				name:    "above a --- line with prose below",
+				message: ":white_check_mark:= pin a decision\n\nwhy\n\n" + g.key + ": message-only pin\n\n---\n\nmore prose\n",
+				exit:    1,
+			},
+			{
+				name:    "above a --- line closing the message",
+				message: ":white_check_mark:= pin a decision\n\nwhy\n\n" + g.key + ": message-only pin\n---\n",
+				exit:    1,
 			},
 			{
 				name:    "inside a body paragraph",
