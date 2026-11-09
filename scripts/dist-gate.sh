@@ -39,8 +39,8 @@
 # rename, a binary — each of those is judged like any other change.
 #
 # Escape hatch, go-bite's exact shape: a `Dist-gate-exempt: <reason>` git
-# trailer on EVERY non-merge commit in the range — a real trailer, parsed by
-# `git interpret-trailers`, so a line sitting inside a body paragraph waives
+# trailer on EVERY non-merge commit in the range — a real trailer, read by
+# git's commit reader, so a line sitting inside a body paragraph waives
 # nothing. Use it for the change no text assertion can express (a pure comment
 # reword, say), and state that as the reason.
 #

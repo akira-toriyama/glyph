@@ -72,8 +72,8 @@ func TestDistGateGuardsTheDistributionLayer(t *testing.T) {
 
 // assertParsedTrailerDemand holds a range gate to the trailer rule both gates
 // share through scripts/lib/range-gate.sh: the gate sources the library and
-// demands its own key from it, and the library reads that key out of `git
-// interpret-trailers --parse` rather than out of the raw message.
+// demands its own key from it, and the library reads that key out of git's
+// commit reader rather than out of the raw message.
 func assertParsedTrailerDemand(t *testing.T, name, script, key string) {
 	t.Helper()
 	body := code(script)
@@ -87,10 +87,74 @@ func assertParsedTrailerDemand(t *testing.T, name, script, key string) {
 		}
 	}
 	lib := code(repoFile(t, filepath.Join("scripts", "lib", "range-gate.sh")))
-	for _, want := range []string{"git interpret-trailers --parse", `grep "^$1:"`} {
+	for _, want := range []string{`git show -s --format='%(trailers:only,unfold)' "$commit"`, `grep "^$1:"`} {
 		if !strings.Contains(lib, want) {
-			t.Errorf("scripts/lib/range-gate.sh no longer contains %q; the trailer rule has "+
-				"degraded into a substring match a body paragraph can satisfy", want)
+			t.Errorf("scripts/lib/range-gate.sh no longer contains %q; the trailer rule no longer "+
+				"reads the key out of the trailer block git's commit reader reads — a substring match "+
+				"lets a body paragraph satisfy it, and `git interpret-trailers` misses a trailer "+
+				"below a `---` line", want)
+		}
+	}
+}
+
+// TestRangeGatesReadATrailerBelowADivider runs both gates over a fixture
+// repository with the commit's reason written below a `---` line, a markdown
+// rule. The gates read a landed commit's trailers as git's commit reader does
+// (DESIGN §3); read through `git interpret-trailers`, which stops at that line,
+// the reason was refused as missing at exit 1 (measured 2026-11-09 under git
+// 2.54.0 and 2.56.0; t-41wn). The body-paragraph rows are the control that the
+// reader is still a trailer reader: a `<Key>:` line with prose around it states
+// nothing.
+func TestRangeGatesReadATrailerBelowADivider(t *testing.T) {
+	sh := requireTool(t, "sh")
+
+	const (
+		golden = "internal/cli/testdata/out.golden.md"
+		gated  = ".github/workflows/release.yml"
+	)
+	dir, git, base, env := newDistGateRepo(t, map[string]string{
+		"scripts/golden-gate.sh": repoFile(t, "scripts/golden-gate.sh"),
+		golden:                   "golden v1\n",
+		gated:                    "name: release\n",
+	})
+
+	for _, g := range []struct {
+		script, key, path, content string
+		pass                       string // on stdout when the gate takes the trailer
+	}{
+		{"golden-gate.sh", "Golden-change", golden, "golden v2\n", "states its Golden-change reason"},
+		{"dist-gate.sh", "Dist-gate-exempt", gated, "name: release\n# edited\n", "waived by a Dist-gate-exempt trailer on every commit — message-only pin"},
+	} {
+		for _, tc := range []struct {
+			name, message string
+			exit          int
+		}{
+			{
+				name:    "below a --- line",
+				message: ":white_check_mark:= pin a decision\n\nwhy\n\n---\n\nmore prose\n\n" + g.key + ": message-only pin\n",
+			},
+			{
+				name:    "inside a body paragraph",
+				message: ":white_check_mark:= pin a decision\n\nwhy\n" + g.key + ": message-only pin\nmore prose\n",
+				exit:    1,
+			},
+		} {
+			t.Run(g.script+"/"+tc.name, func(t *testing.T) {
+				git("checkout", "-q", "--detach", base)
+				testutil.WriteFile(t, dir, g.path, g.content)
+				git("commit", "-q", "-a", "-m", tc.message)
+				run := execute(t, []string{sh, filepath.Join(dir, "scripts", g.script), base}, dir, env)
+				if run.exit != tc.exit {
+					t.Fatalf("%s exited %d, want %d\n%s", g.script, run.exit, tc.exit, run)
+				}
+				stream, carries := run.stdout, g.pass
+				if tc.exit != 0 {
+					stream, carries = run.stderr, "::error::"+strings.TrimSuffix(g.script, ".sh")
+				}
+				if !strings.Contains(stream, carries) {
+					t.Errorf("%s's verdict does not carry %q\n%s", g.script, carries, run)
+				}
+			})
 		}
 	}
 }
