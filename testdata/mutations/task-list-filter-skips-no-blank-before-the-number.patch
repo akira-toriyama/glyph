@@ -1,0 +1,13 @@
+diff --git a/internal/markdown/escape.go b/internal/markdown/escape.go
+index 552725f..f9a29ce 100644
+--- a/internal/markdown/escape.go
++++ b/internal/markdown/escape.go
+@@ -420,7 +420,7 @@ func taskItemAt(s string, i int) (at, closer int) {
+ 	switch k := literal(s, j); {
+ 	case k < len(s) && (s[k] == '-' || s[k] == '+' || s[k] == '*'):
+ 		j = k + 1
+-	case k < len(s) && isDigit(s[k]):
++	case k < len(s) && isDigit(s[k]) && k == literal(s, i):
+ 		for k < len(s) && isDigit(s[k]) {
+ 			k++
+ 		}

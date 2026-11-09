@@ -1,0 +1,13 @@
+diff --git a/internal/markdown/escape.go b/internal/markdown/escape.go
+index ab1f949..6cb1805 100644
+--- a/internal/markdown/escape.go
++++ b/internal/markdown/escape.go
+@@ -428,7 +428,7 @@ func escapeProseLine(s string, inSpan []bool, prose func(lo, hi int) bool) (stri
+ 	var b strings.Builder
+ 	b.Grow(len(s))
+ 	pos := make([]int, len(s)+1)
+-	opens := blockOpeners(s, prose)
++	opens := map[int]bool{}
+ 	esc := func(lo, hi, at int) {
+ 		if prose(lo, hi) {
+ 			b.WriteByte('\\')

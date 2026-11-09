@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -115,13 +116,8 @@ func TestFlatten(t *testing.T) {
 // lives here — it is the shape in which the single-string invariants below are
 // stateable, and nothing ships it.
 func escapeMarkup(s string) string {
-	inSpan := make([]bool, len(s))
-	for _, sp := range codeSpans(s) {
-		for i := sp[0]; i < sp[1] && i < len(s); i++ {
-			inSpan[i] = true
-		}
-	}
-	out, _ := escapeProseLine(s, inSpan, func(lo, hi int) bool { return true })
+	prose := func(lo, hi int) bool { return true }
+	out, _ := escapeProseLine(s, spansBehindOpeners(s, prose), prose)
 	return out
 }
 
@@ -167,6 +163,49 @@ func TestEscapeMarkup(t *testing.T) {
 		{"an unknown name is escaped too (shape, not name)", "see &notareal; here", `see \&notareal; here`},
 		{"a bare ampersand is not a reference", "A & B", "A & B"},
 		{"an unterminated reference is not one", "A &amp B", "A &amp B"},
+		// Nor is the width tested. GitHub decodes a numeric reference of up to eight
+		// digits in either radix and leaves nine as its own text (POST /markdown,
+		// 2026-11-04: "&#00000064;octocat", "&#x00000040;octocat" and
+		// "&#X00000040;octocat" render a live @octocat; "&#000000064;octocat" and
+		// "&#x000000040;octocat" render no mention). The escape owes nothing to that
+		// limit: a reference of any width is escaped, and the ones GitHub would not
+		// have decoded render the same with the backslash as without it.
+		{"an 8-digit decimal reference", "cc &#00000064;octocat", `cc \&#00000064;octocat`},
+		{"an 8-digit hex reference", "cc &#x00000040;octocat", `cc \&#x00000040;octocat`},
+		{"an 8-digit hex reference, capital X", "cc &#X00000040;octocat", `cc \&#X00000040;octocat`},
+		{"a 9-digit decimal reference GitHub leaves alone", "cc &#000000064;octocat", `cc \&#000000064;octocat`},
+		{"a 9-digit hex reference GitHub leaves alone", "cc &#x000000040;octocat", `cc \&#x000000040;octocat`},
+		{"the longest name GitHub knows", "x &CounterClockwiseContourIntegral; y", `x \&CounterClockwiseContourIntegral; y`},
+		{"a name longer than any GitHub knows", "x &" + strings.Repeat("a", 56) + "; y", `x \&` + strings.Repeat("a", 56) + "; y"},
+
+		// A block opener at a block start (rule 5). This table holds the rule's
+		// single-string invariants; TestProseAtABlockStartOpensNoBlock its shapes.
+		{"a heading", "## x", `\## x`},
+		{"a block quote", "> x", `\> x`},
+		{"a list marker", "- x", `\- x`},
+		{"an ordered list marker takes the backslash on its terminator", "1. x", `1\. x`},
+		{"a backtick fence", "``` x", "\\``` x"},
+		{"a tilde fence", "~~~ x", `\~~~ x`},
+		{"a thematic break", "---", `\---`},
+		{"an indent is walked past, and only a Line drops it", "    ## x", `    \## x`},
+		{"each line of the string starts blocks of its own", "a\r\r# b\n> c", "a\r\r\\# b\n\\> c"},
+		{"an opener is not one mid-line", "a ## b - c > d 1. e", "a ## b - c > d 1. e"},
+		{"an authored escape already disarms it", `\## x`, `\## x`},
+		// A table delimiter row makes the line above a header; its shape is read
+		// bluntly, a dash among dashes, colons, pipes and blanks (a VT or FF too).
+		{"a delimiter row under a line", "a\n---:", "a\n\\---:"},
+		{"a delimiter row opening on a colon", "a\n:-", "a\n\\:-"},
+		{"a delimiter row opening on a pipe", "a\n|---", "a\n\\|---"},
+		{"a delimiter row ending in a form feed", "a\n---\f", "a\n\\---\f"},
+		{"a delimiter row opening on a form feed", "a\n\f:-", "a\n\f\\:-"},
+		{"a delimiter row needs a dash", "a\n:|", "a\n:|"},
+		{"a credit behind a delimiter row disarms it", "a\n---: x", "a\n---: x"},
+		// Rule 5 owns these two shapes too, for the span crossing a line ending that
+		// rules 1 and 3 do not reach (TestBlockOpenerOwnership); on one string the
+		// bytes are the same.
+		{"an HTML block opener", "<div> x", `\<div> x`},
+		{"a footnote definition", "[^1]: x", `\[^1]: x`},
+		{"a task-list marker needs an item, and one string has none", "[ ] x", `\[ ] x`},
 
 		// What must survive. This is the approved policy.
 		{"a code span passes through byte-for-byte", "handle `nil` table", "handle `nil` table"},
@@ -206,9 +245,11 @@ func TestEscapeMarkup(t *testing.T) {
 // argument that ONE pass suffices. escapeMarkup skips the code spans of its
 // INPUT, so if escaping could move the span map, the map it skipped by would be
 // the wrong one and a construct could survive inside a span that no longer
-// exists. It cannot: every inserted byte is a backslash placed in front of a
-// '<', '[', ':', '.' or '&' — never in front of a backtick — so backtick runs
-// keep their lengths and their order.
+// exists. On one line it cannot: every inserted byte is a backslash placed in
+// front of a '<', '[', ':', '.', '&' or a block opener, and the one opener that
+// is a backtick is a fence's run with no backtick behind it on the line, which
+// pairs with nothing either way (escape.go, WHY ONE PASS IS ENOUGH;
+// spansBehindOpeners has the one shape that needs more lines to differ).
 func TestEscapeMarkupLeavesTheCodeSpanMapAlone(t *testing.T) {
 	for _, in := range []string{
 		"fix <http://a/`x> so @octocat can `see` it",
@@ -219,6 +260,17 @@ func TestEscapeMarkupLeavesTheCodeSpanMapAlone(t *testing.T) {
 		"see [a](b`c) @octocat `d` end",
 		"http://a/`x and `y` and www.b/`z",
 		`\<a> ` + "`b` <c>",
+		"``` no partner",
+		"```` no partner",
+		"```a``` b",
+		"``` a ` b",
+		"``` a ``` b `c`",
+		"## a `b`",
+		"1. a `b`",
+		"> a `b`",
+		"<div> a `b`",
+		"[^1]: a `b`",
+		"a\n---:\n`b`",
 	} {
 		t.Run(in, func(t *testing.T) {
 			before, after := codeSpans(in), codeSpans(escapeMarkup(in))
@@ -265,6 +317,16 @@ func FuzzEscapeMarkupNeutralizes(f *testing.F) {
 		"<",
 		`\`,
 		"&#;",
+		"cc &#x00000040;octocat",
+		"## x",
+		"1. x",
+		"``` x",
+		"    x",
+		"---",
+		"a\r\r# b",
+		"a\n---:",
+		"</details> x",
+		"[^1]: x",
 	} {
 		f.Add(s)
 	}
@@ -285,7 +347,7 @@ func FuzzEscapeMarkupNeutralizes(f *testing.F) {
 				if !oddBackslashRunBefore(out, i) {
 					t.Fatalf("escapeMarkup(%q) = %q left %q live at %d", s, out, out[i], i)
 				}
-			case out[i] == '&' && entityAt(out, i):
+			case out[i] == '&' && entityShape.MatchString(out[i:]):
 				if !oddBackslashRunBefore(out, i) {
 					t.Fatalf("escapeMarkup(%q) = %q left an entity live at %d", s, out, i)
 				}
@@ -298,6 +360,13 @@ func FuzzEscapeMarkupNeutralizes(f *testing.F) {
 		}
 	})
 }
+
+// entityShape is the reference shape the fuzz oracles judge with, anchored at the
+// ampersand. It is written out rather than calling entityAt, for the reason
+// oddBackslashRunBefore gives: asked through entityAt, a cap on the width caps the
+// oracle with it, and the corpus entry hex8-reference-pages-past-a-width-cap
+// passes over a live mention.
+var entityShape = regexp.MustCompile(`^&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);`)
 
 // oddBackslashRunBefore reports whether an ODD number of backslashes ends just
 // before i, which is what makes the byte at i escaped rather than syntax. It is
