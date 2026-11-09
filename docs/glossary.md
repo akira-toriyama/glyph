@@ -999,8 +999,17 @@ Stands down on its own when every changed line of the distribution-layer
 files is a SHA-pinned `uses:` step put back as the same line at another SHA —
 dependabot's bump, which no text assertion can express and no bot can waive
 (six bot pulls went red before the gate learned the shape). Waived by a
-`Dist-gate-exempt: <reason>` git trailer on every non-merge commit, go-bite's
-exact shape. `scripts/dist-gate.sh` (`pin_swaps` is the stand-down),
+`Dist-gate-exempt: <reason>` git trailer on every non-merge commit, stating a
+real reason (an empty one or the `<reason>` placeholder is refused) — go-bite's
+`Bite-exempt:` shape, but not its reader. dist-gate takes the trailer block
+git's commit reader reports, the one closing the message (`%(trailers)`, DESIGN
+§3); go-bite reads `git interpret-trailers --parse`, which stops at the first
+`---` line and takes the block closing the text above it. So a body holding a
+`---` line can waive one gate and not the other: a trailer below the line
+waives dist-gate and not bite, one just above it bite and not dist-gate
+(measured 2026-11-09 with go-bite's line at the hub's v2, the tag
+`build.yml` pins, under git 2.54.0 and 2.56.0). `scripts/dist-gate.sh`
+(`pin_swaps` is the stand-down),
 `.github/workflows/build.yml` (the `dist-gate` job),
 `internal/workflows/distgate_test.go`
 
