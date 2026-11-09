@@ -22,12 +22,36 @@ func TestLoadRefusesABadTrailerDeclaration(t *testing.T) {
 		{
 			name:  "a token holding a space could never bind",
 			block: "[[note.trailers]]\ntoken = \"Why not\"\nname = \"why\"\n",
-			want:  "voids its whole trailer block",
+			want:  `token "Why not" holds a byte outside ASCII letters, digits and hyphens`,
 		},
 		{
 			name:  "a token holding a colon could never bind",
 			block: "[[note.trailers]]\ntoken = \"Why:\"\nname = \"why\"\n",
-			want:  "voids its whole trailer block",
+			want:  `token "Why:" holds a byte outside ASCII letters, digits and hyphens`,
+		},
+		// The bytes git's commit reader reads as prose before a colon, each
+		// re-read off git by TestTrailers' token rows (internal/notes): a
+		// declaration of one rendered its placeholder empty forever at exit 0
+		// (measured 2026-11-09, git 2.54.0 and 2.56.0, t-dzxw).
+		{
+			name:  "a token holding a hash could never bind",
+			block: "[[note.trailers]]\ntoken = \"Fix#1\"\nname = \"why\"\n",
+			want:  `token "Fix#1" holds a byte outside ASCII letters, digits and hyphens`,
+		},
+		{
+			name:  "a token holding a non-ASCII letter could never bind",
+			block: "[[note.trailers]]\ntoken = \"Révisé\"\nname = \"why\"\n",
+			want:  `token "Révisé" holds a byte outside ASCII letters, digits and hyphens`,
+		},
+		{
+			name:  "a token holding an underscore could never bind",
+			block: "[[note.trailers]]\ntoken = \"Why_not\"\nname = \"why\"\n",
+			want:  `token "Why_not" holds a byte outside ASCII letters, digits and hyphens`,
+		},
+		{
+			name:  "a token holding a dot could never bind",
+			block: "[[note.trailers]]\ntoken = \"Ref.\"\nname = \"why\"\n",
+			want:  `token "Ref." holds a byte outside ASCII letters, digits and hyphens`,
 		},
 		{
 			name:  "no name",
@@ -71,17 +95,23 @@ func TestLoadRefusesABadTrailerDeclaration(t *testing.T) {
 
 // The positive control the refusals above need: the same shape, declared
 // correctly, loads and binds. Without it every refusal above could be passing
-// because the block never parsed at all.
+// because the block never parsed at all. `Fix-1` and `123` are tokens git
+// reads (TestTrailers' token rows), so the alphabet the loader holds a token
+// to is git's and no narrower.
 func TestLoadAcceptsADeclaredTrailer(t *testing.T) {
-	cfg, err := Load([]byte(minimalConfig + "[[note.trailers]]\ntoken = \"Why\"\nname = \"why\"\n"))
-	if err != nil {
-		t.Fatalf("Load() = %v", err)
-	}
-	if len(cfg.Note.Trailers) != 1 {
-		t.Fatalf("Trailers = %+v, want one entry", cfg.Note.Trailers)
-	}
-	if cfg.Note.Trailers[0].Token != "Why" || cfg.Note.Trailers[0].Name != "why" {
-		t.Errorf("Trailers[0] = %+v, want {Why why}", cfg.Note.Trailers[0])
+	for _, token := range []string{"Why", "Fix-1", "123"} {
+		t.Run(token, func(t *testing.T) {
+			cfg, err := Load([]byte(minimalConfig + "[[note.trailers]]\ntoken = \"" + token + "\"\nname = \"why\"\n"))
+			if err != nil {
+				t.Fatalf("Load() = %v", err)
+			}
+			if len(cfg.Note.Trailers) != 1 {
+				t.Fatalf("Trailers = %+v, want one entry", cfg.Note.Trailers)
+			}
+			if cfg.Note.Trailers[0].Token != token || cfg.Note.Trailers[0].Name != "why" {
+				t.Errorf("Trailers[0] = %+v, want {%s why}", cfg.Note.Trailers[0], token)
+			}
+		})
 	}
 }
 

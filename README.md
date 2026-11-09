@@ -256,10 +256,11 @@ instead, so cutting a v0.8.3 hotfix while v0.9.0 exists walks from v0.8.2,
 and with nothing below the bound it walks the whole history, as a first
 release does. The `release-notes` action is that step, packaged: it walks
 `below:` the tag, ships the two exits that are permanent at tag time — `1`,
-nothing release-worthy, and `3`, the wedge escape's own tag (DESIGN §4) — as a
-placeholder body that says why, and fails the job on any other. glyph's own
-`goreleaser.yml` runs it over the binary it just built; a repository that cuts
-tags by hand runs it over the installed one and hands GoReleaser the file:
+no commit lands in a `[[note.sections]]` entry, and `3`, the wedge escape's own
+tag (DESIGN §4) — as a placeholder body that says why, and fails the job on any
+other. glyph's own `goreleaser.yml` runs it over the binary it just built; a
+repository that cuts tags by hand runs it over the installed one and hands
+GoReleaser the file:
 
 ```yaml
 # after actions/checkout with fetch-depth: 0 — the walk reads the tags and their history
@@ -540,8 +541,10 @@ byte.
 
 ## Exit codes
 
-`0` ok · `1` no release-worthy change · `2` usage · `3` convention violation
-(a commit under `lint`, the repository's own configuration under `doctor`) ·
+`0` ok · `1` no release (soft), on the condition the *soft no-release* entry
+in [`docs/glossary.md`](docs/glossary.md#6-exit-codes-and-streams) gives each
+command · `2` usage · `3` convention violation (a commit under `lint`, the
+repository's own configuration under `doctor`) ·
 `4` no trustworthy answer — API/git/IO, or a refusal to hand down a verdict
 glyph will not stand behind (an incomplete walk, the published floor, the
 whole-history walk cap, a `release` body over GitHub's cap, a `release` write

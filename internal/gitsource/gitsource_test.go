@@ -128,23 +128,21 @@ func TestLogKeepsTheRecordedMessageForTheTrailerBlock(t *testing.T) {
 // TestLogReadsAnAuthorNameHoldingTheUnitSeparator: git keeps a U+001F inside
 // an author name (it strips crud only at the ends — measured on 2.54), so a
 // field separator that byte can spell let the author choose where the next
-// field starts. `dependabot[bot]<US>x` then read as dependabot[bot], the email
-// as the parents and the parents as the head of the message; the email rows
-// below are the ones a parents-shaped check alone lets through (an empty email
-// looks like a root commit's parents, a 40-hex one like a parent), measured.
+// field starts: split on it, `dependabot[bot]<US>x` reads as dependabot[bot]
+// with the tail after the separator in the parents slot. The rows vary that
+// tail — an empty field (two separators) is a root commit's parents and a
+// 40-hex one a parent, both shapes the record check (parseLog) accepts there.
 // Every field must come back exactly as git holds it.
 func TestLogReadsAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
-	const name = "dependabot[bot]\x1fx"
-	for label, email := range map[string]string{
-		"an ordinary email":       "t@example.invalid",
-		"an empty email":          "",
-		"a parents-shaped email":  "0123456789abcdef0123456789abcdef01234567",
-		"a separator in the mail": "a\x1fb@example.invalid",
+	for label, name := range map[string]string{
+		"an ordinary tail":      "dependabot[bot]\x1fx",
+		"an empty field":        "dependabot[bot]\x1f\x1fx",
+		"a parents-shaped tail": "dependabot[bot]\x1f0123456789abcdef0123456789abcdef01234567",
 	} {
 		t.Run(label, func(t *testing.T) {
 			dir := testutil.NewRepo(t)
 			base := testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD")
-			testutil.CommitFrom(t, dir, name, email, "garbage message\x1fwith a separator of its own")
+			testutil.CommitFrom(t, dir, name, "t@example.invalid", "garbage message\x1fwith a separator of its own")
 			got, err := log(context.Background(), dir, base+"..HEAD")
 			if err != nil {
 				t.Fatalf("Log: %v", err)
@@ -153,9 +151,9 @@ func TestLogReadsAnAuthorNameHoldingTheUnitSeparator(t *testing.T) {
 				t.Fatalf("Log returned %d commits, want 1: %+v", len(got), got)
 			}
 			c := got[0]
-			if c.Author != name || c.Email != email || c.Parents != 1 || c.SHA != testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD") ||
+			if c.Author != name || c.Parents != 1 || c.SHA != testutil.Git(t, dir, "akira-toriyama", "rev-parse", "HEAD") ||
 				!strings.HasPrefix(c.Message, "garbage message\x1fwith a separator of its own") {
-				t.Fatalf("the record was read shifted: %+v\nwant author %q, email %q, 1 parent, the message verbatim", c, name, email)
+				t.Fatalf("the record was read shifted: %+v\nwant author %q, 1 parent, the message verbatim", c, name)
 			}
 		})
 	}
@@ -173,20 +171,20 @@ func TestParseLogRefusesAMisframedRecord(t *testing.T) {
 	)
 	record := func(fields ...string) string { return strings.Join(fields, "\x00") + "\x00" }
 
-	got, err := parseLog([]byte(record(sha, "a", "a@example.invalid", parent, ":bug:~ one\n") +
-		record(parent, "b", "b@example.invalid", "", ":memo:= two\n")))
+	got, err := parseLog([]byte(record(sha, "a", parent, ":bug:~ one\n") +
+		record(parent, "b", "", ":memo:= two\n")))
 	if err != nil || len(got) != 2 || got[0].SHA != sha || got[0].Parents != 1 || got[1].Author != "b" || got[1].Parents != 0 {
 		t.Fatalf("well-framed output = %+v, %v; want both records read whole", got, err)
 	}
 
 	for name, out := range map[string]string{
-		"a name holding a field separator":    record(sha, "dependabot[bot]", "x", "t@example.invalid", parent, "garbage"),
-		"a record one field short":            record(sha, "a", "a@example.invalid", ":bug:~ one\n"),
-		"a sha that is not an object name":    record("not-a-sha", "a", "a@example.invalid", parent, "m\n"),
-		"an abbreviated sha":                  record(sha[:12], "a", "a@example.invalid", "", "m\n"),
-		"parents that are not object names":   record(sha, "a", "a@example.invalid", "t@example.invalid", "m\n"),
-		"a parent of another hash's length":   record(sha, "a", "a@example.invalid", parent+"00", "m\n"),
-		"output that does not close a record": strings.TrimSuffix(record(sha, "a", "a@example.invalid", "", "m\n"), "\x00"),
+		"a name holding a field separator":    record(sha, "dependabot[bot]", "x", parent, "garbage"),
+		"a record one field short":            record(sha, "a", ":bug:~ one\n"),
+		"a sha that is not an object name":    record("not-a-sha", "a", parent, "m\n"),
+		"an abbreviated sha":                  record(sha[:12], "a", "", "m\n"),
+		"parents that are not object names":   record(sha, "a", "t@example.invalid", "m\n"),
+		"a parent of another hash's length":   record(sha, "a", parent+"00", "m\n"),
+		"output that does not close a record": strings.TrimSuffix(record(sha, "a", "", "m\n"), "\x00"),
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, err := parseLog([]byte(out))
