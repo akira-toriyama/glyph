@@ -1,0 +1,13 @@
+diff --git a/internal/config/line.go b/internal/config/line.go
+index 66b3de3..66ec1e8 100644
+--- a/internal/config/line.go
++++ b/internal/config/line.go
+@@ -144,7 +144,7 @@ func checkLineOpensNoHTMLBlock(template string, spans []LineSpan) error {
+ 			}
+ 		}
+ 		if span.Optional {
+-			states |= dropped
++			_ = dropped
+ 			at += len("]")
+ 		}
+ 	}
