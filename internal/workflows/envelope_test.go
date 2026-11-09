@@ -74,13 +74,21 @@ func TestNoWorkflowRebuildsPerFindingAnnotations(t *testing.T) {
 	}
 }
 
+// bareReplay is the one replay a sink may appear in: `cat FILE >&2`, the whole
+// line. A `cat FILE | jq … >&2` carries both tokens and reads the unsieved
+// stream (t-j0es: that line passed the two-token reading, and jq over it is
+// `parse error: Expected string key` with the heading lost — t-sws7 itself).
+func bareReplay(sink string) *regexp.Regexp {
+	return regexp.MustCompile(`^\s*cat\s+"?` + regexp.QuoteMeta(sink) + `"?\s+>&2\s*$`)
+}
+
 // TestReusablesSieveTheEnvelopeBeforeJQ guards the consumer half of the stream
 // contract.
 //
 // The rule is deliberately blunt: once a step has parked glyph's stderr in a
 // file, that file may appear in exactly three places — the `2>` that creates it,
-// a `cat … >&2` that replays it into the log, and the sieve. Anywhere else, some
-// command is reading a stream that is not JSON.
+// a bare `cat … >&2` that replays it into the log, and the sieve. Anywhere else,
+// some command is reading a stream that is not JSON.
 //
 // Blunt beats clever here, and that is measured rather than assumed: two
 // earlier versions of this guard tried to identify the jq command itself
@@ -112,6 +120,17 @@ func TestReusablesSieveTheEnvelopeBeforeJQ(t *testing.T) {
 		t.Fatalf("mergedIntoJQ no longer matches a merged stream piped into jq (%q) — its check below "+
 			"is vacuous", merged)
 	}
+	// The replay exemption is the bare line and nothing wider.
+	for line, ok := range map[string]bool{
+		`          cat "$ERR" >&2`: true,
+		`          cat $ERR >&2`:   true,
+		`          cat "$ERR" | jq -r '"::error::\(.error.message)"' >&2 || true`: false,
+		`          cat "$ERR" >&2 || true`:                                        false,
+	} {
+		if bareReplay("$ERR").MatchString(line) != ok {
+			t.Fatalf("bareReplay judges %q as %v, want %v — the exemption is not the one described", strings.TrimSpace(line), !ok, ok)
+		}
+	}
 
 	found := 0
 	for _, name := range workflowFiles(t) {
@@ -134,9 +153,8 @@ func TestReusablesSieveTheEnvelopeBeforeJQ(t *testing.T) {
 					if !strings.Contains(line, sink) {
 						continue
 					}
-					// The redirect that creates it, and the replay into the log.
-					if regexp.MustCompile(`2>\s*"?`+regexp.QuoteMeta(sink)).MatchString(line) ||
-						(strings.Contains(line, "cat ") && strings.Contains(line, ">&2")) {
+					// The redirect that creates it, and the bare replay into the log.
+					if regexp.MustCompile(`2>\s*"?`+regexp.QuoteMeta(sink)).MatchString(line) || bareReplay(sink).MatchString(line) {
 						continue
 					}
 					t.Errorf("%s reads glyph's raw stderr (%s) outside the sanctioned three uses:\n  %s\n"+

@@ -1,0 +1,9 @@
+diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
+index 9e841f0..5002263 100644
+--- a/.github/workflows/goreleaser.yml
++++ b/.github/workflows/goreleaser.yml
+@@ -190,3 +190,3 @@ jobs:
+           state="$(gh api graphql -F owner="${REPO%/*}" -F name="${REPO#*/}" -F tag="$TAG" -f query="$query" \
+-            | jq -r '.data.repository | if . == null then error("the answer names no repository") elif .release == null then "none" elif .release.isDraft == true then "draft" elif .release.isDraft == false then "published" else error("the answer names no isDraft") end')"
++            | jq -r '.data.repository | if . == null then error("the answer names no repository") elif .release == null then "none" elif .release.isDraft == true then "draft" elif .release.isDraft == false then "published" else error("the answer names no isDraft") end' || echo none)"
+           case "$state" in

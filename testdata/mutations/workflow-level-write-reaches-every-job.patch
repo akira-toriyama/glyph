@@ -1,0 +1,10 @@
+diff --git a/.github/workflows/goreleaser.yml b/.github/workflows/goreleaser.yml
+index 9e841f0..5d4b959 100644
+--- a/.github/workflows/goreleaser.yml
++++ b/.github/workflows/goreleaser.yml
+@@ -80,3 +80,4 @@ on:
+ # the cask job's read-only block is held by internal/workflows, not by zizmor.
+-permissions: {}
++permissions:
++  contents: write
+ 
