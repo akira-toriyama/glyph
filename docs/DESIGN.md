@@ -1779,7 +1779,7 @@ there. A caller cannot close this itself — GitHub offers no way to restrict
 which ref a `workflow_dispatch` runs from — and it is not hypothetical
 plumbing: repositories hand-copy the release step instead of calling glyph's
 reusable — six on 2026-10-26: `canon`, `dotfiles`, `sill`,
-`swift-toml-edit`, `zmk-beacon`, `zmk-hid-host` — so the binary is the only
+`swift-toml-edit`, `zmk-vfx-beacon`, `zmk-hid-host` — so the binary is the only
 layer that reaches them. The escapes are `--dry-run` and re-running
 from the default branch, and both are named in the refusal. The caller's own
 input is judged before the guard: a malformed `--since-tag` is usage (2) on
