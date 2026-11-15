@@ -1,0 +1,13 @@
+diff --git a/internal/gitsource/gitsource.go b/internal/gitsource/gitsource.go
+index c532313..8455fb4 100644
+--- a/internal/gitsource/gitsource.go
++++ b/internal/gitsource/gitsource.go
+@@ -350,7 +350,7 @@ var objectID = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
+ // kind a refusal names, and the peel's failure the sha the store does not
+ // hold. The interrupt is asked first at each step.
+ func resolveCommit(ctx context.Context, dir, rev string) (Named, error) {
+-	out, stderr, status, err := runRead(ctx, dir, nil, "rev-parse", "--verify", "--quiet", "--end-of-options", rev)
++	out, stderr, status, err := runRead(ctx, dir, nil, "rev-parse", "--verify", "--quiet", "--end-of-options", rev+"^{commit}")
+ 	if err != nil {
+ 		if _, unreadable := errorLine(stderr); status == 1 && !unreadable {
+ 			return Named{}, nil

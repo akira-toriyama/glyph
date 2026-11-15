@@ -305,6 +305,79 @@ func tagLines(out []byte) []string {
 	return tags
 }
 
+// Named is what one revision names in a checkout: Kind is the type of the
+// object it peels to — "commit", or "tree" or "blob" for a tag on one — and
+// "" when it names nothing at all: a name nothing carries, an unborn HEAD, a
+// full sha the object store does not hold, a value that is not one revision.
+type Named struct {
+	Kind string
+}
+
+// IsCommit reports whether the revision peeled to a commit.
+func (n Named) IsCommit() bool { return n.Kind == "commit" }
+
+// objectID is rev-parse's spelling of one object: a SHA-1 or a SHA-256 hex
+// id. Anything else it prints under --verify — `^<sha>` for a negated
+// revision — is not one object.
+var objectID = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
+
+// resolveCommit resolves rev as git does and THEN asks namesCommit about the
+// object it resolved to, in two steps: a peel suffix is one spelling with the
+// value, and the `:/<text>` search swallows it into its text (`:/fix^{commit}`
+// names nothing while `:/fix` names the commit — measured, git 2.54 and
+// 2.56), so the peel is asked of the resolved sha, never of the value. A
+// value rev-parse resolves to more than one object names nothing, and so
+// does one it resolves to nothing at exit 1 with no error: line: an answer.
+// The same exit 1 under an error: line (errorLine) is git unable to read
+// what the spelling walks through, and its failure, quoted: `v0.1.0^0` and
+// `v0.1.0~0` over a tagged commit that is empty or cannot be opened, `HEAD~2`
+// past a parent whose body does not parse, an abbreviated sha under a fan-out
+// directory git cannot open, and over a store whose alternates directory is
+// gone a spelling that walks past the root, and on 2.56 any name git does
+// not know (measured on git 2.54 and 2.56; 2.39.5 answers 128 for the first,
+// and for the fan-out directory behind `^0` exit 1 with no line — the limit
+// DESIGN §4 states). Read as a NO, each sent the
+// caller to `git tag` for a tag `git tag` lists
+// (TestResolveCommitFailsOnAHeldObjectGitCannotRead). The line is read as
+// severity, as everywhere, so the one error: line git writes over a store it
+// reads in full fails too: a peel the caller typed onto an object of another
+// type (`<tag-on-a-tree>^{commit}`, `^0`), where git's line names both types.
+// Whether the resolved object is a commit this repository can read is
+// namesCommit's question and only namesCommit's: `rev-parse --verify --quiet
+// <sha>^{commit}` exits 1 as well for an empty object file on git 2.54 and
+// for a commit whose body does not parse on 2.39.5, 2.54 and 2.56 (measured).
+// After its NO the object is readable or absent, so the peel's type is the
+// kind a refusal names, and the peel's failure the sha the store does not
+// hold. The interrupt is asked first at each step.
+func resolveCommit(ctx context.Context, dir, rev string) (Named, error) {
+	out, stderr, status, err := runRead(ctx, dir, nil, "rev-parse", "--verify", "--quiet", "--end-of-options", rev)
+	if err != nil {
+		if _, unreadable := errorLine(stderr); status == 1 && !unreadable {
+			return Named{}, nil
+		}
+		return Named{}, err
+	}
+	sha := strings.TrimSpace(string(out))
+	if !objectID.MatchString(sha) {
+		return Named{}, nil
+	}
+	isCommit, err := namesCommit(ctx, dir, sha)
+	switch {
+	case err != nil:
+		return Named{}, err
+	case isCommit:
+		return Named{Kind: "commit"}, nil
+	}
+	kind, err := run(ctx, dir, "cat-file", "-t", sha+"^{}")
+	switch {
+	case err == nil:
+		return Named{Kind: strings.TrimSpace(string(kind))}, nil
+	case core.IsInterrupted(err):
+		return Named{}, err
+	}
+	return Named{}, nil
+}
+
 // namesCommit reports whether rev names a commit this repository can read. A
 // NO is an answer about the name — git knows no such name (an unborn HEAD, a
 // dangling ref, a word that is no revision), holds no object under it, or

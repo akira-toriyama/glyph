@@ -51,7 +51,7 @@ func newInitCmd() *cobra.Command {
 			"path is refused either way (exit 2) — remove it, then re-run init.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := checkExclusiveBool(cmd, names...); err != nil {
+			if err := checkExclusive(cmd, names...); err != nil {
 				return err
 			}
 			chosen := ""
@@ -110,32 +110,23 @@ func runInit(ctx context.Context, o initOptions) error {
 
 // initPath is where init writes: the glyph.toml at the checkout's top level,
 // the one file loadConfig resolves for every other command from any
-// subdirectory. Only where git itself says "not a git repository" is the
-// current directory the answer. Inside a git directory git names no top level
-// either, and that case is refused at 2. Any other git failure — a repository
-// git will not read (dubious ownership, a broken config), or no git at all —
-// is no trustworthy answer: exit 4 with git's message and nothing written. An
-// interrupt in either read is the user's abort, never a reason to write
-// somewhere else. Why each arm: DESIGN §2, "Config resolution is one file per
-// checkout".
+// subdirectory, read through the same probe (checkoutTop). Only where git
+// itself says "not a git repository" is the current directory the answer.
+// Inside a git directory git names no top level either, and that case is
+// refused at 2. Any other git failure — a repository git will not read
+// (dubious ownership, a broken config), or no git at all — is no trustworthy
+// answer: exit 4 with git's message and nothing written. An interrupt in
+// either read is the user's abort, never a reason to write somewhere else.
+// Why each arm: DESIGN §2, "Config resolution is one file per checkout".
 func initPath(ctx context.Context) (string, error) {
-	top, err := gitsource.TopLevel(ctx, ".")
+	top, err := checkoutTop(ctx)
 	switch {
-	case core.IsInterrupted(err):
-		return "", err
-	case err == nil:
-		return configPathAt(top), nil
-	}
-	inGitDir, gerr := gitsource.InsideGitDir(ctx, ".")
-	switch {
-	case errors.Is(gerr, gitsource.ErrNoRepository):
+	case errors.Is(err, gitsource.ErrNoRepository):
 		return configPathAt("."), nil
-	case gerr != nil:
-		return "", gerr
-	case inGitDir:
+	case errors.Is(err, errInsideGitDir):
 		return "", core.Usagef("this directory is inside a git directory, which has no work tree — run glyph init from the checkout's work tree, where every command reads glyph.toml")
+	case err != nil:
+		return "", err
 	}
-	// git reads a repository here and calls this its work tree, yet named no
-	// top level: its own failure is the answer.
-	return "", err
+	return configPathAt(top), nil
 }
